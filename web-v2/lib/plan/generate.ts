@@ -164,25 +164,74 @@ export function spacedQualityDowsFromAvailable(avail: number[], longRunDow: numb
  *      to best-achievable when unsatisfiable (e.g. two VO2max days in a ≤6-day week).
  * qualityDows is returned ascending; types align by index (types[i] → i-th-earliest quality day).
  */
+/**
+ * VARIETY-R3-1 (2026-08-28) · the composer's quality-type vocabulary.
+ *
+ * `'speed'` is a COMPOSER-INTERNAL pseudo-type for the 5K/10K third quality
+ * day (the R day). It never reaches a DayPlan: the day is written with the
+ * existing `intervals` type (DOCTRINE-BASE-2's rep-shaped-day convention, so
+ * nothing new reaches the database, the mutation boundary or the watch), and
+ * the pseudo-type exists so the scheduler, the dose ledger and the slot
+ * resolution can tell the R day apart from the week's I session — two days
+ * that share a DayPlan type but spend different Daniels budgets (8% I vs
+ * 5% R, `Research/01` §"Dosing rules") and carry different recovery costs.
+ */
+export type ComposerQualityType = DayPlan['type'] | 'speed';
+
 export function scheduleQuality(
   qualityDows: number[],
-  qualityTypes: Array<DayPlan['type']>,
+  qualityTypes: Array<ComposerQualityType>,
   longRunDow: number,
   restDow: number,
   availableDows: Set<number> | null,
-  placementTypes?: Array<DayPlan['type']>,
-): { dows: DOW[]; types: Array<DayPlan['type']> } {
+  placementTypes?: Array<ComposerQualityType>,
+): { dows: DOW[]; types: Array<ComposerQualityType> } {
   const n = qualityDows.length;
+  // VARIETY-R3-1 · is the R day in this week's mix? Read from the placement
+  // profile too (QUAL-PHASE-STABLE passes the most gap-demanding parity), so
+  // the gap model and the placement always agree about which world they are in.
+  const hasSpeed = qualityTypes.includes('speed')
+    || (placementTypes?.includes('speed') ?? false);
   // FARTLEK-GAP-SCHED-1 (2026-06-23): fartlek is type='easy' and reqGap=0 in the validator
   // (easy needs no recovery day). gapRank must match so scheduleQuality doesn't displace
   // fartlek from its requested slot just because it's adjacent to the long run.
-  const gapRank = (t: DayPlan['type']): number => (t === 'intervals' ? 2 : t === 'easy' ? 0 : 1);
+  //
+  // VARIETY-R3-1 · two additions, both read out of Research/22's own advanced
+  // sample weeks — the only place doctrine writes a three-quality week down:
+  //
+  //   · `speed` (the R day) needs NO easy day before the next hard day. Both
+  //     sample weeks run it the day before the long ("Sat | WU + 8×400 m @ R
+  //     ... | Sun | 10-12 mi E"; "Sat | WU + 10×400 m @ R ... | Sun | 13-14 mi
+  //     LR") — §7's work is short reps at full recovery, the same reasoning as
+  //     FARTLEK-GAP-SCHED-1's rank-0 fartlek. What it must NOT be is the day
+  //     immediately before a threshold session (Research/04 §16 "400m R-pace
+  //     day before threshold"), which the ordering below prevents by putting
+  //     the R day LAST — after the week's T day, against the long's edge.
+  //   · in an R-day week the I session's gap is ONE easy day, not two. The
+  //     three-session arithmetic forces the question (I:2 + T:1 + R:0 + long:1
+  //     = 4 recovery days in a 7-day week that only has 3), and the sample
+  //     weeks answer it: both run the I session with exactly one easy/GA day
+  //     before the next quality day ("Tue | ...@ I... | Wed | 6 mi E | Thu |
+  //     ...@ T..."). Two-session weeks keep the full 2-day buffer of
+  //     Research/00b §"Hard/Easy Alternation" exactly as before.
+  const gapRank = (t: ComposerQualityType): number =>
+    (t === 'speed' ? 0 : t === 'intervals' ? (hasSpeed ? 1 : 2) : t === 'easy' ? 0 : 1);
   // VDEAD-A (2026-06-23) · PAD types to qualityDows.length so gaps[] aligns 1:1 with dows. When qualityTypes
   // is shorter than the dows (base-building emits 1 type for 2 quality slots), the old slice(0,n) left gaps
   // short → score() read gaps[i]=undefined → NaN slack → a stranded quality day (adjacent to the long, 0 easy
   // between) passed as "legal" → §9 stimulus-gap persist-abort. Cycle the types like the slot-assignment loop.
-  const typeBase: Array<DayPlan['type']> = qualityTypes.length > 0 ? qualityTypes : ['threshold'];
-  const types = Array.from({ length: n }, (_, i) => typeBase[i % typeBase.length]).sort((a, b) => gapRank(a) - gapRank(b));
+  //
+  // VARIETY-R3-1 · ordering. The plain sort puts the highest-gap type last
+  // (intervals toward the long's own buffer). In an R-day week that would put
+  // the R day FIRST — often the day straight before the T session, §16's own
+  // forbidden pairing — so the sort instead keeps the mix's stated order for
+  // the non-speed types (I first, T second: Research/22's "Tue ...@ I / Thu
+  // ...@ T") and pins `speed` last, which lands it where both sample weeks put
+  // it: against the long run, two days after the T day.
+  const typeBase: Array<ComposerQualityType> = qualityTypes.length > 0 ? qualityTypes : ['threshold'];
+  const orderKey = (t: ComposerQualityType): number =>
+    hasSpeed ? (t === 'speed' ? 1 : 0) : gapRank(t);
+  const types = Array.from({ length: n }, (_, i) => typeBase[i % typeBase.length]).sort((a, b) => orderKey(a) - orderKey(b));
   if (n === 0) return { dows: qualityDows.slice().sort((a, b) => a - b) as DOW[], types };
   // QUAL-PHASE-STABLE (2026-06-24) · the DOW placement is driven by the GAP requirements of the type
   // mix. When the QUALITY phase toggles its mix every week (weekIdx%2: intervals-in vs intervals-out),
@@ -192,8 +241,8 @@ export function scheduleQuality(
   // still reflect THIS week's actual workouts. The intervals-safe placement is gap-legal for the lighter
   // (intervals-free) weeks too (Research/00b:55-58), so only the TYPE rotates, never the day. Both profiles
   // sort intervals to the last index, so a week that DOES carry intervals still lands it on the gap-2 slot.
-  const gapBase: Array<DayPlan['type']> = (placementTypes && placementTypes.length > 0) ? placementTypes : typeBase;
-  const gapTypes = Array.from({ length: n }, (_, i) => gapBase[i % gapBase.length]).sort((a, b) => gapRank(a) - gapRank(b));
+  const gapBase: Array<ComposerQualityType> = (placementTypes && placementTypes.length > 0) ? placementTypes : typeBase;
+  const gapTypes = Array.from({ length: n }, (_, i) => gapBase[i % gapBase.length]).sort((a, b) => orderKey(a) - orderKey(b));
   const gaps = gapTypes.map(gapRank);
   const between = (a: number, b: number): number => ((b - a + 7) % 7) - 1; // circular easy days strictly between hard a and next hard b
   const score = (dows: number[]): { ok: boolean; minSlack: number } => {
@@ -241,6 +290,28 @@ export function scheduleQuality(
   // latest intervals to threshold (gap 2→1, which a tight pair CAN satisfy) — a legal recoverable
   // substitute (Research/00b · threshold needs only 1 easy day), far better than a rejected plan. Recurse
   // until satisfiable or no intervals remain.
+  // VARIETY-R3-1 · when even the best placement cannot seat the THREE-session
+  // week, the R day goes first — before any downgrade touches the I or T
+  // session. That is Research/00b's own order ("What to Cut First": "3. Second
+  // quality session (replace with easy + strides)" comes ahead of "6. Last to
+  // be cut: the one remaining quality session that defines the block"), and it
+  // restores exactly the two-session week the runner had before VARIETY-R3-1
+  // existed: the recursion drops the `speed` entry from the mix and the gap
+  // profile and re-runs the unchanged two-session machinery. Fires for e.g. a
+  // Saturday-rest Sunday-long runner, whose calendar leaves no legal seat for
+  // an R day between the T session and the long.
+  if (!bestS.ok && hasSpeed) {
+    const si = types.lastIndexOf('speed');
+    const gsi = gapTypes.lastIndexOf('speed');
+    if (si >= 0 || gsi >= 0) {
+      return scheduleQuality(
+        best.filter((_, i) => i !== (si >= 0 ? si : best.length - 1)),
+        types.filter((_, i) => i !== si),
+        longRunDow, restDow, availableDows,
+        gapTypes.filter((_, i) => i !== gsi),
+      );
+    }
+  }
   if (!bestS.ok && gapTypes.lastIndexOf('intervals') >= 0) {
     // Downgrade against the PLACEMENT profile (gapTypes) — it governs satisfiability — and downgrade
     // this week's matching intervals label too (if any), so the recursion converges on a legal placement
@@ -1706,6 +1777,53 @@ export const FAST_FINISH_MIN_MI = 2;
  */
 export const TENK_PROGRESSION_FINISH_MI = 2;
 
+/**
+ * VARIETY-R3-1 (2026-08-28) · the 5K/10K third quality day — the R day.
+ *
+ * `Research/01` §"Dosing rules" prescribes a polarized distribution whose hard
+ * half is TWO bands, not one: "70–80% E, 10–15% M+T, 10–15% I+R". The engine's
+ * two-slot 5K/10K weeks spend the M+T band (tempo/cruise) and the I band (rep
+ * slot) and leave R unspent, so measured I+R landed at 4-6% of block mileage
+ * against doctrine's 10-15. `Research/22`'s own advanced sample weeks show the
+ * missing session by name: §"5K — Advanced" (Phase III, week 4) runs Tue
+ * "6×1000 m @ I", Thu "4×1 mi @ T" AND Sat "WU + 8×400 m @ R, 400 jog + CD";
+ * §"10K — Advanced" (race-specific, week 11) runs "5×1600 m @ 10K pace",
+ * "4×1 mi @ T" AND "WU + 10×400 m @ R, 400 jog + CD". Three quality days,
+ * the third at R — which is also both rows' "Key workout types" column
+ * ("R reps (200-400 m)"; "strides, hill sprints").
+ *
+ * The day exists only where doctrine's own rows assume it can:
+ *
+ *   · 5k/10k only. Research/22's marathon and half rows are 2 quality + long
+ *     (the HM-Advanced sample week is Tue T, Thu race-pace, Sat long), and
+ *     the marathon's third stimulus is the MP long, not a third weekday.
+ *   · `tierTarget.qualityPerWeek >= 3` — the tier table's own count, which
+ *     for 5k/10k advanced/elite is read from those sample weeks.
+ *   · the runner's preferences seat three quality days, and
+ *   · the week runs at least `R3_MIN_TRAINING_DAYS` days: both Research/22
+ *     rows state "| Days/week | 6-7 |", and their sample weeks need six —
+ *     three quality days, a long, and the easy day each hard→hard gap
+ *     requires. A 4-5 day runner keeps the two-session week their tier's
+ *     intermediate row describes.
+ *   · never on a cutback week: `Research/00b` §"What to Cut First" removes
+ *     the extra quality session first ("3. Second quality session (replace
+ *     with easy + strides)") and its cutback table keeps "one true quality
+ *     session only" — so the deload drops the R day before anything else.
+ *
+ * The day rides the composer-internal `speed` slot (`ComposerSlot`), exactly
+ * as DOCTRINE-BASE-2's base-week session does: the DayPlan type stays
+ * `intervals` (nothing new on the wire), the catalogue draws from the §7 R
+ * vocabulary, and Daniels' 5% R cap (`Research/01`: "R | 5% of weekly mi
+ * (max 8K cumulative)") binds through the same `capLedger` /
+ * `slotBudgetMi` machinery as every other slot — three correctly-sized
+ * days, never one inflated one.
+ *
+ * Bound by `VARIETY.r3-third-quality-day` in lib/doctrine/registry.ts, which
+ * parses the Days/week band and counts the sample weeks' structured sessions
+ * out of Research/22 itself.
+ */
+export const R3_MIN_TRAINING_DAYS = 6;
+
 // Exported for lib/plan/block-preview.ts (the pre-recovery-complete block-shape
 // preview) — it must call this SAME function rather than re-deriving BLOCK_SHAPE
 // or the phase-sizing arithmetic. See that file's header for why.
@@ -3019,11 +3137,14 @@ function layoutWeek({
    * Daniels' published 30-85 table, which is the honest answer, and the sizing
    * falls back to the I anchor.
    *
-   * Only BASE reads it (the `repetition` quality family is BASE-only), so it is
-   * resolved only there — `resolveZoneAnchors` walks the VDOT table and this
-   * function runs once per week of every plan in a 120k-archetype sweep.
+   * Resolved only where a `repetition`-family session can exist — BASE, and
+   * (VARIETY-R3-1) the 5K/10K QUALITY / RACE-SPECIFIC weeks whose third
+   * quality day is the R day — `resolveZoneAnchors` walks the VDOT table and
+   * this function runs once per week of every plan in a 120k-archetype sweep.
    */
-  const weekRPaceSec = phase === 'BASE'
+  const weekRPaceSec = (phase === 'BASE'
+    || ((phase === 'QUALITY' || phase === 'RACE-SPECIFIC')
+      && (distanceCategoryOf(raceDistanceMi) === '5k' || distanceCategoryOf(raceDistanceMi) === '10k')))
     ? (anchorsFor({
         tPaceSec: weekTPaceSec, iPaceSec: weekIPaceSec, mpPaceSec: weekMpPaceSec ?? null,
       }).R ?? null)
@@ -3496,7 +3617,33 @@ function layoutWeek({
     // Quality type mix as a FUNCTION of the week index (only QUALITY alternates by parity), so the
     // QUAL-PHASE-STABLE placement below can inspect both parities and anchor the days to the more
     // gap-demanding one — keeping the runner's training WEEKDAYS fixed while the workout TYPE rotates.
-    const qualityTypesFor = (wi: number): Array<DayPlan['type']> => baseBuilding
+    //
+    // VARIETY-R3-1 (2026-08-28) · the 5K/10K third quality day — the R day.
+    // See R3_MIN_TRAINING_DAYS for the whole doctrine case. The gate, term by
+    // term:
+    //   · 5k/10k only (Research/22's HM/M rows are 2 quality + long);
+    //   · `tierTarget.qualityPerWeek >= 3` — the tier count read from
+    //     Research/22's advanced/elite sample weeks;
+    //   · the runner's preferences seat three quality days this week
+    //     (`qualityDows` is already density-sliced by the ramp);
+    //   · the week runs ≥ R3_MIN_TRAINING_DAYS days — both Research/22 rows
+    //     state "| Days/week | 6-7 |". An unstated frequency falls back to the
+    //     tier's own daysPerWeek, the same assumption the volume bands make;
+    //   · never on a cutback (Research/00b §"What to Cut First": the extra
+    //     quality session is the first thing a deload removes) and never on
+    //     race week.
+    // The entry is the composer-internal `speed` pseudo-type; it becomes an
+    // `intervals`-typed DayPlan at write-time (see `ComposerQualityType`).
+    const thirdSpeedDay = (cat === '5k' || cat === '10k')
+      && !baseBuilding
+      && tierTarget.qualityPerWeek >= 3
+      && qualityDows.length >= 3
+      && (trainingDaysPerWeek ?? tierTarget.daysPerWeek) >= R3_MIN_TRAINING_DAYS
+      && !isCutback
+      && !isRaceWeek;
+    const withSpeedDay = (mix: Array<ComposerQualityType>): Array<ComposerQualityType> =>
+      thirdSpeedDay ? [...mix, 'speed'] : mix;
+    const qualityTypesFor = (wi: number): Array<ComposerQualityType> => baseBuilding
       // Base-building (beginner): a LIGHT surge fartlek in the sharpen phase
       // (the `tempo` slot) — BASE weeks are pure easy + strides + long, no
       // structured I/R reps — Research/22 §Beginner (Higdon Novice / Mayo).
@@ -3565,8 +3712,11 @@ function layoutWeek({
           // §15's race-specific row names in the same breath ("4×2 mi for HM").
           // Running the rep session twice broke §6.2's "every 7-10 days" and
           // put 2× the 8% I budget in one week.
-          ? (cat === '5k'   ? ['intervals', 'threshold']
-           : cat === '10k'  ? ['intervals', 'threshold']   // RACE-SPEC-10K-1 (2026-06-23): 10K race-specific dominates with I-pace reps (Research/00a §"Workout dose by race distance" "3–4×2km at 10K pace"), mirrors 5K
+          // VARIETY-R3-1 · `withSpeedDay` appends the R day where the gate
+          // holds — Research/22 §"10K — Advanced"'s race-specific sample week
+          // is exactly this mix plus "WU + 10×400 m @ R, 400 jog + CD".
+          ? (cat === '5k'   ? withSpeedDay(['intervals', 'threshold'])
+           : cat === '10k'  ? withSpeedDay(['intervals', 'threshold'])   // RACE-SPEC-10K-1 (2026-06-23): 10K race-specific dominates with I-pace reps (Research/00a §"Workout dose by race distance" "3–4×2km at 10K pace"), mirrors 5K
            // DOCTRINE-HMLONG-DOSE-1 · on the week the half's fast-finish long
            // lands, the CRUISE session comes out — the direct analogue of
            // DOCTRINE-MPLONG-1, forced by a collision the marathon does not
@@ -3621,8 +3771,11 @@ function layoutWeek({
           // Each row: one I-family slot, one T-family slot, and the T slot
           // alternates cruise intervals ↔ continuous tempo by week parity —
           // §5.2's "alternating with cruise intervals", read literally.
-          ? (cat === '5k'   ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['intervals', 'tempo'])
-           : cat === '10k'  ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['intervals', 'tempo'])
+          // VARIETY-R3-1 · the 5K/10K R day rides here too — Research/22
+          // §"5K — Advanced"'s Phase III sample week is a QUALITY-phase week
+          // and runs all three ("6×1000 m @ I" / "4×1 mi @ T" / "8×400 m @ R").
+          ? (cat === '5k'   ? withSpeedDay(wi % 2 === 0 ? ['intervals', 'threshold'] : ['intervals', 'tempo'])
+           : cat === '10k'  ? withSpeedDay(wi % 2 === 0 ? ['intervals', 'threshold'] : ['intervals', 'tempo'])
            : cat === 'hm'   ? (wi % 2 === 0 ? ['intervals', 'threshold'] : ['intervals', 'tempo'])
            : cat === 'ultra'
                // ULTRA-QUAL-1 (2026-06-23): ultra training is threshold-dominant; I-pace intervals are
@@ -3696,7 +3849,7 @@ function layoutWeek({
     // so they don't oscillate as the QUALITY mix toggles. The two parities differ only by whether
     // intervals is present; the intervals-bearing parity is the most gap-demanding, so place against it.
     // Non-QUALITY phases don't alternate → use this week's types directly (placement byte-unchanged).
-    const placementProfile: Array<DayPlan['type']> = phase === 'QUALITY'
+    const placementProfile: Array<ComposerQualityType> = phase === 'QUALITY'
       ? (() => { const a = qualityTypesFor(0), b = qualityTypesFor(1);
           return a.includes('intervals') ? a : b.includes('intervals') ? b : qualityTypes; })()
       : qualityTypes;
@@ -3852,7 +4005,7 @@ function layoutWeek({
       // nothing asked for it, because no slot spent the R budget. A base
       // week's §7 session does, and asking for it by the day type `intervals`
       // would price it against Daniels' 8% instead of his 5%.
-      return (qt: DayPlan['type'] | 'strides'): number => {
+      return (qt: ComposerQualityType | 'strides'): number => {
         const p = slotDosePace(qt, Boolean(taperMp) && qt === 'tempo');
         return p ? (byPace.get(p) ?? Infinity) : Infinity;
       };
@@ -3900,7 +4053,7 @@ function layoutWeek({
       };
       const spent: Record<CapFamily, number> = { threshold: 0, interval: 0, repetition: 0 };
       /** The cap family a slot is BUDGETED against, from its day type. */
-      const nominalOf = (qt: DayPlan['type']): CapFamily | null => {
+      const nominalOf = (qt: ComposerQualityType): CapFamily | null => {
         const p = slotDosePace(qt, Boolean(taperMp) && qt === 'tempo');
         return p ? FAMILY_OF_PACE[p] ?? null : null;
       };
@@ -3922,13 +4075,13 @@ function layoutWeek({
        * and if nothing fits the slot falls back to the trajectory's generic
        * shape — which claims no doc row and is the honest answer.
        */
-      const slotCeilingMi = (qt: DayPlan['type']): number => Math.min(
+      const slotCeilingMi = (qt: ComposerQualityType): number => Math.min(
         slotBudgetMi(qt),
         mpLongAtPaceCapMi ?? Infinity,
       );
       return {
         /** What slot `i` may spend in each family, given the rest of the week. */
-        remainingFor(i: number, qt: DayPlan['type']): Partial<Record<CapFamily, number>> {
+        remainingFor(i: number, qt: ComposerQualityType): Partial<Record<CapFamily, number>> {
           const mine = pending[i];
           const claimedByOthers = new Set<CapFamily>();
           for (let j = 0; j < pending.length; j++) {
@@ -3975,7 +4128,7 @@ function layoutWeek({
      * ladder is a number, the vocabulary is a name, and only the number has to
      * be monotone.
      */
-    const trackOfType = (qt: DayPlan['type']): SessionFamily | null => {
+    const trackOfType = (qt: ComposerQualityType): SessionFamily | null => {
       if (baseBuilding) return null;
       // DOCTRINE-BASE-2 · the T and I ladders do not start in BASE.
       //
@@ -3993,7 +4146,7 @@ function layoutWeek({
       if (qt === 'intervals') return 'interval';
       return null;
     };
-    const trackFor = (s: { qt: DayPlan['type']; vocabRx: string | undefined }): SessionFamily | null => {
+    const trackFor = (s: { qt: ComposerQualityType; vocabRx: string | undefined }): SessionFamily | null => {
       if (s.vocabRx) return null;
       return trackOfType(s.qt);
     };
@@ -4056,7 +4209,7 @@ function layoutWeek({
      * target is null and this is the behaviour that shipped before: spend the
      * week's whole share.
      */
-    const targetMinutesFor = (qt: DayPlan['type']): number | null => {
+    const targetMinutesFor = (qt: ComposerQualityType): number | null => {
       const track = trackOfType(qt === 'tempo' ? 'threshold' : qt);
       if (track == null) return null;
       const step = stepByTrack.get(track);
@@ -4068,8 +4221,17 @@ function layoutWeek({
     const resolvedSlots = plannedSlots.map((planned, slotIdx) => {
       if (!planned) return null; // conflict · skip
       const { dow, qt } = planned;
+      // VARIETY-R3-1 · the R day's family is stated here, not asked of
+      // `qualityFamilyFor`. That function is the §15 oracle and §15's
+      // QUALITY/race-specific rows do not name R work — the R day's placement
+      // authority is Research/04 §7.4's own cycle row ("When in cycle | Base,
+      // late specific, taper week") plus Research/22's advanced sample weeks,
+      // which is what the `VARIETY.r3-third-quality-day` registry claim reads.
+      // Keeping the §15 oracle out of it keeps VOCAB.phase-placement honest.
       const candidateFamily = (baseBuilding || (taperMp && qt === 'tempo'))
         ? null
+        : qt === 'speed'
+        ? 'speed'
         : qualityFamilyFor(cat, phase, weekIdx, weeksToPhaseEnd, qt);
       // DOCTRINE-BASE-2 · in BASE the rep-shaped day is fed by the SPEED slot.
       //
@@ -4082,8 +4244,14 @@ function layoutWeek({
       // admits §6's rep sessions in every phase, and §6.5's own "Late base"
       // row would have put 8-12×600m at I into a rebuilding week that
       // `Research/00b` says carries "No threshold or VO2max".
+      // VARIETY-R3-1 · the mid-block R day is fed by the same SPEED slot the
+      // base week uses — the pseudo-type resolves to it directly. The selector
+      // scopes what that slot may answer with mid-block (R-pace rep entries;
+      // see `select.ts`), and the day is written as `intervals` at the end.
       const slot: ComposerSlot | null =
-        phase === 'BASE'
+        qt === 'speed'
+          ? 'speed'
+          : phase === 'BASE'
           ? (qt === 'intervals' ? 'speed' : null)
           : qt === 'threshold' || qt === 'intervals' || qt === 'tempo' ? qt : null;
       const choice = (candidateFamily && catalogueTier && slot && catalogueHistory)
@@ -4375,7 +4543,10 @@ function layoutWeek({
       // instead of §6.2's two; and `atPaceSessionCapMi` charges it Daniels'
       // 5% R cap instead of the 8% I cap — the tighter number, which is the
       // one §7's own contraindication row names ("Cap at 5% weekly mileage").
-      const qFamily: QualityFamily = phase === 'BASE'
+      // VARIETY-R3-1 · the mid-block R day is REPETITION work wherever it
+      // lands — same three consequences as the base-week session above:
+      // §7.4's session band, §17.1's one-mile jog legs, and Daniels' 5% R cap.
+      const qFamily: QualityFamily = (phase === 'BASE' || qt === 'speed')
         ? 'repetition'
         : qt === 'intervals' ? 'interval' : 'threshold';
       const tempoSized = (doctrinalDaySizing && qt === 'tempo' && !baseBuilding && !taperMp)
@@ -4390,10 +4561,13 @@ function layoutWeek({
       // either the catalogue's own §15 base-row session or nothing — and
       // nothing means the day is dropped below rather than filled with
       // `rx.intervals`, which is an I-pace rep set §15 does not place in base.
+      // VARIETY-R3-1 · the R day, like BASE, never reaches for a generic
+      // fallback: `rx.intervals` is an I-pace rep set, which is the wrong
+      // budget and the wrong session. Catalogue prescription or nothing.
       const rxSized = (doctrinalDaySizing && !taperMp && step == null && tempoSized == null
-        && (qt === 'intervals' || qt === 'threshold'))
+        && (qt === 'intervals' || qt === 'threshold' || qt === 'speed'))
         ? sizeFromPrescription(
-            phase === 'BASE'
+            (phase === 'BASE' || qt === 'speed')
               ? vocabRx
               : vocabRx ?? (qt === 'intervals' ? rx.intervals : rx.threshold),
             qFamily,
@@ -4408,7 +4582,11 @@ function layoutWeek({
       // the honest week IS easy running plus the strides on its easy days —
       // and the day goes back to the easy fill below instead of being filled
       // with a session doctrine did not put there or sized at zero miles.
-      if (phase === 'BASE' && (!vocabRx || rxSized == null)) return;
+      // VARIETY-R3-1 · the same refusal governs the mid-block R day: when the
+      // selector declines (no R anchor, Daniels' 5% too small for the shortest
+      // R set, §16 spacing) the day goes back to the easy fill — a week that
+      // cannot afford its R day simply keeps the two-session shape.
+      if ((phase === 'BASE' || qt === 'speed') && (!vocabRx || rxSized == null)) return;
       const sub =
         // DOCTRINE-TAPERMP-1 · "N mi WU · M mi @ MP · P mi CD". The "@ MP"
         // token is load-bearing, not decoration: `parseTempoShape` reads the
@@ -4420,6 +4598,10 @@ function layoutWeek({
         // the week's at-pace allowance, when the week could not afford the
         // named dose. Identical to `vocabRx` whenever it could.
       : vocabRx && qt !== 'tempo' ? (rxSized?.prescription ?? vocabRx)
+        // VARIETY-R3-1 · unreachable fallback (the guard above dropped any
+        // speed slot without a catalogue prescription); stated so the arm list
+        // stays total over ComposerQualityType.
+      : qt === 'speed'            ? (rxSized?.prescription ?? 'QUALITY')
         // PROGRESSION-1 · the trajectory's rendered shape when it owns this
         // slot, the fixed catalog string when it does not (unparseable seed,
         // no pace anchor, or a composer that passes no trajectory at all).
@@ -4476,7 +4658,11 @@ function layoutWeek({
       // 'tempo' so spec-builder produces a tempo spec (not a rep spec).
       // Without this remap, the runner sees a sub_label promising
       // continuous tempo over a workout_spec that's actually 4×1mi reps.
-      let effectiveType = qt;
+      // VARIETY-R3-1 · the R day is WRITTEN as `intervals` — DOCTRINE-BASE-2's
+      // rep-shaped-day convention. The pseudo-type dies here; the row, the
+      // spec builder, persistence and the watch see the day type they already
+      // understand, and the "@ R" token in the prescription is what paces it.
+      let effectiveType: DayPlan['type'] = qt === 'speed' ? 'intervals' : qt;
       if (qt === 'threshold' && /\d+\s*(?:mi)?\s*WU\s*[·•].*@\s*T[^·•]*[·•]\s*\d+\s*(?:mi)?\s*CD/i.test(sub)) {
         effectiveType = 'tempo';
       }
@@ -4518,7 +4704,11 @@ function layoutWeek({
         // runner's last tempo was eight would wrap five easy miles around
         // ninety seconds of work and call it quality — the junk-run shape the
         // day-sizing pass exists to prevent, arriving from the other direction.
-        : phase === 'BASE' && doctrinalDayMi != null
+        // VARIETY-R3-1 · the mid-block R day sizes exactly like the base-week
+        // speed session, for the same reason: §7's day is its own shape and
+        // flooring it at the runner's tempo-day length would wrap easy miles
+        // around two-and-a-half at-pace ones and call it quality.
+        : (phase === 'BASE' || qt === 'speed') && doctrinalDayMi != null
           ? Math.min(Math.round(doctrinalDayMi * 2) / 2, doctrinalDayCeiling)
         : doctrinalDayMi != null
           ? Math.min(
@@ -4544,7 +4734,7 @@ function layoutWeek({
       // low-volume threshold case, and it leaves the runner the week doctrine
       // actually prescribes there: easy running, plus the strides
       // DOCTRINE-STRIDES-1 puts on two of its easy days.
-      if (phase === 'BASE' && slotMi + 1e-9 < Math.round((doctrinalDayMi ?? 0) * 2) / 2) return;
+      if ((phase === 'BASE' || qt === 'speed') && slotMi + 1e-9 < Math.round((doctrinalDayMi ?? 0) * 2) / 2) return;
       slots[dow] = {
         dow: dow as DOW, type: effectiveType, distanceMi: slotMi, isQuality: true, isLong: false,
         subLabel: sub,

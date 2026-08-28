@@ -198,6 +198,7 @@ import {
   postRaceNoQualityDays,
   NET_DOWNHILL_LONG_RUN_SHARE,
   LATE_TAPER_DOWNHILL_DAYS,
+  R3_MIN_TRAINING_DAYS,
 } from '@/lib/plan/generate';
 import {
   DRESS_REHEARSAL,
@@ -3888,6 +3889,148 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const p15 = resolveCitation('Research/04-workout-vocabulary.md', '## 15. Training-cycle placement summary');
       if (!/light hills/i.test(p15.table().cell('Base (8–12+ wks)', 'Primary workouts'))) {
         throw new Error('§15\'s base row no longer names light hills · the beginner hill day loses its placement citation');
+      }
+    },
+  },
+  {
+    id: 'VARIETY.r3-third-quality-day',
+    binds: [
+      'lib/plan/generate.ts#R3_MIN_TRAINING_DAYS',
+      'lib/plan/goal-tiers.ts#TIER_TARGETS.qualityPerWeek',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### 5K — Advanced',
+    claim:
+      'A 5K/10K advanced week runs THREE quality days and the third is the R day. Both ' +
+      'advanced rows state "Days/week | 6-7" and their sample weeks write the three sessions ' +
+      'out — 5K: "6×1000 m @ I" / "4×1 mi @ T" / "WU + 8×400 m @ R, 400 jog + CD"; 10K: ' +
+      '"5×1600 m @ 10K pace" / "4×1 mi @ T" / "WU + 10×400 m @ R, 400 jog + CD" — which is ' +
+      'what fills the R half of Research/01\'s polarized band ("10-15% I+R"). The tier ' +
+      'table\'s qualityPerWeek must equal the sample week\'s own structured-session count, ' +
+      'the composer\'s frequency gate must equal the rows\' stated day floor, and the ' +
+      'intermediate rows (two structured sessions, no R day) must stay at two.',
+    check({ cite }) {
+      /** Structured sessions in a Research/22 sample week: the "WU + …" cells. */
+      const sessionsIn = (text: string): number => (text.match(/WU \+/g) ?? []).length;
+      const sections: Array<{ heading: string; cat: '5k' | '10k'; tier: 'advanced' | 'intermediate'; wantR: boolean }> = [
+        { heading: '### 5K — Advanced', cat: '5k', tier: 'advanced', wantR: true },
+        { heading: '### 10K — Advanced', cat: '10k', tier: 'advanced', wantR: true },
+        { heading: '### 5K — Intermediate', cat: '5k', tier: 'intermediate', wantR: false },
+        { heading: '### 10K — Intermediate', cat: '10k', tier: 'intermediate', wantR: false },
+      ];
+      for (const { heading, cat, tier, wantR } of sections) {
+        const sec = resolveCitation('Research/22-plan-templates.md', heading);
+        const n = sessionsIn(sec.text());
+        const q = TIER_TARGETS[cat][tier].qualityPerWeek;
+        if (q !== n) {
+          throw new Error(
+            `TIER_TARGETS.${cat}.${tier}.qualityPerWeek is ${q}, but §"${heading.replace('### ', '')}"'s ` +
+              `sample week runs ${n} structured session(s)`,
+          );
+        }
+        const hasR = /@ R\b/.test(sec.text());
+        if (hasR !== wantR) {
+          throw new Error(
+            `§"${heading.replace('### ', '')}"'s sample week ${hasR ? 'now carries' : 'no longer carries'} an ` +
+              `"@ R" session — the R-day placement (VARIETY-R3-1) needs re-reading`,
+          );
+        }
+        if (wantR) {
+          const days = parseBand(sec.table().cell('Days/week', 'Value'));
+          if (R3_MIN_TRAINING_DAYS !== days[0]) {
+            throw new Error(
+              `R3_MIN_TRAINING_DAYS is ${R3_MIN_TRAINING_DAYS}; §"${heading.replace('### ', '')}" states ` +
+                `"Days/week | ${days[0]}-${days[1]}" — the gate must open at the rows' own floor`,
+            );
+          }
+        }
+      }
+      // The negative half: the half marathon's advanced sample week runs TWO
+      // structured sessions (its third stimulus is the long run's HMP finish),
+      // so no third weekday may be inferred for hm — and the tier table agrees.
+      const hm = resolveCitation('Research/22-plan-templates.md', '### Half Marathon — Advanced');
+      if (sessionsIn(hm.text()) !== 2 || TIER_TARGETS.hm.advanced.qualityPerWeek !== 2) {
+        throw new Error(
+          '§"Half Marathon — Advanced" and TIER_TARGETS.hm.advanced no longer agree on two structured ' +
+            'sessions — the hm/m exclusion from VARIETY-R3-1 needs re-reading',
+        );
+      }
+      // The band the third day exists to fill still reads 10-15% I+R.
+      const dosing = resolveCitation('Research/01-pace-zones-vdot.md', "### Dosing rules — Daniels' caps");
+      if (!/10–15% I\+R/.test(dosing.text())) {
+        throw new Error('Research/01 no longer states the "10–15% I+R" polarized band — re-read VARIETY-R3-1');
+      }
+      // And the deload drops the extra session first: the composer's gate must
+      // carry the cutback exclusion (Research/00b's cut order), and the doc
+      // must still state that order.
+      const cut = resolveCitation('Research/00b-recovery-protocols.md', '### What to Cut First');
+      if (!/quality session/i.test(cut.text())) {
+        throw new Error('Research/00b §"What to Cut First" no longer names the quality session — re-read the cutback gate');
+      }
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      const gate = gen.match(/const thirdSpeedDay =[\s\S]{0,400}?;/);
+      if (!gate || !/!isCutback/.test(gate[0])) {
+        throw new Error('the thirdSpeedDay gate no longer excludes cutback weeks — Research/00b\'s cut order requires it');
+      }
+    },
+  },
+  {
+    id: 'VARIETY.r3-r-day-dose',
+    binds: ['lib/workout-catalogue/catalogue.ts#400m-r-repeats'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: "### Dosing rules — Daniels' caps",
+    claim:
+      'The R day\'s session is bounded by Daniels\' R row: rep length inside "200–600m, ' +
+      '≤2 min", weekly volume inside "5% of weekly mi (max 8K cumulative)", recovery "2–3× ' +
+      'duration of rep" — and Research/22\'s sample weeks state the rep counts (8×400 and ' +
+      '10×400) the entry\'s band spans. The catalogue entry must stay inside every one of ' +
+      'those numbers rather than restating them.',
+    check({ cite }) {
+      const entry = workoutBySlug('400m-r-repeats');
+      if (!entry) throw new Error('the 400m-r-repeats entry is gone — the 5K/10K R day has no session to draw');
+      // The doc's R row, parsed.
+      const rRow = cite.text().split('\n').find((l) => /^\|\s*R\s*\|/.test(l));
+      if (!rRow) throw new Error("Research/01's dosing table no longer carries an R row");
+      const repRange = rRow.match(/(\d+)–(\d+)\s*m,\s*≤\s*(\d+)\s*min/);
+      if (!repRange) throw new Error("the R row no longer states a rep length range — re-read the claim");
+      const [lo, hi] = [Number(repRange[1]), Number(repRange[2])];
+      const recovery = rRow.match(/(\d+)–(\d+)×\s*duration of rep/);
+      if (!recovery) throw new Error('the R row no longer states the recovery multiple');
+      const weeklyCap = rRow.match(/max\s+(\d+)K cumulative/);
+      if (!weeklyCap) throw new Error('the R row no longer states the cumulative R cap');
+      for (const st of entry.structures) {
+        if (st.kind !== 'reps') throw new Error('400m-r-repeats must be a plain rep structure');
+        if (st.rep.unit !== 'm' || st.rep.min < lo || st.rep.max > hi) {
+          throw new Error(`400m-r-repeats rep ${st.rep.min}-${st.rep.max}m sits outside the R row's ${lo}-${hi}m`);
+        }
+        // Recovery: the stated seconds band must reach the doc's 2× floor for
+        // a plausible R-pace 400 (~75-90 s) and never dip below the rep itself.
+        if (!st.recoverySec || st.recoverySec.min < 2 * 75) {
+          throw new Error("400m-r-repeats recovery is under 2× a fast runner's rep — the R row says 2–3× duration");
+        }
+      }
+      // At-pace ceiling inside the cumulative cap.
+      if (!entry.atPace || entry.atPace.unit !== 'km' || entry.atPace.max > Number(weeklyCap[1])) {
+        throw new Error(`400m-r-repeats at-pace band exceeds the R row's ${weeklyCap[1]}K cumulative cap`);
+      }
+      // The reps the entry spans are the ones Research/22's sample weeks state.
+      const fiveK = resolveCitation('Research/22-plan-templates.md', '### 5K — Advanced');
+      const tenK = resolveCitation('Research/22-plan-templates.md', '### 10K — Advanced');
+      const m5 = fiveK.text().match(/(\d+)×400 m @ R/);
+      const m10 = tenK.text().match(/(\d+)×400 m @ R/);
+      if (!m5 || !m10) throw new Error('Research/22\'s advanced sample weeks no longer state the N×400 @ R session');
+      for (const st of entry.structures) {
+        if (st.kind === 'reps' && (st.reps.min !== Math.min(+m5[1], +m10[1]) || st.reps.max !== Math.max(+m5[1], +m10[1]))) {
+          throw new Error(
+            `400m-r-repeats reps ${st.reps.min}-${st.reps.max} disagree with the sample weeks' ` +
+              `${m5[1]}×400 and ${m10[1]}×400`,
+          );
+        }
+      }
+      // §7.4's own contraindication still carries the rest rule the entry quotes.
+      const p74 = resolveCitation('Research/04-workout-vocabulary.md', '### 7.4 200m repeats');
+      if (!/don't shorten the rest/i.test(p74.text())) {
+        throw new Error("§7.4 no longer says \"don't shorten the rest\" — re-transcribe the entry's recovery rule");
       }
     },
   },

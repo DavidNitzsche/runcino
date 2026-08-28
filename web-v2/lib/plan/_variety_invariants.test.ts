@@ -44,6 +44,7 @@ import {
 } from './generate';
 import { tPaceFromGoal, buildWorkoutSpec, strideRepsForPhase, STRIDE_REPS_BY_PHASE, STRIDE_DEFAULT_REPS } from './spec-builder';
 import { DRESS_REHEARSAL, dressRehearsalDose } from './long-run-rows';
+import { dayDoses, weeklyDoseBudgetMi } from './dosing';
 
 const START_MONDAY = '2026-08-31';
 
@@ -399,6 +400,177 @@ describe('MARATHON REGRESSION · the marathon\'s long-run rows are untouched', (
     for (const r of longs) {
       if (r.long.longRunKind == null) continue;
       expect(['mp_long', 'fast_finish', 'dress_rehearsal']).toContain(r.long.longRunKind);
+    }
+  });
+});
+
+// ══ 6 · VARIETY-R3-1 · the 5K/10K third quality day (the R day) ═════════════
+//
+// Research/01 §"Dosing rules": polarized hard half is "10–15% M+T, 10–15% I+R";
+// the two-slot 5K/10K week left R unspent. Research/22's advanced sample weeks
+// state the missing day: §"5K — Advanced" runs I (Tue), T (Thu) AND
+// "WU + 8×400 m @ R, 400 jog + CD" (Sat); §"10K — Advanced" the same shape with
+// "10×400 m @ R". Both rows state "Days/week | 6-7". The registry claim
+// VARIETY.r3-third-quality-day reads the counts and the day floor out of the
+// doc; this block holds the BEHAVIOUR on whole composed plans.
+
+describe('VARIETY-R3-1 · 5K/10K advanced weeks carry the R day', () => {
+  /** Research/22's own frame: Sun long, Mon rest, three quality-eligible days. */
+  function r3input(opts: Parameters<typeof inputFor>[0] & {
+    qualityDows?: DOW[]; restDow?: DOW; trainingDaysPerWeek?: number | null;
+  }): ComposePlanInput {
+    const input = inputFor(opts);
+    return {
+      ...input,
+      restDow: (opts.restDow ?? 1) as DOW,
+      qualityDows: opts.qualityDows ?? ([2, 4, 6] as DOW[]),
+      trainingDaysPerWeek: opts.trainingDaysPerWeek === undefined ? 6 : opts.trainingDaysPerWeek,
+    };
+  }
+  function r3build(opts: Parameters<typeof r3input>[0]) {
+    const input = r3input(opts);
+    const composed = composePlan(input);
+    finalizeComposedPlan(composed, input.raceDistanceMi, input.level);
+    return composed;
+  }
+  const chrono = (dow: number, startDow: number) => (dow - startDow + 7) % 7;
+
+  /** Per-week structured-quality summary for the Q/RS phases. */
+  function qWeeks(composed: ReturnType<typeof r3build>) {
+    return composed.weeks
+      .filter((w) => !w.isRaceWeek && (w.phase === 'QUALITY' || w.phase === 'RACE-SPECIFIC'))
+      .map((w) => {
+        const q = w.days.filter((d) => d.isQuality && !d.isLong);
+        let iMi = 0; let rMi = 0; let weekMi = 0;
+        for (const d of w.days) {
+          weekMi += d.distanceMi;
+          if (!d.isQuality && !d.isLong) continue;
+          for (const dose of dayDoses(d)) {
+            if (dose.pace === 'I') iMi += dose.mi;
+            if (dose.pace === 'R') rMi += dose.mi;
+          }
+        }
+        return { week: w, q, iMi, rMi, weekMi, isCutback: Boolean((w as { isCutback?: boolean }).isCutback) };
+      });
+  }
+
+  const fiveK = r3build({
+    raceDistanceMi: 3.11, goalSec: 1050, weeks: 12, level: 'advanced',
+    recentWeeklyMi: 42, recentLongMi: 10, easyDayMedianMi: 6, bestRecentVdot: 58,
+  });
+  const tenK = r3build({
+    raceDistanceMi: 6.22, goalSec: 2220, weeks: 14, level: 'advanced',
+    recentWeeklyMi: 50, recentLongMi: 13, easyDayMedianMi: 7, bestRecentVdot: 58,
+  });
+
+  it('a 6-day advanced 5K/10K runner with three quality prefs gets three quality days, one of them an R session', () => {
+    for (const [name, composed] of [['5k', fiveK], ['10k', tenK]] as const) {
+      const weeks = qWeeks(composed).filter((w) => !w.isCutback);
+      expect(weeks.length, `${name}: no non-cutback QUALITY/RACE-SPECIFIC weeks at all`).toBeGreaterThan(0);
+      const threeDay = weeks.filter((w) => w.q.length === 3);
+      expect(threeDay.length, `${name}: no week carries three quality days — the R day never landed`).toBeGreaterThan(0);
+      const rWeeks = weeks.filter((w) => w.rMi > 0);
+      expect(rWeeks.length, `${name}: no week spends any R miles — the third day is not the R day`).toBeGreaterThan(0);
+      // The R session is a rep day the runner can read: an "@ R" label.
+      const rLabeled = weeks.flatMap((w) => w.q).filter((d) => /@ R/.test(d.subLabel ?? ''));
+      expect(rLabeled.length, `${name}: no structured day carries an "@ R" label`).toBeGreaterThan(0);
+      for (const d of rLabeled) {
+        expect(d.type, 'the R day rides the rep-shaped day type (DOCTRINE-BASE-2 convention)').toBe('intervals');
+      }
+    }
+  });
+
+  it('cutback weeks drop back to two quality days (Research/00b cut order)', () => {
+    for (const [name, composed] of [['5k', fiveK], ['10k', tenK]] as const) {
+      const cutbacks = qWeeks(composed).filter((w) => w.isCutback);
+      expect(cutbacks.length, `${name}: archetype produced no cutback weeks — widen the plan`).toBeGreaterThan(0);
+      for (const w of cutbacks) {
+        expect(w.q.length, `${name} ${w.week.startISO}: a cutback week kept the third quality day`).toBeLessThanOrEqual(2);
+      }
+    }
+  });
+
+  it('every week honours Daniels\' per-pace caps: the point is three correctly-sized days, not one inflated one', () => {
+    for (const [name, composed] of [['5k', fiveK], ['10k', tenK]] as const) {
+      for (const w of qWeeks(composed)) {
+        // Half-mile rounding grace, same grain the composer sizes days at.
+        const rCap = weeklyDoseBudgetMi(w.weekMi, 'R', 'training') + 0.5;
+        const iCap = weeklyDoseBudgetMi(w.weekMi, 'I', 'training') + 0.5;
+        expect(w.rMi, `${name} ${w.week.startISO}: R miles ${w.rMi.toFixed(2)} breach the 5% weekly cap`).toBeLessThanOrEqual(rCap);
+        expect(w.iMi, `${name} ${w.week.startISO}: I miles ${w.iMi.toFixed(2)} breach the 8% weekly cap`).toBeLessThanOrEqual(iCap);
+      }
+    }
+  });
+
+  it('the I+R share lands meaningfully above the two-day baseline (~4-6%)', () => {
+    for (const [name, composed] of [['5k', fiveK], ['10k', tenK]] as const) {
+      const weeks = qWeeks(composed);
+      const mean = weeks.reduce((s, w) => s + (w.weekMi > 0 ? (w.iMi + w.rMi) / w.weekMi : 0), 0) / weeks.length;
+      // Measured on these archetypes: 5.8-6.0% before VARIETY-R3-1, 7.8-8.1%
+      // after. The floor is set between the two so a regression to the two-day
+      // week fails while normal rotation/sizing noise does not.
+      expect(mean, `${name}: mean Q/RS I+R share ${(mean * 100).toFixed(2)}% has fallen back toward the two-day baseline`).toBeGreaterThan(0.068);
+    }
+  });
+
+  it('the R day never sits the day before a threshold session (Research/04 §16)', () => {
+    for (const [, composed] of [['5k', fiveK], ['10k', tenK]] as const) {
+      for (const w of composed.weeks) {
+        const startDow = new Date(w.startISO + 'T12:00:00Z').getUTCDay();
+        const rDays = w.days.filter((d) => d.isQuality && /@ R/.test(d.subLabel ?? ''));
+        const tDays = w.days.filter((d) => d.isQuality && (d.type === 'threshold' || d.type === 'tempo'));
+        for (const r of rDays) {
+          for (const t of tDays) {
+            expect(
+              chrono(t.dow, startDow) - chrono(r.dow, startDow),
+              `${w.startISO}: R day (dow ${r.dow}) directly before threshold (dow ${t.dow})`,
+            ).not.toBe(1);
+          }
+        }
+      }
+    }
+  });
+
+  it('a 4-day 10K runner stays at two quality days', () => {
+    const f4 = r3build({
+      raceDistanceMi: 6.22, goalSec: 2220, weeks: 12, level: 'advanced',
+      recentWeeklyMi: 30, recentLongMi: 10, easyDayMedianMi: 5, bestRecentVdot: 55,
+      qualityDows: [2, 4] as DOW[], trainingDaysPerWeek: 4,
+    });
+    for (const w of qWeeks(f4)) {
+      expect(w.q.length, `${w.week.startISO}: a 4-day week carries more than two quality days`).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('a calendar that cannot seat the R day (Saturday rest, Sunday long) folds back to two days, never fewer', () => {
+    const satRest = r3build({
+      raceDistanceMi: 6.22, goalSec: 2220, weeks: 12, level: 'advanced',
+      recentWeeklyMi: 50, recentLongMi: 13, easyDayMedianMi: 7, bestRecentVdot: 58,
+      qualityDows: [2, 4, 5] as DOW[], restDow: 6 as DOW,
+    });
+    for (const w of qWeeks(satRest)) {
+      expect(w.q.length, `${w.week.startISO}: seat-less R day did not fold cleanly`).toBeLessThanOrEqual(3);
+      if (!w.isCutback) {
+        expect(w.q.length, `${w.week.startISO}: dropping the R day also lost a core session`).toBeGreaterThanOrEqual(2);
+      }
+    }
+  });
+
+  it('hm and marathon weeks are untouched: never a third quality day, never an R-labelled session', () => {
+    for (const [name, raceDistanceMi, goalSec, weeks, recentWeeklyMi, recentLongMi] of [
+      ['hm', 13.11, 5340, 14, 45, 14],
+      ['m', 26.22, 10500, 16, 55, 18],
+    ] as const) {
+      const composed = r3build({
+        raceDistanceMi, goalSec, weeks, level: 'advanced',
+        recentWeeklyMi, recentLongMi, easyDayMedianMi: 7, bestRecentVdot: 55,
+      });
+      for (const w of qWeeks(composed)) {
+        expect(w.q.length, `${name} ${w.week.startISO}: a third quality day leaked to ${name}`).toBeLessThanOrEqual(2);
+        for (const d of w.q) {
+          expect(d.subLabel ?? '', `${name} ${w.week.startISO}: an R session leaked to ${name}`).not.toMatch(/@ R\b/);
+        }
+      }
     }
   });
 });

@@ -943,6 +943,27 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
       push(entry.slug, 'phase', `§15 does not place it in the ${phase} phase`);
       continue;
     }
+    // VARIETY-R3-1 (2026-08-28) · the MID-BLOCK speed slot is the 5K/10K
+    // dedicated R day, and it carries R-PACE REP WORK — `Research/22`'s
+    // advanced sample weeks write the session out ("WU + 8×400 m @ R, 400 jog
+    // + CD"; "WU + 10×400 m @ R, 400 jog + CD") and both rows' Key-workout
+    // columns name "R reps". §7's effort-cued members keep the placement
+    // their own rows give them instead: strides live on the easy days (§7.2
+    // Placement — "End of an easy run… or standalone day", and DOCTRINE-
+    // STRIDES-1 already places them there weekly), and hill sprints ride the
+    // hills/intervals machinery (§8, and the QUALITY hill block). Without
+    // this, the rotation could spend one of the week's three quality days on
+    // ninety seconds of sprinting, which is not the session doctrine's week
+    // shows. BASE and taper are untouched — there the speed slot / §7
+    // admission keeps its whole vocabulary (DOCTRINE-BASE-2, ZONE-R-1).
+    if (
+      slot === 'speed'
+      && (phase === 'hill_strength' || phase === 'specific_support' || phase === 'race_specific')
+      && !entry.zones.includes('R')
+    ) {
+      push(entry.slug, 'phase', 'the mid-block speed slot is the dedicated R day (Research/22 advanced sample weeks) and takes R-pace rep entries only');
+      continue;
+    }
     if (!entry.distances.includes(distance)) {
       push(entry.slug, 'distance', `doctrine names it for ${entry.distances.join('/')}, not ${distance}`);
       continue;

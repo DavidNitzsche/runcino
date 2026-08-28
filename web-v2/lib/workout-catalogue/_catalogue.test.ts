@@ -46,8 +46,10 @@ function lookupIndex(): Array<{ name: string; section: string }> {
 }
 
 describe('WORKOUT CATALOGUE · coverage against the doc', () => {
-  it('holds 59 distinct workouts', () => {
-    expect(WORKOUT_CATALOGUE).toHaveLength(59);
+  it('holds 60 distinct workouts', () => {
+    // 59 from Research/04's own tables + VARIETY-R3-1's 400m R repeats, whose
+    // dose is read from Research/22's advanced sample weeks (see its entry).
+    expect(WORKOUT_CATALOGUE).toHaveLength(60);
   });
 
   it('has no duplicate slugs', () => {

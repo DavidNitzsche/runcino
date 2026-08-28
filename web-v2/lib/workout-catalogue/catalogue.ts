@@ -737,6 +737,51 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
       '§7 | Daniels: cap R pace at 5% of weekly mileage',
     ],
   },
+  {
+    // VARIETY-R3-1 (2026-08-28) · the 5K/10K dedicated R day's own session.
+    //
+    // §7.4's Variations row names the shape ("200-200-400 cycles (Daniels)")
+    // and `Research/22`'s advanced sample weeks write the full session out —
+    // §"5K — Advanced" runs "WU + 8×400 m @ R, 400 jog + CD (7 mi)" and
+    // §"10K — Advanced" runs "WU + 10×400 m @ R, 400 jog + CD (7 mi)" — which
+    // is why the entry exists at all: without it the mid-block speed slot had
+    // no R-pace rep session longer than §7.4's 200s, and doctrine's own
+    // three-quality weeks could not be authored. The rep length sits inside
+    // `Research/01`'s R row ("200–600m, ≤2 min") and the recovery follows its
+    // recovery column ("2–3× duration of rep") and §7.4's own contraindication
+    // ("don't shorten the rest").
+    slug: '400m-r-repeats',
+    name: '400m R repeats',
+    section: '§7.4',
+    family: 'speed',
+    zones: ['R'],
+    effortOnly: false,
+    structures: [
+      // Recovery: Research/22's "400 jog" — an equal-distance easy jog, ~2:30
+      // — which sits inside Research/01's "2–3× duration of rep" for an
+      // 80-90 s rep. Stated in seconds so the rendered label and the spec both
+      // carry it (§7.4: "don't shorten the rest").
+      { kind: 'reps', reps: r(8, 10), rep: b(400, 400, 'm'), recoverySec: r(150, 240), recoveryRule: '400m jog — full recovery, 2–3× the rep\'s duration; don\'t shorten the rest' },
+    ],
+    atPace: b(3.2, 4, 'km'),
+    session: null,
+    warmupCooldownMi: b(1, 2, 'mi'),
+    cadence: { minDays: 7, maxDays: 14, source: 'Frequency | Weekly during speed block; 1× every 2 weeks otherwise' },
+    distances: ['5k', '10k'],
+    phases: ['hill_strength', 'specific_support', 'race_specific'],
+    tiers: ['advanced', 'advanced_plus'],
+    conventions: [
+      'Reps, at-pace total, distances, phases and tiers are read from Research/22-plan-templates.md §"5K — Advanced" and §"10K — Advanced" (their sample weeks run 8×400 and 10×400 @ R as the week\'s third quality day, Days/week 6-7), not from a Research/04 field table — §7.4\'s own rows describe the 200 m form and name the 400 only in Variations.',
+      'Rep length and recovery multiple are bounded by Research/01-pace-zones-vdot.md §"Dosing rules" ("R | 5% of weekly mi (max 8K cumulative) | ... | 200–600m, ≤2 min | 2–3× duration of rep").',
+    ],
+    cites: [
+      'Variations | 200-200-400 cycles (Daniels), 200m descending, 200m at mile pace into 200m float',
+      'Contraindications | Cap at 5% weekly mileage; don\'t shorten the rest',
+      'Frequency | Weekly during speed block; 1× every 2 weeks otherwise',
+      'Research/22 §"5K — Advanced" | WU + 8×400 m @ R, 400 jog + CD (7 mi)',
+      'Research/22 §"10K — Advanced" | WU + 10×400 m @ R, 400 jog + CD (7 mi)',
+    ],
+  },
 
   // ══ §8 · hills ════════════════════════════════════════════════════════════
   {

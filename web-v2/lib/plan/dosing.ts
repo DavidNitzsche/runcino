@@ -267,6 +267,13 @@ export function slotDosePace(type: string, atMarathonPace = false): DosePace | n
     case 'intervals':
     case 'vo2max':     return 'I';
     case 'strides':    return 'R';
+    // VARIETY-R3-1 (2026-08-28) · the composer-internal `speed` pseudo-type —
+    // the 5K/10K third quality day. It is §7 repetition work and spends
+    // Daniels' R budget (`Research/01` §"Dosing rules": "R | 5% of weekly mi
+    // (max 8K cumulative)"), which is also what keeps `duplicatePaceFamily`
+    // honest: a week may run I + T + R because they are three different
+    // budgets, never two sessions of any one of them.
+    case 'speed':      return 'R';
     // The tune-up's pace depends on its prescription (5K-pace vs race-pace
     // reps), which the slot does not have yet. Doctrine states its dose by name
     // in Research/08 §9.2 and it only ever lands in a taper or race week, where
