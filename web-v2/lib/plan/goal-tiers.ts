@@ -175,6 +175,63 @@ export const RECOVERY_LONG_PCT: Record<DistCategory, number> = {
 };
 
 /**
+ * RECOVERY-HALF-DURATION-1 (2026-08-28) · THE HALF HAS NO "VOLUME VS. PEAK"
+ * COLUMN. IT HAS MINUTES.
+ *
+ * David's real post-half recovery (`pln_0e635603799fd7b1`, week 2) prescribed
+ * 45 miles — four 7-mile easy days and a 13-mile long, off a true recent base
+ * around 30-40 mi/wk. The arithmetic that produced it: DOCTRINE-4 below made
+ * every `RECOVERY_WEEKLY_PCT_OF_BASE` entry multiply `peakAnchor`, a REAL
+ * peak week, because that is what the MARATHON reverse-taper table's own
+ * column header says ("Volume vs. peak"). But `hm`'s 0.60/0.80 were never
+ * read off a peak-vs-column in the doc — RECOVERY-3's own comment above says
+ * they were reverse-engineered by summing the half's 14-day table's MINUTES
+ * "at an easy pace" and dividing by "base". Research/00b has no half-marathon
+ * "volume vs. peak" table anywhere; the half's own protocol
+ * (`### Half Marathon Recovery (14-day)`) is a day-by-day list of MINUTE
+ * ranges. DOCTRINE-4 changing the shared denominator from an average to a
+ * real peak week was correct for the marathon table it names — and wrong for
+ * the half, whose percentages were never calibrated against peak. A runner
+ * whose pre-race peak build week ran meaningfully above their typical base
+ * (exactly what a taper looks like) had every half-recovery week inflated by
+ * that peak/base ratio: peakAnchor ~56 mi × 0.80 ≈ 45 mi, when the table's
+ * own days 8-13 sum to 225-265 minutes — about 24-28 mi at a 9:20/mi easy
+ * pace, not 45.
+ *
+ * So the half stops reading `RECOVERY_WEEKLY_PCT_OF_BASE` (still exported and
+ * still asserted at length 2 by `RECOVERY.half-protocol-run-days`, so a
+ * regression in either place is caught) and instead sizes its week directly
+ * off the protocol's own minutes, summed across the SAME running days
+ * `RECOVERY_RUN_DAYS.hm` already counts (day-count machinery untouched — only
+ * the per-day DOSE changes), converted to miles through the runner's own easy
+ * pace. `composeRecoveryPlan` does the conversion, at the slow end of the
+ * easy band (`EASY_BAND_SLOW_OFFSET_SEC`) — the same convention COLD-START-1
+ * uses, so the conversion can never imply a pace faster than the runner is
+ * permitted to run.
+ *
+ * `[lo, hi]` minutes per week, running days only:
+ *   · week 1 (days 3, 4, 6, 7): 20-30 + 30-40 + 40-50 + 45-60 = 135-180 min
+ *   · week 2 (days 8, 9, 10, 11, 12, 13): 30-40 + 45 + 40 + 30-40 + 50-70 + 30
+ *     = 225-265 min
+ *
+ * NOT extended to 5K/10K/marathon/ultra:
+ *   · 5K/10K have no day-by-day OR volume-vs-peak table in Research/00b at
+ *     all. `RECOVERY_WEEKLY_PCT_OF_BASE['5k'|'10k']` is an undocumented
+ *     heuristic either way — there is no doctrine-backed duration table to
+ *     replace it with, so it is left alone.
+ *   · Marathon/ultra's table genuinely IS headed "Volume vs. peak"
+ *     (`RECOVERY.marathon-reverse-taper`, `RECOVERY.denominator-is-peak`) —
+ *     peakAnchor is the correct, doctrine-stated denominator there. Unchanged.
+ *
+ * Cite: Research/00b-recovery-protocols.md §"Half Marathon Recovery (14-day)"
+ * Bound by RECOVERY.half-duration-not-peak.
+ */
+export const RECOVERY_HALF_WEEKLY_MINUTES: [number, number][] = [
+  [135, 180],
+  [225, 265],
+];
+
+/**
  * WKRAMP-REC-1 (2026-08-25) · THE CEILING ON A REVERSE TAPER, AS A FRACTION OF
  * THE PRE-RACE PEAK.
  *

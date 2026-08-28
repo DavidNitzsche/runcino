@@ -37,7 +37,7 @@ import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achi
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
-import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
+import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
   CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
@@ -8435,6 +8435,20 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
   const wkPctSeq = RECOVERY_WEEKLY_PCT_OF_BASE[lastCat];
   const runDaySeq = RECOVERY_RUN_DAYS[lastCat];
   const longPct = RECOVERY_LONG_PCT[lastCat];
+  // RECOVERY-HALF-DURATION-1 (2026-08-28) · the pace the half's minute→mile
+  // conversion runs at. Same convention as COLD-START-1: the SLOW end of the
+  // runner's own easy band (`EASY_BAND_SLOW_OFFSET_SEC`), so the conversion
+  // can never imply a pace faster than the runner is permitted to run.
+  // `input.tPaceSec` is null only when a runner with no resolved threshold
+  // pace somehow reaches recovery mode (it always follows a finished race, so
+  // this is defensive) — falls back to a conservative VDOT read off recent
+  // mileage, same fallback `composeMaintenancePlan`'s cold-start path uses.
+  const recoveryEasySecPerMi = (() => {
+    const t = (input.tPaceSec != null && input.tPaceSec > 0)
+      ? input.tPaceSec
+      : tPaceFromVdot(conservativeVdotFromMileage(input.recentWeeklyMi || 0));
+    return (t != null && t > 0) ? t + EASY_BAND_SLOW_OFFSET_SEC : null;
+  })();
   // What this block was sized against and the ceiling `finalizeComposedPlan`
   // enforces on it. Published rather than passed as an argument, because
   // `finalizeComposedPlan` takes only the composed result — and because a
@@ -8465,7 +8479,19 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     // The same offset the taper row, the run-day cap and the final-week test
     // already carry. It reaches the LABEL now too.
     const blockWeekIdx = wi + recoveryOff;
-    const wkWeekly = Math.round(peakAnchor * wkPct);
+    // RECOVERY-HALF-DURATION-1 (2026-08-28) · the half sizes off its own
+    // day-by-day minutes (RECOVERY_HALF_WEEKLY_MINUTES), not peakAnchor * pct
+    // — see the constant's citation in goal-tiers.ts for why. Every other
+    // category is unchanged: marathon/ultra's table genuinely is "Volume vs.
+    // peak" and 5K/10K have no comparable doctrine table to convert from.
+    const wkWeekly = (lastCat === 'hm' && recoveryEasySecPerMi != null)
+      ? (() => {
+          const band = RECOVERY_HALF_WEEKLY_MINUTES[blockWeekIdx]
+            ?? RECOVERY_HALF_WEEKLY_MINUTES[RECOVERY_HALF_WEEKLY_MINUTES.length - 1];
+          const midMin = (band[0] + band[1]) / 2;
+          return Math.round((midMin * 60) / recoveryEasySecPerMi);
+        })()
+      : Math.round(peakAnchor * wkPct);
     const slots: (DayPlan | null)[] = new Array(7).fill(null);
     slots[input.restDow] = { dow: input.restDow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Recover.' };
     // RECWK-RESTDAYS-1 (2026-08-25) · THE SECOND REST DAY IS NOT UNCONDITIONAL.

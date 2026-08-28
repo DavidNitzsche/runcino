@@ -50,6 +50,7 @@ import {
   RECOVERY_WEEKLY_PCT_OF_BASE,
   RECOVERY_RUN_DAYS,
   RECOVERY_LONG_PCT,
+  RECOVERY_HALF_WEEKLY_MINUTES,
   recoveryBlockCeilingPct,
   RECOVERY_EFFORT_SCALE,
   recoveryEffortScale,
@@ -1242,6 +1243,57 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (RECOVERY_WEEKLY_PCT_OF_BASE.hm.length !== 2) {
         throw new Error('the half protocol is a 14-day table · RECOVERY_WEEKLY_PCT_OF_BASE.hm must cover 2 weeks');
+      }
+    },
+  },
+  {
+    id: 'RECOVERY.half-duration-not-peak',
+    binds: [
+      'lib/plan/goal-tiers.ts#RECOVERY_HALF_WEEKLY_MINUTES',
+      'lib/plan/generate.ts#composeRecoveryPlan.wkWeekly',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Half Marathon Recovery (14-day)',
+    claim:
+      'Unlike the marathon table, the half\'s 14-day protocol has no "volume vs. peak" column ' +
+      '— it prescribes MINUTES per day. The engine\'s week-1 and week-2 minute bands are the sum ' +
+      'of that table\'s own running-day minutes (the same days RECOVERY.half-protocol-run-days ' +
+      'already counts) — a doc edit to any running day\'s duration must move this sum with it, ' +
+      'the same way a doc edit to a running day\'s presence moves the run-day count.',
+    check({ cite }) {
+      const t = cite.table();
+      const sumMinutes = (from: number, to: number): [number, number] => {
+        let lo = 0, hi = 0;
+        for (const r of t.rows) {
+          const day = Number(r.Day);
+          if (!Number.isFinite(day) || day < from || day > to) continue;
+          const s = r.Session ?? '';
+          if (/^rest/i.test(s) || /^resume/i.test(s)) continue;
+          const [dLo, dHi] = parseBand(s);
+          lo += dLo; hi += dHi;
+        }
+        return [lo, hi];
+      };
+      const wk1 = sumMinutes(1, 7);
+      const wk2 = sumMinutes(8, 13);
+      const bands: [number, number][] = [wk1, wk2];
+      bands.forEach(([lo, hi], i) => {
+        const [cLo, cHi] = RECOVERY_HALF_WEEKLY_MINUTES[i] ?? [NaN, NaN];
+        if (cLo !== lo || cHi !== hi) {
+          throw new Error(
+            `RECOVERY_HALF_WEEKLY_MINUTES[${i}] is [${cLo},${cHi}], but the 14-day protocol's ` +
+              `week ${i + 1} running days sum to [${lo},${hi}] minutes in ${cite.doc}`,
+          );
+        }
+      });
+      // And the engine must actually be spending it — a constant nobody reads
+      // is the failure mode this whole gate exists for.
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/RECOVERY_HALF_WEEKLY_MINUTES\[blockWeekIdx\]/.test(src)) {
+        throw new Error(
+          'composeRecoveryPlan no longer reads RECOVERY_HALF_WEEKLY_MINUTES · the half may have ' +
+            'reverted to peakAnchor * pct, which is what shipped the 45mi/week defect',
+        );
       }
     },
   },
