@@ -334,20 +334,33 @@ struct RaceDetailV5: View {
         }
     }
 
-    /// "A ~45:00 · B ~45:55 · C ~46:50" — tilde in attention amber per the
-    /// design contract, times in primary ink. Text concatenation so the
-    /// amber mark and the number stay one line that can scale together.
+    /// "A ~45:00 · B ~45:55 · C ~46:50" — every time is a modelled value, so
+    /// the mark is drawn by FaffValueText, never as a literal character.
     private func coachTierLine(_ cg: V5CoachGoal) -> some View {
-        func tier(_ label: String, _ display: String?) -> Text {
-            Text("\(label) ").foregroundColor(V5.textSecondary)
-                + Text("~").foregroundColor(V5.attention)
-                + Text(display ?? "").foregroundColor(V5.textPrimary)
+        HStack(spacing: V5.S.s6) {
+            coachTier("A", cg.aDisplay)
+            coachTierDot
+            coachTier("B", cg.bDisplay)
+            coachTierDot
+            coachTier("C", cg.cDisplay)
         }
-        let dot = Text(" · ").foregroundColor(V5.textQuiet)
-        return (tier("A", cg.aDisplay) + dot + tier("B", cg.bDisplay) + dot + tier("C", cg.cDisplay))
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
+    }
+
+    private var coachTierDot: some View {
+        Text("·")
             .font(.faffText(17, weight: .semibold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
+            .foregroundStyle(V5.textQuiet)
+    }
+
+    private func coachTier(_ label: String, _ display: String?) -> some View {
+        HStack(spacing: V5.S.s2) {
+            Text(label)
+                .font(.faffText(17, weight: .semibold))
+                .foregroundStyle(V5.textSecondary)
+            FaffValueText(.modelled(display ?? "—"), font: .faffText(17, weight: .semibold))
+        }
     }
 
     // MARK: Course
