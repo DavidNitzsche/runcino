@@ -4,7 +4,7 @@ exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: p
 [
   "wk0: intervals="10×60s hills @ 5K-10K effort · 2 min jog down"",
   "wk1: intervals="2×90s @ 5K · 90s jog + 4×60s @ 5K · 60s jog + 4×30s · 30s jog + 4×15s @ mile · 15s jog"",
-  "wk2: intervals="5×3 min @ 5K-10K race pace · 2 min jog"",
+  "wk2: intervals="6×3 min @ 5K-10K race pace · 2 min jog"",
   "wk3: intervals="6×8s · by effort · 2 min jog"",
   "wk4: tempo="5mi continuous tempo" ; intervals="8×3 min hills @ T-10K effort"",
   "wk5: threshold="3×1mi @ T pace · 60s jog" ; intervals="10×60s hills @ 5K-10K effort · 2 min jog down"",
@@ -24,8 +24,8 @@ exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: p
 exports[`INV-12 · advanced-marathon (David class) plan is protected > FROZEN: per-week structural fingerprint is byte-stable > david-marathon-structure 1`] = `
 [
   "wk0:BASE:61mi:long15:intervals",
-  "wk1:BASE:60.5mi:long15:intervals",
-  "wk2:BASE:63mi:long17:intervals",
+  "wk1:BASE:60mi:long15:intervals",
+  "wk2:BASE:63.5mi:long17:intervals",
   "wk3:BASE:47.5mi:long13:intervals",
   "wk4:QUALITY:64.5mi:long18:tempo+intervals",
   "wk5:QUALITY:64mi:long19:threshold+intervals",
