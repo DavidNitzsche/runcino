@@ -30,9 +30,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // FID-2 · resolve the REAL level + phase-aware prescriptions from workout_library
-    // (matching production) so the sim shows what the runner would actually get;
-    // buildSimPlan falls back to the inline catalog if this DB read is unavailable.
+    // FID-2 · resolve the REAL level + phase-aware prescriptions from the
+    // in-code workout library (lib/plan/workout-library-static.ts, matching
+    // production) so the sim shows what the runner would actually get.
     let rxOverride: Parameters<typeof buildSimPlan>[1];
     const raceDistMi = body.goalMode === 'justRun' ? SIM_DISTANCE_MI.half : SIM_DISTANCE_MI[body.distance as SimDistance];
     if (raceDistMi) {
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
           resolvePrescriptions(cat, 'race_specific', body.experienceLevel ?? null),
         ]);
         rxOverride = { rxQuality, rxRaceSpecific };
-      } catch { /* DB unavailable → inline fallback in buildSimPlan */ }
+      } catch { /* resolution failure → inline fallback in buildSimPlan */ }
     }
     const built = buildSimPlan(body as SimInputs, rxOverride);
     if (!built.ok) {

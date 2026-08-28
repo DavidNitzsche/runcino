@@ -18,7 +18,7 @@
  *      (from, to) argument pair for `move_day`, and the honest "there is
  *      nothing to test" case when no pair exists.
  *   3. `libraryPhaseKey` (lib/plan/v5-block.ts) — the phase-label →
- *      workout_library.phase_fit vocabulary mapping the catalogue filter
+ *      workout-library `phaseFit` vocabulary mapping the catalogue filter
  *      depends on.
  */
 import { describe, it, expect } from 'vitest';
@@ -165,7 +165,7 @@ describe('findMoveDayCandidate · a representative argument for planMoveDay, not
 
 // ── 3 · libraryPhaseKey — the catalogue filter's vocabulary mapping ────────
 
-describe('libraryPhaseKey · plan_phases.label → workout_library.phase_fit', () => {
+describe('libraryPhaseKey · plan_phases.label → workout-library phaseFit', () => {
   it('maps every real phase label the engine emits', () => {
     expect(libraryPhaseKey('BASE', false)).toBe('base');
     expect(libraryPhaseKey('QUALITY', false)).toBe('quality');

@@ -25,7 +25,7 @@ Decision ledger from David (11 answers) recorded in memory `project_coach_system
 9. **`silent-rebuild` writes no proposal row → not undoable** (the only such writer).
 10. **No unique partial index on active plans** — two-active-plans structurally possible and silently disables the no-change commit gate. (Additive DDL; check for existing dupes first.)
 11. **Deliberate skip is invisible** — `day_actions action='skip'` never reaches the adapter; a declined workout may be rescheduled right back. Conflicts with the graded missed-session doctrine David chose.
-12. Dead weight: `workout_completions` and `coach_actions` tables (no readers/writers); `workout_library` DB table near-dead (one string-only consumer); `docs/SYSTEM_DOCTRINE.md` §2.3 describes a readiness formula that no longer exists; `automatic-mutation-registry.ts` plan-drift note stale by two days; the 20-section adaptive brief survives only in `adaptive-engine/README.md:78-99`.
+12. Dead weight: `workout_completions` and `coach_actions` tables (no readers/writers); `workout_library` DB table near-dead (one string-only consumer) — *retired 2026-08-28: rows moved verbatim into `web-v2/lib/plan/workout-library-static.ts`, all consumers rewired; DROP staged as migration 158, execution pending David's per-statement go*; `docs/SYSTEM_DOCTRINE.md` §2.3 describes a readiness formula that no longer exists; `automatic-mutation-registry.ts` plan-drift note stale by two days; the 20-section adaptive brief survives only in `adaptive-engine/README.md:78-99`.
 
 ## P1 — Variety and dosing gaps
 

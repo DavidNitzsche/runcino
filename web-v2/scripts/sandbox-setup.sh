@@ -4,9 +4,10 @@
 # 1. Creates local DB `faff_sandbox` (Postgres 17 via Homebrew).
 # 2. Clones the PROD SCHEMA (structure only · read-only dump · no runner
 #    data leaves prod).
-# 3. Copies the GLOBAL reference tables the engine needs (workout_library,
-#    learn_articles, course_library, niggle_recovery, sick_recovery) —
-#    shared training knowledge, not user data.
+# 3. Copies the GLOBAL reference tables the engine needs (learn_articles,
+#    course_library, niggle_recovery) — shared training knowledge, not user
+#    data. (workout_library retired 2026-08-28 — the workout catalog lives
+#    in code at lib/plan/workout-library-static.ts now.)
 # 4. Seeds a sandbox admin: admin@faff.local / sandbox-admin (is_admin,
 #    onboarding complete) so /admin approve flows are testable.
 #
@@ -46,7 +47,7 @@ echo "→ copying global reference tables…"
 # keeps local inserts from colliding with copied ids.
 # (sick_recovery excluded · despite the name it FKs into sick_episodes —
 #  per-user data, not global reference.)
-for t in workout_library learn_articles course_library niggle_recovery; do
+for t in learn_articles course_library niggle_recovery; do
   if psql "$RO_URL" -c "\\copy $t TO STDOUT" 2>/dev/null \
       | psql -h localhost -q faff_sandbox -c "\\copy $t FROM STDIN"; then
     psql -h localhost -q faff_sandbox -c \

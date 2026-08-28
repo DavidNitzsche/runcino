@@ -57,7 +57,7 @@ import type {
   AlternationStructure,
   Tier,
 } from '@/lib/workout-catalogue/types';
-import type { WorkoutFamily } from './workout-library';
+import type { WorkoutFamily } from './workout-library-static';
 import { resolveZoneAnchors } from './zone-anchors';
 
 /* ─────────────────────────────────────────────────────────────── history ── */

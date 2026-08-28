@@ -1,6 +1,11 @@
 -- 125_workout_library.sql
 -- Materialize the workout catalog as a real shared L2 table.
 --
+-- ⚠ RETIRED by 158_drop_workout_library.sql (2026-08-28). The catalog moved
+--   back into code — web-v2/lib/plan/workout-library-static.ts — after two
+--   years of the table changing only via its seed script. Kept for history;
+--   do not apply on fresh environments.
+--
 -- Until now, the "workout library" lived as hardcoded TypeScript in
 -- lib/plan/generate.ts (lines 269–388). That worked for David but left
 -- zero runtime flexibility: every doctrine change required a code deploy,

@@ -241,30 +241,11 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
   },
 
   // ── the doctrine library ───────────────────────────────────────────────────
-  {
-    id: 'workout_library.prescription_text',
-    verdict: 'surfaced',
-    holds: 'The written prescription for a library workout.',
-    surface: { file: 'web-v2/app/workouts/page.tsx', token: 'prescription_text' },
-  },
-  {
-    id: 'workout_library.citation',
-    verdict: 'surfaced',
-    holds: 'The book or Research/ file behind a library workout.',
-    surface: { file: 'web-v2/app/workouts/page.tsx', token: 'citation' },
-  },
-  {
-    id: 'workout_library.notes',
-    verdict: 'surfaced',
-    holds: 'Execution notes for a library workout. "Conversational. Z2 HR cap."',
-    surface: { file: 'web-v2/app/workouts/page.tsx', token: 'notes' },
-  },
-  {
-    id: 'workout_library.warmup_cooldown',
-    verdict: 'internal',
-    holds: 'The warm-up / cool-down envelope, on 6 of 54 rows.',
-    reason: 'Read by lib/plan/workout-library.ts when composing a session. It reaches the runner as part of the built workout, not as its own line.',
-  },
+  // (workout_library.* entries removed 2026-08-28: the table is retired —
+  //  migration 158 — and its rows live in code at
+  //  lib/plan/workout-library-static.ts, so this DB-content registry no
+  //  longer speaks for them. The same strings still surface on /workouts
+  //  and the iPhone v5 Block library.)
   {
     id: 'learn_articles.body_md',
     verdict: 'surfaced',

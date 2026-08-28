@@ -23,12 +23,8 @@ try {
   const courseTotal = await one(`SELECT COUNT(*)::int n FROM course_library`);
   console.log(`course_library TOTAL: ${courseTotal.n}`);
 
-  const workoutByFamily = await q(`SELECT family, COUNT(*)::int n FROM workout_library GROUP BY family ORDER BY family`);
-  console.log(`workout_library by family:`);
-  for (const r of workoutByFamily) console.log(`  ${r.family}: ${r.n}`);
-  const workoutTotal = await one(`SELECT COUNT(*)::int n FROM workout_library`);
-  const families = await one(`SELECT COUNT(DISTINCT family)::int n FROM workout_library`);
-  console.log(`workout_library TOTAL: ${workoutTotal.n} · families: ${families.n}`);
+  // workout_library section removed 2026-08-28 — table retired to code
+  // (lib/plan/workout-library-static.ts, migration 158 drops the table).
 
   const wxCache = await one(`SELECT COUNT(*)::int n FROM workout_weather_cache`);
   console.log(`workout_weather_cache: ${wxCache.n}`);

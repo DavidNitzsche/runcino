@@ -1,0 +1,27 @@
+-- 158_drop_workout_library.sql
+--
+-- Retire the workout_library table (created by 125_workout_library.sql,
+-- seeded by scripts/_seed_workout_library.mjs — both retired 2026-08-28).
+--
+-- The 54 rows now live in code, transcribed verbatim and verified
+-- byte-identical against this table before the cut-over:
+--   web-v2/lib/plan/workout-library-static.ts
+-- Consumers already rewired off the table (same commit as this file):
+--   · resolvePrescriptions (lib/plan/generate.ts)
+--   · buildLibrary / GET /api/v5/block (lib/plan/v5-block.ts)
+--   · /workouts (app/workouts/page.tsx)
+-- The `structure` jsonb was read by nothing.
+--
+-- ⚠ EXECUTION IS MANUAL. This file ships as history + the exact statement,
+-- but the DROP is destructive DDL and per project doctrine requires David's
+-- explicit per-statement go before it runs against prod. Take a snapshot
+-- first:
+--
+--   pg_dump "$DATABASE_URL" --table=workout_library --no-owner \
+--     > docs/workout-library-snapshot-$(date +%F).sql
+--
+-- Reversal: restore the snapshot (re-running the retired seed script from
+-- git history also reproduces the rows byte-for-byte, ids included, on an
+-- empty table).
+
+DROP TABLE IF EXISTS workout_library;

@@ -1,6 +1,6 @@
 /**
  * lib/plan/prescription-parser.ts · parse the prescription strings the
- * generator + workout_library use (e.g. "6×800m @ I pace · 90s jog")
+ * generator + workout library use (e.g. "6×800m @ I pace · 90s jog")
  * into structured rep / rest values that spec-builder consumes.
  *
  * Fixes the sub_label vs workout_spec mismatch flagged 2026-06-02 ·
@@ -13,7 +13,7 @@
  * prescription is the source of truth · spec mirrors it.
  *
  * Recognized shapes (from web-v2/lib/plan/generate.ts inlinePrescriptions
- * + workout_library prescription_text column):
+ * + the workout library's prescriptionText — lib/plan/workout-library-static.ts):
  *
  *   "5×800m @ I pace · 90s jog"
  *   "4×1km @ I pace · 2:00 jog"
@@ -23,7 +23,7 @@
  *   "4×1km @ T pace · 60s jog"
  *   "3×1mi @ T pace · 2:00 jog"
  *   "4×1mi @ T pace · 90s jog"
- *   "4×1 mi @ I · 3 Min Jog"        ← workout_library uses this shape too
+ *   "4×1 mi @ I · 3 Min Jog"        ← the workout library uses this shape too
  *
  * "continuous tempo" + "Nmi continuous tempo" are tempo-shaped · they
  * don't carry reps. Returns null for those · spec-builder falls back
@@ -47,7 +47,7 @@ export interface ParsedPrescription {
  *   "1.5 WU · 8 mi @ HM pace · 1.5 CD"
  * Returns null when no continuous-tempo block is recognized.
  *
- * These come from workout_library rows mislabeled family='threshold'
+ * These come from workout-library rows mislabeled family='threshold'
  * that actually describe continuous tempos · spec-builder's tempo
  * branch reads these to produce a tempo spec instead of a rep spec.
  */
@@ -163,7 +163,7 @@ export function parsePrescription(s: string | null | undefined): ParsedPrescript
 /**
  * DOCTRINE-VOCAB-1 (2026-08-17) · reps measured in TIME rather than distance.
  *
- * Two whole `workout_library` families are written this way and no other shape
+ * Two whole workout-library families are written this way and no other shape
  * will do. `Research/04-workout-vocabulary.md` §8.1 sizes every hill repeat by
  * duration ("Short hill repeats | 10–30 s", "Medium hill repeats | 60–90 s",
  * "Long hill repeats | 3–5 min") because the distance covered depends on the

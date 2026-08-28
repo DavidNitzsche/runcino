@@ -1,37 +1,24 @@
 /**
  * /workouts — the runner-facing workout library browser.
  *
- * Surfaces the 54-row workout_library catalog (Research/04 vocabulary +
- * Research/22 templates). Grouped by family (recovery, easy, threshold,
- * vo2max, …) with a chip showing how many entries per family. Each card
- * shows the prescription_text + the typical dose + the citation, so a
- * runner browsing the library can see exactly what a "5×800m @ I · 90s
- * jog" is and where the doctrine comes from.
+ * Surfaces the 54-row workout library (Research/04 vocabulary +
+ * Research/22 templates), served from `lib/plan/workout-library-static.ts`
+ * (formerly the workout_library DB table, retired by migration 158).
+ * Grouped by family (recovery, easy, threshold, vo2max, …) with a chip
+ * showing how many entries per family. Each card shows the prescription +
+ * the citation, so a runner browsing the library can see exactly what a
+ * "5×800m @ I · 90s jog" is and where the doctrine comes from.
  *
- * No detail page yet — the prescription_text + structure are enough to
- * see at a glance. When the coach starts surfacing "here's the workout
- * we just prescribed you" deep-links, /workouts/[slug] will follow.
+ * No detail page yet — the prescription is enough to see at a glance. When
+ * the coach starts surfacing "here's the workout we just prescribed you"
+ * deep-links, /workouts/[slug] will follow.
  */
 import { TopNav } from '@/components/layout/TopNav';
-import { pool } from '@/lib/db/pool';
+import { loadAllWorkouts, type WorkoutTemplate } from '@/lib/plan/workout-library-static';
 
 export const dynamic = 'force-dynamic';
 
-interface LibraryRow {
-  slug: string;
-  name: string;
-  family: string;
-  prescription_text: string;
-  notes: string | null;
-  pace_zones: string[];
-  is_quality: boolean;
-  is_long: boolean;
-  distance_focus: string[];
-  level_fit: string[];
-  phase_fit: string[];
-  frequency_max_per_week: number;
-  citation: string;
-}
+type LibraryRow = WorkoutTemplate;
 
 // Display labels for raw family codes — keeps the SQL canonical name
 // while showing the runner human copy.
@@ -93,24 +80,16 @@ const FAMILY_ORDER = [
   'maintenance', 'walk_run', 'shakeout', 'rest',
 ];
 
-async function loadLibrary(): Promise<LibraryRow[]> {
-  try {
-    const r = await pool.query<LibraryRow>(
-      `SELECT slug, name, family, prescription_text, notes,
-              pace_zones, is_quality, is_long, distance_focus,
-              level_fit, phase_fit, frequency_max_per_week, citation
-         FROM workout_library
-        WHERE active = TRUE
-        ORDER BY family, name`,
-    );
-    return r.rows;
-  } catch {
-    return [];
-  }
+function loadLibrary(): LibraryRow[] {
+  // Mirrors the retired SQL read's ORDER BY family, name — presentation
+  // order only (FAMILY_ORDER regroups below).
+  return [...loadAllWorkouts()].sort(
+    (a, b) => a.family.localeCompare(b.family) || a.name.localeCompare(b.name),
+  );
 }
 
 export default async function WorkoutsLibraryPage() {
-  const rows = await loadLibrary();
+  const rows = loadLibrary();
 
   // Group by family in canonical order.
   const groups = new Map<string, LibraryRow[]>();
@@ -152,17 +131,7 @@ export default async function WorkoutsLibraryPage() {
           picks from this exact list.
         </p>
 
-        {rows.length === 0 ? (
-          <div style={{
-            padding: 40, textAlign: 'center', color: 'var(--mute)',
-            background: 'var(--surface-1, #161A22)',
-            border: '1px solid var(--border-low, #222630)',
-            borderRadius: 12,
-          }}>
-            Library not seeded yet. Migration 125_workout_library hasn&apos;t been populated.
-          </div>
-        ) : (
-          orderedFamilies.map((family) => {
+        {orderedFamilies.map((family) => {
             const items = groups.get(family) ?? [];
             const label = FAMILY_LABEL[family] ?? family.toUpperCase().replace(/_/g, ' ');
             const color = FAMILY_COLOR[family] ?? '#8B95A7';
@@ -213,7 +182,7 @@ export default async function WorkoutsLibraryPage() {
                           display: 'flex', gap: 6, flexWrap: 'wrap',
                           marginTop: 6,
                         }}>
-                          {w.is_quality && (
+                          {w.isQuality && (
                             <span style={{
                               fontSize: 9, letterSpacing: '1px', fontWeight: 700,
                               padding: '2px 6px', borderRadius: 3,
@@ -223,7 +192,7 @@ export default async function WorkoutsLibraryPage() {
                               QUALITY
                             </span>
                           )}
-                          {w.is_long && (
+                          {w.isLong && (
                             <span style={{
                               fontSize: 9, letterSpacing: '1px', fontWeight: 700,
                               padding: '2px 6px', borderRadius: 3,
@@ -233,7 +202,7 @@ export default async function WorkoutsLibraryPage() {
                               LONG
                             </span>
                           )}
-                          {w.pace_zones.slice(0, 3).map((z) => (
+                          {w.paceZones.slice(0, 3).map((z) => (
                             <span
                               key={z}
                               style={{
@@ -256,7 +225,7 @@ export default async function WorkoutsLibraryPage() {
                         background: 'rgba(0,0,0,0.2)',
                         borderRadius: 6,
                       }}>
-                        {w.prescription_text}
+                        {w.prescriptionText}
                       </div>
 
                       {w.notes ? (
@@ -276,7 +245,7 @@ export default async function WorkoutsLibraryPage() {
                         <div style={{
                           display: 'flex', gap: 4, flexWrap: 'wrap',
                         }}>
-                          {w.distance_focus.slice(0, 4).map((d) => (
+                          {w.distanceFocus.slice(0, 4).map((d) => (
                             <span
                               key={d}
                               style={{
@@ -304,8 +273,7 @@ export default async function WorkoutsLibraryPage() {
                 </div>
               </section>
             );
-          })
-        )}
+          })}
       </div>
     </main>
   );

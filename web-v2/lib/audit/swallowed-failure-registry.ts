@@ -182,7 +182,11 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
 // `runnerTimezone(userId).catch(() => 'UTC')` resolution — the same
 // already-tolerated shape used dozens of times elsewhere in this codebase
 // for exactly this fallback, not a new class of swallowed database read).
-export const EMPTIED_BASELINE = 379;
+// 2026-08-28 · -1 from retiring the workout_library DB table: the reader
+// (lib/plan/workout-library.ts, catch → cached-or-empty) is deleted; the
+// catalog is static code now (lib/plan/workout-library-static.ts) with no
+// failure to swallow.
+export const EMPTIED_BASELINE = 378;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

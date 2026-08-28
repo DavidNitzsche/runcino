@@ -175,7 +175,7 @@ describe('the canonical progression, walked by the generator\'s own walker', () 
 
 describe('the label and the numbers are one set of numbers', () => {
   it('every shape the trajectory can produce round-trips into its own spec', () => {
-    // Every zone tag the inline catalog and the seeded workout_library use.
+    // Every zone tag the inline catalog and the workout library use.
     const tags = [null, 'T pace', 'I pace', 'I-T transition', '5K race pace', '10K effort'];
     for (const reps of [1, 2, 3, 4, 5, 6, 8, 12]) {
       for (const repMinutes of [3, 5, 7, 9, 12, 15, 20, 30]) {

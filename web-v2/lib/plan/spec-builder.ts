@@ -1408,7 +1408,7 @@ export function buildWorkoutSpec(
       };
     }
     case 'strides': {
-      // DOCTRINE-STRIDES-1 · a standalone strides session (workout_library
+      // DOCTRINE-STRIDES-1 · a standalone strides session (workout library
       // `strides-standalone`, "2 mi E + 6×80m strides"). Research/04 §7.2
       // §Placement: "End of an easy run, mid-warmup before a workout, or
       // standalone day" — this is the third of those. The easy jog carries the

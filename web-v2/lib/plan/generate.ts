@@ -26,7 +26,7 @@ import type { PoolClient } from 'pg';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
-import { pickWorkout, type WorkoutFamily } from './workout-library';
+import { pickWorkout, type WorkoutFamily } from './workout-library-static';
 import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor } from '@/lib/training/vdot';
@@ -2385,7 +2385,8 @@ export interface DayPlan {
 /**
  * Resolved prescription strings for a (distance × phase × level) combo.
  *
- * Sourced from workout_library (Research/04 + 22), with the previous
+ * Sourced from the in-code workout library (`workout-library-static.ts`,
+ * Research/04 + 22, formerly the workout_library table), with the previous
  * hardcoded strings as a safety-net fallback. Building this map once per
  * plan generation keeps layoutWeek sync.
  */
@@ -2396,7 +2397,7 @@ export interface ResolvedPrescriptions {
   citationInterval: string;
   citationThreshold: string;
   /**
-   * DOCTRINE-VOCAB-1 (2026-08-17) · prescriptions for the workout_library
+   * DOCTRINE-VOCAB-1 (2026-08-17) · prescriptions for the workout-library
    * families beyond `vo2max` and `threshold`.
    *
    * The library carries 21 seeded families, all of them transcribed from
@@ -2575,8 +2576,8 @@ export function qualityFamilyFor(
 /**
  * DOCTRINE-VOCAB-1 · the doctrine prescription for each family, per distance.
  *
- * These mirror the seeded `workout_library` rows byte-for-byte in structure, so
- * the DB path and this fallback describe the same workout. Rest values are
+ * These mirror the `workout-library-static.ts` rows byte-for-byte in structure,
+ * so the library path and this fallback describe the same workout. Rest values are
  * written as single numbers rather than the doc's bands ("60s" not "60–90s")
  * because the prescription is also the machine-readable recipe that
  * `parsePrescription` turns into a spec — the band lives in the research file
@@ -2614,7 +2615,7 @@ const FAMILY_NOTES: Partial<Record<WorkoutFamily, string>> = {
 // §15's families. `lib/workout-catalogue/` now holds all 59 of Research/04's
 // named workouts as cited data and `catalogue-rx.ts` renders whichever one the
 // selector places on the slot, so there is nothing left for a fixed table to
-// do. `rx.families` is now the workout_library rows and nothing else; a family
+// do. `rx.families` is now the workout-library rows and nothing else; a family
 // with no row and no catalogue session falls through to the generic
 // intervals/threshold/tempo prescription below, exactly as an unseeded family
 // always has.
@@ -2623,7 +2624,8 @@ const FAMILY_NOTES: Partial<Record<WorkoutFamily, string>> = {
  *  file. Library reads supersede these.
  *
  *  Exported 2026-06-02 so the generator-bench test can call composePlan
- *  without going through the DB workout_library query. */
+ *  without resolving the full library (which was a DB query at the time;
+ *  the library lives in code now — workout-library-static.ts). */
 export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
   return {
     intervals:
@@ -2641,16 +2643,19 @@ export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
     citationInterval:  'Research/04-workout-vocabulary.md §6',
     citationThreshold: 'Research/04-workout-vocabulary.md §5',
     // VOCAB-CATALOGUE-1 · no inline family table any more. `resolvePrescriptions`
-    // fills this from workout_library where rows exist; the catalogue supplies
+    // fills this from workout-library-static rows where they exist; the catalogue supplies
     // the session itself.
     families: {},
   };
 }
 
 /**
- * Resolve prescription strings for one plan, preferring the workout_library
- * table. Falls back to the inline catalog on any miss so plan generation
- * never blocks.
+ * Resolve prescription strings for one plan, preferring the in-code workout
+ * library (`workout-library-static.ts`, formerly the workout_library table).
+ * Falls back to the inline catalog on any miss.
+ *
+ * Still async: the signature predates the table's retirement and every
+ * caller awaits it; the body is synchronous now that no DB read remains.
  */
 export async function resolvePrescriptions(
   cat: DistCategory,
@@ -2665,14 +2670,11 @@ export async function resolvePrescriptions(
   // DOCTRINE-VOCAB-1 (2026-08-17) · ask the library for every family
   // Research/04 §15 places in this phase, not just the two it used to.
   // `qualityFamilyFor` decides which of them a given week's slot actually
-  // uses; resolving them all here keeps the read to a single round of
-  // queries against an in-process-cached table.
+  // uses.
   const VOCAB: WorkoutFamily[] = ['hills', 'fartlek', 'cutdown', 'combo', 'marathon_specific', 'race_specific'];
-  const [intervalsT, thresholdT, ...vocabT] = await Promise.all([
-    pickWorkout({ family: 'vo2max' as WorkoutFamily, distance: cat, phase: phaseFit, level: lvl }),
-    pickWorkout({ family: 'threshold' as WorkoutFamily, distance: cat, phase: phaseFit, level: lvl }),
-    ...VOCAB.map((family) => pickWorkout({ family, distance: cat, phase: phaseFit, level: lvl })),
-  ]);
+  const intervalsT = pickWorkout({ family: 'vo2max' as WorkoutFamily, distance: cat, phase: phaseFit, level: lvl });
+  const thresholdT = pickWorkout({ family: 'threshold' as WorkoutFamily, distance: cat, phase: phaseFit, level: lvl });
+  const vocabT = VOCAB.map((family) => pickWorkout({ family, distance: cat, phase: phaseFit, level: lvl }));
 
   // Library row wins; the inline doctrine string is the floor. A family with
   // neither (e.g. `combo` for a 5K, which doctrine does not place there) is
@@ -4049,9 +4051,9 @@ function layoutWeek({
            : /* marathon */  (wi % 2 === 0 ? ['tempo', 'intervals']  : ['threshold', 'intervals']))
       : [];
     const qualityTypes = qualityTypesFor(weekIdx);
-    // Prescription strings are resolved up-front from workout_library
-    // (Research/04 + 22) via resolvePrescriptions() — falls back to the
-    // historical inline catalog if the library has no matching row.
+    // Prescription strings are resolved up-front from the in-code workout
+    // library (Research/04 + 22) via resolvePrescriptions() — falls back to
+    // the historical inline catalog if the library has no matching row.
     // B3 · stimulus-gap-aware scheduling: order intervals last (toward the long's buffer) and
     // re-place days only when the default assignment violates a Research/00b:55-60 gap.
     // PP-3 (2026-06-23, David approved) · non-race taper weeks get exactly 1 tune-up, not 2.
@@ -4940,7 +4942,7 @@ function layoutWeek({
         : '4×400m @ 5K pace · 90s jog'                     // 10K-SHARP-1
       )
       :                              'QUALITY';
-      // 2026-06-02 · the workout_library uses family='threshold' for
+      // 2026-06-02 · the workout library uses family='threshold' for
       // BOTH rep-based cruise intervals AND continuous tempos (both
       // are T-pace work in Daniels' taxonomy). When the picked library
       // row's prescription describes a continuous tempo
@@ -11386,7 +11388,7 @@ async function loadGeneratorInputs(
   ).catch(() => ({ rows: [] }))).rows[0];
   const level = (expRow?.experience_level ?? null) as LevelKey;
 
-  // 6. Prescriptions (workout_library)
+  // 6. Prescriptions (in-code workout library)
   const cat = distanceCategoryOf(raceDistanceMi);
   const [rxQuality, rxRaceSpecific] = await Promise.all([
     resolvePrescriptions(cat, 'quality',        level),

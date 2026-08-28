@@ -5,7 +5,7 @@
  * gap between the workout vocabulary `Research/04-workout-vocabulary.md`
  * describes and the one the engine could produce:
  *
- *   · `resolvePrescriptions` asked the workout_library for `vo2max` and
+ *   · `resolvePrescriptions` asked the workout library for `vo2max` and
  *     `threshold` and nothing else, so twelve of twenty-one seeded families
  *     were never requested and an eighteen-week marathon build contained
  *     exactly three workout shapes — reps, tempo, long.

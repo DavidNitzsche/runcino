@@ -392,9 +392,9 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   if (planAuthorshipUnsupported(raceDistanceMi)) {
     return { ok: false, reason: ULTRA_UNSUPPORTED_REASON };
   }
-  // FID-2 · prefer the real level + phase-aware prescriptions (resolved by the route
-  // from workout_library, matching the production engine); fall back to the inline
-  // catalog when not provided (e.g. unit tests with no DB).
+  // FID-2 · prefer the real level + phase-aware prescriptions (resolved by the
+  // route from the in-code workout library, matching the production engine);
+  // fall back to the inline catalog when not provided.
   const rxQuality = rxOverride?.rxQuality ?? inlinePrescriptions(cat);
   const rxRaceSpecific = rxOverride?.rxRaceSpecific ?? inlinePrescriptions(cat);
 

@@ -13,9 +13,11 @@
  *
  * Two things this module adds on top of that loader:
  *
- *   library    Gap B1. `lib/plan/workout-library.ts` `loadAllWorkouts()` is
- *              the workout catalogue that fed plan generation and had no
+ *   library    Gap B1. `lib/plan/workout-library-static.ts` `loadAllWorkouts()`
+ *              is the workout catalogue that fed plan generation and had no
  *              HTTP door (`grep -rl "workout-library" app` was empty).
+ *              (In-code since 2026-08-28 — the workout_library DB table it
+ *              read is retired, migration 158.)
  *              Filtered to this runner's race distance + current phase, and
  *              to rows that carry a citation — a session with no citation
  *              does not go in the library (per the design contract).
@@ -44,7 +46,7 @@ import { dateWords as usDateWords } from '@/lib/format/date';
 import { loadTrainingState, type TrainingState, type PlanWeek } from '@/lib/coach/training-state';
 import { loadSettings } from '@/lib/coach/settings';
 import { pool } from '@/lib/db/pool';
-import { loadAllWorkouts, type PlanPhase as LibraryPhase } from '@/lib/plan/workout-library';
+import { loadAllWorkouts, type PlanPhase as LibraryPhase } from '@/lib/plan/workout-library-static';
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 // RACE-PREP-OPENS-1 · the Block screen asks the mode machine itself when the
@@ -345,7 +347,7 @@ const FAMILY_LABEL: Record<string, string> = {
 };
 
 /** BASE/QUALITY/RACE-SPECIFIC/TAPER/MAINTENANCE (plan_phases.label, this
- *  engine's own phase names) → workout_library.phase_fit's lowercase-snake
+ *  engine's own phase names) → the workout library's `phaseFit` lowercase-snake
  *  vocabulary. Race week overrides the phase label — a race-week session is
  *  tagged 'race_week', not whatever phase the race sits inside.
  *
@@ -368,7 +370,7 @@ export function libraryPhaseKey(phaseLabel: string | null, isRaceWeek: boolean):
 }
 
 export async function buildLibrary(state: TrainingState, raceDistanceMi: number | null) {
-  const all = await loadAllWorkouts();
+  const all = loadAllWorkouts();
   const cat = raceDistanceMi != null ? distanceCategoryOrNull(raceDistanceMi) : null;
   const current = state.weeks.find((w) => w.isCurrent) ?? null;
   const phaseKey = libraryPhaseKey(state.currentPhase, current?.isRaceWeek ?? false);

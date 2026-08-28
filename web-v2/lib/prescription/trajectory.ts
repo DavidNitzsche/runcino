@@ -258,7 +258,7 @@ export function renderRoundTrips(shape: WorkShape, family: SessionFamily, paceTa
  * The seed is the prescription the engine ALREADY authored — "4x1mi @ T pace ·
  * 90s jog" — re-expressed in the units the levers move. A block therefore opens
  * exactly where it opened before this module existed, at the doctrine dose
- * `workout_library` (or the inline catalog) states, and only the weeks AFTER
+ * the workout library (or the inline catalog) states, and only the weeks AFTER
  * week one differ. Nothing here invents an opening session.
  *
  * Distance becomes time at the session's own work pace, which is what makes the

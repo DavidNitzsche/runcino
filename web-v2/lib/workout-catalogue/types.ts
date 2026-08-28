@@ -30,7 +30,7 @@ import {
   DISTANCE_CATEGORIES,
   type DistanceCategory,
 } from '@/lib/race/distance-category';
-import type { WorkoutFamily } from '@/lib/plan/workout-library';
+import type { WorkoutFamily } from '@/lib/plan/workout-library-static';
 
 /**
  * The app's ONE race-distance categorizer · `lib/race/distance-category.ts`.

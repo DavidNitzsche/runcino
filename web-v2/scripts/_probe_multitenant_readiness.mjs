@@ -19,7 +19,9 @@ console.log('\nPLAN CHAIN COLUMNS:');
 for (const r of planCols) console.log(`  ${r.table_name}: ${r.cols}`);
 
 // 5. Single-user leftovers + the new coach_today_cache
-for (const t of ['coach_today_cache', 'workout_rpe', 'strava_sync_state', 'strava_webhook_subscriptions', 'strava_webhook_events', 'workout_library', 'ops_alerts']) {
+// (workout_library removed from this list 2026-08-28 — table retired to code,
+//  lib/plan/workout-library-static.ts; see migration 158.)
+for (const t of ['coach_today_cache', 'workout_rpe', 'strava_sync_state', 'strava_webhook_subscriptions', 'strava_webhook_events', 'ops_alerts']) {
   const cols = await q(`SELECT string_agg(column_name::text, ', ' ORDER BY ordinal_position) AS cols FROM information_schema.columns WHERE table_schema='public' AND table_name=$1`, [t]);
   console.log(`\n${t}: ${cols[0]?.cols ?? 'MISSING'}`);
 }

@@ -4270,7 +4270,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     anchor: '## 15. Training-cycle placement summary',
     claim:
       'Each phase of a block has its own workout vocabulary, and §15 names it phase by ' +
-      'phase. The engine asked the workout_library for two families out of twenty-one, so ' +
+      'phase. The engine asked the workout library for two families out of twenty-one, so ' +
       'an eighteen-week marathon build contained three workout shapes — reps, tempo, long. ' +
       'Every family qualityFamilyFor now places must be named in the row for the phase it ' +
       'places it in.',
