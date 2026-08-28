@@ -215,6 +215,8 @@ import {
   MIDRACE_RESUME_RX,
   CUTBACK_LONG_DROP,
   HOLD_BLOCK_MAX_WEEKS,
+  HOLD_PROGRESSION_MIN_WEEKS,
+  HOLD_CYCLE_GROWTH,
 } from '@/lib/plan/generate';
 import {
   DRESS_REHEARSAL,
@@ -14499,10 +14501,12 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
    * and the owner then approved sizing the block to the doctrine ceiling:
    * `composeMaintenancePlan` caps TOTAL_WEEKS at HOLD_BLOCK_MAX_WEEKS, and a
    * capped hold that elapses is authored its next block toward the race.
-   * Still open, deliberately ungated here: whether a long hold PROGRESSES
-   * (section 6 reverse periodization) or HOLDS flat (section 7) — that
-   * ruling moves prescribed volume for every hold-block runner and stays
-   * the owner's. This claim binds LENGTH only.
+   * The question this comment used to hold open — whether a long hold
+   * PROGRESSES (section 6) or HOLDS flat (section 7) — was ruled by the
+   * owner 2026-08-28 ("when in doubt we should also try for progress"):
+   * a long hold progresses gently. That ruling is bound by
+   * MAINTENANCE.long-hold-progresses-gently, directly below. This claim
+   * binds LENGTH only.
    */
   {
     id: 'MAINTENANCE.hold-block-length',
@@ -14555,6 +14559,98 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         src,
         /TOTAL_WEEKS = Math\.max\(1, Math\.min\(HOLD_BLOCK_MAX_WEEKS, Math\.floor\(weeksToRace - buildWindow\)\)\);/,
         'composeMaintenancePlan sizes the hold block through HOLD_BLOCK_MAX_WEEKS',
+      );
+    },
+  },
+  /* -- HOLD-PROGRESS-1 (2026-08-28) · the ruling hold-block-length left open -
+   *
+   * The owner ruled it ("when in doubt we should also try for progress" —
+   * the progress-is-the-guiding-light principle: current fitness is a
+   * floor, not a ceiling): a hold long enough to be Research/22 section 6's
+   * base-building block PROGRESSES weekly volume gently instead of holding
+   * one number flat. The doctrine's own rows draw the line — section 6 has
+   * a Duration of 8-16 weeks, a "Peak weekly volume" row and a Phases row
+   * that is progression outright ("Reverse periodization is fine"), while
+   * section 7 Maintenance is "holding fitness without progression". So the
+   * threshold is section 6's Duration FLOOR, and the climb's size comes
+   * from Research/00a's per-cycle growth band at its CONSERVATIVE end —
+   * a hold is maintenance-shaped base building, not a build. The climb
+   * itself is volumeCurve with an overridden peak target, so every ramp
+   * guardrail (GENERAL_RAMP_CEILING, the 0.80 cutback, the post-deload
+   * re-entry cap) binds the hold exactly as it binds a build. The 5-15%
+   * row is stated "for trained athletes"; a beginner's hold takes the same
+   * 5%, which sits far under the novice figure the same row states, so the
+   * conservative end is conservative for every cohort.
+   */
+  {
+    id: 'MAINTENANCE.long-hold-progresses-gently',
+    binds: [
+      'lib/plan/generate.ts#HOLD_PROGRESSION_MIN_WEEKS',
+      'lib/plan/generate.ts#HOLD_CYCLE_GROWTH',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'A hold block at least as long as section 6 Base Building\'s own Duration floor is the ' +
+      'section 6 block, and section 6 progresses (its Phases row is reverse periodization; a ' +
+      'Peak weekly volume row implies a climb to a peak), so the block climbs weekly volume ' +
+      'gently instead of holding flat — the owner\'s ruling, 2026-08-28. The climb\'s whole-' +
+      'block growth is the base-growth row\'s per-cycle band at its conservative end: ' +
+      '"Year-on-year base growth | 5-15% per training cycle for trained athletes", so ' +
+      'HOLD_CYCLE_GROWTH must equal 1 + the band\'s FLOOR, and HOLD_PROGRESSION_MIN_WEEKS ' +
+      'must equal section 6\'s Duration floor (a shorter hold is section 7\'s flat shape — ' +
+      '"holding fitness without progression" — and has nothing to progress). The composer ' +
+      'must route the climb through volumeCurve with the growth-bounded peak target, not a ' +
+      'parallel ramp, so every existing ramp guardrail binds the hold unchanged.',
+    check({ cite }) {
+      // Research/00a → "5–15% per training cycle for trained athletes; novices …".
+      const spec = cite.table().cell('Year-on-year base growth', 'Specification');
+      const trained = parseBand(spec.split(';')[0]);
+      const growthPct = Math.round((HOLD_CYCLE_GROWTH - 1) * 1000) / 10;
+      if (growthPct !== trained[0]) {
+        throw new Error(
+          `HOLD_CYCLE_GROWTH is ${HOLD_CYCLE_GROWTH} (${growthPct}% per hold block) · the ruling ` +
+            `takes the CONSERVATIVE end of the doc's ${trained[0]}-${trained[1]}% per-cycle band, ` +
+            `so it must be ${1 + trained[0] / 100}`,
+        );
+      }
+      // Research/22 §6 → "Duration | 8-16 weeks" — the threshold is the FLOOR.
+      const dur = parseBand(
+        resolveCitation(
+          'Research/22-plan-templates.md',
+          '## 6. Base Building / Off-Season Plan',
+        ).table().cell('Duration', 'Value'),
+      );
+      if (HOLD_PROGRESSION_MIN_WEEKS !== dur[0]) {
+        throw new Error(
+          `HOLD_PROGRESSION_MIN_WEEKS is ${HOLD_PROGRESSION_MIN_WEEKS}, section 6's Duration ` +
+            `row opens at ${dur[0]} wk — a hold shorter than the section 6 block stays flat, ` +
+            'one at least that long progresses',
+        );
+      }
+      if (HOLD_PROGRESSION_MIN_WEEKS > HOLD_BLOCK_MAX_WEEKS) {
+        throw new Error(
+          `HOLD_PROGRESSION_MIN_WEEKS (${HOLD_PROGRESSION_MIN_WEEKS}) exceeds ` +
+            `HOLD_BLOCK_MAX_WEEKS (${HOLD_BLOCK_MAX_WEEKS}) · no hold could ever progress`,
+        );
+      }
+      // The composer must actually run the ruling: gate on the threshold, aim
+      // at base × growth, and climb through volumeCurve rather than a copy.
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      matchLiteral(
+        src,
+        /TOTAL_WEEKS >= HOLD_PROGRESSION_MIN_WEEKS/,
+        'composeMaintenancePlan gates hold progression on HOLD_PROGRESSION_MIN_WEEKS',
+      );
+      matchLiteral(
+        src,
+        /const holdPeakTarget = Math\.round\(targetWeekly \* HOLD_CYCLE_GROWTH\);/,
+        'the hold peak target is base × HOLD_CYCLE_GROWTH',
+      );
+      matchLiteral(
+        src,
+        /\? volumeCurve\(targetWeekly, blocks, input\.level, [^)]*holdPeakTarget\)/,
+        'the hold climb routes through volumeCurve with the growth-bounded peak target',
       );
     },
   },

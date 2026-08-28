@@ -2136,6 +2136,13 @@ function volumeCurve(
    *  Null (every synthetic archetype, every cold start) leaves the curve
    *  byte-identical: no cycle ceiling, no resume ramp. */
   evidence?: RampBaseEvidence | null,
+  /** HOLD-PROGRESS-1 (2026-08-28) · an explicit peak target, replacing the
+   *  tier-band derivation. The maintenance composer's long hold is a SHALLOW
+   *  climb — base × HOLD_CYCLE_GROWTH — and reuses this curve rather than
+   *  growing a parallel ramp implementation: same geometric climb, same ramp
+   *  ceiling, same cutback cadence and 0.80 deload, same post-deload re-entry
+   *  cap. Null (every race-prep caller) leaves the curve byte-identical. */
+  peakTargetOverrideMi?: number | null,
 ): number[] {
   const vols: number[] = [];
   // 2026-06-03 · mid-block doctrine RULE 4 (monotonic volume floor) ·
@@ -2167,7 +2174,12 @@ function volumeCurve(
   );
   // WKPEAK-1 · …and no further above the peak the runner has actually run than
   // doctrine's per-cycle growth figure allows. See `cycleBoundedPeak`.
-  const peakTarget = cycleBoundedPeak(doctrineTarget, evidence ?? null, level, taperCat);
+  // HOLD-PROGRESS-1 · unless the caller states the destination outright — the
+  // maintenance hold's target is its own base × HOLD_CYCLE_GROWTH, already
+  // inside Research/00a's per-cycle band, not the tier's race-prep peak.
+  const peakTarget = peakTargetOverrideMi != null
+    ? peakTargetOverrideMi
+    : cycleBoundedPeak(doctrineTarget, evidence ?? null, level, taperCat);
 
   // Build phases · everything before TAPER. Each is a ramp week or a
   // deload (every 4th non-taper week). We pre-mark deload positions
@@ -7801,6 +7813,60 @@ const BASE_BUILD_SUSTAINABLE_PCT = 1.00;
 /** `Research/22` §6 · "Duration | 8-16 weeks" — the top of the band. */
 export const HOLD_BLOCK_MAX_WEEKS = 16;
 
+/* ── HOLD-PROGRESS-1 (2026-08-28) · a long hold climbs gently, not flat ─────
+ *
+ * The owner's ruling on the question MAINT-LENGTH-1 left open ("when in
+ * doubt we should also try for progress"): a hold long enough to be the
+ * block `Research/22` §6 describes PROGRESSES weekly volume gently across
+ * the block instead of holding one number with a step-down every fourth
+ * week. The doctrine gives both shapes and its own Duration rows draw the
+ * line between them:
+ *
+ *   · §6 Base Building / Off-Season — "Duration | 8-16 weeks", a "Peak
+ *     weekly volume" row (a block with a peak is a block that climbs to
+ *     one), and a Phases row that is progression outright: "Reverse
+ *     periodization is fine: continuous E → introduce strides → introduce
+ *     fartlek → introduce LT".
+ *   · §7 Maintenance — "holding fitness without progression", open-ended.
+ *
+ * So the threshold is §6's own floor: a hold of 8+ weeks is the §6 block
+ * (DOCTRINE-MAINTFREQ-1 already ruled §6 governs this mode) and climbs; a
+ * shorter hold has nothing to progress and stays flat — §7's shape.
+ *
+ * How much it climbs comes from `Research/00a` §"Volume progression rules":
+ * "Year-on-year base growth | 5–15% per training cycle for trained
+ * athletes". The CONSERVATIVE end of that band — 5% — because a hold is
+ * maintenance-shaped base building, not a build: the same reading that put
+ * GENERAL_RAMP_CEILING and CYCLE_GROWTH_CEILING at the band's TOP for a
+ * race-prep block puts a between-blocks hold at its BOTTOM, and the
+ * progress-is-the-guiding-light principle asks only that current fitness be
+ * a floor, not that every block ramp like a build.
+ *
+ * The climb is `volumeCurve` itself with the peak target overridden to
+ * base × HOLD_CYCLE_GROWTH — not a parallel ramp — so every existing
+ * guardrail binds unchanged: the geometric climb under GENERAL_RAMP_CEILING
+ * (trivially, at ~1% per week), the every-4th-week 0.80 cutback, the
+ * post-deload re-entry cap, and the monotonic floor. The long run does NOT
+ * climb with the week: it stays on the §7 sizing (≤110% of the recent long
+ * per RAMP.single-session-spike, ≤30% of the week), so the growth lands on
+ * the easy days and the single-session spike rule cannot be approached.
+ * Quality stays 1/week (MAINTENANCE_BY_TIER); the threshold dose already
+ * sizes itself off the week's own T budget (`weeklyDoseBudgetMi`), so it
+ * steps with the week inside Daniels' cap and no quality days are added.
+ * The overload trajectory does not engage here — the non-race composers
+ * have no build to progress through (see ComposePlanResult.progression).
+ *
+ * Bound by MAINTENANCE.long-hold-progresses-gently in the doctrine
+ * registry, which reads both the band and the threshold out of the docs. */
+/** `Research/22` §6 · "Duration | 8-16 weeks" — the BOTTOM of the band. A hold
+ *  at least this long is the §6 base-building block and progresses; a shorter
+ *  hold is §7's flat shape. */
+export const HOLD_PROGRESSION_MIN_WEEKS = 8;
+/** `Research/00a` §"Volume progression rules" · "Year-on-year base growth |
+ *  5–15% per training cycle for trained athletes" — the conservative end (5%),
+ *  applied across the whole hold block as its peak target multiplier. */
+export const HOLD_CYCLE_GROWTH = 1.05;
+
 /**
  * Compose a 4-week maintenance plan. Single phase 'MAINTENANCE'. The
  * graduate cron regenerates this every 4 weeks until the next race
@@ -7847,6 +7913,10 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   // restarts three more times with no visible horizon. Rolling cutback fires every 4th week.
   // When no race is scheduled (just-run mode), fall back to the 4-week rolling default.
   let TOTAL_WEEKS = 4;
+  // HOLD-PROGRESS-1 · the next race's distance category, when it resolves and
+  // the hold is real (weeksToRace > buildWindow). Null on the rolling 4-week
+  // default and on an unresolvable calendar row — both of which stay flat.
+  let holdCat: DistCategory | null = null;
   if (input.nextRace) {
     const weeksToRace = daysBetween(input.startMondayISO, input.nextRace.date) / 7;
     // The next race is a CALENDAR row the runner typed; its distance may not
@@ -7871,16 +7941,21 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       // gets a 16-week hold, and when it elapses the cron authors the next
       // block toward the race. The registry's `no-ceiling-on-a-long-hold`
       // exemption is deleted; MAINTENANCE.hold-block-length now checks the
-      // cap against the doc's own row. Still open, and not gated: whether a
-      // long hold PROGRESSES (§6 reverse periodization) or HOLDS flat (§7) —
-      // each block is one targetWeekly with a 20% step-down every fourth
-      // week. That ruling moves prescribed volume and stays the owner's.
+      // cap against the doc's own row.
+      //
+      // HOLD-PROGRESS-1 (2026-08-28) · the remaining ruling this comment used
+      // to name as open is now MADE: the owner ruled a long hold PROGRESSES
+      // ("when in doubt we should also try for progress"). A hold of
+      // HOLD_PROGRESSION_MIN_WEEKS+ climbs gently to targetWeekly ×
+      // HOLD_CYCLE_GROWTH through `volumeCurve` (cutbacks preserved); a
+      // shorter hold stays §7-flat. See the header on HOLD_CYCLE_GROWTH.
       //
       // Cite: Research/22-plan-templates.md §"Base Building / Off-Season Plan"
       //       — Duration 8-16 weeks, 80-100% of last cycle's peak
       // Cite: Research/22-plan-templates.md §"Maintenance Plan" — Duration
       //       open-ended, 4-15 wk realistically; ~15 weeks of VO2max hold
       TOTAL_WEEKS = Math.max(1, Math.min(HOLD_BLOCK_MAX_WEEKS, Math.floor(weeksToRace - buildWindow)));
+      holdCat = buildCat;
     }
   }
   const weeks: ComposedWeek[] = [];
@@ -7897,6 +7972,28 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   // COLD-START-1 · no volume signal of ANY kind. Not "a small week" — nothing
   // to size a week from. See the block comment above composeMaintenancePlan.
   const noVolumeSignal = !(peakAnchor > 0) && !(input.recentLongMi > 0);
+
+  // HOLD-PROGRESS-1 (2026-08-28) · a hold long enough to be Research/22 §6's
+  // base-building block climbs gently to targetWeekly × HOLD_CYCLE_GROWTH,
+  // through the SAME curve race-prep ramps on (geometric climb under the ramp
+  // ceiling, every-4th-week 0.80 cutback, post-deload re-entry cap) with only
+  // the peak target overridden. `blocks` carries a single MAINTENANCE phase
+  // and no TAPER, so every week is a "build" week to the curve; its deload
+  // mask ((i+1) % cutbackCadence(undefined)=4 === 0, i>0 → weeks 4, 8, 12, 16)
+  // is the same set maintenanceWeek's own isCutback marks, so the week's
+  // volume and its long-run step-down land on the same weeks. Shorter holds,
+  // cold starts and unresolvable-race holds stay flat (§7's shape) — null
+  // here means "flat", exactly the pre-ruling behavior. See the header on
+  // HOLD_CYCLE_GROWTH for the full doctrine derivation.
+  const holdPeakTarget = Math.round(targetWeekly * HOLD_CYCLE_GROWTH);
+  const holdVols: number[] | null = (
+    TOTAL_WEEKS >= HOLD_PROGRESSION_MIN_WEEKS
+    && holdCat != null
+    && !noVolumeSignal
+    && targetWeekly > 0
+  )
+    ? volumeCurve(targetWeekly, blocks, input.level, TIER_TARGETS[holdCat][input.tier], holdCat, undefined, null, holdPeakTarget)
+    : null;
   /** Slow end of the engine's own easy band — the pace the runner is actually
    *  permitted to run at, so the minutes→miles conversion cannot imply a
    *  faster one. Falls back to the bottom of the Daniels table when the runner
@@ -7962,7 +8059,12 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   function maintenanceWeek(weekIdx: number): DayPlan[] {
     if (noVolumeSignal) return coldStartWeek(weekIdx);
     const isCutback = (weekIdx + 1) % 4 === 0; // week 4, 8, 12 … = recovery step-down
-    const wkWeeklyBase = isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly;
+    // HOLD-PROGRESS-1 · a progressing hold reads its week off the curve (whose
+    // deloads land on the same weeks isCutback marks); a flat hold keeps the
+    // one-number-with-step-down shape.
+    const wkWeeklyBase = holdVols != null
+      ? holdVols[weekIdx]
+      : (isCutback ? Math.round(targetWeekly * 0.80) : targetWeekly);
     // SP-6 · 4mi coherence floor, not 8. NS-2 (2026-06-23, ext) · the cutback floor must ALSO respect the
     // true-beginner cap (recentLong 3 → cutback Math.max(4,2)=4 → smoothed 3.5 = 117% = the plan's LONGEST
     // run, over the 110% injury cap). Cutback is never longer than the base long (targetLong, already ≤110%
@@ -8181,7 +8283,13 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     weeks.push({
       startISO,
       phase: 'MAINTENANCE',
-      weeklyMi: wi === 3 ? Math.round(targetWeekly * 0.80) : targetWeekly,
+      // HOLD-PROGRESS-1 · a progressing hold's weeklyMi comes off the same
+      // curve maintenanceWeek(wi) sizes its days from, so the displayed number
+      // and the realized week agree on every cutback (the flat arm's wi === 3
+      // only ever mattered for TOTAL_WEEKS ≤ 7, where it is the only cutback).
+      weeklyMi: holdVols != null
+        ? holdVols[wi]
+        : (wi === 3 ? Math.round(targetWeekly * 0.80) : targetWeekly),
       days: maintenanceWeek(wi),
       isRaceWeek: false,
       tPaceSec: input.tPaceSec,
@@ -8237,6 +8345,12 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       weekly_pct_applied: weeklyPctApplied,
       target_weekly_mi: targetWeekly,
       target_long_mi: targetLong,
+      // HOLD-PROGRESS-1 · which shape this hold ran, and where a progressing
+      // one is climbing to, so the audit surface reads the ruling off the
+      // plan rather than re-deriving it.
+      hold_progression: holdVols != null
+        ? { growth_factor: HOLD_CYCLE_GROWTH, peak_target_mi: holdPeakTarget }
+        : null,
       next_race: input.nextRace,
       // EVIDENCE-2 · carry the season anchor forward (see ComposeNonRaceInput).
       // SELFREPORT-1 · the anchor's provenance, not an assumption about it.

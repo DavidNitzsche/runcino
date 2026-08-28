@@ -41,11 +41,14 @@ import {
   composeMaintenancePlan,
   composeRecoveryPlan,
   inlinePrescriptions,
+  HOLD_BLOCK_MAX_WEEKS,
+  HOLD_PROGRESSION_MIN_WEEKS,
+  HOLD_CYCLE_GROWTH,
   type ComposeNonRaceInput,
   type ComposePlanResult,
   type DOW,
 } from './generate';
-import { RECOVERY_RUN_DAYS, type GoalTier } from './goal-tiers';
+import { RECOVERY_RUN_DAYS, GENERAL_RAMP_CEILING, type GoalTier } from './goal-tiers';
 
 const SM = '2026-01-05'; // Monday
 
@@ -334,5 +337,93 @@ describe('NON-RACE composers · maintenance + recovery sweep', () => {
     const rNull = composeRecoveryPlan(baseInput({ tier: 'elite', recentPeakWeeklyMi: 70, recentLongMi: 22, lastRaceFinished: { slug: 'l', name: 'M', date: '2026-01-01', distanceMi: 26.2 } }));
     const maxEasyNull = Math.max(0, ...rNull.weeks.flatMap((w) => w.days.filter((d) => d.type === 'easy').map((d) => d.distanceMi)));
     expect(maxEasyNull).toBeLessThanOrEqual(12);
+  });
+
+  // ── HOLD-PROGRESS-1 (2026-08-28) · a long hold climbs gently, a short one holds ──
+  //
+  // The owner's ruling on the question MAINT-LENGTH-1 left open: a hold at
+  // least HOLD_PROGRESSION_MIN_WEEKS long (Research/22 §6's own Duration
+  // floor) progresses weekly volume gently to targetWeekly × HOLD_CYCLE_GROWTH
+  // (the conservative end of Research/00a's 5-15% per-cycle band), through
+  // volumeCurve with cutbacks preserved. A shorter hold is §7's flat shape.
+
+  it('HOLD-PROGRESS-1 · a 16-week hold shows monotone-with-cutbacks gentle growth ending within the per-cycle band', () => {
+    // Marathon 35 weeks out · buildWindow 18 → floor(35-18)=17, capped at 16.
+    const res = composeMaintenancePlan(baseInput({
+      tier: 'intermediate',
+      nextRace: { slug: 'r', name: 'Far M', date: '2026-09-07', distanceMi: 26.2, goalPaceSec: 480 },
+    }));
+    expect(res.totalWeeks).toBe(HOLD_BLOCK_MAX_WEEKS);
+    const target = res.authoredState.target_weekly_mi as number;
+    const hp = res.authoredState.hold_progression as { growth_factor: number; peak_target_mi: number } | null;
+    expect(hp, 'a 16-week hold must record its progression').not.toBeNull();
+    expect(hp!.growth_factor).toBe(HOLD_CYCLE_GROWTH);
+    expect(hp!.peak_target_mi).toBe(Math.round(target * HOLD_CYCLE_GROWTH));
+
+    const vols = res.weeks.map((w) => w.weeklyMi);
+    const isCutback = (wi: number) => (wi + 1) % 4 === 0;
+    const climbs = vols.filter((_, wi) => !isCutback(wi));
+    // 1 · monotone growth across the climbing weeks (cutbacks excluded) …
+    for (let i = 1; i < climbs.length; i++) {
+      expect(climbs[i], `climb week ${i} regressed (${climbs.join(',')})`).toBeGreaterThanOrEqual(climbs[i - 1]);
+    }
+    // 2 · … that actually GROWS (the ruling: not flat) …
+    expect(climbs[climbs.length - 1], `no growth across the block (${climbs.join(',')})`).toBeGreaterThan(climbs[0]);
+    // 3 · … opens at the runner's own maintenance base (a floor, not a jump) …
+    expect(climbs[0]).toBe(target);
+    // 4 · … and ends at the growth-bounded peak: within Research/00a's 5-15%
+    //     per-cycle band of the base (rounding of a 5% target can land a hair
+    //     above 5%, never above the band's top).
+    const finalGrowth = climbs[climbs.length - 1] / target;
+    expect(finalGrowth).toBeGreaterThan(1.0);
+    expect(finalGrowth).toBeLessThanOrEqual(1.15);
+    expect(climbs[climbs.length - 1]).toBe(hp!.peak_target_mi);
+    // 5 · every cutback week is a real step-down from the last climbing week
+    //     (volumeCurve's 0.80 deload, ± rounding) …
+    vols.forEach((v, wi) => {
+      if (!isCutback(wi)) return;
+      const prevClimb = vols[wi - 1];
+      expect(v, `cutback wk${wi + 1} not a step-down`).toBeLessThan(prevClimb);
+      expect(Math.abs(v - Math.round(prevClimb * 0.80))).toBeLessThanOrEqual(1);
+    });
+    // 6 · guardrails bind unchanged: week-over-week never exceeds the trained
+    //     ramp ceiling (climb steps are ~1%), the long never exceeds 110% of
+    //     the recent long (RAMP.single-session-spike), the long stays the
+    //     longest run, and the realized days track the stated weekly volume.
+    for (let wi = 1; wi < vols.length; wi++) {
+      if (isCutback(wi)) continue;
+      const prev = isCutback(wi - 1) ? vols[wi - 2] : vols[wi - 1];
+      expect(vols[wi] / prev).toBeLessThanOrEqual(GENERAL_RAMP_CEILING.intermediate + 0.01);
+    }
+    const recentLong = 14; // baseInput default
+    res.weeks.forEach((w, wi) => {
+      const longs = w.days.filter((d) => d.isLong).map((d) => d.distanceMi);
+      expect(longs.length).toBe(1);
+      expect(longs[0]).toBeLessThanOrEqual(Math.round(recentLong * 1.10));
+      const maxDay = Math.max(...w.days.map((d) => d.distanceMi));
+      expect(maxDay, `wk${wi + 1} a non-long day out-runs the long`).toBeLessThanOrEqual(longs[0]);
+      const daySum = w.days.reduce((s, d) => s + d.distanceMi, 0);
+      expect(Math.abs(daySum - w.weeklyMi), `wk${wi + 1} realized ${daySum} vs stated ${w.weeklyMi}`).toBeLessThanOrEqual(4);
+    });
+  });
+
+  it('HOLD-PROGRESS-1 · a short hold (< the §6 Duration floor) stays flat with the every-4th cutback', () => {
+    // Marathon 24 weeks out · buildWindow 18 → floor(24-18)=6 < HOLD_PROGRESSION_MIN_WEEKS.
+    const res = composeMaintenancePlan(baseInput({
+      tier: 'intermediate',
+      nextRace: { slug: 'r', name: 'Near M', date: '2026-06-22', distanceMi: 26.2, goalPaceSec: 480 },
+    }));
+    expect(res.totalWeeks).toBe(6);
+    expect(res.totalWeeks).toBeLessThan(HOLD_PROGRESSION_MIN_WEEKS);
+    expect(res.authoredState.hold_progression).toBeNull();
+    const target = res.authoredState.target_weekly_mi as number;
+    res.weeks.forEach((w, wi) => {
+      const expected = (wi + 1) % 4 === 0 ? Math.round(target * 0.80) : target;
+      expect(w.weeklyMi, `wk${wi + 1} of a short hold moved`).toBe(expected);
+    });
+    // And the rolling no-race default (4 weeks) is flat too.
+    const roll = composeMaintenancePlan(baseInput({ tier: 'intermediate' }));
+    expect(roll.totalWeeks).toBe(4);
+    expect(roll.authoredState.hold_progression).toBeNull();
   });
 });
