@@ -1276,11 +1276,9 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       return { start, end, peak, mean };
     })(),
     weather_context: weatherCtx,
-    // 2026-06-04 · expose the duration-scaled heat slowdown so the
-    // pace-comparison bars can render a faded "heat-adjusted band"
-    // alongside the runner's marker. Same value used to widen the
-    // heat-adjusted phase verdict band (loadPhaseBreakdown) ·
-    // single source of truth across surfaces.
+    // 2026-08-27 · no pace band is drawn from this any more — the client's
+    // heatAwareDrift is the only remaining consumer, using it to relabel an
+    // HR rise as thermoregulation rather than fitness fade.
     heat_slowdown_pct: heatSlowdownPct,
     suffer_score: Number(r.sufferScore) || null,
     kudos: Number(r.kudosCount) || null,
