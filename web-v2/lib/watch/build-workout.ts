@@ -1446,13 +1446,23 @@ export async function buildWatchToday(
 
   // 2. Pull profile inputs for the prescription (LTHR + race goal)
   const prof = (await pool.query(
-    `SELECT lthr, hrmax FROM profile
+    `SELECT lthr FROM profile
       WHERE user_uuid = $1
       ORDER BY (user_uuid=$1) DESC LIMIT 1`,
     [userId]
   ).catch(() => ({ rows: [] }))).rows[0];
   const lthr = prof?.lthr ?? null;
-  const maxHr = prof?.hrmax ? Number(prof.hrmax) : null;
+  // 2026-08-28 · DEAD READ FIX. This was `SELECT hrmax FROM profile`, a
+  // column deprecated by Cluster 3 that nothing writes — NULL for every
+  // runner, forever — so the %HRmax fallback for the easy-run HR ceiling
+  // below could never fire and an LTHR-less runner got NO HR guidance on
+  // the wrist. loadEffectiveMaxHr is the canonical resolver (user override
+  // → 12-month observed ceiling → manual stored), same source every other
+  // surface uses.
+  const maxHr = await import('@/lib/training/max-hr')
+    .then((m) => m.loadEffectiveMaxHr(userId, today))
+    .then((eff) => eff.bpm)
+    .catch(() => null);
 
   // 2026-07-07 · units audit — loadSettings already defaults to 'mi'/'F'
   // internally on any read failure (settings.ts DEFAULT_SETTINGS), so this

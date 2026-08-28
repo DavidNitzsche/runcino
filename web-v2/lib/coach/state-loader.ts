@@ -26,10 +26,15 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
   const today = await runnerToday(userId);
   const stateTz = await runnerTimezone(userId).catch(() => 'UTC');
 
-  // PROFILE — includes LTHR + observed maxHR + experience for HR-zone reasoning
+  // PROFILE — identity + experience. 2026-08-28: hrmax / lthr / rhr dropped
+  // from this SELECT — they were fetched and never used (the assembled
+  // CoachState reads rhrCurrent/rhrBaseline from health_samples via
+  // loadStableBaseline below, and HR anchors resolve through
+  // loadEffectiveMaxHr / resolveThresholdHr at their consumers). Two of the
+  // three were the deprecated always-NULL profile columns; carrying them
+  // here made this look like a live HR read when it never was.
   const profResult = await pool.query(
-    `SELECT full_name, sex, age, city, hrmax, lthr,
-            rhr, height_cm, experience_level
+    `SELECT full_name, sex, age, city, height_cm, experience_level
        FROM profile
       WHERE user_uuid = $1
       ORDER BY (user_uuid = $1) DESC LIMIT 1`,

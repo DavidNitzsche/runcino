@@ -272,11 +272,12 @@ import {
   treadmillEffectiveGradePct,
 } from '@/lib/terrain/grade-adjust';
 import {
-  aerobicCeilingBpm, friel7Zones, judgeEasyRunHr, lthrZones, pctMaxZones, zoneIdxForBpm,
+  aerobicCeilingBpm, friel7Zones, judgeEasyRunHr, lthrZones, pctMaxZones, tanakaMaxHr, zoneIdxForBpm,
   FRIEL_5_ZONE_EDGES, FRIEL_7_ZONE_EDGES, PCT_MAX_ZONE_BANDS,
 } from '@/lib/training/zones';
 import { deriveReadingScopes, HR_REP_KINETICS_FLOOR_SEC } from '@/lib/coach/reading-scope';
 import { lthrFromMaxHr } from '@/lib/training/lthr';
+import { RHR_ROLLING_WINDOW_DAYS } from '@/lib/training/biometrics-refresh';
 import {
   EASY_HRMAX_CEILING_PCT,
   HEAT_CONFOUND_TEMP_C,
@@ -14248,6 +14249,75 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           `the training soft cap (${TRAINING_ESTIMATE_SOFT_CAP_VDOT}) has diverged from doctrine's `
           + `training-evidence quantum (${up}) · they are the same number in the same row`,
+        );
+      }
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BIOMETRICS PIPELINE (2026-08-28) · the age-predicted HRmax fallback and
+  // the resting-HR rolling baseline the nightly profile refresh writes.
+  // ═══════════════════════════════════════════════════════════════════════
+  {
+    id: 'HR.tanaka-age-predicted',
+    binds: ['lib/training/zones.ts#tanakaMaxHr'],
+    doc: 'Research/03-heart-rate-zones.md',
+    // §2's own sub-heading · a section stops at the NEXT heading of any
+    // level, and the formula code-fence lives under this one.
+    anchor: '### Population formulas',
+    claim:
+      'When a runner has no LTHR and no measured/observed HRmax, the age-predicted anchor is ' +
+      'Tanaka (208 − 0.7 × age) — never Fox 220 − age, which REVIEW_NOTES flags as a ' +
+      'weak-evidence formula to never default to. The constants are read out of the doc\'s own ' +
+      'formula block, not hand-copied here.',
+    check({ cite }) {
+      // The doc publishes the formula verbatim inside a code fence:
+      //   Tanaka (2001):             HRmax = 208 − 0.7 × age
+      const line = cite.text().split('\n').find((l) => /Tanaka \(2001\)/.test(l));
+      if (!line) throw new Error('the Tanaka formula line is gone from §2 — re-read the doc');
+      const m = line.match(/HRmax = (\d+(?:\.\d+)?) [−-] (\d+(?:\.\d+)?) × age/);
+      if (!m) throw new Error(`cannot parse the Tanaka formula out of: "${line.trim()}"`);
+      const intercept = Number(m[1]);
+      const slope = Number(m[2]);
+      for (const age of [20, 30, 40, 55, 70]) {
+        const expected = Math.round(intercept - slope * age);
+        const got = tanakaMaxHr(age);
+        if (got !== expected) {
+          throw new Error(
+            `tanakaMaxHr(${age}) = ${got} · the doc's formula (${intercept} − ${slope} × age) says ${expected}`,
+          );
+        }
+        // And it is demonstrably NOT Fox 220 − age (the two agree only at
+        // age 40 under the published constants · every other age must differ).
+        if (age !== 40 && got === 220 - age) {
+          throw new Error(
+            `tanakaMaxHr(${age}) equals 220 − age — the formula REVIEW_NOTES says never to default to`,
+          );
+        }
+      }
+      // Outside the doc's trust range ("Children/adolescents (<16) | None
+      // reliable") the function must refuse rather than extrapolate.
+      if (tanakaMaxHr(12) != null || tanakaMaxHr(null) != null) {
+        throw new Error('tanakaMaxHr fabricates a ceiling for an age the doc calls unreliable');
+      }
+    },
+  },
+  {
+    id: 'HR.rhr-rolling-baseline-window',
+    binds: ['lib/training/biometrics-refresh.ts#RHR_ROLLING_WINDOW_DAYS'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: 'Use a 7-day rolling average as the working baseline; recompute monthly.',
+    claim:
+      'The stored profile.rhr snapshot is a rolling average over the window doctrine names for ' +
+      'a working baseline — read out of the anchor sentence itself, so a doc revision to the ' +
+      'window length fails here rather than drifting silently.',
+    check({ cite }) {
+      const m = cite.text().match(/(\d+)-day rolling average as the working baseline/);
+      if (!m) throw new Error('the working-baseline sentence no longer names an N-day window');
+      const docDays = Number(m[1]);
+      if (RHR_ROLLING_WINDOW_DAYS !== docDays) {
+        throw new Error(
+          `RHR_ROLLING_WINDOW_DAYS = ${RHR_ROLLING_WINDOW_DAYS} · doctrine's working baseline is ${docDays} days`,
         );
       }
     },

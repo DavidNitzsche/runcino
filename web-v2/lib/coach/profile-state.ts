@@ -427,10 +427,14 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
     lthr != null ? 'lthr-derived' :
     p?.hrmax ? 'formula' : null;
 
-  const zones = computeZones({ lthr, maxHr: max_hr });
-
   const birthday = p?.birthday ?? null;
   const age = ageFromBirthday(birthday) ?? p?.age ?? null;
+
+  // 2026-08-28 · age rides along so a runner with NO HR history at all still
+  // gets zones — Tanaka age-predicted (Research/03 §2/§17, never 220 − age),
+  // labeled estimated with wide-band honesty inside computeZones. Precedence
+  // is unchanged: LTHR > measured/observed HRmax > age estimate.
+  const zones = computeZones({ lthr, maxHr: max_hr, age });
 
   return {
     identity: {

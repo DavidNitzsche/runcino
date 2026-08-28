@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { ratchetUsersMaxHr } from '@/lib/training/max-hr';
+import { refreshProfileBiometrics } from '@/lib/training/biometrics-refresh';
 
 export const maxDuration = 60;
 
@@ -51,14 +52,37 @@ export async function POST(req: NextRequest) {
       WHERE archived_iso IS NULL AND user_uuid IS NOT NULL`,
   ).catch(() => ({ rows: [] }))).rows.map((r) => r.user_uuid);
 
-  const results: Array<{ userUuid: string; newMax: number | null; error?: string }> = [];
+  const results: Array<{
+    userUuid: string;
+    newMax: number | null;
+    rhr?: number | null;
+    rhrSamples?: number;
+    vo2?: number | null;
+    error?: string;
+  }> = [];
   let ratcheted = 0;
+  let biometricsRefreshed = 0;
 
   for (const u of userIds) {
     try {
       const today = await runnerToday(u);
       const newMax = await ratchetUsersMaxHr(u, today);
-      results.push({ userUuid: u.slice(0, 8) + '…', newMax });
+      // 2026-08-28 · sibling snapshot: profile.rhr (7-day rolling · doctrine
+      // Research/15-wearable-data.md "Establishing a baseline") and
+      // profile.vo2max_apple (latest sample · display/reference only, never
+      // pace input). Same posture as the max_hr ratchet this cron exists
+      // for — keep the stored profile columns fresh for readers that bypass
+      // the live resolvers, which had been NULL forever because nothing
+      // wrote them. See lib/training/biometrics-refresh.ts.
+      const bio = await refreshProfileBiometrics(u, today);
+      if (bio.wrote.rhr || bio.wrote.vo2) biometricsRefreshed++;
+      results.push({
+        userUuid: u.slice(0, 8) + '…',
+        newMax,
+        rhr: bio.rhrBpm,
+        rhrSamples: bio.rhrSamples,
+        vo2: bio.vo2max,
+      });
       if (newMax != null) ratcheted++;
     } catch (e: unknown) {
       results.push({
@@ -73,6 +97,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     users: userIds.length,
     ratcheted,
+    biometrics_refreshed: biometricsRefreshed,
     per_user: results,
     timestamp: new Date().toISOString(),
   });
@@ -82,6 +107,6 @@ export async function GET() {
   return NextResponse.json({
     endpoint: 'POST /api/cron/max-hr-ratchet',
     auth: 'Authorization: Bearer <CRON_SECRET>',
-    description: 'Daily ratchet users.max_hr to the 12-month observed ceiling for every active user.',
+    description: 'Daily ratchet users.max_hr + profile.hrmax_observed to the 12-month observed ceiling, and refresh profile.rhr (7-day rolling) + profile.vo2max_apple (latest sample) for every active user.',
   });
 }

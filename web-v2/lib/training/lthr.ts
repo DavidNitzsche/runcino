@@ -61,6 +61,85 @@ export function lthrFromMaxHr(maxHrBpm: number): number | null {
   return Math.round(maxHrBpm * 0.90);
 }
 
+// ── Field-test LTHR capture (2026-08-28) ─────────────────────────────────
+
+/**
+ * Friel 30-minute time-trial protocol · Research/03-heart-rate-zones.md
+ * ("### Determining LTHR — 30-Minute Time Trial (Friel)"): "LTHR = average
+ * HR during final 20 min." The 30-min TT was the only field method of four
+ * tested whose HR estimate did not significantly differ from
+ * blood-lactate-determined LTHR.
+ */
+export const FIELD_TEST_FINAL_WINDOW_SEC = 20 * 60;
+
+/** The work segment must actually approximate the 30-min TT for the final-20
+ *  average to mean threshold. 25 minutes is the floor — shorter and the HR
+ *  average drifts toward VO2 territory (the 5K-proxy problem). */
+export const FIELD_TEST_MIN_WORK_SEC = 25 * 60;
+
+/** Need real coverage of the window, not three stray beats: at least this
+ *  many samples spanning at least 15 of the final 20 minutes. */
+export const FIELD_TEST_MIN_SAMPLES = 20;
+export const FIELD_TEST_MIN_SPAN_SEC = 15 * 60;
+
+interface FieldTestPhaseLike {
+  type?: string | null;
+  label?: string | null;
+  actualDurationSec?: number | null;
+  hrSamples?: Array<{ tSec: number; bpm?: number | null }> | null;
+}
+
+/**
+ * Extract LTHR from a completed field test's watch phases.
+ *
+ * The test is authored as a tempo-shaped spec (warmup / 30-min work / cool-
+ * down · lib/plan/adapt.ts field_test conversion), so the work segment is
+ * the longest non-warmup/cooldown phase. LTHR = average bpm of the samples
+ * inside the final 20 minutes of that phase (Friel, above). Null — never a
+ * guess — when the work segment is too short, the HR stream too sparse, or
+ * the average implausible.
+ *
+ * Pure · exported for tests · the watch-completion route calls this and
+ * writes profile.lthr with method 'field_test'.
+ */
+export function lthrFromFieldTestPhases(
+  phases: FieldTestPhaseLike[] | null | undefined,
+): { lthr: number; sampleCount: number; windowSec: number } | null {
+  if (!Array.isArray(phases) || phases.length === 0) return null;
+  const isRestPhase = (p: FieldTestPhaseLike) =>
+    /warm|cool|recover|rest/i.test(String(p.type ?? '') + ' ' + String(p.label ?? ''));
+  const work = phases
+    .filter((p) => !isRestPhase(p))
+    .reduce<FieldTestPhaseLike | null>((best, p) => {
+      const d = Number(p.actualDurationSec) || 0;
+      return d > (Number(best?.actualDurationSec) || 0) ? p : best;
+    }, null);
+  if (!work) return null;
+  const samples = (work.hrSamples ?? [])
+    .map((s) => ({ tSec: Number(s.tSec), bpm: Number(s.bpm) }))
+    .filter((s) => Number.isFinite(s.tSec) && Number.isFinite(s.bpm) && s.bpm >= 60 && s.bpm <= 230)
+    .sort((a, b) => a.tSec - b.tSec);
+  if (samples.length === 0) return null;
+  const endSec = Math.max(
+    Number(work.actualDurationSec) || 0,
+    samples[samples.length - 1].tSec,
+  );
+  if (endSec < FIELD_TEST_MIN_WORK_SEC) return null;
+  const windowStart = endSec - FIELD_TEST_FINAL_WINDOW_SEC;
+  const windowed = samples.filter((s) => s.tSec >= windowStart);
+  if (windowed.length < FIELD_TEST_MIN_SAMPLES) return null;
+  const span = windowed[windowed.length - 1].tSec - windowed[0].tSec;
+  if (span < FIELD_TEST_MIN_SPAN_SEC) return null;
+  const avg = windowed.reduce((s, x) => s + x.bpm, 0) / windowed.length;
+  // Same plausibility band the race-derived estimators use.
+  if (avg < 100 || avg > 210) return null;
+  return {
+    lthr: Math.round(avg),
+    sampleCount: windowed.length,
+    windowSec: Math.round(endSec - windowStart),
+  };
+}
+
 /** How a resolved threshold HR was obtained · drives honest labeling. */
 export type ThresholdHrMethod = 'stored-lthr' | 'maxhr-crosswalk';
 

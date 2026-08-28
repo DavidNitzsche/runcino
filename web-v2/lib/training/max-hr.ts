@@ -32,6 +32,7 @@
  * Generic mechanism: works for any user. No hardcoded values.
  */
 import { pool } from '@/lib/db/pool';
+import { attempt, rowOrNull } from '@/lib/db/read';
 
 /**
  * 2026-08-25 · THE PLAUSIBILITY BAND FOR AN OBSERVED HRmax, NAMED ONCE.
@@ -58,6 +59,29 @@ export const MAX_HR_CEILING_BPM = 230;
 export function isPlausibleMaxHr(bpm: unknown): boolean {
   const n = Number(bpm);
   return Number.isFinite(n) && n >= MAX_HR_FLOOR_BPM && n <= MAX_HR_CEILING_BPM;
+}
+
+/**
+ * 2026-08-28 · age-aware plausibility ceiling for an OBSERVED HRmax reading.
+ *
+ * PRODUCT HEURISTIC, not doctrine. The research corpus has no derivation rule
+ * for an observed HRmax; the closest statement is C7-ancillary.md:461 in the
+ * BuildResearch directory ("Fitness baselines" table: Max HR = "Highest
+ * 10-sec HR in last 90 days, capped at age-predicted + 10"). This constant is that idea with slightly
+ * more headroom: reject a reading above (220 − age + 15), and above 230 bpm
+ * regardless of age. The +15 exists because age formulas carry ±10-12 bpm SD
+ * (Research/03-heart-rate-zones.md, "### Accuracy and Standard Error") — a
+ * real runner two SDs above the formula must not have their genuine ceiling
+ * rejected as an artefact. 220 − age appears here ONLY as a rejection bound
+ * for garbage, never as a zone anchor — zones use Tanaka
+ * (Research/REVIEW_NOTES.md: never default to 220 − age).
+ *
+ * Null/implausible age → the flat 230 band (the pre-existing behavior).
+ */
+export function maxHrPlausibilityCeiling(age: number | null | undefined): number {
+  const a = Number(age);
+  if (!Number.isFinite(a) || a < 10 || a > 100) return MAX_HR_CEILING_BPM;
+  return Math.min(220 - Math.round(a) + 15, MAX_HR_CEILING_BPM);
 }
 
 export interface EffectiveMaxHr {
@@ -111,6 +135,26 @@ async function resolveEffectiveMaxHr(
 
   // 2. Hybrid 12-month observed max from health_samples + runs.
   //    Compute both sources independently so we know which "won."
+  //
+  // 2026-08-28 · the ceiling is age-aware where age is known (see
+  // maxHrPlausibilityCeiling — a PRODUCT HEURISTIC, headroom over the
+  // C7-ancillary "age-predicted + 10" cap). A 40-year-old's 212 bpm strap
+  // artefact used to pass the flat 230 band and, because the ratchet is
+  // monotone UP with a 365-day memory, set their ceiling for a year.
+  // rowOrNull: a failed age read degrades to the flat 230 band (the
+  // pre-existing behavior), logged rather than swallowed.
+  const ageRow = await rowOrNull<{ age: number | string | null }>(
+    'max-hr · profile age for plausibility ceiling',
+    pool.query(
+      `SELECT COALESCE(EXTRACT(YEAR FROM age(birthday))::int, age) AS age
+         FROM profile WHERE user_uuid = $1 LIMIT 1`,
+      [userId],
+    ),
+  );
+  const ceilingBpm = maxHrPlausibilityCeiling(
+    ageRow?.age != null ? Number(ageRow.age) : null,
+  );
+
   const [hkRow, runsRow] = await Promise.all([
     pool.query<{ value: number | string | null }>(
       // 2026-08-25 · THE SAME PHYSIOLOGICAL BAND THE `runs` BRANCH BELOW HAS
@@ -137,17 +181,17 @@ async function resolveEffectiveMaxHr(
       // merely untested.
       `SELECT COALESCE(MAX(value::numeric), 0) AS value FROM health_samples
         WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'max_hr'
-          AND value::numeric BETWEEN ${MAX_HR_FLOOR_BPM} AND ${MAX_HR_CEILING_BPM}
+          AND value::numeric BETWEEN ${MAX_HR_FLOOR_BPM} AND $3::numeric
           AND sample_date >= ($2::date - interval '365 days')`,
-      [userId, today],
+      [userId, today, ceilingBpm],
     ).then((r) => r.rows[0]),
     pool.query<{ value: number | string | null }>(
       `SELECT COALESCE(MAX((data->>'maxHr')::numeric), 0) AS value FROM runs
         WHERE user_uuid = $1::uuid AND NOT (data ? 'mergedIntoId')
           AND data->>'maxHr' IS NOT NULL
-          AND (data->>'maxHr')::numeric BETWEEN ${MAX_HR_FLOOR_BPM} AND ${MAX_HR_CEILING_BPM}
+          AND (data->>'maxHr')::numeric BETWEEN ${MAX_HR_FLOOR_BPM} AND $3::numeric
           AND (data->>'date')::date >= ($2::date - interval '365 days')`,
-      [userId, today],
+      [userId, today, ceilingBpm],
     ).then((r) => r.rows[0]),
   ]);
 
@@ -209,5 +253,31 @@ export async function ratchetUsersMaxHr(
       RETURNING max_hr AS new_max`,
     [eff.bpm, userId],
   );
+
+  // 2026-08-28 · mirror the observed ceiling onto profile.hrmax_observed.
+  // Same reasoning as users.max_hr above: loadEffectiveMaxHr stays the
+  // canonical resolver every live read goes through, but raw-SQL readers and
+  // diagnostics that SELECT the profile row directly (scripts/_q_david.sql,
+  // admin views, the iPhone gap check in TodayView) had been reading a column
+  // NOTHING wrote — NULL since the Cluster 3 deprecation moved the sovereign
+  // path to users.max_hr_override. A snapshot column that is refreshed
+  // nightly is honest; one that is never written is a trap. (When an override
+  // is set the resolver short-circuits before computing the observed ceiling,
+  // so this snapshot — like the users.max_hr ratchet above — only advances
+  // for runners without an override. The override user's live reads all go
+  // through the resolver anyway.)
+  // attempt: non-fatal (the users.max_hr ratchet above already landed) but
+  // logged — a snapshot that silently stops writing is the bug this exists
+  // to fix. A missing profile row is rowCount 0, not an error.
+  await attempt(
+    'max-hr · profile.hrmax_observed snapshot',
+    pool.query(
+      `UPDATE profile
+          SET hrmax_observed = GREATEST(COALESCE(hrmax_observed, 0), $1::int)
+        WHERE user_uuid = $2`,
+      [eff.bpm, userId],
+    ),
+  );
+
   return r.rows[0]?.new_max != null ? Number(r.rows[0].new_max) : null;
 }

@@ -10,8 +10,14 @@
 # those readers see a sensible recent number.
 #
 # Idempotent · runs after snapshot-projections (which also calls
-# ratchetUsersMaxHr inline). If snapshot-projections is healthy, this
-# is a no-op. If it isn't, this is the safety net.
+# ratchetUsersMaxHr inline). If snapshot-projections is healthy, the
+# max_hr half is a no-op. If it isn't, this is the safety net.
+#
+# 2026-08-28 · the endpoint also refreshes the profile biometric
+# snapshots every night: profile.hrmax_observed (observed 12-month
+# ceiling), profile.rhr (7-day rolling average per Research/15), and
+# profile.vo2max_apple (latest Apple Watch sample · display only).
+# See web-v2/lib/training/biometrics-refresh.ts.
 #
 # Schedule: 08:30 UTC daily = 01:30 PT.
 #

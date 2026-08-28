@@ -165,8 +165,6 @@ const ALLOW: Record<string, string> = {
     "PLAN-SIDE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
   "lib/plan/dose-guard.ts":
     "PLAN-SIDE · a fixed-one-decimal distance (the recap rounding). Queued; not on the poster/recap path where the split was visible.",
-  "lib/plan/drift-monitor.ts":
-    "PLAN-SIDE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
   "lib/wire-format/format.ts":
     "THE CROSS-LANGUAGE PARITY CONTRACT, and the one legitimate second implementation. Its counterpart is `FaffFmt` in native-v2/.../ValuesV5.swift, and `_format_vectors.test.ts` generates the table that pins the two together. It cannot simply re-export this module because its PRESENTATION differs on purpose — `paceDeltaSec` prints `+24 s/mi` where `fmtDelta` prints `+0:24`, and `clock(0)` answers `0:00` where `fmtClock(0)` answers null, because a live timer legitimately reads zero and a finished run does not. What must NOT differ is the arithmetic, and `both modules round the total before splitting it` below proves that on every shared vector rather than trusting this note.",
   "lib/plan/generate.ts":

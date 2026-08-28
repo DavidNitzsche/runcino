@@ -109,6 +109,11 @@ export async function GET(req: NextRequest) {
     const r = await pool.query(
       `SELECT p.full_name, p.sex, p.sex AS gender, p.age, p.city, p.height_cm,
               p.birthday::text AS birthday, p.lthr, p.hrmax,
+              -- 2026-08-28 · nightly snapshot columns (max-hr-ratchet cron):
+              -- observed 12-month HR ceiling + 7-day rolling RHR. TodayView's
+              -- physiology-gap check reads hrmax_observed; it had been checking
+              -- a key this GET never returned.
+              p.hrmax_observed,
               p.rhr, p.experience_level, p.lthr_method, p.lthr_set_at,
               p.strava_connected_at, p.health_connected_at, p.onboarded_at,
               p.strava_auto_push, p.strava_push_privacy, p.strava_push_title_format,
@@ -166,6 +171,16 @@ export async function PATCH(req: NextRequest) {
           return NextResponse.json({ error: 'tz_mode must be auto|manual' }, { status: 400 });
         }
         tzMode = m;
+        continue;
+      }
+      // 2026-08-28 · legacy alias. The InlineGapEditor (and any older client)
+      // still PATCHes `hrmax_observed` — the Cluster 3 deprecation moved the
+      // sovereign user-asserted max to users.max_hr_override but left the
+      // sender behind, so the gap editor's save 400'd with "Field not
+      // allowed". A user typing their max HR IS an override; store it there.
+      // (profile.hrmax_observed itself is cron-written from observation only.)
+      if (k === 'hrmax_observed') {
+        usersUpdates.max_hr_override = validateField('max_hr_override', body[k]);
         continue;
       }
       if (USERS_ALLOWED.has(k)) { usersUpdates[k] = validateField(k, body[k]); continue; }

@@ -281,15 +281,61 @@ export function pctMaxZones(maxHr: number): ZoneTable {
   };
 }
 
+// ── Age-predicted HRmax (Tanaka) · last-resort anchor ────────────────────
+
+/**
+ * Tanaka (2001): HRmax = 208 − 0.7 × age.
+ *
+ * Doctrine: Research/03-heart-rate-zones.md §2 ("Estimating HRmax —
+ * Formulas") — Tanaka is the chosen formula for marathon runners and general
+ * adults with no test data, and Research/REVIEW_NOTES.md flags 220 − age as
+ * a weak-evidence formula to NEVER default to (±10-15 bpm SD, biased by
+ * age). Bound by `HR.tanaka-age-predicted` in lib/doctrine/registry.ts,
+ * which parses the formula's constants out of the doc at run time.
+ *
+ * Even Tanaka carries ±10 bpm SEE (95% CI ≈ ±20 bpm individually), so any
+ * zone table anchored on it must say so — see computeZones' estimated note.
+ * Null outside the ages the doc trusts (no formula is reliable under 16).
+ */
+export function tanakaMaxHr(age: number | null | undefined): number | null {
+  const a = Number(age);
+  if (!Number.isFinite(a) || a < 16 || a > 100) return null;
+  return Math.round(208 - 0.7 * a);
+}
+
 // ── Auto-select ─────────────────────────────────────────────────────────
 
 /**
  * Pick the right method given what we know about the runner.
- * Returns null only when we have neither LTHR nor MaxHR.
+ *
+ * Precedence (Research/03 §17 "Picking a System": "If two systems disagree,
+ * the more individualized one (LTHR > Karvonen > %HRmax) wins"):
+ *
+ *   1. LTHR · Friel zones — the individualized anchor.
+ *   2. Measured/observed HRmax · %HRmax ACSM zones.
+ *   3. Age · Tanaka-estimated HRmax · same %HRmax table, loudly labeled as
+ *      an estimate ("treat as approximate" — §17's own words for this row).
+ *      NEVER 220 − age (Research/REVIEW_NOTES.md weak-evidence table).
+ *
+ * Returns null only when we have none of LTHR / MaxHR / age.
  */
-export function computeZones(input: { lthr?: number | null; maxHr?: number | null }): ZoneTable | null {
+export function computeZones(input: { lthr?: number | null; maxHr?: number | null; age?: number | null }): ZoneTable | null {
   if (input.lthr && input.lthr > 100 && input.lthr < 210) return lthrZones(input.lthr, input.maxHr ?? undefined);
   if (input.maxHr && input.maxHr > 140 && input.maxHr < 230) return pctMaxZones(input.maxHr);
+  const est = tanakaMaxHr(input.age);
+  if (est != null) {
+    const t = pctMaxZones(est);
+    return {
+      ...t,
+      anchor: { label: 'MaxHR (est)', bpm: est },
+      citation: 'Research/03-heart-rate-zones.md §2 (Tanaka age-predicted) + §4 (5-Zone ACSM %HRmax)',
+      // Wide-band honesty: an age-predicted anchor is a population guess.
+      // §2 "Practical Rule": 95% CI ≈ ±20 bpm individually. The bands are
+      // rendered normally but the note is the contract that a surface
+      // showing them must carry.
+      note: `estimated from age ${Math.round(Number(input.age))} (Tanaka 208 − 0.7 × age) · individual error up to ±20 bpm · treat zones as approximate until a field test or race locks in LTHR`,
+    };
+  }
   return null;
 }
 

@@ -573,9 +573,10 @@ export async function POST(req: NextRequest) {
   // a tempo day, or an unplanned jog on a rest day, must not inherit a
   // quality label. workoutTypeSource records provenance.
   let plannedWorkoutType: string | null = null;
+  let plannedSubLabel: string | null = null;
   try {
-    const planDay = (await pool.query<{ type: string; distance_mi: string | null }>(
-      `SELECT pw.type, pw.distance_mi::text
+    const planDay = (await pool.query<{ type: string; distance_mi: string | null; sub_label: string | null }>(
+      `SELECT pw.type, pw.distance_mi::text, pw.sub_label
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE tp.user_uuid = $1::uuid
@@ -586,6 +587,9 @@ export async function POST(req: NextRequest) {
       [userId, date],
     )).rows[0];
     if (planDay) {
+      // 2026-08-28 · field-test LTHR capture reads this below. Carried out of
+      // the try so a stamp failure can't silently also kill the capture.
+      plannedSubLabel = planDay.sub_label ?? null;
       const plannedMi = planDay.distance_mi != null ? Number(planDay.distance_mi) : null;
       const distanceMatches = plannedMi == null || plannedMi <= 0
         ? true
@@ -965,6 +969,51 @@ export async function POST(req: NextRequest) {
     await autoMergeForDate(userId, date);
   } catch (e: any) {
     console.error('[watch/complete] autoMerge warn:', e?.message);
+  }
+
+  // ── Field-test LTHR capture (2026-08-28) ────────────────────────────────
+  // The adapt engine's field_test conversion (lib/plan/adapt.ts) authors the
+  // 30-min threshold test and its own comment said "COMPLETION FOLLOW-UP
+  // (not built here)" — so a runner could DO the test and nothing would ever
+  // read the result: the learn-your-LTHR path dead-ended at the finish line.
+  // Friel (Research/03-heart-rate-zones.md, "### Determining LTHR — 30-Minute
+  // Time Trial (Friel)"): LTHR = average HR during the final 20 min. The
+  // watch already streams per-phase hrSamples; lthrFromFieldTestPhases does
+  // the windowed average with coverage + plausibility gates and returns null
+  // rather than guessing. Best-effort: a capture failure never fails the
+  // completion ack.
+  if (plannedSubLabel === 'FIELD TEST' && body.status !== 'abandoned') {
+    try {
+      const { lthrFromFieldTestPhases } = await import('@/lib/training/lthr');
+      const cap = lthrFromFieldTestPhases(body.phases ?? []);
+      if (cap != null) {
+        await pool.query(
+          `UPDATE profile
+              SET lthr = $1, lthr_method = 'field_test', lthr_set_at = NOW()
+            WHERE user_uuid = $2`,
+          [cap.lthr, userId],
+        );
+        // Same acknowledgment channel the race auto-calibration uses — the
+        // coach voice gets to say the number changed and why. attempt: the
+        // LTHR write above already landed, so a failed ack is logged, not
+        // fatal.
+        const { attempt } = await import('@/lib/db/read');
+        await attempt('watch/complete · lthr field-test intent', pool.query(
+          `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
+           VALUES ($1, $1, 'lthr_auto_calibrated', 'lthr', $2)`,
+          [userId, `${cap.lthr} (field_test · avg of final ${Math.round(cap.windowSec / 60)} min · ${cap.sampleCount} samples)`],
+        ));
+        // An LTHR change reshapes zones + HR caps · bust the profile-shaped
+        // caches too, not just the run surfaces.
+        await bustBriefingCacheForEvent(userId, 'profile_edit').catch(() => {});
+        console.log(`[watch/complete] field test → LTHR ${cap.lthr} (${cap.sampleCount} samples over ${cap.windowSec}s)`);
+      } else {
+        console.log('[watch/complete] field test completed but HR stream too sparse/short for LTHR capture · left profile.lthr untouched');
+      }
+    } catch (e: unknown) {
+      console.warn('[watch/complete] field-test LTHR capture failed:',
+        e instanceof Error ? e.message : String(e));
+    }
   }
 
   // Event-driven cache: a workout just finished. Bust only the surfaces
