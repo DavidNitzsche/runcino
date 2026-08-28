@@ -511,6 +511,26 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
   // miles instead of 64 and the interval dose is a share of weekly volume, not
   // a fixed rep count. 10×800m is 5.0 mi in a 66 mi week — 7.6%, inside
   // Daniels' ≤8% I cap, which `_dosing_doctrine.test.ts` checks independently.
+  //
+  // RE-SYNC · MERGE CORRUPTION, NOT NEW DRIFT (2026-08-27).
+  //
+  // This snapshot went stale on wk3/4/6/7/10 — back down to their PRE-WKPEAK-2
+  // values (wk3 51.5→47.5, wk4 64.5→61.5, wk6 66→63, wk7 51→49 long19→18,
+  // wk10 68→64) — even though `volumeCurve`/`cycleBoundedPeak`/`PEAK_HOLD_WEEKS`
+  // never regressed: composePlan has produced the WKPEAK-2 numbers on every
+  // commit since 23a4e60c landed (verified by rebuilding the fingerprint at
+  // each commit between 23a4e60c and this one). The `variety` and
+  // `pace-trajectory` branches (merged in at 91547b15 and 408f98d8) were both
+  // cut BEFORE 23a4e60c, so their own copies of this .snap file still carried
+  // the pre-WKPEAK-2 numbers for those five weeks; the merge conflict on this
+  // generated file was resolved by keeping the stale branch content instead of
+  // regenerating from a test run. wk5/8/9/11/12 escaped this because those
+  // branches' own unrelated fixes (ONE-PER-FAMILY-1/2, d7334086 + 760a1369)
+  // happened to touch the same lines and land correctly.
+  //
+  // Fix here is snapshot-only: `npx vitest run ... -u` against current
+  // composePlan output, which the doctrine-band test above and every other
+  // invariant in this file already passes against. No engine change.
   it('FROZEN: per-week structural fingerprint is byte-stable', () => {
     COMBO_COUNT++;
     const fp = result.weeks.map((w, i) => {
