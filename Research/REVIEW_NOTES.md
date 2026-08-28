@@ -315,3 +315,49 @@ These are not problems for human readers but the coaching engine's parser will h
 10. **Spawn a GLP-1 agonists mini-doc** when peer-reviewed athlete data emerges (12–24 months out).
 11. **Quarterly check-in** on super-shoe regulations, Norwegian-method updates, and wearable-algorithm changes (the 3 fastest-moving areas in the corpus).
 12. **Sweep "you" and personalized voice** in 08 §14, 17, 18, 20.
+
+---
+
+## Addendum — 2026-08-28 review
+
+Items found after the May 2026 review. The corpus is now 25 docs: `24-vdot-age-sex-grading.md` postdates the original scope statement above and has been added to `INDEX.md`.
+
+### A1. Doc 02 §5.1 equivalence table was progressively mislabeled (FIXED 2026-08-28)
+- **02** (`02-race-time-prediction.md`, §5.1): the row labelled VDOT 35 actually solved to VDOT 36.0 under the Daniels–Gilbert equations doc 02 itself prints in §4.1; the drift grew monotonically down the table (40→42.3, 45→48.9, 50→56.0, 55→63.1, 60→70.5, 65→78.0, 70→85.7). Only row 30 was correct. §5.2's Riegel table had also drifted from its own formula (e.g., 22:00 5K → marathon printed 3:30:05; `T2 = T1·(D2/D1)^1.06` gives 3:31:00).
+- **Resolution:** §5.1 regenerated 2026-08-28. **Doc 01's VDOT lookup table is canonical**; 02 §5.1 now copies 01's values verbatim for every shared cell, derives the VDOT 35 row by 01's own linear-interpolation rule (mean of 01's 34 and 36 rows), interpolates the 10mi column in log-time between each row's own 15K and Half anchors (keeps per-row pace monotonic), and solves the 1500m column from the §4.1 equations (01 carries no 1500m column). §5.2 recomputed exactly from the Riegel formula (10K 10000 m, 15K 15000 m, 10mi 16093.4 m, half 21097.5 m, marathon 42195 m; rounded to nearest second). Residual note for a future 01 pass: 01's 15K column sits ~0.5–0.7 VDOT slow of the raw equations at VDOT ≥55 (likely reproduced from the published tables), and 01's "Mile" column matches raw 1500m solutions, not mile times (Daniels' published VDOT 30 mile is 9:11, 01 prints 8:30). Neither was altered — 01 is the locked source of truth. 02 §5.3's calculator-comparison row ("Riegel 2:56:05" from an 18:00 5K) is quoted third-party calculator output and intentionally left as-is, though it disagrees with the exact formula (2:52:38).
+
+### A2. Half marathon at exactly 4 weeks pre-marathon: tune-up sanction collides with recovery + taper doctrine
+- **02** (line 355, §12.3): tune-up protocol sanctions "a half marathon 4–6 weeks before marathon goal, raced at race effort."
+- **00b** (line 201): half marathon = 10–14 total recovery days (no quality), return to quality day 10–14, full training 21–28 days.
+- **08** (line 386, §9.2): week −3 of the marathon taper requires the final MP-specific session (14–16 mi w/ 10–12 mi at MP) and the last long run (20–22 mi).
+- At exactly 4 weeks out, an A-effort half's 10–14 no-quality days consume the week that 08 assigns the final MP-specific block. The three docs are individually correct and jointly impossible.
+- **Resolution:** at 4 weeks out the half must be a **B-effort** (00b line 215: hard but not depleted, 7–10 day recovery) or be converted into the week −3 MP-specific session itself; an **A-effort half is only sanctioned at 5–6 weeks out**, where the 10–14 day recovery clears before week −3.
+
+### A3. 10%-weekly-volume rule: strength of recommendation drifts across docs
+- **00a** (line 738, "The 10% rule — reconsidered"): the rule "is not strongly supported by recent evidence."
+- **22** (line 651, comeback plans): "10% rule strictly enforced."
+- **05** (line 74): "10% rule (convention, not strongly evidence-supported but a reasonable safety margin)."
+- **Resolution:** the canonical hard gate is the **110%-of-longest-run-in-prior-30-days spike rule** (00a line 752; BJSM 5,200-runner cohort) — same tiebreaker already recorded in contradiction #8 above. Weekly ~10% remains a **plan-design heuristic**, never a hard gate; 22's "strictly enforced" overstates it and should be read as "applied as the default ramp in this template."
+
+### A4. Daniels T-pace weekly cap vs. Norwegian sub-threshold volume: distinct buckets, not a contradiction
+- **01** (line 154): T at 10% of weekly mileage, single-workout and weekly cap.
+- **00a** (line 138, Norwegian singles): "Total threshold mileage 20–25% of weekly volume."
+- These describe different intensities: Daniels T is true threshold pace; the Norwegian model's volume is **sub-threshold** (deliberately 10–15 s/mi slower, lactate-capped 2.0–3.5 mmol/L), which is why it tolerates 2–2.5× the dose.
+- **Resolution:** an engine must never apply the 20–25% figure to true T-pace work. T-pace dose is governed by 01's 10% cap; the 20–25% band exists only inside a lactate-controlled sub-threshold (Norwegian) block.
+
+### A5. Marathon-specificity penalty is stated four ways — unresolved band
+- **01** (line 67): "Marathon-specific fitness lags VDOT by ~1.5–3 VDOT points" without marathon-specific endurance work.
+- **01** (line 353): "subtract 1.5 VDOT points" for MP prescription without a marathon-specific block.
+- **02** (line 382, §13.1): add 5% to predicted marathon time if marathon-specific training is absent, 8% if mileage and long run are both below minima.
+- **02** (line 113, §4.3): new marathoners without the base "should expect VDOT to predict 5–10% faster than they will run."
+- These are overlapping but non-identical corrections (1.5 VDOT ≈ 2–3% of marathon time; 3 VDOT ≈ 5–6%).
+- **Resolution:** recorded as an **unresolved band**, with guidance: for a **half-marathon input** with no marathon-specific block, use 02 §13.1's **+5%** (one-sided pessimistic) and always report the ±3% CI from 02 §13.7; the 1.5-VDOT subtraction in 01 is written for **5K/10K inputs** feeding MP prescription. Do not stack the corrections.
+
+### A6. Doc 24 existed outside the corpus's own index
+- `24-vdot-age-sex-grading.md` exists but the scope statement above and `INDEX.md` both described the corpus as 24 docs (`00a`, `00b`, `01`–`22`).
+- **Resolution:** doc 24 added to `INDEX.md` (Auxiliary section) 2026-08-28. The scope line at the top of this file is left as written — it accurately describes the May 2026 review's scope.
+
+### A7. Product-layer HR heuristics in BuildResearch cite KB-03 for rules KB-03 does not contain
+- **BuildResearch/C7-ancillary.md** (lines 461–462): "Max HR = highest 10-sec HR in last 90 days, capped at age-predicted + 10" and "LTHR = field test, or 90% of MaxHR fallback" — both cited to KB-03.
+- **03** contains neither rule. Its threshold crosswalk (lines 619, 625) puts threshold HR at 86–92% HRmax, which brackets the 90% fallback as a defensible midpoint, but the "+10 over age-predicted" cap leans on the 220-age family that 03 itself (and the weak-evidence table above) says never to default to.
+- **Resolution:** both are **product heuristics, not doctrine**. Record them with the honest band: the LTHR fallback should be stated as "~86–92% of measured HRmax (03's threshold band); 90% used as the midpoint," and the HRmax cap should be treated as an outlier guard on measured data, not an age-formula derivation. C7's citation should say "product heuristic informed by KB-03's band," not KB-03 as source.

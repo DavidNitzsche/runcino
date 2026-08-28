@@ -4,7 +4,7 @@ This is the entry point for the coaching engine. Every doc in this knowledge bas
 
 ## Reading order
 
-The knowledge base layers from physiological inputs outward to applied prescriptions. Foundational input layer first (01–04) — these are the runtime inputs every other doc depends on: VDOT and pace zones, race-time prediction, HR zone systems, and the canonical workout vocabulary. Practical coaching logic next (05–08) — the modules that produce the week-to-week prescription: injury return, weather adjustments, strength programming, and pacing/race week. Specialized knowledge (09–16) covers cross-training substitution, mobility, course specifics, travel, sex/age physiology, wearable data, and biomechanics — pulled in only when the situation calls for it. Equipment and fueling (17–19) covers shoes, gels, and hydration. Auxiliary (20–22) handles psychology, form-correction drilldowns, and plan templates. Two longer rewrites (0A, 0B) consolidate the foundational training and recovery references for direct consumption by the coaching engine.
+The knowledge base layers from physiological inputs outward to applied prescriptions. Foundational input layer first (01–04) — these are the runtime inputs every other doc depends on: VDOT and pace zones, race-time prediction, HR zone systems, and the canonical workout vocabulary. Practical coaching logic next (05–08) — the modules that produce the week-to-week prescription: injury return, weather adjustments, strength programming, and pacing/race week. Specialized knowledge (09–16) covers cross-training substitution, mobility, course specifics, travel, sex/age physiology, wearable data, and biomechanics — pulled in only when the situation calls for it. Equipment and fueling (17–19) covers shoes, gels, and hydration. Auxiliary (20–22, 24) handles psychology, form-correction drilldowns, plan templates, and VDOT age/sex grading. Two longer rewrites (0A, 0B) consolidate the foundational training and recovery references for direct consumption by the coaching engine.
 
 ---
 
@@ -113,6 +113,10 @@ The drilldown companion to doc 16. For each specific form error (overstriding, h
 ### [22-plan-templates.md](22-plan-templates.md)
 Generic plan scaffolds for any distance and experience tier. Each plan lists duration, days/week, peak weekly volume, peak long run, key workout types, and a sample peak week — paces written in zone shorthand (E/M/T/I/R) so the coach can substitute the user's VDOT-derived numbers. Input: target distance, experience tier, and weeks-to-race. Output: a week-by-week plan skeleton ready for personalization.
 **Sections:** Zone shorthand (Daniels); How to read these tables; 5K Plans; 10K Plans; Half Marathon Plans; Marathon Plans; Ultramarathon Plans; Base Building / Off-Season Plan; Maintenance Plan; Couch-to-5K Progression; Time-Crunched Plans; High-Volume Plan (6-7 day, doubles); Multi-Race Year Planning; Heat-Season vs. Cold-Season Planning; Track-Season vs. Road-Season Planning; Comeback Plans; Plans by Goal; Sources.
+
+### [24-vdot-age-sex-grading.md](24-vdot-age-sex-grading.md)
+Interprets a VDOT score relative to peers rather than absolutely. Layers age grading (simplified Daniels model against the WMA tables) and sex-cohort context on top of the absolute VDOT from doc 01 — pace prescription stays keyed to the absolute number; grading answers "how strong is this VDOT for this age and sex." Input: an absolute VDOT plus age and sex. Output: an age-graded VDOT and a sex-cohort tier interpretation.
+**Sections:** Age grading (simplified Daniels model); Sex-cohort context; Implementation notes; Future work; Sources.
 
 ---
 
