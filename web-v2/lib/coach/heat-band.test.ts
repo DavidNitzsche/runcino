@@ -44,10 +44,11 @@ describe('heatAdjustedStatus (regression guard)', () => {
     expect(heatAdjustedStatus(420, 400, 0)).toBe('fast');
   });
 
-  it('hot day widens only the slow side', () => {
-    // target 420, slowdown 12% -> effectiveTarget ~470; 450 is now "on".
-    expect(heatAdjustedStatus(420, 450, 12)).toBe('on');
-    // faster than original target - tolerance is still "fast".
+  it('2026-08-27 · heat no longer widens the band at all · a hot day grades the same as a cool one', () => {
+    // Same inputs as the old "widens only the slow side" case: a real 30s
+    // miss now reads as a real miss, whatever the slowdownPct argument says.
+    expect(heatAdjustedStatus(420, 450, 12)).toBe('slow');
     expect(heatAdjustedStatus(420, 400, 12)).toBe('fast');
+    expect(heatAdjustedStatus(420, 425, 12)).toBe('on');
   });
 });

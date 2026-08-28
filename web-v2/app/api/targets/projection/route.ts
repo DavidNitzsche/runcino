@@ -448,7 +448,6 @@ export async function GET(req: NextRequest) {
           todayISO: await (await import('@/lib/runtime/runner-tz')).runnerToday(userId),
         }).catch(() => null);
         if (conditions) {
-          conditionsImpactSec = conditions.seconds;
           conditionsSource = conditions.source;
           conditionsSafetyMessage = conditions.safetyMessage;
         }

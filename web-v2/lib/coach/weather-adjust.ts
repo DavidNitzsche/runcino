@@ -1,12 +1,19 @@
 /**
- * lib/coach/weather-adjust.ts · environmental pace + effort correction.
+ * lib/coach/weather-adjust.ts · heat-vs-fitness signal for HR-drift reading.
+ *
+ * 2026-08-27 · no pace or effort advice is built here any more. The runner
+ * paces off feel and conditions on the day; nothing in this app should
+ * adjust, widen, or advise a pace target because of heat. What's left is
+ * the one legitimate use of this physics: telling a real fitness fade
+ * apart from an HR rise that heat alone explains (heatAwareDrift, in
+ * heat-band.ts). `slowdownPct`/`shouldFlagInRecap` feed only that gate.
  *
  * Doctrine: Research/06-weather-adjustments.md
  *   · Maughan / Ely / Vihma marathon-slowdown synthesis
  *   · RunnersConnect dewpoint adjustment (validated against Maughan/Otani)
  *   · Tair+Td sum framework as a single-number heat-stress index
  *
- * Inputs the coach uses anywhere it needs to judge a run honestly:
+ * Inputs:
  *   - air temperature (°F) · primary heat signal
  *   - dewpoint (°F) · evaporative-cooling limit
  *   - solar load · direct sun adds ~5°F effective
@@ -14,15 +21,12 @@
  *
  * Outputs:
  *   - slowdownPct · how much slower than 50°F reference an honest effort
- *     would land at this temp (so we don't penalize the runner)
- *   - heatBand · "neutral" | "warm" | "hot" | "extreme" · drives copy
- *   - shouldFlagInRecap · true when conditions were material enough that
- *     ignoring them in the post-run analysis would be unfair
- *   - coachTipForNextTime · forward-looking advice (e.g. "start earlier")
- *     when relevant
+ *     would land at this temp
+ *   - heatBand · "neutral" | "warm" | "hot" | "extreme"
+ *   - shouldFlagInRecap · true when conditions were material enough to
+ *     change how HR drift gets read
  *
- * Citations: see CITATION_WEATHER · always returned with any output that
- * carries an environmental adjustment so consumers can show the doctrine.
+ * Citations: see CITATION_WEATHER.
  */
 
 import type { WorkoutType } from './run-purpose';
@@ -61,22 +65,11 @@ export interface WeatherInput {
    * full marathon-distance penalty when null.
    */
   durationS?: number | null;
-  /**
-   * E6: the run's workout type, when known. The heat slowdown is a pace
-   * fact and is unaffected by this field · but for easy/long/recovery/
-   * shakeout runs pace is not the axis the runner trains on (effort/HR is),
-   * so the runner-facing `summary` + `coachTipForNextTime` reframe around
-   * effort instead of "costs you X% on pace". Omitted/null preserves the
-   * pace framing · the back-compat default and the right read for quality +
-   * race, where pace IS the axis. Any runner.
-   */
+  /** Accepted for call-site compatibility. Unused since no copy is built
+   *  from workout type any more. */
   workoutType?: WorkoutType | null;
-  /**
-   * 'pre' (default) frames forward — "your pace will sit slower, hold the
-   * effort". 'post' frames as a past reading for the run recap — no
-   * imperatives, no "will" (David 2026-06-12: the recap was reading like
-   * pre-run advice instead of responding to the run).
-   */
+  /** Accepted for call-site compatibility. Unused since no copy is built
+   *  from phase any more. */
   phase?: 'pre' | 'post';
 }
 
@@ -88,18 +81,18 @@ export interface WeatherInput {
 export type HeatBand = 'neutral' | 'warm' | 'hot' | 'extreme';
 
 export interface WeatherJudgment {
-  /** % slower than the 50°F reference for an honest effort. 0 if neutral. */
+  /** % slower than the 50°F reference an honest effort costs at these
+   *  conditions. Not applied to any displayed pace or target — read only
+   *  by the HR-drift relabeling (heatAwareDrift), which distinguishes
+   *  thermoregulatory HR rise from real fitness fade. */
   slowdownPct: number;
   /** Plain-language band the heat falls in. Null when humidity is unknown. */
   heatBand: HeatBand | null;
   /** Tair + Td combined heat-stress index (°F). null if Td unknown. */
   heatStressF: number | null;
-  /** Whether the conditions were material enough to surface in a recap. */
+  /** Whether the conditions were material enough to affect how HR drift
+   *  gets read. */
   shouldFlagInRecap: boolean;
-  /** One-line summary of the conditions for display. */
-  summary: string;
-  /** Forward-looking advice ("start earlier next time") when applicable. */
-  coachTipForNextTime: string | null;
   /** Research citations to attach to any UI that uses these numbers. */
   citation: typeof CITATION_WEATHER;
 }
@@ -111,15 +104,6 @@ export interface WeatherJudgment {
  * this module.
  */
 export { estimateDewpointF };
-
-// E6: easy / long / recovery / shakeout are run by effort or HR, not by the
-// clock · heat makes those paces drift slower by design, so the "costs you
-// X% on pace" framing miscoaches them (the runner reads a pace tax on a run
-// where pace isn't the target). Quality + race — and unknown, for back-compat
-// — keep the pace framing because pace IS the training axis there.
-function isEffortRun(t: WorkoutType | null | undefined): boolean {
-  return t === 'easy' || t === 'long' || t === 'recovery' || t === 'shakeout';
-}
 
 export function judgeWeather(input: WeatherInput): WeatherJudgment {
   // Prefer the PEAK temperature the run actually fought through. The
@@ -133,8 +117,6 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
       heatBand: null,
       heatStressF: null,
       shouldFlagInRecap: false,
-      summary: 'Conditions unknown',
-      coachTipForNextTime: null,
       citation: CITATION_WEATHER,
     };
   }
@@ -174,115 +156,15 @@ export function judgeWeather(input: WeatherInput): WeatherJudgment {
 
   // Material when slowdown >= 2% or extreme dewpoint, or when sun bumped
   // the effective temperature into a higher band than the raw reading.
+  // Feeds heatAwareDrift's HR-drift relabeling only — no pace/effort copy
+  // is built from this any more.
   const shouldFlagInRecap = slowdownPct >= 2 || (td != null && td >= 65);
-
-  // When we know the run's thermal arc, lead with the climb · "65°F → 75°F"
-  // tells the story far better than the peak alone. Skip the arrow when
-  // the climb was <3°F (within bucket noise) or we only have one reading.
-  const climbedMaterially = tStart != null && input.tempF_end != null
-    && Math.abs((input.tempF_end as number) - tStart) >= 3;
-  const tempPhrase = climbedMaterially
-    ? `${Math.round(tStart as number)}°F → ${Math.round(input.tempF_end as number)}°F (peak ${Math.round(t)}°F)`
-    : `${Math.round(t)}°F`;
-
-  // ── Two doctrinal questions, kept apart ──────────────────────────────
-  //
-  // `heatBand` answers "how RISKY were these conditions" and its taxonomy is
-  // Research/06 §3's WBGT flag table. `slowdownPct` answers "how much PACE
-  // did they cost" and comes from §1 + §12. They are different quantities
-  // and they legitimately disagree: 72°F at 50% RH under cloud is a green
-  // flag (low risk) that still costs a marathoner ~5% of pace.
-  //
-  // So the WORD on the card is the band, and the ADVICE escalates on
-  // whichever of the two is louder — a green-flag morning that costs 5% is
-  // still worth starting earlier, and a red-flag afternoon is worth a
-  // warning even on a run short enough that the duration scale keeps the
-  // percentage small. This is not a second band taxonomy; nothing here is
-  // exported or displayed as a band.
-  const paceCostTier = slowdownPct >= 8 ? 3 : slowdownPct >= 4 ? 2 : slowdownPct >= 2 ? 1 : 0;
-  const bandTier = heatBand === 'extreme' ? 3 : heatBand === 'hot' ? 2 : heatBand === 'warm' ? 1 : 0;
-  const adviceTier = Math.max(paceCostTier, bandTier);
-
-  // Plain-English summary · this is what the runner reads on the run card.
-  // Doctrine drives the band; the words are everyday talk. No "evaporative
-  // cooling impaired", no "heat stress index", no model citations.
-  let summary: string;
-  if (heatBand === 'extreme') {
-    summary = climbedMaterially
-      ? `Started at ${Math.round(tStart as number)}°F, hit ${Math.round(input.tempF_end as number)}°F. That's seriously hot.`
-      : `${Math.round(t)}°F · seriously hot.`;
-  } else if (heatBand === 'hot') {
-    summary = climbedMaterially
-      ? `Started at ${Math.round(tStart as number)}°F, climbed to ${Math.round(input.tempF_end as number)}°F. That's hot for running.`
-      : `${Math.round(t)}°F · hot for running.`;
-  } else if (heatBand === 'warm') {
-    summary = climbedMaterially
-      ? `Got from ${Math.round(tStart as number)}°F to ${Math.round(input.tempF_end as number)}°F · a bit warm.`
-      : `${Math.round(t)}°F · a bit warm.`;
-  } else if (heatBand == null || paceCostTier > 0) {
-    // Either no humidity (no WBGT, no honest heat word — the explicit
-    // degrade), or a green-flag day that still costs real pace. Both cases
-    // state the temperature and let the tail carry the cost; calling a day
-    // that costs 5% "good conditions" is the contradiction, not the honesty.
-    summary = climbedMaterially
-      ? `${Math.round(tStart as number)}°F to ${Math.round(input.tempF_end as number)}°F.`
-      : `${Math.round(t)}°F.`;
-  } else {
-    summary = climbedMaterially
-      ? `${Math.round(tStart as number)}°F to ${Math.round(input.tempF_end as number)}°F · good conditions.`
-      : `${Math.round(t)}°F · good conditions.`;
-  }
-  // Trailing framing only when material. E6: pace-cost for quality/race
-  // (pace is the axis); effort framing for easy/long/recovery/shakeout
-  // (pace drifts slower by design · the runner trains those by feel/HR).
-  const isPost = input.phase === 'post';
-  if (slowdownPct >= 2) {
-    if (isEffortRun(input.workoutType)) {
-      // Post: read it (past, no imperative). Pre: forward cue.
-      summary += isPost
-        ? ` Warm enough to cost a little pace. Heat does that · your fitness is fine.`
-        : ` Your pace will sit slower in this · that's the heat, not lost fitness. Hold the effort.`;
-    } else {
-      summary += isPost
-        ? ` Cost you about ${Math.round(slowdownPct)}% on pace. Heat does that · your fitness is fine.`
-        : ` Costs you about ${Math.round(slowdownPct)}% on pace.`;
-    }
-  }
-
-  // Coach tip · what to do next time. Runner-to-runner, no jargon.
-  // E6: easy/long/recovery/shakeout get effort/HR-first advice (chasing a
-  // pace number in heat just turns an easy run hard); quality/race keep the
-  // pace-aware advice because the workout is defined by pace.
-  let coachTipForNextTime: string | null = null;
-  const effort = isEffortRun(input.workoutType);
-  if (adviceTier === 1) {
-    if (effort) {
-      coachTipForNextTime = isPost
-        ? `Next time it's this warm, start earlier and run by feel. The pace looks after itself.`
-        : `Run these by effort, not the watch · let the pace drift slower and keep it truly easy. A little salt before the long ones helps.`;
-    } else if (input.workoutType === 'tempo' || input.workoutType === 'threshold' || input.workoutType === 'intervals') {
-      // Quality runs: don't push long-run hydration advice — the session is defined by pace.
-      coachTipForNextTime = `Try to start earlier when it's warm like this. Quality work costs more in the heat · HR is a better gauge than the clock.`;
-    } else {
-      coachTipForNextTime = `Try to start earlier next time when it's warm like this. Drink something with salt in it before the long ones.`;
-    }
-  } else if (adviceTier === 2) {
-    coachTipForNextTime = effort
-      ? `Go by effort and HR, not pace · heat like this makes the watch lie. Start earlier when you can, and drink 16-24 oz with salt the hour before.`
-      : `Start earlier next time. Heat like this is rough on the body · drink 16-24 oz with salt the hour before, and don't chase pace in the first miles.`;
-  } else if (adviceTier === 3) {
-    coachTipForNextTime = effort
-      ? `Forget the pace in this · run by effort and cut it short if your HR won't settle. Move the run earlier next time.`
-      : `Move hard runs out of this window. Pace targets don't really work when it's this hot. If you're racing somewhere warm, give yourself 10-14 days running in the heat to get used to it.`;
-  }
 
   return {
     slowdownPct,
     heatBand,
     heatStressF,
     shouldFlagInRecap,
-    summary,
-    coachTipForNextTime,
     citation: CITATION_WEATHER,
   };
 }

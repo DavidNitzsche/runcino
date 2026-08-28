@@ -122,16 +122,6 @@ describe('HEAT-M2 · cross-surface agreement · one input, one output, every con
       cloudCoverPct: HALF.cloudCoverPct, durationS: HALF.durationS,
     });
 
-    // 3 · the drift-monitor's per-run normalisation.
-    const drift = heatAdjustQualitySample({
-      plannedSPerMi: pace, actualSPerMi: pace, workoutType: 'tempo',
-      tempF: HALF.tempF!, dewpointF: HALF.dewpointF!, humidityPct: null,
-      // The sky was missing from this sample type until 2026-08-17, which is
-      // exactly how it landed 2.15 points under the recap for the same run.
-      conditions: HALF.conditions, cloudCoverPct: HALF.cloudCoverPct,
-      durationS: HALF.durationS!,
-    });
-
     // Agreement to a tenth of a percentage point. The residue is display
     // rounding — applyHeatToPace returns whole seconds per mile and the
     // verdict rounds to one decimal — not two models disagreeing. The gap
@@ -140,11 +130,23 @@ describe('HEAT-M2 · cross-surface agreement · one input, one output, every con
     for (const [surface, pct] of [
       ['race projection', projectionPct],
       ['post-run verdict', verdict.slowdownPct],
-      ['drift monitor', drift.slowdownPct],
     ] as const) {
       expect(Math.abs(pct - model), `${msg} · ${surface} read ${pct.toFixed(2)}% against the model's ${model.toFixed(2)}%`)
         .toBeLessThan(0.1);
     }
+
+    // 2026-08-27 · the drift-monitor is the deliberate exception now, not a
+    // third surface to keep in lockstep: it no longer normalizes any run's
+    // pace for heat at all — a hot day's slower pace is scored exactly as
+    // run, unadjusted, against plan.
+    const drift = heatAdjustQualitySample({
+      plannedSPerMi: pace, actualSPerMi: pace, workoutType: 'tempo',
+      tempF: HALF.tempF!, dewpointF: HALF.dewpointF!, humidityPct: null,
+      conditions: HALF.conditions, cloudCoverPct: HALF.cloudCoverPct,
+      durationS: HALF.durationS!,
+    });
+    expect(drift.slowdownPct).toBe(0);
+    expect(drift.adjustedSPerMi).toBe(pace);
   });
 
   it('the sky matters on every surface or on none', () => {
@@ -217,8 +219,10 @@ describe('HEAT-M3 · the band taxonomy is the WBGT flag table', () => {
     const dry = judgeWeather({ tempF: 72, humidityPct: 30, conditions: 'cloudy', cloudCoverPct: 90 });
     expect(dry.heatBand).toBe('neutral');
     expect(dry.slowdownPct, CITE_TABLE).toBeGreaterThanOrEqual(4);
-    // The runner still gets the advice · silence would be the miscoaching.
-    expect(dry.coachTipForNextTime).not.toBeNull();
+    // 2026-08-27 · no advice is built from this any more — the runner paces
+    // by feel. The physics still tells the two questions apart, which is
+    // what this test documents.
+    expect(dry.shouldFlagInRecap).toBe(true);
   });
 });
 

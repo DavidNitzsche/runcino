@@ -2733,7 +2733,6 @@ async function buildSeedInner(): Promise<FaffSeed> {
             // forecast-vs-climate and the race-week copy.
             todayISO: await runnerToday(userId),
           });
-          goalRace.conditionsImpactSec = conditions.seconds;
           goalRace.conditionsSource = conditions.source;
           goalRace.conditionsSafetyMessage = conditions.safetyMessage;
         }

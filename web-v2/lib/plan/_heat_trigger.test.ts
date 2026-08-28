@@ -1,19 +1,24 @@
 /**
- * HEAT-1 wiring · the heat gate can now act, and only by proposing.
+ * HEAT-1 wiring, then its 2026-08-27 reversal.
  *
- * `lib/coach/heat-gate.ts` implemented `Research/06` §11 in full — the WBGT
- * flag table, the time-on-feet conversions, the hard bails — and nothing
- * registered it as an adaptation trigger. At ACSM black flag the prescription
- * was unchanged and the day terminated in a sentence.
+ * `lib/coach/heat-gate.ts` implements `Research/06` §11 in full — the WBGT
+ * flag table, the time-on-feet conversions, the hard bails. It was briefly
+ * wired as an adaptation trigger (`detectHeatBail`, propose-only) so a black
+ * flag day could ask to convert or cancel a hard session.
+ *
+ * Removed entirely 2026-08-27: the runner paces off feel and conditions on
+ * the day, and nothing in this app proposes a pace or session change because
+ * of heat any more. `detectHeatBail` is deleted; `heat_bail` is dropped from
+ * `PROPOSE_FIRST_TRIGGERS`; the `'heat_bail'` case in `actionsForTrigger`
+ * stays only to resolve any in-flight `coach_intents` rows from the old path
+ * (a record-only 'note', the same pattern as the deprecated rhr_spike /
+ * sleep_crater cases).
  *
  * `lib/coach/_heat_doctrine.test.ts` holds the gate's NUMBERS against the
- * research. This file holds the WIRING: that a firing verdict reaches the
- * adapter, that it becomes the right kind of plan change, and — the part worth
- * being loud about — that it can only ever propose.
- *
- * Nothing here touches the database. The detector's DB half (does today's plan
- * even have a hard session, where does the runner live, what is the forecast)
- * is I/O; the decision it hangs on is the pure gate, tested directly.
+ * research — those stay correct, since `heatBandForConditions` still backs
+ * the informational heat-band read used elsewhere (race-morning forecast,
+ * HR-drift relabeling). This file now documents that the gate no longer
+ * reaches the plan.
  *
  * Run: ./node_modules/.bin/vitest run lib/plan/_heat_trigger.test.ts
  */
@@ -26,23 +31,9 @@ import {
 } from './adapt';
 import { evaluateHeatGate } from '@/lib/coach/heat-gate';
 
-describe('HEAT-1 · the heat gate is registered as an adaptation trigger', () => {
-  it('heat_bail is propose-first · it may never mutate the plan by itself', () => {
-    expect(PROPOSE_FIRST_TRIGGERS.has('heat_bail')).toBe(true);
-  });
-
-  it('a heat_bail action is routed to the proposal writer, never to apply-now', () => {
-    const heat: AdaptationAction = {
-      kind: 'downgrade', workoutIds: ['wko_today'], newType: 'easy',
-      sourceTrigger: 'heat_bail', why: 'Heat gate · WBGT 88°F. Black flag.',
-    };
-    const missed: AdaptationAction = {
-      kind: 'reschedule', workoutIds: ['wko_other'], newDate: '2026-08-19',
-      sourceTrigger: 'missed_key_workout', why: 'missed',
-    };
-    const { applyNow, proposeFirst } = partitionActionsForCron([heat, missed]);
-    expect(proposeFirst).toEqual([heat]);
-    expect(applyNow).toEqual([missed]);
+describe('HEAT-1 REVERSED · the heat gate no longer changes a session', () => {
+  it('heat_bail is no longer propose-first · it is not a live trigger at all any more', () => {
+    expect(PROPOSE_FIRST_TRIGGERS.has('heat_bail')).toBe(false);
   });
 
   it('readiness still defaults to propose-first · only convergent red opts out', () => {
@@ -78,14 +69,17 @@ describe('HEAT-1 · the heat gate is registered as an adaptation trigger', () =>
     for (const k of applyNowKinds) expect(PROPOSE_FIRST_TRIGGERS.has(k)).toBe(false);
   });
 
-  it('heat can never opt out · forceApplyNow is readiness-only, by convention and by test', () => {
-    // A heat verdict is about a place and an hour; the runner may be indoors,
-    // out at 5 a.m., or three states away. It proposes, full stop.
+  it('a stale heat_bail action (from before the removal) still resolves as apply-now, not a live proposal', () => {
+    // heat_bail is no longer in PROPOSE_FIRST_TRIGGERS, so partitionActionsForCron
+    // has nothing to route it to specially any more — it falls through like any
+    // other untagged/deprecated kind. The actual handler (`actionsForTrigger`'s
+    // 'heat_bail' case) never produces a 'downgrade' shape any more; this only
+    // documents the partition behavior for whatever a stale row might carry.
     const heat: AdaptationAction = {
       kind: 'downgrade', workoutIds: ['w'], newType: 'easy',
       sourceTrigger: 'heat_bail', why: 'black flag',
     };
-    expect(partitionActionsForCron([heat]).proposeFirst).toEqual([heat]);
+    expect(partitionActionsForCron([heat]).applyNow).toEqual([heat]);
   });
 });
 

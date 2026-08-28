@@ -10,7 +10,6 @@ import { pool } from '@/lib/db/pool';
 import { prescriptionFor, type WorkoutType } from '@/lib/training/prescriptions';
 import { canonicalSessionType } from '@/lib/training/workout-type';
 import { lookupTempF, baselineTempF } from '@/lib/weather/lookup';
-import { abilityTierFromVdot } from '@/lib/weather/heat-adjustment';
 import {
   computeFueling,
   type WorkoutFuelingType,
@@ -78,7 +77,9 @@ export async function GET(req: NextRequest) {
 
   // ── Weather: pull tempF for the workout date (forecast lookup).
   //
-  // Q-04 / Research/06 — apply Maughan heat slowdown to displayed paces.
+  // Feeds the fueling dose (hydration/carb needs scale with heat) and the
+  // informational weather_baseline tag below only. No pace target is
+  // adjusted for heat — the runner paces by feel and conditions on the day.
   // Caller can pass explicit ?tempF=N OR ?date=YYYY-MM-DD (we look up
   // the cache for the runner's recent lat/lon bucket). Falls back to
   // baseline avg over last 14d when exact date not cached yet.
@@ -130,21 +131,8 @@ export async function GET(req: NextRequest) {
     } catch { /* non-fatal */ }
   }
 
-  // Get VDOT for ability-tier inference (heat impact varies by tier).
-  const userRow = (await pool.query<{ vdot: string | null }>(
-    `SELECT vdot_last_reviewed::text AS vdot FROM users WHERE id = $1 LIMIT 1`,
-    [userId]
-  ).catch(() => ({ rows: [] }))).rows[0];
-  const vdot = userRow?.vdot != null ? Number(userRow.vdot) : null;
-  const abilityTier = abilityTierFromVdot(vdot);
-
   const prescription = prescriptionFor(type, weeklyMi, {
     lthr, goal_seconds, goal_distance_mi,
-    weather: tempF != null ? {
-      tempF,
-      raceDistanceMi: goal_distance_mi ?? undefined,
-      abilityTier,
-    } : null,
   }, isFinite(targetMi as number) ? (targetMi as number) : undefined);
 
   // ── Fueling: compute gels + carb intake per Research/18 ─────────

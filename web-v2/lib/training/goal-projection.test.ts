@@ -172,11 +172,11 @@ describe('judgeTestPointExecution · basis ladder', () => {
     expect(j.verdict).toBe('slow');         // 500 > blend 458 + 15
   });
 
-  it('heat widens the blended band (Research/06 §1 · shared heatAdjustedStatus)', () => {
+  it('2026-08-27 · heat no longer widens the blended band · a real miss grades the same either way', () => {
     const noHeat = judgeTestPointExecution({ ...base, overallS: 490 });
     expect(noHeat.verdict).toBe('slow');    // 490 > 458 + 15
     const hot = judgeTestPointExecution({ ...base, overallS: 490, heatSlowdownPct: 5 });
-    expect(hot.verdict).toBe('on');         // 490 ≤ round(458×1.05) + 15
+    expect(hot.verdict).toBe('slow');       // heatSlowdownPct is accepted and ignored
   });
 
   it('mile splits + spec locate the work window · basis work-phase-splits', () => {

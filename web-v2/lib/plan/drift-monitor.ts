@@ -45,7 +45,6 @@ import { primaryZone } from '@/lib/plan/prescription-parser';
 // HEAT-DRIFT-1 (2026-08-17) · shared heat doctrine (Research/06 §1 table +
 // §12 dewpoint surcharge) + Magnus-Tetens dewpoint estimate + the
 // workout_weather_cache reader for runs without enriched weather fields.
-import { effortSlowdownPct } from '@/lib/training/heat-model';
 import { lookupTempF } from '@/lib/weather/lookup';
 import {
   runDaySql,
@@ -627,28 +626,13 @@ async function checkLongDrift(
  * leveled up (running faster than prescribed) or is fatigued (slower
  * than prescribed).
  *
- * HEAT-DRIFT-1 (2026-08-17) · per-run heat context filter. Before this,
- * August tempo paces read as a fitness shortfall with zero weather
- * awareness — a 78°F tempo landing 5% slow is the DOCTRINE-EXPECTED
- * cost of the heat, not drift (the audited failure). Each run's actual
- * pace is now normalized to the 50°F reference before scoring:
- *
- *   adjusted = actual / (1 + slowdownPct/100)
- *
- * where slowdownPct comes from the shared heat model
- * (lib/training/heat-model.ts · effortSlowdownPct — the verbatim
- * Research/06 §1 Maughan/Ely/Vihma table + §12 dewpoint surcharge ×
- * duration scale), halved for interval-type workouts per Research/06 §2
- * ("For repeats with ≥1:1 work:rest, apply half the continuous-run
- * adjustment"). Weather comes from the run's own enriched fields
- * (tempF_peak/tempF) with a workout_weather_cache fallback keyed on the
- * run's start coords + date; when no weather data exists the run scores
- * UNADJUSTED, silently — never invent a correction.
- *
- * Applied PER-RUN, not per-window, per the per-finding context-filter
- * rule (CLAUDE.md locked 2026-05-19 round 4): one hot day inside a mild
- * 3-week window must not discount the window, and a mild day inside a
- * hot spell must not be over-corrected.
+ * HEAT-DRIFT-1 (2026-08-17), REMOVED 2026-08-27 · this used to normalize
+ * each run's actual pace to the 50°F reference before comparing it to
+ * plan, so a hot day's slower pace wouldn't read as fitness drift. The
+ * runner paces off feel and conditions on the day and does not want any
+ * pace adjusted for heat, including this aggregate one, so the
+ * normalization is gone: heatAdjustQualitySample is now a pure
+ * passthrough, kept only so callers don't need restructuring.
  */
 export interface QualityDriftSample {
   /** prescribed pace_target_s_per_mi */
@@ -669,27 +653,11 @@ export interface QualityDriftSample {
   durationS: number | null;
 }
 
-/** Pure per-run heat normalization · exported for tests. Returns the
- *  heat-adjusted actual pace (s/mi) and the applied slowdown %. */
+/** REMOVED 2026-08-27 · pure passthrough, kept only so callers don't need
+ *  restructuring. Quality drift now scores every run's raw pace against
+ *  plan, unadjusted — no run's pace is normalized for heat. */
 export function heatAdjustQualitySample(s: QualityDriftSample): { adjustedSPerMi: number; slowdownPct: number } {
-  // 2026-08-17 · the dewpoint fallback and the Research/06 §2 interval
-  // halving both moved into the shared model (cluster 5). This hands over the
-  // weather it has and lets one implementation decide what to do with it.
-  const pct = effortSlowdownPct({
-    tempF: s.tempF,
-    dewpointF: s.dewpointF,
-    humidityPct: s.humidityPct,
-    conditions: s.conditions,
-    cloudCoverPct: s.cloudCoverPct,
-    durationS: s.durationS,
-    tier: 'mid_pack',
-    intervalStyle: s.workoutType === 'intervals' || s.workoutType === 'vo2max',
-  });
-  if (!(pct > 0)) return { adjustedSPerMi: s.actualSPerMi, slowdownPct: 0 };
-  return {
-    adjustedSPerMi: s.actualSPerMi / (1 + pct / 100),
-    slowdownPct: Math.round(pct * 10) / 10,
-  };
+  return { adjustedSPerMi: s.actualSPerMi, slowdownPct: 0 };
 }
 
 /** percentile_cont(0.5) equivalent · linear-interpolated median. */

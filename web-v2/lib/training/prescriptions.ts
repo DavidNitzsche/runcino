@@ -17,11 +17,6 @@
 import { computeZones, type ZoneTable } from './zones';
 import type { SessionType } from './workout-type';
 import { tPaceFromGoal } from '@/lib/plan/spec-builder';
-import {
-  applyHeatToPace,
-  abilityTierFromVdot,
-  type AbilityTier,
-} from '@/lib/weather/heat-adjustment';
 import { composeQualityDay } from '@/lib/plan/quality-day';
 import { atPaceSessionCapMi } from '@/lib/prescription/levers';
 
@@ -212,33 +207,12 @@ export interface Prescription {
     why: string;
     citation: string;       // Research/18 §1 + §13 · surfaced in the "why" affordance
   } | null;
-  /**
-   * Heat-adjustment context (Q-04 / Research/06). When `tempF` is
-   * known + non-trivial slowdown applies, every pace_target in steps
-   * has been adjusted via applyHeatToPace, and this field carries the
-   * one-line explanation for the coach voice. Null when no heat
-   * adjustment was applied.
-   */
-  weather?: {
-    tempF: number;
-    abilityTier: AbilityTier;
-    noteLine: string;       // e.g. "75°F · pace adjusted +12s/mi for heat"
-    appliedPctMin: number;  // slowdown percent low (range)
-    appliedPctMax: number;  // slowdown percent high
-  } | null;
 }
 
 export interface ProfileInputs {
   lthr?: number | null;
   goal_seconds?: number | null;        // race goal total seconds
   goal_distance_mi?: number | null;    // race distance
-  /** Optional: applies heat slowdown to every step's pace_target.
-   *  See lib/weather/heat-adjustment.ts for the Maughan curve. */
-  weather?: {
-    tempF: number | null;
-    raceDistanceMi?: number;     // defaults to goal_distance_mi
-    abilityTier?: AbilityTier;   // defaults to mid_pack; pass abilityTierFromVdot(vdot)
-  } | null;
 }
 
 // ── Pace derivation ─────────────────────────────────────────────────────
@@ -280,48 +254,14 @@ function paces(p: ProfileInputs) {
       threshold: null, interval: null, rep: null,
     };
   }
-  // Optional heat adjustment per Research/06 Maughan curve. We adjust
-  // each pace target by the runner's distance-scaled slowdown so the
-  // displayed pace already reflects the temperature.
-  const w = p.weather;
-  const tempF = w?.tempF;
-  const tier = w?.abilityTier ?? 'mid_pack';
-  const refDist = w?.raceDistanceMi ?? p.goal_distance_mi ?? 13.1;
-  const adj = (sec: number): number =>
-    tempF != null ? applyHeatToPace(sec, tempF, refDist, tier) : sec;
   return {
-    easy:      fmtPaceRange(adj(t + 80),  adj(t + 120)),  // T + 80-120s · matches spec-builder (Jun-8 floor-raise); Research/01 E = MP+60-90
-    long:      fmtPaceRange(adj(t + 55),  adj(t + 90)),   // T + 55-90s
-    marathon:  fmtPace(adj(t + 18)),                       // T + 18s
-    tempo:     fmtPaceRange(adj(t + 5),   adj(t + 18)),   // T + 5-18s
-    threshold: fmtPace(adj(t)),                            // exact T
-    interval:  fmtPace(adj(t - 18)),                       // T - 18s (~10K pace)
-    rep:       fmtPace(adj(t - 30)),                       // T - 30s (~5K pace)
-  };
-}
-
-/**
- * Compute the slowdown range applied by the heat adjustment, for the
- * prescription's `weather` field. Returns null when weather isn't set
- * or the slowdown is trivial.
- */
-function weatherSummary(p: ProfileInputs): Prescription['weather'] {
-  const w = p.weather;
-  if (!w || w.tempF == null) return null;
-  const tier = w.abilityTier ?? 'mid_pack';
-  const refDist = w.raceDistanceMi ?? p.goal_distance_mi ?? 13.1;
-  // Sample slowdown at threshold pace (60s baseline) — same percent
-  // applies to every pace target.
-  const before = 360; // 6:00/mi reference
-  const after = applyHeatToPace(before, w.tempF, refDist, tier);
-  const pct = ((after - before) / before) * 100;
-  if (pct < 0.5) return null; // trivial · don't surface
-  return {
-    tempF: w.tempF,
-    abilityTier: tier,
-    appliedPctMin: Math.round(pct * 10) / 10,
-    appliedPctMax: Math.round(pct * 10) / 10,
-    noteLine: `${Math.round(w.tempF)}°F · pace adjusted +${(pct).toFixed(1)}% for heat (Research/06 Maughan)`,
+    easy:      fmtPaceRange(t + 80,  t + 120),  // T + 80-120s · matches spec-builder (Jun-8 floor-raise); Research/01 E = MP+60-90
+    long:      fmtPaceRange(t + 55,  t + 90),   // T + 55-90s
+    marathon:  fmtPace(t + 18),                  // T + 18s
+    tempo:     fmtPaceRange(t + 5,   t + 18),   // T + 5-18s
+    threshold: fmtPace(t),                       // exact T
+    interval:  fmtPace(t - 18),                  // T - 18s (~10K pace)
+    rep:       fmtPace(t - 30),                  // T - 30s (~5K pace)
   };
 }
 

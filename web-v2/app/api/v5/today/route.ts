@@ -43,7 +43,6 @@ import {
   type WorkoutType as PrescriptionWorkoutType,
 } from '@/lib/training/prescriptions';
 import { cardFromSpec, cardWithoutSpec, cardForUnprescribableType, type SpecCard } from '@/lib/training/spec-card';
-import { loadHeatEasing } from '@/lib/watch/heat';
 import { splitRuleRegisters } from '@/lib/watch/build-workout';
 import { fmtPace as fmtPaceShared, fmtMinutesCasual } from '@/lib/format/run';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
@@ -1322,39 +1321,11 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     prescriptionType === 'threshold' || prescriptionType === 'intervals' ? 8
     : prescriptionType === 'race' ? 12 : 20;
 
-  /* ── PRERUN-1 · THE WRIST AND THE PHONE STATED DIFFERENT PACES ───────────
-   *
-   * `lib/watch/heat.ts` eases every phase target for today's real conditions
-   * before the watch is handed the workout, and records what it asked for.
-   * This card was built off the AUTHORED band and never asked. So on a warm
-   * morning the phone said 7:29 and the wrist said 7:41 for the same rep, and
-   * the recap — which grades against the eased band via `targetAlreadyHeatEased`
-   * — agreed with the wrist. Two of the three surfaces were right and the one
-   * the runner reads before leaving the house was the odd one out.
-   *
-   * READ BACK, DO NOT RE-DERIVE. `loadHeatEasing` returns exactly what the
-   * watch was given. Asking the weather again here would be a second heat
-   * engine, which is the specific failure `lib/watch/heat.ts`'s own header
-   * says it exists to prevent, and two calls seconds apart can disagree.
-   *
-   * FAIL CLOSED ON NULL. Null means the READ failed, not that nothing was
-   * eased — the distinction the module goes out of its way to preserve. On a
-   * failed read the card shows the authored band unchanged and says nothing
-   * about heat, because a claim we cannot support is worse than a number that
-   * is merely cold. Zero means nothing was eased, which is the honest answer
-   * for a cool day and for a day whose watch payload has not been built yet.
-   */
-  const heatEasing = todayPlan && !isSteppedDay
-    ? await loadHeatEasing(userId, today)
-    : { pct: 0, tempF: null, dewpointF: null };
-  const heatPct = heatEasing?.pct ?? 0;
-
   const prescription: SpecCard | null = !todayPlan
     ? null
     : unprescribable
     ? cardForUnprescribableType({ rawType: todayPlan.type, subLabel: todayPlan.subLabel })
     : (cardFromSpec({
-        heatEasingPct: heatPct,
         spec: specRow?.workout_spec ?? null,
         type: prescriptionType,
         subLabel: specRow?.sub_label ?? todayPlan.subLabel ?? null,
@@ -1453,25 +1424,6 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     ?? recommendShoe(shoes, shoeType);
 
   const beforeYouGo: V5Row[] = [];
-  /* PRERUN-1 · say it, once, where the runner is already checking things.
-   *
-   * A moved target with no stated reason reads as a wrong number. The wrist
-   * says it in the lobby (`heatNote`); this is the same sentence in the same
-   * register, built from the same recorded observation, so the two cannot
-   * drift. Present only when something actually moved — never as a standing
-   * weather row, and never when we do not know (a failed read leaves `heatPct`
-   * at 0 and this row absent). */
-  if (heatPct > 0 && heatEasing?.tempF != null) {
-    const t = Math.round(heatEasing.tempF);
-    const dp = heatEasing.dewpointF != null ? Math.round(heatEasing.dewpointF) : null;
-    beforeYouGo.push({
-      id: 'conditions', label: 'Conditions',
-      sub: dp != null && dp >= 60
-        ? `${t} degrees, dewpoint ${dp}. Targets eased for the heat.`
-        : `${t} degrees. Targets eased for the heat.`,
-      value: null, action: null,
-    });
-  }
   if (shoePick) {
     beforeYouGo.push({
       id: 'shoe', label: shoeDisplayName(shoePick) ?? 'Shoe',

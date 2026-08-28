@@ -2978,7 +2978,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const off = Number(
         matchLiteral(
           sourceOf('web-v2/lib/training/prescriptions.ts'),
-          /rep:\s*fmtPace\(adj\(t - (\d+)\)\)/,
+          /rep:\s*fmtPace\(t - (\d+)\)/,
           'derivePaces rep',
         )[1],
       );

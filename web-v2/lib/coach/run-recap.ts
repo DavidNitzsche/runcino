@@ -3,13 +3,14 @@
  *
  * Takes a completed canonical run + its planned-workout intent + the
  * conditions it ran in, returns 1-2 sentences of plain English about
- * what the stimulus actually was. Heat-aware: when conditions explain
- * a slowdown or HR drift, the recap honors that instead of judging
- * the runner against an impossible pace target.
+ * what the stimulus actually was. Heat-aware for HR only: when heat
+ * explains an HR rise, the recap says so instead of reading it as
+ * fitness fade — it never adjusts, widens, or displays a pace target
+ * for heat. The runner paces off feel and conditions on the day.
  *
  * Doctrine sources:
  *   · Research/04-workout-vocabulary.md · per-type expectations
- *   · Research/06-weather-adjustments.md · heat-adjusted honest pace
+ *   · Research/06-weather-adjustments.md · heat as an HR confounder
  *   · Research/15-wearable-data.md · cardiovascular drift signal
  *   · Research/00a-distance-running-training.md · stimulus vs prescription
  *
@@ -58,18 +59,6 @@ export interface RecapInput {
   type: WorkoutType;
   phase: Phase | null;
   plannedMi: number;
-  /**
-   * 2026-08-24 · heat · TRUE when the target below was ALREADY eased for the
-   * heat before the runner was given it (lib/watch/heat.ts). The recap grades
-   * against the band the runner was ASKED to hold, so when that band already
-   * carries the correction this file must not apply its own on top. Without
-   * this flag a hot run reads better than the identical effort in the cold,
-   * because the same Research/06 slowdown is spent twice.
-   *
-   * Heat still SPEAKS — the prose framing keys on the conditions, not on this
-   * flag — it just stops moving the number a second time.
-   */
-  targetAlreadyHeatEased?: boolean;
   /** Plan-side target pace (s/mi). null when by-feel. */
   plannedPaceSPerMi?: number | null;
   /** Plan-side HR cap (bpm). null when by-feel. */
@@ -340,47 +329,24 @@ function miPhrase(mi: number | null | undefined): string | null {
 function intervalPacing(
   reps: number[],
   targetSPerMi: number | null,
-  slowdownPct: number,
   avgHr: number | null,
   terrain: RecapInput['terrain'],
-  targetAlreadyHeatEased: boolean = false,
 ): { fact: string | null; adjTarget: number | null } {
   const clean = (reps ?? []).filter((p) => typeof p === 'number' && p > 0);
   if (!targetSPerMi || clean.length < 2) {
     return { fact: null, adjTarget: targetSPerMi ?? null };
   }
-  // Research/06 §2 (interval-vs-continuous rule): rep-based work with ≥1:1
-  // work:rest gets HALF the continuous heat slowdown — recovery jogs allow
-  // partial cooling, so reps don't slow as much as a steady effort would.
-  // Adjust the rep target by the halved amount; still surface the heat framing
-  // whenever it's genuinely warm (keyed on the full slowdown), so a hot day
-  // still reads "heat-adjusted" even though the magnitude is halved.
-  //
-  // ...UNLESS the target arrived already eased. The watch payload now applies
-  // this same Research/06 correction before the runner ever sees the band
-  // (lib/watch/heat.ts), and the recap reads that eased band back out of the
-  // completion as `frozenTargetSPerMi`. Applying the halved slowdown on top of
-  // an already-eased number spends one day's heat twice.
-  const repSlowdownPct = targetAlreadyHeatEased ? 0 : slowdownPct / 2;
-  // 2026-08-17 · THIS IS THE ONLY PLACE IN THE RECAP WHERE TWO CONDITIONS
-  // STACK. Heat and hills both make the same target pace harder to hit, and
-  // two independent code paths each "helpfully" forgiving the day is how one
-  // hot hilly run gets forgiven twice. Research/01 §Combined conditions says
-  // multiply, so composeEffortFactor multiplies — once, here.
+  // Terrain is the only condition this grades against — heat no longer
+  // adjusts a target or a grading band anywhere in this app.
   const combined = composeEffortFactor({
-    heatSlowdownPct: repSlowdownPct,
+    heatSlowdownPct: 0,
     gradeFactor: terrainFactor(terrain),
   });
   const adjTarget = Math.round(targetSPerMi * combined.factor);
-  const heat = slowdownPct >= 2;
   const hills = combined.grade > 1.001;
-  const targetPhrase = heat && hills
-    ? `the ~${paceLabel(adjTarget)} the heat and the hills allowed`
-    : heat
-      ? `the heat-adjusted ~${paceLabel(adjTarget)}`
-      : hills
-        ? `the ~${paceLabel(adjTarget)} the terrain allowed`
-        : `the ~${paceLabel(adjTarget)} target`;
+  const targetPhrase = hills
+    ? `the ~${paceLabel(adjTarget)} the terrain allowed`
+    : `the ~${paceLabel(adjTarget)} target`;
   const half = Math.max(1, Math.floor(clean.length / 2));
   const firstHalf = clean.slice(0, half);
   const lastHalf = clean.slice(-half);
@@ -699,13 +665,10 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
   let conditions_note: string | null = null;
   let coach_tip: string | null = null;
 
-  // Compose the conditions sentence FIRST when it's material · it
-  // changes how we read pace + HR drift.
+  // Whether conditions were material enough to change how HR drift +
+  // pace fade get read below. No conditions/pace-cost copy is surfaced —
+  // the runner paces off feel, not a heat estimate.
   const conditionsMaterial = weather?.shouldFlagInRecap === true;
-  if (conditionsMaterial && weather) {
-    conditions_note = weather.summary;
-    if (weather.coachTipForNextTime) coach_tip = weather.coachTipForNextTime;
-  }
 
   // Heat-aware judgment on HR drift + pace fade.
   //
@@ -962,9 +925,6 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       if (execFact) {
         facts.push(execFact);
       }
-      if (heatExplainsDrift && weather!.slowdownPct >= 4) {
-        facts.push(`Heat was working against the clock today. If your HR was right, the stimulus was right · go by effort.`);
-      }
       return {
         verdict: 'Tempo done.',
         facts,
@@ -984,7 +944,6 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       const pacing = intervalPacing(
         input.repPaces ?? [],
         input.plannedPaceSPerMi ?? null,
-        weather?.slowdownPct ?? 0,
         // "HR 165 says the effort was right" is a claim about the REPS, so it
         // has to be the reps' heart rate. It was the whole run's, which on a
         // session with three jog recoveries is a materially lower number and
@@ -992,7 +951,6 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
         // reps are too short for HR to mean anything — the clause then drops.
         scopedWorkHr(input),
         input.terrain,
-        input.targetAlreadyHeatEased === true,
       );
       // Lead with the RESULT, not the prescription: how many reps landed in
       // the acceptable range (same band as the per-rep graph · prescribed

@@ -41,7 +41,6 @@
 
 import { expandSpecToPhases, subLabelFromSpec, type ExpandedPhase } from './expand-spec';
 import { fmtPace as fmtPaceNoUnit, roundTo } from '@/lib/format/run';
-import { applyHeatEasing } from '@/lib/watch/heat';
 import { sessionRationale, type PrescriptionStep, type WorkoutType } from './prescriptions';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 
@@ -281,17 +280,6 @@ export function cardFromSpec(input: {
   /** HR band strings by zone, from `hrTargets(profile)`. Null when no LTHR. */
   hr?: { z1: string | null; z2: string | null; z3: string | null; z4: string | null; z5: string | null } | null;
   toleranceSec?: number;
-  /**
-   * PRERUN-1 · the Research/06 slowdown the WATCH was already given for this
-   * day, percent, from `loadHeatEasing`. Applied to the same phase list, by
-   * the same function (`applyHeatEasing`), so the wrist and the card state one
-   * number.
-   *
-   * Nothing here decides whether or by how much. This is a read-back of a
-   * decision already made and already recorded; a second heat engine is the
-   * specific bug `lib/watch/heat.ts` exists to prevent.
-   */
-  heatEasingPct?: number | null;
 }): SpecCard | null {
   const { spec, type, distanceMi, easyPaceSec, hr } = input;
   if (!spec) return null;
@@ -307,15 +295,6 @@ export function cardFromSpec(input: {
     workPhaseLabel: type === 'race' ? 'Race effort' : type === 'shakeout' ? 'Shakeout' : undefined,
   });
   if (!phases || phases.length === 0) return null;
-
-  /* Same easing, same phases, same function as the wrist — and in the same
-   * place in the order: after the expansion is final, before anything is
-   * rendered off it. A race is never eased (`adjustPhasesForHeat` refuses one
-   * outright, because race pace is priced in the execution plan), so a
-   * recorded percentage arriving on a race day is not applied here either. */
-  if (type !== 'race' && input.heatEasingPct != null && input.heatEasingPct > 0) {
-    applyHeatEasing(phases, input.heatEasingPct);
-  }
 
   const rationale = sessionRationale(type);
   const steps: PrescriptionStep[] = [];

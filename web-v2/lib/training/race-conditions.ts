@@ -1,37 +1,34 @@
 /**
- * lib/training/race-conditions.ts · Conditions chunk for the Targets GapPanel.
+ * lib/training/race-conditions.ts · race-morning weather signal.
  *
- * Returns the heat-driven seconds penalty for a given race, derived from
- * either a real day-forecast (when the race is within ~16 days AND we
- * have lat/lng) or a climate-normals fallback (when the race is too
- * far out OR we don't have GPS but DO have a parseable location string).
- *
- * Hands the temperature off to lib/weather/heat-adjustment.ts (the
- * production Maughan model) · we do NOT re-derive heat impact here.
- * This file is the surface that turns (race + runner) into the right
- * temp + ability tier + distance for that model.
+ * Returns the forecast or climate-normal temperature for a given race —
+ * a real day-forecast when the race is within ~16 days AND we have
+ * lat/lng, otherwise a climate-normals fallback when we have a
+ * parseable location string. Plain weather information: a gear-planning
+ * fact ("race morning: 78°F") and a heat-illness safety note above
+ * 85°F, nothing more. Does not adjust, project, or display any pace or
+ * finish-time target — the runner paces off feel and conditions on the
+ * day, not a model.
  *
  * Inputs:
  *   · raceSlug          · for caching / logging
  *   · raceDateISO       · "2026-08-15"
  *   · location          · "San Diego, CA" / "London, UK" / null
  *   · raceLat, raceLng  · from course_geometry.bbox (or null)
- *   · distanceMi        · scales Maughan's marathon-anchored slowdown
- *   · goalSec           · the runner's A-target → goal pace
- *   · vdot              · drives ability tier (elite/mid/slow)
+ *   · distanceMi        · scales the race-window duration estimate
+ *   · goalSec           · used only to size the forecast window (start → finish)
+ *   · vdot              · unused, kept for caller compatibility
  *
  * Output:
- *   · seconds           · whole-seconds penalty added to goal time
  *   · source            · 'forecast' | 'climate' | null (no data)
  *   · heatBand          · 'neutral' | 'warm' | 'hot' | 'extreme'
- *   · tempF             · the temp the model used
- *   · summary           · one-line copy for the doctrine drawer
+ *   · tempF             · the forecast/normal temperature
+ *   · safetyMessage     · heat-illness note above 85°F, else null
  *
- * Null when neither forecast nor climate normals resolve · the panel
- * hides the Conditions chunk gracefully in that case.
+ * Null-signal fields when neither forecast nor climate normals resolve ·
+ * callers hide the weather note gracefully in that case.
  */
 
-import { applyHeatToPace, abilityTierFromVdot } from '@/lib/weather/heat-adjustment';
 import { heatBandForConditions } from '@/lib/coach/heat-gate';
 import { fetchDayForecast } from '@/lib/weather/openmeteo';
 import { climateNormalForLocation } from '@/lib/training/climate-normals';
@@ -64,15 +61,13 @@ export interface RaceConditionsInput {
 }
 
 export interface RaceConditionsResult {
-  seconds: number | null;
   source: 'forecast' | 'climate' | null;
   /** Doctrine WBGT flag word · null when humidity is unknown and WBGT
    *  genuinely cannot be computed (Research/06:141-148). */
   heatBand: 'neutral' | 'warm' | 'hot' | 'extreme' | null;
   tempF: number | null;
-  summary: string;
-  /** Non-null when tempF > 85°F — heat illness is a real risk above that
-   *  threshold regardless of predicted pace impact. */
+  /** Non-null when tempF > 85°F — heat illness is a real risk regardless
+   *  of how the runner chooses to pace the day. */
   safetyMessage: string | null;
 }
 
@@ -125,16 +120,14 @@ function daysBetween(fromISO: string, toISO: string): number {
 }
 
 /**
- * Build the seconds penalty for the Conditions chunk.
+ * Resolve the race-morning weather signal.
  *
  * Algorithm:
  *  1. Determine which temperature signal to use:
  *     a. If race ≤14d away AND we have lat/lng → fetch the day forecast
  *        and use the max temp (the hottest hour the runner faces).
  *     b. Else → climate normals via location string.
- *  2. Call applyHeatToPace to get adjusted pace for the race-day temp.
- *  3. Convert (adjusted − goal pace) × distance into total-seconds delta.
- *  4. Compose a one-line summary for the doctrine drawer.
+ *  2. Flag the doctrine WBGT band and a heat-illness safety note above 85°F.
  */
 export async function computeRaceConditions(
   input: RaceConditionsInput,
@@ -148,7 +141,6 @@ export async function computeRaceConditions(
   // boundary and the race-week copy.
   const todayISO = input.todayISO ?? new Date().toISOString().slice(0, 10);
   const daysUntil = daysBetween(todayISO, input.raceDateISO);
-  const ability = abilityTierFromVdot(input.vdot);
 
   let tempF: number | null = null;
   let source: 'forecast' | 'climate' | null = null;
@@ -204,74 +196,13 @@ export async function computeRaceConditions(
   }
 
   if (tempF == null || !input.distanceMi || !input.goalSec) {
-    return {
-      seconds: null,
-      source,
-      heatBand: null,
-      tempF: null,
-      summary: 'No race-day weather signal · Conditions chunk hidden.',
-      safetyMessage: null,
-    };
+    return { source, heatBand: null, tempF: null, safetyMessage: null };
   }
 
-  // 2 · apply the shared heat model, with the sky and moisture the race
-  //     will actually be run under. On the climate-normals path there is no
-  //     humidity, so the dewpoint surcharge and the WBGT band both degrade
-  //     to unknown rather than being guessed at.
-  const goalPaceSPerMi = input.goalSec / input.distanceMi;
-  const adjustedPaceSPerMi = applyHeatToPace(
-    goalPaceSPerMi,
-    tempF,
-    input.distanceMi,
-    ability,
-    { conditions: skyConditions, humidityPct, cloudCoverPct },
-  );
-
-  // 3 · convert delta-pace × distance to total-seconds
-  const deltaPerMi = adjustedPaceSPerMi - goalPaceSPerMi;
-  const seconds = Math.max(0, Math.round(deltaPerMi * input.distanceMi));
-
-  // 4 · summary copy
   const heatBand = heatBandFor(tempF, skyConditions, humidityPct, cloudCoverPct);
-  const summary = buildSummary(seconds, tempF, source, heatBand);
   const safetyMessage = tempF > 85
     ? 'At this temperature, heat illness is a real risk. Run early, carry water, back off effort if you feel dizzy or stop sweating.'
     : null;
 
-  return { seconds, source, heatBand, tempF: Math.round(tempF), summary, safetyMessage };
-}
-
-function buildSummary(
-  seconds: number,
-  tempF: number,
-  source: 'forecast' | 'climate' | null,
-  heatBand: RaceConditionsResult['heatBand'],
-): string {
-  const tempLabel = `${Math.round(tempF)}°F`;
-  const sourceLabel = source === 'forecast'
-    ? 'race-day forecast'
-    : source === 'climate'
-      ? 'typical race-morning'
-      : 'unknown signal';
-  if (heatBand == null) {
-    // No humidity for this race, so no WBGT and no heat word · state the
-    // temperature and the seconds, claim nothing about the band.
-    return `${tempLabel} ${sourceLabel}. ` +
-      `Maughan adds about ${seconds}s · humidity unknown this far out.`;
-  }
-  if (heatBand === 'neutral') {
-    return `${tempLabel} ${sourceLabel} · neutral conditions. ` +
-      `Maughan adds about ${seconds}s · the day is not the bottleneck.`;
-  }
-  if (heatBand === 'warm') {
-    return `${tempLabel} ${sourceLabel} · warm but workable. ` +
-      `Maughan adds about ${seconds}s · execute, don't fight it.`;
-  }
-  if (heatBand === 'hot') {
-    return `${tempLabel} ${sourceLabel} · hot. ` +
-      `Maughan adds about ${seconds}s · earlier corral + extra fluids ` +
-      `claw some back.`;
-  }
-  return `${tempLabel} ${sourceLabel} · extreme heat. ` +
-    `Maughan adds about ${seconds}s · race-day reality check, not a stall.`;
+  return { source, heatBand, tempF: Math.round(tempF), safetyMessage };
 }

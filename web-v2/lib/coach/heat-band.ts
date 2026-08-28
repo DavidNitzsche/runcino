@@ -1,5 +1,5 @@
 /**
- * heat-band.ts — heat-adjusted pace verdict band.
+ * heat-band.ts — pace verdict band.
  *
  * Single source of truth for the on / fast / slow classification shared
  * by every surface that judges a completed run's pace against its
@@ -10,34 +10,29 @@
  *   · winTempo                 — lib/coach/run-win.ts            (recap win line)
  *   · loadRecentTestPoints     — lib/training/goal-projection.ts (Targets page)
  *
- * Heat widens the SLOW side only — you're allowed to be slower when it's
- * hot, never faster. All paces in seconds-per-mile.
+ * The target is never widened for conditions — the runner paces off feel
+ * on the day, and a heat-widened "on pace" verdict would grade him against
+ * a number he didn't run to. `slowdownPct` is accepted for call-site
+ * compatibility and ignored. All paces in seconds-per-mile.
  *
- *   effectiveTarget = slowdownPct >= 2 ? round(target * (1 + slowdownPct/100)) : target
- *   'fast' · actual < target - tolerance               (faster than plan)
- *   'on'   · target - tolerance <= actual <= effectiveTarget + tolerance
- *   'slow' · actual > effectiveTarget + tolerance       (real miss, heat allowed for)
- *
- * Cool conditions (slowdownPct < 2) collapse effectiveTarget to the raw
- * target, so the band is symmetric +/- tolerance.
+ *   'fast' · actual < target - tolerance
+ *   'on'   · target - tolerance <= actual <= target + tolerance
+ *   'slow' · actual > target + tolerance
  *
  * Extracted 2026-06-08 from four byte-identical inline copies that had
- * begun to drift — winTempo never heat-adjusted, so the recap win line
- * contradicted the phase bars + done-state on a hot day.
+ * begun to drift. Heat-widening removed 2026-08-27 — the runner does not
+ * want the app re-labeling a real pace miss as "on" because it was hot.
  */
 export type PaceVerdict = 'on' | 'fast' | 'slow';
 
 export function heatAdjustedStatus(
   targetSPerMi: number,
   actualSPerMi: number,
-  slowdownPct: number,
+  _slowdownPct: number,
   tolerance = 10,
 ): PaceVerdict {
-  const effectiveTarget = slowdownPct >= 2
-    ? Math.round(targetSPerMi * (1 + slowdownPct / 100))
-    : targetSPerMi;
   if (actualSPerMi < targetSPerMi - tolerance) return 'fast';
-  if (actualSPerMi > effectiveTarget + tolerance) return 'slow';
+  if (actualSPerMi > targetSPerMi + tolerance) return 'slow';
   return 'on';
 }
 

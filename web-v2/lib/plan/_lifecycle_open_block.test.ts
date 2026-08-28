@@ -217,7 +217,13 @@ describe('2 · a goal-mode plan that elapses', () => {
     // site, so a goal-mode plan produced signals_found > 0 and
     // proposals_written === 0, every night, forever.
     expect(src).not.toMatch(/\}\s*else if \(plan\?\.race_id\) \{/);
-    expect(src).toMatch(/goalTarget: goalTarget!/);
+    // 2026-08-26 · this specific call (soft-drift → fireAutoRebuild with
+    // `goalTarget: goalTarget!`) is gone — every soft-drift signal now writes
+    // a pending plan_proposals row instead of rebuilding directly. The
+    // goal-mode target is still resolved here (for the race-proximity
+    // suppression window below), just never handed to a rebuild call.
+    expect(src).toMatch(/const goalTarget = plan\?\.race_id/);
+    expect(src).toMatch(/'drift_cron_pending'/);
   });
 
   it('fireAutoRebuild accepts a goal target as well as a race slug', () => {

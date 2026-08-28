@@ -158,8 +158,10 @@ describe('deriveRecap · heat-aware drift attribution · LONG type', () => {
     // Heat-attributed framing: "normal in heat", "body works harder to
     // cool itself", "not because you're slowing down".
     expect(text).toMatch(/normal in heat|cool itself|not because you're slowing down/i);
-    expect(r.conditions_note).not.toBeNull();
-    expect(r.coach_tip).not.toBeNull();
+    // No pace-cost note is built from weather any more — only the HR-drift
+    // attribution fact above speaks to the heat.
+    expect(r.conditions_note).toBeNull();
+    expect(r.coach_tip).toBeNull();
   });
 
   it('EXTREME heat → drift attributed to heat, not fitness', () => {
@@ -221,7 +223,7 @@ describe('deriveRecap · heat-aware drift attribution · LONG type', () => {
   });
 });
 
-describe('deriveRecap · null conditions_note + coach_tip when heat is neutral', () => {
+describe('deriveRecap · conditions_note + coach_tip are always null (2026-08-27 removal)', () => {
   it('50°F cloudy → conditions_note null + coach_tip null', () => {
     const r = deriveRecap({
       ...baseLongRun,
@@ -242,7 +244,7 @@ describe('deriveRecap · null conditions_note + coach_tip when heat is neutral',
     expect(r.coach_tip).toBeNull();
   });
 
-  it('material heat (hot) → conditions_note + coach_tip both populated', () => {
+  it('material heat (hot) → still null · no pace-cost note is built any more', () => {
     const r = deriveRecap({
       ...baseLongRun,
       weather: {
@@ -252,12 +254,8 @@ describe('deriveRecap · null conditions_note + coach_tip when heat is neutral',
         cloudCoverPct: 10,
       },
     });
-    expect(r.conditions_note).not.toBeNull();
-    // New plain-English template: "<temp> · hot for running. Costs you
-    // about X% on pace." (or "Started at X°F, climbed to Y°F." when arc
-    // is material).
-    expect(r.conditions_note).toMatch(/hot for running|seriously hot|Costs you about/);
-    expect(r.coach_tip).not.toBeNull();
+    expect(r.conditions_note).toBeNull();
+    expect(r.coach_tip).toBeNull();
   });
 });
 
@@ -342,7 +340,7 @@ describe('deriveRecap · type=tempo/threshold', () => {
     expect(r.facts.join(' ')).toContain('Tempo done · 6 mi total at 7:35/mi, avg HR 168.');
   });
 
-  it('threshold in hot weather with ≥4% slowdown adds heat-cost fact', () => {
+  it('2026-08-27 · threshold in hot weather no longer adds a heat-cost fact', () => {
     const r = deriveRecap({
       type: 'threshold',
       phase: 'BUILD',
@@ -358,7 +356,7 @@ describe('deriveRecap · type=tempo/threshold', () => {
         tempF: 78, humidityPct: 60, conditions: 'clear', cloudCoverPct: 10,
       },
     });
-    expect(r.facts.join(' ')).toMatch(/heat was costing you about|stimulus was right|ignore the clock/);
+    expect(r.facts.join(' ')).not.toMatch(/heat was costing you about|stimulus was right|ignore the clock/);
   });
 });
 
@@ -405,7 +403,7 @@ describe('deriveRecap · type=intervals', () => {
     expect(r.facts.join(' ')).not.toMatch(/Go by feel and HR|workout still counted|Heat makes interval pace harder/);
   });
 
-  it('intervals: hot start then settled → pacing fact vs heat-adjusted target + HR guardrail', () => {
+  it('intervals: hot start then settled → pacing fact vs the plain target + HR guardrail', () => {
     const r = deriveRecap({
       type: 'intervals',
       phase: 'PEAK',
@@ -428,8 +426,9 @@ describe('deriveRecap · type=intervals', () => {
     expect(r.facts.join(' ')).not.toMatch(/hot/i);
     expect(r.facts.join(' ')).toMatch(/HR 147/);
     expect(r.facts.join(' ')).not.toMatch(/Building the top end/);
-    // Heat-adjusted target is exposed and slower than the raw 6:43.
-    expect(r.intervals_adjusted_target_s_per_mi ?? 0).toBeGreaterThan(403);
+    // 2026-08-27 · heat no longer moves this target · flat terrain, so the
+    // exposed target equals the raw 6:43 exactly.
+    expect(r.intervals_adjusted_target_s_per_mi).toBe(403);
   });
 
   it('intervals: fewer reps than prescribed → "did N of M reps" (missed/stopped early)', () => {
@@ -707,7 +706,7 @@ describe('deriveRecap · terrain', () => {
     expect(r.facts.join(' ')).toContain('flat-equivalent');
   });
 
-  it('heat and hills together move the interval target ONCE, multiplicatively', () => {
+  it('2026-08-27 · hills alone move the interval target · heat contributes nothing', () => {
     const base: RecapInput = {
       type: 'intervals', phase: 'BUILD', plannedMi: 6,
       plannedPaceSPerMi: 392, actualMi: 6, actualPaceSPerMi: 470,
@@ -719,15 +718,12 @@ describe('deriveRecap · terrain', () => {
     const heatOnly = deriveRecap(base).intervals_adjusted_target_s_per_mi!;
     const both = deriveRecap({ ...base, terrain }).intervals_adjusted_target_s_per_mi!;
 
-    expect(both).toBeGreaterThan(heatOnly);      // hills stack on top of heat
-    // Exactly one product: target × heat leg × grade leg, per Research/01
-    // §Combined conditions. Within a second of heat-alone scaled by the grade
-    // factor (the slack is the integer rounding of heatOnly itself).
-    expect(Math.abs(both - heatOnly * terrain.factor)).toBeLessThanOrEqual(1);
-    // Applying heat a second time lands somewhere else entirely — that is the
-    // double-count this design makes unreachable.
-    const doubleCounted = heatOnly * (heatOnly / 392) * terrain.factor;
-    expect(doubleCounted - both).toBeGreaterThan(5);
+    // A hot, humid `weather` input moves nothing on its own · the flat-terrain
+    // target equals the raw plannedPaceSPerMi exactly.
+    expect(heatOnly).toBe(392);
+    // Hills alone account for the whole move — one product, target × grade
+    // leg, nothing else.
+    expect(Math.abs(both - 392 * terrain.factor)).toBeLessThanOrEqual(1);
   });
 });
 

@@ -24,7 +24,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { deriveRecap } from '@/lib/coach/run-recap';
-import { loadHeatEasingPct } from '@/lib/watch/heat';
 import { deriveWin } from '@/lib/coach/run-win';
 import { composeRecap } from '@/lib/faff/recap-voice';
 import { mapWatchPhases } from '@/lib/coach/run-state';
@@ -299,26 +298,6 @@ export async function GET(
   const livePlanTargetSPerMi = planRow?.pace_target_s ?? null;
   const evalPlannedPaceSPerMi = frozenTargetSPerMi ?? livePlanTargetSPerMi;
 
-  // 2026-08-24 · heat · the frozen target came off the watch payload, and that
-  // payload now eases its targets for the day's real conditions before the
-  // runner ever sees them (lib/watch/heat.ts). So when a run was built on a
-  // hot day, `frozenTargetSPerMi` ALREADY carries the Research/06 correction
-  // and the recap must not apply its own on top — that is the double-pricing
-  // David named in decision 3, and it would let a hot run read better than the
-  // identical effort in the cold. Only true when the target actually came from
-  // the frozen phases; a live-plan fallback was never eased.
-  //
-  // FAILS CLOSED. `loadHeatEasingPct` returns null when the read itself
-  // failed, which is NOT the same as "nothing was eased" — and collapsing the
-  // two would let a lost connection reintroduce the double-pricing through
-  // the error path. Unknown is therefore treated as eased: on a cool day the
-  // correction is ~0 so it costs nothing, and on a hot day it grades slightly
-  // harder rather than flattering the run.
-  const heatEasedPct = frozenTargetSPerMi != null && date
-    ? await loadHeatEasingPct(userId, date)
-    : 0;
-  const targetAlreadyHeatEased = heatEasedPct == null || heatEasedPct > 0;
-
   // Work-phase pace + distance for tempo recap copy. Both derived from the
   // same work-phase filter so the "4.0 mi @ 7:18" pair is always consistent.
   const workPhases = winPhases.filter((p) => p.type === 'work' && p.actualPaceSPerMi);
@@ -479,7 +458,6 @@ export async function GET(
     phase,
     plannedMi,
     plannedPaceSPerMi: evalPlannedPaceSPerMi,
-    targetAlreadyHeatEased,
     plannedHrCap: planRow?.hr_cap ?? null,
     actualMi,
     actualPaceSPerMi,

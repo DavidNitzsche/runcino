@@ -258,7 +258,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         }).catch(() => null);
         if (cond?.source === 'forecast' && cond.tempF != null) {
           gear.push({
-            id: 'forecast', label: 'Race morning', sub: cond.summary,
+            id: 'forecast', label: 'Race morning',
+            sub: cond.safetyMessage ?? 'Forecast for the course, race-day morning.',
             // MODELLED. A forecast is a model's opinion about a morning that
             // has not happened. Shipping it bare-faced beside a measured
             // finish time is exactly the sin rule one names, and it is the

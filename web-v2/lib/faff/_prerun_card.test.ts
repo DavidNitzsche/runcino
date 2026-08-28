@@ -225,46 +225,28 @@ describe('PRERUN-1 · the session’s minutes come from its phases', () => {
   });
 });
 
-describe('PRERUN-1 · the phone states the band the wrist was given', () => {
-  const HOT_PCT = 4;
-
-  it('eases every target by the recorded percentage', () => {
-    const cold = cardFromSpec({
+describe('PRERUN-1 · the phone never eases a target for heat', () => {
+  // 2026-08-27 · heat easing removed entirely — the runner paces by feel.
+  // `cardFromSpec` no longer accepts a heat-easing input at all; these
+  // tests confirm the authored band is always what the card states.
+  it('states the authored pace, unmoved', () => {
+    const card = cardFromSpec({
       spec: SPEC.tuneup as never, type: 'threshold', subLabel: null,
       distanceMi: 4.3, easyPaceSec: 540, hr: HR, toleranceSec: 8,
     })!;
-    const hot = cardFromSpec({
-      spec: SPEC.tuneup as never, type: 'threshold', subLabel: null,
-      distanceMi: 4.3, easyPaceSec: 540, hr: HR, toleranceSec: 8,
-      heatEasingPct: HOT_PCT,
-    })!;
-    expect(cold.workPaceSPerMi).toBe(430);
-    expect(hot.workPaceSPerMi).toBe(Math.round(430 * 1.04));
-    // The recovery jog moves with it, or the card eases the work and not the
-    // rest and the two stop being one session.
-    const coldJog = cold.steps.find((s) => s.recovery)!.recovery!.pace_target;
-    const hotJog = hot.steps.find((s) => s.recovery)!.recovery!.pace_target;
-    expect(hotJog).not.toBe(coldJog);
+    expect(card.workPaceSPerMi).toBe(430);
   });
 
-  it('never eases a race · that pace is priced in the execution plan', () => {
+  it('a race states the authored pace too · nothing eases it', () => {
     const spec = {
       kind: 'long', fuel_mi: [5, 9, 13], hr_cap_bpm: null,
       pace_target_s_per_mi_hi: 486, pace_target_s_per_mi_lo: 476,
     };
-    const hot = cardFromSpec({
+    const card = cardFromSpec({
       spec: spec as never, type: 'race', subLabel: 'RACE', distanceMi: 26.2,
-      easyPaceSec: 540, hr: HR, toleranceSec: 12, heatEasingPct: HOT_PCT,
+      easyPaceSec: 540, hr: HR, toleranceSec: 12,
     })!;
-    expect(hot.workPaceSPerMi).toBe(481);
-  });
-
-  it('leaves the authored band alone when nothing was recorded', () => {
-    const zero = cardFromSpec({
-      spec: SPEC.tuneup as never, type: 'threshold', subLabel: null,
-      distanceMi: 4.3, easyPaceSec: 540, hr: HR, toleranceSec: 8, heatEasingPct: 0,
-    })!;
-    expect(zero.workPaceSPerMi).toBe(430);
+    expect(card.workPaceSPerMi).toBe(481);
   });
 });
 
