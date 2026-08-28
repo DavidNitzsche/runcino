@@ -7,7 +7,7 @@
  * the iOS sync + Strava webhook both write.
  */
 import { pool } from '@/lib/db/pool';
-import { runnerTimezone } from '@/lib/runtime/runner-tz';
+import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, ALL_TIME } from '@/lib/runs/volume';
 import { computeZones, judgeEasyRunHr, zoneIdxForBpm, type EasyHrVerdict } from '@/lib/training/zones';
 import { resolveThresholdHr, type ThresholdHrMethod } from '@/lib/training/lthr';
@@ -1470,7 +1470,11 @@ async function loadPhaseBreakdown(
   // was still live for every treadmill run. Converting to the runner's own
   // timezone before taking the date is the actual fix; the field-suffix
   // check above only avoided the fallback, it never corrected it.
-  const tz = await runnerTimezone(userId).catch(() => null);
+  // runnerTimezoneOrPacific — this is the exact "coach_intents
+  // watch-completion day bucketing" case that helper is named for. A
+  // runner with no stored timezone is legacy single-user-era data
+  // stamped in Pacific wall time, never UTC.
+  const tz = await runnerTimezoneOrPacific(userId).catch(() => 'America/Los_Angeles');
   const row = (await pool.query(
     `SELECT value FROM coach_intents
       WHERE COALESCE(user_uuid, user_id) = $1
@@ -1482,7 +1486,7 @@ async function loadPhaseBreakdown(
           END
         )
       ORDER BY ts DESC LIMIT 1`,
-    [userId, date, tz ?? 'UTC']
+    [userId, date, tz]
   ).catch(() => ({ rows: [] }))).rows[0];
   if (!row?.value) return [];
 

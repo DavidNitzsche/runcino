@@ -128,7 +128,7 @@ import { snapshotPrescription } from '@/lib/plan/mutate';
 import {
   dayFingerprint, prescriptionFingerprint, fingerprintDigest, type PrescribedDay,
 } from '@/lib/plan/plan-delta';
-import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 
 /** The reason a refusal gives, in the voice the card renders verbatim. */
@@ -248,7 +248,11 @@ export async function POST(req: NextRequest) {
     //     months without anyone noticing, and the cost of trusting a guard that
     //     can fail silently is a run the runner did being re-described as
     //     something he did not.
-    const tzForConflictScan = await runnerTimezone(userId).catch(() => 'UTC');
+    // runnerTimezoneOrPacific — this scan includes coach_intents
+    // watch-completion rows, the exact case that helper is named for. A
+    // runner with no stored timezone is legacy single-user-era data
+    // stamped in Pacific wall time, never UTC.
+    const tzForConflictScan = await runnerTimezoneOrPacific(userId).catch(() => 'America/Los_Angeles');
     const conflicts = await conflictingCompletedDays(client, userId, restore.days, putAway.days, tzForConflictScan);
     if (conflicts.length > 0) {
       const first = conflicts[0];

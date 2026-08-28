@@ -23,7 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
-import { runnerTimezone } from '@/lib/runtime/runner-tz';
+import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { composeRecap } from '@/lib/faff/recap-voice';
@@ -221,7 +221,12 @@ export async function GET(
       // suffix at all and always falls through to the ts::date fallback —
       // still UTC-shifted, still the wrong calendar day for a run after
       // ~5pm Pacific. Convert to the runner's own timezone before comparing.
-      const recapTz = await runnerTimezone(userId).catch(() => null);
+      // runnerTimezoneOrPacific, not the plain UTC-fallback variant — see
+      // today/route.ts's identical comment: this is the exact
+      // "coach_intents watch-completion day bucketing" case that helper is
+      // named for. A runner with no stored timezone is legacy single-user-
+      // era data stamped in Pacific wall time, never UTC.
+      const recapTz = await runnerTimezoneOrPacific(userId).catch(() => 'America/Los_Angeles');
       const intentRow = (await pool.query(
         `SELECT value FROM coach_intents
           WHERE COALESCE(user_uuid, user_id) = $1
@@ -233,7 +238,7 @@ export async function GET(
               END
             )
           ORDER BY ts DESC LIMIT 1`,
-        [userId, date, recapTz ?? 'UTC'],
+        [userId, date, recapTz],
       )).rows[0];
       if (intentRow?.value) {
         let payload: any = intentRow.value;

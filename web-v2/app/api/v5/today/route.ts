@@ -32,7 +32,7 @@ import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/tw
 import { resolveThresholdHr } from '@/lib/training/lthr';
 import { requireUserId } from '@/lib/auth/session';
 import { composeWhy } from '@/lib/faff/why-voice';
-import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
@@ -286,7 +286,11 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // Watch-completion date matching (below) needs the runner's own timezone,
   // not the server's — a UTC insert timestamp for a run logged in the
   // evening reads as tomorrow's date in UTC.
-  const completionTz = await runnerTimezone(userId).catch(() => null);
+  // runnerTimezoneOrPacific, not the plain UTC-fallback variant — this is
+  // exactly the "coach_intents watch-completion day bucketing" use case its
+  // own doc comment names. A runner with no stored timezone is legacy
+  // single-user-era data stamped in Pacific wall time, never UTC.
+  const completionTz = await runnerTimezoneOrPacific(userId).catch(() => 'America/Los_Angeles');
   // 22b. THE SCREEN IS NOT IN THE PRESENT TENSE, SO NEITHER IS ITS CONTEXT.
   //
   // `loadGlanceState` takes no date — it reads readiness, the seven-night
@@ -724,7 +728,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                       -- same runnerTimezone convention as goal-projection.ts.
                       ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
           ORDER BY ts DESC LIMIT 1`,
-        [userId, today, completionTz ?? 'UTC'],
+        [userId, today, completionTz],
       ).catch(() => ({ rows: [] as any[] }))).rows[0];
       let completion: any = intent?.value ?? null;
       if (typeof completion === 'string') { try { completion = JSON.parse(completion); } catch { completion = null; } }

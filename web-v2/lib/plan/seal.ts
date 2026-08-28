@@ -46,7 +46,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
-import { runnerTimezone } from '@/lib/runtime/runner-tz';
+import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import type { PoolClient } from 'pg';
 
 /**
@@ -71,7 +71,13 @@ export async function isDaySealed(userUuid: string, dateIso: string): Promise<bo
   // Both sides are pinned explicitly now: uuid where the column is uuid, text
   // where the comparison is text. A bare `$1` shared across two differently
   // typed columns is the shape to watch for.
-  const sealTz = await runnerTimezone(userUuid).catch(() => 'UTC');
+  // runnerTimezoneOrPacific — this is the exact "coach_intents
+  // watch-completion day bucketing" case that helper is named for. A
+  // runner with no stored timezone is legacy single-user-era data
+  // stamped in Pacific wall time, never UTC. This is the plan's own
+  // write-gate (isDaySealed), so getting the fallback wrong here would
+  // wrongly permit or block a plan write, not just mis-render a card.
+  const sealTz = await runnerTimezoneOrPacific(userUuid).catch(() => 'America/Los_Angeles');
   const r = await rowOrNull<{ n: string }>(
     'plan/seal · isDaySealed',
     pool.query<{ n: string }>(

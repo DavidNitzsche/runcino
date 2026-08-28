@@ -18,7 +18,7 @@ import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { computeAcwr } from './acwr';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 import { loadActivePlan } from '@/lib/plan/lookup';
-import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import type { WorkoutSpec } from '@/lib/faff/types';
@@ -194,7 +194,11 @@ async function computeTodayExecution(
   // carries no date suffix at all and always falls through to it — so every
   // treadmill run still hit the UTC-shifted date compare this comment warned
   // about. Convert to the runner's own timezone before taking the date.
-  const tz = await runnerTimezone(userId).catch(() => null);
+  // runnerTimezoneOrPacific — this is the exact "coach_intents
+  // watch-completion day bucketing" case that helper is named for. A
+  // runner with no stored timezone is legacy single-user-era data
+  // stamped in Pacific wall time, never UTC.
+  const tz = await runnerTimezoneOrPacific(userId).catch(() => 'America/Los_Angeles');
   const row = (await pool.query(
     `SELECT value FROM coach_intents
       WHERE COALESCE(user_uuid, user_id) = $1
@@ -203,7 +207,7 @@ async function computeTodayExecution(
                   THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
                   ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
       ORDER BY ts DESC LIMIT 1`,
-    [userId, today, tz ?? 'UTC'],
+    [userId, today, tz],
   ).catch(() => ({ rows: [] }))).rows[0];
 
   const overreach = todayRow.plannedMi > 0 && todayRow.doneMi >= todayRow.plannedMi * 1.25;
