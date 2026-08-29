@@ -13,11 +13,49 @@ import { computeAcwr } from './acwr';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadBiologicalSex } from '@/lib/coach/biological-sex';
 import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
-import { runCadenceSpm } from '@/lib/runs/coherence';
+import { runCadenceSpm, coherentPace } from '@/lib/runs/coherence';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 // WEEK-READ-1 · the runner's own seven days, from the one helper that answers it.
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { loadSettings } from '@/lib/coach/settings';
+
+
+/**
+ * COACHPACE-1 (2026-08-29) · the fact sheet's pace, arbitrated.
+ *
+ * Both reads below used to take `avgPaceMinPerMi` verbatim, and
+ * `lib/runs/coherence.ts` says in as many words why that is not the pace:
+ * "On 115 of 115 production rows `avgPaceMinPerMi` is derived from
+ * `durationSec` while `paceSPerMi` is derived from `movingTimeS`. They are not
+ * two spellings of one number; they are two different quantities under names
+ * that both read as 'average pace'. Neither may be read as THE pace." So the
+ * fact sheet was carrying an elapsed-clock pace under a name every consumer
+ * would read as the running pace — systematically, on every row, not
+ * occasionally.
+ *
+ * Nothing printed it. `recentRuns` has no reader at all and `latest_activity`
+ * is read only for its null-ness, by the `run_recap` topic predicate, and
+ * nothing builds that topic. That is exactly why this is worth fixing NOW
+ * rather than when it is load-bearing: the allowlist entry in
+ * check-derived-consistency.sh deferred it because migrating "moves the pace
+ * basis for every coach surface at once", and that reason has gone stale —
+ * there is no coach surface on the other end of these two fields yet, so the
+ * change costs nothing today and stops the next consumer inheriting the wrong
+ * number.
+ *
+ * Falls back to the stored string only when the row gives the reconciler
+ * nothing to work with, which is the same answer as before for those rows.
+ */
+function factSheetPace(row: unknown, stored: unknown): string | null {
+  const c = coherentPace(row);
+  if (c && c.secPerMi > 0) {
+    const m = Math.floor(c.secPerMi / 60);
+    const sec = Math.round(c.secPerMi % 60);
+    // 8:60 is not a pace. Carry the rounding into the minute.
+    return sec === 60 ? `${m + 1}:00` : `${m}:${String(sec).padStart(2, '0')}`;
+  }
+  return (stored as string) || null;
+}
 
 export async function loadCoachState(userId: string): Promise<CoachState> {
   // 2026-06-03 · runner TZ instead of the old UTC-minus-7-hour Pacific
@@ -60,7 +98,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
         id: r.id ?? r.activityId ?? `${r.date}-${r.distanceMi}`,
         date: r.date || (r.startLocal ?? '').slice(0, 10),
         mi: Number(r.distanceMi) || 0,
-        pace: r.avgPaceMinPerMi || r.pace || null,
+        pace: factSheetPace(r, r.avgPaceMinPerMi || r.pace),
         timeMoving: r.timeMoving || r.duration || null,
         hr: Number(r.avgHr) || null,
         // BOTH FEET · see `cadence.units-split` in lib/runs/derived-registry.ts.
@@ -107,7 +145,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       date: d.date || (d.startLocal ?? '').slice(0, 10),
       type: d.type ?? null,
       mi: Number(d.distanceMi) || 0,
-      pace: d.avgPaceMinPerMi || (d.paceSPerMi ? `${Math.floor(d.paceSPerMi / 60)}:${String(Math.round(d.paceSPerMi % 60)).padStart(2, '0')}` : null),
+      pace: factSheetPace(d, d.avgPaceMinPerMi),
       hr: Number(d.avgHr) || null,
       name: d.name ?? null,
       source: d.source ?? null,
