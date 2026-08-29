@@ -61,7 +61,26 @@
  * as the modest fixed M-pace tail that sample week states, not §4.4/§4.5's
  * marathon-sized fractions.
  */
-export type LongRunKind = 'mp_long' | 'fast_finish' | 'dress_rehearsal' | 'progression';
+/**
+ * SEGLONG-2 (2026-08-29) · `modified_block` is §11.1's Variations row, "single
+ * longer run with two segments separated by short rest". It is the only member
+ * of this union whose quality is DISCONTINUOUS — every other kind runs its
+ * marathon-pace work as one block, ending at the finish. That difference is
+ * the session: coming back to race pace a second time with the first block
+ * already in the legs is what §11.1 calls "trains under-fatigue running".
+ */
+/**
+ * DOWNHILL-2 (2026-08-29) · `downhill_simulation` is the odd one out here, and
+ * deliberately so: it is the only kind whose defining property is TERRAIN
+ * rather than pace structure. Its marathon-pace shape is an ordinary MP long;
+ * what makes it Research/11's session is running it on a descent matching the
+ * race's. The kind exists so the note can say that and so the day is
+ * identifiable afterwards — without it the session was selectable but authored
+ * as a plain MP long, which is the same session with the instruction missing.
+ */
+export type LongRunKind =
+  | 'mp_long' | 'fast_finish' | 'dress_rehearsal' | 'progression' | 'modified_block'
+  | 'downhill_simulation';
 
 /**
  * §4.6's own table, as numbers.

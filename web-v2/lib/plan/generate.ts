@@ -2991,7 +2991,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -3102,6 +3102,21 @@ function layoutWeek({
    * and guessing one is how a beginner gets handed a Canova block.
    */
   level?: LevelKey;
+  /**
+   * DOWNHILL-2 (2026-08-29) · does the GOAL RACE run net downhill, on trusted
+   * course data?
+   *
+   * Research/11's eccentric-loading protocol is course-specific training, and
+   * the two sessions it prescribes are only ever right for a course that
+   * descends. Offering them to a flat-marathon runner would be the engine
+   * inventing a stimulus their race does not ask for — the protocol's own cost
+   * is deliberate muscle damage — and NOT offering them to a net-downhill
+   * runner is the gap this flag closes: CIM is Research/11's named archetype,
+   * and Research/08 §4.5 puts the downhill payoff at "0% or negative for
+   * untrained". Same signal `applyCourseGuidance` gates its note on, so the
+   * note and the sessions cannot disagree about what kind of race this is.
+   */
+  courseIsNetDownhill?: boolean;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -3710,6 +3725,26 @@ function layoutWeek({
    *     names "MP long runs" among the phase's primary workouts — it is the
    *     dominant entry there by doctrine, not by rotation. §4.6's rehearsal
    *     (via `authorDressRehearsal`) is the late-phase variation.
+   *
+   *     SEGLONG-2 (2026-08-29) · this exclusion was tried WIDENED, to let
+   *     §11.1's modified block and Research/11's downhill simulation into the
+   *     window doctrine places them in, on the reasoning that every eligible
+   *     entry there carries MP so the stimulus survives. That reasoning is
+   *     true and still insufficient: the corpus gate came back with 78
+   *     enforced dosing breaches and 156 firm validator failures, all of the
+   *     shape "RACE-SPECIFIC · session doses N mi at M · doctrine caps it at
+   *     20% of weekly". `DAY-SIZE-1` below is why — on a marathon-pace long
+   *     week the MP block IS the week's race-specific stimulus, and the
+   *     quality slots are sized against that assumption. Rotating the long
+   *     breaks it and the week pays for marathon-pace work twice.
+   *
+   *     So the exclusion is load-bearing for DOSE ACCOUNTING, not only for
+   *     doctrine flavour, and it stays. The two sessions reach the plan by
+   *     routes that do not disturb the accounting: §11.1's block is offered in
+   *     `specific_support` (the engine's QUALITY phase), which is where its
+   *     own row puts the FIRST block — "8-10 weeks out"; and Research/11's
+   *     simulation is placed by `authorDownhillSimulation`, a post-pass that
+   *     PROMOTES a long already carrying race pace and adds no load at all.
    *   · The 10K's fixed two-mile tail (kind 'progression' out of
    *     `longFinishSegment`) is Research/22's own sample-week dose, not a
    *     fraction-sized shape, and stays as authored.
@@ -3749,6 +3784,15 @@ function layoutWeek({
         mpPaceSec: weekMpPaceSec,
         // SLOT-ROTATE-5 · the same QUALITY split the quality slots take.
         inHillBlock: phase === 'QUALITY' ? weeksToPhaseEnd > 2 : null,
+        // DOWNHILL-2 · Research/11's simulation is training FOR a descent.
+        // Excluded outright on a race that does not descend, rather than left
+        // to lose the LRU rotation by luck: a flat-course runner should never
+        // be offered it, and a net-downhill runner should not have their one
+        // prescribed simulation depend on which sessions happened to come up
+        // recently.
+        exclude: courseIsNetDownhill
+          ? undefined
+          : new Set(['downhill-simulation-long-run']),
       })
     : null;
   let progressionSeg: { midMi: number; tailMi: number } | null = null;
@@ -3770,18 +3814,86 @@ function layoutWeek({
       catalogueHistory.attempts.push({ slug: 'progression-long-run', weekIdx });
     }
   }
+  /**
+   * SEGLONG-2 (2026-08-29) · the segmented long — two marathon-pace blocks
+   * with easy running BETWEEN them, not one block at the end.
+   *
+   * Research/04 §11.1's Variations row: "Modified block (single longer run
+   * with two segments separated by short rest) for mortals". It is the only
+   * form of the Canova block a non-elite can run and the only form this engine
+   * can schedule, since `plan_workouts` holds one session per date and the
+   * elite version is a two-a-day.
+   *
+   * Why it is a DIFFERENT session from the progression long above, and not a
+   * cosmetic re-cut of it: a progression runs its quality continuously to the
+   * finish, so the runner enters marathon pace once, fresh-ish, and stays
+   * there. This one asks them to come back to marathon pace a second time with
+   * the first block already in the legs and the easy running having let them
+   * partly recover — §11.1's Purpose row calls that "trains under-fatigue
+   * running", and it is the stimulus the doc names, not the mileage.
+   *
+   * The gap is what makes it that session, and until SEGLONG-1 the segment
+   * grammar could not express one: segments were contiguous and tail-anchored,
+   * so every easy mile went in front of the quality. Both halves had to land
+   * for this to be authorable at all — the grammar, and this branch that
+   * emits it.
+   */
+  let modifiedBlockSeg: { firstMi: number; gapMi: number; secondMi: number } | null = null;
+  if (longVariant?.entry.slug === 'canova-modified-block') {
+    const mBudget = weeklyDoseBudgetMi(weeklyMi, 'M', weekDoseContext);
+    // The doc's own AM:PM proportion (25-30 km : 15-20 km, roughly 60:40)
+    // applied to whatever marathon-pace volume the week can actually fund —
+    // never more than the finish the long run was already sized for.
+    const atPace = Math.min(finishMi, Math.floor(mBudget * 2) / 2);
+    const firstMi = Math.round(atPace * 0.6 * 2) / 2;
+    const secondMi = Math.round((atPace - firstMi) * 2) / 2;
+    // "Short rest", kept short on purpose: long enough to be a real break in
+    // the effort, short enough that the second block is run on tired legs.
+    // A full recovery would make this two sessions in a row, which is the
+    // elite double this variation exists to replace.
+    const gapMi = 1;
+    // Each block has to be a real block (§4.5's two-mile floor, same as the
+    // progression's), and the easy bulk must still outweigh the work.
+    if (
+      firstMi >= FAST_FINISH_MIN_MI
+      && secondMi >= FAST_FINISH_MIN_MI
+      && firstMi + gapMi + secondMi < longMi
+    ) {
+      modifiedBlockSeg = { firstMi, gapMi, secondMi };
+    } else if (catalogueHistory && !catalogueHistory.attempts.some(
+      (a) => a.slug === 'canova-modified-block' && a.weekIdx === weekIdx,
+    )) {
+      // Refused for this week, recorded so the rotation does not keep
+      // offering a session the week cannot fund — same contract the
+      // progression long's refusal uses.
+      catalogueHistory.attempts.push({ slug: 'canova-modified-block', weekIdx });
+    }
+  }
   // The rotation's memory: what this week's intensity long actually IS. Only
   // the rotated weeks record, so the marathon's §4.4 weeks and the 10K's fixed
   // tail leave the quality-slot history exactly as they left it before.
   if (rotatesLongVariant && catalogueHistory) {
     recordCatalogueChoice(
       catalogueHistory,
-      progressionSeg ? 'progression-long-run' : 'fast-finish-long-run',
+      modifiedBlockSeg ? 'canova-modified-block'
+        : progressionSeg ? 'progression-long-run'
+        : 'fast-finish-long-run',
       weekIdx,
     );
   }
+  // DOWNHILL-2 · the simulation's SHAPE is an ordinary marathon-pace long —
+  // Research/11 asks for "1 long downhill simulation (race pace)", not a
+  // different pace structure — so it takes the default segment sizing and
+  // differs only in what the runner is told to run it ON. Recorded as its own
+  // kind so the note can carry the terrain instruction and so the day is
+  // identifiable in the plan afterwards.
+  const isDownhillSim = longVariant?.entry.slug === 'downhill-simulation-long-run';
   const longRunKindAuthored: LongRunKind | null =
-    !hasFinish ? null : progressionSeg ? 'progression' : finishSeg!.kind;
+    !hasFinish ? null
+      : modifiedBlockSeg ? 'modified_block'
+      : isDownhillSim ? 'downhill_simulation'
+      : progressionSeg ? 'progression'
+      : finishSeg!.kind;
   // MPLABEL-1 · "at marathon pace" reads as the goal's marathon pace, and on a
   // refused goal it is not. An HM finish rides `tPaceSec` and never had this
   // ambiguity, so only the M arm is qualified.
@@ -3790,13 +3902,28 @@ function layoutWeek({
     dow: longRunDow, type: 'long', distanceMi: longMi, isQuality: false, isLong: true,
     ...(hasFinish ? { longRunKind: longRunKindAuthored! } : {}),
     subLabel: !hasFinish ? 'LONG'
+      // SEGLONG-2 · the `@ E` token is the gap. `extractLongSegments` folds it
+      // into the block before it as that block's recovery, so the two blocks
+      // stay two blocks and the easy miles stay easy miles in every consumer
+      // that sums quality.
+      : modifiedBlockSeg
+      ? `LONG · ${modifiedBlockSeg.firstMi}mi @ M + ${modifiedBlockSeg.gapMi}mi @ E + ${modifiedBlockSeg.secondMi}mi @ M`
       : progressionSeg ? `LONG · ${progressionSeg.midMi}mi @ M + ${progressionSeg.tailMi}mi @ T`
       : `LONG · ${finishMi}mi @ ${finishSeg!.tag}`,
     notes: !hasFinish
       ? (phase === 'TAPER' ? 'Easy long, hold pace. Quality lives in the race itself.'
         : 'Conversational throughout. Build the engine.')
+      : modifiedBlockSeg
+      // Says what the session IS for, because the shape is the point and a
+      // runner who treats the gap as a rest stop has run a different workout.
+      ? `Modified block. Easy ${Math.round((longMi - modifiedBlockSeg.firstMi - modifiedBlockSeg.gapMi - modifiedBlockSeg.secondMi) * 10) / 10}mi, then ${modifiedBlockSeg.firstMi}mi at ${mPaceWord}, ${modifiedBlockSeg.gapMi}mi easy, then ${modifiedBlockSeg.secondMi}mi at ${mPaceWord}. The second block is the session: you are practising getting back to race pace on tired legs, so keep the easy mile honest and short.`
       : progressionSeg
       ? `Progression long. Easy ${Math.round((longMi - finishMi) * 10) / 10}mi, then ${progressionSeg.midMi}mi at ${mPaceWord}, close with ${progressionSeg.tailMi}mi at threshold. Continuous, no stop between segments.`
+      : isDownhillSim
+      // The instruction IS the session. Run on the flat and this is just
+      // another MP long — the eccentric loading, which is the whole point, only
+      // happens on the descent.
+      ? `Downhill simulation. Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${mPaceWord} — on terrain that descends like your race. Find the closest gradient you can and run the race-pace section on it. Quads will feel this more than the pace suggests; that is the session working, and it is what stops the same damage arriving at mile 20 on race day.`
       : `Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${
           finishSeg!.tag === 'HM' ? 'half-marathon pace' : mPaceWord}.`,
   };
@@ -5403,10 +5530,42 @@ function layoutWeek({
         const strides = (slots[pick]!.subLabel ?? '').includes('strides')
           ? ` · ${strideReps}×${STRIDE_DURATION_S}s strides`
           : '';
-        slots[pick]!.subLabel = `MEDIUM-LONG${strides}`;
+        /* VARIATION-CLOSE-1 (2026-08-29) · §3's "medium-long with embedded T
+         * segment (advanced)".
+         *
+         * The medium-long is authored HERE, directly, and the `medium_long`
+         * slot is never passed to the selector — so an embedded-T structure
+         * added to the catalogue entry would have been unreachable, which is
+         * the same mistake §11.1's Canova block sat in for months. The variant
+         * has to be authored where the session is.
+         *
+         * Guarded hard, because §3's Contraindications row is the constraint
+         * that matters more than the variation: "Don't run too hard — it
+         * should not compete with the long run for recovery." So:
+         *   · advanced tiers only, which is the doc's own "(advanced)" tag;
+         *   · specific phases only, never base;
+         *   · never on a week whose long run already carries race pace — two
+         *     structured days plus a quality day is a third hard session the
+         *     week was not budgeted for;
+         *   · the segment is bounded by Daniels' weekly T budget AND capped at
+         *     a fifth of the run, so it stays an embedded segment rather than
+         *     becoming a tempo that happens to be long.
+         */
+        const mlrTierAllows = level === 'advanced' || level === 'advanced_plus';
+        const mlrPhaseAllows = phase === 'QUALITY' || phase === 'RACE-SPECIFIC';
+        const mlrTBudget = mlrTierAllows && mlrPhaseAllows
+          ? weeklyDoseBudgetMi(weeklyMi, 'T', weekDoseContext)
+          : 0;
+        const mlrTMi = (!hasFinish && mlrTBudget > 0)
+          ? Math.min(Math.floor(mlrTBudget * 2) / 2, Math.floor(mlrMi * 0.2 * 2) / 2)
+          : 0;
+        const embeddedT = mlrTMi >= 2 ? ` · ${mlrTMi}mi @ T` : '';
+        slots[pick]!.subLabel = `MEDIUM-LONG${embeddedT}${strides}`;
         slots[pick]!.notes =
           'Easy to steady. Aerobic strength under fatigue, without the cost of a long run. '
-          + 'Let the last few miles drift up if they want to.'
+          + (embeddedT
+            ? `Settle in, then run ${mlrTMi}mi at threshold somewhere in the middle and ease back to steady after — embedded, no stop either side. It should not leave you needing a recovery day.`
+            : 'Let the last few miles drift up if they want to.')
           + (strides ? ` Finish with ${strideReps} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.` : '');
       }
     }
@@ -7445,6 +7604,11 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // whole block rather than one week.
       catalogueHistory,
       level: input.level,
+      // DOWNHILL-2 · the same signal `applyCourseGuidance` gates its note on,
+      // read here so the sessions and the note cannot disagree about whether
+      // this is a descending race.
+      courseIsNetDownhill:
+        input.courseTerrain?.shape === 'net_downhill' && input.courseTerrain.trusted === true,
     });
     // 2026-06-23 · SP-4 · race-week chronology guard. layoutWeek positions
     // shakeout/tune-up/easy by a circular days-before-race offset that WRAPS, so for a
@@ -9505,6 +9669,9 @@ export function finalizeComposedPlan(
   // intensity floor because `setLongFinish` rewrites a long run's notes
   // wholesale, and this appends to them.
   applyCourseGuidance(composed, courseTerrain, raceDistanceMi);
+  // DOWNHILL-2 · after the guidance note, because this promotes one of the
+  // longs that note already covers and its own sentence is more specific.
+  authorDownhillSimulation(composed, courseTerrain, raceDistanceMi);
 
   // LONGRUN-TRACE-1 (2026-08-25) · collect every race-pace segment a later pass
   // shortened or removed, so a session disappearing is a thing the audit
@@ -10158,6 +10325,75 @@ function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: numbe
   }
 }
 
+/**
+ * DOWNHILL-2 (2026-08-29) · PROMOTE ONE RACE-PACE LONG TO THE DOWNHILL
+ * SIMULATION, on a race that actually descends.
+ *
+ * Research/11's protocol names this session once and dates it: "Weeks 7-8:
+ * peak — 1 long downhill simulation (race pace)", bounded on the other side by
+ * §"Avoid the Late-Taper Trap" — "the last race-pace downhill should be 2-3
+ * weeks out".
+ *
+ * WHY THIS IS A PASS AND NOT A ROTATION CANDIDATE. The long-run rotation is
+ * least-recently-used across §4's variants, which is right for sessions
+ * doctrine offers as interchangeable shapes ("Don't make every long run a
+ * progression — rotate"). This is not one of those. It is prescribed ONCE, at a
+ * stated time, for a stated reason, and leaving it to LRU meant it never
+ * appeared at all: a marathon build has only two or three race-pace longs in
+ * the specific phase and the rotation spent them on §4.4 and §11.1. A session
+ * doctrine schedules by date has to be placed by date.
+ *
+ * NO NEW LOAD. It promotes a long that is ALREADY carrying race pace — the
+ * cadence machinery put the session there and sized it — and changes only the
+ * kind and the note. Research/11 asks for the runner to be somewhere specific,
+ * not to run more.
+ */
+function authorDownhillSimulation(
+  composed: ComposePlanResult,
+  terrain: CourseTerrain,
+  raceDistanceMi: number,
+): void {
+  if (terrain.shape !== 'net_downhill' || !terrain.trusted) return;
+  const cat = distanceCategoryOf(raceDistanceMi);
+  if (cat !== 'm' && cat !== 'hm') return;
+  const raceISO = raceDayISO(composed);
+  if (!raceISO) return;
+
+  // The doc's own window, in days. Its far edge is the protocol's "weeks 7-8"
+  // peak; its near edge is the late-taper trap's "2-3 weeks out" floor. The
+  // dress rehearsal owns 3 weeks out (§4.6, `isDressRehearsalSlot`), so this
+  // takes the latest qualifying long STRICTLY EARLIER than that — the two
+  // sessions rehearse different things and must not fight over one day.
+  const NEAR_DAYS = 25;
+  const FAR_DAYS = 45;
+
+  let best: { day: DayPlan; days: number } | null = null;
+  for (const w of composed.weeks) {
+    if (w.isRaceWeek) continue;
+    const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
+    if (!long) continue;
+    // Already carrying race pace: this promotes, never creates. A plain easy
+    // long is not upgraded, because that would add a hard session the week was
+    // not budgeted for.
+    if (splitDay(long).qualityMi <= 0) continue;
+    // Do not steal the dress rehearsal's day, and do not overwrite §11.1's
+    // modified block — both are sessions in their own right.
+    if (long.longRunKind === 'dress_rehearsal' || long.longRunKind === 'modified_block') continue;
+    const days = daysBetween(dowDateInWeek(w.startISO, long.dow), raceISO);
+    if (days < NEAR_DAYS || days > FAR_DAYS) continue;
+    // Latest inside the window · closest to the protocol's peak without
+    // crossing into the taper trap.
+    if (!best || days < best.days) best = { day: long, days };
+  }
+  if (!best) return;
+
+  best.day.longRunKind = 'downhill_simulation';
+  best.day.notes = `${best.day.notes ?? ''} Run the race-pace section on terrain that descends `
+    + `like your course. Quads will feel this more than the pace suggests; that is the session `
+    + `working, and it is what stops the same damage arriving at mile 20 on race day. Last `
+    + `race-pace downhill of the block — keep the taper's downhill running short and easy.`.trim();
+}
+
 /** The plan's own race day, or null for a goal-mode or open block. */
 function raceDayISO(composed: ComposePlanResult): string | null {
   for (let i = composed.weeks.length - 1; i >= 0; i--) {
@@ -10319,6 +10555,43 @@ function setLongFinish(day: DayPlan, finishMi: number, reason = 'unrecorded'): v
   // this function, and neither should be able to invent a shape doctrine does
   // not describe.
   if (finishMi > 0 && finishMi < FAST_FINISH_MIN_MI) finishMi = 0;
+
+  /* SEGLONG-2 (2026-08-29) · SHRINK §11.1's MODIFIED BLOCK, DO NOT FLATTEN IT.
+   *
+   * Every rewrite below collapses a multi-segment label to one finish, which
+   * is right for a progression — §4.3 walks its paces continuously to the end,
+   * so a trimmed one really is §4.5's single-tag finish. It is wrong for the
+   * modified block, whose identity is the GAP: "two segments separated by short
+   * rest". Flattening it does not shorten the session, it deletes it.
+   *
+   * And the trims that reach here are routine. Measured on an 18-week advanced
+   * marathon build: the easy-floor give-back took 0.5 mi off the long in two
+   * separate weeks, one of which was the block. A session doctrine prescribes
+   * two or three times a cycle cannot survive being destroyed by a half-mile.
+   *
+   * So the give-back comes out of the SECOND block, which is the doctrinally
+   * correct place for it — the first block is what fatigues the legs and the
+   * second is what is run on them, so shortening the second preserves the
+   * stimulus while shortening the third that is being paid for. Below the
+   * two-mile floor there is no second block left and the shape genuinely is
+   * gone, so it falls through to the flatten-and-re-identify path.
+   */
+  if (finishMi > 0 && day.longRunKind === 'modified_block') {
+    const parts = String(day.subLabel ?? '')
+      .match(/([\d.]+)\s*mi\s*@\s*(HM|MP|M|T|E)\b/gi) ?? [];
+    if (parts.length === 3) {
+      const num = (s: string) => Number(/([\d.]+)/.exec(s)![1]);
+      const [firstMi, gapMi] = [num(parts[0]), num(parts[1])];
+      const secondMi = Math.round((finishMi - firstMi) * 2) / 2;
+      if (secondMi >= FAST_FINISH_MIN_MI && firstMi >= FAST_FINISH_MIN_MI) {
+        const zone = /@\s*(HM|MP|M)\b/i.exec(parts[0])?.[1]?.toUpperCase() ?? 'M';
+        day.racePaceChange = { fromMi: splitDay(day).qualityMi, toMi: finishMi, reason, kind: day.longRunKind };
+        day.subLabel = `LONG · ${firstMi}mi @ ${zone} + ${gapMi}mi @ E + ${secondMi}mi @ ${zone}`;
+        return;
+      }
+    }
+  }
+
   const trace = (toMi: number) => {
     if (Math.abs(beforeMi - toMi) < 0.05) return;
     day.racePaceChange = { fromMi: beforeMi, toMi, reason, kind: day.longRunKind ?? null };
@@ -10338,6 +10611,21 @@ function setLongFinish(day: DayPlan, finishMi: number, reason = 'unrecorded'): v
   // two-pace progression; what remains is §4.5's single-tag finish, and the
   // row identity follows the shape it now describes.
   if (wasTwoSegment && day.longRunKind === 'progression') day.longRunKind = 'fast_finish';
+  // SEGLONG-2 (2026-08-29) · the same rule for §11.1's modified block, and it
+  // matters more here. A progression collapsed to one segment is at least
+  // still continuous quality; a modified block collapsed to one segment has
+  // lost the ONLY thing that made it that session — the gap. "Two segments
+  // separated by short rest" with the rest removed is a marathon-pace long
+  // run, and calling it a modified block would have the plan claiming a
+  // stimulus (returning to race pace on tired legs) the runner is not being
+  // given. Observed live: a 0.5-mile dosing give-back collapsed the shape and
+  // left the kind behind, so the day read `modified_block` over a label with
+  // no easy block in it.
+  //
+  // `downhill_simulation` deliberately does NOT re-identify: its identity is
+  // the terrain it is run on, not its segment count, so a trimmed one is still
+  // the session Research/11 asked for.
+  if (wasTwoSegment && day.longRunKind === 'modified_block') day.longRunKind = 'fast_finish';
   // MPLABEL-1 · this function REWRITES a note `layoutWeek` already wrote, and
   // that note is the only place the goal-vs-current-fitness qualifier exists by
   // the time a trim runs. Re-deriving it here would need the week's pace

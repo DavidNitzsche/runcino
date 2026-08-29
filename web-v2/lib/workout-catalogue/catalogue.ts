@@ -164,20 +164,24 @@ export const VARIATION_LEDGER: Array<{
   {
     section: '§3',
     row: '| Variations | Plain medium-long, medium-long with strides, medium-long with embedded T segment (advanced) |',
-    disposition: 'partial',
+    disposition: 'carried',
     carriedBy: ['medium-long-run'],
-    note: 'OPEN AND MARATHON-RELEVANT. Research/22\'s Marathon-Advanced sample week runs a '
-      + 'STRUCTURED MLR, so a template row exists that the catalogue cannot currently reproduce. '
-      + 'The embedded-T medium-long is the strongest remaining candidate in this table.',
+    note: 'CLOSED 2026-08-29 (VARIATION-CLOSE-1), but NOT from this entry. The medium-long is '
+      + 'authored directly by the composer and the `medium_long` slot is never passed to the '
+      + 'selector, so a structure added here would be unreachable — the same trap §11.1 sat in. '
+      + 'The embedded-T segment is authored in generate.ts, guarded to advanced tiers, specific '
+      + 'phases, and weeks whose long run carries no race pace, per §3\'s warning that this run '
+      + '"should not compete with the long run for recovery". Strides are composer-appended.',
   },
   {
     section: '§4.4',
     row: '| Variations | MP locked in second half (harder), MP from the start (hardest), MP with surges |',
-    disposition: 'partial',
+    disposition: 'carried',
     carriedBy: ['marathon-pace-long-run', 'fast-finish-long-run'],
-    note: 'The placement variants are the existing MP and fast-finish long runs. "MP with '
-      + 'surges" is not carried — it needs a surge inside a long-run segment, which the '
-      + 'segment grammar can now express (SEGLONG-1) but no entry uses.',
+    note: 'CLOSED 2026-08-29 (VARIATION-CLOSE-1). The two placement variants are the existing MP '
+      + 'and fast-finish long runs; MP-with-surges is now a third structure on the MP long. It '
+      + 'had no expressible shape until SEGLONG-1, because a surge is an interruption in the MP '
+      + 'work rather than a tail-anchored finish.',
   },
   {
     section: '§5.2',
@@ -189,10 +193,12 @@ export const VARIATION_LEDGER: Array<{
   {
     section: '§5.3',
     row: '| Variations | Cruise + threshold (e.g., 4 × 1 mi + 2 mi continuous), cruise pyramid (1-2-1-2-1) |',
-    disposition: 'out-of-scope',
-    note: 'OPEN. Both are expressible as sequences and neither is built. Research/22\'s '
-      + 'Marathon-Advanced LT row is "6-8 mi @ T", and the cruise+threshold hybrid is a '
-      + 'doctrine-sanctioned way to reach that volume — a real candidate, not a dead end.',
+    disposition: 'carried',
+    carriedBy: ['cruise-intervals'],
+    note: 'CLOSED 2026-08-29 (VARIATION-CLOSE-1). Both the cruise+threshold hybrid (the doc\'s '
+      + 'own worked example) and the 1-2-1-2-1 pyramid are sequences on the entry. Marathon '
+      + 'relevance: Research/22\'s Marathon-Advanced LT row is "6-8 mi @ T" and the hybrid is a '
+      + "doctrine-sanctioned way to accumulate that much time at threshold in one session.",
   },
   {
     section: '§5.4',
@@ -204,9 +210,12 @@ export const VARIATION_LEDGER: Array<{
   {
     section: '§5.5',
     row: '| Variations | 2 × 5 mi at HM with 3 min jog (split version), 8 mi MP + 2 mi T (combo) |',
-    disposition: 'out-of-scope',
-    note: 'OPEN AND MARATHON-RELEVANT. §5.5\'s own placement row is "HM and marathon specific", '
-      + 'and both variants are sequences the grammar can express.',
+    disposition: 'carried',
+    carriedBy: ['long-tempo'],
+    note: 'CLOSED 2026-08-29 (VARIATION-CLOSE-1). The split version was already carried as a rep '
+      + 'structure — this ledger row previously said otherwise and was wrong. The 8mi MP + 2mi T '
+      + 'combo is now a sequence on the same entry, continuous because §5.5\'s Recovery row is '
+      + '"None": the pace steps up, the run does not stop.',
   },
   {
     section: '§6.2',
@@ -313,10 +322,13 @@ export const VARIATION_LEDGER: Array<{
   {
     section: '§10.1',
     row: '| Variations | Progressive (faster segments lengthen across the workout); Nate Jenkins MP/HM alternations (longer segments, less differential) |',
-    disposition: 'out-of-scope',
-    note: 'OPEN AND MARATHON-RELEVANT. §10.1\'s own placement row is "marathon specific phase, '
-      + '6-10 weeks out", and `mp-10k-alternations` carries one fixed alternation shape. Both '
-      + 'variants are expressible; neither is built.',
+    disposition: 'carried',
+    carriedBy: ['mp-10k-alternations'],
+    note: 'CLOSED 2026-08-29 (VARIATION-CLOSE-1). Nate Jenkins MP/HM is a third alternation '
+      + '(longer segments, HM rather than 10K, which IS the smaller differential the row names); '
+      + 'the progressive form is a sequence, because an alternation repeats one fixed pair by '
+      + 'definition and cannot lengthen. The entry recurs on a 2-3 week cadence through the '
+      + 'specific phase, so two fixed shapes meant the same workout every time.',
   },
   {
     section: '§11.1',
@@ -403,16 +415,45 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     name: 'Medium-long run',
     section: '§3',
     family: 'medium_long',
-    zones: ['E', 'M'],
+    zones: ['E', 'M', 'T'],
     effortOnly: false,
-    structures: [{ kind: 'continuous', block: b(11, 15, 'mi'), shape: 'E to low M effort' }],
-    atPace: null,
+    structures: [
+      { kind: 'continuous', block: b(11, 15, 'mi'), shape: 'E to low M effort' },
+      // VARIATION-CLOSE-1 (2026-08-29) · §3's Variations row, "medium-long
+      // with embedded T segment (advanced)".
+      //
+      // This was the strongest open item in VARIATION_LEDGER and it is closed
+      // by evidence from a second doc: Research/22's Marathon-Advanced sample
+      // week runs "15 mi MLR (E w/ 6×ST)" — a STRUCTURED medium-long — so a
+      // plan-template row existed that the catalogue could not reproduce. The
+      // flat continuous block was the only shape available and it is not that
+      // session.
+      //
+      // A sequence rather than a rep set: doctrine says one embedded segment,
+      // not repeats, and the easy running around it is the point ("extend
+      // aerobic stimulus mid-week"). The T block is deliberately modest —
+      // §3's Contraindications row is explicit that this run "should not
+      // compete with the long run for recovery", so the embedded segment
+      // makes the run structured, not hard.
+      {
+        kind: 'sequence',
+        steps: [
+          { value: 3, unit: 'mi', zone: 'T', recoverySec: 0 },
+        ],
+        recoveryRule: 'Embedded, continuous · no jog either side. The run does not stop for it.',
+      },
+    ],
+    atPace: b(2, 4, 'mi'),
     session: b(11, 15, 'mi'),
     warmupCooldownMi: null,
     cadence: { minDays: 7, maxDays: 7, source: 'Frequency | 1×/week during marathon and HM specific phases' },
     distances: ['hm', 'm'],
     phases: BASE_THROUGH_SPECIFIC,
-    tiers: EVERYONE,
+    // "(advanced)" is the doc's own qualifier on the embedded-T variant, and
+    // the flat form stays open to everyone — but `tiers` is per-entry, so the
+    // narrower of the two governs the row. NOT_BEGINNER rather than advanced
+    // only: the doc marks the VARIANT advanced, not the session.
+    tiers: NOT_BEGINNER,
     cites: [
       'Distance (Pfitzinger) | 11–15 miles',
       'Frequency | 1×/week during marathon and HM specific phases',
@@ -490,7 +531,8 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     name: 'Marathon-pace long run',
     section: '§4.4',
     family: 'long',
-    zones: ['E', 'MP'],
+    // '10K' joins for the MP-with-surges structure below · VARIATION-CLOSE-1.
+    zones: ['E', 'MP', '10K'],
     effortOnly: false,
     structures: [
       {
@@ -500,6 +542,29 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
           { value: 12, unit: 'mi', zone: 'MP', recoverySec: 0 },
         ],
         recoveryRule: null,
+      },
+      // VARIATION-CLOSE-1 · §4.4's Variations row names three placements of
+      // the MP work: "MP locked in second half (harder), MP from the start
+      // (hardest), MP with surges". The first two are the existing MP long and
+      // the fast-finish long. The third had no shape until SEGLONG-1 gave the
+      // long-run grammar a way to hold quality that is not one tail-anchored
+      // block — surges are, by definition, interruptions in the MP work rather
+      // than a finish.
+      //
+      // The 10K rungs are the surges; the MP either side of them is the
+      // session. §4.4's Pace row ("MP exactly — not faster") governs the
+      // marathon-pace running, not the surges, which are the variation.
+      {
+        kind: 'sequence',
+        steps: [
+          { value: 3, unit: 'mi', zone: 'E', recoverySec: 0 },
+          { value: 3, unit: 'mi', zone: 'MP', recoverySec: 0 },
+          { value: 0.5, unit: 'mi', zone: '10K', recoverySec: 0 },
+          { value: 3, unit: 'mi', zone: 'MP', recoverySec: 0 },
+          { value: 0.5, unit: 'mi', zone: '10K', recoverySec: 0 },
+          { value: 3, unit: 'mi', zone: 'MP', recoverySec: 0 },
+        ],
+        recoveryRule: 'Continuous · the surges are run THROUGH, and MP resumes immediately after each',
       },
     ],
     atPace: b(8, 16, 'mi'),
@@ -634,6 +699,39 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     structures: [
       { kind: 'reps', reps: r(3, 6), rep: b(1, 1, 'mi'), recoverySec: r(60, 60), recoveryRule: '1 min jog per mile of work segment' },
       { kind: 'reps', reps: r(2, 4), rep: b(2, 2, 'mi'), recoverySec: r(120, 120), recoveryRule: '1 min jog per mile of work segment' },
+      // VARIATION-CLOSE-1 · §5.3's two Variations, both unequal-rung shapes
+      // and so both sequences. Marathon-relevant: Research/22's
+      // Marathon-Advanced LT row is "6-8 mi @ T", and the hybrid is a
+      // doctrine-sanctioned way to accumulate that much time at threshold in
+      // one session — which is §5.3's stated Purpose ("accumulate more time at
+      // T than a single tempo allows").
+      //
+      // "Cruise + threshold (e.g., 4 × 1 mi + 2 mi continuous)" — the doc's own
+      // worked example, taken literally.
+      {
+        kind: 'sequence',
+        steps: [
+          { value: 1, unit: 'mi', zone: 'T', recoverySec: 60 },
+          { value: 1, unit: 'mi', zone: 'T', recoverySec: 60 },
+          { value: 1, unit: 'mi', zone: 'T', recoverySec: 60 },
+          { value: 1, unit: 'mi', zone: 'T', recoverySec: 60 },
+          { value: 2, unit: 'mi', zone: 'T', recoverySec: 0 },
+        ],
+        recoveryRule: '1 min jog per mile of work · the closing 2 mi is continuous',
+      },
+      // "Cruise pyramid (1-2-1-2-1)" — the doc states the rung pattern in
+      // miles and nothing else, so recovery stays §5.3's own per-mile rule.
+      {
+        kind: 'sequence',
+        steps: [
+          { value: 1, unit: 'mi', zone: 'T', recoverySec: 60 },
+          { value: 2, unit: 'mi', zone: 'T', recoverySec: 120 },
+          { value: 1, unit: 'mi', zone: 'T', recoverySec: 60 },
+          { value: 2, unit: 'mi', zone: 'T', recoverySec: 120 },
+          { value: 1, unit: 'mi', zone: 'T', recoverySec: 0 },
+        ],
+        recoveryRule: '1 min jog per mile of work segment · 1-2-1-2-1',
+      },
     ],
     atPace: b(4, 8, 'mi'),
     session: null,
@@ -698,6 +796,20 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     structures: [
       { kind: 'continuous', block: b(8, 12, 'mi'), shape: 'Slightly slower than T — HM pace to T-minus-5 s/mi' },
       { kind: 'reps', reps: r(2, 2), rep: b(5, 5, 'mi'), recoverySec: r(180, 180), recoveryRule: '2 × 5 mi at HM with 3 min jog (split version)' },
+      // VARIATION-CLOSE-1 · §5.5's second Variation, "8 mi MP + 2 mi T
+      // (combo)". Continuous — the doc's Recovery row for this session is
+      // "None", and the combo is a pace change inside one block rather than
+      // two efforts, which is what makes the closing threshold miles bite.
+      // §5.5's placement is "HM and marathon specific", so this is the
+      // marathon-relevant half of the row.
+      {
+        kind: 'sequence',
+        steps: [
+          { value: 8, unit: 'mi', zone: 'MP', recoverySec: 0 },
+          { value: 2, unit: 'mi', zone: 'T', recoverySec: 0 },
+        ],
+        recoveryRule: 'Continuous · no jog between. The pace steps up, the run does not stop.',
+      },
     ],
     atPace: b(8, 12, 'mi'),
     session: null,
@@ -1488,6 +1600,36 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
         fast: { value: 400, unit: 'm', zone: '10K' },
         cycles: r(6, 10),
       },
+      // VARIATION-CLOSE-1 · §10.1's Variations row, both halves. This entry is
+      // marathon-only, race-specific, on a 2-3 week cadence, so it recurs
+      // through the specific phase — and it carried two fixed alternation
+      // shapes, which is how a session doctrine describes as varied became the
+      // same workout every time it came up.
+      //
+      // "Nate Jenkins MP/HM alternations (longer segments, less differential)"
+      // — longer, and HM rather than 10K, which IS the smaller differential
+      // the row names.
+      {
+        kind: 'alternation',
+        steady: { value: 2, unit: 'mi', zone: 'MP' },
+        fast: { value: 2, unit: 'mi', zone: 'HM' },
+        cycles: r(3, 5),
+      },
+      // "Progressive (faster segments lengthen across the workout)" — unequal
+      // rungs, so a sequence rather than an alternation: the alternation shape
+      // repeats one fixed pair by definition and cannot lengthen.
+      {
+        kind: 'sequence',
+        steps: [
+          { value: 1, unit: 'mi', zone: 'MP', recoverySec: 0 },
+          { value: 0.5, unit: 'mi', zone: '10K', recoverySec: 0 },
+          { value: 1, unit: 'mi', zone: 'MP', recoverySec: 0 },
+          { value: 1, unit: 'mi', zone: '10K', recoverySec: 0 },
+          { value: 1, unit: 'mi', zone: 'MP', recoverySec: 0 },
+          { value: 1.5, unit: 'mi', zone: '10K', recoverySec: 0 },
+        ],
+        recoveryRule: 'Continuous · the MP segments ARE the recovery (§10.1: "recovery segments at MP, NOT easy")',
+      },
     ],
     atPace: b(8, 15, 'mi'),
     session: b(8, 15, 'mi'),
@@ -1634,7 +1776,15 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     slug: 'canova-modified-block',
     name: 'Canova modified block',
     section: '§11.1',
-    family: 'marathon_specific',
+    // SEGLONG-2 (2026-08-29) · `long`, not `marathon_specific`, and the
+    // distinction decides whether this session can ever be prescribed.
+    // `SLOT_FAMILIES.long` admits only the `long` family, so filing a 30-40 km
+    // session under `marathon_specific` put it on the threshold and intervals
+    // slots — where it would be sized against a quality-day budget it dwarfs —
+    // and left it invisible to the long-run rotation that actually picks a
+    // runner's weekly long. It IS the long run on the weeks it is prescribed,
+    // which is what "single longer run with two segments" says.
+    family: 'long',
     zones: ['E', 'MP'],
     effortOnly: false,
     structures: [
@@ -1656,7 +1806,16 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     cadence: { minDays: 14, maxDays: 21, source: 'Spacing | 2–3 weeks between blocks' },
     perCycleMax: 3,
     distances: ['m'],
-    phases: ['race_specific'],
+    // SEGLONG-2 · `specific_support` as well as `race_specific`, because §11.1
+    // places this session across BOTH: "Specific phase; first block 8-10 weeks
+    // out, last 4-5 weeks out". The engine's QUALITY phase maps to
+    // specific_support (PHASE_FROM_ENGINE), and eight-to-ten weeks out of a
+    // marathon lands there. It also happens to be the only phase the long-run
+    // rotation runs in for a marathon — the race-specific weeks are reserved
+    // for §4.4 because the week's dose accounting is built on that assumption
+    // (see `rotatesLongVariant`). Doctrine and the accounting agree here,
+    // which is why this is the right home rather than a workaround.
+    phases: ['specific_support', 'race_specific'],
     // "for mortals" is the Variations row's own word for who this is, and the
     // Contraindications row's sub-elite scaling is what it scales to. Not
     // beginners — it is still the second-heaviest session in the vocabulary.
