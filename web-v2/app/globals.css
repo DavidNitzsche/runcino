@@ -629,11 +629,12 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
 .hero-v2-done .leftstack{flex:initial;width:auto;display:flex;flex-direction:column;}
 .hero-v2-done .mapcol{align-self:stretch;min-width:0;grid-column:2;}
 .hero-v2-done .wcard{align-self:stretch;min-width:0;}
-/* Leaflet-hosted route card · Style F+ from designs/route-map-mockups.
-   The Leaflet map fills the entire .routemap box · tiles ARE the
-   background now, no need for the synthetic grid + dark gradient. The
+/* MapLibre-hosted route card · Style F+ from designs/route-map-mockups.
+   Migrated off Leaflet+raster tiles 2026-08-28 (CARTO retired its raster
+   CDN). The MapLibre GL JS map fills the entire .routemap box · tiles ARE
+   the background now, no need for the synthetic grid + dark gradient. The
    elev strip + OSM/CARTO attribution sit on top as small overlays. */
-.hero-v2 .routemap.routemap-leaflet-host{
+.hero-v2 .routemap.routemap-maplibre-host{
   position:relative;flex:1;border-radius:16px;overflow:hidden;
   border:1px solid rgba(255,255,255,.12);
   box-shadow:0 18px 40px -22px rgba(0,0,0,.6);
@@ -641,11 +642,11 @@ body{font-family:Inter,sans-serif;background:#06080c;min-height:100vh;color:#211
   display:block;
   min-height:380px;
 }
-.hero-v2 .routemap.routemap-leaflet-host .routemap-leaflet{
+.hero-v2 .routemap.routemap-maplibre-host .routemap-maplibre{
   width:100%;height:100%;border-radius:16px;
 }
-.hero-v2 .routemap.routemap-leaflet-host .leaflet-container{
-  background:#0a0e16;font-family:inherit;
+.hero-v2 .routemap.routemap-maplibre-host .maplibregl-map{
+  background:#0a0e16;font-family:inherit;border-radius:16px;
 }
 .hero-v2 .routemap-attribution{
   position:absolute; right:8px; bottom:6px; z-index:3;

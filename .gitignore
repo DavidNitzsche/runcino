@@ -38,3 +38,6 @@ native/.asc.env
 legacy/native/.asc-keys/
 native-v2/build/
 scripts/qa/.sessions.json
+
+# Native build-time secrets (CARTO key etc) · see native-v2/Secrets.example.xcconfig
+native-v2/Secrets.xcconfig

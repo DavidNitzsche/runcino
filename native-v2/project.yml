@@ -21,6 +21,28 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     GENERATE_INFOPLIST_FILE: YES
 
+# Build-time secrets (CARTO_API_KEY etc) · gitignored, see
+# Secrets.example.xcconfig. Included as the BASE config file for every
+# build configuration so every target sees $(CARTO_API_KEY); RouteMapView
+# reads it back out of Info.plist (CartoAPIKey → $(CARTO_API_KEY)) rather
+# than a source literal. xcodegen requires this file to exist at generate
+# time — `xcodegen generate` fails with a missing-file error if it's absent,
+# which is why Secrets.example.xcconfig (committed, blank value) exists:
+# `cp Secrets.example.xcconfig Secrets.xcconfig` on a fresh checkout.
+configFiles:
+  Debug: Secrets.xcconfig
+  Release: Secrets.xcconfig
+
+packages:
+  # MapLibre GL Native · vector-tile map renderer. Replaces MKMapView +
+  # MKTileOverlay in RouteMapView.swift (2026-08-28) — CARTO retired its
+  # raster tile CDN, and MapLibre is the only client that speaks their
+  # remaining vector-tile / GL-style offering. Pinned to the exact release
+  # its own Package.swift ships as of this migration; bump deliberately.
+  MapLibre:
+    url: https://github.com/maplibre/maplibre-gl-native-distribution
+    exactVersion: 6.29.0
+
 targets:
   Faff:
     type: application
@@ -141,6 +163,12 @@ targets:
           - CFBundleURLName: run.faff.strava-oauth
             CFBundleURLSchemes:
               - faff
+        # CARTO style key for RouteMapView's MapLibre basemap. Substituted
+        # from the CARTO_API_KEY build setting (Secrets.xcconfig via the
+        # project-level configFiles: block above) at build time — never a
+        # literal in source. CartoConfig.swift reads it back out via
+        # Bundle.main.object(forInfoDictionaryKey:).
+        CartoAPIKey: $(CARTO_API_KEY)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: run.faff.app
@@ -161,6 +189,8 @@ targets:
       - target: FaffWatch Watch App
         embed: true
         codeSign: true
+      # MapLibre GL Native · RouteMapView.swift's basemap renderer.
+      - package: MapLibre
 
   # iOS unit tests · hosted inside the Faff app so @testable import Faff
   # has visibility into internal types (TokenStore, API, SignInView, etc.).

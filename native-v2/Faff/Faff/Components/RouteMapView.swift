@@ -3,15 +3,31 @@
 //  Native mirror of the web's RouteMap.tsx — a pace-graded run route on
 //  CartoDB Dark Matter tiles.
 //
-//  Why MKMapView and not SwiftUI Map: SwiftUI's Map can't host a custom tile
-//  overlay, and we want CartoDB's dark basemap specifically — its street
-//  labels are far more muted than Apple's standard style, so the names recede
+//  2026-08-28 · MIGRATED OFF MKMapView + MKTileOverlay. CARTO retired its
+//  raster tile CDN — the old `basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x
+//  .png` endpoint this file used to point an MKTileOverlay at now returns an
+//  "API KEY REQUIRED" watermark tile UNCONDITIONALLY, confirmed by direct
+//  testing that a valid key makes no difference. CARTO only continues to
+//  serve vector tiles, consumed here via a ready-made MapLibre GL style JSON
+//  (basemaps.cartocdn.com/gl/dark-matter-gl-style) — CARTO's own "Dark
+//  Matter" style, which is the exact look this file was already going for.
+//  MLNMapView (MapLibre GL Native, a Swift Package — see project.yml
+//  `packages:`) replaces MKMapView; the route/gradient/endpoint overlays are
+//  rebuilt as MLNShapeSource + MLNStyleLayer instead of MKOverlay subclasses.
+//  See CartoConfig.swift for the style-key plumbing.
+//
+//  Why a vector basemap and not Apple's own: CartoDB's dark basemap has far
+//  more muted street labels than Apple's standard style, so the names recede
 //  instead of fighting the route (David 2026-06-16 · "the street names over
-//  the route is weird … do it the same way we do it on the web app").
+//  the route is weird … do it the same way we do it on the web app"). That
+//  reasoning is untouched by the tile-format migration — CARTO's GL style
+//  carries the same muted-label design, and `showLabels: false` swaps in
+//  CARTO's dedicated "Dark Matter without labels" style (the vector-tile
+//  equivalent of the old `dark_nolabels` raster variant) for race courses
+//  that span a whole city.
 //
 //  Stack (matches RouteMap.tsx):
-//   · CartoDB dark_all @2x raster tiles · canReplaceMapContent hides Apple's
-//     own basemap so ONLY these tiles render (no Apple labels at all).
+//   · CARTO's "Dark Matter" MapLibre GL style, rendered by MLNMapView.
 //   · Per-mile pace bucketing · five quintile buckets across the run's own
 //     splits, colored warm→cool (fastest → slowest). Baseline coral underlay
 //     drawn first so the line shows even if the bucket walk degenerates.
@@ -20,7 +36,8 @@
 //
 
 import SwiftUI
-import MapKit
+import MapLibre
+import CoreLocation
 import UIKit
 
 struct RouteMapView: UIViewRepresentable {
@@ -48,7 +65,7 @@ struct RouteMapView: UIViewRepresentable {
     /// Place labels on the basemap. The post-run route keeps them (small area,
     /// names recede). The race course map spans a whole city, where CartoDB's
     /// baked "SAN DIEGO / CORONADO" labels render huge — pass false there to use
-    /// the dark_nolabels tiles for a clean route (David 2026-06-17).
+    /// the label-free GL style for a clean route (David 2026-06-17).
     var showLabels: Bool = true
 
     /// The pace window the session asked for, seconds per mile. When present,
@@ -176,7 +193,7 @@ struct RouteMapView: UIViewRepresentable {
     /// Density, not hue — it says WHICH zone without saying whether the
     /// distribution was good, which is exactly the shape `ZoneBar.restFill`
     /// already uses on the tile. Opaque rather than an alpha, because the
-    /// route is drawn as many short overlapping polylines and a translucent
+    /// route is drawn as many short overlapping segments and a translucent
     /// stroke doubles up at every round-capped joint, beading the line.
     ///
     /// The v5 route cards no longer colour by zone at all — see
@@ -197,64 +214,86 @@ struct RouteMapView: UIViewRepresentable {
         return lerp(cs[i], cs[i + 1], CGFloat(tt - Double(i)))
     }
 
-    func makeUIView(context: Context) -> MKMapView {
-        let map = MKMapView()
+    // MARK: - UIViewRepresentable
+
+    func makeUIView(context: Context) -> MLNMapView {
+        let map = MLNMapView(frame: .zero, styleURL: CartoConfig.styleURL(labels: showLabels))
         map.delegate = context.coordinator
         map.isZoomEnabled = false
         map.isScrollEnabled = false
         map.isRotateEnabled = false
         map.isPitchEnabled = false
         map.isUserInteractionEnabled = false   // purely visual · touches pass through
-        map.showsCompass = false
-        map.showsScale = false
         map.showsUserLocation = false
-        map.pointOfInterestFilter = .excludingAll
-        map.overrideUserInterfaceStyle = .dark
+        map.compassView.isHidden = true
+        map.logoView.isHidden = true
+        // No Apple "Legal" link to hide here (unlike MKMapView) — MapLibre's
+        // own attribution control is a plain UIButton we own directly. Hidden
+        // for the same parity reason the old MKMapView code hid Apple's: the
+        // web RouteMap shows no attribution either (David 2026-06-17).
+        map.attributionButton.isHidden = true
         map.backgroundColor = UIColor(Color(hex: 0x0A0E16))
+        context.coordinator.owner = self
 
-        // CartoDB Dark Matter raster tiles. canReplaceMapContent = true tells
-        // MapKit the overlay covers everything, so it skips drawing its own
-        // basemap (and labels) entirely — only the muted CartoDB tiles show.
-        let style = showLabels ? "dark_all" : "dark_nolabels"
-        let overlay = MKTileOverlay(
-            urlTemplate: "https://a.basemaps.cartocdn.com/\(style)/{z}/{x}/{y}@2x.png"
-        )
-        overlay.canReplaceMapContent = true
-        overlay.tileSize = CGSize(width: 512, height: 512)   // @2x retina tiles
-        map.addOverlay(overlay, level: .aboveLabels)
-
-        drawRoute(on: map)
-        hideAttribution(map)
+        if map.style != nil {
+            // Style already loaded synchronously from cache · draw immediately,
+            // didFinishLoadingStyle won't fire again for this load.
+            context.coordinator.applyRoute(to: map)
+        }
         return map
     }
 
-    func updateUIView(_ map: MKMapView, context: Context) {
-        // Re-draw the route on data change · keep the tile overlay in place.
-        map.removeOverlays(map.overlays.filter { !($0 is MKTileOverlay) })
-        map.removeAnnotations(map.annotations)
-        drawRoute(on: map)
-        hideAttribution(map)
-    }
+    func updateUIView(_ map: MLNMapView, context: Context) {
+        context.coordinator.owner = self
 
-    /// Hide MapKit's "Legal" attribution link. We replace the basemap entirely
-    /// with CartoDB tiles (canReplaceMapContent), so Apple's map data — and the
-    /// legal link it requires — isn't used; the web RouteMap shows no attribution
-    /// either (parity · David 2026-06-17). Apple exposes no public API to remove
-    /// it, so locate the label among the map's subviews and hide it. Re-run after
-    /// a tick because MapKit adds it lazily on first layout.
-    private func hideAttribution(_ map: MKMapView) {
-        func hide(in view: UIView) {
-            for sub in view.subviews {
-                let name = String(describing: type(of: sub))
-                if name.contains("Attribution") || name.contains("Legal") { sub.isHidden = true }
-                hide(in: sub)
-            }
+        let wantURL = CartoConfig.styleURL(labels: showLabels)
+        if map.styleURL != wantURL {
+            // Label toggle changed · full style reload, applyRoute runs again
+            // from didFinishLoadingStyle once the new style lands.
+            map.styleURL = wantURL
+            return
         }
-        hide(in: map)
-        DispatchQueue.main.async { hide(in: map) }
+        if map.style != nil {
+            context.coordinator.applyRoute(to: map)
+        }
     }
 
-    private func drawRoute(on map: MKMapView) {
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    // MARK: - Delegate
+
+    final class Coordinator: NSObject, MLNMapViewDelegate {
+        var owner: RouteMapView!
+
+        func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
+            applyRoute(to: mapView)
+        }
+
+        func applyRoute(to map: MLNMapView) {
+            guard let style = map.style, let owner else { return }
+            RouteMapView.removeFaffLayers(from: style)
+            owner.drawRoute(on: map, style: style)
+        }
+    }
+
+    // MARK: - Drawing
+
+    private static let faffSourceIDs = ["faff-baseline", "faff-gradient", "faff-endpoints"]
+    private static let faffLayerIDs = ["faff-baseline-line", "faff-gradient-line", "faff-endpoints-circle"]
+
+    /// Re-drawing on every SwiftUI update means every source/layer id must be
+    /// unique-or-absent before re-adding — MLNStyle.addSource/addLayer throws
+    /// (as an NSException, not a Swift error) on a duplicate identifier.
+    private static func removeFaffLayers(from style: MLNStyle) {
+        for lid in faffLayerIDs {
+            if let layer = style.layer(withIdentifier: lid) { style.removeLayer(layer) }
+        }
+        for sid in faffSourceIDs {
+            if let source = style.source(withIdentifier: sid) { style.removeSource(source) }
+        }
+    }
+
+    private func drawRoute(on map: MLNMapView, style: MLNStyle) {
         guard coords.count >= 2 else { return }
 
         // Baseline line drawn first (always visible · belt + suspenders). Match
@@ -262,40 +301,85 @@ struct RouteMapView: UIViewRepresentable {
         // mid-zone green under an HR route, coral under a pace route.
         let hrMode = RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits,
                                               phases: phases, paceBand: paceBand)
-        let baseline = ColoredPolyline(coordinates: coords, count: coords.count)
         // With a band the whole line is one of two flat fills, so the underlay
         // takes the in-band fill rather than a third colour that could peek
         // through at a joint and read as a mile that was neither.
-        baseline.strokeColor = paceBand != nil
+        let baselineColor: UIColor = paceBand != nil
             ? UIColor(V5.signal)
             : (hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xD03F3F)))
-        baseline.strokeWidth = 5
-        map.addOverlay(baseline, level: .aboveLabels)
+        let baselineFeature = MLNPolylineFeature(coordinates: coords, count: UInt(coords.count))
+        let baselineSource = MLNShapeSource(identifier: "faff-baseline", features: [baselineFeature], options: nil)
+        style.addSource(baselineSource)
+        let baselineLayer = MLNLineStyleLayer(identifier: "faff-baseline-line", source: baselineSource)
+        baselineLayer.lineColor = NSExpression(forConstantValue: baselineColor)
+        baselineLayer.lineWidth = NSExpression(forConstantValue: 5)
+        baselineLayer.lineCap = NSExpression(forConstantValue: "round")
+        baselineLayer.lineJoin = NSExpression(forConstantValue: "round")
+        style.addLayer(baselineLayer)
 
         // Pace-graded line · many short segments, each a continuously
         // interpolated color, so the buckets fade into each other instead of
         // hard-switching (David 2026-06-16). Consecutive segments share a
-        // boundary vertex and round caps blend the joints.
+        // boundary vertex and round caps blend the joints. One shape source
+        // holds every segment as its own LineString feature carrying the
+        // segment's color as an attribute; MLNFeature's `attributes` accepts a
+        // UIColor directly (converted to its CSS string form when added to the
+        // source — see MLNFeature.h), and a single data-driven line layer reads
+        // it back via a key-path NSExpression — the MapLibre equivalent of the
+        // old per-segment MKOverlay-with-its-own-stroke-color technique.
+        var segFeatures: [MLNPolylineFeature] = []
         for seg in gradientSegments() where seg.coords.count >= 2 {
-            let line = ColoredPolyline(coordinates: seg.coords, count: seg.coords.count)
-            line.strokeColor = seg.color
-            line.strokeWidth = 6
-            map.addOverlay(line, level: .aboveLabels)
+            let f = MLNPolylineFeature(coordinates: seg.coords, count: UInt(seg.coords.count))
+            f.attributes = ["strokeColor": seg.color]
+            segFeatures.append(f)
+        }
+        if !segFeatures.isEmpty {
+            let gradientSource = MLNShapeSource(identifier: "faff-gradient", features: segFeatures, options: nil)
+            style.addSource(gradientSource)
+            let gradientLayer = MLNLineStyleLayer(identifier: "faff-gradient-line", source: gradientSource)
+            gradientLayer.lineColor = NSExpression(forKeyPath: "strokeColor")
+            gradientLayer.lineWidth = NSExpression(forConstantValue: 6)
+            gradientLayer.lineCap = NSExpression(forConstantValue: "round")
+            gradientLayer.lineJoin = NSExpression(forConstantValue: "round")
+            style.addLayer(gradientLayer)
         }
 
-        // Endpoints last · annotations always render above overlays.
-        let start = RouteEndpoint(coordinate: coords.first!, kind: .start)
-        let finish = RouteEndpoint(coordinate: coords.last!, kind: .finish)
-        map.addAnnotations([start, finish])
+        // Endpoints last · one circle layer, data-driven per-feature color
+        // (same UIColor-attribute trick as the gradient line) so start/finish
+        // share a single source and layer.
+        let start = MLNPointFeature()
+        start.coordinate = coords.first!
+        start.attributes = ["circleColor": UIColor(Color(hex: 0x3EBD41))]   // start · Success green (palette)
+        let finish = MLNPointFeature()
+        finish.coordinate = coords.last!
+        finish.attributes = ["circleColor": UIColor(Color(hex: 0xFC4D64))]  // finish · Warning red (palette)
+        let endpointsSource = MLNShapeSource(identifier: "faff-endpoints", features: [start, finish], options: nil)
+        style.addSource(endpointsSource)
+        let endpointsLayer = MLNCircleStyleLayer(identifier: "faff-endpoints-circle", source: endpointsSource)
+        endpointsLayer.circleRadius = NSExpression(forConstantValue: 7)
+        endpointsLayer.circleColor = NSExpression(forKeyPath: "circleColor")
+        endpointsLayer.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
+        endpointsLayer.circleStrokeWidth = NSExpression(forConstantValue: 1.5)
+        endpointsLayer.circleOpacity = NSExpression(forConstantValue: 1)
+        style.addLayer(endpointsLayer)
 
-        map.setVisibleMapRect(
-            baseline.boundingMapRect,
+        var minLat = coords[0].latitude, maxLat = coords[0].latitude
+        var minLng = coords[0].longitude, maxLng = coords[0].longitude
+        for c in coords {
+            minLat = min(minLat, c.latitude); maxLat = max(maxLat, c.latitude)
+            minLng = min(minLng, c.longitude); maxLng = max(maxLng, c.longitude)
+        }
+        let bounds = MLNCoordinateBoundsMake(
+            CLLocationCoordinate2D(latitude: minLat, longitude: minLng),
+            CLLocationCoordinate2D(latitude: maxLat, longitude: maxLng)
+        )
+        map.setVisibleCoordinateBounds(
+            bounds,
             edgePadding: UIEdgeInsets(top: 26, left: 26, bottom: 26, right: 26),
-            animated: false
+            animated: false,
+            completionHandler: nil
         )
     }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
 
     // MARK: - Pace gradient
 
@@ -471,52 +555,6 @@ struct RouteMapView: UIViewRepresentable {
         }
         return cur.v
     }
-
-    // MARK: - Delegate
-
-    final class Coordinator: NSObject, MKMapViewDelegate {
-        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            if let tile = overlay as? MKTileOverlay {
-                return MKTileOverlayRenderer(tileOverlay: tile)
-            }
-            if let line = overlay as? ColoredPolyline {
-                let r = MKPolylineRenderer(polyline: line)
-                r.strokeColor = line.strokeColor
-                r.lineWidth = line.strokeWidth
-                r.lineCap = .round
-                r.lineJoin = .round
-                return r
-            }
-            return MKOverlayRenderer(overlay: overlay)
-        }
-
-        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            guard let ep = annotation as? RouteEndpoint else { return nil }
-            let id = "route-endpoint"
-            let view = mapView.dequeueReusableAnnotationView(withIdentifier: id)
-                ?? MKAnnotationView(annotation: annotation, reuseIdentifier: id)
-            view.annotation = annotation
-            view.subviews.forEach { $0.removeFromSuperview() }
-
-            let size: CGFloat = 14
-            view.frame = CGRect(x: 0, y: 0, width: size, height: size)
-            view.backgroundColor = .clear
-            view.centerOffset = .zero
-
-            // Solid dot with a thin white ring · start green, finish coral.
-            // (Was a green ring around a near-black center, which David found
-            // weird · 2026-06-16.) Symmetric with the finish marker.
-            let dot = UIView(frame: view.bounds)
-            dot.layer.cornerRadius = size / 2
-            dot.backgroundColor = ep.kind == .start
-                ? UIColor(Color(hex: 0x3EBD41))   // start · Success green (palette)
-                : UIColor(Color(hex: 0xFC4D64))   // finish · Warning red (palette)
-            dot.layer.borderColor = UIColor.white.cgColor
-            dot.layer.borderWidth = 1.5
-            view.addSubview(dot)
-            return view
-        }
-    }
 }
 
 /// A workout phase reduced to what the route map needs: its distance and its
@@ -524,25 +562,6 @@ struct RouteMapView: UIViewRepresentable {
 struct PhaseSample {
     let mi: Double
     let sec: Int
-}
-
-// MARK: - Overlay / annotation carriers
-
-/// MKPolyline that carries its own stroke color + width so the single
-/// delegate can render many differently-colored pace segments.
-final class ColoredPolyline: MKPolyline {
-    var strokeColor: UIColor = .systemRed
-    var strokeWidth: CGFloat = 5
-}
-
-final class RouteEndpoint: NSObject, MKAnnotation {
-    enum Kind { case start, finish }
-    let coordinate: CLLocationCoordinate2D
-    let kind: Kind
-    init(coordinate: CLLocationCoordinate2D, kind: Kind) {
-        self.coordinate = coordinate
-        self.kind = kind
-    }
 }
 
 // MARK: - Pace + distance helpers (mirror RouteMap.tsx)

@@ -2742,7 +2742,7 @@ function CompletedHeroV2({
         </div>
 
           <div className="mapcol">
-            <div className="routemap routemap-leaflet-host">
+            <div className="routemap routemap-maplibre-host">
               {hasRoute && runData?.route_polyline ? (
                 <>
                   <RouteMap

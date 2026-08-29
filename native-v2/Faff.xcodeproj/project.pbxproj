@@ -33,6 +33,7 @@
 		1BB8C7635DAD616EC84CB80E /* DecodeSweepTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E061B6DE76C25B0D93E9FF /* DecodeSweepTests.swift */; };
 		1CCD6EF18C3EFBE8C114FB8D /* SettingsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EA8EB84CF316484DDD472B3 /* SettingsV5.swift */; };
 		1E2A914A6F9494BD4D0F69E4 /* V5RaceStatsColumnsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6DEE8E1E5A40B942A2E036 /* V5RaceStatsColumnsTests.swift */; };
+		1FACE8007EA29DCA615A05EC /* CartoConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 288A593E39610B2FC7AD4784 /* CartoConfig.swift */; };
 		209B9B2415A9DD80ADC7A4B8 /* StateScreensV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3EEDC7AADDE262E2A9AD515 /* StateScreensV5.swift */; };
 		20AEFCE629FD7E7D0C7021C2 /* WatchThemeV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C80F049A1BE98B3445C2549 /* WatchThemeV5.swift */; };
 		21605BCF7352F46F697713E0 /* RacesV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A369BFF325F4DEEBD7624B8 /* RacesV5.swift */; };
@@ -205,6 +206,7 @@
 		E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D79010E6307A7B819FD164 /* TokenStore.swift */; };
 		E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DDE304E9C6471D398E2D102 /* Briefing.swift */; };
 		E1D19AD240AAA3B18043EF2F /* TreadmillHRStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */; };
+		E342E91C1AA9A12066C35A14 /* MapLibre in Frameworks */ = {isa = PBXBuildFile; productRef = CE9E5630F4A83C871BA20125 /* MapLibre */; };
 		E3F08F2316C2909AF8B3AB8B /* FaffWatch Widgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 574046EFA57DAA5E3FA61AB5 /* FaffWatch Widgets.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E3FA651A77FAF9DC15B217FE /* RunDetailV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FF8F02690033B47196AEF42 /* RunDetailV5.swift */; };
 		E54713F776795DC8AB4F468D /* ChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87DEABD97368BE1C69024791 /* ChimePlayer.swift */; };
@@ -332,6 +334,7 @@
 		232F9F14460F13DDC369F512 /* Brandmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brandmark.swift; sourceTree = "<group>"; };
 		2600BF38DD79CB8A08592B03 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		270299E44E94590D5B9B8501 /* OFL-InstrumentSans.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-InstrumentSans.txt"; sourceTree = "<group>"; };
+		288A593E39610B2FC7AD4784 /* CartoConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CartoConfig.swift; sourceTree = "<group>"; };
 		29E036C5FD2EC231D2FCDC1A /* Watch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Watch.swift; sourceTree = "<group>"; };
 		2BC0F0DA346169545F683D08 /* WatchLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLayout.swift; sourceTree = "<group>"; };
 		2C7678F7233E8206F32F839F /* WireCorpus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireCorpus.swift; sourceTree = "<group>"; };
@@ -529,7 +532,19 @@
 		FCA4369345EE34EAFD3E307C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
+		"TEMP_77384E71-CB74-40CD-8324-93D0DB0CFC7E" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2B3A1654A52057652787C0AE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E342E91C1AA9A12066C35A14 /* MapLibre in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		00A40C55CB0AA30B6F69D363 /* DesignV5 */ = {
@@ -895,6 +910,7 @@
 		EC88686815839E1404C2FFD6 /* Util */ = {
 			isa = PBXGroup;
 			children = (
+				288A593E39610B2FC7AD4784 /* CartoConfig.swift */,
 				B2D9D5E8A322A900CD7832D7 /* ForegroundWork.swift */,
 				A946A92F47DD42163C1A409F /* RaceName.swift */,
 				872674AC672B720B19FB3D93 /* SessionHygiene.swift */,
@@ -904,6 +920,14 @@
 				4E6A293892BB32DC4273DE50 /* Units.swift */,
 			);
 			path = Util;
+			sourceTree = "<group>";
+		};
+		"TEMP_A336F0E7-9121-4D91-B328-90CC8F4DE07D" /* native-v2 */ = {
+			isa = PBXGroup;
+			children = (
+				"TEMP_77384E71-CB74-40CD-8324-93D0DB0CFC7E" /* Secrets.xcconfig */,
+			);
+			path = "native-v2";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -969,6 +993,7 @@
 			buildPhases = (
 				BDEA2FD24F3637461F07E44C /* Sources */,
 				733C4A07DD91440E96DCFCD0 /* Resources */,
+				2B3A1654A52057652787C0AE /* Frameworks */,
 				E78D6D288A9B14BD0D2F8FB6 /* Embed Watch Content */,
 			);
 			buildRules = (
@@ -978,6 +1003,7 @@
 			);
 			name = Faff;
 			packageProductDependencies = (
+				CE9E5630F4A83C871BA20125 /* MapLibre */,
 			);
 			productName = Faff;
 			productReference = B6BF22DF1BD412FB1CA83446 /* Faff.app */;
@@ -1043,6 +1069,9 @@
 			);
 			mainGroup = D9DEE04D90D1C12AAAA1F464;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F81F5BE8185F5C66E388AC08 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C76599E847B6D255D6D2CEB2 /* Products */;
 			projectDirPath = "";
@@ -1198,6 +1227,7 @@
 				03E4A13F4A64C82FE77B80B5 /* BreakdownV5Samples.swift in Sources */,
 				E18843BC1D6862FEB7FEB126 /* Briefing.swift in Sources */,
 				D3BC37653D9BE02DAEABE840 /* C_CoachTransparency.swift in Sources */,
+				1FACE8007EA29DCA615A05EC /* CartoConfig.swift in Sources */,
 				12CCD50936DC4C94D2F4B5B5 /* ChartsV5.swift in Sources */,
 				B5DFBF384D9E66275E5A115A /* CoachDecisionCard.swift in Sources */,
 				5966D86B3E01B512FB053BD2 /* CoachFacts.swift in Sources */,
@@ -1374,6 +1404,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = "TEMP_77384E71-CB74-40CD-8324-93D0DB0CFC7E" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1600,6 +1631,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = "TEMP_77384E71-CB74-40CD-8324-93D0DB0CFC7E" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1783,6 +1815,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F81F5BE8185F5C66E388AC08 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/maplibre/maplibre-gl-native-distribution";
+			requirement = {
+				kind = exactVersion;
+				version = 6.29.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CE9E5630F4A83C871BA20125 /* MapLibre */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F81F5BE8185F5C66E388AC08 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */;
+			productName = MapLibre;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 71044FC49B493BB4714930F0 /* Project object */;
 }

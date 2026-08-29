@@ -26,7 +26,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "leaflet": "^1.9.4",
+    "maplibre-gl": "^6.6.0",
     "next": "15.1.6",
     "pg": "^8.13.1",
     "react": "19.0.0",
@@ -35,7 +35,6 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "@types/leaflet": "^1.9.18",
     "@types/node": "^22",
     "@types/pg": "^8.11.10",
     "@types/react": "^19",
