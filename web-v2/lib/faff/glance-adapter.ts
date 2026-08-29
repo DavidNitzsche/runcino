@@ -422,12 +422,18 @@ function buildWorkoutBreakdown(
     goal_seconds: glance.raceGoalSeconds,
     goal_distance_mi: glance.raceGoalDistanceMi,
   });
-  const easyBand = dp.easySecLo != null && dp.easySecHi != null
-    ? `${fmtPace(dp.easySecLo)}–${fmtPace(dp.easySecHi)}/mi` : null;
-  const longBand = dp.longSecLo != null && dp.longSecHi != null
-    ? `${fmtPace(dp.longSecLo)}–${fmtPace(dp.longSecHi)}/mi` : null;
-  const tempoBand = dp.tempoSecLo != null && dp.tempoSecHi != null
-    ? `${fmtPace(dp.tempoSecLo)}–${fmtPace(dp.tempoSecHi)}/mi` : null;
+  // PACE-T-2 (2026-08-29) · a zero-width band renders as ONE pace. Tempo is
+  // run AT threshold, so its two edges are equal (see `derivePaces`), and
+  // "6:48–6:48/mi" reads as a broken range rather than a precise target. The
+  // easy and long bands are genuinely wide and print unchanged.
+  const band = (lo: number | null, hi: number | null): string | null => {
+    if (lo == null || hi == null) return null;
+    const a = fmtPace(lo), b = fmtPace(hi);
+    return a === b ? `${a}/mi` : `${a}–${b}/mi`;
+  };
+  const easyBand = band(dp.easySecLo, dp.easySecHi);
+  const longBand = band(dp.longSecLo, dp.longSecHi);
+  const tempoBand = band(dp.tempoSecLo, dp.tempoSecHi);
   const aerobicCap = dp.aerobicCapBpm != null ? `${dp.aerobicCapBpm} bpm` : null;
   // P1-47 fix 2026-07-06 · WU/CD "~N min" estimates ride the runner's own
   // easy pace — the week's authored easy/long spec band first (generator

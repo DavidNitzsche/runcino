@@ -243,6 +243,10 @@ function fmtPace(sPerMi: number | null): string | null {
 function fmtPaceRange(loS: number | null, hiS: number | null): string | null {
   const lo = fmtPace(loS), hi = fmtPace(hiS);
   if (!lo || !hi) return null;
+  // A zero-width band is one pace, not a range · "6:48 /mi", never
+  // "6:48-6:48 /mi". Tempo is the case that reaches this (tempo == T, both
+  // edges equal); the easy/long bands are genuinely wide and unaffected.
+  if (lo === hi) return `${lo} /mi`;
   return `${lo}-${hi} /mi`;
 }
 
@@ -333,8 +337,18 @@ export function derivePaces(p: ProfileInputs): DerivedPaceTargets {
     easySecHi: t != null ? t + 120 : null,   // T+120 · matches spec-builder
     longSecLo: t != null ? t + 55 : null,
     longSecHi: t != null ? t + 90 : null,
-    tempoSecLo: t != null ? t + 5 : null,
-    tempoSecHi: t != null ? t + 18 : null,
+    // PACE-T-2 (2026-08-29) · a continuous tempo is run AT threshold, so both
+    // edges are T. This was T+5..T+18 — the SEPARATE sub-threshold band
+    // (Research/04 §5.1 "Sub-threshold intervals ... ST (10-15 s/mi slower
+    // than T)") shipped under a tempo label, which is the exact defect
+    // spec-builder.ts's PACE-T-1 fixed on 2026-06-23 in the other copy of this
+    // derivation and this one was left behind. Research/04 §5.1 "Continuous
+    // tempo | 3-8 mi continuous | T" and §5.2 "Pace | T pace". Kept as a
+    // lo/hi pair rather than collapsed to one field because `midSec` and two
+    // band renderers read the pair; a zero-width band now renders as a single
+    // pace (see `fmtPaceRange`). Bound by `PACE.tempo-is-threshold`.
+    tempoSecLo: t,
+    tempoSecHi: t,
     thresholdSec: t,
     intervalSec: t != null ? t - 18 : null,
     // T - 61s (~mile pace) · PACE.rep-offset. Was T-30 ("~5K pace" per this

@@ -3372,6 +3372,71 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
   {
+    id: 'PACE.tempo-is-threshold',
+    binds: [
+      'lib/plan/spec-builder.ts#buildWorkoutSpec.tempo',
+      // The second copy. `derivePaces` re-derives every zone off T for the
+      // spec-less fallback card, and this offset is the one that drifted:
+      // spec-builder was corrected to tempo == T on 2026-06-23 (PACE-T-1) and
+      // this copy kept the old sub-threshold band for two months, so a tempo
+      // day with no authored spec rendered a pace 5-18 s/mi slower than the
+      // approved definition. Both literals are read below.
+      'lib/training/prescriptions.ts#derivePaces.tempoSecLo',
+      'lib/training/prescriptions.ts#derivePaces.tempoSecHi',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 5.1 Threshold family overview',
+    claim:
+      'A continuous tempo is run AT threshold — the doctrine table\'s own Pace cell for the ' +
+      '"Continuous tempo" row is T, flat, with no offset. The slower band that looks like a ' +
+      'tempo is a DIFFERENT workout in the same table: sub-threshold intervals, ST, which the ' +
+      'table defines as 10-15 s/mi slower than T. Shipping the ST band under a tempo label is ' +
+      'the defect PACE-T-1 fixed in the composer and PACE-T-2 fixed in the fallback card, so ' +
+      'this binds BOTH expressions and fails if either reintroduces an offset or they disagree.',
+    check({ cite }) {
+      // 1 · doctrine still says the continuous tempo is run at T.
+      const paceCell = cite.table().cell('Continuous tempo', 'Pace').trim();
+      if (paceCell !== 'T') {
+        throw new Error(
+          `Research/04 §5.1's "Continuous tempo" row now prices the workout at "${paceCell}" ` +
+            'rather than T · the engine anchors tempo to threshold on the strength of that cell',
+        );
+      }
+
+      // 2 · the composer states it as exactly tPaceSec, no arithmetic.
+      const composer = matchLiteral(
+        sourceOf('web-v2/lib/plan/spec-builder.ts'),
+        /const tempo\s*=\s*([^;]+);/,
+        'buildWorkoutSpec tempo',
+      )[1].trim();
+      if (composer !== 'tPaceSec') {
+        throw new Error(
+          `spec-builder's tempo is "${composer}" · doctrine puts a continuous tempo AT T, so ` +
+            'this must be tPaceSec with no offset (see PACE-T-1, 2026-06-23)',
+        );
+      }
+
+      // 3 · the fallback card's band is zero-width and also exactly T. Read
+      // whatever follows each key so a reintroduced `t + 5` is caught by
+      // value, not merely by the shape of the expression.
+      const src = sourceOf('web-v2/lib/training/prescriptions.ts');
+      for (const key of ['tempoSecLo', 'tempoSecHi'] as const) {
+        const expr = matchLiteral(
+          src,
+          new RegExp(`${key}:\\s*([^,\\n]+),`),
+          `derivePaces ${key}`,
+        )[1].trim();
+        if (expr !== 't') {
+          throw new Error(
+            `derivePaces.${key} is "${expr}" · a continuous tempo is run at T, so both edges of ` +
+              'the band are the bare threshold. "t + 5".."t + 18" is Research/04 §5.1\'s ' +
+              'SUB-THRESHOLD (ST) row wearing a tempo label — the exact drift PACE-T-2 closed.',
+          );
+        }
+      }
+    },
+  },
+  {
     id: 'PACE.marathon-offset',
     binds: ['lib/plan/spec-builder.ts#buildWorkoutSpec.mp'],
     doc: 'Research/01-pace-zones-vdot.md',
