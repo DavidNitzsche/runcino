@@ -27,6 +27,21 @@
  *   · off-track · projection = current VDOT-derived · clear evidence the
  *                  plan won't deliver as is · gap is real and worth
  *                  renegotiating
+ *   · ahead     · projection = current VDOT-derived (faster than goal) ·
+ *                  2026-08-28 AHEAD-1 · [[feedback_progress_is_the_guiding_light]]
+ *                  (locked 2026-08-25): current fitness is a floor, not a
+ *                  ceiling — a runner demonstrably faster than their stated
+ *                  goal cannot see a projection frozen at the goal forever.
+ *                  Fires only from a CLEAN on-track read (no drift signal
+ *                  firing in either direction), gated by the same magnitude
+ *                  bar detectRecentRaceDrift's STRONG threshold uses (10%,
+ *                  ~2 VDOT points, "very clear" territory) and the same
+ *                  sustained-evidence bar computeOverPerformanceBonus already
+ *                  requires (>= MIN_SESSIONS controlled, HR-corroborated
+ *                  threshold sessions) — see resolveAheadOverride below. The
+ *                  GOAL NUMBER ITSELF never moves ([[feedback_no_forced_goal_decisions]]
+ *                  — the coach projects, it never renegotiates a stated goal);
+ *                  only the projection admits it is honestly faster.
  *
  * Drift signals (weights):
  *   · STRONG · recent priority A/B race > 2% slower than goal pace
@@ -57,7 +72,7 @@ import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { expandSpecToPhases, type ExpandedPhase } from './expand-spec';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 
-export type GoalStatus = 'on-track' | 'watching' | 'off-track';
+export type GoalStatus = 'on-track' | 'watching' | 'off-track' | 'ahead';
 export type DriftWeight = 'strong' | 'medium' | 'weak';
 
 /** 2026-07-06 · P1-10 fix · what a recent-test-point verdict compared.
@@ -116,13 +131,17 @@ export interface ConfidenceLabel {
 export interface GoalProjection {
   status: GoalStatus;
   /** What we tell the runner: goal when ON TRACK / WATCHING, VDOT-derived
-   *  when OFF TRACK. The single projection number for the gauge. */
+   *  when OFF TRACK or AHEAD (2026-08-28 AHEAD-1). The single projection
+   *  number for the gauge. */
   projectionSec: number;
   /** The goal · always present so display can show "X projected · Y goal"
-   *  when off-track. */
+   *  when off-track or ahead. Never written by this function — only what it
+   *  reports about the goal moves, never the goal itself
+   *  ([[feedback_no_forced_goal_decisions]]). */
   goalSec: number;
   /** The raw current-VDOT projection · always computed. Used when status
-   *  flips to off-track AND for the "soft watch" hint when WATCHING. */
+   *  flips to off-track AND for the "soft watch" hint when WATCHING, and
+   *  (2026-08-28 AHEAD-1) when status reads ahead. */
   vdotProjectionSec: number | null;
   /** All firing drift signals · empty when ON TRACK. */
   driftSignals: DriftSignal[];
@@ -277,6 +296,15 @@ export async function computeGoalProjection(args: {
       ? Math.round(vdotProjectionSecRaw * (1 + specificityAdjustment.pct / 100))
       : vdotProjectionSecRaw;
 
+  // 2026-08-28 · AHEAD-1 · hoisted from below (was computed only for the
+  // trajectory) so the primary status ladder can read the same sustained,
+  // HR-corroborated over-performance evidence resolveAheadOverride gates on.
+  // Independent of driftSignals, so hoisting changes nothing else — same
+  // call, just earlier.
+  const overPerf = vdot != null
+    ? await computeOverPerformanceBonus(userUuid, vdot).catch(() => ({ bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 }))
+    : { bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 };
+
   // Collect drift signals · each detector returns 0 or 1 signal. Failures
   // (DB error, missing data) silently produce no signal · we never punish
   // a healthy runner because a query timed out.
@@ -310,8 +338,20 @@ export async function computeGoalProjection(args: {
     status = 'watching';
   }
 
-  // Projection = goal until off-track
-  const projectionSec = status === 'off-track' && vdotProjectionSec != null
+  // 2026-08-28 · AHEAD-1 · the ladder's missing rung. See resolveAheadOverride
+  // for the full rationale + the exact thresholds it mirrors. Only ever
+  // promotes a CLEAN on-track read; never overrides watching/off-track.
+  status = resolveAheadOverride({
+    status,
+    vdotProjectionSec,
+    goalSec,
+    overPerformanceSessions: overPerf.sessions,
+  });
+
+  // Projection = goal until off-track OR genuinely ahead. The GOAL number
+  // (goalSec) never moves either way — only which number this function
+  // hands back as "the projection".
+  const projectionSec = (status === 'off-track' || status === 'ahead') && vdotProjectionSec != null
     ? vdotProjectionSec
     : goalSec;
 
@@ -351,9 +391,9 @@ export async function computeGoalProjection(args: {
   // training-derived fitness the projection can read PAST goal with. Projection
   // space only — never moves vdot or any prescribed pace. 0 unless he's beating
   // the plan, so this is dormant for a runner who's merely on track.
-  const overPerf = vdot != null
-    ? await computeOverPerformanceBonus(userUuid, vdot).catch(() => ({ bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 }))
-    : { bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 };
+  // 2026-08-28 · AHEAD-1 · hoisted above the status ladder (see there) — reused
+  // here, not recomputed, so the primary status and the trajectory read the
+  // same evidence.
   const trajectory = (vdot != null && daysToRace != null)
     ? projectFitnessTrajectory({
         currentVdot: vdot,
@@ -408,6 +448,73 @@ export async function computeGoalProjection(args: {
     specificityAdjustment,
     trajectory,
   };
+}
+
+/** 2026-08-28 · AHEAD-1 · margin that promotes a clean on-track read to
+ *  'ahead'. Mirrors detectRecentRaceDrift's STRONG threshold (`strongAt = 10
+ *  + marginPct`, see that detector's threshold comment) applied in the OTHER
+ *  direction — no cross-distance margin applies here because
+ *  vdotProjectionSec is already expressed at raceDistanceMi, the same
+ *  distance as goalSec, so marginPct is always 0. 10% is the same "~2 VDOT
+ *  points, very clear territory" bar the off-track side calls undeniable;
+ *  not a new number invented for this rung. */
+export const AHEAD_STRONG_PCT = 10;
+
+/**
+ * 2026-08-28 · AHEAD-1 · [[feedback_progress_is_the_guiding_light]] (locked
+ * 2026-08-25): current fitness is a floor, not a ceiling. Before this, the
+ * status ladder had no rung for "genuinely beating the goal" — projectionSec
+ * stayed pinned at goalSec for on-track AND watching, so a runner who was
+ * demonstrably faster than their stated goal still saw the goal number
+ * staring back, forever, unless something went WRONG. Drift already reads
+ * short (off-track); this is the missing symmetric read.
+ *
+ * Two gates, both mirrored from existing rigor rather than invented:
+ *
+ *   1. MAGNITUDE · AHEAD_STRONG_PCT (10%), the same bar detectRecentRaceDrift
+ *      calls STRONG / "very clear" territory, applied to vdotProjectionSec
+ *      vs goalSec instead of a past race vs goalSec.
+ *   2. SUSTAINED EVIDENCE · overPerformanceSessions >= MIN_SESSIONS, the
+ *      exact gate computeOverPerformanceBonus already enforces before it will
+ *      credit ANY training-derived over-performance (>= 2 controlled,
+ *      HR-corroborated threshold sessions beating prescribed pace within the
+ *      last 28 days — see that function's doc comment). Reusing its `sessions`
+ *      count here (not a new threshold) is what stops one fast tempo, or a
+ *      single old PR sitting far ahead of a since-lowered goal, from flipping
+ *      the headline. Note the gate is on SESSION COUNT, not `bonusVdot` — a
+ *      runner can clear this floor with well-executed, HR-controlled
+ *      threshold work even in a stretch where the demonstrated pace doesn't
+ *      itself exceed current VDOT; the corroboration is "is this runner
+ *      training in a way that supports a faster read right now", not "did
+ *      training add extra VDOT on top of the race anchor".
+ *
+ * Only ever promotes a CLEAN 'on-track' read — a runner with an active
+ * drift signal (watching/off-track) never gets bumped to 'ahead', even if
+ * vdotProjectionSec momentarily clears the margin; a real gap the OTHER way
+ * is exactly the case doctrine says stays honest, not softened. And this
+ * never touches goalSec — [[feedback_no_forced_goal_decisions]] (the coach
+ * projects, it never renegotiates a stated goal): the runner's number is
+ * theirs; only what the projection reports about it can move.
+ *
+ * Pure + exported so it is unit-testable without the DB every detector in
+ * this file needs.
+ */
+export function resolveAheadOverride(args: {
+  status: GoalStatus;
+  vdotProjectionSec: number | null;
+  goalSec: number;
+  /** computeOverPerformanceBonus's `sessions` count — controlled, HR-gated
+   *  threshold sessions beating prescribed pace, regardless of whether they
+   *  cleared MIN_SESSIONS for a nonzero bonusVdot (see doc comment above). */
+  overPerformanceSessions: number;
+}): GoalStatus {
+  const { status, vdotProjectionSec, goalSec, overPerformanceSessions } = args;
+  if (status !== 'on-track') return status; // never override watching/off-track
+  if (vdotProjectionSec == null || !(goalSec > 0)) return status;
+  const MIN_SESSIONS = 2; // [mirrors computeOverPerformanceBonus's MIN_SESSIONS]
+  if (overPerformanceSessions < MIN_SESSIONS) return status;
+  const aheadPct = (goalSec - vdotProjectionSec) / goalSec * 100;
+  return aheadPct >= AHEAD_STRONG_PCT ? 'ahead' : status;
 }
 
 /** 2026-06-11 · execution quality 0..1 from recent quality-session verdicts +
@@ -1274,6 +1381,15 @@ function composeTransitions(
   status: GoalStatus,
   signals: DriftSignal[],
 ): GoalProjection['transitions'] {
+  if (status === 'ahead') {
+    // 2026-08-28 · AHEAD-1 · the top of the ladder now. Nothing to promote
+    // to; show what would settle it back to on-track (never a demotion word —
+    // on-track isn't worse, it's just no longer showing a demonstrated edge).
+    return {
+      toBetter: null,
+      toWorse: 'Settles back to on track if the fitness margin over the goal narrows below 10%, or the sustained threshold work behind it stops landing.',
+    };
+  }
   if (status === 'on-track') {
     // ON TRACK · already at the top. Show what would tip to WATCHING.
     return {
@@ -1956,6 +2072,12 @@ function composeSummary(
   if (status === 'watching') {
     return 'Hold the plan · the next quality run will tell us more.';
   }
+  if (status === 'ahead') {
+    // 2026-08-28 · AHEAD-1 · coach voice, not a renegotiation prompt. States
+    // what training is showing; never suggests the goal itself should change
+    // ([[feedback_no_forced_goal_decisions]]).
+    return 'Training is reading faster than the goal · the number above reflects it.';
+  }
   // off-track · the signals get listed as chips below so this stays
   // a one-liner framing the moment.
   return 'The math is honest · time to look at what the plan can still close, and what it can\'t.';
@@ -1984,7 +2106,9 @@ function composeSummary(
  * the §4.3 fundamental error even for a metronome pacer.
  *
  * Status scaling · drift signals add uncertainty (faff overlay on §13.7):
- *    on-track ×1.0 · watching ×1.25 · off-track ×1.5
+ *    ahead ×1.0 · on-track ×1.0 · watching ×1.25 · off-track ×1.5
+ * (ahead falls to the same default as on-track below — evidenced-faster is
+ * not less certain than on-pace, so it earns no widening.)
  *
  * ── CI-CROSS-1 (2026-08-19) · the span is a PAIR, not a target ─────────────
  *

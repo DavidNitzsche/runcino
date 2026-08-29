@@ -357,8 +357,13 @@ export type GoalRace = {
    *  ON TRACK · plan is on pace · panel collapses to "the plan is the path".
    *  WATCHING · soft drift signals · panel says "next quality run tells us more".
    *  OFF TRACK · clear evidence · full gap-panel + B-target framing.
+   *  AHEAD · 2026-08-28 AHEAD-1 · sustained, evidenced fitness beating the
+   *  goal by a real margin · `projected` carries the faster number, the goal
+   *  itself is untouched. Consumers that only branch on 'watching' already
+   *  fall through safely to their default (non-watching) rendering for this
+   *  value — see goal-projection.ts's resolveAheadOverride.
    *  Optional for back-compat with older seed envelopes (treated as ON TRACK). */
-  goalStatus?: 'on-track' | 'watching' | 'off-track';
+  goalStatus?: 'on-track' | 'watching' | 'off-track' | 'ahead';
   /** Drift signals firing right now · each with weight + plain-English detail
    *  + raw evidence numbers. Empty array when ON TRACK. */
   driftSignals?: Array<{
