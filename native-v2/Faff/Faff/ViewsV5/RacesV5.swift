@@ -152,6 +152,7 @@ struct RacesV5: View {
                               height: 96,
                               headline: model.trendHeadline.unreadableIfAbsent,
                               headlineLabel: "Projected finish, today",
+                              caption: "Daily fitness reads",
                               footnotes: model.trendFootnotes)
                 }
 

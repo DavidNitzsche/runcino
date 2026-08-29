@@ -416,9 +416,21 @@ async function handleGET(req: NextRequest) {
         const series = await loadProjectionSeries(userId, distanceMi).catch(() => []);
         trend = series.map(s => s.projectionSec).filter((v): v is number => v != null);
         trendHeadline = projectedSec != null ? num(formatRaceTime(projectedSec), true) : null;
-        trendFootnotes = anchorDateISO && anchorAgeDays != null
-          ? [`Anchored ${anchorAgeDays}d ago`]
-          : ['No fitness anchor yet · a race or a hard time trial would set one.'];
+        // The chart's own caption ("Daily fitness reads") says WHAT a bar
+        // is; this footnote row used to carry only the anchor's age, which
+        // reads as if it explains the bars when it's really an unrelated
+        // fact about the VDOT anchor. Lead with the honest count of stored
+        // reads — the same fact the design's own preview payload leads with
+        // ("Twelve weeks of daily reads", scaled here to days since the
+        // window is walked in days, not weeks) — then keep the anchor fact
+        // as a second, separate item.
+        const readsFact = trend.length > 0
+          ? `${trend.length} day${trend.length === 1 ? '' : 's'} of daily reads`
+          : null;
+        const anchorFact = anchorDateISO && anchorAgeDays != null
+          ? `Anchored ${anchorAgeDays}d ago`
+          : 'No fitness anchor yet · a race or a hard time trial would set one.';
+        trendFootnotes = [readsFact, anchorFact].filter((s): s is string => s != null);
         if (trend.length === 0) trendFootnotes = ['Not enough history yet to chart a trend.'];
       }
 

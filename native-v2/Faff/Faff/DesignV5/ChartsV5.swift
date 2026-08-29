@@ -395,6 +395,13 @@ struct TrendBars: View {
     var height: CGFloat = 96
     var headline: FaffValue? = nil
     var headlineLabel: String? = nil
+    /// What one bar in the row IS, printed once in the same small quiet
+    /// idiom as `headlineLabel` and `footnotes`. `barsSpoken` below gives
+    /// VoiceOver a full account of the trend, but a sighted reader gets
+    /// nothing from that — without this, the row is unlabeled bars with no
+    /// legend. Optional and off by default so a call site that already
+    /// captions the chart some other way isn't forced into a second one.
+    var caption: String? = nil
     var footnotes: [String] = []
 
     private var hi: Int {
@@ -457,6 +464,12 @@ struct TrendBars: View {
                     }
                     FaffValueText(headline, font: .faffText(28, weight: .semibold))
                 }
+            }
+
+            if let caption {
+                Text(caption)
+                    .font(.faffText(TypeScaleV5.label12))
+                    .foregroundStyle(V5.textQuiet)
             }
 
             GeometryReader { geo in
