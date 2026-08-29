@@ -36,19 +36,17 @@ describe('HEAT-1 REVERSED · the heat gate no longer changes a session', () => {
     expect(PROPOSE_FIRST_TRIGGERS.has('heat_bail')).toBe(false);
   });
 
-  it('readiness still defaults to propose-first · only convergent red opts out', () => {
-    // 2026-08-19 · this test used to read "readiness still cannot apply
-    // either". That was true under the 2026-06-03 ruling and is no longer the
-    // whole picture: the owner has since ruled that readiness MAY change a
-    // session, on a convergence of independent signals, settled overnight.
+  it('readiness never changes a session unattended · not at amber, not at red', () => {
+    // The history of this one test is the history of the ruling:
+    //   · 2026-06-03 — "readiness still cannot apply either."
+    //   · 2026-08-19 — amended: convergent RED may apply, settled overnight.
+    //   · 2026-08-29 — reversed to the 06-03 position and generalised.
+    //     DIRECTION-1: load may rise unattended, it may never fall unattended.
+    //     So red proposes too, and the amendment above is gone.
     //
-    // What survives unchanged is the guard this test was really written for —
-    // nobody may read the heat wiring as licence to let a wellness score
-    // mutate the plan. Readiness's KIND is still propose-first, so an amber
-    // convergence (two domains) reaches the runner as a banner and touches
-    // nothing. Only an action explicitly carrying `forceApplyNow` — which
-    // `actionsForTrigger` sets on a convergent-RED downgrade and nowhere else
-    // — skips it. See lib/coach/convergence.ts for what red costs to reach.
+    // What has never changed, across all three, is the guard this test was
+    // written for: nobody may read the heat wiring as licence to let a
+    // wellness score mutate the plan by itself.
     expect(PROPOSE_FIRST_TRIGGERS.has('readiness_pullback')).toBe(true);
 
     const amber: AdaptationAction = {
@@ -60,26 +58,46 @@ describe('HEAT-1 REVERSED · the heat gate no longer changes a session', () => {
       sourceTrigger: 'readiness_pullback', forceApplyNow: true, why: 'three domains',
     };
     const split = partitionActionsForCron([amber, red]);
-    expect(split.proposeFirst).toEqual([amber]);
-    expect(split.applyNow).toEqual([red]);
+    // The RED DOWNGRADE now proposes — carrying forceApplyNow no longer buys
+    // it a bypass, because it takes a session away.
+    expect(split.proposeFirst).toEqual([red]);
+    // The amber NOTE applies, and that is not an inconsistency: it writes a
+    // coach_intents row and no plan row. Proposing a note would ask the runner
+    // to approve a change that does not exist, and the row is what stops the
+    // adaptive ramp raising load off an unanswered red morning.
+    expect(split.applyNow).toEqual([amber]);
 
-    const applyNowKinds: AdaptationTriggerKind[] = [
-      'missed_key_workout', 'volume_overshoot', 'pr_bank', 'goal_changed',
-    ];
+    // Still outside the gate, because none of these takes work away.
+    const applyNowKinds: AdaptationTriggerKind[] = ['pr_bank', 'goal_changed'];
     for (const k of applyNowKinds) expect(PROPOSE_FIRST_TRIGGERS.has(k)).toBe(false);
+    // And these joined it under DIRECTION-1, because each does.
+    const nowGated: AdaptationTriggerKind[] = [
+      'missed_key_workout', 'volume_overshoot', 'niggle_reported',
+    ];
+    for (const k of nowGated) expect(PROPOSE_FIRST_TRIGGERS.has(k)).toBe(true);
   });
 
-  it('a stale heat_bail action (from before the removal) still resolves as apply-now, not a live proposal', () => {
-    // heat_bail is no longer in PROPOSE_FIRST_TRIGGERS, so partitionActionsForCron
-    // has nothing to route it to specially any more — it falls through like any
-    // other untagged/deprecated kind. The actual handler (`actionsForTrigger`'s
-    // 'heat_bail' case) never produces a 'downgrade' shape any more; this only
-    // documents the partition behavior for whatever a stale row might carry.
+  it('DIRECTION-1 · a stale heat_bail downgrade proposes, because it is a downgrade', () => {
+    // Was "still resolves as apply-now, not a live proposal". heat_bail is not
+    // in PROPOSE_FIRST_TRIGGERS and never will be — the detector is retired —
+    // so under the old trigger-keyed gate this fell through to apply.
+    //
+    // Under DIRECTION-1 the trigger is not what is asked. The action is a
+    // `downgrade`, so it proposes, and a deprecated trigger nobody maintains
+    // any more is exactly the case where reading direction off the action
+    // rather than off a lookup table earns its keep: there is no list to
+    // remember to add `heat_bail` to.
+    //
+    // `actionsForTrigger`'s 'heat_bail' case produces only record-only notes
+    // now, so this fixture describes a stale row, not anything the engine
+    // still emits.
     const heat: AdaptationAction = {
       kind: 'downgrade', workoutIds: ['w'], newType: 'easy',
       sourceTrigger: 'heat_bail', why: 'black flag',
     };
-    expect(partitionActionsForCron([heat]).applyNow).toEqual([heat]);
+    const split = partitionActionsForCron([heat]);
+    expect(split.proposeFirst).toEqual([heat]);
+    expect(split.applyNow).toHaveLength(0);
   });
 });
 

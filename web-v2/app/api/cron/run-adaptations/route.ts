@@ -37,7 +37,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { detectAdaptations, applyAdaptations, partitionActionsForCron, PROPOSE_FIRST_TRIGGERS } from '@/lib/plan/adapt';
+import { detectAdaptations, applyAdaptations, partitionActionsForCron, reducesLoad, PROPOSE_FIRST_TRIGGERS } from '@/lib/plan/adapt';
 import { tryAdaptiveBump } from '@/lib/plan/adaptive-ramp';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
@@ -83,42 +83,52 @@ export async function POST(req: NextRequest) {
       // directly. The runner sees a banner with [LET IT HAPPEN] /
       // [KEEP ORIGINAL] before the change lands.
       //
-      // Apply-now (immediate · reactive to event that already happened):
-      //   · missed_key_workout · runner missed it, no point proposing
-      //   · sick_episode_active · runner logged sick, plan should respond
-      //   · injury_active · same
-      //   · niggle_reported · same
+      // Apply-now — only what RAISES or preserves load:
+      //   · sick_episode_active / injury_active · emit no plan actions at all
+      //     (they write coach_proposals); listed so the reader is not
+      //     surprised to see them absent from the propose-first set
       //   · pr_bank · runner ran a faster race, paces should update
       //   · goal_changed · runner edited their goal
-      //   · volume_overshoot · safety net
+      //   · progression_gate · raises a dose on an unrun session
       //
-      // Propose-first (engine opinion · runner gates):
-      //   · readiness_pullback · "we'd like to ease tomorrow because..."
-      //   · field_test_due · "spend Thursday's quality on a 30-min test"
-      //     (2026-08-17 · PROPOSE_FIRST_TRIGGERS is the single authority)
-      const triggerKinds = new Set(triggers.map((t) => t.kind));
-      const isProposeOnly = triggerKinds.size > 0
-        && [...triggerKinds].every((k) => PROPOSE_FIRST_TRIGGERS.has(k));
-
+      // Propose-first (the runner gates it):
+      //   · readiness_pullback, field_test_due, volume_overshoot,
+      //     niggle_reported, missed_key_workout
+      //     (PROPOSE_FIRST_TRIGGERS is the single authority · DIRECTION-1)
+      //
+      // ── DIRECTION-1 (2026-08-29) · THE FAST PATH IS GONE ──────────────────
+      //
+      // This used to compute `isProposeOnly` from the TRIGGER KINDS and, when
+      // every trigger was propose-first, hand the whole action list to
+      // `writeWorkoutProposals` without ever consulting
+      // `partitionActionsForCron`. Two things were wrong with that, and the
+      // second one silently defeated the first:
+      //
+      //   1. It decided routing from the trigger, never from the action. An
+      //      action's own `forceApplyNow` was invisible on this path — the
+      //      field's entire purpose, unreachable on exactly the nights
+      //      readiness fired alone, which is the modal case.
+      //   2. `writeWorkoutProposals` drops any action with no `workoutIds`
+      //      (workout-proposals.ts) — so the record-only notes were not
+      //      proposed AND not applied. They simply vanished, taking the
+      //      `coach_intents` audit row with them, which is the row
+      //      `tryAdaptiveBump` reads before raising load.
+      //
+      // One path now: partition per action, apply what may apply, propose the
+      // rest. Under DIRECTION-1 `partitionActionsForCron` will not let a
+      // load-reducing action through regardless of its flag, so routing every
+      // night through here cannot resurrect the auto-pull-back this rule
+      // exists to prevent — it only lets the notes reach the intents table.
+      //
+      // 2026-07-06 · P1-37 · actions do NOT correlate 1:1 with triggers
+      // (missed_key_workout emits 2+N actions, sick/injury emit 0, pullback
+      // emits 1-2) — the old triggers[i] index walk misrouted anti-stacking
+      // downgrades into mislabeled readiness proposals that expired unseen
+      // (live twice: Jul 1 + Jul 6 on David's plan). Partition on each
+      // action's OWN sourceTrigger tag instead.
       let applied = 0;
       let proposed = 0;
-      if (isProposeOnly) {
-        // Every trigger is propose-first · write proposals, don't apply.
-        const { writeWorkoutProposals } = await import('@/lib/plan/workout-proposals');
-        proposed = await writeWorkoutProposals(uid, actions, triggers);
-      } else {
-        // Mixed or non-pullback triggers · apply immediately. (If
-        // readiness_pullback is mixed in with something else, e.g.
-        // niggle + pullback, we apply the niggle response now and
-        // propose the pullback portion separately.)
-        //
-        // 2026-07-06 · P1-37 · actions do NOT correlate 1:1 with
-        // triggers (missed_key_workout emits up to 2+N actions, sick/
-        // injury emit 0, pullback emits 0-1) — the old triggers[i]
-        // index walk misrouted anti-stacking downgrades into
-        // mislabeled readiness proposals that expired unseen (live
-        // twice: Jul 1 + Jul 6 on David's plan). Partition on each
-        // action's OWN sourceTrigger tag instead.
+      {
         const { applyNow, proposeFirst } = partitionActionsForCron(actions);
 
         // 2026-08-24 · SESSION MOVED · the sender `renderSessionMoved` never
@@ -165,7 +175,16 @@ export async function POST(req: NextRequest) {
       // enough to push the next long run +1mi (gated to tier upper).
       // Skip the bump when pull-back actions fired this tick · we
       // don't push up the same day we pulled down.
-      const bump = await tryAdaptiveBump(uid, applied > 0).catch(() => null);
+      //
+      // DIRECTION-1 (2026-08-29) · the tick gate can no longer be `applied >
+      // 0` alone. Pull-backs PROPOSE now, so on the very nights this guard is
+      // for, nothing is applied and `applied` is 0 — the engine would decide
+      // the runner needs easing and then raise his long run in the same pass.
+      // The question the guard is actually asking is "did we judge a pull-back
+      // warranted today", not "did one land", so it reads the decision:
+      // any load-reducing action in the pass, whichever way it routed.
+      const pullbackDecided = actions.some(reducesLoad);
+      const bump = await tryAdaptiveBump(uid, applied > 0 || pullbackDecided).catch(() => null);
       if (bump) await bustBriefingCacheForEvent(uid, 'plan_swap');
 
       // 2026-08-17 · coach's log daily check (lib/coach/coach-log.ts).

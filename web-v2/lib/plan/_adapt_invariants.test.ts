@@ -92,19 +92,57 @@ describe('P1-37 · cron partition is per-action tag, never index alignment', () 
       { kind: 'downgrade', workoutIds: ['wko_b'], newType: 'easy', sourceTrigger: 'missed_key_workout', why: 'Avoid stacking two quality days; downgrade upcoming key to easy.' },
     ];
     const { applyNow, proposeFirst } = partitionActionsForCron(actions);
-    expect(applyNow).toHaveLength(2);
-    expect(proposeFirst).toHaveLength(0);
+    // DIRECTION-1 (2026-08-29) · both now PROPOSE. This test's original point
+    // survives intact and is still what is being checked: the two actions stay
+    // TOGETHER, and the downgrade is not separated from the reschedule it
+    // exists to offset. Only the lane they share has changed — the owner ruled
+    // that load may never fall unattended, and `missed_key_workout` emits a
+    // downgrade, so its whole limb is gated. Gating the pair rather than the
+    // downgrade alone is deliberate: accepting the reschedule while the
+    // offsetting downgrade sat unapplied would leave two quality days stacked.
+    expect(applyNow).toHaveLength(0);
+    expect(proposeFirst).toHaveLength(2);
+    expect(proposeFirst.map((a) => a.workoutIds?.[0])).toEqual(['wko_a', 'wko_b']);
   });
 
-  it('routes pullback-tagged actions to propose-first and untagged actions to apply (back-compat default)', () => {
+  it('DIRECTION-1 · every load-reducing action proposes, tagged or not', () => {
+    // Renamed from "routes pullback-tagged actions to propose-first and
+    // untagged actions to apply (back-compat default)". Under DIRECTION-1 the
+    // deciding axis is no longer WHICH TRIGGER but WHICH DIRECTION: a niggle
+    // downgrade takes a session away exactly as a readiness downgrade does.
     const actions: AdaptationAction[] = [
       { kind: 'downgrade', workoutIds: ['wko_a'], newType: 'easy', sourceTrigger: 'readiness_pullback', why: 'x' },
       { kind: 'downgrade', workoutIds: ['wko_b'], newType: 'easy', sourceTrigger: 'niggle_reported', why: 'x' },
       { kind: 'shave', workoutIds: ['wko_c'], shaveFraction: 0.17, why: 'x' }, // untagged (legacy shape)
     ];
     const { applyNow, proposeFirst } = partitionActionsForCron(actions);
-    expect(proposeFirst.map((a) => a.workoutIds?.[0])).toEqual(['wko_a']);
-    expect(applyNow.map((a) => a.workoutIds?.[0])).toEqual(['wko_b', 'wko_c']);
+    // The untagged shave is gated TOO. The old back-compat default was "an
+    // action with no sourceTrigger applies", which was safe while the gate
+    // keyed on trigger kind — but under a direction rule an untagged shave is
+    // still a shave, and defaulting it to apply would leave a hole exactly
+    // where a legacy or hand-built action walks through. Direction is read off
+    // the action itself, so there is nothing to forget to tag.
+    expect(proposeFirst.map((a) => a.workoutIds?.[0])).toEqual(['wko_a', 'wko_b', 'wko_c']);
+    expect(applyNow).toHaveLength(0);
+  });
+
+  it('DIRECTION-1 · forceApplyNow cannot carry a load-reducing action past the gate', () => {
+    // The structural half of the rule. A future caller that sets the flag on a
+    // downgrade — which is precisely what the flag was originally introduced to
+    // do — must not be able to bypass the runner's approval with it.
+    const actions: AdaptationAction[] = [
+      { kind: 'downgrade', workoutIds: ['wko_a'], newType: 'easy', sourceTrigger: 'readiness_pullback', forceApplyNow: true, why: 'x' },
+      { kind: 'shave', workoutIds: ['wko_b'], shaveFraction: 0.17, sourceTrigger: 'volume_overshoot', forceApplyNow: true, why: 'x' },
+      // A record-only note applies — and note it carries NO forceApplyNow
+      // here on purpose. Notes apply because of what they are, not because
+      // somebody remembered to flag them; a note that proposed would be
+      // dropped outright by writeWorkoutProposals for having no workoutIds.
+      { kind: 'note', noteReason: 'readiness_convergence_red_proposed', noteField: '2026-08-29', sourceTrigger: 'readiness_pullback', why: 'x' },
+    ];
+    const { applyNow, proposeFirst } = partitionActionsForCron(actions);
+    expect(proposeFirst.map((a) => a.workoutIds?.[0])).toEqual(['wko_a', 'wko_b']);
+    expect(applyNow).toHaveLength(1);
+    expect(applyNow[0].kind).toBe('note');
   });
 });
 

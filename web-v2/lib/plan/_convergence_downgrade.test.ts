@@ -184,19 +184,50 @@ describe('the change reaches the plan through one door', () => {
     expect(limb.slice(amberAt, downgradeAt)).toMatch(/kind: 'note'/);
   });
 
-  it('every readiness action is settled overnight · none becomes a banner', () => {
-    // Both halves carry forceApplyNow, for DIFFERENT reasons, and both reasons
-    // are the owner's:
-    //   · the red downgrade because the ruling says the change is settled the
-    //     night before — the cron runs 03:00 UTC, which is 20:00 PT the
-    //     previous evening;
-    //   · the amber note because it is record-only. Proposing a note would ask
-    //     the runner to approve a change that does not exist.
+  it('DIRECTION-1 · no readiness action takes a session away unattended', () => {
+    // REPLACES "every readiness action is settled overnight · none becomes a
+    // banner" (2026-08-19). That test asserted the opposite of what this one
+    // does, and it was right at the time: the owner had ruled a convergent-red
+    // downgrade "settled the night before". He REVERSED that on 2026-08-29 —
+    // asked plainly whether he wanted an automatic pull-back he said no, and
+    // generalised it: load may rise unattended, it may never fall unattended.
+    //
+    // So the invariant flips. What must hold now is that the limb's
+    // forceApplyNow flags land ONLY on record-only actions:
+    //   · every `note` may carry it — a note writes a coach_intents row and
+    //     no plan row, so there is nothing for the runner to approve, and the
+    //     adaptive ramp's 48h guard needs that row to exist or it will raise
+    //     load the morning after a red night nobody answered;
+    //   · no `downgrade` may carry it — that is the session being taken away.
     const limb = limbOf(adaptCode);
     const notes = limb.match(/kind: 'note'/g)?.length ?? 0;
-    const downgrades = limb.match(/kind: 'downgrade'/g)?.length ?? 0;
     const forced = limb.match(/forceApplyNow: true/g)?.length ?? 0;
-    expect(notes + downgrades).toBe(forced);
+    expect(forced, 'forceApplyNow may only ever sit on a record-only note').toBeLessThanOrEqual(notes);
+
+    // And structurally: no downgrade object in this limb carries the flag.
+    // Split on the action-object boundary so each `kind:` is checked with its
+    // own fields rather than against the limb as one blob.
+    const objects = limb.split(/(?=kind: ')/).filter((s) => s.startsWith('kind: '));
+    for (const obj of objects) {
+      if (/^kind: 'downgrade'/.test(obj) && /forceApplyNow: true/.test(obj)) {
+        throw new Error(
+          'a readiness downgrade carries forceApplyNow · under DIRECTION-1 a load-reducing '
+          + 'action must be proposed, never applied unattended. (partitionActionsForCron '
+          + 'would refuse it anyway, but the flag should not be written in the first place.)',
+        );
+      }
+    }
+  });
+
+  it('DIRECTION-1 · a red morning is still RECORDED even though the downgrade only proposes', () => {
+    // The failure mode this closes: pull-backs stopped applying, so the
+    // applied-downgrade coach_intents row stopped being written, so
+    // tryAdaptiveBump's 48h guard saw nothing and could raise mileage the
+    // morning after the engine judged the runner red. The red-with-quality
+    // branch must therefore emit a record-only note ALONGSIDE the proposed
+    // downgrade, under a reason the guard actually reads.
+    const limb = limbOf(adaptCode);
+    expect(limb).toMatch(/readiness_convergence_red_proposed/);
   });
 
   it('the old single-signal gate is gone from the CODE', () => {

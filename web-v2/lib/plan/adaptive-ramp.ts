@@ -468,11 +468,23 @@ export const PULLBACK_BUMP_LOOKBACK_HOURS = 48;
 /** The intent reasons that count as an applied pull-back / red-readiness
  *  morning. `plan_adapt_downgrade` covers readiness-red, niggle, gap and
  *  missed-workout anti-stacking downgrades; `plan_adapt_shave` covers volume
- *  and comeback shaves. */
+ *  and comeback shaves.
+ *
+ *  DIRECTION-1 (2026-08-29) · `readiness_convergence_red_proposed` is the
+ *  fourth, and it exists because pull-backs stopped applying unattended. The
+ *  owner's rule is that load may rise unattended but may never fall
+ *  unattended, so a convergent-red morning now PROPOSES its downgrade — which
+ *  means the applied-downgrade row this guard used to key on is no longer
+ *  written on exactly the mornings the guard matters most. The engine records
+ *  the red verdict separately (a record-only note, no plan row touched) and
+ *  this list reads it, so "we judged you red but you have not answered yet"
+ *  still blocks a ramp. A guard that only notices pull-backs the runner
+ *  accepted would wave load through on every unanswered one. */
 export const PULLBACK_INTENT_REASONS = [
   'plan_adapt_downgrade',
   'plan_adapt_shave',
   'readiness_convergence_red_no_quality',
+  'readiness_convergence_red_proposed',
 ] as const;
 
 /**
