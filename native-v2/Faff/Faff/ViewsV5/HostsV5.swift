@@ -877,6 +877,10 @@ struct RaceDetailHostV5: View {
     /// What the last result submission came back as. Same rule as the Races
     /// card: a declined write is an answer, not an outage.
     @State private var submitOutcome: V5WriteOutcome?
+    /// Race P1 on V5 · `RaceEditSheet` already does the real work (prefill
+    /// GET, PATCH, plan/VDOT auto-rebuild server-side); this host only owns
+    /// the toggle and the reload-on-save, same shape as `RaceDayView`'s.
+    @State private var showEditSheet = false
 
     init(slug: String) {
         self.slug = slug
@@ -891,7 +895,8 @@ struct RaceDetailHostV5: View {
                                  await submitResult(finish: finish, hr: hr)
                              },
                              submitOutcome: submitOutcome,
-                             onBack: { dismiss() })
+                             onBack: { dismiss() },
+                             onEdit: { showEditSheet = true })
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -914,6 +919,29 @@ struct RaceDetailHostV5: View {
         }
         .task { await surface.load() }
         .navigationBarBackButtonHidden(true)
+        .sheet(isPresented: $showEditSheet) {
+            // `RaceEditSheet` does its own authoritative GET
+            // (`API.fetchRaceDetail`) against `/api/race/[slug]` — the raw
+            // editor shape (distance_label, ISO date, priority, wave, bib,
+            // fuel, logistics), a different, wider payload than this V5
+            // screen's own `V5RaceDetail`. So the only instant seeds worth
+            // passing here are the two fields the V5 model actually carries;
+            // everything else arrives a moment later from that GET, same as
+            // it does for every other caller of this sheet.
+            RaceEditSheet(
+                slug: slug,
+                seedName: surface.model?.name,
+                seedGoal: surface.model?.goal?.text,
+                onSaved: {
+                    // The PATCH already ran the plan/VDOT/LTHR auto-rebuild
+                    // server-side (`web-v2/app/api/race/route.ts`), so a
+                    // fresh load is all this needs — goal, distance, course
+                    // and pace plan all come off the same reloaded model.
+                    Task { await surface.load() }
+                }
+            )
+            .presentationDetents([.large])
+        }
     }
 
     /// The result write, with what came back kept.

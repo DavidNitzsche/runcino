@@ -109,6 +109,13 @@ struct AppBar: View {
     /// A quiet line above the title. Race detail puts the date here.
     var eyebrow: String? = nil
     var onBack: (() -> Void)? = nil
+    /// A single trailing icon button, opposite the back chevron. Only race
+    /// detail needs one so far (edit) — kept as one optional SF Symbol slot
+    /// rather than a general trailing-content builder, since every other
+    /// AppBar call site passes neither and stays unaffected.
+    var trailingIcon: String? = nil
+    var trailingLabel: String = "Edit"
+    var onTrailing: (() -> Void)? = nil
 
     var body: some View {
         // Top-aligned, not centre-aligned. A long race name wraps to two or
@@ -147,6 +154,21 @@ struct AppBar: View {
                     .foregroundStyle(V5.textPrimary)
             }
             Spacer(minLength: 0)
+            if let trailingIcon, let onTrailing {
+                Button(action: onTrailing) {
+                    Image(systemName: trailingIcon)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(V5.textPrimary)
+                        .frame(width: V5.Shell.headerButton, height: V5.Shell.headerButton)
+                        .background(V5.materialControl, in: Circle())
+                        // Same 30-drawn / 44-target rule as the back button.
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(-7)
+                .accessibilityLabel(trailingLabel)
+            }
         }
         .padding(.horizontal, V5.S.gutter)
         .frame(height: V5.Shell.appBarHeight, alignment: .bottom)

@@ -65,6 +65,12 @@ struct RaceDetailV5: View {
     /// button that appeared to do nothing.
     var submitOutcome: V5WriteOutcome? = nil
     var onBack: (() -> Void)? = nil
+    /// Opens the edit sheet (goal, distance, date, priority, and the rest of
+    /// what `RaceEditSheet` covers) for THIS race. Nil on any caller that
+    /// hasn't wired an edit flow, in which case the AppBar simply draws no
+    /// trailing button — same absent-by-construction pattern `onGearRowTap`
+    /// already uses one field up.
+    var onEdit: (() -> Void)? = nil
 
     @State private var resultExpanded = false
     @State private var finishText: String = ""
@@ -74,7 +80,10 @@ struct RaceDetailV5: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                AppBar(title: raceDetail.name, eyebrow: raceDetail.dateLine, onBack: onBack)
+                AppBar(title: raceDetail.name, eyebrow: raceDetail.dateLine, onBack: onBack,
+                       trailingIcon: onEdit != nil ? "pencil" : nil,
+                       trailingLabel: "Edit race",
+                       onTrailing: onEdit)
 
                 // The prototype specified `gap:24px` here — the upper end of the
                 // brief's own stated 20-24 "between groups" range, which is exactly
