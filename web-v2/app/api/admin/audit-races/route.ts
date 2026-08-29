@@ -35,7 +35,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireAdmin } from '@/lib/auth/session';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
-import { runWorkoutType } from '@/lib/runs/run-shape';
+import { runWorkoutType, runDaySql, runDay } from '@/lib/runs/run-shape';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
     pool.query<RunRow>(
       `SELECT id::text AS id, data FROM runs
         WHERE user_uuid = $1 AND ${CANONICAL_ROW_SQL}
-        ORDER BY (data->>'startLocal') DESC NULLS LAST`,
+        ORDER BY ${runDaySql()} DESC NULLS LAST`,
       [userId],
     ).then((r) => r.rows),
   ]);
@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
       const match = races.find((r) => {
         const rDate = (r.meta as any)?.date;
         const rDistanceMi = (r.meta as any)?.distanceMi != null ? Number((r.meta as any).distanceMi) : null;
-        const runDate = (d as any).startLocal ? String((d as any).startLocal).slice(0, 10) : null;
+        const runDate = runDay(d as any);
         if (!rDate || rDate !== runDate) return false;
         if (rDistanceMi == null || distanceMi == null) return false;
         return Math.abs(rDistanceMi - distanceMi) / distanceMi < 0.05;
