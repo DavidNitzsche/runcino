@@ -88,7 +88,7 @@ import { EASY_SHARE_FLOOR, SPEC_PROBE_T_PACE_SEC, weekIntensity, splitDay } from
 // the two unable to disagree — see that file's header.
 import {
   DOSE_PACES, slotDosePace, slotDoseBudgetMi, weeklyDoseBudgetMi,
-  dayDoses, weekDosingFindings, duplicatePaceFamily,
+  dayDoses, weekDosingFindings, duplicatePaceFamily, MARATHON_PACE_WORKOUT_CAP, MI_PER_KM,
   type DosePace, type DosingContext,
 } from './dosing';
 // VOCAB-CATALOGUE-1 (2026-08-18) · the workout vocabulary, wired.
@@ -107,7 +107,7 @@ import {
   type CatalogueHistory, type ComposerSlot,
 } from './catalogue-rx';
 import { capFamilyOf, type CapFamily, type PlacedSession } from '@/lib/workout-catalogue/select';
-import type { Tier } from '@/lib/workout-catalogue/types';
+import type { Tier, CatalogueEntry } from '@/lib/workout-catalogue/types';
 // #12 follow-up (2026-08-18) · THE race-distance categorizer. generate.ts kept
 // four more inline mileage branches after the goal-tiers re-export landed, and
 // they had drifted from it — `>= 31` against the canonical 31.07 ultra floor,
@@ -3873,13 +3873,59 @@ function layoutWeek({
    * for this to be authorable at all — the grammar, and this branch that
    * emits it.
    */
-  const modifiedBlockSegFor = (): { firstMi: number; gapMi: number; secondMi: number } | null => {
-    const mBudget = weeklyDoseBudgetMi(weeklyMi, 'M', weekDoseContext);
-    // The doc's own AM:PM proportion (25-30 km : 15-20 km, roughly 60:40)
-    // applied to whatever marathon-pace volume the week can actually fund —
-    // never more than the finish the long run was already sized for.
-    const atPace = Math.min(finishMi, Math.floor(mBudget * 2) / 2);
-    const firstMi = Math.round(atPace * 0.6 * 2) / 2;
+  const modifiedBlockSegFor = (entry: CatalogueEntry): { firstMi: number; gapMi: number; secondMi: number } | null => {
+    /*
+     * SEGLONG-3 (2026-08-29) · size §11.1 off §11.1, not off §4.5.
+     *
+     * This used to read `Math.min(finishMi, …)`, and `finishMi` is the FAST
+     * FINISH's number — §4.5's "final 2-6 mi at MP", sized by the volume curve
+     * for a completely different session. The marathon-pace budget alongside it
+     * is `Infinity`, because doctrine writes "n/a" in M's WEEKLY column, so the
+     * fast-finish bound was the only thing binding this session at all.
+     *
+     * What that produced, measured on a 14-week advanced build at 65 mi/wk:
+     * a 19-mile long run carrying `3.5mi @ M + 1mi @ E + 2mi @ M`. Five and a
+     * half miles at marathon pace — LESS than the same block's own §4.4 weeks,
+     * which carry 10.5 and 12 — and split into two pieces, so it was strictly
+     * worse than the plain fast finish it displaced: the same volume, in halves
+     * too small to be blocks, with the "under-fatigue" second effort arriving
+     * after three and a half easy-ish miles. §11.1's Purpose row calls this a
+     * "massive marathon-specific stimulus"; it was the smallest quality long in
+     * the block.
+     *
+     * The session's own row states its dose, so that is what sizes it now. Both
+     * numbers are READ, never written here:
+     *
+     *   · `entry.atPace` — §11.1's at-pace total, which the catalogue holds in
+     *     the doc's own unit (20 km, off the Structure row's 12 km + 8 km).
+     *   · `MARATHON_PACE_WORKOUT_CAP` — `Research/01`'s "the lesser of 18 mi or
+     *     20% of weekly mi", the ceiling on ONE session's marathon-pace work.
+     *     This is the bound that should always have been here, and the one the
+     *     dosing gate measures the result against.
+     *
+     * The lesser wins, so a small week still buys a small block and the gate
+     * cannot be breached by construction. Bound by
+     * `LONGRUN.modified-block-doses-its-own-row` in lib/doctrine/registry.ts.
+     */
+    const atPaceBandMi = entry.atPace
+      ? entry.atPace.min * (entry.atPace.unit === 'km' ? MI_PER_KM
+        : entry.atPace.unit === 'm' ? MI_PER_KM / 1000 : 1)
+      : Infinity;
+    // `Research/01` §"Dosing rules": both halves bind and the lesser wins.
+    const danielsMi = Math.min(
+      MARATHON_PACE_WORKOUT_CAP.absMi,
+      Math.max(0, weeklyMi) * MARATHON_PACE_WORKOUT_CAP.pctOfWeekly,
+    );
+    const atPace = Math.floor(Math.min(atPaceBandMi, danielsMi) * 2) / 2;
+    // The doc's own proportion between the two segments, read off the same
+    // Structure row the at-pace total comes from (12 km : 8 km) rather than
+    // written here as 0.6. A doc that restates the split restates it once.
+    const steps = entry.structures.find((st) => st.kind === 'sequence');
+    const stepVals = steps?.kind === 'sequence' ? steps.steps.map((x) => x.value) : [];
+    const firstShare = stepVals.length === 2 && stepVals[0] + stepVals[1] > 0
+      ? stepVals[0] / (stepVals[0] + stepVals[1])
+      : 0.6;
+    const firstMi = Math.round(atPace * firstShare * 2) / 2;
     const secondMi = Math.round((atPace - firstMi) * 2) / 2;
     // "Short rest", kept short on purpose: long enough to be a real break in
     // the effort, short enough that the second block is run on tired legs.
@@ -3887,7 +3933,9 @@ function layoutWeek({
     // elite double this variation exists to replace.
     const gapMi = 1;
     // Each block has to be a real block (§4.5's two-mile floor, same as the
-    // progression's), and the easy bulk must still outweigh the work.
+    // progression's), and the work plus its gap must still fit inside the run
+    // with easy running left over — a long run that is nothing but the block
+    // is not the session §11.1 describes.
     return (
       firstMi >= FAST_FINISH_MIN_MI
       && secondMi >= FAST_FINISH_MIN_MI
@@ -3930,7 +3978,7 @@ function layoutWeek({
         }
         progressionSeg = seg;
       } else if (picked.entry.slug === 'canova-modified-block') {
-        const seg = modifiedBlockSegFor();
+        const seg = modifiedBlockSegFor(picked.entry);
         if (!seg) {
           // Refused for this week, recorded so the rotation does not keep
           // offering a session the week cannot fund — same contract the

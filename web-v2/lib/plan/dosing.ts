@@ -161,7 +161,9 @@ export const MARATHON_PACE_WORKOUT_CAP = { absMi: 18, pctOfWeekly: 0.20 } as con
  */
 export const CUMULATIVE_CEILING_KM: Partial<Record<DosePace, number>> = { I: 10, R: 8 };
 
-const MI_PER_KM = 1 / 1.609344;
+/** Miles in one kilometre. Exported so a caller converting a doctrine row
+ *  stated in km uses the same constant this module's ceilings are read with. */
+export const MI_PER_KM = 1 / 1.609344;
 
 /** The share of weekly mileage this pace may occupy, or null where doctrine
  *  states none (M's weekly cell reads "n/a"). */

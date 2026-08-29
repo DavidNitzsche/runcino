@@ -899,6 +899,49 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
 
   {
+    id: 'LONGRUN.modified-block-doses-its-own-row',
+    binds: [
+      'lib/plan/generate.ts#modifiedBlockSegFor',
+      'lib/plan/dosing.ts#MARATHON_PACE_WORKOUT_CAP',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 11.1 Canova special block',
+    claim:
+      'SEGLONG-3 · §11.1\'s modified block is sized off §11.1, and the two numbers that size it ' +
+      'are both read rather than written. Its at-pace total is the catalogue entry\'s own ' +
+      '`atPace` band, which carries the doc\'s Structure row in the doc\'s own unit; its ' +
+      'ceiling is Research/01\'s "the lesser of 18 mi or 20% of weekly mi", the cap on ONE ' +
+      'session\'s marathon-pace work. The composer used to bound it by `finishMi` instead — ' +
+      '§4.5\'s "final 2-6 mi at MP", a different session\'s number — and since doctrine writes ' +
+      '"n/a" in M\'s WEEKLY column there was no other bound at all, so the block came out ' +
+      'smaller than the same block\'s §4.4 weeks and split in two: strictly worse than the ' +
+      'fast finish it displaced. The claim is that the entry still carries an at-pace band and ' +
+      'that the band the composer reads is the doc\'s, not a number typed into the engine.',
+    check({ cite }) {
+      const text = cite.text();
+      if (!/sub-elite runners scale to ~30[–—-]40 km total/i.test(text)) {
+        throw new Error('§11.1 no longer states the sub-elite total — the block loses the row it scales against');
+      }
+      const entry = WORKOUT_CATALOGUE.find((e) => e.slug === 'canova-modified-block');
+      if (!entry) throw new Error('canova-modified-block is gone from the catalogue');
+      if (!entry.atPace) {
+        throw new Error('canova-modified-block carries no atPace band — modifiedBlockSegFor would fall back to Infinity and be bounded only by Daniels');
+      }
+      // The composer converts through MI_PER_KM, so the unit has to stay one
+      // it knows. A band that quietly became 'min' would size the session in
+      // minutes-as-miles without failing anywhere else.
+      if (!['km', 'm', 'mi'].includes(entry.atPace.unit)) {
+        throw new Error(`canova-modified-block atPace is stated in ${entry.atPace.unit}; modifiedBlockSegFor converts only km/m/mi`);
+      }
+      // The doc's PM example is the source of the at-pace figure; if that row
+      // stops naming kilometres at MP the band has nothing behind it.
+      if (!/10[–—-]12 km at MP/i.test(text)) {
+        throw new Error('§11.1 PM example no longer states its at-pace kilometres — entry.atPace loses its citation');
+      }
+    },
+  },
+
+  {
     id: 'LONGRUN.variant-rotation',
     binds: [
       'lib/plan/generate.ts#PROGRESSION_TAIL_SHARE',
