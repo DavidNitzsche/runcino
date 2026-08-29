@@ -50,6 +50,8 @@ import {
   dowOfISO,
   gapAlreadyHandled,
   isStaleMissed,
+  LOAD_REDUCING_ACTION_KINDS,
+  reducesLoad,
   overshootFires,
   overshootSuppressedByPlanMode,
   partitionActionsForCron,
@@ -103,6 +105,80 @@ describe('P1-37 · cron partition is per-action tag, never index alignment', () 
     expect(applyNow).toHaveLength(0);
     expect(proposeFirst).toHaveLength(2);
     expect(proposeFirst.map((a) => a.workoutIds?.[0])).toEqual(['wko_a', 'wko_b']);
+  });
+
+  it('DIRECTION-1 · every action kind is classified, so a new one cannot slip past the guard', () => {
+    /*
+     * DIRECTION-EXHAUSTIVE-1 (2026-08-29) · the guard is a SET, and a set is
+     * only as good as the discipline that keeps it complete.
+     *
+     * The owner's rule is that load may rise unattended and may never fall
+     * unattended. `reducesLoad` implements it by membership in
+     * `LOAD_REDUCING_ACTION_KINDS`, which means the rule is enforced for the
+     * kinds someone remembered to add and silently unenforced for any kind
+     * added later. That is the same shape as every registry in this codebase:
+     * a list that has to be exhaustive, with nothing making it so.
+     *
+     * This is what makes it so. Every kind in the union is named here with its
+     * direction, and a kind that appears in the union without appearing here
+     * fails the test — the author of the next action kind has to state which
+     * way it moves the runner's load before it can ship. Adding a kind to
+     * `REDUCES` also requires adding it to `LOAD_REDUCING_ACTION_KINDS`, which
+     * the assertions below check in both directions.
+     */
+    const REDUCES: ReadonlyArray<AdaptationAction['kind']> = [
+      // Turns a quality session into an easier one. The archetypal pullback.
+      'downgrade',
+      // Takes a fraction of the volume off. Same direction, smaller step.
+      'shave',
+    ];
+    const DOES_NOT_REDUCE: Readonly<Record<string, string>> = {
+      reschedule: 'Moves a session to another day. The work is unchanged; only its date is.',
+      recompute_paces:
+        're-anchors prescribed paces to measured fitness. It does not remove a session, and it '
+        + 'is the mechanism by which a plan stays honest about what the runner can hold.',
+      mark_dirty: 'A flag for a later pass. Changes no prescription.',
+      mark_upgrade: 'Bumps distance UP, with a SQL guard that distance never decreases.',
+      note: 'Records a reason on the plan. Changes no prescription — the record-only lane.',
+      field_test:
+        'Converts one quality day into a 30-minute threshold field test. It is not obviously '
+        + 'lighter than what it replaces, and it is gated anyway: it is emitted under the '
+        + 'field_test_due trigger, which is in PROPOSE_FIRST_TRIGGERS.',
+      reshape:
+        'Rewrites ONE quality session\'s geometry to the shape the progression gate resolved — '
+        + 'never pace, never mileage, never the row type. The trajectory it reads is monotone '
+        + '(a deload week carries no step and the walk resumes from where it stood), and '
+        + 'deload, race and taper weeks are filtered out inside loadProgressionWeek, so there '
+        + 'is no resolved step for it to carry downward. If reshape ever gains a step-back, it '
+        + 'moves to REDUCES and to LOAD_REDUCING_ACTION_KINDS with it.',
+    };
+
+    // Every kind the union admits, taken from a value the compiler checks
+    // rather than from a list retyped here.
+    const ALL: ReadonlyArray<AdaptationAction['kind']> = [
+      'reschedule', 'downgrade', 'shave', 'recompute_paces', 'mark_dirty',
+      'mark_upgrade', 'note', 'field_test', 'reshape',
+    ];
+    const classified = new Set<string>([...REDUCES, ...Object.keys(DOES_NOT_REDUCE)]);
+    const unclassified = ALL.filter((k) => !classified.has(k));
+    expect(
+      unclassified,
+      `these action kinds have no recorded direction: ${unclassified.join(', ')}. `
+      + 'State which way each moves the runner\'s load, and add it to '
+      + 'LOAD_REDUCING_ACTION_KINDS if it can take work away.',
+    ).toEqual([]);
+
+    // The guard's set and this classification are the same set, both ways.
+    expect([...LOAD_REDUCING_ACTION_KINDS].sort()).toEqual([...REDUCES].sort());
+    for (const k of REDUCES) {
+      expect(reducesLoad({ kind: k, why: 'x' } as AdaptationAction), `${k} must reduce`).toBe(true);
+    }
+    for (const k of Object.keys(DOES_NOT_REDUCE)) {
+      expect(
+        reducesLoad({ kind: k as AdaptationAction['kind'], why: 'x' } as AdaptationAction),
+        `${k} is recorded as not reducing load: ${DOES_NOT_REDUCE[k]}`,
+      ).toBe(false);
+    }
   });
 
   it('DIRECTION-1 · every load-reducing action proposes, tagged or not', () => {

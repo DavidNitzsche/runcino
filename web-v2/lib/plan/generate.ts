@@ -9909,6 +9909,40 @@ export function finalizeComposedPlan(
   }
 
   /*
+   * ZERODAY-1 (2026-08-29) · a day with no miles is not a workout.
+   *
+   * Found by the same sweep as LABELTRUTH-1: two days of 47,040 ended at zero
+   * distance while still carrying a prescription — an ultra taper week's
+   * `race_week_tuneup` reading "5×400m @ T pace · 90s jog" on a 0 mi day. The
+   * taper's volume cut took the day to nothing and nothing re-read what the day
+   * still claimed to be.
+   *
+   * It is a small population and an incoherent one. `splitDay` reports the day
+   * as zero easy and zero quality, so it contributes nothing to any cap, ramp
+   * or intensity ratio — but the prescription is still what the runner reads
+   * and what `buildWorkoutSpec` parses, and that spec expands to warm-up plus
+   * five four-hundreds plus cool-down: about two and a quarter miles of running
+   * on a day the plan says is zero.
+   *
+   * Converting it to REST removes no training. The day already had none — zero
+   * miles is what every accounting pass in this file already believes about it,
+   * and this only makes the label agree with them. Cross-training and strength
+   * are not `DayPlan` types — they are carried elsewhere — so the only runless
+   * type this has to step around is `rest` itself.
+   */
+  for (const week of composed.weeks) {
+    for (const day of week.days) {
+      if (day.type === 'rest') continue;
+      if ((day.distanceMi ?? 0) > 0) continue;
+      day.type = 'rest';
+      day.isQuality = false;
+      day.isLong = false;
+      day.subLabel = 'REST';
+      day.notes = 'Off feet. Hydrate.';
+    }
+  }
+
+  /*
    * LABELTRUTH-1 (2026-08-29) · the last word on what a day SAYS is the spec
    * that day builds.
    *
