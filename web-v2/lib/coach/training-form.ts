@@ -46,6 +46,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { coverageDaysFrom, firstRunISO } from '@/lib/runs/volume';
 import { computeAcwr } from './acwr';
+import { FRIEL_5_ZONE_EDGES } from '@/lib/training/zones';
 
 export type TrainingFormLabel =
   | 'DETRAINING'
@@ -120,8 +121,18 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
   const today = await runnerToday(userUuid);
 
   // LTHR for HR-based intensity inference (E8-followup).
-  // Friel zone boundaries: Z4 ≥ 0.88×LTHR → tempo; Z3 ≥ 0.78×LTHR → progression.
-  // Cite: Friel, The Triathlete's Training Bible, zone table.
+  //
+  // TRAINFORM-DEDUP-1 (2026-08-29) · this used to read "Friel zone boundaries:
+  // Z4 >= 0.88xLTHR -> tempo; Z3 >= 0.78xLTHR -> progression," but 0.88 and
+  // 0.78 are not Friel edges at all — Research/03 section 6's table puts Zone
+  // 4 at >=95% LTHR and Zone 3 (the zone the table itself labels "Tempo") at
+  // >=90%. The literals were also hand-copied into both branches of the
+  // ternary below. Both problems share one fix: derive the two triggers from
+  // FRIEL_5_ZONE_EDGES (the canonical, registry-gated edge list) instead of
+  // restating them — Zone 3 "Tempo"'s own floor for the tempo trigger, Zone 2
+  // "Aerobic/Endurance"'s floor for the progression trigger (a progression
+  // run spends most of its build in Zone 2 before easing toward Zone 3).
+  // Cite: Research/03-heart-rate-zones.md §6 "Friel 7-Zone Running HR Table".
   const lthrRow = await pool.query<{ lthr: number | null }>(
     `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userUuid],
@@ -213,16 +224,13 @@ export async function computeTrainingForm(userUuid: string): Promise<TrainingFor
     // zeroing out the stress of a 6-mile run because the plan had "OFF"
     // produces a structurally lighter CTL than reality.
     const planType = r.inferred_type;
-    const type = (planType === 'rest' && mi > 0)
-      ? (mi >= 10 ? 'long'
-        : avgHr && lthr && avgHr >= lthr * 0.88 ? 'tempo'
-        : avgHr && lthr && avgHr >= lthr * 0.78 ? 'progression'
-        : 'easy')
-      : planType
-        ?? (mi >= 10 ? 'long'
-          : avgHr && lthr && avgHr >= lthr * 0.88 ? 'tempo'
-          : avgHr && lthr && avgHr >= lthr * 0.78 ? 'progression'
-          : 'easy');
+    const inferredType = (): string => {
+      if (mi >= 10) return 'long';
+      if (avgHr && lthr && avgHr >= lthr * FRIEL_5_ZONE_EDGES[1]) return 'tempo';       // >=90% LTHR · Friel Zone 3 "Tempo"
+      if (avgHr && lthr && avgHr >= lthr * FRIEL_5_ZONE_EDGES[0]) return 'progression'; // >=85% LTHR · Friel Zone 2 "Aerobic/Endurance"
+      return 'easy';
+    };
+    const type = (planType === 'rest' && mi > 0) ? inferredType() : planType ?? inferredType();
     const ifct = INTENSITY_FACTOR[type] ?? 0.85;
     return mi * ifct;
   });

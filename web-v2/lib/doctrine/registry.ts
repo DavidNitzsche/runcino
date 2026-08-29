@@ -3094,6 +3094,77 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  {
+    id: 'TEMPLATE.source-attribution-matches-research22',
+    binds: ['lib/plan/plan-templates.ts#PLAN_TEMPLATES.source'],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 4. Marathon Plans',
+    claim:
+      "Each PLAN_TEMPLATES row's `source` field names the book(s) its structure was built from " +
+      "— it is a citation, not free text. Research/22 states the same attribution in prose " +
+      "directly under each section heading, so a row's source is checked against that prose " +
+      'rather than trusted as an uncrossed comment. (2026-08-29: promoted from a CLAUDE.md ' +
+      "\"not yet seeded\" line — the sibling claim below already cross-checks qualityCharacter " +
+      'and peak volume/long against the same doc; only the citation label itself was unwatched.)',
+    check() {
+      const doc = 'Research/22-plan-templates.md';
+      const DOC_DISTANCE: Record<'5k' | '10k' | 'hm' | 'm', string> = {
+        '5k': '5K', '10k': '10K', hm: 'Half Marathon', m: 'Marathon',
+      };
+      const COHORT: Record<'beginner' | 'intermediate' | 'advanced', string> = {
+        beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced',
+      };
+      const all = sourceOf(doc).split('\n');
+      // Book/author families this catalog draws from, per Research/22's own
+      // "## Sources" list — kept as substring-safe stems so "Pfitzinger" and
+      // "Pfitz" resolve to the same family, matched case-insensitively.
+      const FAMILIES = [
+        'higdon', 'pfitz', 'daniels', 'hansons', 'galloway', 'mayo', 'koop',
+        'mottiv', 'inov-8', 'inov8', 'runnersconnect', 'hudson', 'c25k', 'furman',
+      ];
+      const familiesIn = (text: string): Set<string> => {
+        const t = text.toLowerCase();
+        return new Set(FAMILIES.filter((f) => t.includes(f)));
+      };
+      // The attribution sentence is the first non-blank, non-table line after
+      // the heading — same section-start anchor as the sibling claim's
+      // exact-prefix `section()` lookup, walked forward instead of pulled
+      // from a table cell.
+      const proseFor = (distance: string, cohort: string): string => {
+        const at = all.findIndex((l) => l.startsWith(`### ${distance} —`) && l.includes(cohort));
+        if (at < 0) throw new Error(`DOCTRINE · no "### ${distance} — ${cohort}" section in ${doc}`);
+        for (let i = at + 1; i < at + 6; i++) {
+          const line = all[i]?.trim();
+          if (line && !line.startsWith('|')) return line;
+        }
+        throw new Error(`DOCTRINE · no prose line under ${distance} — ${cohort} in ${doc}`);
+      };
+      for (const cat of ['5k', '10k', 'hm', 'm'] as const) {
+        const docDistance = DOC_DISTANCE[cat];
+        for (const level of ['beginner', 'intermediate', 'advanced'] as const) {
+          const row = PLAN_TEMPLATES.find((t) => t.distance === cat && t.level === level);
+          if (!row) throw new Error(`PLAN_TEMPLATES has no ${cat}/${level} row`);
+          const prose = proseFor(docDistance, COHORT[level]);
+          const docFamilies = familiesIn(prose);
+          // Research/22's own prose sometimes describes structure without
+          // naming a book at all (10K — Beginner: "Runners who finished a 5K
+          // and want to step up," no attribution) — nothing to cross-check a
+          // citation against there, so skip rather than force a false match.
+          if (docFamilies.size === 0) continue;
+          const rowFamilies = familiesIn(row.source);
+          const overlap = [...rowFamilies].some((f) => docFamilies.has(f));
+          if (!overlap) {
+            throw new Error(
+              `PLAN_TEMPLATES ${cat}/${level}.source is "${row.source}" (families: ` +
+                `${[...rowFamilies].join(', ') || 'none recognized'}) but Research/22's ${docDistance} — ` +
+                `${COHORT[level]} prose is "${prose}" (families: ${[...docFamilies].join(', ')}) — no overlap`,
+            );
+          }
+        }
+      }
+    },
+  },
+
   // ══ VDOT ANCHOR FRESHNESS ═════════════════════════════════════════════════
   {
     id: 'VDOT.anchor-freshness-window',
@@ -3358,28 +3429,18 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'Repetition pace is roughly mile race pace — 5:50 against a 6:51 threshold, 61 s/mi ' +
       'faster. It is the only pace targeting economy and recruitment rather than lactate ' +
       'clearance, so substituting a slower one wastes the workout.',
-    check({ cite, exempt }) {
+    check({ cite }) {
       const t = cite.table();
       const [tPace] = parsePaceBandSec(t.cell('Daniels T', 'Pace (min/mi)'));
       const [rPace] = parsePaceBandSec(t.cell('Daniels R', 'Pace (min/mi)'));
       const off = Number(
         matchLiteral(
           sourceOf('web-v2/lib/training/prescriptions.ts'),
-          /rep:\s*fmtPace\(t - (\d+)\)/,
-          'derivePaces rep',
+          /repSec:\s*t\s*!=\s*null\s*\?\s*t\s*-\s*(\d+)\s*:\s*null/,
+          'derivePaces repSec',
         )[1],
       );
-      if (exempt('rep-runs-slow')) return;
       within(off, [tPace - rPace - 10, tPace - rPace + 10], 'repetition-pace offset off T');
-    },
-    exempt: {
-      'rep-runs-slow':
-        'KNOWN VIOLATION (found seeding this registry, 2026-08-17). prescriptions.ts derives R ' +
-        'as T-30 and its own comment calls that "~5K pace" — which is I pace, not R. Doctrine ' +
-        "puts R at mile pace, T-61 in the worked example. The engine's R is 31 s/mi too slow, " +
-        'so R sessions deliver interval stimulus rather than the neuromuscular/economy ' +
-        'stimulus they are prescribed for. Note the live composer (spec-builder) emits no R ' +
-        'pace at all, which bounds the blast radius. Engine audit owns the fix.',
     },
   },
 

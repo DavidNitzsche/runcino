@@ -246,22 +246,25 @@ function fmtPaceRange(loS: number | null, hiS: number | null): string | null {
   return `${lo}-${hi} /mi`;
 }
 
+/**
+ * REP-DEDUP-1 (2026-08-29) · used to carry its own copy of every T-offset,
+ * kept "in sync" with `derivePaces()` below by a comment ("Offsets mirror
+ * `paces()` exactly") instead of by the compiler. That was the exact shape
+ * the doctrine registry's `PACE.rep-offset` exemption caught: `derivePaces`'s
+ * `repSec` and this function's `rep` field could each be edited without
+ * touching the other. Now there is exactly one T-offset table — the one in
+ * `derivePaces()` — and this function only formats it.
+ */
 function paces(p: ProfileInputs) {
-  const t = tPaceSecPerMi(p);
-  if (!t) {
-    return {
-      easy: null, long: null, marathon: null, tempo: null,
-      threshold: null, interval: null, rep: null,
-    };
-  }
+  const d = derivePaces(p);
   return {
-    easy:      fmtPaceRange(t + 80,  t + 120),  // T + 80-120s · matches spec-builder (Jun-8 floor-raise); Research/01 E = MP+60-90
-    long:      fmtPaceRange(t + 55,  t + 90),   // T + 55-90s
-    marathon:  fmtPace(t + 18),                  // T + 18s
-    tempo:     fmtPaceRange(t + 5,   t + 18),   // T + 5-18s
-    threshold: fmtPace(t),                       // exact T
-    interval:  fmtPace(t - 18),                  // T - 18s (~10K pace)
-    rep:       fmtPace(t - 30),                  // T - 30s (~5K pace)
+    easy:      fmtPaceRange(d.easySecLo, d.easySecHi),
+    long:      fmtPaceRange(d.longSecLo, d.longSecHi),
+    marathon:  fmtPace(d.marathonSec),
+    tempo:     fmtPaceRange(d.tempoSecLo, d.tempoSecHi),
+    threshold: fmtPace(d.thresholdSec),
+    interval:  fmtPace(d.intervalSec),
+    rep:       fmtPace(d.repSec),
   };
 }
 
@@ -334,7 +337,11 @@ export function derivePaces(p: ProfileInputs): DerivedPaceTargets {
     tempoSecHi: t != null ? t + 18 : null,
     thresholdSec: t,
     intervalSec: t != null ? t - 18 : null,
-    repSec: t != null ? t - 30 : null,
+    // T - 61s (~mile pace) · PACE.rep-offset. Was T-30 ("~5K pace" per this
+    // file's own former comment) until 2026-08-29 — that offset is I-pace
+    // territory, not R, so reps were training lactate clearance instead of
+    // the neuromuscular/economy stimulus R is prescribed for.
+    repSec: t != null ? t - 61 : null,
     marathonSec: t != null ? t + 18 : null,
     aerobicCapBpm: z2?.upper ?? null,
     zoneTable: z,

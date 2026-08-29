@@ -57,16 +57,16 @@ The coach runtime pulls from these. Decisions about what each beat of a page sho
 
 ---
 
-## Race-data source-of-truth (locked 2026-05-19)
+## Race-data source-of-truth (locked 2026-05-19, citations re-pointed 2026-08-29)
 
 **Before merging ANY component that displays race-related data, answer these four questions:**
 
 1. **Does this display a race result?** (finish time, finish pace, PR, race comparison, aggregate VDOT, race-anchored prediction)
-2. **If yes, does it read from `races.actual_result` first?** Curated chip times beat raw Strava elapsed.
-3. **If it falls back to `strava_activities`, is that fallback labeled as provisional?** (e.g., "Training effort · race to lock in", "Strava elapsed", not "Personal Record"). Strava-source data must never display as authoritative race performance.
-4. **Does it skip auto-detected Strava best-effort segments?** A 5K split inside a long run is not a 5K race; pulling `canonicalLabel` directly from `strava_activities` is how the phantom-5K bug landed in compute-vdot. If a race-result consumer reads `canonicalLabel`, it's likely wrong.
+2. **If yes, does it read from `races.actual_result` first?** Curated chip times beat raw training-run elapsed.
+3. **If it falls back to training-run data, is that fallback labeled as provisional?** (e.g., "Training effort · race to lock in", not "Personal Record"). Training-run data must never display as authoritative race performance.
+4. **Does it skip auto-detected best-effort segments?** A 5K split inside a long run is not a 5K race; pulling `canonicalLabel` directly is how the phantom-5K bug landed in compute-vdot. If a race-result consumer reads `canonicalLabel`, it's likely wrong.
 
-**The historical bugs that motivate this checklist** (all fixed by 2026-05-19):
+**The historical bugs that motivate this checklist** (all fixed by 2026-05-19, against the pre-rewrite app — table kept as-is for the archaeology):
 
 | Bug | Component | Root cause |
 |---|---|---|
@@ -74,17 +74,24 @@ The coach runtime pulls from these. Decisions about what each beat of a page sho
 | Missing Sombrero Half | `compute-vdot.ts` | Dedup-by-canonical-distance dropped the slower of two HMs |
 | Empty Personal Records card | `/races/page.tsx` | Read ONLY from `strava_activities.canonicalLabel`, never from `races.actual_result` |
 
-**Reference docs:**
-- `docs/simulations/race-data-source-audit-L6.md` — the 11-component audit confirming current clean state
-- `web/app/api/admin/audit-races/route.ts` — diagnostic admin endpoint for ongoing data drift detection
+**PORT-1 (2026-08-29):** `main` now builds and deploys `web-v2` only (`legacy/web` — where `compute-vdot.ts`, `/races/page.tsx`, `strava_activities`, and the old `audit-races` endpoint below all still live — is retired: root `package.json`'s build script and `railway.json` both point at `web-v2`, and `docs/OVERNIGHT-REPORT.md` confirms it isn't deployed). The bug table above stays as history, but **the schema changed**: there is no `strava_activities` table in `web-v2` — activity data lives in `runs` (`data` jsonb), and `canonicalLabel`/`canonicalFinishS` are present as keys but permanently null on every row (the auto-detected-best-effort mechanism was retired, not renamed — see `web-v2/lib/runs/run-shape.ts`'s `RunData.canonicalLabel` doc comment). `races.actual_result`/`races.meta` are unchanged in shape, now with `user_uuid`. The live implementation of this checklist:
 
-**Non-race-result consumers** (these correctly use `strava_activities`):
+- `web-v2/lib/race/personal-records.ts` — races.actual_result rung 1, training-run fallback rung 2, always `provisional:true` + captioned when it's a fallback.
+- `web-v2/lib/race/retrospective.ts` — per-mile splits from `races.actual_result.miles[]` first; never reads `canonicalLabel`.
+- `web-v2/lib/race/effort-authority.ts` — the effort-class authority pipeline.
+- `web-v2/lib/doctrine/registry.ts` claims `EVIDENCE.chip-time-is-canonical` / `EVIDENCE.race-authority-is-the-effort-class` gate rungs 1-2 in CI on every build.
+
+**Reference docs:**
+- `docs/simulations/race-data-source-audit-L6.md` — the 11-component audit confirming clean state as of the pre-rewrite app; treat as historical, not current
+- `web-v2/app/api/admin/audit-races/route.ts` — diagnostic admin endpoint for ongoing data drift detection, re-derived 2026-08-29 against the live `races`/`runs` schema (the old `web/app/api/admin/audit-races/route.ts` this pointed to only exists under retired `legacy/web` and is not reachable on the live app)
+
+**Non-race-result consumers** (these correctly use `runs`, not `races`):
 
 - HR readings (`validate-max-hr.ts` reads `maxHr` and `avgHr` from training runs)
-- Activity caching (`lib/strava-activities.ts`)
-- The sync layer itself (`/api/strava/sync`)
+- Activity caching / ingest (`web-v2/lib/runs/*`)
+- The sync layer itself (Strava/HealthKit ingest routes)
 
-The distinction is *what you're surfacing*: race performance → races table; training data → strava_activities. Use the right source for the right job, not "races good, Strava bad."
+The distinction is *what you're surfacing*: race performance → `races` table; training data → `runs` table. Use the right source for the right job, not "races good, everything else bad."
 
 ---
 
@@ -162,6 +169,8 @@ This rule was caught on first prod run of the V5 Z2 stimulus check. The cost of 
 ## Rule 6 · Multi-writer jsonb columns require field-level updates, not full-replace upserts (locked 2026-05-19 round 5)
 
 **Promoted from candidate after second instance found in `lib/race-store.ts:saveRaceDB` during the queued pre-emptive audit. Same shape, different column. The candidate-stage discipline worked: the second instance was recognized at first sight instead of looking novel.**
+
+**2026-08-29:** `lib/race-store.ts` only exists under retired `legacy/web` now (see the Race-data source-of-truth section above for why). The live `races.actual_result` write site is `web-v2/app/api/race/result/route.ts`, which applies this exact pattern — the route's own header comment cites "Rule 6" by name and does the merge as `COALESCE(actual_result, '{}'::jsonb) || $2::jsonb`. Verified compliant as of that date; check there, not `race-store.ts`, if auditing this rule against the live app.
 
 When two or more code paths write to the same jsonb column with different field coverage, naive full-replace upserts silently erase fields the active writer doesn't know about. The active writer overwrites the inactive writer's contributions because `SET column = EXCLUDED.column` can't distinguish "writer didn't include this field" from "writer intentionally cleared this field."
 
@@ -248,20 +257,22 @@ Do **not** loosen the claim. Add a key to that claim's `exempt` map with an hone
 
 ### Not yet seeded — claim areas still unwatched
 
-Append these as the engine audit reaches them:
+**2026-08-29 sweep:** this list had gone stale — most of it was already seeded in the ~289-entry registry without the checklist being updated. Re-audited against the live registry; corrected below. Append new areas as the engine audit reaches them, and when you close one, say so with the claim id (the pattern the dosing-caps line set) rather than just deleting the bullet — a bullet that vanishes silently is exactly how this list went stale the first time.
 
 - ~~Daniels' weekly dosing caps~~ — CLOSED 2026-08-28: enforced at authoring (`applyDosingCaps` inside `finalizeComposedPlan`), fatal in `validateComposedPlan` §10, corpus-gated by `_dosing_sweep_gate.test.ts` (full archetype matrix, zero enforced findings), bound by `DOSING.enforced-findings-bind-the-composer`. Taper/race weeks keep their doctrine-cited percentage exemption.
-- Polarized intensity distribution (70-80% E, 10-15% M+T, 10-15% I+R).
-- `validate.ts` `longRunWoWMaxPct` / `weeklyVolWoWMaxPct`, and `longRunCapMi`'s absolute per-distance ceilings.
-- The `PLAN_TEMPLATES` table in `plan-templates.ts` (every row cites a book, none cite `Research/`).
-- Heat, dewpoint and WBGT adjustments (`Research/06`, `lib/weather/heat-adjustment.ts`).
-- Fuelling: carbohydrate g/hr and hydration bands (`Research/18`, `Research/19`).
-- Strength programming dose and taper-week caps (`Research/07`).
-- HRV / RHR / ACWR readiness thresholds (`Research/15`).
-- Injury walk-run ladders and per-pathology return protocols (`Research/05`, `lib/plan/injury-builder.ts`).
-- Age and sex grading (`Research/13`, `Research/24`).
-- `fitness-trajectory.ts` gain rates (`BASE_BUILD_RATE`, `MAX_BLOCK_GAIN`) — check these are modelled, not presented as measured.
-- Altitude, treadmill and terrain pace conversions (`Research/01` §course/weather).
+- ~~Polarized intensity distribution (70-80% E, 10-15% M+T, 10-15% I+R)~~ — CLOSED (seeded before this sweep, checklist just never caught up): `INTENSITY.non-easy-remainder` checks both Polarized and Pyramidal TID shapes against the easy-share floor and cross-checks the per-pace weekly caps against it.
+- ~~`validate.ts` `longRunWoWMaxPct` / `weeklyVolWoWMaxPct`, and `longRunCapMi`'s absolute per-distance ceilings~~ — CLOSED: `LONGRUN.wow-single-step-cap-is-the-injury-red-line` and `LONGRUN.validator-cap-is-the-elite-band`; `weeklyVolWoWMaxPct` is guarded as *removed* (a claim fails if it reappears).
+- The `PLAN_TEMPLATES` table in `plan-templates.ts` — **partially closed**. `TEMPLATE.quality-character-and-volume-match-doctrine` checks `qualityCharacter`/peak-volume/peak-long-run per row against `Research/22`'s own table cells (caught a real Marathon/Half-Marathon row-confusion bug on first run). Still open: the free-text `source` field (e.g. `'Pfitz 18/70-18/85'`) that names which book a row structurally follows is declared but never runtime-checked against what `Research/22` says for that cell — nothing catches a future misattribution there.
+- Heat, dewpoint and WBGT adjustments (`Research/06`, `lib/weather/heat-adjustment.ts`) — CLOSED: `HEAT.*` (6+ entries), with one explicit `altitude-trigger-unimplemented` exemption ("no altitude-aware training path for this trigger to sit on").
+- Fuelling: carbohydrate g/hr and hydration bands (`Research/18`, `Research/19`) — **partially closed**: `FUELING.race-carb-rate-by-distance` (`Research/18`) is seeded; nothing yet cites `Research/19` (hydration/electrolyte bands) specifically.
+- Strength programming dose and taper-week caps (`Research/07`) — CLOSED: `STRENGTH.phase-frequency-cap-matches-the-matrix`.
+- HRV / RHR / ACWR readiness thresholds (`Research/15`) — CLOSED: `SAMPLING.*`, `READINESS.*`, `CONVERGENCE.*`.
+- Injury walk-run ladders and per-pathology return protocols (`Research/05`, `lib/plan/injury-builder.ts`) — CLOSED: `INJURY.walk-run-ladder-is-encoded-verbatim` (stage-for-stage verbatim) + `INJURY.walk-run-is-priced-at-the-runners-own-easy-pace`.
+- Age and sex grading (`Research/13`, `Research/24`) — **still open**. Only 2 entries cite `Research/13` (luteal-phase HR/HRV); nothing cites `Research/24` (VDOT age/sex grading) at all.
+- `fitness-trajectory.ts` gain rates (`BASE_BUILD_RATE`, `MAX_BLOCK_GAIN`) — CLOSED: `ADAPTATION.vdot-gain-rate`, `ADAPTATION.single-shot-vdot-magnitudes`.
+- Altitude, treadmill and terrain pace conversions (`Research/01` §course/weather) — CLOSED: `TERRAIN.*`.
+
+**Genuinely still open, going forward: age/sex grading (`Research/24`, `Research/14`), hydration bands (`Research/19`), and the `PLAN_TEMPLATES.source` attribution check.**
 
 ---
 
