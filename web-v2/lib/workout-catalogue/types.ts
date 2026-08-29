@@ -216,8 +216,27 @@ export interface CatalogueEntry {
   slug: string;
   /** The doc's name for it, as §18's lookup index writes it where it appears there. */
   name: string;
-  /** Section it is specified in, e.g. `§5.3`. Resolvable in the doc's headings. */
+  /** Section it is specified in, e.g. `§5.3`. Resolvable in `doc`'s headings. */
   section: string;
+  /**
+   * The doctrine file `section` resolves in. Defaults to Research/04, which is
+   * where the general session vocabulary lives and where every entry sat until
+   * 2026-08-29.
+   *
+   * DOWNHILL-1 · the catalogue was implicitly single-doc, and that assumption
+   * hid a whole session family. `Research/11-course-specific-training.md`
+   * §"Eccentric Loading Protocol for Downhill-Heavy Races" prescribes named
+   * downhill sessions with grades, durations and a lead time, and the engine
+   * carried none of them — all five `hills` entries are uphill. Nothing
+   * failed, because the coverage check only ever walked Research/04's own
+   * index, so a session doctrine describes in a DIFFERENT file could not even
+   * be expressed here, let alone missed.
+   *
+   * Set it when the session is specified outside Research/04. The heading
+   * check resolves `section` against this file, so a wrong value fails loudly
+   * rather than silently skipping validation.
+   */
+  doc?: string;
   family: WorkoutFamily;
   /**
    * The zones the WORK segments target. Ordered as the workout runs them, so a

@@ -11395,6 +11395,99 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+  {
+    id: 'DOWNHILL.eccentric-protocol-is-carried',
+    binds: [
+      'lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE.downhill-repeats',
+      'lib/workout-catalogue/catalogue.ts#WORKOUT_CATALOGUE.downhill-simulation-long-run',
+    ],
+    doc: 'Research/11-course-specific-training.md',
+    anchor: '### Eccentric Loading Protocol for Downhill-Heavy Races',
+    claim:
+      'Downhill running is a session family, not a note. Research/11 prescribes an 8-10 week ' +
+      'eccentric-loading protocol with named workouts, grades and rep counts, and the engine ' +
+      'carried none of it until 2026-08-29 — all five hill entries climb. The protocol\'s two ' +
+      'session-shaped elements (the repeats and the long simulation) are catalogue entries, ' +
+      'their rep counts and distances are read out of the doc\'s own block, and the simulation ' +
+      'is kept out of the taper because the doc names a late-taper downhill session as a hazard.',
+    check({ cite }) {
+      const text = cite.section.join('\n');
+      const bySlug = (slug: string) => {
+        const e = WORKOUT_CATALOGUE.find((w) => w.slug === slug);
+        if (!e) {
+          throw new Error(
+            `the catalogue no longer carries "${slug}" · Research/11's eccentric protocol is a ` +
+              'prescription with named sessions, and dropping them returns the engine to ' +
+              'appending a sentence to the long run where doctrine states a workout',
+          );
+        }
+        return e;
+      };
+
+      // Both entries must cite THIS doc, or the coverage they represent is
+      // only nominal — an entry pointing at Research/04 would be validated
+      // against headings that do not describe it.
+      for (const slug of ['downhill-repeats', 'downhill-simulation-long-run']) {
+        const e = bySlug(slug);
+        if (e.doc !== 'Research/11-course-specific-training.md') {
+          throw new Error(`${slug} must cite Research/11 · it reads "${e.doc ?? 'Research/04 (default)'}"`);
+        }
+      }
+
+      // The repeats' rep count and distance come out of the doc's own line,
+      // parsed rather than restated, so an edit to the protocol fails here.
+      const repRow = text.split('\n').find((l) => /×\s*400/.test(l) && /goal race pace/i.test(l));
+      if (!repRow) {
+        throw new Error(
+          'Research/11 no longer states the downhill repeat row ("6-10 × 400-800 m @ ... at goal ' +
+            'race pace") · re-read the protocol before trusting the entry built from it',
+        );
+      }
+      const nums = repRow.match(/(\d+)\s*[–-]\s*(\d+)\s*×\s*(\d+)\s*[–-]\s*(\d+)\s*m/);
+      if (!nums) throw new Error(`could not parse reps × distance out of "${repRow.trim()}"`);
+      const [repsMin, repsMax, distMin, distMax] = nums.slice(1, 5).map(Number);
+
+      const reps = bySlug('downhill-repeats');
+      const s = reps.structures[0];
+      if (s.kind !== 'reps') throw new Error('downhill-repeats is no longer a rep structure');
+      if (s.reps.min !== repsMin || s.reps.max !== repsMax) {
+        throw new Error(
+          `downhill-repeats runs ${s.reps.min}-${s.reps.max} reps · the doc says ${repsMin}-${repsMax}`,
+        );
+      }
+      if (s.rep.unit !== 'm' || s.rep.min !== distMin || s.rep.max !== distMax) {
+        throw new Error(
+          `downhill-repeats' rep is ${s.rep.min}-${s.rep.max}${s.rep.unit} · the doc says ${distMin}-${distMax}m`,
+        );
+      }
+
+      // §Avoid the Late-Taper Trap · a session whose purpose is muscle damage
+      // must not be placeable in the window where the damage would still be
+      // there on race day. The doc states this as a hazard, not a band, so the
+      // phases list is the only place the engine can honour it.
+      const sim = bySlug('downhill-simulation-long-run');
+      if (sim.phases.includes('taper')) {
+        throw new Error(
+          'the long downhill simulation is placeable in the taper · Research/11 §"Avoid the ' +
+            'Late-Taper Trap" says a heavy downhill session inside ~10 days of the race "risks ' +
+            'racing on quads still impaired by EIMD"',
+        );
+      }
+
+      // Both are marathon/half only. The protocol's rationale is quad failure
+      // in the late miles of a long race; a 5K does not run long enough for
+      // eccentric damage to decide anything.
+      for (const slug of ['downhill-repeats', 'downhill-simulation-long-run']) {
+        const e = bySlug(slug);
+        for (const d of e.distances) {
+          if (d !== 'm' && d !== 'hm') {
+            throw new Error(`${slug} is offered for "${d}" · the protocol is written for downhill-heavy marathons and halves`);
+          }
+        }
+      }
+    },
+  },
+
   /* ── EFFORT-RAMP-1 · the two rep rows doctrine states as a BUILD ───────────
    *
    * `fits`'s effort-cued branch returned `structure.reps.max` unconditionally,

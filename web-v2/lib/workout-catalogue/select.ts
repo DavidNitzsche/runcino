@@ -639,9 +639,30 @@ function fits(
       return dose(1, 0, mins, 0);
     }
     if (structure.kind === 'reps') {
+      // DOWNHILL-1 (2026-08-29) · an effort-cued rep set measured in DISTANCE.
+      //
+      // This used to be `: 0`, so such a session dosed to zero work in BOTH
+      // currencies and the selector offered it as an empty prescription. It
+      // was unreachable while every effort-cued entry was measured in time —
+      // §8's hills and §7.3's sprints are all seconds — and Research/11's
+      // downhill repeats are the first that are not: "6-10 × 400-800 m @ -4 to
+      // -8% at goal race pace".
+      //
+      // Note what that row does and does not give. It names a pace, so the
+      // minutes ARE computable; but the session is still effort-cued, because
+      // the stimulus is eccentric loading at a gradient and not compliance
+      // with a clock. Holding marathon pace down a 6% grade is not marathon
+      // effort, so the week must not charge it against the marathon share —
+      // `atPaceMi` stays 0 and the budget invariant is untouched. What changes
+      // is only that the work becomes EXPRESSIBLE, in the currency the note
+      // above already says effort-cued sessions are measured in: minutes.
+      //
+      // No pace anchored → 0, exactly as before.
       const perRep = structure.rep.unit === 's' ? structure.rep.min / 60
         : structure.rep.unit === 'min' ? structure.rep.min
-        : 0;
+        : paceSPerMi
+          ? ((repMi(structure.rep.min, structure.rep.unit, null) ?? 0) * paceSPerMi) / 60
+          : 0;
       // EFFORT-RAMP-1 (2026-08-19) · the band is walked, not spent.
       //
       // This returned `reps.max` unconditionally, so a runner's first hill

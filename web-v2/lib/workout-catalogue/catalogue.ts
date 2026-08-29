@@ -918,6 +918,132 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     ],
   },
 
+  // ══ DOWNHILL · Research/11 §Eccentric Loading Protocol ═════════════════════
+  //
+  // DOWNHILL-1 (2026-08-29) · every entry above this comment climbs. That was
+  // not a decision, it was an oversight with a structural cause: the catalogue
+  // could only cite Research/04, and downhill running is specified in
+  // Research/11, so the sessions had nowhere to live and no check could miss
+  // them. What the engine did with Research/11 instead was append a sentence
+  // to the long run's notes (`applyCourseGuidance`, generate.ts) — guidance
+  // where doctrine prescribes a protocol.
+  //
+  // This matters for one runner in particular. Research/11 names CIM as the
+  // archetype net-downhill marathon, and Research/08 §4.5 puts the downhill
+  // gain at "0% or negative for untrained" — i.e. the course only pays out if
+  // the quads have been prepared for it, and punishes them otherwise. The
+  // protocol's own framing is protective, not performance: repeated-bout
+  // exposure cuts DOMS markers ~40-50% and CK rise ~50%, and the protection
+  // lasts months from a single substantial bout.
+  //
+  // Two entries, not the whole protocol. The doc's eight-week progression also
+  // opens with a single easy-paced downhill segment (weeks 1-2), which is an
+  // easy run on a gradient rather than a session with a shape — the composer
+  // has no slot for "run your easy run somewhere specific", and inventing one
+  // to carry it would be a bigger change than the doctrine asks for. What is
+  // carried here is the two shapes that ARE sessions: the repeats and the
+  // simulation.
+  {
+    slug: 'downhill-repeats',
+    name: 'Downhill repeats',
+    section: '§Eccentric Loading Protocol for Downhill-Heavy Races',
+    doc: 'Research/11-course-specific-training.md',
+    family: 'hills',
+    zones: ['MP'],
+    // Effort-cued, like every §8 hill entry above, and for the same underlying
+    // reason even though the doc DOES name a pace here. Holding marathon pace
+    // down a 4-8% grade is not marathon effort — it is aerobically easier and
+    // eccentrically far harder — so charging these miles against the week's
+    // marathon share would price the session by the one quality it does not
+    // have. The zone records what the target is anchored to, and the dose is
+    // counted in minutes.
+    effortOnly: true,
+    structures: [
+      { kind: 'reps', reps: r(6, 10), rep: b(400, 800, 'm'), recoverySec: null, recoveryRule: 'Jog or walk back up · the climb is recovery, not part of the stimulus' },
+    ],
+    // Null, like every other effort-cued session: the doc states no
+    // "total at-pace" row for this workout because it prices the session by
+    // grade and rep count, not by a share of the week. The dose is minutes.
+    atPace: null,
+    session: null,
+    warmupCooldownMi: null,
+    // "Repeat-bout sessions every 2-3 weeks during build phase" (§Net-Downhill
+    // Training Adjustments). The protocol's weeks 3-6 allow up to 2/wk, but
+    // the conservative end of the doc's own spacing is what is encoded: this
+    // session's cost is muscle damage, and the doc's other half is a warning
+    // about carrying that damage into a race.
+    cadence: { minDays: 14, maxDays: 21, source: 'Repeat-bout sessions every 2–3 weeks during build phase' },
+    // Marathon and half only. The protocol is written for "Downhill-Heavy
+    // Races" and its rationale is quad failure at miles 18-22 — a 5K or 10K
+    // does not run long enough for eccentric damage to decide the outcome.
+    distances: ['m', 'hm'],
+    phases: ['specific_support', 'race_specific'],
+    tiers: EVERYONE,
+    cites: [
+      'Weeks 3–6: progress to 2 sessions/wk OR add downhill repeats:',
+      '6–10 × 400–800 m @ –4 to –8% at goal race pace',
+      'Lead time: start 8–10 weeks before race',
+      'Repeat-bout sessions every 2–3 weeks during build phase.',
+    ],
+    conventions: [
+      'GRADE IS NOT ENCODED. The doc states -4 to -8%, and no field on this ' +
+      'entry can carry a gradient — the engine has no terrain model and cannot ' +
+      'verify what the runner actually ran. The grade lives in the cited rows ' +
+      'and in the session note, not in a number the engine would be asserting ' +
+      'it had checked.',
+      'The doc allows 2 sessions/wk in weeks 3-6; this encodes the 2-3 week ' +
+      'spacing from the Net-Downhill Training Adjustments section instead. ' +
+      'Where the doctrine gives a range of aggressiveness for a session whose ' +
+      'cost is muscle damage, the conservative end is the one encoded.',
+      'Effort-cued despite the doc naming a pace, because marathon pace down ' +
+      'a 4-8% grade is not marathon effort. The session spends no at-pace ' +
+      'miles and is dosed in minutes — see the distance-measured branch of ' +
+      "`fits()` in select.ts, which this entry is the first to reach.",
+    ],
+  },
+  {
+    slug: 'downhill-simulation-long-run',
+    name: 'Long downhill simulation',
+    section: '§Eccentric Loading Protocol for Downhill-Heavy Races',
+    doc: 'Research/11-course-specific-training.md',
+    // A long run on a gradient, so it takes the long slot rather than the
+    // intervals slot the repeats sit on. Same session family the runner's
+    // other long runs come from; what differs is the terrain and the intent.
+    family: 'long',
+    zones: ['E', 'MP'],
+    effortOnly: true,
+    structures: [
+      { kind: 'continuous', block: b(90, 150, 'min'), shape: 'Long run on terrain matching the race\'s average descent · race-pace segments, not the whole run' },
+    ],
+    atPace: null,
+    session: b(90, 150, 'min'),
+    warmupCooldownMi: null,
+    // "Weeks 7-8: peak — 1 long downhill simulation (race pace) + maintenance".
+    // Once, near the end of the build, and never inside the taper.
+    cadence: { minDays: 21, maxDays: 28, source: 'Weeks 7–8: peak — 1 long downhill simulation (race pace) + maintenance' },
+    perCycleMax: 2,
+    distances: ['m', 'hm'],
+    // race_specific ONLY, and deliberately not taper: §"Avoid the Late-Taper
+    // Trap" says a heavy downhill session within ~10 days of the race "risks
+    // racing on quads still impaired by EIMD", and puts the last race-pace
+    // downhill 2-3 weeks out. A session whose whole purpose is controlled
+    // muscle damage must not be placeable in the window where that damage
+    // would still be present on race day.
+    phases: ['race_specific'],
+    tiers: EVERYONE,
+    cites: [
+      'Weeks 7–8: peak — 1 long downhill simulation (race pace) + maintenance',
+      'Final 10–14 days: taper downhill volume to avoid race-day residual damage',
+      'The last race-pace downhill should be 2–3 weeks out; final downhill running in the taper is short and easy.',
+      '60–80% of long-run mileage should occur on terrain with similar grade to the race\'s average descent.',
+    ],
+    conventions: [
+      'Excluded from the taper phase on purpose · §Avoid the Late-Taper Trap. ' +
+      'The phases list is the only enforcement the catalogue has for a timing ' +
+      'rule doctrine states as a hazard rather than as a band.',
+    ],
+  },
+
   // ══ §9 · fartlek ══════════════════════════════════════════════════════════
   {
     slug: 'mona-fartlek',

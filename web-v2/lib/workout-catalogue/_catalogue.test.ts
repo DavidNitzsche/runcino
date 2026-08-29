@@ -46,10 +46,13 @@ function lookupIndex(): Array<{ name: string; section: string }> {
 }
 
 describe('WORKOUT CATALOGUE · coverage against the doc', () => {
-  it('holds 60 distinct workouts', () => {
+  it('holds 62 distinct workouts', () => {
     // 59 from Research/04's own tables + VARIETY-R3-1's 400m R repeats, whose
-    // dose is read from Research/22's advanced sample weeks (see its entry).
-    expect(WORKOUT_CATALOGUE).toHaveLength(60);
+    // dose is read from Research/22's advanced sample weeks (see its entry),
+    // + DOWNHILL-1's two Research/11 sessions (downhill repeats and the long
+    // downhill simulation). See the DOWNHILL comment block in catalogue.ts for
+    // why they could not previously exist here at all.
+    expect(WORKOUT_CATALOGUE).toHaveLength(62);
   });
 
   it('has no duplicate slugs', () => {
@@ -85,14 +88,30 @@ describe('WORKOUT CATALOGUE · coverage against the doc', () => {
 });
 
 describe('WORKOUT CATALOGUE · every citation still resolves', () => {
-  it('every quoted row is verbatim text in Research/04', () => {
+  it('every quoted row is verbatim text in the doc it was read from', () => {
+    // DOWNHILL-1 · reads each entry's own doc. This used to check every cite
+    // against Research/04 unconditionally, which meant an entry sourced
+    // elsewhere had exactly two possible fates: fail, or have its quotes
+    // skipped. Neither is a check. Resolving per-entry keeps the guarantee the
+    // test exists for — the numbers in an entry are transcriptions, and a
+    // transcription is only trustworthy if something re-reads the source.
+    const textCache = new Map<string, string>([[DOC, raw]]);
+    const textFor = (doc: string): string => {
+      const hit = textCache.get(doc);
+      if (hit != null) return hit;
+      const t = fs.readFileSync(path.join(repoRoot(), doc), 'utf8');
+      textCache.set(doc, t);
+      return t;
+    };
+
     const dead: string[] = [];
     for (const e of WORKOUT_CATALOGUE) {
+      const source = textFor(e.doc ?? DOC);
       for (const cite of e.cites) {
         // Cites that name another doc, or cross-reference another section, are
         // checked by the doctrine lint and the registry rather than here.
         if (cite.startsWith('§') || cite.includes('Research/')) continue;
-        if (!raw.includes(cite)) dead.push(`${e.slug}: ${cite}`);
+        if (!source.includes(cite)) dead.push(`${e.slug}: ${cite}`);
       }
     }
     expect(
@@ -108,14 +127,50 @@ describe('WORKOUT CATALOGUE · every citation still resolves', () => {
     expect(bare).toEqual([]);
   });
 
-  it('every section reference is a real heading in the doc', () => {
+  it('every section reference is a real heading in its own doc', () => {
+    // DOWNHILL-1 · resolves against the ENTRY'S doc, not always Research/04.
+    // An entry citing another file used to be unrepresentable, which is the
+    // structural reason Research/11's downhill protocol had no entries: not a
+    // judgement that it did not belong, just nowhere to put it. Reading
+    // `e.doc` here is what makes the citation checkable rather than skipped —
+    // a wrong filename throws on the read.
+    const headingCache = new Map<string, string[]>([[DOC, headings]]);
+    const headingsFor = (doc: string): string[] => {
+      const hit = headingCache.get(doc);
+      if (hit) return hit;
+      const text = fs.readFileSync(path.join(repoRoot(), doc), 'utf8');
+      const hs = text.split('\n').filter((l) => /^#{1,6}\s/.test(l)).map((l) => l.replace(/^#+\s*/, ''));
+      headingCache.set(doc, hs);
+      return hs;
+    };
+
     const dead: string[] = [];
     for (const e of WORKOUT_CATALOGUE) {
       const n = e.section.replace(/^§/, '');
-      const ok = headings.some((h) => new RegExp(`^${n.replace(/\./g, '\\.')}([.\\s)]|$)`).test(h));
-      if (!ok) dead.push(`${e.slug} → ${e.section}`);
+      const hs = headingsFor(e.doc ?? DOC);
+      // A numbered section anchors at the start ("5.3" → "5.3 Cruise
+      // intervals"). A named one (Research/11's protocol has no number)
+      // matches the heading text itself.
+      const numbered = /^\d/.test(n);
+      const ok = numbered
+        ? hs.some((h) => new RegExp(`^${n.replace(/\./g, '\\.')}([.\\s)]|$)`).test(h))
+        : hs.some((h) => h.trim() === n.trim());
+      if (!ok) dead.push(`${e.slug} → ${e.doc ?? DOC} ${e.section}`);
     }
     expect(dead, `sections that no longer exist:\n  ${dead.join('\n  ')}`).toEqual([]);
+  });
+
+  it('§18 coverage is only asked of entries that live in Research/04', () => {
+    // Guard on the guard. The §18 index check above walks Research/04's own
+    // lookup table, so it can only ever speak for entries specified there. If
+    // a future edit widens it to demand every entry appear in §18, the
+    // Research/11 sessions would be reported missing from an index that has no
+    // business listing them — and the likely "fix" would be to delete them.
+    const offDoc = WORKOUT_CATALOGUE.filter((e) => e.doc != null && e.doc !== DOC);
+    expect(offDoc.length, 'DOWNHILL-1 added entries outside Research/04').toBeGreaterThan(0);
+    for (const e of offDoc) {
+      expect(e.cites.length, `${e.slug} must quote the rows it was read from`).toBeGreaterThan(0);
+    }
   });
 });
 
