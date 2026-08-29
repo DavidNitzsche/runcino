@@ -351,6 +351,7 @@ note "controls OK · inline ladder flagged, multi-line SQL ladder flagged, recon
 # ═════════════════════════════════════════════════════════════════════════════
 ALLOW="$WORK/allow.txt"
 cat > "$ALLOW" <<'ALLOWEOF'
+app/api/admin/audit-races/route.ts :: An admin diagnostic, same standing as audit-weather below. It exists to surface DRIFT — it prints a curated chip time beside the raw movingTimeS/distanceMi of the run it was populated from, and flags the gap. Routing those reads through lib/runs/coherence would return one reconciled figure, which is the one thing that would stop the route detecting the disagreement it was written to detect. Same argument as lib/runs/splits-pick.ts and lib/conservation/laws.ts: a reader that cannot hold two members of a family at once cannot report that they differ.
 app/api/admin/audit-weather/route.ts :: An admin diagnostic. It exists to show raw stored values, so reconciling them would hide what it is for.
 app/api/admin/backfill-splits/route.ts :: An admin backfill that WRITES the splits array.
 app/api/ingest/workout/route.ts :: A WRITER, same reason.

@@ -102,27 +102,41 @@ async function verdictFor(userId: string, dateISO: string): Promise<DayVerdict> 
   // branch's `todayKey`. `rowCount === 0` is ambiguous between "rest day" and
   // "plan no longer covers this date", so distinguish: if the runner has NO
   // active plan row anywhere near this date, report unknown rather than false.
-  const q = await pool.query<{ id: string }>(
-    `SELECT pw.id FROM plan_workouts pw
-       JOIN training_plans tp ON tp.id = pw.plan_id
-      WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
-        AND pw.type = ANY($3::text[])
-        AND pw.date_iso = $2::text
-      LIMIT 1`,
-    [userId, dateISO, QUALITY_TYPES],
-  ).catch(() => ({ rows: [] as Array<{ id: string }>, rowCount: 0 }));
-
-  const anyRow = await pool.query<{ id: string }>(
-    `SELECT pw.id FROM plan_workouts pw
-       JOIN training_plans tp ON tp.id = pw.plan_id
-      WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
-        AND pw.date_iso = $2::text
-      LIMIT 1`,
-    [userId, dateISO],
-  ).catch(() => ({ rows: [] as Array<{ id: string }>, rowCount: 0 }));
-
-  const qualityScheduled: boolean | null =
-    q.rows.length > 0 ? true : (anyRow.rows.length > 0 ? false : null);
+  //
+  // SWALLOW-1 (2026-08-29) · a failed query is UNKNOWN, never "no".
+  //
+  // Both reads used to end `.catch(() => ({ rows: [] }))`, and an empty result
+  // is not what a failure means here. If the quality probe threw while the
+  // any-row probe succeeded, the expression below read "the runner had a
+  // session that day and it was not a quality one" — a fabricated false, from
+  // a query that never answered. `lib/audit/_swallow_scan.test.ts` names this
+  // shape and asks for the honest sentence; the honest sentence is that this
+  // route cannot tell, which the return type already has a value for.
+  const scheduled = async (): Promise<boolean | null> => {
+    const q = await pool.query<{ id: string }>(
+      `SELECT pw.id FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+          AND pw.type = ANY($3::text[])
+          AND pw.date_iso = $2::text
+        LIMIT 1`,
+      [userId, dateISO, QUALITY_TYPES],
+    );
+    if (q.rows.length > 0) return true;
+    // `rowCount === 0` is ambiguous between "rest day" and "plan no longer
+    // covers this date", so distinguish: if the runner has NO active plan row
+    // anywhere near this date, report unknown rather than false.
+    const anyRow = await pool.query<{ id: string }>(
+      `SELECT pw.id FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
+          AND pw.date_iso = $2::text
+        LIMIT 1`,
+      [userId, dateISO],
+    );
+    return anyRow.rows.length > 0 ? false : null;
+  };
+  const qualityScheduled: boolean | null = await scheduled().catch(() => null);
 
   return {
     date: dateISO,

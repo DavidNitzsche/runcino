@@ -49,6 +49,7 @@ import { classifyGoalTier, postRaceRecoveryWeeks } from './goal-tiers';
 import { predictRaceTime } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { pool } from '@/lib/db/pool';
+import { HAS_DATABASE } from '@/lib/db/_test-db';
 
 const ROOT = join(__dirname, '..', '..');
 /** Source with comments stripped, so prose about a rule never satisfies it. */
@@ -81,7 +82,7 @@ async function aRunnerWithHistory(): Promise<string> {
 
 // ── 1 · the bug, and its absence ─────────────────────────────────────────────
 
-describe('the plan engine can be entered with no target at all', () => {
+describe.skipIf(!HAS_DATABASE)('the plan engine can be entered with no target at all', () => {
   it('WITHOUT openTarget the engine still refuses — the exact bug', async () => {
     const userId = await aRunnerWithHistory();
     // No raceSlug, no goalTarget, no openTarget. This is what every path into

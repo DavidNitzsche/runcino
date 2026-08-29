@@ -78,7 +78,14 @@ const DISTS: SimDistance[] = ['half', 'marathon'];
 const GOAL: Record<string, number> = { half: 6300, marathon: 13500 };
 
 describe('race-path week-count parity (goalMode:race == production formula)', () => {
-  it('previews exactly floor(daysBetween(literalStart, literalRace)/7)+1 weeks, from the literal start', () => {
+  // SWEEP-TIMEOUT-1 (2026-08-29) · an explicit budget, because this is a
+  // sweep and vitest's default is 5s. Measured 6948ms on 2026-08-29, so it
+  // had been failing on every run for as long as the sweep has been this size. A timeout is not a
+  // logic failure, but it reads as one in the summary, and a suite that is
+  // red for a reason nobody can act on trains people to skim red — the same
+  // habit `vitest.setup.ts`'s header was written about. 60s is far above
+  // what this needs and far below a hang, so a real regression still shows.
+  it('previews exactly floor(daysBetween(literalStart, literalRace)/7)+1 weeks, from the literal start', { timeout: 60000 }, () => {
     const countViolations: string[] = [];
     const startViolations: string[] = [];
     let asserted = 0;

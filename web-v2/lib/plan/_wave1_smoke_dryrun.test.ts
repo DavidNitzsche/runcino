@@ -9,11 +9,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import { pool } from '@/lib/db/pool';
+import { HAS_DATABASE } from '@/lib/db/_test-db';
 import { detectAdaptations, partitionActionsForCron } from '@/lib/plan/adapt';
 
 const DAVID = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
-describe('wave1 dry-run · prod detection sweep', () => {
+describe.skipIf(!HAS_DATABASE)('wave1 dry-run · prod detection sweep', () => {
   it('detection invariants hold for every active plan', async () => {
     const users = (await pool.query(
       `SELECT DISTINCT user_uuid::text AS uid FROM training_plans

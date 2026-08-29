@@ -163,7 +163,14 @@ describe('maintenance + display invariants (diagnostic)', () => {
   // (sat/fri/thu) long-run users. The gate must sweep ALL long-run days — the prior CAL_MERGE gate
   // hardcoded 'sun' (stable) and missed this. Within one contiguous QUALITY phase the SET of quality
   // weekdays must be constant; only the workout TYPE on those fixed days may rotate.
-  it('QUALITY-phase quality weekdays are stable across the phase (every long-run day)', () => {
+  // SWEEP-TIMEOUT-1 (2026-08-29) · an explicit budget, because this is a
+  // sweep and vitest's default is 5s. Measured 4489ms on 2026-08-29, so it
+  // had been passing or failing by which machine ran it, which is worse than either. A timeout is not a
+  // logic failure, but it reads as one in the summary, and a suite that is
+  // red for a reason nobody can act on trains people to skim red — the same
+  // habit `vitest.setup.ts`'s header was written about. 60s is far above
+  // what this needs and far below a hang, so a real regression still shows.
+  it('QUALITY-phase quality weekdays are stable across the phase (every long-run day)', { timeout: 60000 }, () => {
     const LONGDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     const shuffle: Record<string, V> = {};
     let plans = 0;
