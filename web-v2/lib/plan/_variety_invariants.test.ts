@@ -433,7 +433,17 @@ describe('MARATHON REGRESSION · the marathon\'s long-run rows are untouched', (
   it('marathon long-run kinds stay inside the known row set', () => {
     for (const r of longs) {
       if (r.long.longRunKind == null) continue;
-      expect(['mp_long', 'fast_finish', 'dress_rehearsal', 'progression']).toContain(r.long.longRunKind);
+      // SEGLONG-2 / DOWNHILL-2 (2026-08-29) · two rows added, both authored
+      // deliberately and both marathon-only: §11.1's modified block (two MP
+      // segments with easy running between them) and Research/11's downhill
+      // simulation (an MP long promoted to carry a terrain instruction). The
+      // list is what the marathon may author, so a new row belongs in it — the
+      // assertion is still that nothing UNEXPECTED appears, which is what
+      // caught the 10K's fixed tail leaking in.
+      expect([
+        'mp_long', 'fast_finish', 'dress_rehearsal', 'progression',
+        'modified_block', 'downhill_simulation',
+      ]).toContain(r.long.longRunKind);
     }
   });
 });

@@ -591,6 +591,20 @@ export interface SlotRequest {
   /** Slugs this week has already spent, so a week never repeats a session. */
   usedThisWeek: ReadonlySet<string>;
   /**
+   * DOWNHILL-3 (2026-08-29) · slugs this CALLER rules out, for reasons the
+   * catalogue cannot see.
+   *
+   * The catalogue knows what doctrine places in a phase for a distance; it
+   * does not know what the runner's race COURSE looks like, and one family
+   * turns on exactly that. Research/11's downhill work is training for a
+   * descent — prescribing it to a runner racing a flat course is not variety,
+   * it is a session with no stimulus behind it, and it costs the slot a
+   * session that did have one. `selectLongRunVariant` already took this
+   * argument for the downhill simulation; the quality slots had no way to say
+   * it, so the repeats went to everybody.
+   */
+  exclude?: ReadonlySet<string>;
+  /**
    * SLOT-ROTATE-2 · the at-pace minutes the block's overload trajectory has
    * earned for this slot's track this week, or null to spend the week's whole
    * share (which is what happened before this existed).
@@ -717,6 +731,7 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
   });
   const recent = recentFrom(req.history, req.weekIdx);
   const exclude = new Set<string>(req.usedThisWeek);
+  for (const slug of req.exclude ?? []) exclude.add(slug);
   let lastRefusal: { reason: string; detail: string } = {
     reason: 'no-quality-fits',
     detail: 'nothing was offered',
@@ -822,10 +837,70 @@ export function catalogueNote(entry: CatalogueEntry, dose?: Dose): string {
  *     Left in the rotation it would win the never-run staleness tie on the
  *     block's first cadence week and hand the one long doctrine reserves for
  *     intensity back to an easy run.
+ *
+ * §4.5's fast finish is NOT on this list, and deliberately not: on a half it
+ * is the race-pace long, the only row that tags the finish `@ HM`. The
+ * marathon is the case where it duplicates the default, and the caller
+ * excludes it there — see `MARATHON_ROTATION_EXCLUDED` below, which is
+ * conditional on the distance and so cannot live in this unconditional set.
  */
 const LONG_ROTATION_EXCLUDED: ReadonlySet<string> = new Set([
   'dress-rehearsal-long-run',
   'base-long-run',
+]);
+
+/**
+ * ROTATION-REFUSE-1 (2026-08-29) · what a MARATHON block additionally keeps
+ * out of the long rotation.
+ *
+ * §4.5's fast finish is the shape the composer authors anyway when the
+ * rotation declines — the default finish is `finishSeg.kind`, which is the
+ * fast finish — so on a marathon a rotation slot spent on it delivers exactly
+ * the session the week would have had with no rotation at all. Same argument
+ * as `base-long-run` one rung up: not "hands the slot back to an easy run" but
+ * "hands the slot back to the default".
+ *
+ * It matters because the count is small. `rotatesLongVariant` fires only
+ * outside BASE and only where §4.4's race-specific MP long has not already
+ * claimed the week, which comes to exactly TWO rotated long runs per marathon
+ * block at every length from 12 to 20 weeks. Three candidates competing for
+ * two slots meant §4.3's progression — the one row whose tail is threshold
+ * rather than more marathon pace — fell out of nearly every block, while a
+ * slot went to the session the week already had. Excluded, the two slots go to
+ * §4.3 and §11.1, and §4.5 still arrives on any week both of those refuse, by
+ * the default path.
+ *
+ * ONLY the marathon. A half's race-specific weeks rotate (the reservation in
+ * `rotatesLongVariant` is `racePaceTag === 'MP'`, so it does not fire there),
+ * which means §4.5 is not a duplicate of anything on a half — it is the row
+ * that carries the `@ HM` race-pace finish, and nothing else in the family
+ * does. Excluding it unconditionally took the race-pace long off both David
+ * personas' half blocks.
+ */
+export const MARATHON_ROTATION_EXCLUDED: ReadonlySet<string> = new Set([
+  'fast-finish-long-run',
+]);
+
+/**
+ * DOWNHILL-3 (2026-08-29) · sessions that only make sense on a net-downhill
+ * course, named once so every slot that can offer them gates the same way.
+ *
+ * `Research/11-course-specific-training.md` §"Eccentric Loading Protocol for
+ * Downhill-Heavy Races" is explicit about who it is for. The simulation long
+ * has been gated on the course since it was added; the repeats reached the
+ * intervals slot ungated and were therefore offered to every marathon and half
+ * runner in the app, flat course or not. That is not a variety win — the
+ * session's stimulus is quadriceps eccentric loading for a descent the runner
+ * is not going to run — and it cost the slot a session that did have a
+ * stimulus: §12.2's mile cutdown, which went from landing in every half
+ * archetype swept to landing in none.
+ *
+ * The list, not the individual slug, because the two entries are one protocol
+ * and a third would otherwise be added to one call site and not the other.
+ */
+export const DOWNHILL_ONLY_SLUGS: ReadonlySet<string> = new Set([
+  'downhill-repeats',
+  'downhill-simulation-long-run',
 ]);
 
 export interface LongVariantRequest {

@@ -103,6 +103,7 @@ import {
 import {
   anchorsFor,
   newCatalogueHistory, recordCatalogueChoice, selectSlotWorkout, selectLongRunVariant,
+  MARATHON_ROTATION_EXCLUDED, DOWNHILL_ONLY_SLUGS,
   type CatalogueHistory, type ComposerSlot,
 } from './catalogue-rx';
 import { capFamilyOf, type CapFamily, type PlacedSession } from '@/lib/workout-catalogue/select';
@@ -1748,6 +1749,19 @@ export function beginnerHillReps(phase: string): number {
  * goes to its structured session. Bound by MPLONG.fast-finish-floor.
  */
 export const FAST_FINISH_MIN_MI = 2;
+
+/**
+ * ROTATION-REFUSE-1 · how many long-run variants one week may try before it
+ * gives up and keeps the default finish.
+ *
+ * A bound, not a policy: every iteration that does not settle adds a slug to
+ * the exclusion set, so the loop terminates on its own once the candidate list
+ * is exhausted. This only stops an unbounded `while` from existing in the
+ * plan-authoring path. `SLOT_FAMILIES.long` holds four entries today; the
+ * constant is deliberately above that so adding a fifth does not silently
+ * truncate the retry.
+ */
+const LONG_VARIANT_MAX_ATTEMPTS = 8;
 
 /**
  * VARIETY-10K-1 (2026-08-28) · the 10K progression long run's M-pace tail.
@@ -3767,36 +3781,61 @@ function layoutWeek({
     && !(phase === 'RACE-SPECIFIC' && racePaceTag === 'MP')
     && (phase === 'QUALITY' || phase === 'RACE-SPECIFIC')
     && longTier != null && catalogueHistory != null;
-  const longVariant = rotatesLongVariant
-    ? selectLongRunVariant({
-        history: catalogueHistory!,
-        enginePhase: phase,
-        distance: cat,
-        tier: longTier!,
-        weekIdx,
-        weeklyMi,
-        dayOffset: longRunDow,
-        // The rotation only runs in QUALITY / RACE-SPECIFIC (the gate above),
-        // so the taper window reduces to the race week itself.
-        inTaperWindow: isRaceWeek,
-        tPaceSec: weekTPaceSec,
-        iPaceSec: weekIPaceSec,
-        mpPaceSec: weekMpPaceSec,
-        // SLOT-ROTATE-5 · the same QUALITY split the quality slots take.
-        inHillBlock: phase === 'QUALITY' ? weeksToPhaseEnd > 2 : null,
-        // DOWNHILL-2 · Research/11's simulation is training FOR a descent.
-        // Excluded outright on a race that does not descend, rather than left
-        // to lose the LRU rotation by luck: a flat-course runner should never
-        // be offered it, and a net-downhill runner should not have their one
-        // prescribed simulation depend on which sessions happened to come up
-        // recently.
-        exclude: courseIsNetDownhill
-          ? undefined
-          : new Set(['downhill-simulation-long-run']),
-      })
-    : null;
-  let progressionSeg: { midMi: number; tailMi: number } | null = null;
-  if (longVariant?.entry.slug === 'progression-long-run') {
+  /**
+   * ROTATION-REFUSE-1 (2026-08-29) · a variant the week cannot fund yields to
+   * the next candidate instead of burning the slot.
+   *
+   * Both §4.3's progression and §11.1's modified block are SHAPES the composer
+   * has to be able to seat inside the finish it already sized: each of their
+   * segments has to clear §4.5's two-mile floor, and the block's second segment
+   * additionally has to leave the easy bulk outweighing the work. On a week
+   * where that fails, the code below used to record the attempt and fall
+   * through to the default single-tag finish — the rotation self-corrected on
+   * the NEXT cadence week, which is the right contract when there is a next
+   * one.
+   *
+   * A marathon block does not have one. `rotatesLongVariant` fires only outside
+   * BASE and only where §4.4's race-specific MP long has not already claimed
+   * the week, which comes to exactly TWO rotated long runs per block at every
+   * length from 12 to 20 weeks. So a single refusal did not cost a week of
+   * variety, it cost half the block's: an 18-week build measured on 2026-08-29
+   * authored `fast_finish, fast_finish` — the same session twice, with §4.3
+   * never appearing — because the second slot drew a block the week could not
+   * fund and degraded rather than falling back to the progression that was
+   * sitting right behind it in the rotation.
+   *
+   * So the refusal re-asks. Same device `selectSlotWorkout` already uses for a
+   * shape it cannot render: exclude what refused, select again, and let the
+   * least-recently-used order pick the next one. The attempt is still recorded,
+   * so the rotation's memory is unchanged and a session the week cannot fund
+   * does not keep winning the tie on staleness. Bounded by the candidate count;
+   * when everything refuses, `longVariant` is null and the day keeps the
+   * default finish exactly as it did before.
+   */
+  const longVariantExclude = new Set<string>([
+    // ROTATION-REFUSE-1 · on a marathon, §4.5 is the default the rotation
+    // departs from, so a slot spent on it is a slot spent on nothing. Stated
+    // and reasoned at `MARATHON_ROTATION_EXCLUDED`; conditional on the same
+    // `racePaceTag` the race-specific reservation above reads, so the two
+    // cannot disagree about which distance reserves §4.4.
+    ...(racePaceTag === 'MP' ? MARATHON_ROTATION_EXCLUDED : []),
+    // DOWNHILL-2 · Research/11's simulation is training FOR a descent.
+    // Excluded outright on a race that does not descend, rather than left
+    // to lose the LRU rotation by luck: a flat-course runner should never
+    // be offered it, and a net-downhill runner should not have their one
+    // prescribed simulation depend on which sessions happened to come up
+    // recently.
+    ...(courseIsNetDownhill ? [] : DOWNHILL_ONLY_SLUGS),
+  ]);
+  const recordLongAttempt = (slug: string) => {
+    if (catalogueHistory && !catalogueHistory.attempts.some(
+      (a) => a.slug === slug && a.weekIdx === weekIdx,
+    )) {
+      catalogueHistory.attempts.push({ slug, weekIdx });
+    }
+  };
+  /** §4.3's two-pace walk, sized inside the finish the week already bought. */
+  const progressionSegFor = (): { midMi: number; tailMi: number } | null => {
     const tBudget = weeklyDoseBudgetMi(weeklyMi, 'T', weekDoseContext);
     const tailMi = Math.min(
       Math.max(FAST_FINISH_MIN_MI, Math.floor(finishMi * PROGRESSION_TAIL_SHARE * 2) / 2),
@@ -3806,14 +3845,10 @@ function layoutWeek({
     // Both segments real (§4.5's two-mile floor applies to each), and the easy
     // bulk still the run's first act (§4.3 "First 1/3 to 1/2 at E pace") —
     // guaranteed by hasFinish (finishMi ≤ half the long).
-    if (tailMi >= FAST_FINISH_MIN_MI && midMi >= FAST_FINISH_MIN_MI) {
-      progressionSeg = { midMi, tailMi };
-    } else if (catalogueHistory && !catalogueHistory.attempts.some(
-      (a) => a.slug === 'progression-long-run' && a.weekIdx === weekIdx,
-    )) {
-      catalogueHistory.attempts.push({ slug: 'progression-long-run', weekIdx });
-    }
-  }
+    return (tailMi >= FAST_FINISH_MIN_MI && midMi >= FAST_FINISH_MIN_MI)
+      ? { midMi, tailMi }
+      : null;
+  };
   /**
    * SEGLONG-2 (2026-08-29) · the segmented long — two marathon-pace blocks
    * with easy running BETWEEN them, not one block at the end.
@@ -3838,8 +3873,7 @@ function layoutWeek({
    * for this to be authorable at all — the grammar, and this branch that
    * emits it.
    */
-  let modifiedBlockSeg: { firstMi: number; gapMi: number; secondMi: number } | null = null;
-  if (longVariant?.entry.slug === 'canova-modified-block') {
+  const modifiedBlockSegFor = (): { firstMi: number; gapMi: number; secondMi: number } | null => {
     const mBudget = weeklyDoseBudgetMi(weeklyMi, 'M', weekDoseContext);
     // The doc's own AM:PM proportion (25-30 km : 15-20 km, roughly 60:40)
     // applied to whatever marathon-pace volume the week can actually fund —
@@ -3854,30 +3888,79 @@ function layoutWeek({
     const gapMi = 1;
     // Each block has to be a real block (§4.5's two-mile floor, same as the
     // progression's), and the easy bulk must still outweigh the work.
-    if (
+    return (
       firstMi >= FAST_FINISH_MIN_MI
       && secondMi >= FAST_FINISH_MIN_MI
       && firstMi + gapMi + secondMi < longMi
-    ) {
-      modifiedBlockSeg = { firstMi, gapMi, secondMi };
-    } else if (catalogueHistory && !catalogueHistory.attempts.some(
-      (a) => a.slug === 'canova-modified-block' && a.weekIdx === weekIdx,
-    )) {
-      // Refused for this week, recorded so the rotation does not keep
-      // offering a session the week cannot fund — same contract the
-      // progression long's refusal uses.
-      catalogueHistory.attempts.push({ slug: 'canova-modified-block', weekIdx });
+    ) ? { firstMi, gapMi, secondMi } : null;
+  };
+
+  let longVariant: ReturnType<typeof selectLongRunVariant> = null;
+  let progressionSeg: { midMi: number; tailMi: number } | null = null;
+  let modifiedBlockSeg: { firstMi: number; gapMi: number; secondMi: number } | null = null;
+  if (rotatesLongVariant) {
+    // One pass per candidate at most: every iteration either settles on a
+    // variant or adds one to the exclusion set, so the loop cannot spin.
+    for (let attempt = 0; attempt < LONG_VARIANT_MAX_ATTEMPTS; attempt++) {
+      const picked = selectLongRunVariant({
+        history: catalogueHistory!,
+        enginePhase: phase,
+        distance: cat,
+        tier: longTier!,
+        weekIdx,
+        weeklyMi,
+        dayOffset: longRunDow,
+        // The rotation only runs in QUALITY / RACE-SPECIFIC (the gate above),
+        // so the taper window reduces to the race week itself.
+        inTaperWindow: isRaceWeek,
+        tPaceSec: weekTPaceSec,
+        iPaceSec: weekIPaceSec,
+        mpPaceSec: weekMpPaceSec,
+        // SLOT-ROTATE-5 · the same QUALITY split the quality slots take.
+        inHillBlock: phase === 'QUALITY' ? weeksToPhaseEnd > 2 : null,
+        exclude: longVariantExclude.size ? new Set(longVariantExclude) : undefined,
+      });
+      if (!picked) break;
+      if (picked.entry.slug === 'progression-long-run') {
+        const seg = progressionSegFor();
+        if (!seg) {
+          recordLongAttempt('progression-long-run');
+          longVariantExclude.add('progression-long-run');
+          continue;
+        }
+        progressionSeg = seg;
+      } else if (picked.entry.slug === 'canova-modified-block') {
+        const seg = modifiedBlockSegFor();
+        if (!seg) {
+          // Refused for this week, recorded so the rotation does not keep
+          // offering a session the week cannot fund — same contract the
+          // progression long's refusal uses.
+          recordLongAttempt('canova-modified-block');
+          longVariantExclude.add('canova-modified-block');
+          continue;
+        }
+        modifiedBlockSeg = seg;
+      }
+      // Everything else — §4.5's fast finish, Research/11's simulation — takes
+      // the default segment sizing and has nothing the week can refuse.
+      longVariant = picked;
+      break;
     }
   }
   // The rotation's memory: what this week's intensity long actually IS. Only
   // the rotated weeks record, so the marathon's §4.4 weeks and the 10K's fixed
   // tail leave the quality-slot history exactly as they left it before.
+  //
+  // ROTATION-REFUSE-1 · the CHOSEN entry's own slug, which is what the loop
+  // above settled on after any refusals. It used to be re-derived from which
+  // segment field ended up set, and that derivation could not name a variant
+  // carrying no segment of its own — Research/11's simulation recorded as
+  // `fast-finish-long-run`, so a block that ran the simulation looked to the
+  // next week's tie-break as though it had run the fast finish.
   if (rotatesLongVariant && catalogueHistory) {
     recordCatalogueChoice(
       catalogueHistory,
-      modifiedBlockSeg ? 'canova-modified-block'
-        : progressionSeg ? 'progression-long-run'
-        : 'fast-finish-long-run',
+      longVariant?.entry.slug ?? 'fast-finish-long-run',
       weekIdx,
     );
   }
@@ -4728,6 +4811,15 @@ function layoutWeek({
             // three capped families, with the families the week's OTHER slots
             // are budgeted for held back. See `capLedger` above.
             capFamilyRemainingMi: capLedger.remainingFor(slotIdx, qt),
+            // DOWNHILL-3 · Research/11's eccentric-loading protocol is training
+            // FOR a descent, so a flat-course runner is never offered it. The
+            // long-run simulation was gated on this from the start; the REPEATS
+            // were not, and being family `hills` they sit on the intervals slot
+            // for every marathon and half runner. Measured: on `main` §12.2's
+            // mile cutdown landed in all nine half archetypes swept; with the
+            // repeats in the pool it landed in none, because a session the
+            // runner had no use for was winning the rotation ahead of it.
+            exclude: courseIsNetDownhill ? undefined : DOWNHILL_ONLY_SLUGS,
           })
         : null;
       if (choice?.ok) {
@@ -10581,13 +10673,48 @@ function setLongFinish(day: DayPlan, finishMi: number, reason = 'unrecorded'): v
       .match(/([\d.]+)\s*mi\s*@\s*(HM|MP|M|T|E)\b/gi) ?? [];
     if (parts.length === 3) {
       const num = (s: string) => Number(/([\d.]+)/.exec(s)![1]);
-      const [firstMi, gapMi] = [num(parts[0]), num(parts[1])];
-      const secondMi = Math.round((finishMi - firstMi) * 2) / 2;
-      if (secondMi >= FAST_FINISH_MIN_MI && firstMi >= FAST_FINISH_MIN_MI) {
-        const zone = /@\s*(HM|MP|M)\b/i.exec(parts[0])?.[1]?.toUpperCase() ?? 'M';
-        day.racePaceChange = { fromMi: splitDay(day).qualityMi, toMi: finishMi, reason, kind: day.longRunKind };
-        day.subLabel = `LONG · ${firstMi}mi @ ${zone} + ${gapMi}mi @ E + ${secondMi}mi @ ${zone}`;
+      const [authoredFirstMi, gapMi] = [num(parts[0]), num(parts[1])];
+      /*
+       * ROTATION-REFUSE-1 (2026-08-29) · RE-SPLIT before flattening.
+       *
+       * Taking the give-back off the second block alone is the doctrinally
+       * preferred cut and it stays the first choice, for the reason above. But
+       * as the ONLY choice it left the session with no headroom at all: the
+       * first block is authored at 60% of the finish, so on the six-mile
+       * finish an 18-week 40 mi/wk build actually buys — 3.5 + 1 + 2.5 — a
+       * routine half-mile give-back drops the second block to 2.0 and the next
+       * one to 1.5, below §4.5's floor, and the shape was deleted. Measured on
+       * that build: §11.1 was authored at week 8 and flattened before persist,
+       * so the plan carried `fast_finish` twice and never ran the block or the
+       * §4.3 progression it had displaced.
+       *
+       * Two real blocks are still two real blocks at a different split. So
+       * when the preferred cut would kill the second one, re-apply the doc's
+       * own 60:40 proportion to what the finish is NOW, floored so that each
+       * block clears §4.5. Only below two floors' worth of finish is there
+       * genuinely no second block left, and only then does it flatten.
+       */
+      const zone = /@\s*(HM|MP|M)\b/i.exec(parts[0])?.[1]?.toUpperCase() ?? 'M';
+      const emitKind = day.longRunKind;
+      const emit = (a: number, bMi: number) => {
+        day.racePaceChange = { fromMi: splitDay(day).qualityMi, toMi: finishMi, reason, kind: emitKind };
+        day.subLabel = `LONG · ${a}mi @ ${zone} + ${gapMi}mi @ E + ${bMi}mi @ ${zone}`;
+      };
+      const trimmedSecondMi = Math.round((finishMi - authoredFirstMi) * 2) / 2;
+      if (trimmedSecondMi >= FAST_FINISH_MIN_MI && authoredFirstMi >= FAST_FINISH_MIN_MI) {
+        emit(authoredFirstMi, trimmedSecondMi);
         return;
+      }
+      if (finishMi >= 2 * FAST_FINISH_MIN_MI) {
+        const firstMi = Math.max(
+          FAST_FINISH_MIN_MI,
+          Math.min(finishMi - FAST_FINISH_MIN_MI, Math.round(finishMi * 0.6 * 2) / 2),
+        );
+        const secondMi = Math.round((finishMi - firstMi) * 2) / 2;
+        if (firstMi >= FAST_FINISH_MIN_MI && secondMi >= FAST_FINISH_MIN_MI) {
+          emit(firstMi, secondMi);
+          return;
+        }
       }
     }
   }
