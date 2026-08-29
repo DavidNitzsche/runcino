@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { expandSpecToPhases } from './expand-spec';
+import { expandSpecToPhases, subLabelFromSpec } from './expand-spec';
+import { extractLongSegments } from '@/lib/plan/spec-builder';
 
 /**
  * P1-47 (phone+watch audit 2026-07-06) · WU/CD/recovery pace targets were
@@ -99,5 +100,128 @@ describe('P1-47 · null easy anchor → by-feel WU/CD/recovery, never a fabricat
     expect(phases[1].targetPaceSPerMi).toBe(435);
     expect(phases[1].isFinishSegment).toBe(true);
     expect(phases[1].tolerancePaceSPerMi).toBe(12);
+  });
+});
+
+describe('SEGLONG-1 · a long run with easy running BETWEEN its quality blocks', () => {
+  // The shape doctrine calls a modified block (Research/04 §11.1 Variations,
+  // "two segments separated by short rest") and a coach writes as descending
+  // LT blocks with easy running between them. Before this, every segment was
+  // contiguous and tail-anchored: all the easy miles went in one bulk phase up
+  // front and the blocks ran back-to-back to the finish, which can express a
+  // progression or a fast finish and cannot express re-entering threshold
+  // under accumulating fatigue.
+  const segmented = () => expandSpecToPhases({
+    spec: {
+      kind: 'long',
+      pace_target_s_per_mi_lo: 517, pace_target_s_per_mi_hi: 557,
+      finish_segments: [
+        { mi: 3, pace_s_per_mi: 420, label: 'T', recovery_mi: 1 },
+        { mi: 2, pace_s_per_mi: 420, label: 'T', recovery_mi: 1 },
+        { mi: 1, pace_s_per_mi: 420, label: 'T' },
+      ],
+    },
+    totalMi: 14, easyPaceSec: 540, recoveryPaceSec: 540, toleranceSec: 20,
+  })!;
+
+  it('interleaves the gaps instead of hoisting every easy mile to the front', () => {
+    const phases = segmented();
+    // bulk, T, easy, T, easy, T
+    expect(phases).toHaveLength(6);
+    expect(phases.map((p) => p.targetPaceSPerMi))
+      .toEqual([537, 420, 537, 420, 537, 420]);
+  });
+
+  it('takes the gap miles OUT of the opening bulk, never adds them to the day', () => {
+    const phases = segmented();
+    const total = phases.reduce((a, p) => a + (p.distanceMi ?? 0), 0);
+    // 14 total = 6 quality + 2 gap + 6 bulk. A day that grew because its
+    // recoveries were counted on top would be a session the week never
+    // budgeted for.
+    expect(Number(total.toFixed(1))).toBe(14);
+    expect(phases[0].distanceMi).toBe(6);
+  });
+
+  it('marks the blocks as finish segments and the gaps as not', () => {
+    // `isFinishSegment` is what the day is judged on, so a recovery carrying
+    // it would have the runner graded on the jog between the efforts.
+    expect(segmented().map((p) => p.isFinishSegment === true))
+      .toEqual([false, true, false, true, false, true]);
+  });
+
+  it('a contiguous long run is untouched · no recovery_mi, no extra phases', () => {
+    const phases = expandSpecToPhases({
+      spec: {
+        kind: 'long',
+        pace_target_s_per_mi_lo: 517, pace_target_s_per_mi_hi: 557,
+        finish_segments: [
+          { mi: 3, pace_s_per_mi: 480, label: 'M' },
+          { mi: 2, pace_s_per_mi: 420, label: 'T' },
+        ],
+      },
+      totalMi: 14, easyPaceSec: 540, recoveryPaceSec: 540, toleranceSec: 20,
+    })!;
+    expect(phases).toHaveLength(3);
+    expect(phases[0].distanceMi).toBe(9);
+  });
+});
+
+describe('SEGLONG-1 · the label round-trips the gaps', () => {
+  // `extractLongSegments` reads the label, `subLabelFromSpec` writes it back.
+  // If the writer drops the gaps, the next derivation turns a segmented long
+  // into a contiguous one — the label would claim the blocks run back-to-back
+  // while the spec still separated them, which is exactly the
+  // label-drifts-from-spec defect subLabelFromSpec exists to prevent.
+  it('writes the easy blocks back out', () => {
+    expect(subLabelFromSpec({
+      kind: 'long',
+      finish_segments: [
+        { mi: 3, pace_s_per_mi: 420, label: 'T', recovery_mi: 1 },
+        { mi: 2, pace_s_per_mi: 420, label: 'T', recovery_mi: 1 },
+        { mi: 1, pace_s_per_mi: 420, label: 'T' },
+      ],
+    })).toBe('LONG · 3mi @ T + 1mi @ E + 2mi @ T + 1mi @ E + 1mi @ T');
+  });
+
+  it('survives a full label → segments → label cycle', () => {
+    const label = 'LONG · 3mi @ T + 1mi @ E + 2mi @ T + 1mi @ E + 1mi @ T';
+    const segs = extractLongSegments(label);
+    // Three QUALITY blocks — the easy tokens are gaps hanging off the block
+    // before them, never entries of their own. That is what keeps every
+    // consumer summing `mi` as hard miles correct with no edit.
+    expect(segs).toEqual([
+      { mi: 3, tag: 'T', recoveryMi: 1 },
+      { mi: 2, tag: 'T', recoveryMi: 1 },
+      { mi: 1, tag: 'T' },
+    ]);
+    expect(subLabelFromSpec({
+      kind: 'long',
+      finish_segments: segs.map((s) => ({
+        mi: s.mi, pace_s_per_mi: 420, label: s.tag,
+        ...(s.recoveryMi ? { recovery_mi: s.recoveryMi } : {}),
+      })),
+    })).toBe(label);
+  });
+
+  it('a contiguous label still parses and writes exactly as before', () => {
+    const label = 'LONG · 3mi @ M + 2mi @ T';
+    expect(extractLongSegments(label)).toEqual([
+      { mi: 3, tag: 'M' }, { mi: 2, tag: 'T' },
+    ]);
+    expect(subLabelFromSpec({
+      kind: 'long',
+      finish_segments: [
+        { mi: 3, pace_s_per_mi: 480, label: 'M' },
+        { mi: 2, pace_s_per_mi: 420, label: 'T' },
+      ],
+    })).toBe(label);
+  });
+
+  it('a leading easy block is the opening bulk, not a gap', () => {
+    // The expander computes the bulk as the remainder, so an easy token
+    // before any quality block has nothing to attach to and is dropped.
+    expect(extractLongSegments('LONG · 5mi @ E + 3mi @ T + 2mi @ T')).toEqual([
+      { mi: 3, tag: 'T' }, { mi: 2, tag: 'T' },
+    ]);
   });
 });

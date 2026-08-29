@@ -412,14 +412,38 @@ export function extractFinishSegment(
  */
 export function extractLongSegments(
   prescription?: string | null,
-): Array<{ mi: number; tag: 'HM' | 'M' | 'T' }> {
+): Array<{ mi: number; tag: 'HM' | 'M' | 'T'; recoveryMi?: number }> {
   if (!prescription) return [];
-  const out: Array<{ mi: number; tag: 'HM' | 'M' | 'T' }> = [];
-  const re = /(\d+(?:\.\d+)?)\s*mi\s*@\s*(HM|MP|M|T)\b/gi;
+  const out: Array<{ mi: number; tag: 'HM' | 'M' | 'T'; recoveryMi?: number }> = [];
+  // SEGLONG-1 (2026-08-29) · `E` joins the alternation so a long run can carry
+  // easy running BETWEEN its quality blocks, not only in front of them.
+  //
+  // Until now every segment was contiguous and tail-anchored: the label named
+  // quality blocks, the expander put all the easy miles in one bulk phase up
+  // front, and the blocks ran back-to-back to the finish. That expresses a
+  // progression or a fast finish, and cannot express the shape doctrine calls
+  // a modified block (§11.1 Variations, "two segments separated by short
+  // rest") or the broken long run a coach writes as 15/12/10 min of LT with
+  // easy running between — repeated re-entry into threshold under accumulating
+  // fatigue, which is a different stimulus from one sustained block.
+  //
+  // Note what is NOT changed: an easy token is folded into the PRECEDING
+  // quality segment as its `recoveryMi` and never appended to `out`, so every
+  // existing consumer that sums `s.mi` as hard miles (dosing.ts's per-bucket
+  // charge, intensity-distribution.ts's easy/quality split) stays correct with
+  // no edit — the gap miles simply remain in the easy remainder, which is what
+  // they are. A leading easy token, before any quality block, is the opening
+  // bulk the expander already computes as the remainder, so it is dropped.
+  const re = /(\d+(?:\.\d+)?)\s*mi\s*@\s*(HM|MP|M|T|E)\b/gi;
   for (let m = re.exec(String(prescription)); m; m = re.exec(String(prescription))) {
     const mi = Number(m[1]);
     if (!Number.isFinite(mi) || mi <= 0) continue;
     const raw = m[2].toUpperCase();
+    if (raw === 'E') {
+      const prev = out[out.length - 1];
+      if (prev) prev.recoveryMi = (prev.recoveryMi ?? 0) + mi;
+      continue;
+    }
     out.push({ mi, tag: raw === 'T' ? 'T' : raw.startsWith('H') ? 'HM' : 'M' });
   }
   return out;
@@ -983,6 +1007,13 @@ export function buildWorkoutSpec(
               mi: s.mi,
               pace_s_per_mi: segPace(s.tag),
               label: s.tag,
+              // SEGLONG-1 · easy running that follows THIS block, when the
+              // label placed any there. Omitted entirely when zero so a
+              // contiguous progression long's spec is byte-identical to the
+              // one it produced before segmented longs existed.
+              ...(s.recoveryMi != null && s.recoveryMi > 0
+                ? { recovery_mi: s.recoveryMi }
+                : {}),
             })),
           }
         : {};

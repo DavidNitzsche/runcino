@@ -468,11 +468,19 @@ function expandLong(
         mi: Number(seg?.mi) || 0,
         pace: Number(seg?.pace_s_per_mi) || 0,
         label: String(seg?.label ?? '').trim(),
+        // SEGLONG-1 · easy running that follows THIS block. Absent on every
+        // contiguous long run, which is every long run authored before
+        // segmented longs existed.
+        recoveryMi: Number(seg?.recovery_mi) || 0,
       }))
       .filter((seg) => seg.mi > 0 && seg.pace > 0);
     const segTotal = segs.reduce((a, seg) => a + seg.mi, 0);
-    if (segs.length >= 2 && segTotal > 0 && segTotal < totalMi) {
-      const bulkMi = Number((totalMi - segTotal).toFixed(1));
+    // The gaps come OUT of the opening bulk rather than being added to the
+    // day: the label's numbers already account for the whole run, so counting
+    // recovery miles on top would inflate the session past its own distance.
+    const recoveryTotal = segs.reduce((a, seg) => a + seg.recoveryMi, 0);
+    if (segs.length >= 2 && segTotal > 0 && segTotal + recoveryTotal < totalMi) {
+      const bulkMi = Number((totalMi - segTotal - recoveryTotal).toFixed(1));
       const paceWord = (label: string) =>
         label === 'M' ? 'marathon pace'
         : label === 'HM' ? 'half marathon pace'
@@ -496,6 +504,24 @@ function expandLong(
           tolerancePaceSPerMi: 12,
           isFinishSegment: true,
         });
+        // SEGLONG-1 · the gap that makes a segmented long run segmented.
+        //
+        // Its own phase, at easy pace, so the watch prompts the runner back
+        // down rather than leaving them to guess when the block ended — and so
+        // the phase list reads the way the session was written: block, easy,
+        // block. `isFinishSegment` is deliberately NOT set; this is recovery,
+        // and the finish-routing flag is what marks the parts of the day the
+        // session is judged on.
+        if (seg.recoveryMi > 0) {
+          phases.push({
+            type: 'work',
+            label: `${seg.recoveryMi.toFixed(1)} mi easy`,
+            distanceMi: Number(seg.recoveryMi.toFixed(1)),
+            durationSec: Math.round(seg.recoveryMi * (mid ?? DURATION_EST_S_PER_MI)),
+            targetPaceSPerMi: mid,
+            tolerancePaceSPerMi: easyTol,
+          });
+        }
       }
       return phases;
     }
@@ -723,11 +749,26 @@ export function subLabelFromSpec(spec: WorkoutSpec): string | null {
       // exists to prevent, one field over.
       const segs = Array.isArray(s.finish_segments)
         ? (s.finish_segments as Array<Record<string, unknown>>)
-            .map((seg) => ({ mi: Number(seg?.mi) || 0, label: String(seg?.label ?? '').trim() }))
+            .map((seg) => ({
+              mi: Number(seg?.mi) || 0,
+              label: String(seg?.label ?? '').trim(),
+              // SEGLONG-1 · round-trips the gap. Dropping it here would turn a
+              // segmented long back into a contiguous one on the next
+              // derivation — the label would say the blocks run back-to-back
+              // while the spec still separated them, which is the same
+              // label-drifts-from-spec defect the comment above describes, one
+              // field further in.
+              recoveryMi: Number(seg?.recovery_mi) || 0,
+            }))
             .filter((seg) => seg.mi > 0 && seg.label)
         : [];
       if (segs.length >= 2) {
-        return `LONG · ${segs.map((seg) => `${formatMi(seg.mi)}mi @ ${seg.label}`).join(' + ')}`;
+        const parts = segs.flatMap((seg) => (
+          seg.recoveryMi > 0
+            ? [`${formatMi(seg.mi)}mi @ ${seg.label}`, `${formatMi(seg.recoveryMi)}mi @ E`]
+            : [`${formatMi(seg.mi)}mi @ ${seg.label}`]
+        ));
+        return `LONG · ${parts.join(' + ')}`;
       }
       const finishMi = Number(s.finish_mi) || 0;
       const finishLabel = String(s.finish_label ?? '').trim();
