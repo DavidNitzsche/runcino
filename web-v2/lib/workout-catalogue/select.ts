@@ -617,6 +617,10 @@ function fits(
    * pace, and an effort-cued session has none. See `SelectorInput.blockPosition`.
    */
   blockPosition: number | null = null,
+  /** REACH-1 · easy pace, used ONLY to estimate the duration of an
+   *  effort-cued session whose doc anchors no zone at all (§8.5's circuit).
+   *  Never a prescribed target — `effortOnly` keeps a pace off the card. */
+  easyAnchorSec: number | null = null,
 ): { ok: true; dose: Omit<Dose, 'structure'> } | { ok: false; detail: string } {
   /** The bound the dose is SIZED to · the tighter of allowance and target. */
   const sizeToMi = targetMi != null && targetMi > 0
@@ -682,7 +686,33 @@ function fits(
     }
     if (structure.kind === 'sequence') {
       const rest = structure.steps.find((s) => s.recoverySec != null)?.recoverySec ?? 0;
-      return dose(structure.steps.length, 0, 0, rest);
+      // REACH-1 (2026-08-29) · this returned zero of BOTH currencies, and a
+      // session carrying no work in either is one the selector declines — so
+      // §8.5's Lydiard hill circuit, which doctrine names as a PRIMARY workout
+      // of the hill/strength phase (§15), could never be prescribed. Same hole
+      // the distance-measured rep set had: `fits` could not express the shape,
+      // so the entry was silently unreachable rather than visibly refused.
+      //
+      // An effort-cued sequence still spends no at-pace MILES (it has no pace
+      // to be judged against — §8.1's column is "5K-10K effort"), so the budget
+      // invariant is untouched. Its work is minutes, summed from whatever the
+      // steps are stated in: time directly, distance through the anchored pace
+      // when there is one.
+      // §8.5's circuit declares `zones: []` — it is bounding, jogging and
+      // striding, and doctrine anchors none of it to a pace — so `workPace`
+      // returns null and a distance-stated step has nothing to convert
+      // through. The easy anchor stands in FOR THE DURATION ESTIMATE ONLY:
+      // this decides whether the session carries work and roughly how long it
+      // takes, never what the runner is told to run. Nothing downstream reads
+      // it as a target, because `effortOnly` keeps a pace off the card.
+      const estPace = paceSPerMi ?? easyAnchorSec ?? null;
+      const minutes = structure.steps.reduce((a, s) => {
+        if (s.unit === 's') return a + s.value / 60;
+        if (s.unit === 'min') return a + s.value;
+        const mi = repMi(s.value, s.unit, null);
+        return a + (mi != null && estPace ? (mi * estPace) / 60 : 0);
+      }, 0);
+      return dose(structure.steps.length, 0, minutes, rest);
     }
     return { ok: false, detail: 'no effort-cued form of this structure' };
   }
@@ -1082,7 +1112,7 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
       // IS its identity, and §5.2's continuous tempo already exists as the
       // shorter session, so it refuses rather than scaling into one.
       const scalesBelowFloor = entry.family === 'long';
-      const f = fits(structure, allowanceMi, pace, entry.effortOnly, scalesBelowFloor, targetMi, blockPosition);
+      const f = fits(structure, allowanceMi, pace, entry.effortOnly, scalesBelowFloor, targetMi, blockPosition, anchors.E ?? null);
       if (f.ok) {
         picked = { structure, ...f.dose };
         break;

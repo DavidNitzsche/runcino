@@ -470,9 +470,39 @@ export function renderPrescription(entry: CatalogueEntry, dose: Dose): string | 
   }
 
   if (s.kind === 'continuous') {
-    // A continuous block is the TEMPO slot's shape and the composer writes its
-    // own leading mileage in front of it (`parseTempoLeadMi` reads that number
-    // back). So this returns a PHRASE, never a sized string — see
+    /* REACH-1 (2026-08-29) · A TIME-STATED, EFFORT-CUED CONTINUOUS SESSION
+     * RENDERS HERE; a paced one still belongs to the tempo slot.
+     *
+     * This arm returned null unconditionally, on the reasoning that "a
+     * continuous block is the TEMPO slot's shape". True for §5.2's tempo,
+     * where `layoutWeek` writes the leading mileage and `parseTempoLeadMi`
+     * reads it back — and false for the sessions doctrine states as a DURATION
+     * at an effort, which carry their own size and never take a mileage
+     * prefix. Those are not tempo-slot sessions and cannot reach the tempo
+     * slot: `SLOT_FAMILIES.tempo` admits only `threshold` and `combo`.
+     *
+     * The cost of the gap, measured by a reachability sweep over every
+     * (slot × phase × distance × tier × volume) the composer uses: §8.6's hill
+     * fartlek and §9.4's Lydiard fartlek were UNREACHABLE. Both are base-phase
+     * entries, both are named in §15's own base row ("occasional fartlek/light
+     * hills"), and `SLOT_FAMILIES_IN_PHASE` already admits their families to
+     * the base speed slot precisely so they could be placed — the placement
+     * was fixed by DOCTRINE-BASE-2 and the rendering was not, so the entries
+     * were admitted and then refused for having no prescription.
+     *
+     * Rendered as its own duration and shape, because that is what the doc
+     * states: "| Hill fartlek | 30-60 min | Variable | Mixed |".
+     */
+    if (entry.effortOnly && s.block.unit === 'min') {
+      const mins = dose.atPaceMinutes > 0
+        ? Math.round(dose.atPaceMinutes)
+        : s.block.min;
+      const shape = s.shape ? ` · ${s.shape}` : '';
+      return `${mins} min ${entry.name.toLowerCase()}${shape}`;
+    }
+    // A paced continuous block is the TEMPO slot's shape and the composer
+    // writes its own leading mileage in front of it (`parseTempoLeadMi` reads
+    // that number back). So this returns a PHRASE, never a sized string — see
     // `renderContinuousPhrase`, which the tempo path calls directly.
     return null;
   }
