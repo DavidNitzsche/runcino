@@ -159,6 +159,22 @@ export interface SequenceStep {
   zone: PaceZone | null;
   /** Recovery after this step, seconds. Null when the doc states a rule instead. */
   recoverySec: number | null;
+  /**
+   * REACH-2 (2026-08-29) · what this step IS, where the doc names it and a
+   * pace cannot.
+   *
+   * §8.5's Lydiard circuit is four legs that differ by ACTION rather than by
+   * pace — "800m of springing/bounding uphill, 800m flat jog, 700m fast
+   * relaxed striding downhill, 800m wind sprints on bottom flat" — which is
+   * why its `zones` list is empty. Rendered off distance alone it reads
+   * "800m + 800m + 700m + 800m", four identical-looking reps and not the
+   * session. The leg name is the prescription here, in the same way a pace
+   * target is on a rep set.
+   *
+   * Set it only where the doc names the leg. Absent everywhere else, and the
+   * renderer falls back to the distance-and-zone form it already used.
+   */
+  leg?: string;
 }
 
 /** An ordered set of unequal reps: ladders, Mona, the Michigan. */

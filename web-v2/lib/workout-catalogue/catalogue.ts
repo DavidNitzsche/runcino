@@ -1242,11 +1242,15 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     structures: [
       {
         kind: 'sequence',
+        // REACH-2 · leg names transcribed from the Original-loop row cited
+        // below. Without them the circuit renders as four bare distances and
+        // the session — which is four different ACTIONS, not four reps — is
+        // unreadable off the page.
         steps: [
-          { value: 800, unit: 'm', zone: null, recoverySec: null },
-          { value: 800, unit: 'm', zone: 'E', recoverySec: null },
-          { value: 700, unit: 'm', zone: null, recoverySec: null },
-          { value: 800, unit: 'm', zone: null, recoverySec: null },
+          { value: 800, unit: 'm', zone: null, recoverySec: null, leg: 'bound uphill' },
+          { value: 800, unit: 'm', zone: 'E', recoverySec: null, leg: 'flat jog' },
+          { value: 700, unit: 'm', zone: null, recoverySec: null, leg: 'stride down' },
+          { value: 800, unit: 'm', zone: null, recoverySec: null, leg: 'wind sprints' },
         ],
         recoveryRule: 'Built into loop',
       },

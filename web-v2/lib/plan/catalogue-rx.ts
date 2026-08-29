@@ -458,7 +458,20 @@ export function renderPrescription(entry: CatalogueEntry, dose: Dose): string | 
     // Rendered as segments it came out "800m + 800m @ E + 700m + 800m": a paced
     // four-rep set, one rep of which is an easy jog. A grammar whose content is
     // per-step ZONES has nothing to say about a session doctrine states without
+    // any, so it declined.
+    //
     // any, so it declines, exactly as it did before.
+    //
+    // REACH-2 ATTEMPTED AND REVERTED (2026-08-29). The steps now carry the
+    // doc's own leg names, so the grammar CAN describe the circuit — and
+    // rendering it is still wrong, for a reason one layer down: a rendered
+    // label of distance segments is dose-visible. `dosePaceOf` charges an
+    // intervals-slot day at I, so the circuit's ~1.9 mi of bounding, jogging
+    // and striding is billed against Daniels' 8% interval cap even though
+    // `effortOnly` means it spends no at-pace miles by construction. Measured
+    // on the archetype sweep: 2208 enforced dosing breaches and 4416 firm
+    // validator failures, against zero before. The decline is not a gap in the
+    // grammar; it is the accounting refusing to pay for effort work twice.
     if (entry.effortOnly) return null;
     return renderSequenceSegments(s);
   }

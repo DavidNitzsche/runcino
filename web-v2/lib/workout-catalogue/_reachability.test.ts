@@ -45,15 +45,23 @@ const AUTHORED_ELSEWHERE: Record<string, string> = {
  *  cannot rot into a list of things that quietly started working. */
 const KNOWN_BLOCKED: Record<string, string> = {
   'lydiard-hill-circuit':
-    'Its steps are metres with `zones: []` — doctrine anchors no pace to bounding and striding — '
-    + 'and renderSequenceSegments has no form for a zoneless effort sequence. Dosing was fixed '
-    + '(REACH-1 gave the effort-cued sequence branch its minutes); the RENDERING is the remaining half.',
+    'Blocked by DOSE ACCOUNTING, and measured 2026-08-29. Dosing was fixed (REACH-1 gave the '
+    + 'effort-cued sequence branch its minutes) and the steps now carry the doc\'s own leg names, '
+    + 'so the grammar CAN describe the circuit. Rendering it is still wrong one layer down: a '
+    + 'label of distance segments is dose-visible, and dosePaceOf charges an intervals-slot day '
+    + "at I, so the circuit's ~1.9 mi of bounding, jogging and striding gets billed against "
+    + 'Daniels\' 8% interval cap even though effortOnly means it spends no at-pace miles. '
+    + 'Enabling it produced 2208 enforced breaches and 4416 firm failures against zero before. '
+    + 'The real fix is to make an effort-cued session dose-invisible end to end, not to render it.',
   'continuous-mile-cutdowns':
-    'Blocked twice. `cutdown` is not admitted to the tempo slot, which is the only slot with a '
-    + 'continuous renderer; and renderContinuousPhrase refuses MP-zoned entries outright because '
-    + 'dosePaceOf would charge the block to the marathon budget. Unblocking it needs a decision on '
-    + 'how a MP-to-HM cutdown is charged against Daniels\' buckets, which is a doctrine call, not plumbing.',
+    'Blocked by dose accounting, also measured 2026-08-29. The tempo slot is the only one with a '
+    + 'continuous renderer and renderContinuousPhrase refuses MP-zoned entries; both were relaxed '
+    + 'on the ruling that this charges to the THRESHOLD budget — which capFamilyOf already returns '
+    + 'for it, and which dosePaceOf already gives a tempo label carrying no @ MP token. The '
+    + 'reasoning held and the corpus did not. Reverted alongside the circuit; the two were '
+    + 'measured together, so the split between them is not yet separated.',
 };
+
 
 function reachableSlugs(): Set<string> {
   const reached = new Set<string>();
