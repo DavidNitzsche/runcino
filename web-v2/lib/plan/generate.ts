@@ -27,7 +27,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library-static';
-import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor } from '@/lib/training/vdot';
 import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achievable-target';
@@ -7100,6 +7100,17 @@ export interface ComposePlanResult {
   blocks: BlockPlan;
   totalWeeks: number;
   vols: number[];
+  /**
+   * LABELTRUTH-1 · the threshold pace this plan was COMPOSED at, in s/mi.
+   *
+   * `finalizeComposedPlan` reconciles each day's sub_label against the spec the
+   * day builds, and a time-stated rep set's clamp depends on the pace its
+   * seconds convert through — so reconciling against a probe constant would
+   * answer a question about a different runner. Carried on the result rather
+   * than added as a parameter so every caller is reconciled at the right pace
+   * without any of them changing.
+   */
+  tPaceSec?: number | null;
   /** Bundle that persistPlan writes verbatim to training_plans.authored_state. */
   authoredState: Record<string, unknown>;
   /**
@@ -7861,6 +7872,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     // be a volume the runner reached REPEATEDLY, which is the same reading
     // `resolveRampBase` already takes of the same series.
     ...(rampEvidence?.sustainedMi ? { rampAnchorMi: rampEvidence.sustainedMi } : {}),
+    tPaceSec: input.tPaceSec ?? null,
     authoredState: {
       total_weeks: totalWeeks,
       race_distance_mi: input.raceDistanceMi,
@@ -8663,6 +8675,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     blocks,
     totalWeeks: TOTAL_WEEKS,
     vols: weeks.map((w) => w.weeklyMi),
+    tPaceSec: input.tPaceSec ?? null,
     authoredState: {
       mode: 'maintenance',
       total_weeks: TOTAL_WEEKS,
@@ -8985,6 +8998,7 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     blocks,
     totalWeeks: weeks.length,
     vols: weeks.map((w) => w.weeklyMi),
+    tPaceSec: input.tPaceSec ?? null,
     authoredState: {
       mode: 'recovery',
       total_weeks: weeks.length,
@@ -9891,6 +9905,66 @@ export function finalizeComposedPlan(
       // leaving the pre-finalize scalar behind reported a 4 mi long over a week
       // of three 0.6 mi run/walks.
       if (typeof st.target_long_mi === 'number') st.target_long_mi = realizedLong;
+    }
+  }
+
+  /*
+   * LABELTRUTH-1 (2026-08-29) · the last word on what a day SAYS is the spec
+   * that day builds.
+   *
+   * `timeRepSpec` clamps a rep set to what the day can hold — right, and its
+   * own comment argues why: "a prescription is a request, not an instruction".
+   * But the composer authored the sub_label BEFORE the day's mileage was
+   * finally known (every ramp ceiling, taper rescale and long-run smoother
+   * above can still move it), so the two were free to disagree, and they did.
+   * Swept over the archetype grid on 2026-08-29: 920 of 8,181 rep-bearing days
+   * — 11% — carried a sub_label whose rep count the spec contradicted. A
+   * beginner on a 15 mi/wk block read "6×1 min surges" and their watch ran
+   * three.
+   *
+   * That is the sub_label/spec drift this codebase has already paid for twice,
+   * and this pass is the general answer rather than a third point fix: build
+   * each day's spec exactly as the persist path will, and where the spec
+   * clamped the count, restate the count in the label. `retitleReps` moves the
+   * number and nothing else, so the workout's authored identity survives.
+   *
+   * It runs LAST, after every pass that can change a day's distance, because
+   * a label reconciled before those passes would just drift again.
+   */
+  // The plan's OWN threshold pace. A time-stated rep set's clamp converts its
+  // seconds through this number, so reconciling at any other pace answers the
+  // question for a different runner. The probe constant is the fallback only
+  // for a composer that recorded none.
+  const reconcileTPaceSec = composed.tPaceSec ?? SPEC_PROBE_T_PACE_SEC;
+  for (const week of composed.weeks) {
+    for (const day of week.days) {
+      const label = day.subLabel;
+      if (!label || !(day.distanceMi > 0)) continue;
+      // ONLY a single homogeneous rep set. A SEQUENCE — §9.2's Mona fartlek
+      // is "2×90s + 4×60s + 4×30s + 4×15s" — carries several groups, and its
+      // spec's `rep_count` is the TOTAL number of steps (14), not the first
+      // group's count (2). Reconciling those two against each other rewrites
+      // the leading group to the total and prescribes fourteen ninety-second
+      // reps at 5K effort in place of two. Caught by the same sweep that found
+      // the drift, on this pass's own first run; the guard is why a label with
+      // more than one group is left entirely alone.
+      const groups = label.match(/\d+\s*[×x]\s*\d/g) ?? [];
+      if (groups.length !== 1) continue;
+      let spec: Record<string, unknown> | null = null;
+      try {
+        spec = buildWorkoutSpec(
+          day.type, day.distanceMi, reconcileTPaceSec, null, label,
+        ).spec as Record<string, unknown> | null;
+      } catch {
+        continue;
+      }
+      const built = Number(spec?.rep_count ?? 0);
+      if (!(built > 0)) continue;
+      const authored = Number(/(\d+)\s*[×x]\s*\d/.exec(label)?.[1] ?? 0);
+      if (!(authored > 0) || authored === built) continue;
+
+      const retitled = retitleReps(label, authored, built);
+      if (retitled && retitled !== label) day.subLabel = retitled;
     }
   }
 }

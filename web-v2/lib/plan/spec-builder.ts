@@ -493,6 +493,34 @@ function prescriptionIsEffortCued(prescription: string | null | undefined): bool
  * correctly. `by_effort` tells the expander to emit no pace target at all
  * rather than a number nobody can hit.
  */
+/**
+ * LABELTRUTH-1 · restate a prescription's rep count when the spec clamped it.
+ *
+ * Only the count in the rep clause moves. Everything else in the string — the
+ * warm-up phrase, the workout's name, the pace token, the recovery — is the
+ * authored identity and is left exactly as written, which is the whole reason
+ * the label is carried rather than re-derived. Returns the original string
+ * untouched when nothing was clamped, when there is no count to move, or when
+ * the leading number is not the one the spec is counting (a "2mi E w/ 4×1 min"
+ * prescription has a 2 in it that is not a rep count, so the rewrite anchors on
+ * the `N×` form and never on a bare number).
+ */
+export function retitleReps(
+  prescription: string | null | undefined,
+  authored: number,
+  built: number,
+): string | null | undefined {
+  if (prescription == null || authored === built || !(built > 0)) return prescription;
+  const re = /(\d+)(\s*[×x]\s*)/;
+  const m = re.exec(prescription);
+  // Only rewrite when the number found IS the count that was clamped. A
+  // prescription whose rep clause does not lead with the authored count is one
+  // this function does not understand, and a wrong rewrite is worse than a
+  // stale one — the label stays as authored and the sweep gate still reports it.
+  if (!m || Number(m[1]) !== authored) return prescription;
+  return prescription.replace(re, `${built}$2`);
+}
+
 function timeRepSpec(
   kind: 'threshold' | 'intervals',
   reps: { reps: number; durationS: number; restS: number | null },
@@ -565,7 +593,18 @@ function timeRepSpec(
       // lives ("hills", "Mona"). subLabelFromSpec would otherwise re-derive a
       // generic rep label and the family name would vanish between compose and
       // persist — the sub_label/spec drift this codebase has fixed twice.
-      label: prescription ?? undefined,
+      //
+      // LABELTRUTH-1 (2026-08-29) · and this is where it was about to be paid
+      // for a third time, by the clamp thirty lines above. That clamp is right
+      // — a prescription is a request and a six-rep set has to fit the day —
+      // but it moved `rep_count` and left this string alone, so the runner read
+      // "6×1 min surges" off a spec their watch runs three of. Swept across
+      // 8,181 rep-bearing days of the archetype grid on 2026-08-29: 920 of them
+      // (11%) shipped a label whose rep count the spec contradicted, almost all
+      // of them low-volume beginners — the runners least placed to notice.
+      // `retitleReps` rewrites the count and nothing else, so the identity the
+      // comment above protects survives intact.
+      label: retitleReps(prescription, reps.reps, repCount) ?? undefined,
       ...withRules,
     },
     paceTargetSPerMi: byEffort ? null : repPaceSec,
