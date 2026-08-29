@@ -34,12 +34,36 @@ final class WorkoutTracker: NSObject, ObservableObject {
     /// accurate fixes received during the run.  Read by buildCompletion
     /// BEFORE tracker.end() is called; cleared when a new workout starts.
     private(set) var gpsCoords: [(Double, Double)] = []
-    /// Cumulative elevation GAIN in meters, summed from positive barometer-
-    /// fused CLLocation.altitude deltas during the run. Read by buildCompletion
-    /// BEFORE tracker.end(); cleared when a new workout starts. `lastAltitudeM`
-    /// holds the previous fix's altitude for the per-fix delta.
+    /// Cumulative elevation GAIN in meters. Read by buildCompletion BEFORE
+    /// tracker.end(); cleared when a new workout starts.
+    ///
+    /// 2026-08-28 fix: this used to sum every positive fix-to-fix
+    /// CLLocation.altitude delta (~1,900 fixes over a 6mi run at the 5m
+    /// route filter), which compounds ±2m barometric/GPS jitter into
+    /// thousands of fictional feet (a real near-flat run showed +2008 ft
+    /// on the finish face). Mirrors the fix HealthKitImporter.swift landed
+    /// 2026-05-31 for the identical bug on the phone import path: net
+    /// (segment-end altitude − segment-start altitude) over a coarser
+    /// interval, keeping only positive segments, instead of summing every
+    /// micro-fluctuation. The phone nets per completed mile after the run;
+    /// the watch needs a total that updates live during the run, so it
+    /// nets per `elevSegmentDistanceThresholdM` (~0.1mi) of GPS distance
+    /// instead — short enough to keep the live "Climb" stat moving, long
+    /// enough (~30+ fixes at the 5m filter) for the two-point net delta to
+    /// absorb the jitter the same way the mile split does.
     private(set) var elevGainM: Double = 0
-    private var lastAltitudeM: Double? = nil
+    /// Altitude (m) at the start of the elevation segment currently being
+    /// accumulated.
+    private var elevSegmentStartAltitudeM: Double? = nil
+    /// Most recent valid-vertical-accuracy fix, used both as the GPS
+    /// distance anchor for the next fix and as the segment's current
+    /// altitude when the segment closes.
+    private var elevSegmentAnchorLocation: CLLocation? = nil
+    /// GPS distance (m) covered since `elevSegmentStartAltitudeM` was set.
+    private var elevSegmentDistanceM: Double = 0
+    /// Segment length that triggers a net-delta fold into `elevGainM`.
+    /// ~0.1mi — see `elevGainM` doc for why this granularity.
+    private static let elevSegmentDistanceThresholdM: Double = 160.9344
     /// Live running cadence (steps/min). CMPedometer gives `currentCadence`
     /// directly, which is far more reliable than differencing HealthKit's
     /// batched cumulative step count over wall-clock time.
@@ -362,7 +386,8 @@ final class WorkoutTracker: NSObject, ObservableObject {
             builder = b
             routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
             gpsCoords = []   // reset accumulator for the new run
-            elevGainM = 0; lastAltitudeM = nil   // reset elevation accumulator
+            elevGainM = 0                        // reset elevation accumulator
+            elevSegmentStartAltitudeM = nil; elevSegmentAnchorLocation = nil; elevSegmentDistanceM = 0
 
             // GPS route — requests auth only on the first ever run.
             startLocationUpdates()
@@ -552,7 +577,8 @@ final class WorkoutTracker: NSObject, ObservableObject {
         self.builder = nil
         self.routeBuilder = nil
         self.gpsCoords = []   // coords already consumed by buildCompletion; free memory
-        self.elevGainM = 0; self.lastAltitudeM = nil   // elevation consumed too
+        self.elevGainM = 0                             // elevation consumed too
+        self.elevSegmentStartAltitudeM = nil; self.elevSegmentAnchorLocation = nil; self.elevSegmentDistanceM = 0
 
         // Workout's over — tear down the audio session so the watch's
         // regular silent-mode behavior comes back when the user is just
@@ -623,7 +649,8 @@ final class WorkoutTracker: NSObject, ObservableObject {
         // data) died with the old process. Post-recovery fixes still map.
         routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
         gpsCoords = []
-        elevGainM = 0; lastAltitudeM = nil
+        elevGainM = 0
+        elevSegmentStartAltitudeM = nil; elevSegmentAnchorLocation = nil; elevSegmentDistanceM = 0
 
         // If the runner had paused at the moment of the crash, resume — the
         // recovered UI's elapsed/HR reads should be live either way.
@@ -787,18 +814,50 @@ final class WorkoutTracker: NSObject, ObservableObject {
         // negligible for a 12+ mile run (~4000 pts at 5 m filter = ~64 KB).
         for loc in locs {
             gpsCoords.append((loc.coordinate.latitude, loc.coordinate.longitude))
-            // Elevation GAIN from the barometer-fused altitude · sum positive
-            // deltas only (net climb), and only when the vertical solution is
-            // valid (verticalAccuracy >= 0; negative means altitude is junk).
-            // CLLocation.altitude on Apple Watch fuses the barometric altimeter,
-            // so this needs no separate CMAltimeter session.
-            if loc.verticalAccuracy >= 0 {
-                if let last = lastAltitudeM, loc.altitude - last > 0 {
-                    elevGainM += loc.altitude - last
-                }
-                lastAltitudeM = loc.altitude
+            // Elevation GAIN from the barometer-fused altitude, netted over
+            // ~0.1mi GPS-distance segments (see elevGainM's doc for why —
+            // this is the watch-side counterpart of the phone's per-mile
+            // net-delta fix). Only fixes with a valid vertical solution
+            // (verticalAccuracy >= 0; negative means altitude is junk)
+            // participate — an invalid fix is skipped entirely rather than
+            // stretching the segment's distance or altitude across it.
+            // CLLocation.altitude on Apple Watch fuses the barometric
+            // altimeter, so this needs no separate CMAltimeter session.
+            guard loc.verticalAccuracy >= 0 else { continue }
+            if let anchor = elevSegmentAnchorLocation {
+                elevSegmentDistanceM += anchor.distance(from: loc)
+            } else {
+                elevSegmentStartAltitudeM = loc.altitude   // first valid fix opens the segment
+            }
+            elevSegmentAnchorLocation = loc
+            if elevSegmentDistanceM >= Self.elevSegmentDistanceThresholdM,
+               let segStart = elevSegmentStartAltitudeM {
+                let net = loc.altitude - segStart
+                if net > 0 { elevGainM += net }
+                // Next segment starts where this one ended — no altitude
+                // information is dropped across the boundary, only the
+                // per-fix jitter within each segment.
+                elevSegmentStartAltitudeM = loc.altitude
+                elevSegmentDistanceM = 0
             }
         }
+    }
+
+    /// Folds any still-open elevation segment (< ~0.1mi, so it never hit the
+    /// threshold in `applyLocations`) into `elevGainM`. Call once, right
+    /// before reading `elevGainM` for the run's finish payload —
+    /// `buildCompletion` reads it BEFORE `tracker.end()` tears the session
+    /// down, and without this the last partial segment would be silently
+    /// dropped rather than counted. Safe to call more than once: it clears
+    /// the pending segment, so a second call is a no-op.
+    func flushPendingElevationSegment() {
+        guard let segStart = elevSegmentStartAltitudeM,
+              let anchor = elevSegmentAnchorLocation else { return }
+        let net = anchor.altitude - segStart
+        if net > 0 { elevGainM += net }
+        elevSegmentStartAltitudeM = nil
+        elevSegmentAnchorLocation = nil
+        elevSegmentDistanceM = 0
     }
 
     // MARK: - Simulator mock

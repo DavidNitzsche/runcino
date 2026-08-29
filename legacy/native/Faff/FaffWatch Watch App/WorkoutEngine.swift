@@ -2840,6 +2840,10 @@ final class WorkoutEngine: ObservableObject {
         // Elevation gain — read the barometer-fused accumulator BEFORE
         // tracker.end() tears down the session. Convert meters → feet (1 dp).
         // nil when no valid vertical fixes were collected (indoor, simulator).
+        // Flush first: applyLocations only folds a segment into elevGainM
+        // once it crosses the ~0.1mi threshold, so the run's last partial
+        // segment is still pending until this call.
+        tracker?.flushPendingElevationSegment()
         let elevGainFt: Double? = {
             guard let m = tracker?.elevGainM, m > 0 else { return nil }
             return (m * 3.28084 * 10).rounded() / 10
