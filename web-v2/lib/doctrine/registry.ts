@@ -74,6 +74,7 @@ import { PLAN_TEMPLATES } from '@/lib/plan/plan-templates';
 import {
   WORKOUT_CATALOGUE,
   CROSS_REFERENCES,
+  VARIATION_LEDGER,
   workoutBySlug,
 } from '@/lib/workout-catalogue/catalogue';
 import { DOCTRINE_PHASES } from '@/lib/workout-catalogue/types';
@@ -11395,6 +11396,93 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+  {
+    id: 'VOCAB.variation-rows-are-all-dispositioned',
+    binds: ['lib/workout-catalogue/catalogue.ts#VARIATION_LEDGER'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 18. Workout-name lookup index',
+    claim:
+      'Every "Variations" row in Research/04 has a recorded decision — carried, partial, or out ' +
+      'of scope with a reason. The §18 coverage check cannot see these rows at all (§18 lists 42 ' +
+      'names; the Variations rows name ~60 more session shapes) and it matches on section rather ' +
+      'than on name, so a variant inside a carried section passes trivially. That is how §11.1\'s ' +
+      '"modified block for mortals" — the only form of the Canova block this engine can schedule ' +
+      '— stayed uncarried while §11.1 read as covered. An absent decision and a considered "no" ' +
+      'are indistinguishable until one is written down; this makes writing it down mandatory.',
+    check() {
+      const lines = sourceOf('Research/04-workout-vocabulary.md').split('\n');
+      // Walk the doc for Variations rows, tagging each with the section
+      // heading above it, so the ledger is checked against the doc's own
+      // current text rather than against a transcription of it.
+      const found: Array<{ section: string; row: string }> = [];
+      let section = '';
+      for (const line of lines) {
+        const h = /^#{2,3}\s+(\d+(?:\.\d+)?)\b/.exec(line);
+        if (h) section = `§${h[1]}`;
+        if (/^\|\s*Variations\s*\|/.test(line)) found.push({ section, row: line.trim() });
+      }
+      if (found.length < 20) {
+        throw new Error(
+          `only ${found.length} Variations rows parsed out of Research/04 · the row format has ` +
+            'changed and this claim is passing vacuously, which is worse than failing',
+        );
+      }
+
+      const ledger = new Map(VARIATION_LEDGER.map((v) => [v.row, v]));
+      const missing: string[] = [];
+      for (const f of found) {
+        const hit = ledger.get(f.row);
+        if (!hit) {
+          missing.push(`${f.section} · ${f.row}`);
+          continue;
+        }
+        if (hit.section !== f.section) {
+          throw new Error(
+            `VARIATION_LEDGER files this row under ${hit.section} · the doc has it under ${f.section}`,
+          );
+        }
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `${missing.length} Variations row(s) in Research/04 have no recorded decision:\n  ` +
+            missing.join('\n  ') +
+            '\n\nAdd each to VARIATION_LEDGER in lib/workout-catalogue/catalogue.ts with a ' +
+            'disposition and a reason. "out-of-scope" is a legitimate answer — an unrecorded ' +
+            'one is not. If a row changed rather than appeared, re-read the new text before ' +
+            're-recording the same verdict against it.',
+        );
+      }
+
+      // Stale entries: a ledger row the doc no longer carries is a decision
+      // about a session that no longer exists, and it hides that the doc moved.
+      const docRows = new Set(found.map((f) => f.row));
+      const stale = VARIATION_LEDGER.filter((v) => !docRows.has(v.row));
+      if (stale.length > 0) {
+        throw new Error(
+          `VARIATION_LEDGER carries ${stale.length} row(s) Research/04 no longer states:\n  ` +
+            stale.map((v) => `${v.section} · ${v.row}`).join('\n  ') +
+            '\n\nThe doctrine was edited. Re-read the section and re-record.',
+        );
+      }
+
+      // Every claim of coverage must name a slug that exists, and every row
+      // must carry a reason someone can act on.
+      for (const v of VARIATION_LEDGER) {
+        if (v.disposition !== 'out-of-scope' && (v.carriedBy ?? []).length === 0) {
+          throw new Error(`${v.section} is "${v.disposition}" but names no entry that carries it`);
+        }
+        for (const slug of v.carriedBy ?? []) {
+          if (!WORKOUT_CATALOGUE.some((e) => e.slug === slug)) {
+            throw new Error(`${v.section} claims to be carried by "${slug}", which is not in the catalogue`);
+          }
+        }
+        if (v.note.trim().length < 40) {
+          throw new Error(`${v.section}'s note is too short to be a reason anyone could act on`);
+        }
+      }
+    },
+  },
+
   {
     id: 'DOWNHILL.eccentric-protocol-is-carried',
     binds: [

@@ -90,6 +90,267 @@ export const CROSS_REFERENCES: Array<{ name: string; at: string; resolvesTo: str
   { name: 'Marathon-specific', at: '§14.4', resolvesTo: 'canova-2k-repeats' },
 ];
 
+/**
+ * VARIATION-LEDGER-1 (2026-08-29) · every "Variations" row in Research/04, and
+ * what the engine does about it.
+ *
+ * ── WHY THIS EXISTS ────────────────────────────────────────────────────────
+ *
+ * The catalogue's coverage check walks §18, the doc's own lookup index, and
+ * asks whether each NAME resolves to a section the catalogue carries. That
+ * check cannot see two things, and both cost real sessions:
+ *
+ *   1. §18 lists 42 names; the doc describes more. Every "Variations" row —
+ *      27 of them, naming ~60 further session shapes — is outside the index
+ *      entirely, so a variant can be absent forever with nothing failing.
+ *   2. It matches on SECTION, not name. A variant added inside a section the
+ *      catalogue already carries passes trivially.
+ *
+ * That is not a hypothetical. §11.1's own Variations row offers the modified
+ * block "for mortals" — the only form of the Canova block a non-elite can run,
+ * and the only form the engine can schedule at all — and it went uncarried
+ * while §11.1 read as covered, because the entry carrying §11.1 held a
+ * two-a-day the selector had declined on every pass since it was written. The
+ * gap was found by the owner reading a friend's training plan, not by any
+ * gate. §11.2's three variants were missing the same way, on a session that
+ * recurs every 10-14 days through an 18-week marathon build.
+ *
+ * ── WHAT THIS IS, AND WHAT IT DELIBERATELY IS NOT ──────────────────────────
+ *
+ * It is NOT a demand that every variant be built. Most of these are 5K/track
+ * vocabulary, or cosmetic re-namings of a session already carried, and
+ * building all ~60 would be this module inventing work doctrine did not ask
+ * for. It IS a demand that every variant have a DECISION recorded against it,
+ * the way `CROSS_REFERENCES` records the three pointer rows: carried, or out
+ * of scope for a stated reason. An absent decision and a considered "no" look
+ * identical in a codebase until someone writes them down.
+ *
+ * The `row` field is the doc's line VERBATIM. `VOCAB.variation-rows-are-all-
+ * dispositioned` re-reads Research/04 and fails when a row is added, edited or
+ * removed — so a doctrine change cannot silently widen the vocabulary without
+ * someone looking at it. Fixing the failure means editing this table, which
+ * means making the same judgement again against the new text.
+ */
+export const VARIATION_LEDGER: Array<{
+  /** The section whose Variations row this is. */
+  section: string;
+  /** VERBATIM row text from Research/04. Re-read at test time. */
+  row: string;
+  /** carried · every named variant has an entry. partial · some do.
+   *  out-of-scope · none, for the stated reason. */
+  disposition: 'carried' | 'partial' | 'out-of-scope';
+  /** Slugs that carry it, where any do. */
+  carriedBy?: string[];
+  /** Why. Required on every row — this is the whole point of the ledger. */
+  note: string;
+}> = [
+  {
+    section: '§1',
+    row: '| Variations | Recovery shakeout (15–20 min), double-day recovery (AM or PM tag-on), elliptical/cycle cross-train substitute |',
+    disposition: 'partial',
+    carriedBy: ['recovery-run'],
+    note: 'The shakeout is a plan_workouts type of its own, not a catalogue entry. Double-day '
+      + 'recovery needs two sessions on one date, which the schema does not hold. Cross-training '
+      + 'is not running and the engine authors no cross-training.',
+  },
+  {
+    section: '§2',
+    row: '| Variations | Pure easy, general aerobic (slightly faster end), with strides appended |',
+    disposition: 'carried',
+    carriedBy: ['easy-run', 'strides'],
+    note: 'Strides are appended by the composer (STRIDE_DAYS_PER_WEEK in spec-builder), not '
+      + 'selected as a session, so "easy + strides" needs no entry of its own.',
+  },
+  {
+    section: '§3',
+    row: '| Variations | Plain medium-long, medium-long with strides, medium-long with embedded T segment (advanced) |',
+    disposition: 'partial',
+    carriedBy: ['medium-long-run'],
+    note: 'OPEN AND MARATHON-RELEVANT. Research/22\'s Marathon-Advanced sample week runs a '
+      + 'STRUCTURED MLR, so a template row exists that the catalogue cannot currently reproduce. '
+      + 'The embedded-T medium-long is the strongest remaining candidate in this table.',
+  },
+  {
+    section: '§4.4',
+    row: '| Variations | MP locked in second half (harder), MP from the start (hardest), MP with surges |',
+    disposition: 'partial',
+    carriedBy: ['marathon-pace-long-run', 'fast-finish-long-run'],
+    note: 'The placement variants are the existing MP and fast-finish long runs. "MP with '
+      + 'surges" is not carried — it needs a surge inside a long-run segment, which the '
+      + 'segment grammar can now express (SEGLONG-1) but no entry uses.',
+  },
+  {
+    section: '§5.2',
+    row: '| Variations | Cutdown tempo (start MP, finish T), wave tempo (alternate ±10 s/mi around T) |',
+    disposition: 'carried',
+    carriedBy: ['continuous-mile-cutdowns', 'wave-tempo'],
+    note: 'Both variants have their own entries under §12.5 and §10.3.',
+  },
+  {
+    section: '§5.3',
+    row: '| Variations | Cruise + threshold (e.g., 4 × 1 mi + 2 mi continuous), cruise pyramid (1-2-1-2-1) |',
+    disposition: 'out-of-scope',
+    note: 'OPEN. Both are expressible as sequences and neither is built. Research/22\'s '
+      + 'Marathon-Advanced LT row is "6-8 mi @ T", and the cruise+threshold hybrid is a '
+      + 'doctrine-sanctioned way to reach that volume — a real candidate, not a dead end.',
+  },
+  {
+    section: '§5.4',
+    row: '| Variations | Hill ST intervals (Ingebrigtsen variant), 1000m at ST descending across the set |',
+    disposition: 'out-of-scope',
+    note: 'Sub-threshold work is carried at §5.4 itself; these two re-shape it onto a hill and '
+      + 'into a descent. Neither is marathon-specific and both are middle-distance vocabulary.',
+  },
+  {
+    section: '§5.5',
+    row: '| Variations | 2 × 5 mi at HM with 3 min jog (split version), 8 mi MP + 2 mi T (combo) |',
+    disposition: 'out-of-scope',
+    note: 'OPEN AND MARATHON-RELEVANT. §5.5\'s own placement row is "HM and marathon specific", '
+      + 'and both variants are sequences the grammar can express.',
+  },
+  {
+    section: '§6.2',
+    row: '| Variations | Mile repeats descending (each rep faster), mile repeats at HM pace (more reps, less rest), broken miles (e.g., 1200+400 with 30 s jog) |',
+    disposition: 'partial',
+    carriedBy: ['mile-repeats', '6x1mi-at-hm', 'mile-cutdowns'],
+    note: 'The descending and HM-pace variants are carried. Broken miles are not — 5K/10K '
+      + 'vocabulary, and the lowest-value gap in this table for a marathoner.',
+  },
+  {
+    section: '§6.3',
+    row: '| Variations | 5 × 1K cutdown, 4 × 1K + 4 × 400, 3 × (2 × 1K) with longer set rest |',
+    disposition: 'partial',
+    carriedBy: ['1k-cutdowns'],
+    note: 'The cutdown is carried. The mixed set and the set-of-sets are track vocabulary; the '
+      + 'set-of-sets also needs a two-level rest the structure types do not model.',
+  },
+  {
+    section: '§6.4',
+    row: '| Variations | 8 × 800 at 5K pace (classic), Yasso 800s (see §6.7), 800s descending |',
+    disposition: 'carried',
+    carriedBy: ['800m-repeats', 'yasso-800s'],
+    note: 'The classic set and Yasso both have entries; "descending" is the same set under the '
+      + 'cutdown family already carried at §12.',
+  },
+  {
+    section: '§6.6',
+    row: '| Variations | 16 × 400 at 5K (classic), 12 × 400 alternating I/R, 4 × (4 × 400) with longer set rest |',
+    disposition: 'partial',
+    carriedBy: ['400m-repeats', '400m-sets-5k'],
+    note: 'The classic set and a set-of-sets form are carried. I/R alternation within one set is '
+      + 'not modelled, and is 5K/track vocabulary.',
+  },
+  {
+    section: '§7.2',
+    row: '| Variations | Hill strides (slight uphill, 10–15 s), in-and-out strides (accelerate-cruise-accelerate), strides on grass for impact-sensitive runners |',
+    disposition: 'out-of-scope',
+    note: 'Strides are composer-appended, not selected, and all three variants are surface or '
+      + 'execution notes on the same 10-20 s effort rather than different sessions.',
+  },
+  {
+    section: '§7.3',
+    row: '| Variations | Single-leg bounding hills, alternating sprint/stride hills |',
+    disposition: 'out-of-scope',
+    note: 'Plyometric and drill work. The engine prescribes running, and Research/07 owns the '
+      + 'strength/plyometric programme separately.',
+  },
+  {
+    section: '§7.4',
+    row: '| Variations | 200-200-400 cycles (Daniels), 200m descending, 200m at mile pace into 200m float |',
+    disposition: 'out-of-scope',
+    note: 'Named and consciously declined once already: `400m-r-repeats`\'s own comment records '
+      + 'that this shape was considered and the 400s sourced from Research/22 were carried '
+      + 'instead. Track vocabulary.',
+  },
+  {
+    section: '§7.5',
+    row: '| Variations | 10 × 100 alternating fast/relaxed, 100m fly-ins |',
+    disposition: 'out-of-scope',
+    note: 'Sprint mechanics. Not marathon vocabulary at any tier this engine authors.',
+  },
+  {
+    section: '§8.2',
+    row: '| Variations | Progressive hills (build set length over weeks), hill ladder (10s-20s-30s) |',
+    disposition: 'partial',
+    carriedBy: ['short-hill-repeats'],
+    note: 'The progression across weeks IS carried, as `repBuild` — see EFFORT-RAMP-1, which '
+      + 'walks the rep band across the block rather than opening at the ceiling. The '
+      + 'within-session ladder is not.',
+  },
+  {
+    section: '§8.5',
+    row: '| Variations | Modern abbreviated circuit (single hill with bound up, jog flat, stride down) |',
+    disposition: 'out-of-scope',
+    note: 'An abbreviation of the Lydiard circuit already carried, and like it mostly bounding '
+      + 'and drills rather than running.',
+  },
+  {
+    section: '§8.6',
+    row: '| Variations | Mona-style on hills (timed efforts), pyramid hill fartlek (escalating climb durations) |',
+    disposition: 'out-of-scope',
+    note: 'Both are the carried hill fartlek run on a different course profile. Terrain choice '
+      + 'is not something the engine prescribes.',
+  },
+  {
+    section: '§9.2',
+    row: '| Variations | Half Mona (cut in half), Mona on hills, Mona with extended floats (more recovery) |',
+    disposition: 'out-of-scope',
+    note: 'Scalings of the carried Mona fartlek. The dose already scales to the week.',
+  },
+  {
+    section: '§9.3',
+    row: '| Variations | Shortened Michigan (drop 800/400), all-track Michigan |',
+    disposition: 'out-of-scope',
+    note: 'A shortening and a venue change of the carried Michigan fartlek.',
+  },
+  {
+    section: '§9.4',
+    row: '| Variations | Telephone-pole fartlek (surge between landmarks), partner fartlek (alternate who calls surges) |',
+    disposition: 'out-of-scope',
+    note: 'Both are ways of DECIDING surges mid-run, not different prescriptions. The engine '
+      + 'cannot prescribe a training partner.',
+  },
+  {
+    section: '§10.1',
+    row: '| Variations | Progressive (faster segments lengthen across the workout); Nate Jenkins MP/HM alternations (longer segments, less differential) |',
+    disposition: 'out-of-scope',
+    note: 'OPEN AND MARATHON-RELEVANT. §10.1\'s own placement row is "marathon specific phase, '
+      + '6-10 weeks out", and `mp-10k-alternations` carries one fixed alternation shape. Both '
+      + 'variants are expressible; neither is built.',
+  },
+  {
+    section: '§11.1',
+    row: '| Variations | Modified block (single longer run with two segments separated by short rest) for mortals |',
+    disposition: 'carried',
+    carriedBy: ['canova-modified-block'],
+    note: 'CANOVA-MOD-1. Carried 2026-08-29, and the reason this ledger exists: §11.1 read as '
+      + 'covered for months while the only entry against it held a two-a-day the selector '
+      + 'declined on every pass, so no form of the session could be prescribed.',
+  },
+  {
+    section: '§11.2',
+    row: '| Variations | 2 × 3K + 3 × 2K (Kipsang pre-WR), 5 × 2K all at MP, 6 × 2K cutdown |',
+    disposition: 'carried',
+    carriedBy: ['canova-2k-repeats'],
+    note: 'CANOVA-MOD-1. All three added 2026-08-29 as additional structures. The entry recurs '
+      + 'every 10-14 days in a marathon build and had one uniform shape, so it rendered the '
+      + 'identical session every time it was selected.',
+  },
+  {
+    section: '§12.2',
+    row: '| Variations | 3-2-1 mile cutdown (3 mi, 2 mi, 1 mi each progressively faster) |',
+    disposition: 'out-of-scope',
+    note: 'A specific rung set of the carried mile cutdown, expressible as a sequence. Low value '
+      + 'against the cutdown entry already carried.',
+  },
+  {
+    section: '§13.2',
+    row: '| Variations | Reps run all at 5K (constant-pace ladder), reps each at goal pace for that distance |',
+    disposition: 'out-of-scope',
+    note: 'Two pace policies over the carried ladder rungs. 5K/track vocabulary.',
+  },
+];
+
 // ── the catalogue ───────────────────────────────────────────────────────────
 
 export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
