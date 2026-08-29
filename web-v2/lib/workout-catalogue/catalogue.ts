@@ -1357,6 +1357,69 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
       '"Elite-level workout ... Requires high training age" is mapped to advanced_plus only. ' +
         'The doc offers a sub-elite scaling (30–40 km) but names no tier for it, so this ' +
         'module does not open the session to lower tiers on that sentence alone.',
+      'DECLINED BY DESIGN, and it always has been (named 2026-08-29). This entry carries only ' +
+        'a `double`, and `renderPrescription` has no `double` arm — it renders reps, sequence, ' +
+        'alternation and continuous, and returns null for anything else — so the selector has ' +
+        'declined this session on every pass since it was written. That is not a bug to fix ' +
+        'here: `plan_workouts` holds ONE session per date, so a two-a-day 6–8 hours apart has ' +
+        'nowhere to be scheduled, exactly as pre-fatigue-mp-work\'s structures (a) and (c) do ' +
+        'not. What WAS a defect is that the gap was silent — nothing failed, and §11.1 read as ' +
+        'covered while the engine could not prescribe a single form of it. §11.1\'s own ' +
+        'Variations row offers the answer ("Modified block ... for mortals"), and that is now ' +
+        'carried as `canova-modified-block` below, which renders.',
+    ],
+  },
+  {
+    slug: 'canova-modified-block',
+    name: 'Canova modified block',
+    section: '§11.1',
+    family: 'marathon_specific',
+    zones: ['E', 'MP'],
+    effortOnly: false,
+    structures: [
+      // §11.1 Variations · "Modified block (single longer run with two
+      // segments separated by short rest) for mortals". One calendar session,
+      // so it is schedulable where the elite double is not.
+      {
+        kind: 'sequence',
+        steps: [
+          { value: 12, unit: 'km', zone: 'MP', recoverySec: 300 },
+          { value: 8, unit: 'km', zone: 'MP', recoverySec: 0 },
+        ],
+        recoveryRule: 'Short rest between the two segments · "separated by short rest", not a full recovery',
+      },
+    ],
+    atPace: b(20, 20, 'km'),
+    session: b(30, 40, 'km'),
+    warmupCooldownMi: null,
+    cadence: { minDays: 14, maxDays: 21, source: 'Spacing | 2–3 weeks between blocks' },
+    perCycleMax: 3,
+    distances: ['m'],
+    phases: ['race_specific'],
+    // "for mortals" is the Variations row's own word for who this is, and the
+    // Contraindications row's sub-elite scaling is what it scales to. Not
+    // beginners — it is still the second-heaviest session in the vocabulary.
+    tiers: NOT_BEGINNER,
+    cites: [
+      'Variations | Modified block (single longer run with two segments separated by short rest) for mortals',
+      'Contraindications | Elite-level workout; sub-elite runners scale to ~30–40 km total. Requires high training age',
+      'Purpose | Massive marathon-specific stimulus over a single calendar day; depletes glycogen and trains under-fatigue running',
+      'Spacing | 2–3 weeks between blocks',
+      'When in cycle | Specific phase; first block 8–10 weeks out, last 4–5 weeks out',
+    ],
+    conventions: [
+      'THE SEGMENT SPLIT IS DERIVED, and this is the one number here the doc does not state. ' +
+        'Research/04 §11.1 gives the modified block only as a shape ("two segments separated ' +
+        'by short rest") and gives sub-elite total volume as ~30–40 km. The 12 km + 8 km at MP ' +
+        'split applies the doc\'s OWN AM:PM proportion (25–30 km : 15–20 km, i.e. roughly 60:40) ' +
+        'to the low end of that sub-elite total, so the ratio is read from the doc even though ' +
+        'the segment sizes are not printed in it. Session volume carries the full 30–40 km band ' +
+        'because the surrounding easy running is what makes up the remainder.',
+      'Both segments are at MP. The elite AM session is a progressive long run with only its ' +
+        'last portion at MP, but that shape is the fast-finish long run the engine already ' +
+        'authors (§4.5, and see MP.pre-fatigue-is-the-fast-finish-long). What makes THIS ' +
+        'session distinct is re-entering marathon pace after a break with the first segment ' +
+        'already in the legs, which is the "running under fatigue" the Purpose row names.',
     ],
   },
   {
@@ -1368,6 +1431,32 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
     effortOnly: false,
     structures: [
       { kind: 'reps', reps: r(4, 8), rep: b(2, 2, 'km'), recoverySec: r(120, 180), recoveryRule: '2–3 min jog (60–90 s for advanced)' },
+      // §11.2 Variations · all three, added 2026-08-29. This entry is
+      // race-specific, marathon-only and recurs every 10–14 days, so across an
+      // 18-week build it is selected repeatedly — and with one uniform
+      // structure it rendered the identical session every time. The doc names
+      // three variants and the runner was getting none of them.
+      //
+      // "2 × 3K + 3 × 2K (Kipsang pre-WR)" · unequal rungs, so a sequence.
+      // Recovery carries the same 2–3 min the Recovery row states.
+      {
+        kind: 'sequence',
+        steps: [
+          { value: 3, unit: 'km', zone: 'MP', recoverySec: 150 },
+          { value: 3, unit: 'km', zone: 'MP', recoverySec: 150 },
+          { value: 2, unit: 'km', zone: 'T', recoverySec: 150 },
+          { value: 2, unit: 'km', zone: 'T', recoverySec: 150 },
+          { value: 2, unit: 'km', zone: 'T', recoverySec: 0 },
+        ],
+        recoveryRule: '2–3 min jog · Kipsang pre-WR shape, 12K at quality',
+      },
+      // "5 × 2K all at MP" · the flat-pace variant. Named separately from the
+      // base structure because the base one DESCENDS ("each rep 2.5–5 s/km
+      // faster than the previous") and this one explicitly does not — same
+      // rep length, different session.
+      { kind: 'reps', reps: r(5, 5), rep: b(2, 2, 'km'), recoverySec: r(120, 180), recoveryRule: '2–3 min jog · all reps at MP, no descent' },
+      // "6 × 2K cutdown" · the descent taken to its longest stated form.
+      { kind: 'reps', reps: r(6, 6), rep: b(2, 2, 'km'), recoverySec: r(120, 180), recoveryRule: '2–3 min jog · cutdown across all six' },
     ],
     atPace: b(8, 16, 'km'),
     session: null,
@@ -1383,6 +1472,16 @@ export const WORKOUT_CATALOGUE: CatalogueEntry[] = [
       'Recovery | 2–3 min jog (60–90 s for advanced)',
       'Total volume | 8–16 K at quality',
       'Pacing requirement | Even pace within each rep',
+      'Variations | 2 × 3K + 3 × 2K (Kipsang pre-WR), 5 × 2K all at MP, 6 × 2K cutdown',
+    ],
+    conventions: [
+      "The Kipsang sequence's zones are read off the Pace row, not chosen: " +
+        '"start slightly slower than MP; descend across reps to slightly faster than T" ' +
+        'places the opening 3Ks at MP and the closing 2Ks at T. The doc gives no per-rep ' +
+        'pace table, so the zones mark the two ends of the descent it does state.',
+      'Recovery on the sequence steps is the midpoint of the entry\'s own 2–3 min Recovery ' +
+        'row. The doc offers 60–90 s "for advanced" but attaches no tier condition this ' +
+        'module can evaluate per-step, so the general band is used for every tier.',
     ],
   },
   {

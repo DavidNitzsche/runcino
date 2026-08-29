@@ -46,13 +46,18 @@ function lookupIndex(): Array<{ name: string; section: string }> {
 }
 
 describe('WORKOUT CATALOGUE · coverage against the doc', () => {
-  it('holds 62 distinct workouts', () => {
+  it('holds 63 distinct workouts', () => {
     // 59 from Research/04's own tables + VARIETY-R3-1's 400m R repeats, whose
     // dose is read from Research/22's advanced sample weeks (see its entry),
     // + DOWNHILL-1's two Research/11 sessions (downhill repeats and the long
     // downhill simulation). See the DOWNHILL comment block in catalogue.ts for
     // why they could not previously exist here at all.
-    expect(WORKOUT_CATALOGUE).toHaveLength(62);
+    // + CANOVA-MOD-1's `canova-modified-block`, §11.1's own Variations row.
+    // It shares its section with `canova-special-block`, which carries only a
+    // `double` and has therefore been declined on every pass since it was
+    // written — a two-a-day has nowhere to go in a table holding one session
+    // per date. §11.1 read as covered while no form of it was prescribable.
+    expect(WORKOUT_CATALOGUE).toHaveLength(63);
   });
 
   it('has no duplicate slugs', () => {
