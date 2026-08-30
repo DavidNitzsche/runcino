@@ -1868,13 +1868,52 @@ export const PROGRESSION_TAIL_SHARE = 1 / 3;
 export function sizeBlocks(totalWeeks: number, raceDistanceMi: number, isMidBlock: boolean = false): BlockPlan {
   const cat = distanceCategoryOf(raceDistanceMi);
   const shape = BLOCK_SHAPE[cat];
-  const taperWeeks       = shape.taperWeeks;
+  /*
+   * RUNWAY-1 (2026-08-30) · every phase floor below is written against the
+   * assumption that totalWeeks is comfortably larger than shape.taperWeeks and
+   * qualityWeeks' own 3-week minimum. That assumption held for every runway
+   * this function had ever been called with — until it didn't.
+   *
+   * Swept over every distance category and totalWeeks 1-12: the ORIGINAL
+   * `qualityWeeks = Math.min(8, Math.max(3, Math.floor(remaining * 0.6)))`
+   * floors at 3 whatever `remaining` is, so a category can claim MORE weeks
+   * than totalWeeks actually has. `extraWeeks` a few lines down can only ADD
+   * slack when a phase UNDER-claims — `Math.max(0, ...)` — it has no
+   * mechanism to claw back an OVER-claim. Measured: 5K mismatches at
+   * totalWeeks 1-3, 10K/HM at 1-4, marathon/ultra at 1-5 — a `phases` array
+   * summing to as much as double `totalWeeks` (marathon at totalWeeks=1:
+   * QUALITY:3 + TAPER:3 = 6). Composed downstream (`composePlan`'s week
+   * loop walks `phases` in order, decrementing a week at a time), the
+   * over-claimed early phase consumes the ENTIRE composed grid before the
+   * walk ever reaches TAPER — so a short-runway plan silently never taper'd
+   * at all, while `isRaceWeek = wi === totalWeeks - 1` kept marking its last
+   * week as race week regardless of which phase (or lack of one) that week
+   * actually landed in.
+   *
+   * The fix: every floor below is capped at what is ACTUALLY LEFT, not at an
+   * unconditional minimum. Each cap is a MIN with the previous remainder, so
+   * on any runway large enough to satisfy the floor anyway (every runway this
+   * function ran on before RUNWAY-1) the min is slack and the arithmetic is
+   * unchanged — provably so: `Math.max(3, Math.floor(0.6x)) <= x` for every
+   * `x >= 3`, so `Math.min(x, Math.max(3, Math.floor(0.6x)))` only ever
+   * differs from the original when `x < 3`, which was structurally
+   * unreachable until a short runway could reach it. TAPER — the phase
+   * closest to race day and the one whose absence is most dangerous (no
+   * volume cut, no protected intensity, the plan just runs the runner into
+   * the race at build load) — is protected FIRST, at its full doctrine
+   * length whenever totalWeeks allows it, and shrunk only when totalWeeks
+   * itself is smaller than the category's own taper.
+   */
+  const taperWeeks       = Math.min(shape.taperWeeks, totalWeeks);
   // Race-specific = the closest-to-race quality block. Sized by race distance,
   // squeezed only if total runway is too short.
   const raceSpecificWks  = Math.min(shape.raceSpecificCap, Math.max(0, totalWeeks - taperWeeks - 4));
   // Quality block: bigger when there's more runway, capped at 8.
   const remainingAfterTaperAndRS = totalWeeks - taperWeeks - raceSpecificWks;
-  const qualityWeeks     = Math.min(8, Math.max(3, Math.floor(remainingAfterTaperAndRS * 0.6)));
+  const qualityWeeks     = Math.min(
+    remainingAfterTaperAndRS,
+    Math.min(8, Math.max(3, Math.floor(remainingAfterTaperAndRS * 0.6))),
+  );
   // Base: everything left, but capped at 8 weeks so we don't stall in aerobic
   // forever when the race is far out. If race is >6 months out, the user is
   // effectively in maintenance · the surplus weeks fold into base anyway.
@@ -7157,7 +7196,39 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // weeks - 1/7). Fractional weeks made phaseWkRemaining never hit
   // exactly 0, so phase advancement broke and plans stayed in BASE
   // for the entire runway. Caught by the generator bench.
-  const totalWeeks = Math.max(3,
+  //
+  // RUNWAY-1 (2026-08-30) · the floor used to be `Math.max(3, ...)`, which
+  // padded a genuinely short runway UP to 3 weeks without ever re-checking
+  // that `input.raceDateISO` still falls inside the padded grid. Since
+  // `isRaceWeek = wi === totalWeeks - 1` decides race week by ARRAY INDEX —
+  // below — the composer kept building forward from `startMondayISO` and
+  // blindly marked the LAST padded week as race week, whatever the real
+  // date said. Reproduced directly: a half marathon 6 days out composed a
+  // plan whose race day landed 14 days late; 13 days out landed 7 days
+  // late; three race dates two calendar weeks apart collapsed onto one
+  // identical composed grid.
+  //
+  // The two live callers (`loadGeneratorInputs`, `buildSimPlan`) already
+  // refuse a runway this short before ever reaching `composePlan` — a
+  // real dated goal race under 3 weeks out, or a sim under 2, is declined
+  // with a friendly reason rather than silently mis-dated. So the padding
+  // this floor did was dead weight for both of them; what it was NOT dead
+  // weight for is `sizeBlocks`, whose own phase floors (fixed alongside
+  // this, see RUNWAY-1 there) over-claimed weeks whenever a category's
+  // taper plus quality-minimum exceeded a small totalWeeks — reachable at
+  // 4-9 weeks, well above either guard's 2-3 week threshold, and measured
+  // live: a half marathon or 10K 4 weeks out, or a marathon 3-5 weeks out,
+  // silently never reached TAPER at all.
+  //
+  // Floored at 1, not 0 — a week array of length zero has no week for a
+  // race day to live in, and `sizeBlocks` already degrades correctly to a
+  // single TAPER week at totalWeeks=1 (verified: every category, swept
+  // 1-12 weeks, phases always sum to totalWeeks, TAPER always present).
+  // A race whose date is already in the past floors here too rather than
+  // producing a negative-length grid — that is a caller-input question
+  // (both live callers already refuse it upstream via the same runway
+  // check), not one this function can answer by itself.
+  const totalWeeks = Math.max(1,
     Math.floor(daysBetween(input.startMondayISO, input.raceDateISO) / 7) + 1
   );
   // 2026-06-02 · tier targets drive volume + long-run sizing.
