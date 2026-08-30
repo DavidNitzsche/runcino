@@ -361,21 +361,54 @@ describe('VARIETY-BEGIN-1 · beginner quality: two different days, a dose that m
          * `beginnerSurgeDose` in "the progression helpers agree with
          * doctrine's endpoints" below, which is where that contract belongs.
          *
-         * OPEN GAP, named rather than hidden. 45 days of the 2026-08-29
-         * archetype sweep clamp all the way to ONE rep — 602 days clamp at
-         * all, and the other 557 are honest reductions that fit their day.
-         * Every one of the 45 is a 1-1.5 mi beginner quality day that a later
-         * ramp pass shrank below its own prescription; this archetype's own
-         * week carries one, labelled "1.5mi E w/ 1×1 min surges" on a 1 mi day
-         * — the easy distance in the label is stale too.
+         * VARIETY-BEGIN-1-FIX (2026-08-30) · THE NAMED 45-DAY GAP IS CLOSED TO
+         * ZERO. Re-verified against the 2026-08-29 archetype sweep first: a
+         * cutback week (`isCutback`) deliberately excludes `layoutWeek`'s
+         * RP-FREQ-FLOOR 2mi quality-day floor (by design — cutback weeks are
+         * meant to shrink quality volume), and on a true beginner's low-volume
+         * week `qualityMiEach` could round to exactly 1mi — smaller than the
+         * doctrine floor dose's own warm-up + cool-down floors (1.0mi) before
+         * a single rep is even run. Every one of the 45 was this: a 1-1.5mi
+         * cutback-week day.
          *
-         * The floor here is 1 because 1 is what the engine does today, and a
-         * floor this test cannot meet would be a floor that gets deleted. The
-         * real fix is upstream and is a composer change: a day that cannot
-         * carry a structured session should not be authored as one, and the
-         * ramp pass that shrinks a quality day should re-read its prescription
-         * rather than leaving it stale. Raise this to 2, then 4, as that
-         * lands.
+         * Fixed at authoring time: `layoutWeek` now refuses to author the
+         * beginner surge day at all below `MIN_BEGINNER_SURGE_DAY_MI`
+         * (computed from `timeRepSpec`'s own warm-up/cool-down formula at the
+         * doctrine floor dose — 4×1 min @ T — so it cannot drift out of sync
+         * with the clamp it guards against). Below that floor the day falls
+         * to the easy fill instead, the same answer DOCTRINE-BASE-2 already
+         * gives a base week that cannot seat its own session.
+         *
+         * A SECOND, UNRELATED MECHANISM WAS FOUND AND IS DELIBERATELY LEFT
+         * ALONE. `applyDosingCaps`'s generic Daniels'-T-share trim
+         * (`trimSessionDose`) walks ANY rep-set label down one rep at a time
+         * against the week's own 10% T-pace cap (`validate.ts`'s hard,
+         * enforced ceiling — not spec-builder.ts's day-mileage clamp this test
+         * and the handed-off finding were about), with no floor of its own,
+         * and can walk a beginner's surge label to 1×1 min on a week whose
+         * T-pace budget genuinely cannot afford more — even on a physically
+         * generous day (5-12mi in the cases found). Two fixes for THIS
+         * mechanism were tried and both regressed the corpus gates: rewriting
+         * the label back to the protected 4×1 floor reopened
+         * `_sweep_allusers.test.ts`'s validator (656 new "Week doses N mi at
+         * T … (>10%)" firm failures — the 10% cap is real doctrine, not a
+         * false positive); demoting the day to easy instead left 480
+         * archetypes with a week carrying NO quality session where one
+         * existed before, tripping that same gate's "no quality sessions
+         * prescribed" check. Both attempts were reverted. This mechanism is
+         * NOT what the handed-off finding named (it lives in generate.ts's
+         * dosing-cap pass, not spec-builder.ts's day-size clamp) and a correct
+         * fix needs `trimSessionDose` to give back Daniels' overage from
+         * elsewhere in the week FIRST, before it reaches a beginner surge day
+         * — out of scope here. Flagged as a follow-up rather than fixed.
+         *
+         * The floor below stays 1 for this reason: this specific test's
+         * single archetype (10K, 10 weeks, recentWeeklyMi 12) never triggers
+         * the T-share mechanism above, so it never observes a 1-rep day
+         * post-fix — but the floor is NOT raised to imply the corpus-wide
+         * case is closed, because it is not. See `beginnerSurgeDose`'s
+         * "the progression helpers agree with doctrine's endpoints" below for
+         * the authoring band the AUTHORED (pre-clamp) dose still keeps.
          */
         expect(reps, `${d.subLabel} on a ${d.distanceMi}mi day`).toBeGreaterThanOrEqual(1);
         expect(reps).toBeLessThanOrEqual(6);

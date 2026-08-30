@@ -1712,6 +1712,57 @@ export function beginnerSurgeDose(
 }
 
 /**
+ * VARIETY-BEGIN-1-FIX (2026-08-30) · the smallest day the beginner's surge
+ * fartlek can be authored onto and still be the session Research/22 names.
+ *
+ * `timeRepSpec`'s clamp (spec-builder.ts) floors a rep set at ONE repetition
+ * rather than deleting the session — right for a day that can seat SOME of
+ * the prescribed dose, wrong for a day too small to seat even the doctrine
+ * floor dose. Research/22 §"5K — Beginner" states that floor as "4×1 min @
+ * T" — `BEGINNER_SURGE_REPS_BAND[0]` / `BEGINNER_SURGE_MINUTES_BAND[0]` — and
+ * `beginnerSurgeDose`'s own comment above notes that opening dose "is never
+ * refused" by the WEEKLY T-pace budget. But nothing checked the single DAY's
+ * physical mileage: on a cutback week (`isCutback` excludes the RP-FREQ-FLOOR
+ * 2mi quality-day floor by design — see `qualityFloorFreq` in `layoutWeek`) a
+ * true beginner's `qualityMiEach` can round to exactly 1mi, and warm-up
+ * (0.5mi floor) plus cool-down (0.5mi floor) alone already spend that
+ * mile — the clamp then floors the rep count at 1 rather than 0, which is
+ * doing its job, but the day is a warm-up and a cool-down around one clipped
+ * rep, not a surge fartlek.
+ *
+ * Solved at the SAME conversion `beginnerSurgeDose`'s weekly cap already uses
+ * (`SPEC_PROBE_T_PACE_SEC` — "one conversion on both sides", per that
+ * function's own comment) and against `timeRepSpec`'s own warm-up/cool-down
+ * formula, so authoring and this refusal price the session identically and
+ * cannot drift out of sync with a future change to the band or the probe
+ * pace. `restS` is fixed at 60 — the beginner surge label's own "1 min jog"
+ * — matching what `timeRepSpec` will build for this session.
+ */
+function minBeginnerSurgeDayMi(): number {
+  const [repsLo] = BEGINNER_SURGE_REPS_BAND;
+  const [minLo] = BEGINNER_SURGE_MINUTES_BAND;
+  const workMi = (repsLo * (minLo * 60)) / SPEC_PROBE_T_PACE_SEC;
+  const floatMi = Math.max(0, repsLo - 1) * (60 / 540);
+  // Fixed-point solve for the smallest budgetMi where `timeRepSpec`'s own
+  // wu/cd floors (0.5-1.5mi at 0.3× the day, 0.5-1.0mi at 0.25×) plus this
+  // work no longer exceeds the day — the exact inequality the clamp loop
+  // tests. Converges in a handful of steps (wu/cd scale by <1×); 20 is a
+  // generous, cheap ceiling for a value computed once at module load.
+  let m = workMi + floatMi + 1.0;
+  for (let i = 0; i < 20; i++) {
+    const wuFloor = Math.max(0.5, Math.min(1.5, m * 0.3));
+    const cdFloor = Math.max(0.5, Math.min(1.0, m * 0.25));
+    const next = wuFloor + cdFloor + workMi + floatMi;
+    if (Math.abs(next - m) < 1e-6) { m = next; break; }
+    m = next;
+  }
+  return m;
+}
+
+/** Module-level · computed once, from constants only. */
+const MIN_BEGINNER_SURGE_DAY_MI = minBeginnerSurgeDayMi();
+
+/**
  * VARIETY-BEGIN-1 · the beginner's SECOND weekly structured day is light
  * hills, not a second copy of the fartlek.
  *
@@ -5198,6 +5249,18 @@ function layoutWeek({
       // R set, §16 spacing) the day goes back to the easy fill — a week that
       // cannot afford its R day simply keeps the two-session shape.
       if ((phase === 'BASE' || qt === 'speed') && (!vocabRx || rxSized == null)) return;
+      // VARIETY-BEGIN-1-FIX (2026-08-30) · the same refusal, for the beginner's
+      // surge fartlek. `taperMp` is gated `!baseBuilding` (line ~3730), so it
+      // never overlaps this branch. `minBeginnerSurgeDayMi`'s own comment has
+      // the arithmetic and names where this actually fires — a cutback week,
+      // where RP-FREQ-FLOOR's 2mi quality-day floor deliberately does not
+      // apply and `qualityMiEach` can round to 1mi, too small for even the
+      // doctrine floor dose's warm-up and cool-down, let alone a rep. Below
+      // that floor the day goes back to the easy fill below instead of
+      // authoring a warm-up and cool-down around one clipped rep wearing a
+      // surge label — exactly the "1×1 min surges on a 1mi day" gap
+      // VARIETY-BEGIN-1's own test names.
+      if (baseBuilding && qt === 'tempo' && qualityMiEach + 1e-9 < MIN_BEGINNER_SURGE_DAY_MI) return;
       const sub =
         // DOCTRINE-TAPERMP-1 · "N mi WU · M mi @ MP · P mi CD". The "@ MP"
         // token is load-bearing, not decoration: `parseTempoShape` reads the
