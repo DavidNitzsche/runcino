@@ -50,6 +50,7 @@ import { hasSleepSignal, hasHrvSignal, hasRhrSignal, hasRecoverySignal, recovery
 // restated. See the reconciliation blocks below.
 import { READINESS_WEIGHTS, weeklyMpwFor } from './readiness';
 import { sleepTargetForMileage } from './tier-rules';
+import { runMovingSecSql } from '@/lib/runs/run-shape';
 
 /* ────────────────────────── Public types ────────────────────────── */
 
@@ -891,15 +892,22 @@ async function loadTodayRunTiming(userUuid: string, todayISO: string): Promise<T
         LIMIT 1
      )
      SELECT (t.data->>'startLocal') AS start_local,
-            -- #2 · COALESCE the moving-time key. Webhook-ingested runs carry
+            -- #2 · the moving-time key. Webhook-ingested runs carry
             -- movingSec/durationSec, not movingTimeS, so a strict movingTimeS
             -- read returned null and the recovery-window end anchor silently
             -- fell back to "midpoint of today" for Strava-webhook runs.
-            COALESCE(
-              t.data->>'movingTimeS',
-              t.data->>'movingSec',
-              t.data->>'durationSec'
-            ) AS moving_s,
+            --
+            -- RECOVBRIEF-1 (2026-08-30) · this used to be a hand-rolled
+            -- COALESCE naming the same three keys runMovingSecSql already
+            -- ladders (lib/runs/run-shape.ts), in the same order, with no
+            -- NULLIF — so an empty-string movingTimeS (rather than a NULL
+            -- one) fell through the recovery-brief-side COALESCE as '', which
+            -- estimateTss and Number(row.moving_s) then had to guard against
+            -- separately from every OTHER caller of the canonical ladder.
+            -- Routed through the shared helper so this can no longer drift
+            -- from it, and so the empty-string case is actually skipped
+            -- rather than silently kept.
+            ${runMovingSecSql('t')}::text AS moving_s,
             (t.data->>'distanceMi')  AS distance_mi,
             p.type AS type_hint
        FROM today_runs t

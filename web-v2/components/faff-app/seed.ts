@@ -32,6 +32,7 @@ import { HRV_CV_STABLE_CEILING_PCT } from '@/lib/coach/readiness-brief';
 import { loadSettings } from '@/lib/coach/settings';
 import { resolveShoeCapMi } from '@/lib/shoe/lifespan';
 import { resolveActiveEnergyBatch } from '@/lib/runs/energy';
+import { coherentDurationSec, coherentPace } from '@/lib/runs/coherence';
 import { cadenceTargetFor } from '@/lib/coach/cadence-target';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { resolveBlockState } from '@/lib/faff/block-state';
@@ -691,6 +692,11 @@ async function enrichResultsWithRunData(
     weather: any;
     active_kcal: string | null;
     shoe_id: string | null;
+    // RUNSEED-1 (2026-08-30) · the row itself, so `time` / `apace` below can
+    // be arbitrated through lib/runs/coherence instead of reading
+    // durationSec / avgPaceMinPerMi verbatim. See the comment at the `time:`
+    // assignment for why that mattered here specifically.
+    raw_data: Record<string, unknown> | null;
   }>(
     `WITH canonical AS (
        SELECT DISTINCT ON ((data->>'date')::date) data, shoe_id
@@ -732,7 +738,8 @@ async function enrichResultsWithRunData(
        -- Research/ file supplies. See lib/runs/energy.ts for the argument,
        -- and the energy family in _reader_lint.test.ts for the guard.
        c.data->>'kcal'                 AS active_kcal,
-       c.shoe_id::text AS shoe_id
+       c.shoe_id::text AS shoe_id,
+       c.data                          AS raw_data
        FROM canonical c`,
     [userId, dates],
   ).catch(() => ({ rows: [] }));
@@ -779,7 +786,21 @@ async function enrichResultsWithRunData(
     const result = results[t.idx];
     if (!result) continue;
 
-    const durationSec = Number(row.duration_sec ?? 0);
+    // RUNSEED-1 (2026-08-30) · `time` and `apace` used to read durationSec
+    // and avgPaceMinPerMi verbatim off the single canonical row the CTE above
+    // already picked. Both are the same shape as the 2026-08-23 incident this
+    // whole gate exists to catch: durationSec is the ELAPSED clock and
+    // avgPaceMinPerMi is derived from it (COACHPACE-1's own finding, on 115
+    // of 115 rows), while the week-strip's own labeling promises a MOVING
+    // pace and a run-detail time. Arbitrated through the same reconciler
+    // state-loader.ts now uses, so this card and the coach's fact sheet can
+    // no longer show two different clocks for one row. Falls back to the
+    // stored columns when the row gives the reconciler nothing (e.g. a
+    // manual entry with no clock family at all), which is the same answer as
+    // before for those rows.
+    const coherentDur = coherentDurationSec(row.raw_data);
+    const durationSec = coherentDur ? coherentDur.sec : Number(row.duration_sec ?? 0);
+    const coherentPc = coherentPace(row.raw_data);
     const avgHr = Number(row.avg_hr ?? 0);
     const maxHr = Number(row.max_hr ?? 0);
     const elev = Number(row.elev_gain_ft ?? 0);
@@ -792,6 +813,14 @@ async function enrichResultsWithRunData(
       const m = Math.floor((sec % 3600) / 60);
       const s = sec % 60;
       return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+    };
+
+    // Format pace as M:SS/mi. 8:60 is not a pace — carry the rounding into
+    // the minute, same edge case state-loader.ts's factSheetPace guards.
+    const fmtPace = (secPerMi: number) => {
+      const m = Math.floor(secPerMi / 60);
+      const s = Math.round(secPerMi % 60);
+      return s === 60 ? `${m + 1}:00` : `${m}:${String(s).padStart(2, '0')}`;
     };
 
     // Active energy · already resolved above, by the one ladder.
@@ -812,7 +841,7 @@ async function enrichResultsWithRunData(
     results[t.idx] = {
       ...result,
       time: durationSec > 0 ? fmtTime(durationSec) : '·',
-      apace: row.avg_pace || '·',
+      apace: coherentPc ? fmtPace(coherentPc.secPerMi) : (row.avg_pace || '·'),
       hr: avgHr || 0,
       peak: maxHr || 0,
       weather: weatherStr,

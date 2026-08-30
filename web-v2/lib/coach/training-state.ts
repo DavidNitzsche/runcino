@@ -14,6 +14,7 @@ import { getCanonicalRunIds, mileageByDay } from '@/lib/runs/volume';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
+import { coherentPace } from '@/lib/runs/coherence';
 
 export interface PlanWeek {
   /** plan_weeks.id — added 2026-08-19 for /api/v5/block so week rows carry a
@@ -244,7 +245,18 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
                   NULLIF(data->>'durationSec','')::numeric
                 ) AS moving_s,
                 NULLIF(data->>'avgHr','')::numeric AS avg_hr,
-                data->'splits' AS splits
+                data->'splits' AS splits,
+                -- TRAINSTATE-1 (2026-08-30) · the whole row, so donePaceSec
+                -- below can be arbitrated through lib/runs/coherence instead
+                -- of the pace_sec/pace_str ladder underneath it, which was
+                -- reading paceSPerMi and avgPaceMinPerMi as interchangeable
+                -- fallbacks for "the pace" — COACHPACE-1's own finding is
+                -- that they are not two spellings of one number, they are the
+                -- MOVING and ELAPSED clocks under names that both read as
+                -- average pace. This field drove the TrainView milestones'
+                -- hit-or-miss verdict against a quality workout's target
+                -- pace, so the two clocks disagreeing was not cosmetic.
+                data AS raw_data
            FROM runs
           WHERE user_uuid = $1 AND id = ANY($4::bigint[])
             AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) BETWEEN $2::text AND $3::text`,
@@ -266,10 +278,24 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     cur.mi += Number(r.mi) || 0;
     if (!cur.id) cur.id = r.activity_id ?? null;
     if (cur.paceSec == null) {
-      const direct = r.pace_sec != null ? Number(r.pace_sec) : null;
-      const fromStr = parsePaceStr(r.pace_str);
-      const fromMoving = r.moving_s && r.mi ? Math.round(Number(r.moving_s) / Number(r.mi)) : null;
-      cur.paceSec = direct ?? fromStr ?? fromMoving ?? null;
+      // TRAINSTATE-1 (2026-08-30) · reconciled first. `direct` (paceSPerMi)
+      // and `fromStr` (avgPaceMinPerMi) used to be tried as ordered
+      // fallbacks for one another; they are two different clocks (moving vs
+      // elapsed) under names that both read as "the pace", so picking
+      // whichever was non-null could silently swap the basis row to row.
+      // coherentPace resolves that the same way state-loader.ts's fact sheet
+      // does. Falls back to the old ladder only when the row gives the
+      // reconciler nothing to work with (e.g. distanceMi missing on this
+      // activity row) — same answer as before for those rows.
+      const reconciled = coherentPace(r.raw_data);
+      if (reconciled) {
+        cur.paceSec = Math.round(reconciled.secPerMi);
+      } else {
+        const direct = r.pace_sec != null ? Number(r.pace_sec) : null;
+        const fromStr = parsePaceStr(r.pace_str);
+        const fromMoving = r.moving_s && r.mi ? Math.round(Number(r.moving_s) / Number(r.mi)) : null;
+        cur.paceSec = direct ?? fromStr ?? fromMoving ?? null;
+      }
     }
     if (cur.avgHr == null && r.avg_hr != null) cur.avgHr = Math.round(Number(r.avg_hr));
     // Splits from the richer activity (longer one) — gives us per-mile pace

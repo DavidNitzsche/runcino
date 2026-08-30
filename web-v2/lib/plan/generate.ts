@@ -27,7 +27,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library-static';
-import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor } from '@/lib/training/vdot';
 import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achievable-target';
@@ -10069,6 +10069,31 @@ export function finalizeComposedPlan(
       if (!(authored > 0) || authored === built) continue;
 
       const retitled = retitleReps(label, authored, built);
+      if (retitled && retitled !== label) day.subLabel = retitled;
+    }
+  }
+
+  /*
+   * LABELTRUTH-2 (2026-08-30) · the distance half of the same drift.
+   *
+   * `retitleReps` above restates a clamped REP count; this restates a
+   * beginner base-building label's own LEADING MILEAGE ("8mi E w/ 4×1 min
+   * surges @ T effort · 1 min jog") against the day's FINAL distanceMi, for
+   * the identical reason: VARIETY-BEGIN-1's light-hills/light-surges
+   * branches author that number off `qualityMiEach` at layout time, before
+   * every ramp ceiling, taper rescale and long-run smoother below it has
+   * finished moving the day. Swept 2026-08-30 over the same archetype grid
+   * `_label_truth.test.ts` walks: 4 of 2,310 "mi E w/" days — every one a
+   * 3.11mi/beginner/70mpw base week's dow-2 tempo or dow-4 intervals day —
+   * read "8mi E w/ …" over a day that settled at 7.5mi. Runs LAST, same as
+   * the rep-count pass, for the same reason: reconciled any earlier and it
+   * would just drift again.
+   */
+  for (const week of composed.weeks) {
+    for (const day of week.days) {
+      const label = day.subLabel;
+      if (!label || !(day.distanceMi > 0)) continue;
+      const retitled = retitleLeadMi(label, day.distanceMi);
       if (retitled && retitled !== label) day.subLabel = retitled;
     }
   }

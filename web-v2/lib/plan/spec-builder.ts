@@ -521,6 +521,42 @@ export function retitleReps(
   return prescription.replace(re, `${built}$2`);
 }
 
+/**
+ * LABELTRUTH-2 (2026-08-30) · restate a "N mi E w/ …" label's LEADING
+ * mileage when the day's final distance moved out from under it.
+ *
+ * `retitleReps` above closes the rep-count half of the sub_label/spec drift.
+ * This is the distance half, and it has a narrower cause: the beginner
+ * base-building branches in `generate.ts` (VARIETY-BEGIN-1's light-hills and
+ * light-surges days) author `${Math.round(qualityMiEach * 10) / 10}mi E w/
+ * …` at LAYOUT time, off `qualityMiEach` — before the ramp ceiling, taper
+ * rescale and long-run smoother below it in `finalizeComposedPlan` have
+ * finished moving the day's mileage. `qualityMiEach` and the day's own
+ * `distanceMi` are free to disagree by the same mechanism LABELTRUTH-1 found
+ * for rep counts, and swept: a 3.11mi/beginner/70mpw archetype's dow-2 and
+ * dow-4 base days read "8mi E w/ …" over a day the sweep below settled at
+ * 7.5mi.
+ *
+ * Only the leading number moves — everything from "mi E w/" onward, which
+ * carries the workout's own identity (rep count, effort, recovery), is
+ * untouched. Returns the original string when the label does not open with
+ * this exact shape, or when the day's distance already agrees with it.
+ */
+export function retitleLeadMi(
+  prescription: string | null | undefined,
+  finalDistanceMi: number,
+): string | null | undefined {
+  if (prescription == null || !(finalDistanceMi > 0)) return prescription;
+  const re = /^(\d+(?:\.\d+)?)(mi E w\/)/;
+  const m = re.exec(prescription);
+  if (!m) return prescription;
+  // Same rounding the authoring site uses, so a day that already agrees
+  // is a byte-identical no-op rather than a cosmetic rewrite.
+  const restated = Math.max(1.5, Math.round(finalDistanceMi * 10) / 10);
+  if (Math.abs(restated - Number(m[1])) < 0.05) return prescription;
+  return prescription.replace(re, `${restated}$2`);
+}
+
 function timeRepSpec(
   kind: 'threshold' | 'intervals',
   reps: { reps: number; durationS: number; restS: number | null },

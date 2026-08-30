@@ -51,7 +51,7 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
-import { runCadenceSpmSql } from '@/lib/runs/run-shape';
+import { runCadenceSpmSql, runMovingSecSql } from '@/lib/runs/run-shape';
 import { lutealAdjustedHrvBaseline } from './readiness';
 // 2026-08-19 · ONE sleep target · Research/00b, mileage-scaled.
 import { sleepTargetForMileage } from './tier-rules';
@@ -272,13 +272,19 @@ export async function computeRecoveryPhase(userUuid: string): Promise<RecoveryPh
   }>(
     `SELECT id::text, data->>'date' AS date, data->>'type' AS type,
             (data->>'distanceMi')::numeric AS dist,
-            -- #2 · COALESCE the moving-time key; webhook runs carry
-            -- movingSec/durationSec, not movingTimeS.
-            COALESCE(
-              NULLIF(data->>'movingTimeS','')::numeric,
-              NULLIF(data->>'movingSec','')::numeric,
-              NULLIF(data->>'durationSec','')::numeric
-            ) AS moving
+            -- #2 · the moving-time key; webhook runs carry movingSec/
+            -- durationSec, not movingTimeS.
+            --
+            -- RECOVBRIEF-1 (2026-08-30) · was a hand-rolled COALESCE naming
+            -- the same three keys in the same order as the shared
+            -- runMovingSecSql (lib/runs/run-shape.ts). Routed through it so
+            -- this can no longer drift from the canonical ladder — the field
+            -- has no downstream reader today (RecoveryPhase.anchor.movingTimeS
+            -- is set and never read), so nothing was displaying a false
+            -- number, but a field that goes unread today is exactly the kind
+            -- that gets read tomorrow with whatever ladder it happened to
+            -- carry.
+            ${runMovingSecSql()} AS moving
        FROM runs
       WHERE user_uuid = $1::uuid
         AND NOT (data ? 'mergedIntoId')
