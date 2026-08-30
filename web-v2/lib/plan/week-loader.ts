@@ -14,6 +14,7 @@ import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadSettings } from '@/lib/coach/settings';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
 import { runDaySql } from '@/lib/runs/run-shape';
+import { stripResearchCitations } from './strip-citations';
 
 export interface PlanWeekDay {
   /** A plan day's IDENTITY is its row id, not its date. Null on a
@@ -61,6 +62,42 @@ export interface PlanWeekResult {
    * when this is set — a refusal is a correct answer, an empty state is not.
    */
   skipStateUnknown?: true;
+}
+
+/**
+ * CITESCRUB-1 (2026-08-30) · the runner never reads a Research/ reference.
+ *
+ * `plan_workouts.notes` is the generator's own per-day sentence, and it is
+ * written with the engine's citation attached — "Sub-threshold / Norwegian
+ * intervals · Research/04 §5.4.", "Dress rehearsal · Research/04 §4.6.
+ * Steady 8mi, then 3mi at marathon pace." 626 rows in prod carry one.
+ *
+ * That was harmless for as long as the column was, in this file's own words,
+ * "selected by nothing at all". It stopped being harmless on 2026-08-21, when
+ * the field started being read — it is `dayNote` on GET /api/v5/today. So the
+ * most-read sentence in the app has been shipping internal references to the
+ * runner for nine days.
+ *
+ * The voice doctrine already forbids this ("no citations on the payload ·
+ * rooted in research is for the engine, not the runner") and
+ * `stripResearchCitations` already exists for exactly this job — it is applied
+ * to adapt's whys, the coach log, the morning brief, workout proposals and
+ * moved-session notes. The plan's own notes were simply never added to that
+ * list, because when the scrub was written nothing read them.
+ *
+ * Scrubbed at the READ, deliberately, not backfilled into the table: the
+ * citation is real provenance and the engine is entitled to keep it on the
+ * row. This also fixes all 626 existing rows with no data write, and no
+ * re-authoring, which matters because a marathon block is about to be
+ * authored off this same generator.
+ *
+ * Idempotent and a no-op on a string with no citation, so a note that never
+ * had one is byte-identical.
+ */
+function dayNoteFor(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null;
+  const scrubbed = stripResearchCitations(raw).trim();
+  return scrubbed.length > 0 ? scrubbed : null;
 }
 
 /**
@@ -306,7 +343,7 @@ export function shapePlanWeekDays(
       type: r?.type ?? 'rest',
       distance_mi: r ? Number(r.distance_mi) || 0 : 0,
       sub_label: r?.sub_label ?? (r ? null : 'REST'),
-      notes: r?.notes ?? null,
+      notes: dayNoteFor(r?.notes),
       is_today: dISO === today,
       is_past: dISO < today,
       completedRunId: actual?.id ?? null,
