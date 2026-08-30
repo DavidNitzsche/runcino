@@ -18,14 +18,14 @@
  * the field names; the Swift decoder will refuse them.
  */
 import { pool } from '@/lib/db/pool';
-import { logReadFailure } from '@/lib/db/read';
+import { logReadFailure, rowOrNull } from '@/lib/db/read';
 import {
   prescriptionFor,
   narrowToPrescriptionType,
   type PrescriptionStep,
 } from '@/lib/training/prescriptions';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
-import { parseRaceTime as parseRaceGoalSec } from '@/lib/training/vdot';
+import { parseRaceTime as parseRaceGoalSec, formatRaceTime } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { raceOpeningSegments } from '@/lib/race/distance-doctrine';
@@ -1890,13 +1890,46 @@ export async function buildWatchToday(
     // The goal belongs to THE race this plan targets (plan.race_id), not
     // "the next priority-A race" loaded above for prescription templates —
     // on a B-race day those diverge and the watch would pace the wrong race.
+    // ── MIDGOAL-2 (2026-08-30) · THE RACE ON THE START LINE, NOT THE ONE ────
+    //                              THE BLOCK IS BUILT FOR
+    //
+    // Both of the old sources named the runner's GOAL race, never the race
+    // they are actually standing on:
+    //   · `plan.race_id` is the block's target (David's block: CIM).
+    //   · `raceRow` is "next priority-A race carrying a goal" — CIM again.
+    // A mid-block tune-up is embedded as a `race` row (MIDRACE-1) and is by
+    // definition neither. So on the Santa Monica 10K start line the watch
+    // resolved CIM's meta and shipped a 3:00:00 marathon goal on a 10K:
+    // `workout.goalSec` fed LiveRaceFace's goal-delta row, `strategyLabel`
+    // read "3:00:00 goal", and the gel ladder was sized and filtered at 26.22
+    // miles. Only the pace target escaped, and only because the
+    // `|raceDistMi - distanceMi| < 0.5` guard below happened to fail closed.
+    //
+    // The race a runner is running today is the one whose date is today.
+    // `plan_workouts` carries no race identity of its own, so the date IS the
+    // join, and it is exact: the embedder only ever converts the day the race
+    // falls on. Falls back to the old chain, so a plan whose race day is the
+    // target race resolves exactly as before.
+    // `rowOrNull`, not `.catch(() => [])`: this read decides WHICH RACE the
+    // watch paces, so "no race is dated today" and "the lookup failed" must
+    // not be the same value (lib/db/read.ts · a failure is not an answer).
+    // Both still fall through to the plan race, but only one of them is silent.
+    const todaysRace = await rowOrNull<{ slug: string; meta: Record<string, unknown> | null }>(
+      'watch/todays-race',
+      pool.query(
+        `SELECT slug, meta FROM races
+          WHERE user_uuid = $1 AND meta->>'date' = $2
+          ORDER BY (meta->>'priority' = 'A') DESC LIMIT 1`,
+        [userId, wo.date_iso ?? today],
+      ),
+    );
     const planRace = plan.race_id
       ? (await pool.query<{ meta: Record<string, unknown> | null }>(
           `SELECT meta FROM races WHERE user_uuid = $1 AND slug = $2 LIMIT 1`,
           [userId, String(plan.race_id)],
         ).catch(() => ({ rows: [] }))).rows[0]
       : null;
-    const raceMeta = (planRace?.meta ?? raceRow?.meta ?? null) as Record<string, unknown> | null;
+    const raceMeta = (todaysRace?.meta ?? planRace?.meta ?? raceRow?.meta ?? null) as Record<string, unknown> | null;
     const statedGoalSec = raceMeta ? parseRaceGoalSec(raceMeta.goalDisplay as string) : null;
     const raceDistMi = raceMeta
       ? (Number(raceMeta.distanceMi) || distanceMiFromLabel(raceMeta.distanceLabel as string | null) || distanceMi)
@@ -1914,6 +1947,41 @@ export async function buildWatchToday(
         const eff = await loadEffectiveRaceTarget(userId, statedGoalSec, raceDistMi);
         raceGoalSec = eff.targetSec;
       } catch { /* resolver is additive — stated goal stands on failure */ }
+    }
+
+    // MIDGOAL-2 · a race the runner never gave a time to still gets a number
+    // to run, from the same derivation the plan row and the race screen use
+    // (lib/race/coach-goal.ts behind loadCoachGoalForRace) — never a second
+    // one. Only reached when there is no stated goal, and the loader refuses
+    // on its own the instant one exists, so a stated goal can never be
+    // renegotiated here. An effort framing (a C race, a mountain course)
+    // returns no time and the watch carries no goal, which is the doctrine
+    // answer rather than a gap. Fail-open: a throw leaves raceGoalSec null,
+    // byte-identical to before.
+    let raceGoalIsCoachSet = false;
+    if (raceGoalSec == null && todaysRace && raceDistMi > 0) {
+      try {
+        const { loadCoachGoalForRace } = await import('@/lib/race/coach-goal-load');
+        const meta = raceMeta ?? {};
+        const coach = await loadCoachGoalForRace(userId, {
+          slug: todaysRace.slug,
+          name: (meta.name as string | null) ?? todaysRace.slug,
+          priority: (meta.priority as string | null) ?? null,
+          statedGoalSec: null,
+          distanceMi: raceDistMi,
+          metaTerrain: meta.terrain,
+          elevationGainFt: meta.elevationGainFt != null ? Number(meta.elevationGainFt) : null,
+          goalFraming: meta.goalFraming,
+          daysAway: 0,
+        });
+        // B is the tier a race is paced off · Research/20 §A/B/C, the same
+        // tier the plan row took. A and C are the edges of the band, not the
+        // number to run.
+        if (coach && coach.kind === 'time') {
+          raceGoalSec = coach.bSec;
+          raceGoalIsCoachSet = true;
+        }
+      } catch { /* additive */ }
     }
 
     // F3 · the race face's pace target is the runner's stated GOAL pace,
@@ -2061,9 +2129,15 @@ export async function buildWatchToday(
     // glance. Sourced from the same plan-race meta as goalSec.
     const goalDisp = (raceMeta?.goalDisplay as string | undefined) ?? null;
     const safeDisp = (raceMeta?.goalSafeDisplay as string | undefined) ?? null;
+    // MIDGOAL-2 · when the goal is the COACH's, the label says so. The runner
+    // never typed this number, and a start-line label reading "45:12 goal" on
+    // a race they set no goal for asserts a commitment they did not make.
+    // "coach target" names the author in the only carrier this string has.
     workout.strategyLabel = goalDisp
       ? (safeDisp ? `${goalDisp} goal · ${safeDisp} safe` : `${goalDisp} goal`)
-      : null;
+      : (raceGoalIsCoachSet && raceGoalSec
+          ? `${formatRaceTime(raceGoalSec) ?? ''} coach target`.trim()
+          : null);
 
     // RK-1 · gel fallback for races whose authored spec carries no
     // fuel_mi: convert the research-doctrine fueling plan (time-anchored)
