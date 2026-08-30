@@ -949,7 +949,11 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const activeEnergy = await resolveActiveEnergy(userId, {
     watchActiveKcal: watchActiveEnergyKcal(r),
     distanceMi: reconcileRun(r).distanceMi ?? 0,
-    avgHr: Number(r.avgHr) || null,
+    // RUNSTATE-HR-1 (2026-08-30) · same fix as line 1185's hr_avg: `runAvgHr`
+    // rounds to whole bpm and refuses a sensor artefact a raw Number() cast
+    // would pass through as a heart rate. `|| null` also silently drops a
+    // real 0, which `runAvgHr`/`hrToNum` do not.
+    avgHr: runAvgHr(r as unknown as RunData),
   });
 
   // "How was today's HR vs your usual?" · compare today's avg HR at this
@@ -962,8 +966,20 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     runIdToExclude: String(r.id ?? activityId),
     type: (r.type as string | null) ?? null,
     workoutType: (r.workoutType as string | number | null) ?? null,
-    paceSPerMi: Number(r.paceSPerMi) || null,
-    avgHr: Number(r.avgHr) || null,
+    // RUNSTATE-HR-1 (2026-08-30) · this used to read `r.paceSPerMi` and
+    // `r.avgHr` straight off the row, SHADOWING the already-reconciled
+    // `paceSPerMi` local this same function computed forty lines up — the
+    // comment right above it (2026-08-23's "the recap said 3:37/mi" incident)
+    // is the reason that local exists at all. A run whose stored pace the
+    // reconciler REFUSED (paceRead null, ~1/256 rows) still bucketed correctly
+    // before this fix, because the SQL candidate pool also matches on raw
+    // stored paceSPerMi — so the practical exposure was narrower than "every
+    // HR-vs-pace callout is wrong," but it was real on every row where the
+    // reconciler's answer differs from the stored one: the "HR vs usual"
+    // verdict on THIS run bucketed against a number the rest of run-detail on
+    // the same page was not using.
+    paceSPerMi,
+    avgHr: runAvgHr(r as unknown as RunData),
   });
 
   // Post-run weather context. When the run's tempF is known and the

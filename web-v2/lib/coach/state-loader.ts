@@ -14,6 +14,7 @@ import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadBiologicalSex } from '@/lib/coach/biological-sex';
 import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { runCadenceSpm, coherentPace } from '@/lib/runs/coherence';
+import { runAvgHr, type RunData } from '@/lib/runs/run-shape';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 // WEEK-READ-1 · the runner's own seven days, from the one helper that answers it.
 import { weekWindowFor } from '@/lib/coach/week-window';
@@ -100,7 +101,14 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
         mi: Number(r.distanceMi) || 0,
         pace: factSheetPace(r, r.avgPaceMinPerMi || r.pace),
         timeMoving: r.timeMoving || r.duration || null,
-        hr: Number(r.avgHr) || null,
+        // COACHPACE-1 sibling (2026-08-30) · the pace fields on this same
+        // object were routed through the reconciler for exactly this reason;
+        // `hr` was left raw. `runAvgHr` refuses a sensor artefact (e.g. a
+        // stray single-digit bpm) that `Number(r.avgHr) || null` would pass
+        // straight through as a heart rate, and rounds to whole bpm rather
+        // than printing a Strava tenth. Same latency profile as the pace fix:
+        // `recentRuns`/`latest_activity` have no live reader today.
+        hr: runAvgHr(r as unknown as RunData),
         // BOTH FEET · see `cadence.units-split` in lib/runs/derived-registry.ts.
         cadence: runCadenceSpm(r)?.spm ?? null,
         tempF: Number(r.tempF) || null,
@@ -146,7 +154,7 @@ export async function loadCoachState(userId: string): Promise<CoachState> {
       type: d.type ?? null,
       mi: Number(d.distanceMi) || 0,
       pace: factSheetPace(d, d.avgPaceMinPerMi),
-      hr: Number(d.avgHr) || null,
+      hr: runAvgHr(d as unknown as RunData),
       name: d.name ?? null,
       source: d.source ?? null,
     }));
