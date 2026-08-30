@@ -217,3 +217,50 @@ describe('SEGLONG-2 · the kind never outlives the shape', () => {
     }
   });
 });
+
+describe('SEGLONG-3 · a long run\'s notes never describe segments its label does not carry', () => {
+  // `setLongFinish`'s header states the contract: "the label and the notes are
+  // rewritten together and there is no third place to drift." The flatten path
+  // honoured it; the SEGLONG-2 / ROTATION-REFUSE-1 re-split path rewrote the
+  // label and returned, leaving `layoutWeek`'s note describing the segments the
+  // day used to carry.
+  //
+  // Caught on the owner's live CIM authoring (2026-08-30): the week of 10-05
+  // was labelled `LONG · 3mi @ M + 1mi @ E + 2mi @ M` — five race-pace miles,
+  // which is what `buildWorkoutSpec` reads back out of the label and what the
+  // watch therefore runs — over a note reading "then 7mi at marathon effort ...
+  // then 5mi at marathon effort". Twelve miles promised in prose against five
+  // prescribed. The runner reads the prose.
+  //
+  // The sum is the assertion rather than the exact string, because the note is
+  // allowed to be worded differently for the block, the progression and the
+  // plain finish. What it is not allowed to do is name a different quantity of
+  // race-pace running than the label the spec is built from.
+  const labelRacePaceMi = (subLabel: string | null | undefined): number =>
+    [...String(subLabel ?? '').matchAll(/([\d.]+)\s*mi\s*@\s*(?:HM|MP|M|T)\b/gi)]
+      .reduce((s, m) => s + Number(m[1]), 0);
+  const notesRacePaceMi = (notes: string | null | undefined): number =>
+    [...String(notes ?? '').matchAll(
+      /([\d.]+)\s*mi at (?:marathon pace|marathon effort|half-marathon pace|threshold)/gi,
+    )].reduce((s, m) => s + Number(m[1]), 0);
+
+  for (const baseMi of [40, 50, 60, 70]) {
+    it(`holds across an 18-week advanced marathon build off ${baseMi} mi/wk`, () => {
+      const res = composePlan(marathonInput(baseMi));
+      finalizeComposedPlan(res, 26.2, 'advanced');
+      for (const w of res.weeks) for (const d of w.days) {
+        if (d.type !== 'long') continue;
+        const fromLabel = labelRacePaceMi(d.subLabel);
+        const fromNotes = notesRacePaceMi(d.notes);
+        // A note that quantifies nothing (the plain conversational long) is
+        // fine; a note that quantifies must agree with the label.
+        if (fromLabel === 0 && fromNotes === 0) continue;
+        expect(
+          fromNotes,
+          `week ${w.startISO}: label promises ${fromLabel}mi at race pace, notes promise ` +
+            `${fromNotes}mi\n  label: ${d.subLabel}\n  notes: ${d.notes}`,
+        ).toBeCloseTo(fromLabel, 1);
+      }
+    });
+  }
+});

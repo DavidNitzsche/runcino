@@ -11014,6 +11014,43 @@ function setLongFinish(day: DayPlan, finishMi: number, reason = 'unrecorded'): v
       const emit = (a: number, bMi: number) => {
         day.racePaceChange = { fromMi: splitDay(day).qualityMi, toMi: finishMi, reason, kind: emitKind };
         day.subLabel = `LONG · ${a}mi @ ${zone} + ${gapMi}mi @ E + ${bMi}mi @ ${zone}`;
+        // SEGLONG-3 (2026-08-30) · THE NOTES COME WITH THE LABEL.
+        //
+        // This function's own header states the contract — "the label and the
+        // notes are rewritten together and there is no third place to drift" —
+        // and the flatten path at the bottom honours it. This re-split path,
+        // added by SEGLONG-2/ROTATION-REFUSE-1, rewrote the label and returned,
+        // leaving `layoutWeek`'s note describing the segments the day USED to
+        // carry.
+        //
+        // Observed on the owner's CIM authoring (2026-08-30, week of 10-05):
+        // the easy-floor give-back cut the race-pace work from 10 mi to 5 and
+        // re-split it 3 + 1 + 2, and the note still read "then 7mi at marathon
+        // effort ... then 5mi at marathon effort" — twelve miles of marathon
+        // pace promised in prose on a day whose spec, which is built from the
+        // sub_label, prescribes five. The runner reads the note; the watch runs
+        // the label. On the §11.1 modified block, three times a cycle.
+        //
+        // Rebuilt in `layoutWeek`'s own words with the new numbers. The
+        // goal-vs-current-fitness qualifier is carried forward off the note
+        // being replaced (the MPLABEL-1 technique used at the foot of this
+        // function) because a give-back pass has no access to the week's pace
+        // anchors. Anything the composer appended after the authored sentence
+        // group — the `Research/11` terrain instruction, for one — is a
+        // property of the DAY, not of the segment sizing, so it is preserved.
+        const paceWord = zone === 'HM' ? 'half-marathon pace'
+          : /marathon effort for your current fitness/i.test(String(day.notes ?? ''))
+            ? 'marathon effort for your current fitness'
+            : 'marathon pace';
+        const easyMi = Math.max(0, Math.round((day.distanceMi - a - gapMi - bMi) * 10) / 10);
+        const TAIL = 'so keep the easy mile honest and short.';
+        const prior = String(day.notes ?? '');
+        const cut = prior.indexOf(TAIL);
+        const suffix = cut >= 0 ? prior.slice(cut + TAIL.length) : '';
+        day.notes =
+          `Modified block. Easy ${easyMi}mi, then ${a}mi at ${paceWord}, ${gapMi}mi easy, ` +
+          `then ${bMi}mi at ${paceWord}. The second block is the session: you are practising ` +
+          `getting back to race pace on tired legs, ${TAIL}${suffix}`;
       };
       const trimmedSecondMi = Math.round((finishMi - authoredFirstMi) * 2) / 2;
       if (trimmedSecondMi >= FAST_FINISH_MIN_MI && authoredFirstMi >= FAST_FINISH_MIN_MI) {
