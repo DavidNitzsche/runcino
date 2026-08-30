@@ -48,6 +48,7 @@ import {
 // is allowed to anchor and the zones this file can pace cannot diverge.
 import { resolveZoneAnchors, zonePaceSec } from './zone-anchors';
 import { aerobicCeilingBpm } from '@/lib/training/zones';
+import { roundTo } from '@/lib/format/run';
 import type { PaceZone } from '@/lib/workout-catalogue/types';
 // 2026-08-17 · the stored race abort CALLS doctrine now instead of mirroring
 // its numbers. See the contingency-rules block for what "keep in sync" cost.
@@ -573,7 +574,7 @@ export function retitleLeadMi(
   if (!m) return prescription;
   // Same rounding the authoring site uses, so a day that already agrees
   // is a byte-identical no-op rather than a cosmetic rewrite.
-  const restated = Math.max(1.5, Math.round(finalDistanceMi * 10) / 10);
+  const restated = Math.max(1.5, roundTo(finalDistanceMi, 1));
   if (Math.abs(restated - Number(m[1])) < 0.05) return prescription;
   return prescription.replace(re, `${restated}$2`);
 }

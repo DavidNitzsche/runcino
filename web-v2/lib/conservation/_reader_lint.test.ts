@@ -118,10 +118,6 @@ const ALLOW: Record<string, string> = {
   // ladder. That ladder is gone — the file now calls `resolveActiveEnergy` —
   // and the scan finds one clock key left, in a comment. The staleness check
   // is what made deleting this entry mandatory rather than optional.
-  'lib/coach/recovery-brief.ts':
-    'post-race recovery copy · its own ladder over three keys',
-  'lib/coach/recovery-phase.ts':
-    'the recovery-phase reader · its own ladder over three keys',
   'lib/coach/training-state.ts':
     'the training-state reader · feeds the native TRAIN tab',
   'lib/coach/easy-discipline.ts':
