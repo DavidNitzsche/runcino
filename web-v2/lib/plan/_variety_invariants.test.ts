@@ -759,10 +759,24 @@ describe('VARIETY-R3-1 · 5K/10K advanced weeks carry the R day', () => {
     for (const [name, composed] of [['5k', fiveK], ['10k', tenK]] as const) {
       const weeks = qWeeks(composed);
       const mean = weeks.reduce((s, w) => s + (w.weekMi > 0 ? (w.iMi + w.rMi) / w.weekMi : 0), 0) / weeks.length;
-      // Measured on these archetypes: 5.8-6.0% before VARIETY-R3-1, 7.8-8.1%
-      // after. The floor is set between the two so a regression to the two-day
-      // week fails while normal rotation/sizing noise does not.
-      expect(mean, `${name}: mean Q/RS I+R share ${(mean * 100).toFixed(2)}% has fallen back toward the two-day baseline`).toBeGreaterThan(0.068);
+      // RECALIBRATED · DOSE-EFFORT-1 (2026-08-30). `iMi` comes from `dayDoses`,
+      // which reads `dosePaceOf` — and that function used to bill every
+      // effort-cued hills session on the `intervals` slot (§7-§8's family is
+      // admitted there in QUALITY phase) against the I bucket, though `fits()`
+      // already gave it zero at-pace miles in the composer's own forward
+      // accounting. Both this test's numbers were measured with that phantom I
+      // dose still counted. Re-measured post-fix, holding everything else
+      // (archetype, rotation) fixed and varying only quality-day count:
+      //
+      //   5k  2-day 4.53% → 3-day 5.99% (+1.46pp)
+      //   10k 2-day 5.15% → 3-day 6.94% (+1.79pp)
+      //
+      // The R day still lands and still lifts the share by roughly the same
+      // absolute margin the original 0.068 floor was defending — the absolute
+      // level dropped because the phantom I miles are gone, not because R3
+      // stopped working. New floor sits between both corrected bands (highest
+      // 2-day 5.15%, lowest 3-day 5.99%), same placement logic as before.
+      expect(mean, `${name}: mean Q/RS I+R share ${(mean * 100).toFixed(2)}% has fallen back toward the two-day baseline`).toBeGreaterThan(0.055);
     }
   });
 

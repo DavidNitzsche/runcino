@@ -561,6 +561,49 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
   // cut lands inside the doc's 20-30% band (wk3 24.6% of 63, wk7 28.8% of 66,
   // wk11 24.3% of 68). Bound by CUTBACK.long-run-depth in the doctrine
   // registry; the applying pass is `applyCutbackLongDrop` in generate.ts.
+  //
+  // DRIFT ACCEPTED · DOSE-EFFORT-1 / REACH-4 (2026-08-30) · TWO NEWLY-REACHABLE
+  // ENTRIES RESHUFFLE THE ROTATION, wk4/wk5/wk9/wk11 only.
+  //
+  // Two catalogue entries were `KNOWN_BLOCKED` until this commit —
+  // `lydiard-hill-circuit` (its effort-cued sequence render declined outright)
+  // and `continuous-mile-cutdowns` (the tempo slot, the only door with a
+  // continuous-block renderer, didn't admit its `cutdown` family) — so neither
+  // was ever in the intervals/tempo slots' LRU candidate pool. Both are fixed
+  // and reachable now, and a deterministic LRU rotation drawing from a wider
+  // pool necessarily redraws differently from week zero forward wherever a new
+  // candidate wins a staleness tie:
+  //
+  //   · wk4 intervals: `long-hill-repeats` → `lydiard-hill-circuit` ("800m
+  //     bound uphill + …·by effort"). wk5 intervals: `medium-hill-repeats`
+  //     (6mi) → `long-hill-repeats` (7.5mi), purely because wk4 no longer used
+  //     the latter — one new candidate ripples the recency every later week
+  //     reads (see `CatalogueHistory`'s own doc comment on why rotation is
+  //     LRU).
+  //   · wk9 tempo: `wave-tempo` → `continuous-mile-cutdowns` ("6.5mi
+  //     continuous mile cutdowns"). wk11 tempo: `continuous-tempo` →
+  //     `wave-tempo`, the same one-new-candidate ripple, one slot over. Same
+  //     mileage at both weeks — pure entry-choice reshuffle, no sizing change.
+  //
+  // wk4/wk5's MILEAGE also moves (wk4 64.5→62, wk5 64→65.5) for a second,
+  // independent reason: `applyDosingCaps`'s reconciliation pass used to find a
+  // phantom T/I finding for whichever hill session landed that week (its
+  // rendered "@ T-10K effort" text read as real T/I zones to the OLD
+  // `dosePaceOf`, though `fits()` had already priced the session's at-pace
+  // miles at zero in the composer's own forward accounting) and trimmed a
+  // paced sibling session to compensate. DOSE-EFFORT-1 makes `dosePaceOf`
+  // agree with `fits()` — zero either way — so that trim no longer fires and
+  // the tempo/intervals days it used to shave land at their natural size
+  // (wk4 tempo 9→10mi, intervals 7.5→7mi; wk5 intervals 6→7.5mi from the
+  // rotation swap above). wk9/wk11 carry no such trim either way, hence no
+  // mileage change there.
+  //
+  // Verified NOT a cap violation: `_dosing_sweep_gate.test.ts` stays at 0
+  // enforced breaches across the full 11598-archetype corpus both before and
+  // after (reported taper-only findings actually DROP 7615→7592, the same
+  // phantom-removal effect measured corpus-wide). `_sweep_allusers.test.ts`
+  // and `_maint_invariants.test.ts` both stay at 0 findings. This file's own
+  // doctrine-band test above (peak weekly/long) still passes unchanged.
   it('FROZEN: per-week structural fingerprint is byte-stable', () => {
     COMBO_COUNT++;
     const fp = result.weeks.map((w, i) => {

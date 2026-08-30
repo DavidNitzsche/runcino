@@ -40,6 +40,7 @@
 import {
   selectWorkout,
   PHASE_FROM_ENGINE,
+  capFamilyOf,
   type CapFamily,
   type Dose,
   type PlacedSession,
@@ -446,33 +447,47 @@ export function renderPrescription(entry: CatalogueEntry, dose: Dose): string | 
       const r = restToken(u.recoverySec);
       return `${u.reps}×${size}${word}${zones}${r ? ` · ${r} jog` : ''}`;
     }
+    // EFFORT-CUED SEQUENCE · REACH-3 (2026-08-30). §8.5's Lydiard hill circuit
+    // is the only entry of this shape: four legs that differ by ACTION rather
+    // than by pace — 800 m of bounding uphill, 800 m flat jog, 700 m striding
+    // downhill, 800 m wind sprints — where the second leg is recovery and none
+    // of the four has a pace, because §8.1's pace column is effort and could
+    // not be otherwise on a gradient. The ordinary per-step grammar below
+    // (GRAMMAR-SEQ-1) reads each step's ZONE, and this session states none;
+    // rendered through it the circuit came out "800m + 800m @ E + 700m +
+    // 800m", a paced four-rep set with an easy rep in the middle of it, which
+    // is why REACH-2 declined it outright.
+    //
+    // Each step's own `leg` name — set on the catalogue entry for exactly this
+    // ("the leg name is the prescription here, in the same way a pace target
+    // is on a rep set", see `SequenceStep.leg`) — replaces the zone: `<size>
+    // <leg>`, joined the same way GRAMMAR-SEQ-1 joins its runs. `zones` (the
+    // whole-session clause computed above) is appended once at the end rather
+    // than per step, and for this entry — `effortOnly`, no declared zones — it
+    // is `zoneClause`'s bare "· by effort".
+    //
+    // REACH-2's OWN ATTEMPT rendered the segments and was reverted: 2208
+    // enforced dosing breaches, because a rendered label of distance segments
+    // was dose-visible to `dosePaceOf`, which charged an intervals-slot day at
+    // I regardless of what the label said. That is now DOSE-EFFORT-1 in
+    // `dosing.ts`: `dosePaceOf` reads this same "by effort" token before it
+    // ever reaches a type-keyed default, so this render being dose-visible
+    // text is no longer dose-visible ACCOUNTING — the two are allowed to
+    // disagree in one direction only (a marker present means untaxed; absent
+    // never falsely means untaxed, because nothing but this function and the
+    // reps branch above ever writes it).
+    if (entry.effortOnly) {
+      const parts = s.steps.map((st) => {
+        const size = repToken(st.value, st.unit);
+        return size && st.leg ? `${size} ${st.leg}` : null;
+      });
+      if (parts.length < 2 || parts.some((p) => p == null)) return null;
+      return `${parts.join(' + ')}${zones}`;
+    }
     // GRAMMAR-SEQ-1 · unequal steps · §13's ladders, §9.2's Mona, §10.2's
     // combos, §12.4's progression. Each step carries its own zone and its own
     // recovery, which is the thing a uniform rep set cannot say.
-    //
-    // NOT for an effort-cued entry. §8.5's Lydiard hill circuit is the case
-    // that proves it: its "sequence" is one LAP of a loop — 800 m of bounding
-    // uphill, 800 m flat jog, 700 m striding downhill, 800 m wind sprints —
-    // where the second leg is recovery and none of the four has a pace, because
-    // §8.1's pace column is effort and could not be otherwise on a gradient.
-    // Rendered as segments it came out "800m + 800m @ E + 700m + 800m": a paced
-    // four-rep set, one rep of which is an easy jog. A grammar whose content is
-    // per-step ZONES has nothing to say about a session doctrine states without
-    // any, so it declined.
-    //
-    // any, so it declines, exactly as it did before.
-    //
-    // REACH-2 ATTEMPTED AND REVERTED (2026-08-29). The steps now carry the
-    // doc's own leg names, so the grammar CAN describe the circuit — and
-    // rendering it is still wrong, for a reason one layer down: a rendered
-    // label of distance segments is dose-visible. `dosePaceOf` charges an
-    // intervals-slot day at I, so the circuit's ~1.9 mi of bounding, jogging
-    // and striding is billed against Daniels' 8% interval cap even though
-    // `effortOnly` means it spends no at-pace miles by construction. Measured
-    // on the archetype sweep: 2208 enforced dosing breaches and 4416 firm
-    // validator failures, against zero before. The decline is not a gap in the
-    // grammar; it is the accounting refusing to pay for effort work twice.
-    if (entry.effortOnly) return null;
+    if (s.steps.some((st) => st.zone === 'E')) return null;
     return renderSequenceSegments(s);
   }
 
@@ -511,7 +526,23 @@ export function renderPrescription(entry: CatalogueEntry, dose: Dose): string | 
         ? Math.round(dose.atPaceMinutes)
         : s.block.min;
       const shape = s.shape ? ` · ${s.shape}` : '';
-      return `${mins} min ${entry.name.toLowerCase()}${shape}`;
+      // DOSE-EFFORT-1 (2026-08-30) · a literal "by effort", not `zones`
+      // (`zoneClause(entry)`). §8.6's hill fartlek (`zones: []`) always read as
+      // effort-cued anyway — its name contains "hill", which is the marker
+      // `dosePaceOf` reads for a rep set — which is exactly how this stayed
+      // hidden: §9.4's Lydiard fartlek declares a zone (`E`), so `zoneClause`
+      // renders it "@ E effort" instead of "· by effort", and NEITHER of
+      // `dosePaceOf`'s markers matched — `prescriptionIsEffortCued` reads the
+      // literal phrase, not the bare word, because generate.ts's beginner
+      // surge days hand-author a genuinely PACED "…@ T effort" and must not be
+      // caught by a looser match (see that function's own comment). So this
+      // session's whole ~20 min of surging was billed against the I cap on
+      // every week it was selected. The static marker below is what §7.3's
+      // hill sprints and every other zoneless `effortOnly` entry already gets
+      // for free from `zoneClause`; `E` here means only "easy bulk between
+      // surges", which the `shape` text already states in words, so dropping
+      // it from the label loses nothing a runner reads.
+      return `${mins} min ${entry.name.toLowerCase()}${shape} · by effort`;
     }
     // A paced continuous block is the TEMPO slot's shape and the composer
     // writes its own leading mileage in front of it (`parseTempoLeadMi` reads
@@ -527,14 +558,29 @@ export function renderPrescription(entry: CatalogueEntry, dose: Dose): string | 
  * The tempo slot's phrase: what the block IS, with no size in front of it.
  *
  * `layoutWeek` composes `"<N>mi <phrase>"` and `parseTempoLeadMi` reads the N
- * back out, so the phrase must not lead with a number. It must also not carry
- * an `@ MP` token: `dosePaceOf` reads that as a marathon-pace dose, and a
- * threshold block charged to the marathon budget is a cap breach waiting for
- * the week that cannot afford it.
+ * back out, so the phrase must not lead with a number. It must also never
+ * IMPLY an `@ MP` dose: this function's own output never spells one out (it
+ * writes only `entry.name`, nothing zone-shaped), but a session whose doctrine
+ * price is genuinely marathon pace — `capFamilyOf(entry) === null`, doctrine's
+ * "n/a" weekly cell for M — must not be handed a phrase that reads as an
+ * ordinary threshold block and gets `dosePaceOf`'d as one at zero cost to the
+ * uncapped M budget.
+ *
+ * REACH-4 (2026-08-30) · narrowed from "refuse anything touching MP or M" to
+ * "refuse only what `capFamilyOf` prices as M". §12.5's continuous mile
+ * cutdown declares `zones: ['MP', 'HM']` — it STARTS near marathon pace and
+ * finishes near half-marathon pace ("Start MP+15, drop to slightly faster
+ * than HM by final mile") — and the blanket guard read the `MP` alone and
+ * refused it, though `capFamilyOf` already prices the whole session at
+ * `threshold` (HM is the tighter of the two zones) and `SLOT_FAMILIES.tempo`
+ * admitting `cutdown` routes it through exactly this function. Refusing an
+ * entry `capFamilyOf` prices as `threshold` was never what "must not carry an
+ * `@ MP` token" was protecting against; a PURE-M entry (`capFamilyOf` null)
+ * still declines, unchanged.
  */
 export function renderContinuousPhrase(entry: CatalogueEntry, dose: Dose): string | null {
   if (dose.structure.kind !== 'continuous') return null;
-  if (entry.zones.includes('MP') || entry.zones.includes('M')) return null;
+  if (capFamilyOf(entry) == null) return null;
   const name = entry.name.toLowerCase();
   // §5.2's entry is already named "Continuous tempo"; prefixing it again gives
   // the runner "5mi continuous continuous tempo".

@@ -108,7 +108,7 @@ import {
   type IntensityDay,
   type IntensityWeek,
 } from './intensity-distribution';
-import { extractFinishSegment, extractLongSegments } from './spec-builder';
+import { extractFinishSegment, extractLongSegments, prescriptionIsEffortCued } from './spec-builder';
 import { parseSegments, parseZones, primaryZone, segmentMi } from './prescription-parser';
 import { ZONE_DOSE_PACE, tightestDosePace, type DosePace } from './zone-anchors';
 import type { PaceZone } from '@/lib/workout-catalogue/types';
@@ -199,6 +199,42 @@ function declaredDosePace(subLabel: string | null | undefined): DosePace | null 
 
 /** Which pace a day's hard miles are run at, or null when it doses nothing. */
 export function dosePaceOf(day: IntensityDay): DosePace | null {
+  // DOSE-EFFORT-1 (2026-08-30) · an effort-cued day spends no at-pace miles,
+  // in EITHER direction of this file's two-way accounting. `fits()` in
+  // `lib/workout-catalogue/select.ts` already gives every `effortOnly` entry
+  // `atPaceMi: 0` before it is ever composed — "An effort-prescribed session
+  // spends NO at-pace miles, because it has no pace" — and doctrine is why:
+  // `Research/04-workout-vocabulary.md` §8.1's pace column reads "5K–10K
+  // effort" / "Max effort, all-out", never a number, because a flat-ground
+  // pace target is unreachable on a graded hill; `Research/01`'s dosing table
+  // prices T/I/R/M, four PACES, and an effort-cued session runs none of them.
+  //
+  // This function re-derives dose from the STORED `type`/`subLabel` rather
+  // than from the entry `fits()` already priced, so without this guard the
+  // two accountings disagree: every ZONED_TYPES day falls through to
+  // `declaredDosePace`, which reads whatever race-pace words happen to sit
+  // after "@" in the rendered clause ("6×60s hills @ 5K-10K effort" reads as
+  // 5K/10K zones), and every other quality type defaults its whole day to I
+  // from the bare `type` alone. Measured before this guard existed: EVERY
+  // reachable `effortOnly` rep entry (hill-sprints, short/medium/long hill
+  // repeats, downhill repeats) was billed non-zero miles against I or M
+  // regardless of the composer's own zero — small enough on those entries'
+  // few-second/few-minute reps to sit under the corpus sweep's radar, and the
+  // exact hole that turned catastrophic the one time an effort-cued entry
+  // large enough to matter (§8.5's ~1.9mi Lydiard circuit, REACH-2) tried to
+  // render: 2208 enforced breaches from a session `fits()` had already priced
+  // at zero.
+  //
+  // `prescriptionIsEffortCued` is the one token both directions read — see
+  // its own doc comment in `spec-builder.ts` for why a marker-scan beats a
+  // second hand-written regex. Scoped OFF 'long' and 'race': a long run's
+  // finish is priced by `extractFinishSegment` below and can legitimately
+  // name a hilly COURSE ("downhill simulation long run") without the segment
+  // itself being effort-cued — that day type keeps its own, unrelated logic.
+  if (day.type !== 'long' && day.type !== 'race' && prescriptionIsEffortCued(day.subLabel)) {
+    return null;
+  }
+
   if (ZONED_TYPES.has(day.type)) {
     const declared = declaredDosePace(day.subLabel);
     if (declared) return declared;

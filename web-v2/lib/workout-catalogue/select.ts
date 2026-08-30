@@ -248,7 +248,22 @@ const SLOT_FAMILIES: Record<Slot, CatalogueEntry['family'][]> = {
   // §12.2 and §12.3 on every week that also carries a rep session, which is
   // every QUALITY week of a 5K or 10K build.
   intervals: ['vo2max', 'hills', 'fartlek', 'race_specific', 'ladder', 'cutdown'],
-  tempo: ['threshold', 'combo'],
+  // REACH-4 (2026-08-30) · `cutdown` also joins the TEMPO slot, for the one
+  // member of that family whose structure is `continuous`: §12.5's continuous
+  // mile cutdown. The comment above is right that it "stays threshold work on
+  // the slot it already had" — `capFamilyOf` prices it there whichever slot
+  // fills it — but `renderPrescription`'s `continuous` branch is a paced
+  // structure's dead end everywhere except the tempo path: it authors NO sized
+  // string for a paced continuous block by design (`layoutWeek` writes the
+  // leading mileage itself), so the threshold/intervals slots this family
+  // already reaches could never actually render it. Only `renderContinuousPhrase`
+  // — which `req.slot === 'tempo'` alone calls — has a continuous-block
+  // renderer at all. `mile-cutdowns` / `1k-cutdowns` / `5k-progression`, the
+  // family's other three members, are `reps`/`sequence` structures:
+  // `renderContinuousPhrase` declines any non-`continuous` structure on its
+  // first line, so admitting the family here does not change what the tempo
+  // slot can select from them — it stays a no-op for those three.
+  tempo: ['threshold', 'combo', 'cutdown'],
   // The week's long run and the mid-week medium-long are different DAYS with
   // different recovery costs — §3 is explicit that a medium-long "should not
   // compete with the long run for recovery" — so they are different slots. One

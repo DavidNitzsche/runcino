@@ -254,6 +254,8 @@ import {
   duplicatePaceFamily,
   weeklyDoseBudgetMi,
   weekDosingFindings,
+  dosePaceOf,
+  dayDoses,
 } from '@/lib/plan/dosing';
 import {
   CALIBRATION_INTRO_WEEKS,
@@ -12143,6 +12145,61 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error('a training-week percentage breach is not marked enforced — the caps have gone advisory again');
       }
       within(f.capMi, [40 * tPct[0], 40 * tPct[1]], 'enforced weekly T cap in miles');
+    },
+  },
+  {
+    id: 'DOSING.effort-cued-spends-no-cap',
+    binds: ['lib/plan/dosing.ts#dosePaceOf', 'lib/workout-catalogue/select.ts#fits'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 8.1 Hill family overview',
+    claim:
+      'Every row of §8.1\'s Pace column is an EFFORT, never a number — "Strong, controlled (~95% ' +
+      'effort)", "5K–10K effort", "T to 10K effort", "Sequence of efforts" — and Research/01\'s ' +
+      'dosing table prices four PACES (T/I/R/M), so an effort-cued session draws none of their ' +
+      'weekly share: there is no pace target to be over or under against. `fits()` already gave ' +
+      'this zero at-pace miles at authoring time; DOSE-EFFORT-1 (2026-08-30) closed the matching ' +
+      'gap on the MEASURING side, where `dosePaceOf` re-derives a dose from a day\'s stored ' +
+      '`type`/`subLabel` with no way to see the entry\'s `effortOnly` flag. Before the fix, EVERY ' +
+      'reachable effort-cued rep entry (hill sprints, short/medium/long hill repeats, downhill ' +
+      'repeats, and §9.4\'s Lydiard fartlek once it renders) was billed non-zero miles against I or ' +
+      'M regardless of the composer\'s own zero — the exact hole that produced 2208 enforced ' +
+      'breaches the one time an effort-cued entry large enough to matter (§8.5\'s ~1.9 mi Lydiard ' +
+      'circuit) tried to render, and the reason that entry stayed `KNOWN_BLOCKED` in ' +
+      '`_reachability.test.ts` until this fix.',
+    check() {
+      // §8.1's own table has no pace number in any Pace cell — verified by
+      // VOCAB.hill-family. This claim is downstream of that one: given an
+      // entry the catalogue already marks `effortOnly`, does the DOSING
+      // accounting actually spend nothing on it, in both directions.
+      for (const slug of [
+        'hill-sprints', 'short-hill-repeats', 'medium-hill-repeats',
+        'long-hill-repeats', 'downhill-repeats', 'lydiard-hill-circuit',
+      ]) {
+        const entry = workoutBySlug(slug);
+        if (!entry) throw new Error(`catalogue has no ${slug}`);
+        if (!entry.effortOnly) throw new Error(`${slug} is not effortOnly — wrong fixture for this claim`);
+        const structure = entry.structures[0];
+        const dose = structure.kind === 'sequence'
+          ? { reps: structure.steps.length, atPaceMi: 0, atPaceMinutes: 20, recoverySec: 0 }
+          : { reps: 6, atPaceMi: 0, atPaceMinutes: 20, recoverySec: 90 };
+        const rendered = renderPrescription(entry, { ...dose, structure } as never);
+        if (!rendered) throw new Error(`${slug} did not render — cannot check its dosing`);
+        const day = { type: 'intervals', distanceMi: 6, subLabel: rendered };
+        if (dosePaceOf(day as never) != null) {
+          throw new Error(`${slug} rendered "${rendered}" and dosePaceOf still billed it a pace`);
+        }
+        if (dayDoses(day as never).length !== 0) {
+          throw new Error(`${slug} rendered "${rendered}" and dayDoses still spent a cap on it`);
+        }
+      }
+      // A genuinely PACED prescription that merely contains the word "effort"
+      // as narrative framing (generate.ts's beginner base-phase surge days:
+      // "…w/ 4×1 min surges @ T effort") must NOT be caught by the same
+      // marker — the false positive DOSE-EFFORT-1's own fix had to avoid.
+      const surgeDay = { type: 'tempo', distanceMi: 4, subLabel: '3mi E w/ 4×1 min surges @ T effort · 1 min jog' };
+      if (dosePaceOf(surgeDay as never) !== 'T') {
+        throw new Error('a genuinely paced "@ T effort" surge day is no longer dosed at T — the marker match is too broad');
+      }
     },
   },
   {

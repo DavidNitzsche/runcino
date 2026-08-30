@@ -468,8 +468,29 @@ export function extractLongSegments(
  * So the gate reads the token the renderer actually emits. "· by effort" is
  * written by one function in the codebase and by no hand-authored prescription,
  * so nothing that was paced before becomes effort-cued now.
+ *
+ * DOSE-EFFORT-1 (2026-08-30) · exported so `dosing.ts:dosePaceOf` can read the
+ * same token. That function answers a different question — which PACE CAP a
+ * day's miles spend against, for a day that only survives as a stored
+ * `type`/`subLabel` pair — but the answer for an effort-cued day is the same
+ * one this file already gives the watch: none, because there is no pace to be
+ * judged against. Two regexes reading the same marker was exactly the drift
+ * this file's own header paid for twice; this keeps it to one.
+ *
+ * NOT widened to bare `/effort/i`: `generate.ts`'s beginner base-phase surge
+ * days hand-author "…mi E w/ 4×1 min surges @ T effort · 1 min jog" for a
+ * genuinely PACED tempo day (T is the pace; "effort" is a narrative word, not
+ * this file's marker), and `dosePaceOf` treating that as effort-cued would
+ * exempt real threshold miles from the T cap. The literal phrase "by effort"
+ * is `zoneClause`'s own words when an `effortOnly` entry declares no zone
+ * (§8.5's Lydiard circuit, §7.3's hill sprints); an `effortOnly` entry that
+ * DOES declare a zone renders "@ <zone> effort" instead, which this function
+ * does not match — callers writing that shape append a static "by effort" (or
+ * the family word "hill") of their own rather than relying on `zoneClause`'s
+ * zoned form to be caught here. See `catalogue-rx.ts`'s continuous-effort
+ * branch for the pattern.
  */
-function prescriptionIsEffortCued(prescription: string | null | undefined): boolean {
+export function prescriptionIsEffortCued(prescription: string | null | undefined): boolean {
   const p = String(prescription ?? '');
   return /hill/i.test(p) || /by effort/i.test(p);
 }

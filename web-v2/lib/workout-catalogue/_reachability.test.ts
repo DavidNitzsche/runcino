@@ -42,25 +42,45 @@ const AUTHORED_ELSEWHERE: Record<string, string> = {
 
 /** KNOWN UNREACHABLE · a real gap, recorded rather than hidden. Delete the
  *  entry when it is fixed; the test fails if one becomes reachable, so this
- *  cannot rot into a list of things that quietly started working. */
-const KNOWN_BLOCKED: Record<string, string> = {
-  'lydiard-hill-circuit':
-    'Blocked by DOSE ACCOUNTING, and measured 2026-08-29. Dosing was fixed (REACH-1 gave the '
-    + 'effort-cued sequence branch its minutes) and the steps now carry the doc\'s own leg names, '
-    + 'so the grammar CAN describe the circuit. Rendering it is still wrong one layer down: a '
-    + 'label of distance segments is dose-visible, and dosePaceOf charges an intervals-slot day '
-    + "at I, so the circuit's ~1.9 mi of bounding, jogging and striding gets billed against "
-    + 'Daniels\' 8% interval cap even though effortOnly means it spends no at-pace miles. '
-    + 'Enabling it produced 2208 enforced breaches and 4416 firm failures against zero before. '
-    + 'The real fix is to make an effort-cued session dose-invisible end to end, not to render it.',
-  'continuous-mile-cutdowns':
-    'Blocked by dose accounting, also measured 2026-08-29. The tempo slot is the only one with a '
-    + 'continuous renderer and renderContinuousPhrase refuses MP-zoned entries; both were relaxed '
-    + 'on the ruling that this charges to the THRESHOLD budget — which capFamilyOf already returns '
-    + 'for it, and which dosePaceOf already gives a tempo label carrying no @ MP token. The '
-    + 'reasoning held and the corpus did not. Reverted alongside the circuit; the two were '
-    + 'measured together, so the split between them is not yet separated.',
-};
+ *  cannot rot into a list of things that quietly started working.
+ *
+ * REACH-4 (2026-08-30) · `lydiard-hill-circuit` and `continuous-mile-cutdowns`
+ * CLOSED. Both were reopened from the 2026-08-29 revert and fixed as two
+ * separate defects rather than one:
+ *
+ *   · The circuit's block was never the grammar (REACH-2's leg-name steps
+ *     already described it) or the composer's own accounting (`fits()`'s
+ *     effort-cued `sequence` branch already prices it at zero at-pace miles).
+ *     It was `dosing.ts:dosePaceOf` re-deriving a dose from the STORED
+ *     `type`/`subLabel` with no way to see the entry's `effortOnly` flag —
+ *     every `ZONED_TYPES` day fell through to `declaredDosePace`, and every
+ *     other quality type defaulted to `I` off the bare day `type`. Fixed by
+ *     DOSE-EFFORT-1: `dosePaceOf` now reads the same "hill" / "by effort"
+ *     marker `buildWorkoutSpec`'s `by_effort` gate already reads, and returns
+ *     null before either fallback fires. The circuit's own render is now a
+ *     bespoke effort-cued branch in `catalogue-rx.ts` using each step's `leg`
+ *     name, not `renderSequenceSegments` (which still correctly declines any
+ *     sequence with an E-zoned step — the circuit no longer routes through it
+ *     at all). The same audit found two MORE live instances of the identical
+ *     dosePaceOf hole — every other `effortOnly` rep entry (hill sprints,
+ *     short/medium/long hill repeats, downhill repeats) and §9.4's Lydiard
+ *     fartlek — small enough on each to sit under the corpus sweep gate
+ *     unnoticed; DOSE-EFFORT-1 closes all of them the same way.
+ *   · The continuous mile cutdown was a wiring gap, not a dosing one:
+ *     `capFamilyOf` already prices it `threshold` (HM is its tighter zone) and
+ *     `dosePaceOf`'s tempo case already defaults to T with no "@ MP" token to
+ *     misread — `renderContinuousPhrase`'s blanket "refuses any entry naming
+ *     MP" guard was refusing a session `capFamilyOf` was pricing correctly the
+ *     whole time. Narrowed to check `capFamilyOf(entry) == null` (REACH-4) —
+ *     refuses only a genuinely M-priced entry, not a T-priced one that merely
+ *     names MP as its starting zone — and `SLOT_FAMILIES.tempo` now admits
+ *     `cutdown`, the only door with a continuous-block renderer at all.
+ *
+ * `_dosing_sweep_gate.test.ts`, `_maint_invariants.test.ts` and
+ * `_sweep_allusers.test.ts` all stay green after both fixes — see their own
+ * run notes in the fixing commit for the archetype-level verification.
+ */
+const KNOWN_BLOCKED: Record<string, string> = {};
 
 
 function reachableSlugs(): Set<string> {

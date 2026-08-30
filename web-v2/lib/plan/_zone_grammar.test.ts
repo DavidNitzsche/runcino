@@ -236,12 +236,14 @@ describe('GRAMMAR-SEQ-1 · the shapes the engine can say', () => {
     }
   });
 
-  it('declines what it cannot honestly say · effort circuits, easy legs, two-session days', () => {
-    // §8.5's Lydiard hill circuit is a LAP — bounding uphill, flat jog, striding
-    // downhill, wind sprints — with an easy leg in the middle and no pace on any
-    // of it. §11.4's "8 mi easy + immediate 8 mi MP" is a long run with an MP
-    // finish under another name. §11.1's Canova block is two sessions in a day.
-    for (const slug of ['lydiard-hill-circuit', 'pre-fatigue-mp-work', 'canova-special-block']) {
+  it('declines what it cannot honestly say · easy legs, two-session days', () => {
+    // §11.4's "8 mi easy + immediate 8 mi MP" is a long run with an MP finish
+    // under another name. §11.1's Canova block is two sessions in a day. Both
+    // stay declined: `renderSequenceSegments` still refuses any sequence
+    // carrying an E-zoned step (their `zone`s are per-step, not per-session, so
+    // there is no honest "by effort" clause to fall back to the way §8.5's
+    // circuit does — see the next test).
+    for (const slug of ['pre-fatigue-mp-work', 'canova-special-block']) {
       const entry = WORKOUT_CATALOGUE.find((e) => e.slug === slug)!;
       for (const structure of entry.structures) {
         const rendered = renderPrescription(entry, {
@@ -253,6 +255,32 @@ describe('GRAMMAR-SEQ-1 · the shapes the engine can say', () => {
         }
       }
     }
+  });
+
+  it('REACH-3 · the Lydiard hill circuit renders its own legs, not zoned segments', () => {
+    // §8.5 is a LAP — bounding uphill, flat jog, striding downhill, wind
+    // sprints — with an easy leg in the middle and no pace on any of it.
+    // `renderSequenceSegments`' ordinary per-step grammar still declines it (its
+    // "flat jog" step is zone `E`, same as `pre-fatigue-mp-work` above); this
+    // entry's `effortOnly` flag routes it to a bespoke branch instead, using
+    // each step's `leg` name in place of a zone.
+    const entry = WORKOUT_CATALOGUE.find((e) => e.slug === 'lydiard-hill-circuit')!;
+    const structure = entry.structures[0];
+    expect(structure.kind).toBe('sequence');
+    const rendered = renderPrescription(entry, {
+      structure, reps: structure.kind === 'sequence' ? structure.steps.length : 1,
+      atPaceMinutes: 20, atPaceMi: 0, recoverySec: 0,
+    });
+    expect(rendered).toBe(
+      '800m bound uphill + 800m flat jog + 700m stride down + 800m wind sprints · by effort');
+    // DOSE-EFFORT-1 · not a paced rep set, so it must not read back as one —
+    // `dosePaceOf` reading "by effort" and declining to dose it is what makes
+    // this safe, not `parseSegments` failing to parse it, but the two had
+    // better agree: a label `parseSegments` COULD read as zoned segments would
+    // be exactly REACH-2's 2208-breach shape again if `dosePaceOf`'s marker
+    // check ever stopped running first.
+    expect(parseSegments(rendered!)).toBeNull();
+    expect(dosePaceOf({ type: 'intervals', distanceMi: 7, subLabel: rendered } as never)).toBeNull();
   });
 
   it('sheds its last step, and stops before it stops being a sequence', () => {
