@@ -17,12 +17,30 @@ import { formatRaceTime } from '@/lib/training/vdot';
 import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import { renderProjectionChanged } from './templates';
 import { enqueueNotification, nextMorning0715 } from './enqueue';
+import { MEANINGFUL_MOVE_SEC } from '@/lib/training/projection-trend';
 
-const THRESHOLD_SEC = 30;
+/**
+ * 2026-08-30 · this 30 was declared here and, once the Races chart needed the
+ * same "did it actually move" bar, would have been declared twice. It now
+ * lives in lib/training/projection-trend.ts and both readers import it, so
+ * the push and the chart cannot disagree about what a move is.
+ */
+const THRESHOLD_SEC = MEANINGFUL_MOVE_SEC;
 
 export interface ProjectionChangeCheck {
   sent: boolean;
   reason: 'no_projection' | 'no_prior_snapshot' | 'below_threshold' | 'changed' | 'error';
+  /**
+   * Whether today's row actually landed in `goal_projection_snapshots`.
+   *
+   * This exists because it did not, for days, and nothing said so. The write
+   * was `.catch(() => null)` and the route reported `reason:
+   * 'no_prior_snapshot'` — which is also what a healthy cold start looks
+   * like — while migration 155 sat unapplied in prod and the table the
+   * Races chart now reads was never created. A write that fails must be
+   * distinguishable from a write that had nothing to compare against.
+   */
+  recorded: boolean;
 }
 
 /**
@@ -40,18 +58,23 @@ export async function checkAndNotifyProjectionChange(args: {
   projectedSec: number | null;
 }): Promise<ProjectionChangeCheck> {
   const { userUuid, raceSlug, raceName, todayISO, projectedSec } = args;
-  if (projectedSec == null) return { sent: false, reason: 'no_projection' };
+  if (projectedSec == null) return { sent: false, reason: 'no_projection', recorded: false };
 
   const previousSec = await loadPreviousGoalProjectionSec(userUuid, raceSlug, todayISO).catch(() => null);
-  await recordGoalProjectionSnapshot(userUuid, raceSlug, todayISO, projectedSec).catch(() => null);
+  const recorded = await recordGoalProjectionSnapshot(userUuid, raceSlug, todayISO, projectedSec)
+    .then(() => true)
+    .catch((e: unknown) => {
+      console.error('[projection-changed] snapshot write failed:', userUuid, raceSlug, e);
+      return false;
+    });
 
-  if (previousSec == null) return { sent: false, reason: 'no_prior_snapshot' };
-  if (Math.abs(projectedSec - previousSec) < THRESHOLD_SEC) return { sent: false, reason: 'below_threshold' };
+  if (previousSec == null) return { sent: false, reason: 'no_prior_snapshot', recorded };
+  if (Math.abs(projectedSec - previousSec) < THRESHOLD_SEC) return { sent: false, reason: 'below_threshold', recorded };
 
   try {
     const nowDisplay = formatRaceTime(projectedSec);
     const wasDisplay = formatRaceTime(previousSec);
-    if (!nowDisplay || !wasDisplay) return { sent: false, reason: 'error' };
+    if (!nowDisplay || !wasDisplay) return { sent: false, reason: 'error', recorded };
     const tz = await runnerTimezone(userUuid);
     const fireAt = nextMorning0715(new Date(), tz);
     const tpl = renderProjectionChanged({
@@ -63,8 +86,8 @@ export async function checkAndNotifyProjectionChange(args: {
       was_display: wasDisplay,
     });
     await enqueueNotification(userUuid, tpl, fireAt);
-    return { sent: true, reason: 'changed' };
+    return { sent: true, reason: 'changed', recorded };
   } catch {
-    return { sent: false, reason: 'error' };
+    return { sent: false, reason: 'error', recorded };
   }
 }

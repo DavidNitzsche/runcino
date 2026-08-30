@@ -880,6 +880,10 @@ struct V5Races: Decodable, Equatable {
     /// carries the mark.
     let trend: [Double]
     let trendHeadline: V5Number?
+    /// The move over the window the series ACTUALLY covers, e.g. "Faster by
+    /// 1m 12s over 12 days". Never a fixed "past month" label. Modelled, like
+    /// everything derived from the trajectory. Nil below two reads.
+    let trendDelta: V5Number?
     let trendFootnotes: [String]
     /// The races that count toward the read. This is the evidence, and a race
     /// whose chip time has not locked is explicitly NOT authoritative for
@@ -1521,7 +1525,7 @@ extension V5Block {
 
 extension V5Races {
     enum K: String, CodingKey {
-        case panel, card, schedule, trend, trendHeadline, trendFootnotes, evidence, coachLog
+        case panel, card, schedule, trend, trendHeadline, trendDelta, trendFootnotes, evidence, coachLog
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -1530,6 +1534,7 @@ extension V5Races {
         schedule = c.list(.schedule)
         trend = c.list(.trend)
         trendHeadline = c.opt(.trendHeadline)
+        trendDelta = c.opt(.trendDelta)
         trendFootnotes = c.list(.trendFootnotes)
         evidence = c.list(.evidence)
         coachLog = c.list(.coachLog)

@@ -14,8 +14,12 @@
  *
  * Also closes three backend gaps named in `docs/design/iphone-v5/BUILD-
  * PLAN.md`:
- *   B6 · the projected-finish series (`loadProjectionSeries`) was loaded
- *        elsewhere and never returned — here it's `trend`/`trendHeadline`.
+ *   B6 · the projected-finish series was loaded elsewhere and never
+ *        returned — here it's `trend` / `trendHeadline` / `trendDelta`.
+ *        2026-08-30: the series was ALSO the wrong quantity (it read
+ *        `projection_snapshots`, the frozen current-fitness equivalence,
+ *        under a headline computed from the trajectory). It now reads
+ *        `goal_projection_snapshots`. See the B6 block below.
  *   B7 · no evidence list of the races that count toward the fitness read —
  *        here it's `evidence`, built off the exact candidate pool
  *        `loadVdotInputs` hands `bestRecentVdot`, each row's authority
@@ -36,7 +40,9 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import {
   loadRacesState, PROVISIONAL_FINISH_LABEL, WATCH_PROVISIONAL_FINISH_LABEL, type RaceRow,
 } from '@/lib/coach/races-state';
-import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
+import { loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
+import { loadGoalProjectionSeries } from '@/lib/training/goal-projection-snapshots';
+import { composeProjectionTrend } from '@/lib/training/projection-trend';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { parseRaceTime, formatRaceTime, predictRaceTime } from '@/lib/training/vdot';
 import { assessGoal } from '@/lib/training/goal-assessment';
@@ -283,6 +289,7 @@ async function handleGET(req: NextRequest) {
     let evidence: V5RowOut[] = [];
     let trend: number[] = [];
     let trendHeadline: V5NumberOut | null = null;
+    let trendDelta: V5NumberOut | null = null;
     let trendFootnotes: string[] = [];
 
     if (!nextA) {
@@ -411,27 +418,48 @@ async function handleGET(req: NextRequest) {
         stats,
       };
 
-      // ── B6 · the projected-finish trend, finally returned ──────────────
-      if (distanceMi != null && distanceMi > 0) {
-        const series = await loadProjectionSeries(userId, distanceMi).catch(() => []);
-        trend = series.map(s => s.projectionSec).filter((v): v is number => v != null);
+      // ── B6 · the projected-finish trend ────────────────────────────────
+      //
+      // THE HEADLINE AND THE BARS ARE ONE QUANTITY. They were two.
+      //
+      // `trendHeadline` has always been `projectedSec` above — the
+      // execution-scaled TRAJECTORY out of computeGoalProjection. The bars
+      // were `loadProjectionSeries` off
+      // `projection_snapshots`, which stores the raw current-fitness
+      // equivalence `predictRaceTime(vdot, d)`. Different models of
+      // different things, stacked one on top of the other in one card:
+      // on the owner's phone, 3:22:17 over bars sitting at 3:31:48.
+      //
+      // Worse, the plotted quantity only moves when a race or time trial
+      // re-anchors VDOT, so it had 13 rows and ONE distinct value for his
+      // marathon distance. Thirteen identical rectangles, captioned as a
+      // trend.
+      //
+      // The series is now `goal_projection_snapshots` — the daily read of
+      // the SAME trajectory number, written by the snapshot cron and keyed
+      // to this race's slug (a trajectory belongs to a goal race, not to a
+      // distance: two A races at 26.2 with different goals and different
+      // race days are different trajectories). Today's live value is
+      // appended by composeProjectionTrend, so the highlighted bar IS the
+      // headline by construction rather than by luck.
+      //
+      // Nothing is back-filled. The trajectory series starts the day the
+      // cron starts writing it; before then the card says so in words.
+      {
+        const series = await loadGoalProjectionSeries(userId, nextA.slug);
+        const composed = composeProjectionTrend({
+          series,
+          todayProjectedSec: projectedSec,
+          todayISO,
+          anchorAgeDays: anchorDateISO != null ? anchorAgeDays : null,
+        });
+        trend = composed.values;
         trendHeadline = projectedSec != null ? num(formatRaceTime(projectedSec), true) : null;
-        // The chart's own caption ("Daily fitness reads") says WHAT a bar
-        // is; this footnote row used to carry only the anchor's age, which
-        // reads as if it explains the bars when it's really an unrelated
-        // fact about the VDOT anchor. Lead with the honest count of stored
-        // reads — the same fact the design's own preview payload leads with
-        // ("Twelve weeks of daily reads", scaled here to days since the
-        // window is walked in days, not weeks) — then keep the anchor fact
-        // as a second, separate item.
-        const readsFact = trend.length > 0
-          ? `${trend.length} day${trend.length === 1 ? '' : 's'} of daily reads`
-          : null;
-        const anchorFact = anchorDateISO && anchorAgeDays != null
-          ? `Anchored ${anchorAgeDays}d ago`
-          : 'No fitness anchor yet · a race or a hard time trial would set one.';
-        trendFootnotes = [readsFact, anchorFact].filter((s): s is string => s != null);
-        if (trend.length === 0) trendFootnotes = ['Not enough history yet to chart a trend.'];
+        // The delta David asked for. Modelled, like everything derived from
+        // the trajectory, so it rides a V5Number and the phone never has to
+        // re-decide the basis.
+        trendDelta = composed.delta != null ? num(composed.delta.text, true) : null;
+        trendFootnotes = composed.footnotes;
       }
 
       // ── B7 · the evidence list — the exact pool bestRecentVdot selects
@@ -521,7 +549,7 @@ async function handleGET(req: NextRequest) {
     const coachLog = logPage.entries.map(e => ({ id: e.id, kind: e.kind, date: e.dateISO, body: e.body }));
 
     return NextResponse.json({
-      panel, card, schedule, trend, trendHeadline, trendFootnotes, evidence, coachLog,
+      panel, card, schedule, trend, trendHeadline, trendDelta, trendFootnotes, evidence, coachLog,
     });
   } catch (err: unknown) {
     // Was `err?.message` in the body.

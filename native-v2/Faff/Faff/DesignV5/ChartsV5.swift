@@ -395,6 +395,11 @@ struct TrendBars: View {
     var height: CGFloat = 96
     var headline: FaffValue? = nil
     var headlineLabel: String? = nil
+    /// The move across the window the series covers, already worded by the
+    /// server ("Faster by 1m 12s over 12 days"). A `FaffValue` because it is
+    /// a figure derived from the same model as the headline, and because the
+    /// phone must never re-decide a provenance the wire already carries.
+    var delta: FaffValue? = nil
     /// What one bar in the row IS, printed once in the same small quiet
     /// idiom as `headlineLabel` and `footnotes`. `barsSpoken` below gives
     /// VoiceOver a full account of the trend, but a sighted reader gets
@@ -407,6 +412,25 @@ struct TrendBars: View {
     private var hi: Int {
         highlight < 0 ? values.count + highlight : highlight
     }
+
+    /// ─────────────────────────────────────────────────────────────────────
+    /// A CONSTANT IS NOT A CHART.
+    ///
+    /// `barHeight` below already refuses to exaggerate a series that barely
+    /// moves — that is the honest half. It cannot do anything about a series
+    /// that does not move at all, which draws as a row of identical
+    /// mid-height rectangles and reads as a picture of a trend when it is a
+    /// picture of one number, repeated.
+    ///
+    /// The server decides this (`composeProjectionTrend`, which withholds
+    /// `values` entirely when the window never moved a push-worthy 30
+    /// seconds) and states the reason in a footnote instead. This is the
+    /// phone honouring that: an empty series draws no bar row, no caption
+    /// over an absent chart, and no accessibility label describing a trend
+    /// that is not on screen. It is not an error state, so nothing is
+    /// greyed or dashed; the headline, the delta and the footnotes carry
+    /// the whole story on their own.
+    private var drawsBars: Bool { !values.isEmpty }
 
     /// The bars are scaled against a PADDED domain, not against the series'
     /// own min and max.
@@ -466,30 +490,37 @@ struct TrendBars: View {
                 }
             }
 
-            if let caption {
+            if let delta {
+                FaffValueText(delta, font: .faffText(TypeScaleV5.label12), color: V5.textQuiet)
+            }
+
+            if drawsBars, let caption {
                 Text(caption)
                     .font(.faffText(TypeScaleV5.label12))
                     .foregroundStyle(V5.textQuiet)
             }
 
-            GeometryReader { geo in
-                HStack(alignment: .bottom, spacing: V5.S.s2) {
-                    ForEach(Array(values.enumerated()), id: \.offset) { i, v in
-                        RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(i == hi ? V5.signal : V5.plotInk.opacity(0.32))
-                            .frame(height: barHeight(v, in: geo.size.height))
+            // The BARS get the accessibility label, not the whole component.
+            // The headline above is a `FaffValue` and renders its own
+            // provenance through `FaffValueText`; folding it into a combined
+            // label here would flatten "estimated, 3:16:45" back to "3:16:45"
+            // and lose rule one in the one place a sighted reader would never
+            // notice.
+            if drawsBars {
+                GeometryReader { geo in
+                    HStack(alignment: .bottom, spacing: V5.S.s2) {
+                        ForEach(Array(values.enumerated()), id: \.offset) { i, v in
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .fill(i == hi ? V5.signal : V5.plotInk.opacity(0.32))
+                                .frame(height: barHeight(v, in: geo.size.height))
+                        }
                     }
+                    .frame(height: geo.size.height, alignment: .bottom)
                 }
-                .frame(height: geo.size.height, alignment: .bottom)
+                .frame(height: height)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(barsSpoken)
             }
-            .frame(height: height)
-            // The BARS get the label, not the whole component. The headline
-            // above is a `FaffValue` and renders its own amber mark through
-            // `FaffValueText`; folding it into a combined label here would
-            // flatten "estimated, 3:16:45" back to "3:16:45" and lose rule one
-            // in the one place a sighted reader would never notice.
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(barsSpoken)
 
             if !footnotes.isEmpty {
                 HStack(spacing: V5.S.s12) {

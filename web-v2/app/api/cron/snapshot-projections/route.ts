@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
   // hardcoded-user append. (Pre-signup this force-included David's UUID
   // as legacy-row paranoia; every active plan now carries user_uuid.)
 
-  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { mode: string; from: number | null; to: number; workouts: number; sealed: number; cleared_provisional: boolean }; reanchor_skipped?: { plan_id: string; reason: string; window_hours: number }; calibration?: { data_quality: string; workouts: number; quality: number } | { error: string }; projectionAlert?: { race_slug: string; sent: boolean; reason: string } | { error: string }; error?: string }> = [];
+  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { mode: string; from: number | null; to: number; workouts: number; sealed: number; cleared_provisional: boolean }; reanchor_skipped?: { plan_id: string; reason: string; window_hours: number }; calibration?: { data_quality: string; workouts: number; quality: number } | { error: string }; projectionAlert?: { race_slug: string; sent: boolean; reason: string; recorded: boolean } | { error: string }; error?: string }> = [];
   for (const u of userIds) {
     try {
       const today = await runnerToday(u);
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
       // is the shared source for both), snapshots it, and diffs against
       // yesterday. Its own try/catch — a failed alert must never mask or
       // break the projection snapshot this route exists to write.
-      let projectionAlert: { race_slug: string; sent: boolean; reason: string } | { error: string } | undefined;
+      let projectionAlert: { race_slug: string; sent: boolean; reason: string; recorded: boolean } | { error: string } | undefined;
       try {
         const goalProjection = await resolveNextAGoalProjection(u);
         if (goalProjection) {
@@ -209,7 +209,15 @@ export async function POST(req: NextRequest) {
             todayISO: today,
             projectedSec: goalProjection.projectedSec,
           });
-          projectionAlert = { race_slug: goalProjection.raceSlug, sent: check.sent, reason: check.reason };
+          // `recorded` (2026-08-30) is the half that was missing: this row
+          // is now the Races chart's series, not just the push's diff, so
+          // the response has to say whether it actually landed. It had not
+          // been landing at all — migration 155 was unapplied in prod and
+          // the write sat behind a bare `.catch`.
+          projectionAlert = {
+            race_slug: goalProjection.raceSlug, sent: check.sent,
+            reason: check.reason, recorded: check.recorded,
+          };
         }
       } catch (e: unknown) {
         projectionAlert = { error: e instanceof Error ? e.message : String(e) };

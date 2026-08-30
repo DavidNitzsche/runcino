@@ -146,13 +146,24 @@ struct RacesV5: View {
 
                 RaceScheduleGroupV5(rows: model.schedule, expandedID: $expandedRaceID, onOpen: onOpenRace)
 
+                // The caption says what ONE BAR is, and it used to say "Daily
+                // fitness reads" over a series that was not a fitness read at
+                // all - it was the frozen current-VDOT equivalence, plotted
+                // under a headline computed from the forward trajectory. Both
+                // halves are the trajectory now, so the caption names it.
+                //
+                // `delta` and the empty-`trend` case are the server's call:
+                // `composeProjectionTrend` withholds the bars entirely rather
+                // than draw a constant, and TrendBars honours that by drawing
+                // no row and no caption. Nothing here re-decides it.
                 Tile {
                     TrendBars(values: model.trend,
                               highlight: -1,
                               height: 96,
                               headline: model.trendHeadline.unreadableIfAbsent,
                               headlineLabel: "Projected finish, today",
-                              caption: "Daily fitness reads",
+                              delta: model.trendDelta.optionalValue,
+                              caption: "Daily projected finish",
                               footnotes: model.trendFootnotes)
                 }
 
@@ -938,7 +949,8 @@ enum RacesV5Sample {
           "schedule": \(scheduleJSON),
           "trend": \(trendJSON),
           "trendHeadline": {"text": "3:16:45", "modelled": true},
-          "trendFootnotes": ["Twelve weeks of daily reads", "Best read so far 3:18"],
+          "trendDelta": {"text": "Faster by 1m 12s over 12 days", "modelled": true},
+          "trendFootnotes": ["12 days of daily reads", "Anchored 14d ago"],
           "evidence": \(evidenceJSON),
           "coachLog": \(logJSON)
         }

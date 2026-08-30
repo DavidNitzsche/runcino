@@ -113,6 +113,16 @@ targets() {
        ! -name '._*' ! -name '*.test.ts' ! -name '*.test.tsx' 2>/dev/null
   [ -f "$ROOT/web-v2/lib/notifications/templates.ts" ] \
     && printf '%s\n' "$ROOT/web-v2/lib/notifications/templates.ts"
+  # 2026-08-30 · `lib/training` is not in scope and should not be: it is the
+  # engine, and its strings are ids, kinds and doctrine labels. This ONE file
+  # is the exception — `composeProjectionTrend` authors the Races trend's
+  # footnotes, which a runner reads. It was pulled out of `app/api/v5/races`
+  # so the flat-series guard could be tested without a database, and copy that
+  # moves out of a scanned directory into an unscanned one is exactly how a
+  # gate quietly loses reach. Named individually rather than widening the
+  # directory, so the next file to author copy has to make the same case.
+  [ -f "$ROOT/web-v2/lib/training/projection-trend.ts" ] \
+    && printf '%s\n' "$ROOT/web-v2/lib/training/projection-trend.ts"
 }
 
 FILES="$(targets | sort -u)"
