@@ -152,6 +152,68 @@ export async function POST(req: NextRequest) {
       err instanceof Error ? err.message : String(err));
   }
 
+  /* ══════════════════════════════════════════════════════════════════════
+   * ABSORPTION INVARIANT · the check the flag census could not make
+   *
+   * 2026-08-30. `flag-census` above counts POINTERS and alerts when the count
+   * drops. It is blind to the failure that actually cost miles: a row keeping
+   * the absorption STAMP after losing its pointer. That row reads as canonical
+   * — the census sees nothing missing — while carrying a loser's marker that
+   * no repair pass could see either. Seven of the owner's runs sat in it for up
+   * to ten weeks, 63.0 miles, one of them his peak 18.00 mi long run, on the
+   * eve of a 14-week block that sizes itself from exactly those numbers.
+   *
+   * Runs AFTER the sweep so it grades the state the sweep leaves behind, and
+   * over each runner's FULL history rather than the sweep's 14-day window,
+   * because a violation the sweep cannot reach is the one worth naming.
+   * ═══════════════════════════════════════════════════════════════════ */
+  const invariantOut: Array<{ user_uuid: string; violations: number; milesAtRisk: number }> = [];
+  try {
+    const { auditAbsorptionInvariant, absorptionAlertMessage } = await import('@/lib/runs/absorption-invariant');
+    const { raiseAlert } = await import('@/lib/ops/alerts');
+    for (const u of users) {
+      try {
+        const audit = await auditAbsorptionInvariant(u);
+        const message = absorptionAlertMessage(audit);
+        if (message) {
+          await raiseAlert({
+            kind: 'dedup_absorption_invariant',
+            severity: 'error',
+            source: 'cron/dedupe-runs',
+            message,
+            metadata: {
+              userUuidRef: u,
+              rowsChecked: audit.rowsChecked,
+              milesAtRisk: audit.milesAtRisk,
+              violations: audit.violations,
+            },
+          });
+        }
+        invariantOut.push({
+          user_uuid: u,
+          violations: audit.violations.length,
+          milesAtRisk: audit.milesAtRisk,
+        });
+      } catch (err: unknown) {
+        // Not swallowed into silence: an unreadable check is itself worth an
+        // alert, because "no findings" and "we could not look" are the same
+        // shape in a JSON response and only one of them is good news.
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('[cron/dedupe-runs] absorption invariant failed for', u, msg);
+        await raiseAlert({
+          kind: 'dedup_absorption_invariant',
+          severity: 'warn',
+          source: 'cron/dedupe-runs',
+          message: `Absorption invariant NOT CHECKED for ${u.slice(0, 8)}… · ${msg}`,
+          metadata: { userUuidRef: u, checkFailed: true },
+        }).catch(() => {});
+      }
+    }
+  } catch (err: unknown) {
+    console.warn('[cron/dedupe-runs] absorption invariant unavailable:',
+      err instanceof Error ? err.message : String(err));
+  }
+
   return NextResponse.json({
     ok: results.every((r) => !r.error),
     users: users.length,
@@ -159,6 +221,7 @@ export async function POST(req: NextRequest) {
     errors: results.filter((r) => r.error).length,
     results,
     flag_census: censusOut,
+    absorption_invariant: invariantOut,
   });
 }
 

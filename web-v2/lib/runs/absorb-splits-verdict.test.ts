@@ -70,9 +70,20 @@ function installPool(canonicalData: Record<string, unknown>, canonicalProv: Reco
           rowCount: 1,
         };
       }
-      if (/UPDATE runs\s+SET data = \$1::jsonb/i.test(sql)) {
+      // 2026-08-30 · the data commit is no longer a bare `SET data = $1::jsonb`.
+      // It carries the Rule-6 CASE from run-shape.ts:preserveMergedIntoIdSql,
+      // which keeps a `mergedIntoId` a concurrent merge wrote after this
+      // function read its snapshot. Match the statement, not its shape.
+      if (/UPDATE runs\s+SET data =/i.test(sql)) {
         const p = params as [string, string, string];
         committed.current = { data: JSON.parse(p[0]), provenance: JSON.parse(p[1]) };
+        return { rows: [], rowCount: 1 };
+      }
+      // The absorption stamp is now conditional (see mayStampAbsorbed). Answer
+      // it the way a healthy row does — the loser really did lose to this
+      // canonical — so these fixtures exercise the ordinary path and a refusal
+      // here would be a real signal rather than mock noise.
+      if (/SET absorbed_into_canonical_at = NOW\(\)/i.test(sql)) {
         return { rows: [], rowCount: 1 };
       }
       return { rows: [], rowCount: 0 };

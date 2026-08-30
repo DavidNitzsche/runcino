@@ -869,6 +869,45 @@ export function runNotMergedSql(alias = ''): string {
   return `NOT (${col(alias)} ? 'mergedIntoId')`;
 }
 
+/**
+ * Rule 6 for the dedup pointer · a full-replace of `runs.data` that cannot
+ * erase a `mergedIntoId` written after the payload was computed.
+ *
+ * ── WHY IT HAS TO EXIST ───────────────────────────────────────────────────
+ *
+ * Two writers build a whole new `data` object from a snapshot read earlier in
+ * the same function — `enhanceCanonicalFromAbsorbed` (lib/runs/canonical.ts)
+ * and pullSync's ENHANCE branch (lib/strava/pullSync.ts, whose snapshot is
+ * separated from its write by an HTTP round-trip to Strava). Both wrote it
+ * back with a bare `SET data = $1::jsonb`.
+ *
+ * `autoMergeForDate` fires from four ingest paths and the nightly cron. When
+ * one of them flagged the same row inside that window, the full replace put
+ * the pre-flag snapshot back — erasing `mergedIntoId`, a KEY, while
+ * `absorbed_into_canonical_at`, a COLUMN, sat untouched. A row holding the
+ * stamp and no pointer reads as canonical, is invisible to every repair, and
+ * on seven of the owner's days it was the ONLY canonical row: 63.0 miles,
+ * including a peak 18.00 mi long run, gone from the numbers that size a
+ * marathon block.
+ *
+ * Neither writer has an opinion about the pointer — it is in both their
+ * NEVER_COPY sets — so the correct answer is always the live row's. The CASE
+ * takes it in both directions: keep a pointer that arrived after the snapshot,
+ * and never resurrect one that left after it.
+ *
+ * `param` is the placeholder carrying the replacement object, e.g. `'$1'`.
+ * Emits the right-hand side of `SET data = …`, so the caller writes
+ * `SET data = ${preserveMergedIntoIdSql('$1')}`.
+ */
+export function preserveMergedIntoIdSql(param: string, table = 'runs'): string {
+  const d = `${table}.data`;
+  return `CASE
+            WHEN ${d} ? 'mergedIntoId'
+            THEN jsonb_set(${param}::jsonb, '{mergedIntoId}', ${d}->'mergedIntoId')
+            ELSE ${param}::jsonb - 'mergedIntoId'::text
+          END`;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
  * 3 · ACCESSORS
  *

@@ -24,7 +24,7 @@ import { getStravaToken } from '@/lib/strava/auth';
 import { SOURCE_TIER, existingTierFor, IDENTITY_FILL_ONLY } from '@/lib/runs/canonical';
 import { isSameRun, type RunRow } from '@/lib/runs/identity';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
-import { runDaySql } from '@/lib/runs/run-shape';
+import { preserveMergedIntoIdSql, runDaySql } from '@/lib/runs/run-shape';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { isSubThresholdRun } from '@/lib/runs/length-guard';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
@@ -474,8 +474,24 @@ export async function pullSyncOneUser(args: {
           }
         }
         if (added > 0) {
+          // Rule 6 · `updatedData` descends from a snapshot `findCanonicalRow`
+          // read BEFORE `getStravaActivityDetail` above — a network round-trip
+          // to Strava, so the window between the read and this write is
+          // seconds, not microseconds. `autoMergeForDate` fires from four
+          // ingest paths and the nightly cron and can flag this exact row in
+          // that window; a full `SET data = $1` would then erase the
+          // `mergedIntoId` it wrote while leaving `absorbed_into_canonical_at`
+          // (a COLUMN) behind. That pair — stamp without pointer — is the
+          // orphan that hid 63.0 of the owner's miles across ten weeks.
+          //
+          // The matcher only ever selects canonical rows, so this payload has
+          // no pointer of its own to contribute. The CASE takes the live row's
+          // answer both ways: keep a pointer that arrived after the snapshot,
+          // and never resurrect one that left after it.
           await pool.query(
-            `UPDATE runs SET data = $1::jsonb, provenance = $2::jsonb
+            `UPDATE runs
+                SET data = ${preserveMergedIntoIdSql('$1')},
+                    provenance = $2::jsonb
               WHERE id = $3::BIGINT`,
             [JSON.stringify(updatedData), JSON.stringify(updatedProv), match.id],
           );

@@ -50,6 +50,9 @@
  * All other fields land on data as-is. provenance gets stamped.
  */
 import { pool } from '@/lib/db/pool';
+import {
+  preserveMergedIntoIdSql, runMergedIntoIdSql, runNotMergedSql,
+} from '@/lib/runs/run-shape';
 
 export const SOURCE_TIER: Record<string, number> = {
   watch:          5,  // Faff watch app
@@ -239,7 +242,120 @@ export interface EnhanceResult {
   fieldsSkipped: string[];
   shoeAttributed: number | null;
   rpeWritten: number | null;
+  /**
+   * The absorption stamp was REFUSED because the invariant did not hold at the
+   * moment of the write — see `mayStampAbsorbed`. Non-fatal by design (an
+   * absorb refusal must never fail an ingest), but it is the tell for a
+   * concurrent merge pass and the caller surfaces it.
+   */
+  stampRefused?: string;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE ABSORPTION INVARIANT · why the stamp is conditional
+ *
+ * 2026-08-30. `runs` carries two markers for "this row lost a dedup":
+ *
+ *     data->>'mergedIntoId'          a pointer to the row that won
+ *     absorbed_into_canonical_at     a timestamp stamped at absorption
+ *
+ * They are one fact written in two places, and the invariant binding them is:
+ *
+ *     a row carrying the STAMP carries a POINTER, and that pointer names a row
+ *     that is itself neither stamped nor pointing anywhere.
+ *
+ * Seven of the owner's runs broke it — stamped, no pointer, and the CANONICAL
+ * row for their day with their own duplicates pointing correctly at them. 63.0
+ * miles across ten weeks, including a peak 18.00 mi long run, in a state
+ * nothing in the system could repair.
+ *
+ * The stamp used to be unconditional: `SET absorbed_into_canonical_at = NOW()
+ * WHERE id = $1 AND absorbed_into_canonical_at IS NULL`. It asked whether the
+ * row was already stamped and nothing else — not whether the row was still a
+ * loser, not whether the row it supposedly lost to had itself since been
+ * demoted. `autoMergeForDate` is called from FOUR live ingest paths plus the
+ * nightly cron, all of which can fire for the same (user, date) at once, and
+ * it applied its plan as three independent statements over a snapshot read
+ * outside any transaction. So a pass whose snapshot said "R is the loser"
+ * could land its stamp on R after a fresher pass had already promoted R and
+ * stripped both of R's markers. R keeps the stamp; the pointer is gone; the
+ * fresher pass has already pointed the real duplicates at R.
+ *
+ * merge.ts now serialises passes under an advisory lock, which closes the
+ * window. This predicate closes the STATE: even if a pass somehow arrives
+ * stale, a stamp it is not entitled to write is refused rather than written.
+ * Two independent defences, because the cost of the state is silent mileage
+ * loss and the cost of a refused stamp is one warning line.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** One side of the invariant, as the SQL sees it. `null` = absent. */
+export interface AbsorptionStampContext {
+  /** The loser's current `data->>'mergedIntoId'`. */
+  loserMergedIntoId: string | null;
+  /** The loser's current `absorbed_into_canonical_at`. */
+  loserAbsorbedAt: string | null;
+  /** The row we are absorbing INTO. */
+  canonicalId: string;
+  /** The canonical's current `data->>'mergedIntoId'` — must be absent. */
+  canonicalMergedIntoId: string | null;
+  /** The canonical's current `absorbed_into_canonical_at` — must be absent. */
+  canonicalAbsorbedAt: string | null;
+}
+
+/**
+ * May this absorption stamp be written?
+ *
+ * The JS mirror of the WHERE clause in `enhanceCanonicalFromAbsorbed`, so the
+ * rule can be tested without a database and the SQL has exactly one thing to
+ * agree with. Returns the reason for a refusal, or `null` to allow.
+ *
+ * `alreadyStamped` is NOT a refusal in the failure sense — it is the idempotent
+ * re-run, and it was the only condition the pre-2026-08-30 statement checked.
+ */
+export function mayStampAbsorbed(
+  ctx: AbsorptionStampContext,
+): { allow: true } | { allow: false; reason: string; benign: boolean } {
+  if (ctx.loserAbsorbedAt != null) {
+    return { allow: false, reason: 'already stamped', benign: true };
+  }
+  if (ctx.loserMergedIntoId == null) {
+    // The row is not a loser any more. A fresher merge pass promoted it and
+    // stripped its pointer; stamping now mints the orphan.
+    return { allow: false, reason: 'loser carries no mergedIntoId (promoted since this pass planned)', benign: false };
+  }
+  if (String(ctx.loserMergedIntoId) !== String(ctx.canonicalId)) {
+    return { allow: false, reason: `loser points at ${ctx.loserMergedIntoId}, not ${ctx.canonicalId}`, benign: false };
+  }
+  if (ctx.canonicalMergedIntoId != null) {
+    // Stamping here would record a loss to a row that has itself lost — the
+    // chain the invariant forbids, and one step from a cycle.
+    return { allow: false, reason: `canonical ${ctx.canonicalId} is itself merged into ${ctx.canonicalMergedIntoId}`, benign: false };
+  }
+  if (ctx.canonicalAbsorbedAt != null) {
+    return { allow: false, reason: `canonical ${ctx.canonicalId} is itself absorbed`, benign: false };
+  }
+  return { allow: true };
+}
+
+/**
+ * The SQL that mirrors `mayStampAbsorbed`. Exported so the invariant test can
+ * assert the two never drift, and so this is provably the only shape that
+ * writes the column.
+ *
+ * `$1` = loser id, `$2` = canonical id. The `->>` comparison against
+ * `c.id::text` reads both jsonb spellings of the pointer (legacy rows wrote a
+ * string, `merge.ts` writes a number) without a cast that could throw.
+ */
+export const STAMP_ABSORBED_SQL = `
+  UPDATE runs AS l
+     SET absorbed_into_canonical_at = NOW()
+    FROM runs AS c
+   WHERE l.id = $1::BIGINT
+     AND c.id = $2::BIGINT
+     AND l.absorbed_into_canonical_at IS NULL
+     AND ${runMergedIntoIdSql('l')} = c.id::text
+     AND ${runNotMergedSql('c')}
+     AND c.absorbed_into_canonical_at IS NULL`;
 
 /**
  * Walk an absorbed (dedup-loser) row's data and pull unique non-null fields
@@ -458,26 +574,67 @@ export async function enhanceCanonicalFromAbsorbed(args: {
     }
   }
 
-  // Commit the data + provenance updates
+  // Commit the data + provenance updates.
+  //
+  // Rule 6 · `updatedData` is built from a SNAPSHOT of the canonical read at
+  // the top of this function, and everything between here and there is another
+  // await. A full `SET data = $1` would therefore write back whatever
+  // `mergedIntoId` state the snapshot happened to hold, and a concurrent merge
+  // pass that flagged this row in the meantime would have its pointer erased —
+  // while `absorbed_into_canonical_at`, a COLUMN, survived untouched. That is
+  // one of the two ways the orphan stamp was minted.
+  //
+  // The pointer is never this function's to write: `mergedIntoId` is in
+  // NEVER_COPY, so the payload has no opinion about it. The CASE takes the
+  // live row's answer in both directions — preserve a pointer that arrived
+  // after the snapshot, and do not resurrect one that left after it.
   if (fieldsAdded.some(f => !f.includes('shoe_id') && !f.includes('post_run_rpe'))) {
     await pool.query(
       `UPDATE runs
-          SET data = $1::jsonb, provenance = $2::jsonb
+          SET data = ${preserveMergedIntoIdSql('$1')},
+              provenance = $2::jsonb
         WHERE id = $3::BIGINT`,
       [JSON.stringify(updatedData), JSON.stringify(updatedProv), canonicalId],
     );
   }
 
-  // Stamp the absorbed row
-  await pool.query(
-    `UPDATE runs
-        SET absorbed_into_canonical_at = NOW()
-      WHERE id = $1::BIGINT
-        AND absorbed_into_canonical_at IS NULL`,
-    [absorbedRow.id],
-  );
+  // Stamp the absorbed row — only if it is still entitled to the stamp.
+  // See the ABSORPTION INVARIANT block above for what this refuses and why.
+  let stampRefused: string | undefined;
+  const stamped = await pool.query(STAMP_ABSORBED_SQL, [absorbedRow.id, canonicalId]);
+  if ((stamped.rowCount ?? 0) === 0) {
+    const ctx = (await pool.query<{
+      lm: string | null; la: string | null; cm: string | null; ca: string | null;
+    }>(
+      `SELECT ${runMergedIntoIdSql('l')}         AS lm,
+              l.absorbed_into_canonical_at::text AS la,
+              ${runMergedIntoIdSql('c')}         AS cm,
+              c.absorbed_into_canonical_at::text AS ca
+         FROM runs l LEFT JOIN runs c ON c.id = $2::BIGINT
+        WHERE l.id = $1::BIGINT`,
+      [absorbedRow.id, canonicalId],
+    )).rows[0];
+    const verdict = mayStampAbsorbed({
+      loserMergedIntoId: ctx?.lm ?? null,
+      loserAbsorbedAt: ctx?.la ?? null,
+      canonicalId,
+      canonicalMergedIntoId: ctx?.cm ?? null,
+      canonicalAbsorbedAt: ctx?.ca ?? null,
+    });
+    if (!verdict.allow && !verdict.benign) {
+      stampRefused = verdict.reason;
+      // Loud, and never thrown: refusing the stamp is the CORRECT outcome of a
+      // stale pass. What must not happen is refusing it silently, because then
+      // the only trace of a concurrent-merge collision is a number that no
+      // longer matches the plan.
+      console.warn(
+        `[canonical] absorption stamp REFUSED · loser=${absorbedRow.id} ` +
+        `canonical=${canonicalId} · ${verdict.reason}`,
+      );
+    }
+  }
 
-  return { canonicalId, fieldsAdded, fieldsSkipped, shoeAttributed, rpeWritten };
+  return { canonicalId, fieldsAdded, fieldsSkipped, shoeAttributed, rpeWritten, stampRefused };
 }
 
 /**

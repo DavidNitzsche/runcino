@@ -19,7 +19,21 @@
  */
 import { SOURCE_TIER } from './canonical';
 
-export type RunRow = { id: string; user_uuid: string | null; data: any };
+export type RunRow = {
+  id: string;
+  user_uuid: string | null;
+  data: any;
+  /**
+   * `runs.absorbed_into_canonical_at`, when the caller selected it.
+   *
+   * OPTIONAL on purpose. Only the write-time merge needs it (it is the one
+   * caller that can repair the column), and every other caller — the volume
+   * reader, the audits, pullSync's matcher — leaves it `undefined`, which
+   * `planMergeOps` treats exactly the way it treated a row before this field
+   * existed. See the orphan-stamp note on `planMergeOps`.
+   */
+  absorbedAt?: string | null;
+};
 
 // ── trustworthy timestamp · the hinge ─────────────────────────────────────
 // A `startLocal` we can pin to an unambiguous instant. A bare wall-clock from
@@ -224,7 +238,12 @@ export function pickCanonical(cluster: RunRow[]): { canonical: RunRow; losers: R
 // the mergedIntoId operations that bring the day to the canonical invariant:
 //
 //   for every physical-run cluster, EXACTLY ONE row (the canonical) carries no
-//   mergedIntoId, and every other row's mergedIntoId === canonical.id.
+//   mergedIntoId AND no absorbed_into_canonical_at, and every other row's
+//   mergedIntoId === canonical.id.
+//
+// Both halves of that sentence matter. The two markers are written together and
+// cleared together, so a row holding one without the other is a corruption, not
+// a state — and the canonical is the row that must hold NEITHER.
 //
 // Deriving the flags purely from the CURRENT clustering is what makes the merge
 // self-healing and CYCLE-FREE. The canonical's flag is always cleared first, so
@@ -239,7 +258,7 @@ export function pickCanonical(cluster: RunRow[]): { canonical: RunRow; losers: R
 // function drives the runtime absorber (merge.ts:autoMergeForDate) and the
 // read-only data-repair audit, so write-time and repair-time can never disagree.
 export type MergeOps = {
-  clears: string[];                                   // ids to drop mergedIntoId from (canonicals + healed singletons)
+  clears: string[];                                   // ids to drop BOTH loser markers from (canonicals + healed singletons + stamp-only orphans)
   sets: Array<{ id: string; canonicalId: string }>;   // losers to (re)point at their canonical
   absorptions: Array<{ canonicalId: string; loserId: string }>; // loser→canonical field absorption
   clusters: number;
@@ -256,7 +275,29 @@ export function planMergeOps(rows: RunRow[], defaultTz: string = DEFAULT_TZ): Me
     // The canonical must NEVER carry a mergedIntoId. Clearing it unconditionally
     // (cluster-canonical or lone singleton) breaks any inbound cycle and heals
     // orphaned flags. This clear is sequenced before any set below.
-    if (canonical.data?.mergedIntoId != null) clears.push(canonicalId);
+    //
+    // ── THE ORPHAN STAMP · why `absorbedAt` is here too ────────────────────
+    //
+    // 2026-08-30. `runs` carries TWO loser markers and merge.ts clears BOTH in
+    // one statement, but the gate that decided whether to clear read only ONE
+    // of them. A row holding `absorbed_into_canonical_at` with no
+    // `mergedIntoId` was therefore invisible to the repair: it reads as
+    // canonical, so it is never a loser, and it carries no pointer, so it was
+    // never pushed here. Nothing in the system could ever clear it again.
+    //
+    // Seven of the owner's runs sat in that state — the canonical row for its
+    // day, its own duplicates correctly pointing at it, stamped absorbed —
+    // across ten weeks, 63.0 miles, including a peak 18.00 mi long run. The
+    // nightly `cron/dedupe-runs` sweep ran `autoMergeRecent(user, 14)` over
+    // every one of them while they were still inside its window and repaired
+    // none, because a sweep can only fix what its op planner can see.
+    //
+    // The state is now unreachable from the writer (see `mayStampAbsorbed` in
+    // canonical.ts), and reachable by the repair from here, which is what
+    // heals any row minted before that guard existed.
+    if (canonical.data?.mergedIntoId != null || canonical.absorbedAt != null) {
+      clears.push(canonicalId);
+    }
     for (const loser of losers) {
       if (String(loser.data?.mergedIntoId ?? '') !== canonicalId) {
         sets.push({ id: loser.id, canonicalId });

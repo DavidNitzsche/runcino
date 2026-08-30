@@ -274,15 +274,19 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
   {
     id: 'cron/dedupe-runs',
     route: 'app/api/cron/dedupe-runs/route.ts',
-    trigger: '0 10 * * * · also called live from four ingest paths, with no advisory lock',
+    trigger: '0 10 * * * · also called live from four ingest paths, serialised per (user, date) by an advisory lock',
     reach: 'overwrites_engine_state',
     changes: ['runs.data.mergedIntoId', 'runs.absorbed_into_canonical_at', 'runs.data', 'runs.shoe_id', 'post_run_rpe', 'ops_alerts'],
     idempotent: true,
     onPartialFailure:
-      'NOT TRANSACTIONAL. lib/runs/merge.ts runs the clears loop and the sets loop as independent awaits. '
-      + 'The order is deliberate and prevents the 2026-06-07 circular bug, but dying between the two leaves a '
-      + 'promoted pair where neither row carries mergedIntoId, so both read as canonical and the day '
-      + 'double-counts until the next pass.',
+      'The flag rewrite is now ONE transaction. lib/runs/merge.ts takes pg_advisory_xact_lock on (user, date), '
+      + 're-reads the day inside the lock, and commits the clears loop and the sets loop together, so there is no '
+      + 'middle to die in. Until 2026-08-30 those loops were independent awaits over a snapshot read outside any '
+      + 'transaction, and two concurrent passes that disagreed about which row was canonical could interleave into '
+      + 'a canonical stamped absorbed with no mergedIntoId — invisible to every repair. Seven of the owner\'s runs, '
+      + '63.0 mi, up to ten weeks each. The absorber loop still runs after the commit, per-loser and non-atomic on '
+      + 'purpose (one bad row must not roll back everyone else\'s flags); its stamp is conditional on the committed '
+      + 'flag state (canonical.ts mayStampAbsorbed) and refuses rather than writes when the plan has moved under it.',
     runnerSees: 'audit_row_only',
     reversible:
       'A merge is mostly reversible: the loser row is never deleted and mergedIntoId can be cleared. The '
