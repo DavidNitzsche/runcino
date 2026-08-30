@@ -36,12 +36,35 @@
 //  ─────────────────────────────────────────────────────────────────────────
 //  THE REGISTER · NUMBERS, NOT VERDICTS
 //
-//  No colour carries meaning here. Pace is not tinted by whether it sat in a
-//  window, heart rate is not tinted by zone, a climb is not tinted by
-//  gradient. The split chart above already answers "was this mile inside what
-//  was asked" with its fill, and the coach's verdict — which holds the heat,
-//  the terrain and the taper context this table does not — answers the rest.
-//  A table that graded every mile in isolation would be arguing with both.
+//  No colour carries a VERDICT here. Heart rate is not tinted by zone, a climb
+//  is not tinted by gradient, and pace is not tinted by whether it sat in a
+//  window. The coach's recap — which holds the heat, the terrain and the taper
+//  context this table does not — is what says whether the run was what was
+//  asked. A table that graded every mile in isolation would be arguing with it.
+//
+//  ─────────────────────────────────────────────────────────────────────────
+//  THE ONE COLOUR, AND WHY IT CHANGED (2026-08-30)
+//
+//  The pace column DID tint by band adherence, and it was the second thing on
+//  the run-detail screen doing something different with the same orange. The
+//  route map above it had just become a continuous amber→orange pace gradient
+//  where orange means "ran faster"; this table's orange meant "inside the
+//  prescription". On the runner's own 13.49 mi long run, prescribed 8:37-9:12
+//  and actually run 7:16-8:38 with a friend, mile 4 at 6:52 was the fastest
+//  mile of the day: bright orange on the map, plain ink in the table, two
+//  inches apart on one screen.
+//
+//      "Make the mile table match the map."
+//
+//  So the pace column now draws off `RouteMapView.runPaceColorFn` — the same
+//  function, over the same normalisation, so a mile cannot be one colour in
+//  the graphic and another in the table. Orange means one thing on this
+//  screen: you ran faster here. It is not a grade in either direction.
+//
+//  BAND ADHERENCE DID NOT VANISH, it stopped being a colour. It is said in
+//  words by the run recap, which is his reasoning and is the better carrier
+//  besides: a colour cannot tell you whether running fast was good or bad on
+//  a given day, and a sentence can.
 //
 //  ─────────────────────────────────────────────────────────────────────────
 //  RULE ONE, AND THE ONE THAT ACTUALLY BIT
@@ -101,20 +124,11 @@ struct MilePiece: Identifiable, Equatable {
     /// is why it is not defaulted to 1.
     let distanceMi: Double?
 
-    /// Did this mile sit inside the pace window the session asked for?
-    ///
-    /// NIL WHEN NOTHING WAS ASKED, and that is the common case — an unplanned
-    /// run has no window, and a session with a rep pace has no single one.
-    /// Then the pace column carries no verdict at all.
-    ///
-    /// THIS IS THE ONE THING COLOUR MEANS IN THIS TABLE. It is inherited, not
-    /// invented: the split chart this replaces used its bar fill for exactly
-    /// this and nothing else, and its own screen printed the rule underneath
-    /// ("filled where the mile sat inside what the session asked for"), which
-    /// is the proof the colour was load-bearing rather than decorative. The
-    /// fill comes from `SplitBars.barFill` rather than being restated here, so
-    /// `V5ContrastTests` still measures the colour that actually ships.
-    let inBand: Bool?
+    // `inBand` IS GONE (2026-08-30). It carried the band verdict into the
+    // pace column's fill, which is the collision this component's header
+    // describes. Nothing replaces it here: the fact is the recap's to state,
+    // in words, and a second channel saying the same thing in colour is what
+    // put two meanings on one orange.
 
     /// True only when we were TOLD the split is short. A nil distance is not
     /// evidence of a whole mile, and it is not evidence of a fragment either,
@@ -134,14 +148,28 @@ struct MileBreakdownV5: View {
     let pieces: [MilePiece]
 
 
-    /// The colour rule, said once in words, when there is a rule to say.
+    /// The colour rule, said once in words.
     ///
     /// Carried over from the chart this replaces for the reason its own
     /// comment gave: without it the fill is a code the screen never breaks.
-    /// Nil when the session asked for no window, because then there is no
-    /// code — every pace draws the same and a sentence about colour would be
-    /// describing something that is not happening.
-    var bandLine: String? = nil
+    /// It used to describe the band and is now the pace ramp — see
+    /// `RouteMapView.paceColumnCaption`, which authors it beside the sentence
+    /// under the map so the two cannot drift into describing different rules.
+    /// Nil when no colour rule is in force, i.e. the caller passed no
+    /// `paceColor` and every figure draws in plain ink.
+    var paceLine: String? = nil
+
+    /// SECONDS PER MILE → THE COLOUR THE ROUTE LINE PAINTS AT THAT PACE.
+    ///
+    /// Supplied by the caller, from `RouteMapView.runPaceColorFn`, rather than
+    /// derived here. This component sees only its own rows; the map's
+    /// normalisation depends on whether the run recorded phases, and a table
+    /// that re-decided that for itself is a second answer waiting to disagree
+    /// with the first.
+    ///
+    /// Nil draws plain ink, which is the honest fallback for a caller that has
+    /// no map on screen: it is a missing colour, never a wrong one.
+    var paceColor: ((Int) -> Color)? = nil
 
     /// False where the run type says a per-mile climb is not a measurement.
     /// Defaults true so a caller that has no shape still gets the data-driven
@@ -187,8 +215,8 @@ struct MileBreakdownV5: View {
                 .padding(.vertical, V5.S.s6)
                 .background(V5.materialTile,
                             in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
-                if let bandLine {
-                    Text(bandLine)
+                if let paceLine {
+                    Text(paceLine)
                         .font(.faffText(TypeScaleV5.label12))
                         .foregroundStyle(V5.textQuiet)
                         .fixedSize(horizontal: false, vertical: true)
@@ -258,20 +286,19 @@ struct MileBreakdownV5: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // THE PACE COLUMN IS THE ONLY ONE THAT CAN CARRY A VERDICT, and
-            // only when the session asked for something.
+            // THE PACE COLUMN IS THE ONLY COLOURED ONE, and what it carries
+            // is INTENSITY, not a verdict: amber at this run's slowest, orange
+            // at its fastest, off the same ramp the route line above is drawn
+            // with.
             //
-            // `barFill(inBand:)` returns SIGNAL for nil, which is right on the
-            // chart it comes from — an orange bar among orange bars is
-            // neutral — and wrong here. A column of orange numbers reads as a
-            // column of highlighted numbers, so a run with no pace window
-            // would look graded when nothing was asked of it. Nil takes plain
-            // ink; the shared fill is consulted only when there is a window,
-            // which keeps `V5ContrastTests` measuring the colour that ships.
+            // A run whose spread is under `RouteMapView.paceRangeFloorSec`
+            // comes back one flat `V5.signal` for every mile, which is
+            // deliberate and is the map's behaviour too — the alternative is
+            // amplifying GPS noise into a rainbow. `paceColumnCaption` says so
+            // in that case rather than promising a gradient that is not there.
             if allowsPace {
                 cell(p.paceSec.map { Units.formatPaceBare(secPerMile: $0) },
-                     color: p.inBand == nil ? V5.textPrimary
-                                            : SplitBars.barFill(inBand: p.inBand))
+                     color: p.paceSec.flatMap { sec in paceColor?(sec) } ?? V5.textPrimary)
             }
             if showsHr { cell(p.hr.map { "\($0)" }) }
             if showsElev { cell(p.elevFt.map { $0 > 0 ? "+\($0)" : "\($0)" }) }
@@ -325,13 +352,11 @@ struct MileBreakdownV5: View {
             out.append(e >= 0 ? "\(e) feet up" : "\(abs(e)) feet down")
         }
         if let c = p.cadence { out.append("cadence \(c)") }
-        // The colour, in words. A sighted reader gets it from the fill; this
-        // is the same fact, not an extra one.
-        switch p.inBand {
-        case .some(true):  out.append("inside the target")
-        case .some(false): out.append("outside the target")
-        case .none:        break
-        }
+        // NOTHING ABOUT THE BAND, and nothing about the ramp either. The band
+        // verdict left this component with its fill (see the header) and
+        // speaking it here would hand VoiceOver a fact the screen no longer
+        // makes. The ramp needs no spoken twin: it encodes the pace, and the
+        // pace is already read out as a number.
         return out.joined(separator: ", ") + "."
     }
 }
@@ -339,6 +364,18 @@ struct MileBreakdownV5: View {
 // MARK: - Building the pieces
 
 extension MileBreakdownV5 {
+    /// THE PACE COLUMN'S COLOUR, WHICH IS THE ROUTE LINE'S COLOUR.
+    ///
+    /// A thin `Color` wrapper over `RouteMapView.runPaceColorFn` so both
+    /// callers spell the coupling the same way and neither is tempted to
+    /// normalise for itself. Pass the SAME splits and phases the route card
+    /// passes its map, which is what makes a given mile one colour on the
+    /// screen instead of two.
+    static func paceRamp(splits: [RunSplit], phases: [PhaseSample]) -> (Int) -> Color {
+        let fn = RouteMapView.runPaceColorFn(splits: splits, phases: phases)
+        return { Color(uiColor: fn(Double($0))) }
+    }
+
     /// Splits → rows, with nothing invented.
     ///
     /// `totalMi` is the run's own distance, used ONLY to size a trailing piece
@@ -348,8 +385,7 @@ extension MileBreakdownV5 {
     /// total) means the last row makes no claim about its length, which is
     /// correct: unknown is not "whole".
     static func pieces(from splits: [RunSplit],
-                       totalMi: Double? = nil,
-                       band: (lo: Int, hi: Int)? = nil) -> [MilePiece] {
+                       totalMi: Double? = nil) -> [MilePiece] {
         let ordered = splits.sorted { $0.mile < $1.mile }
         return ordered.enumerated().map { i, s in
             let derived: Double? = {
@@ -362,22 +398,13 @@ extension MileBreakdownV5 {
                 let remainder = total - Double(ordered.count - 1)
                 return (remainder > 0 && remainder < 0.95) ? remainder : nil
             }()
-            let sec = paceSeconds(s.pace)
-            // ONE VERDICT IN BOTH DIRECTIONS, inherited from the chart: a mile
-            // run fast and a mile run slow are both "not what was asked", and
-            // giving fast its own colour would grade it good.
-            let inBand: Bool? = {
-                guard let band, let sec else { return nil }
-                return sec >= band.lo && sec <= band.hi
-            }()
             return MilePiece(id: s.mile,
                              mile: s.mile,
-                             paceSec: sec,
+                             paceSec: paceSeconds(s.pace),
                              hr: (s.hr ?? 0) > 0 ? s.hr : nil,
                              elevFt: s.elev_change_ft,
                              cadence: (s.cadence ?? 0) > 0 ? s.cadence : nil,
-                             distanceMi: derived,
-                             inBand: inBand)
+                             distanceMi: derived)
         }
     }
 

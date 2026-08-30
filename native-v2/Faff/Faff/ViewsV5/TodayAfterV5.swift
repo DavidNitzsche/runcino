@@ -960,9 +960,15 @@ struct TodayAfterV5: View {
         case .miles:
             MileBreakdownV5(title: shape.breakdownTitle(.miles),
                             pieces: milePieces,
-                            bandLine: model.paceBand != nil
-                                ? "Orange where the mile sat inside what the session asked for."
+                            // The pace column runs on the route line's ramp
+                            // now, so its sentence is the map's sentence. See
+                            // `RunDetailV5`'s route section for the ruling.
+                            paceLine: shape.showsPerMilePace
+                                ? RouteMapView.paceColumnCaption(splits: model.routeSplits,
+                                                                 phases: routePhaseSamples)
                                 : nil,
+                            paceColor: MileBreakdownV5.paceRamp(splits: model.routeSplits,
+                                                                phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,
                             allowsPace: shape.showsPerMilePace)
         case .none:
@@ -1060,8 +1066,14 @@ struct TodayAfterV5: View {
     private var milePieces: [MilePiece] {
         // No run total on this payload, so a trailing piece is sized only if
         // the wire told us its length. Unknown is not "a whole mile".
-        MileBreakdownV5.pieces(from: model.routeSplits,
-                               band: model.paceBand.map { (lo: $0.lo, hi: $0.hi) })
+        MileBreakdownV5.pieces(from: model.routeSplits)
+    }
+
+    /// The samples the route map normalises its pace ramp across, built the
+    /// same way `routeCard` builds the map's own — one expression read twice,
+    /// so the table and the line cannot be handed different runs.
+    private var routePhaseSamples: [PhaseSample] {
+        model.routePhases.map { PhaseSample(mi: $0.mi, sec: $0.sec) }
     }
 
     /// Sections, from what this screen actually has.
@@ -1198,7 +1210,7 @@ struct TodayAfterV5: View {
             if coords.count >= 2 {
                 RouteMapView(coords: coords,
                              splits: model.routeSplits,
-                             phases: model.routePhases.map { PhaseSample(mi: $0.mi, sec: $0.sec) },
+                             phases: routePhaseSamples,
                              effort: mappedEffort,
                              // No zone axis. See `RunDetailV5`'s route map for
                              // the reasoning: a line has one channel, and the
@@ -1220,6 +1232,18 @@ struct TodayAfterV5: View {
                     // children and VoiceOver walks into MapKit's furniture.
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Route map")
+                // THE LINE'S COLOUR RULE, SAID IN WORDS. The card printed the
+                // climb and never explained the gradient. Authored beside the
+                // table's caption in `RouteMapView` so the two describe one
+                // rule; see `RunDetailV5`'s route section for the ruling. Nil
+                // where the run recorded no pace for the line to encode.
+                if let caption = RouteMapView.routeCaption(splits: model.routeSplits,
+                                                          phases: routePhaseSamples) {
+                    Text(caption)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
                 // RULE THREE. No GPS is an answer, not an empty frame.
                 Text("No GPS for this run.")

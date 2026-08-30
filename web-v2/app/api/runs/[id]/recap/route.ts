@@ -202,6 +202,17 @@ export async function GET(
     [userId, date],
   )).rows[0] : null;
 
+  // THE PRESCRIBED PACE WINDOW, off the spec rather than the single target
+  // column: `pace_target_s_per_mi` is one number and a window is two. Both
+  // ends or nothing — half a window counts nothing honestly.
+  const plannedPaceBand: { lo: number; hi: number } | null = (() => {
+    const spec = planRow?.workout_spec as Record<string, unknown> | null | undefined;
+    if (!spec) return null;
+    const lo = Number(spec.pace_target_s_per_mi_lo);
+    const hi = Number(spec.pace_target_s_per_mi_hi);
+    return lo > 0 && hi >= lo ? { lo, hi } : null;
+  })();
+
   const type = (TYPE_NORMALIZE[(planRow?.type ?? data.workoutType ?? '').toLowerCase()] ?? 'unplanned') as WorkoutType;
   const phase = planRow?.phase ? (PHASE_FROM_LABEL[planRow.phase] ?? null) : null;
   // No plan row for this date · the run itself is the only intent there is,
@@ -466,6 +477,10 @@ export async function GET(
     phase,
     plannedMi,
     plannedPaceSPerMi: evalPlannedPaceSPerMi,
+    // THE PRESCRIBED WINDOW, for the recap's band-adherence sentence. See
+    // `RecapInput.plannedPaceBandSPerMi`: the phone's mile table stopped
+    // colouring by this on 2026-08-30, and this is where the fact went.
+    plannedPaceBandSPerMi: plannedPaceBand,
     plannedHrCap: planRow?.hr_cap ?? null,
     actualMi,
     actualPaceSPerMi,

@@ -776,6 +776,17 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // to grade a tone against. See V5RecentRunCtx.askedHrIsHardCap's own
       // doc comment in lib/faff/v5-today.ts.
       const askedHrIsHardCap = Boolean(planRow?.workout_spec && Number(planRow.workout_spec.hr_cap_bpm) > 0);
+      // THE PRESCRIBED WINDOW, for the recap's band-adherence sentence. See
+      // `RecapInput.plannedPaceBandSPerMi`: the phone's mile table stopped
+      // colouring by this on 2026-08-30 and the fact now travels in words.
+      // Both ends or nothing — half a window grades nothing honestly.
+      const askedPaceBand: { lo: number; hi: number } | null = (() => {
+        const spec = planRow?.workout_spec;
+        if (!spec) return null;
+        const lo = Number(spec.pace_target_s_per_mi_lo);
+        const hi = Number(spec.pace_target_s_per_mi_hi);
+        return lo > 0 && hi >= lo ? { lo, hi } : null;
+      })();
 
       // THE EFFORT THE RUNNER LOGGED, looked up under EVERY id it could have
       // been filed under rather than the first one that happens to exist.
@@ -920,6 +931,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         type: purposeType, phase: purposePhase,
         plannedMi: todayPlan?.distanceMi ?? 0,
         plannedPaceSPerMi: askedPaceSPerMi,
+        plannedPaceBandSPerMi: askedPaceBand,
         plannedHrCap: askedHrCap,
         actualMi: distanceMi,
         actualPaceSPerMi: paceSPerMi,

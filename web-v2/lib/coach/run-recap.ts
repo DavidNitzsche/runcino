@@ -37,7 +37,7 @@ import {
 import { composeEffortFactor } from '@/lib/terrain/grade-adjust';
 import type { RunTerrain } from '@/lib/terrain/run-terrain';
 import { reconcilePaceWithClock } from '@/lib/runs/run-shape';
-import { miNum, fmtPaceSlash } from '@/lib/format/run';
+import { miNum, fmtPaceSlash, fmtPaceBand } from '@/lib/format/run';
 import type { ReadingScopes } from '@/lib/coach/reading-scope';
 import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
 
@@ -61,6 +61,26 @@ export interface RecapInput {
   plannedMi: number;
   /** Plan-side target pace (s/mi). null when by-feel. */
   plannedPaceSPerMi?: number | null;
+  /**
+   * 2026-08-30 · THE PRESCRIBED PACE WINDOW, from `workout_spec`
+   * (`pace_target_s_per_mi_lo` / `_hi`). Null when the session asked for no
+   * single window, which is the common case on a rep session.
+   *
+   * WHY IT ARRIVED HERE, AND WHAT IT REPLACES. Band adherence used to be
+   * carried by a colour: the phone's mile table tinted a mile's pace by
+   * whether it landed inside this window. That collided head-on with the
+   * route map above it, where the same orange means "ran faster", so on the
+   * runner's 13.49 mi long run his fastest mile drew orange on the map and
+   * plain ink in the table. His ruling was to make the table match the map,
+   * which takes the colour away — and the fact with it, since a colour was
+   * the only place it lived.
+   *
+   * "A colour cannot tell you whether running fast was good or bad on a given
+   * day, but a sentence can." So it is said here instead, as a count of
+   * miles, in the one place that also holds the heat, the terrain and the
+   * taper context a per-mile tint never could.
+   */
+  plannedPaceBandSPerMi?: { lo: number; hi: number } | null;
   /** Plan-side HR cap (bpm). null when by-feel. */
   plannedHrCap?: number | null;
   /** Actual canonical-row execution. */
@@ -581,6 +601,47 @@ function tempoExecution(input: RecapInput): string | null {
 }
 
 /**
+ * HOW THE RUN SAT AGAINST THE WINDOW, AS A COUNT OF MILES.
+ *
+ * THE FACT, NOT A VERDICT. It says how many miles landed inside what was
+ * asked and stops there. It does not say whether that was good: the runner's
+ * own 13.49 mi long run went out at 6:52 with a friend and put one mile of
+ * thirteen inside the window, which is a real thing to know and not a thing
+ * to be graded on. The arms around this one already carry the coaching read,
+ * with the heat and the terrain and the race calendar in front of them.
+ *
+ * RAW CLOCK PACE, DELIBERATELY, against the raw window. This sentence is the
+ * replacement for a per-mile colour that compared exactly those two numbers,
+ * so a grade-adjusted count here would be answering a different question from
+ * the one the graphic asked. The terrain note is composed separately and says
+ * what the hills cost.
+ *
+ * SILENT unless there is something honest to count: no window, fewer than
+ * three paced splits, or a treadmill whose incline nobody recorded, and the
+ * sentence does not appear.
+ */
+function bandAdherenceFact(input: RecapInput): string | null {
+  const band = input.plannedPaceBandSPerMi;
+  if (!band || !(band.lo > 0) || !(band.hi >= band.lo)) return null;
+  if (!judgeableAgainstTarget(input)) return null;
+  const paced = (input.splits ?? [])
+    .map((s) => splitPaceS(s))
+    .filter((p): p is number => p != null && p > 0);
+  if (paced.length < 3) return null;
+  const window = fmtPaceBand(band.lo, band.hi);
+  if (!window) return null;
+  const inside = paced.filter((p) => p >= band.lo && p <= band.hi).length;
+  const noun = paced.length === 1 ? 'mile' : 'miles';
+  if (inside === paced.length) {
+    return `All ${paced.length} ${noun} sat inside the ${window} the session asked for.`;
+  }
+  if (inside === 0) {
+    return `None of the ${paced.length} ${noun} sat inside the ${window} the session asked for.`;
+  }
+  return `${inside} of ${paced.length} ${noun} sat inside the ${window} the session asked for.`;
+}
+
+/**
  * True when a pace-vs-target verdict is honest for this run.
  *
  * False for a treadmill whose incline nobody recorded: the belt speed is
@@ -764,6 +825,18 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
           `Long run done${miPart ? ` · ${miPart}` : ''}${hrPart} · kept it aerobic.`,
         );
       }
+      /* 2026-08-30 · WHERE BAND ADHERENCE LIVES NOW.
+       *
+       * The long arm was the one that never said it. The easy arm compares
+       * the run's average to the easy target in words and always has; this
+       * one printed the distance, the heart rate and "kept it aerobic", and
+       * nothing at all about the window. That was survivable while the
+       * phone's mile table coloured each mile in or out of it. It stopped
+       * being survivable when that colour was withdrawn for colliding with
+       * the route map's, and this sentence is what keeps the fact in the
+       * product rather than letting it leave with the tint. */
+      const bandFact = bandAdherenceFact(input);
+      if (bandFact) facts.push(bandFact);
       /* 2026-08-19 · FUEL IS A CAUSE ONLY ONCE THE RUN IS LONG ENOUGH TO HAVE
        * ONE. Both branches below used to blame fuelling on ANY long run — a
        * 5K-focused runner's 5-mile, 45-minute long run included. `Research/18`

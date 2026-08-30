@@ -168,8 +168,8 @@ struct RouteMapView: UIViewRepresentable {
     /// direction is not a ranking: an easy run is SUPPOSED to be easy, so the
     /// amber end of a Sunday long run is the run going exactly as asked. The
     /// ramp says how hard the runner was working at each point of the route
-    /// and stops there. Nothing on this map answers "was that good" — the
-    /// split chart under it answers "was that what the session asked for",
+    /// and stops there. Nothing on this map answers "was that good" — the run
+    /// recap under it answers "was that what the session asked for" in words,
     /// which is a different question and the only one that is anybody's to
     /// ask.
     ///
@@ -207,14 +207,106 @@ struct RouteMapView: UIViewRepresentable {
     /// NORMALISED AGAINST THE RUN, NEVER AGAINST THE PRESCRIPTION. That is the
     /// whole of the 2026-08-30 ruling — see `gradientSegments()`.
     static func paceColorFn(over values: [Double]) -> (Double) -> UIColor {
-        guard let lo = values.min(), let hi = values.max(),
-              hi - lo >= paceRangeFloorSec else {
+        guard !paceIsFlat(over: values), let lo = values.min(), let hi = values.max() else {
             return { _ in UIColor(V5.signal) }
         }
         let span = hi - lo
         // Pace is seconds per mile, so SMALLER is faster: the fast end of the
         // data is the orange (t = 1) end of the ramp.
         return { v in paceRampColor((hi - max(lo, min(hi, v))) / span) }
+    }
+
+    /// TRUE when this run has no pace story to tell, i.e. its own spread is
+    /// under `paceRangeFloorSec` and a gradient would be drawn out of
+    /// measurement error.
+    ///
+    /// One definition, because three things now depend on the answer: the
+    /// colour function above, the mile table that reuses it, and the sentence
+    /// under each of them that says what the colour means. A caption promising
+    /// amber at the slow end, over a graphic that drew one flat orange, is the
+    /// same defect as a legend naming a colour the map does not paint.
+    static func paceIsFlat(over values: [Double]) -> Bool {
+        guard let lo = values.min(), let hi = values.max() else { return true }
+        return hi - lo < paceRangeFloorSec
+    }
+
+    // MARK: - One ramp for the whole screen
+
+    /// THE VALUES THIS RUN'S PACE RAMP IS NORMALISED ACROSS.
+    ///
+    /// Lifted out of `gradientSegments()` so the axis decision is made ONCE
+    /// and everything that draws or explains the ramp reads the same answer.
+    /// Structured runs normalise across their phases' paces, everything else
+    /// across the run's own miles — see `gradientSegments()` for why.
+    ///
+    /// PRECONDITION, and it holds on both v5 route cards: the caller passes no
+    /// HR zones, so `usesHrZones` is false and the line is a pace ramp. The
+    /// legacy `RoutePolylineCard` does pass zones and draws its own Z1-Z5
+    /// legend rather than these captions.
+    static func paceRampValues(splits: [RunSplit], phases: [PhaseSample]) -> [Double] {
+        let validPhases = phases.filter { $0.mi > 0 && $0.sec > 0 }
+        if validPhases.count >= 2 { return validPhases.map { Double($0.sec) } }
+        return perMileFilled(splits.map { paceToSec($0.pace).flatMap { $0 > 0 ? Double($0) : nil } })
+    }
+
+    /// The pace ramp for one run, as a function of seconds per mile.
+    ///
+    /// THE COUPLING, MADE STRUCTURAL (2026-08-30). The mile table under this
+    /// map used to colour its pace column by BAND ADHERENCE while the line
+    /// above it coloured by SPEED, so on the runner's own 13.49 mi long run
+    /// his fastest mile drew bright orange on the map and plain ink in the
+    /// table, two inches apart. His ruling: "make the mile table match the
+    /// map" — orange means one thing on this screen, you ran faster here, and
+    /// band adherence is said in words instead, because a colour cannot tell
+    /// you whether running fast was good or bad on a given day and a sentence
+    /// can.
+    ///
+    /// So the table calls THIS, rather than owning a second ramp and a second
+    /// normalisation that would drift apart on the first edit to either.
+    static func runPaceColorFn(splits: [RunSplit], phases: [PhaseSample]) -> (Double) -> UIColor {
+        paceColorFn(over: paceRampValues(splits: splits, phases: phases))
+    }
+
+    /// THE ROUTE LINE'S COLOUR RULE, SAID IN WORDS.
+    ///
+    /// The map had none. It drew a two-colour gradient and printed only the
+    /// run's climb beside it, which is the same unexplained-visual defect the
+    /// split chart already carried its own sentence against and the runner has
+    /// flagged twice elsewhere: without a sentence the fill is a code the
+    /// screen never breaks.
+    ///
+    /// NO VERDICT IN IT. Faster is not better — an easy run is supposed to be
+    /// easy, and the amber end of a Sunday long run is the run going exactly
+    /// as asked. The sentence says what the colour is measuring and stops.
+    ///
+    /// NIL WHEN THE RUN CARRIED NO PACE AT ALL. Caught on the runner's real
+    /// 2026-08-26 easy run, whose splits reached the phone without paces: the
+    /// map fell back to its flat "asserts nothing about pace here" fill, and
+    /// the first version of this caption read that fill as "held a single
+    /// pace" — a claim about a run nothing had measured the pace of. Silence
+    /// is the honest caption for a line that is saying nothing.
+    static func routeCaption(splits: [RunSplit], phases: [PhaseSample]) -> String? {
+        let values = paceRampValues(splits: splits, phases: phases)
+        if values.isEmpty { return nil }
+        return paceIsFlat(over: values)
+            ? "One colour the whole way: this run held a single pace."
+            : "The line runs amber where you were slowest and orange where you were fastest. It reads speed, not whether the pace was right."
+    }
+
+    /// The same rule for the mile table's pace column.
+    ///
+    /// SAME WORDS, NO CROSS-REFERENCE. The two sentences are deliberately
+    /// built out of the same vocabulary so they read as one system, and
+    /// deliberately do not point at each other: the map sits BELOW the table
+    /// on run detail and ABOVE it on the after-run sheet, and a run with no
+    /// GPS draws no line for a caption to name. A sentence that says "like the
+    /// route above" is wrong on two of those three screens.
+    static func paceColumnCaption(splits: [RunSplit], phases: [PhaseSample]) -> String? {
+        let values = paceRampValues(splits: splits, phases: phases)
+        if values.isEmpty { return nil }
+        return paceIsFlat(over: values)
+            ? "One colour the whole way: these miles ran within seconds of each other."
+            : "Amber is this run's slowest mile, orange its fastest. Colour reads speed, not whether the pace was right."
     }
 
     static func lerp(_ a: UIColor, _ b: UIColor, _ f: CGFloat) -> UIColor {
@@ -498,13 +590,20 @@ struct RouteMapView: UIViewRepresentable {
     /// not the plan was followed, because the plan is no longer an input.
     /// `paceRangeFloorSec` guards the one case where that could lie.
     ///
-    /// WHERE BAND ADHERENCE WENT: nowhere. It moved down the screen. The split
-    /// chart under this map (`MileBreakdownV5`, off `RunDetailV5.splitBand`)
-    /// still marks each mile in or out of the window, and it is the better
-    /// place for it — a bar chart has a baseline and a scale, a route line has
-    /// one channel and a shape it must not lose. The two graphics now answer
-    /// two different questions (map: where and how hard · chart: was that what
-    /// was asked) instead of both answering the second one.
+    /// WHERE BAND ADHERENCE WENT · CORRECTED SAME DAY. The first version of
+    /// this note said it moved down the screen to `MileBreakdownV5`, which
+    /// still coloured its pace column by the window. That left ORANGE meaning
+    /// two opposite things eight hundred points apart on one screen: fastest,
+    /// on the line; inside the prescription, in the table. On the runner's own
+    /// 13.49 mi long run — prescribed 8:37-9:12, run 7:16-8:38 — mile 4 at
+    /// 6:52 was the fastest mile of the day and drew bright orange on the map
+    /// and plain ink in the table, because fast was out of band.
+    ///
+    /// His ruling: make the table match the map. The table now colours from
+    /// `runPaceColorFn`, the same function this map draws with, and band
+    /// adherence is stated in WORDS by the run recap instead of being a
+    /// colour anywhere. A colour cannot say whether running fast was good or
+    /// bad on a given day. A sentence can.
     private func gradientSegments() -> [(coords: [CLLocationCoordinate2D], color: UIColor)] {
         guard coords.count >= 2 else { return [] }
 
@@ -532,7 +631,9 @@ struct RouteMapView: UIViewRepresentable {
             // orange end and the recoveries at the amber end of the same run.
             // `phaseValue` only ever eases BETWEEN two neighbouring phase
             // values, so every value it can return is inside this min…max.
-            colorFn = RouteMapView.paceColorFn(over: validPhases.map { Double($0.sec) })
+            // Through `runPaceColorFn` rather than `paceColorFn` directly, so
+            // this branch and the mile table cannot pick different axes.
+            colorFn = RouteMapView.runPaceColorFn(splits: splits, phases: phases)
         } else if RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits,
                                            phases: phases) {
             // Steady · per-mile HR → zone position, SMOOTH, on the zone palette.
@@ -551,7 +652,10 @@ struct RouteMapView: UIViewRepresentable {
             // between mile centres and clamps at both ends, so every value it
             // can return is inside this min…max — the ramp's two endpoints are
             // reached exactly at the run's own fastest and slowest mile.
-            colorFn = RouteMapView.paceColorFn(over: paces)
+            // `runPaceColorFn` recomputes the same `paces`; that is the point,
+            // it is the one place the normalisation is decided and the mile
+            // table calls it too.
+            colorFn = RouteMapView.runPaceColorFn(splits: splits, phases: phases)
         }
 
         guard let value = valueFn, let color = colorFn else { return [] }

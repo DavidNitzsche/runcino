@@ -113,6 +113,17 @@ targets() {
        ! -name '._*' ! -name '*.test.ts' ! -name '*.test.tsx' 2>/dev/null
   [ -f "$ROOT/web-v2/lib/notifications/templates.ts" ] \
     && printf '%s\n' "$ROOT/web-v2/lib/notifications/templates.ts"
+  # 2026-08-30 · `native-v2/Faff/Faff/Components` is not in scope and should
+  # not be: it is mostly v4 chrome. This ONE file is the exception. When the
+  # route map's colour rule stopped being band adherence and became a pace
+  # ramp, the sentence explaining it had to live beside the ramp itself —
+  # `routeCaption` and `paceColumnCaption` are read by the run-detail route
+  # card and the after-run mile table, so putting them in either view would
+  # let the two drift into describing different rules. Named individually
+  # rather than widening the directory, same as the `projection-trend.ts`
+  # entry below: the next file to author copy has to make the same case.
+  [ -f "$ROOT/native-v2/Faff/Faff/Components/RouteMapView.swift" ] \
+    && printf '%s\n' "$ROOT/native-v2/Faff/Faff/Components/RouteMapView.swift"
   # 2026-08-30 · `lib/training` is not in scope and should not be: it is the
   # engine, and its strings are ids, kinds and doctrine labels. This ONE file
   # is the exception — `composeProjectionTrend` authors the Races trend's

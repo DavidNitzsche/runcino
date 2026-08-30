@@ -752,6 +752,11 @@ struct RunDetailV5: View {
     /// every recovery jog "outside the target". So a structured session gets
     /// no band and its bars all draw in signal, which says what is true: these
     /// are the miles, and this chart is not the place the work gets judged.
+    ///
+    /// 2026-08-30 · ITS LAST ON-SCREEN CONSUMER IS GONE. `MileBreakdownV5` no
+    /// longer colours by the window, so this feeds only `splitBars`, the model
+    /// behind the retired bar chart. Kept because that model is what the
+    /// wire-level test reads; it renders nothing today.
     private var splitBand: (lo: Int, hi: Int)? {
         guard let spec = detail.planned_spec,
               let lo = spec.pace_target_s_per_mi_lo,
@@ -768,8 +773,14 @@ struct RunDetailV5: View {
     /// different conclusions about how long the last mile was.
     var milePieces: [MilePiece] {
         MileBreakdownV5.pieces(from: detail.splits,
-                               totalMi: detail.distance_mi > 0 ? detail.distance_mi : nil,
-                               band: splitBand)
+                               totalMi: detail.distance_mi > 0 ? detail.distance_mi : nil)
+    }
+
+    /// The samples the route map normalises its pace ramp across, built the
+    /// same way `routeBody` builds the map's own. One expression, read twice,
+    /// so the table and the line cannot be handed different runs.
+    private var routePhaseSamples: [PhaseSample] {
+        RouteMapView.phaseSamples(from: detail.phase_breakdown)
     }
 
     /// MILES OR PIECES, decided by what the session was and what it recorded.
@@ -785,9 +796,18 @@ struct RunDetailV5: View {
         case .miles:
             MileBreakdownV5(title: shape.breakdownTitle(.miles),
                             pieces: milePieces,
-                            bandLine: splitBand != nil
-                                ? "Orange where the mile sat inside what the session asked for."
+                            // The colour rule this table now runs on is the
+                            // map's, so the sentence explaining it is the
+                            // map's too. Only printed when the pace column is
+                            // drawn at all — a recovery run withholds pace,
+                            // and a caption about a column that is not there
+                            // describes nothing.
+                            paceLine: shape.showsPerMilePace
+                                ? RouteMapView.paceColumnCaption(splits: detail.splits,
+                                                                 phases: routePhaseSamples)
                                 : nil,
+                            paceColor: MileBreakdownV5.paceRamp(splits: detail.splits,
+                                                                phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,
                             allowsPace: shape.showsPerMilePace)
         case .none:
@@ -829,25 +849,13 @@ struct RunDetailV5: View {
         return parts[0] * 60 + parts[1]
     }
 
-    private var splitsSection: some View {
-        VStack(alignment: .leading, spacing: V5.S.s10) {
-            V5SectionLabel(text: "Splits").padding(.horizontal, V5.S.s4)
-            SplitBars(bars: splitBars)
-                .padding(.top, V5.S.tilePad)
-                .padding(.horizontal, V5.S.s12)
-                .padding(.bottom, V5.S.s8)
-                .background(V5.materialTile,
-                            in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
-            if splitBand != nil {
-                // The chart's one colour rule, said once in words. Without it
-                // the grey bars are a code the screen never breaks.
-                Text("Filled where the mile sat inside what the session asked for.")
-                    .font(.faffText(TypeScaleV5.label13))
-                    .foregroundStyle(V5.textQuiet)
-                    .padding(.horizontal, V5.S.s4)
-            }
-        }
-    }
+    // `splitsSection` IS GONE (2026-08-30). It was never composed into this
+    // view — `MileBreakdownV5` replaced the bar chart on screen — and what it
+    // still held was the sentence "Filled where the mile sat inside what the
+    // session asked for", i.e. exactly the band-as-colour rule this screen has
+    // just stopped using. An unmounted view carrying a retired rule is an
+    // invitation to remount it. `splitBars` survives it: it is the model the
+    // wire-level test reads, and `SplitBar` is where `RunSplit.hr` travels.
 
     // MARK: - Zone bar
 
@@ -923,14 +931,19 @@ struct RunDetailV5: View {
     //     that ignored the plan, which the coupled version did not: his real
     //     13.49 mi long run had twelve of thirteen miles outside the window
     //     and rendered as one flat grey.
-    //   · the CHART below (`MileBreakdownV5`, off `splitBand`) keeps band
-    //     adherence, unchanged, and is the better home for it: a bar has a
-    //     baseline and a scale, a route line has one channel and a shape it
-    //     must not lose. It answers WAS THAT WHAT THE SESSION ASKED FOR.
+    //   · the TABLE above (`MileBreakdownV5`) now draws its pace column off
+    //     `RouteMapView.runPaceColorFn`, the same function and the same
+    //     normalisation. A mile is one colour on this screen.
     //
-    // Two graphics, two questions, no competition — which is what the old
-    // coupling was reaching for and got by making both of them answer the
-    // second one.
+    // THE CORRECTION, SAME DAY. The paragraph above used to end here saying
+    // the table "keeps band adherence, unchanged", two graphics two questions.
+    // Read on the device that is one orange with two opposite meanings a
+    // thumb's width apart: mile 4 of his 13.49 mi long run, 6:52 and the
+    // fastest of the day, drew bright orange on the map and plain ink in the
+    // table, because fast was outside the 8:37-9:12 window. His ruling was
+    // "make the mile table match the map", and band adherence moved OUT of
+    // colour entirely into the recap's words, where a sentence can say what a
+    // hue cannot: whether running that fast was the right call today.
 
     private var routeSection: some View {
         Tile {
@@ -992,6 +1005,20 @@ struct RunDetailV5: View {
                 // carry their own data. One named element, then move on.
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Route map")
+            // THE LINE'S COLOUR RULE, SAID IN WORDS. The card printed the
+            // run's climb and nothing about the gradient, which is the
+            // unexplained-visual defect the owner has now flagged three
+            // times: without a sentence the fill is a code the screen never
+            // breaks. Authored next to the table's, in `RouteMapView`, so the
+            // two cannot come to describe different rules. Nil where the run
+            // recorded no pace and the line therefore says nothing about one.
+            if let caption = RouteMapView.routeCaption(splits: detail.splits,
+                                                       phases: routePhaseSamples) {
+                Text(caption)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         } else {
             // RULE THREE, applied to a chart rather than a session: a run
             // with no GPS has no map. Say so instead of drawing an empty
