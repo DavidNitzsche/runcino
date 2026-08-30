@@ -121,7 +121,15 @@ say "guard 2 · gate present"
 if [ ! -f "$GATE" ]; then
   bad "gate missing: $GATE · this check cannot be satisfied by deleting it"
 else
-  for sym in "GUARD 0" "GUARD 4" "GUARD 5" "scanPlanWriterFiles" "writesAPlan"; do
+  # GATEAUDIT-4 (2026-08-30) · these three used to be checked with a bare
+  # `grep -q "GUARD 0"`, which any COMMENT containing the words satisfies —
+  # including the comment that would be left behind when the suite was deleted.
+  # A tamper-check a tamperer passes by writing prose is not a tamper-check.
+  # They are `describe()` titles, so the grep now demands the describe.
+  for sym in "GUARD 0" "GUARD 4" "GUARD 5"; do
+    grep -qE "describe\(['\"]${sym} " "$GATE" || bad "gate lost the '$sym' describe block"
+  done
+  for sym in "scanPlanWriterFiles" "writesAPlan"; do
     grep -q "$sym" "$GATE" || bad "gate lost '$sym'"
   done
   [ -f "$GATE" ] && say "  ok · gate present with its guards"

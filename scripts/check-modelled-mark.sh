@@ -89,7 +89,17 @@ sources() {
   find "$@" -name '*.swift' ! -name '._*' 2>/dev/null
 }
 
-[ -d "$V5_VIEWS" ] || mkdir -p "$V5_VIEWS"
+# GATEAUDIT-3 (2026-08-30) · this line used to read
+#   [ -d "$V5_VIEWS" ] || mkdir -p "$V5_VIEWS"
+# — a gate CREATING the tree it audits. With the directory conjured empty,
+# guards 1-3 scanned zero files and reported clean, which is the single worst
+# thing a gate can do: pass loudly while looking at nothing. Guards 4-7 already
+# had a floor (`NCOMPOSERS == 0` → bad) and guards 8-9 had `NWEB`; guards 1-3
+# were the ones without one. Same floor, same posture, no mkdir.
+NV5=$(sources "$V5_VIEWS" "$V5_KIT" | wc -l | tr -d ' ')
+if [ "$NV5" = "0" ]; then
+  bad "no v5 sources found under ViewsV5/DesignV5 — guards 1-3 would pass vacuously"
+fi
 
 # ── 1 · a modelled field may not be printed raw ──────────────────────────────
 #

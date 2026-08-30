@@ -423,20 +423,13 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
     // Listed here so the count cannot grow quietly; shrinking it is the goal.
     const KNOWN_UNANCHORED = new Set([
       'Research/00a-distance-running-training.md §missed-workout-policy',
-      'Research/00b-recovery-protocols.md §recovery-load-scaling',
-      'Research/01-pace-zones-vdot.md §T-pace-derivation',
-      'Research/04-workout-vocabulary.md §hard-easy-rule',
       // (Rule 7, 2026-08-19) · `Research/04 §quality-density` is DELETED from
       // this list. Its last user was the simulator's quality-density risk
       // flag, which is now re-pointed at Research/00a §"Workout dose by race
       // distance" — a heading that exists, and the same one
       // QUALITY.sessions-per-week reads to establish the three-session ceiling
       // the flag fires at. The list shrinks by one; it may not grow.
-      'Research/04-workout-vocabulary.md §long-run-progression',
-      'Research/15-wearable-data.md §HR-Recovery',
-      'Research/15-wearable-data.md §recovery-after-quality',
       'Research/22-plan-templates.md §quality-mix-by-distance',
-      'Research/22-plan-templates.md §minimum-base-by-level',
       'Research/22-plan-templates.md §projection-feedback-loop',
       // Found by this lint on its first run, 2026-08-17. Each names a section that has never
       // existed under that name in the cited doc. The content is generally there; the anchor
@@ -449,6 +442,22 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'Research/04-workout-vocabulary.md §intervals-and-threshold',
       'Research/05-injury-return-protocols.md §illness-return',
       'Research/08-pacing-and-race-week.md §day-before',
+      // GATEAUDIT-2 (2026-08-30) · these five are NOT new defects. They are the
+      // same shape as the eighteen above and have been in the tree for months —
+      // they became visible only when `SHORT_CITE` was widened to accept a KEBAB
+      // section, which it had never done. `Research/22 §quality-mix-by-distance`
+      // had an entry on this list that could never fire for exactly that reason,
+      // so the gap was costing a wasted allowlist line AND hiding five citations.
+      //
+      // The list grows here because the SCANNER improved, not because the code
+      // got worse — and it can no longer rot, because the staleness test below
+      // now deletes any entry that stops suppressing something. Re-pointing them
+      // is engine-comment work (one of them is in generate.ts, which this pass
+      // does not own); the gate's job was to make them countable.
+      'Research/08-pacing-and-race-week.md §sleep-banking',
+      'Research/08-pacing-and-race-week.md §race-execution',
+      'Research/00a-distance-running-training.md §plan-adaptation',
+      'Research/00a-distance-running-training.md §fast-finish',
     ]);
     const headingsOf = new Map<string, string[]>();
     const docs = fs.readdirSync(path.join(repoRoot(), 'Research')).filter((f) => f.endsWith('.md'));
@@ -485,11 +494,41 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
     // failure Rule 7 forbids line-number citations to prevent.
     //
     // Short-form citations are now resolved through the same heading check.
-    const SHORT_CITE = /Research\/([0-9]{2}[a-z]?|[0-9]{2})\s+§(\d+(?:\.\d+)*)/g;
+    //
+    // ── AND THE KEBAB SHORT FORM WAS NOT BEING CHECKED EITHER (2026-08-30) ──
+    //
+    // `SHORT_CITE` accepted only a NUMERIC section, so `Research/22
+    // §quality-mix-by-distance` (lib/plan/seed-from-onboarding.ts) matched
+    // neither this nor `CITE` — which wants the `.md`. It had an entry sitting
+    // in KNOWN_UNANCHORED excusing it, and that entry could never fire, so the
+    // list was one longer than it needed to be AND the citation was invisible.
+    // Two symptoms, one gap. The section alternation now mirrors `CITE`'s.
+    const SHORT_CITE = /Research\/([0-9]{2}[a-z]?|[0-9]{2})\s+§(\d+(?:\.\d+)*|[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+)/g;
     // A gate that extracts nothing and reports "all clean" is worse than no
     // gate. This one is the reason the four above went unseen for months, so
     // it says out loud how many citations it actually looked at.
     let shortSeen = 0;
+    // GATEAUDIT-2 (2026-08-30) · KNOWN_UNANCHORED was the one allowlist in this
+    // file with no staleness test — `SHARED_ON_PURPOSE` has one, `UNBOUND_TABLES`
+    // has one, and this list, whose own comment says "shrinking it is the goal",
+    // had none. Eight of its eighteen entries were excusing citations that no
+    // longer exist anywhere in the tree. Now every entry must earn its place on
+    // every run: an entry that suppresses nothing is deleted by the gate.
+    const usedExemptions = new Set<string>();
+    const nowResolves = new Set<string>();
+    /** Does `section` name a real heading in `doc`? Numeric and kebab forms,
+     *  shared by both citation shapes so the two can never disagree. */
+    const sectionResolves = (doc: string, section: string): boolean => {
+      const heads = headingsOf.get(doc) ?? [];
+      if (/^\d/.test(section)) {
+        // `## 9.1 Taper duration…` and `## Section 1 — Heat Adjustment…` are both
+        // "section 1" · Research/06 numbers its sections the long way.
+        const re = new RegExp(`^(section )?${section.replace(/\./g, '\\.')}([.\\s)—-]|$)`);
+        return heads.some((h) => re.test(h));
+      }
+      const words = section.toLowerCase().split(/[-_]+/).filter((w) => w.length > 2);
+      return words.length > 0 && heads.some((h) => words.every((w) => h.includes(w)));
+    };
     const shortToDoc = new Map<string, string>();
     for (const d of docs) {
       const stem = d.match(/^([0-9]{2}[a-z]?)-/)?.[1];
@@ -506,29 +545,22 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
             continue;
           }
           const key = `Research/${doc} §${m[2]}`;
-          if (KNOWN_UNANCHORED.has(key)) continue;
-          const heads = headingsOf.get(doc) ?? [];
-          const ok = heads.some((h) =>
-            new RegExp(`^(section )?${m[2].replace(/\./g, '\\.')}([.\\s)—-]|$)`).test(h),
-          );
-          if (!ok) dead.push(`${rel(file)}:${i + 1}  Research/${m[1]} §${m[2]}  (no such section — a line number?)`);
+          if (KNOWN_UNANCHORED.has(key)) {
+            (sectionResolves(doc, m[2]) ? nowResolves : usedExemptions).add(key);
+            continue;
+          }
+          if (!sectionResolves(doc, m[2])) {
+            dead.push(`${rel(file)}:${i + 1}  Research/${m[1]} §${m[2]}  (no such section — a line number?)`);
+          }
         }
         for (const m of line.matchAll(CITE)) {
           const [doc, section] = [m[1], m[2]];
           const key = `Research/${doc} §${section}`;
-          if (KNOWN_UNANCHORED.has(key)) continue;
-          const heads = headingsOf.get(doc) ?? [];
-          const ok = /^\d/.test(section)
-            ? heads.some((h) =>
-                // `## 9.1 Taper duration…` and `## Section 1 — Heat Adjustment…` are both
-                // "section 1" · Research/06 numbers its sections the long way.
-                new RegExp(`^(section )?${section.replace(/\./g, '\\.')}([.\\s)—-]|$)`).test(h),
-              )
-            : (() => {
-                const words = section.toLowerCase().split(/[-_]+/).filter((w) => w.length > 2);
-                return words.length > 0 && heads.some((h) => words.every((w) => h.includes(w)));
-              })();
-          if (!ok) dead.push(`${rel(file)}:${i + 1}  ${key}`);
+          if (KNOWN_UNANCHORED.has(key)) {
+            (sectionResolves(doc, section) ? nowResolves : usedExemptions).add(key);
+            continue;
+          }
+          if (!sectionResolves(doc, section)) dead.push(`${rel(file)}:${i + 1}  ${key}`);
         }
       });
     }
@@ -543,6 +575,26 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
         'the real heading, or move the claim into the registry where the anchor is resolved\n' +
         'against the file itself.\n  ' +
         dead.join('\n  '),
+    ).toEqual([]);
+
+    // GATEAUDIT-2 · the staleness test this list never had. Same posture as the
+    // SHARED_ON_PURPOSE and UNBOUND_TABLES checks below/above: an allowlist that
+    // cannot be shown to be doing work is an allowlist nobody re-reads, which is
+    // the failure mode this whole file exists to name.
+    const unused = [...KNOWN_UNANCHORED].filter((k) => !usedExemptions.has(k) && !nowResolves.has(k)).sort();
+    expect(
+      unused,
+      `${unused.length} KNOWN_UNANCHORED entr(ies) suppress nothing — the citation they excuse is\n` +
+        'no longer anywhere in the scanned tree. Delete them. The list may not grow, and it may\n' +
+        'not keep entries that have stopped earning their line.\n  ' +
+        unused.join('\n  '),
+    ).toEqual([]);
+    const fixed = [...nowResolves].sort();
+    expect(
+      fixed,
+      `${fixed.length} KNOWN_UNANCHORED entr(ies) now RESOLVE — the doc grew the heading, or the\n` +
+        'citation was re-pointed. Delete them so the next real break is visible.\n  ' +
+        fixed.join('\n  '),
     ).toEqual([]);
   });
 

@@ -3521,6 +3521,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const t = cite.table();
       const [tPace] = parsePaceBandSec(t.cell('Daniels T', 'Pace (min/mi)'));
       const [iPace] = parsePaceBandSec(t.cell('Daniels I', 'Pace (min/mi)'));
+      const [rPace] = parsePaceBandSec(t.cell('Daniels R', 'Pace (min/mi)'));
       const off = Number(
         matchLiteral(
           sourceOf('web-v2/lib/plan/spec-builder.ts'),
@@ -3528,15 +3529,51 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           'buildWorkoutSpec interval',
         )[1],
       );
+      const band: [number, number] = [tPace - iPace - 10, tPace - iPace + 10];
+      // GATEAUDIT-1 (2026-08-30) · the exemption used to be `if (exempt(...)) return;`
+      // on the line ABOVE the only assertion in this claim, so granting it did not
+      // excuse the known deviation — it switched the claim off. Changing the engine
+      // from T-18 to T-5 would have passed. Every other exemption in this file is
+      // guarded by the specific violating condition; this one now is too.
+      if (off >= band[0] && off <= band[1]) return;   // engine agrees with doctrine
+
+      // Two properties hold whatever the deviation, and neither is excusable.
+      // Both are read out of the doc's own table, not written here.
+      if (off <= 0) {
+        throw new Error(
+          `interval offset is ${off}s · I must be FASTER than T, and the exemption on this ` +
+          'claim covers a conservative deviation, not an inverted one',
+        );
+      }
+      if (off >= tPace - rPace) {
+        throw new Error(
+          `interval offset is ${off}s · that is at or past Daniels R (${tPace - rPace}s off T). ` +
+          'I must sit between T and R; the exemption does not cover rep pace.',
+        );
+      }
+      // And the exemption was granted for ONE number. If the engine's offset moves,
+      // the deviation on record is not the deviation being run, so the exemption
+      // stops applying and this claim fails until a human re-reads it. `18` here is
+      // not a doctrine value and is not asserted as one — it is the provenance of
+      // the exemption itself, which is what Rule 7's staleness discipline is for.
+      const EXEMPTED_OFFSET_SEC = 18;
+      if (off !== EXEMPTED_OFFSET_SEC || off > band[1]) {
+        within(off, band, 'interval-pace offset off T');
+        return;
+      }
       if (exempt('interval-runs-slow')) return;
-      within(off, [tPace - iPace - 10, tPace - iPace + 10], 'interval-pace offset off T');
+      within(off, band, 'interval-pace offset off T');
     },
     exempt: {
       'interval-runs-slow':
-        'KNOWN VIOLATION, self-documented in the engine. spec-builder.ts:241-244 states plainly ' +
-        'that I = T-18 "is a deliberate conservative deviation" from Daniels\' T-33, landing ' +
-        'nearer 10-12K pace than 3-5K pace. Deliberate, but it is a departure from cited ' +
-        'doctrine and should be visible as one rather than reading as Daniels.',
+        'KNOWN VIOLATION, self-documented in the engine. `spec-builder.ts` (search ' +
+        '`const interval = tPaceSec -`) states plainly that I = T-18 "is a deliberate ' +
+        'conservative deviation" from Daniels\' T-33, landing nearer 10-12K pace than 3-5K ' +
+        'pace. Deliberate, but it is a departure from cited doctrine and should be visible ' +
+        'as one rather than reading as Daniels. GATEAUDIT-1 (2026-08-30) scoped this entry ' +
+        'to the deviation actually on record: it excuses T-18 in the conservative direction ' +
+        'only, and the claim still fails if the offset moves, inverts, or reaches rep pace. ' +
+        'The previous form returned before the assertion and excused everything.',
     },
   },
   {

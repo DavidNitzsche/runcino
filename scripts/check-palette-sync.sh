@@ -65,8 +65,12 @@ WEB_CONST="$ROOT/web-v2/components/faff-app/constants.ts"
 IOS_THEME="$ROOT/native-v2/Faff/Faff/Theme.swift"
 IOS_THEME_V5="$ROOT/native-v2/Faff/Faff/ThemeV5.swift"
 IOS_FONTS_V5="$ROOT/native-v2/Faff/Faff/FontsV5.swift"
-WATCH_THEME="$ROOT/legacy/native/Faff/FaffWatch Watch App/WatchTheme.swift"
-WATCH_FACEKIT="$ROOT/legacy/native/Faff/FaffWatch Watch App/FaceKit.swift"
+# GATEAUDIT-5 (2026-08-30) · `WATCH_THEME` and `WATCH_FACEKIT` were defined
+# here and deleted: both pointed at files that no longer exist
+# (WatchTheme.swift, FaceKit.swift), and neither was read anywhere below —
+# one definition, zero uses, aimed at nothing. A gate variable naming a
+# missing file is the cheapest possible form of the rot this script exists to
+# catch, and it was sitting in the script's own header.
 WATCH_THEME_V5="$ROOT/legacy/native/Faff/FaffWatch Watch App/WatchThemeV5.swift"
 
 fail=0
