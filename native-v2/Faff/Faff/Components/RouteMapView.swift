@@ -40,6 +40,54 @@ import MapLibre
 import CoreLocation
 import UIKit
 
+/// 2026-08-30 · REGRESSION FIX — route line missing on real GPS runs, live on
+/// TestFlight 244, confirmed on David's own phone (endpoints + basemap fine,
+/// the polyline alone absent).
+///
+/// `makeUIView` creates the `MLNMapView` at `frame: .zero` — its real size
+/// only exists once SwiftUI finishes laying the card out. Style loading is
+/// asynchronous and races that layout pass. When `didFinishLoadingStyle:`
+/// fires FIRST (confirmed by instrumented on-device-equivalent logging: a
+/// real launch caught `didFinishLoading` firing with `map.bounds ==
+/// (0, 0, 0, 0)`), `drawRoute`'s `setVisibleCoordinateBounds` call fits the
+/// camera against a ZERO-SIZED viewport — MapLibre computes a degenerate
+/// transform, landing the camera roughly 70km from the run's actual
+/// location (measured directly: fit for a Mission-district SF sample route,
+/// `(lat 37.7749, lng -122.4194)`, produced a centre of `(37.105,
+/// -122.601)`). One second later the SAME logging showed `map.bounds`
+/// correctly resolved to `(0, 0, 334, 200)` — but the camera was never
+/// recomputed, because `updateUIView` is not guaranteed to fire again
+/// merely because AutoLayout resolved the represented UIView's frame — it
+/// only reliably fires on SwiftUI's OWN state diffs, and a static
+/// `RunDetail` screen may have none after the first render. The basemap
+/// tiles for that wrong, distant location still load fine (a real CARTO
+/// style, just pointed at the wrong 200×200 pt patch of the planet), and the
+/// whole route collapses into a sub-pixel cluster at that off-target zoom —
+/// which is why start/finish (which always draw regardless of the line's
+/// length) still show as two dots while the connecting line reads as
+/// genuinely absent, matching the reported symptom exactly.
+///
+/// `FaffRouteMapView` closes the gap the SDK doesn't: it is the one thing
+/// in this file that IS guaranteed to observe the view's real bounds
+/// resolving, because `layoutSubviews` is UIKit's own hook for exactly this,
+/// independent of whatever triggered the layout pass. Combined with
+/// `drawRoute` skipping the camera fit while bounds are still zero (below),
+/// the route now draws either immediately (bounds already valid — the
+/// common case, unaffected) or the instant AutoLayout gives the view its
+/// real size (the race case this fixes), and never draws against a bogus
+/// viewport in between.
+private final class FaffRouteMapView: MLNMapView {
+    var onBoundsSettled: (() -> Void)?
+    private var lastSettledBounds: CGRect = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.width > 0, bounds.height > 0, bounds != lastSettledBounds else { return }
+        lastSettledBounds = bounds
+        onBoundsSettled?()
+    }
+}
+
 struct RouteMapView: UIViewRepresentable {
     let coords: [CLLocationCoordinate2D]
     let splits: [RunSplit]
@@ -217,7 +265,7 @@ struct RouteMapView: UIViewRepresentable {
     // MARK: - UIViewRepresentable
 
     func makeUIView(context: Context) -> MLNMapView {
-        let map = MLNMapView(frame: .zero, styleURL: CartoConfig.styleURL(labels: showLabels))
+        let map = FaffRouteMapView(frame: .zero, styleURL: CartoConfig.styleURL(labels: showLabels))
         map.delegate = context.coordinator
         map.isZoomEnabled = false
         map.isScrollEnabled = false
@@ -234,6 +282,14 @@ struct RouteMapView: UIViewRepresentable {
         map.attributionButton.isHidden = true
         map.backgroundColor = UIColor(Color(hex: 0x0A0E16))
         context.coordinator.owner = self
+        // See FaffRouteMapView's header comment — this is what closes the
+        // zero-bounds camera-fit race. `[weak map]` is safe/inert once the
+        // view is torn down; the closure only ever re-runs the same
+        // idempotent draw path.
+        map.onBoundsSettled = { [weak map] in
+            guard let map else { return }
+            context.coordinator.applyRoute(to: map)
+        }
 
         if map.style != nil {
             // Style already loaded synchronously from cache · draw immediately,
@@ -271,6 +327,15 @@ struct RouteMapView: UIViewRepresentable {
 
         func applyRoute(to map: MLNMapView) {
             guard let style = map.style, let owner else { return }
+            // THE FIX · see FaffRouteMapView's header comment for the
+            // measured root cause. `didFinishLoadingStyle:` can fire before
+            // SwiftUI has given this view its real frame — fitting the
+            // camera against a zero-sized viewport lands it at a wrong,
+            // unrelated coordinate that nothing later corrects. Skip the
+            // whole draw (layers included, so nothing shows at the wrong
+            // camera position either) until the view actually has a size;
+            // `onBoundsSettled` above re-invokes this the instant it does.
+            guard map.bounds.width > 0, map.bounds.height > 0 else { return }
             RouteMapView.removeFaffLayers(from: style)
             owner.drawRoute(on: map, style: style)
         }
