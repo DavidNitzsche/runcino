@@ -1154,12 +1154,12 @@ private struct SplitRow: View {
 // MARK: - Route polyline card
 //
 // RoutePolylineCard · the run-detail route card. Wraps RouteMapView
-// (MKMapView + CartoDB dark tiles + pace-graded polyline + endpoint
-// markers, mirror of the web RouteMap.tsx) in a titled dark card with the
-// pace legend. RouteMapView owns the coloring — its `bucketColors` are the
-// single source of truth for the pace ramp + endpoint dots — so this card
-// is layout + legend only (the old self-drawn PACE_BUCKETS / START_RING /
-// FINISH_FILL / BASELINE_UNDER constants were retired with that move).
+// (CartoDB dark tiles + pace-graded polyline + endpoint markers) in a titled
+// dark card with the pace legend. RouteMapView owns the coloring — its
+// `paceRampColor` is the single source of truth for the pace ramp, and the
+// legend below samples that function rather than keeping its own copy of the
+// colours (the old self-drawn PACE_BUCKETS / START_RING / FINISH_FILL /
+// BASELINE_UNDER constants were retired with that move).
 
 struct RoutePolylineCard: View {
     let polyline: String
@@ -1237,14 +1237,20 @@ struct RoutePolylineCard: View {
         }
     }
 
-    /// FASTER ▢▢▢▢▢ SLOWER pace key · mirrors the web legend. RouteMapView
-    /// colors the line by the same five quintile buckets.
+    /// FASTER ▢▢▢▢▢ SLOWER pace key.
+    ///
+    /// 2026-08-30 · SAMPLED OFF THE MAP'S OWN RAMP, not a parallel list. This
+    /// read `RouteMapView.bucketColors` — the retired five-hue quintile
+    /// palette — which stopped being what the line draws when the route moved
+    /// to the continuous `V5.attention`→`V5.signal` pace ramp, and a legend
+    /// that names colours the map does not paint is worse than no legend.
+    /// Five swatches walked fast→slow, i.e. the ramp's t = 1 end first.
     private var paceLegend: some View {
         HStack(spacing: 5) {
             Text("FASTER")
-            ForEach(Array(RouteMapView.bucketColors.enumerated()), id: \.offset) { _, c in
+            ForEach(0..<5, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Color(uiColor: c))
+                    .fill(Color(uiColor: RouteMapView.paceRampColor(1 - Double(i) / 4)))
                     .frame(width: 8, height: 8)
             }
             Text("SLOWER")

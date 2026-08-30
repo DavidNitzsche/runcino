@@ -26,11 +26,12 @@
 //  equivalent of the old `dark_nolabels` raster variant) for race courses
 //  that span a whole city.
 //
-//  Stack (matches RouteMap.tsx):
+//  Stack:
 //   · CARTO's "Dark Matter" MapLibre GL style, rendered by MLNMapView.
-//   · Per-mile pace bucketing · five quintile buckets across the run's own
-//     splits, colored warm→cool (fastest → slowest). Baseline coral underlay
-//     drawn first so the line shows even if the bucket walk degenerates.
+//   · A CONTINUOUS PACE GRADIENT · attention amber (the run's own slowest)
+//     through to signal orange (its own fastest), normalised across the run's
+//     OWN range rather than against any prescription. Baseline signal underlay
+//     drawn first so the line shows even if the gradient walk degenerates.
 //   · Endpoints · start = green ring, finish = coral dot.
 //   · Non-interactive · reads as a still image embedded in the card.
 //
@@ -116,51 +117,19 @@ struct RouteMapView: UIViewRepresentable {
     /// the label-free GL style for a clean route (David 2026-06-17).
     var showLabels: Bool = true
 
-    /// The pace window the session asked for, seconds per mile. When present,
-    /// the route stops grading and starts answering the same question the
-    /// split chart answers.
-    ///
-    /// ROUND THREE, ITEM 4 · THE ROUTE FOLLOWS THE SPLITS. The old colouring
-    /// was a five-hue quintile ramp with green at the fast end, which grades a
-    /// number good — out everywhere else in this palette, and wrong on its own
-    /// terms: a fast mile inside an easy run is off the prescription, not
-    /// good. The 0821 line asking for a single-hue opacity ramp does not fix
-    /// it either; darker still looks worse, so an opacity ramp is a quieter
-    /// verdict rather than no verdict.
-    ///
-    /// Two flat fills carry no gradient of judgement at all, and the payoff is
-    /// that the grey stretch on the map and the grey bar in the chart are THE
-    /// SAME MILE. The two graphics answer each other instead of competing,
-    /// which is worth more than either being individually cleverer.
-    ///
-    /// Nil — an unplanned run, or a session kind with no single pace window —
-    /// draws the whole line in signal and asserts nothing.
-    var paceBand: (lo: Int, hi: Int)? = nil
-
     /// True when this run colors by HR zone (steady effort + per-mile HR + zone
     /// bands present, and not a structured/phase workout). The single rule, used
     /// by both the route coloring and the card's legend so they never diverge.
     ///
-    /// A PRESCRIPTION OUTRANKS THE AXIS. Round three item 4 asks the route to
-    /// follow the splits, and the payoff it names is that "the grey stretch on
-    /// the map and the grey bar in the chart are THE SAME MILE". The zone axis
-    /// broke exactly that, and it broke it in the only case the ruling was
-    /// written for: `RunDetailV5.splitBand` hands a band to steady runs ONLY —
-    /// easy, long, recovery — which is the same set that turns this on. So an
-    /// easy run with HR zones drew a five-hue ramp beside a two-fill chart,
-    /// and the two graphics competed on the one screen that shows both.
-    ///
-    /// Worse on its own terms: the zone ramp puts GREEN at Z2, and Z2 is where
-    /// an easy run is asked to sit. A hue that lands on the prescription is
-    /// the chart saying "good", which this palette never does.
-    ///
-    /// A zone is still an identity, not a grade, so the axis is kept where
-    /// nothing was prescribed — an unplanned run has no band, and there the
-    /// zone ramp says which zone without answering a question nobody asked.
+    /// 2026-08-30 · THE `paceBand` ARGUMENT IS GONE, along with the band axis
+    /// it gated. The map no longer knows what the session prescribed, so
+    /// "a prescription outranks the axis" has nothing left to decide. See
+    /// `gradientSegments()` for the ruling that removed it. Behaviour is
+    /// unchanged at every call site: the v5 route cards pass no zone bands at
+    /// all, and the one card that does — legacy `RoutePolylineCard` — never
+    /// passed a band either.
     static func usesHrZones(effort: FaffEffort, hrZones: [HRZoneRange],
-                            splits: [RunSplit], phases: [PhaseSample],
-                            paceBand: (lo: Int, hi: Int)? = nil) -> Bool {
-        guard paceBand == nil else { return false }
+                            splits: [RunSplit], phases: [PhaseSample]) -> Bool {
         guard phases.filter({ $0.mi > 0 && $0.sec > 0 }).count < 2 else { return false }
         guard [.easy, .long, .recovery].contains(effort) else { return false }
         guard hrZones.count >= 2 else { return false }
@@ -181,72 +150,71 @@ struct RouteMapView: UIViewRepresentable {
         }
     }
 
-    /// Quintile palette · fastest → slowest. Byte-identical to the web's
-    /// BUCKET_COLORS (rose · coral · amber · green · blue).
-    static let bucketColors: [UIColor] = [
-        UIColor(Color(hex: 0xFC4D64)),
-        UIColor(Color(hex: 0xD03F3F)),
-        UIColor(Color(hex: 0xF3AD38)),
-        UIColor(Color(hex: 0x3EBD41)),   // green · = Success (was #14C08C teal)
-        UIColor(Color(hex: 0x27B4E0)),
-    ]
+    // THE FIVE-BUCKET QUINTILE PALETTE IS GONE (2026-08-30). It was rose ·
+    // coral · amber · green · blue, none of them a v5 token, and it graded a
+    // number good at the fast end — which this palette never does, and which
+    // is wrong on its own terms besides: a fast mile inside an easy run is
+    // not a better mile. It had already stopped colouring the route; its last
+    // consumer was `RoutePolylineCard`'s legend, which now samples
+    // `paceRampColor` so a legend cannot name a colour the map does not
+    // paint. Nothing is left to keep it alive, and leaving it declared is an
+    // invitation to reintroduce it.
 
-    /// THE OUT-OF-BAND FILL, ON A MAP RATHER THAN IN A CHART.
+    /// THE PACE RAMP · `V5.attention` amber (this run's slowest) through to
+    /// `V5.signal` orange (this run's fastest), interpolated continuously.
+    /// `t` is 0 at the slow end and 1 at the fast end.
     ///
-    /// 2026-08-30 · THIS IS THE "ROUTE LINE IS INVISIBLE" BUG. The whole line
-    /// was drawing at `V5.materialControl` (#2A2E32) and measuring **1.41:1**
-    /// against CARTO Dark Matter's ground, which samples (14, 14, 14). On
-    /// David's real 13.49 mi run — prescribed 8:37–9:12/mi, run at 7:16–8:38 —
-    /// twelve of thirteen miles are outside the window, so effectively the
-    /// ENTIRE route painted at that contrast and read as genuinely absent.
-    /// Start/finish still showed, because the circle layer carries its own
-    /// colours, which is exactly the reported symptom.
+    /// INTENSITY, NOT QUALITY. Neither end of this ramp is a verdict, and the
+    /// direction is not a ranking: an easy run is SUPPOSED to be easy, so the
+    /// amber end of a Sunday long run is the run going exactly as asked. The
+    /// ramp says how hard the runner was working at each point of the route
+    /// and stops there. Nothing on this map answers "was that good" — the
+    /// split chart under it answers "was that what the session asked for",
+    /// which is a different question and the only one that is anybody's to
+    /// ask.
     ///
-    /// Measured on the real route, on the simulator, against the real basemap:
-    ///
-    ///     #2A2E32  materialControl (was)   1.41:1   invisible
-    ///     #3A3E42  the 0821 handoff        1.79:1   still unreadable, and it
-    ///                                               lands ON the basemap's own
-    ///                                               road-casing tone, so what
-    ///                                               little shows reads as a road
-    ///     #7A7A7A  textQuiet, opaque       4.50:1   reads as a route
-    ///
-    /// So the escape hatch the previous note left open — "the shared token
-    /// wins UNLESS it proves too dark to read on the map" — has now been
-    /// exercised with a measurement, and the handoff's own alternative fails
-    /// the same test. A big filled bar and a 6pt line do not need the same
-    /// contrast: `materialControl` is fine in the split chart, where it is a
-    /// broad fill on `materialTile`, and fails here.
-    ///
-    /// The replacement is not a new invented hex — it is `V5.textQuiet`
-    /// (white at 48%) resolved to an opaque value over black, the palette's
-    /// existing "present but not shouting" neutral. Opaque and not an alpha
-    /// for the reason `zoneColors` already gives: the route is many short
-    /// overlapping segments, and a translucent stroke doubles up at every
-    /// round-capped joint and beads the line.
-    ///
-    /// It stays quieter than `V5.signal` (6.19:1), so an in-band mile is still
-    /// the loudest thing on the map, and it carries no hue, so it still grades
-    /// nothing.
-    static let outOfBandFill = UIColor(white: 122.0 / 255.0, alpha: 1)   // #7A7A7A
-
-    /// In the window, or out of it. ONE grey in BOTH directions — a mile run
-    /// fast and a mile run slow are both "not what was asked", and giving fast
-    /// its own colour would grade it good.
-    static func bandColor(_ paceSec: Double, _ band: (lo: Int, hi: Int)?) -> UIColor {
-        guard let band else { return UIColor(V5.signal) }
-        let inBand = paceSec >= Double(band.lo) && paceSec <= Double(band.hi)
-        return inBand ? UIColor(V5.signal) : outOfBandFill
+    /// WHY THESE TWO TOKENS AND NOTHING ELSE. `V5.fault` is barred outright —
+    /// "never used to render a real value", and every point on this line is a
+    /// real value. There is no green in the palette on purpose. Every
+    /// remaining colour is a surface step or `textQuiet`, i.e. a grey, and
+    /// grey is what the previous encoding used and what David rejected by
+    /// name ("no grey it blends in too much"). Amber and orange are what is
+    /// left, they are the palette's two loudest non-error inks, and both
+    /// clear the basemap comfortably — signal measured 6.19:1 against CARTO
+    /// Dark Matter's (14, 14, 14) ground, attention brighter still.
+    static func paceRampColor(_ t: Double) -> UIColor {
+        lerp(UIColor(V5.attention), UIColor(V5.signal), CGFloat(max(0, min(1, t))))
     }
 
-    /// Continuous warm→cool ramp across the five bucket colors · t in 0…1.
-    /// RETAINED for the HR-zone axis's own palette only — a zone is an
-    /// identity, not a grade, and round three does not touch it.
-    static func rampColor(_ t: Double) -> UIColor {
-        let cs = bucketColors
-        let tt = max(0, min(1, t)) * Double(cs.count - 1)
-        let i = min(Int(floor(tt)), cs.count - 2)
-        return lerp(cs[i], cs[i + 1], CGFloat(tt - Double(i)))
+    /// The smallest spread, in seconds per mile between the run's own fastest
+    /// and slowest sample, that this map will draw a gradient across.
+    ///
+    /// Normalising to the run's own range is what makes the gradient
+    /// informative whether or not the runner followed the plan — but the same
+    /// property turns a genuinely flat run into a full amber→orange sweep
+    /// built entirely out of measurement error. GPS distance error runs around
+    /// 1% per mile, which is ±5-6 s on a 9:00 mile before the runner has done
+    /// anything at all, so two adjacent miles can differ by ~11 s/mi with the
+    /// legs doing nothing different. 20 s/mi is roughly double that: below it
+    /// there is no pace story worth telling and the line draws in one flat
+    /// `V5.signal` instead, which is the fill this file has always used for
+    /// "the map asserts nothing about pace here".
+    static let paceRangeFloorSec: Double = 20
+
+    /// Builds the pace colour function for a set of observed values (seconds
+    /// per mile), normalised across THEIR OWN min…max.
+    ///
+    /// NORMALISED AGAINST THE RUN, NEVER AGAINST THE PRESCRIPTION. That is the
+    /// whole of the 2026-08-30 ruling — see `gradientSegments()`.
+    static func paceColorFn(over values: [Double]) -> (Double) -> UIColor {
+        guard let lo = values.min(), let hi = values.max(),
+              hi - lo >= paceRangeFloorSec else {
+            return { _ in UIColor(V5.signal) }
+        }
+        let span = hi - lo
+        // Pace is seconds per mile, so SMALLER is faster: the fast end of the
+        // data is the orange (t = 1) end of the ramp.
+        return { v in paceRampColor((hi - max(lo, min(hi, v))) / span) }
     }
 
     static func lerp(_ a: UIColor, _ b: UIColor, _ f: CGFloat) -> UIColor {
@@ -395,16 +363,21 @@ struct RouteMapView: UIViewRepresentable {
         guard coords.count >= 2 else { return }
 
         // Baseline line drawn first (always visible · belt + suspenders). Match
-        // the color axis so it never peeks the wrong hue at segment joints:
-        // mid-zone green under an HR route, coral under a pace route.
+        // the color axis so it never peeks the wrong hue at segment joints.
         let hrMode = RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits,
-                                              phases: phases, paceBand: paceBand)
-        // With a band the whole line is one of two flat fills, so the underlay
-        // takes the in-band fill rather than a third colour that could peek
-        // through at a joint and read as a mile that was neither.
-        let baselineColor: UIColor = paceBand != nil
-            ? UIColor(V5.signal)
-            : (hrMode ? RouteMapView.zoneColors[1] : UIColor(Color(hex: 0xD03F3F)))
+                                              phases: phases)
+        // THE UNDERLAY IS NEVER GREY. It used to be a retired coral
+        // (#D03F3F) — a hex from the five-bucket ramp that no longer colours
+        // anything — and the whole point of an underlay is that it is what
+        // shows at a joint, at a GPS gap, and on a run whose splits are too
+        // thin to build a gradient from. `V5.signal` is one of the ramp's own
+        // two endpoints, so a peek can only ever read as a legal pace, and it
+        // is the loudest ink the palette has on this basemap. It is also
+        // already this file's answer for "no pace story to tell", which is
+        // exactly the case where the underlay is the only line drawn.
+        let baselineColor: UIColor = hrMode
+            ? RouteMapView.zoneColors[1]
+            : UIColor(V5.signal)
         let baselineFeature = MLNPolylineFeature(coordinates: coords, count: UInt(coords.count))
         let baselineSource = MLNShapeSource(identifier: "faff-baseline", features: [baselineFeature], options: nil)
         style.addSource(baselineSource)
@@ -495,15 +468,43 @@ struct RouteMapView: UIViewRepresentable {
     /// Short colored segments along the route, colored by what mattered in the
     /// run. Three axes (David 2026-06-17):
     ///   · structured (phases ≥2 · intervals / tempo) → PACE per phase. Each rep
-    ///     reads at its true pace (a 6:45 rep stays red even though its mile
+    ///     reads at its true pace (a 6:45 rep stays orange even though its mile
     ///     averages ~8:00 with the recovery jog), with a SHORT eased boundary so
     ///     the join to the recovery fades instead of hard-switching.
     ///   · steady + HR + zones (easy / long / recovery) → HR ZONE per mile,
     ///     smoothly interpolated, on the zone palette.
-    ///   · else → per-mile PACE, smoothly interpolated, on the pace palette.
+    ///   · else → per-mile PACE, smoothly interpolated, on the pace ramp.
     /// Segments are short and share boundary vertices; with a continuous value
-    /// function the colors FADE between buckets ("the small gradient transition
+    /// function the colors FADE into each other ("the small gradient transition
     /// needs to be on all maps" · David 2026-06-17), without re-washing reps.
+    ///
+    /// 2026-08-30 · BOTH PACE AXES NORMALISE AGAINST THE RUN, NOT THE PLAN.
+    /// David's ruling, asked directly what the line should show: "Pace gradient
+    /// but no grey it blends in too much. Use the faff color system."
+    ///
+    /// What it replaced: the pace axes graded each point BINARY against the
+    /// prescribed window and painted everything outside it one flat grey. On
+    /// his real 13.49 mi long run — prescribed 8:37–9:12/mi, actually run at
+    /// 6:52–8:38 with a friend, off-plan — twelve of thirteen miles fell
+    /// outside the window, so the entire map rendered as a single constant.
+    /// Made visible by the contrast fix that preceded this one, and still
+    /// carrying no information whatsoever: a picture of one number, about a
+    /// run with a 106 s/mi spread in it.
+    ///
+    /// His stated principle is the fix: the map's job is to show WHERE YOU
+    /// RAN, running off-plan is normal life, and the graphic must never
+    /// flatten or hide the route for it. So the ramp is normalised across the
+    /// run's own fastest and slowest — the gradient is informative whether or
+    /// not the plan was followed, because the plan is no longer an input.
+    /// `paceRangeFloorSec` guards the one case where that could lie.
+    ///
+    /// WHERE BAND ADHERENCE WENT: nowhere. It moved down the screen. The split
+    /// chart under this map (`MileBreakdownV5`, off `RunDetailV5.splitBand`)
+    /// still marks each mile in or out of the window, and it is the better
+    /// place for it — a bar chart has a baseline and a scale, a route line has
+    /// one channel and a shape it must not lose. The two graphics now answer
+    /// two different questions (map: where and how hard · chart: was that what
+    /// was asked) instead of both answering the second one.
     private func gradientSegments() -> [(coords: [CLLocationCoordinate2D], color: UIColor)] {
         guard coords.count >= 2 else { return [] }
 
@@ -527,9 +528,13 @@ struct RouteMapView: UIViewRepresentable {
             for p in validPhases { let s = cum; cum += p.mi * scale; spans.append((s, cum, Double(p.sec))) }
             let w = max(0.35, min(0.65, total * 0.08))  // boundary fade wide enough to be visible at map scale
             valueFn = { d in RouteMapView.phaseValue(d, spans, w) }
-            colorFn = { [paceBand] v in RouteMapView.bandColor(v, paceBand) }
+            // Normalised across the PHASES' own paces, so the reps sit at the
+            // orange end and the recoveries at the amber end of the same run.
+            // `phaseValue` only ever eases BETWEEN two neighbouring phase
+            // values, so every value it can return is inside this min…max.
+            colorFn = RouteMapView.paceColorFn(over: validPhases.map { Double($0.sec) })
         } else if RouteMapView.usesHrZones(effort: effort, hrZones: hrZones, splits: splits,
-                                           phases: phases, paceBand: paceBand) {
+                                           phases: phases) {
             // Steady · per-mile HR → zone position, SMOOTH, on the zone palette.
             let hrs = RouteMapView.perMileFilled(splits.map { ($0.hr).flatMap { $0 > 0 ? Double($0) : nil } })
             guard !hrs.isEmpty else { return [] }
@@ -538,11 +543,15 @@ struct RouteMapView: UIViewRepresentable {
             valueFn = { d in RouteMapView.mileSmooth(d, hrs) }
             colorFn = { hr in RouteMapView.zoneRampColor(RouteMapView.zonePosition(hr, zones) / denom) }
         } else {
-            // Per-mile PACE, SMOOTH, on the pace palette.
+            // Per-mile PACE, SMOOTH, on the pace ramp.
             let paces = RouteMapView.perMileFilled(splits.map { paceToSec($0.pace).flatMap { $0 > 0 ? Double($0) : nil } })
             guard !paces.isEmpty else { return [] }
             valueFn = { d in RouteMapView.mileSmooth(d, paces) }
-            colorFn = { [paceBand] v in RouteMapView.bandColor(v, paceBand) }
+            // Normalised across the run's own miles. `mileSmooth` interpolates
+            // between mile centres and clamps at both ends, so every value it
+            // can return is inside this min…max — the ramp's two endpoints are
+            // reached exactly at the run's own fastest and slowest mile.
+            colorFn = RouteMapView.paceColorFn(over: paces)
         }
 
         guard let value = valueFn, let color = colorFn else { return [] }

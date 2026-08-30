@@ -1204,8 +1204,12 @@ struct TodayAfterV5: View {
                              // the reasoning: a line has one channel, and the
                              // breakdown under this card carries the reading
                              // as numbers instead.
-                             hrZones: [],
-                             paceBand: model.paceBand.map { (lo: $0.lo, hi: $0.hi) })
+                             // No band either. The map is a pace gradient
+                             // normalised across this run's own range, and
+                             // knows nothing about the prescription; the
+                             // breakdown below keeps band adherence. See
+                             // `RunDetailV5`'s route section for the ruling.
+                             hrZones: [])
                     .frame(height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
                     // MapKit hit-tests its region even when non-interactive,

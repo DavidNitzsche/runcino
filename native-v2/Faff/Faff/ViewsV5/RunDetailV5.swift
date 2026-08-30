@@ -903,11 +903,34 @@ struct RunDetailV5: View {
 
     // MARK: - Route · the real map, not a redrawn one
     //
-    // `RouteMapView` colors by pace or by HR zone depending on the run's own
-    // effort + zone data (see its header) — `mappedEffort` below only picks
-    // which AXIS that coloring runs on, the same choice `RunDetail.type`
-    // already drives everywhere else in the app. It changes no number on
-    // screen.
+    // `RouteMapView` colors by pace (see its header) — `mappedEffort` below
+    // only picks which AXIS that coloring runs on, the same choice
+    // `RunDetail.type` already drives everywhere else in the app. It changes
+    // no number on screen.
+    //
+    // THE MAP AND THE CHART NOW ANSWER TWO DIFFERENT QUESTIONS (David
+    // 2026-08-30, asked directly what the route line should show: "Pace
+    // gradient but no grey it blends in too much. Use the faff color
+    // system."). The note that used to sit under `paceBand` here said the
+    // grey stretch on the map and the grey bar in the chart "must be the same
+    // mile". That coupling is deliberately broken and this comment records
+    // it rather than leaving the old claim standing:
+    //
+    //   · the MAP is a continuous amber→orange pace gradient, normalised
+    //     across the run's own fastest and slowest mile. It knows nothing
+    //     about `splitBand` any more — `RouteMapView` no longer takes one.
+    //     It answers WHERE HE RAN AND HOW HARD, and it stays legible on a run
+    //     that ignored the plan, which the coupled version did not: his real
+    //     13.49 mi long run had twelve of thirteen miles outside the window
+    //     and rendered as one flat grey.
+    //   · the CHART below (`MileBreakdownV5`, off `splitBand`) keeps band
+    //     adherence, unchanged, and is the better home for it: a bar has a
+    //     baseline and a scale, a route line has one channel and a shape it
+    //     must not lose. It answers WAS THAT WHAT THE SESSION ASKED FOR.
+    //
+    // Two graphics, two questions, no competition — which is what the old
+    // coupling was reaching for and got by making both of them answer the
+    // second one.
 
     private var routeSection: some View {
         Tile {
@@ -951,13 +974,7 @@ struct RunDetailV5: View {
                          // change — `usesHrZones` needs two of them, so the
                          // map falls back to what it was always best at,
                          // which is saying where the runner went.
-                         hrZones: [],
-                         // THE SAME BAND THE SPLIT CHART USES. That is the
-                         // whole point of round three item 4 — the grey
-                         // stretch on the map and the grey bar in the chart
-                         // must be the same mile, or the two graphics compete
-                         // instead of answering each other.
-                         paceBand: splitBand)
+                         hrZones: [])
                 .frame(height: 200)
                 .clipShape(RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
                 // Purely visual: MapKit hit-tests its region even when
