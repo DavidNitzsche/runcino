@@ -59,6 +59,27 @@ export const dynamic = 'force-dynamic';
 const ACTIONS = ['not_now', 'acknowledge', 'repace', 'confirm', 'leave', 'choose_race'] as const;
 type Action = (typeof ACTIONS)[number];
 
+/**
+ * The reason stamped on this route's INTERNAL receipts — a record that the
+ * runner tapped an answer, kept so the triggers above can tell an answered
+ * question from an unasked one.
+ *
+ * IT MUST NOT BEGIN `coach_log_`. It did, and `loadCoachLog` selects
+ * `WHERE reason LIKE 'coach_log_%'`, so every one of these receipts was
+ * eligible for the runner-facing coach log. One of them got there: row 881 on
+ * the owner's account, `{"action":"acknowledge"}`, which the reader's silent
+ * kind-coercion relabelled `week_close` and rendered as an empty WEEK_CLOSE
+ * card dated Wednesday 2026-08-26 — a day that is not a week boundary, under a
+ * heading claiming a week had closed.
+ *
+ * The reader now excludes unknown kinds rather than renaming them, which fixes
+ * the existing row. This fixes the cause: a receipt is not a log entry and does
+ * not wear the log's prefix. `suppressTrigger` below already had this right
+ * (`goal_card_dismissed`) — these five call sites simply reached for the wrong
+ * prefix, and nothing downstream ever read the name they chose.
+ */
+const GOAL_ANSWER_RECEIPT = 'goal_answer_receipt';
+
 async function writeIntent(userId: string, reason: string, field: string | null, value: Record<string, unknown>): Promise<void> {
   await pool.query(
     `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value) VALUES ($1, $1, $2, $3, $4)`,
@@ -100,7 +121,7 @@ export async function POST(req: NextRequest) {
         for (const t of ['heat', 'course_changed', 'chip_lock', 'two_a_races'] as FactChoiceTriggerId[]) {
           await suppressTrigger(userId, t);
         }
-        await writeIntent(userId, 'coach_log_goal_answer', nextA?.slug ?? null, { action, race: nextA?.slug ?? null });
+        await writeIntent(userId, GOAL_ANSWER_RECEIPT, nextA?.slug ?? null, { action, race: nextA?.slug ?? null });
         return NextResponse.json({ ok: true, action });
       }
 
@@ -111,13 +132,13 @@ export async function POST(req: NextRequest) {
         // is harmless — a trigger that wasn't showing has nothing to skip.
         await suppressTrigger(userId, 'heat');
         await suppressTrigger(userId, 'course_changed');
-        await writeIntent(userId, 'coach_log_goal_answer', nextA?.slug ?? null, { action });
+        await writeIntent(userId, GOAL_ANSWER_RECEIPT, nextA?.slug ?? null, { action });
         return NextResponse.json({ ok: true, action });
       }
 
       case 'leave': {
         await suppressTrigger(userId, 'chip_lock');
-        await writeIntent(userId, 'coach_log_goal_answer', raceSlug ?? nextA?.slug ?? null, { action, left_provisional: true });
+        await writeIntent(userId, GOAL_ANSWER_RECEIPT, raceSlug ?? nextA?.slug ?? null, { action, left_provisional: true });
         return NextResponse.json({ ok: true, action });
       }
 
@@ -144,7 +165,7 @@ export async function POST(req: NextRequest) {
            WHERE slug = $1 AND user_uuid = $4`,
           [slug, JSON.stringify(patch), finishDisplay, userId],
         );
-        await writeIntent(userId, 'coach_log_goal_answer', slug, { action, finish_seconds: candidate.finish_seconds, display: finishDisplay });
+        await writeIntent(userId, GOAL_ANSWER_RECEIPT, slug, { action, finish_seconds: candidate.finish_seconds, display: finishDisplay });
         let chain: Awaited<ReturnType<typeof runPostResultChain>> | null = null;
         try {
           chain = await runPostResultChain({
@@ -178,7 +199,7 @@ export async function POST(req: NextRequest) {
             `UPDATE races SET meta = $1::jsonb WHERE user_uuid = $2::uuid AND slug = $3`,
             [JSON.stringify(newMeta), userId, other.slug],
           );
-          await writeIntent(userId, 'coach_log_goal_answer', other.slug, { action, demoted_to: 'B', chosen_goal: raceSlug });
+          await writeIntent(userId, GOAL_ANSWER_RECEIPT, other.slug, { action, demoted_to: 'B', chosen_goal: raceSlug });
           try {
             const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
             await fireAutoRebuild({

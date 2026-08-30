@@ -380,6 +380,7 @@ const MIN_CONVERGING_DOMAINS = 3; // CONVERGENCE.redMinDomains, lib/coach/conver
  */
 import { dateWords as usDateWords } from '@/lib/format/date';
 import { fmtMi, fmtMi2, fmtClock, fmtPaceSlash as fmtPace } from '@/lib/format/run';
+import { canonicalSessionType } from '@/lib/training/workout-type';
 export { fmtMi, fmtClock, fmtPace };
 
 const TRACK_M = [200, 300, 400, 600, 800, 1000, 1200, 1500] as const;
@@ -435,14 +436,85 @@ export function dateLineFor(iso: string): string {
  */
 const NON_RUN_TYPES = new Set(['strength', 'cross', 'xt', 'mobility']);
 
+/**
+ * SHAKEOUT-1 (2026-08-30) · BOTH SWITCHES WERE STRING LISTS, AND STRING LISTS
+ * GO STALE SILENTLY.
+ *
+ * The docblock above records this bug class happening once already, for
+ * `strength` / `cross`. It had happened twice more and nobody had looked:
+ *
+ *   · `shakeout` — 48 rows in production, and the type the generator authors
+ *     for THE DAY BEFORE A GOAL RACE — was in neither list. Race eve fell to
+ *     the default and painted the green EASY gradient under the headline
+ *     "EASY". The word "shakeout" appeared nowhere on the screen: the three
+ *     rows whose `sub_label` is `SHAKEOUT · 4×20s strides` are correctly
+ *     refused as a headline by `subLabelIsName` (prescription syntax), so the
+ *     sub_label could not rescue it either. Those three rows are dated
+ *     2026-11-12 … 2026-11-28 — CIM race prep.
+ *
+ *   · `interval`, SINGULAR — 214 production rows, every one of them with a
+ *     NULL `sub_label` — was in neither list, while `intervals` was in both.
+ *     Two hundred and fourteen rep sessions rendered as green easy days
+ *     headlined "EASY", with no sub_label to save them. This is the exact
+ *     defect `lib/training/workout-type.ts` was written to end, and these two
+ *     switches were simply never converted to it.
+ *
+ * So neither switch matches strings any more. Both canonicalise through
+ * `canonicalSessionType` — the repo's ONE spelling authority, which already
+ * knew `interval → intervals` — and then switch exhaustively over the
+ * resulting `SessionType`. The `assertNever` at the bottom of each is the
+ * actual fix: adding a member to `SESSION_TYPES` now FAILS THE TYPECHECK here
+ * until both switches say what it looks like. A string list could never do
+ * that, which is why this is the third time.
+ */
+function assertNever(x: never): never {
+  throw new Error(`unhandled session type: ${String(x)}`);
+}
+
 export function dayStateWordFor(plannedType: string | null | undefined): V5DayStateWord {
-  const t = (plannedType ?? '').toLowerCase();
-  if (NON_RUN_TYPES.has(t)) return 'rest';
-  if (t === 'long') return 'long';
-  if (t === 'race' || t === 'race_week_tuneup') return 'race';
-  if (['threshold', 'tempo', 'intervals', 'fartlek', 'progression', 'vo2max', 'quality'].includes(t)) return 'quality';
-  if (t === 'rest' || t === '' || t === 'unplanned') return 'rest';
-  return 'easy';
+  const raw = (plannedType ?? '').trim().toLowerCase();
+  if (NON_RUN_TYPES.has(raw)) return 'rest';
+
+  // `quality` is the COARSE wire bucket from lib/faff/types.ts, deliberately
+  // absent from SESSION_TYPES and from its alias map (guessing which session a
+  // bare "quality" meant is how a tempo becomes a rep session). It is answered
+  // here rather than through the canonicaliser because `dayState` is itself
+  // the coarse register — this is the one place the two taxonomies line up.
+  if (raw === 'quality') return 'quality';
+
+  const t = canonicalSessionType(raw);
+  if (t == null) {
+    // Not a session type we recognise. An empty column is a rest day; an
+    // unfamiliar non-empty string is still a day with a run in it, which is
+    // the pre-existing behaviour and the safer of the two defaults.
+    return raw === '' ? 'rest' : 'easy';
+  }
+
+  switch (t) {
+    case 'long':
+      return 'long';
+    // Race eve belongs to the race, not to the easy days. `race_week_tuneup`
+    // has mapped here since it was added; `shakeout` is the same family and
+    // was only ever missing.
+    case 'race':
+    case 'race_week_tuneup':
+    case 'shakeout':
+      return 'race';
+    case 'tempo':
+    case 'threshold':
+    case 'intervals':
+    case 'fartlek':
+    case 'progression':
+      return 'quality';
+    case 'rest':
+    case 'unplanned':
+      return 'rest';
+    case 'easy':
+    case 'recovery':
+      return 'easy';
+    default:
+      return assertNever(t);
+  }
 }
 
 /** The display register holds a NAME. Prescription syntax means it does not.
@@ -528,21 +600,35 @@ export function displayTypeFor(plannedType: string | null | undefined, subLabel?
   // grained than `dayStateWordFor`, which collapses every quality variant to
   // the single gradient word "quality" — the gradient has six buckets, the
   // headline does not have to.
-  const t = (plannedType ?? '').trim().toLowerCase();
+  const raw = (plannedType ?? '').trim().toLowerCase();
+
+  // See SHAKEOUT-1 on `dayStateWordFor`. `quality` is the coarse wire bucket
+  // and is answered before the canonicaliser, which deliberately refuses it.
+  if (raw === 'quality') return 'Quality';
+  // `vo2max` canonicalises to `intervals`, which is correct as a CLASSIFICATION
+  // and lossy as a HEADLINE — the runner asked for VO2 work and the screen may
+  // as well say so. Answered ahead of the canonicaliser to keep the finer word.
+  if (raw === 'vo2max' || raw === 'vo2' || raw === 'vo2-max') return 'VO2 max';
+
+  const t = canonicalSessionType(raw);
+  if (t == null) return raw === '' ? 'Rest' : 'Easy';
+
   switch (t) {
     case 'long': return 'Long';
     case 'race': return 'Race';
     case 'race_week_tuneup': return 'Tune-up';
+    // The day before the race is called what it is. 48 production rows, and
+    // this switch had no case for any of them.
+    case 'shakeout': return 'Shakeout';
     case 'threshold': return 'Threshold';
     case 'tempo': return 'Tempo';
     case 'intervals': return 'Intervals';
     case 'fartlek': return 'Fartlek';
     case 'progression': return 'Progression';
-    case 'vo2max': return 'VO2 max';
-    case 'quality': return 'Quality';
     case 'recovery': return 'Recovery';
-    case 'rest': case '': case 'unplanned': return 'Rest';
-    default: return 'Easy';
+    case 'easy': return 'Easy';
+    case 'rest': case 'unplanned': return 'Rest';
+    default: return assertNever(t);
   }
 }
 

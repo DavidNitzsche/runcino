@@ -22,8 +22,10 @@ import { dateWords } from '@/lib/format/date';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { loadRacesState } from '@/lib/coach/races-state';
-import { parseRaceTime, formatRaceTime, predictRaceTime } from '@/lib/training/vdot';
+import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
+import { computeGoalProjection } from '@/lib/training/goal-projection';
+import { resolveRaceProjection, projectionCoachLine } from '@/lib/training/race-projection';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { resolveCourseElevation, type ResolveCourseElevationInput, type StoredGeometry } from '@/lib/race/course-elevation';
 import { loadActivePlan } from '@/lib/plan/lookup';
@@ -176,12 +178,35 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     //
     // Past and unfinished (a DNS, or a result not logged yet): no projection
     // and no gap. There is nothing honest to put there.
-    const { vdot } = await loadLatestVdotWithAnchor(userId);
+    // 2026-08-30 · AND A RACE IS NOT PROJECTED TWO DIFFERENT WAYS.
+    //
+    // `projectedSec` was `predictRaceTime(vdot, distanceMi)` — today's
+    // fitness equivalence — while the Races list one tap away resolved the
+    // same "Projected" label through `computeGoalProjection().trajectory`.
+    // On the owner's account: list 3:22:17 / gap +22:17, detail 3:31:48 /
+    // gap +31:48. Same race, same goal, same word, 9m31s apart.
+    //
+    // Both surfaces now resolve through `resolveRaceProjection`, which
+    // documents the precedence and returns the `basis` the coach line below
+    // needs to stay true to whichever quantity it got.
+    const { vdot, anchorDateISO, anchorDistanceMi } = await loadLatestVdotWithAnchor(userId);
+    const goalProjection = (!race.is_past && distanceMi > 0 && goalSec != null && race.date)
+      ? await computeGoalProjection({
+          userUuid: userId,
+          goalSec,
+          raceDistanceMi: distanceMi,
+          vdot,
+          daysToRace: race.days,
+          vdotAnchorDateISO: anchorDateISO,
+          vdotAnchorDistanceMi: anchorDistanceMi,
+        }).catch(() => null)
+      : null;
+    const projection = resolveRaceProjection({ goalProjection, vdot, distanceMi });
     const plate = racePlateFor({
       isPast: race.is_past,
       goalSec,
       finishSec: parseRaceTime(race.finishTime),
-      projectedSec: vdot != null && distanceMi > 0 ? predictRaceTime(vdot, distanceMi) : null,
+      projectedSec: projection.projectedSec,
     });
     const gapSec = plate.gapSec;
 
@@ -281,10 +306,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     // gap "can still close", the other says to "race it as planned". Neither
     // is a thing to say about a race already run, so a past race gets no
     // coach line here and the result section speaks for itself.
-    const coachLine = (plate.showsForwardLooking && gapSec != null)
-      ? (gapSec > 0
-          ? `Today's fitness projects ${formatRaceTime(Math.abs(gapSec))} behind the goal. That can still close.`
-          : `Today's fitness covers the goal with room. Race it as planned.`)
+    //
+    // 2026-08-30 · the sentence is worded off the projection's OWN basis.
+    // Hardcoding "Today's fitness" was correct while the plate printed the
+    // raw equivalence and would have become a lie the moment it printed the
+    // race-day trajectory — prose asserting a basis the number beside it
+    // does not have, which is the same defect as the two screens disagreeing.
+    const coachLine = plate.showsForwardLooking
+      ? projectionCoachLine({
+          basis: projection.basis,
+          gapSec,
+          formatGap: formatRaceTime,
+        })
       : null;
 
     // ── result entry (Job 3) ────────────────────────────────────────────

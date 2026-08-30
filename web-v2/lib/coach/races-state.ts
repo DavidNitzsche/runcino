@@ -162,7 +162,46 @@ export interface RacesState {
 function firstClause(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const s = v.split(';')[0].trim();
-  return s || null;
+  return metaText(s);
+}
+
+/**
+ * A stored meta string, or null when what is stored is not a value.
+ *
+ * SENTINEL-1 (2026-08-30) · `races.meta.startTime` for `cim` is literally the
+ * single character `·`. It reached the phone's race detail as a "Gun time" row
+ * reading `·` — a piece of punctuation presented as the time the runner's goal
+ * marathon starts.
+ *
+ * It survived because every guard on the path is a TRUTHINESS check.
+ * `app/api/v5/races/route.ts` composes the row under `if (r.gun_time)`, and
+ * `'·'` is a non-empty string. The web client had already met this and grown
+ * its own local defence — `RaceDetailClient.tsx` tests `r.startTime !== '·'`
+ * and prints "Not set" — which fixed one renderer and left every other
+ * consumer (the phone, the notification templates, the race-week course
+ * builder, the execution plan's gun-relative clock) reading the sentinel raw.
+ * A guard in one client is not a fix; it is a second reader disagreeing with
+ * the first.
+ *
+ * So the coercion happens HERE, at the one composition layer every consumer of
+ * a race row already goes through, and the sentinel never leaves the store.
+ *
+ * The set is deliberately narrow: characters and words that carry no
+ * information but are not empty — the app's own interpunct, dashes, and the
+ * "unset" words a crawler or an autofill writes when it found nothing. A real
+ * value is never one of these. Prod carries exactly one such row today
+ * (`cim.startTime`), which is the point: the next one will not need a new bug
+ * report, and it will not need a new guard in whichever client meets it first.
+ */
+const META_SENTINELS: ReadonlySet<string> = new Set([
+  '·', '-', '--', '—', '–', 'n/a', 'na', 'tbd', 'tba', 'none', 'null', 'undefined', 'unknown',
+]);
+
+export function metaText(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s) return null;
+  return META_SENTINELS.has(s.toLowerCase()) ? null : s;
 }
 
 export async function loadRacesState(userId: string): Promise<RacesState> {
@@ -233,7 +272,10 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       // Deriving here (no DB write) lights up pacing/fueling/execution-plan
       // for every existing race immediately. New writes set meta.distanceMi.
       distance_mi: m.distanceMi ? Number(m.distanceMi) : distanceMiFromLabel(m.distanceLabel ?? null),
-      location: m.location ?? null,
+      // SENTINEL-1 · `location` is composed into a "Location" detail row under
+      // the same `if (r.location)` truthiness test that let `'·'` through as a
+      // gun time, so it gets the same treatment.
+      location: metaText(m.location),
       is_past,
       days,
       finishTime,
@@ -255,22 +297,31 @@ export async function loadRacesState(userId: string): Promise<RacesState> {
       // provisional one takes the matched run's. See the field's docblock.
       finishPace: null,
       pb: m.pb ?? null,
-      gun_time: m.startTime ?? m.gun_time ?? m.start_time ?? null,
-      wave: m.wave ?? null,
-      bib: m.bib ?? null,
-      website: m.officialUrl ?? m.website ?? null,
-      packet_pickup: m.packetPickup ?? m.packet_pickup ?? null,
-      shuttle: m.shuttle ?? null,
-      parking: m.parking ?? null,
-      notes: m.notes ?? null,
+      // SENTINEL-1 · every free-text meta field goes through `metaText`, not
+      // just the one that was caught. These are all written by the same
+      // authors (the race editor, the autofill crawler), so they are all
+      // exposed to the same "wrote a placeholder instead of nothing" failure;
+      // fixing only `startTime` would have left fifteen siblings loaded.
+      // `??` chains resolve the camelCase/snake_case naming history FIRST and
+      // the sentinel check is applied to whatever wins, so a row storing `'·'`
+      // under `startTime` and a real time under `start_time` still finds the
+      // real one.
+      gun_time: metaText(m.startTime) ?? metaText(m.gun_time) ?? metaText(m.start_time),
+      wave: metaText(m.wave),
+      bib: metaText(m.bib),
+      website: metaText(m.officialUrl) ?? metaText(m.website),
+      packet_pickup: metaText(m.packetPickup) ?? metaText(m.packet_pickup),
+      shuttle: metaText(m.shuttle),
+      parking: metaText(m.parking),
+      notes: metaText(m.notes),
       aid_stations: firstClause(m.aidStations ?? m.aid_stations),
-      summary: m.summary ?? null,
-      notable_miles: m.notableMiles ?? m.notable_miles ?? null,
-      weather_norms: m.weatherNorms ?? m.weather_norms ?? null,
+      summary: metaText(m.summary),
+      notable_miles: metaText(m.notableMiles) ?? metaText(m.notable_miles),
+      weather_norms: metaText(m.weatherNorms) ?? metaText(m.weather_norms),
       time_limit: firstClause(m.timeLimit ?? m.time_limit),
-      gear_check: m.gearCheck ?? m.gear_check ?? null,
-      pacers: m.pacers ?? null,
-      spectators: m.spectators ?? null,
+      gear_check: metaText(m.gearCheck) ?? metaText(m.gear_check),
+      pacers: metaText(m.pacers),
+      spectators: metaText(m.spectators),
     };
   });
 

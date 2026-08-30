@@ -44,9 +44,10 @@ import { loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
 import { loadGoalProjectionSeries } from '@/lib/training/goal-projection-snapshots';
 import { composeProjectionTrend } from '@/lib/training/projection-trend';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
-import { parseRaceTime, formatRaceTime, predictRaceTime } from '@/lib/training/vdot';
+import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { assessGoal } from '@/lib/training/goal-assessment';
 import { computeGoalProjection } from '@/lib/training/goal-projection';
+import { resolveRaceProjection } from '@/lib/training/race-projection';
 import { taperWeeksForDistance } from '@/lib/training/fitness-trajectory';
 import { recentWeeklyMileageMi } from '@/lib/runs/volume';
 import { selectionAuthority, authorityTier, type AuthorityTier } from '@/lib/race/effort-authority';
@@ -386,10 +387,15 @@ async function handleGET(req: NextRequest) {
           }).catch(() => null)
         : null;
 
-      const projectedSec = goalProjection?.trajectory?.projectedSec
-        ?? goalProjection?.vdotProjectionSec
-        ?? assessment?.currentEquivalentSec
-        ?? (vdot != null && distanceMi ? predictRaceTime(vdot, distanceMi) : null);
+      // 2026-08-30 · the chain that used to live inline here is now
+      // `resolveRaceProjection`, shared with app/api/v5/race/[slug], which
+      // answered the SAME question with `predictRaceTime` alone: Races list
+      // 3:22:17, CIM detail 3:31:48, one tap apart. One function, one number.
+      // (The dropped `assessment.currentEquivalentSec` rung was
+      // `Math.round(predictRaceTime(currentVdot, distanceMi))` — the same
+      // value as the rung below it, not a distinct quantity. See the
+      // precedence note in lib/training/race-projection.ts.)
+      const { projectedSec } = resolveRaceProjection({ goalProjection, vdot, distanceMi });
       const gapSec = (projectedSec != null && goalSec != null) ? projectedSec - goalSec : null;
 
       const stats: V5StatOut[] = [

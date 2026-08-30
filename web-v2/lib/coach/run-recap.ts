@@ -459,10 +459,28 @@ function detectHrDrift(splits: RecapInput['splits']): {
   if (first.length < 2 || last.length < 2) return null;
   const firstAvg = first.reduce((s, x) => s + x, 0) / first.length;
   const lastAvg = last.reduce((s, x) => s + x, 0) / last.length;
+  /* 2026-08-30 · THE DELTA IS DERIVED FROM THE ENDPOINTS THAT ARE PRINTED.
+   *
+   * All three numbers were rounded independently off the unrounded averages,
+   * and every recap sentence puts all three in one clause:
+   *
+   *     "climbed 13 bpm by the end (153 → 165)"      165 − 153 = 12
+   *
+   * With firstAvg 153.4 and lastAvg 165.2 the endpoints round DOWN and the
+   * difference 11.8 rounds UP, so the sentence contradicts itself on its own
+   * face. A runner who subtracts the two numbers we showed him gets a third
+   * number we did not, on a screen whose whole claim is that it read his data.
+   *
+   * Rounding the endpoints first and subtracting THOSE makes the arithmetic
+   * the reader can do the arithmetic we did. The endpoints are what the copy
+   * shows, so they are the source of truth for the difference between them.
+   */
+  const firstHr = Math.round(firstAvg);
+  const lastHr = Math.round(lastAvg);
   return {
-    drift: Math.round(lastAvg - firstAvg),
-    firstHr: Math.round(firstAvg),
-    lastHr: Math.round(lastAvg),
+    drift: lastHr - firstHr,
+    firstHr,
+    lastHr,
   };
 }
 
@@ -821,9 +839,61 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       } else {
         const hrPart = input.actualAvgHr ? ` · avg HR ${input.actualAvgHr}` : '';
         const miPart = miPhrase(input.actualMi);
+        /* 2026-08-30 · "KEPT IT AEROBIC" WAS ASSERTED WITH NO HEART-RATE
+         * CONDITION OF ANY KIND.
+         *
+         * The clause lived in this `else` — the branch reached whenever the
+         * long run carried no structured finish segment — and was appended
+         * unconditionally. It asked nothing about heart rate before making a
+         * claim entirely about heart rate.
+         *
+         * On the owner's 2026-08-30 long run the same screen printed, in
+         * three places:
+         *
+         *     Long run done, 13.5 mi, avg HR 159, kept it aerobic.
+         *     Heart · under 145 → 159
+         *     15% in zone 2                      (z5 was 60%)
+         *
+         * The verdict is not merely unsupported, it is contradicted by the
+         * two readings sitting beside it. That is false coaching: the runner
+         * is told the session did the aerobic job it did not do, and the one
+         * signal that would have told him otherwise is overruled by the
+         * sentence above it.
+         *
+         * The plan's own `hr_cap_bpm` (145 on that row) is the prescription's
+         * definition of aerobic FOR THIS SESSION, so it is the evidence the
+         * claim is gated on — not a global zone constant, which would judge
+         * one runner's long day by another's ceiling.
+         *
+         * Three outcomes, and only one of them is a verdict:
+         *   · under the cap  → the claim is earned, and is made.
+         *   · over the cap   → no claim. The reading is stated as a FACT
+         *     below, with the same per-finding heat / post-race filters the
+         *     easy arm applies, because the cause changes what is true.
+         *   · no cap on the row → SILENCE. There is no ceiling to have kept
+         *     under, so there is nothing honest to assert either way. Rule
+         *     three: the sentence loses a clause rather than gaining a guess.
+         */
+        const cap = input.plannedHrCap;
+        const avg = input.actualAvgHr;
+        const aerobicEarned = cap != null && cap > 0 && avg != null && avg > 0 && avg <= cap;
         facts.push(
-          `Long run done${miPart ? ` · ${miPart}` : ''}${hrPart} · kept it aerobic.`,
+          `Long run done${miPart ? ` · ${miPart}` : ''}${hrPart}${aerobicEarned ? ' · kept it aerobic' : ''}.`,
         );
+        if (cap != null && cap > 0 && avg != null && avg > 0 && avg > cap) {
+          // PER-FINDING FILTER (CLAUDE.md, 2026-05-19 round 4). The READING is
+          // the same in all three; only the cause differs, and asserting the
+          // wrong cause is the defect this whole file keeps re-finding.
+          if (heatExplainsDrift) {
+            facts.push(`Your HR averaged ${avg} against the ${cap} ceiling for this one. It was hot · the effort was the aerobic one, the number is the weather.`);
+          } else if (postRace) {
+            facts.push(`Your HR averaged ${avg} against the ${cap} ceiling for this one. That is the race still in the legs, not the pace.`);
+          } else {
+            // A fact, not a verdict, and not a scolding (rule four). It says
+            // what the run WAS rather than grading what it should have been.
+            facts.push(`Your HR averaged ${avg} against the ${cap} ceiling for this one · this ran harder than an aerobic long day.`);
+          }
+        }
       }
       /* 2026-08-30 · WHERE BAND ADHERENCE LIVES NOW.
        *

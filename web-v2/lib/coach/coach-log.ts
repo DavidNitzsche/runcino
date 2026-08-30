@@ -139,6 +139,24 @@ const REASON_OF_KIND: Record<Exclude<CoachLogKind, 'fitness_shift'>, string> = {
   race_replacement: 'coach_log_race_replacement',
 };
 
+/**
+ * The kinds this log actually publishes to the runner, and the reverse of
+ * `REASON_OF_KIND` for rows written before `kind` was stamped into the value.
+ *
+ * Both are derived from `REASON_OF_KIND` rather than retyped. The hand-kept
+ * duplicate that used to live inside `loadCoachLog` had drifted out of step
+ * with it in two places (`coach_log_phase`, `coach_log_first`) — see the note
+ * at the read site. A list that must match another list will eventually not.
+ */
+const PUBLISHED_KINDS: ReadonlySet<string> = new Set([
+  ...Object.keys(REASON_OF_KIND),
+  'fitness_shift',
+]);
+
+const KIND_OF_REASON: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(REASON_OF_KIND).map(([kind, reason]) => [reason, kind]),
+);
+
 /* ──────────────────── Pure entry composers ──────────────────── */
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -821,17 +839,54 @@ export async function loadCoachLog(
       });
       continue;
     }
-    const kind = (typeof v.kind === 'string' ? v.kind : r.reason.replace(/^coach_log_/, '')) as CoachLogKind;
+    /* 2026-08-30 · AN UNKNOWN KIND IS EXCLUDED. IT IS NEVER RELABELLED.
+     *
+     * This was `includes(kind) ? kind : 'week_close'` — a SILENT COERCION,
+     * and the reason the defect it produced was invisible for as long as it
+     * was. Row 881 on the owner's account is `reason='coach_log_goal_answer'`,
+     * `value={"action":"acknowledge"}`: an internal receipt of a button tap,
+     * caught by this reader's `reason LIKE 'coach_log_%'` because whoever
+     * named the receipt reached for the same prefix. It carries no `kind`, so
+     * the fallback derived `'goal_answer'` from the reason; `'goal_answer'` is
+     * not in the allowlist, so it was RENAMED to `'week_close'`; it carries no
+     * `dateISO`, so it took the row's timestamp; and it carries no `body`, so
+     * it rendered as nothing.
+     *
+     * The runner's log therefore showed a WEEK_CLOSE card dated Wednesday
+     * 2026-08-26 — not a week boundary — with no body. Every one of those four
+     * substitutions was a fallback doing its job, and the compound result was
+     * a card asserting a week had closed when none had.
+     *
+     * Coercion is what made it silent: had the unknown kind been dropped or
+     * surfaced, the empty card would never have existed. So a row whose kind
+     * is not one this log actually publishes is now skipped outright. It is
+     * not a coach-log entry; it is a row that matched a LIKE pattern.
+     *
+     * NOTE the fallback ALSO mislabelled two legitimate kinds. `REASON_OF_KIND`
+     * maps `phase_boundary → 'coach_log_phase'` and `first_ever →
+     * 'coach_log_first'`, so `reason.replace(/^coach_log_/, '')` yields
+     * `'phase'` and `'first'` — neither in the allowlist, both silently
+     * relabelled `'week_close'`. No row is affected today because `writeEntry`
+     * has always stamped `kind` INTO the value and `v.kind` wins, but the
+     * reason-derived path was wrong for two of the seven kinds it claimed to
+     * handle. It now maps through `REASON_OF_KIND` itself rather than string
+     * surgery, so the two can no longer disagree.
+     */
+    const kind = typeof v.kind === 'string' ? v.kind : KIND_OF_REASON[r.reason] ?? null;
+    if (kind == null || !PUBLISHED_KINDS.has(kind)) continue;
+
+    // A card with nothing in it is not a card. Every composer produces a body;
+    // an entry that reaches here without one cannot be rendered as anything
+    // but the blank card this fix exists to remove.
+    const body = typeof v.body === 'string' ? stripResearchCitations(v.body) : '';
+    if (!body.trim()) continue;
+
     entries.push({
       id: r.id,
-      kind: ([
-        'week_close', 'phase_boundary', 'first_ever', 'easy_discipline', 'fitness_evidence',
-        'threshold_pattern', 'race_replacement',
-      ] as string[]).includes(kind)
-        ? kind : 'week_close',
+      kind: kind as CoachLogKind,
       dateISO: typeof v.dateISO === 'string' ? v.dateISO : ts.slice(0, 10),
       title: typeof v.title === 'string' ? v.title : 'LOG',
-      body: typeof v.body === 'string' ? stripResearchCitations(v.body) : '',
+      body,
       meta: (v.meta ?? {}) as Record<string, unknown>,
       ts,
     });
