@@ -46,6 +46,7 @@ import { isBaseBuildingPlan } from './plan-templates';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { isCoachedExternally, COACHED_SKIP_REASON } from './coached-gate';
 import { distanceMiOfMeta } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
+import { fmtPaceSlash } from '@/lib/format/run'; // MIDGOAL-1 (2026-08-30) · the one pace formatter, so a plan note and a screen read the same string
 import { shapeTravelWindows, type TravelWindow } from './travel-windows'; // TRAVEL-1 (2026-08-28) · runner-declared travel shapes the composed block
 import { ROLE_POST_QUALITY_FREE_DAYS, isRaceRole } from '@/lib/race/race-role'; // RACEROLE-1 (2026-08-28) · answered tune-up roles
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
@@ -6235,6 +6236,31 @@ export function embedMidBlockRaces(
           ? `${race.name}. Race it honestly. Full effort; full recovery follows before quality resumes.`
           : `${race.name}. B race · race effort. Recovery days follow before quality resumes.`
       : `${race.name}. C race · this is the week's quality session. Run it as the workout.`;
+    // MIDGOAL-1 (2026-08-30) · STATE THE TARGET, AND SAY WHOSE IT IS.
+    //
+    // The row carried `raceGoalPaceSec` since MIDRACE-1 and the prose never
+    // said it, so a runner reading the plan saw "B race · race effort" and no
+    // number for a day the watch was already going to pace. State it.
+    //
+    // Provenance is in the WORDS, not a mark. Rule one ("a modelled number
+    // must never look measured", docs/faff-iphone-design-contract.md §1) is
+    // carried on the phone by `FaffValue` and on the web by `<Modelled>`, and
+    // `notes` is a bare string with neither: it reaches the watch, the phone
+    // and the web as prose. check-modelled-mark's own guard-8/9 header records
+    // why a typed `~` is the fallback where no provenance type exists — but a
+    // tilde in a prose string is exactly what guards 2 and 6 forbid elsewhere,
+    // because it can be truncated, copied or formatted away and it says
+    // nothing about WHICH model produced the number. "Coach target" cannot be
+    // stripped without the sentence losing its verb, and it names the author.
+    // A runner-stated goal says "Target", because it is theirs.
+    if (slot.raceGoalPaceSec != null && Number.isFinite(slot.raceGoalPaceSec)) {
+      const paceStr = fmtPaceSlash(slot.raceGoalPaceSec);
+      if (paceStr) {
+        slot.notes += race.goalPaceIsCoachSet === true
+          ? ` Coach target ${paceStr}, set from your current fitness. Yours to change.`
+          : ` Target ${paceStr}.`;
+      }
+    }
     if (role === 'b_effort') slot.subLabel = 'RACE · B EFFORT';
     touchedWeeks.add(wi);
 
@@ -7098,6 +7124,16 @@ export interface ComposePlanInput {
     date: string;
     distanceMi: number;
     goalPaceSec: number | null;
+    /** MIDGOAL-1 (2026-08-30) · TRUE when `goalPaceSec` came from the COACH
+     *  (lib/race/coach-goal.ts) rather than the runner's own stated goal.
+     *
+     *  A coach goal is modelled — derived from current VDOT, the runner's
+     *  personal Riegel exponent and the course grade — and the row's prose
+     *  must never present it as the runner's own number. False/absent means
+     *  `goalPaceSec` is the runner's stated goal (races.meta.goalDisplay),
+     *  which is exactly what it has always meant, so every existing caller
+     *  and every stated-goal race composes byte-identically. */
+    goalPaceIsCoachSet?: boolean;
     priority: 'B' | 'C';
     /** RACEROLE-1 (2026-08-28) · the runner's answered tune-up role
      *  (races.meta.plannedRole · written by the race_role card's accept).
@@ -12299,6 +12335,7 @@ async function loadGeneratorInputs(
         date: String(m.date),
         distanceMi: dMi,
         goalPaceSec: goalSecMid && dMi > 0 ? Math.round(goalSecMid / dMi) : null,
+        goalPaceIsCoachSet: false,
         priority: (m.priority === 'B' ? 'B' : 'C') as 'B' | 'C',
         // RACEROLE-1 (2026-08-28) · the runner's answered role for this
         // tune-up (written by the race_role card's accept). Guarded read —
@@ -12307,6 +12344,81 @@ async function loadGeneratorInputs(
         plannedRole: isRaceRole(m.plannedRole) ? m.plannedRole : null,
       };
     });
+  // ── MIDGOAL-1 (2026-08-30) · A TUNE-UP WITH NO GOAL GETS THE COACH'S ──────
+  //
+  // The mapping above is the ONLY source of a mid-block race's target, and it
+  // reads exactly one field: the runner's own `meta.goalDisplay`. A race the
+  // runner never gave a time to therefore reached the embedder with
+  // `goalPaceSec: null`, and `boundedRacePaceSPerMi` returns null for a null
+  // stated pace — so the row went out with no target at all, and the race-day
+  // prose had no number to state. That is the defect: David's Santa Monica 10K
+  // is the race he designated his all-out fitness anchor, and it is the one
+  // race in his calendar with an empty goal field.
+  //
+  // Owner ruling (David 2026-08-28): "For races that have no goals lets have
+  // the coach set one based on pushing the runner and current fitness." That
+  // derivation already exists and is already used by the race-detail surfaces
+  // — `lib/race/coach-goal.ts` (pure) behind `loadCoachGoalForRace` (evidence
+  // loader). It is called here rather than re-derived, so the number the plan
+  // paces and the number the race screen shows cannot drift apart.
+  //
+  // THREE PROPERTIES THIS PASS MUST KEEP, all of them load-bearing:
+  //
+  //   1 · A STATED GOAL ALWAYS WINS. `loadCoachGoalForRace` returns null the
+  //       moment `statedGoalSec > 0` — structurally, as its first check — and
+  //       this pass only ever runs for a race whose `goalPaceSec` is already
+  //       null. Two independent guards, because a coach renegotiating a goal
+  //       the runner stated is the standing prohibition
+  //       (`feedback_no_forced_goal_decisions`). Dodgers (0:45:00 → 435 s/mi)
+  //       and Run Malibu (1:30:00 → 412 s/mi) are untouched by construction.
+  //
+  //   2 · ONLY A TIME FRAMING PRODUCES A NUMBER. `deriveCoachGoal` answers
+  //       `kind:'effort'` for a C race (Research/00b grades a C race a hard
+  //       workout, not a chase) and for a course past §13.2's Mountain floor.
+  //       Those keep `goalPaceSec: null` — an effort framing withholding a
+  //       time is doctrine working, not a gap to fill.
+  //
+  //   3 · THE B TIER IS THE PACE, NOT A. A/B/C are Daniels' three race goals
+  //       (Research/20 §A/B/C); B is "solid execution, minor adversity" at
+  //       ~50-60%, and it is by construction the honest centre of demonstrated
+  //       fitness — the tier the projection band is drawn AROUND. Pacing a
+  //       tune-up off the ~20-30% A tier would commit the runner to the
+  //       perfect day at the gun, which is the §18.2 blow-up the whole
+  //       `boundedRacePaceSPerMi` machinery exists to prevent.
+  //
+  // Compute-on-read, exactly as the race screen does it: NOTHING is written
+  // back to `races.meta`. A coach goal follows the evidence the morning it
+  // changes, and it evaporates the instant the runner states their own.
+  // Fail-open — a throw or a refusal leaves `goalPaceSec` null, which is
+  // byte-identical to the behaviour before this pass existed.
+  for (const mbr of midBlockRaces) {
+    if (mbr.goalPaceSec != null) continue;          // guard 1 · stated goal stands
+    if (!(mbr.distanceMi > 0)) continue;
+    try {
+      const { loadCoachGoalForRace } = await import('@/lib/race/coach-goal-load');
+      const meta = (midBlockRaceRows.find((row) => row.slug === mbr.slug)?.meta ?? {}) as any;
+      const coach = await loadCoachGoalForRace(userId, {
+        slug: mbr.slug,
+        name: mbr.name,
+        priority: mbr.priority,
+        // Re-parsed from the row rather than inferred from the null above, so
+        // this call carries the same refusal input the race screen passes.
+        statedGoalSec: parseRaceTime(meta.goalDisplay ?? meta.goalTime),
+        distanceMi: mbr.distanceMi,
+        metaTerrain: meta.terrain,
+        elevationGainFt: meta.elevationGainFt != null ? Number(meta.elevationGainFt) : null,
+        goalFraming: meta.goalFraming,
+        daysAway: daysBetween(todayISO, mbr.date),
+      });
+      // guard 2 · an effort framing carries no time, by design.
+      if (!coach || coach.kind !== 'time') continue;
+      // guard 3 · B is the tier a tune-up is paced off.
+      const paceSec = Math.round(coach.bSec / mbr.distanceMi);
+      if (!Number.isFinite(paceSec) || paceSec <= 0) continue;
+      mbr.goalPaceSec = paceSec;
+      mbr.goalPaceIsCoachSet = true;
+    } catch { /* additive · a failed derivation is an absent goal, never a failed plan */ }
+  }
   // TRAVEL-1 (2026-08-28) · the runner's declared travel windows overlapping
   // the plan window. Catch-guarded to [] twice over: the table lands via
   // manual migration 159, and a runner with no windows (or a pre-migration
