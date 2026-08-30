@@ -202,6 +202,9 @@ import {
   SHORT_LAYOFF_WEEKS,
   RAMP_BASE_SUSTAINED_RANK,
   resolveRampBase,
+  restoreSteps,
+  RESTORE_STEP_FRACTION,
+  QUALITY_RETURN_MIN_SESSIONS,
   BASE_REBUILT_SHARE,
   BASE_QUALITY_TYPES,
   FAST_FINISH_MIN_MI,
@@ -485,6 +488,7 @@ const CATS: DistCategory[] = ['5k', '10k', 'hm', 'm', 'ultra'];
 const EVIDENCE_ZERO: RampBaseEvidence = {
   baseMi: 0, meanMi: 0, sustainedMi: 0, peakMi: 0,
   interruptionWeeks: 0, allowedInterruptionWeeks: 0, lifted: false,
+  heldMi: 0, returning: false,
 };
 const TIERS: GoalTier[] = ['elite', 'advanced', 'intermediate', 'developing'];
 
@@ -2207,6 +2211,164 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (!/RESUME_SEQUENCE\b/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
         throw new Error('volumeCurve does not spend RESUME_SEQUENCE · the other two weeks are dropped again');
+      }
+    },
+  },
+  {
+    id: 'RAMP.restoration-is-continuous',
+    binds: [
+      'lib/plan/generate.ts#RESTORE_STEP_FRACTION',
+      'lib/plan/generate.ts#restoreSteps',
+      'lib/plan/generate.ts#volumeCurve.resumeSteps',
+      'lib/plan/_restore_continuity.test.ts#CONTINUOUS-RESTORE-1',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### Return from Short Layoff (1-2 weeks off)',
+    claim:
+      'The row states a RATE, not a membership test: 70% of pre-layoff volume, then 85%, then ' +
+      'full — even steps of 15% of the pre-layoff level, restoring a runner in two of them. ' +
+      'The engine spent it as a fixed three-rung ladder switched on by `RampBaseEvidence.' +
+      'lifted` (`0.70 x sustained > mean`), whose logical complement is the `baseRebuilt` ' +
+      'gate — so one comparison of two near-identical numbers decided between restoration in ' +
+      'three weeks and a geometric crawl from a depressed 28-day mean, with an infinitely ' +
+      'sharp discontinuity at the threshold. A runner at 69% of sustained was restored; a ' +
+      'runner at 71% was not, and the fitter runner therefore received the worse plan. ' +
+      'Restoration must be spent as the rate doctrine states, from wherever the runner ' +
+      'actually is, so the authored volumes move continuously with the runner\'s own volume ' +
+      'and no threshold can flip a categorical behaviour.',
+    check({ cite }) {
+      const row = cite.table().cell('8-14 days', 'Restart approach');
+      const pcts = [...row.matchAll(/(\d+)\s*%/g)].map((m) => Number(m[1]) / 100);
+      if (!/\bfull\b/i.test(row)) {
+        throw new Error('the 8-14-day row no longer ends at "full" · re-read the return protocol');
+      }
+      const rungs = [...pcts, 1.0];
+      // The doc's rungs must be EVENLY spaced, or "a rate" is the wrong reading of them.
+      const gaps = rungs.slice(1).map((v, i) => v - rungs[i]);
+      for (const g of gaps) {
+        if (Math.abs(g - gaps[0]) > 1e-9) {
+          throw new Error(
+            `the return rungs (${rungs.join(' · ')}) are not evenly spaced, so they do not state ` +
+              'a single restoration rate · re-derive RESTORE_STEP_FRACTION from the row',
+          );
+        }
+      }
+      if (Math.abs(RESTORE_STEP_FRACTION - gaps[0]) > 1e-9) {
+        throw new Error(
+          `RESTORE_STEP_FRACTION is ${RESTORE_STEP_FRACTION}, the doctrine row steps by ${gaps[0]}`,
+        );
+      }
+      // Spending the rate from doctrine's own starting rung must REPRODUCE the row.
+      const sustained = 45;
+      const fromDoctrine = restoreSteps(sustained * rungs[0], sustained);
+      const want = rungs.map((f) => Math.round(sustained * f * 10) / 10);
+      if (JSON.stringify(fromDoctrine) !== JSON.stringify(want)) {
+        throw new Error(
+          `restoreSteps at ${rungs[0] * 100}% of sustained gives ${fromDoctrine.join(' · ')}, ` +
+            `the doctrine row publishes ${want.join(' · ')}`,
+        );
+      }
+      // …and it must degrade smoothly, not fall off a cliff. Walk the runner up
+      // in 0.1 mi steps and require the first restored week to move with them.
+      let prevFirst = -Infinity;
+      for (let held = sustained * rungs[0]; held <= sustained + 1e-9; held += 0.1) {
+        const steps = restoreSteps(held, sustained);
+        const first = steps.length > 0 ? steps[0] : sustained;
+        if (first < prevFirst - 1e-9) {
+          throw new Error(
+            `restoreSteps is not monotonic: a runner at ${held.toFixed(1)} mi starts at ` +
+              `${first} after one at ${prevFirst} · a fitter runner may never get a smaller week`,
+          );
+        }
+        if (first - prevFirst > 0.75 && Number.isFinite(prevFirst)) {
+          throw new Error(
+            `restoreSteps jumps ${(first - prevFirst).toFixed(2)} mi for 0.1 mi of input at ` +
+              `${held.toFixed(1)} · the cliff has been relocated, not removed`,
+          );
+        }
+        prevFirst = first;
+        if (steps.length > 0 && steps[steps.length - 1] !== sustained) {
+          throw new Error(`a restoration ending at ${steps[steps.length - 1]} never reaches the sustained level`);
+        }
+      }
+      // The switch must be gone from the curve: the ladder is gated on the
+      // QUANTITY (`returning`), never on the near-tie (`lifted`).
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      if (/resumeSteps[^\n]*\n?[^\n]*evidence\?\.lifted/.test(src)) {
+        throw new Error(
+          'volumeCurve gates the resume ladder on `lifted` again · that boolean is ' +
+            '`0.70 x sustained > mean` and using it as a switch is the cliff this claim exists for',
+        );
+      }
+      if (!/evidence\?\.returning/.test(src)) {
+        throw new Error('volumeCurve no longer gates restoration on `returning` · re-read RAMP.restoration-is-continuous');
+      }
+      // And the base must reach the curve on EVERY authoring, not only lifted ones.
+      if (/if \(ramp\.lifted\) inputs\.compose\.rampBaseMi/.test(src)) {
+        throw new Error(
+          '`rampBaseMi` is conditional on `lifted` again · when false the curve silently falls ' +
+            'back to the 28-day mean and RAMPBASE-1 disengages for the runners nearest the threshold',
+        );
+      }
+    },
+  },
+  {
+    id: 'RULE5.quality-returns-it-does-not-vanish',
+    binds: [
+      'lib/plan/generate.ts#QUALITY_RETURN_MIN_SESSIONS',
+      'lib/plan/generate.ts#composePlan.densityForWeek',
+      'lib/plan/generate.ts#recentQualityPerWeek',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Distance | Total recovery days (no quality) | Days of zero/very-light running | Return to long runs | Return to quality workouts | Earliest reasonable next race-effort |',
+    claim:
+      'Every row of the recovery table names a day on which quality COMES BACK — 5K day 6-8, ' +
+      'half marathon day 10-14, marathon week 3-4. The no-quality window before it belongs to ' +
+      'the recovery composer, so a race-prep quality-bearing week is past that day by ' +
+      'construction and may never author zero quality sessions. Rule 5\'s density ramp reads a ' +
+      '28-day habit window, and for a runner who has just raced most of that window IS the ' +
+      'no-quality recovery this engine itself prescribed — so a literal reading ramps from ~0 ' +
+      'and hands an experienced marathoner a build week with no hard running in it. That is ' +
+      'RAMPBASE-1\'s error (reading the engine\'s own prescription back as the runner\'s ' +
+      'capability) arriving at density instead of volume.',
+    check({ cite }) {
+      const t = cite.table();
+      // The column must still exist, and every distance must still name a return.
+      for (const row of ['5K', 'Half marathon', 'Marathon']) {
+        const cell = t.cell(row, 'Return to quality workouts');
+        if (!/\d/.test(cell)) {
+          throw new Error(
+            `Research/00b no longer names when quality returns for ${row} ("${cell}") · ` +
+              'QUALITY_RETURN_MIN_SESSIONS is read off this column existing at all',
+          );
+        }
+        if (/never|none/i.test(cell)) {
+          throw new Error(`the ${row} row says quality never returns ("${cell}") · re-read the protocol`);
+        }
+      }
+      if (QUALITY_RETURN_MIN_SESSIONS < 1) {
+        throw new Error(
+          `QUALITY_RETURN_MIN_SESSIONS is ${QUALITY_RETURN_MIN_SESSIONS} · a build week that ` +
+            'prescribes no quality at all has not returned the runner to training',
+        );
+      }
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/Math\.max\(QUALITY_RETURN_MIN_SESSIONS, ramped\)/.test(src)) {
+        throw new Error('densityForWeek no longer floors the ramp · it can author a zero-quality build week again');
+      }
+      // …and the habit that feeds the ramp must be MEASURED, not counted off
+      // plan versions, and a measured zero must survive the hand-off.
+      if (/JOIN training_plans[\s\S]{0,400}?pw\.type IN \('tempo','threshold','intervals'\)/.test(src)) {
+        throw new Error(
+          'a quality-habit reader joins training_plans again · that join reaches every plan ' +
+            'version the runner has ever had and counts one session once per rebuild',
+        );
+      }
+      if (/recentQualityPerWeek: recentQualityPW > 0 \? recentQualityPW : undefined/.test(src)) {
+        throw new Error(
+          'a measured zero is being coerced to `undefined` again · densityForWeek reads that as ' +
+            'a cold start and answers with FULL quality density, the opposite of Rule 5',
+        );
       }
     },
   },
@@ -6696,6 +6858,41 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (RAMP_BASE_SUSTAINED_RANK < 3) {
         throw new Error(`RAMP_BASE_SUSTAINED_RANK is ${RAMP_BASE_SUSTAINED_RANK} · a base is a volume reached repeatedly`);
+      }
+      // ── CURRENTVOL-1 · and never BELOW the volume the runner is already holding ──
+      //
+      // The claim above says a runner resumes at a fraction of pre-interruption
+      // volume, never at the interruption's own. The engine implemented that
+      // only where 70% of sustained cleared the 28-day mean; where the mandated
+      // deload was SHALLOW the mean governed, and the mean still contains the
+      // deload. The same defect, one rung down. The owner's numbers, 2026-08-30:
+      // sustained 45.0, resume level 31.50, 28-day mean 31.6 — so the base was
+      // 31.6 while the seven days ending that morning totalled 34.7. The build
+      // opened below the recovery block it was replacing.
+      const shallow = resolveRampBase({
+        meanWeeklyMi: 31.6,
+        weeklySeries: [34.7, 28.4, 23.2, 39.9, 4.2, 47.5, 39.7, 43.3, 0, 27.9, 47.4, 40, 45, 39.8, 40.6, 37.5],
+        allowedInterruptionWeeks: 4,
+      });
+      if (shallow.baseMi < 34.7 - 1e-9) {
+        throw new Error(
+          `the ramp base is ${shallow.baseMi} mi/wk for a runner whose most recent complete week ` +
+            'was 34.7 · a build may not open below the volume the runner is already holding',
+        );
+      }
+      if (shallow.baseMi > shallow.sustainedMi + 1e-9) {
+        throw new Error(
+          `the demonstrated-volume floor lifted the base to ${shallow.baseMi}, above the sustained ` +
+            `level ${shallow.sustainedMi} · one big week must not be able to set a base`,
+        );
+      }
+      // …and the floor must not reach past the allowance: a genuine layoff
+      // keeps the mean, and the comeback protocols keep the ramp.
+      if (detrained.heldMi !== 0 || detrained.returning) {
+        throw new Error(
+          'the demonstrated-volume floor applied through a seven-week layoff · past the mandated ' +
+            'window Research/22 §"Return from Moderate Layoff" and Research/05 own the ramp',
+        );
       }
       if (!/volumeCurve\(input\.rampBaseMi \?\? input\.recentWeeklyMi,/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
         throw new Error('volumeCurve no longer reads rampBaseMi · the build is ramping from the 28-day mean again');

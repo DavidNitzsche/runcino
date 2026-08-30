@@ -662,7 +662,7 @@ describe('anchor fit · positive controls', () => {
     const bad: AnchorFacts = {
       ...CONTROL_BASE, mode: 'race-prep', peakAnchorMi: null, doctrinePct: [],
       vdotAnchor: null,
-      ramp: { baseMi: 33.3, meanMi: 16, sustainedMi: 47.5, peakMi: 49, interruptionWeeks: 2, allowedInterruptionWeeks: 4, lifted: true },
+      ramp: { baseMi: 33.3, meanMi: 16, sustainedMi: 47.5, peakMi: 49, interruptionWeeks: 2, allowedInterruptionWeeks: 4, lifted: true, heldMi: 33.3, returning: true },
       meanMi: 16, weeklyMi: [34, 36, 38],
     };
     expect(fire(bad)).toContain('PACE_ANCHOR_STILL_DEPRESSED');

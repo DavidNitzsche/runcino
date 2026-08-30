@@ -49,6 +49,10 @@ import { distanceMiOfMeta } from '@/lib/race/distance'; // 2026-07-07 · ultra-h
 import { shapeTravelWindows, type TravelWindow } from './travel-windows'; // TRAVEL-1 (2026-08-28) · runner-declared travel shapes the composed block
 import { ROLE_POST_QUALITY_FREE_DAYS, isRaceRole } from '@/lib/race/race-role'; // RACEROLE-1 (2026-08-28) · answered tune-up roles
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
+// PLANVERSION-1 (2026-08-30) · the quality-habit readers describe what the
+// RUNNER RAN, so they read `runs` through the shared shape helpers rather than
+// joining `training_plans` (which duplicates a day once per plan version).
+import { runDaySql, runDistanceMiSql, runWorkoutTypeSql, runTypeSql } from '@/lib/runs/run-shape';
 // 2026-08-17 · coaching-loop reconciliation · shared blend implementation
 // (authoring + adaptation-time recompute run the same math).
 import { blendedTPaceForWeek, measuredProgressFraction, maxSeasonalVdotGain } from './recompute-paces';
@@ -679,6 +683,57 @@ export function requestedBlockStartISO(
   return startAnchor === 'today' ? todayISO : null;
 }
 
+/**
+ * BACKDATE-1 (2026-08-30) · does `persistPlan` write this composed day at all?
+ *
+ * WEEK-ALIGN-1 (above) separated two questions that had been answered by one
+ * variable. There is a THIRD, it was never asked, and not asking it is what
+ * backdated a quality session into a week that had already happened:
+ *
+ *   · WHERE DOES WEEK 0 BEGIN?  `weekStartBoundaryOf` — always a training-week
+ *     boundary, so a `plan_weeks` row spans the same seven days every read
+ *     surface does. Unchanged by this function.
+ *   · WHICH DAY IS THE RUNNER'S FIRST?  `requestedBlockStartISO` — `null` on
+ *     the lifecycle-regen path, which keeps the whole current week on purpose.
+ *   · MAY A REGEN AUTHOR INTO THE PAST?  Never. This.
+ *
+ * A regen composes week 0 from the boundary, so up to six of its days are
+ * already gone by the time the block is written. Rule 15 carries the OUTGOING
+ * plan's prescription onto every past day the runner actually ran, and those
+ * days are history worth keeping — that is why `clipBeforeISO` is null here.
+ * But a past day the runner did NOT run has no prescription to carry forward,
+ * and the freshly-composed one is a decision made after the fact about a day
+ * on which nothing can now be done. Writing it invents an instruction that was
+ * never given and then records it as disobeyed.
+ *
+ * OBSERVED LIVE 2026-08-30. David's CIM block, authored from the 08-24
+ * boundary, put `tempo 6mi · 1.5 WU · 3 @ T · 1.5 CD` on Tuesday 08-25 — five
+ * days past, a day he had not run, so unsealed. Two harms: his adherence
+ * history gained a missed quality session that was never prescribed at the
+ * time, and the day sits 9 days after his 08-16 half, inside `Research/00b`'s
+ * 10-14 day post-half no-quality window — so the new block's first act broke
+ * the doctrine that governed the block it was replacing.
+ *
+ * TODAY IS NOT PAST. The comparison is strictly `<`, so a same-day
+ * regeneration still authors today, which every regen path depends on.
+ *
+ * Pure and exported so the decision can be tested without a database — the
+ * same reason `persistedDayShape` was extracted.
+ */
+export function persistsComposedDay(args: {
+  dateISO: string;
+  todayISO: string;
+  clipBeforeISO: string | null;
+  sealed: boolean;
+}): boolean {
+  // WEEK-ALIGN-1 · a day before the runner's first day is not theirs.
+  if (args.clipBeforeISO && args.dateISO < args.clipBeforeISO) return false;
+  // BACKDATE-1 · the past is not this block's to author. A sealed day is the
+  // outgoing block's prescription being preserved, not this one authoring.
+  if (args.dateISO < args.todayISO && !args.sealed) return false;
+  return true;
+}
+
 // 2026-06-03 · delegate to lib/training/vdot.parseRaceTime (single
 // canonical parser, imported at the top of this file). Re-exported so
 // the generator-bench keeps its existing test surface. Was a local
@@ -935,6 +990,103 @@ export const RESUME_SEQUENCE: readonly number[] = [RAMP_BASE_RESUME_FRACTION, 0.
 /** Research/22 §14 · "Return from Short Layoff (1-2 weeks off)". Longer + unexplained = moderate layoff. */
 export const SHORT_LAYOFF_WEEKS = 2;
 
+/**
+ * QUALITYFLOOR-1 (2026-08-30) · the fewest quality sessions Rule 5's density
+ * ramp may author in a quality-bearing week. ONE, never zero.
+ *
+ * `Research/00b` §"Recovery by Race Distance" publishes a "Return to quality
+ * workouts" column for every distance — 5K day 6-8, half marathon day 10-14,
+ * marathon week 3-4. Every cell names a day on which quality COMES BACK. The
+ * no-quality window before it belongs to the recovery composer; by the time a
+ * race-prep QUALITY or RACE-SPECIFIC week is being authored, that window is
+ * over by construction. A week inside a build that prescribes no quality at all
+ * has not returned the runner to training, and no row in that table sanctions
+ * it.
+ *
+ * WHY IT IS NEEDED NOW. `recentQualityPerWeek` measures a 28-day window. For a
+ * runner who just raced, most of that window IS the mandated no-quality
+ * recovery this engine itself prescribed — so the ramp, reading it literally,
+ * would start from ~0 and hand an experienced marathoner a week with no hard
+ * running in it. That is the same error `RAMPBASE-1` names for volume, arriving
+ * at density: reading the engine's own prescription back as the runner's
+ * capability. The owner, 2026-08-30: one threshold session in 28 days because
+ * days 1-14 of that window were his half marathon and `Research/00b`'s 10-14
+ * day post-half no-quality window.
+ *
+ * Bound by RULE5.quality-returns-it-does-not-vanish.
+ */
+export const QUALITY_RETURN_MIN_SESSIONS = 1;
+
+/**
+ * CONTINUOUS-RESTORE-1 (2026-08-30) · doctrine's restoration RATE, read out of
+ * its own ladder rather than hand-copied: the gap between consecutive rungs of
+ * `RESUME_SEQUENCE` (0.85 − 0.70 = 0.15, and 1.00 − 0.85 = 0.15), as a fraction
+ * of the sustained level. Research/22 §14 restores a runner at 70% of their
+ * pre-interruption volume to 100% in two steps, so a step is 15% of sustained.
+ */
+export const RESTORE_STEP_FRACTION = RESUME_SEQUENCE[1] - RESUME_SEQUENCE[0];
+
+/**
+ * CONTINUOUS-RESTORE-1 (2026-08-30) · the return ladder, as a QUANTITY.
+ *
+ * ── THE DEFECT THIS REPLACES ────────────────────────────────────────────────
+ *
+ * The ladder used to be switched on by `RampBaseEvidence.lifted`, which is
+ * `0.70 × sustained > mean`. Its logical complement, `mean ≥ 0.70 × sustained`,
+ * is `baseRebuilt`. So ONE comparison of two near-identical numbers decided
+ * whether a runner got Research/22 §14's three-week restoration or a geometric
+ * crawl from a 28-day mean, and the discontinuity at the threshold was
+ * infinitely sharp: a runner at 69% of sustained was restored to full volume in
+ * three weeks, a runner at 71% was not.
+ *
+ * THE FITTER RUNNER GOT THE WORSE PLAN. Observed live on the owner's CIM
+ * authoring, 2026-08-30: sustained 45.0, resume level 31.50, 28-day mean 31.6 —
+ * 70.3% of sustained, three tenths of a percent the wrong side of the line. The
+ * ladder never ran. And the number that pushed him over was the good week he
+ * had just run: a better recovery week produced a smaller build.
+ *
+ * ── WHAT THIS DOES INSTEAD ──────────────────────────────────────────────────
+ *
+ * No threshold, no boolean, no band. The question is not "was this runner
+ * interrupted enough to qualify" but "how far below their sustained level are
+ * they", and the answer is spent at doctrine's own rate — one
+ * `RESTORE_STEP_FRACTION` of sustained per week until sustained is reached.
+ *
+ *   · a runner AT 70% of sustained  → [70%, 85%, 100%] · Research/22 §14 exactly
+ *   · a runner at 77% (the owner)   → [77%, 92%, 100%]
+ *   · a runner at 99%              → [99%, 100%] · a one-week nudge, from the
+ *                                     same arithmetic, not a special case
+ *   · a runner at or above sustained → [] · nothing to restore
+ *
+ * Every one of those falls out of the same two lines, and the vector moves
+ * continuously as `startMi` moves. Nobody experiences a step change from a
+ * tenth of a mile.
+ *
+ * `startMi` is the base the curve ramps from, which is already
+ * `max(28-day mean, 0.70 × sustained, demonstrated recent volume)` — so the
+ * ladder can never start BELOW doctrine's resume level (the RAMPBASE-1 rule
+ * that a runner resumes at a fraction of pre-interruption volume, never at the
+ * interruption's own), and never below what the runner is actually running
+ * (CURRENTVOL-1). Bounded to three steps by construction, since `startMi` is at
+ * least 70% of sustained and each step is 15% of it.
+ */
+export function restoreSteps(startMi: number, sustainedMi: number): number[] {
+  const start = Math.max(0, startMi || 0);
+  if (!(sustainedMi > 0) || !(start < sustainedMi)) return [];
+  const stepMi = sustainedMi * RESTORE_STEP_FRACTION;
+  if (!(stepMi > 0)) return [];
+  const steps: number[] = [Math.round(start * 10) / 10];
+  let v = start;
+  // The bound is arithmetic, not a policy cap: start ≥ 0.70 × sustained and a
+  // step is 0.15 × sustained, so this can only ever run twice. The guard is
+  // here so a future change to either number cannot spin.
+  while (v < sustainedMi - 1e-9 && steps.length < RESUME_SEQUENCE.length) {
+    v = Math.min(sustainedMi, v + stepMi);
+    steps.push(Math.round(v * 10) / 10);
+  }
+  return steps;
+}
+
 export interface RampBaseEvidence {
   /** The base volumeCurve ramps from. */
   baseMi: number;
@@ -957,6 +1109,22 @@ export interface RampBaseEvidence {
   allowedInterruptionWeeks: number;
   /** True when the sustained level (not the mean) set the base. */
   lifted: boolean;
+  /**
+   * CURRENTVOL-1 · the volume the runner is demonstrably holding right now:
+   * the better of the two most recent completed 7-day blocks, bounded above by
+   * `sustainedMi` so one outlier week can never set it. 0 when there is no
+   * history, and 0 on the layoff path (the comeback protocols own that ramp).
+   *
+   * A FLOOR under the base and under every resume step — never a ceiling, never
+   * a reduction.
+   */
+  heldMi: number;
+  /**
+   * CURRENTVOL-1 · true when the runner has a known sustained level that they
+   * are currently below, and the low stretch is within the allowance. THIS, not
+   * `lifted`, is the question the three-week return ladder answers.
+   */
+  returning: boolean;
 }
 
 /**
@@ -978,9 +1146,15 @@ export function resolveRampBase(opts: {
   const peakMi = Number.isFinite(opts.peakWeeklyMi) && (opts.peakWeeklyMi ?? 0) > 0
     ? Math.round((opts.peakWeeklyMi as number) * 10) / 10
     : 0;
+  // CURRENTVOL-1 · the better of the two most recent completed 7-day blocks.
+  // Corroborated rather than a raw max: one freak week cannot speak for the
+  // runner, and one down week inside a fortnight of real training cannot erase
+  // what the week beside it demonstrates.
+  const recentDemonstratedMi = Math.max(series[0] ?? 0, series[1] ?? 0);
   const base0: RampBaseEvidence = {
     baseMi: mean, meanMi: mean, sustainedMi: 0, peakMi,
     interruptionWeeks: 0, allowedInterruptionWeeks: opts.allowedInterruptionWeeks, lifted: false,
+    heldMi: 0, returning: false,
   };
   if (series.length < RAMP_BASE_SUSTAINED_RANK) return base0;
   const sorted = [...series].sort((a, b) => b - a);
@@ -994,10 +1168,56 @@ export function resolveRampBase(opts: {
   };
   if (interruption > opts.allowedInterruptionWeeks) return evidence;   // a layoff, not a deload
   const lifted = resumeLevel > mean;
+  const liftedBase = lifted ? Math.round(resumeLevel * 10) / 10 : mean;
+  // ── CURRENTVOL-1 (2026-08-30) · never ramp from below where the runner IS ──
+  //
+  // RAMPBASE-1 stated the rule — "a runner resumes at a fraction of their
+  // PRE-interruption volume, never at the interruption's own" — and then
+  // implemented it only for the case where 70% of sustained clears the 28-day
+  // mean. When the mandated deload is SHALLOW, the mean still governs, and the
+  // mean still contains the deload. The same defect, one rung down, reachable
+  // by any runner whose recovery block was not deep enough to trip the lift.
+  //
+  // OBSERVED LIVE 2026-08-30, and it turned on a tenth of a mile. Owner's CIM
+  // authoring: sustained 45.0, so the resume level is 31.50; his 28-day mean
+  // was 31.6, because that window straddles his 08-16 half, its taper (23.2)
+  // and its recovery (28.4). 31.50 < 31.6, so `lifted` was false and the base
+  // was the mean — 31.6 mi/wk — while the seven days ending that same morning
+  // totalled 34.7 with a 13.5-mile long run inside them. The build opened
+  // BELOW the recovery block it was replacing: week 1 came out at 35 mi
+  // against a 34.7 he had just run, which is a plateau wearing a build's name,
+  // and the easy days were whatever was left after a 14-mile long and two
+  // 6-mile quality sessions — 3.0 mi against a 4.0 mi demonstrated easy day.
+  //
+  // THE RULE. A base is a volume the runner is holding. The most recent
+  // completed 7-day block is the least deniable evidence of that, so it is a
+  // FLOOR under the base — never a ceiling, and never a reduction.
+  //
+  // BOUNDED BY `sustained`, which is what keeps this from becoming the
+  // outlier-week bug `RAMP_BASE_SUSTAINED_RANK` exists to prevent: one huge
+  // week can lift the floor no higher than a level the runner has already
+  // reached three times in the look-back. Ramping from your own sustained
+  // level is, by construction, ramping from somewhere you have been.
+  //
+  // NOT APPLIED PAST THE ALLOWANCE. The early return above still wins: a
+  // genuine layoff hands the ramp to the comeback protocols untouched.
+  //
+  // BYTE-IDENTICAL for a runner in steady training, where the recent blocks,
+  // the mean and the sustained level are the same number, and for every
+  // synthetic archetype (which never reaches this reader at all).
+  const heldMi = Math.round(Math.min(evidence.sustainedMi, recentDemonstratedMi) * 10) / 10;
+  const baseMi = Math.max(liftedBase, heldMi);
   return {
     ...evidence,
-    baseMi: lifted ? Math.round(resumeLevel * 10) / 10 : mean,
+    baseMi,
     lifted,
+    heldMi,
+    // CONTINUOUS-RESTORE-1 · the ladder's real entry condition, and the reason
+    // `lifted` stops being a behavioural switch: is there a sustained level
+    // this runner is currently below? The allowed-interruption entitlement is
+    // already spent — the layoff branch returned above, with `returning` false,
+    // so the comeback protocols keep owning that ramp untouched.
+    returning: evidence.sustainedMi > 0 && baseMi < evidence.sustainedMi,
   };
 }
 
@@ -1171,69 +1391,149 @@ async function recentPeakLongMi(userId: string): Promise<number | null> {
  * workout of type tempo/threshold/intervals, OR (cold-fallback) a run
  * with avgHr ≥ 85% of effective max. Returns 0 when no signal.
  */
-async function recentQualityDistanceMi(userId: string): Promise<number> {
+async function recentQualityDistanceMi(userId: string): Promise<number | null> {
   // 2026-06-03 fix · plan_workouts has NO matched_run_id column.
-  // Matching is date-based: JOIN runs ON (data->>'date')::date = pw.date_iso
-  // (mirrors runner-calibration.ts and drift-monitor.ts patterns).
-  // The previous query silently returned 0 (caught error) · Rule 2
-  // floor never fired since it shipped.
+  // Matching was date-based: JOIN runs ON (data->>'date')::date = pw.date_iso.
+  // The query before that silently returned 0 (caught error) · Rule 2 floor
+  // never fired since it shipped.
+  //
+  // PLANVERSION-1 (2026-08-30) · THE PLAN JOIN IS GONE. See the full story in
+  // `recentQualityPerWeek` below: joining `training_plans` on nothing but the
+  // user reached every plan that user has ever had, and each rebuild carries
+  // its own copy of every day. The owner's account, 2026-08-30: 71 rows for
+  // THREE dates, and two of those three were "threshold" only because plans
+  // authored 2026-05-13 — and archived the same afternoon — had projected a
+  // threshold onto that August date. The runner's own run rows say what he
+  // actually ran, they cannot be duplicated by re-authoring, and they are what
+  // this Rule 2 floor was always trying to describe.
   const today = await runnerToday(userId);
-  const r = (await pool.query<{ med: string | null }>(
-    `WITH q AS (
-       SELECT (r.data->>'distanceMi')::numeric AS mi
-         FROM plan_workouts pw
-         JOIN training_plans tp ON tp.id = pw.plan_id
-         JOIN runs r
-           ON r.user_uuid = tp.user_uuid::uuid
-          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
-          AND NOT (r.data ? 'mergedIntoId')
-        WHERE tp.user_uuid = $1
-          AND pw.type IN ('tempo','threshold','intervals')
-          AND pw.date_iso::date >= $2::date - 28
-     )
-     SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med FROM q`,
-    [userId, today],
-  ).catch((e: unknown) => {
-    console.error('[recentQualityDistanceMi]', e instanceof Error ? e.message : String(e));
-    return { rows: [{ med: null }] };
-  })).rows[0];
-  const m = Number(r?.med ?? 0);
+  const r = await rowOrNull<{ med: string | null }>(
+    'plan/generate · recentQualityDistanceMi',
+    pool.query<{ med: string | null }>(
+      `WITH q AS (
+         SELECT DISTINCT ${runDaySql('r')} AS d, ${runDistanceMiSql('r')} AS mi
+           FROM runs r
+          WHERE r.user_uuid = $1::uuid
+            AND NOT (r.data ? 'mergedIntoId')
+            AND COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '')
+                  IN ('tempo','threshold','intervals')
+            AND (${runDaySql('r')})::date BETWEEN $2::date - 28 AND $2::date
+       )
+       SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med FROM q`,
+      [userId, today],
+    ),
+  );
+  // SWALLOW · a read that FAILED is not a runner with no quality history.
+  // `rowOrNull` gives null on error and undefined on no rows; an aggregate
+  // always returns a row, so undefined here is also "we could not look". Both
+  // must reach the caller as no-signal, never as the 0 that used to disable
+  // the Rule 2 floor silently.
+  if (r === null || r === undefined) return null;
+  const m = Number(r.med ?? 0);
   if (!Number.isFinite(m) || m <= 0) return 0;
   return Math.round(m * 2) / 2;
 }
 
 /**
- * 2026-06-03 · runner's median quality sessions per week (last 28d).
+ * 2026-06-03 · runner's quality sessions per week over the last 28 days.
  * Rule 5 density-ramp source. Returns 0 when no signal.
+ *
+ * ── PLANVERSION-1 (2026-08-30) · IT WAS COUNTING PLAN VERSIONS ──────────────
+ *
+ * `plan_workouts` JOIN `training_plans` filtered on nothing but
+ * `tp.user_uuid = $1`, which reaches EVERY plan that user has ever had, not the
+ * one that was active. Every rebuild writes a new `training_plans` row with its
+ * own copy of every day, so a single Tuesday tempo the runner ran once was
+ * counted once per plan version that happened to cover that date.
+ *
+ * Measured against prod on 2026-08-30, the owner's account: 47 plans, 1 active.
+ * The week of 08-03 returned 59 — from 43 distinct plans — and the week of
+ * 08-10 returned 12, from 12 plans. He had run THREE quality sessions in the
+ * window (08-04, 08-06, 08-11). `AVG(59, 12)` is 35.5, so this function
+ * returned 36.
+ *
+ * WHAT THAT BROKE. `densityForWeek` opens with
+ * `if (recentQ >= tierQ || recentQ >= desiredDensity) return desiredDensity`.
+ * With `recentQ` at 36 that is trivially true, so Rule 5's quality-density ramp
+ * — the mechanism that walks a returning runner up to full quality density over
+ * four weeks — returned full density from week 1 and has never once fired for
+ * any runner whose plan had ever been rebuilt, which is every runner. Nothing
+ * caught it because the output was still well-formed: the weeks simply had more
+ * quality in them than doctrine intended, and the quality crowded the easy days
+ * down to whatever the weekly budget had left. `_repro_live.test.ts` records a
+ * production authoring with `recentQualityPerWeek 273` and carries it as an
+ * INPUT — the defect had already been seen and read as data.
+ *
+ * THE FIX IS THE DEDUPLICATION, NOT A CLAMP. A clamp would have hidden the same
+ * bug from the next reader. A date can hold at most one quality session, so
+ * `COUNT(DISTINCT pw.date_iso)` is the honest count and is immune to how many
+ * times the block around that date was re-authored — which is why it is
+ * preferred over reconstructing "which plan was active on this date" from
+ * `authored_iso`/`archived_iso`, a harder question with the same answer.
+ *
+ * ── AND THE DENOMINATOR IS THE WINDOW, NOT THE WEEKS THAT HAPPENED TO HAVE ONE
+ *
+ * The old query bucketed by `date_trunc('week')` and averaged, so a week with
+ * no quality in it did not appear in the average at all. A runner who did three
+ * sessions across two weeks and none in the other two scored 1.5/wk instead of
+ * 0.75/wk — the zeros were silently dropped, and the runners whose zeros matter
+ * most are exactly the post-race ones this ramp exists for. "Sessions per week
+ * over the last 28 days" is the count over the window, so that is what it is.
+ *
+ * Returned unrounded on purpose: `densityForWeek` does its own rounding, and
+ * rounding here would throw information away twice — 0.25 would land on 0,
+ * which `composeForUserInternal` used to map to `undefined`, which
+ * `densityForWeek` reads as a cold start and answers with FULL density. A
+ * near-zero habit must not come back as "no signal, assume they can handle
+ * everything".
+ *
+ * ── AND `null` IS NOT `0` ───────────────────────────────────────────────────
+ *
+ * A read that FAILED and a runner who did no quality work are opposite facts,
+ * and the old signature could not tell them apart: both came back as 0, which
+ * `composeForUserInternal`'s `> 0 ? x : undefined` then turned into "no
+ * signal", which `densityForWeek` answers with the runner's FULL preferred
+ * density. So the two most cautious situations the engine can be in — we
+ * cannot see, and we can see that he has done nothing hard in a month — both
+ * produced the most aggressive answer available. `null` now means "could not
+ * look", a number means "looked", and 0 survives as 0.
  */
-async function recentQualityPerWeek(userId: string): Promise<number> {
+async function recentQualityPerWeek(userId: string): Promise<number | null> {
   // 2026-06-03 fix · same bug as recentQualityDistanceMi. plan_workouts
-  // has no user_uuid column AND no matched_run_id column. Matching is
-  // date-based via JOIN on training_plans + runs.
+  // has no user_uuid column AND no matched_run_id column, so matching was
+  // date-based via JOIN on training_plans + runs — the join this reader has
+  // now dropped entirely. See the header.
   const today = await runnerToday(userId);
-  const r = (await pool.query<{ avg: string | null }>(
-    `WITH wk_q AS (
-       SELECT date_trunc('week', pw.date_iso::timestamp) AS wk, COUNT(DISTINCT pw.id)::numeric AS n
-         FROM plan_workouts pw
-         JOIN training_plans tp ON tp.id = pw.plan_id
-         JOIN runs r
-           ON r.user_uuid = tp.user_uuid::uuid
-          AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
-          AND NOT (r.data ? 'mergedIntoId')
-        WHERE tp.user_uuid = $1
-          AND pw.type IN ('tempo','threshold','intervals')
-          AND pw.date_iso::date >= $2::date - 28
-        GROUP BY 1
-     )
-     SELECT AVG(n)::text AS avg FROM wk_q`,
-    [userId, today],
-  ).catch((e: unknown) => {
-    console.error('[recentQualityPerWeek]', e instanceof Error ? e.message : String(e));
-    return { rows: [{ avg: null }] };
-  })).rows[0];
-  const n = Number(r?.avg ?? 0);
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.round(n);
+  const r = await rowOrNull<{ avg: string | null }>(
+    'plan/generate · recentQualityPerWeek',
+    pool.query<{ avg: string | null }>(
+      `WITH q_days AS (
+         SELECT DISTINCT ${runDaySql('r')} AS d
+           FROM runs r
+          WHERE r.user_uuid = $1::uuid
+            AND NOT (r.data ? 'mergedIntoId')
+            AND COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '')
+                  IN ('tempo','threshold','intervals')
+            AND (${runDaySql('r')})::date BETWEEN $2::date - 28 AND $2::date
+       )
+       SELECT (COUNT(*)::numeric / 4)::text AS avg FROM q_days`,
+      [userId, today],
+    ),
+  );
+  // SWALLOW · null means the read failed, and that is NOT "he did no quality
+  // work". The two must not collapse into one downstream behaviour. Undefined
+  // (no rows) cannot happen for a COUNT, and is treated as no-signal too.
+  if (r === null || r === undefined) return null;
+  const n = Number(r.avg ?? 0);
+  if (!Number.isFinite(n) || n < 0) return null;
+  if (n === 0) return 0;   // MEASURED zero · survives as zero
+  // PLANVERSION-1 · was `Math.round(n)`. See the header: rounding a real but
+  // small habit down to 0 makes `composeForUserInternal` send `undefined`,
+  // which `densityForWeek` reads as a cold start and answers with FULL density
+  // — the exact opposite of what a runner doing 0.25 quality sessions a week
+  // needs. `densityForWeek` rounds when it builds each week's count; this
+  // reader's job is to report the habit, not to pre-round it into a category.
+  return Math.round(n * 100) / 100;
 }
 
 async function easyDayMedianMi(userId: string): Promise<number> {
@@ -2322,8 +2622,17 @@ function volumeCurve(
   // spare, so the peak is the phase Research/22 describes rather than a single
   // week at the end. The existing `Math.min(cappedTarget, peakTarget)` in the
   // loop is what holds it there — nothing else was needed.
-  const resumeSteps: number[] = (evidence?.lifted && evidence.sustainedMi > 0)
-    ? RESUME_SEQUENCE.map((f) => Math.min(peakTarget, Math.round(evidence.sustainedMi * f * 10) / 10))
+  // CONTINUOUS-RESTORE-1 (2026-08-30) · was gated on `evidence.lifted`, i.e. on
+  // whether 70% of sustained happened to clear the 28-day mean. That is a
+  // comparison of two near-identical numbers being used to switch a whole
+  // behaviour on and off, and it cost the owner his CIM build by 0.1 mi. The
+  // gate is now the quantity the ladder is actually about — how far below their
+  // sustained level the runner is — and the steps are spent at doctrine's own
+  // rate from the base rather than replayed as fixed 70/85/100 fractions.
+  // See `restoreSteps`. `returning` is false on the layoff path, so a genuine
+  // layoff still belongs to the comeback protocols.
+  const resumeSteps: number[] = (evidence?.returning && evidence.sustainedMi > 0)
+    ? restoreSteps(start, evidence.sustainedMi).map((v) => Math.min(peakTarget, v))
     : [];
   const resumeWeeks = Math.min(resumeSteps.length, Math.max(0, climbWeeks - 1));
   // The climbing-week index whose value IS `rampFrom` — week 0 with no resume,
@@ -7546,7 +7855,14 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     if (recentQ >= tierQ || recentQ >= desiredDensity) return desiredDensity;
     // Habit genuinely below target · ramp habit → desired over 4wk.
     const stepsUp = Math.min(4, weekIdx);
-    return Math.min(desiredDensity, Math.round(recentQ + (desiredDensity - recentQ) * (stepsUp / 4)));
+    const ramped = Math.round(recentQ + (desiredDensity - recentQ) * (stepsUp / 4));
+    // QUALITYFLOOR-1 · the ramp brings quality BACK; it never removes it
+    // entirely. A post-race 28-day window is mostly the no-quality recovery
+    // this engine prescribed, so a literal reading of it would author a build
+    // week with no hard running in it. Research/00b's "Return to quality
+    // workouts" column names a day for every distance on which quality
+    // resumes, and this week is past it by construction.
+    return Math.min(desiredDensity, Math.max(QUALITY_RETURN_MIN_SESSIONS, ramped));
   }
 
   // Cold-start pace floor · conservativeVdotFromMileage lifted to spec-builder.ts
@@ -9480,6 +9796,12 @@ async function persistPlan(client: PoolClient, args: {
    *  plan, and dropping them would erase the prescriptions the runner trained
    *  against. See `requestedBlockStartISO`. */
   clipBeforeISO: string | null;
+  /** BACKDATE-1 (2026-08-30) · the runner's own calendar day, from
+   *  `runnerToday`. The regen path keeps week 0's already-elapsed days so
+   *  Rule 15 can re-seal the ones that were RUN; this is what stops it from
+   *  authoring a brand-new prescription onto the ones that were not.
+   *  See `persistsComposedDay`. */
+  todayISO: string;
 }): Promise<string> {
   const planId = id('pln');
   await client.query(
@@ -9556,11 +9878,24 @@ async function persistPlan(client: PoolClient, args: {
     for (const d of w.days) {
       if (d.distanceMi === 0 && d.type !== 'rest' && d.type !== 'race') continue;
       const dateISO = dateForDow(d.dow);
+      // 2026-06-03 · Rule 15 · seal completed days. If the prior
+      // active plan had a row for this date AND a completed run
+      // exists, OVERRIDE the freshly-composed prescription with the
+      // prior's. The runner trained against the prior prescription ·
+      // changing it after-the-fact would make every retro lie.
+      //
+      // BACKDATE-1 (2026-08-30) · read BEFORE the write gate, because the gate
+      // now asks whether this day is sealed. Same lookup, moved up.
+      const sealed = args.sealedSnapshot.get(dateISO);
       // WEEK-ALIGN-1 · a day before the runner's first day is a day that is
       // not theirs. Week 0 is authored from the training-week boundary so the
       // week reads back whole; the part of it that predates them is dropped
       // here rather than shown as already missed.
-      if (args.clipBeforeISO && dateISO < args.clipBeforeISO) continue;
+      // BACKDATE-1 · and a regen never authors a NEW prescription into the
+      // past — only carries a sealed one forward. See `persistsComposedDay`.
+      if (!persistsComposedDay({
+        dateISO, todayISO: args.todayISO, clipBeforeISO: args.clipBeforeISO, sealed: sealed != null,
+      })) continue;
       const wkoId = id('wko');
       // 2026-06-01 · derive pace_target + workout_spec at insert time
       // (web agent gap brief). Was leaving both NULL waiting on the
@@ -9573,12 +9908,6 @@ async function persistPlan(client: PoolClient, args: {
       // fall back to plan-wide goal-T. Plain assignment from week's own
       // tPaceSec (set on every ComposedWeek by composePlan).
       const weekT = (w as { tPaceSec?: number | null }).tPaceSec ?? args.tPaceSec;
-      // 2026-06-03 · Rule 15 · seal completed days. If the prior
-      // active plan had a row for this date AND a completed run
-      // exists, OVERRIDE the freshly-composed prescription with the
-      // prior's. The runner trained against the prior prescription ·
-      // changing it after-the-fact would make every retro lie.
-      const sealed = args.sealedSnapshot.get(dateISO);
       // The spec derivation, the distance cap, the progression block, the
       // spec-summed total and the spec-derived sub_label all live in
       // `persistedDayShape` (extracted 2026-08-24, byte-identical) so the
@@ -11258,12 +11587,23 @@ async function composeForUserInternal(
       lastRaceFinished, lastRaceDistanceMi, lastRaceFinished?.priority ?? null,
     );
     // DOCTRINE-BASE-1 (2026-08-18) · the EVIDENCE is threaded whether or not it
-    // lifted the base. `rampBaseMi` stays conditional, so the volume curve is
-    // byte-identical for every runner the lift does not apply to — but the
-    // base-rebuilt gate in `composePlan` needs the comparison the evidence
-    // carries (this runner's 28-day mean against this runner's own sustained
-    // level) even on the authorings where the ramp itself did not move.
-    if (ramp.lifted) inputs.compose.rampBaseMi = ramp.baseMi;
+    // lifted the base — the base-rebuilt gate in `composePlan` needs the
+    // comparison the evidence carries (this runner's 28-day mean against this
+    // runner's own sustained level) even on the authorings where the ramp
+    // itself did not move.
+    //
+    // CONTINUOUS-RESTORE-1 (2026-08-30) · `rampBaseMi` was conditional on
+    // `ramp.lifted` too, and that was the quietest of the five places one
+    // near-tie switched a behaviour: when false the base was never passed at
+    // all, so `volumeCurve(input.rampBaseMi ?? input.recentWeeklyMi, …)` fell
+    // back to the 28-day mean and the whole RAMPBASE-1 mechanism disengaged —
+    // for precisely the runners sitting near the threshold, who are the ones it
+    // was built for. It is now always passed. This is byte-identical wherever
+    // nothing lifts the base: `resolveRampBase` is handed `recentWeeklyMi` as
+    // its mean and returns exactly that as `baseMi` when neither the resume
+    // level nor demonstrated volume clears it, so the `??` fallback and the
+    // value now supplied are the same number.
+    inputs.compose.rampBaseMi = ramp.baseMi;
     inputs.compose.rampBaseEvidence = ramp;
   }
 
@@ -11598,6 +11938,7 @@ async function persistComposedPlan(
       raceSlug: raceSlug ?? null,  // null for goal-mode AND for an open block (no race row)
       raceDateISO: openTarget ? openBlockEndISO : inputs.compose.raceDateISO,
       clipBeforeISO,
+      todayISO,
       blocks: composed.blocks,
       weeks: composed.weeks.map((w) => ({
         // 2026-06-06 · Audit C C1-1f · pass the per-week blended tPaceSec
@@ -12403,8 +12744,17 @@ async function loadGeneratorInputs(
       recentWeeklyMi: recentMi,
       easyDayMedianMi: easyFloor,
       recentLongMi: recentLong,
-      recentQualityDistanceMi: recentQualityDist > 0 ? recentQualityDist : undefined,
-      recentQualityPerWeek: recentQualityPW > 0 ? recentQualityPW : undefined,
+      // PLANVERSION-1 (2026-08-30) · a MEASURED ZERO SURVIVES AS ZERO.
+      //
+      // These were `x > 0 ? x : undefined`, and `undefined` is what
+      // `densityForWeek` reads as a cold start and answers with the runner's
+      // FULL preferred quality density. So "we measured this runner and he has
+      // done no hard running in a month" arrived at the composer wearing the
+      // same face as "we know nothing about this runner", and got the most
+      // aggressive answer available — the exact opposite of what Rule 5's ramp
+      // exists to do. Only `null` (the reader could not look) is absent now.
+      recentQualityDistanceMi: recentQualityDist ?? undefined,
+      recentQualityPerWeek: recentQualityPW ?? undefined,
       bestRecentVdot,
       // SELFREPORT-1 · carried alongside the number, never re-derived. The
       // composer cannot tell a typed PR from an observed one by looking at it.

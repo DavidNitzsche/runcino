@@ -409,10 +409,12 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
       rxQuality, rxRaceSpecific, tPaceSec, lthr: sim.lthr ?? null, maxHr: sim.maxHr ?? null,
       // ANCHORFIT-1 · RAMPBASE-1, resolved by the shipped pure function. Same
-      // conditionality production uses: `rampBaseMi` only when the lift fired,
-      // the evidence always (the base-rebuilt gate reads it either way).
+      // conditionality production uses.
+      // CONTINUOUS-RESTORE-1 (2026-08-30) · production stopped gating
+      // `rampBaseMi` on `rampEvidence.lifted`; this mirror follows it, or the
+      // sim stops being a mirror. See the note at that call site.
       ...(rampEvidence
-        ? { rampBaseEvidence: rampEvidence, ...(rampEvidence.lifted ? { rampBaseMi: rampEvidence.baseMi } : {}) }
+        ? { rampBaseEvidence: rampEvidence, rampBaseMi: rampEvidence.baseMi }
         : {}),
     };
     composed = composePlan(input);

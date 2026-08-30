@@ -437,7 +437,15 @@ export function checkNoSilentDowngrade(f: AnchorFacts): Finding | null {
  */
 export function checkPaceAnchorAgreesWithVolume(f: AnchorFacts): Finding | null {
   if (f.mode !== 'race-prep') return null;
-  if (!f.ramp?.lifted) return null;
+  // CONTINUOUS-RESTORE-1 (2026-08-30) · was `if (!f.ramp?.lifted) return null`,
+  // and that is why nothing surfaced the cliff: `lifted` is `0.70 × sustained >
+  // mean`, so this diagnostic went blind for exactly the runners sitting near
+  // the threshold — the ones whose volume anchor and pace anchor were most
+  // likely to have parted company. The condition it actually wants is the one
+  // its own message states: the volume base was raised above the 28-day mean
+  // while the pace anchor is still that mean. That is true whether the base was
+  // raised by doctrine's resume level or by the runner's demonstrated volume.
+  if (!f.ramp || !(f.ramp.baseMi > f.ramp.meanMi)) return null;
   if (f.vdotAnchor != null) return null;
   return {
     check: 'PACE_ANCHOR_STILL_DEPRESSED',
