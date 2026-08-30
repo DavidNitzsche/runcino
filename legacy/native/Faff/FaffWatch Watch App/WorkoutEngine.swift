@@ -2894,6 +2894,13 @@ final class WorkoutEngine: ObservableObject {
         // and then, here:  ruleOutcomesForWire?.forEach { out.recordRuleOutcome($0) }
         // Absent when nothing was paused, so the field never ships a zero.
         out.pausedSec = totalPausedSec > 0 ? totalPausedSec : nil
+        // MOVING-1 (2026-08-30) · `totalElapsedSec` already excludes every
+        // paused interval — `resume()` shifts `phaseStart` forward by the
+        // pause, manual or automatic, so paused seconds were never banked
+        // into it. It IS this run's moving time; it was only ever missing
+        // under the wire key `complete/route.ts`'s 2026-08-21 pace ruling
+        // reads by name. See WatchCompletion.movingSec's doc comment.
+        out.movingSec = totalElapsedSec > 0 ? totalElapsedSec : nil
         Self.applyDecisions(
             to: &out,
             ceilingLift: ceilingLiftRecord,

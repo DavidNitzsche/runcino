@@ -1314,6 +1314,22 @@ struct WatchCompletion: Encodable {
     /// paused, so the field is absent on the wire like every other optional.
     var pausedSec: Int? = nil
 
+    /// The server declares `movingSec` and has since before this file did —
+    /// `complete/route.ts`'s "MOVING TIME IS WHAT PACE IS COMPUTED FROM"
+    /// ruling (2026-08-21) reads `body.movingSec`, falling back to `totalSec`
+    /// only when it is absent. No watch build has ever populated this key, so
+    /// every watch run has always taken that fallback — silently, because the
+    /// fallback exists and nothing looked wrong.
+    ///
+    /// It should not have needed a fallback. `totalDurationSec` (below) is
+    /// NOT wall-clock elapsed — `WorkoutEngine.resume()` shifts `phaseStart`
+    /// forward by every paused interval, manual or automatic, so the paused
+    /// seconds were never in `totalElapsedSec` to begin with. The value this
+    /// struct already sends as the run's duration IS its moving time; it was
+    /// only ever missing under the key the ruling asks for by name. Send the
+    /// same number twice rather than compute a second, competing total.
+    var movingSec: Int? = nil
+
     /// Append one outcome. Creates the array only by putting something in it,
     /// so `[]` can never be assigned by accident.
     mutating func recordRuleOutcome(_ outcome: WorkoutEngine.RuleOutcome) {
