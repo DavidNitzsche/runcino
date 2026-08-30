@@ -41,35 +41,11 @@
 
 import {
   REPRESENTATIVE_FLOOR,
-  UNREPRESENTATIVE_FLOOR,
+  RUNNER_REPORTED_AUTHORITY_CAP,
   authorityTier,
   selectionAuthority,
   type AuthorityTier,
 } from '@/lib/race/effort-authority';
-
-/**
- * The authority a RUNNER-REPORTED tier caps a race at. Each value is the
- * bottom of the band `authorityTier` reports for that name, so a reported tier
- * and the tier the engine then publishes always agree — `compromised` sits
- * exactly on `UNREPRESENTATIVE_FLOOR` (the C row), and `unrepresentative` sits
- * just below it.
- *
- * `representative` is deliberately absent: the cap is a floor-lowering lever
- * only (see the `runner_authority_tier` note on `bestRecentVdot`), so a
- * runner reporting "representative" leaves the doctrine grading untouched.
- *
- * NOT zero. `effort-authority.ts` §"What selection deliberately does NOT
- * charge" already ruled on this for illness: zeroing at SELECTION would leave
- * a runner whose only recent race was compromised with no anchor at all, and
- * "an honest slow number prescribes work that is too easy, [but] no number at
- * all falls through to a mileage guess that floors at VDOT 30". Ranked, not
- * removed — the race loses to any better-graded race and keeps its place as a
- * last-resort floor.
- */
-const RUNNER_REPORTED_AUTHORITY_CAP: Record<Exclude<AuthorityTier, 'representative'>, number> = {
-  compromised: UNREPRESENTATIVE_FLOOR,
-  unrepresentative: UNREPRESENTATIVE_FLOOR / 2,
-};
 
 /** Distance in km from a label. */
 function kmFromMi(mi: number): number { return mi * 1.609344; }

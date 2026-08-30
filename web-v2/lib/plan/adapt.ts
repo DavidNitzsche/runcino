@@ -3046,8 +3046,31 @@ export function fieldTestGate(g: {
   upcomingARaceISO: string | null;
   /** active plan age in days · null = no active plan */
   planAgeDays: number | null;
+  /**
+   * 2026-08-30 · LTHR STALENESS · true when the runner's stored threshold HR
+   * is past Friel's re-test cadence AND no race in the window could re-derive
+   * it (`lib/training/lthr-reanchor.ts` returned `action: 'stale'`).
+   *
+   * It lifts exactly ONE blocker: `recent_race_result`. That blocker's whole
+   * justification is that "the race IS the natural test" — but a race is only
+   * the natural test for the anchor it can actually measure. A marathon, a
+   * C-graded tune-up, and a hilly-excluded course all refresh the pace anchor
+   * (`bestRecentVdot` takes them at their graded weight) and refresh NOTHING
+   * about the threshold heart rate, because `Research/03` §6's protocol wants a
+   * sustained maximal effort of about an hour and §16's field-alternatives
+   * table is short. So a runner could race every month, be blocked from a field
+   * test every month on the grounds that they had just raced, and carry a
+   * threshold anchor that had not moved in a year. That is the shape of the
+   * defect this whole change exists to fix, and leaving this gate alone would
+   * have left one door to it open.
+   *
+   * Every other blocker still stands, including `recent_field_test` and
+   * `recent_proposal` — a declined test is respected for the full window
+   * whatever the LTHR is doing, and a taper is still no place for test load.
+   */
+  lthrPastCadence?: boolean;
 }): { ok: boolean; blockedBy: string | null } {
-  if (g.recentResultISO) return { ok: false, blockedBy: 'recent_race_result' };
+  if (g.recentResultISO && !g.lthrPastCadence) return { ok: false, blockedBy: 'recent_race_result' };
   if (g.recentTestISO) return { ok: false, blockedBy: 'recent_field_test' };
   if (g.recentProposalAt) return { ok: false, blockedBy: 'recent_proposal' };
   if (g.recentIntentAt) return { ok: false, blockedBy: 'recent_intent' };
@@ -3099,6 +3122,15 @@ async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | n
       [userId, today],
     )).rows[0];
     if (!gate) return null;
+
+    // 2026-08-30 · is the THRESHOLD anchor stale on its own terms? The pace
+    // anchor and the threshold-HR anchor go stale independently, and only the
+    // first of them is refreshed by any race. `lthrStaleness` answers for the
+    // second: 'stale' means past Friel's re-test cadence with no qualifying
+    // race to re-derive from, which is precisely the state a field test exists
+    // to end. Best-effort — a read failure leaves the gate exactly as it was.
+    const lthrStale = await lthrStalenessFlag(userId, today);
+
     const gateResult = fieldTestGate({
       recentResultISO: gate.recent_result,
       recentTestISO: gate.recent_test,
@@ -3107,6 +3139,7 @@ async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | n
       upcomingRaceISO: gate.upcoming_race_14,
       upcomingARaceISO: gate.upcoming_a_21,
       planAgeDays: gate.plan_age_days != null ? Number(gate.plan_age_days) : null,
+      lthrPastCadence: lthrStale.stale,
     });
     if (!gateResult.ok) return null;
 
@@ -3126,21 +3159,82 @@ async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | n
     )).rows[0];
     if (!slot) return null;
 
+    // The line says which anchor went stale, because they are different asks.
+    // "No race in six weeks" is false and reads as a mistake when the runner
+    // raced a fortnight ago; what is true in that case is that the race could
+    // not measure their threshold heart rate.
+    const reason = lthrStale.stale
+      ? `Threshold HR was last set ${lthrStale.ageDays ?? 'over 12 weeks'} days ago and no race since could re-derive it. `
+        + `Convert ${slot.date}'s quality session to a 30-minute threshold field test to re-anchor your zones.`
+      : `No race or field test in the last 6 weeks. Pace anchors are going stale. `
+        + `Convert ${slot.date}'s quality session to a 30-minute threshold field test to lock in current fitness.`;
+
     return {
       kind: 'field_test_due',
       severity: 'info',
-      reason: `No race or field test in the last 6 weeks. Pace anchors are going stale. Convert ${slot.date}'s quality session to a 30-minute threshold field test to lock in current fitness.`,
+      reason,
       evidence: {
         workout_id: slot.id,
         planned_date: slot.date,
         planned_type: slot.type,
         planned_distance_mi: slot.distance_mi != null ? Number(slot.distance_mi) : null,
-        citation: 'Research/01-pace-zones-vdot.md:684-686 + :700-703',
+        lthr_stale: lthrStale.stale,
+        lthr_age_days: lthrStale.ageDays,
+        citation: lthrStale.stale
+          ? 'Research/03-heart-rate-zones.md §6 (Friel · re-test every 6-12 weeks)'
+          : 'Research/01-pace-zones-vdot.md §"Testing cadence" + §"Field test protocols"',
       },
     };
   } catch (e) {
     console.warn('[adapt] detectFieldTestDue failed:', e instanceof Error ? e.message : String(e));
     return null;
+  }
+}
+
+/**
+ * Is the runner's THRESHOLD HR anchor past Friel's re-test cadence with nothing
+ * available to re-derive it from?
+ *
+ * Delegates the whole judgement to `lib/training/lthr-reanchor.ts` rather than
+ * re-deriving "stale" here — that module owns the cadence, the qualifying-race
+ * rule and the provenance precedence, and a second opinion in this file would
+ * be a second thing to keep in step. Read-only: `decideLthrReanchor` is pure
+ * and the loader only selects.
+ *
+ * Returns `stale: false` on any failure. A detector that fires because a query
+ * broke is worse than one that stays quiet.
+ */
+async function lthrStalenessFlag(
+  userId: string,
+  todayISO: string,
+): Promise<{ stale: boolean; ageDays: number | null }> {
+  try {
+    const { decideLthrReanchor, selectLthrAnchor } = await import('@/lib/training/lthr-reanchor');
+    const { loadLthrRaceCandidates } = await import('@/lib/training/lthr-reanchor-store');
+    const row = (await pool.query<{ lthr: number | null; lthr_method: string | null; lthr_set_at: string | null }>(
+      `SELECT lthr, lthr_method, lthr_set_at::date::text AS lthr_set_at
+         FROM profile WHERE user_uuid = $1 LIMIT 1`,
+      [userId],
+    )).rows[0];
+    if (!row) return { stale: false, ageDays: null };
+    const candidates = await loadLthrRaceCandidates(userId, todayISO);
+    // A failed read is not "no qualifying race". Reporting stale off a broken
+    // query would lift the recent-race blocker and spend a quality day on a
+    // test the runner may not need.
+    if (candidates === null) return { stale: false, ageDays: null };
+    const decision = decideLthrReanchor({
+      stored: { lthr: row.lthr, method: row.lthr_method, setAtISO: row.lthr_set_at },
+      anchor: selectLthrAnchor(candidates, todayISO),
+      todayISO,
+    });
+    // Only the 'stale' limb lifts the race blocker. A 'hold' whose anchor is
+    // also stale is a FIELD-TESTED value the runner set deliberately, and the
+    // right response there is to tell them (the coach log does), not to spend
+    // one of their quality days re-testing something they already tested.
+    return { stale: decision.action === 'stale', ageDays: decision.storedAgeDays };
+  } catch (e) {
+    console.warn('[adapt] lthrStalenessFlag failed:', e instanceof Error ? e.message : String(e));
+    return { stale: false, ageDays: null };
   }
 }
 

@@ -15,6 +15,7 @@ import {
   ToggleRow,
   useGlossaryDrawer,
 } from '../toolkit';
+import { LTHR_RETEST_CADENCE_DAYS } from '@/lib/training/lthr-reanchor';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
 import { CoachCalendarConnect } from '../CoachCalendarConnect';
 import { SettingsPanel } from './SettingsPanel';
@@ -551,16 +552,30 @@ function PhysiologyBlock() {
   const lthrSetLabel = lthrSetDate && Number.isFinite(lthrSetDate.getTime())
     ? lthrSetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
+  // 2026-08-30 · was a literal 120 days, which is not a number doctrine says.
+  // Friel's protocol (Research/03 §6) ends "Re-test every 6-12 weeks", so the
+  // shelf life is 84 days and the tile now reads the same constant the engine's
+  // staleness limb does — `LTHR_RETEST_CADENCE_DAYS`. At 120 the marker stayed
+  // clear for five weeks after doctrine considered the anchor expired.
   const lthrStale = lthrSetDate
-    ? Date.now() - lthrSetDate.getTime() > 120 * 86400000
+    ? Date.now() - lthrSetDate.getTime() > LTHR_RETEST_CADENCE_DAYS * 86400000
     : false;
   const lthrMethodLabel = (() => {
-    switch (p.lthr_method) {
-      case 'race_half':    return 'From a half marathon';
-      case 'race_full':    return 'From a marathon';
-      case 'race_marathon':return 'From a marathon';
-      case 'manual':       return 'Entered manually';
-      default:             return p.lthr_method ?? 'Source unknown';
+    // 2026-08-30 · the re-anchor writes provenance INTO the method string —
+    // "race_half · Americas Finest City · 2026-08-16" — so the switch reads
+    // the machine token ahead of the first separator and appends the race.
+    // An exact-match switch showed the whole raw string, provenance and all,
+    // through the `default` arm.
+    const raw = p.lthr_method ?? '';
+    const [token, ...rest] = raw.split('·').map((s) => s.trim());
+    const suffix = rest.length ? ` · ${rest.join(' · ')}` : '';
+    switch (token) {
+      case 'race_half':     return `From a half marathon${suffix}`;
+      case 'race_full':
+      case 'race_marathon': return `From a marathon${suffix}`;
+      case 'field_test':    return `From a 30-minute field test${suffix}`;
+      case 'manual':        return 'Entered manually';
+      default:              return raw || 'Source unknown';
     }
   })();
   const hrmaxLabel =

@@ -315,7 +315,15 @@ import {
   FRIEL_5_ZONE_EDGES, FRIEL_7_ZONE_EDGES, PCT_MAX_ZONE_BANDS,
 } from '@/lib/training/zones';
 import { deriveReadingScopes, HR_REP_KINETICS_FLOOR_SEC } from '@/lib/coach/reading-scope';
-import { lthrFromMaxHr } from '@/lib/training/lthr';
+import { lthrFromMaxHr, lthrFromRace } from '@/lib/training/lthr';
+import {
+  LTHR_MATERIAL_CHANGE_BPM,
+  LTHR_QUALIFYING_MAX_MI,
+  LTHR_QUALIFYING_MIN_MI,
+  LTHR_RETEST_CADENCE_DAYS,
+  LTHR_RETEST_MAX_WEEKS,
+  LTHR_RETEST_MIN_WEEKS,
+} from '@/lib/training/lthr-reanchor';
 import { RHR_ROLLING_WINDOW_DAYS } from '@/lib/training/biometrics-refresh';
 import {
   EASY_HRMAX_CEILING_PCT,
@@ -3752,6 +3760,126 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const lthr = lthrFromMaxHr(maxHr);
       if (lthr == null) throw new Error('lthrFromMaxHr returned null for a valid HRmax');
       within(lthr / maxHr, band, 'lthrFromMaxHr fraction of HRmax');
+    },
+  },
+  {
+    id: 'LTHR.retest-cadence-is-the-shelf-life',
+    binds: [
+      'lib/training/lthr-reanchor.ts#LTHR_RETEST_MIN_WEEKS',
+      'lib/training/lthr-reanchor.ts#LTHR_RETEST_MAX_WEEKS',
+      'lib/training/lthr-reanchor.ts#LTHR_RETEST_CADENCE_DAYS',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: 'Re-test every 6–12 weeks.',
+    claim:
+      'LTHR is a measurement with a shelf life, not a constant of the runner: Friel ends the ' +
+      '30-minute time-trial protocol by telling you when to do it again. The engine treats an ' +
+      'anchor older than the CEILING of that stated band as stale, and both ends of the band ' +
+      'are read out of the sentence rather than written down here.',
+    check({ cite }) {
+      // The sentence is the anchor line itself, and `parseBand` normalises the
+      // en dash the doc uses. Both ends matter: the floor is what stops the
+      // engine nagging on the near edge of a range doctrine states as a range,
+      // and the ceiling is what makes an anchor stale.
+      const [lo, hi] = parseBand(cite.section[0]);
+      if (LTHR_RETEST_MIN_WEEKS !== lo) {
+        throw new Error(
+          `LTHR_RETEST_MIN_WEEKS is ${LTHR_RETEST_MIN_WEEKS} · the doc's re-test band opens at ${lo} weeks`,
+        );
+      }
+      if (LTHR_RETEST_MAX_WEEKS !== hi) {
+        throw new Error(
+          `LTHR_RETEST_MAX_WEEKS is ${LTHR_RETEST_MAX_WEEKS} · the doc's re-test band closes at ${hi} weeks`,
+        );
+      }
+      // The staleness limb, the field-test detector and the profile tile all
+      // work in DAYS. One derivation, from the weeks the doc states.
+      if (LTHR_RETEST_CADENCE_DAYS !== hi * 7) {
+        throw new Error(
+          `LTHR_RETEST_CADENCE_DAYS is ${LTHR_RETEST_CADENCE_DAYS} · ${hi} weeks is ${hi * 7} days`,
+        );
+      }
+    },
+  },
+  {
+    id: 'LTHR.material-change-is-the-retest-noise-floor',
+    binds: ['lib/training/lthr-reanchor.ts#LTHR_MATERIAL_CHANGE_BPM'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: 'Reproducibility on retest 1–2 weeks later: ±3 bpm.',
+    claim:
+      'A repeated HR field test does not return the same number twice; doctrine states how far ' +
+      'apart two honest readings of an unchanged athlete can be. The engine will not re-write ' +
+      'the threshold anchor — which redraws every zone edge and both HR ceilings — for a move ' +
+      'smaller than that stated repeatability, because inside it the two readings agree.',
+    check({ cite }) {
+      // "±3 bpm" · parseBand strips the ± and reads the magnitude.
+      const tolerance = parseBand(
+        (cite.section[0].match(/±\s*\d+(?:\.\d+)?\s*bpm/) ?? ['±3 bpm'])[0],
+      )[0];
+      if (LTHR_MATERIAL_CHANGE_BPM !== tolerance) {
+        throw new Error(
+          `LTHR_MATERIAL_CHANGE_BPM is ${LTHR_MATERIAL_CHANGE_BPM} · doctrine puts retest ` +
+          `reproducibility at ±${tolerance} bpm, so that is the floor a real change must clear`,
+        );
+      }
+    },
+  },
+  {
+    id: 'LTHR.half-marathon-inverts-at-the-band-top',
+    binds: [
+      'lib/training/lthr.ts#lthrFromRace',
+      'lib/training/lthr-reanchor.ts#LTHR_QUALIFYING_MIN_MI',
+      'lib/training/lthr-reanchor.ts#LTHR_QUALIFYING_MAX_MI',
+    ],
+    doc: 'Research/08-pacing-and-race-week.md',
+    anchor: '### 6.1 Heart-rate ceilings by distance',
+    claim:
+      'A half marathon is raced at a stated fraction of LTHR, so a half average HR inverts to an ' +
+      'LTHR estimate. The engine reads the TOP of that band — a well-run half is AT threshold, ' +
+      'which is the conservative end and the one that cannot over-state fitness — and it accepts ' +
+      'only the half, because it is the tightest band the table publishes.',
+    check({ cite }) {
+      const t = cite.table();
+      const half = parsePctBand(t.cell('Half', '%LTHR'));
+      const marathon = parsePctBand(t.cell('Marathon', '%LTHR'));
+      // The inversion: LTHR = avgHR / (top of the band). The engine's
+      // `lthrFromRace` returns the average unchanged, which is only correct
+      // while the doc's top edge is 100%.
+      const avgHr = 168;
+      const derived = lthrFromRace(13.1, avgHr);
+      if (derived == null) throw new Error('lthrFromRace refused a 13.1 mi race at a plausible HR');
+      const want = Math.round(avgHr / half[1]);
+      if (derived !== want) {
+        throw new Error(
+          `lthrFromRace(13.1, ${avgHr}) is ${derived} · Research/08 §6.1 races a half at ` +
+          `${Math.round(half[0] * 100)}-${Math.round(half[1] * 100)}% of LTHR, which inverts to ${want}`,
+        );
+      }
+      // The half is chosen over the marathon because its band is tighter, and
+      // that ordering is read out of the doc rather than asserted. If a future
+      // edit ever made the marathon row the narrower one, the reason this
+      // module rejects marathons would no longer hold and someone must re-read
+      // it rather than discover it in a runner's zones.
+      if ((half[1] - half[0]) >= (marathon[1] - marathon[0])) {
+        throw new Error(
+          "Research/08 §6.1's Half band is no longer tighter than its Marathon band · " +
+          'the half-only qualifying rule in lib/training/lthr-reanchor.ts rests on that ordering',
+        );
+      }
+      // And the accepted distance window actually contains a half marathon,
+      // with room for the GPS spread a real race carries, and never reaches
+      // far enough to swallow a 10K or a marathon.
+      if (!(LTHR_QUALIFYING_MIN_MI < 13.1 && LTHR_QUALIFYING_MAX_MI > 13.1)) {
+        throw new Error(
+          `the LTHR qualifying window ${LTHR_QUALIFYING_MIN_MI}-${LTHR_QUALIFYING_MAX_MI} mi does not contain 13.1`,
+        );
+      }
+      if (LTHR_QUALIFYING_MIN_MI <= 6.3 || LTHR_QUALIFYING_MAX_MI >= 26.2) {
+        throw new Error(
+          `the LTHR qualifying window ${LTHR_QUALIFYING_MIN_MI}-${LTHR_QUALIFYING_MAX_MI} mi reaches a ` +
+          'distance Research/08 §6.1 gives its own, different %LTHR band',
+        );
+      }
     },
   },
   {

@@ -187,6 +187,24 @@ export async function POST(req: NextRequest) {
       const bump = await tryAdaptiveBump(uid, applied > 0 || pullbackDecided).catch(() => null);
       if (bump) await bustBriefingCacheForEvent(uid, 'plan_swap');
 
+      // 2026-08-30 · LTHR re-anchor (lib/training/lthr-reanchor.ts).
+      //
+      // The race paths call this too, but they only fire when a result is
+      // WRITTEN. An anchor can go stale between result writes — a race
+      // imported through a path that didn't run the chain, a priority edited
+      // from C to A after the fact, or (the case that made this necessary)
+      // months of history that predate the fix. Running it daily means the
+      // anchor is never more than one night behind the evidence.
+      //
+      // Ordered BEFORE updateCoachLog so a move made this tick is available
+      // for the log entry written in the same pass. Idempotent — the decision
+      // returns 'none' once the anchor agrees with the evidence, and the
+      // ±3 bpm noise floor stops it churning on rounding.
+      try {
+        const { reanchorLthr } = await import('@/lib/training/lthr-reanchor-store');
+        await reanchorLthr(uid);
+      } catch { /* logged inside · non-fatal */ }
+
       // 2026-08-17 · coach's log daily check (lib/coach/coach-log.ts).
       // Week-close / phase-boundary entries fire only on the boundary
       // morning; the longest-run-ever check is one indexed query.

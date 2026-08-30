@@ -90,6 +90,34 @@ export const UNREPRESENTATIVE_FLOOR = RECOVERY_EFFORT_SCALE.C;
 /** The three bands the two doctrine floors cut authority into. */
 export type AuthorityTier = 'representative' | 'compromised' | 'unrepresentative';
 
+/**
+ * The authority a RUNNER-REPORTED tier caps a race at. Each value is the
+ * bottom of the band `authorityTier` reports for that name, so a reported tier
+ * and the tier the engine then publishes always agree — `compromised` sits
+ * exactly on `UNREPRESENTATIVE_FLOOR` (the C row), and `unrepresentative` sits
+ * just below it.
+ *
+ * `representative` is deliberately absent: the cap is a floor-lowering lever
+ * only (see the `runner_authority_tier` note on `bestRecentVdot`), so a
+ * runner reporting "representative" leaves the doctrine grading untouched.
+ *
+ * NOT zero. §"What selection deliberately does NOT charge" above already ruled
+ * on this for illness: zeroing at SELECTION would leave a runner whose only
+ * recent race was compromised with no anchor at all, and "an honest slow number
+ * prescribes work that is too easy, [but] no number at all falls through to a
+ * mileage guess that floors at VDOT 30". Ranked, not removed — the race loses
+ * to any better-graded race and keeps its place as a last-resort floor.
+ *
+ * 2026-08-30 · moved here from `lib/training/vdot.ts`, where it was private, so
+ * `lib/training/lthr-reanchor.ts` grades the runner's own report of a race the
+ * same way `bestRecentVdot` does instead of restating the numbers. Two
+ * consumers, one definition.
+ */
+export const RUNNER_REPORTED_AUTHORITY_CAP: Record<Exclude<AuthorityTier, 'representative'>, number> = {
+  compromised: UNREPRESENTATIVE_FLOOR,
+  unrepresentative: UNREPRESENTATIVE_FLOOR / 2,
+};
+
 export function authorityTier(authority: number): AuthorityTier {
   if (!isFinite(authority)) return 'unrepresentative';
   if (authority >= REPRESENTATIVE_FLOOR) return 'representative';
