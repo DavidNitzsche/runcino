@@ -144,3 +144,47 @@ export function todayAtHourLocal(tz: string, hour: number, minute = 0, now: Date
   const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
   return new Date(guess - (asUtc - guess));
 }
+
+/** 2026-08-30 · a wall-clock hour a runner would find it reasonable to
+ *  be notified at, in either direction — not before the household is
+ *  up, not after it would plausibly be asleep. Shared so a "when should
+ *  this land" decision reads the same band everywhere it's made, rather
+ *  than each call site picking its own cutoffs. */
+const REASONABLE_NOTIFY_HOUR_START = 7;
+const REASONABLE_NOTIFY_HOUR_END = 21.5; // 9:30pm
+
+/** 2026-08-30 · "now, if now is a decent hour — otherwise the next 7:15am."
+ *
+ * Built for the recovery→next-block coach note (lib/notifications/
+ * block-started.ts), which the plan-drift cron can now fire from EITHER
+ * its 02:00 PT tick or its 21:00 PT tick (David's own ask: the block
+ * should be there THAT EVENING, not cold the next morning — see
+ * lib/plan/race-lifecycle.ts's recoveryCompleteDue doc comment).
+ * `nextMorning0715` already does the right thing for a 2am trigger (it
+ * lands a few hours later, same day) — the gap was the evening trigger:
+ * `nextMorning0715` at 9pm sees 7:15am has already passed THAT day and
+ * pushes to TOMORROW's 7:15am, which recreates the exact "cold the next
+ * morning" problem one layer down, in the notification instead of the
+ * plan. 9pm is already a reasonable hour to be told — so fire close to
+ * now instead of deferring past it.
+ *
+ * Reads as "was NOW a decent hour" rather than "which cron tick called
+ * this" on purpose — it keeps working correctly if the cron schedule
+ * ever changes again, and it's the honest question either way. */
+export function promptOrNextMorning(now: Date = new Date(), tz?: string): Date {
+  if (!tz) return nextMorning0715(now, tz);
+  const hourFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
+  });
+  const parts: Record<string, string> = {};
+  for (const p of hourFmt.formatToParts(now)) parts[p.type] = p.value;
+  const localHour = Number(parts.hour) + Number(parts.minute) / 60;
+  if (localHour >= REASONABLE_NOTIFY_HOUR_START && localHour < REASONABLE_NOTIFY_HOUR_END) {
+    // A minute out, not literally `now` — the caller's own transaction
+    // (persisting the new plan) needs to be visibly committed before a
+    // push referencing it goes out, and the dispatcher's own cadence
+    // means "now" and "a minute from now" are the same tier of prompt.
+    return new Date(now.getTime() + 60_000);
+  }
+  return nextMorning0715(now, tz);
+}

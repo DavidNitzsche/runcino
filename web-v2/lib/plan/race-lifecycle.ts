@@ -53,15 +53,31 @@ export function graduateDue(raceDateISO: string | null | undefined, todayISO: st
 }
 
 /**
- * True when a recovery-mode plan has run out of prescribed days and its
- * target race is still ahead — time to rebuild toward that race
- * (pickPlanMode will return race-prep or maintenance now that the
- * recovery window has elapsed, or a shorter recovery remainder if it
- * hasn't).
+ * True when a recovery-mode plan has reached (or passed) its last
+ * prescribed day and its target race is still ahead — time to rebuild
+ * toward that race (pickPlanMode will return race-prep or maintenance
+ * now that the recovery window has elapsed, or a shorter recovery
+ * remainder if it hasn't).
  *
- * Loop guard is structural: the rebuild archives this plan and authors
- * a new one whose last workout is >= today, so the predicate reads
- * false for the replacement on the next tick.
+ * SAME-DAY ELIGIBLE (2026-08-30 · David's own ask). This used to be a
+ * strict `<` — the block only counted "complete" the calendar day AFTER
+ * its last prescribed day, no matter what hour the cron ran. Moving the
+ * cron earlier in the day could never have fixed that: at any cron time
+ * on the last prescribed day itself, `lastWorkoutISO < today` was still
+ * false, because both sides named the same date. The fix is here, in
+ * the predicate, not in the schedule — paired with a same-evening cron
+ * run (`.github/workflows/plan-drift.yml`) so a runner whose block ends
+ * today sees the next one start THAT EVENING, not cold the next morning.
+ *
+ * Loop guard is NO LONGER structural (a `<=` predicate can read true
+ * again the same day the replacement plan is authored, if that plan's
+ * own last day happens to be today too — a short recovery remainder).
+ * Safety now rests entirely on the caller's dedupe (24h window OR a
+ * standing pending row, checked before every fire) — verified this is
+ * exactly what the cron already does. Running the cron twice a day
+ * (morning + evening) does not double-fire this transition: the second
+ * tick on the same day finds the first tick's proposal row inside the
+ * 24h window and skips.
  *
  *   · lastWorkoutISO null → false (a plan with no rows is not "complete",
  *     it's broken — don't auto-fire off missing data)
@@ -74,7 +90,7 @@ export function recoveryCompleteDue(
 ): boolean {
   if (!lastWorkoutISO || !todayISO) return false;
   if (!raceDateISO || raceDateISO.slice(0, 10) <= todayISO) return false;
-  return lastWorkoutISO.slice(0, 10) < todayISO;
+  return lastWorkoutISO.slice(0, 10) <= todayISO;
 }
 
 /**

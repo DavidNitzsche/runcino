@@ -13,8 +13,22 @@
 #
 # Today view reads plan_proposals to render accept-or-dismiss cards.
 #
-# Schedule: 09:00 UTC daily = 02:00 PT. Runs after readiness-snapshot
-# (08:15) so plans drift-check against the latest readiness pillar.
+# Schedule: TWICE daily.
+#   09:00 UTC = 02:00 PT (PDT) — the original slot. Runs after
+#     readiness-snapshot (08:15) so soft-drift checks see the day's
+#     readiness pillar. Covers everything this cron does.
+#   04:00 UTC = 21:00 PT (PDT) the PREVIOUS calendar evening — added
+#     2026-08-30 (David's own ask: "I don't love waking up blind Monday
+#     am to a new plan"). recoveryCompleteDue (lib/plan/race-lifecycle.ts)
+#     became same-day-eligible the same day this was added — a recovery
+#     block whose last prescribed day IS today now qualifies THAT
+#     EVENING, not just the calendar day after. Running the cron twice
+#     does not double-fire any lifecycle transition: every auto-apply
+#     path here is gated behind a 24h-or-standing-pending dedupe
+#     (checked fresh before every fire), so the second tick on a day
+#     that already transitioned finds the first tick's proposal row and
+#     skips. See lib/plan/race-lifecycle.ts's recoveryCompleteDue doc
+#     comment for the full reasoning.
 #
 # Manual trigger: Actions tab > "Plan drift detector" > Run workflow.
 
@@ -23,6 +37,7 @@ name: Plan drift detector
 on:
   schedule:
     - cron: '0 9 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch: {}
 
 jobs:

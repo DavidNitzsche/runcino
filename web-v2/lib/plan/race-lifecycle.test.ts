@@ -48,11 +48,15 @@ describe('recoveryCompleteDue — recovery → next-block transition', () => {
     expect(recoveryCompleteDue('2026-08-30', cim, today)).toBe(true);
   });
 
-  it('F3 · no-loop: the replacement plan\'s last workout is today or later → false', () => {
-    // Immediately after the rebuild, the new plan (recovery remainder or
-    // race-prep) prescribes through at least today — the cron must not
-    // re-fire on the next tick.
-    expect(recoveryCompleteDue(today, cim, today)).toBe(false);
+  it('F2b · SAME-DAY ELIGIBLE (2026-08-30): fires the day the last prescribed workout IS today, not the day after', () => {
+    // The whole point of the fix — a runner whose block's last day is
+    // today should not have to wait for tomorrow's date to roll over.
+    expect(recoveryCompleteDue(today, cim, today)).toBe(true);
+  });
+
+  it('F3 · the replacement plan\'s last workout is still ahead → false', () => {
+    // A rebuilt plan (recovery remainder or race-prep) that still has
+    // days left ahead of today reads false, as always.
     expect(recoveryCompleteDue('2026-09-06', cim, today)).toBe(false);
   });
 

@@ -10,14 +10,25 @@
  * changed, not discover it from a reset week counter.
  *
  * Mirrors lib/notifications/projection-changed.ts: read the primitives the
- * template needs, enqueue for next-morning 07:15 runner-local, never throw —
- * a notification must never fail the cron's transition.
+ * template needs, enqueue, never throw — a notification must never fail
+ * the cron's transition.
+ *
+ * TIMING (2026-08-30 · David's own ask): the plan-drift cron that calls
+ * this can now fire from either its 02:00 PT tick or its 21:00 PT tick
+ * (recoveryCompleteDue became same-day-eligible the same day this
+ * changed — see lib/plan/race-lifecycle.ts). Delivery uses
+ * `promptOrNextMorning`, not a hardcoded next-morning slot: a 9pm
+ * trigger notifies close to 9pm, a 2am trigger still waits for a
+ * decent hour. Hardcoding "next morning" here would have meant the
+ * PLAN itself started arriving in the evening while the NOTE telling
+ * the runner about it stayed stuck the next day — the same "cold in
+ * the morning" problem, one layer down.
  */
 import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
 import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import { renderBlockStarted } from './templates';
-import { enqueueNotification, nextMorning0715 } from './enqueue';
+import { enqueueNotification, promptOrNextMorning } from './enqueue';
 
 export interface BlockStartedCheck {
   sent: boolean;
@@ -60,7 +71,7 @@ export async function notifyBlockStarted(args: {
 
     const weeksN = plan.weeks != null ? Number(plan.weeks) : NaN;
     const tz = await runnerTimezone(userUuid);
-    const fireAt = nextMorning0715(new Date(), tz);
+    const fireAt = promptOrNextMorning(new Date(), tz);
     const tpl = renderBlockStarted({
       user_id: userUuid,
       race_name: raceName,
