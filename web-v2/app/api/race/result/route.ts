@@ -114,6 +114,12 @@ export async function POST(req: NextRequest) {
       marathonProjectionSec: chain.marathonProjectionSec,
       planArchived: chain.planArchived,
       nextPlan: chain.nextPlan,
+      // 2026-08-30 · the threshold-HR half of the recalc. Same shape the
+      // race editor's `recalc` block returns, so RaceView's StateChangeToast
+      // renders an LTHR row off either path.
+      lthrBefore: chain.lthrBefore,
+      lthrAfter: chain.lthrAfter,
+      lthrMethod: chain.lthrMethod,
       // 2026-08-19 · what the runner got when there was no next race booked.
       openBlock: chain.openBlock,
     });

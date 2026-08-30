@@ -415,9 +415,7 @@ export async function PATCH(req: NextRequest) {
       try {
         const distanceMi = calDistanceMi;
         const { parseRaceTime, vdotFromRace } = await import('@/lib/training/vdot');
-        const { calibrateLthr } = await import('@/lib/training/lthr');
         const secs = parseRaceTime(String(meta.finishTime));
-        const hr = Number(meta.avgHrBpm);
         recalc = {};
         // Read the prior VDOT + LTHR off the most recent coach_intents +
         // profile so the response can carry the before/after diff. No
@@ -436,12 +434,10 @@ export async function PATCH(req: NextRequest) {
             ORDER BY ts DESC LIMIT 1`,
           [userId]
         ).catch((e) => { logReadFailure('api/race · priorVdot', e); return { rows: [] }; });
-        const priorLthr = await pool.query<{ lthr: number | null }>(
-          `SELECT lthr FROM profile WHERE user_uuid = $1`,
-          [userId]
-        ).catch(() => ({ rows: [] }));
         recalc.vdotBefore = priorVdot.rows[0]?.value ? Number(priorVdot.rows[0].value) : null;
-        recalc.lthrBefore = priorLthr.rows[0]?.lthr ?? null;
+        // lthrBefore comes off `reanchorLthr`'s own read below — it has to read
+        // profile.lthr anyway to decide, and a second copy of that read here
+        // could disagree with the one the decision was made against.
         // VDOT
         if (secs && meta.priority !== 'C') {
           const v = vdotFromRace(secs, distanceMi);
@@ -457,21 +453,25 @@ export async function PATCH(req: NextRequest) {
           }
         }
         // LTHR
-        const cal = calibrateLthr(distanceMi, hr);
-        if (cal) {
-          await pool.query(
-            `UPDATE profile
-                SET lthr = $1, lthr_method = $2, lthr_set_at = NOW()
-              WHERE user_uuid = $3`,
-            [cal.lthr, cal.method, userId]
-          );
-          await pool.query(
-            `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
-             VALUES ($1, $1, 'lthr_auto_calibrated', 'lthr', $2)`,
-            [userId, `${cal.lthr} (${cal.method})`]
-          );
-          recalc.lthrAfter = cal.lthr;
-          recalc.lthrMethod = cal.method;
+        //
+        // 2026-08-30 · was `calibrateLthr(distanceMi, hr)` writing straight to
+        // `profile.lthr` with no gate at all: any edited race in the
+        // half-marathon band overwrote the anchor, INCLUDING a field-tested
+        // one, and no other code path could ever write it. Both halves of that
+        // were wrong, and in opposite directions — too eager here, absent
+        // everywhere else.
+        //
+        // `reanchorLthr` owns the whole rule now (qualifying distance,
+        // representative effort, Friel's re-test cadence, provenance
+        // precedence) and reads the race back out of the row this PATCH just
+        // wrote, so the editor path and the chip-time path reach the same
+        // answer from the same evidence.
+        const { reanchorLthr } = await import('@/lib/training/lthr-reanchor-store');
+        const re = await reanchorLthr(userId);
+        recalc.lthrBefore = re.previousLthr;
+        if (re.written) {
+          recalc.lthrAfter = re.nextLthr;
+          recalc.lthrMethod = re.nextMethod ?? undefined;
         }
       } catch (e: any) {
         console.error('[race PATCH] auto-calibrate warn:', e?.message);

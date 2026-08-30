@@ -113,7 +113,15 @@ export type CoachLogKind =
   | 'easy_discipline'
   | 'fitness_evidence'
   | 'threshold_pattern'
-  | 'race_replacement';
+  | 'race_replacement'
+  /**
+   * 2026-08-30 · the threshold heart rate moved, or should have and could not.
+   * Same argument as `fitness_shift` one row up: a silent re-pace is a coach
+   * who changed the plan and did not say so. An LTHR move is larger than a
+   * re-pace — it redraws every Friel band, both HR ceilings, the watch's cap
+   * and the zone bar under every run — and it was landing with no line at all.
+   */
+  | 'lthr_reanchor';
 
 export interface CoachLogEntry {
   id: string;
@@ -137,6 +145,7 @@ const REASON_OF_KIND: Record<Exclude<CoachLogKind, 'fitness_shift'>, string> = {
   fitness_evidence: 'coach_log_fitness_evidence',
   threshold_pattern: 'coach_log_threshold_pattern',
   race_replacement: 'coach_log_race_replacement',
+  lthr_reanchor: 'coach_log_lthr_reanchor',
 };
 
 /* ──────────────────── Pure entry composers ──────────────────── */
@@ -569,6 +578,12 @@ export async function updateCoachLog(userId: string): Promise<{ written: number 
     // equivalence either. Routed through classifyFinding before it writes.
     // One-shot per session date; same (reason, field) idempotency.
     written += await updateRaceReplacementLog(userId, today);
+
+    // ── 8 · Threshold-HR re-anchor (daily) ──
+    // See lib/training/lthr-reanchor.ts. The re-anchor itself runs earlier in
+    // this same cron tick; this writes the line about it. Idempotent on the
+    // RACE, so one race produces one entry however often the cron runs.
+    written += await updateLthrReanchorLog(userId, today);
   } catch (e) {
     console.warn('[coach-log] updateCoachLog failed:', e instanceof Error ? e.message : String(e));
   }
@@ -750,6 +765,158 @@ function easyMeta(f: EasyDisciplineFinding, state: string): Record<string, unkno
     targetBpm: f.targetBpm,
     caveats: f.caveats,
   };
+}
+
+/* ─────────────── Threshold-HR re-anchor writer (2026-08-30) ─────────────── */
+
+export interface LthrReanchorEntryInput {
+  /** 'moved' · the anchor was re-derived. 'held' · a tested anchor is past the
+   *  re-test cadence and a fresh race disagrees with it, and the engine will
+   *  not overwrite a tested value. */
+  kind: 'moved' | 'held';
+  previousLthr: number | null;
+  /** The number the evidence reads. On 'held' this is what the race says, NOT
+   *  what is stored — the whole point of the line is the disagreement. */
+  evidenceLthr: number;
+  raceName: string;
+  raceDateISO: string;
+  /** Age of the held anchor in days · 'held' only. */
+  storedAgeDays: number | null;
+}
+
+/**
+ * The coach's line for a threshold-HR change. Coach voice: what moved, off
+ * what, and what it changes. No exclamation marks, no citations, " · " joiner.
+ *
+ * The 'held' variant is the one that would otherwise be silent forever. A
+ * runner who field-tested in March and raced a half in August has two honest
+ * numbers that disagree, and the engine's rule is that the tested one stands —
+ * but standing silently is how an anchor ages into a wrong one. Telling them
+ * costs a sentence and leaves the decision theirs.
+ */
+export function composeLthrReanchorEntry(
+  i: LthrReanchorEntryInput,
+): { title: string; body: string } {
+  if (i.kind === 'held') {
+    return {
+      title: 'THRESHOLD HR',
+      body: `${i.raceName} reads a threshold HR of ${i.evidenceLthr}. Yours is set to `
+        + `${i.previousLthr} from a test ${i.storedAgeDays ?? 'some months'} days ago, and a `
+        + `tested number is not overwritten automatically. Re-test or update it by hand if it has moved.`,
+    };
+  }
+  const delta = i.previousLthr != null ? i.evidenceLthr - i.previousLthr : null;
+  if (i.previousLthr == null || delta == null) {
+    return {
+      title: 'THRESHOLD HR',
+      body: `Threshold HR anchored at ${i.evidenceLthr} off ${i.raceName}. Your HR zones and easy ceiling are set from it.`,
+    };
+  }
+  return {
+    title: 'THRESHOLD HR',
+    body: `Threshold HR ${i.previousLthr} → ${i.evidenceLthr} off ${i.raceName} · `
+      + `${delta > 0 ? 'up' : 'down'} ${Math.abs(delta)}. Every HR zone and your easy ceiling moved with it.`,
+  };
+}
+
+/**
+ * Daily check · did the threshold anchor move, or is a tested one now standing
+ * against fresher evidence?
+ *
+ * Reads only — `reanchorLthr` already ran earlier in the same cron tick (see
+ * `app/api/cron/run-adaptations/route.ts`), so by the time this runs the write
+ * has happened and the decision is reproducible from the stored state. The
+ * idempotency key is the RACE, not the date, so one race produces one line
+ * however many nights the cron runs.
+ */
+async function updateLthrReanchorLog(userId: string, todayISO: string): Promise<number> {
+  try {
+    const {
+      decideLthrReanchor, selectLthrAnchor, lthrProvenanceOf, LTHR_MATERIAL_CHANGE_BPM,
+    } = await import('@/lib/training/lthr-reanchor');
+    const { loadLthrRaceCandidates } = await import('@/lib/training/lthr-reanchor-store');
+    const row = (await rowsOrNull<{ lthr: number | null; lthr_method: string | null; lthr_set_at: string | null }>(
+      'coach-log · lthr anchor',
+      pool.query(
+        `SELECT lthr, lthr_method, lthr_set_at::date::text AS lthr_set_at
+           FROM profile WHERE user_uuid = $1 LIMIT 1`,
+        [userId],
+      ),
+    ))?.[0];
+    if (!row) return 0;
+    const candidates = await loadLthrRaceCandidates(userId, todayISO);
+    if (candidates === null) return 0;   // read failed · say nothing
+    const anchor = selectLthrAnchor(candidates, todayISO);
+    if (!anchor) return 0;
+
+    const decision = decideLthrReanchor({
+      stored: { lthr: row.lthr, method: row.lthr_method, setAtISO: row.lthr_set_at },
+      anchor,
+      todayISO,
+    });
+
+    // 'write' means the re-anchor step has NOT yet run for this race (or its
+    // write failed) — the log is not the place to announce a change that has
+    // not landed. The two states worth a line are: the stored value already
+    // came from this race (the move happened, say so), and a tested anchor is
+    // holding against it while past its cadence.
+    const provenance = lthrProvenanceOf(row.lthr_method);
+    const storedIsThisRace =
+      provenance === 'derived' && String(row.lthr_method ?? '').includes(anchor.dateISO);
+
+    if (storedIsThisRace) {
+      // `previousLthr` is not recoverable from the profile row once the write
+      // has landed, so it comes off the coach_intent the re-anchor wrote.
+      const prior = (await rowsOrNull<{ value: string }>(
+        'coach-log · prior lthr intent',
+        pool.query(
+          `SELECT value FROM coach_intents
+            WHERE COALESCE(user_uuid, user_id) = $1::uuid
+              AND reason = 'lthr_auto_calibrated'
+            ORDER BY ts DESC OFFSET 1 LIMIT 1`,
+          [userId],
+        ),
+      ))?.[0];
+      const priorLthr = prior?.value ? Number(String(prior.value).split(' ')[0]) : null;
+      const composed = composeLthrReanchorEntry({
+        kind: 'moved',
+        previousLthr: Number.isFinite(priorLthr) ? priorLthr : null,
+        evidenceLthr: anchor.lthr,
+        raceName: anchor.name,
+        raceDateISO: anchor.dateISO,
+        storedAgeDays: decision.storedAgeDays,
+      });
+      return (await writeEntry(userId, 'lthr_reanchor', `lthr:moved:${anchor.slug}`, {
+        ...composed, dateISO: anchor.dateISO,
+        meta: { raceSlug: anchor.slug, lthr: anchor.lthr, previousLthr: priorLthr, method: row.lthr_method },
+      })) ? 1 : 0;
+    }
+
+    if (decision.action === 'hold' && decision.stale
+        && decision.previousLthr != null
+        && Math.abs(anchor.lthr - decision.previousLthr) >= LTHR_MATERIAL_CHANGE_BPM) {
+      const composed = composeLthrReanchorEntry({
+        kind: 'held',
+        previousLthr: decision.previousLthr,
+        evidenceLthr: anchor.lthr,
+        raceName: anchor.name,
+        raceDateISO: anchor.dateISO,
+        storedAgeDays: decision.storedAgeDays,
+      });
+      return (await writeEntry(userId, 'lthr_reanchor', `lthr:held:${anchor.slug}`, {
+        ...composed, dateISO: anchor.dateISO,
+        meta: {
+          raceSlug: anchor.slug, evidenceLthr: anchor.lthr,
+          storedLthr: decision.previousLthr, provenance,
+          storedAgeDays: decision.storedAgeDays,
+        },
+      })) ? 1 : 0;
+    }
+    return 0;
+  } catch (e) {
+    console.warn('[coach-log] lthr re-anchor entry failed:', e instanceof Error ? e.message : String(e));
+    return 0;
+  }
 }
 
 /* ──────────────────── Paged reader ──────────────────── */

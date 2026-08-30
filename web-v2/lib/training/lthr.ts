@@ -38,6 +38,25 @@ export function lthrFromMarathon(distanceMi: number, avgHrBpm: number): number |
  * Choose the right method for the race distance, return both the
  * suggested LTHR and the method string so the caller can stamp the
  * lthr_method column for audit.
+ *
+ * ⚠ 2026-08-30 · NOT A WRITE PATH ANY MORE. Do not re-wire this to
+ * `UPDATE profile SET lthr = ...`.
+ *
+ * It was one, in `PATCH /api/race`, and it was the only one — which made it
+ * wrong twice over. Too eager: it overwrote the anchor from any edited race in
+ * the half-marathon band with no recency, effort or provenance gate, so a
+ * jogged C-race or a hilly course could move it and a FIELD-TESTED value could
+ * be silently replaced by a race proxy. Too narrow: a chip time entered through
+ * `POST /api/race/result` never reached it at all, so the owner's anchor sat at
+ * 162 from May 2026 while three later qualifying halves went past unread.
+ *
+ * `lib/training/lthr-reanchor.ts` owns the rule now and
+ * `lib/training/lthr-reanchor-store.ts` owns the write. This function survives
+ * as the pure distance→method router its name describes, and
+ * `lthrFromMarathon` below survives with it — note that the marathon arm's flat
+ * +5 bpm disagrees with `Research/08` §6.1, which prices a marathon at 88-95%
+ * of LTHR (a ~10 bpm spread once inverted). That disagreement is the stated
+ * reason the auto re-anchor accepts halves only.
  */
 export function calibrateLthr(distanceMi: number, avgHrBpm: number): { lthr: number; method: string } | null {
   const half = lthrFromRace(distanceMi, avgHrBpm);

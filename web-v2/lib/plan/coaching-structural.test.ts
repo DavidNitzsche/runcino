@@ -513,6 +513,41 @@ describe('field-test detector gating (Research/01:684-686)', () => {
     // last 42d into recentProposalAt — a decline is respected, not re-nagged.
     expect(fieldTestGate({ ...clean, recentProposalAt: '2026-07-10T00:00:00Z' }).ok).toBe(false);
   });
+
+  // ── LTHR staleness · 2026-08-30 ─────────────────────────────────────────
+  //
+  // "The race IS the natural test" is true of the PACE anchor and false of the
+  // threshold-HR anchor: a marathon, a C-graded tune-up and a hilly-excluded
+  // course all refresh the first and none of them can refresh the second
+  // (Research/03 §6's protocol wants a sustained maximal effort of about an
+  // hour). Without this limb a runner who raced monthly was blocked from a
+  // field test monthly, on the grounds that they had just raced, while their
+  // threshold HR aged indefinitely.
+  describe('LTHR past its re-test cadence', () => {
+    it('lifts the recent-race blocker, because that race could not measure LTHR', () => {
+      const raced = { ...clean, recentResultISO: '2026-08-16' };
+      expect(fieldTestGate(raced).blockedBy).toBe('recent_race_result');
+      expect(fieldTestGate({ ...raced, lthrPastCadence: true })).toEqual({ ok: true, blockedBy: null });
+    });
+
+    it('lifts NOTHING else · a declined test, a taper and a fresh plan all still block', () => {
+      const stale = { ...clean, lthrPastCadence: true };
+      expect(fieldTestGate({ ...stale, recentTestISO: '2026-07-20' }).blockedBy).toBe('recent_field_test');
+      expect(fieldTestGate({ ...stale, recentProposalAt: '2026-08-10T00:00:00Z' }).blockedBy).toBe('recent_proposal');
+      expect(fieldTestGate({ ...stale, recentIntentAt: '2026-08-10T00:00:00Z' }).blockedBy).toBe('recent_intent');
+      expect(fieldTestGate({ ...stale, upcomingRaceISO: '2026-08-25' }).blockedBy).toBe('race_within_14d');
+      expect(fieldTestGate({ ...stale, upcomingARaceISO: '2026-09-05' }).blockedBy).toBe('a_race_within_21d');
+      expect(fieldTestGate({ ...stale, planAgeDays: 10 }).blockedBy).toBe('plan_too_fresh');
+    });
+
+    it('changes nothing when the anchor is fresh · the flag is not a bypass', () => {
+      expect(fieldTestGate({ ...clean, recentResultISO: '2026-08-16', lthrPastCadence: false }).blockedBy)
+        .toBe('recent_race_result');
+      // Absent behaves exactly as false · every existing caller is unaffected.
+      expect(fieldTestGate({ ...clean, recentResultISO: '2026-08-16' }).blockedBy)
+        .toBe('recent_race_result');
+    });
+  });
 });
 
 // ── HEAT-DRIFT-1 · REMOVED 2026-08-27 ────────────────────────────────────

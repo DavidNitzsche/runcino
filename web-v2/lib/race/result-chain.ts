@@ -12,6 +12,7 @@
  * Steps (identical to the route's original 2-4):
  *   1. Projection snapshots for the race distance + 26.2M.
  *   2. vdot_auto_recalc coach_intent (briefing layer signal).
+ *   2b. LTHR re-anchor (2026-08-30 · see below).
  *   3. Archive the active plan if this race is its goal race
  *      (archive_reason = 'race_completed').
  *   4. Generate a plan for the next A/B race (optional · regeneratePlan),
@@ -42,6 +43,21 @@
  * || patch`) so no writer can clobber fields it doesn't know about.
  * manualResultPatch / the auto detector's provisionalResultPatch are
  * the two patch builders; both are pure and unit-tested.
+ *
+ * 2026-08-30 · STEP 2b · LTHR. This chain moved VDOT, the snapshots, the plan
+ * and the cache off a finished race, and left the runner's threshold heart
+ * rate untouched. The only code that could ever write a race-derived LTHR was
+ * an inline `calibrateLthr` call in `PATCH /api/race`, which a chip time
+ * entered through `POST /api/race/result` never reaches — so the owner's
+ * anchor sat at 162 from May while three later halves went by, the last of
+ * them reading 168. Every Friel band, both HR caps, the watch ceiling and the
+ * stored per-run zone distribution shifted down with it.
+ *
+ * The re-anchor lives HERE, beside the VDOT recalc, for the reason this module
+ * exists at all: both writers of `actual_result.finishS` run it, so neither
+ * can be the one that forgets. `lib/training/lthr-reanchor.ts` owns the rule —
+ * which race qualifies, whose provenance outranks whose, and what counts as a
+ * material move.
  */
 
 import { pool } from '@/lib/db/pool';
@@ -110,6 +126,15 @@ export interface PostResultOutcome {
   planArchived: boolean;
   nextPlan: NextPlanResult | null;
   openBlock: OpenBlockResult | null;
+  /**
+   * 2026-08-30 · what step 2b did to the threshold heart rate. `lthrAfter` is
+   * null unless the anchor actually moved, so the client toast renders the
+   * LTHR row on exactly the occasions there is something to say — the same
+   * contract `PATCH /api/race`'s `recalc` block already used.
+   */
+  lthrBefore: number | null;
+  lthrAfter: number | null;
+  lthrMethod: string | null;
 }
 
 export interface PostResultChainArgs {
@@ -172,6 +197,28 @@ export async function runPostResultChain(args: PostResultChainArgs): Promise<Pos
        VALUES ($1, $1, 'vdot_auto_recalc', 'vdot', $2)`,
       [userId, String(vdot)],
     ).catch(() => null);
+  }
+
+  // ── 2b. LTHR re-anchor ─────────────────────────────────────────────
+  // Mirrors the VDOT step directly above: a race lands, the anchor it is
+  // evidence for is re-derived. `reanchorLthr` decides whether this race
+  // qualifies at all (half-marathon distance, representative effort, inside
+  // Friel's re-test cadence) and refuses to overwrite a field-tested or
+  // hand-entered value. Never throws; a failure leaves the anchor alone.
+  let lthrBefore: number | null = null;
+  let lthrAfter: number | null = null;
+  let lthrMethod: string | null = null;
+  try {
+    const { reanchorLthr } = await import('@/lib/training/lthr-reanchor-store');
+    const r = await reanchorLthr(userId, today);
+    lthrBefore = r.previousLthr;
+    if (r.written) {
+      lthrAfter = r.nextLthr;
+      lthrMethod = r.nextMethod;
+    }
+  } catch (e: unknown) {
+    console.warn('[race/result-chain] lthr re-anchor failed:',
+      e instanceof Error ? e.message : String(e));
   }
 
   // ── 3. Archive active plan if this was its goal race ───────────────
@@ -301,5 +348,8 @@ export async function runPostResultChain(args: PostResultChainArgs): Promise<Pos
     planArchived,
     nextPlan,
     openBlock,
+    lthrBefore,
+    lthrAfter,
+    lthrMethod,
   };
 }
