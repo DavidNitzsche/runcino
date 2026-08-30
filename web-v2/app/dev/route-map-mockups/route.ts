@@ -4,22 +4,26 @@
  * Auth-gated design-review page. Pulls the signed-in runner's most
  * recent GPS-tracked run from strava_activities and renders the four
  * candidate route-map styles against that real polyline · no paste,
- * no synthetic stub, no API token required. The leading card is
- * Style F+ (pace-graded route on a free OSM-derived dark map).
+ * no synthetic stub. The leading card is Style F+ (pace-graded route
+ * on CARTO's "Dark Matter" vector-tile map).
  *
- * Style F+ stack:
- *   · background  · CartoDB Dark Matter raster tiles · OpenStreetMap
- *                   data, freely licensed, no token required. CDN
- *                   served (basemaps.cartocdn.com). Attribution shown
+ * Style F+ stack (2026-08-29 · mirrors components/faff-app/RouteMap.tsx):
+ *   · background  · CARTO's "Dark Matter" vector-tile GL style
+ *                   (basemaps.cartocdn.com/gl/dark-matter-gl-style) ·
+ *                   OpenStreetMap data. CARTO retired its raster tile
+ *                   CDN (the old dark_all/{z}/{x}/{y}@2x.png endpoint
+ *                   now returns an unconditional "API KEY REQUIRED"
+ *                   watermark tile) · vector tiles + a style key are
+ *                   the only path that still works. Attribution shown
  *                   in the bottom-right corner per OSM + CARTO terms.
- *   · library     · Leaflet 1.9 from unpkg CDN (~40KB gzip) · used
- *                   only to draw the tiles + fit the polyline bounds.
- *                   Interaction (zoom/pan) is disabled so the card
- *                   reads as a still image.
- *   · route       · Leaflet polylines, one per pace bucket. Each
- *                   segment colored by the runner's actual per-mile
- *                   pace (faster warmer, slower cooler · same effort-
- *                   temperature semantics as the EFF dots).
+ *   · library     · MapLibre GL JS from unpkg CDN · renders the vector
+ *                   tiles + our route as GeoJSON sources / data-driven
+ *                   layers. Interaction (zoom/pan) is disabled so the
+ *                   card reads as a still image.
+ *   · route       · one gradient line layer, colored per-segment by
+ *                   the runner's actual per-mile pace (faster warmer,
+ *                   slower cooler · same effort-temperature semantics
+ *                   as the EFF dots).
  *
  * Comparison styles below (all SVG-only, no external deps):
  *   A · Current production stripped (flat dark + grid)
@@ -28,6 +32,12 @@
  *   F · Pace-graded route on flat dark fill (no map background)
  *
  * Override the run with ?id=<activityId> to compare a specific run.
+ *
+ * CARTO key · NEXT_PUBLIC_CARTO_API_KEY (see web-v2/.env.example),
+ * read server-side here (this is a route handler, not a client
+ * component) and interpolated into the generated HTML so the browser
+ * script can build the style URL. CARTO's own docs describe the key
+ * as fair-use rate-limiting, not a security boundary.
  *
  * Mapbox / Maptiler / paid tile vendors NOT used · the question
  * "why do I need Mapbox?" answered itself · we don't.
@@ -108,7 +118,8 @@ export async function GET(req: NextRequest) {
   }
   const activityId = req.nextUrl.searchParams.get('id');
   const run = await loadRun(userId, activityId);
-  const html = renderHtml(run);
+  const cartoKey = process.env.NEXT_PUBLIC_CARTO_API_KEY ?? '';
+  const html = renderHtml(run, cartoKey);
   return new NextResponse(html, {
     headers: {
       'content-type': 'text/html; charset=utf-8',
@@ -117,9 +128,10 @@ export async function GET(req: NextRequest) {
   });
 }
 
-function renderHtml(run: RunSummary | null): string {
+function renderHtml(run: RunSummary | null, cartoKey: string): string {
   const polyline = run?.polyline ?? '';
   const splitsJson = JSON.stringify(run?.splits ?? []);
+  const cartoKeyJson = JSON.stringify(cartoKey);
   const runMeta = run
     ? `${run.name ?? 'Run'} · ${run.distanceMi?.toFixed(1) ?? '?'} mi · ${run.date ?? ''}`
     : 'No GPS run found · paste a polyline below';
@@ -133,8 +145,8 @@ function renderHtml(run: RunSummary | null): string {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.6.0/dist/maplibre-gl.css"/>
+<script src="https://unpkg.com/maplibre-gl@6.6.0/dist/maplibre-gl.js"></script>
 <style>
   :root{
     --bg:#0A0C10; --ink:#F6F7F8; --mute:#8A90A0;
@@ -222,7 +234,7 @@ function renderHtml(run: RunSummary | null): string {
     <div>
       <label for="poly">ENCODED POLYLINE · loaded from your run</label>
       <textarea id="poly" spellcheck="false">${polyline.replace(/[<>"]/g, '')}</textarea>
-      <span class="hint">Override with <code>?id=&lt;activityId&gt;</code> in the URL to load a different run. No API tokens needed · the dark map is OpenStreetMap data via CartoDB's free CDN.</span>
+      <span class="hint">Override with <code>?id=&lt;activityId&gt;</code> in the URL to load a different run. The dark map is CARTO's Dark Matter vector-tile style · OpenStreetMap data, rate-limited by <code>NEXT_PUBLIC_CARTO_API_KEY</code>.</span>
     </div>
     <div style="flex:0 0 auto;">
       <button id="render">RENDER</button>
@@ -233,8 +245,8 @@ function renderHtml(run: RunSummary | null): string {
   <div class="featured">
     <div class="card">
       <div class="card-head">
-        <h3>F+ · Pace-graded route on dark map <span class="badge fav">RECOMMENDED</span> <span class="badge svg">FREE TILES</span></h3>
-        <p class="note">CartoDB Dark Matter tiles (OpenStreetMap data, free, no token) as the actual map background. Leaflet draws the tiles and your route on top, with per-mile pace coloring · faster miles burn warmer, slower miles cool toward teal. The map is darker than the route so the line pops. Real streets, real parks, real water · all the OSM data without paying a vendor.</p>
+        <h3>F+ · Pace-graded route on dark map <span class="badge fav">RECOMMENDED</span> <span class="badge token">VECTOR TILES</span></h3>
+        <p class="note">CARTO's Dark Matter vector-tile GL style (OpenStreetMap data) as the actual map background. MapLibre GL JS draws the tiles and your route on top, with per-mile pace coloring · faster miles burn warmer, slower miles cool toward teal. The map is darker than the route so the line pops. Real streets, real parks, real water · same stack as production's RouteMap.</p>
       </div>
       <div class="map-frame" id="map-fplus"></div>
       <div class="pace-legend" id="pace-legend"></div>
@@ -269,6 +281,11 @@ function renderHtml(run: RunSummary | null): string {
 
 <script>
 const SPLITS = ${splitsJson};
+const CARTO_KEY = ${cartoKeyJson};
+function cartoStyleUrl() {
+  const base = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+  return CARTO_KEY ? base + '?key=' + CARTO_KEY : base;
+}
 
 function decodePolyline(encoded) {
   if (!encoded) return [];
@@ -310,7 +327,8 @@ function projectFlat(points, viewW, viewH, pad) {
   ]);
 }
 
-// Proper Web Mercator projection · used by F+ to align SVG over Mapbox tiles.
+// Proper Web Mercator projection · unused now that F+ renders via MapLibre
+// GL JS (which projects natively) instead of an SVG overlay on raster tiles.
 function mercatorYFraction(lat) {
   const rad = lat * Math.PI / 180;
   return (1 - Math.log(Math.tan(Math.PI / 4 + rad / 2)) / Math.PI) / 2;
@@ -431,132 +449,152 @@ function renderC(host, pts) {
   host.innerHTML = '<svg viewBox="0 0 ' + VW + ' ' + VH + '" preserveAspectRatio="xMidYMid meet">' + body + '</svg>';
 }
 
-/* Render the featured F+ card · Leaflet map with CartoDB Dark Matter
-   tiles + pace-graded polyline segments overlaid as native Leaflet
-   polylines. No tokens, no env vars, no Mapbox. */
-let leafletMap = null;
+/* Render the featured F+ card · MapLibre GL JS map with CARTO's
+   Dark Matter vector-tile style + pace-graded route overlaid as
+   GeoJSON sources / data-driven layers. Mirrors
+   components/faff-app/RouteMap.tsx's approach. */
+let glMap = null;
 function renderFPlus(host, points) {
   if (!points || points.length < 2) {
     host.innerHTML = '<div class="placeholder"><strong>No polyline</strong>nothing to draw</div>';
     return;
   }
-  if (typeof L === 'undefined') {
-    host.innerHTML = '<div class="placeholder"><strong>Leaflet failed to load</strong>check your network</div>';
+  if (typeof maplibregl === 'undefined') {
+    host.innerHTML = '<div class="placeholder"><strong>MapLibre GL JS failed to load</strong>check your network</div>';
     return;
   }
-  // Reset the host · Leaflet needs a clean container each render.
+  // Reset the host · MapLibre needs a clean container each render.
   host.innerHTML = '';
   host.style.position = 'relative';
-  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+  if (glMap) { glMap.remove(); glMap = null; }
 
-  leafletMap = L.map(host, {
-    zoomControl: false,
-    // No attribution control · drops the "Leaflet | ..." watermark
-    // and the Ukraine support flag that Leaflet 1.9 ships in attribution.
-    // OSM/CARTO credit is shown as a static line in the page footer
-    // instead so we still satisfy the licenses without a UI watermark.
+  // GeoJSON is [lng, lat]; our decoded points are [lat, lng].
+  const lngLat = points.map(p => [p[1], p[0]]);
+
+  glMap = new maplibregl.Map({
+    container: host,
+    style: cartoStyleUrl(),
+    interactive: false,
     attributionControl: false,
-    dragging: false,
-    touchZoom: false,
-    doubleClickZoom: false,
-    scrollWheelZoom: false,
-    boxZoom: false,
-    keyboard: false,
-    tap: false,
+    center: lngLat[0],
+    zoom: 12,
   });
 
-  // CartoDB Dark Matter · free OSM-derived dark tiles. Attribution
-  // satisfied in the page footer.
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png', {
-    subdomains: 'abcd',
-    maxZoom: 19,
-    attribution: '',
-  }).addTo(leafletMap);
+  glMap.on('load', () => {
+    if (glMap == null) return;
 
-  // Baseline route · a single full-route polyline rendered FIRST so
-  // the line is always visible even if the per-mile bucket walker
-  // below has a bug or splits coverage is thin. Bucket-colored
-  // segments overlay this baseline; if they fail to draw the
-  // baseline still tells the story.
-  L.polyline(points, {
-    color: '#FF8847',
-    weight: 5,
-    opacity: 0.95,
-    lineCap: 'round',
-    lineJoin: 'round',
-  }).addTo(leafletMap);
+    // Baseline route · a single full-route line rendered FIRST so
+    // the route is always visible even if the per-mile bucket walker
+    // below has a bug or splits coverage is thin. Bucket-colored
+    // segments overlay this baseline; if they fail to draw the
+    // baseline still tells the story.
+    glMap.addSource('faff-baseline', {
+      type: 'geojson',
+      data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: lngLat } },
+    });
+    glMap.addLayer({
+      id: 'faff-baseline-line',
+      type: 'line',
+      source: 'faff-baseline',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#FF8847', 'line-width': 5, 'line-opacity': 0.95 },
+    });
 
-  const buckets = paceBuckets(SPLITS);
-  if (buckets && SPLITS.length >= 2) {
-    // Walk the polyline by Haversine distance · split into segments by
-    // pace bucket so each Leaflet polyline gets a single color.
-    const EARTH_MI = 3958.7613;
-    function distMi(a, b) {
-      const toRad = d => d * Math.PI / 180;
-      const dLat = toRad(b[0] - a[0]), dLng = toRad(b[1] - a[1]);
-      const x = Math.sin(dLat/2)**2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng/2)**2;
-      return 2 * EARTH_MI * Math.asin(Math.min(1, Math.sqrt(x)));
-    }
-    let total = 0;
-    let segStartIdx = 0;
-    let lastBucket = null;
-    function flush(endIdx, b) {
-      if (segStartIdx >= endIdx || b == null) return;
-      const segPts = points.slice(segStartIdx, endIdx + 1);
-      L.polyline(segPts, {
-        color: buckets.colors[b],
-        weight: 6,
-        opacity: 1,
-        lineCap: 'round',
-        lineJoin: 'round',
-      }).addTo(leafletMap);
-    }
-    for (let i = 0; i < points.length; i++) {
-      if (i > 0) total += distMi(points[i-1], points[i]);
-      const mile = Math.floor(total);
-      const split = SPLITS[Math.min(mile, SPLITS.length - 1)];
-      const b = split && split.pace_s_per_mi ? buckets.bucket(split.pace_s_per_mi) : null;
-      if (lastBucket == null) lastBucket = b;
-      if (b !== lastBucket) {
-        flush(i, lastBucket);
-        segStartIdx = i;
-        lastBucket = b;
+    const buckets = paceBuckets(SPLITS);
+    const features = [];
+    if (buckets && SPLITS.length >= 2) {
+      // Walk the polyline by Haversine distance · split into
+      // LineString features by pace bucket, one per bucket change.
+      const EARTH_MI = 3958.7613;
+      function distMi(a, b) {
+        const toRad = d => d * Math.PI / 180;
+        const dLat = toRad(b[0] - a[0]), dLng = toRad(b[1] - a[1]);
+        const x = Math.sin(dLat/2)**2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng/2)**2;
+        return 2 * EARTH_MI * Math.asin(Math.min(1, Math.sqrt(x)));
       }
+      let total = 0;
+      let segStartIdx = 0;
+      let lastBucket = null;
+      function flush(endIdx, b) {
+        if (segStartIdx >= endIdx || b == null) return;
+        features.push({
+          type: 'Feature',
+          properties: { color: buckets.colors[b] },
+          geometry: { type: 'LineString', coordinates: lngLat.slice(segStartIdx, endIdx + 1) },
+        });
+      }
+      for (let i = 0; i < points.length; i++) {
+        if (i > 0) total += distMi(points[i-1], points[i]);
+        const mile = Math.floor(total);
+        const split = SPLITS[Math.min(mile, SPLITS.length - 1)];
+        const b = split && split.pace_s_per_mi ? buckets.bucket(split.pace_s_per_mi) : null;
+        if (lastBucket == null) lastBucket = b;
+        if (b !== lastBucket) {
+          flush(i, lastBucket);
+          segStartIdx = i;
+          lastBucket = b;
+        }
+      }
+      flush(points.length - 1, lastBucket);
     }
-    flush(points.length - 1, lastBucket);
-  }
+    glMap.addSource('faff-gradient', { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    glMap.addLayer({
+      id: 'faff-gradient-line',
+      type: 'line',
+      source: 'faff-gradient',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': 6, 'line-opacity': 1 },
+    });
 
-  // Endpoint markers · circle markers so they scale with zoom.
-  L.circleMarker(points[0], {
-    radius: 7, fillColor: '#04201f', color: '#3EBD41', weight: 3, fillOpacity: 1,
-  }).addTo(leafletMap);
-  L.circleMarker(points[points.length - 1], {
-    radius: 7, fillColor: '#FC4D64', color: '#fff', weight: 2, fillOpacity: 1,
-  }).addTo(leafletMap);
+    // Endpoint markers · one circle layer, colored by a 'kind' property.
+    glMap.addSource('faff-endpoints', {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: [
+          { type: 'Feature', properties: { kind: 'start' }, geometry: { type: 'Point', coordinates: lngLat[0] } },
+          { type: 'Feature', properties: { kind: 'finish' }, geometry: { type: 'Point', coordinates: lngLat[lngLat.length - 1] } },
+        ],
+      },
+    });
+    glMap.addLayer({
+      id: 'faff-endpoints-circle',
+      type: 'circle',
+      source: 'faff-endpoints',
+      paint: {
+        'circle-radius': 7,
+        'circle-color': ['match', ['get', 'kind'], 'start', '#04201f', '#FC4D64'],
+        'circle-stroke-color': ['match', ['get', 'kind'], 'start', '#3EBD41', '#ffffff'],
+        'circle-stroke-width': ['match', ['get', 'kind'], 'start', 3, 2],
+        'circle-opacity': 1,
+      },
+    });
 
-  // Fit the map to the route's bounds with a small padding so the line
-  // doesn't touch the edges. invalidateSize() called after fit because
-  // Leaflet sometimes measures the container before CSS settles on
-  // first render · the second pass picks up the correct dimensions.
-  const bounds = L.latLngBounds(points);
-  leafletMap.fitBounds(bounds, { padding: [24, 24] });
-  setTimeout(() => {
-    if (leafletMap) {
-      leafletMap.invalidateSize();
-      leafletMap.fitBounds(bounds, { padding: [24, 24] });
+    // Fit the map to the route's bounds with a small padding so the
+    // line doesn't touch the edges. resize() + refit called after a
+    // short delay because MapLibre sometimes measures the container
+    // before CSS settles on first render · the second pass picks up
+    // the correct dimensions.
+    const bounds = lngLat.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(lngLat[0], lngLat[0]));
+    glMap.fitBounds(bounds, { padding: 24, animate: false });
+    setTimeout(() => {
+      if (glMap) {
+        glMap.resize();
+        glMap.fitBounds(bounds, { padding: 24, animate: false });
+      }
+    }, 80);
+
+    // Surface diagnostics in case the map still looks off · helps
+    // distinguish "polyline data missing" from "MapLibre positioning bug."
+    const diag = document.getElementById('diag');
+    if (diag) {
+      const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+      diag.textContent = points.length + ' polyline pts · bbox ' +
+        sw.lat.toFixed(4) + ',' + sw.lng.toFixed(4) + ' → ' +
+        ne.lat.toFixed(4) + ',' + ne.lng.toFixed(4) + ' · ' +
+        SPLITS.length + ' splits' + (CARTO_KEY ? '' : ' · NO CARTO KEY SET');
     }
-  }, 80);
-
-  // Surface diagnostics in case the map still looks off · helps
-  // distinguish "polyline data missing" from "Leaflet positioning bug."
-  const diag = document.getElementById('diag');
-  if (diag) {
-    const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
-    diag.textContent = points.length + ' polyline pts · bbox ' +
-      sw.lat.toFixed(4) + ',' + sw.lng.toFixed(4) + ' → ' +
-      ne.lat.toFixed(4) + ',' + ne.lng.toFixed(4) + ' · ' +
-      SPLITS.length + ' splits';
-  }
+  });
 }
 
 function renderF(host, pts) {
@@ -636,7 +674,7 @@ function renderAll() {
   renderB(document.getElementById('map-b'), flatPts);
   renderC(document.getElementById('map-c'), flatPts);
   renderF(document.getElementById('map-f'), flatPts);
-  // Featured F+ · CartoDB Dark Matter via Leaflet · no token required.
+  // Featured F+ · CARTO Dark Matter vector tiles via MapLibre GL JS.
   renderFPlus(document.getElementById('map-fplus'), points);
 }
 
