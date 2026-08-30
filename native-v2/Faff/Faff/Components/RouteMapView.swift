@@ -191,19 +191,52 @@ struct RouteMapView: UIViewRepresentable {
         UIColor(Color(hex: 0x27B4E0)),
     ]
 
+    /// THE OUT-OF-BAND FILL, ON A MAP RATHER THAN IN A CHART.
+    ///
+    /// 2026-08-30 · THIS IS THE "ROUTE LINE IS INVISIBLE" BUG. The whole line
+    /// was drawing at `V5.materialControl` (#2A2E32) and measuring **1.41:1**
+    /// against CARTO Dark Matter's ground, which samples (14, 14, 14). On
+    /// David's real 13.49 mi run — prescribed 8:37–9:12/mi, run at 7:16–8:38 —
+    /// twelve of thirteen miles are outside the window, so effectively the
+    /// ENTIRE route painted at that contrast and read as genuinely absent.
+    /// Start/finish still showed, because the circle layer carries its own
+    /// colours, which is exactly the reported symptom.
+    ///
+    /// Measured on the real route, on the simulator, against the real basemap:
+    ///
+    ///     #2A2E32  materialControl (was)   1.41:1   invisible
+    ///     #3A3E42  the 0821 handoff        1.79:1   still unreadable, and it
+    ///                                               lands ON the basemap's own
+    ///                                               road-casing tone, so what
+    ///                                               little shows reads as a road
+    ///     #7A7A7A  textQuiet, opaque       4.50:1   reads as a route
+    ///
+    /// So the escape hatch the previous note left open — "the shared token
+    /// wins UNLESS it proves too dark to read on the map" — has now been
+    /// exercised with a measurement, and the handoff's own alternative fails
+    /// the same test. A big filled bar and a 6pt line do not need the same
+    /// contrast: `materialControl` is fine in the split chart, where it is a
+    /// broad fill on `materialTile`, and fails here.
+    ///
+    /// The replacement is not a new invented hex — it is `V5.textQuiet`
+    /// (white at 48%) resolved to an opaque value over black, the palette's
+    /// existing "present but not shouting" neutral. Opaque and not an alpha
+    /// for the reason `zoneColors` already gives: the route is many short
+    /// overlapping segments, and a translucent stroke doubles up at every
+    /// round-capped joint and beads the line.
+    ///
+    /// It stays quieter than `V5.signal` (6.19:1), so an in-band mile is still
+    /// the loudest thing on the map, and it carries no hue, so it still grades
+    /// nothing.
+    static let outOfBandFill = UIColor(white: 122.0 / 255.0, alpha: 1)   // #7A7A7A
+
     /// In the window, or out of it. ONE grey in BOTH directions — a mile run
     /// fast and a mile run slow are both "not what was asked", and giving fast
     /// its own colour would grade it good.
-    ///
-    /// The grey is `materialControl`, the same token the split chart uses, so
-    /// the same mile reads the same in both graphics. The handoff names
-    /// `#3A3E42`, a hair lighter for legibility on a dark basemap; that is a
-    /// new hex against a byte-locked palette, so the shared token wins unless
-    /// it proves too dark to read on the map.
     static func bandColor(_ paceSec: Double, _ band: (lo: Int, hi: Int)?) -> UIColor {
         guard let band else { return UIColor(V5.signal) }
         let inBand = paceSec >= Double(band.lo) && paceSec <= Double(band.hi)
-        return UIColor(inBand ? V5.signal : V5.materialControl)
+        return inBand ? UIColor(V5.signal) : outOfBandFill
     }
 
     /// Continuous warm→cool ramp across the five bucket colors · t in 0…1.
@@ -387,11 +420,22 @@ struct RouteMapView: UIViewRepresentable {
         // hard-switching (David 2026-06-16). Consecutive segments share a
         // boundary vertex and round caps blend the joints. One shape source
         // holds every segment as its own LineString feature carrying the
-        // segment's color as an attribute; MLNFeature's `attributes` accepts a
-        // UIColor directly (converted to its CSS string form when added to the
-        // source — see MLNFeature.h), and a single data-driven line layer reads
-        // it back via a key-path NSExpression — the MapLibre equivalent of the
-        // old per-segment MKOverlay-with-its-own-stroke-color technique.
+        // segment's color as an attribute, and a single data-driven line layer
+        // reads it back via a key-path NSExpression — the MapLibre equivalent
+        // of the old per-segment MKOverlay-with-its-own-stroke-color technique.
+        //
+        // 2026-08-30 · the note that used to sit here claimed `attributes`
+        // converts a UIColor "to its CSS string form". It does not: dumping
+        // `geoJSONDictionary()` on a real feature gives
+        // `strokeColor = "UIExtendedSRGBColorSpace 0.164706 0.180392 0.196078 1"`,
+        // which is just `-[UIColor description]`. The UIColor still renders
+        // correctly (MapLibre special-cases the object on its way into the
+        // source rather than going through that dictionary, and a segment
+        // asked for #2A2E32 measured (42, 45, 49) on screen — one unit off
+        // per channel from the requested (42, 46, 50), i.e. a colour-space
+        // rounding difference and nothing more). Keeping the UIColor because
+        // it demonstrably works; correcting the reason, because the old one
+        // was invented and sent an investigation down a false trail.
         var segFeatures: [MLNPolylineFeature] = []
         for seg in gradientSegments() where seg.coords.count >= 2 {
             let f = MLNPolylineFeature(coordinates: seg.coords, count: UInt(seg.coords.count))
