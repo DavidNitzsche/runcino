@@ -278,6 +278,65 @@ Do **not** loosen the claim. Add a key to that claim's `exempt` map with an hone
 
 ---
 
+## Rule 8 · A taper or a recovery window is never the runner's normal (locked 2026-08-30)
+
+**Any reader that answers "what does this runner normally do" MUST exclude days
+the engine itself prescribed as taper, race week, or post-race recovery.** Not
+"should where convenient." Never, in any reader, for any runner.
+
+David, twice, in his own words: *"It cannot look at taper and recover as my
+'normal'. Ever."*
+
+### Why this is a rule and not a bug
+
+It has now produced at least six distinct defects in one engine, every one of
+them found by the runner and none by any gate, because the outputs were all
+well-formed:
+
+| Reader | Read | Truth | What it caused |
+|---|---|---|---|
+| `recentWeeklyMi` (28-day mean) | 31.6 mi/wk | sustained 43.5 | Marathon block opened at 31 mi/wk |
+| `easyDayMedianMi` (14-day) | 4.0 mi | 90-day median 6.0 | Four-mile easy days for a runner whose easy days were 3-7.8 |
+| `recentQualityPerWeek` | 0/wk | habit is 2/wk | One quality session in week 1 instead of two |
+| `recentLongMi` (28-day max) | 13.5 mi | 18.0 on 2026-07-25 | Long-run ramp anchored to a taper long |
+| `resolveRampBase` mean | depressed | — | Return-to-volume ladder switched off entirely |
+| `weekly_frequency` derivation | median 5 | runs 6 | Would have capped a six-day runner at five |
+
+The shape is always the same: **the engine measures the runner during a period
+IT told him to go easy, and reports the result as his training identity.** The
+plan then sizes his next block off his own taper. Every number is arithmetically
+correct against its window; the window is the defect.
+
+### What to do
+
+Exclude the window, do not shrink it. A wider average still contains the taper;
+it just dilutes it. The excluded range for each race the runner actually ran is
+its taper lead-in through its post-race recovery window — `BLOCK_SHAPE[cat]
+.taperWeeks` before, `postRaceRecoveryWeeks(cat, priority)` after. Those are the
+same numbers `allowedInterruptionWeeksFor` already computes, and they are
+doctrine-bound; do not re-derive them.
+
+If excluding leaves too little data to answer honestly, **say so and refuse**.
+Falling back to the contaminated window is how every row above happened. A
+refusal is a correct answer; a confident number measured off a taper is not.
+
+Corollary, and the reason a surface-level guard is not enough: this is the same
+discipline as the per-finding context-filter rule locked 2026-05-19 round 4. A
+zero measured inside a prescribed recovery block and a zero measured off a
+detrained runner are OPPOSITE FACTS. Code that collapses them into "zero" has
+lost the only thing that mattered. Ask *why* the window is low before spending
+the number.
+
+### Where this is enforced
+
+`docs/PRODUCT_DECISIONS.md` records the calls; the readers themselves live in
+`lib/plan/generate.ts` and `lib/runs/volume.ts`. When you add a reader that
+measures habit — frequency, typical distance, typical intensity, typical
+anything — it is on you to apply the filter and to say in the code comment which
+window you excluded and why.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
