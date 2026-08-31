@@ -341,6 +341,7 @@ import {
   LTHR_RETEST_MAX_WEEKS,
   LTHR_RETEST_MIN_WEEKS,
 } from '@/lib/training/lthr-reanchor';
+import { LTHR_TO_HRMAX_CONSERVATIVE_PCT, hrMaxImpliedByLthr } from '@/lib/training/max-hr';
 import { RHR_ROLLING_WINDOW_DAYS } from '@/lib/training/biometrics-refresh';
 import {
   EASY_HRMAX_CEILING_PCT,
@@ -4336,6 +4337,51 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           `the LTHR qualifying window ${LTHR_QUALIFYING_MIN_MI}-${LTHR_QUALIFYING_MAX_MI} mi reaches a ` +
           'distance Research/08 §6.1 gives its own, different %LTHR band',
+        );
+      }
+    },
+  },
+  {
+    id: 'HR.lthr-implied-maxhr-conservative-floor',
+    binds: [
+      'lib/training/max-hr.ts#LTHR_TO_HRMAX_CONSERVATIVE_PCT',
+      'lib/training/max-hr.ts#hrMaxImpliedByLthr',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '%HRmax 86–92%  ≈  %HRR 83–90%  ≈  %LTHR 95–102%  ≈  Daniels T',
+    claim:
+      'The Threshold crosswalk names %HRmax and %LTHR on the SAME line, so a T-effort\'s HR is ' +
+      'both a stated fraction of HRmax and (by LTHR\'s own definition, §6) approximately LTHR ' +
+      'itself — combining the two inverts to an implied HRmax floor. The engine reads the ' +
+      'CONSERVATIVE end: dividing LTHR by the HIGH edge of the %HRmax band (92%) gives the ' +
+      'smaller of the two implied ceilings, because overshooting HRmax would make a genuinely ' +
+      'hard effort read as artificially easy on every %HRmax-gated guard downstream. The ' +
+      'incident this closes: a runner whose only recent max-HR evidence was training and a ' +
+      'threshold half marathon resolved to an "observed" HRmax that was actually a floor.',
+    check({ cite }) {
+      // The %HRmax band on the anchor's own line — parsed at run time so the
+      // engine constant cannot drift from the doc without this claim noticing.
+      const m = cite.text().match(/%HRmax\s+(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)%/);
+      if (!m) {
+        throw new Error(
+          `Research/03's Threshold crosswalk line no longer states a %HRmax band: "${cite.section[0]}"`,
+        );
+      }
+      const hrmaxHi = Number(m[2]) / 100;
+      if (Math.abs(LTHR_TO_HRMAX_CONSERVATIVE_PCT - hrmaxHi) > 1e-9) {
+        throw new Error(
+          `LTHR_TO_HRMAX_CONSERVATIVE_PCT is ${LTHR_TO_HRMAX_CONSERVATIVE_PCT} · the crosswalk's own ` +
+          `%HRmax band tops out at ${hrmaxHi} (${m[1]}-${m[2]}%), which is the conservative divisor`,
+        );
+      }
+      // And the derivation actually does what the claim says: for the
+      // runner this closed the incident for, LTHR=168 must imply an HRmax
+      // strictly above the stale observed ceiling (180) it was written to fix.
+      const implied = hrMaxImpliedByLthr(168);
+      if (implied == null || implied <= 180) {
+        throw new Error(
+          `hrMaxImpliedByLthr(168) is ${implied} · must exceed the 180 bpm observed ceiling this ` +
+          'floor exists to correct, or the mechanism has stopped doing its job',
         );
       }
     },
