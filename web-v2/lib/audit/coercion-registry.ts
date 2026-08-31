@@ -118,6 +118,14 @@ export const COERCION_ARGUED: readonly CoercionExemption[] = [
     reason: 'readinessTotal is the COUNT OF ROWS in the readiness window, so zero rows is an absence by construction and cannot be a measurement; it also guards the `readiness!` non-null assertion on the same line, and removing it would introduce a crash to fix a distinction that does not exist.',
   },
   {
+    id: 'lib/adaptation/load.ts::filterExecutionEvidenceByPrescribedWindow::executions.length',
+    reason: 'ABSORPTION-SPLIT-1 (2026-09-01) · this is `loadAdaptationInput::executions.length` split out into its own pure function so the Rule 8 fork is falsifiable without a database — same source rows, same filter shape, same argument: the upstream filter already drops every unreadable session, so an empty result here means no key session in the (Rule-8-filtered, representativeLookback-widened) window could be DESCRIBED, never that the runner failed one. Passing it as a measured zero would put a fabricated judgement into the execution dimension that gates progression — the exact defect PRODUCT_DECISIONS.md 2026-09-01 §1 names. Arguing this differently from the unfiltered twin would be the fork Rule 16 forbids.',
+  },
+  {
+    id: 'lib/adaptation/load.ts::filterExecutionEvidenceByPrescribedWindow::verdicts.length',
+    reason: 'ABSORPTION-SPLIT-1 (2026-09-01) · the filtered twin of `loadAdaptationInput::verdicts.length`, same consumer (`readInternalCost` opens with `if (input.targetVerdicts && input.targetVerdicts.length > 0)`), so an empty array and null reach identical code and no branch can tell them apart — filtering by the prescribed window does not change that fact, only which dates survive to be tested.',
+  },
+  {
     id: 'lib/plan/generate.ts::loadGeneratorInputs::horizonRaces.length',
     reason: 'a count of zero races IS zero races — the owner\'s own example of where this rule must not be applied. Both states mean the runner has no race on the horizon and the composer takes the identical no-race path.',
   },
@@ -570,6 +578,15 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/adaptation/load.ts::loadAdaptationInput::verdicts.length',
   'lib/adaptation/load.ts::loadAdaptationInput::weeklyActualMi.length',
   'lib/adaptation/load.ts::loadAdaptationInput::weeklyPlannedMi.length',
+  // ABSORPTION-SPLIT-1 (2026-09-01) · filterExecutionEvidenceByPrescribedWindow
+  // is loadAdaptationInput's execution-fields filter, pulled out pure. Three
+  // ternary sites share this one variable (keySessionExecutions, keySessionsPlanned,
+  // keySessionsCompleted all read off `executions.length`), so the id is listed
+  // three times, matching the three actual sites — see the COERCION_ARGUED entry.
+  'lib/adaptation/load.ts::filterExecutionEvidenceByPrescribedWindow::executions.length',
+  'lib/adaptation/load.ts::filterExecutionEvidenceByPrescribedWindow::executions.length',
+  'lib/adaptation/load.ts::filterExecutionEvidenceByPrescribedWindow::executions.length',
+  'lib/adaptation/load.ts::filterExecutionEvidenceByPrescribedWindow::verdicts.length',
   'lib/coach/acwr.ts::computeAcwr::catch',
   'lib/coach/block-comparison.ts::computeBlockComparison::catch',
   'lib/coach/coach-log.ts::updateCoachLog::catch',

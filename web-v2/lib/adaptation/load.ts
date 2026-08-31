@@ -38,7 +38,18 @@ import { DECOUPLING_ENDURANCE_GAP_PCT, DECOUPLING_HEAT_ARTIFACT_PCT } from '@/li
 import { computeHrThirds } from '@/lib/coach/hr-thirds';
 import { loadRecentTestPoints } from '@/lib/training/goal-projection';
 import { loadKeySessionExecutions } from '@/lib/execution/load';
-import { classifyAdaptation, type AdaptationInput, type AdaptationVerdict } from './adaptation-model';
+import {
+  loadPrescribedWindows,
+  isPrescribedNonNormal,
+  representativeLookback,
+  type PrescribedWindow,
+} from '@/lib/training/normal-window';
+import {
+  classifyAdaptation,
+  type AdaptationInput,
+  type AdaptationVerdict,
+  type KeySessionRead,
+} from './adaptation-model';
 
 /**
  * The measured anchor, as the daily snapshot cron computed it from
@@ -469,6 +480,14 @@ export async function loadAdaptationInput(
  * see still gets a verdict — `normal`, low confidence — because "proceed as
  * planned" is the honest answer to "we have no evidence", and it is what a
  * coach would say.
+ *
+ * THIS IS THE LIVE CALL. `progression-pass.ts`'s `resolveProgressionStep` (via
+ * `adapt.ts`'s `detectProgressionGate`) consumes this verdict directly and
+ * mutates the current week's quality-session shape from it, so this function's
+ * behaviour is preserved byte-for-byte — see `loadAdaptationInput` above and
+ * the split below. Nothing here changes until a human explicitly promotes
+ * `representative_execution` to replace it (PRODUCT_DECISIONS.md 2026-09-01
+ * §1).
  */
 export async function readAdaptation(
   userUuid: string,
@@ -477,4 +496,166 @@ export async function readAdaptation(
   const input = await quiet('adaptation input', () => loadAdaptationInput(userUuid, todayArg));
   if (!input) return null;
   return classifyAdaptation(input);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE ABSORPTION/EXECUTION SPLIT · added 2026-09-01, Rule 8 fork
+ *
+ * `loadAdaptationInput` above answers ONE question honestly and a SECOND one
+ * by accident. Its `execution` dimension (`readExecution` in
+ * `adaptation-model.ts`) reads `keySessionExecutions` / `targetVerdicts` over
+ * the raw 42-day `ADAPTATION_WINDOW_DAYS` window with no taper/race/recovery
+ * exclusion at all — correct for "how much load has this runner actually
+ * absorbed" (tissue doesn't care why volume was low, Rule 8's corollary says
+ * leave this literal), wrong for "has this runner demonstrated capability /
+ * earned progression" (Rule 8 proper: a taper is never read as this runner's
+ * normal).
+ *
+ * `classifyAdaptation`'s verdict off the UNFILTERED input is
+ * `actual_load_absorption` — identical to what `readAdaptation` above
+ * produces, because that call must not change (see its own doc comment).
+ *
+ * `representative_execution` is the SAME classifier, called on the SAME
+ * `AdaptationInput` shape, differing ONLY in the fields `readExecution`
+ * consumes: `keySessionExecutions`, `keySessionsPlanned/Completed` and
+ * `targetVerdicts` are re-read with every prescribed taper/race/recovery day
+ * dropped, widening the search window with `representativeLookback` (never
+ * diluting — see `normal-window.ts`'s clause 1) when the base 42 days do not
+ * hold enough representative days. Every OTHER field — internal_cost,
+ * recovery, consistency, trend — is carried through from the unfiltered input
+ * unchanged, because those dimensions are tissue-load/recovery/consistency
+ * questions, not capability questions, and Rule 8's corollary is explicit that
+ * over-applying the filter to a tissue-load reader makes a safety-adjacent
+ * signal MORE permissive exactly where it should not be. If a future review
+ * decides one of those four also forks, that is a separate, scoped decision —
+ * not made here.
+ *
+ * NEITHER OUTPUT IS WIRED ANYWHERE. `readAdaptationSplit` below is called only
+ * by the shadow-replay script and its own tests, per PRODUCT_DECISIONS.md
+ * 2026-09-01 §1's sequence: preserve live behaviour, shadow-run both, report
+ * the diff, promote only after a human reviews it.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** The two raw row shapes the execution dimension is built from — narrowed to
+ *  exactly the fields `filterExecutionEvidenceByPrescribedWindow` reads, so
+ *  the pure function stays testable without importing `loadKeySessionExecutions`
+ *  / `loadRecentTestPoints`'s full return types. */
+interface RawExecutionRow {
+  dateISO: string;
+  readable: boolean;
+  read: { state: KeySessionRead['state']; stimulusCompletion: number } | null;
+  earnsProgression: boolean;
+}
+interface RawVerdictRow {
+  dateISO: string;
+  verdict: 'on' | 'fast' | 'slow' | null;
+}
+
+/**
+ * PURE. The one transform `representative_execution` applies that
+ * `actual_load_absorption` does not: drop every row landing on a prescribed
+ * taper/race/recovery day, then re-derive the narration counts from what
+ * survives.
+ *
+ * Split out from `loadRepresentativeExecutionInput` so this — the part that
+ * actually encodes the Rule 8 fork — is falsifiable without a database
+ * (Rule 18), the same posture `adaptation-model.ts` takes for the classifier
+ * itself. The caller supplies rows already widened to whatever lookback it
+ * chose; this function only excludes, it never decides how far back to look.
+ */
+export function filterExecutionEvidenceByPrescribedWindow(
+  keySessionRows: readonly RawExecutionRow[],
+  verdictRows: readonly RawVerdictRow[],
+  windows: readonly PrescribedWindow[],
+): Pick<AdaptationInput, 'keySessionExecutions' | 'keySessionsPlanned' | 'keySessionsCompleted' | 'targetVerdicts'> {
+  const executions = keySessionRows
+    .filter((s) => s.readable && s.read != null && !isPrescribedNonNormal(s.dateISO, windows))
+    .map((s) => ({
+      state: s.read!.state,
+      stimulusCompletion: s.read!.stimulusCompletion,
+      earnsProgression: s.earnsProgression,
+    }));
+
+  const seenDays = new Set<string>();
+  const verdicts: Array<'on' | 'fast' | 'slow'> = [];
+  for (const p of verdictRows) {
+    if (seenDays.has(p.dateISO)) continue;
+    if (isPrescribedNonNormal(p.dateISO, windows)) continue;
+    seenDays.add(p.dateISO);
+    if (p.verdict === 'on' || p.verdict === 'fast' || p.verdict === 'slow') verdicts.push(p.verdict);
+  }
+
+  return {
+    keySessionExecutions: executions.length > 0 ? executions : null,
+    // Narration only (see the field docs on `AdaptationInput`) — derived from
+    // the filtered set itself rather than a second SQL query, so there is one
+    // definition of "how many representative key sessions" per this reader.
+    keySessionsPlanned: executions.length > 0 ? executions.length : null,
+    keySessionsCompleted: executions.length > 0
+      ? executions.filter((e) => e.state !== 'MISSED').length
+      : null,
+    targetVerdicts: verdicts.length > 0 ? verdicts : null,
+  };
+}
+
+/**
+ * The `representative_execution` half of the split.
+ *
+ * Reuses `loadAdaptationInput`'s unfiltered read for every field the
+ * execution dimension does not touch, and re-derives only the three fields it
+ * does, over a Rule-8-filtered, `representativeLookback`-extended window, via
+ * the pure `filterExecutionEvidenceByPrescribedWindow` above.
+ */
+export async function loadRepresentativeExecutionInput(
+  userUuid: string,
+  todayArg?: string,
+): Promise<AdaptationInput> {
+  const todayISO = todayArg ?? (await runnerToday(userUuid));
+  const base = await loadAdaptationInput(userUuid, todayISO);
+
+  const windows = await loadPrescribedWindows(userUuid, todayISO);
+  const lookback = await representativeLookback(userUuid, todayISO, ADAPTATION_WINDOW_DAYS);
+  const vdot = await quiet('current vdot (representative)', () => currentVdot(userUuid));
+
+  const [keySessionReadsWide, verdictRowsWide] = await Promise.all([
+    /* Same reader `loadAdaptationInput` calls, over the WIDENED window. The
+     * exclusion still has to run explicitly below — `representativeLookback`
+     * only grows how far back the query is allowed to look; it does not, by
+     * itself, drop the prescribed days that fall inside that wider range. */
+    quiet('representative key session executions', () =>
+      loadKeySessionExecutions(userUuid, lookback.fromISO, todayISO, vdot)),
+    quiet('representative target verdicts', () =>
+      loadRecentTestPoints(userUuid, vdot, 200, lookback.fromISO, true)),
+  ]);
+
+  const filtered = filterExecutionEvidenceByPrescribedWindow(
+    keySessionReadsWide ?? [],
+    verdictRowsWide ?? [],
+    windows,
+  );
+
+  return { ...base, ...filtered };
+}
+
+/** Both halves of the split, for the shadow-replay tooling and its tests.
+ *  Never called from a live path — see the header above. */
+export interface AdaptationAbsorptionSplit {
+  actual_load_absorption: AdaptationVerdict;
+  representative_execution: AdaptationVerdict;
+}
+
+export async function readAdaptationSplit(
+  userUuid: string,
+  todayArg?: string,
+): Promise<AdaptationAbsorptionSplit | null> {
+  const todayISO = todayArg ?? (await runnerToday(userUuid));
+  const [unfiltered, representative] = await Promise.all([
+    quiet('adaptation input (unfiltered)', () => loadAdaptationInput(userUuid, todayISO)),
+    quiet('adaptation input (representative)', () => loadRepresentativeExecutionInput(userUuid, todayISO)),
+  ]);
+  if (!unfiltered || !representative) return null;
+  return {
+    actual_load_absorption: classifyAdaptation(unfiltered),
+    representative_execution: classifyAdaptation(representative),
+  };
 }
