@@ -27,6 +27,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library-static';
+import { recoveryDayAfterLongMi } from './plan-templates';
 import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor } from '@/lib/training/vdot';
@@ -6697,10 +6698,69 @@ function layoutWeek({
     }
     const afterLongDow = (longRunDow + 1) % 7;
     if (trueEasy.length >= 2 && trueEasy.includes(afterLongDow)) {
-      const recoveryCapMi = (RECOVERY_RUN_MAX_MINUTES * 60) / easyPaceSecPerMi;
+      /* ── RECOVERY-AFTER-LONG-1 (2026-08-30) · DOCTRINE PUBLISHES THIS DAY ──
+       *
+       * The cap below was `Research/00a` §1's RECOVERY band alone, and §1 is
+       * the GENERIC band for "a recovery run". `Research/22` publishes a
+       * SPECIFIC cell for this specific day in each tier's own sample week,
+       * and a specific cell outranks a generic band — Rule 7's lint shape is
+       * exactly a category reaching for a generic value when doctrine states a
+       * particular one.
+       *
+       * Live consequence, caught by the owner reading his own authored block:
+       * at his 9:38/mi easy pace §1's 45-minute ceiling is 4.67 mi, floored to
+       * 4.5, on a day his tier's row (Marathon — Advanced) reads "Rest or 6 mi
+       * recovery" and his own history reads median 6.0. Six miles at 9:38 is 58
+       * minutes, which is §2's general-aerobic band, so the day was not a §1
+       * run for this runner at all.
+       *
+       * PER-TIER, NEVER A CONSTANT. Marathon — Intermediate reads "Rest" and
+       * Beginner reads "XT or rest"; neither publishes a distance, and for
+       * those runners §1's cap remains the right answer. `recoveryDayAfterLongMi`
+       * returns null there and this whole branch keeps its previous behaviour.
+       *
+       * THE VARIATION IS PRESERVED, which is the half of RULE12-VARY-1 that was
+       * right: the day still differs from the week's other easy days, and the
+       * pool is still conserved. Only the magnitude moves, and it moves to the
+       * number doctrine actually states.
+       */
+      const doctrineAfterLongMi = raceDistanceMi != null && raceDistanceMi > 0
+        ? recoveryDayAfterLongMi(distanceCategoryOf(raceDistanceMi), level ?? null)
+        : null;
+      const recoveryCapMi = Math.max(
+        (RECOVERY_RUN_MAX_MINUTES * 60) / easyPaceSecPerMi,
+        doctrineAfterLongMi ?? 0,
+      );
       const current = slots[afterLongDow]!.distanceMi;
-      const recoveryMi = Math.max(mathFloor, Math.floor(Math.min(current, recoveryCapMi) * 2) / 2);
-      const surplus = Math.round((current - recoveryMi) * 2) / 2;
+      // The doctrine cell is a TARGET, not only a ceiling: when the week's own
+      // division came in under it, this day is raised to it and the miles are
+      // taken from the other easy days rather than added to the week. Bounded
+      // by what those days can give above their floor, so a thin week cannot be
+      // pushed past its ramp ceiling to satisfy a sample-week cell.
+      if (doctrineAfterLongMi != null && current < doctrineAfterLongMi) {
+        const others = trueEasy.filter((d) => d !== afterLongDow);
+        let need = Math.round((doctrineAfterLongMi - current) * 2) / 2;
+        for (let i = 0; i < others.length && need > 0; i++) {
+          const d = others[i];
+          // NOT `mathFloor`. The pull floor is the runner's own DEMONSTRATED
+          // easy day (`baselineFloor` = `easyMileFloor`, Rule-8-filtered),
+          // because funding this day by shortening the others below what he
+          // actually runs would re-create the very defect Rule 12 exists for —
+          // caught by `_coach_sensible`'s DEMONSTRATED_EASY check, which went
+          // from 0 findings to 4 when this took down to `mathFloor`.
+          const pullFloor = Math.max(mathFloor, baselineFloor);
+          const spare = Math.max(0, Math.floor((slots[d]!.distanceMi - pullFloor) * 2) / 2);
+          const take = Math.min(need, spare);
+          if (take <= 0) continue;
+          slots[d]!.distanceMi = Math.round((slots[d]!.distanceMi - take) * 10) / 10;
+          need = Math.round((need - take) * 10) / 10;
+        }
+        const raised = Math.round((doctrineAfterLongMi - need) * 10) / 10;
+        slots[afterLongDow]!.distanceMi = raised;
+      }
+      const recoveryMi = Math.max(mathFloor, Math.floor(Math.min(slots[afterLongDow]!.distanceMi, recoveryCapMi) * 2) / 2);
+      const afterRaise = slots[afterLongDow]!.distanceMi;
+      const surplus = Math.round((afterRaise - recoveryMi) * 2) / 2;
       if (surplus > 0) {
         const others = trueEasy.filter((d) => d !== afterLongDow);
         // §2's own ceiling · a day the surplus pushes past 75 minutes has
@@ -6719,7 +6779,7 @@ function layoutWeek({
         }
         // Only shorten the recovery day by what the others actually absorbed,
         // so the week's mileage is conserved to the half mile either way.
-        slots[afterLongDow]!.distanceMi = Math.round((current - (surplus - left)) * 10) / 10;
+        slots[afterLongDow]!.distanceMi = Math.round((afterRaise - (surplus - left)) * 10) / 10;
       }
     }
   }

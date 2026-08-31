@@ -70,7 +70,7 @@ import {
   type GoalTier,
 } from '@/lib/plan/goal-tiers';
 import { openBlockMode } from '@/lib/plan/race-lifecycle';
-import { PLAN_TEMPLATES } from '@/lib/plan/plan-templates';
+import { PLAN_TEMPLATES, RECOVERY_DAY_AFTER_LONG_MI } from '@/lib/plan/plan-templates';
 import {
   WORKOUT_CATALOGUE,
   CROSS_REFERENCES,
@@ -3349,6 +3349,102 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  {
+    id: 'TEMPLATE.recovery-day-after-long-matches-doctrine',
+    binds: [
+      'lib/plan/plan-templates.ts#RECOVERY_DAY_AFTER_LONG_MI',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '## 4. Marathon Plans',
+    claim:
+      'The day after the long run is sized from the tier\'s OWN sample-week cell, never from ' +
+      'Research/00a §1\'s generic 20-45 min recovery band. Every entry in ' +
+      'RECOVERY_DAY_AFTER_LONG_MI must equal the miles stated in that tier\'s sample peak week ' +
+      'on the day following its long run, and a tier whose cell prescribes no run (Marathon ' +
+      'Intermediate reads "Rest", Beginner "XT or rest") must carry NO entry — the caller then ' +
+      'keeps the generic band, which is correct for a runner doctrine tells to rest.',
+    check() {
+      const doc = 'Research/22-plan-templates.md';
+      const all = sourceOf(doc).split('\n');
+      const DOC_DISTANCE: Record<string, string> = { hm: 'Half Marathon', m: 'Marathon' };
+      const COHORT: Record<string, string> = {
+        beginner: 'Beginner', intermediate: 'Intermediate',
+        advanced: 'Advanced', advanced_plus: 'Advanced',
+      };
+
+      /** The sample-week row for a tier, as seven trimmed cells Mon..Sun. */
+      const sampleWeek = (distance: string, cohort: string): string[] => {
+        // Exact-prefix match · "Marathon" is a substring of "Half Marathon",
+        // so `.includes` silently reads the wrong section (the sibling claim
+        // was caught by exactly that on its first run).
+        const at = all.findIndex((l) => l.startsWith(`### ${distance} —`) && l.includes(cohort));
+        if (at < 0) throw new Error(`DOCTRINE · no "### ${distance} — ${cohort}" in ${doc}`);
+        const block = all.slice(at, at + 30);
+        const hdr = block.findIndex((l) => l.replace(/\s/g, '').startsWith('|Mon|Tue|Wed|Thu|Fri|Sat|Sun|'));
+        if (hdr < 0) throw new Error(`DOCTRINE · no Mon..Sun sample week under ${distance} — ${cohort}`);
+        const row = block[hdr + 2];
+        if (!row) throw new Error(`DOCTRINE · sample week under ${distance} — ${cohort} has no data row`);
+        const cells = row.split('|').slice(1, 8).map((c) => c.trim());
+        if (cells.length !== 7) throw new Error(`DOCTRINE · sample week under ${distance} — ${cohort} is not 7 cells`);
+        return cells;
+      };
+
+      /** Leading whole/decimal mileage in a cell, or null when it states none. */
+      const milesIn = (cell: string): number | null => {
+        const m = cell.match(/(\d+(?:\.\d+)?)\s*mi\b/);
+        return m ? Number(m[1]) : null;
+      };
+
+      for (const [cat, byLevel] of Object.entries(RECOVERY_DAY_AFTER_LONG_MI)) {
+        const distance = DOC_DISTANCE[cat];
+        if (!distance) {
+          throw new Error(
+            `DOCTRINE · RECOVERY_DAY_AFTER_LONG_MI has a '${cat}' entry with no Research/22 ` +
+            'sample week to read it out of. Add the mapping or drop the entry.',
+          );
+        }
+        for (const [level, engineMi] of Object.entries(byLevel ?? {})) {
+          const cells = sampleWeek(distance, COHORT[level]);
+          // The cell must genuinely BE the day after the long run: these tables
+          // run Mon..Sun, so this only holds when the long run is on Sunday.
+          const sunday = cells[6];
+          if (!/\bLR\b|long run/i.test(sunday)) {
+            throw new Error(
+              `DOCTRINE · ${distance} — ${COHORT[level]}'s sample week does not put its long ` +
+              `run on Sunday ("${sunday}"), so its Monday cell is not the day after it. ` +
+              'That tier must not carry an entry.',
+            );
+          }
+          const docMi = milesIn(cells[0]);
+          if (docMi == null) {
+            throw new Error(
+              `DOCTRINE · ${distance} — ${COHORT[level]} reads "${cells[0]}" on the day after ` +
+              `the long run — no distance — but the engine carries ${engineMi}. A tier doctrine ` +
+              'tells to rest must have no entry.',
+            );
+          }
+          if (Math.abs(docMi - (engineMi as number)) > 1e-9) {
+            throw new Error(
+              `DOCTRINE · ${distance} — ${COHORT[level]} reads ${docMi} mi on the day after the ` +
+              `long run ("${cells[0]}"); the engine carries ${engineMi}.`,
+            );
+          }
+        }
+      }
+
+      // The negative half · a tier whose cell prescribes rest must be ABSENT,
+      // not present-with-a-guess. This is what stops the table quietly growing
+      // a number doctrine never published.
+      for (const level of ['beginner', 'intermediate'] as const) {
+        if ((RECOVERY_DAY_AFTER_LONG_MI.m ?? {})[level] != null) {
+          throw new Error(
+            `DOCTRINE · Marathon — ${COHORT[level]} prescribes rest the day after the long run; ` +
+            'the engine must carry no entry for it.',
+          );
+        }
+      }
+    },
+  },
   {
     id: 'TEMPLATE.quality-character-and-volume-match-doctrine',
     binds: [

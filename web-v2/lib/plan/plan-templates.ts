@@ -196,3 +196,67 @@ export function isBaseBuildingPlan(
 ): boolean {
   return templateFor(distance, level, weeklyMi).qualityCharacter === 'base_building';
 }
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * RECOVERY-AFTER-LONG-1 (2026-08-30) · the day after the long run has a
+ * doctrine-published SIZE, and it is per-tier.
+ *
+ * ── WHY THIS TABLE EXISTS ───────────────────────────────────────────────────
+ *
+ * RULE12-VARY-1 sized this day by capping it into `Research/00a` §1's RECOVERY
+ * band (20-45 min). That is the generic band for "a recovery run", and it is
+ * the wrong authority here, because `Research/22` publishes a SPECIFIC cell for
+ * this specific day in each tier's sample week. At the owner's 9:38/mi easy
+ * pace §1's ceiling is 4.67 mi, which floored to 4.5 — while his own tier's row
+ * says six, and his own training says six (day-after-long distances across the
+ * build: 6.7, 6.0, 6.2, 5.1, 6.0, 6.0, 8.1, 6.0, 9.1 · median 6.0; the only
+ * 4-mile instances are all inside his post-AFC taper and recovery window, which
+ * Rule 8 says is precisely the data not to characterise him with).
+ *
+ * Six miles at 9:38 is 58 minutes, which is `Research/00a` §2's GENERAL AEROBIC
+ * band (40-75 min), not §1's. So the day is not a §1 run for this runner at all
+ * — the generic band was answering a question doctrine had already answered
+ * more precisely.
+ *
+ * This is Rule 7's lint shape: a category reaching for a generic value when
+ * doctrine publishes a specific one. It shipped because the instruction to
+ * "make the day after the long run shorter" was given from intuition without
+ * checking what the number was, and the code implemented it faithfully.
+ *
+ * ── WHY IT IS PER-TIER, AND WHY MOST ENTRIES ARE ABSENT ─────────────────────
+ *
+ * `Research/22`'s Marathon sample weeks do not agree with each other, and they
+ * should not: Advanced reads "Rest or 6 mi recovery", Intermediate reads
+ * "Rest", Beginner reads "XT or rest". Only the advanced row publishes a
+ * distance. An absent entry is not "unknown" — it is doctrine declining to
+ * prescribe a run on that day, and the caller keeps §1's behaviour, which is
+ * the right answer for a runner whose own row says rest.
+ *
+ * Populated only where the sample week's long run is on SUNDAY, so that the
+ * Monday cell genuinely is the day after it. Rows whose long run falls
+ * elsewhere are omitted rather than guessed.
+ * `TEMPLATE.recovery-day-after-long-matches-doctrine` parses each cell out of
+ * the doc at run time and fails if this table drifts from it.
+ * ────────────────────────────────────────────────────────────────────────── */
+export const RECOVERY_DAY_AFTER_LONG_MI: Readonly<
+  Partial<Record<DistCategory, Partial<Record<PlanLevel, number>>>>
+> = {
+  // "| Rest or 6 mi recovery | ... | 22 mi LR w/ last 14 @ M |"
+  m: { advanced: 6, advanced_plus: 6 },
+  // "| Rest or 5 mi recovery | ... | 16 mi LR w/ last 8 mi @ HMP |"
+  hm: { advanced: 5, advanced_plus: 5 },
+};
+
+/**
+ * The doctrine-published distance for the day after the long run, or null when
+ * the tier's own row prescribes rest (or when the row's long run is not on the
+ * day before, so the cell would not be describing this day).
+ */
+export function recoveryDayAfterLongMi(
+  cat: DistCategory,
+  level: PlanLevel | null | undefined,
+): number | null {
+  if (!level) return null;
+  return RECOVERY_DAY_AFTER_LONG_MI[cat]?.[level] ?? null;
+}
