@@ -31,9 +31,10 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { extractStringLiterals } from './sql-scan';
+import type { NormalWindowExemption } from './normal-window-registry';
 import {
   NORMAL_WINDOW_EXEMPTIONS,
-  NORMAL_WINDOW_HANDOFF,
+  NORMAL_WINDOW_FILE_PINS,
   HABIT_READERS,
 } from './normal-window-registry';
 
@@ -89,10 +90,32 @@ function scan(): Finding[] {
       if (!/FROM\s+runs\b/i.test(sql)) continue;
       if (!ROLLING_WINDOW.test(sql)) continue;
       if (!HABIT_AGGREGATE.test(sql)) continue;
-      out.push({ file: path.relative(ROOT, p), sql: sql.slice(0, 160) });
+      // The FULL normalised statement is kept — a statement-level exemption
+      // matches a fingerprint against it, and truncating here would make a
+      // fingerprint's validity depend on where the cut fell. Display truncates.
+      out.push({ file: path.relative(ROOT, p), sql });
     }
   }
   return out;
+}
+
+/**
+ * Is this finding excused, and by what?
+ *
+ * Two shapes, because a file can hold both kinds of reader. `lib/plan/
+ * generate.ts` is the case that forced this: its habit readers are filtered
+ * and its two injury guards are deliberately not, so excusing the FILE would
+ * blind the scanner to the next defect in the file that has produced four.
+ *
+ *   · a file-level entry (no `statement`) excuses everything in that file;
+ *   · a statement-level entry excuses only statements containing its
+ *     fingerprint. `NORMAL_WINDOW_FILE_PINS` is the backstop for a fingerprint
+ *     written too broadly.
+ */
+function excuseFor(f: Finding): NormalWindowExemption | undefined {
+  return NORMAL_WINDOW_EXEMPTIONS.find(
+    (e) => e.file === f.file && (e.statement === undefined || f.sql.includes(e.statement)),
+  );
 }
 
 const readSource = (rel: string): string | null => {
@@ -129,12 +152,10 @@ describe('NORMALWINDOW-1 · a habit reader excludes the taper', () => {
   });
 
   it('no unguarded, unexempted habit read over a rolling window', () => {
-    const handoffFiles = new Set(NORMAL_WINDOW_HANDOFF.map((h) => h.file));
-    const unexcused = findings.filter(
-      (f) => !exemptFiles.has(f.file) && !handoffFiles.has(f.file));
+    const unexcused = findings.filter((f) => excuseFor(f) === undefined);
     for (const f of unexcused) {
       // eslint-disable-next-line no-console
-      console.log(`  NORMALWINDOW  ${f.file}\n     ${f.sql}`);
+      console.log(`  NORMALWINDOW  ${f.file}\n     ${f.sql.slice(0, 160)}`);
     }
     expect(
       unexcused.length,
@@ -143,41 +164,70 @@ describe('NORMALWINDOW-1 · a habit reader excludes the taper', () => {
       'inside that window is the engine measuring a period it prescribed and calling the ' +
       'result his identity (CLAUDE.md Rule 8). Import the filter from ' +
       'lib/training/normal-window.ts — EXCLUDE the window, do not widen it, and refuse ' +
-      'rather than answer if too little survives — or add an argued entry to ' +
-      'NORMAL_WINDOW_EXEMPTIONS saying why this reader is right as it stands.',
+      'rather than answer if too little survives.\n\n' +
+      'If the reader is on the OTHER side of Rule 8\'s corollary — if it asks what the ' +
+      'runner HAS RECENTLY ABSORBED rather than what he CAN DO — say so in an entry in ' +
+      'NORMAL_WINDOW_EXEMPTIONS, and prefer a `statement` fingerprint over a file-level ' +
+      'excuse when the file also holds habit readers. If it is answering BOTH questions ' +
+      'under one name, SPLIT it, as recentPeakLongMi was split.',
     ).toBe(0);
   });
 
-  it('the hand-off is count-pinned — it cannot grow, and a fix expires it', () => {
-    // Not an allowlist. A hand-off names a file that is unguarded and KNOWN to
-    // be, pinned to its exact finding count so it fails in both directions: a
-    // fifth offender added to the file fails the build, and the repair landing
-    // fails it too, which is what forces the entry to be deleted rather than
-    // left to rot. See the note above NORMAL_WINDOW_HANDOFF.
-    for (const h of NORMAL_WINDOW_HANDOFF) {
+  it('the file pin holds the total — it cannot grow, and a repair expires it', () => {
+    // The backstop behind the statement-level exemptions. A `statement`
+    // fingerprint is a substring match, so one written a shade too broadly
+    // would silently excuse a future sibling that happens to contain it. The
+    // pin asserts the file's TOTAL finding count, excused or not, which is what
+    // catches that: the total rises while the unexcused count stays at zero.
+    for (const h of NORMAL_WINDOW_FILE_PINS) {
       const n = findings.filter((f) => f.file === h.file).length;
       expect(
         n,
-        `${h.file} is pinned at ${h.findings} unguarded habit reads and the scanner now ` +
-        `finds ${n}. If it went DOWN, the repair landed — delete this hand-off entry ` +
-        '(and register the repaired readers in HABIT_READERS). If it went UP, a new ' +
-        'unguarded habit reader was added to a file that was already known to be broken; ' +
-        'the hand-off is not cover for new work.',
+        `${h.file} is pinned at ${h.findings} rolling-window habit reads and the scanner ` +
+        `now finds ${n}. If it went DOWN, a repair landed — update or delete this pin, and ` +
+        'delete any statement exemption that no longer matches. If it went UP, a new ' +
+        'statement appeared in the file with the worst record under this rule; it is NOT ' +
+        'covered by the existing exemptions just because it sits beside them.',
       ).toBe(h.findings);
-      expect(h.reason.length, `${h.file} hand-off has no argued reason`).toBeGreaterThan(80);
+      expect(h.reason.length, `${h.file} pin has no argued reason`).toBeGreaterThan(80);
       expect(readSource(h.file), `${h.file} does not exist`).not.toBeNull();
     }
   });
 
-  it('the allowlist is a ratchet — an exemption whose file is now clean must be deleted', () => {
-    const flagged = new Set(findings.map((f) => f.file));
-    const stale = NORMAL_WINDOW_EXEMPTIONS.filter((e) => !flagged.has(e.file));
+  it('the allowlist is a ratchet — an exemption nothing trips must be deleted', () => {
+    // Per ENTRY, not per file. A statement-level exemption whose fingerprint no
+    // longer matches anything is stale even while its file still trips on some
+    // OTHER statement — which is exactly what happens when the guard it excuses
+    // is repaired or renamed, and is the case a file-level check would miss.
+    const stale = NORMAL_WINDOW_EXEMPTIONS.filter(
+      (e) => !findings.some(
+        (f) => f.file === e.file && (e.statement === undefined || f.sql.includes(e.statement)),
+      ),
+    );
     expect(
-      stale.map((e) => e.file),
-      'These files no longer trip the scanner, so their exemptions are stale. Delete them ' +
-      '— the list may shrink, never grow. A file that now imports the filter has stopped ' +
-      'needing an exemption; keeping one lets a future edit hide behind it.',
+      stale.map((e) => (e.statement ? `${e.file} :: ${e.statement}` : e.file)),
+      'Nothing trips these exemptions any more, so they are stale. Delete them — the list ' +
+      'may shrink, never grow. A file that now imports the filter has stopped needing an ' +
+      'exemption, and a statement fingerprint that matches nothing is a claim about code ' +
+      'that no longer exists; keeping either lets a future edit hide behind it.',
     ).toEqual([]);
+  });
+
+  it('a statement exemption excuses ONE statement, not its neighbours', () => {
+    // The property that makes per-statement excusing safe on a file that also
+    // holds habit readers. Each fingerprint must be distinctive enough to pick
+    // out a single statement; one that matched several would be a file-level
+    // exemption wearing a narrower word.
+    for (const e of NORMAL_WINDOW_EXEMPTIONS.filter((x) => x.statement !== undefined)) {
+      const matched = findings.filter(
+        (f) => f.file === e.file && f.sql.includes(e.statement as string));
+      expect(
+        matched.length,
+        `${e.file} :: ${e.statement} matches ${matched.length} statements. A fingerprint ` +
+        'must pick out exactly one; a broader one silently excuses whatever lands beside ' +
+        'it. Narrow it, or split it into one entry per statement with its own reason.',
+      ).toBe(1);
+    }
   });
 
   it('every exemption carries a real reason, not a shrug', () => {

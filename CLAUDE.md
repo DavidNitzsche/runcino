@@ -396,10 +396,36 @@ reader has to get this right on its own:
   scanner cannot see, because they aggregate in TypeScript. Both allowlists are
   ratchets, a stale exemption fails until deleted, and a scanner-liveness probe
   fails loudly rather than reporting clean if the predicate stops matching.
-- `lib/plan/generate.ts` is recorded in `NORMAL_WINDOW_HANDOFF`, NOT as an
-  exemption — there is no argument its four readers are right. It is pinned to
-  its exact finding count, so a fifth offender fails the build and the repair
-  landing fails it too, which forces the entry to be deleted.
+- Exemptions can be per STATEMENT, not just per file, because a file can sit on
+  both sides of the corollary. `lib/plan/generate.ts` is the case: its habit
+  readers are filtered and its two injury guards are excused by SQL fingerprint,
+  both citing one shared `ABSORBED_LOAD_NOT_CAPABILITY` text rather than two
+  ad-hoc reasons. The file itself is never exempt, so anything else in it still
+  fails, and `NORMAL_WINDOW_FILE_PINS` holds its total finding count as a
+  backstop against a fingerprint written too broadly.
+
+**Where the two windows in this app disagree, and why (settled 2026-08-30).**
+`lib/coach/easy-discipline.ts`'s `raceWindowFor` and the plan engine's tables
+both name "days around a race that are not ordinary training", and they diverge
+on two rows. Neither citation is wrong — the divergence is entirely
+GRANULARITY, and it is written down here so the next pass starts from the
+evidence:
+
+- `raceWindowFor` reads DAYS, and matches its two sources exactly: post-race is
+  `Research/00b` §"Recovery by Distance" · "total recovery days (no quality)"
+  upper bound (5K 5, 10K 7, half 14, marathon 28); pre-race is `Research/08`
+  §9.1's taper-length upper bound (5K 7, 10K 10, half 14, marathon 21).
+- The engine's `POST_RACE_RECOVERY_WEEKS` and `BLOCK_SHAPE.taperWeeks` are
+  WHOLE WEEKS, and round in opposite directions on the two sub-week rows: 10K
+  pre-race 7-10 days rounds UP to 2 weeks (14), and 5K post-race 3-5 days
+  floors DOWN to 0.
+- Consequence for `normal-window.ts`, which inherits the week-granular tables:
+  it over-excludes 4 days before a 10K, which is the safe direction (at worst a
+  refusal), and **under-excludes up to 5 days after a 5K**, which is not — a
+  runner's post-5K no-quality days currently count as his normal. Small, and
+  real. Fixing it means changing `POST_RACE_RECOVERY_WEEKS['5k']`, which is a
+  doctrine-bound engine constant that also moves plan composition, so it is a
+  call for whoever owns that table rather than a patch to the filter.
 
 ---
 

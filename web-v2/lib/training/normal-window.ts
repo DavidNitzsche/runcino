@@ -106,14 +106,32 @@
  *     constant with a doc comment, so there is one authority and greps find it —
  *     modelled on `CANONICAL_ROW_SQL` in lib/runs/volume.ts.
  *
- * WHAT IS *NOT* A HABIT READER, and must NOT use this. The filter answers "what
- * is this runner's normal". It is the wrong tool for:
+ * WHAT IS *NOT* A HABIT READER, and must NOT use this. Rule 8's corollary:
+ * FILTER A READER THAT ASKS WHAT THE RUNNER CAN DO; DO NOT FILTER ONE THAT ASKS
+ * WHAT HE HAS RECENTLY ABSORBED. Habit and capability are Rule 8 questions;
+ * tissue load and injury exposure are not, and over-applying the rule makes a
+ * safety guard MORE permissive in exactly the case it exists for. So:
  *
  *   · execution / adherence ("what did he actually run") — a taper day is a
  *     real day he really ran, and hiding it would understate his own history.
  *   · acute load, freshness and readiness baselines — those are SUPPOSED to
  *     move with recent load; that is what makes them acute.
  *   · race-recency and taper detectors — they exist to look at race weeks.
+ *   · injury guards. A ramp check measured against a pre-taper self waves
+ *     through a jump the legs have not been prepared for. `recentPeakLongMi` is
+ *     the worked example of a reader that was BOTH questions under one name:
+ *     its habit half is filtered, its spike anchor stays literal.
+ *
+ * KNOWN GRANULARITY GAP, settled 2026-08-30 and recorded rather than papered
+ * over. This module inherits WHOLE-WEEK doctrine tables, while
+ * `lib/coach/easy-discipline.ts` reads the day-granular columns of the same two
+ * sources. They agree on three of five distances either side. The engine's
+ * rounding goes UP at 10K pre-race (7-10 days → 2 weeks), which over-excludes
+ * by 4 days — the safe direction here. It floors DOWN at 5K post-race (3-5 days
+ * → 0 weeks), which UNDER-excludes: a runner's post-5K no-quality days
+ * currently count as his normal. Closing that means changing
+ * `POST_RACE_RECOVERY_WEEKS['5k']`, which also moves plan composition, so it is
+ * a call for that table's owner and not a patch to make here.
  *
  * See `lib/audit/normal-window-exemptions.ts` for the argued exceptions and
  * `lib/audit/_normal_window_scan.test.ts` for the gate that keeps this honest.

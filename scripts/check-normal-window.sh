@@ -48,7 +48,7 @@
 #                 `describe`/`it` and the real predicate constants.
 #
 #   3 · FULL    · the vitest gate: no unguarded habit read over a rolling
-#     GATE        window, the allowlist ratchet, the count-pinned hand-off, and
+#     GATE        window, the allowlist ratchet, the count-pinned file, and
 #                 the scanner-liveness probe that fails LOUDLY rather than
 #                 reporting clean when the predicate stops matching. Two gates
 #                 in this repo have shipped green because they scanned zero
@@ -68,8 +68,12 @@
 #     recovery and a zero because the runner is detrained are OPPOSITE FACTS.
 #
 # If the reader is genuinely exempt — execution rather than habit, a load model
-# that is supposed to move, or a race detector — add an argued entry to
-# NORMAL_WINDOW_EXEMPTIONS. Do NOT loosen a floor to make this pass.
+# that is supposed to move, a race detector, or an injury guard reading what the
+# tissue has ABSORBED rather than what the runner CAN DO — add an argued entry
+# to NORMAL_WINDOW_EXEMPTIONS, citing the corollary's one shared text. Prefer a
+# `statement` fingerprint over a file-level excuse when the file also holds
+# habit readers. If the reader is answering BOTH questions under one name, SPLIT
+# it, as recentPeakLongMi was. Do NOT loosen a floor to make this pass.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
@@ -135,15 +139,19 @@ else
     bad "$exempt file entries but $reasons reasons · every entry is argued or it is not an entry"
   fi
 
-  for sym in "NORMAL_WINDOW_EXEMPTIONS" "NORMAL_WINDOW_HANDOFF" "HABIT_READERS"; do
+  for sym in "NORMAL_WINDOW_EXEMPTIONS" "NORMAL_WINDOW_FILE_PINS" "HABIT_READERS"; do
     grep -q "export const $sym" "$REG" || bad "registry lost '$sym'"
   done
 
-  # A hand-off is not an exemption. It is a count-pinned, self-expiring record
-  # of a file that IS broken — so it must carry a number, or it is just an
-  # exemption wearing a different word.
+  # The corollary has to be stated ONCE and cited, not re-argued ad hoc at each
+  # site — that is how two guards exempted for the same reason drift into two
+  # different reasons and then into two different rules.
+  grep -q "ABSORBED_LOAD_NOT_CAPABILITY" "$REG" \
+    || bad "the corollary's shared reason is gone · absorbed-load exemptions must cite one text"
+
+  # The file pin is a count, or it cannot expire when a repair lands.
   grep -qE "^\s+findings: [0-9]+," "$REG" \
-    || bad "no count-pinned hand-off entry · a hand-off without a number cannot expire"
+    || bad "no count-pinned file entry · a pin without a number cannot expire"
 
   [ "$fail" = "0" ] && say "  ok · module exports intact, $exempt registry entries, all argued"
 fi

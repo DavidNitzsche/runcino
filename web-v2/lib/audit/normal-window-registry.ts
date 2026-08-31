@@ -40,9 +40,63 @@
 export interface NormalWindowExemption {
   /** Repo-relative path, as the scanner reports it. */
   file: string;
+  /**
+   * Optional · excuse ONE statement rather than the whole file.
+   *
+   * A distinctive substring of the normalised SQL. Present when a file holds
+   * both habit readers and corollary readers and must not be excused wholesale
+   * — `lib/plan/generate.ts` is the case that forced this: its habit readers
+   * are filtered and its two injury guards are not, and a file-level exemption
+   * there would blind the scanner to the next defect in a file that has already
+   * produced four.
+   *
+   * Key it on the PROJECTION ALIAS (`::text AS avg_weekly`), never on the raw
+   * jsonb access the statement happens to use. Two reasons, and both bit: a
+   * fingerprint spelling `data->>'…'` trips RUN-SHAPE LINT in this very file,
+   * and an alias is the half of a statement that survives the accessor
+   * refactors `run-shape.ts` exists to make. The gate asserts each fingerprint
+   * matches EXACTLY ONE statement, so a lazy one fails rather than quietly
+   * widening.
+   */
+  statement?: string;
   /** Why reading across prescribed taper / recovery days is correct HERE. */
   reason: string;
 }
+
+/**
+ * RULE 8'S COROLLARY, stated once and cited by every reader it excuses.
+ *
+ * **Filter a reader that asks what the runner CAN DO. Do not filter one that
+ * asks what the runner HAS RECENTLY ABSORBED.**
+ *
+ * Rule 8 says a taper is never his NORMAL. It does not say the taper did not
+ * happen. If he genuinely spent four weeks at reduced volume, then ramping from
+ * THAT volume is what his connective tissue will actually experience next week,
+ * and a guard measured against his pre-taper self would wave through a jump his
+ * legs have not been prepared for. Over-applying Rule 8 makes a safety guard
+ * MORE PERMISSIVE in exactly the situation it exists for.
+ *
+ * Habit and capability are Rule 8 questions. Tissue load and injury exposure
+ * are not.
+ *
+ * The consistency is the argument. Two readers hit this fork independently on
+ * the night the rule was written and both split the same way — and where a
+ * reader turns out to be answering both questions, the answer is to SPLIT it,
+ * not to pick one. `recentPeakLongMi` is the worked example: one name over two
+ * quantities (a Rule 16 violation as well), now two, with the habit half
+ * filtered to his real 18.0 mi longest and the spike anchor left literal at the
+ * taper's 13.5 because `Research/00a` writes its own window into the citation —
+ * ">110% of longest run in the PRIOR 30 D raises overuse injury risk by ~64%".
+ */
+const ABSORBED_LOAD_NOT_CAPABILITY =
+  'RULE 8 COROLLARY · filter a reader that asks what the runner CAN DO; do not filter one ' +
+  'that asks what he HAS RECENTLY ABSORBED. This is an INJURY GUARD, and injury risk is a ' +
+  'property of what the tissue actually did, not of what the runner normally does. Rule 8 ' +
+  'says a taper is never his normal; it does not say the taper did not happen. If he really ' +
+  'spent four weeks at reduced volume, ramping FROM that volume is what his connective ' +
+  'tissue will experience next week, and a guard measured against his pre-taper self would ' +
+  'wave through a jump his legs have not been prepared for. Filtering here would make the ' +
+  'guard more permissive in exactly the situation it exists for. ';
 
 /**
  * Seeded 2026-08-30 from the sixteen files standing after the habit readers
@@ -50,6 +104,35 @@ export interface NormalWindowExemption {
  * direction of error, not assumed.
  */
 export const NORMAL_WINDOW_EXEMPTIONS: readonly NormalWindowExemption[] = [
+  // ── the corollary · two injury guards in a file whose habit readers ARE
+  //    filtered, so they are excused per STATEMENT and the file stays scanned.
+  {
+    file: 'lib/plan/generate.ts',
+    statement: '::text AS mi FROM runs',
+    reason:
+      ABSORBED_LOAD_NOT_CAPABILITY +
+      'THIS STATEMENT is `recentPeakLongMi`\'s LITERAL 28-day max — the spike-guard anchor, ' +
+      'and half of a function that was one name over two quantities until it was split. ' +
+      '`Research/00a` §"Volume progression rules" writes the window into the citation: ' +
+      '">110% of longest run in the PRIOR 30 D raises overuse injury risk by ~64%". A runner ' +
+      'whose longest run in the last thirty days really is 13.5 is at spike risk on an ' +
+      '18-miler however fit he was in July; filtering this would let the engine author 148% ' +
+      'of his actual recent longest and call it doctrine. The HABIT half of the same ' +
+      'function (`representativeMi`) IS filtered, to his real 18.0.',
+  },
+  {
+    file: 'lib/plan/generate.ts',
+    statement: '/ 4.0)::text AS avg_weekly',
+    reason:
+      ABSORBED_LOAD_NOT_CAPABILITY +
+      'THIS STATEMENT is `trailingAvgWeeklyMi`, feeding the validator\'s peak-vs-trailing ' +
+      'RAMP check. Same side of the fork as the spike anchor above and exempt for the same ' +
+      'stated reason rather than an ad-hoc one: it asks what the runner has recently ' +
+      'absorbed, so that the plan\'s peak can be judged against the volume his legs actually ' +
+      'carried. A filtered version would compare the peak against a pre-taper self and pass ' +
+      'a ramp the tissue has not been prepared for — the failure this check exists to catch.',
+  },
+
   {
     file: 'lib/plan/drift-monitor.ts',
     reason:
@@ -164,43 +247,26 @@ export const NORMAL_WINDOW_EXEMPTIONS: readonly NormalWindowExemption[] = [
 ];
 
 /**
- * NOT an exemption · a tracked, count-pinned record of a file this gate cannot
- * express per-statement.
+ * The file-level COUNT PIN · a backstop behind the statement exemptions.
  *
- * `lib/plan/generate.ts` was the worst offender under this rule — four of the
- * six defects in Rule 8's table are its readers. THE HAND-OFF ALREADY FIRED
- * ONCE, on its first real encounter and exactly as designed: the repair landed
- * in `43c3da26` while this gate was being rebased onto it, the count fell from
- * 4 to 2, and the gate refused to pass until this entry was re-read. That is
- * the whole argument for pinning a number rather than writing an exemption.
+ * `lib/plan/generate.ts` produced four of Rule 8's six defects. Its habit
+ * readers were repaired in `43c3da26`; the two statements that remain are
+ * argued above under the corollary, PER STATEMENT, so the file itself is never
+ * exempted and every other statement in it is still scanned.
  *
- * TWO STATEMENTS STAND, and neither is the defect Rule 8 describes:
+ * This pin sits behind those two exemptions and asserts the file's TOTAL
+ * finding count, which the per-statement excuses cannot. A `statement`
+ * fingerprint is a substring match, so one written a shade too broadly would
+ * silently excuse a future sibling that happens to contain it — the pin catches
+ * that, because the total would rise while the unexcused count stayed at zero.
+ * Defence in depth on the file with the worst record.
  *
- *   · `recentPeakLongMi`'s LITERAL 28-day `MAX(distanceMi)`. Deliberate, and
- *     argued at length in generate.ts's own comment above `RecentLongRead`: it
- *     is the SPIKE-GUARD anchor, and `Research/00a` §"Volume progression rules"
- *     writes its own window into the citation — ">110% of longest run in the
- *     PRIOR 30 D raises overuse injury risk by ~64%". A runner whose longest
- *     run in the last thirty days really is 13.5 is at spike risk on an
- *     18-miler however fit he was in July. Filtering it would let the engine
- *     author 148% of his actual recent longest and call it doctrine. The HABIT
- *     half of that same function (`representativeMi`) IS filtered. This is the
- *     over-applied-filter failure mode, avoided on purpose.
- *   · `trailingAvgWeeklyMi`, the 28-day `/ 4.0` mean feeding the validator's
- *     peak-vs-trailing RAMP check. Same family as the first: a question about
- *     what his tissue has recently carried, not about who he is. Flagged rather
- *     than asserted — the call belongs to whoever owns that validator, and this
- *     entry is where it stays visible until they make it.
- *
- * Why a pinned count and not two exemptions: this scanner's allowlist is
- * FILE-level, so exempting `generate.ts` would blind it to a third offender in
- * the file that has produced four of them. The pin fails in both directions —
- * a new unguarded read fails the build, and so does a further repair, which
- * forces this text to be re-read rather than left to rot.
- *
- * Same self-expiring posture as `check-palette-sync.sh`'s legacy-declaration
- * block, which flips from "these values exist" to "these must be gone" once its
- * count reaches zero.
+ * IT HAS ALREADY FIRED ONCE, on its first real encounter and exactly as
+ * designed: `43c3da26` landed while this gate was being rebased onto it, the
+ * count fell from 4 to 2, and the gate refused to pass until the entry was
+ * re-read. That is the argument for pinning a number rather than trusting a
+ * list — the same self-expiring posture as `check-palette-sync.sh`'s
+ * legacy-declaration block.
  *
  * The two implementations of the window itself — this module's
  * `prescribedWindowFor` and generate.ts's `prescribedSpanFor` — are bound
@@ -209,25 +275,26 @@ export const NORMAL_WINDOW_EXEMPTIONS: readonly NormalWindowExemption[] = [
  * are two of them because the generator imports `pg` and reaching into it from
  * the filter would close an import cycle.
  */
-export interface NormalWindowHandoff {
+export interface NormalWindowFilePin {
   file: string;
-  /** Exact number of findings the scanner must report for this file. */
+  /** Exact number of findings the scanner must report for this file, excused
+   *  or not. It rises when a statement is added and falls when one is
+   *  repaired; either way the entry has to be re-read. */
   findings: number;
   reason: string;
 }
 
-export const NORMAL_WINDOW_HANDOFF: readonly NormalWindowHandoff[] = [
+export const NORMAL_WINDOW_FILE_PINS: readonly NormalWindowFilePin[] = [
   {
     file: 'lib/plan/generate.ts',
     findings: 2,
     reason:
-      'Was 4; the repair landed in 43c3da26 on 2026-08-30 and this pin caught the drop, ' +
-      'which is what it is for. The two that stand are both tissue-spike guards rather ' +
-      'than habit claims: recentPeakLongMi\'s LITERAL 28-day MAX, kept on purpose and ' +
-      'argued in generate.ts against Research/00a\'s own "prior 30 D" window (its habit ' +
-      'half IS filtered), and trailingAvgWeeklyMi feeding the validator\'s peak-vs-' +
-      'trailing ramp check, flagged for its owner. Pinned rather than exempted because ' +
-      'this allowlist is file-level and this file has produced four defects.',
+      'Was 4 before the repair in 43c3da26 on 2026-08-30, and this pin caught the drop. ' +
+      'Both remaining statements are argued per-statement above under the corollary — ' +
+      'recentPeakLongMi\'s literal spike anchor and trailingAvgWeeklyMi\'s ramp check, each ' +
+      'an injury guard reading absorbed load rather than capability. The pin stays because ' +
+      'those excuses are substring matches: it is what fails if a third statement in this ' +
+      'file ever slips under one of their fingerprints.',
   },
 ];
 
@@ -397,12 +464,17 @@ export const HABIT_READERS: readonly HabitReader[] = [
     verdict: 'exempt',
     reason:
       'ALREADY COMPLIANT by its own route, and deliberately so. It excludes a per-distance ' +
-      'window around each race as EasyRunExclusion \'race\', citing Research/00b\'s ' +
-      '"total recovery days (no quality)" column, and both halves are claim-bound by ' +
-      'EASY.pre-race-context-window / EASY.post-race-context-window. Its numbers agree ' +
-      'with this module\'s on three of five distances either side and differ on the 5K ' +
-      'post-race and 10K pre-race rows, because the two cite different doctrine columns ' +
-      'for different questions. Converging them needs a doctrine call, not a refactor.',
+      'window around each race as EasyRunExclusion \'race\', claim-bound by ' +
+      'EASY.pre-race-context-window / EASY.post-race-context-window. SETTLED 2026-08-30: ' +
+      'neither citation is wrong and the divergence from this module is pure GRANULARITY. ' +
+      'raceWindowFor reads DAYS and matches its sources exactly — Research/00b\'s "total ' +
+      'recovery days (no quality)" upper bound after (5/7/14/28) and Research/08 §9.1\'s ' +
+      'taper-length upper bound before (7/10/14/21). The engine\'s tables are WHOLE WEEKS ' +
+      'and round opposite ways on the two sub-week rows: 10K pre 7-10 days rounds UP to 14, ' +
+      '5K post 3-5 days floors DOWN to 0. So this module over-excludes 4 days before a 10K ' +
+      '(safe — at worst a refusal) and UNDER-excludes up to 5 days after a 5K (not safe). ' +
+      'Closing that needs POST_RACE_RECOVERY_WEEKS[\'5k\'] to change, which also moves plan ' +
+      'composition, so it belongs to whoever owns that table. Recorded, not silently left.',
   },
   {
     file: 'lib/coach/limiter.ts',
