@@ -247,7 +247,7 @@ describe('ADAPTATION ENGINE · PROGRESS is genuinely reachable, on all four leve
     expect(contradictionsIn(set)).toEqual([]);
   });
 
-  it('SCENARIO:PROGRESS · DENSITY · the progression gate resolved a denser session', () => {
+  it('SCENARIO:PROGRESS · DENSITY · the gate shortened recovery on the same work', () => {
     const i = baseInput();
     i.density = { resolutions: [denserResolution()], noAuthoredTargets: false };
     const set = composeAdaptation(i);
@@ -257,6 +257,39 @@ describe('ADAPTATION ENGINE · PROGRESS is genuinely reachable, on all four leve
     // The gate's own resolution is CARRIED, not re-decided.
     expect(p && 'resolution' in p ? p.resolution.action : null).toBe('ACCELERATE');
     expect(contradictionsIn(set)).toEqual([]);
+  });
+
+  it('SCENARIO:PROGRESS · QUALITY_VOLUME · the gate added work rather than packing it tighter', () => {
+    // The Brain Constitution lists DENSITY and QUALITY_VOLUME as separate
+    // targets, and doctrine draws the same line: more reps is a different claim
+    // from the same reps with less rest. The split reads the progression gate's
+    // OWN lever rather than guessing from the shape.
+    const i = baseInput();
+    i.density = {
+      resolutions: [{ ...denserResolution(), lever: 'rep_count' }],
+      noAuthoredTargets: false,
+    };
+    const set = composeAdaptation(i);
+    const p = primaryProgress(set);
+    expect(p?.target).toBe('QUALITY_VOLUME');
+    expect(p?.domain).toBe('FITNESS');
+    expect(p?.previous.unit).toBe('quality_minutes');
+    expect(p?.reasonCodes).toContain('PROGRESSION_GATE_RESOLVED_MORE_QUALITY_WORK');
+    expect(contradictionsIn(set)).toEqual([]);
+  });
+
+  it('the two session levers are named off the gate\'s lever, never guessed', async () => {
+    const { targetForProgressionLever } = await import('./adaptation-engine');
+    expect(targetForProgressionLever('recovery_duration')).toBe('DENSITY');
+    expect(targetForProgressionLever('work_density')).toBe('DENSITY');
+    expect(targetForProgressionLever('rep_count')).toBe('QUALITY_VOLUME');
+    expect(targetForProgressionLever('quality_duration')).toBe('QUALITY_VOLUME');
+    expect(targetForProgressionLever('interval_duration')).toBe('QUALITY_VOLUME');
+    // A lever owned by ANOTHER target is not quietly filed under a session one.
+    expect(targetForProgressionLever('weekly_volume')).toBeNull();
+    expect(targetForProgressionLever('long_run_duration')).toBeNull();
+    expect(targetForProgressionLever('pace')).toBeNull();
+    expect(targetForProgressionLever(null)).toBeNull();
   });
 });
 
@@ -509,7 +542,8 @@ describe('ADAPTATION ENGINE · doctrine · ADAPT THE THING THAT CHANGED (BRIEF 0
   it('every proposal pairs its lever with exactly one legal domain', () => {
     const legal: Record<string, string> = {
       PACE: 'FITNESS', VOLUME: 'LOAD', DURATION: 'LOAD', DENSITY: 'FITNESS',
-      SPECIFICITY: 'FITNESS', RECOVERY: 'SAFETY', SCHEDULE: 'SCHEDULE',
+      QUALITY_VOLUME: 'FITNESS', SPECIFICITY: 'FITNESS', RECOVERY: 'SAFETY',
+      SCHEDULE: 'SCHEDULE',
     };
     const worlds = [
       baseInput(),

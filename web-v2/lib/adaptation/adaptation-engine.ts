@@ -141,6 +141,7 @@ import { tPaceFromVdot, vdotFromTpace } from '@/lib/training/vdot';
 import { PACE_STEP_S_PER_MI, type WorkShape } from '@/lib/prescription/levers';
 import { roundTo } from '@/lib/format/run';
 import type { ProgressionResolution } from '@/lib/plan/progression-pass';
+import type { ProgressionLever } from '@/lib/prescription/levers';
 import type { AdaptationVerdict } from './adaptation-model';
 import type { RunnerState, StateDecision } from '@/lib/training/runner-state';
 import type { ResolvedCapacity, Immutable } from '@/lib/training/prescription-resolver';
@@ -154,7 +155,8 @@ export type AdaptationDecision = 'PROGRESS' | 'HOLD' | 'REDUCE' | 'RESTRUCTURE';
 
 /** The same document's `target:` row. */
 export type AdaptationLever =
-  | 'PACE' | 'VOLUME' | 'DURATION' | 'DENSITY' | 'SPECIFICITY' | 'RECOVERY' | 'SCHEDULE';
+  | 'PACE' | 'VOLUME' | 'DURATION' | 'QUALITY_VOLUME' | 'DENSITY'
+  | 'SPECIFICITY' | 'RECOVERY' | 'SCHEDULE';
 
 /**
  * BRIEF 07's five adaptation TYPES, which are not the same axis as the lever.
@@ -193,6 +195,7 @@ export type AdaptationReasonCode =
   | 'STEP_CLAMPED_TO_RAMP_CAP'
   // ── DENSITY ──
   | 'PROGRESSION_GATE_RESOLVED_A_DENSER_SESSION'
+  | 'PROGRESSION_GATE_RESOLVED_MORE_QUALITY_WORK'
   | 'PROGRESSION_GATE_HELD_THE_SESSION'
   | 'NO_PROGRESSION_TARGETS_AUTHORED'
   // ── HOLD / REDUCE / RESTRUCTURE ──
@@ -239,6 +242,9 @@ export type DensityMagnitude = {
    *  consumer does not multiply it back out and get a different answer. */
   workMinutes: number;
 };
+/** Total minutes of quality work in a session. Distinct from DENSITY, which
+ *  is the same work packed tighter. */
+export type QualityVolumeMagnitude = { unit: 'quality_minutes'; value: number };
 export type SpecificityMagnitude = { unit: 'race_specific_minutes'; value: number };
 export type RecoveryMagnitude = { unit: 'quality_sessions_per_week'; value: number };
 export type ScheduleMagnitude = { unit: 'sessions_out_of_place'; value: number };
@@ -304,6 +310,12 @@ export type AdaptationProposal =
   | (ProposalCore & {
       target: 'DENSITY'; domain: 'FITNESS';
       previous: DensityMagnitude; proposed: DensityMagnitude;
+      /** The progression gate's own resolution. Carried, not re-decided. */
+      resolution: ProgressionResolution;
+    })
+  | (ProposalCore & {
+      target: 'QUALITY_VOLUME'; domain: 'FITNESS';
+      previous: QualityVolumeMagnitude; proposed: QualityVolumeMagnitude;
       /** The progression gate's own resolution. Carried, not re-decided. */
       resolution: ProgressionResolution;
     })
@@ -572,7 +584,7 @@ export const DURATION_PROGRESS_MIN_TOLERATED_LONGS = 1;
  * clear its bar and break the zero.
  */
 export const PROGRESS_LEVER_ORDER: readonly AdaptationLever[] = [
-  'DENSITY', 'DURATION', 'VOLUME', 'PACE',
+  'DENSITY', 'QUALITY_VOLUME', 'DURATION', 'VOLUME', 'PACE',
 ];
 
 /**
@@ -992,6 +1004,43 @@ function detectDuration(
   };
 }
 
+/**
+ * WHICH TARGET a progression step belongs to — DENSITY or QUALITY_VOLUME.
+ *
+ * The Brain Constitution lists both, and they are genuinely different claims
+ * about what the runner earned:
+ *
+ *   · QUALITY_VOLUME · MORE work. Longer reps, more reps, a longer continuous
+ *     effort. `quality_duration`, `interval_duration`, `rep_count`.
+ *   · DENSITY        · THE SAME work, packed tighter. Shorter recovery, less
+ *     rest between the same reps. `recovery_duration`, `work_density`.
+ *
+ * Doctrine draws exactly this line — "3x8min/3min recovery → 3x10min/2min
+ * recovery" is given as TWO progressions, not one — and the split is read off
+ * `ProgressionResolution.lever`, which the progression gate already decided.
+ * This function chooses a NAME for a decision that has already been made; it
+ * does not make one.
+ */
+export function targetForProgressionLever(
+  lever: ProgressionLever | null,
+): 'DENSITY' | 'QUALITY_VOLUME' | null {
+  if (lever == null) return null;
+  if (lever === 'recovery_duration' || lever === 'work_density') return 'DENSITY';
+  if (lever === 'quality_duration' || lever === 'interval_duration' || lever === 'rep_count') {
+    return 'QUALITY_VOLUME';
+  }
+  // Every other lever belongs to a different owner entirely (`weekly_volume`
+  // to VOLUME, `long_run_duration` to DURATION, `pace` to PACE). Returning null
+  // rather than defaulting to DENSITY keeps a mislabelled step out of the
+  // session lever instead of quietly filing it there.
+  return null;
+}
+
+const qualityMagnitude = (s: WorkShape): QualityVolumeMagnitude => ({
+  unit: 'quality_minutes',
+  value: roundTo(s.reps * s.repMinutes, 1),
+});
+
 const shapeMagnitude = (s: WorkShape): DensityMagnitude => ({
   unit: 'work_shape',
   reps: s.reps,
@@ -1069,10 +1118,36 @@ function detectDensity(
   // change; `changed` already filtered those, so `previous` is the row's
   // current shape and `proposed` is the gate's.
   const previous = evidence.resolutions.find((r) => r.workoutId === best.workoutId);
+  const authored = previous ? previous.authored : best.authored;
+
+  // THE TARGET IS THE GATE'S OWN LEVER, named. A step that added reps is a
+  // QUALITY_VOLUME progression; a step that shortened recovery is a DENSITY
+  // one. Filing both as DENSITY would collapse the distinction doctrine draws
+  // and the Brain Constitution lists separately.
+  const target = targetForProgressionLever(best.lever);
+  if (target === 'QUALITY_VOLUME') {
+    return {
+      proposal: {
+        decision: 'PROGRESS', target: 'QUALITY_VOLUME', domain: 'FITNESS',
+        previous: qualityMagnitude(authored),
+        proposed: qualityMagnitude(best.shape),
+        confidence: 0.7,
+        supportingEvidence: [],
+        reasonCodes: ['PROGRESSION_GATE_RESOLVED_MORE_QUALITY_WORK'],
+        explanation: best.why,
+        whyNot: [],
+        resolution: best,
+        resolvedAt: now, modelVersion: ADAPTATION_ENGINE_MODEL_VERSION,
+      },
+      hold: null,
+      refusal: null,
+    };
+  }
+
   return {
     proposal: {
       decision: 'PROGRESS', target: 'DENSITY', domain: 'FITNESS',
-      previous: shapeMagnitude(previous ? previous.authored : best.authored),
+      previous: shapeMagnitude(authored),
       proposed: shapeMagnitude(best.shape),
       confidence: 0.7,
       supportingEvidence: [],
@@ -1265,9 +1340,16 @@ export function composeAdaptation(input: AdaptationEngineInput): AdaptationPropo
   const density = detectDensity(input.density, now);
   if (density.refusal) refusals.push(density.refusal);
 
+  // The session detector answers for BOTH session levers, and files its result
+  // under whichever one the progression gate's own step belongs to
+  // (`targetForProgressionLever`). It can only ever produce one, because there
+  // is one promoted resolution — which is the one-stressor rule holding inside
+  // the session levers as well as across them.
+  const sessionTarget: AdaptationLever =
+    density.proposal?.target ?? density.hold?.target ?? 'DENSITY';
   const byLever: Partial<Record<AdaptationLever, { proposal: AdaptationProposal | null; hold: AdaptationProposal | null }>> = {
     PACE: pace, VOLUME: volume, DURATION: duration,
-    DENSITY: { proposal: density.proposal, hold: density.hold },
+    [sessionTarget]: { proposal: density.proposal, hold: density.hold },
   };
 
   /* ── STATE GATES THE UPWARD PATH ────────────────────────────────────────
@@ -1359,6 +1441,7 @@ function leverNoun(l: AdaptationLever): string {
     case 'VOLUME': return 'Weekly volume';
     case 'DURATION': return 'The long run';
     case 'DENSITY': return 'Session density';
+    case 'QUALITY_VOLUME': return 'Quality volume';
     case 'SPECIFICITY': return 'Race specificity';
     case 'RECOVERY': return 'Recovery';
     case 'SCHEDULE': return 'The schedule';
@@ -1398,6 +1481,7 @@ function holdFor(
     case 'VOLUME': return { ...core, target: 'VOLUME', domain: 'LOAD', previous: p.previous, proposed: p.previous };
     case 'DURATION': return { ...core, target: 'DURATION', domain: 'LOAD', previous: p.previous, proposed: p.previous };
     case 'DENSITY': return { ...core, target: 'DENSITY', domain: 'FITNESS', previous: p.previous, proposed: p.previous, resolution: p.resolution };
+    case 'QUALITY_VOLUME': return { ...core, target: 'QUALITY_VOLUME', domain: 'FITNESS', previous: p.previous, proposed: p.previous, resolution: p.resolution };
     case 'SPECIFICITY': return { ...core, target: 'SPECIFICITY', domain: 'FITNESS', previous: p.previous, proposed: p.previous };
     case 'RECOVERY': return { ...core, target: 'RECOVERY', domain: 'SAFETY', previous: p.previous, proposed: p.previous };
     case 'SCHEDULE': return { ...core, target: 'SCHEDULE', domain: 'SCHEDULE', previous: p.previous, proposed: p.previous };
