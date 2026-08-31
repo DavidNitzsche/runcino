@@ -1,5 +1,39 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
+# IF THIS HOOK JUST FAILED YOU AND YOU BELIEVE IT'S UNRELATED WIP — READ THIS
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This is a SHARED checkout. Multiple agents routinely hold uncommitted work
+# in it at the same time, so this hook (which typechecks/builds the CURRENT
+# WORKING TREE) can fail on code you did not write and your push does not
+# touch. `git push --no-verify` is not the first move.
+#
+# Formal policy (locked 2026-09-01, `docs/PRODUCT_DECISIONS.md` §"2026-09-01
+# · Four calls on the migration handback's open questions" #4):
+#
+#   1. Run `scripts/verify-commit.sh <your-sha>` — it checks out your EXACT
+#      commit into an isolated worktree and runs the same checks this hook
+#      runs, against that clean copy, not the dirty shared tree.
+#   2. If it passes clean, you have proven the failure above is unrelated
+#      to your commit. That is conditions (2) and (3) of the policy, done.
+#   3. You still owe conditions (1) "prove unrelatedness" (verify-commit's
+#      pass IS that proof once you've confirmed the diff), (4) "record the
+#      result" (handback or commit metadata), (5) "confirm CI/deployment
+#      succeeds", (6) "no merge/migration/security/destructive check
+#      skipped", and (7) "disclose the bypass, don't push silently."
+#   4. THEN `git push --no-verify`, and say so — in the handback, in the
+#      commit message, wherever the next reader will actually see it.
+#
+# If you can't prove unrelatedness, can't reproduce this hook's checks in
+# isolation, isolated verification DISAGREES with this hook, this hook checks
+# something unavailable elsewhere, or your push touches shared state other
+# agents may depend on (schema, shared config, cross-agent contracts) — STOP
+# and ask. Don't bypass on your own judgment in those cases.
+#
+# Full policy, worked examples, and the incidents that motivated it:
+# `docs/VERIFICATION_POLICY.md`.
+# ─────────────────────────────────────────────────────────────────────────────
+#
 # pre-push · the repo's only automated gate that runs on a Mac.
 #
 # Before this file existed, .git/hooks/pre-push was a bare symlink to
