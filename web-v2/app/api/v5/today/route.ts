@@ -1520,6 +1520,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const prescriptionLike: V5PrescriptionLike | null = prescription
     ? {
         type: prescription.type, headline: prescription.headline, why: prescription.why,
+        selectionRationale: prescription.selectionRationale,
         steps: prescription.steps.map((s) => ({
           label: s.label, distance_mi: s.distance_mi, reps: s.reps,
           rep_distance_mi: s.rep_distance_mi, duration: s.duration,

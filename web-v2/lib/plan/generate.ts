@@ -10752,6 +10752,14 @@ export function persistedDayShape(
       }),
     };
   }
+  // RATIONALE-PERSIST-1 (2026-09-01) · the catalogue selector's own "why this
+  // one" line, carried into the row the same way PROGRESSION-PERSIST-1 above
+  // carries the trajectory's shape: after the distance cap, so it describes
+  // the session actually prescribed rather than the one composed before
+  // `capSpecToDistance` may have trimmed it.
+  if (workoutSpec && d.catalogueRationale) {
+    workoutSpec = { ...workoutSpec, [RATIONALE_SPEC_KEY]: d.catalogueRationale };
+  }
   // 2026-06-02 · distance_mi reflects the TOTAL run · WU + core + floats + CD ·
   // so the headline number matches the breakdown. Was: stored just the core
   // (e.g. "4×1 mi @ T" → 4.0) while the sub_label said "2 mi WU · 4 mi @ T ·

@@ -51,6 +51,47 @@ import { LEVER_ORDER } from '@/lib/prescription/levers';
 /** The single `workout_spec` key the whole block lives under. */
 export const PROGRESSION_SPEC_KEY = 'progression';
 
+/**
+ * RATIONALE-PERSIST-1 (2026-09-01) · a second durable key on the same jsonb
+ * column, for a different fact.
+ *
+ * `lib/workout-catalogue/select.ts`'s `selectWorkout` already computes a real
+ * "why this session beat the alternatives" rationale at authoring time
+ * (`SelectorResult.rationale`) and it used to die at the `DayPlan` boundary in
+ * `generate.ts` — kept `entry`, `dose` and `note`, discarded `rationale`. See
+ * `docs/reports/workout-provenance-trace-2026-09-01.md` §1: "the reason this
+ * session beat the alternatives exists at selection time and is nowhere in
+ * the database." `generate.ts` now carries it through as
+ * `DayPlan.catalogueRationale` and persists it here.
+ *
+ * Declared beside `PROGRESSION_SPEC_KEY`, not in its own module, because Rule
+ * 6's guard has to cover every durable key on `workout_spec` from ONE call
+ * site. `preserveProgressionSql` is already called from six writers across
+ * this codebase (`adapt.ts`, `recompute-paces.ts`, `reanchor-plan.ts`,
+ * `progression-pass.ts`, `race-role-apply.ts`, the workout-spec backfill
+ * route) — widening that ONE function to fold over every key in
+ * `DURABLE_SPEC_KEYS` is what lets this key ride along without touching any
+ * of those six call sites.
+ */
+export const RATIONALE_SPEC_KEY = 'selection_rationale';
+
+/** Every key on `workout_spec` that a rewriting writer must carry forward
+ *  when its own new spec does not supply one. Add a key here, not a second
+ *  call to `preserveProgressionSql` at each writer. */
+const DURABLE_SPEC_KEYS = [PROGRESSION_SPEC_KEY, RATIONALE_SPEC_KEY] as const;
+
+/**
+ * Read the catalogue's own selection rationale back off a persisted spec.
+ * `null` for a spec with none — a generic trajectory-driven slot never had a
+ * catalogue rotation to explain, and a row authored before this key existed
+ * carries nothing to read.
+ */
+export function readSelectionRationale(spec: unknown): string | null {
+  if (!spec || typeof spec !== 'object') return null;
+  const v = (spec as Record<string, unknown>)[RATIONALE_SPEC_KEY];
+  return typeof v === 'string' && v.trim().length > 0 ? v.trim() : null;
+}
+
 /** The persisted form. snake_case, like every other `workout_spec` field. */
 export interface ProgressionSpec {
   reps: number;
@@ -252,6 +293,22 @@ function readGate(v: unknown): GateStamp | null {
   };
 }
 
+/** One key's worth of the CASE below, folded over `exprSql` — the expression
+ *  computed by every key processed so far (or the bare new-spec cast, for the
+ *  first). Nesting rather than a single flat expression means each key's
+ *  branch is independently readable and the function is exercised, key by
+ *  key, exactly the way it always was for `progression` alone. */
+function preserveKeySql(exprSql: string, key: string, old: string): string {
+  return `CASE
+              WHEN ${exprSql} IS NOT NULL
+               AND NOT (${exprSql} ? '${key}')
+               AND ${old} IS NOT NULL
+               AND ${old} ? '${key}'
+              THEN jsonb_set(${exprSql}, '{${key}}', ${old}->'${key}')
+              ELSE ${exprSql}
+            END`;
+}
+
 /**
  * CLAUDE.md Rule 6 · the SQL a writer uses when it rewrites `workout_spec` for a
  * session whose IDENTITY has not changed.
@@ -260,25 +317,27 @@ function readGate(v: unknown): GateStamp | null {
  * UPDATE, a bare column reference on the right of SET is the OLD row, which is
  * what lets this read the value it is about to overwrite.
  *
- * Every branch is covered deliberately:
- *   · new spec carries a block           → the new block wins (the author re-ran)
- *   · new spec carries none, old had one → the old block is carried forward
- *   · neither carries one                → nothing happens
- *   · new spec is NULL                   → NULL, because a row with no spec has
- *                                          no session to describe
+ * Every branch is covered deliberately, independently, for every key in
+ * `DURABLE_SPEC_KEYS`:
+ *   · new spec carries the key            → the new value wins (the author re-ran)
+ *   · new spec carries none, old had one  → the old value is carried forward
+ *   · neither carries one                 → nothing happens
+ *   · new spec is NULL                    → NULL, because a row with no spec has
+ *                                           no session to describe
  *
  * `qualifier` names the table for the old-row reference. Pass the alias when the
  * statement uses one; the default is the bare table name.
+ *
+ * RATIONALE-PERSIST-1 · this used to guard `PROGRESSION_SPEC_KEY` alone. It now
+ * folds over `DURABLE_SPEC_KEYS`, so every one of this function's six existing
+ * call sites picked up the `selection_rationale` guard with no edit of their
+ * own — see that constant's header for why widening this one function, rather
+ * than adding a second guarded key at each writer, is the change.
  */
 export function preserveProgressionSql(param: string, qualifier = 'plan_workouts'): string {
   const old = `${qualifier}.workout_spec`;
-  const key = PROGRESSION_SPEC_KEY;
-  return `CASE
-              WHEN ${param}::jsonb IS NOT NULL
-               AND NOT (${param}::jsonb ? '${key}')
-               AND ${old} IS NOT NULL
-               AND ${old} ? '${key}'
-              THEN jsonb_set(${param}::jsonb, '{${key}}', ${old}->'${key}')
-              ELSE ${param}::jsonb
-            END`;
+  return DURABLE_SPEC_KEYS.reduce(
+    (exprSql, key) => preserveKeySql(exprSql, key, old),
+    `${param}::jsonb`,
+  );
 }

@@ -658,6 +658,14 @@ export interface V5PrescriptionLike {
   type: string;
   headline: string;
   why: string;
+  /**
+   * RATIONALE-PERSIST-1 (2026-09-01) · `SpecCard.selectionRationale`, wired
+   * through. The catalogue's own real reason this session beat the
+   * alternatives, for this runner, this week — not the byte-identical
+   * per-family template `why` carries. `null` on a row with none stored.
+   * See `lib/training/spec-card.ts`'s field doc for the voice caveat.
+   */
+  selectionRationale?: string | null;
   steps: V5PrescriptionStepLike[];
   total_mi: number;
   fueling?: { needed: boolean; shortLine: string } | null;

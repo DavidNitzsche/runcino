@@ -43,12 +43,35 @@ import { expandSpecToPhases, subLabelFromSpec, type ExpandedPhase } from './expa
 import { fmtPace as fmtPaceNoUnit, roundTo } from '@/lib/format/run';
 import { sessionRationale, type PrescriptionStep, type WorkoutType } from './prescriptions';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
+import { readSelectionRationale } from '@/lib/plan/progression-spec';
 
 export interface SpecCard {
   type: WorkoutType;
   headline: string;
   why: string;
   citation: string;
+  /**
+   * RATIONALE-PERSIST-1 (2026-09-01) · the catalogue selector's own REAL
+   * reason this session beat the alternatives it considered this week, read
+   * straight off `workout_spec.selection_rationale` — never re-derived,
+   * never templated. `why` above answers "what is this kind of session
+   * for", byte-identical for every runner on every threshold day
+   * (`sessionRationale(type)`); this answers "why THIS one, this week, for
+   * THIS runner" — the question `docs/reports/workout-provenance-
+   * trace-2026-09-01.md` §1 and §11 found computed and then thrown away.
+   *
+   * `null` on a row authored before this field existed, and on any day a
+   * generic trajectory (not the §15 catalogue) filled — both real, honest
+   * absences, not failures.
+   *
+   * Written in the engine's own working voice (candidate counts, doctrine
+   * section numbers), not yet passed through a coach-voice rewrite — kept
+   * as a distinct field rather than folded into `why` for exactly that
+   * reason. A caller putting this in front of the runner as a primary
+   * sentence should scrub it first; today's one wired consumer
+   * (`GET /api/v5/today`) carries it as a secondary field for that reason.
+   */
+  selectionRationale: string | null;
   steps: PrescriptionStep[];
   total_mi: number;
   /**
@@ -481,6 +504,7 @@ export function cardFromSpec(input: {
     headline,
     why: rationale.why,
     citation: rationale.citation,
+    selectionRationale: readSelectionRationale(spec),
     steps,
     total_mi: total,
     workPaceSPerMi: paceSource?.targetPaceSPerMi ?? null,
@@ -553,6 +577,7 @@ export function cardForUnprescribableType(input: {
       ? `The plan has this day down as ${named}. There is no run prescribed for it.`
       : 'The plan has no run down for this day.',
     citation: '',
+    selectionRationale: null,
     steps: [{
       label: 'Today',
       note: 'Nothing to run. The week counts it as a day off the road.',
@@ -581,6 +606,7 @@ export function cardWithoutSpec(input: {
   if (type === 'rest') {
     return {
       type, headline: rationale.headline, why: rationale.why, citation: rationale.citation,
+      selectionRationale: null,
       total_mi: 0, workPaceSPerMi: null, workToleranceSPerMi: null, totalDurationSec: null,
       hasRacePaceFinish: false, basis: 'row',
       steps: [{ label: 'Today', note: 'No running. Sleep, mobility, fuel.' }],
@@ -616,6 +642,7 @@ export function cardWithoutSpec(input: {
 
   return {
     type, headline, why: rationale.why, citation: rationale.citation,
+    selectionRationale: null,
     steps, total_mi: total, workPaceSPerMi: paceTargetSPerMi ?? null, workToleranceSPerMi: null,
     totalDurationSec: null, hasRacePaceFinish: false, basis: 'row',
   };
