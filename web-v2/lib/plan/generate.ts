@@ -1102,17 +1102,50 @@ export function restoreSteps(
    * +40% to +100% — so one restoration step for a runner who is already past
    * the window (a half's is 10-14 days, and he is at day 14) is a conservative
    * reading of it, not an aggressive one.
+   *
+   * ── ENTRY-CONTINUOUS-1 (2026-08-30) · Rule 9 · this was a BOOLEAN ─────────
+   *
+   * It used to be `entryWeekAlreadySpent`, computed as `heldMi >= baseMi`, and
+   * it was the last cliff in this ladder. `baseMi` is
+   * `max(mean, 0.70 × sustained, heldMi)`, so the boolean flipped exactly where
+   * the runner's demonstrated volume crossed the re-entry level — and skipping
+   * the rung is worth a whole `RESTORE_STEP_FRACTION` of sustained. Measured on
+   * the owner's series, 2026-08-30: a runner holding 31.42 mi/wk against a
+   * re-entry level of 31.43 was prescribed 31.4 for week one — the week he had
+   * just run — and a runner holding 31.44 was prescribed 38.2. **Six and a half
+   * miles of week one on two hundredths of a mile of history.**
+   *
+   * The question the boolean was asking is not binary. "Has he already spent
+   * the re-entry week" is really "how far above or below the re-entry level is
+   * he running", and the answer is a distance. So the ladder now opens ONE
+   * DOCTRINE STEP above what the runner is demonstrably holding, floored at the
+   * re-entry level itself and capped at sustained:
+   *
+   *     first = min(sustained, max(start, held + step))
+   *
+   * Both old branches fall out of it unchanged, which is why this is a
+   * generalisation rather than a new rule. A runner coming back from NOT
+   * running has `held` at or near zero, `held + step` is far below `start`, and
+   * the ladder opens on `start` — `Research/22` §14 exactly. A runner holding
+   * the base has `held === start` (since `start` is the max that `held` is a
+   * term of), so the ladder opens on `start + step` — POSTRACE-RESTORE-1
+   * exactly. Everything between the two is now a straight line instead of a
+   * step, and the value moves with the runner's own mileage rather than with
+   * which side of a comparison it landed on.
    */
-  entryWeekAlreadySpent = false,
+  heldMi = 0,
 ): number[] {
   const start = Math.max(0, startMi || 0);
   if (!(sustainedMi > 0) || !(start < sustainedMi)) return [];
   const stepMi = sustainedMi * RESTORE_STEP_FRACTION;
   if (!(stepMi > 0)) return [];
-  // The re-entry rung is `start` itself. It is spent only by a runner who has
-  // NOT already been running at it.
-  const steps: number[] = entryWeekAlreadySpent ? [] : [Math.round(start * 10) / 10];
-  let v = start;
+  // ENTRY-CONTINUOUS-1 · the first authored week: one doctrine step above what
+  // the runner is demonstrably holding, never below the re-entry level, never
+  // past sustained. Continuous and monotone in `heldMi`.
+  const held = Math.max(0, heldMi || 0);
+  const first = Math.min(sustainedMi, Math.max(start, held + stepMi));
+  const steps: number[] = [Math.round(first * 10) / 10];
+  let v = first;
   // The bound is arithmetic, not a policy cap: start ≥ 0.70 × sustained and a
   // step is 0.15 × sustained, so this can only ever run twice. The guard is
   // here so a future change to either number cannot spin.
@@ -1139,7 +1172,12 @@ export interface RampBaseEvidence {
    * cold-start authoring).
    */
   peakMi: number;
-  /** Consecutive most-recent blocks below the resume level. */
+  /**
+   * WEEKS-EQUIVALENT OF ABSENCE in the most recent `allowedInterruptionWeeks + 1`
+   * blocks. Fractional: a block at zero miles counts a full week, a block at the
+   * resume level counts none, and a block half-way counts half. See
+   * `absenceWeeksEquivalent` for why this is not a count of weeks below a line.
+   */
   interruptionWeeks: number;
   /** How long an interruption this authoring is entitled to look through. */
   allowedInterruptionWeeks: number;
@@ -1169,6 +1207,99 @@ export interface RampBaseEvidence {
    * running has not. See `restoreSteps`.
    */
   heldByCurrent: boolean;
+}
+
+/**
+ * ABSENCE-CONTINUOUS-1 (2026-08-30) · Rule 9 · how much has this runner been
+ * AWAY, in weeks — measured so a hair cannot move it.
+ *
+ * ── WHAT IT REPLACES, AND WHY THAT WAS A CLIFF ──────────────────────────────
+ *
+ * `interruptionWeeks` used to be a count of the CONSECUTIVE most-recent 7-day
+ * blocks below the resume level:
+ *
+ *     while (i < series.length && series[i] < resumeLevel) i++;
+ *
+ * Two things are wrong with that, and the second is the one that hurt.
+ *
+ * 1 · IT RESETS ON ONE WEEK. The scan stops at the first block at or above the
+ *     resume level, so a runner three weeks into a dip whose most recent week
+ *     lands a fifth of a mile over the line is reported as having no
+ *     interruption at all. Measured on the owner's own series, 2026-08-30:
+ *     blocks [31.3, 25.6, 20.9] against a resume level of 31.43 reported THREE;
+ *     the same blocks scaled by half a percent — [31.5, 25.7, 21.0] — reported
+ *     ZERO. The count moved three weeks for 0.2 mi, `lifted` flipped with it,
+ *     and an entire BASE phase appeared in the block. Week one moved 29 → 39.
+ *     THE FITTER RUNNER GOT THE WORSE PLAN, which is Rule 9's stated signature.
+ *
+ * 2 · IT IS A MILEAGE THRESHOLD STANDING IN FOR A DAYS-OFF QUESTION, which is
+ *     the shape Rule 9's corollary says to remove rather than smooth. The
+ *     allowance it is compared against comes from `Research/22` §14, and that
+ *     section keys on DAYS OFF in its own row headers — "| 1-7 days |",
+ *     "| 8-14 days |" — while §"Return from Moderate Layoff (3-8 weeks)" keys
+ *     on WEEKS off. Doctrine never asks how many weeks a runner spent below 70%
+ *     of his best; it asks how long he was not running. "Below the resume level"
+ *     was a proxy for that, and a proxy with a step in it.
+ *
+ * ── WHAT THIS MEASURES INSTEAD ──────────────────────────────────────────────
+ *
+ * The same quantity doctrine states, read continuously: WEEKS-EQUIVALENT OF
+ * ABSENCE. Each block contributes its shortfall against the resume level as a
+ * fraction of that level — a block at zero miles is one week off, a block at the
+ * resume level is none, a block at half the resume level is half a week off —
+ * and the contributions are summed over a fixed window so no single week can
+ * erase the ones behind it.
+ *
+ * At doctrine's own integer points it reproduces doctrine exactly: two weeks of
+ * no running is 2.0, which is `SHORT_LAYOFF_WEEKS` and §14's "1-2 weeks off";
+ * three is 3.0, which is where §"Return from Moderate Layoff (3-8 weeks)" takes
+ * over. Between them it interpolates instead of stepping.
+ *
+ * ── THE WINDOW IS THE ALLOWANCE PLUS ONE ────────────────────────────────────
+ *
+ * Not a free parameter. The decision this feeds is `interruption > allowed`, so
+ * the shortest span that can carry more than `allowed` weeks of absence is
+ * `allowed + 1` weeks, and that is the window. Summing over anything longer
+ * would count the weeks the allowance has already FORGIVEN a second time — a
+ * runner whose taper and post-race recovery are explained by his race would have
+ * those same weeks accumulate against him from outside the allowance. Summing
+ * over anything shorter could not reach the allowance at all.
+ *
+ * A consequence worth stating plainly, because it is a real behaviour change:
+ * the layoff branch now requires the whole window to be close to empty. Three
+ * weeks at 25 mi/wk off a 45 mi/wk sustained level used to read as a layoff and
+ * insert a BASE phase; it now reads as what it is, a dip, and the runner keeps
+ * his base. Three weeks at 2 mi/wk still reads as a layoff, which is the case
+ * `_base_gate_invariant.test.ts` and `RAMPBASE.resume-from-pre-interruption-volume`
+ * exist to hold.
+ *
+ * ── WHAT IS STILL DISCRETE, AND WHY THAT IS ALLOWED ─────────────────────────
+ *
+ * `interruption > allowed` remains a binary handoff, because what sits on the
+ * other side of it is a different PROTOCOL — `Research/22` §"Return from
+ * Moderate Layoff" and `Research/05`, not §14's ladder — and Rule 9 permits a
+ * discrete behaviour. What it forbids is a decision hinging on a hair. Reaching
+ * that boundary now requires near-total absence across the whole window, the
+ * quantity moves continuously with the daily series, and no single week can
+ * shift it by more than the one week it actually represents.
+ */
+export function absenceWeeksEquivalent(
+  /** Most-recent-first 7-day sums. */
+  series: readonly number[],
+  /** `sustained × RAMP_BASE_RESUME_FRACTION`. Must be > 0. */
+  resumeLevel: number,
+  allowedInterruptionWeeks: number,
+): number {
+  if (!(resumeLevel > 0)) return 0;
+  const window = Math.max(1, Math.floor(Math.max(0, allowedInterruptionWeeks)) + 1);
+  let weeks = 0;
+  for (let i = 0; i < window && i < series.length; i++) {
+    const shortfall = (resumeLevel - series[i]) / resumeLevel;
+    weeks += Math.max(0, Math.min(1, shortfall));
+  }
+  // Two decimals · a hundredth of a week is a seventh of a day, well past the
+  // resolution of anything downstream, and it keeps the value printable.
+  return Math.round(weeks * 100) / 100;
 }
 
 /**
@@ -1205,8 +1336,7 @@ export function resolveRampBase(opts: {
   const sustained = sorted[RAMP_BASE_SUSTAINED_RANK - 1] ?? 0;
   if (!(sustained > 0)) return base0;
   const resumeLevel = sustained * RAMP_BASE_RESUME_FRACTION;
-  let interruption = 0;
-  while (interruption < series.length && series[interruption] < resumeLevel) interruption++;
+  const interruption = absenceWeeksEquivalent(series, resumeLevel, opts.allowedInterruptionWeeks);
   const evidence: RampBaseEvidence = {
     ...base0, sustainedMi: Math.round(sustained * 10) / 10, interruptionWeeks: interruption,
   };
@@ -1862,6 +1992,21 @@ export const GENERAL_AEROBIC_MAX_MINUTES = 75;
  * Bound by AEROBIC.general-aerobic-run-is-a-duration.
  */
 export const RECOVERY_RUN_MAX_MINUTES = 45;
+
+/**
+ * DOCTRINE-1c / TAPER-RESTORE-CONTINUOUS-1 · how far under its doctrine target
+ * a taper week may sit before `finalizeComposedPlan` lifts it back.
+ *
+ * A TOLERANCE, and now a floor rather than a trigger — see the block that
+ * spends it. Ordinary rounding and the day-sum reconciliation land far inside
+ * 12%, so a healthy plan never reaches it; a week that does has been
+ * over-tapered by the divergence between the volume-curve BUDGET peak the
+ * taper's depth is authored from and the REALIZED peak everything downstream
+ * measures. Ours, not doctrine's: `Research/08` §9.1 states the taper's DEPTH
+ * band (30-40% off peak), and this is the slack allowed around it before the
+ * engine corrects itself, which no source prescribes.
+ */
+export const TAPER_RESTORE_TOLERANCE = 1.12;
 
 /** RULE8-1 · how many representative days a habit reader wants. Same length as
  *  `QUALITY_LOOKBACK_DAYS`, so every habit question is asked over the same span
@@ -3000,7 +3145,7 @@ function volumeCurve(
   // See `restoreSteps`. `returning` is false on the layoff path, so a genuine
   // layoff still belongs to the comeback protocols.
   const resumeSteps: number[] = (evidence?.returning && evidence.sustainedMi > 0)
-    ? restoreSteps(start, evidence.sustainedMi, evidence.heldByCurrent).map((v) => Math.min(peakTarget, v))
+    ? restoreSteps(start, evidence.sustainedMi, evidence.heldMi).map((v) => Math.min(peakTarget, v))
     : [];
   const resumeWeeks = Math.min(resumeSteps.length, Math.max(0, climbWeeks - 1));
   // The climbing-week index whose value IS `rampFrom` — week 0 with no resume,
@@ -4208,13 +4353,45 @@ function layoutWeek({
   // (longShare 0.25, peak ~56) reaches only 14 < band[0]=15 via the share path — so for 5k/10k/hm, when
   // the share would underreach band[0] AT PEAK, use the distance-driven size too. Byte-safe: only lifts
   // when the peak share is short of the band floor (elite/int/dev + David's horizon HM stay in-band).
+  // ── LONGSIZE-CONTINUOUS-1 (2026-08-30) · Rule 9 · TWO FORMULAS, ONE SWITCH ─
+  //
+  // The 5k/10k/hm arm used to read:
+  //
+  //     Math.round(peakWeeklyMi * longShare) < peakLongMiBand[0]
+  //       ? Math.max(shareLongRaw, drivenLongRaw)     // ramped to band[1]
+  //       : shareLongRaw                              // the share alone
+  //
+  // and `Math.max(a, b) >= a` for every input, so crossing that threshold
+  // UPWARD could only ever make the long run SHORTER. More weekly volume, less
+  // long run — Rule 9's stated signature, on the session the block is built
+  // around. Measured on the plan walk: a peak of 36.3 authored a 14-mile long,
+  // a peak of 36.5 authored a 12-mile one.
+  //
+  // Rule 9's corollary says to ask what the threshold is ANSWERING before
+  // reaching for a smoother, and here the answer is: nothing the `max` does
+  // not already answer for itself. The condition chose between
+  // `max(share, driven)` and `share` — and `max(share, driven)` IS `share`
+  // wherever the share is the larger of the two. The branch was a hand-decided
+  // shortcut for a case the max decides correctly on its own, and a wrong one,
+  // because the two sides do not agree at the boundary. So it is DELETED, not
+  // interpolated:
+  //
+  //     longMiRaw = max(weeklyMi × longShare, weeklyMi × longCap / peakWeeklyMi)
+  //
+  // Nothing left to fall off, and the authored SIZES do not move: walking an
+  // advanced HM block across the old threshold produces the same long runs
+  // literal-for-literal, now moving monotonically with the block instead of
+  // stepping down at one peak. A smaller reading of RC2-2 — ramping the lift
+  // to `peakLongMiBand[0]` rather than `longCap` — was tried first and
+  // REJECTED: it is also continuous, but it shortens an advanced half's peak
+  // long from 17 to 15, and a continuity fix has no business reducing a
+  // runner's training. `LONGSIZE-CONTINUOUS-1` in `_restore_continuity.test.ts`
+  // is the walk, falsified against the ternary before this landed.
   const drivenLongRaw = peakWeeklyMi > 0 ? Math.round(weeklyMi * (longCap / peakWeeklyMi)) : 0;
   const shareLongRaw = Math.round(weeklyMi * longShare);
   const longMiRaw = (longCat === 'm' || longCat === 'ultra') && peakWeeklyMi > 0
     ? drivenLongRaw
-    : (peakWeeklyMi > 0 && Math.round(peakWeeklyMi * longShare) < tierTarget.peakLongMiBand[0])
-      ? Math.max(shareLongRaw, drivenLongRaw)
-      : shareLongRaw;
+    : Math.max(shareLongRaw, drivenLongRaw);
   // 2026-06-21 (David signed off): the recent-long floor (don't author a shorter
   // long than the runner just ran) must NOT apply in TAPER — the taper
   // deliberately reduces the long into the race. Flooring it at recentLongMi
@@ -6386,7 +6563,40 @@ function layoutWeek({
   const effectiveFloor = isDeloadOrBase
     ? mathFloor
     : Math.max(mathFloor, baselineFloor);
-  const perEasyRaw = easyCount > 0 ? Math.round(remainingMi / easyCount) : 0;
+  // ── RULE12-RESIDUAL-1 (2026-08-30) · Rule 9 · A ROUNDED QUOTIENT, TIMES N ──
+  //
+  // This was `Math.round(remainingMi / easyCount)` — one WHOLE-MILE number
+  // handed to every easy day. Two consequences, and the second is a Rule 9
+  // defect rather than a rounding nicety:
+  //
+  // 1 · Every other distance this engine authors is half-mile granular (the
+  //     long run, the taper rescale, the medium-long, the recovery day right
+  //     below). The easy day was the only whole-mile quantity in the week.
+  //
+  // 2 · IT MULTIPLIES ITS OWN ROUNDING ERROR BY THE NUMBER OF EASY DAYS. The
+  //     week's realized volume is `long + quality + easyCount × perEasy`, so a
+  //     quotient crossing x.5 moves the WEEK by a full `easyCount` miles. On
+  //     the owner's own series, 2026-08-30: half a mile of long run (15 → 15.5,
+  //     itself a rounding step in the spike anchor) took the quotient from 4.33
+  //     to 4.17, the round dropped 5 → 4, and week one fell from 45.5 to 43 —
+  //     **three miles of easy running lost to a half-mile of long run.** The
+  //     continuity walk read it as the plan getting SMALLER as the runner
+  //     trained MORE, which is Rule 9's stated signature, and it was.
+  //
+  // THE FIX IS THE REMAINDER, NOT A FINER ROUND. Rounding to halves alone would
+  // still multiply by `easyCount`, just at half the size — Rule 9's "widening a
+  // tolerance relocates the cliff". So the quotient FLOORS to the half mile and
+  // the leftover is handed out half a mile at a time, one day each, until it is
+  // spent. The easy pool is then the remainder itself to within half a mile,
+  // whatever `easyCount` is, and the week tracks its budget instead of
+  // quantising in `easyCount`-mile steps.
+  //
+  // The days end up unequal by half a mile, which is the direction Rule 12
+  // already asks for ("four identical easy days is a template, not a plan") and
+  // the same shape MLR-1 and RULE12-VARY-1 give the week below. Every bound
+  // above still binds: no day is handed the extra half if it would reach the
+  // long-run separation, and the floor is untouched.
+  const perEasyRaw = easyCount > 0 ? Math.floor((remainingMi / easyCount) * 2) / 2 : 0;
   // Invariant: an easy run is NEVER longer than the long run — the long run is
   // the longest run of the week by definition. Without this, a cold-start or
   // mismatched-tier plan whose long is pinned at the tier's small peakLong cap
@@ -6427,9 +6637,26 @@ function layoutWeek({
     ? effectiveFloor                              // exempt: easySep or deload/base handles the bound
     : Math.min(effectiveFloor, perEasyBudgetCap); // cap: prevent peak-week ceiling violation
   const perEasy = Math.min(Math.max(flooredPerEasy, perEasyRaw), easySep);
+  // RULE12-RESIDUAL-1 · the half miles the floor left on the table, handed out
+  // one day at a time. Never past the long-run separation, never more than one
+  // half per day, and it stops the moment the remainder is spent — so the pool
+  // lands within half a mile of `remainingMi` instead of within `easyCount` of
+  // it. Inert whenever `perEasy` is set by the floor or the separation rather
+  // than by the budget (the leftover is then zero or negative by construction).
+  const extraHalfDows = new Set<number>();
+  {
+    let left = Math.round((remainingMi - perEasy * easyDowSet.size) * 2) / 2;
+    if (perEasy + 0.5 <= easySep + 1e-9) {
+      for (const dow of [...easyDowSet].sort((a, b) => a - b)) {
+        if (left < 0.5 - 1e-9) break;
+        extraHalfDows.add(dow);
+        left -= 0.5;
+      }
+    }
+  }
   for (const { dow } of emptySlots) {
     slots[dow] = easyDowSet.has(dow)
-      ? { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.' }
+      ? { dow, type: 'easy', distanceMi: perEasy + (extraHalfDows.has(dow) ? 0.5 : 0), isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.' }
       : { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Sleep, mobility, fuel.' };
   }
 
@@ -9045,6 +9272,31 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       ...(input.rampBaseEvidence ? { ramp_base: input.rampBaseEvidence } : {}),
       is_mid_block: input.isMidBlock,
       t_pace_s_per_mi: input.tPaceSec,
+      /**
+       * PACE-E-1 · the pace the composer actually SIZED this block's easy days
+       * at: the current-fitness T anchor plus `EASY_BAND_SLOW_OFFSET_SEC`, the
+       * slow end of the band `spec-builder` emits for an easy run.
+       *
+       * Recorded because it is a different number from `t_pace_s_per_mi`, which
+       * is the GOAL-BLENDED threshold, and anything converting an easy day
+       * between miles and minutes needs the one the engine spent. Rule 16 · one
+       * quantity, one name: `_coach_sensible.test.ts` priced the easy mile off
+       * `t_pace_s_per_mi` and was ~12% fast for a runner whose goal is ahead of
+       * his fitness — 8:34/mi against the engine's 9:38/mi on the owner's own
+       * CIM authoring — so its forty-minute floor asked for 4.7 mi where
+       * doctrine asks for 4.2. Null when no current-fitness anchor resolves,
+       * which is the same condition under which `layoutWeek` gets no easy pace
+       * and every minute-based bound in it is inert.
+       */
+      easy_pace_s_per_mi: currentT != null ? currentT + EASY_BAND_SLOW_OFFSET_SEC : null,
+      /**
+       * RULE8-1 · the runner's own demonstrated easy day, as this authoring
+       * read it — `easyDayMedianMi` over 28 REPRESENTATIVE days, the reading
+       * `easyMileFloor` is set from. Recorded beside the pace it is priced at
+       * so a reader (or a gate) does not have to re-derive it and get a
+       * different window than the composer used. 0 when the reader refused.
+       */
+      easy_day_median_mi: input.easyDayMedianMi,
       lthr_bpm: input.lthr,
       // 2026-06-02 · tier classification for downstream consumers
       // (gap-report, projection snapshots, brief).
@@ -10942,11 +11194,39 @@ export function finalizeComposedPlan(
         // result is still bounded by `priorTaper` (monotonic descent) and by the
         // realized peak. The long-run WoW smoother re-runs after this block.
         //
-        // DEADBAND: only acts when the week sits more than 12% below its target.
-        // Ordinary rounding and reconciliation land far inside that, so healthy
-        // plans — David's marathon among them — are byte-identical.
+        // DEADBAND: only acts when the week sits more than
+        // `TAPER_RESTORE_TOLERANCE` below its target. Ordinary rounding and
+        // reconciliation land far inside that, so healthy plans — David's
+        // marathon among them — are byte-identical.
+        //
+        // ── TAPER-RESTORE-CONTINUOUS-1 (2026-08-30) · Rule 9 ──────────────────
+        //
+        // The deadband used to be a TRIGGER: inside it nothing happened, and
+        // one hundredth outside it the week was lifted all the way to
+        // `doctrineTarget`. That is non-monotonic, and backwards — a week
+        // authored at 89.3% of its target kept its 89.3%, while a week authored
+        // slightly SMALLER was lifted to 100%. **A smaller input produced a
+        // bigger output**, which is the same defect shape as every other cliff
+        // in this pass, and the taper is the block's most volume-sensitive
+        // stretch to have it in.
+        //
+        // The tolerance is now the FLOOR it was always describing. It says
+        // "a taper week is allowed to sit up to 12% under its doctrine target";
+        // so the week is lifted to that edge and no further, and the result is
+        //
+        //     out = max(authored, doctrineTarget / TAPER_RESTORE_TOLERANCE)
+        //
+        // which is continuous at the edge and monotone non-decreasing in the
+        // authored week, by construction. Nothing changes for a week the
+        // deadband never fired on, which is every healthy plan — this only
+        // changes how far an over-tapered week is brought back, and it brings
+        // it back to the edge of the band the deadband already asserted was
+        // acceptable rather than past it. Same shape as the race-target fix
+        // Rule 9 records: a band has ONE edge, and `max(value, floor)` is
+        // continuous and monotone for free.
         const doctrineTarget = Math.min(nonTaperPeakR * factor, priorTaper);
-        if (doctrineTarget > tw.weeklyMi * 1.12) {
+        const restoreFloorMi = doctrineTarget / TAPER_RESTORE_TOLERANCE;
+        if (restoreFloorMi > tw.weeklyMi) {
           // The restored miles go to the EASY days, never the long run. Two
           // reasons, and they agree: Research/08 §9.1's own taper rules say
           // "the largest cut is to easy mileage", so easy mileage is what a
@@ -10960,7 +11240,7 @@ export function finalizeComposedPlan(
             .reduce((sum, d) => sum + d.distanceMi, 0);
           const longestMi = Math.max(0, ...tw.days.filter((d) => d.type !== 'race').map((d) => d.distanceMi));
           const otherMi = tw.weeklyMi - longMi;
-          const wantOther = doctrineTarget - longMi;
+          const wantOther = restoreFloorMi - longMi;
           if (otherMi > 0 && wantOther > otherMi) {
             const scale = wantOther / otherMi;
             for (const d of tw.days) {

@@ -604,6 +604,31 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
   // phantom-removal effect measured corpus-wide). `_sweep_allusers.test.ts`
   // and `_maint_invariants.test.ts` both stay at 0 findings. This file's own
   // doctrine-band test above (peak weekly/long) still passes unchanged.
+  // ── RULE12-RESIDUAL-1 (2026-08-30) · the ONE reason this snapshot moved ────
+  //
+  // Every long run, every phase boundary and every quality type is unchanged,
+  // and the `david-marathon-quality-vocab` snapshot beside this one did not move
+  // at all. What moved is weekly MILEAGE, by at most 2 mi in either direction:
+  //
+  //   wk0 61→60  wk1 60→61  wk2 63.5→62  wk3 47.5→46  wk4 62→63  wk5 65.5→64
+  //   wk6 66→65  wk7 47→48  wk8 65→66  wk9 65→66  wk10 68→66  wk11 51.5→51
+  //   wk12 67.5→66  wk13 55→54  wk14 41→40      (wk15, the race week, unchanged)
+  //
+  // The easy day was the last whole-mile quantity in the week: `perEasy` was
+  // `Math.round(remainingMi / easyCount)` and every easy day got that same
+  // number, so the week's realized volume moved in `easyCount`-mile steps and a
+  // quotient crossing x.5 moved the WEEK by three or four miles. The continuity
+  // walk read that as the plan getting smaller as the runner trained more. The
+  // quotient now floors to the half mile and the leftover is handed out half a
+  // mile at a time, so the easy pool is the remainder to within half a mile and
+  // the week tracks the budget the volume curve actually authored.
+  //
+  // These weeks are therefore CLOSER to their curve targets than the frozen
+  // ones were, not further; the drift is the rounding error being removed.
+  // Verified alongside: `_sweep_allusers` and `_maint_invariants` both stay at
+  // zero findings with NO answer-key edit, `_dosing_sweep_gate` stays at zero
+  // enforced breaches, and this file's own doctrine-band test (peak weekly /
+  // peak long) still passes unchanged.
   it('FROZEN: per-week structural fingerprint is byte-stable', () => {
     COMBO_COUNT++;
     const fp = result.weeks.map((w, i) => {

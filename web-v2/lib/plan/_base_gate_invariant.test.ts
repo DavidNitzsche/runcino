@@ -19,11 +19,17 @@
  * So 3 and 4 are EXACT COMPLEMENTS around one constant. For any runner whose
  * interruption run fits the allowance, one of them is always true and the mean
  * cannot decide anything. What actually decides is
- * `interruptionWeeks > allowedInterruptionWeeks` — the length of the
- * consecutive most-recent run below resume level, which is a RECENCY test and
- * not a depth one. A vacation week, a taper, a race week or a work trip sitting
- * anywhere but the front of the series never enters it, and the mean it drags
- * down is not the statistic in play.
+ * `interruptionWeeks > allowedInterruptionWeeks`.
+ *
+ * ABSENCE-CONTINUOUS-1 (2026-08-30) · that number used to be the length of the
+ * consecutive most-recent run below the resume level — a RECENCY test, not a
+ * depth one, which any single week at the resume level reset to zero. It is now
+ * WEEKS-EQUIVALENT OF ABSENCE over the most recent `allowed + 1` blocks: a
+ * block at zero counts one week, a block at the resume level counts none, and
+ * one good week can no longer erase the ones behind it. A vacation week, a
+ * taper or a work trip inside the window is counted for the fraction of a week
+ * it actually cost, which is the point — the old reader's blind spot moved an
+ * entire BASE phase for 0.2 mi of the front block.
  *
  * ── WHY THIS IS A TEST AND NOT A COMMENT ─────────────────────────────────
  *
@@ -90,12 +96,30 @@ describe('BASE-GATE-1 · what decides whether a mid-block runner rebuilds base',
     }
   });
 
-  it('a light week is invisible unless it is at the FRONT of the series', () => {
-    // The owner's own case: a vacation week sitting mid-series. It drags the
-    // 28-day mean down and contributes nothing to the interruption run.
+  it('a light week behind the front is counted honestly and still does not rebuild base', () => {
+    // The owner's own case: a vacation week sitting mid-series.
+    //
+    // ABSENCE-CONTINUOUS-1 (2026-08-30) · this assertion used to read
+    // `expect(e.interruptionWeeks).toBe(0)` — "a hole behind the front does not
+    // count as an interruption" — and that was the reset-on-one-week pathology
+    // written down as an invariant. The old reader scanned the CONSECUTIVE
+    // leading run, so any block at or above the resume level stopped the scan
+    // and everything behind it vanished. Three weeks of interruption reported
+    // ZERO because the most recent week cleared the line by a fifth of a mile,
+    // and the whole BASE-phase decision hangs off this number.
+    //
+    // The reader now measures weeks-equivalent of absence over a fixed window,
+    // so this 4.2-mile week is counted for what it is — a bit under nine tenths
+    // of a week away, two blocks back — instead of being erased. What the test
+    // is really about is unchanged and is asserted directly below: a hole this
+    // size, at this distance, does not send the runner to a base phase.
     const vacationMidSeries = [38, 40, 4.2, 39, ...trained].slice(0, 16);
     const e = resolve(vacationMidSeries, 2);
-    expect(e.interruptionWeeks, 'a hole behind the front does not count as an interruption').toBe(0);
+    expect(e.interruptionWeeks, 'the 4.2-mile week is nearly a week of absence, and is counted as one').toBeGreaterThan(0.5);
+    expect(
+      e.interruptionWeeks,
+      'one light week two blocks back must stay well inside the allowance',
+    ).toBeLessThanOrEqual(e.allowedInterruptionWeeks);
     expect(baseRebuilt(e)).toBe(true);
   });
 

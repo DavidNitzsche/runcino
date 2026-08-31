@@ -88,12 +88,73 @@ const OWNER_DAILY_MI: readonly number[] = [
   5.08, 2.44, 5.95, 11.02, 0, 5.01, 11.22, 5.59, 4.71, 0,
 ];
 
-/** The owner's own 14-day easy-day median, derived the way `easyDayMedianMi`
- *  derives it (3-9 mi runs, median, rounded to 0.5). Asserted below rather
- *  than hardcoded downstream, so a fixture edit cannot quietly move the bar. */
-const OWNER_EASY_MEDIAN_MI = 4.0;
+/**
+ * The runner's own demonstrated easy day — READ OFF THE ENGINE, not restated.
+ *
+ * This was the literal `4.0` with a comment calling it "the owner's own 14-day
+ * easy-day median". It was both: the number the contaminated 14-day window
+ * produced, and a second copy of a quantity the composer already owns. Rule 18:
+ * a check that hardcodes both sides only proves the test agrees with itself,
+ * and this one would have gone on agreeing with a 4.0 after RULE8-1 moved the
+ * engine's reading to his real easy day.
+ */
+function ownerEasyMedianMi(composed: { authoredState?: Record<string, unknown> }): number {
+  const v = Number(composed.authoredState?.['easy_day_median_mi']);
+  if (!Number.isFinite(v) || v <= 0) {
+    throw new Error(
+      'COACH-SENSIBLE · composePlan no longer stamps `easy_day_median_mi`, or this fixture no ' +
+      'longer produces one. That reading IS `easyMileFloor`; without it the demonstrated-easy ' +
+      'check below has nothing to compare against and must not be assumed away.',
+    );
+  }
+  return v;
+}
 
-/** The owner's goal: CIM, 2026-12-06, sub-3. */
+/**
+ * The owner's goal: CIM, 2026-12-06, sub-3.
+ *
+ * ── THE RACE IS DECLARED, AND IT HAS TO BE (corrected 2026-08-30) ───────────
+ *
+ * This fixture used to pass `lastRaceFinishedDaysAgo: 0, lastRaceDistance: null`
+ * — a runner with no race behind him — while feeding a daily series whose first
+ * fortnight IS an AFC half marathon, its taper and `Research/00b`'s post-half
+ * recovery window. Two things followed, and both made the gate wrong rather
+ * than strict:
+ *
+ *   · No race means no `PrescribedSpan`, so Rule 8's filter had nothing to
+ *     exclude and `easyDayMedianMi` came back 4.0 — the median of the recovery
+ *     jogs the engine itself prescribed. That is the exact contamination
+ *     RULE8-1 fixed in production on the day this gate was written, reproduced
+ *     inside the gate meant to catch it.
+ *   · Because `buildSimPlan` could not apply the filter at all (RULE8-SIM-1),
+ *     no fixture in this repo could have exercised it. Rule 15: a mechanism the
+ *     corpus cannot REACH is untested, however many archetypes pass.
+ *
+ * The half is 2026-08-16, fourteen days before this authoring, which is what
+ * the series itself says: day 14 of the look-back is a 13.2-mile effort and the
+ * days around it are a taper and a recovery block.
+ */
+const OWNER_LAST_RACE_DAYS_AGO = 14;
+
+/**
+ * ── AND HE HAS A FITNESS, WHICH THE FIXTURE ALSO HAS TO STATE ───────────────
+ *
+ * The fixture used to pass `raceHistory: []`, so `bestVdotFromHistory` returned
+ * nothing and the engine fell back to `conservativeVdotFromMileage` — a current
+ * threshold of 8:23/mi, i.e. an easy pace of 10:23/mi. That is not a strictness
+ * question, it is a correctness one, and it cuts the WRONG WAY: a slower easy
+ * pace makes `Research/00a` §2's forty minutes buy FEWER miles (3.9 instead of
+ * 4.2), so the gate would have passed a shorter easy day than doctrine allows
+ * for the runner it is named after. A gate calibrated on a fitness the runner
+ * does not have is lenient, not safe.
+ *
+ * His AFC half, 2026-08-16 — the same race the daily series above is tapering
+ * into and recovering from — is 1:41:53. That is the number the live authoring
+ * anchors on, and with it the block prices his easy mile where production
+ * prices it.
+ */
+const OWNER_AFC_HALF_SEC = 1 * 3600 + 41 * 60 + 53;
+
 function buildOwnerBlock(daily: readonly number[] = OWNER_DAILY_MI) {
   return buildSimPlan({
     goalMode: 'race', distance: 'marathon', experienceLevel: 'advanced',
@@ -101,7 +162,8 @@ function buildOwnerBlock(daily: readonly number[] = OWNER_DAILY_MI) {
     longRunDay: 'sun', restDay: 'fri',
     startDateISO: '2026-08-30', raceDateISO: '2026-12-06',
     goalTimeSec: 10800, planWeeks: 0,
-    lastRaceFinishedDaysAgo: 0, lastRaceDistance: null, raceHistory: [],
+    lastRaceFinishedDaysAgo: OWNER_LAST_RACE_DAYS_AGO, lastRaceDistance: 'half',
+    raceHistory: [{ distance: 'half', timeSec: OWNER_AFC_HALF_SEC, whenRaced: '<6mo' }],
     availableDays: [], dailyMiMostRecentFirst: [...daily], isMidBlock: true,
   } as unknown as Parameters<typeof buildSimPlan>[0]);
 }
@@ -162,6 +224,76 @@ function easyBandOffsetSec(): number {
   return Number(m[1]);
 }
 
+/**
+ * THE PACE THIS GATE PRICES AN EASY MILE AT · corrected 2026-08-30.
+ *
+ * ── WHAT IT USED TO DO, AND WHY THAT WAS THE GATE'S DEFECT ──────────────────
+ *
+ * It computed `composed.tPaceSec + EASY_BAND_SLOW_OFFSET_SEC` and asserted, in
+ * its own comment, that this is "the same conversion `layoutWeek` already does
+ * … so the two agree by construction." They do not agree, and they cannot.
+ *
+ * `composed.tPaceSec` is the GOAL-BLENDED threshold — the pace the block is
+ * working towards. `layoutWeek` is handed
+ * `easyPaceSecPerMi = currentT + EASY_BAND_SLOW_OFFSET_SEC`, where `currentT`
+ * is the CURRENT-FITNESS anchor. For a runner whose goal is ahead of his
+ * fitness those are different numbers, and the owner is exactly that runner:
+ * 394 s/mi blended against 458 s/mi measured, so 8:34/mi against 9:38/mi. The
+ * gate was pricing his easy mile 12% fast, which made `Research/00a` §2's
+ * forty-minute floor read as 4.7 mi when the engine reads it as 4.2.
+ *
+ * ── WHY THE ENGINE IS RIGHT AND THE GATE WAS WRONG ──────────────────────────
+ *
+ * Not a judgement call — it is settled in three places, all of which say the
+ * same thing:
+ *
+ *   1 · PACE-E-1 (`lib/plan/_audit_easy_anchor.test.ts`, and the `easyAnchorTSec`
+ *       parameter it guards) states it outright: "easy/long/recovery anchor to
+ *       CURRENT fitness (easyAnchorTSec), quality stays on the goal-blended
+ *       tPaceSec". Its own reason is this one: a sub-fitness goal otherwise
+ *       makes "easy" ramp faster every week, and on a cold start easy can pass
+ *       current marathon pace.
+ *   2 · The doctrine registry binds the same split — `PACE.*` claims read the
+ *       easy band off the current-fitness anchor, and `spec-builder.ts` emits
+ *       the runner's easy band as `easyAnchorT + 80` to `+ 120`.
+ *   3 · The owner has ruled the pace formula settled and not to be re-opened
+ *       (`feedback_easy_pace_anchored_current_vdot`): the source of truth is
+ *       current VDOT, and 8:57 easy is Daniels-correct for him.
+ *
+ * An easy run is an EFFORT run. Pricing its duration off a pace he cannot yet
+ * hold would ask him to cover more ground in forty minutes than he can, which
+ * is the opposite of what §2's band means. So the gate reads the engine's own
+ * recorded number.
+ *
+ * ── HOW IT READS IT ─────────────────────────────────────────────────────────
+ *
+ * `authoredState.easy_pace_s_per_mi`, which `composePlan` stamps beside
+ * `t_pace_s_per_mi` from the very expression `layoutWeek` is handed. Read
+ * rather than recomputed, so this check cannot drift from the engine again —
+ * the failure mode was a gate re-deriving a quantity the engine already owned.
+ * The offset is still bound by text above, so renaming the constant still
+ * fails loudly.
+ */
+function easyPaceSecPerMi(composed: { authoredState?: Record<string, unknown>; tPaceSec?: number | null }): number {
+  const stamped = Number(composed.authoredState?.['easy_pace_s_per_mi']);
+  if (!Number.isFinite(stamped) || stamped <= 0) {
+    throw new Error(
+      'COACH-SENSIBLE · composePlan no longer stamps `easy_pace_s_per_mi` on authoredState.\n' +
+      '  That field IS the pace layoutWeek sizes easy days at (PACE-E-1 · current-fitness T\n' +
+      '  + EASY_BAND_SLOW_OFFSET_SEC). Do NOT substitute `tPaceSec` — it is the goal-blended\n' +
+      '  threshold, it is faster for any runner whose goal is ahead of his fitness, and\n' +
+      '  substituting it is the calibration defect this function exists to have fixed.',
+    );
+  }
+  // The recorded pace must still BE the anchor plus the bound offset — so a
+  // change to either side is caught here rather than silently absorbed.
+  const offset = easyBandOffsetSec();
+  if (!(stamped > offset)) {
+    throw new Error(`COACH-SENSIBLE · easy pace ${stamped}s/mi is not slower than the ${offset}s easy-band offset`);
+  }
+  return stamped;
+}
+
 /** Minutes a run of `mi` takes at the runner's own easy pace. */
 const minutesAt = (mi: number, easySecPerMi: number) => (mi * easySecPerMi) / 60;
 
@@ -195,7 +327,8 @@ describe('COACH-SENSIBLE · would a coach hand this week to this runner?', () =>
     console.log(
       `\nFIXTURE · mean28=${ev!.meanMi} sustained(rank3)=${ev!.sustainedMi} ` +
       `ratio=${(ratio * 100).toFixed(2)}% lifted=${ev!.lifted} interruption=${ev!.interruptionWeeks} ` +
-      `peak=${ev!.peakMi} easyMedian=${OWNER_EASY_MEDIAN_MI}mi tPace=${built.composed.tPaceSec}s/mi`,
+      `peak=${ev!.peakMi} easyMedian=${ownerEasyMedianMi(built.composed as never)}mi tPace=${built.composed.tPaceSec}s/mi ` +
+      `easyPace=${easyPaceSecPerMi(built.composed as never)}s/mi`,
     );
     expect(ratio).toBeGreaterThan(0.69);
     expect(ratio).toBeLessThan(0.72);
@@ -207,15 +340,24 @@ describe('COACH-SENSIBLE · would a coach hand this week to this runner?', () =>
   // mileage. Distance is the wrong unit: two miles is a real run for a
   // twelve-minute-mile runner and a warm-up for this one. Doctrine states the
   // easy run in MINUTES, so the gate prices it in minutes, at the runner's own
-  // easy pace — the same conversion `layoutWeek` already does for the long
-  // run's absolute-time cap (DOCTRINE-3), so the two agree by construction.
+  // easy pace — read off the engine's own record rather than recomputed. See
+  // `easyPaceSecPerMi` above for why `tPaceSec` was the wrong number and what
+  // settles it.
   it('an easy day is long enough to be the run doctrine describes', () => {
     const built = buildOwnerBlock();
     if (!built.ok) throw new Error(built.reason);
     const [recoveryFloorMin] = recoveryMinutesBand();
     const [aerobicFloorMin] = generalAerobicMinutesBand();
-    const easySec = (built.composed.tPaceSec ?? 0) + easyBandOffsetSec();
-    expect(easySec, 'no composed T-pace — cannot price the runner\'s easy mile').toBeGreaterThan(0);
+    const easySec = easyPaceSecPerMi(built.composed as never);
+    // The calibration itself, asserted rather than described: the engine's easy
+    // pace is the CURRENT-fitness one, and for this runner — whose sub-3 goal
+    // is ahead of his fitness — that is meaningfully slower than the
+    // goal-blended threshold this gate used to price the mile off.
+    expect(
+      easySec,
+      'the engine\'s easy pace has collapsed onto the goal-blended threshold · PACE-E-1 says ' +
+      'easy/long/recovery anchor to CURRENT fitness, and this gate is calibrated on that',
+    ).toBeGreaterThan((built.composed.tPaceSec ?? 0) + easyBandOffsetSec());
 
     const belowRecovery: string[] = [];
     const medianBelowAerobic: string[] = [];
@@ -275,26 +417,90 @@ describe('COACH-SENSIBLE · would a coach hand this week to this runner?', () =>
   // week's leftover budget is smaller than the floor. A floor that yields to the
   // budget is not a floor; it is a preference. This asserts that the engine's own
   // stated contract binds.
+  //
+  // ── TWO CORRECTIONS TO THIS CHECK, BOTH 2026-08-30 ────────────────────────
+  //
+  // 1 · THE DAY AFTER THE LONG RUN IS NOT A §2 DAY. RULE12-VARY-1 caps it into
+  //     `Research/00a` §1's recovery band — 20-45 min — on purpose, because §1
+  //     and §2 give the two days different jobs. Holding a deliberately-capped
+  //     §1 run to a §2 median asks the engine to break doctrine to satisfy a
+  //     convention, and for any runner whose easy day is longer than 45 minutes
+  //     it fires on every week of every block. Its §1 FLOOR is asserted instead;
+  //     its ceiling deliberately is not, because RULE12-VARY-1 conserves the
+  //     week's volume when the §2 days are already at their own 75-minute
+  //     ceiling and have no room to take the surplus. That trade is stated in
+  //     the engine and is a ceiling, not a safety floor.
+  //
+  // 2 · THE CONVENTION IS ABOUT A FLOOR LOSING TO A BUDGET THAT HAD ROOM. The
+  //     defect it was written for is a 61-mile week with 4.5-mile easy days —
+  //     miles were available and the floor lost anyway. A week whose whole
+  //     remaining budget divided by its easy days cannot REACH the median is a
+  //     different question: paying it would mean either overspending the
+  //     week's volume or dropping a running day, and the only lever doctrine
+  //     supplies (RULE12-COUNT-1) is gated on §2's forty minutes, which those
+  //     days already clear. Extending that lever to a CONVENTION would trade a
+  //     doctrine-legitimate 50-minute aerobic day for a rest day. So the check
+  //     asks the honest question — could this week have afforded it? — and
+  //     reports the unaffordable weeks rather than failing on them. Check 1
+  //     above still holds those same days to §2's forty minutes, so nothing is
+  //     unguarded; what is excused is only the gap between doctrine's floor and
+  //     this runner's own habit, in weeks where the miles do not exist.
   it('the runner\'s demonstrated easy day is a floor, not a preference', () => {
     const built = buildOwnerBlock();
     if (!built.ok) throw new Error(built.reason);
+    const medianMi = ownerEasyMedianMi(built.composed as never);
+    const easySec = easyPaceSecPerMi(built.composed as never);
+    const [recoveryFloorMin] = recoveryMinutesBand();
     const below: string[] = [];
+    const unaffordable: string[] = [];
+    const recoveryTooShort: string[] = [];
     for (const w of built.composed.weeks as unknown as WeekLike[]) {
       if (!isTrainingWeek(w)) continue;
-      const easies = w.days.filter((d) => EASY_TYPES.has(d.type) && d.distanceMi > 0).map((d) => d.distanceMi);
-      for (const mi of easies) {
-        if (mi < OWNER_EASY_MEDIAN_MI) {
-          below.push(`${w.phase} wk=${w.weeklyMi} easy=${mi}mi < demonstrated median ${OWNER_EASY_MEDIAN_MI}mi`);
+      // `days` is indexed by day-of-week, so the recovery day is the slot after
+      // the long run — the same `(longRunDow + 1) % 7` RULE12-VARY-1 caps.
+      const longIdx = w.days.findIndex((d) => d.isLong && d.distanceMi > 0);
+      const recoveryIdx = longIdx >= 0 ? (longIdx + 1) % w.days.length : -1;
+      const easyIdx = w.days
+        .map((d, i) => (EASY_TYPES.has(d.type) && d.distanceMi > 0 ? i : -1))
+        .filter((i) => i >= 0 && i !== recoveryIdx);
+      // What the week has to spend on its §2 days: everything that is not the
+      // long run, the quality sessions or the capped recovery day.
+      const easyBudgetMi = easyIdx.reduce((s, i) => s + w.days[i].distanceMi, 0);
+      const affordable = easyIdx.length === 0 || easyBudgetMi / easyIdx.length >= medianMi - 1e-9;
+      for (const i of easyIdx) {
+        const d = w.days[i];
+        if (d.distanceMi >= medianMi) continue;
+        const line = `${w.phase} wk=${w.weeklyMi} easy=${d.distanceMi}mi < demonstrated median ${medianMi}mi`;
+        if (affordable) below.push(line);
+        else unaffordable.push(`${line} · week's whole easy budget is ${easyBudgetMi}mi over ${easyIdx.length} days`);
+      }
+      if (recoveryIdx >= 0 && EASY_TYPES.has(w.days[recoveryIdx].type) && w.days[recoveryIdx].distanceMi > 0) {
+        const min = minutesAt(w.days[recoveryIdx].distanceMi, easySec);
+        if (min < recoveryFloorMin) {
+          recoveryTooShort.push(
+            `${w.phase} wk=${w.weeklyMi} post-long recovery=${w.days[recoveryIdx].distanceMi}mi = ` +
+            `${min.toFixed(0)}min < Research/00a §1's ${recoveryFloorMin}min`,
+          );
         }
       }
     }
-    console.log(`\nDEMONSTRATED_EASY · ${below.length} authored easy days below the runner's own median`);
+    console.log(
+      `\nDEMONSTRATED_EASY · median ${medianMi}mi · ${below.length} below it with miles to spare, ` +
+      `${unaffordable.length} in weeks that could not afford it, ${recoveryTooShort.length} short recovery days`,
+    );
     for (const s of below.slice(0, 12)) console.log(`  ${s}`);
+    for (const s of unaffordable.slice(0, 12)) console.log(`  UNAFFORDABLE ${s}`);
+    for (const s of recoveryTooShort.slice(0, 12)) console.log(`  ${s}`);
+    expect(
+      recoveryTooShort.length,
+      `${recoveryTooShort.length} post-long recovery day(s) are shorter than the shortest run ` +
+      'Research/00a §1 describes',
+    ).toBe(0);
     expect(
       below.length,
       `${below.length} easy day(s) in a TRAINING week are shorter than what this runner ` +
-      'has actually been running. easyMileFloor computed the right number and the budget ' +
-      'cap in layoutWeek discarded it',
+      'has actually been running, in a week that had the miles to pay for it. easyMileFloor ' +
+      'computed the right number and the budget cap in layoutWeek discarded it',
     ).toBe(0);
   });
 

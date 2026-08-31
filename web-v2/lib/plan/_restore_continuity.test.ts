@@ -83,7 +83,9 @@ function composeAt(recentMi: number) {
 
 describe('CONTINUOUS-RESTORE-1 · restoreSteps is doctrine, continuously', () => {
   it('a runner AT 70% of sustained, coming back from NOT running, gets Research/22 §14 exactly', () => {
-    expect(restoreSteps(RESUME_LEVEL, SUSTAINED, false))
+    // ENTRY-CONTINUOUS-1 · "coming back from NOT running" is now stated as the
+    // demonstrated volume it always meant: nothing held.
+    expect(restoreSteps(RESUME_LEVEL, SUSTAINED, 0))
       .toEqual(RESUME_SEQUENCE.map((f) => Math.round(SUSTAINED * f * 10) / 10));
   });
 
@@ -92,12 +94,49 @@ describe('CONTINUOUS-RESTORE-1 · restoreSteps is doctrine, continuously', () =>
     // running. Someone who ran through their post-race window has just spent
     // it, and Research/00b — the protocol that actually governs a post-race
     // runner — restores far faster (30-40% -> 50-60% -> 70-80% of peak).
-    const spent = restoreSteps(RESUME_LEVEL, SUSTAINED, true);
-    const fresh = restoreSteps(RESUME_LEVEL, SUSTAINED, false);
+    //
+    // ENTRY-CONTINUOUS-1 (2026-08-30) · this used to be a BOOLEAN third
+    // argument, and the boolean was the last cliff in the ladder: it was
+    // `heldMi >= baseMi`, so a runner holding a hundredth of a mile less than
+    // the re-entry level repeated it and one holding a hundredth more skipped
+    // it, a whole `RESTORE_STEP_FRACTION` of sustained apart. The argument is
+    // now the demonstrated volume itself and both of these cases still fall
+    // out of it — a runner coming back from NOT running holds nothing, and one
+    // who ran through holds the base.
+    const spent = restoreSteps(RESUME_LEVEL, SUSTAINED, RESUME_LEVEL);
+    const fresh = restoreSteps(RESUME_LEVEL, SUSTAINED, 0);
     expect(spent).toEqual(fresh.slice(1));
     expect(spent[0]).toBeGreaterThan(RESUME_LEVEL);
     // Both still arrive at the sustained level.
     expect(spent[spent.length - 1]).toBe(SUSTAINED);
+  });
+
+  it('ENTRY-CONTINUOUS-1 · the entry rung moves with the runner, it does not flip', () => {
+    // Walk the demonstrated volume across the re-entry level in hundredths and
+    // require the first authored week to move continuously and monotonically.
+    // Against the boolean this fails at the crossing with a 6.75 mi step —
+    // falsified that way before landing, per Rule 18.
+    const STEP_MI = SUSTAINED * 0.15;
+    let prev = -Infinity;
+    for (let held = RESUME_LEVEL - 2 * STEP_MI; held <= RESUME_LEVEL + 1e-9; held += 0.01) {
+      // `baseMi` is `max(mean, resumeLevel, heldMi)`, so at or below the
+      // re-entry level the start IS the re-entry level.
+      const first = restoreSteps(RESUME_LEVEL, SUSTAINED, held)[0];
+      expect(first, `held=${held.toFixed(2)}`).toBeGreaterThanOrEqual(prev - 1e-9);
+      if (Number.isFinite(prev)) {
+        expect(
+          first - prev,
+          `the entry rung jumps ${(first - prev).toFixed(2)} mi for 0.01 mi of demonstrated ` +
+          `volume at held=${held.toFixed(2)} · the boolean is back`,
+        ).toBeLessThan(0.2);
+      }
+      prev = first;
+    }
+    // And the two ends are still doctrine: nothing held → §14's re-entry week;
+    // holding the level → one step above it.
+    expect(restoreSteps(RESUME_LEVEL, SUSTAINED, 0)[0]).toBe(Math.round(RESUME_LEVEL * 10) / 10);
+    expect(restoreSteps(RESUME_LEVEL, SUSTAINED, RESUME_LEVEL)[0])
+      .toBe(Math.round((RESUME_LEVEL + STEP_MI) * 10) / 10);
   });
 
   it('the step rate is read out of the sequence, not hand-copied', () => {
@@ -106,24 +145,27 @@ describe('CONTINUOUS-RESTORE-1 · restoreSteps is doctrine, continuously', () =>
   });
 
   it('a runner already at their sustained level has nothing to restore', () => {
-    expect(restoreSteps(SUSTAINED, SUSTAINED, false)).toEqual([]);
-    expect(restoreSteps(SUSTAINED + 5, SUSTAINED, true)).toEqual([]);
+    expect(restoreSteps(SUSTAINED, SUSTAINED, 0)).toEqual([]);
+    expect(restoreSteps(SUSTAINED + 5, SUSTAINED, SUSTAINED + 5)).toEqual([]);
   });
 
   it('a runner at 99% of sustained gets a one-week nudge, not a special case', () => {
-    const steps = restoreSteps(SUSTAINED * 0.99, SUSTAINED, false);
+    const steps = restoreSteps(SUSTAINED * 0.99, SUSTAINED, 0);
     expect(steps.length).toBe(2);
     expect(steps[steps.length - 1]).toBe(SUSTAINED);
   });
 
   it('every ladder ends at the sustained level and never steps down', () => {
-    for (const spent of [false, true]) {
-      for (let pct = 0.70; pct <= 1.0; pct += 0.01) {
-        const steps = restoreSteps(SUSTAINED * pct, SUSTAINED, spent);
+    for (let pct = 0.70; pct <= 1.0; pct += 0.01) {
+      const start = SUSTAINED * pct;
+      // Both ends of the entry question: nothing demonstrated, and holding the
+      // start level. Everything between is a straight line between the two.
+      for (const held of [0, start]) {
+        const steps = restoreSteps(start, SUSTAINED, held);
         if (steps.length === 0) continue;
-        expect(steps[steps.length - 1], `pct=${pct.toFixed(2)} spent=${spent}`).toBe(SUSTAINED);
+        expect(steps[steps.length - 1], `pct=${pct.toFixed(2)} held=${held.toFixed(1)}`).toBe(SUSTAINED);
         for (let i = 1; i < steps.length; i++) {
-          expect(steps[i], `pct=${pct.toFixed(2)} spent=${spent}`).toBeGreaterThan(steps[i - 1]);
+          expect(steps[i], `pct=${pct.toFixed(2)} held=${held.toFixed(1)}`).toBeGreaterThan(steps[i - 1]);
         }
       }
     }
@@ -148,7 +190,7 @@ describe('CONTINUOUS-RESTORE-1 · the base never sits below demonstrated volume'
     // He ran that 34.7 · the re-entry rung is behind him, so the build's first
     // week steps UP rather than repeating the recovery week it replaces.
     expect(e.heldByCurrent).toBe(true);
-    expect(restoreSteps(e.baseMi, e.sustainedMi, e.heldByCurrent)).toEqual([41.5, 45]);
+    expect(restoreSteps(e.baseMi, e.sustainedMi, e.heldMi)).toEqual([41.5, 45]);
   });
 
   it('one freak week cannot set the base · bounded by the sustained level', () => {
@@ -241,4 +283,64 @@ describe('CONTINUOUS-RESTORE-1 · no step change across the 70% boundary', () =>
       }
     }
   });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * LONGSIZE-CONTINUOUS-1 (2026-08-30) · Rule 9 · the long run is a session,
+ * not a formula choice.
+ *
+ * The 5k/10k/hm long-run sizer picked between two DIFFERENT formulas on
+ * `round(peakWeeklyMi × longShare) < peakLongMiBand[0]`, and the branch it
+ * left on crossing was always the smaller of the two — so a runner whose block
+ * peaks slightly HIGHER was handed a slightly SHORTER long run. Rule 9 calls
+ * that the fitter runner getting the worse plan, and here it lands on the one
+ * session a distance block is built around.
+ *
+ * The walk moves the block's base through the whole neighbourhood of the old
+ * threshold and requires every week's long run to move monotonically with it.
+ * Falsified against the branch before landing: with the ternary restored it
+ * reports the step and the base it happened at.
+ * ══════════════════════════════════════════════════════════════════════════ */
+describe('LONGSIZE-CONTINUOUS-1 · more volume never buys a shorter long run', () => {
+  /** A half-marathon block, the shape the old branch was written for (RC2-2:
+   *  an advanced HM at a 0.25 share reaches only 14 against a band floor of
+   *  15). The block's peak is walked by moving the reported base. */
+  function longsAt(recentMi: number): number[] {
+    const r = composePlan({
+      raceDistanceMi: 13.1, goalSec: 5400, goalPaceSec: 412,
+      raceDateISO: '2026-12-06', startMondayISO: '2026-08-31', level: 'advanced',
+      recentWeeklyMi: recentMi, easyDayMedianMi: 6, recentLongMi: 12,
+      recentQualityDistanceMi: 8, recentQualityPerWeek: 2, bestRecentVdot: 48,
+      isMidBlock: true,
+      longRunDow: 0, restDow: 6, qualityDows: [2, 4],
+      trainingDaysPerWeek: 6, crossModes: [],
+      rxQuality: { threshold: '4×1mi @ T pace · 60s jog', intervals: '5×3 min @ I pace · 90s jog', tempo: 'continuous tempo', families: {} },
+      rxRaceSpecific: { threshold: '4×1mi @ T pace · 60s jog', intervals: '5×3 min @ I pace · 90s jog', tempo: 'continuous tempo', families: {} },
+      tPaceSec: 400, lthr: 162, maxHr: 188,
+    } as never) as { weeks: Array<{ isRaceWeek?: boolean; days: Array<{ isLong?: boolean; type: string; distanceMi: number }> }> };
+    return r.weeks
+      .filter((w) => !w.isRaceWeek)
+      .map((w) => Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)));
+  }
+
+  it('the long run never SHRINKS as the block gets bigger', () => {
+    const walk: Array<{ mi: number; longs: number[] }> = [];
+    for (let mi = 26; mi <= 72.001; mi += 0.5) {
+      walk.push({ mi: Math.round(mi * 10) / 10, longs: longsAt(mi) });
+    }
+    expect(walk.length, 'the walk composed nothing').toBeGreaterThan(20);
+    const width = Math.min(...walk.map((w) => w.longs.length));
+    expect(width, 'the walk produced no comparable weeks').toBeGreaterThan(3);
+    for (let i = 1; i < walk.length; i++) {
+      for (let k = 0; k < width; k++) {
+        expect(
+          walk[i].longs[k],
+          `week ${k + 1}'s long run SHRANK from ${walk[i - 1].longs[k]}mi to ${walk[i].longs[k]}mi ` +
+          `when the runner's base went ${walk[i - 1].mi} → ${walk[i].mi} mi/wk. Two formulas with a ` +
+          'threshold between them — `max(share, driven)` on one side and `share` alone on the ' +
+          'other — and a max is never the smaller of the two it chose between',
+        ).toBeGreaterThanOrEqual(walk[i - 1].longs[k] - 1e-9);
+      }
+    }
+  }, 120_000);
 });

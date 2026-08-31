@@ -208,6 +208,7 @@ import {
   type RampBaseEvidence,
   SHORT_LAYOFF_WEEKS,
   RAMP_BASE_SUSTAINED_RANK,
+  absenceWeeksEquivalent,
   resolveRampBase,
   restoreSteps,
   RESTORE_STEP_FRACTION,
@@ -2375,8 +2376,8 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // The behaviour itself: spending the entry week drops exactly the leading
       // rung, and both ladders still arrive at the sustained level.
       const sustained = 45;
-      const fresh = restoreSteps(sustained * RAMP_BASE_RESUME_FRACTION, sustained, false);
-      const spent = restoreSteps(sustained * RAMP_BASE_RESUME_FRACTION, sustained, true);
+      const fresh = restoreSteps(sustained * RAMP_BASE_RESUME_FRACTION, sustained, 0);
+      const spent = restoreSteps(sustained * RAMP_BASE_RESUME_FRACTION, sustained, sustained * RAMP_BASE_RESUME_FRACTION);
       if (JSON.stringify(spent) !== JSON.stringify(fresh.slice(1))) {
         throw new Error(
           `a runner who already spent the re-entry week gets ${spent.join(' · ')}, which is not ` +
@@ -7194,6 +7195,89 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
 
   // ══ RAMP BASE · what a build is allowed to ramp FROM ══════════════════════
+  {
+    id: 'RAMPBASE.interruption-is-measured-in-weeks-off',
+    binds: [
+      'lib/plan/generate.ts#absenceWeeksEquivalent',
+      'lib/plan/generate.ts#SHORT_LAYOFF_WEEKS',
+      'lib/plan/generate.ts#RAMP_BASE_RESUME_FRACTION',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### Return from Short Layoff (1-2 weeks off)',
+    claim:
+      'Doctrine keys its return protocols on DAYS OFF — this section’s own row headers are ' +
+      '"1-7 days" and "8-14 days", and the section after it is "Return from Moderate Layoff ' +
+      '(3-8 weeks)". The engine’s proxy for that was a COUNT of consecutive most-recent 7-day ' +
+      'blocks below 70% of the sustained level, which is a mileage threshold standing in for a ' +
+      'days-off question, and any single week at the resume level reset it to zero: three weeks ' +
+      'of interruption read as none because the front block cleared the line by a fifth of a ' +
+      'mile, and an entire BASE phase appeared or disappeared on it. `absenceWeeksEquivalent` ' +
+      'measures the same quantity continuously — a block at zero miles is one week off, a block ' +
+      'at the resume level is none, and the shortfalls are summed over a fixed window so one ' +
+      'week cannot erase the ones behind it. At doctrine’s own integer points it reproduces ' +
+      'doctrine exactly.',
+    check({ cite }) {
+      // The section title states the short-layoff span; the boundary between it
+      // and the moderate-layoff protocol is read out of the docs, not typed.
+      const shortMax = parseBand(matchLiteral(
+        cite.text(), /Return from Short Layoff \(([\d\s–—-]+) weeks? off\)/i, 'short-layoff window',
+      )[1])[1];
+      if (SHORT_LAYOFF_WEEKS !== shortMax) {
+        throw new Error(`SHORT_LAYOFF_WEEKS is ${SHORT_LAYOFF_WEEKS}, doctrine's short layoff is ${shortMax} weeks`);
+      }
+      const moderate = resolveCitation(
+        'Research/22-plan-templates.md', '### Return from Moderate Layoff (3-8 weeks)',
+      );
+      const moderateMin = parseBand(matchLiteral(
+        moderate.text(), /Return from Moderate Layoff \(([\d\s–—-]+) weeks?\)/i, 'moderate-layoff window',
+      )[1])[0];
+      if (moderateMin !== shortMax + 1) {
+        throw new Error(
+          `doctrine's short layoff ends at ${shortMax} weeks and its moderate layoff begins at ` +
+            `${moderateMin} · the two protocols no longer meet, so the allowance boundary is unclear`,
+        );
+      }
+      const resume = 30;   // any positive resume level; the measure is a fraction of it
+      // 1 · N weeks of NOT RUNNING reads as exactly N weeks off, so the engine's
+      //     `interruption > allowed` test lands on doctrine's own boundary.
+      for (const n of [1, 2, 3, 5]) {
+        const series = [...Array(n).fill(0), resume, resume, resume, resume, resume, resume];
+        const got = absenceWeeksEquivalent(series, resume, Math.max(n, 8));
+        if (Math.abs(got - n) > 1e-9) {
+          throw new Error(`${n} weeks at zero miles reads as ${got} weeks of absence, not ${n}`);
+        }
+      }
+      // 2 · a runner AT the resume level is not interrupted at all, however long
+      //     they have been there. This is the half the old count got right.
+      if (absenceWeeksEquivalent(Array(16).fill(resume), resume, 4) !== 0) {
+        throw new Error('a runner holding the resume level reads as interrupted');
+      }
+      // 3 · CONTINUITY (Rule 9). Walk the front block down through the resume
+      //     level and require the reading to move with it, never to jump. The
+      //     consecutive-run count fails this with a multi-week step.
+      let prev = -Infinity;
+      for (let front = resume * 1.2; front >= 0; front -= resume * 0.005) {
+        const got = absenceWeeksEquivalent([front, 0, 0, resume, resume, resume], resume, 2);
+        if (got < prev - 1e-9) throw new Error(`absence reading fell from ${prev} to ${got} as the front week SHRANK`);
+        if (Number.isFinite(prev) && got - prev > 0.02) {
+          throw new Error(
+            `absence reading jumped ${(got - prev).toFixed(2)} weeks for half a percent of one ` +
+              `block at front=${front.toFixed(2)} · the consecutive-run count is back`,
+          );
+        }
+        prev = got;
+      }
+      // 4 · and the reset-on-one-week pathology itself, stated as a case: three
+      //     empty weeks behind a full one still read as three weeks of absence.
+      const behindAGoodWeek = absenceWeeksEquivalent([resume, 0, 0, 0, resume, resume], resume, 4);
+      if (behindAGoodWeek < 2.999) {
+        throw new Error(
+          `three empty weeks behind one full week read as ${behindAGoodWeek} weeks of absence · ` +
+            'a single week at the resume level must not erase the ones behind it',
+        );
+      }
+    },
+  },
   {
     id: 'RAMPBASE.resume-from-pre-interruption-volume',
     binds: [

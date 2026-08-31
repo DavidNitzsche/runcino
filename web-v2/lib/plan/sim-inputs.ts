@@ -43,6 +43,14 @@ import {
   allowedInterruptionWeeksFor,
   RAMP_BASE_LOOKBACK_WEEKS,
   type RampBaseEvidence,
+  // RULE8-SIM-1 · the SAME span builder and the SAME window constants the DB
+  // readers spend, so the two front doors cannot disagree about which of a
+  // runner's days count as his normal training.
+  prescribedSpanFor,
+  eligibleDaysBack,
+  HABIT_ELIGIBLE_DAYS,
+  HABIT_MIN_EASY_SAMPLES,
+  type PrescribedSpan,
 } from './generate';
 import { lookupTierTarget, pickPlanMode, buildOpensISO, type PlanMode } from './goal-tiers';
 import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
@@ -156,6 +164,34 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   // `recentPeakWeeklyMileage`, `rampBaseForBuild` — using their own pure
   // halves, so the harness can finally express the case the anchors exist for:
   // a runner whose recent weeks do not describe what they can do.
+  // ── RULE8-SIM-1 (2026-08-30) · THE SIM HAD THE GAP THE DB PATH JUST CLOSED ─
+  //
+  // Rule 8 says no reader that answers "what does this runner normally do" may
+  // count days the engine itself prescribed as taper, race week or post-race
+  // recovery. `loadGeneratorInputs` assembles a `PrescribedSpan` from the race
+  // the runner actually ran and hands it to every habit reader. This path
+  // assembled nothing and read the raw daily series, so `easyDayMedianMi` here
+  // was contaminated exactly as production's was before RULE8-1 — and this is
+  // the path `/sim/plan`, `_anchor_fit`, `_coach_sensible` and the archetype
+  // corpus all run on. Per Rule 15, a mechanism the corpus cannot reach is
+  // untested: the filter existed and nothing in the harness could exercise it.
+  //
+  // The span is built from the SAME `prescribedSpanFor` and consumed through
+  // the SAME `eligibleDaysBack`, so the sim cannot drift from the loader.
+  // Empty (no `lastRaceDistance`, or a distance we cannot resolve) and this is
+  // inert — every existing archetype is byte-identical.
+  const lastRaceDaysAgoForSpan = sim.lastRaceFinishedDaysAgo ?? 0;
+  const prescribedSpans: PrescribedSpan[] = [];
+  {
+    const span = prescribedSpanFor(
+      lastRaceDaysAgoForSpan > 0 ? addDaysISO(blockStartISO, -lastRaceDaysAgoForSpan) : null,
+      sim.lastRaceDistance ? SIM_DISTANCE_MI[sim.lastRaceDistance] : null,
+      // The sim has no race-priority field; `postRaceRecoveryWeeks` treats a
+      // null priority the same way the loader does when the race row has none.
+      null,
+    );
+    if (span) prescribedSpans.push(span);
+  }
   const daily = sim.dailyMiMostRecentFirst ?? null;
   const hist = daily && daily.length >= 28 ? (() => {
     const at = (i: number): number => {
@@ -169,11 +205,34 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     // The 28-day longest single day · `recentPeakLongMi`'s shape.
     let long28 = 0;
     for (let i = 0; i < 28; i++) if (at(i) > long28) long28 = at(i);
-    // `easyDayMedianMi` · runs of 3-9 mi over the last 14 days, median, to 0.5.
+    // `easyDayMedianMi` · runs of 3-9 mi, median, rounded to 0.5.
+    //
+    // RULE8-SIM-1 · over `HABIT_ELIGIBLE_DAYS` REPRESENTATIVE days, not the
+    // most recent 14 calendar ones. This mirrors the DB reader line for line:
+    // the same 28-day span, the same 3-9 mi band, the same minimum sample
+    // count, and the same refusal when there is not enough clean history —
+    // `easyDayMedianMi`'s own header records what the 14-day calendar window
+    // cost, which was four-mile easy days for a runner whose easy day is six.
+    //
+    // The index-to-date map is the one the caller supplies: `daily[i]` is the
+    // day `i` days before `blockStartISO`, most-recent-first.
+    const eligible = new Set(
+      eligibleDaysBack(blockStartISO, HABIT_ELIGIBLE_DAYS, prescribedSpans, daily.length),
+    );
     const easies: number[] = [];
-    for (let i = 0; i < 14; i++) { const m = at(i); if (m >= 3 && m <= 9) easies.push(m); }
+    let eligibleDaysSeen = 0;
+    for (let i = 0; i < daily.length; i++) {
+      if (!eligible.has(addDaysISO(blockStartISO, -i))) continue;
+      eligibleDaysSeen++;
+      const m = at(i);
+      if (m >= 3 && m <= 9) easies.push(m);
+    }
     easies.sort((a, b) => a - b);
-    const easyMed = easies.length === 0 ? 0
+    // Rule 11 · a refusal, not a measured zero. Too few clean days or too few
+    // easy runs inside them and the floor stays unset, exactly as the DB
+    // reader returns null. `easyMileFloor` reads 0 as "no habit evidence".
+    const easyMed = (eligibleDaysSeen < HABIT_ELIGIBLE_DAYS || easies.length < HABIT_MIN_EASY_SAMPLES)
+      ? 0
       : Math.round((easies.length % 2 ? easies[(easies.length - 1) / 2]
         : (easies[easies.length / 2 - 1] + easies[easies.length / 2]) / 2) * 2) / 2;
     return {
