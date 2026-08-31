@@ -92,17 +92,37 @@ import { lthrFromRace } from '@/lib/training/lthr';
 // ── Doctrine constants ─────────────────────────────────────────────────────
 
 /**
- * Friel's re-test cadence, `Research/03-heart-rate-zones.md` §6: "Re-test every
- * 6-12 weeks." The CEILING of that band is the point past which a stored
- * anchor is stale — inside the band a re-test is due but not overdue, and the
- * engine does not nag on the near edge of a range doctrine states as a range.
+ * Friel's re-test cadence, defined in `lib/training/lthr-cadence.ts` and
+ * re-exported here so this module's public surface is unchanged.
  *
- * Bound by `LTHR.retest-cadence-is-the-shelf-life`, which parses both weeks out
- * of the doc's own sentence.
+ * THE DEFINITION MOVED BECAUSE THE PURITY CLAIM ABOVE WAS NOT TRUE. A client
+ * bundle cannot read a constant from this module: the `lthrFromRace` import
+ * below reaches `lib/training/lthr.ts`, whose `resolveThresholdHr` lazily does
+ * `await import('@/lib/db/pool')`. A dynamic import is still a bundled edge, so
+ * `ProfileView.tsx` ('use client') pulled `pg` into the browser graph and
+ * `next build` failed on `fs` · `dns` · `net` · `tls`. Every Railway deploy of
+ * `main` failed from 9a0c6314 onward while `tsc` and all twelve prebuild gates
+ * passed.
+ *
+ * The constants now live in a leaf with no imports at all, which is what makes
+ * the original intent — one number shared by the profile tile's stale marker
+ * and the engine's staleness limb — actually hold. Read the file itself for the
+ * doctrine citation.
  */
-export const LTHR_RETEST_MIN_WEEKS = 6;
-export const LTHR_RETEST_MAX_WEEKS = 12;
-export const LTHR_RETEST_CADENCE_DAYS = LTHR_RETEST_MAX_WEEKS * 7;
+export {
+  LTHR_RETEST_MIN_WEEKS,
+  LTHR_RETEST_MAX_WEEKS,
+  LTHR_RETEST_CADENCE_DAYS,
+} from '@/lib/training/lthr-cadence';
+
+// A re-export does not bind the names locally, and this module reads all three
+// below — the cadence in `selectAnchorRace` and `planLthrReanchor`, the week
+// bounds in the stale verdict's own sentence.
+import {
+  LTHR_RETEST_MIN_WEEKS,
+  LTHR_RETEST_MAX_WEEKS,
+  LTHR_RETEST_CADENCE_DAYS,
+} from '@/lib/training/lthr-cadence';
 
 /**
  * The half-marathon band a race must land in to anchor LTHR. Identical to

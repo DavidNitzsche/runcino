@@ -15,7 +15,11 @@ import {
   ToggleRow,
   useGlossaryDrawer,
 } from '../toolkit';
-import { LTHR_RETEST_CADENCE_DAYS } from '@/lib/training/lthr-reanchor';
+// FROM THE LEAF, NOT FROM `lthr-reanchor`. This is a client component, and
+// `lthr-reanchor` reaches `lib/db/pool` through `lthr.ts` — importing it here
+// pulled `pg` into the browser bundle and broke every deploy. Same number,
+// same doctrine citation, no database at any depth. See lthr-cadence.ts.
+import { LTHR_RETEST_CADENCE_DAYS } from '@/lib/training/lthr-cadence';
 import { StravaConnectionCard } from '@/components/profile/StravaConnectionCard';
 import { CoachCalendarConnect } from '../CoachCalendarConnect';
 import { SettingsPanel } from './SettingsPanel';
