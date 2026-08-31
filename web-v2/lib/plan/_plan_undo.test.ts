@@ -203,13 +203,30 @@ describe('4 · the commit gate in generatePlan', () => {
 });
 
 describe('5 · owned-days prefers the active plan, so an undo cannot split the brain', () => {
-  it('breaks the tie on archived_iso before authored_iso', () => {
+  it('an active plan (reign extends to now()) outranks a reverted, archived one for a shared date', () => {
     // Without this, un-archiving would leave the week strip (which filters
     // archived_iso IS NULL) showing the restored block while execution
     // scoring, the adapter and the goal projection — all of which read through
-    // ownedDaysSql and rank by authored_iso — kept grading the runner against
-    // the block he had just rejected. Two surfaces, two answers, no error.
-    expect(OWNED_SRC).toContain('ORDER BY pw.date_iso, (tp.archived_iso IS NULL) DESC, tp.authored_iso DESC');
+    // ownedDaysSql — kept grading the runner against the block he had just
+    // rejected. Two surfaces, two answers, no error.
+    //
+    // 2026-09-01: the tiebreak is now reign-containment first (see
+    // `_owned_days_reign.test.ts` for the full three-tier fixture), but the
+    // active-plan-wins property this describes still has to hold, because it
+    // falls out of the SAME clause: an active plan's reign runs to `now()`,
+    // which sorts above any past `archived_iso` on the very archived plan it
+    // was undone from. Assert the fallback clauses are still present as the
+    // documented last resort, in the documented order.
+    expect(OWNED_SRC).toContain("CASE WHEN ${REIGN_CONTAINS_DATE} THEN COALESCE(tp.archived_iso, now()) END DESC NULLS LAST");
+    const emitted = ownedDaysSql();
+    const orderByAt = emitted.indexOf('ORDER BY');
+    expect(orderByAt).toBeGreaterThan(-1);
+    const orderByClause = emitted.slice(orderByAt);
+    // Within the ORDER BY (not the header prose above it), the
+    // reign-containment/latest-archived_iso tiebreak precedes the
+    // pre-2026-09-01 fallback clauses.
+    expect(orderByClause.indexOf('COALESCE(tp.archived_iso, now()) END DESC'))
+      .toBeLessThan(orderByClause.indexOf('(tp.archived_iso IS NULL) DESC,'));
   });
 
   it('still does not FILTER on archived_iso', () => {
@@ -219,8 +236,15 @@ describe('5 · owned-days prefers the active plan, so an undo cannot split the b
     // Read off the emitted SQL rather than the file, so a comment that
     // discusses the filter cannot be mistaken for one.
     const emitted = ownedDaysSql();
-    expect(emitted).toContain('archived_iso IS NULL) DESC');   // the tiebreak
-    expect(emitted).not.toMatch(/WHERE[\s\S]*archived_iso IS NULL(?!\) DESC)/); // not a filter
+    expect(emitted).toContain('archived_iso IS NULL) DESC');   // the fallback tiebreak
+    // Scope to the WHERE clause itself, not everything after the WHERE
+    // keyword — the reign predicate legitimately says `archived_iso IS NULL`
+    // inside the ORDER BY (an open-ended reign, not a filter), so a regex
+    // that just scans forward from WHERE would trip on that and false-flag.
+    const whereAt = emitted.indexOf('WHERE');
+    const orderByAt = emitted.indexOf('ORDER BY');
+    const whereClause = emitted.slice(whereAt, orderByAt);
+    expect(whereClause).not.toMatch(/archived_iso/);
     expect(emitted.indexOf('archived_iso')).toBeGreaterThan(emitted.indexOf('ORDER BY'));
   });
 });
