@@ -398,15 +398,15 @@ export const MODULE_ORPHANS: Record<string, string> = {
   // corroboration bar — which is the wiring its own entry said it was waiting
   // for.
   //
-  // `adaptation-engine.ts` and `load-adaptation-engine.ts` DELIBERATELY STAY.
-  // Nothing on any live path reaches them: grep returns only their own tests
-  // and a shadow probe. The Adaptation Engine's promotion is held pending a
-  // separate review of the progression gates, and this list is where that hold
-  // is visible.
-  'web-v2/lib/adaptation/adaptation-engine.ts':
-    'DELIBERATELY UNWIRED — the ADAPTATION ENGINE OWNERSHIP LAYER, the layer that sits on top of capacity-resolver.ts, runner-state.ts and activity-evidence.ts and answers docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md §1’s "what should change in response to new evidence", per BRIEF 07 and docs/ADAPTATION_PROGRESSION_DOCTRINE.md. Same posture as the four layers above it. `composeAdaptation` returns §9’s AdaptationProposal as a DISCRIMINATED UNION ON THE LEVER, so a schedule restructure cannot carry a pace magnitude and a compound "change pace AND density AND duration" proposal is not expressible — one primary stressor at a time is a property of the type. Four INDEPENDENT levers (pace from capacity evidence WITH CONTROL, volume from load tolerance, duration from long-run tolerance, and the session pair carried whole from resolveWeekProgression — split into DENSITY and QUALITY_VOLUME by the progression gate’s OWN lever, because more reps and the same reps with less rest are different claims), each detector receiving only its own slice of the input so BRIEF 07’s "adapt the thing that changed" is plumbing rather than discipline. It CONSOLIDATES rather than duplicates: classifyAdaptation is its absorption input, resolveWeekProgression owns density, adaptive-ramp.ts owns the volume/duration caps, pace-anchor.ts owns the pace quantum, and runner-state.ts owns readiness — nothing here re-derives any of them. Goal isolation and capacity immutability are enforced at COMPILE TIME; the one-stressor rule, the HOLD-does-not-move-the-number rule and safety precedence are enforced by a contradiction checker that was falsified in all three directions before landing. Doctrine-tested (goal poisoning, single-run resistance, the Example-A-vs-Example-B control test, one-stressor-at-a-time, all four decisions proven reachable), doctrine-cited (CONVENTION.adaptation-engine-bars), and RENDERED against the owner’s real account in its own .audit.test.ts — where it caught a live defect (two LOAD-domain levers disagreeing about the same absorption verdict) and where a Rule 21 probe walks his whole season to show each upward bar is a bar rather than a wall. Wiring it into the run-adaptations cron and retiring the overlapping detectors in lib/plan/adapt.ts is the NEXT phase, scoped separately for the same reason every layer below it was: it touches the mutation path, the cron and the doctrine registry at once. Should be WIRED, not deleted, once that pass lands.',
-  'web-v2/lib/adaptation/load-adaptation-engine.ts':
-    'The database shell for adaptation-engine.ts above, and unwired with it. It holds no judgement — it resolves the four capacities, the runner state, the absorption verdict and the progression week through their own owning services, reads the ACTIVE plan’s own numbers (Rule 14: joining plan_workouts on user_uuid alone reads all 47 plan versions), projects the Evidence Engine’s per-activity output into the engine’s narrow reads without combining any of them, and calls the pure composer. Split out for the same reason capacity-resolver.ts and load-activity-evidence.ts split their shells: every judgement stays testable without a database. Dies or lives with adaptation-engine.ts.',
+  // `adaptation-engine.ts` and `load-adaptation-engine.ts` LEFT THIS LIST too,
+  // for the same reason as the Evidence Engine above: `shadow-compare.ts`
+  // (docs/PRODUCT_DECISIONS.md 2026-09-01 §2/§3) now calls them for real, from
+  // the run-adaptations cron route, to compare the engine's own proposal
+  // against live behavior without mutating anything. That is a genuine
+  // non-test importer, so the entries are stale rather than deliberate — the
+  // Adaptation Engine's PROMOTION to the live mutation path is still a
+  // separate, held decision, but "is anything besides a test reaching this
+  // file" is a different question, and the answer to that one changed.
   'web-v2/lib/plan/core.ts':
     'Stranded by block-preview. The shared id()/addDays()/mondayOf() primitives were extracted so the three plan builders stay drift-free; the extraction landed and the other builders never switched over. Dies or lives with block-preview.',
   'web-v2/lib/coach/strength-recommender.ts':
@@ -493,6 +493,10 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'Form-metric definitions, bands and drills — "coach giving a one-thing-to-do". Its only importer is /api/tips, which the phone has a decode model for and never fetches. Wire the fetch or delete both ends.',
   'web-v2/components/redesign/graphics/DualPoint.tsx':
     'The /redesign tree. That direction was shipped and reverted on 2026-08-18 and is not the plan; its orphans are expected and are not this gate\'s business.',
+  'web-v2/lib/training/coaching-thesis.ts':
+    'DELIBERATELY UNWIRED, by its own header. Built 2026-09-01 to answer BRAIN_CONSTITUTION.md §F — "what are we currently trying to accomplish with this runner" — off the Runner Model\'s own canonical capacities (resolveThresholdCapacity, resolveHighIntensityCapacity, resolveDurability), never invented, never persisted. §F\'s own boundary is a READ relationship (the plan generator would consume this), and the header is explicit that wiring it into generate.ts is real, separately-scoped work not done in this pass — the same INSTANCE-3 shape as block-preview.ts above: the question was asked and the answer is written and tested, so it stays named here rather than silently deleted. Should be WIRED, not deleted, once that authoring pass lands.',
+  'web-v2/lib/adaptation/pace-hr-compatibility.ts':
+    'SHADOW MODE ONLY, by its own header. docs/PRODUCT_DECISIONS.md 2026-09-01 §3 requires this compatibility check to exist before any live mutation may pair a pace change with an HR change, but §2 of the same decision authorizes PACE-only shadow-compare and explicitly withholds live mutation for now — so this module has zero callers wired into a live path on purpose: it is a pure function for the (separately-scoped) shadow-compare harness to call, and it writes nothing to the database. Same posture as the adaptation-harness/* entries above: test-only until the harness stream that commissioned it lands. Should gain a shadow-compare caller, not be deleted, once that stream wires it in.',
 };
 
 /**

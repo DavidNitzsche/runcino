@@ -201,6 +201,14 @@ export const COERCION_ARGUED: readonly CoercionExemption[] = [
     id: 'lib/plan/zone-anchors.ts::zonePaceSec::p',
     reason: 'a zone anchor of zero seconds per mile is not a pace band, and every consumer uses presence to decide whether the zone can be drawn at all.',
   },
+  {
+    id: 'lib/plan/progression-spec.ts::readSelectionRationale::v.trim().length',
+    reason: 'the only writer, generate.ts, guards the assignment with `if (workoutSpec && d.catalogueRationale)` before it ever reaches this key, so a stored empty or whitespace-only string can never be a MEASUREMENT of an empty rationale — no code path produces one on purpose. It can only be legacy or hand-edited row data, which is the same "cannot trust it" verdict as absence. Both consumers, spec-card.ts and coaching-thesis.ts, use the field only to decide whether to render a line of prose, and blank prose and no prose render identically — there is no third behaviour for a real empty string to unlock. `_rationale_persist.test.ts` (`readSelectionRationale is honest about absence`) locks this exact collapse in as intended.',
+  },
+  {
+    id: 'lib/adaptation/shadow-compare.ts::runPaceShadowCompareCycle::catch',
+    reason: 'the SAME peripheral-by-consequence-despite-engine-directory shape as `lib/training/durability-anchor.ts::projectWithDurabilityExponent::t` above, argued the same way: `detectAdaptations(userUuid).catch(() => null)` feeds only `liveObs`, a field on the persisted `ShadowCompareRecord` this file\'s own header proves cannot mutate a plan (RO-role test plus a before/after row-count snapshot). A failed live read degrades `trainingLeadFired`/`recomputePacesFired` to false and `reason` to null — the shadow log records "live showed no signal" rather than fabricating one, and the worst outcome is a mismarked `agreesWithLive` on one comparison row, never a changed prescription. Filed on the ratchet below because the scanner classifies by directory (`lib/adaptation`), not by this file\'s own read-only contract.',
+  },
 ];
 
 /**
@@ -566,6 +574,7 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/adaptation/load.ts::loadAdaptationInput::verdicts.length',
   'lib/adaptation/load.ts::loadAdaptationInput::weeklyActualMi.length',
   'lib/adaptation/load.ts::loadAdaptationInput::weeklyPlannedMi.length',
+  'lib/adaptation/shadow-compare.ts::runPaceShadowCompareCycle::catch',
   'lib/coach/acwr.ts::computeAcwr::catch',
   'lib/coach/block-comparison.ts::computeBlockComparison::catch',
   'lib/coach/coach-log.ts::updateCoachLog::catch',
@@ -665,6 +674,7 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/injury-builder.ts::buildInjuryPlan::catch',
   'lib/plan/mutate.ts::num::n',
   'lib/plan/plan-delta.ts::longRunIn::max',
+  'lib/plan/progression-spec.ts::readSelectionRationale::v.trim().length',
   'lib/plan/prescription-parser.ts::parseTempoLeadMi::mi',
   'lib/plan/recompute-paces.ts::recomputePacesForPlan::catch',
   // PRESCRIPTION-WIRE-1 (2026-08-31) · the maintenance arm's twin of the line
