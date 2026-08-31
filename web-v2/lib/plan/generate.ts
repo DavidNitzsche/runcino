@@ -1994,6 +1994,19 @@ export const GENERAL_AEROBIC_MAX_MINUTES = 75;
 export const RECOVERY_RUN_MAX_MINUTES = 45;
 
 /**
+ * SPIKEROLL-1 · `Research/00a` §"Volume progression rules" · the single-run
+ * spike rule, as a share: ">110% of the longest run in the prior 30 days
+ * raises overuse injury risk by ~64%".
+ *
+ * A CEILING on every authored long run, measured against a ROLLING anchor —
+ * not a floor and not a seed. See `enforceSpikeRule` in
+ * `finalizeComposedPlan`.
+ */
+export const SPIKE_MAX_SHARE = 1.10;
+/** SPIKEROLL-1 · the window the rule writes into its own citation: thirty days. */
+export const SPIKE_WINDOW_DAYS = 30;
+
+/**
  * DOCTRINE-1c / TAPER-RESTORE-CONTINUOUS-1 · how far under its doctrine target
  * a taper week may sit before `finalizeComposedPlan` lifts it back.
  *
@@ -11051,6 +11064,81 @@ export function finalizeComposedPlan(
       prevLong = day.distanceMi;
     }
   };
+
+  /**
+   * SPIKEROLL-1 (2026-08-30) · `Research/00a` §"Volume progression rules" ·
+   * ">110% of the longest run in the prior 30 days = ~64% overuse injury risk".
+   *
+   * ── HELD BACK. READ `docs/spikeroll-1-handback.md` BEFORE LANDING THIS ─────
+   *
+   * This closes the owner's ruled defect ("Let's not breach. So adjust.") and it
+   * MOVES PROTECTED ANSWER KEYS, which the brief for this work says is a
+   * stop-and-report condition rather than a rebaseline. Measured, not guessed:
+   * `_sweep_allusers` 334 firm failures, `_dosing_sweep_gate` 12 enforced
+   * breaches, `_audit_long_ramp` red, and one doctrine claim
+   * (`RAMP.single-session-spike`) red. Every one of those is a real conflict
+   * between doctrine and a curve the engine was designed to author, not a bug in
+   * this pass, and resolving it is the owner's call. The hand-back names all
+   * four and shows the arithmetic.
+   *
+   * ── WHY IT EXISTS ────────────────────────────────────────────────────────
+   *
+   * `smoothLongWoW` above caps a long at 130% of the PREVIOUS ONE — a
+   * week-over-week bound with no memory, which a step-down resets. The spike
+   * rule is a THIRTY-DAY bound: a cutback does not license the week after it to
+   * jump. The owner's live block breached exactly there while passing the 130%
+   * smoother at every week — 2026-10-04 authored 19.0 mi against a prior-30-day
+   * longest of 15.5 (123%), immediately after a 12-mile cutback.
+   *
+   * ── WHY IT CANNOT LIVE IN `layoutWeek` ───────────────────────────────────
+   *
+   * Tried there first; the anchor it can read is wrong in the PERMISSIVE
+   * direction. `layoutWeek` returns a week before the composer has embedded
+   * tune-up races, re-shaped cutbacks or rescaled the taper, so its running
+   * maximum was 14.5 / 15 / 16 / 17.5 where the FINAL longs are
+   * 14.5 / 15 / 6.2 / 12 — every one higher than what the runner will run, and
+   * looser by exactly enough to wave the breach through. A guard has to read
+   * the plan that ships.
+   *
+   * ── THE ANCHOR IS BLENDED, AND HAS TO BE ─────────────────────────────────
+   *
+   * The longest SINGLE RUN in the preceding thirty days, races included — a
+   * raced half is tissue load whatever else it is. A guard reading only the
+   * plan is blind to the runner and collapses the whole progression behind a
+   * short opening week; a guard reading only history goes stale by week five.
+   * `spikeAnchorLongMi` (the literal prior-28-day max, kept literal per Rule 8's
+   * corollary) covers the first four weeks and the block's own runs take over.
+   *
+   * Race day is excluded from the CHECK outright: a marathon is not a training
+   * long run. Trimmed miles are NOT redistributed — a long doctrine says is too
+   * long is not a surplus looking for a home.
+   */
+  const enforceSpikeRule = () => {
+    const longestByWeek: number[] = [];
+    const weeksInWindow = Math.floor(SPIKE_WINDOW_DAYS / 7);
+    const df = (composed.authoredState as Record<string, unknown> | undefined)?.['derived_from'];
+    const seedAnchorMi = Number((df as Record<string, unknown> | undefined)?.['spikeAnchorLongMi']) || 0;
+    for (const [wi, week] of composed.weeks.entries()) {
+      const day = week.days.find((d) => d.isLong && d.type !== 'race' && d.distanceMi > 0);
+      const anchor = Math.max(
+        wi < weeksInWindow ? seedAnchorMi : 0,
+        ...longestByWeek.slice(-weeksInWindow),
+      );
+      if (day && anchor > 0) {
+        const ceil = Math.floor(anchor * SPIKE_MAX_SHARE * 2) / 2;
+        if (day.distanceMi > ceil + 1e-9) {
+          const trim = day.distanceMi - ceil;
+          day.distanceMi = ceil;
+          week.weeklyMi = Math.max(0, Math.round((week.weeklyMi - trim) * 10) / 10);
+        }
+      }
+      // Recorded AFTER any clamp, so a trimmed long anchors the next week at
+      // what the runner will actually have run.
+      longestByWeek.push(Math.max(0, ...week.days.map((d) => d.distanceMi)));
+    }
+  };
+  void enforceSpikeRule;   // HELD BACK · see the hand-back doc above.
+
   smoothLongWoW();
 
   // (Progressive taper enforcement moved BELOW the VOL-1 reconcile — it must see each week's
