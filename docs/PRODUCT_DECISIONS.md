@@ -6,6 +6,71 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-08-31 · Fitness is read from the training corpus, not one race. Easy pace is a ceiling, not a band. SETTLED.
+
+Two decisions from the same conversation, both David's, both direct correction
+of the app's core coaching posture.
+
+### 1 · Stop treating VDOT as the single number every pace derives from
+
+The architecture up to this point: collapse every signal — races, training
+runs — into one VDOT scalar, then derive every prescribed pace (easy,
+threshold, marathon, interval) from that one number through Daniels' formula
+table. A first fix (`vdot-corpus.ts`, 2026-08-30) stopped that scalar from
+being race-anchored — it now reads a corroborated level off the training
+corpus instead. David's follow-up, verbatim: *"That's one fix but continuing
+to anchor fitness in VDOT that is based off of the same things we've been
+working with will continue to get us wrong times and information. It needs to
+be anchored in evidence and runs. Maybe we are making VDOT too much of a
+king."*
+
+**Decision:** each pace type reads its own evidence directly where evidence
+exists — easy pace from classified easy-effort runs, threshold pace from
+classified threshold-effort runs — rather than being derived from one shared
+scalar via formula. VDOT/the Daniels table becomes the fallback for whichever
+pace type has no direct evidence yet (marathon pace, interval pace), not the
+source every number is required to pass through. Work in flight as of this
+entry: `lib/training/vdot-corpus.ts`-style corroborated readers, one per pace
+type, not yet wired into the plan engine.
+
+Important scoping note from the same conversation: David was explicit that a
+specific number he mentioned (a ~6:45-7:00/mi tempo effort he ran "for a bit"
+the day before) is not a claimed threshold pace to hit — it's one data point.
+*"I don't know if that's my threshold pace I just know I did that yesterday
+for a bit... I want to rely on data not just numbers that get set (VDOT) in a
+vacuum of races and that's it."* The readers compute from the evidence and
+report whatever comes out, refusing when there isn't enough corroboration —
+they do not work backward from an assumed target.
+
+### 2 · Easy pace is a ceiling with feel-based guidance, not a prescribed band
+
+Prompted by David setting up a comparison plan in a competitor app (Runna) and
+sharing screenshots. The instructive difference wasn't the exact numbers —
+it's the SHAPE of the prescription. Runna states easy pace as a single ceiling
+("no faster than 8:10/mi") with explicit copy: *"This is a limit, not a
+target - run at whatever pace feels truly easy!"* Our engine instead prescribes
+a narrow band ("9:02-9:42/mi") as something to hit.
+
+A band implies a target to land inside; a ceiling plus feel-based guidance
+implies a boundary not to cross, with the runner's own sense doing the rest.
+Given David's real easy pace is naturally ~8:00-8:13/mi day to day, a ceiling
+tracks that lived reality without the engine ever needing to nail an exact
+number — the runner's feel fills the gap a rigid band cannot.
+
+David confirmed both: "1 yes we can get this" (adopt the ceiling model) and
+"2 yes mostly I'm commenting on the paces Runna set" (confirming the complaint
+is concentrated on pace numbers, not plan structure/volume — Runna's weekly
+volume and long-run placement are structurally similar to what this engine
+already produces).
+
+**Decision:** the easy-pace evidence reader's output becomes a single ceiling
+(the fastest pace corroborated at genuinely-easy effort), surfaced with
+feel-based coach copy in this app's voice (no exclamation marks per the
+standing tone rule), not a `{lo, hi}` band to hit. To be applied in the wiring
+phase once the evidence readers land.
+
+---
+
 ## 2026-08-30 · CIM block audit · coaching decisions
 
 Taken while auditing the 14-week California International Marathon block that
