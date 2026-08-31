@@ -6,6 +6,73 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-08-31 · Goal changes require explicit runner action, and Races folds into Progress. SETTLED.
+
+Two decisions from the UX audit's flagged open questions, David's own call on
+both, resolving the doctrinal tension the audit correctly refused to guess
+at.
+
+### 1 · The goal-acceptance card is valid, but only under a strict rule
+
+The historical violation was the app *renegotiating* the goal for the
+runner — a card that functionally overwrote a stated goal. An opt-in card
+with genuinely co-equal choices is different in kind: the coach isn't
+changing the goal, it's saying "here's my current projection, your goal is
+still yours, you may update it if you want."
+
+**Doctrine, verbatim: "A projection can challenge a goal. Only the runner
+can change the goal."**
+
+Concretely, this means:
+
+- Race projection and stated goal are two separate concepts, never
+  conflated. faff may project a different outcome, say a goal is
+  aggressive/unlikely, recommend reconsidering it, or offer an explicit
+  goal-change action.
+- faff may NEVER: silently change the goal, treat a projection as the new
+  goal, preselect a revised target, rebuild the plan around a revised goal
+  before explicit approval, or visually pressure the runner toward accepting
+  the recommendation (no primary "Accept new goal" CTA with "Keep goal"
+  buried as secondary text, no preselected value, no auto-change on
+  timeout).
+- "Hold current goal" must remain a genuine, equal-weight option — not a
+  dismiss action.
+- Copy: never "we've updated your goal." Always "your current projection is
+  slower than your goal" — projection and aspiration stay grammatically
+  separate.
+- A runner can knowingly hold an aggressive goal. If they do
+  (`runner_acknowledged_gap: true`), faff does not nag every few runs — it
+  trains intelligently toward the goal from current fitness, and re-surfaces
+  the decision only when the outlook materially changes.
+
+### 2 · Races folds into Progress; it does not keep a standalone tab
+
+Today and Plan are primary surfaces because runners use them constantly.
+Race prediction is a specialized expression of "is this working" — it
+belongs inside Progress, not beside it. A standalone Races tab gives race
+prediction outsized product weight and risks making the app feel like it's
+constantly forecasting outcomes rather than coaching training.
+
+Target structure: **Today · Plan · Progress**. Progress reads: current
+fitness → what's improving → current limiter → race outlook → goal status →
+recent meaningful changes. Tapping the race outlook opens a rich detail
+screen (goal, current projection, confidence, primary limiter, goal status,
+what would improve the outlook, the goal-decision card when warranted) — so
+Race gets real depth without permanent bottom-nav real estate.
+
+**The one condition that would flip this back:** if faff becomes genuinely
+race-centric — runners regularly managing multiple races, race calendars,
+A/B/C event structures, race-specific plans, course intelligence, pacing
+strategy, taper, race-day execution, results, all as a real recurring
+domain, not just "upcoming race + goal + prediction + decision card." Not
+the case today. **Navigation hierarchy should reflect runner frequency and
+importance, not implementation history** — a fourth tab doesn't get kept
+just because it currently exists.
+
+---
+
+---
+
 ## 2026-08-31 · Two calls from the pace-prescription shadow-mode report. SETTLED.
 
 The shadow-mode comparison (`prescription-resolver.ts`, run against David's
