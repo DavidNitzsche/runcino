@@ -360,6 +360,8 @@ import {
   THRESHOLD_PCT_LTHR_BAND,
   THRESHOLD_MIN_QUALIFYING_SEC,
   THRESHOLD_MAX_QUALIFYING_SEC,
+  THRESHOLD_MAX_REP_SEC,
+  THRESHOLD_MIN_SESSION_TOTAL_SEC,
 } from '@/lib/training/pace-corpus';
 import {
   READINESS_WEIGHTS,
@@ -17425,14 +17427,18 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'lib/training/pace-corpus.ts#THRESHOLD_PCT_HRMAX_BAND',
       'lib/training/pace-corpus.ts#THRESHOLD_MIN_QUALIFYING_SEC',
       'lib/training/pace-corpus.ts#THRESHOLD_MAX_QUALIFYING_SEC',
+      'lib/training/pace-corpus.ts#THRESHOLD_MAX_REP_SEC',
+      'lib/training/pace-corpus.ts#THRESHOLD_MIN_SESSION_TOTAL_SEC',
     ],
     doc: 'Research/03-heart-rate-zones.md',
     anchor: "## 8. Daniels' HR Zones",
     claim:
       'The direct-evidence threshold-pace corpus reader gates a candidate segment\'s heart rate ' +
       "against the published Daniels T row's %HRmax column, and its qualifying-duration floor " +
-      "and ceiling are the table's own \"reps 5-20 min, total 20-60 min\" — read out of the doc " +
-      'at run time, not hardcoded.',
+      "and ceiling — both the per-REP window (5-20 min, applied literally per-phase against " +
+      "coach_intents.value.phases, since a phase IS one rep) and the per-SESSION pooled-total " +
+      "window (20-60 min) — are the table's own \"reps 5-20 min, total 20-60 min\", read out of " +
+      'the doc at run time, not hardcoded.',
     check({ cite }) {
       const t = cite.table();
       const band = parsePctBand(t.cell('T (Threshold)', '%HRmax'));
@@ -17445,6 +17451,8 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(`Research/03 §8's T row duration cell "${durationCell}" no longer states a rep/total band`);
       }
       const repFloorMin = bands[0][0];
+      const repCeilMin = bands[0][1];
+      const totalFloorMin = bands.length > 1 ? bands[1][0] : bands[0][0];
       const totalCeilMin = bands.length > 1 ? bands[1][1] : bands[0][1];
       if (THRESHOLD_MIN_QUALIFYING_SEC !== repFloorMin * 60) {
         throw new Error(
@@ -17454,6 +17462,19 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (THRESHOLD_MAX_QUALIFYING_SEC < totalCeilMin * 60) {
         throw new Error(
           `THRESHOLD_MAX_QUALIFYING_SEC is ${THRESHOLD_MAX_QUALIFYING_SEC}s, under Research/03 §8's T row total ceiling of ${totalCeilMin} min`,
+        );
+      }
+      // Added 2026-08-31 alongside the coach_intents.value.phases source —
+      // a phase is a real rep boundary, so unlike the mile-granular splits
+      // pool the REP ceiling is enforced literally, not just the total.
+      if (THRESHOLD_MAX_REP_SEC !== repCeilMin * 60) {
+        throw new Error(
+          `THRESHOLD_MAX_REP_SEC is ${THRESHOLD_MAX_REP_SEC}s, Research/03 §8's T row rep ceiling is ${repCeilMin} min`,
+        );
+      }
+      if (THRESHOLD_MIN_SESSION_TOTAL_SEC !== totalFloorMin * 60) {
+        throw new Error(
+          `THRESHOLD_MIN_SESSION_TOTAL_SEC is ${THRESHOLD_MIN_SESSION_TOTAL_SEC}s, Research/03 §8's T row total floor is ${totalFloorMin} min`,
         );
       }
     },

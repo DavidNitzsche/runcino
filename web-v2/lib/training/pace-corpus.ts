@@ -186,6 +186,59 @@
  * read by this fallback and will not corroborate, however honest the effort
  * was.
  *
+ * PHASES-AWARE, ADDED 2026-08-31 · `coach_intents.value.phases` is the
+ * watch's own MEASURED per-rep data (duration, distance, pace and HR all
+ * directly instrumented by the device that ran the rep), tried BEFORE splits
+ * for exactly that reason — see `thresholdSegmentFromPhases`'s own header
+ * for the full design and `classifyThresholdCandidates` for the preference
+ * order (phases, then splits, then whole-run; exactly one wins per row, so
+ * one real effort never votes twice). Its one structural difference from the
+ * splits and whole-run paths, and the reason it earned its own header rather
+ * than reusing `hrZoneMatch`'s in/out boolean as a gate: HERE, HEART RATE
+ * INFORMS RELIABILITY, IT DOES NOT GATE ADMISSION. Course-corrected mid-build
+ * by an external architecture review — Research/03 §8's own footnote is why
+ * ("R workouts: HR unreliable ... coach by pace + RPE"), and it is the
+ * physiologically correct call: a phase's duration and type are the watch's
+ * own boundary around the rep, which is stronger, more direct evidence than
+ * an HR reading that may not have caught up in a short rep. Admission stays
+ * BINARY per Rule 11 — `type === 'work'`, duration inside doctrine's per-rep
+ * window (5-20 min, same citation as the splits path's floor, now with its
+ * own ceiling — `THRESHOLD_MAX_REP_SEC`), distance/pace present and finite —
+ * and heart rate, when present, is reported on the observation as `hrPct` /
+ * `hrBandDistance` rather than thrown away, per `PaceObservation`'s own doc
+ * (a retrofit applied to the splits and whole-run paths too, and to the easy
+ * reader, so no source in this file collapses a measurement to a boolean any
+ * more).
+ *
+ * RENDERED against the owner's real account, 2026-08-31, after this change:
+ * the threshold corpus now CORROBORATES — 489 s/mi (8:09/mi), off 4
+ * observations (up from 2, which is what it held immediately before this
+ * pass and which refused under K=3). Two of the three supporting
+ * observations are phase-derived: 2026-07-16 (three ~6.8-min reps pooled at
+ * 408 s/mi / 6:48/mi — `hrPct` 91.3% LTHR, `hrBandDistance` 2.07, WELL
+ * outside the T-band and admitted anyway, the course-correction working
+ * exactly as intended) and 2026-08-06 (one pooled phase segment at
+ * 420 s/mi / 7:00/mi with NO heart-rate reading at all — `hrBasis: null` —
+ * admitted on duration/pace/type alone). The third is a `'tempo'`-labeled
+ * whole-run session from 2026-07-07 at 489 s/mi (8:09/mi, 161 bpm / 95.8%
+ * LTHR) — genuine T-zone evidence, and the WEAKEST of the three, which is
+ * why it is the one that SETS the level: `corroboratedCorpusVdot`'s Kth-
+ * highest is a conservative floor ("the pace at least K sessions support"),
+ * not the runner's best. The two fast phase reps (6:48/mi, 7:00/mi) closely
+ * match his own stated 6:45-7:00/mi tempo effort; the reported number is
+ * slower than that because only 3 of 4 observations need to agree and the
+ * floor is set by the weakest of the chosen three, not the strongest of the
+ * four. One more corroborating session near the fast pair would move the
+ * level substantially — an order statistic behaving exactly as designed at
+ * small N, not a defect. His actual 2026-08-11 4x1km session (the
+ * `actualPaceSPerMi: 381` / 6:21/mi rep this file's header used to cite as
+ * the motivating "residual") correctly does NOT appear anywhere in this
+ * corpus: every one of its four work phases is ~4 minutes, under
+ * `THRESHOLD_MIN_QUALIFYING_SEC`'s 5-minute per-rep floor, so duration alone
+ * excludes it as Repetition-pace work — no HR judgement was needed to reach
+ * the right answer, which is the point of gating admission on duration and
+ * type rather than on heart rate.
+ *
  * RULE 8 · NOT FILTERED, and this is the one place this file's two readers
  * disagree about applicability — argued independently, not by symmetry with
  * the easy reader. `resolveThresholdPaceCorpus` reuses `corroboratedCorpusVdot`
@@ -224,32 +277,37 @@
  *     specially rescued; it is simply read by whichever basis wins
  *     precedence. If evidence later shows this materially under-corroborates,
  *     a blended vote is the next thing to try — not a wider band, per Rule 9.
- *   · THE THRESHOLD READER ONLY SEES `data.splits` (MILE-GRANULAR), NOT
- *     `coach_intents.value.phases` (THE WATCH'S PER-REP ACTUALS) — MEASURED,
- *     not theoretical, and this is the one residual worth flagging loudest.
- *     Rendered against the owner's real account, 2026-08-31: the threshold
- *     corpus corroborates T-pace 458 s/mi (7:38/mi) from `data.splits`, which
- *     is honest for what it reads but visibly slower than the 6:45-7:00/mi he
- *     described. The fastest work-phase in his `coach_intents` history over
- *     the same window is a 2026-08-12 1km interval rep — `actualPaceSPerMi:
- *     381` (6:21/mi), `avgHr: 164` (97.6% of his fresh 168 LTHR, squarely
- *     inside the T-band this file uses) — that never reaches this reader,
- *     because `vdotFromRun`'s own `useWork` split (vdot-inputs.ts) exists for
- *     exactly this reason: a mile-boundary split rolls a short fast rep
- *     together with the recovery jog straddling the mile marker, and dilutes
- *     it. `loadVdotInputs`'s `wc_work` CTE already reads this same source
- *     for the whole-corpus VDOT ceiling; extending
- *     `thresholdSegmentFromSplits`'s sibling to read it too — matching
- *     per-phase `avgHr` against the same T-band this file already uses — is
- *     the concrete next step, not a vague "could be improved." Deliberately
- *     not built in this pass: phase data carries its own complications (a
- *     `verdict:'missed'` tolerance flag, multiple reps per session, HR that
- *     may not have caught up to a short rep — Research/03 §8's own note that
- *     "R workouts: HR unreliable... coach by pace + RPE" bears directly on
- *     whether a HR-zone gate is even the right filter for a rep this short),
- *     and folding it in without its own falsification pass would be
- *     exactly the "wired and inert" failure CLAUDE.md's Rule 21 warns about,
- *     applied to reading instead of writing.
+ *   · CLOSED 2026-08-31 · THE THRESHOLD READER USED TO ONLY SEE `data.splits`
+ *     (MILE-GRANULAR), NOT `coach_intents.value.phases` (THE WATCH'S PER-REP
+ *     ACTUALS). This was the one residual this section used to flag loudest.
+ *     `thresholdSegmentFromPhases` closes it — see "PHASES-AWARE, ADDED
+ *     2026-08-31" above for the design and the real numbers. Kept here,
+ *     historically, because the diagnosis that motivated the fix is worth
+ *     keeping legible: the fastest work-phase in the owner's `coach_intents`
+ *     history was a 2026-08-11 1km interval rep at 381 s/mi (6:21/mi,
+ *     `avgHr: 164`, 97.6% of a fresh 168 LTHR) that no reader could see,
+ *     because `data.splits` rolls a short fast rep together with the
+ *     recovery jog straddling its mile marker and dilutes it — the SAME
+ *     reason `vdotFromRun`'s own `useWork` split (vdot-inputs.ts) exists.
+ *     What the fix actually found, once built: that specific rep is real
+ *     Repetition-pace work, not Threshold — its four reps are each ~4
+ *     minutes, under doctrine's 5-minute T-rep floor — and duration alone
+ *     correctly excludes it without needing an HR judgement call at all. The
+ *     evidence that DOES corroborate T-pace lives in other sessions in the
+ *     same corpus (2026-07-16, 2026-08-06) that the file could not see
+ *     before this pass. Two complications this entry used to name as reasons
+ *     to defer the build are handled explicitly, not sidestepped: HR
+ *     unreliability on a short rep (Research/03 §8's "R workouts: HR
+ *     unreliable ... coach by pace + RPE") is answered by NOT gating
+ *     admission on HR for this source at all (see "PHASES-AWARE" above); the
+ *     `verdict: 'missed'/'drifted'/'hit'/'incomplete'` tolerance flag is
+ *     carried on `PhaseBreakdown` but still NOT read by this file — an
+ *     honest residual, not a silent gap: a `'missed'` or `'incomplete'` work
+ *     phase is still admitted today on duration/distance/pace alone, and
+ *     whether the device's own pass/fail grade should factor into admission
+ *     or into the `hrBandDistance`-style reliability signal is an open
+ *     question for whichever pass builds the confidence scorer this file's
+ *     richer per-observation metadata now exists to feed.
  *   · SPLITS RECONCILIATION (added same day, after the finding above was
  *     first written) MADE THIS WORSE BEFORE IT MADE IT HONEST. Once
  *     `thresholdSegmentFromSplits` was gated on `reconcileSplitsTotal`
@@ -270,15 +328,29 @@
  *     reported for the owner was itself built partly on unreconciled splits
  *     and should not have been trusted at face value either — the
  *     reconciliation fix didn't just close a gate, it retracted a number.
- *     What is left standing (2 observations, refusing under K=3) is the
- *     honest current answer for this runner over this window; a clean answer
- *     needs either fresher/more-reconciling splits data, or the
- *     `coach_intents.value.phases` extension named above, or both.
+ *     What was left standing at the time (2 observations, refusing under
+ *     K=3) is superseded by the phases source above, which recovers the
+ *     corpus to 4 observations and a corroborated 489 s/mi.
+ *   · `hrPct` / `hrBandDistance` (on `PaceObservation`, see its own doc) are
+ *     COMPUTED AND PRESERVED, NOT YET CONSUMED. Added 2026-08-31 per an
+ *     external architecture review specifically so a future confidence pass
+ *     can weight a corroborating observation by how well its heart rate
+ *     matched the target zone, instead of the boolean this file used to
+ *     collapse that measurement to. As of this pass, nothing reads them —
+ *     `thresholdPaceCorpus` / `easyPaceCorpus` still resolve purely by the
+ *     Kth-highest order statistic, exactly as before. This is a deliberately
+ *     incomplete wiring, not an oversight: the metadata's whole reason for
+ *     existing is to be ready for a scorer that has not been built and
+ *     falsified yet (CLAUDE.md Rule 21's "wired and inert" pattern would
+ *     apply to a half-built consumer far more than it applies to unused
+ *     evidence sitting on an observation record).
  */
 
 import { pool } from '@/lib/db/pool';
-import { runnerToday } from '@/lib/runtime/runner-tz';
+import { rowsOrEmpty } from '@/lib/db/read';
+import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { loadEffectiveMaxHr, lthrFloorIsFresh } from '@/lib/training/max-hr';
+import { mapWatchPhases, type PhaseBreakdown } from '@/lib/coach/run-state';
 import {
   CORROBORATION_MIN_OBSERVATIONS,
   corroboratedCorpusVdot,
@@ -339,6 +411,35 @@ export const EASY_MIN_DURATION_SEC = 20 * 60;
  *  materially different from one that sums to 60:00. */
 export const THRESHOLD_MIN_QUALIFYING_SEC = 5 * 60;
 export const THRESHOLD_MAX_QUALIFYING_SEC = 65 * 60;
+
+/**
+ * Research/03 §8 · T row, duration column: "reps 5-20 min, total 20-60
+ * min" — the REP CEILING half of the same cell `THRESHOLD_MIN_QUALIFYING_SEC`
+ * already reads the floor from. Enforced only against
+ * `coach_intents.value.phases` (see `thresholdSegmentFromPhases`), because a
+ * phase carries a real rep boundary the watch itself decided, unlike a
+ * mile-granular split. A 2026-08-11 production row is the reason this needs
+ * its own constant rather than reusing `THRESHOLD_MAX_QUALIFYING_SEC`: four
+ * ~4-minute 1&nbsp;km reps at 164-169 bpm (squarely T-zone by HR alone) —
+ * without this ceiling they would pool into a 988-second "T session" that
+ * is, by Daniels' own duration column, Repetition-pace work wearing a
+ * Threshold-zone heart rate. Research/03 §8's own footnote is the reason HR
+ * alone cannot be trusted to catch this: "R workouts: HR unreliable ...
+ * coach by pace + RPE."
+ */
+export const THRESHOLD_MAX_REP_SEC = 20 * 60;
+
+/**
+ * Research/03 §8 · T row, duration column, the TOTAL FLOOR half of "total
+ * 20-60 min" — distinct from `THRESHOLD_MIN_QUALIFYING_SEC` (a per-rep
+ * floor) even though both currently read 20/5 minutes from the same cell;
+ * they are different doctrine facts that happen to be nameable separately.
+ * A single 6-minute qualifying phase is a real rep and still not, on its
+ * own, a full threshold session — Daniels prices the SESSION at 20-60
+ * minutes of pooled work, so a lone short rep needs company from another
+ * rep in the same watch completion before the pooled observation counts.
+ */
+export const THRESHOLD_MIN_SESSION_TOTAL_SEC = 20 * 60;
 
 /** No splits data to isolate a work segment · the loose whole-run plausibility
  *  ceiling (Research/03 §8's total is 60 min; this allows for warm-up/
@@ -442,12 +543,29 @@ function labelExcludesEasy(rawWorkoutType: unknown): boolean {
   return norm != null && (QUALITY_TYPES.has(norm) || norm === 'race');
 }
 
-/** Label positively says easy/recovery/long — excludes a run from THRESHOLD
- *  candidacy so a stray HR spike (a strides set, a downhill surge) inside an
- *  easy day cannot masquerade as a threshold observation. */
+/** Label positively says easy/recovery/long/race — excludes a run from
+ *  THRESHOLD candidacy so a stray HR spike (a strides set, a downhill surge)
+ *  inside an easy day cannot masquerade as a threshold observation, AND so a
+ *  race cannot either.
+ *
+ *  `'race'` ADDED alongside the phase-data source (2026-08-31): Daniels
+ *  defines T-pace as roughly a runner's current ~1-hour race effort, and a
+ *  race — strategically paced, run to a competitive plan rather than a
+ *  training zone — is a categorically different thing from routine T-work,
+ *  the same reasoning `labelExcludesEasy` already applies to easy candidacy.
+ *  Concretely: David's 2026-08-16 half marathon carries `coach_intents`
+ *  phase data (Point Loma Climb / The Drop / Mission Bay / Harbor Approach /
+ *  Balboa Finish — real segments of the course, not reps) whose HR readings
+ *  (163-172 bpm against a 168 LTHR) sit inside the T-band by coincidence.
+ *  Admitting it would let one race's mile-by-mile effort corroborate a
+ *  "threshold pace" that is really this runner's half-marathon race pace.
+ *  Applies uniformly to the splits path too, which had no such exclusion
+ *  before this change — a genuine pre-existing gap, closed here rather than
+ *  narrowly to just the new phase source, because the argument is identical
+ *  for both. */
 function labelExcludesThreshold(rawWorkoutType: unknown): boolean {
   const norm = normalizeDataWorkoutType(rawWorkoutType);
-  return norm === 'easy' || norm === 'recovery' || norm === 'long' || norm === 'shakeout';
+  return norm === 'easy' || norm === 'recovery' || norm === 'long' || norm === 'shakeout' || norm === 'race';
 }
 
 /** Label positively says threshold-zone — the stronger bar the no-splits
@@ -474,10 +592,61 @@ export interface PaceObservation {
   paceSecPerMi: number;
   /** Seconds of qualifying effort this observation contributes. */
   durationSec: number;
-  /** Whether the pace came from a splits-aware segment or the whole run. */
-  source: 'splits' | 'whole-run';
-  /** Which HR basis classified this observation into its zone. */
-  hrBasis: HrBasis;
+  /** Whether the pace came from a splits-aware segment, the whole run, or
+   *  `coach_intents.value.phases` (the watch's own per-rep measurement —
+   *  added 2026-08-31, see `thresholdSegmentFromPhases`). */
+  source: 'splits' | 'whole-run' | 'phases';
+  /** Which HR basis classified this observation into its zone. Null only
+   *  for a phase-derived observation with no heart-rate reading at all
+   *  (e.g. a treadmill session with no strap) — every other source always
+   *  has one, because HR-in-zone is still a hard admission gate for them. */
+  hrBasis: HrBasis | null;
+  /**
+   * `avgHr / basisBpm` for whichever basis classified this observation — the
+   * raw fraction `hrZoneMatch` computed, kept rather than discarded once the
+   * pass/fail verdict was read off it. ADDED 2026-08-31, per an external
+   * architecture review: a later pass building continuous confidence scoring
+   * on top of these readers needs the underlying measurement, not just the
+   * boolean this file used to collapse it to. Null exactly when `hrBasis` is
+   * null (no HR reading was available to compute it from).
+   */
+  hrPct: number | null;
+  /**
+   * How far `hrPct` sits from the CENTER of the qualifying band, in
+   * band-half-width units: 0 at the center, 1 at either edge, greater than 1
+   * outside it. For every source except phases this observation was already
+   * required to be `<= 1` to be admitted at all (HR-in-zone is a hard gate);
+   * for a phase-derived observation it can exceed 1 — HR informs reliability
+   * there, it does not gate admission (see `thresholdSegmentFromPhases`).
+   * Null exactly when `hrPct` is null.
+   */
+  hrBandDistance: number | null;
+}
+
+/**
+ * How far `pct` sits from the center of `band`, in band-half-width units — 0
+ * at the center, 1 at either edge, greater than 1 outside it. Pure; shared by
+ * every classifier below so "how well did HR match" is computed the same way
+ * regardless of which source produced the observation.
+ */
+function hrBandDistance(pct: number | null, band: readonly [number, number]): number | null {
+  if (pct == null) return null;
+  const center = (band[0] + band[1]) / 2;
+  const halfWidth = (band[1] - band[0]) / 2;
+  if (!(halfWidth > 0)) return null;
+  return Math.abs(pct - center) / halfWidth;
+}
+
+/** `EASY_PCT_LTHR_BAND` when `basis` is `'pct_lthr'`, else
+ *  `EASY_PCT_HRMAX_BAND` — the band `hrZoneMatch` actually used, so a caller
+ *  computing `hrBandDistance` after the fact matches the same precedence. */
+function easyBandFor(basis: HrBasis): readonly [number, number] {
+  return basis === 'pct_lthr' ? EASY_PCT_LTHR_BAND : EASY_PCT_HRMAX_BAND;
+}
+
+/** The threshold-reader sibling of `easyBandFor`. */
+function thresholdBandFor(basis: HrBasis): readonly [number, number] {
+  return basis === 'pct_lthr' ? THRESHOLD_PCT_LTHR_BAND : THRESHOLD_PCT_HRMAX_BAND;
 }
 
 export type EasyPaceCorpusReason = 'no_observations' | 'insufficient_corroboration';
@@ -610,8 +779,13 @@ export function thresholdPaceCorpus(
 interface ThresholdSegment {
   paceSecPerMi: number;
   durationSec: number;
-  source: 'splits' | 'whole-run';
-  basis: HrBasis;
+  source: 'splits' | 'whole-run' | 'phases';
+  /** Null only for a phase-derived segment with no HR reading at all. */
+  basis: HrBasis | null;
+  /** See `PaceObservation.hrPct` — carried through unchanged. */
+  hrPct: number | null;
+  /** See `PaceObservation.hrBandDistance` — carried through unchanged. */
+  hrBandDistance: number | null;
 }
 
 /**
@@ -648,20 +822,35 @@ export function thresholdSegmentFromSplits(
   let totalSec = 0;
   let totalMi = 0;
   let basisUsed: HrBasis | null = null;
+  // Duration-weighted, same convention as `workAveragesFromPhases` — a
+  // qualifying split's OWN pct contributes to the pooled reliability signal
+  // in proportion to how much of the pooled time it represents.
+  let pctWeighted = 0;
+  let pctWeight = 0;
   for (const s of splits) {
     if (s.hr == null || s.paceSec == null || !(s.paceSec > 0)) continue;
     const mi = s.distanceMi != null && s.distanceMi > 0 ? s.distanceMi : 1;
-    const { inZone, basis } = hrZoneMatch(
+    const sec = s.paceSec * mi;
+    const { inZone, basis, pct } = hrZoneMatch(
       s.hr, ctx, THRESHOLD_PCT_HRMAX_BAND, THRESHOLD_PCT_LTHR_BAND,
     );
     if (!inZone || basis == null) continue;
-    totalSec += s.paceSec * mi;
+    totalSec += sec;
     totalMi += mi;
     basisUsed = basisUsed ?? basis;
+    if (pct != null) { pctWeighted += pct * sec; pctWeight += sec; }
   }
   if (totalMi <= 0 || basisUsed == null) return null;
   if (totalSec < THRESHOLD_MIN_QUALIFYING_SEC || totalSec > THRESHOLD_MAX_QUALIFYING_SEC) return null;
-  return { paceSecPerMi: totalSec / totalMi, durationSec: totalSec, source: 'splits', basis: basisUsed };
+  const pooledPct = pctWeight > 0 ? pctWeighted / pctWeight : null;
+  return {
+    paceSecPerMi: totalSec / totalMi,
+    durationSec: totalSec,
+    source: 'splits',
+    basis: basisUsed,
+    hrPct: pooledPct,
+    hrBandDistance: hrBandDistance(pooledPct, thresholdBandFor(basisUsed)),
+  };
 }
 
 /**
@@ -676,7 +865,7 @@ export function thresholdSegmentFromWholeRun(
   if (row.finishSec == null || !(row.finishSec > 0)) return null;
   if (row.distanceMi == null || !(row.distanceMi > 0)) return null;
   if (!labelSaysThreshold(row.workoutTypeRaw)) return null;
-  const { inZone, basis } = hrZoneMatch(row.avgHr, ctx, THRESHOLD_PCT_HRMAX_BAND, THRESHOLD_PCT_LTHR_BAND);
+  const { inZone, basis, pct } = hrZoneMatch(row.avgHr, ctx, THRESHOLD_PCT_HRMAX_BAND, THRESHOLD_PCT_LTHR_BAND);
   if (!inZone || basis == null) return null;
   if (row.finishSec < THRESHOLD_MIN_QUALIFYING_SEC || row.finishSec > THRESHOLD_WHOLE_RUN_MAX_SEC) return null;
   return {
@@ -684,6 +873,100 @@ export function thresholdSegmentFromWholeRun(
     durationSec: row.finishSec,
     source: 'whole-run',
     basis,
+    hrPct: pct,
+    hrBandDistance: hrBandDistance(pct, thresholdBandFor(basis)),
+  };
+}
+
+/**
+ * PHASE RELIABILITY, NOT A GATE — added 2026-08-31 alongside
+ * `coach_intents.value.phases` as a threshold-evidence source, course-
+ * corrected mid-build by an external architecture review of this exact
+ * change. `thresholdSegmentFromSplits` / `FromWholeRun` above treat the
+ * T-zone HR check as STAGE-1 ADMISSION: fail it and the segment never enters
+ * the pool. A phase is different evidence and earns a different design: it
+ * is the watch's own MEASURED per-rep boundary — duration, distance and pace
+ * are directly instrumented by the device that ran the rep, not
+ * reconstructed after the fact from a mile-binned GPS stream the way a split
+ * is. "Right duration, right pace, clearly a work interval and not a
+ * recovery jog" is already strong evidence on its own, and Research/03 §8's
+ * own footnote says heart rate is the WEAKER signal for a short rep, not the
+ * stronger one: "R workouts: HR unreliable ... coach by pace + RPE."
+ *
+ * So admission here is STAGE 1 ONLY, and it stays binary per Rule 11 — a
+ * phase either qualifies or it does not, on facts that cannot be corrupted
+ * into ambiguity:
+ *
+ *   · genuinely `type === 'work'` — never a recovery jog, warm-up or
+ *     cool-down, so the rest BETWEEN reps can never masquerade as the reps
+ *     themselves.
+ *   · `actual_duration_sec` inside doctrine's own PER-REP window — the same
+ *     citation the splits path already uses for its pooled-total floor,
+ *     applied here per-phase because a phase, unlike a split, IS one rep:
+ *     `THRESHOLD_MIN_QUALIFYING_SEC` (5 min) to `THRESHOLD_MAX_REP_SEC`
+ *     (20 min). This is what correctly excludes David's 2026-08-11 4x1km
+ *     session (four ~4-minute reps at a T-zone heart rate that are, by
+ *     duration alone, Repetition-pace work) without needing HR to make that
+ *     call at all.
+ *   · `actual_distance_mi` present, finite and positive — not corrupted.
+ *
+ * Heart rate — when present — is computed exactly as it is for the other two
+ * sources (`hrZoneMatch` against the same T-band) and reported on the
+ * resulting segment as `hrPct` / `hrBandDistance`, but it does NOT gate
+ * admission and it does NOT widen or narrow the duration/type checks above.
+ * A future confidence pass can weight a corroborating observation by how
+ * close its HR sat to band center; this pass only refuses to throw that
+ * measurement away before such a pass exists to use it (see
+ * `PaceObservation`'s own doc for the same reasoning applied to every
+ * source, including a retrofit of the two above).
+ *
+ * POOLING mirrors the splits path: multiple qualifying work phases in one
+ * watch completion (repeated cruise intervals, say) sum their distance and
+ * time into one observation, and the pooled total must still clear
+ * doctrine's SESSION floor (`THRESHOLD_MIN_SESSION_TOTAL_SEC`, 20 min) —
+ * one lone 6-minute rep is real work and still not, by itself, a full
+ * threshold session.
+ */
+export function thresholdSegmentFromPhases(
+  phases: readonly PhaseBreakdown[],
+  ctx: HrContext,
+): ThresholdSegment | null {
+  const qualifying = phases.filter((p) =>
+    p.type === 'work'
+    && p.actual_duration_sec != null
+    && p.actual_duration_sec >= THRESHOLD_MIN_QUALIFYING_SEC
+    && p.actual_duration_sec <= THRESHOLD_MAX_REP_SEC
+    && p.actual_distance_mi != null
+    && p.actual_distance_mi > 0,
+  );
+  if (qualifying.length === 0) return null;
+
+  let totalSec = 0;
+  let totalMi = 0;
+  let hrWeighted = 0;
+  let hrWeight = 0;
+  for (const p of qualifying) {
+    const sec = p.actual_duration_sec as number;
+    totalSec += sec;
+    totalMi += p.actual_distance_mi as number;
+    // A phase with no reading contributes to neither numerator nor weight —
+    // same convention as `workAveragesFromPhases`, so a partly-instrumented
+    // session (a strap that dropped mid-run) does not drag the pooled HR
+    // toward a reading that was never measured.
+    if (p.avg_hr != null && p.avg_hr > 0) { hrWeighted += p.avg_hr * sec; hrWeight += sec; }
+  }
+  if (totalMi <= 0) return null;
+  if (totalSec < THRESHOLD_MIN_SESSION_TOTAL_SEC || totalSec > THRESHOLD_MAX_QUALIFYING_SEC) return null;
+
+  const pooledHr = hrWeight > 0 ? hrWeighted / hrWeight : null;
+  const { basis, pct } = hrZoneMatch(pooledHr, ctx, THRESHOLD_PCT_HRMAX_BAND, THRESHOLD_PCT_LTHR_BAND);
+  return {
+    paceSecPerMi: totalSec / totalMi,
+    durationSec: totalSec,
+    source: 'phases',
+    basis,
+    hrPct: pct,
+    hrBandDistance: basis != null ? hrBandDistance(pct, thresholdBandFor(basis)) : null,
   };
 }
 
@@ -699,6 +982,16 @@ export interface CandidateRow {
   avgHr: number | null;
   workoutTypeRaw: string | null;
   splits: unknown;
+  /**
+   * `coach_intents.value.phases` for this row's date, already parsed via
+   * `mapWatchPhases` (lib/coach/run-state.ts — the same accessor run detail
+   * itself uses, reused rather than re-derived). Optional and defaults to
+   * empty: `classifyEasyCandidates` never reads it, `loadCandidateRows`
+   * itself does not populate it (a separate, batched query does — see
+   * `loadPhasesByDate`), and every hand-built `CandidateRow` literal in this
+   * file's own unit tests predates this field.
+   */
+  phases?: PhaseBreakdown[];
 }
 
 /**
@@ -718,7 +1011,7 @@ export function classifyEasyCandidates(
     if (labelExcludesEasy(row.workoutTypeRaw)) continue;
     if (row.finishSec == null || row.finishSec < EASY_MIN_DURATION_SEC) continue;
     if (row.distanceMi == null || !(row.distanceMi > 0)) continue;
-    const { inZone, basis } = hrZoneMatch(row.avgHr, ctx, EASY_PCT_HRMAX_BAND, EASY_PCT_LTHR_BAND);
+    const { inZone, basis, pct } = hrZoneMatch(row.avgHr, ctx, EASY_PCT_HRMAX_BAND, EASY_PCT_LTHR_BAND);
     if (!inZone || basis == null) continue;
     out.push({
       id: row.id,
@@ -727,15 +1020,27 @@ export function classifyEasyCandidates(
       durationSec: row.finishSec,
       source: 'whole-run',
       hrBasis: basis,
+      hrPct: pct,
+      hrBandDistance: hrBandDistance(pct, easyBandFor(basis)),
     });
   }
   return out;
 }
 
 /**
- * Pure · classify a set of candidate rows into threshold-pace observations,
- * splits-aware with the whole-run fallback. Same factoring rationale as
+ * Pure · classify a set of candidate rows into threshold-pace observations:
+ * phase-aware first (the watch's own MEASURED per-rep data — the most
+ * direct evidence, see `thresholdSegmentFromPhases`), then splits-aware,
+ * then the whole-run fallback. Same factoring rationale as
  * `classifyEasyCandidates`. No Rule 8 filtering — see "THE THRESHOLD DESIGN".
+ *
+ * Exactly one segment wins per row — a run whose watch completion carries
+ * BOTH qualifying phases and reconciling splits contributes ONE observation
+ * to the corroboration pool, not two, so the same real effort cannot vote
+ * twice. Phases are tried first because they are the more direct
+ * measurement: a mile-granular split is a mile-boundary reconstruction of a
+ * continuous GPS/pace stream, while a phase is the boundary the watch itself
+ * drew around the rep as it ran it.
  */
 export function classifyThresholdCandidates(
   rows: readonly CandidateRow[],
@@ -745,6 +1050,7 @@ export function classifyThresholdCandidates(
   for (const row of rows) {
     if (labelExcludesThreshold(row.workoutTypeRaw)) continue;
     const seg =
+      thresholdSegmentFromPhases(row.phases ?? [], ctx) ??
       thresholdSegmentFromSplits(row.splits, ctx, row.distanceMi) ??
       thresholdSegmentFromWholeRun(row, ctx);
     if (seg == null) continue;
@@ -755,9 +1061,19 @@ export function classifyThresholdCandidates(
       durationSec: seg.durationSec,
       source: seg.source,
       hrBasis: seg.basis,
+      hrPct: seg.hrPct,
+      hrBandDistance: seg.hrBandDistance,
     });
   }
   return out;
+}
+
+/** Shared by `loadCandidateRows` and `loadPhasesByDate` so the two windows
+ *  the threshold reader draws from (runs, watch-completion phases) always
+ *  cover the same span of calendar days. */
+function cutoffDateISO(todayISO: string, lookbackDays: number): string {
+  return new Date(Date.parse(todayISO + 'T12:00:00Z') - lookbackDays * 86400000)
+    .toISOString().slice(0, 10);
 }
 
 async function loadCandidateRows(
@@ -765,8 +1081,7 @@ async function loadCandidateRows(
   todayISO: string,
   lookbackDays: number,
 ): Promise<CandidateRow[]> {
-  const cutoff = new Date(Date.parse(todayISO + 'T12:00:00Z') - lookbackDays * 86400000)
-    .toISOString().slice(0, 10);
+  const cutoff = cutoffDateISO(todayISO, lookbackDays);
   const rows = await pool.query<{
     id: string; date: string; distance_mi: string | null; finish_seconds: string | null;
     avg_hr: string | null; workout_type: string | null; splits: unknown;
@@ -817,6 +1132,83 @@ async function loadHrContext(userId: string, todayISO: string): Promise<HrContex
 }
 
 /**
+ * Batched `coach_intents.value.phases` loader, one date at a time is what
+ * `loadPhaseBreakdown` (lib/coach/run-state.ts, private to that file) does
+ * for run detail — this answers the whole lookback window in ONE query
+ * instead of one per candidate run, which is the only structural
+ * difference. The date-BUCKETING rule is copied from that function rather
+ * than reinvented: a `field` carrying a trailing `-YYYY-MM-DD` (an optional
+ * `#NNNN` de-dup suffix) is bucketed by that literal date; every other shape
+ * (a treadmill's `trd_<uuid>`, a `just-run-<uuid>#hhmm`) is bucketed by `ts`
+ * converted into the runner's OWN wall-clock timezone
+ * (`runnerTimezoneOrPacific` — the same helper, for the same "coach_intents
+ * watch-completion day bucketing" reason its own doc comment names, and the
+ * same reason a `to_char(... AT TIME ZONE tz, 'YYYY-MM-DD')` string extract
+ * is used rather than a `::date` cast — see the node-pg timestamp TZ trap
+ * this repo has hit before). `mapWatchPhases` (also from run-state.ts) does
+ * 100% of the actual parsing — this function only resolves "which date does
+ * this row belong to" and hands each date's raw phases array to it.
+ *
+ * A ±2/+1 day pad around the window covers a matched date that lands just
+ * outside `[cutoffISO, todayISO]` after timezone conversion; rows whose
+ * matched date is still outside the caller's actual window are simply never
+ * looked up by `classifyThresholdCandidates` (which only requests a
+ * candidate row's own `date`), so the pad cannot leak an out-of-window
+ * observation into the corpus.
+ *
+ * Two watch completions landing on the SAME local date (a rare two-a-day, or
+ * a re-submitted completion) keep the most recent by `ts`, matching
+ * `loadPhaseBreakdown`'s own `ORDER BY ts DESC LIMIT 1` per-date semantics.
+ * Malformed JSON in `value` refuses that one row cleanly (Rule 11) rather
+ * than throwing and losing every other row in the window.
+ */
+async function loadPhasesByDate(
+  userId: string,
+  cutoffISO: string,
+  todayISO: string,
+): Promise<Map<string, PhaseBreakdown[]>> {
+  const tz = await runnerTimezoneOrPacific(userId).catch(() => 'America/Los_Angeles');
+  // `rowsOrEmpty` (lib/db/read.ts, per check-swallowed-failure.sh) rather
+  // than a bare `.catch(() => [])`: this reader IS the argued escape-hatch
+  // case — a failed lookup here just means fewer phase observations reach
+  // an already-conservative corroboration statistic (Rule 11 is upheld one
+  // layer up, by thresholdPaceCorpus's own explicit refusal reasons), so
+  // "no phases found" and "the query failed" are the same answer to every
+  // caller of this function. `rowsOrEmpty` still LOGS the failure rather
+  // than swallowing it silently, which is the floor this file's own gate
+  // requires even for an argued-safe fallback.
+  const rows = await rowsOrEmpty<{ value: string | null; matched_date: string | null }>(
+    'pace-corpus.loadPhasesByDate',
+    pool.query(
+      `SELECT ci.value AS value,
+              CASE
+                WHEN ci.field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
+                  THEN substring(ci.field from '([0-9]{4}-[0-9]{2}-[0-9]{2})(?:#[0-9]+)?$')
+                ELSE to_char(ci.ts AT TIME ZONE $4::text, 'YYYY-MM-DD')
+              END AS matched_date
+         FROM coach_intents ci
+        WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
+          AND ci.reason = 'watch_completion'
+          AND ci.ts >= $2::timestamptz - interval '2 days'
+          AND ci.ts <= $3::timestamptz + interval '1 day'
+        ORDER BY ci.ts DESC`,
+      [userId, cutoffISO, todayISO, tz],
+    ),
+  );
+
+  const out = new Map<string, PhaseBreakdown[]>();
+  for (const row of rows) {
+    const date = row.matched_date;
+    if (!date || out.has(date)) continue; // ORDER BY ts DESC · first row per date wins
+    if (row.value == null) continue;
+    let payload: unknown;
+    try { payload = JSON.parse(row.value); } catch { continue; } // Rule 11 · refuse this row, not the query
+    out.set(date, mapWatchPhases((payload as { phases?: unknown })?.phases));
+  }
+  return out;
+}
+
+/**
  * Resolve the easy-pace band from the runner's own classified training.
  *
  * @param todayISO defaults to the runner's local today (`runnerToday`).
@@ -852,11 +1244,14 @@ export async function resolveThresholdPaceCorpus(
 ): Promise<ThresholdPaceRead> {
   const today = todayISO ?? await runnerToday(userId);
   const lookbackDays = opts?.lookbackDays ?? PACE_CORPUS_LOOKBACK_DAYS;
-  const [rows, ctx] = await Promise.all([
+  const cutoff = cutoffDateISO(today, lookbackDays);
+  const [rows, ctx, phasesByDate] = await Promise.all([
     loadCandidateRows(userId, today, lookbackDays),
     loadHrContext(userId, today),
+    loadPhasesByDate(userId, cutoff, today),
   ]);
 
-  const raw = classifyThresholdCandidates(rows, ctx);
+  const withPhases: CandidateRow[] = rows.map((r) => ({ ...r, phases: phasesByDate.get(r.date) ?? [] }));
+  const raw = classifyThresholdCandidates(withPhases, ctx);
   return thresholdPaceCorpus(raw, opts?.minObservations);
 }

@@ -72,6 +72,10 @@ export interface CoercionExemption {
  */
 export const COERCION_ARGUED: readonly CoercionExemption[] = [
   {
+    id: 'lib/training/pace-corpus.ts::loadPhasesByDate::catch',
+    reason: 'runnerTimezoneOrPacific(userId).catch(() => "America/Los_Angeles") mirrors the identical fallback lib/coach/run-state.ts loadPhaseBreakdown already uses for this exact "coach_intents watch-completion day bucketing" case — and runnerTimezoneOrPacific itself already treats a NULL profile.timezone as "assume Pacific" by its own documented convention (pre-multi-tenant rows were all stamped in Pacific wall time), so a thrown read and an absent column reach the identical fallback value by design; this catch only extends that same convention to the rarer case where the lookup throws instead of returning null.',
+  },
+  {
     id: 'lib/adaptation/load.ts::loadAdaptationInput::verdicts.length',
     reason: 'the only consumer is `readInternalCost`, which opens with `if (input.targetVerdicts && input.targetVerdicts.length > 0)` — it tests BOTH shapes, so an empty array and a null reach identical code and no branch anywhere can tell them apart.',
   },
@@ -235,7 +239,7 @@ export interface HandedBack {
 export const HANDED_BACK: readonly HandedBack[] = [
   {
     id: 'lib/plan/adapt.ts::runnerIsCompromised::catch',
-    reason: 'PERMISSIVE · five detector calls each `.catch(() => null | false)` — detectTrainingGap, hasRecentGapIntent, detectSickEpisodeActive, detectInjuryActive, detectNiggleReported. Any ONE failing reads as "not compromised" and the caller\'s next line is `if (compromised) return null`, so a database blip re-enables a plan rebuild on a runner who may be injured. Three call sites of this helper disagree about direction: the plan-drift cron fails CLOSED with compromised:true, this one fails open.',
+    reason: 'PERMISSIVE · five detector calls each `.catch(() => null | false)` — detectTrainingGap, hasRecentGapIntent, detectSickEpisodeActive, detectInjuryActive, detectNiggleReported. Any ONE failing reads as "not compromised" internally, before the function itself ever gets a chance to reject — so `runnerIsCompromised` currently cannot reject at all, and a database blip during any one of these five reads is silently absorbed into a clean `{compromised:false}` rather than surfacing as a failure. Still open; still this session\'s to route. NOT the same bug as the four EXTERNAL call sites disagreeing about what to do if the whole function ever DID reject — that was fixed 2026-08-31 via the exported `runnerIsCompromisedFailClosed` wrapper (all four call sites now agree, fail closed), and is a distinct, narrower fix that does nothing for the internal permissiveness recorded here.',
   },
   {
     id: 'lib/plan/adapt.ts::detectTrainingGap::catch',
@@ -383,7 +387,17 @@ export const SCAN_FLOORS = {
  * for `runnerIsCompromised::catch` means five separate blind handlers in that
  * function, and fixing four of them still leaves one.
  *
- * 122 on 2026-08-30, after this pass's fixes. It may only shrink.
+ * 122 on 2026-08-30, after this pass's fixes; 123 on 2026-08-31 — the one
+ * argued exception to "may only shrink". `runnerIsCompromisedFailClosed`'s
+ * own catch is a new, deliberate, SAFE collapse (see the entry's own comment
+ * below): closing the four-call-site direction disagreement required
+ * centralising the fail-closed conversion into one function, and that
+ * function's own catch is exactly the shape this scanner watches for. The
+ * alternative — naming the fallback value instead of writing it inline so
+ * the regex-based scanner cannot see it — would have been dodging the
+ * classifier rather than answering it, which the scanner's own failure
+ * message says not to do. Everything else on this list may still only
+ * shrink.
  */
 export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/adaptation/load.ts::loadAdaptationInput::catch',
@@ -451,6 +465,18 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/adapt.ts::runnerIsCompromised::catch',
   'lib/plan/adapt.ts::runnerIsCompromised::catch',
   'lib/plan/adapt.ts::runnerIsCompromised::catch',
+  // 2026-08-31 · NOT PERMISSIVE, unlike the five above. This is
+  // `runnerIsCompromisedFailClosed`'s own catch — the fix for the four
+  // call-site direction disagreement this same finding's HANDED_BACK entry
+  // describes ("Three call sites... two fail closed, one fails open" — now
+  // stale text; a fourth call site, also failing open, turned up in the same
+  // audit and all four now agree). The scanner cannot tell direction, only
+  // that a failure collapses into one value, so this deliberate SAFE
+  // collapse (→ compromised:true, never compromised:false) still has to be
+  // named here rather than silently passed. 122 → 123 is not slack; it is
+  // one argued, safe addition — see the function's own doc comment in
+  // lib/plan/adapt.ts.
+  'lib/plan/adapt.ts::runnerIsCompromisedFailClosed::catch',
   'lib/plan/drift-monitor.ts::checkQualityDrift::catch',
   'lib/plan/drift-monitor.ts::loadPlanEasyDayMedian::m',
   'lib/plan/drift-monitor.ts::loadPlanLongRunMedian::m',
@@ -506,6 +532,7 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/training/goal-projection.ts::paceStrToSec::s',
   'lib/training/lthr-reanchor-store.ts::reanchorLthr::catch',
   'lib/training/lthr.ts::resolveThresholdHr::catch',
+  'lib/training/pace-corpus.ts::loadPhasesByDate::catch',
   'lib/training/spec-card.ts::cardFromSpec::sec',
   'lib/training/vdot-gain-rate.ts::secondsPerVdotDelta::gain',
 ];

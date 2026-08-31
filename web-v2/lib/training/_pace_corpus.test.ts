@@ -11,8 +11,9 @@
  *    itself K times) — same blind spot `vdot-corpus.ts`'s own gate names, for
  *    the same reason: corroboration defends against one bad row, not a bad
  *    instrument.
- *  · The DB loader (`loadCandidateRows`, `loadHrContext`) and the Rule 8
- *    window loader (`loadPrescribedWindows`) — nothing here executes SQL.
+ *  · The DB loader (`loadCandidateRows`, `loadHrContext`, `loadPhasesByDate`)
+ *    and the Rule 8 window loader (`loadPrescribedWindows`) — nothing here
+ *    executes SQL.
  *  · Whether the classification bands are RIGHT for a human — that is a
  *    physiology claim the doctrine gate (`lib/doctrine/registry.ts`) makes,
  *    not this file.
@@ -23,16 +24,21 @@ import {
   thresholdPaceCorpus,
   thresholdSegmentFromSplits,
   thresholdSegmentFromWholeRun,
+  thresholdSegmentFromPhases,
   classifyEasyCandidates,
   classifyThresholdCandidates,
   EASY_PCT_HRMAX_BAND,
   THRESHOLD_PCT_HRMAX_BAND,
+  THRESHOLD_MIN_QUALIFYING_SEC,
+  THRESHOLD_MAX_REP_SEC,
+  THRESHOLD_MIN_SESSION_TOTAL_SEC,
   EASY_MIN_DURATION_SEC,
   type PaceObservation,
   type CandidateRow,
   type HrContext,
 } from '@/lib/training/pace-corpus';
 import { vdotFromRun, tPaceFromVdot } from '@/lib/training/vdot';
+import type { PhaseBreakdown } from '@/lib/coach/run-state';
 
 const MAX_HR = 190; // a plausible adult max, used across fixtures
 
@@ -48,6 +54,8 @@ function obs(over: Partial<PaceObservation> & { id: string }): PaceObservation {
     durationSec: 1800,
     source: 'whole-run',
     hrBasis: 'pct_hrmax',
+    hrPct: null,
+    hrBandDistance: null,
     ...over,
   };
 }
@@ -328,6 +336,223 @@ describe('RULE 18 · falsify against the OLD behavior', () => {
       // diluted whole-run average — the exact defect the owner's "Broken Long
       // Run" example demonstrated.
       expect(wholeRunAvgPace - splitAware.paceSecPerMi).toBeGreaterThan(30);
+    }
+  });
+});
+
+/** A `PhaseBreakdown`-shaped fixture with sane defaults, matching what
+ *  `mapWatchPhases` actually returns. */
+function phase(over: Partial<PhaseBreakdown> & { type: PhaseBreakdown['type']; actual_duration_sec: number | null }): PhaseBreakdown {
+  return {
+    index: 0,
+    label: 'Phase',
+    target_pace: null,
+    target_pace_sec: null,
+    tolerance_pace_sec: null,
+    target_distance_mi: null,
+    target_duration_sec: null,
+    actual_pace: null,
+    actual_distance_mi: null,
+    avg_hr: null,
+    max_hr: null,
+    avg_cadence: null,
+    completed: true,
+    status: null,
+    verdict: null,
+    time_in_tolerance_sec: null,
+    time_out_of_tolerance_sec: null,
+    ...over,
+  };
+}
+
+describe('thresholdSegmentFromPhases · coach_intents.value.phases, HR informs reliability not admission', () => {
+  it('pools multiple qualifying T-length work phases into one session (David\'s real 2026-07-16 shape: 3x ~6.8min reps at ~6:46/mi)', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const phases = [
+      phase({ index: 0, type: 'warmup', actual_duration_sec: 600, actual_distance_mi: 1.2, avg_hr: midOfBand(EASY_PCT_HRMAX_BAND) }),
+      phase({ index: 1, type: 'work', actual_duration_sec: 407, actual_distance_mi: 1.0, avg_hr: tHr }),
+      phase({ index: 2, type: 'recovery', actual_duration_sec: 90, actual_distance_mi: 0.15, avg_hr: 130 }),
+      phase({ index: 3, type: 'work', actual_duration_sec: 410, actual_distance_mi: 1.0, avg_hr: tHr }),
+      phase({ index: 4, type: 'recovery', actual_duration_sec: 90, actual_distance_mi: 0.15, avg_hr: 130 }),
+      phase({ index: 5, type: 'work', actual_duration_sec: 408, actual_distance_mi: 1.0, avg_hr: tHr }),
+      phase({ index: 6, type: 'cooldown', actual_duration_sec: 600, actual_distance_mi: 1.2, avg_hr: midOfBand(EASY_PCT_HRMAX_BAND) }),
+    ];
+    const seg = thresholdSegmentFromPhases(phases, ctxHrMaxOnly);
+    expect(seg).not.toBeNull();
+    if (seg) {
+      expect(seg.source).toBe('phases');
+      expect(seg.durationSec).toBe(407 + 410 + 408); // only the 3 work phases pooled
+      // Recovery/warmup/cooldown never enter the pool, however their HR reads.
+      expect(seg.paceSecPerMi).toBeGreaterThan(0);
+      expect(seg.hrPct).not.toBeNull();
+      expect(seg.hrBandDistance).not.toBeNull();
+      expect(seg.hrBandDistance as number).toBeLessThan(1); // squarely in-band
+    }
+  });
+
+  it('REFUSES David\'s real 2026-08-11 4x1km shape — reps too short to be T-pace by duration alone, even with in-band HR', () => {
+    // Real production shape: four ~4-minute 1km reps at a T-zone heart rate.
+    // Duration alone (not HR) is what correctly excludes this — it is
+    // Repetition-pace work wearing a Threshold-zone heart rate.
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const phases = [237, 242, 250, 259].map((sec, i) =>
+      phase({ index: i, type: 'work', actual_duration_sec: sec, actual_distance_mi: 0.62, avg_hr: tHr }));
+    expect(thresholdSegmentFromPhases(phases, ctxHrMaxOnly)).toBeNull();
+  });
+
+  it('a single qualifying rep alone is real work and still not a full session — needs the pooled 20-min total floor', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const onePhase = [phase({ type: 'work', actual_duration_sec: THRESHOLD_MIN_QUALIFYING_SEC + 60, actual_distance_mi: 1.0, avg_hr: tHr })];
+    expect(thresholdSegmentFromPhases(onePhase, ctxHrMaxOnly)).toBeNull();
+    // Three reps of 500s (8.3 min, inside the per-rep window) clear the
+    // 20-minute pooled total floor (1500s total).
+    const threePhases = [0, 1, 2].map((i) =>
+      phase({ index: i, type: 'work', actual_duration_sec: 500, actual_distance_mi: 1.0, avg_hr: tHr }));
+    expect(threePhases.reduce((s, p) => s + (p.actual_duration_sec ?? 0), 0)).toBeGreaterThanOrEqual(THRESHOLD_MIN_SESSION_TOTAL_SEC);
+    expect(thresholdSegmentFromPhases(threePhases, ctxHrMaxOnly)).not.toBeNull();
+  });
+
+  it('a rep at exactly the 20-minute per-rep ceiling qualifies; one second over does not', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const atCeiling = [0, 1].map((i) =>
+      phase({ index: i, type: 'work', actual_duration_sec: THRESHOLD_MAX_REP_SEC, actual_distance_mi: 3.0, avg_hr: tHr }));
+    expect(thresholdSegmentFromPhases(atCeiling, ctxHrMaxOnly)).not.toBeNull();
+    const overCeiling = [0, 1].map((i) =>
+      phase({ index: i, type: 'work', actual_duration_sec: THRESHOLD_MAX_REP_SEC + 1, actual_distance_mi: 3.0, avg_hr: tHr }));
+    // Both individual reps now fail the per-rep ceiling, so nothing qualifies.
+    expect(thresholdSegmentFromPhases(overCeiling, ctxHrMaxOnly)).toBeNull();
+  });
+
+  it('HR clearly outside the T-band does NOT veto admission — course-corrected 2026-08-31 — but is reported honestly as unreliable', () => {
+    // Right duration, right type, HR reading squarely in the EASY band (a
+    // genuinely aerobic rep, or a strap that lagged) — still admitted, per
+    // the external review: HR informs reliability, it is not a hard gate for
+    // phase-sourced evidence.
+    const easyHr = midOfBand(EASY_PCT_HRMAX_BAND);
+    const phases = [0, 1, 2].map((i) =>
+      phase({ index: i, type: 'work', actual_duration_sec: THRESHOLD_MIN_QUALIFYING_SEC + 120, actual_distance_mi: 1.0, avg_hr: easyHr }));
+    const seg = thresholdSegmentFromPhases(phases, ctxHrMaxOnly);
+    expect(seg).not.toBeNull();
+    if (seg) {
+      expect(seg.hrPct).not.toBeNull();
+      // Well outside the T-band — a large hrBandDistance, not a rejection.
+      expect(seg.hrBandDistance as number).toBeGreaterThan(1);
+    }
+  });
+
+  it('admits a session with NO heart-rate reading at all (a treadmill with no strap) — duration/pace/type carry it alone', () => {
+    const phases = [0, 1, 2].map((i) =>
+      phase({ index: i, type: 'work', actual_duration_sec: 500, actual_distance_mi: 1.0, avg_hr: null }));
+    const seg = thresholdSegmentFromPhases(phases, ctxHrMaxOnly);
+    expect(seg).not.toBeNull();
+    if (seg) {
+      expect(seg.basis).toBeNull();
+      expect(seg.hrPct).toBeNull();
+      expect(seg.hrBandDistance).toBeNull(); // Rule 11 · unknown, not zero
+    }
+  });
+
+  it('recovery/warmup/cooldown phases never qualify, however fast or however in-band their HR', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const phases: PhaseBreakdown[] = [
+      phase({ type: 'recovery', actual_duration_sec: 1500, actual_distance_mi: 3, avg_hr: tHr }),
+      phase({ type: 'warmup', actual_duration_sec: 1500, actual_distance_mi: 3, avg_hr: tHr }),
+      phase({ type: 'cooldown', actual_duration_sec: 1500, actual_distance_mi: 3, avg_hr: tHr }),
+    ];
+    expect(thresholdSegmentFromPhases(phases, ctxHrMaxOnly)).toBeNull();
+  });
+
+  it('refuses cleanly on an empty or malformed phase list rather than throwing (Rule 11)', () => {
+    expect(thresholdSegmentFromPhases([], ctxHrMaxOnly)).toBeNull();
+    const corrupted = [phase({ type: 'work', actual_duration_sec: null, actual_distance_mi: null })];
+    expect(() => thresholdSegmentFromPhases(corrupted, ctxHrMaxOnly)).not.toThrow();
+    expect(thresholdSegmentFromPhases(corrupted, ctxHrMaxOnly)).toBeNull();
+  });
+});
+
+describe('classifyThresholdCandidates · phases preferred over splits, race excluded', () => {
+  const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+
+  it('a run with BOTH qualifying phases and reconciling splits contributes exactly one observation', () => {
+    const workPhases: PhaseBreakdown[] = [0, 1, 2].map((i) =>
+      phase({ index: i, type: 'work', actual_duration_sec: 500, actual_distance_mi: 1.0, avg_hr: tHr }));
+    const splits = [
+      { mile: 1, hr: tHr, pace: '6:50', paceSecPerMi: 410 },
+      { mile: 2, hr: tHr, pace: '6:48', paceSecPerMi: 408 },
+      { mile: 3, hr: tHr, pace: '6:52', paceSecPerMi: 412 },
+    ];
+    const rows: CandidateRow[] = [
+      { id: 'both1', date: '2026-08-01', distanceMi: 6, finishSec: 3000, avgHr: tHr, workoutTypeRaw: 'tempo', splits, phases: workPhases },
+    ];
+    const out = classifyThresholdCandidates(rows, ctxHrMaxOnly);
+    expect(out.length).toBe(1);
+    expect(out[0].source).toBe('phases'); // phases preferred — the more direct measurement
+  });
+
+  it('falls back to splits when phases do not qualify, and to whole-run when neither does', () => {
+    const shortReps: PhaseBreakdown[] = [237, 242, 250, 259].map((sec, i) =>
+      phase({ index: i, type: 'work', actual_duration_sec: sec, actual_distance_mi: 0.62, avg_hr: tHr }));
+    const splits = [
+      { mile: 1, hr: tHr, pace: '6:50', paceSecPerMi: 410 },
+      { mile: 2, hr: tHr, pace: '6:48', paceSecPerMi: 408 },
+      { mile: 3, hr: tHr, pace: '6:52', paceSecPerMi: 412 },
+    ];
+    const rows: CandidateRow[] = [
+      { id: 'fallback1', date: '2026-08-01', distanceMi: 6, finishSec: 3000, avgHr: tHr, workoutTypeRaw: 'tempo', splits, phases: shortReps },
+    ];
+    const out = classifyThresholdCandidates(rows, ctxHrMaxOnly);
+    expect(out.length).toBe(1);
+    expect(out[0].source).toBe('splits'); // phases refused (too short), splits pick it up
+  });
+
+  it('a `phases` field left undefined behaves exactly like an empty array — the pre-existing splits/whole-run behavior is unchanged', () => {
+    const splits = [
+      { mile: 1, hr: tHr, pace: '6:50', paceSecPerMi: 410 },
+      { mile: 2, hr: tHr, pace: '6:48', paceSecPerMi: 408 },
+      { mile: 3, hr: tHr, pace: '6:52', paceSecPerMi: 412 },
+    ];
+    const rows: CandidateRow[] = [
+      { id: 'nophases1', date: '2026-08-01', distanceMi: 6, finishSec: 3000, avgHr: tHr, workoutTypeRaw: 'tempo', splits },
+    ];
+    const out = classifyThresholdCandidates(rows, ctxHrMaxOnly);
+    expect(out.length).toBe(1);
+    expect(out[0].source).toBe('splits');
+  });
+
+  it('a race-labeled run is excluded from threshold candidacy entirely, however qualifying its phases look', () => {
+    const workPhases: PhaseBreakdown[] = [0, 1, 2].map((i) =>
+      phase({ index: i, type: 'work', actual_duration_sec: THRESHOLD_MIN_QUALIFYING_SEC + 300, actual_distance_mi: 1.5, avg_hr: tHr }));
+    const rows: CandidateRow[] = [
+      { id: 'race1', date: '2026-08-16', distanceMi: 13.1, finishSec: 6000, avgHr: tHr, workoutTypeRaw: 'race', splits: null, phases: workPhases },
+    ];
+    expect(classifyThresholdCandidates(rows, ctxHrMaxOnly).length).toBe(0);
+  });
+});
+
+describe('PaceObservation · hrPct / hrBandDistance retrofit (external review, 2026-08-31)', () => {
+  it('classifyEasyCandidates reports the measured hrPct and a small hrBandDistance for a centered reading', () => {
+    const easyHr = midOfBand(EASY_PCT_HRMAX_BAND);
+    const rows: CandidateRow[] = [
+      { id: 'e1', date: '2026-08-01', distanceMi: 6, finishSec: 3000, avgHr: easyHr, workoutTypeRaw: null, splits: null },
+    ];
+    const out = classifyEasyCandidates(rows, ctxHrMaxOnly);
+    expect(out.length).toBe(1);
+    expect(out[0].hrPct).toBeCloseTo(easyHr / MAX_HR, 3);
+    expect(out[0].hrBandDistance as number).toBeLessThan(0.1); // dead center by construction
+  });
+
+  it('thresholdSegmentFromSplits reports a pooled hrPct/hrBandDistance, not a discarded boolean', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const splits = [
+      { mile: 1, hr: tHr, pace: '6:50', paceSecPerMi: 410 },
+      { mile: 2, hr: tHr, pace: '6:48', paceSecPerMi: 408 },
+      { mile: 3, hr: tHr, pace: '6:52', paceSecPerMi: 412 },
+    ];
+    const seg = thresholdSegmentFromSplits(splits, ctxHrMaxOnly);
+    expect(seg).not.toBeNull();
+    if (seg) {
+      expect(seg.hrPct).not.toBeNull();
+      expect(seg.hrBandDistance as number).toBeLessThan(1);
     }
   });
 });
