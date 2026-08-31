@@ -1740,7 +1740,14 @@ export async function buildWatchToday(
         AND workout_spec->>'pace_target_s_per_mi_lo' IS NOT NULL
         AND workout_spec->>'pace_target_s_per_mi_hi' IS NOT NULL
       ORDER BY (workout_spec->>'kind' = 'easy') DESC,
-               ABS(date_iso::date - $2::date) ASC
+               ABS(date_iso::date - $2::date) ASC,
+               -- EASYBAND-TIE-1 (2026-09-01) · same tiebreak as the
+               -- identical query in app/api/v5/today/route.ts — on an exact
+               -- distance tie, prefer the FUTURE neighbor. Recompute only
+               -- ever rewrites unsealed rows with date_iso >= "today", so a
+               -- future row can never be staler than a past one. Must stay
+               -- identical to the phone's query (see header comment above).
+               (date_iso::date > $2::date) DESC
       LIMIT 1`,
     [plan.id, today]
   ).catch(() => ({ rows: [] }))).rows[0];

@@ -104,12 +104,14 @@ one.
 ## 4. Warm-up, recovery, and cool-down intent — as the runner now reads it
 
 **Warm-up:** *"Start easy. Build into the work over the last quarter mile."*
-— unchanged copy, but the pace beside it changed shape: `"≤ 8:43 /mi"`, a
+— unchanged copy, but the pace beside it changed shape: `"≤ 8:22 /mi"`, a
 ceiling with an explicit upper-bound glyph, not a flat target. The HR row
 beside it, `"<139 bpm (Z1)"`, is the same field it always was. Read together
 they now agree instead of fighting: start under both ceilings, let the effort
-rise toward the work that follows. See §6 for why "8:43" specifically is
-still not the number doctrine's own resolver would hand this exact day.
+rise toward the work that follows. (§6 walks the short-lived intermediate
+state — `8:43` — where this pass's semantics fix had landed but a separate,
+same-day tiebreak bug still fed it a stale anchor; both are fixed as of this
+report.)
 
 **Recovery (the 1:00 jog between reps):** *"Honest jog, not standing."* — no
 pace shown at all now. It used to print `"9:03 /mi"`, identical to the
@@ -122,7 +124,7 @@ split.
 **Cool-down:** *"Easy jog. Part of the workout, not extra mileage."* — the
 punitive "it shortens tomorrow" line was already fixed by a prior pass
 (`docs/reports/workout-provenance-trace-2026-09-01.md` §15, commit before
-this one); untouched here. Pace shows the same `"≤ 8:43 /mi"` ceiling as the
+this one); untouched here. Pace shows the same `"≤ 8:22 /mi"` ceiling as the
 warm-up, for the same reason — cool-down is easy running too.
 
 ## 5. Provenance of every distance, duration, pace, range, and HR instruction
@@ -138,7 +140,7 @@ warm-up, for the same reason — cool-down is easy running too.
 | Rep recovery pace | *(none)* | Was `easyPaceSec` reused; now explicitly null | **Fixed this pass** — no doctrine source ever priced this pace |
 | Rep pass/bail HR | ≤164 / >173 | `round(lthr × 0.975)` / `lthr + 5`, off live `lthr = 168` | Unchanged |
 | Warm-up/cool-down HR | ≤139 (Z1) | `hrTargets(profile)` zone 1 | Unchanged |
-| Warm-up/cool-down pace | ≤ 8:43/mi (523 s/mi) | Nearest easy-band row's `lo` (fast edge = ceiling, per `docs/PRODUCT_DECISIONS.md` 2026-08-31) | **Fixed this pass** — was the *midpoint* of the same band (543 s/mi, 9:03/mi); now the ceiling (523 s/mi). **Still stale** — see §6, a separate bug this pass found but did not fix |
+| Warm-up/cool-down pace | ≤ 8:22/mi (502 s/mi) | Nearest easy-band row's `lo` (fast edge = ceiling, per `docs/PRODUCT_DECISIONS.md` 2026-08-31) | **Fixed this pass** — was the *midpoint* of the same band (543 s/mi, 9:03/mi); now the ceiling. Briefly still stale at 523 s/mi (8:43/mi) due to a separate same-day tiebreak bug (§6, EASYBAND-TIE-1) this pass found and flagged; that bug is also resolved as of this report, landing the final 502 s/mi |
 | Rep pace tolerance | ± 8 s/mi | `cardTolerance` in `route.ts`, same width the watch grades against | Unchanged value; **now displayed**, not just wired |
 
 ## 6. Identical effective target — phone, watch, and execution grading
@@ -183,6 +185,24 @@ citations rather than expanding this pass's scope to include a change to a
 query shared by every workout type, every plan, on every day — a change that
 size deserved its own falsification pass.
 
+**RESOLVED 2026-09-01, same-day follow-up (EASYBAND-TIE-1).** Both
+`easyBandRow` queries (`app/api/v5/today/route.ts`,
+`lib/watch/build-workout.ts`) now carry a third `ORDER BY` term —
+`(date_iso::date > $2::date) DESC` — that breaks an exact distance tie toward
+the future-dated candidate. This is monotone, not a heuristic guess:
+`recomputePacesForPlan`/`reanchorActivePlan` only ever rewrite rows with
+`date_iso >= "today"` that aren't sealed, so a future-dated row keeps
+receiving every later recompute while a past-dated row freezes the moment it
+seals or simply passes — a future tie-candidate's band can therefore never be
+staler than a past one's. Re-run against the live read-only role on
+`pln_9a57561debb776e5`: the query now resolves to 2026-09-02
+(`lo=502, hi=542`) instead of 2026-08-31 (`lo=523, hi=563`), so
+`wko_eaa8cfd7cb94310b`'s warm-up/cool-down line becomes `≤ 8:22 /mi`
+(502 s/mi) — exactly the "if fixed" value predicted above, and matching the
+resolver's own `easyCeilingSecPerMi` in `authored_state.pace_recompute.anchors`
+as of the 2026-08-31T21:48 UTC recompute. `npx tsc --noEmit` clean and the
+418 tests in `app/api/v5`, `lib/watch`, `lib/faff` pass unchanged.
+
 ## 7. Which legacy values disappeared
 
 - **The bare `7:10 /mi` point** on the rep target — replaced by the `7:02-
@@ -197,14 +217,17 @@ size deserved its own falsification pass.
   HR cap, provenance trace §14) — gone; the ceiling framing is consistent
   with all three surviving fields.
 - **The midpoint-of-a-ceiling-band anti-pattern** — `543 s/mi` (the mean of
-  523/563) is no longer shown anywhere on this card; `523` (the fast edge)
-  is used instead, per the settled "easy pace is a ceiling, not a band"
-  product decision.
+  523/563) is no longer shown anywhere on this card; the fast edge is used
+  instead, per the settled "easy pace is a ceiling, not a band" product
+  decision.
+- **The stale easy-band row selection** described in §6 — gone as of
+  EASYBAND-TIE-1, same day. `task_10b63406` ("Fix easy-band nearest-day
+  tie-break toward freshness") was spawned for this and is now resolved;
+  dismissed rather than left open against a closed finding.
 
 **Not touched by this pass, still present, named so the next reader does not
 have to re-find them:**
 
-- The stale easy-band row selection described in §6 (`task_10b63406`).
 - `restS / 540` — the hardcoded 9:00/mi conversion `spec-builder.ts` still
   uses to convert a rep's rest seconds into mileage for the WU/CD slack
   split (provenance trace §6, "the same fabricated constant `P1-47` removed
@@ -231,9 +254,9 @@ Cooldown   2.1 mi   9:03 /mi   HR ≤ 139   "Easy jog. Do not skip it, it shorte
 why:  "Lift the lactate threshold · the engine's ceiling. The pace you could hold for an hour."
 ```
 
-**After** (this pass, `cardFromSpec` called directly against the live row,
-2026-09-01, real anchors — exact JSON the phone receives, formatted for
-reading):
+**After, intermediate** (this pass's semantics fix alone, before
+EASYBAND-TIE-1 landed — `easyCeilingSec: 523`, the stale-but-now-correctly-
+interpreted-as-a-ceiling anchor described in §6):
 
 ```
 Warmup     2.1 mi   ≤ 8:43 /mi     HR <139 bpm (Z1)    "Start easy. Build into the work over the last quarter mile."
@@ -243,15 +266,27 @@ Cooldown   2.1 mi   ≤ 8:43 /mi     HR <139 bpm (Z1)    "Easy jog. Part of the 
 why:  "Lift the lactate threshold · the engine's ceiling. The pace you could hold for an hour."
 ```
 
-Raw output of the verification call (`cardFromSpec` against
-`wko_eaa8cfd7cb94310b`'s real `workout_spec`, `easyPaceSec: 543`,
-`easyCeilingSec: 523`, `toleranceSec: 8`):
+**After, final** (post EASYBAND-TIE-1 — `cardFromSpec` called directly
+against the live row with the corrected tie-break in force, `easyCeilingSec:
+502` — this is what the runner actually reads as of this report):
+
+```
+Warmup     2.1 mi   ≤ 8:22 /mi     HR <139 bpm (Z1)    "Start easy. Build into the work over the last quarter mile."
+Repeat 4×  1 mi     7:02-7:18 /mi  HR 164-172 bpm (Z4)  "Same pace on every rep. If the last one slips, the target was too fast."
+  recovery 1:00     (by feel)                           "Honest jog, not standing."
+Cooldown   2.1 mi   ≤ 8:22 /mi     HR <139 bpm (Z1)    "Easy jog. Part of the workout, not extra mileage."
+why:  "Lift the lactate threshold · the engine's ceiling. The pace you could hold for an hour."
+```
+
+Raw output of the final verification call (`cardFromSpec` against
+`wko_eaa8cfd7cb94310b`'s real `workout_spec`, `easyPaceSec: 522`,
+`easyCeilingSec: 502`, `toleranceSec: 8`, re-run after EASYBAND-TIE-1):
 
 ```json
 {
   "label": "Warmup",
   "distance_mi": 2.1,
-  "pace_target": "≤ 8:43 /mi",
+  "pace_target": "≤ 8:22 /mi",
   "hr_target": "<139 bpm (Z1)",
   "note": "Start easy. Build into the work over the last quarter mile."
 }
@@ -267,7 +302,7 @@ Raw output of the verification call (`cardFromSpec` against
 {
   "label": "Cooldown",
   "distance_mi": 2.1,
-  "pace_target": "≤ 8:43 /mi",
+  "pace_target": "≤ 8:22 /mi",
   "hr_target": "<139 bpm (Z1)",
   "note": "Easy jog. Part of the workout, not extra mileage."
 }
@@ -277,10 +312,9 @@ Note the recovery sub-object carries no `pace_target` key at all — not a
 null, an absence, which is what "goes out by feel" means on the wire (same
 P1-47 convention the expander already used for a missing easy anchor).
 
-If §6's stale-row bug is fixed separately, the warm-up/cool-down line becomes
-`"≤ 8:22 /mi"` (502 s/mi, the resolver's live `easyCeilingSecPerMi`) with
-every other line in this render unchanged — confirmed by re-running the same
-verification call with `easyCeilingSec: 502` substituted by hand.
+This matches the resolver's own live `easyCeilingSecPerMi` (502 s/mi) in
+`authored_state.pace_recompute.anchors` exactly — the display layer and the
+capacity layer now agree, which they did not at any point before this pass.
 
 ---
 

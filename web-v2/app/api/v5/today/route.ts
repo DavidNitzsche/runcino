@@ -1432,7 +1432,24 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
             AND workout_spec->>'pace_target_s_per_mi_lo' IS NOT NULL
             AND workout_spec->>'pace_target_s_per_mi_hi' IS NOT NULL
           ORDER BY (workout_spec->>'kind' = 'easy') DESC,
-                   ABS(date_iso::date - $2::date) ASC
+                   ABS(date_iso::date - $2::date) ASC,
+                   -- EASYBAND-TIE-1 (2026-09-01) · on an exact distance tie
+                   -- (a workout sitting equidistant between two easy/long
+                   -- rows — common, since most weeks alternate easy/quality
+                   -- daily), prefer the FUTURE neighbor over the past one.
+                   -- recomputePacesForPlan / reanchorActivePlan only ever
+                   -- rewrite rows with date_iso >= "today" that aren't
+                   -- sealed; a past-dated row freezes the moment it seals
+                   -- (or simply passes) and never gets touched again, while
+                   -- a future-dated row keeps receiving every later
+                   -- recompute. So a future tie-candidate's band can never
+                   -- be staler than a past one's — this is monotonic, not a
+                   -- guess. Without it Postgres broke the tie by scan order,
+                   -- which in practice favoured the stale past row (verified
+                   -- 2026-09-01 on plan pln_9a57561debb776e5: a 2026-09-01
+                   -- workout picked 2026-08-31's pre-recompute band over
+                   -- 2026-09-02's current one, 21 s/mi apart).
+                   (date_iso::date > $2::date) DESC
           LIMIT 1`,
         [activePlan.id, today],
       ).catch((e) => { console.error('[v5/today] easy band read failed', e); return { rows: [] as any[] }; })).rows[0]
