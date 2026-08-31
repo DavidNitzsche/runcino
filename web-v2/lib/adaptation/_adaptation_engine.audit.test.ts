@@ -106,10 +106,19 @@ describe.skipIf(!RO)('ADAPTATION ENGINE · shadow mode against the owner\'s live
       + ` · readable ${input.state.readable}`);
     console.log(`absorption · band ${input.absorption.band} · confidence ${input.absorption.confidence} `
       + `· decision ${input.absorption.decision} · veto ${input.absorption.veto ?? 'none'}`);
-    console.log(`plan     · prescribed threshold ${pace(input.pace.prescribedThresholdSecPerMi)} `
-      + `· week ahead ${input.load.currentWeeklyMi ?? '-'} mi `
+    console.log(`plan     · week ahead ${input.load.currentWeeklyMi ?? '-'} mi `
       + `· long ahead ${input.longRun.prescribedLongMi ?? '-'} mi `
       + `· tier ceiling ${input.load.tierWeeklyUpperMi ?? '-'} mi`);
+    // PART 1 OF THE 2026-09-01 DECISION · phase-specific pricing, not a
+    // blended average. Print every phase the loader found, each with its own
+    // prescribed pace, so a human reading this log sees the SAME thing the
+    // engine now decides against.
+    console.log(`plan     · prescribed threshold, BY PHASE (${input.pace.phases.length} phase(s)):`);
+    for (const ph of input.pace.phases) {
+      console.log(`             ${pad(ph.phaseLabel ?? '(unphased)', 14)} `
+        + `${pace(ph.prescribedSecPerMi)} · ${ph.rowCount} row(s) `
+        + `· ${ph.firstDateISO} → ${ph.lastDateISO}`);
+    }
 
     /* ── 2b · THE WINDOW · Rule 8's confidence-weighted lookback ───────────── */
     const lb = input.pace.lookback;
@@ -138,10 +147,10 @@ describe.skipIf(!RO)('ADAPTATION ENGINE · shadow mode against the owner\'s live
         + `cost=${pad(String(s.internalCostMagnitude), 9)} `
         + `weight=${s.weight.toFixed(2)} ${sessionDemonstratesControl(s) ? '✓ counts' : '✗ does not count'}`);
     }
-    if (input.pace.prescribedThresholdSecPerMi != null) {
-      const gap = input.pace.prescribedThresholdSecPerMi - c.threshold.paceSecPerMi;
-      console.log(`             capacity leads the prescription by ${gap.toFixed(1)} s/mi `
-        + `(needs ${'5'}+ and a direct source; source is ${c.threshold.sourceMode})`);
+    for (const ph of input.pace.phases) {
+      const gap = ph.prescribedSecPerMi - c.threshold.paceSecPerMi;
+      console.log(`             ${pad(ph.phaseLabel ?? '(unphased)', 14)} capacity leads by `
+        + `${gap.toFixed(1)} s/mi (needs 5+ and a direct source; source is ${c.threshold.sourceMode})`);
     }
 
     const scheduled = input.load.recentWeeks.filter((w) => w.scheduledMi != null && w.scheduledMi > 0);
@@ -179,6 +188,15 @@ describe.skipIf(!RO)('ADAPTATION ENGINE · shadow mode against the owner\'s live
       console.log(`      ${JSON.stringify(p.previous)} → ${JSON.stringify(p.proposed)}`);
       console.log(`      reasons: ${p.reasonCodes.join(', ')}`);
       console.log(`      "${p.explanation}"`);
+      if (p.target === 'PACE') {
+        console.log('      phase breakdown (Part 1 of the 2026-09-01 decision):');
+        for (const b of p.phaseBreakdown) {
+          console.log(`        ${pad(b.phaseLabel ?? '(unphased)', 14)} `
+            + `${pace(b.previousSecPerMi)} → ${pace(b.proposedSecPerMi)} `
+            + `(step ${b.stepSecPerMi.toFixed(1)}s, ${b.rowCount} row(s)) `
+            + `${b.moved ? 'MOVED' : 'held'}`);
+        }
+      }
       for (const w of p.whyNot) console.log(`      why-not ${w.lever}: ${w.detail}`);
     }
     if (proposals.deferred.length > 0) {

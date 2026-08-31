@@ -42,6 +42,7 @@ import { tryAdaptiveBump } from '@/lib/plan/adaptive-ramp';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
 import { recordCronSuccess } from '@/lib/ops/cron-ledger';
+import { runAndPersistPaceShadowCompare } from '@/lib/adaptation/shadow-compare';
 
 export const maxDuration = 120;
 
@@ -109,6 +110,30 @@ export async function POST(req: NextRequest) {
       } catch { /* logged inside · non-fatal */ }
 
       const { triggers, actions } = await detectAdaptations(uid);
+
+      // ── 2026-09-01 · PACE SHADOW-COMPARE (docs/PRODUCT_DECISIONS.md §2) ──
+      //
+      // Runs on every eligible cycle — this loop iterates every active plan,
+      // which is exactly "eligible" for a runner-scoped daily pass. PACE-only,
+      // read-only, never mutates: `runAndPersistPaceShadowCompare` calls
+      // `resolveAdaptationProposals` and `detectAdaptations` (a detector, not
+      // an applier) and persists the comparison — see
+      // lib/adaptation/shadow-compare.ts's header for the zero-mutation
+      // argument and the DDL-blocked persistence posture.
+      //
+      // Placed BEFORE `applyAdaptations` below on purpose: it re-derives
+      // `detectAdaptations` internally (for standalone testability outside
+      // this loop), and reading it before the live pass mutates anything
+      // keeps both detections looking at the SAME pre-mutation plan state —
+      // reading it after would compare the new engine's proposal against a
+      // live signal computed off an already-adapted plan, which is not the
+      // same cycle. Best-effort: never blocks the real adaptation pass.
+      try {
+        const shadow = await runAndPersistPaceShadowCompare(uid);
+        if (shadow.error) {
+          console.warn(`[shadow-compare] ${uid}: ${shadow.error}`);
+        }
+      } catch { /* logged inside · non-fatal, per the file's own contract */ }
 
       // 2026-06-04 · split actions into APPLY-NOW vs PROPOSE-FIRST.
       // David's complaint: "I dont want to wake up to change runs ·

@@ -98,6 +98,7 @@ import {
   type DensityGateState,
   type EvidenceLookback,
   type LongRunRead,
+  type PacePhaseRead,
   type QualitySessionRead,
   type VolumeToleranceRead,
 } from './adaptation-engine';
@@ -308,16 +309,10 @@ export async function resolveAdaptationProposals(
   const weekAheadEnd = isoPlusDays(today, 6);
   const planNumbers = planRow
     ? await pool.query<{
-        prescribed_threshold: number | null;
         long_ahead: string | number | null;
         week_ahead_mi: string | number | null;
       }>(
         `SELECT
-           (SELECT AVG(pace_target_s_per_mi)::int
-              FROM plan_workouts
-             WHERE plan_id = $1 AND date_iso >= $2
-               AND type IN ('threshold','tempo','cruise')
-               AND pace_target_s_per_mi IS NOT NULL) AS prescribed_threshold,
            (SELECT MAX(distance_mi)
               FROM plan_workouts
              WHERE plan_id = $1 AND date_iso BETWEEN $2 AND $3 AND type = 'long') AS long_ahead,
@@ -326,6 +321,47 @@ export async function resolveAdaptationProposals(
              WHERE plan_id = $1 AND date_iso BETWEEN $2 AND $3) AS week_ahead_mi`,
         [planRow.id, today, weekAheadEnd],
       ).then((r) => r.rows[0] ?? null).catch((e) => note('plan numbers', e))
+    : null;
+
+  /* ── 6b · THE PRESCRIBED PACE, GROUPED BY PHASE ───────────────────────────
+   *
+   * PART 1 OF THE 2026-09-01 DECISION (`docs/PRODUCT_DECISIONS.md` §2). The
+   * query this replaced was one `AVG(pace_target_s_per_mi)` across EVERY
+   * remaining threshold/tempo/cruise row through the end of the visible
+   * plan — no upper bound on `date_iso`, so it blended QUALITY, RACE-SPECIFIC
+   * and TAPER pricing (407-475 s/mi on the owner's real account) into one
+   * number and moved every future row by the same delta off it.
+   *
+   * `plan_phases`/`plan_weeks` already carry the grouping the plan itself
+   * authored — `plan_workouts.week_id` → `plan_weeks.id` →
+   * `plan_weeks.phase_id` → `plan_phases.label` — so this reads the plan's
+   * OWN phase boundaries rather than inventing a second one. A row whose week
+   * carries no phase (`LEFT JOIN`, `phase_label IS NULL`) is grouped as its
+   * own null-labelled bucket, never folded into a neighbour's average.
+   */
+  const phaseRows = planRow
+    ? await pool.query<{
+        phase_label: string | null;
+        avg_s: number | null;
+        row_count: string;
+        first_date: string;
+        last_date: string;
+      }>(
+        `SELECT ph.label AS phase_label,
+                ROUND(AVG(pw.pace_target_s_per_mi))::int AS avg_s,
+                COUNT(*)::int AS row_count,
+                MIN(pw.date_iso) AS first_date,
+                MAX(pw.date_iso) AS last_date
+           FROM plan_workouts pw
+           LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
+           LEFT JOIN plan_phases ph ON ph.id = wk.phase_id
+          WHERE pw.plan_id = $1 AND pw.date_iso >= $2
+            AND pw.type IN ('threshold','tempo','cruise')
+            AND pw.pace_target_s_per_mi IS NOT NULL
+          GROUP BY ph.id, ph.label
+          ORDER BY MIN(pw.date_iso)`,
+        [planRow.id, today],
+      ).then((r) => r.rows).catch((e) => note('plan phase pricing', e))
     : null;
 
   /* ── 7 · THE LOAD PICTURE · completed against scheduled, per whole week ── */
@@ -511,7 +547,19 @@ export async function resolveAdaptationProposals(
     state,
     absorption,
     pace: {
-      prescribedThresholdSecPerMi: num(planNumbers?.prescribed_threshold ?? null),
+      phases: (phaseRows ?? [])
+        .map((r): PacePhaseRead | null => {
+          const avg = num(r.avg_s);
+          if (avg == null) return null;
+          return {
+            phaseLabel: r.phase_label,
+            prescribedSecPerMi: avg,
+            rowCount: Number(r.row_count),
+            firstDateISO: r.first_date,
+            lastDateISO: r.last_date,
+          };
+        })
+        .filter((p): p is PacePhaseRead => p != null),
       sessions,
       // The CONTROLLED ones — `sessionDemonstratesControl` is the engine's own
       // exported predicate, called rather than re-implemented (Rule 16).

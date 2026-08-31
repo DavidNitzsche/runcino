@@ -361,7 +361,15 @@ interface ProposalCore {
 export type AdaptationProposal =
   | (ProposalCore & {
       target: 'PACE'; domain: 'FITNESS';
+      /** The soonest phase this proposal actually touches (or, on a HOLD /
+       *  INSUFFICIENT_EVIDENCE, the soonest phase read) — a single number for
+       *  a caller that just wants "the headline". THE MECHANISM ITSELF is
+       *  `phaseBreakdown`, never this pair alone. */
       previous: PaceMagnitude; proposed: PaceMagnitude;
+      /** EVERY phase read, each with its OWN previous/proposed/step — Part 1
+       *  of the 2026-09-01 decision. Never a blended average applied
+       *  uniformly; see `PacePhaseOutcome`. */
+      phaseBreakdown: PacePhaseOutcome[];
     })
   | (ProposalCore & {
       target: 'VOLUME'; domain: 'LOAD';
@@ -513,11 +521,63 @@ export interface EvidenceLookback {
   reachedOuterBound: boolean;
 }
 
+/**
+ * ONE PHASE-WORTH of prescribed threshold/tempo/cruise pricing, as the plan
+ * itself groups it (`plan_phases`/`plan_weeks`).
+ *
+ * ── PART 1 OF THE 2026-09-01 DECISION, §2 ────────────────────────────────────
+ *
+ * The bug this replaces: the loader used to run one `AVG(pace_target_s_per_mi)`
+ * across EVERY remaining threshold/tempo/cruise row through the end of the
+ * visible plan, and `detectPace` moved that single blended number by one step.
+ * On the owner's real account (2026-08-31) that average was computed across
+ * QUALITY (435 s/mi), RACE-SPECIFIC (424 s/mi) and TAPER (475 s/mi) — three
+ * phases whose correct paces legitimately differ by doctrine, blended into
+ * 438 and then nudged uniformly. A TAPER row and a QUALITY-phase row do not
+ * share a "current authored pace"; averaging them produces a number that is
+ * correct for neither, and moving every future row by the SAME delta off that
+ * number is imprecise in exactly the way the decision doc names.
+ *
+ * Never blended across phases. RACE-SPECIFIC and TAPER price threshold work
+ * differently ON PURPOSE.
+ */
+export interface PacePhaseRead {
+  /** `plan_phases.label` (e.g. 'QUALITY', 'RACE-SPECIFIC', 'TAPER'), or null
+   *  when the row carries no phase — an unlabelled row is its own single-row
+   *  "phase", never folded into a neighbour's blend (Rule 11). */
+  phaseLabel: string | null;
+  /** This phase's OWN currently-authored pace, s/mi — averaged across this
+   *  phase's own rows only, never across phases. */
+  prescribedSecPerMi: number;
+  /** Rows backing this phase's number. */
+  rowCount: number;
+  firstDateISO: string;
+  lastDateISO: string;
+}
+
+/**
+ * One phase's OUTCOME once a PACE decision has been computed — its own
+ * previous/proposed/step, so "these specific future rows, each moving by
+ * their own delta relative to their own current authored pace" (the decision
+ * doc's own words) is a field on the proposal, not a sentence about it.
+ *
+ * Reported for EVERY phase, moved or not (Rule 16 — a phase that did not
+ * move is still a fact about the proposal, not silence).
+ */
+export interface PacePhaseOutcome extends PacePhaseRead {
+  previousSecPerMi: number;
+  proposedSecPerMi: number;
+  stepSecPerMi: number;
+  /** Whether THIS phase's own gain cleared the step and actually moved. */
+  moved: boolean;
+}
+
 /** The PACE lever's slice. Capacity and quality execution, nothing else. */
 export interface PaceEvidence {
-  /** What the plan currently prescribes for threshold work, s/mi. The thing a
-   *  proposal would change. Null when no threshold day carries a target. */
-  prescribedThresholdSecPerMi: number | null;
+  /** Grouped by phase, chronological (soonest first). Each phase is priced
+   *  and moved independently — see `PacePhaseRead`. Empty when the plan
+   *  carries no priced threshold/tempo/cruise row ahead. */
+  phases: PacePhaseRead[];
   sessions: QualitySessionRead[];
   lookback: EvidenceLookback;
 }
@@ -821,6 +881,53 @@ export function sessionDemonstratesControl(s: QualitySessionRead): boolean {
   return true;
 }
 
+/**
+ * One phase's step, computed against ITS OWN currently-authored pace.
+ *
+ * The step ceiling is anchored on THAT PHASE's `prescribedSecPerMi`, exactly
+ * as the pre-fix single-value version anchored on the blended average — the
+ * doctrinal soft-lead quantum ("one training-lead VDOT point, priced at this
+ * runner's own level") is a property of the pace being moved FROM, and a
+ * phase's own prescribed pace is the only honest anchor for that phase's own
+ * step. `gain < 0` (this phase's own prescription is already faster than
+ * believed capacity — e.g. a RACE-SPECIFIC phase deliberately pricing
+ * marathon-pace segments near threshold) and `gain` below the doctrine
+ * minimum are both "no move for this phase", kept apart in `moved`.
+ */
+function phaseStep(
+  phase: PacePhaseRead,
+  believedSecPerMi: number,
+): PacePhaseOutcome {
+  const prescribed = phase.prescribedSecPerMi;
+  const gain = prescribed - believedSecPerMi;
+  if (gain < PACE_PROGRESS_MIN_STEP_SEC_PER_MI) {
+    return { ...phase, previousSecPerMi: prescribed, proposedSecPerMi: prescribed, stepSecPerMi: 0, moved: false };
+  }
+  const believedVdot = vdotFromTpace(prescribed);
+  const stepCeiling = believedVdot != null
+    ? (() => {
+        const faster = tPaceFromVdot(believedVdot + TRAINING_LEAD_REANCHOR_DELTA);
+        return faster != null ? Math.max(PACE_PROGRESS_MIN_STEP_SEC_PER_MI, prescribed - faster) : gain;
+      })()
+    : gain;
+  const step = Math.min(gain, stepCeiling);
+  return {
+    ...phase,
+    previousSecPerMi: prescribed,
+    proposedSecPerMi: round1(prescribed - step),
+    stepSecPerMi: step,
+    moved: true,
+  };
+}
+
+/** Every phase, unmoved — the shape a HOLD / INSUFFICIENT_EVIDENCE PACE
+ *  proposal carries, since none of them got far enough to compute a step. */
+const flatBreakdown = (phases: readonly PacePhaseRead[]): PacePhaseOutcome[] =>
+  phases.map((p) => ({
+    ...p, previousSecPerMi: p.prescribedSecPerMi, proposedSecPerMi: p.prescribedSecPerMi,
+    stepSecPerMi: 0, moved: false,
+  }));
+
 /** PACE · progresses from capacity evidence, and only with control. */
 function detectPace(
   capacity: Immutable<ResolvedCapacity>,
@@ -832,7 +939,12 @@ function detectPace(
   const uncontrolled = evidence.sessions.filter((s) => !sessionDemonstratesControl(s));
   const collapsed = uncontrolled.filter((s) => s.lateRunPacingCollapse === true);
 
-  const prescribed = evidence.prescribedThresholdSecPerMi;
+  const phases = evidence.phases;
+  // The SOONEST phase — chronological order is the loader's contract — stands
+  // in as the single-number headline on a HOLD / INSUFFICIENT_EVIDENCE
+  // proposal, where nothing was computed per phase because an earlier gate
+  // (absorption, source mode, corroboration count) already stopped things.
+  const nearest = phases[0] ?? null;
   const believed = capacity.threshold.paceSecPerMi;
   const reasons: AdaptationReasonCode[] = [];
   const ids = controlled.map((s) => s.activityId);
@@ -844,11 +956,12 @@ function detectPace(
     explanation: string,
     decision: 'HOLD' | 'INSUFFICIENT_EVIDENCE' = 'HOLD',
   ): AdaptationProposal | null => {
-    if (prescribed == null) return null;
+    if (nearest == null) return null;
     return {
       decision, target: 'PACE', domain: 'FITNESS',
-      previous: { unit: 'sec_per_mi', value: prescribed },
-      proposed: { unit: 'sec_per_mi', value: prescribed },
+      previous: { unit: 'sec_per_mi', value: nearest.prescribedSecPerMi },
+      proposed: { unit: 'sec_per_mi', value: nearest.prescribedSecPerMi },
+      phaseBreakdown: flatBreakdown(phases),
       confidence: clamp01(capacity.threshold.confidence),
       supportingEvidence: ids,
       reasonCodes: [...codes, ...lookbackNote],
@@ -858,7 +971,7 @@ function detectPace(
     };
   };
 
-  if (prescribed == null) {
+  if (nearest == null) {
     return { proposal: null, hold: null };
   }
 
@@ -922,34 +1035,33 @@ function detectPace(
     };
   }
 
-  const gain = prescribed - believed;
-  if (gain < PACE_PROGRESS_MIN_STEP_SEC_PER_MI) {
+  /* ── PART 1 OF THE 2026-09-01 DECISION · EVERY PHASE, PRICED ON ITS OWN ──
+   *
+   * No blended average. Each phase's own prescribed pace is compared to the
+   * SAME believed capacity (capacity is one number — it is a belief about the
+   * runner, not about the plan), and each phase's step is bounded by ITS OWN
+   * doctrinal quantum, anchored on ITS OWN prescribed pace. A phase whose own
+   * prescription is already at or ahead of capacity (RACE-SPECIFIC, often;
+   * TAPER, by design) reports `moved: false` rather than being dragged along
+   * by a neighbour's gain. */
+  const breakdown = phases.map((p) => phaseStep(p, believed));
+  const moving = breakdown.filter((b) => b.moved);
+
+  if (moving.length === 0) {
     return {
       proposal: null,
       hold: holdWith(
         ['REPEATED_CONTROLLED_QUALITY_EXECUTION', 'PRESCRIPTION_ALREADY_MATCHES_CAPACITY'],
-        'Threshold pace holds. The work is going well and the prescribed target already '
-          + 'matches what the evidence supports.',
+        'Threshold pace holds. The work is going well and every upcoming phase already prices at '
+          + 'or ahead of what the evidence supports.',
       ),
     };
   }
 
-  // THE STEP CEILING · doctrine's own upward soft-lead quantum, expressed in
-  // s/mi through the table rather than re-invented. `TRAINING_LEAD_REANCHOR_DELTA`
-  // is 1.0 VDOT point; this is what one point is worth at THIS runner's level,
-  // which is why the ceiling is computed rather than constant.
-  const believedVdot = vdotFromTpace(prescribed);
-  const stepCeiling = believedVdot != null
-    ? (() => {
-        const faster = tPaceFromVdot(believedVdot + TRAINING_LEAD_REANCHOR_DELTA);
-        return faster != null ? Math.max(PACE_PROGRESS_MIN_STEP_SEC_PER_MI, prescribed - faster) : gain;
-      })()
-    : gain;
-
-  const step = Math.min(gain, stepCeiling);
-  const proposedPace = round1(prescribed - step);
   reasons.push('REPEATED_CONTROLLED_QUALITY_EXECUTION', 'CAPACITY_LEADS_PRESCRIPTION_BY_A_USEFUL_STEP');
-  if (step < gain) reasons.push('PACE_STEP_CLAMPED_TO_DOCTRINE_QUANTUM');
+  if (moving.some((b) => b.stepSecPerMi < (b.prescribedSecPerMi - believed))) {
+    reasons.push('PACE_STEP_CLAMPED_TO_DOCTRINE_QUANTUM');
+  }
   reasons.push(...lookbackNote);
 
   // THE STALENESS PRICE. A belief carried by sessions the lookback had to reach
@@ -960,17 +1072,25 @@ function detectPace(
   // the runner reads as a prescription.
   const confidence = clamp01(capacity.threshold.confidence * evidence.lookback.stalenessFactor);
 
+  const soonest = moving[0];
+  const phaseList = moving
+    .map((b) => `${b.phaseLabel ?? 'unphased'} ${Math.round(b.stepSecPerMi)} sec/mi quicker `
+      + `(${b.rowCount} row${b.rowCount === 1 ? '' : 's'}, ${b.firstDateISO}–${b.lastDateISO})`)
+    .join('; ');
+
   return {
     proposal: {
       decision: 'PROGRESS', target: 'PACE', domain: 'FITNESS',
-      previous: { unit: 'sec_per_mi', value: prescribed },
-      proposed: { unit: 'sec_per_mi', value: proposedPace },
+      previous: { unit: 'sec_per_mi', value: soonest.previousSecPerMi },
+      proposed: { unit: 'sec_per_mi', value: soonest.proposedSecPerMi },
+      phaseBreakdown: breakdown,
       confidence,
       supportingEvidence: [...ids, ...capacity.threshold.evidenceIds],
       reasonCodes: reasons,
       explanation:
         `Your recent threshold work consistently supports faster training. `
-        + `Move threshold targets about ${Math.round(step)} sec/mi quicker.`,
+        + `Move ${moving.length} of ${phases.length} upcoming phase${moving.length === 1 ? '' : 's'} `
+        + `of threshold/tempo/cruise work: ${phaseList}.`,
       whyNot: [],
       resolvedAt: now, modelVersion: ADAPTATION_ENGINE_MODEL_VERSION,
     },
@@ -1864,7 +1984,15 @@ function holdFor(
   // "a HOLD does not move the number" a structural fact rather than an
   // assertion — and it keeps each lever in its own units.
   switch (p.target) {
-    case 'PACE': return { ...core, target: 'PACE', domain: 'FITNESS', previous: p.previous, proposed: p.previous };
+    case 'PACE': return {
+      ...core, target: 'PACE', domain: 'FITNESS', previous: p.previous, proposed: p.previous,
+      // The state block withholds the WHOLE proposal, so the breakdown is
+      // flattened to "nothing moved" too — a HOLD whose per-phase detail still
+      // said `moved: true` would contradict its own top-level number.
+      phaseBreakdown: p.phaseBreakdown.map((b) => ({
+        ...b, proposedSecPerMi: b.previousSecPerMi, stepSecPerMi: 0, moved: false,
+      })),
+    };
     case 'VOLUME': return { ...core, target: 'VOLUME', domain: 'LOAD', previous: p.previous, proposed: p.previous };
     case 'DURATION': return { ...core, target: 'DURATION', domain: 'LOAD', previous: p.previous, proposed: p.previous };
     case 'DENSITY': return { ...core, target: 'DENSITY', domain: 'FITNESS', previous: p.previous, proposed: p.previous, resolution: p.resolution };

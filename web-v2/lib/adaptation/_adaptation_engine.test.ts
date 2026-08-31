@@ -193,7 +193,14 @@ const baseInput = (): AdaptationEngineInput => ({
   capacity: capacityAt(400),
   state: stateAt('proceed'),
   absorption: absorptionAt('normal'),
-  pace: { prescribedThresholdSecPerMi: 400, sessions: [], lookback: freshLookback() },
+  pace: {
+    phases: [{
+      phaseLabel: null, prescribedSecPerMi: 400, rowCount: 1,
+      firstDateISO: '2026-09-01', lastDateISO: '2026-09-01',
+    }],
+    sessions: [],
+    lookback: freshLookback(),
+  },
   load: {
     currentWeeklyMi: 45,
     recentWeeks: [
@@ -247,6 +254,59 @@ describe('ADAPTATION ENGINE · PROGRESS is genuinely reachable, on all four leve
     expect((p?.proposed as { value: number }).value).toBeLessThan(400);
     expect(p?.reasonCodes).toContain('REPEATED_CONTROLLED_QUALITY_EXECUTION');
     expect(contradictionsIn(set)).toEqual([]);
+  });
+
+  it('PART 1 (2026-09-01 decision) · PACE moves each phase by its OWN delta, never a blended average', () => {
+    // The owner's real shape: three phases at 435 / 424 / 475 s/mi (QUALITY,
+    // RACE-SPECIFIC, TAPER). The pre-fix engine would have blended these to
+    // 438 and moved every future row by one shared step off that number.
+    const i = baseInput();
+    i.capacity = capacityAt(430); // believed threshold capacity
+    i.pace.phases = [
+      { phaseLabel: 'QUALITY', prescribedSecPerMi: 435, rowCount: 6, firstDateISO: '2026-09-01', lastDateISO: '2026-10-13' },
+      { phaseLabel: 'RACE-SPECIFIC', prescribedSecPerMi: 424, rowCount: 4, firstDateISO: '2026-10-20', lastDateISO: '2026-11-13' },
+      { phaseLabel: 'TAPER', prescribedSecPerMi: 475, rowCount: 2, firstDateISO: '2026-11-17', lastDateISO: '2026-11-24' },
+    ];
+    i.pace.sessions = controlledSessions(PACE_PROGRESS_MIN_SESSIONS);
+    const set = composeAdaptation(i);
+    const p = primaryProgress(set);
+    expect(p?.target).toBe('PACE');
+    if (p?.target !== 'PACE') throw new Error('unreachable');
+
+    // No blended 438 anywhere. Each phase is judged against its OWN number.
+    const byLabel = Object.fromEntries(p.phaseBreakdown.map((b) => [b.phaseLabel, b]));
+    // QUALITY (435) clears the +5s/mi minimum against believed 430 → moves.
+    expect(byLabel.QUALITY?.moved).toBe(true);
+    expect(byLabel.QUALITY?.previousSecPerMi).toBe(435);
+    expect(byLabel.QUALITY?.proposedSecPerMi).toBeLessThan(435);
+    // RACE-SPECIFIC (424) is already FASTER than believed capacity (430) —
+    // negative gain, held, never dragged along by QUALITY's move.
+    expect(byLabel['RACE-SPECIFIC']?.moved).toBe(false);
+    expect(byLabel['RACE-SPECIFIC']?.proposedSecPerMi).toBe(424);
+    // TAPER (475) is a deliberately slow phase; its own gain clears the step
+    // too (it is far from believed capacity), but the step is CLAMPED to the
+    // doctrinal quantum, not applied as a blended-average nudge.
+    expect(byLabel.TAPER?.stepSecPerMi).toBeLessThan(475 - 430);
+    // The headline previous/proposed is the SOONEST moving phase (QUALITY),
+    // never the three-phase average of 438.
+    expect(p.previous).toEqual({ unit: 'sec_per_mi', value: 435 });
+    expect(contradictionsIn(set)).toEqual([]);
+  });
+
+  it('PART 1 · a PACE proposal with only phases already ahead of capacity holds, per phase', () => {
+    const i = baseInput();
+    i.capacity = capacityAt(430);
+    i.pace.phases = [
+      { phaseLabel: 'RACE-SPECIFIC', prescribedSecPerMi: 424, rowCount: 4, firstDateISO: '2026-10-20', lastDateISO: '2026-11-13' },
+    ];
+    i.pace.sessions = controlledSessions(PACE_PROGRESS_MIN_SESSIONS);
+    const set = composeAdaptation(i);
+    const p = set.proposals.find((x) => x.target === 'PACE');
+    expect(p?.decision).not.toBe('PROGRESS');
+    expect(NON_MOVING_DECISIONS.has(p!.decision)).toBe(true);
+    if (p?.target === 'PACE') {
+      expect(p.phaseBreakdown.every((b) => !b.moved)).toBe(true);
+    }
   });
 
   it('SCENARIO:PROGRESS · VOLUME · load absorbed for the required weeks, headroom in the band', () => {
