@@ -15082,6 +15082,13 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'lib/training/aerobic-decoupling.ts#computeAerobicDecoupling',
       'lib/training/decoupling-trend.ts#computeDecouplingTrend',
       'lib/coach/limiter.ts#DECOUPLING_ENDURANCE_GAP_PCT',
+      // 2026-08-31 · the durability anchor's decoupling sub-read is a THIRD
+      // consumer of this same gated function and duration floor — it does
+      // not re-derive either, it calls `computeAerobicDecoupling` unchanged
+      // (see `qualifyingDecouplingObservation`), so it rides this claim's
+      // existing `check()` rather than needing one of its own.
+      'lib/training/durability-anchor.ts#qualifyingDecouplingObservation',
+      'lib/training/durability-anchor.ts#loadDecouplingObservations',
     ],
     doc: 'Research/03-heart-rate-zones.md',
     anchor: 'Compare first vs. second half of a steady aerobic run (60–90 min).',
@@ -15201,6 +15208,186 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (/currentDriftPct\s*<\s*\d/.test(trend)) {
         throw new Error('decoupling-trend banded on a literal again · read the shared constants');
       }
+    },
+  },
+
+  // ══ DURABILITY ANCHOR ═══════════════════════════════════════════════════
+  //
+  // 2026-08-31 · the fitness-vector rebuild's durability anchor
+  // (`lib/training/durability-anchor.ts`): a personal Riegel exponent fitted
+  // from the runner's own race history, shrunk toward the population
+  // default, plus a corroborated aerobic-decoupling read across long runs.
+  {
+    id: 'DURABILITY.population-endurance-prior',
+    binds: ['lib/training/durability-anchor.ts#POPULATION_ENDURANCE_PRIOR'],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: 'T2 = T1 × (D2 / D1)^1.06',
+    claim:
+      'The population endurance PRIOR the durability anchor shrinks a runner\'s own fitted ' +
+      'Riegel exponent toward — named a prior, not a physiological law, because it is a ' +
+      'cross-sport population mean the engine may later refine, not an unrevisable constant ' +
+      '(see the code\'s own header) — currently equals 1.06, the exact exponent Research/02 ' +
+      '§2.1\'s Riegel formula states, read out of the formula at run time rather than ' +
+      'hardcoded on both sides.',
+    check({ cite }) {
+      const m = matchLiteral(cite.text(), /\^\s*([\d.]+)/, 'Riegel formula exponent');
+      const docExponent = Number(m[1]);
+      const src = sourceOf('web-v2/lib/training/durability-anchor.ts');
+      const codeM = matchLiteral(src, /export const POPULATION_ENDURANCE_PRIOR = ([\d.]+);/, 'POPULATION_ENDURANCE_PRIOR');
+      const codeExponent = Number(codeM[1]);
+      if (Math.abs(docExponent - codeExponent) > 0.0001) {
+        throw new Error(
+          `POPULATION_ENDURANCE_PRIOR is ${codeExponent} · Research/02 §2.1's formula states ${docExponent}`,
+        );
+      }
+      // §1 restates the same number a second way ("fatigue exponent (≈ 1.06
+      // for most runners...")) — both mentions must agree, the same
+      // discipline DECOUPLING.protocol-duration applies to its own doc's
+      // repeated statement of one number.
+      const doc02 = sourceOf('Research/02-race-time-prediction.md');
+      const s1M = matchLiteral(doc02, /fatigue exponent \(≈\s*([\d.]+)/, '§1 fatigue exponent restatement');
+      if (Math.abs(Number(s1M[1]) - codeExponent) > 0.0001) {
+        throw new Error(
+          `§1 restates the fatigue exponent as ${s1M[1]} · POPULATION_ENDURANCE_PRIOR is ${codeExponent}`,
+        );
+      }
+      // The naming discipline itself: a future reader must not be able to
+      // mistake this for unrevisable physiology.
+      if (!/deliberately "prior", not "constant" or "law"/.test(src)) {
+        throw new Error(
+          'durability-anchor.ts no longer states that POPULATION_ENDURANCE_PRIOR is a refinable ' +
+            'prior, not a physiological constant — that framing is the whole point of this claim',
+        );
+      }
+    },
+  },
+
+  /* ── A CONVENTION claim · durability's shrinkage weighting ────────────────
+   *
+   * No `Research/` file models how confident a PERSONAL Riegel-exponent fit
+   * should be, or how fast that confidence should decay with a widening gap
+   * between races. What grounds the shrinkage's SHAPE is `Research/02` §2.1's
+   * own stated range for Riegel ("1500m to marathon") — the spread target is
+   * that range's own span, not a number invented independently of doctrine —
+   * and the owner's own worked instruction that races far apart in time may
+   * no longer measure the same underlying fitness. The weighting itself
+   * (equal-weighted average of four components) is engineering judgement,
+   * stated as such rather than dressed up as research.
+   */
+  {
+    id: 'CONVENTION.durability-race-exponent-shrinkage',
+    binds: [
+      'lib/training/durability-anchor.ts#RACE_EXPONENT_SATURATION_RACES',
+      'lib/training/durability-anchor.ts#RACE_EXPONENT_SPREAD_TARGET_LN',
+      'lib/training/durability-anchor.ts#RACE_EXPONENT_TIME_COHERENCE_HALFLIFE_DAYS',
+      'lib/training/durability-anchor.ts#RACE_EXPONENT_CONSISTENCY_LOOSE_LN',
+      'lib/training/durability-anchor.ts#fitRaceExponent',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: 'Designed for events 3.5–230 minutes (≈ 1500m to marathon).',
+    claim:
+      'The confidence a personal Riegel-exponent fit deserves is a CONVENTION, not a research ' +
+      'finding — Research/02 does not model fit confidence for an individual runner. What it ' +
+      'grounds is the SPREAD TARGET: a fit spanning Riegel\'s own stated design range (1500m to ' +
+      'marathon) sees the distances the formula was built for, so the spread component of ' +
+      'confidence is keyed to that span rather than an unargued number. The engine must state ' +
+      'plainly that the weighting itself is a convention.',
+    check() {
+      const src = sourceOf('web-v2/lib/training/durability-anchor.ts');
+      if (!/THIS NUMBER IS A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
+        throw new Error(
+          'durability-anchor.ts no longer states that the half-life is a convention · that ' +
+            'sentence is the whole point of this claim family',
+        );
+      }
+      if (!/CONVENTION, not doctrine: `Research\/02` names no race/.test(src)) {
+        throw new Error('RACE_EXPONENT_SATURATION_RACES no longer states its convention status');
+      }
+      // The spread target must actually be Riegel's own stated design range
+      // (1500m ≈ 0.932 mi, to marathon 26.2 mi), read out of the doc, not
+      // hand-copied.
+      const doc02 = sourceOf('Research/02-race-time-prediction.md');
+      if (!/1500m to marathon/.test(doc02)) {
+        throw new Error('Research/02 no longer states the "1500m to marathon" design range this spread target reuses');
+      }
+      const m = matchLiteral(
+        src, /RACE_EXPONENT_SPREAD_TARGET_LN = Math\.log\(([\d.]+) \/ ([\d.]+)\);/,
+        'RACE_EXPONENT_SPREAD_TARGET_LN',
+      );
+      const [hiMi, loMi] = [Number(m[1]), Number(m[2])];
+      // Marathon distance is unambiguous; the short end just has to be a
+      // genuinely short distance (well under 10K) so the target reflects a
+      // real multi-distance spread rather than two adjacent race lengths.
+      if (Math.abs(hiMi - 26.2) > 0.5) {
+        throw new Error(`RACE_EXPONENT_SPREAD_TARGET_LN's long end is ${hiMi} mi · expected ~26.2 (marathon)`);
+      }
+      if (!(loMi > 0 && loMi < 6.2)) {
+        throw new Error(`RACE_EXPONENT_SPREAD_TARGET_LN's short end is ${loMi} mi · expected a short race, under 10K`);
+      }
+      // The consistency threshold must be Research/02 §2.3's own reported
+      // "Half → marathon" error band's upper (loosest) edge, read out of the
+      // table at run time rather than hand-copied.
+      const table = resolveCitation('Research/02-race-time-prediction.md', '| Distance gap | Typical error band | Notes |').table();
+      const cell = table.cell('Half → marathon', 'Typical error band').replace(/±/g, '');
+      const [, hiPct] = parsePctBand(cell);
+      const expectedLn = Math.log(1 + hiPct);
+      const m2 = matchLiteral(
+        src, /RACE_EXPONENT_CONSISTENCY_LOOSE_LN = Math\.log\(([\d.]+)\);/,
+        'RACE_EXPONENT_CONSISTENCY_LOOSE_LN',
+      );
+      const codeLn = Math.log(Number(m2[1]));
+      if (Math.abs(codeLn - expectedLn) > 0.001) {
+        throw new Error(
+          `RACE_EXPONENT_CONSISTENCY_LOOSE_LN is ln(${m2[1]}) · Research/02 §2.3's Half → ` +
+            `marathon row's upper edge is ±${(hiPct * 100).toFixed(0)}%, which is ln(${(1 + hiPct).toFixed(4)})`,
+        );
+      }
+    },
+  },
+
+  /* ── A CONVENTION claim · durability's own half-life and the decoupling
+   * aggregate's confidence weighting. Same discipline as the shrinkage claim
+   * above: state plainly that the numbers are engineering judgement, and gate
+   * that the source keeps saying so.
+   */
+  {
+    id: 'CONVENTION.durability-half-life-and-decoupling-confidence',
+    binds: [
+      'lib/training/durability-anchor.ts#DURABILITY_HALF_LIFE_DAYS',
+      'lib/training/durability-anchor.ts#DECOUPLING_LOOKBACK_DAYS',
+      'lib/training/durability-anchor.ts#DECOUPLING_SATURATION_OBSERVATIONS',
+      'lib/training/durability-anchor.ts#aggregateDecoupling',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| Decoupling % | Meaning |',
+    claim:
+      'How slowly the durability anchor decays (84 days / 12 weeks), how many corroborating long ' +
+      'runs its decoupling read needs, and how it weighs consistency across them are all ' +
+      'CONVENTIONS — no `Research/` file models a decay half-life or a corpus size for this ' +
+      'trait. The engine must say so explicitly rather than presenting an invented number as a ' +
+      'research finding, and the decoupling aggregate must keep reading its per-run math from ' +
+      'the SAME gated function (`computeAerobicDecoupling`) §12\'s interpretation table already ' +
+      'governs, not a second one.',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/training/durability-anchor.ts');
+      if (!/THIS NUMBER IS A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
+        throw new Error('durability-anchor.ts no longer states the half-life is a convention');
+      }
+      if (!/CONVENTION: a spread under `LOW_PP`/.test(src)) {
+        throw new Error('the decoupling consistency band no longer states its convention status');
+      }
+      const m = matchLiteral(src, /export const DURABILITY_HALF_LIFE_DAYS = (\d+);/, 'DURABILITY_HALF_LIFE_DAYS');
+      if (!(Number(m[1]) > 0)) throw new Error('DURABILITY_HALF_LIFE_DAYS must be positive');
+      // The decoupling aggregate must not re-implement the per-run math §12
+      // governs · it calls the shared, doctrine-gated function.
+      if (!/computeAerobicDecoupling/.test(src)) {
+        throw new Error('durability-anchor.ts no longer calls the shared computeAerobicDecoupling — a second implementation would be ungated');
+      }
+      // The table this file's decoupling read ultimately reports against
+      // must still exist — same liveness check DECOUPLING.interpretation-bands
+      // performs, cited here too since this claim also rests on it existing.
+      const rows = cite.section.filter((l) => /^\|/.test(l) && /%/.test(l));
+      if (rows.length === 0) throw new Error('§12\'s interpretation table is gone');
     },
   },
 

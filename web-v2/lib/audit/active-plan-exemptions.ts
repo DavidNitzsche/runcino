@@ -61,6 +61,16 @@ export const ACTIVE_PLAN_EXEMPTIONS: readonly ActivePlanExemption[] = [
       'sample. It shrinks the sample; it cannot corrupt a value in it.',
   },
   {
+    file: 'lib/training/durability-anchor.ts',
+    reason:
+      '`loadDecouplingObservations`\' NOT EXISTS clause mirrors decoupling-trend.ts ' +
+      'verbatim, for the same reason (see the file\'s own header note on reusing ' +
+      'that sibling\'s exclusion query rather than inventing a second one): reading ' +
+      'across archived plan versions can only EXCLUDE a run that was actually a ' +
+      'prescribed quality day under SOME version, never fabricate one, so it ' +
+      'shrinks the durability corpus and never corrupts a value already in it.',
+  },
+  {
     file: 'lib/plan/adapt.ts',
     reason:
       'Existence test for "did a run land on this plan day", used to decide ' +
