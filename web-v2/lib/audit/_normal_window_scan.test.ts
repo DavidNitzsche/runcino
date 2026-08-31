@@ -45,6 +45,31 @@ const DIRS = ['lib', 'app', 'scripts'];
 const FILTER_MODULE = 'lib/training/normal-window';
 
 /**
+ * RULE8-SIM-1 (2026-08-30) · the filter's BOUND TWIN, and the only other way to
+ * reach it.
+ *
+ * There are deliberately two implementations of the prescribed window —
+ * `normal-window.ts`'s `prescribedWindowFor` and `generate.ts`'s
+ * `prescribedSpanFor` — because the generator imports `pg` and reaching into it
+ * from the filter would close an import cycle. `lib/training/_normal_window.test.ts`
+ * asserts they agree across every distance and priority, so a reader that spends
+ * `prescribedSpanFor` + `eligibleDaysBack` has reached the same definition by
+ * the other door. `sim-inputs.ts` is that case, and it uses the generator's twin
+ * ON PURPOSE: its whole point is to answer "which days count" identically to
+ * `loadGeneratorInputs`, which is the parity the sim exists to have.
+ *
+ * Named as a pair rather than either symbol alone, so a file cannot satisfy
+ * this by importing the span builder and then not filtering with it.
+ */
+const FILTER_TWIN_SYMBOLS = ['prescribedSpanFor', 'eligibleDaysBack'] as const;
+
+/** Has this source reached the one definition, by either door? */
+function reachesTheFilter(src: string): boolean {
+  return src.includes(FILTER_MODULE)
+    || FILTER_TWIN_SYMBOLS.every((sym) => src.includes(sym));
+}
+
+/**
  * A rolling RECENT window — a date floor expressed relative to now, rather than
  * a fixed range a caller passed in. This is what makes a read a claim about the
  * runner's current normal rather than about one named stretch of history.
@@ -257,11 +282,12 @@ describe('NORMALWINDOW-1 · a habit reader excludes the taper', () => {
     for (const r of HABIT_READERS.filter((x) => x.verdict === 'filtered')) {
       const src = readSource(r.file) ?? '';
       expect(
-        src.includes(FILTER_MODULE),
-        `${r.file} claims verdict 'filtered' for \`${r.symbol}\` but no longer imports ` +
-        `${FILTER_MODULE}. Either the fix was reverted — in which case restore it — or the ` +
-        'reader genuinely stopped being a habit reader, in which case change the verdict ' +
-        'and say why.',
+        reachesTheFilter(src),
+        `${r.file} claims verdict 'filtered' for \`${r.symbol}\` but no longer reaches the ` +
+        `shared window — neither by importing ${FILTER_MODULE} nor by spending its bound ` +
+        `twin (${FILTER_TWIN_SYMBOLS.join(' + ')}). Either the fix was reverted — in which ` +
+        'case restore it — or the reader genuinely stopped being a habit reader, in which ' +
+        'case change the verdict and say why.',
       ).toBe(true);
     }
   });

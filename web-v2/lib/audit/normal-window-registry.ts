@@ -328,6 +328,23 @@ export interface HabitReader {
 export const HABIT_READERS: readonly HabitReader[] = [
   // ── repaired 2026-08-30 ───────────────────────────────────────────────────
   {
+    file: 'lib/plan/sim-inputs.ts',
+    symbol: 'prescribedSpans',
+    window: '28 representative days · easy 3-9 mi, median to 0.5',
+    verdict: 'filtered',
+    reason:
+      'RULE8-SIM-1 · the SIMULATOR\'s half of `easyDayMedianMi`, and the one Rule 8 could not ' +
+      'reach. `loadGeneratorInputs` assembles a PrescribedSpan and hands it to every habit ' +
+      'reader; `buildSimPlan` assembled none and read the raw daily series over 14 CALENDAR ' +
+      'days, so the filter RULE8-1 shipped that morning was unreachable by /sim/plan, by ' +
+      '_anchor_fit, by _coach_sensible and by the whole archetype corpus — Rule 15\'s ' +
+      '"a mechanism the corpus cannot REACH is untested", in the one place a gate could have ' +
+      'proved it. It now builds the span with the same `prescribedSpanFor` and consumes it ' +
+      'through the same `eligibleDaysBack`, over the same HABIT_ELIGIBLE_DAYS, refusing on ' +
+      'the same HABIT_MIN_EASY_SAMPLES. On the owner\'s own logged series the reading moves ' +
+      'from 4.0 (the median of his post-half recovery jogs) to 6.0.',
+  },
+  {
     file: 'lib/coach/runner-calibration.ts',
     symbol: 'medianDailyMi',
     window: '14 days · easy 3-9 mi, long 10-30 mi, quality 4-12 mi',
