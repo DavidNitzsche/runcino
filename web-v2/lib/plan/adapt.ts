@@ -1554,9 +1554,13 @@ export async function runnerIsCompromised(userId: string): Promise<
  * `reason: 'injury'` on the failure branch is a placeholder, not a
  * diagnosis — the whole point of failing here is that we do NOT know which
  * of the four states applies, only that we could not rule any of them out.
- * Every current call site branches on `.compromised` only (never reads
- * `.reason` as a clinical claim when the branch was reached via this
- * catch), which is what makes the placeholder safe to carry.
+ * Every call site branches on `.compromised` for the actual DECISION; two of
+ * the four (the plan-drift plan-elapsed and recovery-complete guards) also
+ * fold `.reason` into an internal `plan_proposals.reasons` audit field
+ * (`compromised_reason` / `compromised:${reason}`) purely for operator
+ * legibility — never into the runner-facing `message` string those same
+ * cards write, which states the actual outcome ("not cleared for an
+ * automatic build") without naming a clinical cause it cannot back up.
  */
 export async function runnerIsCompromisedFailClosed(
   userId: string,

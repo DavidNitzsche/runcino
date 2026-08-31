@@ -2,7 +2,7 @@
  * lib/plan/_plan_drift_lifecycle.test.ts · the plan-lifecycle dead-ends,
  * closed 2026-08-28, and the guards that keep them closed.
  *
- * Three rulings under test, at the route level with the database mocked:
+ * Four rulings under test, at the route level with the database mocked:
  *
  *   1 · RECOVERY → BUILD AUTO-APPLIES. The recovery-complete transition is
  *       doctrine-driven and non-optional (David 2026-08-28) — it fires
@@ -27,6 +27,16 @@
  *       the old branch auto-authored a goal build over an injured runner. A
  *       compromised runner — or a plan stamped mode_label='injury-return' —
  *       gets a pending card instead.
+ *
+ *   4 · GOAL-GAP NEVER SURFACES ITS REBUILD CARD OVER A COMPROMISED RUNNER
+ *       (2026-08-31). The widening-projection guard used to default a failed
+ *       compromised-check read to `compromised: false`, so a database blip
+ *       could surface "rebuild to close the gap?" built on the exact
+ *       evidence — illness/injury — the guard's own comment says
+ *       contaminates that projection. Now routed through the shared
+ *       `runnerIsCompromisedFailClosed` wrapper (also sites 2 and 3 above),
+ *       so a genuine compromised read and an unreadable one suppress the
+ *       card identically.
  *
  * Same harness idiom as _guard_fail_closed.test.ts: mock the pool, route SQL
  * by shape, drive the route's POST, and assert on the calls that left.
@@ -73,7 +83,7 @@ vi.mock('@/lib/plan/auto-rebuild', () => ({
 }));
 
 vi.mock('@/lib/plan/adapt', () => ({
-  runnerIsCompromised: vi.fn(),
+  runnerIsCompromisedFailClosed: vi.fn(),
 }));
 
 vi.mock('@/lib/plan/open-block', () => ({
@@ -91,8 +101,9 @@ vi.mock('@/lib/notifications/block-started', () => ({
 
 import { pool } from '@/lib/db/pool';
 import { fireAutoRebuild, resolveGoalTarget } from '@/lib/plan/auto-rebuild';
-import { runnerIsCompromised } from '@/lib/plan/adapt';
+import { runnerIsCompromisedFailClosed } from '@/lib/plan/adapt';
 import { notifyBlockStarted } from '@/lib/notifications/block-started';
+import { computeGoalGap } from '@/lib/plan/goal-gap';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * HARNESS
@@ -116,9 +127,11 @@ const fire = fireAutoRebuild as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const goalTarget = resolveGoalTarget as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const compromised = runnerIsCompromised as any;
+const compromised = runnerIsCompromisedFailClosed as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const blockNote = notifyBlockStarted as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const goalGap = computeGoalGap as any;
 
 let route: Router = async () => ({ rows: [] });
 let issued: Array<{ sql: string; params: unknown[] }> = [];
@@ -140,6 +153,7 @@ beforeEach(() => {
   compromised.mockResolvedValue({ compromised: false });
   goalTarget.mockResolvedValue(null);
   fire.mockResolvedValue({ ok: true, newPlanId: 'plan-NEW', proposalId: 7 });
+  goalGap.mockResolvedValue(null);
 });
 
 const sawInsert = (needle: string): number =>
@@ -371,5 +385,75 @@ describe('3 · plan_elapsed · injury guard', () => {
 
     expect(fire).not.toHaveBeenCalled();
     expect(sawInsert("'plan_elapsed'")).toBe(1);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 4 · goal-gap rebuild suppression · site 4 of runnerIsCompromisedFailClosed
+ *
+ * 2026-08-31 · closed a real direction bug: this site defaulted a failed
+ * compromised-check read to `compromised: false` and no comment explaining
+ * why, so a database blip while illness/injury/gap-reentry status was
+ * unreadable let the cron surface a "rebuild to close the gap?" card built on
+ * the exact evidence the comment above the guard says illness/injury
+ * contaminates (the widening projection itself). Both a genuine compromised
+ * read AND an unreadable one must suppress the card the same way — neither
+ * is allowed to fire it.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+// mode:'maintenance' + a future last_workout_iso keeps the plan_elapsed and
+// recovery-complete lifecycle sections silent, so only the goal-gap branch
+// under test can call the compromised guard or write a proposal.
+const GOAL_GAP_PLAN: PlanRow = {
+  plan_id: 'plan-GG', race_id: 'cim-2026', race_date: '2026-12-06',
+  goal_mode: null, mode: 'maintenance', authored_mode: null,
+  mode_label: null, last_workout_iso: '2026-09-15',
+};
+
+const WIDENING_GOAL_GAP = {
+  status: 'widening', consecutiveWideningDays: 3,
+  raceDateISO: '2026-12-06', raceSlug: 'cim-2026',
+  trajectorySec: 11500, goalSec: 10800, gapSec: 700,
+  weeksRemaining: 12, whatClosesIt: null, citation: null,
+};
+
+describe('4 · goal-gap · compromised runner suppresses the rebuild card', () => {
+  it('a compromised runner never sees the "rebuild to close the gap?" card', async () => {
+    compromised.mockResolvedValue({ compromised: true, reason: 'illness' });
+    goalGap.mockResolvedValue(WIDENING_GOAL_GAP);
+    setRouter(lifecycleRouter({ plan: GOAL_GAP_PLAN }));
+    const body = await runCron();
+
+    expect(sawInsert("'goal_gap_widening'")).toBe(0);
+    expect(fire).not.toHaveBeenCalled();
+    expect(body.errors).toBe(0);
+    // Rule 16 (2026-08-25) · the suppression must still be legible in the
+    // cron's own report, not just silently skip the runner.
+    const results = body.results as Array<Record<string, unknown>>;
+    expect(results).toHaveLength(1);
+    expect(results[0].goal_gap_suppressed_compromised).toBe(1);
+  });
+
+  it('the guard fails CLOSED · an unreadable state suppresses too, never surfaces the card', async () => {
+    compromised.mockRejectedValue(new Error('connection terminated'));
+    goalGap.mockResolvedValue(WIDENING_GOAL_GAP);
+    setRouter(lifecycleRouter({ plan: GOAL_GAP_PLAN }));
+    const body = await runCron();
+
+    expect(sawInsert("'goal_gap_widening'")).toBe(0);
+    expect(fire).not.toHaveBeenCalled();
+    expect(body.errors).toBe(0);
+    const results = body.results as Array<Record<string, unknown>>;
+    expect(results).toHaveLength(1);
+    expect(results[0].goal_gap_suppressed_compromised).toBe(1);
+  });
+
+  it('success path unchanged · a genuinely uncompromised runner still gets the card', async () => {
+    compromised.mockResolvedValue({ compromised: false });
+    goalGap.mockResolvedValue(WIDENING_GOAL_GAP);
+    setRouter(lifecycleRouter({ plan: GOAL_GAP_PLAN }));
+    await runCron();
+
+    expect(sawInsert("'goal_gap_widening'")).toBe(1);
   });
 });

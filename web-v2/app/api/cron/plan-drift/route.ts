@@ -522,9 +522,16 @@ export async function POST(req: NextRequest) {
             // auto-authored block; `mode_label='injury-return'` on the plan
             // itself is the belt-and-braces signal for a cleared injury row.
             // FAILS CLOSED: this guard stands in front of AUTHORING, so an
-            // unreadable state must propose, not prescribe.
-            const { runnerIsCompromised } = await import('@/lib/plan/adapt');
-            const compromised = await runnerIsCompromised(u)
+            // unreadable state must propose, not prescribe. Via the shared
+            // runnerIsCompromisedFailClosed wrapper (2026-08-31) so this
+            // direction can't drift from the other three call sites again —
+            // the extra local `.catch` is belt-and-braces, same idiom as the
+            // mode_label check two lines up: the wrapper cannot reject in
+            // practice, but a second independent layer means a future edit
+            // to the wrapper that reopens this cannot silently reopen it here
+            // too.
+            const { runnerIsCompromisedFailClosed } = await import('@/lib/plan/adapt');
+            const compromised = await runnerIsCompromisedFailClosed(u)
               .catch(() => ({ compromised: true, reason: 'injury' } as const));
             const injuryReturn = activePlanRow.mode_label === 'injury-return';
             const { fireAutoRebuild, resolveGoalTarget } = await import('@/lib/plan/auto-rebuild');
@@ -752,10 +759,16 @@ export async function POST(req: NextRequest) {
           // and a compromised runner (open injury / illness / override
           // niggle / gap re-entry) is never auto-built over.
           try {
-            const { runnerIsCompromised } = await import('@/lib/plan/adapt');
             // FAILS CLOSED: this guard stands in front of AUTHORING, so an
-            // unreadable state must propose, not prescribe.
-            const compromised = await runnerIsCompromised(u)
+            // unreadable state must propose, not prescribe. Via the shared
+            // runnerIsCompromisedFailClosed wrapper (2026-08-31) so this
+            // direction can't drift from the other three call sites again —
+            // the extra local `.catch` is belt-and-braces: the wrapper cannot
+            // reject in practice, but a second independent layer means a
+            // future edit to the wrapper that reopens this cannot silently
+            // reopen it here too.
+            const { runnerIsCompromisedFailClosed } = await import('@/lib/plan/adapt');
+            const compromised = await runnerIsCompromisedFailClosed(u)
               .catch(() => ({ compromised: true, reason: 'injury' } as const));
             let pendingCardReason: string | null = null;
             if (compromised.compromised) {
@@ -1212,8 +1225,23 @@ export async function POST(req: NextRequest) {
          * This is the same reasoning about a much larger action: a field test
          * changes one session, a rebuild re-authors the block. It had no guard
          * at all beyond race proximity. */
-        const { runnerIsCompromised } = await import('@/lib/plan/adapt');
-        const compromised = await runnerIsCompromised(u).catch(() => ({ compromised: false } as const));
+        // FAILS CLOSED (2026-08-31): this guard stands in front of AUTHORING
+        // (the pending 'goal_gap_widening' card below asks the runner to
+        // rebuild), so an unreadable state must propose nothing, matching the
+        // two lifecycle guards elsewhere in this file — an unreadable state
+        // must propose, not prescribe. Before this fix a failed read defaulted
+        // to compromised:false and surfaced a "rebuild to close the gap?" card
+        // built on the exact evidence the comment above says illness/injury
+        // contaminates, to a runner whose compromised status we never actually
+        // confirmed. Via the shared runnerIsCompromisedFailClosed wrapper so
+        // this direction can't drift from the other three call sites again —
+        // the extra local `.catch` is belt-and-braces: the wrapper cannot
+        // reject in practice, but a second independent layer means a future
+        // edit to the wrapper that reopens this cannot silently reopen it
+        // here too.
+        const { runnerIsCompromisedFailClosed } = await import('@/lib/plan/adapt');
+        const compromised = await runnerIsCompromisedFailClosed(u)
+          .catch(() => ({ compromised: true, reason: 'injury' } as const));
         if (compromised.compromised) {
           r.goal_gap_suppressed_compromised = (r.goal_gap_suppressed_compromised ?? 0) + 1;
           // 2026-08-25 · PUSH BEFORE CONTINUE. `results.push(r)` is the last
