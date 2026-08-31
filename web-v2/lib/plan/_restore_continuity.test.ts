@@ -343,4 +343,109 @@ describe('LONGSIZE-CONTINUOUS-1 · more volume never buys a shorter long run', (
       }
     }
   }, 120_000);
+
+  /* ────────────────────────────────────────────────────────────────────────
+   * …AND THE SAME QUESTION ASKED OF EVERY ARCHETYPE, not one fixture.
+   *
+   * Rule 15: a mechanism the corpus cannot reach is untested. The walk above
+   * proves the fix on the block the defect was found in; this proves the CLASS
+   * is gone. Sixteen distance × level walks, 134 base-volume points each,
+   * measuring every backward step in every week's long run.
+   *
+   * Two numbers, because they are two different findings:
+   *
+   *   · CATEGORICAL steps — a drop of MORE than one mile — are the formula
+   *     switch, and there must be none. Against the ternary this reports 46 of
+   *     them, the worst a THREE-mile collapse (a 10K beginner's week 13 long
+   *     falling 9 → 6 for half a mile of reported base), and whole blocks
+   *     stepping down together at one input.
+   *
+   *   · The ratchet counts what is LEFT: 107 single-mile steps, every one of
+   *     them in a deload week, and all of them the same arithmetic —
+   *     `round(weeklyMi × longCap / peakWeeklyMi)` where the deload week's own
+   *     volume was already rounded to a whole mile, so its ratio to the peak
+   *     jitters by a mile as the block grows. That is rounding, not a
+   *     threshold: there is no branch to fall off and the magnitude is bounded
+   *     by the rounding itself. It is named and held rather than excused, so
+   *     it can be closed later and can never grow.
+   * ──────────────────────────────────────────────────────────────────────── */
+  const CORPUS_DISTANCES: Array<readonly [string, number, number]> = [
+    ['5k', 3.107, 1200], ['10k', 6.21, 2500], ['hm', 13.1, 5400], ['m', 26.2, 10800],
+  ];
+  const CORPUS_LEVELS = ['beginner', 'intermediate', 'advanced', 'advanced_plus'] as const;
+  /** RATCHET · single-mile deload rounding steps. May shrink, never grow. */
+  const LONG_ROUNDING_STEPS_ALLOWED = 107;
+
+  function corpusLongs(distMi: number, goalSec: number, level: string, recentMi: number): number[] {
+    const r = composePlan({
+      raceDistanceMi: distMi, goalSec, goalPaceSec: Math.round(goalSec / distMi),
+      raceDateISO: '2026-12-06', startMondayISO: '2026-08-31', level,
+      recentWeeklyMi: recentMi, easyDayMedianMi: 5, recentLongMi: Math.min(12, recentMi * 0.3),
+      recentQualityDistanceMi: 6, recentQualityPerWeek: 2, bestRecentVdot: 48,
+      isMidBlock: true,
+      longRunDow: 0, restDow: 6, qualityDows: [2, 4],
+      trainingDaysPerWeek: 5, crossModes: [],
+      rxQuality: { threshold: '4×1mi @ T pace · 60s jog', intervals: '5×3 min @ I pace · 90s jog', tempo: 'continuous tempo', families: {} },
+      rxRaceSpecific: { threshold: '4×1mi @ T pace · 60s jog', intervals: '5×3 min @ I pace · 90s jog', tempo: 'continuous tempo', families: {} },
+      tPaceSec: 400, lthr: 162, maxHr: 188,
+    } as never) as { weeks: Array<{ isRaceWeek?: boolean; days: Array<{ isLong?: boolean; type: string; distanceMi: number }> }> };
+    return r.weeks
+      .filter((w) => !w.isRaceWeek)
+      .map((w) => Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)));
+  }
+
+  it('no archetype anywhere loses more than a rounding step of long run', () => {
+    const categorical: string[] = [];
+    let steps = 0;
+    let walks = 0;
+    let points = 0;
+    for (const [name, mi, goal] of CORPUS_DISTANCES) {
+      for (const lvl of CORPUS_LEVELS) {
+        walks++;
+        let prev: number[] | null = null;
+        let prevMi = 0;
+        for (let base = 14; base <= 80.001; base += 0.5) {
+          let cur: number[];
+          try { cur = corpusLongs(mi, goal, lvl, base); } catch { prev = null; continue; }
+          points++;
+          if (prev) {
+            const width = Math.min(prev.length, cur.length);
+            for (let k = 0; k < width; k++) {
+              const drop = prev[k] - cur[k];
+              if (drop <= 1e-9) continue;
+              steps++;
+              if (drop > 1.0001) {
+                categorical.push(
+                  `${name}/${lvl} wk${k + 1} long ${prev[k]} → ${cur[k]} mi (−${drop.toFixed(1)}) ` +
+                  `as the base went ${prevMi} → ${base} mi/wk`,
+                );
+              }
+            }
+          }
+          prev = cur;
+          prevMi = base;
+        }
+      }
+    }
+    // Liveness · a sweep that composed nothing reports clean, which is the
+    // worst outcome available (Rule 18 clause 2).
+    expect(walks, 'the corpus sweep walked no archetypes').toBe(CORPUS_DISTANCES.length * CORPUS_LEVELS.length);
+    expect(points, 'the corpus sweep composed no plans').toBeGreaterThan(2000);
+    for (const s of categorical.slice(0, 20)) console.log(`  CATEGORICAL ${s}`);
+    console.log(
+      `\nLONGSIZE corpus · ${walks} walks · ${points} plans · ${steps} backward steps, ` +
+      `${categorical.length} of them larger than a rounding step`,
+    );
+    expect(
+      categorical.length,
+      `${categorical.length} archetype(s) lose MORE than a mile of long run for half a mile of ` +
+      'reported base. That is a formula switching, not rounding — see CATEGORICAL above',
+    ).toBe(0);
+    expect(
+      steps,
+      `the deload-week rounding residual grew from ${LONG_ROUNDING_STEPS_ALLOWED} to ${steps}. ` +
+      'This ratchet may shrink and never grow: something has added a new backward step to the ' +
+      'long-run curve',
+    ).toBeLessThanOrEqual(LONG_ROUNDING_STEPS_ALLOWED);
+  }, 300_000);
 });
