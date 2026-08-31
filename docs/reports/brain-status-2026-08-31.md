@@ -194,6 +194,22 @@ a forward risk, not a current defect.
 
 ## Test / gate health, right now
 
+**UPDATE 2026-09-01: this whole section is a point-in-time snapshot of an
+uncommitted working tree and is now historical, not current.** The in-flight
+work described above (the `spec-builder.ts` refactor, the four
+`_doctrine_gate.test.ts` `PACE.*` bindings, `reanchor-plan.test.ts` mid-edit)
+landed and was committed in `66a5fea5`. Re-verified independently against
+current `main` on 2026-09-01: `_doctrine_gate.test.ts` passes 651/651 clean.
+`reanchor-plan.test.ts` was run in isolation three consecutive times (12/12
+passed, identical, every run) and as part of the full `lib/plan/` batch
+three consecutive times (2031/2031 passed, identical file/test counts every
+run) — the run-to-run instability this section documents does not reproduce
+against committed code; it was the mid-edit uncommitted state itself. See
+`docs/reports/gate-verification-2026-09-01.md` for the full determinism
+proof. The two-different-answers-on-two-runs finding below was real and
+correctly flagged at the time — it just does not describe `main` today.
+Left in place below as the original record.
+
 **This section reflects the actual disk state at audit time — committed
 `main` PLUS the uncommitted in-flight work described above — because that
 is what actually runs when you type `npx vitest run` in this checkout right

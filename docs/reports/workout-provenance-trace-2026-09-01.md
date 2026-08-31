@@ -212,6 +212,13 @@ The working tree (uncommitted, another agent's wiring phase) now imports
 and `reanchor-plan.ts:86,531`. When that lands and next runs, this row should
 move 439 → 430. It has not reached this row yet.
 
+**UPDATE 2026-09-01: landed and confirmed moved.** The wiring committed as
+`66a5fea5`. `docs/reports/handback-2026-09-01.md` §3 confirms, read back
+live from the database on plan `pln_9a57561debb776e5`'s 2026-09-01 row: the
+threshold rep pace moved 439 (7:19, legacy VDOT cascade) → 430 (7:10,
+canonical `resolveThresholdCapacity`, direct evidence, confidence 0.727) —
+exactly the row and direction predicted here.
+
 ## 4. Why 1:00 recovery
 
 Straight from doctrine, and it is the cleanest number in the workout.

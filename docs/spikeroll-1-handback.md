@@ -1,6 +1,22 @@
 # SPIKEROLL-1 · the 110% spike rule, bound every week — HELD BACK
 
-**Status: written, verified against the owner's live block, NOT landed on `main`.**
+**UPDATE 2026-09-01: landed.** Commit `ecb5972c` (`feat(spikeroll-1): land
+the 110% single-run spike guard, held back one cycle`) shipped this for
+real — `enforceSpikeRule()` is called live in `generate.ts` (`void
+enforceSpikeRule;` is gone), with an argued, cited exemption for anchors
+under a 5-mile "coherence floor" (see `SPIKE_MIN_COHERENT_ANCHOR_MI` in
+`generate.ts`). The four protected keys named below as the hold-back reason
+are confirmed green as of this update: `_sweep_allusers.test.ts` (0 firm
+failures, 11,598 archetypes), `_dosing_sweep_gate.test.ts` (0 enforced
+breaches), `_audit_long_ramp.test.ts` and `_audit_periodization.test.ts`
+both pass. A dedicated standing gate now watches this directly —
+`_spike_rule_gate.test.ts` (SPIKEROLL-1) — which also parses the 110%
+figure out of `Research/00a` at run time per Rule 7, rather than asserting a
+second hardcoded copy of the number. Rest of this document is the original
+hold-back writeup, kept as the historical record of why it waited one cycle.
+
+**Status (as of original write-up, now superseded above): written, verified
+against the owner's live block, NOT landed on `main`.**
 The code sits inert in `web-v2/lib/plan/generate.ts` as `enforceSpikeRule`, with a
 `void enforceSpikeRule;` beneath it so it compiles and is impossible to miss.
 

@@ -414,6 +414,19 @@ never distorts training. Recorded so the next auditor does not re-open it.
 
 ### 6 · The phase-structure gate stays RED. Not loosened.
 
+**UPDATE 2026-09-01: fixed, entry closed.** Commit `81bf30eb`
+(`fix(rule9): the last cliffs — an interruption is measured in weeks OFF,
+and easy running stops quantising the week`) landed the same night this
+entry was written, by exactly the remedy this entry called for — a more
+robust input (`interruptionWeeks` now counts weeks off, not a hair-thin
+crossing of the 28-day mean) rather than a wider tolerance around the same
+cliff. `_coach_sensible.test.ts` passes 6/6, including both continuity
+walks this entry names. Found stale by the plan-generator external review
+(`docs/reports/plan-generator-external-review-2026-08-31.md` §3) and
+re-verified independently by running the gate before appending this note.
+Rest of the entry below is the original write-up, kept as the record of
+why the gate was red and what it took to close it.
+
 `_coach_sensible.test.ts` asserts zero phase-structure discontinuities across a
 walk, and it fails: `interruptionWeeks` is an integer count of leading weeks
 below the resume level, so an entire BASE phase appears or disappears on a

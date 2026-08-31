@@ -53,7 +53,15 @@ Three things are worth an outside opinion:
    the legacy cascade the rest of the app is actively moving away from, and
    only stops being priced by it once the flex path rewrites an unrun week.
 
-2. **The doctrine-citation gate is currently red, for exactly the file this
+2. **UPDATE 2026-09-01: fixed.** Commit `66a5fea5` exported the offset
+   constants the four `PACE.*` claims below regexed for as real bindings the
+   claims now import, rather than re-deriving them from source text.
+   Re-verified independently on 2026-09-01: `_doctrine_gate.test.ts` passes
+   651/651 clean against current `main`. The finding as originally written
+   (below) is kept as the record of what was found and why it mattered —
+   see `docs/reports/gate-verification-2026-09-01.md` for the fresh run.
+
+   **The doctrine-citation gate is currently red, for exactly the file this
    report covers, and nobody has re-pointed it.** `_doctrine_gate.test.ts`
    fails 4 of 658 tests right now, all four bound to
    `spec-builder.ts#buildWorkoutSpec`'s easy/tempo/marathon/interval pace
@@ -311,6 +319,10 @@ practices for its own "closed" bullets.
 
 ## 4. A live, currently-red gate this review found that the task brief did not anticipate
 
+**UPDATE 2026-09-01: closed. See the note at finding 2 above — `66a5fea5`
+fixed all four bindings; `_doctrine_gate.test.ts` re-verified 651/651 passed
+against current `main`.** Section kept below as the original finding.
+
 Running `_doctrine_gate.test.ts` (Rule 7's citation-binding enforcement,
 `lib/doctrine/registry.ts` + `_doctrine_gate.test.ts`) produces **654 passed,
 4 failed, out of 658**. All four failures are bound to
@@ -453,11 +465,12 @@ distinguish "real regression" from "batch interference."
 | `_restore_continuity.test.ts` | passed |
 | `_audit_long_ramp.test.ts` + `_audit_periodization.test.ts` (together) | 558/558 passed |
 | All five gates above, run together | 27/27 passed |
-| `_doctrine_gate.test.ts` (Rule 7, whole-repo scope) | **654/658 passed, 4 failed** — see §4 |
+| `_doctrine_gate.test.ts` (Rule 7, whole-repo scope) | **654/658 passed, 4 failed** — see §4. UPDATE 2026-09-01: fixed by `66a5fea5`, re-verified 651/651 passed. |
 
 Every gate explicitly named in the task brief is green. The one red gate
 found (`_doctrine_gate.test.ts`) was not named in the brief and directly
-implicates `spec-builder.ts`, which is in scope.
+implicates `spec-builder.ts`, which is in scope. **UPDATE 2026-09-01: also
+now green — see the table row above and §4's update note.**
 
 ---
 
