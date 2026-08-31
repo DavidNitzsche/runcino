@@ -65,46 +65,56 @@ describe('easyPaceCorpus · pure statistic', () => {
     if (!r.ok) { expect(r.reason).toBe('insufficient_corroboration'); expect(r.observations).toBe(2); }
   });
 
-  it('reports a band whose lo is the Kth-fastest and hi is the median, sorted', () => {
+  it('reports the ceiling as the Kth-fastest qualifying pace', () => {
     // Paces s/mi, fastest first: 460, 470, 480(K=3rd fastest), 500, 520.
     const observations = [460, 470, 480, 500, 520].map((p, i) => obs({ id: `r${i}`, paceSecPerMi: p }));
     const r = easyPaceCorpus(observations, 3);
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.observations).toBe(5);
-      // Kth-fastest (3rd) = 480; median of 5 values = 480. Degenerate but valid.
-      expect(r.band.lo).toBeLessThanOrEqual(r.band.hi);
+      expect(r.ceilingSecPerMi).toBe(480);
       expect(r.supporting.length).toBe(3);
       expect(r.supporting.map((o) => o.paceSecPerMi)).toEqual([460, 470, 480]);
     }
   });
 
-  it('a single fast outlier cannot set the band alone — needs K corroborating runs', () => {
-    // One very fast run (350) plus four ordinary ones (600s) — K=3 fastest
-    // excludes the outlier from "the lo edge" once there are enough ordinary
-    // runs ahead of it in the corroboration count... actually the outlier IS
-    // among the fastest, so verify it participates but does not distort past
-    // what K-corroboration allows: with 5 runs the 3rd-fastest is 600, not 350.
+  it('a single fast outlier cannot set the ceiling alone — needs K corroborating runs', () => {
+    // One very fast run (350) plus four ordinary ones (600s) — with 5 runs
+    // the 3rd-fastest is 600, not 350, so the outlier alone cannot move it.
     const observations = [350, 600, 600, 600, 600].map((p, i) => obs({ id: `o${i}`, paceSecPerMi: p }));
     const r = easyPaceCorpus(observations, 3);
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.band.lo).toBe(600); // the outlier alone cannot set `lo`
+      expect(r.ceilingSecPerMi).toBe(600);
     }
   });
 
-  it('median (hi edge) moves when a slow observation enters the pool — the reason Rule 8 filtering matters', () => {
-    // 7 observations so the Kth-fastest (K=3, index 2) and the median (index 3
-    // of 7) are genuinely different statistics — with a pool the same size as
-    // K they coincide, which would make this test vacuous.
-    const withoutTaper = [450, 460, 470, 480, 490, 500, 510].map((p, i) => obs({ id: `w${i}`, paceSecPerMi: p }));
-    const withTaper = [...withoutTaper, obs({ id: 'taper', paceSecPerMi: 700 })];
-    const a = easyPaceCorpus(withoutTaper, 3);
-    const b = easyPaceCorpus(withTaper, 3);
+  it('additional SLOWER evidence cannot move the ceiling — the order-statistic property both readers rely on', () => {
+    const withoutMore = [450, 460, 470].map((p, i) => obs({ id: `w${i}`, paceSecPerMi: p }));
+    const withMoreSlower = [...withoutMore, obs({ id: 'slow1', paceSecPerMi: 700 }), obs({ id: 'slow2', paceSecPerMi: 720 })];
+    const a = easyPaceCorpus(withoutMore, 3);
+    const b = easyPaceCorpus(withMoreSlower, 3);
     expect(a.ok && b.ok).toBe(true);
     if (a.ok && b.ok) {
-      expect(b.band.hi).toBeGreaterThan(a.band.hi); // median dragged slower
-      expect(b.band.lo).toBe(a.band.lo); // Kth-fastest unmoved — insensitive to the bottom
+      expect(b.ceilingSecPerMi).toBe(a.ceilingSecPerMi); // unmoved — insensitive to the bottom
+      expect(b.observations).toBe(5);
+    }
+  });
+
+  it('additional FASTER evidence DOES move the ceiling — this is why Rule 8 filtering still matters for a rested/taper day', () => {
+    // A pool of 3 ordinary easy paces, then a 4th, genuinely faster observation
+    // enters (e.g. a rested taper-week easy run read faster than usual). With
+    // K=3 the 3rd-fastest of 4 becomes faster than the 3rd-fastest of 3 — the
+    // ceiling MOVES on new fast evidence, unlike on new slow evidence above.
+    // This is exactly the scenario resolveEasyPaceCorpus's Rule 8 filter
+    // exists to keep out of the pool in the first place.
+    const base = [460, 470, 480].map((p, i) => obs({ id: `b${i}`, paceSecPerMi: p }));
+    const withFastTaperDay = [...base, obs({ id: 'taper-fast', paceSecPerMi: 440 })];
+    const a = easyPaceCorpus(base, 3);
+    const b = easyPaceCorpus(withFastTaperDay, 3);
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) {
+      expect(b.ceilingSecPerMi).toBeLessThan(a.ceilingSecPerMi); // faster (smaller s/mi)
     }
   });
 });
@@ -181,6 +191,30 @@ describe('thresholdSegmentFromSplits · splits-aware, the owner\'s "Broken Long 
     expect(thresholdSegmentFromSplits([], ctxHrMaxOnly)).toBeNull();
     expect(thresholdSegmentFromSplits(null, ctxHrMaxOnly)).toBeNull();
     expect(thresholdSegmentFromSplits(undefined, ctxHrMaxOnly)).toBeNull();
+  });
+
+  it('RULE 18 · refuses a splits array that does not reconcile against the row\'s own distance', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const splits = [
+      { mile: 1, hr: tHr, pace: '6:50', paceSecPerMi: 410, distanceMi: 1 },
+      { mile: 2, hr: tHr, pace: '6:48', paceSecPerMi: 408, distanceMi: 1 },
+      { mile: 3, hr: tHr, pace: '6:52', paceSecPerMi: 412, distanceMi: 1 },
+    ];
+    // The array itself is a perfectly good 3-mile T session by its own
+    // arithmetic — the defect is that the ROW claims a wildly different
+    // distance (e.g. a fabricated-tail or wrong-sibling adoption, the exact
+    // shape splits-adopt.ts documents a real production row for).
+    const rejected = thresholdSegmentFromSplits(splits, ctxHrMaxOnly, 12.0);
+    expect(rejected).toBeNull();
+    // The SAME array against a row distance it actually reconciles with is
+    // admitted — falsifying the guard in both directions (Rule 18).
+    const admitted = thresholdSegmentFromSplits(splits, ctxHrMaxOnly, 3.0);
+    expect(admitted).not.toBeNull();
+    // No row distance supplied at all (the pure-function unit tests above) —
+    // the reconciliation check is skipped, not refused; this is the
+    // documented default for a caller that doesn't have it.
+    const noDistanceGiven = thresholdSegmentFromSplits(splits, ctxHrMaxOnly);
+    expect(noDistanceGiven).not.toBeNull();
   });
 });
 

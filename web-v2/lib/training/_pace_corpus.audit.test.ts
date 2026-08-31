@@ -43,10 +43,9 @@ describe.skipIf(!RO)('PACE CORPUS · rendered against the owner\'s real account'
     console.log('EASY PACE CORPUS ·', JSON.stringify(read, null, 2));
     expect(read).toBeDefined();
     if (read.ok) {
-      // Sanity: a band, ordered, in a plausible running-pace range (4-20 min/mi).
-      expect(read.band.lo).toBeLessThanOrEqual(read.band.hi);
-      expect(read.band.lo).toBeGreaterThan(240);
-      expect(read.band.hi).toBeLessThan(1200);
+      // Sanity: a plausible running-pace ceiling (4-20 min/mi).
+      expect(read.ceilingSecPerMi).toBeGreaterThan(240);
+      expect(read.ceilingSecPerMi).toBeLessThan(1200);
       expect(read.observations).toBeGreaterThanOrEqual(3);
     } else {
       expect(['no_observations', 'insufficient_corroboration']).toContain(read.reason);

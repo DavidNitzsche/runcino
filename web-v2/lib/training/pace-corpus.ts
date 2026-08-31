@@ -45,10 +45,11 @@
  * statistical shape as that question, and they are not the same shape as each
  * other — each design below is argued on its own, not copied from the other.
  *
- *   EASY  · a BAND, from a Kth-fastest edge (mirrors the corpus's own
- *           insensitive-to-the-bottom argument) and a median edge (which is
- *           NOT insensitive to the bottom — this is why easy pace, alone of
- *           the two, needs the Rule 8 filter). See "THE EASY DESIGN" below.
+ *   EASY  · a CEILING (Kth-fastest, mirrors the corpus's own
+ *           insensitive-to-the-bottom argument) — settled 2026-08-31 as a
+ *           single number with feel-based guidance, not a band to hit. See
+ *           "THE EASY DESIGN" below for the ruling and why the Rule 8 filter
+ *           still applies even though the statistic is now order-based.
  *
  *   THRESHOLD · reuses `corroboratedCorpusVdot` on a zone-BUCKETED pool
  *           (threshold-zone observations only) rather than inventing a
@@ -106,46 +107,47 @@
  *
  * ── THE EASY DESIGN ──────────────────────────────────────────────────────────
  *
- * A band, not a point — because Research/00a's own E-pace zone is a band, and
- * because a single number cannot honestly answer two different questions at
- * once: "the fastest he has repeatedly proven he can hold at genuinely easy
- * effort" and "what he typically runs easy." Both are real, and
- * `easyPaceBandFromAnchorPace` (vdot.ts) already returns `{lo, hi}` for the
- * VDOT-derived band, so a direct-evidence band is the shape Phase 3 can drop
- * in without reshaping its consumer.
+ * 2026-08-31 UPDATE · A CEILING, NOT A BAND. This file originally reported a
+ * `{lo, hi}` band (Kth-fastest edge + median edge). Overtaken same-day by a
+ * SETTLED product decision from the owner's own conversation, recorded in
+ * `docs/PRODUCT_DECISIONS.md` §"2026-08-31 · ... Easy pace is a ceiling, not a
+ * band": prompted by a Runna comparison ("This is a limit, not a target - run
+ * at whatever pace feels truly easy!"), the owner ruled that easy pace should
+ * be a single ceiling with feel-based guidance, not a band to hit — "a band
+ * implies a target to land inside; a ceiling plus feel-based guidance implies
+ * a boundary not to cross, with the runner's own sense doing the rest." He
+ * confirmed adopting it ("1 yes we can get this"). This reader now reports
+ * ONLY that ceiling — the median edge (a central-tendency "typical easy pace"
+ * claim) is deleted, not deferred, because the decision it served no longer
+ * stands. `easyPaceBandFromAnchorPace` (vdot.ts, still `{lo, hi}`) is the
+ * VDOT-formula path this decision is explicitly about replacing, not a shape
+ * this reader owes matching.
  *
- *   lo = Kth-fastest qualifying pace (K = CORROBORATION_MIN_OBSERVATIONS) —
- *        the same order-statistic idea `corroboratedCorpusVdot` uses, applied
- *        to pace instead of VDOT: at least K sessions ran this fast or
- *        faster at genuinely easy effort, so no single good-weather day can
- *        set it.
- *   hi = median of every qualifying observation — a central tendency, and
- *        DELIBERATELY NOT an order statistic insensitive to the bottom of the
- *        window: a median moves when a slow taper jog enters the pool, which
- *        is exactly why this half of the band (unlike the corpus VDOT ceiling,
- *        and unlike the `lo` edge above) needs the Rule 8 filter. Reported
- *        rather than picked between, because Research/00a's own E-pace zone
- *        is a band and collapsing it to one number would be a second,
- *        needless information loss on top of collapsing every pace type into
- *        one VDOT — the exact failure this file exists to stop.
+ * ceilingSecPerMi = Kth-fastest qualifying pace (K =
+ * CORROBORATION_MIN_OBSERVATIONS) — the same order-statistic idea
+ * `corroboratedCorpusVdot` uses, applied to pace instead of VDOT: at least K
+ * sessions ran this fast or faster at genuinely easy effort, so no single
+ * good-weather day can set it. This is exactly "the fastest pace corroborated
+ * at genuinely-easy effort" the decision names.
  *
- * `lo` and `hi` are sorted (`Math.min`/`Math.max`) rather than assumed ordered
- * — with a small qualifying pool the Kth-fastest and the median can sit close
- * enough that rounding or a thin sample flips their raw order, and a crossed
- * band would be worse than a narrow one.
- *
- * RULE 8 · FILTERED, and argued independently rather than inheriting
- * `vdot-corpus.ts`'s conclusion. Easy pace capability is explicitly a "what
- * CAN this runner do" question — CLAUDE.md's Rule 8 corollary names "typical
- * distance, typical intensity, typical anything" as needing the filter. The
- * `lo` edge (Kth-fastest) *would* survive unfiltered by the same
- * insensitive-to-the-bottom argument the corpus ceiling uses — but the `hi`
- * edge (median) would not, and reporting a band where only one edge is
- * honestly filtered is worse than filtering the whole input: it would look
- * like a considered choice was made about `hi` when none was. So both edges
- * are computed from the SAME filtered pool. `excludePrescribedDays` /
- * `loadPrescribedWindows` (lib/training/normal-window.ts) are reused, not
- * re-derived.
+ * RULE 8 · STILL FILTERED, and the argument is NOT "the old `hi` edge needed
+ * it so the file keeps filtering out of habit" — re-argued for the ceiling
+ * alone, because the statistic changed and the old reasoning doesn't
+ * automatically carry over. The Kth-fastest edge *would* survive an unfiltered
+ * pool by the same insensitive-to-the-bottom argument `vdot-corpus.ts` uses
+ * for ITS ceiling — so why does this one still filter, when that one does not?
+ * The two ceilings answer physiologically different questions under a taper.
+ * `vdot-corpus.ts`'s residual explicitly WANTS a taper-week fast observation
+ * to count, because a race-pace tune-up run during a taper is unambiguous hard
+ * effort — real evidence of fitness regardless of the calendar. An EASY run
+ * during a taper has no equivalent cover: it is easy-effort by definition, and
+ * a rested, low-fatigue body often runs its "easy" faster than it would
+ * hold under real training load — which is precisely a claim about what he
+ * NORMALLY runs easy, not what he has proven capable of under load, and Rule
+ * 8's corollary puts "typical intensity, typical anything" on the filtered
+ * side by default. So `excludePrescribedDays` / `loadPrescribedWindows`
+ * (lib/training/normal-window.ts) are still applied, reused rather than
+ * re-derived, on the sole remaining statistic.
  *
  * ── THE THRESHOLD DESIGN ─────────────────────────────────────────────────────
  *
@@ -248,6 +250,30 @@
  *     and folding it in without its own falsification pass would be
  *     exactly the "wired and inert" failure CLAUDE.md's Rule 21 warns about,
  *     applied to reading instead of writing.
+ *   · SPLITS RECONCILIATION (added same day, after the finding above was
+ *     first written) MADE THIS WORSE BEFORE IT MADE IT HONEST. Once
+ *     `thresholdSegmentFromSplits` was gated on `reconcileSplitsTotal`
+ *     (lib/runs/coherence.ts — required by check-derived-consistency.sh, and
+ *     a real gap: this reader had no defence against a splits array that
+ *     doesn't even sum to its own run's distance, the same shape
+ *     `splits-adopt.ts` documents a real production row for), the corpus's
+ *     observation count on the owner's real 60-day window dropped from 7 to
+ *     2 — an honest REFUSAL (Rule 11), not a bug. Six of the seven original
+ *     splits-derived observations turn out to come from arrays that do not
+ *     reconcile against their own row's `distanceMi` (drift 0.39-0.87 mi,
+ *     over `MAX_SPLIT_SUM_DRIFT_MI`'s 0.25 mi), and the whole-run fallback
+ *     cannot rescue them either — the SAME dilution problem the fallback's
+ *     own gate exists to catch (their whole-run avg HR sits at 85-92% of a
+ *     freshly-reanchored 168 LTHR, under the 95-102% T-band, exactly the
+ *     WU/CD-diluted-average shape `vdotFromRun`'s zone-aware read was built
+ *     to avoid trusting). So the 458 s/mi figure this file originally
+ *     reported for the owner was itself built partly on unreconciled splits
+ *     and should not have been trusted at face value either — the
+ *     reconciliation fix didn't just close a gate, it retracted a number.
+ *     What is left standing (2 observations, refusing under K=3) is the
+ *     honest current answer for this runner over this window; a clean answer
+ *     needs either fresher/more-reconciling splits data, or the
+ *     `coach_intents.value.phases` extension named above, or both.
  */
 
 import { pool } from '@/lib/db/pool';
@@ -339,10 +365,13 @@ export const PACE_CORPUS_LOOKBACK_DAYS = 60;
  * argued separately rather than inheriting `PACE_CORPUS_LOOKBACK_DAYS`.
  *
  * MEASURED against the owner's real account, 2026-08-31 (Rule 13 — this is
- * not a guess): at 60 days the easy-pace band read {lo: 524.5, hi: 524.5}
- * s/mi (8:44/mi) off exactly 5 representative observations, all from
- * mid-July — visibly slower than his stated "8:00/mi easily all day,
- * everyday." The cause was not the classifier; it was the WINDOW. His
+ * not a guess): at 60 days the easy-pace ceiling read 524.5 s/mi (8:44/mi)
+ * off exactly 5 representative observations, all from mid-July — visibly
+ * slower than his stated "8:00/mi easily all day, everyday." (Measured
+ * before the same-day product decision below dropped the `{lo, hi}` band
+ * shape to a ceiling alone — `lo` and the ceiling are the identical Kth-
+ * fastest statistic, so the numbers here still hold.) The cause was not the
+ * classifier; it was the WINDOW. His
  * Americas Finest City half (2026-08-16, A) opened a Rule 8 exclusion window
  * spanning roughly 2026-08-02 through 2026-08-30 — nearly the entire back
  * half of a 60-day lookback ending 2026-08-31 — so every one of his faster,
@@ -357,11 +386,11 @@ export const PACE_CORPUS_LOOKBACK_DAYS = 60;
  * in a narrow one. So a longer nominal window here doesn't dilute anything —
  * it gives the exclusion something left to work with when a recent A-race
  * has already claimed most of a 60-day span. Measured at 90 days, the same
- * account's band moved to {lo: 491.7, hi: 517.0} s/mi (8:12-8:37/mi) off 12
- * observations — the `lo` edge lines up with the owner's own stated pace to
- * within a few seconds. 120 and 150 days recovered a few more observations
- * (16) without moving `lo` at all, which is the Kth-fastest edge behaving
- * exactly as designed: additional, slower evidence cannot pull it around.
+ * account's ceiling moved to 491.7 s/mi (8:12/mi) off 12 observations —
+ * lining up with the owner's own stated pace to within a few seconds. 120
+ * and 150 days recovered a few more observations (16) without moving the
+ * ceiling at all, which is the Kth-fastest statistic behaving exactly as
+ * designed: additional, slower evidence cannot pull it around.
  *
  * 90 is chosen over 120/150 as the smaller window that already recovers a
  * representative answer — per Rule 9, prefer the least aggressive fix that
@@ -457,12 +486,12 @@ export type EasyPaceCorpusReason = 'no_observations' | 'insufficient_corroborati
 export type EasyPaceRead =
   | {
       ok: true;
-      /** `lo` = Kth-fastest corroborated pace (the honest ceiling of the
-       *  E-band); `hi` = median of the qualifying pool (typical easy). Both
-       *  s/mi, `lo <= hi`. */
-      band: { lo: number; hi: number };
+      /** The fastest pace corroborated at genuinely-easy effort, s/mi — a
+       *  single ceiling per the 2026-08-31 product decision ("a boundary not
+       *  to cross", not a band to hit). */
+      ceilingSecPerMi: number;
       observations: number;
-      /** The K fastest qualifying observations — what sets `lo`. */
+      /** The K fastest qualifying observations — what sets the ceiling. */
       supporting: PaceObservation[];
     }
   | {
@@ -495,18 +524,11 @@ export type ThresholdPaceRead =
  * 4 · PURE STATISTICS — no DB, unit-testable without a fixture
  * ═══════════════════════════════════════════════════════════════════════ */
 
-function median(values: readonly number[]): number {
-  const s = [...values].sort((a, b) => a - b);
-  const n = s.length;
-  const mid = Math.floor(n / 2);
-  return n % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
-}
-
 /**
- * Pure · the easy-pace band from a set of already-classified observations.
+ * Pure · the easy-pace ceiling from a set of already-classified observations.
  * Every judgement about which runs QUALIFY (HR zone, duration, label,
  * Rule 8) has already happened upstream — this function's only job is the
- * two statistics, which is why it is testable without a fixture.
+ * order statistic, which is why it is testable without a fixture.
  */
 export function easyPaceCorpus(
   observations: readonly PaceObservation[],
@@ -520,10 +542,9 @@ export function easyPaceCorpus(
   // Ascending by pace = fastest first (smaller s/mi is faster).
   const byPaceAsc = [...usable].sort((a, b) => a.paceSecPerMi - b.paceSecPerMi);
   const kthFastest = byPaceAsc[minObservations - 1].paceSecPerMi;
-  const med = median(usable.map((o) => o.paceSecPerMi));
   return {
     ok: true,
-    band: { lo: Math.min(kthFastest, med), hi: Math.max(kthFastest, med) },
+    ceilingSecPerMi: kthFastest,
     observations: usable.length,
     supporting: byPaceAsc.slice(0, minObservations),
   };
@@ -814,8 +835,8 @@ export async function resolveEasyPaceCorpus(
   ]);
 
   const raw = classifyEasyCandidates(rows, ctx);
-  // Rule 8 · filtered here, on both edges — see "THE EASY DESIGN" for why the
-  // median edge specifically needs this and the Kth-fastest edge would not.
+  // Rule 8 · filtered — see "THE EASY DESIGN" for why a taper-day easy run
+  // isn't given the same cover vdot-corpus.ts gives a taper-week tune-up.
   const filtered = excludePrescribedDays(raw, (o) => o.date, windows);
   return easyPaceCorpus(filtered, opts?.minObservations);
 }
