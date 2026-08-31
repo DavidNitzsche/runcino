@@ -122,6 +122,13 @@ gate any change to this architecture. The merge rule: if this code can
 produce a coaching decision that contradicts doctrine without passing through
 the owning service, it does not merge.
 
+**UX simplification — `docs/PRODUCT_UX_SIMPLIFICATION_DOCTRINE.md`.** The
+engine's sophistication must never leak into the UI as more surface area.
+One rule: only surface information that changes what the runner should
+understand or do next. Read before adding or keeping any screen, card, or
+metric — the test is "what decision does this help the runner make," not
+"does this exist because the engine can compute it."
+
 ### 1. Design source of truth
 
 **iPhone — `/Volumes/WP/06 Claude Code/Faff/design/0819/design_handoff_faff_iphone_app v5/`**
