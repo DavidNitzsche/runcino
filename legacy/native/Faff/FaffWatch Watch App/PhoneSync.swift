@@ -395,6 +395,52 @@ final class PhoneSync: NSObject, ObservableObject {
         }
         return nil
     }
+
+    // MARK: - Simulator · render a REAL payload
+
+    /// Drive the app from a real `/api/watch/today` body held in a file, so a
+    /// change to something the runner sees can be verified by RENDERING it with
+    /// the runner's own data instead of a fixture.
+    ///
+    /// WHY THIS EXISTS. Until now the simulator had exactly two sources and
+    /// both are fixtures: `WatchWorkout.sample*` and the `-face` harness.
+    /// CLAUDE.md Rule 13 says it in as many words — *"Never a sample fixture
+    /// for a display fix. Fixtures skip the exact code paths that break."*
+    /// `_FacePreview.swift` already carries a warning it earned: it once drew
+    /// a pace gauge the router never passed, so every screenshot reviewed was
+    /// accurate about a screen that did not exist. There was no way to look at
+    /// the real thing, so nobody did, and the rule had no apparatus behind it.
+    ///
+    /// It reconstructs the applicationContext EXACTLY as the phone builds it
+    /// (`WatchSync.syncTodayToWatch` — the workout object alone under
+    /// `workout`, the whole body under `glance`) and hands it to the same
+    /// `apply` every live payload goes through. It decodes nothing itself: a
+    /// second decode path would be a second answer to a question that already
+    /// has one, and that is precisely how a harness ends up disagreeing with
+    /// the product it exists to show.
+    ///
+    /// Simulator-only, and reached only from an explicit `-payload` launch
+    /// argument, so there is no path to it on a wrist.
+    #if targetEnvironment(simulator)
+    func applyLocalPayloadFile(_ path: String) {
+        guard let raw = FileManager.default.contents(atPath: path) else {
+            lastSyncError = "-payload: no file at \(path)"
+            return
+        }
+        guard let obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] else {
+            lastSyncError = "-payload: \(path) is not a JSON object"
+            return
+        }
+        var ctx: [String: Any] = [:]
+        if let w = obj["workout"], let wData = try? JSONSerialization.data(withJSONObject: w) {
+            ctx["workout"] = wData
+        } else if let msg = obj["message"] as? String {
+            ctx["noWorkout"] = msg
+        }
+        ctx["glance"] = raw
+        apply(ctx)
+    }
+    #endif
 }
 
 // MARK: - The widget shelf (complications + Smart Stack)

@@ -1272,6 +1272,30 @@ async function loadCompletedRun(
   ).catch(() => ({ rows: [] as any[] }))).rows[0];
   const effortLogged = rpeRow?.rpe ?? null;
 
+  return {
+    distanceMi, durationSec, paceSPerMi, avgHr,
+    rows: composeCompletedRows({ distanceMi, askedMi, avgHr, askedHrCap, askedHrIsHardCap, effortLogged }),
+  };
+}
+
+/**
+ * The recap board's rows, as pure composition.
+ *
+ * Split out of `loadCompletedRun` so the thing the runner READS can be
+ * asserted without a database. Rule 15's point, applied narrowly: the row
+ * list was only reachable through four live queries, so nothing had ever
+ * checked what the four rows say when they are drawn together — which is the
+ * only question that matters and exactly where WATCH-DUP-HR-1 was hiding.
+ */
+export function composeCompletedRows(input: {
+  distanceMi: number;
+  askedMi: number | null;
+  avgHr: number | null;
+  askedHrCap: number | null;
+  askedHrIsHardCap: boolean;
+  effortLogged: number | null;
+}): WatchCompletedRow[] {
+  const { distanceMi, askedMi, avgHr, askedHrCap, askedHrIsHardCap, effortLogged } = input;
   const rows: WatchCompletedRow[] = [];
 
   // Distance — only when the gap from what was asked is material. Same
@@ -1293,6 +1317,7 @@ async function loadCompletedRun(
 
   // Heart — only when the plan set a genuine ceiling, never a target to
   // hover near or a bare LTHR reference (askedHrIsHardCap above).
+  const heartRowCarriesAvgHr = askedHrCap != null && askedHrIsHardCap && avgHr != null;
   if (askedHrCap != null && askedHrIsHardCap) {
     rows.push({
       id: 'heart', label: 'Heart',
@@ -1313,9 +1338,30 @@ async function loadCompletedRun(
     tone: null,
   });
 
-  // Heart rate, avg — a plain reading, not an asked-vs-ran row (the phone's
-  // own TodayAfterV5 draws it the same way, outside its askedVsRan table).
-  if (avgHr != null) {
+  // Heart rate, avg — a plain reading, not an asked-vs-ran row.
+  //
+  // WATCH-DUP-HR-1 (2026-08-30) · this fired UNCONDITIONALLY whenever an
+  // average existed, including when the `heart` row three lines up had just
+  // drawn the same number. Rendered on the owner's own 2026-08-30 long run,
+  // the lobby recap read:
+  //
+  //     Heart              under 145        159
+  //     Effort                          7 of 10
+  //     Heart rate, avg                 159 bpm
+  //
+  // One number, twice, two rows apart, on the smallest screen this product
+  // has. The precedent cited above — "the phone's own TodayAfterV5 draws it
+  // the same way" — is true and does not transfer: on the phone the two live
+  // in different SECTIONS with other content between them, and here they are
+  // adjacent rows in one four-row list. Rule 17: if two components can both
+  // draw a value, one of them yields, and it yields on the rendered text.
+  //
+  // The `heart` row yields nothing and wins: it carries the same reading PLUS
+  // what was asked for and the tone that grades it. This row keeps its job
+  // for the case it was actually built for — a session with no hard cap
+  // (quality days, an uncapped easy day), where nothing else reports the
+  // average at all.
+  if (avgHr != null && !heartRowCarriesAvgHr) {
     rows.push({
       id: 'hr_avg', label: 'Heart rate, avg',
       sub: null,
@@ -1324,7 +1370,7 @@ async function loadCompletedRun(
     });
   }
 
-  return { distanceMi, durationSec, paceSPerMi, avgHr, rows };
+  return rows;
 }
 
 export async function buildWatchToday(
@@ -2003,7 +2049,32 @@ export async function buildWatchToday(
     if (raceGoalSec && specWorkPhases.length === 1 && Math.abs(raceDistMi - distanceMi) < 0.5) {
       let coursePhases: WatchPhase[] | null = null;
       try {
-        const courseSlug = String(raceMeta?.courseSlug ?? plan.race_id ?? '');
+        // MIDGOAL-3 (2026-08-30) · the LAST `?? plan.race_id` on this path.
+        //
+        // MIDGOAL-2 fixed `goalSec`, `strategyLabel` and the gel ladder to
+        // resolve the race the runner is standing on rather than the one the
+        // block is built for. This line was left, and it is the same defect
+        // wearing the same disguise: the runner's Santa Monica 10K on
+        // 2026-09-13 carries no `courseSlug`, so this resolved to `plan.race_id`
+        // — `cim` — and asked the course library for a TWENTY-SIX MILE
+        // marathon profile to pace a 10K with.
+        //
+        // It does not currently reach the wrist, and the reason is worth
+        // stating because it is not a reason to leave it: `usablePhases`
+        // (lib/race/pacing.ts) refuses geometry whose length misses the race
+        // distance by more than 0.6 mi, so CIM's 26.2 fails against 6.2 and
+        // the payload falls through to flat goal pace. That is the identical
+        // accident MIDGOAL-2 recorded about the pace target — *"only the pace
+        // target escaped, and only because a distance guard happened to fail
+        // closed."* A guard that saves this one because a marathon is not a
+        // 10K stops saving it the moment the block's race and the tune-up are
+        // the same distance.
+        //
+        // A race names its own course or it has none. There is nothing to fall
+        // back to, because the block's course is not this race's course — and
+        // for the target race itself nothing changes, since its own meta
+        // carries the slug.
+        const courseSlug = String(raceMeta?.courseSlug ?? '');
         const geoRow = courseSlug
           ? (await pool.query<{ geometry_json: unknown }>(
               `SELECT geometry_json FROM course_library WHERE slug = $1 LIMIT 1`,

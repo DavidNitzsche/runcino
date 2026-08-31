@@ -391,17 +391,32 @@ struct WorkoutRootView: View {
                 // UserDefaults and was never read back. One line closes it.
                 FaffNotificationHandoff.flushPending()
                 phone.requestTodayWorkout()
+                #if targetEnvironment(simulator)
+                // -payload <file> · render a REAL /api/watch/today body (Rule
+                // 13). See PhoneSync.applyLocalPayloadFile. Runs after
+                // requestTodayWorkout so the injected payload is the last word
+                // — the simulator has no paired phone, so nothing overwrites it.
+                if let path = Self.payloadPathArgument {
+                    phone.applyLocalPayloadFile(path)
+                }
+                #endif
                 // RK-3 — ask HealthKit for a session that outlived its
                 // process (crash / reboot mid-run). One-shot; no-op on a
                 // normal launch.
                 model.attemptRecovery()
                 #if targetEnvironment(simulator)
                 // -autostart launch arg: skip the lobby tap and immediately
-                // begin the simulator workout. For automated sim drives via
+                // begin the loaded workout. For automated sim drives via
                 // `xcrun simctl launch ... -autostart`.
+                //
+                // `phone.todayWorkout` FIRST, so `-payload` + `-autostart`
+                // together drive the running faces off the real body rather
+                // than the fixture. Without this the one launch that is meant
+                // to show real numbers mid-run would silently show sample
+                // ones — the exact substitution Rule 13 was written about.
                 if ProcessInfo.processInfo.arguments.contains("-autostart"),
                    model.engine == nil,
-                   let w = Self.simulatorWorkout {
+                   let w = phone.todayWorkout ?? Self.simulatorWorkout {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                         model.start(w)
                     }
@@ -627,12 +642,28 @@ struct WorkoutRootView: View {
         }
     }
 
+    /// `-payload <file>`, the real-data render hook. Nil when not asked for.
+    /// See `PhoneSync.applyLocalPayloadFile` for what it does and why.
+    static var payloadPathArgument: String? {
+        let a = ProcessInfo.processInfo.arguments
+        guard let i = a.firstIndex(of: "-payload"), i + 1 < a.count else { return nil }
+        return a[i + 1]
+    }
+
     /// The watch is a companion (the phone pushes the workout over
     /// WatchConnectivity). The simulator has no paired phone, so fall
     /// back to the bundled sample — which mirrors the /api/watch/today
     /// shape — so the faces + state machine are fully exercisable.
     private static var simulatorWorkout: WatchWorkout? {
         #if targetEnvironment(simulator)
+        // A REAL payload was asked for, so a fixture must never stand in for
+        // it. If the file is missing or will not decode, the lobby shows the
+        // failure — which is the honest answer and the whole point. Rule 13's
+        // recurring failure is a fixture quietly substituting for real data
+        // and the screenshot being believed anyway; Rule 11 says a failed read
+        // and a real value are not the same fact. This line is where both are
+        // enforced for this harness.
+        if payloadPathArgument != nil { return nil }
         let args = ProcessInfo.processInfo.arguments
         // -race  → race-day faces (watch-app.html §F)
         // -cruise → 4 × 1 mile threshold reps with mixed distance/time phases,
