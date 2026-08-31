@@ -68,6 +68,7 @@
 import { pool } from '@/lib/db/pool';
 import { logReadFailure, rowsOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runStimulusType } from '@/lib/runs/log-enrich';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
 // ANCHOR-STALE-3 · the canonical HRmax resolver. `rebuildWorkoutDerivations`
 // prices a rebuilt quality session against the runner's LIVE anchors; see the
@@ -403,6 +404,14 @@ export const EXPERIENCE_CAPS_MI: Record<ExperienceLevel, number> = {
 // SQL shell feeds — same test posture as adapter-bench.test.ts.
 
 /** Quality types the missed detector + anti-stacking guard operate on. */
+/**
+ * QUALITY-EVIDENCE-1 · stimulus labels that POSITIVELY contradict a quality
+ * prescription. `long` is deliberately absent — a long run is a prescribed
+ * session in its own right, not a denial that quality happened.
+ */
+export const EASY_STIMULUS: ReadonlySet<string> =
+  new Set(['easy', 'recovery', 'shakeout']);
+
 export const QUALITY_TYPES = ['threshold', 'tempo', 'intervals', 'vo2max'] as const;
 
 /** Rows the adapter must never shave or downgrade — race execution is
@@ -2560,9 +2569,12 @@ export async function detectMissedKeyWorkout(userId: string): Promise<Adaptation
   // wrongly mark a completed key workout as done twice / missed never.
   const canonicalIds = await getCanonicalRunIds(userId, isoDaysBefore(today, 8), today);
   const maxRunByDay = new Map<string, number>();
+  /** QUALITY-EVIDENCE-1 · what each day's run said it WAS, when it said. */
+  const stimulusByDay = new Map<string, string>();
   if (canonicalIds.length > 0) {
-    const runRows = (await pool.query<{ d: string; mi: string }>(
-      `SELECT (data->>'date') AS d, (data->>'distanceMi') AS mi
+    const runRows = (await pool.query<{ d: string; mi: string; wt: string | null; t: string | null }>(
+      `SELECT (data->>'date') AS d, (data->>'distanceMi') AS mi,
+              (data->>'workoutType') AS wt, (data->>'type') AS t
          FROM runs
         WHERE user_uuid = $1 AND id = ANY($2::bigint[])`,
       [userId, canonicalIds]
@@ -2571,11 +2583,60 @@ export async function detectMissedKeyWorkout(userId: string): Promise<Adaptation
       if (!r.d) continue;
       const mi = Number(r.mi) || 0;
       if (mi > (maxRunByDay.get(r.d) ?? 0)) maxRunByDay.set(r.d, mi);
+      // QUALITY-EVIDENCE-1 · what the runner (or the importer) SAID this run
+      // was, resolved through the one function that reads both vocabularies.
+      const stim = runStimulusType({ workoutType: r.wt, type: r.t });
+      if (stim != null) {
+        const prev = stimulusByDay.get(r.d);
+        // A day with two runs keeps the more specific claim: an easy shakeout
+        // beside a tempo must not make the day read easy.
+        if (prev == null || (EASY_STIMULUS.has(prev) && !EASY_STIMULUS.has(stim))) {
+          stimulusByDay.set(r.d, stim);
+        }
+      }
     }
   }
-  const completedNear = (dateISO: string, thresholdMi: number): boolean => {
+  /**
+   * QUALITY-EVIDENCE-1 (2026-08-30) · A KEY SESSION IS NOT COMPLETED BY THE
+   * ORDINARY EASY RUN BESIDE IT.
+   *
+   * This asked one question — is there a canonical run within ±1 day covering
+   * 60% of the prescribed distance — and distance alone cannot tell a threshold
+   * session from a jog. The gate's own header claims it stops "any 4mi easy jog
+   * satisfy[ing] an unrelated 8mi tempo", and for an 8-mile prescription
+   * (threshold 4.8) that holds. For a FOUR-mile threshold session the threshold
+   * is 2.4, so the owner's ordinary 7-mile easy day satisfied it outright.
+   *
+   * That is worse than a missed reschedule. If the engine believes he did
+   * quality he did not do, every downstream judgement — the adaptation verdict's
+   * execution dimension, the progression gate, the goal projection — is built on
+   * fiction, and all of them agree with each other because they read the same
+   * fiction.
+   *
+   * THE FIX IS A CONTRADICTION CHECK, NOT A CLASSIFIER. `runStimulusType` is the
+   * one resolver that reads both of `runs.data`'s vocabularies (semantic label
+   * and Strava's enum) and refuses activity KINDS like 'Run'. When it says a day
+   * was EASY and the prescription was quality, the run positively contradicts
+   * the session and cannot complete it. When it says nothing — 131 of his rows
+   * carry no workoutType at all — the day is unchanged from today's behaviour,
+   * because Rule 11 forbids reading absence as contradiction. A long run is not
+   * in the easy set: a long IS the prescribed session on a long day, and a
+   * long-run day satisfying a nearby long prescription is correct.
+   */
+  const completedNear = (
+    dateISO: string,
+    thresholdMi: number,
+    prescribedType: string,
+  ): boolean => {
+    const wantsQuality = (QUALITY_TYPES as readonly string[]).includes(prescribedType);
     for (const off of [-1, 0, 1]) {
-      if ((maxRunByDay.get(plusDaysISO(dateISO, off)) ?? 0) >= thresholdMi) return true;
+      const day = plusDaysISO(dateISO, off);
+      if ((maxRunByDay.get(day) ?? 0) < thresholdMi) continue;
+      if (wantsQuality) {
+        const stim = stimulusByDay.get(day);
+        if (stim != null && EASY_STIMULUS.has(stim)) continue;
+      }
+      return true;
     }
     return false;
   };
@@ -2605,7 +2666,7 @@ export async function detectMissedKeyWorkout(userId: string): Promise<Adaptation
       distance_mi: c.distance_mi != null ? Number(c.distance_mi) : null,
       original_date_iso: c.original_date_iso,
     }))
-    .filter((c) => !completedNear(c.planned_date, completionThresholdMi(c.distance_mi)));
+    .filter((c) => !completedNear(c.planned_date, completionThresholdMi(c.distance_mi), c.type));
   const { skips, longMisses, drops, rescheduable } = partitionMissedCandidates({
     candidates: notCompleted, skippedDates, todayISO: today,
   });

@@ -417,6 +417,12 @@ function AdaptationBlock({ d }: { d: FaffSeed['week'][number] }) {
     reschedule:  'Rescheduled',
     shave:       'Shortened',
     mark_dirty:  'Paces refreshed',
+    // RAMP-VERB-1 (2026-08-30) · every DOWNWARD action had a word and the one
+    // that adds work did not — it fell through to 'Adjusted', the same
+    // catch-all used when we cannot say what happened. Rule 22's bias reaching
+    // the copy layer: the plan can be seen to ease and cannot be seen to push.
+    upgrade:     'Lengthened',
+    reshape:     'Resized',
     other:       'Adjusted',
   };
   const verb = kindCopy[a.kind ?? 'other'] ?? 'Adjusted';

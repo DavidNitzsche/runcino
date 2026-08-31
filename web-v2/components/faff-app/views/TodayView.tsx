@@ -1858,6 +1858,11 @@ function PlannedHeroV2({
     reschedule: 'Rescheduled',
     shave: 'Shortened',
     mark_dirty: 'Paces refreshed',
+    // RAMP-VERB-1 · see WorkoutDetail. The two maps are kept in step by
+    // `_adaptation_kind.test.ts`, which asserts every AdaptationKind the
+    // resolver can return has a verb on BOTH surfaces.
+    upgrade: 'Lengthened',
+    reshape: 'Resized',
     other: 'Adjusted',
   };
   const adaptedFromLabel = adaptedRaw

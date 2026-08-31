@@ -87,6 +87,30 @@ describe('a push is named, not filed under "other"', () => {
     );
   });
 
+  it('every kind has a VERB on both runner-facing surfaces · RAMP-VERB-1', () => {
+    /* The copy layer is where Rule 22's bias last showed: downgrade/reschedule/
+     * shave/mark_dirty each had a word and `upgrade` fell through to
+     * 'Adjusted', the catch-all for "we cannot say what happened". A push the
+     * runner cannot name is barely a push. */
+    const surfaces = [
+      'components/faff-app/overlays/WorkoutDetail.tsx',
+      'components/faff-app/views/TodayView.tsx',
+    ];
+    const NEEDS_VERB: AdaptationKind[] = [
+      'downgrade', 'reschedule', 'shave', 'mark_dirty', 'reshape', 'upgrade',
+    ];
+    for (const rel of surfaces) {
+      const src = fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+      expect(src.length, `${rel} read as empty`).toBeGreaterThan(1_000);
+      for (const kind of NEEDS_VERB) {
+        expect(
+          new RegExp(`\\b${kind}\\s*:\\s*'`).test(src),
+          `${rel} has no verb for adaptation kind '${kind}' · it would render as "Adjusted"`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it('THERE IS ONE RESOLVER · the readiness brief does not carry a second', () => {
     // The drift this file exists to end. A behavioural test cannot catch a
     // surface that stops calling the shared resolver, so the source is scanned

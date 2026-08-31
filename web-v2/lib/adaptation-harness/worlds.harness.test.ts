@@ -451,7 +451,7 @@ describe('WORLD 2 · he falls short', () => {
     // DISTANCE ONLY across a ±1 day window, so a neighbouring easy run longer
     // than 60% of the session marks the session done.
     check({
-      world: W, id: 'w2.a-key-session-is-not-completed-by-the-easy-run-beside-it', binding: 'open',
+      world: W, id: 'w2.a-key-session-is-not-completed-by-the-easy-run-beside-it', binding: 'binding',
       ok: detectedOnRemovalAlone,
       detail: detectedOnRemovalAlone
         ? 'removing the session\'s own run was enough for the engine to see the miss.'
@@ -676,7 +676,7 @@ describe('WORLD 3 · he pushes', () => {
     // logs a push for a change that may not be in the database.
     const landed = totalMi(after) > totalMi(before) + 0.05;
     check({
-      world: W, id: 'w3.the-decision-to-push-actually-reaches-the-plan', binding: 'open',
+      world: W, id: 'w3.the-decision-to-push-actually-reaches-the-plan', binding: 'binding',
       ok: result == null || landed,
       detail: result == null
         ? 'no bump was decided, so there was nothing to land (see the check above).'
@@ -734,7 +734,7 @@ describe('WORLD 3 · he pushes', () => {
     const second = await bump(false);
 
     check({
-      world: W, id: 'w3.bump-cooldown-holds', binding: 'open',
+      world: W, id: 'w3.bump-cooldown-holds', binding: 'binding',
       ok: first == null || second == null,
       detail: first == null
         ? 'the first bump did not fire, so the cooldown could not be exercised (see w3.the-upward-volume-path-fires).'

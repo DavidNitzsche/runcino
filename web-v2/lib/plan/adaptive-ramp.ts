@@ -358,12 +358,26 @@ export async function detectRampSignals(
   // to `daysSinceLastBump = 999`, i.e. "no bump in nearly three years" — the
   // cooldown was OPEN for every runner on every evaluation, which is the one
   // answer that lets a ramp fire back-to-back.
+  /* BUMP-COOLDOWN-1 (2026-08-30) · the reason string below is
+   * 'plan_adapt_upgrade', which is what applyAdaptations actually writes for a
+   * mark_upgrade action (adapt.ts). It read 'plan_adapt_bump' — a string
+   * NOTHING in this codebase has ever written — so the row was never found,
+   * daysSinceLastBump was the 999 sentinel on every evaluation, and the
+   * seven-day cooldown has never once engaged. The harness got two bumps out of
+   * a single evaluation. Rule 14: a query naming a population that does not
+   * exist.
+   *
+   * It also confounded this module's own evidence. Zero 'plan_adapt_bump' rows
+   * reads as "the ramp never fired" whether it fired nightly or never, so the
+   * wrong string was both the cooldown's bug and the reason the bug was hard to
+   * see from the data. */
   const lastBump = await rowOrNull<{ ts: Date | string }>(
     'plan/adaptive-ramp · lastBump cooldown',
     pool.query<{ ts: Date | string }>(
       `SELECT ts FROM coach_intents
       WHERE COALESCE(user_uuid, user_id) = $1::uuid
-        AND reason = 'plan_adapt_bump'
+        -- BUMP-COOLDOWN-1 (2026-08-30) · see the note above detectRampSignals.
+        AND reason = 'plan_adapt_upgrade'
       ORDER BY ts DESC LIMIT 1`,
       [userId],
     ),
@@ -704,13 +718,44 @@ export async function tryAdaptiveBump(
   const action = await actionForAdaptiveRamp(userId);
   if (!action) return null;
   const { applyAdaptations } = await import('./adapt');
-  await applyAdaptations(userId, [{
+  /* ── BUMP-LANDED-1 (2026-08-30) · REPORT WHAT LANDED, NOT WHAT WAS ASKED FOR
+   *
+   * This discarded the return value. `applyAdaptations` runs inside
+   * `mutatePlan`, which validates the resulting week and ROLLS THE WHOLE BATCH
+   * BACK when it introduces a violation — returning 0 touched, deliberately, so
+   * the cron survives to serve the next runner. The bump then reported its
+   * summary anyway.
+   *
+   * Observed on the owner's real block the first time the ramp ever fired: the
+   * batch was refused (taper too shallow, T-pace dosing 23.8% against a 10%
+   * cap), the plan was byte-identical afterwards, zero `plan_adapt_upgrade`
+   * intents were written — and the cron logged a bump, busted the briefing
+   * cache, and told the runner nothing had gone wrong.
+   *
+   * A PUSH THAT REPORTS SUCCESS AND DID NOT HAPPEN IS WORSE THAN NO PUSH,
+   * because it defeats every downstream check that looks for one: the cooldown
+   * that reads the intent, the visibility surface that renders it, and any
+   * harness asserting the plan moved. Rule 11 in the write direction — "it was
+   * refused" and "it landed" became one value.
+   *
+   * `touched` counts rows the pass actually changed. Zero means nothing landed,
+   * whether refused by the boundary or filtered as sealed, and either way there
+   * is no bump to report. */
+  const touched = await applyAdaptations(userId, [{
     kind: 'mark_upgrade',
     bumps: action.bumps,
     why: action.why,
   }]);
+  if (touched <= 0) {
+    console.warn(
+      `[adaptive-ramp] bump did NOT land · user=${userId.slice(0, 8)} · `
+      + `${action.bumps.length} row(s) proposed, 0 changed — the mutation boundary refused the `
+      + 'batch or every target was sealed. Reporting no bump.',
+    );
+    return null;
+  }
   return {
-    bumps: action.bumps.length,
+    bumps: touched,
     longBumpMi: action.longBumpMi,
     weeklyBumpMi: action.weeklyBumpMi,
     why: action.why,

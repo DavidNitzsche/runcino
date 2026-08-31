@@ -162,8 +162,11 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
       'startLocal, type, workoutType, avgHr. Migrate once the hold lifts.',
     'lib/plan/adapt.ts':
       'The plan adapter · 3000+ lines and the single highest blast radius in the app. ' +
-      'Reads only the day/distance trio. Worth migrating, but not in the same change as ' +
-      'the module that would migrate it.',
+      'Reads the day/distance trio, plus (2026-08-30, QUALITY-EVIDENCE-1) workoutType and ' +
+      'type in the completion gate — those two are handed straight to `runStimulusType`, ' +
+      'the canonical resolver, rather than compared to a literal here, which is the thing ' +
+      'the vocabulary split forbids. Worth migrating, but not in the same change as the ' +
+      'module that would migrate it.',
     'lib/plan/drift-monitor.ts':
       'Widest key surface in the codebase (18 keys, most of them weather). Several of its ' +
       'literals — tempF_peak, dewpointF, startLat, start_latitude — do NOT appear on any ' +
