@@ -49,7 +49,7 @@ import {
   beginnerSurgeDose, beginnerHillReps,
   type ComposePlanInput, type DOW, type DayPlan,
 } from './generate';
-import { tPaceFromGoal, buildWorkoutSpec, strideRepsForPhase, STRIDE_REPS_BY_PHASE, STRIDE_DEFAULT_REPS, extractLongSegments } from './spec-builder';
+import { tPaceFromGoal, buildWorkoutSpec, strideRepsForPhase, STRIDE_REPS_BY_PHASE, STRIDE_DEFAULT_REPS, STRIDE_DAYS_PER_WEEK, extractLongSegments } from './spec-builder';
 import { DRESS_REHEARSAL, dressRehearsalDose } from './long-run-rows';
 import { dayDoses, weeklyDoseBudgetMi } from './dosing';
 import { splitDay } from './intensity-distribution';
@@ -270,6 +270,60 @@ describe('DOCTRINE-STRIDES-2 · stride reps vary across the block within 4-8', (
   it('the count is NOT one frozen number across the block', () => {
     const all = new Set([...strideRepsByPhase().values()].flatMap((s) => [...s]));
     expect(all.size, 'strides are frozen at a single rep count again').toBeGreaterThan(1);
+  });
+
+  /* DOCTRINE-STRIDES-3 (2026-08-30) · WHERE the strides land, not just how many.
+   *
+   * The MLR pass promotes one of the week's stride-carrying easy days into a
+   * 9-12 mile medium-long run, and used to carry the strides across with it.
+   * `Research/04` §7.2 Placement gives three homes — "End of an easy run,
+   * mid-warmup before a workout, or standalone day" — and a medium-long is
+   * none of them: `Research/00a` §3 gives it its own category, for "aerobic
+   * strength under fatigue", which is the state §7.2's "Not a workout — back
+   * off if form degrades" contraindication rules out.
+   *
+   * Found on the owner's live block `pln_9a57561debb776e5`: three medium-long
+   * runs of 9-12 mi carrying 6-8×20s strides, one of them alongside an
+   * embedded threshold segment.
+   */
+  it('a MEDIUM-LONG run never carries strides · §7.2 Placement', () => {
+    const offenders: string[] = [];
+    for (const w of composed.weeks) {
+      for (const d of w.days) {
+        const label = d.subLabel ?? '';
+        if (label.startsWith('MEDIUM-LONG') && /strides/.test(label)) {
+          offenders.push(`${w.phase} ${label} (${d.distanceMi}mi)`);
+        }
+        // The notes must not promise what the label no longer carries — that
+        // is the "row promises strides over a spec that has none" failure
+        // DOCTRINE-STRIDES-1's own comment warns about, in reverse.
+        if (label.startsWith('MEDIUM-LONG') && /strides/.test(d.notes ?? '')) {
+          offenders.push(`${w.phase} MEDIUM-LONG notes still promise strides`);
+        }
+      }
+    }
+    expect(offenders, 'strides on a medium-long run').toEqual([]);
+  });
+
+  it('and the week keeps its two stride days · §7.2 Frequency 2-4×/week', () => {
+    // Re-homing, not deletion. A week that has an MLR and other easy days must
+    // still carry two stride sessions — otherwise the fix above would have
+    // bought placement at the cost of frequency.
+    const shortfalls: string[] = [];
+    for (const w of composed.weeks) {
+      const hasMlr = w.days.some((d) => (d.subLabel ?? '').startsWith('MEDIUM-LONG'));
+      if (!hasMlr) continue;
+      const easyDays = w.days.filter(
+        (d) => d.type === 'easy' && (d.distanceMi ?? 0) > 0
+          && !(d.subLabel ?? '').startsWith('MEDIUM-LONG'));
+      const withStrides = easyDays.filter((d) => /strides/.test(d.subLabel ?? '')).length;
+      // Only demand two where two easy days actually exist to put them on.
+      const expected = Math.min(STRIDE_DAYS_PER_WEEK, easyDays.length);
+      if (withStrides < expected) {
+        shortfalls.push(`${w.phase} wk: ${withStrides} stride days on ${easyDays.length} easy days`);
+      }
+    }
+    expect(shortfalls, 'MLR promotion cost the week its stride days').toEqual([]);
   });
 
   it('the taper runs a familiar dose, not a novel one (Research/08 §9.1)', () => {

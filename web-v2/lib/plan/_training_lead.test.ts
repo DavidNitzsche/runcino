@@ -20,7 +20,7 @@
  * No database. The candidate arithmetic is the real `bestRecentVdot`.
  */
 import { describe, it, expect } from 'vitest';
-import { bestRecentVdot, tPaceFromVdot } from '@/lib/training/vdot';
+import { bestRecentVdot, tPaceFromVdot, vdotFromTpace } from '@/lib/training/vdot';
 import { REANCHOR_VDOT_DELTA } from './reanchor-plan';
 import {
   REGRESSION_DELTA_THRESHOLD,
@@ -63,26 +63,70 @@ function read(weeks: number, paceSPerMi: number) {
   );
 }
 
-describe('the closed door (what shipped before)', () => {
-  it('caps a genuine training lead at exactly +1.0, below every trigger', () => {
-    // 7:05/mi is T-pace for VDOT ~50 — six points clear of his anchor.
+/**
+ * 2026-08-30 · THE DOOR IS OPEN, AND THIS BLOCK IS REWRITTEN RATHER THAN
+ * REBASELINED.
+ *
+ * This describe block was called "the closed door (what shipped before)" and
+ * its two tests pinned the defect this whole file's header describes: twelve
+ * sessions at VDOT-48.4 threshold pace reading exactly `44.1 + 1.0`, because
+ * the ceiling was one race's number plus a constant.
+ *
+ * The owner's ruling retired that ceiling — it is now the CORROBORATED CORPUS
+ * level (`lib/training/vdot-corpus.ts`) — so the assertions that pinned the
+ * closed door are asserting a rule the engine no longer has. Flipping their
+ * numbers would have been a rebaseline; what they are replaced with is the
+ * property that actually still holds, which is that the +1 LEAD QUANTUM is
+ * unchanged. Only the thing being led has changed, from a race to the
+ * runner's own training.
+ *
+ * The asymmetry check the first test carried is KEPT verbatim — it is Rule
+ * 21's business (the bar to go up may not exceed the bar to come down) and it
+ * was never about the ceiling.
+ */
+describe('the door is open · training evidence is no longer capped by one race', () => {
+  it('reads what the sessions actually say, not the race plus one', () => {
+    // 7:05/mi is T-pace for VDOT ~48.4 — four points clear of his anchor.
     const r = read(6, 425);
     const measured = r.best!.vdot;
     expect(r.best!.source).toBe('run');
-    expect(measured).toBeCloseTo(ANCHOR_VDOT + 1.0, 5);
+    // The corpus corroborates these sessions, so they stand at face value.
+    expect(measured).toBeCloseTo(vdotFromTpace(425)!, 5);
+    // Which is emphatically NOT the retired race-anchored ceiling.
+    expect(measured).toBeGreaterThan(ANCHOR_VDOT + 1.0);
 
-    // Both pre-existing gates need more than the cap can ever supply.
-    expect(measured - ANCHOR_VDOT).toBeLessThan(REGRESSION_DELTA_THRESHOLD);
-    expect(measured - ANCHOR_VDOT).toBeLessThan(REANCHOR_VDOT_DELTA);
+    // The gates it was structurally unable to reach are now reachable, which
+    // is the entire point: a runner CAN train their way to a re-anchor.
+    expect(measured - ANCHOR_VDOT).toBeGreaterThan(REGRESSION_DELTA_THRESHOLD);
+    expect(measured - ANCHOR_VDOT).toBeGreaterThan(REANCHOR_VDOT_DELTA);
 
-    // And the same magnitude in the DOWNWARD direction does fire — which is
-    // the asymmetry, stated as a test rather than as a comment.
+    // And the same magnitude in the DOWNWARD direction still fires — the
+    // asymmetry, stated as a test rather than as a comment.
     expect(fitnessRegressionFires(ANCHOR_VDOT, ANCHOR_VDOT - 1.6)).toBe(true);
   });
 
-  it('running it longer does not help · the ceiling is not a function of time', () => {
+  it('one session still cannot do it · the lead quantum is unchanged', () => {
+    // The bound did not go away, it changed what it is made of. A single fast
+    // session among modest ones leads the corroborated level by exactly the
+    // doctrinal +1 and no more (Research/01 §"Triggers to retest").
+    const modest = nailedSessions(3, 462);              // his current T pace
+    const one = [{
+      id: 'spike', date: '2026-10-09', workout_type: 'threshold',
+      distance_mi: 5, finish_seconds: 5 * 380, avg_hr: 168, max_hr: 188,
+      zone: 'threshold',
+    }];
+    const r = bestRecentVdot(AFC as never, TODAY, 180, [...one, ...modest] as never, 4);
+    expect(r.best!.vdot).toBeCloseTo(vdotFromTpace(462)! + 1.0, 5);
+    expect(r.best!.vdot).toBeLessThan(vdotFromTpace(380)!);
+  });
+
+  it('running it longer does not inflate it · the level is the evidence, not the duration', () => {
+    // The old version of this test asserted the ceiling was constant because
+    // it was a RACE's number. The level is still constant across block
+    // lengths, for the opposite reason: every session says the same thing, so
+    // more of them corroborate the same level rather than compounding it.
     for (const weeks of [2, 4, 6, 10, 16]) {
-      expect(read(weeks, 425).best!.vdot).toBeCloseTo(ANCHOR_VDOT + 1.0, 5);
+      expect(read(weeks, 425).best!.vdot).toBeCloseTo(vdotFromTpace(425)!, 5);
     }
   });
 });
@@ -161,15 +205,20 @@ describe('sustained means sustained · two sessions across two weeks', () => {
 });
 
 describe('what it is worth · the pace actually tightens', () => {
-  it('a credited lead moves threshold, and the move is bounded', () => {
+  it('a credited lead moves threshold, and the move is bounded BY THE EVIDENCE', () => {
     const measured = read(6, 425).best!.vdot;
     const before = tPaceFromVdot(ANCHOR_VDOT)!;
     const after = tPaceFromVdot(measured)!;
     expect(after).toBeLessThan(before);
-    // One VDOT point is a real but small move — the bound that makes
-    // auto-applying safe rather than a leap of faith.
     expect(before - after).toBeGreaterThan(0);
-    expect(before - after).toBeLessThan(15);
+    // 2026-08-30 · this assertion used to read `< 15` — a bound in seconds,
+    // which was really the +1 race ceiling wearing a pace's clothes. With the
+    // ceiling now made of the corpus, the honest bound is not a constant: it
+    // is the pace the sessions were actually run at. The runner cannot be
+    // prescribed a threshold faster than the threshold he has been holding,
+    // however many times he holds it — that is the property worth pinning,
+    // and a fixed second-count never was.
+    expect(after).toBeGreaterThanOrEqual(425 - 1);
   });
 
   it('a second lead cannot be banked on top of the first', () => {

@@ -117,6 +117,9 @@ import {
   DANIELS_VDOT_MIN,
   DANIELS_VDOT_MAX,
   iPaceFromVdot,
+  // CONVENTION.corpus-corroboration-count runs the real selector rather than
+  // only reading its source — see that claim for why a regex was not enough.
+  bestRecentVdot,
 } from '@/lib/training/vdot';
 import {
   zonePaceAtVdot,
@@ -8509,13 +8512,30 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
             'defined but inert',
         );
       }
-      // 4 · The bound that makes the veto unnecessary must still exist. If the
-      //     soft cap were ever removed, training reads WOULD run away from a
-      //     race and this claim's reasoning would no longer hold.
-      if (!/const trainingCeiling = bestRaceRaw != null\s*\n?\s*\? bestRaceRaw \+ TRAINING_ESTIMATE_SOFT_CAP_VDOT : null;/.test(src)) {
+      // 4 · A BOUND on an individual training read must still exist. If it were
+      //     ever removed, a single training read WOULD run away and this
+      //     claim's reasoning would no longer hold.
+      //
+      //     2026-08-30 · what the bound is MADE OF changed (the corpus, not a
+      //     race — see `CONVENTION.corpus-corroboration-count`), so this clause
+      //     no longer pins the race-anchored expression literally. It pins the
+      //     two things this claim actually depends on: that the +1 lead quantum
+      //     is still what a single session may lead by, and that the race arm
+      //     survives as the fallback for a runner whose corpus cannot yet
+      //     corroborate. Whether the bound is corpus- or race-anchored is that
+      //     other claim's business; that there IS one is this claim's.
+      if (!/trainingCeiling = corpusRead\.ok\s*\n?\s*\? corpusRead\.vdot \+ TRAINING_ESTIMATE_SOFT_CAP_VDOT/.test(src)) {
         throw new Error(
-          'the AUDIT #8 training soft cap is gone · it is what bounds training influence to the ' +
-            'doctrinal +1 lead, and retiring the date veto depends on it',
+          'the corpus-anchored training ceiling is gone from bestRecentVdot · some bound on a ' +
+            'single training read is what stops one session running away from the evidence, and ' +
+            'retiring the date veto depends on there being one',
+        );
+      }
+      if (!/bestRaceRaw != null \? bestRaceRaw \+ TRAINING_ESTIMATE_SOFT_CAP_VDOT : null/.test(src)) {
+        throw new Error(
+          'the race-anchored fallback ceiling is gone · it is what bounds a runner whose training ' +
+            'corpus cannot yet corroborate itself (fewer than the corroboration minimum), which ' +
+            'is every runner in their first weeks',
         );
       }
     },
@@ -8581,6 +8601,173 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           'sub-representative races are being REMOVED from the candidate pool again · doctrine ' +
             'ranks them, it does not delete them, or a C-race-only runner has no anchor at all',
+        );
+      }
+    },
+  },
+
+  /* ── A CONVENTION claim · THE CORPUS IS THE ANCHOR ───────────────────────
+   *
+   * The owner's ruling, 2026-08-30: "Stop anchoring everything into one
+   * fucking race when I have so much data there to pull from... We anchor it
+   * into the evidence. What's the evidence?? THE FUCKING RUNNING."
+   *
+   * Two sibling claims above already fixed WHICH evidence wins a comparison.
+   * Neither touched the fact that the COMPARISON'S CEILING was a race's
+   * number: `trainingCeiling = bestRaceRaw + 1`. So the owner's corrected
+   * anchor, 45.1, was still literally "his race, plus one" — and a runner with
+   * no race at all had no ceiling whatsoever, which is two different laws for
+   * one question decided by whether a `races` row happens to exist.
+   *
+   * The ceiling is now what at least `CORROBORATION_MIN_OBSERVATIONS`
+   * independent training sessions support. Like the two CONVENTION claims
+   * elsewhere in this file, this one asserts that a number is OURS and exists
+   * so nobody can quietly re-label it as science: `Research/` does not model a
+   * training corpus and names no session count.
+   *
+   * What research DOES ground is the shape, and this check reads it out of the
+   * doc at run time: §"Triggers to retest" prices ONE good tempo at "+1 VDOT
+   * estimated", i.e. a single session is a lead and not a fitness number,
+   * which is precisely why a corroborated level is needed for it to lead from.
+   */
+  {
+    id: 'CONVENTION.corpus-corroboration-count',
+    binds: [
+      'lib/training/vdot-corpus.ts#CORROBORATION_MIN_OBSERVATIONS',
+      'lib/training/vdot-corpus.ts#corroboratedCorpusVdot',
+      'lib/training/vdot.ts#bestRecentVdot.trainingCeiling',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Triggers to retest',
+    claim:
+      'The fitness ceiling a single training session may lead from is the CORROBORATED CORPUS ' +
+      'level, not a race. The session COUNT that constitutes corroboration is a CONVENTION, not ' +
+      'a research finding — Research/ does not model a training corpus. What research grounds is ' +
+      'the shape: §"Triggers to retest" prices one good tempo at "+1 VDOT estimated; field-test ' +
+      'within 2 weeks", so a single session is a LEAD and never a fitness number, which is what ' +
+      'requires a corroborated level for it to lead FROM. What this claim enforces is that the ' +
+      'count stays above one (a corpus of one is the cherry-pick the rule exists to prevent), ' +
+      'that the read is an ORDER statistic no single observation can set, that the lead quantum ' +
+      'above it is still the doctrinal +1, and that the module never advertises the count as ' +
+      'measured.',
+    check() {
+      const src = sourceOf('web-v2/lib/training/vdot-corpus.ts');
+
+      // The doctrine sentence the SHAPE rests on, read out of the doc at run
+      // time · a check that hardcodes both sides only proves it agrees with
+      // itself (Rule 18).
+      const triggers = resolveCitation(
+        'Research/01-pace-zones-vdot.md', '### Triggers to retest').text();
+      if (!/\+\s*1\s*VDOT/i.test(triggers) || !/tempo/i.test(triggers)) {
+        throw new Error(
+          'Research/01 §"Triggers to retest" no longer prices a good tempo at +1 VDOT · that ' +
+            'clause is why one session is a lead rather than a fitness number, and it is the ' +
+            'entire shape this convention rests on',
+        );
+      }
+
+      // The honest label must stay. Same discipline as
+      // CONVENTION.cold-start-mileage-anchor.
+      if (!/THIS NUMBER IS A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
+        throw new Error(
+          'vdot-corpus.ts no longer states that the corroboration count is a convention · that ' +
+            'sentence is the whole point of this claim',
+        );
+      }
+
+      // A corpus of one is the cherry-pick this exists to prevent.
+      const m = src.match(/export const CORROBORATION_MIN_OBSERVATIONS = (\d+);/);
+      if (!m) throw new Error('CORROBORATION_MIN_OBSERVATIONS is gone or no longer a literal');
+      const k = Number(m[1]);
+      if (!(k >= 2)) {
+        throw new Error(
+          `CORROBORATION_MIN_OBSERVATIONS is ${k} · at 1 the "corroborated" level IS the single ` +
+            'best session, which is exactly the cherry-pick the rule exists to prevent',
+        );
+      }
+
+      // WIRED, and an ORDER statistic. A mean or a max would let one
+      // observation move the level, which is the property being bought.
+      if (!/sorted\[minObservations - 1\]\.vdot/.test(src)) {
+        throw new Error(
+          'the corpus read is no longer the Kth-highest observation · a mean, a max or a blend ' +
+            'lets a single session move the level, which is what corroboration is for',
+        );
+      }
+      // The refusal must stay a TYPE, not a number (Rule 11). If the refusal
+      // branch ever grows a `vdot`, a caller can spend a "don't know" as zero.
+      //
+      // 2026-08-30 · FALSIFIED, and the first version of this check did not
+      // fire. It searched for `vdot` AFTER the `reason:` line, so inserting the
+      // field one line ABOVE it walked straight through — a check that catches
+      // one ordering of the same defect is not a check. It now reads the whole
+      // refusal branch out of the union and asserts over all of it.
+      const refusalStart = src.indexOf('ok: false;');
+      if (refusalStart < 0) {
+        throw new Error("the CorpusRead refusal branch is gone · `ok: false` no longer appears");
+      }
+      const refusalEnd = src.indexOf('};', refusalStart);
+      const refusal = src.slice(refusalStart, refusalEnd < 0 ? src.length : refusalEnd);
+      if (/\bvdot\b/.test(refusal)) {
+        throw new Error(
+          'the CorpusRead refusal branch carries a `vdot` field · the refusal is a TYPE so that ' +
+            '`read.vdot` does not compile until the caller has branched (Rule 11). A refusal that ' +
+            'can be read as a number is how "measured zero" and "don\'t know" get collapsed.',
+        );
+      }
+
+      // And the engine must actually SPEND it as the ceiling — defined but
+      // inert is how every rule in this file has failed before.
+      const vdotSrc = sourceOf('web-v2/lib/training/vdot.ts');
+      if (!/corpusRead = corroboratedCorpusVdot\(corpusObs\);/.test(vdotSrc)) {
+        throw new Error('bestRecentVdot no longer computes the corpus read · the rule is inert');
+      }
+      if (!/trainingCeiling = corpusRead\.ok\s*\n?\s*\? corpusRead\.vdot \+ TRAINING_ESTIMATE_SOFT_CAP_VDOT/.test(vdotSrc)) {
+        throw new Error(
+          'the training ceiling is no longer anchored on the corpus · it is back to being a ' +
+            "race's number plus a constant, which is the defect this claim was written for",
+        );
+      }
+
+      // BEHAVIOURAL, because a source regex can always be walked around and
+      // this one was: the first version of the sibling check above matched
+      // even after the branch had been made inert with `false &&`. Reading the
+      // source proves the code is WRITTEN; running it proves the code ACTS.
+      //
+      // Four corroborating threshold sessions at 7:05/mi under a 1:41:53 half.
+      // The race reads 44.1, so the retired ceiling would clamp every one of
+      // them to 45.1. The corpus corroborates ~48.4, and that is what must
+      // come out.
+      const race = [{
+        slug: 'x', name: 'x', date: '2026-09-20', priority: 'A',
+        distance_mi: 13.1, finish_seconds: 6113,
+      }];
+      const runs = [0, 1, 2, 3].map((i) => ({
+        id: `d${i}`,
+        date: new Date(Date.parse('2026-10-12T12:00:00Z') - (i * 5 + 2) * 86400000)
+          .toISOString().slice(0, 10),
+        workout_type: 'threshold', distance_mi: 5, finish_seconds: 5 * 425,
+        avg_hr: 168, max_hr: 188, zone: 'threshold' as const,
+      }));
+      const live = bestRecentVdot(race, '2026-10-12', 180, runs, 4);
+      if (!live.corpus.ok) {
+        throw new Error(
+          'four corroborating sessions did not produce a corpus read · either the corroboration ' +
+            'minimum has grown past what a normal training block supplies, or the corpus is not ' +
+            'being computed at all',
+        );
+      }
+      if (!(live.best && live.best.vdot > 44.1 + TRAINING_ESTIMATE_SOFT_CAP_VDOT + 0.05)) {
+        throw new Error(
+          `the anchor came out at ${live.best?.vdot} · four corroborating threshold sessions well ` +
+            'above the race still resolved at or below race + 1, so the ceiling is behaving as a ' +
+            "race's number plus a constant however it is written",
+        );
+      }
+      if (live.best.vdot > live.corpus.vdot + TRAINING_ESTIMATE_SOFT_CAP_VDOT + 1e-9) {
+        throw new Error(
+          `the anchor (${live.best.vdot}) leads the corroborated corpus (${live.corpus.vdot}) by ` +
+            'more than the doctrinal +1 · the bound is not being applied',
         );
       }
     },

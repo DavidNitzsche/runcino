@@ -6848,12 +6848,53 @@ function layoutWeek({
           slots[d]!.distanceMi = Math.max(0, Math.round(give * 10) / 10);
           left = Math.round((left - slots[d]!.distanceMi) * 10) / 10;
         });
-        // DOCTRINE-STRIDES-2 · re-render at the same phase count the stride
-        // pass above used, so promoting the day to MEDIUM-LONG cannot silently
-        // reset its strides to the old fixed 6.
-        const strides = (slots[pick]!.subLabel ?? '').includes('strides')
-          ? ` · ${strideReps}×${STRIDE_DURATION_S}s strides`
-          : '';
+        // DOCTRINE-STRIDES-3 (2026-08-30) · A MEDIUM-LONG RUN IS NOT AN EASY
+        // RUN, SO IT DOES NOT CARRY THE EASY DAY'S STRIDES.
+        //
+        // The stride pass above ran before this one and put strides on the
+        // week's first two easy days. This pass then promotes one of those
+        // days into a 9-12 mile medium-long run — and the code here used to
+        // carry the strides across with it, deliberately, re-rendering them at
+        // the current phase count. That is placement doctrine does not license:
+        //
+        //   · `Research/04` §7.2 Placement names exactly three homes — "End of
+        //     an easy run, mid-warmup before a workout, or standalone day". A
+        //     medium-long is none of them: `Research/00a` §3 gives it its OWN
+        //     row among the seven workout categories, whose Purpose is
+        //     "Aerobic strength under fatigue without long-run cost".
+        //   · §7.2's Contraindications row is "Not a workout — back off if form
+        //     degrades", and the end of a twelve-mile run done for aerobic
+        //     strength UNDER FATIGUE is the exact state that names.
+        //   · §3's own Contraindications row — "Don't run too hard — it should
+        //     not compete with the long run for recovery" — is what the
+        //     embedded-T guard directly below already respects. Appending
+        //     8×20s at near-mile pace after that embedded threshold segment
+        //     puts three intensities on the one day the doctrine asks to stay
+        //     out of the long run's way.
+        //
+        // Verified on the owner's live block `pln_9a57561debb776e5`: three
+        // medium-long runs (9-12 mi) carried strides for exactly this reason.
+        //
+        // The week does not LOSE its second stride day — the strides are
+        // re-homed to the earliest remaining true-easy slot, so §7.2's
+        // "Frequency 2-4×/week" is still met where §7.2 says to meet it.
+        // Deterministic (earliest dow wins), so plans still regenerate
+        // byte-identically.
+        if ((slots[pick]!.subLabel ?? '').includes('strides')) {
+          for (let d = 0; d < 7; d++) {
+            if (d === pick) continue;
+            const s = slots[d];
+            if (!s || s.type !== 'easy' || s.distanceMi <= 0) continue;
+            if ((s.subLabel ?? '').includes('strides')) continue;
+            s.subLabel = `EASY · ${strideReps}×${STRIDE_DURATION_S}s strides`;
+            s.notes = `${s.notes} Finish with ${strideReps} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.`;
+            break;
+          }
+        }
+        // Never appended to a medium-long. Kept as a named empty string rather
+        // than deleting the interpolation, so the label shape below still reads
+        // as "here is where strides would go, and they do not go here".
+        const strides = '';
         /* VARIATION-CLOSE-1 (2026-08-29) · §3's "medium-long with embedded T
          * segment (advanced)".
          *

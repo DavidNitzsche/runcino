@@ -552,7 +552,14 @@ export async function loadVdotInputs(
           -- "operator does not exist: text >= date" - which this call site
           -- swallows, returning an empty evidence list instead of an error.
           AND (ci.ts AT TIME ZONE $4::text)::date >= $2::text::date
-          AND (ci.ts AT TIME ZONE $4::text)::date <  $3::text::date
+          -- 2026-08-30 · INCLUSIVE, matching the run window below. These two
+          -- bounds have to agree: this CTE supplies the WORK-PHASE effort, so
+          -- an exclusive one here would admit today's run and read its whole-run
+          -- average — warm-up and cool-down included — instead of the tempo
+          -- block inside it. That is the ~3-point understatement the
+          -- zone-aware read exists to prevent, applied to the freshest
+          -- evidence the runner has.
+          AND (ci.ts AT TIME ZONE $4::text)::date <= $3::text::date
         ORDER BY (ci.ts AT TIME ZONE $4::text)::date, ci.id DESC
      ), wc_work AS MATERIALIZED (
        SELECT wc.d,
@@ -615,7 +622,21 @@ export async function loadVdotInputs(
       WHERE sa.user_uuid = $1
         AND ${runNotMergedSql('sa')}
         AND ${runDaySql('sa')} >= $2
-        AND ${runDaySql('sa')} <  $3
+        -- 2026-08-30 · TODAY'S RUN COUNTS. This bound was exclusive, which made
+        -- the runner's freshest evidence — the session they finished an hour ago —
+        -- invisible to every pace the app prescribed until the calendar
+        -- rolled. On the day this was found, the owner's 13.5-mile long run
+        -- was already ingested, already had its splits, and could not reach
+        -- the fitness read; the plan he was looking at was priced off runs up
+        -- to 55 days older.
+        --
+        -- NOTE (no backticks in here: this is inside a JS template literal).
+        -- The inclusive bound is safe here in a way it is not for the RACE
+        -- window above: a race dated today has not been run yet (races are
+        -- scheduled, and the exclusive bound is what stops a future A-race
+        -- anchoring a plan), whereas a runs row only exists once the run is
+        -- over. There is no such thing as a future run in this table.
+        AND ${runDaySql('sa')} <= $3
         -- 2026-06-15 · floor lowered 4 → 3mi so a 5K-goal runner's ~3.1mi
         -- quality efforts leave the DB at all. The GOAL-RELATIVE gate
         -- (vdotRunFloorMi: 3.0 for 5K, 4.0 for longer) is applied downstream

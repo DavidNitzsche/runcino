@@ -46,6 +46,11 @@ import {
   selectionAuthority,
   type AuthorityTier,
 } from '@/lib/race/effort-authority';
+import {
+  corroboratedCorpusVdot,
+  type CorpusObservation,
+  type CorpusRead,
+} from '@/lib/training/vdot-corpus';
 
 /** Distance in km from a label. */
 function kmFromMi(mi: number): number { return mi * 1.609344; }
@@ -1116,7 +1121,22 @@ export function bestRecentVdot(
    *  legacy behavior for every caller that doesn't pass it; a 5K-goal caller
    *  passes 3.0 so the runner's ~3.1mi efforts count as fitness candidates. */
   minRunDistanceMi: number = 4,
-): { best: VdotCandidate | null; considered: VdotCandidate[]; belowTableAnchor: BelowTableAnchor | null } {
+): {
+  best: VdotCandidate | null;
+  considered: VdotCandidate[];
+  belowTableAnchor: BelowTableAnchor | null;
+  /**
+   * 2026-08-30 · what the TRAINING corpus corroborated, before any race was
+   * consulted. Additive: every existing caller destructures `best` /
+   * `considered` / `belowTableAnchor` and is unaffected.
+   *
+   * Exposed because the ceiling is now made of this, and a number that decides
+   * every prescribed pace should be answerable to "which runs said so" without
+   * re-deriving it — the observability half of Rule 21, and what
+   * `_vdot_corpus_anchor.test.ts` asserts against.
+   */
+  corpus: CorpusRead;
+} {
   const todayMs = Date.parse(todayISO + 'T12:00:00Z');
   // Hard cutoff now includes the fade tail; the fade handles 180→300.
   const cutoff = new Date(todayMs - (lookbackDays + FADE_TAIL_DAYS) * 86400000).toISOString().slice(0, 10);
@@ -1295,15 +1315,75 @@ export function bestRecentVdot(
   const bestRaceRaw = raceCandidates.reduce<number | null>(
     (max, c) => (excludedFromCeiling(c) ? max
       : (max == null || c.vdot_raw > max ? c.vdot_raw : max)), null);
-  const trainingCeiling = bestRaceRaw != null
-    ? bestRaceRaw + TRAINING_ESTIMATE_SOFT_CAP_VDOT : null;
+
+  /** What the training corpus corroborates, independent of any race. Refusal
+   *  (`ok:false`) with no runs at all, or with fewer than K qualifying ones. */
+  let corpusRead: CorpusRead = { ok: false, reason: 'no_observations', observations: 0 };
+  /** The bound on an individual training read. Set in the run block below. */
+  let trainingCeiling: number | null = null;
 
   const runCandidates: RunVdotCandidate[] = [];
   if (runs && runs.length > 0) {
-    for (const r of runs) {
+    // ── PASS 1 · read every run UNCAPPED, so the corpus can speak ──────────
+    //
+    // 2026-08-30 · THE CEILING STOPS BEING RACE-SHAPED. See
+    // `lib/training/vdot-corpus.ts` for the owner's ruling and the reasoning;
+    // this is the two-line consequence of it. The AUDIT #8 cap used to be
+    // resolved before this loop, from `bestRaceRaw` alone, and applied inside
+    // it — so a runner's entire training history was bounded by one race day
+    // plus a constant, and a runner with no race was bounded by nothing at
+    // all. Two different laws for one question, chosen by whether a `races`
+    // row exists.
+    //
+    // Now the runs are read first and the ceiling is derived from what at
+    // least `CORROBORATION_MIN_OBSERVATIONS` of them independently support.
+    // A race no longer bounds training evidence; it competes with it, at the
+    // authority its own grading gives it, in the sort below.
+    // Keyed by POSITION, not by `id`. A caller that builds this array by hand
+    // — which every test of this function does — may reuse an id, and a map
+    // keyed on it would silently hand pass 2 another run's reading.
+    const uncapped = new Map<number, number>();
+    const corpusObs: CorpusObservation[] = [];
+    runs.forEach((r, i) => {
+      if (!r.date || r.date < cutoff) return;
+      if (!r.distance_mi || !r.finish_seconds) return;
+      const v = vdotFromRun({
+        finishSeconds: r.finish_seconds,
+        distanceMi: r.distance_mi,
+        workoutType: r.workout_type,
+        avgHr: r.avg_hr ?? null,
+        maxHr: r.max_hr ?? null,
+        zone: r.zone ?? null,
+        minDistanceMi: minRunDistanceMi,
+      });
+      if (v == null) return;
+      uncapped.set(i, v);
+      corpusObs.push({ id: r.id, date: r.date, vdot: v });
+    });
+    corpusRead = corroboratedCorpusVdot(corpusObs);
+
+    // The ceiling an individual training read is bounded to. Corpus-anchored
+    // when the corpus can corroborate itself; the historical race-anchored
+    // bound ONLY as the fallback for a runner whose training cannot yet answer
+    // (fewer than K qualifying sessions — a new user's first fortnight). With
+    // neither, a training read is uncapped, exactly as before: a 5K TT IS a
+    // valid VDOT input, Research/01 §"Field-test protocols".
+    //
+    // Both arms add the SAME doctrinal +1 lead quantum (Research/01
+    // §"Triggers to retest": a good tempo is "+1 VDOT estimated"), so what a
+    // single standout session is allowed to say above the corroborated level
+    // is unchanged. Only the thing it leads has changed, from one race to the
+    // runner's own training.
+    trainingCeiling = corpusRead.ok
+      ? corpusRead.vdot + TRAINING_ESTIMATE_SOFT_CAP_VDOT
+      : (bestRaceRaw != null ? bestRaceRaw + TRAINING_ESTIMATE_SOFT_CAP_VDOT : null);
+
+    // ── PASS 2 · build the candidates, capped ─────────────────────────────
+    for (let i = 0; i < runs.length; i++) {
+      const r = runs[i];
       if (!r.date || r.date < cutoff) continue;
       if (!r.distance_mi || !r.finish_seconds) continue;
-      const v = vdotFromRun({
+      const v = uncapped.has(i) ? uncapped.get(i)! : vdotFromRun({
         finishSeconds: r.finish_seconds,
         distanceMi: r.distance_mi,
         workoutType: r.workout_type,
@@ -1518,7 +1598,7 @@ export function bestRecentVdot(
   const belowTableAnchor: BelowTableAnchor | null =
     considered.length > 0 ? null : (belowTableRace ?? belowTableRun);
 
-  return { best: considered[0] ?? null, considered, belowTableAnchor };
+  return { best: considered[0] ?? null, considered, belowTableAnchor, corpus: corpusRead };
 }
 
 /**
