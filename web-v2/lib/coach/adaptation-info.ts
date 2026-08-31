@@ -30,7 +30,73 @@ import { stripResearchCitations } from '@/lib/plan/strip-citations';
  *  session's dose. Named rather than left to fall through to 'other' because
  *  the runner's question about this one is different: the day is the same
  *  workout at a different size, not a workout that was replaced. */
-export type AdaptationKind = 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'reshape' | 'other';
+/** 2026-08-30 · 'upgrade' · the adaptive ramp raised this day's distance.
+ *
+ *  THE ONE KIND THE PRODUCT EXISTS FOR HAD NO NAME ON THIS SURFACE.
+ *  `tryAdaptiveBump` applies `kind: 'mark_upgrade'`, which `applyAdaptations`
+ *  records as `plan_adapt_upgrade` with `value.kind = 'mark_upgrade'`. Neither
+ *  spelling was in the accepted set below, so both fell through to `'other'` —
+ *  the catch-all that also covers "a row differs from its authored self and we
+ *  have no idea why". A push would have rendered as an anonymous change.
+ *
+ *  It has never mattered until now because `plan_adapt_upgrade` has zero rows
+ *  in production; the ramp could not fire (see `lib/plan/adaptive-ramp.ts`
+ *  gate 2). Now that it can, this surface is the first thing the runner sees. */
+export type AdaptationKind =
+  | 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'reshape' | 'upgrade' | 'other';
+
+/** The action kinds a persisted intent may carry, and the surface name each
+ *  maps to. `mark_upgrade` is the adapter's internal action name; `upgrade` is
+ *  what the runner's surface calls it. */
+const KIND_FROM_ACTION: Readonly<Record<string, AdaptationKind>> = {
+  downgrade: 'downgrade',
+  reschedule: 'reschedule',
+  shave: 'shave',
+  mark_dirty: 'mark_dirty',
+  reshape: 'reshape',
+  mark_upgrade: 'upgrade',
+};
+
+/** `coach_intents.reason` suffix → surface name, for rows whose `value` carries
+ *  no `kind`. `plan_adapt_progression` is the cycle's name, not the row's:
+ *  what happened to the row is a reshape. */
+const KIND_FROM_REASON: Readonly<Record<string, AdaptationKind>> = {
+  downgrade: 'downgrade',
+  reschedule: 'reschedule',
+  shave: 'shave',
+  mark_dirty: 'mark_dirty',
+  reshape: 'reshape',
+  upgrade: 'upgrade',
+  progression: 'reshape',
+};
+
+/**
+ * ONE resolver, because there were two and they had already drifted (Rule 16).
+ *
+ * `lib/coach/readiness-brief.ts` carried its own copy whose accepted set was a
+ * strict subset — no `reshape`, no `upgrade` — so the same adaptation rendered
+ * with one name on Today and a different one in the readiness brief. Both now
+ * call this.
+ *
+ * Returns null only when nothing changed AND nothing is recorded: an unadapted
+ * row has no kind, which is different from an adapted row we cannot classify.
+ */
+export function resolveAdaptationKind(args: {
+  intentActionKind: string | null | undefined;
+  intentReason: string | null | undefined;
+  wasAdapted: boolean;
+}): AdaptationKind | null {
+  if (args.intentActionKind) {
+    return KIND_FROM_ACTION[args.intentActionKind] ?? 'other';
+  }
+  if (args.intentReason) {
+    const suffix = args.intentReason.replace(/^plan_adapt_?/, '');
+    return KIND_FROM_REASON[suffix] ?? (args.wasAdapted ? 'other' : null);
+  }
+  // No intent at all · a backend-mutated row. "other" is the catch-all per the
+  // adaptation-visibility brief, and only when something actually differs.
+  return args.wasAdapted ? 'other' : null;
+}
 
 export interface AdaptationInfo {
   /** True when current runner-facing fields (type / distance / date)
@@ -133,33 +199,13 @@ function composeInfo(r: RawRow): AdaptationInfo {
   const reasonRaw = r.intent_value?.why ?? r.intent_reason ?? null;
   const reason = reasonRaw ? stripResearchCitations(reasonRaw) : null;
 
-  // Kind · prefer the parsed kind from value, fall back to inferring from
-  // the reason suffix.
-  let kind: AdaptationKind | null = null;
-  if (r.intent_value?.kind) {
-    const k = r.intent_value.kind;
-    if (k === 'downgrade' || k === 'reschedule' || k === 'shave' || k === 'mark_dirty' || k === 'reshape') {
-      kind = k;
-    } else {
-      kind = 'other';
-    }
-  } else if (r.intent_reason) {
-    // 'plan_adapt_progression' → 'reshape'. The reason string and the kind
-    // differ here because the reason names the CYCLE that made the decision
-    // and the kind names what happened to the row.
-    const reasonSuffix = r.intent_reason === 'plan_adapt_progression'
-      ? 'reshape'
-      : r.intent_reason.replace(/^plan_adapt_?/, '');
-    if (['downgrade', 'reschedule', 'shave', 'mark_dirty', 'reshape'].includes(reasonSuffix)) {
-      kind = reasonSuffix as AdaptationKind;
-    } else if (wasAdapted) {
-      kind = 'other';
-    }
-  } else if (wasAdapted) {
-    // wasAdapted=true but no intent · backend-mutated row · "other" is
-    // the catch-all per the brief.
-    kind = 'other';
-  }
+  // Kind · one resolver, shared with the readiness brief. See
+  // `resolveAdaptationKind` for why there is only one now.
+  const kind = resolveAdaptationKind({
+    intentActionKind: r.intent_value?.kind ?? null,
+    intentReason: r.intent_reason,
+    wasAdapted,
+  });
 
   return {
     wasAdapted,

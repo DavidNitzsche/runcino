@@ -27,6 +27,7 @@
  */
 
 import { pool } from '@/lib/db/pool';
+import { resolveAdaptationKind, type AdaptationKind } from '@/lib/coach/adaptation-info';
 import { logReadFailure } from '@/lib/db/read';
 import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
@@ -1662,7 +1663,10 @@ async function loadActivePlanAdaptation(
   originalSubLabel: string | null;
   originalDistanceMi: number | null;
   reason: string | null;
-  kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null;
+  /** 2026-08-30 · widened to the shared `AdaptationKind`. This union was a
+   *  strict subset of Today's, so a reshape or an upgrade arrived here as
+   *  'other' while Today named it. Rule 16. */
+  kind: AdaptationKind | null;
 } | null> {
   try {
     const tomorrowISO = new Date(Date.parse(todayISO + 'T00:00:00Z') + 86400000)
@@ -1717,24 +1721,15 @@ async function loadActivePlanAdaptation(
       && Math.abs(Number(r.original_distance_mi) - Number(r.distance_mi)) > 0.05;
     if (!typeChanged && !subLabelChanged && !distanceChanged) return null;
 
-    let kind: 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty' | 'other' | null = null;
-    if (r.intent_value?.kind) {
-      const k = r.intent_value.kind;
-      if (k === 'downgrade' || k === 'reschedule' || k === 'shave' || k === 'mark_dirty') {
-        kind = k;
-      } else {
-        kind = 'other';
-      }
-    } else if (r.intent_reason) {
-      const suffix = r.intent_reason.replace(/^plan_adapt_?/, '');
-      if (['downgrade', 'reschedule', 'shave', 'mark_dirty'].includes(suffix)) {
-        kind = suffix as 'downgrade' | 'reschedule' | 'shave' | 'mark_dirty';
-      } else {
-        kind = 'other';
-      }
-    } else {
-      kind = 'other';
-    }
+    // 2026-08-30 · ONE resolver, shared with `lib/coach/adaptation-info.ts`.
+    // This carried its own copy whose accepted set was a strict subset of that
+    // one's — no `reshape`, no `upgrade` — so the same adaptation rendered with
+    // a different name here than on Today. Rule 16: one quantity, one name.
+    const kind = resolveAdaptationKind({
+      intentActionKind: r.intent_value?.kind ?? null,
+      intentReason: r.intent_reason,
+      wasAdapted: true,
+    }) ?? 'other';
 
     return {
       date: r.date_iso,
