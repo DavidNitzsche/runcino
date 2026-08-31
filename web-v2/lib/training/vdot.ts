@@ -1268,8 +1268,30 @@ export function bestRecentVdot(
   // laundering the demoted race straight back in through the runs. Note the
   // predicate is inert when no representative race exists, so a C-race-only
   // runner still gets a ceiling off their C race rather than none.
+  //
+  // 2026-08-30 (sub-representative races) · the third exclusion, and it closes
+  // the case the other two could not reach. `authorityDemoted` is inert unless
+  // a BETTER-graded race exists, which is right for the HEADLINE — "a floor you
+  // have beats a guess you don't", so a runner whose only race was jogged still
+  // anchors on it. It is wrong for the CEILING, and by this block's own
+  // sentence, stated twice above: the cap anchors to the evidence the headline
+  // TRUSTS. The ceiling asks one question — "what is the last hard proof of
+  // fitness?" — and `Research/01` §"Triggers to retest" licenses "Update VDOT
+  // from race" only for a result that was "all-out, well-paced". A race
+  // doctrine grades below the representative floor is not that proof.
+  //
+  // It is proof of a FLOOR, and it keeps that job untouched: such a race still
+  // enters the pool, still competes at face value, and still anchors when it is
+  // all the runner has. What it stops doing is silently bounding every training
+  // read to itself + 1. Before this, a runner who told the app "I ran that one
+  // sick" through `POST /api/v5/race-authority` had their report honoured in
+  // the ranking and then quietly ignored by the cap — the flagged race set the
+  // ceiling anyway, so the anchor could not move more than a point off a result
+  // the runner had just disowned. The runner-report lever was half-wired.
+  const subRepresentative = (c: RaceVdotCandidate): boolean =>
+    c.authority < REPRESENTATIVE_FLOOR;
   const excludedFromCeiling = (c: RaceVdotCandidate): boolean =>
-    demotedForCeiling(c) || authorityDemoted(c);
+    demotedForCeiling(c) || authorityDemoted(c) || subRepresentative(c);
   const bestRaceRaw = raceCandidates.reduce<number | null>(
     (max, c) => (excludedFromCeiling(c) ? max
       : (max == null || c.vdot_raw > max ? c.vdot_raw : max)), null);
@@ -1380,73 +1402,98 @@ export function bestRecentVdot(
     c.source === 'race' ? c.vdot : (runsCapBounded ? c.vdot : c.vdot - 1);
 
   /**
-   * 2026-08-17 · SUPERSEDED-LEAD DOCTRINE.
+   * 2026-08-30 · THE DATE VETO IS RETIRED. An INFERRED rule was overriding an
+   * EXPLICIT one in the same document.
    *
-   * `Research/01` §"Testing cadence" is explicit about what a good training run
-   * IS: a tempo that feels notably easier at target pace is worth "+1 VDOT
-   * estimated; field-test within 2 weeks". A SOFT LEAD, and a request for a
-   * test — not a fitness number. The AUDIT #8 cap above enforces the +1
-   * magnitude faithfully. Nothing enforced the second half of the sentence.
+   * ── What stood here ───────────────────────────────────────────────────────
    *
-   * The failure that exposed it: David raced an A-priority half on 2026-08-16
-   * in 1:41:53 → VDOT 44.1. Four training runs — the oldest a 4-mile tempo from
-   * 55 days earlier — were each capped to `bestRaceRaw + 1.0` = 45.1, tied at
-   * the ceiling, and outranked the race by exactly the permitted lead. His
-   * anchor the day after his goal race was a two-month-old tempo run. Because
-   * the cap pins every lead to the same value, this is not an edge case: once a
-   * runner has ANY qualifying training run, their races can never anchor them.
+   * `supersededLead` demoted EVERY training candidate dated on or before the
+   * freshest representative race below every candidate that was not, whatever
+   * its magnitude. Its own doc comment named its basis honestly: "the rule
+   * doctrine IMPLIES: a lead is RESOLVED by the test it asked for."
    *
-   * The rule doctrine implies: a lead is RESOLVED by the test it asked for. A
-   * training estimate older than a race cannot outrank that race, whatever its
-   * magnitude — the field test came back, and it is the answer. Training runs
-   * SINCE the race still lead by up to +1, because that is new evidence
-   * acquired after the last hard proof, which is precisely the case the soft
-   * lead exists to describe.
+   * That inference contradicts a sentence `Research/01` states outright, in
+   * §"Implementation notes for the engine":
    *
-   * ── 2026-08-17 · IT HAS TO BE A TEST TO RESOLVE A TEST ───────────────────
+   *     "Selection — pick the highest derived VDOT, not the most recent.
+   *      A 6-week-old PR is a better fitness signal than a heat-affected
+   *      race last weekend."
    *
-   * The rule shipped keyed on the freshest race's DATE with no predicate on
-   * what that race was, which was safe only because the A/B filter upstream
-   * guaranteed it was a graded one. Opening the pool removes that guarantee and
-   * the rule inverts: a parkrun jogged as a workout becomes "the field test"
-   * and demotes every legitimate training lead behind it, deleting real
-   * evidence on the authority of a race nobody raced.
+   * That is this exact situation, decided the other way, by doctrine, in
+   * advance. The same section also records that the engine has no
+   * well-paced/heat-affected quality flag ("Currently we don't have this
+   * signal and treat all races equally") — so doctrine knows a recent race can
+   * be the distorted one and STILL says to take the highest derived read.
    *
-   * Doctrine is precise about which result answers the question. `Research/01`
-   * §"Triggers to retest" licenses "Update VDOT from race" for a "New race
-   * result (any distance, all-out, well-paced …)", and `Research/00b`'s C row
-   * is neither all-out nor tapered — it is "treat like a hard workout". A hard
-   * workout does not resolve the field test that another hard workout asked
-   * for. So the date that supersedes is the freshest race AT OR ABOVE THE
-   * REPRESENTATIVE FLOOR: the same B row that is doctrine's boundary for a
-   * result standing as a performance. Existing behaviour is unchanged for every
-   * A and B race, which is every race that could reach this rule before today.
+   * ── The failure the veto was built for is already covered ────────────────
+   *
+   * Its author's case: "the day after a 1:41:53 A-race half, the anchor was a
+   * 4-mile tempo from 55 days earlier ... once a runner has ANY qualifying
+   * training run, their races can never anchor them."
+   *
+   * The first half is real; the second half is what doctrine PRESCRIBES.
+   * §"Triggers to retest" row 2: "Tempo runs feel notably easier at the same
+   * target pace → Add 1 VDOT point; re-derive paces; field-test within 2
+   * weeks." A runner whose tempos read above their last race is supposed to be
+   * anchored at race + 1 and asked for a test. The AUDIT #8 soft cap already
+   * enforces the magnitude — a training candidate can NEVER say more than
+   * `bestRaceRaw + 1.0`, so it cannot run away from the race no matter how old
+   * or how fast it is. Nothing needed a second bound.
+   *
+   * The clause the author correctly noticed nothing enforced — "field-test
+   * within 2 weeks" — asks the engine to REQUEST A TEST. It does not license
+   * deleting the evidence. Discarding a lead is not enforcing the request for
+   * a test; it is answering the question the test was meant to answer, in the
+   * direction of the reading doctrine told us not to prefer.
+   *
+   * ── What it cost, measured on the owner's data, 2026-08-30 ───────────────
+   *
+   * `bestRecentVdot` resolved 44.1 off Americas Finest City (2026-08-16,
+   * 1:41:53). Five training candidates in the same window read at or above the
+   * ceiling — a 4mi tempo at 7:18/mi, another at 7:26, another at 7:31, a 12mi
+   * long-run work block at 7:35 — every one of them capped to 45.1 and every
+   * one of them vetoed for predating the race by days. Prescribed easy became
+   * 9:02-9:42/mi for a runner whose 27 logged runs at avg HR 144 average
+   * 8:14/mi. He described the plan as unusable.
+   *
+   * ── What replaces it: nothing, and that is the point ─────────────────────
+   *
+   * Selection is now the two rules doctrine actually states — highest derived
+   * VDOT, bounded for training reads by the +1 soft-estimate quantum — plus
+   * the staleness and authority tiers, which are separately cited. A race
+   * still wins an EXACT tie (stable sort; races precede runs in the
+   * concatenation below), so a race and a tempo that agree resolve to the race.
+   *
+   * The one clause kept, and it is a data-identity argument rather than a
+   * doctrinal one: a run dated the SAME DAY as a race is almost always that
+   * race re-ingested from Strava, or its warm-up. Letting it through would let
+   * a race lead itself by +1 and inflate every runner's anchor on the day they
+   * race. `loadVdotInputs` already excludes race-day runs (C1-1e, ±1 day), so
+   * in production this is belt-and-braces; it matters for callers that build
+   * candidate arrays directly, which is most of this function's tests.
    */
-  const freshestRaceDate = raceCandidates.reduce<string | null>(
-    (max, r) => (r.date && r.authority >= REPRESENTATIVE_FLOOR && (!max || r.date > max) ? r.date : max),
-    null,
+  const representativeRaceDates = new Set(
+    raceCandidates.filter((r) => r.date && r.authority >= REPRESENTATIVE_FLOOR).map((r) => r.date),
   );
-  // `<=`, not `<`. A run dated the SAME day as the race is almost always that
-  // race re-ingested from Strava, or its warm-up — so treating it as fresh
-  // evidence would let the race lead itself by +1 and inflate every runner's
-  // anchor on the day they race. Strictly-later runs are genuine new evidence.
-  const supersededLead = (c: VdotCandidate): boolean =>
-    c.source === 'run' && freshestRaceDate != null && c.date <= freshestRaceDate;
+  const sameDayAsRace = (c: VdotCandidate): boolean =>
+    c.source === 'run' && representativeRaceDates.has(c.date);
   // DOCTRINE-2 · a floor-only (56-84 day) candidate ranks below every in-window
   // candidate of either source. With no in-window evidence at all the tier term
   // is uniform and the stale anchor still wins — it is the floor doctrine says
   // to keep using until a fresh test replaces it.
   const inWindowExists = inWindowRaceExists || runCandidates.some((c) => !floorOnly(c));
   const demoted = (c: { age_days: number }): boolean => inWindowExists && floorOnly(c);
-  // Tier order · staleness, then authority, then superseded leads, then value.
+  // Tier order · staleness, then authority, then same-day race echoes, then
+  // value.
   //
   // Authority sits BELOW staleness because the two answer different questions
   // and staleness is the harder one: doctrine calls a 12-week-old anchor
   // "Expired. Don't anchor pace prescription on this VDOT" with no appeal,
   // where a low-authority race is current evidence that is simply worth less.
   //
-  // Authority sits ABOVE the superseded-lead tier because it now feeds it: a
-  // race has to clear the floor to supersede anything at all.
+  // The same-day tier sits last because it is not a judgement about evidence at
+  // all — it is the identity guard described above, keeping a race from
+  // leading itself by +1 through its own re-ingested GPS row.
   //
   // AUTHORITY NEVER TOUCHES `sortKey`. A candidate's `vdot` is a statement
   // about a performance that actually happened, and it is read by display
@@ -1459,7 +1506,7 @@ export function bestRecentVdot(
     .sort((a, b) =>
       ((demoted(b) ? 0 : 1) - (demoted(a) ? 0 : 1)) ||
       ((authorityDemoted(b) ? 0 : 1) - (authorityDemoted(a) ? 0 : 1)) ||
-      ((supersededLead(b) ? 0 : 1) - (supersededLead(a) ? 0 : 1)) ||
+      ((sameDayAsRace(b) ? 0 : 1) - (sameDayAsRace(a) ? 0 : 1)) ||
       (sortKey(b) - sortKey(a)));
 
   // P1-56 · belowTableAnchor is populated ONLY when there is no real (in-table)

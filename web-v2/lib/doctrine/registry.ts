@@ -8430,72 +8430,159 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
    *
    * Every other claim in this file binds a NUMBER to research. This one binds
    * a SELECTION RULE, because the bug it locks had its doctrine stated
-   * correctly in a comment directly above the code that violated it.
+   * correctly in a document the engine then contradicted.
    *
-   * `Research/01` says a good tempo is worth "+1 VDOT estimated; field-test
-   * within 2 weeks" — two clauses. The AUDIT #8 soft cap enforced the +1 and
-   * nothing enforced the field test, so a lead outranked the very test it
-   * asked for. The engine agreed with doctrine on the magnitude and disagreed
-   * with it on what the number MEANT, and no gate could see the difference.
+   * 2026-08-30 · THIS CLAIM WAS INVERTED. It shipped 2026-08-17 asserting the
+   * OPPOSITE of what it asserts now, and it is the reason the inversion
+   * survived: the gate was written by the same reasoning as the engine, so it
+   * locked the inference in place instead of catching it (CLAUDE.md Rule 22).
+   *
+   * What it used to assert: `supersededLead` — a training estimate dated on or
+   * before a representative race can never outrank that race, whatever its
+   * magnitude. Its own stated basis was "the rule doctrine IMPLIES", an
+   * inference, and it overrode a sentence Research/01 states outright in
+   * §"Implementation notes for the engine": "Selection — pick the highest
+   * derived VDOT, not the most recent. A 6-week-old PR is a better fitness
+   * signal than a heat-affected race last weekend."
+   *
+   * Measured on the owner's data the day this was corrected: five training
+   * candidates reading at or above the ceiling, every one vetoed for predating
+   * an A-race half by days, prescribed easy 9:02-9:42/mi against 27 logged runs
+   * at avg HR 144 averaging 8:14/mi.
    */
   {
-    id: 'EVIDENCE.race-supersedes-earlier-leads',
-    binds: ['lib/training/vdot.ts#bestRecentVdot.supersededLead'],
+    id: 'EVIDENCE.selection-takes-the-highest-derived-vdot',
+    binds: ['lib/training/vdot.ts#bestRecentVdot.sameDayAsRace'],
     doc: 'Research/01-pace-zones-vdot.md',
-    anchor: '### Testing cadence',
+    anchor: '### Implementation notes for the engine',
     claim:
-      'A training-derived VDOT is a SOFT LEAD awaiting a field test, not a fitness number. So a ' +
-      'training estimate dated on or before a race can never outrank that race, whatever its ' +
-      'magnitude — the test came back and it is the answer. The soft cap pins every qualifying ' +
-      'lead to exactly bestRaceRaw + 1, so without this rule a runner with ANY qualifying ' +
-      'training run could never be anchored on their own races: the day after a 1:41:53 A-race ' +
-      'half, the anchor was a 4-mile tempo from 55 days earlier. Training AFTER the race still ' +
-      'leads by the permitted +1, which is the case the soft lead exists to describe. ' +
-      'AND THE RACE HAS TO BE A TEST TO RESOLVE ONE (2026-08-17): the rule shipped keyed on the ' +
-      'freshest race DATE with no predicate on what that race was, which was safe only while an ' +
-      'upstream A/B filter guaranteed it. Doctrine licenses "Update VDOT from race" for a result ' +
-      'that was "all-out, well-paced"; a C race is "treat like a hard workout", and a hard ' +
-      'workout does not resolve the field test another hard workout asked for. The superseding ' +
-      'date is therefore the freshest race at or above the representative floor.',
+      'Selection takes the HIGHEST DERIVED VDOT, not the most recent evidence. Doctrine states ' +
+      'this outright and names this exact case — a older PR beating "a heat-affected race last ' +
+      'weekend" — so no date-ordering rule may demote a training candidate below a race merely ' +
+      'for predating it. Training influence is bounded by the AUDIT #8 soft cap (bestRaceRaw + ' +
+      'the doctrinal +1 lead quantum) and by the freshness window; it does not need, and ' +
+      'doctrine does not license, a second veto on top. The ONE demotion kept is a data-identity ' +
+      'guard, not a doctrinal one: a run dated the same day as a race is that race re-ingested ' +
+      'or its warm-up, and must not let the race lead itself by +1.',
     check() {
       const src = sourceOf('web-v2/lib/training/vdot.ts');
-      // The doc must still describe a training read as an estimate needing a test.
-      const cite = resolveCitation('Research/01-pace-zones-vdot.md', '### Testing cadence').text();
-      if (!/field-test|field test/i.test(cite)) {
+      // 1 · The doctrine sentence this rule rests on must still be there, and
+      //     must still say HIGHEST rather than most-recent. Read out of the
+      //     doc at run time — a check that hardcodes both sides only proves the
+      //     test agrees with itself (Rule 18).
+      const notes = resolveCitation(
+        'Research/01-pace-zones-vdot.md', '### Implementation notes for the engine').text();
+      if (!/pick the highest derived VDOT, not the most recent/i.test(notes)) {
         throw new Error(
-          'Research/01 §"Testing cadence" no longer asks for a field test · the superseded-lead ' +
-            'rule rests on that clause, so re-read the passage before changing the engine',
+          'Research/01 §"Implementation notes for the engine" no longer says to pick the highest ' +
+            'derived VDOT rather than the most recent · that sentence is the entire basis for ' +
+            'retiring the superseded-lead veto. Re-read the passage before changing the engine.',
         );
       }
-      // The doc must also still say which results update VDOT · "all-out,
-      // well-paced" is what licenses the authority predicate below.
-      const triggers = resolveCitation('Research/01-pace-zones-vdot.md', '### Triggers to retest').text();
+      // 2 · The retired rule must STAY retired. This is the ratchet: if a
+      //     future edit reintroduces a date veto under any name, the shape is
+      //     back and this claim fails.
+      if (/const supersededLead\b/.test(src)) {
+        throw new Error(
+          '`supersededLead` is back in bestRecentVdot · the date veto contradicts Research/01 ' +
+            '§"Implementation notes" ("pick the highest derived VDOT, not the most recent"). ' +
+            'If it is genuinely needed again, change the CLAIM first, with a citation.',
+        );
+      }
+      if (/c\.date <= freshestRaceDate|c\.date < freshestRaceDate/.test(src)) {
+        throw new Error(
+          'a training candidate is being demoted by DATE against a race again · that is the ' +
+            'superseded-lead shape under a new name',
+        );
+      }
+      // 3 · The identity guard that replaced it must be defined AND applied.
+      //     A rule that is defined but inert is how the last one looked after
+      //     it was half-removed.
+      matchLiteral(
+        src,
+        /const sameDayAsRace = \(c: VdotCandidate\): boolean =>\s*\n?\s*c\.source === 'run' && representativeRaceDates\.has\(c\.date\);/,
+        'bestRecentVdot same-day race-echo guard',
+      );
+      if (!/\(\(sameDayAsRace\(b\) \? 0 : 1\) - \(sameDayAsRace\(a\) \? 0 : 1\)\)/.test(src)) {
+        throw new Error(
+          'the same-day race-echo tier is no longer applied in the candidate sort · the rule is ' +
+            'defined but inert',
+        );
+      }
+      // 4 · The bound that makes the veto unnecessary must still exist. If the
+      //     soft cap were ever removed, training reads WOULD run away from a
+      //     race and this claim's reasoning would no longer hold.
+      if (!/const trainingCeiling = bestRaceRaw != null\s*\n?\s*\? bestRaceRaw \+ TRAINING_ESTIMATE_SOFT_CAP_VDOT : null;/.test(src)) {
+        throw new Error(
+          'the AUDIT #8 training soft cap is gone · it is what bounds training influence to the ' +
+            'doctrinal +1 lead, and retiring the date veto depends on it',
+        );
+      }
+    },
+  },
+
+  /* ── The ceiling anchors to evidence the headline trusts ─────────────────
+   *
+   * Sibling of the claim above, and the other half of the same 2026-08-30
+   * correction. `bestRecentVdot` says twice, in its own comments, that the
+   * training soft cap "anchors to the same evidence the headline trusts" — but
+   * the exclusion implementing that sentence (`authorityDemoted`) is inert
+   * unless a BETTER-graded race exists. So a runner whose ONLY race was graded
+   * below the representative floor — including one they had explicitly
+   * reported as compromised through `POST /api/v5/race-authority` — still had
+   * every training read bounded to that race + 1.
+   */
+  {
+    id: 'EVIDENCE.ceiling-anchors-to-a-well-paced-race',
+    binds: ['lib/training/vdot.ts#bestRecentVdot.subRepresentative'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Triggers to retest',
+    claim:
+      'The training soft-cap ceiling asks "what is the last HARD PROOF of fitness", and doctrine ' +
+      'licenses "Update VDOT from race" only for a result that was all-out and well-paced. A ' +
+      'race graded below the representative floor is not that proof, so it does not set the ' +
+      'ceiling — even when it is the only race in scope. It is still proof of a FLOOR: it stays ' +
+      'in the pool, competes at face value, and anchors the headline when it is all the runner ' +
+      'has ("a floor you have beats a guess you don\'t"). Only its power to bound OTHER evidence ' +
+      'is withdrawn.',
+    check() {
+      const src = sourceOf('web-v2/lib/training/vdot.ts');
+      // Doctrine's qualifier on which race result updates VDOT, read at run time.
+      const triggers = resolveCitation(
+        'Research/01-pace-zones-vdot.md', '### Triggers to retest').text();
       if (!/all-out.*well-paced/i.test(triggers)) {
         throw new Error(
-          'Research/01 §"Triggers to retest" no longer qualifies which race result updates VDOT · ' +
-            'the authority predicate on the superseded-lead rule rests on that clause',
+          'Research/01 §"Triggers to retest" no longer qualifies which race result updates VDOT ' +
+            '("all-out, well-paced") · that clause is what excludes a sub-representative race ' +
+            'from setting the training ceiling',
         );
       }
-      // And the engine must still demote leads at or before the freshest race.
       matchLiteral(
         src,
-        /const supersededLead = \(c: VdotCandidate\): boolean =>\s*\n?\s*c\.source === 'run' && freshestRaceDate != null && c\.date <= freshestRaceDate;/,
-        'bestRecentVdot superseded-lead rule',
+        /const subRepresentative = \(c: RaceVdotCandidate\): boolean =>\s*\n?\s*c\.authority < REPRESENTATIVE_FLOOR;/,
+        'bestRecentVdot sub-representative ceiling exclusion',
       );
-      if (!/\(\(supersededLead\(b\) \? 0 : 1\) - \(supersededLead\(a\) \? 0 : 1\)\)/.test(src)) {
+      // WIRED · defined is not enough, it has to be in the exclusion.
+      if (!/demotedForCeiling\(c\) \|\| authorityDemoted\(c\) \|\| subRepresentative\(c\)/.test(src)) {
         throw new Error(
-          'the superseded-lead tier is no longer applied in the candidate sort · the rule is ' +
-            'defined but inert, which is how it looked before the fix',
+          'the sub-representative exclusion is no longer applied to the ceiling · the rule is ' +
+            'defined but inert',
         );
       }
-      // WIRED · the date that supersedes must be filtered by authority. Without
-      // this the rule reads "the freshest race" again and a jogged C race
-      // becomes the field test.
-      matchLiteral(
-        src,
-        /const freshestRaceDate = raceCandidates\.reduce<string \| null>\(\s*\n?\s*\(max, r\) => \(r\.date && r\.authority >= REPRESENTATIVE_FLOOR/,
-        'bestRecentVdot superseded-lead authority predicate',
-      );
+      // And the race must NOT have been removed from the pool as well — the
+      // whole point is ranked-not-removed. If a future edit starts filtering
+      // sub-representative races out of raceCandidates, this claim's "still
+      // anchors as a floor" half is silently false.
+      // Anchored at line start so the historical note in `bestRecentVdot`'s own
+      // comment — which quotes this exact statement to record that it was
+      // REMOVED — is not read as the statement coming back. Real code here is
+      // indented inside the race loop; the note is prefixed by `//` or ` * `.
+      if (/^\s*if \(r\.priority === 'C'\) continue;/m.test(src)) {
+        throw new Error(
+          'sub-representative races are being REMOVED from the candidate pool again · doctrine ' +
+            'ranks them, it does not delete them, or a C-race-only runner has no anchor at all',
+        );
+      }
     },
   },
 

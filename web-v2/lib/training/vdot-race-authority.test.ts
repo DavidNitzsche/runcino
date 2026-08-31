@@ -177,41 +177,64 @@ describe('2 · authority scales RANK, and never the number', () => {
   });
 });
 
-describe('3 · only a race with authority supersedes a training lead', () => {
+/**
+ * 2026-08-30 · RESCOPED. This section tested `supersededLead` — the rule that a
+ * training candidate dated on or before a representative race could never
+ * outrank it. That rule is retired: it was an inference overriding
+ * `Research/01` §"Implementation notes for the engine" ("pick the highest
+ * derived VDOT, not the most recent"). See `vdot-selection-order.test.ts`.
+ *
+ * What survives, and is what this section now covers, is the half of the
+ * original claim that was always sound: **authority decides which race gets to
+ * BOUND a training lead.** A jogged C race is "treat like a hard workout"
+ * (`Research/00b`), and a hard workout does not set the ceiling on what other
+ * hard workouts may say. The rule moved from the ranking to the cap; the
+ * doctrine behind it did not change.
+ */
+describe('3 · only a race with authority bounds a training lead', () => {
   const TODAY = '2026-06-01';
   const LEAD = tempo('lead', '2026-05-20');
 
-  it('a jogged C race does NOT demote a training lead that preceded it', () => {
+  /** The lead's UNBOUNDED read, for comparing against each capped case. */
+  const uncapped = bestRecentVdot([], TODAY, undefined, [LEAD])
+    .considered.find((c) => c.source === 'run')!.vdot_raw;
+
+  it('a jogged C race does not cap the lead · it is not the hard proof', () => {
     const jogged = race({
       slug: 'parkrun', date: '2026-05-25', priority: 'C',
       distance_mi: TEN_K, finish_seconds: 3000,
     });
-    const { best } = bestRecentVdot([jogged], TODAY, undefined, [LEAD]);
-    expect(best?.source).toBe('run');
+    const { considered } = bestRecentVdot([jogged], TODAY, undefined, [LEAD]);
+    expect(considered.find((c) => c.source === 'run')!.vdot_raw).toBeCloseTo(uncapped, 5);
   });
 
-  it('an A race still does · the rule is unchanged for every race that could reach it before', () => {
+  it('an A race does · the lead is bound to race + the doctrinal quantum', () => {
     const goal = race({ slug: 'goal-hm', date: '2026-05-25', priority: 'A' });
-    const { best } = bestRecentVdot([goal], TODAY, undefined, [LEAD]);
-    expect(best).toMatchObject({ source: 'race', slug: 'goal-hm' });
+    const { considered } = bestRecentVdot([goal], TODAY, undefined, [LEAD]);
+    const raceCand = considered.find((c) => c.source === 'race')!;
+    const run = considered.find((c) => c.source === 'run')!;
+    expect(run.vdot_raw).toBeCloseTo(raceCand.vdot_raw + 1.0, 5);
+    expect(run.vdot_raw).toBeLessThan(uncapped);
   });
 
-  it('a B race still does', () => {
+  it('a B race does too · the representative floor is the boundary', () => {
     const tuneUp = race({ slug: 'tune-up', date: '2026-05-25', priority: 'B' });
-    const { best } = bestRecentVdot([tuneUp], TODAY, undefined, [LEAD]);
-    expect(best).toMatchObject({ source: 'race', slug: 'tune-up' });
+    const { considered } = bestRecentVdot([tuneUp], TODAY, undefined, [LEAD]);
+    const raceCand = considered.find((c) => c.source === 'race')!;
+    expect(considered.find((c) => c.source === 'run')!.vdot_raw)
+      .toBeCloseTo(raceCand.vdot_raw + 1.0, 5);
   });
 
-  it('a C race AFTER an A race does not un-supersede the leads the A race resolved', () => {
-    // The freshest AUTHORITATIVE race is the A one, so leads before it stay
-    // demoted even though a C race is more recent than all of them.
+  it('a C race alongside an A race does not soften the A race\'s ceiling', () => {
     const goal = race({ slug: 'goal-hm', date: '2026-05-22', priority: 'A' });
     const jogged = race({
       slug: 'parkrun', date: '2026-05-28', priority: 'C',
       distance_mi: TEN_K, finish_seconds: 3000,
     });
-    const { best } = bestRecentVdot([goal, jogged], TODAY, undefined, [LEAD]);
-    expect(best).toMatchObject({ source: 'race', slug: 'goal-hm' });
+    const { considered } = bestRecentVdot([goal, jogged], TODAY, undefined, [LEAD]);
+    const a = considered.find((c) => c.source === 'race' && c.slug === 'goal-hm')!;
+    expect(considered.find((c) => c.source === 'run')!.vdot_raw)
+      .toBeCloseTo(a.vdot_raw + 1.0, 5);
   });
 });
 
@@ -277,10 +300,37 @@ describe('4 · a demoted race cannot launder itself back in through the training
     expect(run.vdot_raw).toBeCloseTo(44.1 + 1.0, 5); // capped to the A race, not to the C one
   });
 
-  it('but a C race that is the only race DOES set the ceiling · a floor you have beats a guess you don\'t', () => {
-    const { considered } = bestRecentVdot([SOMBRERO], TODAY, undefined, [tempo('t', '2026-05-25')]);
-    const run = considered.find((c) => c.source === 'run')!;
-    expect(run.vdot_raw).toBeCloseTo(44.8 + 1.0, 5);
+  /**
+   * 2026-08-30 · INVERTED, deliberately. This asserted that a C race which is
+   * the only race in scope DOES set the ceiling, on the "a floor you have
+   * beats a guess you don't" principle.
+   *
+   * That principle is about the HEADLINE — which race anchors a runner who has
+   * nothing better — and it still holds there (the case below). It was wrong
+   * about the CEILING, which asks a different question: "what is the last hard
+   * proof of fitness?" `Research/01` §"Triggers to retest" licenses "Update
+   * VDOT from race" only for an "all-out, well-paced" result, and a C race is
+   * "treat like a hard workout" (`Research/00b`). A hard workout is proof of a
+   * floor, not of a ceiling.
+   *
+   * The cost of the old behaviour, measured on the owner 2026-08-30: a runner
+   * who told the app "I ran that one sick" through `POST /api/v5/race-authority`
+   * had the report honoured in the ranking and then silently ignored by the
+   * cap — the disowned race still bounded every training read to itself + 1,
+   * so the anchor could not move more than a point off a result the runner had
+   * just rejected. The lever was half-wired.
+   */
+  it('a C race that is the only race does NOT set the ceiling', () => {
+    const lead = tempo('t', '2026-05-25');
+    const { considered } = bestRecentVdot([SOMBRERO], TODAY, undefined, [lead]);
+    const uncapped = bestRecentVdot([], TODAY, undefined, [lead])
+      .considered.find((c) => c.source === 'run')!.vdot_raw;
+    expect(considered.find((c) => c.source === 'run')!.vdot_raw).toBeCloseTo(uncapped, 5);
+  });
+
+  it('but it still ANCHORS when it is all the runner has · ranked, never removed', () => {
+    const { best } = bestRecentVdot([SOMBRERO], TODAY, undefined, []);
+    expect(best).toMatchObject({ source: 'race', slug: SOMBRERO.slug });
   });
 });
 
@@ -298,16 +348,32 @@ describe('the owner · 2026-08-17', () => {
   const RUNS = [tempo('t-jul', '2026-07-20'), tempo('t-aug', '2026-08-09')];
 
   it('opening the filter changes nothing today · the window already excluded both', () => {
-    const { best, considered } = bestRecentVdot(ALL, TODAY, undefined, RUNS);
+    const { considered } = bestRecentVdot(ALL, TODAY, undefined, RUNS);
     // Big Sur (113 d) and Sombrero (106 d) are past VDOT_EXPIRY_DAYS = 84.
     expect(considered.filter((c) => c.source === 'race').map((c) => c.slug)).toEqual(['afc']);
-    expect(best).toMatchObject({ source: 'race', slug: 'afc', vdot: 44.1 });
+    expect(considered.find((c) => c.source === 'race')).toMatchObject({ slug: 'afc', vdot: 44.1 });
   });
 
-  it('and the anchor is the race, because both leads predate it', () => {
-    const { best } = bestRecentVdot(ALL, TODAY, undefined, RUNS);
-    expect(best?.source).toBe('race');
-    expect(best?.age_days).toBe(1);
+  /**
+   * 2026-08-30 · INVERTED. This asserted "the anchor is the race, because both
+   * leads predate it" — the superseded-lead rule, stated as an outcome.
+   *
+   * It is the exact case that broke the product. AFC read 44.1; the tempos in
+   * the same window read above it and were vetoed for being older; prescribed
+   * easy came out 9:02-9:42/mi for a runner whose 27 logged runs at avg HR 144
+   * average 8:14/mi. `Research/01` §"Implementation notes for the engine" had
+   * already decided this the other way — "pick the highest derived VDOT, not
+   * the most recent" — and the veto overrode it on an inference.
+   *
+   * What the runner gets now is the doctrinal +1 lead over their last hard
+   * proof, and nothing more: the cap still binds, which the assertion checks
+   * explicitly rather than just checking who won.
+   */
+  it('the leads anchor, bounded to AFC + the doctrinal quantum', () => {
+    const { best, considered } = bestRecentVdot(ALL, TODAY, undefined, RUNS);
+    const afc = considered.find((c) => c.source === 'race')!;
+    expect(best?.source).toBe('run');
+    expect(best!.vdot).toBeCloseTo(afc.vdot + 1.0, 5);
   });
 });
 
@@ -318,16 +384,29 @@ describe('the owner · 2026-09-28, the day after Dodgers', () => {
   const LEAD_AFTER_AFC = tempo('t-sep', '2026-09-20');
   const RACES = [AFC, DODGERS_JOGGED];
 
-  it('DAMAGE · with no authority scaling, the jog deletes the lead behind it', () => {
-    // A C race with no authority predicate behaves exactly as a B race does:
-    // it is simply "the freshest race". Declaring Dodgers a B reproduces the
-    // pre-fix behaviour through the shipped code path.
+  /**
+   * 2026-08-30 · RESCOPED. This reproduced the pre-2026-08-17 damage by
+   * declaring the jogged Dodgers 10K a B race and showing it deleted the lead
+   * behind it. With the date veto retired there is no lead-deletion left to
+   * demonstrate — no race, at any grade, demotes a training candidate for
+   * being older than it.
+   *
+   * The damage that remains real, and is what this now asserts, is the
+   * CEILING half: an ungraded jog that reads as a representative race would
+   * hand every training run a ceiling of jog + 1, laundering a race nobody
+   * raced into every prescribed pace.
+   */
+  it('DAMAGE · with no authority scaling, a jog would set the ceiling', () => {
     const asIfUngraded = { ...DODGERS_JOGGED, priority: 'B' };
-    const { best, considered } = bestRecentVdot([AFC, asIfUngraded], TODAY, undefined, [LEAD_AFTER_AFC]);
-    const lead = considered.find((c) => c.source === 'run')!;
-    expect(lead.vdot).toBeGreaterThan(best!.vdot); // the lead is the strongest evidence
-    expect(best?.source).toBe('race');             // and it is demoted anyway
-    expect(best).toMatchObject({ slug: 'afc' });
+    const { considered } = bestRecentVdot([AFC, asIfUngraded], TODAY, undefined, [LEAD_AFTER_AFC]);
+    const races = considered.filter((c) => c.source === 'race');
+    const jog = races.find((c) => c.slug === 'dodgers')!;
+    const afc = races.find((c) => c.slug === 'afc')!;
+    // Graded as a B, the jog is in-window and representative, so it competes
+    // for the ceiling · it is only AFC's higher raw read that holds the line.
+    expect(jog.authority).toBeGreaterThanOrEqual(REPRESENTATIVE_FLOOR);
+    expect(considered.find((c) => c.source === 'run')!.vdot_raw)
+      .toBeCloseTo(Math.max(afc.vdot_raw, jog.vdot_raw) + 1.0, 5);
   });
 
   it('DAMAGE · and a C race that reads high would take the anchor outright', () => {
@@ -361,21 +440,33 @@ describe('the owner · 2026-09-28, the day after Dodgers', () => {
     expect(best).toMatchObject({ slug: 'afc' });
   });
 
-  it('a B tune-up between AFC and Dodgers DOES supersede · authority, not priority-name', () => {
+  /**
+   * 2026-08-30 · RESCOPED from "a B tune-up DOES supersede" to what authority
+   * still decides now that no race supersedes anything by date: **which race
+   * gets to raise the ceiling.** The contrast is the same and it still
+   * isolates authority rather than the priority letter — adding the graded B
+   * race changes the bound on the lead, adding the jog does not.
+   */
+  it('a B tune-up raises the ceiling · authority, not priority-name', () => {
     const santaMonica = race({
       slug: 'santa-monica-10k', date: '2026-09-13', priority: 'B',
-      distance_mi: TEN_K, finish_seconds: 2761, // 46:01 → the honest 10K for VDOT 44.1
+      distance_mi: TEN_K, finish_seconds: 2650, // 44:10 → reads above AFC, below the lead
     });
-    // This lead sits AFTER AFC and BEFORE the B race, so AFC cannot resolve it
-    // and only the B race or the jog can. The contrast below isolates which.
     const leadBetween = tempo('t-between', '2026-09-06');
+    const runOf = (r: ReturnType<typeof bestRecentVdot>) =>
+      r.considered.find((c) => c.source === 'run')!.vdot_raw;
+    const raceOf = (r: ReturnType<typeof bestRecentVdot>, slug: string) =>
+      r.considered.find((c) => c.source === 'race' && c.slug === slug)!.vdot_raw;
 
     const withB = bestRecentVdot([AFC, santaMonica, DODGERS_JOGGED], TODAY, undefined, [leadBetween]);
-    expect(withB.best?.source).toBe('race');
+    expect(runOf(withB)).toBeCloseTo(raceOf(withB, 'santa-monica-10k') + 1.0, 5);
 
-    // Drop the B race and the same lead leads again · the jog never resolved it.
+    // Drop the B race and the ceiling falls back to AFC · the jog never set it.
     const withoutB = bestRecentVdot([AFC, DODGERS_JOGGED], TODAY, undefined, [leadBetween]);
-    expect(withoutB.best).toMatchObject({ source: 'run', id: 't-between' });
+    expect(runOf(withoutB)).toBeCloseTo(raceOf(withoutB, 'afc') + 1.0, 5);
+
+    // And the graded race genuinely moved it · not a tautology on both sides.
+    expect(runOf(withB)).toBeGreaterThan(runOf(withoutB));
   });
 
   it('and a lead acquired AFTER that B race still leads', () => {

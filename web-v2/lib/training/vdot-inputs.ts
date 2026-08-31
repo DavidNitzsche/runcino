@@ -167,6 +167,139 @@ export interface VdotInputs {
   runFloorMi: number;
 }
 
+/**
+ * 2026-08-30 · THE ROW'S OWN MILE SPLITS ARE A SECOND CLOCK, AND THEY VOTE.
+ *
+ * `runFinishSecSql` prefers `movingTimeS`, and `survivingMovingSecSql` refuses
+ * it only when it implies MORE THAN HALF the run was paused (`MAX_PAUSED_SHARE
+ * = 0.5`). That catches the 2026-08-23 absorber row at 54.9% and nothing else.
+ * A moving time that is wrong by 10% sails through, and a fitness anchor is
+ * exactly the consumer that cannot afford it: a 10% pace error is ~5 VDOT.
+ *
+ * ── The row that made this necessary ──────────────────────────────────────
+ *
+ * 2026-08-11, the owner's 4×1km interval session. 5.97 mi.
+ *
+ *     durationSec  2784     ← 7:46/mi
+ *     movingTimeS  2479     ← 6:55/mi   ← what the VDOT path spent
+ *     splits[]     8:01, 7:05, 7:34, 7:42, 7:59, 7:23  → 2727 s over 5.96 mi
+ *
+ * The six mile splits sum to 2727 s. That is 248 s MORE than `movingTimeS`
+ * (10.0%) and 57 s LESS than `durationSec` (2.0%). Per-mile splits are a
+ * record of running, so they cannot hide five minutes of standing still: if
+ * the 305 s gap were genuine pauses the splits would agree with the moving
+ * time, and they do not. They agree with the wall clock. No single mile was
+ * faster than 7:05, so a 6:55 whole-session average — across a warm-up at avg
+ * HR 135, four reps and three jog recoveries — is not a pace the runner ran.
+ *
+ * Read at 6:55/mi and typed `threshold`, that row derives **VDOT 49.8** — the
+ * single highest read in the runner's entire 60-day pool, four points clear of
+ * anything else, and eight clear of the median. It sat harmlessly behind the
+ * superseded-lead veto until that veto was retired; the moment selection
+ * started taking the highest derived VDOT the way doctrine says to, this row
+ * became the anchor and would have prescribed T-pace 6:55 off a broken clock.
+ * Fixing the selection rule without fixing this would have replaced paces that
+ * were too slow with paces the runner cannot hold, which is the worse error.
+ *
+ * ── The rule ──────────────────────────────────────────────────────────────
+ *
+ * Pure arithmetic on numbers the same row carries — a ratio between two of its
+ * own clocks. No claim about human speed, no physiology, so no doctrine
+ * registry entry, for the reason `lib/runs/coherence.ts` states for its own
+ * guards: "the guard is equally correct for an elite and for a walker, and it
+ * cannot go stale when the research does."
+ *
+ * Only fires when the splits can actually answer. Partial splits are a
+ * "don't know", not a verdict (Rule 11) — hence the coverage gate. When the
+ * splits DO disprove the stored clock, the candidate is refused rather than
+ * repaired: the honest finish time for that run is unknown, and substituting
+ * `durationSec` would be a guess wearing a measurement's clothes. A run that
+ * cannot say how long it took is not evidence of fitness.
+ *
+ * WHAT THIS CANNOT CATCH (Rule 22): a row with no splits, a row whose splits
+ * are wrong in the same direction as its clock, and any error under the
+ * tolerance. It is a cross-check between two sources, not a truth oracle.
+ *
+ * ── WHERE THE TOLERANCE COMES FROM ────────────────────────────────────────
+ *
+ * Not fitted to the data. A 5% pace error is roughly 2.5 VDOT, which is
+ * already more than twice the largest move doctrine ever lets TRAINING
+ * evidence make off a hard proof — the +1 soft-estimate quantum
+ * (`Research/01` §"Triggers to retest"). Past that point the two clocks
+ * disagree by more than the whole adjustment the reading could justify, so
+ * the reading cannot be spent whichever clock is right.
+ *
+ * MEASURED against that line, 2026-08-30, over every canonical row in the
+ * owner's history that carries per-mile splits (22 clear the coverage gate):
+ *
+ *     9.2%   2026-08-11   the 4×1km session · REFUSED
+ *     6.9%   2026-08-27   3.14 mi treadmill · REFUSED (and it already failed
+ *                         the honesty gate, so nothing is lost)
+ *     3.6%   2026-08-30   the LT-block long run · admitted
+ *     3.0%   2026-05-24   admitted
+ *     ≤2.7%  the other 18 rows · admitted
+ *
+ * The margin either side of the line is real but not luxurious: 1.4 points
+ * below and 1.9 above. Re-measure before moving it, and say what moved.
+ */
+const SPLIT_CLOCK_TOLERANCE = 0.05;
+/**
+ * Splits must cover between this much and `SPLIT_CLOCK_MAX_COVERAGE` of the run
+ * before they may overrule its clock.
+ *
+ * The upper bound is not symmetry for its own sake. Two rows dated 2026-05-24
+ * carry splits summing to MORE than the run: 12.0 miles of splits on a 1.00
+ * mile row (coverage 12.0) and 12.0 on an 11.12 mile row (1.079). The first is
+ * plainly corrupt, and a corrupt arbiter is worse than no arbiter — it would
+ * refuse sound rows with the same confidence it refuses broken ones. Splits
+ * that cannot describe this run do not get a vote on it (Rule 11: that is a
+ * "don't know", not a verdict).
+ */
+const SPLIT_CLOCK_MIN_COVERAGE = 0.9;
+const SPLIT_CLOCK_MAX_COVERAGE = 1.25;
+
+/**
+ * Seconds the row's own per-mile splits say the run took, scaled to its full
+ * distance — or null when the splits cannot answer (absent, unparseable, or
+ * covering too little of the run to arbitrate).
+ */
+export function splitImpliedSeconds(splits: unknown, distanceMi: number | null): number | null {
+  if (!Array.isArray(splits) || splits.length === 0) return null;
+  if (distanceMi == null || !(distanceMi > 0)) return null;
+  let sec = 0;
+  let miles = 0;
+  for (const s of splits) {
+    if (!s || typeof s !== 'object') continue;
+    const row = s as Record<string, unknown>;
+    const paceRaw = row.paceSecPerMi;
+    const pace = typeof paceRaw === 'number' ? paceRaw : Number(paceRaw);
+    if (!Number.isFinite(pace) || pace <= 0) continue;
+    // A split is one mile unless it says otherwise (the last one usually does).
+    const dRaw = row.distanceMi;
+    const d = dRaw == null ? 1 : Number(dRaw);
+    if (!Number.isFinite(d) || d <= 0) continue;
+    sec += pace * d;
+    miles += d;
+  }
+  if (miles <= 0) return null;
+  const coverage = miles / distanceMi;
+  if (coverage < SPLIT_CLOCK_MIN_COVERAGE || coverage > SPLIT_CLOCK_MAX_COVERAGE) return null;
+  return (sec / miles) * distanceMi;
+}
+
+/**
+ * True when the row's per-mile splits disprove the clock the VDOT path is
+ * about to spend. See `SPLIT_CLOCK_TOLERANCE` above for the measurement.
+ */
+export function clockDisprovedBySplits(
+  finishSec: number | null, splits: unknown, distanceMi: number | null,
+): boolean {
+  if (finishSec == null || !(finishSec > 0)) return false;
+  const implied = splitImpliedSeconds(splits, distanceMi);
+  if (implied == null || !(implied > 0)) return false;
+  return Math.abs(finishSec - implied) / implied > SPLIT_CLOCK_TOLERANCE;
+}
+
 // Strava's numeric workoutType enum → string taxonomy bestRecentVdot expects.
 // 1 = race effort, 3 = workout (tempo/quality). 0/2/null → non-quality;
 // the HR gate inside vdotFromRun decides those.
@@ -543,7 +676,23 @@ export async function loadVdotInputs(
     const workSec = r.work_seconds != null ? Math.round(Number(r.work_seconds)) : null;
     const useWork = workMi != null && workSec != null && workMi >= runFloorMi && workSec > 60;
     const distMi = useWork ? workMi : (r.distance_mi != null ? Number(r.distance_mi) : null);
-    const rawSec = useWork ? workSec : (r.finish_seconds != null ? Number(r.finish_seconds) : null);
+    const wholeRunSec = r.finish_seconds != null ? Number(r.finish_seconds) : null;
+
+    // 2026-08-30 · the row's own mile splits arbitrate its clock. See
+    // `clockDisprovedBySplits` for the 2026-08-11 row this exists for.
+    //
+    // Scoped to the WHOLE-RUN path deliberately. When `useWork` is true the
+    // seconds come from the watch's phase actuals in `coach_intents`, a
+    // different source with its own per-phase distances and paces — the mile
+    // splits do not describe that segment and cannot arbitrate it.
+    //
+    // Refusal, not repair: `rawSec` goes null and the candidate drops out of
+    // the pool at the `finish_seconds > 60` gate downstream. `durationSec` is
+    // NOT substituted — this run's honest finish time is unknown, and the whole
+    // point is not to spend a number the row itself cannot support.
+    const rawSec = useWork
+      ? workSec
+      : (clockDisprovedBySplits(wholeRunSec, r.splits, distMi) ? null : wholeRunSec);
 
     // ── Terrain ────────────────────────────────────────────────────────────
     // 2026-08-17 · a VDOT candidate is an effort estimate, so it is judged on
