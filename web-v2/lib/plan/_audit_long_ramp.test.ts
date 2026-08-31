@@ -48,7 +48,24 @@ describe('A1 · long-run ramp shape', () => {
   it('recent long 5 → gradual climb from the runner capacity, reaches the peak late', () => {
     const longs = buildLongs('3-6', 25);
     expect(longs[0]).toBeLessThanOrEqual(7);         // seeded near recent 5
-    expect(Math.max(...longs)).toBeGreaterThanOrEqual(18);
+    // SPIKEROLL-1 (2026-08-31) · this bound was >= 18, and that was the bug,
+    // not this fix. Research/00a §"Practical load rules" caps a single long at
+    // 110% of the longest run in the prior 30 days (`SPIKE_MAX_SHARE`), so an
+    // UNROUNDED 10%-per-week climb over the full 13-week climbing span this
+    // archetype gets can reach at most 5 * 1.1^13 ≈ 17.3 mi as a pure ceiling —
+    // never 18, and the engine measures BELOW that theoretical bound besides,
+    // because the 30-day anchor is ROLLING (it reads the actual, already-
+    // rounded-to-a-half-mile week the runner would have run, not an unrounded
+    // running product) and every quality/easy day in the same week is held at
+    // or below the long, which can itself pull a week's max down a further
+    // half-step on the grid. The old assertion required the ramp to climb
+    // FASTER than the doctrine ceiling it is bound by, which is exactly the
+    // shape `enforceSpikeRule` (`finalizeComposedPlan`) now closes: measured
+    // here at a peak of 15.5 mi (rounds to 16), reached at week 17. See
+    // docs/spikeroll-1-handback.md §3b — "the engine's low-capacity long-run
+    // ramp is designed to breach Research/00a:752, and a test has been
+    // asserting that it does" — this is that fix, applied to the test itself.
+    expect(Math.max(...longs)).toBeGreaterThanOrEqual(16);
     // the peak arrives in the back half, not week 2
     const peakIdx = longs.indexOf(Math.max(...longs));
     expect(peakIdx).toBeGreaterThan(8);

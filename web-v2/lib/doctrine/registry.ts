@@ -2081,7 +2081,12 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'RAMP.single-session-spike',
-    binds: ['lib/plan/generate.ts#rampCeiling', 'lib/plan/generate.ts#recentPeakLongMi'],
+    binds: [
+      'lib/plan/generate.ts#rampCeiling',
+      'lib/plan/generate.ts#recentPeakLongMi',
+      'lib/plan/generate.ts#enforceSpikeRule',
+      'lib/plan/generate.ts#SPIKE_MAX_SHARE',
+    ],
     doc: 'Research/00a-distance-running-training.md',
     anchor: '### Volume progression rules',
     claim:
@@ -2092,7 +2097,16 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'the ceiling may carry no minimum-distance filter, because filtering short runs out makes a ' +
       'low-volume runner read as no history and `rampCeiling` then returns the unbounded doctrine ' +
       'cap — the guard switched off for exactly the runners it protects (LOWVOL-1, 2026-08-19: a ' +
-      '6 mi longest read 0 and was authored a 10 mi week-1 long, 167% of prior-30d).',
+      '6 mi longest read 0 and was authored a 10 mi week-1 long, 167% of prior-30d).' +
+      ' SPIKEROLL-1 (2026-08-31): `rampCeiling` is `layoutWeek`\'s AUTHORING-TIME expression of ' +
+      'this same threshold, and it reads a pre-finalization curve that is always looser than what ' +
+      'ships — every pass after `layoutWeek` (embedded races, cutbacks, the taper rescale) can only ' +
+      'shrink a week further. `enforceSpikeRule` in `finalizeComposedPlan` is the SAME 110% figure ' +
+      'applied to the plan that actually ships, rolling across the whole block rather than seeded ' +
+      'once — the two are complementary, not duplicate, and this claim now watches both: the ' +
+      'authoring-time expression stays inside the threshold as before, AND the finishing pass is ' +
+      'demonstrably WIRED rather than defined-and-inert (Rule 20 — `void enforceSpikeRule;` shipped ' +
+      'for one cycle before this).',
     check({ cite }) {
       const t = cite.table();
       const stated = parseBand(t.cell('Single-session spike threshold', 'Specification'))[0] / 100;
@@ -2112,6 +2126,103 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           'recentPeakLongMi filters the lookback by a minimum distance again · a runner whose ' +
             'longest run is below that floor reads 0 and rampCeiling stops bounding their long run',
+        );
+      }
+
+      // SPIKEROLL-1 · the finishing-pass half. `SPIKE_MAX_SHARE` (the literal
+      // `finalizeComposedPlan` clamps against) must still equal the same
+      // doctrine threshold this claim already reads.
+      const shareM = src.match(/export const SPIKE_MAX_SHARE = (\d*\.?\d+);/);
+      if (!shareM) throw new Error('SPIKE_MAX_SHARE is gone or no longer a literal · enforceSpikeRule has no doctrine-bound ceiling');
+      const share = Number(shareM[1]);
+      if (Math.abs(share - stated) > 1e-9) {
+        throw new Error(
+          `SPIKE_MAX_SHARE is ${share}, the cited threshold is ${stated} · the finishing-pass ` +
+            'ceiling has drifted from the same table this claim already binds',
+        );
+      }
+      // WIRED, not inert (Rule 20's own named failure mode — `void
+      // enforceSpikeRule;` shipped for one cycle after this pass was written
+      // and before the owner ruled on landing it). A call site must exist and
+      // the old no-op marker must be gone.
+      if (/void enforceSpikeRule;/.test(src)) {
+        throw new Error(
+          '`void enforceSpikeRule;` is back in generate.ts · the finishing-pass spike guard has ' +
+            'been switched off again while its own doctrine claim stays green',
+        );
+      }
+      if (!/^\s*enforceSpikeRule\(\);\s*$/m.test(src)) {
+        throw new Error(
+          'no bare `enforceSpikeRule();` call site found in generate.ts · the guard may be defined ' +
+            'but never invoked',
+        );
+      }
+    },
+  },
+  {
+    id: 'CONVENTION.spike-rule-coherence-floor',
+    binds: ['lib/plan/generate.ts#SPIKE_MIN_COHERENT_ANCHOR_MI'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Practical load rules',
+    claim:
+      'The 110% single-session spike ceiling (`RAMP.single-session-spike`) degenerates on the ' +
+      'half-mile authoring grid for a small anchor: `floor(anchor * 1.10 * 2) / 2` EQUALS `anchor` ' +
+      'itself whenever a 10% move does not cross a half-mile boundary — the norm, not the edge ' +
+      'case, for an anchor already authored on that grid (`floor(2 * 1.10 * 2) / 2 = 2.0`). Below ' +
+      'that floor the guard cannot express the doctrine ratio at every anchor — some anchors can ' +
+      '(2.3 -> 2.5 is +8.7%), others structurally cannot (2.0 -> 2.0 is +0%) — which is an anchor- ' +
+      'dependent, incoherent guard rather than a strict one. THE 5 MI FLOOR ITSELF IS A ' +
+      'CONVENTION, NOT A RESEARCH FINDING: `Research/00a` states the 110% ratio and says nothing ' +
+      'about a minimum coherent long-run distance for it to operate on a half-mile grid — this ' +
+      'claim exists to enforce the SHAPE (the guard must not be incoherent below its own floor) ' +
+      'and that the module never advertises the floor as measured, on the same discipline as ' +
+      '`CONVENTION.corpus-corroboration-count` and `CONVENTION.cold-start-mileage-anchor`.',
+    check({ cite }) {
+      // The doctrine sentence the SHAPE rests on, read at run time (Rule 18):
+      // the 110% ratio this floor exists to keep coherent must still be there.
+      const spec = cite.table().cell('Long-run cap rule', 'Specification');
+      if (!/110%/.test(spec)) {
+        throw new Error(
+          'Research/00a §"Practical load rules" no longer states the long-run cap at 110% · that ' +
+            'figure is the entire reason a coherence floor is needed on the authoring grid',
+        );
+      }
+      const growthShare = parseBand(spec)[0] / 100 - 1; // 110% -> 0.10
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      const m = src.match(/export const SPIKE_MIN_COHERENT_ANCHOR_MI = (\d*\.?\d+);/);
+      if (!m) throw new Error('SPIKE_MIN_COHERENT_ANCHOR_MI is gone or no longer a literal');
+      const floor = Number(m[1]);
+      // The honest label must stay — same discipline as the two CONVENTION
+      // siblings this claim's own comment names.
+      if (!/THIS NUMBER IS A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
+        throw new Error(
+          'generate.ts no longer states that the spike-rule coherence floor is a convention · that ' +
+            'sentence is the whole point of this claim',
+        );
+      }
+      // The floor must actually sit where the degeneracy the claim describes
+      // stops being universal: at the floor itself, a half-mile step must be
+      // AT LEAST the doctrine growth share (0.5 / floor >= 0.10 · floor <= 5),
+      // parsed from the SAME row above rather than hardcoded on both sides.
+      if (!(0.5 / floor >= growthShare - 1e-9)) {
+        throw new Error(
+          `SPIKE_MIN_COHERENT_ANCHOR_MI is ${floor} · a half-mile grid step there is smaller than ` +
+            "the doctrine ratio, so the floor sits past the point it claims to fix — the guard is " +
+            'STILL incoherent at its own boundary',
+        );
+      }
+      if (!(floor >= 2)) {
+        throw new Error(
+          `SPIKE_MIN_COHERENT_ANCHOR_MI is ${floor} · too small to be a meaningful coherence floor ` +
+            '(the degeneracy this claim describes is worst well above 2 mi)',
+        );
+      }
+      // And it must actually be SPENT as the exemption — defined but inert is
+      // how every rule in this file has failed before (Rule 20).
+      if (!/anchor >= SPIKE_MIN_COHERENT_ANCHOR_MI/.test(src)) {
+        throw new Error(
+          'SPIKE_MIN_COHERENT_ANCHOR_MI is declared but `enforceSpikeRule` no longer gates on it · ' +
+            'the exemption may be inert',
         );
       }
     },

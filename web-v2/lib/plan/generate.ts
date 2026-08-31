@@ -2007,6 +2007,52 @@ export const SPIKE_MAX_SHARE = 1.10;
 export const SPIKE_WINDOW_DAYS = 30;
 
 /**
+ * SPIKEROLL-1 · the guard degenerates on the half-mile authoring grid for a
+ * small anchor: `floor(anchor * SPIKE_MAX_SHARE * 2) / 2` EQUALS `anchor`
+ * itself whenever a 10% move does not cross a half-mile boundary —
+ * `floor(2 * 1.10 * 2) / 2 = 2.0` — which is the NORM, not the edge case, for
+ * an anchor that is already authored on that grid. Measured in
+ * `docs/spikeroll-1-handback.md` §3a: 334 archetype failures on landing, ALL
+ * traced to this — nearly every one a "Taper bottoms at N mi, X% below peak"
+ * on the smallest runners (L0-3 / m0-m5), because the long run could never
+ * grow at all, so the block's own peak — and therefore its taper depth —
+ * never rose.
+ *
+ * THIS NUMBER IS A CONVENTION, NOT A RESEARCH FINDING. `Research/00a` states
+ * the 110% ratio; it says nothing about a minimum coherent long-run distance
+ * for that ratio to operate on a half-mile grid. 5 mi is the smallest anchor
+ * at which a single 0.5 mi grid step is ALWAYS at least a 10% move
+ * (0.5 / 5.0 = 10%), so the ceiling can express doctrine's ratio at every
+ * anchor above it. Below 5 mi some anchors can still express it (2.3 -> 2.5 is
+ * +8.7%) and others structurally cannot (2.0 -> 2.0 is +0%) — an anchor-
+ * dependent, incoherent guard, not a strict one, which is worse than no guard
+ * at that grid resolution because it looks like protection and is not.
+ *
+ * The exemption is NARROW, not a retreat: below the floor, `enforceSpikeRule`
+ * does not evaluate that week at all, but the long run is not left unguarded
+ * — `layoutWeek`'s own `rampCeiling` (bound by doctrine claim
+ * `RAMP.single-session-spike`) already bounds every authored session at
+ * ~110% of ITS OWN pre-finalization anchor, so an exempt week keeps exactly
+ * the protection it had before this pass existed. What this pass adds — the
+ * rolling, POST-taper, POST-cutback, FINAL-value check — is what does not
+ * apply below the floor, not protection in general. So the population below
+ * this floor is no worse off than `main` was before SPIKEROLL-1 landed.
+ *
+ * Known gap, named rather than silently routed around (a beginner or a
+ * runner returning from a long layoff is exactly the population
+ * `Research/22`'s "Return from Long Layoff" section addresses with its own
+ * mechanism, and a finer authoring grid below 5 mi — quarter-mile — would
+ * also close this structurally). Either is a real fix for later; this floor
+ * only keeps the guard honest today rather than quietly wrong.
+ *
+ * Bound by `CONVENTION.spike-rule-coherence-floor` in
+ * `lib/doctrine/registry.ts`, on the same discipline as
+ * `CONVENTION.corpus-corroboration-count`: it asserts the number stays inside
+ * the reasoning above and never advertises itself as measured.
+ */
+export const SPIKE_MIN_COHERENT_ANCHOR_MI = 5;
+
+/**
  * DOCTRINE-1c / TAPER-RESTORE-CONTINUOUS-1 · how far under its doctrine target
  * a taper week may sit before `finalizeComposedPlan` lifts it back.
  *
@@ -11066,20 +11112,22 @@ export function finalizeComposedPlan(
   };
 
   /**
-   * SPIKEROLL-1 (2026-08-30) · `Research/00a` §"Volume progression rules" ·
-   * ">110% of the longest run in the prior 30 days = ~64% overuse injury risk".
+   * SPIKEROLL-1 (2026-08-30, landed 2026-08-31) · `Research/00a`
+   * §"Volume progression rules" · ">110% of the longest run in the prior 30
+   * days = ~64% overuse injury risk".
    *
-   * ── HELD BACK. READ `docs/spikeroll-1-handback.md` BEFORE LANDING THIS ─────
+   * ── LANDED. `docs/spikeroll-1-handback.md` is the full audit trail ────────
    *
-   * This closes the owner's ruled defect ("Let's not breach. So adjust.") and it
-   * MOVES PROTECTED ANSWER KEYS, which the brief for this work says is a
-   * stop-and-report condition rather than a rebaseline. Measured, not guessed:
-   * `_sweep_allusers` 334 firm failures, `_dosing_sweep_gate` 12 enforced
-   * breaches, `_audit_long_ramp` red, and one doctrine claim
-   * (`RAMP.single-session-spike`) red. Every one of those is a real conflict
-   * between doctrine and a curve the engine was designed to author, not a bug in
-   * this pass, and resolving it is the owner's call. The hand-back names all
-   * four and shows the arithmetic.
+   * This closes the owner's ruled defect ("Let's not breach. So adjust."). It
+   * was held back for one cycle because turning it on MOVES PROTECTED ANSWER
+   * KEYS: `_sweep_allusers` (0 -> 334 firm failures, all traced to the sub-5mi
+   * grid degeneracy — see `SPIKE_MIN_COHERENT_ANCHOR_MI`), `_dosing_sweep_gate`
+   * (0 -> 12, the same population), `_audit_long_ramp` (its own assertion was
+   * the bug — see `RAMP12MI` below), doctrine claim `RAMP.single-session-spike`,
+   * and the `_audit_periodization` frozen snapshot (deliberately rebaselined,
+   * net -5.0 mi over 14 weeks, peak long 21.5 -> 21.0, still inside
+   * `Research/22`'s 20-24 marathon band). None of the four was a bug in this
+   * pass; each is resolved on landing rather than routed around.
    *
    * ── WHY IT EXISTS ────────────────────────────────────────────────────────
    *
@@ -11113,7 +11161,72 @@ export function finalizeComposedPlan(
    * long run. Trimmed miles are NOT redistributed — a long doctrine says is too
    * long is not a surplus looking for a home.
    */
-  const enforceSpikeRule = () => {
+  // ONE CALL, placed BEFORE COH-4 (the taper rescale, directly below) —
+  // deliberately, not after. COH-4 sizes each taper week's target as a
+  // PERCENTAGE of the block's realized peak, computed fresh at COH-4's own
+  // start, so a peak this guard has already trimmed by then is what taper is
+  // correctly sized against. Tried the reverse order first (after COH-4) and
+  // it is wrong: a trim landing after COH-4 has already fixed its target
+  // leaves the taper's depth measured against a peak that no longer exists —
+  // 1,574 firm `_sweep_allusers` failures, "Taper bottoms at Nmi, only X%
+  // below peak (need >=Y%)" with X<Y.
+  //
+  // TAPER-phase weeks are exempt from the ceiling ENTIRELY, for a related but
+  // distinct reason, and this is true whether the ceiling would run before or
+  // after COH-4 — both were tried and both broke COH-4's own arithmetic:
+  //
+  //  · Before COH-4 (this call's position): COH-4's restore-up pass
+  //    (DOCTRINE-1c) ONLY ever adds miles back to EASY days, never the long —
+  //    "restored miles go to the EASY days, never the long run" is its own
+  //    comment — so a TAPER week's long this guard clamped stayed clamped even
+  //    where COH-4's restore tried to lift the week back toward its doctrine
+  //    floor, producing an over-taper COH-4 exists specifically to prevent.
+  //    Measured as a new `_sweep_allusers` finding (10K/beginner/m0/L0-3: "43%
+  //    below peak, max 40%").
+  //  · After COH-4 (tried as a second call, to catch `authorDressRehearsal`'s
+  //    fixed-distance rehearsal long three weeks out — see that call site for
+  //    what actually fixes it): trimming a taper week post-COH-4 can drop it
+  //    BELOW the depth COH-4 already computed and fixed, the same under-taper
+  //    shape from the opposite direction (86 new failures).
+  //
+  // A taper week's long only ever gets SMALLER from `layoutWeek`'s authored
+  // value to what ships — COH-4 cites Research/08 §9.1 for exactly how much —
+  // so this guard cannot make a taper week safer by also clamping it; it can
+  // only make COH-4's own arithmetic wrong, in either direction, depending on
+  // which side of COH-4 it runs. The week's raw distance still feeds
+  // `longestByWeek` below so a week after taper reads a real anchor — only
+  // the CEILING is skipped.
+  //
+  // ── THE ROLLING ANCHOR READS THE WEEK'S RECONCILED MAX, NOT ITS RAW ONE ───
+  //
+  // `longestByWeek` records the true stress of the week — the longest SINGLE
+  // run of any type, per Rule 8's corollary — so a hard quality session that
+  // ties or exceeds the (just-trimmed) long must be reconciled BEFORE that
+  // record is taken, not after. A first version recorded the max first and
+  // ran the easy/quality re-cap as a separate pass over the whole block
+  // afterward: a quality day sized to the ORIGINAL, un-trimmed long (legal —
+  // "quality may reach the long", RP-5) was still sitting at its old value
+  // when the NEXT week's anchor was computed, so a week trimmed 9->8 fed the
+  // rolling window a 9 anyway (whatever the tied quality day still read), and
+  // the very next week's ceiling was calculated off the wrong number. Caught
+  // by `_spike_rule_gate.test.ts`'s own corpus walk: `2026-10-05` on a
+  // marathon/advanced_plus archetype read `anchor=9` when the week that fed
+  // it had already been trimmed to 8. The re-cap now runs PER WEEK, inline,
+  // immediately after that week's own trim and before its max is recorded —
+  // so the anchor a later week reads is always what the runner would actually
+  // have run, never a value another pass hasn't caught up to yet.
+  const recapEasyBelowLong = (week: ComposedWeek) => {
+    const longMi = Math.max(0, ...week.days.filter((d) => d.isLong).map((d) => d.distanceMi));
+    if (longMi <= 0) return;
+    for (const d of week.days) {
+      const cap = d.type === 'easy' ? Math.max(1, Math.min(longMi - 1, Math.round(0.8 * longMi))) : longMi;
+      if ((d.type === 'easy' || (d.isQuality && d.type !== 'race')) && !d.isLong && d.distanceMi > cap) {
+        week.weeklyMi = Math.max(0, Math.round((week.weeklyMi - (d.distanceMi - cap)) * 10) / 10);
+        d.distanceMi = cap;
+      }
+    }
+  };
+  const enforceSpikeRule = (): void => {
     const longestByWeek: number[] = [];
     const weeksInWindow = Math.floor(SPIKE_WINDOW_DAYS / 7);
     const df = (composed.authoredState as Record<string, unknown> | undefined)?.['derived_from'];
@@ -11124,12 +11237,21 @@ export function finalizeComposedPlan(
         wi < weeksInWindow ? seedAnchorMi : 0,
         ...longestByWeek.slice(-weeksInWindow),
       );
-      if (day && anchor > 0) {
+      // SPIKE_MIN_COHERENT_ANCHOR_MI · below the coherence floor the guard
+      // cannot express doctrine's ratio on the half-mile grid (see that
+      // constant's comment), so the week is left exactly as every other pass
+      // above it left it — `layoutWeek`'s own rampCeiling already bounds this
+      // population, this pass simply does not additionally constrain it.
+      const taperExempt = week.phase === 'TAPER';
+      if (day && !taperExempt && anchor >= SPIKE_MIN_COHERENT_ANCHOR_MI) {
         const ceil = Math.floor(anchor * SPIKE_MAX_SHARE * 2) / 2;
         if (day.distanceMi > ceil + 1e-9) {
           const trim = day.distanceMi - ceil;
           day.distanceMi = ceil;
           week.weeklyMi = Math.max(0, Math.round((week.weeklyMi - trim) * 10) / 10);
+          // Belt-and-suspenders re-cap, THIS week, THIS iteration — see the
+          // comment above `recapEasyBelowLong` for why it cannot wait.
+          recapEasyBelowLong(week);
         }
       }
       // Recorded AFTER any clamp, so a trimmed long anchors the next week at
@@ -11137,7 +11259,6 @@ export function finalizeComposedPlan(
       longestByWeek.push(Math.max(0, ...week.days.map((d) => d.distanceMi)));
     }
   };
-  void enforceSpikeRule;   // HELD BACK · see the hand-back doc above.
 
   smoothLongWoW();
 
@@ -11248,6 +11369,33 @@ export function finalizeComposedPlan(
       enforceGeneralRamp();
     }
   }
+
+  // SPIKEROLL-1 · runs HERE, deliberately BEFORE the taper rescale (COH-4,
+  // directly below) rather than after it. Both orderings satisfy "read the
+  // plan that ships, not `layoutWeek`'s pre-finalization curve" — the hand-
+  // back's own reason this cannot live in `layoutWeek` — because by this point
+  // every long-run-moving pass that runs BEFORE `finalizeComposedPlan` is done
+  // (`layoutWeek` itself), and so are both WoW smoothers and the general and
+  // embedded-race ramp ceilings, directly above.
+  //
+  // Only AFTER-taper was tried first, and it is wrong: COH-4 sizes each taper
+  // week's target as a PERCENTAGE OF `nonTaperPeakR`, the block's own realized
+  // peak — computed once, before this guard runs. If `enforceSpikeRule` then
+  // ran after COH-4 and trimmed the actual PEAK week (exactly the week most
+  // likely to trip a 30-day spike right after a cutback — 2026-10-04 in the
+  // owner's own block), the taper's already-fixed target no longer matches the
+  // now-lower REAL peak the validator reads at the end of the pipeline, and
+  // every taper week under-reaches by however much the peak dropped. Measured
+  // on the sweep with the guard placed after COH-4: 1,574 firm failures, the
+  // overwhelming majority "Taper bottoms at Nmi, only X% below peak Nmi (need
+  // >=Y%)" with X<Y — not the ~334, nearly-all-sub-5mi population the hand-back
+  // characterized. That population is real (see `SPIKE_MIN_COHERENT_ANCHOR_MI`)
+  // but it was never the whole story; this ordering bug was compounding it.
+  //
+  // Placed HERE, COH-4 computes `nonTaperPeakR` off the ALREADY spike-trimmed
+  // weeks, so the taper is sized against the peak that actually ships and the
+  // two stay consistent by construction — no separate reconciliation needed.
+  enforceSpikeRule();
 
   // 2026-06-23 · COH-4 · PROGRESSIVE taper enforcement, AFTER VOL-1 so it sees each week's REALIZED
   // day-sum. The race week's pre-race easy volume often EXCEEDS the volume-curve budget (the layout
@@ -11403,6 +11551,32 @@ export function finalizeComposedPlan(
   // legitimately removes §4.4's marathon-pace long cannot also remove §4.6's
   // rehearsal) and before both caps below (so they still get the last word).
   authorDressRehearsal(composed, raceDistanceMi);
+
+  // SPIKEROLL-1 · third `smoothLongWoW()` call, for `authorDressRehearsal`
+  // immediately above. Research/04 §4.6's rehearsal long is authored AFTER
+  // COH-4 and the first `enforceSpikeRule` call, at a fixed distance tied to
+  // race day rather than to the block's recent longs, so neither guard has
+  // seen it — and left unchecked it can open a WoW jump `smoothLongWoW`'s own
+  // 30% limit already passed BEFORE the rehearsal existed to violate it (a
+  // beginner marathon archetype measured at 44%, once the first spike call
+  // had correctly shrunk the weeks the rehearsal is compared against).
+  //
+  // `smoothLongWoW` — not a third `enforceSpikeRule` call — is the fix here.
+  // A second full spike pass was tried first, `skipTaperWeeks: false`, so it
+  // could reach a rehearsal that lands in a TAPER week: it re-broke taper
+  // depth the same way the first call did before it learned to skip TAPER
+  // weeks, because trimming ANY week that happens to be COH-4's already-spent
+  // peak reference — taper or not — invalidates arithmetic COH-4 finished
+  // before this point runs (86 new `_sweep_allusers` failures, same
+  // under-taper shape). `smoothLongWoW` does not have that failure mode: it
+  // caps each long against the PREVIOUS week's own realized value, never
+  // against a block-wide peak, so re-running it here cannot invalidate
+  // anything COH-4 already computed — it can only trim a jump the rehearsal
+  // just introduced, which is exactly and only what this needs to do. Safe to
+  // call a third time for the identical reason the file's own comment gives
+  // for calling it a second: "only ever REMOVE miles, so ... the second call
+  // converges and is a no-op whenever the first left nothing to do."
+  smoothLongWoW();
 
   // DOCTRINE-DOSING-2 (2026-08-18) · Daniels' dosing caps, reconciled after
   // every pass that moved mileage. Runs BEFORE the intensity floor: it only
