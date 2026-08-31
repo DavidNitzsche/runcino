@@ -156,6 +156,20 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
    * it, so a future migration can be scoped rather than guessed at.
    * ═══════════════════════════════════════════════════════════════════ */
   const RAW_ACCESS_ALLOWED: Record<string, string> = {
+    /* ── test substrate · builds rows rather than reading them ────────── */
+    'lib/adaptation-harness/substrate.ts':
+      'NOT A READER. It copies the runner\'s rows into a local scratch database and ' +
+      'slides them forward by whole weeks so a real block lands on today — so it ' +
+      'MANIPULATES the jsonb rather than interpreting it, and the accessors exist to ' +
+      'answer "what does this run say", a question it never asks. It also has to name ' +
+      'both `date` and `startLocal` explicitly and write them back, which is the one ' +
+      'thing an accessor that resolves between them cannot express. Fenced to a ' +
+      'loopback scratch DB named faff_adapt_harness and excluded from the default ' +
+      'vitest glob, so a wrong key here cannot reach production data — it breaks the ' +
+      'harness loudly on the next run instead. Migrate the read-shaped queries (the ' +
+      'distanceMi/movingTimeS trio around :456-479) if the accessors ever grow a ' +
+      'write-side form.',
+
     /* ── plan engine · held by another agent, or high blast radius ────── */
     'lib/plan/generate.ts':
       'HELD BY ANOTHER AGENT this session · not to be touched. Reads distanceMi, date, ' +

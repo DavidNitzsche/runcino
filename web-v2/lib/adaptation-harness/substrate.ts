@@ -46,6 +46,11 @@ assertHarnessDatabase();
 // Imported AFTER the fence, so a misconfigured run throws before a pool exists.
 import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
+// Rule 14 · there is ONE answer to "which run is canonical", and filtering on
+// the absorption stamp instead once zeroed 63 miles of this runner's history.
+// The harness reads the same predicate the app reads, or it is not a substrate
+// of the app.
+import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
 
 /* ------------------------------------------------------------------- dates */
 
@@ -351,7 +356,7 @@ export async function shiftRealBlockOntoToday(opts?: {
     `SELECT MIN(pw.date_iso) AS d0, MAX(pw.date_iso) AS d1,
             COUNT(*) FILTER (WHERE pw.date_iso > $2)::text AS future,
             (SELECT COUNT(*)::text FROM runs r WHERE r.user_uuid = $3::uuid
-               AND NOT (r.data ? 'mergedIntoId')) AS kept
+               AND ${CANONICAL_ROW_SQL.replace(/\bdata\b/g, 'r.data')}) AS kept
        FROM plan_workouts pw WHERE pw.plan_id = $1`,
     [src.id, todayISO, OWNER_UUID],
   )).rows[0];
@@ -452,7 +457,7 @@ export async function clearCompletionWindow(dateISO: string, thresholdMi: number
   const r = await pool.query(
     `UPDATE runs SET data = data || jsonb_build_object('distanceMi', $4::numeric)
       WHERE user_uuid = $1::uuid
-        AND NOT (data ? 'mergedIntoId')
+        AND ${CANONICAL_ROW_SQL}
         AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))
             BETWEEN to_char($2::date - 1, 'YYYY-MM-DD') AND to_char($2::date + 1, 'YYYY-MM-DD')
         AND (data->>'distanceMi')::numeric >= $3::numeric`,

@@ -539,6 +539,13 @@ const ROOT = join(__dirname, '..', '..');
  * stops writing plan_workouts get deleted from the list.
  */
 const RUNS_INSIDE_ANOTHERS_BOUNDARY: Record<string, string> = {
+  'lib/adaptation-harness/substrate.ts':
+    'BUILDS a fixture, does not adapt a plan. It writes plan_workouts into a loopback '
+    + 'scratch database to stage the three worlds, so routing through mutatePlan would '
+    + 'run the validator against a half-built substrate and reject the setup it is trying '
+    + 'to create. The boundary exists to stop an ADAPTATION bypassing validation; this is '
+    + 'the fixture the adaptations are then driven against, and it never touches '
+    + 'production — three independent fences enforce that.',
   'lib/plan/progression-pass.ts':
     'applyProgressionReshape is one statement inside applyAdaptations\' batch; ' +
     'writes workout_spec / sub_label / pace_target only',

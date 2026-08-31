@@ -26,6 +26,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { assertHarnessDatabase } from './fence';
+import { fmtPaceSlash } from '@/lib/format/run';
 
 assertHarnessDatabase();
 
@@ -145,10 +146,16 @@ export async function seeWeek(
   });
 }
 
+/**
+ * 2026-08-30 · was a hand-rolled clock that floored the minutes and rounded the
+ * seconds SEPARATELY, so 419.7 s/mi rendered as "6:60/mi". The format lint
+ * caught it by name ("split-before-round clock (prints 6:60)"), which is the
+ * gate working exactly as intended — a harness that reports what the runner
+ * sees must not invent its own way of writing a pace down, or it can disagree
+ * with the app while claiming to mirror it.
+ */
 function paceStr(sPerMi: number): string {
-  const m = Math.floor(sPerMi / 60);
-  const s = Math.round(sPerMi % 60);
-  return `${m}:${String(s).padStart(2, '0')}/mi`;
+  return fmtPaceSlash(sPerMi) ?? '';
 }
 
 /** Total prescribed miles across a window — the volume axis, as prescribed. */

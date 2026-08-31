@@ -97,6 +97,13 @@ const READER_MODULES = new Set([
  * at once is its own risk — and it is the queue.
  */
 const ALLOW: Record<string, string> = {
+  'lib/adaptation-harness/substrate.ts':
+    'NOT A READER. It copies the runner\'s rows into a loopback scratch database and '
+    + 'slides them forward by whole weeks so a real block lands on today, so it WRITES '
+    + 'the clock trio rather than interpreting it — and a reader that resolves between '
+    + 'movingTimeS/movingSec/durationSec cannot express "put this value back". Fenced to '
+    + 'faff_adapt_harness and excluded from the default vitest glob, so a wrong key here '
+    + 'breaks the harness loudly rather than reaching production.',
   'lib/runs/canonical.ts':
     "THE WRITE SIDE, and the reason the read side had a problem to solve. `familyGuardedFill` has to name every member of the clock family in order to refuse a partial one — a fill that knew only two spellings is precisely how Strava's moving time landed on the watch's row on 2026-08-23 without its matching clock. It reads the keys to POLICE them, not to pick one, so it is a guard rather than a ladder. It should stay listed anyway: if this file ever starts CHOOSING a clock, that is a real finding and the entry is where the argument lives.",
   /* ── WRITERS. A writer has to name what it writes; these are not drift. ── */

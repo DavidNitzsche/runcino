@@ -163,8 +163,28 @@ describe.skipIf(!RO)('SPLITS REPAIR · generate the SQL, execute nothing', () =>
         + '\n');
       expect(out.length).toBeGreaterThan(0);
 
+      // Every forward statement has its own inverse — the invariant that
+      // matters, and it holds at any row count, zero included.
       expect(forward.length).toBe(inverse.length);
-      expect(forward.length).toBeGreaterThan(0);
+
+      // 2026-08-30 · this used to assert `forward.length > 0`, which encoded
+      // "there ARE repairable rows". True the day it was written; false the
+      // moment the 14 rows it found were actually repaired. A green fix turned
+      // it red, and zero-rows-needing-repair is the number we WANT.
+      //
+      // An assertion that a defect still exists is not a regression test, it
+      // is a countdown that fires when you succeed.
+      //
+      // The teeth stay with the liveness assertion above (`rows.length > 0`)
+      // plus this one: zero repairable rows out of a non-empty canonical set
+      // is the healthy state and passes; zero CANONICAL rows means the query
+      // broke and still fails. Rule 18 / Rule 22 — "clean" and "scanned
+      // nothing" must not look the same.
+      expect(
+        canonical.length,
+        'the repair query resolved no canonical rows — the generator is broken, '
+        + 'not the data clean',
+      ).toBeGreaterThan(0);
     } finally {
       await pool.end();
     }
