@@ -455,3 +455,44 @@ this exact commit in the shared checkout — not a different worktree, since
 the failure is proven to originate from an untracked file this session never
 touched, not from any uncommitted change. No file this session edited was
 excluded from the check.
+
+### Deploy verification and multi-agent integration (Rule 19)
+
+The first push (`aa8b8a21`) deployed and Railway's build FAILED — two real,
+this-session's-own gate violations (`_coercion_scan.test.ts` on
+`shadow-compare.ts`'s `.catch(() => null)`, `_generated_content_gate.test.ts`
+GUARD 5 on the now-stale `adaptation-engine.ts`/`load-adaptation-engine.ts`
+MODULE_ORPHANS entries). Both fixed and verified in isolated worktrees
+(`fe5315e4`, then two more commits for two further pre-existing violations
+this push's own verification pass surfaced — `progression-spec.ts`'s
+uncaught coercion collapse and two more stale orphan entries, both
+introduced by an earlier, unrelated commit and not by this session, but
+blocking every deploy on `main` since — `76147458`, `14c60df8`).
+
+Before those could be pushed, `git fetch` showed `origin/main` had moved:
+a concurrent session had independently found and fixed the SAME set of
+gate violations in one consolidated commit (`b2b13ede`), landed on top of
+this session's own `aa8b8a21`. The two fixes overlapped almost entirely
+(same ids, same registry entries) with exactly one real conflict: this
+session's `shadow-compare.ts` fix RESTRUCTURED the violating code (the
+gate's own first-preference remedy), while the concurrent session's fix
+ARGUED an exemption for the pre-restructure code (its third-preference
+remedy) — leaving a stale `COERCION_ARGUED`/`LOAD_BEARING_KNOWN` entry
+pointing at a `.catch()` call that no longer existed. Reconciled in an
+isolated worktree built from `origin/main`, keeping the restructure and
+dropping the now-stale exemption, verified clean (`tsc`, the two specific
+gate test files, the full `lib/adaptation` suite, and the full 17-script
+prebuild chain — all green). Before that reconciliation commit could be
+pushed, a THIRD concurrent session merged `origin/main` into `main` and
+pushed the exact same reconciliation independently (`24bf6310`) — confirmed
+by diffing this session's own reconciliation against the pushed merge: the
+`shadow-compare.ts` code and the registry state matched. No push was needed
+from this session for that step; `git merge --ff-only origin/main` on the
+local checkout reported "Already up to date."
+
+**Deploy confirmed**, not just pushed: `railway deployment list` shows
+`93b024b9` at `SUCCESS`, timestamped one minute after the `24bf6310` push,
+and `railway logs` on that deployment shows `✓ Ready in 495ms` with no
+crash. The full 17-script prebuild chain plus `next build` ran clean in a
+final isolated worktree built directly from `origin/main` HEAD, independent
+of any of this session's own uncommitted state.
