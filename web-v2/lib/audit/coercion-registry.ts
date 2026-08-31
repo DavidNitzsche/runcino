@@ -406,8 +406,43 @@ export const HANDED_BACK_FAILS = false;
  * where the next person will read it.
  *
  * Nine to one is the direction this file wants. One is still one.
+ *
+ * ── 180 → 182 · RACE PREDICTION CONSOLIDATION, 2026-09-01 ──────────────────
+ *
+ * Two new sites, both `lib/race/*` — outside the engine directories this
+ * scanner treats as load-bearing (`lib/plan`, `lib/coach`, `lib/adaptation`,
+ * `lib/training`, `lib/runs`), so both classify peripheral by construction.
+ * Full account, same standard as the paragraph above:
+ *
+ *   · `lib/race/coach-goal.ts::projectWithDurabilityExponent::t` — the SAME
+ *     ternary shape (`Number.isFinite(t) && t > 0 ? {...} : null`) this
+ *     file's own sibling `predictWithPersonalExponent::t` already carries
+ *     (also peripheral, already inside the pre-existing baseline). A race
+ *     finish projected at zero or negative seconds is not a measurement any
+ *     more than a zero-length run is (`usableMeasurement`'s own argument,
+ *     above) — this new function is `deriveCoachGoal`'s replacement personal-
+ *     exponent projector (docs/reports/race-prediction-consolidation-
+ *     2026-09-01.md), and it inherits its predecessor's validity check
+ *     verbatim rather than inventing a different one for the same question.
+ *   · `lib/race/coach-goal-load.ts::loadCoachGoalForRace::catch` — was
+ *     `try { ... } catch { exponentFit = null; }`, a STATEMENT the scanner
+ *     cannot see by its own documented limitation (Rule 22: "it sees
+ *     expressions, not statements"). Replacing it with `await
+ *     resolveRaceExponent(userId).catch(() => null)` — an EXPRESSION, and
+ *     therefore visible — did not introduce a new coercion; it made an
+ *     existing one honest and auditable, which the paragraph above already
+ *     calls the wrong direction to game (hiding a site to protect a number
+ *     is worse than the number moving). Consumer is `deriveCoachGoal`'s
+ *     `durabilityExponent` input, which already handles `ok: false` as its
+ *     own explicit, typed refusal branch (Rule 11) — this catch's null
+ *     degrades to exactly that same branch, not a fabricated confident read.
+ *
+ * Both are genuinely peripheral by the scanner's own test (worst outcome is
+ * a blank coach-set A/B/C tile, never a changed prescription — pace
+ * prescription is untouched by this consolidation). The count moves, per the
+ * standing rule two paragraphs up.
  */
-export const PERIPHERAL_BASELINE = 180;
+export const PERIPHERAL_BASELINE = 182;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
@@ -456,8 +491,26 @@ export const SCAN_FLOORS = {
  * alternative — naming the fallback value instead of writing it inline so
  * the regex-based scanner cannot see it — would have been dodging the
  * classifier rather than answering it, which the scanner's own failure
- * message says not to do. Everything else on this list may still only
- * shrink.
+ * message says not to do.
+ *
+ * 2026-09-01 · a second argued exception, same shape as the first: two new
+ * `lib/plan/goal-gap.ts::computeGoalGap::catch` entries. `computeGoalGap`
+ * now resolves its `trajectorySec` through the canonical `resolveRaceProjection`
+ * (docs/reports/race-prediction-consolidation-2026-09-01.md), which means it
+ * now reads a VDOT anchor and calls `computeGoalProjection` itself — the
+ * EXACT two calls, with the EXACT same inline fallback shapes
+ * (`.catch(() => ({vdot:null,...}))`, `.catch(() => null)`), that
+ * `lib/plan/goal-outlook.ts::resolveGoalOutlookProjection::catch` already
+ * carries twice on this list, for the identical purpose (degrade to
+ * cold-start / "could not resolve" rather than throw). Both new sites fail
+ * CLOSED, not silently confident: a failed anchor read zeroes `vdot`, which
+ * starves `resolveRaceProjection` down to its own null return, and
+ * `trajectorySec` then falls back to the pre-existing, independently-read
+ * raw snapshot value with `trajectoryBasis: null` — never a fabricated
+ * number, and the honest "could not resolve" fact survives in
+ * `trajectoryBasis`. Arguing them differently from goal-outlook.ts's
+ * byte-identical calls would be the fork Rule 16 forbids. Everything else on
+ * this list may still only shrink.
  */
 export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/adaptation/load.ts::loadAdaptationInput::catch',
@@ -551,6 +604,11 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/generate.ts::reverseTaperCeilingMi::mi',
   'lib/plan/generate.ts::targetMinutesFor::mins',
   'lib/plan/goal-gap.ts::computeGoalGap::catch',
+  'lib/plan/goal-gap.ts::computeGoalGap::catch',
+  'lib/plan/goal-gap.ts::computeGoalGap::catch',
+  // 2026-09-01 · the two new sites from computeGoalGap resolving
+  // trajectorySec through resolveRaceProjection — see the note above this
+  // array's declaration.
   'lib/plan/goal-gap.ts::computeGoalGap::catch',
   'lib/plan/goal-gap.ts::computeGoalGap::catch',
   'lib/plan/goal-gap.ts::loadGoalAssessment::catch',

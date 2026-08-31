@@ -243,25 +243,10 @@ describe('fitPersonalExponent · Research/02 §11.4', () => {
     ], TODAY)).toBeNull();
   });
 
-  it('feeds deriveCoachGoal as method personal-exponent', () => {
-    const fit = fitPersonalExponent([
-      fitRace({ slug: '5k', date: '2026-08-10', distance_mi: FIVEK, finish_seconds: 1200 }),
-      fitRace({ slug: '10k', date: '2026-08-20', distance_mi: TENK, finish_seconds: 2500 }),
-    ], TODAY);
-    const r = deriveCoachGoal({
-      statedGoalSec: null, priority: 'B', distanceMi: HM,
-      vdot: 50, vdotAnchorDistanceMi: TENK, exponentFit: fit,
-      todayISO: TODAY,
-    });
-    expect(r?.kind).toBe('time');
-    if (r?.kind !== 'time') return;
-    expect(r.method).toBe('personal-exponent');
-    expect(r.personalExponent).toBe(fit!.b);
-    const base = predictWithPersonalExponent(fit!, HM)!;
-    // 10K → half span: §13.7 ±2.5%, and it beats the HM same-distance 2.5 tie.
-    expect(r.bSec).toBe(roundTargetSec(base));
-    expect(r.ciPct).toBe(2.5);
-  });
+  // 2026-09-01 · `deriveCoachGoal` no longer accepts `exponentFit` — this
+  // file's own two-race fit is not deriveCoachGoal's personal-exponent
+  // source any more. See coach-goal-durability.test.ts for the replacement
+  // (`durabilityExponent`, resourced from `durability-anchor.ts`).
 });
 
 describe('display-default helpers', () => {

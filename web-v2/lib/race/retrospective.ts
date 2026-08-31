@@ -28,6 +28,7 @@ import { pool } from '@/lib/db/pool';
 import { vdotFromRace, predictRaceTime, parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import type { RaceRow } from '@/lib/coach/races-state';
+import { resolveRaceProjection, type RaceProjectionBasis } from '@/lib/training/race-projection';
 
 export interface RetroMile {
   mile: number;
@@ -88,8 +89,18 @@ export interface RaceRetro {
     distanceMi: number | null;
     goalSec: number | null;
     goalDisplay: string | null;
-    /** what this race's fitness predicts at the next race's distance */
+    /** what this race's fitness predicts at the next race's distance.
+     *  2026-09-01 · resolved through the canonical `resolveRaceProjection`
+     *  (with no `goalProjection`, since this is a RETROSPECTIVE what-if off
+     *  ONE specific past race's VDOT, not "today's" trajectory) instead of
+     *  calling `predictRaceTime` directly — same number, but now carries an
+     *  honest `basis` and goes through the one function every other
+     *  cross-distance projection in the app resolves through. */
     predictedSec: number | null;
+    /** Always 'equivalence' when `predictedSec` is non-null (this reader
+     *  never supplies a trajectory) — carried so a caller does not have to
+     *  assume. Null alongside a null `predictedSec`. */
+    predictedBasis: RaceProjectionBasis | null;
     weeksAway: number;
   } | null;
 }
@@ -412,9 +423,17 @@ export async function buildRaceRetro(args: {
   if (nextA?.date) {
     const nextGoalSec = parseRaceTime(nextA.goal) ?? null;
     const anchorVdot = vdotRace ?? vdotBefore;
-    const predictedSec = anchorVdot != null && nextA.distance_mi != null
-      ? predictRaceTime(anchorVdot, nextA.distance_mi)
-      : null;
+    // No `goalProjection` here on purpose — this is "what does THIS ONE
+    // PAST RACE'S fitness alone predict", not "what does the runner's
+    // current trajectory predict" (that question is `resolveRaceProjection`
+    // called with a real `computeGoalProjection` result, elsewhere). With
+    // `goalProjection: null` the resolver always lands on rung 3 (raw
+    // equivalence), which is exactly what this reader asks for — same
+    // number `predictRaceTime` gave directly, now through the one function
+    // every cross-distance projection in the app resolves through.
+    const resolvedNext = resolveRaceProjection({
+      goalProjection: null, vdot: anchorVdot, distanceMi: nextA.distance_mi,
+    });
     nextRace = {
       slug: nextA.slug,
       name: nextA.name,
@@ -422,7 +441,8 @@ export async function buildRaceRetro(args: {
       distanceMi: nextA.distance_mi,
       goalSec: nextGoalSec,
       goalDisplay: nextA.goal,
-      predictedSec,
+      predictedSec: resolvedNext.projectedSec,
+      predictedBasis: resolvedNext.basis,
       weeksAway: Math.max(0, Math.round(
         (Date.parse(nextA.date + 'T12:00:00Z') - Date.parse(todayISO + 'T12:00:00Z')) / (7 * 86_400_000),
       )),

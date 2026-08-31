@@ -5,23 +5,30 @@
  * cron diffs day-over-day (for the projection-change push) are sourced the
  * same way and cannot silently drift apart.
  *
- * Mirrors app/api/v5/races/route.ts's inline resolution, minus its
- * assessGoal() cold-start fallback (currentEquivalentSec) — that fallback
- * only matters before any VDOT has ever been read, and when it does apply
- * it's derived from the same predictRaceTime(vdot, distance) this already
- * falls back to. Not worth threading assessGoal's full weeklyMi/taper
- * context through the cron for that edge case.
+ * 2026-09-01 · the final precedence step now CALLS `resolveRaceProjection`
+ * (`lib/training/race-projection.ts`) instead of reimplementing its
+ * trajectory → vdotProjectionSec → raw-equivalence precedence inline. This
+ * file's own header used to say it "mirrors app/api/v5/races/route.ts's
+ * inline resolution" — a hand copy of the canonical resolver's logic, kept
+ * in sync by nobody. It agreed with the resolver because it was written to,
+ * not because anything enforced it (no test equivalent to
+ * `_goal_immutability.test.ts`'s import-regex check existed for this file —
+ * see docs/reports/race-prediction-external-review-2026-08-31.md §2.3).
+ * Now there is exactly one implementation of the precedence to drift from.
  */
 import { loadRacesState, type RaceRow } from '@/lib/coach/races-state';
 import { loadLatestVdotWithAnchor } from './projection-snapshots';
-import { parseRaceTime, predictRaceTime } from './vdot';
+import { parseRaceTime } from './vdot';
 import { computeGoalProjection } from './goal-projection';
+import { resolveRaceProjection, type RaceProjectionBasis } from './race-projection';
 
 export interface ResolvedGoalProjection {
   raceSlug: string;
   raceName: string;
   goalSec: number | null;
   projectedSec: number | null;
+  /** Which rung of `resolveRaceProjection`'s precedence answered. */
+  basis: RaceProjectionBasis | null;
 }
 
 function nextARace(racesState: Awaited<ReturnType<typeof loadRacesState>>): RaceRow | null {
@@ -52,9 +59,10 @@ export async function resolveNextAGoalProjection(userUuid: string): Promise<Reso
       }).catch(() => null)
     : null;
 
-  const projectedSec = goalProjection?.trajectory?.projectedSec
-    ?? goalProjection?.vdotProjectionSec
-    ?? (vdot != null && distanceMi ? predictRaceTime(vdot, distanceMi) : null);
+  const resolved = resolveRaceProjection({ goalProjection, vdot, distanceMi: distanceMi ?? null });
 
-  return { raceSlug: nextA.slug, raceName: nextA.name, goalSec, projectedSec };
+  return {
+    raceSlug: nextA.slug, raceName: nextA.name, goalSec,
+    projectedSec: resolved.projectedSec, basis: resolved.basis,
+  };
 }

@@ -9,8 +9,12 @@
  *
  *   · current VDOT + its anchor  — the same snapshot chain every projection
  *     surface reads (loadLatestVdotWithAnchor)
- *   · the personal exponent fit  — bestRecentVdot's own race candidates
- *     (loadVdotInputs), graded by the race-authority machinery
+ *   · the personal exponent read — `durability-anchor.ts#resolveRaceExponent`,
+ *     the CANONICAL personal-exponent resolver (2026-09-01, see
+ *     docs/reports/race-prediction-consolidation-2026-09-01.md). Was
+ *     `fitPersonalExponent` off `loadVdotInputs`' race candidates — coach-
+ *     goal.ts's own, independent two-race fit; that duplicated the same
+ *     question `durability-anchor.ts` already answers for pace prescription.
  *   · the marathon-block signal  — loadMarathonSpecificTraining, asked only
  *     when the target is a marathon off a sub-marathon anchor
  *
@@ -22,11 +26,11 @@
 
 import {
   deriveCoachGoal,
-  fitPersonalExponent,
   gradeCourse,
   inferDistanceMiFromNameOrSlug,
   type CoachGoalFraming,
 } from './coach-goal';
+import { resolveRaceExponent } from '@/lib/training/durability-anchor';
 import { isGoalFraming } from './goal-framing';
 import { distanceCategoryOrNull } from './distance-category';
 
@@ -82,12 +86,7 @@ export async function loadCoachGoalForRace(
     const { runnerToday } = await import('@/lib/runtime/runner-tz');
     const todayISO = await runnerToday(userId);
 
-    let exponentFit = null;
-    try {
-      const { loadVdotInputs } = await import('@/lib/training/vdot-inputs');
-      const { raceCandidates } = await loadVdotInputs(userId, todayISO);
-      exponentFit = fitPersonalExponent(raceCandidates, todayISO);
-    } catch { exponentFit = null; }
+    const durabilityExponent = await resolveRaceExponent(userId).catch(() => null);
 
     const needsBlockSignal = goalDistanceMi != null
       && distanceCategoryOrNull(goalDistanceMi) === 'm'
@@ -107,7 +106,7 @@ export async function loadCoachGoalForRace(
       vdot: anchor.vdot,
       vdotAnchorDistanceMi: anchor.anchorDistanceMi,
       marathonSpecificTraining,
-      exponentFit,
+      durabilityExponent,
       todayISO,
     });
     if (!framing) return null;

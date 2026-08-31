@@ -36,6 +36,8 @@ import { assessGoal, type GoalAssessment } from '@/lib/training/goal-assessment'
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { postRaceRecoveryWeeks } from './goal-tiers';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { computeGoalProjection } from '@/lib/training/goal-projection';
+import { resolveRaceProjection, type RaceProjectionBasis } from '@/lib/training/race-projection';
 
 export type GoalGapStatus = 'closing' | 'static' | 'widening' | 'unclosable';
 
@@ -58,10 +60,29 @@ export interface GoalGap {
   raceDistanceMi: number;
   /** Goal finish time in seconds. */
   goalSec: number;
-  /** Current projected finish time in seconds (today's snapshot). */
+  /** Current projected finish time in seconds. 2026-09-01 · resolved through
+   *  the CANONICAL `resolveRaceProjection` (`lib/training/race-projection.ts`),
+   *  the same resolver the Races list, race detail, and `goal-outlook.ts`
+   *  all read — NOT the raw `projection_snapshots.projection_sec` value
+   *  this field used to alias (that value is today's VDOT EQUIVALENCE, a
+   *  different quantity from the execution-scaled race-day trajectory; see
+   *  `trajectoryBasis`). Falls back to the raw snapshot only when the live
+   *  resolution itself could not run (see `computeGoalGap`). Was the exact
+   *  Rule 16 defect `goal-outlook.ts`'s header names in its own predecessor
+   *  code — this field carried the word "trajectory" while holding an
+   *  equivalence. docs/reports/race-prediction-consolidation-2026-09-01.md. */
   trajectorySec: number;
+  /** Which rung of `resolveRaceProjection`'s precedence produced
+   *  `trajectorySec` — 'trajectory' (race day, execution-scaled) or
+   *  'equivalence' (today's fitness). Null only alongside the raw-snapshot
+   *  fallback path, where no live resolution was possible. Drives prose the
+   *  same way `race-projection.ts#projectionCoachLine` uses `basis`: a
+   *  sentence about this number must name the quantity it actually is. */
+  trajectoryBasis: RaceProjectionBasis | null;
   /** Signed delta · positive = trajectory slower than goal (gap to close).
-   *  Negative = trajectory faster than goal (running ahead). */
+   *  Negative = trajectory faster than goal (running ahead). Always
+   *  `trajectorySec - goalSec` — recomputed off the resolved trajectory, so
+   *  this can never disagree with the number beside it. */
   gapSec: number;
   /** 0..1 confidence band based on data density + projection stability. */
   confidence: number;
@@ -180,17 +201,61 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
     raceDateISO = planRow.goal_iso ? String(planRow.goal_iso).slice(0, 10) : null;
   }
 
-  // 2. Recent projection series for trajectory + trend
+  // 2. Recent projection series for TREND + CONFIDENCE only (steps 4-5,
+  //    below). This series is still the raw daily VDOT-equivalence snapshot
+  //    (`snapshot-projections` cron) — that is a defensible, distinct
+  //    question ("is the day-to-day equivalence moving toward the goal, and
+  //    how stable is that read") from "what will this runner actually run
+  //    on race day", which is `trajectorySec` below. `latest.projectionSec`
+  //    used to ALSO be reported as `trajectorySec` — that was the Rule 16
+  //    defect this file's 2026-09-01 fix closes; see the GoalGap field doc.
   const series = await loadProjectionSeries(userUuid, raceDistanceMi, 14);
   const latest = series.at(-1);
   if (!latest || latest.projectionSec == null) return null;
-  const trajectorySec = latest.projectionSec;
-  const gapSec = trajectorySec - goalSec;
 
   // 3. Weeks remaining · null when the goal carries no date (open-ended
   //    distance goal). Nothing downstream may substitute a runway it does
   //    not have.
   const todayISO = await runnerToday(userUuid).catch(() => new Date().toISOString().slice(0, 10));
+
+  // 2b. THE TRAJECTORY, resolved through the CANONICAL resolver — the same
+  //     `computeGoalProjection` + `resolveRaceProjection` pair
+  //     `goal-outlook.ts#resolveGoalOutlookProjection` calls, so this file
+  //     and that one can never disagree about what "the projection" is for
+  //     the same runner on the same day. Falls back to the raw snapshot
+  //     (`latest.projectionSec`, `basis: null`) only when the live
+  //     resolution itself produced nothing — cold-start VDOT gaps the
+  //     snapshot cron already smoothed over historically. That fallback is
+  //     an honest degrade (Rule 11: a resolver that could not run is a
+  //     different fact from one that resolved to "level with the goal"),
+  //     not a silent return to the old defect — `trajectoryBasis` is null
+  //     exactly when this happens, so a caller can tell.
+  const anchor = await loadLatestVdotWithAnchor(userUuid)
+    .catch(() => ({ vdot: null, anchorDateISO: null, anchorDistanceMi: null }));
+  const daysToRace = raceDateISO
+    ? Math.max(0, Math.round(
+        (Date.parse(raceDateISO + 'T12:00:00Z') - Date.parse(todayISO + 'T12:00:00Z')) / 86400000,
+      ))
+    : null;
+  const goalProjectionForTrajectory = (raceDistanceMi > 0 && goalSec > 0 && raceDateISO)
+    ? await computeGoalProjection({
+        userUuid,
+        goalSec,
+        raceDistanceMi,
+        vdot: anchor.vdot,
+        daysToRace,
+        vdotAnchorDateISO: anchor.anchorDateISO,
+        vdotAnchorDistanceMi: anchor.anchorDistanceMi,
+      }).catch(() => null)
+    : null;
+  const resolvedTrajectory = resolveRaceProjection({
+    goalProjection: goalProjectionForTrajectory, vdot: anchor.vdot, distanceMi: raceDistanceMi,
+  });
+  const trajectorySec = resolvedTrajectory.projectedSec ?? latest.projectionSec;
+  const trajectoryBasis: GoalGap['trajectoryBasis'] =
+    resolvedTrajectory.projectedSec != null ? resolvedTrajectory.basis : null;
+  const gapSec = trajectorySec - goalSec;
+
   let weeksRemaining: number | null = null;
   if (raceDateISO) {
     const today = Date.parse(todayISO + 'T12:00:00Z');
@@ -266,6 +331,7 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
     raceDistanceMi,
     goalSec,
     trajectorySec,
+    trajectoryBasis,
     gapSec,
     confidence,
     status,

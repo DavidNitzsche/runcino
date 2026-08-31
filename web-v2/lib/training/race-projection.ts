@@ -54,6 +54,7 @@
  * quantity and is not one here.
  */
 import { predictRaceTime } from './vdot';
+import type { ConfidenceInterval, ConfidenceLabel } from './goal-projection';
 
 /** Which rung of the precedence produced the number. */
 export type RaceProjectionBasis = 'trajectory' | 'equivalence';
@@ -64,6 +65,17 @@ export interface RaceProjectionInput {
   goalProjection: {
     trajectory?: { projectedSec?: number | null } | null;
     vdotProjectionSec?: number | null;
+    /** 2026-09-01 · `computeGoalProjection` already computes this AROUND
+     *  `vdotProjectionSec` (see that field's own doc comment) — it used to
+     *  be discarded before reaching this resolver (race-prediction-
+     *  external-review-2026-08-31.md §5: "every live 'Projected' figure ...
+     *  is a bare point estimate"). Threaded through so a caller CAN render
+     *  a likely range next to the number, on the rung it actually describes
+     *  — see `RaceProjection.confidenceInterval`'s own doc for the honesty
+     *  boundary this stops at. */
+    confidenceInterval?: ConfidenceInterval | null;
+    /** Same rung as `confidenceInterval` · HIGH/MEDIUM/LOW. */
+    confidenceLabel?: ConfidenceLabel | null;
   } | null;
   /** Latest VDOT read. Null at cold start. */
   vdot: number | null;
@@ -77,6 +89,24 @@ export interface RaceProjection {
   /** 'trajectory' = race day. 'equivalence' = today's fitness. Null with
    *  `projectedSec` null. Drives copy, never a second number. */
   basis: RaceProjectionBasis | null;
+  /** A likely range around `projectedSec`, when one is honestly available.
+   *
+   *  2026-09-01 (docs/reports/race-prediction-consolidation-2026-09-01.md,
+   *  answering external-review-2026-08-31.md §5's "every live 'Projected'
+   *  figure is a bare point estimate" finding). ALWAYS null when `basis ===
+   *  'trajectory'`: `computeGoalProjection`'s `confidenceInterval` is
+   *  computed AROUND `vdotProjectionSec` (today's equivalence), not around
+   *  the execution-scaled trajectory — attaching it to a trajectory number
+   *  would print a range that describes a different quantity than the
+   *  point estimate beside it, the exact mislabeling Rule 16 forbids. A
+   *  trajectory-specific band is real, wanted follow-up work (open question
+   *  in the external review, §5 + Q4) and is NOT built here — this resolver
+   *  only ever surfaces a range it can honestly attribute to the number it
+   *  is next to. Non-null only when `basis === 'equivalence'` AND the
+   *  caller's `goalProjection.confidenceInterval` was itself non-null. */
+  confidenceInterval: ConfidenceInterval | null;
+  /** Same honesty boundary as `confidenceInterval` — null whenever that is. */
+  confidenceLabel: ConfidenceLabel | null;
 }
 
 /**
@@ -89,22 +119,37 @@ export function resolveRaceProjection(input: RaceProjectionInput): RaceProjectio
 
   const trajectorySec = goalProjection?.trajectory?.projectedSec ?? null;
   if (trajectorySec != null && Number.isFinite(trajectorySec)) {
-    return { projectedSec: Math.round(trajectorySec), basis: 'trajectory' };
+    // No confidence interval here — see RaceProjection.confidenceInterval's
+    // doc for why a trajectory number never carries the equivalence's band.
+    return {
+      projectedSec: Math.round(trajectorySec), basis: 'trajectory',
+      confidenceInterval: null, confidenceLabel: null,
+    };
   }
 
   const adjustedSec = goalProjection?.vdotProjectionSec ?? null;
   if (adjustedSec != null && Number.isFinite(adjustedSec)) {
-    return { projectedSec: Math.round(adjustedSec), basis: 'equivalence' };
+    return {
+      projectedSec: Math.round(adjustedSec), basis: 'equivalence',
+      confidenceInterval: goalProjection?.confidenceInterval ?? null,
+      confidenceLabel: goalProjection?.confidenceLabel ?? null,
+    };
   }
 
   if (vdot != null && vdot > 0 && distanceMi != null && distanceMi > 0) {
     const raw = predictRaceTime(vdot, distanceMi);
     if (raw != null && Number.isFinite(raw)) {
-      return { projectedSec: Math.round(raw), basis: 'equivalence' };
+      // Rung 3 has no computed band of its own (computeGoalProjection was
+      // never called, or produced neither of the rungs above) — still
+      // 'equivalence', but honestly no range to attach.
+      return {
+        projectedSec: Math.round(raw), basis: 'equivalence',
+        confidenceInterval: null, confidenceLabel: null,
+      };
     }
   }
 
-  return { projectedSec: null, basis: null };
+  return { projectedSec: null, basis: null, confidenceInterval: null, confidenceLabel: null };
 }
 
 /**

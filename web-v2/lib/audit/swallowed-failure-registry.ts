@@ -198,7 +198,17 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
 // 'intervals','tempo')`, a value that field has never held. The gate now calls
 // `loadKeySessionExecutions` under `attempt`, so a failed read is its own state
 // and closes the gate, and `_guard_fail_closed.test.ts` holds it there.
-export const EMPTIED_BASELINE = 375;
+// 2026-09-01 · -1 from `lib/race/coach-goal-load.ts::loadCoachGoalForRace`.
+// Its personal-exponent block used to be
+// `try { const { raceCandidates } = await loadVdotInputs(...); ... }
+// catch { exponentFit = null; }` — a DB-backed read (loadVdotInputs queries
+// `races`) whose failure and whose "no qualifying races" outcome were
+// indistinguishable, both landing as `exponentFit = null`. The block is gone
+// — replaced by `resolveRaceExponent(userId).catch(() => null)`, which calls
+// `durability-anchor.ts`'s canonical resolver instead of coach-goal.ts's own
+// race-loading query, per docs/reports/race-prediction-consolidation-
+// 2026-09-01.md. One fewer DB-backed swallow site in this tree.
+export const EMPTIED_BASELINE = 374;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

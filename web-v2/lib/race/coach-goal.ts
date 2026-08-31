@@ -65,29 +65,54 @@
  *
  * ── Personal Riegel exponent (Research/02 §11.4) ───────────────────────────
  *
- * With two qualifying recent races the runner's own fatigue exponent
+ * 2026-09-01 · RESOURCED FROM `lib/training/durability-anchor.ts`, NOT
+ * FITTED HERE ANY MORE (docs/reports/race-prediction-consolidation-2026-09-01.md).
+ * This file used to carry its own two-race log-ratio fit
+ * (`fitPersonalExponent`, 56-day window, hard-reject band [1.03, 1.13]) —
+ * built 2026-08-28, before `durability-anchor.ts`'s shrinkage-weighted
+ * multi-race fit existed. Both answered the same physiological question —
+ * "what is this runner's own cross-distance fatigue exponent" — from the
+ * same `races` table, independently, and could disagree. `durability-
+ * anchor.ts#fitRaceExponent` is now the ONE fit: wider evidence window (up
+ * to 6 corroborating races, not just the freshest 2), an evidence-only
+ * shrinkage toward the population prior instead of a hard accept/reject
+ * band (Rule 11 — thin evidence lowers `confidence`, it does not silently
+ * disable the personal read), and freshness moves confidence only, never the
+ * fitted value (Rule 8/11 — see that file's header for the incident this
+ * fixes). `deriveCoachGoal` takes a `durabilityExponent: RaceExponentRead`
+ * read (assembled by the caller, same as `vdot` — this file stays DB-free)
+ * and projects through it via `projectWithDurabilityExponent` below.
+ *
+ * `fitPersonalExponent` / `predictWithPersonalExponent` / their constants
+ * STAY in this file, unchanged, because two other things still legitimately
+ * depend on their exact (non-shrinking, hard-reject-band) behavior and
+ * neither is in this consolidation's scope: `app/api/targets/projection
+ * /route.ts` (the paused web Targets surface, out of active development per
+ * CLAUDE.md's locked scope) and `lib/doctrine/registry.ts`'s
+ * `PREDICTION.personal-exponent-two-point-fit` /
+ * `PREDICTION.exponent-fit-freshness-window` claims, which test THIS
+ * function's own two-point-fit arithmetic against Research/02 §11.4's
+ * worked formula, not the shrinkage read. Deprecated for `deriveCoachGoal`'s
+ * purpose only — not deleted, because deleting a still-depended-on function
+ * to manufacture a cleaner diff is the Rule 20 failure this app keeps
+ * naming ("a stale exemption fails until deleted" cuts both ways: don't
+ * delete what is not actually stale).
+ *
+ * Original doctrine, still true of the fit `durability-anchor.ts` performs:
+ * with two qualifying recent races the runner's own fatigue exponent
  * b = ln(T2/T1) / ln(D2/D1) replaces the population default for the
  * cross-distance projection (§14 rule 3: "Two recent races available: fit the
- * runner's own exponent and use that for the third distance"). Qualifying is
- * strict, per §11.4's own caveat ("Best when both races are recent, on flat
- * courses, in similar weather") and §11.2 rule 4 ("Discard any race run in
- * heat > 18°C, on a hilly course, or in a depleted state without
- * correction"):
- *   · both within the freshness window (Research/01 §Freshness window:
- *     "within the last 8 weeks (≤56 days)")
- *   · both graded representative by the race-authority machinery — A/B
- *     priority (selectionAuthority ≥ REPRESENTATIVE_FLOOR) and no downgrading
- *     runner report — and not flagged hilly
- *   · both inside Riegel's own validity window (1500m–marathon, §2.4)
- *   · distances far enough apart that the fit is signal, not noise
- *     amplification (denominator ln(D2/D1) → 0 as the distances converge)
- * A fitted exponent outside the range doctrine has ever observed for
- * sub-ultra running (§6.1 table: George women's-road 1.0397 … §7.2 Speedster
- * ~1.10-1.13) means the two races are not comparable — the fit is discarded
- * rather than clamped, and the Daniels equivalence stands.
+ * runner's own exponent and use that for the third distance"), racesQualify
+ * per §11.4's own caveat ("Best when both races are recent, on flat courses,
+ * in similar weather") and §11.2 rule 4 ("Discard any race run in heat >
+ * 18°C, on a hilly course, or in a depleted state without correction") — see
+ * `durability-anchor.ts#loadRaceObservationsForDurability` for exactly how
+ * that qualification is now applied (graded priority, non-provisional,
+ * rungs 1-2 of the race-data ladder only).
  *
  * Pure module — no DB. Callers load evidence (bestRecentVdot inputs, course
- * geometry, the plan's marathon-block signal) and hand it in.
+ * geometry, the plan's marathon-block signal, the durability-anchor read)
+ * and hand it in.
  */
 
 import {
@@ -104,6 +129,9 @@ import { roundTargetSec } from './effective-race-target';
 import { roundTo } from '@/lib/format/run';
 import { selectionAuthority, REPRESENTATIVE_FLOOR } from './effort-authority';
 import type { AuthorityTier } from './effort-authority';
+// Type-only — this file stays DB-free (see header). The caller resolves the
+// read (`resolveRaceExponent`, which does touch the DB) and hands it in.
+import type { RaceExponentRead } from '@/lib/training/durability-anchor';
 
 // ── Personal Riegel exponent (Research/02 §11.4) ────────────────────────────
 
@@ -241,6 +269,49 @@ export function predictWithPersonalExponent(
   )[0];
   const t = anchor.finish_seconds! * Math.pow(targetDistanceMi / anchor.distance_mi!, fit.b);
   return Number.isFinite(t) && t > 0 ? Math.round(t) : null;
+}
+
+/**
+ * `deriveCoachGoal`'s ACTUAL personal-exponent source, 2026-09-01 —
+ * projects at `targetDistanceMi` off the CANONICAL durability anchor's
+ * fitted exponent (`durability-anchor.ts#fitRaceExponent`) instead of this
+ * file's own `fitPersonalExponent`/`predictWithPersonalExponent` pair. Same
+ * anchor-selection rule (nearest supporting race in log-distance), same
+ * Riegel validity window — the only thing that changed is WHICH exponent
+ * fit feeds it. See the "Personal Riegel exponent" section of this file's
+ * header for why: two independent fits of the same physiological question
+ * is exactly the shape Rule 16 (`CLAUDE.md`) exists to forbid, and
+ * `durability-anchor.ts`'s shrinkage-weighted, Rule-11-typed fit is the more
+ * rigorous of the two and already the doctrine's canonical resolver for
+ * pace prescription.
+ *
+ * `read.value` is ALREADY the shrunk-toward-population number
+ * (`durability-anchor.ts`'s own header: decay and thin evidence move
+ * `confidence`, never `value`) — this function performs no further
+ * shrinkage or clamping of its own, the same posture
+ * `predictWithPersonalExponent` above took toward its own already-validated
+ * `fit.b`. Null when the read refused (Rule 11: `RaceExponentRead.ok ===
+ * false` carries no `value`), carries no supporting races (should not
+ * happen when `ok === true`; checked defensively anyway), or the target
+ * sits outside Riegel's validity window.
+ */
+export function projectWithDurabilityExponent(
+  read: RaceExponentRead,
+  targetDistanceMi: number,
+): { sec: number; anchorDistanceMi: number } | null {
+  if (!read.ok) return null;
+  if (!targetDistanceMi || targetDistanceMi <= 0) return null;
+  if (targetDistanceMi < RIEGEL_MIN_DISTANCE_MI || targetDistanceMi > RIEGEL_MAX_DISTANCE_MI) return null;
+  if (read.supporting.length === 0) return null;
+  const anchor = [...read.supporting].sort(
+    (a, b) =>
+      Math.abs(Math.log(targetDistanceMi / a.distanceMi)) -
+      Math.abs(Math.log(targetDistanceMi / b.distanceMi)),
+  )[0];
+  const t = anchor.finishSec * Math.pow(targetDistanceMi / anchor.distanceMi, read.value);
+  return Number.isFinite(t) && t > 0
+    ? { sec: Math.round(t), anchorDistanceMi: anchor.distanceMi }
+    : null;
 }
 
 // ── Course grading (Research/02 §13.2, read per mile) ───────────────────────
@@ -444,8 +515,15 @@ export interface CoachGoalTargets {
   specificityAdjustedPct: number | null;
   /** How B was predicted. */
   method: 'daniels-vdot' | 'personal-exponent';
-  /** The fitted exponent when method === 'personal-exponent'. */
+  /** The fitted exponent when method === 'personal-exponent'. Sourced from
+   *  `durability-anchor.ts#fitRaceExponent` (`RaceExponentRead.value`) —
+   *  2026-09-01, see `projectWithDurabilityExponent`. */
   personalExponent: number | null;
+  /** `RaceExponentRead.confidence` for `personalExponent` — how much to
+   *  trust the fitted exponent right now (evidence quality blended with
+   *  freshness; see durability-anchor.ts). Null when method is
+   *  'daniels-vdot' (no personal exponent was used). */
+  personalExponentConfidence: number | null;
   /** The VDOT evidence B came from (null for a pure exponent projection). */
   vdotBasis: number | null;
   /** Whole seconds added to each tier for a rolling-band course (Research/02
@@ -499,16 +577,20 @@ export interface CoachGoalInput {
   /** Whether the runner's plan meets §13.1's marathon-specificity minima
    *  (loadMarathonSpecificTraining). null = unknown = treated as absent. */
   marathonSpecificTraining?: boolean | null;
-  /** Personal exponent fit when two qualifying recent races exist. */
-  exponentFit?: PersonalExponentFit | null;
+  /** The CANONICAL personal-exponent read (`durability-anchor.ts
+   *  #resolveRaceExponent`), 2026-09-01. Replaces this file's own
+   *  `exponentFit: PersonalExponentFit` — see the "Personal Riegel exponent"
+   *  section of this file's header for why. `ok: false` (or absent) falls
+   *  through to the Daniels-vdot method, same as an absent fit used to. */
+  durabilityExponent?: RaceExponentRead | null;
   todayISO: string;
 }
 
 /**
  * Derive the coach-set goal framing for one race. Null means "nothing to
  * set": a stated goal exists (untouchable), or there is no honest evidence to
- * set one from (no VDOT and no exponent fit, or an unusable distance) — a
- * fabricated goal is worse than an empty one.
+ * set one from (no VDOT and no usable exponent read, or an unusable
+ * distance) — a fabricated goal is worse than an empty one.
  */
 export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null {
   // 1 · A runner-stated goal is untouchable. Standing rule; checked first so
@@ -571,25 +653,25 @@ export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null 
   if (distanceMi == null || !(distanceMi > 0)) return null;
   if (distanceMi > DANIELS_MAX_VALID_DISTANCE_MI) return null; // ultra — no honest band to set
 
-  // 4 · B = the equivalent-fitness prediction. Personal exponent when two
-  //     qualifying races exist (§14 rule 3), else the Daniels equivalence.
+  // 4 · B = the equivalent-fitness prediction. The canonical durability
+  //     anchor's personal exponent when it has a usable read (§14 rule 3),
+  //     else the Daniels equivalence. 2026-09-01: was this file's own
+  //     `exponentFit` two-race fit — see the "Personal Riegel exponent"
+  //     section of the header for why it now reads `durabilityExponent`.
   let baseSec: number | null = null;
   let method: CoachGoalTargets['method'] = 'daniels-vdot';
   let personalExponent: number | null = null;
+  let personalExponentConfidence: number | null = null;
   let anchorDistanceMi = input.vdotAnchorDistanceMi ?? null;
-  if (input.exponentFit) {
-    const t = predictWithPersonalExponent(input.exponentFit, distanceMi);
-    if (t != null) {
-      baseSec = t;
+  if (input.durabilityExponent) {
+    const proj = projectWithDurabilityExponent(input.durabilityExponent, distanceMi);
+    if (proj != null && input.durabilityExponent.ok) {
+      baseSec = proj.sec;
       method = 'personal-exponent';
-      personalExponent = input.exponentFit.b;
+      personalExponent = input.durabilityExponent.value;
+      personalExponentConfidence = input.durabilityExponent.confidence;
       // The span the CI pays for is the one actually projected across.
-      const anchor = [...input.exponentFit.races].sort(
-        (a, b2) =>
-          Math.abs(Math.log(distanceMi / a.distance_mi!)) -
-          Math.abs(Math.log(distanceMi / b2.distance_mi!)),
-      )[0];
-      anchorDistanceMi = anchor.distance_mi ?? anchorDistanceMi;
+      anchorDistanceMi = proj.anchorDistanceMi;
     }
   }
   if (baseSec == null && input.vdot != null && input.vdot > 0) {
@@ -670,6 +752,7 @@ export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null 
     specificityAdjustedPct: spec?.pct ?? null,
     method,
     personalExponent,
+    personalExponentConfidence,
     vdotBasis: method === 'daniels-vdot' ? (input.vdot ?? null) : null,
     hillAdjustedSec: hill ? hill.costSec : null,
     hillGainFtPerMi: hill ? roundTo(hill.gainFtPerMi, 1) : null,
