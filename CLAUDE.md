@@ -666,6 +666,57 @@ hardcodes both only proves the test agrees with itself.
 
 ---
 
+## Rule 19 · Green is not deployed. Confirm the artifact reached production (locked 2026-08-30)
+
+**A passing gate chain is evidence about the checks, not about production. Verify
+the deploy landed.**
+
+Earned the hard way. On 2026-08-30 a `'use client'` component imported one
+constant from `lib/training/lthr-reanchor.ts`, which reaches a
+`await import('@/lib/db/pool')` three modules deep. A dynamic import is still a
+bundled edge, so webpack pulled `pg` into the browser graph and `next build`
+died on `fs`/`dns`/`net`/`tls`.
+
+**`main` did not deploy for a full day.** Five merged commits — an entire
+marathon block's worth of engine fixes, plus the LTHR re-anchor the runner's HR
+caps depend on — were never live, while every session that pushed them believed
+they were. `tsc --noEmit` passed. All twelve prebuild scripts passed. The break
+was in `next build`, which runs AFTER them, and its failure surfaced only in
+Railway, hours later, where nobody was looking.
+
+Two failures, and both are the rule:
+
+**1 · The gate chain stopped before the thing that actually ships.** Twelve
+checks verified palette, spacing, voice, doctrine, wire keys, mutations and
+swallowed reads — everything except whether the application builds. A gate set
+that does not cover the last step is a gate set with a hole exactly where it
+matters, and the hole is invisible because everything before it is green.
+
+**2 · Nobody confirmed the artifact.** Every push was treated as a deploy. `git
+push` succeeding says the remote accepted the commit and nothing more.
+
+**To comply:**
+
+- **After a push you care about, check the deployment STATUS**, not the push
+  result. A deployment can exist and be failed; `success` is the only word that
+  means deployed.
+- **Cover the last step.** `scripts/check-client-graph.sh` now walks the import
+  graph from every `'use client'` entry and fails when it reaches a server-only
+  module, following DYNAMIC imports and the full transitive closure — the
+  offending edge was three deep and dynamic, so a one-hop static check would
+  have reported it clean.
+- **A claim in a comment that nothing verifies is not a fact.**
+  `lthr-reanchor.ts` asserted in its own header that it "imports no database at
+  any depth." It was false, it was false for a day, and no check could tell.
+  This is Rule 18 pointed at prose: if a header states an invariant, either gate
+  it or delete the sentence.
+
+When work is time-critical — a plan authoring overnight, a cron that fires once —
+**confirm the deploy before the deadline, not after.** The cost of assuming is
+the entire night's work silently not existing.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
