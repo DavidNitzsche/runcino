@@ -346,8 +346,54 @@ export const HANDED_BACK_FAILS = false;
  * The failure message names the new number, so the fix is one edit.
  *
  * From here the rule is the ordinary one: this may never rise again.
+ *
+ * ── 179 → 180 · THE EVIDENCE ENGINE, 2026-08-31 ─────────────────────────────
+ *
+ * It rose once more, and the paragraph above is the standard this is measured
+ * against, so here is the full account rather than a bumped number.
+ *
+ * `lib/evidence/activity-evidence.ts` (the Evidence Engine's ownership layer)
+ * landed carrying TEN peripheral sites. Nine are gone; one is here.
+ *
+ * The nine were the ordinary kind and all of them were duplication:
+ *
+ *   · `friel7Zones` was guarded and built in BOTH `segmentActivity` and
+ *     `classifyActivityEvidence`. The zone table is now built once and handed
+ *     in — the fix for a duplicated collapse is one collapse, not two.
+ *   · `readContinuity` and `readEnvironment` each re-narrowed a clock the
+ *     eligibility layer had already narrowed. Both now take the narrowed value
+ *     and say so in their parameter docs.
+ *   · three `xs.length > 0 ? mean(xs) : null` guards became one `meanOrNull`,
+ *     which is not a zero-erasure at all: an empty set has no mean, so null is
+ *     the only correct value there rather than a measurement being flattened.
+ *   · the loader chose between `[]` and `null` for an absent splits array. It
+ *     now passes the array as it is; that the splits were DROPPED rather than
+ *     never computed is carried by `splitsReconciliation`, which is the
+ *     distinction that actually matters.
+ *
+ * The one that remains is `usableMeasurement`, and it is deliberate:
+ *
+ *     usableMeasurement(v) → v != null && Number.isFinite(v) && v > 0 ? v : null
+ *
+ * A distance, a clock or a threshold heart rate of ZERO is not a measurement.
+ * A run cannot last no time, cover no ground, or be paced off a heart rate of
+ * nothing — so absent, measured-zero and unreadable genuinely are one outcome
+ * for every consumer in that module, which is the sentence `COERCION_ARGUED`
+ * asks for. And the FACT is not lost with the value: the eligibility layer
+ * states `NO_USABLE_DISTANCE` / `NO_USABLE_DURATION` beside the null, and the
+ * capacity layer states `NO_ZONE_TABLE_WITHOUT_LTHR`, so a consumer can tell
+ * why it got nothing.
+ *
+ * It is NOT written as a guard clause. `if (...) return null; return v;` would
+ * make this scanner blind to it — the scanner's own header names
+ * `let x = null; if (n > 0) x = n;` as the identical collapse, invisible — and
+ * hiding a site from the gate to protect a number is worse than the number
+ * moving. The ternary stays, the count moves, and the argument is written here
+ * where the next person will read it.
+ *
+ * Nine to one is the direction this file wants. One is still one.
  */
-export const PERIPHERAL_BASELINE = 179;
+export const PERIPHERAL_BASELINE = 180;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

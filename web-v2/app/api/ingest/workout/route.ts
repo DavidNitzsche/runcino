@@ -44,6 +44,7 @@ import { runnerTimezoneOrPacific, captureTimezoneFromDevice } from '@/lib/runtim
 import { requireUserId } from '@/lib/auth/session';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
 import { sanitizeSplits } from '@/lib/runs/split-sanity';
+import { splitTimesReliable } from '@/lib/runs/split-coverage';
 import { omitEmpty } from '@/lib/runs/merge-safe';
 import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs/length-guard';
 import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
@@ -351,8 +352,11 @@ export async function POST(req: NextRequest) {
     // iPhone agent updates buildRoutePayload to mask paused time.
     ...(() => {
       const rawSplits = Array.isArray(body.splits) ? body.splits : [];
-      const splitsCheck = validateSplitsAgainstDuration(rawSplits,
-        Number(body.duration_sec ?? body.moving_sec ?? 0));
+      const splitsCheck = validateSplitsAgainstDuration(
+        rawSplits,
+        Number(body.duration_sec ?? body.moving_sec ?? 0),
+        Number(body.distance_mi ?? 0),
+      );
       if (!splitsCheck.reliable && rawSplits.length > 0) {
         console.warn(
           `[ingest/workout] dropping unreliable splits · user=${userId.slice(0,8)} ` +
@@ -384,7 +388,23 @@ export async function POST(req: NextRequest) {
         // destruction only. See lib/runs/merge-safe.ts for the contract.
         ...omitEmpty('splits', keptSplits),
         splits_unreliable: rawSplits.length > 0 ? !splitsCheck.reliable : false,
-        splits_validation: splitsCheck.reliable ? null : {
+        // 2026-08-31 · WRITTEN WHATEVER THE VERDICT, not only on a drop.
+        //
+        // This is the reconciliation, and a continuity reader needs it on the
+        // GOOD rows too: `lib/evidence/activity-evidence.ts#readContinuity`
+        // asks whether the split times leave activity time unaccounted for
+        // once the un-split tail is priced, which is the difference between a
+        // crosswalk stop and a run that ended mid-mile. Nulling it on the
+        // reliable path discarded the only record that the check had run, so
+        // "the clock reconciled" and "nothing ever checked" looked identical
+        // downstream (Rule 11).
+        //
+        // `droppedCount` keeps its name and its meaning — the number of splits
+        // the check LOOKED AT, which equals the number dropped only when the
+        // verdict was unreliable. Renaming it would break
+        // `absorb-splits-verdict.test.ts` and the diagnostic scripts that read
+        // it, for no gain.
+        splits_validation: rawSplits.length === 0 ? null : {
           splitsSumS: splitsCheck.splitsSumS,
           durationS: splitsCheck.durationS,
           deltaS: splitsCheck.deltaS,
@@ -739,22 +759,48 @@ function bigIntIdFromString(s: string): string {
 }
 
 /**
- * 2026-06-03 · Splits sanity check · sum of per-mile times must match
- * total moving duration within 5 seconds. When the sum is > duration,
- * splits include time the watch correctly excluded (pause/stop), which
- * means iPhone's GPS-timestamp-derived split computation in
- * HealthKitManager.swift didn't consult HKWorkoutEvent pause/resume.
+ * 2026-06-03 · Splits sanity check · do the per-mile times reconcile with the
+ * activity's own clock?
  *
- * `reliable=false` means we drop the splits at storage time so downstream
- * surfaces (slowest mile / drift / fastest mile) fall back to total
+ * When the sum EXCEEDS duration, the splits include time the watch correctly
+ * excluded (pause/stop), which means iPhone's GPS-timestamp-derived split
+ * computation in HealthKitManager.swift didn't consult HKWorkoutEvent
+ * pause/resume. `reliable=false` means we drop the splits at storage time so
+ * downstream surfaces (slowest mile / drift / decoupling) fall back to total
  * stats only instead of rendering wrong numbers from inconsistent data.
  *
  * Source-of-truth fix lives at designs/briefs/iphone-split-pause-fix.md
  * · iPhone agent updates buildRoutePayload to mask paused time.
+ *
+ * ── 2026-08-31 · ONE PREDICATE, NOT TWO (Rule 16) ─────────────────────────
+ *
+ * The reliability VERDICT now comes from `splitTimesReliable`
+ * (`lib/runs/split-coverage.ts`), which is the app's one definition of it and
+ * which `/api/watch/workouts/complete` has used since it was written. This
+ * route kept a private `Math.abs(deltaS) <= 5` copy — the exact symmetric rule
+ * `split-coverage.ts`'s own header records as REPLACED, because
+ * `deriveSplitsFromPaceSamples` only emits a split on a whole-mile crossing, so
+ * every run ending mid-mile legitimately falls one tail's worth of seconds
+ * short and the symmetric rule read that as broken.
+ *
+ * Two definitions of one predicate meant the same payload was judged
+ * differently by which endpoint received it. Measured cost on the owner's
+ * account: his 2026-08-31 easy run arrived with SEVEN per-mile splits summing
+ * 2985s against a 3095s duration — a 110-second shortfall on a 6.18-mile run,
+ * i.e. almost exactly the un-split 0.18-mile tail — and all seven were
+ * discarded. `splitTimesReliable` keeps them (shortfall ≤ one average mile +
+ * 30s) and still rejects any over-claim past 5s, so the pause-bug protection
+ * this function was written for is unchanged.
+ *
+ * The reconciliation NUMBERS are still computed here and still stored, whatever
+ * the verdict: `splits_validation` is what a continuity reader needs in order
+ * to tell an interruption from a tail, and nulling it on the reliable path
+ * threw away the only record that the check had run.
  */
 function validateSplitsAgainstDuration(
   splits: unknown,
   durationS: number,
+  totalDistanceMi: number,
 ): { reliable: boolean; splitsSumS: number; durationS: number; deltaS: number } {
   if (!Array.isArray(splits) || splits.length === 0 || durationS <= 0) {
     return { reliable: true, splitsSumS: 0, durationS, deltaS: 0 };
@@ -777,9 +823,8 @@ function validateSplitsAgainstDuration(
     splitsSumS += paceSec * (distMi ?? 1);
   }
   const deltaS = Math.round(splitsSumS - durationS);
-  const reliable = Math.abs(deltaS) <= 5;
   return {
-    reliable,
+    reliable: splitTimesReliable(splitsSumS, durationS, totalDistanceMi),
     splitsSumS: Math.round(splitsSumS),
     durationS,
     deltaS,

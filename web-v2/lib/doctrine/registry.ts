@@ -107,6 +107,14 @@ import {
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { A_RACE_COLLISION_DAYS } from '@/lib/training/race-card';
 import { HR_TARGET_MIN_REP_SEC } from '@/lib/training/spec-card';
+import { heatEffort } from '@/lib/training/heat-model';
+import {
+  DRIFT_NORMAL_BAND_PCT_PER_60MIN,
+  DRIFT_SCOPE_MIN_MINUTES,
+  ENV_COST_SATURATION_PCT,
+  HR_SETTLING_MINUTES,
+  BELIEF_MATCH_MARGIN_PCT,
+} from '@/lib/evidence/activity-evidence';
 import { anchorsFor, doctrinePhasesForWeek, renderPrescription } from '@/lib/plan/catalogue-rx';
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { MIN_SESSIONS_PER_STAGE } from '@/lib/plan/return-ladder';
@@ -17732,6 +17740,178 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       if (Math.abs(tBand[0] - THRESHOLD_PCT_LTHR_BAND[0]) > 0.001 || Math.abs(tBand[1] - THRESHOLD_PCT_LTHR_BAND[1]) > 0.001) {
         throw new Error(`THRESHOLD_PCT_LTHR_BAND is ${THRESHOLD_PCT_LTHR_BAND}, Research/03 §17 crosswalk is ${tBand}`);
+      }
+    },
+  },
+
+  // ══ EVIDENCE ENGINE ═══════════════════════════════════════════════════════
+  {
+    id: 'EVIDENCE.drift-scope-and-normal-band',
+    binds: [
+      'lib/evidence/activity-evidence.ts#DRIFT_SCOPE_MIN_MINUTES',
+      'lib/evidence/activity-evidence.ts#DRIFT_NORMAL_BAND_PCT_PER_60MIN',
+      'lib/evidence/activity-evidence.ts#readInternalCost',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| Cardiac drift (>30 min steady) | Rises | +5–15% over 60 min |',
+    claim:
+      'Section 2\'s confounder table states BOTH facts the Evidence Engine reads about ' +
+      'cardiovascular drift, and both numbers are parsed out of that one row: drift is only a ' +
+      'meaningful reading past 30 minutes of steady running, and a rise of 5-15% per 60 minutes ' +
+      'is the EXPECTED response for a healthy runner rather than a finding. The second is what ' +
+      'stops a single warm 52-minute easy run being read as a durability problem — §12\'s ' +
+      '5/8/10 interpretation ladder describes a 60-90 MINUTE protocol run and quoting it outside ' +
+      'that scope is the defect aerobic-decoupling.ts already records for its old six-mile gate.',
+    check({ cite }) {
+      const row = cite.text();
+      const scope = Number(
+        matchLiteral(row, /Cardiac drift \(>(\d+) min steady\)/, "§2's drift scope")[1],
+      );
+      if (DRIFT_SCOPE_MIN_MINUTES !== scope) {
+        throw new Error(
+          `DRIFT_SCOPE_MIN_MINUTES = ${DRIFT_SCOPE_MIN_MINUTES} · §2 scopes cardiac drift to ` +
+            `>${scope} min steady`,
+        );
+      }
+      const m = matchLiteral(row, /\+(\d+)–(\d+)% over (\d+) min/, "§2's drift magnitude band");
+      const [lo, hi, per] = [Number(m[1]), Number(m[2]), Number(m[3])];
+      if (per !== 60) {
+        throw new Error(`§2 now states the drift band over ${per} min · the engine reads it per 60`);
+      }
+      if (DRIFT_NORMAL_BAND_PCT_PER_60MIN[0] !== lo || DRIFT_NORMAL_BAND_PCT_PER_60MIN[1] !== hi) {
+        throw new Error(
+          `DRIFT_NORMAL_BAND_PCT_PER_60MIN is ${DRIFT_NORMAL_BAND_PCT_PER_60MIN} · §2 states ` +
+            `+${lo}-${hi}% over ${per} min`,
+        );
+      }
+      // And the engine reads the band as NORMAL, not as a fault ladder: the
+      // §12 interpretation bands must not appear in this file at all.
+      const src = stripComments(sourceOf('web-v2/lib/evidence/activity-evidence.ts'));
+      if (/DECOUPLING_BAND_(STRONG|ACCEPTABLE|ABOVE_AET)_PCT/.test(src)) {
+        throw new Error(
+          "activity-evidence.ts reads Research/03 §12's interpretation bands · those describe a " +
+            '60-90 min protocol run and must not grade an ordinary easy run',
+        );
+      }
+    },
+  },
+  {
+    id: 'EVIDENCE.hr-settling-window-matches-protocol-warmups',
+    binds: ['lib/evidence/activity-evidence.ts#HR_SETTLING_MINUTES'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '**Protocol C — Treadmill ramp.** 10 min warm-up.',
+    claim:
+      'Every HR field protocol in Research/03 opens with a warm-up before any reading is taken ' +
+      '(10-15 min, 15 min, 10 min). The Evidence Engine excludes the same opening window before ' +
+      'reading drift, so an activity\'s first minutes of HR settling are not mistaken for aerobic ' +
+      'decoupling. It takes the FLOOR of the range the doc states, because over-excluding ' +
+      'manufactures a refusal while under-excluding manufactures drift, and a refusal is the ' +
+      'recoverable error.',
+    check({ cite }) {
+      const stated = Number(matchLiteral(cite.text(), /(\d+) min warm-up/, "Protocol C's warm-up")[1]);
+      if (HR_SETTLING_MINUTES !== stated) {
+        throw new Error(
+          `HR_SETTLING_MINUTES = ${HR_SETTLING_MINUTES} · Research/03's shortest stated protocol ` +
+            `warm-up is ${stated} min`,
+        );
+      }
+      // The floor claim: no protocol in the doc warms up for LESS than this.
+      const doc = sourceOf('Research/03-heart-rate-zones.md');
+      for (const m of doc.matchAll(/(\d+)(?:–\d+)? min warm-up/g)) {
+        if (Number(m[1]) < HR_SETTLING_MINUTES) {
+          throw new Error(
+            `Research/03 now states a ${m[1]} min warm-up · HR_SETTLING_MINUTES ` +
+              `(${HR_SETTLING_MINUTES}) is no longer the floor`,
+          );
+        }
+      }
+    },
+  },
+  {
+    id: 'EVIDENCE.environmental-cost-saturates-at-doctrines-bail-conditions',
+    binds: [
+      'lib/evidence/activity-evidence.ts#ENV_COST_SATURATION_PCT',
+      'lib/evidence/activity-evidence.ts#readEnvironment',
+    ],
+    doc: 'Research/06-weather-adjustments.md',
+    anchor: '| 70–74 | 21–23 | Very hard | Convert to time-on-feet | 5–8% |',
+    claim:
+      'How much of an observed HR elevation the conditions could explain is normalised against ' +
+      'the composed heat cost at doctrine\'s own bail conditions, not against an invented ' +
+      'ceiling. Section 2\'s dewpoint table is the ladder: the row §11 independently converts to ' +
+      'time-on-feet ("Td ≥70°F") carries a 5-8% adjustment, and the composed model at Tair 90°F / ' +
+      'Td 80°F — where §11 bails outright — lands near 15%. Enforcement §18: this changes how ' +
+      'CONFIDENTLY the HR response is read, and produces no corrected pace of any kind.',
+    check({ cite }) {
+      // The cited row's own upper bound, read out of the doc.
+      const rowTop = Number(
+        matchLiteral(cite.text(), /Convert to time-on-feet \| \d+–(\d+)%/, "§2's time-on-feet row")[1],
+      );
+      if (!(ENV_COST_SATURATION_PCT > rowTop)) {
+        throw new Error(
+          `ENV_COST_SATURATION_PCT (${ENV_COST_SATURATION_PCT}) must sit ABOVE §2's ` +
+            `time-on-feet row (${rowTop}%) · saturation is the bail point, not the convert point`,
+        );
+      }
+      // §11's bail conditions, composed through THE heat model, must land at
+      // or below the saturation constant — read at run time rather than
+      // hardcoded on both sides.
+      const bailTd = Number(
+        matchLiteral(
+          sourceOf('Research/06-weather-adjustments.md'),
+          /\| Td ≥(\d+)°F \| Evaporative cooling fails \|/,
+          "§11's dewpoint bail trigger",
+        )[1],
+      );
+      const atBail = heatEffort({ tempF: 90, dewpointF: bailTd, durationS: 7200 })?.slowdownPct ?? 0;
+      if (!(atBail > 0)) throw new Error('the heat model returned no cost at §11 bail conditions');
+      if (Math.abs(atBail - ENV_COST_SATURATION_PCT) > 2) {
+        throw new Error(
+          `ENV_COST_SATURATION_PCT is ${ENV_COST_SATURATION_PCT} · the shared heat model composes ` +
+            `${atBail.toFixed(1)}% at §11's bail conditions (Tair 90°F / Td ${bailTd}°F)`,
+        );
+      }
+      // Enforcement §18 · no corrected performance number leaves this layer.
+      const src = stripComments(sourceOf('web-v2/lib/evidence/activity-evidence.ts'));
+      if (/applyHeatToPace|adjustedPace|correctedPace/.test(src)) {
+        throw new Error(
+          'activity-evidence.ts produces an adjusted pace · Enforcement §18 makes environmental ' +
+            'normalization a SUPPORTING layer that changes interpretation, not an alternate engine',
+        );
+      }
+    },
+  },
+  {
+    id: 'EVIDENCE.belief-match-margin-is-doctrines-sustainability-width',
+    binds: [
+      'lib/evidence/activity-evidence.ts#BELIEF_MATCH_MARGIN_PCT',
+      'lib/evidence/activity-evidence.ts#readBeliefTension',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| <5% | Strong aerobic endurance; sustainable |',
+    claim:
+      'The width inside which an observation is treated as MATCHING a capacity belief is ' +
+      'doctrine\'s own "same effort, held sustainably" width, not a number picked here. §12\'s ' +
+      'first interpretation band is < 5%. The belief-tension signal that width feeds never moves ' +
+      'an anchor: its `anchorEffect` is typed to one literal that cannot express a change.',
+    check({ cite }) {
+      const pct = Number(
+        matchLiteral(cite.text(), /\|\s*<(\d+)%\s*\|\s*Strong aerobic endurance/, "§12's sustainable decoupling band")[1],
+      );
+      if (BELIEF_MATCH_MARGIN_PCT !== pct) {
+        throw new Error(
+          `BELIEF_MATCH_MARGIN_PCT = ${BELIEF_MATCH_MARGIN_PCT} · §12's sustainable band is < ${pct}%`,
+        );
+      }
+      const src = sourceOf('web-v2/lib/evidence/activity-evidence.ts');
+      if (!/anchorEffect:\s*'no_change_flag_for_reexamination'/.test(src)) {
+        throw new Error(
+          "the belief-tension read no longer types its anchorEffect to " +
+            "'no_change_flag_for_reexamination' · it must be structurally incapable of an anchor move",
+        );
+      }
+      if (/candidate_anchor_move/.test(stripComments(src).split('readBeliefTension')[1] ?? '')) {
+        throw new Error('readBeliefTension can now emit an anchor move · Part 3 forbids it');
       }
     },
   },
