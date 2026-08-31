@@ -9,7 +9,7 @@
  * Run: ./node_modules/.bin/vitest run lib/plan/_sweep_allusers.test.ts --disable-console-intercept 2>&1 | tail -60
  */
 import { describe, it, expect } from 'vitest';
-import { buildSimPlan } from './sim-inputs';
+import { buildSimPlan, simEasyDayMedianMi, simPrescribedSpans } from './sim-inputs';
 import { validateComposedPlan, PlanValidationError } from './validate';
 import { classifyGoalTier, TIER_TARGETS, distanceCategoryOf } from './goal-tiers';
 import { ULTRA_UNSUPPORTED_REASON } from './supported-distances';
@@ -19,7 +19,7 @@ import { predictRaceTime } from '@/lib/training/vdot';
 // dosing gate (`_dosing_sweep_gate.test.ts`) can drive the IDENTICAL matrix
 // without importing this test file. Add arcs THERE; every gate sweeps them.
 import { matrix, isUltra, arcStr, simInputsForArc, type Arc } from './sim-matrix';
-import { REACH_BRANCHES, HISTORY_SHAPES, QUALITY_INFLATION_ENV, easyMedianOf, type ReachBranch } from './history-shapes';
+import { REACH_BRANCHES, HISTORY_SHAPES, QUALITY_INFLATION_ENV, type ReachBranch } from './history-shapes';
 import { SHORT_LAYOFF_WEEKS } from './generate';
 
 const catOfMi = (mi: number) => distanceCategoryOf(mi);
@@ -365,12 +365,29 @@ function recordReach(a: Arc, built: Built) {
   }
 
   // The easy-day floor · read the number the engine actually recorded being
-  // handed, and cross-check it against this corpus's own derivation so a drift
-  // between `sim-inputs`'s median and `history-shapes`'s fails rather than
-  // silently making the ledger describe a different runner.
+  // handed, and cross-check it against the corpus's own statement of what this
+  // runner's easy day IS, so a drift fails rather than silently making the
+  // ledger describe a different runner.
+  //
+  // RULE8-SIM-1 (2026-08-30) · this used to call `history-shapes`' own
+  // `easyMedianOf`, a SECOND 14-calendar-day derivation of a quantity
+  // `sim-inputs` already owns — and the moment the engine's copy was corrected
+  // to skip the prescribed taper / recovery span (Rule 8) the two disagreed on
+  // 57 archetypes. That is this check working, and the answer is not to teach
+  // the copy the same trick: Rule 16 says one quantity, one name. It now grades
+  // against `simEasyDayMedianMi` itself, fed the arc's OWN race facts through
+  // `simPrescribedSpans` and the same `startDateISO` that `simInputsForArc`
+  // hands the engine. The check therefore still fires on a real regression —
+  // an arc whose engine reading stops matching its own history — and can no
+  // longer fire on two implementations of one idea drifting apart.
   const engineEasyMedian = typeof df['easyDayMedianMi'] === 'number' ? (df['easyDayMedianMi'] as number) : null;
   if (engineEasyMedian != null && a.history) {
-    const mine = a.history.easyDayMedianOverrideMi ?? easyMedianOf(a.history.dailyMiMostRecentFirst);
+    const arcInputs = simInputsForArc(a);
+    const mine = a.history.easyDayMedianOverrideMi ?? simEasyDayMedianMi(
+      a.history.dailyMiMostRecentFirst,
+      arcInputs.startDateISO,
+      simPrescribedSpans(arcInputs.startDateISO, arcInputs.lastRaceFinishedDaysAgo, arcInputs.lastRaceDistance),
+    );
     if (Math.abs(mine - engineEasyMedian) > 1e-9) firm(`EASY_MEDIAN_DRIFT sim=${engineEasyMedian} corpus=${mine}`, a);
     if (engineEasyMedian > 3) reach('easy:floor-armed');
     else if (engineEasyMedian === 0) reach('easy:floor-dark');

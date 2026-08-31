@@ -399,7 +399,25 @@ export const HISTORY_SHAPES: readonly HistoryShapeSpec[] = [
     // only OBSERVABLE through `sizeBlocks(…, isMidBlock && baseRebuilt)` — a
     // runner who has not done quality skips BASE-insertion on the isMidBlock
     // clause alone and the gate would be grading nothing.
-    weekFrac: [0.15, 0.22, 0.30, 0.90, 0.95, 0.75, 0.92, 1.00, 0.88, 0.70, 0.94, 0.90, 1.00, 0.72, 0.86, 0.83],
+    //
+    // ABSENCE-CONTINUOUS-1 (2026-08-30) · DEEPENED, and the reason is the point
+    // of the shape. `interruptionWeeks` used to be a COUNT of consecutive weeks
+    // below the resume level, so three weeks at 15/22/30% of sustained counted
+    // as exactly three and cleared the two-week allowance. It is now
+    // WEEKS-EQUIVALENT OF ABSENCE — doctrine keys its return protocols on DAYS
+    // OFF, and a runner holding 22% of his sustained volume is not off — so the
+    // same three weeks measured 1.99, a hundredth of a week INSIDE the
+    // allowance, and this shape stopped reaching `ramp:layoff` and with it the
+    // only path to `base:deficit`. Exactly the blindness Rule 15 exists to
+    // catch, caught by the reachability assertion the same night both landed.
+    //
+    // The fractions below are 10/18/25% of sustained — for a 45 mi/wk runner,
+    // four and a half, eight and eleven miles across three weeks. That is what
+    // `Research/22` §"Return from Moderate Layoff (3-8 weeks)" is describing,
+    // and it is what this shape's own `what` claims: a dip longer than any
+    // allowance. The old numbers described a deep dip, which is a different
+    // runner and a different branch.
+    weekFrac: [0.10, 0.18, 0.25, 0.90, 0.95, 0.75, 0.92, 1.00, 0.88, 0.70, 0.94, 0.90, 1.00, 0.72, 0.86, 0.83],
     weekQuality: [0, 0, 0, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2],
     // No density claims. This is the one shape that gets a BASE phase, and
     // `densityForWeek` returns the full prescribed density during BASE while
