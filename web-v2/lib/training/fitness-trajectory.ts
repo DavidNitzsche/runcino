@@ -229,6 +229,31 @@ export function projectFitnessTrajectory(args: {
    *  caller's HR-controlled signal. Applied in projection space on top of the
    *  anchor; never touches currentVdot or paces. Capped at OVERPERFORMANCE_CAP_VDOT. */
   overPerformanceBonusVdot?: number | null;
+  /**
+   * 2026-09-01 · goal-projection-durability follow-up · a durability-aware
+   * cross-distance read of TODAY's fitness at `raceDistanceMi` — the SAME
+   * confidence-weighted blend of `predictRaceTime(currentVdot, raceDistanceMi)`
+   * and `durability-anchor.ts#projectWithDurabilityExponent`'s real-race-anchored
+   * projection that `goal-projection.ts#computeGoalProjection` computes for
+   * `vdotProjectionSec`. Resolved and blended by the CALLER (it needs a DB read,
+   * `resolveRaceExponent`) and passed in as plain data, on purpose: this module
+   * is imported by a client component (`GapPanel.tsx`, see file header), so it
+   * must stay free of any server-only import, and `durability-anchor.ts` pulls
+   * in `pg`.
+   *
+   * Substitutes ONLY the final cross-distance read of TODAY's fitness — the
+   * VDOT-space training-response model above (gain rate, execution quality,
+   * plan ceiling, all temporal reasoning grounded in Research/01 with nothing to
+   * say about cross-distance shape) is untouched. `projectedSec` below then
+   * preserves the SAME relative improvement that model computed
+   * (`danielsProjectedSec / danielsCurrentSec`) on top of this corrected
+   * baseline, rather than re-deriving a "projected durability" that has no
+   * real anchor to fit (there is no race result for a day that hasn't
+   * happened yet). Null/omitted → byte-identical to this function's prior
+   * behavior (`predictRaceTime` throughout) — confirmed by the continuity
+   * tests in `fitness-trajectory-durability.test.ts`.
+   */
+  currentSecOverride?: number | null;
 }): FitnessTrajectory | null {
   const { currentVdot, goalSec, raceDistanceMi, weeksToRace } = args;
   if (!currentVdot || currentVdot <= 0) return null;
@@ -339,8 +364,22 @@ export function projectFitnessTrajectory(args: {
   const projectedVdotRaw = currentVdot + projectedGainVdot;
   const projectedVdot = Math.round(projectedVdotRaw * 10) / 10; // display only
 
-  const currentSec = predictRaceTime(currentVdot, raceDistanceMi);
-  const projectedSec = predictRaceTime(projectedVdot, raceDistanceMi);
+  // 2026-09-01 · goal-projection-durability follow-up · currentSec honors the
+  // caller's durability-blended override when supplied; projectedSec then
+  // scales the durability-corrected baseline by the SAME ratio the pure-Daniels
+  // read would have moved by, so the modeled GAIN (a temporal question) stays
+  // exactly what the VDOT-space math above computed while only the DISTANCE
+  // conversion (a cross-distance question) honors personal durability. When
+  // `currentSecOverride` is null/omitted, `currentSec === danielsCurrentSec`
+  // and this reduces to `danielsProjectedSec` exactly (x · (y/x) = y) — the
+  // untouched prior behavior.
+  const danielsCurrentSec = predictRaceTime(currentVdot, raceDistanceMi);
+  const danielsProjectedSec = predictRaceTime(projectedVdot, raceDistanceMi);
+  const currentSec = args.currentSecOverride ?? danielsCurrentSec;
+  const projectedSec =
+    currentSec != null && danielsCurrentSec != null && danielsCurrentSec > 0 && danielsProjectedSec != null
+      ? Math.round(currentSec * (danielsProjectedSec / danielsCurrentSec))
+      : danielsProjectedSec;
 
   // reachable / aheadOfGoal read the UNROUNDED gap so the ±0.05 display
   // rounding of projectedVdot can never flip the verdict. gapVdot is the

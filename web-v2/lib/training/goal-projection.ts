@@ -71,6 +71,11 @@ import { loadPlannedTargetVdot, loadMarathonSpecificTraining } from './plan-targ
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { expandSpecToPhases, DURATION_EST_S_PER_MI, type ExpandedPhase } from './expand-spec';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
+import {
+  resolveRaceExponent,
+  projectWithDurabilityExponent,
+  type RaceExponentRead,
+} from './durability-anchor';
 
 export type GoalStatus = 'on-track' | 'watching' | 'off-track' | 'ahead';
 export type DriftWeight = 'strong' | 'medium' | 'weak';
@@ -143,6 +148,26 @@ export interface GoalProjection {
    *  flips to off-track AND for the "soft watch" hint when WATCHING, and
    *  (2026-08-28 AHEAD-1) when status reads ahead. */
   vdotProjectionSec: number | null;
+  /**
+   * 2026-09-01 · goal-projection-durability follow-up · how much
+   * `vdotProjectionSec` (and `trajectory.currentSec`/`projectedSec`) leaned on
+   * this runner's own fitted cross-distance exponent
+   * (`durability-anchor.ts#resolveRaceExponent`) instead of the population
+   * Daniels-table equivalence. `weight` is `RaceExponentRead.confidence`
+   * directly (already a 0..1 evidence+freshness score on its own documented
+   * scale) — a CONTINUOUS blend, not a threshold: `vdotProjectionSecRaw =
+   * weight · durabilityProjectionSec + (1 − weight) · danielsProjectionSec`.
+   * No cliff to manufacture (Rule 9) because there is no discrete cutover — a
+   * runner's confidence moving from 0.59 to 0.61 moves the number by the same
+   * small amount confidence moving from 0.49 to 0.51 would. Null when the
+   * durability read refused (`ok: false`) or `vdot` itself is null (cold
+   * start) — `weight` is then implicitly 0 and this field is omitted rather
+   * than reported as a no-op blend, so a consumer can tell "durability wasn't
+   * read" from "durability was read and weighted at zero" (Rule 11 — thin
+   * evidence is a fact about EVIDENCE, refusal is a fact about the READ). See
+   * docs/reports/race-prediction-goal-projection-durability-2026-09-01.md.
+   */
+  durabilityBlend: { weight: number; anchorDistanceMi: number } | null;
   /** All firing drift signals · empty when ON TRACK. */
   driftSignals: DriftSignal[];
   /** One-liner the page can render under the gauge. */
@@ -257,10 +282,6 @@ export async function computeGoalProjection(args: {
   const { userUuid, goalSec, raceDistanceMi, vdot, daysToRace, pacing,
           vdotAnchorDateISO, vdotAnchorDistanceMi } = args;
 
-  const vdotProjectionSecRaw = vdot != null
-    ? predictRaceTime(vdot, raceDistanceMi) ?? null
-    : null;
-
   // CI-CROSS-1 · §13.7's marathon rows split on whether a marathon block is in
   // place, so the band needs to know. Only asked when it can matter — a
   // marathon target predicted off a sub-marathon anchor — so no other shape
@@ -283,14 +304,50 @@ export async function computeGoalProjection(args: {
     distanceCategoryOrNull(raceDistanceMi) === 'm' &&
     vdotAnchorDistanceMi != null &&
     ['5k', '10k', 'hm'].includes(distanceCategoryOrNull(vdotAnchorDistanceMi) ?? '');
-  const marathonSpecificTraining = needsMarathonBlockSignal
-    ? await loadMarathonSpecificTraining(userUuid).catch(() => null)
-    : null;
+
+  // 2026-09-01 · goal-projection-durability follow-up (docs/reports/
+  // race-prediction-consolidation-2026-09-01.md §4.1) · read alongside the
+  // marathon-block signal — both are independent userUuid-keyed DB reads with
+  // nothing to wait on. `.catch()` degrades to the SAME typed refusal
+  // `resolveRaceExponent` itself returns for "no races" (Rule 11: a query
+  // failure and "this runner has no qualifying races" are both honestly "I
+  // cannot read a personal exponent right now" from this call site's
+  // perspective — the caller has no way to tell them apart either way, unlike
+  // `coach-goal-load.ts`'s fix in §2.1 of the consolidation report, which
+  // could because it controlled the query directly).
+  const [marathonSpecificTraining, durabilityRead] = await Promise.all([
+    needsMarathonBlockSignal ? loadMarathonSpecificTraining(userUuid).catch(() => null) : Promise.resolve(null),
+    resolveRaceExponent(userUuid).catch((): RaceExponentRead => ({ ok: false, reason: 'no_races', races: 0 })),
+  ]);
   const specificityAdjustment = marathonSpecificityAdjustment(
     raceDistanceMi,
     vdotAnchorDistanceMi ?? null,
     marathonSpecificTraining,
   );
+
+  // The durability-aware cross-distance read, blended continuously by
+  // confidence rather than gated by a hand-picked threshold — see
+  // `durabilityBlend`'s own doc comment on `GoalProjection` for why a
+  // threshold was rejected in favor of this shape (Rule 9: no cliff to
+  // manufacture when there is no discrete cutover), and
+  // docs/reports/race-prediction-goal-projection-durability-2026-09-01.md for
+  // the grounding (no existing archetype/plan-generation corpus reaches this
+  // function at all — confirmed by grep — so a threshold "tuned" against it
+  // would have been tuned against nothing).
+  const danielsProjectionSec = vdot != null ? predictRaceTime(vdot, raceDistanceMi) ?? null : null;
+  const durabilityProjection = durabilityRead.ok
+    ? projectWithDurabilityExponent(durabilityRead, raceDistanceMi)
+    : null;
+  const durabilityWeight = durabilityRead.ok ? durabilityRead.confidence : 0;
+  const vdotProjectionSecRaw: number | null =
+    vdot == null ? null :
+    durabilityProjection == null ? danielsProjectionSec :
+    danielsProjectionSec == null ? durabilityProjection.sec :
+    Math.round(durabilityWeight * durabilityProjection.sec + (1 - durabilityWeight) * danielsProjectionSec);
+  const durabilityBlend = (vdot != null && durabilityProjection != null)
+    ? { weight: durabilityWeight, anchorDistanceMi: durabilityProjection.anchorDistanceMi }
+    : null;
+
   const vdotProjectionSec =
     vdotProjectionSecRaw != null && specificityAdjustment != null
       ? Math.round(vdotProjectionSecRaw * (1 + specificityAdjustment.pct / 100))
@@ -394,6 +451,15 @@ export async function computeGoalProjection(args: {
   // 2026-08-28 · AHEAD-1 · hoisted above the status ladder (see there) — reused
   // here, not recomputed, so the primary status and the trajectory read the
   // same evidence.
+  // 2026-09-01 · goal-projection-durability follow-up · reuses the SAME
+  // blended value `vdotProjectionSecRaw` above already computed for
+  // `predictRaceTime(vdot, raceDistanceMi)` — `projectFitnessTrajectory`'s own
+  // internal `predictRaceTime(currentVdot, raceDistanceMi)` is byte-identical
+  // to that quantity's Daniels-only half (same vdot, same distance), so
+  // passing the resolved blend in once, rather than re-resolving durability a
+  // second time inside the trajectory call, is not a new duplication — it is
+  // the existing one this file already had, now correctly kept in sync
+  // instead of drifting into two different answers.
   const trajectory = (vdot != null && daysToRace != null)
     ? projectFitnessTrajectory({
         currentVdot: vdot,
@@ -403,6 +469,7 @@ export async function computeGoalProjection(args: {
         executionQuality,
         plannedTargetVdot,
         overPerformanceBonusVdot: overPerf.bonusVdot,
+        currentSecOverride: vdotProjectionSecRaw,
       })
     : null;
 
@@ -437,6 +504,7 @@ export async function computeGoalProjection(args: {
     projectionSec,
     goalSec,
     vdotProjectionSec,
+    durabilityBlend,
     driftSignals,
     summary,
     nextTestPoints,

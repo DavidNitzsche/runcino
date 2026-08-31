@@ -609,6 +609,60 @@ export async function resolveRaceExponent(userUuid: string): Promise<RaceExponen
   return fitRaceExponent(observations, { today });
 }
 
+/**
+ * Riegel's stated validity window, `Research/02` §2.1: "1500m to marathon."
+ * Same bounds `lib/training/vdot.ts`'s own private `RIEGEL_MIN/MAX_DISTANCE_MI`
+ * and `lib/race/coach-goal.ts`'s (now-legacy) copy already carry — a third,
+ * still-module-local pair rather than a shared export, matching the existing
+ * convention for this specific pair rather than fixing it as a drive-by.
+ */
+const RIEGEL_MIN_DISTANCE_MI = 0.93;
+const RIEGEL_MAX_DISTANCE_MI = 26.22;
+
+/**
+ * Project a race time at `targetDistanceMi` through THIS read's fitted
+ * exponent: `T = T1 × (Dtarget/D1)^value`, anchored on whichever supporting
+ * race sits closest to the target in log-distance (the smaller
+ * extrapolation) — same anchor-selection rule `lib/race/coach-goal.ts`'s
+ * (legacy) `predictWithPersonalExponent` used for its own two-race fit.
+ *
+ * 2026-09-01 · relocated here from `lib/race/coach-goal.ts` (where it was
+ * first built, as `deriveCoachGoal`'s bridge onto this file's canonical
+ * exponent) so `lib/training/goal-projection.ts` can call the SAME function —
+ * importing it from `coach-goal.ts` would cycle back through
+ * `goal-projection.ts` (`coach-goal.ts` imports
+ * `marathonSpecificityAdjustment` from there). `coach-goal.ts` re-exports
+ * this name unchanged, so its own callers and `coach-goal-durability.test.ts`
+ * needed no edits. One function, one name, callable from both the coach-set
+ * A/B/C tiers and the goal-projection trajectory — Rule 16.
+ *
+ * `read.value` is ALREADY the shrunk-toward-population number
+ * (this file's own header: decay and thin evidence move `confidence`, never
+ * `value`) — this function performs no further shrinkage or clamping of its
+ * own. Null when the read refused (Rule 11: `RaceExponentRead.ok === false`
+ * carries no `value`), carries no supporting races (should not happen when
+ * `ok === true`; checked defensively anyway), or the target sits outside
+ * Riegel's validity window.
+ */
+export function projectWithDurabilityExponent(
+  read: RaceExponentRead,
+  targetDistanceMi: number,
+): { sec: number; anchorDistanceMi: number } | null {
+  if (!read.ok) return null;
+  if (!targetDistanceMi || targetDistanceMi <= 0) return null;
+  if (targetDistanceMi < RIEGEL_MIN_DISTANCE_MI || targetDistanceMi > RIEGEL_MAX_DISTANCE_MI) return null;
+  if (read.supporting.length === 0) return null;
+  const anchor = [...read.supporting].sort(
+    (a, b) =>
+      Math.abs(Math.log(targetDistanceMi / a.distanceMi)) -
+      Math.abs(Math.log(targetDistanceMi / b.distanceMi)),
+  )[0];
+  const t = anchor.finishSec * Math.pow(targetDistanceMi / anchor.distanceMi, read.value);
+  return Number.isFinite(t) && t > 0
+    ? { sec: Math.round(t), anchorDistanceMi: anchor.distanceMi }
+    : null;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
  * 2 · DECOUPLING — corroborated Pa:HR drift across qualifying long runs
  * ══════════════════════════════════════════════════════════════════════ */

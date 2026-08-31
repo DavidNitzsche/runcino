@@ -81,7 +81,9 @@
  * fitted value (Rule 8/11 — see that file's header for the incident this
  * fixes). `deriveCoachGoal` takes a `durabilityExponent: RaceExponentRead`
  * read (assembled by the caller, same as `vdot` — this file stays DB-free)
- * and projects through it via `projectWithDurabilityExponent` below.
+ * and projects through it via `projectWithDurabilityExponent`, re-exported
+ * below from `durability-anchor.ts` (2026-09-01, moved there so
+ * `goal-projection.ts` can share it too — see that export's own comment).
  *
  * `fitPersonalExponent` / `predictWithPersonalExponent` / their constants
  * STAY in this file, unchanged, because two other things still legitimately
@@ -132,6 +134,10 @@ import type { AuthorityTier } from './effort-authority';
 // Type-only — this file stays DB-free (see header). The caller resolves the
 // read (`resolveRaceExponent`, which does touch the DB) and hands it in.
 import type { RaceExponentRead } from '@/lib/training/durability-anchor';
+// `projectWithDurabilityExponent` itself is a real (runtime) import, not
+// type-only — it moved to durability-anchor.ts 2026-09-01 (see the re-export
+// below, at its original call site) but this file still calls it directly.
+import { projectWithDurabilityExponent } from '@/lib/training/durability-anchor';
 
 // ── Personal Riegel exponent (Research/02 §11.4) ────────────────────────────
 
@@ -285,34 +291,14 @@ export function predictWithPersonalExponent(
  * rigorous of the two and already the doctrine's canonical resolver for
  * pace prescription.
  *
- * `read.value` is ALREADY the shrunk-toward-population number
- * (`durability-anchor.ts`'s own header: decay and thin evidence move
- * `confidence`, never `value`) — this function performs no further
- * shrinkage or clamping of its own, the same posture
- * `predictWithPersonalExponent` above took toward its own already-validated
- * `fit.b`. Null when the read refused (Rule 11: `RaceExponentRead.ok ===
- * false` carries no `value`), carries no supporting races (should not
- * happen when `ok === true`; checked defensively anyway), or the target
- * sits outside Riegel's validity window.
+ * RELOCATED to `durability-anchor.ts` 2026-09-01 so
+ * `lib/training/goal-projection.ts` can call the same function without a
+ * circular import (`coach-goal.ts` itself imports
+ * `marathonSpecificityAdjustment` from `goal-projection.ts`). Imported above
+ * and re-exported here unchanged so this file's own call site (below) and
+ * `coach-goal-durability.test.ts` needed no edits.
  */
-export function projectWithDurabilityExponent(
-  read: RaceExponentRead,
-  targetDistanceMi: number,
-): { sec: number; anchorDistanceMi: number } | null {
-  if (!read.ok) return null;
-  if (!targetDistanceMi || targetDistanceMi <= 0) return null;
-  if (targetDistanceMi < RIEGEL_MIN_DISTANCE_MI || targetDistanceMi > RIEGEL_MAX_DISTANCE_MI) return null;
-  if (read.supporting.length === 0) return null;
-  const anchor = [...read.supporting].sort(
-    (a, b) =>
-      Math.abs(Math.log(targetDistanceMi / a.distanceMi)) -
-      Math.abs(Math.log(targetDistanceMi / b.distanceMi)),
-  )[0];
-  const t = anchor.finishSec * Math.pow(targetDistanceMi / anchor.distanceMi, read.value);
-  return Number.isFinite(t) && t > 0
-    ? { sec: Math.round(t), anchorDistanceMi: anchor.distanceMi }
-    : null;
-}
+export { projectWithDurabilityExponent };
 
 // ── Course grading (Research/02 §13.2, read per mile) ───────────────────────
 

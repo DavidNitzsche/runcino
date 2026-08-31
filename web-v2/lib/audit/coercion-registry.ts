@@ -424,6 +424,15 @@ export const HANDED_BACK_FAILS = false;
  *     exponent projector (docs/reports/race-prediction-consolidation-
  *     2026-09-01.md), and it inherits its predecessor's validity check
  *     verbatim rather than inventing a different one for the same question.
+ *     RELOCATED to `lib/training/durability-anchor.ts::projectWithDurabilityExponent::t`
+ *     2026-09-01 (goal-projection-durability follow-up) so
+ *     `goal-projection.ts` could call it without a circular import;
+ *     `coach-goal.ts` re-exports the same function unchanged. Same site,
+ *     same shape — but `lib/training` IS one of the engine directories this
+ *     scanner treats as load-bearing (unlike `lib/race`, where this entry
+ *     used to live), so the move genuinely RECLASSIFIES it. See
+ *     "182 → 181 · 1 → LOAD_BEARING_KNOWN" below for the corrected account —
+ *     do not read this paragraph as still describing where the site lives.
  *   · `lib/race/coach-goal-load.ts::loadCoachGoalForRace::catch` — was
  *     `try { ... } catch { exponentFit = null; }`, a STATEMENT the scanner
  *     cannot see by its own documented limitation (Rule 22: "it sees
@@ -441,8 +450,43 @@ export const HANDED_BACK_FAILS = false;
  * a blank coach-set A/B/C tile, never a changed prescription — pace
  * prescription is untouched by this consolidation). The count moves, per the
  * standing rule two paragraphs up.
+ *
+ * ── 182 → 181 · 1 → LOAD_BEARING_KNOWN · GOAL-PROJECTION-DURABILITY, 2026-09-01
+ *
+ * docs/reports/race-prediction-goal-projection-durability-2026-09-01.md wires
+ * `durability-anchor.ts#resolveRaceExponent` into
+ * `goal-projection.ts#computeGoalProjection` — the trajectory the drift cron,
+ * the simulator, and the adaptation loop all read, unlike the coach-set A/B/C
+ * tiles the paragraph above classified peripheral. `projectWithDurabilityExponent`
+ * itself did not change (still the exact ternary the paragraph above quotes) —
+ * what changed is that it moved INTO `lib/training/durability-anchor.ts`,
+ * which — unlike `lib/race`, where it used to live — IS one of this
+ * scanner's engine directories (`lib/plan`, `lib/coach`, `lib/adaptation`,
+ * `lib/training`, `lib/runs`, stated at the top of the paragraph above). The
+ * SAME site the paragraph above argued is genuinely peripheral by consequence
+ * (worst outcome: a blank coach-set tile) is now reachable from a
+ * load-bearing consumer too, so it is filed here rather than left to trade
+ * silently against the peripheral count:
+ *
+ *   · `lib/training/durability-anchor.ts::projectWithDurabilityExponent::t` —
+ *     `Number.isFinite(t) && t > 0 ? {...} : null`. A race finish (or, from
+ *     this new call site, a cross-distance PROJECTION built off one)
+ *     computed at zero or negative seconds is not a measurement any more
+ *     than a zero-length run is — the same argument this file already makes
+ *     for `usableMeasurement` and for this exact ternary's own prior
+ *     (peripheral) account above. What changed for the load-bearing consumer
+ *     specifically: `goal-projection.ts` never spends this refusal
+ *     unguarded — `computeGoalProjection`'s blend already treats a null
+ *     return from this function identically to `durabilityRead.ok === false`
+ *     (both fall through to the pre-existing Daniels-table path, weight 0),
+ *     so a `t <= 0` collapse here degrades to the SAME honest fallback a
+ *     refused read already produces, not a fabricated confident number.
+ *
+ * `PERIPHERAL_BASELINE` moves 182 → 181 (the site left the peripheral
+ * bucket, it did not disappear — see the ratchet-cannot-be-traded-site-for-
+ * site rule this file opens with).
  */
-export const PERIPHERAL_BASELINE = 182;
+export const PERIPHERAL_BASELINE = 181;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
@@ -644,6 +688,7 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/runs/work-averages.ts::workAveragesFromPhases::totalSec',
   'lib/training/cadence-fatigue.ts::paceToSec::n',
   'lib/training/cadence-fatigue.ts::paceToSec::p',
+  'lib/training/durability-anchor.ts::projectWithDurabilityExponent::t',
   'lib/training/goal-projection-resolve.ts::resolveNextAGoalProjection::catch',
   'lib/training/goal-projection.ts::blendedExpectation::d',
   'lib/training/goal-projection.ts::computeGoalProjection::catch',
