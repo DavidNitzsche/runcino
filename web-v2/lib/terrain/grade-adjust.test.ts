@@ -377,12 +377,33 @@ describe('resolveRunTerrain · reading the real row shapes', () => {
 
   it('reuses the barometric sanity check rather than trusting a wild total', () => {
     // 2400 ft over 6 mi = 400 ft/mi, past the 250 ft/mi credibility ceiling
-    // that lib/runs/elev-sanity.ts owns. With no corroborating splits the
-    // sanity module keeps the raw value; the point is that the judgement
-    // comes from ONE place, not a second threshold copied into this file.
-    const t = resolveRunTerrain({ source: 'watch', distanceMi: 6, durationSec: 2880, elevGainFt: 2400 });
-    expect(t.gainFt).toBe(2400);
-    expect(t.material).toBe(true);
+    // that lib/runs/elev-sanity.ts owns. The point of this test is that the
+    // judgement comes from ONE place, not a second threshold copied into this
+    // file — so it asserts whatever that module decides, in both directions.
+    //
+    // 2026-08-30 · THIS USED TO EXPECT 2400, AND THAT WAS THE DEFECT.
+    //
+    // The comment read "with no corroborating splits the sanity module keeps
+    // the raw value", which is a Rule 11 violation written down as an
+    // expectation: "I could not check" was being spent as "I checked and it is
+    // fine". `sanitizeElevGain` now fails CLOSED on sparse splits, and this
+    // path is a READ (`deriveRecap` judges pace through this factor), so the
+    // change is what stops a 361 ft/mi reading on the owner's flat 2026-08-26
+    // LA run telling him it was a harder effort than the pace shows.
+    const uncorroborated = resolveRunTerrain({
+      source: 'watch', distanceMi: 6, durationSec: 2880, elevGainFt: 2400,
+    });
+    expect(uncorroborated.gainFt).toBeNull();
+    expect(uncorroborated.material).toBe(false);
+
+    // BOTH DIRECTIONS · the same wild total, corroborated by its own splits,
+    // is still kept. The delegation is to a judgement, not to a refusal.
+    const corroborated = resolveRunTerrain({
+      source: 'watch', distanceMi: 6, durationSec: 2880, elevGainFt: 2400,
+      splits: Array.from({ length: 6 }, (_, i) => ({ mile: i + 1, elev_ft: 390 })),
+    });
+    expect(corroborated.gainFt).toBe(2340);
+    expect(corroborated.material).toBe(true);
   });
 
   it('emits a plain-English note only when terrain actually changed the read', () => {

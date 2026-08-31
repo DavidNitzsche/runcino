@@ -560,9 +560,65 @@ export function runDistanceMiSql(alias = ''): string {
  */
 export function runMovingSecSql(alias = ''): string {
   const d = col(alias);
-  return `COALESCE(NULLIF(${d}->>'movingTimeS','')::numeric, ` +
-         `NULLIF(${d}->>'movingSec','')::numeric, ` +
+  return `COALESCE(${survivingMovingSecSql(alias)}, ` +
          `NULLIF(${d}->>'durationSec','')::numeric)`;
+}
+
+/**
+ * The largest share of a run that may plausibly have been paused before its
+ * stored moving time stops being believable.
+ *
+ * The SQL side of `MAX_PAUSED_SHARE` in `lib/runs/coherence.ts`. Restated here
+ * rather than imported because this file emits SQL text and a template literal
+ * cannot reach a TypeScript constant at query time — `_ingest_integrity.test.ts`
+ * asserts the two never drift, the same arrangement `STAMP_ABSORBED_SQL` and
+ * `mayStampAbsorbed` already use.
+ */
+export const MAX_PAUSED_SHARE_SQL = '0.5';
+
+/**
+ * A stored moving time, or NULL when the row's own wall clock disproves it.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * 2026-08-30 · THE SQL LADDERS DID NOT KNOW WHAT THE RECONCILER KNOWS.
+ *
+ * `lib/runs/coherence.ts` refuses a `movingTimeS` implying more than half a
+ * run was paused, and every TypeScript surface that reads a clock through it
+ * gets the honest answer. The SQL ladders in this file did not: they took
+ * `movingTimeS` first, unconditionally, and one production row is exactly the
+ * shape the reconciler exists to catch.
+ *
+ * 2026-08-23, 11.01 miles. A Strava webhook fired mid-upload and reported
+ * 39:49; the absorber's fill-when-missing branch — tier-blind until the
+ * 2026-08-24 `familyGuardedFill` fix, which landed one day too late for this
+ * row — copied `movingTimeS` 2389, `elapsedTimeS` 2389, `paceSPerMi` 217 and
+ * `avgSpeedMph` 16.591 onto a watch canonical whose own `durationSec` is 5298
+ * and whose own `avgPaceMinPerMi` is "8:01".
+ *
+ * `runFinishSecSql` then handed `bestRecentVdot` 2389 seconds for 11.01 miles.
+ * That is 3:37/mi, `vdotFromRace` returns null outside [30, 85], and the row
+ * left the evidence pool without a trace. An 11.01-mile run at a genuine
+ * 8:02/mi with avg HR 147 — VDOT 42.0, and the longest single piece of
+ * evidence in that window — simply was not there. Not a wrong number on a
+ * screen: a measurement that spent nothing and that nothing could see.
+ *
+ * Guarded, so it changes NOTHING on a row whose two clocks agree: the CASE
+ * only fires when both are present and the implied pause exceeds half the run.
+ * Measured over the owner's 153 canonical rows, that is one row. The five rows
+ * whose Strava moving time sits 6-11% under their watch wall clock are
+ * untouched, because a runner who stopped at a light is not a defect.
+ *
+ * A blank where a lie used to be is a fix: the caller now sees `durationSec`
+ * 5298 through the ladder's next rung, which is this run's real clock.
+ */
+export function survivingMovingSecSql(alias = ''): string {
+  const d = col(alias);
+  const moving = `COALESCE(NULLIF(${d}->>'movingTimeS','')::numeric, ` +
+                 `NULLIF(${d}->>'movingSec','')::numeric)`;
+  const elapsed = `NULLIF(${d}->>'durationSec','')::numeric`;
+  return `(CASE WHEN ${moving} IS NOT NULL AND ${elapsed} > 0 ` +
+         `AND ${moving} < ${elapsed} * (1 - ${MAX_PAUSED_SHARE_SQL}) ` +
+         `THEN NULL ELSE ${moving} END)`;
 }
 
 /**
@@ -591,8 +647,11 @@ export function runMovingSecSql(alias = ''): string {
  */
 export function runFinishSecSql(alias = ''): string {
   const d = col(alias);
-  return `COALESCE(NULLIF(${d}->>'movingTimeS','')::numeric, ` +
-         `NULLIF(${d}->>'movingSec','')::numeric, ` +
+  // 2026-08-30 · the moving rungs go through `survivingMovingSecSql`, so a
+  // moving time this row's own wall clock disproves falls through to
+  // `durationSec` instead of anchoring a VDOT. See that function for the
+  // 2026-08-23 row that left the evidence pool entirely.
+  return `COALESCE(${survivingMovingSecSql(alias)}, ` +
          `NULLIF(${d}->>'durationSec','')::numeric, ` +
          `NULLIF(${d}->>'elapsedTimeS','')::numeric)`;
 }

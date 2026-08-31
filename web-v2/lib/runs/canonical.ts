@@ -52,7 +52,10 @@
 import { pool } from '@/lib/db/pool';
 import {
   preserveMergedIntoIdSql, runMergedIntoIdSql, runNotMergedSql,
+  runSourceSql, runSplitsSql,
 } from '@/lib/runs/run-shape';
+import { chooseSplits, type SplitCandidate } from '@/lib/runs/splits-adopt';
+import { MAX_PAUSED_SHARE, MAX_DISPLAY_DRIFT_S_PER_MI } from '@/lib/runs/coherence';
 
 export const SOURCE_TIER: Record<string, number> = {
   watch:          5,  // Faff watch app
@@ -186,6 +189,42 @@ export function familyGuardedFill(
 ): { allow: true } | { allow: false; blockedBy: string; siblingTier: number } {
   if (!CLOCK_FAMILY.has(key)) return { allow: true };
   const data = canonicalData ?? {};
+
+  /* 2026-08-30 · THE FAMILY BELONGS TO THE ROW, REGARDLESS OF COVERAGE.
+   *
+   * This loop used to ask only whether some PRESENT sibling outranked the
+   * incoming source, which left two holes the 2026-08-23 incident happened to
+   * miss and a re-run would not:
+   *
+   *   · EQUAL TIER. `siblingTier > incomingTier` is strict, so a second
+   *     tier-1 Strava row could fill a family member beside a first tier-1
+   *     Strava row that disagreed with it.
+   *   · A ROW WHOSE OWN SOURCE IS UNKNOWN. Seven of the owner's canonical
+   *     rows carry no `source` at all, so every present sibling scores tier 0
+   *     and ANY incoming source outranks it. The family could then be
+   *     assembled from two different providers one key at a time — exactly
+   *     the shape this guard exists to stop.
+   *
+   * The floor is now the row's own tier as well as its siblings'. A source may
+   * contribute to this family only if it is at least as authoritative as the
+   * row it is contributing to, whether or not the specific sibling it would
+   * sit beside happens to be populated. `existingTierFor` already floors a
+   * field at the row's own source, so asking it about `key` itself — the field
+   * that is ABSENT — is precisely "what is this row's clock worth".
+   */
+  const rowFloor = existingTierFor(data, provenance, key);
+  if (incomingTier < rowFloor) {
+    // Only a refusal when there is actually a family here to contradict. A row
+    // holding no clock at all has nothing for a lower-tier source to break,
+    // and refusing there would leave a gap the reconciler cannot fill either.
+    for (const sibling of CLOCK_FAMILY) {
+      if (sibling === key) continue;
+      const v = data[sibling];
+      if (v == null || v === '') continue;
+      return { allow: false, blockedBy: sibling, siblingTier: rowFloor };
+    }
+  }
+
   for (const sibling of CLOCK_FAMILY) {
     if (sibling === key) continue;
     const v = data[sibling];
@@ -198,11 +237,123 @@ export function familyGuardedFill(
   return { allow: true };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE ROW-LOCAL CLOCK INVARIANT · WHAT WOULD HAVE REJECTED IT AT WRITE TIME
+ *
+ * 2026-08-30. The tier guard above is about WHO said a number. This is about
+ * whether the number the row would then hold is possible. It makes no claim
+ * about provenance and none about physiology — every test is a ratio between
+ * two figures the row itself carries — so a source ladder that is wrong, or a
+ * new provider nobody has tiered yet, cannot get past it.
+ *
+ * Deliberately the SAME arithmetic and the SAME constants as
+ * `lib/runs/coherence.ts`, imported rather than restated. The reconciler
+ * refuses this shape on the READ; this refuses it on the WRITE. Two guards
+ * that disagreed about what "contradictory" means would be worse than one.
+ *
+ * Against the 2026-08-23 row, `movingTimeS: 2389` arriving beside the watch's
+ * `durationSec: 5298` implies 54.9% of an eleven-mile run was paused, and
+ * `paceSPerMi: 217` implies 16.6 mph. Both are refused here, and the run keeps
+ * a coherent 8:01/mi.
+ *
+ * MEASURED: over the owner's 153 canonical rows this rejects exactly one —
+ * 2026-08-23. The five rows where a Strava `paceSPerMi` sits 6-11% from
+ * `durationSec/distanceMi` are NOT rejected, and must not be: that gap is
+ * moving-time-versus-wall-clock, which is a real difference between two
+ * correct measurements, not a contradiction. Only the members that are
+ * arithmetically bound to each other are compared to each other.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The fastest average a stored `avgSpeedMph` may claim before it is a unit
+ * error or a foreign clock rather than a run.
+ *
+ * 13 mph is 4:37/mi held for a whole session. The world record marathon
+ * average is 13.1 mph and the 5000 m record is 14.1, so this cannot reject a
+ * human running: it rejects a row whose speed came from arithmetic over the
+ * wrong denominator. Not a doctrine constant — it prescribes nothing and
+ * grades nobody, it is a unit sanity bound on a stored average.
+ */
+export const MAX_STORED_AVG_SPEED_MPH = 13;
+
+/** Parse a stored clock-family scalar. Rejects '', NaN and non-numeric text. */
+function clockNum(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Would `key = value` make this row contradict itself?
+ *
+ * Returns the reason, or null to allow. Checked against the row AS IT WOULD
+ * BE — the candidate is merged in before the tests run, so a member is judged
+ * on the row it would actually create.
+ */
+export function clockFamilyContradiction(
+  canonicalData: Record<string, unknown> | null | undefined,
+  key: string,
+  value: unknown,
+): string | null {
+  if (!CLOCK_FAMILY.has(key)) return null;
+  const d = { ...(canonicalData ?? {}), [key]: value };
+
+  const distanceMi = clockNum(d.distanceMi);
+  const durationSec = clockNum(d.durationSec);
+  const movingTimeS = clockNum(d.movingTimeS) ?? clockNum(d.movingSec);
+
+  // 1 · The two clocks. A run cannot move for longer than it lasted, and it
+  //     cannot spend more than MAX_PAUSED_SHARE of itself stopped and still be
+  //     one session. Same rule, same constant, as `reconcileRun`.
+  if (durationSec != null && durationSec > 0 && movingTimeS != null && movingTimeS > 0) {
+    const paused = 1 - movingTimeS / durationSec;
+    if (paused < 0) {
+      return `moving time ${movingTimeS}s exceeds the row's own elapsed clock ${durationSec}s`;
+    }
+    if (paused > MAX_PAUSED_SHARE) {
+      return `moving time ${movingTimeS}s against an elapsed ${durationSec}s implies `
+        + `${(paused * 100).toFixed(1)}% of the run was paused`;
+    }
+  }
+
+  // 2 · The stored pace against the clock it belongs to. `paceSPerMi` is the
+  //     MOVING pace on every row that carries both, so it is compared with the
+  //     moving clock and never with `durationSec` — comparing it to the wall
+  //     clock would reject five rows whose only sin is having stopped at a
+  //     light. When no moving clock survives, the wall clock is the only
+  //     denominator there is and a gross disagreement still counts.
+  const paceSPerMi = clockNum(d.paceSPerMi);
+  if (paceSPerMi != null && paceSPerMi > 0 && distanceMi != null && distanceMi > 0) {
+    const basis = movingTimeS ?? durationSec;
+    if (basis != null && basis > 0) {
+      const implied = basis / distanceMi;
+      if (Math.abs(paceSPerMi - implied) > MAX_DISPLAY_DRIFT_S_PER_MI) {
+        return `paceSPerMi ${paceSPerMi.toFixed(0)}s/mi against this row's own `
+          + `${implied.toFixed(0)}s/mi over ${distanceMi} mi`;
+      }
+    }
+  }
+
+  // 3 · Speed, as a unit check and as a cross-check on the pace it mirrors.
+  const avgSpeedMph = clockNum(d.avgSpeedMph);
+  if (avgSpeedMph != null && avgSpeedMph > MAX_STORED_AVG_SPEED_MPH) {
+    return `avgSpeedMph ${avgSpeedMph} exceeds ${MAX_STORED_AVG_SPEED_MPH} mph — `
+      + `not a running average`;
+  }
+  if (avgSpeedMph != null && avgSpeedMph > 0 && paceSPerMi != null && paceSPerMi > 0
+      && Math.abs(3600 / avgSpeedMph - paceSPerMi) > MAX_DISPLAY_DRIFT_S_PER_MI) {
+    return `avgSpeedMph ${avgSpeedMph} implies ${(3600 / avgSpeedMph).toFixed(0)}s/mi `
+      + `against a stored pace of ${paceSPerMi.toFixed(0)}s/mi`;
+  }
+
+  return null;
+}
+
 /** Real per-mile splits = a non-empty array with at least one entry carrying a
  *  per-mile pace (under any historical key). Drives the Fix-4a tier-independent
  *  splits absorption: a watch row's whole-run "stub" (or no splits) is NOT real;
  *  the HK row's per-mile array is. */
-function splitsAreReal(v: unknown): boolean {
+export function splitsAreReal(v: unknown): boolean {
   if (!Array.isArray(v) || v.length === 0) return false;
   return v.some((s) => s && typeof s === 'object' && (
     (s as Record<string, unknown>).pace != null
@@ -358,6 +509,62 @@ export const STAMP_ABSORBED_SQL = `
      AND c.absorbed_into_canonical_at IS NULL`;
 
 /**
+ * Every splits array that belongs to this run, from every sibling that lost
+ * the dedup to it — plus the row being absorbed right now.
+ *
+ * WHY ALL OF THEM, when the absorber is handed one loser at a time: the
+ * adoption ranks candidates against each other (count, then source tier), and
+ * a ranking that can only see one candidate is not a ranking. With a per-loser
+ * view, whichever admissible sibling merge.ts happened to walk first would
+ * take the gaps and the tier tie-break would never run, so the same day could
+ * resolve two different ways depending on ingest order. Reading them together
+ * makes the outcome a function of the data.
+ *
+ * SCOPE, STATED (Rule 14) · the losers of ONE canonical row, by the pointer
+ * `runMergedIntoIdSql` defines, never by `absorbed_into_canonical_at`. The
+ * stamp answers a different question and filtering on it here would hide the
+ * very siblings holding the missing miles.
+ *
+ * The incoming row is unioned in explicitly rather than relied on: merge.ts
+ * commits the pointer transaction before calling the absorber, so it will
+ * normally be in the query's result already, but the absorber is also called
+ * from paths that have not necessarily flagged it yet, and a candidate that
+ * silently vanished would be a Rule 11 failure dressed as a clean read.
+ */
+async function loadSiblingSplitCandidates(
+  canonicalId: string,
+  incomingId: string,
+  incomingData: Record<string, unknown>,
+  incomingSource: string,
+): Promise<SplitCandidate[]> {
+  const out: SplitCandidate[] = [];
+  const seen = new Set<string>();
+  try {
+    const rows = (await pool.query<{ id: string; source: string | null; splits: unknown }>(
+      `SELECT id::text AS id, ${runSourceSql()} AS source, ${runSplitsSql()} AS splits
+         FROM runs
+        WHERE ${runMergedIntoIdSql()} = $1::text
+          AND jsonb_typeof(${runSplitsSql()}) = 'array'`,
+      [String(canonicalId)],
+    )).rows;
+    for (const r of rows) {
+      seen.add(String(r.id));
+      out.push({ source: r.source, raw: r.splits });
+    }
+  } catch (err) {
+    // A failed read is NOT "no siblings" (Rule 11). Returning [] here would
+    // silently disable the adoption and look identical to a clean run, so the
+    // failure is surfaced and the incoming row alone is still considered —
+    // which is exactly the old behaviour, never worse than it.
+    console.warn('[canonical] sibling splits read failed for', canonicalId, '→', err);
+  }
+  if (!seen.has(String(incomingId))) {
+    out.push({ source: incomingSource || null, raw: incomingData.splits });
+  }
+  return out;
+}
+
+/**
  * Walk an absorbed (dedup-loser) row's data and pull unique non-null fields
  * into the canonical. Updates provenance accordingly. Stamps
  * absorbed_into_canonical_at on the loser.
@@ -418,10 +625,36 @@ export async function enhanceCanonicalFromAbsorbed(args: {
     // (a tier-5 watch canonical with no per-mile data takes the tier-2 HK
     //  row's real splits). Subsumes the old single-entry stub special-case.
     if (key === 'splits') {
-      if (!splitsAreReal(canonicalVal) && splitsAreReal(incomingVal)) {
-        updatedData[key] = incomingVal;
-        updatedProv[key] = incomingSource;
-        fieldsAdded.push('splits (absorbed real per-mile · tier-independent)');
+      /* 2026-08-30 · A PARTIAL ARRAY USED TO BLOCK ADOPTION ENTIRELY.
+       *
+       * The condition was `!splitsAreReal(canonicalVal)`, so present-but-short
+       * read as present and the absorber walked away from a sibling holding
+       * the miles the canonical was missing — 21 canonical rows, always losing
+       * from the END, which for this runner is the fast-finish segment.
+       *
+       * `chooseSplits` (lib/runs/splits-adopt.ts) now decides, and it decides
+       * over ALL of this canonical's siblings at once rather than only the one
+       * being absorbed. That is what makes the outcome independent of the
+       * order merge.ts happens to walk the losers in: with a per-loser view,
+       * whichever admissible sibling arrived first would take the gaps and the
+       * tier tie-break would never be consulted. See that module's header for
+       * the ranking and for why the winner is not simply the longest array.
+       */
+      const adoption = chooseSplits(
+        canonicalVal,
+        await loadSiblingSplitCandidates(canonicalId, absorbedRow.id, incomingData, incomingSource),
+        Number(canonicalData.distanceMi),
+        tierFor,
+      );
+      if (adoption.splits != null) {
+        updatedData[key] = adoption.splits;
+        // The array is now a union, so the provenance stamp names the source
+        // the ADDED miles came from. Stamping it as though one source supplied
+        // the whole array would be a claim the row cannot support.
+        updatedProv[key] = adoption.adoptedFrom ?? incomingSource;
+        fieldsAdded.push(
+          `splits (+${adoption.milesAdded.length} mile(s) [${adoption.milesAdded.join(',')}] `
+          + `from ${adoption.adoptedFrom ?? 'unknown'})`);
         // 2026-08-21 · backend audit · THE FLAG DESCRIBED THE SPLITS WE JUST
         // REPLACED, so it cannot survive them.
         //
@@ -457,7 +690,15 @@ export async function enhanceCanonicalFromAbsorbed(args: {
           fieldsAdded.push('splits_unreliable (cleared · verdict was about the replaced splits)');
         }
       } else {
-        fieldsSkipped.push('splits (canonical already has real per-mile, or incoming has none)');
+        // Rule 11 · say WHICH of the three this was. "No candidate was richer"
+        // and "a richer candidate was refused because it decomposes a
+        // different distance" are different facts about this row, and only the
+        // second is worth a human looking at.
+        fieldsSkipped.push(
+          'splits (no adoption · '
+          + (adoption.refusals.map((r) => `${r.source ?? 'incumbent'}:${r.reason}`).join(', ')
+             || 'nothing richer available')
+          + ')');
       }
       continue;
     }
@@ -471,24 +712,41 @@ export async function enhanceCanonicalFromAbsorbed(args: {
       // arithmetic family whose other members already came from a better
       // source. See familyGuardedFill above for the 2026-08-23 incident.
       const verdict = familyGuardedFill(key, canonicalData, canonicalProv, incomingTier);
-      if (verdict.allow) {
-        updatedData[key] = incomingVal;
-        updatedProv[key] = incomingSource;
-        fieldsAdded.push(key);
-      } else {
+      if (!verdict.allow) {
         fieldsSkipped.push(
           key + ' (clock family · would contradict ' + verdict.blockedBy
           + ' at tier ' + verdict.siblingTier + ' from tier ' + incomingTier + ')',
         );
+      } else {
+        // The second, source-independent net. Even a source entitled to
+        // contribute to this family may not contribute a value the row's own
+        // arithmetic disproves — a tier ladder cannot catch a provider that is
+        // simply wrong, and 2026-08-23's Strava row was internally correct
+        // about a clock this run did not have.
+        const contradiction = clockFamilyContradiction(updatedData, key, incomingVal);
+        if (contradiction) {
+          fieldsSkipped.push(key + ' (clock family · row-local invariant · ' + contradiction + ')');
+        } else {
+          updatedData[key] = incomingVal;
+          updatedProv[key] = incomingSource;
+          fieldsAdded.push(key);
+        }
       }
     } else if (IDENTITY_FILL_ONLY.has(key)) {
       // Present already · an absorbed row never moves the run in time.
       fieldsSkipped.push(key + ' (identity field · fill-only, never overwritten)');
     } else if (incomingTier > existingTier) {
-      // Higher tier wins · overwrite
-      updatedData[key] = incomingVal;
-      updatedProv[key] = incomingSource;
-      fieldsAdded.push(key + ' (overwrote tier ' + existingTier + ' with tier ' + incomingTier + ')');
+      // Higher tier wins · overwrite, unless the resulting row would disprove
+      // itself. Outranking the incumbent is permission to replace a value, not
+      // permission to make the row incoherent.
+      const contradiction = clockFamilyContradiction(updatedData, key, incomingVal);
+      if (contradiction) {
+        fieldsSkipped.push(key + ' (clock family · row-local invariant · ' + contradiction + ')');
+      } else {
+        updatedData[key] = incomingVal;
+        updatedProv[key] = incomingSource;
+        fieldsAdded.push(key + ' (overwrote tier ' + existingTier + ' with tier ' + incomingTier + ')');
+      }
     } else {
       fieldsSkipped.push(key + ' (existing tier ' + existingTier + ' >= incoming tier ' + incomingTier + ')');
     }

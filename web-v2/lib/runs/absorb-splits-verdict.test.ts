@@ -43,10 +43,30 @@ const CANONICAL_ID = '-226447289863060';
 const ABSORBED_ID = '-3558250452245243';
 const USER = 'abcdef12-3456-7890-abcd-ef1234567890';
 
-/** Real per-mile splits, shaped as production stores them. */
-function realSplits(n: number) {
+/**
+ * Real per-mile splits, shaped as production stores them.
+ *
+ * 2026-08-30 · THE FIXTURE HAD TO DECOMPOSE ITS OWN RUN.
+ *
+ * This used to give every element `distanceMi: 1`, so `realSplits(14)` summed
+ * to 14.00 miles on a fixture whose run is 13.13 — an array describing a
+ * different run, which is precisely the shape `chooseSplits` now refuses (the
+ * 2026-07-25 apple_watch array sums to 18.893 against a stated 18.00). The
+ * fixture was passing only because nothing checked.
+ *
+ * `totalMi` defaults to the canonical's own distance so a sibling array is a
+ * decomposition of the SAME run, with the final mile carrying the remainder,
+ * which is what a real per-mile array looks like.
+ */
+function realSplits(n: number, totalMi = 13.13) {
   return Array.from({ length: n }, (_, i) => ({
-    mile: i + 1, pace: '7:41', hr: 139 + i, cadence: 162, elev_ft: -3, distanceMi: 1,
+    mile: i + 1,
+    pace: '7:41',
+    hr: 139 + i,
+    cadence: 162,
+    elev_ft: -3,
+    // Whole miles, then whatever is left. Rounded so the sum is exact.
+    distanceMi: i < n - 1 ? 1 : Math.round((totalMi - (n - 1)) * 1e6) / 1e6,
   }));
 }
 
@@ -128,7 +148,11 @@ describe('enhanceCanonicalFromAbsorbed · the splits verdict follows the splits'
       absorbedRow: hkSibling(realSplits(14)),
     });
 
-    expect(res.fieldsAdded.some(f => f.startsWith('splits (absorbed real per-mile'))).toBe(true);
+    // The message names the miles it added — see chooseSplits. Assert the
+    // SHAPE of the result (fourteen miles landed), not merely that some
+    // string starting with "splits" appeared: an absence-only or prefix-only
+    // assertion is satisfied by garbage.
+    expect(res.fieldsAdded.some(f => f.startsWith('splits (+14 mile(s)'))).toBe(true);
     expect(committed.current).not.toBeNull();
     const data = committed.current!.data;
 
@@ -144,7 +168,10 @@ describe('enhanceCanonicalFromAbsorbed · the splits verdict follows the splits'
     const committed = installPool(staleWatchCanonical(), {});
     await enhanceCanonicalFromAbsorbed({
       canonicalId: CANONICAL_ID,
-      absorbedRow: hkSibling(realSplits(15)),
+      // 14, not 15: a 13.13-mile run decomposes into fourteen splits (thirteen
+      // whole miles and a 0.13 remainder), and a fifteenth would describe a
+      // run that did not happen. See the note on `realSplits`.
+      absorbedRow: hkSibling(realSplits(14)),
     });
     const data = committed.current!.data as { splits_unreliable?: boolean };
 
@@ -156,10 +183,17 @@ describe('enhanceCanonicalFromAbsorbed · the splits verdict follows the splits'
     expect(data.splits_unreliable === true).toBe(false);
   });
 
-  it('F3 · a canonical that already holds real splits keeps its own flag', async () => {
+  it('F3 · a canonical whose splits are already complete keeps its own flag', async () => {
     // Nothing is replaced here, so the verdict still describes live data and
     // clearing it would be inventing a reliability claim we did not compute.
-    const canonical = { ...staleWatchCanonical(), splits: realSplits(13) };
+    //
+    // 2026-08-30 · the sibling now carries the SAME fourteen miles rather than
+    // one more than the canonical. Under the old adopt-only-when-empty rule
+    // any non-empty canonical was untouchable, so "13 against 14" read as
+    // "nothing to do"; it was in fact a canonical missing its last mile, which
+    // is the defect this file's sibling `_ingest_integrity.test.ts` exists for.
+    // Equal coverage is the honest way to say "there is nothing to add".
+    const canonical = { ...staleWatchCanonical(), splits: realSplits(14) };
     const committed = installPool(canonical, {});
 
     const res = await enhanceCanonicalFromAbsorbed({
@@ -167,12 +201,38 @@ describe('enhanceCanonicalFromAbsorbed · the splits verdict follows the splits'
       absorbedRow: hkSibling(realSplits(14)),
     });
 
-    expect(res.fieldsSkipped.some(f => f.startsWith('splits ('))).toBe(true);
+    expect(res.fieldsSkipped.some(f => f.startsWith('splits (no adoption'))).toBe(true);
     expect(res.fieldsAdded.some(f => f.startsWith('splits_unreliable'))).toBe(false);
     // Either nothing was committed at all, or the flag survived untouched.
     if (committed.current) {
       expect(committed.current.data.splits_unreliable).toBe(true);
     }
+  });
+
+  it('F3b · a SHORT canonical takes the mile it was missing, and the verdict goes with it', async () => {
+    // The 2026-07-25 shape, in miniature: the canonical holds a contiguous
+    // 1..13 of a 13.13-mile run and the sibling holds 1..14. The last mile is
+    // the fast finish, and it is the mile the old rule threw away.
+    const canonical = { ...staleWatchCanonical(), splits: realSplits(13, 13.0) };
+    const committed = installPool(canonical, {});
+
+    const res = await enhanceCanonicalFromAbsorbed({
+      canonicalId: CANONICAL_ID,
+      absorbedRow: hkSibling(realSplits(14)),
+    });
+
+    expect(res.fieldsAdded.some(f => f.startsWith('splits (+1 mile(s) [14]'))).toBe(true);
+    const splits = committed.current!.data.splits as Array<Record<string, unknown>>;
+    expect(splits).toHaveLength(14);
+    // Ordered by mile, and the first thirteen are the canonical's OWN
+    // elements — byte-identical, so nothing a consumer already reads moved.
+    expect(splits.map(s => s.mile)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14]);
+    expect(splits.slice(0, 13)).toEqual(realSplits(13, 13.0));
+    // The added element is in the one shape this path writes, and carries the
+    // sibling's measured HR rather than a zero.
+    expect(splits[13]).toMatchObject({ mile: 14, pace: '7:41', paceSecPerMi: 461, hr: 152 });
+    // The verdict described the array that has just changed, so it cannot survive it.
+    expect('splits_unreliable' in committed.current!.data).toBe(false);
   });
 
   it('F4 · a clean run gains no key it never had', async () => {

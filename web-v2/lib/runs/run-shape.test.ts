@@ -17,7 +17,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  runDaySql, runDistanceMiSql, runMovingSecSql, runFinishSecSql,
+  runDaySql, runDistanceMiSql, runMovingSecSql, runFinishSecSql, survivingMovingSecSql,
   runAvgHrSql, runMaxHrSql, runElevGainFtSql, runSplitsSql, runNotMergedSql,
   runDay, runDistanceMi, runMovingSec, runFinishSec, runAvgHr, runMaxHr,
   runElevGainFt, runWorkoutType, isMergedAway,
@@ -53,17 +53,36 @@ describe('SQL fragments · byte-equivalent to the expressions they replaced', ()
     // VDOT path slower than it was run. One 5.97-mile threshold session
     // carried 305s of pauses and anchored at VDOT 43.6 having been run at
     // ~6:55/mi. Races are unaffected — they never used this ladder.
+    //
+    // 2026-08-30 · the moving rungs are now wrapped in `survivingMovingSecSql`,
+    // which nulls a moving time the row's OWN wall clock disproves. Asserted
+    // as an exact string still, because the whole value of this block is that
+    // a silent edit to the emitted SQL cannot pass.
     expect(runFinishSecSql('sa')).toBe(
-      "COALESCE(NULLIF(sa.data->>'movingTimeS','')::numeric, NULLIF(sa.data->>'movingSec','')::numeric, " +
+      "COALESCE(" + survivingMovingSecSql('sa') + ", " +
       "NULLIF(sa.data->>'durationSec','')::numeric, NULLIF(sa.data->>'elapsedTimeS','')::numeric)",
+    );
+    expect(survivingMovingSecSql('sa')).toBe(
+      "(CASE WHEN COALESCE(NULLIF(sa.data->>'movingTimeS','')::numeric, " +
+      "NULLIF(sa.data->>'movingSec','')::numeric) IS NOT NULL " +
+      "AND NULLIF(sa.data->>'durationSec','')::numeric > 0 " +
+      "AND COALESCE(NULLIF(sa.data->>'movingTimeS','')::numeric, " +
+      "NULLIF(sa.data->>'movingSec','')::numeric) < " +
+      "NULLIF(sa.data->>'durationSec','')::numeric * (1 - 0.5) " +
+      "THEN NULL ELSE COALESCE(NULLIF(sa.data->>'movingTimeS','')::numeric, " +
+      "NULLIF(sa.data->>'movingSec','')::numeric) END)",
     );
   });
 
   it('runMovingSecSql matches the ladder in lib/coach/recovery-phase.ts', () => {
     expect(runMovingSecSql()).toBe(
-      "COALESCE(NULLIF(data->>'movingTimeS','')::numeric, NULLIF(data->>'movingSec','')::numeric, " +
+      "COALESCE(" + survivingMovingSecSql() + ", " +
       "NULLIF(data->>'durationSec','')::numeric)",
     );
+    // The rungs it always had, in the order it always had them.
+    const sql = runMovingSecSql();
+    expect(sql.indexOf('movingTimeS')).toBeLessThan(sql.indexOf('movingSec'));
+    expect(sql).toContain("NULLIF(data->>'durationSec','')::numeric");
   });
 
   it('both ladders now prefer moving time, and neither may regress', () => {

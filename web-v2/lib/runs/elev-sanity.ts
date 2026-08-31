@@ -23,11 +23,52 @@
  * sanitizeElevGain returns either:
  *   · { value: raw, source: 'raw' } · raw was credible
  *   · { value: corrected, source: 'recomputed' } · splits agreed
- *   · { value: raw, source: 'raw' } · couldn't confidently recompute,
- *      trust the source rather than zeroing the field out
+ *   · { value: null, source: 'absent' } · suspicious AND uncorroborated
  *
  * Callers fold the source into data.elevGainSource so the read path
  * knows the provenance without redoing the math.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * 2026-08-30 · THE SPARSE-SPLITS BRANCH FAILED OPEN (RULE 11)
+ *
+ * The third bullet used to read "couldn't confidently recompute, trust the
+ * source rather than zeroing the field out", and the code did exactly that:
+ * a value above the suspicion threshold, presented with too few splits to
+ * check, was returned RAW.
+ *
+ * That collapses "I checked and it is fine" into "I could not check". The
+ * whole point of the 250 ft/mi threshold is to declare the number
+ * untrustworthy until something corroborates it; answering "no corroborating
+ * evidence available" with "trust it then" spends the suspicion on nothing
+ * and disables the guard precisely on the rows that most need it — a run with
+ * no splits has no second opinion about anything.
+ *
+ * It was also internally inconsistent. The branch immediately below — splits
+ * present with adequate coverage but carrying no elevation fields — already
+ * returns `absent` on the identical reasoning ("we cannot corroborate a
+ * suspicious raw value"). Having MORE splits could therefore get the value
+ * refused while having FEWER got it accepted.
+ *
+ * Measured on production, 2026-08-30, faff_readonly, over the owner's 153
+ * canonical rows (`NOT (data ? 'mergedIntoId')`): 8 rows sit above 250 ft/mi,
+ * and exactly 3 of them reached this branch and were accepted raw —
+ *
+ *     2026-05-27   5.86 mi   1910 ft   326 ft/mi    1 split  (min 4)
+ *     2026-05-29   7.71 mi   2492 ft   323 ft/mi    1 split  (min 5)
+ *     2026-08-26   7.78 mi   2807 ft   361 ft/mi    0 splits (min 5)
+ *
+ * 2026-08-26 is the visible cost: `lib/terrain/run-terrain.ts` calls this
+ * function on the READ, and 2807 ft over a flat LA route makes `deriveRecap`
+ * forgive the pace and tell the runner the effort was harder than it looks.
+ *
+ * Because that call site is a read, this change repairs those rows on screen
+ * with no write to `runs.data` at all.
+ *
+ * FALSIFICATION ANCHOR · the owner's genuinely hilly runs must survive.
+ * Big Sur, 2026-04-26, 26.81 mi / 2140 ft = 80 ft/mi, 27 splits — nowhere
+ * near the threshold, so it never reaches this branch. The hilliest
+ * non-suspicious row on the account is the Point Mugu half at 164 ft/mi.
+ * Both are asserted in `_ingest_integrity.test.ts`.
  */
 
 export interface ElevSanityInput {
@@ -59,8 +100,26 @@ export interface ElevSanityResult {
   source: 'raw' | 'recomputed' | 'absent';
 }
 
-/** Cap: above this ft/mi we don't trust the raw without corroboration. */
-const SUSPICION_THRESHOLD_FT_PER_MI = 250;
+/**
+ * Cap: above this ft/mi we don't trust the raw without corroboration.
+ *
+ * Exported so `_ingest_integrity.test.ts` can read the number out of the
+ * module it is checking instead of hardcoding a second copy of it — a check
+ * that hardcodes both sides only proves the test agrees with itself.
+ */
+export const SUSPICION_THRESHOLD_FT_PER_MI = 250;
+
+/**
+ * How many splits a run of this length must carry before its splits can
+ * corroborate (or refute) a suspicious elevation total. 75% mile coverage,
+ * floor 3.
+ *
+ * Exported for the same reason as the threshold above, and because the
+ * sparse-splits refusal is now a behaviour worth asserting by name.
+ */
+export function requiredSplitCoverage(distanceMi: number): number {
+  return Math.max(3, Math.floor(distanceMi * 0.75));
+}
 
 /**
  * TRUE when a run's per-mile positives sum to MORE than the total climb the
@@ -119,9 +178,17 @@ export function sanitizeElevGain(input: ElevSanityInput): ElevSanityResult {
   }
   // Above threshold · demand at least 75% mile coverage in splits.
   const splits = input.splits ?? [];
-  const minSplits = Math.max(3, Math.floor(distMi * 0.75));
+  const minSplits = requiredSplitCoverage(distMi);
   if (splits.length < minSplits) {
-    return { value: Math.round(raw), source: 'raw' };
+    // RULE 11 · "cannot check" is not "checked and fine".
+    //
+    // FAILS CLOSED. A suspicious value with too few splits to corroborate is
+    // refused, exactly as the sufficient-coverage-but-no-elevation-data case
+    // below is refused, and for the same reason. The caller's GPS/DEM
+    // fallback fires instead of a possibly-10x barometric reading being
+    // persisted or rendered. See the module header for the three production
+    // rows this covers.
+    return { value: null, source: 'absent' };
   }
   // Sum positive elev changes. Accept all three known field names ·
   // see ElevSanityInput.splits doc for why we tolerate three names.
