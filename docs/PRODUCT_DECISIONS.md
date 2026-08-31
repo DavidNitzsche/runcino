@@ -6,6 +6,80 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-08-31 · Fitness-vector architecture: external review corrections. SETTLED.
+
+An external review of the fitness-vector design (recorded in the entry below)
+came back largely confirming the direction while catching real gaps. These
+corrections are now locked; applied to in-flight work by direct mid-task
+correction rather than waiting to redo it after landing.
+
+**1. Capacity, current state, and prescription stay three separate concepts,
+never merged.** Fatigue/readiness/recovery is NOT a fourth fitness anchor. A
+runner can have excellent threshold fitness and durability while carrying
+heavy accumulated fatigue — folding fatigue into a fitness anchor would let a
+hard training week read as *becoming less fit*, which is a different fact
+(the same Rule 11 discipline — three facts, never collapsed to one — already
+enforced elsewhere in this engine). Model: `capacity + current state +
+workout purpose → today's prescription`. Current-state inputs (load, HR
+anomalies, illness, injury, subjective fatigue) modify prescription; they
+never write into a capacity anchor's value.
+
+**2. Anchor decay reduces confidence, not the value.** The original design's
+`half_life` field could be read as "the estimate itself drifts down with
+staleness" — corrected. Staleness widens uncertainty / lowers confidence over
+time. It must never mechanically lower a fitness estimate on its own. "We
+haven't recently confirmed this" and "the runner got less fit" are different
+facts, and only the second one may move the number — and only when there's
+actual evidence of it (a new race, a real interruption, a documented pattern
+of regression), never as a function of the clock alone.
+
+**3. The Riegel exponent's population default (1.06) is a named, revisable
+CONVENTION, not physiology.** A personal exponent fit from race pairs shrinks
+toward this prior, weighted by evidence QUALITY (how representative/clean
+each race was — reuse `lib/race/effort-authority.ts`'s existing grading,
+don't invent a second one) rather than by race count alone. Two clean races
+should outweigh three questionable ones. The prior itself may later be
+conditioned on more than a flat constant (training history, specialization);
+not built now, just named so today's heuristic can't calcify into doctrine by
+accident.
+
+**4. Decoupling is longitudinal evidence, not a single-run reading.** One long
+run's pace/HR drift is weak evidence on its own — it takes multiple
+comparable qualifying long runs agreeing before it says anything about
+durability. Onset (when drift begins, not just how much) is a valuable
+second signal where cheaply available, named as a real follow-up rather than
+required immediately.
+
+**5. Two-stage evidence, not one classifier doing both jobs.** Stage 1
+(eligibility) stays binary — is this observation admissible at all — and the
+binary-refusal readers already built stand as this stage, not something to
+discard. Stage 2 (reliability weighting) is continuous and layers on top
+later. The requirement THIS locks in now: every reader must preserve the
+metadata a later confidence layer will need (sample duration, source,
+how well HR matched a target zone — not just pass/fail, recency) rather than
+collapsing straight to a bare value-or-refusal. Losing that metadata now means
+rebuilding the readers later instead of just layering on top of them.
+
+**6. HR informs evidence, it doesn't get unilateral veto power.** A
+observation that's otherwise strong (right duration, right pace, clearly a
+work effort) should not be discarded outright for a borderline HR reading —
+HRmax and zone boundaries carry their own uncertainty (see the HRmax fix
+below), and treating a zone boundary as a hard gate propagates that
+uncertainty as a false rejection instead of a lower weight.
+
+**Anchor naming refinement:** "Speed" → **"High-Intensity Capacity"** — avoids
+conflating short neuromuscular speed with 5K-adjacent capacity; to be applied
+during the wiring phase, not urgent enough to interrupt in-flight work for.
+
+**Confirmed unchanged:** the three-anchor decomposition itself (speed/
+high-intensity, threshold, durability — no fourth fitness axis), easy pace as
+a ceiling not a band, goal never redefining current-fitness training paces,
+VDOT surviving as fallback/derived-display rather than disappearing, race
+prediction as its own service returning a range with confidence rather than a
+point estimate, and adaptation proposing rather than silently imposing.
+
+---
+
 ## 2026-08-31 · Fitness is read from the training corpus, not one race. Easy pace is a ceiling, not a band. SETTLED.
 
 Two decisions from the same conversation, both David's, both direct correction
