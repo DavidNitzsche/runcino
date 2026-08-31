@@ -899,6 +899,56 @@ export interface OvershootContext {
    * Cite: Research/00b-recovery-protocols.md §"Week-by-Week Protocols"
    */
   recoveryBlock?: boolean;
+  /**
+   * How many days in the trailing window the active plan actually scheduled a
+   * run on · Rule 9 (2026-08-30).
+   *
+   * THE QUESTION THE `>= 5` PROXY WAS ASKING. `scheduled_mi` comes back from
+   * `COALESCE(SUM(...), 0)`, so it is NEVER null: 0 means "no plan covers this
+   * window" and the experience cap is the only claim available. The old code
+   * distinguished that case from a real schedule with `scheduledMi >= 5`, a
+   * mileage threshold standing in for a data-presence fact — and it put a
+   * cliff on a continuous quantity. With `capMi` 45 and no chronic floor, a
+   * window scheduling 4.9 mi was judged against 45 and one scheduling 5.0 mi
+   * against 5: the bar fell 40 miles for a tenth of a mile of schedule, so the
+   * plan that asked for slightly MORE got the runner cut. Rule 9's signature,
+   * and reachable on the one window every new plan has — the first, where the
+   * trailing seven days overlap the plan start by a day or two.
+   *
+   * Answering the data question directly removes the threshold rather than
+   * relocating it: any scheduled day at all means there is a prescription to
+   * be judged against, and the baseline is then continuous and monotone in
+   * `scheduledMi`. Null keeps the old mileage proxy, so a caller that cannot
+   * answer is byte-identical to before.
+   */
+  scheduledDays?: number | null;
+}
+
+/**
+ * Mileage below which a schedule was ASSUMED to be no schedule · the pre-Rule-9
+ * proxy, kept only for callers that cannot state `scheduledDays`.
+ */
+export const MEANINGFUL_SCHEDULE_MI = 5;
+
+/**
+ * The bar a trailing week is judged against, and which quantity set it.
+ *
+ * One implementation for the predicate AND the copy. These had drifted into
+ * three hand-copied `scheduledMi != null && scheduledMi >= 5` expressions —
+ * one in the predicate, two in the trigger's label — which is exactly how a
+ * sentence ends up naming a baseline the arithmetic did not use (Rule 16).
+ */
+export function overshootBaseline(
+  scheduledMi: number | null,
+  capMi: number,
+  ctx: OvershootContext = {},
+): { baseline: number; prescribed: number; usedSchedule: boolean } {
+  const usedSchedule = ctx.scheduledDays != null
+    ? ctx.scheduledDays > 0 && scheduledMi != null
+    : scheduledMi != null && scheduledMi >= MEANINGFUL_SCHEDULE_MI;
+  const prescribed = usedSchedule ? scheduledMi! : capMi;
+  const chronic = ctx.chronicWeeklyMi != null && ctx.chronicWeeklyMi > 0 ? ctx.chronicWeeklyMi : 0;
+  return { baseline: Math.max(prescribed, chronic), prescribed, usedSchedule };
 }
 
 /**
@@ -922,14 +972,10 @@ export function overshootFires(
   // Guard A · doctrine guard on the response. Nothing about a recovery block
   // is answered by cutting distance.
   if (ctx.recoveryBlock === true) return false;
-  const prescribed = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : capMi;
-  // Guard B · arithmetic guard on the baseline. A deliberately-small
-  // prescription may not lower the bar beneath the runner's own chronic load.
-  const chronic = ctx.chronicWeeklyMi != null && ctx.chronicWeeklyMi > 0
-    ? ctx.chronicWeeklyMi
-    : 0;
-  const baseline = Math.max(prescribed, chronic);
-  return completedMi > baseline * 1.25;
+  // Guard B · arithmetic guard on the baseline, inside `overshootBaseline`: a
+  // deliberately-small prescription may not lower the bar beneath the runner's
+  // own chronic load.
+  return completedMi > overshootBaseline(scheduledMi, capMi, ctx).baseline * 1.25;
 }
 
 /**
@@ -4087,7 +4133,11 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
         WHERE d BETWEEN $2::date - 35 AND $2::date - 8
           AND ${normalTrainingDaySql('d', 3, 4)}
      ), sched AS (
-       SELECT COALESCE(SUM(pw.distance_mi), 0) AS mi
+       -- days answers the data-presence question the old "mi >= 5" proxy was
+       -- standing in for: does a plan cover this window at all? See
+       -- OvershootContext.scheduledDays (Rule 9).
+       SELECT COALESCE(SUM(pw.distance_mi), 0) AS mi,
+              COUNT(DISTINCT pw.date_iso) AS days
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
@@ -4102,6 +4152,7 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
        SELECT experience_level FROM profile WHERE user_uuid = $1
      )
      SELECT vol.mi, chronic.mi AS chronic_mi, sched.mi AS scheduled_mi,
+            sched.days AS scheduled_days,
             mode.mode, mode.state_mode, p.experience_level
        FROM vol, chronic, sched, p LEFT JOIN mode ON TRUE`,
     [userId, today, ovNonNormalLo, ovNonNormalHi]
@@ -4130,15 +4181,18 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   );
   const chronicWeeklyMi = weeklyAvgFromWindow(Number(r.chronic_mi ?? 0), chronicRepresentative, 28);
   const recoveryBlock = r.mode === 'recovery' || r.state_mode === 'recovery';
-  if (overshootFires(mi, scheduledMi, cap, { chronicWeeklyMi, recoveryBlock })) {
-    const prescribed = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : cap;
-    const baseline = Math.max(prescribed, chronicWeeklyMi ?? 0);
+  const scheduledDays = r.scheduled_days != null ? Number(r.scheduled_days) : null;
+  const ctx = { chronicWeeklyMi, recoveryBlock, scheduledDays };
+  if (overshootFires(mi, scheduledMi, cap, ctx)) {
+    // One implementation for the arithmetic AND the sentence (Rule 16) — these
+    // were three hand-copied copies of the same predicate.
+    const { baseline, prescribed, usedSchedule } = overshootBaseline(scheduledMi, cap, ctx);
     // Name whichever quantity actually set the bar. Saying "17mi scheduled"
     // when the bar was the runner's own 43mi base is the sentence that made
     // the original defect read as reasonable.
     const baselineLabel = chronicWeeklyMi != null && chronicWeeklyMi > prescribed
       ? `your usual ${Math.round(chronicWeeklyMi)}mi week`
-      : scheduledMi != null && scheduledMi >= 5
+      : usedSchedule
         ? `${Math.round(prescribed)}mi scheduled`
         : `${lvl} cap ${cap}mi`;
     return {

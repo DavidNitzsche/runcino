@@ -310,6 +310,24 @@ export const HARD_DAY_GAP_DAYS: Record<'threshold' | 'vo2max' | 'long_race_pace'
 export const INCOMPLETE_RECOVERY_WORKOUTS = 2;
 
 /**
+ * How far under the tier's peak volume band a runner may sit AT THE START of a
+ * block before the shortfall stops being the plan working and starts being
+ * evidence · §4 of the diagnosis below.
+ *
+ * Was the boolean `volNow < floor * 0.7`. Rule 9 (2026-08-30) turned it into
+ * the head of a ramp: it is the shortfall the phase is expected to explain at
+ * block progress 0, decaying to zero by `PROGRESS_FULLY_LATE`.
+ */
+export const DEEP_SHORTFALL_FRACTION = 0.30;
+
+/**
+ * The point in a block by which no volume shortfall is explained by phase any
+ * more · was the boolean `progress >= 0.5`. From here on the finding's severity
+ * is the original `shortfall × 1.6`.
+ */
+export const PROGRESS_FULLY_LATE = 0.5;
+
+/**
  * Where the curve is flat and nothing else fires, the limiter defaults to
  * whatever doctrine says dominates the event — Research/00a §Training Intensity
  * Distribution, "When each TID applies". 5K/10K is one row there and its
@@ -646,13 +664,41 @@ export function diagnoseLimiter(input: LimiterInput): LimiterRead | null {
     // Being under the PEAK band early in a block is the plan working, not a
     // limiter. Fire late in the block, or at any point if the shortfall is
     // deeper than any phase justifies.
-    const lateInBlock = progress != null && progress >= 0.5;
-    const deepShortfall = volNow < floor * 0.7;
-    if (volNow < floor && (lateInBlock || deepShortfall)) {
-      const shortfall = (floor - volNow) / floor;
+    //
+    // ── Rule 9 (2026-08-30) · this was two booleans and a severity floor ────
+    //
+    //   lateInBlock   = progress >= 0.5
+    //   deepShortfall = volNow < floor * 0.7
+    //   if (volNow < floor && (lateInBlock || deepShortfall))
+    //     f.add(..., clamp(shortfall * 1.6, 0.2, 1), ...)
+    //
+    // Measured: early in a block, a runner at 70.1% of the floor got NOTHING
+    // and one at 69.9% got a 0.4825-severity finding — for a tenth of a mile.
+    // And 0.4480 for two thousandths of block progress. `Findings.ranked()`
+    // sorts by severity and the top limiter is the lever the whole block's
+    // prescription reaches for, so a finding materialising at 0.48 can displace
+    // the incumbent and send the prescription down a different road.
+    //
+    // The fix is the sentence directly above, taken literally: some shortfall
+    // is EXPECTED this early, so subtract what the phase justifies and let only
+    // the excess be evidence. The same two constants become the ends of a ramp
+    // rather than two switches — the expected shortfall falls from
+    // DEEP_SHORTFALL_FRACTION at the start of the block to zero by
+    // PROGRESS_FULLY_LATE. An unknown progress keeps the old posture: it is
+    // treated as the start of the block, so only a deep shortfall carries.
+    //
+    // From halfway on the expected shortfall is zero, so severity is
+    // `shortfall * 1.6` — the original formula exactly, minus its 0.2 floor.
+    // The floor had to go: a finding that cannot be weak cannot fade in, and
+    // that floor is what turned the firing boundary into an output cliff.
+    const progressT = progress == null ? 0 : clamp(progress / PROGRESS_FULLY_LATE, 0, 1);
+    const expectedShortfall = DEEP_SHORTFALL_FRACTION * (1 - progressT);
+    const shortfall = volNow < floor ? (floor - volNow) / floor : 0;
+    const unexplained = shortfall - expectedShortfall;
+    if (unexplained > 0) {
       f.add(
         'training_volume',
-        clamp(shortfall * 1.6, 0.2, 1),
+        clamp(unexplained * 1.6, 0, 1),
         `running ${Math.round(volNow)} mi/wk against a ${floor} mi/wk floor for this goal`,
       );
     }
