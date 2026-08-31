@@ -1527,7 +1527,15 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           // reschedule uses), recompute dow, and stamp original_date_iso
           // on first move so the row's provenance — and the staleness
           // clock — anchor to the authored date.
-          await client.query(
+          // REBUILD-DEDUP-1 · RETURNING the authored date, because the intent
+          // written below has to be findable after a rebuild has re-minted
+          // every row id. `original_date_iso` is stamped by this very UPDATE
+          // on the first move, so after it runs the returned value IS the date
+          // the session was authored for — the durable key
+          // `missedAlreadyHandledSql` matches on. Taking it from the UPDATE
+          // rather than from the action means the recorded date is the row's
+          // own, not a second opinion that could drift from it.
+          const moved = (await client.query(
             `UPDATE plan_workouts pw
                 SET date_iso = $1,
                     dow = $3,
@@ -1539,12 +1547,16 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
                         LIMIT 1),
                       pw.week_id),
                     original_date_iso = COALESCE(pw.original_date_iso, pw.date_iso)
-              WHERE pw.id = $2`,
+              WHERE pw.id = $2
+              RETURNING COALESCE(pw.original_date_iso, pw.date_iso)::date::text AS planned_date`,
             [a.newDate, wid, dowOfISO(a.newDate)]
-          );
+          )) as { rows?: Array<{ planned_date: string | null }> };
           landedReschedules.add(wid);
           await writeIntent(client, userId, reason, wid, {
             kind: a.kind, newDate: a.newDate, why: a.why,
+            // Null only if the RETURNING came back empty, which means the row
+            // was gone — the id clause then still covers what it always did.
+            planned_date: moved.rows?.[0]?.planned_date ?? null,
           });
           touched++;
         }
@@ -2396,6 +2408,82 @@ export function skipRespectedActions(skips: MissedCandidate[]): AdaptationAction
   }));
 }
 
+/**
+ * The four `coach_intents` reasons that mean "the adapter has already answered
+ * for this missed session". One list, because two queries ask the question and
+ * a third would be along shortly (Rule 14 · one definition a grep can find).
+ */
+export const MISSED_HANDLED_REASONS = [
+  'plan_adapt_reschedule',
+  'plan_adapt_drop_missed',
+  'plan_adapt_missed_noted',
+  'plan_adapt_skip_respected',
+] as const;
+
+/**
+ * "Has the adapter already handled the session this row prescribes?"
+ *
+ * ── REBUILD-DEDUP-1 (2026-08-30) · WHY THIS IS NOT `ci.field = pw.id` ────────
+ *
+ * It was, and the row id is not durable. `plan_workouts.id` is
+ * `wko_<randomBytes(8)>`, minted fresh on every persist, and NOTHING carries an
+ * id across a rebuild — verified against production: no id in the owner's 3,918
+ * rows appears on more than one `plan_id`. He has 47 plan versions in three
+ * months (`easy_drift`, `regenerated`, `race_completed`), so rebuilds are the
+ * normal case, not the exception.
+ *
+ * The consequence is a silent amnesia. The adapter notes a missed tempo on
+ * Tuesday and writes its intent against that row's id. A rebuild that night
+ * re-mints every row, the old intent now points at an id no live row carries,
+ * and Wednesday's pass re-detects the same missed session as new — rescheduling
+ * a session already dropped, or logging a miss the runner has already been told
+ * about. On the first morning of a fourteen-week block that reads as a plan the
+ * runner does not recognise, which is the failure he has been most explicit
+ * about.
+ *
+ * ── THE DURABLE KEY IS THE CALENDAR DATE, AND THE APP ALREADY SAYS SO ────────
+ *
+ * `app/api/plan/undo/route.ts` established it by reading every writer: there is
+ * no completion pointer anywhere in this schema, and "a completed run is matched
+ * to a prescription BY CALENDAR DATE, at read time, every time". Seal, owned-days
+ * and execution scoring all key on the date. The dedup is the one place that
+ * keyed on the row instead, so it is the one place a rebuild could erase.
+ *
+ * The date used is the AUTHORED date — `COALESCE(original_date_iso, date_iso)` —
+ * because a rescheduled row's `date_iso` has already moved and the intent records
+ * where the session was originally asked for. That is the same field
+ * `isStaleMissed` already treats as the session's identity.
+ *
+ * ── BACKWARD COMPATIBLE, DELIBERATELY ───────────────────────────────────────
+ *
+ * The id clause stays. Intents written before this change carry no
+ * `planned_date` on the reschedule path, and within one plan generation the id
+ * match is still exactly right. New rows match either way. Nothing is migrated
+ * and no existing dedup weakens.
+ *
+ * The `LIKE '{%'` guard is not decoration: `coach_intents.value` is TEXT and
+ * some reasons store a bare string, so an unguarded `::jsonb` cast can throw on
+ * a row this predicate was never about. `CASE` fixes the evaluation order that
+ * a bare `AND` does not guarantee.
+ *
+ * @param userParam  placeholder holding the runner's uuid
+ * @param alias      the `plan_workouts` alias to correlate against
+ */
+export function missedAlreadyHandledSql(userParam: number, alias = 'pw'): string {
+  const reasons = MISSED_HANDLED_REASONS.map((r) => `'${r}'`).join(', ');
+  return `EXISTS (
+              SELECT 1 FROM coach_intents ci
+               WHERE COALESCE(ci.user_uuid, ci.user_id) = $${userParam}::uuid
+                 AND ci.reason IN (${reasons})
+                 AND (
+                       ci.field = ${alias}.id
+                    OR (CASE WHEN ci.value LIKE '{%'
+                             THEN ci.value::jsonb->>'planned_date' END)
+                       = COALESCE(${alias}.original_date_iso, ${alias}.date_iso)::date::text
+                 )
+            )`;
+}
+
 export async function detectMissedKeyWorkout(userId: string): Promise<AdaptationTrigger | null> {
   // 2026-06-03 · runner TZ.
   const today = await runnerToday(userId);
@@ -2420,15 +2508,7 @@ export async function detectMissedKeyWorkout(userId: string): Promise<Adaptation
         AND tp.archived_iso IS NULL
         AND pw.type IN ('threshold','tempo','intervals','vo2max','long')
         AND pw.date_iso::date BETWEEN $2::date - 7 AND $2::date - 1
-        AND NOT EXISTS (
-              SELECT 1 FROM coach_intents ci
-               WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
-                 AND ci.field = pw.id
-                 AND ci.reason IN ('plan_adapt_reschedule',
-                                   'plan_adapt_drop_missed',
-                                   'plan_adapt_missed_noted',
-                                   'plan_adapt_skip_respected')
-            )
+        AND NOT ${missedAlreadyHandledSql(1)}
       ORDER BY pw.date_iso::date DESC`,
     [userId, today]
   )).rows;
@@ -4411,12 +4491,13 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
              AND pw.type IN ('threshold','tempo','intervals','vo2max')
              AND pw.date_iso::date BETWEEN $2::date AND $2::date + 7
              AND pw.id <> $3
-             AND NOT EXISTS (
-                   SELECT 1 FROM coach_intents ci
-                    WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
-                      AND ci.field = pw.id
-                      AND ci.reason = 'plan_adapt_reschedule'
-                 )
+             -- REBUILD-DEDUP-1 · the anti-stacking probe asks the same
+             -- question as the detector ("has this session already been
+             -- answered for?") and so must survive a rebuild the same way.
+             -- Keying on the row id alone meant that after any rebuild this
+             -- could pick a key session it had ALREADY downgraded and
+             -- downgrade it a second time.
+             AND NOT ${missedAlreadyHandledSql(1)}
            ORDER BY pw.date_iso::date ASC LIMIT 1`,
         [userId, today, ev.workout_id]
       )).rows[0];

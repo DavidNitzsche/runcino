@@ -59,6 +59,8 @@ import {
   type AdaptationAction,
   type GapPlanRow,
   type RescheduleDayContext,
+  MISSED_HANDLED_REASONS,
+  missedAlreadyHandledSql,
 } from './adapt';
 import { TIER_TARGETS } from './goal-tiers';
 
@@ -596,7 +598,23 @@ describe('SQL contracts · adapt.ts source', () => {
   it('NO-CHAIN-DRAG: the missed detector excludes rows the adapter already rescheduled/dropped/noted/skip-respected', () => {
     // 2026-08-28 · plan_adapt_skip_respected joined the exclusion list: a
     // deliberately-skipped session's note intent is also its dedupe record.
-    expect(src).toMatch(/ci\.reason IN \('plan_adapt_reschedule',\s*'plan_adapt_drop_missed',\s*'plan_adapt_missed_noted',\s*'plan_adapt_skip_respected'\)/);
+    //
+    // 2026-08-30 · REBUILD-DEDUP-1 · the four reasons moved out of the inline
+    // SQL into MISSED_HANDLED_REASONS, because the exclusion is now asked by
+    // two queries and had already drifted between them. This asserts the same
+    // invariant against the list rather than against one query's text, and the
+    // list is READ rather than restated so the two cannot disagree.
+    expect(MISSED_HANDLED_REASONS).toEqual([
+      'plan_adapt_reschedule',
+      'plan_adapt_drop_missed',
+      'plan_adapt_missed_noted',
+      'plan_adapt_skip_respected',
+    ]);
+    for (const reason of MISSED_HANDLED_REASONS) {
+      expect(missedAlreadyHandledSql(1)).toContain(`'${reason}'`);
+    }
+    // And the detector applies it, rather than carrying its own copy.
+    expect(src).toMatch(/BETWEEN \$2::date - 7 AND \$2::date - 1\s*\n\s*AND NOT \$\{missedAlreadyHandledSql\(1\)\}/);
   });
 
   it('P1-39: missed detection covers long runs', () => {
@@ -604,7 +622,14 @@ describe('SQL contracts · adapt.ts source', () => {
   });
 
   it('NO-SELF-CANNIBALIZATION: the anti-stacking downgrade target excludes previously-rescheduled rows and the moved row itself', () => {
-    expect(src).toMatch(/AND pw\.id <> \$3[\s\S]{0,400}ci\.reason = 'plan_adapt_reschedule'/);
+    // 2026-08-30 · REBUILD-DEDUP-1 · this probe used its own inline
+    // `ci.reason = 'plan_adapt_reschedule'`, which was BOTH narrower than the
+    // detector's list and keyed on a row id that a rebuild re-mints. It now
+    // shares the helper, so it excludes every already-answered session (a row
+    // already dropped or noted should not be downgraded a second time either)
+    // and it survives a rebuild. The moved row is still excluded by id, which
+    // is correct — that exclusion is about THIS pass, not about history.
+    expect(src).toMatch(/AND pw\.id <> \$3[\s\S]{0,600}AND NOT \$\{missedAlreadyHandledSql\(1\)\}/);
   });
 
   it('P2-64: a reschedule re-resolves week_id, dow, and stamps original_date_iso (no bare date_iso poke)', () => {
