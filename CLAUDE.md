@@ -2,6 +2,14 @@
 
 This project is a multi-surface running app for a competitive marathoner. Three surfaces share one source of truth: **web** (command center), **iPhone** (daily companion), **Apple Watch** (execution layer).
 
+> **Train the runner you have. Build the runner they want to become.**
+> — David, 2026-08-31. The mission statement. Everything below serves it: fitness
+> prescribed from demonstrated evidence, never a vacuum of races or aspiration —
+> that's the runner you have. Progression, adaptation, the goal shaping the
+> trajectory and pushing harder as it's earned — that's the runner they're
+> building toward. A rule that trains the aspiration instead of the evidence, or
+> that refuses to ever push toward the goal, has broken one half of this.
+
 ---
 
 ## What this app is for (locked 2026-08-30 — read this before anything else)
@@ -64,6 +72,22 @@ ceiling.
 ## Required reading at session start
 
 Read these in order before doing any design or implementation work in this project. Do not skim. Load them into context fully.
+
+### 0. Coaching doctrine — read this first, it governs everything below
+
+**`docs/PRODUCT_COACHING_DOCTRINE.md`** — locked 2026-08-31. The canonical,
+complete statement of what this app is for and how it should behave: the core
+loop (understand → prescribe → observe → interpret → adapt → repeat), fitness
+as a confidence-weighted belief across three anchors (high-intensity,
+threshold, durability) rather than one VDOT number, the decay-confidence-
+not-value rule, the evidence ledger, race prediction as a range with
+confidence, the five adaptation types, coaching voice, and the tests for every
+new feature/workout/adaptation. Any design or engineering decision about
+coaching logic, pace prescription, adaptation, or race prediction should be
+checked against this document before being checked against anything else in
+this file. `docs/PRODUCT_DECISIONS.md` is the dated log of how the app arrived
+here — read it for history and specific implementation calls, but this
+document is the standing statement of what's true now.
 
 ### 1. Design source of truth
 
