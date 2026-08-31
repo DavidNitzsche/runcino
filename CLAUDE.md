@@ -623,6 +623,49 @@ redundancy but a correctness bug, and the contradiction is the finding.
 
 ---
 
+## Rule 18 · A gate is not trusted until it has been made to fail (locked 2026-08-30)
+
+**Every rule above is worth exactly as much as the check behind it, and this
+project has repeatedly shipped checks that could not fail.**
+
+- `check-modelled-mark.sh` contained `[ -d "$V5_VIEWS" ] || mkdir -p "$V5_VIEWS"`
+  — **a gate creating the tree it audits.** Guards 1-3 scanned zero files and
+  reported clean.
+- `check-automatic-mutations.sh` guard 2's tamper-check was `grep -q "GUARD 0"`,
+  which **any comment satisfies** — including the one left behind if the suite
+  were deleted.
+- `PACE.interval-offset` carried `if (exempt(...)) return;` on the line ABOVE its
+  only assertion. Granting the exemption did not excuse the known deviation, it
+  **switched the claim off entirely**; changing the engine to a wrong value would
+  have passed.
+- The citation scrub's test asserted `"Research/"` was absent from the output. It
+  passed while the scrub corrupted *"Cruise intervals · Research/04 §5.3."* into
+  **"Cruise intervals.3."** — an absence-only assertion cannot see wreckage.
+- `check-palette-sync.sh` named two files that no longer existed, in the header of
+  the script whose entire job is catching exactly that rot.
+
+**To comply, before you trust any check:**
+
+1. **Falsify it.** Break the thing on purpose and watch the gate name it. Then
+   restore. Both directions where the gate has two — a new violation must fail,
+   and a stale exemption must fail.
+2. **Assert liveness.** A scanner states how many files it read and fails on
+   zero. Reporting clean because it looked at nothing is the worst outcome
+   available, since it also reports confidence.
+3. **Never let an exemption bypass the assertion** — guard it with the violating
+   condition, so the exempted case is the only thing excused and everything else
+   still runs.
+4. **Every allowlist is a ratchet and every exemption carries an argued reason.**
+   It may shrink, never grow. An exemption whose target is now clean fails until
+   deleted. "We might need it" is not a reason; a stale allowlist is how a gate
+   quietly stops meaning anything.
+
+A gate that has never failed is a hypothesis, not a guarantee. **Read numbers out
+of the cited source at run time rather than hardcoding both sides** — a check that
+hardcodes both only proves the test agrees with itself.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
