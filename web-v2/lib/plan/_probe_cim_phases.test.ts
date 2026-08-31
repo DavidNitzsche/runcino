@@ -14,10 +14,11 @@
  *   → /tmp/cim-phases.txt
  */
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { CRON_AUTHOR_INSTANT } from './probe-instant';
 import { composeForUser, BASE_REBUILT_SHARE } from './generate';
 
 const DAVID = '0645f40c-951d-4ccc-b86e-9979cd26c795';
-const AUTHOR_INSTANT = new Date('2026-08-31T19:00:00Z');
+const AUTHOR_INSTANT = CRON_AUTHOR_INSTANT;
 
 beforeAll(() => {
   vi.useFakeTimers({ toFake: ['Date'] });

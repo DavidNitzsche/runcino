@@ -370,6 +370,8 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'Same ruling as strength-recommender. The weekly confirmed/skipped verdict has no surface because strength has no surface.',
   'web-v2/lib/doctrine/registry.ts':
     'A GATE. Test-only is its correct state — it is consulted by check-doctrine.sh, not at runtime.',
+  'web-v2/lib/plan/probe-instant.ts':
+    'A FIXTURE, which is a fine reason by this gate\'s own text. It holds the single instant the CIM audit harnesses must fake — 04:00 UTC = 21:00 PT the previous evening, the plan-drift cron\'s own tick. Four probes had independently hardcoded NOON PT on the following day and were auditing a block that would never be authored (37.5 mi first week against the real 43.5). One constant so they cannot drift apart again. Runtime code must never import it: production reads the clock, it does not fake one.',
   'web-v2/lib/audit/active-plan-exemptions.ts':
     'A GATE, same shape as the doctrine and derived registries: the argued exceptions to ACTIVEPLAN-1, read only by lib/audit/_active_plan_scan.test.ts. Runtime code must never import it — the point is that a query either names its plan or is listed here, and nothing should be able to consult the list to decide behaviour. The list is a ratchet and the scanner fails when an entry goes stale, so it cannot rot in place.',
   'web-v2/lib/audit/normal-window-registry.ts':
