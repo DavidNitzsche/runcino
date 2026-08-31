@@ -35,13 +35,21 @@
 # CPU (measured: 30s warm against a populated .next cache, this repo, 2026-08-30)
 # and zero Railway minutes.
 #
-# ── THE HOOK IS A COPY, NOT A SYMLINK ───────────────────────────────────────
+# ── HOW THIS IS INVOKED (checked, not assumed) ──────────────────────────────
 #
-# As of 2026-08-30 `.git/hooks/pre-push` on the owner's machine is a BYTE COPY
-# of an older version of this file, so edits here do NOT reach it. Re-link it,
-# or the tsc-only version keeps running and this header is decoration:
+# `core.hooksPath` is set to `.githooks`, so the ACTIVE hook is the versioned
+# dispatcher `.githooks/pre-push`, which calls this script by path on every
+# push. Edits here therefore take effect immediately, with no re-linking.
 #
-#   ln -sf ../../scripts/check-web-build.sh .git/hooks/pre-push
+# The older `.git/hooks/pre-push` symlink still exists and points here too, but
+# it is inert while `core.hooksPath` is set. An earlier draft of this header
+# said the hook was a stale byte copy needing `ln -sf`. That was wrong — it was
+# written from reading `.git/hooks/` without checking `core.hooksPath` first,
+# which is the same mistake as trusting `lthr-reanchor.ts`'s purity claim.
+# Verified by observation: the build step below ran on the push of 49035f0b.
+#
+# On a fresh clone the dispatcher needs activating once:
+#   git config core.hooksPath .githooks
 #
 # To skip in emergencies:
 #   git push --no-verify              # skip the hook entirely

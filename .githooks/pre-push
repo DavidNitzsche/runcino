@@ -24,7 +24,12 @@
 #
 #   check-web-build.sh   · always. Typechecks web-v2 so a missing import is
 #                          caught here rather than by the sixteenth failed
-#                          Railway deploy in a row.
+#                          Railway deploy in a row — and since 2026-08-30 also
+#                          runs `next build` (~30s), because tsc passing is not
+#                          evidence that Railway will deploy. On 2026-08-30
+#                          `main` sat undeployed for a full day with tsc and
+#                          twelve prebuild gates all green; the break was in
+#                          the build, which nothing here was running.
 #
 #   check-watch.sh       · only when the push touches watch code. Runs the
 #                          watch engine suite and audits rendered board
