@@ -118,6 +118,14 @@ export interface WatchWorkout {
   gelsMi?: number[] | null;
   fueling?: { needed: boolean; gels: number; atMins: number[]; gPerHr: number; totalCarbsG: number; isRehearsal: boolean; heatAdjusted: boolean; shortLine: string; why: string } | null;
   hrCeilingBpm?: number | null;
+  /** ANCHOR-SPLIT-1 · 2026-08-30 · where `hrCeilingBpm` came from.
+   *  'prescribed' — the plan authored it (`workout_spec.hr_cap_bpm`), and it is
+   *  the same number the recap grades against. 'derived' — the plan authored
+   *  none and this was computed from the runner's live threshold, so nothing
+   *  may present it as a limit the plan set. Null when there is no ceiling.
+   *  Rule 11: absent and 145 are different facts. Optional + additive — a
+   *  deployed watch that does not decode it behaves exactly as before. */
+  hrCeilingSource?: 'prescribed' | 'derived' | null;
   displayHint?: string | null;
   /** 2026-08-24 · heat · the lobby's one sentence about today's conditions,
    *  e.g. "84 degrees, dewpoint 66. Targets eased for the heat." Present ONLY
@@ -1373,6 +1381,84 @@ export function composeCompletedRows(input: {
   return rows;
 }
 
+/**
+ * The easy/long HR ceiling, and where it came from.
+ *
+ * ── ANCHOR-SPLIT-1 (2026-08-30) · SPEC FIRST, LIVE DERIVATION AS FALLBACK ──
+ *
+ * This read the LIVE `profile.lthr` and never once looked at the ceiling the
+ * plan actually prescribed. The recap row (`loadCompletedRun`) reads the
+ * authored `workout_spec.hr_cap_bpm`. So ONE payload carried two answers to
+ * "what is today's ceiling", under one name.
+ *
+ * Measured against the owner's real rows: at `profile.lthr` 162 both say 145
+ * and the split is invisible. The moment the re-anchor cron moves him to 168
+ * the running face says 151 while every spec row in the block still says 145 —
+ * six beats apart, on the surface where being wrong changes what his body does
+ * mid-run, and in the direction that lets him run an easy day too hard while
+ * the recap then grades him against the tighter number and marks him down for
+ * obeying his own watch. Rule 16.
+ *
+ * WHY SPEC-FIRST IS NOT A RULE 10 VIOLATION. Rule 10 says a persisted derived
+ * value must carry its anchor or be recomputed, and this deliberately reads a
+ * frozen one. That tension resolves on `db3fb5e7`: `recompute-paces.ts` now
+ * reads the LIVE `profile.lthr` instead of the frozen `authored_state.lthr_bpm`,
+ * so the spec is REFRESHED when the anchor moves rather than re-cemented at
+ * authoring. Spec-first plus a working cascade is correct; spec-first with a
+ * broken cascade was the bug.
+ *
+ * THAT CASCADE IS THE DEPENDENCY, AND IT IS GATED — this is not a promise in a
+ * comment. It is `ANCHOR-STALE-2` in `lib/audit/anchor-derivation-registry.ts`,
+ * enforced by `scripts/check-anchor-derivation.sh` in `prebuild`, which scans
+ * the call shape rather than trusting prose (Rule 20: gate the claim or delete
+ * the sentence). If the recompute is ever changed back to a frozen anchor, that
+ * gate fails before this ceiling can go stale behind it. Do not "fix" this back
+ * to a live read to compensate: a live read here is what produced the
+ * two-number session in the first place.
+ *
+ * Within one session the runner sees one number, and it is the one the plan
+ * prescribed for THIS workout. The quality-HR path already resolves spec-first
+ * (`specHrBpm ?? lthr`); this ceiling was the lone outlier, so this is the
+ * consistent answer rather than a new convention.
+ *
+ * RULE 11 · "the plan prescribed 145" and "the plan prescribed nothing so the
+ * watch worked one out" are different facts, and the payload said the same
+ * thing for both. On 2026-08-24 the spec authored NO cap (`hr_cap_bpm: null`,
+ * written by `replan-scenarios.ts` on a replanned day) and the wrist showed 145
+ * anyway — a number nothing had prescribed.
+ *
+ * The derived ceiling is KEPT rather than refused, because a replanned easy day
+ * with no aerobic guidance at all is the worse outcome and that null is an
+ * incomplete spec rather than a considered "run this uncapped". So it ships,
+ * and it ships labelled. The half that already behaves correctly is untouched:
+ * `loadCompletedRun`'s grading row requires `spec.hr_cap_bpm > 0`, so a derived
+ * ceiling can never become an "under 145" the runner is marked against.
+ */
+export function resolveHrCeiling(input: {
+  sessionClass: SessionClass;
+  longHasFinish: boolean;
+  specCeilingBpm: number | null;
+  lthr: number | null;
+  maxHr: number | null;
+}): { bpm: number | null; source: 'prescribed' | 'derived' | null } {
+  const { sessionClass, longHasFinish, specCeilingBpm, lthr, maxHr } = input;
+  // Only easy/long, where staying aerobic is the discipline. A long run with an
+  // HM/M finish is excluded: the finish is run at race pace, well above the
+  // aerobic ceiling, so a workout-level cap would red-alert through the whole
+  // finish and coach the opposite of the prescription (Audit D / D1).
+  if ((sessionClass !== 'easy' && sessionClass !== 'long') || longHasFinish) {
+    return { bpm: null, source: null };
+  }
+  if (specCeilingBpm != null) return { bpm: specCeilingBpm, source: 'prescribed' };
+  // ZONE-BANDS-1 · the shared Friel Z2 ceiling. Was a hand-written 0.89, which
+  // gave 144 at LTHR 162 while the band's real top is 145 — so the watch capped
+  // an easy run one beat tighter than the plan asked for.
+  const derived = lthr  ? aerobicCeilingBpm(lthr)
+                : maxHr ? Math.round(maxHr * 0.78)  // %HRmax fallback, no LTHR
+                : null;
+  return derived != null ? { bpm: derived, source: 'derived' } : { bpm: null, source: null };
+}
+
 export async function buildWatchToday(
   userId: string,
   /** Override "today" for testing/smoke. Defaults to PT-adjusted now. */
@@ -1834,15 +1920,15 @@ export async function buildWatchToday(
   const longHasFinish = sessionClass === 'long'
     && wo.workout_spec != null
     && Number((wo.workout_spec as Record<string, unknown>)?.finish_mi) > 0;
-  // HR ceiling only for easy/long where staying aerobic is the discipline
-  const hrCeilingBpm = (sessionClass === 'easy' || sessionClass === 'long') && !longHasFinish
-    // ZONE-BANDS-1 · the shared Friel Z2 ceiling. Was a hand-written 0.89,
-    // which gave 144 at LTHR 162 while the band's real top is 145 — so the
-    // watch capped an easy run one beat tighter than the plan asked for.
-    ? lthr  ? aerobicCeilingBpm(lthr)
-    : maxHr ? Math.round(maxHr * 0.78)  // %HRmax fallback when LTHR absent
-    : null
+  // The ceiling the runner runs under, and where it came from. See
+  // `resolveHrCeiling` — spec first, live derivation only when the plan
+  // authored none, and the two are never presented as the same fact.
+  const specCeilingBpm = wo.workout_spec
+    ? Number((wo.workout_spec as Record<string, unknown>)?.hr_cap_bpm) || null
     : null;
+  const ceiling = resolveHrCeiling({ sessionClass, longHasFinish, specCeilingBpm, lthr, maxHr });
+  const hrCeilingBpm = ceiling.bpm;
+  const hrCeilingSource = ceiling.source;
 
   const summary = `${distanceMi.toFixed(1)} mi · ${prescription.headline}`;
 
@@ -1884,6 +1970,7 @@ export async function buildWatchToday(
     paceLabel: paceLabelFor(wo.type),
     isRace: wo.type === 'race',
     hrCeilingBpm,
+    hrCeilingSource,
     // Long runs foreground HR (the easy-aerobic discipline) — EXCEPT when
     // they carry an HM/M finish, where pace is the target (D1).
     //

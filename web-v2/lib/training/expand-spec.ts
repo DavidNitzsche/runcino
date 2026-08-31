@@ -76,6 +76,53 @@ export interface ExpandSpecInput {
 }
 
 /**
+ * The half-width of the band actually in force — the ONE definition of it.
+ *
+ * BAND-WIDEN-1 (2026-08-30) · this was written out three times, identically,
+ * as `Math.max(tolerance, Math.round((hi - lo) / 2))` — in `expandLong`,
+ * `expandEasy` and `expandRecovery`. A MAX over two candidate bounds always
+ * returns the more permissive one, which is the same shape the doctrine
+ * registry already carries as a known violation for `hrCapEasy` ("a ceiling
+ * assembled from two candidate ceilings must take the lower, or the looser
+ * system always wins"). Here it meant the watch drew a band the plan did not
+ * author whenever the authored one was TIGHTER than the caller's per-class
+ * default.
+ *
+ * Rendered on the owner's real 2026-08-30 long run: the plan authored
+ * 517-552 s/mi (8:37-9:12), the watch computed mid 535 and then widened the
+ * half-width from 18 to the long-run default of 20, drawing 8:35-9:15. The
+ * runner is told "on target" three seconds per mile outside the band the plan
+ * actually set. Rule 16 — the plan and the wrist must not name one band and
+ * show another.
+ *
+ * It went unnoticed because on an EASY day it is invisible by coincidence:
+ * the authored easy band 542-582 has a half-width of exactly 20, which is
+ * also the easy default, so `Math.max` returned the same number either way
+ * and the board rendered correctly. That coincidence is what this removes —
+ * the band in force is the band, authored or derived, and there is no second
+ * candidate for the MAX to prefer.
+ *
+ * The caller's `toleranceSec` keeps its real job in `expandTempo` and
+ * `expandReps`, where a work phase carries a single target and no band, so a
+ * per-class tolerance is the only thing there is. It has no role here, which
+ * is why the three functions below no longer take it: an unused parameter is
+ * an invitation to reintroduce exactly this.
+ *
+ * ONE SECOND OF SLACK, DELIBERATELY. The wire carries a target plus a
+ * SYMMETRIC tolerance, so a band of odd width cannot be represented exactly:
+ * the owner's 517-552 has a half-width of 17.5, and mid rounds to 535. Rounding
+ * the half-width UP to 18 draws 517-553 — one second wide at the slow end.
+ * Rounding down to 17 would draw 518-552, which is one second TIGHT at the fast
+ * end and would call 8:37/mi off-target on a day the plan explicitly allows it.
+ * Telling a runner he has missed a band he is inside is the worse error, so the
+ * rounding errs wide, and never excludes a pace the plan authored.
+ */
+function bandToleranceSec(lo: number | null, hi: number | null): number | null {
+  if (lo == null || hi == null) return null;
+  return Math.max(1, Math.round((hi - lo) / 2));
+}
+
+/**
  * Expand a workout_spec into a flat phase list. Pure function ·
  * deterministic · no DB. Returns null when the spec is null or
  * unrecognized · caller should fall back to a generic prescription.
@@ -112,7 +159,7 @@ export function expandSpecToPhases(input: ExpandSpecInput): ExpandedPhase[] | nu
     case 'intervals':
       return expandReps(s, easyPaceSec, recoveryPace, defaultTolerance);
     case 'long':
-      return expandLong(s, totalMi, easyPaceSec, defaultTolerance, input.workPhaseLabel);
+      return expandLong(s, totalMi, easyPaceSec, input.workPhaseLabel);
     case 'easy':
     case 'shakeout':
     case 'strides':
@@ -120,12 +167,12 @@ export function expandSpecToPhases(input: ExpandSpecInput): ExpandedPhase[] | nu
       // appended when the spec carries them (Research/04 §7.2 §Placement,
       // "End of an easy run").
       return appendStrides(
-        expandEasy(s, totalMi, easyPaceSec, defaultTolerance, input.workPhaseLabel),
+        expandEasy(s, totalMi, easyPaceSec, input.workPhaseLabel),
         s,
         recoveryPace,
       );
     case 'recovery':
-      return expandRecovery(s, totalMi, recoveryPace, defaultTolerance);
+      return expandRecovery(s, totalMi, recoveryPace);
     default:
       return null;
   }
@@ -437,7 +484,6 @@ function expandLong(
   s: Record<string, unknown>,
   totalMi: number,
   easyPaceSec: number | null,
-  tolerance: number,
   workPhaseLabel?: string,
 ): ExpandedPhase[] {
   // Spec band first (authored truth) · else the easy anchor · else by feel
@@ -447,9 +493,7 @@ function expandLong(
   const lo = specLo ?? (easyPaceSec != null ? easyPaceSec - 30 : null);
   const hi = specHi ?? (easyPaceSec != null ? easyPaceSec + 30 : null);
   const mid = lo != null && hi != null ? Math.round((lo + hi) / 2) : null;
-  const easyTol = lo != null && hi != null
-    ? Math.max(tolerance, Math.round((hi - lo) / 2))
-    : null;
+  const easyTol = bandToleranceSec(lo, hi);
 
   // VARIETY-LONG-1 (2026-08-28) · a progression long (Research/04 §4.3) walks
   // TWO paces after the easy bulk — an M middle and a T tail — carried on the
@@ -578,7 +622,6 @@ function expandEasy(
   s: Record<string, unknown>,
   totalMi: number,
   easyPaceSec: number | null,
-  tolerance: number,
   workPhaseLabel?: string,
 ): ExpandedPhase[] {
   // Spec band first · else the easy anchor · else by feel (P1-47).
@@ -593,9 +636,7 @@ function expandEasy(
     distanceMi: Number(totalMi.toFixed(1)),
     durationSec: Math.round(totalMi * (mid ?? DURATION_EST_S_PER_MI)),
     targetPaceSPerMi: mid,
-    tolerancePaceSPerMi: lo != null && hi != null
-      ? Math.max(tolerance, Math.round((hi - lo) / 2))
-      : null,
+    tolerancePaceSPerMi: bandToleranceSec(lo, hi),
   }];
 }
 
@@ -603,7 +644,6 @@ function expandRecovery(
   s: Record<string, unknown>,
   totalMi: number,
   recoveryPace: number | null,
-  tolerance: number,
 ): ExpandedPhase[] {
   // Spec band first · else the recovery anchor · else by feel (P1-47).
   const specLo = Number(s.pace_target_s_per_mi_lo) || null;
@@ -617,9 +657,7 @@ function expandRecovery(
     distanceMi: Number(totalMi.toFixed(1)),
     durationSec: Math.round(totalMi * (mid ?? DURATION_EST_S_PER_MI)),
     targetPaceSPerMi: mid,
-    tolerancePaceSPerMi: lo != null && hi != null
-      ? Math.max(tolerance, Math.round((hi - lo) / 2))
-      : null,
+    tolerancePaceSPerMi: bandToleranceSec(lo, hi),
   }];
 }
 

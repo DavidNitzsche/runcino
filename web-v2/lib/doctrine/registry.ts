@@ -4259,9 +4259,25 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
       // The two remaining call sites must route through the helper rather than
       // re-deriving. A literal here is how the three drifted apart before.
+      //
+      // ANCHOR-SPLIT-1 (2026-08-30) · the watch pattern was re-pointed. Its
+      // ceiling moved into the exported `resolveHrCeiling`, which now resolves
+      // the PRESCRIBED `workout_spec.hr_cap_bpm` first and only falls back to
+      // this derivation when the plan authored none — so the derived branch is
+      // still exactly the zone table's, which is all this claim asserts, but it
+      // no longer sits in a nested ternary. This gate caught that refactor on
+      // the first run and refused it, which is the gate working: the claim is
+      // re-pointed, not widened.
+      //
+      // The behavioural half — that the fallback equals aerobicCeilingBpm and
+      // that a prescribed cap wins over it, labelled — is asserted against the
+      // owner's real spec rows in `lib/watch/_watch_anchor_split.test.ts`. Kept
+      // as a source match here rather than importing the resolver, because
+      // `build-workout.ts` reaches `lib/db/pool` and this registry has no
+      // business pulling a database edge into the doctrine gate.
       for (const [file, binding, re] of [
         ['web-v2/lib/plan/spec-builder.ts', 'hrCapEasy', /const lthrCap = lthr \? aerobicCeilingBpm\(lthr\)/],
-        ['web-v2/lib/watch/build-workout.ts', 'hrCeilingBpm', /\? lthr\s+\? aerobicCeilingBpm\(lthr\)/],
+        ['web-v2/lib/watch/build-workout.ts', 'hrCeilingBpm', /const derived = lthr\s+\? aerobicCeilingBpm\(lthr\)/],
       ] as [string, string, RegExp][]) {
         matchLiteral(sourceOf(file), re, binding);
       }
