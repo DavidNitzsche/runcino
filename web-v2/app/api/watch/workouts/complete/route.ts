@@ -30,6 +30,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { autoMergeForDate } from '@/lib/runs/merge';
 import { sanitizeElevGain } from '@/lib/runs/elev-sanity';
@@ -283,7 +284,12 @@ interface WatchCompletionBody {
  *
  * Returns `{ ok: true, id: number | null }` — null when the completion
  * this workoutId names hasn't landed in `runs` yet (still in flight on the
- * durable queue), which is a normal, retryable state, not an error.
+ * durable queue), which is a normal, retryable state, not an error. A
+ * genuine read failure is a DIFFERENT fact (Rule 11: "don't know",
+ * "measured zero" and "the read failed" are three states, never one) and
+ * comes back as a 500 instead of a false `id: null` — collapsing the two
+ * would tell the watch's queue "this run does not exist yet" when the
+ * honest answer is "the database could not be asked".
  */
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -295,17 +301,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'workoutId required' }, { status: 400 });
   }
 
-  const r = await pool.query<{ id: string }>(
-    `SELECT id::text AS id
-       FROM runs
-      WHERE user_uuid = $1
-        AND (data->>'client_workout_id' = $2 OR data->>'client_workout_id' LIKE $2 || '@%')
-      ORDER BY id DESC
-      LIMIT 1`,
-    [userId, workoutId],
-  ).catch(() => ({ rows: [] as Array<{ id: string }> }));
+  const row = await rowOrNull<{ id: string }>(
+    'watch/complete GET · resolve runs.id from workoutId',
+    pool.query<{ id: string }>(
+      `SELECT id::text AS id
+         FROM runs
+        WHERE user_uuid = $1
+          AND (data->>'client_workout_id' = $2 OR data->>'client_workout_id' LIKE $2 || '@%')
+        ORDER BY id DESC
+        LIMIT 1`,
+      [userId, workoutId],
+    ),
+  );
+  if (row === null) {
+    return NextResponse.json({ ok: false, error: 'lookup failed' }, { status: 500 });
+  }
 
-  return NextResponse.json({ ok: true, id: r.rows[0]?.id ?? null });
+  return NextResponse.json({ ok: true, id: row?.id ?? null });
 }
 
 export async function POST(req: NextRequest) {
