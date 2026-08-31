@@ -36,11 +36,15 @@ describe('composeRaceDetailPacing · effective-target adoption', () => {
       netElevFt: 0,
     });
     expect(pf.effectiveSource).toBe('projection');
-    expect(pf.effectiveGoal).toBe('3:22:00');           // roundTargetSec(12120)
+    // 2026-08-30 · Rule 9. Was '3:22:00' — the UNREDUCED projection, which is
+    // the cliff: a goal one second inside doctrine's 5% band was raced at the
+    // goal, a goal one second outside it was thrown back to the projection
+    // 606 s slower. 3:12:00 is the band EDGE, the bound doctrine states.
+    expect(pf.effectiveGoal).toBe('3:12:00');           // the 5% band edge
     expect(pf.stretchGoal).toBe('3:00:00');             // the stretch line
     expect(pf.aGoal).toBe('3:00:00');                   // hero still shows the stated goal
-    // Pace off the projection, not the goal: 12120/26.2 ≈ 462.6 s/mi.
-    expect(pf.goalPace).toBe('7:43');
+    // Pace off the bound, not the goal: 11520/26.2 ≈ 439.7 s/mi.
+    expect(pf.goalPace).toBe('7:20');
     // Splits/pacing recompute off the effective target — cumulative of the
     // final pacing block lands at the effective time, not the goal.
     expect(pf.pacing.length).toBe(4);
@@ -49,8 +53,11 @@ describe('composeRaceDetailPacing · effective-target adoption', () => {
     // Gels sized off the longer honest duration AND the marathon's own
     // Research/18 §11 (:372) rate of 60-90 g/hr — not the old `hours × 1.7`
     // house formula (2026-08-17 doctrine audit). Default serving is 22 g.
-    const hours = roundTargetSec(12120) / 3600;
-    const rate = raceCarbsPerHourTarget(MARATHON, roundTargetSec(12120))!.targetGPerHr;
+    // Sized off the EFFECTIVE target the component actually paced from, read
+    // back out of it rather than hand-copied — a duplicated constant here only
+    // proves the test agrees with itself (Rule 18).
+    const hours = effective.targetSec / 3600;
+    const rate = raceCarbsPerHourTarget(MARATHON, effective.targetSec)!.targetGPerHr;
     expect(rate).toBeGreaterThanOrEqual(60);
     expect(pf.gels.length).toBe(Math.ceil((hours * rate) / 22));
     // Two caffeinated stops, at ~mi 13 and ~mi 20 (:372).

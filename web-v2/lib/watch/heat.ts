@@ -116,7 +116,9 @@ export async function adjustPhasesForHeat(
     cloudCoverPct: now.cloud_cover_pct,
     durationS: opts.totalSec,
     intervalStyle: opts.intervalStyle,
-    tier: abilityTierFromVdot(vdot),
+    // Rule 9 · pass the VDOT itself. Collapsing it to a tier here bought a
+    // five-point step in slowdown at VDOT 45 and 60.
+    vdot,
   });
 
   const factor = 1 + pct / 100;

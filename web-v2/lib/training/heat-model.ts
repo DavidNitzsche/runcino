@@ -88,6 +88,86 @@ export function abilityTierFromVdot(vdot: number | null | undefined): AbilityTie
 }
 
 /**
+ * The VDOT at which each of Research/06 §1's three ability columns is exactly
+ * the answer · Rule 9 (2026-08-30).
+ *
+ * ── The defect ────────────────────────────────────────────────────────────
+ *
+ * Every other axis of this model is interpolated. Temperature is linear between
+ * the table's rows; the dewpoint surcharge is linear; `durationHeatScale` is a
+ * ramp. The ABILITY axis was two hard steps — the tell that the author
+ * interpolated everything else and left these.
+ *
+ * The step is not small. At an effective 85°F the same conditions read 15.0%
+ * for VDOT 44.99 and 10.0% for VDOT 45.00: five percentage points of predicted
+ * race time (about ten minutes on a 3:30 marathon) for a hundredth of a VDOT.
+ * And it runs the wrong way — THE FITTER RUNNER'S HEAT ALLOWANCE COLLAPSES,
+ * discontinuously, which is Rule 9's signature. It is not hypothetical: the
+ * owner's anchor sits at VDOT 44.1, nine tenths of a point under the edge, so
+ * one good race walks him straight across it.
+ *
+ * ── Why these anchors ─────────────────────────────────────────────────────
+ *
+ * EVERY ANCHOR SITS INSIDE THE BAND DOCTRINE ASSIGNS TO THAT COLUMN. That is
+ * the constraint, and it rules out the tempting shape: anchoring `slow` at 45
+ * and `mid_pack` at the 45-60 midpoint reproduces the columns as points but
+ * prices VDOT 45 — which `abilityTierFromVdot` calls MID-PACK — at the SLOW
+ * column's number, and prices most of the mid-pack band as mostly-slow. A
+ * smoothing that contradicts the classification it is smoothing is not a fix.
+ *
+ * So the mid-pack column holds flat across the whole cited 45-60 band: every
+ * runner doctrine calls mid-pack still gets the mid-pack number, unchanged.
+ * The two OPEN-ENDED columns (elite ≥ 60, slow < 45) have no far edge to
+ * anchor on, so each sits one mid-band width (60 - 45 = 15) outside its own
+ * edge — 30 and 75. That is engine-internal, in the same sense
+ * `durationHeatScale` below is, and it is documented rather than dressed up as
+ * doctrine: the ruler is the one closed band the doc actually publishes, which
+ * is the least arbitrary measure available for a band with no far side.
+ */
+export const ABILITY_ANCHOR_VDOT = {
+  /** Below the slow/mid edge by one mid-band width · doctrine calls this slow. */
+  slow: 30,
+  /** The cited mid-pack band, held flat · Daniels 45-60. */
+  midLo: 45,
+  midHi: 60,
+  /** Above the mid/elite edge by one mid-band width · doctrine calls this elite. */
+  elite: 75,
+} as const;
+
+/**
+ * Marathon-anchored slowdown % for a runner of a given VDOT · the ability axis
+ * interpolated, the way the temperature axis already is.
+ *
+ * A null/unreadable VDOT falls back to the `mid_pack` column, which is the same
+ * honest population default `HeatConditions.tier` carries. Outside the anchors
+ * it is flat, so no extrapolation invents a slowdown the table never states.
+ */
+export function maughanSlowdownPctForVdot(
+  tempF: number,
+  vdot: number | null | undefined,
+): number {
+  if (vdot == null || !isFinite(vdot)) return maughanSlowdownPct(tempF, 'mid_pack');
+  const A = ABILITY_ANCHOR_VDOT;
+  const knots: ReadonlyArray<readonly [number, number]> = [
+    [A.slow, maughanSlowdownPct(tempF, 'slow')],
+    [A.midLo, maughanSlowdownPct(tempF, 'mid_pack')],
+    [A.midHi, maughanSlowdownPct(tempF, 'mid_pack')],
+    [A.elite, maughanSlowdownPct(tempF, 'elite')],
+  ];
+  if (vdot <= knots[0][0]) return knots[0][1];
+  const last = knots[knots.length - 1];
+  if (vdot >= last[0]) return last[1];
+  for (let i = 0; i < knots.length - 1; i++) {
+    const [x0, y0] = knots[i];
+    const [x1, y1] = knots[i + 1];
+    if (vdot >= x0 && vdot <= x1) {
+      return x1 === x0 ? y1 : y0 + ((y1 - y0) * (vdot - x0)) / (x1 - x0);
+    }
+  }
+  return last[1];
+}
+
+/**
  * Marathon-anchored slowdown % vs the 50°F baseline, linearly
  * interpolated between the Research/06 bracket points. 0 at/below 50°F.
  * Above 90°F extends at the table's terminal slope (the doctrine table
@@ -204,6 +284,17 @@ export interface HeatConditions {
   /** Defaults to mid_pack · the honest population default. */
   tier?: AbilityTier;
   /**
+   * The runner's VDOT, when the caller knows it · Rule 9 (2026-08-30).
+   *
+   * PREFERRED OVER `tier`. Every caller that sets `tier` computed it by calling
+   * `abilityTierFromVdot` on a VDOT it already had, throwing away the very
+   * precision that keeps the answer continuous — and buying a five-point step
+   * in slowdown at VDOT 45 and 60. Pass the VDOT and let the model interpolate
+   * (`maughanSlowdownPctForVdot`). `tier` remains for callers that genuinely
+   * have only a tier.
+   */
+  vdot?: number | null;
+  /**
    * Research/06 §2 · "For repeats with ≥1:1 work:rest, apply half the
    * continuous-run adjustment". True for interval / VO2max sessions.
    */
@@ -241,7 +332,10 @@ export function heatEffort(c: HeatConditions): HeatEffort | null {
     ? c.dewpointF
     : (c.humidityPct != null && isFinite(c.humidityPct) ? estimateDewpointF(t, c.humidityPct) : null);
 
-  const base = maughanSlowdownPct(effectiveTempF, c.tier ?? 'mid_pack');
+  // A known VDOT is read continuously; a bare tier keeps the column it names.
+  const base = c.vdot != null && isFinite(c.vdot)
+    ? maughanSlowdownPctForVdot(effectiveTempF, c.vdot)
+    : maughanSlowdownPct(effectiveTempF, c.tier ?? 'mid_pack');
   const dp = dewpointAddPct(dewpointF);
   let pct = (base + dp) * durationHeatScale(c.durationS);
   if (c.intervalStyle) pct *= INTERVAL_ADJUSTMENT_FACTOR;

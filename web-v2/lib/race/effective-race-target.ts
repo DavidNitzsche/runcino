@@ -54,6 +54,17 @@ export function roundTargetSec(sec: number): number {
   return Math.round(sec / step) * step;
 }
 
+/** Rule 9 · the fastest target this surface may show · doctrine's
+ *  achievability band edge, cleaned to the same step and rounded UP so the
+ *  cleaning can never carry the target THROUGH the bound. Value-for-value
+ *  identical to `lib/training/achievable-target.ts#prescriptionFloorSec`;
+ *  bound by GOAL.prescribed-race-pace-ceiling. */
+export function prescriptionFloorSec(boundSec: number, tolerance: number): number {
+  const raw = boundSec * (1 - tolerance);
+  const step = raw >= 3600 ? 10 : 5;
+  return Math.ceil(raw / step) * step;
+}
+
 /** Pure resolver · exported for tests. */
 export function resolveEffectiveRaceTarget(
   goalSec: number,
@@ -65,11 +76,24 @@ export function resolveEffectiveRaceTarget(
   }
   // goal within 5% of projection (goal is FASTER = smaller seconds; allow
   // goalSec down to 95% of projection).
-  if (goalSec >= projectionSec * (1 - MAX_GOAL_OPTIMISM_FRACTION)) {
+  //
+  // Rule 9 (2026-08-30) · a goal BEYOND the band is clamped to the band EDGE,
+  // not past it back to the unreduced projection. Spending the 5% twice put a
+  // 606 s step at the edge here — a runner one second more ambitious was raced
+  // ten minutes slower — and, worse, it re-opened the very gap this module
+  // exists to close: authoring rehearses the block at the band edge, so racing
+  // at the unreduced projection is a pace step onto a start line off a block
+  // that never ran it. One runner, one race, one formula. The floor helper is
+  // `lib/training/achievable-target.ts#prescriptionFloorSec`, duplicated rather
+  // than imported for the same reason the constant is (that module must stay
+  // free of `pg` for the client bundles); GOAL.prescribed-race-pace-ceiling
+  // pins the pair.
+  const floorSec = prescriptionFloorSec(projectionSec, MAX_GOAL_OPTIMISM_FRACTION);
+  if (goalSec >= floorSec) {
     return { targetSec: goalSec, source: 'goal', goalSec, projectionSec, projectionDateISO };
   }
   return {
-    targetSec: roundTargetSec(projectionSec),
+    targetSec: floorSec,
     source: 'projection',
     goalSec,
     projectionSec,

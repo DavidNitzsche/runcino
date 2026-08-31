@@ -299,17 +299,95 @@ export const LOAD_CONTEXT_MULTIPLIER = {
   fresh: 1.05,
 } as const;
 
+/**
+ * The multiplier as a CURVE rather than a stop-light · Rule 9 (2026-08-30).
+ *
+ * ── What was wrong ────────────────────────────────────────────────────────
+ *
+ * This was four `if`s on Gabbett's zone edges, so the response stepped 0.05 at
+ * ACWR 1.3 and 0.07 at 1.5. A runner at 1.300 kept his whole score; a runner at
+ * 1.301 lost 5% of it. ACWR is a ratio of two rolling averages — it moves that
+ * far when one easy run lands on the far side of midnight — so this is a hair
+ * of input deciding a categorically different readout.
+ *
+ * ── Why interpolating is doctrine, not a softening of it ──────────────────
+ *
+ * The cited numbers do not move. 0.8, 1.3 and 1.5 are still the abscissae and
+ * D1 §6's four multipliers are still the ordinates; nothing here invents a
+ * value. What changes is that the response runs THROUGH the edges instead of
+ * stepping AT them, which is what `Research/15-wearable-data.md` §"Acute:
+ * Chronic Workload Ratio (ACWR)" demands in the paragraph directly beneath the
+ * zone table:
+ *
+ *   "treat ACWR as a directional sanity check, not a stop-light ... A ratio
+ *    jumping from 0.9 to 1.6 in a week is a flag worth examining; a ratio of
+ *    1.4 in itself is not a verdict."
+ *
+ * A step function is precisely a stop-light, and the old code handed 1.4 the
+ * full elevated penalty — a verdict on the one number the doc names as not
+ * being one. The same section carries the Impellizzeri critique ("argues
+ * against using ACWR as a deterministic injury predictor"), which is the same
+ * instruction in stronger terms.
+ *
+ * ── The control points ────────────────────────────────────────────────────
+ *
+ *   0.6  fresh     the taper bonus fully realised · D1 §2.4
+ *   0.8  neutral   floor of Research/15's sweet spot
+ *   1.3  neutral   top of the sweet spot · nothing pulls the score inside it
+ *   1.5  elevated  the caution band, fully traversed, at the danger edge
+ *   1.7  spike     one caution-band width (1.5-1.3) past the danger edge
+ *
+ * The WHOLE sweet spot 0.8-1.3 stays flat neutral, which is the property the
+ * 2026-08-17 audit fixed and this must not undo: a runner may not bank points
+ * for having run an ordinary week. So the bonus lives strictly below 0.8, and
+ * the two abscissae not printed in the table — 0.6 and 1.7 — are each one
+ * caution-band width (1.5-1.3 = 0.2) outside the sweet spot's own edges,
+ * derived from the table rather than chosen. 0.6 is already this repo's
+ * canonical planned-freshness sample, in both READINESS.load-is-a-multiplier
+ * and _readiness_doctrine.test.ts.
+ *
+ * Flat outside the ends, so the range stays inside D1 §2.4's [0.85, 1.10].
+ */
+export const LOAD_CONTEXT_CURVE: ReadonlyArray<readonly [acwr: number, multiplier: number]> = [
+  [0.6, LOAD_CONTEXT_MULTIPLIER.fresh],
+  [0.8, LOAD_CONTEXT_MULTIPLIER.neutral],
+  [1.3, LOAD_CONTEXT_MULTIPLIER.neutral],
+  [1.5, LOAD_CONTEXT_MULTIPLIER.elevated],
+  [1.7, LOAD_CONTEXT_MULTIPLIER.spike],
+];
+
 export function loadContextMultiplier(
   acwr: number | null | undefined,
   acute7: number | null | undefined,
   chronic28: number | null | undefined,
 ): number {
   if (acwr == null || !isFinite(acwr)) return LOAD_CONTEXT_MULTIPLIER.neutral;
+
+  const first = LOAD_CONTEXT_CURVE[0];
+  const last = LOAD_CONTEXT_CURVE[LOAD_CONTEXT_CURVE.length - 1];
+  let mult: number;
+  if (acwr <= first[0]) {
+    mult = first[1];
+  } else if (acwr >= last[0]) {
+    mult = last[1];
+  } else {
+    mult = last[1];
+    for (let i = 0; i < LOAD_CONTEXT_CURVE.length - 1; i++) {
+      const [x0, y0] = LOAD_CONTEXT_CURVE[i];
+      const [x1, y1] = LOAD_CONTEXT_CURVE[i + 1];
+      if (acwr >= x0 && acwr <= x1) {
+        mult = x1 === x0 ? y1 : y0 + ((y1 - y0) * (acwr - x0)) / (x1 - x0);
+        break;
+      }
+    }
+  }
+
+  // The ATL-under-CTL guard, unchanged in intent: a high ratio whose acute load
+  // is not actually above chronic is not a spike, so the penalty is capped at
+  // the elevated value rather than running on to the spike floor.
   const atlOverCtl = acute7 != null && chronic28 != null ? acute7 > chronic28 : acwr > 1;
-  if (acwr > 1.5 && atlOverCtl) return LOAD_CONTEXT_MULTIPLIER.spike;
-  if (acwr > 1.3) return LOAD_CONTEXT_MULTIPLIER.elevated;
-  if (acwr < 0.8) return LOAD_CONTEXT_MULTIPLIER.fresh;
-  return LOAD_CONTEXT_MULTIPLIER.neutral;
+  if (!atlOverCtl) return Math.max(mult, LOAD_CONTEXT_MULTIPLIER.elevated);
+  return mult;
 }
 
 /**
@@ -607,9 +685,14 @@ export function computeReadiness(
     // David's call. Under the multiplier it is D1's taper bonus, ×1.05.
     const acuteWk = state.loadAcute7 * 7;   // mi/day → mi/week
     const baseWk = state.loadChronic28 * 7;
+    // 2026-08-30 · Rule 9. The multiplier is now a curve, so the sentence is
+    // driven by the trim it ACTUALLY applies rather than by the band the ratio
+    // fell in. Branching on the band while interpolating the number is how a
+    // tile ends up reading "Elevated ramp · trims the score 0%".
+    const trimPct = Math.round((1 - loadMult) * 100);
     const meaning = r < 0.8
       ? `${acuteWk.toFixed(0)}mi this week vs your ~${baseWk.toFixed(0)}mi base. Fresh legs, low fatigue · fine for a cutback. Only a worry if it stays here for weeks.`
-      : r <= 1.3
+      : trimPct <= 0
         // Two things left this tile. A researcher's surname is a citation,
         // and a citation belongs in the code and the doctrine registry, not
         // in a sentence a runner reads at 6am — nothing else the coach says
@@ -619,8 +702,8 @@ export function computeReadiness(
         // convergence ladder puts two domains away.
         ? `${acuteWk.toFixed(0)}mi this week against your ~${baseWk.toFixed(0)}mi base. In the range the ramp is meant to sit in · the ratio is not pulling the score either way.`
         : r <= 1.5
-          ? `${acuteWk.toFixed(0)}mi this week runs above your ~${baseWk.toFixed(0)}mi base. Elevated ramp · trims the score ${Math.round((1 - loadMult) * 100)}%.`
-          : `${acuteWk.toFixed(0)}mi this week against a ~${baseWk.toFixed(0)}mi base is the injury-risk band. Trims the score ${Math.round((1 - loadMult) * 100)}%.`;
+          ? `${acuteWk.toFixed(0)}mi this week runs above your ~${baseWk.toFixed(0)}mi base. Elevated ramp · trims the score ${trimPct}%.`
+          : `${acuteWk.toFixed(0)}mi this week against a ~${baseWk.toFixed(0)}mi base is the injury-risk band. Trims the score ${trimPct}%.`;
     const acwrWord = r < 0.8 ? 'Fresh' : r < 1.0 ? 'Building' : r <= 1.3 ? 'In range'
       : r < 1.5 ? 'Elevated' : 'High';
     inputs.push({

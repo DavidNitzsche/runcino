@@ -186,7 +186,8 @@ async function loadCueContext(userId: string, date: string): Promise<{
           cloudCoverPct: f.cloud_cover_pct,
           durationS: null,
           intervalStyle: false,
-          tier: abilityTierFromVdot(vdot),
+          // Rule 9 · the VDOT itself, not the tier it would collapse to.
+          vdot,
         });
       }
     }

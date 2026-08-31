@@ -183,10 +183,26 @@ export function resolveCitation(doc: string, anchor: string): ResolvedCitation {
     );
   }
   const at = hits[0];
-  // Section = anchor through the next markdown heading of the same or higher level.
+  // Section = anchor through the next markdown heading of the same or higher
+  // level.
+  //
+  // 2026-08-30 · a `#` inside a FENCED CODE BLOCK is a comment, not a heading.
+  // Research/15 §"Acute:Chronic Workload Ratio (ACWR)" opens with a fenced
+  // block whose second line is `# both can be rolling averages or ...`, which
+  // truncated the section three lines in and hid the zone table underneath it
+  // from `table()` entirely. A resolver that silently hands a claim the wrong
+  // slice of the doc is the Rule 18 failure mode — the claim still passes, it
+  // just stops meaning anything — so fences are tracked rather than the anchor
+  // being moved to dodge one.
   let end = all.length;
-  const headingAt = (i: number) => /^#{1,6}\s/.test(all[i]);
+  let inFence = false;
+  const fenceAt = (i: number) => /^\s*(```|~~~)/.test(all[i]);
+  const headingAt = (i: number) => !inFence && /^#{1,6}\s/.test(all[i]);
   for (let i = at + 1; i < all.length; i++) {
+    if (fenceAt(i)) {
+      inFence = !inFence;
+      continue;
+    }
     if (headingAt(i) && i > at + 1) {
       end = i;
       break;

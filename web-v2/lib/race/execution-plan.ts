@@ -436,9 +436,10 @@ export function composeRaceExecutionPlan(args: {
   // This table is a "if the gun reads X°F" ladder built weeks out, so the
   // dewpoint and the sky are genuinely unknown and are passed as such; the
   // race-day Conditions chunk prices the real forecast.
-  const tier = abilityTierFromVdot(args.vdot);
+  // Rule 9 · the VDOT itself, not the tier it would collapse to: the ability
+  // axis is interpolated like every other axis of the model.
   const heatRules: HeatRule[] = [65, 70, 75, 80].map((t) => {
-    const pct = effortSlowdownPct({ tempF: t, durationS: goalSec, tier });
+    const pct = effortSlowdownPct({ tempF: t, durationS: goalSec, vdot: args.vdot });
     const add = Math.round(goalPace * pct / 100);
     return {
       ifStartTempAtLeastF: t,

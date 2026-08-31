@@ -120,7 +120,7 @@ describe('MIDGOAL-1 · the stated-goal derivation is untouched (byte-safety bar)
     expect(day?.raceGoalPaceSec).toBe(435);
   });
 
-  it('Run Malibu still derives 412 s/mi, and RACEPACE-1 still bounds it to 441', () => {
+  it('Run Malibu still derives 412 s/mi, and RACEPACE-1 still bounds it to 420', () => {
     const composed = build([
       { slug: 'run-malibu', name: 'Run Malibu', date: MALIBU_ISO, distanceMi: 13.1,
         goalPaceSec: 412, goalPaceIsCoachSet: false, priority: 'B' },
@@ -133,9 +133,20 @@ describe('MIDGOAL-1 · the stated-goal derivation is untouched (byte-safety bar)
     // clamps a stated goal to what this runner can actually run off this build
     // (RACEPACE-1, 2026-08-25) — and Run Malibu's 412 is the exact case that
     // rule's own doc comment was written for: a 1:30 half off a 1:41:53 half
-    // three months earlier. 441 s/mi is that bound doing its job. A change that
+    // three months earlier. 420 s/mi is that bound doing its job. A change that
     // returns this to 412 has re-opened the defect RACEPACE-1 closed.
-    expect(day?.raceGoalPaceSec).toBe(441);
+    //
+    // 2026-08-30 · Rule 9 moved this from 441 to 420, and the direction is the
+    // whole point. 441 was the UNREDUCED ceiling: the old code spent doctrine's
+    // 5% achievability band twice, so a goal just inside the band was prescribed
+    // as stated while a goal just outside it was thrown back past the band edge
+    // to the ceiling — the more ambitious runner handed the slower target. 420
+    // is the band EDGE, which is the bound doctrine actually states
+    // (Research/20 §"SMART criteria", "Within ~5% of current fitness ceiling").
+    // The assertion that matters is unchanged and still passes: the composed
+    // row is NOT the unbounded 412.
+    expect(day?.raceGoalPaceSec).toBe(420);
+    expect(day?.raceGoalPaceSec).toBeGreaterThan(412);
   });
 
   it('the coach-set FLAG is inert for a stated goal · omitting it changes nothing', () => {
@@ -169,10 +180,10 @@ describe('MIDGOAL-1 · the stated-goal derivation is untouched (byte-safety bar)
         goalPaceSec: 412, goalPaceIsCoachSet: false, priority: 'B' },
     ]);
     const notes = dayAt(composed, MALIBU_ISO)?.notes ?? '';
-    // The row states what it will actually ask for (the bounded 441 = 7:21/mi),
+    // The row states what it will actually ask for (the bounded 420 = 7:00/mi),
     // never the unbounded ambition. The stated goal still lives on
     // authored_state.goal_pace_s_per_mi and on every surface that shows it.
-    expect(notes).toContain('Target 7:21/mi');
+    expect(notes).toContain('Target 7:00/mi');
     // The runner's own goal is never attributed to the coach.
     expect(notes).not.toContain('Coach target');
   });
@@ -243,7 +254,7 @@ describe('MIDGOAL-1 · all three races in one block, the owner\'s real calendar'
     expect(dayAt(composed, SANTA_MONICA_ISO)?.raceGoalPaceSec).toBe(418);
     expect(dayAt(composed, DODGERS_ISO)?.raceGoalPaceSec).toBe(435);
     // Bounded from the stated 412 · see the RACEPACE-1 note above.
-    expect(dayAt(composed, MALIBU_ISO)?.raceGoalPaceSec).toBe(441);
+    expect(dayAt(composed, MALIBU_ISO)?.raceGoalPaceSec).toBe(420);
     // Only the goal-less one is attributed to the coach.
     expect(dayAt(composed, SANTA_MONICA_ISO)?.notes).toContain('Coach target');
     expect(dayAt(composed, DODGERS_ISO)?.notes).not.toContain('Coach target');

@@ -132,7 +132,11 @@ import {
 } from '@/lib/training/fitness-trajectory';
 // RACEPACE-1 · the prescribed-race-pace ceiling and the two 5% constants it
 // must stay pinned to.
-import { GOAL_OPTIMISM_TOLERANCE, seasonalVdotCeiling } from '@/lib/training/achievable-target';
+import {
+  GOAL_OPTIMISM_TOLERANCE,
+  seasonalVdotCeiling,
+  achievableRaceTarget,
+} from '@/lib/training/achievable-target';
 import { TRAINING_ESTIMATE_SOFT_CAP_VDOT } from '@/lib/training/vdot';
 import {
   TRAINING_LEAD_DELTA_THRESHOLD,
@@ -140,7 +144,10 @@ import {
   TRAINING_LEAD_MIN_SPAN_DAYS,
   REGRESSION_DELTA_THRESHOLD,
 } from '@/lib/plan/adapt';
-import { MAX_GOAL_OPTIMISM_FRACTION } from '@/lib/race/effective-race-target';
+import {
+  MAX_GOAL_OPTIMISM_FRACTION,
+  resolveEffectiveRaceTarget,
+} from '@/lib/race/effective-race-target';
 import { maxSeasonalVdotGain } from '@/lib/plan/recompute-paces';
 import {
   ASSESSMENT_BLOCK_WEEKS_FAST,
@@ -341,6 +348,7 @@ import { vdotFromRace, predictRaceTime } from '@/lib/training/vdot';
 import {
   READINESS_WEIGHTS,
   LOAD_CONTEXT_MULTIPLIER,
+  LOAD_CONTEXT_CURVE,
   loadContextMultiplier,
   computeReadiness,
   computeDynamicSleepTarget,
@@ -387,7 +395,12 @@ import {
   AQI_TIME_ON_FEET_LOW,
 } from '@/lib/coach/heat-gate';
 import { HEAT_HR_CONFOUNDER, heatHrBumpBpm } from '@/lib/weather/heat-adjustment';
-import { MAUGHAN_HEAT_SLOWDOWN, maughanSlowdownPct, abilityTierFromVdot } from '@/lib/training/heat-model';
+import {
+  MAUGHAN_HEAT_SLOWDOWN,
+  maughanSlowdownPct,
+  maughanSlowdownPctForVdot,
+  abilityTierFromVdot,
+} from '@/lib/training/heat-model';
 import type { AbilityTier } from '@/lib/training/heat-model';
 import {
   REPRESENTATIVE_FLOOR,
@@ -6252,6 +6265,47 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (abilityTierFromVdot(65) !== 'elite' || abilityTierFromVdot(50) !== 'mid_pack' || abilityTierFromVdot(38) !== 'slow') {
         throw new Error('abilityTierFromVdot no longer separates the three columns doctrine states');
       }
+
+      // ── Rule 9 · the ability axis is interpolated, like every other axis ──
+      //
+      // Every other axis of this model is continuous — temperature between the
+      // rows above, dewpoint, duration. Ability was two hard steps, worth up to
+      // 7 points of slowdown for a hundredth of a VDOT at 90F, running the
+      // WRONG WAY (the fitter runner's heat allowance collapsed). The columns
+      // are still reproduced exactly, and the whole cited mid-pack band still
+      // gets the mid-pack column — an anchor outside its own band would price a
+      // runner as a tier doctrine does not put him in.
+      for (const row of MAUGHAN_HEAT_SLOWDOWN) {
+        if (row.tairF <= 50) continue;
+        for (let v = 45; v <= 60; v += 0.5) {
+          if (Math.abs(maughanSlowdownPctForVdot(row.tairF, v) - row.midPaceMarathonerPct) > 1e-9) {
+            throw new Error(
+              `VDOT ${v} is inside the cited 45-60 mid-pack band but is charged ` +
+                `${maughanSlowdownPctForVdot(row.tairF, v)}% at ${row.tairF}F, not the column's ` +
+                `${row.midPaceMarathonerPct}% · an anchor outside its own band prices a runner ` +
+                'as a tier doctrine does not put him in',
+            );
+          }
+        }
+        let prev = maughanSlowdownPctForVdot(row.tairF, 25);
+        for (let v = 25.01; v <= 80; v += 0.01) {
+          const vdot = Math.round(v * 100) / 100;
+          const cur = maughanSlowdownPctForVdot(row.tairF, vdot);
+          if (cur > prev + 1e-9) {
+            throw new Error(
+              `heat slowdown ROSE with fitness at VDOT ${vdot}, ${row.tairF}F · ` +
+                'the fitter runner may not be handed the larger penalty',
+            );
+          }
+          if (Math.abs(cur - prev) > 0.05) {
+            throw new Error(
+              `heat slowdown steps ${Math.abs(cur - prev).toFixed(2)} points at VDOT ${vdot}, ` +
+                `${row.tairF}F · the ability axis must interpolate like the temperature axis (Rule 9)`,
+            );
+          }
+          prev = cur;
+        }
+      }
     },
   },
   /* ── 2026-08-21 · the eight heat thresholds that cited LINE NUMBERS ────────
@@ -6632,6 +6686,95 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         /Math\.min\(composite \* loadMult, pillarCeiling\)/,
         'lib/coach/readiness.ts#computeReadiness · post-composite multiplier',
       );
+    },
+  },
+  {
+    id: 'READINESS.acwr-is-a-slope-not-a-stop-light',
+    binds: ['lib/coach/readiness.ts#LOAD_CONTEXT_CURVE', 'lib/coach/readiness.ts#loadContextMultiplier'],
+    doc: 'Research/15-wearable-data.md',
+    anchor: '### Acute:Chronic Workload Ratio (ACWR)',
+    claim:
+      'Rule 9 · Gabbett\'s zone edges are kept exactly and the response runs continuously ' +
+      'THROUGH them rather than stepping AT them. The section that publishes the zones also ' +
+      'publishes how to spend them — "treat ACWR as a directional sanity check, not a ' +
+      'stop-light ... a ratio of 1.4 in itself is not a verdict" — and a step function is a ' +
+      'stop-light. The old four-branch form dropped the readiness score 5% between ACWR 1.300 ' +
+      'and 1.301, on a ratio of two rolling averages that moves that far when one easy run ' +
+      'lands the far side of midnight, and it handed 1.4 the full elevated penalty. The band ' +
+      'edges are read out of the doc\'s own zone table; the sweet spot stays flat so no runner ' +
+      'banks points for an ordinary week.',
+    check({ cite }) {
+      const text = cite.text();
+      // The doc's own zone edges, read out of its own table rather than
+      // hardcoded — a claim that hardcodes both sides only proves the test
+      // agrees with itself (Rule 18).
+      const zones = cite.table();
+      const edges = new Set<number>();
+      for (const row of zones.rows) {
+        for (const m of (row[zones.headers[0]] ?? '').matchAll(/\d*\.?\d+/g)) {
+          edges.add(Number(m[0]));
+        }
+      }
+      for (const want of [0.8, 1.3, 1.5]) {
+        if (!edges.has(want)) {
+          throw new Error(
+            `Research/15's ACWR zone table no longer publishes the ${want} edge · ` +
+              `found ${[...edges].sort((a, b) => a - b).join(', ')}`,
+          );
+        }
+      }
+      // Every edge the doc names is a control point of the curve.
+      const xs = new Set(LOAD_CONTEXT_CURVE.map(([x]) => x));
+      for (const want of [0.8, 1.3, 1.5]) {
+        if (!xs.has(want)) {
+          throw new Error(
+            `doctrine's ACWR edge ${want} is not a control point of LOAD_CONTEXT_CURVE ` +
+              `(${[...xs].join(', ')}) · the cited number must be kept, not moved`,
+          );
+        }
+      }
+      // The instruction that makes a step function wrong must still be there.
+      if (!/not a stop-?light/i.test(text)) {
+        throw new Error(
+          'Research/15 no longer says to treat ACWR as "not a stop-light" · the continuity ' +
+            'of loadContextMultiplier rests on that sentence',
+        );
+      }
+      if (!/1\.4 in itself is not a verdict/i.test(text)) {
+        throw new Error('Research/15 no longer names 1.4 as "not a verdict"');
+      }
+      // And the engine actually behaves that way. A step anywhere across the
+      // bands fails this, which is the whole point.
+      let prev = loadContextMultiplier(0.4, 1.6, 4);
+      let worst = 0;
+      let worstAt = 0;
+      for (let r = 0.401; r <= 2.2; r += 0.001) {
+        const acwr = Math.round(r * 1000) / 1000;
+        const cur = loadContextMultiplier(acwr, acwr * 4, 4);
+        if (cur - prev > 1e-9) {
+          throw new Error(`the load multiplier ROSE with load at ACWR ${acwr}`);
+        }
+        if (Math.abs(cur - prev) > worst) { worst = Math.abs(cur - prev); worstAt = acwr; }
+        prev = cur;
+      }
+      if (worst > 0.002) {
+        throw new Error(
+          `the load multiplier steps ${worst.toFixed(4)} at ACWR ${worstAt.toFixed(3)} · ` +
+            'Research/15 asks for a directional read, not a stop-light (Rule 9)',
+        );
+      }
+      // 1.4 is a nudge, never the full verdict the doc rules out.
+      const m14 = loadContextMultiplier(1.4, 5.6, 4);
+      if (!(m14 < LOAD_CONTEXT_MULTIPLIER.neutral && m14 > LOAD_CONTEXT_MULTIPLIER.elevated)) {
+        throw new Error(
+          `ACWR 1.4 gives ${m14} · the doc names 1.4 as "not a verdict", so it must sit ` +
+            'between neutral and the elevated value, not on either',
+        );
+      }
+      // The sweet spot earns nothing · the 2026-08-17 audit's own finding.
+      if (loadContextMultiplier(1.15, 4.6, 4) !== LOAD_CONTEXT_MULTIPLIER.neutral) {
+        throw new Error('a sweet-spot ACWR has stopped being neutral');
+      }
     },
   },
   {
@@ -15789,6 +15932,43 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           'authored_state no longer records the runner’s stated goal pace verbatim · ' +
             'bounding what is prescribed must never move what was asked for',
+        );
+      }
+
+      // ── Rule 9 · the band is spent ONCE ─────────────────────────────────
+      //
+      // Doctrine names ONE edge. Spending the tolerance twice — forgive inside
+      // the band, then snap back past it to the unreduced ceiling — put a 600 s
+      // step at the edge with the MORE ambitious runner on the slower side.
+      // Both moments must clamp TO the edge. The tolerance below is the one
+      // parsed out of Research/20 above, not a second copy.
+      const ceilingSec = predictRaceTime(seasonalVdotCeiling(44.1, 14, 26.2).ceilingVdot, 26.2)!;
+      const edge = ceilingSec * (1 - tolerance);
+      const fantasy = achievableRaceTarget({
+        goalSec: Math.round(ceilingSec * 0.5),   // far beyond any band
+        currentVdot: 44.1, raceDistanceMi: 26.2, totalWeeks: 14,
+      })!;
+      if (fantasy.targetSec > edge + 10) {
+        throw new Error(
+          `a goal beyond the achievability band is prescribed at ${fantasy.targetSec} s, past the ` +
+            `band edge ${edge.toFixed(0)} s · the tolerance is being spent twice and the runner who ` +
+            'wants it more is being handed the slower target (Rule 9)',
+        );
+      }
+      if (fantasy.targetSec < edge) {
+        throw new Error(
+          `a prescribed target of ${fantasy.targetSec} s runs FASTER than the band edge ` +
+            `${edge.toFixed(0)} s · the bound has stopped bounding`,
+        );
+      }
+      // The same, at the execution moment. One runner, one race, one formula.
+      const raced = resolveEffectiveRaceTarget(Math.round(12120 * 0.5), 12120);
+      const racedEdge = 12120 * (1 - tolerance);
+      if (raced.targetSec > racedEdge + 10 || raced.targetSec < racedEdge) {
+        throw new Error(
+          `execution clamps a beyond-band goal to ${raced.targetSec} s but the band edge is ` +
+            `${racedEdge.toFixed(0)} s · authoring rehearses the block at the edge, so racing ` +
+            'anywhere else is the pace step onto a start line that RACEPACE-1 exists to close',
         );
       }
     },

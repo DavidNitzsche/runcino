@@ -159,6 +159,7 @@ import {
   dewpointAddPct,
   estimateDewpointF,
   maughanSlowdownPct,
+  maughanSlowdownPctForVdot,
   solarEffectiveBumpF,
   durationHeatScale,
   type AbilityTier,
@@ -927,7 +928,11 @@ function priceConditions(args: {
       : tempF > HEAT_GATE_TAIR_ONLY_F;
 
     const durationScale = durationHeatScale(finishS);
-    const basePct = heatMaterial ? maughanSlowdownPct(effectiveTempF, tier) * durationScale : 0;
+    // Rule 9 · the ability axis is interpolated off the anchor VDOT rather than
+    // stepped at 45 and 60 · see maughanSlowdownPctForVdot.
+    const basePct = heatMaterial
+      ? maughanSlowdownPctForVdot(effectiveTempF, input.anchorVdot) * durationScale
+      : 0;
     const dpPct = heatMaterial ? dewpointAddPct(dewpointF) * durationScale : 0;
 
     if (!skip.has('heat')) {

@@ -97,14 +97,29 @@ describe('READINESS-2 · load is a post-composite multiplier, not a pillar', () 
     }
   });
 
-  it('D1 §6 step 4 · the branch values, in order', () => {
+  it('D1 §6 step 4 · the branch values, at their control points', () => {
     // if ACWR > 1.5 and ATL > CTL → 0.88 ; elif ACWR > 1.3 → 0.95 ; else 1.00
+    //
+    // 2026-08-30 · Rule 9. Doctrine's four VALUES are unchanged and still
+    // asserted; what moved is that they are now reached continuously instead
+    // of stepped onto, so each is checked at its control point rather than at
+    // an arbitrary interior sample. The line that had to go was
+    // `loadContextMultiplier(1.4, ...) === 0.95` — Research/15
+    // §"Acute:Chronic Workload Ratio (ACWR)" says in terms that "a ratio of 1.4
+    // in itself is not a verdict", and handing 1.4 the full elevated penalty is
+    // exactly the verdict it rules out. 1.4 is now asserted to sit BETWEEN
+    // neutral and elevated, which is what the doc describes.
     expect(loadContextMultiplier(1.7, 8, 4), `${CITE_MULT} · spike`).toBe(0.88);
-    expect(loadContextMultiplier(1.4, 5.6, 4), `${CITE_MULT} · elevated`).toBe(0.95);
+    expect(loadContextMultiplier(1.5, 6, 4), `${CITE_MULT} · elevated`).toBe(0.95);
+    expect(loadContextMultiplier(1.3, 5.2, 4), `${CITE_MULT} · sweet-spot top is NEUTRAL`).toBe(1.00);
     expect(loadContextMultiplier(1.15, 4.6, 4), `${CITE_MULT} · sweet spot is NEUTRAL`).toBe(1.00);
     expect(loadContextMultiplier(0.9, 3.6, 4), `${CITE_MULT} · building is NEUTRAL`).toBe(1.00);
     expect(loadContextMultiplier(0.6, 2.4, 4), `${CITE_MULT} · planned freshness`).toBe(1.05);
     expect(loadContextMultiplier(null, null, null), `${CITE_MULT} · no history, no opinion`).toBe(1.00);
+    // Research/15 · "not a stop-light" · 1.4 is a nudge, not a verdict.
+    const m14 = loadContextMultiplier(1.4, 5.6, 4);
+    expect(m14, `${CITE_MULT} · 1.4 is not a verdict`).toBeLessThan(1.00);
+    expect(m14, `${CITE_MULT} · 1.4 is not a verdict`).toBeGreaterThan(0.95);
   });
 
   it('a sweet-spot ACWR no longer manufactures readiness points', () => {

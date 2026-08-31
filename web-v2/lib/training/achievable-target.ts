@@ -154,6 +154,41 @@ export function roundTargetSec(sec: number): number {
 }
 
 /**
+ * The fastest target the engine may prescribe · doctrine's achievability band
+ * edge, cleaned to the same step and never rounded THROUGH it.
+ *
+ * ── Rule 9 (2026-08-30) · why this exists ─────────────────────────────────
+ *
+ * The 5% band used to be spent twice. A goal inside it was prescribed as
+ * stated (so the engine already prescribed up to 5% faster than the ceiling,
+ * for everyone mildly ambitious); a goal outside it snapped back to the
+ * UNREDUCED ceiling. So the prescribed target jumped the full 5% of race time
+ * as the stated goal crossed the edge, in the wrong direction — on the owner's
+ * CIM shape, 600 s (22.9 s/mi) for one second of stated goal, with the MORE
+ * ambitious runner handed the SLOWER prescription. Rule 9's signature.
+ *
+ * The band has one edge, and it is the bound. `Research/20` §"SMART criteria"
+ * says a goal "Within ~5% of current fitness ceiling" is ACHIEVABLE — so the
+ * fastest achievable target is the edge, and a goal beyond it is clamped TO
+ * the edge rather than past it back to the ceiling. `max(goal, floor)` is
+ * continuous and monotone by construction.
+ *
+ * Note what this does NOT do: it does not make the engine more aggressive than
+ * it already was. 95% of the ceiling was already the fastest thing prescribed —
+ * to every runner whose goal sat just inside the band. The fix makes that
+ * maximum UNIFORM instead of handing the hungriest runner a slower target than
+ * his slightly-less-hungry neighbour.
+ *
+ * Rounds UP to the step, never down: rounding down would prescribe a target
+ * marginally faster than the band edge and break the bound this function is.
+ */
+export function prescriptionFloorSec(boundSec: number, tolerance: number): number {
+  const raw = boundSec * (1 - tolerance);
+  const step = raw >= 3600 ? 10 : 5;
+  return Math.ceil(raw / step) * step;
+}
+
+/**
  * What the engine may prescribe as a race-relative target.
  *
  * @param goalSec        the stated goal, seconds. The ambition. Untouched.
@@ -193,7 +228,13 @@ export function achievableRaceTarget(args: {
   // deciding it knows better than a runner who chose to race conservatively.
   const optimismFraction = Math.max(0, (ceilingSec - goalSec) / ceilingSec);
 
-  if (goalSec >= ceilingSec * (1 - GOAL_OPTIMISM_TOLERANCE)) {
+  // Rule 9 · the band has ONE edge and it is the bound. A goal beyond it is
+  // clamped TO the edge, not past it back to the unreduced ceiling — see
+  // `prescriptionFloorSec`. `max` is continuous and monotone by construction,
+  // so a more ambitious goal can never buy a slower prescribed target.
+  const floorSec = prescriptionFloorSec(ceilingSec, GOAL_OPTIMISM_TOLERANCE);
+
+  if (goalSec >= floorSec) {
     return {
       targetSec: goalSec,
       paceSPerMi: Math.round(goalSec / raceDistanceMi),
@@ -206,10 +247,9 @@ export function achievableRaceTarget(args: {
     };
   }
 
-  const targetSec = roundTargetSec(ceilingSec);
   return {
-    targetSec,
-    paceSPerMi: Math.round(targetSec / raceDistanceMi),
+    targetSec: floorSec,
+    paceSPerMi: Math.round(floorSec / raceDistanceMi),
     source: 'projected_ceiling',
     goalSec,
     ceilingSec,
