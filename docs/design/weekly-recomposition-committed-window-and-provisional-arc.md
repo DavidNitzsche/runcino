@@ -1,8 +1,41 @@
-# Weekly re-composition · the committed window and the provisional arc
+# The block flexes on two axes · pace and distance, on weeks not yet run
 
-**Status:** build plan, decisions made. Nothing here ships on 2026-08-30 — the
-owner's CIM block authors at 21:00 PT and the authoring path is the one
-irreversible thing on tonight's clock.
+**Status:** build plan, decisions made. Nothing here shipped on the night it was
+written; the owner's CIM block authored at 21:00 PT and the authoring path was
+the one irreversible thing on that clock.
+
+> ## SUPERSEDED, 2026-08-30, and the correction is the owner's
+>
+> This document was first written to a brief that assumed a **shortened
+> horizon** — a committed window of two weeks with the rest of the block held as
+> a provisional arc, re-authored weekly. **That shape is withdrawn.** The owner,
+> unprompted:
+>
+> > *"I think the whole block should be built but week to week there can be
+> > shifts in pace or distance as needed. So there's still confidence there in
+> > seeing everything but adaption to the runner."*
+>
+> and, on what may move:
+>
+> > *"The long run curve is def touchable. Also medium long runs. Everything is
+> > touchable tbh."*
+>
+> What that changes, section by section:
+>
+> | Section | Status |
+> |---|---|
+> | §1 committed vs provisional | **SUPERSEDED.** Rewritten below. The full block stays authored and visible; there is no horizon to shorten and no UI split. |
+> | §2 triggers and churn | **AMENDED.** The rhythm and the dead band stand. "Phase boundaries frozen once entered" is promoted from a churn guard to a hard constraint on the whole mechanism. |
+> | §3 the downward ratchet | **STANDS, and is now more load-bearing.** A destination that erodes because a peak week rolled out of a 112-day window would betray "confidence in seeing everything" directly. |
+> | §4 what breaks | **STANDS**, minus the rows about re-authoring phases. |
+> | §5 what the runner sees | **SUPERSEDED.** Rewritten below. No committed/provisional rendering. |
+> | §6 sequencing | **STANDS, and is now the whole design** rather than its first step — widened to include long and medium-long runs. |
+> | §7 doctrine | **AMENDED.** The commitment-horizon convention is no longer needed; what needs stating is which guards are untouchable. |
+> | §8 acceptance criteria | **STANDS**, re-pointed at the narrowed shape. |
+>
+> The earlier sections are left in place below the rewrites rather than deleted,
+> because the reasoning that produced them is what the correction is measured
+> against.
 
 **Owner's framing, verbatim (2026-08-30):** *"This is a training app not a live
 in the past app. What's happening week to week is what matters. With pace but
@@ -12,6 +45,55 @@ forward and the plan has to push us more and more. That's what the app is for.
 To push."*
 
 And: *"Should the plan build a week or two at a time? Make it truly adaptive?"*
+
+---
+
+## 0a · The settled shape (2026-08-30)
+
+**The full fourteen weeks are authored on day one and stay visible.** He wants
+to see the arc — the peak, the two 20-milers, the taper date. That is not a
+concession to be traded away for adaptivity; it is half the product, and his
+word for it is *confidence*.
+
+**What is FIXED once authored, for the life of the block:**
+
+- session layout — which days carry quality, which carry the long run
+- session types and their identities
+- dates
+- phase boundaries
+- the taper
+
+That fixity is what makes the block trustworthy rather than churning. In the
+first draft it was risk #1 to be mitigated; it is now a constraint.
+
+**What FLEXES, on weeks not yet run:**
+
+- **pace** — already works, and reaches every remaining week
+  (`recomputePacesForPlan` rewrites all rows with `date_iso >= today`)
+- **distance** — the axis with no equivalent mechanism, which is what this
+  design builds
+
+**Distance includes the long run and the medium-long run.** They were fenced off
+in an earlier round on the basis of a week-5 preference about one number; that
+was a preference turned into a constraint on the mechanism, and it is withdrawn.
+His words: *"The long run curve is def touchable. Also medium long runs.
+Everything is touchable tbh."* and, earlier, *"I dont know that anything in the
+plan is precious."*
+
+### The two boundaries · "everything is touchable" is not "remove the guards"
+
+**1 · The injury guard is not touchable.** `Research/00a`'s ">110% of the longest
+run in the prior 30 days = 64% injury risk" bounds any long-run bump, and Rule
+8's corollary is why it reads the LITERAL recent number rather than the filtered
+one: a guard asking what the tissue has ABSORBED must not be handed a pre-taper
+self. That split already landed — `recentPeakLongMi`'s habit half sees his real
+18.0, its spike-anchor half keeps the literal 13.5. The flex may raise a long
+run; it may not raise it past what the legs have been prepared for.
+`MAX_LONG_BUMP_MI = 1.0` already encodes that shape.
+
+**2 · Rule 21's clause stands.** Push by spending headroom doctrine already
+allows, never by weakening a guard to manufacture it. Every ceiling in this
+engine is doctrine-cited and injury-motivated.
 
 ---
 
@@ -63,7 +145,18 @@ block down while appearing to serve the owner's instruction.
 
 ---
 
-## 1 · What is committed and what is provisional
+## 1 · What is committed and what is provisional  ·  SUPERSEDED
+
+**Withdrawn.** There is no committed window and no provisional arc: the block is
+authored whole and stays visible, and §0a lists what is fixed and what flexes.
+The `seal.ts` reasoning below is still correct about seal — a day the runner has
+run is immutable — and the "promised but not run" gap it identifies is now
+answered differently: nothing about a future day's SHAPE moves, so there is
+nothing to promise. Only its distance can change, and only before it is run.
+
+The original section follows, for the reasoning rather than the conclusion.
+
+### (superseded) What is committed and what is provisional
 
 ### The decision
 
@@ -264,30 +357,43 @@ nothing a peak already measures.
 
 ---
 
-## 5 · What the runner sees
+## 5 · What the runner sees  ·  REWRITTEN
 
-Three registers on one screen, and the boundary is drawn as **confidence, not
-uncertainty**:
+The whole block, always, with no confidence marking on the far weeks and no
+committed/provisional split. He asked to see everything; the arc IS the
+deliverable, and drawing two thirds of it as tentative would take back exactly
+what he asked for.
 
-- **This week and next** — concrete. Distances, paces, HR caps. No marker of any
-  kind; this is just the plan.
-- **The arc** — the block's shape, always visible: phases, the three races
-  placed against CIM, the two 20-milers, where the taper starts, the peak week.
-  Rendered as a curve with the committed window solid and the rest drawn in the
-  attention-amber `~` register the iPhone v5 design already reserves for a
-  modelled number.
-- **One line when it moves** — coach voice, in the log: *"Re-drew from week 6.
-  Peak moves 58 to 61 — the last four weeks earned it."* Silence when nothing
-  moved past the dead band.
+What changes is **one line when a week's numbers move**, in the coach's log:
 
-The `~` mark is load-bearing and already specified: the phone design uses it for
-"this is modelled". A provisional week is exactly that. It should never read as
-*"we do not know what you are doing in November"* — the destination is fixed and
-visible; only the route to it is being kept current.
+> Re-drew weeks 6 onward off your last four weeks. Peak moves 58 to 61 — the
+> long run goes with it.
 
----
+Silence when nothing moved past the dead band. The per-day surface already has
+the vocabulary for a changed number — `lib/coach/adaptation-info.ts` renders
+"was 5 mi" from `original_distance_mi`, and as of 2026-08-30 an upward change
+has its own kind (`upgrade`) rather than falling through to the anonymous
+`other`.
 
-## 6 · Sequencing · the smallest first step
+**The `~` modelled mark is NOT used for future weeks.** It means "this number is
+modelled rather than measured", and a prescribed distance four weeks out is not
+modelled — it is prescribed. Marking it would say the plan is unsure of itself,
+which is the opposite of what the arc is for.
+
+## 6 · Sequencing  ·  now the whole design, not its first step
+
+Step 1 below is no longer a cautious opening move that steps 2-4 build on. Under
+the settled shape **it is the design**, widened on one axis: long runs and
+medium-long runs are inside the "volume" half rather than fenced off.
+
+Does that widening mean the first commit should split? **No.** The commit is
+`lib/plan/volume-high-water.ts` — pure, uncalled, the anti-ratchet primitive —
+and it is indifferent to which rows the curve later moves. The long/MLR question
+is about what step 1's re-derivation is allowed to touch, and that is settled by
+§0a rather than by code shape. Steps 2 and 4 are withdrawn with the horizon;
+step 3 stands and is now the natural follow-on.
+
+### (superseded framing) Sequencing · the smallest first step
 
 **The smallest useful step is NOT a weekly rebuild.** It is narrower than the
 brief assumed, and it is most of the value at a fraction of the risk:
@@ -323,10 +429,11 @@ behaviour change, nothing calls it yet. It is the one piece everything else
 depends on and the one piece that is dangerous to get wrong, so it lands alone
 and gets falsified alone.
 
-### Step 2 · Wire `block-preview.ts` as the provisional arc
+### Step 2 · WITHDRAWN
 
-Read-only. The runner sees committed-versus-provisional before anything reshapes
-underneath him, which is the correct order: show the concept, then act on it.
+`block-preview.ts` was to render the committed/provisional split. There is no
+split. It remains an orphan with no caller, and wiring it is now an unrelated
+question.
 
 ### Step 3 · Session-shape re-composition inside provisional weeks
 
@@ -336,11 +443,10 @@ catalogue-chosen sessions (see the audit's finding on `generate.ts:5883` —
 progression gate is dark). Re-composing shapes before that is re-composing
 against nothing.
 
-### Step 4 · Full arc re-derivation, phases included
+### Step 4 · WITHDRAWN
 
-Last, and possibly never. Steps 1-3 may deliver enough that re-drawing phase
-boundaries is all risk and no benefit. **Decide this on evidence from steps 1-3,
-not now.**
+Full arc re-derivation with phases included is now forbidden rather than
+deferred: phases, dates, types and the taper are fixed once authored (§0a).
 
 ---
 
@@ -352,27 +458,28 @@ cycle-growth ceiling, and both are already bound in the registry
 (`RAMP.cycle-over-cycle-peak-growth`,
 `LONGRUN.wow-single-step-cap-is-the-injury-red-line`).
 
-**Neither says how far ahead a block should be planned.** The published plans the
-corpus is built from — Daniels, Pfitzinger — are fixed schedules, which is the
-same gap `DOCTRINE-BOOK-15` already recorded when the adaptive-bump policy tried
-to cite Pfitzinger and could not.
+**Neither says how far ahead a block should be planned**, and under the settled
+shape that question no longer needs answering: the block is authored whole, as
+every published plan in the corpus is.
 
-So: **the commitment horizon is a product convention, and it must be declared as
-one.** Per Rule 7 it gets a registry entry of the `CONVENTION.*` family — the
-same shape as `CONVENTION.adaptive-bump-ceiling` — asserting the property it
-actually owes (the committed window is byte-stable across re-composition) rather
-than dressing two weeks up as a physiological number. The supporting evidence is
-the owner's own: *"my buddy who has a real life running coach gets his schedule
-a couple weeks at a time."*
+What DOES need a registry entry is the pair of boundaries in §0a, because they
+are the load-bearing constraints on a mechanism whose whole job is to raise
+numbers. `LONGRUN.spike-anchor-is-the-literal-recent-max` already pins the
+injury guard's window; the flex needs a claim asserting that no re-derived
+distance may exceed it, in the `RAMP.*` family alongside
+`RAMP.cycle-over-cycle-peak-growth`.
 
-Do not invent a citation for the two weeks.
+The old draft proposed a `CONVENTION.*` entry for a two-week commitment horizon.
+**Withdrawn with the horizon.** Do not invent a citation for a number the design
+no longer contains.
 
 ---
 
 ## 8 · Acceptance criteria
 
-1. Re-composing the owner's block twice on consecutive days produces a
-   **byte-identical committed window** both times.
+1. Re-composing the owner's block twice on consecutive days leaves **layout,
+   types, dates, phases and the taper byte-identical** both times, and changes
+   no week he has already run.
 2. Across a simulated 14-week block with one deliberately terrible week in the
    middle, the block's peak weekly is **non-decreasing** at every re-composition.
 3. The same walk with a genuinely detraining runner **does** lower the peak, and
