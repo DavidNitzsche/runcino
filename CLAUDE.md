@@ -466,6 +466,47 @@ and is deliberately red while it is open.
 
 ---
 
+## Rule 13 · A fix to something the runner sees is verified by RENDERING it, with real data (locked 2026-08-30)
+
+**Not by reading the code. Not against a sample fixture. Not by asserting the
+absence of the bad thing. By looking at the actual screen, with the actual
+account's data, after the change.**
+
+This rule exists because it is the failure that has cost the most trust, and it
+has recurred:
+
+- The route line was declared fixed **twice** while still invisible. The first
+  fix blamed a camera race and verified against the app's SAMPLE fixture — which
+  skips the gradient code path entirely. The real cause was a 1.41:1 contrast
+  ratio. The owner's response: *"Very concerning fixes are not actually fixed."*
+- The trend chart was "fixed" by adding a caption. It was plotting **13 bars
+  holding one distinct value**, under a headline that was a different quantity.
+- The citation scrub had a test asserting `"Research/"` was absent from its
+  output. It passed — while turning *"Cruise intervals · Research/04 §5.3."* into
+  **"Cruise intervals.3."**. An absence-only assertion cannot see wreckage.
+
+**To comply:**
+
+1. **Render it.** Build and run the real app against real data. For iOS use the
+   simulator tools: attach, build, launch, screenshot, read the screenshot.
+2. **Never a sample fixture for a display fix.** Fixtures skip the exact code
+   paths that break. If you cannot get real data, say so plainly rather than
+   substituting a fixture and calling it verified.
+3. **Assert the shape of the result, not the absence of the defect.** "The bad
+   string is gone" is satisfied by garbage. Check what the runner actually reads.
+4. **Measure, do not eyeball, anything numeric** — contrast ratios especially.
+   A colour that "looks fine" shipped at 1.41:1.
+5. **Falsify the check.** Run it against the unfixed code and watch it fail
+   first. A test that has never failed proves nothing, and this repo has shipped
+   gates that reported clean because they scanned zero files.
+
+If a fix cannot be verified this way, report it as unverified. **An honest
+"I could not confirm this" is worth more than a confident claim that turns out
+to be wrong on the runner's phone** — that is the failure this rule exists to
+stop.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
