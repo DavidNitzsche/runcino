@@ -1843,6 +1843,24 @@ async function derivedTrainingDaysPerWeek(userId: string, todayISO: string): Pro
  * Bound by AEROBIC.general-aerobic-run-is-a-duration.
  */
 export const GENERAL_AEROBIC_MIN_MINUTES = 40;
+/**
+ * Rule 12 · the TOP of the same band. `Research/00a` §2's general-aerobic run is
+ * 40-75 minutes, and 75 is the longest a day can be and still be one of these
+ * rather than a second medium-long.
+ *
+ * Used as a CEILING on how much the medium-long promotion is required to leave
+ * its neighbours: a runner whose measured easy day is longer than doctrine's own
+ * general-aerobic maximum should not, on that basis, have the MLR suppressed
+ * entirely. Bound by AEROBIC.general-aerobic-run-is-a-duration.
+ */
+export const GENERAL_AEROBIC_MAX_MINUTES = 75;
+/**
+ * Rule 12 · `Research/00a` §1's recovery run is 20-45 minutes, and this is the
+ * top of it — the longest the day AFTER a long run should be before it stops
+ * being recovery and becomes another aerobic day.
+ * Bound by AEROBIC.general-aerobic-run-is-a-duration.
+ */
+export const RECOVERY_RUN_MAX_MINUTES = 45;
 
 /** RULE8-1 · how many representative days a habit reader wants. Same length as
  *  `QUALITY_LOOKBACK_DAYS`, so every habit question is asked over the same span
@@ -6178,9 +6196,43 @@ function layoutWeek({
   const easyCandidates = availableDows
     ? emptySlots.filter((e) => availableDows.has(e.dow))
     : emptySlots;
-  const easyCount = trainingDaysPerWeek != null
+  const easyCountRaw = trainingDaysPerWeek != null
     ? Math.max(0, Math.min(easyCandidates.length, trainingDaysPerWeek - runningPlaced))
     : easyCandidates.length;
+  // ── RULE12-COUNT-1 (2026-08-30) · FEWER HONEST DAYS, NOT MORE JUNK ONES ────
+  //
+  // Rule 12: "If quality will not fit once easy running is honest, the week is
+  // over-prescribed — cut quality, not the aerobic base." When quality and the
+  // long are already doctrine-sized and the remainder still will not give each
+  // easy day `Research/00a` §2's forty minutes, the last honest lever is the
+  // NUMBER of easy days. A stated frequency is a CEILING on how often the
+  // runner is willing to run, never a quota the week must fill — so spending
+  // the same miles over fewer, real runs is strictly better than spreading
+  // them into four 29-minute jogs.
+  //
+  // OBSERVED: his week of 2026-09-14 — a cutback in the 10K's own post-race
+  // window — held a 12-mile long, a 7-mile hill session and FOUR easy days
+  // sharing 14 miles: 3, 5, 3, 3. Three miles is the number he called
+  // "incredibly short", and `Research/00b` wants 2-3 zero/very-light days after
+  // a 10K anyway, so the extra rest day this produces is the doctrine-correct
+  // shape rather than a concession.
+  //
+  // NOT IN BASE OR TAPER. A taper cuts volume on purpose and short easy days
+  // are what that looks like — `Research/00a` §1 prices easy/recovery at 20-75
+  // min, and his taper 3.5s are ~32 min, a legitimate run. BASE steps down
+  // deliberately too. Both keep every day they are given; this is explicit so
+  // the next reader does not "fix" them.
+  //
+  // Volume-neutral by construction: `weeklyMi` is untouched, the same miles are
+  // spread over fewer days, so no ramp ceiling can be breached by it. Inert
+  // wherever no easy pace resolves, which is every caller that supplies none.
+  const genAerobicFloorMi = easyPaceSecPerMi && easyPaceSecPerMi > 0
+    ? (GENERAL_AEROBIC_MIN_MINUTES * 60) / easyPaceSecPerMi
+    : 0;
+  let easyCount = easyCountRaw;
+  if (genAerobicFloorMi > 0 && phase !== 'BASE' && phase !== 'TAPER') {
+    while (easyCount > 1 && remainingMi / easyCount < genAerobicFloorMi) easyCount--;
+  }
   // Place the easy days for EVEN distribution across the week (audit RP-1/RP-2):
   // maximize the minimum circular gap between run days, tie-break by MINIMIZING the
   // maximum gap (so the runs don't collapse into one contiguous block with a long
@@ -6422,22 +6474,25 @@ function layoutWeek({
       // which is the honest answer: the easy days ARE the week's aerobic work
       // at that volume, and Research/22 lists the MLR in the peak-week shape,
       // not in week one.
-      // What the MLR must LEAVE each remaining easy day. The runner's own
-      // demonstrated easy distance, but never more than an even split of the
-      // pool — demanding more than the week can give every easy day would
-      // suppress the MLR on exactly the big weeks Research/22 puts it in — and
-      // never less than the flat math floor.
-      // Priced in MINUTES at the runner's own easy pace, per Rule 12: an easy
-      // day is a DURATION, and Research/00a §2's general-aerobic run is 40-75
-      // minutes. The MLR may take the miles above that, never the ones under
-      // it. Capped by the runner's demonstrated easy day too, since a runner
-      // whose easy day is genuinely shorter than 40 minutes should not have the
-      // MLR blocked on his behalf. Falls back to the flat math floor when no
-      // easy pace is resolvable, which is the pre-Rule-12 behaviour.
-      const genAerobicMi = easyPaceSecPerMi && easyPaceSecPerMi > 0
-        ? (GENERAL_AEROBIC_MIN_MINUTES * 60) / easyPaceSecPerMi
-        : mathFloor;
-      const mlrLeaveMi = Math.max(mathFloor, Math.min(effectiveFloor, genAerobicMi));
+      // WHAT THE MLR MUST LEAVE EACH REMAINING EASY DAY.
+      //
+      // The runner's own demonstrated easy distance (`effectiveFloor`, the
+      // Rule-8-clean `easyMileFloor` floored at `mathFloor`) — the number Rule
+      // 12 says is halved when this goes wrong.
+      //
+      // Bounded ABOVE by `Research/00a` §2's own general-aerobic maximum, 75
+      // minutes priced at the runner's easy pace. Without that bound a runner
+      // whose measured easy day is longer than any general-aerobic run doctrine
+      // describes would suppress the MLR entirely on his own behalf — which is
+      // how the first cut of this broke `_seglong_authoring`, whose advanced
+      // marathoner has a 12-mile "easy day". Past 75 minutes a day is not an
+      // easy day the MLR is displacing, it is a second medium-long.
+      //
+      // Bounded BELOW by `mathFloor`, so a week can never collapse entirely.
+      const genAerobicMaxMi = easyPaceSecPerMi && easyPaceSecPerMi > 0
+        ? (GENERAL_AEROBIC_MAX_MINUTES * 60) / easyPaceSecPerMi
+        : Infinity;
+      const mlrLeaveMi = Math.max(mathFloor, Math.min(effectiveFloor, genAerobicMaxMi));
       const affordableMi = easyPool - mlrLeaveMi * (easyDows.length - 1);
       const mlrMi = Math.floor(Math.min(rampedMi, shareMi, belowLongMi, affordableMi) * 2) / 2;
       if (mlrMi >= MLR_MIN_MI && mlrMi > slots[easyDows[0]]!.distanceMi) {
@@ -6514,6 +6569,63 @@ function layoutWeek({
             ? `Settle in, then run ${mlrTMi}mi at threshold somewhere in the middle and ease back to steady after — embedded, no stop either side. It should not leave you needing a recovery day.`
             : 'Let the last few miles drift up if they want to.')
           + (strides ? ` Finish with ${strideReps} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.` : '');
+      }
+    }
+  }
+
+  // ── RULE12-VARY-1 (2026-08-30) · THE DAY AFTER THE LONG RUN IS A RECOVERY DAY
+  //
+  // Rule 12's second clause: "Vary them: a week has a short recovery day after
+  // the long run and longer aerobic days elsewhere. Four identical easy days is
+  // a template, not a plan." The engine sized every easy day in a week to the
+  // same number because they were all the same division of one remainder.
+  //
+  // `Research/00a` gives them different jobs and different lengths. §1 recovery
+  // run: "| Duration | 20-45 min |", whose whole purpose is the day after hard
+  // work. §2 general aerobic: "| Duration | 40-75 min |", "bulk of weekly Z1".
+  // So the day following the long run is capped into §1's band and the miles it
+  // gives up go to the §2 days, which is the shape both sections describe.
+  //
+  // POOL-CONSERVING, exactly as the medium-long promotion above is: the same
+  // miles, distributed by job rather than by division, so `weeklyMi` is
+  // untouched and no ramp ceiling can move.
+  //
+  // NOT IN BASE OR TAPER, for the same reason the count rule above skips them —
+  // a taper's easy days are already short by design and are legitimate §1 runs.
+  // Inert when no easy pace resolves, or when the week has fewer than two easy
+  // days to vary between.
+  if (easyPaceSecPerMi && easyPaceSecPerMi > 0 && phase !== 'BASE' && phase !== 'TAPER') {
+    const trueEasy: number[] = [];
+    for (let d = 0; d < 7; d++) {
+      const s = slots[d];
+      if (s && s.type === 'easy' && s.distanceMi > 0
+          && !(s.subLabel ?? '').startsWith('MEDIUM-LONG')) trueEasy.push(d);
+    }
+    const afterLongDow = (longRunDow + 1) % 7;
+    if (trueEasy.length >= 2 && trueEasy.includes(afterLongDow)) {
+      const recoveryCapMi = (RECOVERY_RUN_MAX_MINUTES * 60) / easyPaceSecPerMi;
+      const current = slots[afterLongDow]!.distanceMi;
+      const recoveryMi = Math.max(mathFloor, Math.floor(Math.min(current, recoveryCapMi) * 2) / 2);
+      const surplus = Math.round((current - recoveryMi) * 2) / 2;
+      if (surplus > 0) {
+        const others = trueEasy.filter((d) => d !== afterLongDow);
+        // §2's own ceiling · a day the surplus pushes past 75 minutes has
+        // stopped being a general-aerobic run, so it does not take more.
+        const aerobicCapMi = (GENERAL_AEROBIC_MAX_MINUTES * 60) / easyPaceSecPerMi;
+        let left = surplus;
+        const per = Math.floor((surplus / others.length) * 2) / 2;
+        for (let i = 0; i < others.length && left > 0; i++) {
+          const d = others[i];
+          const want = i === others.length - 1 ? left : per;
+          const room = Math.max(0, Math.floor((aerobicCapMi - slots[d]!.distanceMi) * 2) / 2);
+          const give = Math.min(want, room);
+          if (give <= 0) continue;
+          slots[d]!.distanceMi = Math.round((slots[d]!.distanceMi + give) * 10) / 10;
+          left = Math.round((left - give) * 10) / 10;
+        }
+        // Only shorten the recovery day by what the others actually absorbed,
+        // so the week's mileage is conserved to the half mile either way.
+        slots[afterLongDow]!.distanceMi = Math.round((current - (surplus - left)) * 10) / 10;
       }
     }
   }
