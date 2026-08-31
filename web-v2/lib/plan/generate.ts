@@ -1071,12 +1071,46 @@ export const RESTORE_STEP_FRACTION = RESUME_SEQUENCE[1] - RESUME_SEQUENCE[0];
  * (CURRENTVOL-1). Bounded to three steps by construction, since `startMi` is at
  * least 70% of sustained and each step is 15% of it.
  */
-export function restoreSteps(startMi: number, sustainedMi: number): number[] {
+export function restoreSteps(
+  startMi: number,
+  sustainedMi: number,
+  /**
+   * POSTRACE-RESTORE-1 (2026-08-30) · has the runner ALREADY spent a week at
+   * `startMi`? When true the ladder opens on the first step UP, because the
+   * re-entry week doctrine describes has already happened.
+   *
+   * ── WHICH DOCTRINE GOVERNS, AND WHY IT IS NOT §14 ─────────────────────────
+   *
+   * `Research/22` §14's ladder is titled "Return from Short Layoff (1-2 weeks
+   * OFF)" and its row keys on "8-14 days" — DAYS OFF. Its first rung, 70% of
+   * pre-layoff volume, is the week a runner spends coming BACK from not
+   * running. A runner who never stopped has not got that week ahead of them;
+   * they have just finished it.
+   *
+   * The owner, 2026-08-30, is the case: `interruptionWeeks` is 0, he ran every
+   * week of his post-half window, and the seven days ending that morning held
+   * 30.7 miles WITH a 13.5-mile long run in them. Opening his marathon build at
+   * ~70% of sustained would have prescribed the week he had just run — the
+   * build's first week as a copy of the recovery block it replaces, which is a
+   * recovery that never ends.
+   *
+   * `Research/00b` is the protocol that actually governs a runner coming off a
+   * race, and it restores far FASTER than §14, as a percentage of PEAK on a
+   * fixed schedule: "| Week 2 | 30-40% |", "| Week 3 | 50-60% |", "| Week 4 |
+   * 70-80% |", full by week 5-6. Those are week-over-week steps of roughly
+   * +40% to +100% — so one restoration step for a runner who is already past
+   * the window (a half's is 10-14 days, and he is at day 14) is a conservative
+   * reading of it, not an aggressive one.
+   */
+  entryWeekAlreadySpent = false,
+): number[] {
   const start = Math.max(0, startMi || 0);
   if (!(sustainedMi > 0) || !(start < sustainedMi)) return [];
   const stepMi = sustainedMi * RESTORE_STEP_FRACTION;
   if (!(stepMi > 0)) return [];
-  const steps: number[] = [Math.round(start * 10) / 10];
+  // The re-entry rung is `start` itself. It is spent only by a runner who has
+  // NOT already been running at it.
+  const steps: number[] = entryWeekAlreadySpent ? [] : [Math.round(start * 10) / 10];
   let v = start;
   // The bound is arithmetic, not a policy cap: start ≥ 0.70 × sustained and a
   // step is 0.15 × sustained, so this can only ever run twice. The guard is
@@ -1126,6 +1160,14 @@ export interface RampBaseEvidence {
    * `lifted`, is the question the three-week return ladder answers.
    */
   returning: boolean;
+  /**
+   * POSTRACE-RESTORE-1 · true when the base is the volume the runner is
+   * DEMONSTRABLY holding (`heldMi` is the binding term) rather than a re-entry
+   * level being prescribed to them. A runner who has already been running at
+   * the base has spent the ladder's first rung; one who is coming back from not
+   * running has not. See `restoreSteps`.
+   */
+  heldByCurrent: boolean;
 }
 
 /**
@@ -1155,7 +1197,7 @@ export function resolveRampBase(opts: {
   const base0: RampBaseEvidence = {
     baseMi: mean, meanMi: mean, sustainedMi: 0, peakMi,
     interruptionWeeks: 0, allowedInterruptionWeeks: opts.allowedInterruptionWeeks, lifted: false,
-    heldMi: 0, returning: false,
+    heldMi: 0, returning: false, heldByCurrent: false,
   };
   if (series.length < RAMP_BASE_SUSTAINED_RANK) return base0;
   const sorted = [...series].sort((a, b) => b - a);
@@ -1219,6 +1261,9 @@ export function resolveRampBase(opts: {
     // already spent — the layoff branch returned above, with `returning` false,
     // so the comeback protocols keep owning that ramp untouched.
     returning: evidence.sustainedMi > 0 && baseMi < evidence.sustainedMi,
+    // POSTRACE-RESTORE-1 · the base IS what he is running, not a level being
+    // prescribed to him — so the ladder's re-entry rung has already been spent.
+    heldByCurrent: heldMi >= baseMi - 1e-9,
   };
 }
 
@@ -1535,6 +1580,89 @@ async function recentQualityPerWeek(userId: string): Promise<number | null> {
   // needs. `densityForWeek` rounds when it builds each week's count; this
   // reader's job is to report the habit, not to pre-round it into a category.
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * DERIVEDFREQ-1 (2026-08-30) · how many days a week this runner actually runs,
+ * when their profile does not say.
+ *
+ * ── THE DEFECT ──────────────────────────────────────────────────────────────
+ *
+ * `profile.weekly_frequency` is NULL for 8 of the 16 profiles in production —
+ * every Strava-only signup and every profile predating the field, the owner's
+ * among them. The comment at the read site calls that "legacy fill-every-slot"
+ * and treats it as a cosmetic default. It is not. `trainingDaysPerWeek != null`
+ * is the gate on THIRTEEN separate mechanisms in this file, and a NULL switches
+ * every one of them off, including the whole cluster written to stop the
+ * junk-run pattern:
+ *
+ *   · the RP-FREQ-FLOOR long cap, which reserves 2 mi for each easy day
+ *   · `qualityFloorFreq`, the 2 mi minimum on a quality session (0 when null)
+ *   · `qualityWeekRoomMi` / `doctrinalDayCeiling` — no per-day quality ceiling
+ *   · `coherentRecentLong`'s `weeklyMi / trainingDaysPerWeek` floor
+ *   · `easyCount`'s even-distribution placement
+ *
+ * The day COUNT still came out right for the owner by accident — with no cap,
+ * every non-rest slot fills, which happens to be six — so nothing ever looked
+ * wrong. A NULL must not disable safety machinery, and the fix has to be in the
+ * engine rather than in one runner's row: a data write would fix one account
+ * and leave every other NULL profile exactly as it is.
+ *
+ * ── THE STATISTIC, AND WHY THIS ONE ─────────────────────────────────────────
+ *
+ * The 3rd-highest distinct-run-day count over the last `RAMP_BASE_LOOKBACK_
+ * WEEKS` 7-day blocks — deliberately the same rank and the same window
+ * `resolveRampBase` already spends on volume, for the same stated reason: it is
+ * a level the runner reached REPEATEDLY, so no single (or double) big week can
+ * set it, and no single interrupted week can drag it down.
+ *
+ * That last part is what rules out the median. The owner's sixteen blocks are
+ * 5,4,3,6,1,5,5,6,0,3,6,5,6,5,6,5 — a median of 5, because the window contains
+ * his half marathon, its taper and Research/00b's mandated recovery. Reading 5
+ * there would CAP a six-day runner at five days on the strength of a window the
+ * engine itself depressed: the same error `RAMPBASE-1` names for volume. Rank-3
+ * gives 6, which is what he runs.
+ *
+ * It is a CEILING on running days, so erring high is the permissive direction —
+ * toward today's fill-every-slot behaviour — which is what keeps this from
+ * taking days away from anyone.
+ *
+ * ── "WE DO NOT KNOW" IS NOT "WE MEASURED ZERO" ──────────────────────────────
+ *
+ * `null` is returned only when the read failed, or when rank-3 is 0 — a runner
+ * who ran in fewer than three of the last sixteen weeks, from whom no frequency
+ * can honestly be derived. Those keep the legacy permissive path. A runner we
+ * CAN measure gets their measured number, however small.
+ */
+async function derivedTrainingDaysPerWeek(userId: string, todayISO: string): Promise<number | null> {
+  const { isoDaysBefore } = await import('@/lib/runs/volume');
+  const WINDOW_DAYS = RAMP_BASE_LOOKBACK_WEEKS * 7;
+  const r = await rowOrNull<{ days: string | null }>(
+    'plan/generate · derivedTrainingDaysPerWeek',
+    pool.query<{ days: string | null }>(
+      `SELECT string_agg(DISTINCT (${runDaySql('r')})::date::text, ',') AS days
+         FROM runs r
+        WHERE r.user_uuid = $1::uuid
+          AND NOT (r.data ? 'mergedIntoId')
+          AND (${runDaySql('r')})::date BETWEEN $2::date AND $3::date`,
+      [userId, isoDaysBefore(todayISO, WINDOW_DAYS), todayISO],
+    ),
+  );
+  // A read we could not make is not a runner with no habit. Legacy path.
+  if (r === null || r === undefined) return null;
+  const ran = new Set((r.days ?? '').split(',').filter(Boolean));
+  if (ran.size === 0) return null;
+  const perBlock: number[] = [];
+  for (let b = 0; b < RAMP_BASE_LOOKBACK_WEEKS; b++) {
+    let n = 0;
+    for (let k = 0; k < 7; k++) if (ran.has(isoDaysBefore(todayISO, b * 7 + k))) n++;
+    perBlock.push(n);
+  }
+  const sorted = perBlock.sort((a, b) => b - a);
+  const rank3 = sorted[RAMP_BASE_SUSTAINED_RANK - 1] ?? 0;
+  // Fewer than three weeks with any running in them · nothing to derive from.
+  if (!(rank3 > 0)) return null;
+  return Math.min(7, rank3);
 }
 
 async function easyDayMedianMi(userId: string): Promise<number> {
@@ -2633,7 +2761,7 @@ function volumeCurve(
   // See `restoreSteps`. `returning` is false on the layoff path, so a genuine
   // layoff still belongs to the comeback protocols.
   const resumeSteps: number[] = (evidence?.returning && evidence.sustainedMi > 0)
-    ? restoreSteps(start, evidence.sustainedMi).map((v) => Math.min(peakTarget, v))
+    ? restoreSteps(start, evidence.sustainedMi, evidence.heldByCurrent).map((v) => Math.min(peakTarget, v))
     : [];
   const resumeWeeks = Math.min(resumeSteps.length, Math.max(0, climbWeeks - 1));
   // The climbing-week index whose value IS `rampFrom` — week 0 with no resume,
@@ -12408,10 +12536,15 @@ async function loadGeneratorInputs(
   //   null → David / Strava-only / pre-frequency profiles: legacy fill-
   //          every-slot + prefs' 2 quality days, byte-for-byte unchanged.
   const rawFreq = freqRow?.f != null ? Number(freqRow.f) : null;
-  const trainingDaysPerWeek = rawFreq == null ? null
+  // DERIVEDFREQ-1 (2026-08-30) · a NULL profile field no longer switches off
+  // thirteen mechanisms. When the runner has not STATED a frequency we measure
+  // one from their own running; only a runner we cannot measure keeps the
+  // legacy fill-every-slot path. See `derivedTrainingDaysPerWeek`.
+  const statedFreq = rawFreq == null ? null
     : rawFreq === 0 ? 3
     : (rawFreq >= 1 && rawFreq <= 7) ? rawFreq
     : null;
+  const trainingDaysPerWeek = statedFreq ?? await derivedTrainingDaysPerWeek(userId, todayISO);
   // Quality-day count scaled to the running-day budget so we never prescribe
   // more hard days than the runner has sessions:
   //   1 day  → 0 quality (the single run is just easy/long)

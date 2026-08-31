@@ -82,9 +82,22 @@ function composeAt(recentMi: number) {
 }
 
 describe('CONTINUOUS-RESTORE-1 · restoreSteps is doctrine, continuously', () => {
-  it('a runner AT 70% of sustained gets Research/22 §14 exactly', () => {
-    expect(restoreSteps(RESUME_LEVEL, SUSTAINED))
+  it('a runner AT 70% of sustained, coming back from NOT running, gets Research/22 §14 exactly', () => {
+    expect(restoreSteps(RESUME_LEVEL, SUSTAINED, false))
       .toEqual(RESUME_SEQUENCE.map((f) => Math.round(SUSTAINED * f * 10) / 10));
+  });
+
+  it('POSTRACE-RESTORE-1 · a runner who never stopped does not re-run the week he just ran', () => {
+    // §14's first rung is the week a runner spends coming BACK from not
+    // running. Someone who ran through their post-race window has just spent
+    // it, and Research/00b — the protocol that actually governs a post-race
+    // runner — restores far faster (30-40% -> 50-60% -> 70-80% of peak).
+    const spent = restoreSteps(RESUME_LEVEL, SUSTAINED, true);
+    const fresh = restoreSteps(RESUME_LEVEL, SUSTAINED, false);
+    expect(spent).toEqual(fresh.slice(1));
+    expect(spent[0]).toBeGreaterThan(RESUME_LEVEL);
+    // Both still arrive at the sustained level.
+    expect(spent[spent.length - 1]).toBe(SUSTAINED);
   });
 
   it('the step rate is read out of the sequence, not hand-copied', () => {
@@ -93,23 +106,25 @@ describe('CONTINUOUS-RESTORE-1 · restoreSteps is doctrine, continuously', () =>
   });
 
   it('a runner already at their sustained level has nothing to restore', () => {
-    expect(restoreSteps(SUSTAINED, SUSTAINED)).toEqual([]);
-    expect(restoreSteps(SUSTAINED + 5, SUSTAINED)).toEqual([]);
+    expect(restoreSteps(SUSTAINED, SUSTAINED, false)).toEqual([]);
+    expect(restoreSteps(SUSTAINED + 5, SUSTAINED, true)).toEqual([]);
   });
 
   it('a runner at 99% of sustained gets a one-week nudge, not a special case', () => {
-    const steps = restoreSteps(SUSTAINED * 0.99, SUSTAINED);
+    const steps = restoreSteps(SUSTAINED * 0.99, SUSTAINED, false);
     expect(steps.length).toBe(2);
     expect(steps[steps.length - 1]).toBe(SUSTAINED);
   });
 
   it('every ladder ends at the sustained level and never steps down', () => {
-    for (let pct = 0.70; pct <= 1.0; pct += 0.01) {
-      const steps = restoreSteps(SUSTAINED * pct, SUSTAINED);
-      if (steps.length === 0) continue;
-      expect(steps[steps.length - 1]).toBe(SUSTAINED);
-      for (let i = 1; i < steps.length; i++) {
-        expect(steps[i], `pct=${pct.toFixed(2)}`).toBeGreaterThan(steps[i - 1]);
+    for (const spent of [false, true]) {
+      for (let pct = 0.70; pct <= 1.0; pct += 0.01) {
+        const steps = restoreSteps(SUSTAINED * pct, SUSTAINED, spent);
+        if (steps.length === 0) continue;
+        expect(steps[steps.length - 1], `pct=${pct.toFixed(2)} spent=${spent}`).toBe(SUSTAINED);
+        for (let i = 1; i < steps.length; i++) {
+          expect(steps[i], `pct=${pct.toFixed(2)} spent=${spent}`).toBeGreaterThan(steps[i - 1]);
+        }
       }
     }
   });
@@ -130,7 +145,10 @@ describe('CONTINUOUS-RESTORE-1 · the base never sits below demonstrated volume'
     expect(e.heldMi).toBe(34.7);
     expect(e.baseMi).toBe(34.7);           // … and it no longer decides anything
     expect(e.returning).toBe(true);
-    expect(restoreSteps(e.baseMi, e.sustainedMi)).toEqual([34.7, 41.5, 45]);
+    // He ran that 34.7 · the re-entry rung is behind him, so the build's first
+    // week steps UP rather than repeating the recovery week it replaces.
+    expect(e.heldByCurrent).toBe(true);
+    expect(restoreSteps(e.baseMi, e.sustainedMi, e.heldByCurrent)).toEqual([41.5, 45]);
   });
 
   it('one freak week cannot set the base · bounded by the sustained level', () => {
@@ -165,12 +183,24 @@ describe('CONTINUOUS-RESTORE-1 · the base never sits below demonstrated volume'
 
 describe('CONTINUOUS-RESTORE-1 · no step change across the 70% boundary', () => {
   /**
-   * 0.1 mi of input either side of the old cliff. `volumeCurve` rounds weeks to
-   * whole miles, so one mile of movement per step is rounding; the defect this
-   * catches moved week 1 by about six.
+   * 0.1 mi of input either side of the old cliff.
+   *
+   * THE BOUND. `volumeCurve` rounds weeks to whole miles, so a mile of movement
+   * is rounding. The ceiling is ONE restoration step, because that is the
+   * largest jump the ladder can legitimately produce: crossing the level at
+   * which the runner has demonstrably already spent the re-entry week
+   * (POSTRACE-RESTORE-1) drops the ladder's leading rung, which advances each
+   * later week by exactly one step. That boundary is a real change in the
+   * runner's situation — has he been running at this volume or not — and both
+   * sides still arrive at the same sustained level, one week apart.
+   *
+   * What it still catches is the defect it was written for: the old
+   * `lifted` switch turned the entire ladder ON and OFF, so week 2 fell from
+   * 38 to 36 and week 3 from 45 to 41 as the runner got FITTER. Monotonicity
+   * below is the assertion that names that directly.
    */
   const STEP_MI = 0.1;
-  const MAX_JUMP_MI = 1.5;
+  const MAX_JUMP_MI = SUSTAINED * RESTORE_STEP_FRACTION + 1.0;
   const LO = RESUME_LEVEL - 2.0;   // 29.5
   const HI = RESUME_LEVEL + 2.0;   // 33.5
 

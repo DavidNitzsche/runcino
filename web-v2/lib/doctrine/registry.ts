@@ -488,7 +488,7 @@ const CATS: DistCategory[] = ['5k', '10k', 'hm', 'm', 'ultra'];
 const EVIDENCE_ZERO: RampBaseEvidence = {
   baseMi: 0, meanMi: 0, sustainedMi: 0, peakMi: 0,
   interruptionWeeks: 0, allowedInterruptionWeeks: 0, lifted: false,
-  heldMi: 0, returning: false,
+  heldMi: 0, returning: false, heldByCurrent: false,
 };
 const TIERS: GoalTier[] = ['elite', 'advanced', 'intermediate', 'developing'];
 
@@ -2308,6 +2308,72 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           '`rampBaseMi` is conditional on `lifted` again · when false the curve silently falls ' +
             'back to the 28-day mean and RAMPBASE-1 disengages for the runners nearest the threshold',
+        );
+      }
+    },
+  },
+  {
+    id: 'RAMP.post-race-return-is-not-a-layoff-return',
+    binds: [
+      'lib/plan/generate.ts#restoreSteps',
+      'lib/plan/generate.ts#RampBaseEvidence.heldByCurrent',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '### Marathon Recovery (4-week reverse taper)',
+    claim:
+      'Research/22 §14\'s ladder is titled "Return from Short Layoff (1-2 weeks OFF)" and keys on ' +
+      'DAYS OFF; its first rung, 70% of pre-layoff volume, is the week a runner spends coming ' +
+      'back from not running. A runner who ran THROUGH a post-race window has just spent that ' +
+      'week, and the protocol that governs them is this reverse taper, which restores as a ' +
+      'percentage of PEAK on a fixed schedule and far faster than §14 does. So a build opening ' +
+      'for a runner who never stopped must STEP UP from the volume they are holding, not repeat ' +
+      'it — otherwise the build\'s first week is a copy of the recovery block it replaces and ' +
+      'the recovery never ends.',
+    check({ cite }) {
+      const t = cite.table();
+      // Doctrine's own post-race week-over-week steps, read out of the table.
+      const pctOf = (row: string): number => {
+        const [lo] = parseBand(t.cell(row, 'Volume vs. peak'));
+        return lo;
+      };
+      const w2 = pctOf('Week 2');
+      const w3 = pctOf('Week 3');
+      const w4 = pctOf('Week 4');
+      if (!(w2 > 0 && w3 > w2 && w4 > w3)) {
+        throw new Error(
+          `the reverse taper no longer climbs (${w2} -> ${w3} -> ${w4}) · this claim reads its ` +
+            'week-over-week steps to establish that post-race restoration outpaces §14',
+        );
+      }
+      // The point being claimed: post-race restoration steps are LARGER than
+      // the short-layoff ladder's 15%-of-sustained. If that ever stops being
+      // true, stepping up rather than repeating needs re-arguing.
+      const postRaceStep = (w3 - w2) / 100;
+      if (!(postRaceStep > RESTORE_STEP_FRACTION)) {
+        throw new Error(
+          `Research/00b's week 2->3 step is ${(postRaceStep * 100).toFixed(0)}% of peak, no larger ` +
+            `than the short-layoff rate of ${(RESTORE_STEP_FRACTION * 100).toFixed(0)}% · the ` +
+            'reasoning that a post-race runner may step up rather than repeat no longer holds',
+        );
+      }
+      // The behaviour itself: spending the entry week drops exactly the leading
+      // rung, and both ladders still arrive at the sustained level.
+      const sustained = 45;
+      const fresh = restoreSteps(sustained * RAMP_BASE_RESUME_FRACTION, sustained, false);
+      const spent = restoreSteps(sustained * RAMP_BASE_RESUME_FRACTION, sustained, true);
+      if (JSON.stringify(spent) !== JSON.stringify(fresh.slice(1))) {
+        throw new Error(
+          `a runner who already spent the re-entry week gets ${spent.join(' · ')}, which is not ` +
+            `${fresh.join(' · ')} minus its first rung`,
+        );
+      }
+      if (spent.length > 0 && spent[spent.length - 1] !== sustained) {
+        throw new Error('a post-race restoration no longer arrives at the sustained level');
+      }
+      if (!/heldMi >= baseMi - 1e-9/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
+        throw new Error(
+          '`heldByCurrent` is no longer derived from the demonstrated volume setting the base · ' +
+            'without it the engine cannot tell a runner who ran through from one coming back',
         );
       }
     },
