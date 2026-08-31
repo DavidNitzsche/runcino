@@ -327,13 +327,46 @@ detrained runner are OPPOSITE FACTS. Code that collapses them into "zero" has
 lost the only thing that mattered. Ask *why* the window is low before spending
 the number.
 
+### The corollary · which readers this does NOT apply to
+
+**Filter a reader that asks what the runner CAN DO. Do not filter one that asks
+what the runner HAS RECENTLY ABSORBED.**
+
+Rule 8 says a taper is never his NORMAL. It does not say the taper did not
+happen. Habit and capability are Rule 8 questions; tissue load and injury
+exposure are not. Over-applying this rule makes a safety guard MORE permissive
+in exactly the situation it exists for — a ramp check measured against a
+pre-taper self waves through a jump the legs have not been prepared for.
+
+Two readers hit this fork independently on the night the rule was written, and
+both split the same way:
+
+- **`recentPeakLongMi`** was two questions under one name. Its HABIT half is now
+  filtered (18.0 mi, his real longest). Its SPIKE-ANCHOR half keeps the literal
+  prior-30-day max (13.5 mi), because `Research/00a`'s ">110% of the longest run
+  in the prior 30 days = 64% injury risk" writes its own window into the citation.
+- **`trailingAvgWeeklyMi`** feeding the validator's ramp check stays unfiltered
+  for the same reason: it is an injury guard, and what the connective tissue will
+  experience next week is a function of what it actually did, not of what this
+  runner normally does.
+
+When a reader turns out to be answering both questions, **split it** rather than
+picking one. One name for two quantities is a Rule 16 violation as well.
+
 ### Where this is enforced
 
-`docs/PRODUCT_DECISIONS.md` records the calls; the readers themselves live in
-`lib/plan/generate.ts` and `lib/runs/volume.ts`. When you add a reader that
+`lib/training/normal-window.ts` is the shared filter and the only definition —
+an in-memory lane, a `NORMAL_TRAINING_DAY_SQL` lane modelled on
+`CANONICAL_ROW_SQL`, and a `NormalReading<T>` refusal contract whose refusal
+branch carries **no `value` field**, so `reading.value` does not compile until
+the caller branches. That makes Rule 11's zero-versus-refusal distinction a type
+error rather than a discipline, which is the strongest enforcement available and
+the pattern to copy. `scripts/check-normal-window.sh` is its gate, in `prebuild`.
+
+`docs/PRODUCT_DECISIONS.md` records the calls. When you add a reader that
 measures habit — frequency, typical distance, typical intensity, typical
-anything — it is on you to apply the filter and to say in the code comment which
-window you excluded and why.
+anything — apply the filter, and say in the code comment which window you
+excluded and why. If you exempt it, say which side of the corollary it falls on.
 
 **The filter, and the gate (2026-08-30).** There is now ONE definition, so no
 reader has to get this right on its own:
