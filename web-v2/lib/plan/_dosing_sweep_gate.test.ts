@@ -36,7 +36,7 @@ import { describe, it, expect } from 'vitest';
 import { buildSimPlan } from './sim-inputs';
 import { validateComposedPlan, PlanValidationError } from './validate';
 import { planDosingFindings, type DosingFinding } from './dosing';
-import { matrix, arcStr, type Arc } from './sim-matrix';
+import { matrix, arcStr, simInputsForArc, type Arc } from './sim-matrix';
 
 const REPORT = !!process.env.FAFF_DOSING_PROBE;
 
@@ -44,12 +44,18 @@ const REPORT = !!process.env.FAFF_DOSING_PROBE;
 const ROUNDING_MI = 0.5;
 
 /** Exactly the inputs the conformance sweep hands `buildSimPlan`, so the two
- *  gates measure the same plans byte-for-byte. */
+ *  gates measure the same plans byte-for-byte.
+ *
+ *  HIST-1 (2026-08-30) · that promise used to be kept by two copies of one
+ *  literal. Both hardcoded `lastRaceFinishedDaysAgo: 0` and `lastRaceDistance:
+ *  null` AFTER the `...a` spread, so the arcs that now carry a race would have
+ *  been silently stripped of it here AND in the sweep — the two gates would
+ *  have gone on agreeing with each other while both graded a runner the matrix
+ *  no longer describes. `simInputsForArc` is the one definition (Rule 16), and
+ *  it is byte-identical to this literal for every history-free arc (pinned by
+ *  an assertion in the sweep). */
 function build(a: Arc) {
-  return buildSimPlan({
-    ...a, startDateISO: '2026-07-06', raceDateISO: a.raceDateISO ?? '', lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
-    raceHistory: [], longRunDay: 'sun', availableDays: a.availableDays ?? [],
-  } as never);
+  return buildSimPlan(simInputsForArc(a) as never);
 }
 
 describe('Daniels dosing caps · full-matrix gate', () => {

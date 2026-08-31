@@ -403,7 +403,15 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     const input: ComposePlanInput = {
       raceDistanceMi, goalSec, goalPaceSec, raceDateISO, startMondayISO, level,
       recentWeeklyMi, easyDayMedianMi, recentLongMi,
-      recentQualityDistanceMi: undefined, recentQualityPerWeek: undefined,
+      // HIST-1 (2026-08-30) · was `undefined, undefined` unconditionally, which
+      // is why Rule 5's quality-density ramp and the quality-distance floor
+      // could not be reached by ANY harness in this repo. Absent still reaches
+      // the composer as `undefined` — `?? undefined` rather than `?? 0`,
+      // because Rule 11: a measured zero and a missing read are different
+      // facts, and `composePlan` reads a real 0 as "no quality habit" and an
+      // `undefined` as "cold start, use the runner's prefs".
+      recentQualityDistanceMi: sim.recentQualityDistanceMi ?? undefined,
+      recentQualityPerWeek: sim.recentQualityPerWeek ?? undefined,
       bestRecentVdot, bestRecentVdotSelfReported, tsbAtStart: undefined, horizonRaces: undefined,
       isMidBlock: sim.isMidBlock ?? false,
       longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,

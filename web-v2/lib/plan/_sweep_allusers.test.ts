@@ -18,7 +18,9 @@ import { predictRaceTime } from '@/lib/training/vdot';
 // The archetype corpus lives in `./sim-matrix` (extracted 2026-08-28) so the
 // dosing gate (`_dosing_sweep_gate.test.ts`) can drive the IDENTICAL matrix
 // without importing this test file. Add arcs THERE; every gate sweeps them.
-import { matrix, isUltra, arcStr, type Arc } from './sim-matrix';
+import { matrix, isUltra, arcStr, simInputsForArc, type Arc } from './sim-matrix';
+import { REACH_BRANCHES, HISTORY_SHAPES, QUALITY_INFLATION_ENV, easyMedianOf, type ReachBranch } from './history-shapes';
+import { SHORT_LAYOFF_WEEKS } from './generate';
 
 const catOfMi = (mi: number) => distanceCategoryOf(mi);
 
@@ -28,11 +30,123 @@ const examples: Record<string, string> = {};
 const firm = (k: string, a: Arc) => { FIRM[k] = (FIRM[k] || 0) + 1; if (!examples[k]) examples[k] = arcStr(a); };
 const warn = (k: string, a: Arc) => { WARN[k] = (WARN[k] || 0) + 1; if (!examples[k]) examples[k] = arcStr(a); };
 
+// ── HIST-1 (2026-08-30) · the coverage ledger, and the probe families ───────
+//
+// CLAUDE.md Rule 15: "Coverage is not the count of cases that pass. It is the
+// set of code paths any case can reach." Everything below states coverage that
+// way. `REACHED` records which branch of which mechanism each archetype
+// actually visited, and the gate asserts every named branch was visited at
+// least once — so a change that makes one unreachable fails LOUDLY rather than
+// letting the corpus go quietly back to grading runners with no past.
+const REACHED = new Map<ReachBranch, number>();
+/** Per-shape, so a shape's declared `reaches` is an ASSERTION rather than a
+ *  comment. A shape that stops reaching what it claims is the exact failure
+ *  this corpus exists to end — a mechanism gated on something the fixtures
+ *  never populate is decoration, and so is a fixture that says it exercises a
+ *  mechanism and does not. */
+const REACHED_BY_SHAPE = new Map<string, Set<ReachBranch>>();
+let currentShape: string | null = null;
+const reach = (b: ReachBranch) => {
+  REACHED.set(b, (REACHED.get(b) ?? 0) + 1);
+  if (currentShape) {
+    const s = REACHED_BY_SHAPE.get(currentShape) ?? new Set<ReachBranch>();
+    s.add(b);
+    REACHED_BY_SHAPE.set(currentShape, s);
+  }
+};
+
+/** One probe arc's measurements, collected for comparison after the sweep.
+ *  A single archetype cannot express "the floor binds" or "the ramp ramps" —
+ *  those are statements about two runners who differ in one input. */
+interface ProbeRow {
+  arc: Arc;
+  ok: boolean;
+  /** Smallest easy day in the first non-BASE, non-TAPER training week. */
+  firstWeekMinEasyMi: number;
+  /** Largest easy day anywhere in a non-BASE, non-TAPER training week. */
+  peakEasyMi: number;
+  /** Quality days in the first quality-bearing week, and in the densest week. */
+  firstQualityCount: number;
+  peakQualityCount: number;
+  /** The plan's opening weekly volumes · what the ramp base buys. Summed over
+   *  three weeks because a single realized week carries up to ~3 mi of
+   *  day-snapping noise (`layoutWeek` rounds `perEasy` to whole miles across up
+   *  to five easy days), and a monotonicity check tight enough to be useful on
+   *  the budget is meaningless on the realized sum of one week. */
+  openingMi: number[];
+  /** The DECISION the walk is about, straight off `RampBaseEvidence` — no
+   *  rounding in it at all, so this side of the assertion can be exact. */
+  rampBaseMi: number;
+  rampNote: string;
+}
+const PROBES = new Map<string, ProbeRow[]>();
+
+/** How many opening weeks the ramp walk averages over. Three, so per-day
+ *  rounding in any one of them cannot dominate the comparison. */
+const RAMP_WALK_WEEKS = 3;
+/**
+ * Day-snapping slack allowed per week on the realized walk, and where the
+ * number comes from.
+ *
+ * `layoutWeek` computes `perEasyRaw = Math.round(remainingMi / easyCount)` and
+ * then gives that SAME whole number to every easy day, so the realized week
+ * moves in steps of `easyCount` miles as `remainingMi` crosses a half-mile-per-
+ * easy-day boundary. These walk weeks carry four easy days, so the realized
+ * total can swing +/- 2 mi for an input change of a single mile, with no
+ * decision having changed at all.
+ *
+ * Observed on the unmodified engine at the 0.70 -> 0.72 step: the long run
+ * grows by 1 mi (14.6 -> 15.0 recent long), `remainingMi` falls 30.5 -> 29.5,
+ * `perEasyRaw` rounds 8 -> 7, and the week loses 4 easy miles to gain 1 long
+ * one — a net 3 mi, or 1.8 mi/wk across the three opening weeks.
+ *
+ * THAT IS A REAL RULE 9 CANDIDATE and it is reported below rather than hidden
+ * by this constant: a behavioural quantity should not move in four-mile steps
+ * because a divisor rounded. It sits in `layoutWeek`, which this file does not
+ * own. The tolerance is set at the ARITHMETIC bound (easyCount / 2) so the
+ * check still catches anything an order of magnitude larger — a re-introduced
+ * `lifted` gate moves these weeks by ~10 mi/wk, five times this.
+ */
+const RAMP_WALK_SNAP_MI = 2.0;
+/** Anything above one day-snap is worth naming even when it is under the
+ *  arithmetic bound, so the rounding steps stay visible instead of being
+ *  quietly absorbed by the tolerance. */
+const RAMP_WALK_NOTABLE_MI = 0.5;
+
+/**
+ * RULE 12 EXEMPTION · KNOWN-OPEN, NAMED, AND A RATCHET (CLAUDE.md Rule 18 §4).
+ *
+ * The easy-day floor pairs below hand the engine two otherwise-identical
+ * runners whose demonstrated easy day differs by three miles. In THESE families
+ * the larger number changes nothing, because `layoutWeek` computes
+ * `flooredPerEasy = Math.min(effectiveFloor, perEasyBudgetCap)` — the runner's
+ * own demonstrated easy day loses to whatever the week has left after the long
+ * run and the quality sessions are priced. That is CLAUDE.md Rule 12 verbatim:
+ * "Easy running is sized before quality, never with the remainder."
+ *
+ * It is a LIVE DEFECT with an owner (`_coach_sensible.test.ts`, deliberately
+ * red on exactly this), so it is carried here as an honest exemption rather
+ * than loosened away or silently passed. Rule 7: a claim that reveals a real
+ * violation is never weakened.
+ *
+ * The list is asserted EXACTLY, in both directions:
+ *   · a family joining it   → the floor got weaker somewhere. Fails.
+ *   · a family leaving it   → Rule 12 was fixed. Fails until this entry is
+ *                             deleted, which is what stops a stale exemption
+ *                             from quietly making the check mean nothing.
+ * `easyfloor:steady:half` is deliberately NOT here: it is the family where the
+ * floor DOES bind, and it is what proves the mechanism is wired at all rather
+ * than merely absent.
+ */
+const EASYFLOOR_RULE12_EXEMPT = [
+  'easyfloor:postRaceShallow:half',
+  'easyfloor:postRaceShallow:marathon',
+  'easyfloor:steady:marathon',
+];
+const EASYFLOOR_INERT: string[] = [];
+
 function grade(a: Arc) {
-  const built = buildSimPlan({
-    ...a, startDateISO: '2026-07-06', raceDateISO: a.raceDateISO ?? '', lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
-    raceHistory: [], longRunDay: 'sun', availableDays: a.availableDays ?? [],
-  } as any);
+  const built = buildSimPlan(simInputsForArc(a) as any);
   // ULTRA-OUT-1 (2026-08-19) · ultra archetypes are graded on the REFUSAL, not on
   // the plan. The owner removed ultra authorship ("lets remove ultra plans and
   // training for now"), so for these the only correct outcome is a clean, honest
@@ -65,9 +179,17 @@ function grade(a: Arc) {
     // always plan.
     const zeroBase = a.weeklyMileageBucket === 0;
     const shortByFeel = (a.distance === '5k' || a.distance === '10k' || a.distance === 'half') && a.goalTimeSec == null;
+    // HIST-1 · a probe arc that refuses is a failure of the probe, not a
+    // graceful outcome — the family exists to be compared, and half a pair
+    // compares to nothing. Recorded so the post-sweep assertion names it.
+    if (a.probe) recordProbe(a, null);
     if (zeroBase && !shortByFeel) return; // graceful refusal is the correct outcome
     firm(`GEN_FAIL: ${built.reason}`.slice(0, 60), a); return;
   }
+
+  // ── HIST-1 · the coverage ledger ─────────────────────────────────────────
+  if (a.history) { recordReach(a, built); currentShape = null; }
+  if (a.probe) recordProbe(a, built);
 
   // Grade BOTH connection states a new runner can be in: a COLD-START signup (no Strava → prod sets
   // trailingAvgWeeklyMi null, the peak-vs-trailing ramp check is skipped) AND a STRAVA-CONNECTED
@@ -185,6 +307,122 @@ function grade(a: Arc) {
   }
 }
 
+// ── HIST-1 · the recorders ──────────────────────────────────────────────────
+
+type Built = Extract<ReturnType<typeof buildSimPlan>, { ok: true }>;
+
+/** Non-BASE, non-TAPER, non-race training weeks · where the easy-day floor and
+ *  the density ramp are supposed to be doing something. BASE and TAPER are
+ *  exempted by `layoutWeek` itself (`isDeloadOrBase`), so grading them would be
+ *  grading the exemption. */
+const gradedWeeks = (built: Built) =>
+  built.composed.weeks.filter((w: any) => !w.isRaceWeek && w.phase !== 'BASE' && w.phase !== 'TAPER');
+
+const easyMiOf = (w: any): number[] =>
+  w.days.filter((d: any) => d.type === 'easy' && d.distanceMi > 0).map((d: any) => d.distanceMi);
+const qualityCountOf = (w: any): number =>
+  w.days.filter((d: any) => d.isQuality && d.type !== 'race').length;
+
+/**
+ * Which branch of which mechanism did this archetype actually visit?
+ *
+ * Read off the ENGINE's own record wherever one exists — `derived.rampBase` is
+ * the `RampBaseEvidence` the composer was handed, and `authoredState
+ * .derived_from` is the transparency envelope the plan persists. Reading the
+ * engine's answer rather than recomputing it here is the difference between a
+ * coverage ledger and a second implementation that can agree with itself while
+ * both are wrong (Rule 18: "a check that hardcodes both sides only proves the
+ * test agrees with itself").
+ */
+function recordReach(a: Arc, built: Built) {
+  currentShape = a.history!.shapeId;
+  const ev = built.derived.rampBase;
+  const df = ((built.composed.authoredState as any)?.derived_from ?? {}) as Record<string, unknown>;
+
+  if (ev) {
+    reach('ramp:called');
+    const layoff = ev.interruptionWeeks > ev.allowedInterruptionWeeks;
+    if (!(ev.sustainedMi > 0)) reach('ramp:no-sustained');
+    else if (layoff) reach('ramp:layoff');
+    else if (ev.lifted) reach('ramp:lifted');
+    else reach('ramp:not-lifted');
+    if (ev.heldMi > ev.meanMi) reach('ramp:held-binds');
+    if (ev.returning) {
+      reach('ramp:returning');
+      if (ev.heldByCurrent) reach('ramp:entry-week-spent'); else reach('ramp:entry-week-owed');
+    }
+    if (ev.allowedInterruptionWeeks > SHORT_LAYOFF_WEEKS) reach('ramp:race-extended-allowance');
+  }
+
+  // `baseRebuilt` is only OBSERVABLE through `sizeBlocks(…, isMidBlock &&
+  // baseRebuilt)`, so it is read where it lands: whether a mid-block runner got
+  // a BASE phase. A non-mid-block runner tells us nothing about it and is not
+  // counted, which is why `injuryReturn` is deliberately built to still be
+  // mid-block.
+  if (built.mode === 'race-prep' && (built.composed.authoredState as any)?.is_mid_block === true) {
+    const hasBase = built.composed.blocks.phases.some((p: any) => p.label === 'BASE');
+    reach(hasBase ? 'base:deficit' : 'base:rebuilt');
+  }
+
+  // The easy-day floor · read the number the engine actually recorded being
+  // handed, and cross-check it against this corpus's own derivation so a drift
+  // between `sim-inputs`'s median and `history-shapes`'s fails rather than
+  // silently making the ledger describe a different runner.
+  const engineEasyMedian = typeof df['easyDayMedianMi'] === 'number' ? (df['easyDayMedianMi'] as number) : null;
+  if (engineEasyMedian != null && a.history) {
+    const mine = a.history.easyDayMedianOverrideMi ?? easyMedianOf(a.history.dailyMiMostRecentFirst);
+    if (Math.abs(mine - engineEasyMedian) > 1e-9) firm(`EASY_MEDIAN_DRIFT sim=${engineEasyMedian} corpus=${mine}`, a);
+    if (engineEasyMedian > 3) reach('easy:floor-armed');
+    else if (engineEasyMedian === 0) reach('easy:floor-dark');
+  }
+
+  // The density ramp · `recentQ` below both the tier's density and the
+  // runner's own prefs is what makes `densityForWeek` ramp at all.
+  const q = typeof df['recentQualityPerWeek'] === 'number' ? (df['recentQualityPerWeek'] as number) : null;
+  if (q != null && built.mode === 'race-prep') {
+    const wks = gradedWeeks(built).filter((w: any) => qualityCountOf(w) > 0);
+    const first = wks.length ? qualityCountOf(wks[0]) : 0;
+    const peak = wks.reduce((m: number, w: any) => Math.max(m, qualityCountOf(w)), 0);
+    if (first < peak) reach('density:ramps'); else if (peak > 0) reach('density:habit-at-target');
+    // QUALITYFLOOR-1 · the ramp brings quality BACK; it never removes it.
+    //
+    // The condition is `Math.round(q) === 0`, not `q === 0`, because that is
+    // what `densityForWeek` actually computes: at week 0 `stepsUp` is 0, so
+    // `ramped = Math.round(recentQ)`, and a post-marathon runner measured at
+    // 0.25 sessions/week rounds to zero exactly as a runner measured at zero
+    // does. Writing `q === 0` here would have let the floor's real trigger sit
+    // unwatched while the ledger claimed otherwise.
+    if (Math.round(q) === 0 && first >= 1) reach('density:return-floor');
+    if (Math.round(q) === 0 && wks.length === 0 && built.composed.blocks.phases.some((p: any) => p.label !== 'BASE' && p.label !== 'TAPER')) {
+      firm('DENSITY_ZERO_ERASED_QUALITY', a);
+    }
+  }
+}
+
+function recordProbe(a: Arc, built: Built | null) {
+  const key = a.probe!.family;
+  const rows = PROBES.get(key) ?? [];
+  if (!built) {
+    rows.push({ arc: a, ok: false, firstWeekMinEasyMi: 0, peakEasyMi: 0, firstQualityCount: 0, peakQualityCount: 0, openingMi: [], rampBaseMi: 0, rampNote: '' });
+  } else {
+    const wks = gradedWeeks(built);
+    const withEasy = wks.filter((w: any) => easyMiOf(w).length > 0);
+    const withQ = wks.filter((w: any) => qualityCountOf(w) > 0);
+    const ev = built.derived.rampBase;
+    rows.push({
+      arc: a, ok: true,
+      firstWeekMinEasyMi: withEasy.length ? Math.min(...easyMiOf(withEasy[0])) : 0,
+      peakEasyMi: withEasy.reduce((m: number, w: any) => Math.max(m, ...easyMiOf(w)), 0),
+      firstQualityCount: withQ.length ? qualityCountOf(withQ[0]) : 0,
+      peakQualityCount: wks.reduce((m: number, w: any) => Math.max(m, qualityCountOf(w)), 0),
+      openingMi: built.composed.weeks.slice(0, RAMP_WALK_WEEKS).map((w: any) => w.weeklyMi),
+      rampBaseMi: ev?.baseMi ?? 0,
+      rampNote: ev ? `base ${ev.baseMi} held ${ev.heldMi} lift:${ev.lifted ? 1 : 0} hbc:${ev.heldByCurrent ? 1 : 0}` : '-',
+    });
+  }
+  PROBES.set(key, rows);
+}
+
 describe('ALL-USER conformance sweep', () => {
   // Composing 9294 plans takes ~2s alone and several times that when the whole
   // suite is running in parallel around it, against vitest's 5s default. A gate
@@ -193,7 +431,23 @@ describe('ALL-USER conformance sweep', () => {
   // timeout is generous on purpose; nothing about the assertions changes.
   it('every archetype is research-conformant', () => {
     let n = 0;
-    for (const a of matrix()) { grade(a); n++; }
+    let withHist = 0;
+    for (const a of matrix()) {
+      // HIST-1 · BYTE-STABILITY, PINNED. `simInputsForArc` replaced a literal
+      // that lived in this file and in the dosing gate. For an arc with no
+      // history it must produce EXACTLY what that literal produced, or the
+      // corpus has quietly become a different corpus and its 11,598 rows stop
+      // being a regression net. Asserted here rather than checked once by hand,
+      // because a hand-check is a claim and only a check is in force (Rule 20).
+      if (!a.history) {
+        expect(simInputsForArc(a), `simInputsForArc drifted from the pre-HIST-1 literal: ${arcStr(a)}`).toEqual({
+          ...a, startDateISO: '2026-07-06', raceDateISO: a.raceDateISO ?? '', lastRaceFinishedDaysAgo: 0, lastRaceDistance: null,
+          raceHistory: [], longRunDay: 'sun', availableDays: a.availableDays ?? [],
+        } as any);
+      }
+      grade(a); n++; if (a.history) withHist++;
+    }
+    gradeProbeFamilies();
     const firmTotal = Object.values(FIRM).reduce((s, v) => s + v, 0);
     const warnTotal = Object.values(WARN).reduce((s, v) => s + v, 0);
     console.log(`\n=== SWEPT ${n} archetypes ===`);
@@ -201,8 +455,152 @@ describe('ALL-USER conformance sweep', () => {
     for (const [k, v] of Object.entries(FIRM).sort((a, b) => b[1] - a[1])) console.log(`  [${v}] ${k}  e.g. ${examples[k]}`);
     console.log(`WARN: ${warnTotal} across ${Object.keys(WARN).length} types`);
     for (const [k, v] of Object.entries(WARN).sort((a, b) => b[1] - a[1])) console.log(`  [${v}] ${k}  e.g. ${examples[k]}`);
+
+    // ── HIST-1 · COVERAGE, STATED AS PATHS REACHED (CLAUDE.md Rule 15) ──────
+    //
+    // "Treat a green sweep as evidence about what it EXERCISED, never as
+    // evidence about the engine." So the sweep says what it exercised.
+    const missing = REACH_BRANCHES.filter((b) => !(REACHED.get(b) ?? 0));
+    console.log(`\n=== HISTORY COVERAGE · ${withHist} archetypes carry a past ===`);
+    for (const b of REACH_BRANCHES) console.log(`  [${String(REACHED.get(b) ?? 0).padStart(4)}] ${b}`);
+    if (missing.length) console.log(`  UNREACHED: ${missing.join(', ')}`);
+
+    // Rule 18 §2 · assert liveness. A branch that stops being reachable fails
+    // here rather than quietly reverting the corpus to runners with no past.
+    // This is the assertion that would have caught the original blindness on
+    // the day it was introduced.
+    expect(missing, `mechanisms the corpus can no longer REACH: ${missing.join(', ')}`).toEqual([]);
+
+    // Rule 15: "when you add a mechanism, ask which corpus case reaches it and
+    // NAME THAT CASE in the test." Each shape declares its branches in
+    // `history-shapes.ts`; here the declaration is checked against what the
+    // shape's own arcs actually visited, so a claim cannot survive as prose.
+    const shapeGaps: string[] = [];
+    for (const spec of HISTORY_SHAPES) {
+      const got = REACHED_BY_SHAPE.get(spec.id) ?? new Set();
+      const gaps = spec.reaches.filter((b) => !got.has(b));
+      if (gaps.length) shapeGaps.push(`${spec.id} claims but never reaches: ${gaps.join(', ')}`);
+    }
+    expect(shapeGaps, `a history shape no longer exercises what it says it does:\n  ${shapeGaps.join('\n  ')}`).toEqual([]);
+
     // THE GATE · every archetype must be research-conformant. If this fails, an engine change
     // regressed some user segment — read the FIRM list above for the exact archetypes + violations.
     expect(firmTotal, `${firmTotal} firm conformance failures across the user matrix — see log`).toBe(0);
+    // The Rule 12 exemption, asserted exactly. See EASYFLOOR_RULE12_EXEMPT.
+    expect(
+      [...EASYFLOOR_INERT].sort(),
+      'easy-day-floor families where the budget cap beats the runner\'s demonstrated easy day. '
+      + 'MORE than the exempt list = the floor got weaker. FEWER = Rule 12 was fixed, so delete '
+      + 'the entry rather than leaving a stale exemption.',
+    ).toEqual([...EASYFLOOR_RULE12_EXEMPT].sort());
+    // LAST, deliberately · if a falsifier is armed and everything above still
+    // passed, the corpus failed to catch what the falsifier re-introduced, and
+    // THAT is the finding worth reporting. Ordering this first would mask it
+    // behind a housekeeping message.
+    expect(process.env[QUALITY_INFLATION_ENV] ?? '', 'quality-inflation falsifier armed and the corpus did NOT catch it').toBe('');
   }, 60_000);
 });
+
+/**
+ * HIST-1 · the assertions that need TWO runners.
+ *
+ * Every check above grades one archetype in isolation, which is precisely the
+ * shape a discontinuity passes — both sides of a cliff are legal plans. These
+ * grade a FAMILY: arcs that differ in exactly one input, compared against each
+ * other. Three families, one per mechanism that cannot be seen from a single
+ * row.
+ */
+function gradeProbeFamilies() {
+  for (const [family, rows] of PROBES) {
+    const bad = rows.filter((r) => !r.ok);
+    if (bad.length) { for (const r of bad) firm(`PROBE_REFUSED ${family}`, r.arc); continue; }
+    rows.sort((x, y) => x.arc.probe!.step - y.arc.probe!.step);
+
+    if (family.startsWith('easyfloor:')) {
+      // The pair: identical runners, one told his demonstrated easy day is 3 mi
+      // longer. `layoutWeek`'s floor is monotone by construction, so a smaller
+      // prescription off a bigger demonstrated easy day is Rule 9's signature
+      // — the fitter runner getting the worse plan.
+      const [measured, raised] = rows;
+      if (raised.firstWeekMinEasyMi < measured.firstWeekMinEasyMi - 1e-9)
+        firm(`EASYFLOOR_NON_MONOTONE ${family} ${measured.firstWeekMinEasyMi}→${raised.firstWeekMinEasyMi}`, raised.arc);
+      // And it must actually BUY something. `easyMileFloor` was decoration for
+      // all 11,598 archetypes; a floor that never moves a prescription is
+      // indistinguishable from one that is not wired at all.
+      if (raised.firstWeekMinEasyMi <= measured.firstWeekMinEasyMi + 1e-9
+        && raised.peakEasyMi <= measured.peakEasyMi + 1e-9) {
+        EASYFLOOR_INERT.push(family);
+        warn(`EASYFLOOR_BUDGET_CAP_WINS ${family}`, raised.arc);
+      } else reach('easy:floor-binds');
+    }
+
+    if (family.startsWith('density:')) {
+      // Identical runners, one with a measured quality habit of 0 and one of 2.
+      // Rule 5's ramp must open the block BELOW the habit-2 runner and climb.
+      const [habit0, habit2] = rows;
+      if (habit0.firstQualityCount > habit2.firstQualityCount)
+        firm(`DENSITY_INVERTED ${family} 0-habit opened at ${habit0.firstQualityCount} vs ${habit2.firstQualityCount}`, habit0.arc);
+      if (habit0.firstQualityCount === habit2.firstQualityCount)
+        firm(`DENSITY_RAMP_INERT ${family} (a measured 0 authored the same week as a measured 2)`, habit0.arc);
+      // QUALITYFLOOR-1 · never to zero. Research/00b names a day for every
+      // distance on which quality comes back, and a race-prep quality week is
+      // past it by construction.
+      if (habit0.firstQualityCount < 1)
+        firm(`DENSITY_ERASED ${family} (a measured 0 authored a build week with no hard running)`, habit0.arc);
+    }
+
+    if (family === 'rampladder') {
+      // THE WALK. Nine steps of 0.02 of sustained across
+      // `RAMP_BASE_RESUME_FRACTION`. The owner sat 0.003 the wrong side of this
+      // line; 11,598 archetypes passed on both sides because both sides are
+      // legal plans, and nothing sampled the derivative.
+      //
+      // MONOTONE, not smooth. `restoreSteps` is deliberately step-shaped —
+      // doctrine's ladder has rungs — so the assertion is the one Rule 9
+      // actually makes: running MORE never buys a SMALLER plan. Any violation
+      // is the recurring signature, "the fitter runner gets the worse plan".
+      //
+      // Asserted on TWO quantities, because they answer different questions:
+      //
+      //  1. `rampBaseMi` · the DECISION. Continuous by construction since
+      //     CURRENTVOL-1 (`max(liftedBase, heldMi)`), carries no day-snapping,
+      //     and is asserted EXACTLY. This is the number the `lifted` cliff was
+      //     computed from.
+      //  2. the realized opening weeks · what the runner actually gets, which
+      //     is where a re-introduced cliff would show up even if the base
+      //     stayed smooth. Allowed `RAMP_WALK_SNAP_MI` per week of slack,
+      //     because `layoutWeek` rounds `perEasy` to whole miles across up to
+      //     five easy days and the realized total wobbles by more than a mile
+      //     for reasons that are arithmetic rather than coaching. Measured on
+      //     the unmodified engine the largest downward wobble is 0.83 mi/wk;
+      //     re-introducing the `lifted` gate moves it by an order of magnitude.
+      for (let i = 1; i < rows.length; i++) {
+        const prev = rows[i - 1], cur = rows[i];
+        if (cur.rampBaseMi < prev.rampBaseMi - 1e-9)
+          firm(`RAMP_BASE_NON_MONOTONE ${prev.arc.probe!.id}:${prev.rampBaseMi} → ${cur.arc.probe!.id}:${cur.rampBaseMi}`, cur.arc);
+        const pMean = prev.openingMi.reduce((s, v) => s + v, 0) / Math.max(1, prev.openingMi.length);
+        const cMean = cur.openingMi.reduce((s, v) => s + v, 0) / Math.max(1, cur.openingMi.length);
+        if (cMean < pMean - RAMP_WALK_SNAP_MI)
+          firm(`RAMP_OPENING_NON_MONOTONE ${prev.arc.probe!.id}:${pMean.toFixed(1)} → ${cur.arc.probe!.id}:${cMean.toFixed(1)} mi/wk`, cur.arc);
+        else if (cMean < pMean - RAMP_WALK_NOTABLE_MI)
+          warn(`RAMP_OPENING_ROUNDING_STEP ${prev.arc.probe!.id}:${pMean.toFixed(1)} → ${cur.arc.probe!.id}:${cMean.toFixed(1)} mi/wk (perEasy Math.round × easyCount)`, cur.arc);
+      }
+      for (const r of rows) console.log(`  rampladder ${r.arc.probe!.id} · open ${r.openingMi.join('/')} · ${r.rampNote}`);
+      // REPORTED, NOT FAILED · a Rule 9 candidate this walk found on its first
+      // run, in `POSTRACE-RESTORE-1`'s `heldByCurrent`. It flips false→true the
+      // moment `heldMi` reaches `liftedBase`, and `restoreSteps` then DROPS the
+      // ladder's re-entry rung — so the opening week jumps from doctrine's 70%
+      // rung straight to its 85% rung on about a mile of history. It moves
+      // UPWARD, so it is not the fitter-runner-gets-less signature and this
+      // gate does not fail on it, but it is a behavioural switch derived from
+      // comparing two computed quantities, which Rule 9 says gets a walk.
+      // `generate.ts` is not this file's to change; the finding is the report.
+      let biggestJump = 0, at = '';
+      for (let i = 1; i < rows.length; i++) {
+        const d = (rows[i].openingMi[0] ?? 0) - (rows[i - 1].openingMi[0] ?? 0);
+        if (d > biggestJump) { biggestJump = d; at = `${rows[i - 1].arc.probe!.id}→${rows[i].arc.probe!.id}`; }
+      }
+      console.log(`  rampladder · largest UPWARD week-0 step ${biggestJump.toFixed(1)} mi at ${at} (heldByCurrent flip · reported, see comment)`);
+    }
+  }
+}

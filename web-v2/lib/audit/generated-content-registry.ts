@@ -360,6 +360,8 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
 export const MODULE_ORPHANS: Record<string, string> = {
   'web-v2/lib/plan/sim-matrix.ts':
     'A fixture set, which is a fine reason by this gate\'s own text. The archetype corpus was extracted from _sweep_allusers.test.ts on 2026-08-28 so the dosing-caps gate (_dosing_sweep_gate.test.ts) drives the IDENTICAL matrix as the sweep without importing a test file. Two gates import it; no runtime code should.',
+  'web-v2/lib/plan/history-shapes.ts':
+    'A FIXTURE SET, which is a fine reason by this gate\'s own text — the sibling of sim-matrix.ts, and imported by it. It holds the eight training-history shapes (and the owner\'s real 112 logged days) that let the archetype corpus express a runner with a past, which is what CLAUDE.md Rule 15 was locked about: resolveRampBase, baseRebuilt, the easy-day floor and the quality-density ramp were unreachable by all 11,598 archetypes because Arc had no history fields. Runtime code must never import it: production reads a runner\'s real history from `runs`, it does not render one.',
   'web-v2/lib/plan/block-preview.ts':
     'INSTANCE 3, STILL OPEN. Built 2026-08-18 to answer the owner\'s own question — why the shape of the next block stays invisible until recovery ends. Its route has no caller either. It should be WIRED, not deleted: the question was asked and the answer is written and tested. Wiring it needs a screen decision, so it stays named here rather than quietly removed.',
   'web-v2/lib/plan/core.ts':

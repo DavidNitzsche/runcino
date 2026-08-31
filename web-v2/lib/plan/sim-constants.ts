@@ -87,6 +87,27 @@ export interface SimInputs {
   // ── Advanced overrides (normally derived from Strava/runs) ──
   bestRecentVdotOverride?: number | null;
   easyDayMedianMi?: number | null;
+  /**
+   * HIST-1 (2026-08-30, CLAUDE.md Rule 15) · the runner's recent QUALITY HABIT.
+   *
+   * `composePlan` has always taken these two; `buildSimPlan` hardcoded both to
+   * `undefined`, so Rule 5's quality-density ramp and the quality-distance
+   * floor were unreachable from any harness in the repo — including the
+   * 11,598-archetype sweep, which is the most-cited quality evidence here.
+   * Rule 15: "A mechanism gated on a field the fixtures never populate is
+   * decoration."
+   *
+   * Optional and absent by default, so every existing archetype composes
+   * byte-identically: absent still reaches the composer as `undefined` and
+   * `recentQ` still falls back to the runner's own prefs.
+   *
+   * NOT derivable from `dailyMiMostRecentFirst` — a mileage series says nothing
+   * about which days were hard — so this is a separate input rather than
+   * another read off the same array. `lib/plan/history-shapes.ts` renders both
+   * from ONE runner so they cannot describe two.
+   */
+  recentQualityPerWeek?: number | null;
+  recentQualityDistanceMi?: number | null;
   isMidBlock?: boolean;
   restDay?: DayKey | null;
   lthr?: number | null;
