@@ -2,7 +2,7 @@
   "name": "faff-web-v2",
   "version": "0.1.0-dev",
   "private": true,
-  "description": "faff.run v2 — coaching-app rewrite against deck-v1-2026-05-25.html. Replaces legacy/web on cutover.",
+  "description": "faff.run v2 \u2014 coaching-app rewrite against deck-v1-2026-05-25.html. Replaces legacy/web on cutover.",
   "scripts": {
     "dev": "next dev",
     "prebuild": "bash ../scripts/check-palette-sync.sh && bash ../scripts/check-spacing-tokens.sh && bash ../scripts/check-modelled-mark.sh && bash ../scripts/check-coach-voice.sh && bash ../scripts/check-doctrine.sh && bash ../scripts/check-wire-keys.sh && bash ../scripts/check-generated-content.sh && bash ../scripts/check-surface-sweep.sh && bash ../scripts/check-xcodeproj-sync.sh && bash ../scripts/check-swallowed-failure.sh && bash ../scripts/check-derived-consistency.sh && bash ../scripts/check-automatic-mutations.sh && bash ../scripts/check-normal-window.sh && bash ../scripts/check-goal-immutability.sh && bash ../scripts/check-anchor-derivation.sh && bash ../scripts/check-client-graph.sh",
@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "harness:adapt": "bash scripts/adapt-harness.sh",
+    "harness:adapt:refresh": "bash scripts/adapt-harness.sh --refresh",
     "test:doctrine": "bash ../scripts/check-doctrine.sh",
     "test:wire": "bash ../scripts/check-wire-keys.sh",
     "test:voice": "bash ../scripts/check-coach-voice.sh",

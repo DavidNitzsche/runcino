@@ -124,6 +124,24 @@ const PLAN_INFRASTRUCTURE = [
   'lib/plan/seed-from-onboarding.ts',
 ];
 
+/** Files that write plan rows and CANNOT run in production.
+ *
+ *  This gate's question is "which automatic trigger reaches this writer" — it
+ *  is a map of what can change the runner's plan while nobody is watching. A
+ *  module that refuses to execute unless `DATABASE_URL` names a local scratch
+ *  database has no answer to that question, and forcing one would mean writing
+ *  a false attribution into the very registry the gate exists to keep true.
+ *
+ *  The exclusion is narrow and is itself checked: `lib/adaptation-harness/*`
+ *  calls `assertHarnessDatabase()` at module scope (fence.ts), which throws
+ *  before a pool exists unless the connection string is loopback AND names the
+ *  harness's own database; the directory is excluded from `vitest.config.ts`;
+ *  and no route, cron or workflow imports it. The assertion below re-checks the
+ *  first of those at gate time, so deleting the fence deletes the exclusion. */
+const TEST_ONLY_FENCED = [
+  'lib/adaptation-harness/substrate.ts',
+];
+
 function rel(abs: string): string {
   return abs.slice(WEB.length + 1);
 }
@@ -150,6 +168,7 @@ export function scanPlanWriterFiles(files: readonly string[]): string[] {
   for (const abs of files) {
     const r = rel(abs);
     if (RUNNER_INITIATED.includes(r) || PLAN_INFRASTRUCTURE.includes(r)) continue;
+    if (TEST_ONLY_FENCED.includes(r)) continue;
     if (writesAPlan(stripComments(readFileSync(abs, 'utf8')))) hits.add(r);
   }
   return [...hits].sort();
@@ -329,6 +348,22 @@ describe('GUARD 4 · the plan writers in the source are the plan writers on the 
         continue;
       }
       expect(declaredIds.has(owner), `${file} claims owner ${owner}, which is not a plan writer`).toBe(true);
+    }
+  });
+
+  it('every test-only exclusion still exists and still carries its fence', () => {
+    // Rule 18 guard 4 · the allowlist is a ratchet. A file that has been
+    // deleted, or that has lost the fence the exclusion rests on, fails until
+    // the entry is deleted — the exclusion cannot outlive its own argument.
+    for (const f of TEST_ONLY_FENCED) {
+      const abs = join(WEB, f);
+      expect(existsSync(abs), `${f} is excluded here and no longer exists. Delete the entry.`).toBe(true);
+      const src = readFileSync(abs, 'utf8');
+      expect(
+        /assertHarnessDatabase\s*\(\s*\)/.test(src),
+        `${f} is excluded as fenced test-only code but no longer calls assertHarnessDatabase() at module scope. `
+        + 'Either restore the fence or map the file to a real plan writer.',
+      ).toBe(true);
     }
   });
 

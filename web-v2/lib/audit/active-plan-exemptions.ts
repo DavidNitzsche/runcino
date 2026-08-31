@@ -79,6 +79,17 @@ export const ACTIVE_PLAN_EXEMPTIONS: readonly ActivePlanExemption[] = [
       'happens to be active. Resolve the intent before changing the query.',
   },
   {
+    file: 'lib/adaptation-harness/substrate.ts',
+    reason:
+      'Reads across versions ON PURPOSE, and cannot reach production. The ' +
+      'adaptation harness picks which of the runner\'s HISTORICAL blocks to slide ' +
+      'onto today as its substrate, so "every plan version" is exactly the ' +
+      'population it means — the query GROUPs by plan id and selects one. The ' +
+      'module refuses to run at all unless DATABASE_URL names its own local ' +
+      'scratch database (lib/adaptation-harness/fence.ts), and it is excluded from ' +
+      'the default vitest config so `npm test` cannot load it.',
+  },
+  {
     file: 'scripts/vdot-tuneup-impact.analysis.ts',
     reason:
       'One-off analysis script, not production. Reads tune-up dates across the ' +
