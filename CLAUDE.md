@@ -783,6 +783,46 @@ the entire night's work silently not existing.
 
 ---
 
+## Rule 20 · A product rule with no gate is a hypothesis (locked 2026-08-30)
+
+**A decision written down in a doc, a memory or a header comment is not in
+force. Only a check is in force.** Every rule above is worth exactly what its
+enforcement is worth, and this project keeps proving it.
+
+Four instances, all of them rules that were genuinely decided, written down, and
+then violated anyway because nothing could tell:
+
+- **"The coach projects, it never renegotiates a stated goal."** The owner's
+  own standing rule, app-wide. A cron generated a live card in his production
+  account reading *"Set the revised target to race off the fitness you have"*,
+  with an accept action that PATCHes his 3:00:00 CIM goal down to 3:31:48.
+  A forced goal decision, which is the one thing that was never to exist.
+- **"No content is printed twice on one screen."** In the design contract.
+  Average heart rate rendered **three times** on Today, and the pace legend
+  twice on one screen.
+- **"Imports no database at any depth."** Asserted in `lthr-reanchor.ts`'s own
+  header. It was false, it was false for a day, and it kept production
+  undeployed while every gate stayed green.
+- **Coach voice — no em dashes.** Locked, with a gate. The gate's scope
+  excluded `lib/plan`, which authors the sentence attached to every workout, so
+  **1,804 rows** carried them.
+
+**To comply:** when you lock a rule, write the check in the same change. If the
+check cannot be written yet, say so in the rule text and name what would be
+needed — an honest "unenforced" is a known gap; an unmarked one is a rule
+everybody believes is holding.
+
+**And when a rule IS violated, fix the gate, not just the instance.** The
+instance is one row in one account. The gap is what let it in, and it is still
+open the moment you have deleted the row.
+
+The corollary for prose: **a header comment asserting an invariant is
+documentation, not enforcement.** Gate the claim or delete the sentence — a
+sentence nothing verifies is worse than silence, because it stops the next
+reader from checking.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
