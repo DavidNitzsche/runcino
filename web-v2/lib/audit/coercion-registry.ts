@@ -259,7 +259,7 @@ export const HANDED_BACK: readonly HandedBack[] = [
   },
   {
     id: 'lib/plan/adapt.ts::chooseRescheduleDate::weeklyFrequency',
-    reason: 'PERMISSIVE · three nullable opts each gate a guard-continue — longRunDow, restDow and weeklyFrequency. All three null lets a missed quality session be rescheduled onto the runner\'s REST DAY and past their weekly frequency, and the frequency check needs two non-nulls to run at all.',
+    reason: 'PERMISSIVE · three nullable opts each gate a guard-continue, so a null longRunDow makes the LONG RUN DAY a valid makeup slot and a null restDow makes the REST DAY one. Worse, the frequency check needs BOTH weeklyFrequency and ctx.weekRunCount non-null, and the fallback object built for a day with no plan row is literally `{ runCount: 0, qualityOrLong: false, hasRestRow: false, weekRunCount: null }` — the default IS the skip-the-check value, and it is supplied for exactly the empty days a makeup lands on, so a stated frequency is silently unenforced where it matters most.',
   },
 ];
 
