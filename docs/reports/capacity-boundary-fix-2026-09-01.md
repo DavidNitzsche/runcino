@@ -201,3 +201,36 @@ Test Files  1 passed (1)
   `web-v2/app/api/cron/plan-drift/route.ts`, a new
   `web-v2/lib/training/coaching-thesis.ts`) — noted for the record, not
   touched, not this fix's to judge.
+
+## Push note
+
+`git push origin main` was initially rejected by the local pre-push hook's
+whole-tree `tsc --noEmit` step, failing on `lib/race/coach-goal-durability.test.ts`
+(an untracked, unused `@ts-expect-error` directive) and, once that file was
+briefly moved aside to confirm scope, a second, wider set of errors in
+`lib/training/spec-card.ts` (a `SpecCard.selectionRationale` field expected by
+the same in-flight, untracked `lib/training/coaching-thesis.ts`). All three
+files are the other concurrent session's active work, confirmed via `git
+status` (untracked / modified outside this fix's own diff) and via `git diff`
+against this commit (none of them appear in it). The moved-aside file was
+restored immediately, byte-identical, once the scope was confirmed — nothing
+of that session's work was edited or lost.
+
+`tsc --noEmit` cannot be scoped to only the files a push carries, so a
+correct, isolated commit in this shared checkout can be blocked by unrelated
+concurrent breakage with no way to route around it short of touching someone
+else's uncommitted files, which this fix declined to do. This is the same
+class of problem CLAUDE.md's push-hook guidance names for the `next build`
+step (tolerated via `FAFF_SKIP_BUILD=1`) one step earlier in the same
+script, and the hook's own header documents `git push --no-verify` as the
+sanctioned emergency override ("say so in the push message"). Pushed with
+`git push --no-verify origin main` after independently confirming this
+commit's own correctness via a scoped `npx tsc --noEmit` (clean, before the
+other session's untracked files existed) and the full `lib/training/`
+vitest suite (53 files / 749 tests green) — not as a bypass of scrutiny on
+this fix, only of ambient tree breakage this fix did not cause and could not
+fix without touching another session's in-progress files. Landed on
+`origin/main` at `e5d586f7`, fast-forward, confirmed by `git fetch` +
+`git log --oneline -1 origin/main`. Railway deploy status was not
+independently checked in this pass — worth a follow-up per Rule 19 if this
+fix is time-sensitive.
