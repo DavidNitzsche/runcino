@@ -1,0 +1,84 @@
+# Does main actually build?
+#
+# WHY THIS EXISTS — Rule 19, "green is not deployed."
+#
+# On 2026-08-30 a `'use client'` component imported one constant from
+# lib/training/lthr-reanchor.ts, which reaches `await import('@/lib/db/pool')`
+# three modules deep. A dynamic import is still a bundled edge, so webpack
+# pulled `pg` into the browser graph and `next build` died on fs/dns/net/tls.
+#
+# MAIN DID NOT DEPLOY FOR A FULL DAY. Five merged commits — a marathon block's
+# worth of engine fixes plus the LTHR re-anchor a runner's HR caps depend on —
+# were never live, while every session that pushed them believed they were.
+# `tsc --noEmit` passed. All prebuild scripts passed. The break was in
+# `next build`, which runs AFTER them, and it surfaced only in Railway, hours
+# later, where nobody was looking.
+#
+# WHY NOT JUST THE PRE-PUSH HOOK. There is one, and it does run `next build`
+# (~30s). It cannot see three things:
+#   · a `--no-verify` push — used repeatedly on this repo, legitimately, because
+#     the watch-simulator gate in the same hook needs a booted Apple Watch sim
+#     and fails on environment rather than on code;
+#   · a push from another machine or another agent's worktree;
+#   · a push whose hook was never installed.
+# Every one of those is exactly the case where "Railway goes red and nobody
+# knows" recurs. A hook protects a careful pusher; this protects the branch.
+#
+# WHY NOT IN `prebuild`. Railway runs prebuild immediately before the build it
+# is already about to run, so putting `next build` there doubles every deploy's
+# minutes and learns nothing thirty seconds earlier. The gap was never that
+# Railway fails to notice — it is that noticing was a person's job.
+#
+# This job's only claim is: at this commit, on a clean checkout, the thing
+# builds. It does not assert the artifact deployed; that is still the
+# deployments API, per Rule 19.
+name: build-check
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # One run per branch. A newer push supersedes an in-flight check rather than
+  # queueing behind it — the question is always "does the tip build".
+  group: build-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web-v2/package-lock.json
+
+      - name: Install
+        working-directory: web-v2
+        run: npm ci --no-audit --no-fund
+
+      # The same chain Railway runs, in the same order, so a gate that only
+      # fails on a cold container fails here too rather than on deploy.
+      - name: Gates (prebuild)
+        working-directory: web-v2
+        run: npm run prebuild
+
+      - name: Typecheck
+        working-directory: web-v2
+        run: npx tsc --noEmit
+
+      # The step the incident needed. Everything above passed on the broken
+      # tree; only this caught it.
+      - name: next build
+        working-directory: web-v2
+        env:
+          # A build must not need live credentials. If it ever does, that is
+          # itself the finding — a build-time database read is a defect, not a
+          # configuration gap to paper over with a secret.
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build
