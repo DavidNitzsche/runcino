@@ -6,6 +6,138 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-09-01 · Four calls on the migration handback's open questions. SETTLED.
+
+Response to `docs/reports/handback-2026-09-01.md` §11–§12, after external
+review. Governs the next phase of work on the coaching-brain migration.
+
+### 1 · The unfiltered 42-day `classifyAdaptation` absorption window
+
+Confirmed: one reader answering two different questions (Rule 8 fork).
+**Actual load absorbed** (taper, races, recovery, illness all still count —
+tissue doesn't care why volume was low) stays unfiltered. **Capability
+demonstrated / progression earned** needs representative-context filtering,
+same discipline as `normal-window.ts` already applies elsewhere.
+
+**Authorized now, but gated, not incidental:** split the reader into
+`actual_load_absorption` and `representative_execution`. Sequence —
+preserve current live behavior first, shadow-run both across historical
+runners and plan archetypes, report how many DURATION/VOLUME decisions
+change and in which direction, check for discontinuities at taper/race/
+recovery boundaries (Rule 9), promote only after reviewing the diffs. This
+is also a **prerequisite for broad Adaptation Engine authority**, not a
+parallel, unrelated task.
+
+**Flagged as under-argued in the handback:** DURATION and VOLUME were
+grouped as both "held by the 42-day window," but VOLUME's hold in the
+regenerated-block table is actually historical tolerance (33.4 mi/wk)
+against a 45 mi/wk opening — a different reason. The follow-up must
+identify the decisive limiter per lever, not group them.
+
+**Open sub-question, needs real data before the next brief is written:**
+for the three "under-executed" 08-04/08-06/07-28/07-30 tempo sessions —
+were they compared against their own contemporaneous (possibly
+already-taper-reduced) prescription, or against a generic tempo
+expectation regardless of what the plan actually asked for that day? If the
+plan had already reduced the ask and the runner met the reduced ask,
+"under-executed" is an intent/comparison bug, not a windowing problem.
+
+### 2 · Adaptation Engine authority
+
+**Authorized: PACE-only shadow-compare. Withheld: any live mutation, any
+other lever.** The engine has earned the next validation stage (real
+regenerated-block PACE proposal, representative lookback working,
+insufficient-evidence distinct from HOLD, historical tolerance preserved,
+compound proposals checked) — but the proposed mutation isn't precise
+enough for live authority yet (a cross-phase blended average, unresolved
+HR interaction, authoring/recomputation still on different brains, one
+account's evidence only).
+
+Shadow-compare means: runs on every eligible cycle, persists proposed
+before/after values and reasons, **zero plan mutation**, evaluates
+phase-specific targets rather than a blended average, reports false
+positives/refusals/reversals/day-to-day stability, and covers
+downward/hold/insufficient-evidence cases too — not just the successful
+upward one already seen.
+
+**Required before live PACE authority is even reconsidered:**
+phase-aware mutation targets, the pace/HR compatibility validator (see
+§3), replay across multiple runner archetypes, stable proposals across
+repeated daily evaluations, a rollback/audit trail, and an explicit
+decision on how authoring and recomputation converge onto one brain.
+
+### 3 · Pace progression and the paired HR ceiling
+
+**Decision: independent resolution, plus a mandatory compatibility
+validator. No automatic paired HR increase.** A runner getting fitter often
+runs faster at the same physiological intensity — mechanically raising HR
+with pace would compound the progression and conflate two genuinely
+separate evidence streams (pace capacity, cardiovascular response).
+
+"Independent" does not mean "allowed to silently contradict." Pace
+Prescription resolves its range; the HR owner resolves its own guard
+independently; a final compatibility check determines whether both can
+truthfully describe one intended stimulus. Policy: if the faster pace is
+compatible with existing HR evidence, HR stays put; if HR would exceed
+ceiling only from adverse conditions, that's a same-day readiness/
+environment adjustment, not a capacity-belief change; if repeated
+controlled sessions show the HR ceiling itself is stale, update it through
+HR evidence, not as a side effect of a pace change; if genuinely
+incompatible at prescription time, **refuse or hold the pace progression**
+rather than silently moving HR to make it fit.
+
+For threshold work specifically: HR should generally act as a secondary
+guard/interpretive range, not a co-equal instantaneous target — it lags
+early in reps and moves with heat/fatigue/terrain/hydration/sensor noise,
+and a runner shouldn't be asked to simultaneously satisfy a narrow pace
+band and a rigid HR ceiling that disagree.
+
+**Open clarification owed on the existing card:** what semantic is
+`HR 164-172` on the quality segment — a safety ceiling, an expected
+response band, or a target zone? These are different product meanings and
+the handback didn't specify which one is live today.
+
+### 4 · The `--no-verify` pre-push bypass pattern
+
+**Decision: isolated-commit verification is an acceptable FORMAL
+substitute for the hook, not an unsupervised shortcut — and never an
+undocumented one.** A hook that validates the whole dirty shared checkout
+is not concurrency-safe; banning any bypass makes parallel agent work
+impractical, but a silent, ad hoc `--no-verify` trains the system to treat
+a safety boundary as optional. Neither extreme is acceptable.
+
+**An agent may bypass the local hook without stopping only when ALL of the
+following hold:** (1) the failure is proven to originate exclusively from
+unrelated uncommitted changes; (2) the agent verifies the exact commit in a
+clean isolated worktree; (3) it runs the SAME checks the hook would have
+run, not a hand-picked subset; (4) results are recorded in the handback or
+commit metadata; (5) CI/deployment verification succeeds where available;
+(6) no merge/migration/security/destructive-operation check is omitted;
+(7) the bypass is explicitly disclosed, not silent.
+
+**Must stop and ask instead when:** the failure's unrelatedness can't be
+proven; the hook's checks can't be reproduced in isolation; isolated
+verification disagrees with the hook; the hook checks something unavailable
+elsewhere; or the push affects shared state other agents may depend on.
+
+**Longer-term tooling fix, not yet built:** per-agent worktrees; the hook
+operating on the commit/index rather than unrelated working-tree state; a
+supported `verify-commit <sha>` command defined as hook-equivalent; CI
+enforcing the non-negotiable checks independently of the local hook.
+
+### What this authorizes going forward
+
+A next brief may direct: (1) a separately-scoped, shadow/replay-gated split
+of the 42-day reader, gated as a prerequisite for broader Adaptation Engine
+authority; (2) PACE-only Adaptation Engine shadow-compare, explicitly no
+live mutation; (3) independent pace/HR resolution with a compatibility
+validator, no automatic paired HR movement; (4) the formal isolated-
+verification exception above, replacing ad hoc `--no-verify`, pending the
+tooling fix. Writing that brief is blocked on one real-data question: the
+taper-period tempo sessions' actual-vs-generic comparison basis, above.
+
+---
+
 ## 2026-08-31 · The Pace Prescription layer is WIRED, on the flex path. Four calls made during the wiring. SETTLED.
 
 `lib/plan/recompute-paces.ts` and `lib/plan/reanchor-plan.ts` — the mechanism
