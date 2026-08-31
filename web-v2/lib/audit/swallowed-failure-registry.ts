@@ -186,7 +186,14 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
 // (lib/plan/workout-library.ts, catch → cached-or-empty) is deleted; the
 // catalog is static code now (lib/plan/workout-library-static.ts) with no
 // failure to swallow.
-export const EMPTIED_BASELINE = 378;
+// 2026-08-30 · -2 from ANCHOR-STALE-1: `deriveHrZones` and
+// `deriveHrZonesFromSamples` in lib/coach/run-state.ts each carried their own
+// `SELECT lthr FROM profile … .catch(() => ({ rows: [] }))`, and a swallowed
+// read there returned NO ZONE BAR while the zone RANGES panel beside it — fed
+// by `resolveThresholdHr` — still drew its bands. Both helpers are deleted:
+// the caller resolves the anchor once and passes the table in, so there is one
+// read to fail instead of three, and it fails for the whole panel at once.
+export const EMPTIED_BASELINE = 376;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

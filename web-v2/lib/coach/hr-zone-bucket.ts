@@ -170,6 +170,92 @@ export function zoneSharesFromSplitHr(
 }
 
 /**
+ * ANCHOR-STALE-1 (2026-08-30) · the zone distribution for a run, resolved
+ * against the anchor the runner has TODAY.
+ *
+ * ── WHY THE STORED VALUE LOST ITS PRECEDENCE ────────────────────────────────
+ *
+ * `data.hrZonePcts` is computed at ingest and persisted on the row. The read
+ * path used to take the stored value first and recompute only when it was
+ * MISSING, so the stored value won forever. That is fine while the anchor it
+ * was computed against is still the runner's anchor. It stops being fine the
+ * moment the anchor moves, because nothing on the row records which anchor
+ * produced it and nothing invalidates it when that anchor changes.
+ *
+ * The owner's threshold anchor was re-derived from race evidence on
+ * 2026-08-30 (162 → 168 · `lib/training/lthr-reanchor.ts`). Every stored
+ * distribution he holds was bucketed at 162. On his 2026-08-30 long run —
+ * 13.49 mi, avg HR 159, an EASY long day — the stored value says
+ * `{z1:4, z2:15, z3:11, z4:10, z5:60}`. Sixty percent of an easy long run in
+ * Zone 5. Bucketing the SAME samples at 168 gives
+ * `{z1:11, z2:17, z3:9, z4:36, z5:27}`, and Z5 stops being modal.
+ *
+ * Both numbers are arithmetically correct. Only one of them is about this
+ * runner. The stored one passes every guard in `lib/runs/coherence.ts`,
+ * because those guards ask whether a row agrees with ITSELF — they cannot ask
+ * whether it agrees with an anchor they have never been shown.
+ *
+ * ── THE PRECEDENCE, AND THE ONE TRADE IT MAKES ──────────────────────────────
+ *
+ *   1. Per-sample bucketing · the watch's 5-second stream. Time-weighted,
+ *      highest fidelity, and computed against the anchor passed in here.
+ *   2. Per-mile averages · coarser, and the run's own measurement all the
+ *      same. Same anchor.
+ *   3. The STORED distribution, reconciled · only when the row carries
+ *      nothing to recompute from.
+ *
+ * Rung 3 used to be rung 1. The trade is that a row whose per-second samples
+ * were pruned after ingest now re-derives from its per-mile averages instead
+ * of keeping a finer stored distribution — coarser, but anchored to the
+ * runner who is reading it. That is the right way round: a precise answer to
+ * the wrong question is not more accurate than an imprecise answer to the
+ * right one, and only the recompute knows what the anchor is now. Verified
+ * against the owner's eight stored rows — every one reproduces its stored
+ * value EXACTLY when re-bucketed at 162, so nothing is lost by re-deriving
+ * them at 168.
+ *
+ * `table` is the caller's ONE resolved anchor (`resolveThresholdHr` →
+ * `computeZones`), passed in rather than re-read here, so the zone BAR and
+ * the zone RANGES panel drawn beside it cannot come from different anchors.
+ * A null table means the runner has no anchor at all: rungs 1 and 2 cannot
+ * run, and the stored value is the only thing left.
+ */
+export function resolveHrZoneShares(args: {
+  /** `data.phases` · where the watch actually writes its 5-second HR. */
+  phases?: unknown;
+  /** `data.splits` · older payloads put the samples here instead. */
+  rawSplits?: unknown;
+  /** Per-mile splits carrying an average `hr`, for rung 2. */
+  splits?: ReadonlyArray<{ hr?: number | null; avgHr?: number | null }> | null;
+  /** The already-reconciled stored distribution, or null. Rung 3. */
+  storedPcts?: ZonePcts | null;
+  /** The runner's CURRENT zone table. Null when they have no anchor. */
+  table: ZoneTable | null;
+  hrOffsetBpm?: number;
+}): ZonePcts | null {
+  const offset = args.hrOffsetBpm ?? 0;
+  if (args.table) {
+    // 1 · per-second samples, wherever the payload put them. `phases` first:
+    // that is where the watch writes, and a run carrying both should be read
+    // from the stream the device recorded.
+    for (const src of [args.phases, args.rawSplits]) {
+      const arr = Array.isArray(src) ? (src as RawSplit[]) : [];
+      if (arr.length > 0 && hasHrSamples(arr)) {
+        const next = bucketHrSamplesByZone(arr, args.table, offset);
+        if (next) return next;
+      }
+    }
+    // 2 · per-mile averages.
+    const next = zoneSharesFromSplitHr(args.splits ?? [], args.table, offset);
+    if (next) return next;
+  }
+  // 3 · nothing to recompute from. The stored value is all there is, and it
+  // is better than refusing outright — it is only its ANCHOR that is in
+  // doubt, not the fact that the run had a distribution.
+  return args.storedPcts ?? null;
+}
+
+/**
  * Convenience · check whether ANY split in the array carries
  * usable raw HR samples. Used by the render fallback to decide
  * whether the per-sample bucketer can run · false means callers

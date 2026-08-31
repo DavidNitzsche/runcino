@@ -16,7 +16,9 @@
  * catches that on the read; the refusal here stops it being written.
  */
 import { describe, it, expect } from 'vitest';
-import { apportionToHundred, bucketHrSamplesByZone, type RawSplit } from './hr-zone-bucket';
+import {
+  apportionToHundred, bucketHrSamplesByZone, resolveHrZoneShares, type RawSplit,
+} from './hr-zone-bucket';
 import { computeZones } from '@/lib/training/zones';
 
 const TABLE = computeZones({ lthr: 162 })!;
@@ -127,5 +129,63 @@ describe('bucketHrSamplesByZone', () => {
       const z = bucketHrSamplesByZone(split([132, 7], [148, 7], [161, 7]), TABLE, bump)!;
       expect(sum(z), `bump ${bump}`).toBe(100);
     }
+  });
+});
+
+
+/**
+ * ANCHOR-STALE-1 (2026-08-30) · the render must follow the anchor.
+ *
+ * `data.hrZonePcts` is computed at ingest and persisted. Nothing on the row
+ * records WHICH threshold produced it, and `reconcileHrZones` — the only
+ * guard the read path had — asks whether five numbers are a distribution,
+ * never which anchor they came from. So while the stored value took
+ * precedence, re-deriving the anchor could not reach history.
+ *
+ * The shape below is a miniature of the owner's 2026-08-30 long run: 13.49
+ * mi, avg HR 159, an EASY long day, stored in production as
+ * `{z1:4,z2:15,z3:11,z4:10,z5:60}`. Sixty percent of an easy long run in Zone
+ * 5, because the anchor it was bucketed at (162) was ~6 bpm below the one his
+ * race evidence supports (168).
+ */
+describe('resolveHrZoneShares · a stored distribution does not outlive its anchor', () => {
+  const PHASES = split([139, 20], [147, 30], [155, 30], [163, 20]);
+  const STORED = { z1: 4, z2: 15, z3: 11, z4: 10, z5: 60 };
+
+  it('recomputes from the samples rather than serving the stored value', () => {
+    const at162 = resolveHrZoneShares({ phases: PHASES, storedPcts: STORED, table: computeZones({ lthr: 162 }) })!;
+    const at168 = resolveHrZoneShares({ phases: PHASES, storedPcts: STORED, table: computeZones({ lthr: 168 }) })!;
+    expect(at162).not.toEqual(STORED);
+    // The two anchors give different answers, which is the whole point.
+    expect(at162).not.toEqual(at168);
+    expect(sum(at162)).toBe(100);
+    expect(sum(at168)).toBe(100);
+  });
+
+  it('raising the anchor moves time DOWN the zones, never up', () => {
+    const lo = resolveHrZoneShares({ phases: PHASES, storedPcts: STORED, table: computeZones({ lthr: 162 }) })!;
+    const hi = resolveHrZoneShares({ phases: PHASES, storedPcts: STORED, table: computeZones({ lthr: 168 }) })!;
+    // Every band edge scales with the anchor, so a higher anchor puts the same
+    // beats in lower zones. Cumulative share from the top must not grow.
+    let cumLo = 0, cumHi = 0;
+    for (const k of ['z5', 'z4', 'z3', 'z2'] as const) {
+      cumLo += lo[k]; cumHi += hi[k];
+      expect(cumHi, `cumulative from the top through ${k}`).toBeLessThanOrEqual(cumLo);
+    }
+  });
+
+  it('falls back to per-mile averages before it falls back to the stored value', () => {
+    const splits = [{ hr: 139 }, { hr: 147 }, { hr: 155 }, { hr: 163 }];
+    const out = resolveHrZoneShares({ splits, storedPcts: STORED, table: computeZones({ lthr: 168 }) })!;
+    expect(out).not.toEqual(STORED);
+    expect(sum(out)).toBe(100);
+  });
+
+  it('keeps the stored value only when there is nothing to recompute from', () => {
+    expect(resolveHrZoneShares({ storedPcts: STORED, table: computeZones({ lthr: 168 }) })).toEqual(STORED);
+    // No anchor at all · rungs 1 and 2 cannot run, so the stored value stands.
+    expect(resolveHrZoneShares({ phases: PHASES, storedPcts: STORED, table: null })).toEqual(STORED);
+    // Nothing anywhere · a refusal, never five zeros.
+    expect(resolveHrZoneShares({ table: computeZones({ lthr: 168 }) })).toBeNull();
   });
 });

@@ -41,8 +41,7 @@ import {
 } from '@/lib/runs/coherence';
 import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
-import { apportionToHundred } from './hr-zone-bucket';
-import { zoneSharesFromSplitHr } from './hr-zone-bucket';
+import { resolveHrZoneShares } from './hr-zone-bucket';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
 import { fmtPace as fmtPaceNoUnit, fmtClock } from '@/lib/format/run';
 // THE one enum-to-word table. Imported, never restated — see `type_display`.
@@ -903,23 +902,45 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   //
   // A refusal still falls through to re-deriving from the samples, which is
   // the right order: the STORED value is what is disproved, not the run.
+  //
+  // ANCHOR-STALE-1 (2026-08-30) · THE ORDER IS NOW THE OTHER WAY ROUND, and
+  // the anchor is resolved ONCE for both the bar and the ranges beside it.
+  //
+  // Taking the stored value first made it permanent: `reconcileHrZones` asks
+  // whether five numbers are a distribution, never which ANCHOR produced
+  // them, so a distribution bucketed at a threshold the runner no longer has
+  // passed the guard and won. Re-deriving the anchor therefore could not
+  // reach history — the owner's 2026-08-30 long run kept reading 60% Zone 5
+  // for an easy day. `resolveHrZoneShares` puts the recompute first and
+  // leaves the stored value as the last rung; see its doc comment for the
+  // precedence and the one trade it makes.
+  //
+  // The threshold resolution moved ABOVE this block for the same reason the
+  // two are now one call: the bar used to be bucketed against a RAW
+  // `profile.lthr` read inside `deriveHrZones`, while the ranges panel drawn
+  // next to it used `resolveThresholdHr`. For a runner with no stored LTHR
+  // those are different anchors — the crosswalk resolves, the raw read does
+  // not — so one screen could draw its bands at one threshold and colour its
+  // bar at another, or draw the bands and no bar at all. One anchor now.
+  //
+  // 2026-07-06 · P1-43 · resolveThresholdHr = stored profile.lthr →
+  // effective-maxHr §11 crosswalk. maxHr-only runners get personalized zones;
+  // `method` lets surfaces label crosswalk-derived numbers as estimated.
+  // Still null at true cold start — never fabricated.
+  const thresholdHr = await resolveThresholdHr(userId).catch(() => null);
+  const zoneTable = thresholdHr ? computeZones({ lthr: thresholdHr.bpm }) : null;
+
   const hrPctsRaw = r.hrZonePcts ?? r.hr_zones ?? null;
-  const hrZonePcts = reconcileHrZones({ ...r, hrZonePcts: hrPctsRaw } as never)
-    // 2026-06-04 · prefer per-sample bucketing when raw HR samples
-    // are present (watch path). Falls through to deriveHrZones
-    // (per-split-avg) for older runs or Strava-source that ships
-    // only summary HR per split. See lib/coach/hr-zone-bucket.ts.
-    ?? await deriveHrZonesFromSamples(userId, r.splits, r.avgHr, splits, 0, r.phases);
+  const hrZonePcts = resolveHrZoneShares({
+    phases: r.phases,
+    rawSplits: r.splits,
+    splits,
+    storedPcts: reconcileHrZones({ ...r, hrZonePcts: hrPctsRaw } as never),
+    table: zoneTable,
+  });
 
   // Bring the user's LTHR-anchored zone ranges so the modal can render
   // an actionable "where your HR landed" panel.
-  // 2026-07-06 · P1-43 fix · resolve via resolveThresholdHr (stored
-  // profile.lthr → effective-maxHr §11 crosswalk) instead of reading only
-  // profile.lthr. maxHr-only runners now get personalized zones; the
-  // `method` field lets surfaces label crosswalk-derived numbers as
-  // estimated. Still null at true cold start — never fabricated.
-  const thresholdHr = await resolveThresholdHr(userId).catch(() => null);
-  const zoneTable = thresholdHr ? computeZones({ lthr: thresholdHr.bpm }) : null;
   const hr_zones_from_lthr = (zoneTable && thresholdHr) ? {
     lthr: thresholdHr.bpm,
     method: thresholdHr.method,
@@ -1922,95 +1943,3 @@ async function loadFormMetrics(userId: string, date: string | null): Promise<Run
   };
 }
 
-/** When the activity didn't ship hrZonePcts, derive a rough split based on
- *  the runner's LTHR zones (if known) and the available avg HR. */
-async function deriveHrZones(
-  userId: string,
-  avgHr: number | string | null,
-  splits: RunSplit[],
-  hrOffsetBpm = 0,
-): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number } | null> {
-  // ZONES-SUM-1 · null, not five zeros. Nothing to distribute is the ABSENCE
-  // of a distribution, and returning one shaped like a distribution is how
-  // five canonical rows came to carry `{0,0,0,0,0}` beside a measured average
-  // of 135-145 bpm. See lib/coach/hr-zone-bucket.ts.
-  const hr = Number(avgHr);
-  if (!hr) return null;
-
-  // Pull LTHR for zone bands
-  const lthrRow = await pool.query(
-    `SELECT lthr FROM profile WHERE user_uuid = $1 ORDER BY (user_uuid=$1) DESC LIMIT 1`,
-    [userId]
-  ).catch(() => ({ rows: [] }));
-  const lthr = lthrRow.rows[0]?.lthr;
-  if (!lthr) return null;
-  const z = computeZones({ lthr });
-  if (!z) return null;
-
-  // ONE BUCKETER. The per-mile counting, the readable-HR range and the
-  // largest-remainder apportionment all live in lib/coach/hr-zone-bucket.ts
-  // beside the per-sample path, so a run bucketed from samples and a run
-  // bucketed from mile averages cannot round differently or disagree about
-  // which band a beat is in. This file kept its own copy of all three.
-  //
-  // ZONES-SUM-2 · a null here is the answer, not a gap to fill. It used to
-  // end "no splits, so assign 100% to the band the average falls in", which
-  // is a chart of an hour drawn from one number. See the function's own doc
-  // comment for what that shipped on 16 of 149 canonical runs.
-  return zoneSharesFromSplitHr(splits, z, hrOffsetBpm);
-}
-
-/**
- * 2026-06-04 · per-sample HR-zone bucketer preferred over the legacy
- * split-average path. Watch payloads ship raw HR samples every 5s
- * inside each split's `_raw.hrSamples` · bucketing every sample is
- * naturally time-weighted and won't put "33% in Z5" just because
- * a tempo phase happens to have its average HR at LTHR.
- *
- * Falls through to `deriveHrZones` (the legacy per-split-avg path)
- * when no samples are present · covers Strava-source runs and any
- * legacy data shape that doesn't carry per-second HR.
- *
- * ZONE-BANDS-1 (2026-08-24) · `rawPhases` is new, and it is where the samples
- * actually are. This function only ever looked inside `splits`, but the watch
- * writes its 5-second HR under `data.phases[].hrSamples` — which is why
- * `/api/watch/workouts/complete` hands the bucketer a synthetic split built
- * out of the phases. The READ path had no such handling, so on every one of
- * the 50 stored watch runs carrying per-second HR this silently fell through
- * to the per-mile-average path the 06-04 fix existed to replace. Same rule as
- * the write path now: look in both places, prefer whichever carries samples.
- *
- * Cite: lib/coach/hr-zone-bucket.ts · David's QC 2026-06-04.
- */
-async function deriveHrZonesFromSamples(
-  userId: string,
-  rawSplits: unknown,
-  avgHr: number | string | null,
-  splits: RunSplit[],
-  hrOffsetBpm = 0,
-  rawPhases?: unknown,
-): Promise<{ z1: number; z2: number; z3: number; z4: number; z5: number } | null> {
-  const { bucketHrSamplesByZone, hasHrSamples } = await import('./hr-zone-bucket');
-  type Bucketable = Parameters<typeof bucketHrSamplesByZone>[0];
-  let rawArr = Array.isArray(rawSplits) ? rawSplits as Bucketable : ([] as Bucketable);
-  if (rawArr.length === 0 || !hasHrSamples(rawArr)) {
-    // Phases carry `hrSamples` in the same shape; one synthetic split holding
-    // all of them buckets identically, because counting time-even samples IS
-    // time-weighting and the bucketer never reads a split's own fields.
-    const phaseArr = Array.isArray(rawPhases) ? rawPhases as Bucketable : ([] as Bucketable);
-    if (phaseArr.length > 0 && hasHrSamples(phaseArr)) rawArr = phaseArr;
-  }
-  if (rawArr.length === 0 || !hasHrSamples(rawArr)) {
-    return deriveHrZones(userId, avgHr, splits, hrOffsetBpm);
-  }
-  // Load LTHR once · build the zone table · bucket every sample.
-  const lthrRow = await pool.query(
-    `SELECT lthr FROM profile WHERE user_uuid = $1 ORDER BY (user_uuid=$1) DESC LIMIT 1`,
-    [userId],
-  ).catch(() => ({ rows: [] }));
-  const lthr = lthrRow.rows[0]?.lthr;
-  if (!lthr) return null;
-  const table = computeZones({ lthr });
-  if (!table) return null;
-  return bucketHrSamplesByZone(rawArr, table, hrOffsetBpm);
-}
