@@ -68,6 +68,7 @@
 import { pool } from '@/lib/db/pool';
 import { logReadFailure, rowsOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { trainingWeekWindow } from '@/lib/notifications/week-window';
 // ANCHOR-STALE-3 · the canonical HRmax resolver. `rebuildWorkoutDerivations`
 // prices a rebuilt quality session against the runner's LIVE anchors; see the
 // Rule 10 note there for why `users.max_hr` is never read directly.
@@ -517,10 +518,47 @@ export function chooseRescheduleDate(opts: {
   /** TRAVEL-1 · ISO dates inside the runner's travel windows. Optional —
    *  absent/empty keeps the search byte-identical to before. */
   travelDates?: Set<string> | null;
+  /**
+   * GRADED-MISS-1 (2026-08-30) · the last day of the training week the makeup
+   * may land in. Candidates past it are refused, which is what turns this
+   * search into the owner's graded rule. Null keeps the old unbounded search.
+   */
+  weekEndISO?: string | null;
 }): string | null {
-  const { todayISO, byDate, longRunDow, restDow, weeklyFrequency, raceDates, travelDates } = opts;
+  const { todayISO, byDate, longRunDow, restDow, weeklyFrequency, raceDates, travelDates, weekEndISO } = opts;
   for (let i = 1; i <= 4; i++) {
     const d = plusDaysISO(todayISO, i);
+    /* ── GRADED-MISS-1 · RESHUFFLE EARLY, ABSORB LATE ──────────────────────
+     *
+     * The owner's ruling on a missed session, and it had neither an
+     * implementation nor a gate: reshuffle it early in the week when the
+     * stimulus still matters, absorb it late.
+     *
+     * There is no "early" threshold here and there should not be one — a
+     * number like "the first three days" would be invented, and Rule 9 warns
+     * that a behavioural switch on a hair is a defect. The rule falls out of
+     * the week boundary the app already treats as the single source of truth
+     * (the training week ENDS on `user_settings.long_run_day`, locked
+     * 2026-06-16, one definition in `trainingWeekWindow`):
+     *
+     *   · Miss EARLY · today+1..+4 all sit inside the week → a slot is found,
+     *     the session is rescheduled, the week still gets its stimulus.
+     *   · Miss LATE  · the candidates fall past the week's end → every one is
+     *     refused → the caller drops it as data with a coach_intents record.
+     *
+     * So "early" and "late" are read off the runner's own calendar rather than
+     * asserted, and the response grades itself.
+     *
+     * IT ALSO CLOSES A STACKING HAZARD. Without this the window ran straight
+     * past the boundary, so a Thursday miss could be rescheduled onto next
+     * Monday — adding a quality day to a week that had already been composed
+     * with its own, which is exactly the stacking the anti-stacking downgrade
+     * exists to prevent, arriving from the other direction and unguarded.
+     *
+     * The drop copy has said "no clear day exists this week" since P1-35. It
+     * was describing behaviour the code did not have.
+     */
+    if (weekEndISO && d > weekEndISO) continue;
     const ctx = byDate[d] ?? { runCount: 0, qualityOrLong: false, hasRestRow: false, weekRunCount: null };
     if (ctx.runCount > 0) continue;
     if (ctx.hasRestRow) continue;
@@ -4450,9 +4488,19 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         } catch { return new Set<string>(); }
       })();
 
+      // GRADED-MISS-1 · the training week the makeup must land inside. Read
+      // through `trainingWeekWindow`, the one definition of the runner's week
+      // boundary (it ENDS on their long-run day), so this cannot drift from
+      // `/api/plan/week` or the progression pass. Null when the long-run day is
+      // unknown, which leaves the search exactly as it was rather than guessing
+      // a boundary — a missing setting must not silently change the response.
+      const weekEndISO = longRunDow != null
+        ? trainingWeekWindow(today, dowOfISO(today), longRunDow).week_end_iso
+        : null;
+
       const target = chooseRescheduleDate({
         todayISO: today, byDate, longRunDow, restDow, weeklyFrequency, raceDates,
-        travelDates,
+        travelDates, weekEndISO,
       });
 
       if (!target) {
