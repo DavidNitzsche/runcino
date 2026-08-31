@@ -75,6 +75,18 @@ Read these in order before doing any design or implementation work in this proje
 
 ### 0. Coaching doctrine — read this first, it governs everything below
 
+**`docs/BRAIN_CONSTITUTION.md`** — locked 2026-08-31, read this one FIRST of
+all. The fast-reference ownership table for every coaching domain (Activity
+Interpreter, Evidence Engine, Runner Model, Readiness, Safety, Coaching
+Thesis, Pace Prescription, Plan Generator, Adaptation Engine, Race
+Prediction, Goal System, Goal Feasibility, Training Load, Environmental
+Context, Workout Library, UI) — one question, one canonical owner, no side
+doors, no feature-specific overrides, no "temporary" second truth, signals
+are evidence not new engines, scores require justification, prefer deletion
+before addition. If a PR introduces a second answer to any row in its
+ownership table, reject it. Check this before deciding where any new
+coaching logic belongs.
+
 **`docs/PRODUCT_COACHING_DOCTRINE.md`** — locked 2026-08-31. The canonical,
 complete statement of what this app is for and how it should behave: the core
 loop (understand → prescribe → observe → interpret → adapt → repeat), fitness
