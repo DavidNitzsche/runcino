@@ -130,6 +130,63 @@ remain his, and none were made. I merged it.
 
 ---
 
+## 2026-08-30 · The block is built whole and flexes on two axes. SETTLED.
+
+**The question.** Should the plan build a week or two at a time, to make it truly
+adaptive?
+
+**The answer, David's, and it is narrower than what was being designed:** *"I
+think the whole block should be built but week to week there can be shifts in
+pace or distance as needed. So there's still confidence there in seeing
+everything but adaption to the runner."*
+
+### What that settles
+
+- **All fourteen weeks are authored and visible.** He wants to see the arc — the
+  peak, the two 20-milers, the taper date. No shortened horizon, and no
+  committed-window / provisional-arc split in the UI.
+- **Layout, session types, dates, phases and taper are FIXED once authored.**
+  This is now a constraint rather than a risk to mitigate. That fixity is what
+  makes the block trustworthy instead of churning, and churn was the thing he
+  named first when he said he did not want to wake up to a plan he did not
+  recognise.
+- **Pace and distance flex on the weeks not yet run.** That is the whole
+  adaptation surface.
+
+### Why this supersedes the weekly re-composition design
+
+`docs/design/weekly-recomposition-committed-window-and-provisional-arc.md`
+(2026-08-30) was written to a broader brief. Its committed-window and
+shortened-horizon sections are superseded; its anti-ratchet work is not and
+should survive — `resolvePeakWeekly` is a max over a rolling 112-day window, so
+the block's peak falls when the week that set it **rolls out of the window**
+rather than when the evidence changes. That is a time-driven regression, and it
+would directly betray "seeing everything" by quietly walking the arc down.
+
+**The audit reached the same conclusion independently, and argued against me.**
+My hypothesis was that re-composition would dissolve the push problem. It would
+not have: the reason nothing ever pushed was two gate defects, not the
+architecture — a gate querying `data->>'type'`, a field that has never held a
+session type, and a bump veto three domains stricter than the pull-back it
+mirrors. Both fixed 2026-08-30. Recording that the agent was right and the
+hypothesis was wrong, because the alternative was a large re-architecture that
+would not have fixed the thing it was aimed at.
+
+### What this makes the real work
+
+A block that cannot flex is a printout, so the adjustment layer IS the product:
+
+1. **The progression gate is dark** — 25 quality days in his block, one carries a
+   `workShape`, and that one has `lever: null`, so ACCELERATE is unreachable by
+   construction. 5 of 4,536 rows database-wide.
+2. **Missed-session grading is unimplemented** — the graded rule (reshuffle early,
+   absorb late) has neither implementation nor gate, and `chooseRescheduleDate`
+   can push a Thursday miss into the following week.
+3. **Provisional-week volume re-derivation** — the "distance shifts" half of his
+   sentence, and the narrowest useful version of the original design.
+
+---
+
 ## Standing constraints referenced above
 
 - Paces come from evidence. The goal stays visible and never distorts training.
