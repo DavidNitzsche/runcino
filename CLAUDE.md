@@ -507,6 +507,122 @@ stop.
 
 ---
 
+## Rule 14 · A query names the population it reads (locked 2026-08-30)
+
+**Filtering on the runner is not the same as filtering on the right ROWS.** Three
+separate incidents in this project, all the same shape — a query that looked
+correct, ran without error, and read a population nobody intended:
+
+- **Archived plan versions.** `clearActivePlansFor` archives a plan and never
+  deletes its `plan_workouts`, so a join on `user_uuid` alone reads all 47 of the
+  owner's plan versions. It counted **59 "quality sessions" in one week**, which
+  made `recentQualityPerWeek` return 36, which made Rule 5's quality-density ramp
+  trivially satisfied — so it **had never fired for any runner whose plan had ever
+  been rebuilt, which is everyone.** Three more defects from the same omission,
+  including six duplicate coach-log cards for one week.
+- **`user_id = 'me'`.** A shared legacy sentinel that returns OTHER ACCOUNTS' rows.
+  Never filter on it; join `users` on email and use `user_uuid`.
+- **`absorbed_into_canonical_at`.** Filtering on the stamp instead of
+  `NOT (data ? 'mergedIntoId')` does not shade a day down, it **zeroes it** — 63
+  miles across 7 days once vanished this way, including the owner's true peak long
+  run. The canonical predicate is `CANONICAL_ROW_SQL` and there is exactly one.
+
+**To comply:** every query states its scope explicitly — the active plan, the
+canonical row, this user by uuid — and where a scope has one correct definition it
+lives in ONE exported constant that greps find, never re-typed per call site.
+
+**And verify without the app's own filters first.** A verification query that
+reuses the reader's filter reproduces the bug instead of revealing it. That
+happened here: a confident report of 63 lost miles was produced by a query with
+the same defect as the code it was checking. When a number looks wrong, query
+raw, then compare.
+
+**Enforcement:** `lib/audit/_active_plan_scan.test.ts` (ACTIVEPLAN-1) and
+`lib/runs/_absorption_predicate.test.ts`. Both are ratchets: the allowlist may
+shrink, never grow, and a stale exemption fails until deleted.
+
+---
+
+## Rule 15 · A mechanism the test corpus cannot REACH is untested, however many archetypes pass (locked 2026-08-30)
+
+**Coverage is not the count of cases that pass. It is the set of code paths any
+case can reach.**
+
+`_sweep_allusers.test.ts` grades **11,598 archetypes** against a research answer
+key and is the most-cited quality evidence in this project. Its `Arc` type has no
+`dailyMiMostRecentFirst`, no `easyDayMedianMi`, no `recentQualityPerWeek`, no
+`isMidBlock`. So `hist` is null for **every archetype**, and therefore:
+
+- `resolveRampBase` is **never called** — `lifted` never exercised
+- `rampBaseEvidence` is null → `baseRebuilt` short-circuits true on clause one
+- `easyDayMedianMi` is 0 → the easy-day floor never binds
+- `recentQualityPerWeek` is undefined → the density ramp never fires
+
+**Four doctrine mechanisms, dark across the entire corpus.** Adding archetypes
+would never have helped — the corpus cannot express a runner with a history at
+all, and every real runner has one.
+
+**To comply:** when you add a mechanism, ask which corpus case reaches it and
+name that case in the test. If none can, the corpus needs the input, not more
+rows. A mechanism gated on a field the fixtures never populate is decoration.
+
+**And treat a green sweep as evidence about what it EXERCISED, never as evidence
+about the engine.** State coverage in terms of paths reached, not cases run.
+
+---
+
+## Rule 16 · One quantity, one name (locked 2026-08-30)
+
+**If two surfaces show the same label they show the same number, and a sentence
+about a measurement is gated on that measurement.**
+
+- The owner's CIM race had **three different projected finishes** live at once —
+  `3:22:17` on the list, `3:31:48` on the detail, `3:42:23` in a third rung. All
+  labelled "projected". They were three different quantities: forward trajectory,
+  current-fitness equivalence, and equivalence plus a marathon-specificity
+  adjustment. Each was individually defensible; together they were incoherent.
+- The recap printed **"kept it aerobic" unconditionally** — no HR condition at
+  all. It said it over a 13.5-mile long run at avg HR 159 against a 145 ceiling.
+- The watch resolved race day as "the next A race with a goal", which is always
+  the marathon. It would have carried a **3:00:00 marathon goal, a marathon
+  strategy label and a 26.2-mile gel ladder to the start line of a 10K.**
+
+**To comply:** resolve a displayed quantity in ONE place and let every surface
+call it — the fix for the three projections was `lib/training/race-projection.ts`,
+plus a test asserting no route computes it directly, because a behavioural test
+alone cannot catch a surface that stops calling the shared resolver. A sentence
+asserting a fact about a measurement must be gated on that measurement or not
+said. And a surface about an entity resolves THAT entity, not the most important
+one in scope.
+
+---
+
+## Rule 17 · The runner reads a sentence once (locked 2026-08-30)
+
+**Repetition is not thoroughness. It is the most common form of bloat in this
+app, and it makes real information harder to find.**
+
+Found in one pass over three screens: the same 20-word downhill instruction
+appended to **every long run, eleven times in one block**. The pace-ramp legend
+printed **twice on one screen**. Average heart rate printed **three times** on
+Today. The coach log rendering **six duplicate cards** for a single week. A
+catalogue of tempo and hill sessions displayed during a phase whose own coach
+line above it read "Easy running only. No quality."
+
+**To comply:** say it once, in the place it is most useful, and refer back rather
+than restate. A coach says "run the downhills" when prescribing the block and
+then trusts the runner. If a surface repeats a sentence per row, the sentence
+belongs to the block, not the row. If two components can both draw a value, one
+of them yields — and it yields on the rendered text, not on a row id, because
+that is what the runner actually sees.
+
+This is the enforceable half of the owner's standing instruction to strip fluff
+and bloat, and of the design contract's rule that no content is printed twice on
+one screen. Where a surface contradicts the sentence above it, that is not
+redundancy but a correctness bug, and the contradiction is the finding.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
