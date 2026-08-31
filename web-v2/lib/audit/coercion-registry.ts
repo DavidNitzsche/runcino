@@ -201,6 +201,10 @@ export const COERCION_ARGUED: readonly CoercionExemption[] = [
     id: 'lib/plan/zone-anchors.ts::zonePaceSec::p',
     reason: 'a zone anchor of zero seconds per mile is not a pace band, and every consumer uses presence to decide whether the zone can be drawn at all.',
   },
+  {
+    id: 'lib/plan/progression-spec.ts::readSelectionRationale::v.trim().length',
+    reason: 'the only writer, generate.ts, guards the assignment with `if (workoutSpec && d.catalogueRationale)` before it ever reaches this key, so a stored empty or whitespace-only string can never be a MEASUREMENT of an empty rationale — no code path produces one on purpose. It can only be legacy or hand-edited row data, which is the same "cannot trust it" verdict as absence. Both consumers, spec-card.ts and coaching-thesis.ts, use the field only to decide whether to render a line of prose, and blank prose and no prose render identically — there is no third behaviour for a real empty string to unlock. `_rationale_persist.test.ts` (`readSelectionRationale is honest about absence`) locks this exact collapse in as intended.',
+  },
 ];
 
 /**
@@ -665,6 +669,7 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/injury-builder.ts::buildInjuryPlan::catch',
   'lib/plan/mutate.ts::num::n',
   'lib/plan/plan-delta.ts::longRunIn::max',
+  'lib/plan/progression-spec.ts::readSelectionRationale::v.trim().length',
   'lib/plan/prescription-parser.ts::parseTempoLeadMi::mi',
   'lib/plan/recompute-paces.ts::recomputePacesForPlan::catch',
   // PRESCRIPTION-WIRE-1 (2026-08-31) · the maintenance arm's twin of the line
