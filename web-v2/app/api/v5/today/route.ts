@@ -37,6 +37,7 @@ import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
+import { resolveViewedPlanDay, viewedDayIsUnresolved } from '@/lib/faff/viewed-day';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
 import {
   prescriptionFor, derivePaces, hrTargets, narrowToPrescriptionType, strictPrescriptionType,
@@ -384,7 +385,28 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // the viewed date to itself, matched, and silently no-opped — the button
   // that fired but did nothing, on David's phone, 2026-08-25.
   const planWeek = await loadPlanWeek(userId, runnerTodayISO, today);
-  const todayWeekDay = planWeek.days.find((d) => d.is_today) ?? null;
+  // VIEWED-DAY-1 (2026-08-30) · BY DATE, NOT BY `is_today`.
+  //
+  // The comment above is about `is_today` meaning the runner's REAL today, and
+  // it is right. This line is about the fact that the prescription must follow
+  // the SCREEN, and `is_today` stopped being able to answer both questions the
+  // moment 230fbac1 split the two dates apart.
+  //
+  // Viewing Monday loads the Monday-to-Sunday week, which does not contain the
+  // Sunday the runner is actually on, so this matched NO row and the day came
+  // back null — hero REST, no distance, no pace, no HR cap, and an About card
+  // reading "By feel." over a week with `4x1mi @ T pace` in it. See
+  // lib/faff/viewed-day.ts for the full account.
+  const todayWeekDay = resolveViewedPlanDay(planWeek.days, today);
+  // RULE 11 · the plan is loaded and says NOTHING about this date, which is not
+  // the same fact as the plan saying "rest" — and neither is the same as the
+  // read having failed. `plan_id != null` is what separates the third from the
+  // other two: no plan loaded means the surface must not assert an absence it
+  // never established.
+  const todayPlanUnresolved = viewedDayIsUnresolved({
+    planLoaded: planWeek.plan_id != null,
+    viewedDay: todayWeekDay,
+  });
   const glanceToday = glance.weekDays.find((d) => d.date === today) ?? null;
 
   const weekStripDays = planWeek.days.map((d) => ({
@@ -640,7 +662,40 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       }
     : null;
 
-  const purposeType = TYPE_NORMALIZE[(todayPlan?.type ?? '').toLowerCase()] ?? 'unplanned';
+  // BYFEEL-1 (2026-08-30) · "BY FEEL" IS A PRESCRIPTION, NOT A SHRUG.
+  //
+  // `derivePurpose`'s `unplanned` arm is `verdict: 'By feel.'`, and this line
+  // routed three different situations into it:
+  //
+  //   1. The day was unresolved (VIEWED-DAY-1 above). Fixed at the source; the
+  //      flag is what keeps this arm honest for the cases that remain.
+  //   2. The day resolved to REST. `todayPlan` is deliberately null on a rest
+  //      day, so reading the type off it turned every rest day into "By feel"
+  //      rather than "Rest day" — and `composeWhy`'s own `/^rest day/i` guard
+  //      could not fire, because the string never said rest.
+  //   3. The type was REAL but not in the twelve-entry map. `interval`
+  //      (singular) is 214 production rows by workout-type.ts's own count;
+  //      `vo2max`, `track`, `repeats`, `lt`, `long-run` and nine more alias
+  //      the same way. A hard interval session read "By feel."
+  //
+  // The owner hit (1) on 2026-08-30 on a week whose Tuesday is `4×1 mi @ T
+  // pace` with `lthr_bpm: 168` stamped on it. Being told to run that by feel
+  // contradicts the prescription two taps away — Rule 16: a sentence about a
+  // measurement is gated on that measurement.
+  //
+  // `canonicalSessionType` is the app's own resolver and this file already
+  // imports it and uses it twice below; the local map now only carries the
+  // aliases that resolver deliberately does NOT make (`race_week_tuneup` →
+  // `threshold` is a COPY choice, not a classification).
+  const viewedPlannedType: string | null =
+    glanceToday && glanceToday.plannedType !== 'unplanned'
+      ? glanceToday.plannedType
+      : todayWeekDay?.type ?? null;
+  const purposeType: PurposeWorkoutType = todayPlanUnresolved
+    ? 'unplanned'
+    : (TYPE_NORMALIZE[(viewedPlannedType ?? '').toLowerCase()]
+        ?? canonicalSessionType(viewedPlannedType ?? '')
+        ?? 'unplanned');
   const purposePhase: PurposePhase | null = glance.phaseLabel ? (PHASE_FROM_LABEL[glance.phaseLabel] ?? null) : null;
   const purpose = derivePurpose({
     type: purposeType, phase: purposePhase,
@@ -669,14 +724,21 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         [activePlan.id, today],
       ).catch(() => ({ rows: [] }))).rows[0]?.rationale ?? null)
     : null;
-  const why = composeWhy({
-    phase: glance.phaseLabel,
-    lastRaceName: lastRaceRow?.name ?? null,
-    daysSinceRace: daysSinceLastRace,
-    dayNote: todayWeekDay?.notes?.trim() || null,
-    phaseRationale,
-    fallback: [purpose.verdict, ...purpose.facts].filter(Boolean).join(' '),
-  });
+  const why = todayPlanUnresolved
+    // RULE 11 · an unresolved day says so. It does NOT borrow the phase
+    // opener, because "you're in the part of the block where the hard
+    // sessions do the work" is a claim about a week whose prescription we
+    // have just failed to find, and it is the half of the old sentence that
+    // made the other half sound authoritative.
+    ? 'This block does not prescribe this day. Nothing is scheduled to run.'
+    : composeWhy({
+        phase: glance.phaseLabel,
+        lastRaceName: lastRaceRow?.name ?? null,
+        daysSinceRace: daysSinceLastRace,
+        dayNote: todayWeekDay?.notes?.trim() || null,
+        phaseRationale,
+        fallback: [purpose.verdict, ...purpose.facts].filter(Boolean).join(' '),
+      });
 
   // ── Already ran today? → after_run (5b/5c) ─────────────────────────────
   const ranToday = glanceToday && glanceToday.doneMi >= 0.5;
@@ -1231,6 +1293,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
 
       const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
       ctx.todayPlan = todayPlan;
+      ctx.todayPlanUnresolved = todayPlanUnresolved;
       ctx.weekLine = weekLine;
   // The panel's line, beside the week line. Where the runner is in the block
   // beats what today's date is: the strip already highlights the day and the
@@ -1521,6 +1584,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
 
   const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
   ctx.todayPlan = todayPlan;
+  ctx.todayPlanUnresolved = todayPlanUnresolved;
   ctx.weekLine = weekLine;
   // The phase belongs on every branch that composes a real panel, not just
   // the after-run one — a before-run day was falling back to the date and

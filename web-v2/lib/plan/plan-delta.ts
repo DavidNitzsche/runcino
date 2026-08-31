@@ -218,6 +218,16 @@ export interface PlanDelta {
    *  block prescribes that week (a plan that starts next Monday). */
   thisWeekMiFrom: number | null;
   thisWeekMiTo: number | null;
+  /**
+   * BLOCKSWAP-1 · miles in the first week the NEW block fully owns — the week
+   * starting the day after the current window ends.
+   *
+   * The forward number. A block replacement's honest headline is what the
+   * runner is about to do, not a delta on a week that has already been run.
+   * Optional because rows persisted before 2026-08-30 do not carry it, and a
+   * sentence that needs it must degrade rather than print `undefined`.
+   */
+  nextWeekMiTo?: number | null;
   /** The long run in the week containing `todayISO`. */
   longRunMiFrom: number | null;
   longRunMiTo: number | null;
@@ -278,6 +288,25 @@ function longRunIn(days: PrescribedDay[], startISO: string, endISO: string): num
   return max > 0 ? roundTo(max, 1) : null;
 }
 
+/**
+ * The after block's days, completed with the before block's rows for elapsed
+ * dates the after block did not author. See BLOCKSWAP-1 in `computeDelta`.
+ *
+ * Only dates strictly before `todayISO`, and only where the after side has no
+ * row at all — an after row always wins, including one that prescribes rest,
+ * because that IS the new block speaking.
+ */
+function effectiveAfterDays(
+  beforeDays: PrescribedDay[],
+  afterDays: PrescribedDay[],
+  todayISO: string,
+): PrescribedDay[] {
+  const today = todayISO.slice(0, 10);
+  const have = new Set(afterDays.map((d) => d.dateISO));
+  const carried = beforeDays.filter((d) => d.dateISO < today && !have.has(d.dateISO));
+  return carried.length > 0 ? [...afterDays, ...carried] : afterDays;
+}
+
 function lastDayOf(p: PlanPrescription): string | null {
   return p.days.reduce<string | null>(
     (m, d) => (m == null || d.dateISO > m ? d.dateISO : m), null,
@@ -301,10 +330,30 @@ export function computeDelta(
   // covers a rebuild that no longer prescribes this week at all.
   const win = weekWindowFor(after, today) ?? weekWindowFor(before, today);
 
+  // BLOCKSWAP-1 (2026-08-30) · RULE 11 · A DAY THE NEW BLOCK MAY NOT AUTHOR
+  // IS NOT A DAY IT PRESCRIBED ZERO MILES FOR.
+  //
+  // `persistsComposedDay` refuses to write any day before the runner's today
+  // that is not sealed — the past is not the incoming block's to author, and
+  // that is correct. The consequence is that a block authored mid-week emits
+  // a PARTIAL current week, and `milesIn` summed that partial week against
+  // the outgoing block's complete one. The difference is the days the new
+  // block was structurally forbidden from mentioning, and it was rendered to
+  // the runner as a decision: "cut this week from 45 to 38 miles", on the
+  // first night of a block 45% BIGGER than the one it replaced.
+  //
+  // The prescription that actually stands for an elapsed day is the outgoing
+  // block's — nobody revoked it, and the runner either ran it or did not. So
+  // the after side is completed with the before side's rows for dates STRICTLY
+  // BEFORE today that the after side does not carry. Today onward is left
+  // alone: those days ARE the new block's to author, and a day it genuinely
+  // dropped must keep counting as dropped.
+  const afterWeekDays = win ? effectiveAfterDays(before.days, after.days, today) : after.days;
+
   const thisWeekMiFrom = win && before.days.length > 0 ? milesIn(before.days, win.startISO, win.endISO) : null;
-  const thisWeekMiTo = win && after.days.length > 0 ? milesIn(after.days, win.startISO, win.endISO) : null;
+  const thisWeekMiTo = win && after.days.length > 0 ? milesIn(afterWeekDays, win.startISO, win.endISO) : null;
   const longRunMiFrom = win && before.days.length > 0 ? longRunIn(before.days, win.startISO, win.endISO) : null;
-  const longRunMiTo = win && after.days.length > 0 ? longRunIn(after.days, win.startISO, win.endISO) : null;
+  const longRunMiTo = win && after.days.length > 0 ? longRunIn(afterWeekDays, win.startISO, win.endISO) : null;
 
   // Days from today onward, by date, on both sides. A date present on one side
   // only counts as changed — that is a day added or a day taken away.
@@ -320,8 +369,19 @@ export function computeDelta(
   const unchanged = before.days.length > 0 && after.days.length > 0
     && prescriptionFingerprint(before) === prescriptionFingerprint(after);
 
+  // The first week the new block fully owns. Read off the after block's own
+  // rows — no completion from `before`, because this window is entirely in
+  // the future and everything in it is the new block's to author.
+  const nextWeekMiTo = (() => {
+    if (!win || after.days.length === 0) return null;
+    const start = addDaysISO(win.endISO, 1);
+    const end = addDaysISO(start, 6);
+    const has = after.days.some((d) => d.dateISO >= start && d.dateISO <= end);
+    return has ? milesIn(after.days, start, end) : null;
+  })();
+
   return {
-    thisWeekMiFrom, thisWeekMiTo,
+    thisWeekMiFrom, thisWeekMiTo, nextWeekMiTo,
     longRunMiFrom, longRunMiTo,
     daysChangedFromToday,
     lastDayFrom: lastDayOf(before),
@@ -388,10 +448,53 @@ function mi(n: number): string {
  * says "your plan changed" and cannot say how is the card that was already
  * there on 2026-08-25.
  */
+/**
+ * BLOCKSWAP-1 · the kinds where one block ENDS and another is authored.
+ *
+ * For these, the current week is not a comparable quantity. The outgoing and
+ * incoming blocks do not author the same population of days for the elapsed
+ * part of it — `persistsComposedDay` forbids the new block from writing the
+ * past — so their difference over that week is bookkeeping, never a coaching
+ * decision. `computeDelta` now completes the population, but rows persisted
+ * before that fix still carry the old numbers and `describeDelta` recomposes
+ * the sentence from the STORED delta on every read. The owner's row id 60
+ * holds `thisWeekMiTo: 38` permanently. Suppressing the clause here is what
+ * stops him reading it, with no data write to a live plan.
+ *
+ * A block swap's story is the block.
+ */
+const BLOCK_REPLACEMENT_KINDS = new Set([
+  'recovery_complete',
+  'race_graduate',
+  'plan_elapsed',
+  'maintenance_to_raceprep',
+]);
+
 export function describeDelta(delta: PlanDelta, kind: string): string | null {
   if (delta.unchanged) return null;
 
   const subject = DELTA_SUBJECT[kind] ?? 'The plan';
+
+  if (BLOCK_REPLACEMENT_KINDS.has(kind)) {
+    // What is now in place, forward-looking, every number checkable against
+    // the plan beside it. No delta, because there is no honest one to state:
+    // the thing that happened is that a block was authored.
+    //
+    // The hero statement is the reason this is not simply suppressed to null.
+    // "There's a world where we push forward and the plan has to push us more
+    // and more. That's what the app is for." The first morning of a build is
+    // the moment that sentence is most load-bearing, and the app was opening
+    // on the word "cut".
+    const weeks = delta.weeksTo > 0 ? delta.weeksTo : null;
+    const opens = delta.nextWeekMiTo != null && delta.nextWeekMiTo > 0
+      ? `, opening at ${mi(delta.nextWeekMiTo)} miles`
+      : '';
+    if (weeks != null) return `${subject} put a ${weeks}-week block in place${opens}.`;
+    // No week count to stand on. Say the shape we do have rather than a number
+    // we do not (Rule 11 — a refusal is a correct answer, filler is not).
+    return `${subject} put a new block in place.`;
+  }
+
   const clauses: string[] = [];
 
   const volMoved = delta.thisWeekMiFrom != null && delta.thisWeekMiTo != null

@@ -389,6 +389,23 @@ const APPLIED_WHY: Partial<Record<PlanProposalKind, string>> = {
   long_drift: 'Your long runs had moved past what the block prescribed.',
   quality_drift: 'Your quality sessions had moved away from the block’s targets.',
   goal_gap_widening: 'The projection had been drifting away from the goal.',
+  // BLOCKSWAP-1 (2026-08-30) · RULE 17 · THE RUNNER READS A SENTENCE ONCE.
+  //
+  // Without an entry here the card falls through to the cron's stored
+  // `reasons.message`, which on his row id 60 is "Recovery block finished ·
+  // rebuilt toward cim." That card's TITLE is already "Recovery is done"
+  // (PLAN_TITLES) and `describeDelta`'s subject is already "The end of
+  // recovery" — so the same fact landed three times in one card, and the
+  // third time carried a raw lowercase race slug the runner never typed.
+  //
+  // This says the one thing the other two do not: where the block goes. The
+  // race is named by the surface that owns it, not spelled out of a slug here
+  // (`santa-monica-10k-2026-09-13` is what that guess looks like when it is
+  // wrong).
+  //
+  // The cron's sentence is the half that should change; it lives in
+  // app/api/cron/plan-drift/route.ts, which this change does not own.
+  recovery_complete: 'It runs to your goal race.',
 };
 
 function synthesizeMessage(

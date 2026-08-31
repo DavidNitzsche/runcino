@@ -845,6 +845,19 @@ export interface V5TodayContext {
     originalType: string | null;
     originalSubLabel: string | null;
   } | null;
+  /**
+   * RULE 11 · the live plan prescribes NOTHING for the day on screen.
+   *
+   * `todayPlan: null` is overloaded — it is also how a rest day arrives — so
+   * on its own it cannot tell "the plan says rest" from "the plan says
+   * nothing", and the composer rendered both as a 56pt REST. That told the
+   * owner he had Monday 2026-08-31 off, on a day carrying a 4.5 mi easy.
+   *
+   * Set ONLY when the plan read succeeded and returned no row for this date.
+   * A FAILED read must leave this false: asserting "nothing is scheduled"
+   * off a Postgres blip is the same lie pointing the other way.
+   */
+  todayPlanUnresolved?: boolean;
   weekLine: string | null; // "Week 6 of 16"
   /** The block phase, title-cased for display ("Maintenance", "Base"). */
   phaseLine: string | null;
@@ -1758,7 +1771,17 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
           : ctx.weekLine)
       : ctx.weekLine,
     kicker: ctx.weatherKicker,
-    type: displayTypeFor(ctx.todayPlan?.type, ctx.todayPlan?.subLabel),
+    // RULE 11 · "NOTHING SET" IS NOT "REST".
+    //
+    // `displayTypeFor(undefined)` answers 'Rest', which is correct for a rest
+    // ROW and a fabrication for a missing one. The runner reads this word at
+    // 56pt and takes the day off on it. The gradient stays the quiet one —
+    // `dayState` is a six-value wire enum the phone maps to a background, and
+    // an unprescribed day is visually a non-session day — but the WORD tells
+    // the truth, and the About card underneath says which of the two it is.
+    type: ctx.todayPlanUnresolved
+      ? 'NOTHING SET'
+      : displayTypeFor(ctx.todayPlan?.type, ctx.todayPlan?.subLabel),
     // David, live in the simulator, 2026-08-25: "it says REST, REST day.
     // then extra rest" — three statements of the same fact stacked at the
     // top of one screen. `type` already carries the word at 56pt; the dose
@@ -1805,7 +1828,16 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
       ...(ctx.effortStat ? [{ label: 'Effort', value: num(ctx.effortStat, true), tone: null }] : []),
     ],
   };
-  t.groups = [...buildGroups(ctx.prescription), ...buildContingencyGroup(ctx.contingency)];
+  // RULE 17 · a surface must not contradict the sentence above it.
+  //
+  // On a date the block does not prescribe, `glance` still manufactures a rest
+  // day of its own (`planRow?.type ?? (plan ? 'rest' : 'unplanned')` — the same
+  // collapse as the week loader's), so a prescription was built and rendered a
+  // rest group UNDER a hero that had just said NOTHING SET. Seen on the live
+  // account at ?date=2026-08-29. The hero is the honest one; the group goes.
+  t.groups = ctx.todayPlanUnresolved
+    ? []
+    : [...buildGroups(ctx.prescription), ...buildContingencyGroup(ctx.contingency)];
   t.why = ctx.why;
   t.whereYouAre = ctx.whereYouAre;
   t.beforeYouGo = ctx.beforeYouGo;
