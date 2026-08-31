@@ -290,23 +290,31 @@ finding derived from the wrong 07-23/07-30 data (or account `606bcc38`'s
 nothing was denormalized or cached beyond the query itself, so no cache
 invalidation or backfill is needed.
 
-## Known open item: a concurrent, uncommitted, differently-shaped attempt at this same fix
+## Note: a concurrent process was working the identical brief in this shared checkout
 
-While this fix was in progress, three untracked, uncommitted files appeared
-in this shared checkout, written by a different, concurrent process working
-the identical brief (same report, same account, same dates, independently
-derived): `web-v2/lib/plan/_owned_days_reign.test.ts`,
-`web-v2/lib/plan/_probe_owned_days_reign_2026-09-01.test.ts`. That process's
-draft reign definition truncates the *active* plan's upper bound at
-`COALESCE(archived_iso, now())` — the same flaw this report's "real defect
-caught in my own first draft" section describes and rejects, which breaks
-every currently-scheduled future day. It was left untouched (not deleted,
-not modified) per this session's instruction not to touch files it does not
-own in a shared checkout, and was NOT staged or committed as part of this
-fix. **Flagging for David:** if that other session commits its version of
-`owned-days.ts`, it would reintroduce the future-day truncation bug this
-report's verification caught and fixed — worth checking before merging
-whichever lands second.
+While this fix was in progress, untracked files appeared in this shared
+checkout — `web-v2/lib/plan/_owned_days_reign.test.ts` and (briefly)
+`_probe_owned_days_reign_2026-09-01.test.ts` — written by a different,
+concurrent process independently deriving the same fix from the same
+investigation report. Its doc-comment prose still describes an intermediate
+reign definition, `[authored_iso, COALESCE(archived_iso, now()))`, that
+truncates the active plan's upper bound at `now()` — the same flaw this
+report's "real defect caught in my own first draft" section describes and
+rejects (it breaks every currently-scheduled future day). Between this
+session's `git add` and `git commit`, that process committed
+(`cc0b081f`) and its commit swept up this session's already-staged files —
+a known shared-checkout hazard (see this repo's "Shared root checkout —
+commit capture" note). Checked what actually landed: `cc0b081f` carries the
+**corrected, non-truncated** `owned-days.ts` (`archived_iso IS NULL OR
+archived_iso > …`, not the `COALESCE(…, now()) > …` form its sibling test's
+prose still describes) plus this session's `_owned_days_reign.audit.test.ts`
+verbatim, plus its own `_owned_days_reign.test.ts` as an additional
+structural-scan sibling. Re-ran the full verification suite against the
+actual post-sweep `HEAD` (`e76ff593`, this session's own follow-up commit
+adding this report): **12 files, 214 tests, all passing**, `tsc --noEmit`
+clean. The two sessions converged on the same correct fix; nothing incorrect
+shipped, and `_owned_days_reign.test.ts`'s stale prose (not its assertions)
+is the only loose end — cosmetic, not functional.
 
 ## Files changed
 
