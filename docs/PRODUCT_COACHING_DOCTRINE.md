@@ -7,6 +7,20 @@ conflicts with this document, treat the conflict as a signal to reconcile
 explicitly, not to silently pick one — most should already agree, since this
 document was written the same night as and consolidates that work.**
 
+**Companion:** `docs/PRODUCT_COACHING_DOCTRINE_BRIEFS.md` — twelve detailed
+per-system briefs (Runner Model, Evidence Engine, Pace Prescription, Plan
+Generation, Workout Library & Evidence Coverage, Durability, Adaptation
+Engine, Training Load/Recovery/Readiness, Race Prediction & Goal Feasibility,
+Missed Training, Safety, Coaching Experience) that define HOW each system
+should behave under this doctrine, with explicit ownership boundaries so no
+subsystem quietly answers another's question. This document defines WHAT faff
+believes; the briefs define HOW.
+
+**Standing directive (David, 2026-08-31): as new doctrine lands, actively
+audit for and remove anything already in the app that contradicts it — this
+is not a one-time reconciliation, it's ongoing practice for every change from
+here forward.**
+
 ---
 
 ## The Guiding Light

@@ -89,6 +89,20 @@ this file. `docs/PRODUCT_DECISIONS.md` is the dated log of how the app arrived
 here — read it for history and specific implementation calls, but this
 document is the standing statement of what's true now.
 
+**Companion briefs — `docs/PRODUCT_COACHING_DOCTRINE_BRIEFS.md`.** Twelve
+per-system briefs (runner model, evidence engine, pace prescription, plan
+generation, workout library/evidence coverage, durability, adaptation engine,
+readiness, race prediction/goal feasibility, missed training, safety,
+coaching experience) with explicit ownership boundaries — read before
+touching any of those systems specifically.
+
+**Standing directive, ongoing from 2026-08-31: as new doctrine lands, actively
+audit for and remove anything already in the app that contradicts it.** This
+is not a one-time reconciliation pass — it is practice for every change from
+here forward. When work in this session touches a system one of these briefs
+governs, check the existing behavior against the brief and fix what
+contradicts it as part of that work, not as a separately-scheduled cleanup.
+
 ### 1. Design source of truth
 
 **iPhone — `/Volumes/WP/06 Claude Code/Faff/design/0819/design_handoff_faff_iphone_app v5/`**
