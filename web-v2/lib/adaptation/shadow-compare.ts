@@ -102,6 +102,10 @@ import type {
  *  paces off a RACE, which is a different question this comparison does not
  *  ask — see the header). */
 export interface LiveShadowObservation {
+  /** Rule 11 · false when `detectAdaptations` itself FAILED to read — not
+   *  when it read cleanly and found no pace-moving trigger. Those are
+   *  opposite facts and `agreesWithLive` below must not average them. */
+  readable: boolean;
   trainingLeadFired: boolean;
   recomputePacesFired: boolean;
   reason: string | null;
@@ -163,10 +167,24 @@ export async function runPaceShadowCompareCycle(
   // exactly what "compare against what live behavior would have produced"
   // (the decision doc's words) requires.
   const { detectAdaptations } = await import('@/lib/plan/adapt');
-  const live = await detectAdaptations(userUuid).catch(() => null);
+  let live: Awaited<ReturnType<typeof detectAdaptations>> | null = null;
+  let liveReadable = true;
+  try {
+    live = await detectAdaptations(userUuid);
+  } catch (liveErr) {
+    // Rule 11 · a FAILED read must never look like "the live engine looked
+    // and found nothing to do" — those license opposite conclusions about
+    // agreement. Named and logged, not swallowed into a bare `null`.
+    liveReadable = false;
+    console.warn(
+      '[shadow-compare] detectAdaptations unreadable:',
+      liveErr instanceof Error ? liveErr.message : liveErr,
+    );
+  }
   const trainingLead = live?.triggers.find((t) => t.kind === 'training_lead') ?? null;
   const recomputeAction = live?.actions.find((a) => a.kind === 'recompute_paces') ?? null;
   const liveObs: LiveShadowObservation = {
+    readable: liveReadable,
     trainingLeadFired: trainingLead != null,
     recomputePacesFired: recomputeAction != null,
     reason: trainingLead?.reason ?? null,
@@ -229,7 +247,10 @@ export async function runPaceShadowCompareCycle(
     // engine has no way to express one"), so a HOLD-vs-silent pair still
     // counts as agreement; only PROGRESS-vs-silent or silent-vs-fired count
     // as disagreement.
-    agreesWithLive: engineUpward === liveUpward,
+    // Rule 11 again: a live read that FAILED cannot license an agreement or
+    // disagreement verdict — that would be spending a failure as if it were
+    // a "no" from the live engine.
+    agreesWithLive: liveObs.readable ? engineUpward === liveUpward : null,
   };
 }
 

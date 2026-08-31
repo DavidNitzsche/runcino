@@ -398,15 +398,16 @@ export const MODULE_ORPHANS: Record<string, string> = {
   // corroboration bar — which is the wiring its own entry said it was waiting
   // for.
   //
-  // `adaptation-engine.ts` and `load-adaptation-engine.ts` DELIBERATELY STAY.
-  // Nothing on any live path reaches them: grep returns only their own tests
-  // and a shadow probe. The Adaptation Engine's promotion is held pending a
-  // separate review of the progression gates, and this list is where that hold
-  // is visible.
-  'web-v2/lib/adaptation/adaptation-engine.ts':
-    'DELIBERATELY UNWIRED — the ADAPTATION ENGINE OWNERSHIP LAYER, the layer that sits on top of capacity-resolver.ts, runner-state.ts and activity-evidence.ts and answers docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md §1’s "what should change in response to new evidence", per BRIEF 07 and docs/ADAPTATION_PROGRESSION_DOCTRINE.md. Same posture as the four layers above it. `composeAdaptation` returns §9’s AdaptationProposal as a DISCRIMINATED UNION ON THE LEVER, so a schedule restructure cannot carry a pace magnitude and a compound "change pace AND density AND duration" proposal is not expressible — one primary stressor at a time is a property of the type. Four INDEPENDENT levers (pace from capacity evidence WITH CONTROL, volume from load tolerance, duration from long-run tolerance, and the session pair carried whole from resolveWeekProgression — split into DENSITY and QUALITY_VOLUME by the progression gate’s OWN lever, because more reps and the same reps with less rest are different claims), each detector receiving only its own slice of the input so BRIEF 07’s "adapt the thing that changed" is plumbing rather than discipline. It CONSOLIDATES rather than duplicates: classifyAdaptation is its absorption input, resolveWeekProgression owns density, adaptive-ramp.ts owns the volume/duration caps, pace-anchor.ts owns the pace quantum, and runner-state.ts owns readiness — nothing here re-derives any of them. Goal isolation and capacity immutability are enforced at COMPILE TIME; the one-stressor rule, the HOLD-does-not-move-the-number rule and safety precedence are enforced by a contradiction checker that was falsified in all three directions before landing. Doctrine-tested (goal poisoning, single-run resistance, the Example-A-vs-Example-B control test, one-stressor-at-a-time, all four decisions proven reachable), doctrine-cited (CONVENTION.adaptation-engine-bars), and RENDERED against the owner’s real account in its own .audit.test.ts — where it caught a live defect (two LOAD-domain levers disagreeing about the same absorption verdict) and where a Rule 21 probe walks his whole season to show each upward bar is a bar rather than a wall. Wiring it into the run-adaptations cron and retiring the overlapping detectors in lib/plan/adapt.ts is the NEXT phase, scoped separately for the same reason every layer below it was: it touches the mutation path, the cron and the doctrine registry at once. Should be WIRED, not deleted, once that pass lands.',
-  'web-v2/lib/adaptation/load-adaptation-engine.ts':
-    'The database shell for adaptation-engine.ts above, and unwired with it. It holds no judgement — it resolves the four capacities, the runner state, the absorption verdict and the progression week through their own owning services, reads the ACTIVE plan’s own numbers (Rule 14: joining plan_workouts on user_uuid alone reads all 47 plan versions), projects the Evidence Engine’s per-activity output into the engine’s narrow reads without combining any of them, and calls the pure composer. Split out for the same reason capacity-resolver.ts and load-activity-evidence.ts split their shells: every judgement stays testable without a database. Dies or lives with adaptation-engine.ts.',
+  // `adaptation-engine.ts` and `load-adaptation-engine.ts` LEFT THIS LIST
+  // 2026-09-01 (docs/PRODUCT_DECISIONS.md §2, PACE-only shadow-compare
+  // authorization). `lib/adaptation/shadow-compare.ts` now imports both for
+  // real, and `app/api/cron/run-adaptations/route.ts` calls it every eligible
+  // cycle — a genuine live caller, not a test or an unmounted probe. This is
+  // exactly the wiring their prior entries here said was the NEXT phase.
+  // Still true and worth stating: this is READ-ONLY wiring (PACE proposals,
+  // zero plan mutation) — retiring the overlapping detectors in
+  // lib/plan/adapt.ts and any live-authority promotion remain separate,
+  // future, explicitly-gated decisions.
   'web-v2/lib/plan/core.ts':
     'Stranded by block-preview. The shared id()/addDays()/mondayOf() primitives were extracted so the three plan builders stay drift-free; the extraction landed and the other builders never switched over. Dies or lives with block-preview.',
   'web-v2/lib/coach/strength-recommender.ts':
