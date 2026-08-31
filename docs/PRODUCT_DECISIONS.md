@@ -6,6 +6,53 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-08-31 · Two calls from the pace-prescription shadow-mode report. SETTLED.
+
+The shadow-mode comparison (`prescription-resolver.ts`, run against David's
+real live 103-row CIM block) surfaced five divergences between the old
+VDOT-cascade output and the new capacity-resolver-driven output. Three were
+mechanical gaps (sub-threshold zone folded into threshold instead of using
+the existing `ST_OFFSET_S_PER_MI`; segmented sessions need one resolver call
+per segment, not one per row; high-intensity capacity still has no
+direct-evidence reader, so it stays a flagged, honest VDOT fallback) — those
+are execution items for the wiring phase, not judgment calls. Two were real
+decisions, made here because Claude had full authorization and David was
+away.
+
+### 1 · Marathon-specific tempo pace: adopt the new number (7:55/mi, was 7:37/mi)
+
+The live plan prices `tempo @ MP` segments at a flat population offset,
+`T + 18 s/mi`, applied identically regardless of who's running. The new
+resolver derives marathon pace from David's own fitted durability exponent
+(1.0869, evidenced by 5 graded races including his real 3:31:40 LA
+Marathon) rather than the population default of 1.06 — he demonstrably fades
+more than average from threshold-effort distance out to marathon distance.
+
+**Decision: adopt the new, personally-evidenced number.** This is not a
+close call once stated plainly — the old rule is exactly the "one formula
+for every runner" pattern the entire night's rework exists to replace, and
+the new number is slower, which is the safe direction: it stops rehearsing
+marathon-pace segments at a pace his own race history says he can't hold for
+26.2 miles. Applies to his two remaining marathon-pace rehearsal sessions,
+2-3 weeks before CIM (`2026-11-17`, `2026-11-24`).
+
+### 2 · Shakeout pace gets its own ceiling, not the shared easy ceiling
+
+Routing shakeout runs through the general easy-pace ceiling (8:22/mi vs the
+live plan's 9:42/mi floor) was the single largest shadow-mode divergence
+(−80 s/mi) and removed a guard rail specifically on the days closest to a
+race, where the entire point of the session is staying loose without
+spending anything — a different purpose from ordinary easy-day aerobic
+development.
+
+**Decision: shakeout is its own purpose with its own, deliberately tighter
+ceiling** (padded meaningfully slower than the general easy ceiling), not an
+alias for `easy`. Exact offset to be set in the wiring phase, argued as a
+named convention the way `CORROBORATION_MIN_OBSERVATIONS` is, since no
+doctrine source prices this distance to a number.
+
+---
+
 ## 2026-08-31 · Fitness-vector architecture: external review corrections. SETTLED.
 
 An external review of the fitness-vector design (recorded in the entry below)
