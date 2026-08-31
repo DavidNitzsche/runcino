@@ -687,21 +687,38 @@ struct CoachDecisionCard: View {
             // A decision is answered, not swept away · DECIDE LATER defers
             // it for the session without resolving the row server-side.
             // A notice is FYI, so it gets a real, persisted dismiss.
-            Button {
-                if item.kind == .decision {
-                    withAnimation(Theme.Motion.smooth) { _ = resolved.insert(item.key) }
-                } else {
-                    onDismiss(item)
-                    withAnimation(Theme.Motion.smooth) { _ = resolved.insert(item.key) }
+            //
+            // 2026-09-01 · goal-card doctrine audit · EXCEPT when the notice
+            // already carries a `.keep` action — today that is only the
+            // goal-outlook note's "KEEP THE GOAL ON THE BOARD". That button
+            // IS the acknowledgment: it round-trips to POST /api/plan/proposal
+            // { action: "dismiss" }, which is what `writeGoalOutlookNote`'s
+            // 14-day `recentDismiss` check reads to stop re-nagging on a
+            // knowingly-held aggressive goal (doctrine: "does not nag every
+            // few runs ... re-surfaces only when the outlook materially
+            // changes"). This generic ghost button is LOCAL-ONLY (see
+            // `dismissCoachDecision`) — offered next to a real `.keep` action
+            // it let a runner believe they had acknowledged the note while
+            // the server still saw it pending, so the cron's 7-day
+            // `OUTLOOK_REFRESH_DAYS` refresh brought it back sooner than the
+            // real 14-day floor. One true way to close this card.
+            if !(item.kind == .notice && item.actions.contains(where: { $0.role == .keep })) {
+                Button {
+                    if item.kind == .decision {
+                        withAnimation(Theme.Motion.smooth) { _ = resolved.insert(item.key) }
+                    } else {
+                        onDismiss(item)
+                        withAnimation(Theme.Motion.smooth) { _ = resolved.insert(item.key) }
+                    }
+                } label: {
+                    Text(item.kind == .decision ? "DECIDE LATER" : "DISMISS")
+                        .font(.body(10, weight: .extraBold))
+                        .tracking(1.0)
+                        .foregroundStyle(Theme.txt.opacity(0.45))
                 }
-            } label: {
-                Text(item.kind == .decision ? "DECIDE LATER" : "DISMISS")
-                    .font(.body(10, weight: .extraBold))
-                    .tracking(1.0)
-                    .foregroundStyle(Theme.txt.opacity(0.45))
+                .buttonStyle(.plain)
+                .disabled(busy != nil)
             }
-            .buttonStyle(.plain)
-            .disabled(busy != nil)
         }
     }
 
