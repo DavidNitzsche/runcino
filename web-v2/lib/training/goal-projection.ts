@@ -71,6 +71,7 @@ import { loadPlannedTargetVdot, loadMarathonSpecificTraining } from './plan-targ
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { expandSpecToPhases, DURATION_EST_S_PER_MI, type ExpandedPhase } from './expand-spec';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
+import { thresholdPassHrBpm } from '@/lib/training/zones';
 import {
   resolveRaceExponent,
   projectWithDurabilityExponent,
@@ -877,7 +878,7 @@ async function loadNextTestPoints(
     if (tPace == null || !T_PACE_CRITERIA_TYPES.has(type)) return null;
     return {
       paceMaxSPerMi: Math.round(tPace + 10),
-      hrMaxBpm: lthr != null ? Math.round(lthr * 0.975) : null,
+      hrMaxBpm: lthr != null ? thresholdPassHrBpm(lthr) : null,
     };
   };
   const rows = (await pool.query<{

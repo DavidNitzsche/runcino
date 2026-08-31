@@ -47,7 +47,7 @@ import {
 // `lib/plan/catalogue-rx.ts#anchorsFor` also reads — so the zones the catalogue
 // is allowed to anchor and the zones this file can pace cannot diverge.
 import { resolveZoneAnchors, zonePaceSec } from './zone-anchors';
-import { aerobicCeilingBpm } from '@/lib/training/zones';
+import { aerobicCeilingBpm, thresholdPassHrBpm } from '@/lib/training/zones';
 import { roundTo } from '@/lib/format/run';
 import type { PaceZone } from '@/lib/workout-catalogue/types';
 // TYPE-ONLY. `prescription-resolver.ts` is pure — no pool, no query — so even a
@@ -1057,7 +1057,7 @@ export function buildWorkoutSpec(
   // "Keep in sync" is not a mechanism. Calling the same function is.
   const contingencyRules = ((): Array<Record<string, unknown>> | null => {
     const rules: Array<Record<string, unknown>> = [];
-    const passHr = lthr != null ? Math.round(lthr * 0.975) : null;
+    const passHr = lthr != null ? thresholdPassHrBpm(lthr) : null;
     const bailHr = lthr != null ? lthr + 5 : null;
     if (type === 'threshold' || type === 'tempo' || type === 'intervals' || type === 'race_week_tuneup') {
       if (passHr != null) {

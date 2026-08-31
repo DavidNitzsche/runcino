@@ -50,14 +50,29 @@ import SwiftUI
 // MARK: - RangeScale
 //
 // A pill track with the asked-for range marked on it and the runner's current
-// value sitting somewhere along it. Three modes, from the prototype:
+// value sitting somewhere along it. Four modes:
 //
 //   band      · a target band, and whether you are inside it (live pace)
-//   ceiling   · a ceiling, and how close you are to it (heart rate)
+//   ceiling   · a real ceiling, and how close you are to it (aerobic HR cap
+//               on an easy/long day — staying under it is the discipline)
 //   progress  · how far through something you are (taper weeks)
+//   reference · HR-SEMANTICS-1 (2026-09-01) · a value worth SHOWING but never
+//               ENFORCING — the quality-phase "expected response" HR reading
+//               (see `LiveRunOutdoorV5.heartReference`). Added because the
+//               live run screen was drawing this exact number in `.ceiling`
+//               mode: a threshold rep running a few beats past 100% LTHR —
+//               normal, expected, not a breach — turned the marker amber and
+//               had VoiceOver announce "above the ceiling", the same alarm a
+//               real easy-day aerobic-cap breach gets. Doctrine (see
+//               `docs/reports/hr-semantics-2026-09-01.md`): pace/effort is
+//               the primary instruction on a quality rep, HR is a secondary,
+//               informational signal that must never fight it by reading as
+//               a hard limit. `.reference` draws no shaded zone and never
+//               marks the value out-of-range — it is a number to notice, not
+//               a line to stay under.
 
 struct RangeScale: View {
-    enum Mode { case band, ceiling, progress }
+    enum Mode { case band, ceiling, progress, reference }
     enum Hue { case pace, heart, phase }
     enum Size { case s, m }
 
@@ -82,13 +97,16 @@ struct RangeScale: View {
         return Swift.min(Swift.max((v - min) / (max - min), 0), 1)
     }
 
-    /// Outside the band is the one thing amber means here.
+    /// Outside the band is the one thing amber means here. `.reference` never
+    /// returns true — see the Mode doc comment: a value that is worth showing
+    /// but never enforcing has no "outside" to flag.
     private var outOfRange: Bool {
         guard let value else { return false }
         switch mode {
-        case .band:     guard let b = band else { return false }; return value < b.low || value > b.high
-        case .ceiling:  guard let b = band else { return false }; return value > b.high
-        case .progress: return false
+        case .band:      guard let b = band else { return false }; return value < b.low || value > b.high
+        case .ceiling:   guard let b = band else { return false }; return value > b.high
+        case .progress:  return false
+        case .reference: return false
         }
     }
 
@@ -120,6 +138,11 @@ struct RangeScale: View {
                                 .fill(V5.signal)
                                 .frame(width: Swift.max(frac(value) * w, 2), height: trackHeight)
                         }
+                    case .reference:
+                        // No shaded zone, on purpose — see the Mode doc
+                        // comment. The plain track plus the value marker
+                        // below is the whole picture: a reading, not a line.
+                        EmptyView()
                     }
 
                     if mode != .progress, let value {
@@ -196,6 +219,13 @@ struct RangeScale: View {
             let pct = Int((frac(value) * 100).rounded())
             let head = centerLabel.map { "\($0). \(pct)% through." } ?? "\(pct)% through."
             return head + ends
+        case .reference:
+            // Never "ceiling", never "band" — see the Mode doc comment. This
+            // is the one mode that says outright it is not a target, so a
+            // VoiceOver runner gets the same "informational only" framing a
+            // sighted runner gets from the missing shaded zone.
+            guard let value else { return ends.isEmpty ? "Reference scale" : "Reference scale.\(ends)" }
+            return "You are at \(fmt(value)). Informational only, not a target.\(ends)"
         }
     }
 

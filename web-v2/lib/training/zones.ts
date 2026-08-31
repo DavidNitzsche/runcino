@@ -179,6 +179,20 @@ export function aerobicCeilingBpm(lthr: number): number {
   return Math.ceil(lthr * FRIEL_5_ZONE_EDGES[1]) - 1;
 }
 
+/**
+ * The Friel Z4→Z5a seam in bpm — "at-or-under threshold," the pass line a
+ * completed tempo/threshold/intervals effort is judged against.
+ *
+ * Existed as `Math.round(lthr * 0.975)` written out by hand in both
+ * spec-builder.ts's post-run contingency rules and goal-projection.ts's
+ * next-test-point pass criteria. One derivation now.
+ */
+export const THRESHOLD_PASS_HR_FRACTION = 0.975;
+
+export function thresholdPassHrBpm(lthr: number): number {
+  return Math.round(lthr * THRESHOLD_PASS_HR_FRACTION);
+}
+
 /** Friel zones, condensed to the 5 most-actionable for marathoners.
  *  We collapse 5a/5b/5c (cruise/VO2/anaerobic) since the in-app coach
  *  uses Z5 = "max effort, save for hill repeats / VO2 reps". The detailed

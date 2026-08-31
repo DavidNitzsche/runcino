@@ -86,9 +86,10 @@ struct LiveRunPlanV5 {
     let totalMi: Double?
     let phases: [WatchPhase]
     /// HR ceiling for the WHOLE session (easy / Z2 / heat-flagged sessions
-    /// carry one at the workout level). A quality session's ceiling more
-    /// often comes from the CURRENT phase's own `hrTargetBpm` instead — see
-    /// `heartCeilingBpm(walk:)` below, which prefers the phase.
+    /// carry one at the workout level). A quality session carries no
+    /// workout-level ceiling at all — its HR reference comes from the
+    /// CURRENT phase's own `hrTargetBpm` instead, and is a different KIND of
+    /// value, not a tighter ceiling — see `heartReference(walk:plan:)` below.
     let workoutHrCeilingBpm: Int?
 
     init(workout: WatchWorkout, sessionType: String) {
@@ -449,19 +450,35 @@ struct LiveRunOutdoorV5: View {
     private var heartTile: some View {
         Group {
             if let bpm = hr.currentBpm {
-                let ceiling = LiveRunOutdoorV5.heartCeilingBpm(walk: walk, plan: plan)
-                let hrMax = Double(ceiling ?? max(bpm + 20, 170)) + 20
+                // HR-SEMANTICS-1 (2026-09-01) · a real ceiling (easy/long)
+                // still draws the shaded `.ceiling` gauge and still turns
+                // amber on breach — unchanged. A quality phase's "expected"
+                // reference now draws `.reference` instead: same track, same
+                // live marker, no shaded zone and never amber, because
+                // running past it mid-rep is not a breach. See
+                // `heartReference`'s doc comment.
+                let reference = LiveRunOutdoorV5.heartReference(walk: walk, plan: plan)
+                let ceilingBpm: Int? = { if case .ceiling(let c) = reference { return c }; return nil }()
+                let expectedBpm: Int? = { if case .expected(let e) = reference { return e }; return nil }()
+                let hrMax = Double(ceilingBpm ?? expectedBpm ?? max(bpm + 20, 170)) + 20
                 VStack(spacing: V5.S.s10) {
                     Text("HEART RATE")
                         .font(.faffText(18))
                         .tracking(18 * 0.06)
                         .foregroundStyle(V5.textSecondary)
                     FaffValueText(.measured(FaffFmt.bpm(Double(bpm))), font: .faffText(72, weight: .semibold))
-                    RangeScale(mode: .ceiling, min: 100, max: hrMax,
-                              band: ceiling.map { (low: 0.0, high: Double($0)) },
-                              value: Double(bpm),
-                              endpoints: ("100", ceiling.map { String($0) } ?? FaffFmt.bpm(hrMax) ?? "\u{2014}"),
-                              hue: .heart, size: .s)
+                    if let ceilingBpm {
+                        RangeScale(mode: .ceiling, min: 100, max: hrMax,
+                                  band: (low: 0.0, high: Double(ceilingBpm)),
+                                  value: Double(bpm),
+                                  endpoints: ("100", String(ceilingBpm)),
+                                  hue: .heart, size: .s)
+                    } else {
+                        RangeScale(mode: .reference, min: 100, max: hrMax,
+                                  value: Double(bpm),
+                                  endpoints: ("100", expectedBpm.map { "~\($0) expected" } ?? FaffFmt.bpm(hrMax) ?? "\u{2014}"),
+                                  hue: .heart, size: .s)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(maxHeight: .infinity)
@@ -534,11 +551,38 @@ struct LiveRunOutdoorV5: View {
         return (lo, hi)
     }
 
-    /// The current phase's own HR target wins over the workout-level
-    /// ceiling — a quality phase's target is a tighter read than the
-    /// session's overall easy/Z2 ceiling.
-    static func heartCeilingBpm(walk: LiveRunPhaseWalk?, plan: LiveRunPlanV5?) -> Int? {
-        walk?.phase.hrTargetBpm ?? plan?.workoutHrCeilingBpm
+    /// HR-SEMANTICS-1 (2026-09-01) · what the heart tile has to say about
+    /// heart rate on THIS phase, if anything — and which of two structurally
+    /// different things it is. See `docs/reports/hr-semantics-2026-09-01.md`.
+    ///
+    /// `.ceiling` — `plan.workoutHrCeilingBpm`, the real aerobic Z2 cap an
+    /// easy/long/shakeout day is judged against. Staying under it is the
+    /// whole discipline of the day, so the tile shades the zone and turns
+    /// amber on breach.
+    ///
+    /// `.expected` — `walk.phase.hrTargetBpm`, the quality work phase's own
+    /// informational reference (`lib/watch/build-workout.ts`'s
+    /// `workHrTargetBpm`, ~100-105% LTHR). Pace is the primary instruction
+    /// on a threshold or interval rep; this number is worth showing, never
+    /// enforcing. Before this fix it rode the SAME `.ceiling` gauge as the
+    /// real cap above — a rep running a few beats past it (normal, expected)
+    /// turned the marker amber and had VoiceOver announce "above the
+    /// ceiling", exactly the alarm a genuine easy-day breach gets. That is
+    /// the live-run-screen instance of the warm-up segment's own
+    /// pace-vs-HR contradiction (`spec-card.ts`'s WARMUP-CONTRADICTION-1),
+    /// one surface over.
+    ///
+    /// The two are mutually exclusive by construction on the server —
+    /// `build-workout.ts` gates `hrTargetBpm` to quality work phases and
+    /// `hrCeilingBpm` to easy/long/shakeout — but the phase value still wins
+    /// if a future spec shape ever sent both, since a quality phase's own
+    /// read is the tighter, more specific one.
+    enum HeartReference { case ceiling(Int), expected(Int) }
+
+    static func heartReference(walk: LiveRunPhaseWalk?, plan: LiveRunPlanV5?) -> HeartReference? {
+        if let bpm = walk?.phase.hrTargetBpm { return .expected(bpm) }
+        if let bpm = plan?.workoutHrCeilingBpm { return .ceiling(bpm) }
+        return nil
     }
 }
 

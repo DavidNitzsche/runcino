@@ -148,6 +148,13 @@ struct GalleryV5: View {
                         RangeScale(mode: .ceiling, min: 100, max: 190,
                                    band: (low: 100, high: 168), value: 174,
                                    endpoints: ("110", "180"))
+                        // HR-SEMANTICS-1 (2026-09-01) · the quality-phase
+                        // "expected response" reading — no shaded zone, the
+                        // marker never turns amber. See the Mode doc comment
+                        // and `LiveRunOutdoorV5.heartReference`.
+                        RangeScale(mode: .reference, min: 100, max: 190,
+                                   value: 174,
+                                   endpoints: ("100", "~168 expected"))
                         ZoneBar(shares: [12, 76, 12, 0, 0], target: 2, labels: true)
                         PhaseBar(phases: [
                             PhaseSegment("Base", weeks: 8, current: true, at: 0.72),

@@ -272,11 +272,36 @@ function paces(p: ProfileInputs) {
   };
 }
 
-/** SPECFIRST-1 · exported so `lib/training/spec-card.ts` quotes the SAME zone
- *  band strings this file does. A zone is the runner's own physiology (LTHR →
- *  Friel bands), not a session structure, so it is safe to share across both
- *  card sources — and sharing it is what stops the two rendering "Z4" two
- *  different ways. */
+/**
+ * SPECFIRST-1 · exported so `lib/training/spec-card.ts` quotes the SAME zone
+ * band strings this file does. A zone is the runner's own physiology (LTHR →
+ * Friel bands), not a session structure, so it is safe to share across both
+ * card sources — and sharing it is what stops the two rendering "Z4" two
+ * different ways.
+ *
+ * HR-SEMANTICS-1 (2026-09-01) · this is the EXPECTED-RESPONSE / INFORMATIONAL
+ * mechanism named in `docs/reports/hr-semantics-2026-09-01.md`. It is
+ * display-only — nothing parses this string back into a number, nothing
+ * gates or grades against it — and it must never be presented as something
+ * the runner is meant to hit or hold. Two other, structurally different HR
+ * mechanisms exist in this codebase and must not be confused with this one
+ * (Rule 16 — one quantity, one name):
+ *
+ *   - the PASS/BAIL CONTINGENCY pair (`thresholdPassHrBpm` in `zones.ts`,
+ *     `lthr + 5`) — `lib/plan/spec-builder.ts`'s `contingencyRules`, an
+ *     offered mid-run escape hatch, never enforced, evaluated against
+ *     average work-segment HR;
+ *   - the quality-phase "expected" reference the watch/phone live-run
+ *     screen reads off `workout_spec.lthr_bpm` / `hr_target_bpm`
+ *     (`lib/watch/build-workout.ts`'s `workHrTargetBpm`) — see
+ *     `LiveRunOutdoorV5.heartReference` for how that surface now keeps it
+ *     visually distinct from a genuine ceiling.
+ *
+ * The leading "~" is the app's existing mark for a modelled/informational
+ * number (see CLAUDE.md's design-brief section) — carried here so a zone
+ * band never reads as a literal instruction beside a `pace_target` that IS
+ * one.
+ */
 export function hrTargets(p: ProfileInputs) {
   const z = p.lthr ? computeZones({ lthr: p.lthr }) : null;
   if (!z) return null;
@@ -286,9 +311,9 @@ export function hrTargets(p: ProfileInputs) {
     // Z1 has no meaningful lower bound (no one runs at 0 bpm) — show "< upper"
     // Z5 has no meaningful upper bound (no one's max is hardcoded here) — show "> lower"
     // Everything else: lower-upper range
-    if (zz.idx === 1) return `< ${zz.upper} bpm (${zz.shortLabel} ${zz.label})`;
-    if (zz.idx === 5) return `> ${zz.lower} bpm (${zz.shortLabel} ${zz.label})`;
-    return `${zz.lower}–${zz.upper} bpm (${zz.shortLabel} ${zz.label})`;
+    if (zz.idx === 1) return `~< ${zz.upper} bpm (${zz.shortLabel} ${zz.label})`;
+    if (zz.idx === 5) return `~> ${zz.lower} bpm (${zz.shortLabel} ${zz.label})`;
+    return `~${zz.lower}–${zz.upper} bpm (${zz.shortLabel} ${zz.label})`;
   };
   return {
     z1: get(1), z2: get(2), z3: get(3), z4: get(4), z5: get(5),
