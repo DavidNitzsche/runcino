@@ -37,6 +37,7 @@ import {
   gatedBlendFraction,
   blendedTPaceForWeek,
 } from './recompute-paces';
+import { buildWorkoutSpec, hrCapEasy } from './spec-builder';
 import { seasonalVdotCeiling } from '@/lib/training/achievable-target';
 import { VDOT_GAIN_PER_WEEK_MAX, MAX_BLOCK_GAIN_VDOT } from '@/lib/training/vdot-gain-rate';
 
@@ -231,5 +232,73 @@ describe('maxSeasonalVdotGain', () => {
       expect(seasonalVdotCeiling(44.1, weeks, 26.22).gainVdot)
         .toBe(maxSeasonalVdotGain(weeks, 26.22));
     }
+  });
+});
+
+/**
+ * ANCHOR-STALE-2 (2026-08-30) · THE HR ANCHORS THE RECOMPUTE FEEDS
+ * `buildWorkoutSpec`.
+ *
+ * `recomputePacesForPlan` used to read the threshold off
+ * `authored_state.lthr_bpm` — frozen at authoring — and pass `maxHr` as a
+ * literal null. So the one mechanism whose job is to bring a plan up to date
+ * re-cemented the anchor the plan was born with, and demoted `hrCapEasy` to
+ * its LTHR-only branch, every time evidence moved the VDOT.
+ *
+ * It reads `profile.lthr` and `loadEffectiveMaxHr` live now. Those need a
+ * database, so what is locked here is the CONTRACT the change rests on, at the
+ * seam it actually crosses — what `buildWorkoutSpec` does with each pair of
+ * anchors:
+ *
+ *   1. PARITY   — at the owner's stored 162, adding his real HRmax (180)
+ *                 changes nothing. `hrCapEasy(162, 180)` is `max(145, 140)`,
+ *                 and 145 is what the LTHR-only branch already returned. This
+ *                 is the guarantee that nothing regresses before the anchor
+ *                 moves.
+ *   2. MOVEMENT — at the re-derived 168 every HR number moves with it. A fix
+ *                 that reads the live anchor and produces the same output
+ *                 either way would not be a fix.
+ *   3. REFUSAL  — a null threshold with no HRmax carries no HR at all. This is
+ *                 what the old call actually produced on the owner's live
+ *                 plan, whose `authored_state.lthr_bpm` is null: not a stale
+ *                 cap, no cap.
+ *
+ * Cite: Research/03-heart-rate-zones.md §6 (Friel Z2 ceiling · 89% LTHR) and
+ * the Daniels E ceiling at 78% HRmax — see `hrCapEasy`'s own doc comment.
+ */
+describe('ANCHOR-STALE-2 · live HR anchors through buildWorkoutSpec', () => {
+  const HR_TYPES = ['easy', 'long', 'recovery', 'tempo', 'threshold', 'intervals'] as const;
+  const build = (type: string, lthr: number | null, maxHr: number | null) =>
+    buildWorkoutSpec(
+      type, type === 'long' ? 13 : 6, 400, lthr, null, maxHr, null, null, 520, false, null,
+    ).spec;
+
+  it('PARITY · at the stored 162 the real HRmax is a no-op', () => {
+    for (const type of HR_TYPES) {
+      expect(JSON.stringify(build(type, 162, 180)))
+        .toBe(JSON.stringify(build(type, 162, null)));
+    }
+    expect(hrCapEasy(162, 180)).toBe(hrCapEasy(162, null));
+    expect(hrCapEasy(162, 180)).toBe(145);
+  });
+
+  it('MOVEMENT · at the re-derived 168 every HR number moves', () => {
+    for (const type of HR_TYPES) {
+      expect(JSON.stringify(build(type, 168, 180)))
+        .not.toBe(JSON.stringify(build(type, 162, 180)));
+    }
+    // The easy/long/recovery ceiling, and the quality anchor the watch reads.
+    expect(hrCapEasy(168, 180)).toBe(151);
+    expect((build('easy', 168, 180) as { hr_cap_bpm: number }).hr_cap_bpm).toBe(151);
+    expect((build('threshold', 162, 180) as { lthr_bpm: number }).lthr_bpm).toBe(162);
+    expect((build('threshold', 168, 180) as { lthr_bpm: number }).lthr_bpm).toBe(168);
+  });
+
+  it('REFUSAL · no threshold and no HRmax carries no HR, never a fabricated one', () => {
+    expect(hrCapEasy(null, null)).toBeNull();
+    expect((build('easy', null, null) as { hr_cap_bpm: number | null }).hr_cap_bpm).toBeNull();
+    expect((build('threshold', null, null) as { lthr_bpm: number | null }).lthr_bpm).toBeNull();
+    // HRmax alone still yields the Daniels E ceiling — 78% of 180.
+    expect(hrCapEasy(null, 180)).toBe(140);
   });
 });

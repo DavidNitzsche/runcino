@@ -44,6 +44,7 @@ import {
   tPaceFromVdot, iPaceFromVdot, vdotFromTpace, vdotFromRace,
 } from '@/lib/training/vdot';
 import { seasonalVdotCeiling, achievableRaceTarget } from '@/lib/training/achievable-target';
+import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
 import { preserveProgressionSql } from './progression-spec';
 import { distanceCategoryOrNull } from './goal-tiers';
@@ -299,7 +300,31 @@ export async function recomputePacesForPlan(
     ? Number(st.goal_sec)
     : (goalPaceSec != null && raceDistanceMi != null ? Math.round(goalPaceSec * raceDistanceMi) : null);
   const totalWeeks = Number(st.total_weeks) || 0;
-  const lthr = st.lthr_bpm != null ? Number(st.lthr_bpm) : null;
+  /**
+   * ANCHOR-STALE-2 (2026-08-30) · THE FROZEN THRESHOLD, KEPT ONLY AS A
+   * FALLBACK FOR AN UNREADABLE PROFILE.
+   *
+   * `composePlan` writes `authored_state.lthr_bpm` once, at authoring, from
+   * `profile.lthr`. This function used to READ that frozen value and hand it
+   * straight to `buildWorkoutSpec` — so the one mechanism whose entire job is
+   * to bring a plan up to date re-cemented the threshold anchor the plan was
+   * born with, every time evidence moved the VDOT. The staleness was not
+   * merely surviving the recompute; the recompute was rewriting it back in.
+   *
+   * The owner's anchor was re-derived from race evidence on 2026-08-30
+   * (162 → 168 · `lib/training/lthr-reanchor.ts`). Under the old read, a
+   * re-anchor firing after that would have rewritten every future workout's
+   * `hr_cap_bpm` at 145 (89% of 162) and every quality session's `lthr_bpm`
+   * at 162 — numbers about a runner who no longer exists, written by the
+   * function that had just been told he had changed.
+   *
+   * Kept because a FAILED read is not the same as an absent threshold: if the
+   * profile row cannot be reached we fall back to what the plan recorded
+   * rather than silently stripping HR from every future session. An explicit
+   * NULL in a profile row we DID read wins over it — see the `lthr` resolution
+   * beside the `loadEffectiveMaxHr` call below.
+   */
+  const authoredLthr = st.lthr_bpm != null ? Number(st.lthr_bpm) : null;
 
   // Anchor VDOT the plan was authored at · pace_blend.season_anchor_vdot
   // (written by composePlan since 2026-08-17), falling back to the Rule 10
@@ -366,6 +391,59 @@ export async function recomputePacesForPlan(
 
   const today = await runnerToday(plan.user_uuid);
 
+  /**
+   * ANCHOR-STALE-2 · THE HR ANCHORS, READ LIVE.
+   *
+   * Both of these used to be wrong in the same direction and for the same
+   * reason — the recompute described the runner as he was at authoring:
+   *
+   *   · LTHR came off `authored_state.lthr_bpm`, frozen (above).
+   *   · maxHr was passed as a literal `null`, with the standing note that HR
+   *     caps "re-derive on the next full rebuild". They do not. Nothing else
+   *     rewrites `workout_spec.hr_cap_bpm` for these rows, so the recompute
+   *     was the rebuild, and it demoted `hrCapEasy` to its LTHR-only branch
+   *     every time it ran.
+   *
+   * `profile.lthr` is read RAW, exactly as `composePlan` reads it (see
+   * generate.ts §"7. T-pace + LTHR + maxHR"), and deliberately NOT through
+   * `resolveThresholdHr`. That resolver's second rung estimates a threshold
+   * from HRmax via the §11 crosswalk, which is the right answer for a
+   * DISPLAY surface that can label a number as estimated. `buildWorkoutSpec`
+   * cannot: it writes the value into `workout_spec.lthr_bpm`, where the
+   * watch's quality HR target and the recap's aerobic gate read it as the
+   * runner's measured threshold. Feeding it a crosswalk estimate would also
+   * loosen the easy cap to ~81% of HRmax — above the 78% Daniels E ceiling
+   * `hrCapEasy`'s maxHr arm exists to enforce — so a runner with no stored
+   * LTHR would get a HIGHER cap than one whose threshold we actually know.
+   * The raw read keeps authoring and recompute converging, which is this
+   * module's stated contract.
+   *
+   * `loadEffectiveMaxHr` is the canonical resolver (override → 12-month
+   * observed ceiling → stored) and is the ONLY correct reader here:
+   * `users.max_hr` is a nightly ratchet mirror that never falls, and for this
+   * runner it holds 181 from a single 2025-08-17 sample now outside the
+   * 365-day window, against a live resolved 180.
+   *
+   * At LTHR 162 this pair is byte-identical to what the old call produced —
+   * `hrCapEasy(162, 180)` is `max(145, 140)` = 145, the same 145 the
+   * LTHR-only branch gave — so nothing regresses before the anchor moves. At
+   * 168 every derived number moves with it: caps 145 → 151, tempo target
+   * 149 → 155, the work-pass gate 158 → 164, the bail 167 → 173.
+   */
+  const lthrRow = (await q.query<{ lthr: number | null }>(
+    `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [plan.user_uuid],
+  ).catch(() => null));
+  // A row we READ decides, even when its `lthr` is null (the runner has no
+  // threshold and the spec should carry none). Only an unreadable profile —
+  // query error or no row at all — falls back to what the plan recorded.
+  const lthr = lthrRow?.rows?.[0] != null
+    ? (lthrRow.rows[0].lthr != null ? Number(lthrRow.rows[0].lthr) : null)
+    : authoredLthr;
+  const maxHr = await loadEffectiveMaxHr(plan.user_uuid, today)
+    .then((r) => r.bpm)
+    .catch(() => null);
+
   // Future rows + seal predicate in one read (same sealed EXISTS as
   // adapt.ts filterUnsealedWorkouts · Rule 15).
   const rows = (await q.query<{
@@ -421,9 +499,12 @@ export async function recomputePacesForPlan(
       const iPaceSec = goalIPaceEligible ? iPaceFromVdot(vdotFromTpace(t)) : null;
       const built = buildWorkoutSpec(
         row.type, distanceMi, t, lthr, row.sub_label,
-        null,               // maxHr not persisted in authored_state · HR caps
-                            // re-derive on the next full rebuild (same posture
-                            // as adapt.ts rebuildWorkoutDerivations)
+        maxHr,              // ANCHOR-STALE-2 · the LIVE effective HRmax, so
+                            // `hrCapEasy` gets both of its anchors and the
+                            // max(89% LTHR, 78% HRmax) doctrine can actually
+                            // run. Was a literal null on the claim that HR
+                            // caps re-derive on the next full rebuild; this
+                            // IS that rebuild.
         goalPaceSec, iPaceSec, easyAnchorTSec,
         false,              // effortCued · a recompute runs on measured evidence
                             // by definition, so the calibration intro is over
@@ -466,6 +547,16 @@ export async function recomputePacesForPlan(
         measured_progress_fraction: measured,
         source: opts?.source ?? 'recompute_paces',
         workouts_updated: updated,
+        // ANCHOR-STALE-2 · WHICH HR ANCHORS THESE SPECS WERE BUILT AGAINST.
+        // The whole defect above was that nothing on a workout row records
+        // the threshold that produced its HR numbers, so a stale one could
+        // not be told from a current one by looking. This does not fix that
+        // for the workout rows, but it does mean the PLAN carries the answer
+        // for its most recent recompute — enough for the next audit to ask
+        // "was this written before or after the re-anchor" and get a number
+        // back instead of an inference.
+        lthr_bpm: lthr,
+        max_hr_bpm: maxHr,
       })],
     );
   };

@@ -62,6 +62,7 @@ import { bestRecentVdot } from '@/lib/training/vdot';
 import { resolveFitness } from '@/lib/fitness/fitness-model';
 import { buildFitnessRow } from '@/lib/faff/fitness-read';
 import { reconcileHrZones, coherentPace, coherentDurationSec, runCadenceSpm } from '@/lib/runs/coherence';
+import { resolveHrZoneShares } from '@/lib/coach/hr-zone-bucket';
 // `runAvgHr` / `runMaxHr` bound a reading to something a heart can do. Reading
 // `data.avgHr` raw passes a sensor sentinel straight into the recap's prose.
 import {
@@ -748,18 +749,6 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         inclinePct = belt.inclinePct;
       }
 
-      // 2026-08-24 · reconciled. A five-zero object is truthy and well-shaped,
-      // so this used to hand the phone `[0,0,0,0,0]` and the zone bar rendered
-      // nothing — on 5 canonical rows carrying a MEASURED average of 135-145
-      // bpm. A run with a heart rate spent its time in some zone; a flat zero
-      // distribution is a computation that produced nothing, drawn as a chart.
-      // `lib/coach/run-state.ts` has guarded this since 2026-05-31 and the
-      // phone route never picked the guard up.
-      const zonePcts = reconcileHrZones(data);
-      const zoneShares = zonePcts
-        ? [zonePcts.z1 ?? 0, zonePcts.z2 ?? 0, zonePcts.z3 ?? 0, zonePcts.z4 ?? 0, zonePcts.z5 ?? 0]
-        : null;
-
       // Asked pace/HR: today's plan target where present, else null (by feel).
       const planRow = (await pool.query<{ pace_target_s_per_mi: number | null; workout_spec: any }>(
         `SELECT pace_target_s_per_mi, workout_spec FROM plan_workouts
@@ -877,6 +866,54 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       const hrZoneRanges = zoneTable
         ? zoneTable.zones.map((z) => ({ label: z.shortLabel, lower: z.lower, upper: z.upper }))
         : [];
+
+      /* ── ANCHOR-STALE-1 · THE ZONE BAR IS BUCKETED AT TODAY'S ANCHOR ───────
+       *
+       * This was `reconcileHrZones(data)` alone, up beside the treadmill
+       * telemetry: the STORED distribution, reconciled for shape and then
+       * rendered. Reconciliation asks whether five numbers are a distribution.
+       * It cannot ask which THRESHOLD produced them, and nothing on the row
+       * records that or invalidates it when the threshold moves — so a
+       * distribution bucketed at an anchor the runner no longer has passed
+       * every guard and won permanently.
+       *
+       * The owner's threshold was re-derived from race evidence on 2026-08-30
+       * (162 → 168 · `lib/training/lthr-reanchor.ts`). His 2026-08-30 long run
+       * — 13.49 mi, avg HR 159, an easy aerobic day — is stored as
+       * `{z1:4,z2:15,z3:11,z4:10,z5:60}`. Sixty percent of an easy long run in
+       * Zone 5, on the phone's own Today card. The same samples at 168 read
+       * `{z1:11,z2:17,z3:9,z4:36,z5:27}`.
+       *
+       * `resolveHrZoneShares` owns the precedence (per-sample → per-mile →
+       * stored) and `lib/coach/run-state.ts` already reads through it; this is
+       * the same call, so web run detail and the phone cannot answer
+       * differently for one run. Verified against all eight of the owner's
+       * canonical rows carrying a real stored distribution: every one
+       * reproduces its stored value EXACTLY when re-bucketed at 162, so this
+       * changes nothing until the anchor actually moves.
+       *
+       * MOVED DOWN HERE, below the threshold resolution and `splitChoice`, for
+       * two reasons the block above could not satisfy: the bar must be
+       * bucketed against the SAME `zoneTable` the ranges panel beside it is
+       * drawn from, and rung 2 must decompose the run with the same split
+       * array the map draws — on 26 of 71 merged runs that is an absorbed
+       * twin's array, not the canonical row's.
+       */
+      const zonePcts = resolveHrZoneShares({
+        phases: data.phases,
+        rawSplits: data.splits,
+        // `SplitLike.hr` is `unknown` by design (the picker only asks whether
+        // a key is present). `zoneSharesFromSplitHr` reads it through
+        // `Number(...)` and bounds the result to 40-230, so an unreadable
+        // value is discarded rather than trusted — the narrowing is safe.
+        splits: (splitChoice?.splits ?? null) as
+          ReadonlyArray<{ hr?: number | null; avgHr?: number | null }> | null,
+        storedPcts: reconcileHrZones(data),
+        table: zoneTable,
+      });
+      const zoneShares = zonePcts
+        ? [zonePcts.z1 ?? 0, zonePcts.z2 ?? 0, zonePcts.z3 ?? 0, zonePcts.z4 ?? 0, zonePcts.z5 ?? 0]
+        : null;
 
       /* ── THE SAME RUN MAY NOT TELL TWO STORIES (2026-08-24) ───────────────
        *
