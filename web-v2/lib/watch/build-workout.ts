@@ -1747,14 +1747,25 @@ export async function buildWatchToday(
   const easyPaceAnchor = easyBandRow && easyBandRow.lo != null && easyBandRow.hi != null
     ? Math.round((Number(easyBandRow.lo) + Number(easyBandRow.hi)) / 2)
     : null;
+  /* WU/CD-CEIL-1 (2026-09-01) · `lo` is the FAST edge of the authored band —
+   * the ceiling `docs/PRODUCT_DECISIONS.md` 2026-08-31 says a warm-up or
+   * cool-down should be judged against, not the midpoint above. Mirrors the
+   * identical fix in `app/api/v5/today/route.ts` so the watch and the phone
+   * carry the SAME warm-up/cool-down target (Rule 16) instead of the phone
+   * moving off the old reused-midpoint number while the watch stayed on it. */
+  const easyCeilingSec = easyBandRow && easyBandRow.lo != null
+    ? Math.round(Number(easyBandRow.lo))
+    : null;
   const expanded = wo.workout_spec
     ? expandSpecToPhases({
         spec: wo.workout_spec,
         totalMi: distanceMi,
         easyPaceSec: easyPaceAnchor,
-        // Jog recoveries are easy jogging (Research/04-workout-vocabulary.md
-        // §1 recovery runs) — same anchor, by feel when absent. Replaces
-        // the hardcoded 9:00/mi recovery target.
+        easyCeilingSec,
+        // RECOVERY-BYFEEL-1 (2026-09-01) · this anchor no longer reaches the
+        // rep-to-rep jog inside `expandReps`/`expandSteps` — see the field
+        // doc on `ExpandSpecInput.recoveryPaceSec`. A jog between reps of the
+        // same session now goes by feel, on the wrist as on the phone.
         recoveryPaceSec: easyPaceAnchor,
         toleranceSec: defaultTolerance,
         workPhaseLabel: wo.type === 'race'     ? 'Race effort'

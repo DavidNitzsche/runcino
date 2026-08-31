@@ -69,7 +69,7 @@ import { projectFitnessTrajectory, type FitnessTrajectory } from './fitness-traj
 import { VDOT_GAIN_PER_WEEK_MAX } from './vdot-gain-rate';
 import { loadPlannedTargetVdot, loadMarathonSpecificTraining } from './plan-target';
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
-import { expandSpecToPhases, type ExpandedPhase } from './expand-spec';
+import { expandSpecToPhases, DURATION_EST_S_PER_MI, type ExpandedPhase } from './expand-spec';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 
 export type GoalStatus = 'on-track' | 'watching' | 'off-track' | 'ahead';
@@ -953,9 +953,14 @@ export function contiguousWorkWindowMi(
   let end: number | null = null;
   let workClosed = false;
   for (const p of phases) {
+    // RECOVERY-BYFEEL-1 (2026-09-01) · a between-rep jog now carries no
+    // `targetPaceSPerMi` (it goes out by feel on the card and the wrist).
+    // This is pure accounting — how far did the jog cover, so the cumulative
+    // mile axis below stays right — not a target shown anywhere, so it falls
+    // back to the same internal estimate `expandSpecToPhases` itself uses to
+    // size a by-feel phase's `durationSec`.
     const d = p.distanceMi
-      ?? (p.durationSec != null && p.targetPaceSPerMi
-            ? p.durationSec / p.targetPaceSPerMi : 0);
+      ?? (p.durationSec != null ? p.durationSec / (p.targetPaceSPerMi ?? DURATION_EST_S_PER_MI) : 0);
     if (p.type === 'work') {
       if (workClosed) return null; // second disjoint work block
       if (start == null) start = cum;
@@ -1004,11 +1009,17 @@ export function blendedExpectation(
 ): { timeS: number; distMi: number } | null {
   let t = 0, d = 0;
   for (const p of phases) {
-    const pace = p.targetPaceSPerMi ?? null;
+    // RECOVERY-BYFEEL-1 (2026-09-01) · see the identical comment in
+    // `contiguousWorkWindowMi` — a by-feel jog's distance-equivalent for THIS
+    // accounting question falls back to the same internal estimate
+    // `expandSpecToPhases` already sizes its own `durationSec` from, rather
+    // than aborting the whole blend the moment one phase declines to name a
+    // pace it was never going to be graded against.
+    const pace = p.targetPaceSPerMi ?? DURATION_EST_S_PER_MI;
     const dist = p.distanceMi
-      ?? (p.durationSec != null && pace ? p.durationSec / pace : null);
+      ?? (p.durationSec != null ? p.durationSec / pace : null);
     const dur = p.durationSec
-      ?? (dist != null && pace != null ? dist * pace : null);
+      ?? (dist != null ? dist * pace : null);
     if (dist == null || dur == null || dist < 0 || dur < 0) return null;
     t += dur;
     d += dist;

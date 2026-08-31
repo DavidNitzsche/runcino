@@ -1440,6 +1440,16 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const easyPaceAnchor = easyBandRow?.lo != null && easyBandRow?.hi != null
     ? Math.round((Number(easyBandRow.lo) + Number(easyBandRow.hi)) / 2)
     : null;
+  /* WU/CD-CEIL-1 (2026-09-01) · `lo` IS the ceiling — `easyBandRow.lo` is the
+   * FAST edge of the authored band (`vdot.ts`'s own comment: "lo is the FAST
+   * edge — the ceiling an easy-pace prescription must not cross"), which is
+   * the number `docs/PRODUCT_DECISIONS.md` 2026-08-31 says a warm-up or
+   * cool-down should be judged against, not the midpoint `easyPaceAnchor`
+   * above. Kept as a separate value rather than redefining `easyPaceAnchor`
+   * itself, because that midpoint still does other jobs downstream (the
+   * fuelling-duration estimate below) that have nothing to do with WU/CD and
+   * should not silently move every time this ceiling does. */
+  const easyCeilingSec = easyBandRow?.lo != null ? Math.round(Number(easyBandRow.lo)) : null;
 
   const hrBands = hrTargets({ lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi });
   // Same tolerance the watch applies, so the band the phone quotes is the band
@@ -1458,6 +1468,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         subLabel: specRow?.sub_label ?? todayPlan.subLabel ?? null,
         distanceMi: todayPlan.distanceMi,
         easyPaceSec: easyPaceAnchor,
+        easyCeilingSec,
         hr: hrBands,
         toleranceSec: cardTolerance,
       })

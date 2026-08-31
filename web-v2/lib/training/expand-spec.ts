@@ -62,9 +62,16 @@ export interface ExpandSpecInput {
    *  (plan-authored easy band · Research/01-pace-zones-vdot.md §E-pace),
    *  never from goal race pace or a fixed constant. */
   easyPaceSec: number | null;
-  /** Recovery jog pace · seconds/mi. Jog recoveries are easy jogging
-   *  (Research/04-workout-vocabulary.md §1 recovery runs) — callers pass
-   *  the same easy anchor. null → by-feel recovery (no pace target). */
+  /** Recovery jog pace · seconds/mi. 2026-09-01 · no longer consumed by the
+   *  rep-to-rep jog inside `expandReps`/`expandSteps` (see the comment at
+   *  those call sites) — a 60s-to-90s jog between quality reps goes out
+   *  BY FEEL now, on doctrine's own terms ("recover enough to execute the
+   *  next rep", not a pace to hit). Still read by `appendStrides`' walk-back,
+   *  which is a genuinely different thing (a full recovery between two
+   *  strides, not a partial one inside a continuous effort). Kept in the
+   *  input shape so a caller migrating off the old reused-anchor behavior
+   *  does not need a signature change to do it.
+   *  null → by-feel recovery (no pace target). */
   recoveryPaceSec?: number | null;
   /** Default tolerance per phase type · in seconds/mi. */
   toleranceSec?: number;
@@ -73,6 +80,26 @@ export interface ExpandSpecInput {
    *  race workouts and "Shakeout" for shakeout workouts. Internal label
    *  only — no behavior change. */
   workPhaseLabel?: string;
+  /**
+   * WU/CD-CEIL-1 (2026-09-01) · the FAST edge of the runner's easy band —
+   * the ceiling a warm-up or cool-down must not run faster than
+   * (`docs/PRODUCT_DECISIONS.md` 2026-08-31 "easy pace is a ceiling, not a
+   * band"; `lo` is the fast edge, per `vdot.ts`'s own comment on that band).
+   *
+   * Deliberately a SEPARATE field from `easyPaceSec`, not a redefinition of
+   * it. `easyPaceSec` still does two other jobs in the functions below —
+   * sizing a WU/CD phase's estimated duration, and (on a legacy spec with no
+   * authored rep pace) deriving a fallback rep pace as `easyPaceSec - 80`.
+   * Feeding the ceiling into either of those would shift a threshold
+   * fallback formula every time the ceiling moved for a reason that has
+   * nothing to do with it — the exact "one anchor reused for three
+   * semantically different things" bug this field exists to stop repeating.
+   *
+   * Falls back to `easyPaceSec` when absent, so a caller that has not been
+   * updated to pass the real ceiling keeps its previous (technically-a-
+   * midpoint) number rather than losing a WU/CD target outright.
+   */
+  easyCeilingSec?: number | null;
 }
 
 /**
@@ -151,13 +178,16 @@ export function expandSpecToPhases(input: ExpandSpecInput): ExpandedPhase[] | nu
   // 12:00/mi runner was being handed a 9:00/mi jog-recovery target.
   const recoveryPace = input.recoveryPaceSec ?? input.easyPaceSec ?? null;
   const defaultTolerance = input.toleranceSec ?? 12;
+  // WU/CD-CEIL-1 · see the field doc on `easyCeilingSec`. Falls back to the
+  // plain easy anchor so an un-migrated caller is unaffected.
+  const wuCdCeiling = input.easyCeilingSec ?? easyPaceSec;
 
   switch (kind) {
     case 'tempo':
-      return expandTempo(s, easyPaceSec, defaultTolerance);
+      return expandTempo(s, easyPaceSec, defaultTolerance, wuCdCeiling);
     case 'threshold':
     case 'intervals':
-      return expandReps(s, easyPaceSec, recoveryPace, defaultTolerance);
+      return expandReps(s, easyPaceSec, recoveryPace, defaultTolerance, wuCdCeiling);
     case 'long':
       return expandLong(s, totalMi, easyPaceSec, input.workPhaseLabel);
     case 'easy':
@@ -233,15 +263,28 @@ function appendStrides(
 
 // ── per-kind expanders ─────────────────────────────────────────────────
 
-/** Internal duration ESTIMATE (s/mi) used ONLY to size durationSec when no
- *  pace anchor exists — the wire contract requires durationSec even for
- *  by-feel phases. Never emitted as a pace target (P1-47 · 2026-07-06). */
-const DURATION_EST_S_PER_MI = 540;
+/**
+ * Internal duration ESTIMATE (s/mi) used ONLY to size durationSec when no
+ * pace anchor exists — the wire contract requires durationSec even for
+ * by-feel phases. Never emitted as a pace target (P1-47 · 2026-07-06).
+ *
+ * Exported (2026-09-01) for the one other legitimate use of the same
+ * estimate: `goal-projection.ts`'s `blendedExpectation`/
+ * `contiguousWorkWindowMi` convert a time-based phase's duration into a
+ * distance-equivalent purely for EXECUTION-GRADING accounting — how many
+ * miles did a jog recovery cover, so the cumulative mile axis used to window
+ * GPS splits stays correct. That is a different question from "what pace
+ * should the runner be told to hold", which `RECOVERY-BYFEEL-1` answers with
+ * `null` on the very same phase. Reusing this constant keeps the two
+ * questions from silently sharing an answer again.
+ */
+export const DURATION_EST_S_PER_MI = 540;
 
 function expandTempo(
   s: Record<string, unknown>,
   easyPaceSec: number | null,
   tolerance: number,
+  wuCdCeiling: number | null = easyPaceSec,
 ): ExpandedPhase[] {
   const wu = Number(s.warmup_mi ?? 1.5) || 1.5;
   const tempoMi = Number(s.tempo_distance_mi ?? 4) || 4;
@@ -266,8 +309,10 @@ function expandTempo(
       label: 'Warm-up',
       distanceMi: Number(wu.toFixed(1)),
       durationSec: Math.round(wu * easyEst),
-      targetPaceSPerMi: easyPaceSec,
-      tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
+      // WU/CD-CEIL-1 · the ceiling, not the plain easy anchor — see the field
+      // doc on `easyCeilingSec`.
+      targetPaceSPerMi: wuCdCeiling,
+      tolerancePaceSPerMi: wuCdCeiling != null ? 30 : null,
     },
     {
       type: 'work',
@@ -287,8 +332,8 @@ function expandTempo(
       label: 'Cool-down',
       distanceMi: Number(cd.toFixed(1)),
       durationSec: Math.round(cd * easyEst),
-      targetPaceSPerMi: easyPaceSec,
-      tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
+      targetPaceSPerMi: wuCdCeiling,
+      tolerancePaceSPerMi: wuCdCeiling != null ? 30 : null,
     },
   ];
 }
@@ -318,6 +363,7 @@ function expandSteps(
   easyPaceSec: number | null,
   recoveryPace: number | null,
   tolerance: number,
+  wuCdCeiling: number | null = easyPaceSec,
 ): ExpandedPhase[] | null {
   const raw = Array.isArray(s.steps) ? (s.steps as Array<Record<string, unknown>>) : null;
   if (!raw || raw.length === 0) return null;
@@ -333,8 +379,9 @@ function expandSteps(
     label: 'Warm-up',
     distanceMi: Number(wu.toFixed(1)),
     durationSec: Math.round(wu * easyEst),
-    targetPaceSPerMi: easyPaceSec,
-    tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
+    // WU/CD-CEIL-1 · the ceiling, not the plain easy anchor.
+    targetPaceSPerMi: wuCdCeiling,
+    tolerancePaceSPerMi: wuCdCeiling != null ? 30 : null,
   });
 
   raw.forEach((step, i) => {
@@ -370,8 +417,17 @@ function expandSteps(
         label: `Jog ${formatSec(restS)}`,
         distanceMi: null,
         durationSec: restS,
-        targetPaceSPerMi: recoveryPace,
-        tolerancePaceSPerMi: recoveryPace != null ? 60 : null,
+        // RECOVERY-BYFEEL-1 (2026-09-01) · a jog between steps of the SAME
+        // session carries no pace target, ever — this used to reuse the easy
+        // anchor (`recoveryPace`), stamping one number across warm-up, every
+        // jog and cool-down "by construction", which is finding #1 of
+        // `docs/reports/workout-provenance-trace-2026-09-01.md`. Research/04
+        // §1 calls a jog recovery easy jogging whose job is to have the
+        // runner ready for the next step, not hit a number — there is no
+        // doctrine reason for a partial-recovery jog inside one session to
+        // carry a stricter target than a full recovery RUN does.
+        targetPaceSPerMi: null,
+        tolerancePaceSPerMi: null,
       });
     }
   });
@@ -381,8 +437,8 @@ function expandSteps(
     label: 'Cool-down',
     distanceMi: Number(cd.toFixed(1)),
     durationSec: Math.round(cd * easyEst),
-    targetPaceSPerMi: easyPaceSec,
-    tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
+    targetPaceSPerMi: wuCdCeiling,
+    tolerancePaceSPerMi: wuCdCeiling != null ? 30 : null,
   });
   return phases;
 }
@@ -392,10 +448,11 @@ function expandReps(
   easyPaceSec: number | null,
   recoveryPace: number | null,
   tolerance: number,
+  wuCdCeiling: number | null = easyPaceSec,
 ): ExpandedPhase[] {
   // GRAMMAR-SEQ-1 · an unequal-step session first. A spec with no `steps` is
   // byte-identical to before.
-  const stepped = expandSteps(s, easyPaceSec, recoveryPace, tolerance);
+  const stepped = expandSteps(s, easyPaceSec, recoveryPace, tolerance, wuCdCeiling);
   if (stepped) return stepped;
   const wu = Number(s.warmup_mi ?? 1.5) || 1.5;
   const cd = Number(s.cooldown_mi ?? 1.0) || 1.0;
@@ -431,8 +488,9 @@ function expandReps(
     label: 'Warm-up',
     distanceMi: Number(wu.toFixed(1)),
     durationSec: Math.round(wu * easyEst),
-    targetPaceSPerMi: easyPaceSec,
-    tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
+    // WU/CD-CEIL-1 · the ceiling, not the plain easy anchor.
+    targetPaceSPerMi: wuCdCeiling,
+    tolerancePaceSPerMi: wuCdCeiling != null ? 30 : null,
   });
 
   for (let i = 0; i < reps; i++) {
@@ -463,8 +521,16 @@ function expandReps(
         label: `Jog ${formatSec(restS)}`,
         distanceMi: null,
         durationSec: restS,
-        targetPaceSPerMi: recoveryPace,
-        tolerancePaceSPerMi: recoveryPace != null ? 60 : null,
+        // RECOVERY-BYFEEL-1 · see the identical comment in `expandSteps`. The
+        // 1-min jog between threshold reps and the 60-90s jog between
+        // interval reps used to inherit the easy-pace anchor and stamp it
+        // here too — the same anchor as the warm-up and cool-down, so all
+        // three read the identical number "by construction" (provenance
+        // trace §5, finding #1). Doctrine (`Research/04` §5.1/§9.1's
+        // `recoveryRule`) prescribes the DURATION of this jog, never a pace
+        // — its only job is getting the runner ready for the next rep.
+        targetPaceSPerMi: null,
+        tolerancePaceSPerMi: null,
       });
     }
   }
@@ -474,8 +540,8 @@ function expandReps(
     label: 'Cool-down',
     distanceMi: Number(cd.toFixed(1)),
     durationSec: Math.round(cd * easyEst),
-    targetPaceSPerMi: easyPaceSec,
-    tolerancePaceSPerMi: easyPaceSec != null ? 30 : null,
+    targetPaceSPerMi: wuCdCeiling,
+    tolerancePaceSPerMi: wuCdCeiling != null ? 30 : null,
   });
   return phases;
 }

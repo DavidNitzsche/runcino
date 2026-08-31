@@ -633,6 +633,53 @@ export function retitleLeadMi(
   return prescription.replace(re, `${restated}$2`);
 }
 
+// ── Warm-up / cool-down remainder split ────────────────────────────────────
+
+/**
+ * WU/CD-BOUND-1 (2026-09-01) · what `warmup_mi`/`cooldown_mi` ARE, stated
+ * explicitly, because the provenance trace this closes found nothing saying
+ * so anywhere near the arithmetic below.
+ *
+ * Every branch that builds a rep-based spec (threshold, intervals, tempo, a
+ * time-based rep set, a segmented/stepped set) reserves the work miles and
+ * the float-jog miles first, then splits whatever is LEFT of the day's
+ * budget evenly across warm-up and cool-down. That is remainder mileage, not
+ * an independent coaching judgment about how long a warm-up should be — no
+ * doctrine table is consulted for the split itself, only for the FLOOR
+ * (`wuFloor`/`cdFloor` above each site, ~30%/25% of the day capped at
+ * 1.5/1.0 mi).
+ *
+ * Nothing bounded the split from above. A quality day with a large budget
+ * and a small rep count (the rep count itself is capped elsewhere, by
+ * Daniels' weekly at-pace share — see the provenance trace §2 — but nothing
+ * stops the two caps disagreeing) could hand the runner a multi-mile
+ * "warm-up" that is really just unspent mileage with no warm-up judgment
+ * behind it at all.
+ *
+ * `Research/22-plan-templates.md` §"Definitions and Terminology" states the
+ * abbreviation outright — "WU/CD — Warm-up / Cool-down (1-3 mi E)" — and
+ * every per-session row in `Research/04-workout-vocabulary.md` that names a
+ * warm-up/cool-down figure (§5.2's tempo row included, already cited two
+ * sites down at TEMPO-WU-1) sits inside that same 1-3 mi band. 3.0 is
+ * therefore not a number invented for this fix; it is the top of the band
+ * the rest of this file already cites for the FLOOR, applied to the CEILING
+ * for the first time.
+ *
+ * Clamping here, after the remainder is computed, means an adversarial
+ * budget/rep-count combination can leave a sliver of the day's mileage
+ * unspent rather than crediting it to an ever-larger warm-up — the honest
+ * trade: a slightly short day beats a fabricated warm-up. In the corpus this
+ * file actually authors against, the rep-count caps keep the remainder well
+ * inside 1-3 mi on every archetype checked, so the clamp is a backstop, not
+ * a live rewrite of any current plan's numbers.
+ */
+export const WU_CD_MAX_MI = 3.0;
+
+/** Apply the WU/CD ceiling to an already-rounded mileage value. */
+function clampWuCdMi(mi: number): number {
+  return Math.min(mi, WU_CD_MAX_MI);
+}
+
 function timeRepSpec(
   kind: 'threshold' | 'intervals',
   reps: { reps: number; durationS: number; restS: number | null },
@@ -688,8 +735,8 @@ function timeRepSpec(
   // Round the warm-up once and derive the cool-down as the exact remainder,
   // mirroring the intervals branch — two independent roundings let wu + cd
   // overshoot the slack by up to a tenth of a mile each.
-  const wu = Number((workMi > 0 ? Math.max(wuFloor, slack / 2) : wuFloor).toFixed(1));
-  const cd = workMi > 0 ? Math.max(cdFloor, slack - wu) : cdFloor;
+  const wu = clampWuCdMi(Number((workMi > 0 ? Math.max(wuFloor, slack / 2) : wuFloor).toFixed(1)));
+  const cd = clampWuCdMi(workMi > 0 ? Math.max(cdFloor, slack - wu) : cdFloor);
   return {
     spec: {
       kind,
@@ -821,8 +868,8 @@ function segmentSpec(
   const wuFloor = Math.max(0.5, Math.min(1.5, budgetMi * 0.3));
   const cdFloor = Math.max(0.5, Math.min(1.0, budgetMi * 0.25));
   const slack = Math.max(0, budgetMi - workMi - floatMi);
-  const wu = Number(Math.max(wuFloor, slack / 2).toFixed(1));
-  const cd = Number(Math.max(cdFloor, slack - wu).toFixed(1));
+  const wu = clampWuCdMi(Number(Math.max(wuFloor, slack / 2).toFixed(1)));
+  const cd = clampWuCdMi(Number(Math.max(cdFloor, slack - wu).toFixed(1)));
 
   // The uniform summary a consumer that does not read `steps` sees. Deliberately
   // the session's own TOTALS spread evenly rather than a first-step-wins guess:
@@ -1407,11 +1454,11 @@ export function buildWorkoutSpec(
       return {
         spec: {
           kind: 'tempo',
-          warmup_mi: Number(wu.toFixed(1)),
+          warmup_mi: clampWuCdMi(Number(wu.toFixed(1))),
           tempo_distance_mi: Number(tempoDist.toFixed(1)),
           tempo_pace_s_per_mi: blockByEffort ? null : blockPace,
           ...(blockByEffort ? { by_effort: true } : {}),
-          cooldown_mi: Number(cd.toFixed(1)),
+          cooldown_mi: clampWuCdMi(Number(cd.toFixed(1))),
           hr_target_bpm: atMarathonPace ? null : (lthr ? Math.round(lthr * 0.92) : null),
           // The authored prescription carries the block's IDENTITY, exactly as
           // it does for time-based rep sets above: `subLabelFromSpec` re-derives
@@ -1451,8 +1498,8 @@ export function buildWorkoutSpec(
       // realized ~0.6mi under the composer's budget every threshold week. slack splits WU/CD so the spec sums
       // to budget exactly (mirrors the intervals branch's remainder-derivation).
       const floatTotalT = Math.max(0, reps - 1) * (restS / 540);
-      const wu = Math.max(wuFloor, (budget - reps * repMi - floatTotalT) / 2);
-      const cd = Math.max(cdFloor, budget - reps * repMi - floatTotalT - wu);
+      const wu = clampWuCdMi(Math.max(wuFloor, (budget - reps * repMi - floatTotalT) / 2));
+      const cd = clampWuCdMi(Math.max(cdFloor, budget - reps * repMi - floatTotalT - wu));
       return {
         spec: {
           kind: 'threshold',
@@ -1509,8 +1556,8 @@ export function buildWorkoutSpec(
       // that lets wu + cd overshoot the available slack after reps + float jogs.
       const floatJogTotal = Math.max(0, reps - 1) * floatPer;
       const wuRaw = Math.max(wuFloor, (budget - reps * repMi - floatJogTotal) / 2);
-      const wuVal = Number(wuRaw.toFixed(1));
-      const cdVal = Number(Math.max(cdFloor, budget - reps * repMi - floatJogTotal - wuVal).toFixed(1));
+      const wuVal = clampWuCdMi(Number(wuRaw.toFixed(1)));
+      const cdVal = clampWuCdMi(Number(Math.max(cdFloor, budget - reps * repMi - floatJogTotal - wuVal).toFixed(1)));
       // True I-pace when the caller threaded a VDOT-derived one (goal builds);
       // else the legacy T−18 cruise-interval offset (marathon / maintenance).
       // ZONE-R-1 · unless the label declares a zone of its own — §7's R work,

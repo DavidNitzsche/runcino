@@ -24,7 +24,7 @@
  * and refuses any number the card invented on top of it.
  */
 import { describe, it, expect } from 'vitest';
-import { cardFromSpec, cardWithoutSpec } from './spec-card';
+import { cardFromSpec, cardWithoutSpec, fmtPace, fmtPaceCeiling, fmtPaceBand } from './spec-card';
 import { expandSpecToPhases } from './expand-spec';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 
@@ -39,10 +39,28 @@ function cardPaces(steps: ReturnType<typeof cardFromSpec>extends null ? never : 
   }
   return out;
 }
-function phasePaces(spec: WorkoutSpec, totalMi: number, easy: number | null): string[] {
-  const ph = expandSpecToPhases({ spec, totalMi, easyPaceSec: easy, recoveryPaceSec: easy, toleranceSec: 8 })!;
-  return ph.map((p) => p.targetPaceSPerMi).filter((x): x is number => x != null)
-    .map((x) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, '0')} /mi`);
+/**
+ * WU/CD-CEIL-1 / QUALITY-BAND-1 (2026-09-01) · the allowed set now has to be
+ * built with the SAME formatting rule the card applies, not a bare point for
+ * every phase — a warm-up/cool-down prints as a ceiling ("≤ 9:00 /mi") and a
+ * quality work phase (threshold/intervals/tempo) prints as a tolerance band
+ * ("7:02-7:18 /mi"), reusing `spec-card.ts`'s own formatters rather than a
+ * second copy of that arithmetic, so this stays a real anti-fabrication check
+ * instead of a rubber stamp that happens to agree with itself.
+ */
+function phasePaces(spec: WorkoutSpec, totalMi: number, easy: number | null, type: string): string[] {
+  const ph = expandSpecToPhases({ spec, totalMi, easyPaceSec: easy, easyCeilingSec: easy, recoveryPaceSec: easy, toleranceSec: 8 })!;
+  const isQualityWork = type === 'threshold' || type === 'intervals' || type === 'tempo';
+  const out: string[] = [];
+  for (const p of ph) {
+    if (p.targetPaceSPerMi == null) continue;
+    const s =
+      (p.type === 'warmup' || p.type === 'cooldown') ? fmtPaceCeiling(p.targetPaceSPerMi)
+      : (p.type === 'work' && isQualityWork) ? fmtPaceBand(p.targetPaceSPerMi, p.tolerancePaceSPerMi)
+      : fmtPace(p.targetPaceSPerMi);
+    if (s) out.push(s);
+  }
+  return out;
 }
 
 describe('SPECFIRST-1 · the card is composed from the spec the watch runs', () => {
@@ -65,8 +83,15 @@ describe('SPECFIRST-1 · the card is composed from the spec the watch runs', () 
     // handed the same 0.25, which is the whole point — the card agrees with
     // what will actually be run, not with a number it re-derived.
     expect(rep.rep_distance_mi).toBeCloseTo(0.25, 3);
-    expect(rep.pace_target).toBe('7:10 /mi');
+    // QUALITY-BAND-1 (2026-09-01) · a rounded band, not a bare point — this
+    // used to assert '7:10 /mi'. `cardFromSpec`'s own default tolerance (8
+    // s/mi, the same width the watch grades threshold execution against) now
+    // shows on the card too, closing the Rule 16 gap the provenance trace
+    // found ("the runner is graded on a band he is never shown").
+    expect(rep.pace_target).toBe('7:02-7:18 /mi');
     expect(rep.recovery?.duration).toBe('2:00');
+    // RECOVERY-BYFEEL-1 · the jog between reps carries no exact pace anymore.
+    expect(rep.recovery?.pace_target).toBeUndefined();
     // The last rep has no recovery. It is still a rep of the set — the earlier
     // grouping split it off and showed "4 × 400 m" beside a headline saying 5.
     expect(card.steps.filter((s) => s.reps != null)).toHaveLength(1);
@@ -113,7 +138,7 @@ describe('SPECFIRST-1 · the card is composed from the spec the watch runs', () 
     ];
     for (const [spec, mi] of specs) {
       const card = cardFromSpec({ spec, type: 'threshold', distanceMi: mi, easyPaceSec: 540, hr: HR })!;
-      const allowed = new Set(phasePaces(spec, mi, 540));
+      const allowed = new Set(phasePaces(spec, mi, 540, 'threshold'));
       for (const p of cardPaces(card.steps)) expect(allowed.has(p), `card invented pace ${p}`).toBe(true);
     }
   });
@@ -138,8 +163,10 @@ describe('SPECFIRST-1 · the card is composed from the spec the watch runs', () 
     const card = cardFromSpec({ spec, type: 'threshold', distanceMi: 6, easyPaceSec: null, hr: HR })!;
     expect(card.steps.find((s) => s.label === 'Warmup')!.pace_target).toBeUndefined();
     expect(card.steps.find((s) => s.label === 'Cooldown')!.pace_target).toBeUndefined();
-    // The rep still carries its own authored pace — only the edges go by feel.
-    expect(card.steps.find((s) => s.reps === 3)!.pace_target).toBe('8:23 /mi');
+    // QUALITY-BAND-1 (2026-09-01) · the rep still carries its own authored
+    // pace — only the edges go by feel — but now as a band (target ± the
+    // default 8 s/mi tolerance), not the bare '8:23 /mi' this used to assert.
+    expect(card.steps.find((s) => s.reps === 3)!.pace_target).toBe('8:15-8:31 /mi');
   });
 
   it('a set of one is still a set · "1 × 1 km", matching the plan label', () => {
@@ -236,7 +263,7 @@ describe('SPECFIRST-1 · the phone and the watch read the same phases', () => {
       const specMi = work.reduce((a, p) => a + (p.distanceMi ?? 0), 0);
       expect(cardMi, 'at-pace miles').toBeCloseTo(specMi, 2);
 
-      const allowed = new Set(phasePaces(c.spec, c.mi, easy));
+      const allowed = new Set(phasePaces(c.spec, c.mi, easy, c.type));
       for (const p of cardPaces(card.steps)) expect(allowed.has(p), `invented pace ${p}`).toBe(true);
 
       expect(card.total_mi).toBe(Math.round(c.mi * 10) / 10);

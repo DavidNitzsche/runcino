@@ -57,14 +57,27 @@ describe('P1-47 · null easy anchor → by-feel WU/CD/recovery, never a fabricat
     }
   });
 
-  it('reps · anchor present → recoveries ride the easy anchor', () => {
+  it('reps · anchor present → WU/CD still ride it, but the between-rep jog goes by feel', () => {
+    // RECOVERY-BYFEEL-1 (2026-09-01) · this used to assert the OPPOSITE —
+    // that the recovery jog rode the same easy anchor as warm-up and
+    // cool-down. That was finding #1 of
+    // `docs/reports/workout-provenance-trace-2026-09-01.md`: one anchor
+    // stamped on three semantically different segments "by construction".
+    // Doctrine (`Research/04` §5.1/§9.1 `recoveryRule`) prescribes this jog's
+    // DURATION, never a pace — its only job is having the runner ready for
+    // the next rep.
     const spec = {
       kind: 'intervals', warmup_mi: 1, cooldown_mi: 1,
       rep_count: 3, rep_distance_m: 800, rep_pace_s_per_mi: 390, rep_rest_s: 90,
     };
     const phases = expandSpecToPhases({ spec, totalMi: 5, easyPaceSec: 560, recoveryPaceSec: 560 })!;
     const rec = phases.find((p) => p.type === 'recovery')!;
-    expect(rec.targetPaceSPerMi).toBe(560);
+    expect(rec.targetPaceSPerMi).toBeNull();
+    expect(rec.durationSec).toBe(90);
+    const wu = phases.find((p) => p.type === 'warmup')!;
+    const cd = phases.find((p) => p.type === 'cooldown')!;
+    expect(wu.targetPaceSPerMi).toBe(560);
+    expect(cd.targetPaceSPerMi).toBe(560);
   });
 
   it('easy · spec band absent + null anchor → by feel; spec band present → band wins', () => {

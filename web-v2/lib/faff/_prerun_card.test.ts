@@ -77,12 +77,17 @@ const groupById = (t: V5Today, id: string) => t.groups.find((g) => g.id === id)!
 const mains = (t: V5Today, id: string) => groupById(t, id).steps.map((s) => s.main);
 
 describe('PRERUN-1 · the rest interval reaches the screen', () => {
-  it('renders the jog as its own step, with its own pace', () => {
+  it('renders the jog as its own step, by feel · no exact pace', () => {
     const { screen: s } = cardFor(SPEC.tuneup, 'race_week_tuneup', 4.3, '5×400 m @ T pace · 2 min jog');
     expect(mains(s, 'work')).toEqual(['5 × 400 m', '2:00 jog between']);
-    // The jog carries a pace of its own, so "honest jog, not standing" has a
-    // number behind it.
-    expect(groupById(s, 'work').steps[1].sub?.text).toBe('9:00 /mi');
+    // RECOVERY-BYFEEL-1 (2026-09-01) · this used to assert the jog carried a
+    // number ("9:00 /mi" — the runner's own easy anchor, reused). That was
+    // finding #1 of the provenance trace: warm-up, every jog recovery and
+    // cool-down all read the identical anchor "by construction", including a
+    // jog whose only job is getting the runner ready for the next 400. The
+    // jog's own note ("Honest jog, not standing.") still reaches the screen
+    // via the step's `note`; it no longer needs a pace behind it to be real.
+    expect(groupById(s, 'work').steps[1].sub).toBeNull();
   });
 
   it('calls a stride recovery a walk back, because that is what it is', () => {

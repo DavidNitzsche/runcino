@@ -135,7 +135,7 @@ function fmtDuration(sec: number | null | undefined): string | null {
 /** "7:10 /mi" — the same shape `prescriptions.ts` writes, so the two card
  *  sources render identically on the client. Null in, null out: an absent pace
  *  target is BY FEEL and must not acquire a number here. */
-function fmtPace(sPerMi: number | null | undefined): string | null {
+export function fmtPace(sPerMi: number | null | undefined): string | null {
   // Rounds the TOTAL, then splits it. The version this replaces rounded the
   // REMAINDER — `Math.round(sPerMi % 60)` — which carries to 60 without the
   // minute hearing about it, so a target of 419.6 s/mi printed `6:60 /mi` on
@@ -147,6 +147,48 @@ function fmtPace(sPerMi: number | null | undefined): string | null {
   // to render identically. Presentation differs; the arithmetic does not.
   const p = fmtPaceNoUnit(sPerMi);
   return p == null ? null : `${p} /mi`;
+}
+
+/**
+ * WU/CD-CEIL-1 (2026-09-01) · "≤ 8:22 /mi" — a ceiling, not a target to
+ * land on. `docs/PRODUCT_DECISIONS.md` 2026-08-31 settled this for easy
+ * running generally; warm-up and cool-down are easy running, so they read
+ * the same way. Null in, null out, same contract as `fmtPace`.
+ */
+export function fmtPaceCeiling(sPerMi: number | null | undefined): string | null {
+  const p = fmtPaceNoUnit(sPerMi);
+  return p == null ? null : `≤ ${p} /mi`;
+}
+
+/**
+ * QUALITY-BAND-1 (2026-09-01) · "7:02-7:18 /mi" when a tolerance rides along
+ * with the target, else the same bare point `fmtPace` would print.
+ *
+ * `docs/reports/workout-provenance-trace-2026-09-01.md` §13: a threshold
+ * pace resolved from direct evidence still carries confidence (0.727 on the
+ * workout that trace named), not certainty, and Brief 03 is explicit that
+ * "precision should match the workout" licenses a NARROWER band, not a bare
+ * point with no represented uncertainty at all. This layer has no access to
+ * that confidence number — it only sees the phase's own
+ * `tolerancePaceSPerMi`, which for threshold/interval work IS the doctrine-
+ * documented band already in force: `cardTolerance` in `/api/v5/today`
+ * (± 8 s/mi) is the same width the watch grades execution against. Showing
+ * that width here — rather than inventing a second one from nothing — is
+ * what closes the Rule 16 gap the trace found: the runner was graded on a
+ * band he was never shown.
+ *
+ * A zero or missing tolerance falls back to a bare point, so a work phase
+ * with no band in force (an effort-only rep, or a type this fix does not
+ * touch) is unaffected.
+ */
+export function fmtPaceBand(sPerMi: number | null | undefined, toleranceSec: number | null | undefined): string | null {
+  if (sPerMi == null) return null;
+  if (toleranceSec == null || !(toleranceSec > 0)) return fmtPace(sPerMi);
+  const lo = fmtPaceNoUnit(sPerMi - toleranceSec);
+  const hi = fmtPaceNoUnit(sPerMi + toleranceSec);
+  if (lo == null || hi == null) return fmtPace(sPerMi);
+  if (lo === hi) return `${lo} /mi`;
+  return `${lo}-${hi} /mi`;
 }
 
 /**
@@ -308,6 +350,14 @@ export function cardFromSpec(input: {
   distanceMi: number;
   /** The runner's own easy-pace anchor, s/mi. Null → by-feel edges (P1-47). */
   easyPaceSec: number | null;
+  /**
+   * WU/CD-CEIL-1 (2026-09-01) · the FAST edge of the runner's easy band —
+   * what a warm-up or cool-down must not run faster than
+   * (`docs/PRODUCT_DECISIONS.md` 2026-08-31 "easy pace is a ceiling, not a
+   * band"). Distinct from `easyPaceSec` above on purpose — see the field doc
+   * on `ExpandSpecInput.easyCeilingSec`. Null → falls back to `easyPaceSec`.
+   */
+  easyCeilingSec?: number | null;
   /** HR band strings by zone, from `hrTargets(profile)`. Null when no LTHR. */
   hr?: { z1: string | null; z2: string | null; z3: string | null; z4: string | null; z5: string | null } | null;
   toleranceSec?: number;
@@ -319,8 +369,15 @@ export function cardFromSpec(input: {
     spec,
     totalMi: distanceMi,
     easyPaceSec,
-    // Jog recoveries are easy jogging (Research/04 §1). Same anchor the watch
-    // passes, so the two surfaces read the same recovery target.
+    easyCeilingSec: input.easyCeilingSec ?? easyPaceSec,
+    // RECOVERY-BYFEEL-1 (2026-09-01) · this used to be the same easy anchor
+    // as `easyPaceSec`, which is exactly HOW warm-up, every jog recovery and
+    // cool-down ended up printing one identical number "by construction"
+    // (provenance trace §5, finding #1). `expandReps`/`expandSteps` no
+    // longer consume this for the rep-to-rep jog — it now only feeds
+    // `appendStrides`' walk-back, a genuinely different (full-recovery)
+    // pause. Kept non-null here rather than deleting the line, so a future
+    // caller of strides on this path keeps its walk-back target.
     recoveryPaceSec: easyPaceSec,
     toleranceSec: input.toleranceSec ?? 8,
     workPhaseLabel: type === 'race' ? 'Race effort' : type === 'shakeout' ? 'Shakeout' : undefined,
@@ -358,13 +415,28 @@ export function cardFromSpec(input: {
     if (t.kind === 'edge') {
       const p = t.phase;
       const isWu = p.type === 'warmup';
+      const isCd = p.type === 'cooldown';
+      /* WARMUP-CONTRADICTION-1 (2026-09-01) · provenance trace §14. The card
+       * used to print a FLAT pace target on this step ("9:03 /mi") beside a
+       * note reading "build into the work" and, on quality days, an HR cap
+       * of z1 — three statements, two of them fighting the third. A flat
+       * target says "hold this"; "build" says the opposite; the HR cap was
+       * the only one of the three that was ever the real constraint.
+       *
+       * Showing the number as a CEILING resolves it without dropping any of
+       * the three: "≤ 8:22 /mi, ≤ 139 bpm, build into the work" all point the
+       * same direction — start under both ceilings, let the effort rise
+       * toward the work that follows. Recovery edges (unused today — see
+       * `tokenize`) show no pace at all, same reasoning as the between-rep
+       * jog below: a recovery is not paced. */
+      const paceLabel = (isWu || isCd) ? fmtPaceCeiling(p.targetPaceSPerMi) : null;
       steps.push({
-        label: isWu ? 'Warmup' : p.type === 'cooldown' ? 'Cooldown' : p.label,
+        label: isWu ? 'Warmup' : isCd ? 'Cooldown' : p.label,
         ...(p.distanceMi != null ? { distance_mi: p.distanceMi } : {}),
         ...(p.distanceMi == null && fmtDuration(p.durationSec) ? { duration: fmtDuration(p.durationSec)! } : {}),
-        ...(fmtPace(p.targetPaceSPerMi) ? { pace_target: fmtPace(p.targetPaceSPerMi)! } : {}),
+        ...(paceLabel ? { pace_target: paceLabel } : {}),
         ...(hr?.z1 ? { hr_target: hr.z1 } : {}),
-        note: isWu ? NOTE.warmup : p.type === 'cooldown' ? NOTE.cooldown : NOTE.recovery,
+        note: isWu ? NOTE.warmup : isCd ? NOTE.cooldown : NOTE.recovery,
       });
       continue;
     }
@@ -386,8 +458,20 @@ export function cardFromSpec(input: {
     }
     const w = t.work;
     const isStride = w.isStrideSegment === true;
-    const paceStr = fmtPace(w.targetPaceSPerMi);
+    /* QUALITY-BAND-1 · a band for genuine quality work (threshold, intervals,
+     * tempo), a bare point everywhere else. Easy/long/race/shakeout work
+     * stays a point on purpose — the 2026-08-31 "easy pace is a ceiling, not
+     * a band" decision is the opposite instruction for those, and this file
+     * does not re-open that here. */
+    const isQualityWork = type === 'threshold' || type === 'intervals' || type === 'tempo';
+    const paceStr = isQualityWork
+      ? fmtPaceBand(w.targetPaceSPerMi, w.tolerancePaceSPerMi)
+      : fmtPace(w.targetPaceSPerMi);
     const recDur = fmtDuration(t.rec?.durationSec);
+    // RECOVERY-BYFEEL-1 · `t.rec?.targetPaceSPerMi` is null for a between-rep
+    // jog now (see `expand-spec.ts`), so this naturally comes back null and
+    // the recovery sub-object below carries no `pace_target` — no separate
+    // change needed here to drop it.
     const recPace = fmtPace(t.rec?.targetPaceSPerMi);
     /* A rep too short for a heart rate to arrive gets no heart rate.
      * `Research/03` §13 — see `HR_TARGET_MIN_REP_SEC`. A stride was already
