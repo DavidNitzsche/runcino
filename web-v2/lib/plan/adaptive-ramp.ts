@@ -16,7 +16,7 @@
  *   applyAdaptations() picks it up and mutates plan_workouts
  *
  * Gates · all must pass before a bump:
- *   · No pull-back streak in last 7 days (HRV / RHR / sleep / soreness)
+ *   · Readiness GREEN — at most one pillar dragging (CONVERGENCE.amberMinDomains)
  *   · The last 2 prescribed key sessions in 14 days both EARNED PROGRESSION
  *     (`lib/execution/load.ts` · `earnsProgressionCredit`)
  *   · Last long run clean (aerobic decoupling < 5% if measurable)
@@ -60,6 +60,7 @@ import { pool } from '@/lib/db/pool';
 import { attempt, rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { runDaySql, runDistanceMiSql, runNotMergedSql } from '@/lib/runs/run-shape';
+import { CONVERGENCE } from '@/lib/coach/convergence';
 
 export interface RampOpportunity {
   /** Why we're bumping · explainer for the intent log. */
@@ -94,6 +95,11 @@ export interface RampSignals {
 
 const COOLDOWN_DAYS = 7;
 const LONG_DECOUPLING_PCT_CAP = 5;
+
+/** A pillar must drag for at least this many days before it counts as a
+ *  dragging DOMAIN. One bad night is not a trend — the sustain the old
+ *  `pullbackStreakDays < 2` comparison was reaching for, stated per pillar. */
+const MIN_SUSTAINED_STREAK_DAYS = 2;
 
 /** How far back the quality and long-run signals look. Unchanged from the
  *  window the dead queries used, so this fix moves the SOURCE and not the bar. */
@@ -162,11 +168,48 @@ export async function detectRampSignals(
   // one of five that authorise PRESCRIBING MORE MILEAGE. The one signal that
   // would stop a bump is exactly the one an unreadable table cannot show.
   const readinessReadFailed = readinessRow === null;
-  const streaks = (readinessRow?.streaks as Array<{ direction?: string; days?: number }> | undefined) ?? [];
-  const pullbackStreakDays = streaks
-    .filter((s) => s.direction === 'below')
-    .reduce((max, s) => Math.max(max, Number(s.days ?? 0)), 0);
-  const readinessGreen = !readinessReadFailed && pullbackStreakDays < 2;
+  const streaks = (readinessRow?.streaks as Array<{ direction?: string; days?: number; pillar?: string }> | undefined) ?? [];
+  /** Pillars dragging long enough to be a trend rather than one bad night. */
+  const sustained = streaks.filter(
+    (s) => s.direction === 'below' && Number(s.days ?? 0) >= MIN_SUSTAINED_STREAK_DAYS,
+  );
+  const draggingPillars = new Set(sustained.map((s) => s.pillar ?? 'unknown')).size;
+  // Kept for the diagnostic line and the bench · the longest single streak.
+  const pullbackStreakDays = sustained.reduce((max, s) => Math.max(max, Number(s.days ?? 0)), 0);
+
+  /* ── 2026-08-30 · ONE DRAGGING PILLAR IS GREEN EVERYWHERE ELSE ────────────
+   *
+   * This read the LONGEST streak of ANY SINGLE pillar and blocked at two days:
+   * `pullbackStreakDays = max(days)`, `readinessGreen = pullbackStreakDays < 2`.
+   * So one pillar below its own baseline vetoed every bump, for as long as it
+   * stayed there.
+   *
+   * On the owner's live account that is not hypothetical. His sleep pillar has
+   * run below baseline continuously since 2026-08-16 — 14 days and counting —
+   * while `readiness_snapshots.band` reads `ready` on every one of those days
+   * (scores 55-68). The upward path was permanently vetoed by a signal the
+   * readiness system itself grades as fine.
+   *
+   * It also disagreed with the rest of the app about what "readiness is
+   * dragging" means. `lib/coach/convergence.ts` is the definition: ≤1 domain
+   * is GREEN and nothing happens, 2 is amber and the runner is merely TOLD,
+   * and it takes 3 converging domains before a pull-back may touch the plan.
+   * The bar to ADD load was therefore stricter than the bar to CUT it by three
+   * whole domains — the fitter runner getting the weaker response, which is
+   * the Rule 9 signature, and the "readiness must not be harsh" ruling
+   * (2026-08-30: "some people just are lower ready scores and that's okay")
+   * pointed at the one path where harshness costs the runner progress.
+   *
+   * The bar now reuses `CONVERGENCE.amberMinDomains` rather than a private
+   * number, so it is the same notion of corroboration (Rule 16): a bump is
+   * allowed exactly while readiness is GREEN — at most one dragging pillar.
+   * That is still the conservative side of doctrine; it is not a relaxation of
+   * any ceiling, only agreement with the ladder the app already publishes.
+   *
+   * A per-pillar streak must be sustained (>= 2 days) before it counts as a
+   * dragging domain at all, which is the sustain the old `< 2` comparison was
+   * reaching for. A failed read still closes the gate. */
+  const readinessGreen = !readinessReadFailed && draggingPillars < CONVERGENCE.amberMinDomains;
 
   // 2. Last 2 quality sessions · did the runner actually deliver them?
   //
