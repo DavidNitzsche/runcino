@@ -444,7 +444,16 @@ export async function loadAdaptationInput(
     weeklyActualMi: weeklyActualMi.length > 0 ? weeklyActualMi : null,
     trainingForm: form?.label ?? null,
 
-    distinctEvidenceWeeks: evidenceWeeks.size > 0 ? evidenceWeeks.size : null,
+    // COERCE-EVIDENCE-1 (2026-08-30) · Rule 11. `evidenceWeeks.size > 0 ? size
+    // : null` collapsed two opposite facts. `weekly` empty means the window
+    // holds no plan weeks at all — nothing to judge, and null is right. But
+    // `weekly` NON-empty with every week at zero miles means the runner did not
+    // train, which is a measurement, and `readTrend` scores it at
+    // `clamp((0 - 2) * 0.8) = -1.6`. Erasing it dropped that negative reading
+    // out of the weighted mean entirely, so a block nobody ran read no worse
+    // than a block nobody could see — the permissive direction, in the
+    // dimension that gates progression.
+    distinctEvidenceWeeks: (weekly?.length ?? 0) > 0 ? evidenceWeeks.size : null,
     adapterDowngrades: downgrades ? Number(downgrades.n) : null,
 
     niggleSeverity: niggle?.severity ?? null,

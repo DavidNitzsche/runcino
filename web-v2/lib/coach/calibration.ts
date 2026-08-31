@@ -327,7 +327,17 @@ export async function completeCalibrationSession(
     qualified = false;
     qualifiedReasons.push(`HR drift ${pillars.hrDriftBpmPerMi.toFixed(1)}bpm/mi > ${MAX_QUALIFYING_HR_DRIFT_BPM_PER_MI}`);
   }
-  pillars.qualifiedReasons = qualifiedReasons.length === 0 ? ['all thresholds passed'] : qualifiedReasons;
+  // COERCE-CALIB-1 (2026-08-30) · Rule 11 + Rule 16. Two of the three
+  // disqualifiers run unconditionally; the HR-drift one is gated on
+  // `hrDriftBpmPerMi != null`, so a run with no heart-rate data CANNOT be
+  // disqualified for drift — and then reported `'all thresholds passed'`, a
+  // sentence asserting the result of a test that never ran. This run goes on to
+  // be the calibrated easy-pace anchor for everything downstream, so the claim
+  // is load-bearing rather than cosmetic. Say which thresholds were checked.
+  const hrDriftChecked = pillars.hrDriftBpmPerMi != null;
+  pillars.qualifiedReasons = qualifiedReasons.length === 0
+    ? [hrDriftChecked ? 'all thresholds passed' : 'distance and pace variance passed · no HR on this run, drift not checked']
+    : qualifiedReasons;
 
   // 4. The session to complete. `prior` is in_progress or absent · step 0
   //    already returned for completed and skipped, so there is nothing left

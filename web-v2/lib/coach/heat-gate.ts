@@ -284,11 +284,31 @@ export function evaluateHeatGate(input: HeatGateInput): HeatGateVerdict {
       ? estimateDewpointF(tairF, input.humidityPct)
       : null);
 
+  // COERCE-HEAT-1 (2026-08-30) · Rule 11, and Rule 16's "a sentence asserting a
+  // fact about a measurement must be gated on that measurement".
+  //
+  // The default headline was "Conditions are fine. Run it as written." — flat,
+  // unconditional, and reached in two very different situations. One is that
+  // every table ran and none of them fired. The other is that `wbgtApproxF`
+  // returned null because humidity or cloud cover was missing, `dewpointF`
+  // could not be estimated for the same reason, and the three tables below
+  // therefore SKIPPED THEMSELVES ENTIRELY. In that second case nothing had been
+  // measured and nothing had been checked, and the runner was told conditions
+  // were fine — on a day that could have been a black flag.
+  //
+  // The air temperature alone cannot answer this. `wbgtApproxF` needs humidity
+  // precisely because dry 90°F and humid 90°F are different days, which is the
+  // whole reason Research/06 §3 keys on WBGT rather than on Tair.
+  const measured = wbgtF != null || dewpointF != null;
   let best: { action: HeatGateAction; flag: HeatFlag; headline: string; citation: string } = {
     action: 'normal',
     flag: wbgtF != null ? flagForWbgt(wbgtF).flag : 'unknown',
-    headline: 'Conditions are fine. Run it as written.',
-    citation: 'Research/06 §3 · WBGT flag table',
+    headline: measured
+      ? 'Conditions are fine. Run it as written.'
+      : 'No humidity reading, so no heat call. Judge it outside.',
+    citation: measured
+      ? 'Research/06 §3 · WBGT flag table'
+      : 'Research/06 §11 · gate needs humidity or dew point to run its tables',
   };
   const consider = (
     action: HeatGateAction, flag: HeatFlag, headline: string, citation: string,

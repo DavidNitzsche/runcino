@@ -145,6 +145,47 @@ export interface QualityDay {
 }
 
 /**
+ * A structural bound on the quality day, or an explicit statement that there
+ * is none · COERCE-CEILING-1 (2026-08-30), Rule 11.
+ *
+ * The three states this used to collapse:
+ *
+ *   `number`      · a real ceiling. ZERO IS A REAL CEILING — it means no room,
+ *                   and the day composes to nothing. It used to mean the
+ *                   opposite: `ceilingMi != null && ceilingMi > 0 ? ceilingMi :
+ *                   Infinity` mapped a zero bound to an INFINITE one, a
+ *                   hundred-and-eighty-degree inversion of the caller's
+ *                   statement, in the direction of more work.
+ *   `'unbounded'` · the caller has looked and there is genuinely no structural
+ *                   bound. `layoutWeek`'s first-pass sizing says this.
+ *   `null`        · nothing was stated. Kept as unbounded for back-compat with
+ *                   the callers that pass a bare `null` today, and that is a
+ *                   KNOWN WEAKNESS, written down here rather than papered over:
+ *                   a bound that could not be computed still reads as "no
+ *                   bound". `'unbounded'` exists so a caller who MEANS it can
+ *                   say so, which is what lets the null case be tightened later
+ *                   without guessing at each call site's intent.
+ *
+ * Why this mattered. `seed-from-onboarding` passed `longMi > 0 ? longMi : null`
+ * — "cap the quality day at the long run, for long-primacy". For a true
+ * beginner whose peak long run is zero, `longMi` is zero, the erasure sent
+ * `null`, and the cap came off entirely: the one week where long-primacy is
+ * least established was the one week nothing enforced it. The call site now
+ * states `'unbounded'`, which is what it always meant, and a future zero that
+ * means "no room" can be told apart from it.
+ */
+export type QualityCeiling = number | 'unbounded' | null;
+
+/** Miles, or `Infinity` for an explicit or unstated absence of a bound. */
+export function resolveCeiling(c: QualityCeiling | undefined): number {
+  if (c === 'unbounded' || c == null) return Infinity;
+  if (!Number.isFinite(c)) return Infinity;
+  // A negative bound is not a statement anyone makes on purpose; clamp rather
+  // than compose a negative day. Zero survives as zero.
+  return Math.max(0, c);
+}
+
+/**
  * Compose a quality day from its parts.
  *
  * `ceilingMi` is the caller's structural bound — `layoutWeek` passes
@@ -161,7 +202,7 @@ export function composeQualityDay(args: {
   atPaceMi: number;
   /** Jog recovery inside the session, in miles. Continuous work passes 0. */
   floatMi?: number;
-  ceilingMi?: number | null;
+  ceilingMi?: QualityCeiling;
 }): QualityDay {
   const atPaceMi = Math.max(0, args.atPaceMi);
   const floats = Math.max(0, args.floatMi ?? 0);
@@ -188,7 +229,7 @@ export function composeQualityDay(args: {
   warmupMi = Number(warmupMi.toFixed(2));
   cooldownMi = Number(cooldownMi.toFixed(2));
 
-  const ceiling = args.ceilingMi != null && args.ceilingMi > 0 ? args.ceilingMi : Infinity;
+  const ceiling = resolveCeiling(args.ceilingMi);
   const over = warmupMi + atPaceMi + floats + cooldownMi - ceiling;
   if (over > 0) {
     // Give back proportionally so neither leg vanishes while the other stays
@@ -219,7 +260,7 @@ export function maxQualityDayMi(args: {
   family: QualityFamily;
   weeklyMi: number;
   paceSPerMi: number | null;
-  ceilingMi?: number | null;
+  ceilingMi?: QualityCeiling;
 }): number {
   const atPaceMi = atPaceSessionCapMi(args.weeklyMi, args.family);
   // Recovery at doctrine's own ratio: cruise floats run one minute per mile of

@@ -452,7 +452,13 @@ function distributeVolume(
         family: qualityFamily,
         weeklyMi,
         paceSPerMi: null,
-        ceilingMi: longMi > 0 ? longMi : null,
+        // COERCE-CEILING-1 (2026-08-30) · `longMi > 0 ? longMi : null` erased a
+        // measured zero into "nothing stated", and `composeQualityDay` read
+        // that as INFINITY. A week with no long run lost the long-primacy cap
+        // entirely, which is the one week it is least established. Same
+        // behaviour, said out loud: there is no long run to be primary over,
+        // so the bound is genuinely absent rather than accidentally missing.
+        ceilingMi: longMi > 0 ? longMi : 'unbounded',
       })
     : 0;
 
