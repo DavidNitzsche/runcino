@@ -183,6 +183,9 @@ function demoteToEasy(d: DayPlan): void {
   delete d.workShape;
   delete d.progressionLever;
   delete d.challengeZone;
+  // PROGRESSION-DOSE-1 (2026-08-30) · a travel day downgraded out of quality
+  // carries no ladder position, same as the three fields above it.
+  delete d.progressionDose;
   delete d.longRunKind;
 }
 

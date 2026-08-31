@@ -3131,6 +3131,48 @@ export interface DayPlan {
   /** The session's intent · `Design/adaptive-progression-engine.md` §4. */
   challengeZone?: ChallengeZone | null;
   /**
+   * PROGRESSION-DOSE-1 (2026-08-30) · WHERE ON THE LADDER THIS WEEK STANDS,
+   * recorded even when the catalogue supplied the session's identity.
+   *
+   * ── The defect this exists for ───────────────────────────────────────────
+   *
+   * `workShape` above is the LABEL half: it is set only when `trackFor(slot)`
+   * is non-null, which excludes any slot the §15 catalogue filled, because a
+   * catalogue session "carries the session doctrine names by name" and the
+   * ladder must not overwrite those words with its own rendering. That split is
+   * deliberate and it is right.
+   *
+   * But `workShape` was ALSO the only thing that reached storage, and the
+   * adaptation gate reads storage. Measured on the owner's CIM block as the
+   * cron authors it: 24 quality slots, 21 with `vocabRx` SET, and
+   * `trackOfType` non-null on 13 of those 21. So the dose stepped for thirteen
+   * sessions — verified directly against `OverloadTrajectory`, which climbs
+   * 3x10 → 2x15 → 1x30 on T and 5x3 → 6x3 → 7x3 → 5x4 → 4x5 on I — and its
+   * position was written down for TWO. `loadProgressionWeek` then built zero
+   * targets, `detectProgressionGate` returned null every week, and
+   * `plan_adapt_progression` has zero rows in the entire production database.
+   *
+   * The ladder was never dark. Only its position was unrecorded.
+   *
+   * ── Why a separate field rather than widening `workShape` ────────────────
+   *
+   * Because they answer the two different questions `generate.ts:5449` already
+   * separates. `workShape` is "does the trajectory supply the WORDS"; this is
+   * "which rung is the DOSE on". Widening the first to cover the second would
+   * make the trajectory rename a doctrine-named session — trading variety, a
+   * feature, for progression, the product, when both are available.
+   *
+   * Keyed off `trackOfType`, which is the dose question and is type-driven by
+   * construction, so this is populated on exactly the weeks `stepByTrack`
+   * stepped. Cleared by `clearWorkShape` alongside its sibling: a day that
+   * stops being quality stops carrying a ladder position too.
+   */
+  progressionDose?: {
+    shape: WorkShape;
+    lever: ProgressionLever | null;
+    zone: ChallengeZone | null;
+  } | null;
+  /**
    * LONGRUN-ROWS-1 (2026-08-25) · WHICH `Research/04` §4.1 ROW this long run's
    * race-pace segment came from.
    *
@@ -5490,10 +5532,44 @@ function layoutWeek({
       if (s.vocabRx) return null;
       return trackOfType(s.qt);
     };
+    /**
+     * PROGRESSION-DOSE-1 (2026-08-30) · which track a slot SPENDS against.
+     *
+     * `trackOfType` is the LABEL-side reading and deliberately says nothing
+     * about `tempo`. This says what `Research/01` says. Its own table gives
+     * "Tempo (continuous)" and "Cruise intervals" the SAME Daniels zone (T),
+     * the same pace anchor, the same RPE 7-8 and the same 88-92% HRmax; the
+     * concept map one section above lists them as "T" and "T (broken)". A tempo
+     * IS the threshold ladder, continuous rather than chopped up.
+     *
+     * The engine already agreed with that on the sizing path —
+     * `targetMinutesFor` below does `qt === 'tempo' ? 'threshold' : qt` — and
+     * disagreed with itself here, which is a Rule 16 split: one quantity, two
+     * answers. The consequence was silent. On a week whose only T-side slot was
+     * a tempo, `stepByTrack` got no 'threshold' entry at all, so
+     * `targetMinutesFor` returned null and the ladder's at-pace ceiling was not
+     * applied to the session it was computed for.
+     *
+     * `trackFor` is deliberately NOT routed through this. It still asks
+     * `trackOfType`, so a generic tempo keeps its own `rx.tempo` sizing and the
+     * trajectory does not start supplying words it never supplied before. The
+     * rendered prescription is byte-identical; only the map gains an entry.
+     */
+    const doseTrackOfType = (qt: ComposerQualityType): SessionFamily | null =>
+      trackOfType(qt === 'tempo' ? 'threshold' : qt);
     const stepByTrack = new Map<SessionFamily, ReturnType<OverloadTrajectory['step']>>();
     if (trajectory) {
       for (const s of plannedSlots) {
         if (!s) continue;
+        // NOT `doseTrackOfType` here, deliberately. Keying the MAP by the dose
+        // track would add a `threshold` entry on a tempo-only week, and
+        // `targetMinutesFor` reads this same map — so the ladder's at-pace
+        // ceiling would begin binding on weeks where it never has. That is
+        // arguably the behaviour DOCTRINE-DOSING-2 intended, but it changes the
+        // composed plan, and `_audit_periodization.test.ts`'s frozen
+        // David-class fingerprint caught it doing so. The dose READ below is
+        // additive and byte-stable; changing what the map holds is a separate
+        // decision with its own evidence, and it is not this change.
         const track = trackOfType(s.qt);
         if (track == null || stepByTrack.has(track)) continue;
         stepByTrack.set(track, trajectory.step({
@@ -5550,7 +5626,7 @@ function layoutWeek({
      * week's whole share.
      */
     const targetMinutesFor = (qt: ComposerQualityType): number | null => {
-      const track = trackOfType(qt === 'tempo' ? 'threshold' : qt);
+      const track = doseTrackOfType(qt);
       if (track == null) return null;
       const step = stepByTrack.get(track);
       if (!step) return null;
@@ -5882,6 +5958,13 @@ function layoutWeek({
       const { dow, qt, vocabFamily, vocabRx } = slot;
       const track = trackFor(slot);
       const step = track != null ? (stepByTrack.get(track) ?? null) : null;
+      // PROGRESSION-DOSE-1 · the DOSE half, read off `trackOfType` rather than
+      // `trackFor`, so a catalogue-filled slot still records which rung its
+      // track is on. `stepByTrack` is itself built from `trackOfType`, so this
+      // is exactly the step that was already computed and then discarded on
+      // every rotated week. See the `progressionDose` field doc.
+      const doseTrack = doseTrackOfType(qt);
+      const doseStep = doseTrack != null ? (stepByTrack.get(doseTrack) ?? null) : null;
       // DOCTRINE-BASE-2 · a base week's session is §7/§8/§9 work, so it is
       // sized and capped as REPETITION, not as an interval session.
       //
@@ -6106,6 +6189,17 @@ function layoutWeek({
           workShape: step.shape,
           progressionLever: step.lever,
           challengeZone: step.zone,
+        } : {}),
+        // PROGRESSION-DOSE-1 · the ladder position, recorded whether or not the
+        // trajectory supplied the words. On a slot the catalogue filled, `step`
+        // is null and this is the only thing that reaches storage; on a generic
+        // slot the two describe the same rung and the gate reads either.
+        ...(doseStep ? {
+          progressionDose: {
+            shape: doseStep.shape,
+            lever: doseStep.lever,
+            zone: doseStep.zone,
+          },
         } : {}),
         // DOCTRINE-VOCAB-1 · a family's coaching note comes from what that
         // family is FOR, not from the slot's spec kind. "Hold pace, even
@@ -6937,6 +7031,11 @@ function clearWorkShape(d: DayPlan): void {
   delete d.workShape;
   delete d.progressionLever;
   delete d.challengeZone;
+  // PROGRESSION-DOSE-1 · the dose half goes with the label half, for the same
+  // reason and at the same moment. A day demoted out of quality carries no
+  // ladder position either, or the row would say "Easy · no quality this close"
+  // over a spec still claiming a rung on the threshold ladder.
+  delete d.progressionDose;
 }
 
 /**
@@ -10190,13 +10289,24 @@ export function persistedDayShape(
   // Attached AFTER the distance cap so the block describes the session actually
   // prescribed: `capSpecToDistance` can trim a rep, and a block disagreeing with
   // the spec beside it would be the same drift in a new field.
-  if (workoutSpec && d.workShape) {
+  //
+  // PROGRESSION-DOSE-1 (2026-08-30) · `d.progressionDose` is the fallback, and
+  // on this runner's block it is the ONLY source for 13 of 24 quality slots.
+  // `workShape` is set only where the trajectory also supplied the LABEL, which
+  // excludes every session the §15 catalogue filled — 21 of his 24. The dose
+  // stepped for those anyway; it simply had nowhere to be written. Preferring
+  // `workShape` when both exist keeps the byte-for-byte output of a generic
+  // slot unchanged, since the two then describe the same rung.
+  const persistedDose = d.workShape
+    ? { shape: d.workShape, lever: d.progressionLever ?? null, zone: d.challengeZone ?? null }
+    : d.progressionDose ?? null;
+  if (workoutSpec && persistedDose) {
     workoutSpec = {
       ...workoutSpec,
       ...progressionSpecFields({
-        shape: d.workShape,
-        lever: d.progressionLever ?? null,
-        zone: d.challengeZone ?? null,
+        shape: persistedDose.shape,
+        lever: persistedDose.lever,
+        zone: persistedDose.zone,
         repsOverride: Number((workoutSpec as Record<string, unknown>).rep_count ?? 0) || null,
       }),
     };

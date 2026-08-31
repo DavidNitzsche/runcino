@@ -437,9 +437,21 @@ const DOW_OF: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4,
  * prescription the engine wrote before this declares one that maps back to the
  * type's own family — so nothing existing changes hands.
  */
-function familyOfType(type: string, prescription?: string | null): SessionFamily | null {
+export function familyOfType(type: string, prescription?: string | null): SessionFamily | null {
   const declared = ZONE_SESSION_FAMILY[primaryZone(prescription) ?? ''] ?? null;
-  if (type === 'threshold') return declared ?? 'threshold';
+  // PROGRESSION-DOSE-1 (2026-08-30) · `tempo` joins `threshold`, on doctrine
+  // rather than on convenience. `Research/01` § "Pace prescription by workout
+  // type" gives "Tempo (continuous)" and "Cruise intervals" the SAME Daniels
+  // zone (T), the same pace anchor, the same RPE 7-8 and the same 88-92%
+  // HRmax; the concept table above it lists them as "T" and "T (broken)". A
+  // tempo is the threshold ladder run continuously.
+  //
+  // It was already treated that way on the composer's sizing path
+  // (`doseTrackOfType`), and not here, so a tempo row carrying a persisted
+  // dose would have been read as belonging to no family and skipped — the
+  // reader half of the same Rule 16 split. On this runner's block that is 8 of
+  // 24 quality slots.
+  if (type === 'threshold' || type === 'tempo') return declared ?? 'threshold';
   if (type === 'intervals' || type === 'vo2max') return declared ?? 'interval';
   return null;
 }
