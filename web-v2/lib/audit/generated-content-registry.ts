@@ -370,6 +370,8 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'Same ruling as strength-recommender. The weekly confirmed/skipped verdict has no surface because strength has no surface.',
   'web-v2/lib/doctrine/registry.ts':
     'A GATE. Test-only is its correct state — it is consulted by check-doctrine.sh, not at runtime.',
+  'web-v2/lib/audit/active-plan-exemptions.ts':
+    'A GATE, same shape as the doctrine and derived registries: the argued exceptions to ACTIVEPLAN-1, read only by lib/audit/_active_plan_scan.test.ts. Runtime code must never import it — the point is that a query either names its plan or is listed here, and nothing should be able to consult the list to decide behaviour. The list is a ratchet and the scanner fails when an entry goes stale, so it cannot rot in place.',
   'web-v2/lib/runs/derived-registry.ts':
     'A GATE. Same shape as the doctrine registry: the list of places two stored values describe one thing, consulted by lib/runs/_coherence_gate.test.ts and check-derived-consistency.sh, never at runtime. The reconciler it documents (lib/runs/coherence.ts) IS wired, on every surface that prints a pace or a duration; this file holds the winner rules, the production counts and the controls that prove each guard fires.',
   'web-v2/lib/audit/sql-scan.ts':
