@@ -494,8 +494,65 @@ export interface RescheduleDayContext {
   hasRestRow: boolean;
   /** running rows already in this date's plan week, EXCLUDING the
    *  workout being moved (so a same-week move doesn't double-count).
-   *  null → unknown → frequency check skipped. */
+   *  null → unknown (the caller couldn't resolve this date's plan week —
+   *  see byDate construction in actionsForTrigger). RESCHED-2 (2026-08-31):
+   *  when a weeklyFrequency IS stated, an unknown weekRunCount now REFUSES
+   *  the candidate rather than silently skipping the check — see
+   *  chooseRescheduleDate. Unknown must never read as "compliant". */
   weekRunCount: number | null;
+}
+
+/** Row shape `majorityRowDow`/`resolveRestDowForReschedule` read — the
+ *  fields chooseRescheduleDate's caller already pulls off plan_workouts. */
+export interface PlanRowDow { type: string; dow: number | null; date: string }
+
+/** Majority-vote day-of-week for a plan-row type — the SAME derivation
+ *  actionsForTrigger already uses inline for longRunDow, extracted so
+ *  restDow can share it and so both are testable without a DB. Plan rows
+ *  are truer than a settings default: a composed plan's own rows describe
+ *  what the runner is actually on, not what a maybe-stale settings row says. */
+export function majorityRowDow(rows: readonly PlanRowDow[], type: string): number | null {
+  const counts = new Map<number, number>();
+  for (const g of rows) {
+    if (g.type !== type) continue;
+    const dw = g.dow ?? dowOfISO(g.date);
+    counts.set(dw, (counts.get(dw) ?? 0) + 1);
+  }
+  let best: number | null = null;
+  for (const [dw, n] of counts) {
+    if (best === null || n > (counts.get(best) ?? 0)) best = dw;
+  }
+  return best;
+}
+
+/**
+ * RESCHED-1 (2026-08-31 · aeb3cee7's hand-back) · resolves the rest day a
+ * reschedule search must never target, and says explicitly when it cannot.
+ *
+ * `chooseRescheduleDate`'s rest-day guard (`restDow != null && dow ===
+ * restDow`) only fires once restDow is known; a null restDow does not mean
+ * "this runner has no rest day", it means the guard goes dark. The old
+ * caller read ONLY `settings.rest_day` — which `loadSettings` DEFAULTS to
+ * 'sat' when unset (see web-v2/lib/coach/settings.ts), so a null there
+ * meant the settings READ ITSELF FAILED, not that the runner has no rest
+ * day. Rule 11: a failed read is its own fact and must never be spent as
+ * "safe to skip this guard".
+ *
+ * Plan rows are the primary source, exactly mirroring longRunDow's existing
+ * derivation: composePlan stamps an explicit type='rest' row for the rest
+ * day in every week it builds, so the window this reads (today-6..today+11
+ * in actionsForTrigger) carries it for any plan that has actually been
+ * composed. Settings is the fallback for a genuinely rest-row-free window
+ * (e.g. a brand-new plan whose first week hasn't materialized rows yet).
+ * When BOTH come up empty, `refuse` is true and the caller must not run
+ * chooseRescheduleDate at all — not "run it with the guard silently off".
+ */
+export function resolveRestDowForReschedule(
+  rows: readonly PlanRowDow[],
+  settingsRestDow: number | null,
+): { restDow: number | null; refuse: boolean } {
+  const restDow = majorityRowDow(rows, 'rest') ?? settingsRestDow;
+  return { restDow, refuse: restDow == null };
 }
 
 /**
@@ -568,7 +625,17 @@ export function chooseRescheduleDate(opts: {
      * was describing behaviour the code did not have.
      */
     if (weekEndISO && d > weekEndISO) continue;
-    const ctx = byDate[d] ?? { runCount: 0, qualityOrLong: false, hasRestRow: false, weekRunCount: null };
+    /* RESCHED-2 (2026-08-31 · aeb3cee7's hand-back). A candidate with NO
+     * byDate entry used to fall back to
+     *   { runCount: 0, qualityOrLong: false, hasRestRow: false, weekRunCount: null }
+     * — which is precisely the shape every guard below treats as "confirmed
+     * clear". "No plan-row data for this date" and "confirmed clear running
+     * day" are different facts (Rule 11); only the DB shell that built byDate
+     * can tell them apart, and leaving a date out of a byDate that was built
+     * to cover it (today..today+5 in actionsForTrigger) means it couldn't.
+     * Refuse the candidate — don't manufacture the values that make it pass. */
+    const ctx = byDate[d];
+    if (!ctx) continue;
     if (ctx.runCount > 0) continue;
     if (ctx.hasRestRow) continue;
     const dow = dowOfISO(d);
@@ -577,7 +644,17 @@ export function chooseRescheduleDate(opts: {
     const prev = byDate[plusDaysISO(todayISO, i - 1)];
     const next = byDate[plusDaysISO(todayISO, i + 1)];
     if (prev?.qualityOrLong || next?.qualityOrLong) continue;
-    if (weeklyFrequency != null && ctx.weekRunCount != null && ctx.weekRunCount + 1 > weeklyFrequency) continue;
+    /* RESCHED-2 · weekRunCount: null means "couldn't resolve this date's plan
+     * week", not "no runs this week" (see byDate construction). The old
+     * `ctx.weekRunCount != null` clause on this line made a STATED
+     * weeklyFrequency silently unenforced on exactly the unresolved days a
+     * makeup lands on — the sentinel for "we don't know" and the sentinel for
+     * "check satisfied" were the same value. A stated frequency that can't be
+     * verified against this candidate now refuses the candidate. */
+    if (weeklyFrequency != null) {
+      if (ctx.weekRunCount == null) continue;
+      if (ctx.weekRunCount + 1 > weeklyFrequency) continue;
+    }
     if (dateNearRace(d, raceDates)) continue;
     if (travelDates?.has(d)) continue;
     return d;
@@ -1455,6 +1532,45 @@ export async function runnerIsCompromised(userId: string): Promise<
     return { compromised: true, reason: 'niggle' };
   }
   return { compromised: false };
+}
+
+/**
+ * `runnerIsCompromised`, but a failed read is never mistaken for "not
+ * compromised". THE ONE SAFE-FAIL WRAPPER for this predicate — call this at
+ * every site that gates an autonomous action (a plan mutation, a rebuild
+ * proposal, a progression finding that can push training up) instead of
+ * writing a fifth ad-hoc `.catch()` and re-deciding the direction from
+ * scratch.
+ *
+ * 2026-08-31 · found with two of this predicate's four call sites failing
+ * OPEN with no comment explaining why (`detectProgressionGate` below, and
+ * the goal-gap rebuild suppression in plan-drift's cron), against two that
+ * already failed CLOSED with an explicit "an unreadable state must propose,
+ * not prescribe" rationale (`app/api/cron/plan-drift/route.ts`, the
+ * plan-elapsed and recovery-complete lifecycle guards). All four now agree,
+ * through this one function, so a fifth call site cannot silently pick the
+ * wrong direction again.
+ *
+ * `reason: 'injury'` on the failure branch is a placeholder, not a
+ * diagnosis — the whole point of failing here is that we do NOT know which
+ * of the four states applies, only that we could not rule any of them out.
+ * Every current call site branches on `.compromised` only (never reads
+ * `.reason` as a clinical claim when the branch was reached via this
+ * catch), which is what makes the placeholder safe to carry.
+ */
+export async function runnerIsCompromisedFailClosed(
+  userId: string,
+  // Injectable seam for the falsifier in _runner_compromised_fail_closed.test.ts
+  // — same-module calls bypass a mocked export (JS/TS closures reference the
+  // local declaration, not the module namespace object), so there is no way
+  // to make the REAL `runnerIsCompromised` reject from outside this file.
+  // Defaulting to the real function means every current call site is
+  // untouched; only the test supplies a rejecting fake.
+  check: (userId: string) => ReturnType<typeof runnerIsCompromised> = runnerIsCompromised,
+): Promise<
+  { compromised: false } | { compromised: true; reason: 'illness' | 'injury' | 'niggle' | 'gap_reentry' }
+> {
+  return check(userId).catch(() => ({ compromised: true, reason: 'injury' } as const));
 }
 
 async function hasRecentGapIntent(userId: string, days: number): Promise<boolean> {
@@ -4133,7 +4249,15 @@ async function detectProgressionGate(userId: string): Promise<AdaptationTrigger 
   // This finding's own context filter. See the call site in detectAdaptations
   // for why each of the four states disqualifies the evidence rather than
   // merely colouring it.
-  const compromised = await runnerIsCompromised(userId).catch(() => ({ compromised: false as const }));
+  //
+  // FAILS CLOSED (2026-08-31, via runnerIsCompromisedFailClosed above): this
+  // gate can emit ACCELERATE, not just HOLD or BACK_OFF (`resolveWeekProgression`
+  // in progression-gate.ts) — the one path in this whole detector that pushes a
+  // runner's week harder. An unreadable compromised-check must not be read as
+  // "not compromised", or a database blip could propose MORE quality density
+  // on a runner whose injury/illness/niggle/gap-reentry status we simply
+  // failed to confirm.
+  const compromised = await runnerIsCompromisedFailClosed(userId);
   if (compromised.compromised) return null;
 
   const { readAdaptation } = await import('@/lib/adaptation/load');
@@ -4520,14 +4644,36 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       for (const [dw, n] of longDowCounts) {
         if (longRunDow === null || n > (longDowCounts.get(longRunDow) ?? 0)) longRunDow = dw;
       }
-      let restDow: number | null = null;
+      let settingsRestDow: number | null = null;
       let weeklyFrequency: number | null = null;
       try {
         const { loadSettings } = await import('@/lib/coach/settings');
         const settings = await loadSettings(userId);
         if (longRunDow === null) longRunDow = DOW_OF_SHORTCODE[settings.long_run_day] ?? null;
-        restDow = DOW_OF_SHORTCODE[settings.rest_day] ?? null;
+        settingsRestDow = DOW_OF_SHORTCODE[settings.rest_day] ?? null;
       } catch { /* settings unavailable → dow prefs skipped; plan rows still guard */ }
+      // RESCHED-1 · plan rows first, settings as fallback (mirrors longRunDow
+      // just above) — see resolveRestDowForReschedule's doc comment for why a
+      // settings-only read let a failed settings load make the rest day a
+      // valid makeup slot.
+      const { restDow, refuse: restDowUnknown } = resolveRestDowForReschedule(geo, settingsRestDow);
+      if (restDowUnknown) {
+        // Rule 11: don't guess which day is the rest day. Refuse the whole
+        // search rather than let chooseRescheduleDate's rest-day guard run
+        // dark — same "data, not debt" drop as no clear day existing.
+        out.push({
+          kind: 'note',
+          noteReason: 'plan_adapt_drop_missed',
+          workoutIds: [ev.workout_id],
+          noteValue: {
+            planned_date: ev.planned_date, type: ev.type,
+            distance_mi: ev.distance_mi, no_slot: true, rest_day_unknown: true,
+          },
+          why: `${ev.type} on ${ev.planned_date} was missed and the rest day could not be `
+            + `determined, so no reschedule search can run safely. Dropped, not rescheduled.`,
+        });
+        return out;
+      }
       try {
         const freqRow = (await pool.query<{ weekly_frequency: number | null }>(
           `SELECT weekly_frequency FROM profile WHERE user_uuid = $1::uuid LIMIT 1`,

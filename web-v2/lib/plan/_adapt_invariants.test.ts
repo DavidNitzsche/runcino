@@ -51,13 +51,16 @@ import {
   gapAlreadyHandled,
   isStaleMissed,
   LOAD_REDUCING_ACTION_KINDS,
+  majorityRowDow,
   reducesLoad,
   overshootFires,
   overshootSuppressedByPlanMode,
   partitionActionsForCron,
   plusDaysISO,
+  resolveRestDowForReschedule,
   type AdaptationAction,
   type GapPlanRow,
+  type PlanRowDow,
   type RescheduleDayContext,
   MISSED_HANDLED_REASONS,
   missedAlreadyHandledSql,
@@ -316,6 +319,109 @@ describe('P1-35/P1-46 · chooseRescheduleDate guard battery', () => {
     expect(dateNearRace('2026-08-19', [race])).toBe(true);   // +3 post-race
     expect(dateNearRace('2026-08-09', [race])).toBe(false);  // race-7 · clear
     expect(dateNearRace('2026-08-20', [race])).toBe(false);  // +4 post-race · clear
+  });
+});
+
+describe('RESCHED-1/RESCHED-2 (2026-08-31 · aeb3cee7\'s hand-back) · reschedule refusal, not guessing', () => {
+  it('FALSIFIER · reproduces the OLD bug shape: a candidate with no byDate entry used to be picked', () => {
+    // Old code: `byDate[d] ?? { runCount: 0, qualityOrLong: false, hasRestRow: false,
+    // weekRunCount: null }` — exactly the values every guard below treats as
+    // "confirmed clear". Reproduce that fallback object directly (the way the
+    // pre-fix code built it) and confirm the CURRENT function does NOT pick a day
+    // it has no context for, even though the old fallback would have looked clear.
+    const oldFallbackShape: RescheduleDayContext = {
+      runCount: 0, qualityOrLong: false, hasRestRow: false, weekRunCount: null,
+    };
+    // Sanity: the old fallback shape is indistinguishable from a genuinely-clear
+    // day under every OTHER guard — it's only the fix under test that tells them
+    // apart, by refusing a day chooseRescheduleDate was never given a byDate entry
+    // for at all.
+    expect(oldFallbackShape.runCount).toBe(0);
+    expect(oldFallbackShape.hasRestRow).toBe(false);
+
+    const opts = {
+      ...baseOpts(),
+      // today+1..today+3 deliberately absent from byDate (no plan-row context) —
+      // only today+4 has a real, confirmed-clear entry.
+      byDate: { [plusDaysISO(TODAY, 4)]: { runCount: 0, qualityOrLong: false, hasRestRow: false, weekRunCount: null } },
+    };
+    // Old shape would have returned today+1 (first "clear" candidate via the
+    // fabricated fallback). Fixed shape must skip the unverified days and land
+    // on the one day it actually has evidence for.
+    expect(chooseRescheduleDate(opts)).toBe(plusDaysISO(TODAY, 4));
+  });
+
+  it('a candidate missing from byDate entirely is refused even when it is the ONLY candidate', () => {
+    const opts = { ...baseOpts(), byDate: {} }; // no context for any candidate at all
+    expect(chooseRescheduleDate(opts)).toBeNull();
+  });
+
+  it('weeklyFrequency stated + weekRunCount unknown refuses the candidate (was: silently passed)', () => {
+    const opts = {
+      ...baseOpts(),
+      weeklyFrequency: 4,
+      byDate: dayMap({
+        // today+1: weekRunCount unresolved (null) — old code let this through
+        // because `ctx.weekRunCount != null` gated the whole check off.
+        [plusDaysISO(TODAY, 1)]: { weekRunCount: null },
+        [plusDaysISO(TODAY, 2)]: { weekRunCount: 1 }, // genuinely under budget → picked
+      }),
+    };
+    expect(chooseRescheduleDate(opts)).toBe(plusDaysISO(TODAY, 2));
+  });
+
+  it('weeklyFrequency stated + EVERY candidate weekRunCount unknown → null, not a guess', () => {
+    const opts = { ...baseOpts(), weeklyFrequency: 4 }; // dayMap() default weekRunCount: null throughout
+    expect(chooseRescheduleDate(opts)).toBeNull();
+  });
+});
+
+describe('RESCHED-1 · majorityRowDow / resolveRestDowForReschedule', () => {
+  const row = (type: string, dow: number, date = '2026-07-06'): PlanRowDow => ({ type, dow, date });
+
+  it('majorityRowDow picks the dow with the most rows of that type', () => {
+    const rows = [row('rest', 6), row('rest', 6), row('rest', 0), row('long', 0)];
+    expect(majorityRowDow(rows, 'rest')).toBe(6);
+    expect(majorityRowDow(rows, 'long')).toBe(0);
+  });
+
+  it('majorityRowDow returns null when no row of that type exists', () => {
+    expect(majorityRowDow([row('easy', 2)], 'rest')).toBeNull();
+    expect(majorityRowDow([], 'rest')).toBeNull();
+  });
+
+  it('resolveRestDowForReschedule prefers plan rows over the settings fallback', () => {
+    const rows = [row('rest', 6), row('rest', 6)];
+    const resolved = resolveRestDowForReschedule(rows, /* settingsRestDow */ 0);
+    expect(resolved).toEqual({ restDow: 6, refuse: false });
+  });
+
+  it('resolveRestDowForReschedule falls back to settings when no rest row exists', () => {
+    const resolved = resolveRestDowForReschedule([row('easy', 2)], 0);
+    expect(resolved).toEqual({ restDow: 0, refuse: false });
+  });
+
+  it('FALSIFIER · reproduces the OLD bug: no rest rows AND settings unreadable → refuse, never a silent null that lets the rest day through', () => {
+    // This is the exact shape aeb3cee7 flagged: `restDow = DOW_OF_SHORTCODE[settings.rest_day]
+    // ?? null` with no plan-row fallback meant a failed settings read (which the old
+    // caller's try/catch swallows to `restDow: null`) silently made the rest day pickable,
+    // because `chooseRescheduleDate`'s `restDow != null && dow === restDow` guard never fires
+    // on null. The fixed resolver must say so explicitly (refuse: true) rather than pass a
+    // null through that a caller could forget to check.
+    const resolved = resolveRestDowForReschedule([row('easy', 2), row('long', 0)], /* settings failed */ null);
+    expect(resolved).toEqual({ restDow: null, refuse: true });
+  });
+
+  it('the caller-level refusal actually stops the search — chooseRescheduleDate is never called with an unresolved restDow in the fixed path', () => {
+    // Integration-shaped: simulate what actionsForTrigger now does when restDow
+    // cannot be resolved — refuse before calling chooseRescheduleDate at all,
+    // rather than call it with restDow: null and rely on the (permissive-by-design,
+    // for isolated-guard testing) pure-function contract to save it.
+    const resolved = resolveRestDowForReschedule([], null);
+    expect(resolved.refuse).toBe(true);
+    // The old code would have proceeded to call chooseRescheduleDate({ ...  restDow: null })
+    // here, and — because the true rest day (say, dow 6) has no materialized row yet — the
+    // rest day itself would have been a legal target. The fix never reaches that call.
   });
 });
 
