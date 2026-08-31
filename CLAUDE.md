@@ -993,6 +993,56 @@ headroom doctrine already allows.
 
 ---
 
+## Rule 22 · A gate inherits the bias of whoever wrote it (locked 2026-08-30)
+
+**Coverage is not the same as balance. Ask what your tests CANNOT fail on.**
+
+Measured on this repo, 2026-08-30, counting test files that exercise each
+verdict of the progression ladder and each adaptation action:
+
+```
+HOLD          29 files          readiness_pullback   6 files
+BACK_OFF       1 file           downgrade            5 files
+ACCELERATE     2 files          reschedule           5 files
+                                mark_upgrade         1 file
+```
+
+Twenty-nine files know how to hold a runner back. Two know what it means to
+accelerate one. **The tests have the same instinct as the engine**, which is
+unsurprising — they were written by the same reasoning, at the same time, by
+people worrying about the same failure. And it is exactly why 7,294 passing
+tests coexisted with an upward adaptation path that had fired ZERO times in 309
+production intents (Rule 21).
+
+**You cannot correct an engine's bias with a test suite that shares it.** A gate
+that only ever asks "did you correctly refuse?" will pass an engine that can
+only refuse.
+
+### To comply
+
+**When you write a gate, write down what it cannot fail on.** Not what it
+covers — what it is structurally incapable of catching. That sentence belongs in
+the file header, next to the liveness assertion Rule 18 already requires.
+
+**Check the DISTRIBUTION, not just the count.** For any mechanism with opposing
+verdicts — hold vs accelerate, pull back vs push, refuse vs permit, exclude vs
+admit — count the cases on each side. A large imbalance is a finding in itself
+and should be justified or corrected. Doctrine sometimes licenses an imbalance
+(there are more ways to be injured than to be ready); habit never does.
+
+**Beware the corpus that cannot ask the question.** Rule 15's failure is the
+extreme form of this one: `_sweep_allusers` grades 11,598 archetypes whose
+fixture type has no history fields at all, so four doctrine mechanisms are
+unreachable across the entire sweep and no amount of additional cases would
+help. A biased corpus at least asks lopsided questions; a blind one asks none.
+
+**And beware the false zero.** Counting coverage by grepping a literal action
+string reported `progression_gate: 0` on a mechanism with 43 tests across three
+files. Verify a coverage claim the way you would verify a defect — the number
+that says "nothing tests this" is exactly the number worth doubting twice.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
