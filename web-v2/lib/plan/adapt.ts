@@ -68,6 +68,10 @@
 import { pool } from '@/lib/db/pool';
 import { logReadFailure, rowsOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+// ANCHOR-STALE-3 · the canonical HRmax resolver. `rebuildWorkoutDerivations`
+// prices a rebuilt quality session against the runner's LIVE anchors; see the
+// Rule 10 note there for why `users.max_hr` is never read directly.
+import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays, weeklyAvgFromWindow } from '@/lib/runs/volume';
 import {
   loadPrescribedWindows,
@@ -2042,16 +2046,28 @@ async function rebuildWorkoutDerivations(
   workoutId: string,
 ): Promise<void> {
   try {
-    // 1. Read the workout's current type + distance + race_id.
+    // 1. Read the workout's current type + distance + race_id, AND the HR
+    //    anchors this rebuild must price the session against (see step 3).
+    //    The profile join is a LEFT JOIN on purpose: it keeps "the runner has
+    //    no threshold" (`profile_lthr` null on a row we found) separable from
+    //    "we could not read the profile at all" (`profile_found` false), which
+    //    Rule 11 requires and which decides the fallback below.
     const row = (await client.query<{
       type: string;
       distance_mi: string | null;
       race_id: string | null;
       sub_label: string | null;
+      profile_found: boolean;
+      profile_lthr: number | string | null;
+      authored_lthr: string | null;
     }>(
-      `SELECT pw.type, pw.distance_mi::text, pw.sub_label, tp.race_id
+      `SELECT pw.type, pw.distance_mi::text, pw.sub_label, tp.race_id,
+              (p.user_uuid IS NOT NULL) AS profile_found,
+              p.lthr                    AS profile_lthr,
+              tp.authored_state->>'lthr_bpm' AS authored_lthr
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
+         LEFT JOIN profile p ON p.user_uuid = tp.user_uuid
         WHERE pw.id = $1
           AND tp.user_uuid = $2::uuid
           AND tp.archived_iso IS NULL
@@ -2076,10 +2092,69 @@ async function rebuildWorkoutDerivations(
     const tPaceSec = await deriveTPaceSecForRebuild(client, userId, row.race_id);
     if (tPaceSec == null) return;
 
-    // 3. Build the fresh spec from (type, current distance, T-pace).
-    //    Pass null lthr/maxHr · the rebuild scope is label drift, not
-    //    HR-cap accuracy. The next briefing/render will re-load HR
-    //    anchors through the standard pipeline.
+    /* 3. Build the fresh spec from (type, current distance, T-pace, HR anchors).
+     *
+     * ANCHOR-STALE-3 (2026-08-30) · CLAUDE.md Rule 10. This used to pass
+     * `null` for both `lthr` and `maxHr` under the note that "the rebuild
+     * scope is label drift, not HR-cap accuracy · the next briefing/render
+     * will re-load HR anchors through the standard pipeline."
+     *
+     * NOTHING DOES. That sentence is the same false claim `recompute-paces.ts`
+     * carried until `db3fb5e7`, in the same words, and it is false for the same
+     * reason: `preserveProgressionSql` carries forward exactly ONE key
+     * (`overload_progression`). Every other key in `workout_spec` is replaced
+     * wholesale by the UPDATE in step 5. So on a `tempo` / `threshold` /
+     * `intervals` row this function did not leave the HR numbers stale — it
+     * DELETED them: `lthr_bpm` and `hr_target_bpm` to null, and the HR `pass`
+     * and `bail` contingency rules the watch reads mid-session out of the spec
+     * entirely (`spec-builder.ts` derives all of them from `lthr`, and a null
+     * threshold yields none). Rendering and briefing are READ paths; no read
+     * path writes `workout_spec`. A shave therefore silently stripped the
+     * quality session's HR target and its abort rule, and nothing failed,
+     * because a spec with no HR fields is perfectly well-formed.
+     *
+     * `profile.lthr` is read RAW — the same read `composePlan` does, and
+     * deliberately NOT `resolveThresholdHr`. That resolver's second rung
+     * estimates a threshold from HRmax, which is right for a display surface
+     * that can label the number estimated and wrong here: this value lands in
+     * `workout_spec.lthr_bpm`, where the watch's quality HR target and the
+     * recap's aerobic gate read it as the runner's MEASURED threshold. Keeping
+     * the raw read is also what keeps authoring, recompute and rebuild
+     * converging on one number instead of three.
+     *
+     * `loadEffectiveMaxHr` is the canonical resolver (override → 12-month
+     * observed ceiling → stored). `users.max_hr` is a monotone-up ratchet
+     * mirror that never falls; for the owner it holds 181 from a 2025 sample
+     * now outside the 365-day window, against a live resolved 180. It is
+     * INERT for the three types gated above and is passed anyway — see the
+     * argument at the call.
+     *
+     * WHAT MOVES, measured (`_rebuild_derivations.test.ts`). Before: every
+     * rebuilt tempo row lost `hr_target_bpm`, every threshold/intervals row
+     * lost `lthr_bpm`, and all three lost both HR contingency rules. After, at
+     * the live 162: tempo target 149, pass ≤158, bail >167; threshold and
+     * intervals `lthr_bpm` 162. At the re-derived 168: 155, ≤164, >173, and
+     * 168. Those are the same numbers `recompute-paces.ts` produces at the
+     * same anchors, which is the parity that matters here — not parity with
+     * the old output, which was the defect.
+     *
+     * PARITY: this does not merely stop the deletion, it makes the rebuild
+     * agree with `recomputePacesForPlan` at the same anchor — the two writers
+     * of these same columns now read the same two anchors the same way, so a
+     * shave and a recompute can no longer leave one row describing a different
+     * runner than its neighbour.
+     */
+    const lthr = row.profile_found
+      // A row we READ decides, even when its `lthr` is null: the runner has no
+      // threshold and the spec must carry none rather than a fabricated one.
+      ? (row.profile_lthr != null ? Number(row.profile_lthr) : null)
+      // Only an unreadable profile falls back to what the plan recorded at
+      // authoring. A failed read is not the same fact as an absent threshold.
+      : (row.authored_lthr != null ? Number(row.authored_lthr) : null);
+    const maxHr = await loadEffectiveMaxHr(userId)
+      .then((r) => r.bpm)
+      .catch(() => null);
+
     const { buildWorkoutSpec } = await import('./spec-builder');
     //    DOCTRINE-VOCAB-1 (2026-08-17) · pass the row's CURRENT sub_label as the
     //    prescription. It was passing null, so a rebuild re-derived the spec from
@@ -2094,9 +2169,23 @@ async function rebuildWorkoutDerivations(
       type,
       distanceMi,
       tPaceSec,
-      null,
+      lthr,               // ANCHOR-STALE-3 · the LIVE threshold. Was a literal
+                          // null, which wiped lthr_bpm / hr_target_bpm and the
+                          // HR pass+bail rules off every rebuilt quality row.
       row.sub_label,
-      null,
+      maxHr,              // ANCHOR-STALE-3 · the LIVE effective HRmax. INERT
+                          // for the three types gated above — verified: their
+                          // specs are byte-identical for maxHr 180 vs null at
+                          // both 162 and 168, because only the `hrCapEasy` /
+                          // `raceAbortHrBpm` branches read it and none of
+                          // tempo/threshold/intervals reach either. Passed so
+                          // the two writers of these columns take the same
+                          // anchors by the same route: the type gate above has
+                          // already been widened once (DOCTRINE-VOCAB-1), and
+                          // a null left here would be a silent wipe waiting
+                          // for the next widening. Cheap — `loadEffectiveMaxHr`
+                          // is request-memoized, so the per-workout loop in
+                          // `applyAdaptations` resolves it once.
     );
     if (!spec) return;
 
