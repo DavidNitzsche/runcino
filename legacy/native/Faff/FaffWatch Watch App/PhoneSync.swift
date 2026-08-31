@@ -209,6 +209,8 @@ final class PhoneSync: NSObject, ObservableObject {
         apply(session.receivedApplicationContext, replayed: true)
         // Push up anything queued while we were offline / token-less.
         Task { await flushDirectCompletions() }
+        // Same for any effort rating still waiting on its run to resolve.
+        Task { await flushPendingEffort() }
     }
 
     /// Ask the iPhone for today's workout right now (used on launch when
@@ -263,6 +265,140 @@ final class PhoneSync: NSObject, ObservableObject {
         Task { await flushDirectCompletions() }
     }
 
+    // MARK: - Post-run effort (RPE), from the watch's own finish flow
+    //
+    // The owner's ask: an effort rating in Faff's own watch finish flow,
+    // capturing this from where most runs actually happen, not left to the
+    // phone alone. It writes to the SAME table and through the SAME route
+    // the iPhone's "How hard was it" picker already uses —
+    // `POST /api/runs/{id}/rpe` → `post_run_rpe` — so this is one data
+    // source with two capture surfaces, never two RPE systems (see
+    // TodayAfterV5.swift's `effortScale` / HostsV5.swift's `logEffort`).
+    //
+    // THE ID PROBLEM. `sendCompletion` above has already fired by the time
+    // the runner sees the finish boards — it has to, so a completion
+    // survives the app being suspended seconds later. But the row it
+    // creates keys on `runs.id`, a bigint the BACKEND derives (SHA-1 of the
+    // — possibly cross-day-forked — workoutId; see
+    // `web-v2/app/api/watch/workouts/complete/route.ts`'s `stableId`). The
+    // watch cannot safely re-derive that hash client-side: duplicating a
+    // server-computed id in two places is exactly the drift Rule 16 warns
+    // about, and the cross-day fork depends on a same-user comparison the
+    // watch does not have visibility into. So the watch RESOLVES the id
+    // (`GET .../workouts/complete?workoutId=`, added alongside the existing
+    // POST) rather than guessing it.
+    //
+    // THE TIMING PROBLEM. The completion the id depends on may not have
+    // reached `runs` yet — it is itself on a durable, retried queue. A
+    // picked effort is therefore queued exactly like `pendingDirect`
+    // completions are: written durably first, resolved+posted best-effort
+    // immediately, and retried on every future `activate()` until the
+    // backend accepts it or permanently refuses it. Rule 23: no job here
+    // assumes the completion already landed — it retries until it can prove
+    // it did.
+
+    private let pendingEffortKey = "faff.watch.pendingEffort.v1"
+
+    private struct PendingEffort: Codable {
+        let workoutId: String
+        let rpe: Int
+        /// Bounds how long a rating waits on a completion that never
+        /// resolves (e.g. the run was rejected as sub-threshold and will
+        /// never get a `runs` row) — dropped after 14 days rather than
+        /// retried forever.
+        let capturedAt: Date
+    }
+
+    private var pendingEffort: [PendingEffort] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: pendingEffortKey),
+                  let items = try? JSONDecoder().decode([PendingEffort].self, from: data)
+            else { return [] }
+            return items
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue) else { return }
+            UserDefaults.standard.set(data, forKey: pendingEffortKey)
+        }
+    }
+
+    /// Called the moment the runner picks a number (or the moment a queued
+    /// pick is retried). Durable-first: written to the queue before the
+    /// network is even attempted, so a picked rating survives the watch
+    /// app being suspended the instant the runner swipes away — the exact
+    /// failure `pendingDirect` above already exists to guard against.
+    func submitPostRunEffort(workoutId: String, rpe: Int) {
+        var q = pendingEffort
+        // One outstanding rating per run: a re-pick (shouldn't happen from
+        // the UI, since the board advances on the first tap, but a retried
+        // flush racing a fresh pick is possible) replaces rather than
+        // duplicates the entry.
+        q.removeAll { $0.workoutId == workoutId }
+        q.append(PendingEffort(workoutId: workoutId, rpe: rpe, capturedAt: Date()))
+        pendingEffort = q
+        Task { await flushPendingEffort() }
+    }
+
+    /// Resolve + POST every queued rating. Safe to call any time (launch,
+    /// activation, right after a fresh pick) — empty queue is a no-op, and
+    /// an item mid-flight from a previous call is simply retried again,
+    /// which the backend's own idempotent upsert on (user_id, activity_id)
+    /// makes harmless.
+    func flushPendingEffort() async {
+        guard let token = authToken else { return }
+        let maxAge: TimeInterval = 14 * 24 * 3600
+        var remaining: [PendingEffort] = []
+        for item in pendingEffort {
+            if Date().timeIntervalSince(item.capturedAt) > maxAge {
+                continue   // dead-letter: the completion this depended on never landed
+            }
+            guard let runId = await resolveRunId(workoutId: item.workoutId, token: token) else {
+                remaining.append(item)   // not synced yet — retry on the next flush
+                continue
+            }
+            let posted = await postEffort(runId: runId, rpe: item.rpe, token: token)
+            if !posted { remaining.append(item) }
+        }
+        pendingEffort = remaining
+    }
+
+    /// `GET /api/watch/workouts/complete?workoutId=` → the `runs.id` the
+    /// backend minted for this completion, or nil when it hasn't synced
+    /// yet (not an error — the caller retries).
+    private func resolveRunId(workoutId: String, token: String) async -> String? {
+        var comps = URLComponents(url: apiBase.appendingPathComponent("api/watch/workouts/complete"),
+                                   resolvingAgainstBaseURL: false)
+        comps?.queryItems = [URLQueryItem(name: "workoutId", value: workoutId)]
+        guard let url = comps?.url else { return nil }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        struct Resolved: Decodable { let ok: Bool; let id: String? }
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
+              let decoded = try? JSONDecoder().decode(Resolved.self, from: data)
+        else { return nil }
+        return decoded.id
+    }
+
+    /// `POST /api/runs/{id}/rpe { rpe }` — the exact endpoint and body
+    /// shape `HostsV5.swift`'s `logEffort` posts from the iPhone. Returns
+    /// true on acceptance OR on a permanent client error (bad rpe range,
+    /// run not found for this user): both mean "stop retrying", the same
+    /// contract `flushDirectCompletions`'s 4xx branch uses.
+    private func postEffort(runId: String, rpe: Int, token: String) async -> Bool {
+        var req = URLRequest(url: apiBase.appendingPathComponent("api/runs/\(runId)/rpe"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["rpe": rpe])
+        guard let (_, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse
+        else { return false }   // network error — retry later
+        if (200...299).contains(http.statusCode) { return true }
+        if (400...499).contains(http.statusCode) { return true }   // permanent — drop
+        return false   // 5xx — retry later
+    }
+
     // MARK: Apply incoming context / reply
 
     /// `replayed` is true when the payload is the LAST context the phone
@@ -277,6 +413,7 @@ final class PhoneSync: NSObject, ObservableObject {
         if let token = payload["authToken"] as? String, !token.isEmpty, token != authToken {
             authToken = token
             Task { await flushDirectCompletions() }
+            Task { await flushPendingEffort() }
         }
         // Sign-out. The phone has no key for this today (its `logout()` clears
         // TokenStore and pushes nothing), so this is the hook rather than a

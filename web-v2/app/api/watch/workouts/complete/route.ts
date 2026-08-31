@@ -266,6 +266,48 @@ interface WatchCompletionBody {
   dateLocal?: string;
 }
 
+/**
+ * GET /api/watch/workouts/complete?workoutId=<the id the watch minted>
+ *
+ * Resolves the `runs.id` (the same synthetic bigint `stableId` this route's
+ * POST derives from `effectiveWorkoutId` via SHA-1) for a completion this
+ * endpoint already accepted. Added so the watch's own post-run effort
+ * screen can hit `/api/runs/[id]/rpe` — the exact same route and table the
+ * iPhone's effort picker writes to (`post_run_rpe`) — without re-deriving
+ * that hash client-side. Recomputing a server-derived id on-device is
+ * exactly the kind of duplicated-logic drift Rule 16 warns about, and the
+ * cross-day fork above means the naive `workoutId` and the row's actual
+ * `client_workout_id` can legitimately differ by an `@YYYY-MM-DD` suffix —
+ * so this matches on prefix, not on equality alone, and takes the newest
+ * match when more than one row was ever forked from the same start.
+ *
+ * Returns `{ ok: true, id: number | null }` — null when the completion
+ * this workoutId names hasn't landed in `runs` yet (still in flight on the
+ * durable queue), which is a normal, retryable state, not an error.
+ */
+export async function GET(req: NextRequest) {
+  const auth = await requireUserId(req);
+  if (auth instanceof NextResponse) return auth;
+  const userId = auth;
+
+  const workoutId = req.nextUrl.searchParams.get('workoutId');
+  if (!workoutId) {
+    return NextResponse.json({ ok: false, error: 'workoutId required' }, { status: 400 });
+  }
+
+  const r = await pool.query<{ id: string }>(
+    `SELECT id::text AS id
+       FROM runs
+      WHERE user_uuid = $1
+        AND (data->>'client_workout_id' = $2 OR data->>'client_workout_id' LIKE $2 || '@%')
+      ORDER BY id DESC
+      LIMIT 1`,
+    [userId, workoutId],
+  ).catch(() => ({ rows: [] as Array<{ id: string }> }));
+
+  return NextResponse.json({ ok: true, id: r.rows[0]?.id ?? null });
+}
+
 export async function POST(req: NextRequest) {
   // 2026-05-30 user-isolation fix: identity comes from the Bearer token,
   // not from body.user_id. Accepting body.user_id meant any caller could

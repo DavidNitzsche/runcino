@@ -1590,6 +1590,7 @@ struct WatchFinishSurfaceV5: View {
     @ObservedObject var tracker: WorkoutTracker
     let onDone: () -> Void
 
+    @State private var showingEffort = false
     @State private var showingSummary = false
 
     private var units: String? { engine.workout.unitsDistance }
@@ -1615,13 +1616,36 @@ struct WatchFinishSurfaceV5: View {
                 splits: splits,
                 totals: totals
             )
+            // Tap anywhere to leave. Summary had NO exit before this change —
+            // `onDone` was a stored parameter this view never called — so
+            // this both delivers the effort board a place to land and closes
+            // that gap, matching the sibling receipt board immediately below
+            // (`WatchRecoveryReceiptV5`), which already does exactly this.
+            .onTapGesture(perform: onDone)
+        } else if showingEffort {
+            // "How hard was it" — the same question, same 1-10 Borg CR10
+            // scale, same wording as the iPhone's `effortScale`
+            // (TodayAfterV5.swift / HostsV5.swift `logEffort`). Optional:
+            // Skip carries the runner on exactly like a pick does, because a
+            // runner who just finished a hard effort should not be blocked
+            // from ending the session by a mandatory rating (the phone's own
+            // version is a row the runner may leave collapsed).
+            FinishEffortBoard(
+                onPick: { rpe in
+                    if let workoutId = engine.completion?.workoutId {
+                        PhoneSync.shared.submitPostRunEffort(workoutId: workoutId, rpe: rpe)
+                    }
+                    showingSummary = true
+                },
+                onSkip: { showingSummary = true }
+            )
         } else if engine.workout.isRace {
             // The clock is not the result, so it does not pose as one.
             FinishRaceCompleteBoard(
                 raceName: engine.workout.name,
                 watchTime: duration,
                 goalComparison: goalComparison,
-                onSave: { showingSummary = true }
+                onSave: { showingEffort = true }
             )
         } else {
             FinishCompleteBoard(
@@ -1630,7 +1654,7 @@ struct WatchFinishSurfaceV5: View {
                 distanceUnit: dist.unit,
                 duration: duration,
                 pace: pace,
-                onSave: { showingSummary = true }
+                onSave: { showingEffort = true }
             )
         }
     }

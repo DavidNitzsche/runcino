@@ -350,6 +350,96 @@ struct FinishSummaryBoard: View {
     }
 }
 
+// MARK: - 8 · Finish · Effort
+//
+// Not a design-handoff board — the 0821 set predates it. Added so Faff's own
+// finish flow can capture the same post-run effort question the iPhone
+// already asks (TodayAfterV5.swift's `effortScale`, reached from the Today
+// recap's "Effort" row), from where most runs actually happen. Built to the
+// same rules as every other board in this file rather than to a new pattern:
+// `WBoard`, `WKicker` + `WCoachLine` for the ask (the same pair
+// `FaceCeilingOverrideV5` uses for "the coach asks a question"), `WTarget`
+// for the one verb that needs a pill.
+//
+// SAME SCALE, SAME MEANING. 1-10, Borg CR10, identical to the phone's grid —
+// a runner who rates effort on the wrist and one who rates it on the phone
+// are answering the one question this app has, not two.
+//
+// OPTIONAL, LIKE THE PHONE'S. The iPhone's row sits collapsed by default and
+// a runner can finish the recap without ever opening it — nothing on that
+// surface forces an answer. Skip carries the runner forward exactly as a
+// pick does: a runner who just finished a hard effort should not be
+// blocked from ending the session by a mandatory rating, and this is not
+// the moment to turn the finish flow into a form.
+
+/// Finish · Effort. "How hard was it" — one question, one 1-10 grid, one
+/// escape.
+struct FinishEffortBoard: View {
+    var coachLine: String = "How hard was it"
+    var skipLabel: String = "Skip"
+    /// Fires once, on the first tap — never twice for the same board. The
+    /// grid locks immediately after (see `picked` below) so a double-tap on
+    /// a wet, moving wrist cannot fire two ratings.
+    let onPick: (Int) -> Void
+    let onSkip: () -> Void
+
+    @State private var picked: Int? = nil
+
+    var body: some View {
+        WBoard {
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer(minLength: 0)
+
+                VStack(alignment: .leading, spacing: 6) {              // 12px
+                    WKicker(text: "Effort", color: WatchV5.valueLabel)
+                    WCoachLine(text: coachLine, size: 15, color: WatchV5.value)
+                }
+                .padding(.leading, 2)
+
+                effortGrid
+                    .padding(.top, 10)                                 // 20px
+
+                Spacer(minLength: 0)
+
+                WTargetStack {
+                    WTarget(label: skipLabel, action: onSkip)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Five across, two rows — the phone's ten-in-a-row does not fit a
+    /// 40-45mm width at a hittable size (its own comment measures ten cells
+    /// at 29pt each on a PHONE). Unselected cells read as `WTarget.quiet`'s
+    /// own fill/foreground pair; the pick reads as `WTarget.filled`'s —
+    /// white fill, black label — never `WatchV5.signal`, which handoff rule
+    /// 3 reserves for drawn intent and forbids on a number.
+    private var effortGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
+            ForEach(1...10, id: \.self) { n in
+                Button {
+                    guard picked == nil else { return }
+                    picked = n
+                    onPick(n)
+                } label: {
+                    Text("\(n)")
+                        .font(WatchV5.number(15))
+                        .foregroundStyle(picked == n ? .black : WatchV5.value.opacity(0.86))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30)
+                        .background(picked == n ? WatchV5.value : WatchV5.surface3,
+                                    in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(picked != nil && picked != n)
+                .accessibilityLabel("Effort \(n) of 10")
+                .accessibilityAddTraits(picked == n ? [.isSelected] : [])
+            }
+        }
+    }
+}
+
 // MARK: - Before there is a session
 //
 // Three states, all inside the first thirty seconds, all shipping raw until
@@ -570,6 +660,10 @@ struct PreSessionRecoveredRunBoard: View {
         watchTime: "3:28:44",
         goalComparison: "Under 3:29:59"
     ) { }
+}
+
+#Preview("Effort") {
+    FinishEffortBoard(onPick: { _ in }, onSkip: { })
 }
 
 #Preview("Summary") {
