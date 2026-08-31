@@ -155,6 +155,8 @@ import {
 } from '@/lib/race/effort-authority';
 import { CORROBORATION_MIN_OBSERVATIONS } from '@/lib/training/vdot-corpus';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
+import { reconcileSplitsTotal } from '@/lib/runs/coherence';
+import type { RunData } from '@/lib/runs/run-shape';
 import { HEAT_CONFOUND_TEMP_F } from '@/lib/coach/easy-discipline';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
 import {
@@ -825,6 +827,20 @@ export function qualifyingDecouplingObservation(row: {
   tempF: number | null;
 }): DecouplingObservation | null {
   if (row.tempF != null && Number.isFinite(row.tempF) && row.tempF >= HEAT_CONFOUND_TEMP_F) return null;
+  // `distanceMi` and `splits` are two members of ONE arithmetic family
+  // (`splits.total-vs-distance`, lib/runs/derived-registry.ts) — reading
+  // both without reconciling them is exactly the shape
+  // check-derived-consistency.sh exists to catch, and it is a real defect
+  // here specifically: a splits array that does not decompose this run
+  // (`splits-adopt.ts`'s own header names a production row whose splits
+  // summed to 12.0 mi against a stated 1.00 mi) would hand a fabricated
+  // half/second-half comparison to a durability read. Refuses only on an
+  // EXPLICIT mismatch (`false`); `null` means the array carries no
+  // per-split distance to check, which is most historical shapes and not
+  // itself a contradiction — same posture `thresholdSegmentFromSplits`
+  // (pace-corpus.ts) takes on the identical guard.
+  const coherent = reconcileSplitsTotal({ splits: row.splits } as RunData, row.distanceMi);
+  if (coherent === false) return null;
   const splits = Array.isArray(row.splits) ? row.splits as Parameters<typeof computeAerobicDecoupling>[0] : null;
   const result = computeAerobicDecoupling(splits, row.distanceMi);
   if (!result) return null;

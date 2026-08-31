@@ -324,6 +324,29 @@ describe('qualifyingDecouplingObservation · heat exclusion actually changes the
     });
     expect(r).toBeNull();
   });
+
+  it('a splits array that does not decompose its own run is refused (splits.total-vs-distance) even though the per-run math would otherwise qualify', () => {
+    // 8 splits, each explicitly claiming 1 mile (8 mi of splits total), but
+    // the row itself claims distanceMi 1 — the exact corruption shape
+    // splits-adopt.ts documents for real production rows (12.0 mi of
+    // splits on a 1.00 mile row).
+    const splits = splitsRun(8, 480, 140, 20).map((s) => ({ ...s, distanceMi: 1 }));
+    const r = qualifyingDecouplingObservation({
+      id: 'corrupt', date: TODAY, distanceMi: 1, splits, tempF: 60,
+    });
+    expect(r).toBeNull();
+  });
+
+  it('a splits array with no per-split distance field is NOT refused by the reconciler (null is not a contradiction)', () => {
+    // splitsRun()'s elements carry only mile/pace/hr, no distanceMi field,
+    // so reconcileSplitsTotal has nothing to check and must return null,
+    // not false — the run still qualifies on its own merits.
+    const splits = splitsRun(8, 480, 140, 20);
+    const r = qualifyingDecouplingObservation({
+      id: 'no-dist-field', date: TODAY, distanceMi: 8, splits, tempF: 60,
+    });
+    expect(r).not.toBeNull();
+  });
 });
 
 describe('aggregateDecoupling · corroboration discipline (BALANCE: raise 2 / hold-back 3)', () => {
