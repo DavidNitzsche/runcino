@@ -68,26 +68,26 @@
   degraded, what's missing, and what's worth your attention. Re-run
   <code>node web-v2/scripts/_emit_telemetry.mjs</code> any time to refresh.
 </p>
-<div class="stamp">Generated 2026-08-30T11:08:11.158Z</div>
+<div class="stamp">Generated 2026-08-31T12:32:25.913Z</div>
 
 <!-- ─────────── 1. SYSTEM HEALTH ─────────── -->
 <h2><span class="num">01</span>System health</h2>
 
 <div class="stat-grid">
   <div class="stat good">
-    <div class="n">2h ago</div>
+    <div class="n">3h ago</div>
     <div class="l">Last adaptation tick</div>
   </div>
   <div class="stat good">
-    <div class="n">211/214</div>
+    <div class="n">212/216</div>
     <div class="l">Weather coverage (of GPS-having runs)</div>
   </div>
   <div class="stat good">
-    <div class="n">192</div>
+    <div class="n">198</div>
     <div class="l">Projection snapshots (cron-daily)</div>
   </div>
-  <div class="stat good">
-    <div class="n">0</div>
+  <div class="stat warn">
+    <div class="n">2</div>
     <div class="l">Notifications pending</div>
   </div>
 </div>
@@ -98,6 +98,11 @@
 <table>
 <tr><th>Workflow</th><th>Schedule (UTC)</th><th>Route</th></tr>
 
+<tr>
+  <td class="mono">build-check.yml</td>
+  <td class="mono">manual only</td>
+  <td class=""><code>—</code></td>
+</tr>
 <tr>
   <td class="mono">dedupe-runs.yml</td>
   <td class="mono">0 10 * * *</td>
@@ -135,7 +140,7 @@
 </tr>
 <tr>
   <td class="mono">plan-drift.yml</td>
-  <td class="mono">0 9 * * *</td>
+  <td class="mono">0 9 * * *, 0 4 * * *</td>
   <td class=""><code>plan-drift</code></td>
 </tr>
 <tr>
@@ -183,18 +188,23 @@
   <td class="mono">manual only</td>
   <td class=""><code>—</code></td>
 </tr>
+<tr>
+  <td class="mono">tick.yml</td>
+  <td class="mono">*/10 * * * *</td>
+  <td class=""><code>tick</code></td>
+</tr>
 </table>
 
 <h3>Active plan</h3>
 <table>
 <tr><th>Plan ID</th><th>Mode</th><th>Race</th><th>Goal date</th><th>Authored</th><th>Last adapted</th></tr>
 <tr>
-  <td class="mono">pln_0e635603799fd7…</td>
-  <td>recovery</td>
+  <td class="mono">pln_9a57561debb776…</td>
+  <td>race-prep</td>
   <td><code>cim</code></td>
   <td>2026-12-06</td>
-  <td>2026-08-26 09:34 UTC</td>
-  <td class="tone-good">2026-08-30 09:01 UTC</td>
+  <td>2026-08-31 03:40 UTC</td>
+  <td class="tone-good">2026-08-31 09:29 UTC</td>
 </tr>
 </table>
 
@@ -211,6 +221,19 @@
   <th>GPS</th><th>HR</th><th>splits</th><th>weather</th><th>shoe</th><th>plan match</th><th>RPE</th>
 </tr>
 
+<tr>
+  <td class="mono">2026-08-30</td>
+  <td>Run</td>
+  <td class="right num">13.5</td>
+  <td class="right mono">1h 42m</td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">✓</span></td>
+  <td><span class="tone-good">long</span></td>
+  <td><span class="tone-good">7/10</span></td>
+</tr>
 <tr>
   <td class="mono">2026-08-28</td>
   <td>Run</td>
@@ -267,7 +290,7 @@
   <td class="mono">2026-08-23</td>
   <td>Run</td>
   <td class="right num">11.0</td>
-  <td class="right mono">39m</td>
+  <td class="right mono">1h 28m</td>
   <td><span class="tone-good">✓</span></td>
   <td><span class="tone-good">✓</span></td>
   <td><span class="tone-good">✓</span></td>
@@ -393,19 +416,6 @@
   <td><span class="tone-neutral">no</span></td>
   <td><span class="tone-bad">✗</span></td>
 </tr>
-<tr>
-  <td class="mono">2026-08-05</td>
-  <td>Run</td>
-  <td class="right num">6.0</td>
-  <td class="right mono">49m</td>
-  <td><span class="tone-good">✓</span></td>
-  <td><span class="tone-good">✓</span></td>
-  <td><span class="tone-good">✓</span></td>
-  <td><span class="tone-good">✓</span></td>
-  <td><span class="tone-good">✓</span></td>
-  <td><span class="tone-neutral">no</span></td>
-  <td><span class="tone-bad">✗</span></td>
-</tr>
 </table>
 
 <!-- ─────────── 3. COACH ACTIVITY ─────────── -->
@@ -415,21 +425,50 @@
 <table>
 <tr><th>Reason</th><th class="right">n</th><th>Latest</th></tr>
 
-<tr><td><code>watch_completion</code></td><td class="right num">10</td><td class="mono">2026-08-29 02:10 UTC</td></tr>
+<tr><td><code>coach_log_week_close</code></td><td class="right num">3</td><td class="mono">2026-08-31 09:29 UTC</td></tr>
+<tr><td><code>coach_log_lthr_reanchor</code></td><td class="right num">1</td><td class="mono">2026-08-31 02:40 UTC</td></tr>
+<tr><td><code>lthr_auto_calibrated</code></td><td class="right num">1</td><td class="mono">2026-08-31 02:40 UTC</td></tr>
+<tr><td><code>watch_completion</code></td><td class="right num">10</td><td class="mono">2026-08-30 16:56 UTC</td></tr>
 <tr><td><code>watch_heat_easing</code></td><td class="right num">51</td><td class="mono">2026-08-26 16:55 UTC</td></tr>
 <tr><td><code>coach_log_goal_answer</code></td><td class="right num">1</td><td class="mono">2026-08-26 04:08 UTC</td></tr>
 <tr><td><code>goal_card_dismissed</code></td><td class="right num">2</td><td class="mono">2026-08-26 04:08 UTC</td></tr>
-<tr><td><code>coach_log_week_close</code></td><td class="right num">2</td><td class="mono">2026-08-25 03:51 UTC</td></tr>
 <tr><td><code>coach_log_race_replacement</code></td><td class="right num">1</td><td class="mono">2026-08-19 03:49 UTC</td></tr>
 <tr><td><code>workout_swapped</code></td><td class="right num">1</td><td class="mono">2026-08-18 04:53 UTC</td></tr>
 <tr><td><code>vdot_auto_recalc</code></td><td class="right num">1</td><td class="mono">2026-08-17 18:04 UTC</td></tr>
-<tr><td><code>calibration_completed</code></td><td class="right num">1</td><td class="mono">2026-08-17 08:59 UTC</td></tr>
 </table>
 
 <h3>Recent intents · last 10 rows</h3>
 <table>
 <tr><th>When</th><th>Reason</th><th>Field</th><th>Value (preview)</th><th>Acked</th></tr>
 
+<tr>
+  <td class="mono">2026-08-31 09:29 UTC</td>
+  <td><code>coach_log_week_close</code></td>
+  <td class="mono">week:2026-08-24</td>
+  <td class="mono">{"kind":"week_close","dateISO":"2026-08-30","title":"WEEK CL…</td>
+  <td><span class="tone-good">✓</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-08-31 02:40 UTC</td>
+  <td><code>coach_log_lthr_reanchor</code></td>
+  <td class="mono">lthr:moved:americas-fine</td>
+  <td class="mono">{"kind":"lthr_reanchor","dateISO":"2026-08-16","title":"THRE…</td>
+  <td><span class="tone-good">✓</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-08-31 02:40 UTC</td>
+  <td><code>lthr_auto_calibrated</code></td>
+  <td class="mono">lthr</td>
+  <td class="mono">168 (race_half · Americas Finest City · 2026-08-16)</td>
+  <td><span class="tone-neutral">no</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-08-30 16:56 UTC</td>
+  <td><code>watch_completion</code></td>
+  <td class="mono">0645f40c-951d-4ccc-b86e-</td>
+  <td class="mono">{"phases":[{"avgHr":159,"label":"13.0 mi long run","timeOutO…</td>
+  <td><span class="tone-neutral">no</span></td>
+</tr>
 <tr>
   <td class="mono">2026-08-29 02:10 UTC</td>
   <td><code>watch_completion</code></td>
@@ -472,34 +511,6 @@
   <td class="mono">{"pct":12.494,"tempF":85,"dewpointF":60,"observedAgeMin":11}</td>
   <td><span class="tone-neutral">no</span></td>
 </tr>
-<tr>
-  <td class="mono">2026-08-26 14:34 UTC</td>
-  <td><code>watch_heat_easing</code></td>
-  <td class="mono">heat-2026-08-26</td>
-  <td class="mono">{"pct":8.713,"tempF":77.5,"dewpointF":57.4,"observedAgeMin":…</td>
-  <td><span class="tone-neutral">no</span></td>
-</tr>
-<tr>
-  <td class="mono">2026-08-26 14:34 UTC</td>
-  <td><code>watch_heat_easing</code></td>
-  <td class="mono">heat-2026-08-26</td>
-  <td class="mono">{"pct":8.713,"tempF":77.5,"dewpointF":57.4,"observedAgeMin":…</td>
-  <td><span class="tone-neutral">no</span></td>
-</tr>
-<tr>
-  <td class="mono">2026-08-26 14:34 UTC</td>
-  <td><code>watch_completion</code></td>
-  <td class="mono">0645f40c-951d-4ccc-b86e-</td>
-  <td class="mono">{"maxHr":147,"elevGainFt":2806.5,"phases":[{"avgHr":138,"tim…</td>
-  <td><span class="tone-neutral">no</span></td>
-</tr>
-<tr>
-  <td class="mono">2026-08-26 13:00 UTC</td>
-  <td><code>watch_heat_easing</code></td>
-  <td class="mono">heat-2026-08-26</td>
-  <td class="mono">{"pct":7.089,"tempF":73.2,"dewpointF":63.6,"observedAgeMin":…</td>
-  <td><span class="tone-neutral">no</span></td>
-</tr>
 </table>
 
 <h3>Coach proposals (injury / illness · propose-only)</h3>
@@ -526,6 +537,16 @@
 <table>
 <tr><th>Kind</th><th>Headline</th><th>When</th></tr>
 
+<tr>
+  <td><code>week_close</code></td>
+  <td>WEEK CLOSED</td>
+  <td class="mono">2026-08-31 09:29 UTC</td>
+</tr>
+<tr>
+  <td><code>lthr_reanchor</code></td>
+  <td>THRESHOLD HR</td>
+  <td class="mono">2026-08-31 02:40 UTC</td>
+</tr>
 <tr>
   <td><code>goal_answer</code></td>
   <td>cim</td>
@@ -558,10 +579,101 @@
 <tr><th>Date</th><th>Type</th><th class="right">mi</th><th>Label</th><th>Status</th></tr>
 
 <tr>
-  <td class="mono">2026-08-30</td>
+  <td class="mono">2026-08-31</td>
+  <td>easy</td>
+  <td class="right num">4.5</td>
+  <td>EASY · 6×20s strides</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-01</td>
+  <td>threshold <span class="pill warn">Q</span></td>
+  <td class="right num">8.5</td>
+  <td>4×1 mi @ T pace · 1 min jog</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-02</td>
+  <td>easy</td>
+  <td class="right num">5.0</td>
+  <td>EASY · 6×20s strides</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-03</td>
+  <td>intervals <span class="pill warn">Q</span></td>
+  <td class="right num">6.5</td>
+  <td>10×60s hills @ 5K-10K effort · 2 min jog down</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-04</td>
+  <td>easy</td>
+  <td class="right num">5.5</td>
+  <td>EASY</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-05</td>
+  <td>rest</td>
+  <td class="right num">0.0</td>
+  <td>REST</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-06</td>
   <td>long <span class="pill neutral">L</span></td>
-  <td class="right num">13.0</td>
+  <td class="right num">15.0</td>
   <td>LONG</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-07</td>
+  <td>easy</td>
+  <td class="right num">4.5</td>
+  <td>EASY · 6×20s strides</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-08</td>
+  <td>tempo <span class="pill warn">Q</span></td>
+  <td class="right num">6.2</td>
+  <td>2.1 mi WU · 2 mi @ T · 2.1 mi CD</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-09</td>
+  <td>easy</td>
+  <td class="right num">5.0</td>
+  <td>EASY · 6×20s strides</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-10</td>
+  <td>easy</td>
+  <td class="right num">5.0</td>
+  <td>EASY</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-11</td>
+  <td>shakeout</td>
+  <td class="right num">2.0</td>
+  <td>SHAKEOUT · 4×20s strides</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-12</td>
+  <td>rest</td>
+  <td class="right num">0.0</td>
+  <td>REST</td>
+  <td><span class="tone-neutral">as authored</span></td>
+</tr>
+<tr>
+  <td class="mono">2026-09-13</td>
+  <td>race <span class="pill warn">Q</span> <span class="pill neutral">L</span></td>
+  <td class="right num">6.2</td>
+  <td>RACE</td>
   <td><span class="tone-neutral">as authored</span></td>
 </tr>
 </table>
@@ -577,9 +689,9 @@
   <td><code>active_energy</code></td>
   <td>apple_health</td>
   <td class="right num">14</td>
-  <td class="right num">323.8</td>
-  <td class="right mono">0.1 – 785.1</td>
-  <td class="mono">Sun Aug 16 → Sat Aug 29</td>
+  <td class="right num">311.3</td>
+  <td class="right mono">0.1 – 771.9</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>body_fat_pct</code></td>
@@ -601,25 +713,25 @@
   <td><code>ground_contact_time</code></td>
   <td>apple_health</td>
   <td class="right num">6</td>
-  <td class="right num">258.8</td>
+  <td class="right num">258.7</td>
   <td class="right mono">244.0 – 268.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Fri Aug 21 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>hr_recovery</code></td>
   <td>apple_health</td>
-  <td class="right num">4</td>
-  <td class="right num">42.3</td>
+  <td class="right num">3</td>
+  <td class="right num">42.0</td>
   <td class="right mono">41.0 – 43.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Fri Aug 21 → Fri Aug 28</td>
 </tr>
 <tr>
   <td><code>hrv</code></td>
   <td>apple_health</td>
   <td class="right num">14</td>
-  <td class="right num">55.3</td>
+  <td class="right num">54.4</td>
   <td class="right mono">42.0 – 80.0</td>
-  <td class="mono">Sun Aug 16 → Sat Aug 29</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>lean_mass</code></td>
@@ -632,74 +744,74 @@
 <tr>
   <td><code>max_hr</code></td>
   <td>apple_health</td>
-  <td class="right num">13</td>
-  <td class="right num">135.8</td>
-  <td class="right mono">84.0 – 178.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="right num">14</td>
+  <td class="right num">133.3</td>
+  <td class="right mono">84.0 – 179.0</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>respiratory_rate</code></td>
   <td>apple_health</td>
   <td class="right num">13</td>
-  <td class="right num">16.0</td>
+  <td class="right num">15.9</td>
   <td class="right mono">15.0 – 21.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>resting_hr</code></td>
   <td>apple_health</td>
   <td class="right num">14</td>
-  <td class="right num">47.0</td>
-  <td class="right mono">42.0 – 53.0</td>
-  <td class="mono">Sun Aug 16 → Sat Aug 29</td>
+  <td class="right num">46.8</td>
+  <td class="right mono">42.0 – 52.0</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>run_power</code></td>
   <td>apple_health</td>
   <td class="right num">6</td>
-  <td class="right num">286.2</td>
-  <td class="right mono">272.0 – 309.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="right num">285.2</td>
+  <td class="right mono">272.0 – 303.0</td>
+  <td class="mono">Fri Aug 21 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>sleep_awake_minutes</code></td>
   <td>apple_health</td>
   <td class="right num">12</td>
-  <td class="right num">25.4</td>
+  <td class="right num">24.9</td>
   <td class="right mono">3.0 – 61.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>sleep_deep_minutes</code></td>
   <td>apple_health</td>
   <td class="right num">12</td>
-  <td class="right num">38.3</td>
-  <td class="right mono">0.0 – 72.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="right num">43.6</td>
+  <td class="right mono">0.0 – 90.0</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>sleep_hours</code></td>
   <td>apple_health</td>
   <td class="right num">12</td>
-  <td class="right num">5.4</td>
+  <td class="right num">5.5</td>
   <td class="right mono">0.9 – 6.9</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>sleep_light_minutes</code></td>
   <td>apple_health</td>
   <td class="right num">12</td>
-  <td class="right num">203.4</td>
+  <td class="right num">198.0</td>
   <td class="right mono">53.0 – 269.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>sleep_rem_minutes</code></td>
   <td>apple_health</td>
   <td class="right num">12</td>
-  <td class="right num">83.0</td>
+  <td class="right num">86.4</td>
   <td class="right mono">0.0 – 124.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>sleep_unspecified_minutes</code></td>
@@ -707,23 +819,23 @@
   <td class="right num">12</td>
   <td class="right num">0.0</td>
   <td class="right mono">0.0 – 0.0</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>spo2</code></td>
   <td>apple_health</td>
   <td class="right num">14</td>
-  <td class="right num">96.8</td>
+  <td class="right num">96.7</td>
   <td class="right mono">96.2 – 97.6</td>
-  <td class="mono">Sun Aug 16 → Sat Aug 29</td>
+  <td class="mono">Mon Aug 17 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>stride_length</code></td>
   <td>apple_health</td>
   <td class="right num">6</td>
   <td class="right num">1.2</td>
-  <td class="right mono">1.1 – 1.4</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="right mono">1.1 – 1.3</td>
+  <td class="mono">Fri Aug 21 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>vertical_oscillation</code></td>
@@ -731,23 +843,23 @@
   <td class="right num">6</td>
   <td class="right num">10.2</td>
   <td class="right mono">9.8 – 10.5</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Fri Aug 21 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>vo2_max</code></td>
   <td>apple_health</td>
   <td class="right num">6</td>
-  <td class="right num">59.0</td>
+  <td class="right num">59.1</td>
   <td class="right mono">58.2 – 60.2</td>
-  <td class="mono">Sun Aug 16 → Fri Aug 28</td>
+  <td class="mono">Fri Aug 21 → Sun Aug 30</td>
 </tr>
 <tr>
   <td><code>wrist_temp</code></td>
   <td>apple_health</td>
   <td class="right num">11</td>
-  <td class="right num">35.8</td>
+  <td class="right num">35.7</td>
   <td class="right mono">35.4 – 36.0</td>
-  <td class="mono">Sun Aug 16 → Thu Aug 27</td>
+  <td class="mono">Mon Aug 17 → Sat Aug 29</td>
 </tr>
 </table>
 
@@ -755,7 +867,6 @@
 <table>
 <tr><th>Date</th><th>Sample?</th></tr>
 
-<tr><td class="mono">Mon Aug 17</td><td><span class="tone-good">✓</span></td></tr>
 <tr><td class="mono">Tue Aug 18</td><td><span class="tone-good">✓</span></td></tr>
 <tr><td class="mono">Wed Aug 19</td><td><span class="tone-good">✓</span></td></tr>
 <tr><td class="mono">Thu Aug 20</td><td><span class="tone-good">✓</span></td></tr>
@@ -768,12 +879,13 @@
 <tr><td class="mono">Thu Aug 27</td><td><span class="tone-good">✓</span></td></tr>
 <tr><td class="mono">Fri Aug 28</td><td><span class="tone-good">✓</span></td></tr>
 <tr><td class="mono">Sat Aug 29</td><td><span class="tone-bad">✗</span></td></tr>
-<tr><td class="mono">Sun Aug 30</td><td><span class="tone-bad">✗</span></td></tr>
+<tr><td class="mono">Sun Aug 30</td><td><span class="tone-good">✓</span></td></tr>
+<tr><td class="mono">Mon Aug 31</td><td><span class="tone-bad">✗</span></td></tr>
 </table>
 
 <h3>RHR baseline · last 14 days</h3>
 <p>
-  Avg: <strong>47.0 bpm</strong>
+  Avg: <strong>46.8 bpm</strong>
   · samples: <strong>14</strong>
   
 </p>
@@ -800,7 +912,6 @@
 <tr><td class="mono">2026-08-21</td><td>Run</td><td class="right num">9.1</td></tr>
 <tr><td class="mono">2026-08-20</td><td>Treadmill</td><td class="right num">4.3</td></tr>
 <tr><td class="mono">2026-08-18</td><td>Treadmill</td><td class="right num">4.0</td></tr>
-<tr><td class="mono">2026-08-16</td><td>Run</td><td class="right num">13.2</td></tr>
 </table>
 
 <h3>Runs with GPS but no weather</h3>
@@ -812,7 +923,7 @@
 <!-- ─────────── 7. SIGNALS ─────────── -->
 <h2><span class="num">07</span>Signals worth watching</h2>
 
-<div class="signal good"><strong>Adaptation cron is firing.</strong> last_adapted_at moved within the last 2 days. The 9 detectors are running daily.</div><div class="signal good"><strong>Projection snapshots are firing.</strong> The trend chart will have data.</div><div class="signal good"><strong>Coach is talking</strong> · 9 distinct intent reasons fired in the last 14 days.</div><div class="signal warn"><strong>5 recent runs without RPE.</strong> Surfacing an RPE prompt in DayDetailModal or post-run drawer would feed the adaptation engine richer signal.</div><div class="signal good"><strong>RHR baseline solid</strong> · 14 samples in 14 days. rhr-spike detector has a stable baseline to compare against.</div><div class="signal good"><strong>Weather coverage healthy</strong> · 211/214 GPS-having runs enriched.</div>
+<div class="signal good"><strong>Adaptation cron is firing.</strong> last_adapted_at moved within the last 2 days. The 9 detectors are running daily.</div><div class="signal good"><strong>Projection snapshots are firing.</strong> The trend chart will have data.</div><div class="signal good"><strong>Coach is talking</strong> · 10 distinct intent reasons fired in the last 14 days.</div><div class="signal warn"><strong>4 recent runs without RPE.</strong> Surfacing an RPE prompt in DayDetailModal or post-run drawer would feed the adaptation engine richer signal.</div><div class="signal good"><strong>RHR baseline solid</strong> · 14 samples in 14 days. rhr-spike detector has a stable baseline to compare against.</div><div class="signal good"><strong>Weather coverage healthy</strong> · 212/216 GPS-having runs enriched.</div>
 
 <hr>
 <p style="color:var(--mute);font-size:12.5px;text-align:center;">
