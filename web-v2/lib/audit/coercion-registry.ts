@@ -300,6 +300,27 @@ export const HANDED_BACK_FAILS = false;
  *     -daysAgo) : null` in `simPrescribedSpans`. Zero days ago is the block
  *     start itself, and the shift is a no-op there.
  *
+ * ── AND BACK TO 179, WHICH IS THE POINT OF A RATCHET ────────────────────────
+ *
+ * That third site was a DUPLICATE, not a new fact: `buildSimPlan` already
+ * computed the same expression, and `simPrescribedSpans` was extracted from it
+ * a few hours later without the original being removed. Its author took it out
+ * rather than leaving the ceiling raised, and the ratchet is back where it was.
+ *
+ * Two wrong shapes were tried on the way and both are worth recording, because
+ * the scanner was right about each. Extracting the ternary into an EXPORTED
+ * helper reclassified it LOAD-BEARING, which is the honest verdict — the fix
+ * for a duplicated collapse is one collapse, not one collapse with a wider
+ * blast radius. Deleting the ORIGINAL instead took the count to 178 and this
+ * file's own "not left slack" assertion refused that too. What landed removes
+ * the collapse rather than moving it: `simPrescribedSpans` states "no race
+ * behind this runner" with a guard clause and returns nothing, so there is no
+ * `null` date standing for three facts and travelling anywhere.
+ *
+ * This is what the paragraph below means by affordable. The ceiling turned
+ * somebody's commit red, the somebody was the author of the site, and the site
+ * is gone instead of the ceiling.
+ *
  * All three arrived in other sessions' commits between a measurement and a
  * merge, all three are peripheral, and none was reachable by this gate at the
  * time it was authored.
@@ -322,7 +343,7 @@ export const HANDED_BACK_FAILS = false;
  *
  * From here the rule is the ordinary one: this may never rise again.
  */
-export const PERIPHERAL_BASELINE = 180;
+export const PERIPHERAL_BASELINE = 179;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

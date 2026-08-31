@@ -103,9 +103,13 @@ export function simEasyDayMedianMi(
   for (let i = 0; i < daily.length; i++) {
     if (!eligible.has(addDaysISO(blockStartISO, -i))) continue;
     eligibleDaysSeen++;
+    // COERCION-1 · no `? v : 0`. A day with no run and a day whose value did
+    // not parse are both simply NOT easy runs of 3-9 miles, and the band test
+    // says so directly — collapsing them to a zero first would be a third fact
+    // pretending to be one (Rule 11), and would add a peripheral collapse to
+    // the ratchet for nothing.
     const v = daily[i];
-    const m = Number.isFinite(v) && v > 0 ? v : 0;
-    if (m >= 3 && m <= 9) easies.push(m);
+    if (Number.isFinite(v) && v >= 3 && v <= 9) easies.push(v);
   }
   if (eligibleDaysSeen < HABIT_ELIGIBLE_DAYS || easies.length < HABIT_MIN_EASY_SAMPLES) return 0;
   easies.sort((a, b) => a - b);
@@ -125,10 +129,16 @@ export function simPrescribedSpans(
   lastRaceFinishedDaysAgo: number | null | undefined,
   lastRaceDistance: keyof typeof SIM_DISTANCE_MI | null | undefined,
 ): PrescribedSpan[] {
+  // COERCION-1 · a GUARD, not a collapse. "No race behind this runner" is
+  // stated by returning nothing, rather than by folding it into a `null` date
+  // that then travels across a module boundary as one value standing for three
+  // facts. `sim.lastRaceFinishedDaysAgo` of 0 IS "no race" in this schema, and
+  // saying so here is the whole answer.
   const daysAgo = lastRaceFinishedDaysAgo ?? 0;
+  if (!(daysAgo > 0) || !lastRaceDistance) return [];
   const span = prescribedSpanFor(
-    daysAgo > 0 ? addDaysISO(blockStartISO, -daysAgo) : null,
-    lastRaceDistance ? SIM_DISTANCE_MI[lastRaceDistance] : null,
+    addDaysISO(blockStartISO, -daysAgo),
+    SIM_DISTANCE_MI[lastRaceDistance],
     // The sim has no race-priority field; `postRaceRecoveryWeeks` treats a null
     // priority the same way the loader does when the race row has none.
     null,
