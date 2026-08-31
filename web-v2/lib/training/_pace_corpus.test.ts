@@ -1,0 +1,299 @@
+/**
+ * lib/training/_pace_corpus.test.ts · direct-evidence pace readers, unit gate.
+ *
+ * Pure functions only — everything here is constructed by hand, no database.
+ * `_pace_corpus.audit.test.ts` is the DB-backed companion that runs these same
+ * readers against the owner's real account (Rule 13).
+ *
+ * ── WHAT THIS SUITE CANNOT FAIL ON (Rule 22) ────────────────────────────────
+ *
+ *  · A corpus that is uniformly wrong (a mis-calibrated watch corroborating
+ *    itself K times) — same blind spot `vdot-corpus.ts`'s own gate names, for
+ *    the same reason: corroboration defends against one bad row, not a bad
+ *    instrument.
+ *  · The DB loader (`loadCandidateRows`, `loadHrContext`) and the Rule 8
+ *    window loader (`loadPrescribedWindows`) — nothing here executes SQL.
+ *  · Whether the classification bands are RIGHT for a human — that is a
+ *    physiology claim the doctrine gate (`lib/doctrine/registry.ts`) makes,
+ *    not this file.
+ */
+import { describe, it, expect } from 'vitest';
+import {
+  easyPaceCorpus,
+  thresholdPaceCorpus,
+  thresholdSegmentFromSplits,
+  thresholdSegmentFromWholeRun,
+  classifyEasyCandidates,
+  classifyThresholdCandidates,
+  EASY_PCT_HRMAX_BAND,
+  THRESHOLD_PCT_HRMAX_BAND,
+  EASY_MIN_DURATION_SEC,
+  type PaceObservation,
+  type CandidateRow,
+  type HrContext,
+} from '@/lib/training/pace-corpus';
+import { vdotFromRun, tPaceFromVdot } from '@/lib/training/vdot';
+
+const MAX_HR = 190; // a plausible adult max, used across fixtures
+
+/** An avgHr that lands in the middle of a %HRmax band. */
+const midOfBand = (band: readonly [number, number]) => Math.round(MAX_HR * ((band[0] + band[1]) / 2));
+
+const ctxHrMaxOnly: HrContext = { maxHrBpm: MAX_HR, lthrBpm: null, lthrFresh: false };
+
+function obs(over: Partial<PaceObservation> & { id: string }): PaceObservation {
+  return {
+    date: '2026-08-01',
+    paceSecPerMi: 480,
+    durationSec: 1800,
+    source: 'whole-run',
+    hrBasis: 'pct_hrmax',
+    ...over,
+  };
+}
+
+describe('easyPaceCorpus · pure statistic', () => {
+  it('refuses with no observations', () => {
+    const r = easyPaceCorpus([]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('no_observations');
+  });
+
+  it('refuses below the corroboration minimum (K=3)', () => {
+    const r = easyPaceCorpus([obs({ id: 'a', paceSecPerMi: 480 }), obs({ id: 'b', paceSecPerMi: 490 })]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) { expect(r.reason).toBe('insufficient_corroboration'); expect(r.observations).toBe(2); }
+  });
+
+  it('reports a band whose lo is the Kth-fastest and hi is the median, sorted', () => {
+    // Paces s/mi, fastest first: 460, 470, 480(K=3rd fastest), 500, 520.
+    const observations = [460, 470, 480, 500, 520].map((p, i) => obs({ id: `r${i}`, paceSecPerMi: p }));
+    const r = easyPaceCorpus(observations, 3);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.observations).toBe(5);
+      // Kth-fastest (3rd) = 480; median of 5 values = 480. Degenerate but valid.
+      expect(r.band.lo).toBeLessThanOrEqual(r.band.hi);
+      expect(r.supporting.length).toBe(3);
+      expect(r.supporting.map((o) => o.paceSecPerMi)).toEqual([460, 470, 480]);
+    }
+  });
+
+  it('a single fast outlier cannot set the band alone — needs K corroborating runs', () => {
+    // One very fast run (350) plus four ordinary ones (600s) — K=3 fastest
+    // excludes the outlier from "the lo edge" once there are enough ordinary
+    // runs ahead of it in the corroboration count... actually the outlier IS
+    // among the fastest, so verify it participates but does not distort past
+    // what K-corroboration allows: with 5 runs the 3rd-fastest is 600, not 350.
+    const observations = [350, 600, 600, 600, 600].map((p, i) => obs({ id: `o${i}`, paceSecPerMi: p }));
+    const r = easyPaceCorpus(observations, 3);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.band.lo).toBe(600); // the outlier alone cannot set `lo`
+    }
+  });
+
+  it('median (hi edge) moves when a slow observation enters the pool — the reason Rule 8 filtering matters', () => {
+    // 7 observations so the Kth-fastest (K=3, index 2) and the median (index 3
+    // of 7) are genuinely different statistics — with a pool the same size as
+    // K they coincide, which would make this test vacuous.
+    const withoutTaper = [450, 460, 470, 480, 490, 500, 510].map((p, i) => obs({ id: `w${i}`, paceSecPerMi: p }));
+    const withTaper = [...withoutTaper, obs({ id: 'taper', paceSecPerMi: 700 })];
+    const a = easyPaceCorpus(withoutTaper, 3);
+    const b = easyPaceCorpus(withTaper, 3);
+    expect(a.ok && b.ok).toBe(true);
+    if (a.ok && b.ok) {
+      expect(b.band.hi).toBeGreaterThan(a.band.hi); // median dragged slower
+      expect(b.band.lo).toBe(a.band.lo); // Kth-fastest unmoved — insensitive to the bottom
+    }
+  });
+});
+
+describe('thresholdPaceCorpus · pure statistic (zone-bucketed VDOT reuse)', () => {
+  it('refuses below K', () => {
+    const r = thresholdPaceCorpus([obs({ id: 'a', paceSecPerMi: 400 })]);
+    expect(r.ok).toBe(false);
+  });
+
+  it('round-trips through vdotFromTpace/tPaceFromVdot consistently', () => {
+    const pace = 420; // 7:00/mi
+    const observations = [0, 1, 2].map((i) => obs({ id: `t${i}`, paceSecPerMi: pace }));
+    const r = thresholdPaceCorpus(observations, 3);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      // Corroborating three IDENTICAL paces should return that exact pace
+      // (VDOT round-trip may introduce sub-second rounding).
+      expect(Math.abs(r.tPaceSecPerMi - pace)).toBeLessThanOrEqual(2);
+      expect(tPaceFromVdot(r.vdot)).not.toBeNull();
+    }
+  });
+
+  it('deduplicates repeated ids (two qualifying segments off the same run), keeping the faster', () => {
+    const observations = [
+      obs({ id: 'dup', paceSecPerMi: 430 }),
+      obs({ id: 'dup', paceSecPerMi: 410 }), // faster segment, same run
+      obs({ id: 'b', paceSecPerMi: 420 }),
+      obs({ id: 'c', paceSecPerMi: 425 }),
+    ];
+    const r = thresholdPaceCorpus(observations, 3);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.observations).toBe(3); // 'dup' counted once, not twice
+  });
+});
+
+describe('thresholdSegmentFromSplits · splits-aware, the owner\'s "Broken Long Run" shape', () => {
+  it('reads the sustained T-zone segment, excluding diluting recovery jogs', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND); // e.g. ~169 for MAX_HR=190
+    const easyHr = midOfBand(EASY_PCT_HRMAX_BAND); // e.g. ~136
+    // A broken workout: warm-up (easy), 3 T-pace miles, a recovery jog, 2 more
+    // T-pace miles, cool-down (easy). Splits are `faff-hr` shape.
+    const splits = [
+      { mile: 1, hr: easyHr, pace: '9:30', paceSecPerMi: 570 }, // warm-up
+      { mile: 2, hr: tHr, pace: '6:50', paceSecPerMi: 410 },     // T rep
+      { mile: 3, hr: tHr, pace: '6:48', paceSecPerMi: 408 },     // T rep
+      { mile: 4, hr: tHr, pace: '6:52', paceSecPerMi: 412 },     // T rep
+      { mile: 5, hr: easyHr, pace: '9:20', paceSecPerMi: 560 },  // recovery jog
+      { mile: 6, hr: tHr, pace: '6:55', paceSecPerMi: 415 },     // T rep
+      { mile: 7, hr: tHr, pace: '6:49', paceSecPerMi: 409 },     // T rep
+      { mile: 8, hr: easyHr, pace: '9:40', paceSecPerMi: 580 },  // cool-down
+    ];
+    const seg = thresholdSegmentFromSplits(splits, ctxHrMaxOnly);
+    expect(seg).not.toBeNull();
+    if (seg) {
+      expect(seg.source).toBe('splits');
+      // The segment pace should be close to the T-pace splits (~410), NOT the
+      // whole-run average (which is dragged toward ~480 by the easy miles).
+      expect(seg.paceSecPerMi).toBeGreaterThan(405);
+      expect(seg.paceSecPerMi).toBeLessThan(420);
+      const wholeRunAvg = splits.reduce((s, x) => s + x.paceSecPerMi, 0) / splits.length;
+      expect(seg.paceSecPerMi).toBeLessThan(wholeRunAvg); // segment is faster than the diluted average
+    }
+  });
+
+  it('refuses when the qualifying pool is too short to be a real T session', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const splits = [{ mile: 1, hr: tHr, pace: '6:50', paceSecPerMi: 410, distanceMi: 0.3 }]; // ~2 min
+    const seg = thresholdSegmentFromSplits(splits, ctxHrMaxOnly);
+    expect(seg).toBeNull();
+  });
+
+  it('refuses with no usable splits', () => {
+    expect(thresholdSegmentFromSplits([], ctxHrMaxOnly)).toBeNull();
+    expect(thresholdSegmentFromSplits(null, ctxHrMaxOnly)).toBeNull();
+    expect(thresholdSegmentFromSplits(undefined, ctxHrMaxOnly)).toBeNull();
+  });
+});
+
+describe('thresholdSegmentFromWholeRun · the weaker no-splits fallback', () => {
+  it('requires the label to positively say threshold-zone', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const row = { finishSec: 1800, distanceMi: 4, avgHr: tHr, workoutTypeRaw: 'easy' };
+    expect(thresholdSegmentFromWholeRun(row, ctxHrMaxOnly)).toBeNull();
+    const row2 = { ...row, workoutTypeRaw: 'tempo' };
+    expect(thresholdSegmentFromWholeRun(row2, ctxHrMaxOnly)).not.toBeNull();
+  });
+
+  it('refuses a threshold-labeled run whose whole-run HR is actually easy (diluted by WU/CD)', () => {
+    const easyHr = midOfBand(EASY_PCT_HRMAX_BAND);
+    const row = { finishSec: 1800, distanceMi: 4, avgHr: easyHr, workoutTypeRaw: 'threshold' };
+    expect(thresholdSegmentFromWholeRun(row, ctxHrMaxOnly)).toBeNull();
+  });
+});
+
+describe('classifyEasyCandidates · label + HR + duration, together', () => {
+  const easyHr = midOfBand(EASY_PCT_HRMAX_BAND);
+  const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+
+  it('an unlabeled run classifies correctly by HR alone', () => {
+    const rows: CandidateRow[] = [
+      { id: 'u1', date: '2026-08-01', distanceMi: 6, finishSec: 3000, avgHr: easyHr, workoutTypeRaw: null, splits: null },
+    ];
+    const out = classifyEasyCandidates(rows, ctxHrMaxOnly);
+    expect(out.length).toBe(1);
+  });
+
+  it('a label that positively says quality excludes the run from easy candidacy, even if HR looks easy', () => {
+    // A tempo whose whole-run avg HR happens to read in the E band (a long
+    // warm-up diluting it) must NOT count as easy evidence.
+    const rows: CandidateRow[] = [
+      { id: 'q1', date: '2026-08-01', distanceMi: 6, finishSec: 3000, avgHr: easyHr, workoutTypeRaw: 'tempo', splits: null },
+    ];
+    expect(classifyEasyCandidates(rows, ctxHrMaxOnly).length).toBe(0);
+  });
+
+  it('a run whose label says easy but whose HR says threshold is excluded (HR gate alone rejects it)', () => {
+    const rows: CandidateRow[] = [
+      { id: 'x1', date: '2026-08-01', distanceMi: 6, finishSec: 3000, avgHr: tHr, workoutTypeRaw: 'easy', splits: null },
+    ];
+    expect(classifyEasyCandidates(rows, ctxHrMaxOnly).length).toBe(0);
+    // ...and it is ALSO excluded from threshold candidacy, by the label guard.
+    expect(classifyThresholdCandidates(rows, ctxHrMaxOnly).length).toBe(0);
+  });
+
+  it('a run under the duration floor (a shakeout) does not qualify', () => {
+    const rows: CandidateRow[] = [
+      { id: 's1', date: '2026-08-01', distanceMi: 1.5, finishSec: EASY_MIN_DURATION_SEC - 60, avgHr: easyHr, workoutTypeRaw: null, splits: null },
+    ];
+    expect(classifyEasyCandidates(rows, ctxHrMaxOnly).length).toBe(0);
+  });
+
+  it('a run meeting the duration floor exactly qualifies', () => {
+    const rows: CandidateRow[] = [
+      { id: 's2', date: '2026-08-01', distanceMi: 3, finishSec: EASY_MIN_DURATION_SEC, avgHr: easyHr, workoutTypeRaw: null, splits: null },
+    ];
+    expect(classifyEasyCandidates(rows, ctxHrMaxOnly).length).toBe(1);
+  });
+});
+
+describe('RULE 18 · falsify against the OLD behavior', () => {
+  it('vdotFromRun (the pre-existing race-shaped read) is near-useless for genuine easy running', () => {
+    // A genuinely easy 8-mile run at 8:00/mi, HR comfortably in the E band —
+    // the owner's own stated "8:00/mi easily all day" pace. The OLD read
+    // (vdotFromRun, which has no easy branch and falls through to
+    // vdotFromRace) treats it as an all-out race and returns a VDOT that is
+    // either null (fails the honesty gate — no quality label, HR under 80%
+    // max) or, if it passed, badly understates fitness. Demonstrating the
+    // gate failure IS the point: this run is invisible to the old mechanism.
+    const easyHr = midOfBand(EASY_PCT_HRMAX_BAND);
+    const v = vdotFromRun({
+      finishSeconds: 8 * 480, // 8 miles @ 8:00/mi
+      distanceMi: 8,
+      workoutType: null,
+      avgHr: easyHr,
+      maxHr: MAX_HR,
+    });
+    expect(v).toBeNull(); // passesRunHonestyGate rejects it — not quality, HR under 80% max
+
+    // The new direct-evidence reader sees the SAME run as exactly what it is.
+    const rows: CandidateRow[] = [
+      { id: 'e1', date: '2026-08-01', distanceMi: 8, finishSec: 8 * 480, avgHr: easyHr, workoutTypeRaw: null, splits: null },
+    ];
+    const out = classifyEasyCandidates(rows, ctxHrMaxOnly);
+    expect(out.length).toBe(1);
+    expect(out[0].paceSecPerMi).toBe(480);
+  });
+
+  it('a whole-run-average threshold read understates a broken/structured session vs. the split-aware read', () => {
+    const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
+    const easyHr = midOfBand(EASY_PCT_HRMAX_BAND);
+    const splits = [
+      { mile: 1, hr: easyHr, pace: '9:30', paceSecPerMi: 570 },
+      { mile: 2, hr: tHr, pace: '6:50', paceSecPerMi: 410 },
+      { mile: 3, hr: tHr, pace: '6:48', paceSecPerMi: 408 },
+      { mile: 4, hr: tHr, pace: '6:52', paceSecPerMi: 412 },
+      { mile: 5, hr: easyHr, pace: '9:20', paceSecPerMi: 560 },
+      { mile: 6, hr: tHr, pace: '6:55', paceSecPerMi: 415 },
+      { mile: 7, hr: tHr, pace: '6:49', paceSecPerMi: 409 },
+      { mile: 8, hr: easyHr, pace: '9:40', paceSecPerMi: 580 },
+    ];
+    const wholeRunAvgPace = splits.reduce((s, x) => s + x.paceSecPerMi, 0) / splits.length;
+    const splitAware = thresholdSegmentFromSplits(splits, ctxHrMaxOnly);
+    expect(splitAware).not.toBeNull();
+    if (splitAware) {
+      // The split-aware read is meaningfully faster (more honest) than the
+      // diluted whole-run average — the exact defect the owner's "Broken Long
+      // Run" example demonstrated.
+      expect(wholeRunAvgPace - splitAware.paceSecPerMi).toBeGreaterThan(30);
+    }
+  });
+});

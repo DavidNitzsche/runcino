@@ -354,6 +354,14 @@ import {
 } from '@/lib/coach/easy-discipline';
 import { vdotFromRace, predictRaceTime } from '@/lib/training/vdot';
 import {
+  EASY_PCT_HRMAX_BAND,
+  THRESHOLD_PCT_HRMAX_BAND,
+  EASY_PCT_LTHR_BAND,
+  THRESHOLD_PCT_LTHR_BAND,
+  THRESHOLD_MIN_QUALIFYING_SEC,
+  THRESHOLD_MAX_QUALIFYING_SEC,
+} from '@/lib/training/pace-corpus';
+import {
   READINESS_WEIGHTS,
   LOAD_CONTEXT_MULTIPLIER,
   LOAD_CONTEXT_CURVE,
@@ -17195,6 +17203,98 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         if (!sourceOf(file).includes(needle)) {
           throw new Error(`${file} shapes a role's recovery window without ROLE_POST_QUALITY_FREE_DAYS · the answered role would not change the window`);
         }
+      }
+    },
+  },
+
+  /**
+   * 2026-08-30/31 · PACE-CORPUS-1 · the direct-evidence easy/threshold pace
+   * readers (`lib/training/pace-corpus.ts`, Phase 2 of the owner's
+   * anchor-in-the-running ruling — see `lib/training/vdot-corpus.ts`'s header
+   * for Phase 1). Three claims: the %HRmax bands for Daniels E and T (§8's
+   * own table), and the %LTHR crosswalk for both (§17) that the readers use
+   * when a fresh LTHR outranks %HRmax per the doc's own stated precedence.
+   */
+  {
+    id: 'PACE.easy-zone-is-daniels-e',
+    binds: ['lib/training/pace-corpus.ts#EASY_PCT_HRMAX_BAND'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: "## 8. Daniels' HR Zones",
+    claim:
+      'The direct-evidence easy-pace corpus reader gates a candidate run\'s heart rate against ' +
+      "the published Daniels E row's %HRmax column, read out of the table at run time rather " +
+      'than hardcoded on both sides.',
+    check({ cite }) {
+      const t = cite.table();
+      const band = parsePctBand(t.cell('E (Easy)', '%HRmax'));
+      if (Math.abs(band[0] - EASY_PCT_HRMAX_BAND[0]) > 0.001 || Math.abs(band[1] - EASY_PCT_HRMAX_BAND[1]) > 0.001) {
+        throw new Error(`EASY_PCT_HRMAX_BAND is ${EASY_PCT_HRMAX_BAND}, Research/03 §8's E row is ${band}`);
+      }
+    },
+  },
+  {
+    id: 'PACE.threshold-zone-is-daniels-t',
+    binds: [
+      'lib/training/pace-corpus.ts#THRESHOLD_PCT_HRMAX_BAND',
+      'lib/training/pace-corpus.ts#THRESHOLD_MIN_QUALIFYING_SEC',
+      'lib/training/pace-corpus.ts#THRESHOLD_MAX_QUALIFYING_SEC',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: "## 8. Daniels' HR Zones",
+    claim:
+      'The direct-evidence threshold-pace corpus reader gates a candidate segment\'s heart rate ' +
+      "against the published Daniels T row's %HRmax column, and its qualifying-duration floor " +
+      "and ceiling are the table's own \"reps 5-20 min, total 20-60 min\" — read out of the doc " +
+      'at run time, not hardcoded.',
+    check({ cite }) {
+      const t = cite.table();
+      const band = parsePctBand(t.cell('T (Threshold)', '%HRmax'));
+      if (Math.abs(band[0] - THRESHOLD_PCT_HRMAX_BAND[0]) > 0.001 || Math.abs(band[1] - THRESHOLD_PCT_HRMAX_BAND[1]) > 0.001) {
+        throw new Error(`THRESHOLD_PCT_HRMAX_BAND is ${THRESHOLD_PCT_HRMAX_BAND}, Research/03 §8's T row is ${band}`);
+      }
+      const durationCell = t.cell('T (Threshold)', 'Typical duration');
+      const bands = parseBands(durationCell);
+      if (bands.length === 0) {
+        throw new Error(`Research/03 §8's T row duration cell "${durationCell}" no longer states a rep/total band`);
+      }
+      const repFloorMin = bands[0][0];
+      const totalCeilMin = bands.length > 1 ? bands[1][1] : bands[0][1];
+      if (THRESHOLD_MIN_QUALIFYING_SEC !== repFloorMin * 60) {
+        throw new Error(
+          `THRESHOLD_MIN_QUALIFYING_SEC is ${THRESHOLD_MIN_QUALIFYING_SEC}s, Research/03 §8's T row rep floor is ${repFloorMin} min`,
+        );
+      }
+      if (THRESHOLD_MAX_QUALIFYING_SEC < totalCeilMin * 60) {
+        throw new Error(
+          `THRESHOLD_MAX_QUALIFYING_SEC is ${THRESHOLD_MAX_QUALIFYING_SEC}s, under Research/03 §8's T row total ceiling of ${totalCeilMin} min`,
+        );
+      }
+    },
+  },
+  {
+    id: 'PACE.hrmax-lthr-crosswalk-matches-daniels-e-and-t',
+    binds: [
+      'lib/training/pace-corpus.ts#EASY_PCT_LTHR_BAND',
+      'lib/training/pace-corpus.ts#THRESHOLD_PCT_LTHR_BAND',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '### Conversion Between Systems',
+    claim:
+      'When a fresh LTHR is available the direct-evidence pace readers gate on %LTHR instead of ' +
+      '%HRmax (Research/03 §17: "If two systems disagree, the more individualized one (LTHR > ' +
+      'Karvonen > %HRmax) wins"). The %LTHR bands for Daniels E and Daniels T are the doc\'s own ' +
+      'crosswalk equivalences, read out of the text at run time.',
+    check({ cite }) {
+      const text = cite.text();
+      const easyM = matchLiteral(text, /%LTHR\s+([\d.]+)[–-]([\d.]+)%\s*≈\s*Daniels E/, 'EASY_PCT_LTHR_BAND');
+      const tM = matchLiteral(text, /%LTHR\s+([\d.]+)[–-]([\d.]+)%\s*≈\s*Daniels T/, 'THRESHOLD_PCT_LTHR_BAND');
+      const easyBand: [number, number] = [Number(easyM[1]) / 100, Number(easyM[2]) / 100];
+      const tBand: [number, number] = [Number(tM[1]) / 100, Number(tM[2]) / 100];
+      if (Math.abs(easyBand[0] - EASY_PCT_LTHR_BAND[0]) > 0.001 || Math.abs(easyBand[1] - EASY_PCT_LTHR_BAND[1]) > 0.001) {
+        throw new Error(`EASY_PCT_LTHR_BAND is ${EASY_PCT_LTHR_BAND}, Research/03 §17 crosswalk is ${easyBand}`);
+      }
+      if (Math.abs(tBand[0] - THRESHOLD_PCT_LTHR_BAND[0]) > 0.001 || Math.abs(tBand[1] - THRESHOLD_PCT_LTHR_BAND[1]) > 0.001) {
+        throw new Error(`THRESHOLD_PCT_LTHR_BAND is ${THRESHOLD_PCT_LTHR_BAND}, Research/03 §17 crosswalk is ${tBand}`);
       }
     },
   },
