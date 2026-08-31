@@ -191,7 +191,14 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
 // by `resolveThresholdHr` — still drew its bands. Both helpers are deleted:
 // the caller resolves the anchor once and passes the table in, so there is one
 // read to fail instead of three, and it fails for the whole panel at once.
-export const EMPTIED_BASELINE = 376;
+// 2026-08-30 · -1 from the adaptive ramp's quality gate. It ran its own
+// `SELECT … FROM runs … .catch(() => [])`, and the empty array it minted on a
+// failure was indistinguishable from the empty array the query returned on
+// EVERY call — the predicate asked for `data->>'type' IN ('threshold',
+// 'intervals','tempo')`, a value that field has never held. The gate now calls
+// `loadKeySessionExecutions` under `attempt`, so a failed read is its own state
+// and closes the gate, and `_guard_fail_closed.test.ts` holds it there.
+export const EMPTIED_BASELINE = 375;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

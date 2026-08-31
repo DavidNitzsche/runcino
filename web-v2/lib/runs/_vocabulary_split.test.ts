@@ -123,29 +123,39 @@ export function comparesRunTypeToLiteral(src: string): boolean {
  * `sportType` answers "is this a run"; `runStimulusType` answers "what kind of
  * session". There is no third question `type` can be asked.
  */
-const ALLOWLIST: Record<string, string> = {
-  /* NOT MIGRATED, DELIBERATELY. This is a blocker raised with the owner on
-   * 2026-08-24, not an oversight.
-   *
-   * `detectRampSignals` reads `data->>'type' IN ('threshold','intervals',
-   * 'tempo')` for its quality signal and `= 'long'` for its long-run one.
-   * Neither can ever match: across all 257 rows, `data.type` takes exactly
-   * three values — 'Run' (141), 'easy' (45) and absent (71). It also
-   * selects three keys that exist on ZERO rows:
-   * `hr_on_pace_delta_bpm`, `pace_target_s_per_mi`, `aerobicDecouplingPct`.
-   *
-   * So `recentQuality` is always empty, `lastQualityOnPace` is always
-   * false, and `allGreen` — which requires it — is never true. THE
-   * ADAPTIVE RAMP HAS NEVER FIRED. Fixing the field would switch on an
-   * auto-ramp that has never run against this runner's plan, and would do
-   * it with `lastQualityDeltaBpm == null` taking the benefit of the doubt.
-   * That is a plan-engine decision with a real trade-off, not a read fix,
-   * and the current failure is in the safe direction. */
-  'lib/plan/adaptive-ramp.ts':
-    'Reads data.type as a session type; it never holds one, so both ramp '
-    + 'signals are structurally dead and the ramp never fires. Turning them '
-    + 'on is a plan-engine decision. Raised with the owner 2026-08-24.',
-};
+/* EMPTY AS OF 2026-08-30, and the last entry's removal is worth recording.
+ *
+ * `lib/plan/adaptive-ramp.ts` sat here from 2026-08-24 as a DELIBERATE
+ * blocker, not an oversight. `detectRampSignals` read
+ * `data->>'type' IN ('threshold','intervals','tempo')` for its quality
+ * signal and `= 'long'` for its long-run one. Neither could ever match:
+ * across the whole `runs` table `data.type` takes exactly three values —
+ * 'Run', 'easy' and absent. It also selected three keys present on ZERO
+ * rows: `hr_on_pace_delta_bpm`, `pace_target_s_per_mi`,
+ * `aerobicDecouplingPct`.
+ *
+ * So `recentQuality` was always empty, `lastQualityOnPace` always false,
+ * and `allGreen` — which requires it — never true. THE ADAPTIVE RAMP HAD
+ * NEVER FIRED, for any runner, in the whole history of the table:
+ * `coach_intents.reason = 'plan_adapt_bump'` is 0 rows. Measured against
+ * the owner's real training, the gate passed on 0 of the last 121 days
+ * and could not have passed on any of them whatever he ran.
+ *
+ * The entry's stated reason for staying was that turning the signals on
+ * "is a plan-engine decision with a real trade-off", and that the fix
+ * would hand the benefit of the doubt to the engine because
+ * `lastQualityDeltaBpm` is always null. Both objections are now answered:
+ *
+ *   · The owner gave the decision on 2026-08-30 — "there's a world where
+ *     we push forward and the plan has to push us more and more. That's
+ *     what the app is for. To push."
+ *   · The gate no longer takes the benefit of the doubt. It reads
+ *     `loadKeySessionExecutions`, the same interpreter the adaptation
+ *     verdict scores, and requires `earnsProgression` on the sessions it
+ *     finds — an actual measurement of the claim the gate's name makes,
+ *     rather than a null tolerated into a pass.
+ */
+const ALLOWLIST: Record<string, string> = {};
 
 describe('vocabulary split · one field, two vocabularies', () => {
   it('normalizeDataWorkoutType reads BOTH vocabularies', () => {

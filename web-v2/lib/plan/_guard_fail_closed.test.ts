@@ -363,7 +363,7 @@ const ACTIVE_PLAN = {
   } as Record<string, unknown>,
 };
 
-type RampFailure = 'readiness' | 'long' | 'peak' | null;
+type RampFailure = 'readiness' | 'quality' | 'long' | 'peak' | null;
 
 function rampRouter(failing: RampFailure): Router {
   return async (sql) => {
@@ -371,18 +371,26 @@ function rampRouter(failing: RampFailure): Router {
       if (failing === 'readiness') throw dbFailure();
       return { rows: [{ streaks: [] }] };
     }
-    // Order matters · both quality and long read FROM runs.
-    if (sql.includes("(data->>'type') = 'long'")) {
+    // 2026-08-30 · the quality gate no longer runs its own dead `runs` query.
+    // It calls `loadKeySessionExecutions`, whose first read is the owned-days
+    // scope — the distinctive clause below. A rejection there must close the
+    // gate rather than read as "this runner has no key sessions".
+    if (sql.includes('owned.is_quality = true')) {
+      if (failing === 'quality') throw dbFailure();
+      return { rows: [] };
+    }
+    // Order matters · both quality and long read FROM runs. The long read is
+    // now identified by DISTANCE (`>= 8`), not by a `data.type` that never
+    // held one, so it is matched on the column it selects.
+    if (sql.includes('aerobicDecouplingPct')) {
       if (failing === 'long') throw dbFailure();
       return { rows: [{ decoupling: 2.0 }] };
     }
-    if (sql.includes("IN ('threshold'")) {
-      return { rows: [{ pace_delta_bpm: 2 }, { pace_delta_bpm: 3 }] };
-    }
-    if (sql.includes('plan_workouts')) {
+    if (sql.includes('MAX(weekly)')) {
       if (failing === 'peak') throw dbFailure();
       return { rows: [{ peak_weekly: 30, peak_long: 12 }] };
     }
+    if (sql.includes('projection_snapshots')) return { rows: [{ vdot: '52' }] };
     if (sql.includes('coach_intents')) return { rows: [] };
     return { rows: [] };
   };
@@ -409,6 +417,22 @@ describe('2 · adaptive ramp · a DB error is not permission to add mileage', ()
     exercised('plan/adaptive-ramp.ts::readinessGreen');
   });
 
+  /* 2026-08-30 · a NEW fail-closed path, and the reason it did not exist
+   * before is the finding. The old quality read ended in `.catch(() => [])`,
+   * so a rejection and an empty table were the same value — and both produced
+   * `lastQualityOnPace: false`, which meant the gate closed for the right
+   * outcome by the wrong reason and nothing could tell. The read now goes
+   * through `loadKeySessionExecutions` under `attempt`, so a failure is its
+   * own state, and this asserts it stays shut. */
+  it('quality read rejects → lastQualityOnPace is FALSE, not "no sessions"', async () => {
+    setRouter(rampRouter('quality'));
+    const { detectRampSignals } = await import('@/lib/plan/adaptive-ramp');
+    const s = await detectRampSignals(UUID, ACTIVE_PLAN);
+
+    expect(s.lastQualityOnPace).toBe(false);
+    exercised('plan/adaptive-ramp.ts::lastQualityOnPace');
+  });
+
   it('long-run read rejects → lastLongClean is FALSE, no benefit of the doubt', async () => {
     setRouter(rampRouter('long'));
     const { detectRampSignals } = await import('@/lib/plan/adaptive-ramp');
@@ -429,7 +453,7 @@ describe('2 · adaptive ramp · a DB error is not permission to add mileage', ()
 
   it('no single failed read can leave all five gates green', async () => {
     const { detectRampSignals } = await import('@/lib/plan/adaptive-ramp');
-    for (const failing of ['readiness', 'long', 'peak'] as RampFailure[]) {
+    for (const failing of ['readiness', 'quality', 'long', 'peak'] as RampFailure[]) {
       setRouter(rampRouter(failing));
       const s = await detectRampSignals(UUID, ACTIVE_PLAN);
       const allGreen = s.readinessGreen && s.lastQualityOnPace && s.lastLongClean
@@ -505,10 +529,11 @@ describe('floor · every site is still covered', () => {
       'cron/notifications/route.ts::enqueueIfFresh',
       'plan/adaptive-ramp.ts::belowTierUpper',
       'plan/adaptive-ramp.ts::lastLongClean',
+      'plan/adaptive-ramp.ts::lastQualityOnPace',
       'plan/adaptive-ramp.ts::readinessGreen',
       'plan/workout-proposals.ts::writeWorkoutProposals',
     ].join('\n'));
-    expect(EXERCISED_GUARDS.size).toBe(7);
+    expect(EXERCISED_GUARDS.size).toBe(8);
     expect(new Set([...EXERCISED_GUARDS].map((g) => g.split('::')[0])).size).toBe(5);
   });
 });

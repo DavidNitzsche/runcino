@@ -294,7 +294,10 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
     'lib/plan/generate.ts': 'HELD BY ANOTHER AGENT this session · see RAW_ACCESS_ALLOWED.',
     'lib/plan/adapt.ts': 'Highest blast radius in the app · see RAW_ACCESS_ALLOWED.',
     'lib/plan/drift-monitor.ts': 'Needs a correctness review, not a substitution · see RAW_ACCESS_ALLOWED.',
-    'lib/plan/adaptive-ramp.ts': 'Mixed plan-column / run-jsonb query · see RAW_ACCESS_ALLOWED.',
+    /* 2026-08-30 · `lib/plan/adaptive-ramp.ts` removed. Its two `runs` queries
+     * were the dead ones — the quality read is now `loadKeySessionExecutions`
+     * and the long read uses `runNotMergedSql` / `runDistanceMiSql` /
+     * `runDaySql`. Nothing there hand-rolls the canonical filter any more. */
     'lib/plan/recompute-paces.ts': 'Next batch.',
     'lib/plan/seal.ts': 'Next batch.',
     'lib/plan/seed-from-onboarding.ts': 'Next batch.',

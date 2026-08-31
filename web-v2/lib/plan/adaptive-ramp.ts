@@ -17,10 +17,19 @@
  *
  * Gates · all must pass before a bump:
  *   · No pull-back streak in last 7 days (HRV / RHR / sleep / soreness)
- *   · Last 2 quality workouts hit target pace ±10s/mi
+ *   · The last 2 prescribed key sessions in 14 days both EARNED PROGRESSION
+ *     (`lib/execution/load.ts` · `earnsProgressionCredit`)
  *   · Last long run clean (aerobic decoupling < 5% if measurable)
  *   · Plan's current peak weekly is below tier upper band × 0.95
  *   · No bump applied in last 7 days (cooldown · absorption time)
+ *
+ * 2026-08-30 · THE SECOND GATE IS NEW, AND THE ONE IT REPLACED IS WHY THIS
+ * WHOLE MODULE HAD NEVER RUN. It read `runs.data->>'type'` for a session type
+ * that field has never carried, so it matched nothing, `allGreen` was never
+ * true, and `coach_intents.reason = 'plan_adapt_bump'` is 0 rows across every
+ * account and the whole life of the table. Wired, cron-mounted, unit-tested,
+ * and inert. See `detectRampSignals` gate 2 for the full account and for why
+ * the fix reaches for the execution reader rather than a corrected field name.
  *
  * Bump rules:
  *   · weekly target +5% (cap at tier upper band)
@@ -48,8 +57,9 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { rowOrNull } from '@/lib/db/read';
+import { attempt, rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runDaySql, runDistanceMiSql, runNotMergedSql } from '@/lib/runs/run-shape';
 
 export interface RampOpportunity {
   /** Why we're bumping · explainer for the intent log. */
@@ -83,8 +93,47 @@ export interface RampSignals {
 }
 
 const COOLDOWN_DAYS = 7;
-const QUALITY_PACE_TOLERANCE_SEC = 10;  // s/mi
 const LONG_DECOUPLING_PCT_CAP = 5;
+
+/** How far back the quality and long-run signals look. Unchanged from the
+ *  window the dead queries used, so this fix moves the SOURCE and not the bar. */
+const QUALITY_LOOKBACK_DAYS = 14;
+
+/** How many delivered key sessions the ramp wants before it will add load.
+ *  Two, per the module header's original policy ("Last 2 quality workouts"). */
+const MIN_QUALITY_SESSIONS = 2;
+
+/** What counts as a long run here. The SAME number `lib/adaptation/load.ts`
+ *  uses to pick the runs it derives decoupling from, so the two readers cannot
+ *  disagree about which day was the long one. */
+const LONG_RUN_MIN_MI = 8;
+
+/** `YYYY-MM-DD`, n days before `iso`. */
+function isoDaysBefore(iso: string, n: number): string {
+  return new Date(Date.parse(`${iso}T12:00:00Z`) - n * 86_400_000)
+    .toISOString().slice(0, 10);
+}
+
+/**
+ * The measured anchor as the daily snapshot cron computed it — the same read
+ * `lib/adaptation/load.ts` makes, for the same reason: the execution reader
+ * needs it to size the easy-pace leg of a blended verdict, and recomputing it
+ * here would put a second opinion about fitness in the ramp path.
+ *
+ * A null anchor is a legitimate answer (no snapshot yet), and
+ * `loadKeySessionExecutions` accepts it. A failed read propagates, because the
+ * caller wraps this in `attempt` and a failure must not read as "no anchor".
+ */
+async function snapshotVdot(userUuid: string): Promise<number | null> {
+  const r = await pool.query<{ vdot: string | null }>(
+    `SELECT vdot::text FROM projection_snapshots
+      WHERE user_uuid = $1 AND vdot IS NOT NULL
+      ORDER BY snapshot_date DESC LIMIT 1`,
+    [userUuid],
+  );
+  const v = r.rows[0]?.vdot;
+  return v != null ? Number(v) : null;
+}
 
 /**
  * Read every gate signal for upward adaptation. Returns the full
@@ -119,43 +168,98 @@ export async function detectRampSignals(
     .reduce((max, s) => Math.max(max, Number(s.days ?? 0)), 0);
   const readinessGreen = !readinessReadFailed && pullbackStreakDays < 2;
 
-  // 2. Last 2 quality workouts · hit prescribed pace ± tolerance
-  const recentQuality = await pool.query<{
-    pace_delta_bpm: number | null;
-    pace_target: number | null;
-    avg_pace: string | null;
-  }>(
-    `SELECT (data->>'hr_on_pace_delta_bpm')::numeric AS pace_delta_bpm,
-            (data->>'pace_target_s_per_mi')::numeric AS pace_target,
-            data->>'avgPaceMinPerMi' AS avg_pace
-       FROM runs
-      WHERE user_uuid = $1
-        AND NOT (data ? 'mergedIntoId')
-        AND (data->>'type') IN ('threshold', 'intervals', 'tempo')
-        AND (data->>'date')::date >= $2::date - 14
-      ORDER BY (data->>'date')::date DESC LIMIT 2`,
-    [userId, today],
-  ).then((r) => r.rows).catch(() => []);
-  // On-pace check · pace_delta_bpm absolute < tolerance (note: bpm is
-  // HR-on-pace not pace-on-pace · but tracks the runner-vs-target gap)
-  const lastQualityDeltaBpm = recentQuality[0]?.pace_delta_bpm != null
-    ? Math.abs(Number(recentQuality[0].pace_delta_bpm))
-    : null;
-  const lastQualityOnPace = recentQuality.length >= 2 && (
-    lastQualityDeltaBpm == null || lastQualityDeltaBpm <= QUALITY_PACE_TOLERANCE_SEC
+  // 2. Last 2 quality sessions · did the runner actually deliver them?
+  //
+  // ── 2026-08-30 · THE GATE THAT MADE THE RAMP UNREACHABLE ─────────────────
+  //
+  // This read `runs.data->>'type' IN ('threshold','intervals','tempo')` and
+  // three keys — `hr_on_pace_delta_bpm`, `pace_target_s_per_mi`,
+  // `aerobicDecouplingPct` — that exist on ZERO rows of the table. `data.type`
+  // holds Strava's ACTIVITY KIND ('Run') or the loose faff label ('easy'); it
+  // has never once held a session type. So `recentQuality` came back empty on
+  // every call, `recentQuality.length >= 2` was false, `allGreen` was false,
+  // and the whole upward ramp never fired for any runner in the history of the
+  // database — `coach_intents.reason = 'plan_adapt_bump'` is 0 rows.
+  //
+  // Measured against the owner's real training: over the last 121 days this
+  // gate passed on 0 of them, and could not have passed on any of them
+  // whatever he ran. That is not a bar, it is a wall. Meanwhile the same
+  // window held up to five sessions the app HAD classified — under
+  // `data.workoutType`, one field name away. `_vocabulary_split.test.ts` is
+  // the gate that now keeps this file honest, and its allowlist entry for this
+  // file is deleted rather than re-argued.
+  //
+  // ── WHY THE EXECUTION READER AND NOT A CORRECTED FIELD NAME ──────────────
+  //
+  // Swapping `type` for `workoutType` would have made the query return rows,
+  // and would ALSO have shipped a lie. `lastQualityDeltaBpm` is null on every
+  // row, so `delta == null || delta <= tolerance` is vacuously true and the
+  // gate would have reduced to "he did two quality-ish runs" while still
+  // calling itself `lastQualityOnPace`. A sentence asserting a fact about a
+  // measurement has to be gated on that measurement (CLAUDE.md Rule 16), and
+  // the benefit of the doubt here is handed to the ENGINE — the answer it
+  // produces is permission to add mileage.
+  //
+  // `loadKeySessionExecutions` is the reader that already answers this, on
+  // this runner's real data, and the adaptation verdict scores off it. It
+  // resolves each prescribed session through `ownedDaysSql` (so archived plan
+  // versions cannot inflate the count — Rule 14), reconstructs the actual work
+  // from the watch's own phases, and `earnsProgression` is doctrine's own
+  // predicate for "this session earned a step up". One quantity, one name.
+  //
+  // Sessions that came back `readable: false` are DROPPED rather than counted
+  // either way: a session we could not judge is missing evidence, not a failed
+  // one. A read that THREW is its own third state and closes the gate.
+  const qualityWindowFromISO = isoDaysBefore(today, QUALITY_LOOKBACK_DAYS);
+  const keySessions = await attempt(
+    'plan/adaptive-ramp · key session executions',
+    (async () => {
+      const [{ loadKeySessionExecutions }, vdot] = await Promise.all([
+        import('@/lib/execution/load'),
+        snapshotVdot(userId),
+      ]);
+      return loadKeySessionExecutions(userId, qualityWindowFromISO, today, vdot);
+    })(),
   );
+  const readableSessions = keySessions.ok
+    ? keySessions.value.filter((s) => s.readable && !s.replacedByRace)
+    : null;
+  // Newest first, so "the last two" means the last two.
+  const lastTwo = readableSessions
+    ? [...readableSessions].sort((a, b) => b.dateISO.localeCompare(a.dateISO)).slice(0, 2)
+    : [];
+  const lastQualityOnPace = readableSessions != null
+    && lastTwo.length >= MIN_QUALITY_SESSIONS
+    && lastTwo.every((s) => s.earnsProgression);
+  // Kept on the interface because `composeReason` and the bench read it. It
+  // was always null in production — the key it came from does not exist — and
+  // it is null here for the same honest reason rather than a new one.
+  const lastQualityDeltaBpm: number | null = null;
 
   // 3. Last long · aerobic decoupling clean
+  //
+  // 2026-08-30 · same defect, same fix, smaller blast radius: this asked for
+  // `data->>'type' = 'long'`, which never matches, so `rowOrNull` returned
+  // `undefined` (no rows — NOT a failure) and the gate stood permanently open
+  // on a long run it had never looked at. A long run is identified by DISTANCE
+  // here, exactly as `lib/adaptation/load.ts` identifies it (`>= 8` mi), so
+  // the two readers agree about what a long run is.
+  //
+  // `aerobicDecouplingPct` is still not a stored key, so a found long with no
+  // decoupling on record still reads clean. That is the documented posture and
+  // it is unchanged — what changes is that the query now finds the run, so the
+  // diagnostic below stops reporting confidence about a row it never read.
   const recentLong = await rowOrNull<{ decoupling: number | null }>(
     'plan/adaptive-ramp · last long decoupling',
     pool.query<{ decoupling: number | null }>(
-      `SELECT (data->>'aerobicDecouplingPct')::numeric AS decoupling
-       FROM runs
-      WHERE user_uuid = $1
-        AND NOT (data ? 'mergedIntoId')
-        AND (data->>'type') = 'long'
-        AND (data->>'date')::date >= $2::date - 14
-      ORDER BY (data->>'date')::date DESC LIMIT 1`,
+      `SELECT (r.data->>'aerobicDecouplingPct')::numeric AS decoupling
+       FROM runs r
+      WHERE r.user_uuid = $1
+        AND ${runNotMergedSql('r')}
+        AND ${runDistanceMiSql('r')} >= ${LONG_RUN_MIN_MI}
+        AND ${runDaySql('r')} >= ($2::date - ${QUALITY_LOOKBACK_DAYS})::text
+        AND ${runDaySql('r')} <= $2::text
+      ORDER BY ${runDaySql('r')} DESC LIMIT 1`,
       [userId, today],
     ),
   );
