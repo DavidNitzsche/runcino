@@ -432,6 +432,32 @@ the DECISION must not hinge on a hair. Use hysteresis, or a more robust input,
 or interpolate. Widening a tolerance around the same threshold relocates the
 cliff, it does not remove it.
 
+**Before smoothing a threshold, ask what question it is actually answering.**
+The best fix found on the night this rule was written removed a cliff instead of
+smoothing it. `adapt.ts` gated overshoot detection on `scheduledMi >= 5`, and
+the walk measured a **40-mile jump in baseline for 0.1 mi of schedule** — the
+plan that asked for more got the cut. But `scheduled_mi` came from
+`COALESCE(SUM(...), 0)` and is never null, so the five was a MILEAGE proxy for a
+**data-presence** question: "did this window have scheduled days at all?" The
+query now returns the scheduled-day COUNT, the decision rests on a discrete
+honest fact, and there is no threshold on a continuous quantity left to smooth.
+
+A threshold standing in for a question it cannot actually ask is the strongest
+form of this defect, and interpolating it would have preserved the confusion in
+a nicer shape. Two more from the same pass, both worth recognising:
+
+- **Doctrine's number is a control point, not a step.** ACWR's 1.3 and 1.5 are
+  real research figures and stay exactly where they are; only the RESPONSE runs
+  continuously through them. `Research/15` says so itself, one paragraph under
+  the table — *"not a stop-light … a ratio of 1.4 in itself is not a verdict"* —
+  and the old step gave 1.4 the full elevated penalty. That was doctrine
+  restored, not bent. (The owner's own ACWR hit **1.303** on 2026-08-24, three
+  thousandths past the edge, and crossed 1.3 four more times in thirty days.)
+- **A band has ONE edge.** The race-target cliff spent doctrine's 5% band twice
+  — forgiving inside it, then snapping back PAST it to the unreduced ceiling —
+  which cost **600 seconds of prescribed race target for a one-second change of
+  stated goal.** `max(goal, floor)` is continuous and monotone by construction.
+
 **Enforcement:** `_restore_continuity.test.ts` and `_coach_sensible.test.ts`
 walk a synthetic runner across each boundary in small increments and assert the
 output vector moves continuously and monotonically. **Any new behavioural switch
