@@ -260,8 +260,9 @@ import {
 } from '@/lib/training/vdot-corpus';
 import { vdotFromTpace, tPaceFromVdot, zoneFromType } from '@/lib/training/vdot';
 import { normalizeDataWorkoutType, QUALITY_TYPES } from '@/lib/runs/log-enrich';
-import { normalizeSplits } from '@/lib/runs/run-shape';
+import { normalizeSplits, type RunData } from '@/lib/runs/run-shape';
 import { excludeDistanceReviewSql } from '@/lib/runs/distance-guard';
+import { reconcileSplitsTotal } from '@/lib/runs/coherence';
 import {
   runDaySql,
   runDistanceMiSql,
@@ -599,11 +600,28 @@ interface ThresholdSegment {
  * window. This is what lets a broken structured workout (the owner's own
  * "Broken Long Run" example) count as threshold evidence instead of being
  * diluted into a moderate-looking whole-run average.
+ *
+ * `runDistanceMi` gates trust in the splits array itself before any of that:
+ * `reconcileSplitsTotal` (lib/runs/coherence.ts) is the shared check that a
+ * splits array actually decomposes ITS OWN run — `splits-adopt.ts`'s own
+ * header names a real production row whose splits summed to 12.0 mi against a
+ * stated 1.00 mi. A corrupted array like that would otherwise hand a fast,
+ * HR-plausible-looking pace to the threshold corpus from a run that never
+ * happened at that distance. Refuses (falls through to the whole-run
+ * fallback) only on an EXPLICIT mismatch (`false`) — `null` means the splits
+ * carry no per-split distance to check at all, which most of the historical
+ * shapes don't, and is not itself a contradiction (see that function's own
+ * doc comment).
  */
 export function thresholdSegmentFromSplits(
   rawSplits: unknown,
   ctx: HrContext,
+  runDistanceMi: number | null = null,
 ): ThresholdSegment | null {
+  if (runDistanceMi != null) {
+    const coherent = reconcileSplitsTotal({ splits: rawSplits } as RunData, runDistanceMi);
+    if (coherent === false) return null;
+  }
   const splits = normalizeSplits(rawSplits);
   if (splits.length === 0) return null;
   let totalSec = 0;
@@ -706,7 +724,7 @@ export function classifyThresholdCandidates(
   for (const row of rows) {
     if (labelExcludesThreshold(row.workoutTypeRaw)) continue;
     const seg =
-      thresholdSegmentFromSplits(row.splits, ctx) ??
+      thresholdSegmentFromSplits(row.splits, ctx, row.distanceMi) ??
       thresholdSegmentFromWholeRun(row, ctx);
     if (seg == null) continue;
     out.push({
