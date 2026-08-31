@@ -72,6 +72,20 @@ export interface CoercionExemption {
  */
 export const COERCION_ARGUED: readonly CoercionExemption[] = [
   {
+    id: 'lib/plan/reanchor-plan.ts::reanchorMaintenance::catch',
+    reason: 'FAILS CLOSED, which is this gate\'s own option 2 rather than an argument for erasure. '
+      + 'It is `loadEffectiveMaxHr(...).catch(() => null)`, and the single consumer is `hrCapEasy`, '
+      + 'whose rule is max(89% LTHR, 78% HRmax): dropping the HRmax term takes a maximum over one '
+      + 'fewer candidate, so an unreadable HRmax can only ever produce a cap at or BELOW the one a '
+      + 'successful read would have given. A failed read and an absent HRmax therefore reach the '
+      + 'identical outcome for every consumer, and that outcome is the conservative one — the guard '
+      + 'this feeds gets tighter when it cannot see, never looser. It is also the byte-identical '
+      + 'shape and argument `lib/plan/recompute-paces.ts::recomputePacesForPlan::catch` already '
+      + 'carries for the same call: PRESCRIPTION-WIRE-1 gave the maintenance arm the live HR reads '
+      + 'the race-prep arm already had, so this site exists BECAUSE a genuine null-anchor defect was '
+      + 'fixed, and arguing them differently would be the fork Rule 16 forbids.',
+  },
+  {
     id: 'lib/training/pace-corpus.ts::loadPhasesByDate::catch',
     reason: 'runnerTimezoneOrPacific(userId).catch(() => "America/Los_Angeles") mirrors the identical fallback lib/coach/run-state.ts loadPhaseBreakdown already uses for this exact "coach_intents watch-completion day bucketing" case — and runnerTimezoneOrPacific itself already treats a NULL profile.timezone as "assume Pacific" by its own documented convention (pre-multi-tenant rows were all stamped in Pacific wall time), so a thrown read and an absent column reach the identical fallback value by design; this catch only extends that same convention to the rarer case where the lookup throws instead of returning null.',
   },
@@ -551,6 +565,11 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/plan-delta.ts::longRunIn::max',
   'lib/plan/prescription-parser.ts::parseTempoLeadMi::mi',
   'lib/plan/recompute-paces.ts::recomputePacesForPlan::catch',
+  // PRESCRIPTION-WIRE-1 (2026-08-31) · the maintenance arm's twin of the line
+  // directly above — the same `loadEffectiveMaxHr(...).catch(() => null)`, added
+  // because that arm was FIXED to read the live HR anchors it used to pass as a
+  // literal null. Argued in COERCION_ARGUED, and it fails closed.
+  'lib/plan/reanchor-plan.ts::reanchorMaintenance::catch',
   'lib/plan/seal.ts::isDaySealed::catch',
   'lib/plan/sim-inputs.ts::buildSimPlan::recentWeeklyMi',
   'lib/plan/simulator.ts::simulateActivePlan::catch',

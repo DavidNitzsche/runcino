@@ -34,8 +34,13 @@
  */
 import { describe, it, expect } from 'vitest';
 
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
+
 import {
   resolvePrescription,
+  composePaceAnchors,
+  SHAKEOUT_CEILING_PAD_S_PER_MI,
   marathonPaceFromDurability,
   purposeFromPlanRow,
   paceWindow,
@@ -642,5 +647,151 @@ describe('BRIEF 08 · composeRunnerState', () => {
     for (let i = 1; i < order.length; i++) {
       expect(STATE_DECISION_SEVERITY[order[i]]).toBeGreaterThan(STATE_DECISION_SEVERITY[order[i - 1]]);
     }
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * PRESCRIPTION-WIRE-1 · THE ANCHOR SET, AND THE SHAKEOUT CEILING
+ *
+ * Every assertion below was falsified against the unfixed code before landing
+ * (Rule 18); the specific break is named in each block.
+ *
+ * WHAT THESE CANNOT FAIL ON (Rule 22): they check the ORDER and the RELATIONS
+ * of six numbers, never their magnitude. An anchor set uniformly 90 s/mi too
+ * slow satisfies every one of them. The magnitudes are checked where they can
+ * be — against the owner's real account, in `_recompute_paces.audit.test.ts`.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('2026-08-31 decision · shakeout gets doctrine\'s recovery ceiling, not the easy one', () => {
+  it('the pad is exactly the gap between doctrine\'s easy and recovery rows', () => {
+    // READ FROM THE SOURCE, not asserted against a second hardcoded copy
+    // (Rule 18). `Research/01` §"Hansons pace methodology" states both bands
+    // against one MP anchor: Recovery MP+90-120, Easy MP+60-90. The distance
+    // between their FAST edges is what a shakeout is padded by.
+    const doc = readFileSync(
+      resolvePath(process.cwd(), '..', 'Research', '01-pace-zones-vdot.md'), 'utf8',
+    );
+    const recovery = /\|\s*Recovery\s*\|\s*MP\s*\+\s*(\d+)\s*[–-]\s*\d+\s*sec\/mi/.exec(doc);
+    const easy = /\|\s*Easy\s*\|\s*MP\s*\+\s*(\d+)\s*[–-]\s*\d+\s*sec\/mi/.exec(doc);
+    expect(recovery).toBeTruthy();
+    expect(easy).toBeTruthy();
+    expect(SHAKEOUT_CEILING_PAD_S_PER_MI).toBe(Number(recovery![1]) - Number(easy![1]));
+  });
+
+  it('a shakeout ceiling is meaningfully slower than the same runner\'s easy ceiling', () => {
+    // FALSIFIED against the pre-fix resolver, where `shakeout` fell into the
+    // same branch as `easy` and these two were byte-identical.
+    const cap = ownerCapacity();
+    const easy = call('easy', cap, stateOf('proceed'));
+    const shake = call('shakeout', cap, stateOf('proceed'), 2);
+    expect(easy.shape).toBe('ceiling');
+    expect(shake.shape).toBe('ceiling');
+    expect(shake.ceilingSecPerMi!).toBeCloseTo(easy.ceilingSecPerMi! + SHAKEOUT_CEILING_PAD_S_PER_MI, 6);
+    expect(shake.reasons).toContain('SHAKEOUT_CEILING_IS_THE_RECOVERY_BAND');
+    expect(easy.reasons).not.toContain('SHAKEOUT_CEILING_IS_THE_RECOVERY_BAND');
+  });
+
+  it('a long run shares the easy ceiling exactly — one quantity, one number', () => {
+    const cap = ownerCapacity();
+    const easy = call('easy', cap, stateOf('proceed'));
+    const long = call('long', cap, stateOf('proceed'), 20);
+    expect(long.ceilingSecPerMi).toBe(easy.ceilingSecPerMi);
+    expect(long.reasons).toContain('LONG_IS_EASY_EFFORT');
+  });
+
+  it('the pad is additive, so the two ceilings can never cross (Rule 9)', () => {
+    for (let c = 0.10; c <= 0.90; c += 0.05) {
+      const cap = { ...ownerCapacity(), easyCeiling: easyCeiling(491.694, c, c > 0.5 ? 'direct' : 'inferred') };
+      const easy = call('easy', cap, stateOf('proceed'));
+      const shake = call('shakeout', cap, stateOf('proceed'), 2);
+      expect(shake.ceilingSecPerMi!).toBeGreaterThan(easy.ceilingSecPerMi!);
+    }
+  });
+});
+
+describe('PRESCRIPTION-WIRE-1 · composePaceAnchors', () => {
+  it('resolves the owner\'s six anchors in strictly increasing seconds per mile', () => {
+    const read = composePaceAnchors(deepFreeze(ownerCapacity()));
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    const a = read.anchors;
+    expect(a.repetitionSecPerMi!).toBeLessThan(a.intervalSecPerMi);
+    expect(a.intervalSecPerMi).toBeLessThan(a.thresholdSecPerMi);
+    expect(a.thresholdSecPerMi).toBeLessThan(a.marathonSecPerMi);
+    expect(a.marathonSecPerMi).toBeLessThan(a.easyCeilingSecPerMi);
+    expect(a.easyCeilingSecPerMi).toBeLessThan(a.shakeoutCeilingSecPerMi);
+  });
+
+  it('marathon pace is the DURABILITY derivation, not the flat T+18 offset', () => {
+    // The 2026-08-31 decision, asserted as a number rather than as prose. The
+    // owner's fitted exponent is 1.0869 against a 1.06 population mean, so his
+    // personal number must sit clearly SLOWER than the population offset —
+    // which is the whole reason the decision was to adopt it.
+    const read = composePaceAnchors(deepFreeze(ownerCapacity()));
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    const t = ownerCapacity().threshold.paceSecPerMi;
+    expect(read.anchors.marathonSecPerMi).toBeGreaterThan(t + 18);
+    expect(read.anchors.basis.marathon.personallyEvidenced).toBe(true);
+  });
+
+  it('a runner on the population exponent gets the population answer, and says so', () => {
+    const cap = { ...ownerCapacity(), durability: durability(POPULATION_ENDURANCE_PRIOR, 0.2, false) };
+    const read = composePaceAnchors(deepFreeze(cap));
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.anchors.basis.marathon.personallyEvidenced).toBe(false);
+    expect(read.anchors.basis.marathon.enduranceExponent).toBeCloseTo(POPULATION_ENDURANCE_PRIOR, 6);
+  });
+
+  it('REFUSES an incoherent set rather than clamping it (Rule 11, Constitution §8)', () => {
+    // FALSIFIED by removing the monotonicity loop and watching this pass with
+    // an easy ceiling faster than threshold — a well-formed set that would have
+    // written an easy day faster than a tempo day onto a real plan.
+    const broken = { ...ownerCapacity(), easyCeiling: easyCeiling(300, 0.8) };
+    const read = composePaceAnchors(deepFreeze(broken));
+    expect(read.ok).toBe(false);
+    if (read.ok) return;
+    expect(read.reason).toBe('ANCHORS_NOT_MONOTONE');
+    // And the refusal carries NO anchors field at all, so a caller cannot read
+    // one without branching. This is the type-level half, checked at runtime.
+    expect('anchors' in read).toBe(false);
+  });
+
+  it('an interval capacity SLOWER than threshold is CLAMPED, not refused — and that is correct', () => {
+    // RULE 22 · WHAT THE COHERENCE GATE CANNOT FAIL ON, established by trying
+    // to make it fail and failing. §29's per-prescription contradiction clamps
+    // already bind the interval window's slow edge — and its POINT estimate —
+    // against threshold, so an absurd high-intensity read (600 s/mi, slower
+    // than the runner's own tempo pace) comes back clamped to one second inside
+    // threshold rather than incoherent. The same is true of repetition-vs-
+    // interval and of marathon-vs-easy.
+    //
+    // So the gate is a BACKSTOP over a set the clamps have mostly already made
+    // ordered, not the primary defence. It is kept because "mostly" is doing
+    // real work in that sentence — the clamps are per-prescription and the gate
+    // is over the set, and the one relation no clamp covers is easy-vs-threshold
+    // in the direction the test above exercises.
+    const broken = { ...ownerCapacity(), highIntensity: highIntensity(600, 0.3) };
+    const read = composePaceAnchors(deepFreeze(broken));
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.anchors.intervalSecPerMi).toBeLessThan(read.anchors.thresholdSecPerMi);
+  });
+
+  it('a refusal names which pair broke, so it is actionable', () => {
+    const broken = { ...ownerCapacity(), easyCeiling: easyCeiling(300, 0.8) };
+    const read = composePaceAnchors(deepFreeze(broken));
+    expect(read.ok).toBe(false);
+    if (read.ok) return;
+    expect(read.detail).toMatch(/threshold|marathon|easy ceiling|interval|repetition/);
+    expect(read.detail).toMatch(/\d+ s\/mi/);
+  });
+
+  it('cannot mutate the capacity it was handed (§7, at runtime)', () => {
+    const cap = deepFreeze(ownerCapacity());
+    const before = JSON.stringify(cap);
+    composePaceAnchors(cap);
+    expect(JSON.stringify(cap)).toBe(before);
   });
 });

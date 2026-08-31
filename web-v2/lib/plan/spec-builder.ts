@@ -50,6 +50,11 @@ import { resolveZoneAnchors, zonePaceSec } from './zone-anchors';
 import { aerobicCeilingBpm } from '@/lib/training/zones';
 import { roundTo } from '@/lib/format/run';
 import type { PaceZone } from '@/lib/workout-catalogue/types';
+// TYPE-ONLY. `prescription-resolver.ts` is pure — no pool, no query — so even a
+// value import would be safe here; keeping it type-only means this file's
+// runtime graph is unchanged by PRESCRIPTION-WIRE-1, which is what
+// `check-client-graph.sh` cares about (Rule 19).
+import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 // 2026-08-17 · the stored race abort CALLS doctrine now instead of mirroring
 // its numbers. See the contingency-rules block for what "keep in sync" cost.
 import {
@@ -171,6 +176,55 @@ function strideFields(
  * — slower than threshold, faster than the long-run bulk — else the moderate
  * T+18 default, which is always in-zone. `Research/01`:130-134 zone order.
  */
+/* ── THE POPULATION OFFSETS, AS EXPORTED CONSTANTS ─────────────────────────
+ *
+ * PRESCRIPTION-WIRE-1 (2026-08-31) · these five numbers used to be literals
+ * inside `buildWorkoutSpec`, and four doctrine claims read them by REGEXING
+ * THIS FILE'S SOURCE. That is the fragility Rule 7 names in its own words —
+ * "prefer exporting the constant so the claim can import it" — and it bit on
+ * the first refactor that touched the expressions: four claims failed with
+ * "bound literal not found" while the physiology behind them had not moved a
+ * second.
+ *
+ * They are exported now, so the claims bind a SYMBOL rather than a line of
+ * text, and so they can be read from the one place that states each one.
+ *
+ * WHAT THEY ARE, AND WHAT THEY ARE NOT. Each is a POPULATION default: the
+ * relationship doctrine states between one zone and threshold for a runner we
+ * know nothing else about. They are still exactly right for that job and they
+ * are still what `generate.ts` authors a fresh block from. What they are not is
+ * a reading of a particular runner — which is why `buildWorkoutSpec` prefers a
+ * `PrescribedPaceAnchors` over every one of them when a caller supplies one.
+ */
+
+/** E band's fast edge, off the current-fitness threshold anchor. `Research/01`
+ *  §"Pace conversion from a race time": E = MP + 60-90 s/mi, and M = T + 18. */
+export const EASY_BAND_LO_OFFSET_S = 80;
+/** How wide the E band is. Doctrine states E as a 30 s/mi span (MP+60..MP+90);
+ *  this is that span with the conservative-slow rounding PACE-E-2 argues. */
+export const EASY_BAND_WIDTH_S = 40;
+/** Long-run band's fast edge off the same anchor. `Research/01` §"Hansons pace
+ *  methodology" prices a long run at MP + 30-60 s/mi, i.e. T + 48..T + 78. */
+export const LONG_BAND_LO_OFFSET_S = 55;
+/** How wide the long band is — narrower than E, which is why long keeps its own
+ *  width even after PRESCRIPTION-WIRE-1 gave it the shared easy CEILING. */
+export const LONG_BAND_WIDTH_S = 35;
+/** Recovery pace off the same anchor. `Research/01` §"Hansons pace methodology"
+ *  recovery row: MP + 90-120 s/mi. */
+export const RECOVERY_OFFSET_S = 100;
+/** Marathon pace off threshold. `Research/01` §"Numerical equivalencies" puts M
+ *  ~26 s/mi slower than T in its worked example; 18 is this engine's
+ *  conservative-fast reading of that gap, bound by `PACE.marathon-offset`. */
+export const MARATHON_OFFSET_S = 18;
+/** Interval pace off threshold. Daniels' own I is T-33; 18 is a deliberate
+ *  conservative deviation toward 10-12K pace, bound (and exempted, with its
+ *  argument) by `PACE.interval-offset`. */
+export const INTERVAL_OFFSET_S = 18;
+/** Stride pace off threshold, when no true I-pace is threaded. `Research/04`
+ *  §7.2 "accelerate to mile-to-5K race pace" — Daniels' I = T-33 is the SLOW
+ *  end of that band, so this never over-prescribes. */
+export const STRIDE_OFFSET_S = 33;
+
 export function marathonPaceSPerMi(args: {
   tPaceSec: number;
   /** The current-fitness T anchor (PACE-E-1). Defaults to `tPaceSec`. */
@@ -237,7 +291,7 @@ export function resolveMarathonPace(args: {
     return { paceSPerMi: goal, source: 'goal', refusedGoalPaceSPerMi: null };
   }
   return {
-    paceSPerMi: Math.min(tPaceSec, easyAnchorT) + 18,
+    paceSPerMi: Math.min(tPaceSec, easyAnchorT) + MARATHON_OFFSET_S,
     source: 'current_fitness',
     refusedGoalPaceSPerMi: goal,
   };
@@ -882,6 +936,44 @@ export function buildWorkoutSpec(
    * why it is MODELLED whenever it is not the goal itself.
    */
   prescribedRacePaceSPerMi: number | null = null,
+  /**
+   * PRESCRIPTION-WIRE-1 (2026-08-31) · THE CANONICAL PACES, WHEN THE CALLER HAS
+   * THEM. Every derivation below stops guessing and starts reading.
+   *
+   * Until this argument existed, this file DERIVED five separate physiological
+   * quantities out of one threshold scalar by fixed offsets — easy at T+80,
+   * long at T+55, recovery at T+100, interval at T-18, marathon at T+18, strides
+   * at T-33 — which is the "one formula for every runner" pattern the whole
+   * capacity/prescription layer exists to replace. Those offsets are cited and
+   * they are a reasonable population default; they are not a reading of THIS
+   * runner.
+   *
+   * When `anchors` is supplied, each of those numbers comes instead from the
+   * service that owns it (Constitution §5, §13): threshold and marathon from
+   * `resolveThresholdCapacity` + `resolveDurability`, interval and repetition
+   * from `resolveHighIntensityCapacity`, easy and shakeout from
+   * `resolveEasyCeiling` — all routed through `resolveCapacityPrescription`, so
+   * what lands here is a PRESCRIPTION with its uncertainty already priced in,
+   * not a raw belief.
+   *
+   * NULL — the default, and every authoring caller today — leaves this file
+   * byte-identical. `_spec_builder_anchors.test.ts` asserts that on real
+   * prescriptions rather than asserting it in prose.
+   *
+   * WHAT IT DOES NOT OVERRIDE, on purpose:
+   *   · `goalPaceSPerMi` / `prescribedRacePaceSPerMi`. A race-day target is
+   *     Race Prediction's answer (§J) and reaches the `race` branch as it always
+   *     has. Marathon-PACE TRAINING is a different question and no longer reads
+   *     the goal at all when anchors are supplied — which is the 2026-08-31
+   *     decision to adopt the durability-personalised number, applied.
+   *   · the 3K and 10K columns. Those stay on `resolveZoneAnchors`' published-
+   *     table round trip, now seeded from the canonical threshold. Named rather
+   *     than hidden: they are an honest table fallback, the same status
+   *     high-intensity capacity's own `vdot_fallback` rung carries.
+   *   · anything structural. Reps, distances, warm-ups, rest, fuelling and HR
+   *     are untouched by this argument.
+   */
+  anchors: PrescribedPaceAnchors | null = null,
 ): SpecBuildResult {
   // 2026-06-02 · parse the prescription up front (e.g. "6×800m @ I
   // pace · 90s jog" → {reps:6, repDistanceMi:0.497, restS:90}). When
@@ -980,20 +1072,45 @@ export function buildWorkoutSpec(
   // tPaceSec — otherwise a sub-fitness goal ramps "easy" faster every week (cold-start: easy can pass
   // current MP, a physiological impossibility). Defaults to tPaceSec when unthreaded (byte-identical).
   const easyAnchorT = easyAnchorTSec ?? tPaceSec;
-  const easyLo = easyAnchorT + 80, easyHi = easyAnchorT + 120;
-  const longLo = easyAnchorT + 55, longHi = easyAnchorT + 90;
+  // PRESCRIPTION-WIRE-1 · the BAND WIDTHS are preserved exactly; only the fast
+  // edge moves onto the canonical ceiling. The widths are this engine's own
+  // long-standing expression of `Research/01` §"Pace conversion" (E = MP+60..90,
+  // a 30 s/mi span, widened to 40 here since PACE-E-2), and re-picking them
+  // would be a second coaching change riding along inside a wiring change.
+  //
+  // EASY AND LONG SHARE ONE FAST EDGE when anchors are supplied, and that is a
+  // correction rather than a simplification: the live block paced every long run
+  // at 8:36/mi against an easy band opening at 9:02, i.e. a long run prescribed
+  // FASTER than an easy day. `spec-builder` already states the doctrine in its
+  // own words for the HR cap — "LONG IS EASY EFFORT, just more volume" — and
+  // Rule 16 says one quantity gets one number. Long keeps its own, narrower
+  // band WIDTH, because a long run genuinely does sit in a tighter range than a
+  // recovery-to-aerobic easy day; it no longer gets a faster CEILING.
+  const easyLo = anchors ? anchors.easyCeilingSecPerMi : easyAnchorT + EASY_BAND_LO_OFFSET_S;
+  const easyHi = easyLo + EASY_BAND_WIDTH_S;
+  const longLo = anchors ? anchors.easyCeilingSecPerMi : easyAnchorT + LONG_BAND_LO_OFFSET_S;
+  const longHi = longLo + LONG_BAND_WIDTH_S;
   // PACE-T-1 (2026-06-23, David approved) · a "continuous tempo" is run AT threshold (Research/04:159,
   // 164,169 · "Continuous tempo | T"). The old +12 was the SEPARATE sub-threshold band (Research/04:14,
   // 161) shipped under a threshold label + family — the runner saw a threshold-effort label over a
   // pace ~12 s/mi easy. Now the headline tempo pace == T.
-  const tempo  = tPaceSec;
+  // PRESCRIPTION-WIRE-1 · with anchors the caller has ALREADY passed the
+  // canonical threshold in as `tPaceSec` (see `recomputePacesForPlan`), so this
+  // reads the same number either way. Written explicitly so the two can never
+  // silently diverge if a future caller threads one without the other.
+  const tempo  = anchors ? anchors.thresholdSecPerMi : tPaceSec;
   // Daniels I = T−33 (95-100% VO2max, ~3K-5K pace). T−18 is a deliberate
   // conservative deviation: ~10-12K pace, yielding more sub-VO2max ceiling work
   // rather than true VO2max intervals. Appropriate for a 40-50 mpw runner who
   // cannot absorb full Daniels I volume without injury risk. Cite: Research/01 §Daniels-I.
-  const interval = tPaceSec - 18;
-  const recovery = easyAnchorT + 100;   // very easy · PACE-E-1 · current-fitness anchor
-  const mp = tPaceSec + 18;             // marathon pace
+  // PRESCRIPTION-WIRE-1 · high-intensity capacity owns this question
+  // (Constitution §C). The T-18 offset stays as the no-anchor fallback and
+  // keeps its argument below.
+  const interval = anchors ? anchors.intervalSecPerMi : tPaceSec - INTERVAL_OFFSET_S;
+  // PRESCRIPTION-WIRE-1 · a recovery day is doctrine's RECOVERY band, which is
+  // the same band a shakeout runs in (`Research/04` §1 · "Recovery shakeout").
+  // One number for both, per Rule 16.
+  const recovery = anchors ? anchors.shakeoutCeilingSecPerMi : easyAnchorT + RECOVERY_OFFSET_S;
   /**
    * DOCTRINE-TAPERMP-1 (2026-08-17) · THE marathon-pace expression, in one
    * place. The long-run M-finish and the taper's MP session are the same
@@ -1005,13 +1122,33 @@ export function buildWorkoutSpec(
    * when goal MP genuinely sits in the marathon zone — slower than threshold,
    * faster than the long-run bulk — else the moderate T+18 default, which is
    * always in-zone. Research/01:130-134 zone order.
+   *
+   * PRESCRIPTION-WIRE-1 (2026-08-31) · WITH ANCHORS, NEITHER OF THOSE TWO
+   * BRANCHES RUNS, and that is the 2026-08-31 product decision applied verbatim:
+   * "adopt the new, personally-evidenced number ... no A/B toggle, no fallback
+   * to the old number." The anchor is `marathonPaceFromDurability` — threshold
+   * capacity carried out to 26.2 through the runner's OWN fitted Riegel
+   * exponent — which supersedes both the flat T+18 population offset and the
+   * goal-pace branch:
+   *
+   *   · the T+18 offset is "one formula for every runner", the pattern this
+   *     whole layer replaces;
+   *   · the goal branch is the goal reaching a TRAINING pace, which Constitution
+   *     §G forbids outright ("goal ≠ current training capacity") and which the
+   *     standing rule states as "paces come from evidence, the goal never
+   *     distorts training." A race-day target still reads the goal, in the
+   *     `race` branch, where it belongs.
    */
-  const marathonPace = marathonPaceSPerMi({ tPaceSec, easyAnchorTSec: easyAnchorT, goalPaceSPerMi });
+  const marathonPace = anchors
+    ? anchors.marathonSecPerMi
+    : marathonPaceSPerMi({ tPaceSec, easyAnchorTSec: easyAnchorT, goalPaceSPerMi });
   // DOCTRINE-STRIDES-1 · Research/04 §7.2 "Accelerate to mile-to-5K race pace".
   // True I-pace when the caller threaded one; else Daniels' I = T−33 (the same
   // relation the intervals branch documents below). 5K pace is the SLOW end of
   // doctrine's band, so this never over-prescribes.
-  const stridePace = iPaceSec ?? (tPaceSec - 33);
+  // PRESCRIPTION-WIRE-1 · same owner as the interval anchor above, because it is
+  // the same question — §7.2's "mile-to-5K race pace" is high-intensity capacity.
+  const stridePace = anchors ? anchors.intervalSecPerMi : (iPaceSec ?? (tPaceSec - STRIDE_OFFSET_S));
   const strides = strideFields(prescription, stridePace);
 
   /* ── ZONE-R-1 (2026-08-19) · pace the session by the zone it DECLARES ──────
@@ -1036,12 +1173,20 @@ export function buildWorkoutSpec(
    * at all resolves to null and the branch default stands.
    */
   const zoneAnchors = resolveZoneAnchors({
-    tPaceSec,
+    // PRESCRIPTION-WIRE-1 · with anchors this IS `tPaceSec`, because the caller
+    // passes the canonical threshold in both places. Stated as the anchor so a
+    // caller that threads only one of the two cannot produce a zone table
+    // priced off a different threshold than the tempo block beside it.
+    tPaceSec: anchors ? anchors.thresholdSecPerMi : tPaceSec,
     // The rep pace this file has always used: the true Daniels I when the
     // caller threaded one, else the legacy cruise-interval offset the intervals
-    // branch documents below.
-    iPaceSec: iPaceSec ?? interval,
+    // branch documents below. With anchors, high-intensity capacity's own I.
+    iPaceSec: anchors ? anchors.intervalSecPerMi : (iPaceSec ?? interval),
     marathonPaceSec: marathonPace,
+    // ZONE-R-CANON · R and mile off the capacity that owns them, when known.
+    // Null keeps the published-table round trip, which is what every authoring
+    // caller still gets.
+    repetitionPaceSec: anchors?.repetitionSecPerMi ?? null,
   });
   const declaredZone = primaryZone(prescription);
   const declaredPace = zonePaceSec(declaredZone as PaceZone | null, zoneAnchors);
@@ -1094,10 +1239,24 @@ export function buildWorkoutSpec(
       // `expandSpecToPhases` walks the list; the watch receives flat phases
       // exactly as it always has. Wire-compatible, the finish_mi move itself.
       const longSegments = extractLongSegments(prescription);
+      // PRESCRIPTION-WIRE-1 · ONE CALL PER SEGMENT, off the canonical anchors.
+      // The shadow report named this as a mechanical gap — "3.5mi @ M + 1mi @ E
+      // + 2mi @ M" is one row with three stimuli and was being priced from its
+      // headline one. It is not a gap in the STRUCTURE (this list and
+      // `segmentSpec` have always walked segments individually); it was a gap in
+      // the INPUTS, which came off a single VDOT-derived scalar. Each tag now
+      // resolves through the owner of its own zone.
+      //
+      // `Math.min` against the easy anchor is retained in the no-anchor arm
+      // because that is BRK-1's soft-goal guard. With anchors there is no
+      // goal-blended threshold left to guard against — `anchors.thresholdSecPerMi`
+      // IS current capacity — so the min would be a no-op comparing a number
+      // with itself.
+      const segAnchorT = anchors ? anchors.thresholdSecPerMi : Math.min(tPaceSec, easyAnchorT);
       const segPace = (tag: 'HM' | 'M' | 'T'): number =>
         tag === 'M' ? marathonPace
-        : tag === 'HM' ? Math.min(tPaceSec, easyAnchorT) + 5
-        : Math.min(tPaceSec, easyAnchorT);
+        : tag === 'HM' ? segAnchorT + 5
+        : segAnchorT;
       const segmentFields = longSegments.length >= 2
         ? {
             finish_segments: longSegments.map((s) => ({
@@ -1129,9 +1288,10 @@ export function buildWorkoutSpec(
             // DOCTRINE-TAPERMP-1 · the M arm now reads the shared `marathonPace`
             // expression above (byte-identical to the inline one it replaces) so
             // the taper's MP session cannot drift from the long-run M-finish.
-            finish_pace_s_per_mi: finish.tag === 'HM'
-              ? Math.min(tPaceSec, easyAnchorT) + 5
-              : marathonPace,
+            // PRESCRIPTION-WIRE-1 · `segAnchorT` is the same expression the
+            // segment list above uses, so a single-finish long and a segmented
+            // one can never price the same tag differently (Rule 16).
+            finish_pace_s_per_mi: finish.tag === 'HM' ? segAnchorT + 5 : marathonPace,
             finish_label: finish.tag,
           }
         : {};
@@ -1418,11 +1578,19 @@ export function buildWorkoutSpec(
       };
     }
     case 'shakeout':
+      // PRESCRIPTION-WIRE-1 · the RULE is unchanged and the ANCHOR moves. This
+      // branch has always opened the shakeout band where the easy band closes,
+      // which is `Research/01` §"Hansons pace methodology"'s recovery row
+      // beginning where its easy row ends. `SHAKEOUT_CEILING_PAD_S_PER_MI`
+      // states that same 30 s/mi step against the CANONICAL easy ceiling, so a
+      // shakeout is now priced off the runner's own measured easy running
+      // rather than off a threshold-derived offset — and it stops being an
+      // alias for a general easy day, per the 2026-08-31 decision.
       return {
         spec: {
           kind: 'easy',
-          pace_target_s_per_mi_lo: easyHi,
-          pace_target_s_per_mi_hi: easyHi + 30,
+          pace_target_s_per_mi_lo: anchors ? anchors.shakeoutCeilingSecPerMi : easyHi,
+          pace_target_s_per_mi_hi: (anchors ? anchors.shakeoutCeilingSecPerMi : easyHi) + 30,
           hr_cap_bpm: hrCapEasy(lthr, maxHr),
           fuel_mi: [],
           // Research/08's race-week templates and Research/04 §17.3's pre-race

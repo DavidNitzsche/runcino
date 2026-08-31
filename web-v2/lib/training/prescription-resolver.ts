@@ -60,15 +60,28 @@
  * on `PrescriptionArgs` as an explicit narrow field supplied by plan
  * generation — never as this service reaching for goal data.
  *
- * ── WHAT THIS PHASE DELIBERATELY DOES NOT DO (§21) ──────────────────────────
+ * ── WHAT IS WIRED, AND WHAT IS NOT (§21) ────────────────────────────────────
  *
- * NOT WIRED. `generate.ts`, `spec-builder.ts`, `recompute-paces.ts`,
- * `reanchor-plan.ts`, `zone-anchors.ts` and `catalogue-rx.ts` are untouched and
- * still derive every prescribed pace the old way. This is §21's shadow-mode
- * step: `_prescription_resolver.audit.test.ts` runs this resolver against the
- * owner's real live plan and prints the disagreements. Promotion is the next
- * phase, and §21 is explicit that disagreement alone is evidence for neither
- * side.
+ * WIRED, 2026-08-31, ON THE FLEX PATH ONLY. `composePaceAnchors` (section 8)
+ * turns a resolved capacity into the six anchors a plan row can be priced at,
+ * and `lib/training/load-prescription-anchors.ts` is its DB shell.
+ * `lib/plan/recompute-paces.ts` and `lib/plan/reanchor-plan.ts` — the mechanism
+ * that rewrites pace and distance on a LIVE block's unrun weeks — call it and
+ * no longer call the VDOT cascade at all. That is the axis the 2026-08-30
+ * decision reserves for adaptation: "layout, session types, dates, phases and
+ * taper are FIXED once authored; pace and distance flex on the weeks not yet
+ * run."
+ *
+ * STILL NOT WIRED: `generate.ts`'s full-block authoring path. A brand-new block
+ * is still composed off the old cascade, and it is scoped as its own pass for
+ * the same reason this one was scoped separately from the capacity layer. That
+ * is a MIGRATION, not a second truth (Constitution §8): the flex runs daily and
+ * is the LAST writer on every unrun day, so a block authored on the old numbers
+ * converges onto these ones and no surface ever shows two answers at once.
+ *
+ * `_prescription_resolver.audit.test.ts` remains the shadow-mode report and is
+ * still read-only — it is now the before/after record for this promotion rather
+ * than a proposal for it.
  *
  * ── RULE 22 · WHAT THIS CANNOT FAIL ON ─────────────────────────────────────
  *
@@ -319,6 +332,54 @@ export const ZONE_TOLERANCE_S_PER_MI: Readonly<Record<
 export const WIDEST_STATED_TOLERANCE_S = 30;
 
 /**
+ * How much slower than the general easy ceiling a SHAKEOUT may be run, s/mi.
+ *
+ * THE 2026-08-31 PRODUCT DECISION, PRICED. That decision settled the shape —
+ * "shakeout is its own purpose with its own, deliberately tighter ceiling
+ * (padded meaningfully slower than the general easy ceiling), not an alias for
+ * `easy`" — and deferred the number to this phase, on the grounds that "no
+ * doctrine source prices this distance to a number."
+ *
+ * It turns out one does, and the number is READ rather than chosen (Rule 18:
+ * read numbers out of the cited source, never hardcode both sides of a claim).
+ *
+ *   · `Research/04-workout-vocabulary.md` §1's Variations row names the session:
+ *     "Recovery shakeout (15-20 min)". A shakeout is a RECOVERY run in this
+ *     corpus's own vocabulary, not an easy run — §1's Pace row says "Slower than
+ *     E ... or 'easier than easy'".
+ *   · `Research/01-pace-zones-vdot.md` §"Hansons pace methodology" prices both
+ *     bands against one shared frame, two adjacent rows of one table:
+ *
+ *         | Recovery | MP + 90-120 sec/mi | Minimum allowable easy pace |
+ *         | Easy     | MP + 60-90  sec/mi | Routine mileage             |
+ *
+ *     The recovery band BEGINS where the easy band ENDS. Both fast edges are
+ *     stated against the same MP anchor, so the distance between them is
+ *     90 - 60 = 30 s/mi, and it is a difference of two doctrine cells rather
+ *     than a preference.
+ *
+ * `DOCTRINE.shakeout-ceiling-is-the-recovery-band` parses those two rows out of
+ * the file at run time and asserts this constant equals their difference, so
+ * editing either row moves the engine or fails the build.
+ *
+ * WHY THIS IS THE SAFE DIRECTION. The shakeout sits on the days closest to a
+ * race, where the point of the session is staying loose without spending
+ * anything. A ceiling 30 s/mi slower than the ordinary easy ceiling is a real
+ * guard rail on exactly those days, and it is the direction the shadow-mode
+ * report flagged as the single largest divergence when shakeout was routed
+ * through the shared easy ceiling. It remains a CEILING — slower is always
+ * fine — so it can never ask a runner for more than an easy day does.
+ *
+ * NOTE THIS IS ALSO WHAT THE ENGINE ALREADY DID, one anchor over.
+ * `spec-builder.ts`'s `shakeout` branch has always set the band's fast edge to
+ * `easyHi` — the SLOW edge of the easy band, which is the same "the recovery
+ * band starts where easy ends" rule. What changes here is only WHERE that rule
+ * is anchored: on the canonical easy ceiling rather than on a VDOT-derived
+ * offset from a threshold pace.
+ */
+export const SHAKEOUT_CEILING_PAD_S_PER_MI = 30;
+
+/**
  * The uncertainty a value one inference removed from its evidence carries, as a
  * percentage of the value.
  *
@@ -549,6 +610,7 @@ export type PrescriptionReasonCode =
   // ── which capacity answered ──
   | 'EASY_CEILING_FROM_CAPACITY'
   | 'LONG_IS_EASY_EFFORT'
+  | 'SHAKEOUT_CEILING_IS_THE_RECOVERY_BAND'
   | 'THRESHOLD_FROM_CAPACITY'
   | 'INTERVAL_FROM_HIGH_INTENSITY_CAPACITY'
   | 'REPETITION_FROM_HIGH_INTENSITY_CAPACITY'
@@ -707,12 +769,36 @@ export interface PrescriptionArgs {
  * number, because that number is finished before state is consulted.
  */
 export function resolvePrescription(args: PrescriptionArgs): WorkoutPrescription {
-  const base = prescribeFromCapacity(args);
+  const base = resolveCapacityPrescription(args);
   return applyState(base, args);
 }
 
-/** Step 1 · the capacity-derived prescription, before state is consulted. */
-function prescribeFromCapacity(args: PrescriptionArgs): WorkoutPrescription {
+/**
+ * The fields a CAPACITY-ONLY prescription request may carry. `state` is absent
+ * by construction, which is the whole point — see `resolveCapacityPrescription`.
+ */
+export type CapacityPrescriptionArgs = Omit<PrescriptionArgs, 'state'>;
+
+/**
+ * Step 1, ON ITS OWN · the capacity-derived prescription, before state is
+ * consulted. Exported because a caller that is NOT asking about today has a
+ * legitimate need for it, and faking a `proceed` state to reach it would be a
+ * lie in the shape of an argument.
+ *
+ * THE CALLER THIS EXISTS FOR is the plan's pace flex
+ * (`lib/plan/recompute-paces.ts`), which rewrites every unrun day in a
+ * fourteen-week block. Readiness answers "what is appropriate for this runner
+ * TODAY" (§D of the Brain Constitution, and doctrine's hard rule "tired ≠ less
+ * fit"); writing this morning's readiness into November's rows would apply a
+ * one-day fact to a whole season, which is the category error §D exists to
+ * prevent. So the flex reads CAPACITY and nothing else, and the day's readiness
+ * modifies the day's ask at the point the day is actually served.
+ *
+ * ONE IMPLEMENTATION, not a copy: `resolvePrescription` is this function plus
+ * `applyState`, so a capacity-only prescription and a state-adjusted one can
+ * never disagree about the capacity half (Rule 16).
+ */
+export function resolveCapacityPrescription(args: CapacityPrescriptionArgs): WorkoutPrescription {
   const { capacity, purpose } = args;
   const plannedMi = args.plannedMi ?? null;
 
@@ -978,6 +1064,12 @@ function shell(
  * doctrine's own widest stated window (`WIDEST_STATED_TOLERANCE_S`, the E row's
  * ±30 s/mi) at the bottom of the scale, linearly, so it is continuous and
  * monotone (Rule 9, §30).
+ *
+ * SHAKEOUT IS THE ONE THAT DOES NOT SHARE THE NUMBER, and it is a purpose
+ * rather than a special case: `SHAKEOUT_CEILING_PAD_S_PER_MI` moves it onto
+ * doctrine's RECOVERY band, which `Research/04` §1 says a shakeout belongs to.
+ * The pad is additive and constant, so the shakeout ceiling is a monotone
+ * function of the easy ceiling and can never cross it (Rule 9).
  */
 function easyPrescription(
   purpose: WorkoutPurpose,
@@ -985,10 +1077,12 @@ function easyPrescription(
   plannedMi: number | null,
 ): WorkoutPrescription {
   const uncertainty = 1 - confidencePosition(easy.confidence);
-  const ceiling = easy.ceilingSecPerMi + WIDEST_STATED_TOLERANCE_S * uncertainty;
+  const pad = purpose === 'shakeout' ? SHAKEOUT_CEILING_PAD_S_PER_MI : 0;
+  const ceiling = easy.ceilingSecPerMi + pad + WIDEST_STATED_TOLERANCE_S * uncertainty;
 
   const reasons: PrescriptionReasonCode[] = ['EASY_CEILING_FROM_CAPACITY'];
   if (purpose === 'long') reasons.push('LONG_IS_EASY_EFFORT');
+  if (purpose === 'shakeout') reasons.push('SHAKEOUT_CEILING_IS_THE_RECOVERY_BAND');
   reasons.push(evidenceReason(easy.sourceMode));
 
   return {
@@ -1257,7 +1351,215 @@ function applyState(base: WorkoutPrescription, args: PrescriptionArgs): WorkoutP
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 8 · THE COMPILE-TIME ASSERTIONS (§7, §10)
+ * 8 · THE ANCHOR SET — one prescription per zone, for a whole block
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Every pace a plan row can be priced at, resolved ONCE per block.
+ *
+ * WHY A SET AND NOT N CALLS AT THE ROW. `lib/plan/zone-anchors.ts` already owns
+ * "what is this zone worth" — the twelve-row table out of `Research/04`
+ * §"Pace zone shorthand" — and `spec-builder.ts` already prices every segment
+ * of every session through it. What that table was missing was not structure
+ * but INPUTS: it was fed a VDOT-derived threshold scalar and derived everything
+ * else off offsets from it. This shape is those inputs, resolved through the
+ * canonical owners, so the zone table stays the one answer to its own question
+ * and stops being the place physiology gets invented (Constitution §5, §13).
+ *
+ * IT IS A PRESCRIPTION, NOT A CAPACITY. Every field is the output of
+ * `resolveCapacityPrescription`, which means each carries whatever widening,
+ * clamping and uncertainty slack its own capacity earned. A caller that wants
+ * the raw belief calls `capacity-resolver.ts`; a caller that wants what to ask
+ * of the runner calls this (Constitution §C vs §G).
+ *
+ * NO GOAL, ANYWHERE IN IT. The set is composed from `ResolvedCapacity` alone,
+ * and `PrescriptionArgs` is compile-time sealed against goal data (section 9).
+ * A race-day target still reads the runner's stated goal, and it reaches the
+ * row through `buildWorkoutSpec`'s own `goalPaceSPerMi` /
+ * `prescribedRacePaceSPerMi` arguments — Race Prediction's question, answered by
+ * Race Prediction (§J), never smuggled in here.
+ */
+export interface PrescribedPaceAnchors {
+  /** T and HM zones, continuous tempo blocks. */
+  thresholdSecPerMi: number;
+  /** I and 5K zones, strides. */
+  intervalSecPerMi: number;
+  /** R and mile zones. NULL when the high-intensity ladder cannot price a
+   *  mile-column pace at all (Rule 11 — a caller must branch, never read a
+   *  substituted I-pace). */
+  repetitionSecPerMi: number | null;
+  /** The fast edge of every easy, long and general-aerobic prescription.
+   *  ONE number for easy and long: long is easy effort with more volume. */
+  easyCeilingSecPerMi: number;
+  /** The fast edge of a shakeout or recovery day — doctrine's recovery band,
+   *  `SHAKEOUT_CEILING_PAD_S_PER_MI` slower than the easy ceiling. */
+  shakeoutCeilingSecPerMi: number;
+  /** M and MP zones, and a long run's marathon-pace finish. Derived from
+   *  threshold capacity through the runner's OWN endurance exponent. */
+  marathonSecPerMi: number;
+  /** Provenance, for the audit stamp and for a surface that has to say how
+   *  well each number is known. Never re-derived downstream (§17). */
+  basis: {
+    threshold: {
+      sourceMode: SourceMode;
+      confidence: number;
+      /**
+       * The threshold capacity's DERIVED VDOT, carried through unchanged.
+       *
+       * DERIVED DISPLAY, NOT A SOURCE — `ThresholdCapacityEstimate.vdot` is
+       * `vdotFromTpace` of an already-resolved pace, and it is here for the one
+       * consumer that legitimately still speaks VDOT: `achievableRaceTarget`,
+       * which is Race Prediction's own input (Constitution §J). Carrying it
+       * rather than letting that caller re-derive one is Rule 16 — the race
+       * target and the block's paces must be read off the same fitness.
+       *
+       * Null for a runner outside the table's [30,85] range, which is a real
+       * answer and not a failure (Rule 11).
+       */
+      vdot: number | null;
+    };
+    highIntensity: { sourceMode: SourceMode; confidence: number };
+    easyCeiling: { sourceMode: SourceMode; confidence: number };
+    marathon: {
+      sourceMode: SourceMode;
+      confidence: number;
+      enduranceExponent: number;
+      personallyEvidenced: boolean;
+    };
+  };
+}
+
+/** Why an anchor set was refused. Structured, never prose (§27). */
+export type PaceAnchorRefusal =
+  | 'ANCHORS_NOT_MONOTONE'
+  | 'ANCHOR_NOT_FINITE';
+
+/**
+ * Rule 11 as a type. The refusal branch carries NO `anchors` field, so
+ * `read.anchors` does not compile until the caller has branched — the same
+ * device `NormalReading<T>` uses, and for the same reason: a caller that
+ * silently fell back to the old VDOT cascade on a refusal would reintroduce
+ * exactly the second truth Constitution §8 forbids.
+ */
+export type PaceAnchorRead =
+  | { ok: true; anchors: PrescribedPaceAnchors }
+  | { ok: false; reason: PaceAnchorRefusal; detail: string };
+
+/**
+ * Pure · the six anchors, composed from one resolved capacity.
+ *
+ * ── THE COHERENCE GATE, AND WHY IT REFUSES RATHER THAN CLAMPS ──────────────
+ *
+ * `Research/01` §"Pace conversion from a race time" states the zone ORDER, and
+ * the ordering is the one thing about this set that is not a matter of degree:
+ * a plan in which an easy day is prescribed faster than a threshold day is not
+ * a conservative plan or an aggressive one, it is an incoherent one. Every
+ * individual number here can be defensible while the SET is nonsense — which is
+ * precisely the internally-consistent-but-wrong shape Rule 10's guards are blind
+ * to by construction.
+ *
+ * So the set is checked as a set, and a violation REFUSES. It does not clamp,
+ * because a clamp would hand the plan a well-formed set assembled out of a
+ * contradiction and nothing downstream would ever know; and it does not fall
+ * back, because falling back to the old cascade is the "sometimes old, sometimes
+ * new" failure Constitution §8 names. A refusal leaves the plan exactly as it
+ * was — which is a safe, inspectable state — and says why.
+ */
+export function composePaceAnchors(capacity: Immutable<ResolvedCapacity>): PaceAnchorRead {
+  const rx = (purpose: WorkoutPurpose): WorkoutPrescription =>
+    resolveCapacityPrescription({ capacity, purpose });
+
+  const threshold = rx('threshold');
+  const interval = rx('interval');
+  const repetition = rx('repetition');
+  const easy = rx('easy');
+  const shakeout = rx('shakeout');
+  const marathon = rx('marathon_specific');
+
+  const mp = marathonPaceFromDurability({
+    thresholdPaceSecPerMi: capacity.threshold.paceSecPerMi,
+    durability: capacity.durability,
+  });
+
+  // A `window` prescription reports its centre; a `ceiling` reports its
+  // ceiling; `effort` reports neither, and that is Rule 11's third state — the
+  // number is genuinely unknown and must not be filled in.
+  const point = (p: WorkoutPrescription): number | null =>
+    p.shape === 'ceiling' ? p.ceilingSecPerMi : (p.shape === 'window' ? p.paceSecPerMi : null);
+
+  const anchors: PrescribedPaceAnchors = {
+    thresholdSecPerMi: Math.round(point(threshold) ?? capacity.threshold.paceSecPerMi),
+    intervalSecPerMi: Math.round(point(interval) ?? capacity.highIntensity.intervalPaceSecPerMi),
+    repetitionSecPerMi: point(repetition) != null ? Math.round(point(repetition)!) : null,
+    easyCeilingSecPerMi: Math.round(point(easy) ?? capacity.easyCeiling.ceilingSecPerMi),
+    shakeoutCeilingSecPerMi: Math.round(
+      point(shakeout) ?? capacity.easyCeiling.ceilingSecPerMi + SHAKEOUT_CEILING_PAD_S_PER_MI,
+    ),
+    marathonSecPerMi: Math.round(point(marathon) ?? mp.paceSecPerMi),
+    basis: {
+      threshold: {
+        sourceMode: capacity.threshold.sourceMode,
+        confidence: capacity.threshold.confidence,
+        vdot: capacity.threshold.vdot,
+      },
+      highIntensity: {
+        sourceMode: capacity.highIntensity.sourceMode,
+        confidence: capacity.highIntensity.confidence,
+      },
+      easyCeiling: {
+        sourceMode: capacity.easyCeiling.sourceMode,
+        confidence: capacity.easyCeiling.confidence,
+      },
+      marathon: {
+        sourceMode: weakerSourceMode(capacity.threshold.sourceMode, capacity.durability.sourceMode),
+        confidence: Math.min(capacity.threshold.confidence, capacity.durability.confidence),
+        enduranceExponent: mp.enduranceExponent,
+        personallyEvidenced: mp.personallyEvidenced,
+      },
+    },
+  };
+
+  const finite = [
+    ['threshold', anchors.thresholdSecPerMi],
+    ['interval', anchors.intervalSecPerMi],
+    ['easyCeiling', anchors.easyCeilingSecPerMi],
+    ['shakeoutCeiling', anchors.shakeoutCeilingSecPerMi],
+    ['marathon', anchors.marathonSecPerMi],
+  ] as const;
+  for (const [name, v] of finite) {
+    if (!Number.isFinite(v) || v <= 0) {
+      return { ok: false, reason: 'ANCHOR_NOT_FINITE', detail: `${name} = ${v}` };
+    }
+  }
+  if (anchors.repetitionSecPerMi != null
+    && (!Number.isFinite(anchors.repetitionSecPerMi) || anchors.repetitionSecPerMi <= 0)) {
+    return { ok: false, reason: 'ANCHOR_NOT_FINITE', detail: `repetition = ${anchors.repetitionSecPerMi}` };
+  }
+
+  // Strictly increasing seconds per mile is strictly decreasing speed:
+  // R faster than I faster than T slower-than-which nothing easy may be run.
+  const order: Array<[string, number]> = [];
+  if (anchors.repetitionSecPerMi != null) order.push(['repetition', anchors.repetitionSecPerMi]);
+  order.push(['interval', anchors.intervalSecPerMi]);
+  order.push(['threshold', anchors.thresholdSecPerMi]);
+  order.push(['marathon', anchors.marathonSecPerMi]);
+  order.push(['easy ceiling', anchors.easyCeilingSecPerMi]);
+  order.push(['shakeout ceiling', anchors.shakeoutCeilingSecPerMi]);
+  for (let i = 1; i < order.length; i++) {
+    if (!(order[i][1] > order[i - 1][1])) {
+      return {
+        ok: false,
+        reason: 'ANCHORS_NOT_MONOTONE',
+        detail: `${order[i - 1][0]} ${order[i - 1][1]} s/mi is not faster than ${order[i][0]} ${order[i][1]} s/mi`,
+      };
+    }
+  }
+
+  return { ok: true, anchors };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 9 · THE COMPILE-TIME ASSERTIONS (§7, §10)
  *
  * Placed at the bottom so they reference the real declarations above.
  *
@@ -1285,6 +1587,15 @@ type _NoGoalInArgs = AssertTrue<
   Equals<keyof PrescriptionArgs, 'capacity' | 'state' | 'purpose' | 'plannedMi'>
 >;
 
+/** The capacity-only entry point carries the same fields MINUS state, and no
+ *  others. `composePaceAnchors` — the seam the live plan flex now calls — goes
+ *  through it, so the same goal seal covers the wired path. Adding a goal field
+ *  to either shape fails here. */
+type _CapacityArgsAreSealed = AssertTrue<
+  Equals<keyof CapacityPrescriptionArgs, 'capacity' | 'purpose' | 'plannedMi'>
+>;
+
 /** Exported so the assertions above are not dead code an unused-locals lint
  *  could delete along with the guarantees they carry. */
-export type PrescriptionArgsAreSealed = _CapacityIsImmutable & _NoGoalInArgs;
+export type PrescriptionArgsAreSealed =
+  _CapacityIsImmutable & _NoGoalInArgs & _CapacityArgsAreSealed;

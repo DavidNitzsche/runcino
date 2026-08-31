@@ -29,26 +29,80 @@
  *
  *   2. AUTHORING-ONLY PACES · weekly pace rows were derivable only inside
  *      composePlan. recomputePacesForPlan() re-derives every FUTURE,
- *      UNSEALED workout's pace_target_s_per_mi + workout_spec from a
- *      stated VDOT using the SAME buildWorkoutSpec call shape persistPlan
- *      uses, so an adaptation-time recompute and a fresh authoring at the
- *      same VDOT converge. Sealed/completed days are immutable (Rule 15 ·
- *      same guard predicate as adapt.ts filterUnsealedWorkouts).
+ *      UNSEALED workout's pace_target_s_per_mi + workout_spec using the SAME
+ *      buildWorkoutSpec call shape persistPlan uses. Sealed/completed days are
+ *      immutable (Rule 15 · same guard predicate as adapt.ts
+ *      filterUnsealedWorkouts).
  *      Cite: Research/01 §Recalibrate-Paces ("update VDOT and re-derive
  *      zones when a new measured signal lands").
+ *
+ * ── PRESCRIPTION-WIRE-1 (2026-08-31) · THIS IS NOW THE PACE PRESCRIPTION
+ *    LAYER'S LIVE PATH, AND IT NO LONGER SPEAKS VDOT ─────────────────────────
+ *
+ * The 2026-08-30 decision settled what a block may change once authored: "the
+ * whole block should be built but week to week there can be shifts in pace or
+ * distance as needed" — layout, session types, dates, phases and taper FIXED;
+ * pace and distance flexing on the weeks not yet run. This function is the pace
+ * half of that mechanism, which makes it the one place a live plan's numbers can
+ * be brought onto the canonical brain without re-authoring anything.
+ *
+ * So it is: every pace this function writes now comes from
+ * `resolvePrescribedPaceAnchors` — the four capacity resolvers, through
+ * `resolveCapacityPrescription` — and NOT ONE comes from the VDOT cascade. What
+ * left with the cascade, and why each departure is the doctrine rather than a
+ * simplification:
+ *
+ *   · `tPaceFromVdot(vdotNow)` as the threshold anchor → `resolveThresholdCapacity`.
+ *     Constitution §5: one canonical resolver per derived value. VDOT survives
+ *     UNDERNEATH it, as that resolver's own fourth rung, which is exactly the
+ *     "VDOT becomes the fallback rather than the source every number passes
+ *     through" call from 2026-08-31.
+ *   · THE GOAL BLEND — `tPaceFromGoal`, `maxSeasonalVdotGain`, `goalVdot`,
+ *     `measuredProgressFraction`, `blendedTPaceForWeek` — is GONE from this
+ *     path entirely. Not softened: gone. Constitution §G's hard rule is
+ *     "goal ≠ current training capacity", the standing constraint is "paces come
+ *     from evidence, the goal never distorts training", and a per-week ramp from
+ *     current fitness toward a goal-derived ceiling is that distortion in its
+ *     purest form. The five functions remain exported because `generate.ts`'s
+ *     authoring path still calls them and is a separately-scoped migration; this
+ *     path does not.
+ *   · `iPaceFromVdot(vdotFromTpace(t))`, and the `goalIPaceEligible` gate that
+ *     decided whether a runner got a true I-pace based on WHAT RACE THEY HAD
+ *     ENTERED → `resolveHighIntensityCapacity`, unconditionally. That gate was a
+ *     goal reaching an interval pace, and Constitution §7 names it: "no
+ *     feature-specific overrides."
+ *   · The flat `T + 18` marathon offset and its goal-pace branch →
+ *     `marathonPaceFromDurability`, the runner's own fitted Riegel exponent.
+ *     The 2026-08-31 decision, verbatim: "adopt the new, personally-evidenced
+ *     number ... no A/B toggle, no fallback to the old number."
+ *   · The easy/long/recovery band, derived from a threshold offset →
+ *     `resolveEasyCeiling`. And `shakeout` leaves `RECOMPUTE_EXEMPT_TYPES`,
+ *     because it does carry a pace band and it now gets doctrine's RECOVERY
+ *     ceiling rather than a general easy one.
+ *
+ * WHAT `vdotNow` IS STILL FOR. It is no longer a pace source and nothing below
+ * derives a prescription from it. It remains the caller's statement that
+ * evidence moved — the reason this function was called at all — it still feeds
+ * `achievableRaceTarget` (Race Prediction's own input, §J), and it is recorded
+ * in the audit stamp so the next reader can tell which measurement occasioned a
+ * rewrite. Kept rather than removed because the callers' gates
+ * (`shouldReanchor`, the adapter's delta checks) are genuinely about a VDOT
+ * delta and are not this function's to redesign.
+ *
+ * RULE 11 · IF THE ANCHORS REFUSE, NOTHING IS WRITTEN. There is no fallback to
+ * the old cascade. A silent fallback would be Constitution §8's "sometimes old,
+ * sometimes new" and would make a real coherence defect invisible; leaving the
+ * plan untouched is a safe, inspectable state and the refusal is logged.
  */
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import {
-  tPaceFromVdot, iPaceFromVdot, vdotFromTpace, vdotFromRace,
-} from '@/lib/training/vdot';
 import { seasonalVdotCeiling, achievableRaceTarget } from '@/lib/training/achievable-target';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
-import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
+import { buildWorkoutSpec } from './spec-builder';
 import { preserveProgressionSql } from './progression-spec';
-import { distanceCategoryOrNull } from './goal-tiers';
-import { paceBlendAnchorIsProvisional } from './anchor-provenance';
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
+import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 
 /**
  * Grace allowance on the measured-progress gate. Week 1-2 of a block has
@@ -226,37 +280,67 @@ export function blendedTPaceForWeek(args: BlendTPaceArgs): number | null {
 export interface RecomputePacesResult {
   planId: string;
   vdotNow: number;
-  /** Measured-progress fraction the gate ran with (null = ungated). */
-  measuredProgressFraction: number | null;
+  /**
+   * PRESCRIPTION-WIRE-1 · always null now, and kept rather than removed so a
+   * consumer that logs it (`adapt.ts`'s intent detail) keeps compiling and keeps
+   * recording an honest value. The measured-progress gate graded a runner's
+   * banked share of a GOAL gap, and this path no longer reads a goal at all —
+   * so there is no fraction to report, which is a different fact from "the gate
+   * ran and found zero" (Rule 11).
+   */
+  measuredProgressFraction: null;
   workoutsUpdated: number;
   workoutsSealed: number;
-  /** weekIdx → recomputed T-pace (s/mi) for audit surfaces. */
+  /**
+   * weekIdx → the threshold pace that week was priced at, for audit surfaces.
+   *
+   * Every entry now holds the SAME number. That is the point rather than a
+   * degradation: the per-week variation it used to carry was a calendar-indexed
+   * ramp toward a goal, and capacity does not vary by week index. When capacity
+   * genuinely moves, this function runs again and every unrun week moves with
+   * it.
+   */
   weekT: Record<number, number | null>;
+  /** The anchors this run priced the block at, for the audit trail and for a
+   *  caller that wants to report what changed without re-resolving. */
+  anchors: PrescribedPaceAnchors;
 }
 
-/** Types the recompute never touches: no pace to carry (rest/cross/
- *  strength/shakeout) or owned by the race machinery (race day pacing is
- *  the effective-race-target resolver's job · lib/race/effective-race-
- *  target.ts; the tune-up is authored race-goal-relative and stays). */
-const RECOMPUTE_EXEMPT_TYPES = ['rest', 'cross', 'strength', 'shakeout', 'race', 'race_week_tuneup'];
+/** Types the recompute never touches: no pace to carry (rest/cross/strength)
+ *  or owned by the race machinery (race day pacing is the effective-race-target
+ *  resolver's job · lib/race/effective-race-target.ts; the tune-up is authored
+ *  race-goal-relative and stays).
+ *
+ *  PRESCRIPTION-WIRE-1 · `shakeout` LEFT THIS LIST. The stated reason for its
+ *  exemption was "no pace to carry", and that was simply not true: a shakeout
+ *  row carries a `pace_target_s_per_mi_lo/hi` band in its spec, and on the
+ *  owner's live block it was the one row type nothing could ever bring up to
+ *  date — authored at 9:42/mi off a threshold offset and frozen there for the
+ *  life of the plan. It now takes doctrine's recovery ceiling like every other
+ *  easy-family row. `subLabelFromSpec` returns null for its `kind: 'easy'` spec,
+ *  so the "SHAKEOUT · 4×20s strides" label survives the rewrite untouched. */
+const RECOMPUTE_EXEMPT_TYPES = ['rest', 'cross', 'strength', 'race', 'race_week_tuneup'];
 
 /**
  * Rewrite FUTURE (unsealed, incomplete) plan_workouts' pace targets +
- * workout_spec from a stated VDOT.
+ * workout_spec at the runner's CANONICAL, currently-resolved capacity.
  *
- * · currentT re-anchors to tPaceFromVdot(vdotNow) — Research/01
- *   §Recalibrate-Paces row 1 ("new race result → update VDOT from race").
- * · goalT re-floors off vdotNow + maxSeasonalVdotGain(remaining weeks) —
- *   the GOAL-2 achievable-floor logic re-run against TODAY's fitness, so
- *   a runner who lost fitness gets a goalT floor that honestly reflects
- *   what the remaining runway can build.
- * · Each week's T comes from blendedTPaceForWeek with the measured gate
- *   active: fraction = (vdotNow − vdotAtAuthoring) / (goalVdot −
- *   vdotAtAuthoring). Fitness stalls → paces stall; fitness advances →
- *   paces advance; fitness tracks the calendar → recompute converges on
- *   the authored numbers (gate no-op).
+ * · Every zone is priced by the service that owns it, through one call to
+ *   `resolvePrescribedPaceAnchors` per plan rather than one per row — the same
+ *   six numbers for the whole block, because capacity is a property of the
+ *   runner and not of a week index. See the file header for the full list of
+ *   what each replaces.
+ * · The anchors are CAPACITY-derived only. No readiness signal reaches them:
+ *   this function writes months of future days and readiness answers a
+ *   question about today (Constitution §D).
+ * · A refused anchor set writes NOTHING and returns null. No fallback to the
+ *   VDOT cascade (Rule 11, Constitution §8).
  * · Sealed days (a completed run exists for the date) are never touched —
  *   same predicate as adapt.ts filterUnsealedWorkouts (Rule 15).
+ * · LAYOUT IS UNTOUCHED. Dates, types, distances, phases, quality flags and the
+ *   taper are not columns this function writes, and the plan mutation boundary
+ *   PROVES that by fingerprint rather than taking the claim on trust — which is
+ *   the 2026-08-30 decision's fixity guarantee enforced rather than asserted.
  *
  * ROUTED THROUGH THE PLAN MUTATION BOUNDARY (2026-08-18).
  *
@@ -294,6 +378,21 @@ export async function recomputePacesForPlan(
   if (!plan) return null;
 
   const st = (plan.authored_state ?? {}) as Record<string, any>;
+  /**
+   * THE GOAL, READ ONCE, FOR ONE CONSUMER.
+   *
+   * These three are threaded to `achievableRaceTarget` and to
+   * `buildWorkoutSpec`'s `race` branch, and to nothing else. That branch is
+   * Race Prediction's (Constitution §J) and a race target legitimately reads a
+   * stated goal — it is the one prescription in this app that does.
+   *
+   * Nothing below derives a TRAINING pace from any of them. Under the old
+   * cascade `goalSec` reached `tPaceFromGoal` and shaped every quality session
+   * in the block; that path is gone, and `race` is in `RECOMPUTE_EXEMPT_TYPES`
+   * besides, so on today's engine no row reads them at all. They are threaded
+   * so that the day race rows come into scope they cannot come in anchored to
+   * something stale.
+   */
   const raceDistanceMi = Number(st.race_distance_mi ?? st.goal_distance_mi) || null;
   const goalPaceSec = st.goal_pace_s_per_mi != null ? Number(st.goal_pace_s_per_mi) : null;
   const goalSec = st.goal_sec != null
@@ -326,43 +425,35 @@ export async function recomputePacesForPlan(
    */
   const authoredLthr = st.lthr_bpm != null ? Number(st.lthr_bpm) : null;
 
-  // Anchor VDOT the plan was authored at · pace_blend.season_anchor_vdot
-  // (written by composePlan since 2026-08-17), falling back to the Rule 10
-  // transparency envelope, then the cold-start mileage heuristic — the
-  // same cascade composePlan's estimatedCurrentVdot ran at authoring.
-  // COLD-3 (2026-08-17) · READER 2 · both the provisional anchor AND the
-  // re-derivation rung below it are fabrications of the same number. This
-  // function feeds `measuredProgressFraction`, whose entire job is to answer
-  // "how much of the goal gap has the runner actually banked" — grading measured
-  // progress against a mileage-derived starting point makes that number a
-  // fiction, and the final rung recomputed the fiction from scratch even when
-  // the plan never recorded one. When nothing was measured, the honest anchor is
-  // null: `measuredProgressFraction(null, …)` already returns null, and the
-  // blend falls back to its calendar forecast, which is at least labelled as a
-  // forecast. (Design/adaptive-progression-engine.md §A.)
-  const anchorProvisional = paceBlendAnchorIsProvisional(st.pace_blend);
-  const vdotAtAuthoring: number | null =
-    (!anchorProvisional && st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null)
-    ?? (st.derived_from?.bestRecentVdot != null ? Number(st.derived_from.bestRecentVdot) : null);
+  const today = await runnerToday(plan.user_uuid);
 
-  const goalVdot = goalSec != null && raceDistanceMi != null
-    ? vdotFromRace(goalSec, raceDistanceMi)
-    : null;
-  const measured = measuredProgressFraction(vdotAtAuthoring, vdotNow, goalVdot);
+  /* ── THE ANCHORS · one resolution, for the whole block ───────────────────
+   *
+   * This replaces the entire currentT / goalT / measured-fraction /
+   * per-week-blend apparatus that used to sit here. Six numbers, each from the
+   * service that owns its question, and no goal among them.
+   *
+   * RULE 11 · A REFUSAL WRITES NOTHING. `composePaceAnchors` refuses only when
+   * the set is INCOHERENT — an easy ceiling faster than threshold, a marathon
+   * pace faster than a threshold pace, a non-finite number — which is a real
+   * defect and not a thin-evidence case (every capacity resolver's last rung is
+   * a population prior, so thin evidence still produces an ordered set). There
+   * is deliberately no fallback: reaching for the VDOT cascade on a refusal
+   * would put the defect on the runner's phone under a different derivation.
+   */
+  const anchorRead = await resolvePrescribedPaceAnchors(plan.user_uuid, today);
+  if (!anchorRead.ok) {
+    console.error(
+      `[recomputePacesForPlan] REFUSED · plan=${planId} · anchors ${anchorRead.reason} · ${anchorRead.detail} · `
+      + 'plan left untouched (Rule 11 · no fallback to the VDOT cascade)',
+    );
+    return null;
+  }
+  const anchors = anchorRead.anchors;
 
-  // currentT/goalT at TODAY's fitness. GOAL-2 floor re-run against vdotNow
-  // over the plan's authored horizon (totalWeeks — the season's gain
-  // budget, not the shrinking remainder, so repeated recomputes at stable
-  // fitness are idempotent).
-  const currentT = tPaceFromVdot(vdotNow);
-  const goalTraw = raceDistanceMi != null ? tPaceFromGoal(goalSec, raceDistanceMi) : null;
-  const achievableFloorT = tPaceFromVdot(vdotNow + maxSeasonalVdotGain(totalWeeks, raceDistanceMi));
-  const goalT = (goalTraw != null && achievableFloorT != null)
-    ? Math.max(goalTraw, achievableFloorT)
-    : (goalTraw ?? currentT);
-  if (goalT == null && currentT == null) return null;
-
-  // Week layout: week_idx + phase label + non-taper count.
+  // Week layout · read for the audit surface's per-week map and for nothing
+  // else. The per-week BLEND it used to feed is gone: capacity does not vary by
+  // week index, and a pace that advanced on the calendar was Rule 1's violation.
   const weekRows = (await q.query<{ week_id: string; week_idx: number; phase: string | null }>(
     `SELECT wk.id AS week_id, wk.week_idx, ph.label AS phase
        FROM plan_weeks wk
@@ -372,24 +463,9 @@ export async function recomputePacesForPlan(
     [planId],
   ).catch(() => ({ rows: [] }))).rows;
   if (weekRows.length === 0) return null;
-  const buildWeeks = weekRows.filter((w) => (w.phase ?? '') !== 'TAPER').length;
 
   const weekT: Record<number, number | null> = {};
-  const weekTByWeekId = new Map<string, number | null>();
-  for (const w of weekRows) {
-    const t = blendedTPaceForWeek({
-      currentT,
-      goalT,
-      weekIdx: w.week_idx,
-      phase: w.phase ?? '',
-      buildWeeks,
-      measuredProgressFraction: measured,
-    });
-    weekT[w.week_idx] = t;
-    weekTByWeekId.set(w.week_id, t);
-  }
-
-  const today = await runnerToday(plan.user_uuid);
+  for (const w of weekRows) weekT[w.week_idx] = anchors.thresholdSecPerMi;
 
   /**
    * ANCHOR-STALE-2 · THE HR ANCHORS, READ LIVE.
@@ -467,22 +543,36 @@ export async function recomputePacesForPlan(
     [planId, plan.user_uuid, today, RECOMPUTE_EXEMPT_TYPES],
   ).catch(() => ({ rows: [] }))).rows;
 
-  // Same I-pace eligibility rule persistPlan uses (R3 + PACE-I-1):
-  // 5K/10K/HM goals carry true VO2max I-pace; marathon/ultra keep the
-  // cruise default.
-  // 2026-08-18 · resolved through THE categorizer, which answers null for an
-  // unresolvable distance instead of bucketing 0 as a 5K.
-  const goalIPaceEligible = raceDistanceMi != null
-    && ['5k', '10k', 'hm'].includes(distanceCategoryOrNull(raceDistanceMi) ?? '');
-  // PACE-E-1 · easy/long/recovery anchor tracks CURRENT fitness.
-  const easyAnchorTSec = currentT;
+  /**
+   * PRESCRIPTION-WIRE-1 · THE I-PACE ELIGIBILITY GATE IS DELETED, NOT MOVED.
+   *
+   * It read: a 5K/10K/HM goal earns a true Daniels I-pace; a marathon or ultra
+   * goal keeps the `T - 18` cruise default. That is a runner's ENTERED RACE
+   * deciding what interval pace their intervals are run at — Constitution §7's
+   * "no feature-specific overrides" and §G's "goal ≠ current training capacity",
+   * in one line. High-intensity capacity is a property of the runner; a
+   * marathoner's 800s are run at their own 3-5K effort, not at a slower pace
+   * because of what is on their calendar.
+   *
+   * `resolveHighIntensityCapacity` now answers for every runner, unconditionally.
+   * It is honest about how well it knows the number — on this account it is a
+   * flagged `vdot_fallback` at confidence 0.29, because this app still has no
+   * direct high-intensity reader — and that is a stated gap rather than a
+   * silent one.
+   */
 
-  // RACEPACE-1 · the achievable race target, re-run against TODAY's fitness
-  // over the plan's authored horizon — the same posture `achievableFloorT`
-  // takes above, and for the same reason: a runner who gained gets a target
-  // that reflects it, a runner who lost gets one that reflects that too.
+  // RACEPACE-1 · the achievable race target, re-run against TODAY's fitness.
+  // `currentVdot` is the CANONICAL threshold capacity's derived VDOT where one
+  // exists, not the caller's `vdotNow` — Race Prediction consumes the Runner
+  // Model (Constitution §J), and handing it a different fitness read than the
+  // one that priced the block would be two answers to one question (Rule 16).
+  // `vdotNow` remains the fallback for a runner whose threshold pace sits
+  // outside the table's [30,85] range and therefore has no derived VDOT at all.
   const prescribedRacePaceSec = achievableRaceTarget({
-    goalSec, currentVdot: vdotNow, raceDistanceMi, totalWeeks,
+    goalSec,
+    currentVdot: anchors.basis.threshold.vdot ?? vdotNow,
+    raceDistanceMi,
+    totalWeeks,
   })?.paceSPerMi ?? null;
 
   const { subLabelFromSpec } = await import('@/lib/training/expand-spec');
@@ -492,29 +582,39 @@ export async function recomputePacesForPlan(
   const core = async (tx: { query: typeof pool.query }): Promise<void> => {
     for (const row of rows) {
       if (row.sealed) { sealedCount++; continue; }
-      const t = (row.week_id != null ? weekTByWeekId.get(row.week_id) : null)
-        ?? goalT ?? currentT;
-      if (t == null) continue;
       const distanceMi = row.distance_mi != null ? Number(row.distance_mi) : null;
-      const iPaceSec = goalIPaceEligible ? iPaceFromVdot(vdotFromTpace(t)) : null;
       const built = buildWorkoutSpec(
-        row.type, distanceMi, t, lthr, row.sub_label,
+        row.type, distanceMi,
+        // PRESCRIPTION-WIRE-1 · the CANONICAL threshold, the same number the
+        // anchor set carries, passed in both places so a branch that reads
+        // `tPaceSec` and a branch that reads `anchors.thresholdSecPerMi` can
+        // never be priced off different fitness (Rule 16).
+        anchors.thresholdSecPerMi,
+        lthr, row.sub_label,
         maxHr,              // ANCHOR-STALE-2 · the LIVE effective HRmax, so
                             // `hrCapEasy` gets both of its anchors and the
                             // max(89% LTHR, 78% HRmax) doctrine can actually
                             // run. Was a literal null on the claim that HR
                             // caps re-derive on the next full rebuild; this
                             // IS that rebuild.
-        goalPaceSec, iPaceSec, easyAnchorTSec,
+        goalPaceSec,
+        // The I-pace argument, superseded by `anchors` below and passed anyway
+        // so the two agree if a branch ever reads the bare argument.
+        anchors.intervalSecPerMi,
+        // `easyAnchorTSec`, superseded likewise. Every easy/long/recovery band
+        // now opens on `anchors.easyCeilingSecPerMi`; this is what the branches
+        // that still consult the raw anchor would fall back to.
+        anchors.thresholdSecPerMi,
         false,              // effortCued · a recompute runs on measured evidence
                             // by definition, so the calibration intro is over
-        // RACEPACE-1 · re-derived off vdotNow, not carried forward. This is the
-        // point of the whole mechanism: when evidence moves the anchor, the
-        // race target the block rehearses moves with it. `RECOMPUTE_EXEMPT_
-        // TYPES` currently excludes `race`, so no row reads this today — it is
-        // threaded so that the day race rows come into scope they cannot come
-        // in still anchored to the authoring-time ceiling.
+        // RACEPACE-1 · re-derived off the canonical threshold's VDOT, not
+        // carried forward. `RECOMPUTE_EXEMPT_TYPES` excludes `race`, so no row
+        // reads this today — it is threaded so that the day race rows come into
+        // scope they cannot come in still anchored to the authoring-time ceiling.
         prescribedRacePaceSec,
+        // PRESCRIPTION-WIRE-1 · the six canonical anchors. This is the argument
+        // that makes every derived pace below a READ rather than an offset.
+        anchors,
       );
       if (!built.spec && built.paceTargetSPerMi == null) continue;
       const derivedLabel = built.spec
@@ -544,9 +644,28 @@ export async function recomputePacesForPlan(
       [planId, JSON.stringify({
         at: new Date().toISOString(),
         vdot: vdotNow,
-        measured_progress_fraction: measured,
+        // PRESCRIPTION-WIRE-1 · the gate this recorded graded a runner's banked
+        // share of a GOAL gap, and this path no longer reads a goal. Written as
+        // an explicit null rather than dropped, so a reader of an OLD stamp can
+        // still tell "the gate ran" from "there is no gate any more" — the same
+        // Rule 11 distinction the field itself used to carry.
+        measured_progress_fraction: null,
         source: opts?.source ?? 'recompute_paces',
         workouts_updated: updated,
+        // PRESCRIPTION-WIRE-1 · WHAT THESE ROWS WERE ACTUALLY PRICED AT, and how
+        // well each number was known. Rule 10's stamp requirement, and the
+        // answer to "was this block written before or after the prescription
+        // layer landed" without an inference.
+        anchors: {
+          threshold_s_per_mi: anchors.thresholdSecPerMi,
+          interval_s_per_mi: anchors.intervalSecPerMi,
+          repetition_s_per_mi: anchors.repetitionSecPerMi,
+          easy_ceiling_s_per_mi: anchors.easyCeilingSecPerMi,
+          shakeout_ceiling_s_per_mi: anchors.shakeoutCeilingSecPerMi,
+          marathon_s_per_mi: anchors.marathonSecPerMi,
+          basis: anchors.basis,
+        },
+        model: 'prescription_resolver',
         // ANCHOR-STALE-2 · WHICH HR ANCHORS THESE SPECS WERE BUILT AGAINST.
         // The whole defect above was that nothing on a workout row records
         // the threshold that produced its HR numbers, so a stale one could
@@ -594,9 +713,10 @@ export async function recomputePacesForPlan(
   return {
     planId,
     vdotNow,
-    measuredProgressFraction: measured,
+    measuredProgressFraction: null,
     workoutsUpdated: updated,
     workoutsSealed: sealedCount,
     weekT,
+    anchors,
   };
 }

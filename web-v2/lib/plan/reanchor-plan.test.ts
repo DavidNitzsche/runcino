@@ -1,13 +1,49 @@
 /**
- * Self-heal re-anchor — gate logic + the convergence property (a re-anchor at
- * VDOT V produces the SAME paces a fresh seed at V would).
+ * Self-heal re-anchor — gate logic + the convergence property.
+ *
+ * PRESCRIPTION-WIRE-1 (2026-08-31) · THE CONVERGENCE PROPERTY CHANGED PARTNER,
+ * and this header says so rather than leaving a stale sentence (Rule 20's
+ * corollary). It used to be "a re-anchor at VDOT V produces the same paces a
+ * fresh SEED at V would" — convergence with `generate.ts`'s authoring path,
+ * through the VDOT cascade both then shared. `refreshedPaceAndSpec` no longer
+ * takes a VDOT, so that property is not merely unasserted, it is not
+ * expressible.
+ *
+ * The property that replaces it is the one that now matters: the maintenance
+ * arm and the race-prep arm must price a runner IDENTICALLY off one anchor set
+ * (Rule 16 — before this they used two different derivations and a runner
+ * switching modes changed physiology). Authoring convergence returns when
+ * `generate.ts` is migrated, which is a separately-scoped pass.
  */
 import { describe, it, expect } from 'vitest';
 import {
   shouldReanchor, shouldReanchorRacePrep, refreshedPaceAndSpec, REANCHOR_VDOT_DELTA,
 } from './reanchor-plan';
 import { buildWorkoutSpec } from './spec-builder';
-import { tPaceFromVdot, iPaceFromVdot } from '@/lib/training/vdot';
+import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
+
+/**
+ * The owner's real resolved anchor set on 2026-08-31, used as a fixture because
+ * a number that came out of the live resolvers is harder to write a
+ * self-satisfying test around than one invented for the test.
+ */
+const ANCHORS: PrescribedPaceAnchors = {
+  thresholdSecPerMi: 430,
+  intervalSecPerMi: 407,
+  repetitionSecPerMi: 371,
+  easyCeilingSecPerMi: 502,
+  shakeoutCeilingSecPerMi: 532,
+  marathonSecPerMi: 475,
+  basis: {
+    threshold: { sourceMode: 'direct', confidence: 0.727, vdot: 47.9 },
+    highIntensity: { sourceMode: 'vdot_fallback', confidence: 0.291 },
+    easyCeiling: { sourceMode: 'direct', confidence: 0.634 },
+    marathon: {
+      sourceMode: 'direct', confidence: 0.727,
+      enduranceExponent: 1.0869, personallyEvidenced: true,
+    },
+  },
+};
 
 describe('shouldReanchor — when to refresh', () => {
   it('upgrades a provisional / calibrating plan the moment a measured read exists', () => {
@@ -71,30 +107,64 @@ describe('shouldReanchorRacePrep — the race-prep gate', () => {
   });
 });
 
-describe('refreshedPaceAndSpec — converges with a fresh seed', () => {
-  // The seeder calls buildWorkoutSpec(type, dist, tPaceSec, null, undefined, null, null, iPaceSec).
-  const seedShape = (type: string, dist: number | null, vdot: number, tt: string | null) => {
-    const tPaceSec = tPaceFromVdot(vdot) ?? 480;
-    const iPaceSec = tt ? iPaceFromVdot(vdot) : null;
-    return buildWorkoutSpec(type, dist, tPaceSec, null, undefined, null, null, iPaceSec);
-  };
+describe('refreshedPaceAndSpec — prices off the anchors, and nothing else', () => {
+  /** The call shape `recomputePacesForPlan` makes — the race-prep arm's engine. */
+  const racePrepShape = (type: string, dist: number | null) => buildWorkoutSpec(
+    type, dist, ANCHORS.thresholdSecPerMi, null, undefined, null, null,
+    ANCHORS.intervalSecPerMi, ANCHORS.thresholdSecPerMi, false, null, ANCHORS,
+  );
 
-  it('5K-build intervals re-anchor to true I-pace (Justin: VDOT 35.4 → 8:36)', () => {
-    const r = refreshedPaceAndSpec('intervals', 3, 35.4, '5k');
-    expect(r.paceTargetSPerMi).toBe(iPaceFromVdot(35.4));   // ~516 s/mi = 8:36
-    expect(r.paceTargetSPerMi).toBe(seedShape('intervals', 3, 35.4, '5k').paceTargetSPerMi);
-  });
-
-  it('easy/long/threshold also match a fresh seed at the new VDOT', () => {
-    for (const [type, dist] of [['easy', 5], ['long', 8], ['threshold', 4]] as const) {
-      const r = refreshedPaceAndSpec(type, dist, 35.4, '5k');
-      const seed = seedShape(type, dist, 35.4, '5k');
-      expect(r.paceTargetSPerMi).toBe(seed.paceTargetSPerMi);
+  it('the two self-heal arms produce identical paces from one anchor set (Rule 16)', () => {
+    for (const [type, dist] of [
+      ['easy', 5], ['long', 14], ['threshold', 8], ['intervals', 7],
+      ['tempo', 6], ['shakeout', 2],
+    ] as const) {
+      const maintenance = refreshedPaceAndSpec(type, dist, ANCHORS);
+      const racePrep = racePrepShape(type, dist);
+      expect(maintenance.paceTargetSPerMi).toBe(racePrep.paceTargetSPerMi);
+      expect(JSON.stringify(maintenance.spec)).toBe(JSON.stringify(racePrep.spec));
     }
   });
 
-  it('a no-goal (consistency) plan gets no I-pace — threshold stays threshold', () => {
-    const r = refreshedPaceAndSpec('threshold', 4, 35.4, null);
-    expect(r.paceTargetSPerMi).toBe(tPaceFromVdot(35.4));   // threshold = T pace, no I-pace
+  it('intervals take high-intensity capacity, whatever race the runner entered', () => {
+    // THE DELETED GOAL GATE. `ttDistance` used to decide whether a runner got a
+    // true I-pace or the `T - 18` cruise default, so a marathoner's 800s were
+    // run slower than a 5K runner's at identical fitness — a stated goal
+    // reaching a training pace (Constitution §7, §G). The parameter survives for
+    // call-site shape and must now change nothing at all.
+    const withGoal = refreshedPaceAndSpec('intervals', 7, ANCHORS, undefined, '5k');
+    const noGoal = refreshedPaceAndSpec('intervals', 7, ANCHORS, undefined, null);
+    const marathon = refreshedPaceAndSpec('intervals', 7, ANCHORS, undefined, 'marathon');
+    expect(withGoal.paceTargetSPerMi).toBe(ANCHORS.intervalSecPerMi);
+    expect(noGoal.paceTargetSPerMi).toBe(ANCHORS.intervalSecPerMi);
+    expect(marathon.paceTargetSPerMi).toBe(ANCHORS.intervalSecPerMi);
+  });
+
+  it('threshold work is priced at threshold capacity exactly', () => {
+    const r = refreshedPaceAndSpec('threshold', 8, ANCHORS);
+    expect(r.paceTargetSPerMi).toBe(ANCHORS.thresholdSecPerMi);
+  });
+
+  it('easy and long share one ceiling; a shakeout gets the tighter one', () => {
+    const easy = refreshedPaceAndSpec('easy', 5, ANCHORS).spec as Record<string, number>;
+    const long = refreshedPaceAndSpec('long', 14, ANCHORS).spec as Record<string, number>;
+    const shake = refreshedPaceAndSpec('shakeout', 2, ANCHORS).spec as Record<string, number>;
+    expect(easy.pace_target_s_per_mi_lo).toBe(ANCHORS.easyCeilingSecPerMi);
+    // LONG IS EASY EFFORT · one quantity, one number. The live block had long
+    // runs prescribed FASTER than easy days; that is what this asserts is over.
+    expect(long.pace_target_s_per_mi_lo).toBe(ANCHORS.easyCeilingSecPerMi);
+    expect(shake.pace_target_s_per_mi_lo).toBe(ANCHORS.shakeoutCeilingSecPerMi);
+    expect(shake.pace_target_s_per_mi_lo).toBeGreaterThan(easy.pace_target_s_per_mi_lo);
+  });
+
+  it('the zone order survives every row type it prices', () => {
+    // Rule 13's sanity check, as an assertion rather than an eyeball: no easy
+    // day may be prescribed faster than a threshold day, on any row.
+    for (const [type, dist] of [
+      ['easy', 5], ['long', 14], ['shakeout', 2],
+    ] as const) {
+      const spec = refreshedPaceAndSpec(type, dist, ANCHORS).spec as Record<string, number>;
+      expect(spec.pace_target_s_per_mi_lo).toBeGreaterThan(ANCHORS.thresholdSecPerMi);
+    }
   });
 });

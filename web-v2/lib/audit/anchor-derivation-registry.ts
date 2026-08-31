@@ -253,23 +253,20 @@ export const ANCHOR_DERIVATION_SITES: readonly AnchorDerivationSite[] = [
   // and thrown away is not a Rule 10 problem, and flagging it would train
   // people to add exemptions rather than read them. (This entry existed for
   // one run and the ratchet deleted it, which is the ratchet working.)
-  {
-    id: 'reanchor-plan.maintenance-arm',
-    file: 'web-v2/lib/plan/reanchor-plan.ts',
-    anchor: 'buildWorkoutSpec(type, distanceMi, tPaceSec, null, undefined, null, null, iPaceSec)',
-    posture: 'exempt',
-    reason:
-      'DERIVED FROM THE SEEDER, and must not be fixed alone. This function\'s own '
-      + 'contract is to be "IDENTICAL to what the seeder emits at that VDOT ... so '
-      + 're-anchor and fresh-seed produce the same numbers". Passing live anchors '
-      + 'here while `seed-from-onboarding.ts` still passes null would FORK that '
-      + 'parity: the same runner at the same VDOT would get one spec from a '
-      + 're-anchor and a different one from a rebuild. A uniform absence is worse '
-      + 'than nothing but better than a fork, which is the class this codebase has '
-      + 'already paid for twice. Correct fix: change the seeder and this in ONE '
-      + 'commit — see `seed-from-onboarding.onboarding-seed` below for why that is '
-      + 'a real change and not a no-op.',
-  },
+  // `reanchor-plan.maintenance-arm` WAS HERE, AND IS DELETED (2026-08-31,
+  // PRESCRIPTION-WIRE-1). Recorded rather than silently dropped, because the
+  // ratchet's whole value is that a vanished entry is legible.
+  //
+  // Its exemption rested entirely on PARITY: `refreshedPaceAndSpec` had to emit
+  // "IDENTICAL" specs to `seed-from-onboarding.ts`, so passing live HR anchors
+  // in one and null in the other would fork the same runner's numbers. That
+  // parity is gone — the maintenance arm now prices off canonical capacity and
+  // the seeder still prices off the VDOT cascade — so the argument that
+  // licensed the null went with it.
+  //
+  // The site is FIXED, not re-argued: the maintenance arm reads `profile.lthr`
+  // raw and `loadEffectiveMaxHr`, the same two reads `recomputePacesForPlan`
+  // makes, and threads them in. Rule 10's "recompute" posture.
   {
     id: 'seed-from-onboarding.onboarding-seed',
     file: 'web-v2/lib/plan/seed-from-onboarding.ts',
@@ -286,8 +283,13 @@ export const ANCHOR_DERIVATION_SITES: readonly AnchorDerivationSite[] = [
       + 'to read `profile.lthr` raw and let it be null when it is null: '
       + 'byte-identical for fifteen users, and it stops throwing away the one '
       + 'anchor that exists. Left for its own commit because it moves what every '
-      + 'new plan is authored with, and because `reanchor-plan.ts` must move with '
-      + 'it to keep the parity contract above.',
+      + 'new plan is authored with. UPDATED 2026-08-31: the second half of this '
+      + 'reason used to read "and because `reanchor-plan.ts` must move with it to '
+      + 'keep the parity contract above." That contract no longer exists — '
+      + 'PRESCRIPTION-WIRE-1 moved the re-anchor onto canonical capacity and fixed '
+      + 'its HR reads, so this site is now the only one still passing a literal '
+      + 'null and has nothing to stay in step with. It is a standalone fix waiting '
+      + 'on the authoring-path migration, not a coupled one.',
   },
   {
     id: 'plan-restore.re-derive-on-restore',

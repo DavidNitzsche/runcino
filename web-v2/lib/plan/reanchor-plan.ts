@@ -31,11 +31,15 @@
  * name says so. The two modes need genuinely different machinery and each gets
  * the one that already exists:
  *
- *   · race-prep → `recomputePacesForPlan`, which knows the goal blend, the
- *     seal predicate, the exempt types and the sub-label derivation.
- *   · maintenance / recovery / no-race → the in-place refresh below, which is
- *     the same `buildWorkoutSpec` call shape the seeder uses, so a re-anchor
- *     and a fresh seed at the same VDOT converge.
+ *   · race-prep → `recomputePacesForPlan`, which knows the seal predicate, the
+ *     exempt types and the sub-label derivation.
+ *   · maintenance / recovery / no-race → the in-place refresh below.
+ *
+ * Both now price off ONE anchor set (see PRESCRIPTION-WIRE-1 below). The older
+ * note here said the maintenance arm used "the same `buildWorkoutSpec` call
+ * shape the seeder uses, so a re-anchor and a fresh seed at the same VDOT
+ * converge" — that convergence was with the AUTHORING path and it is
+ * deliberately over; the convergence that holds now is between the two arms.
  *
  * ── THE THREE GUARDS ────────────────────────────────────────────────────────
  *
@@ -58,13 +62,30 @@
  *
  * Cite: Research/01-pace-zones-vdot.md §"How to recalibrate paces" — update
  * VDOT and re-derive zones when a new measured signal lands.
+ *
+ * ── PRESCRIPTION-WIRE-1 (2026-08-31) · WHAT "RE-ANCHOR" NOW MEANS ───────────
+ *
+ * Both arms have stopped deriving paces from a VDOT. `measuredVdot` is still
+ * the TRIGGER — it is what says evidence moved, and `shouldReanchor` /
+ * `shouldReanchorRacePrep` still gate on its delta — but the numbers written
+ * come from `resolvePrescribedPaceAnchors`: the four canonical capacity
+ * resolvers, through the Pace Prescription layer. `tPaceFromVdot` and
+ * `iPaceFromVdot` are no longer imported by this file at all.
+ *
+ * That closes a Rule 16 divergence the two arms carried since they were joined:
+ * race-prep priced a block through the goal blend and maintenance through
+ * `tPaceFromVdot(measuredVdot)`, so the same runner at the same fitness got two
+ * different threshold paces depending on which mode their plan was in.
  */
 
 import { pool } from '@/lib/db/pool';
 import { buildWorkoutSpec } from './spec-builder';
 import { preserveProgressionSql } from './progression-spec';
-import { tPaceFromVdot, iPaceFromVdot } from '@/lib/training/vdot';
 import { paceBlendAnchorIsProvisional } from './anchor-provenance';
+import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
+import { rowOrNull } from '@/lib/db/read';
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
+import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import { mutatePlan } from './mutate';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 import { recordPaceZoneEvent, type PaceZoneEvidenceSource } from './pace-drop-event';
@@ -153,24 +174,59 @@ export function shouldReanchorRacePrep(
 }
 
 /**
- * The refreshed pace + spec for one workout at a new fitness level — IDENTICAL
- * to what the seeder emits at that VDOT (same buildWorkoutSpec call shape:
- * lthr/maxHr null, prescription default, goal-build I-pace when a TT goal
- * exists), so re-anchor and fresh-seed produce the same numbers.
+ * The refreshed pace + spec for one workout at the runner's canonical capacity.
  *
- * Note the absent tenth argument: a re-anchor never emits `effortCued`. That is
- * the whole point — this function only runs when a measurement exists, and a
- * measured pace is exactly what the calibration intro was waiting for.
+ * PRESCRIPTION-WIRE-1 (2026-08-31) · takes ANCHORS, not a VDOT.
+ *
+ * It used to derive a threshold from `tPaceFromVdot(newVdot)` and an interval
+ * from `iPaceFromVdot(newVdot)` — the VDOT cascade, twice — and then let
+ * `buildWorkoutSpec` derive easy, long, recovery, marathon and stride paces off
+ * fixed offsets from the first of those. Every one of those five now comes from
+ * the service that owns it, and this function's whole body is the plumbing.
+ *
+ * IT ALSO CARRIED A GOAL. `ttDistance` — the runner's stated time-trial
+ * distance — decided whether they got a true Daniels I-pace or the cruise
+ * default, which is the same "what race have you entered decides your interval
+ * pace" gate `recomputePacesForPlan` just deleted (Constitution §7, §G). Gone
+ * for the same reason; the parameter is kept only so the two live call sites and
+ * the unit suite keep their shape, and nothing reads it.
+ *
+ * IT ALSO TAKES THE LIVE HR ANCHORS NOW (ANCHORSTAMP-1). It used to pass a
+ * literal `null` for both `lthr` and `maxHr`, and it carried an argued
+ * exemption in `ANCHOR_DERIVATION_SITES` for doing so. That exemption's entire
+ * argument was PARITY: "this function's contract is to be identical to what the
+ * seeder emits at that VDOT, so passing live anchors here while the seeder
+ * passes null would FORK that parity."
+ *
+ * The parity is gone — this function prices off canonical capacity and the
+ * seeder still prices off the cascade — so the argument that licensed the null
+ * is gone with it, and the exemption is deleted rather than re-worded. A
+ * `workout_spec` written with `hr_cap_bpm: null` is a row whose HR ceiling
+ * describes nobody, and nothing downstream re-derives it (rendering is a READ
+ * path). Rule 10's "recompute" posture, taken: the caller reads `profile.lthr`
+ * raw and `loadEffectiveMaxHr`, exactly as `recomputePacesForPlan` does, so the
+ * two self-heal arms write the same HR numbers for the same runner.
+ *
+ * Note the absent `effortCued`: a re-anchor never emits it. That is the whole
+ * point — this function only runs when a measurement exists, and a measured
+ * pace is exactly what the calibration intro was waiting for.
  */
 export function refreshedPaceAndSpec(
   type: string,
   distanceMi: number | null,
-  newVdot: number,
-  ttDistance: string | null,
+  anchors: PrescribedPaceAnchors,
+  hr?: { lthr: number | null; maxHr: number | null },
+  /** Retained for call-site compatibility. Deliberately unread — see above. */
+  _ttDistance?: string | null,
 ): { paceTargetSPerMi: number | null; spec: unknown } {
-  const tPaceSec = tPaceFromVdot(newVdot) ?? 480;
-  const iPaceSec = ttDistance ? iPaceFromVdot(newVdot) : null;
-  const built = buildWorkoutSpec(type, distanceMi, tPaceSec, null, undefined, null, null, iPaceSec);
+  const built = buildWorkoutSpec(
+    type, distanceMi, anchors.thresholdSecPerMi,
+    hr?.lthr ?? null, undefined, hr?.maxHr ?? null, null,
+    anchors.intervalSecPerMi,
+    anchors.thresholdSecPerMi,
+    false, null,
+    anchors,
+  );
   return { paceTargetSPerMi: built.paceTargetSPerMi, spec: built.spec };
 }
 
@@ -332,18 +388,18 @@ function evidenceSourceFor(evidence: ReanchorEvidence | null | undefined): PaceZ
 /**
  * Clear the provenance marks, THEN recompute.
  *
- * Order matters and is deliberate. `recomputePacesForPlan` reads
- * `pace_blend.season_anchor_vdot` to compute `measuredProgressFraction` — "how
- * much of the goal gap has the runner banked". Clearing first makes the new
- * anchor the measurement itself, so the fraction is 0 and the blend is the
- * standing `BLEND_GRACE_FRACTION` and nothing more. That is precisely what a
- * FRESH authoring at this VDOT would produce, which keeps the codebase's
- * convergence property: a re-anchor and a fresh author at the same fitness
- * agree.
+ * PRESCRIPTION-WIRE-1 (2026-08-31) · THE ORDER NO LONGER CHANGES ANY PACE, and
+ * the clearing is kept for what it was always also doing. It used to matter
+ * arithmetically: `recomputePacesForPlan` read `pace_blend.season_anchor_vdot`
+ * to grade `measuredProgressFraction` — "how much of the goal gap has the runner
+ * banked" — and clearing first made the new anchor the measurement itself. That
+ * blend is gone; the recompute prices the block off resolved capacity and reads
+ * no anchor VDOT at all.
  *
- * Clearing afterwards would instead leave `vdotAtAuthoring` null for one cycle,
- * pinning every week at exactly current-fitness T and holding the first quality
- * progression step shut — the case the grace exists to open.
+ * What the clearing still does, and why it stays FIRST: it is GUARD 3. Three
+ * readers refuse an anchor marked provisional (`paceBlendAnchorIsProvisional`),
+ * and a plan that has been re-anchored must stop advertising a calibration that
+ * has ended before anything downstream reads it in the same transaction.
  *
  * Rule 6 · the write is a field-level jsonb merge on `pace_blend`, never a
  * full-column replace. `authored_state` has several writers with different field
@@ -459,10 +515,69 @@ async function reanchorMaintenance(
   const anchorSource = (st.anchorSource as string) ?? null;
   if (!force && !shouldReanchor(anchorSource, anchorVdot, measuredVdot)) return null;
 
-  const ttDistance = (st.onboarding_goals?.ttDistance as string) ?? null;
+  /* ── THE ANCHORS · one resolution for the whole plan (PRESCRIPTION-WIRE-1) ──
+   *
+   * Same seam and same refusal contract as `recomputePacesForPlan`, which is
+   * the race-prep arm's engine. Rule 16: the two arms of one self-heal must not
+   * price a runner off two different fitness reads, and before this they did —
+   * race-prep went through the goal blend and maintenance through
+   * `tPaceFromVdot` — so a runner switching modes changed physiology.
+   *
+   * Rule 11 · a refusal writes nothing and does not reach for the cascade. Note
+   * this cannot fire for lack of evidence: every capacity resolver's last rung
+   * is a population prior, so a genuine cold start still produces an ordered
+   * set. A refusal here means the set is INCOHERENT, which is a defect worth
+   * stopping for.
+   */
+  const anchorRead = await resolvePrescribedPaceAnchors(userId, today);
+  if (!anchorRead.ok) {
+    console.error(
+      `[reanchorPlan] maintenance REFUSED · plan=${planId} · anchors ${anchorRead.reason} · `
+      + `${anchorRead.detail} · plan left untouched`,
+    );
+    return null;
+  }
+  const anchors = anchorRead.anchors;
 
-  // Future, pace-bearing workouts only — rest/cross/strength/shakeout carry no
-  // pace target and are exempt from the workout_spec CHECK.
+  /* ── THE HR ANCHORS, READ LIVE (ANCHORSTAMP-1) ────────────────────────────
+   *
+   * The same two reads `recomputePacesForPlan` makes, for the same reasons and
+   * with the same subtleties:
+   *
+   *   · `profile.lthr` RAW, not through `resolveThresholdHr`. That resolver's
+   *     second rung crosswalks a threshold out of HRmax, which is right for a
+   *     display surface that can label a number as estimated and wrong here,
+   *     because the value lands in `workout_spec.lthr_bpm` where the watch reads
+   *     it as measured. A row we READ decides even when its `lthr` is null; only
+   *     an unreadable profile leaves it absent.
+   *   · `loadEffectiveMaxHr`, the canonical resolver, never `users.max_hr` —
+   *     that column is a nightly ratchet mirror that never falls.
+   */
+  // `rowOrNull` returns THREE states — a row, `undefined` for a read that
+  // matched nothing, and `null` for a read that FAILED — which is the only
+  // reason this is not a bare `.catch(() => null)`. Rule 11: "no profile row"
+  // and "could not reach the profile table" are different facts, and the second
+  // one is worth a line in the log rather than a silently HR-less block.
+  const lthrRow = await rowOrNull<{ lthr: number | null }>(
+    'reanchor-plan/profile-lthr',
+    pool.query(`SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`, [userId]),
+  );
+  if (lthrRow === null) {
+    console.warn(
+      `[reanchorPlan] profile.lthr unreadable · plan=${planId} · every rewritten spec will carry `
+      + 'no threshold HR. The easy cap falls back to its HRmax arm, which is the tighter branch.',
+    );
+  }
+  const lthr = lthrRow != null && lthrRow.lthr != null ? Number(lthrRow.lthr) : null;
+  const maxHr = await loadEffectiveMaxHr(userId, today).then((r) => r.bpm).catch(() => null);
+
+  // Future, pace-bearing workouts only — rest/cross/strength carry no pace
+  // target and are exempt from the workout_spec CHECK.
+  //
+  // PRESCRIPTION-WIRE-1 · `shakeout` left this exclusion, in step with
+  // `RECOMPUTE_EXEMPT_TYPES`. It does carry a pace band, and it now takes
+  // doctrine's recovery ceiling. The two arms must exclude the same set or a
+  // runner's shakeout would be current in one mode and frozen in the other.
   //
   // GUARD 1 · sealed days. This arm used to rewrite every row dated >= today,
   // including today's, which the runner may already have run — the race-prep
@@ -479,7 +594,7 @@ async function reanchorMaintenance(
             ) AS sealed
        FROM plan_workouts pw
       WHERE pw.plan_id = $1 AND pw.date_iso >= $2
-        AND pw.type NOT IN ('rest','cross','strength','shakeout')`,
+        AND pw.type NOT IN ('rest','cross','strength')`,
     [planId, today, userId],
   )).rows;
 
@@ -498,7 +613,8 @@ async function reanchorMaintenance(
     for (const w of wkos) {
       if (w.sealed) { sealedCount++; continue; }
       const { paceTargetSPerMi, spec } = refreshedPaceAndSpec(
-        w.type, w.distance_mi != null ? Number(w.distance_mi) : null, measuredVdot, ttDistance,
+        w.type, w.distance_mi != null ? Number(w.distance_mi) : null, anchors,
+        { lthr, maxHr },
       );
       await client.query(
         // Rule 6 · a maintenance re-anchor rewrites the same session's paces;
@@ -509,14 +625,33 @@ async function reanchorMaintenance(
       );
       updated++;
     }
-    const tPaceSec = tPaceFromVdot(measuredVdot) ?? 480;
-    const iPaceSec = ttDistance ? iPaceFromVdot(measuredVdot) : null;
     // GUARD 3 · the calibration marks this arm owns.
+    //
+    // PRESCRIPTION-WIRE-1 · `tPaceSec`/`iPaceSec` are what the seeder reads back
+    // when it rebuilds this plan, so they must be the numbers the rows were
+    // ACTUALLY written at. They used to be re-derived here off `measuredVdot` —
+    // a second derivation of a quantity the rows had already been priced from,
+    // which is precisely the drift Rule 16 is about. They are now copied from
+    // the anchor set the loop above spent, so the state and the rows cannot
+    // disagree. `pace_anchors` records the whole set beside them (Rule 10's
+    // stamp: a persisted derived value carries its anchor).
     const newState = {
       ...st,
       anchorVdot: measuredVdot,
       anchorSource: 'measured_run',
-      tPaceSec, iPaceSec,
+      tPaceSec: anchors.thresholdSecPerMi,
+      iPaceSec: anchors.intervalSecPerMi,
+      pace_anchors: {
+        at: new Date().toISOString(),
+        threshold_s_per_mi: anchors.thresholdSecPerMi,
+        interval_s_per_mi: anchors.intervalSecPerMi,
+        repetition_s_per_mi: anchors.repetitionSecPerMi,
+        easy_ceiling_s_per_mi: anchors.easyCeilingSecPerMi,
+        shakeout_ceiling_s_per_mi: anchors.shakeoutCeilingSecPerMi,
+        marathon_s_per_mi: anchors.marathonSecPerMi,
+        basis: anchors.basis,
+        model: 'prescription_resolver',
+      },
       calibrating: false,
       reanchored_at: today,
     };

@@ -153,6 +153,23 @@ export interface ZoneAnchorInput {
   /** The runner's marathon pace, as `buildWorkoutSpec` resolves it. Anchors M
    *  and MP. Null leaves them unanchored. */
   marathonPaceSec?: number | null;
+  /**
+   * The runner's REPETITION pace, when a caller has resolved one directly.
+   * Anchors R and mile.
+   *
+   * ZONE-R-CANON (2026-08-31). R has always been read out of the published Mile
+   * column at `vdotFromTpace(tPaceSec)` — a VDOT round trip off the threshold
+   * anchor. That is a defensible fallback and it stays the fallback, but it is
+   * not the canonical answer: `resolveHighIntensityCapacity` owns "what can this
+   * runner hold at 3-5K effort and above" (Constitution §C, §5), and when a
+   * caller has that answer the zone table must spend it rather than re-derive a
+   * second one through a table (Constitution §6 · derivation vs authority).
+   *
+   * Null — the default, and every pre-existing caller — falls through to the
+   * round trip exactly as before, so nothing that does not thread this changes
+   * by a single second.
+   */
+  repetitionPaceSec?: number | null;
 }
 
 /**
@@ -200,12 +217,26 @@ export function resolveZoneAnchors(input: ZoneAnchorInput): Partial<Record<PaceZ
     // memoised and returns null outside the table's 30-85 range, in which case
     // these three stay unanchored — the honest answer for a runner the table
     // does not cover.
+    //
+    // ZONE-R-CANON · a caller-supplied repetition pace WINS over the round trip,
+    // because it came from the capacity that owns the question. The round trip
+    // remains the fallback for every caller that has no such answer, and for the
+    // runner whose high-intensity ladder could not price R at all (it returns
+    // null there, which is Rule 11's "genuinely unknown" and must not be filled
+    // in from a neighbouring zone).
     const vdot = vdotFromTpace(tPaceSec);
+    const rGiven = input.repetitionPaceSec ?? null;
+    if (rGiven != null && rGiven > 0) {
+      out.R = rGiven;
+      out.mile = rGiven;
+    }
     if (vdot != null) {
-      const r = rPaceFromVdot(vdot);
-      if (r != null && r > 0) {
-        out.R = r;
-        out.mile = r;
+      if (out.R == null) {
+        const r = rPaceFromVdot(vdot);
+        if (r != null && r > 0) {
+          out.R = r;
+          out.mile = r;
+        }
       }
       const tenK = racePaceFromVdot(vdot, TABLE_RACE_DISTANCE_MI['10K']);
       if (tenK != null && tenK > 0) out['10K'] = tenK;

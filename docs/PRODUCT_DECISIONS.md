@@ -6,6 +6,85 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-08-31 · The Pace Prescription layer is WIRED, on the flex path. Four calls made during the wiring. SETTLED.
+
+`lib/plan/recompute-paces.ts` and `lib/plan/reanchor-plan.ts` — the mechanism
+that rewrites pace on a live block's unrun weeks, per the 2026-08-30 "built
+whole, flexes on two axes" decision — now price every zone through the four
+canonical capacity resolvers and `resolveCapacityPrescription`. They no longer
+call the VDOT cascade at all. `generate.ts`'s full-block authoring path is
+deliberately still on the old cascade and is its own scoped pass; the flex runs
+daily and is the last writer on every unrun day, so a block authored on the old
+numbers converges rather than showing two answers at once.
+
+Four decisions were required to land it, all made with full authorization while
+David was away.
+
+### 1 · The shakeout pad is 30 s/mi, and it is READ rather than chosen
+
+The 2026-08-31 shakeout decision settled the shape and left the number "to be
+set in the wiring phase, argued as a named convention ... since no doctrine
+source prices this distance to a number." One does.
+
+`Research/04` §1's Variations row names the session — "Recovery shakeout
+(15-20 min)" — so a shakeout is a RECOVERY run in the corpus's own vocabulary,
+not a fast easy day. `Research/01` §"Hansons pace methodology" then prices both
+bands against one shared MP anchor, two adjacent rows: Recovery MP+90-120, Easy
+MP+60-90. The recovery band begins exactly where the easy band ends, so the pad
+is 90 − 60 = **30 s/mi**, differenced out of two doctrine cells at run time by
+`PACE.shakeout-ceiling-is-the-recovery-band`.
+
+This is also what the engine already did, one anchor over: `spec-builder`'s
+shakeout branch has always opened the band at `easyHi`. What changed is only
+where that rule is anchored — on the runner's measured easy ceiling instead of
+on a threshold-derived offset.
+
+### 2 · The current→goal threshold blend is DELETED from the flex path, not softened
+
+`blendedTPaceForWeek`, `measuredProgressFraction`, `tPaceFromGoal` and
+`maxSeasonalVdotGain` ran a per-week ramp from measured fitness toward a
+goal-derived ceiling. On the flex path that is gone entirely. The Brain
+Constitution's §G hard rule is "goal ≠ current training capacity" and the
+standing constraint is "paces come from evidence, the goal never distorts
+training"; a threshold pace that moves because of a stated goal is that
+distortion in its purest form. The four functions stay exported because
+`generate.ts` still calls them.
+
+Same reasoning killed two smaller goal leaks in the same files: the
+`goalIPaceEligible` gate (a 5K/10K/HM goal earned a true Daniels I-pace, a
+marathon goal got the slower cruise default — a marathoner's 800s run slower
+than a 5K runner's at identical fitness), and `refreshedPaceAndSpec`'s
+`ttDistance` parameter, which did the same thing on the maintenance arm.
+
+### 3 · Long runs share the easy ceiling; only the band WIDTH differs
+
+The live block paced every long run at 8:36/mi against an easy band opening at
+9:02 — a long run prescribed FASTER than an easy day. `spec-builder` already
+states the doctrine for the HR cap in its own words ("LONG IS EASY EFFORT, just
+more volume"); the pace targets simply had not followed. One ceiling for both
+now, with long keeping its own narrower width.
+
+### 4 · An incoherent anchor set REFUSES; it is never clamped and never falls back
+
+`composePaceAnchors` checks the six anchors as a SET — repetition faster than
+interval faster than threshold, slower than marathon, slower than the easy
+ceiling, slower than the shakeout ceiling — and refuses the whole write if the
+order breaks. It does not clamp, because a clamp hands the plan a well-formed
+set assembled out of a contradiction; and it does not fall back to the VDOT
+cascade, because that is Constitution §8's "sometimes old, sometimes new."
+Leaving the plan untouched is a safe, inspectable state.
+
+Worth recording: the gate turned out to be a BACKSTOP rather than the primary
+defence. The per-prescription contradiction clamps already bind most adjacent
+pairs, so an absurd high-intensity read comes back clamped rather than
+incoherent. Established by trying to make the gate fail and failing, and written
+into the test that documents it.
+
+**Not touched:** the Adaptation Engine. It stays unwired and reaches no live
+path, pending a separate review of the progression gates.
+
+---
+
 ## 2026-08-31 · Goal changes require explicit runner action, and Races folds into Progress. SETTLED.
 
 Two decisions from the UX audit's flagged open questions, David's own call on

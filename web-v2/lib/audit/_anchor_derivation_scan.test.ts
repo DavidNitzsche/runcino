@@ -136,12 +136,28 @@ describe('ANCHORSTAMP-1 · a persisted derivation names the anchor it came from'
     // The registry declares `buildWorkoutSpec`. If a rename lands and this file
     // is not updated, `findNullAnchors` matches nothing and reports zero
     // findings — indistinguishable from a clean repo without this assertion.
-    const src = fs.readFileSync(path.join(ROOT, 'web-v2/lib/plan/reanchor-plan.ts'), 'utf8');
-    const hits = findNullAnchors(src, 'reanchor-plan.ts');
+    //
+    // 2026-08-31 · THE CANARY MOVED, because the old one was FIXED. This probe
+    // used to read `reanchor-plan.ts`, whose maintenance arm passed a literal
+    // null for both HR anchors under an argued exemption. PRESCRIPTION-WIRE-1
+    // removed the parity argument that exemption rested on, so the site was
+    // repaired rather than re-excused — and this assertion went red, which is
+    // the probe doing exactly its job: it refuses to report clean once it can
+    // no longer find the thing it was pointed at.
+    //
+    // Re-pointed at `seed-from-onboarding.ts`, which still passes `/* lthr */
+    // null` under its own argued entry (correct for fifteen of sixteen
+    // production profiles, wrong for the one that matters — see the registry).
+    // When THAT is fixed this probe must move again, and a reader who finds it
+    // red should check whether the canary was repaired before assuming a
+    // parser break.
+    const src = fs.readFileSync(path.join(ROOT, 'web-v2/lib/plan/seed-from-onboarding.ts'), 'utf8');
+    const hits = findNullAnchors(src, 'seed-from-onboarding.ts');
     expect(
       hits.length,
-      'the known null-anchor call in reanchor-plan.ts was not detected — the '
-      + 'builder name in DERIVATION_BUILDERS is stale, or the parser is broken',
+      'the known null-anchor call in seed-from-onboarding.ts was not detected — the '
+      + 'builder name in DERIVATION_BUILDERS is stale, the parser is broken, or the '
+      + 'canary was fixed and this probe needs re-pointing at another exempted site',
     ).toBeGreaterThan(0);
   });
 

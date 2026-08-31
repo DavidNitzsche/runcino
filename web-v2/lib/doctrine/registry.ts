@@ -298,7 +298,21 @@ import {
   strideRepsForPhase,
   buildWorkoutSpec,
   marathonPaceSPerMi,
+  // PRESCRIPTION-WIRE-1 (2026-08-31) · the population offsets, imported as
+  // SYMBOLS rather than regexed out of the source. Rule 7's own instruction —
+  // "prefer exporting the constant so the claim can import it" — taken, after
+  // four claims broke on a refactor that had not moved a single number.
+  EASY_BAND_LO_OFFSET_S,
+  EASY_BAND_WIDTH_S,
+  MARATHON_OFFSET_S,
+  INTERVAL_OFFSET_S,
 } from '@/lib/plan/spec-builder';
+// PRESCRIPTION-WIRE-1 · pure, no pool at any depth, so importing it here does
+// not put a database on any path this registry reaches (Rule 19).
+import {
+  SHAKEOUT_CEILING_PAD_S_PER_MI,
+  resolveCapacityPrescription,
+} from '@/lib/training/prescription-resolver';
 import {
   AT_PACE_SESSION_MI,
   AT_PACE_WEEKLY_SHARE_CAP,
@@ -3945,15 +3959,13 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'code comment cited the table row while quoting a figure computed off MP+60.',
     check({ cite }) {
       // E = MP + 60..90 (Research/01:142), and M = T + MARATHON_OFFSET_SEC.
-      const mpOffset = 18;
-      const want: [number, number] = [mpOffset + 60, mpOffset + 90];
-      const src = sourceOf('web-v2/lib/plan/spec-builder.ts');
-      const m = matchLiteral(
-        src,
-        /const easyLo = easyAnchorT \+ (\d+), easyHi = easyAnchorT \+ (\d+);/,
-        'buildWorkoutSpec easy band',
-      );
-      const [lo, hi] = [Number(m[1]), Number(m[2])];
+      const want: [number, number] = [MARATHON_OFFSET_S + 60, MARATHON_OFFSET_S + 90];
+      // PRESCRIPTION-WIRE-1 · read off the exported symbols, not off a regex
+      // over this file's own source. The band is stated as a fast edge plus a
+      // width since the easy CEILING became the thing that moves; the two
+      // offsets this claim has always asserted are that edge and edge+width.
+      const lo = EASY_BAND_LO_OFFSET_S;
+      const hi = EASY_BAND_LO_OFFSET_S + EASY_BAND_WIDTH_S;
       within(lo, [want[0] - 15, want[0] + 15], 'easy-pace floor offset off T (Research/01:142 MP+60)');
       within(hi, [want[1] - 15, want[1] + 15], 'easy-pace ceiling offset off T (Research/01:142 MP+90)');
 
@@ -3972,6 +3984,74 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           `the easy band is stated twice and the two disagree: spec-builder T+${lo}/T+${hi}, ` +
           `lib/training/vdot.ts easyPaceBandFromAnchorPace T+${twin[1]}/T+${twin[2]}. ` +
           'Re-point one at the other or delete the unused twin — do not edit only one.',
+        );
+      }
+    },
+  },
+  {
+    id: 'PACE.shakeout-ceiling-is-the-recovery-band',
+    binds: ['lib/training/prescription-resolver.ts#SHAKEOUT_CEILING_PAD_S_PER_MI'],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '## Hansons pace methodology',
+    claim:
+      'A shakeout is a RECOVERY run, not a fast easy day. Research/04 §1 names the session in '
+      + 'its own Variations row — "Recovery shakeout (15-20 min)" — and prices the recovery '
+      + 'family as "Slower than E ... or easier than easy". Research/01\'s Hansons table then '
+      + 'puts both bands on ONE shared MP anchor, two adjacent rows: Recovery MP+90-120, Easy '
+      + 'MP+60-90. So the recovery band begins exactly where the easy band ends, and the pad a '
+      + 'shakeout ceiling takes over the general easy ceiling is the difference between those '
+      + 'two fast edges — read out of the doc, never chosen. The 2026-08-31 product decision '
+      + 'settled the SHAPE (shakeout is its own purpose with its own tighter ceiling, not an '
+      + 'alias for easy) and left the number to the wiring phase; this is the number, and it '
+      + 'is doctrine\'s rather than a preference.',
+    check({ cite }) {
+      const t = cite.table();
+      // `parseBand` reads "MP + 90-120 sec/mi" as [90, 120]; the FAST edge of
+      // each band is where it begins, and it is the two beginnings that are
+      // being differenced.
+      const [recovery] = parseBand(t.cell('Recovery', 'Pace'));
+      const [easy] = parseBand(t.cell('Easy', 'Pace'));
+      const want = recovery - easy;
+      if (SHAKEOUT_CEILING_PAD_S_PER_MI !== want) {
+        throw new Error(
+          `SHAKEOUT_CEILING_PAD_S_PER_MI is ${SHAKEOUT_CEILING_PAD_S_PER_MI}; the Hansons table's `
+          + `Recovery row starts at MP+${recovery} and its Easy row at MP+${easy}, so the gap `
+          + `doctrine states is ${want} s/mi`,
+        );
+      }
+      // And the pad is actually SPENT — a constant nothing reads is a rule
+      // nobody is following (Rule 20). Both prescriptions are built and the
+      // distance between them is measured, so a future edit that stops
+      // applying the pad fails here as well as in the unit suite.
+      const cap = {
+        threshold: {
+          paceSecPerMi: 430, vdot: 48, confidence: 0.7, sourceMode: 'direct' as const,
+          evidenceIds: [], resolvedAt: '', reasons: [], modelVersion: '1.0.0',
+        },
+        highIntensity: {
+          intervalPaceSecPerMi: 407, repetitionPaceSecPerMi: 371, vdot: 47, confidence: 0.3,
+          sourceMode: 'vdot_fallback' as const, evidenceIds: [], resolvedAt: '', reasons: [], modelVersion: '1.0.0',
+        },
+        easyCeiling: {
+          ceilingSecPerMi: 492, confidence: 0.634, sourceMode: 'direct' as const,
+          evidenceIds: [], resolvedAt: '', reasons: [], modelVersion: '1.0.0',
+        },
+        durability: {
+          enduranceExponent: 1.0869,
+          raceExponent: { present: false as const, reason: 'fixture', observations: 0 },
+          decoupling: { present: false as const, reason: 'fixture', observations: 0 },
+          confidence: 0.5, sourceMode: 'population_prior' as const,
+          evidenceIds: [], resolvedAt: '', reasons: [], modelVersion: '1.0.0',
+        },
+      };
+      const easyRx = resolveCapacityPrescription({ capacity: cap, purpose: 'easy' });
+      const shakeRx = resolveCapacityPrescription({ capacity: cap, purpose: 'shakeout' });
+      const spent = (shakeRx.ceilingSecPerMi ?? 0) - (easyRx.ceilingSecPerMi ?? 0);
+      if (Math.abs(spent - SHAKEOUT_CEILING_PAD_S_PER_MI) > 1e-6) {
+        throw new Error(
+          `the shakeout prescription sits ${spent.toFixed(2)} s/mi off the easy prescription, `
+          + `not the ${SHAKEOUT_CEILING_PAD_S_PER_MI} s/mi the constant states · the pad is `
+          + 'declared but not spent',
         );
       }
     },
@@ -4008,16 +4088,48 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         );
       }
 
-      // 2 · the composer states it as exactly tPaceSec, no arithmetic.
-      const composer = matchLiteral(
-        sourceOf('web-v2/lib/plan/spec-builder.ts'),
-        /const tempo\s*=\s*([^;]+);/,
-        'buildWorkoutSpec tempo',
-      )[1].trim();
-      if (composer !== 'tPaceSec') {
+      // 2 · the composer prices a continuous tempo AT T, with no offset.
+      //
+      // PRESCRIPTION-WIRE-1 · checked BEHAVIOURALLY rather than by regexing the
+      // expression. The old check read `const tempo = ([^;]+);` and required
+      // the text `tPaceSec`, which broke the moment the line gained a
+      // canonical-anchor branch — while the physiology had not moved. Building
+      // a real tempo session and reading its pace back is a strictly stronger
+      // assertion: it fails on a reintroduced offset AND on any other path that
+      // would put a tempo block at something other than threshold, which a text
+      // match never could.
+      //
+      // Both arms are exercised, because there are now two: with no anchors the
+      // block must sit at the `tPaceSec` argument, and with anchors it must sit
+      // at the canonical threshold. Either drifting is the PACE-T-1 defect.
+      const T_FIXTURE = 430;
+      const plain = buildWorkoutSpec('tempo', 8, T_FIXTURE, null, '2 mi WU · 4 mi @ T · 2 mi CD');
+      const plainPace = Number((plain.spec as Record<string, unknown>)?.tempo_pace_s_per_mi);
+      if (plainPace !== T_FIXTURE) {
         throw new Error(
-          `spec-builder's tempo is "${composer}" · doctrine puts a continuous tempo AT T, so ` +
-            'this must be tPaceSec with no offset (see PACE-T-1, 2026-06-23)',
+          `a continuous tempo built at T=${T_FIXTURE} came back at ${plainPace} s/mi · doctrine ` +
+            'puts a continuous tempo AT T, with no offset (see PACE-T-1, 2026-06-23)',
+        );
+      }
+      const anchored = buildWorkoutSpec(
+        'tempo', 8, T_FIXTURE, null, '2 mi WU · 4 mi @ T · 2 mi CD',
+        null, null, 407, T_FIXTURE, false, null,
+        {
+          thresholdSecPerMi: T_FIXTURE, intervalSecPerMi: 407, repetitionSecPerMi: 371,
+          easyCeilingSecPerMi: 502, shakeoutCeilingSecPerMi: 532, marathonSecPerMi: 475,
+          basis: {
+            threshold: { sourceMode: 'direct', confidence: 0.7, vdot: 48 },
+            highIntensity: { sourceMode: 'vdot_fallback', confidence: 0.3 },
+            easyCeiling: { sourceMode: 'direct', confidence: 0.6 },
+            marathon: { sourceMode: 'direct', confidence: 0.7, enduranceExponent: 1.0869, personallyEvidenced: true },
+          },
+        },
+      );
+      const anchoredPace = Number((anchored.spec as Record<string, unknown>)?.tempo_pace_s_per_mi);
+      if (anchoredPace !== T_FIXTURE) {
+        throw new Error(
+          `a continuous tempo built off a canonical threshold of ${T_FIXTURE} came back at ` +
+            `${anchoredPace} s/mi · the anchored arm must price it at threshold too`,
         );
       }
 
@@ -4043,7 +4155,22 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'PACE.marathon-offset',
-    binds: ['lib/plan/spec-builder.ts#buildWorkoutSpec.mp'],
+    // PRESCRIPTION-WIRE-1 · re-pointed. `buildWorkoutSpec.mp` was a dead local
+    // — every reader had already moved to `resolveMarathonPace` — and it was
+    // DELETED rather than left as a literal nothing calls, per the standing
+    // rule against keeping a migrated path around as a comment. The offset it
+    // held lives on as `MARATHON_OFFSET_S`, inside the one function that still
+    // spends it, which is where this claim now binds.
+    //
+    // WHAT THIS CLAIM NO LONGER COVERS, said plainly (Rule 22): it is now a
+    // claim about the POPULATION default only. On the plan-flex path a marathon
+    // pace comes from `marathonPaceFromDurability` — the runner's own fitted
+    // Riegel exponent — and this offset is not consulted at all. That
+    // derivation is bound separately, by the prescription resolver's own suite.
+    binds: [
+      'lib/plan/spec-builder.ts#MARATHON_OFFSET_S',
+      'lib/plan/spec-builder.ts#resolveMarathonPace',
+    ],
     doc: 'Research/01-pace-zones-vdot.md',
     anchor: '### Numerical equivalencies',
     claim:
@@ -4054,15 +4181,28 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const t = cite.table();
       const [tPace] = parsePaceBandSec(t.cell('Daniels T', 'Pace (min/mi)'));
       const [mPace] = parsePaceBandSec(t.cell('Daniels M', 'Pace (min/mi)'));
-      const off = Number(
-        matchLiteral(sourceOf('web-v2/lib/plan/spec-builder.ts'), /const mp = tPaceSec \+ (\d+);/, 'buildWorkoutSpec mp')[1],
-      );
-      within(off, [mPace - tPace - 10, mPace - tPace + 10], 'marathon-pace offset off T');
+      within(MARATHON_OFFSET_S, [mPace - tPace - 10, mPace - tPace + 10], 'marathon-pace offset off T');
+      // And the function that spends it actually spends it. The constant being
+      // right is worth nothing if the derivation stopped reading it — the
+      // "declared but never runtime-checked" gap this registry has already been
+      // caught leaving open elsewhere.
+      const T_FIXTURE = 430;
+      const spent = marathonPaceSPerMi({ tPaceSec: T_FIXTURE }) - T_FIXTURE;
+      if (spent !== MARATHON_OFFSET_S) {
+        throw new Error(
+          `resolveMarathonPace's current-fitness branch spends ${spent} s/mi off T while ` +
+            `MARATHON_OFFSET_S is ${MARATHON_OFFSET_S} · the constant and the derivation have drifted`,
+        );
+      }
     },
   },
   {
     id: 'PACE.interval-offset',
-    binds: ['lib/plan/spec-builder.ts#buildWorkoutSpec.interval'],
+    // PRESCRIPTION-WIRE-1 · re-pointed at the exported constant. WHAT IT NO
+    // LONGER COVERS (Rule 22): on the plan-flex path an interval pace comes
+    // from `resolveHighIntensityCapacity`, not from this offset, so this claim
+    // now watches the POPULATION default that `generate.ts` still authors from.
+    binds: ['lib/plan/spec-builder.ts#INTERVAL_OFFSET_S'],
     doc: 'Research/01-pace-zones-vdot.md',
     anchor: '### Numerical equivalencies',
     claim:
@@ -4073,13 +4213,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const [tPace] = parsePaceBandSec(t.cell('Daniels T', 'Pace (min/mi)'));
       const [iPace] = parsePaceBandSec(t.cell('Daniels I', 'Pace (min/mi)'));
       const [rPace] = parsePaceBandSec(t.cell('Daniels R', 'Pace (min/mi)'));
-      const off = Number(
-        matchLiteral(
-          sourceOf('web-v2/lib/plan/spec-builder.ts'),
-          /const interval = tPaceSec - (\d+);/,
-          'buildWorkoutSpec interval',
-        )[1],
-      );
+      const off = INTERVAL_OFFSET_S;
       const band: [number, number] = [tPace - iPace - 10, tPace - iPace + 10];
       // GATEAUDIT-1 (2026-08-30) · the exemption used to be `if (exempt(...)) return;`
       // on the line ABOVE the only assertion in this claim, so granting it did not
