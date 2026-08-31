@@ -212,6 +212,9 @@ import {
   restoreSteps,
   RESTORE_STEP_FRACTION,
   QUALITY_RETURN_MIN_SESSIONS,
+  GENERAL_AEROBIC_MIN_MINUTES,
+  GENERAL_AEROBIC_MAX_MINUTES,
+  RECOVERY_RUN_MAX_MINUTES,
   BASE_REBUILT_SHARE,
   BASE_QUALITY_TYPES,
   FAST_FINISH_MIN_MI,
@@ -2387,6 +2390,83 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           '`heldByCurrent` is no longer derived from the demonstrated volume setting the base · ' +
             'without it the engine cannot tell a runner who ran through from one coming back',
+        );
+      }
+    },
+  },
+  {
+    id: 'AEROBIC.general-aerobic-run-is-a-duration',
+    binds: [
+      'lib/plan/generate.ts#GENERAL_AEROBIC_MIN_MINUTES',
+      'lib/plan/generate.ts#GENERAL_AEROBIC_MAX_MINUTES',
+      'lib/plan/generate.ts#RECOVERY_RUN_MAX_MINUTES',
+      'lib/plan/generate.ts#layoutWeek.easyCount',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### 2. General aerobic (easy run)',
+    claim:
+      'Doctrine states every easy category in MINUTES, never miles — §1 recovery 20-45 min, ' +
+      '§2 general aerobic 40-75 min — because three miles is a real run for one runner and a ' +
+      'warm-up for another. Rule 12: the engine sized easy days as whatever the long run and ' +
+      'the quality sessions left over, and handed a 3:00-goal marathoner 2-mile easy days. ' +
+      'The three constants must equal the bands the cited tables publish, and the engine must ' +
+      'SPEND them: cutting the NUMBER of easy days rather than authoring any below the §2 ' +
+      'floor, and shortening the day after the long run into §1\'s band while the others take ' +
+      'the miles it gives up.',
+    check({ cite }) {
+      // §2's own row, read at run time rather than hardcoded on both sides.
+      const [aeroLo, aeroHi] = parseBand(cite.table().cell('Duration', 'Specification'));
+      if (GENERAL_AEROBIC_MIN_MINUTES !== aeroLo) {
+        throw new Error(
+          `GENERAL_AEROBIC_MIN_MINUTES is ${GENERAL_AEROBIC_MIN_MINUTES}, §2 states ${aeroLo}-${aeroHi} min`,
+        );
+      }
+      if (GENERAL_AEROBIC_MAX_MINUTES !== aeroHi) {
+        throw new Error(
+          `GENERAL_AEROBIC_MAX_MINUTES is ${GENERAL_AEROBIC_MAX_MINUTES}, §2 states ${aeroLo}-${aeroHi} min`,
+        );
+      }
+      // §1 is a different section · resolve it explicitly rather than assuming
+      // the two tables sit under one anchor.
+      const rec = resolveCitation('Research/00a-distance-running-training.md', '### 1. Recovery run');
+      const [recLo, recHi] = parseBand(rec.table().cell('Duration', 'Specification'));
+      if (RECOVERY_RUN_MAX_MINUTES !== recHi) {
+        throw new Error(
+          `RECOVERY_RUN_MAX_MINUTES is ${RECOVERY_RUN_MAX_MINUTES}, §1 states ${recLo}-${recHi} min`,
+        );
+      }
+      // The two bands OVERLAP in doctrine (20-45 against 40-75) and that is
+      // fine — they are different jobs, not disjoint lengths. What has to hold
+      // is that recovery is the SHORTER of the two at both ends, or "shorten
+      // the day after the long run into §1" would not shorten anything.
+      if (!(recLo < aeroLo && recHi < aeroHi)) {
+        throw new Error(
+          `§1 recovery is ${recLo}-${recHi} min and §2 aerobic is ${aeroLo}-${aeroHi} · recovery ` +
+            'is no longer the shorter category, so varying between them is meaningless',
+        );
+      }
+      // And the engine spends them. Rule 18: an assertion that only checks the
+      // constants proves the file agrees with itself.
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/while \(easyCount > 1 && remainingMi \/ easyCount < genAerobicFloorMi\) easyCount--;/.test(src)) {
+        throw new Error(
+          'layoutWeek no longer cuts the NUMBER of easy days when the remainder cannot fund the ' +
+            '§2 floor · easy running is back to being the leftover (Rule 12)',
+        );
+      }
+      if (!/RECOVERY_RUN_MAX_MINUTES \* 60\) \/ easyPaceSecPerMi/.test(src)) {
+        throw new Error(
+          'the day after the long run is no longer priced into §1\'s recovery band · Rule 12\'s ' +
+            'variation clause is unspent and every easy day is the same number again',
+        );
+      }
+      // TAPER and BASE are excluded on purpose (owner ruling 2026-08-30: a
+      // taper's short easy days are legitimate §1 runs). If that exclusion
+      // disappears, the taper gets "fixed" and the let-down stops working.
+      if (!/phase !== 'BASE' && phase !== 'TAPER'/.test(src)) {
+        throw new Error(
+          'the easy-day rules no longer exclude BASE and TAPER · a taper deliberately cuts ' +
+            'volume and its short easy days are doctrine, not a defect',
         );
       }
     },
