@@ -17915,6 +17915,96 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       }
     },
   },
+  {
+    id: 'CONVENTION.adaptation-engine-bars',
+    binds: [
+      'lib/adaptation/adaptation-engine.ts#PACE_PROGRESS_MIN_SESSIONS',
+      'lib/adaptation/adaptation-engine.ts#PACE_PROGRESS_MIN_STEP_SEC_PER_MI',
+      'lib/adaptation/adaptation-engine.ts#PROGRESS_LEVER_ORDER',
+      'lib/adaptation/adaptation-engine.ts#sessionDemonstratesControl',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Triggers to retest',
+    claim:
+      'The Adaptation Engine may not invent its own corroboration count, its own pace quantum, ' +
+      'or its own idea of which lever to reach for first. The COUNT is ' +
+      'CORROBORATION_MIN_OBSERVATIONS, imported from vdot-corpus.ts, so the corpus reader, the ' +
+      'capacity resolver and the adaptation engine cannot hold three opinions about what ' +
+      '"corroborated" means. The STEP is PACE_STEP_S_PER_MI, imported from prescription/levers.ts ' +
+      '— the same quantum the calendar\'s own progression uses — and the engine\'s ceiling on a ' +
+      'single move is derived from TRAINING_LEAD_REANCHOR_DELTA through the Daniels table rather ' +
+      'than picked, so it is worth whatever one VDOT point is worth at THIS runner\'s level. ' +
+      'The ORDER is smallest-useful-stressor-first with pace LAST, which is doctrine rather than ' +
+      'taste: Research/01 §"Triggers to retest" prices a single good tempo as a LEAD needing a ' +
+      'field test, and lib/prescription/levers.ts LEVER_ORDER already encodes the same ranking by ' +
+      'putting eight levers ahead of pace. And CONTROL is a hard gate on the pace lever — a ' +
+      'session the Evidence Engine graded `variable`, or one carrying a late-run pacing collapse, ' +
+      'may not count toward a pace progression however fast it was, which is ' +
+      'ADAPTATION_PROGRESSION_DOCTRINE\'s Example A / Example B distinction.',
+    check() {
+      const src = sourceOf('web-v2/lib/adaptation/adaptation-engine.ts');
+
+      // The doctrine sentence the ordering rests on, read out of the doc at run
+      // time — a check that hardcodes both sides only proves it agrees with
+      // itself (Rule 18).
+      const triggers = resolveCitation(
+        'Research/01-pace-zones-vdot.md', '### Triggers to retest').text();
+      if (!/\+\s*1\s*VDOT/i.test(triggers) || !/field-test/i.test(triggers)) {
+        throw new Error(
+          'Research/01 §"Triggers to retest" no longer prices a good tempo as a +1 VDOT lead ' +
+            'needing a field test · that clause is why one session cannot move a pace here',
+        );
+      }
+
+      // The bars must be IMPORTED, never re-typed. A literal 3 or a literal 5
+      // appearing here instead is the duplication this claim exists to stop.
+      if (!/export const PACE_PROGRESS_MIN_SESSIONS = CORROBORATION_MIN_OBSERVATIONS;/.test(src)) {
+        throw new Error(
+          'PACE_PROGRESS_MIN_SESSIONS is no longer CORROBORATION_MIN_OBSERVATIONS · the ' +
+            'adaptation engine has grown its own opinion about what corroboration means',
+        );
+      }
+      if (!/export const PACE_PROGRESS_MIN_STEP_SEC_PER_MI = PACE_STEP_S_PER_MI;/.test(src)) {
+        throw new Error(
+          'PACE_PROGRESS_MIN_STEP_SEC_PER_MI is no longer PACE_STEP_S_PER_MI · the engine and ' +
+            'the calendar now disagree about what one pace step is',
+        );
+      }
+      if (!/TRAINING_LEAD_REANCHOR_DELTA/.test(src)) {
+        throw new Error(
+          'the pace step ceiling no longer derives from TRAINING_LEAD_REANCHOR_DELTA · a ' +
+            'hardcoded ceiling is a second opinion about the doctrinal soft-lead quantum',
+        );
+      }
+
+      // Pace LAST. The whole point of the ordering, and the half that
+      // counteracts this engine's measured disposition.
+      const order = matchLiteral(
+        src,
+        /PROGRESS_LEVER_ORDER: readonly AdaptationLever\[\] = \[\s*([^\]]+)\]/,
+        'the progress lever order',
+      )[1];
+      const levers = order.split(',').map((s) => s.trim().replace(/['\s]/g, '')).filter(Boolean);
+      if (levers[levers.length - 1] !== 'PACE') {
+        throw new Error(
+          `PROGRESS_LEVER_ORDER ends with ${levers[levers.length - 1]}, not PACE · BRIEF 04 says ` +
+            'not to use pace as the primary progression mechanism, and levers.ts LEVER_ORDER ' +
+            'puts eight levers ahead of it',
+        );
+      }
+
+      // CONTROL is a gate, not a weight. Both disqualifiers must remain.
+      const control = stripComments(src).split('function sessionDemonstratesControl')[1] ?? '';
+      if (!/executionQuality !== 'controlled'/.test(control)
+        || !/lateRunPacingCollapse === true/.test(control)) {
+        throw new Error(
+          'sessionDemonstratesControl no longer disqualifies variable execution AND late-run ' +
+            'collapse · that pair IS the Example A / Example B test, and without it a session ' +
+            'that beat its target while falling apart counts as upward evidence',
+        );
+      }
+    },
+  },
 ];
 
 /** The four race-week templates in Research/08 section 9.3, by their own

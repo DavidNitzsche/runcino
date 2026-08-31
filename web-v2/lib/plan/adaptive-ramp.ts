@@ -565,7 +565,17 @@ export const planBump = planUpgrade;
 
 // ── helpers ────────────────────────────────────────────────────────────
 
-function readTierUpper(
+/**
+ * The upper edge of the plan's own tier band, off `training_plans
+ * .authored_state`.
+ *
+ * EXPORTED 2026-08-31 so the Adaptation Engine's loader
+ * (`lib/adaptation/load-adaptation-engine.ts`) reads the ceiling through this
+ * function rather than re-typing the `authored_state` key lookup. Rule 16: two
+ * readers of one band is two chances to disagree about where a runner's
+ * ceiling is, and this one already knows the pre-tier-system case.
+ */
+export function readTierUpper(
   authoredState: Record<string, unknown>,
   key: 'tier_peak_weekly_band' | 'tier_peak_long_band',
 ): number {

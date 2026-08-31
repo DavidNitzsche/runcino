@@ -233,6 +233,17 @@ import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
 import { normalWeeklyMileage, type NormalReading } from '@/lib/training/normal-window';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+// THE BELIEF-TENSION CONSUMER. `reexamination.ts` deliberately imports nothing
+// from this file at run time (it writes out the half-life rather than importing
+// it, with a gate keeping the two equal) precisely so this edge can be a plain
+// static import and there is no module cycle to reason about.
+import {
+  REEXAMINATION_WINDOW_DAYS,
+  accumulateReexamination,
+  tensionObservationsFrom,
+  type ReexaminationPressure,
+} from '@/lib/evidence/reexamination';
+import { classifyRecentActivities } from '@/lib/evidence/load-activity-evidence';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 0 · GOAL ISOLATION, ENFORCED BY THE COMPILER (§6, §10)
@@ -329,7 +340,9 @@ export type CapacityReasonCode =
   | 'NO_DIRECT_EVIDENCE'
   | 'NO_DECOUPLING_CORROBORATION'
   | 'NO_RACE_EXPONENT_EVIDENCE'
-  | 'HABIT_WINDOW_REFUSED';
+  | 'HABIT_WINDOW_REFUSED'
+  // ── the belief-tension consumer (lib/evidence/reexamination.ts) ──
+  | 'REEXAMINATION_LOWERED_THE_CORROBORATION_BAR';
 
 /**
  * §31 · version the model, so a behaviour change can be attributed to new
@@ -901,6 +914,21 @@ export interface ThresholdCapacityInputs {
   todayISO: string;
   /** The corroboration floor tier 1 was read at. Defaults to the reader's. */
   minObservations?: number;
+  /**
+   * THE BELIEF-TENSION CONSUMER'S INPUT (`lib/evidence/reexamination.ts`).
+   *
+   * Repeated same-direction disagreement between recent activities and the
+   * belief we already held may lower tier 1's corroboration floor by ONE, never
+   * below two. It cannot move a pace, cannot raise the bar, and cannot make one
+   * activity sufficient. Absent → the floor is untouched and this resolver
+   * behaves byte-for-byte as it did before the consumer existed, which is the
+   * property `_capacity_resolver.test.ts` asserts.
+   *
+   * The pressure is measured against the belief that was held when each
+   * activity ARRIVED, which is why the caller resolves once without it before
+   * classifying — see `resolveThresholdCapacity`.
+   */
+  reexamination?: ReexaminationPressure | null;
 }
 
 /**
@@ -934,7 +962,16 @@ export function composeThresholdCapacity(
   inputs: ThresholdCapacityInputs,
 ): ThresholdCapacityEstimate {
   const { direct, fallback, todayISO } = inputs;
-  const minObservations = inputs.minObservations ?? CORROBORATION_MIN_OBSERVATIONS;
+  const baseMinObservations = inputs.minObservations ?? CORROBORATION_MIN_OBSERVATIONS;
+  // The consumer may only ever LOWER the floor, and `accumulateReexamination`
+  // guarantees that on its side. Re-clamped here so this file's own behaviour
+  // does not depend on a caller having used the sanctioned accumulator — a
+  // hand-built pressure object cannot raise the bar through this seam.
+  const relaxed = inputs.reexamination?.effectiveMinObservations;
+  const minObservations = relaxed != null && relaxed < baseMinObservations
+    ? relaxed
+    : baseMinObservations;
+  const barLowered = minObservations < baseMinObservations;
   const resolvedAt = new Date().toISOString();
 
   // ── TIER 1 · DIRECT ──────────────────────────────────────────────────────
@@ -948,7 +985,11 @@ export function composeThresholdCapacity(
       sourceMode: 'direct',
       evidenceIds: direct.supporting.map((o) => o.id),
       resolvedAt,
-      reasons: ['DIRECT_CORROBORATED_THRESHOLD_EVIDENCE', ...evidenceReasons(q, components)],
+      reasons: [
+        'DIRECT_CORROBORATED_THRESHOLD_EVIDENCE',
+        ...evidenceReasons(q, components),
+        ...(barLowered ? ['REEXAMINATION_LOWERED_THE_CORROBORATION_BAR' as const] : []),
+      ],
       modelVersion: CAPACITY_MODEL_VERSION,
     };
   }
@@ -1027,7 +1068,88 @@ export async function resolveThresholdCapacity(
     resolveThresholdPaceCorpus(userId, today),
     loadVdotFallback(userId, today),
   ]);
-  return composeThresholdCapacity({ direct, fallback, todayISO: today });
+  const base = composeThresholdCapacity({ direct, fallback, todayISO: today });
+
+  /* ── PASS 2 · THE BELIEF-TENSION CONSUMER ────────────────────────────────
+   *
+   * `lib/evidence/reexamination.ts` owns the policy; this is the two lines that
+   * apply it. TWO PASSES, and the order is the whole point: tension is measured
+   * against THE BELIEF THAT WAS HELD WHEN THE ACTIVITY ARRIVED, so the base
+   * estimate above has to exist first. It terminates because pass 2 can only
+   * ever LOWER the corroboration floor, and a lower floor can only move tier 1
+   * from refusing to answering — never back.
+   *
+   * WHY THE RE-READ IS CONDITIONAL. When nothing relaxed the floor, the second
+   * corpus read would return exactly what the first did, so it is skipped and
+   * `base` is returned unchanged. That is what keeps this resolver's behaviour
+   * byte-identical for every runner with no repeated same-direction tension —
+   * which today is every runner, and is the property the existing capacity
+   * tests assert.
+   *
+   * NO GOAL IS VISIBLE HERE. `loadRecentTension` takes a user, a date and a
+   * pace; the compile-time assertion in section 8 still holds. */
+  const tension = await loadRecentTension(userId, today, base);
+  if (tension == null || tension.effectiveMinObservations >= CORROBORATION_MIN_OBSERVATIONS) {
+    return base;
+  }
+  const relaxedDirect = await resolveThresholdPaceCorpus(userId, today, {
+    minObservations: tension.effectiveMinObservations,
+  });
+  return composeThresholdCapacity({
+    direct: relaxedDirect,
+    fallback,
+    todayISO: today,
+    reexamination: tension,
+  });
+}
+
+/**
+ * Read the runner's recent belief-tension, or say honestly that we could not.
+ *
+ * Returns `null` — not an empty pressure — when the read FAILS, so a database
+ * hiccup reads as "we did not look" rather than "we looked and found no
+ * tension" (Rule 11). Both produce the same estimate today; they must not
+ * produce the same LOG entry, and a future consumer that treats an absence as
+ * evidence would be reading a swallowed failure.
+ *
+ * The window is `REEXAMINATION_WINDOW_DAYS`, the same one the accumulator
+ * filters on, so the classifier is never run over activities the policy will
+ * discard.
+ */
+async function loadRecentTension(
+  userId: string,
+  todayISO: string,
+  belief: ThresholdCapacityEstimate,
+): Promise<ReexaminationPressure | null> {
+  try {
+    const from = new Date(Date.parse(`${todayISO}T00:00:00Z`) - REEXAMINATION_WINDOW_DAYS * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const classified = await classifyRecentActivities(userId, from, todayISO, {
+      currentBelief: {
+        thresholdPaceSecPerMi: belief.paceSecPerMi,
+        thresholdConfidence: belief.confidence,
+        asOf: todayISO,
+      },
+    });
+    const observations = tensionObservationsFrom(
+      classified.map((c) => ({
+        activityId: c.runId,
+        dateISO: c.dateISO,
+        tension: c.result.beliefTension,
+      })),
+    );
+    return accumulateReexamination({
+      capacity: 'threshold',
+      observations,
+      baseMinObservations: CORROBORATION_MIN_OBSERVATIONS,
+      todayISO,
+    });
+  } catch (err) {
+    // Named, never swallowed into an empty reading.
+    console.warn('[capacity/reexamination] tension read failed', err);
+    return null;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

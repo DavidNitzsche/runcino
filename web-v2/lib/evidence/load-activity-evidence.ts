@@ -17,10 +17,16 @@
  *   `CANONICAL_ROW_SQL`, the ONE definition, not a re-typed
  *   `absorbed_into_canonical_at` test. A row that was merged into another is a
  *   duplicate of an activity, not an activity.
- * · The plan day: the ACTIVE plan only (`training_plans.archived_iso IS NULL`).
- *   Joining `plan_workouts` on `user_uuid` alone reads every plan version the
- *   runner has ever had — 47 of them on the owner's account — which is the
- *   ACTIVEPLAN-1 defect exactly.
+ * · The plan day, SINGLE-ACTIVITY path (`classifyStoredActivity`): the ACTIVE
+ *   plan only (`training_plans.archived_iso IS NULL`). Joining `plan_workouts`
+ *   on `user_uuid` alone reads every plan version the runner has ever had — 47
+ *   of them on the owner's account — which is the ACTIVEPLAN-1 defect exactly.
+ * · The plan day, WINDOW path (`classifyRecentActivities`): `ownedDaysSql`,
+ *   which resolves the version that was LIVE FOR THAT DATE (active first, then
+ *   newest authored). Different from the single-activity path on purpose and
+ *   strictly better over a historical window: the active plan may not cover an
+ *   old date at all, and what the runner actually trained against that day is
+ *   the version that owned it. Neither reads all 47.
  * · Subjective: `post_run_rpe` by `activity_id`, and `subjective_checkins` by
  *   date. Never `user_id = 'me'`, which is a shared legacy sentinel that
  *   returns other accounts' rows.
@@ -41,7 +47,8 @@
  */
 import { pool } from '@/lib/db/pool';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
-import { normalizeSplits, type RunData } from '@/lib/runs/run-shape';
+import { normalizeSplits, runDaySql, type RunData } from '@/lib/runs/run-shape';
+import { ownedDaysSql } from '@/lib/plan/owned-days';
 import { runFacts } from '@/lib/runs/run-facts';
 import { runCadenceSpm } from '@/lib/runs/coherence';
 import {
@@ -121,6 +128,12 @@ export function normaliseSplits(raw: unknown): EvidenceSplit[] {
 interface RunRow {
   id: string;
   data: Record<string, unknown>;
+}
+
+/** `ownedDaysSql`'s upper bound is exclusive; this file's windows are
+ *  inclusive. One conversion, named, rather than an off-by-one at a call site. */
+function isoPlusOneDay(isoDate: string): string {
+  return new Date(Date.parse(`${isoDate}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 }
 
 function num(v: unknown): number | null {
@@ -342,4 +355,165 @@ export async function classifyStoredActivity(
     currentBelief: opts.currentBelief ?? null,
   };
   return classifyActivityEvidence(activityInputFromRunData(row.id, data, lthrBpm), context);
+}
+
+/**
+ * One classified result plus the identity a consumer needs to talk about it.
+ *
+ * `runId` is `runs.id` (what a `plan_workouts`/`coach_intents` row references);
+ * `result.activityId` is the SOURCE activity id, which is a different key on
+ * older rows. Both are reported rather than collapsed, because a caller citing
+ * evidence provenance needs the one the rest of the app can look up.
+ */
+export interface ClassifiedActivity {
+  runId: string;
+  dateISO: string;
+  result: ActivityEvidenceResult;
+}
+
+/**
+ * Classify a WINDOW of the runner's recent activities, in ONE pass over the
+ * database rather than N calls to `classifyStoredActivity`.
+ *
+ * ── WHY A BATCH LOADER EXISTS AT ALL ────────────────────────────────────────
+ *
+ * `classifyStoredActivity` issues four queries per activity. Two consumers now
+ * need the last few weeks at once — the belief-tension accumulator
+ * (`lib/evidence/reexamination.ts`) and the Adaptation Engine
+ * (`lib/adaptation/adaptation-engine.ts`) — and a per-row loop would issue
+ * forty. This runs FIVE queries whatever the window holds, and calls the same
+ * pure classifier on the same normalised input, so nothing about the judgement
+ * differs between the two paths. §24: when the canonical service is missing
+ * functionality, add it there rather than routing around it.
+ *
+ * ── RULE 14 · WHAT POPULATION THIS READS ────────────────────────────────────
+ *
+ * Identical to `classifyStoredActivity`'s, stated again because it is a second
+ * query set and a copy that drifts is the whole defect class:
+ *
+ * · Runs: this `user_uuid`, CANONICAL rows only (`CANONICAL_ROW_SQL` — the one
+ *   definition), inside the date window. A merged row is a duplicate of an
+ *   activity, not an activity, and counting one twice would double a
+ *   corroboration count.
+ * · Plan days: the ACTIVE plan only. Joining `plan_workouts` on `user_uuid`
+ *   alone reads all 47 of the owner's plan versions (ACTIVEPLAN-1).
+ * · Subjective: `post_run_rpe` matched on either id spelling AND on either
+ *   user column, for the reasons `classifyStoredActivity` documents.
+ *
+ * Rule 11: a run the window contains but whose data cannot be classified is
+ * ABSENT from the result, never present as an empty classification.
+ */
+export async function classifyRecentActivities(
+  userUuid: string,
+  fromISO: string,
+  toISO: string,
+  opts: { currentBelief?: CurrentCapacityBelief | null } = {},
+): Promise<ClassifiedActivity[]> {
+  const runsRes = await pool.query<RunRow>(
+    `SELECT id::text, data
+       FROM runs
+      WHERE user_uuid = $1::uuid
+        AND ${CANONICAL_ROW_SQL}
+        AND ${runDaySql()} BETWEEN $2 AND $3
+      ORDER BY ${runDaySql()}`,
+    [userUuid, fromISO, toISO],
+  );
+  if (runsRes.rows.length === 0) return [];
+
+  const [profRes, planRes, rpeRes, checkinRes] = await Promise.all([
+    pool.query<{ lthr: string | number | null }>(
+      `SELECT lthr FROM profile WHERE user_uuid = $1::uuid`,
+      [userUuid],
+    ),
+    pool.query<{
+      date_iso: string; type: string | null; distance_mi: string | number | null;
+      duration_min: string | number | null; is_quality: boolean | null;
+    }>(
+      // `ownedDaysSql` · THE one answer to "which plan owned this day", and a
+      // strictly better one than the active-plan filter this query first
+      // carried: for a HISTORICAL date the active plan may not cover it at all,
+      // and the version that was live then is what the runner actually trained
+      // against. `_run_shape_lint.test.ts` caught the hand-rolled
+      // `DISTINCT ON (pw.date_iso)` and it was right to.
+      //
+      // Its upper bound is EXCLUSIVE, so `toISO` is advanced one day to keep
+      // this function's own inclusive window.
+      ownedDaysSql({
+        columns: 'pw.date_iso, pw.type, pw.distance_mi, pw.duration_min, pw.is_quality',
+      }),
+      [userUuid, fromISO, isoPlusOneDay(toISO)],
+    ),
+    pool.query<{ activity_id: string; rpe: number | null; notes: string | null }>(
+      `SELECT DISTINCT ON (activity_id) activity_id, rpe, notes
+         FROM post_run_rpe
+        WHERE (user_uuid = $1::uuid OR user_id::text = $1::text)
+        ORDER BY activity_id, logged_at DESC`,
+      [userUuid],
+    ),
+    pool.query<{ d: string; rating: number | null }>(
+      `SELECT DISTINCT ON (date::date) date::date::text AS d, rating
+         FROM subjective_checkins
+        WHERE user_uuid = $1::uuid AND date::date BETWEEN $2::date AND $3::date
+        ORDER BY date::date, updated_at DESC`,
+      [userUuid, fromISO, toISO],
+    ),
+  ]);
+
+  const lthrBpm = num(profRes.rows[0]?.lthr ?? null);
+  const planByDate = new Map(planRes.rows.map((r) => [r.date_iso, r]));
+  const rpeByKey = new Map(rpeRes.rows.map((r) => [String(r.activity_id), r]));
+  const ratingByDate = new Map(checkinRes.rows.map((r) => [r.d, r.rating]));
+
+  const out: ClassifiedActivity[] = [];
+  for (const row of runsRes.rows) {
+    const data = row.data ?? {};
+    const dateISO = String(data.date ?? String(data.startLocal ?? '').slice(0, 10));
+    if (!dateISO) continue;
+
+    const planRow = planByDate.get(dateISO) ?? null;
+    const intent = intentForPlanType(planRow?.type ?? null);
+    const plannedWorkout: PlannedWorkoutContext | null = intent
+      ? {
+          intent,
+          sourceType: planRow?.type ?? null,
+          plannedDistanceMi: num(planRow?.distance_mi ?? null),
+          plannedDurationSec: (() => {
+            const m = num(planRow?.duration_min ?? null);
+            return m != null ? m * 60 : null;
+          })(),
+          quality: planRow?.is_quality ?? null,
+        }
+      : null;
+
+    const rpeKeys = [
+      row.id,
+      ...(typeof data.id === 'string' || typeof data.id === 'number' ? [String(data.id)] : []),
+      ...(typeof data.activityId === 'string' || typeof data.activityId === 'number'
+        ? [String(data.activityId)] : []),
+    ];
+    const rpeRow = rpeKeys.map((k) => rpeByKey.get(k)).find((r) => r != null) ?? null;
+    const dayRating = ratingByDate.get(dateISO) ?? null;
+    const subjectiveReport: SubjectiveReport | null = rpeRow || dayRating != null
+      ? {
+          rpe: rpeRow?.rpe ?? null,
+          notes: rpeRow?.notes ?? null,
+          dayRating,
+          appleEffortRating: null,
+          feltHarderOverTime: null,
+          heatPerceived: null,
+        }
+      : null;
+
+    const context: ClassifyContext = {
+      plannedWorkout,
+      subjectiveReport,
+      currentBelief: opts.currentBelief ?? null,
+    };
+    out.push({
+      runId: row.id,
+      dateISO,
+      result: classifyActivityEvidence(activityInputFromRunData(row.id, data, lthrBpm), context),
+    });
+  }
+  return out;
 }

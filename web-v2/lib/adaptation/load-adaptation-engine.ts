@@ -1,0 +1,419 @@
+/**
+ * lib/adaptation/load-adaptation-engine.ts · the database shell for the
+ * Adaptation Engine's ownership layer.
+ *
+ * `adaptation-engine.ts` is pure: every input arrives as an argument, so every
+ * branch is falsifiable without a database. This file is the only impure part.
+ * It resolves the four capacities, the runner's state, the absorption verdict,
+ * the progression week and the plan's own numbers, maps the Evidence Engine's
+ * per-activity output into the engine's narrow reads, and calls
+ * `composeAdaptation`.
+ *
+ * Same split `capacity-resolver.ts` and `load-activity-evidence.ts` use, for
+ * the same reason, and this file carries NO JUDGEMENT — every threshold lives
+ * one file over. The one thing that looks like judgement here is the mapping
+ * from `ActivityEvidenceResult` to `QualitySessionRead`, and it is a
+ * projection: each field is copied, none is combined.
+ *
+ * ── RULE 14 · WHAT POPULATION EACH QUERY READS ──────────────────────────────
+ *
+ * · The plan: the ACTIVE plan only (`archived_iso IS NULL`), newest authored.
+ *   Joining `plan_workouts` on `user_uuid` alone reads all 47 of the owner's
+ *   plan versions and is the ACTIVEPLAN-1 defect exactly — it is what made
+ *   `recentQualityPerWeek` return 36.
+ * · Completed mileage: `mileageByDay`, which clusters by identity and reads
+ *   canonical rows only. Never a hand-rolled SUM over `runs`.
+ * · Scheduled mileage: rows of THAT plan, in the same window.
+ * · Activities: `classifyRecentActivities`, which states its own scoping.
+ *
+ * ── RULE 11 · A FAILED READ IS NOT AN EMPTY RUNNER ──────────────────────────
+ *
+ * Every read that can fail is wrapped so the FAILURE is recorded on
+ * `readable: false`, not flattened into "this runner has no evidence". The
+ * engine refuses outright when `readable` is false, because a runner we could
+ * not see and a runner with nothing to show are opposite facts and only one of
+ * them is a reason to hold.
+ *
+ * ── RULE 8 · WHICH WINDOW ───────────────────────────────────────────────────
+ *
+ * The load picture asks WHAT THE RUNNER HAS RECENTLY ABSORBED, which is the
+ * corollary's second case — the tissue-load question, not the habit question —
+ * so the completed/scheduled weeks are read LITERALLY and are NOT filtered for
+ * taper or post-race days. That is deliberate and it is the safe direction: a
+ * volume proposal sized against a pre-taper self would wave through a jump the
+ * legs have not been prepared for. Stated here rather than left for someone to
+ * discover, as Rule 8 requires of any reader that takes a side.
+ */
+import { pool } from '@/lib/db/pool';
+import { roundTo } from '@/lib/format/run';
+import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
+import { runnerToday } from '@/lib/runtime/runner-tz';
+import { mileageByDay } from '@/lib/runs/volume';
+import { readTierUpper } from '@/lib/plan/adaptive-ramp';
+import {
+  loadProgressionWeek,
+  resolveWeekProgression,
+  type ProgressionResolution,
+} from '@/lib/plan/progression-pass';
+import {
+  resolveThresholdCapacity,
+  resolveHighIntensityCapacity,
+  resolveEasyCeiling,
+  resolveDurability,
+} from '@/lib/training/capacity-resolver';
+import { resolveRunnerState } from '@/lib/training/runner-state';
+import { readAdaptation } from './load';
+
+import { classifyRecentActivities, type ClassifiedActivity } from '@/lib/evidence/load-activity-evidence';
+import type { ResolvedCapacity } from '@/lib/training/prescription-resolver';
+import {
+  composeAdaptation,
+  unreadableProposalSet,
+  type AdaptationEngineInput,
+  type AdaptationProposalSet,
+  type LongRunRead,
+  type QualitySessionRead,
+} from './adaptation-engine';
+
+/**
+ * How far back the engine looks for quality-session and long-run evidence.
+ *
+ * 28 days · the same window `CAPACITY_CONFIDENCE_HALF_LIFE_DAYS` and
+ * `REEXAMINATION_WINDOW_DAYS` use, so the engine cannot count a session as
+ * corroboration that the capacity resolver has already aged out of confidence.
+ * One window, three consumers.
+ */
+export const ADAPTATION_EVIDENCE_WINDOW_DAYS = 28;
+
+/** How many whole weeks of completed-versus-scheduled the load picture reads. */
+export const ADAPTATION_LOAD_WEEKS = 4;
+
+const num = (v: unknown): number | null => {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+};
+
+const isoMinusDays = (isoDate: string, days: number): string =>
+  new Date(Date.parse(`${isoDate}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+
+const isoPlusDays = (isoDate: string, days: number): string =>
+  new Date(Date.parse(`${isoDate}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Project one classified activity into the PACE lever's read, or null when the
+ * activity produced no quality-capacity evidence at all.
+ *
+ * A PROJECTION, not a judgement: `executionQuality`, `lateRunPacingCollapse`
+ * and the internal-cost magnitude are all carried through unchanged from the
+ * Evidence Engine. Rule 11 is preserved across the boundary — a refusal arm
+ * becomes `null`, never `false`.
+ */
+export function qualitySessionFrom(c: ClassifiedActivity): QualitySessionRead | null {
+  const r = c.result;
+  const threshold = r.capacities.threshold;
+  const high = r.capacities.high_intensity;
+  const chosen = threshold.kind === 'evidence'
+    ? { capacity: 'threshold' as const, ev: threshold }
+    : high.kind === 'evidence'
+      ? { capacity: 'high_intensity' as const, ev: high }
+      : null;
+  if (!chosen) return null;
+
+  return {
+    activityId: c.runId,
+    dateISO: c.dateISO,
+    capacity: chosen.capacity,
+    weight: chosen.ev.weight,
+    anchorMoveCandidate: r.anchorMoveCandidate,
+    executionQuality: r.executionQuality,
+    lateRunPacingCollapse: r.qualityUnderLoad.ok ? r.qualityUnderLoad.lateRunPacingCollapse : null,
+    internalCostMagnitude: r.internalCost.ok ? r.internalCost.magnitude : null,
+    internalCostWithinNormalBand: r.internalCost.ok ? r.internalCost.withinDoctrineNormalBand : null,
+  };
+}
+
+/**
+ * Project one classified activity into the DURATION lever's read.
+ *
+ * `plannedIntent === 'LONG'` is not required: the structured-long-run
+ * reference case is an UNLABELLED long run, and BRIEF 02's rule is that labels
+ * describe intent rather than physiological truth. What qualifies is the
+ * distance actually covered.
+ */
+export function longRunFrom(c: ClassifiedActivity, minLongMi: number): LongRunRead | null {
+  const r = c.result;
+  const distanceMi = r.ledger[0]?.distanceMi ?? null;
+  if (distanceMi == null || distanceMi < minLongMi) return null;
+  return {
+    activityId: c.runId,
+    dateISO: c.dateISO,
+    distanceMi,
+    durabilityEvidence: r.capacities.durability.kind === 'evidence',
+    lateRunPacingCollapse: r.qualityUnderLoad.ok ? r.qualityUnderLoad.lateRunPacingCollapse : null,
+    residualCardiovascularLoad: r.qualityUnderLoad.ok
+      ? r.qualityUnderLoad.residualCardiovascularLoad
+      : null,
+    executionQuality: r.executionQuality,
+  };
+}
+
+/**
+ * What counts as a long run for the DURATION lever's evidence window.
+ *
+ * A FRACTION of what the plan itself prescribes as its long run, not an
+ * absolute mileage — 10 miles is a long run for one runner and a midweek easy
+ * day for another, which is Rule 12's argument applied to the other end of the
+ * distance scale. 0.80 so a long run the runner cut slightly short still counts
+ * as evidence about the distance, which is the honest reading: they went out to
+ * do the long run and mostly did it.
+ */
+export const LONG_RUN_EVIDENCE_SHARE = 0.80;
+
+export interface AdaptationEngineLoad {
+  input: AdaptationEngineInput | null;
+  proposals: AdaptationProposalSet | null;
+  /** Everything the loader could not read, named. */
+  failures: string[];
+}
+
+/**
+ * THE canonical adaptation decision for one runner (§2), resolved.
+ *
+ * SHADOW MODE. Nothing calls this on a live path and it writes nothing.
+ * `lib/plan/adapt.ts` still owns every mutation, unchanged — this is the §21
+ * step that has to come first.
+ */
+export async function resolveAdaptationProposals(
+  userUuid: string,
+  todayISO?: string,
+): Promise<AdaptationEngineLoad> {
+  const today = todayISO ?? await runnerToday(userUuid);
+  const failures: string[] = [];
+
+  const note = (what: string, err: unknown): null => {
+    failures.push(`${what}: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  };
+
+  /* ── 1 · THE ACTIVE PLAN · resolved, never assumed (Rule 14) ───────────── */
+  const planRow = await pool.query<{
+    id: string; authored_state: Record<string, unknown> | null;
+  }>(
+    `SELECT id, authored_state
+       FROM training_plans
+      WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+      ORDER BY authored_iso DESC
+      LIMIT 1`,
+    [userUuid],
+  ).then((r) => r.rows[0] ?? null).catch((e) => note('active plan', e));
+
+  /* ── 2 · CAPACITY · the four canonical resolvers, nothing re-derived ───── */
+  const capacity = await Promise.all([
+    resolveThresholdCapacity(userUuid, today),
+    resolveHighIntensityCapacity(userUuid, today),
+    resolveEasyCeiling(userUuid, today),
+    resolveDurability(userUuid, today),
+  ]).then(([threshold, highIntensity, easyCeiling, durability]): ResolvedCapacity => ({
+    threshold, highIntensity, easyCeiling, durability,
+  })).catch((e) => note('capacity', e));
+
+  /* ── 3 · STATE · the consolidator, which invents no readiness rule ─────── */
+  const state = await resolveRunnerState(userUuid, today).catch((e) => note('state', e));
+
+  /* ── 4 · ABSORPTION · classifyAdaptation's verdict, consumed whole ─────── */
+  const absorption = await readAdaptation(userUuid, today).catch((e) => note('absorption', e));
+
+  /* ── 5 · ACTIVITY EVIDENCE · one batched classification pass ───────────── */
+  const from = isoMinusDays(today, ADAPTATION_EVIDENCE_WINDOW_DAYS);
+  const classified = await classifyRecentActivities(userUuid, from, today, {
+    currentBelief: capacity
+      ? {
+          thresholdPaceSecPerMi: capacity.threshold.paceSecPerMi,
+          thresholdConfidence: capacity.threshold.confidence,
+          asOf: today,
+        }
+      : null,
+  }).catch((e) => note('activity evidence', e));
+
+  /* ── 6 · THE PLAN'S OWN NUMBERS ────────────────────────────────────────── */
+  const weekAheadEnd = isoPlusDays(today, 6);
+  const planNumbers = planRow
+    ? await pool.query<{
+        prescribed_threshold: number | null;
+        long_ahead: string | number | null;
+        week_ahead_mi: string | number | null;
+      }>(
+        `SELECT
+           (SELECT AVG(pace_target_s_per_mi)::int
+              FROM plan_workouts
+             WHERE plan_id = $1 AND date_iso >= $2
+               AND type IN ('threshold','tempo','cruise')
+               AND pace_target_s_per_mi IS NOT NULL) AS prescribed_threshold,
+           (SELECT MAX(distance_mi)
+              FROM plan_workouts
+             WHERE plan_id = $1 AND date_iso BETWEEN $2 AND $3 AND type = 'long') AS long_ahead,
+           (SELECT SUM(distance_mi)
+              FROM plan_workouts
+             WHERE plan_id = $1 AND date_iso BETWEEN $2 AND $3) AS week_ahead_mi`,
+        [planRow.id, today, weekAheadEnd],
+      ).then((r) => r.rows[0] ?? null).catch((e) => note('plan numbers', e))
+    : null;
+
+  /* ── 7 · THE LOAD PICTURE · completed against scheduled, per whole week ── */
+  const loadWeeks: Array<{ weekStartISO: string; completedMi: number; scheduledMi: number | null }> = [];
+  if (planRow) {
+    const oldest = isoMinusDays(today, 7 * ADAPTATION_LOAD_WEEKS);
+    const [completedByDay, scheduledRows] = await Promise.all([
+      mileageByDay(userUuid, oldest, today).catch((e) => note('completed mileage', e)),
+      pool.query<{ date_iso: string; distance_mi: string | number | null }>(
+        `SELECT date_iso, distance_mi
+           FROM plan_workouts
+          WHERE plan_id = $1 AND date_iso BETWEEN $2 AND $3`,
+        [planRow.id, oldest, today],
+      ).then((r) => r.rows).catch((e) => note('scheduled mileage', e)),
+    ]);
+    if (completedByDay && scheduledRows) {
+      const scheduledByDay = new Map<string, number>();
+      for (const r of scheduledRows) {
+        scheduledByDay.set(r.date_iso, (scheduledByDay.get(r.date_iso) ?? 0) + (num(r.distance_mi) ?? 0));
+      }
+      // WHOLE weeks only, ending yesterday — a week still in progress would
+      // read as under-completed for no reason other than that it is Tuesday.
+      for (let w = 1; w <= ADAPTATION_LOAD_WEEKS; w += 1) {
+        const start = isoMinusDays(today, 7 * w);
+        const end = isoMinusDays(today, 7 * (w - 1) + 1);
+        let completedMi = 0;
+        let scheduledMi = 0;
+        let anyScheduled = false;
+        for (let d = start; d <= end; d = isoPlusDays(d, 1)) {
+          completedMi += completedByDay.get(d)?.mi ?? 0;
+          const s = scheduledByDay.get(d);
+          if (s != null) { scheduledMi += s; anyScheduled = true; }
+        }
+        loadWeeks.push({
+          weekStartISO: start,
+          completedMi: roundTo(completedMi, 1),
+          // Rule 11 · a week with no schedule is not a week scheduled at zero.
+          scheduledMi: anyScheduled ? roundTo(scheduledMi, 1) : null,
+        });
+      }
+    }
+  }
+
+  /* ── 8 · DENSITY · the progression gate's own resolutions, carried ─────── */
+  let resolutions: ProgressionResolution[] = [];
+  let noAuthoredTargets = true;
+  if (absorption) {
+    const week = await loadProgressionWeek(userUuid).catch((e) => note('progression week', e));
+    if (week && week.targets.length > 0) {
+      noAuthoredTargets = false;
+      resolutions = resolveWeekProgression({
+        targets: week.targets,
+        prior: week.prior,
+        verdict: absorption,
+        weeklyMi: week.weeklyMi,
+      });
+    }
+  }
+
+  /* ── 9 · SCHEDULE · prescribed key sessions with no run against them ───── */
+  const schedule = planRow
+    ? await pool.query<{ out_of_place: string; clear_slots: string }>(
+        `WITH missed AS (
+           SELECT pw.date_iso
+             FROM plan_workouts pw
+            WHERE pw.plan_id = $1
+              AND pw.is_quality = true
+              AND pw.date_iso BETWEEN $2 AND $3
+              AND NOT EXISTS (
+                SELECT 1 FROM runs r
+                 WHERE r.user_uuid = $4::uuid
+                   AND ${runNotMergedSql('r')}
+                   AND ${runDaySql('r')} = pw.date_iso
+              )
+         ),
+         clear AS (
+           SELECT pw.date_iso
+             FROM plan_workouts pw
+            WHERE pw.plan_id = $1
+              AND pw.date_iso BETWEEN $3 AND $5
+              AND pw.is_quality = false
+              AND pw.type NOT IN ('long','race','race_week_tuneup','shakeout')
+              AND COALESCE(pw.distance_mi, 0) > 0
+         )
+         SELECT (SELECT COUNT(*) FROM missed)::text AS out_of_place,
+                (SELECT COUNT(*) FROM clear)::text  AS clear_slots`,
+        [planRow.id, isoMinusDays(today, 7), isoMinusDays(today, 1), userUuid, weekAheadEnd],
+      ).then((r) => r.rows[0] ?? null).catch((e) => note('schedule', e))
+    : null;
+
+  /* ── 10 · COMPOSE ──────────────────────────────────────────────────────── */
+  // Rule 11 · the engine only runs on a complete read. The three inputs below
+  // are the ones no lever can work without; a missing PLAN is a legitimate
+  // "this runner has no plan", which is a different fact and not a failure.
+  const readable = capacity != null && state != null && absorption != null && classified != null;
+  if (!readable) {
+    const missing = [
+      capacity == null ? 'capacity' : null,
+      state == null ? 'state' : null,
+      absorption == null ? 'absorption' : null,
+      classified == null ? 'activity evidence' : null,
+    ].filter((x): x is string => x != null);
+    return {
+      input: null,
+      proposals: unreadableProposalSet(
+        today,
+        `Could not read: ${missing.join(', ')}. No proposal is made from a failed read.`,
+      ),
+      failures,
+    };
+  }
+
+  const prescribedLongMi = num(planNumbers?.long_ahead ?? null);
+  const minLongMi = prescribedLongMi != null ? prescribedLongMi * LONG_RUN_EVIDENCE_SHARE : Infinity;
+
+  const input: AdaptationEngineInput = {
+    todayISO: today,
+    capacity,
+    state,
+    absorption,
+    pace: {
+      prescribedThresholdSecPerMi: num(planNumbers?.prescribed_threshold ?? null),
+      sessions: classified
+        .map(qualitySessionFrom)
+        .filter((s): s is QualitySessionRead => s != null),
+    },
+    load: {
+      currentWeeklyMi: num(planNumbers?.week_ahead_mi ?? null),
+      recentWeeks: loadWeeks,
+      tierWeeklyUpperMi: planRow?.authored_state
+        ? (readTierUpper(planRow.authored_state, 'tier_peak_weekly_band') || null)
+        : null,
+    },
+    longRun: {
+      prescribedLongMi,
+      longRunCapMi: planRow?.authored_state
+        ? (readTierUpper(planRow.authored_state, 'tier_peak_long_band') || null)
+        : null,
+      // `validate.ts` sets 30% for every distance category, so this is that
+      // number rather than a second opinion about it. Written as a fraction
+      // because the engine's cap arithmetic is in fractions.
+      longRunWoWMaxFraction: 0.30,
+      recent: classified
+        .map((c) => longRunFrom(c, minLongMi))
+        .filter((l): l is LongRunRead => l != null),
+    },
+    density: { resolutions, noAuthoredTargets },
+    schedule: {
+      sessionsOutOfPlace: Number(schedule?.out_of_place ?? 0),
+      clearSlotsAvailable: Number(schedule?.clear_slots ?? 0),
+    },
+    readable: true,
+  };
+
+  return { input, proposals: composeAdaptation(input), failures };
+}
