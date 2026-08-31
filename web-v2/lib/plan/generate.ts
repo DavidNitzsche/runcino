@@ -1300,6 +1300,78 @@ export function allowedInterruptionWeeksFor(
   return allowed;
 }
 
+// ── RULE8-1 (2026-08-30) · a taper or a recovery window is never the normal ──
+//
+// CLAUDE.md Rule 8, locked after the owner said it twice and the second time as
+// an absolute: "It cannot look at taper and recover as my 'normal'. Ever."
+//
+// Every reader that answers "what does this runner normally do" must exclude the
+// days the engine ITSELF prescribed as taper, race week and post-race recovery.
+// Six distinct defects in this one engine came from not doing it, every one
+// found by the runner and none by a gate, because every output was well-formed:
+// a 31 mi/wk marathon opener, 4-mile easy days, one quality session where his
+// habit is two, a long-run ramp anchored to a taper long.
+//
+// EXCLUDE, DO NOT WIDEN. A longer average still CONTAINS the taper; it only
+// dilutes it. And if excluding leaves too little to answer honestly, the reader
+// REFUSES — `null`, distinguishable downstream from a measured zero, because a
+// zero inside a prescribed recovery block and a zero off a detrained runner are
+// opposite facts. Falling back to the contaminated window is how all six landed.
+//
+// The bounds are doctrine-bound and already in this file. They are not
+// re-derived here: `BLOCK_SHAPE[cat].taperWeeks` before the race and
+// `postRaceRecoveryWeeks(cat, priority)` after — the same two numbers
+// `allowedInterruptionWeeksFor` assembles.
+
+/** RULE8-1 · a closed date range the engine prescribed. Inclusive both ends. */
+export interface PrescribedSpan { startISO: string; endISO: string }
+
+/**
+ * RULE8-1 · the span around a race the runner ACTUALLY RAN that the engine
+ * itself wrote: its taper lead-in through its post-race recovery window.
+ *
+ * Null when nothing explains a quiet stretch — no race, or a history row whose
+ * distance we cannot resolve, which explains no mandated window and so excludes
+ * nothing. A `5k` returns a span too (1 taper week), because even a short race
+ * has a lead-in the engine authored.
+ */
+export function prescribedSpanFor(
+  raceDateISO: string | null | undefined,
+  raceDistanceMi: number | null | undefined,
+  racePriority: string | null | undefined,
+): PrescribedSpan | null {
+  if (!raceDateISO || raceDistanceMi == null || !(raceDistanceMi > 0)) return null;
+  const cat = distanceCategoryOrNull(raceDistanceMi);
+  if (cat == null) return null;
+  const taperDays = BLOCK_SHAPE[cat].taperWeeks * 7;
+  const recoveryDays = postRaceRecoveryWeeks(cat, racePriority ?? null) * 7;
+  if (taperDays <= 0 && recoveryDays <= 0) return null;
+  return { startISO: addDays(raceDateISO, -taperDays), endISO: addDays(raceDateISO, recoveryDays) };
+}
+
+/**
+ * RULE8-1 · the most recent `n` days that are NOT inside any prescribed span,
+ * most-recent-first. Walks back day by day, skipping what the engine wrote.
+ *
+ * `maxLookbackDays` bounds how far back it will reach for them. Returning FEWER
+ * than `n` days is the signal that there is not enough representative training
+ * to answer — callers must refuse on it rather than spend a short sample.
+ */
+export function eligibleDaysBack(
+  todayISO: string,
+  n: number,
+  spans: readonly PrescribedSpan[],
+  maxLookbackDays = 365,
+): string[] {
+  const out: string[] = [];
+  const inSpan = (d: string) => spans.some((s) => d >= s.startISO && d <= s.endISO);
+  for (let k = 0; out.length < n && k <= maxLookbackDays; k++) {
+    const d = addDays(todayISO, -k);
+    if (!inSpan(d)) out.push(d);
+  }
+  return out;
+}
+
 /** ANCHORFIT-1 · pure · 16 most-recent-first 7-day sums from a daily series. */
 export function weeklyBlocksFromDaily(dailyMi: readonly number[], blocks = RAMP_BASE_LOOKBACK_WEEKS): number[] {
   const at = (i: number): number => {
@@ -1413,8 +1485,43 @@ async function rampBaseForBuild(
  * Null now means "we could not look". Zero still means "no runs in 28 days",
  * which is a real state and keeps its old behaviour.
  */
-async function recentPeakLongMi(userId: string): Promise<number | null> {
-  const today = await runnerToday(userId);
+/**
+ * RULE8-2 (2026-08-30) · TWO QUESTIONS, ONE NAME — the `lifted` disease again.
+ *
+ * `recentLongMi` fed two consumers with opposite semantics, and Rule 8 applies
+ * to exactly one of them:
+ *
+ *   · `longFloor` asks A HABIT QUESTION — "what long run is normal for this
+ *     runner, so we never author one shorter". Measured across the owner's AFC
+ *     taper and recovery it read 13.5, his taper long, when he had run 18.0 on
+ *     2026-07-25. That is Rule 8's fourth row and it is fixed here:
+ *     `representativeMi` skips the prescribed span.
+ *
+ *   · `rampCeiling` asks A DOCTRINE QUESTION with its own window written into
+ *     the citation — `Research/00a` §"Volume progression rules": "An individual
+ *     run >110% of longest run in the PRIOR 30 D raises overuse injury risk by
+ *     ~64%". That thirty days is the rule, not an accident of implementation. A
+ *     runner whose longest run in the last thirty days really is 13.5 is at
+ *     spike risk on an 18-miler however fit he was in July, and Rule-8-filtering
+ *     this one would let the engine author 148% of his actual recent longest and
+ *     call it doctrine. `literalMi` stays literal.
+ *
+ * Rule 8 says a taper is never the runner's NORMAL. It does not say a taper
+ * never happened — and the spike rule is precisely a question about what has
+ * recently happened to his connective tissue.
+ */
+interface RecentLongRead {
+  /** Literal MAX over the last 28 calendar days · the spike-guard anchor. */
+  literalMi: number;
+  /** MAX over 28 REPRESENTATIVE days · the habit floor. Null when refused. */
+  representativeMi: number | null;
+}
+
+async function recentPeakLongMi(
+  userId: string,
+  todayISO: string,
+  spans: readonly PrescribedSpan[],
+): Promise<RecentLongRead | null> {
   const r = await rowOrNull<{ mi: string | null }>(
     'plan/generate · recentPeakLongMi',
     pool.query<{ mi: string | null }>(
@@ -1424,11 +1531,32 @@ async function recentPeakLongMi(userId: string): Promise<number | null> {
         AND NOT (data ? 'mergedIntoId')
         AND COALESCE(data->>'date', LEFT(data->>'startLocal',10))::date
             >= $2::date - 28`,
-      [userId, today],
+      [userId, todayISO],
     ),
   );
-  if (r === null) return null;
-  return Math.round((Number(r?.mi ?? 0)) * 10) / 10;
+  if (r === null || r === undefined) return null;
+  const literalMi = Math.round((Number(r.mi ?? 0)) * 10) / 10;
+
+  const days = eligibleDaysBack(todayISO, HABIT_ELIGIBLE_DAYS, spans);
+  let representativeMi: number | null = null;
+  if (days.length >= HABIT_ELIGIBLE_DAYS) {
+    const rep = await rowOrNull<{ mi: string | null }>(
+      'plan/generate · recentPeakLongMi · representative',
+      pool.query<{ mi: string | null }>(
+        `SELECT MAX(${runDistanceMiSql('r')})::text AS mi
+           FROM runs r
+          WHERE r.user_uuid = $1::uuid
+            AND NOT (r.data ? 'mergedIntoId')
+            AND (${runDaySql('r')})::date = ANY($2::date[])`,
+        [userId, days],
+      ),
+    );
+    if (rep !== null && rep !== undefined && rep.mi != null) {
+      const v = Math.round(Number(rep.mi) * 10) / 10;
+      if (Number.isFinite(v) && v > 0) representativeMi = v;
+    }
+  }
+  return { literalMi, representativeMi };
 }
 
 /**
@@ -1437,7 +1565,11 @@ async function recentPeakLongMi(userId: string): Promise<number | null> {
  * workout of type tempo/threshold/intervals, OR (cold-fallback) a run
  * with avgHr ≥ 85% of effective max. Returns 0 when no signal.
  */
-async function recentQualityDistanceMi(userId: string): Promise<number | null> {
+async function recentQualityDistanceMi(
+  userId: string,
+  todayISO: string,
+  spans: readonly PrescribedSpan[],
+): Promise<number | null> {
   // 2026-06-03 fix · plan_workouts has NO matched_run_id column.
   // Matching was date-based: JOIN runs ON (data->>'date')::date = pw.date_iso.
   // The query before that silently returned 0 (caught error) · Rule 2 floor
@@ -1452,7 +1584,12 @@ async function recentQualityDistanceMi(userId: string): Promise<number | null> {
   // threshold onto that August date. The runner's own run rows say what he
   // actually ran, they cannot be duplicated by re-authoring, and they are what
   // this Rule 2 floor was always trying to describe.
-  const today = await runnerToday(userId);
+  //
+  // RULE8-1 (2026-08-30) · and the window skips the days the engine prescribed.
+  // A quality session's typical DISTANCE measured across a taper is the taper's
+  // distance, not the runner's.
+  const days = eligibleDaysBack(todayISO, HABIT_ELIGIBLE_DAYS, spans);
+  if (days.length < HABIT_ELIGIBLE_DAYS) return null;
   const r = await rowOrNull<{ med: string | null }>(
     'plan/generate · recentQualityDistanceMi',
     pool.query<{ med: string | null }>(
@@ -1463,10 +1600,10 @@ async function recentQualityDistanceMi(userId: string): Promise<number | null> {
             AND NOT (r.data ? 'mergedIntoId')
             AND COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '')
                   IN ('tempo','threshold','intervals')
-            AND (${runDaySql('r')})::date BETWEEN $2::date - 28 AND $2::date
+            AND (${runDaySql('r')})::date = ANY($2::date[])
        )
        SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med FROM q`,
-      [userId, today],
+      [userId, days],
     ),
   );
   // SWALLOW · a read that FAILED is not a runner with no quality history.
@@ -1544,42 +1681,76 @@ async function recentQualityDistanceMi(userId: string): Promise<number | null> {
  * produced the most aggressive answer available. `null` now means "could not
  * look", a number means "looked", and 0 survives as 0.
  */
-async function recentQualityPerWeek(userId: string): Promise<number | null> {
+async function recentQualityPerWeek(
+  userId: string,
+  todayISO: string,
+  spans: readonly PrescribedSpan[],
+): Promise<number | null> {
   // 2026-06-03 fix · same bug as recentQualityDistanceMi. plan_workouts
   // has no user_uuid column AND no matched_run_id column, so matching was
   // date-based via JOIN on training_plans + runs — the join this reader has
   // now dropped entirely. See the header.
-  const today = await runnerToday(userId);
-  const r = await rowOrNull<{ avg: string | null }>(
-    'plan/generate · recentQualityPerWeek',
-    pool.query<{ avg: string | null }>(
-      `WITH q_days AS (
-         SELECT DISTINCT ${runDaySql('r')} AS d
-           FROM runs r
-          WHERE r.user_uuid = $1::uuid
-            AND NOT (r.data ? 'mergedIntoId')
-            AND COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '')
-                  IN ('tempo','threshold','intervals')
-            AND (${runDaySql('r')})::date BETWEEN $2::date - 28 AND $2::date
-       )
-       SELECT (COUNT(*)::numeric / 4)::text AS avg FROM q_days`,
-      [userId, today],
-    ),
-  );
+  //
+  // ── RULE8-1 (2026-08-30) · IT WAS MEASURING THE PRESCRIPTION ──────────────
+  //
+  // The 28-day window on the owner's CIM authoring was 2026-08-02 to 08-30, and
+  // his AFC taper plus Research/00b's post-half no-quality window runs 08-02 to
+  // 08-30 — the SAME 28 days, exactly. The reader looked only at days the
+  // engine had told him not to do quality on, found almost none, and reported
+  // "his habit is a quarter of a session a week". The plan then rationed him to
+  // one quality day in week 1. He is a marathoner whose pattern is two, and he
+  // was running threshold-ish efforts through that window anyway — 9.14 mi at
+  // 156 bpm, 6.32 at 154.
+  //
+  // ── AND IT IS A MEDIAN, WHICH IS WHAT IT ALWAYS SAID IT WAS ───────────────
+  //
+  // The header has read "median quality sessions per week" since 2026-06-03 and
+  // no implementation ever computed one — first an AVG over only the weeks that
+  // happened to contain quality, then a flat count/4. Both let one quiet week
+  // decide. Over his eligible weeks the counts are 2, 2, 1, 0 (that 0 is a
+  // four-mile travel week), so the mean is 1.25 and the MEDIAN is 1.5 — and 1.5
+  // is the honest description of a runner who does two in a normal week.
+  //
+  // Refuses when 28 representative days cannot be assembled. That refusal is
+  // NOT a measured zero: `null` reaches `densityForWeek` as "no habit evidence"
+  // and it answers with the runner's own stated pattern, whereas 0 means "he
+  // genuinely does no quality" and ramps him up from nothing.
+  const days = eligibleDaysBack(todayISO, HABIT_ELIGIBLE_DAYS, spans);
+  if (days.length < HABIT_ELIGIBLE_DAYS) return null;
+  const rows = await pool.query<{ d: string }>(
+    `SELECT DISTINCT (${runDaySql('r')})::date::text AS d
+       FROM runs r
+      WHERE r.user_uuid = $1::uuid
+        AND NOT (r.data ? 'mergedIntoId')
+        AND COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '')
+              IN ('tempo','threshold','intervals')
+        AND (${runDaySql('r')})::date = ANY($2::date[])`,
+    [userId, days],
+  ).then((res) => res.rows).catch((e: unknown) => {
+    logReadFailure('plan/generate · recentQualityPerWeek', e);
+    return null;
+  });
   // SWALLOW · null means the read failed, and that is NOT "he did no quality
-  // work". The two must not collapse into one downstream behaviour. Undefined
-  // (no rows) cannot happen for a COUNT, and is treated as no-signal too.
-  if (r === null || r === undefined) return null;
-  const n = Number(r.avg ?? 0);
-  if (!Number.isFinite(n) || n < 0) return null;
-  if (n === 0) return 0;   // MEASURED zero · survives as zero
-  // PLANVERSION-1 · was `Math.round(n)`. See the header: rounding a real but
-  // small habit down to 0 makes `composeForUserInternal` send `undefined`,
-  // which `densityForWeek` reads as a cold start and answers with FULL density
-  // — the exact opposite of what a runner doing 0.25 quality sessions a week
-  // needs. `densityForWeek` rounds when it builds each week's count; this
-  // reader's job is to report the habit, not to pre-round it into a category.
-  return Math.round(n * 100) / 100;
+  // work". The two must not collapse into one downstream behaviour.
+  if (rows === null) return null;
+  const qualityDays = new Set(rows.map((x) => x.d));
+  // `days` is most-recent-first; slice the ELIGIBLE days into 7-day blocks and
+  // count each. Blocks are representative days, not calendar weeks, so a
+  // prescribed window can never contribute a zero-quality "week".
+  const ordered = [...days].sort();
+  const perWeek: number[] = [];
+  for (let i = 0; i + 7 <= ordered.length; i += 7) {
+    perWeek.push(ordered.slice(i, i + 7).filter((d) => qualityDays.has(d)).length);
+  }
+  if (perWeek.length === 0) return null;
+  perWeek.sort((a, b) => a - b);
+  const mid = perWeek.length >> 1;
+  const med = perWeek.length % 2 ? perWeek[mid] : (perWeek[mid - 1] + perWeek[mid]) / 2;
+  if (!Number.isFinite(med) || med < 0) return null;
+  // `densityForWeek` rounds when it builds each week's count; this reader's job
+  // is to report the habit, not to pre-round it into a category. A MEASURED
+  // zero survives as zero.
+  return Math.round(med * 100) / 100;
 }
 
 /**
@@ -1665,23 +1836,69 @@ async function derivedTrainingDaysPerWeek(userId: string, todayISO: string): Pro
   return Math.min(7, rank3);
 }
 
-async function easyDayMedianMi(userId: string): Promise<number> {
-  const r = await pool.query<{ med: string | null }>(
-    `WITH easy_runs AS (
-       SELECT (data->>'distanceMi')::numeric AS mi
-         FROM runs
-        WHERE user_uuid = $1
-          AND NOT (data ? 'mergedIntoId')
-          AND (data->>'distanceMi')::numeric BETWEEN 3 AND 9
-          AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text
-              >= (NOW() - interval '14 days')::date::text
-     )
-     SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med
-       FROM easy_runs`,
-    [userId],
-  ).catch(() => ({ rows: [{ med: null }] }));
-  const m = Number(r.rows[0]?.med);
-  if (!Number.isFinite(m) || m <= 0) return 0;
+/**
+ * Rule 12 · an easy day is a DURATION, not a distance. `Research/00a` §2's
+ * general-aerobic run is 40-75 minutes; this is the floor of that band, the
+ * shortest an aerobic day can be and still be one.
+ * Bound by AEROBIC.general-aerobic-run-is-a-duration.
+ */
+export const GENERAL_AEROBIC_MIN_MINUTES = 40;
+
+/** RULE8-1 · how many representative days a habit reader wants. Same length as
+ *  `QUALITY_LOOKBACK_DAYS`, so every habit question is asked over the same span
+ *  of REAL training rather than each picking its own calendar window. */
+export const HABIT_ELIGIBLE_DAYS = 28;
+/** RULE8-1 · fewer easy runs than this in the representative window and the
+ *  median is an anecdote. Refuse rather than floor a block on three runs. */
+export const HABIT_MIN_EASY_SAMPLES = 4;
+
+async function easyDayMedianMi(
+  userId: string,
+  todayISO: string,
+  spans: readonly PrescribedSpan[],
+): Promise<number | null> {
+  // ── RULE8-1 (2026-08-30) · THIS READER MEASURED THE TAPER ─────────────────
+  //
+  // It took a 14-day median off `NOW()`. On the owner's CIM authoring every one
+  // of those 14 days sat inside his AFC taper and Research/00b's post-half
+  // recovery window, so four of its six samples were the short recovery jogs
+  // the engine had prescribed: 3.14, 4.01, 4.02, 4.26 against his real easy
+  // days of 6.32 and 7.78. It returned 4.0 and the block authored four-mile
+  // easy days for a runner whose easy day is six.
+  //
+  // The window is now 28 ELIGIBLE days — the prescribed span skipped entirely,
+  // not averaged away. Measured against prod 2026-08-30 the reading is stable
+  // where it matters: 6.16 over 28 eligible days and 6.16 again over 42, where
+  // the contaminated 14-day window said 4.0 and a naive 90-day widening said
+  // 6.02 only because the taper was diluted rather than removed.
+  //
+  // It also read server `NOW()` while every neighbouring reader anchors on
+  // `runnerToday`. That is a timezone the runner does not live in deciding
+  // which of his days count.
+  const days = eligibleDaysBack(todayISO, HABIT_ELIGIBLE_DAYS, spans);
+  if (days.length < HABIT_ELIGIBLE_DAYS) return null;   // not enough clean history
+  const r = await rowOrNull<{ med: string | null; n: string }>(
+    'plan/generate · easyDayMedianMi',
+    pool.query<{ med: string | null; n: string }>(
+      `WITH easy_runs AS (
+         SELECT ${runDistanceMiSql('r')} AS mi
+           FROM runs r
+          WHERE r.user_uuid = $1::uuid
+            AND NOT (r.data ? 'mergedIntoId')
+            AND ${runDistanceMiSql('r')} BETWEEN 3 AND 9
+            AND (${runDaySql('r')})::date = ANY($2::date[])
+       )
+       SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med,
+              COUNT(*)::text AS n
+         FROM easy_runs`,
+      [userId, days],
+    ),
+  );
+  // A read that failed is not a runner with no easy days.
+  if (r === null || r === undefined) return null;
+  if (Number(r.n ?? 0) < HABIT_MIN_EASY_SAMPLES) return null;
+  const m = Number(r.med);
+  if (!Number.isFinite(m) || m <= 0) return null;
   // Round to nearest 0.5 mi per the distance-rounding doctrine.
   return Math.round(m * 2) / 2;
 }
@@ -1977,7 +2194,10 @@ const LONG_RUN_MAX_HOURS = 3.5;
  *  the pace prescription cannot drift apart. */
 const EASY_BAND_SLOW_OFFSET_SEC = 120;
 
-const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: number }> = {
+/** RULE8-1 (2026-08-30) · EXPORTED so the shared representative-window filter
+ *  reads these doctrine-bound taper weeks rather than keeping a second copy.
+ *  `prescribedSpanFor` above is this file's own consumer of the same numbers. */
+export const BLOCK_SHAPE: Record<DistCategory, { taperWeeks: number; raceSpecificCap: number }> = {
   '5k':    { taperWeeks: 1, raceSpecificCap: 2 }, // short, fast races · minimal taper
   '10k':   { taperWeeks: 2, raceSpecificCap: 3 },
   'hm':    { taperWeeks: 2, raceSpecificCap: 3 },
@@ -3533,7 +3753,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -3550,8 +3770,11 @@ function layoutWeek({
   isRaceWeek: boolean; raceDow: DOW | null; raceDistanceMi: number;
   rx: ResolvedPrescriptions;
   /** 2026-06-03 · runner's recent peak long · floors longMi so plan
-   *  never asks for a long shorter than what the runner just did. */
+   *  never asks for a long shorter than what the runner just did.
+   *  RULE8-2 · habit value, prescribed span excluded. */
   recentLongMi?: number;
+  /** RULE8-2 · literal prior-28-day max · the single-session spike anchor. */
+  spikeAnchorLongMi?: number;
   /** 2026-06-03 · Rule 2 · runner's typical quality-day distance ·
    *  floors qualityMiEach so plan never asks for a shorter tempo/
    *  threshold than the runner is already running. */
@@ -3959,7 +4182,15 @@ function layoutWeek({
     // taper long larger (non-monotonic taper). In TAPER, only the doctrine cap + descending
     // longMiRaw apply. Byte-safe for high recent-long runners (their stepCeil already cleared longCap).
     if (phase === 'TAPER') return longCap;
-    if (!recentLongMi || recentLongMi <= 0) return longCap;
+    // RULE8-2 (2026-08-30) · the SPIKE anchor, not the habit value. Research/00a
+    // §"Volume progression rules" writes its own window into the rule this
+    // implements — ">110% of longest run in the prior 30 d" — so this one stays
+    // literal even where Rule 8 filters everything else. A runner whose longest
+    // run in the last thirty days really is 13.5 is at spike risk on an
+    // 18-miler however fit he was five weeks ago. `longFloor` above is the
+    // habit question and DOES read the Rule-8-filtered `recentLongMi`.
+    const spikeAnchorMi = spikeAnchorLongMi ?? recentLongMi;
+    if (!spikeAnchorMi || spikeAnchorMi <= 0) return longCap;
     // LOWVOL-1 (2026-08-19) · FLOOR to the half mile, not ROUND to the whole.
     // `Math.round` can only ever push this ABOVE the multiple it is enforcing,
     // and proportionally that costs the small runner the most: a 6 mi longest
@@ -3967,8 +4198,8 @@ function layoutWeek({
     // not exceed 110% of the longest run in the prior 30 days". Flooring can
     // only reduce, never raise, and lands on the half-mile grid the rest of the
     // generator rounds to.
-    const seed = Math.floor(recentLongMi * 1.10 * 2) / 2;      // week-0 ≤110% of recent
-    const stepCeil = recentLongMi * Math.pow(1.10, weekIdx);   // ≤10%/step geometric climb
+    const seed = Math.floor(spikeAnchorMi * 1.10 * 2) / 2;      // week-0 ≤110% of recent
+    const stepCeil = spikeAnchorMi * Math.pow(1.10, weekIdx);   // ≤10%/step geometric climb
     const peakWeekIdx = Math.max(1, totalWeeks - 4);           // reach the cap ~3-4 wk before race
     const linearTarget = seed + Math.max(0, longCap - seed) * Math.min(1, weekIdx / peakWeekIdx);
     return Math.max(longFloor, seed, Math.round(Math.min(stepCeil, linearTarget)));
@@ -6171,7 +6402,43 @@ function layoutWeek({
       const shareMi = weeklyMi * MLR_MAX_WEEK_SHARE;
       // The same expression finalizeComposedPlan re-applies to easy days.
       const belowLongMi = longMi > 0 ? Math.max(1, Math.min(longMi - 1, Math.round(0.8 * longMi))) : Infinity;
-      const affordableMi = easyPool - mathFloor * (easyDows.length - 1);
+      // MLR-EASY-FLOOR-1 (2026-08-30) · WHAT COUNTS AS SPARE.
+      //
+      // This read `mathFloor` — the flat 3 mi emergency minimum — so the
+      // medium-long run was allowed to take every mile above three from each
+      // remaining easy day. On the owner's CIM week 1 that turned easy days of
+      // 5 / 5 / 5 into 3 / 9 / 3: the MLR ate six miles of aerobic base and the
+      // two real easy days dropped under the general-aerobic floor
+      // (`_coach_sensible` "an easy day is long enough", 3 mi = 26 min against
+      // Research/03's 40). He read it as the plan giving him less than the
+      // recovery week it replaced, and he was right.
+      //
+      // The MLR is a stimulus laid ON TOP of an aerobic base; it is not funded
+      // by dismantling one. Spare miles are the ones above the runner's OWN
+      // demonstrated easy day (`effectiveFloor`, which is `easyMileFloor` — now
+      // Rule-8 clean — floored at `mathFloor`), not above a number that exists
+      // so a week cannot collapse entirely. Where the week genuinely cannot
+      // fund both, `mlrMi` falls under `MLR_MIN_MI` and no MLR is promoted,
+      // which is the honest answer: the easy days ARE the week's aerobic work
+      // at that volume, and Research/22 lists the MLR in the peak-week shape,
+      // not in week one.
+      // What the MLR must LEAVE each remaining easy day. The runner's own
+      // demonstrated easy distance, but never more than an even split of the
+      // pool — demanding more than the week can give every easy day would
+      // suppress the MLR on exactly the big weeks Research/22 puts it in — and
+      // never less than the flat math floor.
+      // Priced in MINUTES at the runner's own easy pace, per Rule 12: an easy
+      // day is a DURATION, and Research/00a §2's general-aerobic run is 40-75
+      // minutes. The MLR may take the miles above that, never the ones under
+      // it. Capped by the runner's demonstrated easy day too, since a runner
+      // whose easy day is genuinely shorter than 40 minutes should not have the
+      // MLR blocked on his behalf. Falls back to the flat math floor when no
+      // easy pace is resolvable, which is the pre-Rule-12 behaviour.
+      const genAerobicMi = easyPaceSecPerMi && easyPaceSecPerMi > 0
+        ? (GENERAL_AEROBIC_MIN_MINUTES * 60) / easyPaceSecPerMi
+        : mathFloor;
+      const mlrLeaveMi = Math.max(mathFloor, Math.min(effectiveFloor, genAerobicMi));
+      const affordableMi = easyPool - mlrLeaveMi * (easyDows.length - 1);
       const mlrMi = Math.floor(Math.min(rampedMi, shareMi, belowLongMi, affordableMi) * 2) / 2;
       if (mlrMi >= MLR_MIN_MI && mlrMi > slots[easyDows[0]]!.distanceMi) {
         // PLACEMENT · the easy day furthest from the long run, measured both
@@ -7496,8 +7763,16 @@ export interface ComposePlanInput {
   easyDayMedianMi: number;
   /** 2026-06-03 · runner's recent peak long-run distance · floors the
    *  long-run sizing so the plan can't ask for a shorter long than the
-   *  runner just did. 0 = no floor (cold start). */
+   *  runner just did. 0 = no floor (cold start).
+   *  RULE8-2 · this is the HABIT value and skips the prescribed span. The
+   *  prior-30-day spike anchor is `spikeAnchorLongMi`. */
   recentLongMi: number;
+  /** RULE8-2 (2026-08-30) · the LITERAL longest run in the last 28 calendar
+   *  days, taper included. `rampCeiling`'s anchor, because Research/00a writes
+   *  its own window into the rule it cites — ">110% of longest run in the prior
+   *  30 d". Undefined falls back to `recentLongMi`, which is what every caller
+   *  that does not supply it got before. */
+  spikeAnchorLongMi?: number;
   /** 2026-06-03 · mid-block runner doctrine carriers. Optional · all
    *  default to 0/undefined for cold-start runners. Bench persona
    *  "david-mid-block" exercises each as a gap-rule assertion. See
@@ -8327,6 +8602,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       rx,
       easyMileFloor: input.easyDayMedianMi,
       recentLongMi: input.recentLongMi,
+      spikeAnchorLongMi: input.spikeAnchorLongMi,
       recentQualityDistanceMi: input.recentQualityDistanceMi,
       tierTarget,
       trainingDaysPerWeek: input.trainingDaysPerWeek,
@@ -8529,6 +8805,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       derived_from: {
         recentWeeklyMi: input.recentWeeklyMi,
         recentLongMi: input.recentLongMi,
+        spikeAnchorLongMi: input.spikeAnchorLongMi,
         recentQualityPerWeek: input.recentQualityPerWeek ?? null,
         recentQualityDistanceMi: input.recentQualityDistanceMi ?? null,
         bestRecentVdot: input.bestRecentVdot ?? null,
@@ -12628,15 +12905,33 @@ async function loadGeneratorInputs(
     return { ok: false, reason: 'could not read your recent training · try again in a moment' };
   }
   let recentMi = await recentWeeklyMileage(userId);
-  const easyFloor = await easyDayMedianMi(userId);
-  const recentLongRead = await recentPeakLongMi(userId);
+  // RULE8-1 · the days the engine itself prescribed as taper / race week /
+  // post-race recovery. Every habit reader below skips them. Assembled ONCE so
+  // the readers cannot answer "which days count" differently from each other.
+  const prescribedSpans: PrescribedSpan[] = [];
+  {
+    const lastRaceForSpan = await loadLastRaceFinished(userId, todayISO)
+      .catch(() => ({ lastRaceFinished: null, lastRaceDistanceMi: null }));
+    const span = prescribedSpanFor(
+      lastRaceForSpan.lastRaceFinished?.date ?? null,
+      lastRaceForSpan.lastRaceDistanceMi ?? lastRaceForSpan.lastRaceFinished?.distanceMi ?? null,
+      lastRaceForSpan.lastRaceFinished?.priority ?? null,
+    );
+    if (span) prescribedSpans.push(span);
+  }
+  const easyFloor = await easyDayMedianMi(userId, todayISO, prescribedSpans);
+  const recentLongRead = await recentPeakLongMi(userId, todayISO, prescribedSpans);
   // A plan authored on a failed read is a plan authored on a fabricated
   // history. Refuse — the runner keeps the plan they have, and the refusal is
   // a correct answer with a reason on it, not an empty state.
   if (recentLongRead === null) {
     return { ok: false, reason: 'could not read your recent runs · try again in a moment' };
   }
-  let recentLong = recentLongRead;
+  // RULE8-2 · the HABIT value where one could be measured, the literal 28-day
+  // max otherwise. `spikeAnchorLongMi` below keeps the literal one for the
+  // prior-30-day injury rule, which owns its own window.
+  const spikeAnchorLongMi = recentLongRead.literalMi;
+  let recentLong = Math.max(recentLongRead.literalMi, recentLongRead.representativeMi ?? 0);
   // 2026-06-10 persona-suite fix · cold-start race plans. A brand-new
   // runner has NO runs, so recentMi/recentLong read 0 and the ramp from
   // zero to race-prep peaks trips the progression validator (26.2mi
@@ -12678,8 +12973,8 @@ async function loadGeneratorInputs(
   // the week; an incoherent long mis-sizes the whole plan). Byte-safe for coherent runners.
   recentLong = coherentRecentLong(recentLong, recentMi, trainingDaysPerWeek);
   // 2026-06-03 · mid-block doctrine carriers (Rules 2, 3, 5, 8).
-  const recentQualityDist = await recentQualityDistanceMi(userId);
-  const recentQualityPW = await recentQualityPerWeek(userId);
+  const recentQualityDist = await recentQualityDistanceMi(userId, todayISO, prescribedSpans);
+  const recentQualityPW = await recentQualityPerWeek(userId, todayISO, prescribedSpans);
   // bestRecentVdot — assembled by the canonical shared loader (B2).
   // A fix to the race/run query now propagates to all call sites automatically.
   // Throws on DB error; generatePlan propagates up (refuses to plan rather than
@@ -12987,8 +13282,15 @@ async function loadGeneratorInputs(
       startMondayISO,
       level,
       recentWeeklyMi: recentMi,
-      easyDayMedianMi: easyFloor,
+      // RULE8-1 · `null` is the reader REFUSING — it could not assemble 28
+      // representative days, or found too few easy runs in them to call a
+      // median. `layoutWeek`'s `easyMileFloor` already treats 0 as "no
+      // recoverable baseline" and falls back to its 3 mi math floor, which is
+      // the correct answer to "we cannot say". What must never happen is a
+      // confident floor measured off a taper, and that is what is now gone.
+      easyDayMedianMi: easyFloor ?? 0,
       recentLongMi: recentLong,
+      spikeAnchorLongMi,
       // PLANVERSION-1 (2026-08-30) · a MEASURED ZERO SURVIVES AS ZERO.
       //
       // These were `x > 0 ? x : undefined`, and `undefined` is what

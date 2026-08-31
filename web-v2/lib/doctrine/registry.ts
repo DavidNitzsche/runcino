@@ -2067,10 +2067,10 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const stated = parseBand(t.cell('Single-session spike threshold', 'Specification'))[0] / 100;
       const src = sourceOf('web-v2/lib/plan/generate.ts');
       const seed = Number(
-        matchLiteral(src, /const seed = Math\.floor\(recentLongMi \* (\d*\.?\d+) \* 2\) \/ 2;/, 'rampCeiling seed')[1],
+        matchLiteral(src, /const seed = Math\.floor\(spikeAnchorMi \* (\d*\.?\d+) \* 2\) \/ 2;/, 'rampCeiling seed')[1],
       );
       const step = Number(
-        matchLiteral(src, /const stepCeil = recentLongMi \* Math\.pow\((\d*\.?\d+),/, 'rampCeiling step')[1],
+        matchLiteral(src, /const stepCeil = spikeAnchorMi \* Math\.pow\((\d*\.?\d+),/, 'rampCeiling step')[1],
       );
       atMost(seed, stated, 'long-run ramp seed vs the single-session spike threshold');
       atMost(step, stated, 'long-run per-step ramp vs the single-session spike threshold');
