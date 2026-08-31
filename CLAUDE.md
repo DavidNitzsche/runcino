@@ -1043,6 +1043,57 @@ that says "nothing tests this" is exactly the number worth doubting twice.
 
 ---
 
+## Rule 23 · A scheduled job guarantees its own preconditions. A schedule is not a guarantee (locked 2026-08-30)
+
+**No job may depend on another job having run. Ensure the precondition, or
+refuse loudly — never proceed on the assumption.**
+
+Earned the night the owner's 14-week marathon block was authored. `plan-drift`
+stamps every `hr_cap_bpm` in the block from `profile.lthr` at the instant it
+runs. `run-adaptations`, scheduled an hour earlier, is what re-anchors that
+value — 162 to 168 that night. **`plan-drift` never checks. It assumes.**
+
+And the schedule those two jobs relied on had not been kept once that week:
+
+```
+run-adaptations   scheduled 03:00 UTC   actual  09:01  09:50  15:08  13:56
+plan-drift        scheduled 09:00 UTC   actual  14:13  14:07  20:37
+```
+
+Five to twelve hours late, every day. GitHub Actions cron is explicitly
+best-effort under load; treating it as a clock was the defect. Had the order
+slipped by one hour, the block would have frozen fourteen weeks of HR ceilings
+about 6 bpm low, silently, and nothing anywhere would have reported it. Both
+jobs had to be fired by hand to guarantee the sequence — which, as the owner
+put it, "defeats the purpose."
+
+**Nobody knew.** No alert, no staleness check. The drift was found because a
+human happened to run `gh run list`.
+
+### To comply
+
+**Enumerate what a job assumes another job did, then remove the assumption.**
+Prefer *ensure the precondition* over *check and refuse* — `reanchorLthr` is
+idempotent and costs nothing when the anchor is already fresh, so authoring
+should simply ensure it. Where a job genuinely cannot ensure a precondition, it
+refuses loudly rather than proceeding on a stale one. Rule 11 applies: fresh,
+stale and absent are three different facts.
+
+**Lateness must be harmless.** A job that runs ten hours late should still do
+the right thing. If being late changes the outcome, the job has an ordering or
+freshness dependency it has not declared.
+
+**A job that does not run must be NOTICED.** Every scheduled job should be able
+to answer "when did I last complete successfully, and is that too long ago",
+and something must raise when the answer is bad. `ops_alerts` is the existing
+surface. Per Rule 20, a scheduling guarantee with no check is a hypothesis —
+and this one was false for a week without anyone noticing.
+
+**Manual triggering is a bridge, never a fix.** If the answer to "will this fire
+correctly" is "I will run it myself", the system is not in place.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
