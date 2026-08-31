@@ -223,8 +223,15 @@ export const POPULATION_ENDURANCE_PRIOR = 1.06;
  */
 export const DURABILITY_HALF_LIFE_DAYS = 84;
 
-/** Weight of a reading `n` days old, on the anchor's own half-life. */
-function recencyWeight(daysAgo: number, halfLifeDays: number): number {
+/** Weight of a reading `n` days old, on the anchor's own half-life.
+ *
+ *  EXPORTED 2026-08-31 so `lib/training/capacity-resolver.ts` can fade its own
+ *  confidence on the SAME curve rather than writing a second exponential decay
+ *  three files away (Rule 16 · one quantity, one name — "how much does an
+ *  N-day-old reading still count toward confidence" is one question). The
+ *  half-life is always the CALLER's, passed in; this function owns the shape,
+ *  never the rate. It is never an input to any `value`. */
+export function recencyWeight(daysAgo: number, halfLifeDays: number): number {
   if (!(daysAgo >= 0)) return 1;
   return Math.pow(2, -daysAgo / halfLifeDays);
 }

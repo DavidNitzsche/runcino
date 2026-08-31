@@ -15504,6 +15504,124 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
+  /* ── A CONVENTION claim · the runner model's confidence scale. The four
+   * capacity resolvers (lib/training/capacity-resolver.ts) grade how much to
+   * trust every fitness belief this app holds, and every number in that scale
+   * is engineering judgement rather than a research finding. Same discipline as
+   * the two durability claims above: gate that the source SAYS SO, gate the one
+   * structural property the whole scheme rests on, and read the one number that
+   * IS doctrine-grounded out of the doc at run time.
+   */
+  {
+    id: 'CONVENTION.capacity-confidence-bands',
+    binds: [
+      'lib/training/capacity-resolver.ts#CAPACITY_CONFIDENCE_BANDS',
+      'lib/training/capacity-resolver.ts#CAPACITY_SATURATION_OBSERVATIONS',
+      'lib/training/capacity-resolver.ts#CAPACITY_CONFIDENCE_HALF_LIFE_DAYS',
+      'lib/training/capacity-resolver.ts#CAPACITY_CONSISTENCY_BAND',
+      'lib/training/capacity-resolver.ts#directEvidenceConfidence',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '| Distance gap | Typical error band | Notes |',
+    claim:
+      'How much to trust a capacity estimate is a CONVENTION — no `Research/` file models ' +
+      'confidence for a fitness belief. What doctrine DOES ground is the consistency band: ' +
+      "Research/02 §2.3's own reported accuracy table gives the error band doctrine expects " +
+      'between two honest readings of one stable trait, and the engine keys "these observations ' +
+      'agree / disagree" to that band rather than to an unargued number. The engine must state ' +
+      'plainly that the rest of the scale is a convention, and the three confidence bands must ' +
+      'not overlap — that non-overlap is what makes BRIEF 01\'s "as direct evidence accumulates, ' +
+      'fallback assumptions lose authority" structurally true instead of a tuning outcome.',
+    check() {
+      const src = sourceOf('web-v2/lib/training/capacity-resolver.ts');
+      if (!/THESE NUMBERS ARE A CONVENTION, NOT A RESEARCH FINDING/.test(src)) {
+        throw new Error(
+          'capacity-resolver.ts no longer states that its confidence bands are a convention · ' +
+            'that sentence is the whole point of this claim',
+        );
+      }
+      if (!/CONVENTION, and deliberately the same value as/.test(src)) {
+        throw new Error('CAPACITY_SATURATION_OBSERVATIONS no longer states its convention status');
+      }
+      if (!/CONVENTION, not a research finding\. What grounds the number/.test(src)) {
+        throw new Error('CAPACITY_CONFIDENCE_HALF_LIFE_DAYS no longer states its convention status');
+      }
+
+      // ── THE STRUCTURAL PROPERTY · the bands may not overlap ──────────────
+      // Read out of the source literal, so a future edit that "just nudges"
+      // one edge past another fails the build rather than silently letting a
+      // VDOT-derived guess out-confidence a corroborated direct read.
+      const num = (key: string) =>
+        Number(matchLiteral(src, new RegExp(`${key}:\\s*([\\d.]+),`), `CAPACITY_CONFIDENCE_BANDS.${key}`)[1]);
+      const directFloor = num('directFloor');
+      const directCeiling = num('directCeiling');
+      const fallbackFloor = num('fallbackFloor');
+      const fallbackCeiling = num('fallbackCeiling');
+      const populationPrior = num('populationPrior');
+      if (!(directCeiling > directFloor && fallbackCeiling > fallbackFloor)) {
+        throw new Error('a capacity confidence band has a ceiling at or below its own floor');
+      }
+      if (!(directFloor >= fallbackCeiling)) {
+        throw new Error(
+          `the direct band's floor (${directFloor}) has fallen below the fallback band's ceiling ` +
+            `(${fallbackCeiling}) · a derived guess can now out-confidence direct evidence, which is ` +
+            'the exact inversion §17 exists to prevent',
+        );
+      }
+      if (!(fallbackFloor >= populationPrior)) {
+        throw new Error(
+          `the fallback band's floor (${fallbackFloor}) has fallen below the population prior ` +
+            `(${populationPrior})`,
+        );
+      }
+      if (!(directCeiling < 1)) {
+        throw new Error(
+          'direct evidence may not reach confidence 1.0 · corroboration cannot see an instrument ' +
+            'error repeated across every session (vdot-corpus.ts names the blind spot)',
+        );
+      }
+
+      // ── THE ONE DOCTRINE-GROUNDED NUMBER, read out of the doc ────────────
+      const table = resolveCitation(
+        'Research/02-race-time-prediction.md',
+        '| Distance gap | Typical error band | Notes |',
+      ).table();
+      const cell = table.cell('Half → marathon', 'Typical error band').replace(/±/g, '');
+      const [loPct, hiPct] = parsePctBand(cell);
+      const bandLo = Number(matchLiteral(src, /CAPACITY_CONSISTENCY_BAND = Object\.freeze\(\{ low: ([\d.]+),/, 'CAPACITY_CONSISTENCY_BAND.low')[1]);
+      const bandHi = Number(matchLiteral(src, /CAPACITY_CONSISTENCY_BAND = Object\.freeze\(\{ low: [\d.]+, high: ([\d.]+) \}\)/, 'CAPACITY_CONSISTENCY_BAND.high')[1]);
+      if (Math.abs(bandLo - loPct) > 0.0005) {
+        throw new Error(
+          `CAPACITY_CONSISTENCY_BAND.low is ${bandLo} · Research/02 §2.3's Half → marathon row's ` +
+            `tight edge is ${loPct}`,
+        );
+      }
+      if (Math.abs(bandHi - hiPct) > 0.0005) {
+        throw new Error(
+          `CAPACITY_CONSISTENCY_BAND.high is ${bandHi} · Research/02 §2.3's Half → marathon row's ` +
+            `loose edge is ${hiPct}`,
+        );
+      }
+
+      // ── THE SENTENCE THE HALF-LIFE REUSES MUST STILL EXIST ───────────────
+      // CAPACITY_CONFIDENCE_HALF_LIFE_DAYS is argued from durability-anchor's
+      // own statement of a speed anchor's rate. If that sentence is edited
+      // away, the 28 becomes an unargued number and this claim says so rather
+      // than continuing to vouch for it.
+      const dur = sourceOf('web-v2/lib/training/durability-anchor.ts');
+      if (!/3-4 week half-life/.test(dur)) {
+        throw new Error(
+          "durability-anchor.ts no longer states a speed anchor's 3-4 week half-life · " +
+            'CAPACITY_CONFIDENCE_HALF_LIFE_DAYS is derived from that sentence and now has no argument',
+        );
+      }
+      const halfLife = Number(
+        matchLiteral(src, /CAPACITY_CONFIDENCE_HALF_LIFE_DAYS = (\d+);/, 'CAPACITY_CONFIDENCE_HALF_LIFE_DAYS')[1],
+      );
+      within(halfLife, [21, 28], 'capacity confidence half-life (durability-anchor: a speed anchor is 3-4 weeks)');
+    },
+  },
+
   // ══ FUELLING ══════════════════════════════════════════════════════════════
   {
     id: 'FUELLING.attribution-duration-floor',

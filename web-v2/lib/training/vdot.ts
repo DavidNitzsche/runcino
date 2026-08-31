@@ -305,9 +305,33 @@ export function easyPaceBandFromAnchorPace(anchor: AnchorPace | null | undefined
   // instead of resolveCurrentTPace.
   const t = clampToSanePace(tRaw, anchor?.paceSPerMi);
   if (t == null) return null;
-  // Matches spec-builder PACE-E-2 · Research/01:142 §Pace conversion (E = MP+60..90,
-  // and M = T+18, so E = T+78..T+108). Do not re-cite the §Numerical equivalencies
-  // VDOT-50 row here: it says T+104..T+156 and contradicts :142 by 20-40 s/mi.
+  return easyBandFromTPace(t);
+}
+
+/**
+ * 2026-08-31 · THE OFFSETS, IN ONE PLACE. Split out of
+ * `easyPaceBandFromAnchorPace` (which now calls it) so a caller that already
+ * holds a THRESHOLD PACE — `lib/training/capacity-resolver.ts`'s easy-ceiling
+ * fallback tier is the first — can read the easy band without either
+ * reconstructing an `AnchorPace` it does not have or restating `+80/+120` as a
+ * third copy. `PACE.easy-band-off-threshold` (lib/doctrine/registry.ts) already
+ * gates that the spec-builder copy and this one agree literal-for-literal, and
+ * that claim keeps working unchanged: there is still exactly one
+ * `return { lo: t + N, hi: t + M };` in this file, it just lives here now.
+ *
+ * Matches spec-builder PACE-E-2 · Research/01:142 §Pace conversion (E = MP+60..90,
+ * and M = T+18, so E = T+78..T+108). Do not re-cite the §Numerical equivalencies
+ * VDOT-50 row here: it says T+104..T+156 and contradicts :142 by 20-40 s/mi.
+ *
+ * `lo` is the FAST edge — the ceiling an easy-pace prescription must not
+ * cross, and the only half the 2026-08-31 "easy pace is a ceiling, not a band"
+ * decision leaves a prescription reading. `hi` is kept because the band shape
+ * still has non-prescription readers (and because deleting half of a
+ * doctrine-gated pair would break the claim that watches it).
+ */
+export function easyBandFromTPace(tPaceSPerMi: number | null | undefined): { lo: number; hi: number } | null {
+  if (tPaceSPerMi == null || !Number.isFinite(tPaceSPerMi) || tPaceSPerMi <= 0) return null;
+  const t = tPaceSPerMi;
   return { lo: t + 80, hi: t + 120 };
 }
 
