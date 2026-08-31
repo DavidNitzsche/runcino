@@ -164,15 +164,22 @@
  * SPLITS-AWARE, for the owner's own real complaint: "Broken Long Run — 95 min
  * with Structured Blocks", a mixed session whose whole-run average dilutes
  * the T-effort with recovery-jog segments between reps. When `data.splits`
- * exists, every split whose HR lands in the T-zone (by the same LTHR/HRmax
- * precedence as the easy reader) is pooled — not required to be contiguous,
- * because splits are stored ~per-mile with no reliable rep/recovery flag, so
- * a strict contiguous-block scan would miss a broken workout's later reps as
- * readily as it misses the recovery jogs between them. Pooling BY ZONE
- * MEMBERSHIP is what actually excludes the diluting recovery segments: their
- * HR sits below the T-band and they never enter the average. The pooled
- * total must fall inside Research/03 §8's own "reps 5-20 min, total 20-60
- * min" (a little slack applied to the ceiling for split-boundary rounding).
+ * exists, `thresholdSegmentFromSplits` finds the RELATIVE work-segment shape
+ * within the run — a split both clears the absolute T-zone HR band and sits
+ * meaningfully faster than the run's own slowest split SEEDS the block, then
+ * adjacent splits GROW into it on pace-plus-not-clearly-easy-effort, not on
+ * the absolute band alone. Membership is not required to be contiguous
+ * end-to-end across the whole run (a broken workout's second rep group joins
+ * the pool the same way its first does), but growth itself walks split-by-
+ * split from each seed, so a genuine gap (a recovery jog, or 2026-07-14's
+ * real HR anomaly) still stops one cluster from merging into another. See
+ * `THRESHOLD_WORK_SEED_PACE_MARGIN_SEC_PER_MI`'s own header for the full
+ * design, why a plain median-split and a largest-pace-gap clustering were
+ * both tried and falsified first, and the four real/synthetic fixtures it
+ * is proven against. The pooled total must still fall inside Research/03
+ * §8's own "reps 5-20 min, total 20-60 min" (a little slack applied to the
+ * ceiling for split-boundary rounding) — that duration window is unchanged
+ * by this redesign; only which splits are ADMITTED into the pool changed.
  *
  * WHOLE-RUN FALLBACK, when splits are absent. Explicitly weaker and
  * explicitly gated harder: the run's OWN label must positively say
@@ -210,27 +217,31 @@
  * reader, so no source in this file collapses a measurement to a boolean any
  * more).
  *
- * RENDERED against the owner's real account, 2026-08-31, after this change:
- * the threshold corpus now CORROBORATES — 489 s/mi (8:09/mi), off 4
- * observations (up from 2, which is what it held immediately before this
- * pass and which refused under K=3). Two of the three supporting
- * observations are phase-derived: 2026-07-16 (three ~6.8-min reps pooled at
- * 408 s/mi / 6:48/mi — `hrPct` 91.3% LTHR, `hrBandDistance` 2.07, WELL
- * outside the T-band and admitted anyway, the course-correction working
- * exactly as intended) and 2026-08-06 (one pooled phase segment at
- * 420 s/mi / 7:00/mi with NO heart-rate reading at all — `hrBasis: null` —
- * admitted on duration/pace/type alone). The third is a `'tempo'`-labeled
- * whole-run session from 2026-07-07 at 489 s/mi (8:09/mi, 161 bpm / 95.8%
- * LTHR) — genuine T-zone evidence, and the WEAKEST of the three, which is
- * why it is the one that SETS the level: `corroboratedCorpusVdot`'s Kth-
- * highest is a conservative floor ("the pace at least K sessions support"),
- * not the runner's best. The two fast phase reps (6:48/mi, 7:00/mi) closely
- * match his own stated 6:45-7:00/mi tempo effort; the reported number is
- * slower than that because only 3 of 4 observations need to agree and the
- * floor is set by the weakest of the chosen three, not the strongest of the
- * four. One more corroborating session near the fast pair would move the
- * level substantially — an order statistic behaving exactly as designed at
- * small N, not a defect. His actual 2026-08-11 4x1km session (the
+ * RENDERED against the owner's real account, 2026-08-31, after the
+ * seed-and-grow splits redesign (see `THRESHOLD_WORK_SEED_PACE_MARGIN_SEC_PER_MI`'s
+ * header for the full "why" — this paragraph is the "what came out"): the
+ * threshold corpus now CORROBORATES — 430 s/mi (7:10/mi), off 6
+ * observations, VDOT 47.9. This supersedes an intermediate reading of
+ * 489 s/mi (8:09/mi) off 4 observations that stood for a few hours between
+ * the phases source landing and this redesign — that number was itself
+ * still wrong, and visibly so: barely faster than the easy-pace ceiling
+ * (491.7 s/mi), the exact defect that motivated this pass. The three
+ * supporting observations now: 2026-07-16 (phase-derived, three ~6.8-min
+ * reps pooled at 408 s/mi / 6:48/mi), 2026-08-06 (phase-derived, 420 s/mi /
+ * 7:00/mi, no HR reading at all), and — NEW — 2026-07-07 (splits-derived,
+ * 429 s/mi / 7:09/mi, five pooled work-block splits including HR-drifted
+ * miles 158-168 bpm), which REPLACES the same run's own whole-run read
+ * (489 s/mi / 8:09/mi) as the third and now-weakest supporting observation:
+ * the same real session, read honestly instead of diluted by its own
+ * warm-up. Two more real runs corroborate but do not set the level —
+ * 2026-07-14 (435 s/mi / 7:15/mi) and 2026-07-21 (451 s/mi / 7:31/mi) — both
+ * previously invisible entirely (see the fixtures in `_pace_corpus.test.ts`,
+ * pasted verbatim from this same account). The new level sits close to his
+ * own stated 6:45-7:00/mi tempo effort, materially closer than the
+ * superseded 8:09/mi read, and — the sanity check this whole pass exists to
+ * satisfy — 61.7 s/mi faster than the easy-pace ceiling (491.7 s/mi), a
+ * physiologically sane gap between easy and threshold effort where the
+ * prior number left almost none. His actual 2026-08-11 4x1km session (the
  * `actualPaceSPerMi: 381` / 6:21/mi rep this file's header used to cite as
  * the motivating "residual") correctly does NOT appear anywhere in this
  * corpus: every one of its four work phases is ~4 minutes, under
@@ -309,28 +320,32 @@
  *     question for whichever pass builds the confidence scorer this file's
  *     richer per-observation metadata now exists to feed.
  *   · SPLITS RECONCILIATION (added same day, after the finding above was
- *     first written) MADE THIS WORSE BEFORE IT MADE IT HONEST. Once
+ *     first written) MADE THIS WORSE BEFORE IT MADE IT HONEST — then CLOSED
+ *     2026-08-31, same pass as the seed-and-grow redesign above. Once
  *     `thresholdSegmentFromSplits` was gated on `reconcileSplitsTotal`
  *     (lib/runs/coherence.ts — required by check-derived-consistency.sh, and
  *     a real gap: this reader had no defence against a splits array that
  *     doesn't even sum to its own run's distance, the same shape
  *     `splits-adopt.ts` documents a real production row for), the corpus's
  *     observation count on the owner's real 60-day window dropped from 7 to
- *     2 — an honest REFUSAL (Rule 11), not a bug. Six of the seven original
- *     splits-derived observations turn out to come from arrays that do not
- *     reconcile against their own row's `distanceMi` (drift 0.39-0.87 mi,
- *     over `MAX_SPLIT_SUM_DRIFT_MI`'s 0.25 mi), and the whole-run fallback
- *     cannot rescue them either — the SAME dilution problem the fallback's
- *     own gate exists to catch (their whole-run avg HR sits at 85-92% of a
- *     freshly-reanchored 168 LTHR, under the 95-102% T-band, exactly the
- *     WU/CD-diluted-average shape `vdotFromRun`'s zone-aware read was built
- *     to avoid trusting). So the 458 s/mi figure this file originally
- *     reported for the owner was itself built partly on unreconciled splits
- *     and should not have been trusted at face value either — the
- *     reconciliation fix didn't just close a gate, it retracted a number.
- *     What was left standing at the time (2 observations, refusing under
- *     K=3) is superseded by the phases source above, which recovers the
- *     corpus to 4 observations and a corroborated 489 s/mi.
+ *     2 — an honest REFUSAL (Rule 11), not a bug, but an OVER-strict one:
+ *     the shared function's absolute 0.25 mi tolerance and its
+ *     zero-explicit-distance-means-skip-nothing arithmetic were both right
+ *     for THAT function's other call sites and wrong for this one. Two of
+ *     the owner's real, coherent runs were among the six casualties —
+ *     2026-07-21 (7 of 8 splits carry no per-split distance at all, so the
+ *     un-defaulted sum manufactured a false ~7 mi mismatch against a 7.52 mi
+ *     row) and 2026-07-14 (a genuine 4.9% GPS auto-lap drift over 9 splits,
+ *     comfortably inside ordinary instrumentation noise). This reader now
+ *     runs its OWN reconciliation — `THRESHOLD_SPLITS_RELATIVE_DRIFT_FRACTION`,
+ *     see that constant's header — that defaults a missing per-split
+ *     distance the same way the pooling loop already does (only when at
+ *     least one split in the array anchors a real distance) and scales its
+ *     tolerance with the run's own length, while `reconcileSplitsTotal`
+ *     itself is untouched for every OTHER caller. Both real runs now
+ *     corroborate; see `_pace_corpus.test.ts`'s "seed-and-grow, three real
+ *     runs" block for both pasted verbatim, and the file header's own
+ *     "RENDERED" paragraph for the corpus this recovers them into.
  *   · `hrPct` / `hrBandDistance` (on `PaceObservation`, see its own doc) are
  *     COMPUTED AND PRESERVED, NOT YET CONSUMED. Added 2026-08-31 per an
  *     external architecture review specifically so a future confidence pass
@@ -358,9 +373,9 @@ import {
 } from '@/lib/training/vdot-corpus';
 import { vdotFromTpace, tPaceFromVdot, zoneFromType } from '@/lib/training/vdot';
 import { normalizeDataWorkoutType, QUALITY_TYPES } from '@/lib/runs/log-enrich';
-import { normalizeSplits, type RunData } from '@/lib/runs/run-shape';
+import { normalizeSplits } from '@/lib/runs/run-shape';
 import { excludeDistanceReviewSql } from '@/lib/runs/distance-guard';
-import { reconcileSplitsTotal } from '@/lib/runs/coherence';
+import { MAX_SPLIT_SUM_DRIFT_MI } from '@/lib/runs/coherence';
 import {
   runDaySql,
   runDistanceMiSql,
@@ -440,6 +455,134 @@ export const THRESHOLD_MAX_REP_SEC = 20 * 60;
  * rep in the same watch completion before the pooled observation counts.
  */
 export const THRESHOLD_MIN_SESSION_TOTAL_SEC = 20 * 60;
+
+/**
+ * SPLIT-LEVEL WORK-SEGMENT SHAPE, not an absolute HR band — 2026-08-31,
+ * closing the gap the file's own falsification found the same night the
+ * phases source landed: `thresholdSegmentFromSplits` gated every split on
+ * absolute T-zone HR membership (`THRESHOLD_PCT_HRMAX_BAND` /
+ * `THRESHOLD_PCT_LTHR_BAND`), and Research/03 §1's own confounder table
+ * names why that starves real evidence — "Onset lag | 30–90 s to plateau |
+ * unreliable for short reps." A tempo mile's HR is still climbing while its
+ * PACE has already arrived; gating admission on the absolute band drops the
+ * first work mile (or two) of a real effort every time, exactly the
+ * "meaningfully faster/elevated relative to the run's own slowest splits"
+ * shape a relative reader should catch instead.
+ *
+ * PROVEN AGAINST THREE REAL, PREVIOUSLY-INVISIBLE RUNS (Rule 13) —
+ * 2026-07-21 (tempo, work block miles 3-6 at 156-160 bpm against a fresh
+ * LTHR 168 · miles 3 and 4 sit at 92.9%/94.6%, BELOW the 95% absolute floor,
+ * so the old gate produced zero splits observations for this run at all),
+ * 2026-06-18 (tempo, work block miles 3-6 · mile 3 at 157 bpm/93.5% is the
+ * same shape — the old gate pooled only miles 4-6 and quietly dropped a
+ * quarter of the real work), and 2026-07-14 (tempo, work miles 3-4 and 6,
+ * with mile 5 a genuine anomaly — 6:46/mi at only 141 bpm, a downhill or a
+ * sensor glitch — that this design correctly excludes on HR alone without
+ * needing to special-case it). See `_pace_corpus.test.ts` for these three
+ * pasted verbatim.
+ *
+ * SEED, THEN GROW — two stages, not one relative test, because a plain
+ * "faster/higher than this run's own median" split (tried and falsified
+ * first) breaks on a structured workout where work reps OUTNUMBER the
+ * warm-up/cooldown/recovery splits: with 5 T-reps against 3 easy splits the
+ * median sits INSIDE the work cluster, not between the two, and silently
+ * drops a real rep. A largest-gap 1-D clustering was tried next and also
+ * falsified — it fixed that case but latched onto the single most extreme
+ * outlier mile on a noisier real run (2026-07-14) instead of the true
+ * work/non-work boundary. What holds against all four real and synthetic
+ * fixtures:
+ *
+ *   1. SEED — a split both clears the absolute T-zone HR band (the existing,
+ *      doctrine-cited signal — still the strongest available for the
+ *      cleanest reps) AND sits meaningfully faster than this run's own
+ *      slowest usable split (`THRESHOLD_WORK_SEED_PACE_MARGIN_SEC_PER_MI`).
+ *      The pace half of this test is what keeps a late-run, HR-drifted-but-
+ *      SLOWER mile (aerobic decoupling in a longer tempo — 2026-08-21's
+ *      miles 8-9, 164-163 bpm but 512-519 s/mi against a 477-493 s/mi work
+ *      block) from seeding the block and dragging the reported pace toward
+ *      exactly the dilution this file exists to stop.
+ *   2. GROW — from each seed, walk to the ADJACENT split (by array position,
+ *      not `mile` index, so a null-`mile` shape still works) and admit it
+ *      when its pace sits within `THRESHOLD_WORK_GROWTH_PACE_MARGIN_SEC_PER_MI`
+ *      of the SEED CLUSTER'S OWN average pace — fixed once at seed time, not
+ *      a walking reference, because a walking "current block max + margin"
+ *      reference ratchets outward and re-admits the same decoupled tail the
+ *      seed pace filter was built to keep out (verified against 2026-08-21:
+ *      a walking anchor pulls miles 8-9 back in; a fixed one does not) — AND
+ *      its effort sits above the EASY band's own upper edge (reusing
+ *      `EASY_PCT_LTHR_BAND`/`EASY_PCT_HRMAX_BAND`, not a new invented
+ *      threshold): "not still easy effort" is a lower, more honest bar than
+ *      "in the T-band" for a split whose HR simply hasn't caught up yet, and
+ *      it is what correctly excludes 2026-07-14's anomalous mile 5 (141 bpm,
+ *      inside the run's OWN easy band despite a fast 406 s/mi) without a
+ *      special case — a real work mile does not read as recovery-easy on
+ *      its own heart rate, however GPS-fast it looks.
+ *
+ * FALLBACK WHEN THE RUN HAS NO SLOW REFERENCE AT ALL. A splits array that is
+ * ALREADY trimmed to work-pace only (this file's own pre-existing unit
+ * fixtures — three splits, all within 4 s/mi of each other) has no genuine
+ * warm-up/cooldown split to measure "meaningfully faster than" against, so
+ * requiring one would refuse real evidence for no reason. When the run's own
+ * pace spread (`slowest − fastest`) is under
+ * `THRESHOLD_WORK_SEED_PACE_MARGIN_SEC_PER_MI + THRESHOLD_WORK_GROWTH_PACE_MARGIN_SEC_PER_MI`
+ * — too narrow to plausibly contain a real WU/CD-vs-work separation — the
+ * pace half of the seed test is dropped and every split inside the absolute
+ * T-zone band seeds directly, which is exactly the pre-existing behavior for
+ * that shape and keeps every prior unit test passing unchanged.
+ *
+ * HR REMAINS METADATA, NOT AN ADMISSION GATE, on the pooled result — same
+ * posture as `thresholdSegmentFromPhases` (see that function's header): the
+ * absolute-band membership test still computes `hrPct`/`hrBandDistance` for
+ * whatever the seed-and-grow algorithm pooled, so a later confidence pass
+ * can weight the observation, but a pooled pct sitting outside the band no
+ * longer discards the segment — only the RELATIVE shape and the doctrine
+ * duration window do that now.
+ */
+export const THRESHOLD_WORK_SEED_PACE_MARGIN_SEC_PER_MI = 30;
+export const THRESHOLD_WORK_GROWTH_PACE_MARGIN_SEC_PER_MI = 20;
+
+/**
+ * RECONCILIATION, SCALED TO THE RUN — 2026-08-31, the second half of the
+ * same falsification pass. `reconcileSplitsTotal` (lib/runs/coherence.ts)
+ * stays untouched for its OTHER call sites — its absolute
+ * `MAX_SPLIT_SUM_DRIFT_MI` (0.25 mi) is right for the incident it was built
+ * to catch (a 1.34-mile row wearing a 4.14-mile splits array, 209% drift, a
+ * genuinely wrong-run array) and for a short run generally. It is too tight
+ * for THIS reader's real evidence on a longer run: 2026-07-14's real 9-split
+ * array sums to 8.41 mi against a stated 8.02 mi run — 0.39 mi, 4.9% of the
+ * run — ordinary GPS auto-lap accumulation over 9 mile-triggers, ARITHMETIC
+ * instrumentation noise, not a wrong-run array; `reconcileSplitsTotal`
+ * refused it outright and the run fell through to the whole-run fallback,
+ * where its own WU/CD-diluted average HR (86.9% of a fresh 168 LTHR, under
+ * the 95% T-floor) correctly could not rescue it either — the exact
+ * "reconciliation made this worse before it made it honest" shape this
+ * file's own header already named for 6 OTHER rows, now closed properly
+ * instead of accepted as a standing loss.
+ *
+ * `Math.max(MAX_SPLIT_SUM_DRIFT_MI, THRESHOLD_SPLITS_RELATIVE_DRIFT_FRACTION
+ * × distanceMi)` — the absolute floor still governs a short run (unchanged
+ * behavior, still catches the 1.34-mile incident: 2.8 mi of drift clears
+ * either number by miles), and a longer run earns proportional room for
+ * auto-lap noise that scales with its own split count. 7% clears
+ * 2026-07-14's real 4.9% with comfortable margin (not a razor's width from
+ * the boundary — Rule 9) while a genuinely wrong-run array (209% drift, or
+ * the file's other cited incident: 5 splits totalling 4.14 mi on a 1.34-mile
+ * row) fails by more than an order of magnitude either way. Arithmetic, not
+ * physiology — same reasoning `coherence.ts`'s own header gives for why
+ * `MAX_SPLIT_SUM_DRIFT_MI` itself carries no doctrine registry entry.
+ *
+ * Applied with the SAME per-split distance default the pooling loop below
+ * already uses (`s.distanceMi` when present and positive, else 1 mile) —
+ * 2026-07-21's real array carries an explicit distance on only its trailing
+ * partial mile and none of its 7 full-mile splits; comparing the raw,
+ * un-defaulted sum against the row's distance (what the OLD reconciliation
+ * call effectively did, since `reconcileSplitsTotal` only sums splits that
+ * carry an explicit distance field) manufactures a false 7-mile "mismatch"
+ * out of a fully coherent array. Defaulting first is not a laxer check; it
+ * is the same arithmetic the rest of this function already trusts, applied
+ * before comparison instead of after.
+ */
+export const THRESHOLD_SPLITS_RELATIVE_DRIFT_FRACTION = 0.07;
 
 /** No splits data to isolate a work segment · the loose whole-run plausibility
  *  ceiling (Research/03 §8's total is 60 min; this allows for warm-up/
@@ -813,35 +956,108 @@ export function thresholdSegmentFromSplits(
   ctx: HrContext,
   runDistanceMi: number | null = null,
 ): ThresholdSegment | null {
-  if (runDistanceMi != null) {
-    const coherent = reconcileSplitsTotal({ splits: rawSplits } as RunData, runDistanceMi);
-    if (coherent === false) return null;
-  }
   const splits = normalizeSplits(rawSplits);
   if (splits.length === 0) return null;
+
+  // Distance per split, defaulted the SAME way the pooling loop below
+  // defaults it — see THRESHOLD_SPLITS_RELATIVE_DRIFT_FRACTION's own doc for
+  // why comparing the raw, un-defaulted sum (what reconcileSplitsTotal does)
+  // manufactures a false mismatch on an array whose full-mile splits carry
+  // no explicit distance field at all.
+  const miFor = (s: { distanceMi: number | null }): number =>
+    s.distanceMi != null && s.distanceMi > 0 ? s.distanceMi : 1;
+
+  // Only when at least one split carries a REAL, explicit distance do we
+  // have any evidence the "1 mile when absent" default is a valid reading of
+  // this array at all (2026-07-21's real row: 7 of 8 splits carry none, and
+  // its one trailing partial-mile split is exactly that anchor). Zero
+  // anchors — every split silent on distance, e.g. a shape that reports
+  // per-kilometre rather than per-mile — is the SAME "nothing to check"
+  // case `reconcileSplitsTotal` itself refuses to touch, not license to
+  // assume miles; skip the check rather than default-fill blind.
+  const anchored = splits.some((x) => x.distanceMi != null && x.distanceMi > 0);
+  if (anchored && runDistanceMi != null && runDistanceMi > 0) {
+    const summed = splits.reduce((s, x) => s + miFor(x), 0);
+    const tolerance = Math.max(
+      MAX_SPLIT_SUM_DRIFT_MI,
+      THRESHOLD_SPLITS_RELATIVE_DRIFT_FRACTION * runDistanceMi,
+    );
+    if (Math.abs(summed - runDistanceMi) > tolerance) return null;
+  }
+
+  // Every split carrying both an HR and a pace, with the SAME absolute
+  // T-zone classification the old admission gate used — still computed, now
+  // spent as the SEED signal (and later as pooled metadata) rather than as
+  // the sole admission test. `index` is the split's position in the
+  // normalized array, not `mile` — adjacency below walks POSITION, since a
+  // shape carrying no `mile` field still has a real sequence.
+  const signals = splits
+    .map((s, index) => ({ s, index }))
+    .filter(({ s }) => s.hr != null && s.paceSec != null && s.paceSec > 0)
+    .map(({ s, index }) => {
+      const { inZone, basis, pct } = hrZoneMatch(
+        s.hr, ctx, THRESHOLD_PCT_HRMAX_BAND, THRESHOLD_PCT_LTHR_BAND,
+      );
+      return { index, paceSec: s.paceSec as number, mi: miFor(s), inThresholdBand: inZone, basis, pct };
+    });
+  if (signals.length === 0) return null;
+
+  const paces = signals.map((s) => s.paceSec);
+  const slowestPaceSec = Math.max(...paces);
+  const fastestPaceSec = Math.min(...paces);
+  const spreadSec = slowestPaceSec - fastestPaceSec;
+  const seedMargin = THRESHOLD_WORK_SEED_PACE_MARGIN_SEC_PER_MI + THRESHOLD_WORK_GROWTH_PACE_MARGIN_SEC_PER_MI;
+  // No genuine slow reference to separate from (an already-trimmed,
+  // work-pace-only array) — trust the absolute band alone, the pre-existing
+  // behavior for that shape. See this constant's own doc for the fixtures
+  // this fallback keeps passing.
+  const seedPaceCeiling = spreadSec >= seedMargin
+    ? slowestPaceSec - THRESHOLD_WORK_SEED_PACE_MARGIN_SEC_PER_MI
+    : Infinity;
+
+  const seeds = signals.filter((s) => s.inThresholdBand && s.paceSec <= seedPaceCeiling);
+  if (seeds.length === 0) return null;
+
+  const seedAvgPace = seeds.reduce((a, s) => a + s.paceSec, 0) / seeds.length;
+  const growthCeiling = seedAvgPace + THRESHOLD_WORK_GROWTH_PACE_MARGIN_SEC_PER_MI;
+
+  const easyCeilingFor = (basis: HrBasis): number =>
+    basis === 'pct_lthr' ? EASY_PCT_LTHR_BAND[1] : EASY_PCT_HRMAX_BAND[1];
+  const notClearlyEasy = (s: (typeof signals)[number]): boolean =>
+    s.basis != null && s.pct != null && s.pct > easyCeilingFor(s.basis);
+
+  const byIndex = new Map(signals.map((s) => [s.index, s]));
+  const admitted = new Set(seeds.map((s) => s.index));
+  const queue = [...admitted];
+  while (queue.length > 0) {
+    const i = queue.pop() as number;
+    for (const n of [i - 1, i + 1]) {
+      if (admitted.has(n)) continue;
+      const sig = byIndex.get(n);
+      if (!sig) continue;
+      if (sig.paceSec <= growthCeiling && notClearlyEasy(sig)) {
+        admitted.add(n);
+        queue.push(n);
+      }
+    }
+  }
+
+  const pooled = signals.filter((s) => admitted.has(s.index));
   let totalSec = 0;
   let totalMi = 0;
-  let basisUsed: HrBasis | null = null;
-  // Duration-weighted, same convention as `workAveragesFromPhases` — a
-  // qualifying split's OWN pct contributes to the pooled reliability signal
-  // in proportion to how much of the pooled time it represents.
   let pctWeighted = 0;
   let pctWeight = 0;
-  for (const s of splits) {
-    if (s.hr == null || s.paceSec == null || !(s.paceSec > 0)) continue;
-    const mi = s.distanceMi != null && s.distanceMi > 0 ? s.distanceMi : 1;
-    const sec = s.paceSec * mi;
-    const { inZone, basis, pct } = hrZoneMatch(
-      s.hr, ctx, THRESHOLD_PCT_HRMAX_BAND, THRESHOLD_PCT_LTHR_BAND,
-    );
-    if (!inZone || basis == null) continue;
+  let basisUsed: HrBasis | null = null;
+  for (const s of pooled) {
+    const sec = s.paceSec * s.mi;
     totalSec += sec;
-    totalMi += mi;
-    basisUsed = basisUsed ?? basis;
-    if (pct != null) { pctWeighted += pct * sec; pctWeight += sec; }
+    totalMi += s.mi;
+    basisUsed = basisUsed ?? s.basis;
+    if (s.pct != null) { pctWeighted += s.pct * sec; pctWeight += sec; }
   }
-  if (totalMi <= 0 || basisUsed == null) return null;
+  if (totalMi <= 0) return null;
   if (totalSec < THRESHOLD_MIN_QUALIFYING_SEC || totalSec > THRESHOLD_MAX_QUALIFYING_SEC) return null;
+
   const pooledPct = pctWeight > 0 ? pctWeighted / pctWeight : null;
   return {
     paceSecPerMi: totalSec / totalMi,
@@ -849,7 +1065,7 @@ export function thresholdSegmentFromSplits(
     source: 'splits',
     basis: basisUsed,
     hrPct: pooledPct,
-    hrBandDistance: hrBandDistance(pooledPct, thresholdBandFor(basisUsed)),
+    hrBandDistance: basisUsed != null ? hrBandDistance(pooledPct, thresholdBandFor(basisUsed)) : null,
   };
 }
 

@@ -226,6 +226,109 @@ describe('thresholdSegmentFromSplits · splits-aware, the owner\'s "Broken Long 
   });
 });
 
+describe('thresholdSegmentFromSplits · seed-and-grow, three real runs (Rule 13)', () => {
+  // David's own real profile at the time this fix landed: fresh LTHR 168,
+  // HRmax 183. All three fixtures below are pasted VERBATIM from
+  // `runs.data.splits` for user_uuid 0645f40c-951d-4ccc-b86e-9979cd26c795
+  // (read via DATABASE_URL_RO, 2026-08-31) — not paraphrased, not rounded.
+  //
+  // FALSIFIED AGAINST THE UNFIXED CODE (Rule 18): before this change, all
+  // three of these real `tempo`-labeled runs produced NO threshold
+  // observation at all. `thresholdSegmentFromSplits` returned null for every
+  // one of them — 2026-07-21 and 2026-07-14 because `reconcileSplitsTotal`
+  // rejected their real, coherent splits arrays (the first has no per-split
+  // distance on 7 of 8 miles, manufacturing a false ~7 mi "mismatch"; the
+  // second's 9 mile-trigger splits sum 0.39 mi — 4.9% — over their own row's
+  // distance, ordinary GPS auto-lap noise the old 0.25 mi absolute tolerance
+  // was too tight to admit); 2026-06-18 DID reconcile but its per-split
+  // absolute T-zone HR gate (95-102% of a fresh 168 LTHR) excluded mile 3 at
+  // 157 bpm / 93.5% — just under the floor, the exact "HR is still climbing
+  // while pace has already arrived" shape Research/03 §1's own onset-lag row
+  // names. `thresholdSegmentFromWholeRun` could not rescue any of the three
+  // either — verified below — because a whole-run average diluted by
+  // warm-up/cool-down never clears the T-band. All three of these facts were
+  // reproduced against the live account before landing this fix.
+  const ctx: HrContext = { maxHrBpm: 183, lthrBpm: 168, lthrFresh: true };
+
+  it('2026-07-21 (tempo, 7.52 mi) · work block miles 3-6, 451 s/mi — was NULL under the old absolute band + strict reconciliation', () => {
+    const splits = [
+      { mile: 1, hr: 125, paceSecPerMi: 521 }, // warm-up
+      { mile: 2, hr: 142, paceSecPerMi: 491 }, // warm-up
+      { mile: 3, hr: 159, paceSecPerMi: 438 }, // work — 93.5% LTHR, BELOW the old absolute floor
+      { mile: 4, hr: 156, paceSecPerMi: 450 }, // work — 92.9% LTHR, also below it
+      { mile: 5, hr: 160, paceSecPerMi: 463 }, // work
+      { mile: 6, hr: 160, paceSecPerMi: 453 }, // work
+      { mile: 7, hr: 149, paceSecPerMi: 535 }, // cool-down
+      { mile: 8, hr: null, paceSecPerMi: 501, distanceMi: 0.5167322834645669 }, // cool-down tail, no HR
+    ];
+    // reconcileSplitsTotal on this row's real distance (7.52 mi) returns
+    // FALSE — 7 of these 8 splits carry no per-split distance at all, so the
+    // old un-defaulted sum is ~0.52 mi against a 7.52 mi row. The new
+    // reconciliation defaults a distance-less split to 1 mile ONLY when at
+    // least one split in the array anchors a real distance (here, the
+    // trailing partial mile does), which is what lets this array reconcile
+    // at all: 7 × 1 mi + 0.5167 mi = 7.5167 mi against 7.52 mi.
+    const seg = thresholdSegmentFromSplits(splits, ctx, 7.52);
+    expect(seg).not.toBeNull();
+    if (seg) {
+      expect(seg.source).toBe('splits');
+      expect(seg.paceSecPerMi).toBe(451);
+      expect(seg.durationSec).toBe(1804); // 438+450+463+453 — all 4 real work miles pooled
+      // A run whose row-level avgHr (148) is itself under the T-band (the
+      // dilution `thresholdSegmentFromWholeRun` cannot see past).
+      const wholeRun = thresholdSegmentFromWholeRun(
+        { finishSec: 3607, distanceMi: 7.52, avgHr: 148, workoutTypeRaw: 'tempo' }, ctx,
+      );
+      expect(wholeRun).toBeNull();
+    }
+  });
+
+  it('2026-06-18 (tempo, 8.15 mi) · work block miles 3-6, 425.5 s/mi — recovers mile 3 the old absolute HR gate dropped', () => {
+    const splits = [
+      { mile: 1, hr: 125, paceSecPerMi: 518, distanceMi: 1 },
+      { mile: 2, hr: 137, paceSecPerMi: 501, distanceMi: 1 },
+      { mile: 3, hr: 157, paceSecPerMi: 427, distanceMi: 1 }, // 93.5% LTHR — below the OLD absolute floor
+      { mile: 4, hr: 162, paceSecPerMi: 420, distanceMi: 1 },
+      { mile: 5, hr: 164, paceSecPerMi: 432, distanceMi: 1 },
+      { mile: 6, hr: 167, paceSecPerMi: 423, distanceMi: 1 },
+      { mile: 7, hr: 150, paceSecPerMi: 546, distanceMi: 1 },
+      { mile: 8, hr: 145, paceSecPerMi: 527, distanceMi: 1 },
+      { mile: 9, hr: 144, paceSecPerMi: 474, distanceMi: 0.3080168776371308 },
+    ];
+    const seg = thresholdSegmentFromSplits(splits, ctx, 8.15);
+    expect(seg).not.toBeNull();
+    if (seg) {
+      expect(seg.paceSecPerMi).toBe(425.5);
+      expect(seg.durationSec).toBe(1702); // 427+420+432+423 — mile 3 IS pooled this time
+    }
+  });
+
+  it('2026-07-14 (tempo, 8.02 mi) · work miles 3-4, 435 s/mi — excludes the anomalous mile 5 on HR, not by special-casing it', () => {
+    const splits = [
+      { mile: 1, hr: 122, paceSecPerMi: 518, distanceMi: 1 },
+      { mile: 2, hr: 131, paceSecPerMi: 452, distanceMi: 1 },
+      { mile: 3, hr: 154, paceSecPerMi: 437, distanceMi: 1 },
+      { mile: 4, hr: 160, paceSecPerMi: 433, distanceMi: 1 },
+      // A real anomaly (downhill mile or sensor glitch): 6:46/mi at only 141
+      // bpm — inside this run's own EASY band despite a fast GPS pace.
+      { mile: 5, hr: 141, paceSecPerMi: 406, distanceMi: 1 },
+      { mile: 6, hr: 150, paceSecPerMi: 440, distanceMi: 1 },
+      { mile: 7, hr: 149, paceSecPerMi: 491, distanceMi: 1 },
+      { mile: 8, hr: 145, paceSecPerMi: 506, distanceMi: 1 },
+      { mile: 9, hr: 149, paceSecPerMi: 460, distanceMi: 0.4108695652173913 },
+    ];
+    // reconcileSplitsTotal on 8.02 mi returns FALSE here — these 9 splits sum
+    // 8.41 mi, 0.39 mi (4.9%) of ordinary GPS auto-lap drift over the row's
+    // own distance, which the new distance-scaled tolerance admits.
+    const seg = thresholdSegmentFromSplits(splits, ctx, 8.02);
+    expect(seg).not.toBeNull();
+    if (seg) {
+      expect(seg.paceSecPerMi).toBe(435);
+      expect(seg.durationSec).toBe(870); // 437+433 — mile 5's anomaly never enters the pool
+    }
+  });
+});
+
 describe('thresholdSegmentFromWholeRun · the weaker no-splits fallback', () => {
   it('requires the label to positively say threshold-zone', () => {
     const tHr = midOfBand(THRESHOLD_PCT_HRMAX_BAND);
