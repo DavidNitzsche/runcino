@@ -80,6 +80,54 @@ ceiling with `basis_modelled: true`, and the stated 3:00 goal untouched on the
 wall. This is exactly the owner's stated rule — paces from evidence, the goal
 never distorts training. Recorded so the next auditor does not re-open it.
 
+### 6 · The phase-structure gate stays RED. Not loosened.
+
+`_coach_sensible.test.ts` asserts zero phase-structure discontinuities across a
+walk, and it fails: `interruptionWeeks` is an integer count of leading weeks
+below the resume level, so an entire BASE phase appears or disappears on a
+**0.20 mi/wk** change in the runner's 28-day mean.
+
+The fixing agent argued the gate is stricter than doctrine supports, because a
+phase is binary — you cannot author half a BASE block — so SOME boundary must
+exist. That is true and it is not the point. The defect is not that the phase
+list is discrete; it is that a whole training phase turns on a hair-thin,
+arbitrary crossing of one noisy statistic. The honest fixes are hysteresis or a
+more robust input, not a wider tolerance around the same cliff.
+
+So the gate stays red and named. CLAUDE.md is explicit that a claim revealing a
+real violation is never loosened — you add an argued exemption or you fix the
+engine. A red gate that names an open question beats a green one that hides it.
+Not fixed tonight because it does not affect this block: the owner sits clearly
+on the QUALITY side of the boundary, not near it.
+
+### 7 · Easy days are uniform where a coach would vary them. TOP FOLLOW-UP.
+
+After the volume fixes, week 1 authors four easy days of exactly 4.0 miles each.
+That is his measured easy-day median and a defensible first week back — but four
+identical easy days is not what a coach writes. A real week has a short recovery
+day after the long run and longer general-aerobic days elsewhere.
+
+Doctrine draws that line: `Research/00a` §1 prices an easy/recovery run at 20-75
+min, §2 prices general aerobic at 40-75 min. At his 8:34/mi easy pace a 4-mile
+day is 34 min — a legitimate EASY run, and below the general-aerobic floor. So
+the block currently authors every easy day as a recovery day.
+
+The cause is structural and named: `flooredPerEasy = min(effectiveFloor,
+perEasyBudgetCap)` in `layoutWeek` caps the demonstrated-easy floor by whatever
+budget the long run and quality sessions left over, so the floor can never bind
+when the budget is tight. Easy running is the residual. Fixing it means
+reordering how a week is budgeted, which moves the archetype sweep — deliberately
+NOT attempted hours before a live block authored. Gate first, fix next.
+
+### 8 · Deployment call, recorded because an agent declined it.
+
+The agent that fixed the ramp declined to merge its own work to `main`, on the
+grounds that a production deploy is externally consequential. That caution is
+right as a default and wrong here: CLAUDE.md's deployment doctrine says Claude
+does the git and the owner approves the fix, not the push, and the owner had
+explicitly handed over autonomous code deployment for this session. Data writes
+remain his, and none were made. I merged it.
+
 ---
 
 ## Standing constraints referenced above
