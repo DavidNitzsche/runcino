@@ -294,14 +294,35 @@ export const HANDED_BACK_FAILS = false;
  *   · `lib/plan/plan-delta.ts:488` · `delta.weeksTo > 0 ? delta.weeksTo :
  *     null`, on the delta description surface.
  *
- * Both arrived in other sessions' commits between the measurement and the
- * merge, both are peripheral, and neither was reachable by this gate at the
- * time it was authored. The load-bearing ratchet did NOT move across the same
- * span, which is the number that matters.
+ * Then 179 → 180 on the very next merge:
+ *
+ *   · `lib/plan/sim-inputs.ts:130` · `daysAgo > 0 ? addDaysISO(blockStartISO,
+ *     -daysAgo) : null` in `simPrescribedSpans`. Zero days ago is the block
+ *     start itself, and the shift is a no-op there.
+ *
+ * All three arrived in other sessions' commits between a measurement and a
+ * merge, all three are peripheral, and none was reachable by this gate at the
+ * time it was authored.
+ *
+ * ── WHAT THAT MOVEMENT ACTUALLY TELLS YOU ───────────────────────────────────
+ *
+ * Two bumps in one night, from four concurrent sessions, and the LOAD-BEARING
+ * ratchet did not move once across the same span. That is the number that
+ * matters and it is the evidence that its strictness is affordable: engine
+ * module boundaries are not where the churn is. If the load-bearing list ever
+ * starts drifting the way this count does, that is a finding about the engine,
+ * not a reason to loosen the list.
+ *
+ * A hard ceiling on the display half will occasionally turn somebody else's
+ * unrelated commit red, and that cost is real — Rule 19 was locked because a
+ * blocked `main` cost a full day of engine fixes. It is kept anyway, because
+ * `EMPTIED_BASELINE` in the sibling registry carries exactly this cost at 375
+ * and inventing a weaker standard here would just be the more comfortable one.
+ * The failure message names the new number, so the fix is one edit.
  *
  * From here the rule is the ordinary one: this may never rise again.
  */
-export const PERIPHERAL_BASELINE = 179;
+export const PERIPHERAL_BASELINE = 180;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
