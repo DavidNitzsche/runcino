@@ -1160,6 +1160,97 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
   {
+    id: 'CONVENTION.representative-lookback-outer-bound',
+    binds: [
+      'lib/training/normal-window.ts#REPRESENTATIVE_LOOKBACK_MAX_DAYS',
+      'lib/training/normal-window.ts#extendLookback',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Total recovery days (no quality) | Days of zero/very-light running |',
+    claim:
+      'Rule 8 excludes taper, race and post-race days from any reader that answers "what does ' +
+      'this runner normally do". When that leaves too little to answer with, the lookback may ' +
+      'reach FURTHER BACK for representative training rather than hard-cliffing at the base ' +
+      'window (locked 2026-08-31 at the owner\'s instruction). How far back it may reach is a ' +
+      'CONVENTION, not a research finding — Research/ does not model an evidence lookback. What ' +
+      'research grounds is the FLOOR: the bound must be able to clear the longest prescribed ' +
+      'non-normal stretch the doctrine tables themselves can open (the marathon\'s taper plus ' +
+      'its "total recovery days (no quality)") AND still hold a full base window of ordinary ' +
+      'training on the far side of it. A bound below that is a bound that cannot answer for a ' +
+      'marathoner in the fortnight after a marathon, which is precisely when it is asked.',
+    check({ cite }) {
+      const src = sourceOf('web-v2/lib/training/normal-window.ts');
+      const m = src.match(/export const REPRESENTATIVE_LOOKBACK_MAX_DAYS = (\d+);/);
+      if (!m) throw new Error('REPRESENTATIVE_LOOKBACK_MAX_DAYS is gone or no longer a literal');
+      const bound = Number(m[1]);
+
+      // THE FLOOR, read out of the doctrine tables and the doc at run time
+      // rather than hardcoded on both sides (Rule 18).
+      const t = cite.table();
+      const marathonRecoveryDays = parseBand(t.cell('Marathon', 'Total recovery days (no quality)'))[1];
+      const marathonTaperDays = TAPER_WEEKS_BY_DISTANCE.m * 7;
+      const engineRecoveryDays = POST_RACE_RECOVERY_WEEKS.m * 7;
+      const worstBlockDays = marathonTaperDays + Math.max(marathonRecoveryDays, engineRecoveryDays);
+
+      const base = 28; // ADAPTATION_EVIDENCE_WINDOW_DAYS · one base window past it
+      if (bound < worstBlockDays + base) {
+        throw new Error(
+          `REPRESENTATIVE_LOOKBACK_MAX_DAYS is ${bound} · the longest prescribed block the ` +
+            `doctrine tables open is ${worstBlockDays} days (marathon taper ${marathonTaperDays} ` +
+            `+ recovery ${Math.max(marathonRecoveryDays, engineRecoveryDays)}), so a bound under ` +
+            `${worstBlockDays + base} cannot hold a base window of ordinary training past it`,
+        );
+      }
+
+      // And it must stay a BOUND, not a licence: half a year of history is a
+      // different runner, and the widening must terminate rather than reach.
+      if (bound > 200) {
+        throw new Error(
+          `REPRESENTATIVE_LOOKBACK_MAX_DAYS is ${bound} · past roughly half a year the training ` +
+            'a reading rests on is no longer this runner\'s current identity, which is the thing ' +
+            'Rule 8 exists to protect',
+        );
+      }
+
+      // The honest label, same discipline as CONVENTION.corpus-corroboration-count.
+      if (!/the argument is the doctrine tables' own arithmetic rather than/.test(src)) {
+        throw new Error(
+          'normal-window.ts no longer states where the outer bound comes from · an unexplained ' +
+            'bound is the number nobody can check',
+        );
+      }
+
+      // WIDENING MUST NEVER ADMIT A PRESCRIBED DAY. That is the whole
+      // difference between extending and the diluting Rule 8 forbids, and it is
+      // held by the exclusion running at EVERY candidate width.
+      //
+      // Read out of `extendLookback`'s own body rather than the whole file, and
+      // every call checked rather than one of them: the first draft searched the
+      // file for a single matching call, so removing the filter from the LOOP
+      // and leaving it on the initial computation walked straight through. Same
+      // defect this registry already fixed once in
+      // CONVENTION.corpus-corroboration-count, found the same way (Rule 18).
+      const body = src.slice(src.indexOf('export function extendLookback'));
+      const fn = body.slice(0, body.indexOf('\n}\n'));
+      const calls = [...fn.matchAll(/representativeDayCount\(([^)]*)\)/g)];
+      if (calls.length < 2) {
+        throw new Error(
+          `extendLookback makes ${calls.length} exclusion call(s) · it must re-run the filter for ` +
+            'the initial window AND for every widened one, or a wider window admits taper days',
+        );
+      }
+      for (const c of calls) {
+        if (!/,\s*windows\s*$/.test(c[1])) {
+          throw new Error(
+            `extendLookback calls representativeDayCount(${c[1]}) · every width must be measured ` +
+              'against the runner\'s own prescribed windows, and a call that drops them is the ' +
+              'dilution Rule 8 clause 1 forbids',
+          );
+        }
+      }
+    },
+  },
+  {
     id: 'RECOVERY.priority-scale',
     binds: [
       'lib/plan/generate.ts#POST_RACE_PRIORITY_SCALE',

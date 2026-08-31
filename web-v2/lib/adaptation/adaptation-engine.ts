@@ -130,8 +130,30 @@
  *     doctrinally legal. The shadow-mode audit against the owner's real history
  *     is what produces that judgement, and it produces it for a human.
  *   · It cannot see a lever nobody wired. DENSITY refuses honestly when no plan
- *     row carries a progression block — which is the production reality today —
- *     and a refusal is not the same as a mechanism that works.
+ *     row carries a progression block — which is the production reality today,
+ *     measured 2026-08-31 at SIX rows out of 4,639 across every plan in the
+ *     database — and a refusal is not the same as a mechanism that works. The
+ *     refusal now names WHICH of the five reasons applies, which is the most
+ *     this file can do: authoring the block is the Plan Generator's job and
+ *     this engine must not grow a second opinion about session geometry.
+ *   · It cannot tell whether the EVIDENCE WINDOW was the right one. It reads
+ *     the lookback the loader hands it and trusts the `stalenessFactor` on it.
+ *
+ * ── THE 2026-08-31 REVIEW · what changed and why ────────────────────────────
+ *
+ *   · A FIFTH DECISION. `INSUFFICIENT_EVIDENCE` — see `AdaptationDecision`.
+ *     Every "we could not see it" branch used to land on HOLD carrying a reason
+ *     code that asserts a finding.
+ *   · A CONFIDENCE-WEIGHTED LOOKBACK. `EvidenceLookback`, resolved by
+ *     `lib/training/normal-window.ts`. The gate no longer cliffs at day 28 when
+ *     days 1-28 were a taper; it reaches back for representative training and
+ *     prices the age of what it finds into `confidence`.
+ *   · VOLUME ASKS TWO QUESTIONS. `historicalTolerance` beside `recentWeeks` —
+ *     a plan authored yesterday knows nothing about a runner who has held 43
+ *     mi/wk since June, and used to report that as `LOAD_NOT_YET_ABSORBED`.
+ *   · ONE STIMULUS CHANGE PER CYCLE, not merely one PROGRESS. See
+ *     `changesStimulus`: a PACE progression and a SPECIFICITY restructure were
+ *     both reachable in the same `marginal` cycle and are two stressors.
  */
 import { CORROBORATION_MIN_OBSERVATIONS } from '@/lib/training/vdot-corpus';
 import { TRAINING_LEAD_REANCHOR_DELTA } from '@/lib/training/pace-anchor';
@@ -150,8 +172,42 @@ import type { ResolvedCapacity, Immutable } from '@/lib/training/prescription-re
  * 1 · THE STATE MACHINE
  * ═══════════════════════════════════════════════════════════════════════ */
 
-/** `ADAPTATION_PROGRESSION_DOCTRINE.md` §state machine, literally. */
-export type AdaptationDecision = 'PROGRESS' | 'HOLD' | 'REDUCE' | 'RESTRUCTURE';
+/**
+ * `ADAPTATION_PROGRESSION_DOCTRINE.md` §state machine, plus the fifth state
+ * Rule 11 requires and the doctrine's four-word list cannot express.
+ *
+ * ── WHY `INSUFFICIENT_EVIDENCE` IS A DECISION AND NOT A FLAVOUR OF HOLD ─────
+ *
+ * Three facts, never one:
+ *
+ *   PROGRESS              · the evidence supports asking for more.
+ *   HOLD                  · the evidence was READ and it argues against more.
+ *   INSUFFICIENT_EVIDENCE · there was no opportunity to demonstrate anything.
+ *
+ * The first draft of this engine had four states, and every "we could not see
+ * it" branch landed on HOLD — carrying reason codes that ASSERT A FINDING. A
+ * runner three days into a plan came back `HOLD · LOAD_NOT_YET_ABSORBED`, which
+ * is a sentence about him, from a gate that had one week to look at. A taper
+ * that generates zero threshold sessions came back `HOLD · SINGLE_STRONG_
+ * SESSION_IS_NOT_CORROBORATION`, which says the sessions did not corroborate
+ * when the truth is that the plan did not prescribe any.
+ *
+ * That is Rule 11 exactly — "don't know", "measured zero" and "the read
+ * failed" are three facts — and it is the shape that made `recentQualityPerWeek`
+ * answer full quality density off a prescribed recovery block. Absence of an
+ * OPPORTUNITY to demonstrate capacity is not negative evidence, and a state
+ * machine that cannot say so will keep saying the wrong one of the two.
+ *
+ * A refusal is still an ANSWER: it carries the lever, the numbers unchanged and
+ * a reason naming what was missing, so it is never silence (Rule 21).
+ */
+export type AdaptationDecision =
+  | 'PROGRESS' | 'HOLD' | 'REDUCE' | 'RESTRUCTURE' | 'INSUFFICIENT_EVIDENCE';
+
+/** The two decisions that leave the number where it is. One definition, so a
+ *  new non-moving decision cannot be added without every check seeing it. */
+export const NON_MOVING_DECISIONS: ReadonlySet<AdaptationDecision> =
+  new Set<AdaptationDecision>(['HOLD', 'INSUFFICIENT_EVIDENCE']);
 
 /** The same document's `target:` row. */
 export type AdaptationLever =
@@ -185,9 +241,14 @@ export type AdaptationReasonCode =
   | 'CAPACITY_NOT_DIRECTLY_EVIDENCED'
   | 'PRESCRIPTION_ALREADY_MATCHES_CAPACITY'
   | 'PACE_STEP_CLAMPED_TO_DOCTRINE_QUANTUM'
+  | 'NO_QUALITY_EVIDENCE_IN_WINDOW'
   // ── VOLUME / DURATION ──
   | 'RECENT_LOAD_ABSORBED'
   | 'LOAD_NOT_YET_ABSORBED'
+  | 'HISTORICAL_VOLUME_TOLERANCE_ESTABLISHED'
+  | 'CURRENT_PLAN_TOO_YOUNG_TO_JUDGE_ABSORPTION'
+  | 'STEP_HELD_TO_DEMONSTRATED_HISTORICAL_VOLUME'
+  | 'NO_VOLUME_TOLERANCE_EVIDENCE'
   | 'LONG_RUN_TOLERATED_WITHOUT_COLLAPSE'
   | 'LONG_RUN_SHOWED_LATE_COLLAPSE'
   | 'NO_LONG_RUN_EVIDENCE_IN_WINDOW'
@@ -198,6 +259,9 @@ export type AdaptationReasonCode =
   | 'PROGRESSION_GATE_RESOLVED_MORE_QUALITY_WORK'
   | 'PROGRESSION_GATE_HELD_THE_SESSION'
   | 'NO_PROGRESSION_TARGETS_AUTHORED'
+  // ── the lookback (Rule 8's confidence-weighted extension) ──
+  | 'LOOKBACK_EXTENDED_PAST_A_PRESCRIBED_PERIOD'
+  | 'CONFIDENCE_DISCOUNTED_FOR_EVIDENCE_AGE'
   // ── HOLD / REDUCE / RESTRUCTURE ──
   | 'ANOTHER_LEVER_IS_PROGRESSING_THIS_CYCLE'
   | 'ABSORPTION_MARGINAL'
@@ -335,7 +399,14 @@ export type AdaptationProposal =
 export type EngineRefusalCode =
   | 'NO_CAPACITY_EVIDENCE'
   | 'NO_ACTIVITY_EVIDENCE_IN_WINDOW'
+  /** The plan carries no progression block to step. The AUTHORING gap. */
   | 'NO_PROGRESSION_TARGETS'
+  /** The weekly pass is not due today. Nothing is wrong. */
+  | 'PROGRESSION_PASS_NOT_DUE'
+  /** Cutback / race week / taper — doctrine says no step this week. */
+  | 'WEEK_TAKES_NO_PROGRESSION_STEP'
+  | 'NO_ACTIVE_PLAN'
+  | 'PROGRESSION_GATE_UNREADABLE'
   | 'STATE_UNREADABLE'
   | 'NO_LOAD_PICTURE';
 
@@ -413,22 +484,80 @@ export interface LongRunRead {
   executionQuality: 'controlled' | 'variable' | 'indeterminate';
 }
 
+/**
+ * HOW FAR BACK the evidence beside it was gathered from, and what that cost in
+ * confidence. `lib/training/normal-window.ts` owns both numbers; this is the
+ * shape they arrive in, and nothing here recomputes either.
+ *
+ * Carried on the two levers whose evidence is EPISODIC — a quality session and
+ * a long run happen once or twice a week, so a window emptied by a taper leaves
+ * them with nothing, which is the case Rule 8's cliff was hiding. The load
+ * picture does not carry one: it reads whole weeks literally, on purpose (see
+ * the loader's Rule 8 note).
+ */
+export interface EvidenceLookback {
+  /** The window the gate was designed against. */
+  baseWindowDays: number;
+  /** The window actually read. Equal to `baseWindowDays` on the common path. */
+  windowDays: number;
+  /** Days of ordinary training inside `windowDays` — prescribed taper, race and
+   *  recovery days excluded at every width. */
+  representativeDays: number;
+  /** Prescribed days dropped from the window. */
+  excludedDays: number;
+  /** 0-1. What the age of the evidence costs a belief resting on it. Exactly 1
+   *  when the evidence sits inside the base window. */
+  stalenessFactor: number;
+  /** True when the outer bound was reached before enough ordinary training
+   *  was found. Distinguishable from "found it further back" (Rule 11). */
+  reachedOuterBound: boolean;
+}
+
 /** The PACE lever's slice. Capacity and quality execution, nothing else. */
 export interface PaceEvidence {
   /** What the plan currently prescribes for threshold work, s/mi. The thing a
    *  proposal would change. Null when no threshold day carries a target. */
   prescribedThresholdSecPerMi: number | null;
   sessions: QualitySessionRead[];
+  lookback: EvidenceLookback;
 }
+
+/**
+ * WHAT WEEKLY VOLUME THIS RUNNER HAS DEMONSTRATED HE TOLERATES, over his own
+ * training history and independent of when the current plan was authored.
+ *
+ * A HABIT / CAPABILITY question, so it is Rule 8 filtered — a taper week is not
+ * evidence about what he tolerates. Deliberately SEPARATE from `recentWeeks`,
+ * which asks the different question of whether THIS PLAN is being absorbed.
+ * Collapsing the two is the defect this type exists to make impossible: a plan
+ * authored yesterday knows nothing about a runner who has held 43 mi/wk since
+ * June, and reporting that as `LOAD_NOT_YET_ABSORBED` is a finding about him
+ * invented out of the engine's own youth.
+ */
+export type VolumeToleranceRead =
+  | {
+      ok: true;
+      /** The filtered weekly rate, mi/wk. */
+      sustainedWeeklyMi: number;
+      /** Representative days behind it. */
+      representativeDays: number;
+      oldestISO: string;
+    }
+  | { ok: false; reason: 'NOT_ENOUGH_REPRESENTATIVE_TRAINING' | 'UNREADABLE' };
 
 /** The VOLUME lever's slice. Absorbed load, and the ceiling it may not pass. */
 export interface LoadEvidence {
   /** The runner's current weekly prescription, mi. */
   currentWeeklyMi: number | null;
-  /** Completed-versus-scheduled for each of the recent whole weeks, newest
-   *  first. `null` scheduled means the week had no schedule to compare to,
-   *  which is a different fact from a week that was scheduled and missed. */
+  /**
+   * CURRENT-PLAN ABSORPTION. Completed-versus-scheduled for each of the recent
+   * whole weeks, newest first. `null` scheduled means the week had no schedule
+   * to compare to, which is a different fact from a week that was scheduled and
+   * missed — and, on a plan authored this week, it is the ONLY fact.
+   */
   recentWeeks: Array<{ weekStartISO: string; completedMi: number; scheduledMi: number | null }>;
+  /** HISTORICAL VOLUME TOLERANCE. The other question, kept apart. */
+  historicalTolerance: VolumeToleranceRead;
   /** The upper edge of the runner's own tier band, mi. A proposal may never
    *  cross it — `adaptive-ramp.ts` owns the band and this is its number. */
   tierWeeklyUpperMi: number | null;
@@ -443,17 +572,42 @@ export interface LongRunEvidence {
   /** Max week-over-week growth as a fraction, e.g. 0.30. */
   longRunWoWMaxFraction: number | null;
   recent: LongRunRead[];
+  lookback: EvidenceLookback;
 }
+
+/**
+ * WHY the progression gate produced nothing, when it produced nothing.
+ *
+ * `loadProgressionWeek` returns `null` for FIVE distinct reasons and the first
+ * cut of this engine reported all five as "no plan row carries a progression
+ * block, an authoring gap". On five days out of seven that sentence is simply
+ * false — the pass runs once per training week, so on a Thursday the honest
+ * answer is "already resolved this week", not a claim about how the plan was
+ * authored. Rule 11 and Rule 16 both: a reason that is right one day in seven
+ * is a reason nobody can act on.
+ */
+export type DensityGateState =
+  /** The gate ran and returned resolutions. */
+  | 'RESOLVED'
+  /** The gate ran and the week's rows carry no `workout_spec.progression`.
+   *  A genuine AUTHORING gap, and the only one of these that is. */
+  | 'NO_AUTHORED_PROGRESSION_BLOCK'
+  /** Once per training week, and this is not the day. Says nothing about the
+   *  plan or the runner. */
+  | 'PASS_NOT_DUE_THIS_WEEK'
+  /** Cutback, race week or taper. Doctrine's own rule that a recovery week
+   *  carries no progression step — a correct refusal, not a gap. */
+  | 'WEEK_TAKES_NO_PROGRESSION_STEP'
+  | 'NO_ACTIVE_PLAN'
+  /** The read failed. Never to be reported as any of the above. */
+  | 'UNREADABLE';
 
 /** The DENSITY lever's slice — the progression gate's own output, carried. */
 export interface DensityEvidence {
-  /** `resolveWeekProgression`'s resolutions for the week ahead. EMPTY means the
-   *  gate had no targets, which is a refusal, not a hold. */
+  /** `resolveWeekProgression`'s resolutions for the week ahead. */
   resolutions: ProgressionResolution[];
-  /** True when the week's plan rows carry no `workout_spec.progression` at all,
-   *  so the gate could not have had a target. Reported separately because it is
-   *  an AUTHORING gap, not a runner-evidence gap. */
-  noAuthoredTargets: boolean;
+  /** Why there are none, when there are none. */
+  gate: DensityGateState;
 }
 
 /** The SCHEDULE lever's slice. Schedule facts ONLY — no fitness, no capacity. */
@@ -683,18 +837,21 @@ function detectPace(
   const reasons: AdaptationReasonCode[] = [];
   const ids = controlled.map((s) => s.activityId);
 
+  const lookbackNote = lookbackReasons(evidence.lookback);
+
   const holdWith = (
     codes: AdaptationReasonCode[],
     explanation: string,
+    decision: 'HOLD' | 'INSUFFICIENT_EVIDENCE' = 'HOLD',
   ): AdaptationProposal | null => {
     if (prescribed == null) return null;
     return {
-      decision: 'HOLD', target: 'PACE', domain: 'FITNESS',
+      decision, target: 'PACE', domain: 'FITNESS',
       previous: { unit: 'sec_per_mi', value: prescribed },
       proposed: { unit: 'sec_per_mi', value: prescribed },
       confidence: clamp01(capacity.threshold.confidence),
       supportingEvidence: ids,
-      reasonCodes: codes,
+      reasonCodes: [...codes, ...lookbackNote],
       explanation,
       whyNot: [],
       resolvedAt: now, modelVersion: ADAPTATION_ENGINE_MODEL_VERSION,
@@ -720,27 +877,47 @@ function detectPace(
   }
 
   if (capacity.threshold.sourceMode !== 'direct') {
+    // NOT a hold. A fallback estimate means we have not measured this runner's
+    // threshold, which is an absence of evidence, not evidence against him.
     return {
       proposal: null,
       hold: holdWith(
         ['CAPACITY_NOT_DIRECTLY_EVIDENCED'],
-        'Threshold pace holds. The current estimate rests on a fallback rather than '
-          + 'on recent threshold work.',
+        'No recent threshold work to price the target from. The current estimate rests on '
+          + 'a fallback, so the target stays where it is until there is something to read.',
+        'INSUFFICIENT_EVIDENCE',
       ),
     };
   }
 
   if (controlled.length < PACE_PROGRESS_MIN_SESSIONS) {
+    /* THE THREE-STATE SPLIT (Rule 11, and the owner's point 6).
+     *
+     *   · sessions were run and they did NOT hold together  → HOLD. That is a
+     *     read, and it argues against moving the target.
+     *   · sessions were run, held together, and there are simply not enough of
+     *     them yet, or there were none at all → INSUFFICIENT_EVIDENCE. A taper
+     *     that prescribes no threshold work has not told us the runner cannot
+     *     hold the pace; it has told us nothing.
+     *
+     * Collapsing these is how "the plan gave him no chance to show us" ends up
+     * rendered as "his sessions did not corroborate". */
     if (collapsed.length > 0) reasons.push('LATE_SESSION_DETERIORATION');
     if (uncontrolled.length > 0) reasons.push('EXECUTION_BEAT_TARGET_WITHOUT_CONTROL');
-    reasons.push('SINGLE_STRONG_SESSION_IS_NOT_CORROBORATION');
+    const evidenceArguesAgainst = uncontrolled.length > 0;
+    if (evidence.sessions.length === 0) reasons.push('NO_QUALITY_EVIDENCE_IN_WINDOW');
+    else reasons.push('SINGLE_STRONG_SESSION_IS_NOT_CORROBORATION');
     return {
       proposal: null,
       hold: holdWith(
         reasons,
-        `Threshold pace holds. ${controlled.length} of the last ${evidence.sessions.length} `
-          + `quality sessions held together; ${PACE_PROGRESS_MIN_SESSIONS} are needed before the `
-          + 'target moves.',
+        evidence.sessions.length === 0
+          ? `No quality session in the last ${evidence.lookback.windowDays} days to read. `
+            + 'The threshold target stays where it is.'
+          : `Threshold pace holds. ${controlled.length} of the last ${evidence.sessions.length} `
+            + `quality sessions held together; ${PACE_PROGRESS_MIN_SESSIONS} are needed before the `
+            + 'target moves.',
+        evidenceArguesAgainst ? 'HOLD' : 'INSUFFICIENT_EVIDENCE',
       ),
     };
   }
@@ -773,13 +950,22 @@ function detectPace(
   const proposedPace = round1(prescribed - step);
   reasons.push('REPEATED_CONTROLLED_QUALITY_EXECUTION', 'CAPACITY_LEADS_PRESCRIPTION_BY_A_USEFUL_STEP');
   if (step < gain) reasons.push('PACE_STEP_CLAMPED_TO_DOCTRINE_QUANTUM');
+  reasons.push(...lookbackNote);
+
+  // THE STALENESS PRICE. A belief carried by sessions the lookback had to reach
+  // back for is a weaker belief, and it says so in the one field a consumer
+  // orders proposals by. The MAGNITUDE is untouched — evidence that is older is
+  // not evidence for a smaller step, it is the same evidence trusted less, and
+  // shrinking the step instead would have hidden the discount inside a number
+  // the runner reads as a prescription.
+  const confidence = clamp01(capacity.threshold.confidence * evidence.lookback.stalenessFactor);
 
   return {
     proposal: {
       decision: 'PROGRESS', target: 'PACE', domain: 'FITNESS',
       previous: { unit: 'sec_per_mi', value: prescribed },
       proposed: { unit: 'sec_per_mi', value: proposedPace },
-      confidence: clamp01(capacity.threshold.confidence),
+      confidence,
       supportingEvidence: [...ids, ...capacity.threshold.evidenceIds],
       reasonCodes: reasons,
       explanation:
@@ -792,6 +978,22 @@ function detectPace(
   };
 }
 
+/**
+ * The reason codes a widened or discounted lookback contributes, on every
+ * proposal that rests on it.
+ *
+ * Written once so the six sites that build a pace or duration proposal cannot
+ * each decide separately whether to mention that the evidence came from further
+ * back than the gate's own window. A proposal that quietly spends stale
+ * evidence is the Rule 20 shape: a rule nothing states is a rule nobody checks.
+ */
+function lookbackReasons(l: EvidenceLookback): AdaptationReasonCode[] {
+  const out: AdaptationReasonCode[] = [];
+  if (l.windowDays > l.baseWindowDays) out.push('LOOKBACK_EXTENDED_PAST_A_PRESCRIBED_PERIOD');
+  if (l.stalenessFactor < 1) out.push('CONFIDENCE_DISCOUNTED_FOR_EVIDENCE_AGE');
+  return out;
+}
+
 /** VOLUME · progresses from load tolerance, independent of pace capacity. */
 function detectVolume(
   evidence: LoadEvidence,
@@ -801,8 +1003,12 @@ function detectVolume(
   const current = evidence.currentWeeklyMi;
   if (current == null || current <= 0) return { proposal: null, hold: null };
 
-  const holdWith = (codes: AdaptationReasonCode[], explanation: string): AdaptationProposal => ({
-    decision: 'HOLD', target: 'VOLUME', domain: 'LOAD',
+  const holdWith = (
+    codes: AdaptationReasonCode[],
+    explanation: string,
+    decision: 'HOLD' | 'INSUFFICIENT_EVIDENCE' = 'HOLD',
+  ): AdaptationProposal => ({
+    decision, target: 'VOLUME', domain: 'LOAD',
     previous: { unit: 'weekly_mi', value: round1(current) },
     proposed: { unit: 'weekly_mi', value: round1(current) },
     confidence: absorption.confidence === 'high' ? 0.8 : absorption.confidence === 'medium' ? 0.6 : 0.4,
@@ -816,7 +1022,54 @@ function detectVolume(
   const scheduled = evidence.recentWeeks.filter((w) => w.scheduledMi != null && w.scheduledMi > 0);
   const absorbed = scheduled.filter((w) => w.completedMi >= (w.scheduledMi as number) * VOLUME_ABSORBED_SHARE);
 
-  if (absorbed.length < VOLUME_PROGRESS_MIN_ABSORBED_WEEKS) {
+  /* ── TWO QUESTIONS, KEPT APART ────────────────────────────────────────────
+   *
+   * The defect this replaces: a single test on `absorbed.length` answered BOTH
+   * "has this runner absorbed the load" and "do I have enough of this plan to
+   * tell". A plan authored yesterday covers one comparable week, so the gate
+   * reported `LOAD_NOT_YET_ABSORBED` — a finding about the runner — off the
+   * engine's own youth. Measured on the owner's account on 2026-08-31: his plan
+   * was authored the same morning and covered exactly one whole week, while his
+   * completed history had held 37-48 mi/wk since June.
+   *
+   * So: CURRENT-PLAN ABSORPTION answers when it can, and when it cannot the
+   * question falls back to HISTORICAL VOLUME TOLERANCE with the step held to
+   * what the history actually demonstrates. It never falls through to a
+   * finding, which is Rule 11 and the owner's "confidence-weighted, not
+   * amnesia". */
+  const planTooYoung = scheduled.length < VOLUME_PROGRESS_MIN_ABSORBED_WEEKS;
+  const historical = evidence.historicalTolerance;
+  /** Set only when the decision rested on history; caps the step below. */
+  let historicalCeilingMi: number | null = null;
+
+  if (planTooYoung) {
+    if (!historical.ok) {
+      return {
+        proposal: null,
+        hold: holdWith(
+          ['CURRENT_PLAN_TOO_YOUNG_TO_JUDGE_ABSORPTION', 'NO_VOLUME_TOLERANCE_EVIDENCE'],
+          `Weekly volume stays at ${round1(current)} mi. Only ${scheduled.length} whole week`
+            + `${scheduled.length === 1 ? '' : 's'} of this plan can be compared yet, and there is `
+            + 'not enough representative training behind it either.',
+          'INSUFFICIENT_EVIDENCE',
+        ),
+      };
+    }
+    if (historical.sustainedWeeklyMi < current * VOLUME_ABSORBED_SHARE) {
+      // History exists and it does NOT support the week the plan is asking for.
+      // That is a read, so it is a HOLD.
+      return {
+        proposal: null,
+        hold: holdWith(
+          ['CURRENT_PLAN_TOO_YOUNG_TO_JUDGE_ABSORPTION', 'LOAD_NOT_YET_ABSORBED'],
+          `Weekly volume holds at ${round1(current)} mi. Your own recent training averages `
+            + `${round1(historical.sustainedWeeklyMi)} mi a week, which is below the week already `
+            + 'prescribed.',
+        ),
+      };
+    }
+    historicalCeilingMi = historical.sustainedWeeklyMi;
+  } else if (absorbed.length < VOLUME_PROGRESS_MIN_ABSORBED_WEEKS) {
     return {
       proposal: null,
       hold: holdWith(
@@ -851,38 +1104,69 @@ function detectVolume(
     };
   }
 
-  // THREE CAPS, all owned elsewhere, none widened here:
+  // FOUR CAPS, all owned elsewhere, none widened here:
   //   · MAX_WEEKLY_BUMP_MI      · adaptive-ramp.ts's absolute per-bump ceiling
   //   · RERAMP_WEEKLY_GROWTH    · adapt.ts's 10% week-over-week growth rule
   //   · tierWeeklyUpperMi       · the runner's own tier band
+  //   · historicalCeilingMi     · set ONLY when the decision rested on history
+  //     rather than on this plan's own absorption. Falling back to history buys
+  //     the runner the volume he has ALREADY HELD and not one mile past it: the
+  //     history says he tolerates 43 mi/wk, it does not say he tolerates 48,
+  //     and spending an unproven step off an unproven week is how a fallback
+  //     turns into a spike. Rule 8's corollary in the other direction.
   const byAbsolute = current + MAX_WEEKLY_BUMP_MI;
   const byFraction = current * RERAMP_WEEKLY_GROWTH;
-  const uncapped = Math.min(byAbsolute, byFraction);
+  let uncapped = Math.min(byAbsolute, byFraction);
+  if (historicalCeilingMi != null) uncapped = Math.min(uncapped, historicalCeilingMi);
   const proposed = round1(ceiling != null ? Math.min(uncapped, ceiling) : uncapped);
   if (proposed <= current) {
+    // WHICH ceiling bound it matters, and used to be reported as the tier band
+    // whichever one it was. "You are at the top of the block's band" and "the
+    // plan has already reached the volume your own history supports" are
+    // different sentences, and only one of them is true here.
+    const boundByHistory = historicalCeilingMi != null && historicalCeilingMi <= (ceiling ?? Infinity);
     return {
       proposal: null,
-      hold: holdWith(
-        ['RECENT_LOAD_ABSORBED', 'AT_TIER_CEILING'],
-        `Weekly volume holds at ${round1(current)} mi. There is no headroom left in the band.`,
-      ),
+      hold: boundByHistory
+        ? holdWith(
+            ['CURRENT_PLAN_TOO_YOUNG_TO_JUDGE_ABSORPTION', 'STEP_HELD_TO_DEMONSTRATED_HISTORICAL_VOLUME'],
+            `Weekly volume holds at ${round1(current)} mi. This plan is too new to judge, and it is `
+              + `already at the ${round1(historicalCeilingMi as number)} mi a week your own training `
+              + 'supports.',
+          )
+        : holdWith(
+            ['RECENT_LOAD_ABSORBED', 'AT_TIER_CEILING'],
+            `Weekly volume holds at ${round1(current)} mi. There is no headroom left in the band.`,
+          ),
     };
   }
 
-  const reasons: AdaptationReasonCode[] = ['RECENT_LOAD_ABSORBED'];
+  const reasons: AdaptationReasonCode[] = historicalCeilingMi != null
+    ? ['HISTORICAL_VOLUME_TOLERANCE_ESTABLISHED', 'CURRENT_PLAN_TOO_YOUNG_TO_JUDGE_ABSORPTION']
+    : ['RECENT_LOAD_ABSORBED'];
   if (proposed < round1(byAbsolute)) reasons.push('STEP_CLAMPED_TO_RAMP_CAP');
+  if (historicalCeilingMi != null && round1(uncapped) <= round1(historicalCeilingMi)) {
+    reasons.push('STEP_HELD_TO_DEMONSTRATED_HISTORICAL_VOLUME');
+  }
+
+  // A step taken on history rather than on this plan's own record is a weaker
+  // claim, and the confidence field is where that belongs.
+  const confidence = (absorption.confidence === 'high' ? 0.8 : absorption.confidence === 'medium' ? 0.6 : 0.4)
+    * (historicalCeilingMi != null ? 0.75 : 1);
 
   return {
     proposal: {
       decision: 'PROGRESS', target: 'VOLUME', domain: 'LOAD',
       previous: { unit: 'weekly_mi', value: round1(current) },
       proposed: { unit: 'weekly_mi', value: proposed },
-      confidence: absorption.confidence === 'high' ? 0.8 : absorption.confidence === 'medium' ? 0.6 : 0.4,
+      confidence: clamp01(confidence),
       supportingEvidence: [],
       reasonCodes: reasons,
-      explanation:
-        `The last ${absorbed.length} weeks were absorbed at ${round1(current)} mi. `
-        + `Take the week to ${proposed} mi.`,
+      explanation: historicalCeilingMi != null
+        ? `This plan is too new to judge, and your own training has been holding `
+          + `${round1(historicalCeilingMi)} mi a week. Take the week to ${proposed} mi.`
+        : `The last ${absorbed.length} weeks were absorbed at ${round1(current)} mi. `
+          + `Take the week to ${proposed} mi.`,
       whyNot: [],
       resolvedAt: now, modelVersion: ADAPTATION_ENGINE_MODEL_VERSION,
     },
@@ -899,15 +1183,18 @@ function detectDuration(
   const current = evidence.prescribedLongMi;
   if (current == null || current <= 0) return { proposal: null, hold: null };
 
+  const lookbackNote = lookbackReasons(evidence.lookback);
+
   const holdWith = (
     codes: AdaptationReasonCode[], explanation: string, ids: string[],
+    decision: 'HOLD' | 'INSUFFICIENT_EVIDENCE' = 'HOLD',
   ): AdaptationProposal => ({
-    decision: 'HOLD', target: 'DURATION', domain: 'LOAD',
+    decision, target: 'DURATION', domain: 'LOAD',
     previous: { unit: 'long_run_mi', value: round1(current) },
     proposed: { unit: 'long_run_mi', value: round1(current) },
     confidence: 0.6,
     supportingEvidence: ids,
-    reasonCodes: codes,
+    reasonCodes: [...codes, ...lookbackNote],
     explanation,
     whyNot: [],
     resolvedAt: now, modelVersion: ADAPTATION_ENGINE_MODEL_VERSION,
@@ -930,12 +1217,17 @@ function detectDuration(
   }
 
   if (evidence.recent.length === 0) {
+    // Rule 11 · no long run in the window is an ABSENCE. It is not a runner who
+    // failed to tolerate one, and after a race week it is usually the plan's
+    // own doing.
     return {
       proposal: null,
       hold: holdWith(
         ['NO_LONG_RUN_EVIDENCE_IN_WINDOW'],
-        `The long run holds at ${round1(current)} mi. No long run in the window to read.`,
+        `The long run stays at ${round1(current)} mi. No long run in the last `
+          + `${evidence.lookback.windowDays} days to read.`,
         [],
+        'INSUFFICIENT_EVIDENCE',
       ),
     };
   }
@@ -950,16 +1242,24 @@ function detectDuration(
   const ids = tolerated.map((l) => l.activityId);
 
   if (tolerated.length < DURATION_PROGRESS_MIN_TOLERATED_LONGS) {
+    // A long run that came apart is a READ and argues against growing it. A
+    // long run the Evidence Engine could not grade is an absence, and the two
+    // must not both come back as "held" (Rule 11).
     const collapsed = evidence.recent.some((l) => l.lateRunPacingCollapse === true);
+    const unreadable = evidence.recent.every(
+      (l) => !l.durabilityEvidence || l.executionQuality === 'indeterminate',
+    );
     return {
       proposal: null,
       hold: holdWith(
         collapsed ? ['LONG_RUN_SHOWED_LATE_COLLAPSE'] : ['NO_LONG_RUN_EVIDENCE_IN_WINDOW'],
-        `The long run holds at ${round1(current)} mi. `
-          + (collapsed
-            ? 'The last one came apart over the closing miles.'
-            : 'Nothing in the window shows the current distance being absorbed.'),
+        collapsed
+          ? `The long run holds at ${round1(current)} mi. The last one came apart over the `
+            + 'closing miles.'
+          : `The long run stays at ${round1(current)} mi. Nothing in the window could be read `
+            + 'as the current distance being absorbed.',
         evidence.recent.map((l) => l.activityId),
+        collapsed || !unreadable ? 'HOLD' : 'INSUFFICIENT_EVIDENCE',
       ),
     };
   }
@@ -986,13 +1286,14 @@ function detectDuration(
 
   const reasons: AdaptationReasonCode[] = ['LONG_RUN_TOLERATED_WITHOUT_COLLAPSE'];
   if (proposed < round1(byAbsolute)) reasons.push('STEP_CLAMPED_TO_RAMP_CAP');
+  reasons.push(...lookbackNote);
 
   return {
     proposal: {
       decision: 'PROGRESS', target: 'DURATION', domain: 'LOAD',
       previous: { unit: 'long_run_mi', value: round1(current) },
       proposed: { unit: 'long_run_mi', value: proposed },
-      confidence: 0.7,
+      confidence: clamp01(0.7 * evidence.lookback.stalenessFactor),
       supportingEvidence: ids,
       reasonCodes: reasons,
       explanation:
@@ -1050,6 +1351,53 @@ const shapeMagnitude = (s: WorkShape): DensityMagnitude => ({
 });
 
 /**
+ * The refusal one `DensityGateState` earns, said in its own words.
+ *
+ * Exported so the shadow-mode audit and the loader read the SAME sentence a
+ * consumer would (Rule 16), and so a state added to the union without a
+ * sentence is a compile error rather than a silent fall-through to the
+ * authoring-gap line — which is the defect this function replaces.
+ */
+export function densityRefusalFor(gate: DensityGateState): EngineRefusal {
+  const at = (code: EngineRefusalCode, detail: string): EngineRefusal =>
+    ({ lever: 'DENSITY', code, detail });
+  switch (gate) {
+    case 'NO_AUTHORED_PROGRESSION_BLOCK':
+      return at(
+        'NO_PROGRESSION_TARGETS',
+        'No plan row in the week carries a progression block, so the progression gate had '
+          + 'nothing to decide about. This is an authoring gap in the Plan Generator, not a '
+          + 'runner-evidence gap, and no amount of training will close it.',
+      );
+    case 'PASS_NOT_DUE_THIS_WEEK':
+      return at(
+        'PROGRESSION_PASS_NOT_DUE',
+        'The weekly progression pass runs once per training week and has already run for this '
+          + 'one. Nothing is missing; there is simply no new session geometry to decide today.',
+      );
+    case 'WEEK_TAKES_NO_PROGRESSION_STEP':
+      return at(
+        'WEEK_TAKES_NO_PROGRESSION_STEP',
+        'The week ahead is a cutback, a race week or inside the taper. Doctrine gives those '
+          + 'weeks no progression step, so a refusal here is the correct answer rather than a gap.',
+      );
+    case 'NO_ACTIVE_PLAN':
+      return at('NO_ACTIVE_PLAN', 'There is no active plan to progress a session inside.');
+    case 'UNREADABLE':
+      return at(
+        'PROGRESSION_GATE_UNREADABLE',
+        'The progression gate could not be read. That is a failure, not a finding, and no '
+          + 'density decision is made from it.',
+      );
+    case 'RESOLVED':
+      return at(
+        'NO_PROGRESSION_TARGETS',
+        'The progression gate ran and returned no resolutions for the week.',
+      );
+  }
+}
+
+/**
  * DENSITY · progresses independently of pace and volume.
  *
  * This detector DECIDES NOTHING. `resolveWeekProgression` already decided, and
@@ -1062,18 +1410,8 @@ function detectDensity(
   evidence: DensityEvidence,
   now: string,
 ): { proposal: AdaptationProposal | null; hold: AdaptationProposal | null; refusal: EngineRefusal | null } {
-  if (evidence.noAuthoredTargets || evidence.resolutions.length === 0) {
-    return {
-      proposal: null, hold: null,
-      refusal: {
-        lever: 'DENSITY',
-        code: 'NO_PROGRESSION_TARGETS',
-        detail: evidence.noAuthoredTargets
-          ? 'No plan row in the week carries a progression block, so the progression gate had '
-            + 'nothing to decide about. This is an authoring gap, not a runner-evidence gap.'
-          : 'The progression gate returned no resolutions for the week.',
-      },
-    };
+  if (evidence.gate !== 'RESOLVED' || evidence.resolutions.length === 0) {
+    return { proposal: null, hold: null, refusal: densityRefusalFor(evidence.gate) };
   }
 
   const denser = evidence.resolutions.filter(
@@ -1272,7 +1610,32 @@ function rankOf(p: AdaptationProposal): number {
   if (p.decision === 'RESTRUCTURE') return 1;
   if (p.decision === 'REDUCE') return 2;
   if (p.decision === 'PROGRESS') return 3;
-  return 4;
+  if (p.decision === 'HOLD') return 4;
+  return 5; // INSUFFICIENT_EVIDENCE · last, because it is the least actionable
+}
+
+/**
+ * Does this proposal CHANGE THE TRAINING STIMULUS?
+ *
+ * The one-stressor rule is enforced structurally at the proposal level — one
+ * `target` field, no compound arm — and the composer promotes exactly one
+ * PROGRESS. Neither of those catches the cycle-level version: a PROGRESS on one
+ * lever and a FITNESS-domain RESTRUCTURE on another are two separate,
+ * individually legal proposals that together tell the runner to run threshold
+ * faster AND change the kind of quality he does, in the same week.
+ *
+ * That combination was reachable and was reached — `marginal` absorption emits
+ * the SPECIFICITY restructure while still permitting a pace progression, which
+ * is the deliberate gate asymmetry two sections up. The asymmetry is right; the
+ * pair is not, so the composer suppresses the restructure rather than the gate
+ * being changed.
+ *
+ * A SCHEDULE restructure is NOT a stimulus change: moving Tuesday's session to
+ * Wednesday preserves the intent, which is BRIEF 10's whole point.
+ */
+function changesStimulus(p: AdaptationProposal): boolean {
+  if (p.decision === 'PROGRESS') return true;
+  return p.decision === 'RESTRUCTURE' && p.domain === 'FITNESS';
 }
 
 /**
@@ -1327,8 +1690,9 @@ export function composeAdaptation(input: AdaptationEngineInput): AdaptationPropo
   const reduce = detectReduce(input.state, input.absorption, qualityPerWeek, now);
   if (reduce) out.push(reduce);
 
+  // Computed here, PUSHED LATER. Whether a FITNESS-domain restructure survives
+  // depends on whether a progression is promoted below — see `changesStimulus`.
   const restructure = detectRestructure(input.schedule, input.absorption, input.state, now);
-  if (restructure) out.push(restructure);
 
   /* ── THE FOUR LEVERS ────────────────────────────────────────────────────
    * Each detector receives ONLY its own slice. `detectPace` cannot see the
@@ -1393,6 +1757,29 @@ export function composeAdaptation(input: AdaptationEngineInput): AdaptationPropo
         detail: `${leverNoun(primary.lever)} is the primary stressor this cycle.`,
       }];
       deferred.push(r.p);
+    }
+  }
+
+  /* ── ONE STIMULUS CHANGE PER CYCLE, ACROSS DECISION TYPES TOO ────────────
+   *
+   * `changesStimulus` explains the case. If a progression was promoted, the
+   * FITNESS-domain restructure is not merely outranked, it is WITHDRAWN — and
+   * the promoted proposal records that it was, so the log can tell "the engine
+   * never considered changing the workout type" from "it did, and deferred it
+   * to keep one stressor at a time". A SCHEDULE restructure always survives:
+   * moving a session is not adding one. */
+  const progressPromoted = out.some((p) => p.decision === 'PROGRESS');
+  if (restructure) {
+    if (progressPromoted && changesStimulus(restructure)) {
+      const primaryProposal = out.find((p) => p.decision === 'PROGRESS');
+      primaryProposal?.whyNot.push({
+        lever: restructure.target,
+        reasonCodes: restructure.reasonCodes,
+        detail: 'Changing the KIND of quality was also available and was withheld: one stimulus '
+          + 'changes per cycle, and the progression above is this cycle\'s.',
+      });
+    } else {
+      out.push(restructure);
     }
   }
 
@@ -1497,7 +1884,28 @@ export type ContradictionCode =
   | 'HOLD_MOVED_THE_NUMBER'
   | 'PROGRESS_WHILE_SAFETY_REDUCES'
   | 'PROPOSAL_WITHOUT_REASON'
-  | 'DEFERRED_IS_NOT_A_PROGRESSION';
+  | 'DEFERRED_IS_NOT_A_PROGRESSION'
+  /** Two proposals that each change the training stimulus in one cycle. The
+   *  one-stressor rule at the CYCLE level, which the type system cannot reach
+   *  because each proposal is individually legal. */
+  | 'MORE_THAN_ONE_STIMULUS_CHANGE'
+  /** A refusal that also asserts a finding about the runner. "We could not see
+   *  it" and "we saw it and it argues against you" are different sentences and
+   *  a proposal may not carry both. */
+  | 'INSUFFICIENT_EVIDENCE_CLAIMS_A_FINDING';
+
+/**
+ * Reason codes that ASSERT something about the runner rather than about what
+ * the engine could see. An `INSUFFICIENT_EVIDENCE` proposal may not carry one.
+ */
+const FINDING_REASON_CODES: ReadonlySet<AdaptationReasonCode> = new Set<AdaptationReasonCode>([
+  'EXECUTION_BEAT_TARGET_WITHOUT_CONTROL',
+  'LATE_SESSION_DETERIORATION',
+  'LOAD_NOT_YET_ABSORBED',
+  'LONG_RUN_SHOWED_LATE_COLLAPSE',
+  'ABSORPTION_MARGINAL',
+  'ABSORPTION_POOR',
+]);
 
 /**
  * §29's deterministic validation layer, run over a finished proposal set.
@@ -1512,15 +1920,21 @@ export function contradictionsIn(set: AdaptationProposalSet): ContradictionCode[
   if (progress.length > 1) out.push('MORE_THAN_ONE_PRIMARY_STRESSOR');
 
   for (const p of set.proposals) {
-    if (p.decision === 'HOLD'
+    if (NON_MOVING_DECISIONS.has(p.decision)
       && JSON.stringify(p.previous) !== JSON.stringify(p.proposed)) {
       out.push('HOLD_MOVED_THE_NUMBER');
     }
     if (p.reasonCodes.length === 0) out.push('PROPOSAL_WITHOUT_REASON');
+    if (p.decision === 'INSUFFICIENT_EVIDENCE'
+      && p.reasonCodes.some((c) => FINDING_REASON_CODES.has(c))) {
+      out.push('INSUFFICIENT_EVIDENCE_CLAIMS_A_FINDING');
+    }
   }
 
   const safetyReduces = set.proposals.some((p) => p.domain === 'SAFETY' && p.decision === 'REDUCE');
   if (safetyReduces && progress.length > 0) out.push('PROGRESS_WHILE_SAFETY_REDUCES');
+
+  if (set.proposals.filter(changesStimulus).length > 1) out.push('MORE_THAN_ONE_STIMULUS_CHANGE');
 
   if (set.deferred.some((d) => d.decision !== 'PROGRESS')) out.push('DEFERRED_IS_NOT_A_PROGRESSION');
 

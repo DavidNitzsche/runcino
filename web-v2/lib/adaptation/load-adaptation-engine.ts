@@ -34,15 +34,32 @@
  * not see and a runner with nothing to show are opposite facts and only one of
  * them is a reason to hold.
  *
- * ── RULE 8 · WHICH WINDOW ───────────────────────────────────────────────────
+ * ── RULE 8 · WHICH WINDOW, AND THE FORK THIS FILE SITS ON ───────────────────
  *
- * The load picture asks WHAT THE RUNNER HAS RECENTLY ABSORBED, which is the
- * corollary's second case — the tissue-load question, not the habit question —
- * so the completed/scheduled weeks are read LITERALLY and are NOT filtered for
- * taper or post-race days. That is deliberate and it is the safe direction: a
- * volume proposal sized against a pre-taper self would wave through a jump the
- * legs have not been prepared for. Stated here rather than left for someone to
- * discover, as Rule 8 requires of any reader that takes a side.
+ * Three readers here, and Rule 8's corollary splits them into two groups. Both
+ * sides are stated because the rule requires any reader that takes a side to
+ * say which side and why.
+ *
+ * NOT FILTERED · `recentWeeks` asks WHAT THE RUNNER HAS RECENTLY ABSORBED,
+ * which is the corollary's second case — the tissue-load question — so the
+ * completed/scheduled weeks are read LITERALLY. A volume proposal sized against
+ * a pre-taper self would wave through a jump the legs have not been prepared
+ * for.
+ *
+ * FILTERED · `historicalTolerance` asks WHAT WEEKLY VOLUME THIS RUNNER HOLDS,
+ * which is the habit/capability question, so it runs through
+ * `normalWeeklyMileage`. It is the twin of the reader above under a different
+ * name, and Rule 8's instruction for a reader that turned out to be two
+ * questions is to SPLIT it, which is what these two fields are.
+ *
+ * EXTENDED, NOT FILTERED · the quality-session and long-run windows. Filtering
+ * a genuinely good session out because it happened during a recovery block
+ * would DESTROY evidence, which is the opposite of what Rule 8 is for — the
+ * rule is about not reading a taper as an IDENTITY, not about pretending the
+ * sessions inside it did not happen. What the taper does do is stop the plan
+ * from PRESCRIBING quality, and that is the sparse-window problem: the fix is
+ * to reach further back for representative training (`representativeLookback`)
+ * and price the age of what turns up, never to drop what is there.
  */
 import { pool } from '@/lib/db/pool';
 import { roundTo } from '@/lib/format/run';
@@ -51,10 +68,16 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { mileageByDay } from '@/lib/runs/volume';
 import { readTierUpper } from '@/lib/plan/adaptive-ramp';
 import {
-  loadProgressionWeek,
+  diagnoseProgressionWeek,
   resolveWeekProgression,
   type ProgressionResolution,
+  type ProgressionWeekSkip,
 } from '@/lib/plan/progression-pass';
+import {
+  evidenceStalenessFactor,
+  normalWeeklyMileage,
+  representativeLookback,
+} from '@/lib/training/normal-window';
 import {
   resolveThresholdCapacity,
   resolveHighIntensityCapacity,
@@ -68,11 +91,15 @@ import { classifyRecentActivities, type ClassifiedActivity } from '@/lib/evidenc
 import type { ResolvedCapacity } from '@/lib/training/prescription-resolver';
 import {
   composeAdaptation,
+  sessionDemonstratesControl,
   unreadableProposalSet,
   type AdaptationEngineInput,
   type AdaptationProposalSet,
+  type DensityGateState,
+  type EvidenceLookback,
   type LongRunRead,
   type QualitySessionRead,
+  type VolumeToleranceRead,
 } from './adaptation-engine';
 
 /**
@@ -87,6 +114,30 @@ export const ADAPTATION_EVIDENCE_WINDOW_DAYS = 28;
 
 /** How many whole weeks of completed-versus-scheduled the load picture reads. */
 export const ADAPTATION_LOAD_WEEKS = 4;
+
+/**
+ * How far back the HABIT reader for weekly volume looks.
+ *
+ * 90 days · long enough to hold a whole mesocycle either side of a race window
+ * (a marathon's taper-plus-recovery is 49 of them), and the window
+ * `normalWeeklyMileage`'s own filter is designed to survive. This answers "what
+ * does this runner hold", so unlike `ADAPTATION_LOAD_WEEKS` it is Rule 8
+ * filtered and its denominator is representative days.
+ */
+export const ADAPTATION_VOLUME_TOLERANCE_WINDOW_DAYS = 90;
+
+/** The progression gate's skip reason, translated into the engine's own state.
+ *  A pure mapping, so the loader still carries no judgement. */
+export function densityGateFor(skip: ProgressionWeekSkip | null): DensityGateState {
+  switch (skip) {
+    case null: return 'RESOLVED';
+    case 'PASS_NOT_DUE': return 'PASS_NOT_DUE_THIS_WEEK';
+    case 'NO_ACTIVE_PLAN': return 'NO_ACTIVE_PLAN';
+    case 'WEEK_TAKES_NO_STEP': return 'WEEK_TAKES_NO_PROGRESSION_STEP';
+    case 'NO_ROWS_IN_WEEK':
+    case 'NO_AUTHORED_PROGRESSION_BLOCK': return 'NO_AUTHORED_PROGRESSION_BLOCK';
+  }
+}
 
 const num = (v: unknown): number | null => {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -227,8 +278,22 @@ export async function resolveAdaptationProposals(
   /* ── 4 · ABSORPTION · classifyAdaptation's verdict, consumed whole ─────── */
   const absorption = await readAdaptation(userUuid, today).catch((e) => note('absorption', e));
 
-  /* ── 5 · ACTIVITY EVIDENCE · one batched classification pass ───────────── */
-  const from = isoMinusDays(today, ADAPTATION_EVIDENCE_WINDOW_DAYS);
+  /* ── 5 · ACTIVITY EVIDENCE · one batched classification pass ─────────────
+   *
+   * THE WINDOW IS NOT FIXED AT 28 DAYS ANY MORE, and this is the 2026-08-31
+   * review's central change. `representativeLookback` reaches further back only
+   * when the base window holds too few days of ORDINARY training — that is,
+   * only when the engine's own taper or post-race block is the reason it is
+   * looking at nothing. It never admits a prescribed day at any width; it only
+   * keeps going until it has as many representative days as the gate was
+   * designed against.
+   *
+   * A refusal is still possible: the outer bound binds, and reaching it with
+   * too little representative training is reported rather than papered over. */
+  const lookbackWindow = await representativeLookback(
+    userUuid, today, ADAPTATION_EVIDENCE_WINDOW_DAYS,
+  ).catch((e) => note('representative lookback', e));
+  const from = lookbackWindow?.fromISO ?? isoMinusDays(today, ADAPTATION_EVIDENCE_WINDOW_DAYS);
   const classified = await classifyRecentActivities(userUuid, from, today, {
     currentBelief: capacity
       ? {
@@ -304,21 +369,50 @@ export async function resolveAdaptationProposals(
     }
   }
 
-  /* ── 8 · DENSITY · the progression gate's own resolutions, carried ─────── */
+  /* ── 8 · DENSITY · the progression gate's own resolutions, carried ───────
+   *
+   * The gate's SKIP REASON is carried too. It returns null for five different
+   * reasons and the engine used to report all five as an authoring gap; see
+   * `diagnoseProgressionWeek`'s header for what that cost. */
   let resolutions: ProgressionResolution[] = [];
-  let noAuthoredTargets = true;
+  let densityGate: DensityGateState = 'UNREADABLE';
   if (absorption) {
-    const week = await loadProgressionWeek(userUuid).catch((e) => note('progression week', e));
-    if (week && week.targets.length > 0) {
-      noAuthoredTargets = false;
-      resolutions = resolveWeekProgression({
-        targets: week.targets,
-        prior: week.prior,
-        verdict: absorption,
-        weeklyMi: week.weeklyMi,
-      });
+    const diag = await diagnoseProgressionWeek(userUuid).catch((e) => note('progression week', e));
+    if (diag == null) {
+      densityGate = 'UNREADABLE';
+    } else {
+      densityGate = densityGateFor(diag.skip);
+      if (diag.week && diag.week.targets.length > 0) {
+        resolutions = resolveWeekProgression({
+          targets: diag.week.targets,
+          prior: diag.week.prior,
+          verdict: absorption,
+          weeklyMi: diag.week.weeklyMi,
+        });
+      }
     }
   }
+
+  /* ── 8b · HISTORICAL VOLUME TOLERANCE · the OTHER volume question ────────
+   *
+   * Rule 8 FILTERED, unlike `loadWeeks` immediately above, because this one
+   * asks what the runner holds rather than what his legs have just taken. The
+   * refusal branch is carried straight through: `normalWeeklyMileage` returns a
+   * `NormalReading` whose refusal arm has no `value`, and flattening that to a
+   * zero here would put the one-quality-day defect back in a new file. */
+  const tolerance = await normalWeeklyMileage(
+    userUuid, today, ADAPTATION_VOLUME_TOLERANCE_WINDOW_DAYS,
+  ).catch((e) => note('volume tolerance', e));
+  const historicalTolerance: VolumeToleranceRead = tolerance == null
+    ? { ok: false, reason: 'UNREADABLE' }
+    : tolerance.ok
+      ? {
+          ok: true,
+          sustainedWeeklyMi: tolerance.value,
+          representativeDays: tolerance.representativeDays,
+          oldestISO: isoMinusDays(today, ADAPTATION_VOLUME_TOLERANCE_WINDOW_DAYS),
+        }
+      : { ok: false, reason: 'NOT_ENOUGH_REPRESENTATIVE_TRAINING' };
 
   /* ── 9 · SCHEDULE · prescribed key sessions with no run against them ───── */
   const schedule = planRow
@@ -355,13 +449,15 @@ export async function resolveAdaptationProposals(
   // Rule 11 · the engine only runs on a complete read. The three inputs below
   // are the ones no lever can work without; a missing PLAN is a legitimate
   // "this runner has no plan", which is a different fact and not a failure.
-  const readable = capacity != null && state != null && absorption != null && classified != null;
+  const readable = capacity != null && state != null && absorption != null && classified != null
+    && lookbackWindow != null;
   if (!readable) {
     const missing = [
       capacity == null ? 'capacity' : null,
       state == null ? 'state' : null,
       absorption == null ? 'absorption' : null,
       classified == null ? 'activity evidence' : null,
+      lookbackWindow == null ? 'evidence lookback' : null,
     ].filter((x): x is string => x != null);
     return {
       input: null,
@@ -376,6 +472,39 @@ export async function resolveAdaptationProposals(
   const prescribedLongMi = num(planNumbers?.long_ahead ?? null);
   const minLongMi = prescribedLongMi != null ? prescribedLongMi * LONG_RUN_EVIDENCE_SHARE : Infinity;
 
+  const sessions = classified
+    .map(qualitySessionFrom)
+    .filter((s): s is QualitySessionRead => s != null);
+  const longRuns = classified
+    .map((c) => longRunFrom(c, minLongMi))
+    .filter((l): l is LongRunRead => l != null);
+
+  /**
+   * The lookback each episodic lever spends, with the discount priced off the
+   * dates of THE EVIDENCE THAT WOULD ACTUALLY CARRY THE DECISION.
+   *
+   * Per-lever rather than shared, and that is the point: the pace lever's
+   * sessions and the duration lever's long runs can sit at very different ages
+   * inside the same window, and one factor for both would charge the fresher
+   * lever for the staler one's evidence.
+   *
+   * And per-lever means the QUALIFYING subset, not everything in the slice. The
+   * owner's instruction is a penalty "proportional to how far back the evidence
+   * that ended up mattering actually is" — a session the control test throws
+   * out is not evidence that mattered, and letting it sit in the median moves
+   * the discount for a run that changed no decision.
+   */
+  const lookbackFor = (datesISO: string[]): EvidenceLookback => ({
+    baseWindowDays: ADAPTATION_EVIDENCE_WINDOW_DAYS,
+    windowDays: lookbackWindow.windowDays,
+    representativeDays: lookbackWindow.representativeDays,
+    excludedDays: lookbackWindow.excludedDays,
+    stalenessFactor: evidenceStalenessFactor(
+      datesISO, today, ADAPTATION_EVIDENCE_WINDOW_DAYS,
+    ),
+    reachedOuterBound: lookbackWindow.reachedOuterBound,
+  });
+
   const input: AdaptationEngineInput = {
     todayISO: today,
     capacity,
@@ -383,13 +512,17 @@ export async function resolveAdaptationProposals(
     absorption,
     pace: {
       prescribedThresholdSecPerMi: num(planNumbers?.prescribed_threshold ?? null),
-      sessions: classified
-        .map(qualitySessionFrom)
-        .filter((s): s is QualitySessionRead => s != null),
+      sessions,
+      // The CONTROLLED ones — `sessionDemonstratesControl` is the engine's own
+      // exported predicate, called rather than re-implemented (Rule 16).
+      lookback: lookbackFor(
+        sessions.filter(sessionDemonstratesControl).map((s) => s.dateISO),
+      ),
     },
     load: {
       currentWeeklyMi: num(planNumbers?.week_ahead_mi ?? null),
       recentWeeks: loadWeeks,
+      historicalTolerance,
       tierWeeklyUpperMi: planRow?.authored_state
         ? (readTierUpper(planRow.authored_state, 'tier_peak_weekly_band') || null)
         : null,
@@ -403,11 +536,19 @@ export async function resolveAdaptationProposals(
       // number rather than a second opinion about it. Written as a fraction
       // because the engine's cap arithmetic is in fractions.
       longRunWoWMaxFraction: 0.30,
-      recent: classified
-        .map((c) => longRunFrom(c, minLongMi))
-        .filter((l): l is LongRunRead => l != null),
+      recent: longRuns,
+      // The TOLERATED ones, by the same argument. Mirrors `detectDuration`'s
+      // own filter so the discount is priced off the runs that would carry the
+      // decision, not off every long run in the window.
+      lookback: lookbackFor(
+        longRuns
+          .filter((l) => l.durabilityEvidence
+            && l.lateRunPacingCollapse !== true
+            && l.executionQuality !== 'variable')
+          .map((l) => l.dateISO),
+      ),
     },
-    density: { resolutions, noAuthoredTargets },
+    density: { resolutions, gate: densityGate },
     schedule: {
       sessionsOutOfPlace: Number(schedule?.out_of_place ?? 0),
       clearSlotsAvailable: Number(schedule?.clear_slots ?? 0),

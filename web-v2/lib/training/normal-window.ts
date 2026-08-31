@@ -27,14 +27,24 @@
  *
  * ── TWO CLAUSES THAT ARE EASY TO GET WRONG ──────────────────────────────────
  *
- * 1 · EXCLUDE, DO NOT WIDEN. A longer window still contains the taper; it only
- *     dilutes it. A reader "fixed" by reaching for 90 days instead of 14 has
- *     the wrong shape even when the number improves. This module has NO
- *     widen-until-sufficient path, and that is deliberate — the only knob it
- *     offers is which days to drop. It is also why the denominator here is
- *     `representativeDays`, never the nominal window length: see
+ * 1 · EXCLUDE, DO NOT DILUTE. A longer window still contains the taper; a
+ *     reader "fixed" by averaging over 90 days instead of 14 has the wrong
+ *     shape even when the number improves. It is also why the denominator here
+ *     is `representativeDays`, never the nominal window length: see
  *     `weeklyRateFromRepresentative`. Excluding a third of a window and then
  *     dividing by the whole window is the same lie with an extra step.
+ *
+ *     THE ONE THING THIS CLAUSE DOES NOT FORBID, added 2026-08-31 at the
+ *     owner's explicit instruction and separated from the clause above because
+ *     the two are one word apart and opposite in effect: REACHING FURTHER BACK
+ *     FOR REPRESENTATIVE DAYS. See `extendLookback`. Diluting admits taper days
+ *     into the answer; extending admits none — every width runs the same
+ *     exclusion, the denominator is still `representativeDays`, and the only
+ *     thing that grows is how many days of ORDINARY training the reader got to
+ *     look at. The owner's words: "I would rather have a confidence-weighted
+ *     lookback that can extend backward when the intervening period contains
+ *     little opportunity for relevant evidence than a hard cliff where day 28
+ *     counts and day 29 disappears."
  *
  * 2 · IF EXCLUDING LEAVES TOO LITTLE DATA, REFUSE. A refusal is a correct
  *     answer; a confident number measured off a taper is not. Crucially the
@@ -413,11 +423,11 @@ export interface NormalWindow {
 /**
  * Resolve the filtered lookback a habit reader should measure over.
  *
- * `windowDays` is FIXED by the caller and this function will not grow it. There
- * is no widen-until-sufficient path anywhere in this module, by design: a wider
- * average still contains the taper, it only dilutes it, so a reader that
- * "improves" by reaching further back has changed its number without fixing its
- * defect. When the filtered window is too thin the answer is a refusal.
+ * `windowDays` is FIXED by the caller and this function will not grow it. A
+ * reader that wants to reach further back for REPRESENTATIVE days — never for
+ * more taper days — asks `representativeLookback` instead, which is a separate
+ * entry point precisely so that widening is a decision a call site takes on
+ * purpose rather than a fallback this one performs on its behalf.
  */
 export async function normalTrainingWindow(
   userUuid: string,
@@ -523,4 +533,217 @@ export async function normalWeeklyMileage(
     if (!isPrescribedNonNormal(iso, w.windows)) total += mi;
   }
   return weeklyRateFromRepresentative(Math.round(total * 10) / 10, w);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE CONFIDENCE-WEIGHTED LOOKBACK · locked 2026-08-31 at the owner's request
+ *
+ * The distinction this exists to preserve, in his words: "we haven't seen
+ * enough evidence because this runner is new or inconsistent" is NOT the same
+ * fact as "we haven't seen much recent evidence because the training phase
+ * deliberately stopped generating it". A gate that hard-cliffs at day 28 says
+ * the same thing about both, and it says it loudest exactly when the engine
+ * itself is the reason the window is empty.
+ *
+ * The worked case, measured on the owner's own account on 2026-08-31. His
+ * Americas Finest City half (2026-08-16, A, 13.1 mi) opens a prescribed window
+ * of 2026-08-02 → 2026-08-30. A 28-day evidence window ending today therefore
+ * holds ONE representative day. Inside it: one threshold session. In the 32
+ * representative days immediately before it: five — 2026-07-07, 07-09, 07-14,
+ * 07-16 and 07-21. The evidence exists, it is his, and the only thing standing
+ * between the gate and it is a fixed window number.
+ *
+ * ── WHY THIS IS NOT CLAUSE 1'S "WIDEN" ─────────────────────────────────────
+ *
+ * Clause 1 forbids widening INSTEAD of excluding — reaching for 90 days so the
+ * taper is averaged away. This path widens AFTER excluding, and every candidate
+ * width runs the identical exclusion: a prescribed day is never admitted at any
+ * width, and `representativeDays` remains the denominator. The only quantity
+ * that grows is how many days of ORDINARY training the reader is allowed to
+ * see. Compare the two failure modes:
+ *
+ *   DILUTE (forbidden)  · 28d holds 1 normal day + 27 taper days
+ *                       → answer over 28 days · the taper IS the answer.
+ *   EXTEND (this)       · 28d holds 1 normal day
+ *                       → reach back to 60d, which holds 32 normal days
+ *                       → answer over 32 REPRESENTATIVE days, taper still out,
+ *                         confidence discounted for how old they are.
+ *
+ * ── AND WHY IT IS DISCOUNTED RATHER THAN FREE ───────────────────────────────
+ *
+ * Older evidence is real evidence and it is not current evidence. The discount
+ * is a half-life on the MEDIAN AGE of the observations that actually mattered,
+ * over the same `CAPACITY_CONFIDENCE_HALF_LIFE_DAYS` the confidence model
+ * already ages capacity by — so a belief cannot be more confident here than the
+ * layer that owns confidence would be about the same runs. It is exactly 1.0
+ * whenever the evidence sits inside the base window, which makes this whole
+ * mechanism a NO-OP for any runner whose recent window is representative.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The outer bound. A lookback may never reach past this, however thin the
+ * representative sample is.
+ *
+ * 120 DAYS, and the argument is the doctrine tables' own arithmetic rather than
+ * a round number: the longest prescribed non-normal stretch this module can
+ * open is a marathon at A priority — `TAPER_WEEKS_BY_DISTANCE.m` (3) plus
+ * `postRaceRecoveryWeeks('m','A')` (4) = 7 weeks = 49 days. A 28-day base
+ * window sitting entirely inside one needs 49 + 28 = 77 days to clear it, and
+ * a runner can have a second race inside the reach. 120 leaves that headroom
+ * and stops well short of half a year, past which "this is the runner" stops
+ * being true of a training block at all.
+ *
+ * The bound BINDS: when it is reached with too few representative days the
+ * answer is still a refusal. Extending is not a promise of an answer.
+ */
+export const REPRESENTATIVE_LOOKBACK_MAX_DAYS = 120;
+
+/** How much further back one widening step reaches. One training week, so a
+ *  step can only ever add whole weeks of ordinary training. */
+export const REPRESENTATIVE_LOOKBACK_STEP_DAYS = 7;
+
+/**
+ * The half-life the staleness discount uses.
+ *
+ * THE SAME NUMBER as `CAPACITY_CONFIDENCE_HALF_LIFE_DAYS` in
+ * `lib/training/capacity-resolver.ts`. Written out rather than imported because
+ * that module reads this one's siblings and a value import here would close a
+ * cycle — the same posture `REEXAMINATION_WINDOW_DAYS` takes, and held the same
+ * way: `_normal_window.test.ts` imports both and fails if they ever diverge.
+ * Do not "fix" this by importing it; fix it by deleting the assertion, and the
+ * divergence arrives silently the next time either number moves.
+ */
+export const REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS = 28;
+
+/** The widened lookback, and everything a caller needs to explain it. */
+export interface RepresentativeLookback extends NormalWindow {
+  /** The window the caller asked for before any extension. */
+  baseWindowDays: number;
+  /** The window actually used. */
+  windowDays: number;
+  /** `windowDays - baseWindowDays`. Zero on the common path. */
+  extendedByDays: number;
+  /** How many representative days the extension was trying to reach. */
+  targetRepresentativeDays: number;
+  /** True when the outer bound was hit before the target was met. */
+  reachedOuterBound: boolean;
+}
+
+/**
+ * Choose the smallest window, at or past `baseWindowDays`, that holds
+ * `targetRepresentativeDays` of ordinary training.
+ *
+ * PURE, so the whole widening rule is falsifiable without a database (Rule 18).
+ * Returns the base window untouched whenever it already clears the target,
+ * which is what makes this a no-op for a runner with a clean recent window.
+ */
+export function extendLookback(args: {
+  todayISO: string;
+  windows: readonly PrescribedWindow[];
+  baseWindowDays: number;
+  /** Defaults to `baseWindowDays` — reach back until you have as many
+   *  representative days as the caller originally budgeted for. */
+  targetRepresentativeDays?: number;
+  maxWindowDays?: number;
+  stepDays?: number;
+}): {
+  windowDays: number;
+  fromISO: string;
+  representativeDays: number;
+  reachedOuterBound: boolean;
+  targetRepresentativeDays: number;
+} {
+  const {
+    todayISO, windows, baseWindowDays,
+    maxWindowDays = REPRESENTATIVE_LOOKBACK_MAX_DAYS,
+    stepDays = REPRESENTATIVE_LOOKBACK_STEP_DAYS,
+  } = args;
+  const target = args.targetRepresentativeDays ?? baseWindowDays;
+
+  let windowDays = Math.max(0, Math.min(baseWindowDays, maxWindowDays));
+  let fromISO = isoShift(todayISO, -windowDays);
+  let representativeDays = representativeDayCount(fromISO, todayISO, windows);
+
+  // Monotone by construction: every step only ADDS days, and a day either is or
+  // is not prescribed, so `representativeDays` can never fall as the window
+  // grows. That is what makes this loop terminate and what makes the result
+  // continuous in the runner's history rather than cliff-edged (Rule 9).
+  while (representativeDays < target && windowDays < maxWindowDays) {
+    windowDays = Math.min(maxWindowDays, windowDays + Math.max(1, stepDays));
+    fromISO = isoShift(todayISO, -windowDays);
+    representativeDays = representativeDayCount(fromISO, todayISO, windows);
+  }
+
+  return {
+    windowDays,
+    fromISO,
+    representativeDays,
+    reachedOuterBound: representativeDays < target && windowDays >= maxWindowDays,
+    targetRepresentativeDays: target,
+  };
+}
+
+/**
+ * The database shell for `extendLookback` — one read of the runner's races,
+ * then the pure decision.
+ */
+export async function representativeLookback(
+  userUuid: string,
+  todayISO: string,
+  baseWindowDays: number,
+  opts: { targetRepresentativeDays?: number; maxWindowDays?: number } = {},
+): Promise<RepresentativeLookback> {
+  const windows = await loadPrescribedWindows(userUuid, todayISO);
+  const ext = extendLookback({
+    todayISO, windows, baseWindowDays,
+    targetRepresentativeDays: opts.targetRepresentativeDays,
+    maxWindowDays: opts.maxWindowDays,
+  });
+  const total = daySpan(ext.fromISO, todayISO) + 1;
+  return {
+    fromISO: ext.fromISO,
+    toISO: todayISO,
+    windows,
+    representativeDays: ext.representativeDays,
+    excludedDays: Math.max(0, total - ext.representativeDays),
+    sufficient: ext.representativeDays >= MIN_REPRESENTATIVE_DAYS,
+    baseWindowDays,
+    windowDays: ext.windowDays,
+    extendedByDays: Math.max(0, ext.windowDays - baseWindowDays),
+    targetRepresentativeDays: ext.targetRepresentativeDays,
+    reachedOuterBound: ext.reachedOuterBound,
+  };
+}
+
+/**
+ * How much to discount a belief for the age of the evidence that carried it.
+ *
+ * 1.0 — no discount at all — whenever the median observation sits inside the
+ * base window, which is every runner whose recent training is representative.
+ * Past that it is a half-life on the EXCESS age only, so an observation is
+ * never penalised for being 27 days old when the window was 28.
+ *
+ * The MEDIAN rather than the mean, on purpose: one very old corroborating
+ * session should not drag down a belief carried by three recent ones, and one
+ * very recent session should not rescue a belief carried by three old ones.
+ *
+ * PURE, and returns 1 for an empty list: nothing to age is not "infinitely
+ * stale", it is a caller with no evidence, and that caller's own gate is what
+ * should refuse (Rule 11).
+ */
+export function evidenceStalenessFactor(
+  evidenceDatesISO: readonly string[],
+  todayISO: string,
+  baseWindowDays: number,
+): number {
+  const ages = evidenceDatesISO
+    .map((d) => daySpan(String(d).slice(0, 10), todayISO))
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    .sort((a, b) => a - b);
+  if (ages.length === 0) return 1;
+  const mid = Math.floor(ages.length / 2);
+  const median = ages.length % 2 === 1 ? ages[mid] : (ages[mid - 1] + ages[mid]) / 2;
+  const excess = Math.max(0, median - baseWindowDays);
+  if (excess === 0) return 1;
+  return Math.pow(0.5, excess / REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS);
 }

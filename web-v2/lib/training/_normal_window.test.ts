@@ -25,10 +25,16 @@ import {
   weeklyRateFromRepresentative,
   readNormal,
   isRefusal,
+  extendLookback,
+  evidenceStalenessFactor,
   NORMAL_TRAINING_DAY_SQL,
   MIN_REPRESENTATIVE_DAYS,
+  REPRESENTATIVE_LOOKBACK_MAX_DAYS,
+  REPRESENTATIVE_LOOKBACK_STEP_DAYS,
+  REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS,
   type NormalWindow,
 } from './normal-window';
+import { CAPACITY_CONFIDENCE_HALF_LIFE_DAYS } from './capacity-resolver';
 import { TAPER_WEEKS_BY_DISTANCE } from './fitness-trajectory';
 import { postRaceRecoveryWeeks } from '@/lib/plan/goal-tiers';
 import { MIN_COVERAGE_DAYS } from '@/lib/runs/volume';
@@ -246,5 +252,123 @@ describe('RULE 8 · refuse rather than answer, and never as a zero', () => {
     if (detrained.ok) expect(detrained.value).toBe(0);
     // Same call shape, opposite meaning, and the two cannot be confused.
     expect(isRefusal(detrained)).toBe(false);
+  });
+});
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE CONFIDENCE-WEIGHTED LOOKBACK · locked 2026-08-31
+ *
+ * WHAT THIS BLOCK CANNOT FAIL ON (Rule 22, stated beside the tests):
+ *   · Whether the OUTER BOUND is the right number. It asserts that the bound
+ *     binds, never that 120 days is correct rather than 90 or 150.
+ *   · Whether the half-life is the right SHAPE for staleness. It asserts the
+ *     arithmetic and the tie to the confidence model's own constant.
+ *   · Whether a CALLER spends the discount. That lives in the adaptation
+ *     engine's suite, which asserts the confidence field actually moves.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('RULE 8 · extend backward for representative days, never for taper days', () => {
+  const windows = prescribedWindowsFrom([AFC]);
+
+  it('is a NO-OP when the base window is already representative', () => {
+    // A runner with no race anywhere near the window. Nothing widens, and that
+    // is what makes this mechanism invisible to everyone it should be invisible
+    // to — the byte-stability property this whole extension needed.
+    const r = extendLookback({ todayISO: '2026-07-20', windows: [], baseWindowDays: 28 });
+    expect(r.windowDays).toBe(28);
+    expect(r.representativeDays).toBe(29); // inclusive of both endpoints
+    expect(r.reachedOuterBound).toBe(false);
+  });
+
+  it("reaches past the owner's AFC block to find his July training", () => {
+    // THE CASE THIS EXISTS FOR. A 28-day window ending 2026-08-31 holds ONE
+    // representative day; his five July quality sessions sit just outside it.
+    const base = representativeDayCount('2026-08-03', '2026-08-31', windows);
+    expect(base).toBe(1);
+
+    const r = extendLookback({ todayISO: '2026-08-31', windows, baseWindowDays: 28 });
+    expect(r.windowDays).toBeGreaterThan(28);
+    expect(r.representativeDays).toBeGreaterThanOrEqual(28);
+    // And it admitted NOT ONE prescribed day: the excluded count is the same
+    // block it always was, which is the difference between extending and
+    // diluting.
+    const total = r.windowDays + 1;
+    expect(total - r.representativeDays).toBe(29);
+  });
+
+  it('never admits a prescribed day, at any width', () => {
+    for (let base = 7; base <= 120; base += 7) {
+      const r = extendLookback({ todayISO: '2026-08-31', windows, baseWindowDays: base });
+      for (let i = 0; i <= r.windowDays; i++) {
+        const iso = new Date(Date.parse(r.fromISO + 'T12:00:00Z') + i * 86400000)
+          .toISOString().slice(0, 10);
+        if (isPrescribedNonNormal(iso, windows)) {
+          // It is INSIDE the window and it does not COUNT. Both must be true.
+          expect(r.representativeDays).toBeLessThan(r.windowDays + 1);
+        }
+      }
+    }
+  });
+
+  it('the outer bound BINDS · reaching it is a refusal, not an answer', () => {
+    // A runner whose entire history is inside prescribed windows. Widening
+    // cannot rescue him and the function says so rather than reaching forever.
+    const everything = prescribedWindowsFrom([{
+      slug: 'endless', dateISO: '2026-06-15', distanceMi: 26.2, priority: 'A',
+    }]);
+    const r = extendLookback({
+      todayISO: '2026-07-01', windows: everything, baseWindowDays: 28,
+      targetRepresentativeDays: 200,
+    });
+    expect(r.windowDays).toBe(REPRESENTATIVE_LOOKBACK_MAX_DAYS);
+    expect(r.reachedOuterBound).toBe(true);
+  });
+
+  it('RULE 9 · representative days move monotonically as the window walks back', () => {
+    // No cliff: a day either is or is not prescribed, so widening can only ever
+    // add. A non-monotone step here would mean the window arithmetic itself had
+    // a discontinuity in it.
+    let previous = -1;
+    for (let d = 7; d <= 120; d += REPRESENTATIVE_LOOKBACK_STEP_DAYS) {
+      const n = representativeDayCount(
+        new Date(Date.parse('2026-08-31T12:00:00Z') - d * 86400000).toISOString().slice(0, 10),
+        '2026-08-31', windows,
+      );
+      expect(n).toBeGreaterThanOrEqual(previous);
+      previous = n;
+    }
+  });
+});
+
+describe('RULE 8 · the staleness discount', () => {
+  it('is exactly 1 while the evidence sits inside the base window', () => {
+    expect(evidenceStalenessFactor(['2026-08-30', '2026-08-23', '2026-08-16'], '2026-08-31', 28))
+      .toBe(1);
+    // And at the very edge — no penalty for being 28 days old in a 28-day window.
+    expect(evidenceStalenessFactor(['2026-08-03'], '2026-08-31', 28)).toBe(1);
+  });
+
+  it('halves one half-life past the base window', () => {
+    // Median age 56 days, base 28 → 28 days of excess → exactly one half-life.
+    expect(evidenceStalenessFactor(['2026-07-06'], '2026-08-31', 28)).toBeCloseTo(0.5, 6);
+  });
+
+  it("uses the MEDIAN, so one old session cannot drag three fresh ones down", () => {
+    const fresh = ['2026-08-30', '2026-08-27', '2026-08-24'];
+    expect(evidenceStalenessFactor([...fresh, '2026-01-01'], '2026-08-31', 28)).toBe(1);
+  });
+
+  it('an empty list is not infinitely stale · Rule 11', () => {
+    // Nothing to age is a caller with no evidence, and that caller's own gate
+    // is what refuses. Returning 0 here would silently zero a confidence.
+    expect(evidenceStalenessFactor([], '2026-08-31', 28)).toBe(1);
+  });
+
+  it('the half-life is the confidence model\'s own, not a second opinion', () => {
+    // RULE 16, held by assertion rather than by import: a value import in this
+    // direction closes a module cycle (capacity-resolver reads this module's
+    // siblings). If these ever diverge the fix is the constant, not the test.
+    expect(REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS).toBe(CAPACITY_CONFIDENCE_HALF_LIFE_DAYS);
   });
 });

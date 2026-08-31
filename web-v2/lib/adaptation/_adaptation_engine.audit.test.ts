@@ -111,6 +111,20 @@ describe.skipIf(!RO)('ADAPTATION ENGINE · shadow mode against the owner\'s live
       + `· long ahead ${input.longRun.prescribedLongMi ?? '-'} mi `
       + `· tier ceiling ${input.load.tierWeeklyUpperMi ?? '-'} mi`);
 
+    /* ── 2b · THE WINDOW · Rule 8's confidence-weighted lookback ───────────── */
+    const lb = input.pace.lookback;
+    console.log('\n── EVIDENCE WINDOW ──────────────────────────────────────────────');
+    console.log(`base ${lb.baseWindowDays}d · used ${lb.windowDays}d `
+      + `(${lb.windowDays > lb.baseWindowDays ? `EXTENDED by ${lb.windowDays - lb.baseWindowDays}d` : 'not extended'}) `
+      + `· ${lb.representativeDays} representative days, ${lb.excludedDays} excluded as `
+      + `taper/race/recovery · outer bound reached: ${lb.reachedOuterBound}`);
+    console.log(`staleness factor · pace ${lb.stalenessFactor.toFixed(3)} `
+      + `· duration ${input.longRun.lookback.stalenessFactor.toFixed(3)}`);
+    const ht = input.load.historicalTolerance;
+    console.log(`historical volume tolerance · ${ht.ok
+      ? `${ht.sustainedWeeklyMi} mi/wk over ${ht.representativeDays} representative days`
+      : `REFUSED (${ht.reason})`}`);
+
     /* ── 3 · THE DISTANCE TO EVERY BAR · the Rule 21 question ──────────────── */
     console.log('\n── DISTANCE TO EACH UPWARD BAR ──────────────────────────────────');
 
@@ -148,7 +162,7 @@ describe.skipIf(!RO)('ADAPTATION ENGINE · shadow mode against the owner\'s live
     }
 
     console.log(`\nDENSITY  · ${input.density.resolutions.length} progression resolution(s) `
-      + `· authored targets present: ${!input.density.noAuthoredTargets}`);
+      + `· gate state: ${input.density.gate}`);
     for (const r of input.density.resolutions) {
       console.log(`             ${r.dateISO} ${r.family} → ${r.action} `
         + `${r.shape.reps}x${r.shape.repMinutes}min/${r.shape.recoveryMinutes}min changed=${r.changed}`);

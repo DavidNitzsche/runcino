@@ -488,6 +488,41 @@ const ZONE_SESSION_FAMILY: Record<string, SessionFamily | undefined> = {
  * here for the same reason the trajectory leaves them alone.
  */
 export async function loadProgressionWeek(userId: string): Promise<ProgressionWeek | null> {
+  return (await diagnoseProgressionWeek(userId)).week;
+}
+
+/**
+ * WHY the pass produced nothing, when it produced nothing.
+ *
+ * `loadProgressionWeek` returns `null` for five structurally different reasons
+ * and a caller that only sees `null` cannot tell them apart. That was harmless
+ * while the only caller was the pass itself — it wants to do nothing in all
+ * five cases — and stopped being harmless the moment the Adaptation Engine
+ * started REPORTING one of them. It reported the same sentence for all five:
+ * "no plan row carries a progression block, an authoring gap". On five days in
+ * seven the true answer is "the pass already ran for this week", which is not
+ * a gap and not about the plan at all.
+ *
+ * Rule 11 in the small, and Rule 16: one name may not carry five facts.
+ */
+export type ProgressionWeekSkip =
+  | 'PASS_NOT_DUE'
+  | 'NO_ACTIVE_PLAN'
+  | 'NO_ROWS_IN_WEEK'
+  | 'WEEK_TAKES_NO_STEP'
+  | 'NO_AUTHORED_PROGRESSION_BLOCK';
+
+export interface ProgressionWeekDiagnosis {
+  week: ProgressionWeek | null;
+  /** Null exactly when `week` is non-null. */
+  skip: ProgressionWeekSkip | null;
+}
+
+/**
+ * The same load, with the reason kept. `loadProgressionWeek` is the thin
+ * wrapper so no existing caller changes behaviour by one byte.
+ */
+export async function diagnoseProgressionWeek(userId: string): Promise<ProgressionWeekDiagnosis> {
   const todayISO = await runnerToday(userId);
   const settings = await loadSettings(userId);
   const longRunDow = DOW_OF[settings.long_run_day] ?? 0;
@@ -503,7 +538,7 @@ export async function loadProgressionWeek(userId: string): Promise<ProgressionWe
   ).catch(() => ({ rows: [] as Array<{ week_start: string | null }> }))).rows[0]?.week_start ?? null;
 
   const due = progressionPassDue({ todayISO, todayDow, longRunDow, lastPassWeekStartISO: lastPass });
-  if (!due.due) return null;
+  if (!due.due) return { week: null, skip: 'PASS_NOT_DUE' };
 
   const plan = (await pool.query<{ id: string; authored_state: Record<string, unknown> | null }>(
     `SELECT id, authored_state FROM training_plans
@@ -511,7 +546,7 @@ export async function loadProgressionWeek(userId: string): Promise<ProgressionWe
       ORDER BY authored_iso DESC LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] }))).rows[0];
-  if (!plan) return null;
+  if (!plan) return { week: null, skip: 'NO_ACTIVE_PLAN' };
 
   const st = (plan.authored_state ?? {}) as Record<string, unknown>;
   const lthr = st.lthr_bpm != null ? Number(st.lthr_bpm) : null;
@@ -534,10 +569,10 @@ export async function loadProgressionWeek(userId: string): Promise<ProgressionWe
       ORDER BY pw.date_iso::date ASC`,
     [plan.id, due.weekStartISO, due.weekEndISO],
   ).catch(() => ({ rows: [] }))).rows;
-  if (weekRows.length === 0) return null;
+  if (weekRows.length === 0) return { week: null, skip: 'NO_ROWS_IN_WEEK' };
 
   if (weekRows.some((r) => r.is_cutback === true || r.is_race_week === true || (r.phase ?? '') === 'TAPER')) {
-    return null;
+    return { week: null, skip: 'WEEK_TAKES_NO_STEP' };
   }
 
   // The week's own planned mileage, which is what Daniels' at-pace share is a
@@ -573,7 +608,7 @@ export async function loadProgressionWeek(userId: string): Promise<ProgressionWe
       subLabel: r.sub_label,
     });
   }
-  if (targets.length === 0) return null;
+  if (targets.length === 0) return { week: null, skip: 'NO_AUTHORED_PROGRESSION_BLOCK' };
 
   // What was actually prescribed most recently, per family, from the weeks
   // BEFORE this one. Scoped to the active plan: a rebuild re-authors the whole
@@ -626,15 +661,18 @@ export async function loadProgressionWeek(userId: string): Promise<ProgressionWe
   }
 
   return {
-    planId: plan.id,
-    todayISO,
-    weekStartISO: due.weekStartISO,
-    weekEndISO: due.weekEndISO,
-    weeklyMi,
-    targets,
-    prior,
-    context,
-    lthr,
+    week: {
+      planId: plan.id,
+      todayISO,
+      weekStartISO: due.weekStartISO,
+      weekEndISO: due.weekEndISO,
+      weeklyMi,
+      targets,
+      prior,
+      context,
+      lthr,
+    },
+    skip: null,
   };
 }
 

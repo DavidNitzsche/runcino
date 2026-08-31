@@ -28,13 +28,17 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
+  NON_MOVING_DECISIONS,
   PACE_PROGRESS_MIN_SESSIONS,
   PROGRESS_LEVER_ORDER,
   composeAdaptation,
   contradictionsIn,
   sessionDemonstratesControl,
+  densityRefusalFor,
   type AdaptationEngineInput,
   type AdaptationProposalSet,
+  type DensityGateState,
+  type EvidenceLookback,
   type QualitySessionRead,
 } from './adaptation-engine';
 import type { AdaptationVerdict } from './adaptation-model';
@@ -163,22 +167,47 @@ const heldResolution = (): ProgressionResolution => ({
 });
 
 /** The neutral world: nothing earned, nothing wrong. Scenarios override. */
+/** A lookback that never had to reach back. The common path, and the one the
+ *  whole extension is a no-op on. */
+const freshLookback = (): EvidenceLookback => ({
+  baseWindowDays: 28,
+  windowDays: 28,
+  representativeDays: 28,
+  excludedDays: 0,
+  stalenessFactor: 1,
+  reachedOuterBound: false,
+});
+
+/** A lookback that had to reach past a prescribed block, and paid for it. */
+const extendedLookback = (stalenessFactor = 0.5): EvidenceLookback => ({
+  baseWindowDays: 28,
+  windowDays: 60,
+  representativeDays: 32,
+  excludedDays: 29,
+  stalenessFactor,
+  reachedOuterBound: false,
+});
+
 const baseInput = (): AdaptationEngineInput => ({
   todayISO: TODAY,
   capacity: capacityAt(400),
   state: stateAt('proceed'),
   absorption: absorptionAt('normal'),
-  pace: { prescribedThresholdSecPerMi: 400, sessions: [] },
+  pace: { prescribedThresholdSecPerMi: 400, sessions: [], lookback: freshLookback() },
   load: {
     currentWeeklyMi: 45,
     recentWeeks: [
       { weekStartISO: '2026-08-24', completedMi: 20, scheduledMi: 45 },
       { weekStartISO: '2026-08-17', completedMi: 20, scheduledMi: 45 },
     ],
+    historicalTolerance: { ok: true, sustainedWeeklyMi: 44, representativeDays: 84, oldestISO: '2026-06-02' },
     tierWeeklyUpperMi: 70,
   },
-  longRun: { prescribedLongMi: 16, longRunCapMi: 22, longRunWoWMaxFraction: 0.30, recent: [] },
-  density: { resolutions: [], noAuthoredTargets: true },
+  longRun: {
+    prescribedLongMi: 16, longRunCapMi: 22, longRunWoWMaxFraction: 0.30,
+    recent: [], lookback: freshLookback(),
+  },
+  density: { resolutions: [], gate: 'NO_AUTHORED_PROGRESSION_BLOCK' },
   schedule: { sessionsOutOfPlace: 0, clearSlotsAvailable: 0 },
   readable: true,
 });
@@ -249,7 +278,7 @@ describe('ADAPTATION ENGINE · PROGRESS is genuinely reachable, on all four leve
 
   it('SCENARIO:PROGRESS · DENSITY · the gate shortened recovery on the same work', () => {
     const i = baseInput();
-    i.density = { resolutions: [denserResolution()], noAuthoredTargets: false };
+    i.density = { resolutions: [denserResolution()], gate: 'RESOLVED' };
     const set = composeAdaptation(i);
     const p = primaryProgress(set);
     expect(p?.target).toBe('DENSITY');
@@ -267,7 +296,7 @@ describe('ADAPTATION ENGINE · PROGRESS is genuinely reachable, on all four leve
     const i = baseInput();
     i.density = {
       resolutions: [{ ...denserResolution(), lever: 'rep_count' }],
-      noAuthoredTargets: false,
+      gate: 'RESOLVED',
     };
     const set = composeAdaptation(i);
     const p = primaryProgress(set);
@@ -298,9 +327,13 @@ describe('ADAPTATION ENGINE · PROGRESS is genuinely reachable, on all four leve
  * ═══════════════════════════════════════════════════════════════════════ */
 
 describe('ADAPTATION ENGINE · HOLD, REDUCE and RESTRUCTURE are all reachable', () => {
-  it('SCENARIO:HOLD · nothing earned · one HOLD, and it says the training is working', () => {
+  it('SCENARIO:HOLD · nothing earned · nothing moves, and every lever says why', () => {
     const set = composeAdaptation(baseInput());
-    expect(set.proposals.every((p) => p.decision === 'HOLD')).toBe(true);
+    // HOLD and INSUFFICIENT_EVIDENCE both leave the number where it is, and
+    // they are DIFFERENT ANSWERS — the set may hold both and may hold nothing
+    // that moves.
+    expect(set.proposals.every((p) => NON_MOVING_DECISIONS.has(p.decision))).toBe(true);
+    expect(set.proposals.every((p) => p.reasonCodes.length > 0)).toBe(true);
     expect(set.proposals.length).toBeGreaterThan(0);
     expect(contradictionsIn(set)).toEqual([]);
   });
@@ -311,7 +344,9 @@ describe('ADAPTATION ENGINE · HOLD, REDUCE and RESTRUCTURE are all reachable', 
     i.pace.sessions = controlledSessions(PACE_PROGRESS_MIN_SESSIONS - 1);
     const set = composeAdaptation(i);
     const hold = set.proposals.find((p) => p.target === 'PACE');
-    expect(hold?.decision).toBe('HOLD');
+    // Two controlled sessions and nothing arguing against them is NOT a finding
+    // that the pace should stay — it is one session short of knowing.
+    expect(hold?.decision).toBe('INSUFFICIENT_EVIDENCE');
     expect(hold?.reasonCodes).toContain('SINGLE_STRONG_SESSION_IS_NOT_CORROBORATION');
     // A HOLD names what is missing rather than going silent — the Rule 21
     // failure mode is a lever that can only ever fail to fire, invisibly.
@@ -358,7 +393,10 @@ describe('ADAPTATION ENGINE · HOLD, REDUCE and RESTRUCTURE are all reachable', 
     expect(r?.reasonCodes).toContain('STIMULUS_TYPE_CHANGED_RATHER_THAN_REDUCED');
   });
 
-  it('all four decisions are reachable from the same fixture family', () => {
+  it('all four ACTING decisions are reachable from the same fixture family', () => {
+    // The fifth, INSUFFICIENT_EVIDENCE, has its own block below: it is a
+    // refusal rather than an act, and mixing it in here would let a suite that
+    // only ever refuses look complete.
     const seen = new Set<string>();
     const scenarios: AdaptationEngineInput[] = [
       (() => { const i = withAbsorbedLoad(baseInput()); i.absorption = absorptionAt('strong'); return i; })(),
@@ -369,7 +407,7 @@ describe('ADAPTATION ENGINE · HOLD, REDUCE and RESTRUCTURE are all reachable', 
     for (const s of scenarios) {
       for (const p of composeAdaptation(s).proposals) seen.add(p.decision);
     }
-    expect([...seen].sort()).toEqual(['HOLD', 'PROGRESS', 'REDUCE', 'RESTRUCTURE']);
+    for (const d of ['HOLD', 'PROGRESS', 'REDUCE', 'RESTRUCTURE']) expect([...seen]).toContain(d);
   });
 });
 
@@ -408,7 +446,8 @@ describe('ADAPTATION ENGINE · doctrine · SINGLE-RUN RESISTANCE', () => {
     i.pace.sessions = [session('2026-08-30', { weight: 0.95 })];
     const set = composeAdaptation(i);
     const p = set.proposals.find((x) => x.target === 'PACE');
-    expect(p?.decision).toBe('HOLD');
+    expect(p?.decision).not.toBe('PROGRESS');
+    expect(NON_MOVING_DECISIONS.has(p!.decision)).toBe(true);
     expect(p?.reasonCodes).toContain('SINGLE_STRONG_SESSION_IS_NOT_CORROBORATION');
   });
 
@@ -478,7 +517,7 @@ describe('ADAPTATION ENGINE · doctrine · ONE PRIMARY STRESSOR AT A TIME', () =
       durabilityEvidence: true, lateRunPacingCollapse: false,
       residualCardiovascularLoad: false, executionQuality: 'controlled',
     }];
-    i.density = { resolutions: [denserResolution()], noAuthoredTargets: false };
+    i.density = { resolutions: [denserResolution()], gate: 'RESOLVED' };
 
     const set = composeAdaptation(i);
     const promoted = set.proposals.filter((p) => p.decision === 'PROGRESS');
@@ -498,7 +537,7 @@ describe('ADAPTATION ENGINE · doctrine · ONE PRIMARY STRESSOR AT A TIME', () =
     i.absorption = absorptionAt('strong');
     i.capacity = capacityAt(388);
     i.pace.sessions = controlledSessions(PACE_PROGRESS_MIN_SESSIONS);
-    i.density = { resolutions: [denserResolution()], noAuthoredTargets: false };
+    i.density = { resolutions: [denserResolution()], gate: 'RESOLVED' };
     const set = composeAdaptation(i);
     expect(primaryProgress(set)?.target).toBe('DENSITY');
     expect(PROGRESS_LEVER_ORDER.indexOf('DENSITY'))
@@ -527,7 +566,9 @@ describe('ADAPTATION ENGINE · doctrine · ADAPT THE THING THAT CHANGED (BRIEF 0
     // And it structurally cannot carry a pace: the SCHEDULE arm's magnitude
     // unit is `sessions_out_of_place`.
     expect(r?.previous.unit).toBe('sessions_out_of_place');
-    expect(set.proposals.some((p) => p.decision !== 'HOLD' && p.target === 'PACE')).toBe(false);
+    expect(set.proposals.some(
+      (p) => !NON_MOVING_DECISIONS.has(p.decision) && p.target === 'PACE',
+    )).toBe(false);
   });
 
   it('a tired Friday reduces RECOVERY and never proposes a capacity change', () => {
@@ -665,7 +706,9 @@ describe('ADAPTATION ENGINE · doctrine · FALLBACK CAPACITY IS NOT EVIDENCE (§
     i.pace.sessions = controlledSessions(PACE_PROGRESS_MIN_SESSIONS);
     const set = composeAdaptation(i);
     const p = set.proposals.find((x) => x.target === 'PACE');
-    expect(p?.decision).toBe('HOLD');
+    // An unmeasured capacity is an ABSENCE, so this is a refusal rather than a
+    // finding that the pace should stay. See the REVIEW block below.
+    expect(p?.decision).toBe('INSUFFICIENT_EVIDENCE');
     expect(p?.reasonCodes).toContain('CAPACITY_NOT_DIRECTLY_EVIDENCED');
   });
 });
@@ -696,8 +739,11 @@ describe('ADAPTATION ENGINE · Rule 11 · a failed read is not a runner with no 
     ];
     const set = composeAdaptation(i);
     const p = set.proposals.find((x) => x.target === 'VOLUME');
-    expect(p?.decision).toBe('HOLD');
-    expect(p?.reasonCodes).toContain('LOAD_NOT_YET_ABSORBED');
+    // No comparable week is not a runner who completed nothing. The gate falls
+    // to HISTORICAL TOLERANCE and says which question it answered, and it never
+    // reports a scheduled-week failure it did not observe.
+    expect(p?.reasonCodes).toContain('CURRENT_PLAN_TOO_YOUNG_TO_JUDGE_ABSORPTION');
+    expect(p?.explanation).not.toMatch(/0 of the last/);
   });
 });
 
@@ -729,6 +775,7 @@ describe('ADAPTATION ENGINE · doctrine caps are never widened', () => {
         durabilityEvidence: true, lateRunPacingCollapse: false,
         residualCardiovascularLoad: false, executionQuality: 'controlled',
       }],
+      lookback: freshLookback(),
     };
     const set = composeAdaptation(i);
     const p = set.proposals.find((x) => x.target === 'DURATION');
@@ -837,7 +884,7 @@ describe('ADAPTATION ENGINE · every proposal explains itself (§9, §27)', () =
       (() => { const i = withAbsorbedLoad(baseInput()); i.absorption = absorptionAt('strong'); return i; })(),
       (() => { const i = baseInput(); i.state = stateAt('stop'); return i; })(),
       (() => { const i = baseInput(); i.schedule = { sessionsOutOfPlace: 1, clearSlotsAvailable: 1 }; return i; })(),
-      (() => { const i = baseInput(); i.density = { resolutions: [heldResolution()], noAuthoredTargets: false }; return i; })(),
+      (() => { const i = baseInput(); i.density = { resolutions: [heldResolution()], gate: 'RESOLVED' }; return i; })(),
     ];
     for (const w of worlds) {
       const set = composeAdaptation(w);
@@ -850,5 +897,355 @@ describe('ADAPTATION ENGINE · every proposal explains itself (§9, §27)', () =
       }
       expect(contradictionsIn(set)).toEqual([]);
     }
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE 2026-08-31 REVIEW · the four fixes it produced, each with its falsifier
+ *
+ * WHAT THIS BLOCK CANNOT FAIL ON (Rule 22):
+ *   · Whether the LOOKBACK the loader hands in was resolved correctly. That is
+ *     `_normal_window.test.ts`; here the lookback is a fixture.
+ *   · Whether `historicalTolerance` was measured over the right window. Same:
+ *     the loader owns it, this asserts only what the gate DOES with it.
+ *   · Whether the SIZE of a discounted confidence is the right size. It asserts
+ *     the direction and the ordering, never the number.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('REVIEW §6 · insufficient evidence is not evidence against progression', () => {
+  it('SCENARIO:INSUFFICIENT · PACE · a window with no quality session refuses, and does not hold', () => {
+    // THE TAPER CASE, in the engine's units. The plan prescribed no threshold
+    // work, so the runner had no opportunity to demonstrate anything. Reporting
+    // that as a HOLD would be a sentence about him.
+    const i = baseInput();
+    i.capacity = capacityAt(388);
+    i.pace.sessions = [];
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'PACE');
+    expect(p?.decision).toBe('INSUFFICIENT_EVIDENCE');
+    expect(p?.reasonCodes).toContain('NO_QUALITY_EVIDENCE_IN_WINDOW');
+    expect(p?.previous).toEqual(p?.proposed);
+  });
+
+  it('SCENARIO:HOLD · PACE · sessions that were run and did NOT hold together is a HOLD', () => {
+    // The other side of the same fork, and the whole point of the split: this
+    // one IS a read, and it argues against moving the target.
+    const i = baseInput();
+    i.capacity = capacityAt(388);
+    i.pace.sessions = controlledSessions(2).map((s) => ({
+      ...s, executionQuality: 'variable' as const, lateRunPacingCollapse: true,
+    }));
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'PACE');
+    expect(p?.decision).toBe('HOLD');
+    expect(p?.reasonCodes).toContain('EXECUTION_BEAT_TARGET_WITHOUT_CONTROL');
+  });
+
+  it('SCENARIO:INSUFFICIENT · PACE · a fallback capacity is an absence, not a finding', () => {
+    const i = baseInput();
+    i.capacity = capacityAt(388, { sourceMode: 'vdot_fallback' });
+    i.pace.sessions = controlledSessions(PACE_PROGRESS_MIN_SESSIONS);
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'PACE');
+    expect(p?.decision).toBe('INSUFFICIENT_EVIDENCE');
+    expect(p?.reasonCodes).toContain('CAPACITY_NOT_DIRECTLY_EVIDENCED');
+  });
+
+  it('SCENARIO:INSUFFICIENT · DURATION · no long run in the window refuses', () => {
+    const i = baseInput();
+    i.longRun.recent = [];
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'DURATION');
+    expect(p?.decision).toBe('INSUFFICIENT_EVIDENCE');
+    expect(p?.reasonCodes).toContain('NO_LONG_RUN_EVIDENCE_IN_WINDOW');
+  });
+
+  it('SCENARIO:HOLD · DURATION · a long run that came apart is a HOLD, not a refusal', () => {
+    const i = baseInput();
+    i.longRun.recent = [{
+      activityId: 'l', dateISO: '2026-08-29', distanceMi: 16,
+      durabilityEvidence: true, lateRunPacingCollapse: true,
+      residualCardiovascularLoad: true, executionQuality: 'variable',
+    }];
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'DURATION');
+    expect(p?.decision).toBe('HOLD');
+  });
+
+  it('the five decisions are all reachable, and all distinguishable', () => {
+    const seen = new Set<string>();
+    const worlds: AdaptationEngineInput[] = [
+      (() => { const i = withAbsorbedLoad(baseInput()); i.absorption = absorptionAt('strong'); return i; })(),
+      baseInput(),
+      (() => { const i = baseInput(); i.state = stateAt('recover'); return i; })(),
+      (() => { const i = baseInput(); i.schedule = { sessionsOutOfPlace: 1, clearSlotsAvailable: 1 }; return i; })(),
+      (() => { const i = baseInput(); i.longRun.recent = []; return i; })(),
+    ];
+    for (const w of worlds) for (const p of composeAdaptation(w).proposals) seen.add(p.decision);
+    expect([...seen].sort()).toEqual(
+      ['HOLD', 'INSUFFICIENT_EVIDENCE', 'PROGRESS', 'REDUCE', 'RESTRUCTURE'],
+    );
+  });
+
+  it('a refusal may never carry a reason code that asserts a finding', () => {
+    // The falsifier for the collapse this fix exists to stop. Hand the checker
+    // a refusal wearing a finding and it must name it.
+    const set = composeAdaptation((() => { const i = baseInput(); i.longRun.recent = []; return i; })());
+    const refusal = set.proposals.find((p) => p.decision === 'INSUFFICIENT_EVIDENCE')!;
+    expect(contradictionsIn(set)).toEqual([]);
+    const tampered: AdaptationProposalSet = {
+      ...set,
+      proposals: [{ ...refusal, reasonCodes: [...refusal.reasonCodes, 'LOAD_NOT_YET_ABSORBED'] } as never],
+    };
+    expect(contradictionsIn(tampered)).toContain('INSUFFICIENT_EVIDENCE_CLAIMS_A_FINDING');
+  });
+
+  it('a refusal may not move the number either', () => {
+    const set = composeAdaptation((() => { const i = baseInput(); i.longRun.recent = []; return i; })());
+    const refusal = set.proposals.find((p) => p.decision === 'INSUFFICIENT_EVIDENCE')!;
+    const tampered: AdaptationProposalSet = {
+      ...set,
+      proposals: [{ ...refusal, proposed: { unit: 'long_run_mi', value: 99 } } as never],
+    };
+    expect(contradictionsIn(tampered)).toContain('HOLD_MOVED_THE_NUMBER');
+  });
+});
+
+describe('REVIEW §3 · historical volume tolerance is not current-plan absorption', () => {
+  /** A plan authored days ago: one comparable week, and it went fine. */
+  const youngPlan = (i: AdaptationEngineInput): AdaptationEngineInput => ({
+    ...i,
+    load: {
+      ...i.load,
+      recentWeeks: [
+        { weekStartISO: '2026-08-24', completedMi: 44, scheduledMi: 45 },
+        { weekStartISO: '2026-08-17', completedMi: 28, scheduledMi: null },
+        { weekStartISO: '2026-08-10', completedMi: 23, scheduledMi: null },
+      ],
+    },
+  });
+
+  it('SCENARIO:PROGRESS · VOLUME · a week-old plan does not erase months of tolerance', () => {
+    // THE DEFECT. One comparable week used to come back `LOAD_NOT_YET_ABSORBED`
+    // — a finding about the runner, invented out of the engine's own youth.
+    const i = youngPlan(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.load.currentWeeklyMi = 40;
+    i.load.historicalTolerance = {
+      ok: true, sustainedWeeklyMi: 44, representativeDays: 84, oldestISO: '2026-06-02',
+    };
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'VOLUME');
+    expect(p?.decision).toBe('PROGRESS');
+    expect(p?.reasonCodes).toContain('HISTORICAL_VOLUME_TOLERANCE_ESTABLISHED');
+    expect(p?.reasonCodes).toContain('CURRENT_PLAN_TOO_YOUNG_TO_JUDGE_ABSORPTION');
+  });
+
+  it('and the step is HELD to what the history actually demonstrated', () => {
+    // The safety half. History says he holds 44; it does not say he holds 45,
+    // and spending an unproven ramp step off an unproven week is how a fallback
+    // turns into a spike.
+    const i = youngPlan(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.load.currentWeeklyMi = 40;
+    i.load.historicalTolerance = {
+      ok: true, sustainedWeeklyMi: 44, representativeDays: 84, oldestISO: '2026-06-02',
+    };
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'VOLUME');
+    expect((p?.proposed as { value: number }).value).toBeLessThanOrEqual(44);
+    expect(p?.reasonCodes).toContain('STEP_HELD_TO_DEMONSTRATED_HISTORICAL_VOLUME');
+  });
+
+  it('SCENARIO:HOLD · VOLUME · history BELOW the prescribed week is a read, so it holds', () => {
+    const i = youngPlan(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.load.currentWeeklyMi = 60;
+    i.load.historicalTolerance = {
+      ok: true, sustainedWeeklyMi: 40, representativeDays: 84, oldestISO: '2026-06-02',
+    };
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'VOLUME');
+    expect(p?.decision).toBe('HOLD');
+    expect(p?.reasonCodes).toContain('LOAD_NOT_YET_ABSORBED');
+  });
+
+  it('SCENARIO:INSUFFICIENT · VOLUME · a young plan AND no history refuses', () => {
+    const i = youngPlan(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.load.historicalTolerance = { ok: false, reason: 'NOT_ENOUGH_REPRESENTATIVE_TRAINING' };
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'VOLUME');
+    expect(p?.decision).toBe('INSUFFICIENT_EVIDENCE');
+    expect(p?.reasonCodes).toContain('NO_VOLUME_TOLERANCE_EVIDENCE');
+  });
+
+  it('a REFUSED tolerance read never reads as a tolerance of zero · Rule 11', () => {
+    const i = youngPlan(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.load.historicalTolerance = { ok: false, reason: 'UNREADABLE' };
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'VOLUME');
+    // A tolerance of zero would be `LOAD_NOT_YET_ABSORBED`, a finding. An
+    // unreadable one is a refusal, and the two must never be the same output.
+    expect(p?.decision).toBe('INSUFFICIENT_EVIDENCE');
+    expect(p?.reasonCodes).not.toContain('LOAD_NOT_YET_ABSORBED');
+  });
+});
+
+describe('REVIEW §1 · the lookback is confidence-weighted, not a cliff', () => {
+  const threeControlled = () => controlledSessions(PACE_PROGRESS_MIN_SESSIONS);
+
+  it('SCENARIO:PROGRESS · evidence reached back for still progresses, at lower confidence', () => {
+    const fresh = baseInput();
+    fresh.capacity = capacityAt(388);
+    fresh.pace.sessions = threeControlled();
+    const freshP = composeAdaptation(fresh).proposals.find((p) => p.target === 'PACE')!;
+
+    const stale = baseInput();
+    stale.capacity = capacityAt(388);
+    stale.pace.sessions = threeControlled();
+    stale.pace.lookback = extendedLookback(0.5);
+    const staleP = composeAdaptation(stale).proposals.find((p) => p.target === 'PACE')!;
+
+    expect(freshP.decision).toBe('PROGRESS');
+    expect(staleP.decision).toBe('PROGRESS');
+    // The MAGNITUDE is identical — older evidence is not evidence for a smaller
+    // step, it is the same evidence trusted less.
+    expect(staleP.proposed).toEqual(freshP.proposed);
+    expect(staleP.confidence).toBeLessThan(freshP.confidence);
+    expect(staleP.reasonCodes).toContain('CONFIDENCE_DISCOUNTED_FOR_EVIDENCE_AGE');
+    expect(staleP.reasonCodes).toContain('LOOKBACK_EXTENDED_PAST_A_PRESCRIBED_PERIOD');
+  });
+
+  it('an unextended lookback says nothing about itself · the no-op property', () => {
+    const i = baseInput();
+    i.capacity = capacityAt(388);
+    i.pace.sessions = threeControlled();
+    const p = composeAdaptation(i).proposals.find((x) => x.target === 'PACE')!;
+    expect(p.reasonCodes).not.toContain('LOOKBACK_EXTENDED_PAST_A_PRESCRIBED_PERIOD');
+    expect(p.reasonCodes).not.toContain('CONFIDENCE_DISCOUNTED_FOR_EVIDENCE_AGE');
+  });
+
+  it('RULE 9 · confidence falls continuously with the staleness factor', () => {
+    let previous = Infinity;
+    for (let f = 1; f >= 0.2; f -= 0.05) {
+      const i = baseInput();
+      i.capacity = capacityAt(388);
+      i.pace.sessions = threeControlled();
+      i.pace.lookback = extendedLookback(f);
+      const p = composeAdaptation(i).proposals.find((x) => x.target === 'PACE')!;
+      expect(p.decision).toBe('PROGRESS');   // it never cliffs OFF
+      expect(p.confidence).toBeLessThanOrEqual(previous + 1e-9);
+      previous = p.confidence;
+    }
+  });
+});
+
+describe('REVIEW §4 · the density refusal names WHICH of the five reasons applies', () => {
+  const CASES: Array<[DensityGateState, RegExp]> = [
+    ['NO_AUTHORED_PROGRESSION_BLOCK', /authoring gap in the Plan Generator/i],
+    ['PASS_NOT_DUE_THIS_WEEK', /once per training week/i],
+    ['WEEK_TAKES_NO_PROGRESSION_STEP', /cutback, a race week or inside the taper/i],
+    ['NO_ACTIVE_PLAN', /no active plan/i],
+    ['UNREADABLE', /failure, not a finding/i],
+  ];
+
+  it('every gate state gets its own sentence, and no two share one', () => {
+    const details = new Set<string>();
+    for (const [gate, matcher] of CASES) {
+      const i = baseInput();
+      i.density = { resolutions: [], gate };
+      const r = composeAdaptation(i).refusals.find((x) => x.lever === 'DENSITY');
+      expect(r, `no refusal for ${gate}`).toBeTruthy();
+      expect(r!.detail).toMatch(matcher);
+      details.add(r!.detail);
+      expect(densityRefusalFor(gate).detail).toBe(r!.detail);
+    }
+    expect(details.size).toBe(CASES.length);
+  });
+
+  it('the pass simply not being due is NOT reported as an authoring gap', () => {
+    // The defect: on five days in seven the engine said the plan had been
+    // authored wrong, when the truth was that the weekly pass had already run.
+    const i = baseInput();
+    i.density = { resolutions: [], gate: 'PASS_NOT_DUE_THIS_WEEK' };
+    const r = composeAdaptation(i).refusals.find((x) => x.lever === 'DENSITY')!;
+    expect(r.code).toBe('PROGRESSION_PASS_NOT_DUE');
+    expect(r.detail).not.toMatch(/authoring gap/i);
+  });
+
+  it('an unreadable gate is a failure and never a gap · Rule 11', () => {
+    const i = baseInput();
+    i.density = { resolutions: [], gate: 'UNREADABLE' };
+    const r = composeAdaptation(i).refusals.find((x) => x.lever === 'DENSITY')!;
+    expect(r.code).toBe('PROGRESSION_GATE_UNREADABLE');
+  });
+});
+
+describe('REVIEW §5 · one stimulus change per cycle, across decision types', () => {
+  it('a promoted PROGRESS withdraws the FITNESS restructure rather than sitting beside it', () => {
+    // THE COMPOUND. `marginal` absorption emits the SPECIFICITY restructure and
+    // still permits a pace progression — the deliberate gate asymmetry — so the
+    // runner was told to run threshold faster AND change the kind of quality he
+    // does, in the same week. Two stressors.
+    const i = baseInput();
+    i.absorption = absorptionAt('marginal');
+    i.capacity = capacityAt(388);
+    i.pace.sessions = controlledSessions(PACE_PROGRESS_MIN_SESSIONS);
+    const set = composeAdaptation(i);
+
+    expect(set.proposals.filter((p) => p.decision === 'PROGRESS')).toHaveLength(1);
+    expect(set.proposals.some((p) => p.target === 'SPECIFICITY')).toBe(false);
+    expect(contradictionsIn(set)).toEqual([]);
+    // WITHDRAWN, NOT FORGOTTEN. The log has to be able to tell "never
+    // considered" from "considered and withheld".
+    const progress = set.proposals.find((p) => p.decision === 'PROGRESS')!;
+    expect(progress.whyNot.some((w) => w.lever === 'SPECIFICITY')).toBe(true);
+  });
+
+  it('a SCHEDULE restructure is not a stimulus change and survives beside a progression', () => {
+    // Moving Tuesday to Wednesday preserves the intent; it does not add one.
+    const i = withAbsorbedLoad(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.schedule = { sessionsOutOfPlace: 2, clearSlotsAvailable: 2 };
+    const set = composeAdaptation(i);
+    expect(set.proposals.some((p) => p.target === 'SCHEDULE')).toBe(true);
+    expect(set.proposals.filter((p) => p.decision === 'PROGRESS')).toHaveLength(1);
+    expect(contradictionsIn(set)).toEqual([]);
+  });
+
+  it('FOUR levers with simultaneous evidence promote exactly ONE and defer the rest', () => {
+    // The owner's §5 acceptance test, spelled out: build a world where every
+    // lever has clearing evidence at once and confirm the cycle spends one.
+    const i = withAbsorbedLoad(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.capacity = capacityAt(388);
+    i.pace.sessions = controlledSessions(PACE_PROGRESS_MIN_SESSIONS);
+    i.longRun.recent = [{
+      activityId: 'long-1', dateISO: '2026-08-29', distanceMi: 16,
+      durabilityEvidence: true, lateRunPacingCollapse: false,
+      residualCardiovascularLoad: false, executionQuality: 'controlled',
+    }];
+    i.density = { resolutions: [denserResolution()], gate: 'RESOLVED' };
+
+    const set = composeAdaptation(i);
+    const promoted = set.proposals.filter((p) => p.decision === 'PROGRESS');
+    expect(promoted).toHaveLength(1);
+    expect(promoted[0].target).toBe('DENSITY');          // smallest useful first
+    expect(set.deferred.map((d) => d.target).sort())
+      .toEqual(['DURATION', 'PACE', 'VOLUME']);
+    // AND NOTHING ELSE IN THE SET CHANGES THE STIMULUS. That is the property
+    // the type system cannot reach, because each proposal is legal alone.
+    expect(contradictionsIn(set)).not.toContain('MORE_THAN_ONE_STIMULUS_CHANGE');
+    // No deferred proposal is applied anywhere: they are reported separately
+    // and carry the lever that beat them.
+    expect(set.deferred.every((d) => d.whyNot.some((w) => w.lever === 'DENSITY'))).toBe(true);
+  });
+
+  it('the compound check can be made to fail · Rule 18', () => {
+    const i = withAbsorbedLoad(baseInput());
+    i.absorption = absorptionAt('strong');
+    const set = composeAdaptation(i);
+    const progress = set.proposals.find((p) => p.decision === 'PROGRESS')!;
+    const tampered: AdaptationProposalSet = {
+      ...set,
+      proposals: [...set.proposals, {
+        ...progress, decision: 'RESTRUCTURE', target: 'SPECIFICITY', domain: 'FITNESS',
+        previous: { unit: 'race_specific_minutes', value: 0 },
+        proposed: { unit: 'race_specific_minutes', value: 0 },
+      } as never],
+    };
+    expect(contradictionsIn(tampered)).toContain('MORE_THAN_ONE_STIMULUS_CHANGE');
   });
 });
