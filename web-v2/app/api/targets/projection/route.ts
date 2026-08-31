@@ -663,10 +663,15 @@ export async function GET(req: NextRequest) {
       try {
         const { assessGoal } = await import('@/lib/training/goal-assessment');
         const { taperWeeksForDistance } = await import('@/lib/training/fitness-trajectory');
-        const { recentWeeklyMileageMi } = await import('@/lib/runs/volume');
+        const { normalWeeklyMileage } = await import('@/lib/training/normal-window');
         const { runnerToday } = await import('@/lib/runtime/runner-tz');
         const todayISO = await runnerToday(userId);
-        const weeklyMi = await recentWeeklyMileageMi(userId).catch(() => null);
+        // RULE 8 · `assessGoal`'s volume caution asks what this runner NORMALLY
+        // runs in a week, so the taper and post-race recovery his own races
+        // prescribed are excluded rather than averaged in. A refusal lands as
+        // null — this parameter's existing "cannot say" — never as a zero.
+        const weeklyReading = await normalWeeklyMileage(userId, todayISO).catch(() => null);
+        const weeklyMi = weeklyReading && weeklyReading.ok ? weeklyReading.value : null;
         const anchorAgeDays = vdotAnchorDateISO
           ? Math.floor(
               (Date.parse(todayISO + 'T12:00:00Z') -

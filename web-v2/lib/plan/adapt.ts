@@ -69,6 +69,12 @@ import { pool } from '@/lib/db/pool';
 import { logReadFailure, rowsOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays, weeklyAvgFromWindow } from '@/lib/runs/volume';
+import {
+  loadPrescribedWindows,
+  normalTrainingDaySql,
+  normalWindowParams,
+  representativeDayCount,
+} from '@/lib/training/normal-window';
 // 2026-08-28 · the ONE pace-anchor authority. The adapter's evidence-kind
 // thresholds and the anchor cascade live in lib/training/pace-anchor.ts,
 // shared with the 07:30 self-heal (reanchor-plan.ts) so the two writers of
@@ -3954,6 +3960,26 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   // `chronic` is the 28 days ending where the acute window begins — separated
   // deliberately, so the week under judgement cannot inflate its own ceiling.
   // Research/15 §ACWR: acute_load_7d / chronic_load_28d.
+  // RULE 8 (2026-08-30) · the CHRONIC leg only. It is the baseline this
+  // detector calls "your usual {N}mi week" in the runner's own copy, so it is
+  // a habit claim and the taper and post-race recovery his races prescribed
+  // are not part of it. The ACUTE leg is deliberately NOT filtered: that week
+  // is the thing under judgement, and hiding a day he actually ran from the
+  // number that judges him would be a different lie.
+  //
+  // Direction of the defect this closes: `baseline = max(prescribed, chronic)`,
+  // so a taper-depressed chronic lowers the bar and the overshoot shave fires
+  // on a runner doing nothing but returning to his own normal volume — while
+  // the card tells him his usual week is the taper's.
+  //
+  // A failed window read REFUSES the finding rather than falling back to the
+  // unfiltered window. Returning `null` here means no overshoot trigger fires,
+  // which is the safe direction — it withholds a shave, it does not impose
+  // one — and it keeps the failure out of the detector loop, which has no
+  // catch of its own.
+  const ovNonNormal = await loadPrescribedWindows(userId, today).catch(() => null);
+  if (ovNonNormal == null) return null;
+  const { lo: ovNonNormalLo, hi: ovNonNormalHi } = normalWindowParams(ovNonNormal);
   const r = (await pool.query(
     `WITH dedup AS (
        SELECT (data->>'date')::date AS d,
@@ -3970,6 +3996,7 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
      ), chronic AS (
        SELECT COALESCE(SUM(mi), 0) AS mi FROM dedup
         WHERE d BETWEEN $2::date - 35 AND $2::date - 8
+          AND ${normalTrainingDaySql('d', 3, 4)}
      ), sched AS (
        SELECT COALESCE(SUM(pw.distance_mi), 0) AS mi
          FROM plan_workouts pw
@@ -3988,7 +4015,7 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
      SELECT vol.mi, chronic.mi AS chronic_mi, sched.mi AS scheduled_mi,
             mode.mode, mode.state_mode, p.experience_level
        FROM vol, chronic, sched, p LEFT JOIN mode ON TRUE`,
-    [userId, today]
+    [userId, today, ovNonNormalLo, ovNonNormalHi]
   )).rows[0];
   if (!r) return null;
   const lvl = (r.experience_level ?? 'intermediate') as ExperienceLevel;
@@ -4001,9 +4028,18 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   // collapse (COLD-2). Null then flows through as "no chronic floor", which
   // leaves the old prescription-only baseline in place for a cold-start
   // runner — the population the floor was never about.
+  // RULE 8, clause 1 · the divisor moves with the exclusion. Dropping the
+  // taper days from the numerator while still dividing by 28 would report the
+  // taper as a volume collapse rather than as absent — the same lie with an
+  // extra step — and here that lands as a LOWER baseline, which makes the
+  // shave fire more readily rather than less.
   const chronicCovered = await observableCoverageDays(userId, isoDaysBefore(today, 8), 28)
     .catch(() => 0);
-  const chronicWeeklyMi = weeklyAvgFromWindow(Number(r.chronic_mi ?? 0), chronicCovered, 28);
+  const chronicRepresentative = Math.min(
+    chronicCovered,
+    representativeDayCount(isoDaysBefore(today, 35), isoDaysBefore(today, 8), ovNonNormal),
+  );
+  const chronicWeeklyMi = weeklyAvgFromWindow(Number(r.chronic_mi ?? 0), chronicRepresentative, 28);
   const recoveryBlock = r.mode === 'recovery' || r.state_mode === 'recovery';
   if (overshootFires(mi, scheduledMi, cap, { chronicWeeklyMi, recoveryBlock })) {
     const prescribed = scheduledMi != null && scheduledMi >= 5 ? scheduledMi : cap;

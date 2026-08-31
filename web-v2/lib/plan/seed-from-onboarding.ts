@@ -69,6 +69,13 @@ import {
   vdotRunFloorMi, goalDistanceMiFromCode,
 } from '@/lib/training/vdot';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
+import {
+  loadPrescribedWindows,
+  normalTrainingDaySql,
+  normalWindowParams,
+  representativeDayCount,
+  MIN_REPRESENTATIVE_DAYS,
+} from '@/lib/training/normal-window';
 import { loadSettings } from '@/lib/coach/settings';
 import {
   HIST_AVG_MIDPOINTS,
@@ -685,21 +692,51 @@ async function persistMaintenancePlan(args: {
  * Same connected-data principle as the VDOT floor — use what we have instead of
  * dropping to the bare MPW floor. Null only when there's genuinely no run data.
  */
-async function deriveRunHistory(userId: string, cutoffISO: string): Promise<{
+async function deriveRunHistory(
+  userId: string,
+  cutoffISO: string,
+  todayISO: string,
+): Promise<{
   avgWeeklyMi: number | null;
   longestMi: number | null;
 }> {
-  const r = (await pool.query<{ avg_wk: string | null; longest: string | null }>(
-    `SELECT ROUND(SUM((data->>'distanceMi')::numeric) / 8.0, 1) AS avg_wk,
+  // RULE 8 (2026-08-30) · both numbers this returns are habit claims that go
+  // straight into the first plan — `avgWeeklyMi` sets the start of the volume
+  // ramp and `longestMi` sets the long-run floor. Rule 8's table names both
+  // failures by name: a block opened at 31 mi/wk off a 43.5 mi/wk runner, and
+  // a long-run ramp anchored to a 13.5 mi taper long instead of his 18.0.
+  //
+  // The divisor moves with the exclusion. It was a hardcoded `/ 8.0` — the
+  // nominal eight weeks — which is the shape clause 1 of the rule forbids:
+  // dropping the taper days from the numerator while leaving them in the
+  // denominator reports the taper as a collapse rather than as absent.
+  //
+  // Not swallowed to "no windows". A failed read would put this straight back
+  // on the contaminated window, which is the whole defect; the caller already
+  // handles a null history by falling to the self-report chips and then the
+  // MPW floor, which is the honest answer when we cannot say.
+  const nonNormal = await loadPrescribedWindows(userId, todayISO);
+  const representativeDays = representativeDayCount(cutoffISO, todayISO, nonNormal);
+  if (representativeDays < MIN_REPRESENTATIVE_DAYS) return { avgWeeklyMi: null, longestMi: null };
+  const { lo, hi } = normalWindowParams(nonNormal);
+  const r = (await pool.query<{ total: string | null; longest: string | null }>(
+    `SELECT ROUND(SUM((data->>'distanceMi')::numeric), 1) AS total,
             ROUND(MAX((data->>'distanceMi')::numeric), 1) AS longest
        FROM runs
       WHERE user_uuid = $1
         AND NOT (data ? 'mergedIntoId')
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2`,
-    [userId, cutoffISO],
-  ).catch(() => ({ rows: [] as Array<{ avg_wk: string | null; longest: string | null }> }))).rows[0];
+        AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) >= $2
+        AND ${normalTrainingDaySql(
+          `COALESCE(data->>'date', LEFT(data->>'startLocal',10))`, 3, 4,
+        )}`,
+    [userId, cutoffISO, lo, hi],
+  ).catch(() => ({ rows: [] as Array<{ total: string | null; longest: string | null }> }))).rows[0];
+  const total = r?.total != null ? Number(r.total) : null;
+  const avgWeeklyMi = total != null && total > 0
+    ? Math.round((total / (representativeDays / 7)) * 10) / 10
+    : null;
   return {
-    avgWeeklyMi: r?.avg_wk != null && Number(r.avg_wk) > 0 ? Number(r.avg_wk) : null,
+    avgWeeklyMi,
     longestMi: r?.longest != null && Number(r.longest) > 0 ? Number(r.longest) : null,
   };
 }
@@ -736,7 +773,7 @@ export async function seedMaintenancePlanFromOnboarding(
   // actual runs (last 8 weeks) rather than dropping to the bare MPW floor —
   // same connected-data principle as the VDOT read.
   const sr = midpoints(goals);
-  const derived = await deriveRunHistory(userId, addDays(today, -56));
+  const derived = await deriveRunHistory(userId, addDays(today, -56), today);
   const historyAvgWeeklyMi = sr.historyAvgWeeklyMi ?? derived.avgWeeklyMi;
   const historyLongestRecentMi = sr.historyLongestRecentMi ?? derived.longestMi;
   const historySource = sr.historyAvgWeeklyMi != null ? 'self_report'

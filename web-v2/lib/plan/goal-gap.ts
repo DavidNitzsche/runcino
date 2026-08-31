@@ -27,7 +27,7 @@
 import { pool } from '@/lib/db/pool';
 import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
 import { diagnoseLimiter, type LimiterRead, type PerformancePoint } from '@/lib/coach/limiter';
-import { recentWeeklyMileageMi } from '@/lib/runs/volume';
+import { normalWeeklyMileage } from '@/lib/training/normal-window';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { vdotFromRace, goalDistanceMiFromCode, parseRaceTime } from '@/lib/training/vdot';
 import { closableSecPerWeek } from '@/lib/training/vdot-gain-rate';
@@ -206,7 +206,26 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
 
   // Measured weekly volume · one read, two consumers (the limiter's volume
   // signal and the assessment's volume caution).
-  const recentWeeklyMi = await recentWeeklyMileageMi(userUuid).catch(() => null);
+  //
+  // RULE 8 (2026-08-30) · both consumers ask a HABIT question — "is this
+  // runner's normal volume too low for the distance he has entered" — so this
+  // reads `normalWeeklyMileage`, not `recentWeeklyMileageMi`. The raw 28-day
+  // mean is the right number for a drift check ("how much did he run") and the
+  // wrong one here: measured the fortnight after a half marathon it reports
+  // the taper the engine itself prescribed and then blames him for it.
+  //
+  // The per-finding guard already in `composeCautions` is not enough on its
+  // own, and that is the point of the rule. It suppresses the caution while
+  // the runner is INSIDE the taper; a week after the recovery block closes,
+  // `inTaperOrRaceWeek` is false again while the 28-day mean is still almost
+  // entirely taper, and the caution fires off a number that was never his.
+  //
+  // A refusal becomes `null`, which is this parameter's existing "cannot say"
+  // — the same channel a cold-start runner uses — and is checked by every
+  // consumer before it speaks. It is NOT zero: `composeCautions` would read a
+  // zero as a real volume and stay silent for the opposite reason.
+  const weeklyReading = await normalWeeklyMileage(userUuid, todayISO).catch(() => null);
+  const recentWeeklyMi = weeklyReading && weeklyReading.ok ? weeklyReading.value : null;
 
   // 6. Limiter · WHY the runner is short, not just by how much. Best-effort:
   //    a failure here degrades whatClosesIt, it never blocks the gap.

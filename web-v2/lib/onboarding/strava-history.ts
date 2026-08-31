@@ -20,6 +20,13 @@
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
+import {
+  isPrescribedNonNormal,
+  loadPrescribedWindows,
+  representativeDayCount,
+  MIN_REPRESENTATIVE_DAYS,
+  type PrescribedWindow,
+} from '@/lib/training/normal-window';
 
 export interface StravaOnboardingHistory {
   avgWeeklyMi: number;
@@ -49,14 +56,36 @@ export async function loadStravaHistoryForOnboarding(
     return null;
   }
 
-  const runDays = Array.from(canonicalDays.entries()).filter(([, v]) => v.mi >= 0.5);
+  // RULE 8 (2026-08-30) · `avgWeeklyMi` and `longestRecentMi` below prefill
+  // the onboarding volume chips, which seed `weeklyAvg4w` and the plan's
+  // peak-long floor — the two numbers Rule 8's table names as having opened a
+  // marathon block at 31 mi/wk and anchored a long-run ramp to a taper long.
+  // A runner onboarding for the first time has no `races` rows and gets an
+  // empty window list, so this changes nothing for them; a runner who raced
+  // under us and is re-onboarding is exactly the case it exists for.
+  let nonNormal: PrescribedWindow[];
+  try {
+    nonNormal = await loadPrescribedWindows(userUuid, todayISO);
+  } catch {
+    // Same posture as the read above: without the filter we cannot answer the
+    // habit question honestly, and prefilling a chip off a possibly-tapered
+    // window is worse than leaving the runner to type his own number.
+    return null;
+  }
+
+  const runDays = Array.from(canonicalDays.entries())
+    .filter(([, v]) => v.mi >= 0.5)
+    .filter(([iso]) => !isPrescribedNonNormal(iso, nonNormal));
   if (runDays.length < LIGHT_HISTORY_MIN_RUNS) return null;
 
-  // Weekly avg · sum mi / weeks in window. We use 8 weeks as denominator
-  // (the lookback window) rather than weeks-with-runs, so the number
-  // honestly reflects ALL the runner's running cadence.
+  // Weekly avg · sum mi / representative weeks. The denominator is the days
+  // that SURVIVED the filter, not the nominal 8 weeks: excluding a third of
+  // the window and then dividing by the whole window reports the taper as a
+  // volume collapse instead of reporting it as absent (RULE 8, clause 1).
   const totalMi = runDays.reduce((s, [, v]) => s + v.mi, 0);
-  const weeks = LOOKBACK_DAYS / 7;
+  const representativeDays = representativeDayCount(startISO, todayISO, nonNormal);
+  if (representativeDays < MIN_REPRESENTATIVE_DAYS) return null;
+  const weeks = representativeDays / 7;
   const avgWeeklyMi = Math.round((totalMi / weeks) * 10) / 10;
 
   // Longest single-day mileage in window · drives the peakLongRunMi floor

@@ -23,6 +23,12 @@ import { rowOrNull } from '@/lib/db/read';
 import { pgDayKey } from '@/lib/runtime/day-key';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, isoDaysBefore } from '@/lib/runs/volume';
+import {
+  loadPrescribedWindows,
+  normalTrainingDaySql,
+  normalWindowParams,
+  type PrescribedWindow,
+} from '@/lib/training/normal-window';
 import type { RunnerCalibrationLike } from '@/lib/plan/simulator';
 
 export type DataQuality = 'cold-start' | 'building' | 'calibrated';
@@ -233,10 +239,21 @@ export async function refreshRunnerCalibration(userUuid: string): Promise<Runner
     :                                           'cold-start';
 
   // Compute the medians + recovery + ceiling
-  const easyMed = await medianDailyMi(userUuid, 3, 9, 14);
-  const longMed = await medianDailyMi(userUuid, 10, 30, 14);
-  const qualityMed = await medianDailyMi(userUuid, 4, 12, 14);
-  const volumeCeiling = await peakWeekMi(userUuid, 28);
+  //
+  // RULE 8 (2026-08-30) · every number below is a HABIT claim — "the distance
+  // this runner's easy days normally are", "the biggest week he normally
+  // holds" — persisted into a row literally called the runner's learned state.
+  // Read raw, a 14-day easy median taken the week after a half marathon is the
+  // taper's 4 mi and a 28-day peak week is the taper's peak, and the engine
+  // then treats both as who he is. The windows this runner's own races
+  // prescribed are excluded, once, here, and passed to both readers so the
+  // four numbers agree about which days were his.
+  const calToday = await runnerToday(userUuid);
+  const nonNormal = await loadPrescribedWindows(userUuid, calToday);
+  const easyMed = await medianDailyMi(userUuid, 3, 9, 14, nonNormal);
+  const longMed = await medianDailyMi(userUuid, 10, 30, 14, nonNormal);
+  const qualityMed = await medianDailyMi(userUuid, 4, 12, 14, nonNormal);
+  const volumeCeiling = await peakWeekMi(userUuid, 28, nonNormal);
 
   // For now · keep VDOT response curves from the experience-level
   // defaults until we have enough data to actually learn them.
@@ -284,11 +301,16 @@ async function medianDailyMi(
   minMi: number,
   maxMi: number,
   daysBack: number,
+  nonNormal: readonly PrescribedWindow[],
 ): Promise<number | null> {
   // Phase B · one canonical dedup. A dupe would add a second identical distance
   // into the percentile. +1d slack ⊇ the NOW()-based SQL window.
   const mToday = await runnerToday(userUuid);
   const canonicalIds = await getCanonicalRunIds(userUuid, isoDaysBefore(mToday, daysBack + 1), mToday);
+  // RULE 8 · the SQL half of the taper/recovery filter. Excluded, not widened:
+  // reaching back 90 days instead of 14 would still hold the taper, it would
+  // only dilute it. See lib/training/normal-window.ts.
+  const { lo, hi } = normalWindowParams(nonNormal);
   const r = (await pool.query<{ med: string | null }>(
     `WITH runs_in_range AS (
        SELECT (data->>'distanceMi')::numeric AS mi
@@ -298,16 +320,23 @@ async function medianDailyMi(
           AND (data->>'distanceMi')::numeric BETWEEN $2 AND $3
           AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10))::text
               >= (NOW() - ($4 || ' days')::interval)::date::text
+          AND ${normalTrainingDaySql(
+            `COALESCE(data->>'date', LEFT(data->>'startLocal', 10))`, 6, 7,
+          )}
      )
      SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY mi)::text AS med
        FROM runs_in_range`,
-    [userUuid, minMi, maxMi, daysBack, canonicalIds],
+    [userUuid, minMi, maxMi, daysBack, canonicalIds, lo, hi],
   ).catch(() => ({ rows: [{ med: null }] }))).rows[0];
   const m = Number(r?.med);
   return Number.isFinite(m) && m > 0 ? Math.round(m * 2) / 2 : null;
 }
 
-async function peakWeekMi(userUuid: string, daysBack: number): Promise<number | null> {
+async function peakWeekMi(
+  userUuid: string,
+  daysBack: number,
+  nonNormal: readonly PrescribedWindow[],
+): Promise<number | null> {
   // 2026-06-03 · runner TZ anchors the lookback.
   const today = await runnerToday(userUuid);
   // 2026-08-24 · swallowed-failure sweep · `$3::date - $2` left `$2` with no
@@ -319,6 +348,10 @@ async function peakWeekMi(userUuid: string, daysBack: number): Promise<number | 
   //
   // Sibling of the `date_iso` family — a comparison that only fails once real
   // parameters arrive, so nothing static ever saw it.
+  // RULE 8 · a taper week must not be able to WIN this MAX, and — the worse
+  // direction — a window that is nothing but taper must not set a low ceiling
+  // and call it the runner's capacity. Excluded, not widened.
+  const { lo, hi } = normalWindowParams(nonNormal);
   const r = await rowOrNull<{ peak: string | null }>(
     'coach/runner-calibration · peakWeekMi',
     pool.query<{ peak: string | null }>(
@@ -331,13 +364,14 @@ async function peakWeekMi(userUuid: string, daysBack: number): Promise<number | 
         WHERE user_uuid = $1::uuid
           AND NOT (data ? 'mergedIntoId')
           AND (data->>'date')::date >= $3::date - $2::int
+          AND ${normalTrainingDaySql(`data->>'date'`, 4, 5)}
         GROUP BY 1
      ), weekly AS (
        SELECT DATE_TRUNC('week', d) AS wk, SUM(mi) AS mi
          FROM per_day GROUP BY wk
      )
      SELECT MAX(mi)::text AS peak FROM weekly`,
-      [userUuid, daysBack, today],
+      [userUuid, daysBack, today, lo, hi],
     ),
   );
   // null covers both "the read failed" and "no weeks on record". Both are

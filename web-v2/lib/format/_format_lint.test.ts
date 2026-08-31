@@ -211,6 +211,8 @@ const ALLOW: Record<string, string> = {
     "TRAINING-ENGINE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
   "lib/training/goal-projection.ts":
     "TRAINING-ENGINE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
+  "lib/training/normal-window.ts":
+    "Same case as lib/plan/sim-inputs.ts: the `Math.round(x*10)/10` is `normalWeeklyMileage` reproducing `weeklyAvgFromWindow`'s and `mileageByDay`'s own 0.1-mi rounding, because it is the RULE 8 twin of `recentWeeklyMileageMi` and the two must be byte-identical wherever the filter excludes nothing. Engine arithmetic standing in for a database read, not a rendered number — nothing this module returns is printed; callers hand it to the plan engine.",
   "lib/training/prescriptions.ts":
     "TRAINING-ENGINE · an open-coded `Math.round(x*10)/10` (the poster rounding) and a clock split before rounding (prints `6:60`). Queued; not on the poster/recap path where the split was visible.",
   "lib/training/vdot.ts":

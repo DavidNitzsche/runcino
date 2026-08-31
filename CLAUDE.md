@@ -335,6 +335,39 @@ measures habit — frequency, typical distance, typical intensity, typical
 anything — it is on you to apply the filter and to say in the code comment which
 window you excluded and why.
 
+**The filter, and the gate (2026-08-30).** There is now ONE definition, so no
+reader has to get this right on its own:
+
+- `web-v2/lib/training/normal-window.ts` — the shared filter. Two shapes,
+  because readers need both: `isPrescribedNonNormal` /
+  `excludePrescribedDays` / `representativeDayCount` for code that already
+  holds the rows, and `NORMAL_TRAINING_DAY_SQL` (via `normalTrainingDaySql` +
+  `normalWindowParams`) for readers that filter in the query — one exported
+  constant with a doc comment, modelled on `CANONICAL_ROW_SQL`. It REUSES the
+  doctrine numbers rather than re-deriving them: `TAPER_WEEKS_BY_DISTANCE`
+  (which `TAPER.trajectory-build-weeks` already pins to
+  `BLOCK_SHAPE[cat].taperWeeks` literal-for-literal in CI) and
+  `postRaceRecoveryWeeks`. `normalWeeklyMileage` is the habit twin of
+  `recentWeeklyMileageMi`; the two are separate functions on purpose, so a
+  call site has to say which question it is asking.
+- The refusal is a TYPE, not a number. `NormalReading<T>` is a discriminated
+  union whose refusal branch carries no `value` field at all, so
+  `reading.value` does not compile until the caller has branched. That is the
+  clause the one-quality-day defect broke: a zero because the plan prescribed
+  recovery and a zero because the runner is detrained are opposite facts.
+- `web-v2/lib/audit/normal-window-registry.ts` +
+  `_normal_window_scan.test.ts` + `scripts/check-normal-window.sh` (wired into
+  `web-v2` `prebuild`, so it blocks a Railway deploy). A scanner finds SQL that
+  aggregates the runner's own `runs` over a rolling window and demands the
+  filter or an argued exemption; a curated registry carries the readers the
+  scanner cannot see, because they aggregate in TypeScript. Both allowlists are
+  ratchets, a stale exemption fails until deleted, and a scanner-liveness probe
+  fails loudly rather than reporting clean if the predicate stops matching.
+- `lib/plan/generate.ts` is recorded in `NORMAL_WINDOW_HANDOFF`, NOT as an
+  exemption — there is no argument its four readers are right. It is pinned to
+  its exact finding count, so a fifth offender fails the build and the repair
+  landing fails it too, which forces the entry to be deleted.
+
 ---
 
 ## Rule 9 · A hair's difference in input must never produce a categorically different plan (locked 2026-08-30)

@@ -49,7 +49,7 @@ import { assessGoal } from '@/lib/training/goal-assessment';
 import { computeGoalProjection } from '@/lib/training/goal-projection';
 import { resolveRaceProjection } from '@/lib/training/race-projection';
 import { taperWeeksForDistance } from '@/lib/training/fitness-trajectory';
-import { recentWeeklyMileageMi } from '@/lib/runs/volume';
+import { normalWeeklyMileage } from '@/lib/training/normal-window';
 import { selectionAuthority, authorityTier, type AuthorityTier } from '@/lib/race/effort-authority';
 import { resolveCourseElevation, type ResolveCourseElevationInput } from '@/lib/race/course-elevation';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
@@ -319,7 +319,13 @@ async function handleGET(req: NextRequest) {
       const goalDateISO = nextA.date;
 
       const { vdot, anchorDateISO, anchorDistanceMi } = await loadLatestVdotWithAnchor(userId);
-      const weeklyMi = await recentWeeklyMileageMi(userId).catch(() => null);
+      // RULE 8 · `assessGoal`'s volume caution is a HABIT question, so the
+      // taper and post-race recovery windows this runner's own races
+      // prescribed are excluded rather than diluted into a 28-day mean. A
+      // refusal lands as null — the parameter's existing "cannot say" — and
+      // never as a zero, which the caution would read as a real volume.
+      const weeklyReading = await normalWeeklyMileage(userId, todayISO).catch(() => null);
+      const weeklyMi = weeklyReading && weeklyReading.ok ? weeklyReading.value : null;
       const anchorAgeDays = anchorDateISO
         ? Math.floor((Date.parse(todayISO + 'T12:00:00Z') - Date.parse(anchorDateISO.slice(0, 10) + 'T12:00:00Z')) / 86400000)
         : null;
