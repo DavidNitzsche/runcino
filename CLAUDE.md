@@ -337,6 +337,135 @@ window you excluded and why.
 
 ---
 
+## Rule 9 · A hair's difference in input must never produce a categorically different plan (locked 2026-08-30)
+
+**If two adjacent inputs a tenth of a mile apart produce plans that differ in
+kind rather than degree, that is a defect, not a boundary.**
+
+The apparatus could not see this class at all. As the gate audit put it: *every
+gate samples the output space at POINTS and asks whether each point is legal.
+That is precisely the check a discontinuity passes, because both sides of a
+cliff are legal plans. Nothing sampled the derivative.* 11,598 archetypes pass
+either side of every cliff below.
+
+Found in one evening, all verified:
+
+| Site | The cliff |
+|---|---|
+| `resolveRampBase` `lifted` | `0.70 × sustained > mean` switched the whole three-week return ladder on or off. The owner sat 1.15 mi from it — and **the good week he had just run is what pushed him to the worse side** |
+| `interruptionWeeks` | An entire BASE phase appears or disappears on **0.20 mi/wk** |
+| `generate.ts:3489` long sizing | Two different formulas. Peak 36.3 → 14 mi long; peak **36.5 → 12 mi long**. More volume, shorter long run |
+| `achievable-target.ts:196` | A goal at 95.1% of ceiling is prescribed at the goal; at 94.9%, at the ceiling. **Being slightly more ambitious buys a ~25 s/mi slower race pace** |
+| `generate.ts:9896` taper restore | 88.2% of target stays; 87.9% is lifted to 100%. Non-monotonic |
+
+Note the recurring signature: **the fitter runner gets the worse plan.** Any
+time you find that, you have found one of these.
+
+**To comply:** a behaviour may be discrete (a phase exists or it does not), but
+the DECISION must not hinge on a hair. Use hysteresis, or a more robust input,
+or interpolate. Widening a tolerance around the same threshold relocates the
+cliff, it does not remove it.
+
+**Enforcement:** `_restore_continuity.test.ts` and `_coach_sensible.test.ts`
+walk a synthetic runner across each boundary in small increments and assert the
+output vector moves continuously and monotonically. **Any new behavioural switch
+derived from comparing two computed quantities gets a walk.** Both were falsified
+against the unfixed engine before landing.
+
+---
+
+## Rule 10 · A persisted derived value carries its anchor, or it is recomputed (locked 2026-08-30)
+
+**A value derived from a physiological anchor — LTHR, HRmax, VDOT, threshold
+pace — that is written to a row and read back as authoritative MUST either carry
+the anchor it was computed from, or be recomputed at read time.**
+
+Every existing guard is blind to this by construction. `lib/runs/derived-registry.ts`
+has nine families and all nine ask whether a row agrees with ITSELF.
+`reconcileHrZones` asks whether five numbers sum to 100. **A stale distribution
+is internally perfect — that is exactly why it survives.**
+
+What it cost: `runs.data.hrZonePcts` was frozen at LTHR 162, so an easy 13.5-mile
+long run displayed **60% Zone 5** and kept displaying it after the anchor moved to
+168 (correct value: 27%). `plan_workouts.workout_spec.hr_cap_bpm` freezes at
+authoring across 666 rows; worse, `recompute-paces.ts` reads the frozen
+`authored_state.lthr_bpm` rather than `profile.lthr`, so the mechanism meant to
+keep a plan current **re-cements the staleness**. `users.max_hr` holds 181 from a
+single 2025 sample while the live resolver returns 180.
+
+**To comply:** stamp `{anchor, value, at}` beside the derivation, and at read
+time pick one of three postures explicitly — **recompute** (where the inputs
+survive), **refuse or label**, or **exempt with an argued reason** (freezing is
+sometimes the intent: a watch heat-easing band records what the wrist actually
+held, and re-deriving it would be the bug).
+
+**Enforcement:** to build, as a sibling of `check-doctrine.sh` — scan for writes
+of a derivation into a persisted column and fail any site with no stamp and no
+declared posture. `resolveHrZoneShares` in `lib/coach/hr-zone-bucket.ts` is the
+worked example of the recompute posture.
+
+---
+
+## Rule 11 · "Don't know", "measured zero" and "the read failed" are three facts, never one (locked 2026-08-30)
+
+**Code that collapses them has thrown away the only thing that mattered.**
+
+This is Rule 8's corollary generalised, and it is the single most productive bug
+shape in this codebase:
+
+- `recentQualityPerWeek` returned a real, correct **0** — the runner had been in
+  a prescribed recovery block. `generate.ts` coerced it to `undefined`, the
+  caller read that as "no signal", and answered with **full quality density**.
+  The safest possible reading of the data produced the most aggressive plan.
+- `easyDayMedianMi` swallows a failed read and returns `0`, which silently
+  disables the easy-day floor. Its sibling `recentQualityDistanceMi` did the same
+  and, by its own header comment, *"the Rule 2 floor never fired since it shipped."*
+- `profile.weekly_frequency` NULL — for **8 of 16 production profiles** — reads
+  as "legacy, fill every slot" and silently disables **thirteen** mechanisms,
+  including the per-easy-day floor and the per-day quality ceiling. The day count
+  came out right by accident, so nothing looked wrong.
+
+**To comply:** a reader returns a value, an explicit "no data", or an explicit
+failure — three states, distinguishable downstream. **A missing input must never
+silently disable a safety mechanism**; if a guard cannot run, that is a refusal
+worth surfacing, not a default worth assuming. Ask *why* a number is low or
+absent before spending it.
+
+**Enforcement:** `check-swallowed-failure.sh` and its ratcheted
+`EMPTIED_BASELINE` cover the catch-and-return-empty half. The coercion half —
+`x > 0 ? x : undefined` over a legitimately-zero measurement — is not yet gated
+and should be.
+
+---
+
+## Rule 12 · Easy running is sized before quality, never with the remainder (locked 2026-08-30)
+
+**A week is built by giving easy days their doctrine-correct duration first and
+fitting quality into what remains — not the reverse.**
+
+This is the rule the whole audit started from. The engine sized the long run and
+the quality sessions, then divided the leftovers among the easy days, and handed
+a 3:00-goal marathoner **2-mile easy days** — half his own measured easy day.
+The floor existed, was computed correctly, and lost every time:
+`flooredPerEasy = Math.min(effectiveFloor, perEasyBudgetCap)`.
+
+The runner's verdict, which is the standard: *"a 3 mile easy run for marathon
+training seems incredibly short."*
+
+**To comply:** price an easy day in MINUTES at the runner's own easy pace, not in
+miles — `Research/00a` §1 gives 20-75 min for easy/recovery and §2 gives 40-75
+for general aerobic, and 3 miles is a real run for one runner and a warm-up for
+another. Vary them: a week has a short recovery day after the long run and longer
+aerobic days elsewhere. Four identical easy days is a template, not a plan, and
+CLAUDE.md already requires composition to be state-driven. If quality will not
+fit once easy running is honest, the week is over-prescribed — cut quality, not
+the aerobic base.
+
+**Enforcement:** `lib/plan/_coach_sensible.test.ts`, which fires on exactly this
+and is deliberately red while it is open.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
