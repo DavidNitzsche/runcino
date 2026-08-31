@@ -358,6 +358,8 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
  * feature is not.
  */
 export const MODULE_ORPHANS: Record<string, string> = {
+  'web-v2/lib/adaptation/_shadow_run_absorption_split.script.ts':
+    'A one-off diagnostic tool, not runtime code and not a `.test.ts` the default vitest include glob would pick up (its own header explains why: it needs the real production DB, read-only, the way lib/adaptation-harness does but without the write-safety fence, since it never mutates). Invoked directly via `npx vitest run --config vitest.shadow-run.config.ts`, which is the only caller by design — it exists to produce docs/reports/absorption-reader-split-2026-09-01.md\'s per-case diffs and Rule 9 continuity walk, a task done once for that report, not a mechanism anything else should import. Kept rather than deleted so the report\'s numbers stay reproducible against a later account state, matching the posture of the adaptation-harness scripts above it.',
   'web-v2/lib/adaptation-harness/fence.ts':
     'A GATE, and the one that keeps the other four safe. It is the write-safety fence for the adaptation harness (CLAUDE.md Rule 21): a pure predicate over DATABASE_URL plus an assertion that throws unless the connection string is loopback AND names the harness\'s own local scratch database. Every other module in the directory calls assertHarnessDatabase() at module scope before importing the pool, and lib/adaptation-harness/falsify.harness.test.ts drives it against a production-shaped URL and asserts it refuses. Runtime code must never import it — a fence something in production consults is a fence something in production can be made to answer differently.',
   'web-v2/lib/adaptation-harness/substrate.ts':
@@ -398,16 +400,15 @@ export const MODULE_ORPHANS: Record<string, string> = {
   // corroboration bar — which is the wiring its own entry said it was waiting
   // for.
   //
-  // `adaptation-engine.ts` and `load-adaptation-engine.ts` LEFT THIS LIST
-  // 2026-09-01 (docs/PRODUCT_DECISIONS.md §2, PACE-only shadow-compare
-  // authorization). `lib/adaptation/shadow-compare.ts` now imports both for
-  // real, and `app/api/cron/run-adaptations/route.ts` calls it every eligible
-  // cycle — a genuine live caller, not a test or an unmounted probe. This is
-  // exactly the wiring their prior entries here said was the NEXT phase.
-  // Still true and worth stating: this is READ-ONLY wiring (PACE proposals,
-  // zero plan mutation) — retiring the overlapping detectors in
-  // lib/plan/adapt.ts and any live-authority promotion remain separate,
-  // future, explicitly-gated decisions.
+  // `adaptation-engine.ts` and `load-adaptation-engine.ts` LEFT THIS LIST too,
+  // for the same reason as the Evidence Engine above: `shadow-compare.ts`
+  // (docs/PRODUCT_DECISIONS.md 2026-09-01 §2/§3) now calls them for real, from
+  // the run-adaptations cron route, to compare the engine's own proposal
+  // against live behavior without mutating anything. That is a genuine
+  // non-test importer, so the entries are stale rather than deliberate — the
+  // Adaptation Engine's PROMOTION to the live mutation path is still a
+  // separate, held decision, but "is anything besides a test reaching this
+  // file" is a different question, and the answer to that one changed.
   'web-v2/lib/plan/core.ts':
     'Stranded by block-preview. The shared id()/addDays()/mondayOf() primitives were extracted so the three plan builders stay drift-free; the extraction landed and the other builders never switched over. Dies or lives with block-preview.',
   'web-v2/lib/coach/strength-recommender.ts':
