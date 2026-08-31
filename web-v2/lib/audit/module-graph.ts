@@ -29,6 +29,8 @@ export interface ModuleGraph {
 
 const SOURCE_EXT = ['.ts', '.tsx', '.mts', '.mjs', '.js', '.jsx'];
 
+export { SOURCE_EXT };
+
 function walk(dir: string, out: string[] = []): string[] {
   let entries: fs.Dirent[];
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
@@ -42,8 +44,131 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** The recursive source-file walk, for callers that need their own graph shape. */
+export function walkSourceFiles(dir: string): string[] {
+  return walk(dir, []);
+}
+
+/**
+ * Strip comments before looking for imports.
+ *
+ * `buildModuleGraph` below does NOT do this and can afford not to: an extra
+ * edge only makes a module look MORE alive, which is the safe direction for an
+ * orphan hunt. The client-graph walk has the opposite polarity — a phantom edge
+ * fails a build — and this repo is the worst possible place to skip it. The
+ * header of `lthr-reanchor.ts`, the commit message that fixed the incident and
+ * the header of this very file all contain the literal text
+ * `await import('@/lib/db/pool')` inside prose. Uncommented, the gate would
+ * report the file that DOCUMENTS the bug as committing it.
+ *
+ * Whole-line `//` only. A trailing `// note` cannot invent an import (the real
+ * one on that line is already matched), while stripping from any `//` would
+ * swallow the tail of a line holding `'https://…'`.
+ */
+export function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+}
+
+export interface ImportEdge {
+  /** The specifier exactly as written. */
+  spec: string;
+  /** Repo-absolute path, or null for a package / unresolvable specifier. */
+  resolvedAbs: string | null;
+  /**
+   * True when TypeScript erases the edge entirely — `import type {…}`,
+   * `export type {…}`, or a brace clause whose every specifier is inline
+   * `type`. An erased edge is NOT a bundled edge, and treating it as one is
+   * how a gate flags `import type { PoolClient } from 'pg'` as shipping a
+   * database to the browser. Fourteen modules here carry exactly that import.
+   */
+  typeOnly: boolean;
+  /**
+   * `await import('…')` or `require('…')`. Still a bundled edge — this is the
+   * whole reason the incident was invisible to a human reading the file — but
+   * worth reporting distinctly, because it is the shape that hides.
+   */
+  dynamic: boolean;
+}
+
+const STATIC_IMPORT_RE =
+  /(?:^|[\s;}()])(?:import|export)\s+(type\s+)?((?:[^'"]*?)\sfrom\s*)?['"]([^'"\n]+)['"]/g;
+const DYNAMIC_IMPORT_RE =
+  /(?<![\w.$])(?:import|require)\s*\(\s*['"]([^'"\n]+)['"]\s*\)/g;
+
+/**
+ * `import('…')` is TWO different things that share a spelling.
+ *
+ *   const { pool } = await import('@/lib/db/pool');            ← a bundled edge
+ *   kind: import('@/lib/coach/adaptation-info').AdaptationKind ← erased entirely
+ *
+ * The second is TypeScript's import-TYPE syntax, and it is everywhere in this
+ * codebase's prop types. On the first run of the client-graph gate it produced
+ * all ten findings — `components/faff-app/constants.ts` and `types.ts` each
+ * annotate one field with a type pulled from a module that does touch the
+ * database, and every client view imports them. Ten false positives on a tree
+ * whose build is green, which is precisely how a gate earns a reputation for
+ * noise and stops being read.
+ *
+ * The discriminator: an import-type is a member access — `import('x').Foo` —
+ * and is never awaited. A value import is awaited, or continues as a promise.
+ */
+function dynamicImportIsTypePosition(before: string, after: string): boolean {
+  if (/\bawait\s*$/.test(before)) return false;
+  if (/\btypeof\s*$/.test(before)) return true;
+  if (/^\s*\.\s*(then|catch|finally)\b/.test(after)) return false;
+  return /^\s*\.\s*[A-Za-z_$]/.test(after);
+}
+
+/** Every `{ a, b }` specifier is inline-`type`, so the whole clause is erased. */
+function clauseIsAllInlineType(clause: string): boolean {
+  const braces = clause.match(/\{([^}]*)\}/);
+  if (!braces) return false;
+  // A default or namespace binding alongside the braces is a value edge.
+  const beforeBrace = clause.slice(0, clause.indexOf('{')).trim();
+  if (beforeBrace.replace(/,$/, '').trim() !== '') return false;
+  const parts = braces[1].split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return false;
+  return parts.every((p) => /^type\s+\S/.test(p));
+}
+
+/**
+ * Every import edge out of one source file, comment-stripped, classified.
+ *
+ * The two properties that matter, both learned from the incident this feeds:
+ * dynamic imports are followed, and type-only imports are not.
+ */
+export function parseImportEdges(
+  src: string,
+  fromAbs: string,
+  webRoot: string,
+): ImportEdge[] {
+  const code = stripComments(src);
+  const edges: ImportEdge[] = [];
+  const seen = new Set<string>();
+  const push = (spec: string, typeOnly: boolean, dynamic: boolean) => {
+    const key = `${spec}|${typeOnly}|${dynamic}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push({ spec, typeOnly, dynamic, resolvedAbs: resolveSpecifier(spec, fromAbs, webRoot) });
+  };
+  for (const m of code.matchAll(STATIC_IMPORT_RE)) {
+    const typeKeyword = Boolean(m[1]);
+    const clause = m[2] ?? '';
+    push(m[3], typeKeyword || clauseIsAllInlineType(clause), false);
+  }
+  for (const m of code.matchAll(DYNAMIC_IMPORT_RE)) {
+    const start = m.index ?? 0;
+    const before = code.slice(Math.max(0, start - 16), start);
+    const after = code.slice(start + m[0].length, start + m[0].length + 24);
+    push(m[1], dynamicImportIsTypePosition(before, after), true);
+  }
+  return edges;
+}
+
 /** Resolve a specifier the way `tsconfig` `paths: {"@/*": ["./*"]}` and node do. */
-function resolveSpecifier(spec: string, fromAbs: string, webRoot: string): string | null {
+export function resolveSpecifier(spec: string, fromAbs: string, webRoot: string): string | null {
   let base: string;
   if (spec.startsWith('@/')) base = path.join(webRoot, spec.slice(2));
   else if (spec.startsWith('.')) base = path.resolve(path.dirname(fromAbs), spec);
