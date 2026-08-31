@@ -6,6 +6,7 @@ import type { FaffSeed, GoalRace, PlanProposalSeed } from '@/components/faff-app
 import type { CoachLogKind } from '@/lib/coach/coach-log';
 import { parseRaceTime } from '@/lib/training/vdot';
 import { resolveGoalStatus, formatGapClock, type GoalStatusRead } from '@/lib/faff/goal-status';
+import { isGoalOutlookKind } from '@/lib/plan/goal-immutability';
 import { Tile } from '@/components/redesign/core/Tile';
 import { Badge } from '@/components/redesign/core/Badge';
 import { Button } from '@/components/redesign/core/Button';
@@ -48,7 +49,7 @@ import { FaffChartRegistrar } from '@/components/redesign/graphics/FaffChartRegi
  * goal-projection story exist" — so this file forks on `seed.goalRace`
  * itself (NoGoalSeason below) and then guards each panel independently on
  * the specific real field it needs (trajectory / confidenceLabel /
- * driftSignals / a pending goal_renegotiation proposal), per CLAUDE.md's
+ * driftSignals / a pending goal-outlook note), per CLAUDE.md's
  * per-finding context-filter rule: a parent guard doesn't protect every
  * child element, each one applies its own.
  *
@@ -63,11 +64,10 @@ import { FaffChartRegistrar } from '@/components/redesign/graphics/FaffChartRegi
  *     goal race's distance. Same field TodayClient's "Projected finish"
  *     chart already reads.
  *   · seed.planProposals — the SAME pending-proposal list TargetsView and
- *     TrainView read to find a pending `goal_renegotiation` (see
- *     lib/plan/goal-renegotiation.ts). When one is pending, the hero
- *     CoachDecision wires REAL Hold/Move buttons to the exact endpoints
- *     TargetsView's GoalRenegotiationCard uses — see the "CoachDecision
- *     data source" note below.
+ *     TrainView read to find a pending goal-outlook note (see
+ *     lib/plan/goal-outlook.ts). When one is pending, the hero
+ *     CoachDecision renders it as a NOTICE with one KEEP — see the
+ *     "CoachDecision data source" note below.
  *   · seed.coachLog — the real coach's-log feed (lib/coach/coach-log.ts),
  *     already computed into the seed (loadCoachLog(userId, {limit:8})).
  *     Feeds LogEntry directly — no new plumbing needed.
@@ -76,25 +76,28 @@ import { FaffChartRegistrar } from '@/components/redesign/graphics/FaffChartRegi
  *   · seed.health.vdotAnchor — real VDOT provenance (ageDays/tier), feeds
  *     the Confidence metric's foot label.
  *
- * ── CoachDecision data source (the task's flagged open question) ──
- * WebSeason.jsx's CoachDecision ("Hold the goal / Move the goal / Decide
- * later", footer "if you move it, here is the band") is NOT a fabricated
- * flow — it maps 1:1 onto a real, already-shipped mechanism:
- * lib/plan/goal-renegotiation.ts writes a pending `plan_proposals` row
- * (kind='goal_renegotiation') when the gap has read 'unclosable' for 5+
- * consecutive snapshot days, carrying real A/B/C alternative-time bands
- * from the gap report. components/faff-app/views/TargetsView.tsx already
- * renders this exact decision inline (GoalRenegotiationCard) with two real
- * endpoints:
+ * ── CoachDecision data source ──
+ * WebSeason.jsx's CoachDecision mocked "Hold the goal / Move the goal /
+ * Decide later", with a footer "if you move it, here is the band". That
+ * shape shipped here and on Targets, wired to two real endpoints:
  *   · Hold  → POST /api/plan/proposal { id, action: 'dismiss' }
  *   · Move  → PATCH /api/race/{slug} { goalSec, source: 'renegotiate' }
- * This file wires the SAME two endpoints (see `hold`/`move` below) rather
- * than inventing a new one, so accepting/dismissing here has the identical
- * real effect it has on Targets/Train — one mechanism, three renderings.
- * "Decide later" stays inert (no onClick), matching both the source mock
- * and the legacy inline card (there it's plain text, not a button).
  *
- * When there is NO pending renegotiation (the common case — most days the
+ * 2026-08-30 · THE MOVE IS GONE, AND SO IS THE MOCK IT CAME FROM. Writing a
+ * new `goalSec` on the runner's behalf is a forced goal decision, and the
+ * owner's locked app-wide rule is that the coach PROJECTS and never
+ * RENEGOTIATES a stated goal via a card or a button. The endpoint now
+ * refuses `source: 'renegotiate'` outright and POST /api/plan/proposal
+ * refuses `accept` for these kinds, so this is not a UI-level tidy-up: the
+ * buttons below could not work even if someone put them back.
+ *
+ * What is left is the projection, rendered as a notice. `keep` clears the
+ * note; the goal does not move. Body copy is the server's own sentence
+ * (proposal.message), recomposed by proposals-state from the row's
+ * structured fields, so the retired rows' persisted imperative ("Set the
+ * revised target …") cannot render here either.
+ *
+ * When there is NO pending outlook note (the common case — most days the
  * gap hasn't been unclosable for 5 straight days), the hero card
  * degrades to a real but non-actionable read off seed.goalRace's own
  * status fields (kind='proposal' when watching/behind with no proposal
@@ -244,8 +247,11 @@ function GoalSeason({ seed, goal }: { seed: FaffSeed; goal: GoalRace }) {
   const goalSec = parseRaceTime(goal.goal);
   const projSec = parseRaceTime(goal.projected) ?? null;
 
-  const renegotiation = (seed.planProposals ?? []).find(
-    (p) => p.kind === 'goal_renegotiation' && p.status === 'pending',
+  // 2026-08-30 · `isGoalOutlookKind` covers the live `goal_outlook` note and
+  // the retired `goal_renegotiation` rows still standing in prod, so an
+  // unclosable gap keeps forcing BEHIND across the deploy.
+  const outlook = (seed.planProposals ?? []).find(
+    (p) => isGoalOutlookKind(p.kind) && p.status === 'pending',
   ) ?? null;
 
   // ONE status vocabulary (lib/faff/goal-status.ts) — the same read
@@ -255,7 +261,7 @@ function GoalSeason({ seed, goal }: { seed: FaffSeed; goal: GoalRace }) {
     trajectory: goal.trajectory ?? null,
     goalSec,
     projectionSec: goal.vdotProjectionSec ?? null,
-    unclosable: renegotiation != null,
+    unclosable: outlook != null,
   });
 
   const weeksOut = Math.round(goal.daysAway / 7);
@@ -280,7 +286,7 @@ function GoalSeason({ seed, goal }: { seed: FaffSeed; goal: GoalRace }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: 'var(--stack-gap)', alignItems: 'stretch' }}>
         <GoalHero goal={goal} weeksOut={weeksOut} status={status} router={router} />
-        <GoalDecision goal={goal} status={status} renegotiation={renegotiation} router={router} />
+        <GoalDecision goal={goal} status={status} outlook={outlook} router={router} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 'var(--stack-gap)', alignItems: 'stretch' }}>
@@ -440,101 +446,66 @@ function GoalHero({ goal, weeksOut, status, router }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// The CoachDecision · real goal_renegotiation proposal when pending, a
+// The CoachDecision · the real goal-outlook note when one is pending, a
 // real-but-inert status read otherwise. See file header note.
+//
+// 2026-08-30 · this branch used to render two buttons, "Hold {goal}" and
+// "Move to {band}", the second of which PATCHed a new `goalSec`. That is the
+// forced goal decision the owner's locked rule forbids. One KEEP remains and
+// it only clears the note.
 // ─────────────────────────────────────────────────────────────────────────
-function GoalDecision({ goal, status, renegotiation, router }: {
+function GoalDecision({ goal, status, outlook, router }: {
   goal: GoalRace; status: GoalStatusRead | null;
-  renegotiation: PlanProposalSeed | null;
+  outlook: PlanProposalSeed | null;
   router: ReturnType<typeof useRouter>;
 }) {
-  const [busy, setBusy] = useState<null | 'hold' | 'move'>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
-  if (renegotiation && !dismissed) {
-    const reasons = renegotiation.reasons ?? {};
-    const alternatives = (reasons as {
-      alternatives?: Record<'a' | 'b' | 'c', { sec: number; display: string; label: string }>;
-    }).alternatives ?? null;
-    const suggested = alternatives?.b ?? null;
-    const raceSlug = typeof (reasons as { race_slug?: unknown }).race_slug === 'string'
-      ? (reasons as { race_slug: string }).race_slug
-      : goal.slug;
-
-    // Real endpoints — the same two TargetsView's GoalRenegotiationCard
-    // uses (lib/plan/goal-renegotiation.ts's own accept_path). See the
-    // file header's "CoachDecision data source" note.
-    async function hold() {
-      setBusy('hold'); setError(null);
+  if (outlook && !dismissed) {
+    // ONE real endpoint. There is no second one to wire, by design.
+    async function keep() {
+      setBusy(true); setError(null);
       try {
         const r = await fetch('/api/plan/proposal', {
           method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ id: renegotiation!.id, action: 'dismiss' }),
+          body: JSON.stringify({ id: outlook!.id, action: 'dismiss' }),
         });
         const j = await r.json().catch(() => ({}));
         if (!r.ok && !(j as { ok?: boolean }).ok) throw new Error(`HTTP ${r.status}`);
         setDismissed(true);
         router.refresh();
       } catch (e) {
-        setBusy(null);
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    }
-    async function move() {
-      if (!suggested) return;
-      setBusy('move'); setError(null);
-      try {
-        const r = await fetch(`/api/race/${raceSlug}`, {
-          method: 'PATCH', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ goalSec: suggested.sec, source: 'renegotiate' }),
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok && !(j as { ok?: boolean }).ok) throw new Error(`HTTP ${r.status}`);
-        // The goal edit fires an auto-rebuild — reload so every pace on
-        // the page comes from the new target, same mechanic
-        // GoalRenegotiationCard uses.
-        window.location.reload();
-      } catch (e) {
-        setBusy(null);
+        setBusy(false);
         setError(e instanceof Error ? e.message : String(e));
       }
     }
 
     const options: CoachDecisionOption[] = [
-      { label: busy === 'hold' ? 'Holding…' : `Hold ${goal.goal}`, onClick: busy ? undefined : hold },
-      ...(suggested ? [{ label: busy === 'move' ? 'Moving…' : `Move to ${suggested.display}`, onClick: busy ? undefined : move }] : []),
-      { label: 'Decide later' },
+      {
+        label: busy ? 'Noting…' : `Keep ${goal.goal} on the board`,
+        onClick: busy ? undefined : keep,
+      },
     ];
 
     return (
       <CoachDecision
-        kind="decision"
+        kind="outlook"
         options={options}
-        footer={suggested ? (
-          <div style={{ background: 'var(--surface-tile)', borderRadius: 'var(--radius-l)', padding: 'var(--sp-7)' }}>
-            <div style={{
-              fontFamily: 'var(--font-sub)', fontSize: 'var(--type-label-s)', fontWeight: 'var(--weight-label)',
-              letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-quiet)',
-            }}>If you move it, here is the band</div>
-            <div className="faff-value" style={{ fontSize: 'var(--type-value-3)', marginTop: 4 }}>
-              {suggested.display}{alternatives?.c ? ` · ${alternatives.c.display}` : ''}
-            </div>
-            <div style={{ marginTop: 'var(--sp-6)', fontSize: 'var(--type-label-s)', color: 'var(--text-quiet)' }}>
-              {goal.goal} stays on the board as the season ambition.
-            </div>
-            {error && <div style={{ marginTop: 'var(--sp-5)', fontSize: 'var(--type-label-s)', color: 'var(--fault)' }}>Could not save: {error}</div>}
-          </div>
-        ) : error ? (
+        footer={error ? (
           <div style={{ fontSize: 'var(--type-label-s)', color: 'var(--fault)' }}>Could not save: {error}</div>
         ) : null}
       >
-        Your {goal.name.split(' ').slice(0, 2).join(' ')} goal needs a call. {renegotiation.message || `The plan projects ${goal.projected} against your ${goal.goal} goal.`}
+        {/* The server's sentence, not a second composition of the same fact.
+            Its number comes from resolveRaceProjection, so it agrees with the
+            projection this page already shows. */}
+        {outlook.message}
       </CoachDecision>
     );
   }
 
-  // No pending renegotiation — a real, non-actionable read off the goal's
+  // No pending outlook note — a real, non-actionable read off the goal's
   // own status fields, rather than an inert copy of the mock's three-button
   // ask (see file header note).
   const content = goalDecisionContent(goal, status);

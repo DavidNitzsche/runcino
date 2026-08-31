@@ -678,16 +678,22 @@ export type ReadinessBriefSeed = {
    *    · closing    · trajectory moving toward goal · encouragement
    *    · static     · trajectory stable · "what we need to see next week"
    *    · widening   · trajectory moving away · adapter shifts emphasis
-   *    · unclosable · gap too wide for remaining weeks · renegotiation
+   *    · unclosable · gap too wide for remaining weeks · outlook note
    *
    *  alternativeRanges:
    *    Populated when status != 'closing' · A=stretch, B=current, C=safe.
+   *    No surface renders these; they are brief-internal.
    *
    *  daysToRenegotiate:
-   *    null  · no renegotiation needed (status='closing' or has time)
-   *    >0    · countdown until the renegotiation card surfaces
-   *    0     · renegotiation card should render NOW. POST new goal to
-   *            PATCH /api/race/[slug] { goalSec, source: 'renegotiate' }.
+   *    Lead-time countdown only. 2026-08-30 · this comment used to end "POST
+   *    new goal to PATCH /api/race/[slug] { goalSec, source: 'renegotiate' }",
+   *    which is the forced goal decision the owner's locked rule forbids — the
+   *    coach projects, it never renegotiates a stated goal. That route now
+   *    REFUSES that source (lib/plan/goal-immutability.ts), and the unclosable
+   *    read reaches the runner as the informational goal-outlook note instead.
+   *    null  · nothing to surface (status='closing', or there is still runway)
+   *    >0    · days until the note is due
+   *    0     · due now
    */
   gapReport: {
     headline: string;

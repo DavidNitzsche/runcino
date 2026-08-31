@@ -55,6 +55,7 @@ import { resolveRampScope } from '@/lib/faff/ramp-scope';
 // the last surface deriving its own wording, so Train said "32 min behind"
 // while Goal said "BEHIND 19:04" for the same runner.
 import { resolveGoalStatus, formatGapClock } from '@/lib/faff/goal-status';
+import { isGoalOutlookKind } from '@/lib/plan/goal-immutability';
 import { StatusChip } from '../StatusChip';
 
 /**
@@ -277,12 +278,15 @@ export function TrainView({
   const isRaceDay = daysOut === 0;
   const isRace = blockRunsToRace && focusIdx === raceIdx;
 
-  // 2026-08-17 · same pending-renegotiation read TargetsView makes, so the
-  // shared status resolver gets identical inputs on both pages. An
-  // unclosable gap must not read softer on Train than it does on Goal.
-  const renegotiation = useMemo(
+  // 2026-08-17 · same pending-note read TargetsView makes, so the shared
+  // status resolver gets identical inputs on both pages. An unclosable gap
+  // must not read softer on Train than it does on Goal.
+  //
+  // 2026-08-30 · `isGoalOutlookKind` covers the live `goal_outlook` note and
+  // the retired `goal_renegotiation` rows still standing in prod.
+  const outlook = useMemo(
     () => (seed.planProposals ?? []).find(
-      (p) => p.kind === 'goal_renegotiation' && p.status === 'pending',
+      (p) => isGoalOutlookKind(p.kind) && p.status === 'pending',
     ) ?? null,
     [seed.planProposals],
   );
@@ -1203,7 +1207,7 @@ export function TrainView({
                 trajectory: goal.trajectory ?? null,
                 goalSec: parseRaceTime(goal.goal) ?? null,
                 projectionSec: goal.vdotProjectionSec ?? null,
-                unclosable: renegotiation != null,
+                unclosable: outlook != null,
               });
               // The race-day read · where the plan, executed, lands him.
               const trajSec = goal.trajectory?.projectedSec ?? null;

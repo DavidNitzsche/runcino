@@ -10,8 +10,9 @@
  *      passed '' and could never match a real row)
  *   5. expireStalePendingProposals expires the historical mislabeled
  *      'goal_time_changed' spam (reasons.drift_kind in the drift set)
- *      regardless of age — and never touches a real goal edit or the
- *      renegotiation accept path (drift_kind 'goal_renegotiated').
+ *      regardless of age — and never touches a real goal edit
+ *      (drift_kind 'goal_edited_by_runner', and the retired
+ *      'goal_renegotiated' rows that predate 2026-08-30).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -29,7 +30,7 @@ import {
   daysToRace,
 } from './drift-proposal-policy';
 import { hasPendingProposal, type DriftKind } from './drift-monitor';
-import { expireStalePendingProposals } from './goal-renegotiation';
+import { expireStalePendingProposals } from './goal-outlook';
 
 const mockQuery = pool.query as ReturnType<typeof vi.fn>;
 
@@ -197,8 +198,10 @@ describe('expireStalePendingProposals · historical mislabeled spam', () => {
     expect(sqlMislabeled).toContain("'staleness'");
     expect(sqlMislabeled).toContain("'volume_drift'");
     expect(sqlMislabeled).toContain("'goal_gap_widening'");
-    // The renegotiation accept path stamps drift_kind 'goal_renegotiated'
-    // on a REAL goal edit · must never be expired by this pass.
+    // A REAL goal edit stamps drift_kind 'goal_edited_by_runner' (and
+    // 'goal_renegotiated' on rows written before 2026-08-30, when the route
+    // was renamed). Neither may ever be expired by this pass.
     expect(sqlMislabeled).not.toContain('goal_renegotiated');
+    expect(sqlMislabeled).not.toContain('goal_edited_by_runner');
   });
 });

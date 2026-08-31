@@ -42,10 +42,11 @@ vi.mock('@/lib/plan/goal-gap', () => ({
   computeGoalGap: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock('@/lib/plan/goal-renegotiation', () => ({
+vi.mock('@/lib/plan/goal-outlook', () => ({
   expireStalePendingProposals: vi.fn().mockResolvedValue(0),
-  shouldProposeRenegotiation: vi.fn().mockReturnValue(false),
-  writeGoalRenegotiationProposal: vi.fn().mockResolvedValue(false),
+  shouldSurfaceGoalOutlook: vi.fn().mockReturnValue(false),
+  resolveGoalOutlookProjection: vi.fn().mockResolvedValue({ projectedSec: null, basis: null }),
+  writeGoalOutlookNote: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('@/lib/race/auto-result', () => ({

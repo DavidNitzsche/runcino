@@ -17,12 +17,18 @@ import { Button, type ButtonVariant } from '@/components/redesign/core/Button';
  * `footer` showing the revised target band.
  */
 
-export type CoachDecisionKind = 'decision' | 'proposal' | 'applied';
+// 2026-08-30 · `outlook` added. The goal-outlook note is none of the other
+// three: nothing was applied, nothing is proposed, and nothing needs a
+// decision. It states where the runner's evidence puts him and asks for
+// nothing, which is the shape the locked "the coach projects, it never
+// renegotiates" rule requires (lib/plan/goal-immutability.ts).
+export type CoachDecisionKind = 'decision' | 'proposal' | 'applied' | 'outlook';
 
 const KIND: Record<CoachDecisionKind, { kicker: string; tone: string }> = {
   decision: { kicker: 'Needs a decision', tone: 'var(--attention)' },
   proposal: { kicker: 'A proposal', tone: 'var(--signal)' },
   applied: { kicker: 'Already applied', tone: 'var(--text-quiet)' },
+  outlook: { kicker: 'Where this build projects', tone: 'var(--attention)' },
 };
 
 export interface CoachDecisionOption {

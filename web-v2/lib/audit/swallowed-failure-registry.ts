@@ -108,7 +108,9 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
     reason: 'same shape and same contract as loadEasyDayMedian — nullable return, null means absent, and a drift finding needs both medians present before it fires.',
   },
   {
-    id: 'lib/plan/goal-renegotiation.ts::expireStalePendingProposals',
+    // 2026-08-30 · the function did not change; its file did. It moved to
+    // goal-outlook.ts when goal-renegotiation.ts was retired.
+    id: 'lib/plan/goal-outlook.ts::expireStalePendingProposals',
     reason: 'covers both rowCount tallies in this function; expiry and the mislabel cleanup are idempotent and ride a daily cron, so an uncounted pass expires the same rows tomorrow and reports zero for what THIS run achieved, which is true.',
   },
   {

@@ -76,6 +76,7 @@ import { generatePlan } from '@/lib/plan/generate';
 import { resolveGoalTarget } from '@/lib/plan/auto-rebuild';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { logReadFailure } from '@/lib/db/read';
+import { isInformationalProposalKind } from '@/lib/plan/goal-immutability';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -125,6 +126,27 @@ export async function POST(req: NextRequest) {
       error: `proposal already ${proposal.status}`,
       status: proposal.status,
     }, { status: 409 });
+  }
+
+  // 2026-08-30 · AN INFORMATIONAL KIND HAS NOTHING TO ACCEPT.
+  //
+  // `goal_outlook` (and the retired `goal_renegotiation` rows still standing in
+  // prod) STATE where the runner's evidence puts him. They ask for nothing. The
+  // owner's locked rule: the coach projects, it never renegotiates a stated
+  // goal via a card or a button, and a verdict is not a trigger.
+  //
+  // This refusal is the seam, not the absence of a button. Three renderers had
+  // an accept for the retired kind — two web surfaces PATCHed a new `goalSec`,
+  // the phone offered "SET THE REVISED TARGET" and fell through to the generic
+  // rebuild below — and each was individually removable and individually
+  // re-addable. A server that refuses cannot be undone by a UI edit.
+  // `dismiss` still works: clearing a note you have read is the runner's call.
+  if (action === 'accept' && isInformationalProposalKind(proposal.proposal_kind)) {
+    return NextResponse.json({
+      error: 'this card is informational · there is nothing to accept',
+      kind: proposal.proposal_kind,
+      status: 'pending',
+    }, { status: 400 });
   }
 
   // 2026-08-28 · GOALFRAME-1 · a race_goal_framing card is answered by BOTH

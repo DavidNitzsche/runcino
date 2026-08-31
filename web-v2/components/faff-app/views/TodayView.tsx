@@ -54,6 +54,7 @@ import { TARGETS_OWNED_PLAN_KINDS, selectCoachDecisions } from '@/lib/coach/deci
 // 2026-08-17 · deck Decision 3b · one status vocabulary. Today's GAP tile
 // reads the same resolver and renders the same chip Targets does.
 import { resolveGoalStatus } from '@/lib/faff/goal-status';
+import { isGoalOutlookKind } from '@/lib/plan/goal-immutability';
 import { StatusChip } from '../StatusChip';
 import { RouteMap } from '../RouteMap';
 import {
@@ -838,9 +839,9 @@ export function TodayView({
         planProposals={seed.planProposals}
         workoutProposals={seed.pendingWorkoutProposals}
         todayISO={seed.todayISO}
-        // Wave 2 mounts the goal renegotiation inside THE PATH on Targets,
-        // beside the number it renegotiates. Today must not ask the same
-        // question a second time.
+        // Wave 2 mounts the goal outlook note inside THE PATH on Targets,
+        // beside the number it speaks about. Today must not say the same
+        // sentence a second time (Rule 17).
         excludeKinds={TARGETS_OWNED_PLAN_KINDS}
       />
     </>
@@ -5019,18 +5020,23 @@ function Tiles({ seed, onOpenRace, gates }: {
   //
   // Same call shape as TargetsView: trajectory first (where the plan,
   // executed, lands you on race day), current-fitness projection as the
-  // fallback, and a pending goal_renegotiation forces BEHIND. Today and
+  // fallback, and a pending goal-outlook note forces BEHIND. Today and
   // Targets now speak the same four words plus the same gap number.
   const goalTraj = goal?.trajectory ?? null;
-  const renegotiationPending = (seed.planProposals ?? []).some(
-    (p) => p.kind === 'goal_renegotiation' && p.status === 'pending',
+  // 2026-08-30 · was a `goal_renegotiation` read. That kind is retired (it
+  // carried a button that rewrote the goal); `isGoalOutlookKind` covers its
+  // live successor `goal_outlook` AND the standing retired rows, so an
+  // unclosable gap keeps forcing BEHIND across the deploy rather than
+  // silently softening on the runner's phone.
+  const outlookPending = (seed.planProposals ?? []).some(
+    (p) => isGoalOutlookKind(p.kind) && p.status === 'pending',
   );
   const goalStatus = goal
     ? resolveGoalStatus({
         trajectory: goalTraj,
         goalSec: parseRaceTime(goal.goal) ?? null,
         projectionSec: goal.vdotProjectionSec ?? null,
-        unclosable: renegotiationPending,
+        unclosable: outlookPending,
       })
     : null;
   // The projected finish, same precedence Targets uses for its hero number.

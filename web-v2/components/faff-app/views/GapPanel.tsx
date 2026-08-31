@@ -642,7 +642,7 @@ export function GapPanel({ goal, series, anchor, status: statusRead }: GapPanelP
         </div>
         {traj ? <TrajectoryHero t={traj} raceDateLabel={raceDateLabel} /> : null}
         {traj && trajSeries.length >= 3 ? <TrajectorySparkline series={trajSeries} goalSec={goalSec} /> : null}
-        {traj && traj.planUnderBuilt ? <RebuildDoor slug={goal.slug} projectedSec={traj.projectedSec} goalSec={traj.goalSec} /> : null}
+        {traj && traj.planUnderBuilt ? <PlanUnderBuiltNote projectedSec={traj.projectedSec} goalSec={traj.goalSec} /> : null}
         {/* 2026-06-11 · one fitness line · David's strip-down. The chip pile
             (held / gap / re-rates), the 4-part gap breakdown, and the hit list
             are cut — the trajectory hero + sparkline already say where you are,
@@ -733,50 +733,43 @@ function TrajectoryHero({ t, raceDateLabel }: {
   );
 }
 
-/* ─────── the upgrade door · set a faster goal + rebuild (Phase 3) ───────
- * Shows only when the trajectory has passed what the plan trains for
- * (planUnderBuilt). Routes to the existing PATCH /api/race flow, which updates
- * the goal AND auto-rebuilds the plan in one transaction. Deliberate (confirm
- * gate) — a door the runner walks through, not a nag. */
-function RebuildDoor({ slug, projectedSec, goalSec }: {
-  slug: string; projectedSec: number | null; goalSec: number;
+/* ─────── the plan-under-built NOTE (was: the upgrade door) ───────
+ *
+ * 2026-08-30 · THIS WAS A SECOND FORCED GOAL DECISION, found while closing the
+ * first. It rendered when `traj.planUnderBuilt` — a VERDICT — and offered
+ * "Set 2:58:30 goal · rebuild plan", a button that PATCHed /api/race with a
+ * new `goal` string the ENGINE had picked (the projection rounded up to the
+ * nearest 30s) and re-authored the whole block around it.
+ *
+ * The owner's locked rule is about the MECHANISM, not the direction: the coach
+ * PROJECTS, it never RENEGOTIATES a stated goal via a card or a button, and a
+ * verdict is not a trigger. A door that raises the goal is the same shape as
+ * one that lowers it, and a rule enforced in only one direction is not a rule
+ * a gate can hold. See lib/plan/goal-immutability.ts.
+ *
+ * The observation survives, because it is real coaching and the runner wants
+ * it: his trajectory has passed what this block trains for. What he does about
+ * that is his call, made in the goal editor on the race page, not here.
+ */
+function PlanUnderBuiltNote({ projectedSec, goalSec }: {
+  projectedSec: number | null; goalSec: number;
 }) {
-  // A slightly conservative target: the projection rounded UP to the nearest
-  // 30s — never promise faster than the trajectory actually shows.
-  const suggestSec = projectedSec != null && projectedSec < goalSec
-    ? Math.ceil(projectedSec / 30) * 30
-    : goalSec;
-  const fmtHMS = (s: number) => {
-    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = Math.round(s % 60);
-    return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-  };
-  const onRebuild = async () => {
-    if (!window.confirm(`Set ${fmtClock(suggestSec)} as your goal and rebuild the plan around it? Your current plan will be replaced.`)) return;
-    try {
-      const res = await fetch('/api/race', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, goal: fmtHMS(suggestSec) }),
-      });
-      if (res.ok) window.location.reload();
-      else window.alert('Could not rebuild the plan. Try setting the goal from the race page.');
-    } catch { window.alert('Could not rebuild the plan. Try setting the goal from the race page.'); }
-  };
+  // Stated, never offered as a button. Conservative on purpose — the
+  // trajectory rounded UP to the nearest 30s, so the sentence never promises
+  // faster than the evidence shows.
+  const aheadSec = projectedSec != null && projectedSec < goalSec
+    ? goalSec - Math.ceil(projectedSec / 30) * 30
+    : null;
   return (
     <div style={{
       marginTop: 14, padding: '12px 14px', borderRadius: 12,
       background: 'rgba(243,173,56,.07)', border: '1px solid rgba(243,173,56,.22)',
     }}>
-      <div style={{ fontSize: 12, lineHeight: 1.45, color: 'rgba(255,255,255,.66)', marginBottom: 9 }}>
-        Your trajectory has passed what this plan trains for. Confirm it with a tune-up, or commit to the faster goal and rebuild the block around it.
+      <div style={{ fontSize: 12, lineHeight: 1.45, color: 'rgba(255,255,255,.66)' }}>
+        Your trajectory has passed what this plan trains for
+        {aheadSec != null && aheadSec > 0 ? `, by ${fmtClock(aheadSec)}` : ''}.
+        {' '}Confirm it with a tune-up. Your goal is yours to move, on the race page, whenever you want it moved.
       </div>
-      <button onClick={onRebuild} style={{
-        fontFamily: 'var(--font-oswald, var(--font-display, inherit))', fontWeight: 600,
-        fontSize: 12.5, letterSpacing: '.04em', textTransform: 'uppercase',
-        color: '#1a1205', background: '#F3AD38', border: 'none', borderRadius: 8,
-        padding: '8px 13px', cursor: 'pointer',
-      }}>
-        Set {fmtClock(suggestSec)} goal · rebuild plan
-      </button>
     </div>
   );
 }

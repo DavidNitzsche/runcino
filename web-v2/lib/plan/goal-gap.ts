@@ -91,9 +91,11 @@ export interface GoalGap {
   /** Days the gap has been widening (drives auto-rebuild trigger). */
   consecutiveWideningDays: number;
   /** 2026-08-17 · days (most recent backwards) the gap has exceeded the
-   *  unclosable threshold. Drives the goal-renegotiation proposal in the
-   *  plan-drift cron (sustained ≥5 days → propose a revised target band
-   *  while the stated goal stays the season ambition). */
+   *  unclosable threshold. Drives the goal-OUTLOOK note in the plan-drift
+   *  cron (sustained ≥5 days → state where the evidence puts him while the
+   *  stated goal stays untouched). 2026-08-30 · it used to drive a
+   *  goal-RENEGOTIATION proposal with a button that rewrote `goalSec`; that
+   *  is retired, see lib/plan/goal-immutability.ts. */
   consecutiveUnclosableDays: number;
 }
 
@@ -700,7 +702,12 @@ export function composeWhatClosesIt(
   if (limiter && levers[0] && !hedged) {
     out.push(`The work does not change · ${levers[0]}`);
   }
-  out.push('Goal renegotiation will surface in the brief when we have one more data week.');
+  // 2026-08-30 · this line used to read "Goal renegotiation will surface in the
+  // brief when we have one more data week." It promised the runner the exact
+  // thing the owner's locked rule says must never exist — a card asking him to
+  // lower his stated goal. The goal stays; what surfaces is the projection.
+  // See lib/plan/goal-immutability.ts and lib/plan/goal-outlook.ts.
+  out.push('The goal stays on the board · the projection is what moves.');
   out.push('Training stays honest · race-day execution still matters at any goal.');
   return out;
 }

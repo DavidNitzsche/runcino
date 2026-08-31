@@ -7,10 +7,12 @@
  * approved as mocked. The page answers four questions in order:
  *
  *   1 · ANSWER    · the goal, the projection, and ONE status chip.
- *   2 · THE PATH  · the trajectory number line (GapPanel), with the
- *                   renegotiation card mounted HERE when one is pending —
- *                   beside the number it renegotiates, not floating at the
- *                   top of the page.
+ *   2 · THE PATH  · the trajectory number line (GapPanel), with the goal
+ *                   OUTLOOK note mounted HERE when one is pending — beside
+ *                   the number it speaks about, not floating at the top of
+ *                   the page. (It was a RENEGOTIATION card with a button
+ *                   that rewrote the goal, until 2026-08-30; see
+ *                   lib/plan/goal-immutability.ts.)
  *   3 · THE WORK  · test points, or an explicit BETWEEN BLOCKS state when
  *                   the active plan is a recovery bridge (or there is none)
  *                   and the next block has not opened.
@@ -50,6 +52,8 @@ import { resolveGoalStatus, formatGapClock, type GoalStatusRead } from '@/lib/fa
 import { resolveRaceRole, resolveProvenance } from '@/lib/faff/race-roles';
 import { personalGoalHorizon, personalGoalTypeLabel } from '@/lib/faff/personal-goal-copy';
 import { StatusChip } from '../StatusChip';
+import { resolveRaceProjection } from '@/lib/training/race-projection';
+import { isGoalOutlookKind } from '@/lib/plan/goal-immutability';
 import { Modelled } from '../Modelled';
 
 export function TargetsView({
@@ -59,12 +63,17 @@ export function TargetsView({
   const goal = seed.goalRace;
   const [goalOpen, setGoalOpen] = useState(false);
 
-  // The pending goal renegotiation, if the engine has written one. Mounts
+  // The pending goal OUTLOOK note, if the engine has written one. Mounts
   // inside THE PATH per the deck, and forces the status chip to BEHIND —
   // an unclosable gap is never dressed as anything softer.
-  const renegotiation = useMemo(
+  //
+  // 2026-08-30 · this used to be the goal RENEGOTIATION card, with a button
+  // that PATCHed a new `goalSec`. See lib/plan/goal-immutability.ts.
+  // `isGoalOutlookKind` covers the retired kind too, so the owner's standing
+  // row keeps its place on this page rather than falling through to Today.
+  const outlook = useMemo(
     () => (seed.planProposals ?? []).find(
-      (p) => p.kind === 'goal_renegotiation' && p.status === 'pending',
+      (p) => isGoalOutlookKind(p.kind) && p.status === 'pending',
     ) ?? null,
     [seed.planProposals],
   );
@@ -107,14 +116,28 @@ export function TargetsView({
   const goalSec = parseRaceTime(goal.goal) ?? null;
   // The projected finish · trajectory first (where the plan, executed, lands
   // you on race day), current-fitness projection as the fallback.
-  const projectedSec = traj?.projectedSec ?? goal.vdotProjectionSec ?? null;
+  //
+  // 2026-08-30 · RULE 16 · this was that precedence hand-rolled inline, a
+  // fourth private copy of the rule `lib/training/race-projection.ts` was
+  // extracted to own. It agreed with the resolver by luck rather than by
+  // construction, which is the state that put 3:22:17, 3:31:48 and 3:42:23 on
+  // three screens under one word. It now calls the resolver, like the Races
+  // list and the race detail route do.
+  const { projectedSec } = resolveRaceProjection({
+    goalProjection: {
+      trajectory: traj ? { projectedSec: traj.projectedSec ?? null } : null,
+      vdotProjectionSec: goal.vdotProjectionSec ?? null,
+    },
+    vdot: null,
+    distanceMi: goal.distanceMi ?? null,
+  });
 
   // THE single status read. Every chip on this page comes from here.
   const status = resolveGoalStatus({
     trajectory: traj,
     goalSec,
     projectionSec: goal.vdotProjectionSec ?? null,
-    unclosable: renegotiation != null,
+    unclosable: outlook != null,
   });
 
   const goalPace = goalSec != null && goal.distanceMi ? paceLabel(goalSec, goal.distanceMi) : null;
@@ -210,11 +233,11 @@ export function TargetsView({
           anchor={seed.health?.vdotAnchor ?? null}
           status={status}
         />
-        {/* The renegotiation mounts HERE · directly under the number line
-            that justifies it. Deck Decision 3a. */}
-        {renegotiation ? (
-          <GoalRenegotiationCard
-            proposal={renegotiation}
+        {/* The outlook note mounts HERE · directly under the number line that
+            justifies it. Deck Decision 3a. */}
+        {outlook ? (
+          <GoalOutlookNote
+            proposal={outlook}
             goal={goal}
             onDone={() => router.refresh()}
           />
@@ -507,50 +530,52 @@ const goalRowStyle: React.CSSProperties = {
   borderBottom: '1px solid rgba(255,255,255,.05)',
 };
 
-// ============================ RENEGOTIATION ============================
+// ============================ GOAL OUTLOOK =============================
 /**
- * The goal renegotiation, mounted beside the number it renegotiates.
+ * The goal OUTLOOK note, mounted beside the number it speaks about.
  *
- * TODO(wave-1-integration): Wave 1 is landing a shared CoachDecisionCard
- * with exactly this grammar (deck Decision 2 · eyebrow names the kind, left
- * accent carries the state, verb buttons in coach voice, never
- * Accept/Dismiss). When it exists, swap this inline card for it and delete
- * this component — the props map 1:1 (kind, eyebrow, title, body, actions).
- * Rendered inline for now so Targets is complete without a cross-wave
- * dependency.
+ * ── WHAT THIS REPLACED, AND WHY ─────────────────────────────────────────
  *
- * Accept path is the existing goal edit · PATCH /api/race/[slug]
- * { goalSec, source: 'renegotiate' }, named by the proposal payload itself
- * (RenegotiationReasons.accept_path). Holding the goal dismisses the
- * proposal through the standard POST /api/plan/proposal seam.
+ * This was `GoalRenegotiationCard`. It rendered a pending
+ * `goal_renegotiation` proposal with two buttons: "Hold 3:00:00", and
+ * "Move to 3:31:48" — which PATCHed `/api/race/{slug}` with a new
+ * `goalSec` and `source: 'renegotiate'`, rebuilding the whole block
+ * around a lowered goal.
+ *
+ * That is a forced goal decision. The owner's locked app-wide rule is that
+ * the coach PROJECTS and never RENEGOTIATES a stated goal via a card or a
+ * button; a verdict is not a trigger. See lib/plan/goal-immutability.ts for
+ * the rule, the live row that broke it, and the server-side refusal that now
+ * stands behind this component — the button is not merely removed here, the
+ * endpoint refuses the source and `/api/plan/proposal` refuses the accept.
+ *
+ * ── WHAT SURVIVED ───────────────────────────────────────────────────────
+ *
+ * The projection. The runner still gets told, plainly, where his evidence
+ * puts him — that is coaching and he asked for it. The body is the server's
+ * own sentence (`proposal.message`, recomposed by proposals-state from the
+ * row's structured fields so a persisted imperative can never render), and
+ * the number in it comes from `resolveRaceProjection`, the same resolver
+ * THE PATH's hero number four lines above this card resolves through. One
+ * quantity, one name, one number on the screen.
+ *
+ * The only action is to clear the note. The goal does not move.
  */
-function GoalRenegotiationCard({
+function GoalOutlookNote({
   proposal, goal, onDone,
 }: {
   proposal: PlanProposalSeed;
   goal: GoalRace;
   onDone: () => void;
 }) {
-  const [busy, setBusy] = useState<null | 'hold' | 'move'>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  const reasons = proposal.reasons ?? {};
-  const alternatives = (reasons as { alternatives?: Record<string, { sec: number; display: string; label: string }> }).alternatives ?? null;
-  // The engine recommends the B band · where the evidence says the runner is
-  // tracking. It never picks for them; this is the button's default.
-  const suggested = alternatives?.b ?? null;
-  const raceSlug = typeof (reasons as { race_slug?: unknown }).race_slug === 'string'
-    ? (reasons as { race_slug: string }).race_slug
-    : goal.slug;
-  const trajectorySec = typeof (reasons as { trajectory_sec?: unknown }).trajectory_sec === 'number'
-    ? (reasons as { trajectory_sec: number }).trajectory_sec
-    : null;
-
   if (done) return null;
 
-  async function hold() {
-    setBusy('hold'); setError(null);
+  async function keep() {
+    setBusy(true); setError(null);
     try {
       const r = await fetch('/api/plan/proposal', {
         method: 'POST',
@@ -561,28 +586,8 @@ function GoalRenegotiationCard({
       if (!r.ok && !(j as { ok?: boolean }).ok) throw new Error(`HTTP ${r.status}`);
       setDone(true);
       onDone();
-    } catch (e) {
-      setBusy(null);
-      setError('That did not save. Nothing was written, so it is safe to try again.');
-    }
-  }
-
-  async function move() {
-    if (!suggested) return;
-    setBusy('move'); setError(null);
-    try {
-      const r = await fetch(`/api/race/${raceSlug}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ goalSec: suggested.sec, source: 'renegotiate' }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok && !(j as { ok?: boolean }).ok) throw new Error(`HTTP ${r.status}`);
-      // The goal edit fires an auto-rebuild · reload so every pace on the
-      // page comes from the new target rather than the old one.
-      window.location.reload();
-    } catch (e) {
-      setBusy(null);
+    } catch {
+      setBusy(false);
       setError('That did not save. Nothing was written, so it is safe to try again.');
     }
   }
@@ -590,7 +595,7 @@ function GoalRenegotiationCard({
   return (
     <div
       role="region"
-      aria-label="Goal renegotiation"
+      aria-label="Goal outlook"
       style={{
         marginTop: 14,
         background: 'rgba(20,22,28,.55)',
@@ -604,42 +609,24 @@ function GoalRenegotiationCard({
         fontSize: 10, fontWeight: 800, letterSpacing: '1.8px',
         color: '#F3AD38', textTransform: 'uppercase',
       }}>
-        Coach · needs a decision
+        Coach
       </div>
       <div style={{
         fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 21,
         letterSpacing: '.4px', textTransform: 'uppercase', margin: '10px 0 8px',
       }}>
-        Your {shortRaceName(goal.name)} goal needs a call
+        Where this build projects
       </div>
+      {/* The server's sentence, not a second composition of the same fact.
+          Two components writing the same coach line is how they drift. */}
       <div style={{ fontSize: 14, color: '#C7CBD4', lineHeight: 1.55, maxWidth: 640 }}>
-        {trajectorySec != null
-          ? `Evidence says ${formatClock(trajectorySec)} against your ${goal.goal} goal. `
-          : `The projection has sat past your ${goal.goal} goal for long enough that the runway cannot close it. `}
-        Hold the goal and the plan keeps writing to it. Move the target and the paces get honest.
-        {suggested ? ` The ${goal.goal} stays on the board as the season ambition.` : ''}
+        {proposal.message}
       </div>
       <div style={{ display: 'flex', gap: 10, marginTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" onClick={hold} disabled={busy != null} style={renegBtn(busy != null)}>
-          {busy === 'hold' ? 'Holding…' : `Hold ${goal.goal}`}
+        <button type="button" onClick={keep} disabled={busy} style={outlookBtn(busy)}>
+          {busy ? 'Noting…' : `Keep ${goal.goal} on the board`}
         </button>
-        {suggested ? (
-          <button type="button" onClick={move} disabled={busy != null} style={renegBtn(busy != null)}>
-            {busy === 'move' ? 'Moving…' : `Move to ${suggested.display}`}
-          </button>
-        ) : null}
-        <span style={{
-          fontSize: 11, fontWeight: 700, letterSpacing: '1.2px',
-          color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', marginLeft: 'auto',
-        }}>
-          Decide later
-        </span>
       </div>
-      {suggested && alternatives?.c ? (
-        <div style={{ marginTop: 12, fontSize: 12, color: 'rgba(255,255,255,.55)' }}>
-          {suggested.label} · {suggested.display}. Safe floor {alternatives.c.display}.
-        </div>
-      ) : null}
       {error ? (
         <div style={{ marginTop: 10, fontSize: 11.5, color: '#FC4D64' }}>{error}</div>
       ) : null}
@@ -647,7 +634,7 @@ function GoalRenegotiationCard({
   );
 }
 
-function renegBtn(busy: boolean): React.CSSProperties {
+function outlookBtn(busy: boolean): React.CSSProperties {
   return {
     fontFamily: "'Inter', sans-serif",
     fontSize: 11, fontWeight: 800, letterSpacing: '1.4px', textTransform: 'uppercase',

@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       // pending-row dedupe check (the audit found 19 identical staleness
       // proposals accumulated on one runner).
       try {
-        const { expireStalePendingProposals } = await import('@/lib/plan/goal-renegotiation');
+        const { expireStalePendingProposals } = await import('@/lib/plan/goal-outlook');
         r.proposals_expired = await expireStalePendingProposals(u);
       } catch (e) {
         console.error('[plan-drift] proposal expiry failed:', e);
@@ -1150,26 +1150,31 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 2026-08-17 · coaching-loop reconciliation · UNCLOSABLE gap →
-      // goal-renegotiation proposal. goal-gap has classified 'unclosable'
-      // correctly since Phase 1.1 but nothing acted on it — the widening
-      // branch above only fires on trend, so a goal parked out of
-      // physiological reach just sat there. Sustained ≥5 consecutive
-      // snapshot days → write a pending plan_proposals row carrying the
-      // A/B/C alternative bands the gap report already computes. The
-      // proposal proposes a REVISED TARGET BAND; the stated goal stays on
-      // the board as the season ambition (David's framing). Accept seam:
-      // the existing PATCH /api/race/[slug] goal edit → goal_renegotiated
-      // rebuild. Dedupe/supersede/expiry live in goal-renegotiation.ts.
+      // 2026-08-17 · coaching-loop reconciliation · UNCLOSABLE gap → a note.
+      // goal-gap has classified 'unclosable' correctly since Phase 1.1 but
+      // nothing acted on it — the widening branch above only fires on trend,
+      // so a goal parked out of physiological reach just sat there. Sustained
+      // ≥5 consecutive snapshot days → write a pending plan_proposals row.
+      //
+      // 2026-08-30 · THE RENEGOTIATION IS GONE. This block used to write a
+      // `goal_renegotiation` proposal whose copy instructed the runner to
+      // "Set the revised target" and whose accept_path was
+      // `PATCH /api/race/[slug] { goalSec, source: 'renegotiate' }`. That is
+      // a forced goal decision, which the owner's locked app-wide rule says
+      // must never exist — the coach PROJECTS, it never RENEGOTIATES. See
+      // lib/plan/goal-immutability.ts for the rule and the live row that
+      // broke it. What survives is the PROJECTION: an informational
+      // `goal_outlook` note that says where the evidence puts him, keeps the
+      // stated goal on the board, and has nothing to accept (the accept is
+      // refused server-side in POST /api/plan/proposal, not merely absent
+      // from the renderers). Dedupe/supersede/expiry live in goal-outlook.ts.
       if (goalGap && goalGap.status === 'unclosable') {
         try {
-          const { shouldProposeRenegotiation, writeGoalRenegotiationProposal } =
-            await import('@/lib/plan/goal-renegotiation');
-          if (shouldProposeRenegotiation(goalGap)) {
-            const { composeGapReport } = await import('@/lib/plan/gap-report');
-            const gapReport = await composeGapReport(u).catch(() => null);
+          const { shouldSurfaceGoalOutlook, resolveGoalOutlookProjection, writeGoalOutlookNote } =
+            await import('@/lib/plan/goal-outlook');
+          if (shouldSurfaceGoalOutlook(goalGap)) {
             const activePlanRow = await rowOrNull(
-              'cron/plan-drift · goal-renegotiation active plan lookup',
+              'cron/plan-drift · goal-outlook active plan lookup',
               pool.query<{ id: string }>(
                 `SELECT id FROM training_plans
                   WHERE user_uuid = $1 AND archived_iso IS NULL
@@ -1178,11 +1183,15 @@ export async function POST(req: NextRequest) {
               ),
             );
             const activePlanId = activePlanRow?.id ?? null;
-            const wrote = await writeGoalRenegotiationProposal(u, activePlanId, goalGap, gapReport);
+            // RULE 16 · the number comes from the shared resolver, never from
+            // `goalGap.trajectorySec` (which is the projection SNAPSHOT, i.e.
+            // today's equivalence, wearing the word "trajectory").
+            const projection = await resolveGoalOutlookProjection(u, goalGap, userToday);
+            const wrote = await writeGoalOutlookNote(u, activePlanId, goalGap, projection);
             if (wrote) r.proposals_written++;
           }
         } catch (e) {
-          console.error('[plan-drift] goal-renegotiation failed:', e);
+          console.error('[plan-drift] goal-outlook failed:', e);
         }
       }
 

@@ -26,7 +26,14 @@
  * This module is PURE — no React, no fetch, no DOM. CoachDecisionCard.tsx
  * renders whatever comes out of selectCoachDecisions(). That is what makes
  * kind / priority / pager selection testable (decision-cards.test.ts).
+ *
+ * The one import is a constants module with no imports of its own, so this
+ * stays pure and client-safe.
  */
+import {
+  GOAL_OUTLOOK_KINDS,
+  isInformationalProposalKind,
+} from '@/lib/plan/goal-immutability';
 
 /** Amber = the coach needs a call. Recovery blue = already applied. */
 export type DecisionKind = 'decision' | 'notice';
@@ -110,6 +117,12 @@ const PRIORITY = {
 
 const EYEBROW_DECISION = 'COACH · NEEDS A DECISION';
 const EYEBROW_NOTICE = 'COACH · APPLIED';
+// 2026-08-30 · a goal-outlook note takes the NOTICE dressing (quiet, no
+// decision urgency) but not its eyebrow: nothing was applied, and "COACH ·
+// APPLIED" over a projection is a sentence asserting something that did not
+// happen. Same discipline as Rule 16's prose clause — a line stating a fact is
+// gated on the fact.
+const EYEBROW_OUTLOOK = 'COACH · PROJECTION';
 
 /* ── input shapes · structural mirrors of the existing loaders ───────────
    Deliberately structural (not imports) so this module stays pure and the
@@ -177,17 +190,21 @@ export type SelectDecisionsInput = {
 /**
  * Plan-proposal kinds that belong to Targets, not to Today.
  *
- * Deck Decision 3a mounts the goal renegotiation inside THE PATH, directly
- * under the number line that justifies it. If Today also rendered it from
- * the generic plan-proposal list, the runner would be asked the same
- * question twice on two pages, and answering it in one place would leave a
- * stale card in the other. The renegotiation is a decision ABOUT a number;
- * it belongs beside that number.
+ * Deck Decision 3a mounts the goal outlook inside THE PATH, directly under the
+ * number line that justifies it. If Today also rendered it from the generic
+ * plan-proposal list, the runner would read the same sentence twice on two
+ * pages (Rule 17), and clearing it in one place would leave a stale card in the
+ * other. The outlook is a statement ABOUT a number; it belongs beside that
+ * number.
  *
  * This is a list, not a special case, because the next surface-owned kind
  * will want the same treatment.
+ *
+ * 2026-08-30 · carries the retired `goal_renegotiation` too, so the owner's
+ * standing row keeps its home on Targets instead of falling through to Today's
+ * generic list the moment the new kind ships.
  */
-export const TARGETS_OWNED_PLAN_KINDS = ['goal_renegotiation'] as const;
+export const TARGETS_OWNED_PLAN_KINDS = GOAL_OUTLOOK_KINDS;
 
 /* ── kind labels ─────────────────────────────────────────────────────── */
 
@@ -208,7 +225,10 @@ export const PLAN_TITLES: Record<string, string> = {
   goal_time_changed: 'Your goal time changed',
   a_race_added: 'A goal race was added',
   a_race_removed: 'A goal race was removed',
-  goal_renegotiation: 'Your race target needs a call',
+  // 2026-08-30 · was "Your race target needs a call" on both. It does not need
+  // a call: the goal stays, and the note says where the evidence puts him.
+  goal_renegotiation: 'Where this build projects',
+  goal_outlook: 'Where this build projects',
   pace_reanchor: 'Your paces are off your fitness',
   // 2026-08-25 · the kinds the writers stamp that this map did not carry. They
   // fell through to the generic "Your plan needs an update", which reads as a
@@ -244,7 +264,13 @@ const PLAN_ACCEPT_VERB: Record<string, string> = {
   goal_time_changed: 'REBUILD THE PLAN',
   a_race_added: 'REBUILD THE PLAN',
   a_race_removed: 'REBUILD THE PLAN',
-  goal_renegotiation: 'MOVE THE TARGET',
+  // 2026-08-30 · `goal_renegotiation: 'MOVE THE TARGET'` was here, and
+  // `goal_outlook` deliberately is NOT. Both are informational — they state
+  // where the evidence puts the runner and ask for nothing — and the owner's
+  // locked rule forbids a card or button that renegotiates a stated goal.
+  // POST /api/plan/proposal refuses `accept` for them, and
+  // scripts/check-goal-immutability.sh fails the build if a verb is declared
+  // for any kind in INFORMATIONAL_PROPOSAL_KINDS on any surface.
   pace_reanchor: 'RE-ANCHOR MY PACES',
   // 2026-08-28 · the lifecycle kinds normally auto-apply, but both keep a
   // pending fallback (undone-by-runner, compromised runner, failed rebuild)
@@ -327,6 +353,44 @@ function fromPlanProposal(p: PlanProposalInput): CoachDecision | null {
     ? p.reasons.keep_verb
     : null;
   const title = reasonTitle ?? PLAN_TITLES[p.kind] ?? 'Your plan needs an update';
+
+  // 2026-08-30 · AN INFORMATIONAL KIND NEVER GETS AN ACCEPT BUTTON.
+  //
+  // `goal_outlook`, and the retired `goal_renegotiation` rows still pending in
+  // prod, STATE where the evidence puts the runner. The old shape gave the
+  // retired kind the full pending treatment with the verb "MOVE THE TARGET",
+  // which is the forced goal decision the owner's locked rule forbids.
+  //
+  // It renders as a NOTICE with one quiet clear. Note the writer-composed
+  // `accept_verb` escape hatch above cannot reach it: this branch is taken
+  // before the verb is read, so a row carrying a stale `accept_verb` (the
+  // owner's does not, but a future one could) cannot buy itself a button.
+  if (isInformationalProposalKind(p.kind) && p.status === 'pending') {
+    return {
+      key: `plan-${p.id}`,
+      source: 'plan_proposal',
+      kind: 'notice',
+      eyebrow: EYEBROW_OUTLOOK,
+      title,
+      body: p.message ?? '',
+      stamp: p.createdAt ?? null,
+      priority: PRIORITY.plan_proposal_pending,
+      // ONE action, and it is the only one there has ever been an honest case
+      // for. `role: 'keep'` rather than `'link'` because a link navigates and
+      // this must POST; and because the button grammar's KEEP verb happens to
+      // say exactly the right thing here — the goal stays on the board, the
+      // runner has read the note, the card clears.
+      actions: [
+        {
+          role: 'keep',
+          label: 'KEEP THE GOAL ON THE BOARD',
+          busyLabel: 'NOTING',
+          endpoint: '/api/plan/proposal',
+          body: { id: p.id, action: 'dismiss' },
+        },
+      ],
+    };
+  }
 
   if (p.status === 'pending') {
     const verb = reasonVerb ?? PLAN_ACCEPT_VERB[p.kind] ?? 'REBUILD THE PLAN';

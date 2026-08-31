@@ -135,6 +135,9 @@ enum CoachDecisions {
 
     static let eyebrowDecision = "COACH · NEEDS A DECISION"
     static let eyebrowNotice = "COACH · APPLIED"
+    /// 2026-08-30 · the goal-outlook note. Notice dressing, honest eyebrow.
+    /// Mirrors EYEBROW_OUTLOOK in web-v2/lib/coach/decision-cards.ts.
+    static let eyebrowOutlook = "COACH · PROJECTION"
 
     /* priority ladder · mirrors decision-cards.ts PRIORITY.
        Injury / illness first: those rows exist because something happened
@@ -281,7 +284,11 @@ enum CoachDecisions {
         "goal_time_changed": "Your goal time changed",
         "a_race_added": "A goal race was added",
         "a_race_removed": "A goal race was removed",
-        "goal_renegotiation": "Your race target needs a call",
+        // 2026-08-30 · was "Your race target needs a call" on both. It does not
+        // need a call: the goal stays, and the note says where the evidence
+        // puts him. `goal_renegotiation` is retired but its rows still stand.
+        "goal_renegotiation": "Where this build projects",
+        "goal_outlook": "Where this build projects",
         "pace_reanchor": "Your paces are off your fitness",
         "replan": "Your settings reshaped the block",
         "plan_change": "Your settings reshaped the block",
@@ -294,10 +301,28 @@ enum CoachDecisions {
         "silent_rebuild": "The engine rebuilt your block",
     ]
 
+    /// Plan-proposal kinds that are NOTES, not decisions.
+    ///
+    /// Mirrors `INFORMATIONAL_PROPOSAL_KINDS` + `RETIRED_PROPOSAL_KINDS` in
+    /// web-v2/lib/plan/goal-immutability.ts, which is the single declaration;
+    /// `scripts/check-goal-immutability.sh` reads that file at build time and
+    /// fails if this list drifts from it or if any member gains an accept verb.
+    /// `goal_renegotiation` is retired and unwritable, but rows written before
+    /// 2026-08-30 still stand in production and must still render safely.
+    static let informationalPlanKinds: Set<String> = [
+        "goal_outlook",
+        "goal_renegotiation",
+    ]
+
     /// What ACCEPT concretely does, per kind. Mirrors `PLAN_ACCEPT_VERB`.
+    ///
+    /// 2026-08-30 · `"goal_renegotiation": "SET THE REVISED TARGET"` was here,
+    /// and `goal_outlook` deliberately is not. Both are INFORMATIONAL kinds —
+    /// see `informationalPlanKinds` below and the web's
+    /// INFORMATIONAL_PROPOSAL_KINDS, which `scripts/check-goal-immutability.sh`
+    /// reads and cross-checks against this file.
     private static let planAcceptVerbs: [String: String] = [
         "staleness": "REFRESH THE PLAN",
-        "goal_renegotiation": "SET THE REVISED TARGET",
         "pace_reanchor": "RE-ANCHOR THE PACES",
         // 2026-08-28 · the lifecycle kinds normally auto-apply, but both keep
         // a pending fallback (undone-by-runner, compromised runner, failed
@@ -329,6 +354,34 @@ enum CoachDecisions {
         let body = p.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "Open the plan to see what moved."
             : p.message
+
+        // 2026-08-30 · AN INFORMATIONAL KIND NEVER GETS AN ACCEPT BUTTON.
+        //
+        // The phone shipped "ACCEPT · SET THE REVISED TARGET" on the retired
+        // `goal_renegotiation` card — an instruction to lower a stated goal,
+        // which the owner's locked rule forbids app-wide, and which on this
+        // surface did not even do what it said (the generic accept below
+        // rebuilds the block against the SAME goal). Both are gone. The note
+        // renders as a notice with one KEEP, and the server refuses `accept`
+        // for these kinds regardless of what any client sends.
+        if p.status == "pending" && informationalPlanKinds.contains(p.kind) {
+            return CoachDecision(
+                key: "plan-\(p.id)",
+                source: .planProposal(p),
+                kind: .notice,
+                // Notice DRESSING, but not the "APPLIED" eyebrow: nothing was
+                // applied, and saying so over a projection asserts something
+                // that did not happen. Mirrors EYEBROW_OUTLOOK on the web.
+                eyebrow: eyebrowOutlook,
+                title: title,
+                body: body,
+                stamp: p.createdAt.isEmpty ? nil : p.createdAt,
+                actions: [
+                    .init(role: .keep, label: "KEEP THE GOAL ON THE BOARD", busyLabel: "NOTING"),
+                ],
+                priority: priorityPlanProposal
+            )
+        }
 
         if p.status == "pending" {
             let verb = planAcceptVerbs[p.kind] ?? "REBUILD THE PLAN"

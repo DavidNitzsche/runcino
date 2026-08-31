@@ -17,6 +17,7 @@ import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { loadEffectiveRaceTarget, type EffectiveRaceTarget } from '@/lib/race/effective-race-target';
 import { resolveBGoal } from '@/lib/race/b-goal';
 import { loadCoachGoalForRace } from '@/lib/race/coach-goal-load';
+import { RUNNER_INITIATED_GOAL_SOURCES } from '@/lib/plan/goal-immutability';
 
 export const dynamic = 'force-dynamic';
 
@@ -281,17 +282,31 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
 }
 
 /**
- * PATCH /api/race/[slug] · goal renegotiation (Phase 2.4).
+ * PATCH /api/race/[slug] · the runner edits his own goal time.
  *
- * Body: { goalSec: number, source?: 'renegotiate' | 'manual' }
+ * Body: { goalSec: number, source?: 'manual' | 'onboarding' }
  *
  * Accepts a new goal time, updates races.plan.goal.finish_time_s +
  * meta.goalDisplay, audits the change, busts the briefing cache, and
  * fires an auto-rebuild (plan needs new pace targets at the new goal).
  *
- * Engine NEVER picks the new goal · the runner chose it from the gap
- * report's A/B/C alternatives. PATCH is the seam where the runner's
- * choice becomes durable state.
+ * ── 2026-08-30 · `source: 'renegotiate'` IS RETIRED, AND REFUSED ───────────
+ *
+ * This route accepted a third source, `'renegotiate'`, which existed for one
+ * caller: the accept button on a `goal_renegotiation` coach card. That is a
+ * forced goal decision, and the owner's locked app-wide rule says the coach
+ * PROJECTS and never RENEGOTIATES a stated goal via a card or a button. The
+ * old header even said the quiet part — "the runner chose it from the gap
+ * report's A/B/C alternatives" — which is a choice the engine put in front of
+ * him and asked him to make.
+ *
+ * The route is now runner-initiated only. `RUNNER_INITIATED_GOAL_SOURCES` in
+ * lib/plan/goal-immutability.ts is the whole allowed set, every member of it
+ * means a human typed the number, and a request carrying any other source is
+ * REJECTED rather than quietly normalised to 'manual' — a coach-authored write
+ * arriving here is a bug that must be visible, not laundered.
+ * `scripts/check-goal-immutability.sh` reads that constant at run time and
+ * fails the build if this route ever accepts a value outside it.
  *
  * Cite: docs/PLAN_ENGINE_ARCHITECTURE.md §Phase 2.4
  */
@@ -312,7 +327,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       { status: 400 },
     );
   }
-  const source = (body.source === 'renegotiate' ? 'renegotiate' : 'manual') as 'renegotiate' | 'manual';
+  // A goal write is runner-initiated or it is refused. Omitted source reads as
+  // 'manual' (the goal editor has always posted without one); anything present
+  // must be in the allowed set. Never coerce an unknown source to 'manual' —
+  // that is how a coach-authored write would arrive looking like the runner.
+  const rawSource = body.source == null ? 'manual' : String(body.source);
+  if (!(RUNNER_INITIATED_GOAL_SOURCES as readonly string[]).includes(rawSource)) {
+    return NextResponse.json(
+      {
+        error: `source '${rawSource}' is not runner-initiated · a goal is only ever set by the runner`,
+        allowed: RUNNER_INITIATED_GOAL_SOURCES,
+      },
+      { status: 400 },
+    );
+  }
+  const source = rawSource as (typeof RUNNER_INITIATED_GOAL_SOURCES)[number];
 
   // Format new display
   const h = Math.floor(goalSec / 3600);
@@ -346,10 +375,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     [JSON.stringify(newMeta), JSON.stringify(newPlan), userId, slug],
   );
 
-  // Audit the change
+  // Audit the change.
+  //
+  // 2026-08-30 · reason was 'goal_renegotiated'. Nothing reads it (grep: this
+  // route is the only writer and there is no consumer), and the word describes
+  // a mechanism that no longer exists — every write reaching here is now the
+  // runner editing his own goal. Historical rows keep the old reason; new ones
+  // say what actually happened.
   await pool.query(
     `INSERT INTO coach_intents (user_id, user_uuid, ts, reason, field, value)
-     VALUES ($1::uuid, $1::uuid, NOW(), 'goal_renegotiated', $2, $3::jsonb)`,
+     VALUES ($1::uuid, $1::uuid, NOW(), 'goal_edited_by_runner', $2, $3::jsonb)`,
     [
       userId, slug,
       JSON.stringify({
@@ -371,15 +406,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       raceSlug: slug,
       kind: 'goal_time_changed',
       reasons: {
-        drift_kind: 'goal_renegotiated',
+        drift_kind: 'goal_edited_by_runner',
         old_goal_sec: oldGoalSec,
         new_goal_sec: goalSec,
         source,
       },
-      source: 'goal_renegotiation',
+      source: 'goal_edit',
     });
   } catch (e) {
-    console.error('[race goal renegotiate] auto-rebuild failed:', e);
+    console.error('[race goal edit] auto-rebuild failed:', e);
   }
 
   // Bust briefing cache

@@ -13,6 +13,8 @@
 
 import { pool } from '@/lib/db/pool';
 import { describeDelta, type PlanDelta } from './plan-delta';
+import { isGoalOutlookKind } from './goal-immutability';
+import { composeGoalOutlookMessage } from './goal-outlook-copy';
 
 export type PlanProposalKind =
   | 'volume_drift'
@@ -31,7 +33,18 @@ export type PlanProposalKind =
   | 'a_race_added'
   | 'a_race_removed'
   // 2026-08-17 · coaching-loop reconciliation
-  | 'goal_renegotiation'   // unclosable gap sustained ≥5d · revised target band, ambition stays
+  // 2026-08-30 · RETIRED. Nothing writes this any more — it carried an
+  // imperative ("Set the revised target") and an accept path that rewrote
+  // `goalSec`, which is the forced goal decision the owner's locked rule
+  // forbids. Kept in the union because the rows still exist and must still
+  // describe themselves; `RETIRED_PROPOSAL_KINDS` in goal-immutability.ts is
+  // the machine-readable half and the gate fails if a writer stamps it again.
+  | 'goal_renegotiation'
+  // 2026-08-30 · its replacement, and the difference is the whole point: this
+  // one STATES where the evidence puts the runner and asks for nothing. Listed
+  // in INFORMATIONAL_PROPOSAL_KINDS, so POST /api/plan/proposal refuses to
+  // accept it and no surface may declare an accept verb for it.
+  | 'goal_outlook'
   | 'pace_reanchor'        // training-drift fitness regression · propose a re-anchor rebuild
   // 2026-08-25 · THE KINDS THE WRITERS ALREADY STAMP AND THIS TYPE DENIED.
   //
@@ -323,9 +336,10 @@ function isHardDriftKind(kind: PlanProposalKind): boolean {
       || kind === 'goal_time_changed'
       || kind === 'a_race_added'
       || kind === 'a_race_removed'
-      // 2026-08-17 · a sustained-unclosable renegotiation is the highest-
-      // stakes card the engine writes · never buried under soft drift.
-      || kind === 'goal_renegotiation'
+      // 2026-08-17 · a sustained-unclosable read is the highest-stakes thing
+      // the engine says · never buried under soft drift. Both the live note
+      // and the retired renegotiation, so a standing row keeps its place.
+      || isGoalOutlookKind(kind)
       // 2026-08-28 · RACEROLE-1 · a race-role card has a hard deadline (the
       // race itself, ~14 days out when it fires) · never buried under drift.
       || kind === 'race_role'
@@ -382,6 +396,37 @@ function synthesizeMessage(
   status: PlanProposalStatus,
   reasons: Record<string, unknown>,
 ): string {
+  // 2026-08-30 · THE GOAL-OUTLOOK KINDS DO NOT GET TO KEEP THEIR STORED PROSE.
+  //
+  // Retiring the writer does not retire what it already wrote. The owner has a
+  // standing `goal_renegotiation` row whose persisted `reasons.message` ends
+  // "Set the revised target to race off the fitness you have" — the forced
+  // goal decision the locked rule forbids — and the `why` line below prefers
+  // `reasons.message` over every fallback, so that sentence would keep
+  // rendering on his phone after the fix shipped. These kinds are recomposed
+  // from the row's STRUCTURED fields instead.
+  //
+  // A retired row is composed with `projectedSec: null` on purpose: its
+  // `trajectory_sec` is the projection SNAPSHOT (today's equivalence), not the
+  // forward trajectory every other surface prints under the same word, and
+  // reprinting it would re-open the Rule 16 defect. It states the situation
+  // without a figure; the figure sits beside it, resolver-sourced.
+  if (isGoalOutlookKind(kind)) {
+    const num = (k: string): number | null =>
+      typeof reasons[k] === 'number' && Number.isFinite(reasons[k] as number)
+        ? (reasons[k] as number)
+        : null;
+    const basis = reasons.projection_basis === 'equivalence' ? 'equivalence' as const
+      : reasons.projection_basis === 'trajectory' ? 'trajectory' as const
+      : null;
+    return composeGoalOutlookMessage({
+      projectedSec: num('projected_sec'),
+      basis,
+      goalSec: num('goal_sec'),
+      weeksRemaining: num('weeks_remaining'),
+    });
+  }
+
   const what = deltaSentence(kind, reasons);
   const why = typeof reasons.message === 'string' && reasons.message.length > 0
     ? reasons.message
@@ -427,8 +472,12 @@ function synthesizeMessage(
         : 'A new goal race was added · plan needs a refit.';
     case 'a_race_removed':
       return 'Your goal race was removed · pick a new A-race to keep training meaningful.';
+    // Unreachable: both goal-outlook kinds return from the recompose branch at
+    // the top of this function. Listed so the switch stays exhaustive over the
+    // union, and worded without the retired recommendation in case it is not.
     case 'goal_renegotiation':
-      return 'The gap to your goal is wider than the remaining weeks can close. A revised race target is recommended. The goal stays on the board as the season ambition.';
+    case 'goal_outlook':
+      return 'The gap to your goal is wider than the remaining weeks can close. The goal stays on the board as the season ambition. Nothing to set here.';
     case 'pace_reanchor':
       return 'Training evidence reads below the plan\'s pace anchor. Recommend re-anchoring paces to current fitness.';
     case 'replan':

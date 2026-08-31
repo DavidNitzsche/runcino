@@ -88,15 +88,51 @@ describe('TrainView has adopted the shared vocabulary', () => {
   });
 
   it('feeds the resolver the same four inputs TargetsView feeds it', () => {
-    const targets = readFileSync(TARGETS, 'utf8');
-    for (const key of ['trajectory:', 'goalSec:', 'projectionSec:', 'unclosable:']) {
-      expect(src).toContain(key);
-      expect(targets).toContain(key);
-    }
-    // Both must read the pending renegotiation, or one page can call an
-    // unclosable gap "watching" while the other calls it BEHIND.
-    for (const s of [src, targets]) {
-      expect(s).toMatch(/goal_renegotiation/);
+    // 2026-08-30 · THIS ASSERTION WAS BEING SATISFIED BY THE BUG.
+    //
+    // It used to look for the bare substring 'goalSec:' anywhere in each file.
+    // TargetsView passes `goalSec` to the resolver as a SHORTHAND property, so
+    // the only literal `goalSec:` in that file was
+    // `JSON.stringify({ goalSec: suggested.sec, source: 'renegotiate' })` —
+    // the goal-renegotiation button's request body. Deleting the violation
+    // turned this test red, which is the wrong way round: a check that passes
+    // because a defect is present is worse than no check.
+    //
+    // It now reads the resolver's ARGUMENT OBJECT out of each file and compares
+    // the key sets, which is what "the same inputs" actually means.
+    const targets = stripComments(readFileSync(TARGETS, 'utf8'));
+    const argKeys = (source: string, where: string): string[] => {
+      const i = source.indexOf('resolveGoalStatus({');
+      expect(i, `${where} does not call resolveGoalStatus`).toBeGreaterThan(-1);
+      let depth = 1;
+      let j = i + 'resolveGoalStatus({'.length;
+      for (; j < source.length && depth > 0; j++) {
+        if (source[j] === '{') depth++;
+        else if (source[j] === '}') depth--;
+      }
+      const body = source.slice(i + 'resolveGoalStatus({'.length, j - 1);
+      // Top-level keys only · shorthand (`goalSec,`) counts as the key it names.
+      return body
+        .split('\n')
+        .map((l) => l.trim())
+        .map((l) => /^([A-Za-z_$][\w$]*)\s*[:,]/.exec(l)?.[1] ?? null)
+        .filter((k): k is string => k != null)
+        .sort();
+    };
+    expect(argKeys(src, 'TrainView')).toEqual(['goalSec', 'projectionSec', 'trajectory', 'unclosable']);
+    expect(argKeys(targets, 'TargetsView')).toEqual(['goalSec', 'projectionSec', 'trajectory', 'unclosable']);
+  });
+
+  it('both pages read the pending goal-outlook note through the shared predicate', () => {
+    // Or one page can call an unclosable gap "watching" while the other calls
+    // it BEHIND. `isGoalOutlookKind` covers the live `goal_outlook` kind AND
+    // the retired `goal_renegotiation` rows still standing in prod, so neither
+    // page may hardcode either literal.
+    const targets = stripComments(readFileSync(TARGETS, 'utf8'));
+    for (const [name, s] of [['TrainView', src], ['TargetsView', targets]] as const) {
+      expect(s, `${name} must use the shared kind predicate`).toMatch(/isGoalOutlookKind\s*\(/);
+      expect(s, `${name} hardcodes a proposal kind instead of using the predicate`)
+        .not.toMatch(/kind === 'goal_(renegotiation|outlook)'/);
     }
   });
 

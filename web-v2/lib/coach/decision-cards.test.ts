@@ -270,23 +270,27 @@ describe('both endpoints the deck required stay wired', () => {
 });
 
 describe('surface-owned kinds do not double-ask', () => {
-  const renegotiation: PlanProposalInput = {
+  const outlook: PlanProposalInput = {
     id: 44,
-    kind: 'goal_renegotiation',
+    kind: 'goal_outlook',
     status: 'pending',
-    message: 'The plan projects 3:31:48 against your 3:00:00 goal.',
+    message: 'This build projects 3:22:17. The 3:00:00 stays on the board as the season ambition.',
     createdAt: '2026-08-16T09:00:00Z',
   };
+  // The owner's standing prod row, retired kind and all. It must keep
+  // rendering, and it must render as a NOTICE.
+  const retired: PlanProposalInput = { ...outlook, id: 57, kind: 'goal_renegotiation' };
 
-  it('goal_renegotiation is in the Targets-owned list', () => {
+  it('both goal-outlook kinds are in the Targets-owned list', () => {
+    expect(TARGETS_OWNED_PLAN_KINDS).toContain('goal_outlook');
     expect(TARGETS_OWNED_PLAN_KINDS).toContain('goal_renegotiation');
   });
 
-  it('Today excludes it so the runner is not asked the same thing twice', () => {
-    // Wave 2 mounts this one inside THE PATH on Targets, beside the number
-    // it renegotiates. Today must not render it as a generic plan proposal.
+  it('Today excludes them so the runner is not told the same thing twice', () => {
+    // Wave 2 mounts these inside THE PATH on Targets, beside the number they
+    // speak about. Today must not render them as generic plan proposals.
     const q = selectCoachDecisions({
-      planProposals: [renegotiation, pendingDrift],
+      planProposals: [outlook, retired, pendingDrift],
       excludeKinds: TARGETS_OWNED_PLAN_KINDS,
       todayISO: TODAY,
     });
@@ -294,15 +298,44 @@ describe('surface-owned kinds do not double-ask', () => {
   });
 
   it('without the exclusion it still renders · the filter is the caller’s call', () => {
-    const q = selectCoachDecisions({ planProposals: [renegotiation], todayISO: TODAY });
+    const q = selectCoachDecisions({ planProposals: [outlook], todayISO: TODAY });
     expect(q).toHaveLength(1);
-    expect(q[0].title).toBe('Your race target needs a call');
+    expect(q[0].title).toBe('Where this build projects');
+  });
+
+  // 2026-08-30 · THE VIOLATION, ASSERTED AS A SHAPE.
+  //
+  // A pending `goal_renegotiation` used to come out of here as kind
+  // 'decision' with `ACCEPT · MOVE THE TARGET` wired to POST
+  // /api/plan/proposal { action: 'accept' }. The owner's locked rule: the
+  // coach projects, it never renegotiates a stated goal via a card or a
+  // button. Both goal-outlook kinds are notices with one KEEP.
+  it('neither goal-outlook kind can produce an accept action', () => {
+    for (const p of [outlook, retired]) {
+      const [d] = selectCoachDecisions({ planProposals: [p], todayISO: TODAY });
+      expect(d.kind).toBe('notice');
+      expect(d.actions.map((a) => a.role)).toEqual(['keep']);
+      expect(d.actions[0].body).toEqual({ id: p.id, action: 'dismiss' });
+      expect(JSON.stringify(d)).not.toMatch(/goalSec|renegotiate|MOVE THE TARGET|REVISED TARGET/i);
+    }
+  });
+
+  it('a writer-composed accept_verb cannot buy an informational kind a button', () => {
+    // `reasons.accept_verb` is the RACEROLE-1 escape hatch that lets a writer
+    // name its own verb. The informational branch is taken before it is read,
+    // so a row carrying one still renders as a notice.
+    const [d] = selectCoachDecisions({
+      planProposals: [{ ...retired, reasons: { accept_verb: 'MOVE THE TARGET' } }],
+      todayISO: TODAY,
+    });
+    expect(d.kind).toBe('notice');
+    expect(d.actions.every((a) => a.role !== 'accept')).toBe(true);
   });
 
   it('excluding a kind never removes an unrelated one', () => {
     const q = selectCoachDecisions({
       coachProposals: [injury],
-      planProposals: [renegotiation, appliedRebuild],
+      planProposals: [outlook, appliedRebuild],
       workoutProposals: [swap],
       excludeKinds: TARGETS_OWNED_PLAN_KINDS,
       todayISO: TODAY,
