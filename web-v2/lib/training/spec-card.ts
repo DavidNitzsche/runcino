@@ -136,7 +136,15 @@ function fmtPace(sPerMi: number | null | undefined): string | null {
  */
 const NOTE = {
   warmup: 'Start easy. Build into the work over the last quarter mile.',
-  cooldown: 'Easy jog. Do not skip it, it shortens tomorrow.',
+  // 2026-08-31 · "it shortens tomorrow" asserted a physiological fact — that a
+  // cool-down measurably shortens next-day recovery — that no document in
+  // `Research/` states, and Rule 7 is explicit that a claim about physiology
+  // carries a citation or is not made. It also argued with the number beside
+  // it: the step is priced at the same easy pace as the warm-up, so the runner
+  // reads a recovery promise over an ordinary easy mile. Says what the segment
+  // IS instead, which is the part that is true and the part that stops it being
+  // treated as optional padding on the end of the day.
+  cooldown: 'Easy jog. Part of the workout, not extra mileage.',
   recovery: 'Honest jog, not standing.',
   repThreshold: 'Same pace on every rep. If the last one slips, the target was too fast.',
   repInterval: 'Even splits from the first rep. Do not go out fast expecting to fade.',
