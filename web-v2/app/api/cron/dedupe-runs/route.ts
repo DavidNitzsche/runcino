@@ -25,6 +25,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
 import { autoMergeRecent } from '@/lib/runs/merge';
+import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 
 export const maxDuration = 120;
 
@@ -213,6 +214,12 @@ export async function POST(req: NextRequest) {
     console.warn('[cron/dedupe-runs] absorption invariant unavailable:',
       err instanceof Error ? err.message : String(err));
   }
+
+  // 2026-08-30 · scheduler ledger (lib/ops/cron-ledger.ts).
+  await recordCronSuccess('dedupe-runs', {
+    users: users.length, changed: totalChanged,
+    errors: results.filter((r) => r.error).length,
+  });
 
   return NextResponse.json({
     ok: results.every((r) => !r.error),

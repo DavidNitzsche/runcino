@@ -16,6 +16,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pullSyncAllUsers } from '@/lib/strava/pullSync';
+import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest) {
       rpeWritten: a.rpeWritten + x.rpeWritten,
       errors: a.errors + x.errors.length,
     }), { fetched: 0, matched: 0, inserted: 0, fieldsAdded: 0, shoesAttributed: 0, rpeWritten: 0, errors: 0 });
+    // 2026-08-30 · scheduler ledger (lib/ops/cron-ledger.ts). Stamped by the
+    // route so whichever trigger arrived first satisfies the slot.
+    await recordCronSuccess('strava-sync', { users: r.users, ...totals });
     return NextResponse.json({
       ok: true,
       users: r.users,

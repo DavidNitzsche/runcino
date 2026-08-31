@@ -31,6 +31,7 @@ import { distanceMiFromLabel } from '@/lib/race/distance';
 import { refreshRunnerCalibration } from '@/lib/coach/runner-calibration';
 import { resolveNextAGoalProjection } from '@/lib/training/goal-projection-resolve';
 import { checkAndNotifyProjectionChange } from '@/lib/notifications/projection-changed';
+import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 
 export const maxDuration = 60;
 
@@ -244,6 +245,14 @@ export async function POST(req: NextRequest) {
       });
     }
   }
+
+  // 2026-08-30 · scheduler ledger (lib/ops/cron-ledger.ts). plan-drift's
+  // goal-gap findings refuse to fire when this job's output is more than 36h
+  // old, so this stamp is also what tells the operator WHY they went quiet.
+  await recordCronSuccess('snapshot-projections', {
+    users: results.length,
+    errors: results.filter((r) => r.error).length,
+  });
 
   return NextResponse.json({
     ok: results.every((r) => !r.error),

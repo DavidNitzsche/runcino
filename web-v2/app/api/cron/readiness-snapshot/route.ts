@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { writeReadinessSnapshot } from '@/lib/coach/readiness-snapshot';
+import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 
 export const maxDuration = 60;
 
@@ -108,6 +109,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 2026-08-30 · scheduler ledger (lib/ops/cron-ledger.ts). This job is only
+  // STRUCTURALLY idempotent — the score is recomputed from live state, so a
+  // second run at a different hour writes a different number over the first
+  // (automatic-mutation-registry cron/readiness-snapshot). Due-gating it is
+  // therefore a correctness improvement and not merely a saving: today two
+  // triggers can both land and the later hour wins arbitrarily.
+  await recordCronSuccess('readiness-snapshot', {
+    users: results.length,
+    written: results.filter((r) => r.written).length,
+    errors: results.filter((r) => r.error).length,
+  });
+
   return NextResponse.json({
     ok: results.every((r) => !r.error),
     // 2026-06-03 · per-runner today now lives on each result row;
@@ -125,7 +138,12 @@ export async function GET() {
   return NextResponse.json({
     endpoint: 'POST /api/cron/readiness-snapshot',
     auth: 'Authorization: Bearer <CRON_SECRET>',
-    recommended_schedule: '15 8 * * *  (daily at 01:15 PT = 08:15 UTC · runs AFTER snapshot-projections)',
+    // 2026-08-30 · this said "runs AFTER snapshot-projections". It does, by the
+    // clock, and it does not NEED to: nothing in writeReadinessSnapshot or its
+    // pillar readers touches projection_snapshots. A false ordering claim is
+    // how a real one gets trusted (Rule 20), so the real dependency is named
+    // instead. Slots and the true `requires` edge live in lib/ops/cron-ledger.ts.
+    recommended_schedule: '15 8 * * *  (daily at 01:15 PT = 08:15 UTC · after strava-sync, whose runs the sleep/load pillars read)',
     note: 'Idempotent · re-running same day overwrites. Brand-new users with no signal are skipped (reason=no_data).',
   });
 }

@@ -21,6 +21,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { logReadFailure, rowOrNull, rowsOrNull } from '@/lib/db/read';
 import { detectDrift, hasPendingProposal } from '@/lib/plan/drift-monitor';
+import {
+  recordCronSuccess, raisePreconditionAlert, cronJob,
+} from '@/lib/ops/cron-ledger';
 import { roundTo } from '@/lib/format/run';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
 import {
@@ -102,6 +105,18 @@ export async function POST(req: NextRequest) {
      *  written this tick (a pending card is the WHOLE action — the plan only
      *  moves if the runner accepts). */
     race_role_cards?: number;
+    /** 2026-08-30 · outcome of this job ENSURING its own LTHR anchor rather
+     *  than assuming run-adaptations already did. `reanchorLthr`'s own `why`
+     *  string when it decided nothing, 'rewritten' when it moved the anchor,
+     *  'ensure_failed' when the ensure itself could not run — three facts, not
+     *  a boolean (Rule 11). Reported per user because a block authored on an
+     *  unconfirmed anchor is exactly the thing that was invisible before. */
+    lthr_ensured?: string;
+    /** 2026-08-30 · goal-gap findings skipped because the projection series
+     *  this job reads had not been refreshed by snapshot-projections. A
+     *  per-finding refusal, not a whole-job one: the lifecycle transitions
+     *  above do not read projections and must still fire. */
+    goal_gap_skipped_stale_projection?: number;
     /** 2026-08-28 · GOALFRAME-1 · "time or effort?" framing cards written
      *  this tick for rolling-band races with no stated goal (the pending
      *  card is the WHOLE action — the framing only changes if the runner
@@ -122,6 +137,62 @@ export async function POST(req: NextRequest) {
       proposals_expired: 0,
     };
     try {
+      // ── 2026-08-30 · ENSURE THE ANCHOR. THIS JOB NO LONGER ASSUMES A SIBLING
+      //    RAN · CLAUDE.md Rule 23 ────────────────────────────────────────
+      //
+      // This is the assumption Rule 23 was written from, and the rule's own
+      // preferred remedy: ENSURE the precondition rather than check and refuse.
+      //
+      // This cron AUTHORS BLOCKS. Every authoring path below reaches
+      // `generatePlan`, and `spec-builder.ts` stamps `workout_spec.hr_cap_bpm`
+      // and `lthr_bpm` on every easy, long and quality day from `profile.lthr`
+      // AT THAT INSTANT (hrCapEasy / hrCapLong / hrLthrBpm, spec-builder.ts
+      // :335-354). Those numbers are then frozen for the length of the block —
+      // fourteen weeks for a marathon build.
+      //
+      // The only thing that re-anchors `profile.lthr` on a schedule is
+      // `run-adaptations`, which calls `reanchorLthr` once a night. So this job
+      // was silently assuming that a DIFFERENT job, triggered by a DIFFERENT
+      // GitHub cron, had already run today. Nominally it does: 03:00 UTC
+      // against this job's 04:00. In practice, measured over the four days to
+      // 2026-08-30, `run-adaptations` started at 03:55, 13:56, 15:08, 09:50 and
+      // 09:01 UTC and this job at 14:13, 14:07 and 20:37. The order was a coin
+      // toss, the losing side froze fourteen weeks of heart-rate ceilings about
+      // 6 bpm low (162 against 168 on the owner's own anchor the night this was
+      // found), and NOTHING ANYWHERE REPORTED IT.
+      //
+      // The fix is not to check the sibling and refuse. It is to stop needing
+      // it. `reanchorLthr` is idempotent by construction — it returns
+      // `action: 'none'` the moment the anchor agrees with the evidence, has a
+      // ±3 bpm noise floor so it cannot churn on rounding, guards its UPDATE on
+      // the exact state it decided against, and never throws (its own header,
+      // lthr-reanchor-store.ts). Calling it here costs two indexed reads when
+      // the anchor is already fresh, which is the common case precisely BECAUSE
+      // run-adaptations usually ran first.
+      //
+      // Deliberately the FIRST statement of the loop body, ahead of the
+      // hygiene sweeps, so there is no path from the top of this loop to any
+      // `fireAutoRebuild` that skips it.
+      try {
+        const { reanchorLthr } = await import('@/lib/training/lthr-reanchor-store');
+        const re = await reanchorLthr(u);
+        r.lthr_ensured = re.written ? 'rewritten' : re.why;
+      } catch (e) {
+        // reanchorLthr does not throw; if the import itself failed, the block
+        // would be authored off an anchor nobody confirmed. Say so out loud
+        // rather than proceeding as though it had been checked — Rule 11:
+        // "could not look" is not "looked and it was fine".
+        r.lthr_ensured = 'ensure_failed';
+        console.error('[plan-drift] LTHR ensure failed · authoring on an unconfirmed anchor:', e);
+        const job = cronJob('plan-drift');
+        if (job) {
+          await raisePreconditionAlert(
+            job, ['lthr-reanchor'],
+            `User ${u}: could not confirm profile.lthr before authoring. Any block authored this pass may carry stale hr_cap_bpm.`,
+          ).catch(() => {});
+        }
+      }
+
       // 2026-08-17 · stale-proposal hygiene FIRST. Pending rows older
       // than 14 days go to 'expired' — proposals-state stopped surfacing
       // them at 14d anyway, and as invisible zombies they defeated every
@@ -1058,7 +1129,71 @@ export async function POST(req: NextRequest) {
       // §Phase 1.1. We check it BEFORE per-axis drift because a widening
       // goal-gap is the higher-order signal · drift detection is the
       // input-side anomaly check, goal-gap is the output-side check.
-      const goalGap = await computeGoalGap(u);
+      // ── 2026-08-30 · THE SECOND ASSUMPTION, AND WHY IT REFUSES INSTEAD OF
+      //    ENSURING ────────────────────────────────────────────────────────
+      //
+      // `computeGoalGap` reads `projection_snapshots` over the last 14 days and
+      // both branches below act on a TREND across that series
+      // (`consecutiveWideningDays >= 3`, `consecutiveUnclosableDays >= 5`).
+      // The series is written by `snapshot-projections`, a different job on a
+      // different cron. This job's 09:00 UTC slot is after its 07:30; the 04:00
+      // slot added on 2026-08-30 is three and a half hours BEFORE it, and with
+      // the measured lateness either can land on either side.
+      //
+      // Unlike the LTHR anchor this one cannot honestly be ENSURED from here:
+      // refreshing the series means running the whole projection pipeline —
+      // bestRecentVdot over 180 days, per-distance predictions, plus
+      // `reanchorActivePlan`, which is itself a plan writer
+      // (automatic-mutation-registry cron/snapshot-projections). Firing a
+      // second plan writer from inside this one to satisfy a read is a worse
+      // defect than the one it fixes.
+      //
+      // So it REFUSES, and refuses at the level of the FINDING rather than the
+      // job (CLAUDE.md · per-finding context filters): the lifecycle
+      // transitions above read no projections and must still fire, because a
+      // runner parked in a dead block is the harm this cron exists to prevent.
+      // A stale series only silences the two findings that are computed FROM
+      // it, and the silence is counted so it appears in the cron's own report
+      // rather than looking like "no drift".
+      //
+      // 36 hours, not "today": the series is per-runner-day and the tolerance
+      // has to survive a timezone boundary and one late-but-successful pass. It
+      // catches what it is for — snapshot-projections not running at all — and
+      // cannot fire on a job that merely ran late.
+      const projectionFresh = await (async () => {
+        const row = await rowOrNull<{ age_hours: number | null }>(
+          'cron/plan-drift · projection freshness',
+          pool.query(
+            `SELECT EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) / 3600.0 AS age_hours
+               FROM projection_snapshots WHERE user_uuid = $1`,
+            [u],
+          ),
+        );
+        // A failed read is not "stale" and not "fresh". Treat it as fresh so a
+        // dropped connection cannot silence a real coaching finding — the
+        // finding is a pending CARD, and the cost of one card raised on a
+        // series we could not verify is smaller than the cost of the app going
+        // quiet about a widening goal because a read blipped. Said out loud
+        // here because the opposite choice is the default elsewhere in this
+        // file and the difference is deliberate.
+        if (row === null) return true;
+        // `undefined` is the third state: the read succeeded and matched no
+        // rows. An aggregate always returns one row, so this is unreachable in
+        // practice — named rather than asserted because a `!` here would be a
+        // claim nothing verifies.
+        if (row === undefined) return true;
+        const age = row.age_hours;
+        // No snapshot at all: a new runner the projection job has never
+        // reached. `computeGoalGap` returns null on an empty series anyway, so
+        // this costs nothing and avoids reporting a skip that did not happen.
+        if (age == null) return true;
+        return Number(age) <= 36;
+      })();
+
+      const goalGap = projectionFresh ? await computeGoalGap(u) : null;
+      if (!projectionFresh) {
+        r.goal_gap_skipped_stale_projection = 1;
+      }
       if (
         goalGap && goalGap.status === 'widening' && goalGap.consecutiveWideningDays >= 3
         // 2026-08-17 · truth-bug fix · inside 14 days of the race the
@@ -1303,10 +1438,36 @@ export async function POST(req: NextRequest) {
     results.push(r);
   }
 
+  // 2026-08-30 · scheduler ledger. Stamped by the ROUTE so the GitHub workflow
+  // and the in-process tick dedupe against each other (lib/ops/cron-ledger.ts).
+  const staleProjectionUsers = results.filter((x) => x.goal_gap_skipped_stale_projection).length;
+  const unconfirmedAnchorUsers = results.filter((x) => x.lthr_ensured === 'ensure_failed').length;
+  await recordCronSuccess('plan-drift', {
+    users: results.length,
+    written: results.reduce((s, x) => s + x.proposals_written, 0),
+    errors: results.filter((x) => x.error).length,
+    goal_gap_skipped_stale_projection: staleProjectionUsers,
+    lthr_ensure_failed: unconfirmedAnchorUsers,
+  });
+  // A silenced finding is a decision and has to be legible as one, at the level
+  // of the OPERATOR and not only in this response body — nobody was reading the
+  // body, which is how the ordering drift survived four days.
+  if (staleProjectionUsers > 0) {
+    const job = cronJob('plan-drift');
+    if (job) {
+      await raisePreconditionAlert(
+        job, ['snapshot-projections'],
+        `Goal-gap findings were skipped for ${staleProjectionUsers} runner(s): their projection series is more than 36h old, so the widening/unclosable trend could not be computed honestly.`,
+      ).catch(() => {});
+    }
+  }
+
   return NextResponse.json({
     ok: results.every((r) => !r.error),
     today: new Intl.DateTimeFormat('en-CA').format(new Date()),
     users: results.length,
+    goal_gap_skipped_stale_projection: staleProjectionUsers,
+    lthr_ensure_failed: unconfirmedAnchorUsers,
     written: results.reduce((s, r) => s + r.proposals_written, 0),
     skipped: results.reduce((s, r) => s + r.signals_skipped, 0),
     errors: results.filter((r) => r.error).length,

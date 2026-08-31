@@ -409,6 +409,35 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     reversible: 'Nothing to reverse.',
     note: 'Verified read-only: all six loaders it calls contain no UPDATE, INSERT, DELETE or ON CONFLICT.',
   },
+  {
+    id: 'cron/tick',
+    route: 'app/api/cron/tick/route.ts',
+    trigger:
+      'An in-process heartbeat inside the Railway container every 5 min (web-v2/instrumentation.ts), '
+      + 'plus */10 from .github/workflows/cron-tick.yml as a backstop. Both are due-gated, so a cause '
+      + 'that fires it a hundred times still runs each job at most once per slot.',
+    reach: 'append_or_fill',
+    changes: ['ops_alerts'],
+    idempotent: true,
+    onPartialFailure:
+      'It writes nothing but ops_alerts rows, and only AFTER deciding. The jobs it invokes stamp their '
+      + 'own ledger row from inside their own route, so a tick that dies mid-pass leaves every job it '
+      + 'had not reached still due, and the one it was running either stamped (it finished) or did not '
+      + '(it will be retried). There is no state in the tick itself to leave half-written.',
+    runnerSees: 'invisible',
+    reversible: 'Nothing to reverse. The heartbeat is switched off with CRON_TICK_DISABLED=1 and a restart.',
+    note:
+      'THE SCHEDULER, and it is a caller rather than a writer: every runner-visible mutation it causes '
+      + 'belongs to the job it invoked and is registered under that job\'s own entry. What it changes '
+      + 'directly is WHEN those jobs run and HOW OFTEN — a job now runs once per slot instead of once '
+      + 'per trigger, which for cron/readiness-snapshot is a correctness improvement (the registry '
+      + 'records it as structurally but not semantically idempotent) and for cron/promote-courses '
+      + 'reduces the number of passes that can enter its non-transactional crash window. It drives only '
+      + 'the jobs listed in lib/ops/cron-ledger.ts CRON_JOBS, every one of which is marked idempotent '
+      + 'in THIS file; cron/notifications and cron/strava-push-poll are excluded by name because they '
+      + 'are not, and a second driver for a job that sends pushes or uploads to Strava is a second '
+      + 'chance to do it twice.',
+  },
 
   // ── Event-driven ──────────────────────────────────────────────────────────
   {

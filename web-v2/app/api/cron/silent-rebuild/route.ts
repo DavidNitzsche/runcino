@@ -102,6 +102,33 @@ export async function POST(req: NextRequest) {
   if (!raceSlug) {
     return NextResponse.json({ error: 'active plan has no race_id and no raceSlug provided' }, { status: 400 });
   }
+  // ── 2026-08-30 · ENSURE THE ANCHOR BEFORE AUTHORING ──────────────────────
+  //
+  // The same defect plan-drift carried, in the third authoring path. This route
+  // reaches `generatePlan`, which stamps `workout_spec.hr_cap_bpm` and
+  // `lthr_bpm` on every easy, long and quality day from `profile.lthr` at that
+  // instant and then freezes them for the length of the block. `reanchorLthr`
+  // is the only thing that moves that anchor, and it runs inside a DIFFERENT
+  // cron on a DIFFERENT clock.
+  //
+  // This route is worse-placed than plan-drift for that assumption, not better:
+  // it is `workflow_dispatch` only, so it fires at an arbitrary hour chosen by
+  // whoever dispatched it, with no relationship at all to 03:00 UTC. Its whole
+  // purpose is to land an engine upgrade into a live block — authoring that
+  // block off an anchor nobody confirmed is exactly the shape of bug it exists
+  // to fix.
+  //
+  // `reanchorLthr` is idempotent, has a ±3 bpm noise floor, and never throws.
+  let lthrEnsured = 'not_attempted';
+  try {
+    const { reanchorLthr } = await import('@/lib/training/lthr-reanchor-store');
+    const re = await reanchorLthr(userUuid);
+    lthrEnsured = re.written ? 'rewritten' : re.why;
+  } catch (e) {
+    lthrEnsured = 'ensure_failed';
+    console.error('[silent-rebuild] LTHR ensure failed · authoring on an unconfirmed anchor:', e);
+  }
+
   const result = await fireAutoRebuild({
     userUuid,
     raceSlug,
@@ -146,5 +173,9 @@ export async function POST(req: NextRequest) {
     // The undo pairing row (auto_applied) this route used to skip.
     proposal_id: result.proposalId ?? null,
     acked_stale_intents: ackedIntents,
+    // 2026-08-30 · whether this route CONFIRMED profile.lthr before authoring,
+    // rather than assuming run-adaptations had. `reanchorLthr`'s own reason
+    // string, 'rewritten' when it moved the anchor, or 'ensure_failed'.
+    lthr_ensured: lthrEnsured,
   });
 }

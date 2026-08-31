@@ -41,6 +41,7 @@ import { detectAdaptations, applyAdaptations, partitionActionsForCron, reducesLo
 import { tryAdaptiveBump } from '@/lib/plan/adaptive-ramp';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
+import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 
 export const maxDuration = 120;
 
@@ -74,6 +75,39 @@ export async function POST(req: NextRequest) {
   for (const uid of userIds) {
     let sessionMoved = false;
     try {
+      // ── 2026-08-30 · THE RE-ANCHOR MOVED TO THE FRONT ────────────────────
+      //
+      // It used to sit near the BOTTOM of this loop, after `applyAdaptations`
+      // and `tryAdaptiveBump`. That is an ordering assumption inside a single
+      // job, and it is the same shape as the cross-job one this pass was
+      // written to remove.
+      //
+      // `applyAdaptations` reaches `recompute-paces.ts`, which reads
+      // `profile.lthr` RAW (`SELECT lthr FROM profile`, recompute-paces.ts:433)
+      // and rewrites `workout_spec.hr_cap_bpm` and `lthr_bpm` on every future
+      // unsealed day. So on the one night that matters — the night the anchor
+      // actually moves — the recompute spent the OLD number and the re-anchor
+      // landed afterwards, leaving the whole plan a full day behind the app's
+      // own best estimate of the runner's threshold, with nothing saying so.
+      // The owner's anchor moved 162 → 168 on 2026-08-30; under the old order
+      // every cap this cron rewrote that night was 89% of 162.
+      //
+      // Nothing wanted it last. The only ordering constraint its own comment
+      // stated was "BEFORE updateCoachLog so a move made this tick is available
+      // for the log entry written in the same pass", and moving it to the front
+      // preserves that with room to spare. Now every reader in this pass —
+      // detector, adapter, ramp and log — sees the same anchor, and it is the
+      // current one.
+      //
+      // Idempotent, cheap, and never throws: `action: 'none'` the moment the
+      // anchor agrees with the evidence, a ±3 bpm noise floor so it cannot
+      // churn on rounding, and its UPDATE guarded on the exact state it decided
+      // against (lib/training/lthr-reanchor-store.ts).
+      try {
+        const { reanchorLthr } = await import('@/lib/training/lthr-reanchor-store');
+        await reanchorLthr(uid);
+      } catch { /* logged inside · non-fatal */ }
+
       const { triggers, actions } = await detectAdaptations(uid);
 
       // 2026-06-04 · split actions into APPLY-NOW vs PROPOSE-FIRST.
@@ -187,24 +221,22 @@ export async function POST(req: NextRequest) {
       const bump = await tryAdaptiveBump(uid, applied > 0 || pullbackDecided).catch(() => null);
       if (bump) await bustBriefingCacheForEvent(uid, 'plan_swap');
 
-      // 2026-08-30 · LTHR re-anchor (lib/training/lthr-reanchor.ts).
+      // 2026-08-30 · the LTHR re-anchor USED TO BE HERE, and this is the
+      // reason it is not any more.
       //
-      // The race paths call this too, but they only fire when a result is
-      // WRITTEN. An anchor can go stale between result writes — a race
-      // imported through a path that didn't run the chain, a priority edited
-      // from C to A after the fact, or (the case that made this necessary)
-      // months of history that predate the fix. Running it daily means the
-      // anchor is never more than one night behind the evidence.
+      // Why it runs at all (unchanged): the race paths call `reanchorLthr` too,
+      // but only when a result is WRITTEN. An anchor can go stale between
+      // result writes — a race imported through a path that did not run the
+      // chain, a priority edited from C to A after the fact, or months of
+      // history that predate the fix. Running it daily means the anchor is
+      // never more than one night behind the evidence.
       //
-      // Ordered BEFORE updateCoachLog so a move made this tick is available
-      // for the log entry written in the same pass. Idempotent — the decision
-      // returns 'none' once the anchor agrees with the evidence, and the
-      // ±3 bpm noise floor stops it churning on rounding.
-      try {
-        const { reanchorLthr } = await import('@/lib/training/lthr-reanchor-store');
-        await reanchorLthr(uid);
-      } catch { /* logged inside · non-fatal */ }
-
+      // Why it moved: at this position `applyAdaptations` had already run, and
+      // it reaches `recompute-paces.ts`, which reads `profile.lthr` raw and
+      // rewrites every future `hr_cap_bpm`. See the block at the top of this
+      // loop. `updateCoachLog` below still gets a move made this tick, which
+      // was the only ordering this position was ever chosen for.
+      //
       // 2026-08-17 · coach's log daily check (lib/coach/coach-log.ts).
       // Week-close / phase-boundary entries fire only on the boundary
       // morning; the longest-run-ever check is one indexed query.
@@ -238,6 +270,13 @@ export async function POST(req: NextRequest) {
   }
   const totalApplied = results.reduce((a, r) => a + r.applied, 0);
   const totalProposed = results.reduce((a, r) => a + r.proposed, 0);
+  // 2026-08-30 · scheduler ledger (lib/ops/cron-ledger.ts). Stamped by the
+  // ROUTE, not by whatever triggered it, so the GitHub workflow and the
+  // in-process tick dedupe against each other instead of both firing this pass.
+  await recordCronSuccess('run-adaptations', {
+    users: userIds.length, applied: totalApplied, proposed: totalProposed,
+    errors: results.filter((r) => r.error).length,
+  });
   return NextResponse.json({
     ok: true,
     users: userIds.length,

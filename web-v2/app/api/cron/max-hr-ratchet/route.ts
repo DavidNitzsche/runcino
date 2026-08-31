@@ -25,6 +25,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { ratchetUsersMaxHr } from '@/lib/training/max-hr';
 import { refreshProfileBiometrics } from '@/lib/training/biometrics-refresh';
+import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 
 export const maxDuration = 60;
 
@@ -92,6 +93,14 @@ export async function POST(req: NextRequest) {
       });
     }
   }
+
+  // 2026-08-30 · scheduler ledger (lib/ops/cron-ledger.ts). This job is the
+  // model the rest of this work copies: its header already says it assumes
+  // NOTHING about snapshot-projections and re-does the ratchet regardless, so
+  // it is a no-op when its neighbour is healthy and a rescue when it is not.
+  await recordCronSuccess('max-hr-ratchet', {
+    users: userIds.length, ratcheted, biometrics_refreshed: biometricsRefreshed,
+  });
 
   return NextResponse.json({
     ok: true,

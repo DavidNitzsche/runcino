@@ -11,7 +11,15 @@
  */
 import { pool } from '@/lib/db/pool';
 
-export type AlertKind = 'cron_fail' | 'regen_fail' | 'asc_stall' | 'crash' | 'briefing_failure' | 'webhook_failure' | 'apns_send_failed' | 'notifications_cron_error' | 'dedup_flag_census' | 'dedup_absorption_invariant' | 'account_deleted' | 'unknown';
+// 2026-08-30 · the scheduler kinds (lib/ops/cron-ledger.ts).
+//   cron_ok           — a heartbeat, not an alert. Written with acked_at
+//                       already set so `recentUnackedAlerts` never shows it;
+//                       it exists to answer "when did this job last
+//                       successfully complete".
+//   cron_stale        — that answer was "too long ago", or "never".
+//   cron_precondition — a job ran with an input another job was supposed to
+//                       have refreshed and had not.
+export type AlertKind = 'cron_fail' | 'cron_ok' | 'cron_stale' | 'cron_precondition' | 'regen_fail' | 'asc_stall' | 'crash' | 'briefing_failure' | 'webhook_failure' | 'apns_send_failed' | 'notifications_cron_error' | 'dedup_flag_census' | 'dedup_absorption_invariant' | 'account_deleted' | 'unknown';
 export type AlertSeverity = 'info' | 'warn' | 'error' | 'critical';
 
 export interface RaiseAlertInput {

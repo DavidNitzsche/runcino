@@ -48,6 +48,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { promoteCourseFromRace, type PromoteResult } from '@/lib/courses/promote-from-race';
 import { hydrateCourseGeometry } from '@/lib/race/hydrate-course-geometry';
+import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 
 export const maxDuration = 60;
 
@@ -117,6 +118,18 @@ export async function POST(req: NextRequest) {
         user_uuid: c.user_uuid,
       });
     }
+  }
+
+  // 2026-08-30 · scheduler ledger (lib/ops/cron-ledger.ts). Stamped only when
+  // the pass COMPLETED — the registry records this job as idempotent on a clean
+  // run and NOT idempotent on a crashed one (contributor_count is incremented
+  // before promoted_to_library_iso, and that flag is the only dedupe), so a
+  // half-finished pass must stay due rather than be marked done.
+  if (counts.error === 0) {
+    await recordCronSuccess('promote-courses', {
+      created: counts.created, upgraded: counts.upgraded,
+      incremented: counts.incremented, noop: counts.noop, errors: counts.error,
+    });
   }
 
   return NextResponse.json({

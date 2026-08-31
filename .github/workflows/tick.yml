@@ -1,0 +1,105 @@
+# The scheduler backstop.
+#
+# WHAT THIS IS NOT: a replacement for any of the per-job workflows beside it.
+# Every one of those still exists, still runs on its own cron, and is
+# deliberately untouched. A new trigger and the removal of an old one do not
+# belong in the same change — the new path has to be watched through a full
+# cycle first.
+#
+# WHAT IT IS: a second, dumber leg. It hits /api/cron/tick, which works out what
+# is DUE and runs it (web-v2/lib/ops/cron-ledger.ts). The primary driver is an
+# in-process heartbeat inside the Railway container itself
+# (web-v2/instrumentation.ts) which fires every five minutes and does not depend
+# on GitHub at all. This exists for the case that heartbeat cannot cover: a
+# container that restarted, slept, or wedged.
+#
+# WHY THE TWO CANNOT DOUBLE-FIRE ANYTHING: the ledger row is stamped by each
+# JOB'S OWN ROUTE, not by whatever called it. So a job satisfied by the
+# heartbeat, by this workflow, by its own old workflow, or by a human with curl
+# reads as "not due" to all the others until its next slot opens.
+#
+# ON THE SCHEDULE BELOW: GitHub Actions cron is best-effort, and measured on
+# this repo on 2026-08-30 it delivered EIGHT of the 75 ticks keep-warm's three
+# cron lines ask for in a day. */10 is written here in full knowledge that it
+# will not be honoured; the point is that whatever fraction does land is enough,
+# because a due-based tick does not care what time it is. That is the whole
+# design: this workflow being late, or skipped, is no longer a defect.
+#
+# Manual trigger: Actions tab > "Cron tick" > Run workflow.
+#   Input `dry` reports what WOULD run and changes nothing.
+#
+# FILENAME: `tick.yml`, matching the route it drives, because
+# lib/audit/_automatic_mutations.test.ts GUARD 3 pairs every scheduled workflow
+# with a registry entry by deriving `<id-after-cron/>.yml`. Named `cron-tick.yml`
+# it read as an unregistered scheduled mutator.
+
+name: Cron tick
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: 'Report what would run without running it'
+        required: false
+        type: boolean
+        default: false
+
+# Only one tick at a time from this workflow. A backlog of queued ticks all
+# firing at once after a GitHub outage would each try to drain the same jobs;
+# they are idempotent, so it would be safe, but it would also be pointless.
+concurrency:
+  group: cron-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Hit /api/cron/tick
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DRY: ${{ inputs.dry }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          url="https://www.faff.run/api/cron/tick"
+          if [ "$DRY" = "true" ]; then
+            url="${url}?dry=1"
+            echo "DRY RUN · nothing will be executed"
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "x-faff-cron-origin: github-tick" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 300 \
+            "$url")
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "$body" | python3 -m json.tool 2>/dev/null || echo "Body: $body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Tick failed with HTTP $status"
+            exit 1
+          fi
+
+          # A tick that ran nothing is the NORMAL case and must not look like a
+          # failure — most of the day nothing is due. What is worth surfacing in
+          # the run summary is a job the ledger says has gone stale, because
+          # that is the signal this whole mechanism exists to produce.
+          stale=$(echo "$body" | python3 -c \
+            'import sys,json; d=json.load(sys.stdin); print(",".join(h["job"] for h in d.get("health",[]) if h["state"] in ("stale","unknown")) or "none")' \
+            2>/dev/null || echo "unparsed")
+          echo "Stale jobs: $stale"
+          if [ "$stale" != "none" ] && [ "$stale" != "unparsed" ]; then
+            echo "::warning::Scheduled jobs behind: $stale — see ops_alerts (kind cron_stale)"
+          fi
