@@ -103,6 +103,25 @@ here forward. When work in this session touches a system one of these briefs
 governs, check the existing behavior against the brief and fix what
 contradicts it as part of that work, not as a separately-scheduled cleanup.
 
+**Implementation discipline — `docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md`.**
+David's own framing: "a set of rules for you mostly." Read before wiring the
+fitness-vector architecture into the plan engine or touching any coaching
+logic. The load-bearing rules: one owning service per coaching decision, one
+canonical resolver per derived value (`resolveThresholdCapacity()`, not four
+copies across `dashboard.ts`/`planBuilder.ts`/`racePrediction.ts`); goal data
+physically excluded from capacity resolvers' inputs, not just conventionally
+kept separate; every estimate carries `source_mode` (DIRECT/INFERRED/
+RACE_DERIVED/VDOT_FALLBACK/USER_PRIOR/POPULATION_PRIOR) so downstream code
+knows how much to trust it; legacy VDOT-cascade paths get deleted once
+migrated, never left as a "// legacy, don't use" comment someone will call
+anyway; a doctrine test suite (goal-poisoning, bad-race, hero-workout, stale-
+evidence, fatigue, easy-run, modified-workout cases) and golden-runner
+fixtures (new runner, fast-5K-weak-durability, strong-marathoner-modest-
+speed, inconsistent training, injury return, aggressive goal, no/bad HR data)
+gate any change to this architecture. The merge rule: if this code can
+produce a coaching decision that contradicts doctrine without passing through
+the owning service, it does not merge.
+
 ### 1. Design source of truth
 
 **iPhone — `/Volumes/WP/06 Claude Code/Faff/design/0819/design_handoff_faff_iphone_app v5/`**
