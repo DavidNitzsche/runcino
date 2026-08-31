@@ -1,6 +1,6 @@
 # faff.run — Project Memory
 
-This project is a multi-surface running app for a competitive marathoner. Three surfaces share one source of truth: **web** (command center), **iPhone** (daily companion), **Apple Watch** (execution layer).
+This project is a running app for a competitive marathoner. **Locked 2026-08-31: iPhone is the focus, Apple Watch is its execution-layer partner. Web is removed from active development.** The backend (`web-v2/lib`, `web-v2/app/api` — the engine, the database, the API surface) stays and remains canonical, since iPhone and watch both consume it; what's dropped is the web *frontend* (`web-v2/app/**` pages, `web-v2/components/faff-app/**`) as a product surface — no further feature work, UX fixes, or design-parity effort goes there. Where a required-reading doc below still describes web as a co-equal surface ("command center"), read it as historical/backend-shared context only, not as active product scope.
 
 > **Train the runner you have. Build the runner they want to become.**
 > — David, 2026-08-31. The mission statement. Everything below serves it: fitness
@@ -143,6 +143,8 @@ depends on the Evidence Engine's per-activity classification landing first,
 since that's what tells demonstrated capacity apart from aggressive pacing.**
 
 ### 1. Design source of truth
+
+**iPhone is the primary product surface as of 2026-08-31 (web dropped from active development — see the top of this file). Read the iPhone section below as governing the app, not just the phone.**
 
 **iPhone — `/Volumes/WP/06 Claude Code/Faff/design/0819/design_handoff_faff_iphone_app v5/`**
 
