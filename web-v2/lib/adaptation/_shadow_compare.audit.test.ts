@@ -117,14 +117,25 @@ describe.skipIf(!RO)('SHADOW-COMPARE · Part 2, real account', () => {
     console.log('\n═════════════════════════════════════════════════════════════════\n');
   }, 120_000);
 
-  it('the CRON path (file fallback OFF) reports skipped rather than a placebo write, and never throws', async () => {
+  it('the CRON path (file fallback OFF), over the RO role, reports skipped rather than a placebo write, and never throws', async () => {
+    // 2026-09-01 · migration 160 is now APPLIED in production. This test
+    // runs over DATABASE_URL_RO on purpose (see the file header) — the
+    // table now EXISTS, so the RO role's INSERT is refused at the Postgres
+    // permission level (proven separately: `has_table_privilege
+    // ('faff_readonly','adaptation_shadow_log','INSERT') = false`,
+    // `docs/reports/shadow-log-production-2026-09-01.md` §1). That refusal
+    // is what this test now demonstrates — "skipped, never a placebo write"
+    // holds whether the table is absent (pre-migration) or present but
+    // unwritable from this role (post-migration, this run) — both are
+    // legitimate reasons the cron path (file fallback OFF) must not throw
+    // and must not silently pretend to have persisted.
     process.env.DATABASE_URL = RO;
     const { runAndPersistPaceShadowCompare, _resetShadowTableProbeForTests } = await import('./shadow-compare');
     _resetShadowTableProbeForTests();
 
     const { record, persisted, error } = await runAndPersistPaceShadowCompare(OWNER, TODAY);
 
-    console.log('\n══ SHADOW-COMPARE · CRON PATH (persistence blocked on DDL) ════════');
+    console.log('\n══ SHADOW-COMPARE · CRON PATH OVER THE RO ROLE ════════════════════');
     console.log(`error: ${error ?? 'none'}`);
     console.log(`persisted: ${JSON.stringify(persisted)}`);
     console.log('═════════════════════════════════════════════════════════════════\n');
@@ -132,7 +143,54 @@ describe.skipIf(!RO)('SHADOW-COMPARE · Part 2, real account', () => {
     expect(error).toBeUndefined();
     expect(record).not.toBeNull();
     expect(persisted?.posture).toBe('skipped');
-    expect(persisted?.detail).toMatch(/migration 160/);
+    // Table exists now, so the reason is a permission refusal on the insert,
+    // never "table does not exist" (that branch is still exercised by
+    // `_resetShadowTableProbeForTests` + a nonexistent-table simulation
+    // below, so both messages stay real and both are covered).
+    expect(persisted?.detail).toMatch(/insert failed|permission denied/i);
+  }, 60_000);
+
+  it('reports the OTHER honest reason — table genuinely absent — distinctly from a permission refusal', async () => {
+    // Rule 11 · "the table does not exist" and "the table exists but this
+    // role cannot write to it" are different facts, and `persistShadow
+    // CompareRecord` must not collapse them (see the fix in shadow-compare.ts
+    // itself, and the incident this specific case guards against: the
+    // pre-migration code hardcoded "migration 160 pending David's go" as
+    // the ONLY skip reason, which would have kept reporting that sentence
+    // forever even after the migration ran and the real reason became a
+    // permission refusal instead).
+    process.env.DATABASE_URL = RO;
+    const { persistShadowCompareRecord, runPaceShadowCompareCycle, _resetShadowTableProbeForTests } =
+      await import('./shadow-compare');
+    const { pool } = await import('@/lib/db/pool');
+    _resetShadowTableProbeForTests();
+
+    // Simulate "table absent" without touching the real table: probe a
+    // regclass that cannot exist, by monkey-patching the pool's query for
+    // the one call the probe makes. Cheaper and safer than dropping/
+    // recreating the production table from a test.
+    const originalQuery: (...args: any[]) => any = pool.query.bind(pool);
+    (pool as any).query = (...args: any[]) => {
+      const sql = String(args[0] ?? '');
+      if (sql.includes('to_regclass')) {
+        return Promise.resolve({ rows: [{ reg: null }] });
+      }
+      return originalQuery(...args);
+    };
+
+    try {
+      const record = await runPaceShadowCompareCycle(OWNER, TODAY);
+      const persisted = await persistShadowCompareRecord(record, { allowFileFallback: false });
+      console.log('\n══ SHADOW-COMPARE · SIMULATED TABLE-ABSENT SKIP ═══════════════════');
+      console.log(`persisted: ${JSON.stringify(persisted)}`);
+      console.log('═════════════════════════════════════════════════════════════════\n');
+      expect(persisted.posture).toBe('skipped');
+      expect(persisted.detail).toMatch(/does not exist yet/);
+      expect(persisted.detail).not.toMatch(/insert failed|permission denied/i);
+    } finally {
+      (pool as any).query = originalQuery;
+      _resetShadowTableProbeForTests();
+    }
   }, 60_000);
 
   /**
@@ -166,5 +224,11 @@ describe.skipIf(!RO)('SHADOW-COMPARE · Part 2, real account', () => {
     // sampled date lands on a specific verdict.
     expect(found).not.toBeNull();
     expect(['HOLD', 'INSUFFICIENT_EVIDENCE']).toContain(found?.decision);
-  }, 120_000);
+  }, 240_000);
+  // 2026-09-01 · bumped 120s → 240s. Each cycle now also resolves the
+  // authoring/reanchor convergence guard and re-runs `classifyRecentActivities`
+  // for the pace/HR compatibility check (Parts 3 and 4 of the schema
+  // expansion) — real added work, not a regression, and this walk covers 5
+  // dates in one test. `shadow-log-production-2026-09-01.md` records the
+  // real per-cycle timing this pass measured.
 });

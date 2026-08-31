@@ -314,6 +314,18 @@ export const EXCLUDED_FROM_TICK: readonly { id: string; why: string }[] = [
     id: 'emit-telemetry',
     why: 'Runs in the GitHub runner and pushes to the repo. It is not an app endpoint.',
   },
+  {
+    id: 'prune-adaptation-shadow-log',
+    why:
+      'automatic-mutation-registry-equivalent reasoning (no formal entry needed — this is a '
+      + 'DELETE-only housekeeping job, never a writer of runner-visible state): idempotent by '
+      + 'construction (deleting rows already past the retention window a second time deletes '
+      + 'nothing further), and nothing downstream reads adaptation_shadow_log at all, let alone '
+      + 'depends on its freshness — a late or missed prune costs a slightly larger table for a '
+      + 'day, never a wrong coaching answer. The catch-up guarantee this tick provides protects '
+      + "jobs whose lateness cascades into stale plan data; this job's lateness has no such "
+      + 'downstream effect, so it runs on its own simple nightly schedule instead.',
+  },
 ];
 
 export const CRON_JOB_IDS: ReadonlySet<string> = new Set(CRON_JOBS.map((j) => j.id));

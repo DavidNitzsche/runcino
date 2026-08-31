@@ -1,0 +1,45 @@
+# Nightly retention sweep for adaptation_shadow_log.
+#
+# db/migrations/160_adaptation_shadow_log.sql · deletes rows older than
+# ADAPTATION_SHADOW_LOG_RETENTION_DAYS (180) and enforces a 400-row-per-user
+# cap as a backstop against a double-insert bug. See that migration's header
+# and lib/adaptation/shadow-log-retention.ts for the full policy.
+#
+# Housekeeping only — nothing reads this table live, so a missed or late run
+# costs a slightly larger table for a day, never a wrong answer. Not part of
+# the app's cron-ledger catch-up chain (lib/ops/cron-ledger.ts's
+# EXCLUDED_FROM_TICK carries the argued reason).
+#
+# Manual trigger: Actions tab > "Prune adaptation shadow log" > Run workflow.
+
+name: Prune adaptation shadow log
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger /api/cron/prune-adaptation-shadow-log
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "${CRON_SECRET:-}" ]; then echo "::error::CRON_SECRET secret missing"; exit 1; fi
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 25 \
+            https://www.faff.run/api/cron/prune-adaptation-shadow-log)
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+          echo "Status: $status"
+          echo "Body: $body"
+          if [ "$status" != "200" ]; then
+            echo "::error::Prune failed with HTTP $status"
+            exit 1
+          fi

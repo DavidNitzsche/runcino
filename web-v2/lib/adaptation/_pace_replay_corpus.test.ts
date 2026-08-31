@@ -642,18 +642,42 @@ describe('FIXTURE 9 · a deliberately slower TAPER phase, walked across its own 
 });
 
 /* ══════════════════════════════════════════════════════════════════════════
- * FIXTURE 10 · A young plan not yet reanchored canonically — the
- * authoring/recomputation convergence guard `docs/PRODUCT_DECISIONS.md`
- * 2026-09-01 §2 names as still required, and still unbuilt
+ * FIXTURE 10 · A young plan not yet reanchored canonically — this is what
+ * `composeAdaptation` alone STILL cannot tell apart from genuine PROGRESS.
+ *
+ * UPDATE 2026-09-01 (same night, later pass): the guard this fixture said
+ * "does not exist yet" now does —
+ * `web-v2/lib/adaptation/authoring-convergence.ts`'s
+ * `resolveAuthoringReanchorConvergence`, called by `shadow-compare.ts` and
+ * exposed on `ShadowCompareRecord.convergence`. It lives ONE LAYER UP from
+ * this fixture, exactly where this fixture's own closing comment said it
+ * would: `composeAdaptation` (§8's own header) deliberately does not own
+ * capacity resolution, and the convergence guard is a capacity-resolution-
+ * adjacent question, not a decision-layer one. So this fixture's ASSERTION
+ * is unchanged and still correct — `composeAdaptation` on its own, fed this
+ * exact contaminated shape, still cannot tell it apart from Fixture 1's
+ * genuine gain, because nothing about that layer changed. What changed is
+ * that a CALLER one layer up (`shadow-compare.ts`) now separately reads
+ * `training_plans.authored_iso` against the last successful
+ * `reanchorActivePlan` run and stamps `AUTHORED_TOO_RECENTLY` /
+ * `REANCHOR_STATUS_UNKNOWN` on the record precisely when this fixture's
+ * scenario applies — see `_shadow_compare.audit.test.ts` for that guard's
+ * own real-account verification, which is a different file because it needs
+ * a real database and this corpus deliberately does not (see this file's own
+ * header on why `runPaceShadowCompareCycle` is not called from here).
  * ═══════════════════════════════════════════════════════════════════════ */
 
-describe('FIXTURE 10 · a young, not-yet-reanchored plan — the convergence guard this needs does not exist yet', () => {
-  it('documents the gap rather than fabricating a guard: shadow-compare.ts has no authored_iso/reanchor check', () => {
+describe('FIXTURE 10 · a young, not-yet-reanchored plan — composeAdaptation alone still cannot tell (the guard now lives one layer up)', () => {
+  it('composeAdaptation on its own still cannot distinguish contaminated pricing from genuine gain — that is why the convergence guard had to live in shadow-compare.ts, not here', () => {
     // Confirmed by reading `web-v2/lib/adaptation/shadow-compare.ts` in full
-    // for this task: it has no function reading `training_plans.authored_iso`
-    // or comparing it against the last successful `reanchorActivePlan` run.
-    // `docs/reports/pace-shadow-compare-2026-09-01.md` §3 names this exact
-    // guard as "not built tonight, out of scope per the brief" and proposes
+    // for this task, THEN AGAIN after the guard landed: `composeAdaptation`
+    // itself still has no function reading `training_plans.authored_iso` or
+    // comparing it against the last successful `reanchorActivePlan` run, and
+    // by design never will — that is `authoring-convergence.ts` +
+    // `shadow-compare.ts`'s job now, one layer up from this pure engine.
+    // `docs/reports/pace-shadow-compare-2026-09-01.md` §3 originally named
+    // this exact guard as "not built tonight, out of scope per the brief"
+    // and proposed it in the same shape `detectVolume` already uses for
     // it in the same shape `detectVolume` already uses for
     // `CURRENT_PLAN_TOO_YOUNG_TO_JUDGE_ABSORPTION` — applied to the
     // authoring/recomputation boundary instead of to absorption.

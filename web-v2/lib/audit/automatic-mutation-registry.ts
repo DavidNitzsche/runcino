@@ -577,6 +577,29 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       + 'passes the runs.id BIGINT and calibration.ts matches it against data->>\'id\'. Correcting that join '
       + 'turns it on for HealthKit, watch and manual too, which is a product decision, not a bug fix.',
   },
+  {
+    id: 'cron/prune-adaptation-shadow-log',
+    route: 'app/api/cron/prune-adaptation-shadow-log/route.ts',
+    trigger: '0 5 * * * (.github/workflows/prune-adaptation-shadow-log.yml)',
+    reach: 'destructive_or_external',
+    changes: ['adaptation_shadow_log'],
+    idempotent: true,
+    onPartialFailure:
+      'Two independent DELETEs (by age, then by per-user row cap), each its own statement. A crash between '
+      + 'them leaves the age-based prune committed and the cap-based one simply not yet run — no partial row, '
+      + 'and the next scheduled run (or a manual retrigger) finishes the job. Neither DELETE can double-count: '
+      + 're-running either after it has already caught up matches zero rows.',
+    runnerSees: 'invisible',
+    reversible:
+      'Not by running the inverse — a deleted row is gone. Reversible in the sense that matters here: this '
+      + 'table has no reader (db/migrations/160_adaptation_shadow_log.sql\'s own COMMENT ON TABLE says so), so '
+      + 'a pruned row costs nothing a runner or the engine can observe.',
+    note:
+      'Retention for the PACE shadow-compare log (docs/PRODUCT_DECISIONS.md 2026-09-01 §2) — 180 days or 400 '
+      + 'rows/user, whichever binds first. See lib/adaptation/shadow-log-retention.ts. Excluded from the '
+      + 'cron-ledger catch-up chain (lib/ops/cron-ledger.ts EXCLUDED_FROM_TICK) since nothing downstream reads '
+      + 'this table, so lateness has no effect beyond a slightly larger table for a day.',
+  },
 ] as const;
 
 /**
