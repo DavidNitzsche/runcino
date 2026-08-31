@@ -263,7 +263,16 @@ describe('a guard that cannot see assumes the worst', () => {
     const s = read('lib/plan/generate.ts');
     // recentPeakLongMi returning 0 made composePlan treat a marathoner as a
     // cold start and re-seed the volume curve from their onboarding form.
-    expect(s).toContain('async function recentPeakLongMi(userId: string): Promise<number | null>');
+    //
+    // 2026-08-30 · Rule 8 split this read in two, and the signature moved with
+    // it: the LITERAL 28-day max is the spike-guard anchor (doctrine writes its
+    // own prior-30-day window into that citation), while the REPRESENTATIVE max
+    // — taper and post-race recovery excluded — is the habit floor. The refusal
+    // this test exists to protect is now asserted at BOTH points rather than
+    // one, which is stricter than the signature it replaces. Pinning the
+    // intent, not the old text.
+    expect(s).toContain('Promise<RecentLongRead | null>');
+    expect(s).toMatch(/representativeMi:\s*number \| null/);
     expect(s).toContain("reason: 'could not read your recent runs · try again in a moment'");
     // detectMidBlock returning false drops a mid-build runner back to BASE.
     expect(s).toContain('async function detectMidBlock(userId: string): Promise<boolean | null>');
