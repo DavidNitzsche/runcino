@@ -251,11 +251,14 @@ describe('CAPACITY · goal isolation is structural, not conventional (§6)', () 
     expect(hits).toHaveLength(1);
   });
 
-  it('1c · the VDOT loader is called with an EXPLICIT run floor, so goalRunFloorMiForUser never fires', () => {
+  it('1c · the VDOT loader is called with an EXPLICIT run floor, never the default', () => {
     const code = strippedSource();
     // The one goal leak a name-based scan cannot see: `loadVdotInputs`
-    // resolves its honest-effort floor from `profile.goal_race_distance` when
-    // the argument is omitted. Assert the argument is passed, by value.
+    // falls back to `EVIDENCE_RUN_FLOOR_MI` when the argument is omitted
+    // (formerly the goal-keyed `goalRunFloorMiForUser`, removed 2026-09-01 —
+    // see docs/reports/capacity-boundary-fix-2026-09-01.md). Both are
+    // evidence-only now, but this file still passes the constant explicitly
+    // by value so the two halves of the ladder can never disagree.
     expect(code).toMatch(/loadVdotInputs\(\s*userId,\s*todayISO,\s*undefined,\s*CAPACITY_RUN_FLOOR_MI\s*\)/);
     expect(code).toMatch(/CAPACITY_RUN_FLOOR_MI,\s*\n\s*\)/); // threaded into bestRecentVdot too
     expect(CAPACITY_RUN_FLOOR_MI).toBe(3.0);

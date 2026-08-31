@@ -39,8 +39,8 @@
 import { pool } from '@/lib/db/pool';
 import { logReadFailure } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { bestRecentVdot, VDOT_FULL_VALUE_DAYS, vdotFromTpace } from '@/lib/training/vdot';
-import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
+import { bestRecentVdot, VDOT_FULL_VALUE_DAYS, vdotFromTpace, EVIDENCE_RUN_FLOOR_MI } from '@/lib/training/vdot';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { primaryZone } from '@/lib/plan/prescription-parser';
 // HEAT-DRIFT-1 (2026-08-17) · shared heat doctrine (Research/06 §1 table +
 // §12 dewpoint surcharge) + Magnus-Tetens dewpoint estimate + the
@@ -493,9 +493,10 @@ async function inferPlanAnchorVdot(planId: string): Promise<number | null> {
 
 async function loadCurrentVdot(userUuid: string): Promise<number | null> {
   const today = await runnerToday(userUuid);
-  // Same goal-relative floor as the projection cron so a 5K runner's drift
-  // reads off the same candidate set (mismatch → false drift signal).
-  const runFloorMi = await goalRunFloorMiForUser(userUuid);
+  // Same evidence-only floor as the projection cron so a 5K runner's drift
+  // reads off the same candidate set (mismatch → false drift signal). Not
+  // goal-derived (2026-09-01 fix — see EVIDENCE_RUN_FLOOR_MI's header).
+  const runFloorMi = EVIDENCE_RUN_FLOOR_MI;
   const { raceCandidates, runCandidates } = await loadVdotInputs(userUuid, today);
   const { best } = bestRecentVdot(raceCandidates, today, VDOT_FULL_VALUE_DAYS, runCandidates, runFloorMi);
   return best?.vdot ?? null;

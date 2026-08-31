@@ -1,15 +1,25 @@
 /**
- * Goal-relative training-VDOT floor + I-pace — verified against Justin
- * Demetrician's REAL Apple Watch runs (the 5K-goal test case, 2026-06-15).
+ * Evidence-only training-VDOT floor + I-pace — verified against Justin
+ * Demetrician's REAL Apple Watch runs (the 5K-length-effort test case,
+ * 2026-06-15).
  *
- * Before this fix: a flat 4mi floor in vdotFromRun + the SQL loader rejected
- * every one of his ~3.1mi efforts, so a 5K-goal runner with 6 months of 5K
+ * Before FLOOR-1: a flat 4mi floor in vdotFromRun + the SQL loader rejected
+ * every one of his ~3.1mi efforts, so a runner with 6 months of 5K-length
  * data had NO measured VDOT and was coached on a mileage-fabricated VDOT 32 →
  * "VO2 intervals" at 9:50/mi, slower than his own easy runs.
+ *
+ * 2026-09-01 · FLOOR-1's own fix (`vdotRunFloorMi(goalDistanceMi)`) turned out
+ * to be a second bug: it keyed the floor to the runner's STATED GOAL rather
+ * than to the effort itself, so admissibility of a runner's OWN training run
+ * depended on what race they said they were training for — a live violation
+ * closed in `docs/reports/capacity-boundary-fix-2026-09-01.md`. The floor is
+ * now the flat, evidence-only `EVIDENCE_RUN_FLOOR_MI` (3.0); this file's
+ * remaining tests document why 3.0 is the right number using Justin's real
+ * data, without any goal in the loop.
  */
 import { describe, it, expect } from 'vitest';
 import {
-  vdotRunFloorMi, goalDistanceMiFromCode, vdotFromRun, bestRecentVdot,
+  EVIDENCE_RUN_FLOOR_MI, vdotFromRun, bestRecentVdot,
   iPaceFromVdot, tPaceFromVdot,
 } from './vdot';
 
@@ -22,16 +32,9 @@ const JUSTIN_RUNS = [
 ];
 const TODAY = '2026-06-15';
 
-describe('vdotRunFloorMi — floor keys off the goal event', () => {
-  it('5K goal → 3.0mi (admits a 5K time trial)', () => {
-    expect(vdotRunFloorMi(goalDistanceMiFromCode('5k'))).toBe(3);
-  });
-  it('10K / Half / Marathon / unknown → 4.0mi (unchanged)', () => {
-    expect(vdotRunFloorMi(goalDistanceMiFromCode('10k'))).toBe(4);
-    expect(vdotRunFloorMi(goalDistanceMiFromCode('half'))).toBe(4);
-    expect(vdotRunFloorMi(goalDistanceMiFromCode('marathon'))).toBe(4);
-    expect(vdotRunFloorMi(goalDistanceMiFromCode('none'))).toBe(4); // null code
-    expect(vdotRunFloorMi(null)).toBe(4);
+describe('EVIDENCE_RUN_FLOOR_MI — flat, evidence-only, no goal in the loop', () => {
+  it('is 3.0mi — the shortest canonical field test, for every runner', () => {
+    expect(EVIDENCE_RUN_FLOOR_MI).toBe(3.0);
   });
 });
 

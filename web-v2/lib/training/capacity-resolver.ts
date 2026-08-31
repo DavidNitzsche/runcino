@@ -63,15 +63,20 @@
  * own sentence is the standard: "if the service cannot see the goal, it cannot
  * accidentally train toward it."
  *
- * That leaves one real leak to close rather than to document away, and it is
- * worth spelling out because it is exactly the shape §6 warns about.
- * `loadVdotInputs` resolves its honest-effort distance floor through
- * `goalRunFloorMiForUser`, which reads `profile.goal_race_distance` /
- * `profile.tt_goal_distance` — so on the live engine, whether one of the
- * runner's OWN 3.4-mile hard efforts counts as fitness evidence depends on what
- * race they say they are training for. This file passes
- * `CAPACITY_RUN_FLOOR_MI` explicitly instead, so that read never fires; see
- * that constant's header for why 3.0 rather than 4.0 and what it costs.
+ * One real leak used to exist here, closed rather than documented away — kept
+ * below because it is exactly the shape §6 warns about and the next one will
+ * look like it. `loadVdotInputs` used to resolve its honest-effort distance
+ * floor through `goalRunFloorMiForUser`, which read `profile.goal_race_distance`
+ * / `profile.tt_goal_distance` — so on the live engine, whether one of the
+ * runner's OWN 3.4-mile hard efforts counted as fitness evidence depended on
+ * what race they said they were training for. This file always passed
+ * `CAPACITY_RUN_FLOOR_MI` explicitly instead, so that read never fired here —
+ * see that constant's header for why 3.0 rather than 4.0 and what it costs.
+ * FIXED 2026-09-01: `goalRunFloorMiForUser` is gone; every live caller
+ * (`generate.ts`, `drift-monitor.ts`, `seed-from-onboarding.ts`, the three API
+ * routes that used it) now passes the same flat, evidence-only
+ * `EVIDENCE_RUN_FLOOR_MI` (`vdot.ts`) that this constant matches — see
+ * `docs/reports/capacity-boundary-fix-2026-09-01.md`.
  *
  * IF YOU FIND YOURSELF WANTING GOAL DATA IN HERE, the logic you are writing
  * belongs in Pace Prescription or in Plan Generation. A goal legitimately
@@ -773,38 +778,43 @@ function qualityFromPaceObservations(
 /**
  * The honest-effort distance floor this layer admits a training run at.
  *
- * §6 IN ONE CONSTANT. The live engine resolves this through
- * `goalRunFloorMiForUser`, which reads the runner's stated goal distance — so
- * on that path, whether one of the runner's OWN 3.4-mile hard efforts is
- * admissible fitness evidence depends on what race they say they are training
- * for. That is goal data reaching a capacity read, and §6 is explicit that the
- * fitness resolver should not be able to see the goal at all.
+ * §6 IN ONE CONSTANT. Until 2026-09-01 the live engine resolved this through
+ * `goalRunFloorMiForUser`, which read the runner's stated goal distance — so
+ * on that path, whether one of the runner's OWN 3.4-mile hard efforts was
+ * admissible fitness evidence depended on what race they said they were
+ * training for. That was goal data reaching a capacity read, and §6 is
+ * explicit that the fitness resolver should not be able to see the goal at
+ * all. This file never replicated that leak — it always passed
+ * `CAPACITY_RUN_FLOOR_MI` explicitly — and the live engine has now been fixed
+ * to match: `goalRunFloorMiForUser` is deleted, and every call site that used
+ * it passes the OLD engine's own evidence-only floor
+ * (`EVIDENCE_RUN_FLOOR_MI`, `vdot.ts`) instead. See
+ * `docs/reports/capacity-boundary-fix-2026-09-01.md`.
  *
  * 3.0 AND NOT 4.0, and the choice is argued rather than defaulted:
  * admissibility is a property of the EFFORT, not of the runner's ambition. A
  * 3.1-mile all-out effort demonstrates the same physiology whoever ran it, and
- * `vdotRunFloorMi`'s own header says so — 3.0 is there because "a 5K time trial
- * IS a valid VDOT input", which is a statement about the test, not about the
- * tester. Keying it to the goal produces the incoherent result that a runner's
- * own past effort becomes invisible to the engine on the day they change their
- * goal, and it is what FLOOR-1 (2026-06-15) already had to fix once in the
- * other direction, when a flat 4.0 fabricated VDOTs for 5K runners by hiding
- * their real efforts.
+ * `EVIDENCE_RUN_FLOOR_MI`'s own header says so — 3.0 is there because "a 5K
+ * time trial IS a valid VDOT input", which is a statement about the test, not
+ * about the tester. Keying it to the goal produces the incoherent result that
+ * a runner's own past effort becomes invisible to the engine on the day they
+ * change their goal, and it is what FLOOR-1 (2026-06-15) already had to fix
+ * once in the other direction, when a flat 4.0 fabricated VDOTs for 5K
+ * runners by hiding their real efforts.
  *
  * WHAT IT COSTS, stated rather than hidden: a half/marathon-goal runner's
- * 3.0-3.9 mile hard efforts become admissible to this layer's fallback tier
- * where the live engine excludes them. Three things bound that. It is the
+ * 3.0-3.9 mile hard efforts are now admissible to the fallback tier where the
+ * live engine used to exclude them. Three things bound that. It is the
  * FALLBACK tier only — a runner with direct threshold evidence never reaches
  * it. `passesRunHonestyGate` still requires a quality label or a hard HR, so a
  * brisk 3.5-mile Tuesday does not qualify. And `bestRecentVdot`'s corpus
  * ceiling still bounds any single training read against what K sessions
  * corroborate.
  *
- * FOR THE WIRING PHASE: this is a deliberate, recorded divergence from the live
- * engine's goal-keyed floor, not an oversight. The right long-term answer is a
- * floor keyed to the distances this runner has actually RACED — a runner-model
- * question, answerable without the goal — and that is follow-up work, named
- * here rather than smuggled in.
+ * FOLLOW-UP, still open: the right long-term answer is a floor keyed to the
+ * distances this runner has actually RACED — a runner-model question,
+ * answerable without the goal — rather than the flat constant here. Named as
+ * follow-up work, not attempted in this fix.
  */
 export const CAPACITY_RUN_FLOOR_MI = 3.0;
 

@@ -30,7 +30,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
+import { EVIDENCE_RUN_FLOOR_MI } from '@/lib/training/vdot';
 import { nextBestVdotExcludingRace } from '@/lib/race/next-best-anchor';
 import { forceReanchorActivePlan } from '@/lib/plan/reanchor-plan';
 import { outage } from '@/lib/route/failure';
@@ -120,7 +121,7 @@ async function setRaceAuthority(req: NextRequest): Promise<NextResponse> {
   // ── 2 · compromised / unrepresentative → the NEXT-BEST anchor, computed
   // fresh with this race EXCLUDED from the candidate pool entirely ─────────
   const today = await runnerToday(userId);
-  const runFloorMi = await goalRunFloorMiForUser(userId);
+  const runFloorMi = EVIDENCE_RUN_FLOOR_MI;
   const { raceCandidates, runCandidates } = await loadVdotInputs(userId, today, undefined, runFloorMi);
   const fallback = nextBestVdotExcludingRace(raceCandidates, runCandidates, slug, today, runFloorMi);
 

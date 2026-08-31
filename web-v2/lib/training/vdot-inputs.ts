@@ -21,7 +21,7 @@
 
 import { pool } from '@/lib/db/pool';
 import {
-  parseRaceTime, zoneFromType, vdotRunFloorMi, goalDistanceMiFromCode,
+  parseRaceTime, zoneFromType, EVIDENCE_RUN_FLOOR_MI,
   FADE_TAIL_DAYS,
   VDOT_FULL_VALUE_DAYS,
 } from '@/lib/training/vdot';
@@ -341,12 +341,14 @@ export async function loadVdotInputs(
   userId: string,
   today: string,
   windowDays = VDOT_FULL_VALUE_DAYS,
-  /** FLOOR-1 · the goal-relative honest-effort floor. Resolved from the
-   *  runner's own goal when omitted, which is what every caller wants and what
-   *  none of them can forget once it is resolved here. */
+  /** The honest-effort admissibility floor. Defaults to `EVIDENCE_RUN_FLOOR_MI`
+   *  when omitted — evidence-only, never the runner's goal. FLOOR-1
+   *  (2026-06-15) used to resolve this from the runner's own stated goal via
+   *  `goalRunFloorMiForUser`; that was a live goal-into-evidence leak, closed
+   *  2026-09-01 (see `EVIDENCE_RUN_FLOOR_MI`'s header in `vdot.ts`). */
   runFloorMiArg?: number,
 ): Promise<VdotInputs> {
-  const runFloorMi = runFloorMiArg ?? await goalRunFloorMiForUser(userId);
+  const runFloorMi = runFloorMiArg ?? EVIDENCE_RUN_FLOOR_MI;
 
   // ── Race candidates ──────────────────────────────────────────────────────
 
@@ -775,23 +777,23 @@ export async function loadVdotInputs(
 }
 
 /**
- * Resolve the runner's goal-relative training-VDOT floor (vdotRunFloorMi) from
- * their stored goal — race goal preferred, else time-trial goal (goal-mode
- * runners have no race). A 5K-goal runner gets 3.0mi so their ~3.1mi quality
- * efforts qualify as fitness candidates; every longer/unknown goal keeps the
- * 4mi default. Pass the result as bestRecentVdot's minRunDistanceMi so the
- * projection cron, drift monitor, and plan generator all gate identically (a
- * mismatch would have the cron compute a 5K runner's VDOT while drift sees
- * none → false drift). Best-effort — returns 4 on any read failure.
+ * REMOVED 2026-09-01 · `goalRunFloorMiForUser` used to resolve the training-
+ * VDOT honest-effort floor from the runner's STORED GOAL
+ * (`profile.goal_race_distance` / `tt_goal_distance`) — a 5K-goal runner got
+ * 3.0mi so their ~3.1mi quality efforts qualified as fitness candidates,
+ * every longer/unknown goal kept a 4mi floor. That meant whether one of the
+ * runner's own hard training efforts counted as fitness evidence depended on
+ * what race they said they were training for — a live violation of "the
+ * fitness resolver should not be able to see the goal at all"
+ * (`docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md` §6), confirmed in
+ * `docs/reports/brain-status-2026-08-31.md` and fixed in
+ * `docs/reports/capacity-boundary-fix-2026-09-01.md`.
  *
- * Cite: Research/01-pace-zones-vdot.md §field-test (a solo 5K IS a VDOT input).
+ * The floor is now the flat, evidence-only `EVIDENCE_RUN_FLOOR_MI` (3.0,
+ * defined in `vdot.ts`) — every call site below passes it explicitly (or
+ * lets `loadVdotInputs`'s own default apply), so the projection cron, drift
+ * monitor, plan generator and onboarding seeder all still gate identically
+ * (the reason this function existed in the first place — a mismatch would
+ * have one surface compute a runner's VDOT while another saw none), without
+ * any of them reading the goal to get there.
  */
-export async function goalRunFloorMiForUser(userId: string): Promise<number> {
-  const row = (await pool.query<{ grd: string | null; ttd: string | null }>(
-    `SELECT goal_race_distance AS grd, tt_goal_distance AS ttd
-       FROM profile WHERE user_uuid = $1`,
-    [userId],
-  ).catch(() => ({ rows: [] as Array<{ grd: string | null; ttd: string | null }> }))).rows[0];
-  const code = (row?.grd && row.grd !== 'none') ? row.grd : row?.ttd;
-  return vdotRunFloorMi(goalDistanceMiFromCode(code));
-}

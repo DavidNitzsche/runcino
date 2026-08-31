@@ -66,7 +66,7 @@ import { atPaceSessionCapMi, INTERVAL_MIN_REPS } from '@/lib/prescription/levers
 import { CALIBRATION_INTRO_WEEKS } from './anchor-provenance';
 import {
   tPaceFromVdot, iPaceFromVdot, bestRecentVdot, VDOT_FULL_VALUE_DAYS,
-  vdotRunFloorMi, goalDistanceMiFromCode,
+  EVIDENCE_RUN_FLOOR_MI,
 } from '@/lib/training/vdot';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import {
@@ -831,18 +831,22 @@ export async function seedMaintenancePlanFromOnboarding(
   // 2026-06-15 · root the plan in REAL fitness when the data exists. HealthKit
   // / Strava history is usually already synced by the time onboarding
   // completes (a watch runner has months of runs). Read it through the
-  // canonical VDOT loader with a GOAL-RELATIVE floor — a 5K-goal runner's
-  // ~3.1mi quality efforts qualify (vdotRunFloorMi → 3.0) where the flat 4mi
-  // floor used to reject every one of them, leaving the plan anchored on a
-  // VDOT fabricated from weekly mileage. Best-effort: a read failure (or no
-  // qualifying run) falls back to the conservative estimate inside persist —
-  // it never blocks onboarding. Once the floor is fixed, the daily projection
-  // cron also starts computing this runner's VDOT, so live paces self-heal.
+  // canonical VDOT loader with the evidence-only honest-effort floor — a
+  // short-distance runner's ~3.1mi quality efforts qualify
+  // (EVIDENCE_RUN_FLOOR_MI → 3.0) where the flat 4mi floor used to reject
+  // every one of them, leaving the plan anchored on a VDOT fabricated from
+  // weekly mileage. 2026-09-01 · this used to be keyed to the runner's
+  // GOAL distance (`vdotRunFloorMi(goalDistanceMiFromCode(goals.ttDistance))`)
+  // — a live goal-into-evidence leak, closed the same way as every other
+  // caller of the old `goalRunFloorMiForUser` (see `EVIDENCE_RUN_FLOOR_MI`'s
+  // header in `vdot.ts`). Best-effort: a read failure (or no qualifying run)
+  // falls back to the conservative estimate inside persist — it never blocks
+  // onboarding.
   // Cite: Research/01 §field-test (a solo 5K IS a VDOT input) · CLAUDE.md
   // "Engine must match research".
   let anchorVdot: number | null = null;
   try {
-    const runFloorMi = vdotRunFloorMi(goalDistanceMiFromCode(goals.ttDistance));
+    const runFloorMi = EVIDENCE_RUN_FLOOR_MI;
     const { raceCandidates, runCandidates } = await loadVdotInputs(userId, today);
     const { best } = bestRecentVdot(raceCandidates, today, VDOT_FULL_VALUE_DAYS, runCandidates, runFloorMi);
     anchorVdot = best?.vdot ?? null;

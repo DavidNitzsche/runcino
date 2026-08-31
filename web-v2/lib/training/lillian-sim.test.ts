@@ -9,13 +9,16 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  bestRecentVdot, vdotFromRun, vdotRunFloorMi, goalDistanceMiFromCode,
+  bestRecentVdot, vdotFromRun, EVIDENCE_RUN_FLOOR_MI,
   iPaceFromVdot, tPaceFromVdot,
 } from './vdot';
 import { conservativeVdotFromMileage } from '../plan/spec-builder';
 
 const fmt = (s: number | null) => s == null ? 'null' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}/mi`;
-const FLOOR = vdotRunFloorMi(goalDistanceMiFromCode('5k')); // 3.0 — her 5K goal sets the floor
+// 2026-09-01 · not her 5K goal any more — the flat evidence-only floor
+// (EVIDENCE_RUN_FLOOR_MI) admits her ~3.1mi effort regardless of what she is
+// training for. See docs/reports/capacity-boundary-fix-2026-09-01.md.
+const FLOOR = EVIDENCE_RUN_FLOOR_MI;
 
 // Her treadmill efforts: 3.1 mi at ~9:00/mi, honest (HR 168 avg / 182 max ≈ 92%).
 const TT_WITH_DISTANCE = (i: number) => ({
@@ -25,8 +28,8 @@ const TT_WITH_DISTANCE = (i: number) => ({
 // Same effort but the treadmill reported no distance (no GPS).
 const TT_NO_DISTANCE = (i: number) => ({ ...TT_WITH_DISTANCE(i), distance_mi: 0 });
 
-describe('Lillian · 5K goal sets the run floor to 3.0mi', () => {
-  it('admits her ~3.1mi treadmill efforts (would be rejected at the old 4mi floor)', () => {
+describe('Lillian · the evidence-only floor is 3.0mi regardless of her goal', () => {
+  it('admits her ~3.1mi treadmill efforts (would be rejected at the old flat 4mi floor)', () => {
     expect(FLOOR).toBe(3);
   });
 });

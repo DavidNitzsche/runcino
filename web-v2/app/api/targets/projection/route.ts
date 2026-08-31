@@ -55,8 +55,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
-import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode, DANIELS_MAX_VALID_DISTANCE_MI, predictRaceTimeFromAnchor, bestRecentVdot, VDOT_FULL_VALUE_DAYS } from '@/lib/training/vdot';
-import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
+import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode, DANIELS_MAX_VALID_DISTANCE_MI, predictRaceTimeFromAnchor, bestRecentVdot, VDOT_FULL_VALUE_DAYS, EVIDENCE_RUN_FLOOR_MI } from '@/lib/training/vdot';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { loadProfileState } from '@/lib/coach/profile-state';
 import { computeCourseImpact } from '@/lib/training/course-impact';
 import { resolveCourseElevation, elevationIsTrustedForAdjustment } from '@/lib/race/course-elevation';
@@ -325,7 +325,7 @@ export async function GET(req: NextRequest) {
       try {
         const { runnerToday } = await import('@/lib/runtime/runner-tz');
         const today = await runnerToday(userId);
-        const runFloorMi = await goalRunFloorMiForUser(userId);
+        const runFloorMi = EVIDENCE_RUN_FLOOR_MI;
         const { raceCandidates, runCandidates } = await loadVdotInputs(userId, today);
         const { belowTableAnchor } = bestRecentVdot(raceCandidates, today, VDOT_FULL_VALUE_DAYS, runCandidates, runFloorMi);
         if (belowTableAnchor) {

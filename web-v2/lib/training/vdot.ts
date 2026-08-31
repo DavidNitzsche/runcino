@@ -673,9 +673,11 @@ const QUALITY_RUN_TYPES = new Set([
 
 /** Map an onboarding/profile distance to miles — accepts BOTH the legacy
  *  onboarding codes ('5k') AND the SetGoalSheet labels ('5K', 'Half Marathon',
- *  '50K', '100K'). Null for 'none'/unknown. Used to derive the goal-relative
- *  training-VDOT floor (vdotRunFloorMi) and the goal plan distance, so the
- *  fitness read keys off the event the runner is actually training for. */
+ *  '50K', '100K'). Null for 'none'/unknown. Used for the goal PLAN distance
+ *  (duration, progression, race specificity — legitimately goal-shaped) and,
+ *  historically, for the now-removed goal-relative VDOT floor
+ *  (`vdotRunFloorMi`, see `EVIDENCE_RUN_FLOOR_MI`'s header) — do not thread
+ *  this into any evidence-admissibility decision again. */
 export function goalDistanceMiFromCode(code: string | null | undefined): number | null {
   switch (String(code ?? '').toLowerCase()) {
     case '1mi': case 'mile':                            return 1.0;
@@ -690,24 +692,38 @@ export function goalDistanceMiFromCode(code: string | null | undefined): number 
 }
 
 /**
- * Minimum honest-effort distance (miles) for a TRAINING-derived VDOT, keyed to
- * the runner's goal event. A solo effort at ~the goal distance is the canonical
- * field test: a 5K time trial IS a valid VDOT input. A flat 4-mile floor used
- * to exclude every 5K-goal runner — whose quality sessions ARE ~3.1mi — from
- * training-derived fitness entirely. The floor never drops below the 5K TT
- * (3.0mi, the shortest canonical test) nor demands more than a sustained tempo
- * (4mi — we don't make a half/marathon runner race their event to read fitness;
- * a tempo is signal enough, and vdotFromRun's HR gate guards honesty).
+ * Minimum honest-effort distance (miles) a TRAINING-derived VDOT read admits.
  *
- * 5K goal → 3.0mi · 10K / Half / Marathon / unknown → 4.0mi.
+ * FIXED 2026-09-01 · doctrine violation closed. This used to be
+ * `vdotRunFloorMi(goalDistanceMi)`, keyed to the runner's stated GOAL event
+ * (5K goal → 3.0mi, everything else → 4.0mi) via `goalRunFloorMiForUser`,
+ * which read `profile.goal_race_distance` / `tt_goal_distance` and was
+ * called live from `generate.ts`, `drift-monitor.ts`,
+ * `seed-from-onboarding.ts` and three API routes. That let the runner's
+ * stated AMBITION decide whether their own demonstrated effort counted as
+ * fitness evidence — a direct violation of "the fitness resolver should not
+ * be able to see the goal at all" (`docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_
+ * IMPLEMENTATION.md` §6), confirmed live in
+ * `docs/reports/brain-status-2026-08-31.md`.
  *
- * Cite: Research/01-pace-zones-vdot.md §"Field-test protocols" (5K TT → VDOT,
- * apply +1 solo correction) + §"Field-test selection for the Coach".
+ * `capacity-resolver.ts` (the new Runner Model layer) had already argued and
+ * adopted the fix for exactly this constant — `CAPACITY_RUN_FLOOR_MI = 3.0`,
+ * reasoning that "admissibility is a property of the EFFORT, not of the
+ * runner's ambition. A 3.1-mile all-out effort demonstrates the same
+ * physiology whoever ran it." This constant matches that number and that
+ * reasoning, applied to the OLD engine's live call sites too — not only the
+ * shadow one.
+ *
+ * 3.0mi, not 4.0mi: the shortest canonical field test (a 5K time trial) is
+ * the admissibility floor for every runner, not only for one who happens to
+ * say "5K" is their goal. `vdotFromRun`'s HR/quality-label gate still guards
+ * honesty, and `bestRecentVdot`'s corpus ceiling still bounds any single
+ * training read against what other sessions corroborate.
+ *
+ * Cite: Research/01-pace-zones-vdot.md §"Field-test protocols" (a 5K time
+ * trial IS a valid VDOT input) + §"Field-test selection for the Coach".
  */
-export function vdotRunFloorMi(goalDistanceMi: number | null | undefined): number {
-  if (!goalDistanceMi || goalDistanceMi <= 0) return 4;
-  return Math.min(4, Math.max(3, goalDistanceMi * 0.9));
-}
+export const EVIDENCE_RUN_FLOOR_MI = 3.0;
 
 /**
  * Daniels I-pace (VO2max interval pace, s/mi) from a VDOT score.
@@ -916,10 +932,13 @@ export function vdotFromRun(input: {
    *  Lets a threshold/marathon-pace effort read by its zone instead of as a
    *  race — see below. */
   zone?: 'threshold' | 'marathon' | 'interval' | 'race' | null;
-  /** 2026-06-15 · goal-relative minimum honest-effort distance (vdotRunFloorMi).
-   *  Defaults to the legacy flat 4mi floor; a 5K-goal runner passes 3.0 so their
-   *  ~3.1mi quality efforts become VDOT-readable instead of being silently
-   *  rejected. The HR gate below still guards effort honesty. */
+  /** Minimum honest-effort distance a training-derived VDOT read admits.
+   *  Defaults to 4mi; callers pass `EVIDENCE_RUN_FLOOR_MI` (3.0, see its
+   *  header in this file) so a real field-test-length effort — a 5K time
+   *  trial and up — becomes VDOT-readable rather than being silently
+   *  rejected. Evidence-only: never derive this value from the runner's
+   *  stated goal (2026-09-01 fix; it used to be `vdotRunFloorMi(goalDistanceMi)`).
+   *  The HR gate below still guards effort honesty. */
   minDistanceMi?: number;
 }): number | null {
   if (!passesRunHonestyGate(input)) return null;
@@ -1141,9 +1160,12 @@ export function bestRecentVdot(
     /** Prescribed training zone for the zone-aware read (vdotFromRun). */
     zone?: 'threshold' | 'marathon' | 'interval' | 'race' | null;
   }>,
-  /** 2026-06-15 · goal-relative run floor (vdotRunFloorMi). Default 4mi keeps
-   *  legacy behavior for every caller that doesn't pass it; a 5K-goal caller
-   *  passes 3.0 so the runner's ~3.1mi efforts count as fitness candidates. */
+  /** The honest-effort run floor. Default 4mi keeps legacy behavior for any
+   *  caller that doesn't pass it; every live caller now passes
+   *  `EVIDENCE_RUN_FLOOR_MI` (3.0) so a real field-test-length effort counts
+   *  as a fitness candidate. Evidence-only — never derive this from the
+   *  runner's stated goal (2026-09-01 fix; see `EVIDENCE_RUN_FLOOR_MI`'s
+   *  header). */
   minRunDistanceMi: number = 4,
 ): {
   best: VdotCandidate | null;

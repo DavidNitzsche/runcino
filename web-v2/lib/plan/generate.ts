@@ -30,13 +30,13 @@ import { pickWorkout, type WorkoutFamily } from './workout-library-static';
 import { recoveryDayAfterLongMi } from './plan-templates';
 import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
-import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, type BelowTableAnchor } from '@/lib/training/vdot';
+import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, EVIDENCE_RUN_FLOOR_MI, type BelowTableAnchor } from '@/lib/training/vdot';
 import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achievable-target';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.
 // profile.max_hr is NOT the source of truth per task #141.
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
-import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
@@ -80,7 +80,7 @@ import { dropLastSegment, keepFirstSegment, parsePrescription, parseSegments, pa
 // PROGRESSION-PERSIST-1 (2026-08-17) · the trajectory's decision, carried into
 // `plan_workouts.workout_spec` so the adaptation model can hold or modify a
 // stimulus it can actually see.
-import { progressionSpecFields } from './progression-spec';
+import { progressionSpecFields, RATIONALE_SPEC_KEY } from './progression-spec';
 import { validateComposedPlan } from './validate';
 import { mutatePlan, snapshotPrescription, snapshotActivePrescription } from './mutate';
 // 2026-08-25 · the commit gate + the "what moved" line. See lib/plan/plan-delta.ts.
@@ -3378,6 +3378,20 @@ export interface DayPlan {
     zone: ChallengeZone | null;
   } | null;
   /**
+   * RATIONALE-PERSIST-1 (2026-09-01) · the §15 catalogue selector's own
+   * reason this session beat the alternatives it considered on this slot —
+   * `SelectorResult.rationale` in `lib/workout-catalogue/select.ts`, e.g.
+   * "Cruise intervals (§5.3) · threshold on the threshold slot in QUALITY; 3
+   * session(s) eligible, least recently used wins." Computed at selection
+   * time and, until this field existed, discarded at this exact boundary —
+   * see `docs/reports/workout-provenance-trace-2026-09-01.md` §1.
+   *
+   * Present only on a slot the catalogue filled. Absent on a generic
+   * trajectory-driven slot (no rotation to explain) and on every non-quality
+   * day, the same population `workShape` and `progressionDose` are scoped to.
+   */
+  catalogueRationale?: string | null;
+  /**
    * LONGRUN-ROWS-1 (2026-08-25) · WHICH `Research/04` §4.1 ROW this long run's
    * race-pace segment came from.
    *
@@ -5974,6 +5988,9 @@ function layoutWeek({
             vocabRx: text,
             catalogueNote: choice.note,
             catalogueAtPaceMi: choice.dose.atPaceMi,
+            // RATIONALE-PERSIST-1 · the selector's real "why this one" line,
+            // carried past this boundary instead of discarded here.
+            catalogueRationale: choice.rationale,
           };
         }
       }
@@ -5985,7 +6002,10 @@ function layoutWeek({
       const vocabFamily = (candidateFamily && !usedFamilies.has(candidateFamily)) ? candidateFamily : null;
       const vocabRx = vocabFamily ? rx.families[vocabFamily] : undefined;
       if (vocabFamily && vocabRx) usedFamilies.add(vocabFamily);
-      return { dow, qt, vocabFamily, vocabRx, catalogueNote: null, catalogueAtPaceMi: null };
+      return {
+        dow, qt, vocabFamily, vocabRx, catalogueNote: null, catalogueAtPaceMi: null,
+        catalogueRationale: null,
+      };
     });
 
     // DAY-SIZE-1 (2026-08-17) · size a quality DAY from its session.
@@ -6438,6 +6458,11 @@ function layoutWeek({
             zone: doseStep.zone,
           },
         } : {}),
+        // RATIONALE-PERSIST-1 · the catalogue's own selection reason, carried
+        // the same way `progressionDose` is: present only when the slot has
+        // one, absent (not null-valued) so a generic slot's shape is
+        // unchanged.
+        ...(slot.catalogueRationale ? { catalogueRationale: slot.catalogueRationale } : {}),
         // DOCTRINE-VOCAB-1 · a family's coaching note comes from what that
         // family is FOR, not from the slot's spec kind. "Hold pace, even
         // splits" is exactly wrong on a hill session, which Research/04 §8.1
@@ -7423,6 +7448,10 @@ function clearWorkShape(d: DayPlan): void {
   // ladder position either, or the row would say "Easy · no quality this close"
   // over a spec still claiming a rung on the threshold ladder.
   delete d.progressionDose;
+  // RATIONALE-PERSIST-1 · and the selection reason goes with both. A demoted
+  // day's rationale would describe a session that is no longer on the row —
+  // the same lie in a third field.
+  delete d.catalogueRationale;
 }
 
 /**
@@ -13844,7 +13873,7 @@ async function loadGeneratorInputs(
   // A fix to the race/run query now propagates to all call sites automatically.
   // Throws on DB error; generatePlan propagates up (refuses to plan rather than
   // producing a goal-pace plan from undefined VDOT — the C1 bug class).
-  const runFloorMi = await goalRunFloorMiForUser(userId);
+  const runFloorMi = EVIDENCE_RUN_FLOOR_MI;
   const { raceCandidates, runCandidates } = await loadVdotInputs(userId, todayISO);
   const { best: bestVdotPick, belowTableAnchor } = computeBestRecentVdot(raceCandidates, todayISO, 180, runCandidates, runFloorMi);
   // PARITY-1 (2026-06-23) · when there is NO measured signal (empty races+runs → bestVdotPick

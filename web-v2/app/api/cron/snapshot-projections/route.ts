@@ -21,11 +21,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import {
-  bestRecentVdot, VDOT_FULL_VALUE_DAYS, predictRaceTime,
+  bestRecentVdot, VDOT_FULL_VALUE_DAYS, predictRaceTime, EVIDENCE_RUN_FLOOR_MI,
 } from '@/lib/training/vdot';
 import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
-import { loadVdotInputs, goalRunFloorMiForUser } from '@/lib/training/vdot-inputs';
+import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { reanchorActivePlan, isReanchorDeferral } from '@/lib/plan/reanchor-plan';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { refreshRunnerCalibration } from '@/lib/coach/runner-calibration';
@@ -56,11 +56,11 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
     await ratchetUsersMaxHr(userUuid, today).catch(() => null);
   }
 
-  // Goal-relative training-VDOT floor: a 5K-goal runner's ~3.1mi quality
-  // efforts must count as fitness candidates (vdotRunFloorMi → 3.0). The flat
-  // 4mi floor rejected every one of them, so short-distance runners had no
-  // measured VDOT at all and stayed pinned on an onboarding estimate.
-  const runFloorMi = await goalRunFloorMiForUser(userUuid);
+  // Evidence-only honest-effort floor (2026-09-01 fix — see
+  // EVIDENCE_RUN_FLOOR_MI's header in vdot.ts): a short-distance runner's
+  // ~3.1mi quality efforts count as fitness candidates because the effort
+  // itself is field-test length, never because of what the runner's goal is.
+  const runFloorMi = EVIDENCE_RUN_FLOOR_MI;
 
   // Race + run candidates via the shared canonical loader.
   // Throws on DB error — the outer loop catches per-user, logs, and continues
