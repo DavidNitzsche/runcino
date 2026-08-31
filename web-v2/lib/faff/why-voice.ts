@@ -42,6 +42,8 @@
  *      no em dashes, and never scold.
  */
 
+import { stripResearchCitations } from '@/lib/plan/strip-citations';
+
 export interface WhyFacts {
   /** RECOVERY · BASE · QUALITY · RACE-SPECIFIC · TAPER, or null. */
   phase: string | null;
@@ -130,7 +132,32 @@ export function composeWhy(f: WhyFacts): string {
   // Still recovering." says it a second time in fragments.
   if (lead && isRest) return sentence(lead);
 
-  let body = deInterpunct(f.dayNote?.trim() || f.fallback?.trim() || '');
+  // THE CITATION SCRUB, WHICH THIS COMPOSER NEVER HAD.
+  //
+  // `dayNote` is `plan_workouts.notes` verbatim, and the plan engine writes
+  // its doctrine references into that column: on the owner's account 601 rows
+  // carry a `Research/` reference, e.g. "Long run with race-pace segment
+  // (middle 5 mi @ HMP per Research/22 §3 advanced template)" and
+  // `applyCourseGuidance`'s "· Research/11 §net-downhill adjustments".
+  //
+  // (`WhyFacts.phaseRationale` is authored the same way and would need the
+  // same scrub, but this composer never reads it — the field is declared,
+  // passed in by /api/v5/today, and unused. Left alone rather than quietly
+  // wired up: making it appear on screen is a content change, not a fix.)
+  //
+  // Every other runner-facing consumer of engine prose already scrubs — the
+  // coach log, adaptation reasons, workout proposals, session-moved pushes,
+  // the morning brief. This one, which is the "Why this run" line on Today,
+  // did not, so it printed internal citations straight at the runner. The
+  // locked voice doctrine `strip-citations.ts` cites in its own header is
+  // unambiguous: "rooted in research is for the engine, not the runner".
+  //
+  // Scrubbed at the three sources rather than on the joined output, so a
+  // citation can never survive by sitting across a join seam.
+  const dayNote = f.dayNote ? stripResearchCitations(f.dayNote) : null;
+  const fallback = f.fallback ? stripResearchCitations(f.fallback) : null;
+
+  let body = deInterpunct(dayNote?.trim() || fallback?.trim() || '');
 
   // THE VERDICT IS A LABEL, NOT A SENTENCE. `derivePurpose` opens with a bare
   // noun — "Easy day.", "Tempo.", "Long run.", "Intervals." — which works as

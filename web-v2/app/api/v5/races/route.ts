@@ -552,7 +552,21 @@ async function handleGET(req: NextRequest) {
 
     // ── the log ─────────────────────────────────────────────────────────
     const logPage = await loadCoachLog(userId, { limit: 6 }).catch(() => ({ entries: [], nextBefore: null }));
-    const coachLog = logPage.entries.map(e => ({ id: e.id, kind: e.kind, date: e.dateISO, body: e.body }));
+    // `title` NOW TRAVELS. This mapped `kind` and dropped the eyebrow the log
+    // writer had already authored, so the phone had nothing to print but the
+    // machine identifier — and the owner's Races screen read `WEEK_CLOSE` and
+    // `RACE_REPLACEMENT` back at him, in the one surface whose whole job is
+    // the coach's voice. `loadCoachLog` has produced "WEEK CLOSED" all along;
+    // it simply never got on the wire. The phone falls back to a de-cased
+    // `kind` when this is absent, so the two can deploy in either order.
+    //
+    // Bodyless entries are NOT filtered here on purpose: `loadCoachLog` already
+    // drops them at the source (`if (!body.trim()) continue`), which is the
+    // right place for it, and a second copy of that rule here would be one
+    // more thing to keep in step.
+    const coachLog = logPage.entries.map(e => ({
+      id: e.id, kind: e.kind, title: e.title, date: e.dateISO, body: e.body,
+    }));
 
     return NextResponse.json({
       panel, card, schedule, trend, trendHeadline, trendDelta, trendFootnotes, evidence, coachLog,

@@ -642,6 +642,22 @@ struct TodayAfterV5: View {
     // it expands in place to a 1-10 scale. Every other row is a plain,
     // chevronless `ListRow`.
 
+    /// TRUE WHEN THE ASKED-VS-RAN TABLE IS ALREADY PRINTING AVERAGE HR.
+    ///
+    /// Matched on the row's own rendered TEXT against `model.hrAvg`, not on
+    /// the row's id alone. The server only emits the `heart` row when the
+    /// session carried a hard cap, and it fills it with `avgHr` — but a
+    /// predicate that trusted the id would suppress the reading on any future
+    /// day the row carried a different number (across-the-work HR, say), and
+    /// the runner would silently lose a reading. Comparing the printed strings
+    /// means this can only ever hide a genuine duplicate.
+    private var hrAvgShownInAskedVsRan: Bool {
+        guard let hr = model.hrAvg else { return false }
+        return model.askedVsRan.contains { row in
+            row.id == "heart" && row.value?.text == "\(hr)"
+        }
+    }
+
     private var askedVsRanSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(model.askedVsRan) { row in
@@ -805,7 +821,22 @@ struct TodayAfterV5: View {
                     .accessibilityElement(children: .combine)
                 }
             }
-            ZoneBar(shares: shares, targets: Set(targets), height: 44, labels: false)
+            // LABELLED, THE SAME WAY RUN DETAIL LABELS IT.
+            //
+            // This drew the identical component over the identical data with
+            // `labels: false` while `RunDetailV5.zoneSection` drew it with
+            // `labels: true` — two screens, one chart, one of them readable.
+            //
+            // Unlabelled, the bar is five blocks on an ordinal density ramp
+            // with no key: the ramp says WHICH zone only if you already know
+            // the segments run Z1→Z5 left to right, and the caption beside it
+            // names exactly one of them. Rendered on the owner's 2026-08-30
+            // long run — 4/15/11/10/60 — the eye lands on a 60%-wide block
+            // that the screen never names, over a caption reading "15% in
+            // zone 2". `ZoneBar` already places each label under its own
+            // segment and omits it for an empty zone, so this costs 15pt and
+            // makes the distribution the chart is for actually readable.
+            ZoneBar(shares: shares, targets: Set(targets), height: 44, labels: true)
         }
     }
 
@@ -947,6 +978,27 @@ struct TodayAfterV5: View {
                       indoor: model.onTheBelt != nil)
     }
 
+    /// TRUE WHEN THE ROUTE CARD ABOVE ALREADY EXPLAINED THE PACE RAMP.
+    ///
+    /// The map's caption and the mile table's caption are deliberately built
+    /// from the same vocabulary (see `RouteMapView.routeCaption` /
+    /// `paceColumnCaption`), and on run detail — where the map sits BELOW the
+    /// table — only one of them is ever in front of the runner at a time.
+    ///
+    /// On THIS screen the map sits ABOVE the table, so both printed, and the
+    /// two sentences end in the same seven words: "reads speed, not whether
+    /// the pace was right." Rendered on the owner's 2026-08-30 long run they
+    /// read as the same instruction given twice, ~600pt apart, which is the
+    /// bloat this pass exists to remove. One ramp, one sentence — the map's,
+    /// because it is the first one the runner meets and the table inherits its
+    /// colours. When the map draws no caption (no GPS, or no pace on the
+    /// splits) the table keeps its own, so the rule is never left unsaid.
+    private var routeCaptionAlreadyShown: Bool {
+        guard routeCoords.count >= 2 else { return false }
+        return RouteMapView.routeCaption(splits: model.routeSplits,
+                                         phases: routePhaseSamples) != nil
+    }
+
     @ViewBuilder
     private var breakdownSection: some View {
         // The shape states a preference; what the run actually recorded
@@ -962,8 +1014,11 @@ struct TodayAfterV5: View {
                             pieces: milePieces,
                             // The pace column runs on the route line's ramp
                             // now, so its sentence is the map's sentence. See
-                            // `RunDetailV5`'s route section for the ruling.
-                            paceLine: shape.showsPerMilePace
+                            // `RunDetailV5`'s route section for the ruling —
+                            // and `routeCaptionAlreadyShown` for why, on THIS
+                            // screen only, the map having said it means the
+                            // table does not say it again.
+                            paceLine: (shape.showsPerMilePace && !routeCaptionAlreadyShown)
                                 ? RouteMapView.paceColumnCaption(splits: model.routeSplits,
                                                                  phases: routePhaseSamples)
                                 : nil,
@@ -1002,7 +1057,21 @@ struct TodayAfterV5: View {
     /// row — not a zero, and not a dash we typed.
     private var readingRows: [(String, FaffValue)] {
         var out: [(String, FaffValue)] = []
-        if shape.showsWholeRunHrAvg, let hr = model.hrAvg {
+        // NOT TWICE ON ONE SCREEN. The asked-vs-ran table two rows above
+        // prints average HR as the value against a prescribed ceiling
+        // ("Heart · under 145 · 159") whenever the session carried a hard cap.
+        // This row then printed the SAME integer again ("Heart rate, avg ·
+        // 159 bpm"), two rows down — 159 rendered twice on the owner's
+        // 2026-08-30 long run, and a third time inside the coach line below.
+        //
+        // The design contract's own rule: "No content is ever printed twice on
+        // one screen." The asked-vs-ran row is the one that has to stay — it
+        // carries the ceiling and the breach tone, which is a judgement this
+        // plain reading cannot make. So the reading yields when, and only
+        // when, the row above is already showing this number. On every session
+        // with no hard cap (the majority) nothing changes and the reading
+        // stands, which is what David asked for when he added this card.
+        if shape.showsWholeRunHrAvg, let hr = model.hrAvg, !hrAvgShownInAskedVsRan {
             out.append(("Heart rate, avg", .measured("\(hr) bpm")))
         }
         if shape.showsMaxHr, let hrMax = model.hrMax {

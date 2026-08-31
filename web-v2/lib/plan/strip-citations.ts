@@ -59,8 +59,32 @@
  * alternation: NUMBERED is attempted before NAMED, so "§5.4" is consumed as a
  * number and the sentence's own period survives, rather than the named branch
  * halting at the first dot.
+ *
+ * CITESCRUB-2 (2026-08-30, surface audit) · a FOURTH shape fell between the
+ * numbered and named branches and was corrupted exactly the way the three
+ * above were: the NUMBER-LED HYPHENATED section, `§5-Threshold` / `§6-VO2max`.
+ * Not hypothetical — `generate.ts`'s own header cites
+ * "Research/04-workout-vocabulary.md §5-Threshold §6-VO2max".
+ *
+ *   "Threshold work today, see Research/04 §5-Threshold for why."
+ *                             → "Threshold work today,-Threshold for why."
+ *   "VO2max reps today per Research/04 §6-VO2max."
+ *                             → "VO2max reps today-VO2max."
+ *
+ * NUMBERED matched the bare `5`, stopped dead at the hyphen and stranded
+ * `-Threshold` in the runner's sentence; NAMED could not rescue it because it
+ * required a leading LETTER. Two minimal changes:
+ *
+ *   · NUMBERED now declines when a word character or hyphen follows
+ *     (`(?![\w-])`), so `§5.4` is still a number and `§5-Threshold` is not.
+ *   · NAMED now accepts a leading DIGIT as well as a letter, so the section
+ *     numbered just declined is caught here and runs to the sentence
+ *     terminator like any other title.
+ *
+ * Alternation order is unchanged and still load-bearing: a pure `§5.4` is
+ * consumed as a number, so the sentence's own period survives.
  */
-const REF = /Research\/[0-9A-Za-z_.\-]+(?::[0-9]+(?:-[0-9]+)?)?(?:\s*§(?:"[^"]*"|[0-9]+(?:\.[0-9]+)*|[A-Za-z][^.!?]*))?/;
+const REF = /Research\/[0-9A-Za-z_.\-]+(?::[0-9]+(?:-[0-9]+)?)?(?:\s*§(?:"[^"]*"|[0-9]+(?:\.[0-9]+)*(?![\w-])|[A-Za-z0-9][^.!?]*))?/;
 
 /**
  * Strip Research/ citation fragments from a runner-facing string.
@@ -88,6 +112,10 @@ export function stripResearchCitations(text: string): string {
     s = s
       .replace(/\(\s*\)/g, '')
       .replace(/\s+([.,;:!?])/g, '$1')
+      // A connective left dangling on its comma once the citation went:
+      // "Threshold work today, see <ref> for why." → "Threshold work today,."
+      // The comma was punctuating a clause that no longer exists.
+      .replace(/,(\s*[.!?])$/, '$1')
       .replace(/(?:\s*(?:\bper\b|·))+\s*([.!?])$/, '$1')
       .replace(/\s{2,}/g, ' ')
       .trim();

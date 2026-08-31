@@ -914,6 +914,58 @@ struct V5LogEntry: Decodable, Equatable, Hashable, Identifiable {
     let kind: String
     let date: String
     let body: String
+    /// The coach's own eyebrow for this entry — "WEEK CLOSED", "PHASE",
+    /// "FIRST", "FITNESS". Optional because the field is newer than the
+    /// screen: `/api/v5/races` mapped `kind` and dropped `title`, so the
+    /// phone printed the machine identifier. See `eyebrow`.
+    let title: String?
+
+    enum CodingKeys: String, CodingKey { case id, kind, date, body, title }
+
+    /// Lenient decode per doctrine 2026-05-31 · every field defaults, so one
+    /// malformed entry can never take the Races screen down with it.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
+        self.kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        self.date = try c.decodeIfPresent(String.self, forKey: .date) ?? ""
+        self.body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""
+        self.title = try c.decodeIfPresent(String.self, forKey: .title)
+    }
+
+    /// Preview / test constructor · NOT a wire path.
+    init(id: String, kind: String, date: String, body: String, title: String? = nil) {
+        self.id = id; self.kind = kind; self.date = date
+        self.body = body; self.title = title
+    }
+
+    /// WHAT THE RUNNER ACTUALLY READS ABOVE THE ENTRY.
+    ///
+    /// The log printed `kind` verbatim, so the owner's Races screen showed
+    /// `WEEK_CLOSE` and `RACE_REPLACEMENT` — raw enum identifiers, in a
+    /// surface whose whole job is the coach's voice. A coach does not say
+    /// "WEEK_CLOSE".
+    ///
+    /// The server authors a real eyebrow ("WEEK CLOSED") and it is now on the
+    /// wire. When it is absent — an older server, or a kind added without one
+    /// — the identifier is at least de-cased rather than shown raw, so the
+    /// worst case is "WEEK CLOSE" instead of "WEEK_CLOSE".
+    var eyebrow: String {
+        if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty {
+            return t
+        }
+        return kind.replacingOccurrences(of: "_", with: " ")
+    }
+
+    /// An entry with no body is a write-path receipt that leaked into the log,
+    /// not something to draw. The owner's account carries exactly one — a
+    /// `goal_answer` receipt written under the log's own `coach_log_` prefix
+    /// (see `/api/v5/goal-answer`'s header) — and it rendered as an empty
+    /// card under a heading claiming a week had closed, on a Wednesday.
+    /// Mirrors `CoachLogEntry.isRenderable`, which the other reader already had.
+    var isRenderable: Bool {
+        !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 }
 
 // MARK: - Race detail · GET /api/v5/race/{slug}

@@ -74,4 +74,67 @@ describe('stripResearchCitations', () => {
   it('handles empty/nullish-ish input', () => {
     expect(stripResearchCitations('')).toBe('');
   });
+
+  /* ── §section shapes ────────────────────────────────────────────────────
+   * The scrub's failure mode is not "the citation survives" — it is "the
+   * citation is half-removed and its tail is promoted into the coach's own
+   * sentence", which reads as a typo rather than as engine debris. That is
+   * strictly worse than leaving the reference alone, and the original test
+   * for this file could not catch it: it only asserted "Research/" was absent
+   * from the output, which ".3." and "-Threshold" both satisfy.
+   *
+   * So these assert the WHOLE output string, one case per section shape the
+   * engine actually writes. Fixtures are real: the first two come from
+   * generate.ts's `applyCourseGuidance`, which appends them to every long run
+   * of a net-downhill build; the hyphenated ones are the section names
+   * generate.ts's own file header cites.
+   */
+  it('strips a multi-word named §section (CITESCRUB-1)', () => {
+    expect(stripResearchCitations(
+      'Course drops 304 ft. Run at least 60% of this on downhill-similar terrain · Research/11 §net-downhill adjustments.',
+    )).toBe('Course drops 304 ft. Run at least 60% of this on downhill-similar terrain.');
+
+    expect(stripResearchCitations(
+      'Course drops 304 ft. Downhill running stays short and easy from here · Research/11 §late-taper trap.',
+    )).toBe('Course drops 304 ft. Downhill running stays short and easy from here.');
+  });
+
+  it('strips a numbered §section without eating the sentence period (CITESCRUB-1)', () => {
+    expect(stripResearchCitations('Cruise intervals · Research/04 §5.3.'))
+      .toBe('Cruise intervals.');
+    expect(stripResearchCitations('Short hill repeats · Research/04 §8.2. Run them by feel.'))
+      .toBe('Short hill repeats. Run them by feel.');
+  });
+
+  it('strips a quoted §section (CITESCRUB-1)', () => {
+    expect(stripResearchCitations('Cutback week per Research/00b §"Depth of Cutback by Mileage Tier".'))
+      .toBe('Cutback week.');
+  });
+
+  it('strips a number-led hyphenated §section (CITESCRUB-2)', () => {
+    // §5-Threshold fell between the numbered branch (stopped at the hyphen)
+    // and the named branch (needed a leading letter), stranding "-Threshold".
+    expect(stripResearchCitations('Threshold work today, see Research/04 §5-Threshold for why.'))
+      .toBe('Threshold work today.');
+    expect(stripResearchCitations('VO2max reps today per Research/04 §6-VO2max.'))
+      .toBe('VO2max reps today.');
+  });
+
+  it('leaves prose after a mid-sentence citation alone', () => {
+    expect(stripResearchCitations('Taper starts now per Research/08 §taper. Trust it.'))
+      .toBe('Taper starts now. Trust it.');
+  });
+
+  it('is idempotent across every §section shape', () => {
+    for (const input of [
+      'Course drops 304 ft. Run at least 60% of this on downhill-similar terrain · Research/11 §net-downhill adjustments.',
+      'Cruise intervals · Research/04 §5.3.',
+      'Threshold work today, see Research/04 §5-Threshold for why.',
+      'Cutback week per Research/00b §"Depth of Cutback by Mileage Tier".',
+    ]) {
+      const once = stripResearchCitations(input);
+      expect(stripResearchCitations(once)).toBe(once);
+      expect(once).not.toContain('Research/');
+    }
+  });
 });

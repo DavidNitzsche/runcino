@@ -181,8 +181,13 @@ struct RacesV5: View {
                     V5SectionLabel(text: "The log")
                         .padding(.horizontal, V5.S.s4)
                     VStack(spacing: V5.S.inGroup) {
-                        ForEach(model.coachLog) { entry in
-                            LogEntry(kind: entry.kind, date: entry.date, text: entry.body)
+                        // `eyebrow`, not `kind` — the log was printing raw
+                        // enum identifiers (`WEEK_CLOSE`, `RACE_REPLACEMENT`)
+                        // at the runner. `isRenderable` drops the bodyless
+                        // receipt that leaked into this log and drew as an
+                        // empty card. Both live on `V5LogEntry`.
+                        ForEach(model.coachLog.filter(\.isRenderable)) { entry in
+                            LogEntry(kind: entry.eyebrow, date: entry.date, text: entry.body)
                         }
                     }
                 }
