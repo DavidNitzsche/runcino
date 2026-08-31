@@ -144,10 +144,24 @@ describe.skipIf(!RO)('SPLITS REPAIR · generate the SQL, execute nothing', () =>
         `-- ── DRY RUN ──────────────────────────────────────────\n\n${dryRun}\n\n` +
         `-- ── FORWARD ──────────────────────────────────────────\n\n${forward.join('\n\n')}\n\n` +
         `-- ── INVERSE ──────────────────────────────────────────\n\n${inverse.join('\n\n')}\n`;
-      const path = new URL('../../../docs/splits-truncation-repair.sql', import.meta.url).pathname;
-      (await import('node:fs')).writeFileSync(decodeURIComponent(path), out);
+      // The write is OPT-IN. A test that rewrites a tracked file on every run
+      // dirties the tree of anyone who happens to have DATABASE_URL_RO set,
+      // and a dirty tree is how an unrelated change gets swept into a commit.
+      // The assertions below run either way, so the check still has teeth
+      // without the side effect.
+      //
+      //   SPLITS_REPAIR_EMIT=1 npx vitest run lib/runs/_splits_repair_sql.audit.test.ts
+      const path = decodeURIComponent(
+        new URL('../../../docs/splits-truncation-repair.sql', import.meta.url).pathname);
+      if (process.env.SPLITS_REPAIR_EMIT === '1') {
+        (await import('node:fs')).writeFileSync(path, out);
+      }
       // eslint-disable-next-line no-console
-      console.log(`\nSPLITS REPAIR · ${forward.length} rows, ${miles} miles → ${path}\n`);
+      console.log(
+        `\nSPLITS REPAIR · ${forward.length} rows, ${miles} miles`
+        + (process.env.SPLITS_REPAIR_EMIT === '1' ? ` → ${path}` : ' (set SPLITS_REPAIR_EMIT=1 to write)')
+        + '\n');
+      expect(out.length).toBeGreaterThan(0);
 
       expect(forward.length).toBe(inverse.length);
       expect(forward.length).toBeGreaterThan(0);
