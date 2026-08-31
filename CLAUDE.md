@@ -4,6 +4,63 @@ This project is a multi-surface running app for a competitive marathoner. Three 
 
 ---
 
+## What this app is for (locked 2026-08-30 — read this before anything else)
+
+David's own words. Every rule, decision and plan in this file serves this
+statement. If one of them ever contradicts it, the statement wins and the rule
+is wrong.
+
+> **"This is a training app not a live in the past app. What's happening week to
+> week is what matters. With pace but also with volume. There's a world where I
+> or other runners follow the plan, there's a world where we fall short, but
+> ideally there's a world where we push forward and the plan has to push us more
+> and more. That's what the app is for. To push."**
+
+### What that means when you are writing code
+
+**Three worlds, and the third is the one the app exists for.**
+
+1. **The runner follows the plan.** It proceeds. This is the easy case and it is
+   not the product.
+2. **The runner falls short.** The plan responds in GRADED fashion — reshuffle
+   early in the week when the stimulus still matters, absorb it late. A missed
+   run is stated, never judged.
+3. **The runner pushes forward — and the plan pushes back harder.** In PACE AND
+   IN VOLUME. "More and more." A plan that only ever executes the curve it was
+   born with is not coaching, and a plan whose only lever is "do less" is a
+   safety system wearing a coach's clothes.
+
+**"Week to week is what matters."** This is a forward-looking product. History
+exists to size the next week and for no other reason. His ruling in the same
+conversation: *"Past data can be messy, current runs in a plan is not."* Spend
+the effort on the live loop — the run lands, the plan responds — not on
+archaeology.
+
+**"With pace but also with volume."** Both axes respond, or it is half a
+response. An engine that re-anchors paces while the volume curve stays frozen
+has answered only half the question.
+
+### The asymmetry to watch for
+
+Nearly every mechanism in this engine reduces: dosing caps, ramp ceilings, spike
+guards, cutbacks, deloads, pull-backs, readiness suppression, taper. Measured
+2026-08-30 across `lib/plan` and `lib/coach`: **117 files carry reducing
+vocabulary against 37 carrying increasing vocabulary.**
+
+That asymmetry is not automatically wrong — the guards are doctrine-cited and
+injury-motivated, and Rule 8's corollary is explicit that a guard reading
+absorbed tissue load must keep reading the literal recent number. **But a coach
+whose only lever is "do less" is not a coach.** When you touch the adaptation
+loop, ask whether the upward path fires as reliably as the downward one, and
+whether the bar to go UP is higher than the bar to come DOWN. If it is, that is
+a defect, and it is the one this app can least afford.
+
+Pushing harder means **spending the headroom doctrine already allows** — never
+weakening a guard to manufacture it. Current fitness is a SAFETY FLOOR, not a
+ceiling.
+
+---
+
 ## Required reading at session start
 
 Read these in order before doing any design or implementation work in this project. Do not skim. Load them into context fully.
