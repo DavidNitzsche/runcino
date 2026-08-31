@@ -285,12 +285,19 @@ struct RouteMapView: UIViewRepresentable {
     /// the first version of this caption read that fill as "held a single
     /// pace" — a claim about a run nothing had measured the pace of. Silence
     /// is the honest caption for a line that is saying nothing.
+    ///
+    /// AND IT IS SHORT, because it is read after every single run and learned
+    /// once. The first version spent 24 words and three full lines restating
+    /// the gradient the reader is already looking at. Both clauses that earn
+    /// their place survive: which end is which, and that the colour is not a
+    /// verdict. "Not a grade" is the app's own words for the second one — this
+    /// product never grades a number as good.
     static func routeCaption(splits: [RunSplit], phases: [PhaseSample]) -> String? {
         let values = paceRampValues(splits: splits, phases: phases)
         if values.isEmpty { return nil }
         return paceIsFlat(over: values)
             ? "One colour the whole way: this run held a single pace."
-            : "The line runs amber where you were slowest and orange where you were fastest. It reads speed, not whether the pace was right."
+            : "Amber slowest, orange fastest. Colour reads speed, not a grade."
     }
 
     /// The same rule for the mile table's pace column.
@@ -306,7 +313,7 @@ struct RouteMapView: UIViewRepresentable {
         if values.isEmpty { return nil }
         return paceIsFlat(over: values)
             ? "One colour the whole way: these miles ran within seconds of each other."
-            : "Amber is this run's slowest mile, orange its fastest. Colour reads speed, not whether the pace was right."
+            : "Amber slowest mile, orange fastest. Colour reads speed, not a grade."
     }
 
     static func lerp(_ a: UIColor, _ b: UIColor, _ f: CGFloat) -> UIColor {

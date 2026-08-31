@@ -262,13 +262,14 @@ struct TodayAfterV5: View {
         VStack(spacing: 0) {
             switch stravaPushState {
             case .done, .dup:
-                stravaStatusPill(text: "Published to Strava")
+                stravaStatusLine("Published to Strava")
             case .pushing, .pending:
-                stravaStatusPill(text: stravaAutoPush ? "Publishing to Strava…" : "Pushing…")
+                stravaStatusLine(stravaAutoPush ? "Publishing to Strava…" : "Pushing…")
             case .idle, .failed:
                 if stravaAutoPush {
-                    stravaStatusPill(
-                        text: stravaPushState == .failed ? "Couldn’t publish to Strava" : "Publishing to Strava…")
+                    stravaStatusLine(
+                        stravaPushState == .failed ? "Couldn’t publish to Strava" : "Publishing to Strava…",
+                        failed: stravaPushState == .failed)
                 } else {
                     FaffButton(stravaPushState == .failed ? "Push failed · tap to retry" : "Send it to Strava",
                                variant: stravaPushState == .failed ? .secondary : .primary,
@@ -295,13 +296,30 @@ struct TodayAfterV5: View {
         }
     }
 
+    /// A STATUS IS NOT AN ACTION, SO IT DOES NOT WEAR AN ACTION'S CLOTHES.
+    ///
+    /// This drew a full-width 52pt filled pill — deliberately, so it would line
+    /// up with the `FaffButton(.lg)` it replaces. But matching the button's
+    /// geometry gave a terminal, untappable status the exact visual weight of
+    /// the screen's primary action, and it sits at the bottom of the after-run
+    /// screen where the primary action lives. "Published to Strava" was the
+    /// loudest thing on the page and the only thing on it that does nothing.
+    ///
+    /// It is now a quiet line: the run is on Strava, the runner needs to know
+    /// once, and nothing is being asked of them. No fill, no button height, no
+    /// border (containment in this system is a fill step, never a hairline).
+    ///
+    /// A FAILURE IS STILL NOT A SUCCESS. `.failed` came through here too, so a
+    /// push that did not happen rendered in Strava orange at primary weight —
+    /// the same treatment as the one that did. Failure now takes fault red,
+    /// which is what the palette has for "we could not do this".
     @ViewBuilder
-    private func stravaStatusPill(text: String) -> some View {
+    private func stravaStatusLine(_ text: String, failed: Bool = false) -> some View {
         Text(text)
-            .font(.body(15, weight: .extraBold)).tracking(0.3)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 52)
-            .background(Theme.Brand.strava.opacity(0.28), in: RoundedRectangle(cornerRadius: 14))
+            .font(.faffText(TypeScaleV5.label13))
+            .foregroundStyle(failed ? V5.fault : V5.textQuiet)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, V5.S.s8)
     }
 
     /// Load current push status on appear · mirrors `TodayPostRunBody`'s

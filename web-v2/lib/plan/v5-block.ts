@@ -369,17 +369,52 @@ export function libraryPhaseKey(phaseLabel: string | null, isRaceWeek: boolean):
   }
 }
 
+/** A phase that prescribes no quality at all.
+ *
+ *  RECOVERY is the one such phase the engine authors (generate.ts's post-race
+ *  composer), and `buildCoachLine` states it in as many words directly above
+ *  this list: "Easy running only. No quality until this phase closes."
+ *
+ *  THE CATALOGUE USED TO CONTRADICT THAT SENTENCE. `libraryPhaseKey` returns
+ *  null for RECOVERY — correctly, since `phaseFit` has no 'recovery' value to
+ *  match — but the filter below reads a null key as "do not filter by phase",
+ *  so the one phase that forbids quality was the only phase that advertised
+ *  the WHOLE catalogue: Continuous tempo, Cruise intervals, Yasso 800s, Hill
+ *  sprints, Canova 2K repeats, all of it, under a coach line saying to run
+ *  easy. Seen on the owner's own phone on 2026-08-30, in RECOVERY, 14 weeks
+ *  out from CIM.
+ *
+ *  So the phase-fit key and the no-quality question are now asked separately.
+ *  A missing `phaseFit` value means the catalogue was never authored for this
+ *  phase; it does not mean the phase will take anything. */
+export function phaseIsEasyOnly(phaseLabel: string | null): boolean {
+  return phaseLabel === 'RECOVERY';
+}
+
+/** Run entirely at easy pace — the only thing an easy-only phase can offer.
+ *
+ *  Read off `paceZones` rather than `isQuality`, because `isQuality` is a
+ *  narrower claim than "easy": the marathon-pace long runs carry
+ *  `paceZones: ['E','M']` with `isQuality: false`, and 14 miles at marathon
+ *  pace is not easy running by any reading of the sentence above the list.
+ *  An empty zone list is a rest day, which belongs. */
+function isEasyPaced(paceZones: string[]): boolean {
+  return paceZones.every((z) => z === 'E');
+}
+
 export async function buildLibrary(state: TrainingState, raceDistanceMi: number | null) {
   const all = loadAllWorkouts();
   const cat = raceDistanceMi != null ? distanceCategoryOrNull(raceDistanceMi) : null;
   const current = state.weeks.find((w) => w.isCurrent) ?? null;
   const phaseKey = libraryPhaseKey(state.currentPhase, current?.isRaceWeek ?? false);
+  const easyOnly = phaseIsEasyOnly(state.currentPhase);
 
   const relevant = all.filter((t) => {
     // "A session with no citation does not go in the library."
     if (!t.citation || !t.citation.trim()) return false;
     if (cat && !(t.distanceFocus.includes(cat) || t.distanceFocus.includes('all'))) return false;
     if (phaseKey && t.phaseFit.length > 0 && !t.phaseFit.includes(phaseKey)) return false;
+    if (easyOnly && !isEasyPaced(t.paceZones)) return false;
     return true;
   });
 

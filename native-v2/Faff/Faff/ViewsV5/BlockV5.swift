@@ -133,13 +133,33 @@ struct BlockV5: View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 panel
-                arcSection
+                // AN ARC NEEDS SOMETHING TO ARC BETWEEN.
+                //
+                // `PhaseBar` exists to answer "when does the taper start" —
+                // it sizes each phase against the others and marks which one
+                // you are in. With a single phase there is nothing to size
+                // against: it draws one featureless full-width bar, one tick,
+                // and one name. Every fact in it is already on this screen
+                // twice — the panel headline names the phase in 56pt display
+                // directly above, and "So far in this block · Weeks in" gives
+                // the position directly below. The handoff's own rule is "no
+                // content is ever printed twice on one screen"; at one phase
+                // this is the third printing, and it is the one that carries
+                // no information of its own.
+                //
+                // Seen on the owner's phone on 2026-08-30: a RECOVERY block of
+                // one week, "Weeks in 1 of 1", and a blank bar above it.
+                if model.phases.count > 1 { arcSection }
                 coachSection
                 soFarSection
                 runLogRow
                 changePlanRow
                 weeksSection
-                librarySection
+                // An empty ListGroup is a titled empty box. The library is
+                // legitimately empty in an easy-only phase (see
+                // `phaseIsEasyOnly` in lib/plan/v5-block.ts), so this is a
+                // reachable state, not a defensive nicety.
+                if !model.library.isEmpty { librarySection }
             }
             .padding(.horizontal, V5.S.gutter)
             .padding(.bottom, V5.S.s24)
