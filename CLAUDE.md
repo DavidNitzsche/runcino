@@ -932,6 +932,67 @@ reader from checking.
 
 ---
 
+## Rule 21 · The plan must be able to get harder — and you must be able to PROVE it has (locked 2026-08-30)
+
+This is the rule the hero statement at the top of this file demands, and it is
+locked because the engine currently fails it.
+
+**Measured 2026-08-30 against the owner's entire history: 309 `coach_intents`
+rows, 20 distinct reasons, months of real training, and the number of UPWARD
+adaptations is ZERO.**
+
+```
+plan_adapt_downgrade      5        upgrade / bump / accelerate    0
+plan_adapt_long_floor     5
+plan_adapt_reschedule     3        vdot_auto_recalc               1
+plan_adapt_missed_noted   3        (the pace axis, once, ever)
+plan_adapt_overridden     2
+plan_adapt_gap            1
+plan_adapt_drop_missed    1
+```
+
+The push machinery is not missing. All three axes are wired: pace through the
+VDOT re-anchor into `recompute-paces.ts`; quality-session shape through
+`progression-pass.ts`, whose gate returns TAKE / **ACCELERATE** / HOLD /
+BACK_OFF; and volume through `adaptive-ramp.ts`'s `tryAdaptiveBump`, imported by
+the `run-adaptations` cron, capped at +5 mi/week with +1 on the long and +1 per
+easy day. Doctrine-bound, unit-tested, cron-mounted — **and it has never once
+fired for the only real runner this app has.**
+
+That is the third instance of the same class in one night, after Rule 5's
+quality-density ramp (never fired for any runner with a rebuilt plan) and Rule
+2's easy-day floor ("never fired since it shipped"). **Wired, tested and inert
+is this codebase's signature failure**, and it is most damaging on the upward
+path, because a coach that cannot push is not a coach.
+
+### To comply
+
+**The bar to go UP may not be higher than the bar to come DOWN.** When you write
+or touch an adaptation trigger, put its threshold beside its opposite number's
+and justify any asymmetry with a citation. Five downgrades against zero upgrades
+is not a runner's record, it is an engine's disposition.
+
+**Prove it fires, on real history.** Per Rule 15, a mechanism no case can reach
+is untested. For an adaptation the standard is higher: compute what the runner
+would have had to DO to trigger it, then check whether any week they have
+actually run would have. If none could, the bar is not a bar, it is a wall.
+
+**Make it observable.** `training_plans.adaptation_log` stores `{"n": 1, "ts":
+"..."}` — a counter and a timestamp, and no record of WHAT adapted. So the
+engine's own log cannot answer "has this ever pushed up", and establishing the
+zero above required querying `coach_intents` sideways. **A log that records that
+something happened but not what is not a log.** Every adaptation writes what it
+did, in which direction, and on what evidence — otherwise the next person cannot
+tell an engine that never pushes from a runner who never earned it, which is
+exactly the ambiguity that let this survive.
+
+**Never manufacture push by weakening a guard.** Every ceiling here is
+doctrine-cited and injury-motivated, and Rule 8's corollary keeps the
+absorbed-load guards reading the literal recent number. Push by spending the
+headroom doctrine already allows.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
