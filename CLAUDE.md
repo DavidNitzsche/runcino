@@ -129,6 +129,19 @@ understand or do next. Read before adding or keeping any screen, card, or
 metric — the test is "what decision does this help the runner make," not
 "does this exist because the engine can compute it."
 
+**Adaptation & progression mechanics — `docs/ADAPTATION_PROGRESSION_DOCTRINE.md`.**
+Extends Brief 07 with how progression actually works: four separate
+questions (pace / duration / density / hold), each with its own evidence and
+owner — never one generic progression score. Pace progresses from capacity
+evidence; duration progresses from load-tolerance evidence; density
+progresses independently of both. Progress one primary stressor at a time.
+Compare intended stimulus against ACTUAL EXECUTION (control, consistency,
+physiological cost, late-session deterioration), not just completion — a
+fast-but-uncontrolled session is not evidence pace should move. Constitution:
+"the calendar proposes progression, the runner earns it." **Not yet built —
+depends on the Evidence Engine's per-activity classification landing first,
+since that's what tells demonstrated capacity apart from aggressive pacing.**
+
 ### 1. Design source of truth
 
 **iPhone — `/Volumes/WP/06 Claude Code/Faff/design/0819/design_handoff_faff_iphone_app v5/`**
