@@ -525,11 +525,20 @@ export function _resetShadowTableProbeForTests(): void {
   shadowTableExists = null;
 }
 
-const FILE_LOG_DIR = path.join(process.cwd(), '..', 'docs', 'reports', 'adaptation-shadow-log');
+/** Where the file fallback writes. Resolved PER CALL, not at module load, so a
+ *  test can redirect it to a temp directory after the module is already in the
+ *  import cache. The default is the git-tracked report directory, which is why
+ *  the fallback is opt-in (see `persistShadowCompareRecord`) rather than a
+ *  default anyone can trip over. */
+function fileLogDir(): string {
+  return process.env.FAFF_SHADOW_LOG_DIR
+    ?? path.join(process.cwd(), '..', 'docs', 'reports', 'adaptation-shadow-log');
+}
 
 async function persistToFile(record: ShadowCompareRecord): Promise<string> {
-  await fs.mkdir(FILE_LOG_DIR, { recursive: true });
-  const file = path.join(FILE_LOG_DIR, `${record.userUuid}.jsonl`);
+  const dir = fileLogDir();
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, `${record.userUuid}.jsonl`);
   await fs.appendFile(file, `${JSON.stringify(record)}\n`, 'utf8');
   return file;
 }
@@ -588,17 +597,25 @@ export interface PersistResult {
  * best-effort and logged, matching every other non-fatal step in the cron
  * loop this is wired into (`updateCoachLog`, `reanchorLthr`).
  *
- * `allowFileFallback` defaults to true for local verification runs and is
- * set `false` from the cron route — see the header's ephemeral-filesystem
- * note. In production, absent the table, this is a no-op that still returns
- * a result so the caller can log "shadow-compare ran, nothing persisted,
- * migration pending" rather than silently doing nothing.
+ * `allowFileFallback` DEFAULTS TO FALSE and must be opted into explicitly.
+ * It used to default to true "for local verification runs", and the cost of
+ * that default was that any read-only test run which happened to reach this
+ * function APPENDED to the git-tracked `docs/reports/adaptation-shadow-log/
+ * *.jsonl` — a test dirtying the working tree of whoever ran it, silently.
+ * The cron route already passed `false` (ephemeral filesystem in production),
+ * so nothing that ships relied on the old default. A caller that genuinely
+ * wants a file writes `{ allowFileFallback: true }` and, if it is a test,
+ * points `FAFF_SHADOW_LOG_DIR` somewhere disposable.
+ *
+ * With the fallback off and the table absent, this is a no-op that still
+ * returns a result, so the caller can log "shadow-compare ran, nothing
+ * persisted, migration pending" rather than silently doing nothing (Rule 11).
  */
 export async function persistShadowCompareRecord(
   record: ShadowCompareRecord,
   opts: { allowFileFallback?: boolean } = {},
 ): Promise<PersistResult> {
-  const allowFileFallback = opts.allowFileFallback ?? true;
+  const allowFileFallback = opts.allowFileFallback ?? false;
 
   // Rule 11 · "the table is absent" and "the table exists but this INSERT
   // failed" are different facts. Collapsing them was a real bug once the
