@@ -439,6 +439,24 @@ reached the remote before the local hook's report — confirmed by `git fetch`
 production: `curl -X POST https://www.faff.run/api/cron/prune-adaptation-
 shadow-log` returns `401` (correct — no `CRON_SECRET` supplied), not `404`.
 
+**Note for whoever reads this next**: a THIRD deployment (`bb380823`,
+building the follow-up docs-only commit that added this section) failed
+*after* `7cfe3a25`'s confirmed SUCCESS above, on a commit (`fd13f09b`,
+`feat(adaptation): ongoing dual-reader comparison logging for the
+absorption/execution split`) pushed by a different, still-active concurrent
+session — `git log origin/main` shows it landed on top of this pass's own
+final commit. It fails the same `check-generated-content.sh` GUARD 5 §8
+already named as pre-existing and out of scope
+(`_season_sweep_absorption_duration.script.ts` with no `MODULE_ORPHANS`
+entry), now actually committed rather than sitting uncommitted in the shared
+tree. Not fixed here: it is that session's own file, mid-development, and
+the safe call given the shared-checkout doctrine is to let the session that
+owns it resolve it rather than guessing whether the right answer is wire /
+delete / exempt on their behalf. **This pass's own deliverable was
+independently confirmed deployed (`7cfe3a25` SUCCESS) before that later,
+unrelated commit landed** — the mechanism this report documents is live in
+production regardless of what happens to `main` afterward.
+
 ---
 
 ## Constraint held
