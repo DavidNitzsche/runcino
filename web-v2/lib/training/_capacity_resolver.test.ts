@@ -62,6 +62,7 @@ import {
 } from '@/lib/training/capacity-resolver';
 import { POPULATION_ENDURANCE_PRIOR } from '@/lib/training/durability-anchor';
 import { tPaceFromVdot, iPaceFromVdot, easyBandFromTPace } from '@/lib/training/vdot';
+import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
 import type { PaceObservation, ThresholdPaceRead, EasyPaceRead } from '@/lib/training/pace-corpus';
 import type { RaceExponentRead, DecouplingRead } from '@/lib/training/durability-anchor';
 import type { NormalReading } from '@/lib/training/normal-window';
@@ -113,6 +114,7 @@ function emptyFallback(overrides: Partial<VdotFallbackRead> = {}): VdotFallbackR
     measuredVdotSource: null,
     belowTableAnchor: null,
     normalWeeklyMi: okNormal(40),
+    selfReportedWeeklyMi: null,
     ...overrides,
   };
 }
@@ -443,6 +445,97 @@ describe('CAPACITY · the ladder falls through, it does not serve a refusal (Rul
     expect(refused.reasons).toContain('HABIT_WINDOW_REFUSED');
   });
 
+  /* ── COLD-START PRIOR FIX (2026-09-01) ─────────────────────────────────────
+   * `docs/reports/cold-start-prior-fix-2026-09-01.md`. Before this fix, a
+   * zero-run account's threshold pace floored straight to the flat
+   * VDOT-30 population prior (~10:42/mi) no matter what the runner typed at
+   * onboarding — the ~35% divergence the shadow-compare audit found on every
+   * real zero-run account. */
+
+  it('3e-1 · a zero-run account with an onboarding self-report gets `user_prior`, not the flat population floor', () => {
+    const noSelfReport = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: null }),
+      todayISO: TODAY,
+    });
+    const withSelfReport = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      // '25-35' bucket midpoint (HIST_AVG_MIDPOINTS, lib/onboarding/state.ts).
+      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: 30 }),
+      todayISO: TODAY,
+    });
+    expect(noSelfReport.sourceMode).toBe('population_prior');
+    expect(noSelfReport.confidence).toBe(CAPACITY_CONFIDENCE_BANDS.populationPrior);
+
+    expect(withSelfReport.sourceMode).toBe('user_prior');
+    expect(withSelfReport.reasons).toContain('ONBOARDING_MILEAGE_USER_PRIOR');
+    expect(withSelfReport.reasons).not.toContain('MILEAGE_POPULATION_PRIOR');
+    // Low confidence, conservative bounds: strictly between the population
+    // floor and the fallback band, never a confident precise pace.
+    expect(withSelfReport.confidence).toBe(CAPACITY_CONFIDENCE_BANDS.userPrior);
+    expect(withSelfReport.confidence).toBeGreaterThan(CAPACITY_CONFIDENCE_BANDS.populationPrior);
+    expect(withSelfReport.confidence).toBeLessThan(CAPACITY_CONFIDENCE_BANDS.fallbackFloor);
+    // The 30 mi/wk self-report resolves a materially faster (and more
+    // reasonable) pace than the flat VDOT-30 floor — this is the ~35%
+    // divergence closing, not just a source-mode label change.
+    expect(withSelfReport.paceSecPerMi).toBeLessThan(noSelfReport.paceSecPerMi);
+  });
+
+  it('3e-2 · the self-report never crosses into direct/inferred, and is capped by the same monotonic conversion', () => {
+    const e = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      // Well above the ladder's top band — `conservativeVdotFromMileage` caps
+      // at VDOT 50 for anything >= 100 mi/wk, unchanged by this fix.
+      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: 120 }),
+      todayISO: TODAY,
+    });
+    expect(e.sourceMode).toBe('user_prior');
+    expect(conservativeVdotFromMileage(120)).toBe(50);
+    expect(e.paceSecPerMi).toBe(tPaceFromVdot(50));
+    expect(e.evidenceIds).toEqual([]); // a self-report names no runner evidence
+  });
+
+  it('3e-3 · ANY real logged mileage displaces the self-report automatically — no special-case code needed', () => {
+    const e = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      // A single real mile of representative training outranks a 40 mi/wk
+      // self-report, because it is an actual observation of this runner.
+      fallback: emptyFallback({ normalWeeklyMi: okNormal(1), selfReportedWeeklyMi: 40 }),
+      todayISO: TODAY,
+    });
+    expect(e.sourceMode).toBe('population_prior');
+    expect(e.reasons).not.toContain('ONBOARDING_MILEAGE_USER_PRIOR');
+    expect(e.paceSecPerMi).toBe(tPaceFromVdot(conservativeVdotFromMileage(1)));
+  });
+
+  it('3e-4 · self-report substitutes on a REFUSED habit window too, and both facts are reported', () => {
+    const e = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: emptyFallback({ normalWeeklyMi: refusedNormal(), selfReportedWeeklyMi: 20 }),
+      todayISO: TODAY,
+    });
+    expect(e.sourceMode).toBe('user_prior');
+    expect(e.reasons).toContain('ONBOARDING_MILEAGE_USER_PRIOR');
+    // The window still refused — that fact does not disappear because a
+    // self-report filled the gap.
+    expect(e.reasons).toContain('HABIT_WINDOW_REFUSED');
+  });
+
+  it('3e-5 · HIGH-INTENSITY tier 4 mirrors the same user_prior substitution', () => {
+    const noSelfReport = composeHighIntensityCapacity({
+      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: null }),
+      todayISO: TODAY,
+    });
+    const withSelfReport = composeHighIntensityCapacity({
+      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: 30 }),
+      todayISO: TODAY,
+    });
+    expect(noSelfReport.sourceMode).toBe('population_prior');
+    expect(withSelfReport.sourceMode).toBe('user_prior');
+    expect(withSelfReport.confidence).toBe(CAPACITY_CONFIDENCE_BANDS.userPrior);
+    expect(withSelfReport.intervalPaceSecPerMi).toBeLessThan(noSelfReport.intervalPaceSecPerMi);
+  });
+
   it('3f · HIGH-INTENSITY always declares that its top rung is not built', () => {
     const vdotRung = composeHighIntensityCapacity({
       fallback: emptyFallback({ measuredVdot: 47, measuredVdotEvidenceId: 'afc-half', measuredVdotDate: '2026-08-16', measuredVdotSource: 'race' }),
@@ -549,6 +642,12 @@ describe('CAPACITY · confidence bands and monotonicity (§30)', () => {
     expect(b.fallbackFloor).toBeGreaterThanOrEqual(b.populationPrior);
     // And direct evidence never claims certainty — see the constant's header.
     expect(b.directCeiling).toBeLessThan(1);
+  });
+
+  it('4a-1 · userPrior sits strictly between the fallback floor and the population prior (2026-09-01)', () => {
+    const b = CAPACITY_CONFIDENCE_BANDS;
+    expect(b.fallbackFloor).toBeGreaterThan(b.userPrior);
+    expect(b.userPrior).toBeGreaterThan(b.populationPrior);
   });
 
   it('4b · the source-mode strength ordering is §16\'s ladder', () => {
