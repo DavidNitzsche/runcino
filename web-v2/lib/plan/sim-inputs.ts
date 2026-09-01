@@ -55,7 +55,7 @@ import {
 import { lookupTierTarget, pickPlanMode, buildOpensISO, type PlanMode } from './goal-tiers';
 import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
-import { tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
+import { syntheticPaceAnchors } from './authoring-anchors';
 import { vdotFromRace, tPaceFromVdot, predictRaceTime } from '@/lib/training/vdot';
 import {
   SIM_DISTANCE_MI,
@@ -453,12 +453,32 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     (vdotFromRace(goalSec, raceDistanceMi) == null && goalSec < (predictRaceTime(85, raceDistanceMi) ?? 0))
   )) goalSec = null;
   const goalPaceSec = goalSec ? Math.round(goalSec / raceDistanceMi) : null;
-  // VAR-05 · by-feel (no goal) or ultra (PACE-5 → tPaceFromGoal null) anchors T to the
-  // runner's actual fitness (currentT), never the flat 480s/mi literal. Mirrors composePlan.
-  const currentT = tPaceFromVdot(bestRecentVdot ?? conservativeVdotFromMileage(recentWeeklyMi));
-  // NEW-A · floor tPaceSec at currentT (mirrors the loader) so maintenance/recovery don't inherit a slow soft goal.
-  const goalTpSim = tPaceFromGoal(goalSec, raceDistanceMi);
-  const tPaceSec = (goalTpSim != null && currentT != null ? Math.min(goalTpSim, currentT) : goalTpSim) ?? currentT ?? 480;
+  /* AUTHORING-CANONICAL-1 (2026-09-01) · THE SIMULATOR MIRRORS AUTHORING, SO
+   * ITS PRICING MOVED WITH IT.
+   *
+   * What was here — `min(tPaceFromGoal(goal), currentT)` — is the exact
+   * expression `loadGeneratorInputs` carried, and it picks the FASTER of the
+   * two, so for an ambitious goal the whole simulated block was priced at the
+   * GOAL's threshold pace. This module's entire purpose is that a sim and a
+   * real authoring answer identically; leaving the leak here would mean the
+   * simulator kept demonstrating a behaviour production no longer has.
+   *
+   * `syntheticPaceAnchors` is the same pure capacity cores `composePlan` uses
+   * for any caller without a database, which a simulator is by construction.
+   */
+  const simAnchorRead = syntheticPaceAnchors({
+    bestRecentVdot: bestRecentVdot ?? null,
+    recentWeeklyMi,
+    todayISO: blockStartISO,
+  });
+  if (!simAnchorRead.ok) {
+    throw new Error(
+      '[sim-inputs] pace anchors refused: ' + simAnchorRead.reason + ' - ' + simAnchorRead.detail,
+    );
+  }
+  const paceAnchors = simAnchorRead.anchors;
+  const currentT = paceAnchors.thresholdSecPerMi;
+  const tPaceSec = paceAnchors.thresholdSecPerMi;
 
   // ANCHORFIT-1 · RAMPBASE-1's pure half, on the same path production runs it
   // (`if (mode === 'race-prep')`). Null with no history, and then the sim
@@ -523,7 +543,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       bestRecentVdot, bestRecentVdotSelfReported, tsbAtStart: undefined, horizonRaces: undefined,
       isMidBlock: sim.isMidBlock ?? false,
       longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
-      rxQuality, rxRaceSpecific, tPaceSec, lthr: sim.lthr ?? null, maxHr: sim.maxHr ?? null,
+      rxQuality, rxRaceSpecific, tPaceSec, paceAnchors, lthr: sim.lthr ?? null, maxHr: sim.maxHr ?? null,
       // ANCHORFIT-1 · RAMPBASE-1, resolved by the shipped pure function. Same
       // conditionality production uses.
       // CONTINUOUS-RESTORE-1 (2026-08-30) · production stopped gating
@@ -562,7 +582,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       // toward a completed block they do not have.
       measuredPeakWeeklyMi: hist ? hist.peak : 0,
       easyDayMedianMi, longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
-      tier, nextRace, lastRaceFinished, rxQuality, tPaceSec, lthr: sim.lthr ?? null,
+      tier, nextRace, lastRaceFinished, rxQuality, tPaceSec, paceAnchors, lthr: sim.lthr ?? null,
     };
     composed = mode === 'recovery' ? composeRecoveryPlan(nonRace) : composeMaintenancePlan(nonRace);
 

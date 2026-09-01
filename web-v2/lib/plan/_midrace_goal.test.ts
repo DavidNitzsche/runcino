@@ -143,9 +143,20 @@ describe('MIDGOAL-1 · the stated-goal derivation is untouched (byte-safety bar)
     // to the ceiling — the more ambitious runner handed the slower target. 420
     // is the band EDGE, which is the bound doctrine actually states
     // (Research/20 §"SMART criteria", "Within ~5% of current fitness ceiling").
+    //
+    // 2026-09-01 · AUTHORING-CANONICAL-1 moved this from 420 to 421, and the
+    // ONE second is the whole change: `boundedRacePaceSPerMi`'s ceiling is
+    // derived from the runner's CURRENT VDOT, and authoring now hands it the
+    // CANONICAL threshold capacity's derived VDOT instead of
+    // `conservativeVdotFromMileage`'s / the legacy cascade's. Same function,
+    // same doctrine band, a fitness read that is one VDOT-tenth different — so
+    // the band edge lands one second slower. Race Prediction's own question is
+    // untouched (Constitution §J); what changed is that it and the block are
+    // now read off ONE fitness (Rule 16), which is exactly what the migration
+    // was for.
     // The assertion that matters is unchanged and still passes: the composed
     // row is NOT the unbounded 412.
-    expect(day?.raceGoalPaceSec).toBe(420);
+    expect(day?.raceGoalPaceSec).toBe(421);
     expect(day?.raceGoalPaceSec).toBeGreaterThan(412);
   });
 
@@ -180,10 +191,12 @@ describe('MIDGOAL-1 · the stated-goal derivation is untouched (byte-safety bar)
         goalPaceSec: 412, goalPaceIsCoachSet: false, priority: 'B' },
     ]);
     const notes = dayAt(composed, MALIBU_ISO)?.notes ?? '';
-    // The row states what it will actually ask for (the bounded 420 = 7:00/mi),
+    // The row states what it will actually ask for (the bounded 421 = 7:01/mi),
     // never the unbounded ambition. The stated goal still lives on
     // authored_state.goal_pace_s_per_mi and on every surface that shows it.
-    expect(notes).toContain('Target 7:00/mi');
+    // AUTHORING-CANONICAL-1 moved the bound by one second — see the note on
+    // the 421 assertion above for why, and why it is the migration working.
+    expect(notes).toContain('Target 7:01/mi');
     // The runner's own goal is never attributed to the coach.
     expect(notes).not.toContain('Coach target');
   });
@@ -253,8 +266,9 @@ describe('MIDGOAL-1 · all three races in one block, the owner\'s real calendar'
     // No race inherits another's pace, and none inherits CIM's 412.
     expect(dayAt(composed, SANTA_MONICA_ISO)?.raceGoalPaceSec).toBe(418);
     expect(dayAt(composed, DODGERS_ISO)?.raceGoalPaceSec).toBe(435);
-    // Bounded from the stated 412 · see the RACEPACE-1 note above.
-    expect(dayAt(composed, MALIBU_ISO)?.raceGoalPaceSec).toBe(420);
+    // Bounded from the stated 412 · see the RACEPACE-1 note above, and the
+    // AUTHORING-CANONICAL-1 note beside it for the one-second move.
+    expect(dayAt(composed, MALIBU_ISO)?.raceGoalPaceSec).toBe(421);
     // Only the goal-less one is attributed to the coach.
     expect(dayAt(composed, SANTA_MONICA_ISO)?.notes).toContain('Coach target');
     expect(dayAt(composed, DODGERS_ISO)?.notes).not.toContain('Coach target');

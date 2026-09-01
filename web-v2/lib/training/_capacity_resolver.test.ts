@@ -47,6 +47,8 @@ import {
   CAPACITY_MODEL_VERSION,
   CAPACITY_RUN_FLOOR_MI,
   SOURCE_MODE_STRENGTH,
+  USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS,
+  priorWeeklyMi,
   combineIndependentConfidence,
   composeDurability,
   composeEasyCeiling,
@@ -66,6 +68,7 @@ import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
 import type { PaceObservation, ThresholdPaceRead, EasyPaceRead } from '@/lib/training/pace-corpus';
 import type { RaceExponentRead, DecouplingRead } from '@/lib/training/durability-anchor';
 import type { NormalReading } from '@/lib/training/normal-window';
+import { readSelfReportedPr } from '@/lib/training/self-reported-pr';
 
 const TODAY = '2026-08-31';
 const RESOLVER_PATH = path.join(process.cwd(), 'lib/training/capacity-resolver.ts');
@@ -114,7 +117,12 @@ function emptyFallback(overrides: Partial<VdotFallbackRead> = {}): VdotFallbackR
     measuredVdotSource: null,
     belowTableAnchor: null,
     normalWeeklyMi: okNormal(40),
+    // Full coverage by default — the baseline runner has a real training
+    // history, so the self-report/PR priors are retired and every existing
+    // ladder assertion reads the same number it always did.
+    normalRunDays: USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS,
     selfReportedWeeklyMi: null,
+    selfReportedPr: { ok: false, reason: 'NO_PR_ON_FILE', considered: 0, rejected: [] },
     ...overrides,
   };
 }
@@ -445,23 +453,47 @@ describe('CAPACITY · the ladder falls through, it does not serve a refusal (Rul
     expect(refused.reasons).toContain('HABIT_WINDOW_REFUSED');
   });
 
-  /* ── COLD-START PRIOR FIX (2026-09-01) ─────────────────────────────────────
-   * `docs/reports/cold-start-prior-fix-2026-09-01.md`. Before this fix, a
-   * zero-run account's threshold pace floored straight to the flat
-   * VDOT-30 population prior (~10:42/mi) no matter what the runner typed at
-   * onboarding — the ~35% divergence the shadow-compare audit found on every
-   * real zero-run account. */
+  /* ── COLD-START PRIOR (2026-09-01, REVISED after the independent audit) ────
+   *
+   * `docs/reports/cold-start-prior-fix-2026-09-01.md` for the original fix and
+   * the audit appendix `A-authoring-migration.md` §4 for what was wrong with
+   * it. Before the fix, a zero-run account's threshold pace floored straight
+   * to the flat VDOT-30 population prior (~10:42/mi) no matter what the runner
+   * typed at onboarding. The fix substituted the self-report on a hard
+   * `real > 0` switch, which the audit walked and found to be a 188 s/mi
+   * Rule 9 cliff — the sparse-history runner (1-2 logged runs, the first month
+   * of every new account) landing in a WORSE bucket than the zero-run runner
+   * the fix was written for. What is asserted below is the BLEND that replaced
+   * it, and the typed-PR rung the fix never had. */
+
+  /** A cold-start fallback: no measured VDOT, no below-table anchor, a real
+   *  habit reading of `weeklyMi` over `runDays` representative running days.
+   *  The two are supplied together on purpose — 0 mi/wk over 16 running days
+   *  is not a runner, it is an incoherent fixture, and the old helper's
+   *  independent defaults let exactly that shape into four tests. */
+  function coldStart(
+    weeklyMi: number,
+    runDays: number,
+    overrides: Partial<VdotFallbackRead> = {},
+  ): VdotFallbackRead {
+    return emptyFallback({ normalWeeklyMi: okNormal(weeklyMi), normalRunDays: runDays, ...overrides });
+  }
+
+  /** A validated typed PR, in the shape `readSelfReportedPr` returns. */
+  function typedPr(distance: string, timeSec: number, whenRaced: string) {
+    return readSelfReportedPr([{ distance, timeSec, whenRaced }]);
+  }
 
   it('3e-1 · a zero-run account with an onboarding self-report gets `user_prior`, not the flat population floor', () => {
     const noSelfReport = composeThresholdCapacity({
       direct: REFUSED_THRESHOLD,
-      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: null }),
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: null }),
       todayISO: TODAY,
     });
     const withSelfReport = composeThresholdCapacity({
       direct: REFUSED_THRESHOLD,
       // '25-35' bucket midpoint (HIST_AVG_MIDPOINTS, lib/onboarding/state.ts).
-      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: 30 }),
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 30 }),
       todayISO: TODAY,
     });
     expect(noSelfReport.sourceMode).toBe('population_prior');
@@ -486,7 +518,7 @@ describe('CAPACITY · the ladder falls through, it does not serve a refusal (Rul
       direct: REFUSED_THRESHOLD,
       // Well above the ladder's top band — `conservativeVdotFromMileage` caps
       // at VDOT 50 for anything >= 100 mi/wk, unchanged by this fix.
-      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: 120 }),
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 120 }),
       todayISO: TODAY,
     });
     expect(e.sourceMode).toBe('user_prior');
@@ -495,23 +527,173 @@ describe('CAPACITY · the ladder falls through, it does not serve a refusal (Rul
     expect(e.evidenceIds).toEqual([]); // a self-report names no runner evidence
   });
 
-  it('3e-3 · ANY real logged mileage displaces the self-report automatically — no special-case code needed', () => {
-    const e = composeThresholdCapacity({
+  /* 3e-3 · REWRITTEN 2026-09-01 after the independent audit.
+   *
+   * The version this replaces asserted the cliff AS CORRECT — `okNormal(1)`
+   * against a 40 mi/wk self-report expecting `population_prior`, under the
+   * heading "ANY real logged mileage displaces the self-report automatically
+   * — no special-case code needed". The PRINCIPLE (evidence precedence) was
+   * right and is still asserted below. The IMPLEMENTATION it blessed was a
+   * hard switch, and Rule 9 exists to stop exactly that: the runner who
+   * logged one short run after typing 40 mi/wk went from a prescribed 7:34/mi
+   * to 10:42/mi, a +188 s/mi step, and stayed there for weeks.
+   *
+   * A test that blesses a cliff is worse than no test, because it makes the
+   * cliff look deliberate to the next reader. */
+  it('3e-3 · real logged mileage displaces the self-report CONTINUOUSLY, in proportion to how much of it there is', () => {
+    const selfReportedWeeklyMi = 40;
+    const at = (weeklyMi: number, runDays: number) => composeThresholdCapacity({
       direct: REFUSED_THRESHOLD,
-      // A single real mile of representative training outranks a 40 mi/wk
-      // self-report, because it is an actual observation of this runner.
-      fallback: emptyFallback({ normalWeeklyMi: okNormal(1), selfReportedWeeklyMi: 40 }),
+      fallback: coldStart(weeklyMi, runDays, { selfReportedWeeklyMi }),
       todayISO: TODAY,
     });
-    expect(e.sourceMode).toBe('population_prior');
-    expect(e.reasons).not.toContain('ONBOARDING_MILEAGE_USER_PRIOR');
-    expect(e.paceSecPerMi).toBe(tPaceFromVdot(conservativeVdotFromMileage(1)));
+
+    const zeroRun = at(0, 0);
+    const oneRun = at(0.8, 1);
+    const fullMonth = at(12, USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS);
+
+    // ONE logged run moves the prior a LITTLE, not off a cliff. The old
+    // behaviour jumped straight to the population floor here.
+    expect(oneRun.paceSecPerMi).toBeGreaterThan(zeroRun.paceSecPerMi);
+    expect(oneRun.paceSecPerMi - zeroRun.paceSecPerMi).toBeLessThan(20);
+    expect(oneRun.sourceMode).toBe('user_prior');
+
+    // A FULL MONTH of logged running retires the self-report entirely — the
+    // evidence-precedence principle, reached as a limit rather than a switch.
+    expect(fullMonth.sourceMode).toBe('population_prior');
+    expect(fullMonth.reasons).not.toContain('ONBOARDING_MILEAGE_USER_PRIOR');
+    expect(fullMonth.paceSecPerMi).toBe(tPaceFromVdot(conservativeVdotFromMileage(12)));
+  });
+
+  /* ── RULE 9 CONTINUITY WALKS · the falsifier for the cliff above ──────────
+   *
+   * WHAT THESE CANNOT FAIL ON (Rule 22), stated because it matters here:
+   * `conservativeVdotFromMileage` is itself a STEP LADDER over weekly mileage
+   * (30 → 32 at 15 mi/wk, 32 → 35 at 20, and so on), so a runner whose
+   * mileage crosses one of its rungs moves by that rung's whole width no
+   * matter what this file does. That is a pre-existing Rule 9 defect in a
+   * doctrine-bound CONVENTION constant, it predates the self-report rung
+   * entirely, and it is NOT what these walks are about — smoothing it means
+   * re-pricing every cold-start plan in the corpus and belongs to whoever
+   * owns that table. So the walks below measure the SUBSTITUTION, and they
+   * measure it two ways:
+   *
+   *   · the blended MILEAGE, which this file owns outright and which must be
+   *     continuous with no exception at all;
+   *   · the prescribed PACE, bounded by the ladder's own worst adjacent-rung
+   *     step, READ OUT OF THE LADDER at run time rather than hardcoded, so
+   *     the bound cannot silently widen (Rule 18).
+   *
+   * Falsified before landing: against the `real > 0` switch this replaced,
+   * the mileage walk reports a 40 mi/wk step and the pace walk 188 s/mi.
+   * Both bounds fail by an order of magnitude. */
+
+  /** The widest single move the mileage ladder itself can make, in s/mi —
+   *  computed from the ladder, not restated. Anything at or under this is the
+   *  ladder's cliff, not the substitution's. */
+  function ladderWorstStepSecPerMi(): number {
+    const rungs = [15, 20, 25, 30, 35, 40, 45, 70, 85, 100];
+    let worst = 0;
+    for (const mi of rungs) {
+      const below = tPaceFromVdot(conservativeVdotFromMileage(mi - 0.001));
+      const above = tPaceFromVdot(conservativeVdotFromMileage(mi));
+      if (below != null && above != null) worst = Math.max(worst, Math.abs(above - below));
+    }
+    return worst;
+  }
+
+  it('3e-3b · RULE 9 WALK · the blended mileage moves CONTINUOUSLY as real running arrives', () => {
+    // The quantity this file actually owns. No ladder involved, so the bound
+    // is genuinely small: a half-mile step of real mileage may never move the
+    // prior by more than a couple of miles.
+    const selfReportedWeeklyMi = 40;
+    let prev: number | null = null;
+    let worst = 0;
+    let worstAt = -1;
+    for (let i = 0; i <= 80; i++) {
+      const weeklyMi = i * 0.5;
+      const runDays = Math.min(
+        USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS,
+        (weeklyMi / 40) * USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS,
+      );
+      // The REAL function, not a re-implementation of its formula — a walk
+      // that recomputes the thing it is auditing proves only that the test
+      // agrees with itself (Rule 18).
+      const blended = priorWeeklyMi(okNormal(weeklyMi), selfReportedWeeklyMi, runDays).weeklyMi;
+      if (prev != null && Math.abs(blended - prev) > worst) {
+        worst = Math.abs(blended - prev);
+        worstAt = weeklyMi;
+      }
+      prev = blended;
+    }
+    expect({ worstAt, ok: worst <= 1.0 }).toEqual({ worstAt, ok: true });
+  });
+
+  it('3e-3c · RULE 9 WALK · real habit mileage 0 → 40 against a 40 mi/wk self-report never steps further than the mileage ladder itself', () => {
+    const selfReportedWeeklyMi = 40;
+    const bound = ladderWorstStepSecPerMi();
+    // Sanity on the bound itself: it must be a real, finite, MUCH smaller
+    // number than the 188 s/mi cliff this walk exists to keep out.
+    expect(bound).toBeGreaterThan(0);
+    expect(bound).toBeLessThan(60);
+
+    let prev: number | null = null;
+    let worst = 0;
+    let worstAt = -1;
+    for (let i = 0; i <= 80; i++) {
+      const weeklyMi = i * 0.5;
+      const runDays = Math.min(
+        USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS,
+        (weeklyMi / 40) * USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS,
+      );
+      const e = composeThresholdCapacity({
+        direct: REFUSED_THRESHOLD,
+        fallback: coldStart(weeklyMi, runDays, { selfReportedWeeklyMi }),
+        todayISO: TODAY,
+      });
+      if (prev != null) {
+        const step = Math.abs(e.paceSecPerMi - prev);
+        if (step > worst) { worst = step; worstAt = weeklyMi; }
+      }
+      prev = e.paceSecPerMi;
+    }
+    // `worstAt` travels in the failure message so a regression names WHERE
+    // the cliff came back, not just that one did.
+    expect({ worstAt, ok: worst <= bound + 1e-6 }).toEqual({ worstAt, ok: true });
+  });
+
+  it('3e-3d · RULE 9 WALK · the same walk with a typed PR on file is no worse', () => {
+    const pr = typedPr('half', 5400, '<6mo'); // 1:30 half
+    const bound = ladderWorstStepSecPerMi();
+    let prev: number | null = null;
+    let worst = 0;
+    let worstAt = -1;
+    for (let i = 0; i <= 80; i++) {
+      const weeklyMi = i * 0.5;
+      const runDays = Math.min(
+        USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS,
+        (weeklyMi / 40) * USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS,
+      );
+      const e = composeThresholdCapacity({
+        direct: REFUSED_THRESHOLD,
+        fallback: coldStart(weeklyMi, runDays, { selfReportedWeeklyMi: 40, selfReportedPr: pr }),
+        todayISO: TODAY,
+      });
+      if (prev != null) {
+        const step = Math.abs(e.paceSecPerMi - prev);
+        if (step > worst) { worst = step; worstAt = weeklyMi; }
+      }
+      prev = e.paceSecPerMi;
+    }
+    expect({ worstAt, ok: worst <= bound + 1e-6 }).toEqual({ worstAt, ok: true });
   });
 
   it('3e-4 · self-report substitutes on a REFUSED habit window too, and both facts are reported', () => {
     const e = composeThresholdCapacity({
       direct: REFUSED_THRESHOLD,
-      fallback: emptyFallback({ normalWeeklyMi: refusedNormal(), selfReportedWeeklyMi: 20 }),
+      fallback: emptyFallback({
+        normalWeeklyMi: refusedNormal(), normalRunDays: 0, selfReportedWeeklyMi: 20,
+      }),
       todayISO: TODAY,
     });
     expect(e.sourceMode).toBe('user_prior');
@@ -523,17 +705,148 @@ describe('CAPACITY · the ladder falls through, it does not serve a refusal (Rul
 
   it('3e-5 · HIGH-INTENSITY tier 4 mirrors the same user_prior substitution', () => {
     const noSelfReport = composeHighIntensityCapacity({
-      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: null }),
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: null }),
       todayISO: TODAY,
     });
     const withSelfReport = composeHighIntensityCapacity({
-      fallback: emptyFallback({ normalWeeklyMi: okNormal(0), selfReportedWeeklyMi: 30 }),
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 30 }),
       todayISO: TODAY,
     });
     expect(noSelfReport.sourceMode).toBe('population_prior');
     expect(withSelfReport.sourceMode).toBe('user_prior');
     expect(withSelfReport.confidence).toBe(CAPACITY_CONFIDENCE_BANDS.userPrior);
     expect(withSelfReport.intervalPaceSecPerMi).toBeLessThan(noSelfReport.intervalPaceSecPerMi);
+  });
+
+  it('3e-6 · ANSWERED ZERO is a different fact from never having answered (Rule 11)', () => {
+    const unanswered = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: null }),
+      todayISO: TODAY,
+    });
+    const answeredZero = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 0 }),
+      todayISO: TODAY,
+    });
+    // Same number — a runner who says they do not run yet IS at the
+    // population floor. Not the same FACT, and now distinguishable.
+    expect(answeredZero.paceSecPerMi).toBe(unanswered.paceSecPerMi);
+    expect(unanswered.reasons).not.toContain('ONBOARDING_MILEAGE_ANSWERED_ZERO');
+    expect(answeredZero.reasons).toContain('ONBOARDING_MILEAGE_ANSWERED_ZERO');
+  });
+
+  /* ── THE TYPED-PR RUNG (2026-09-01) ───────────────────────────────────────
+   * `lib/training/self-reported-pr.ts`. The audit's second blocker: legacy's
+   * PARITY-1 consumed `profile.race_history` and the canonical ladder had no
+   * rung for it, leaving a measured ~101 s/mi residual on a real cold-start
+   * account. */
+
+  it('3e-7 · a validated typed PR moves the prior toward it, CONSERVATIVELY, as `user_prior`', () => {
+    const noPr = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 20 }),
+      todayISO: TODAY,
+    });
+    const withPr = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, {
+        selfReportedWeeklyMi: 20,
+        selfReportedPr: typedPr('half', 5400, '<6mo'),
+      }),
+      todayISO: TODAY,
+    });
+    expect(withPr.sourceMode).toBe('user_prior');
+    expect(withPr.reasons).toContain('ONBOARDING_PR_USER_PRIOR');
+    expect(withPr.confidence).toBe(CAPACITY_CONFIDENCE_BANDS.userPrior);
+    expect(withPr.evidenceIds).toEqual([]); // still names no runner evidence
+
+    // It moves the pace toward the PR — but never all the way there. The
+    // shrinkage toward the mileage prior is the whole defence (Rule 22: this
+    // file's validator cannot catch an ambitious lie).
+    const prImplied = readSelfReportedPr([{ distance: 'half', timeSec: 5400, whenRaced: '<6mo' }]);
+    expect(prImplied.ok).toBe(true);
+    const prT = prImplied.ok ? prImplied.best.tPaceSecPerMi : 0;
+    expect(withPr.paceSecPerMi).toBeLessThan(noPr.paceSecPerMi);
+    expect(withPr.paceSecPerMi).toBeGreaterThan(prT);
+  });
+
+  it('3e-8 · an implausible typed PR is REJECTED with a reason, and prices nothing', () => {
+    const absurd = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, {
+        selfReportedWeeklyMi: 20,
+        // A 40-minute marathon. 91 s/mi — inside no human's reach and
+        // outside `PR_MIN_PLAUSIBLE_PACE_S_PER_MI`.
+        selfReportedPr: typedPr('marathon', 2400, '<6mo'),
+      }),
+      todayISO: TODAY,
+    });
+    const clean = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 20 }),
+      todayISO: TODAY,
+    });
+    expect(absurd.reasons).toContain('ONBOARDING_PR_REJECTED');
+    expect(absurd.reasons).not.toContain('ONBOARDING_PR_USER_PRIOR');
+    // Rejected means it prices NOTHING — identical to the no-PR runner.
+    expect(absurd.paceSecPerMi).toBe(clean.paceSecPerMi);
+    // And "nothing on file" is not reported as a rejection.
+    expect(clean.reasons).not.toContain('ONBOARDING_PR_REJECTED');
+  });
+
+  it('3e-9 · a typed PR loses authority CONTINUOUSLY with age, and holds its value (decay confidence, not value)', () => {
+    const paceFor = (whenRaced: string) => composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, {
+        selfReportedWeeklyMi: 20,
+        selfReportedPr: typedPr('half', 5400, whenRaced),
+      }),
+      todayISO: TODAY,
+    }).paceSecPerMi;
+
+    const fresh = paceFor('<6mo');
+    const midAged = paceFor('6-12mo');
+    const old = paceFor('1-2yr');
+    const ancient = paceFor('2+yr');
+    // Monotone: older PR → less pull toward the PR's pace → slower prescribed
+    // threshold. And no cliff at any bucket boundary — the legacy path CUT
+    // the PR off entirely at 180 days.
+    expect(midAged).toBeGreaterThan(fresh);
+    expect(old).toBeGreaterThan(midAged);
+    expect(ancient).toBeGreaterThan(old);
+    // Even a 3-year-old PR still says "not a beginner" — it is faint, not
+    // deleted, which is what a hard date cut got wrong.
+    const noPr = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 20 }),
+      todayISO: TODAY,
+    }).paceSecPerMi;
+    expect(ancient).toBeLessThan(noPr);
+  });
+
+  it('3e-10 · a typed PR NEVER outranks a real observation of the runner running', () => {
+    const measured = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: emptyFallback({
+        measuredVdot: 42, measuredVdotEvidenceId: 'run-1',
+        measuredVdotDate: '2026-08-20', measuredVdotSource: 'run',
+        selfReportedPr: typedPr('half', 4500, '<6mo'), // a much faster claim
+      }),
+      todayISO: TODAY,
+    });
+    expect(measured.sourceMode).toBe('vdot_fallback');
+    expect(measured.reasons).not.toContain('ONBOARDING_PR_USER_PRIOR');
+    expect(measured.paceSecPerMi).toBe(tPaceFromVdot(42));
+  });
+
+  it('3e-11 · the GOAL cannot reach any of it — no input this ladder takes carries one', () => {
+    // Structural, not behavioural: the fallback read has no goal-shaped field
+    // at all, so an "extreme goal swap" cannot move a number because there is
+    // nothing to swap. Asserted on the KEYS so a future field named
+    // `goalPaceSec` fails here before it can price anything.
+    const keys = Object.keys(coldStart(0, 0, { selfReportedWeeklyMi: 20 }));
+    expect(keys.filter((k) => /goal/i.test(k))).toEqual([]);
   });
 
   it('3f · HIGH-INTENSITY always declares that its top rung is not built', () => {

@@ -189,3 +189,55 @@ export const CALIBRATION_INTRO_WEEKS = 2;
 export const EFFORT_CUED_TYPES: ReadonlySet<string> = new Set([
   'threshold', 'intervals', 'tempo', 'vo2max',
 ]);
+
+/**
+ * AUTHORING-CANONICAL-1 (2026-09-01) · THE CANONICAL SOURCE MODE, TRANSLATED.
+ *
+ * Authoring used to derive an `AnchorSource` from which legacy cascade tier
+ * happened to answer, plus a `bestRecentVdotSelfReported` boolean the loader
+ * had to remember to set (and, before `SELFREPORT-1`, did not — so a typed PR
+ * shipped stamped `measured_vdot`). Since authoring prices from
+ * `resolvePrescribedPaceAnchors`, the fact is already carried, structurally,
+ * as `SourceMode` — and `user_prior` means exactly "the runner told us",
+ * which is the distinction that boolean existed to reconstruct.
+ *
+ * The mapping is the same claim in two vocabularies:
+ *
+ *   direct / vdot_fallback — the app OBSERVED the performance     → measured_vdot
+ *   inferred / race_derived — a demonstrated pace the [30,85]
+ *                             table cannot represent               → below_table_anchor
+ *   user_prior              — a self-report: a typed PR, or an
+ *                             onboarding mileage chip              → self_reported_race
+ *   population_prior        — nothing runner-specific at all       → provisional_mileage
+ *
+ * `user_prior` → `self_reported_race` is the one row worth arguing. It is
+ * deliberately NOT `provisional_mileage`: `isProvisionalAnchor` gates the
+ * calibration intro and the goal-realism verdict, and both exist because
+ * `conservativeVdotFromMileage` invents a performance out of nothing. A runner
+ * who typed a real PR gave the engine a real performance, and this file's own
+ * `CALIBRATION_INTRO_WEEKS` header already argues that case at length. It IS
+ * caught by `isUnverifiedAnchor`, which is the reader that governs inheritance
+ * and grading — where an unverified baseline compounds.
+ *
+ * THE ONE PLACE THIS IS COARSER THAN THE OLD DERIVATION: an onboarding weekly-
+ * MILEAGE chip with no typed PR also lands on `self_reported_race` rather than
+ * `provisional_mileage`, so such a runner no longer gets the calibration intro.
+ * `capacity-resolver.ts` reports the two apart in `reasons`
+ * (`ONBOARDING_MILEAGE_USER_PRIOR` vs `ONBOARDING_PR_USER_PRIOR`) and a later
+ * pass that wants the intro back for the mileage-only case should read that,
+ * not re-derive a tier here.
+ */
+export function anchorSourceFromCapacityMode(mode: string): AnchorSource {
+  switch (mode) {
+    case 'direct':
+    case 'vdot_fallback':
+      return 'measured_vdot';
+    case 'inferred':
+    case 'race_derived':
+      return 'below_table_anchor';
+    case 'user_prior':
+      return 'self_reported_race';
+    default:
+      return 'provisional_mileage';
+  }
+}

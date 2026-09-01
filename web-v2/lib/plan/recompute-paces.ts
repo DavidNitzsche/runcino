@@ -104,176 +104,45 @@ import { preserveProgressionSql } from './progression-spec';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 
-/**
- * Grace allowance on the measured-progress gate. Week 1-2 of a block has
- * no new race/test evidence yet — without the grace the gated blend would
- * pin every early week at exactly currentT and the first quality
- * progression step could never open. +0.15 of the currentT→goalT span is
- * ~1 VDOT point of pace on a 6-point season gap — inside the Research/01
- * :314-316 "tempo feels easier → +1 VDOT" single-signal step, so the
- * grace can never outrun what one honest retest could confirm.
- */
-export const BLEND_GRACE_FRACTION = 0.15;
-
-/**
- * GOAL-2 seasonal-gain cap · the ceiling `achievableFloorT` floors goal-T at,
- * and (since RACEPACE-1) the ceiling the prescribed RACE pace is floored at too.
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE GOAL→TRAINING-PACE BLEND IS DELETED · AUTHORING-CANONICAL-1 (2026-09-01)
  *
- * GAINRATE-2 (2026-08-25) · THE FOURTH GAIN MODEL, RECONCILED.
+ * Five exports lived here and every one of them existed to serve ONE
+ * mechanism: walking a prescribed threshold pace from the runner's current
+ * fitness toward the pace their STATED GOAL implies.
  *
- * This was `Math.min(6, 2 + totalWeeks * 0.22)`, carrying the citation
- * "Research/01:314-321 — retest deltas ~+2-3, scaled with build length, capped
- * ~+6". Three problems, and the third is the one that matters:
+ *   BLEND_GRACE_FRACTION      the 15% of the gap granted on zero evidence
+ *   maxSeasonalVdotGain       the ceiling that bounded how far the goal reached
+ *   measuredProgressFraction  the share of the goal gap actually banked
+ *   gatedBlendFraction        measured + grace, capped at 1
+ *   blendedTPaceForWeek       currentT + (goalT − currentT) × blend
  *
- *  1. It is a LINE-NUMBER citation, which Rule 7 forbids precisely because
- *     line numbers rot.
- *  2. Its cap (6) sits ABOVE `MAX_BLOCK_GAIN_VDOT` (5.0), the bound ceiling
- *     every other consumer honours — so this formula could authorise a gain
- *     the rest of the engine calls impossible.
- *  3. The 2026-08-18 gain-rate reconciliation collapsed THREE incompatible
- *     rates (goal-ready 0.167-0.25, fitness-trajectory 0.35, goal-gap 0.5)
- *     into `lib/training/vdot-gain-rate.ts`, bound by ADAPTATION.vdot-gain-rate.
- *     It did not find this one. There were four.
+ * `recomputePacesForPlan` stopped calling them on 2026-08-31 (PRESCRIPTION-
+ * WIRE-1: "this path no longer reads a goal at all"). `generate.ts` was the
+ * only remaining caller, and as of AUTHORING-CANONICAL-1 it prices every zone
+ * from `resolvePrescribedPaceAnchors` instead — so nothing in the app can
+ * reach a training pace from a goal, and Constitution §7/§G is enforced by
+ * ABSENCE rather than by a guard someone has to remember.
  *
- * A fresh sweep of `Research/` and `BuildResearch/` confirms what that
- * reconciliation concluded: **the corpus contains no VDOT-gain-per-build rate
- * at all.** Every VDOT delta in it is REACTIVE — a trigger fired by an observed
- * signal (`Research/01` §"Triggers to retest": a race, a tempo that felt
- * easier, an HR that dropped). The single per-TIME quantum is §"Testing cadence
- * — how often to deliberately test", and `vdot-gain-rate.ts` already derives
- * the 0.167-0.25/wk band from it. So there is no third opinion available to
- * hold; there is one derivation, and this function now reads it.
+ * WHAT REPLACED IT, AND WHY IT IS NOT A LOSS. The blend's honest half — "a
+ * plan should aim a little beyond today" — belongs to the Adaptation Engine
+ * (§I), which moves a pace when EVIDENCE says the runner has earned it, and to
+ * `achievableRaceTarget`, which bounds RACE DAY against the runway. Neither
+ * needs a calendar and neither reads a goal into a training zone.
  *
- * `+2 for free` is gone with it: it awarded two VDOT points to a zero-week
- * block, which is Rule 1's violation in its purest form (fitness from nothing
- * but the existence of a plan).
+ * THE SEASONAL CEILING SURVIVES, IN ITS OWN HOME. `maxSeasonalVdotGain` was a
+ * one-line delegation to `seasonalVdotCeiling` (`lib/training/achievable-
+ * target.ts`), which is Race Prediction's own function and is still called by
+ * `achievableRaceTarget`. Deleting the alias removes a second name for one
+ * quantity (Rule 16); it removes no doctrine.
  *
- * TAPER DOES NOT BUILD. The old formula spent the whole `totalWeeks`, taper
- * included. `fitness-trajectory.ts` has always subtracted the taper before
- * sizing a gain ("taper expresses fitness, doesn't build it") and `assessGoal`
- * does the same; this now agrees with both, off the one shared
- * `taperWeeksForDistance` table.
- *
- * NET EFFECT: strictly more conservative at every horizon (14 weeks: 5.08 → 2.75).
- * Prescribed paces get slower, never faster, so no runner inherits work they
- * were not already being given.
- *
- * @param totalWeeks   the block's full length, taper included.
- * @param raceDistanceMi  used only to look up the taper length. Null → the
- *   shortest taper in the table, which maximises the build window and is
- *   therefore the direction that never silently withholds gain from a runner
- *   whose distance we could not read.
- */
-export function maxSeasonalVdotGain(
-  totalWeeks: number,
-  raceDistanceMi: number | null = null,
-): number {
-  // RACEPACE-1 · delegated, not duplicated. The ceiling under THRESHOLD work
-  // and the ceiling under RACE work are the same physiological claim about the
-  // same runway, so they are the same call. `achievable-target.ts` owns it
-  // because it must also be reachable from a client bundle, which this module
-  // (it imports `pg`) can never be.
-  return seasonalVdotCeiling(0, totalWeeks, raceDistanceMi).gainVdot;
-}
-
-/**
- * Measured share of the season's VDOT gap actually banked.
- *
- *   (vdotNow − vdotAtAuthoring) / (goalVdot − vdotAtAuthoring), clamped [0,1]
- *
- * null (= "no gate · trust the calendar") when any input is missing or the
- * goal isn't above the authoring fitness (soft goal · BRK-1 handles it).
- */
-export function measuredProgressFraction(
-  vdotAtAuthoring: number | null | undefined,
-  vdotNow: number | null | undefined,
-  goalVdot: number | null | undefined,
-): number | null {
-  if (vdotAtAuthoring == null || vdotNow == null || goalVdot == null) return null;
-  if (!Number.isFinite(vdotAtAuthoring) || !Number.isFinite(vdotNow) || !Number.isFinite(goalVdot)) return null;
-  const span = goalVdot - vdotAtAuthoring;
-  if (span <= 0.1) return null;  // at/above goal already · no gap to gate
-  return Math.min(1, Math.max(0, (vdotNow - vdotAtAuthoring) / span));
-}
-
-/**
- * EVIDENCE-1 (2026-08-17) · THE BLEND IS DRIVEN BY EVIDENCE, NOT BY THE WEEK
- * NUMBER.
- *
- * `Design/engine-doctrine-evidence-and-levers.md` Rule 1, locked by the owner:
- *
- *   > Time passing, plan completion, or scheduled progression alone cannot
- *   > increase or decrease demonstrated fitness.
- *
- * and it names this function's caller as violation #1 by file. The blend used
- * to advance from measured fitness toward the goal-derived ceiling on
- * `weekIdx / round(buildWeeks × 0.6)` — a calendar fraction — with the measured
- * gate only ever capping it. So when no evidence existed the calendar ran
- * unopposed, and the plan asserted a fitness change nobody measured: on the
- * owner's CIM block, threshold work by week 8 at a VDOT he has never run.
- *
- * There is now no calendar term. The fraction of the current→goal gap the
- * prescription may claim is the fraction the runner has DEMONSTRATED, plus the
- * standing grace below. No evidence supplied → 0 → the block trains at
- * current, demonstrated fitness for its whole length, and moves the day a race,
- * a time trial or a re-anchor lands (`recomputePacesForPlan`, which is the
- * evidence path and passes a real `measured`).
- *
- * The corollary the doctrine states for coming out of a recovery block —
- * "preserve the prior estimate, reduce confidence if warranted, and require
- * fresh evidence before moving the ceiling" — is exactly this: the prior
- * estimate is preserved because nothing moves it but a measurement.
- */
-export function gatedBlendFraction(
-  _calendarFraction: number,
-  measured: number | null | undefined,
-): number {
-  if (measured == null) return 0;
-  return Math.min(1, measured + BLEND_GRACE_FRACTION);
-}
-
-export interface BlendTPaceArgs {
-  /** T-pace at current fitness (s/mi). */
-  currentT: number | null;
-  /** GOAL-2-floored goal T-pace (s/mi). */
-  goalT: number | null;
-  weekIdx: number;
-  /** Phase label · 'TAPER' short-circuits (VAR-07). */
-  phase: string;
-  /** Non-TAPER weeks in the plan (blend denominator base). */
-  buildWeeks: number;
-  /** Measured-progress gate · null/undefined = calendar-only (authoring
-   *  parity — byte-identical to the pre-2026-08-17 tPaceForWeek). */
-  measuredProgressFraction?: number | null;
-}
-
-/**
- * Per-week T-pace · the single blend implementation shared by
- * composePlan (authoring) and recomputePacesForPlan (adaptation).
- * Semantics with measuredProgressFraction == null are byte-identical to
- * the historical composePlan-local tPaceForWeek (Rule 3 + BRK-1 + VAR-07).
- */
-export function blendedTPaceForWeek(args: BlendTPaceArgs): number | null {
-  const { currentT, goalT } = args;
-  if (goalT == null) return null;
-  if (currentT == null) return goalT;
-  // BRK-1 · soft goal (runner already fitter than the goal) trains quality
-  // at CURRENT fitness. See composePlan for the full rationale.
-  if (currentT <= goalT) return currentT;
-  const measured = args.measuredProgressFraction ?? null;
-  // EVIDENCE-1 · TAPER used to return `goalT` verbatim when no evidence
-  // existed — the sharpest form of the violation, since it prescribed
-  // goal-anchored quality in the last three weeks to a runner who had never
-  // demonstrated it. Taper now sharpens exactly as far as the evidence does,
-  // like every other week. Race-pace work is unaffected: MP/HMP segments and
-  // race day anchor on `goalPaceSec`, not on this T (Research/01:659-677 ·
-  // a stale anchor is a floor, not a pace source).
-  //
-  // `weekIdx` and `buildWeeks` remain on the args for callers and for the
-  // audit trail; nothing reads them any more, which is the point.
-  const blend = gatedBlendFraction(0, measured);
-  return Math.round(currentT + (goalT - currentT) * blend);
-}
+ * RULE 20 · THIS DELETION IS GATED, NOT MERELY DONE. `scripts/check-goal-pace-
+ * leak.sh` fails if any training pace in `lib/plan`, `lib/training` or
+ * `lib/prescription` is derived from a goal outside the two owners allowed to,
+ * and `EVIDENCE.no-calendar-pace-advance` in the doctrine registry now asserts
+ * these five symbols STAY deleted — the same "guarded as removed" shape
+ * `weeklyVolWoWMaxPct` already uses.
+ * ═══════════════════════════════════════════════════════════════════════ */
 
 // ── Adaptation-time recompute ───────────────────────────────────────────
 

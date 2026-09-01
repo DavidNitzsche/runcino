@@ -159,7 +159,6 @@ import {
   MAX_GOAL_OPTIMISM_FRACTION,
   resolveEffectiveRaceTarget,
 } from '@/lib/race/effective-race-target';
-import { maxSeasonalVdotGain } from '@/lib/plan/recompute-paces';
 import {
   ASSESSMENT_BLOCK_WEEKS_FAST,
   ASSESSMENT_BLOCK_WEEKS_SLOW,
@@ -257,11 +256,6 @@ import {
   dressRehearsalDose,
   isDressRehearsalSlot,
 } from '@/lib/plan/long-run-rows';
-import {
-  BLEND_GRACE_FRACTION,
-  blendedTPaceForWeek,
-  gatedBlendFraction,
-} from '@/lib/plan/recompute-paces';
 import {
   THRESHOLD_HR_CEILING_OF_TARGET,
   THRESHOLD_HR_FLOOR_OF_TARGET,
@@ -8378,63 +8372,68 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   {
     id: 'EVIDENCE.no-calendar-pace-advance',
     binds: [
-      'lib/plan/recompute-paces.ts#gatedBlendFraction',
-      'lib/plan/recompute-paces.ts#blendedTPaceForWeek',
+      'lib/plan/recompute-paces.ts#recomputePacesForPlan',
+      'lib/plan/generate.ts#composePlan',
     ],
     doc: 'Design/engine-doctrine-evidence-and-levers.md',
     anchor: '> Time passing, plan completion, or scheduled progression alone cannot increase or decrease',
     claim:
-      'A prescribed pace may not advance because a week went by. The weekly T-pace blend ' +
-      'interpolated from measured fitness toward the goal-derived ceiling on weekIdx / ' +
-      'round(buildWeeks x 0.6), and the taper returned goal pace outright — both assert a ' +
-      'fitness change nobody measured, and the owner\'s locked Rule 1 names this file as ' +
-      'the violation. The blend is now the DEMONSTRATED fraction of the gap plus a fixed ' +
-      'grace, and nothing else: no evidence means the block trains at demonstrated ' +
-      'fitness until a race, a time trial or a re-anchor moves it.',
+      'A prescribed pace may not advance because a week went by, and it may not advance ' +
+      'because the runner typed an ambitious goal. This claim used to assert that the ' +
+      'goal-to-current T-pace BLEND had no calendar term in it. AUTHORING-CANONICAL-1 ' +
+      '(2026-09-01) deleted the blend outright — every zone is now priced from the ' +
+      'canonical capacity resolvers, which are compile-time sealed against goal data — so ' +
+      'the claim is now GUARDED AS REMOVED: it fails if any of the five blend symbols ' +
+      'comes back, if a calendar term reappears, or if authoring stops resolving its ' +
+      'anchors. Same shape as the weeklyVolWoWMaxPct guard.',
     check() {
       const src = sourceOf('web-v2/lib/plan/recompute-paces.ts');
-      // No calendar term may re-enter the blend.
+      // ── GUARDED AS REMOVED · the five blend symbols may not come back ────
+      for (const sym of [
+        'BLEND_GRACE_FRACTION',
+        'maxSeasonalVdotGain',
+        'measuredProgressFraction',
+        'gatedBlendFraction',
+        'blendedTPaceForWeek',
+      ]) {
+        if (new RegExp('export (?:const|function) ' + sym + '\\b').test(src)) {
+          throw new Error(
+            'recompute-paces.ts exports `' + sym + '` again \u00b7 the goal-to-training-pace blend '
+            + 'was deleted by AUTHORING-CANONICAL-1 and a prescribed pace may not be derived '
+            + 'from a stated goal (Constitution \u00a77/\u00a7G)',
+          );
+        }
+      }
+      // No calendar term may re-enter this module at all.
       if (/weekIdx\s*\/\s*denom|args\.weekIdx\s*\//.test(src)) {
-        throw new Error('blendedTPaceForWeek divides by a calendar denominator again · Rule 1 forbids it');
+        throw new Error('a calendar denominator is back in recompute-paces.ts \u00b7 Rule 1 forbids it');
       }
       if (/buildWeeks\s*\*\s*0\.6/.test(src)) {
         throw new Error('the 60%-of-build calendar ramp is back in recompute-paces.ts');
       }
-      // Behaviour, not just text: identical inputs at every week index and phase.
-      const args = { currentT: 453, goalT: 413, buildWeeks: 11 };
-      for (const measured of [null, 0, 0.5, 1] as (number | null)[]) {
-        const seen = new Set<number | null>();
-        for (const weekIdx of [0, 1, 4, 8, 13]) {
-          for (const phase of ['BASE', 'BUILD', 'RACE-SPECIFIC', 'TAPER']) {
-            seen.add(blendedTPaceForWeek({ ...args, weekIdx, phase, measuredProgressFraction: measured }));
-          }
-        }
-        if (seen.size !== 1) {
-          throw new Error(
-            `the T-pace blend still varies with the schedule at measured=${measured}: ${[...seen].join(' · ')}`,
-          );
-        }
+      // ── AND THE REPLACEMENT MUST ACTUALLY BE WIRED ───────────────────────
+      // A deletion with nothing in its place would pass every check above and
+      // leave the engine unable to price a plan at all. `composePlan` must
+      // read its threshold from the canonical anchors, not re-derive one.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/const currentT = anchors\.thresholdSecPerMi;/.test(gen)) {
+        throw new Error(
+          'composePlan no longer prices its threshold from the canonical anchors \u00b7 the '
+          + 'blend was deleted on the promise that this replaced it',
+        );
       }
-      // No evidence → the runner's own demonstrated fitness (plus the grace),
-      // never the goal-derived pace.
-      const held = blendedTPaceForWeek({ ...args, weekIdx: 13, phase: 'TAPER' });
-      if (held !== args.currentT) {
-        throw new Error(`with no evidence the taper prescribes ${held} s/mi against a demonstrated ${args.currentT}`);
-      }
-      if (gatedBlendFraction(1, null) !== 0) {
-        throw new Error('an unmeasured runner is still credited with part of the goal gap');
-      }
-      // The grace is bounded by what ONE honest retest could confirm (Research/01
-      // :314-316 · a single signal moves VDOT ~1-3 points).
-      if (BLEND_GRACE_FRACTION < 0 || BLEND_GRACE_FRACTION > 0.2) {
-        throw new Error(`BLEND_GRACE_FRACTION is ${BLEND_GRACE_FRACTION} · the standing allowance must stay inside one retest`);
+      if (!/resolvePrescribedPaceAnchors\(userId, todayISO\)/.test(gen)) {
+        throw new Error(
+          'loadGeneratorInputs no longer resolves the canonical pace anchors \u00b7 authoring '
+          + 'and the nightly flex would be pricing the same block two different ways '
+          + '(Constitution \u00a78)',
+        );
       }
       // The recovery composer must record an anchor for the NEXT block to
       // measure progress against — the second violation in the doctrine table.
-      const gen = sourceOf('web-v2/lib/plan/generate.ts');
       if (!/mode: 'recovery',[\s\S]{0,900}?season_anchor_vdot/.test(gen)) {
         throw new Error(
-          'composeRecoveryPlan writes no pace_blend.season_anchor_vdot · the build that follows ' +
+          'composeRecoveryPlan writes no pace_blend.season_anchor_vdot \u00b7 the build that follows ' +
             'a recovery block has no evidence baseline and the gate goes inert',
         );
       }
@@ -17005,7 +17004,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     id: 'PACE.marathon-pace-is-not-ramped',
     binds: [
       'lib/plan/spec-builder.ts#resolveMarathonPace',
-      'lib/plan/recompute-paces.ts#blendedTPaceForWeek',
+      'lib/plan/generate.ts#composePlan',
     ],
     doc: 'Research/04-workout-vocabulary.md',
     anchor: '### 4.4 Marathon-pace long run',
@@ -17015,8 +17014,10 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       "section's own 8-16 mi at MP, and Daniels' 4-18 mi M cap), never the pace itself. No " +
       'passage in Research/ describes an MP pace that gets faster week by week, so the engine ' +
       'must not carry a calendar-indexed race-pace ramp. The only thing permitted to move a ' +
-      'prescribed pace is evidence (engine-doctrine Rule 1), which is what the measured blend ' +
-      'in blendedTPaceForWeek does and the deleted weekIdx ramp did not.',
+      'prescribed pace is evidence (engine-doctrine Rule 1). AUTHORING-CANONICAL-1 (2026-09-01) ' +
+      'settled this the strongest way available: authoring reads ONE marathon anchor per block ' +
+      'from resolveDurability through the runner\'s own fitted Riegel exponent, so there is no ' +
+      'per-week MP expression left to ramp and no goal left to ramp toward.',
     check({ cite }) {
       const text = cite.text();
       // Read the rule out of the doc rather than restating it.
@@ -17035,17 +17036,42 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error('Research/04 §4.4 MP dose is no longer a range · nothing left for the block to progress');
       }
 
-      // The deleted violation must stay deleted. `blendedTPaceForWeek` still
-      // TAKES weekIdx/buildWeeks (callers and the audit trail want them) but
-      // nothing may read them back into the blend.
-      const rp = sourceOf('web-v2/lib/plan/recompute-paces.ts');
-      const body = /export function blendedTPaceForWeek[\s\S]*?\n}/.exec(rp)?.[0] ?? '';
-      if (!body) throw new Error('blendedTPaceForWeek is no longer findable in recompute-paces.ts');
-      if (/\bblend\s*=\s*[^;]*\bweekIdx\b/.test(body) || /weekIdx\s*\/\s*/.test(body)) {
+      // THE DELETED VIOLATION MUST STAY DELETED, and the shape of the guard
+      // moved with the engine. This used to read `blendedTPaceForWeek`'s body
+      // and check that no `weekIdx` term had crept back into the blend. There
+      // is no blend: AUTHORING-CANONICAL-1 deleted it, so the check that
+      // matters now is that composePlan's marathon anchor is a single
+      // BLOCK-SCOPED read of the canonical durability answer rather than
+      // anything computed per week.
+      const gen = sourceOf('web-v2/lib/plan/generate.ts');
+      const weekMp = /const weekMp = weekT != null && weekT > 0[\s\S]{0,400}?;\n/.exec(gen)?.[0] ?? '';
+      if (!weekMp) {
         throw new Error(
-          'blendedTPaceForWeek has re-introduced a calendar term · a pace that advances on the ' +
-            'week number asserts a fitness change nobody measured (engine-doctrine Rule 1, ' +
-            'violation #1 by file)',
+          'composePlan\'s marathon-pace expression is no longer findable · this claim is '
+          + 'watching nothing (Rule 18 liveness)',
+        );
+      }
+      if (!/anchors\.marathonSecPerMi/.test(weekMp)) {
+        throw new Error(
+          'composePlan no longer prices marathon work from anchors.marathonSecPerMi · MP is '
+          + 'threshold capacity carried to 26.2 through the runner\'s OWN endurance exponent, '
+          + 'not a flat offset and not the goal',
+        );
+      }
+      if (/\bweekIdx\b|\bwi\b\s*[*/+-]/.test(weekMp)) {
+        throw new Error(
+          'composePlan\'s marathon pace has re-introduced a calendar term · a pace that '
+          + 'advances on the week number asserts a fitness change nobody measured '
+          + '(engine-doctrine Rule 1, violation #1 by file)',
+        );
+      }
+      // And the goal may not reach it. `resolveMarathonPace`'s goal branch is
+      // what the audit named as the largest single divergence in the whole
+      // block; authoring must not be passing a goal into it any more.
+      if (/resolveMarathonPace\(\{[\s\S]{0,300}?goalPaceSPerMi/.test(gen)) {
+        throw new Error(
+          'composePlan hands a goal pace to resolveMarathonPace again · that is the goal '
+          + 'reaching a TRAINING pace, which Constitution §G forbids outright',
         );
       }
     },
@@ -17167,10 +17193,21 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
             'only defensible ceiling is the ADAPTATION.vdot-gain-rate band',
         );
       }
+      // AUTHORING-CANONICAL-1 (2026-09-01) · there is now only ONE ceiling to
+      // check. `maxSeasonalVdotGain` was a one-line alias for
+      // `seasonalVdotCeiling` living in `recompute-paces.ts` so the deleted
+      // goal-to-threshold blend could reach it; with the blend gone, the alias
+      // went with it and Race Prediction owns the quantity outright (Rule 16).
+      // The claim below therefore checks the surviving function against the
+      // bound block ceiling directly, and guards the alias as REMOVED.
+      if (/export function maxSeasonalVdotGain\b/.test(rp)) {
+        throw new Error(
+          'recompute-paces.ts exports `maxSeasonalVdotGain` again \u00b7 the seasonal ceiling has '
+          + 'one owner (achievable-target.ts#seasonalVdotCeiling) and a second name for it is '
+          + 'how the fourth gain model got in',
+        );
+      }
       for (const weeks of [6, 14, 24]) {
-        if (seasonalVdotCeiling(44, weeks, 26.22).gainVdot !== maxSeasonalVdotGain(weeks, 26.22)) {
-          throw new Error('the threshold ceiling and the race-pace ceiling have diverged');
-        }
         if (seasonalVdotCeiling(44, weeks, 26.22).gainVdot > MAX_BLOCK_GAIN_VDOT) {
           throw new Error('the seasonal ceiling now exceeds MAX_BLOCK_GAIN_VDOT');
         }

@@ -236,7 +236,13 @@ import {
 } from '@/lib/training/vdot';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
-import { normalWeeklyMileage, type NormalReading } from '@/lib/training/normal-window';
+import { normalWeeklyMileageDetail, type NormalReading } from '@/lib/training/normal-window';
+import {
+  readSelfReportedPr,
+  prPriorWeight,
+  type SelfReportedPrRead,
+} from '@/lib/training/self-reported-pr';
+import type { RaceHistoryEntry } from '@/lib/training/race-history';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
@@ -332,6 +338,18 @@ export type CapacityReasonCode =
   | 'BELOW_TABLE_ANCHOR_FALLBACK'
   | 'MILEAGE_POPULATION_PRIOR'
   | 'ONBOARDING_MILEAGE_USER_PRIOR'
+  // The runner ANSWERED the onboarding weekly-mileage question with zero.
+  // A real self-report, and not the same fact as never having answered —
+  // both imply the same number and only one of them is something the runner
+  // told us (Rule 11).
+  | 'ONBOARDING_MILEAGE_ANSWERED_ZERO'
+  // A validated self-reported PR (`profile.race_history`) contributed to
+  // this estimate, shrunk toward the mileage prior. Never evidence.
+  | 'ONBOARDING_PR_USER_PRIOR'
+  // Something was on file and every entry failed validation — an implausible
+  // pace, an unparseable distance/time, or a VDOT off the [30,85] table.
+  // A thing to tell the runner about; "no PR on file" is not.
+  | 'ONBOARDING_PR_REJECTED'
   | 'PERSONAL_RIEGEL_EXPONENT'
   | 'POPULATION_ENDURANCE_PRIOR'
   | 'LONGITUDINAL_DECOUPLING'
@@ -920,6 +938,20 @@ export interface VdotFallbackRead {
    */
   normalWeeklyMi: NormalReading<number>;
   /**
+   * HOW MANY of the Rule 8-filtered representative days the runner actually
+   * ran on — the COVERAGE half of the same read `normalWeeklyMi` is the RATE
+   * half of (`normalWeeklyMileageDetail`, one query, one filter, so the two
+   * cannot disagree).
+   *
+   * This is the quantity that retires the onboarding self-report CONTINUOUSLY
+   * (`priorWeeklyMi`, and `USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS`'s header
+   * for why a rate could not do it). Zero when the habit window refused —
+   * which is not a claim that the runner ran nothing, only that no
+   * representative day was available to count; `normalWeeklyMi.ok === false`
+   * is where that fact lives (Rule 11), and `priorWeeklyMi` reads both.
+   */
+  normalRunDays: number;
+  /**
    * The runner's own SELF-REPORTED onboarding weekly mileage
    * (`profile.history_avg_weekly_mi`), for the `user_prior` rung — FIXED
    * 2026-09-01, see `CAPACITY_CONFIDENCE_BANDS.userPrior`'s header for the
@@ -934,6 +966,24 @@ export interface VdotFallbackRead {
    * `HIST_AVG_MIDPOINTS['0-5'] = 3`, not null.
    */
   selfReportedWeeklyMi: number | null;
+  /**
+   * The runner's own SELF-REPORTED onboarding PRs (`profile.race_history`),
+   * VALIDATED — the typed-PR rung the canonical ladder was missing.
+   *
+   * The legacy cascade has consumed this field since `PARITY-1` (2026-06-23),
+   * raw, straight into `bestRecentVdot`; this ladder ignored it entirely,
+   * which the 2026-09-01 independent audit measured as a ~101 s/mi residual
+   * on a real cold-start account. Neither is right. It enters here as a
+   * validated, conservative, LOW-CONFIDENCE `user_prior` shrunk toward the
+   * mileage prior, and never as `direct` / `inferred` / `race_derived`.
+   *
+   * Rule 11 as a shape: `readSelfReportedPr` distinguishes "nothing on file"
+   * from "something on file and every entry failed validation", and the
+   * rejection reasons travel so a surface can tell the runner which.
+   *
+   * See `lib/training/self-reported-pr.ts`.
+   */
+  selfReportedPr: SelfReportedPrRead;
 }
 
 /**
@@ -969,15 +1019,40 @@ async function loadOnboardingWeeklyMiPrior(userId: string): Promise<number | nul
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/**
+ * The runner's own onboarding self-reported PRs (`profile.race_history`),
+ * validated. `rowOrNull` for the same reason `loadOnboardingWeeklyMiPrior`
+ * uses it: a failed read is LOGGED, and then falls through to the same
+ * conservative rung a runner who typed nothing would get.
+ *
+ * The validation itself is `readSelfReportedPr` and is PURE — this reader
+ * only fetches, so every rejection reason is falsifiable without a database
+ * (Rule 18).
+ */
+async function loadSelfReportedPr(userId: string): Promise<SelfReportedPrRead> {
+  const row = await rowOrNull<{ race_history: unknown }>(
+    'capacity-resolver/onboarding-race-history',
+    pool.query(
+      `SELECT race_history FROM profile WHERE user_uuid = $1 LIMIT 1`,
+      [userId],
+    ),
+  );
+  const raw = row?.race_history;
+  return readSelfReportedPr(Array.isArray(raw) ? (raw as RaceHistoryEntry[]) : null);
+}
+
 async function loadVdotFallback(userId: string, todayISO: string): Promise<VdotFallbackRead> {
-  const [inputs, normalWeeklyMi, selfReportedWeeklyMi] = await Promise.all([
+  const [inputs, normalDetail, selfReportedWeeklyMi, selfReportedPr] = await Promise.all([
     // The floor is passed EXPLICITLY on both halves so `goalRunFloorMiForUser`
     // never fires and the loader and the ranker cannot disagree about which
     // floor gated the pool — the mismatch `vdot-inputs.ts`'s own comment warns
     // about, closed here by construction rather than by remembering.
     loadVdotInputs(userId, todayISO, undefined, CAPACITY_RUN_FLOOR_MI),
-    normalWeeklyMileage(userId, todayISO),
+    // ONE read for the rate AND the coverage, so the two halves of the same
+    // window cannot disagree (Rule 16).
+    normalWeeklyMileageDetail(userId, todayISO),
     loadOnboardingWeeklyMiPrior(userId),
+    loadSelfReportedPr(userId),
   ]);
   const { best, belowTableAnchor } = bestRecentVdot(
     inputs.raceCandidates,
@@ -986,6 +1061,14 @@ async function loadVdotFallback(userId: string, todayISO: string): Promise<VdotF
     inputs.runCandidates,
     CAPACITY_RUN_FLOOR_MI,
   );
+  const normalWeeklyMi: NormalReading<number> = normalDetail.ok
+    ? {
+        ok: true,
+        value: normalDetail.value.weeklyMi,
+        representativeDays: normalDetail.representativeDays,
+        excludedDays: normalDetail.excludedDays,
+      }
+    : normalDetail;
   return {
     measuredVdot: best?.vdot ?? null,
     measuredVdotEvidenceId: best == null ? null : (best.source === 'race' ? best.slug : best.id),
@@ -993,7 +1076,9 @@ async function loadVdotFallback(userId: string, todayISO: string): Promise<VdotF
     measuredVdotSource: best?.source ?? null,
     belowTableAnchor,
     normalWeeklyMi,
+    normalRunDays: normalDetail.ok ? normalDetail.value.runDays : 0,
     selfReportedWeeklyMi,
+    selfReportedPr,
   };
 }
 
@@ -1006,51 +1091,177 @@ function belowTableSourceMode(anchor: BelowTableAnchor): SourceMode {
   return anchor.source === 'race' ? 'race_derived' : 'inferred';
 }
 
+/**
+ * HOW MUCH REAL RUNNING RETIRES A SELF-REPORTED PRIOR, in representative days
+ * the runner actually ran on.
+ *
+ * 16 — four weeks at four running days a week. The brief this closes is the
+ * 2026-09-01 audit's own sentence: "one logged run moves the prior a little
+ * and a full month of logged running retires it." Four days a week is the
+ * frequency `Research/00a` §1's easy/general-aerobic dose assumes for a runner
+ * building a base, and a month is the shortest window over which the Rule
+ * 8-filtered habit reader can see a training pattern rather than a week.
+ *
+ * CONVENTION, and the number is a RATE OF FORGETTING, not a physiological
+ * claim — which is why it is here and not in a doctrine registry entry. What
+ * it must do is bounded on both ends and it does: one run out of sixteen buys
+ * 1/16th of the weight (the self-report still leads, correctly — one run is
+ * not a training history), and sixteen buys all of it (the self-report is
+ * gone, correctly — a month of logged running IS a training history).
+ */
+export const USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS = 16;
+
+/**
+ * How much of this runner's actual running the app has seen, on [0,1].
+ *
+ * Continuous and monotone non-decreasing in `runDays` by construction, which
+ * is the whole point: it is the term that makes the transition from "we have
+ * only what they typed" to "we have what they ran" a RAMP rather than the
+ * `real > 0` switch that shipped on 2026-09-01 and that the independent audit
+ * measured at a 188 s/mi step (Rule 9's own diagnostic signature — the runner
+ * who does MORE getting the categorically worse plan).
+ */
+export function evidenceCoverageFromRunDays(runDays: number): number {
+  if (!Number.isFinite(runDays) || runDays <= 0) return 0;
+  return Math.min(1, runDays / USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS);
+}
+
 /** What the mileage-based rung (`composeThresholdCapacity` tiers 2-4,
- *  `composeHighIntensityCapacity` tier 4) may spend: the real, Rule 8-filtered
- *  habit mileage when it is nonzero; the runner's own onboarding self-report
- *  ONLY when that real read is zero or refused; the true zero otherwise. */
-interface PriorWeeklyMiResult {
+ *  `composeHighIntensityCapacity` tier 4) may spend: a CONTINUOUS blend of the
+ *  real, Rule 8-filtered habit mileage and the runner's own onboarding
+ *  self-report, weighted by how much real running the app has actually seen. */
+export interface PriorWeeklyMiResult {
   weeklyMi: number;
   /** The REAL habit window itself refused to answer (Rule 11 — a different
    *  fact from "he ran nothing", and reported separately in `reasons` via
    *  `HABIT_WINDOW_REFUSED` regardless of whether a self-report filled the
    *  gap). */
   refused: boolean;
-  /** True when `weeklyMi` came from the onboarding self-report rather than
-   *  from real logged running — the fact that decides `user_prior` vs
-   *  `population_prior` sourceMode one level up. */
+  /** True while the self-report still carries ANY weight — the fact that
+   *  decides `user_prior` vs `population_prior` one level up. False at full
+   *  evidence coverage, where the blend has already converged on the real
+   *  number, so the source-mode flip happens at a point where the VALUE does
+   *  not move (Rule 9: a behaviour may be discrete, the pace may not step). */
   usedSelfReport: boolean;
+  /** The runner ANSWERED the onboarding mileage question with zero. A real
+   *  self-report, and a different fact from never having answered — the
+   *  distinction `loadOnboardingWeeklyMiPrior`'s header promises to keep and
+   *  that the original `> 0` gate erased one function later (Rule 20's prose
+   *  corollary). Reported so `reasons` can carry it. */
+  answeredZero: boolean;
+  /** The coverage weight the blend used, on [0,1]. Carried for the PR rung,
+   *  which shrinks by the same complement so the two priors retire together. */
+  evidenceCoverage: number;
 }
 
-/** The weekly mileage the mileage-based rung may spend, and whether the
- *  habit window refused to answer.
+/**
+ * The weekly mileage the mileage-based rung may spend.
  *
- *  Rule 11, explicitly: a refusal is NOT coerced into a measurement. The rung
- *  falls to the most conservative REAL input available. Until 2026-09-01 that
- *  was always a flat zero, which is `CAPACITY_CONFIDENCE_BANDS.userPrior`'s
- *  documented defect — a zero-run account got `conservativeVdotFromMileage(0)`
- *  (VDOT 30, ~10:42/mi) no matter what the runner had typed at onboarding.
- *  Now, and ONLY when the real filtered read is zero or refused, the
- *  runner's own self-report substitutes — never when real mileage is any
- *  nonzero number, however small, because a genuine observation of the
- *  runner running always outranks an unverified self-report (§17). The
- *  caller stamps `HABIT_WINDOW_REFUSED` when the real window refused (whether
- *  or not a self-report filled the gap) so the estimate says out loud what
- *  its last real rung actually saw. That is a different fact from "this
- *  runner runs zero miles", and a consumer reading `reasons` can tell them
- *  apart. */
-function priorWeeklyMi(
+ * ── THE CLIFF THIS REPLACES (Rule 9) ────────────────────────────────────────
+ *
+ * The 2026-09-01 cold-start fix substituted the self-report on a hard
+ * `real > 0` switch. The independent audit walked it and found the textbook
+ * Rule 9 signature: a runner who self-reported 40 mi/wk and then logged one
+ * short run went from a prescribed threshold of 7:34/mi to 10:42/mi — a
+ * **+188 s/mi step for 0.05 mi of running** — and stayed there for weeks,
+ * because the sparse-history case (1-2 runs, the first month of every new
+ * account) landed in a WORSE bucket than the zero-run case the fix was
+ * written for. The evidence-precedence PRINCIPLE was right; the switch was
+ * the defect.
+ *
+ * ── THE BLEND ───────────────────────────────────────────────────────────────
+ *
+ *     weeklyMi = coverage · real + (1 − coverage) · selfReport
+ *
+ * `coverage` is `evidenceCoverageFromRunDays(runDays)` — how many
+ * representative days the runner actually ran on, over a month of running.
+ * It is continuous in `runDays` and the expression is continuous and monotone
+ * in `real`, so there is no step anywhere on the path from "nothing logged"
+ * to "a month logged":
+ *
+ *   · 0 run days   → the self-report, exactly (the cold-start case)
+ *   · 1 run day    → 1/16 real + 15/16 self-report (one run moves it a little)
+ *   · 16 run days  → the real number, exactly, and the self-report is gone
+ *
+ * WHY COVERAGE AND NOT THE VALUE. Weighting by how CLOSE the real mileage is
+ * to the self-report would mean a runner honestly training 10 mi/wk after
+ * typing 40 never escapes their own onboarding chip. Coverage asks the only
+ * question that should retire a prior: how much of this runner have we
+ * actually watched. Rule 8 has already thrown the taper and post-race days
+ * out of both halves of it.
+ *
+ * EVIDENCE STILL WINS, and now it wins CONTINUOUSLY. `SOURCE_MODE_STRENGTH`
+ * puts `user_prior` below every observation-backed rung and this function is
+ * only ever reached when all of those refused; within it, real running
+ * displaces the self-report at a rate set by how much real running there is.
+ *
+ * Rule 11 is unchanged: a REFUSAL is still not coerced into a measurement.
+ * A refused habit window contributes `real = 0` at `coverage = 0`, which
+ * means it contributes nothing at all rather than a fabricated zero, and
+ * `refused` is reported separately so `HABIT_WINDOW_REFUSED` still fires.
+ */
+export function priorWeeklyMi(
   r: NormalReading<number>,
   selfReportedWeeklyMi: number | null,
+  runDays: number,
 ): PriorWeeklyMiResult {
   const real = r.ok ? r.value : 0;
   const refused = !r.ok;
-  if (real > 0) return { weeklyMi: real, refused: false, usedSelfReport: false };
-  if (selfReportedWeeklyMi != null && selfReportedWeeklyMi > 0) {
-    return { weeklyMi: selfReportedWeeklyMi, refused, usedSelfReport: true };
+  // A refused window has seen nothing representative, whatever `runDays` the
+  // caller computed off it — the coverage term must not credit days the
+  // refusal says are not there.
+  const evidenceCoverage = refused ? 0 : evidenceCoverageFromRunDays(runDays);
+  const answeredZero = selfReportedWeeklyMi === 0;
+
+  if (selfReportedWeeklyMi == null || selfReportedWeeklyMi <= 0) {
+    // Nothing to blend toward. `answeredZero` still travels, because "he told
+    // us he does not run yet" and "he never answered" are two facts that
+    // happen to imply the same number and must not become one.
+    return { weeklyMi: real, refused, usedSelfReport: false, answeredZero, evidenceCoverage };
   }
-  return { weeklyMi: real, refused, usedSelfReport: false };
+
+  const blended = evidenceCoverage * real + (1 - evidenceCoverage) * selfReportedWeeklyMi;
+  return {
+    weeklyMi: blended,
+    refused,
+    // At full coverage the blend IS `real`, so flipping the label here cannot
+    // move a pace — the discrete change sits exactly where the continuous one
+    // has already finished.
+    usedSelfReport: evidenceCoverage < 1,
+    answeredZero,
+    evidenceCoverage,
+  };
+}
+
+/**
+ * The typed-PR rung's contribution to a threshold pace, or null when there is
+ * nothing usable to contribute.
+ *
+ * SHRINKAGE, NOT SUBSTITUTION. The returned pace is
+ *
+ *     w · prTPace + (1 − w) · mileagePriorTPace,   w = prPriorWeight(...)
+ *
+ * so the app's own conservative mileage anchor is always in the answer, the
+ * PR can never own more than `USER_PR_MAX_WEIGHT` of it, and the weight falls
+ * continuously to zero as real running arrives (`evidenceCoverage`) and as
+ * the PR ages (`freshness`). See `lib/training/self-reported-pr.ts` for why
+ * each term is shaped the way it is.
+ *
+ * It is only ever consulted on the MILEAGE rung — i.e. when no measured VDOT
+ * and no demonstrated below-table pace exist. A typed PR never outranks, and
+ * never even reaches, an observation of the runner running.
+ */
+function prShrunkTPace(
+  pr: SelfReportedPrRead,
+  mileagePriorTPaceSec: number,
+  evidenceCoverage: number,
+): { tPaceSec: number; weight: number } | null {
+  if (!pr.ok) return null;
+  const w = prPriorWeight(pr.best.freshness, evidenceCoverage);
+  if (!(w > 0)) return null;
+  const blended = w * pr.best.tPaceSecPerMi + (1 - w) * mileagePriorTPaceSec;
+  if (!Number.isFinite(blended) || blended <= 0) return null;
+  return { tPaceSec: blended, weight: w };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1152,7 +1363,9 @@ export function composeThresholdCapacity(
   }
 
   // ── TIERS 2-4 · THE LEGACY CASCADE ───────────────────────────────────────
-  const prior = priorWeeklyMi(fallback.normalWeeklyMi, fallback.selfReportedWeeklyMi);
+  const prior = priorWeeklyMi(
+    fallback.normalWeeklyMi, fallback.selfReportedWeeklyMi, fallback.normalRunDays,
+  );
   const cascade = resolveCurrentTPace(
     fallback.measuredVdot,
     fallback.belowTableAnchor,
@@ -1160,32 +1373,63 @@ export function composeThresholdCapacity(
     conservativeVdotFromMileage,
   );
 
+  // `resolveCurrentTPace` returns `tPaceSec: null` only when its LAST rung's
+  // own conversion failed, which `conservativeVdotFromMileage`'s floor makes
+  // unreachable — kept as an explicit conservative substitution rather than a
+  // non-null assertion, because a silent `!` here would be a fabricated pace.
+  const mileagePaceSecPerMi = cascade.tPaceSec
+    ?? tPaceFromVdot(conservativeVdotFromMileage(0))
+    ?? 0;
+
+  /* ── THE TYPED-PR RUNG ────────────────────────────────────────────────────
+   *
+   * Consulted ONLY on the mileage rung — i.e. when no measured VDOT and no
+   * demonstrated below-table pace exist. A PR the runner typed into
+   * onboarding never outranks, and never even reaches, an observation of the
+   * runner running; `SOURCE_MODE_STRENGTH` says so and this gate enforces it.
+   *
+   * What it does when it fires: shrinks the conservative mileage pace toward
+   * the PR-implied pace by `prPriorWeight`, which falls continuously to zero
+   * as the PR ages and as real running arrives. See
+   * `lib/training/self-reported-pr.ts` for every term.
+   */
+  const prBlend = cascade.tier === 'mileage_estimate'
+    ? prShrunkTPace(fallback.selfReportedPr, mileagePaceSecPerMi, prior.evidenceCoverage)
+    : null;
+  const paceSecPerMi = prBlend?.tPaceSec ?? mileagePaceSecPerMi;
+
   const tierMap: Record<TPaceResolutionTier, SourceMode> = {
     measured_vdot: 'vdot_fallback',
     below_table_anchor: fallback.belowTableAnchor
       ? belowTableSourceMode(fallback.belowTableAnchor)
       : 'inferred',
-    // FIXED 2026-09-01 · `user_prior` when the mileage this rung spent came
-    // from the runner's own onboarding self-report rather than real logged
-    // running — see `CAPACITY_CONFIDENCE_BANDS.userPrior`'s header.
-    mileage_estimate: prior.usedSelfReport ? 'user_prior' : 'population_prior',
+    // FIXED 2026-09-01 · `user_prior` when the number this rung spent came
+    // from the runner's own onboarding self-report — a weekly-mileage chip, a
+    // typed PR, or both — rather than only from real logged running. See
+    // `CAPACITY_CONFIDENCE_BANDS.userPrior`'s header.
+    mileage_estimate: (prior.usedSelfReport || prBlend != null) ? 'user_prior' : 'population_prior',
   };
   const sourceMode = tierMap[cascade.tier];
-
-  // `resolveCurrentTPace` returns `tPaceSec: null` only when its LAST rung's
-  // own conversion failed, which `conservativeVdotFromMileage`'s floor makes
-  // unreachable — kept as an explicit conservative substitution rather than a
-  // non-null assertion, because a silent `!` here would be a fabricated pace.
-  const paceSecPerMi = cascade.tPaceSec
-    ?? tPaceFromVdot(conservativeVdotFromMileage(0))
-    ?? 0;
 
   const reasons: CapacityReasonCode[] = ['NO_DIRECT_EVIDENCE'];
   if (cascade.tier === 'measured_vdot') reasons.push('MEASURED_VDOT_FALLBACK');
   if (cascade.tier === 'below_table_anchor') reasons.push('BELOW_TABLE_ANCHOR_FALLBACK');
-  if (cascade.tier === 'mileage_estimate' && prior.usedSelfReport) reasons.push('ONBOARDING_MILEAGE_USER_PRIOR');
-  if (cascade.tier === 'mileage_estimate' && !prior.usedSelfReport) reasons.push('MILEAGE_POPULATION_PRIOR');
-  if (cascade.tier === 'mileage_estimate' && prior.refused) reasons.push('HABIT_WINDOW_REFUSED');
+  if (cascade.tier === 'mileage_estimate') {
+    if (prior.usedSelfReport) reasons.push('ONBOARDING_MILEAGE_USER_PRIOR');
+    else reasons.push('MILEAGE_POPULATION_PRIOR');
+    // A runner who answered "0 mi/wk" told us something. A runner who never
+    // answered did not. The two imply the same number and are not the same
+    // fact (Rule 11), and until now nothing downstream could tell them apart.
+    if (prior.answeredZero) reasons.push('ONBOARDING_MILEAGE_ANSWERED_ZERO');
+    if (prBlend != null) reasons.push('ONBOARDING_PR_USER_PRIOR');
+    // Reported whether or not a PR was ultimately used: an entry that failed
+    // validation is a thing worth surfacing to the runner ("that half
+    // marathon time looks wrong"), and silence would be the swallow.
+    if (!fallback.selfReportedPr.ok && fallback.selfReportedPr.reason === 'ALL_PRS_REJECTED') {
+      reasons.push('ONBOARDING_PR_REJECTED');
+    }
+    if (prior.refused) reasons.push('HABIT_WINDOW_REFUSED');
+  }
 
   const anchorDate = cascade.tier === 'measured_vdot'
     ? fallback.measuredVdotDate
@@ -1424,16 +1668,35 @@ export function composeHighIntensityCapacity(
   // ── TIER 4 · MILEAGE PRIOR (population, or the runner's own onboarding
   //    self-report when real logged mileage reads zero — FIXED 2026-09-01,
   //    see `CAPACITY_CONFIDENCE_BANDS.userPrior`'s header) ──────────────────
-  const prior = priorWeeklyMi(fallback.normalWeeklyMi, fallback.selfReportedWeeklyMi);
-  const priorVdot = conservativeVdotFromMileage(prior.weeklyMi);
+  const prior = priorWeeklyMi(
+    fallback.normalWeeklyMi, fallback.selfReportedWeeklyMi, fallback.normalRunDays,
+  );
+  const mileageVdot = conservativeVdotFromMileage(prior.weeklyMi);
+  /* THE TYPED-PR RUNG, mirrored from threshold and derived through the same
+   * shrinkage — so the two capacities cannot disagree about how much of a
+   * typed PR they believe (Rule 16). It is applied in T-PACE space and read
+   * back out as a VDOT rather than blending two VDOTs, because that is the
+   * quantity `prShrunkTPace` owns and a second blend formula here would be a
+   * second answer to one question. */
+  const mileageTPace = tPaceFromVdot(mileageVdot);
+  const prBlend = mileageTPace != null
+    ? prShrunkTPace(fallback.selfReportedPr, mileageTPace, prior.evidenceCoverage)
+    : null;
+  const priorVdot = prBlend != null ? (vdotFromTpace(prBlend.tPaceSec) ?? mileageVdot) : mileageVdot;
+  const usedAnySelfReport = prior.usedSelfReport || prBlend != null;
   reasons.push(prior.usedSelfReport ? 'ONBOARDING_MILEAGE_USER_PRIOR' : 'MILEAGE_POPULATION_PRIOR');
+  if (prior.answeredZero) reasons.push('ONBOARDING_MILEAGE_ANSWERED_ZERO');
+  if (prBlend != null) reasons.push('ONBOARDING_PR_USER_PRIOR');
+  if (!fallback.selfReportedPr.ok && fallback.selfReportedPr.reason === 'ALL_PRS_REJECTED') {
+    reasons.push('ONBOARDING_PR_REJECTED');
+  }
   if (prior.refused) reasons.push('HABIT_WINDOW_REFUSED');
-  const sourceMode: SourceMode = prior.usedSelfReport ? 'user_prior' : 'population_prior';
+  const sourceMode: SourceMode = usedAnySelfReport ? 'user_prior' : 'population_prior';
   return {
     intervalPaceSecPerMi: iPaceFromVdot(priorVdot) ?? 0,
     repetitionPaceSecPerMi: rPaceFromVdot(priorVdot),
     vdot: priorVdot,
-    confidence: prior.usedSelfReport
+    confidence: usedAnySelfReport
       ? CAPACITY_CONFIDENCE_BANDS.userPrior
       : CAPACITY_CONFIDENCE_BANDS.populationPrior,
     sourceMode,

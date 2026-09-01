@@ -41,8 +41,12 @@ import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
+  anchorSourceFromCapacityMode,
   CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
 } from './anchor-provenance';
+import { syntheticPaceAnchors } from './authoring-anchors';
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
+import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import { isBaseBuildingPlan } from './plan-templates';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { isCoachedExternally, COACHED_SKIP_REASON } from './coached-gate';
@@ -57,7 +61,6 @@ import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal
 import { runDaySql, runDistanceMiSql, runWorkoutTypeSql, runTypeSql } from '@/lib/runs/run-shape';
 // 2026-08-17 · coaching-loop reconciliation · shared blend implementation
 // (authoring + adaptation-time recompute run the same math).
-import { blendedTPaceForWeek, measuredProgressFraction, maxSeasonalVdotGain } from './recompute-paces';
 import {
   type LongRunKind,
   DRESS_REHEARSAL,
@@ -797,8 +800,9 @@ export function distanceMiOf(meta: any): number | null {
  *     race's category. Neither reads this number.
  *   · `rxQuality` / `rxRaceSpecific` are resolved per category but read only
  *     inside `composePlan`, which this path never enters.
- *   · `goalIPaceEligible` gates I-pace derivation for `intervals` and
- *     `race_week_tuneup` rows. Neither non-race composer emits either type.
+ *   · the canonical pace `anchors` price every zone, but the non-race
+ *     composers resolve their own (see `composeMaintenancePlan`) rather than
+ *     inheriting a race block's.
  *
  * That left ONE live consumer, and it was not inert. `classifyGoalTier` with no
  * goal reads the runner's demonstrated pace predicted at this distance and
@@ -8482,6 +8486,25 @@ export interface ComposePlanInput {
      *  the week's MP long. Absent/null → shaping identical to before. */
     plannedRole?: 'b_effort' | 'race' | 'mp_workout' | null;
   }>;
+  /**
+   * AUTHORING-CANONICAL-1 (2026-09-01) · THE SIX CANONICAL PRICES.
+   *
+   * THE ONLY pace authority this composer has. A real authoring supplies them
+   * from `resolvePrescribedPaceAnchors` (`loadGeneratorInputs`) — the same
+   * function `recompute-paces.ts` and `reanchor-plan.ts` call, so a block is
+   * authored at exactly the prices the nightly flex would rewrite it to.
+   *
+   * ABSENT — every pure caller: sweep archetypes, bench personas, `/sim/plan`,
+   * unit fixtures. Those are composed through `syntheticPaceAnchors`
+   * (`lib/plan/authoring-anchors.ts`), which runs the IDENTICAL pure capacity
+   * cores on this input's own evidence fields. One pricing path, two sources
+   * for its bottom rung — never a fallback to the VDOT cascade.
+   *
+   * NO GOAL REACHES IT. `PrescribedPaceAnchors` is composed from
+   * `ResolvedCapacity` alone and `capacity-resolver.ts` is compile-time sealed
+   * against goal data (Constitution §G).
+   */
+  paceAnchors?: PrescribedPaceAnchors | null;
   isMidBlock: boolean;
   /** TRAVEL-1 (2026-08-28) · the runner's declared travel windows that
    *  overlap the plan window (travel_windows table, entered on the phone).
@@ -8514,18 +8537,6 @@ export interface ComposePlanInput {
   /** 2026-06-03 · Rule 16 · maxHr for the easy/long HR cap doctrine.
    *  Optional · null falls back to LTHR-only cap. */
   maxHr: number | null;
-  /** 2026-08-17 · coaching-loop reconciliation · measured share of the
-   *  season's VDOT gap actually banked (recompute-paces.ts
-   *  measuredProgressFraction). Gates the currentT→goalT weekly blend so
-   *  paces advance only as fast as demonstrated fitness: blend =
-   *  min(calendar fraction, measured + 0.15 grace). null/undefined =
-   *  calendar-only (fresh authoring · byte-identical to the historical
-   *  Rule 3 blend — the plan is a forecast, and the adaptation layer
-   *  (recomputePacesForPlan, pr_bank, fitness_regression) keeps it
-   *  honest as evidence arrives). generatePlan populates this on
-   *  MID-BLOCK REBUILDS from the prior plan's season anchor.
-   *  Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces (:304-321). */
-  measuredProgressFraction?: number | null;
   /** 2026-08-17 · the season's original anchor VDOT, carried FORWARD
    *  across mid-block rebuilds so the measured-progress fraction always
    *  measures against where the season's ambition was priced, not against
@@ -8588,6 +8599,22 @@ export interface ComposePlanResult {
    * without any of them changing.
    */
   tPaceSec?: number | null;
+  /**
+   * AUTHORING-CANONICAL-1 (2026-09-01) · THE SIX PRICES THIS BLOCK WAS
+   * COMPOSED AT, carried to the writer.
+   *
+   * Rule 16: the composition and the persisted rows must be priced off one
+   * resolution of one runner's capacity. Before this the writer re-derived a
+   * threshold pace of its own (`resolveCurrentTPace`, the second of three
+   * copies), and the two could — and for a below-table runner did — disagree.
+   *
+   * Rule 10: it is also the stamp. `persistComposedPlan` writes it to
+   * `authored_state.pace_authoring`, so a later reader can answer "what was
+   * this block priced at, and how well was each number known" without an
+   * inference, and `lib/adaptation/authoring-convergence.ts` can tell a plan
+   * authored canonically from one that still needs the flex to fix it.
+   */
+  paceAnchors?: PrescribedPaceAnchors | null;
   /** Bundle that persistPlan writes verbatim to training_plans.authored_state. */
   authoredState: Record<string, unknown>;
   /**
@@ -8931,48 +8958,84 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     return Math.min(desiredDensity, Math.max(QUALITY_RETURN_MIN_SESSIONS, ramped));
   }
 
-  // Cold-start pace floor · conservativeVdotFromMileage lifted to spec-builder.ts
-  // 2026-06-10 (shared with the maintenance seeder). Moved ABOVE goalT for VAR-05.
-  //
-  // 2026-08-17 · the duplicate of a citation that named a table which does not
-  // exist. See that function's header: its values are a CONVENTION, bound by
-  // CONVENTION.cold-start-mileage-anchor, and its output is marked
-  // `provisional_mileage` so three readers refuse to inherit it.
-  const estimatedCurrentVdot = input.bestRecentVdot
-    ?? conservativeVdotFromMileage(input.recentWeeklyMi);
-  // 2026-07-07 · AUDIT P1-56 · currentT is the pace every easy/long/recovery/
-  // quality band anchors to (below); resolveCurrentTPace's tier-2 fallback
-  // (belowTableAnchor → tPaceFromAnchorPace) replaces conservativeVdotFromMileage
-  // ONLY for the prescribed-PACE math when the runner's own best race/run implied
-  // a sub-30 VDOT — conservativeVdotFromMileage floors at VDOT 30 (T ~10:41/mi),
-  // which can be FASTER than a slow runner's actual demonstrated race pace.
-  // estimatedCurrentVdot (a VDOT number) is left untouched for the seasonal-gain
-  // / goal-realism math a few lines below, which reasons in VDOT deltas, not
-  // paces — those stay on the existing (unaffected, already-doctrine-vetted) path.
-  const currentTResolved = resolveCurrentTPace(
-    input.bestRecentVdot ?? null, input.belowTableAnchor ?? null,
-    input.recentWeeklyMi, conservativeVdotFromMileage,
-  );
-  const currentT = currentTResolved.tPaceSec ?? tPaceFromVdot(estimatedCurrentVdot);
+  /* ── THE SIX ANCHORS · AUTHORING-CANONICAL-1 (2026-09-01) ─────────────────
+   *
+   * This block replaced the entire legacy pricing apparatus that used to sit
+   * here: `conservativeVdotFromMileage` as an authority, `resolveCurrentTPace`
+   * (one of THREE independent copies of the same computation — Rule 16),
+   * `tPaceFromGoal`, `maxSeasonalVdotGain`, `achievableFloorT`, and the
+   * per-week `blendedTPaceForWeek` blend that let a STATED GOAL move a
+   * PRESCRIBED TRAINING PACE (Constitution §7/§G, and the live violation the
+   * 2026-09-01 independent audit measured on the owner's own plan).
+   *
+   * Six numbers, each from the service that owns its question, and NO GOAL
+   * AMONG THEM. `recompute-paces.ts` and `reanchor-plan.ts` — the flex path
+   * that rewrites every unrun day of a live block — have priced this way since
+   * 2026-08-31; authoring was the last surface still on the cascade, which is
+   * exactly the "sometimes old, sometimes new depending on which path ran
+   * last" state Constitution §8 forbids. It is now closed.
+   *
+   * WHERE THE ANCHORS COME FROM. `input.paceAnchors`, always. A real authoring
+   * gets them from `resolvePrescribedPaceAnchors` in `loadGeneratorInputs`; a
+   * pure caller (sweep archetype, bench persona, /sim/plan) gets them from
+   * `syntheticPaceAnchors`, which runs the IDENTICAL pure capacity cores on
+   * the caller's own evidence fields. See `lib/plan/authoring-anchors.ts` —
+   * one pricing path, two sources for its bottom rung.
+   *
+   * RULE 11 · there is no fallback. `composePaceAnchors` refuses only on an
+   * INCOHERENT set (an easy ceiling faster than threshold, a non-finite
+   * number), never on thin evidence — every capacity resolver's last rung is a
+   * prior, so a cold-start runner still gets an ordered set. Reaching for the
+   * VDOT cascade on a refusal would put the defect on the runner's phone under
+   * a different derivation, so a refusal THROWS and the caller declines to
+   * author.
+   */
+  const anchorRead = input.paceAnchors != null
+    ? ({ ok: true, anchors: input.paceAnchors } as const)
+    : syntheticPaceAnchors({
+        bestRecentVdot: input.bestRecentVdot ?? null,
+        belowTableAnchor: input.belowTableAnchor ?? null,
+        recentWeeklyMi: input.recentWeeklyMi,
+      });
+  if (!anchorRead.ok) {
+    throw new Error(
+      `[composePlan] REFUSED · pace anchors ${anchorRead.reason} · ${anchorRead.detail} · `
+      + 'no plan authored (Rule 11 · no fallback to the VDOT cascade)',
+    );
+  }
+  const anchors = anchorRead.anchors;
 
-  // COLD-3 · provenance of the anchor this authoring is about to persist.
-  // `resolveCurrentTPace` has computed exactly this tier since 2026-07-07 and
-  // every caller threw it away. An INHERITED anchor keeps the provenance it was
-  // handed (generatePlan refuses to inherit a provisional one, so an inherited
-  // anchor present here is always measured); a fresh authoring reports whether
-  // anything was actually measured.
-  // SELFREPORT-1 (2026-08-21) · `bestRecentVdot != null` used to be read as
-  // "something was measured". It is not: PARITY-1 seeds it from the PR the
-  // runner typed into onboarding when nothing WAS measured, and the anchor then
-  // went out stamped `measured_vdot`, `season_anchor_provisional: false`, with
-  // zero runs and zero races on file. The seeder now says which it handed over.
+  /** THE threshold pace this block is priced at. One number, one resolution.
+   *  Was `resolveCurrentTPace(...)` here, again in `persistComposedPlan`, and
+   *  a third time in `loadGeneratorInputs` — Rule 16's cheapest win. */
+  const currentT = anchors.thresholdSecPerMi;
+
+  /**
+   * The threshold capacity's DERIVED VDOT, for the two consumers that
+   * legitimately still speak VDOT: Race Prediction's own input
+   * (`achievableRaceTarget`, Constitution §J) and the goal-REALISM flag, which
+   * is a sanity check on a stated goal rather than a training prescription.
+   *
+   * Null for a runner whose threshold pace sits outside the Daniels table's
+   * [30,85] range — a real answer, not a failure (Rule 11), and both consumers
+   * below branch on it rather than substituting.
+   */
+  const estimatedCurrentVdot = anchors.basis.threshold.vdot;
+
+  // COLD-3 · provenance of the anchor this authoring is about to persist,
+  // now read off the CANONICAL source mode rather than re-derived from which
+  // legacy tier happened to answer. The mapping is the same claim in both
+  // vocabularies: an observation the app made is `measured_vdot`, a
+  // demonstrated below-table pace is `below_table_anchor`, something the
+  // runner typed is `self_reported_race`, and a mileage bucket is
+  // `provisional_mileage`.
+  //
+  // SELFREPORT-1's distinction survives intact and is now STRUCTURAL rather
+  // than a boolean the loader had to remember to set: `user_prior` is exactly
+  // "the runner told us", and `population_prior` is exactly "we have nothing".
   const seasonAnchorSource: AnchorSource = input.seasonAnchorVdot != null
     ? (input.seasonAnchorSource ?? 'measured_vdot')
-    : input.bestRecentVdot != null
-      ? (input.bestRecentVdotSelfReported ? 'self_reported_race' : 'measured_vdot')
-      : currentTResolved.tier === 'below_table_anchor'
-        ? 'below_table_anchor'
-        : 'provisional_mileage';
+    : anchorSourceFromCapacityMode(anchors.basis.threshold.sourceMode);
   const anchorIsProvisional = isProvisionalAnchor(seasonAnchorSource);
   // SELFREPORT-1 · the persisted boolean answers the READER's question ("may I
   // believe this as fitness"), which is the wider one. `anchorIsProvisional`
@@ -8980,70 +9043,25 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // from the runner. See ./anchor-provenance for why they are not the same.
   const anchorIsUnverified = isUnverifiedAnchor(seasonAnchorSource);
 
-  // 2026-06-03 · mid-block doctrine RULE 3 (pace anchor blend) · when bestRecentVdot
-  // implies a T-pace slower than goal-T, anchor early-week paces to currentT and blend
-  // toward goalT by mid-build (Cite: §Rule 3). 2026-06-23 · VAR-05 · a by-feel runner (no
-  // goal) now paces off their ACTUAL fitness (currentT), never the flat 480s/mi (8:00/mi)
-  // literal — tPaceFromGoal returns null with no goal, and currentT always resolves
-  // (conservativeVdotFromMileage ≥30) so the 480 fallback goes dead. PACE-5 · ultra
-  // (≥31mi) also makes tPaceFromGoal return null → ultra T anchors to currentT here, not the
-  // bogus goalPace−18. Cite: Research/01 §Daniels-T (T-pace is a function of VDOT).
-  // GOAL-2 (2026-06-23) · clamp goal-T to an ACHIEVABLE floor so the per-week blend never prescribes
-  // paces faster than current fitness + a safe seasonal VDOT gain (Research/01:314-321 · retest deltas
-  // ~+2-3; scale with build length, cap ~+6). An in-table but over-ambitious goal (e.g. +8 VDOT in one
-  // block) otherwise drives every quality day to an unreachable pace. The aspirational goal stays on
-  // the UI; only the prescribed paces are floored. Derived from CURRENT fitness (never goalVdot, which
-  // is null off-table). Byte-safe for an at/near-goal runner (achievableFloorT faster ⇒ max keeps goalT).
-  const goalTraw = tPaceFromGoal(input.goalSec, input.raceDistanceMi) ?? currentT ?? input.tPaceSec;
-  // GAINRATE-2 (2026-08-25) · this was a SECOND copy of the formula, written
-  // inline here while `recompute-paces.ts` exported an identical one so "the
-  // recompute path floors goalT off the SAME curve the author used". Two copies
-  // of one curve is the fork class this file has paid for repeatedly; the
-  // export is now the only definition, and it reads the bound doctrine band
-  // rather than a fourth uncited rate. See that function's header.
-  const seasonalGainVdot = maxSeasonalVdotGain(totalWeeks, input.raceDistanceMi);
-  // achievableFloorT is derived from estimatedCurrentVdot, which floors at
-  // VDOT 30 (conservativeVdotFromMileage) when the runner has no measured
-  // VDOT — completely blind to a below-table anchor's real (slower) pace.
-  // For a below-table runner this "achievable floor" guard can legitimize a
-  // VDOT-30-territory goalT that is faster than the runner has ever run.
-  const achievableFloorT = tPaceFromVdot(estimatedCurrentVdot + seasonalGainVdot);
-  const goalTFloored = (achievableFloorT != null && goalTraw != null) ? Math.max(goalTraw, achievableFloorT) : goalTraw;
-  // 2026-07-08 · P0 re-audit follow-up (3rd instance of the P1-56 unclamped-
-  // pace bug class) · clamp goalT itself to the anchor pace. tPaceForWeek
-  // blends currentT -> goalT; clamping BOTH endpoints to >= the anchor pace
-  // means every interpolated value in between is also honest, closing the
-  // mid-block ramp leak without touching the blend math itself.
-  const goalT = input.belowTableAnchor
-    ? clampToSanePace(goalTFloored, input.belowTableAnchor.anchor.paceSPerMi)
-    : goalTFloored;
-
   /**
-   * RACEPACE-1 (2026-08-25) · THE SAME CEILING, APPLIED TO THE ONE PACE THE
-   * GOAL IS ACTUALLY ABOUT.
+   * RACEPACE-1 (2026-08-25) · THE ONE PACE THE GOAL IS ACTUALLY ABOUT.
    *
-   * Everything above bounds THRESHOLD. Nothing bounded RACE pace, so
-   * `input.goalPaceSec` reached the race-day row untouched. On a block whose
-   * every marathon-pace session correctly refused the goal and ran at the
-   * in-zone default, race day still prescribed the goal — the runner rehearses
-   * one pace for fourteen weeks and is handed another at the gun.
-   *
+   * The stated goal reaches EXACTLY here and nowhere else in this function.
    * `achievableRaceTarget` answers with the goal when the goal is inside
-   * `Research/20` §"SMART criteria"'s ~5% achievability band, and with the
-   * runway's own ceiling when it is not. Either way the STATED goal is
-   * untouched: it stays on `authored_state.goal_pace_s_per_mi` below, and
+   * `Research/20` §"SMART criteria"'s achievability band and with the runway's
+   * own ceiling when it is not. The STATED goal is untouched either way: it
+   * stays on `authored_state.goal_pace_s_per_mi`, and
    * `Design/goal-pursuit-doctrine.md` §14 ("Fitness updates often. Goals do
    * not.") is honoured because nothing here writes a goal.
    *
-   * Deliberately NOT fed to `marathonPaceSPerMi`. That function's refusal is
-   * the guard that keeps MP work inside the marathon zone, and it can only fire
-   * if it is shown the real goal. See `buildWorkoutSpec`'s
-   * `prescribedRacePaceSPerMi` parameter for why the two are separate arguments.
+   * `currentVdot` is the CANONICAL threshold capacity's derived VDOT — the
+   * same fitness that priced every training day above, so the race target and
+   * the block cannot be read off two different runners (Rule 16). Null when
+   * the anchor is provisional, which is `achievableRaceTarget`'s own signal to
+   * decline rather than to price a race off an invented fitness.
    */
   const achievableRace = achievableRaceTarget({
     goalSec: input.goalSec,
-    // The same anchor `achievableFloorT` uses one line up, so the two ceilings
-    // are the same claim about the same runner.
     currentVdot: anchorIsProvisional ? null : estimatedCurrentVdot,
     raceDistanceMi: input.raceDistanceMi,
     totalWeeks,
@@ -9052,8 +9070,10 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const prescribedRacePaceSec = achievableRace?.paceSPerMi ?? null;
 
   // Goal-realism guard: flag when the entered goal implies a VDOT >15% above
-  // the conservative current estimate. Written to authoredState for the plan
-  // UI to surface; does not block generation.
+  // the current estimate. Written to authoredState for the plan UI to surface;
+  // does not block generation. This is GOAL-SANITY VALIDATION — the one
+  // remaining legitimate `vdotFromRace(goalSec)` at authoring — and it prices
+  // nothing.
   const goalVdot = input.goalSec != null
     ? vdotFromRace(input.goalSec, input.raceDistanceMi)
     : null;
@@ -9061,31 +9081,31 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // MOST ambitious goals — so the old `goalVdot != null && >est×1.15` treated those (off-the-top) as
   // NOT flagged (the flag inverted for the most absurd goals). When goalVdot is null, compare the goal
   // TIME to the current-fitness predicted time: faster ⇒ off-the-top ⇒ flag; slower ⇒ off-the-bottom ⇒
-  // don't. (GOAL-2 already floors the prescribed paces; this makes the surfaced flag correct too.)
-  const currentPredicted = input.goalSec != null ? predictRaceTime(estimatedCurrentVdot, input.raceDistanceMi) : null;
-  const realismFlag = goalVdot != null
+  // don't.
+  const currentPredicted = (input.goalSec != null && estimatedCurrentVdot != null)
+    ? predictRaceTime(estimatedCurrentVdot, input.raceDistanceMi)
+    : null;
+  const realismFlag = (goalVdot != null && estimatedCurrentVdot != null)
     ? goalVdot > estimatedCurrentVdot * 1.15
     : (input.goalSec != null && currentPredicted != null && input.goalSec < currentPredicted);
-  // COLD-3 (2026-08-17) · the guard was SILENCED BY THE FABRICATION IT WAS
-  // MEANT TO CATCH. `estimatedCurrentVdot` falls back to
-  // conservativeVdotFromMileage, which reads a 30 mi/wk self-report as VDOT 40 —
-  // a level of fitness nobody demonstrated. A 3:30 marathon goal (VDOT ~44.6) is
-  // then only +11.5% over that invented baseline, under the 15% trigger, and the
-  // plan records `{ flag: false }`: an affirmative statement that the goal is
-  // realistic, made about a runner the app has never seen take a step.
+  // COLD-3 (2026-08-17) · THE GUARD WAS SILENCED BY THE FABRICATION IT WAS
+  // MEANT TO CATCH. With no measured fitness the honest answer is neither true
+  // nor false. It is "not assessable yet" — which is a different thing to say
+  // to the runner, and the only honest thing the engine knows about an
+  // over-ambitious cold-start goal. `basis` names what the verdict rests on so
+  // a surface never has to guess. (Design/adaptive-progression-engine.md §A ·
+  // evidence-only.)
   //
-  // With no measured fitness the honest answer is neither true nor false. It is
-  // "not assessable yet" — which is a different thing to say to the runner, and
-  // the only honest thing the engine knows about an over-ambitious cold-start
-  // goal. `basis` names what the verdict rests on so a surface never has to
-  // guess. (Design/adaptive-progression-engine.md §A · evidence-only.)
+  // AUTHORING-CANONICAL-1 · a null `estimatedCurrentVdot` (a runner off the
+  // Daniels table entirely) is now ALSO not assessable, rather than silently
+  // taking the time-comparison branch against a number that does not exist.
   const goalRealism: {
     flag: boolean;
     assessable: boolean;
     basis: AnchorSource;
     goalVdot?: number;
     estimatedCurrentVdot?: number;
-  } = anchorIsProvisional
+  } = (anchorIsProvisional || estimatedCurrentVdot == null)
     ? {
         flag: false,
         assessable: false,
@@ -9096,26 +9116,30 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       ? { flag: true, assessable: true, basis: seasonAnchorSource, ...(goalVdot != null ? { goalVdot } : {}), estimatedCurrentVdot }
       : { flag: false, assessable: true, basis: seasonAnchorSource, estimatedCurrentVdot };
 
-  // 2026-08-17 · coaching-loop reconciliation · the blend math moved to
-  // lib/plan/recompute-paces.ts (blendedTPaceForWeek) so authoring and the
-  // adaptation-time recompute share ONE implementation. Semantics here are
-  // byte-identical to the historical inline formula (Rule 3 + BRK-1 +
-  // VAR-07) whenever input.measuredProgressFraction is null/undefined;
-  // when a measured-progress fraction IS supplied (mid-block rebuilds),
-  // the calendar blend is gated on it — paces advance only as fast as
-  // demonstrated fitness. Cite: Research/01 §Recalibrate-Paces (:304-321).
   const composeBuildWeeks = blocks.phases.filter((p) => p.label !== 'TAPER')
     .reduce((s, p) => s + p.weeks, 0);
-  function tPaceForWeek(weekIdx: number, phase: string): number | null {
-    return blendedTPaceForWeek({
-      currentT,
-      goalT,
-      weekIdx,
-      phase,
-      buildWeeks: composeBuildWeeks,
-      measuredProgressFraction: input.measuredProgressFraction ?? null,
-    });
-  }
+
+  /**
+   * AUTHORING-CANONICAL-1 · THE PER-WEEK PACE RAMP IS DELETED, NOT MOVED.
+   *
+   * It read: anchor early weeks to current fitness and blend toward the GOAL's
+   * threshold pace by mid-build, gated on a measured-progress fraction with a
+   * 15% grace. Three things were wrong with it and all three are Constitution
+   * violations rather than tuning problems:
+   *
+   *   · A stated goal moved a prescribed training pace (§G) — and it could
+   *     only ever move it FASTER, because `BRK-1` kept current fitness
+   *     whenever the goal was slower.
+   *   · At ZERO demonstrated progress the grace still advanced the pace 15% of
+   *     the way toward the goal, on the owner's real plan, on 2026-08-31.
+   *   · A pace that advanced on the CALENDAR is Rule 1's violation, and
+   *     `fbc61eb9` had already deleted an earlier version of exactly that.
+   *
+   * Capacity does not vary by week index. The block is priced at what the
+   * runner can do now; the ADAPTATION engine moves it when evidence says so
+   * (Constitution §I), and that is the only thing that may.
+   */
+  const tPaceForWeek = (_weekIdx: number, _phase: string): number | null => currentT;
 
   /**
    * PROGRESSION-1 (2026-08-17) · the block's default overload trajectory.
@@ -9136,30 +9160,22 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // VOCAB-CATALOGUE-1 · plan-scoped, so the selector's rotation and its
   // per-cycle caps ("1× per training cycle") count the whole block.
   const catalogueHistory = newCatalogueHistory();
-  // The rep pace persistPlan will use, mirrored here so the trajectory's
-  // at-pace caps are computed against the pace actually prescribed. 5K/10K/HM
-  // goals carry true Daniels I; marathon and ultra keep the cruise-interval
-  // T−18 default that `buildWorkoutSpec` applies (R3 · PACE-I-1).
-  const iPaceEligible = ['5k', '10k', 'hm'].includes(distanceCategoryOf(input.raceDistanceMi));
-  // Memoised: `vdotFromTpace` is a fifty-step binary search over the Daniels
-  // table, and without evidence every week of a block carries the same T, so
-  // this would otherwise run the same search once per week for one answer.
-  const iPaceCache = new Map<number, number | null>();
-  const iPaceForWeek = (t: number | null): number | null => {
-    if (t == null) return null;
-    if (!iPaceEligible) return t - 18;
-    const hit = iPaceCache.get(t);
-    if (hit !== undefined) return hit;
-    // Same precedence as `resolveCurrentTPace`: a MEASURED VDOT outranks a
-    // below-table anchor. persistPlan's own I-pace derivation reaches for the
-    // anchor first, which for a runner who has both is the anchor overriding a
-    // measurement — the inversion P1-56's byte-safety test exists to catch.
-    const v = (input.bestRecentVdot == null && input.belowTableAnchor)
-      ? iPaceFromAnchorPace(input.belowTableAnchor.anchor)
-      : (iPaceFromVdot(vdotFromTpace(t)) ?? t - 18);
-    iPaceCache.set(t, v);
-    return v;
-  };
+  /**
+   * AUTHORING-CANONICAL-1 · THE I-PACE ELIGIBILITY GATE IS DELETED, NOT MOVED.
+   *
+   * It read: a 5K/10K/HM goal earns a true Daniels I-pace; a marathon or ultra
+   * goal keeps the `T - 18` cruise default. That is a runner's ENTERED RACE
+   * deciding what pace their intervals are run at — §G's "goal ≠ current
+   * training capacity" in one line. `recompute-paces.ts` deleted it on the
+   * flex path on 2026-08-31 with the same sentence; this is authoring
+   * catching up, so the two paths stop disagreeing.
+   *
+   * `resolveHighIntensityCapacity` now answers for every runner,
+   * unconditionally, and says out loud how well it knows the number — on most
+   * accounts a flagged `vdot_fallback`, because this app still has no direct
+   * high-intensity reader. A stated gap beats a silent one (§38).
+   */
+  const iPaceForWeek = (t: number | null): number | null => (t == null ? null : anchors.intervalSecPerMi);
 
   const weeks: ComposedWeek[] = [];
   let phaseCursor = 0;
@@ -9186,29 +9202,28 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     // 2026-06-03 · Rule 3 · per-week T-pace.
     const weekT = tPaceForWeek(wi, phaseLabel);
     /**
-     * ZONE-R-1 · THE marathon-pace expression, called rather than re-derived,
-     * so the pace the selector prices an MP session at is the pace
-     * `buildWorkoutSpec` will build it at. The two inputs are the ones
-     * `persistPlan` hands `buildWorkoutSpec`, in the same shapes: `currentT` is
-     * the same `resolveCurrentTPace` cascade, and the goal pace carries the
-     * same below-table fallback. Diverging on either would size an MP session
-     * at one pace and run it at another.
+     * AUTHORING-CANONICAL-1 · MARATHON PACE IS A CAPACITY, NOT A GOAL.
      *
-     * MPLABEL-1 · resolved through the provenance-returning form, because the
-     * notes downstream need to know WHICH marathon pace this is. The stated
-     * goal is passed, never the achievable target — the refusal below is the
-     * guard that keeps MP work inside the marathon zone and it can only fire
-     * on the real goal.
+     * `resolveMarathonPace` used to take the runner's stated goal pace and
+     * return it whenever it happened to land inside the marathon zone —
+     * `spec-builder.ts:1160-1188` states the problem in its own words: that is
+     * "the goal reaching a TRAINING pace, which Constitution §G forbids
+     * outright", and when the goal was refused the fallback was a FLAT `T+18`
+     * population offset, "one formula for every runner".
+     *
+     * `anchors.marathonSecPerMi` is neither. It is threshold capacity carried
+     * to 26.2 through THIS RUNNER'S OWN fitted Riegel exponent
+     * (`resolveDurability`), and it is the single largest divergence the
+     * 2026-09-01 shadow compare measured — on the owner's block it moves every
+     * marathon-pace day from 7:22/mi to 7:43/mi. The canonical number is
+     * SLOWER, and it is the honest one.
+     *
+     * MPLABEL-1's flag survives and is now always false at authoring: no
+     * marathon-pace session is ever priced at the goal, so no note may name it
+     * as the goal's pace.
      */
     const weekMp = weekT != null && weekT > 0
-      ? resolveMarathonPace({
-          tPaceSec: weekT,
-          easyAnchorTSec: currentT,
-          goalPaceSPerMi: input.goalPaceSec
-            ?? (input.belowTableAnchor
-              ? Math.round(input.belowTableAnchor.anchor.paceSPerMi)
-              : null),
-        })
+      ? { paceSPerMi: anchors.marathonSecPerMi, source: 'current_fitness' as const }
       : null;
     const days = layoutWeek({
       phase: phaseLabel,
@@ -9264,7 +9279,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // rather than discarded. `layoutWeek` writes the notes that name this
       // pace; without the flag it named the goal's pace over a session that had
       // refused it. Null when there is no MP work in play at all.
-      weekMpAtGoalPace: weekMp ? weekMp.source === 'goal' : null,
+      weekMpAtGoalPace: weekMp ? false : null,
       // VOCAB-CATALOGUE-1 · the plan's running record of which of
       // Research/04's named workouts it has already authored. Stepped in
       // ascending week order, the same contract as `trajectory`, so the
@@ -9389,7 +9404,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     // be a volume the runner reached REPEATEDLY, which is the same reading
     // `resolveRampBase` already takes of the same series.
     ...(rampEvidence?.sustainedMi ? { rampAnchorMi: rampEvidence.sustainedMi } : {}),
-    tPaceSec: input.tPaceSec ?? null,
+    // AUTHORING-CANONICAL-1 · the plan-wide threshold is now the CANONICAL
+    // anchor, not `input.tPaceSec` (which was `min(goalT, currentT)` — the
+    // goal's own threshold pace whenever the goal was ambitious). One number,
+    // resolved once, carried to every reader (Rule 16).
+    tPaceSec: currentT,
+    paceAnchors: anchors,
     authoredState: {
       total_weeks: totalWeeks,
       race_distance_mi: input.raceDistanceMi,
@@ -9517,7 +9537,11 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         season_anchor_provisional: anchorIsUnverified,
         goal_vdot: goalVdot,
         build_weeks: composeBuildWeeks,
-        measured_progress_fraction: input.measuredProgressFraction ?? null,
+        // AUTHORING-CANONICAL-1 · written as an explicit null rather than
+        // dropped, so a reader of an OLD stamp can still tell "the gate ran"
+        // from "there is no gate any more" — the same Rule 11 distinction
+        // `recompute-paces.ts` kept when it deleted its half on 2026-08-31.
+        measured_progress_fraction: null,
       },
       citations: blocks.phases.map((p) => p.citation),
     },
@@ -9612,6 +9636,10 @@ export interface ComposeNonRaceInput {
    *  anchor the NEXT build measures progress against, so a typed PR reaching
    *  that column unmarked is the same laundering on a quieter path. */
   bestRecentVdotSelfReported?: boolean;
+  /** AUTHORING-CANONICAL-1 · the six canonical prices, as on
+   *  `ComposePlanInput`. Absent → `syntheticPaceAnchors` off this input's own
+   *  evidence, which is what every pure caller gets. */
+  paceAnchors?: PrescribedPaceAnchors | null;
 }
 
 /* ── COLD-START-1 (2026-08-19) · the week a runner with NO history gets ──────
@@ -9763,6 +9791,29 @@ export const HOLD_CYCLE_GROWTH = 1.05;
  * runner's recent peak; quality drops to 1/week; intervals removed.
  */
 export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanResult {
+  /* AUTHORING-CANONICAL-1 (2026-09-01) · THE SIX CANONICAL PRICES.
+   *
+   * This composer used to price its threshold day off `input.tPaceSec` — which
+   * `loadGeneratorInputs` computed as `min(tPaceFromGoal(goal), currentT)`, so
+   * for an ambitious goal it WAS the goal's threshold pace — and its easy band
+   * off `tPaceFromVdot(conservativeVdotFromMileage(0))`, the flat VDOT-30
+   * floor, whenever that was null. Both are gone; see `composePlan`'s own
+   * anchor block for the full argument.
+   */
+  const maintAnchorsRead = input.paceAnchors != null
+    ? ({ ok: true, anchors: input.paceAnchors } as const)
+    : syntheticPaceAnchors({
+        bestRecentVdot: input.bestRecentVdot ?? null,
+        recentWeeklyMi: input.recentWeeklyMi,
+      });
+  if (!maintAnchorsRead.ok) {
+    throw new Error(
+      '[composeMaintenancePlan] REFUSED · pace anchors ' + maintAnchorsRead.reason + ' · ' + maintAnchorsRead.detail
+      + ' · no plan authored (Rule 11 · no fallback to the VDOT cascade)',
+    );
+  }
+  const maintAnchors = maintAnchorsRead.anchors;
+
   const tierShape = MAINTENANCE_BY_TIER[input.tier];
   // 2026-06-10 · honor the runner's stated frequency over the tier
   // default so a far-out-race runner who picked 3 days/wk doesn't get
@@ -9887,12 +9938,13 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
    *  faster one. Falls back to the bottom of the Daniels table when the runner
    *  has no goal to derive a threshold pace from, which is the usual day-one
    *  case. */
-  const coldStartEasySecPerMi = (() => {
-    const t = (input.tPaceSec != null && input.tPaceSec > 0)
-      ? input.tPaceSec
-      : tPaceFromVdot(conservativeVdotFromMileage(0));
-    return (t != null && t > 0) ? t + 120 : null;
-  })();
+  // AUTHORING-CANONICAL-1 · the easy ceiling is `resolveEasyCeiling`'s answer,
+  // not a fixed +120 s/mi off a threshold scalar and not
+  // `conservativeVdotFromMileage(0)` (the flat VDOT-30 floor, which this path
+  // reached for on every cold start). `EASY_BAND_SLOW_OFFSET_SEC` off the
+  // canonical CEILING is the slow edge of the runner's own band, which is what
+  // a minutes→miles conversion must never run faster than.
+  const coldStartEasySecPerMi = maintAnchors.easyCeilingSecPerMi + EASY_BAND_SLOW_OFFSET_SEC;
 
   /**
    * COLD-START-1 · `Research/22` §8's opening weeks, in the shape the plan
@@ -10180,7 +10232,9 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
         : (wi === 3 ? Math.round(targetWeekly * 0.80) : targetWeekly),
       days: maintenanceWeek(wi),
       isRaceWeek: false,
-      tPaceSec: input.tPaceSec,
+      // AUTHORING-CANONICAL-1 · the canonical threshold, not the goal-blended
+      // plan-wide scalar this used to carry.
+      tPaceSec: maintAnchors.thresholdSecPerMi,
     });
   }
 
@@ -10218,7 +10272,8 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     blocks,
     totalWeeks: TOTAL_WEEKS,
     vols: weeks.map((w) => w.weeklyMi),
-    tPaceSec: input.tPaceSec ?? null,
+    tPaceSec: maintAnchors.thresholdSecPerMi,
+    paceAnchors: maintAnchors,
     authoredState: {
       mode: 'maintenance',
       total_weeks: TOTAL_WEEKS,
@@ -10257,6 +10312,29 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
  * via the graduate cron when the recovery window closes.
  */
 export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResult {
+  /* AUTHORING-CANONICAL-1 (2026-09-01) · THE SIX CANONICAL PRICES.
+   *
+   * This composer used to price its threshold day off `input.tPaceSec` — which
+   * `loadGeneratorInputs` computed as `min(tPaceFromGoal(goal), currentT)`, so
+   * for an ambitious goal it WAS the goal's threshold pace — and its easy band
+   * off `tPaceFromVdot(conservativeVdotFromMileage(0))`, the flat VDOT-30
+   * floor, whenever that was null. Both are gone; see `composePlan`'s own
+   * anchor block for the full argument.
+   */
+  const recAnchorsRead = input.paceAnchors != null
+    ? ({ ok: true, anchors: input.paceAnchors } as const)
+    : syntheticPaceAnchors({
+        bestRecentVdot: input.bestRecentVdot ?? null,
+        recentWeeklyMi: input.recentWeeklyMi,
+      });
+  if (!recAnchorsRead.ok) {
+    throw new Error(
+      '[composeRecoveryPlan] REFUSED · pace anchors ' + recAnchorsRead.reason + ' · ' + recAnchorsRead.detail
+      + ' · no plan authored (Rule 11 · no fallback to the VDOT cascade)',
+    );
+  }
+  const recAnchors = recAnchorsRead.anchors;
+
   if (!input.lastRaceFinished) {
     // Shouldn't happen · recovery requires a finished race. Bail to a
     // single-week placeholder.
@@ -10332,12 +10410,10 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
   // pace somehow reaches recovery mode (it always follows a finished race, so
   // this is defensive) — falls back to a conservative VDOT read off recent
   // mileage, same fallback `composeMaintenancePlan`'s cold-start path uses.
-  const recoveryEasySecPerMi = (() => {
-    const t = (input.tPaceSec != null && input.tPaceSec > 0)
-      ? input.tPaceSec
-      : tPaceFromVdot(conservativeVdotFromMileage(input.recentWeeklyMi || 0));
-    return (t != null && t > 0) ? t + EASY_BAND_SLOW_OFFSET_SEC : null;
-  })();
+  // AUTHORING-CANONICAL-1 · see `composeMaintenancePlan`'s twin. The canonical
+  // easy ceiling replaces both the goal-blended `input.tPaceSec` and the
+  // `conservativeVdotFromMileage` fallback beneath it.
+  const recoveryEasySecPerMi = recAnchors.easyCeilingSecPerMi + EASY_BAND_SLOW_OFFSET_SEC;
   // What this block was sized against and the ceiling `finalizeComposedPlan`
   // enforces on it. Published rather than passed as an argument, because
   // `finalizeComposedPlan` takes only the composed result — and because a
@@ -10531,7 +10607,11 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       weeklyMi: wkWeekly,
       days: slots.filter(Boolean) as DayPlan[],
       isRaceWeek: false,
-      tPaceSec: null,
+      // AUTHORING-CANONICAL-1 · was a literal null, which made persistPlan fall
+      // back to the plan-wide scalar for every recovery row. The canonical
+      // threshold is what the block is priced at; recovery rows carry no
+      // quality anyway, and the easy bands read the anchors either way.
+      tPaceSec: recAnchors.thresholdSecPerMi,
       blockWeekIdx,
     });
   }
@@ -10541,7 +10621,8 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     blocks,
     totalWeeks: weeks.length,
     vols: weeks.map((w) => w.weeklyMi),
-    tPaceSec: input.tPaceSec ?? null,
+    tPaceSec: recAnchors.thresholdSecPerMi,
+    paceAnchors: recAnchors,
     authoredState: {
       mode: 'recovery',
       total_weeks: weeks.length,
@@ -10599,14 +10680,13 @@ async function clearActivePlansFor(client: PoolClient, userId: string, reason = 
  */
 export function specForComposedDay(
   d: DayPlan,
-  /** The week's blended T-pace. Null → no spec (the caller writes nulls). */
+  /** The block's threshold anchor. Null → no spec (the caller writes nulls). */
   weekT: number | null,
   args: {
     lthr: number | null;
     maxHr: number | null;
     goalPaceSec: number | null;
     easyAnchorTSec: number | null;
-    goalIPaceEligible: boolean;
     belowTableAnchor?: BelowTableAnchor | null;
     /** RACEPACE-1 · the achievable race target for the PLAN's own race day.
      *  Null → the race branch reads `goalPaceSec`, byte-identical to before.
@@ -10614,6 +10694,18 @@ export function specForComposedDay(
      *  carries its OWN goal (`raceGoalPaceSec`) at its OWN distance, and this
      *  ceiling was computed for the goal race at the goal distance. */
     prescribedRacePaceSec?: number | null;
+    /**
+     * AUTHORING-CANONICAL-1 · THE SIX CANONICAL PRICES, threaded to
+     * `buildWorkoutSpec` so every derived pace below is a READ rather than a
+     * fixed offset off one threshold scalar. Exactly the wiring
+     * `recompute-paces.ts` has used since PRESCRIPTION-WIRE-1.
+     *
+     * NULL is not a fallback to the cascade — it is the shape a caller that
+     * genuinely has no anchors (an adapt-time restore of a single row) passes,
+     * and `buildWorkoutSpec` then behaves as it did before that argument
+     * existed. Every AUTHORING caller supplies them.
+     */
+    anchors?: PrescribedPaceAnchors | null;
   },
 ): { paceTargetSPerMi: number | null; spec: ReturnType<typeof buildWorkoutSpec>['spec'] } {
   if (weekT == null) return { paceTargetSPerMi: null, spec: null };
@@ -10636,11 +10728,17 @@ export function specForComposedDay(
   // came from a below-table anchor (no measured VDOT), derive I-pace directly off the anchor via
   // Riegel (iPaceFromAnchorPace) instead — never re-enters VDOT space. Byte-identical whenever
   // args.belowTableAnchor is null (every runner with a measured VDOT).
-  const iPaceSec = (args.goalIPaceEligible || d.type === 'race_week_tuneup')
-    ? (args.belowTableAnchor
+  // AUTHORING-CANONICAL-1 · the I-pace eligibility gate is DELETED, not moved
+  // — a runner's entered race distance may not decide what pace their
+  // intervals are run at (Constitution §G). `anchors.intervalSecPerMi` is
+  // `resolveHighIntensityCapacity`'s answer, unconditionally, for every
+  // runner. The legacy VDOT round trip survives only for a caller with no
+  // anchors at all.
+  const iPaceSec = args.anchors != null
+    ? args.anchors.intervalSecPerMi
+    : (args.belowTableAnchor
         ? iPaceFromAnchorPace(args.belowTableAnchor.anchor)
-        : iPaceFromVdot(vdotFromTpace(weekT)))
-    : null;
+        : iPaceFromVdot(vdotFromTpace(weekT)));
   const built = buildWorkoutSpec(
     d.type, d.distanceMi, weekT, args.lthr, d.subLabel, args.maxHr ?? null,
     // 2026-06-09 · goal pace · only the race branch reads it.
@@ -10658,6 +10756,10 @@ export function specForComposedDay(
     // computed for this goal at this distance. An embedded tune-up
     // (`raceGoalPaceSec` set) is a different race and keeps its own target.
     d.raceGoalPaceSec !== undefined ? null : (args.prescribedRacePaceSec ?? null),
+    // AUTHORING-CANONICAL-1 · the six canonical anchors. This is the argument
+    // that makes every derived pace inside `buildWorkoutSpec` a READ of the
+    // service that owns it rather than an offset off one scalar.
+    args.anchors ?? null,
   );
   return { paceTargetSPerMi: built.paceTargetSPerMi, spec: built.spec };
 }
@@ -10701,10 +10803,11 @@ export function persistedDayShape(
     maxHr: number | null;
     goalPaceSec: number | null;
     easyAnchorTSec: number | null;
-    goalIPaceEligible: boolean;
     belowTableAnchor?: BelowTableAnchor | null;
     /** RACEPACE-1 · see `specForComposedDay`. */
     prescribedRacePaceSec?: number | null;
+    /** AUTHORING-CANONICAL-1 · see `specForComposedDay`. */
+    anchors?: PrescribedPaceAnchors | null;
   },
   /** The prior plan's prescription for this date, when the day is sealed. */
   sealed?: SealedPrescription | null,
@@ -10875,12 +10978,18 @@ async function persistPlan(client: PoolClient, args: {
    *  goal makes "easy" ramp faster every week (cold-start: easy can pass current MP). null → falls
    *  back to weekT (byte-identical; at-goal runners have easyAnchorT == weekT). */
   easyAnchorTSec: number | null;
-  /** 2026-06-15 · R3 · use true Daniels I-pace (≈ current 5K race pace, from
-   *  iPaceFromVdot) for intervals on a 5K/10K race goal — where VO2 at race
-   *  pace IS the point — instead of spec-builder's tPaceSec-18 cruise default
-   *  (which lands near threshold for a low-VDOT runner). Half/marathon keep the
-   *  conservative cruise default. Per-week I-pace ramps with the week's T. */
-  goalIPaceEligible: boolean;
+  /**
+   * AUTHORING-CANONICAL-1 (2026-09-01) · THE SIX CANONICAL PRICES, carried
+   * from `composePlan` to the row.
+   *
+   * This REPLACED `goalIPaceEligible`, which gated true Daniels I-pace on the
+   * runner's entered race distance — a goal deciding a training pace, which
+   * Constitution §G forbids and which `recompute-paces.ts` deleted on the flex
+   * path on 2026-08-31. High-intensity capacity is a property of the runner:
+   * a marathoner's 800s are run at their own 3-5K effort, not at a slower pace
+   * because of what is on their calendar.
+   */
+  anchors: PrescribedPaceAnchors | null;
   /** 2026-06-03 · Rule 15 · Seal completed days against retroactive
    *  mutation. Snapshotted BEFORE clearActivePlansFor archives the
    *  prior plan; applied during INSERT so the new plan's row for a
@@ -11775,7 +11884,15 @@ export function finalizeComposedPlan(
   // seconds through this number, so reconciling at any other pace answers the
   // question for a different runner. The probe constant is the fallback only
   // for a composer that recorded none.
-  const reconcileTPaceSec = composed.tPaceSec ?? SPEC_PROBE_T_PACE_SEC;
+  // AUTHORING-CANONICAL-1 · AND AT THE SAME ANCHORS THE PERSIST PATH USES.
+  // `specForComposedDay` builds every persisted spec WITH the canonical
+  // anchors; reconciling the label against a spec built WITHOUT them answers
+  // the question for a differently-priced runner, and a rep-count clamp is
+  // pace-dependent — which is exactly the drift this pass exists to close
+  // (Rule 16: the label and the spec must come off one pricing).
+  const reconcileTPaceSec = composed.paceAnchors?.thresholdSecPerMi
+    ?? composed.tPaceSec ?? SPEC_PROBE_T_PACE_SEC;
+  const reconcileAnchors = composed.paceAnchors ?? null;
   for (const week of composed.weeks) {
     for (const day of week.days) {
       const label = day.subLabel;
@@ -11794,6 +11911,13 @@ export function finalizeComposedPlan(
       try {
         spec = buildWorkoutSpec(
           day.type, day.distanceMi, reconcileTPaceSec, null, label,
+          null,                                       // maxHr
+          null,                                       // goalPaceSPerMi
+          reconcileAnchors?.intervalSecPerMi ?? null, // iPaceSec
+          reconcileAnchors?.easyCeilingSecPerMi ?? null, // easyAnchorTSec
+          false,                                      // effortCued
+          null,                                       // prescribedRacePaceSPerMi
+          reconcileAnchors,
         ).spec as Record<string, unknown> | null;
       } catch {
         continue;
@@ -12950,80 +13074,37 @@ async function composeForUserInternal(
     inputs.compose.rampBaseEvidence = ramp;
   }
 
-  // 2026-08-17 · coaching-loop reconciliation · measured-progress gate for
-  // MID-BLOCK REBUILDS of the same race. The prior active plan carries the
-  // season's anchor VDOT (authored_state.pace_blend, falling back to the
-  // Rule 10 derived_from envelope); measured progress = share of the
-  // (goalVdot − seasonAnchor) gap the runner has actually banked. The
-  // weekly currentT→goalT blend is then capped at measured + 0.15 grace so
-  // a rebuild can't re-schedule goal-anchored paces fitness hasn't earned.
-  // Fresh authorings (no prior plan for this race) stay calendar-blended —
-  // a forecast, kept honest by recomputePacesForPlan + the adapter's
-  // pr_bank/fitness_regression detectors as evidence arrives.
-  // Byte-safe: when measured VDOT tracks the calendar the gate is a no-op
-  // (min(calendar, measured+grace) = calendar), and when no prior plan
-  // exists the input stays undefined (identical behavior to before).
-  // Cite: Research/01-pace-zones-vdot.md §Recalibrate-Paces (:304-321).
-  if (mode === 'race-prep' && raceSlug && inputs.compose.goalSec != null) {
-    try {
-      const prior = (await pool.query<{ authored_state: Record<string, unknown> | null }>(
-        `SELECT authored_state FROM training_plans
-          WHERE user_uuid = $1 AND archived_iso IS NULL AND race_id = $2
-          ORDER BY authored_iso DESC LIMIT 1`,
-        [userId, raceSlug],
-      ).catch(() => ({ rows: [] }))).rows[0];
-      const priorSt = (prior?.authored_state ?? null) as Record<string, any> | null;
-      // EVIDENCE-2 · third rung: the runner's OWN measured VDOT. A prior plan
-      // that recorded no anchor (every recovery block before this commit) used
-      // to leave seasonAnchor null, which switched the gate off entirely.
-      // Anchoring on today's measurement makes measured progress 0 — honest:
-      // nothing has been demonstrated since — rather than absent.
-      // COLD-3 (2026-08-17) · READER 3 · refuse to INHERIT a provisional anchor.
-      // The prior plan's `season_anchor_vdot` may be a mileage-derived estimate.
-      // Carrying it forward launders a self-report into the season's fitness
-      // baseline permanently: every subsequent rebuild inherits it, and
-      // measuredProgressFraction then grades real running against an invented
-      // starting point.
-      //
-      // SELFREPORT-1 (2026-08-21) · the sentence that used to sit here — "rung 2
-      // is measured by construction, it is null when nothing was measured" —
-      // stopped being true when PARITY-1 began seeding `bestRecentVdot` from
-      // `profile.race_history`. `derived_from.bestRecentVdot` records whatever
-      // the authoring was handed, so on a cold-start plan it holds the PR the
-      // runner typed, and rung 2 walked straight past rung 1's guard with it.
-      // Rung 2 now inherits the PLAN's provenance, and rung 3 inherits this
-      // authoring's own, so whichever rung wins, the source recorded is the
-      // source that won.
-      const priorAnchorProvisional = paceBlendAnchorIsProvisional(priorSt?.pace_blend);
-      const priorAnchorSource = priorSt?.pace_blend?.season_anchor_source;
-      let seasonAnchorInheritedSource: AnchorSource = 'measured_vdot';
-      let seasonAnchor: number | null = null;
-      if (!priorAnchorProvisional && priorSt?.pace_blend?.season_anchor_vdot != null) {
-        seasonAnchor = Number(priorSt.pace_blend.season_anchor_vdot);
-      } else if (priorSt?.derived_from?.bestRecentVdot != null) {
-        seasonAnchor = Number(priorSt.derived_from.bestRecentVdot);
-        // The prior plan's own stamp is the only record of where its
-        // `bestRecentVdot` came from. A prior plan that predates the stamp
-        // carries none, and reads measured — unchanged from before.
-        if (priorAnchorProvisional) seasonAnchorInheritedSource = (priorAnchorSource as AnchorSource | undefined) ?? 'provisional_mileage';
-      } else if (inputs.compose.bestRecentVdot != null) {
-        seasonAnchor = Number(inputs.compose.bestRecentVdot);
-        if (inputs.compose.bestRecentVdotSelfReported) seasonAnchorInheritedSource = 'self_reported_race';
-      }
-      if (seasonAnchor != null) {
-        const goalVdotNow = vdotFromRace(inputs.compose.goalSec, inputs.compose.raceDistanceMi);
-        inputs.compose.seasonAnchorVdot = seasonAnchor;
-        // SELFREPORT-1 · the provenance of the rung that actually won. Rung 1
-        // is measured by the guard above; rungs 2 and 3 carry their own.
-        inputs.compose.seasonAnchorSource = seasonAnchorInheritedSource;
-        inputs.compose.measuredProgressFraction = measuredProgressFraction(
-          seasonAnchor,
-          inputs.compose.bestRecentVdot ?? null,
-          goalVdotNow,
-        );
-      }
-    } catch { /* gate is additive — a read failure falls back to calendar blend */ }
-  }
+  /* AUTHORING-CANONICAL-1 (2026-09-01) · THE MEASURED-PROGRESS GATE IS DELETED,
+   * NOT MOVED, BECAUSE THE THING IT GATED IS GONE.
+   *
+   * It existed to cap the per-week `currentT → goalT` blend on a mid-block
+   * rebuild: measured progress = the share of the (goalVdot − seasonAnchor)
+   * gap the runner had actually banked, plus a 15% grace. That was a careful,
+   * well-argued mechanism for keeping a goal-driven pace ramp honest — and the
+   * pace ramp itself is what Constitution §G forbids. The 2026-09-01
+   * independent audit measured it firing on the owner's own live plan: at
+   * `measured_progress_fraction = 0`, on ZERO demonstrated progress, the grace
+   * alone moved his prescribed threshold pace 3 s/mi toward a 3:00 marathon
+   * goal, with a ceiling of 20 s/mi on that block and more on a longer one.
+   * It could also only ever move paces FASTER — `BRK-1` kept current fitness
+   * whenever the goal was slower — so the goal was a one-way ratchet on
+   * training intensity.
+   *
+   * `recomputePacesForPlan` deleted its half of this on 2026-08-31 ("this path
+   * no longer reads a goal at all"). Authoring was the remaining half, which
+   * is precisely the §8 state where two paths disagree about whether the goal
+   * may touch a training pace depending on which ran last. Both are now silent.
+   *
+   * WHAT SURVIVES, AND WHERE. The season anchor itself is still recorded —
+   * `pace_blend.season_anchor_vdot` / `season_anchor_source` — because a
+   * BASELINE to measure progress against is a real and useful thing that the
+   * adaptation engine and the projection surfaces read. It is now written from
+   * the canonical threshold capacity's own derived VDOT and its own source
+   * mode (see `composePlan`), which is a stronger provenance than the
+   * three-rung inheritance this block performed: rung 2 could and did launder
+   * a typed PR into a season baseline (`SELFREPORT-1`), and the canonical
+   * resolver cannot, because `user_prior` is a distinct mode by construction.
+   */
 
   // 2. Compose · branch by mode.
   let composed: ComposePlanResult;
@@ -13291,14 +13372,19 @@ async function persistComposedPlan(
         startISO: w.startISO, phase: w.phase, days: w.days, isRaceWeek: w.isRaceWeek, tPaceSec: w.tPaceSec,
       })),
       tPaceSec: inputs.compose.tPaceSec,
-      // PACE-E-1 · current-fitness anchor for easy/long/recovery (vs the goal-blended weekT).
-      // 2026-07-07 · AUDIT P1-56 · same resolveCurrentTPace cascade as composePlan's
-      // internal currentT (above) — must match, or the persisted anchor and the
-      // in-memory composition anchor diverge for a below-table runner.
-      easyAnchorTSec: resolveCurrentTPace(
-        inputs.compose.bestRecentVdot ?? null, inputs.compose.belowTableAnchor ?? null,
-        inputs.compose.recentWeeklyMi, conservativeVdotFromMileage,
-      ).tPaceSec,
+      // AUTHORING-CANONICAL-1 · THE SECOND OF THREE COPIES OF ONE COMPUTATION,
+      // DELETED. This was `resolveCurrentTPace(...)` again, with a comment
+      // saying it "must match" `composePlan`'s internal copy — a Rule 16
+      // violation that named itself. The composer now RETURNS the anchors it
+      // priced the block at, so there is nothing left to keep in sync.
+      //
+      // The value is the canonical EASY CEILING, not a threshold pace: every
+      // easy, long and recovery band in `buildWorkoutSpec` opens on it, and
+      // `resolveEasyCeiling` is the service that owns that question. The old
+      // argument handed it a THRESHOLD pace and let the offsets manufacture an
+      // easy band — the "one formula for every runner" shape the whole
+      // prescription layer exists to replace.
+      easyAnchorTSec: composed.paceAnchors?.easyCeilingSecPerMi ?? null,
       lthr: inputs.compose.lthr,
       // 2026-06-03 · Rule 16 · plumb maxHr through to spec-builder so
       // easy/long HR caps land at max(89% LTHR, 78% maxHR) instead of
@@ -13341,7 +13427,10 @@ async function persistComposedPlan(
       // with iPace null it shipped the cruise T−18 default: a +6..+28 s/mi too-slow "VO2max" rep that
       // contradicts its own label (Research/22:187,194,206,213 · HM I-reps ≈ 5K-10K race pace).
       // Marathon/ultra keep the cruise default (their label is "I-T transition", not "@ I pace").
-      goalIPaceEligible: ['5k', '10k', 'hm'].includes(distanceCategoryOf(inputs.compose.raceDistanceMi)),
+      // AUTHORING-CANONICAL-1 · the six canonical prices this compose was
+      // authored at, carried to the row so the persisted spec and the in-memory
+      // composition cannot be priced off different fitness (Rule 16).
+      anchors: composed.paceAnchors ?? null,
       sealedSnapshot,
       // 2026-07-07 · AUDIT P1-56 · threaded so persistPlan's I-pace derivation
       // for race_week_tuneup/goal-I-eligible days uses iPaceFromAnchorPace
@@ -13376,6 +13465,47 @@ async function persistComposedPlan(
             openBlockAnchorIsMeasured(openTarget.after?.distanceMi ?? null) ? 'last_raced' : 'convention',
         } : {}),
         generated_at: new Date().toISOString(),
+        /**
+         * AUTHORING-CANONICAL-1 (2026-09-01) · RULE 10'S STAMP · WHAT THIS
+         * BLOCK WAS ACTUALLY PRICED AT, AND BY WHICH BRAIN.
+         *
+         * `lib/adaptation/authoring-convergence.ts` was built with an
+         * `AUTHORED_CANONICALLY` state that was, in its own header's words,
+         * "structurally unreachable today". This is the mark that makes it
+         * reachable: a plan carrying `pace_authoring.source === 'canonical'`
+         * has been through `resolvePrescribedPaceAnchors` at composition time
+         * and needs no reanchor to converge, because there was never a second
+         * brain to converge with.
+         *
+         * Rule 10 proper: the six prices are stamped WITH their basis (source
+         * mode, confidence, the derived VDOT, the fitted endurance exponent),
+         * so a later reader can tell a stale price from a current one by
+         * looking rather than by inferring — the exact failure `hrZonePcts`
+         * and `hr_cap_bpm` shipped.
+         */
+        pace_authoring: composed.paceAnchors != null
+          ? {
+              source: 'canonical' as const,
+              // The key `authoring-convergence.ts` already checks for. Named
+              // rather than renamed: that guard was written first and its
+              // predicate is the contract.
+              authored_directly: true,
+              at: new Date().toISOString(),
+              anchors: {
+                threshold_s_per_mi: composed.paceAnchors.thresholdSecPerMi,
+                interval_s_per_mi: composed.paceAnchors.intervalSecPerMi,
+                repetition_s_per_mi: composed.paceAnchors.repetitionSecPerMi,
+                easy_ceiling_s_per_mi: composed.paceAnchors.easyCeilingSecPerMi,
+                shakeout_ceiling_s_per_mi: composed.paceAnchors.shakeoutCeilingSecPerMi,
+                marathon_s_per_mi: composed.paceAnchors.marathonSecPerMi,
+                basis: composed.paceAnchors.basis,
+              },
+              model: 'prescription_resolver',
+            }
+          // Rule 11 · an explicit null, never an omitted key. "This composer
+          // returned no anchors" and "this plan predates the stamp" are two
+          // different facts and a reader must be able to tell them apart.
+          : null,
         // When runway is < 14 weeks (e.g. AFC → CIM compressed block), flag it
         // so the coach briefing layer can surface the context. Base phase
         // condenses; race-specific and taper are preserved intact.
@@ -14140,25 +14270,45 @@ async function loadGeneratorInputs(
   //            → hybrid 12-mo observed → users.max_hr → null). Reading
   //            profile.max_hr directly would miss the observed peak ·
   //            per task #141 the profile column is not source of truth.
-  // 2026-06-06 · Audit C C5 · plan-wide T-pace. 2026-06-23 · VAR-05 · when no goal is set
-  // (by-feel) OR an ultra makes tPaceFromGoal return null (PACE-5), anchor to the runner's
-  // ACTUAL fitness (currentT from bestRecentVdot, else the conservative mileage estimate),
-  // never the flat 480s/mi (8:00/mi) literal — this value feeds authoredState.t_pace_s_per_mi
-  // + the per-week blend fallback. conservativeVdotFromMileage is always ≥30 so 480 is now a
-  // dead last-ditch. Cite: Research/01 §Daniels-T (T is a function of VDOT, never a constant).
-  // 2026-07-07 · AUDIT P1-56 · resolveCurrentTPace tier-2 (belowTableAnchor) replaces
-  // conservativeVdotFromMileage when the runner's best race/run implied sub-30 VDOT —
-  // see the composePlan-internal currentT fix above for the full rationale. Byte-safe
-  // when belowTableAnchor is null (the vast majority of runners): falls straight to
-  // the same tPaceFromVdot(bestRecentVdot ?? conservativeVdotFromMileage(recentMi)).
-  const currentTLoader = resolveCurrentTPace(
-    bestRecentVdot ?? null, belowTableAnchor, recentMi, conservativeVdotFromMileage,
-  ).tPaceSec;
-  // NEW-A (2026-06-23) · floor the plan-wide tPaceSec at currentT so the MAINTENANCE/RECOVERY composers
-  // (which read input.tPaceSec, not tPaceForWeek) can't inherit a SLOW soft-goal pace → threshold quality
-  // ~70s/mi slower than easy. Race-prep is unaffected (its goalT derives from input.goalSec, not tPaceSec).
-  const goalTpLoader = tPaceFromGoal(goalSec, raceDistanceMi);
-  const tPaceSec = (goalTpLoader != null && currentTLoader != null ? Math.min(goalTpLoader, currentTLoader) : goalTpLoader) ?? currentTLoader ?? 480;
+  // AUTHORING-CANONICAL-1 (2026-09-01) · THE THIRD COPY OF `resolveCurrentTPace`
+  // AND THE PLAN-WIDE GOAL PACE, BOTH DELETED.
+  //
+  // What used to be here:
+  //
+  //     const currentTLoader = resolveCurrentTPace(bestRecentVdot, belowTableAnchor,
+  //                                                recentMi, conservativeVdotFromMileage).tPaceSec;
+  //     const goalTpLoader   = tPaceFromGoal(goalSec, raceDistanceMi);
+  //     const tPaceSec       = min(goalTpLoader, currentTLoader) ?? currentTLoader ?? 480;
+  //
+  // `min` of two PACES picks the FASTER one, so for any ambitious goal the
+  // plan-wide threshold pace WAS THE GOAL'S — and the maintenance and recovery
+  // composers read exactly this field, as did `persistPlan` for every week that
+  // carried no `tPaceSec` of its own. A stated goal, pricing training. The
+  // 2026-09-01 independent audit named it the blunter of the two goal→pace
+  // leaks (appendix A §2, `generate.ts:14160`).
+  //
+  // In its place: ONE resolution, from the services that own each question, on
+  // the same seam `recompute-paces.ts` and `reanchor-plan.ts` already use — so
+  // a block is authored at exactly the prices the nightly flex would rewrite it
+  // to, and Constitution §8's "sometimes old, sometimes new" state is closed.
+  //
+  // RULE 11 · a refusal REFUSES. `composePaceAnchors` refuses only on an
+  // incoherent SET, never on thin evidence, so this cannot fire for a
+  // cold-start runner — every capacity resolver's last rung is a prior.
+  // Reaching for the VDOT cascade here would be the exact second truth this
+  // migration removes.
+  const anchorRead = await resolvePrescribedPaceAnchors(userId, todayISO);
+  if (!anchorRead.ok) {
+    console.error(
+      '[loadGeneratorInputs] REFUSED - pace anchors ' + anchorRead.reason + ' - ' + anchorRead.detail,
+    );
+    return {
+      ok: false,
+      reason: 'could not price your training paces right now - try again in a moment',
+    };
+  }
+  const paceAnchors = anchorRead.anchors;
+  const tPaceSec = paceAnchors.thresholdSecPerMi;
   const lthrRow = (await pool.query<{ lthr: number | null }>(
     `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
@@ -14228,6 +14378,9 @@ async function loadGeneratorInputs(
       rxQuality,
       rxRaceSpecific,
       tPaceSec,
+      // AUTHORING-CANONICAL-1 · the six canonical prices, resolved ONCE here and
+      // carried into `composePlan`. Nothing downstream re-derives a pace.
+      paceAnchors,
       lthr,
       // 2026-06-03 · Rule 16 · plumbed to persistPlan + buildWorkoutSpec.
       maxHr,
