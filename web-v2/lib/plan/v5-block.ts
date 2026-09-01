@@ -621,10 +621,13 @@ export async function loadV5Block(userId: string) {
     // identical to the one Today composes its "why" from, because both call
     // the same resolver and neither writes its own version (Rule 16).
     //
-    // Never fatal, for the same reason as on Today: a block screen that
-    // refuses to draw because an explanation failed is worse than one drawn
-    // without it.
-    resolveCoachingThesis(userId, state.today).catch(() => null),
+    // NO `.catch`, for the reason /api/v5/today's own thesis block spells out:
+    // a thesis that FAILED and a block with no thesis are different facts
+    // (Rule 11), and this resolver reads the same database `loadTrainingState`
+    // above already read uncaught — so a throw here means the request was
+    // failing regardless, and /api/v5/block's handler turns that into the
+    // honest data-outage screen.
+    resolveCoachingThesis(userId, state.today),
   ]);
 
   return {

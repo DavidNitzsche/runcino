@@ -743,14 +743,22 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // a coarse `is_long` proxy the header already flags. So the three families
   // the thesis ranks and prescribes against, and nothing else.
   //
-  // Never fatal. A thesis is an explanation, and a screen that refuses to draw
-  // because the explanation failed is worse than one that draws the day's own
-  // note (Rule 11 says the failure is distinguishable, not that it is fatal —
-  // and `why` falls back to exactly what it composed before this change).
+  // RULE THREE, AND NO `.catch`. The first draft of this block wrapped the
+  // resolve in `.catch(() => null)` on the argument that an explanation should
+  // never stop a screen drawing. `_coercion_scan` named it, correctly: a
+  // thesis that FAILED and a day that has no thesis are different facts, and
+  // collapsing them is Rule 11 whatever the consumer does with the result.
+  //
+  // The catch was also unnecessary. This resolver reads the same database this
+  // route already reads uncaught a dozen times over, so a throw here means the
+  // request was going to fail anyway — and the handler's own try/catch turns
+  // that into the honest data-outage screen rather than a Today with a quietly
+  // missing strategy. `null` below now means exactly one thing: the day is
+  // unresolved, so there is no session for a thesis to be about.
   const THESIS_QUALITY_TYPES = new Set(['threshold', 'tempo', 'intervals']);
   const thesis = todayPlanUnresolved
     ? null
-    : await resolveCoachingThesis(userId, today).catch(() => null);
+    : await resolveCoachingThesis(userId, today);
   const thesisIsForToday = thesis != null
     && THESIS_QUALITY_TYPES.has((viewedPlannedType ?? '').toLowerCase());
   const addressedToday = thesis?.addressedBy.find((s) => s.dateIso === today) ?? null;
