@@ -154,7 +154,7 @@ struct GalleryV5: View {
                         // and `LiveRunOutdoorV5.heartReference`.
                         RangeScale(mode: .reference, min: 100, max: 190,
                                    value: 174,
-                                   endpoints: ("100", "~168 expected"))
+                                   endpoints: ("100", "168 expected"))
                         ZoneBar(shares: [12, 76, 12, 0, 0], target: 2, labels: true)
                         PhaseBar(phases: [
                             PhaseSegment("Base", weeks: 8, current: true, at: 0.72),

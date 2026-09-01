@@ -474,9 +474,14 @@ struct LiveRunOutdoorV5: View {
                                   endpoints: ("100", String(ceilingBpm)),
                                   hue: .heart, size: .s)
                     } else {
+                        // RangeScale's `endpoints` is a plain-text caption, not
+                        // a FaffValue slot — the modelled mark belongs only
+                        // where FaffValueText draws it (check-modelled-mark.sh
+                        // guard 2), so "expected" carries the informational
+                        // framing in words instead of a hand-drawn "~".
                         RangeScale(mode: .reference, min: 100, max: hrMax,
                                   value: Double(bpm),
-                                  endpoints: ("100", expectedBpm.map { "~\($0) expected" } ?? FaffFmt.bpm(hrMax) ?? "\u{2014}"),
+                                  endpoints: ("100", expectedBpm.map { "\($0) expected" } ?? FaffFmt.bpm(hrMax) ?? "\u{2014}"),
                                   hue: .heart, size: .s)
                     }
                 }
