@@ -129,7 +129,12 @@ else
   for sym in "GUARD 0" "GUARD 4" "GUARD 5"; do
     grep -qE "describe\(['\"]${sym} " "$GATE" || bad "gate lost the '$sym' describe block"
   done
-  for sym in "scanPlanWriterFiles" "writesAPlan"; do
+  # 2026-09-01 · the scan is PER STATEMENT, not per file. `scanPlanWriterFiles`
+  # was removed with the file-granularity gate it served (a second writer inside
+  # an already-declared file passed); these are the symbols that replaced it.
+  # `PLAN_WRITER_SITE_OWNERS` is named here specifically because a gate that
+  # kept the scanner and lost the declaration map would report clean.
+  for sym in "scanPlanWriteSites" "scanPlanWriteSitesIn" "PLAN_WRITER_SITE_OWNERS" "writesAPlan"; do
     grep -q "$sym" "$GATE" || bad "gate lost '$sym'"
   done
   [ -f "$GATE" ] && say "  ok · gate present with its guards"

@@ -46,6 +46,9 @@ import {
   planWriters,
   type AutomaticMutation,
 } from './automatic-mutation-registry';
+// One definition of "which function is this byte offset inside", shared with
+// the swallowed-failure scanner rather than re-derived here (Rule 16).
+import { maskSource, enclosingSymbol, lineAt } from './swallow-scan';
 
 /** web-v2/ */
 const WEB = resolve(__dirname, '../..');
@@ -163,63 +166,196 @@ export function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
-export function scanPlanWriterFiles(files: readonly string[]): string[] {
-  const hits = new Set<string>();
+/* ══════════════════════════════════════════════════════════════════════════
+ * PER-STATEMENT SCANNING (2026-09-01)
+ *
+ * This gate used to derive plan writers at FILE granularity, and that is one
+ * declaration covering an unbounded number of writes. Falsified exactly as the
+ * audit demonstrated:
+ *
+ *   · a new file `lib/plan/_falsify-writer.ts` carrying
+ *     `UPDATE plan_workouts SET pace_target_s_per_mi …`  → FAIL, names the file
+ *   · the SAME statement appended to `lib/plan/reanchor-plan.ts`, which is
+ *     already declared → **PASS**, "ok · 23 entries", "Tests 20 passed"
+ *
+ * The registry's five questions (`idempotent`, `onPartialFailure`,
+ * `runnerSees`, `changes`, `trigger`) are answered per ENTRY. A second writer
+ * added inside a declared file silently inherits answers that are now false
+ * for it, and `reanchor-plan.ts` and `adapt.ts` are precisely the two files
+ * most likely to grow one.
+ *
+ * The unit is now `<file>::<enclosingSymbol>`, resolved with the same
+ * `maskSource` / `enclosingSymbol` pair `swallow-scan.ts` uses — one
+ * definition of "which function is this statement in", not a second one
+ * written next door (Rule 16).
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Blank COMMENT bodies while preserving every byte offset and newline.
+ *
+ * `maskSource` blanks comments AND string bodies, which is right for finding
+ * code but wrong here: the SQL this gate hunts lives INSIDE a template
+ * literal. So the two passes are used for different questions — this one to
+ * find the statement (prose about `UPDATE plan_workouts` must not count), and
+ * `maskSource` to resolve which function the offset falls in.
+ */
+export function blankComments(src: string): string {
+  const n = src.length;
+  const out = src.split('');
+  const blank = (from: number, to: number) => {
+    for (let k = from; k < to && k < n; k++) if (out[k] !== '\n') out[k] = ' ';
+  };
+  let i = 0;
+  while (i < n) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '/') {
+      let j = i;
+      while (j < n && src[j] !== '\n') j++;
+      blank(i, j); i = j; continue;
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      let j = i + 2;
+      while (j < n && !(src[j] === '*' && src[j + 1] === '/')) j++;
+      blank(i, Math.min(j + 2, n)); i = Math.min(j + 2, n); continue;
+    }
+    // Skip over string bodies so a `//` or `/*` inside one cannot open a
+    // phantom comment — `'https://…'` is the everyday case.
+    if (c === '`' || c === "'" || c === '"') {
+      let j = i + 1;
+      while (j < n) {
+        if (src[j] === '\\') { j += 2; continue; }
+        if (src[j] === c) break;
+        if (c !== '`' && src[j] === '\n') break;
+        j++;
+      }
+      i = j + 1; continue;
+    }
+    i++;
+  }
+  return out.join('');
+}
+
+export type PlanWriteKind = 'generatePlan' | 'reanchorActivePlan' | 'UPDATE' | 'INSERT' | 'DELETE';
+
+export interface PlanWriteSite {
+  /** Repo-relative, e.g. `lib/plan/adapt.ts`. */
+  file: string;
+  /** 1-based line of the statement or call. */
+  line: number;
+  /** Enclosing function name, or `<module>` for a top-level statement. */
+  symbol: string;
+  /** `<file>::<symbol>` — the declaration key. Stable across edits above it. */
+  id: string;
+  kind: PlanWriteKind;
+}
+
+/** Every statement in one file that can change a plan row. */
+export function scanPlanWriteSitesIn(file: string, src: string): PlanWriteSite[] {
+  const code = blankComments(src);
+  const masked = maskSource(src);
+  const sites: PlanWriteSite[] = [];
+  const add = (index: number, kind: PlanWriteKind, declaredName?: string) => {
+    // A DECLARATION resolves to its own name, not to `<module>`. `export async
+    // function generatePlan(` matches the call regex, and reporting the
+    // implementation of the plan writer as a module-level statement would give
+    // the two most important sites in the tree the least stable id available.
+    const symbol = declaredName ?? enclosingSymbol(masked, index);
+    sites.push({ file, line: lineAt(src, index), symbol, id: `${file}::${symbol}`, kind });
+  };
+  const isDeclaration = (index: number): boolean =>
+    /(?:^|[^.\w$])(?:export\s+)?(?:async\s+)?function\s+$/.test(code.slice(Math.max(0, index - 40), index));
+  for (const m of code.matchAll(/\bgeneratePlan\s*\(/g)) {
+    add(m.index!, 'generatePlan', isDeclaration(m.index!) ? 'generatePlan' : undefined);
+  }
+  for (const m of code.matchAll(/\breanchorActivePlan\s*\(/g)) {
+    add(m.index!, 'reanchorActivePlan', isDeclaration(m.index!) ? 'reanchorActivePlan' : undefined);
+  }
+  // Multi-line SQL is normal here, so `[\s\S]` rather than `.` — a single-line
+  // grep is one of the traps this codebase has actually hit.
+  for (const m of code.matchAll(/\b(UPDATE|INSERT\s+INTO|DELETE\s+FROM)[\s\S]{0,40}?\bplan_workouts\b/gi)) {
+    const verb = m[1].toUpperCase().startsWith('INSERT') ? 'INSERT'
+      : m[1].toUpperCase().startsWith('DELETE') ? 'DELETE' : 'UPDATE';
+    add(m.index!, verb);
+  }
+  return sites;
+}
+
+export function scanPlanWriteSites(files: readonly string[]): PlanWriteSite[] {
+  const out: PlanWriteSite[] = [];
   for (const abs of files) {
     const r = rel(abs);
     if (RUNNER_INITIATED.includes(r) || PLAN_INFRASTRUCTURE.includes(r)) continue;
     if (TEST_ONLY_FENCED.includes(r)) continue;
-    if (writesAPlan(stripComments(readFileSync(abs, 'utf8')))) hits.add(r);
+    out.push(...scanPlanWriteSitesIn(r, readFileSync(abs, 'utf8')));
   }
-  return [...hits].sort();
+  return out.sort((a, b) => (a.id === b.id ? a.line - b.line : a.id.localeCompare(b.id)));
 }
 
-const PLAN_WRITER_FILES = scanPlanWriterFiles(SOURCE_FILES);
+const PLAN_WRITE_SITES = scanPlanWriteSites(SOURCE_FILES);
+/** Derived from the SAME scan, not from a second one. Two scanners that answer
+ *  "which files write a plan" differently is how a gate starts disagreeing
+ *  with itself (Rule 16). */
+const PLAN_WRITER_FILES = [...new Set(PLAN_WRITE_SITES.map((s) => s.file))].sort();
+const PLAN_WRITE_SITE_IDS = [...new Set(PLAN_WRITE_SITES.map((s) => s.id))].sort();
 
 /**
- * Every file that writes a plan, and which automatic trigger reaches it.
+ * Every STATEMENT that writes a plan, and which automatic trigger reaches it.
  *
- * A value of `runner-initiated: <reason>` means this file is only ever reached
+ * Keyed on `<file>::<enclosingFunction>`, not on the file. It used to be the
+ * file, and a file is one declaration covering an unbounded number of writes:
+ * a second `UPDATE plan_workouts` appended inside `reanchor-plan.ts` inherited
+ * that file's answers to the registry's five questions (`idempotent`,
+ * `onPartialFailure`, `runnerSees`, `changes`, `trigger`) even though they were
+ * now false for it, and the gate passed. Falsified and re-falsified; see the
+ * PER-STATEMENT SCANNING note above.
+ *
+ * A value of `runner-initiated: <reason>` means this site is only ever reached
  * by a runner tapping something. That is an ARGUMENT, not an exclusion list —
  * it lives here, next to the automatic ones, and the gate requires it to be a
  * sentence. An exclusion with no reason is how a writer gets quietly filed as
  * harmless, which is the failure this whole gate exists to stop.
  *
- * Several triggers share one implementation file, so the mapping is many-to-one
- * and stated rather than inferred.
+ * Several triggers share one implementation, so the mapping is many-to-one and
+ * stated rather than inferred.
  *
  * Every attribution below was established by reading the import graph. The
  * first draft of this map was written from a summary and the gate rejected two
  * of its entries within a minute, which is the argument for the gate.
  */
-const PLAN_WRITER_FILE_OWNERS: Record<string, string> = {
+const PLAN_WRITER_SITE_OWNERS: Record<string, string> = {
   // Automatic.
   // 2026-08-28 · auto-rebuild.ts is reached by cron/plan-drift AND
   // cron/silent-rebuild (the latter routed through fireAutoRebuild so its
   // rebuild writes the undo-pairing proposal row; its route file no longer
   // calls generatePlan directly and so no longer registers in the scan —
   // the registry entry cron/silent-rebuild still declares the write).
-  'lib/plan/auto-rebuild.ts': 'cron/plan-drift',
-  'lib/plan/open-block.ts': 'cron/plan-drift',
-  'lib/plan/generate.ts': 'cron/plan-drift',
-  'lib/race/result-chain.ts': 'cron/plan-drift',
-  'app/api/cron/snapshot-projections/route.ts': 'cron/snapshot-projections',
-  'lib/plan/reanchor-plan.ts': 'cron/snapshot-projections',
-  'lib/plan/recompute-paces.ts': 'cron/snapshot-projections',
-  'lib/plan/adapt.ts': 'cron/run-adaptations',
-  'lib/plan/progression-pass.ts': 'cron/run-adaptations',
+  'lib/plan/auto-rebuild.ts::fireAutoRebuild': 'cron/plan-drift',
+  'lib/plan/auto-rebuild.ts::rebuildActivePlanForPrefs': 'cron/plan-drift',
+  'lib/plan/open-block.ts::authorOpenBlock': 'cron/plan-drift',
+  'lib/plan/open-block.ts::authorNoTargetBlock': 'cron/plan-drift',
+  // The implementation itself, and the function that writes its rows.
+  'lib/plan/generate.ts::generatePlan': 'cron/plan-drift',
+  'lib/plan/generate.ts::persistPlan': 'cron/plan-drift',
+  'lib/race/result-chain.ts::runPostResultChain': 'cron/plan-drift',
+  'app/api/cron/snapshot-projections/route.ts::snapshotForUser': 'cron/snapshot-projections',
+  'lib/plan/reanchor-plan.ts::reanchorActivePlan': 'cron/snapshot-projections',
+  'lib/plan/reanchor-plan.ts::reanchorMaintenance': 'cron/snapshot-projections',
+  'lib/plan/recompute-paces.ts::core': 'cron/snapshot-projections',
+  'lib/plan/adapt.ts::applyAdaptations': 'cron/run-adaptations',
+  'lib/plan/adapt.ts::rebuildWorkoutDerivations': 'cron/run-adaptations',
+  'lib/plan/progression-pass.ts::applyProgressionReshape': 'cron/run-adaptations',
 
   // Runner-initiated, each with the route that reaches it.
-  'lib/plan/injury-builder.ts':
+  'lib/plan/injury-builder.ts::buildInjuryPlan':
     'runner-initiated: reached only from POST /api/coach/proposal/[id]/accept, which is the runner '
     + 'accepting an injury protocol. adapt.ts mentions it in comments and does not import it.',
-  'lib/race/race-role-apply.ts':
-    'runner-initiated: reached only from POST /api/plan/proposal accept on a race_role card — the '
+  'lib/race/race-role-apply.ts::applyRaceRole':
+    'runner-initiated: reached only from POST /api/plan/proposal accept on a race_role card · the '
     + 'runner accepting the coach\'s tune-up recommendation (RACEROLE-1, 2026-08-28). The nightly '
     + 'cron writes ONLY the pending plan_proposals card (declared under cron/plan-drift); the race '
     + 'row\'s meta.plannedRole and the plan_workouts week patch move only on the runner\'s accept, '
     + 'and the patch runs through mutatePlan.',
-  'lib/plan/replan-scenarios.ts':
+  'lib/plan/replan-scenarios.ts::applyChange':
     'runner-initiated: reached from POST /api/plan/change and POST /api/plan/replan, both runner '
     + 'actions. lib/plan/v5-block.ts also imports it but calls only proposeChange and the read-only '
     + 'gates, never applyChange.',
@@ -327,27 +463,32 @@ describe('GUARD 3 · every scheduled workflow is accounted for', () => {
 });
 
 describe('GUARD 4 · the plan writers in the source are the plan writers on the list', () => {
-  it('every automatic caller of generatePlan / reanchorActivePlan maps to a declared plan writer', () => {
+  it('every plan-writing STATEMENT maps to a declared plan writer', () => {
     const declaredIds = new Set(planWriters().map((m) => m.id));
-    const unmapped = PLAN_WRITER_FILES.filter((f) => !PLAN_WRITER_FILE_OWNERS[f]);
+    const unmapped = PLAN_WRITE_SITES
+      .filter((s) => !PLAN_WRITER_SITE_OWNERS[s.id])
+      .map((s) => `${s.id}  [${s.kind}]  ${s.file}:${s.line}`);
     expect(
-      unmapped,
-      'A file writes the training plan from a non-runner-initiated path and no registry entry '
+      [...new Set(unmapped)],
+      'A statement writes the training plan from a non-runner-initiated path and no registry entry '
       + 'claims it. This is the exact shape of snapshot-projections, which rewrote every future '
-      + 'prescribed pace daily while the incident inventory listed two plan writers. Either map '
-      + 'it to an existing entry or add one.',
+      + 'prescribed pace daily while the incident inventory listed two plan writers.\n\n'
+      + 'The unit here is the FUNCTION, not the file: adding a second writer inside an '
+      + 'already-declared file used to pass, and it inherited that file\'s answers to the '
+      + 'registry\'s five questions while they were no longer true of it. Either map this site to '
+      + 'an existing entry or add one.',
     ).toEqual([]);
 
-    for (const [file, owner] of Object.entries(PLAN_WRITER_FILE_OWNERS)) {
+    for (const [site, owner] of Object.entries(PLAN_WRITER_SITE_OWNERS)) {
       if (owner.startsWith('runner-initiated:')) {
         // An exclusion has to be an argument. "It's fine" is not one.
         expect(
           owner.length,
-          `${file} is excluded as runner-initiated with no real reason. Name the route that reaches it.`,
+          `${site} is excluded as runner-initiated with no real reason. Name the route that reaches it.`,
         ).toBeGreaterThan(80);
         continue;
       }
-      expect(declaredIds.has(owner), `${file} claims owner ${owner}, which is not a plan writer`).toBe(true);
+      expect(declaredIds.has(owner), `${site} claims owner ${owner}, which is not a plan writer`).toBe(true);
     }
   });
 
@@ -367,10 +508,14 @@ describe('GUARD 4 · the plan writers in the source are the plan writers on the 
     }
   });
 
-  it('every mapping points at a file that still writes a plan', () => {
-    const found = new Set(PLAN_WRITER_FILES);
-    const stale = Object.keys(PLAN_WRITER_FILE_OWNERS).filter((f) => !found.has(f));
-    expect(stale, 'Mapping outlived the call site. Delete it.').toEqual([]);
+  it('every mapping points at a statement that still writes a plan', () => {
+    const found = new Set(PLAN_WRITE_SITE_IDS);
+    const stale = Object.keys(PLAN_WRITER_SITE_OWNERS).filter((s) => !found.has(s));
+    expect(
+      stale,
+      'Mapping outlived the call site. Delete it. (A renamed function counts: the id is '
+      + '<file>::<enclosingFunction>, so a rename retires the old entry and needs a new one.)',
+    ).toEqual([]);
   });
 
   it('holds the plan-writer floor', () => {
@@ -479,10 +624,70 @@ describe('GUARD 5 · the planted defect', () => {
    * generatePlan would register as a writer and guard 4 would drown in false
    * positives until someone loosened it.
    */
-  it('catches a plan writer that declares itself nowhere', () => {
-    const planted = [...PLAN_WRITER_FILES, 'lib/plan/a-quiet-new-rebuilder.ts'];
-    const unmapped = planted.filter((f) => !PLAN_WRITER_FILE_OWNERS[f]);
-    expect(unmapped).toEqual(['lib/plan/a-quiet-new-rebuilder.ts']);
+  it('catches a plan writer in a NEW FILE that declares itself nowhere', () => {
+    // Driven off a FIXTURE list of already-owned ids, not off the live scan:
+    // a control that mixes in the real tree stops isolating the predicate the
+    // moment the tree has a genuine finding, and then reports the plant as
+    // wrong when it is the tree that changed.
+    const owned = Object.keys(PLAN_WRITER_SITE_OWNERS);
+    const planted = [...owned, 'lib/plan/a-quiet-new-rebuilder.ts::rebuild'];
+    const unmapped = planted.filter((s) => !PLAN_WRITER_SITE_OWNERS[s]);
+    expect(unmapped).toEqual(['lib/plan/a-quiet-new-rebuilder.ts::rebuild']);
+  });
+
+  /**
+   * THE PLANT THAT USED TO PASS. Before 2026-09-01 the unit was the FILE, and
+   * appending this statement to `lib/plan/reanchor-plan.ts` — already declared
+   * under cron/snapshot-projections — was invisible: "ok · 23 entries",
+   * "Tests 20 passed". Falsified against the real file, restored, and pinned
+   * here as a fixture so the fix cannot silently regress.
+   */
+  it('catches a SECOND writer inside an already-declared file', () => {
+    const src = `
+      import { pool } from '@/lib/db/pool';
+      export async function reanchorMaintenance(planId: string) {
+        await pool.query(\`UPDATE plan_workouts SET pace_target_s_per_mi = $1\`, [1]);
+      }
+      export async function quietlyRewritePaces(planId: string) {
+        await pool.query(
+          \`UPDATE plan_workouts SET pace_target_s_per_mi = 600 WHERE plan_id = $1\`,
+          [planId],
+        );
+      }
+    `;
+    const sites = scanPlanWriteSitesIn('lib/plan/reanchor-plan.ts', src);
+    const ids = [...new Set(sites.map((s) => s.id))].sort();
+    // Both are seen, and they are DIFFERENT ids — which is the whole fix.
+    expect(ids).toEqual([
+      'lib/plan/reanchor-plan.ts::quietlyRewritePaces',
+      'lib/plan/reanchor-plan.ts::reanchorMaintenance',
+    ]);
+    // The declared one is owned; the new one is not, so the gate fires.
+    expect(ids.filter((i) => !PLAN_WRITER_SITE_OWNERS[i]))
+      .toEqual(['lib/plan/reanchor-plan.ts::quietlyRewritePaces']);
+  });
+
+  it('does not count SQL that only appears in a comment', () => {
+    const src = `
+      // This function used to run UPDATE plan_workouts SET x = 1. It no longer does.
+      /* DELETE FROM plan_workouts is discussed in the doc below. */
+      export function nothingHappensHere() { return 1; }
+    `;
+    expect(scanPlanWriteSitesIn('lib/plan/prose.ts', src)).toEqual([]);
+  });
+
+  it('does count multi-line SQL, which is how this codebase writes it', () => {
+    const src = `
+      export async function movesADay() {
+        await pool.query(\`
+          UPDATE
+            plan_workouts
+             SET date_iso = $1\`, [1]);
+      }
+    `;
+    const sites = scanPlanWriteSitesIn('lib/plan/x.ts', src);
+    expect(sites.map((s) => s.id)).toEqual(['lib/plan/x.ts::movesADay']);
+    expect(sites[0].kind).toBe('UPDATE');
   });
 
   it('does not count a call site that only appears in a comment', () => {
