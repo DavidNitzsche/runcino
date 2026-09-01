@@ -65,6 +65,11 @@ import { predictRaceTime, vdotFromRace, tPaceFromVdot, vdotFromTpace, parseRaceT
 import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
+import {
+  classifySession,
+  sessionToleranceSec,
+  EASY_PHASE_TOLERANCE_S_PER_MI,
+} from './execution-semantics';
 import { projectFitnessTrajectory, type FitnessTrajectory } from './fitness-trajectory';
 import { VDOT_GAIN_PER_WEEK_MAX } from './vdot-gain-rate';
 import { loadPlannedTargetVdot, loadMarathonSpecificTraining } from './plan-target';
@@ -1128,12 +1133,12 @@ const WORK_TARGET_TYPES = new Set(['tempo', 'threshold', 'intervals', 'race_week
 /**
  * 2026-07-06 · P1-10 fix · pure verdict resolution for one recent test point.
  * Exported for tests. Basis ladder (first honest read wins):
- *   1. work-phase-watch  · watch_completion work pace vs work target (±10)
- *   2. work-phase-splits · splits-derived work-window pace vs work target (±10)
- *   3. blended-overall   · overall pace vs WU/CD/work blend (±15 · the WU/CD
- *                          legs carry a ±30 s/mi band of their own in
- *                          expandSpecToPhases; half their typical ~30%
- *                          distance share widens the run-level band by ~5)
+ *   1. work-phase-watch  · watch_completion work pace vs work target, at
+ *                          `sessionToleranceSec` for this session's class
+ *   2. work-phase-splits · splits-derived work-window pace vs work target,
+ *                          same width
+ *   3. blended-overall   · overall pace vs WU/CD/work blend, at doctrine's own
+ *                          E width — the blend is dominated by easy running
  *   4. abstain           · verdict null (honest absence · matches
  *                          detectTempoPaceDrift's no-watch-data doctrine)
  * Non-work-target types (long/race) keep the whole-run comparison — there the
@@ -1157,8 +1162,17 @@ export function judgeTestPointExecution(input: {
   basis: TestPointVerdictBasis | null;
 } {
   const { type, targetS, watchWorkS, overallS, heatSlowdownPct } = input;
-  // Easy/long band stays generous (David 2026-06-11) · quality stays tight.
-  const tolerance = type === 'long' ? 40 : 10;
+  /* THE tolerance, from THE owner (`lib/training/execution-semantics.ts`).
+   *
+   * This was `type === 'long' ? 40 : 10` — a THIRD width, on the pipeline
+   * that feeds evidence and adaptation, against a ±8 the runner was shown and
+   * a ±8 the wrist graded. On the owner's 2026-09-01 threshold session the two
+   * engines returned opposite answers for the same four reps, and he only ever
+   * saw the harsher one. One table now, keyed off the same classifier the
+   * phone and the wrist use. */
+  const tolerance = sessionToleranceSec(
+    classifySession(type, input.spec as unknown as Record<string, unknown>),
+  );
   const hasTarget = targetS != null && targetS > 0;
 
   // 1 · watch work-phase pace · the existing honest path, unchanged.
@@ -1245,7 +1259,14 @@ export function judgeTestPointExecution(input: {
     const blend = timeS / distMi;
     return {
       actualS: overallS,
-      verdict: heatAdjustedStatus(Math.round(blend), overallS, heatSlowdownPct, 15),
+      /* The blended basis compares a WHOLE-RUN average against a blend of the
+       * session's own legs, so it inherits the widest band in the blend rather
+       * than inventing one: the WU/CD legs are easy running
+       * (`EASY_PHASE_TOLERANCE_S_PER_MI`, doctrine's own E row) and that is
+       * what dominates a run-level comparison. Was a bare `15`. */
+      verdict: heatAdjustedStatus(
+        Math.round(blend), overallS, heatSlowdownPct, EASY_PHASE_TOLERANCE_S_PER_MI,
+      ),
       basis: 'blended-overall',
     };
   }

@@ -44,6 +44,13 @@ import {
   type WorkoutType as PrescriptionWorkoutType,
 } from '@/lib/training/prescriptions';
 import { cardFromSpec, cardWithoutSpec, cardForUnprescribableType, type SpecCard } from '@/lib/training/spec-card';
+import {
+  classifySession,
+  sessionToleranceSec,
+  paceShapeFor,
+  phaseVerdictLabel,
+  gradePhase,
+} from '@/lib/training/execution-semantics';
 import { splitRuleRegisters } from '@/lib/watch/build-workout';
 import { fmtPace as fmtPaceShared, fmtMinutesCasual } from '@/lib/format/run';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
@@ -1511,11 +1518,22 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const easyCeilingSec = easyBandRow?.lo != null ? Math.round(Number(easyBandRow.lo)) : null;
 
   const hrBands = hrTargets({ lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi });
-  // Same tolerance the watch applies, so the band the phone quotes is the band
-  // the wrist grades against.
-  const cardTolerance =
-    prescriptionType === 'threshold' || prescriptionType === 'intervals' ? 8
-    : prescriptionType === 'race' ? 12 : 20;
+  /* THE tolerance, from THE owner (`lib/training/execution-semantics.ts`).
+   *
+   * This used to be a local ternary over `strictPrescriptionType`, which maps
+   * `tempo → 'tempo'` — matching neither the `'threshold'` nor the
+   * `'intervals'` arm, so every tempo day fell to `: 20` while the wrist,
+   * classifying on `workout_spec.kind`, graded the same row at 8. 21 live plan
+   * rows. The comment that used to sit here claimed the two were the same
+   * width, and nothing checked it (Rule 20).
+   *
+   * `classifySession` reads the SPEC first for exactly this reason, so the
+   * phone and the wrist now answer from one function with one input. */
+  const cardSessionClass = classifySession(
+    todayPlan?.type ?? '',
+    (specRow?.workout_spec ?? null) as Record<string, unknown> | null,
+  );
+  const cardTolerance = sessionToleranceSec(cardSessionClass);
 
   const prescription: SpecCard | null = !todayPlan
     ? null

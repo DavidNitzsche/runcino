@@ -29,6 +29,8 @@
  * adapt-dedup-brief.md
  */
 
+import { classifySession, sessionToleranceSec } from '@/lib/training/execution-semantics';
+
 export type TrainingInfluenceKind =
   | 'on_track'
   | 'consistent'
@@ -44,6 +46,13 @@ export interface TrainingInfluence {
 export interface InfluenceInput {
   /** Workout type (canonical effort key). */
   type: string;
+  /**
+   * The row's `workout_spec`, when the caller holds it. Read ONLY to classify
+   * the session (`classifySession` prefers `spec.kind`, because a race-week
+   * tune-up carries `kind: 'threshold'` while its `type` does not say so).
+   * Null is a legitimate answer — the classifier falls back to `type`.
+   */
+  spec?: Record<string, unknown> | null;
   /** Planned pace target in seconds per mile, when authored. */
   plannedPaceSec: number | null;
   /** Actual completed pace · work-pace for quality, avg for easy/long. */
@@ -99,8 +108,13 @@ export function composeTrainingInfluence(input: InfluenceInput): TrainingInfluen
 
   // Pace delta · seconds per mile. Negative = faster than planned.
   const paceDelta = input.donePaceSec - input.plannedPaceSec;
-  // Tolerance per type · quality demands tighter execution.
-  const tolerance = input.type === 'long' ? 18 : 12;
+  /* THE tolerance, from THE owner (`lib/training/execution-semantics.ts`).
+   *
+   * This was `input.type === 'long' ? 18 : 12` — a FIFTH width, driving the
+   * "on track / slipping" copy the runner reads on the Key Workouts panel,
+   * against a ±8 shown on the card, a ±8 graded on the wrist and a ±10 in the
+   * evidence pipeline. Same run, five answers. */
+  const tolerance = sessionToleranceSec(classifySession(input.type, input.spec ?? null));
 
   // Slipping path · pace fell off by ≥ 2× tolerance.
   if (paceDelta > tolerance * 2) {

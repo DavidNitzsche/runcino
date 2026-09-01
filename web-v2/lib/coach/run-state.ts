@@ -18,6 +18,17 @@ import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
 import { deriveReadingScopes, type ReadingScopes } from './reading-scope';
 import { heatAdjustedStatus } from './heat-band';
+import {
+  classifySession,
+  gradePhase,
+  paceShapeFor,
+  phaseToleranceSec,
+  phaseVerdictLabel,
+  sessionToleranceSec,
+  EASY_PHASE_TOLERANCE_S_PER_MI,
+  type PaceShape,
+  type SessionClass,
+} from '@/lib/training/execution-semantics';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { coerceShoeType, resolveShoeCapMi, type ShoeType } from '@/lib/shoe/lifespan';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
@@ -90,6 +101,22 @@ export interface PhaseBreakdown {
   target_pace: string | null;       // "6:48" formatted
   target_pace_sec: number | null;   // raw seconds/mi for bar math
   tolerance_pace_sec: number | null; // ±band in seconds/mi
+  /**
+   * PACE-SHAPE-1 (2026-09-01) · what `target_pace_sec` MEANS on this phase.
+   * `'window'` — hold it, both sides. `'ceiling'` — do not go faster than it;
+   * slower is never a miss. `'none'` / `'effort'` — not pace-graded at all.
+   * Owned by `lib/training/execution-semantics.ts`; never re-derived by a
+   * renderer.
+   */
+  pace_shape: PaceShape;
+  /**
+   * The word the runner reads for `status`, already correct for the shape.
+   * A ceiling phase reads "Under the ceiling", never "Slower than target" and
+   * never "missed" — that copy defect is half of what made a flawless
+   * 2026-09-01 threshold session read as a failure. Null when nothing was
+   * graded (Rule 11: absence is not a verdict).
+   */
+  status_label: string | null;
   target_distance_mi: number | null;
   target_duration_sec: number | null;
   // Actual
@@ -1545,24 +1572,17 @@ async function loadPhaseBreakdown(
  * `heatSlowdownPct` no longer widens the on-target band — kept only for
  * call-site compatibility; see `heatAdjustedStatus`.
  */
-export function mapWatchPhases(raw: unknown, heatSlowdownPct: number = 0): PhaseBreakdown[] {
+export function mapWatchPhases(
+  raw: unknown,
+  heatSlowdownPct: number = 0,
+  sessionClass?: SessionClass,
+): PhaseBreakdown[] {
   const phases: any[] = Array.isArray(raw) ? raw : [];
   if (phases.length === 0) return [];
 
   return phases.map((p: any, i: number): PhaseBreakdown => {
     const targetSPerMi = Number(p.targetPaceSPerMi) || null;
     const actualSPerMi = Number(p.actualPaceSPerMi) || null;
-
-    // Plain ±10s/mi tolerance band, regardless of conditions — the runner
-    // paces off feel, not a heat allowance. (Was widened for heat
-    // 2026-06-04; that widening was removed 2026-08-27 per David: "I know
-    // how to pace myself based on the heat... remove all of that." See
-    // `heatAdjustedStatus` in heat-band.ts, which now ignores the
-    // slowdown-pct argument entirely.)
-    let status: 'on' | 'fast' | 'slow' | null = null;
-    if (targetSPerMi && actualSPerMi && p.type !== 'recovery' && p.type !== 'rest') {
-      status = heatAdjustedStatus(targetSPerMi, actualSPerMi, heatSlowdownPct);
-    }
 
     const typeRaw = String(p.type ?? 'unknown').toLowerCase();
     const type: PhaseBreakdown['type'] =
@@ -1573,15 +1593,76 @@ export function mapWatchPhases(raw: unknown, heatSlowdownPct: number = 0): Phase
           ? 'work'
           : 'unknown';
 
+    /* PACE-SHAPE-1 (2026-09-01) · WHAT the target on this phase means, on a
+     * three-rung ladder, most-authoritative first:
+     *
+     *   1. `paceShape` off the wire. New watch builds send it, and it is the
+     *      server's own `paceShapeFor` round-tripped, so it is authored truth.
+     *   2. `paceShapeFor` recomputed here, when the caller told us the session
+     *      class. Covers every completion recorded before the field existed.
+     *   3. The phase type alone. A warm-up and a cool-down are easy running
+     *      whatever the session was, and a recovery carries no pace at all —
+     *      both of which are true without knowing the class.
+     *
+     * This is what stops the old two-sided grading. A 534 s/mi cool-down under
+     * a 502 s/mi ceiling used to come back "missed"; it is a correct
+     * cool-down, and a ceiling has no slow edge to miss. */
+    const wireShape: PaceShape | null =
+      p.paceShape === 'ceiling' || p.paceShape === 'window'
+        || p.paceShape === 'effort' || p.paceShape === 'none'
+        ? p.paceShape
+        : null;
+    const gradablePhaseType = type === 'unknown' ? 'work' : type;
+    const hasTarget = targetSPerMi != null && targetSPerMi > 0;
+    const paceShape: PaceShape =
+      wireShape
+      ?? (sessionClass
+          ? paceShapeFor(gradablePhaseType, sessionClass, { hasTarget })
+          : (!hasTarget ? 'none'
+             : gradablePhaseType === 'recovery' ? 'none'
+             : gradablePhaseType === 'warmup' || gradablePhaseType === 'cooldown' ? 'ceiling'
+             : 'window'));
+
+    /* The verdict, from THE owner. Was a local `heatAdjustedStatus` call at a
+     * FOURTH tolerance (±10) while this same function shipped
+     * `tolerance_pace_sec: 8` to the phone beside it — the row said 8 and was
+     * coloured at 10.
+     *
+     * A ceiling phase can only come back 'on' or 'fast'. Slower than a ceiling
+     * is correct running, and no surface may call it a miss. */
+    const toleranceSPerMi: number | null =
+      Number(p.tolerancePaceSPerMi)
+      || (sessionClass ? phaseToleranceSec(gradablePhaseType, sessionClass, { hasTarget }) : null)
+      || (hasTarget && paceShape === 'window' ? sessionToleranceSec(sessionClass ?? 'other') : null)
+      || (hasTarget && paceShape === 'ceiling' ? EASY_PHASE_TOLERANCE_S_PER_MI : null);
+
+    const verdict = gradePhase(
+      {
+        phaseType: gradablePhaseType,
+        targetSecPerMi: targetSPerMi,
+        avgSecPerMi: actualSPerMi,
+        toleranceSec: toleranceSPerMi,
+        completed: p.completed === false ? false : true,
+      },
+      // When the caller could not say, the shape resolved above is what the
+      // grade must follow, so route through a class that produces it.
+      sessionClass ?? (paceShape === 'window' ? 'threshold' : 'easy'),
+    );
+    const status: 'on' | 'fast' | 'slow' | null =
+      verdict === 'hit' ? 'on' : verdict === 'fast' ? 'fast' : verdict === 'slow' ? 'slow' : null;
+
     return {
+      pace_shape: paceShape,
+      status_label: phaseVerdictLabel(verdict, paceShape),
       index: Number(p.index ?? i) || i,
       label: String(p.label ?? p.name ?? defaultLabel(type, i)),
       type,
       target_pace: fmtPace(targetSPerMi),
       target_pace_sec: targetSPerMi,
-      // Fall back to 8 s/mi (build-workout.ts default for single-pace
-      // targets) when tolerance wasn't stored in the watch completion.
-      tolerance_pace_sec: Number(p.tolerancePaceSPerMi) || (targetSPerMi && type === 'work' ? 8 : null),
+      // THE owner's width when the completion did not carry one — never a
+      // second literal. The row the phone draws and the band it is graded
+      // against are now the same number by construction.
+      tolerance_pace_sec: toleranceSPerMi,
       target_distance_mi: Number(p.targetDistanceMi) || null,
       target_duration_sec: Number(p.targetDurationSec) || null,
       actual_pace: fmtPace(actualSPerMi),
