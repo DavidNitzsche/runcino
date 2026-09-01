@@ -180,6 +180,15 @@ struct V5Stat: Decodable, Equatable, Hashable {
 struct V5RoutePhase: Decodable, Equatable {
     let mi: Double
     let sec: Int
+    /// "warmup" | "work" | "recovery" | "cooldown" | "unknown" | nil.
+    ///
+    /// Nil on a payload from before 2026-09-01 — `web-v2/app/api/v5/today
+    /// /route.ts`'s `routePhases` dropped the watch's own `type` on the
+    /// floor, wire-narrowing a real classification down to a bare
+    /// distance-and-duration pair. `TodayAfterV5.sectionPieces` falls back
+    /// to a numbered, unnamed row only when this is nil — never guesses a
+    /// phase's role from its pace.
+    let type: String?
 }
 
 /// The pace window the session asked for, seconds per mile. When present the
