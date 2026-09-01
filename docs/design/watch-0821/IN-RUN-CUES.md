@@ -24,6 +24,7 @@ its sibling.
 | Phase change · race | phase haptic | 1.8 s | Each course segment |
 | Phase change · finish | phase haptic | 2.2 s | Long-run finish segment |
 | Phase change · work rep | phase haptic | 1.6 s | Entering a work rep |
+| Phase change · recovery | phase haptic | 1.6 s | Entering a recovery |
 | Ending countdown | `tick` ×9 + `almostDone` | live 10→0 | Last 10 s of a **time** rep |
 | Almost done | `almostDone` | 2.6 s | 0.25 mi / 0.03 mi from the end of a **distance** phase |
 | Drift | `headsUpEaseOff` / `headsUpPickItUp` | 2.6 s | Sustained drift outside the band, work phases |
@@ -37,9 +38,9 @@ its sibling.
 |---|---|---|---|---|---|---|
 | Go | ● | ● | ● | ● | ● | ● |
 | Mile split | ● | — *(suppressed in rep)* | — *(suppressed in rep)* | — | ● | ● |
-| Phase change | finish seg. only | each rep | each rep | each block | each segment | — |
+| Phase change | finish seg. only | each rep + recovery | each rep + recovery | each block + float | each segment | — |
 | Ending countdown | — | ● | — | ● if time-based | — | — |
-| Almost done | ● | — | ● | ● | — | — |
+| Almost done | ● | — | ● + recovery | ● + float | — | — |
 | Drift | ● if banded | ● | ● | ● | ● | — |
 | Fuel | ● if planned | ● if planned | ● if planned | ● if planned | ● aid stations | — |
 
@@ -86,6 +87,39 @@ back is the failure the router already had to patch with a tap gesture.
 
 ---
 
+## Decided — 2026-09-01
+
+**Entering a recovery now announces itself too, the same way entering a work
+rep does.** This section used to carry the note below (kept here struck
+through in spirit, replaced in substance): *"Only three phase changes
+announce themselves — race segments, finish segments and work reps. Entering
+a warm-up, a recovery or a cool-down fires the phase haptic and no board, so a
+runner is announced into effort and never out of it... the asymmetry should
+be a decision."*
+
+David ran a distance-based interval session and reported it directly: *"did
+not say when the interval was complete."* The interval ending IS entering
+recovery, and recovery entry fired the haptic and nothing else — no board, no
+spoken cue (`SpokenCues` only speaks off `engine.transition` changing, and
+`transition` was never set on that edge). A runner not staring at the wrist
+felt a buzz with no way to tell whether it meant the interval just ended or
+was about to.
+
+The fix mirrors the work-rep cue exactly: title "Recovery", and — when the
+session has more than one recovery — a "n of total" detail, spoken the same
+way ("Recovery, two of four."). Warm-up and cool-down entry are unchanged;
+David's report was specifically about the interval boundary, and those two
+still read fine off the board alone (see the still-open note below on plan
+completion, which is the same kind of question for a different edge).
+
+Same run surfaced a second, unrelated gap the almost-done gate had: a
+DISTANCE-based recovery (a "jog 0.2 mi" segment, common in real prescribed
+sessions — see the distance-intervals and threshold fixtures, whose
+recoveries/floats are distance phases) got no heads-up of either kind. The
+live ending countdown only fires for TIME-based reps; the almost-done flash
+was gated to `phase.type == .work` outright. Widened that gate to include
+`.recovery` alongside `.work` wherever the phase itself is distance-based.
+
 ## Open, and deliberately not changed
 
 **Plan completion is a haptic on a single-phase run.** When the last phase ends
@@ -106,12 +140,6 @@ marked present on a just-run, which carries no distance and no working
 duration, so the engine cannot fire it; and absent on a threshold, whose
 three-mile blocks are distance phases that do get it. The first row was an
 assumption generalised from the almost-done path's own `!isRace` guard.
-
-**Only three phase changes announce themselves.** Race segments, finish
-segments and work reps. Entering a warm-up, a recovery or a cool-down fires the
-phase haptic and no board, so a runner is announced *into* effort and never
-*out* of it. The board underneath does change, which may be enough — but the
-asymmetry should be a decision.
 
 **Manual laps are unreachable.** `markLap()` has no callers since the Lap verb
 was removed from controls, and `lapCount` / `lastLapElapsedSec` are still

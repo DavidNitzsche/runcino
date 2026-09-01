@@ -64,6 +64,21 @@ final class WorkoutTracker: NSObject, ObservableObject {
     /// Segment length that triggers a net-delta fold into `elevGainM`.
     /// ~0.1mi — see `elevGainM` doc for why this granularity.
     private static let elevSegmentDistanceThresholdM: Double = 160.9344
+    /// A segment's net rise has to clear this before it counts as climb
+    /// rather than noise. `elevGainM`'s doc above cites ±2m as the actual
+    /// jitter magnitude that motivated netting over segments at all — but
+    /// netting alone does not remove that jitter, because each segment is
+    /// still a two-point (start, end) comparison, not an average. A close
+    /// call this fine (~0.1mi, ~30 fixes) has roughly ten times the segment
+    /// BOUNDARIES per mile that the proven phone-side per-mile net does
+    /// (`HealthKitImporter.swift`, 2026-05-31), and each boundary is an
+    /// independent chance for jitter to read as a small "climb" — summed
+    /// one-sided (`if net > 0`, never negative), that bias compounds with
+    /// segment count even though no single segment's jitter got any worse.
+    /// Requiring the net to clear the jitter floor before crediting it
+    /// blocks most of that compounding without touching segment length, so
+    /// the live "Climb" stat keeps updating at the same cadence.
+    private static let elevSegmentNoiseFloorM: Double = 2.0
     /// Live running cadence (steps/min). CMPedometer gives `currentCadence`
     /// directly, which is far more reliable than differencing HealthKit's
     /// batched cumulative step count over wall-clock time.
@@ -833,7 +848,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
             if elevSegmentDistanceM >= Self.elevSegmentDistanceThresholdM,
                let segStart = elevSegmentStartAltitudeM {
                 let net = loc.altitude - segStart
-                if net > 0 { elevGainM += net }
+                if net > Self.elevSegmentNoiseFloorM { elevGainM += net }
                 // Next segment starts where this one ended — no altitude
                 // information is dropped across the boundary, only the
                 // per-fix jitter within each segment.
@@ -854,7 +869,7 @@ final class WorkoutTracker: NSObject, ObservableObject {
         guard let segStart = elevSegmentStartAltitudeM,
               let anchor = elevSegmentAnchorLocation else { return }
         let net = anchor.altitude - segStart
-        if net > 0 { elevGainM += net }
+        if net > Self.elevSegmentNoiseFloorM { elevGainM += net }
         elevSegmentStartAltitudeM = nil
         elevSegmentAnchorLocation = nil
         elevSegmentDistanceM = 0

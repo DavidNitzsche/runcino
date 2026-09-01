@@ -674,7 +674,7 @@ struct TodayPreRunBodyV3: View {
             return "Z4 · threshold"
         case .intervals:
             if let bpm = workout?.phases.first(where: { $0.type == .work })?.hrTargetBpm {
-                return "\(bpm)+ bpm · VO2max"
+                return "~\(bpm) bpm · VO2max"
             }
             return "Z5 · VO2max"
         case .rest:      return "—"

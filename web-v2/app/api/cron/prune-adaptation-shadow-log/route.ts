@@ -18,6 +18,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pruneAdaptationShadowLog } from '@/lib/adaptation/shadow-log-retention';
+import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 
 export const maxDuration = 30;
 
@@ -34,6 +35,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await pruneAdaptationShadowLog();
+    // 2026-09-01 · scheduler ledger (lib/ops/cron-ledger.ts). This job sits in
+    // EXCLUDED_FROM_TICK (it isn't due-gated or catch-up-driven), but it still
+    // needs to stamp its own completion — otherwise the ledger has no record
+    // this job has ever run, regardless of whether the GitHub Actions schedule
+    // is actually firing it. Confirmed empirically: zero ops_alerts rows for
+    // cron/prune-adaptation-shadow-log before this fix.
+    await recordCronSuccess('prune-adaptation-shadow-log', { ...result });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     return NextResponse.json(

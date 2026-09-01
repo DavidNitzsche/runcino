@@ -1213,8 +1213,14 @@ final class WorkoutEngine: ObservableObject {
             nearEnd = false       // time-based: handled by live countdown below
             headsUpValue = ""
         }
+        // Recovery included alongside work: a DISTANCE-based recovery (a
+        // "jog 0.2 mi" segment) ends on distance exactly like a distance work
+        // rep, and used to get no heads-up at all — the live countdown below
+        // only fires for `.time` reps, and this gate excluded `.recovery`
+        // outright, so a distance recovery closed with no countdown of
+        // either kind on screen.
         let shouldFire = !isRace && !didFireAlmostDone && nearEnd &&
-            (isSinglePhaseDistanceRun || phase.type == .work)
+            (isSinglePhaseDistanceRun || phase.type == .work || phase.type == .recovery)
         if shouldFire {
             didFireAlmostDone = true
             Haptics.almostDone()
@@ -1632,6 +1638,21 @@ final class WorkoutEngine: ObservableObject {
                     sub = rep
                 }
                 flash(.phase(title: p.label, sub: sub), for: 1.6)
+            } else if p.type == .recovery {
+                // Entering recovery — the interval that just ended had no cue
+                // of its own. The haptic above always fired (`p.haptic` is
+                // `.transitionRecovery`), but nothing ever set `transition`,
+                // so neither the takeover board NOR the spoken cue (which
+                // only fires off `transition` changing — see WatchRouterV5's
+                // `.onChange(of: engine.transition)`) ever said the interval
+                // was done. A runner without a wrist glued to the screen
+                // felt a buzz and had no way to know what it meant.
+                // David, 2026-09-01: "did not say when the interval was
+                // complete."
+                let totalRecoveries = workout.phases.filter { $0.type == .recovery }.count
+                let n = workout.phases.prefix(currentIndex + 1).filter { $0.type == .recovery }.count
+                let sub = totalRecoveries > 1 ? "\(n) of \(totalRecoveries)" : nil
+                flash(.phase(title: "Recovery", sub: sub), for: 1.6)
             }
         }
         // Tier 2 RPE prompt — if a pending RPE was queued by the prior

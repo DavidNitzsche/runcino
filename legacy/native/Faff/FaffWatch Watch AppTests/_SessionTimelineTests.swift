@@ -458,19 +458,24 @@ struct SessionTimelineTests {
     // MARK: TIME INTERVALS
     // ─────────────────────────────────────────────────────────────────
 
-    @Test("Time intervals · a phase cue entering every work rep, naming the rep")
+    @Test("Time intervals · a phase cue entering every work rep AND every recovery, naming each")
     func timeIntervalsPhaseCuePerRep() {
         let s = SimRun(Fx.timeIntervals(), pace: 400)
         s.start()
         s.runPlan(cap: 3000)
         #expect(s.engine.planComplete)
         assertTimelineIsSane(s.rec, "time-intervals")
-        #expect(s.rec.phaseCues.count == 6,
-                "six work reps, six phase cues. got \(s.rec.phaseCues.count)\n\(s.rec.summary)")
-        #expect(s.rec.phaseSubs == (1...6).map { "Rep \($0) of 6" },
-                "the cue must say which rep. got \(s.rec.phaseSubs)")
-        #expect(s.rec.phaseCues.allSatisfy { $0.phaseType == .work },
-                "a phase cue must land inside the rep it announces")
+        // Six work reps AND six recoveries — the interval that just ended is
+        // announced by entering the NEXT phase, in both directions. Recovery
+        // used to get the haptic and nothing else, so a runner without eyes
+        // on the wrist felt a buzz with no way to know the interval was over.
+        // David, 2026-09-01.
+        #expect(s.rec.phaseCues.count == 12,
+                "six work reps, six recoveries, twelve phase cues. got \(s.rec.phaseCues.count)\n\(s.rec.summary)")
+        #expect(s.rec.phaseSubs == (1...6).flatMap { ["Rep \($0) of 6", "\($0) of 6"] },
+                "the cue must say which rep or which recovery. got \(s.rec.phaseSubs)")
+        #expect(s.rec.phaseCues.allSatisfy { $0.phaseType == .work || $0.phaseType == .recovery },
+                "a phase cue must land inside the rep or recovery it announces")
         s.stop()
     }
 
@@ -524,26 +529,31 @@ struct SessionTimelineTests {
     // MARK: DISTANCE INTERVALS
     // ─────────────────────────────────────────────────────────────────
 
-    @Test("Distance intervals · a phase cue entering every work rep")
+    @Test("Distance intervals · a phase cue entering every work rep AND every recovery")
     func distanceIntervalsPhaseCuePerRep() {
         let s = SimRun(Fx.distanceIntervals(), pace: 360)
         s.start()
         s.runPlan(cap: 3000)
         #expect(s.engine.planComplete)
         assertTimelineIsSane(s.rec, "distance-intervals")
-        #expect(s.rec.phaseCues.count == 4, "four reps, four cues\n\(s.rec.summary)")
-        #expect(s.rec.phaseSubs == (1...4).map { "Rep \($0) of 4" })
+        #expect(s.rec.phaseCues.count == 8, "four reps, four recoveries, eight cues\n\(s.rec.summary)")
+        #expect(s.rec.phaseSubs == (1...4).flatMap { ["Rep \($0) of 4", "\($0) of 4"] })
         s.stop()
     }
 
-    @Test("Distance intervals · almost-done on every distance rep, and only there")
+    @Test("Distance intervals · almost-done on every distance phase (rep or recovery), and only there")
     func distanceIntervalsAlmostDone() {
         let s = SimRun(Fx.distanceIntervals(), pace: 360)
         s.start()
         s.runPlan(cap: 3000)
-        #expect(s.rec.almostDones.count == 4,
-                "one per work rep — warmup, floats and cooldown get none\n\(s.rec.summary)")
-        #expect(s.rec.almostDones.allSatisfy { $0.phaseType == .work })
+        // Four reps AND four recoveries — this fixture's 400m jog recoveries
+        // are DISTANCE phases too (real recoveries often are), so they close
+        // exactly like a distance rep does and get the same heads-up.
+        // Warmup and cooldown still get none: `shouldFire` never allows
+        // those two phase types (see WorkoutEngine.tick()).
+        #expect(s.rec.almostDones.count == 8,
+                "one per work rep and one per recovery — warmup and cooldown get none\n\(s.rec.summary)")
+        #expect(s.rec.almostDones.allSatisfy { $0.phaseType == .work || $0.phaseType == .recovery })
         let units: [String] = s.rec.events.compactMap { if case .almostDone(_, let u) = $0.cue { return u }; return nil }
         #expect(units.allSatisfy { $0 == "mi left" })
         s.stop()
@@ -564,15 +574,15 @@ struct SessionTimelineTests {
     // MARK: THRESHOLD
     // ─────────────────────────────────────────────────────────────────
 
-    @Test("Threshold · a phase cue entering each block, and none inside one")
+    @Test("Threshold · a phase cue entering each block and each float, and none inside one")
     func thresholdPhaseCuePerBlock() {
         let s = SimRun(Fx.threshold(), pace: 391)
         s.start()
         s.runPlan(cap: 4000)
         #expect(s.engine.planComplete)
         assertTimelineIsSane(s.rec, "threshold")
-        #expect(s.rec.phaseCues.count == 2, "two blocks, two cues\n\(s.rec.summary)")
-        #expect(s.rec.phaseSubs == ["Rep 1 of 2", "Rep 2 of 2"])
+        #expect(s.rec.phaseCues.count == 4, "two blocks, two floats, four cues\n\(s.rec.summary)")
+        #expect(s.rec.phaseSubs == (1...2).flatMap { ["Rep \($0) of 2", "\($0) of 2"] })
         s.stop()
     }
 
@@ -596,9 +606,11 @@ struct SessionTimelineTests {
         let s = SimRun(Fx.threshold(), pace: 391)
         s.start()
         s.runPlan(cap: 4000)
-        #expect(s.rec.almostDones.count == 2,
-                "one per distance block\n\(s.rec.summary)")
-        #expect(s.rec.almostDones.allSatisfy { $0.phaseType == .work })
+        // The 0.5 mi floats are distance phases too and close the same way a
+        // 3 mi block does.
+        #expect(s.rec.almostDones.count == 4,
+                "one per distance block, one per distance float\n\(s.rec.summary)")
+        #expect(s.rec.almostDones.allSatisfy { $0.phaseType == .work || $0.phaseType == .recovery })
         s.stop()
     }
 
@@ -816,7 +828,7 @@ struct SessionTimelineTests {
         let s = SimRun(Fx.timeIntervals(), pace: 700)
         s.start()
         s.runPlan(cap: 3000)
-        #expect(s.rec.phaseCues.count == 6, "precondition: the boundaries were crossed")
+        #expect(s.rec.phaseCues.count == 12, "precondition: the boundaries were crossed")
         #expect(s.rec.headsUps.isEmpty,
                 "drift is a sustained-effort cue, not a boundary cue\n\(s.rec.summary)")
         s.stop()
