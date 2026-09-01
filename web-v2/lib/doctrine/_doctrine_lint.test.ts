@@ -419,8 +419,22 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
   });
 
   it('every §section citation resolves to a heading in the cited doc', () => {
-    // Known-unresolvable anchors, already self-flagged with TODO in lib/plan/citation.ts.
-    // Listed here so the count cannot grow quietly; shrinking it is the goal.
+    // Known-unresolvable anchors. Listed here so the count cannot grow
+    // quietly; shrinking it is the goal.
+    //
+    // This used to read "already self-flagged with TODO in lib/plan/citation.ts".
+    // THERE IS NO `lib/plan/citation.ts`, and there never has been — a citation
+    // that does not resolve, in the allowlist whose entire subject is citations
+    // that do not resolve. The entries stand on the arguments written beside
+    // them below, not on that file.
+    //
+    // Where the self-flagging actually is, verified 2026-09-01: five
+    // `// TODO: no matching heading` markers, in lib/plan/adapt.ts,
+    // lib/plan/drift-monitor.ts, lib/plan/goal-gap.ts and
+    // lib/coach/run-state.ts — at the citation sites themselves, which is the
+    // right place for them. Several entries below carry no marker at all
+    // (lib/plan/seed-from-onboarding.ts:264's §quality-mix-by-distance is one),
+    // so "already self-flagged" was not true of the list as a whole either.
     const KNOWN_UNANCHORED = new Set([
       'Research/00a-distance-running-training.md §missed-workout-policy',
       // (Rule 7, 2026-08-19) · `Research/04 §quality-density` is DELETED from

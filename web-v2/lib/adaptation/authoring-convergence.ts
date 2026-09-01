@@ -9,9 +9,21 @@
  * "cheap guard... not built tonight": a shadow-compare record must be able to
  * say whether the plan it just read has actually been through the canonical
  * capacity resolvers since it was authored, or whether it is still pricing
- * off `lib/plan/generate.ts`'s legacy VDOT cascade (32 call expressions, zero
- * references to `capacity-resolver.ts`, confirmed by that report as of
- * 2026-09-01 — generate.ts is NOT migrated yet).
+ * off `lib/plan/generate.ts`'s legacy VDOT cascade. As of 2026-09-01
+ * `generate.ts` holds ZERO references to `capacity-resolver.ts` and the
+ * cascade is threaded through its authoring logic rather than isolable at a
+ * call site: it is NOT migrated.
+ *
+ * NO COUNT HERE ANY MORE. This sentence used to say "32 call expressions",
+ * quoting `docs/reports/pace-shadow-compare-2026-09-01.md` §"The real scope"
+ * ("32 call expressions across 19 distinct lines"). Re-counted at HEAD on
+ * 2026-09-01 over that report's own import list, the figure is 35 across 31
+ * lines — the report's number was already a recount that disagreed with the
+ * prior day's "23 direct call sites" on counting method alone, and a number
+ * copied into a header rots faster than the thing it describes. The QUALITY of
+ * the claim (zero canonical references, not isolable) is what the guard rests
+ * on and is checkable by grep; the arithmetic is not, so it lives in the
+ * report where it is dated.
  *
  * ── FOUR STATES, NOT A BOOLEAN ──────────────────────────────────────────────
  *

@@ -3,9 +3,20 @@
  *
  * §21: "run in shadow mode → record what they would have returned → compare
  * against production behavior → inspect disagreements → decide which reflects
- * doctrine → promote." The first four steps are here. THE FIFTH IS NOT: nothing
- * in this repo calls `resolveAdaptationProposals` on a live path, and
- * `lib/plan/adapt.ts` still owns every mutation.
+ * doctrine → promote." The first four steps are here. THE FIFTH IS NOT:
+ * `lib/plan/adapt.ts` still owns every mutation, and nothing this layer
+ * proposes changes a plan row.
+ *
+ * This used to read "nothing in this repo calls `resolveAdaptationProposals`
+ * on a live path". That became false on 2026-09-01:
+ * `lib/adaptation/shadow-compare.ts:315` calls it inside
+ * `runPaceShadowCompareCycle`, which `app/api/cron/run-adaptations/route.ts`
+ * invokes unconditionally in its per-user loop. The call is READ-ONLY and its
+ * result is persisted to `adaptation_shadow_log` rather than applied — so the
+ * ownership claim still holds and the reachability claim did not. Corrected
+ * rather than deleted, because which of the two is true is the whole point of
+ * the file (Rule 20's corollary: a header comment nothing verifies is
+ * documentation, and a stale one stops the next reader from checking).
  *
  * So this file DECIDES NOTHING. It prints what the new ownership layer would
  * propose for the owner's real account today, beside what the shipped detectors

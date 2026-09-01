@@ -16441,8 +16441,11 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     claim:
       'GET /api/v5/paces reports THREE independent zone deltas (threshold, interval, rep) off the ' +
       'canonical Daniels curve this app already binds to doctrine — never a single headline delta, ' +
-      'and never a reinvented offset table (the exact mistake docs/2026-05-19-sim-sweep.md ' +
-      'documents for the deprecated `E = M + 75` / `R = mile-pace` formulas).',
+      'and never a reinvented offset table, which is the mistake the deprecated `E = M + 75` / ' +
+      '`R = mile-pace` formulas made before pacesFromVdot was re-architected onto ' +
+      'resolveTrainingPaces. (This cited docs/2026-05-19-sim-sweep.md, which does not exist ' +
+      'and has no successor; the finding survives in CLAUDE.md and is enforced by ' +
+      'PACE.threshold-anchor and its siblings, not by that doc.)',
     check({ cite }) {
       const text = cite.text();
       if (!text.includes('threshold `+24 s/mi`') || !text.includes('interval `+22`') || !text.includes('rep `+19`')) {

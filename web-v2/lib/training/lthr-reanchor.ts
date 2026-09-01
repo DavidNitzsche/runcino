@@ -76,10 +76,20 @@
  *     AND a fresh qualifying race disagrees materially, the disagreement is
  *     SURFACED (`action: 'hold'` with `stale: true`) rather than written.
  *
- * This module is PURE and imports no database at any depth, so a client bundle
- * can read `LTHR_RETEST_CADENCE_DAYS` from it — the profile tile's stale marker
- * and the engine's staleness limb are then the same number by construction.
- * The queries and the write live in `lib/training/lthr-reanchor-store.ts`.
+ * THIS MODULE IS NOT CLIENT-SAFE. Its `lthrFromRace` import below reaches
+ * `lib/training/lthr.ts`, whose `resolveThresholdHr` does
+ * `await import('@/lib/db/pool')` — a dynamic import is still a bundled edge.
+ * Do not import anything from here into a `'use client'` file; take
+ * `LTHR_RETEST_CADENCE_DAYS` from `lib/training/lthr-cadence.ts`, which is why
+ * that file exists. The queries and the write live in
+ * `lib/training/lthr-reanchor-store.ts`.
+ *
+ * This paragraph asserted the OPPOSITE until 2026-09-01 ("PURE and imports no
+ * database at any depth"), which is the sentence CLAUDE.md Rule 19 quotes as
+ * its canonical example of a false invariant nothing could check. Deleted per
+ * Rule 20's corollary — gate the claim or delete the sentence. `LTHR_RETEST_
+ * CADENCE_DAYS` below carries the full account; `scripts/check-client-graph.sh`
+ * is what actually enforces the boundary.
  */
 import {
   RUNNER_REPORTED_AUTHORITY_CAP,
