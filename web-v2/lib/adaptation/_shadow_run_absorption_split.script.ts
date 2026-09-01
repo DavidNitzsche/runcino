@@ -32,7 +32,7 @@
  *       and unfiltered read of the same underlying sessions.
  */
 import { describe, it, expect } from 'vitest';
-import { readAdaptationSplit } from './load';
+import { readAdaptationSplit, filterExecutionEvidenceByPrescribedWindow } from './load';
 import {
   classifyAdaptation,
   type AdaptationInput,
@@ -41,8 +41,6 @@ import {
 } from './adaptation-model';
 import {
   prescribedWindowsFrom,
-  isPrescribedNonNormal,
-  type PrescribedWindow,
   type RanRace,
 } from '@/lib/training/normal-window';
 
@@ -195,25 +193,39 @@ describe('absorption-reader-split shadow run (report tool, not a gate)', () => {
     };
   }
 
-  /** Apply the SAME transform `loadRepresentativeExecutionInput` applies to a
-   *  real loader's rows — filter by `isPrescribedNonNormal`, using the real
-   *  `normal-window.ts` predicate — to a hand-built session list. This is the
-   *  faithful proxy: the loader's own logic is "filter raw rows by this
-   *  predicate, then classify", and that is exactly what this does. */
-  function filterFixture(
-    sessions: Array<{ dateISO: string; read: KeySessionRead }>,
-    windows: PrescribedWindow[],
-  ): Array<{ dateISO: string; read: KeySessionRead }> {
-    return sessions.filter((s) => !isPrescribedNonNormal(s.dateISO, windows));
-  }
-
+  /**
+   * MASKING-1 (2026-09-01) fidelity fix. This used to re-implement the filter
+   * locally (`sessions.filter((s) => !isPrescribedNonNormal(...))`) rather
+   * than calling the real, exported `filterExecutionEvidenceByPrescribedWindow`
+   * — two definitions of one question, the exact shape Rule 16 warns about.
+   * It also meant this script's `filteredVerdict` recomputed
+   * `distinctEvidenceWeeks` from the FILTERED session list via `fixtureInput`,
+   * which is not what production does: `loadRepresentativeExecutionInput`
+   * only overrides `keySessionExecutions`/`keySessionsPlanned`/
+   * `keySessionsCompleted`/`targetVerdicts` on top of the UNFILTERED base —
+   * `distinctEvidenceWeeks` (trend) and every other dimension carry through
+   * unchanged. That mismatch made trend go null in lockstep with execution in
+   * a masked window, when in real production trend is independent (driven by
+   * weekly-volume evidence, never by key-session dates) and would usually
+   * stay populated. Fixed both: call the real function, and build the
+   * filtered `AdaptationInput` the same way `loadRepresentativeExecutionInput`
+   * does — `{ ...base, ...filtered }`. */
   function runFixture(label: string, sessions: Array<{ dateISO: string; read: KeySessionRead }>, race: RanRace | null) {
     const windows = race ? prescribedWindowsFrom([race]) : [];
-    const unfilteredVerdict = classifyAdaptation(fixtureInput(sessions));
-    const filteredVerdict = classifyAdaptation(fixtureInput(filterFixture(sessions, windows)));
+    const base = fixtureInput(sessions);
+    const unfilteredVerdict = classifyAdaptation(base);
+    const rawRows = sessions.map((s) => ({
+      dateISO: s.dateISO,
+      readable: true,
+      read: { state: s.read.state, stimulusCompletion: s.read.stimulusCompletion },
+      earnsProgression: s.read.earnsProgression,
+    }));
+    const filteredFields = filterExecutionEvidenceByPrescribedWindow(rawRows, [], windows);
+    const filteredVerdict = classifyAdaptation({ ...base, ...filteredFields });
     const changed = unfilteredVerdict.band !== filteredVerdict.band
       || unfilteredVerdict.decision !== filteredVerdict.decision;
-    console.log(`\n--- ${label} ${changed ? '  <<< CHANGED >>>' : '  (no change)'} ---`);
+    const permissiveFlip = unfilteredVerdict.decision !== 'PROGRESS' && filteredVerdict.decision === 'PROGRESS';
+    console.log(`\n--- ${label} ${changed ? '  <<< CHANGED >>>' : '  (no change)'}${permissiveFlip ? '  <<< PERMISSIVE FLIP >>>' : ''} ---`);
     if (race) {
       const w = windows[0];
       console.log(`  race ${race.dateISO} (${race.priority}) → excluded ${w.fromISO}..${w.toISO}`);
@@ -317,9 +329,18 @@ describe('absorption-reader-split shadow run (report tool, not a gate)', () => {
       { slug: 'big-sur', dateISO: '2026-04-26', distanceMi: 26.2, priority: 'hilly-excluded' },
       { slug: 'sombrero', dateISO: '2026-05-03', distanceMi: 13.1, priority: 'C' },
     ]);
-    const unfilteredVerdict = classifyAdaptation(fixtureInput(sessions));
-    const filteredVerdict = classifyAdaptation(fixtureInput(sessions.filter((s) => !isPrescribedNonNormal(s.dateISO, windows))));
-    console.log(`  (both windows applied) unfiltered: ${fmtVerdict(unfilteredVerdict)}`);
+    const base = fixtureInput(sessions);
+    const unfilteredVerdict = classifyAdaptation(base);
+    const rawRows = sessions.map((s) => ({
+      dateISO: s.dateISO,
+      readable: true,
+      read: { state: s.read.state, stimulusCompletion: s.read.stimulusCompletion },
+      earnsProgression: s.read.earnsProgression,
+    }));
+    const filteredFields = filterExecutionEvidenceByPrescribedWindow(rawRows, [], windows);
+    const filteredVerdict = classifyAdaptation({ ...base, ...filteredFields });
+    const permissiveFlip = unfilteredVerdict.decision !== 'PROGRESS' && filteredVerdict.decision === 'PROGRESS';
+    console.log(`  (both windows applied)${permissiveFlip ? '  <<< PERMISSIVE FLIP >>>' : ''} unfiltered: ${fmtVerdict(unfilteredVerdict)}`);
     console.log(`  (both windows applied) filtered:   ${fmtVerdict(filteredVerdict)}`);
     expect(true).toBe(true);
   });

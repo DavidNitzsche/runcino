@@ -65,13 +65,33 @@ describe('filterExecutionEvidenceByPrescribedWindow', () => {
     expect(out.keySessionsCompleted).toBe(2);
   });
 
-  it('returns null (not zero) fields when everything is filtered out — Rule 11', () => {
+  it('returns null (not zero) fields when everything filtered out is UNREADABLE — Rule 11 still applies to true absence', () => {
+    // Rule 11's refusal is for a runner we genuinely cannot see — an
+    // unreadable session, not a readable one that happened to fail on a
+    // prescribed day. This is the case Rule 11 was written for: nothing
+    // survives, and nothing was measured either.
     const windows = prescribedWindowsFrom([HALF_A]);
-    const rows = [missed('2026-08-05'), missed('2026-08-12')];
+    const rows = [unreadable('2026-08-05'), unreadable('2026-08-12')];
     const out = filterExecutionEvidenceByPrescribedWindow(rows, [], windows);
     expect(out.keySessionExecutions).toBeNull();
     expect(out.keySessionsPlanned).toBeNull();
     expect(out.keySessionsCompleted).toBeNull();
+  });
+
+  it('MASKING-1: a fully-masked window whose only evidence is real failures keeps that evidence, never nulls it', () => {
+    // The corrected contract: dropping a day from PROVING normal capability
+    // (Rule 8) is not the same operation as excusing a genuine failure from
+    // counting against progression. When the window-exclusion would erase
+    // EVERY readable row, negative-valence rows (MISSED / PARTIAL_FAILED)
+    // survive the exclusion rather than vanishing with it — see the incident
+    // note above `filterExecutionEvidenceByPrescribedWindow` in load.ts.
+    const windows = prescribedWindowsFrom([HALF_A]);
+    const rows = [missed('2026-08-05'), missed('2026-08-12')];
+    const out = filterExecutionEvidenceByPrescribedWindow(rows, [], windows);
+    expect(out.keySessionExecutions).toHaveLength(2);
+    expect(out.keySessionExecutions!.every((e) => e.state === 'MISSED')).toBe(true);
+    expect(out.keySessionsPlanned).toBe(2);
+    expect(out.keySessionsCompleted).toBe(0);
   });
 
   it('filters target verdicts by the same predicate and dedups by date, same as the unfiltered reader', () => {
@@ -83,6 +103,30 @@ describe('filterExecutionEvidenceByPrescribedWindow', () => {
     ];
     const out = filterExecutionEvidenceByPrescribedWindow([], verdictRows, windows);
     expect(out.targetVerdicts).toEqual(['on']);
+  });
+
+  it('MASKING-1 applies to target verdicts too: a fully-masked window of real "slow" misses keeps them', () => {
+    const windows = prescribedWindowsFrom([HALF_A]);
+    const verdictRows = [
+      { dateISO: '2026-08-05', verdict: 'slow' as const }, // inside window, genuinely missed the target
+      { dateISO: '2026-08-12', verdict: 'slow' as const },
+    ];
+    const out = filterExecutionEvidenceByPrescribedWindow([], verdictRows, windows);
+    expect(out.targetVerdicts).toEqual(['slow', 'slow']);
+  });
+
+  it('MASKING-1 does not preserve "on"/"fast" inside a fully-masked window — only genuine shortfalls survive', () => {
+    // A target hit (or an over-pace) during a prescribed day is exactly the
+    // kind of evidence Rule 8 says must not be credited toward "normal"
+    // capability — MASKING-1 only ever rescues NEGATIVE evidence from
+    // erasure, never positive evidence.
+    const windows = prescribedWindowsFrom([HALF_A]);
+    const verdictRows = [
+      { dateISO: '2026-08-05', verdict: 'on' as const },
+      { dateISO: '2026-08-12', verdict: 'fast' as const },
+    ];
+    const out = filterExecutionEvidenceByPrescribedWindow([], verdictRows, windows);
+    expect(out.targetVerdicts).toBeNull();
   });
 });
 
@@ -143,12 +187,74 @@ describe('the split through classifyAdaptation (real classifier, hand-built evid
       .toBe(unfiltered.dimensions.find((d) => d.dimension === 'execution')!.score);
   });
 
-  it('a fully-masked window refuses to null evidence rather than fabricating a poor score', () => {
+  it('MASKING-1 falsifier: a fully-masked window of real failures must not flip the decision toward MORE permission', () => {
+    // Every session in the window is a genuine MISS, and every one of them
+    // falls inside the prescribed window. Before the MASKING-1 fix,
+    // `filterExecutionEvidenceByPrescribedWindow` erased all four rows,
+    // `readExecution` scored null, `classifyAdaptation` fell through its
+    // MIN_DIMENSIONS_FOR_VERDICT refusal (Rule 11's "not enough evidence,
+    // proceed as planned"), and the filtered verdict came out
+    // normal/PROGRESS — MORE permissive than the unfiltered poor/MODIFY it
+    // was supposed to be a stricter, more honest read of. That is the exact
+    // "total-evidence-masking" risk named in
+    // docs/reports/absorption-dual-log-2026-09-01.md §7.2 and never fixed
+    // there. This assertion is the falsifier: it fails against the
+    // pre-MASKING-1 code and passes after the fix.
+    //
+    // BLANK alone is too thin to isolate the mechanism: with only `execution`
+    // ever populated, `classifyAdaptation`'s general
+    // `MIN_DIMENSIONS_FOR_VERDICT` floor (>=2 known dimensions before it will
+    // render a real verdict) fires identically for both readers regardless of
+    // the fix, masking the very thing being tested. In production, exactly
+    // one field carries a second dimension through UNCHANGED from the
+    // unfiltered base — `loadRepresentativeExecutionInput` only overrides
+    // `keySessionExecutions`/`keySessionsPlanned`/`keySessionsCompleted`/
+    // `targetVerdicts`; `internal_cost`/`recovery`/`consistency`/`trend` are
+    // always identical between the two readers. `trainingForm` (consistency)
+    // stands in for that here — the same value on both sides, exactly as
+    // `{ ...base, ...filtered }` produces in the real loader.
     const windows = prescribedWindowsFrom([HALF_A]);
     const raw = [missed('2026-08-05'), missed('2026-08-12'), missed('2026-08-19'), missed('2026-08-24')];
+    const unfiltered = classifyAdaptation({
+      ...BLANK,
+      trainingForm: 'BUILDING',
+      keySessionExecutions: raw.map((r) => ({
+        state: r.read!.state, stimulusCompletion: r.read!.stimulusCompletion, earnsProgression: r.earnsProgression,
+      })),
+    });
     const filteredFields = filterExecutionEvidenceByPrescribedWindow(raw, [], windows);
-    const filtered = classifyAdaptation({ ...BLANK, ...filteredFields });
-    expect(filtered.dimensions.find((d) => d.dimension === 'execution')!.score).toBeNull();
+    const filtered = classifyAdaptation({ ...BLANK, trainingForm: 'BUILDING', ...filteredFields });
+
+    // The real fix: a real failure is not erased by the calendar it fell on.
+    expect(filtered.dimensions.find((d) => d.dimension === 'execution')!.score).not.toBeNull();
+    expect(filteredFields.keySessionExecutions).not.toBeNull();
+    // The decisive assertion: filtering must never be MORE permissive than
+    // the unfiltered read when what it excluded was entirely negative
+    // evidence. Here they must land on the identical verdict, since nothing
+    // outside the window existed to differentiate them.
+    expect(filtered.decision).toBe(unfiltered.decision);
+    expect(filtered.band).toBe(unfiltered.band);
+    expect(unfiltered.decision).not.toBe('PROGRESS'); // sanity: the scenario is a real shortfall
+    expect(filtered.decision).not.toBe('PROGRESS');
+  });
+
+  it('MASKING-1 corollary: a window with real OUTSIDE evidence still excludes the in-window days (3a is unaffected)', () => {
+    // Falsifies the fix in the other direction: MASKING-1 must fire ONLY on
+    // total washout. When representative evidence survives outside the
+    // window, the taper-day exclusion must behave exactly as before — this
+    // is what lets a genuinely good runner's taper/recovery misses stop
+    // dragging down a block that was, outside the window, clean.
+    const windows = prescribedWindowsFrom([HALF_A]);
+    const raw = [
+      planned('2026-07-07'), planned('2026-07-12'), planned('2026-07-16'),
+      planned('2026-07-21'), planned('2026-07-28'),
+      missed('2026-08-05'), missed('2026-08-12'), missed('2026-08-22'),
+    ];
+    const filteredFields = filterExecutionEvidenceByPrescribedWindow(raw, [], windows);
+    // Only the 5 outside-window AS_PLANNED sessions survive — the 3 missed
+    // in-window sessions stay excluded, because washout never occurred.
+    expect(filteredFields.keySessionExecutions).toHaveLength(5);
+    expect(filteredFields.keySessionExecutions!.every((e) => e.state === 'AS_PLANNED')).toBe(true);
   });
 });
 

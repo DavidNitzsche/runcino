@@ -555,10 +555,85 @@ interface RawVerdictRow {
 }
 
 /**
+ * MASKING-1 (2026-09-01). `docs/reports/absorption-dual-log-2026-09-01.md`
+ * §7.2 named a real, unfixed risk: when EVERY readable session in a window
+ * falls inside a prescribed taper/race/recovery block, the naive exclusion
+ * below erased all of it — including genuine failures — and
+ * `classifyAdaptation` fell through to its `MIN_DIMENSIONS_FOR_VERDICT`
+ * refusal (Rule 11's "not enough evidence, proceed as planned"), which is a
+ * `normal/PROGRESS` default. That default exists for a runner this reader
+ * truly cannot see — a brand-new account, a reader that failed to load. It is
+ * the wrong answer for a runner whose every visible session in the window was
+ * a real, measured shortfall that happened to also land on a prescribed day.
+ * Confirmed via the synthetic fixtures 3d/3e in
+ * `_shadow_run_absorption_split.script.ts` — never observed on the real
+ * account's 90 sampled dates (every real window this account's
+ * `representativeLookback` needed to reach past always found some real
+ * evidence to fall back on), but reachable, and a newer account or a runner
+ * with back-to-back races and no clean gap between them would hit it easily.
+ *
+ * The fix rests on a distinction the risk collapsed: Rule 8 says a prescribed
+ * day must not be used to PROVE a runner's normal capability — a good session
+ * during taper does not show the runner can handle full load, and crediting
+ * it would inflate a "can this runner progress" read on evidence that was
+ * never asked to carry that weight. Rule 8 does NOT say a genuine failure on
+ * that same day is excused from counting against progression — a session
+ * that went badly is still evidence against progression, and the calendar it
+ * fell on does not launder that away. Those are two different operations:
+ * excluding a day from the pool that CORROBORATES readiness, and excluding a
+ * day's NEGATIVE signal from ever being counted. This function now performs
+ * only the first. A prescribed day is still excluded exactly as before in
+ * every case except one: when the exclusion would leave the window's
+ * evidence entirely empty, the rows it was about to erase are inspected, and
+ * any that are themselves negative evidence (a real MISSED session, or a
+ * PARTIAL_FAILED one — `lib/execution/interpret.ts` marks PARTIAL_FAILED
+ * `evidence.adaptation: 'negative'` explicitly; MISSED carries
+ * `stimulusCompletion: 0`, the most negative reading the completion scale
+ * has, even though its own per-session "why" is officially unknown) survive.
+ * Positive-valence rows (AS_PLANNED, EQUIVALENT, PARTIAL_PRODUCTIVE, REPLACED)
+ * are excluded exactly as before, total-washout or not — MASKING-1 only ever
+ * rescues evidence AGAINST progression, never evidence FOR it, so it cannot
+ * become a second way for a good taper session to inflate the read. Target
+ * verdicts follow the identical rule: 'slow' (a genuine miss on pace) is
+ * preserved on total washout; 'on'/'fast' are not.
+ *
+ * This only fires on TOTAL washout, so `loadRepresentativeExecutionInput`'s
+ * primary, well-verified behavior — a taper/recovery block correctly
+ * dropping OUT of a read that also has real clean evidence outside the
+ * window (fixture 3a, and the account's own real AFC episode in
+ * `docs/reports/absorption-reader-split-2026-09-01.md` §3.1) — is completely
+ * unaffected: as soon as ANY row survives the plain exclusion, that survives
+ * unchanged and the fallback never runs.
+ */
+function isNegativeKeySessionSignal(read: RawExecutionRow['read']): boolean {
+  return read != null && (read.state === 'MISSED' || read.state === 'PARTIAL_FAILED');
+}
+
+function isNegativeVerdictSignal(row: RawVerdictRow): boolean {
+  return row.verdict === 'slow';
+}
+
+/** Apply a window exclusion, but never let it erase the only evidence a
+ *  window holds when everything it erases is negative. Shared by the
+ *  production filter below and the comparison log's observation selection
+ *  (`selectExecutionObservations` / `selectVerdictObservations`) so both
+ *  answer "did representative_execution keep this row" identically — Rule 16,
+ *  and the reason this lives as one function rather than two restatements. */
+function applyRepresentativeWindow<T>(
+  readableRows: readonly T[],
+  isExcluded: (row: T) => boolean,
+  isNegative: (row: T) => boolean,
+): T[] {
+  const representative = readableRows.filter((r) => !isExcluded(r));
+  if (representative.length > 0) return representative;
+  return readableRows.filter(isNegative);
+}
+
+/**
  * PURE. The one transform `representative_execution` applies that
  * `actual_load_absorption` does not: drop every row landing on a prescribed
- * taper/race/recovery day, then re-derive the narration counts from what
- * survives.
+ * taper/race/recovery day (except the MASKING-1 fallback above), then
+ * re-derive the narration counts from what survives.
  *
  * Split out from `loadRepresentativeExecutionInput` so this — the part that
  * actually encodes the Rule 8 fork — is falsifiable without a database
@@ -571,22 +646,34 @@ export function filterExecutionEvidenceByPrescribedWindow(
   verdictRows: readonly RawVerdictRow[],
   windows: readonly PrescribedWindow[],
 ): Pick<AdaptationInput, 'keySessionExecutions' | 'keySessionsPlanned' | 'keySessionsCompleted' | 'targetVerdicts'> {
-  const executions = keySessionRows
-    .filter((s) => s.readable && s.read != null && !isPrescribedNonNormal(s.dateISO, windows))
-    .map((s) => ({
-      state: s.read!.state,
-      stimulusCompletion: s.read!.stimulusCompletion,
-      earnsProgression: s.earnsProgression,
-    }));
+  const readableExecRows = keySessionRows.filter((s) => s.readable && s.read != null);
+  const executions = applyRepresentativeWindow(
+    readableExecRows,
+    (s) => isPrescribedNonNormal(s.dateISO, windows),
+    (s) => isNegativeKeySessionSignal(s.read),
+  ).map((s) => ({
+    state: s.read!.state,
+    stimulusCompletion: s.read!.stimulusCompletion,
+    earnsProgression: s.earnsProgression,
+  }));
 
-  const seenDays = new Set<string>();
-  const verdicts: Array<'on' | 'fast' | 'slow'> = [];
-  for (const p of verdictRows) {
-    if (seenDays.has(p.dateISO)) continue;
-    if (isPrescribedNonNormal(p.dateISO, windows)) continue;
-    seenDays.add(p.dateISO);
-    if (p.verdict === 'on' || p.verdict === 'fast' || p.verdict === 'slow') verdicts.push(p.verdict);
+  const dedupedVerdictRows: RawVerdictRow[] = [];
+  {
+    const seenDays = new Set<string>();
+    for (const p of verdictRows) {
+      if (seenDays.has(p.dateISO)) continue;
+      seenDays.add(p.dateISO);
+      dedupedVerdictRows.push(p);
+    }
   }
+  const keptVerdictRows = applyRepresentativeWindow(
+    dedupedVerdictRows,
+    (p) => isPrescribedNonNormal(p.dateISO, windows),
+    isNegativeVerdictSignal,
+  );
+  const verdicts = keptVerdictRows
+    .map((p) => p.verdict)
+    .filter((v): v is 'on' | 'fast' | 'slow' => v === 'on' || v === 'fast' || v === 'slow');
 
   return {
     keySessionExecutions: executions.length > 0 ? executions : null,
@@ -716,10 +803,17 @@ export function selectExecutionObservations(
   toISO: string,
   windows: readonly PrescribedWindow[] | null,
 ): RawExecutionRow[] {
-  return rows.filter((r) =>
-    r.dateISO >= fromISO && r.dateISO < toISO
-    && r.readable && r.read != null
-    && (!windows || !isPrescribedNonNormal(r.dateISO, windows)));
+  const readable = rows.filter((r) => r.dateISO >= fromISO && r.dateISO < toISO && r.readable && r.read != null);
+  if (!windows) return readable;
+  // MASKING-1: mirror `filterExecutionEvidenceByPrescribedWindow`'s fallback
+  // so the comparison log reports which rows `representative_execution`
+  // ACTUALLY kept, not the pre-fix selection this restatement used to
+  // reproduce. See the incident note above that function in this file.
+  return applyRepresentativeWindow(
+    readable,
+    (r) => isPrescribedNonNormal(r.dateISO, windows),
+    (r) => isNegativeKeySessionSignal(r.read),
+  );
 }
 
 /**
@@ -734,15 +828,19 @@ export function selectVerdictObservations(
   windows: readonly PrescribedWindow[] | null,
 ): RawVerdictRow[] {
   const seen = new Set<string>();
-  const out: RawVerdictRow[] = [];
+  const deduped: RawVerdictRow[] = [];
   for (const p of rows) {
     if (p.dateISO < fromISO || p.dateISO >= toISO) continue;
-    if (windows && isPrescribedNonNormal(p.dateISO, windows)) continue;
     if (seen.has(p.dateISO)) continue;
     seen.add(p.dateISO);
-    if (p.verdict === 'on' || p.verdict === 'fast' || p.verdict === 'slow') out.push(p);
+    deduped.push(p);
   }
-  return out;
+  // MASKING-1: same fallback as `filterExecutionEvidenceByPrescribedWindow`
+  // — see the incident note above that function.
+  const kept = windows
+    ? applyRepresentativeWindow(deduped, (p) => isPrescribedNonNormal(p.dateISO, windows), isNegativeVerdictSignal)
+    : deduped;
+  return kept.filter((p) => p.verdict === 'on' || p.verdict === 'fast' || p.verdict === 'slow');
 }
 
 /** One dated piece of evidence, and whether each reader's selection kept it. */

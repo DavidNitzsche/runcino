@@ -29,8 +29,8 @@
  *   npx vitest run --config vitest.shadow-run.config.ts
  */
 import { describe, it, expect } from 'vitest';
-import { readAdaptationSplitWithLog, type AdaptationComparisonRecord } from './load';
-import { prescribedWindowFor, prescribedWindowsFrom, isPrescribedNonNormal, type RanRace } from '@/lib/training/normal-window';
+import { readAdaptationSplitWithLog, filterExecutionEvidenceByPrescribedWindow, type AdaptationComparisonRecord } from './load';
+import { prescribedWindowFor, prescribedWindowsFrom, type RanRace } from '@/lib/training/normal-window';
 import { classifyAdaptation, type AdaptationInput, type AdaptationVerdict, type KeySessionRead } from './adaptation-model';
 
 const DAVID_UUID = '0645f40c-951d-4ccc-b86e-9979cd26c795';
@@ -198,19 +198,36 @@ describe('season-wide absorption/duration dual-reader sweep (report tool, not a 
     return v.decision === 'PROGRESS' && v.veto == null;
   }
 
+  /* MASKING-1 (2026-09-01) fidelity fix: this used to reimplement the filter
+   * locally (`sessions.filter((s) => !isPrescribedNonNormal(...))`) instead
+   * of calling the real, exported `filterExecutionEvidenceByPrescribedWindow`
+   * — a second definition of the same question (Rule 16), and one that could
+   * not reflect the MASKING-1 fix landing in `load.ts`. Also builds the
+   * filtered `AdaptationInput` as `{ ...base, ...filtered }`, matching what
+   * `loadRepresentativeExecutionInput` actually does — `distinctEvidenceWeeks`
+   * (trend) now carries through from the unfiltered base rather than being
+   * recomputed off the filtered session list, which is what production does. */
   function runFixtureDurationLever(
     label: string,
     sessions: Array<{ dateISO: string; read: KeySessionRead }>,
     races: RanRace[],
   ) {
     const windows = races.length > 0 ? prescribedWindowsFrom(races) : [];
-    const filtered = sessions.filter((s) => !isPrescribedNonNormal(s.dateISO, windows));
-    const a = classifyAdaptation(fixtureInput(sessions));
-    const r = classifyAdaptation(fixtureInput(filtered));
+    const base = fixtureInput(sessions);
+    const rawRows = sessions.map((s) => ({
+      dateISO: s.dateISO,
+      readable: true,
+      read: { state: s.read.state, stimulusCompletion: s.read.stimulusCompletion },
+      earnsProgression: s.read.earnsProgression,
+    }));
+    const filteredFields = filterExecutionEvidenceByPrescribedWindow(rawRows, [], windows);
+    const a = classifyAdaptation(base);
+    const r = classifyAdaptation({ ...base, ...filteredFields });
     const pa = permits(a);
     const pr = permits(r);
     const flips = pa !== pr;
-    console.log(`\n--- ${label} ${flips ? '  <<< DURATION GATE FLIPS >>>' : '  (duration gate agrees)'} ---`);
+    const permissiveFlip = !pa && pr;
+    console.log(`\n--- ${label} ${flips ? '  <<< DURATION GATE FLIPS >>>' : '  (duration gate agrees)'}${permissiveFlip ? '  <<< PERMISSIVE FLIP >>>' : ''} ---`);
     console.log(`  absorption:     band=${a.band} decision=${a.decision} veto=${a.veto ?? '-'} permitsDuration=${pa}`);
     console.log(`  representative: band=${r.band} decision=${r.decision} veto=${r.veto ?? '-'} permitsDuration=${pr}`);
     if (flips) {
