@@ -238,6 +238,8 @@ import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
 import { normalWeeklyMileage, type NormalReading } from '@/lib/training/normal-window';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 // THE BELIEF-TENSION CONSUMER. `reexamination.ts` deliberately imports nothing
 // from this file at run time (it writes out the half-life rather than importing
 // it, with a gate keeping the two equal) precisely so this edge can be a plain
@@ -329,6 +331,7 @@ export type CapacityReasonCode =
   | 'MEASURED_VDOT_FALLBACK'
   | 'BELOW_TABLE_ANCHOR_FALLBACK'
   | 'MILEAGE_POPULATION_PRIOR'
+  | 'ONBOARDING_MILEAGE_USER_PRIOR'
   | 'PERSONAL_RIEGEL_EXPONENT'
   | 'POPULATION_ENDURANCE_PRIOR'
   | 'LONGITUDINAL_DECOUPLING'
@@ -503,7 +506,7 @@ export interface DurabilityCapacityEstimate extends CapacityEstimateBase {
  * ═══════════════════════════════════════════════════════════════════════ */
 
 /**
- * THREE NON-OVERLAPPING BANDS, AND THE TIER PICKS THE BAND.
+ * FOUR NON-OVERLAPPING BANDS, AND THE TIER PICKS THE BAND.
  *
  * THESE NUMBERS ARE A CONVENTION, NOT A RESEARCH FINDING, in exactly the sense
  * `CORROBORATION_MIN_OBSERVATIONS` (vdot-corpus.ts) and
@@ -560,12 +563,69 @@ export interface DurabilityCapacityEstimate extends CapacityEstimateBase {
  * runner-specific to scale it with — a self-reported weekly mileage is one
  * number the runner typed, and grading confidence off it would manufacture the
  * precision §38 forbids.
+ *
+ * ── userPrior = 0.15 flat · a self-report is still runner-specific, and still
+ *    not evidence ─────────────────────────────────────────────────────────
+ *
+ * FIXED 2026-09-01 (`docs/reports/cold-start-prior-fix-2026-09-01.md`). Before
+ * this, a zero-run account's threshold pace floored straight to
+ * `populationPrior` off `conservativeVdotFromMileage(0)` — VDOT 30, ~10:42/mi
+ * — no matter what the runner had typed at onboarding about their own running
+ * history. The legacy VDOT cascade (`generate.ts`'s `COLD-2`/`HIGHVOL-1`
+ * comments) has always seeded exactly this rung from
+ * `profile.history_avg_weekly_mi`, the runner's own self-reported onboarding
+ * weekly mileage; this resolver's `loadVdotFallback` never wired that in,
+ * which is the ~35% pace divergence the shadow-compare audit in
+ * `docs/reports/canonical-authoring-migration-2026-09-01.md` §5.1 found on
+ * every real zero-run account this database holds.
+ *
+ * `SourceMode.user_prior` already existed for exactly this shape ("a
+ * self-reported ability, unverified by any running") and already sat strictly
+ * between `vdot_fallback` and `population_prior` in `SOURCE_MODE_STRENGTH` —
+ * it was declared and ranked but never once assigned by either resolver. No
+ * new mode was needed; only the missing wire.
+ *
+ * WHY IT IS ITS OWN BAND AND NOT JUST `populationPrior` RELABELLED. §17's
+ * whole point is that the label says how much to trust the number — a
+ * self-report the runner actually typed about their own history is a
+ * different epistemic state than the resolver knowing nothing about them at
+ * all, and collapsing the two into one flat 0.10 would erase that distinction
+ * downstream (a caller reading `reasons` could no longer tell "he told us
+ * something" from "we have nothing").
+ *
+ * WHY 0.15 AND NOT SOMEWHERE ELSE. Flat, for the same reason
+ * `populationPrior` is flat: a self-reported weekly-mileage BUCKET midpoint
+ * (`HIST_AVG_MIDPOINTS`, `lib/onboarding/state.ts`) is one number the runner
+ * picked from a chip, with no corroboration count, no freshness date and no
+ * cross-observation spread to score — inventing one of those would be the
+ * fake specificity §38 forbids. The VALUE sits strictly between the two bands
+ * it sits between in `SOURCE_MODE_STRENGTH`: it must never touch
+ * `fallbackFloor` (0.20), because a self-report is still not an observation
+ * of this runner running, and it must sit strictly above `populationPrior`
+ * (0.10), because unlike the population prior it IS runner-specific — the
+ * runner told the app something true about themselves, even if unverified.
+ *
+ * ── THE BOUNDARY THIS BAND DOES NOT MOVE ────────────────────────────────────
+ *
+ * Self-reported onboarding mileage informs a LOW-CONFIDENCE PRIOR here and
+ * nothing more. It never reaches `direct` or `inferred` — those require an
+ * actual observation of the runner running, which a chip tapped at onboarding
+ * is not. `loadVdotFallback` only ever substitutes it into the WEEKLY-MILEAGE
+ * input the mileage-estimate rung already consumed (`conservativeVdotFromMileage`
+ * still does the same monotonic, bounded, conservative conversion it always
+ * did) — it is never used to fabricate a VDOT, a race result, or any evidence
+ * id. And it only substitutes when the runner's OWN FILTERED training data
+ * reads zero: the moment any real run lands with nonzero representative
+ * weekly mileage, `priorWeeklyMi` prefers it over the self-report
+ * automatically, with no special-case code — the same fall-through property
+ * every other rung in this ladder already has.
  */
 export const CAPACITY_CONFIDENCE_BANDS = Object.freeze({
   directFloor: 0.50,
   directCeiling: 0.90,
   fallbackFloor: 0.20,
   fallbackCeiling: 0.50,
+  userPrior: 0.15,
   populationPrior: 0.10,
 });
 
@@ -859,16 +919,65 @@ export interface VdotFallbackRead {
    * `composeThresholdCapacity`.
    */
   normalWeeklyMi: NormalReading<number>;
+  /**
+   * The runner's own SELF-REPORTED onboarding weekly mileage
+   * (`profile.history_avg_weekly_mi`), for the `user_prior` rung — FIXED
+   * 2026-09-01, see `CAPACITY_CONFIDENCE_BANDS.userPrior`'s header for the
+   * defect this closes and the boundary it does not cross.
+   *
+   * Null when the profile row is missing, the field was never answered, or the
+   * read itself failed (`rowOrNull`, `lib/db/read.ts` — three states collapse
+   * to one here on purpose: whichever of the three is true, the ladder's
+   * correct move is identical, fall through to the real population prior).
+   * Never coerced to zero — `priorWeeklyMi` treats `null` and "answered zero"
+   * differently, because a runner who typed "0-5 mi/wk" DID answer, at
+   * `HIST_AVG_MIDPOINTS['0-5'] = 3`, not null.
+   */
+  selfReportedWeeklyMi: number | null;
+}
+
+/**
+ * The runner's own onboarding self-report of weekly mileage, or `null` when
+ * there is none to read (missing profile, unanswered field, or a failed read
+ * — see `VdotFallbackRead.selfReportedWeeklyMi`'s header for why the three
+ * collapse here). `rowOrNull` (Rule 11/`lib/db/read.ts`) so a DB failure is
+ * LOGGED rather than silently indistinguishable from "the runner never said"
+ * — both still fall through to the same conservative rung, which is the
+ * argued exemption this reader owes the swallowed-failure gate.
+ */
+async function loadOnboardingWeeklyMiPrior(userId: string): Promise<number | null> {
+  const row = await rowOrNull<{ history_avg_weekly_mi: number | string | null }>(
+    'capacity-resolver/onboarding-weekly-mi-prior',
+    pool.query(
+      `SELECT history_avg_weekly_mi FROM profile WHERE user_uuid = $1 LIMIT 1`,
+      [userId],
+    ),
+  );
+  // `row == null` is "missing profile row" or "the read itself failed" — both
+  // collapse to null, argued above. `row.history_avg_weekly_mi == null` is
+  // "the runner never answered this question" — also null, same argument.
+  // NEITHER of those is the same fact as the runner answering `HIST_AVG_MIDPOINTS['0']
+  // = 0` — "I said I don't run yet" is a real, measured self-report (ZEROSAY-1,
+  // lib/onboarding/state.ts) and must survive as `0`, not be coerced into the
+  // same null a missing answer produces (Rule 11's zero-vs-absent distinction,
+  // caught here by `check-coercion.sh` on first run). `priorWeeklyMi`'s own
+  // `> 0` gate is what decides whether a self-reported 0 is USABLE to
+  // substitute — that policy question belongs one layer up, not folded into
+  // this reader erasing the value before it gets there.
+  if (row == null || row.history_avg_weekly_mi == null) return null;
+  const n = Number(row.history_avg_weekly_mi);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 async function loadVdotFallback(userId: string, todayISO: string): Promise<VdotFallbackRead> {
-  const [inputs, normalWeeklyMi] = await Promise.all([
+  const [inputs, normalWeeklyMi, selfReportedWeeklyMi] = await Promise.all([
     // The floor is passed EXPLICITLY on both halves so `goalRunFloorMiForUser`
     // never fires and the loader and the ranker cannot disagree about which
     // floor gated the pool — the mismatch `vdot-inputs.ts`'s own comment warns
     // about, closed here by construction rather than by remembering.
     loadVdotInputs(userId, todayISO, undefined, CAPACITY_RUN_FLOOR_MI),
     normalWeeklyMileage(userId, todayISO),
+    loadOnboardingWeeklyMiPrior(userId),
   ]);
   const { best, belowTableAnchor } = bestRecentVdot(
     inputs.raceCandidates,
@@ -884,6 +993,7 @@ async function loadVdotFallback(userId: string, todayISO: string): Promise<VdotF
     measuredVdotSource: best?.source ?? null,
     belowTableAnchor,
     normalWeeklyMi,
+    selfReportedWeeklyMi,
   };
 }
 
@@ -896,18 +1006,51 @@ function belowTableSourceMode(anchor: BelowTableAnchor): SourceMode {
   return anchor.source === 'race' ? 'race_derived' : 'inferred';
 }
 
-/** The weekly mileage the population-prior rung may spend, and whether the
+/** What the mileage-based rung (`composeThresholdCapacity` tiers 2-4,
+ *  `composeHighIntensityCapacity` tier 4) may spend: the real, Rule 8-filtered
+ *  habit mileage when it is nonzero; the runner's own onboarding self-report
+ *  ONLY when that real read is zero or refused; the true zero otherwise. */
+interface PriorWeeklyMiResult {
+  weeklyMi: number;
+  /** The REAL habit window itself refused to answer (Rule 11 — a different
+   *  fact from "he ran nothing", and reported separately in `reasons` via
+   *  `HABIT_WINDOW_REFUSED` regardless of whether a self-report filled the
+   *  gap). */
+  refused: boolean;
+  /** True when `weeklyMi` came from the onboarding self-report rather than
+   *  from real logged running — the fact that decides `user_prior` vs
+   *  `population_prior` sourceMode one level up. */
+  usedSelfReport: boolean;
+}
+
+/** The weekly mileage the mileage-based rung may spend, and whether the
  *  habit window refused to answer.
  *
  *  Rule 11, explicitly: a refusal is NOT coerced into a measurement. The rung
- *  falls to the most conservative input the ladder has (zero miles →
- *  `conservativeVdotFromMileage`'s own floor) and the caller stamps
- *  `HABIT_WINDOW_REFUSED` so the estimate says out loud that its last rung ran
- *  on nothing. That is a different fact from "this runner runs zero miles", and
- *  a consumer reading `reasons` can tell them apart. */
-function priorWeeklyMi(r: NormalReading<number>): { weeklyMi: number; refused: boolean } {
-  if (r.ok) return { weeklyMi: r.value, refused: false };
-  return { weeklyMi: 0, refused: true };
+ *  falls to the most conservative REAL input available. Until 2026-09-01 that
+ *  was always a flat zero, which is `CAPACITY_CONFIDENCE_BANDS.userPrior`'s
+ *  documented defect — a zero-run account got `conservativeVdotFromMileage(0)`
+ *  (VDOT 30, ~10:42/mi) no matter what the runner had typed at onboarding.
+ *  Now, and ONLY when the real filtered read is zero or refused, the
+ *  runner's own self-report substitutes — never when real mileage is any
+ *  nonzero number, however small, because a genuine observation of the
+ *  runner running always outranks an unverified self-report (§17). The
+ *  caller stamps `HABIT_WINDOW_REFUSED` when the real window refused (whether
+ *  or not a self-report filled the gap) so the estimate says out loud what
+ *  its last real rung actually saw. That is a different fact from "this
+ *  runner runs zero miles", and a consumer reading `reasons` can tell them
+ *  apart. */
+function priorWeeklyMi(
+  r: NormalReading<number>,
+  selfReportedWeeklyMi: number | null,
+): PriorWeeklyMiResult {
+  const real = r.ok ? r.value : 0;
+  const refused = !r.ok;
+  if (real > 0) return { weeklyMi: real, refused: false, usedSelfReport: false };
+  if (selfReportedWeeklyMi != null && selfReportedWeeklyMi > 0) {
+    return { weeklyMi: selfReportedWeeklyMi, refused, usedSelfReport: true };
+  }
+  return { weeklyMi: real, refused, usedSelfReport: false };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -952,8 +1095,12 @@ export interface ThresholdCapacityInputs {
  *                          through the Daniels T column
  *   3 · race_derived     — a demonstrated pace the VDOT table cannot represent,
  *     / inferred          offset to T by doctrine's distance-tier table
- *   4 · population_prior — a self-reported weekly volume, through the
- *                          cold-start anchor
+ *   4 · user_prior        — real logged mileage reads zero, but the runner's
+ *     / population_prior   OWN ONBOARDING SELF-REPORT of weekly volume exists
+ *                          (`user_prior`) or does not (`population_prior`),
+ *                          through the cold-start anchor either way —
+ *                          `priorWeeklyMi` decides which, see
+ *                          `CAPACITY_CONFIDENCE_BANDS.userPrior`'s header
  *
  * Rungs 2-4 are `resolveCurrentTPace`, called rather than reimplemented: it is
  * the proven encoding of that cascade, it already carries the
@@ -1005,7 +1152,7 @@ export function composeThresholdCapacity(
   }
 
   // ── TIERS 2-4 · THE LEGACY CASCADE ───────────────────────────────────────
-  const prior = priorWeeklyMi(fallback.normalWeeklyMi);
+  const prior = priorWeeklyMi(fallback.normalWeeklyMi, fallback.selfReportedWeeklyMi);
   const cascade = resolveCurrentTPace(
     fallback.measuredVdot,
     fallback.belowTableAnchor,
@@ -1018,7 +1165,10 @@ export function composeThresholdCapacity(
     below_table_anchor: fallback.belowTableAnchor
       ? belowTableSourceMode(fallback.belowTableAnchor)
       : 'inferred',
-    mileage_estimate: 'population_prior',
+    // FIXED 2026-09-01 · `user_prior` when the mileage this rung spent came
+    // from the runner's own onboarding self-report rather than real logged
+    // running — see `CAPACITY_CONFIDENCE_BANDS.userPrior`'s header.
+    mileage_estimate: prior.usedSelfReport ? 'user_prior' : 'population_prior',
   };
   const sourceMode = tierMap[cascade.tier];
 
@@ -1033,7 +1183,8 @@ export function composeThresholdCapacity(
   const reasons: CapacityReasonCode[] = ['NO_DIRECT_EVIDENCE'];
   if (cascade.tier === 'measured_vdot') reasons.push('MEASURED_VDOT_FALLBACK');
   if (cascade.tier === 'below_table_anchor') reasons.push('BELOW_TABLE_ANCHOR_FALLBACK');
-  if (cascade.tier === 'mileage_estimate') reasons.push('MILEAGE_POPULATION_PRIOR');
+  if (cascade.tier === 'mileage_estimate' && prior.usedSelfReport) reasons.push('ONBOARDING_MILEAGE_USER_PRIOR');
+  if (cascade.tier === 'mileage_estimate' && !prior.usedSelfReport) reasons.push('MILEAGE_POPULATION_PRIOR');
   if (cascade.tier === 'mileage_estimate' && prior.refused) reasons.push('HABIT_WINDOW_REFUSED');
 
   const anchorDate = cascade.tier === 'measured_vdot'
@@ -1055,7 +1206,9 @@ export function composeThresholdCapacity(
     vdot: vdotFromTpace(paceSecPerMi),
     confidence: sourceMode === 'population_prior'
       ? CAPACITY_CONFIDENCE_BANDS.populationPrior
-      : fallbackConfidence(anchorDate, todayISO),
+      : sourceMode === 'user_prior'
+        ? CAPACITY_CONFIDENCE_BANDS.userPrior
+        : fallbackConfidence(anchorDate, todayISO),
     sourceMode,
     evidenceIds,
     resolvedAt,
@@ -1203,7 +1356,10 @@ export interface HighIntensityCapacityInputs {
  *     / inferred          below-table pace. R is NULL here: the mile column is
  *                          a VDOT table this runner is off, and there is no
  *                          doctrine-supported route to R without it.
- *   4 · population_prior — the cold-start anchor, same as threshold's
+ *   4 · user_prior        — the cold-start anchor, same as threshold's tier
+ *     / population_prior   4 — `user_prior` when the runner's own onboarding
+ *                          self-report fills in for a real-zero mileage read,
+ *                          `population_prior` when neither exists
  *
  * §38 is the standard this is written to: "Threshold based on race-derived
  * fallback; direct evidence currently insufficient" beats silently pretending
@@ -1265,17 +1421,22 @@ export function composeHighIntensityCapacity(
     }
   }
 
-  // ── TIER 4 · POPULATION PRIOR ────────────────────────────────────────────
-  const prior = priorWeeklyMi(fallback.normalWeeklyMi);
+  // ── TIER 4 · MILEAGE PRIOR (population, or the runner's own onboarding
+  //    self-report when real logged mileage reads zero — FIXED 2026-09-01,
+  //    see `CAPACITY_CONFIDENCE_BANDS.userPrior`'s header) ──────────────────
+  const prior = priorWeeklyMi(fallback.normalWeeklyMi, fallback.selfReportedWeeklyMi);
   const priorVdot = conservativeVdotFromMileage(prior.weeklyMi);
-  reasons.push('MILEAGE_POPULATION_PRIOR');
+  reasons.push(prior.usedSelfReport ? 'ONBOARDING_MILEAGE_USER_PRIOR' : 'MILEAGE_POPULATION_PRIOR');
   if (prior.refused) reasons.push('HABIT_WINDOW_REFUSED');
+  const sourceMode: SourceMode = prior.usedSelfReport ? 'user_prior' : 'population_prior';
   return {
     intervalPaceSecPerMi: iPaceFromVdot(priorVdot) ?? 0,
     repetitionPaceSecPerMi: rPaceFromVdot(priorVdot),
     vdot: priorVdot,
-    confidence: CAPACITY_CONFIDENCE_BANDS.populationPrior,
-    sourceMode: 'population_prior',
+    confidence: prior.usedSelfReport
+      ? CAPACITY_CONFIDENCE_BANDS.userPrior
+      : CAPACITY_CONFIDENCE_BANDS.populationPrior,
+    sourceMode,
     evidenceIds: [],
     resolvedAt,
     reasons,
