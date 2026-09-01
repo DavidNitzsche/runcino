@@ -289,8 +289,32 @@ elif [ -x "$VITEST" ]; then
     fail=1
   fi
 else
-  echo "coercion · vitest not installed here · ran the registry shape check only"
+  # ── RULE 18 point 2 · A GATE THAT CHECKS NOTHING MAY NOT REPORT OK ────────
+  #
+  # Until 2026-09-01 this branch printed a caveat and then fell through to
+  # `exit 0` with "coercion OK · N argued exemptions, N on the named ratchet". Four gate stages did the
+  # same. Railway builds with `npm install` and vitest is a devDependency, so
+  # any environment that omits devDeps turned four gates into registry-SHAPE
+  # checks that still announced confidence — reporting clean because they
+  # looked at nothing, which is the worst outcome available.
+  #
+  # The COLD-CONTAINER case is real and stays honest: with no `node_modules`
+  # at all, the shape checks above genuinely stand on their own (that is what
+  # the sed-and-grep format contract is FOR) and the newer gates
+  # (check-normal-window, check-client-graph, check-automatic-mutations,
+  # check-goal-immutability) say exactly this. But `node_modules` PRESENT and
+  # vitest missing is a pruned install, not a cold container, and the two must
+  # not report the same way.
+  if [ -d "$ROOT/web-v2/node_modules" ]; then
+    echo "COERCION FAIL · node_modules is present but $VITEST is not executable"
+    echo "  devDependencies were pruned. The shape checks above ran; the SCANNER did not,"
+    echo "  and this stage will not report OK over a check it did not perform."
+    echo "  Install devDependencies, or set COERCION_SKIP_VITEST=1 to skip it deliberately."
+    fail=1
+  else
+    echo "coercion · no node_modules (cold container) · ran the shape check only"
   echo "  ($n_id argued exemptions, $n_known named ratchet entries, peripheral baseline ${baseline:-?})"
+  fi
 fi
 
 if [ "$fail" -eq 0 ]; then

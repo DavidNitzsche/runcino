@@ -111,16 +111,55 @@ VITEST="$ROOT/web-v2/node_modules/.bin/vitest"
 if [ "${DOCTRINE_SKIP_VITEST:-}" = "1" ]; then
   echo "doctrine · vitest stage skipped (DOCTRINE_SKIP_VITEST=1)"
 elif [ -x "$VITEST" ]; then
-  if ! (cd "$ROOT/web-v2" && "$VITEST" run lib/doctrine --silent); then
+  # NOT `--silent`, and not `--silent` again. Until 2026-09-01 this line read
+  # `"$VITEST" run lib/doctrine --silent`, which suppressed the gate's own
+  # report — `=== DOCTRINE · 323 claims · 12 recorded violations ===` and the
+  # twelve reasons under it — on every single build. Three of those twelve open
+  # with the words "REAL VIOLATION, RUNNER-FACING, NOT FIXED HERE", and the only
+  # thing anybody ever saw was "doctrine OK · 323 citations resolve".
+  #
+  # `--disable-console-intercept` because vitest buffers console output by
+  # default and drops it for a passing file; the report is printed by a passing
+  # test on purpose, so without this it is suppressed a second way.
+  #
+  # A recorded violation is a thing the build should have to look at.
+  if ! (cd "$ROOT/web-v2" && "$VITEST" run lib/doctrine --disable-console-intercept); then
     echo "DOCTRINE FAIL · a claim's predicate or the structural lint failed (see above)."
     echo "  Fix the engine constant, not the claim. A real violation you are not fixing"
     echo "  now goes in that claim's \`exempt\` map with an honest reason — never widen"
     echo "  the claim to swallow it."
+    echo "  If the failure names a RUNNER-FACING exemption, it is a number on somebody's"
+    echo "  phone: fix the constant, or acknowledge it by name with an owner in"
+    echo "  web-v2/lib/doctrine/runner-facing-violations.ts. Acknowledging is not resolving."
     fail=1
   fi
 else
-  echo "doctrine · vitest not installed here · ran citation resolution only"
+  # ── RULE 18 point 2 · A GATE THAT CHECKS NOTHING MAY NOT REPORT OK ────────
+  #
+  # Until 2026-09-01 this branch printed a caveat and then fell through to
+  # `exit 0` with "doctrine OK · 323 citations resolve against Research/". Four gate stages did the
+  # same. Railway builds with `npm install` and vitest is a devDependency, so
+  # any environment that omits devDeps turned four gates into registry-SHAPE
+  # checks that still announced confidence — reporting clean because they
+  # looked at nothing, which is the worst outcome available.
+  #
+  # The COLD-CONTAINER case is real and stays honest: with no `node_modules`
+  # at all, the shape checks above genuinely stand on their own (that is what
+  # the sed-and-grep format contract is FOR) and the newer gates
+  # (check-normal-window, check-client-graph, check-automatic-mutations,
+  # check-goal-immutability) say exactly this. But `node_modules` PRESENT and
+  # vitest missing is a pruned install, not a cold container, and the two must
+  # not report the same way.
+  if [ -d "$ROOT/web-v2/node_modules" ]; then
+    echo "DOCTRINE FAIL · node_modules is present but $VITEST is not executable"
+    echo "  devDependencies were pruned. The shape checks above ran; the SCANNER did not,"
+    echo "  and this stage will not report OK over a check it did not perform."
+    echo "  Install devDependencies, or set DOCTRINE_SKIP_VITEST=1 to skip it deliberately."
+    fail=1
+  else
+    echo "doctrine · no node_modules (cold container) · ran the shape check only"
   echo "  ($checked anchors verified; run 'npm test' for the predicates and the lint)"
+  fi
 fi
 
 if [ "$fail" -eq 0 ]; then

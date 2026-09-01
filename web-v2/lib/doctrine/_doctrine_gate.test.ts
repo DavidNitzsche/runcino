@@ -20,6 +20,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { DOCTRINE_REGISTRY } from './registry';
+import { RUNNER_FACING_ACKNOWLEDGED } from './runner-facing-violations';
 import { resolveCitation } from './resolve';
 import type { ClaimContext } from './types';
 
@@ -114,8 +115,73 @@ describe('DOCTRINE GATE · every physiology constant is bound to its citation', 
     const rows = DOCTRINE_REGISTRY.flatMap((c) =>
       Object.entries(c.exempt ?? {}).map(([k, v]) => `  ${c.id} · ${k}\n    ${v.replace(/\s+/g, ' ')}`),
     );
-    // Not an assertion · this prints in CI so a violation cannot be carried silently.
+    // Not an assertion · this prints in CI so a violation cannot be carried
+    // silently. It was silent anyway until 2026-09-01, because
+    // `check-doctrine.sh` ran this suite with `--silent` and swallowed the
+    // whole report; the gate printed "doctrine OK · 323 citations resolve" over
+    // twelve recorded violations, three of which say RUNNER-FACING in their own
+    // text. The `--silent` is gone and the assertion below is what makes the
+    // three matter.
     console.log(`\n=== DOCTRINE · ${DOCTRINE_REGISTRY.length} claims · ${rows.length} recorded violations ===\n${rows.join('\n')}\n`);
     expect(DOCTRINE_REGISTRY.length).toBeGreaterThan(0);
+  });
+
+  /* ──────────────────────────────────────────────────────────────────────────
+   * RUNNER-FACING VIOLATIONS · acknowledged by name, or the build fails.
+   *
+   * An exemption for a deviation nobody outside the engine can observe is one
+   * thing. An exemption for a number on somebody's phone is another, and until
+   * 2026-09-01 the registry could not tell them apart: twelve entries, all
+   * equally quiet, three of them opening with "REAL VIOLATION, RUNNER-FACING".
+   *
+   * See `runner-facing-violations.ts` for the instrument and for what it
+   * cannot fail on.
+   * ────────────────────────────────────────────────────────────────────────── */
+  /**
+   * TWO markers, and the second one is not padding.
+   *
+   * The 5K and 10K rows say "REAL VIOLATION, RUNNER-FACING, NOT FIXED HERE".
+   * The half row — the SAME defect on the SAME surface, one distance over —
+   * says "REAL VIOLATION, MARGINAL" and never uses the word. Matching only
+   * "RUNNER-FACING" would have let two thirds of one finding through, and
+   * would have made the marker something a future author could drop by
+   * rewording rather than by fixing. "REAL VIOLATION" is this registry's
+   * existing convention for a live defect (as against "KNOWN VIOLATION", which
+   * its three users apply to internal deviations nobody outside the engine can
+   * observe), so both are treated as runner-facing.
+   */
+  const runnerFacing = DOCTRINE_REGISTRY.flatMap((c) =>
+    Object.entries(c.exempt ?? {})
+      .filter(([, v]) => /RUNNER-FACING|REAL VIOLATION/.test(v))
+      .map(([k]) => `${c.id}::${k}`),
+  );
+
+  it('every RUNNER-FACING exemption is acknowledged with an owner and a decision', () => {
+    const acknowledged = new Set(RUNNER_FACING_ACKNOWLEDGED.map((r) => r.id));
+    const unacknowledged = runnerFacing.filter((id) => !acknowledged.has(id));
+    expect(
+      unacknowledged,
+      '\nA doctrine exemption describes itself as RUNNER-FACING and nobody has been named to\n'
+      + 'decide it. This is a number a runner reads off his phone that disagrees with the\n'
+      + 'research the app cites for it.\n\n'
+      + 'Fix the constant, or add an entry to RUNNER_FACING_ACKNOWLEDGED in\n'
+      + 'lib/doctrine/runner-facing-violations.ts naming WHO decides and WHAT the runner\n'
+      + 'sees. Acknowledging is not resolving — the entry records who owes the call.\n',
+    ).toEqual([]);
+    for (const r of RUNNER_FACING_ACKNOWLEDGED) {
+      expect(r.owner.length, `${r.id} needs a real owner, not a placeholder`).toBeGreaterThan(20);
+      expect(r.decision.length, `${r.id} needs to say what the runner sees`).toBeGreaterThan(80);
+    }
+  });
+
+  it('no acknowledgement outlives the violation it names', () => {
+    const live = new Set(runnerFacing);
+    const stale = RUNNER_FACING_ACKNOWLEDGED.filter((r) => !live.has(r.id)).map((r) => r.id);
+    expect(
+      stale,
+      '\nThese acknowledgements no longer match a RUNNER-FACING exemption. Either the\n'
+      + 'violation was fixed (delete the entry, and say so) or the exemption was reworded\n'
+      + 'so it no longer says RUNNER-FACING, which is worse. Check which.\n',
+    ).toEqual([]);
   });
 });
