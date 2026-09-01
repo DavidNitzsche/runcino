@@ -19,11 +19,18 @@
  * distinguish among these states, not just a boolean."
  *
  *   · AUTHORED_CANONICALLY      — the plan was composed directly through the
- *     canonical resolvers at authoring time. STRUCTURALLY UNREACHABLE TODAY
- *     — generate.ts still imports the legacy cascade — kept as a real branch
- *     so the day generate.ts is migrated, this guard does not need touching;
- *     it starts firing the moment authoring stamps the marker it already
- *     checks for.
+ *     canonical resolvers at authoring time. This branch was written as
+ *     "structurally unreachable today", on the bet that it should need no
+ *     change the day `generate.ts` was migrated. That day is 2026-09-01
+ *     (AUTHORING-CANONICAL-1): authoring prices every zone from
+ *     `resolvePrescribedPaceAnchors` and stamps
+ *     `authored_state.pace_authoring` with `authored_directly: true`. The bet
+ *     paid — the predicate below moved by one key name and nothing else in
+ *     this file changed for it.
+ *   · CANNOT_CONVERGE_NO_CANONICAL_PRICING — added 2026-09-01. See the state's
+ *     own doc comment: this guard's four states could not express "no reanchor
+ *     will EVER come", which the independent audit found was the majority
+ *     state in production.
  *   · REANCHORED_CANONICALLY    — authored via the legacy cascade, but
  *     `reanchorActivePlan` (the nightly, unconditional self-heal —
  *     `lib/plan/reanchor-plan.ts`, run from `/api/cron/snapshot-projections`
@@ -74,7 +81,26 @@ export type AuthoringReanchorConvergenceState =
   | 'AUTHORED_CANONICALLY'
   | 'REANCHORED_CANONICALLY'
   | 'AUTHORED_TOO_RECENTLY'
-  | 'REANCHOR_STATUS_UNKNOWN';
+  | 'REANCHOR_STATUS_UNKNOWN'
+  /**
+   * CANNOT-CONVERGE-1 (2026-09-01) · THE STATE THIS GUARD HAD NO WORD FOR, and
+   * which the independent audit found was the MAJORITY STATE in production.
+   *
+   * `reanchorActivePlan`'s GUARD 2 used to return null for any runner without
+   * a qualifying measured VDOT, and `snapshot-projections` passes an
+   * evidence-only read. So such a runner was never reanchored — not late,
+   * NEVER — and this guard reported `AUTHORED_TOO_RECENTLY` or
+   * `REANCHOR_STATUS_UNKNOWN` forever, both of which imply "check again
+   * tomorrow". Six of seven live plans, one of them 24 days old.
+   *
+   * The engine side is fixed (`reanchorOffCanonicalPrior` re-prices such a
+   * plan off the canonical resolvers' honest prior). This state remains
+   * because a plan can still be in it — between the fix landing and the next
+   * nightly run — and because Rule 23 says a precondition that can never be
+   * satisfied must be LOUD rather than silent. It is raised as an
+   * `ops_alerts` row by `alertOnUnconvergedPlan`.
+   */
+  | 'CANNOT_CONVERGE_NO_CANONICAL_PRICING';
 
 export interface AuthoringReanchorConvergence {
   readable: boolean;
@@ -116,15 +142,26 @@ function lastCanonicalReanchorFromState(authoredState: Record<string, unknown> |
 }
 
 /**
- * Structural marker for authoring having gone through the canonical
- * resolvers DIRECTLY, at composition time. `generate.ts` does not write this
- * today (see header) — this branch is real code with no live path to it yet,
- * kept so the guard needs no change the day generate.ts is migrated. Any
- * writer that starts authoring canonically should stamp exactly this key.
+ * Structural marker for authoring having gone through the canonical resolvers
+ * DIRECTLY, at composition time.
+ *
+ * `persistComposedPlan` writes `authored_state.pace_authoring` since
+ * AUTHORING-CANONICAL-1 (2026-09-01): `{source:'canonical', authored_directly:
+ * true, at, anchors:{…, basis}}`. The six prices and their basis travel with
+ * the mark, which is Rule 10's stamp requirement — a later reader can tell a
+ * stale price from a current one by looking rather than by inferring.
+ *
+ * BOTH KEYS ARE READ. `pace_anchors.authored_directly` was this file's
+ * original guess at the key name and no writer ever produced it; it is kept as
+ * an accepted alias rather than deleted, because a plan authored by a future
+ * writer that follows the older comment must not be reported as unconverged.
+ * Cheap, and the failure it prevents is silent.
  */
 function authoredCanonically(authoredState: Record<string, unknown> | null): boolean {
-  return authoredState?.pace_anchors != null
-    && (authoredState.pace_anchors as Record<string, unknown>).authored_directly === true;
+  const pa = authoredState?.pace_authoring as Record<string, unknown> | null | undefined;
+  if (pa != null && (pa.authored_directly === true || pa.source === 'canonical')) return true;
+  const legacy = authoredState?.pace_anchors as Record<string, unknown> | null | undefined;
+  return legacy != null && legacy.authored_directly === true;
 }
 
 /**
@@ -168,7 +205,7 @@ export async function resolveAuthoringReanchorConvergence(
       readable: true, planId: planRow.id, authoredIso: authoredIso.toISOString(),
       lastCanonicalReanchorAt: authoredIso.toISOString(),
       state: 'AUTHORED_CANONICALLY',
-      detail: 'authored_state.pace_anchors.authored_directly is true — this plan was composed '
+      detail: 'authored_state.pace_authoring says this plan was composed '
         + 'through the canonical resolvers directly, not the legacy VDOT cascade. No reanchor '
         + 'was needed to converge because there was never a second brain to converge with.',
     };
@@ -246,6 +283,24 @@ export async function resolveAuthoringReanchorConvergence(
   //    found nothing to do, OR the mutation boundary could have refused for
   //    this user specifically — the two are indistinguishable from here,
   //    and Rule 11 forbids picking the comfortable one). ───────────────────
+  // ── CANNOT_CONVERGE_NO_CANONICAL_PRICING · the job has run since authoring
+  //    and this plan STILL carries no canonical stamp of any kind. Older than
+  //    a day, that is not ambiguity any more: it is a plan the convergence
+  //    mechanism is not reaching, and Rule 23 says that must be loud. ───────
+  const ageHours = (Date.now() - authoredIso.getTime()) / 3_600_000;
+  if (ageHours > CONVERGENCE_ALERT_AFTER_HOURS) {
+    return {
+      readable: true, planId: planRow.id, authoredIso: authoredIso.toISOString(),
+      lastCanonicalReanchorAt: lastReanchor?.toISOString() ?? null,
+      state: 'CANNOT_CONVERGE_NO_CANONICAL_PRICING',
+      detail: `Plan authored ${authoredIso.toISOString()} (${Math.round(ageHours)}h ago) carries `
+        + `neither a canonical authoring stamp nor a reanchor stamp, and /api/cron/${REANCHOR_JOB_ID} `
+        + `has completed since (${jobLastRan.toISOString()}). This plan is being priced by neither `
+        + 'brain the app currently has, and waiting another night will not change that — before '
+        + 'CANNOT-CONVERGE-1 a runner with no measured VDOT was never reanchored at all.',
+    };
+  }
+
   return {
     readable: true, planId: planRow.id, authoredIso: authoredIso.toISOString(),
     lastCanonicalReanchorAt: lastReanchor?.toISOString() ?? null,
@@ -257,4 +312,56 @@ export async function resolveAuthoringReanchorConvergence(
       + 'cron-ledger.ts\'s own documented limit is that a batch success cannot see a per-user '
       + 'failure. Treated as unready rather than assumed fine.',
   };
+}
+
+/**
+ * How old an unconverged plan may be before it stops being timing and starts
+ * being a defect, in hours.
+ *
+ * 24. `snapshot-projections` is scheduled daily and the audit measured its
+ * worst observed gap at 15.7 h, so a plan that has survived a full day with no
+ * canonical pricing of any kind has outlived every benign explanation the
+ * schedule can offer (Rule 23: lateness must be harmless, and this is the
+ * boundary past which it is not).
+ */
+export const CONVERGENCE_ALERT_AFTER_HOURS = 24;
+
+/**
+ * RULE 23 · A PLAN THAT NOTHING IS PRICING MUST BE NOTICED.
+ *
+ * The audit's finding was not that convergence sometimes lagged. It was that
+ * for the majority of live plans it never happened, and NOBODY KNEW — there
+ * was no alert, no staleness check, and the state was discovered only because
+ * a human queried `training_plans` by hand.
+ *
+ * Called by the reanchor cron after it has done its own work, so the alert
+ * describes what is STILL wrong after the mechanism has had its turn. Raises
+ * at most one row per plan per `CONVERGENCE_ALERT_AFTER_HOURS` window —
+ * `raiseAlert` is append-only and this is a daily job, so the dedupe is the
+ * schedule rather than a query.
+ *
+ * Returns the state it judged, so a caller can log it without re-resolving.
+ */
+export async function alertOnUnconvergedPlan(
+  userUuid: string,
+): Promise<AuthoringReanchorConvergenceState | null> {
+  const c = await resolveAuthoringReanchorConvergence(userUuid).catch(() => null);
+  if (c == null || !c.readable) return null;
+  if (c.state !== 'CANNOT_CONVERGE_NO_CANONICAL_PRICING') return c.state;
+
+  const { raiseAlert } = await import('@/lib/ops/alerts');
+  await raiseAlert({
+    kind: 'plan_convergence',
+    severity: 'warn',
+    message: `Plan ${c.planId} has no canonical pricing ${CONVERGENCE_ALERT_AFTER_HOURS}h after authoring`,
+    metadata: {
+      plan_id: c.planId,
+      user_uuid: userUuid,
+      authored_iso: c.authoredIso,
+      last_canonical_reanchor_at: c.lastCanonicalReanchorAt,
+      detail: c.detail,
+    },
+    source: 'authoring-convergence',
+  });
+  return c.state;
 }

@@ -208,7 +208,14 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
 // `durability-anchor.ts`'s canonical resolver instead of coach-goal.ts's own
 // race-loading query, per docs/reports/race-prediction-consolidation-
 // 2026-09-01.md. One fewer DB-backed swallow site in this tree.
-export const EMPTIED_BASELINE = 374;
+// 2026-09-01 · -1 from AUTHORING-CANONICAL-1. `loadGeneratorInputs` used to
+// resolve the plan-wide threshold pace through `resolveCurrentTPace` over a
+// `bestRecentVdot` assembled from a `.catch`-guarded loader; that whole block
+// is deleted and replaced by `resolvePrescribedPaceAnchors`, whose refusal is
+// a TYPE (`PaceAnchorRead`'s branch carries no `anchors` field) rather than a
+// swallowed read. One fewer site, and the state it used to lose is now
+// something the caller cannot fail to branch on.
+export const EMPTIED_BASELINE = 373;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
