@@ -173,6 +173,7 @@ export async function GET(
     workout_spec: any;
     phase: string | null;
     hr_cap: number | null;
+    lthr_bpm: number | null;
     pace_target_s: number | null;
   }>(
     `SELECT pw.type, pw.distance_mi, pw.workout_spec,
@@ -182,6 +183,13 @@ export async function GET(
               (pw.workout_spec->>'hr_target_bpm')::int,
               (pw.workout_spec->>'lthr_bpm')::int
             ) AS hr_cap,
+            -- C-3 · the THRESHOLD anchor on its own, NOT through the cap's
+            -- COALESCE ladder. threshold-band.ts multiplies its argument by
+            -- 1.02/1.00 to find the Friel 5a seam, so the argument must be the
+            -- LTHR; on a tempo row the ladder above returns hr_target_bpm,
+            -- which is a hover target well under LT, and the band it produced
+            -- called a 160 bpm tempo run past threshold.
+            (pw.workout_spec->>'lthr_bpm')::int AS lthr_bpm,
             -- A3: read the plan_workouts column first (correct source for
             -- structured workouts); fall back to spec keys for any runner
             -- whose plan was built before the column existed.
@@ -482,6 +490,7 @@ export async function GET(
     // colouring by this on 2026-08-30, and this is where the fact went.
     plannedPaceBandSPerMi: plannedPaceBand,
     plannedHrCap: planRow?.hr_cap ?? null,
+    lthrBpm: planRow?.lthr_bpm ?? null,
     actualMi,
     actualPaceSPerMi,
     // Real elapsed time where the row carries one · the recap otherwise derives

@@ -435,34 +435,56 @@ struct PhaseBreakdown: Decodable, Identifiable {
     let completed: Bool
     let status: String?                    // "on" | "fast" | "slow" | nil
 
+    /// PACE-SHAPE-1 (2026-09-01) · WHAT `target_pace_sec` MEANS on this phase.
+    ///
+    ///   window  · hold it, both sides of the tolerance. Quality reps.
+    ///   ceiling · do not go FASTER than it. Slower is never a miss. Warm-up,
+    ///             cool-down, easy and long running.
+    ///   none / effort · not pace-graded at all.
+    ///
+    /// Absent on rows recorded before the field existed; the server fills it
+    /// from the phase type in that case, so this is never nil in practice and
+    /// the default here only covers a payload from an older backend.
+    let pace_shape: String?
+
+    /// The word for `status`, already correct for the shape, composed server
+    /// side so the phone and the web read the same sentence.
+    let status_label: String?
+
     /// THE WATCH'S OWN GRADE, and not the same thing as `status`.
     ///
-    /// `status` is the server's read, recomputed from the two paces with a
-    /// heat allowance. `verdict` is what the device decided on the wrist,
-    /// against the tolerance the server sent it, using a 5-second sample
-    /// stream that never leaves the watch:
+    /// `status` is the server's read, recomputed from the two paces.
+    /// `verdict` is what the device decided on the wrist, against the
+    /// tolerance the server sent it:
     ///
-    ///   hit        · mean pace in band AND at least 70% of samples in band
-    ///   drifted    · mean pace in band, under 70% of samples in band
-    ///   missed     · mean pace outside the band
+    ///   hit        · the completed segment AVERAGE was in the window, or
+    ///                under the ceiling
+    ///   fast       · quicker than the fast edge, or past the ceiling
+    ///   slow       · slower than the slow edge. Never returned on a ceiling
+    ///                phase — slower than a ceiling is correct running
     ///   incomplete · the phase ended before reaching its target
+    ///   drifted / missed · LEGACY, from builds before 2026-09-01
     ///
-    /// The two legitimately disagree. A rep whose mean was fine but which
-    /// sawed either side of the band reads `on` and `drifted`, and the second
-    /// is the one holding the sample stream's evidence.
+    /// The old wrist rule graded the SHARE OF INSTANTANEOUS 5-SECOND SAMPLES
+    /// inside the band, and on 2026-09-01 returned drifted / drifted /
+    /// drifted / missed on four reps averaging 422 / 429 / 422 / 419 against
+    /// a 430 ± 8 target, on a negative split. A ±8 s/mi window is 1.9% of a
+    /// 430 s/mi pace; that was a measurement of the GPS, not of the runner.
     ///
     /// Nil on every treadmill phase and on any phase with no target — absence
     /// of recording, never a judgement.
-    let verdict: String?                   // "hit" | "drifted" | "missed" | "incomplete" | nil
+    let verdict: String?
     /// Seconds inside the pace band, as the device counted them.
     let time_in_tolerance_sec: Int?
     /// Seconds outside it. `in + out` is the GRADED time and is shorter than
     /// `actual_duration_sec` — the device only grades while it has a pace.
+    /// This is where raggedness lives now that it is no longer a verdict.
     let time_out_of_tolerance_sec: Int?
 
     enum CodingKeys: String, CodingKey {
         case index, label, type
         case target_pace, target_pace_sec, tolerance_pace_sec
+        case pace_shape, status_label
         case target_distance_mi, target_duration_sec
         case actual_pace, actual_distance_mi, actual_duration_sec
         case avg_hr, max_hr, avg_cadence, completed, status
@@ -489,6 +511,10 @@ struct PhaseBreakdown: Decodable, Identifiable {
         self.target_pace = try? c.decodeIfPresent(String.self, forKey: .target_pace)
         self.target_pace_sec = try? c.decodeIfPresent(Double.self, forKey: .target_pace_sec)
         self.tolerance_pace_sec = try? c.decodeIfPresent(Double.self, forKey: .tolerance_pace_sec)
+        // PACE-SHAPE-1 · nil on a payload from a backend that predates the
+        // field, which `verdictPhrase` reads as "fall back to the phase type".
+        self.pace_shape = try? c.decodeIfPresent(String.self, forKey: .pace_shape)
+        self.status_label = try? c.decodeIfPresent(String.self, forKey: .status_label)
         self.target_distance_mi = try? c.decodeIfPresent(Double.self, forKey: .target_distance_mi)
         self.target_duration_sec = c.decodeFlexInt(forKey: .target_duration_sec)
         self.actual_pace = try? c.decodeIfPresent(String.self, forKey: .actual_pace)

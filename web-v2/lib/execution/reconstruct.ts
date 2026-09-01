@@ -91,6 +91,7 @@ import {
   type NormalizedPhase,
   type RunData,
 } from '@/lib/runs/run-shape';
+import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import type { WirePhaseVerdict } from '@/lib/training/execution-semantics';
 import { readProgressionSpec } from '@/lib/plan/progression-spec';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
@@ -549,22 +550,64 @@ export function executionContext(args: {
 export const RPE_HARDER_THAN_EXPECTED = 8;
 
 /**
- * The pace this runner has established for a domain, from their current
- * fitness anchor. Doctrine's "previously considered established" — it is what
- * lets a failure at a known pace read as high fitness evidence rather than as
- * a bad day. Offsets are `derivePaces`', so this and the prescription agree.
+ * The pace this runner has established for a domain. Doctrine's "previously
+ * considered established" — it is what lets a failure at a known pace read as
+ * high fitness evidence rather than as a bad day.
+ *
+ * ── F-5 · WHAT THIS USED TO DO, AND WHAT IT COST ────────────────────────────
+ *
+ * It took a raw VDOT and applied its own offsets to `tPaceFromVdot`:
+ *
+ *     repetition: t - 30 · interval: t - 18 · easy: t + 100
+ *
+ * and its own header claimed "offsets are `derivePaces`', so this and the
+ * prescription agree." They did not. The prescription side uses Daniels'
+ * Mile column for R (`rPaceFromVdot`), the I column for I (`iPaceFromVdot`),
+ * and `easyBandFromTPace(t).lo = t + 80` for the easy ceiling — the last of
+ * which is doctrine-gated by `PACE.easy-band-off-threshold`. Measured against
+ * the real functions:
+ *
+ *     VDOT 40 · R table 7:07 vs t-30  7:53   → 46 s/mi slower
+ *     VDOT 50 · R table 5:50 vs t-30  6:24   → 34 s/mi slower
+ *     VDOT 65 · R table 4:37 vs t-30  4:59   → 22 s/mi slower
+ *     VDOT 50 · I table 6:25 vs t-18  6:36   → 11 s/mi slower
+ *     all     · easy t+80    vs t+100        → 20 s/mi slower
+ *
+ * EVERY offset erred in the same direction: the grader believed the runner's
+ * established pace was SLOWER than the pace he was actually prescribed. That
+ * biases `failedAtKnownPace` (`interpret.ts` — `actual <= established + 5`)
+ * toward TRUE, so a session that came apart at a pace well INSIDE the
+ * prescription still read as HIGH fitness evidence. And it was printed at the
+ * runner: `composeFitnessEvidenceEntry` says "That pace has been comfortable
+ * before, at {established}/mi", which at VDOT 50 would have told him his rep
+ * pace was comfortable at 6:24/mi while his plan asked for 5:50.
+ *
+ * ── WHAT IT DOES NOW ────────────────────────────────────────────────────────
+ *
+ * It reads `PrescribedPaceAnchors` — the SAME six numbers
+ * `resolvePrescribedPaceAnchors` hands the plan builder, off the same four
+ * capacity resolvers. There is no second fitness and no offset table here at
+ * all, which is the only way "the grader and the prescription share one
+ * fitness" can be true rather than asserted (Rule 16, Rule 20).
+ *
+ * `null` in, `null` out, and `null` for `repetition` when the high-intensity
+ * ladder could not price a mile-column pace — that null is deliberate in
+ * `PrescribedPaceAnchors` (Rule 11: a caller must branch, never read a
+ * substituted I-pace) and it is carried through rather than filled in.
  */
-export function establishedPaceFor(domain: IntensityDomain, vdot: number | null): number | null {
-  const t = tPaceFromVdot(vdot);
-  if (t == null) return null;
+export function establishedPaceFor(
+  domain: IntensityDomain,
+  anchors: PrescribedPaceAnchors | null,
+): number | null {
+  if (anchors == null) return null;
   switch (domain) {
-    case 'repetition': return t - 30;
-    case 'interval': return t - 18;
-    case 'threshold': return t;
-    case 'race': return t;
-    case 'marathon': return t + 18;
-    case 'easy': return t + 100;
-    case 'recovery': return t + 100;
+    case 'repetition': return anchors.repetitionSecPerMi;
+    case 'interval':   return anchors.intervalSecPerMi;
+    case 'threshold':  return anchors.thresholdSecPerMi;
+    case 'race':       return anchors.thresholdSecPerMi;
+    case 'marathon':   return anchors.marathonSecPerMi;
+    case 'easy':       return anchors.easyCeilingSecPerMi;
+    case 'recovery':   return anchors.shakeoutCeilingSecPerMi;
   }
 }
 

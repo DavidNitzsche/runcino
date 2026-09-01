@@ -28,7 +28,11 @@
  * not in the words.
  */
 import type { Phase, WorkoutType } from '@/lib/coach/run-purpose';
-import { ranAboveThresholdBand } from '@/lib/training/threshold-band';
+import {
+  ranAboveThresholdBand,
+  ranBelowThresholdBand,
+} from '@/lib/training/threshold-band';
+import { hrCapBreached } from '@/lib/training/execution-semantics';
 import {
   judgeWeather,
   type WeatherInput,
@@ -83,6 +87,25 @@ export interface RecapInput {
   plannedPaceBandSPerMi?: { lo: number; hi: number } | null;
   /** Plan-side HR cap (bpm). null when by-feel. */
   plannedHrCap?: number | null;
+  /**
+   * The runner's LACTATE THRESHOLD heart rate, bpm — the anchor the threshold
+   * band is a multiple of.
+   *
+   * C-3 (2026-09-01) · this is NOT `plannedHrCap`, and conflating them was a
+   * live defect. `plannedHrCap` is a COALESCE ladder — `hr_cap_bpm`, then
+   * `hr_target_bpm`, then `lthr_bpm` — so on a threshold row it happens to be
+   * the LTHR and on a TEMPO row it is `hr_target_bpm`, which is a target to
+   * hover near and is well below threshold. `ranAboveThresholdBand(160, 155)`
+   * is true, so a tempo run at 160 bpm — the FLOOR of what this same app
+   * labels "Z4 Threshold · just below LT" — was told "that is past threshold,
+   * not more of it."
+   *
+   * `threshold-band.ts` multiplies its argument by 1.02 / 1.00 to find the
+   * Friel 5a seam. That argument must be the LTHR or the band is a band around
+   * something else. Null is a real answer (Rule 11): with no LTHR the recap
+   * declines to say anything about the band at all rather than guessing one.
+   */
+  lthrBpm?: number | null;
   /** Actual canonical-row execution. */
   actualMi: number;
   actualPaceSPerMi: number | null;
@@ -587,10 +610,32 @@ function tempoExecution(input: RecapInput): string | null {
        * Same discriminator the drift monitor uses, from the same module, so
        * the recap and the rebuild decision can never disagree. */
       const under = Math.abs(vsTarget);
-      if (ranAboveThresholdBand(input.actualAvgHr, input.plannedHrCap)) {
-        return `Ran ${under}s/mi under the target, and the heart rate went with it · that is past threshold, not more of it. Threshold is bought with time at the pace, not by beating it. ${spreadDesc}.`;
-      }
-      if (input.actualAvgHr != null && input.plannedHrCap != null) {
+      /* C-6 (2026-09-01) · THREE ARMS, NOT TWO.
+       *
+       * The middle arm used to be gated on nothing but "an HR and a cap both
+       * exist", and it asserted "with the heart rate still in the band". On
+       * the owner's own 2026-09-01 shape — threshold row, LTHR 168, avg HR
+       * 154 — that is FOURTEEN BEATS BELOW the band floor, and the sentence
+       * went on to call it "a soft lead the targets should probably catch up
+       * to": a recommendation to make the targets FASTER, off a session where
+       * the runner never reached the intensity the session existed for.
+       *
+       * `ranBelowThresholdBand` has existed in the same module the whole time,
+       * is imported by `drift-monitor.ts`, and this file imported only its
+       * opposite. Rule 16: a sentence asserting a fact about a measurement is
+       * gated on that measurement or not said.
+       *
+       * The band is read off `lthrBpm`, never off `plannedHrCap` — see that
+       * field's own doc for why (C-3). With no LTHR there is no band, and the
+       * fourth arm says exactly that instead of assuming one. */
+      const bandAnchor = input.lthrBpm ?? null;
+      if (input.actualAvgHr != null && bandAnchor != null) {
+        if (ranAboveThresholdBand(input.actualAvgHr, bandAnchor)) {
+          return `Ran ${under}s/mi under the target, and the heart rate went with it · that is past threshold, not more of it. Threshold is bought with time at the pace, not by beating it. ${spreadDesc}.`;
+        }
+        if (ranBelowThresholdBand(input.actualAvgHr, bandAnchor)) {
+          return `Ran ${under}s/mi under the target, but the heart rate stayed under the threshold band · the pace was quick and the effort was not, so this is not evidence the targets are soft. ${spreadDesc}.`;
+        }
         return `Ran ${under}s/mi under the target with the heart rate still in the band · that is a soft lead the targets should probably catch up to. Worth a retest before it counts as a new number. ${spreadDesc}.`;
       }
       return `Ran ${under}s/mi under the target · no heart rate to say whether that was fitness or just a hot start. The test is stacking the next eight weeks, not winning today. ${spreadDesc}.`;
@@ -876,11 +921,19 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
          */
         const cap = input.plannedHrCap;
         const avg = input.actualAvgHr;
-        const aerobicEarned = cap != null && cap > 0 && avg != null && avg > 0 && avg <= cap;
+        /* F-14 · THE cap comparison, from THE owner. Both arms of this file
+         * asked the same question with two different graces — this one at
+         * `avg > cap`, the easy arm below at `avg > cap + 5` — while the phone
+         * row and the wrist row both toned at `avg > cap`. One screen, three
+         * answers. `HR_CAP_GRACE_BPM` is derived from the zone arithmetic
+         * itself (`aerobicCeilingBpm` prints one beat BELOW the seam), not
+         * chosen. */
+        const aerobicEarned = cap != null && cap > 0 && avg != null && avg > 0
+          && !hrCapBreached(avg, cap);
         facts.push(
           `Long run done${miPart ? ` · ${miPart}` : ''}${hrPart}${aerobicEarned ? ' · kept it aerobic' : ''}.`,
         );
-        if (cap != null && cap > 0 && avg != null && avg > 0 && avg > cap) {
+        if (hrCapBreached(avg, cap)) {
           // PER-FINDING FILTER (CLAUDE.md, 2026-05-19 round 4). The READING is
           // the same in all three; only the cause differs, and asserting the
           // wrong cause is the defect this whole file keeps re-finding.
@@ -1010,7 +1063,9 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
       } else {
         facts.push(`${lead} Run by feel · the right way to take an easy day.`);
       }
-      if (input.plannedHrCap && input.actualAvgHr && input.actualAvgHr > input.plannedHrCap + 5) {
+      // F-14 · was `> cap + 5`, the outlier among four sites asking one
+      // question. Now the same owner the long arm above and both rows use.
+      if (hrCapBreached(input.actualAvgHr, input.plannedHrCap)) {
         if (heatExplainsDrift) {
           facts.push(`Your HR (${input.actualAvgHr}) ran a bit above the ${input.plannedHrCap} target, but it was hot · effort was right.`);
         } else if (postRace) {

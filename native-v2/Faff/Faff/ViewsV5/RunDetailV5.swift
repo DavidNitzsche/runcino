@@ -699,10 +699,40 @@ struct RunDetailV5: View {
     /// kilometres is the instruction, not a miss, and repeating the device's
     /// word here would print "outside the band" against a phase executed
     /// exactly as written. `nil` says the honest thing: nothing to grade.
+    ///
+    /// PACE-SHAPE-1 (2026-09-01) · A CEILING PHASE NEVER READS "OUTSIDE THE
+    /// BAND". A warm-up and a cool-down are easy running and their target is
+    /// the easy band's FAST edge, so running slower than it is correct. On
+    /// 2026-09-01 a 8:54/mi cool-down under an 8:22/mi ceiling came back
+    /// `missed` from the wrist while a 8:36/mi warm-up against the same number
+    /// came back `hit`, and this function would have printed "Outside the
+    /// band" over the correct one. It now reads `pace_shape` and says what
+    /// actually happened.
+    ///
+    /// `status_label` is the server's own word, composed by the one owner
+    /// (`lib/training/execution-semantics.ts`) so the phone and every other
+    /// surface read the same sentence. It is preferred whenever it arrives;
+    /// the switch below is the fallback for a payload from an older backend
+    /// and for the two legacy verdict words still sitting on stored rows.
     static func verdictPhrase(_ p: PhaseBreakdown) -> String? {
+        // A ceiling phase gets its word whatever its type — a warm-up and a
+        // cool-down are exactly the phases this fixes.
+        if p.pace_shape == "ceiling" {
+            switch p.verdict {
+            case "fast":       return "Over the ceiling"
+            case "hit":        return "Under the ceiling"
+            case "incomplete": return "Ended before its target"
+            default:           return p.status_label
+            }
+        }
         guard p.type == "work" else { return nil }
+        if let label = p.status_label, !label.isEmpty { return label }
         switch p.verdict {
         case "hit":        return "In the band"
+        case "fast":       return "Quicker than the band"
+        case "slow":       return "Slower than the band"
+        // LEGACY, from builds before 2026-09-01. Kept because stored rows
+        // carry them; no build emits them.
         case "drifted":    return "In and out of the band"
         case "missed":     return "Outside the band"
         case "incomplete": return "Ended before its target"

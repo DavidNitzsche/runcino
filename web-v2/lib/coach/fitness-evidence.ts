@@ -81,6 +81,7 @@ import { pool } from '@/lib/db/pool';
 import { loadKeySessionExecutions, type KeySessionExecution } from '@/lib/execution/load';
 import { establishedPaceFor } from '@/lib/execution/reconstruct';
 import type { IntensityDomain } from '@/lib/execution/interpret';
+import { resolveCurrentVdotSnapshot } from '@/lib/training/projection-snapshots';
 
 /**
  * How far back to look for a not-yet-logged occurrence. Short, because this
@@ -115,7 +116,6 @@ export interface FitnessEvidencePartialFinding {
  */
 export function findPartialFitnessEvidence(
   session: KeySessionExecution,
-  vdot: number | null,
 ): FitnessEvidencePartialFinding | null {
   if (!session.readable || !session.read || !session.planned) return null;
   if (session.read.state !== 'PARTIAL_FAILED') return null;
@@ -123,13 +123,21 @@ export function findPartialFitnessEvidence(
 
   const domain = session.planned.domain;
   const actualPaceSPerMi = session.actual?.meanWorkPaceSPerMi ?? null;
-  const establishedPaceSPerMi = establishedPaceFor(domain, vdot);
-  // Both are guaranteed non-null whenever `failedAtKnownPace` set
-  // evidence.fitness to 'high' inside interpretExecution — that flag itself
-  // requires ctx.establishedPaceSPerMi and actual.meanWorkPaceSPerMi to be
-  // non-null. This guard is defensive (a different vdot argument than the
-  // one load.ts used could theoretically disagree), not expected to trip on
-  // real data.
+  /* F-5 · READ, never recomputed.
+   *
+   * This used to call `establishedPaceFor(domain, vdot)` a second time with
+   * its OWN vdot argument, and the comment below already named the hazard:
+   * "a different vdot argument than the one load.ts used could theoretically
+   * disagree". It is no longer theoretical to avoid — the interpreter's own
+   * value rides on the row, so the number in the sentence the runner reads is
+   * by construction the number the verdict was computed against (Rule 16).
+   *
+   * Both are still guaranteed non-null whenever `failedAtKnownPace` set
+   * evidence.fitness to 'high' inside `interpretExecution` — that flag itself
+   * requires `ctx.establishedPaceSPerMi` and `actual.meanWorkPaceSPerMi` to be
+   * non-null. The guard stays because a refused anchor set (Rule 11) is a real
+   * state this function must decline rather than describe. */
+  const establishedPaceSPerMi = session.establishedPaceSPerMi;
   if (actualPaceSPerMi == null || establishedPaceSPerMi == null) return null;
 
   return {
@@ -181,24 +189,32 @@ export function composeFitnessEvidenceEntry(
 /* Best-effort, never throws, mirrors the house posture in coach-log.ts and
  * easy-discipline.ts. Everything above is pure and is what the tests lock. */
 
-/** Same read `lib/adaptation/load.ts#currentVdot` uses — the cron-computed
- *  snapshot anchor, not a second opinion recomputed here. Duplicated rather
- *  than imported: `lib/adaptation/load.ts`'s own header states the house
- *  rule ("where a reader exists it is called; where one does not, the query
- *  here is the only place that shape is derived") and that file does not
- *  export this query — `lib/plan/simulator.ts` and `lib/race/result-chain.ts`
- *  each carry their own copy of the same one-line read for the same reason. */
+/**
+ * THE current-VDOT read, from THE owner
+ * (`lib/training/projection-snapshots.ts#resolveCurrentVdotSnapshot`).
+ *
+ * F-6 (2026-09-01) · this file used to carry its OWN copy of the query, and
+ * justified it in a header comment citing a "house rule" — "where a reader
+ * does not exist, each caller carries its own one-line copy". Four files did
+ * exactly that, byte for byte, and a reader DID exist in
+ * `projection-snapshots.ts`; nobody called it. Three of the four wrapped the
+ * query in `.catch(() => ({ rows: [] }))`, so a FAILED READ became "no VDOT",
+ * which became `establishedPaceFor → null`, which suppressed the finding
+ * entirely. A guard that switches itself off when its input fails is Rule 11's
+ * defining shape.
+ *
+ * The resolver also closes two things no copy had: a total ORDER BY (Rule 14 —
+ * production holds three rows per user per snapshot_date and the tie-break was
+ * the planner's choice) and a staleness bound (a snapshot was faded as of its
+ * own date and never again, so an N-day-old row is under-faded by N days).
+ *
+ * `null` here still means "do not spend a VDOT", which is what every caller
+ * already did with it — but the REASON is now distinguishable upstream, and a
+ * stale or failed read is a refusal rather than a silent zero.
+ */
 async function currentVdot(userUuid: string): Promise<number | null> {
-  const r = await pool
-    .query<{ vdot: string | null }>(
-      `SELECT vdot::text FROM projection_snapshots
-        WHERE user_uuid = $1 AND vdot IS NOT NULL
-        ORDER BY snapshot_date DESC LIMIT 1`,
-      [userUuid],
-    )
-    .catch(() => ({ rows: [] as Array<{ vdot: string | null }> }));
-  const v = r.rows[0]?.vdot;
-  return v != null ? Number(v) : null;
+  const read = await resolveCurrentVdotSnapshot(userUuid);
+  return read.ok ? read.vdot : null;
 }
 
 /**
@@ -225,7 +241,7 @@ export async function loadPartialFitnessEvidenceFindings(
     );
     const out: FitnessEvidencePartialFinding[] = [];
     for (const session of sessions) {
-      const finding = findPartialFitnessEvidence(session, vdot);
+      const finding = findPartialFitnessEvidence(session);
       if (finding) out.push(finding);
     }
     return out;

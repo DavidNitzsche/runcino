@@ -1033,11 +1033,30 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         durationS: durationSec,
       } : null;
 
+      /* C-3 · the THRESHOLD anchor, distinct from the row's HR cap.
+       *
+       * `askedHrCap` is a COALESCE ladder (`hr_cap_bpm` → `hr_target_bpm` →
+       * `lthr_bpm`), so on a tempo row it is a hover target well under LT.
+       * Feeding it to `threshold-band.ts` told a tempo run at 160 bpm — the
+       * FLOOR of what this same app calls "Z4 Threshold" — that it had gone
+       * "past threshold". The band's anchor is the LTHR or there is no band. */
+      const recapLthrBpm: number | null =
+        planRow?.workout_spec && Number(planRow.workout_spec.lthr_bpm) > 0
+          ? Number(planRow.workout_spec.lthr_bpm)
+          // `glance.lthr` is the same resolved threshold the card's own HR
+          // bands are drawn from, three hundred lines below. Reading it rather
+          // than issuing a second `resolveThresholdHr` keeps the recap's band
+          // and the card's band on ONE number (Rule 16) and adds no swallowed
+          // read. Null is a real answer: with no LTHR the recap declines to
+          // say anything about the threshold band at all.
+          : (glance.lthr ?? null);
+
       const recap = deriveRecap({
         type: purposeType, phase: purposePhase,
         plannedMi: todayPlan?.distanceMi ?? 0,
         plannedPaceSPerMi: askedPaceSPerMi,
         plannedPaceBandSPerMi: askedPaceBand,
+        lthrBpm: recapLthrBpm,
         plannedHrCap: askedHrCap,
         actualMi: distanceMi,
         actualPaceSPerMi: paceSPerMi,

@@ -202,3 +202,152 @@ export async function loadLatestVdotWithAnchor(
     anchorDistanceMi: row?.anchor_dist ?? null,
   };
 }
+
+
+/* ═══════════════ THE canonical "what is this runner's VDOT" read ══════════ */
+
+/**
+ * How old a snapshot may be before this resolver refuses to hand it over as
+ * "current fitness".
+ *
+ * F-6, verified in production: `bestRecentVdot` has a whole fade apparatus
+ * (`FADE_PER_14D` = 0.1 VDOT per 14 days past `VDOT_FULL_VALUE_DAYS` = 56,
+ * expiring at `VDOT_EXPIRY_DAYS` = 84). A SNAPSHOT bypasses all of it, because
+ * the row was faded as of its OWN date and never again. So a snapshot N days
+ * old is under-faded by exactly N days, silently — and this is not
+ * theoretical: the owner's snapshot history carries real gaps of 7, 9 and 15
+ * days (2026-03-31 → 2026-05-30), with only 101 of 155 days in that span
+ * carrying a row at all.
+ *
+ * Fourteen days is `FADE_PER_14D`'s own period: it is the longest gap that can
+ * cost at most ONE fade step, which is the largest error doctrine's own
+ * machinery treats as a single increment. Past that the resolver refuses
+ * rather than handing back a number that is confidently wrong (Rule 11 — a
+ * refusal is a correct answer; a stale value presented as current is not).
+ */
+export const VDOT_SNAPSHOT_MAX_AGE_DAYS = 14;
+
+/**
+ * Rule 11 as a type. Three states, and the refusal branch carries no `vdot`
+ * field at all, so `read.vdot` does not compile until the caller has branched
+ * — the same device `NormalReading<T>` and `PaceAnchorRead` use, and for the
+ * same reason.
+ *
+ * `NO_SNAPSHOT` and `READ_FAILED` are deliberately separate. A cold-start
+ * runner with no snapshot and a database that just refused a query are
+ * opposite facts, and the four hand-copied readers this replaces collapsed
+ * them into `null` — three of them behind `.catch(() => ({ rows: [] }))`, so a
+ * failed read became "no VDOT", which became `establishedPaceFor → null`,
+ * which SUPPRESSED the finding entirely. A guard that silently switches itself
+ * off when its input fails is the exact shape Rule 11 exists to stop.
+ */
+export type VdotSnapshotRead =
+  | {
+      ok: true;
+      vdot: number;
+      snapshotDateISO: string;
+      /** Days between the snapshot and the date asked about. */
+      ageDays: number;
+      /** ISO date of the race/run the stored VDOT was derived from. */
+      anchorDateISO: string | null;
+      anchorDistanceMi: number | null;
+    }
+  | { ok: false; reason: 'NO_SNAPSHOT' | 'READ_FAILED' | 'STALE'; detail: string };
+
+/**
+ * THE current-VDOT snapshot read. One definition, one population, one
+ * staleness posture.
+ *
+ * F-6: this replaced FOUR byte-identical hand-copied queries in
+ * `lib/adaptation/load.ts`, `lib/coach/fitness-evidence.ts`,
+ * `lib/coach/race-replacement.ts` and `lib/coach/threshold-pattern.ts`, each
+ * of which justified itself in its own header with a "house rule" — "where a
+ * reader does not exist, each caller carries its own one-line copy" — which is
+ * precisely the reasoning Rule 16 exists to refuse. A reader DID exist
+ * (`loadLatestVdotForUser`, in this file); nobody called it.
+ *
+ * RULE 14 · THE POPULATION IS NAMED. Production carries THREE rows per
+ * `snapshot_date` per user (one per `race_slug`, two with `race_slug` NULL),
+ * and `ORDER BY snapshot_date DESC LIMIT 1` had no tie-break at all — which of
+ * the three came back was up to the planner. They agree today, so this was
+ * latent rather than live, and it is now closed: the order is
+ * `snapshot_date DESC, distance_mi DESC, race_slug NULLS LAST`, which is
+ * total, and the query says so.
+ *
+ * NO `.catch(() => ({ rows: [] }))`. A failed read returns `READ_FAILED` and
+ * the caller must decide; it does not silently become "this runner has no
+ * fitness".
+ */
+export async function resolveCurrentVdotSnapshot(
+  userUuid: string,
+  todayISO?: string,
+): Promise<VdotSnapshotRead> {
+  /* RULE 11 · a failed date read is its own refusal, not a null that flows on.
+   * Written as try/catch rather than `.catch(() => null)` deliberately: the
+   * coercion scanner cannot see that a later `if (today == null)` branch makes
+   * the collapse harmless, and a reader cannot either. The failure returns
+   * from here, where it happened. */
+  let today: string;
+  try {
+    today = todayISO ?? (await runnerToday(userUuid));
+  } catch (err) {
+    return {
+      ok: false,
+      reason: 'READ_FAILED',
+      detail: `could not resolve the runner's own date: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  let rows: Array<{ vdot: number; snapshot_date: string; anchor_date: string | null; anchor_dist: number | null }>;
+  try {
+    const r = await pool.query<{
+      vdot: number; snapshot_date: string; anchor_date: string | null; anchor_dist: number | null;
+    }>(
+      `SELECT vdot::float                        AS vdot,
+              snapshot_date::text                AS snapshot_date,
+              vdot_anchor_date::text             AS anchor_date,
+              vdot_anchor_distance_mi::float     AS anchor_dist
+         FROM projection_snapshots
+        WHERE user_uuid = $1::uuid
+          AND vdot IS NOT NULL
+        -- RULE 14 · a TOTAL order. Production holds three rows per
+        -- (user, snapshot_date); without the last two keys which one came
+        -- back was the planner's choice.
+        ORDER BY snapshot_date DESC, distance_mi DESC, race_slug NULLS LAST
+        LIMIT 1`,
+      [userUuid],
+    );
+    rows = r.rows;
+  } catch (err) {
+    return {
+      ok: false,
+      reason: 'READ_FAILED',
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const row = rows[0];
+  if (!row || row.vdot == null || !Number.isFinite(Number(row.vdot))) {
+    return { ok: false, reason: 'NO_SNAPSHOT', detail: 'no projection_snapshots row carries a vdot' };
+  }
+
+  const ageDays = Math.max(
+    0,
+    Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${row.snapshot_date}T12:00:00Z`)) / 86_400_000),
+  );
+  if (ageDays > VDOT_SNAPSHOT_MAX_AGE_DAYS) {
+    return {
+      ok: false,
+      reason: 'STALE',
+      detail: `snapshot is ${ageDays}d old (max ${VDOT_SNAPSHOT_MAX_AGE_DAYS}d) — it was faded as of ${row.snapshot_date}, not today`,
+    };
+  }
+
+  return {
+    ok: true,
+    vdot: Number(row.vdot),
+    snapshotDateISO: row.snapshot_date,
+    ageDays,
+    anchorDateISO: row.anchor_date ?? null,
+    anchorDistanceMi: row.anchor_dist ?? null,
+  };
+}

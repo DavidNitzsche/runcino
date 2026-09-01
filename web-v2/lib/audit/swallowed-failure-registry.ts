@@ -208,7 +208,18 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
 // `durability-anchor.ts`'s canonical resolver instead of coach-goal.ts's own
 // race-loading query, per docs/reports/race-prediction-consolidation-
 // 2026-09-01.md. One fewer DB-backed swallow site in this tree.
-export const EMPTIED_BASELINE = 374;
+// 2026-09-01 · -3 (374 → 371), F-6. `lib/coach/fitness-evidence.ts`,
+// `lib/coach/race-replacement.ts` and `lib/coach/threshold-pattern.ts` each
+// carried a byte-identical `currentVdot` reader wrapped in
+// `.catch(() => ({ rows: [] }))`. A failed read became "no VDOT", which became
+// `establishedPaceFor → null`, which SUPPRESSED the finding entirely — a guard
+// that silently switched itself off when its own input failed, which is Rule
+// 11's defining shape. All three now call
+// `projection-snapshots.ts#resolveCurrentVdotSnapshot`, whose refusal branch
+// carries no `vdot` field at all and distinguishes NO_SNAPSHOT from
+// READ_FAILED from STALE. `lib/adaptation/load.ts`'s copy (the one that did
+// NOT swallow) is the fourth caller and routes there too.
+export const EMPTIED_BASELINE = 371;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

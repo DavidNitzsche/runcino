@@ -27,6 +27,7 @@ import {
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
 import {
   classifySession,
+  hrCapBreached,
   sessionToleranceSec,
   paceShapeFor,
   phaseToleranceSec,
@@ -1331,7 +1332,9 @@ export function composeCompletedRows(input: {
       id: 'heart', label: 'Heart',
       sub: `under ${askedHrCap}`,
       value: avgHr != null ? `${avgHr}` : null,
-      tone: (avgHr != null && avgHr > askedHrCap) ? 'attention' : null,
+      // F-14 · THE cap comparison, from THE owner — the wrist row and the
+      // phone row and the recap all read one function now.
+      tone: hrCapBreached(avgHr, askedHrCap) ? 'attention' : null,
     });
   }
 

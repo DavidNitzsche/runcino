@@ -704,3 +704,99 @@ export function phaseVerdictLabel(
     default: return null;
   }
 }
+
+/* ══════════════════ 7 · how much of the session landed ═══════════════════ */
+
+/**
+ * THE completion ladder. Three lines on ONE scale, so they cannot contradict
+ * each other, and each one still answers its own question.
+ *
+ * F-14 · these were three constants in two files with no relationship stated
+ * between them, and an 8 mi threshold run at 5.0 mi (62.5%) got three answers:
+ * `adapt.ts` counted it DONE and let the plan proceed, `interpretExecution`
+ * recorded `PARTIAL_*`, and the phone drew an uncoloured "asked 8 mi · 5.00"
+ * row. Nobody was wrong. They were answering different questions and nothing
+ * said so, which is how "did he hit it" ended up with four incompatible
+ * answers and none of them shown.
+ *
+ * The three questions, in order up the same scale:
+ *
+ *   · `FRAGMENT_BELOW` (0.40) — below this the run stops being a version of
+ *     the prescription and becomes a fragment of it. `interpret.ts`'s
+ *     `PARTIAL_FLOOR`.
+ *   · `COUNTS_AS_DONE` (0.60) — at or above this the session is not MISSED
+ *     and the plan does not reschedule it. `adapt.ts`'s `completionThresholdMi`.
+ *     Cite: `Research/22-plan-templates.md` §14 — a 70%-volume comeback week
+ *     still banks the stimulus, so 60% of a prescription is a
+ *     completed-enough session, not a missed one.
+ *   · `SAME_STIMULUS_WITHIN` (0.25, i.e. the 0.75-1.25 band) — inside this the
+ *     delivered work IS the intended stimulus. `interpret.ts`'s
+ *     `EQUIVALENT_WORK_TOLERANCE`. Cite: `Research/04` §5.1 prescribes
+ *     threshold sessions at 4-8 mi at pace and VO2 sessions at 3-6 mi — bands
+ *     with a 2× and a 1.5× span — so doctrine treats every point inside those
+ *     as the same session, and this is the tighter of the two spans expressed
+ *     as a symmetric tolerance.
+ *
+ * NOT MISSED and FULL STIMULUS are deliberately different lines, and that is
+ * the resolution rather than the defect: a 62.5% session is correctly "not
+ * rescheduled" AND "a partial stimulus" at the same time. What was missing was
+ * anywhere that said so. `_execution_semantics_owner.test.ts` asserts the
+ * ordering, so a future edit cannot invert them silently.
+ */
+export const COMPLETION_LADDER = Object.freeze({
+  FRAGMENT_BELOW: 0.4,
+  COUNTS_AS_DONE: 0.6,
+  SAME_STIMULUS_WITHIN: 0.25,
+});
+
+/**
+ * Where one completed session sits on the ladder. Pure, and the only place
+ * the three lines are compared to a number.
+ */
+export type CompletionBand = 'fragment' | 'partial' | 'as_prescribed' | 'over';
+
+export function completionBand(share: number | null | undefined): CompletionBand | null {
+  if (share == null || !Number.isFinite(share) || share < 0) return null;
+  if (share < COMPLETION_LADDER.FRAGMENT_BELOW) return 'fragment';
+  if (share > 1 + COMPLETION_LADDER.SAME_STIMULUS_WITHIN) return 'over';
+  if (share >= 1 - COMPLETION_LADDER.SAME_STIMULUS_WITHIN) return 'as_prescribed';
+  return 'partial';
+}
+
+/** Did enough of the prescription land that the plan should NOT treat this
+ *  day as missed? The scheduling question, and only that one. */
+export function countsAsDone(share: number | null | undefined): boolean {
+  return share != null && Number.isFinite(share) && share >= COMPLETION_LADDER.COUNTS_AS_DONE;
+}
+
+/* ══════════════════ 8 · heart rate against a prescribed cap ══════════════ */
+
+/**
+ * How far above a prescribed HR cap a reading may sit and still be inside the
+ * band that cap was derived FROM.
+ *
+ * DERIVED, NOT CHOSEN. `zones.ts#aerobicCeilingBpm` is
+ * `ceil(lthr × 0.90) − 1` — the printed cap is deliberately ONE BEAT BELOW
+ * the true zone seam, so that the cap itself reads as "inside Z2". A run
+ * averaging `cap + 1` is therefore still inside the zone the cap describes,
+ * and calling it a breach contradicts the zone bar drawn beside it. `cap + 2`
+ * is over the seam and is a real breach.
+ *
+ * F-14 · before this the same question had two answers in ONE FILE.
+ * `run-recap.ts` coached a LONG run at `avg > cap` and an EASY run at
+ * `avg > cap + 5`, while the phone row (`v5-today.ts`) and the watch row
+ * (`build-workout.ts`) both toned at `avg > cap`. So an easy run at cap 145,
+ * avg 148 drew an amber "Heart · under 145 · 148" and then, three lines
+ * below, said nothing about heart rate at all — the same screen contradicting
+ * itself. The +5 was the outlier and it is gone; every site now reads this.
+ */
+export const HR_CAP_GRACE_BPM = 1;
+
+/** Did this run's average heart rate breach its prescribed cap? */
+export function hrCapBreached(
+  avgHrBpm: number | null | undefined,
+  capBpm: number | null | undefined,
+): boolean {
+  if (avgHrBpm == null || !(avgHrBpm > 0) || capBpm == null || !(capBpm > 0)) return false;
+  return avgHrBpm > capBpm + HR_CAP_GRACE_BPM;
+}

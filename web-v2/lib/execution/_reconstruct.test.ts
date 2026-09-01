@@ -105,10 +105,54 @@ describe('domain · the session is the session, run well or badly', () => {
     expect(paceDomain(T + 100, T)).toBe('easy');
   });
 
-  it('the established pace for a domain comes from the runner s own anchor', () => {
-    expect(establishedPaceFor('threshold', VDOT)).toBe(T);
-    expect(establishedPaceFor('interval', VDOT)).toBe(T - 18);
+  /* F-5 · `establishedPaceFor` used to take a VDOT and apply its OWN offsets
+   * (`t - 30` for R, `t - 18` for I, `t + 100` for E), which were 11-46 s/mi
+   * slower than the numbers the prescription side actually uses — every one
+   * in the same direction, which biased `failedAtKnownPace` toward true. It
+   * now reads `PrescribedPaceAnchors`: the same six numbers the plan builder
+   * prices a block from, so there is no second fitness to disagree with. */
+  const ANCHORS = {
+    thresholdSecPerMi: T,
+    intervalSecPerMi: T - 22,
+    repetitionSecPerMi: T - 41,
+    easyCeilingSecPerMi: T + 80,
+    shakeoutCeilingSecPerMi: T + 100,
+    marathonSecPerMi: T + 18,
+    basis: {
+      threshold: { sourceMode: 'direct' as const, confidence: 0.8, vdot: VDOT },
+      highIntensity: { sourceMode: 'inferred' as const, confidence: 0.6 },
+      easyCeiling: { sourceMode: 'direct' as const, confidence: 0.8 },
+      marathon: {
+        sourceMode: 'inferred' as const, confidence: 0.6,
+        enduranceExponent: 1.06, personallyEvidenced: false,
+      },
+    },
+  };
+
+  it('the established pace for a domain IS the prescribed anchor', () => {
+    expect(establishedPaceFor('threshold', ANCHORS)).toBe(T);
+    expect(establishedPaceFor('interval', ANCHORS)).toBe(T - 22);
+    expect(establishedPaceFor('repetition', ANCHORS)).toBe(T - 41);
+    expect(establishedPaceFor('marathon', ANCHORS)).toBe(T + 18);
+    expect(establishedPaceFor('easy', ANCHORS)).toBe(T + 80);
+    expect(establishedPaceFor('recovery', ANCHORS)).toBe(T + 100);
     expect(establishedPaceFor('threshold', null)).toBeNull();
+  });
+
+  it('none of the retired offsets survives', () => {
+    // Rule 18 · assert the SHAPE of the result, not the absence of the bug.
+    // These are the exact three numbers that were wrong, and each must now
+    // come back as the anchor rather than as an offset off T.
+    expect(establishedPaceFor('repetition', ANCHORS)).not.toBe(T - 30);
+    expect(establishedPaceFor('interval', ANCHORS)).not.toBe(T - 18);
+    expect(establishedPaceFor('easy', ANCHORS)).not.toBe(T + 100);
+  });
+
+  it('a refused repetition anchor is carried, never substituted', () => {
+    // Rule 11 · `PrescribedPaceAnchors.repetitionSecPerMi` is null when the
+    // high-intensity ladder cannot price a mile-column pace, and a caller must
+    // branch rather than read a substituted I-pace.
+    expect(establishedPaceFor('repetition', { ...ANCHORS, repetitionSecPerMi: null })).toBeNull();
   });
 });
 

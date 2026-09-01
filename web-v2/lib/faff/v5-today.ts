@@ -381,6 +381,7 @@ const MIN_CONVERGING_DOMAINS = 3; // CONVERGENCE.redMinDomains, lib/coach/conver
 import { dateWords as usDateWords } from '@/lib/format/date';
 import { fmtMi, fmtMi2, fmtClock, fmtPaceSlash as fmtPace } from '@/lib/format/run';
 import { canonicalSessionType } from '@/lib/training/workout-type';
+import { hrCapBreached } from '@/lib/training/execution-semantics';
 export { fmtMi, fmtClock, fmtPace };
 
 const TRACK_M = [200, 300, 400, 600, 800, 1000, 1200, 1500] as const;
@@ -1414,7 +1415,11 @@ function buildRecentRun(r: V5RecentRunCtx): {
       sub: `under ${r.askedHrCap}`,
       value: num(r.avgHr != null ? `${r.avgHr}` : null, false),
       action: null,
-      tone: (r.avgHr != null && r.avgHr > r.askedHrCap) ? 'attention' : null,
+      // F-14 · THE cap comparison, from THE owner. This read `avgHr > cap`
+      // while `run-recap.ts`'s easy arm read `avgHr > cap + 5`, so an easy run
+      // at cap 145 / avg 148 drew an amber row here and then said nothing
+      // about heart rate three lines below — one screen contradicting itself.
+      tone: hrCapBreached(r.avgHr, r.askedHrCap) ? 'attention' : null,
     });
   }
 
