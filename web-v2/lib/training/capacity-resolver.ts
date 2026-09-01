@@ -209,6 +209,10 @@ import {
   type PaceObservation,
   resolveEasyPaceCorpus,
   resolveThresholdPaceCorpus,
+  loadThresholdCorpusInputs,
+  thresholdCorpusFromInputs,
+  type ThresholdMoveCap,
+  type ExcludedObservation,
 } from '@/lib/training/pace-corpus';
 import {
   CORROBORATION_MIN_OBSERVATIONS,
@@ -347,7 +351,12 @@ export type CapacityReasonCode =
   | 'NO_RACE_EXPONENT_EVIDENCE'
   | 'HABIT_WINDOW_REFUSED'
   // ── the belief-tension consumer (lib/evidence/reexamination.ts) ──
-  | 'REEXAMINATION_LOWERED_THE_CORROBORATION_BAR';
+  | 'REEXAMINATION_LOWERED_THE_CORROBORATION_BAR'
+  // ── the evidence contract (2026-09-01, pace-corpus.ts §1b) ──
+  | 'SINGLE_SESSION_MOVE_CAPPED'
+  | 'REDUCED_AUTHORITY_EVIDENCE_IN_SUPPORT'
+  | 'NON_REPRESENTATIVE_EVIDENCE_IN_SUPPORT'
+  | 'EVIDENCE_ENGINE_READ_UNAVAILABLE';
 
 /**
  * §31 · version the model, so a behaviour change can be attributed to new
@@ -402,6 +411,20 @@ export interface ThresholdCapacityEstimate extends CapacityEstimateBase {
    * runner `BelowTableAnchor` exists for.
    */
   vdot: number | null;
+  /**
+   * 2026-09-01 · the evidence contract's provenance. Every observation the
+   * corpus admitted (with its weight and how the weight was assembled) and
+   * every one it refused (with the reason), plus how the daily move cap
+   * treated the read. Present on a `direct` read; absent on the fallback
+   * rungs, which have no corpus to report.
+   */
+  evidence?: {
+    supporting: PaceObservation[];
+    excluded: ExcludedObservation[];
+    weightedSupport: number;
+    representativeSupporting: number;
+    moveCap: ThresholdMoveCap;
+  };
 }
 
 /** What the runner can hold at 3-5K effort — the anchor for VO2-oriented
@@ -988,6 +1011,11 @@ export function composeThresholdCapacity(
   if (direct.ok) {
     const q = qualityFromPaceObservations(direct.observations, direct.supporting, minObservations);
     const { confidence, components } = directEvidenceConfidence(q, todayISO);
+    const contractReasons: CapacityReasonCode[] = [];
+    if (direct.moveCap.applied) contractReasons.push('SINGLE_SESSION_MOVE_CAPPED');
+    if (direct.supporting.some((o) => o.weight < 1)) contractReasons.push('REDUCED_AUTHORITY_EVIDENCE_IN_SUPPORT');
+    if (direct.supporting.some((o) => !o.representative)) contractReasons.push('NON_REPRESENTATIVE_EVIDENCE_IN_SUPPORT');
+    if (direct.supporting.some((o) => o.authority.evidenceKind === 'unavailable')) contractReasons.push('EVIDENCE_ENGINE_READ_UNAVAILABLE');
     return {
       paceSecPerMi: direct.tPaceSecPerMi,
       vdot: direct.vdot,
@@ -999,8 +1027,16 @@ export function composeThresholdCapacity(
         'DIRECT_CORROBORATED_THRESHOLD_EVIDENCE',
         ...evidenceReasons(q, components),
         ...(barLowered ? ['REEXAMINATION_LOWERED_THE_CORROBORATION_BAR' as const] : []),
+        ...contractReasons,
       ],
       modelVersion: CAPACITY_MODEL_VERSION,
+      evidence: {
+        supporting: direct.supporting,
+        excluded: direct.excluded,
+        weightedSupport: direct.weightedSupport,
+        representativeSupporting: direct.representativeSupporting,
+        moveCap: direct.moveCap,
+      },
     };
   }
 
@@ -1074,10 +1110,14 @@ export async function resolveThresholdCapacity(
   todayISO?: string,
 ): Promise<ThresholdCapacityEstimate> {
   const today = todayISO ?? await runnerToday(userId);
-  const [direct, fallback] = await Promise.all([
-    resolveThresholdPaceCorpus(userId, today),
+  // The corpus INPUTS are loaded once — rows, HR context, phases, prescribed
+  // windows and the Evidence Engine's per-run verdicts — so the two passes
+  // below classify identical evidence and can only differ in the bar.
+  const [corpusInputs, fallback] = await Promise.all([
+    loadThresholdCorpusInputs(userId, today),
     loadVdotFallback(userId, today),
   ]);
+  const direct = thresholdCorpusFromInputs(corpusInputs);
   const base = composeThresholdCapacity({ direct, fallback, todayISO: today });
 
   /* ── PASS 2 · THE BELIEF-TENSION CONSUMER ────────────────────────────────
@@ -1102,9 +1142,7 @@ export async function resolveThresholdCapacity(
   if (tension == null || tension.effectiveMinObservations >= CORROBORATION_MIN_OBSERVATIONS) {
     return base;
   }
-  const relaxedDirect = await resolveThresholdPaceCorpus(userId, today, {
-    minObservations: tension.effectiveMinObservations,
-  });
+  const relaxedDirect = thresholdCorpusFromInputs(corpusInputs, tension.effectiveMinObservations);
   return composeThresholdCapacity({
     direct: relaxedDirect,
     fallback,

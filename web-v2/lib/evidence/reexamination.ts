@@ -124,6 +124,7 @@ export type ReexaminationReasonCode =
   | 'TENSION_BELOW_REPETITION_FLOOR'
   | 'CONFLICTING_TENSION_DIRECTIONS'
   | 'REPEATED_TENSION_LOWERED_THE_CORROBORATION_BAR'
+  | 'WEAKER_TENSION_DOES_NOT_RELAX_THE_BAR'
   | 'RELAXATION_CLAMPED_AT_FLOOR'
   | 'TENSION_OUTSIDE_WINDOW';
 
@@ -249,6 +250,25 @@ export function accumulateReexamination(args: {
       direction,
       effectiveMinObservations: baseMinObservations,
       reasons: [...reasons, 'CONFLICTING_TENSION_DIRECTIONS'],
+    };
+  }
+
+  // 2026-09-01 · DIRECTION IS A DECISION, NOT A LABEL. The corroboration
+  // statistic is the K-th BEST observation, so lowering K can only ever make
+  // the resolved belief FASTER. Repeated evidence that the runner is SLOWER
+  // than believed is a reason to hold the bar (or to widen uncertainty
+  // upstream), never a reason to let a faster reading through on less
+  // corroboration. On the owner's real account two `weaker` observations — an
+  // A-race 10.9% slower than believed and a session read 5.5% slower — lowered
+  // the bar and the belief got faster and more confident. That is the mirror
+  // image of the doctrine sentence this file cites, and it is refused here.
+  if (direction === 'weaker') {
+    return {
+      ...base,
+      pressure,
+      direction,
+      effectiveMinObservations: baseMinObservations,
+      reasons: [...reasons, 'WEAKER_TENSION_DOES_NOT_RELAX_THE_BAR'],
     };
   }
 

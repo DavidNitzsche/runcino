@@ -62,7 +62,7 @@ import {
 } from '@/lib/training/capacity-resolver';
 import { POPULATION_ENDURANCE_PRIOR } from '@/lib/training/durability-anchor';
 import { tPaceFromVdot, iPaceFromVdot, easyBandFromTPace } from '@/lib/training/vdot';
-import type { PaceObservation, ThresholdPaceRead, EasyPaceRead } from '@/lib/training/pace-corpus';
+import { fullAuthority, uncappedMoveCap, type PaceObservation, type ThresholdPaceRead, type EasyPaceRead } from '@/lib/training/pace-corpus';
 import type { RaceExponentRead, DecouplingRead } from '@/lib/training/durability-anchor';
 import type { NormalReading } from '@/lib/training/normal-window';
 
@@ -73,6 +73,7 @@ const RESOLVER_PATH = path.join(process.cwd(), 'lib/training/capacity-resolver.t
 
 function obs(id: string, date: string, paceSecPerMi: number): PaceObservation {
   return {
+    ...fullAuthority(),
     id,
     date,
     paceSecPerMi,
@@ -127,12 +128,20 @@ const DIRECT_THRESHOLD: ThresholdPaceRead = {
     obs('r2', '2026-08-18', 430),
     obs('r3', '2026-08-11', 433),
   ],
+  weightedSupport: 6,
+  representativeSupporting: 3,
+  excluded: [],
+  moveCap: uncappedMoveCap(430),
+  windowDays: 60,
 };
 
 const REFUSED_THRESHOLD: ThresholdPaceRead = {
   ok: false,
   reason: 'insufficient_corroboration',
   observations: 1,
+  weightedSupport: 1,
+  excluded: [],
+  windowDays: 60,
 };
 
 const DIRECT_EASY: EasyPaceRead = {
@@ -502,7 +511,7 @@ describe('CAPACITY · the ladder falls through, it does not serve a refusal (Rul
   it('3j · EASY is a CEILING slower than threshold pace, always (§30 range test)', () => {
     for (const t of [360, 400, 430, 500, 600]) {
       const threshold = composeThresholdCapacity({
-        direct: { ok: true, tPaceSecPerMi: t, vdot: 45, observations: 5, supporting: [obs('a', TODAY, t), obs('b', TODAY, t), obs('c', TODAY, t)] },
+        direct: { ok: true, tPaceSecPerMi: t, vdot: 45, observations: 5, supporting: [obs('a', TODAY, t), obs('b', TODAY, t), obs('c', TODAY, t)], weightedSupport: 5, representativeSupporting: 3, excluded: [], moveCap: uncappedMoveCap(t), windowDays: 60 },
         fallback: emptyFallback(),
         todayISO: TODAY,
       });
@@ -611,7 +620,7 @@ describe('CAPACITY · confidence bands and monotonicity (§30)', () => {
     // Doctrine §16 and the 2026-08-31 decision, as an assertion: the ESTIMATE
     // is identical across those three, only the confidence moved.
     const at = (date: string) => composeThresholdCapacity({
-      direct: { ok: true, tPaceSecPerMi: 430, vdot: 47.9, observations: 5, supporting: [obs('a', date, 430), obs('b', date, 430), obs('c', date, 430)] },
+      direct: { ok: true, tPaceSecPerMi: 430, vdot: 47.9, observations: 5, supporting: [obs('a', date, 430), obs('b', date, 430), obs('c', date, 430)], weightedSupport: 5, representativeSupporting: 3, excluded: [], moveCap: uncappedMoveCap(430), windowDays: 60 },
       fallback: emptyFallback(),
       todayISO: TODAY,
     });

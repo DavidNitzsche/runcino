@@ -131,20 +131,23 @@ describe('reexamination · what it does', () => {
     expect(six.effectiveMinObservations).toBe(two.effectiveMinObservations);
   });
 
-  it('a WEAKER-direction tension relaxes the same way · the mechanism is not upward-only', () => {
-    // The bar being relaxed is about how much corroboration is needed, not
-    // about which way the belief moves. An engine that only became receptive to
-    // GOOD news would be the Rule 21 defect pointed at the Runner Model.
+  it('a WEAKER-direction tension does NOT relax the bar · the statistic is K-th BEST, so a lower bar can only make the belief faster (2026-09-01)', () => {
+    // Falsified against the pre-2026-09-01 code, which returned 2 here: two
+    // observations saying "the runner is slower than believed" lowered the bar
+    // and the resolved belief got faster. The mirror image of "one run rarely
+    // rewrites the runner".
     const p = run([
       obs('2026-08-30', 'observation_weaker_than_belief'),
       obs('2026-08-28', 'observation_weaker_than_belief'),
     ]);
     expect(p.direction).toBe('weaker');
-    expect(p.effectiveMinObservations).toBe(CORROBORATION_MIN_OBSERVATIONS - 1);
+    expect(p.effectiveMinObservations).toBe(3);
+    expect(p.reasons).toContain('WEAKER_TENSION_DOES_NOT_RELAX_THE_BAR');
+    expect(p.reasons).not.toContain('REPEATED_TENSION_LOWERED_THE_CORROBORATION_BAR');
+    // pressure is still reported, so the tension is not lost
+    expect(p.pressure).toBeGreaterThan(0);
   });
-});
 
-describe('reexamination · Rule 9 · the decision does not hinge on a hair', () => {
   it('the relaxation is identical across the entire weight range', () => {
     // THE FALSIFIER for the cliff this file was written to avoid. If a future
     // edit reintroduces a `pressure >= X` gate, two of these land on different

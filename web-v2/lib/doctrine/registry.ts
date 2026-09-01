@@ -1160,6 +1160,70 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
   {
+    id: 'CONVENTION.threshold-evidence-authority-model',
+    binds: [
+      'lib/training/pace-corpus.ts#THRESHOLD_SESSION_DURATION_RAMP_SEC',
+      'lib/training/pace-corpus.ts#THRESHOLD_HR_ABSENT_AUTHORITY',
+      'lib/training/pace-corpus.ts#THRESHOLD_HR_OUT_OF_BAND_FADE_HALF_WIDTHS',
+      'lib/training/pace-corpus.ts#PRESCRIBED_WINDOW_AUTHORITY',
+      'lib/training/pace-corpus.ts#EVIDENCE_ENGINE_INDETERMINATE_AUTHORITY',
+      'lib/training/pace-corpus.ts#EVIDENCE_ENGINE_UNAVAILABLE_AUTHORITY',
+      'lib/training/pace-corpus.ts#THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI',
+      'lib/training/pace-corpus.ts#classifyThresholdCandidatesDetailed',
+      'lib/training/pace-corpus.ts#thresholdPaceCorpus',
+      'lib/evidence/reexamination.ts#accumulateReexamination',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| T (Threshold) |',
+    claim:
+      'The threshold pace corpus consumes the Evidence Engine and weights each observation (2026-09-01 ' +
+      'evidence contract): HR inside doctrine\'s T band is full authority, HR further out fades to ' +
+      'zero, an absent HR is reduced, a session under the doctrine floor ramps in rather than ' +
+      'vanishing, a prescribed-window session is reduced and non-representative, and one session\'s ' +
+      'arrival may move the corroborated level by at most a fixed amount per elapsed day. Every one ' +
+      'of those numbers is a CONVENTION for model stability, labelled as such in the source; the ' +
+      'doctrine grounds only the BAND (Research/03 §8) and the DIRECTION ("one run rarely rewrites ' +
+      'the runner"). The corpus may not stop reading the Evidence Engine, and repeated evidence that ' +
+      'the runner is SLOWER may never lower the corroboration bar for a faster belief.',
+    check() {
+      const src = sourceOf('web-v2/lib/training/pace-corpus.ts');
+      const lit = (name: string): number => {
+        const m = src.match(new RegExp(`export const ${name} = ([0-9.*\\s]+);`));
+        if (!m) throw new Error(`${name} is gone or no longer a literal`);
+        // eslint-disable-next-line no-new-func
+        return Number(new Function(`return (${m[1]});`)());
+      };
+      const ramp = lit('THRESHOLD_SESSION_DURATION_RAMP_SEC');
+      const floor = lit('THRESHOLD_MIN_SESSION_TOTAL_SEC');
+      if (!(ramp > 0 && ramp < floor)) throw new Error(`the duration ramp (${ramp}s) must sit strictly inside the doctrine floor (${floor}s)`);
+      for (const name of ['THRESHOLD_HR_ABSENT_AUTHORITY', 'PRESCRIBED_WINDOW_AUTHORITY',
+        'EVIDENCE_ENGINE_INDETERMINATE_AUTHORITY', 'EVIDENCE_ENGINE_UNAVAILABLE_AUTHORITY']) {
+        const v = lit(name);
+        if (!(v > 0 && v < 1)) throw new Error(`${name} is ${v} · a reduced authority must be strictly between 0 and 1, never full and never an exclusion`);
+      }
+      const fade = lit('THRESHOLD_HR_OUT_OF_BAND_FADE_HALF_WIDTHS');
+      if (!(fade > 0 && fade <= 2)) throw new Error(`the HR fade width (${fade} half-widths) must be positive and no wider than two band-widths`);
+      const cap = lit('THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI');
+      if (!(cap >= 2 && cap <= 15)) throw new Error(`the daily move cap (${cap} s/mi) must be a real bound: at least noise, well under a zone`);
+      if (!/CONVENTION for model stability/.test(src)) {
+        throw new Error('pace-corpus.ts no longer labels the authority numbers as conventions');
+      }
+      // The contract itself: the corpus reads the Evidence Engine and the
+      // classifier reads its verdict. Delete either and this fails.
+      if (!/classifyRecentActivities\(userId, cutoff, today\)/.test(src)) {
+        throw new Error('the threshold corpus no longer reads the Evidence Engine (classifyRecentActivities)');
+      }
+      if (!/evidenceKind === 'no_evidence'/.test(src) || !/reason: 'EVIDENCE_ENGINE_NO_THRESHOLD_EVIDENCE'/.test(src)) {
+        throw new Error('the classifier no longer excludes a run the Evidence Engine classified as demonstrating no threshold capacity');
+      }
+      if (!/p\.completed !== false/.test(src)) throw new Error('the phases reader no longer refuses abandoned work phases');
+      const reex = sourceOf('web-v2/lib/evidence/reexamination.ts');
+      if (!/direction === 'weaker'/.test(reex) || !/WEAKER_TENSION_DOES_NOT_RELAX_THE_BAR/.test(reex)) {
+        throw new Error('accumulateReexamination no longer refuses to relax the bar on weaker-direction tension');
+      }
+    },
+  },
+  {
     id: 'CONVENTION.representative-lookback-outer-bound',
     binds: [
       'lib/training/normal-window.ts#REPRESENTATIVE_LOOKBACK_MAX_DAYS',
