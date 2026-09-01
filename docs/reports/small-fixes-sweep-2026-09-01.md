@@ -121,3 +121,53 @@ out of scope.
 - `git status` was checked before staging; only the two files above were staged
   (other agents' concurrent WIP in `native-v2/Faff.xcodeproj/project.pbxproj` and
   elsewhere was left alone).
+- Committed as `50c7aab3` ("fix: cron heartbeat + HR copy — two small, isolated
+  bugs").
+
+### The push — blocked twice by concurrent-agent activity, neither time by this commit
+
+This is a shared checkout with several other agents committing to `main`
+simultaneously tonight (per `CLAUDE.md`'s branching doctrine). The push hit real
+friction, none of it caused by these two fixes:
+
+1. **First `git push` attempt** — `main` had moved (a commit `9dae0613` landed
+   after I'd branched). Fetched, and found `50c7aab3` already sat cleanly on top
+   of the new `origin/main` tip with no rebase needed (confirmed via
+   `git merge-base --is-ancestor`). Before pushing, stashed four files that were
+   *other agents'* uncommitted WIP already sitting in the shared tree
+   (`docs/reports/adaptation-shadow-log/*.jsonl`, `pace-replay-corpus-2026-09-01.md`,
+   `status-and-answers-2026-08-31.md`, `native-v2/Faff.xcodeproj/project.pbxproj`)
+   so the pre-push hook wouldn't see them, then restored them unchanged after —
+   never touched their content, only kept them from being swept into a rebase.
+2. **The hook then failed** with real-looking Swift test failures
+   (`_SessionTimelineTests.swift`, phase-cue counts doubled) — but on inspection
+   these came from an *already-committed* ancestor commit that predates mine
+   locally (`d8de0e62`, "fix(watch): interval-complete cue..."), not my own
+   diff. Per `docs/VERIFICATION_POLICY.md`, ran `scripts/verify-commit.sh` on
+   both the exact SHA I was pushing (`50c7aab3` — PASS, and doesn't even touch
+   watch paths) and on that ancestor commit alone (`d8de0e62` — its web build
+   passed; its watch check hit an unrelated isolated-worktree limitation,
+   gitignored `native-v2/Secrets.xcconfig` doesn't exist in a fresh worktree).
+   Reading `d8de0e62`'s diff showed it intentionally added a second phase-cue
+   (on entering `.recovery`, not just `.work`) as its main fix — which explained
+   the doubled cue count exactly, meaning the failing test was genuinely stale
+   against that commit's own intentional change, not a defect. This was **not**
+   a call I made alone: another agent working the same shared checkout landed
+   `610af2f2` ("test(watch): update session-timeline expectations for the
+   recovery phase cue") moments later, confirming the diagnosis independently.
+3. **Second `git push` attempt**, after `610af2f2` landed locally — hit a
+   *different*, transient failure: `next build` errored with `ENOENT` on
+   `web-v2/.next/build-manifest.json`. `ps aux` showed another agent's own
+   `next build` process actively running against the same shared `web-v2/.next`
+   cache directory at that exact moment — a build-cache race, not a code issue.
+4. **Third attempt**, after waiting for that concurrent build to exit — pushed
+   clean. `watch OK · 195 test cases; 20 boards inside Apple's content box`.
+   `origin/main` advanced `9dae0613..894a3db5`, carrying my commit plus three
+   commits from other agents (`d8de0e62`, `610af2f2`, `894a3db5`) that were
+   already ahead of me locally by the time I went to push.
+
+No `--no-verify` bypass was used at any point — every push went through the
+real hook, and the two failures were resolved by waiting out genuine concurrent
+activity in the shared checkout, not by skipping a check. Final state confirmed:
+`git fetch origin main` shows `origin/main` at `894a3db5`, matching local `main`
+exactly (no ahead/behind), and `50c7aab3` is in that history.
