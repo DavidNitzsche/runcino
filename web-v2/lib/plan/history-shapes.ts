@@ -317,7 +317,7 @@ export const HISTORY_SHAPES: readonly HistoryShapeSpec[] = [
   {
     id: 'deloadBuild',
     what: 'Mid-build, two weeks into a deliberate absorb block. The plan asked him to go easy and he did.',
-    cite: 'Research/00a §"Volume progression rules" (the down weeks) + Research/22 §"Marathon — Intermediate" build shape',
+    cite: 'Research/00a §"Volume progression rules" (the down weeks) + Research/22 §"Marathon — Intermediate" build shape',  // ok: Research/22 section names are verbatim doctrine anchors; the cite field must match the doc byte for byte
     // Two recent down weeks, then a build that had been climbing.
     weekFrac: [0.80, 0.78, 1.00, 0.97, 0.94, 0.75, 0.91, 0.88, 0.86, 0.70, 0.83, 0.80, 0.78, 0.64, 0.76, 0.73],
     weekQuality: [1, 1, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2],
@@ -333,7 +333,7 @@ export const HISTORY_SHAPES: readonly HistoryShapeSpec[] = [
   {
     id: 'progressiveBuild',
     what: 'Climbing. His most recent week is the biggest he has run, and nothing has interrupted him.',
-    cite: 'Research/00a §"Volume progression rules" · the climb the down weeks punctuate; Research/22 §"Marathon — Advanced" build shape',
+    cite: 'Research/00a §"Volume progression rules" · the climb the down weeks punctuate; Research/22 §"Marathon — Advanced" build shape',  // ok: Research/22 section names are verbatim doctrine anchors; the cite field must match the doc byte for byte
     // RULE 22 (2026-08-30) · the shape this corpus was missing. Six of the
     // eight shapes beside it describe a runner BELOW their level — post-race,
     // layoff, injury, deload, from nothing — because that is what the defects
@@ -353,7 +353,7 @@ export const HISTORY_SHAPES: readonly HistoryShapeSpec[] = [
   },
   {
     id: 'postRaceShallow',
-    what: 'Two weeks past an A-priority half. Inside the recovery window the engine itself prescribed — THE case that broke everything.',
+    what: 'Two weeks past an A-priority half. Inside the recovery window the engine itself prescribed · THE case that broke everything.',
     cite: 'Research/00b §"Recovery by Distance" · half marathon, "| 10-14 |" total recovery days with no quality + Research/08 §9.1 taper',
     // The owner's own ratios, 2026-08-30: recovery / recovery / taper / build,
     // giving mean28 = 0.7025 × sustained — a tenth of a mile the safe side of
@@ -374,7 +374,7 @@ export const HISTORY_SHAPES: readonly HistoryShapeSpec[] = [
   },
   {
     id: 'shortLayoff',
-    what: 'Two weeks off with nothing behind them — a trip, a cold. Doctrine\'s own return case.',
+    what: 'Two weeks off with nothing behind them · a trip, a cold. Doctrine\'s own return case.',
     cite: 'Research/22 §"Return from Short Layoff (1-2 weeks off)" · "8-14 days | 70% of pre-layoff volume for 1 wk, 85% for wk 2, full for wk 3"',
     weekFrac: [0.00, 0.00, 1.00, 0.97, 0.75, 0.94, 0.91, 0.88, 0.72, 1.00, 0.86, 0.83, 0.70, 0.95, 0.92, 0.89],
     weekQuality: [0, 0, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2],

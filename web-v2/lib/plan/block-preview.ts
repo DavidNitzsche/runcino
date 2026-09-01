@@ -180,7 +180,7 @@ export function previewBlockShape(input: BlockShapePreviewInput): BlockShapePrev
         sourced: isMidBlockSourced ? 'explicit' : 'default',
         note: 'The real generator computes this from actual 28-day quality-session data '
           + '(detectMidBlock in generate.ts) at rebuild time. This preview cannot see that '
-          + 'data before the rebuild happens, so it defaults to false — recovery plans '
+          + 'data before the rebuild happens, so it defaults to false. Recovery plans '
           + 'prescribe no quality by design, so false is the honest assumption unless the '
           + 'caller has a real reason to override it.',
       },
@@ -189,7 +189,7 @@ export function previewBlockShape(input: BlockShapePreviewInput): BlockShapePrev
         sourced: input.weekStartDow !== undefined ? 'explicit' : 'default',
       },
     },
-    disclaimer: 'PROVISIONAL — phase shape only (how many weeks of BASE/QUALITY/RACE-SPECIFIC/TAPER). '
+    disclaimer: 'PROVISIONAL · phase shape only (how many weeks of BASE/QUALITY/RACE-SPECIFIC/TAPER). '
       + 'Volume, pace anchors and cutback cadence are NOT computed here and will differ from this '
       + 'preview once the real rebuild runs with actual post-recovery training data.',
   };
@@ -428,7 +428,7 @@ export function previewMidBlockRacePlacement(input: MidBlockRacePlacementInput):
       + 'Which EXACT day inside that week becomes the mini-taper/shakeout/recovery-easy day, and what a '
       + 'displaced quality session turns into, was computed against a SYNTHETIC placeholder week (long/'
       + 'quality/rest days placed from the runner\'s own preferences, but with round placeholder distances '
-      + 'and no recent-quality-habit ramp) — not the real prescribed week the actual rebuild will build. '
+      + 'and no recent-quality-habit ramp), not the real prescribed week the actual rebuild will build. '
       + 'Expect the week to match and the day-level detail to shift once the real rebuild runs.',
   };
 }

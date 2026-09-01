@@ -159,7 +159,7 @@ export function checkAnchorNotCircular(f: AnchorFacts): Finding | null {
       `(3rd-highest of 16 weeks). The recent dip is engine-mandated, so the anchor is a ` +
       `measurement of the plan's own prescription. Research/22 §14 floors a resume at ` +
       `${floor.toFixed(1)}. 28-day mean was ${f.meanMi.toFixed(1)}` +
-      (Math.abs(anchor - f.meanMi) < 0.6 ? ' — the anchor IS the depressed mean.' : '.'),
+      (Math.abs(anchor - f.meanMi) < 0.6 ? ' · the anchor IS the depressed mean.' : '.'),
   };
 }
 
@@ -270,7 +270,7 @@ export function checkVolumesInBandOfAnchor(f: AnchorFacts): Finding | null {
             `${detail} The row is outside what this week can express: ${days} running days land ` +
             `between ${gridLo.toFixed(1)} mi (every run at the ${RECOVERY_MIN_EASY}-mile ` +
             `junk-run floor) and ${gridHi.toFixed(1)} mi (a ${longest.toFixed(1)}-mile longest ` +
-            `run plus ${days - 1} at ${EASY_BELOW_LONG} of it). No ceiling is involved — the ` +
+            `run plus ${days - 1} at ${EASY_BELOW_LONG} of it). No ceiling is involved · the ` +
             `floor and the recovery long-run share bracket the week, and doctrine's row falls ` +
             `outside the bracket.`,
         };
@@ -416,7 +416,7 @@ export function checkNoSilentDowngrade(f: AnchorFacts): Finding | null {
         `${detail} Sized 'last_cycle_peak' × ${f.statedPctApplied ?? '?'} off a peak of ` +
         `${f.measuredPeakMi.toFixed(1)} against a sustained ${sustained.toFixed(1)}` +
         (noBlockBehind
-          ? ' — and there is no block behind this runner to be a percentage OF.'
+          ? ' · and there is no block behind this runner to be a percentage OF.'
           : '.'),
     };
   }
@@ -453,7 +453,7 @@ export function checkPaceAnchorAgreesWithVolume(f: AnchorFacts): Finding | null 
     message:
       `${f.id} · the volume base was lifted to ${f.ramp.baseMi.toFixed(1)} mi/wk through a ` +
       `mandated interruption, but there is no measured VDOT, so every pace is anchored on ` +
-      `conservativeVdotFromMileage(${f.meanMi.toFixed(1)}) — the interruption itself. ` +
+      `conservativeVdotFromMileage(${f.meanMi.toFixed(1)}) · the interruption itself. ` +
       `Volume reads the runner before the dip; pace reads the runner inside it.`,
   };
 }
@@ -550,7 +550,7 @@ export function checkRecoveryStaysBelowPeak(f: AnchorFacts): Finding | null {
     message:
       `${f.id} · a recovery week prescribes ${biggest.toFixed(1)} mi against a pre-race peak of ` +
       `${anchor.toFixed(1)} (${pct(biggest, anchor)}). Research/00b puts the full return to peak ` +
-      `at week 5-6, after this block — the reverse taper ends at 70-80%, not above it.`,
+      `at week 5-6, after this block · the reverse taper ends at 70-80%, not above it.`,
   };
 }
 

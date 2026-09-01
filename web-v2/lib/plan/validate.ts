@@ -385,7 +385,7 @@ export function validateComposedPlan(
       if (Math.abs(result.vols[i] - weeks[i].weeklyMi) > 0.5) {
         violations.push(
           `Week ${weeks[i].startISO}: vols[${i}]=${result.vols[i]}mi disagrees with weeklyMi=${weeks[i].weeklyMi}mi ` +
-          `— volume-curve series not re-snapshotted after finalize`,
+          `· volume-curve series not re-snapshotted after finalize`,
         );
       }
     }
@@ -439,7 +439,7 @@ export function validateComposedPlan(
     if (longPeak < floor) {
       violations.push(
         `Corruption check: new plan peak long ${longPeak}mi < 80% of prior plan peak ` +
-        `${ctx.priorPlanPeakLongMi}mi — likely bad input data (run-history gap, VDOT signal loss)`,
+        `${ctx.priorPlanPeakLongMi}mi · likely bad input data (run-history gap, VDOT signal loss)`,
       );
     }
   }
@@ -498,7 +498,7 @@ export function validateComposedPlan(
     if (peakWeeklyMi > ceiling + Math.max(0.5, ceiling * 0.03)) {
       violations.push(
         `Peak weekly volume ${Math.round(peakWeeklyMi)}mi exceeds the ${buildWeeks}-week safe-ramp ceiling ` +
-        `${Math.round(ceiling)}mi (base ${Math.round(rampBase)}mi) — plan ramp is unsupported by current fitness`,
+        `${Math.round(ceiling)}mi (base ${Math.round(rampBase)}mi) · plan ramp is unsupported by current fitness`,
       );
     }
   }
@@ -537,7 +537,7 @@ export function validateComposedPlan(
   if (mode === 'race-prep') {
     const hasTaperPhase = result.blocks.phases.some(p => p.label === 'TAPER');
     if (!hasTaperPhase) {
-      violations.push('No TAPER phase in plan blocks — plan will not taper before race');
+      violations.push('No TAPER phase in plan blocks · plan will not taper before race');
     } else {
       const nonTaperNonRace = weeks.filter(w => w.phase !== 'TAPER' && !w.isRaceWeek);
       const peakVol = nonTaperNonRace.length > 0
@@ -558,7 +558,7 @@ export function validateComposedPlan(
       if (taperW.length < minNonRaceTaperWks) {
         violations.push(
           `Too few pre-race taper weeks: got ${taperW.length} non-race TAPER week(s), ` +
-          `need ≥${minNonRaceTaperWks} for ${raceDistanceMi >= 20 ? 'marathon/ultra' : 'half-marathon'} — ` +
+          `need ≥${minNonRaceTaperWks} for ${raceDistanceMi >= 20 ? 'marathon/ultra' : 'half-marathon'} · ` +
           `plan is too short or phase phasing overflowed (increase plan length)`,
         );
       }
@@ -572,7 +572,7 @@ export function validateComposedPlan(
         if (deepestDrop < c.taperDropMinPct) {
           violations.push(
             `Taper bottoms at ${deepest}mi, only ${Math.round(deepestDrop)}% below peak ${peakVol}mi ` +
-            `(need ≥${c.taperDropMinPct}% by race) — taper too shallow`,
+            `(need ≥${c.taperDropMinPct}% by race) · taper too shallow`,
           );
         }
         // DOCTRINE-1b · the OTHER end of the band. Research/08 §9.1 states a
@@ -598,7 +598,7 @@ export function validateComposedPlan(
           if (authoredDrop > c.taperDropMaxPct) {
             violations.push(
               `Taper bottoms at ${authoredDeepest}mi, ${Math.round(authoredDrop)}% below peak ${peakVol}mi ` +
-              `(max ${c.taperDropMaxPct}% for this distance, Research/08 §9.1) — taper too deep`,
+              `(max ${c.taperDropMaxPct}% for this distance, Research/08 §9.1) · taper too deep`,
             );
           }
         }
@@ -613,14 +613,14 @@ export function validateComposedPlan(
           if (taperW[i].weeklyMi > expected * 1.15 + 0.5) {
             violations.push(
               `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi vs the doctrine target ` +
-              `${Math.round(expected * 10) / 10}mi at ${wksLeft} weeks out (Research/08 §9.1) — taper week too shallow`,
+              `${Math.round(expected * 10) / 10}mi at ${wksLeft} weeks out (Research/08 §9.1) · taper week too shallow`,
             );
           }
         }
         for (let i = 0; i < taperW.length; i++) {
           if (taperW[i].weeklyMi > peakVol * 1.02) {
             violations.push(
-              `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi is ABOVE peak ${peakVol}mi — taper must reduce volume`,
+              `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi is ABOVE peak ${peakVol}mi · taper must reduce volume`,
             );
           }
           // TRAVEL-1 · a prior taper week that dipped because travel eased its
@@ -637,12 +637,12 @@ export function validateComposedPlan(
               if (ref && ref !== taperW[i - 1]) {
                 violations.push(
                   `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi rises above the last authored taper week ` +
-                  `${ref.weeklyMi}mi — taper must descend`,
+                  `${ref.weeklyMi}mi · taper must descend`,
                 );
               } else if (ref) {
                 violations.push(
                   `Taper week ${taperW[i].startISO}: ${taperW[i].weeklyMi}mi rises above the prior taper week ` +
-                  `${taperW[i - 1].weeklyMi}mi — taper must descend`,
+                  `${taperW[i - 1].weeklyMi}mi · taper must descend`,
                 );
               }
             }
@@ -703,7 +703,7 @@ export function validateComposedPlan(
     if (weekTravelEased(week, ['quality_eased'])) continue;
     if (!week.days.some(d => d.isQuality)) {
       violations.push(
-        `Week ${week.startISO} (${week.phase}): no quality sessions prescribed — ` +
+        `Week ${week.startISO} (${week.phase}): no quality sessions prescribed · ` +
         `every quality-phase week requires at least one`,
       );
     }
@@ -772,7 +772,7 @@ export function validateComposedPlan(
       violations.push(
         `Week ${nonRaceWeeks[i].startISO}: ${curr}mi against a ${chronic.toFixed(1)}mi ` +
         `${ACWR_CHRONIC_WEEKS}-week mean is an acute:chronic ratio of ` +
-        `${(curr / chronic).toFixed(2)} — doctrine's high-risk line is ${ACWR_HIGH_RISK}`,
+        `${(curr / chronic).toFixed(2)} · doctrine's high-risk line is ${ACWR_HIGH_RISK}`,
       );
     }
   }
@@ -791,7 +791,7 @@ export function validateComposedPlan(
       if (d.isLong || d.type === 'race' || d.type === 'rest') continue;
       if (d.distanceMi > longMi + 0.15) {
         violations.push(
-          `Week ${week.startISO} (${week.phase}): ${d.type} ${d.distanceMi}mi exceeds the long ${longMi}mi — ` +
+          `Week ${week.startISO} (${week.phase}): ${d.type} ${d.distanceMi}mi exceeds the long ${longMi}mi · ` +
           `the long must be the week's longest run`,
         );
       }
@@ -820,7 +820,7 @@ export function validateComposedPlan(
         if (isPrescription && pos(d.dow) > racePosInWeek) {
           violations.push(
             `Week ${week.startISO} (race week): ${d.type} on dow ${d.dow} is dated AFTER the race ` +
-            `(dow ${raceDay.dow}) — no prescription may fall after race day`,
+            `(dow ${raceDay.dow}) · no prescription may fall after race day`,
           );
         }
       }

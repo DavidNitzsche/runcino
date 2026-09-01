@@ -137,7 +137,7 @@ export function resolveProgressionStep(args: {
       return {
         action: 'ACCELERATE',
         shape: stepped.shape,
-        why: `You are absorbing this block well, so this week asks for a little more than the plan had drawn up — ${stepped.change}.`,
+        why: `You are absorbing this block well, so this week asks for a little more than the plan had drawn up · ${stepped.change}.`,
         changed: true,
       };
     }
@@ -153,7 +153,7 @@ export function resolveProgressionStep(args: {
       return {
         action: 'HOLD',
         shape: previous,
-        why: 'Holding this week where it was rather than adding to it. The step up is deferred, not cancelled — repeating a stimulus you have not finished adapting to is how the next one lands better.',
+        why: 'Holding this week where it was rather than adding to it. The step up is deferred, not cancelled. Repeating a stimulus you have not finished adapting to is how the next one lands better.',
         changed: !sameShape(previous, planned),
       };
     }

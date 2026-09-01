@@ -544,7 +544,7 @@ export class OverloadTrajectory {
       // Doctrine §2's W4 and §13: a recovery week absorbs the block; it does
       // not carry a progression step, and the trajectory resumes from where it
       // stood rather than from the deload.
-      change = 'recovery week — the stimulus holds';
+      change = 'recovery week · the stimulus holds';
     } else {
       const capped: ProgressionLever[] = [];
       for (;;) {
@@ -577,7 +577,7 @@ export class OverloadTrajectory {
         // already at the volume doctrine allows for the mileage they are
         // running, and more of it would be over the cap rather than progress.
         held = true;
-        change = 'every lever is at its doctrine cap — the session holds';
+        change = 'every lever is at its doctrine cap · the session holds';
       }
     }
 

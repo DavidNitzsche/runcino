@@ -409,7 +409,7 @@ export function selectLever(args: {
       rationale: diagnosed
         ? `${limiter!.replace(/_/g, ' ')} is the limiter, and this is the cheapest lever it responds to that still has room`
         : args.preferred && args.preferredReason
-          ? `${args.preferredReason} — and this is the cheapest lever on it that still has room`
+          ? `${args.preferredReason} · the cheapest lever on it that still has room`
           : 'cheapest lever with room on the generic ladder',
       skipped,
     };
@@ -521,7 +521,7 @@ export function advanceShape(args: {
       // no continuous form. Merging reps past that floor is not a denser
       // version of the session; it is a different session with the wrong label.
       if (family === 'interval' && shape.reps - 1 < INTERVAL_MIN_REPS) {
-        return { shape, change: 'a VO2max session is a rep set — §6.1 bottoms out at three reps', capped: true };
+        return { shape, change: 'a VO2max session is a rep set · §6.1 bottoms out at three reps', capped: true };
       }
       const total = totalWorkMinutes(shape);
       next.reps = shape.reps - 1;
@@ -563,7 +563,7 @@ export function advanceShape(args: {
       }
       return {
         shape: next,
-        change: `${shape.reps} x ${shape.repMinutes} min becomes ${next.reps} x ${next.repMinutes} min — same volume, less rest`,
+        change: `${shape.reps} x ${shape.repMinutes} min becomes ${next.reps} x ${next.repMinutes} min · same volume, less rest`,
         capped: false,
       };
     }
@@ -652,7 +652,7 @@ export function probeShape(base: WorkShape): {
     terminalPaceSPerMi: terminal,
     instruction:
       'Hold the first reps at the usual effort. Take the last one faster only if it stays controlled. ' +
-      'If it turns into a fight, back off and finish at the earlier pace — that is a complete session, not a failed one.',
+      'If it turns into a fight, back off and finish at the earlier pace. That is a complete session, not a failed one.',
   };
 }
 
@@ -694,11 +694,11 @@ export function probesSupportFitnessMove(probes: ProbeObservation[]): {
   if (good.length < PROBES_FOR_FITNESS_EVIDENCE) {
     return {
       supported: false,
-      reason: `${good.length} of ${PROBES_FOR_FITNESS_EVIDENCE} controlled probes — not yet a pattern`,
+      reason: `${good.length} of ${PROBES_FOR_FITNESS_EVIDENCE} controlled probes · not yet a pattern`,
     };
   }
   return {
     supported: true,
-    reason: `${good.length} controlled probes at the reached pace — repeated evidence, not one good day`,
+    reason: `${good.length} controlled probes at the reached pace · repeated evidence, not one good day`,
   };
 }

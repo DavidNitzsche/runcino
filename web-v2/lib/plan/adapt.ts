@@ -5006,7 +5006,7 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         noteField: today,
         noteValue: { trigger: t.kind, observed: t.reason },
         forceApplyNow: true,
-        why: `${t.reason} Heat no longer changes a session in this app — pace it by feel.`,
+        why: `${t.reason} Heat no longer changes a session in this app. Pace it by feel.`,
       }];
     }
     case 'rhr_spike':

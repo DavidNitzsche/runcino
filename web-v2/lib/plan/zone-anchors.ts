@@ -82,7 +82,8 @@ import {
  */
 export const ST_OFFSET_S_PER_MI = 15;
 
-/** The four quality paces `Research/01` §"Dosing rules — Daniels' caps" doses.
+/**
+ *  The four quality paces `Research/01` §"Dosing rules — Daniels' caps" doses.
  *  Defined here rather than in `dosing.ts` so the zone table and the dose
  *  buckets cannot drift; `dosing.ts` re-exports it unchanged. */
 export type DosePace = 'M' | 'T' | 'I' | 'R';

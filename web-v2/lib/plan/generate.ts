@@ -5124,7 +5124,7 @@ function layoutWeek({
       // The instruction IS the session. Run on the flat and this is just
       // another MP long — the eccentric loading, which is the whole point, only
       // happens on the descent.
-      ? `Downhill simulation. Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${mPaceWord} — on terrain that descends like your race. Find the closest gradient you can and run the race-pace section on it. Quads will feel this more than the pace suggests; that is the session working, and it is what stops the same damage arriving at mile 20 on race day.`
+      ? `Downhill simulation. Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${mPaceWord}, on terrain that descends like your race. Find the closest gradient you can and run the race-pace section on it. Quads will feel this more than the pace suggests; that is the session working, and it is what stops the same damage arriving at mile 20 on race day.`
       : `Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${
           finishSeg!.tag === 'HM' ? 'half-marathon pace' : mPaceWord}.`,
   };
@@ -7013,7 +7013,7 @@ function layoutWeek({
         slots[pick]!.notes =
           'Easy to steady. Aerobic strength under fatigue, without the cost of a long run. '
           + (embeddedT
-            ? `Settle in, then run ${mlrTMi}mi at threshold somewhere in the middle and ease back to steady after — embedded, no stop either side. It should not leave you needing a recovery day.`
+            ? `Settle in, then run ${mlrTMi}mi at threshold somewhere in the middle and ease back to steady after. Embedded, no stop either side. It should not leave you needing a recovery day.`
             : 'Let the last few miles drift up if they want to.')
           + (strides ? ` Finish with ${strideReps} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.` : '');
       }
@@ -12470,7 +12470,7 @@ function authorDownhillSimulation(
   best.day.notes = `${best.day.notes ?? ''} Run the race-pace section on terrain that descends `
     + `like your course. Quads will feel this more than the pace suggests; that is the session `
     + `working, and it is what stops the same damage arriving at mile 20 on race day. Last `
-    + `race-pace downhill of the block — keep the taper's downhill running short and easy.`.trim();
+    + `race-pace downhill of the block. Keep the taper's downhill running short and easy.`.trim();
 }
 
 /** The plan's own race day, or null for a goal-mode or open block. */
@@ -13140,7 +13140,7 @@ async function composeForUserInternal(
       ),
     );
     if (priorPeakRow === null || trailingRow === null) {
-      return { ok: false, reason: 'could not read your training history · try again in a moment' };
+      return { ok: false, reason: 'could not read your training history · the plan you have stands' };
     }
     trailingAvgWeeklyMi = trailingRow?.avg_weekly != null
       ? Number(trailingRow.avg_weekly)
@@ -13804,7 +13804,7 @@ async function loadGeneratorInputs(
   // A plan authored on "no quality detected" when we simply could not look
   // rewrites a mid-build runner back to BASE. Refuse instead.
   if (isMidBlock === null) {
-    return { ok: false, reason: 'could not read your recent training · try again in a moment' };
+    return { ok: false, reason: 'could not read your recent training · the plan you have stands' };
   }
   let recentMi = await recentWeeklyMileage(userId);
   // RULE8-1 · the days the engine itself prescribed as taper / race week /
@@ -13827,7 +13827,7 @@ async function loadGeneratorInputs(
   // history. Refuse — the runner keeps the plan they have, and the refusal is
   // a correct answer with a reason on it, not an empty state.
   if (recentLongRead === null) {
-    return { ok: false, reason: 'could not read your recent runs · try again in a moment' };
+    return { ok: false, reason: 'could not read your recent runs · the plan you have stands' };
   }
   // RULE8-2 · the HABIT value where one could be measured, the literal 28-day
   // max otherwise. `spikeAnchorLongMi` below keeps the literal one for the
