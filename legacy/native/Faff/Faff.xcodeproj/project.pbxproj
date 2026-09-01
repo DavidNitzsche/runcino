@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		639307872FBD6666004C9428 /* FaffWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 639307672FBD6665004C9428 /* FaffWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		639307932FBD6666004C9428 /* FaffWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 639307922FBD6666004C9428 /* FaffWidgetSnapshot.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,6 +68,7 @@
 		6393073D2FBD29D8004C9428 /* FaffTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FaffTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		639307472FBD29D8004C9428 /* FaffUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FaffUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		639307672FBD6665004C9428 /* FaffWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "FaffWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		639307922FBD6666004C9428 /* FaffWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FaffWidgetSnapshot.swift; path = "FaffWatch Widgets/FaffWidgetSnapshot.swift"; sourceTree = "<group>"; };
 		639307732FBD6666004C9428 /* FaffWatch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "FaffWatch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6393077D2FBD6666004C9428 /* FaffWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "FaffWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -170,6 +172,7 @@
 				639307402FBD29D8004C9428 /* FaffTests */,
 				6393074A2FBD29D8004C9428 /* FaffUITests */,
 				639307682FBD6665004C9428 /* FaffWatch Watch App */,
+				639307922FBD6666004C9428 /* FaffWidgetSnapshot.swift */,
 				639307762FBD6666004C9428 /* FaffWatch Watch AppTests */,
 				639307802FBD6666004C9428 /* FaffWatch Watch AppUITests */,
 				639307312FBD29D7004C9428 /* Products */,
@@ -459,6 +462,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				639307932FBD6666004C9428 /* FaffWidgetSnapshot.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
