@@ -1251,3 +1251,65 @@ export function selectWorkout(input: SelectorInput): SelectorResult {
     rejected,
   };
 }
+
+/* ────────────────────────────────────────────── recomposing a rationale ── */
+
+/**
+ * RATIONALE-BACKFILL-1 (2026-09-01) · the rationale for a row that was
+ * authored before `selection_rationale` was persisted.
+ *
+ * `selectWorkout` above composes the real line at selection time. RATIONALE-
+ * PERSIST-1 carries it to `workout_spec.selection_rationale` from that moment
+ * on — but the owner's live block was authored 2026-08-31 and predates it, so
+ * `selection_rationale` is present on ZERO of its 103 rows (appendix E Finding
+ * 6). "Why was this session selected" therefore has no answer in production on
+ * any row, which is CLAUDE.md's signature failure: wired, tested and inert.
+ *
+ * A recompute cannot regenerate the real line, because the two facts that make
+ * it a SELECTION record rather than a description — how many sessions were
+ * eligible, and that least-recently-used broke the tie — existed only inside
+ * the call that made the choice. They are not recoverable from the row, and
+ * inventing them would be worse than their absence (§38, Rule 11).
+ *
+ * What IS recoverable is the identity of the entry that was chosen, because
+ * the catalogue's own NAME and SECTION are written verbatim into
+ * `plan_workouts.notes` by the same selection ("Medium hill repeats ·
+ * Research/04 §8.3. Run the climb by effort, not pace."). So this recomposes
+ * the identifying half of the same sentence, in the same shape and word order,
+ * and STOPS — the eligible-count clause is omitted rather than guessed.
+ *
+ * Returns null, never a partial guess, when:
+ *   · there is no note to read, or
+ *   · the note's head does not resolve to a catalogue entry (a day a generic
+ *     trajectory filled rather than the catalogue, which is a real and common
+ *     case and must not be given a catalogue provenance it never had).
+ *
+ * The entry is resolved by NAME rather than by slug because the slug is not
+ * persisted anywhere on the row; the name is, and `_catalogue.test.ts` already
+ * holds every name unique against `Research/04` §18's own lookup index.
+ */
+export function rationaleForRow(row: {
+  /** `plan_workouts.notes` — the catalogue's own note, when the catalogue
+   *  filled this day. Anything else returns null. */
+  notes: string | null;
+  /** The slot this session sits on. `plan_workouts.type` is the slot for every
+   *  catalogue-filled day. */
+  slot: string;
+  /** The doctrine phase the row's week belongs to, from `plan_phases.label`.
+   *  Null when the week has no phase row, in which case the phase clause is
+   *  omitted rather than invented. */
+  phase: string | null;
+}): string | null {
+  const head = (row.notes ?? '').split(/\s*[·.]/)[0]?.trim() ?? '';
+  if (!head) return null;
+  const entry = WORKOUT_CATALOGUE.find(
+    (e) => e.name.toLowerCase() === head.toLowerCase(),
+  );
+  if (!entry) return null;
+  const where = row.phase
+    ? `on the ${row.slot} slot in ${row.phase}`
+    : `on the ${row.slot} slot`;
+  // Same shape and word order as `selectWorkout`'s own line, minus the
+  // "N session(s) eligible, least recently used wins" clause this cannot know.
+  return `${entry.name} (${entry.section}) · ${entry.family} ${where}.`;
+}

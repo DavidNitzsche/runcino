@@ -100,7 +100,8 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { seasonalVdotCeiling, achievableRaceTarget } from '@/lib/training/achievable-target';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { buildWorkoutSpec } from './spec-builder';
-import { preserveProgressionSql } from './progression-spec';
+import { preserveProgressionSql, readSelectionRationale, RATIONALE_SPEC_KEY } from './progression-spec';
+import { rationaleForRow } from '@/lib/workout-catalogue/select';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 
@@ -466,6 +467,12 @@ export async function recomputePacesForPlan(
 
   const weekT: Record<number, number | null> = {};
   for (const w of weekRows) weekT[w.week_idx] = anchors.thresholdSecPerMi;
+  // RATIONALE-BACKFILL-1 · the doctrine phase per week, so a recomposed
+  // rationale names the phase the session was actually placed in rather than
+  // omitting it. Built off the same `weekRows` read, never a second query.
+  const phaseByWeekId = new Map<string, string | null>(
+    weekRows.map((w) => [String(w.week_id), w.phase ?? null]),
+  );
 
   /**
    * ANCHOR-STALE-2 · THE HR ANCHORS, READ LIVE.
@@ -525,10 +532,15 @@ export async function recomputePacesForPlan(
   const rows = (await q.query<{
     id: string; week_id: string | null; type: string; distance_mi: string | null;
     sub_label: string | null; date_iso: string; sealed: boolean;
+    notes: string | null; workout_spec: unknown;
   }>(
+    // RATIONALE-BACKFILL-1 · `notes` and `workout_spec` are read for one
+    // purpose: to tell a row that already carries a `selection_rationale` from
+    // one that predates the field, and to recompose the identifying half of the
+    // line for the latter. See the write below.
     `SELECT pw.id::text AS id, pw.week_id::text AS week_id, pw.type,
             pw.distance_mi::text AS distance_mi, pw.sub_label,
-            pw.date_iso::text AS date_iso,
+            pw.date_iso::text AS date_iso, pw.notes, pw.workout_spec,
             EXISTS (
               SELECT 1 FROM runs r
                WHERE r.user_uuid = $2::uuid
@@ -579,6 +591,11 @@ export async function recomputePacesForPlan(
 
   let updated = 0;
   let sealedCount = 0;
+  // RATIONALE-BACKFILL-1 · counted so the audit stamp can say how many rows the
+  // recompute gave a provenance line to, rather than leaving the backfill's
+  // effect unobservable (Rule 21: a log that says something happened but not
+  // what is not a log).
+  let rationalesWritten = 0;
   const core = async (tx: { query: typeof pool.query }): Promise<void> => {
     for (const row of rows) {
       if (row.sealed) { sealedCount++; continue; }
@@ -620,6 +637,38 @@ export async function recomputePacesForPlan(
       const derivedLabel = built.spec
         ? subLabelFromSpec(built.spec as Parameters<typeof subLabelFromSpec>[0])
         : null;
+
+      // ── RATIONALE-BACKFILL-1 (2026-09-01) ────────────────────────────────
+      //
+      // `preserveProgressionSql` already CARRIES an existing
+      // `selection_rationale` forward (RATIONALE-PERSIST-1 widened its fold to
+      // `DURABLE_SPEC_KEYS`), so nothing here can erase one. What it cannot do
+      // is create one, and every row authored before that change carries none
+      // — 103 of 103 on the owner's live block, so "why was this session
+      // selected" has no answer in production on any row.
+      //
+      // `buildWorkoutSpec` knows nothing about the catalogue, so the recompute
+      // cannot regenerate the selector's own line. `rationaleForRow` recomposes
+      // the identifying half of it from what the row does carry, and refuses
+      // (null) on a day the catalogue never filled rather than claiming a
+      // provenance that day never had.
+      //
+      // WRITTEN ONLY WHEN ABSENT. A stored rationale is the selector's own
+      // record of a real choice and outranks anything recomposed after the
+      // fact, so this never overwrites one — the new spec simply does not carry
+      // the key, and the preserve guard's "old had one" branch keeps it.
+      const existingRationale = readSelectionRationale(row.workout_spec);
+      if (built.spec && !existingRationale) {
+        const recomposed = rationaleForRow({
+          notes: row.notes,
+          slot: row.type,
+          phase: phaseByWeekId.get(row.week_id ?? '') ?? null,
+        });
+        if (recomposed) {
+          (built.spec as Record<string, unknown>)[RATIONALE_SPEC_KEY] = recomposed;
+          rationalesWritten++;
+        }
+      }
       await tx.query(
         // Rule 6 · this rebuilds the spec for the SAME session off a new pace.
         // `buildWorkoutSpec` knows nothing about the overload trajectory, so a
@@ -652,6 +701,10 @@ export async function recomputePacesForPlan(
         measured_progress_fraction: null,
         source: opts?.source ?? 'recompute_paces',
         workouts_updated: updated,
+        // RATIONALE-BACKFILL-1 · how many rows gained a `selection_rationale`
+        // they did not have. Zero on a block authored after RATIONALE-PERSIST-1,
+        // which is the honest steady state, not a failure.
+        rationales_written: rationalesWritten,
         // PRESCRIPTION-WIRE-1 · WHAT THESE ROWS WERE ACTUALLY PRICED AT, and how
         // well each number was known. Rule 10's stamp requirement, and the
         // answer to "was this block written before or after the prescription

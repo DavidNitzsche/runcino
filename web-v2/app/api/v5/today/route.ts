@@ -32,6 +32,9 @@ import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/tw
 import { resolveThresholdHr } from '@/lib/training/lthr';
 import { requireUserId } from '@/lib/auth/session';
 import { composeWhy } from '@/lib/faff/why-voice';
+import {
+  resolveCoachingThesis, thesisLeadClause, coachSafeSessionName, wireThesis,
+} from '@/lib/training/coaching-thesis';
 import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
@@ -724,6 +727,34 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         [activePlan.id, today],
       ).catch(() => ({ rows: [] }))).rows[0]?.rationale ?? null)
     : null;
+  // ── THE COACHING THESIS · Constitution §F, wired (2026-09-01) ──────────
+  //
+  // On a QUALITY day the "why this run" opener is the strategy, not the
+  // calendar. `resolveCoachingThesis` answers "what are we currently trying to
+  // accomplish with this runner" off the Runner Model's own capacities, and
+  // this route quotes it — it composes no sentence of its own about the same
+  // facts (Constitution §P, Rule 16). The thesis also travels on the payload
+  // as `thesis`, so Block can say the same thing without re-deriving it.
+  //
+  // QUALITY DAY, and only a quality day. `thesisLeadClause` replaces the phase
+  // opener, and doing that on an easy or rest day would put a limiter sentence
+  // over a run that is not about the limiter at all. Long runs are out too:
+  // they carry their own rich note and the durability half of `addressedBy` is
+  // a coarse `is_long` proxy the header already flags. So the three families
+  // the thesis ranks and prescribes against, and nothing else.
+  //
+  // Never fatal. A thesis is an explanation, and a screen that refuses to draw
+  // because the explanation failed is worse than one that draws the day's own
+  // note (Rule 11 says the failure is distinguishable, not that it is fatal —
+  // and `why` falls back to exactly what it composed before this change).
+  const THESIS_QUALITY_TYPES = new Set(['threshold', 'tempo', 'intervals']);
+  const thesis = todayPlanUnresolved
+    ? null
+    : await resolveCoachingThesis(userId, today).catch(() => null);
+  const thesisIsForToday = thesis != null
+    && THESIS_QUALITY_TYPES.has((viewedPlannedType ?? '').toLowerCase());
+  const addressedToday = thesis?.addressedBy.find((s) => s.dateIso === today) ?? null;
+
   const why = todayPlanUnresolved
     // RULE 11 · an unresolved day says so. It does NOT borrow the phase
     // opener, because "you're in the part of the block where the hard
@@ -738,6 +769,16 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         dayNote: todayWeekDay?.notes?.trim() || null,
         phaseRationale,
         fallback: [purpose.verdict, ...purpose.facts].filter(Boolean).join(' '),
+        thesisLead: thesisIsForToday && thesis
+          ? thesisLeadClause(thesis, addressedToday != null)
+          : null,
+        // Only when this session actually addresses the limiter. Naming the
+        // catalogue pick on a session that does not serve the limiter would
+        // read as the thesis endorsing it, which is appendix E Finding 7's
+        // mistake made in prose instead of in a family match.
+        thesisSessionName: thesisIsForToday && addressedToday
+          ? coachSafeSessionName(addressedToday.selectionRationale)
+          : null,
       });
 
   // ── Already ran today? → after_run (5b/5c) ─────────────────────────────
@@ -1347,6 +1388,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   ctx.phaseLine = phaseWords(glance.phaseLabel);
       ctx.weekStripDays = weekStripDays;
       ctx.why = why;
+      ctx.thesis = thesis ? wireThesis(thesis) : null;
       ctx.whereYouAre = buildWhereYouAre(glance, fitnessRow);
       ctx.recentRun = recentRun;
       ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
@@ -1751,6 +1793,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // honesty note on this field.
   ctx.effortStat = null;
   ctx.why = why;
+  ctx.thesis = thesis ? wireThesis(thesis) : null;
   ctx.whereYouAre = buildWhereYouAre(glance, fitnessRow);
   ctx.beforeYouGo = beforeYouGo;
   ctx.raceDay = raceDay;

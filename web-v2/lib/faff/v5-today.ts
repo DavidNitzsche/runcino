@@ -227,6 +227,18 @@ export interface V5Today {
   weekStrip: V5WeekStripDay[];
   groups: V5Group[];
   why: string | null;
+  /// THE COACHING THESIS (BRAIN_CONSTITUTION §F), additive 2026-09-01.
+  ///
+  /// The strategic frame `why` is composed FROM on a quality day, carried
+  /// structurally as well so the phone holds the claim and not only the
+  /// sentence. Rule 17: `why` and `thesis.coachLine` are ALTERNATIVES on this
+  /// screen, never siblings — the About section draws one of them, and since
+  /// the route composes `why` out of the thesis on every quality day, the
+  /// runner never reads the same strategy twice.
+  ///
+  /// Null when the thesis could not resolve, and on states that do not
+  /// prescribe. Optional so a pre-existing context builder stays valid.
+  thesis?: ThesisWire | null;
   whereYouAre: V5Row[];
   beforeYouGo: V5Row[];
   /// Present only when the active plan carries an unacknowledged pace-drop
@@ -381,6 +393,7 @@ const MIN_CONVERGING_DOMAINS = 3; // CONVERGENCE.redMinDomains, lib/coach/conver
 import { dateWords as usDateWords } from '@/lib/format/date';
 import { fmtMi, fmtMi2, fmtClock, fmtPaceSlash as fmtPace } from '@/lib/format/run';
 import { canonicalSessionType } from '@/lib/training/workout-type';
+import type { ThesisWire } from '@/lib/training/coaching-thesis';
 export { fmtMi, fmtClock, fmtPace };
 
 const TRACK_M = [200, 300, 400, 600, 800, 1000, 1200, 1500] as const;
@@ -888,6 +901,9 @@ export interface V5TodayContext {
   hrCapStat: string | null;     // "146 bpm"
   effortStat: string | null;    // "2-4"
   why: string | null;           // derivePurpose().verdict + facts, joined
+  /// See `V5Today.thesis`. Optional so pre-existing context builders stay
+  /// valid; the route sets it on every state that prescribes.
+  thesis?: ThesisWire | null;
 
   whereYouAre: V5Row[];   // readiness/week-status rows
   beforeYouGo: V5Row[];   // shoe pick, fuel, move/skip rows
@@ -1565,6 +1581,7 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   weekStrip: [],
   groups: [],
   why: null,
+  thesis: null,
   whereYouAre: [],
   beforeYouGo: [],
   paceNote: null,
@@ -1721,6 +1738,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     };
     t.groups = buildGroups(ctx.prescription);
     t.why = ctx.why;
+    t.thesis = ctx.thesis ?? null;
     t.whereYouAre = ctx.whereYouAre;
     t.beforeYouGo = [];
     t.paceNote = ctx.paceNote;
@@ -1847,6 +1865,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     ? []
     : [...buildGroups(ctx.prescription), ...buildContingencyGroup(ctx.contingency)];
   t.why = ctx.why;
+  t.thesis = ctx.thesis ?? null;
   t.whereYouAre = ctx.whereYouAre;
   t.beforeYouGo = ctx.beforeYouGo;
   t.paceNote = ctx.paceNote;

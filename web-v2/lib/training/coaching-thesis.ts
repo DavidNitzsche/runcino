@@ -499,11 +499,128 @@ export function composeCoachLine(
       + 'than pushing one trait.';
   }
   const holds = heldConstant.find((h) => h.code === 'BETTER_EVIDENCED_THAN_THE_LIMITER');
-  const work = `${CAPACITY_WORD[limiter].charAt(0).toUpperCase()}${CAPACITY_WORD[limiter].slice(1)}`
-    + ' is where the work goes.';
+  const work = `${capitalise(CAPACITY_WORD[limiter])} is where the work goes.`;
   if (!holds) return work;
   return `Your ${CAPACITY_WORD[holds.capacity]} is the best evidenced part of your training `
     + `right now, so it holds. ${work}`;
+}
+
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * THE DAY-LEVEL half of the same voice, for Today's "why this run".
+ *
+ * `coachLine` above is the BLOCK-level set: what holds, then where the work
+ * goes. A single day cannot carry that and also say what the day is inside the
+ * two-sentence limit `lib/faff/why-voice.ts` holds every sentence in this
+ * section to, so this returns the OPENING CLAUSE only and the day's own
+ * instruction becomes the second sentence.
+ *
+ * Same module, same vocabulary table, one owner of thesis prose — this is a
+ * second LENGTH, not a second explanation (Rule 16). Returned as a clause with
+ * no leading capital and no full stop, because `composeWhy`'s `sentence()`
+ * owns punctuation for that section.
+ *
+ * `servesToday` is the honest half. A quality day that does not address the
+ * limiter must not be described as the session that moves it — appendix E
+ * Finding 7 is exactly that mistake made by a family match.
+ */
+export function thesisLeadClause(thesis: CoachingThesis, servesToday: boolean): string {
+  if (thesis.primaryLimiter === 'UNKNOWN') {
+    return 'there is not enough direct evidence yet to name what is limiting you, so this '
+      + 'block is building it';
+  }
+  const word = CAPACITY_WORD[thesis.primaryLimiter];
+  return servesToday
+    ? `${word} is the limiter right now, and this is the session that moves it`
+    : `${word} is the limiter right now, so that is what the block is building toward`;
+}
+
+/**
+ * The one coach-safe fragment of a persisted `selection_rationale`: the
+ * catalogue workout's own NAME.
+ *
+ * The stored string is the selector's working record —
+ * `"Cruise intervals (§5.3) · threshold on the threshold slot in QUALITY;
+ * 3 session(s) eligible, least recently used wins."` — and everything after
+ * the name is engine vocabulary (doctrine section numbers, slot names,
+ * candidate counts) that the locked coach voice does not print at a runner.
+ * The name is not: it is what the session is called.
+ *
+ * Returning the name from HERE rather than from `plan_workouts.notes` is the
+ * point of the field. The note is free text a later pass can rewrite; the
+ * rationale is the selector's own record of what it picked. Same words today,
+ * different provenance, and only one of them is a claim about the selection.
+ *
+ * `null` on a row with no rationale stored, which is every row authored before
+ * RATIONALE-PERSIST-1 — Rule 11: absent is not empty, and the caller falls
+ * back to the day's own note rather than printing nothing.
+ */
+export function coachSafeSessionName(selectionRationale: string | null): string | null {
+  if (!selectionRationale) return null;
+  const head = selectionRationale.split(/\s*[(·;]/)[0]?.trim() ?? '';
+  if (!head || head.length > 60) return null;
+  return head;
+}
+
+/**
+ * §F's "what evidence would change the strategy", in coach voice.
+ *
+ * `reconsiderIf[]` is the machine-readable form and carries live numbers and
+ * capacity names; this is the one sentence a runner reads. It says the same
+ * two things the structured triggers say — a new race result, or the evidence
+ * behind the limiter catching up — and nothing the triggers do not.
+ *
+ * `null` is impossible today (`NEW_RACE_RESULT` is always emitted), and the
+ * signature says `string` rather than `string | null` so a surface does not
+ * write a branch for a case that cannot happen.
+ */
+export function composeReviewTrigger(thesis: CoachingThesis): string {
+  if (thesis.primaryLimiter === 'UNKNOWN') {
+    return 'This gets revisited as soon as there is enough evidence to name a limiter.';
+  }
+  const word = CAPACITY_WORD[thesis.primaryLimiter];
+  return `This gets revisited when a new race result lands, or when the evidence behind `
+    + `your ${word} catches up with the rest.`;
+}
+
+/**
+ * THE WIRE SHAPE, and the only one. Both `/api/v5/today` and `/api/v5/block`
+ * emit exactly this object under the key `thesis`, so the two surfaces cannot
+ * disagree about the strategy and neither can compose its own version of it
+ * (Constitution §P, Rule 16).
+ *
+ * Deliberately five keys and no more. `standings`, `evidenceIds`,
+ * `heldConstant[].note` and the structured `reconsiderIf[]` are engine
+ * internals — real, auditable, and of no use to a runner
+ * (`docs/PRODUCT_UX_SIMPLIFICATION_DOCTRINE.md`: only surface what changes
+ * what the runner should understand or do next). They stay on
+ * `CoachingThesis`, which is what a test, a debug view or a future authoring
+ * consumer reads.
+ */
+export interface ThesisWire {
+  /** `'THRESHOLD' | 'HIGH_INTENSITY' | 'DURABILITY' | 'UNKNOWN'`. */
+  limiter: ThesisLimiter;
+  priority: ThesisPriority;
+  /** The limiter's own resolved confidence, or null when there is no limiter.
+   *  A quantity, never a sentence — the surface owns the words. */
+  confidence: number | null;
+  /** THE composed sentence set. Quoted verbatim; never re-written. */
+  coachLine: string;
+  /** §F's review trigger, in coach voice. */
+  reviewTrigger: string;
+}
+
+export function wireThesis(thesis: CoachingThesis): ThesisWire {
+  return {
+    limiter: thesis.primaryLimiter,
+    priority: thesis.priority,
+    confidence: thesis.confidence,
+    coachLine: thesis.coachLine,
+    reviewTrigger: composeReviewTrigger(thesis),
+  };
 }
 
 /** The plan-day `type`/`is_long` shape that speaks to each capacity's

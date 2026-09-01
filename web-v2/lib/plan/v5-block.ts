@@ -66,6 +66,7 @@ import {
 // ("Threshold" from sub_label "THRESHOLD", "Easy" from a bare type column).
 // One authoring path for "what does this day's type read as", not two.
 import { displayTypeFor } from '@/lib/faff/v5-today';
+import { resolveCoachingThesis, wireThesis, type ThesisWire } from '@/lib/training/coaching-thesis';
 
 // ── small local formatters — presentation only, no doctrine here ───────────
 
@@ -574,6 +575,10 @@ export function emptyBlock(todayISO: string) {
     },
     phases: [],
     coachLine: 'There is no block running right now.',
+    // A strategy is a statement about a block. There is no block, so there is
+    // no strategy, and a thesis composed over a runner with no plan would be a
+    // sentence about nothing (Rule 11: absent, not empty).
+    thesis: null as ThesisWire | null,
     soFar: [],
     weeks: [],
     library: [],
@@ -603,15 +608,30 @@ export async function loadV5Block(userId: string) {
     raceDistanceMi = distanceMiFromLabel(label);
   }
 
-  const [library, scenarios] = await Promise.all([
+  const [library, scenarios, thesis] = await Promise.all([
     buildLibrary(state, raceDistanceMi),
     buildScenarios(userId, state.today),
+    // THE COACHING THESIS, ONCE, AT BLOCK LEVEL (Constitution §F).
+    //
+    // Quoted, never re-written. `buildCoachLine` above narrates WHERE in the
+    // block the runner is standing ("this is where the fitness gets built");
+    // the thesis says WHAT the block is currently trying to move and what
+    // would change that. Different claims, so the two sit together without
+    // repeating each other (Rule 17) — and the strategy sentence is byte
+    // identical to the one Today composes its "why" from, because both call
+    // the same resolver and neither writes its own version (Rule 16).
+    //
+    // Never fatal, for the same reason as on Today: a block screen that
+    // refuses to draw because an explanation failed is worse than one drawn
+    // without it.
+    resolveCoachingThesis(userId, state.today).catch(() => null),
   ]);
 
   return {
     panel: buildPanel(state),
     phases: buildPhases(state),
     coachLine: buildCoachLine(state, raceDistanceMi),
+    thesis: thesis ? wireThesis(thesis) : null,
     soFar: buildSoFar(state),
     weeks: buildWeeks(state),
     library,

@@ -499,8 +499,6 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'Form-metric definitions, bands and drills — "coach giving a one-thing-to-do". Its only importer is /api/tips, which the phone has a decode model for and never fetches. Wire the fetch or delete both ends.',
   'web-v2/components/redesign/graphics/DualPoint.tsx':
     'The /redesign tree. That direction was shipped and reverted on 2026-08-18 and is not the plan; its orphans are expected and are not this gate\'s business.',
-  'web-v2/lib/training/coaching-thesis.ts':
-    'DELIBERATELY UNWIRED, by its own header. Built 2026-09-01 to answer BRAIN_CONSTITUTION.md §F — "what are we currently trying to accomplish with this runner" — off the Runner Model\'s own canonical capacities (resolveThresholdCapacity, resolveHighIntensityCapacity, resolveDurability), never invented, never persisted. §F\'s own boundary is a READ relationship (the plan generator would consume this), and the header is explicit that wiring it into generate.ts is real, separately-scoped work not done in this pass — the same INSTANCE-3 shape as block-preview.ts above: the question was asked and the answer is written and tested, so it stays named here rather than silently deleted. Should be WIRED, not deleted, once that authoring pass lands.',
 };
 
 /**
