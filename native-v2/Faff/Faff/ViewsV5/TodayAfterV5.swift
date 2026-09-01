@@ -1187,10 +1187,23 @@ struct TodayAfterV5: View {
         // `RunDetailV5.repPieces` makes, for the same reason.
         guard usable.count > 1 else { return [] }
         return usable.enumerated().map { i, p in
-            RepPiece(id: i,
+            // A DURATION IS NOT A PACE. Found 2026-09-01, the day `p.mi`/
+            // `p.sec` first carried real data (a server field-name bug had
+            // made `model.routePhases` empty on every run before that — see
+            // `web-v2/app/api/v5/today/route.ts`'s `routePhases` comment).
+            // This passed `p.sec` — the phase's raw duration in seconds —
+            // straight into `formatPace(secPerMile:)`, which prints it as a
+            // pace unchanged. It read as a plausible pace on a ~1-mile
+            // interval by coincidence (seconds-per-mile happens to be close
+            // to seconds-elapsed when the distance is close to 1), and was
+            // wrong everywhere else: a 2.10 mi, 1084 s warm-up (a real
+            // 8:36/mi) rendered as "18:04/mi" — 1084 seconds read back as a
+            // pace. Divide by the phase's own distance first.
+            let paceSecPerMi = p.mi > 0 ? Double(p.sec) / p.mi : Double(p.sec)
+            return RepPiece(id: i,
                      label: "Section \(i + 1)",
                      isWork: true,
-                     actualPace: Units.formatPace(secPerMile: p.sec),
+                     actualPace: Units.formatPace(secPerMile: paceSecPerMi),
                      askedPace: nil,
                      detail: "\(Units.formatDistance(miles: p.mi, decimals: 2)) \(Units.distanceLabel())",
                      verdictPhrase: nil,
