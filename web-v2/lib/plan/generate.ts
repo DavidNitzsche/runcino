@@ -4541,10 +4541,45 @@ function layoutWeek({
   // permitted pace overshoot the ceiling.
   //
   // Ultra is exempt by the doctrine sentence itself ("ultra athletes go longer").
-  if (longCat !== 'ultra' && easyPaceSecPerMi != null && easyPaceSecPerMi > 0) {
-    const timeCapMi = Math.floor(((LONG_RUN_MAX_HOURS * 3600) / easyPaceSecPerMi) * 2) / 2;
-    // Never cap below the coherence floor a long run needs to still be a long run.
-    if (timeCapMi >= 3) longMi = Math.min(longMi, timeCapMi);
+  //
+  // ── RULE 11 (2026-09-01) · AN UNREADABLE PACE IS A REFUSAL, NOT AN EXEMPTION
+  //
+  // This used to read `if (longCat !== 'ultra' && easyPaceSecPerMi != null &&
+  // easyPaceSecPerMi > 0) { … }` and nothing else. A missing easy pace SILENTLY
+  // DISABLED the 3-hour cap — the safest reading of the data producing the most
+  // aggressive plan, which is Rule 11's exact sentence: "a missing input must
+  // never silently disable a safety mechanism". For a 12:00/mi runner the cap
+  // binds at 15 mi; without it a distance-driven 20-miler is a four-hour long
+  // run, aimed at the cohort least equipped to absorb it.
+  //
+  // The cap still cannot be APPLIED without a pace — there is nothing to divide
+  // by, and inventing one would be worse. What changes is that the skip is now
+  // STATED rather than silent, so a plan authored without this ceiling can be
+  // told apart from one the ceiling did not bind on.
+  if (longCat !== 'ultra') {
+    if (easyPaceSecPerMi != null && easyPaceSecPerMi > 0) {
+      const timeCapMi = Math.floor(((LONG_RUN_MAX_HOURS * 3600) / easyPaceSecPerMi) * 2) / 2;
+      // Never cap below the coherence floor a long run needs to still be a long run.
+      if (timeCapMi >= 3) longMi = Math.min(longMi, timeCapMi);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn('[plan/generate] SAFETY CAP NOT APPLIED', {
+        cap: 'LONG_RUN_MAX_HOURS',
+        capHours: LONG_RUN_MAX_HOURS,
+        site: 'layoutWeek · absolute-time long-run cap',
+        reason: easyPaceSecPerMi == null
+          ? 'easyPaceSecPerMi is null · no easy-band anchor resolved for this week'
+          : 'easyPaceSecPerMi is not a positive number',
+        easyPaceSecPerMi,
+        weekIdx,
+        phase,
+        longMiUncapped: longMi,
+        doctrine: 'Research/00a §"Volume progression rules" · <3.0-3.5 h for marathoners',
+        consequence: 'The long run for this week is sized by DISTANCE only. It may exceed '
+          + `${LONG_RUN_MAX_HOURS} hours at this runner's own easy pace, and nothing downstream `
+          + 'knows the ceiling did not run.',
+      });
+    }
   }
   // RP-FREQ-FLOOR (2026-06-24) · race-prep analogue of MAINT-FREQ-FLOOR. A distance-driven long
   // (marathon/ultra DIST-1 above) can over-consume a small week's budget, pinning the easy days at

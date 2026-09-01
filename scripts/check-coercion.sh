@@ -245,13 +245,36 @@ fi
 n_handed=$(sed -n '/^export const HANDED_BACK:/,/^\];/p' "$REGISTRY" \
   | grep -cE "^[[:space:]]*id:[[:space:]]*'")
 handed_fails=$(sed -n 's/^export const HANDED_BACK_FAILS = \([a-z]*\);.*$/\1/p' "$REGISTRY")
+# 2026-09-01 · every handed-back entry now carries an `owner:`. Before it did,
+# "awaiting an owner" was equally true of all seven forever and nothing told a
+# routed entry apart from an abandoned one. Counted here as well as asserted in
+# the vitest stage, so a cold container still catches a missing one.
+n_handed_owner=$(sed -n '/^export const HANDED_BACK:/,/^\];/p' "$REGISTRY" \
+  | grep -cE "^[[:space:]]*owner:[[:space:]]*'")
+if [ "${n_handed:-0}" -ne "${n_handed_owner:-0}" ]; then
+  echo "COERCION FAIL · ${n_handed} handed-back entries but ${n_handed_owner} owner: lines"
+  echo "  A handed-back collapse with no owner is not staged, it is abandoned. Name the"
+  echo "  system that owns the decision (docs/BRAIN_CONSTITUTION.md's ownership table)."
+  fail=1
+fi
+# The ratchet the vitest stage enforces. Counted here so a cold container can
+# still see the two lists disagree.
+n_handed_known=$(sed -n '/^export const HANDED_BACK_KNOWN:/,/^\];/p' "$REGISTRY" \
+  | grep -cE "^[[:space:]]*'[^']*',")
+if [ "${n_handed:-0}" -ne "${n_handed_known:-0}" ]; then
+  echo "COERCION FAIL · ${n_handed} handed-back entries but ${n_handed_known} on HANDED_BACK_KNOWN"
+  echo "  The ratchet and the list must agree. An entry off the ratchet is a NEW collapse;"
+  echo "  a ratchet id with no entry is stale and must be deleted."
+  fail=1
+fi
 if [ "${n_handed:-0}" -gt 0 ]; then
   echo ""
-  echo "COERCION · ${n_handed} known collapse(s) awaiting an owner (HANDED_BACK_FAILS=${handed_fails:-?}):"
+  echo "COERCION · ${n_handed} known collapse(s) still open (HANDED_BACK_FAILS=${handed_fails:-?}):"
   sed -n '/^export const HANDED_BACK:/,/^\];/p' "$REGISTRY" \
     | sed -n "s/^[[:space:]]*id:[[:space:]]*'\([^']*\)',[[:space:]]*$/    · \1/p"
-  echo "  These are NOT exemptions. Route them, fix them, delete the entry, and set"
-  echo "  HANDED_BACK_FAILS = true so the next one cannot be carried this way."
+  echo "  These are NOT exemptions. They are LIVE Rule 11 collapses, each with a named"
+  echo "  owner in the registry. Fix them, delete the entry AND its HANDED_BACK_KNOWN"
+  echo "  line, and set HANDED_BACK_FAILS = true once the list is empty."
   echo ""
 fi
 

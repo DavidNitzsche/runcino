@@ -273,11 +273,11 @@ describe('a guard that cannot see assumes the worst', () => {
     // intent, not the old text.
     expect(s).toContain('Promise<RecentLongRead | null>');
     expect(s).toMatch(/representativeMi:\s*number \| null/);
-    expect(s).toContain("reason: 'could not read your recent runs · try again in a moment'");
+    expect(s).toContain("reason: 'could not read your recent runs · the plan you have stands'");
     // detectMidBlock returning false drops a mid-build runner back to BASE.
     expect(s).toContain('async function detectMidBlock(userId: string): Promise<boolean | null>');
     // Two validator inputs whose null means "skip this check".
-    expect(s).toContain("reason: 'could not read your training history · try again in a moment'");
+    expect(s).toContain("reason: 'could not read your training history · the plan you have stands'");
   });
 
   it('the streak pill does not read zero on a dropped connection', () => {

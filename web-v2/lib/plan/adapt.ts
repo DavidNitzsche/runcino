@@ -2849,8 +2849,35 @@ export async function detectMissedKeyWorkout(userId: string): Promise<Adaptation
  */
 async function detectTrainingGap(userId: string): Promise<AdaptationTrigger | null> {
   const today = await runnerToday(userId);
-  const byDay = await mileageByDay(userId, isoDaysBefore(today, 60), today)
-    .catch(() => new Map<string, { mi: number; canonicalIds: string[] }>());
+  // RULE 11 (2026-09-01) · a FAILED read is not an empty history.
+  //
+  // This was `.catch(() => new Map())`, and the empty map it minted left
+  // `lastRunISO` null, which returns "no training gap" one line below. So a
+  // database blip silently disabled the whole layoff-and-comeback detector —
+  // and, because `runnerIsCompromised` calls this, silently reported the runner
+  // as not compromised too. An empty map is also the honest answer for a
+  // genuinely new runner, and those two facts are opposites (Rule 8's
+  // corollary): one means "nothing to detect", the other means "we cannot tell".
+  //
+  // The refusal is distinguishable and loud. Returning null for a failed read
+  // is unchanged in EFFECT — this detector has no fail-closed action available,
+  // since inventing a gap would author a layoff protocol for a runner who never
+  // took one — but it is no longer indistinguishable from the cold-start path
+  // that returns null three lines down for a stated reason.
+  const byDay = await mileageByDay(userId, isoDaysBefore(today, 60), today).catch((e: unknown) => {
+    // eslint-disable-next-line no-console
+    console.warn('[plan/adapt] DETECTOR REFUSED', {
+      detector: 'detectTrainingGap',
+      read: 'mileageByDay(60d)',
+      reason: 'volume read failed · cannot tell a layoff from a runner who has not started',
+      consequence: 'no gap trigger this pass, and runnerIsCompromised loses this signal. '
+        + 'Not the same as "no gap": the detector could not run.',
+      userId: userId.slice(0, 8),
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  });
+  if (byDay === null) return null;
   let lastRunISO: string | null = null;
   for (const [day, v] of byDay) {
     if (v.mi > 0 && (lastRunISO === null || day > lastRunISO)) lastRunISO = day;
@@ -4480,8 +4507,33 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   // taper as a volume collapse rather than as absent — the same lie with an
   // extra step — and here that lands as a LOWER baseline, which makes the
   // shave fire more readily rather than less.
+  // RULE 11 (2026-09-01) · a FAILED coverage read is not zero coverage.
+  //
+  // This was `.catch(() => 0)`, and the comment directly above says why that
+  // was the wrong direction: a lower baseline makes the shave fire MORE
+  // readily, not less. Zero collapses the chronic floor entirely, so a database
+  // blip turned a runner's real 43 mi/wk base into "no chronic floor" and let
+  // an overshoot trim through on a bar that was never computed.
+  //
+  // The overshoot detector is a REDUCING mechanism, so it fails CLOSED by not
+  // firing at all: it refuses to grade this pass rather than grading it against
+  // a fabricated floor. Rule 11 — a guard that cannot run is a refusal worth
+  // surfacing, not a default worth assuming.
   const chronicCovered = await observableCoverageDays(userId, isoDaysBefore(today, 8), 28)
-    .catch(() => 0);
+    .catch((e: unknown) => {
+      // eslint-disable-next-line no-console
+      console.warn('[plan/adapt] DETECTOR REFUSED', {
+        detector: 'detectVolumeOvershoot',
+        read: 'observableCoverageDays(28d chronic window)',
+        reason: 'coverage read failed · the chronic-volume floor has no divisor',
+        consequence: 'no overshoot trigger this pass. Not the same as "no overshoot": '
+          + 'a zero here would have LOWERED the bar and made the shave fire more readily.',
+        userId: userId.slice(0, 8),
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return null;
+    });
+  if (chronicCovered === null) return null;
   const chronicRepresentative = Math.min(
     chronicCovered,
     representativeDayCount(isoDaysBefore(today, 35), isoDaysBefore(today, 8), ovNonNormal),
