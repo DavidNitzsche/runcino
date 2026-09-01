@@ -1123,10 +1123,24 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // never asked for; scoped to the work it is the number the runner
         // actually held.
         ...(() => {
+          // FIELD-NAME MISMATCH, FOUND 2026-09-01 · the watch's own completion
+          // payload writes `actualDurationSec` / `actualDistanceMi` (confirmed
+          // against a real completed run, `coach_intents.id = 915`, and against
+          // `runs.data.phases` written verbatim from it — every field is
+          // `actual`-prefixed except `avgHr`/`avgCadence`, which never were).
+          // This read `durationSec`/`distanceMi` — a plain name that plain
+          // grep across the wire shows this account's phases have never
+          // carried — so `sec`/`mi` were NaN-then-null on every phase, of
+          // every watch-completed run, always. `hrAvgWork`/`cadenceAvgWork`/
+          // `paceWork` below have therefore been silently null since this
+          // shipped; `beltAverages()` two screens down already reads the
+          // correct `actualDurationSec`/`actualSpeedMph` names, which is what
+          // exposed the mismatch here as a real divergence rather than a
+          // guess.
           const w = workAveragesFromPhases(completionPhases.map((ph: any) => ({
             type: ph.type ?? null,
-            sec: Number(ph.durationSec ?? ph.duration_sec) || null,
-            mi: Number(ph.distanceMi ?? ph.distance_mi) || null,
+            sec: Number(ph.actualDurationSec ?? ph.durationSec ?? ph.duration_sec) || null,
+            mi: Number(ph.actualDistanceMi ?? ph.distanceMi ?? ph.distance_mi) || null,
             hr: Number(ph.avgHr ?? ph.avg_hr) || null,
             cadence: Number(ph.avgCadence ?? ph.avg_cadence) || null,
           })));
@@ -1258,11 +1272,27 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // Phases colour the reps at their TRUE pace instead of smearing them
         // into mile averages — the whole reason a rep session's map is worth
         // drawing at all.
+        //
+        // SAME FIELD-NAME MISMATCH AS `workAveragesFromPhases` ABOVE, FOUND
+        // 2026-09-01. This read `ph.distanceMi ?? ph.distance_mi`; the real
+        // wire is `actualDistanceMi` (see the comment on the block above).
+        // `routePhases` was therefore always `[]` for every watch-completed
+        // run, which is what fed `sectionPieces` on the phone's immediate
+        // post-run sheet (`TodayAfterV5.sectionPieces`, requires
+        // `usable.count > 1`) — always empty, so `RunShapeV5.decomposition`
+        // always fell back from `.sections` to `.miles` for a threshold/
+        // tempo/interval session, even though the watch's own per-rep verdict
+        // data was sitting right there in `completionPhases`. The run-history
+        // screen (`RunDetailV5`) never had this bug — it reads
+        // `phase_breakdown` off a different, already-correct query
+        // (`loadPhaseBreakdown` in `lib/coach/run-state.ts`) — so a rep
+        // breakdown was always one tap away, just never on the sheet the
+        // runner opens first.
         routePhases: indoor
           ? []
           : completionPhases.flatMap((ph: any) => {
-              const mi = Number(ph.distanceMi ?? ph.distance_mi);
-              const sec = Number(ph.durationSec ?? ph.duration_sec);
+              const mi = Number(ph.actualDistanceMi ?? ph.distanceMi ?? ph.distance_mi);
+              const sec = Number(ph.actualDurationSec ?? ph.durationSec ?? ph.duration_sec);
               return Number.isFinite(mi) && mi > 0 && Number.isFinite(sec) && sec > 0
                 ? [{ mi, sec: Math.round(sec) }]
                 : [];
