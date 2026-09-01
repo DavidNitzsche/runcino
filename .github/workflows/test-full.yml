@@ -1,0 +1,117 @@
+# Does the whole suite pass?
+#
+# WHY THIS EXISTS — F-31, and Rule 15 raised one level.
+#
+# 397 test files live under web-v2/lib. Before this workflow, roughly 76 were
+# reachable from any automated runner: prebuild's fourteen gates, plus two
+# path-filtered suites.
+#
+#   · surface-sweep.yml  paths: web-v2/lib/faff/**, lib/coach/run-recap.ts,
+#                               lib/runs/run-shape.ts, app/api/v5/**
+#   · plan-engine-bench.yml paths: web-v2/lib/plan/**, lib/coach/readiness**,
+#                               lib/coach/runner-calibration**,
+#                               lib/training/vdot.ts,
+#                               lib/training/projection-snapshots.ts
+#   · web-v2/lib/adaptation/** matched NO path filter at all. The only workflow
+#     mentioning it was prune-adaptation-shadow-log.yml, a cron.
+#   · No workflow ran `npm test`.
+#
+# So `_adaptation_engine.test.ts` (63 KB), `_pace_replay_corpus.test.ts`
+# (48 KB), `_duration_volume_density_replay_corpus.test.ts` (36 KB) and
+# `_adaptation_model.test.ts` (23 KB) never ran automatically, nor did 131 of
+# 136 lib/plan test files, nor lib/training beyond two named files. The corpora
+# exist, they are cited as evidence in reports and headers, and no automated
+# process reached them. A corpus nothing runs is a corpus nobody can trust.
+#
+# This job takes no path filter on purpose. A path filter is what produced the
+# gap: every one above was written to cover the directory somebody was working
+# in that day, and the union of them is not the tree.
+#
+# NO SECRETS, DELIBERATELY. `build-check.yml` states the principle for the
+# build ("A build must not need live credentials. If it ever does, that is
+# itself the finding") and it holds here too: the 16 `*.audit.test.ts` files
+# are `describe.skipIf(!process.env.DATABASE_URL_RO)` and SKIP cleanly without
+# one. Verified 2026-09-01 with the environment variable unset — they report
+# `16 skipped (16)` / `46 skipped (46)`, never "passed", so nothing here can
+# pass vacuously by having its assertions silently not run. Eight further
+# DB-gated probes (`lib/plan/_probe_*`, `_wave1_smoke_dryrun`,
+# `lib/race/_probe_course_geometry_backfill`) and 5 of 22 cases in
+# `_open_block_authoring` skip the same way: 25 files, 62 tests, all reported
+# as skipped rather than passed.
+#
+# WHAT THIS JOB CANNOT FAIL ON (Rule 22):
+#   · anything the 62 skipped tests cover — every one of them needs production
+#     data, and this job has none. In particular `shadow-compare.ts` (665 lines,
+#     run nightly for every user) is defended ONLY by a skipped file here;
+#   · a defect that lives in `next build` rather than in a test — build-check.yml
+#     owns that step;
+#   · a mechanism no case can reach. A green run is evidence about the paths
+#     these files exercise, not about the engine (Rule 15).
+name: test-full
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # One run per branch. A newer push supersedes an in-flight run rather than
+  # queueing behind it — the question is always "does the tip pass".
+  group: test-full-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Whole suite, no path filter
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web-v2/package-lock.json
+
+      - name: Install
+        working-directory: web-v2
+        run: npm ci --no-audit --no-fund
+
+      - name: Vitest · every file
+        working-directory: web-v2
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npx vitest run --reporter=default --reporter=json --outputFile=../vitest-results.json
+
+      # LIVENESS (Rule 18 point 2). A runner that executes nothing and exits 0
+      # reports clean AND reports confidence, which is the worst outcome
+      # available — and it is the exact failure the gates this suite contains
+      # were written about. If the include glob, the config or the tree moves
+      # underneath this job, it must go red rather than quiet.
+      #
+      # The floor is held well under the observed 7,935 passing / 395 files so
+      # ordinary deletion does not trip it. Raise it, never lower it.
+      - name: Assert the run actually executed something
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          d = json.load(open('vitest-results.json'))
+          files  = len(d['testResults'])
+          passed = d['numPassedTests']
+          skipped = d['numPendingTests']
+          print(f'files={files} passed={passed} skipped={skipped}')
+          bad = []
+          if files  < 300: bad.append(f'only {files} test files ran (floor 300)')
+          if passed < 7000: bad.append(f'only {passed} tests passed (floor 7000)')
+          # Every skip in this job should be a credential-gated one. A skip
+          # count that has grown a long way past the 62 observed on 2026-09-01
+          # means tests are being switched off, which is not the same as tests
+          # being unnecessary.
+          if skipped > 120: bad.append(f'{skipped} tests skipped (ceiling 120) — tests are being disabled')
+          if bad:
+              print('LIVENESS FAIL · ' + '; '.join(bad))
+              print('  A suite that runs nothing and passes is the failure this job exists to prevent.')
+              sys.exit(1)
+          print('liveness ok')
+          PY

@@ -41,3 +41,6 @@ scripts/qa/.sessions.json
 
 # Native build-time secrets (CARTO key etc) · see native-v2/Secrets.example.xcconfig
 native-v2/Secrets.xcconfig
+
+# CI artifact from .github/workflows/test-full.yml (--outputFile). Never committed.
+vitest-results.json
