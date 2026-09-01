@@ -812,6 +812,27 @@ struct WatchRunSurfaceV5: View {
         return "\(repIndex) of \(repCount)"
     }
 
+    /// Time-or-distance countdown for the current phase, matching how the
+    /// phase was PRESCRIBED rather than always reading the clock.
+    ///
+    /// A distance rep (`phase.repUnit == .distance`) ends on distance —
+    /// `advance()`'s `finished` check reads `phaseCoveredMi >= d` for exactly
+    /// that phase, never `phaseElapsedSec`. But every board here drew
+    /// `engine.phaseRemainingSec` regardless, which is only an ESTIMATE built
+    /// from the phase's target pace (see `WatchWorkoutModels`'s `durationSec`
+    /// on a distance phase). Run faster or slower than that estimate and the
+    /// clock hits zero, or stalls at zero, with no relationship to when the
+    /// rep actually ends — a countdown answering a question the phase never
+    /// asked. David, 2026-09-01: "if the section/interval is in distance the
+    /// watch needs to count down using miles."
+    private func remainingMetric(for phase: WatchPhase, timeRole: String, distanceRole: String) -> WorkoutMetric {
+        if phase.repUnit == .distance, let mi = engine.phaseRemainingMi {
+            let d = WFmt.distance(mi, units: units)
+            return WorkoutMetric(value: d.value, unit: d.unit, role: distanceRole)
+        }
+        return WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec), role: timeRole)
+    }
+
     /// WHICH numbers, in what order. The only genuinely product decision on
     /// these boards — everything else belongs to the foundation.
     private func phaseMetrics(_ phase: WatchPhase) -> [WorkoutMetric] {
@@ -824,13 +845,13 @@ struct WatchRunSurfaceV5: View {
             // No pace. A recovery is not asking for one, and drawing a number
             // nobody is being held to is how a board starts lying.
             var m: [WorkoutMetric] = [
-                WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec), role: "Time left")
+                remainingMetric(for: phase, timeRole: "Time left", distanceRole: "Distance left")
             ]
             if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
             return m
 
         case .warmup, .cooldown:
-            var m = [WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec), role: "Time left"), paced]
+            var m = [remainingMetric(for: phase, timeRole: "Time left", distanceRole: "Distance left"), paced]
             if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
             m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
             return m
@@ -882,7 +903,7 @@ struct WatchRunSurfaceV5: View {
                 if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
                 return m
             }
-            var m = [WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec), role: "Time left in rep"), paced]
+            var m = [remainingMetric(for: phase, timeRole: "Time left in rep", distanceRole: "Distance left in rep"), paced]
             if isThreshold(phase),
                let avg = WFmt.paceWithUnit(averagePaceSPerMi, units: units) {
                 // Average pace earns a row on a threshold block and nowhere
@@ -1323,8 +1344,17 @@ struct WatchRunSurfaceV5: View {
         // Just Run's one phase is `.work` with a 24h placeholder duration —
         // never a real rep to count down, so it takes the mile/elapsed
         // line below rather than "Just run · 1439:32 left".
-        if engine.currentPhase?.type == .work && !engine.workout.isOpenEnded {
-            return "\(engine.currentPhase?.label ?? "Rep") \(WatchV5.separator) \(WFmt.short(engine.phaseRemainingSec)) left"
+        if let phase = engine.currentPhase, phase.type == .work && !engine.workout.isOpenEnded {
+            // Same distance-vs-time split as `remainingMetric` — a distance
+            // rep ends on distance, so its header counts down in miles too.
+            let left: String
+            if phase.repUnit == .distance, let mi = engine.phaseRemainingMi {
+                let d = WFmt.distance(mi, units: units)
+                left = "\(d.value) \(d.unit) left"
+            } else {
+                left = "\(WFmt.short(engine.phaseRemainingSec)) left"
+            }
+            return "\(phase.label) \(WatchV5.separator) \(left)"
         }
         let mile = Int(tracker.distanceMi) + 1
         return "Mile \(mile) \(WatchV5.separator) \(WFmt.clock(engine.totalElapsedSec))"
