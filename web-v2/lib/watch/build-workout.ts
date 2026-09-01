@@ -114,6 +114,19 @@ export interface WatchWorkout {
   paceLabel?: string | null;
   isRace: boolean;
   goalSec?: number | null;
+  /** 2026-09-01 · race-day HR guidance from the race-pace brain. Additive;
+   *  the watch decodes what it knows. Informational unless the runner's own
+   *  evidence backs the band. */
+  raceHr?: {
+    expectedLoBpm: number;
+    expectedHiBpm: number;
+    earlyCeilingBpm: number;
+    earlyThroughMi: number;
+    lateAllowanceBpm: number;
+    checkpointMi: number | null;
+    checkpointAbortBpm: number | null;
+    informationalOnly: boolean;
+  } | null;
   strategyLabel?: string | null;
   gelsMi?: number[] | null;
   fueling?: { needed: boolean; gels: number; atMins: number[]; gPerHr: number; totalCarbsG: number; isRehearsal: boolean; heatAdjusted: boolean; shortLine: string; why: string } | null;
@@ -2095,8 +2108,25 @@ export async function buildWatchToday(
     if (statedGoalSec != null && raceDistMi > 0) {
       try {
         const { loadEffectiveRaceTarget } = await import('@/lib/race/effective-race-target');
-        const eff = await loadEffectiveRaceTarget(userId, statedGoalSec, raceDistMi);
+        const eff = await loadEffectiveRaceTarget(userId, statedGoalSec, raceDistMi, {
+          slug: todaysRace?.slug ?? (plan.race_id ? String(plan.race_id) : null),
+        });
         raceGoalSec = eff.targetSec;
+        // 2026-09-01 · P0 · race-day HR guidance rides along, additive. The
+        // wrist may show the expected range; it never alarms on it.
+        const hr = eff.outlook?.execution.hr ?? null;
+        if (hr) {
+          workout.raceHr = {
+            expectedLoBpm: hr.expectedRangeBpm[0],
+            expectedHiBpm: hr.expectedRangeBpm[1],
+            earlyCeilingBpm: hr.earlyCeilingBpm,
+            earlyThroughMi: hr.earlyThroughMi,
+            lateAllowanceBpm: hr.lateAllowanceBpm,
+            checkpointMi: hr.checkpointMi,
+            checkpointAbortBpm: hr.checkpointAbortBpm,
+            informationalOnly: hr.informationalOnly,
+          };
+        }
       } catch { /* resolver is additive — stated goal stands on failure */ }
     }
 

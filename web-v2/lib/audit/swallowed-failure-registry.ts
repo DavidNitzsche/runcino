@@ -208,7 +208,9 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
 // `durability-anchor.ts`'s canonical resolver instead of coach-goal.ts's own
 // race-loading query, per docs/reports/race-prediction-consolidation-
 // 2026-09-01.md. One fewer DB-backed swallow site in this tree.
-export const EMPTIED_BASELINE = 374;
+// 2026-09-01 · P0 race-pace brain · 374 → 373: the race HR-evidence read in
+// lib/race/race-outlook.ts no longer swallows a failed query into `rows: []`.
+export const EMPTIED_BASELINE = 373;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

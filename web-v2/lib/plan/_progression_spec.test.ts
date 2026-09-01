@@ -252,6 +252,13 @@ describe('PROGRESSION-PERSIST-1 · the work shape survives persistence', () => {
         'Clears the spec to NULL on a replan — there is no session left to describe.',
       'web-v2/app/api/plan/workout/[id]/accept-standing/route.ts':
         'Clears the spec to NULL when a standing change replaces the workout.',
+      'web-v2/lib/race/race-row-refresh.ts':
+        '2026-09-01 · P0 race-pace brain. Writes RACE rows only, and PRESERVES: the statement is a ' +
+        'field-level jsonb merge — `(workout_spec - hr_cap_bpm) || $n` — so every key the row already ' +
+        'carries (rules, fuel_mi, strides, an overload block if one ever lands on a race row) survives, ' +
+        'and only the keys this path owns (pace band, race_execution, race_hr) are replaced. It does not ' +
+        'use preserveProgressionSql because a race row has no progression block to carry and the merge ' +
+        'shape is the same guard stated directly.',
       'web-v2/lib/plan/replan-scenarios.ts':
         'The "Change the plan" sheet writes a spec on exactly two shapes, and neither is the same ' +
         'session it replaced. A quality day demoted by a cutback or a re-entry ramp becomes an easy ' +

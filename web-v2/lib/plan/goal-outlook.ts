@@ -35,10 +35,10 @@
  * EQUIVALENCE — while every other surface printed 3:22:17 for the same race,
  * the forward trajectory. `lib/training/race-projection.ts` was extracted on
  * 2026-08-30 precisely to stop three quantities being called "projected"; this
- * path never got the memo, because `GoalGap.trajectorySec` is the projection
+ * path never got the memo, because `GoalGap.expectedRaceDaySec` is the projection
  * SNAPSHOT (today's equivalence) wearing the word "trajectory".
  *
- * So the note does not read `gap.trajectorySec`. It resolves through
+ * So the note does not read `gap.expectedRaceDaySec`. It resolves through
  * `resolveRaceProjection`, the same rung-1 `computeGoalProjection().trajectory
  * .projectedSec` that Targets' hero, the Races list and the race detail all
  * show, and `_goal_immutability.test.ts` asserts this file never computes its
@@ -47,12 +47,11 @@
 
 import { pool } from '@/lib/db/pool';
 import type { GoalGap } from './goal-gap';
-import { computeGoalProjection } from '@/lib/training/goal-projection';
-import { loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
 import {
-  resolveRaceProjection,
+  raceProjectionFromOutlook,
   type RaceProjectionBasis,
 } from '@/lib/training/race-projection';
+import { resolveOutlookForGap } from './goal-gap';
 import { composeGoalOutlookMessage } from './goal-outlook-copy';
 
 /** Consecutive unclosable snapshot days before the note surfaces. */
@@ -79,7 +78,7 @@ export interface GoalOutlookProjection {
 export interface GoalOutlookReasons {
   message: string;
   goal_sec: number;
-  /** The shared resolver's answer. NOT `gap.trajectorySec`. */
+  /** The shared resolver's answer. NOT `gap.expectedRaceDaySec`. */
   projected_sec: number | null;
   /** 'trajectory' = race day · 'equivalence' = today's fitness. Drives the
    *  copy's opening clause so the prose names the basis the number has. */
@@ -102,7 +101,7 @@ export interface GoalOutlookReasons {
  *
  * Best-effort by design: a failed read returns `{ null, null }`, which the
  * composer renders as a note with no figure rather than falling back to
- * `gap.trajectorySec` — that fallback IS the Rule 16 defect, so it does not
+ * `gap.expectedRaceDaySec` — that fallback IS the Rule 16 defect, so it does not
  * exist here. Rule 11: "could not project" and "projects level with the goal"
  * are different facts and only one of them has a number.
  */
@@ -111,33 +110,10 @@ export async function resolveGoalOutlookProjection(
   gap: GoalGap,
   todayISO: string,
 ): Promise<GoalOutlookProjection> {
-  const distanceMi = gap.raceDistanceMi;
-  const anchor = await loadLatestVdotWithAnchor(userUuid)
-    .catch(() => ({ vdot: null, anchorDateISO: null, anchorDistanceMi: null }));
-
-  const daysToRace = gap.raceDateISO
-    ? Math.max(
-        0,
-        Math.round(
-          (Date.parse(gap.raceDateISO + 'T12:00:00Z') - Date.parse(todayISO + 'T12:00:00Z'))
-          / 86400000,
-        ),
-      )
-    : null;
-
-  const goalProjection = (distanceMi > 0 && gap.goalSec > 0 && gap.raceDateISO)
-    ? await computeGoalProjection({
-        userUuid,
-        goalSec: gap.goalSec,
-        raceDistanceMi: distanceMi,
-        vdot: anchor.vdot,
-        daysToRace,
-        vdotAnchorDateISO: anchor.anchorDateISO,
-        vdotAnchorDistanceMi: anchor.anchorDistanceMi,
-      }).catch(() => null)
-    : null;
-
-  return resolveRaceProjection({ goalProjection, vdot: anchor.vdot, distanceMi });
+  // 2026-09-01 · P0 · the race-pace brain. One object, mapped to "Projected".
+  const outlook = await resolveOutlookForGap(userUuid, gap, todayISO);
+  const proj = raceProjectionFromOutlook(outlook);
+  return { projectedSec: proj.projectedSec, basis: proj.basis };
 }
 
 /**

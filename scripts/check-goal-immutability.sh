@@ -165,8 +165,13 @@ if [ -f "$WRITER" ]; then
   # bare identifier and stayed green when the falsifier changed the import to
   # `resolveRaceProjection as _unused` — a check satisfied by a mention is the
   # same defect class as check-automatic-mutations' `grep -q "GUARD 0"`.
-  grep -qE "resolveRaceProjection\s*\(" "$WRITER" \
-    || bad "goal-outlook.ts no longer CALLS the shared projection resolver (Rule 16)"
+  # 2026-09-01 · P0 · the shared resolver is now the race-pace brain: the
+  # writer must resolve the outlook (resolveOutlookForGap) AND map it through
+  # raceProjectionFromOutlook. Both calls, not names.
+  grep -qE "raceProjectionFromOutlook\s*\(" "$WRITER" \
+    || bad "goal-outlook.ts no longer CALLS the shared projection mapping raceProjectionFromOutlook (Rule 16)"
+  grep -qE "resolveOutlookForGap\s*\(" "$WRITER" \
+    || bad "goal-outlook.ts no longer resolves the race outlook (resolveOutlookForGap) (Rule 16)"
 fi
 
 if [ ! -f "$NATIVE" ]; then

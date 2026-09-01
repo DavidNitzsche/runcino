@@ -11,9 +11,10 @@
  * answer.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   diagnoseLimiter,
-  fitRiegelExponent,
   CURVE_NEUTRAL_EXPONENT_BAND,
   DECOUPLING_ENDURANCE_GAP_PCT,
   DECOUPLING_HEAT_ARTIFACT_PCT,
@@ -36,7 +37,7 @@ function blank(goalDistanceMi = 26.2, goalPaceSecPerMi: number | null = 412): Li
     goalPaceSecPerMi,
     experienceLevel: 'advanced',
     blockProgressFraction: null,
-    performances: null,
+    curve: null,
     fadeObservations: null,
     thresholdPaceStartSecPerMi: null,
     thresholdPaceNowSecPerMi: null,
@@ -48,65 +49,26 @@ function blank(goalDistanceMi = 26.2, goalPaceSecPerMi: number | null = 412): Li
   };
 }
 
-/** Two performances whose fitted exponent is `b`, anchored on a 1:30 half. */
-function curveAt(b: number): LimiterInput['performances'] {
-  const halfS = 5400;
-  const marathonS = halfS * Math.pow(2, b);
-  return [
-    { distanceMi: 13.1, finishSeconds: halfS, ageDays: 10 },
-    { distanceMi: 26.2, finishSeconds: Math.round(marathonS), ageDays: 30 },
-  ];
+/** The canonical durability read's curve at exponent `b`. */
+function curveAt(b: number): LimiterInput['curve'] {
+  return { exponent: b, races: 2, provisional: false };
 }
 
-describe('the curve fit is doctrine\'s own formula', () => {
-  it('b = ln(T2/T1) / ln(D2/D1) · Research/02 §6', () => {
-    // Doctrine's own worked example: a 20:00 5K with a 1:33 half is b ≈ 1.072.
-    const b = fitRiegelExponent(
-      { distanceMi: 3.10686, finishSeconds: 1200, ageDays: 0 },
-      { distanceMi: 13.1094, finishSeconds: 5580, ageDays: 0 },
-    );
-    expect(b).toBeCloseTo(1.072, 2);
+describe('the curve is READ from the canonical durability anchor, never fitted here', () => {
+  it('limiter.ts carries no Riegel fit of its own (2026-09-01 · one exponent engine)', () => {
+    const src = readFileSync(join(__dirname, 'limiter.ts'), 'utf8');
+    expect(src).not.toMatch(/fitRiegelExponent|pickCurvePair|MIN_CURVE_DISTANCE_RATIO|CURVE_FRESHNESS_DAYS/);
+    expect(src).not.toMatch(/Math\.log\([^)]*finishSeconds/);
   });
-
-  it('refuses a pair too close in distance to fit against', () => {
-    // Half against 30K · ratio 1.42, where ln(D2/D1) stops carrying the fit and
-    // a few seconds of timing noise moves the exponent more than the runner does.
-    expect(
-      fitRiegelExponent(
-        { distanceMi: 13.1, finishSeconds: 5400, ageDays: 0 },
-        { distanceMi: 18.6, finishSeconds: 7900, ageDays: 0 },
-      ),
-    ).toBeNull();
-  });
-
-  it('accepts the pairs runners actually have · 5K-to-10K and half-to-marathon', () => {
-    expect(
-      fitRiegelExponent(
-        { distanceMi: 3.1, finishSeconds: 1200, ageDays: 0 },
-        { distanceMi: 6.2, finishSeconds: 2500, ageDays: 0 },
-      ),
-    ).not.toBeNull();
-    expect(
-      fitRiegelExponent(
-        { distanceMi: 13.1, finishSeconds: 5400, ageDays: 0 },
-        { distanceMi: 26.2, finishSeconds: 11400, ageDays: 0 },
-      ),
-    ).not.toBeNull();
-  });
-
-  it('refuses a pair where the longer race was not slower · that is not a curve', () => {
-    expect(
-      fitRiegelExponent(
-        { distanceMi: 13.1, finishSeconds: 5400, ageDays: 0 },
-        { distanceMi: 26.2, finishSeconds: 5000, ageDays: 0 },
-      ),
-    ).toBeNull();
+  it('no curve read → no shape finding', () => {
+    const r = diagnoseLimiter({ ...blank(), curve: null })!;
+    expect(r.ranked.find((x) => x.evidence.some((e) => /curve/i.test(e)))).toBeUndefined();
   });
 });
 
 describe('each limiter fires from its characteristic evidence', () => {
   it('endurance · a curve steeper than doctrine\'s neutral band', () => {
-    const r = diagnoseLimiter({ ...blank(), performances: curveAt(1.14) })!;
+    const r = diagnoseLimiter({ ...blank(), curve: curveAt(1.14) })!;
     expect(r.primary).toBe('endurance');
     expect(r.levers[0]).toMatch(/long-run duration/i);
   });
@@ -123,7 +85,7 @@ describe('each limiter fires from its characteristic evidence', () => {
   });
 
   it('speed_reserve · a curve flatter than doctrine\'s neutral band', () => {
-    const r = diagnoseLimiter({ ...blank(), performances: curveAt(1.01) })!;
+    const r = diagnoseLimiter({ ...blank(), curve: curveAt(1.01) })!;
     expect(r.primary).toBe('speed_reserve');
     expect(r.levers[0]).toMatch(/strides/i);
   });
@@ -203,7 +165,7 @@ describe('each limiter fires from its characteristic evidence', () => {
     // path may ever produce it as an evidence-backed finding.
     const loaded = diagnoseLimiter({
       ...blank(3.1, 330),
-      performances: curveAt(1.14),
+      curve: curveAt(1.14),
       fadeObservations: [{ distanceMi: 10, lateFadeSecPerMi: 20, decouplingPct: 12, cadence: 'breaking' }],
       recentWeeklyMi: 12,
       blockProgressFraction: 0.9,
@@ -216,7 +178,7 @@ describe('each limiter fires from its characteristic evidence', () => {
 describe('a flat curve is a real finding, not a failure', () => {
   it('a runner whose curve tracks the reference gets the goal-distance default at low confidence', () => {
     const mid = (CURVE_NEUTRAL_EXPONENT_BAND[0] + CURVE_NEUTRAL_EXPONENT_BAND[1]) / 2;
-    const r = diagnoseLimiter({ ...blank(), performances: curveAt(mid) })!;
+    const r = diagnoseLimiter({ ...blank(), curve: curveAt(mid) })!;
     expect(r.ranked).toEqual([]);
     expect(r.primary).toBe('threshold'); // marathon · doctrine says LT2 dominates
     expect(r.confidence).not.toBe('high');
@@ -321,9 +283,8 @@ describe('per-observation context filters · CLAUDE.md, locked 2026-05-19 round 
     expect(r.ranked.find((x) => x.limiter === 'endurance')).toBeDefined();
   });
 
-  it('a stale performance cannot fit a curve · two old races describe a different runner', () => {
-    const stale = curveAt(1.14)!.map((p) => ({ ...p, ageDays: 400 }));
-    const r = diagnoseLimiter({ ...blank(), performances: stale })!;
+  it('freshness is the durability anchor\'s job · a refused read reaches here as null and yields nothing', () => {
+    const r = diagnoseLimiter({ ...blank(), curve: null })!;
     expect(r.ranked).toEqual([]);
   });
 });
@@ -340,10 +301,9 @@ describe('the David case · a marathoner whose half-marathon fitness outruns the
    */
   const david: LimiterInput = {
     ...blank(26.2, 412), // goal marathon 3:00
-    performances: [
-      { distanceMi: 13.1, finishSeconds: 6113, ageDays: 5 }, // 1:41:53
-      { distanceMi: 26.2, finishSeconds: 13800, ageDays: 45 }, // 3:50:00
-    ],
+    // AFC half 1:41:53 and a 3:50:00 marathon: the canonical fit's raw
+    // exponent for that pair, ln(13800/6113)/ln(2) ≈ 1.175.
+    curve: { exponent: Math.log(13800 / 6113) / Math.log(26.2 / 13.1), races: 2, provisional: false },
     fadeObservations: [
       { distanceMi: 20, lateFadeSecPerMi: 28, decouplingPct: 11, cadence: 'fading' },
       { distanceMi: 18, lateFadeSecPerMi: 19, decouplingPct: 9.5, cadence: 'sustained' },
@@ -370,14 +330,14 @@ describe('the David case · a marathoner whose half-marathon fitness outruns the
   });
 
   it('the same runner with the marathon removed cannot be diagnosed from the half alone', () => {
-    const r = diagnoseLimiter({ ...david, performances: [david.performances![0]], fadeObservations: null })!;
+    const r = diagnoseLimiter({ ...david, curve: null, fadeObservations: null })!;
     expect(r.ranked.find((x) => x.limiter === 'endurance' && x.evidence.some((e) => /curve/i.test(e)))).toBeUndefined();
   });
 
   it('a provisional result costs the read a confidence notch', () => {
     const r = diagnoseLimiter({
       ...david,
-      performances: david.performances!.map((p, i) => (i === 0 ? { ...p, provisional: true } : p)),
+      curve: { ...david.curve!, provisional: true },
     })!;
     expect(r.confidence).not.toBe('high');
   });
@@ -385,7 +345,7 @@ describe('the David case · a marathoner whose half-marathon fitness outruns the
 
 describe('the goal-gap payoff · whatClosesIt is the limiter, not hardcoded prose', () => {
   it('an endurance-limited runner is told to lengthen the long run', () => {
-    const limiter = diagnoseLimiter({ ...blank(), performances: curveAt(1.14) })!;
+    const limiter = diagnoseLimiter({ ...blank(), curve: curveAt(1.14) })!;
     const out = composeWhatClosesIt('widening', 600, 12, 26.2, limiter);
     expect(out.join(' ')).toMatch(/long-run duration/i);
     // The line that used to go to everyone.
@@ -393,14 +353,14 @@ describe('the goal-gap payoff · whatClosesIt is the limiter, not hardcoded pros
   });
 
   it('a speed-limited runner is told to add strides, not threshold density', () => {
-    const limiter = diagnoseLimiter({ ...blank(), performances: curveAt(1.01) })!;
+    const limiter = diagnoseLimiter({ ...blank(), curve: curveAt(1.01) })!;
     const out = composeWhatClosesIt('widening', 600, 12, 26.2, limiter);
     expect(out.join(' ')).toMatch(/strides/i);
     expect(out.join(' ')).not.toMatch(/threshold density/i);
   });
 
   it('two runners with the same gap and different limiters get different advice', () => {
-    const a = diagnoseLimiter({ ...blank(), performances: curveAt(1.14) })!;
+    const a = diagnoseLimiter({ ...blank(), curve: curveAt(1.14) })!;
     const b = diagnoseLimiter({ ...blank(), recentWeeklyMi: 28, blockProgressFraction: 0.8 })!;
     expect(composeWhatClosesIt('static', 600, 12, 26.2, a)).not.toEqual(
       composeWhatClosesIt('static', 600, 12, 26.2, b),
@@ -414,7 +374,7 @@ describe('the goal-gap payoff · whatClosesIt is the limiter, not hardcoded pros
   });
 
   it('running ahead of the goal is still left alone', () => {
-    const limiter = diagnoseLimiter({ ...blank(), performances: curveAt(1.14) })!;
+    const limiter = diagnoseLimiter({ ...blank(), curve: curveAt(1.14) })!;
     const out = composeWhatClosesIt('static', -300, 12, 26.2, limiter);
     expect(out.join(' ')).toMatch(/ahead of the goal/i);
   });

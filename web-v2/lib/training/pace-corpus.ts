@@ -837,6 +837,14 @@ export interface PaceObservation {
    *  1 for every easy-corpus observation (its gates are binary); the product of
    *  `authority`'s four factors for a threshold observation. */
   weight: number;
+  /**
+   * 0..1 · what this observation contributes toward the CORROBORATION bar
+   * (and toward confidence): `weight` × the age discount. Doctrine: stale
+   * evidence lowers CONFIDENCE, never the VALUE — so the level statistic
+   * interpolates on `weight`, and only the "is there enough evidence" check
+   * and the confidence read this. Undefined = same as `weight`.
+   */
+  supportWeight?: number;
   /** False only when a phase-derived segment had abandoned work phases dropped
    *  from its pool (the completed reps still count; the abandoned ones never). */
   completed: boolean;
@@ -1104,7 +1112,15 @@ export function easyPaceCorpus(
 export function thresholdPaceCorpus(
   observations: readonly PaceObservation[],
   minObservations: number = CORROBORATION_MIN_OBSERVATIONS,
-  opts?: { todayISO?: string; excluded?: readonly ExcludedObservation[]; windowDays?: number },
+  opts?: {
+    todayISO?: string;
+    excluded?: readonly ExcludedObservation[];
+    windowDays?: number;
+    /** The read WITHOUT the newest date's observations, settled on its own
+     *  window by the caller. When omitted, computed from `observations`
+     *  alone (the pure-statistic path). */
+    priorRead?: ThresholdPaceRead | null;
+  },
 ): ThresholdPaceRead {
   const excluded = [...(opts?.excluded ?? [])];
   const windowDays = opts?.windowDays ?? PACE_CORPUS_LOOKBACK_DAYS;
@@ -1126,9 +1142,9 @@ export function thresholdPaceCorpus(
     allowedSecPerMi: null, newestDate, daysSinceNewest: null,
   };
   if (opts?.todayISO && newestDate) {
-    const without = weightedThresholdLevel(
-      full.usable.filter((o) => o.date !== newestDate), minObservations,
-    );
+    const without: { ok: true; tPaceSecPerMi: number } | { ok: false } = opts.priorRead !== undefined
+      ? (opts.priorRead && opts.priorRead.ok ? { ok: true, tPaceSecPerMi: opts.priorRead.tPaceSecPerMi } : { ok: false })
+      : weightedThresholdLevel(full.usable.filter((o) => o.date !== newestDate), minObservations);
     const daysSince = Math.max(0, Math.round(
       (Date.parse(opts.todayISO + 'T12:00:00Z') - Date.parse(newestDate + 'T12:00:00Z')) / 86_400_000,
     ));
@@ -1183,7 +1199,7 @@ function weightedThresholdLevel(
   const k = Math.max(1, minObservations);
   // Fastest first == highest VDOT first == smallest s/mi first.
   const sorted = [...usable].sort((a, b) => a.paceSecPerMi - b.paceSecPerMi);
-  const weightedSupport = sorted.reduce((acc, o) => acc + Math.min(1, o.weight), 0);
+  const weightedSupport = sorted.reduce((acc, o) => acc + Math.min(1, o.supportWeight ?? o.weight), 0);
   if (weightedSupport < k) {
     return { ok: false, reason: 'insufficient_corroboration', observations: usable.length, weightedSupport };
   }
@@ -1651,9 +1667,15 @@ export function classifyThresholdCandidatesDetailed(
     // pace — the owner's 2026-07-12 long run priced 8:06/mi as "threshold" that
     // way. The Engine already separated the threshold-like blocks from the
     // drift; this reads its answer instead of re-deriving a worse one.
+    // A quality or unlabelled row is priced by the corpus's own readers first
+    // (the watch's per-rep phases are the most direct measurement); when none
+    // qualifies, the Engine's threshold_like segments are the last honest
+    // read — an unlabelled 47-minute two-block session (the owner's
+    // 2026-08-23) is threshold evidence whether or not a watch structured it.
     const seg = labelNonQuality
       ? segmentFromEvidenceSegments(verdict?.segments ?? [], ctx)
-      : (phaseSeg ?? thresholdSegmentFromSplits(row.splits, ctx, row.distanceMi) ?? thresholdSegmentFromWholeRun(row, ctx));
+      : (phaseSeg ?? thresholdSegmentFromSplits(row.splits, ctx, row.distanceMi) ?? thresholdSegmentFromWholeRun(row, ctx)
+          ?? (evidenceKind === 'evidence' ? segmentFromEvidenceSegments(verdict?.segments ?? [], ctx) : null));
     if (seg == null && labelNonQuality) {
       excluded.push({ id: row.id, date: row.date, paceSecPerMi: null, reason: 'LABEL_NON_QUALITY_UNPRICEABLE',
         detail: 'the Evidence Engine found threshold-like work but its segments do not amount to a priceable threshold session' });
@@ -2048,20 +2070,41 @@ export function thresholdCorpusFromInputs(
     const reasons = stalenessFactor < 1
       ? [...o.authority.reasons, 'AGE_DISCOUNTED_BEYOND_BASE_WINDOW' as const]
       : o.authority.reasons;
-    return { ...o, weight: o.weight * stalenessFactor, authority: { ...o.authority, stalenessFactor, ageDays: age, reasons } };
+    return { ...o, supportWeight: o.weight * stalenessFactor, authority: { ...o.authority, stalenessFactor, ageDays: age, reasons } };
   };
   const all = observations.map(discounted);
-  let windowDays = base;
-  for (let w = base; w <= inputs.maxLookbackDays; w += REPRESENTATIVE_LOOKBACK_STEP_DAYS) {
-    windowDays = w;
-    const support = all.filter((o) => (o.authority.ageDays ?? 0) <= w).reduce((acc, o) => acc + Math.min(1, o.weight), 0);
-    if (support >= k) break;
-  }
-  const inWindow = all.filter((o) => (o.authority.ageDays ?? 0) <= windowDays);
-  const outside = all.filter((o) => (o.authority.ageDays ?? 0) > windowDays)
-    .map((o): ExcludedObservation => ({ id: o.id, date: o.date, reason: 'OUTSIDE_LOOKBACK_WINDOW', paceSecPerMi: o.paceSecPerMi,
-      detail: `${o.authority.ageDays} days old · the read settled on a ${windowDays}-day window` }));
-  return thresholdPaceCorpus(inWindow, k, { todayISO: inputs.todayISO, excluded: [...excluded, ...outside], windowDays });
+  const settle = (pool: readonly PaceObservation[]): { windowDays: number; inWindow: PaceObservation[]; outside: ExcludedObservation[] } => {
+    let windowDays = base;
+    for (let w = base; w <= inputs.maxLookbackDays; w += REPRESENTATIVE_LOOKBACK_STEP_DAYS) {
+      windowDays = w;
+      const support = pool.filter((o) => (o.authority.ageDays ?? 0) <= w).reduce((acc, o) => acc + Math.min(1, o.supportWeight ?? o.weight), 0);
+      if (support >= k) break;
+    }
+    return {
+      windowDays,
+      inWindow: pool.filter((o) => (o.authority.ageDays ?? 0) <= windowDays),
+      outside: pool.filter((o) => (o.authority.ageDays ?? 0) > windowDays)
+        .map((o): ExcludedObservation => ({ id: o.id, date: o.date, reason: 'OUTSIDE_LOOKBACK_WINDOW', paceSecPerMi: o.paceSecPerMi,
+          detail: `${o.authority.ageDays} days old · the read settled on a ${windowDays}-day window` })),
+    };
+  };
+  const withNewest = settle(all);
+  // The prior for the daily move cap is the read the runner would have had
+  // WITHOUT the newest date's session(s), settled on ITS OWN window — a
+  // corpus that only reaches K by widening must widen again when the newest
+  // session is removed, or the cap would never find a prior to compare to.
+  const newestDate = all.reduce<string | null>((m, o) => (m == null || o.date > m ? o.date : m), null);
+  const priorPool = newestDate ? all.filter((o) => o.date !== newestDate) : [];
+  const priorSettled = settle(priorPool);
+  // An empty prior pool is a refusal from the corpus itself (insufficient
+  // corroboration), not a null manufactured here — Rule 11.
+  const priorRead = thresholdPaceCorpus(priorSettled.inWindow, k, { windowDays: priorSettled.windowDays });
+  return thresholdPaceCorpus(withNewest.inWindow, k, {
+    todayISO: inputs.todayISO,
+    excluded: [...excluded, ...withNewest.outside],
+    windowDays: withNewest.windowDays,
+    priorRead,
+  });
 }
 
 /**

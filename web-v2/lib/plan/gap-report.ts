@@ -23,14 +23,14 @@ export interface GapReport {
   /** Header line · "Tracking 1:32:30 · 2:30 behind goal". */
   headline: string;
   /** Current trajectory in seconds. */
-  trajectorySec: number;
+  expectedRaceDaySec: number;
   /** Goal time in seconds. */
   goalSec: number;
   /** Signed gap · positive = behind goal. */
   gapSec: number;
   /** 'closing' | 'static' | 'widening' | 'unclosable'. */
   status: GoalGap['status'];
-  /** Confidence band from simulator (p25/median/p75 finish times). */
+  /** The likely race-day range (fast edge / expected / slow edge) from the race-pace brain. */
   confidenceBand: {
     p25Sec: number;
     medianSec: number;
@@ -92,11 +92,14 @@ export async function composeGapReport(userUuid: string): Promise<GapReport | nu
   if (!gap) return null;
 
   const headline = composeHeadline(gap);
-  const confidenceBand = sim?.finalProjection.medianSec != null
+  // 2026-09-01 · P0 · the band a runner is shown as A/B/C is the race-pace
+  // brain's likely race-day range — fast edge / expected / slow edge — not
+  // the simulator's p25/median/p75. The simulator still supplies risk flags.
+  const confidenceBand = gap.likelyRangeSec
     ? {
-        p25Sec: sim.finalProjection.p25Sec ?? sim.finalProjection.medianSec,
-        medianSec: sim.finalProjection.medianSec,
-        p75Sec: sim.finalProjection.p75Sec ?? sim.finalProjection.medianSec,
+        p25Sec: Math.round(gap.likelyRangeSec[0]),
+        medianSec: gap.expectedRaceDaySec,
+        p75Sec: Math.round(gap.likelyRangeSec[1]),
       }
     : null;
 
@@ -122,7 +125,7 @@ export async function composeGapReport(userUuid: string): Promise<GapReport | nu
 
   return {
     headline,
-    trajectorySec: gap.trajectorySec,
+    expectedRaceDaySec: gap.expectedRaceDaySec,
     goalSec: gap.goalSec,
     gapSec: gap.gapSec,
     status: gap.status,
@@ -138,7 +141,7 @@ export async function composeGapReport(userUuid: string): Promise<GapReport | nu
 // ─── helpers ───────────────────────────────────────────────────────────
 
 function composeHeadline(gap: GoalGap): string {
-  const traj = formatTime(gap.trajectorySec);
+  const traj = formatTime(gap.expectedRaceDaySec);
   const absGap = Math.abs(gap.gapSec);
   const gapStr = formatGapShort(absGap);
   if (gap.status === 'closing') {

@@ -259,6 +259,124 @@ export interface GoalProjection {
   trajectory: FitnessTrajectory | null;
 }
 
+/**
+ * TODAY's equivalence at a distance — the durability-blended, specificity-
+ * adjusted read of what the runner could race NOW. Race Prediction's own
+ * input step (Constitution §J), shared by `computeGoalProjection` and the
+ * canonical race outlook.
+ *
+ *   danielsSec            · `predictRaceTime(vdot, d)` — the population table
+ *   durabilityProjectionSec · the runner's own fitted exponent carried from
+ *                           his nearest real race to this distance
+ *   blendedRawSec         · weight · durability + (1 − weight) · daniels,
+ *                           weight = `RaceExponentRead.confidence` (continuous)
+ *   expectedSec           · blendedRawSec after Research/02 §13.1's one-sided
+ *                           marathon-specificity adjustment where it applies
+ *
+ * Takes NO goal. Null fields mean "could not be read", never a substitute.
+ */
+export interface CurrentEquivalence {
+  danielsSec: number | null;
+  durabilityProjectionSec: number | null;
+  durabilityRead: RaceExponentRead;
+  durabilityBlend: { weight: number; anchorDistanceMi: number } | null;
+  blendedRawSec: number | null;
+  specificityAdjustment: { pct: number; oneSided: true } | null;
+  marathonSpecificTraining: boolean | null;
+  expectedSec: number | null;
+}
+
+export async function computeCurrentEquivalence(args: {
+  userUuid: string;
+  raceDistanceMi: number;
+  vdot: number | null;
+  vdotAnchorDistanceMi: number | null;
+  /** Pass an already-resolved read to avoid a second database round trip. */
+  durabilityRead?: RaceExponentRead | null;
+}): Promise<CurrentEquivalence> {
+  const { userUuid, raceDistanceMi, vdot, vdotAnchorDistanceMi } = args;
+  const needsMarathonBlockSignal =
+    distanceCategoryOrNull(raceDistanceMi) === 'm' &&
+    vdotAnchorDistanceMi != null &&
+    ['5k', '10k', 'hm'].includes(distanceCategoryOrNull(vdotAnchorDistanceMi) ?? '');
+  const [marathonSpecificTraining, durabilityRead] = await Promise.all([
+    needsMarathonBlockSignal ? loadMarathonSpecificTraining(userUuid).catch(() => null) : Promise.resolve(null),
+    args.durabilityRead
+      ? Promise.resolve(args.durabilityRead)
+      : resolveRaceExponent(userUuid).catch((): RaceExponentRead => ({ ok: false, reason: 'no_races', races: 0 })),
+  ]);
+  const specificityAdjustment = marathonSpecificityAdjustment(
+    raceDistanceMi,
+    vdotAnchorDistanceMi ?? null,
+    marathonSpecificTraining,
+  );
+  const danielsProjectionSec = vdot != null ? predictRaceTime(vdot, raceDistanceMi) ?? null : null;
+  const durabilityProjection = durabilityRead.ok
+    ? projectWithDurabilityExponent(durabilityRead, raceDistanceMi)
+    : null;
+  const durabilityWeight = durabilityRead.ok ? durabilityRead.confidence : 0;
+  const blendedRawSec: number | null =
+    vdot == null ? null :
+    durabilityProjection == null ? danielsProjectionSec :
+    danielsProjectionSec == null ? durabilityProjection.sec :
+    Math.round(durabilityWeight * durabilityProjection.sec + (1 - durabilityWeight) * danielsProjectionSec);
+  const durabilityBlend = (vdot != null && durabilityProjection != null)
+    ? { weight: durabilityWeight, anchorDistanceMi: durabilityProjection.anchorDistanceMi }
+    : null;
+  const expectedSec =
+    blendedRawSec != null && specificityAdjustment != null
+      ? Math.round(blendedRawSec * (1 + specificityAdjustment.pct / 100))
+      : blendedRawSec;
+  return {
+    danielsSec: danielsProjectionSec,
+    durabilityProjectionSec: durabilityProjection?.sec ?? null,
+    durabilityRead,
+    durabilityBlend,
+    blendedRawSec,
+    specificityAdjustment,
+    marathonSpecificTraining,
+    expectedSec,
+  };
+}
+
+/**
+ * The runner's EXECUTION signal — how well recent quality work is landing and
+ * any HR-controlled over-performance — read once so the goal-relative wrapper
+ * and the canonical race outlook size expected improvement off the same
+ * evidence. Takes no goal.
+ */
+export async function resolveExecutionSignal(userUuid: string, vdot: number | null): Promise<{
+  executionQuality: number;
+  overPerformanceBonusVdot: number;
+  overPerformanceSessions: number;
+  missedKeyWorkouts: boolean;
+  recentTestPoints: GoalProjection['recentTestPoints'];
+  daysSinceLastRun: number | null;
+  recentMissedKeyDates: string[];
+}> {
+  const [recentTestPoints, absence, overPerf, missedSignal] = await Promise.all([
+    loadRecentTestPoints(userUuid, vdot).catch(() => [] as GoalProjection['recentTestPoints']),
+    loadExecutionAbsence(userUuid).catch(() => ({ daysSinceLastRun: null as number | null, recentMissedKeyDates: [] as string[] })),
+    vdot != null
+      ? computeOverPerformanceBonus(userUuid, vdot).catch(() => ({ bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 }))
+      : Promise.resolve({ bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 }),
+    detectMissedKeyWorkoutDrift(userUuid).catch(() => null),
+  ]);
+  const missedKeyWorkouts = missedSignal != null;
+  const executionQuality = executionQualityFromTestPoints(
+    recentTestPoints, missedKeyWorkouts, absence.daysSinceLastRun, absence.recentMissedKeyDates,
+  );
+  return {
+    executionQuality,
+    overPerformanceBonusVdot: overPerf.bonusVdot,
+    overPerformanceSessions: overPerf.sessions,
+    missedKeyWorkouts,
+    recentTestPoints,
+    daysSinceLastRun: absence.daysSinceLastRun,
+    recentMissedKeyDates: absence.recentMissedKeyDates,
+  };
+}
+
 export async function computeGoalProjection(args: {
   userUuid: string;
   goalSec: number;
@@ -301,58 +419,19 @@ export async function computeGoalProjection(args: {
   // raw equivalence — the exact point estimate §14.7 says "systematically
   // over-predict[s]". The adjusted projection is MODELLED, and
   // `specificityAdjustment` below is how a surface knows to mark it (~).
-  const needsMarathonBlockSignal =
-    distanceCategoryOrNull(raceDistanceMi) === 'm' &&
-    vdotAnchorDistanceMi != null &&
-    ['5k', '10k', 'hm'].includes(distanceCategoryOrNull(vdotAnchorDistanceMi) ?? '');
-
-  // 2026-09-01 · goal-projection-durability follow-up (docs/reports/
-  // race-prediction-consolidation-2026-09-01.md §4.1) · read alongside the
-  // marathon-block signal — both are independent userUuid-keyed DB reads with
-  // nothing to wait on. `.catch()` degrades to the SAME typed refusal
-  // `resolveRaceExponent` itself returns for "no races" (Rule 11: a query
-  // failure and "this runner has no qualifying races" are both honestly "I
-  // cannot read a personal exponent right now" from this call site's
-  // perspective — the caller has no way to tell them apart either way, unlike
-  // `coach-goal-load.ts`'s fix in §2.1 of the consolidation report, which
-  // could because it controlled the query directly).
-  const [marathonSpecificTraining, durabilityRead] = await Promise.all([
-    needsMarathonBlockSignal ? loadMarathonSpecificTraining(userUuid).catch(() => null) : Promise.resolve(null),
-    resolveRaceExponent(userUuid).catch((): RaceExponentRead => ({ ok: false, reason: 'no_races', races: 0 })),
-  ]);
-  const specificityAdjustment = marathonSpecificityAdjustment(
-    raceDistanceMi,
-    vdotAnchorDistanceMi ?? null,
-    marathonSpecificTraining,
-  );
-
-  // The durability-aware cross-distance read, blended continuously by
-  // confidence rather than gated by a hand-picked threshold — see
-  // `durabilityBlend`'s own doc comment on `GoalProjection` for why a
-  // threshold was rejected in favor of this shape (Rule 9: no cliff to
-  // manufacture when there is no discrete cutover), and
-  // docs/reports/race-prediction-goal-projection-durability-2026-09-01.md for
-  // the grounding (no existing archetype/plan-generation corpus reaches this
-  // function at all — confirmed by grep — so a threshold "tuned" against it
-  // would have been tuned against nothing).
-  const danielsProjectionSec = vdot != null ? predictRaceTime(vdot, raceDistanceMi) ?? null : null;
-  const durabilityProjection = durabilityRead.ok
-    ? projectWithDurabilityExponent(durabilityRead, raceDistanceMi)
-    : null;
-  const durabilityWeight = durabilityRead.ok ? durabilityRead.confidence : 0;
-  const vdotProjectionSecRaw: number | null =
-    vdot == null ? null :
-    durabilityProjection == null ? danielsProjectionSec :
-    danielsProjectionSec == null ? durabilityProjection.sec :
-    Math.round(durabilityWeight * durabilityProjection.sec + (1 - durabilityWeight) * danielsProjectionSec);
-  const durabilityBlend = (vdot != null && durabilityProjection != null)
-    ? { weight: durabilityWeight, anchorDistanceMi: durabilityProjection.anchorDistanceMi }
-    : null;
-
-  const vdotProjectionSec =
-    vdotProjectionSecRaw != null && specificityAdjustment != null
-      ? Math.round(vdotProjectionSecRaw * (1 + specificityAdjustment.pct / 100))
-      : vdotProjectionSecRaw;
+  // 2026-09-01 · Phase 3 of the P0 order · the current-equivalence read is
+  // ONE exported function (`computeCurrentEquivalence`) so the canonical race
+  // outlook (`lib/race/race-outlook.ts`) and this goal-relative wrapper cannot
+  // blend durability two different ways. Byte-identical to the inline block it
+  // replaces.
+  const eq = await computeCurrentEquivalence({
+    userUuid, raceDistanceMi, vdot, vdotAnchorDistanceMi: vdotAnchorDistanceMi ?? null,
+  });
+  const marathonSpecificTraining = eq.marathonSpecificTraining;
+  const specificityAdjustment = eq.specificityAdjustment;
+  const vdotProjectionSecRaw = eq.blendedRawSec;
+  const durabilityBlend = eq.durabilityBlend;
+  const vdotProjectionSec = eq.expectedSec;
 
   // 2026-08-28 · AHEAD-1 · hoisted from below (was computed only for the
   // trajectory) so the primary status ladder can read the same sustained,

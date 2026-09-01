@@ -1,127 +1,101 @@
 /**
- * lib/race/effective-race-target.ts · the one resolver for what a race
- * execution surface paces off (2026-08-17 coaching-loop reconciliation).
+ * lib/race/effective-race-target.ts · what a race EXECUTION surface paces off.
  *
- * The defect: every race pacing surface — the watch race payload
- * (build-workout.ts), the execution plan (execution-plan.ts via its API
- * route), and the race-detail pacing (api/race/[slug] → buildRacePacing)
- * — paced off the STATED GOAL even when the projection said the runner
- * couldn't hold it. A 3:00 goal at 3:15 fitness produced 6:52/mi split
- * cards and watch targets that guarantee a blow-up (Research/08 §18.2:
- * ≥~5% adrift of honest pace by mile 5 is the unrecoverable zone).
+ * 2026-09-01 · P0 race-pace brain. This module used to be its own resolver:
+ * it read the latest projection-snapshot row for the distance (a second
+ * fitness read, off a snapshot VDOT rather than the canonical threshold
+ * capacity) and applied a 5% goal-optimism band to it. Two surfaces that
+ * agreed on the label "target" could still disagree on the number, because
+ * the race-detail route, the watch and the execution plan each fed it a
+ * different snapshot.
  *
- * The rule: a race pacing surface never prescribes paces more than 5%
- * faster than the current projection.
+ * Now it is an ADAPTER over `lib/race/race-outlook.ts`, the one race-pace
+ * brain. `targetSec` IS `outlook.execution.targetSec`; nothing is computed
+ * here. The shape is kept because eleven call sites read it; the semantics
+ * are the outlook's:
  *
- *   effectiveTargetSec = goalSec                 when goal within 5% of projection
- *                      = projectionSec (rounded) otherwise
+ *   source 'goal'        the stated goal sits inside the likely race-day
+ *                        range (at or slower than the range's fast edge)
+ *   source 'projection'  no stated goal, or the goal is faster than the
+ *                        range's fast edge — the target is the expected
+ *                        race-day result, or that edge. The goal is not
+ *                        deleted: it rides along as `goalSec`, the stretch.
  *
- * The stated goal is not deleted: it rides along as `goalSec` (the
- * stretch) so surfaces with room show it as secondary — A-target =
- * effective, stretch = goal — per David's "goal caps ambition and frames
- * the season, but never writes paces the runner cannot run."
- *
- * No projection snapshot → goal fallback (cold start · nothing honest to
- * gate on, and the CI note on the execution plan already frames it).
- *
- * Cite: Research/08-pacing-and-race-week.md §3.1/§18.2 (execution-error
- * costs); Research/01-pace-zones-vdot.md §Freshness window (:659-677).
+ * Cite: Research/08 §3.1/§18.2 (execution-error costs); the outlook's own
+ * header for the range the goal may pull the target toward.
  */
 
-import { pool } from '@/lib/db/pool';
+import { resolveRaceOutlook, resolveRaceOutlookBySlug, type RaceOutlook } from './race-outlook';
 
 export interface EffectiveRaceTarget {
-  /** What the surface paces off. */
+  /** What the surface paces off · `outlook.execution.targetSec`. */
   targetSec: number;
-  /** Where targetSec came from. */
+  /** Where targetSec came from (see header). */
   source: 'goal' | 'projection';
   /** The stated goal · the stretch when source === 'projection'. */
   goalSec: number;
-  /** Latest projection for the distance · null when no snapshot. */
+  /** Expected race-day result · null when the outlook could not project. */
   projectionSec: number | null;
-  /** ISO date of the snapshot used · null when none. */
+  /** The day the outlook was resolved. */
   projectionDateISO: string | null;
+  /** The whole brain, for a caller that wants to say WHY. */
+  outlook: RaceOutlook | null;
 }
 
-/** Goal may run at most this fraction faster than projection. */
-export const MAX_GOAL_OPTIMISM_FRACTION = 0.05;
-
-/** Round a projection-sourced target to a clean number: nearest 10s for
- *  races over an hour, nearest 5s under. A watch target of 3:14:37 is
- *  noise pretending to be precision. */
-export function roundTargetSec(sec: number): number {
-  const step = sec >= 3600 ? 10 : 5;
-  return Math.round(sec / step) * step;
-}
-
-/** Rule 9 · the fastest target this surface may show · doctrine's
- *  achievability band edge, cleaned to the same step and rounded UP so the
- *  cleaning can never carry the target THROUGH the bound. Value-for-value
- *  identical to `lib/training/achievable-target.ts#prescriptionFloorSec`;
- *  bound by GOAL.prescribed-race-pace-ceiling. */
-export function prescriptionFloorSec(boundSec: number, tolerance: number): number {
-  const raw = boundSec * (1 - tolerance);
-  const step = raw >= 3600 ? 10 : 5;
-  return Math.ceil(raw / step) * step;
-}
-
-/** Pure resolver · exported for tests. */
-export function resolveEffectiveRaceTarget(
-  goalSec: number,
-  projectionSec: number | null | undefined,
-  projectionDateISO: string | null = null,
-): EffectiveRaceTarget {
-  if (projectionSec == null || !Number.isFinite(projectionSec) || projectionSec <= 0) {
-    return { targetSec: goalSec, source: 'goal', goalSec, projectionSec: null, projectionDateISO: null };
-  }
-  // goal within 5% of projection (goal is FASTER = smaller seconds; allow
-  // goalSec down to 95% of projection).
-  //
-  // Rule 9 (2026-08-30) · a goal BEYOND the band is clamped to the band EDGE,
-  // not past it back to the unreduced projection. Spending the 5% twice put a
-  // 606 s step at the edge here — a runner one second more ambitious was raced
-  // ten minutes slower — and, worse, it re-opened the very gap this module
-  // exists to close: authoring rehearses the block at the band edge, so racing
-  // at the unreduced projection is a pace step onto a start line off a block
-  // that never ran it. One runner, one race, one formula. The floor helper is
-  // `lib/training/achievable-target.ts#prescriptionFloorSec`, duplicated rather
-  // than imported for the same reason the constant is (that module must stay
-  // free of `pg` for the client bundles); GOAL.prescribed-race-pace-ceiling
-  // pins the pair.
-  const floorSec = prescriptionFloorSec(projectionSec, MAX_GOAL_OPTIMISM_FRACTION);
-  if (goalSec >= floorSec) {
-    return { targetSec: goalSec, source: 'goal', goalSec, projectionSec, projectionDateISO };
-  }
-  return {
-    targetSec: floorSec,
-    source: 'projection',
-    goalSec,
-    projectionSec,
-    projectionDateISO,
-  };
-}
+/** Round a target to a clean number: nearest 10 s over an hour, nearest 5 s
+ *  under. Re-exported from the outlook so callers keep one name. */
+export { roundRaceTargetSec as roundTargetSec } from './race-outlook';
 
 /**
- * DB wrapper · latest projection snapshot for the race distance (±5%
- * band, same match the execution-plan route has always used) → pure
- * resolver. Best-effort: any read failure degrades to the goal.
+ * The effective target for a race. Pass the race `slug` whenever it is known
+ * — the outlook then reads the race's date and can project the remaining
+ * block. Without a slug the outlook has no runway and answers with today's
+ * projection (`expectedRaceDay.basis === 'current_projection'`).
+ *
+ * A failed resolve degrades to the goal with `outlook: null`, which is the
+ * Rule 11 "could not read" state, distinct from a goal that was judged
+ * within range.
  */
 export async function loadEffectiveRaceTarget(
-  userId: string,
+  userUuid: string,
   goalSec: number,
   distanceMi: number,
+  opts?: { slug?: string | null; todayISO?: string },
 ): Promise<EffectiveRaceTarget> {
-  const snap = (await pool.query<{ projection_sec: number | null; snapshot_date: string | null }>(
-    `SELECT projection_sec, snapshot_date::text AS snapshot_date
-       FROM projection_snapshots
-      WHERE user_uuid = $1 AND distance_mi BETWEEN $2 * 0.95 AND $2 * 1.05
-        AND projection_sec IS NOT NULL
-      ORDER BY snapshot_date DESC LIMIT 1`,
-    [userId, distanceMi],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  return resolveEffectiveRaceTarget(
+  let outlook: RaceOutlook | null = null;
+  try {
+    if (opts?.slug) {
+      outlook = await resolveRaceOutlookBySlug(userUuid, opts.slug, opts.todayISO);
+    }
+    if (!outlook) {
+      outlook = await resolveRaceOutlook(userUuid, {
+        slug: opts?.slug ?? 'ad-hoc',
+        name: opts?.slug ?? 'race',
+        distanceMi,
+        dateISO: null,
+        priority: null,
+        statedGoalSec: goalSec,
+        isPast: false,
+      }, opts?.todayISO);
+    }
+  } catch {
+    outlook = null;
+  }
+  return effectiveTargetFromOutlook(goalSec, outlook);
+}
+
+/** Pure mapping · exported for tests. */
+export function effectiveTargetFromOutlook(goalSec: number, outlook: RaceOutlook | null): EffectiveRaceTarget {
+  const x = outlook?.execution;
+  if (!outlook || !x || x.targetSec == null) {
+    return { targetSec: goalSec, source: 'goal', goalSec, projectionSec: null, projectionDateISO: null, outlook };
+  }
+  return {
+    targetSec: x.targetSec,
+    source: x.source === 'stated_goal_within_range' ? 'goal' : 'projection',
     goalSec,
-    snap?.projection_sec ?? null,
-    snap?.snapshot_date ?? null,
-  );
+    projectionSec: outlook.expectedRaceDay.expectedSec,
+    projectionDateISO: outlook.todayISO,
+    outlook,
+  };
 }

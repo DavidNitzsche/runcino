@@ -437,10 +437,10 @@ describe('GOALIMMUT-1 · the coach projects, it never renegotiates', () => {
     const p = path.join(WEB, 'lib/plan/goal-outlook.ts');
     const src = fs.readFileSync(p, 'utf8');
     expect(src, 'goal-outlook.ts must import the shared resolver')
-      .toMatch(/import\s*\{[^}]*resolveRaceProjection[^}]*\}\s*from\s*'@\/lib\/training\/race-projection'/);
+      .toMatch(/import\s*\{[^}]*raceProjectionFromOutlook[^}]*\}\s*from\s*'@\/lib\/training\/race-projection'/);
     const code = codeLines(src);
     // It may not compute its own. `predictRaceTime` is the raw equivalence;
-    // `gap.trajectorySec` is the snapshot wearing the trajectory's name.
+    // `gap.expectedRaceDaySec` is the snapshot wearing the trajectory's name.
     const own = code.filter((l) =>
       /\bpredictRaceTime\s*\(/.test(l.text) || /\btrajectorySec\b/.test(l.text));
     expect(own.map((l) => `${l.n} · ${l.text.trim()}`),
@@ -479,7 +479,7 @@ describe('GOALIMMUT-1 · the coach projects, it never renegotiates', () => {
 
     it('a retired row prints no figure rather than the wrong one', () => {
       // What `synthesizeMessage` passes for a `goal_renegotiation` row: its
-      // stored `trajectory_sec` is a different quantity, so it is not read.
+      // stored `expected_race_day_sec` is a different quantity, so it is not read.
       const m = composeGoalOutlookMessage({
         projectedSec: null, basis: null, goalSec: 10800, weeksRemaining: 14,
       });

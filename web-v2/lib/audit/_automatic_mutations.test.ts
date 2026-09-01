@@ -206,6 +206,9 @@ const PLAN_WRITER_FILE_OWNERS: Record<string, string> = {
   'app/api/cron/snapshot-projections/route.ts': 'cron/snapshot-projections',
   'lib/plan/reanchor-plan.ts': 'cron/snapshot-projections',
   'lib/plan/recompute-paces.ts': 'cron/snapshot-projections',
+  // 2026-09-01 · P0 · the dedicated race-row path: standalone from the daily
+  // snapshot cron (through mutatePlan), and inside recompute-paces' tx.
+  'lib/race/race-row-refresh.ts': 'cron/snapshot-projections',
   'lib/plan/adapt.ts': 'cron/run-adaptations',
   'lib/plan/progression-pass.ts': 'cron/run-adaptations',
 

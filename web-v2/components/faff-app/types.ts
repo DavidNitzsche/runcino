@@ -697,7 +697,7 @@ export type ReadinessBriefSeed = {
    */
   gapReport: {
     headline: string;
-    trajectorySec: number;
+    expectedRaceDaySec: number;
     goalSec: number;
     gapSec: number;
     status: 'closing' | 'static' | 'widening' | 'unclosable';

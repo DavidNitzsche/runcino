@@ -129,15 +129,22 @@ export interface LimiterRead {
  * a genuine weakness look identical in a finish time. Callers with race
  * priority available should prefer A and B efforts.
  */
-export interface PerformancePoint {
-  distanceMi: number;
-  finishSeconds: number;
-  /** Days ago. Two performances far apart in time describe two different
-   *  runners, so the fit requires both inside the freshness window. */
-  ageDays: number;
-  /** True for watch-auto-logged results not yet confirmed by a chip time.
-   *  Still real efforts, but they cost the read a confidence notch. */
-  provisional?: boolean;
+/**
+ * The performance curve, READ from the canonical durability anchor
+ * (`lib/training/durability-anchor.ts#resolveRaceExponent`) — never fitted
+ * here. 2026-09-01 · P0: this file carried its own two-race Riegel fit with
+ * its own freshness window and its own distance-ratio floor, a second
+ * exponent engine beside the one Pace Prescription and Race Prediction read.
+ * One fit, one set of validity rules, one number.
+ */
+export interface CurveRead {
+  /** The RAW fitted exponent (`rawFittedExponent`), unshrunk — the SHAPE of
+   *  the runner's curve is what a limiter diagnosis needs, and the shrunk
+   *  `value` would pull every runner toward the neutral band. */
+  exponent: number;
+  races: number;
+  /** True when a supporting race result is provisional (watch, unconfirmed). */
+  provisional: boolean;
 }
 
 /**
@@ -193,7 +200,8 @@ export interface LimiterInput {
   /* --- the performance curve --------------------------------------------- */
   /** Curated race results, any order. From `bestRecentVdot().considered` filtered
    *  to `source: 'race'`, or straight off the races table. */
-  performances: PerformancePoint[] | null;
+  /** The canonical durability read's curve, or null when it refused. */
+  curve: CurveRead | null;
 
   /* --- fade / decoupling -------------------------------------------------- */
   fadeObservations: FadeObservation[] | null;
@@ -236,25 +244,7 @@ export interface LimiterInput {
  */
 export const CURVE_NEUTRAL_EXPONENT_BAND: [number, number] = [1.06, 1.08];
 
-/**
- * Minimum ratio between the two distances used to fit the exponent.
- *
- * NOT a physiological constant and deliberately carries no doctrine claim — it
- * is numerical conditioning. `b = ln(T2/T1)/ln(D2/D1)` divides by `ln(D2/D1)`,
- * so two nearby distances make the denominator small and the fitted exponent
- * explodes on a few seconds of timing noise.
- *
- * 1.8 admits the pairs runners actually have — half-to-marathon and 5K-to-10K
- * are both ratio 2.0, and 10K-to-half is 2.1 — while rejecting the pairs where
- * the denominator stops carrying the fit: half-to-30K (1.4), marathon-to-50K
- * (1.2), and any two runnings of adjacent road distances.
- */
-export const MIN_CURVE_DISTANCE_RATIO = 1.8;
 
-/** Both performances must sit inside this window, or the fit is describing two
- *  different runners. Matches `VDOT_FULL_VALUE_DAYS` in `lib/training/vdot.ts`,
- *  which is the window the rest of the engine treats a result as current for. */
-export const CURVE_FRESHNESS_DAYS = 56;
 
 /**
  * Pa:HR decoupling at which Research/03 §12 stops calling the aerobic system
@@ -423,44 +413,7 @@ function mean(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
-/**
- * Fit Riegel's exponent from two performances · Research/02 §6:
- * `b = ln(T2/T1) / ln(D2/D1)`.
- *
- * Returns null when the pair is too close in distance to fit against (see
- * `MIN_CURVE_DISTANCE_RATIO`) or either input is not a real performance.
- */
-export function fitRiegelExponent(a: PerformancePoint, b: PerformancePoint): number | null {
-  const [short, long] = a.distanceMi <= b.distanceMi ? [a, b] : [b, a];
-  if (!(short.distanceMi > 0) || !(short.finishSeconds > 0)) return null;
-  if (!(long.distanceMi > 0) || !(long.finishSeconds > 0)) return null;
-  const dRatio = long.distanceMi / short.distanceMi;
-  if (dRatio < MIN_CURVE_DISTANCE_RATIO) return null;
-  const tRatio = long.finishSeconds / short.finishSeconds;
-  if (tRatio <= 1) return null; // the longer race was not slower · not a curve
-  return Math.log(tRatio) / Math.log(dRatio);
-}
 
-/** The widest-separated fresh pair, which gives the fit the most leverage. */
-function pickCurvePair(points: PerformancePoint[]): [PerformancePoint, PerformancePoint] | null {
-  const fresh = points.filter(
-    (p) => p.ageDays <= CURVE_FRESHNESS_DAYS && p.distanceMi > 0 && p.finishSeconds > 0,
-  );
-  let best: [PerformancePoint, PerformancePoint] | null = null;
-  let bestRatio = 0;
-  for (let i = 0; i < fresh.length; i++) {
-    for (let j = i + 1; j < fresh.length; j++) {
-      const lo = Math.min(fresh[i].distanceMi, fresh[j].distanceMi);
-      const hi = Math.max(fresh[i].distanceMi, fresh[j].distanceMi);
-      const ratio = lo > 0 ? hi / lo : 0;
-      if (ratio > bestRatio) {
-        bestRatio = ratio;
-        best = [fresh[i], fresh[j]];
-      }
-    }
-  }
-  return bestRatio >= MIN_CURVE_DISTANCE_RATIO ? best : null;
-}
 
 function paceStr(secPerMi: number): string {
   const m = Math.floor(secPerMi / 60);
@@ -515,15 +468,12 @@ export function diagnoseLimiter(input: LimiterInput): LimiterRead | null {
   /* ── 1 · the performance curve ─────────────────────────────────────────
    * The only signal here that separates limiters on its own. Everything below
    * either corroborates it or fills in where it is silent. */
-  const pair = input.performances ? pickCurvePair(input.performances) : null;
-  const b = pair ? fitRiegelExponent(pair[0], pair[1]) : null;
-  if (pair && b != null) {
+  const b = input.curve != null && Number.isFinite(input.curve.exponent) ? input.curve.exponent : null;
+  if (input.curve && b != null) {
     dimensionsRead++;
-    curveRestsOnProvisional = pair.some((p) => p.provisional === true);
+    curveRestsOnProvisional = input.curve.provisional === true;
     const [lo, hi] = CURVE_NEUTRAL_EXPONENT_BAND;
-    const shorter = pair[0].distanceMi <= pair[1].distanceMi ? pair[0] : pair[1];
-    const longer = pair[0].distanceMi <= pair[1].distanceMi ? pair[1] : pair[0];
-    const shape = `${shorter.distanceMi.toFixed(1)}mi and ${longer.distanceMi.toFixed(1)}mi form a curve at ${b.toFixed(3)}`;
+    const shape = `${input.curve.races} graded races form a curve at ${b.toFixed(3)}`;
     if (b > hi) {
       // Speedster. Short form outruns long form · the aerobic side is the gap.
       f.add('endurance', clamp((b - hi) / 0.05, 0.15, 1), `${shape} · doctrine's neutral band tops out at ${hi}`);

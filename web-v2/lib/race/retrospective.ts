@@ -28,7 +28,8 @@ import { pool } from '@/lib/db/pool';
 import { vdotFromRace, predictRaceTime, parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import type { RaceRow } from '@/lib/coach/races-state';
-import { resolveRaceProjection, type RaceProjectionBasis } from '@/lib/training/race-projection';
+import type { RaceProjectionBasis } from '@/lib/training/race-projection';
+import { equivalenceAtDistance } from '@/lib/race/race-outlook';
 
 export interface RetroMile {
   mile: number;
@@ -423,17 +424,16 @@ export async function buildRaceRetro(args: {
   if (nextA?.date) {
     const nextGoalSec = parseRaceTime(nextA.goal) ?? null;
     const anchorVdot = vdotRace ?? vdotBefore;
-    // No `goalProjection` here on purpose — this is "what does THIS ONE
-    // PAST RACE'S fitness alone predict", not "what does the runner's
-    // current trajectory predict" (that question is `resolveRaceProjection`
-    // called with a real `computeGoalProjection` result, elsewhere). With
-    // `goalProjection: null` the resolver always lands on rung 3 (raw
-    // equivalence), which is exactly what this reader asks for — same
-    // number `predictRaceTime` gave directly, now through the one function
-    // every cross-distance projection in the app resolves through.
-    const resolvedNext = resolveRaceProjection({
-      goalProjection: null, vdot: anchorVdot, distanceMi: nextA.distance_mi,
-    });
+    // "What does THIS ONE PAST RACE'S fitness alone predict at the next
+    // distance" — a distinctly named quantity (equivalence at a VDOT), not
+    // the race-day outlook (`lib/race/race-outlook.ts` owns that). Read
+    // through the outlook module's own equivalence helper so no second copy
+    // of the cross-distance table lives here.
+    const predictedSec = equivalenceAtDistance(anchorVdot, nextA.distance_mi ?? 0);
+    const resolvedNext = {
+      projectedSec: predictedSec != null ? Math.round(predictedSec) : null,
+      basis: (predictedSec != null ? 'equivalence' : null) as RaceProjectionBasis | null,
+    };
     nextRace = {
       slug: nextA.slug,
       name: nextA.name,

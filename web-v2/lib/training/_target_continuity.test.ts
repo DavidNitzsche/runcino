@@ -42,10 +42,8 @@ import {
   GOAL_OPTIMISM_TOLERANCE,
 } from './achievable-target';
 import { predictRaceTime } from './vdot';
-import {
-  resolveEffectiveRaceTarget,
-  MAX_GOAL_OPTIMISM_FRACTION,
-} from '@/lib/race/effective-race-target';
+import { composeRaceOutlook } from '@/lib/race/race-outlook';
+import { fixtureReads, fixtureRace } from '@/lib/race/_race_outlook_fixture';
 
 /** The owner's CIM shape: a 3:00 marathon goal off a mid-40s VDOT. */
 const VDOT = 44.1;
@@ -67,8 +65,20 @@ function authoredAt(goalSec: number): number {
   })!.targetSec;
 }
 
-function executedAt(goalSec: number, projectionSec: number): number {
-  return resolveEffectiveRaceTarget(goalSec, projectionSec).targetSec;
+// 2026-09-01 · P0 · the execution moment is the race-pace brain. Pre-walk
+// the goal space once (compose is async) so `sweep` stays synchronous.
+const EXEC_READS = fixtureReads();
+const EXEC_TARGETS = new Map<number, number>();
+async function primeExecution(lo: number, hi: number) {
+  for (let g = lo; g <= hi; g++) {
+    const o = await composeRaceOutlook(fixtureRace({ statedGoalSec: g }), '2026-09-01', EXEC_READS);
+    EXEC_TARGETS.set(g, o.execution.targetSec!);
+  }
+}
+function executedAt(goalSec: number): number {
+  const t = EXEC_TARGETS.get(goalSec);
+  if (t == null) throw new Error(`execution walk not primed for goalSec=${goalSec}`);
+  return t;
 }
 
 /**
@@ -138,37 +148,40 @@ describe('CONTINUOUS-TARGET-1 · authoring · no step change at the band edge', 
   });
 });
 
-describe('CONTINUOUS-TARGET-1 · execution · the same rule, the same shape', () => {
+describe('CONTINUOUS-TARGET-1 · execution · the same rule, the same shape', async () => {
   // One runner, one race: the watch may not bound the target by a different
-  // formula than the block rehearsed. GOAL.prescribed-race-pace-ceiling pins
-  // the CONSTANT; this pins the SPENDING of it.
-  const PROJECTION_SEC = 12120; // the CIM projection, ~3:22
-  const r = sweep((g) => executedAt(g, PROJECTION_SEC), PROJECTION_SEC);
+  // formula than the block rehearsed. The race-pace brain clamps a stated goal
+  // to the likely race-day range's FAST EDGE; this pins the spending of it.
+  const base = await composeRaceOutlook(fixtureRace({ statedGoalSec: null }), '2026-09-01', EXEC_READS);
+  const EDGE_SEC = base.expectedRaceDay.likelyRangeSec![0];
+  const boundSec = EDGE_SEC / (1 - GOAL_OPTIMISM_TOLERANCE); // so sweep's edge == EDGE_SEC
+  await primeExecution(Math.round(EDGE_SEC - 61), Math.round(EDGE_SEC + 61));
+  const r = sweep(executedAt, boundSec);
 
-  it('the two moments carry the same tolerance', () => {
-    expect(MAX_GOAL_OPTIMISM_FRACTION).toBe(GOAL_OPTIMISM_TOLERANCE);
+  it('the walk crosses the edge (liveness)', async () => {
+    const lo = await composeRaceOutlook(fixtureRace({ statedGoalSec: Math.round(EDGE_SEC - 60) }), '2026-09-01', EXEC_READS);
+    const hi = await composeRaceOutlook(fixtureRace({ statedGoalSec: Math.round(EDGE_SEC + 60) }), '2026-09-01', EXEC_READS);
+    expect(lo.execution.source).toBe('stated_goal_clamped_to_range_edge');
+    expect(hi.execution.source).toBe('stated_goal_within_range');
   });
 
   it('the raced target is CONTINUOUS across the edge', () => {
     expect(
       r.worstJump,
-      `raced target jumped ${r.worstJump.toFixed(0)} s at goalSec=${r.worstJumpAt}, ` +
-      `band edge ${r.edge.toFixed(0)} s`,
+      `raced target jumped ${r.worstJump.toFixed(0)} s at goalSec=${r.worstJumpAt}, edge ${EDGE_SEC.toFixed(0)} s`,
     ).toBeLessThanOrEqual(ROUNDING_STEP_S);
   });
 
   it('a MORE AMBITIOUS goal never buys a SLOWER raced target', () => {
     expect(
       r.worstInversion,
-      `raced target was ${r.worstInversion.toFixed(0)} s SLOWER for the more ambitious goal ` +
-      `at goalSec=${r.worstInversionAt}`,
+      `raced target was ${r.worstInversion.toFixed(0)} s SLOWER for the more ambitious goal at goalSec=${r.worstInversionAt}`,
     ).toBeLessThanOrEqual(0);
   });
 
-  it('the bound still holds · a target is never faster than the band edge', () => {
-    for (const g of [1, 3600, 9000, 11000, 11513, 11514, 11520, 12000, 20000]) {
-      expect(executedAt(g, PROJECTION_SEC))
-        .toBeGreaterThanOrEqual(PROJECTION_SEC * (1 - MAX_GOAL_OPTIMISM_FRACTION));
+  it('the bound still holds · a target is never faster than the fast edge', () => {
+    for (const g of [Math.round(EDGE_SEC - 61), Math.round(EDGE_SEC - 30), Math.round(EDGE_SEC), Math.round(EDGE_SEC + 61)]) {
+      expect(executedAt(g)).toBeGreaterThanOrEqual(Math.floor(EDGE_SEC / 10) * 10 - 10);
     }
   });
 });

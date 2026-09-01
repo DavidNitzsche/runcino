@@ -1,142 +1,86 @@
 /**
  * lib/training/_race_projection.test.ts — ONE race, ONE projected time.
  *
- * THE TEST THAT WOULD HAVE CAUGHT IT. On the owner's account, 2026-08-30, CIM
- * 2026-12-06, goal 3:00:00, VDOT 44.1 anchored to the AFC half:
+ * On the owner's account, 2026-08-30, CIM: Races list 3:22:17, CIM detail
+ * 3:31:48, one tap apart, both labelled "Projected". Two legitimately
+ * different quantities under one word.
  *
- *   Races list   Projected 3:22:17 · Gap +22:17
- *   CIM detail   Projected 3:31:48 · Gap +31:48
+ * 2026-09-01 · P0 · the resolver is now a pure MAPPING from the race-pace
+ * brain (`lib/race/race-outlook.ts`). Two halves, as before:
  *
- * Same race, same goal, same label, one tap apart, 9m31s of daylight between
- * them. The list resolved through `computeGoalProjection().trajectory`; the
- * detail called `predictRaceTime(vdot, distanceMi)` and had never heard of the
- * trajectory.
- *
- * Neither number was wrong in isolation — they are two real, legitimately
- * different quantities (race-day projection vs today's fitness equivalence).
- * The defect is that both were published under the word "Projected". So the
- * assertions below come in two halves, and the second half is the one that
- * actually holds the line:
- *
- *   1 · the resolver's precedence behaves.
- *   2 · NEITHER ROUTE RESOLVES A PROJECTION ANY OTHER WAY. A behavioural test
- *       of a shared function cannot catch a route that stops calling it, and
- *       that is precisely the failure mode here — the detail route did not
- *       call the wrong function, it called a different one entirely. So the
- *       route sources are read and asserted against directly.
+ *   1 · the mapping behaves (trajectory when race day is projectable, the
+ *       equivalence by name when it is not).
+ *   2 · NO ROUTE RESOLVES A PROJECTION ANY OTHER WAY. A behavioural test of
+ *       a shared function cannot catch a route that stops calling it, so the
+ *       route sources are read and asserted against directly — and the
+ *       things a route must NOT import are asserted too.
  */
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { resolveRaceProjection, projectionCoachLine } from './race-projection';
+import { raceProjectionFromOutlook, projectionCoachLine } from './race-projection';
+import { composeRaceOutlook } from '@/lib/race/race-outlook';
+import { fixtureReads, fixtureRace } from '@/lib/race/_race_outlook_fixture';
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const LIST_ROUTE = path.join(ROOT, 'app/api/v5/races/route.ts');
-const DETAIL_ROUTE = path.join(ROOT, 'app/api/v5/race/[slug]/route.ts');
+const src = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+/** Source with block and line comments blanked: an epitaph is not a call. */
+const code = (rel: string) => src(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 
-// The owner's real numbers, 2026-08-30. Not a fixture — these are what the two
-// screens actually printed, and what the engine actually computed.
-const GOAL_SEC = 3 * 3600;                     // 3:00:00
-const TRAJECTORY_SEC = 12137;                  // 3:22:17 · execution-scaled to race day
-const ADJUSTED_EQUIVALENCE_SEC = 13343;        // 3:42:23 · today + Research/02 §13.1 +5%
-const RAW_EQUIVALENCE_SEC = 12708;             // 3:31:48 · today, raw predictRaceTime
-const CIM_VDOT = 44.1;
-const CIM_MI = 26.22;
+/** Every surface that prints "Projected" or paces a race. */
+const CONSUMERS = [
+  'app/api/v5/races/route.ts',
+  'app/api/v5/race/[slug]/route.ts',
+  'lib/plan/goal-gap.ts',
+  'lib/plan/goal-outlook.ts',
+  'lib/training/goal-projection-resolve.ts',
+  'components/faff-app/seed.ts',
+];
 
-describe('resolveRaceProjection · precedence', () => {
-  it('prefers the race-day trajectory over every equivalence', () => {
-    const out = resolveRaceProjection({
-      goalProjection: {
-        trajectory: { projectedSec: TRAJECTORY_SEC },
-        vdotProjectionSec: ADJUSTED_EQUIVALENCE_SEC,
-      },
-      vdot: CIM_VDOT,
-      distanceMi: CIM_MI,
-    });
-    expect(out.projectedSec).toBe(TRAJECTORY_SEC);
-    expect(out.basis).toBe('trajectory');
+describe('raceProjectionFromOutlook · mapping', () => {
+  it('race day projectable → trajectory, with the outlook\'s own likely range', async () => {
+    const o = await composeRaceOutlook(fixtureRace(), '2026-09-01', fixtureReads());
+    const p = raceProjectionFromOutlook(o);
+    expect(p.basis).toBe('trajectory');
+    expect(p.projectedSec).toBe(Math.round(o.expectedRaceDay.expectedSec!));
+    expect(p.likelyRangeSec).toEqual(o.expectedRaceDay.likelyRangeSec);
   });
-
-  it('falls back to the adjusted equivalence when there is no trajectory', () => {
-    const out = resolveRaceProjection({
-      goalProjection: { trajectory: null, vdotProjectionSec: ADJUSTED_EQUIVALENCE_SEC },
-      vdot: CIM_VDOT,
-      distanceMi: CIM_MI,
-    });
-    expect(out.projectedSec).toBe(ADJUSTED_EQUIVALENCE_SEC);
-    expect(out.basis).toBe('equivalence');
+  it('no race date → equivalence, named as such', async () => {
+    const o = await composeRaceOutlook(fixtureRace({ dateISO: null }), '2026-09-01', fixtureReads());
+    const p = raceProjectionFromOutlook(o);
+    expect(p.basis).toBe('equivalence');
+    expect(p.projectedSec).toBe(Math.round(o.currentProjection.expectedSec!));
   });
-
-  it('falls back to the raw equivalence only when the projection failed entirely', () => {
-    const out = resolveRaceProjection({ goalProjection: null, vdot: CIM_VDOT, distanceMi: CIM_MI });
-    expect(out.basis).toBe('equivalence');
-    // The value the detail screen used to print, now reachable only as a last
-    // resort rather than as a peer of the trajectory.
-    expect(out.projectedSec).toBe(RAW_EQUIVALENCE_SEC);
-  });
-
-  it('refuses rather than guessing when there is no fitness read at all', () => {
-    const out = resolveRaceProjection({ goalProjection: null, vdot: null, distanceMi: CIM_MI });
-    expect(out.projectedSec).toBeNull();
-    expect(out.basis).toBeNull();
+  it('no outlook → nothing, by name', () => {
+    expect(raceProjectionFromOutlook(null)).toMatchObject({ projectedSec: null, basis: null });
   });
 });
 
-describe('the two surfaces agree', () => {
-  /** Exactly what each route now does with the resolver's answer. */
-  const project = () => resolveRaceProjection({
-    goalProjection: {
-      trajectory: { projectedSec: TRAJECTORY_SEC },
-      vdotProjectionSec: ADJUSTED_EQUIVALENCE_SEC,
-    },
-    vdot: CIM_VDOT,
-    distanceMi: CIM_MI,
-  });
-
-  it('produces one number and one gap for one race', () => {
-    const list = project();
-    const detail = project();
-    expect(detail.projectedSec).toBe(list.projectedSec);
-    expect(detail.projectedSec! - GOAL_SEC).toBe(list.projectedSec! - GOAL_SEC);
-    // The regression, stated as the number it was: the detail screen must not
-    // land back on today's equivalence while the list shows the trajectory.
-    expect(detail.projectedSec).not.toBe(RAW_EQUIVALENCE_SEC);
-    expect(list.projectedSec! - GOAL_SEC).toBe(1337); // +22:17, both screens
-  });
-
-  it('neither route resolves a projection any other way', () => {
-    for (const file of [LIST_ROUTE, DETAIL_ROUTE]) {
-      const src = fs.readFileSync(file, 'utf8');
-      expect(src, `${file} must import the shared resolver`)
-        .toMatch(/import\s*\{[^}]*resolveRaceProjection[^}]*\}\s*from\s*'@\/lib\/training\/race-projection'/);
-      // `predictRaceTime` may still be NAMED in prose explaining the bug; it
-      // may not be CALLED. A call is the defect returning.
-      const calls = src
-        .split('\n')
-        .filter((l) => !l.trimStart().startsWith('*') && !l.trimStart().startsWith('//'))
-        .filter((l) => /\bpredictRaceTime\s*\(/.test(l));
-      expect(calls, `${file} calls predictRaceTime directly: ${calls.join(' | ')}`).toHaveLength(0);
-    }
+describe('every "Projected" consumer reads the brain and nothing else', () => {
+  for (const rel of CONSUMERS) {
+    it(`${rel} resolves through the outlook`, () => {
+      const s = code(rel);
+      expect(s, `${rel} must map through raceProjectionFromOutlook`).toMatch(/raceProjectionFromOutlook/);
+      expect(s, `${rel} must resolve the outlook (by slug or via resolveOutlookForGap)`).toMatch(/resolveRaceOutlookBySlug|resolveOutlookForGap|resolveRaceOutlook\(/);
+      expect(s, `${rel} must not call computeGoalProjection for a projection`).not.toMatch(/resolveRaceProjection\(/);
+      expect(s, `${rel} must not read predictRaceTime for a race projection`).not.toMatch(/predictRaceTime\(/);
+    });
+  }
+  it('the retired resolver is gone', () => {
+    expect(src('lib/training/race-projection.ts')).not.toMatch(/export function resolveRaceProjection/);
+    expect(code('lib/race/effective-race-target.ts')).not.toMatch(/projection_snapshots/);
   });
 });
 
-describe('projectionCoachLine · the prose names the basis it actually has', () => {
+describe('projectionCoachLine · prose names the quantity beside it', () => {
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-
-  it('does not say "Today\'s fitness" over a race-day projection', () => {
-    const line = projectionCoachLine({ basis: 'trajectory', gapSec: 1337, formatGap: fmt })!;
-    // The exact sentence the detail screen used to print beside its number.
-    expect(line).not.toMatch(/Today's fitness/);
-    expect(line).toMatch(/This build projects/);
+  it('trajectory basis speaks of the build', () => {
+    expect(projectionCoachLine({ basis: 'trajectory', gapSec: 600, formatGap: fmt })).toMatch(/^This build projects 10:00 behind/);
   });
-
-  it('still says "Today\'s fitness" when that is genuinely the basis', () => {
-    const line = projectionCoachLine({ basis: 'equivalence', gapSec: 1908, formatGap: fmt })!;
-    expect(line).toMatch(/Today's fitness projects/);
+  it('equivalence basis speaks of today', () => {
+    expect(projectionCoachLine({ basis: 'equivalence', gapSec: -60, formatGap: fmt })).toMatch(/^Today's fitness covers/);
   });
-
-  it('says nothing when there is no projection to speak about', () => {
-    expect(projectionCoachLine({ basis: null, gapSec: 100, formatGap: fmt })).toBeNull();
-    expect(projectionCoachLine({ basis: 'trajectory', gapSec: null, formatGap: fmt })).toBeNull();
+  it('no basis → no line', () => {
+    expect(projectionCoachLine({ basis: null, gapSec: 600, formatGap: fmt })).toBeNull();
   });
 });

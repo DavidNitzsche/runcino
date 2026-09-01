@@ -1157,7 +1157,7 @@ export function TrainView({
               // normal parse path works.
               const projSec = (goal.goalStatus === 'watching' && goal.vdotProjectionSec)
                 ? goal.vdotProjectionSec
-                : (seed.readinessBrief?.gapReport?.trajectorySec
+                : (seed.readinessBrief?.gapReport?.expectedRaceDaySec
                   ?? parseClockTime(goal.projected) ?? 0);
               const gapSec = (projSec && goalSec) ? projSec - goalSec : 0;
               // Bar offset · cap at 28% from center so the dot stays

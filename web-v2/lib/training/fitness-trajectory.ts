@@ -214,6 +214,93 @@ function clamp(x: number, lo: number, hi: number): number {
  *                          Default 0.7 (a runner with no execution signal yet
  *                          is assumed to roughly follow the plan, not nail it).
  */
+/**
+ * 2026-09-01 · Phase 3 of the P0 order · EXPECTED IMPROVEMENT, GOAL-FREE.
+ *
+ * What the remaining block can defensibly deliver, sized from evidence about
+ * the RUNNER and the RUNWAY and nothing else:
+ *
+ *   gain = min(MAX_BLOCK_GAIN, buildWeeks × BASE_BUILD_RATE) × executionQuality
+ *          × responseFactor
+ *
+ * `executionQuality` is the recent test-point/missed-session read
+ * (`executionQualityFromTestPoints`); `responseFactor` is the runner's own
+ * historical response where one has been measured (1 = population rate when
+ * unknown — and the RANGE widens to say so). The over-performance bonus
+ * (HR-controlled sessions already beating prescription) rides on top as
+ * demonstrated-but-unconfirmed fitness, capped as before.
+ *
+ * WHAT IS DELIBERATELY ABSENT: the stated goal. The previous trajectory
+ * credited `(goalVdot − currentVdot) × executionQuality` — "the plan trusts
+ * itself" — which is the goal used as evidence of improvement, and the P0
+ * order forbids it outright ("Do not use the goal as capacity evidence …
+ * Do not fill uncertainty with the goal"). A goal can still be COMPARED
+ * against the result (`gapSec`, feasibility); it cannot manufacture the
+ * result.
+ *
+ * The RANGE convention (labelled, not physiology): the low edge is the gain
+ * at an execution quality one quarter lower, the high edge at one quarter
+ * higher plus the demonstrated bonus. It exists so a runner with thin
+ * execution evidence receives a wider band, not a narrower promise.
+ */
+export const EXPECTED_GAIN_RANGE_EXECUTION_HALF_WIDTH = 0.25;
+
+export interface ExpectedGain {
+  gainVdot: number;
+  gainRangeVdot: readonly [number, number];
+  buildWeeks: number;
+  taperWeeks: number;
+  executionQuality: number;
+  responseFactor: number;
+  overPerformanceBonusVdot: number;
+  /** Which bound sized the planned gain. */
+  bindingCap: 'runway' | 'block_max' | 'none';
+  basis: 'plan_stimulus_and_execution' | 'no_runway';
+  reasons: string[];
+}
+
+export function projectExpectedGain(args: {
+  raceDistanceMi: number;
+  weeksToRace: number;
+  executionQuality?: number | null;
+  overPerformanceBonusVdot?: number | null;
+  /** Measured historical response multiplier (1 = population). Null = unknown. */
+  responseFactor?: number | null;
+}): ExpectedGain {
+  const executionQuality = clamp(args.executionQuality ?? 0.7, 0, 1);
+  const responseFactor = args.responseFactor != null && Number.isFinite(args.responseFactor)
+    ? clamp(args.responseFactor, 0.5, 1.5)
+    : 1;
+  const taperWeeks = taperWeeksForDistance(args.raceDistanceMi);
+  const buildWeeks = Math.max(0, args.weeksToRace - taperWeeks);
+  const runwayCap = buildWeeks * BASE_BUILD_RATE;
+  const cap = Math.min(MAX_BLOCK_GAIN, runwayCap);
+  const bindingCap: ExpectedGain['bindingCap'] = buildWeeks <= 0 ? 'none' : runwayCap <= MAX_BLOCK_GAIN ? 'runway' : 'block_max';
+  const overPerf = clamp(args.overPerformanceBonusVdot ?? 0, 0, OVERPERFORMANCE_CAP_VDOT);
+  const at = (eq: number): number => clamp(cap * clamp(eq, 0, 1) * responseFactor, 0, MAX_BLOCK_GAIN);
+  const gainVdot = clamp(at(executionQuality) + overPerf, 0, MAX_BLOCK_GAIN);
+  const lo = clamp(at(executionQuality - EXPECTED_GAIN_RANGE_EXECUTION_HALF_WIDTH), 0, MAX_BLOCK_GAIN);
+  const hi = clamp(at(executionQuality + EXPECTED_GAIN_RANGE_EXECUTION_HALF_WIDTH) + overPerf, 0, MAX_BLOCK_GAIN);
+  const reasons: string[] = [];
+  if (buildWeeks <= 0) reasons.push('NO_BUILD_WEEKS_REMAIN');
+  else reasons.push(bindingCap === 'runway' ? 'GAIN_BOUNDED_BY_RUNWAY' : 'GAIN_BOUNDED_BY_BLOCK_MAX');
+  if (args.executionQuality == null) reasons.push('EXECUTION_QUALITY_DEFAULTED');
+  if (args.responseFactor == null) reasons.push('HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE');
+  if (overPerf > 0) reasons.push('OVER_PERFORMANCE_BONUS_APPLIED');
+  return {
+    gainVdot,
+    gainRangeVdot: [Math.min(lo, gainVdot), Math.max(hi, gainVdot)],
+    buildWeeks: Math.round(buildWeeks * 10) / 10,
+    taperWeeks,
+    executionQuality: Math.round(executionQuality * 100) / 100,
+    responseFactor,
+    overPerformanceBonusVdot: Math.round(overPerf * 10) / 10,
+    bindingCap,
+    basis: buildWeeks <= 0 ? 'no_runway' : 'plan_stimulus_and_execution',
+    reasons,
+  };
+}
+
 export function projectFitnessTrajectory(args: {
   currentVdot: number;
   goalSec: number;
@@ -318,45 +405,25 @@ export function projectFitnessTrajectory(args: {
   // not a generic rate. The plan's prescribed ceiling caps the gain (an
   // under-built plan can't deliver the goal no matter the effort), and
   // over-performance rides on top, up to that same ceiling.
-  const planCeilingGain = plannedTargetVdot != null
-    ? Math.max(0, plannedTargetVdot - currentVdot)
-    : Infinity;
-  const gainCap = Math.min(MAX_BLOCK_GAIN, planCeilingGain);
-  // 2026-07-06 · P1-14 · runway cap on the PLANNED (future-build) gain.
-  // "The plan trusts itself" credits the full goal gap when execution is
-  // clean — but one block cannot physically deliver more than the modelled
-  // build rate over the weeks that REMAIN (BASE_BUILD_RATE — a bounded
-  // convention, not a doctrine number; see the file-header note — is the
-  // same 0.35 midpoint computeConfidenceLabel grades the runway against).
-  // Without this term a VDOT-40 runner setting a goal needing 44.5 with 3 weeks left
-  // projected the full 4.5 gain → hero read ON PACE while confidenceLabel on
-  // the SAME payload read LOW ("behind on this runway"). A gap the runway
-  // cannot close IS David's "very clear I cannot" case — the projection must
-  // say so. The cap applies to modeled FUTURE gain only; the over-performance
-  // bonus is DEMONSTRATED current fitness (HR-controlled sessions already
-  // run) and keeps riding on top under the original block/plan ceiling, so a
-  // tapering over-performer still reads ahead.
-  // 2026-07-13 · S5 · scale the runway cap by executionQuality. Before this,
-  // exec scaled ONLY the goal-gap term ((goalVdot - currentVdot) x exec), which
-  // is irrelevant whenever the runway is the binding cap — so a missed block on
-  // a short runway produced ZERO projection penalty. One block cannot deliver
-  // more than the research build rate over the weeks that REMAIN, and a runner
-  // who is not executing does not even earn that full rate.
-  //   [TUNABLE · the one model tweak · keep BASE_BUILD_RATE (0.35) as-is;
-  //    executionQuality is applied as the multiplier so an incomplete block
-  //    honestly discounts the runway ceiling, not just the goal-gap term.]
+  // 2026-09-01 · THE GAIN IS GOAL-FREE. See `projectExpectedGain`: the goal
+  // no longer sizes the improvement it is compared against. `plannedTargetVdot`
+  // is kept as a plan DESCRIPTION (planBuiltForGoal / planUnderBuilt below);
+  // under canonical authoring the plan's prescribed paces follow capacity, so
+  // it is no longer a stimulus ceiling on the gain.
+  const expected = projectExpectedGain({
+    raceDistanceMi,
+    weeksToRace,
+    executionQuality,
+    overPerformanceBonusVdot: 0,
+  });
+  const gainCap = MAX_BLOCK_GAIN;
   const runwayCapGain = buildWeeks * BASE_BUILD_RATE * executionQuality;
-  // Which cap binds the PLANNED (future) gain: the block/plan ceiling, or the
-  // runway. Named so runwayLimited below reads off the exact same quantity.
   const plannedGainCap = Math.min(gainCap, runwayCapGain);
-  const plannedGainVdot = clamp((goalVdot - currentVdot) * executionQuality, 0, plannedGainCap);
-  // 2026-07-13 · S5 · runwayLimited · true IFF the planned gain was clamped by
-  // the runway (time remaining) rather than by the block/plan ceiling or by
-  // execution/goal-gap: the runway is the smaller cap AND the exec-scaled goal
-  // gap actually reaches it. The goal is limited by the calendar, not the
-  // runner — the surface uses this to say "runway limited" not "stalled".
-  const runwayLimited = plannedGainCap === runwayCapGain
-    && (goalVdot - currentVdot) * executionQuality >= runwayCapGain;
+  const plannedGainVdot = expected.gainVdot;
+  // 2026-09-01 · goal-free gain: "limited by the runway" means the goal is
+  // NOT reachable AND the binding cap on the expected gain is time remaining
+  // (not the block maximum). Resolved after `reachable` below.
+  const runwayBinds = expected.bindingCap === 'runway';
   // projectedGainVdot feeds route COMPUTATIONS (buildRatio, accrual), not just
   // display — keep it UNROUNDED so a sub-0.05 arithmetic swing can never flip a
   // downstream verdict. Only the display echoes below are rounded.
@@ -392,6 +459,7 @@ export function projectFitnessTrajectory(args: {
   // paces on. The seconds form below is DERIVED from it per distance rather
   // than being a second, HM-calibrated constant.
   const reachable = gapVdotRaw <= PROJECTION_NOISE_GRACE_VDOT;
+  const runwayLimited = !reachable && runwayBinds;
   // 2026-06-12 · the upgrade gear's headline: projected to BEAT the goal beyond
   // noise. Mirrors how the drift detectors let the projection read SHORT.
   // 2026-08-17 · P1-56 follow-up · a below-table goal can't express this in

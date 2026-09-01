@@ -47,7 +47,7 @@ function distFromLabel(label: string | null | undefined): number | null {
   return distanceMiFromLabel(label);
 }
 
-async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchor: Awaited<ReturnType<typeof reanchorActivePlan>> }> {
+async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchor: Awaited<ReturnType<typeof reanchorActivePlan>>; raceRows: { updated: number; refused: number } | null }> {
   // Ratchet stored max_hr if a new ceiling was observed this year.
   // loadVdotInputs calls loadEffectiveMaxHr internally for the run-candidate
   // HR gate; we call it separately here for the ratchet side effect only.
@@ -150,7 +150,32 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
     console.error('[snapshot-projections] plan re-anchor failed:', userUuid, e);
   }
 
-  return { vdot, snapshots, reanchor };
+  // 2026-09-01 · P0 · the plan's RACE rows follow the race-pace brain daily,
+  // through the dedicated canonical path (lib/race/race-row-refresh.ts). The
+  // reanchor above refreshes them too when it rewrites paces; this call is
+  // what keeps them current on a day the anchor did NOT move but the runway
+  // did. Idempotent — an unchanged row is reported, not rewritten (Rule 23).
+  let raceRows: { updated: number; refused: number } | null = null;
+  try {
+    const active = (await pool.query<{ id: string }>(
+      `SELECT id FROM training_plans
+        WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+        ORDER BY authored_iso DESC LIMIT 1`,
+      [userUuid],
+    )).rows[0];
+    if (active) {
+      const { refreshRaceRowsForPlan } = await import('@/lib/race/race-row-refresh');
+      const r = await refreshRaceRowsForPlan(active.id, { todayISO: today, source: 'cron/snapshot-projections' });
+      raceRows = r ? { updated: r.updated, refused: r.refused } : null;
+      if (r && r.refused > 0) {
+        console.error('[snapshot-projections] race-row refresh refused rows:', userUuid, r.rows.filter((x) => x.action === 'refused'));
+      }
+    }
+  } catch (e) {
+    console.error('[snapshot-projections] race-row refresh failed:', userUuid, e);
+  }
+
+  return { vdot, snapshots, reanchor, raceRows };
 }
 
 export async function POST(req: NextRequest) {

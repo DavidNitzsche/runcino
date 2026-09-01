@@ -80,12 +80,31 @@ export async function loadCoachGoalForRace(
       distanceMi: goalDistanceMi,
     });
 
-    const { loadLatestVdotWithAnchor } = await import('@/lib/training/projection-snapshots');
-    const anchor = await loadLatestVdotWithAnchor(userId)
-      .catch(() => ({ vdot: null, anchorDateISO: null, anchorDistanceMi: null }));
     const { runnerToday } = await import('@/lib/runtime/runner-tz');
     const todayISO = await runnerToday(userId);
 
+    // 2026-09-01 · P0 · THE race-pace brain. A coach-set goal is the brain's
+    // expected race day with the likely range as A/C; the fitness figure it
+    // reports is the canonical threshold capacity's, not a snapshot table's.
+    const { resolveRaceOutlook } = await import('@/lib/race/race-outlook');
+    // goalDistanceMi is positive or null by construction (see above); the
+    // function's outer try/catch is the one failure path.
+    const outlook = goalDistanceMi != null
+      ? await resolveRaceOutlook(userId, {
+          slug: race.slug, name: race.name ?? race.slug, distanceMi: goalDistanceMi,
+          dateISO: race.daysAway != null
+            ? new Date(Date.parse(todayISO + 'T12:00:00Z') + race.daysAway * 86_400_000).toISOString().slice(0, 10)
+            : null,
+          priority: race.priority === 'A' || race.priority === 'B' || race.priority === 'C' ? race.priority : null,
+          statedGoalSec: null,
+          isPast: false,
+        }, todayISO)
+      : null;
+    const anchor = {
+      vdot: outlook?.capacity.thresholdVdot ?? null,
+      anchorDateISO: outlook?.capacity.newestEvidenceISO ?? null,
+      anchorDistanceMi: outlook?.capacity.thresholdSecPerMi ? (60 * 60) / outlook.capacity.thresholdSecPerMi : null,
+    };
     const durabilityExponent = await resolveRaceExponent(userId).catch(() => null);
 
     const needsBlockSignal = goalDistanceMi != null
@@ -107,6 +126,13 @@ export async function loadCoachGoalForRace(
       vdotAnchorDistanceMi: anchor.anchorDistanceMi,
       marathonSpecificTraining,
       durabilityExponent,
+      outlook: outlook?.expectedRaceDay.expectedSec != null && outlook.expectedRaceDay.likelyRangeSec
+        ? {
+            expectedSec: outlook.expectedRaceDay.expectedSec,
+            likelyRangeSec: outlook.expectedRaceDay.likelyRangeSec,
+            thresholdVdot: outlook.capacity.thresholdVdot,
+          }
+        : null,
       todayISO,
     });
     if (!framing) return null;

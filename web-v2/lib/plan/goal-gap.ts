@@ -26,9 +26,8 @@
 
 import { pool } from '@/lib/db/pool';
 import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
-import { diagnoseLimiter, type LimiterRead, type PerformancePoint } from '@/lib/coach/limiter';
+import { diagnoseLimiter, type LimiterRead } from '@/lib/coach/limiter';
 import { normalWeeklyMileage } from '@/lib/training/normal-window';
-import { distanceMiFromLabel } from '@/lib/race/distance';
 import { vdotFromRace, goalDistanceMiFromCode, parseRaceTime } from '@/lib/training/vdot';
 import { closableSecPerWeek } from '@/lib/training/vdot-gain-rate';
 import { taperWeeksForDistance } from '@/lib/training/fitness-trajectory';
@@ -36,8 +35,8 @@ import { assessGoal, type GoalAssessment } from '@/lib/training/goal-assessment'
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { postRaceRecoveryWeeks } from './goal-tiers';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { computeGoalProjection } from '@/lib/training/goal-projection';
-import { resolveRaceProjection, type RaceProjectionBasis } from '@/lib/training/race-projection';
+import { raceProjectionFromOutlook, type RaceProjectionBasis } from '@/lib/training/race-projection';
+import { resolveRaceOutlook, resolveRaceOutlookBySlug, type RaceOutlook } from '@/lib/race/race-outlook';
 
 export type GoalGapStatus = 'closing' | 'static' | 'widening' | 'unclosable';
 
@@ -71,9 +70,12 @@ export interface GoalGap {
    *  Rule 16 defect `goal-outlook.ts`'s header names in its own predecessor
    *  code — this field carried the word "trajectory" while holding an
    *  equivalence. docs/reports/race-prediction-consolidation-2026-09-01.md. */
-  trajectorySec: number;
+  expectedRaceDaySec: number;
+  /** The likely race-day range around `expectedRaceDaySec`, from the
+   *  race-pace brain. Null when the outlook could not resolve. */
+  likelyRangeSec: readonly [number, number] | null;
   /** Which rung of `resolveRaceProjection`'s precedence produced
-   *  `trajectorySec` — 'trajectory' (race day, execution-scaled) or
+   *  `expectedRaceDaySec` — 'trajectory' (race day, execution-scaled) or
    *  'equivalence' (today's fitness). Null only alongside the raw-snapshot
    *  fallback path, where no live resolution was possible. Drives prose the
    *  same way `race-projection.ts#projectionCoachLine` uses `basis`: a
@@ -81,7 +83,7 @@ export interface GoalGap {
   trajectoryBasis: RaceProjectionBasis | null;
   /** Signed delta · positive = trajectory slower than goal (gap to close).
    *  Negative = trajectory faster than goal (running ahead). Always
-   *  `trajectorySec - goalSec` — recomputed off the resolved trajectory, so
+   *  `expectedRaceDaySec - goalSec` — recomputed off the resolved trajectory, so
    *  this can never disagree with the number beside it. */
   gapSec: number;
   /** 0..1 confidence band based on data density + projection stability. */
@@ -206,8 +208,8 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
   //    (`snapshot-projections` cron) — that is a defensible, distinct
   //    question ("is the day-to-day equivalence moving toward the goal, and
   //    how stable is that read") from "what will this runner actually run
-  //    on race day", which is `trajectorySec` below. `latest.projectionSec`
-  //    used to ALSO be reported as `trajectorySec` — that was the Rule 16
+  //    on race day", which is `expectedRaceDaySec` below. `latest.projectionSec`
+  //    used to ALSO be reported as `expectedRaceDaySec` — that was the Rule 16
   //    defect this file's 2026-09-01 fix closes; see the GoalGap field doc.
   const series = await loadProjectionSeries(userUuid, raceDistanceMi, 14);
   const latest = series.at(-1);
@@ -230,31 +232,22 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
   //     different fact from one that resolved to "level with the goal"),
   //     not a silent return to the old defect — `trajectoryBasis` is null
   //     exactly when this happens, so a caller can tell.
-  const anchor = await loadLatestVdotWithAnchor(userUuid)
-    .catch(() => ({ vdot: null, anchorDateISO: null, anchorDistanceMi: null }));
-  const daysToRace = raceDateISO
-    ? Math.max(0, Math.round(
-        (Date.parse(raceDateISO + 'T12:00:00Z') - Date.parse(todayISO + 'T12:00:00Z')) / 86400000,
-      ))
-    : null;
-  const goalProjectionForTrajectory = (raceDistanceMi > 0 && goalSec > 0 && raceDateISO)
-    ? await computeGoalProjection({
-        userUuid,
-        goalSec,
-        raceDistanceMi,
-        vdot: anchor.vdot,
-        daysToRace,
-        vdotAnchorDateISO: anchor.anchorDateISO,
-        vdotAnchorDistanceMi: anchor.anchorDistanceMi,
-      }).catch(() => null)
-    : null;
-  const resolvedTrajectory = resolveRaceProjection({
-    goalProjection: goalProjectionForTrajectory, vdot: anchor.vdot, distanceMi: raceDistanceMi,
-  });
-  const trajectorySec = resolvedTrajectory.projectedSec ?? latest.projectionSec;
+  // 2026-09-01 · P0 · THE race-pace brain. `lib/race/race-outlook.ts` is the
+  // one owner of every projection-shaped quantity; this file consumes its
+  // `expectedRaceDay` (race day, this build, goal-free improvement) through
+  // the same `raceProjectionFromOutlook` mapping every "Projected" surface
+  // uses. Falls back to the raw snapshot (`latest.projectionSec`, basis
+  // null) only when the outlook itself could not resolve — Rule 11: "could
+  // not project" is a different fact from "projects level with the goal",
+  // and `trajectoryBasis` is null exactly then.
+  const outlookForGap = await resolveOutlookForGap(userUuid, {
+    mode, raceSlug, goalSec, raceDateISO, raceDistanceMi,
+  }, todayISO);
+  const resolvedTrajectory = raceProjectionFromOutlook(outlookForGap);
+  const expectedRaceDaySec = resolvedTrajectory.projectedSec ?? latest.projectionSec;
   const trajectoryBasis: GoalGap['trajectoryBasis'] =
     resolvedTrajectory.projectedSec != null ? resolvedTrajectory.basis : null;
-  const gapSec = trajectorySec - goalSec;
+  const gapSec = expectedRaceDaySec - goalSec;
 
   let weeksRemaining: number | null = null;
   if (raceDateISO) {
@@ -330,7 +323,8 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
     raceDateISO,
     raceDistanceMi,
     goalSec,
-    trajectorySec,
+    expectedRaceDaySec,
+    likelyRangeSec: resolvedTrajectory.likelyRangeSec,
     trajectoryBasis,
     gapSec,
     confidence,
@@ -626,43 +620,15 @@ async function loadLimiterForGoal(args: {
   const { userUuid, goalDistanceMi, goalSec, raceDateISO, planAuthoredISO, excludeSlug, recentWeeklyMi } = args;
   const todayMs = Date.now();
 
-  const rows = (await pool.query<{ slug: string; meta: any; actual_result: any }>(
-    `SELECT slug, meta, actual_result FROM races
-      WHERE user_uuid = $1::uuid AND ($2::text IS NULL OR slug <> $2)
-      ORDER BY (meta->>'date') DESC NULLS LAST
-      LIMIT 40`,
-    [userUuid, excludeSlug],
-  ).catch(() => ({ rows: [] }))).rows;
-
-  const performances: PerformancePoint[] = [];
-  for (const r of rows) {
-    const m = r.meta ?? {};
-    const ar = r.actual_result ?? {};
-    const dateISO = String(m.date ?? '').slice(0, 10);
-    if (!dateISO) continue;
-    const ageDays = Math.floor((todayMs - Date.parse(dateISO + 'T12:00:00Z')) / 86400000);
-    if (ageDays < 0) continue; // upcoming race · not a performance
-
-    const distanceMi = m.distanceMi ? Number(m.distanceMi) : distanceMiFromLabel(m.distanceLabel ?? null);
-    if (!distanceMi || !(distanceMi > 0)) continue;
-
-    // The ladder, per the race-data lock · curated chip time beats stale meta.
-    let finishSeconds: number | null = null;
-    let provisional = false;
-    if (ar?.finishS && Number(ar.finishS) > 0) {
-      finishSeconds = Math.round(Number(ar.finishS));
-      provisional = ar.provisional === true || ar.source === 'watch_provisional';
-    } else if (typeof m.finishTime === 'string') {
-      const parts = m.finishTime.split(':').map(Number);
-      if (parts.length >= 2 && parts.every((n: number) => Number.isFinite(n))) {
-        finishSeconds =
-          parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
-      }
-    }
-    if (!finishSeconds || !(finishSeconds > 0)) continue;
-
-    performances.push({ distanceMi, finishSeconds, ageDays, provisional });
-  }
+  // 2026-09-01 · P0 · the curve comes from the canonical durability anchor,
+  // not from a second two-race fit living here (Rule 16 · one exponent).
+  const { resolveRaceExponent } = await import('@/lib/training/durability-anchor');
+  // No `.catch`: the read already returns a typed refusal; a thrown DB error
+  // is a failure the caller must see, not a null that looks like "no curve".
+  const durability = await resolveRaceExponent(userUuid);
+  const curve = durability.ok
+    ? { exponent: durability.rawFittedExponent, races: durability.races, provisional: false }
+    : null;
 
   // How far through the block we are · volume under the peak band is the plan
   // working early and a finding late, and the limiter model needs to know which.
@@ -680,7 +646,7 @@ async function loadLimiterForGoal(args: {
     goalPaceSecPerMi: goalDistanceMi > 0 ? goalSec / goalDistanceMi : null,
     experienceLevel: null,
     blockProgressFraction,
-    performances: performances.length > 0 ? performances : null,
+    curve,
     fadeObservations: null,
     thresholdPaceStartSecPerMi: null,
     thresholdPaceNowSecPerMi: null,
@@ -776,4 +742,35 @@ export function composeWhatClosesIt(
   out.push('The goal stays on the board · the projection is what moves.');
   out.push('Training stays honest · race-day execution still matters at any goal.');
   return out;
+}
+
+
+/**
+ * The outlook a goal gap speaks about. Race mode resolves the race row by
+ * slug; goal mode (profile.tt_goal_*, no race row) composes a synthetic race
+ * carrying the goal's own distance and deadline. Best-effort: a failed read
+ * is null, never a fallback number.
+ */
+export async function resolveOutlookForGap(
+  userUuid: string,
+  gap: Pick<GoalGap, 'mode' | 'raceSlug' | 'goalSec' | 'raceDateISO' | 'raceDistanceMi'>,
+  todayISO: string,
+): Promise<RaceOutlook | null> {
+  try {
+    if (gap.mode === 'race' && gap.raceSlug) {
+      return await resolveRaceOutlookBySlug(userUuid, gap.raceSlug, todayISO);
+    }
+    if (!(gap.raceDistanceMi > 0)) return null;
+    return await resolveRaceOutlook(userUuid, {
+      slug: 'goal',
+      name: 'Goal',
+      distanceMi: gap.raceDistanceMi,
+      dateISO: gap.raceDateISO,
+      priority: 'A',
+      statedGoalSec: gap.goalSec,
+      isPast: false,
+    }, todayISO);
+  } catch {
+    return null;
+  }
 }

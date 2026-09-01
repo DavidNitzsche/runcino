@@ -358,6 +358,8 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
  * feature is not.
  */
 export const MODULE_ORPHANS: Record<string, string> = {
+  'web-v2/lib/race/_race_outlook_fixture.ts':
+    'A fixture set: builds a complete `RaceOutlookReads` from a handful of numbers so the race-pace brain\'s pure composition (`composeRaceOutlook`) can be driven with no database. Imported only by tests — _race_outlook_contract.test.ts, _race_projection.test.ts, _effective_target.test.ts, _target_continuity.test.ts — which is the whole point: the contract gate must not need production reads to run. Runtime code must never import it.',
   'web-v2/lib/adaptation/_shadow_run_absorption_split.script.ts':
     'A one-off diagnostic tool, not runtime code and not a `.test.ts` the default vitest include glob would pick up (its own header explains why: it needs the real production DB, read-only, the way lib/adaptation-harness does but without the write-safety fence, since it never mutates). Invoked directly via `npx vitest run --config vitest.shadow-run.config.ts`, which is the only caller by design — it exists to produce docs/reports/absorption-reader-split-2026-09-01.md\'s per-case diffs and Rule 9 continuity walk, a task done once for that report, not a mechanism anything else should import. Kept rather than deleted so the report\'s numbers stay reproducible against a later account state, matching the posture of the adaptation-harness scripts above it.',
   'web-v2/lib/adaptation/_season_sweep_absorption_duration.script.ts':

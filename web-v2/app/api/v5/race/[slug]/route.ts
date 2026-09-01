@@ -23,9 +23,9 @@ import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { loadRacesState } from '@/lib/coach/races-state';
 import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
-import { loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
-import { computeGoalProjection } from '@/lib/training/goal-projection';
-import { resolveRaceProjection, projectionCoachLine } from '@/lib/training/race-projection';
+import { raceProjectionFromOutlook, projectionCoachLine } from '@/lib/training/race-projection';
+import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
+import { raceOutlookPayload } from '@/lib/race/race-outlook-payload';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { resolveCourseElevation, type ResolveCourseElevationInput, type StoredGeometry } from '@/lib/race/course-elevation';
 import { loadActivePlan } from '@/lib/plan/lookup';
@@ -189,19 +189,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     // Both surfaces now resolve through `resolveRaceProjection`, which
     // documents the precedence and returns the `basis` the coach line below
     // needs to stay true to whichever quantity it got.
-    const { vdot, anchorDateISO, anchorDistanceMi } = await loadLatestVdotWithAnchor(userId);
-    const goalProjection = (!race.is_past && distanceMi > 0 && goalSec != null && race.date)
-      ? await computeGoalProjection({
-          userUuid: userId,
-          goalSec,
-          raceDistanceMi: distanceMi,
-          vdot,
-          daysToRace: race.days,
-          vdotAnchorDateISO: anchorDateISO,
-          vdotAnchorDistanceMi: anchorDistanceMi,
-        }).catch(() => null)
+    // 2026-09-01 · P0 · THE race-pace brain. `resolveRaceOutlookBySlug` is
+    // the one owner; `raceProjectionFromOutlook` is the one mapping to
+    // "Projected". The list route reads the same two functions.
+    const outlook = (!race.is_past && distanceMi > 0)
+      ? await resolveRaceOutlookBySlug(userId, race.slug, todayISO).catch(() => null)
       : null;
-    const projection = resolveRaceProjection({ goalProjection, vdot, distanceMi });
+    const projection = raceProjectionFromOutlook(outlook);
+    // The runner's fitness for the heat read below: the canonical threshold
+    // capacity's VDOT, not a snapshot table's.
+    const vdot = outlook?.capacity.thresholdVdot ?? null;
     const plate = racePlateFor({
       isPast: race.is_past,
       goalSec,
@@ -394,6 +391,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       coachLine,
       resultEntry,
       coachGoal,
+      // 2026-09-01 · P0 · the four quantities and the bridge, additive.
+      outlook: raceOutlookPayload(outlook),
     });
   } catch (err: unknown) {
     // Was `err?.message` in the body.
