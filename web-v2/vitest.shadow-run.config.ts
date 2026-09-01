@@ -29,7 +29,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['lib/adaptation/_shadow_run_absorption_split.script.ts'],
+    include: [
+      'lib/adaptation/_shadow_run_absorption_split.script.ts',
+      'lib/adaptation/_season_sweep_absorption_duration.script.ts',
+    ],
     testTimeout: 60_000,
     passWithNoTests: false,
   },

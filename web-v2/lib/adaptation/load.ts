@@ -16,6 +16,8 @@
  * Nothing in this file may substitute a default for a measurement.
  */
 
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds } from '@/lib/runs/volume';
@@ -657,5 +659,357 @@ export async function readAdaptationSplit(
   return {
     actual_load_absorption: classifyAdaptation(unfiltered),
     representative_execution: classifyAdaptation(representative),
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE DUAL-READER COMPARISON LOG · added 2026-09-01
+ *
+ * The account owner's ruling on the split above (per
+ * docs/reports/absorption-reader-split-2026-09-01.md's go/no-go): DO NOT
+ * promote `representative_execution` into the live gate yet. Instead: log a
+ * structured comparison EVERY time the split is read, so a promotion
+ * decision is eventually made off a season of evidence rather than a
+ * seven-date sample. This section is that logging — still nothing wired into
+ * any live path, still nothing here mutates a plan.
+ *
+ * `buildAdaptationComparisonRecord` is a superset of `readAdaptationSplit`:
+ * it calls the exact same three functions
+ * (`loadAdaptationInput` / `loadRepresentativeExecutionInput` /
+ * `classifyAdaptation`) for the verdicts — so this log can never disagree
+ * with the split it is describing — and ADDITIONALLY fetches the raw dated
+ * rows a second time, purely so the log can name WHICH sessions each reader
+ * used. That date is real information: `AdaptationInput.keySessionExecutions`
+ * throws it away once the rows reach the classifier (it only carries
+ * `state`/`stimulusCompletion`/`earnsProgression`), so this is the one place
+ * in the call graph the date is still attached to the verdict. The second
+ * fetch is best-effort and wrapped so its failure can never take down the
+ * verdicts, which are already computed by the time it runs.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * PURE. Exactly `loadAdaptationInput`'s own key-session selection
+ * (`readable && read != null`, bounded to `[fromISO, toISO)`), restated so it
+ * can run against a raw fetch the caller controls instead of requiring its
+ * own query. Passing `windows: null` reproduces the unfiltered
+ * (`actual_load_absorption`) selection; passing the runner's real prescribed
+ * windows reproduces `filterExecutionEvidenceByPrescribedWindow`'s selection
+ * exactly, over whatever `[fromISO, toISO)` the caller supplies. Two call
+ * sites, one definition — Rule 16.
+ */
+export function selectExecutionObservations(
+  rows: readonly RawExecutionRow[],
+  fromISO: string,
+  toISO: string,
+  windows: readonly PrescribedWindow[] | null,
+): RawExecutionRow[] {
+  return rows.filter((r) =>
+    r.dateISO >= fromISO && r.dateISO < toISO
+    && r.readable && r.read != null
+    && (!windows || !isPrescribedNonNormal(r.dateISO, windows)));
+}
+
+/**
+ * PURE. Exactly `loadAdaptationInput`'s / `filterExecutionEvidenceByPrescribedWindow`'s
+ * verdict-row selection (first-occurrence-per-day dedup, then the same
+ * `windows` gate), restated the same way and for the same reason.
+ */
+export function selectVerdictObservations(
+  rows: readonly RawVerdictRow[],
+  fromISO: string,
+  toISO: string,
+  windows: readonly PrescribedWindow[] | null,
+): RawVerdictRow[] {
+  const seen = new Set<string>();
+  const out: RawVerdictRow[] = [];
+  for (const p of rows) {
+    if (p.dateISO < fromISO || p.dateISO >= toISO) continue;
+    if (windows && isPrescribedNonNormal(p.dateISO, windows)) continue;
+    if (seen.has(p.dateISO)) continue;
+    seen.add(p.dateISO);
+    if (p.verdict === 'on' || p.verdict === 'fast' || p.verdict === 'slow') out.push(p);
+  }
+  return out;
+}
+
+/** One dated piece of evidence, and whether each reader's selection kept it. */
+export interface AdaptationComparisonObservation {
+  dateISO: string;
+  kind: 'key_session' | 'target_verdict';
+  /** `KeySessionRead['state']` for a key session, the plain verdict for a
+   *  target-verdict row. */
+  detail: string;
+  inAbsorption: boolean;
+  inRepresentative: boolean;
+  /** Set when `actual_load_absorption` kept this row and
+   *  `representative_execution` dropped it — the Rule 8 exclusion firing. */
+  excludedFromRepresentativeReason: 'prescribed_non_normal' | null;
+  /** Set when `representative_execution` kept a row `actual_load_absorption`
+   *  never even looked at, because `representativeLookback` reached back
+   *  past the unfiltered reader's fixed 42-day window to find it. */
+  onlyInRepresentativeReason: 'representative_lookback_reach' | null;
+}
+
+/** Restated from `adaptation-engine.ts`'s own (unexported)
+ *  `absorptionPermitsLoadProgression` — `decision === 'PROGRESS' && veto ==
+ *  null` — rather than imported, because that file is owned by a concurrent
+ *  session tonight and is on this task's do-not-touch list. The predicate is
+ *  one line and doctrine-cited there; if it ever moves, this restatement
+ *  goes stale in the same silent way `progressionLean` in the shadow-run
+ *  script already accepted for the same reason. Flagged, not fixed. */
+function permitsLoadProgression(v: AdaptationVerdict): boolean {
+  return v.decision === 'PROGRESS' && v.veto == null;
+}
+
+export interface DurationLeverRead {
+  band: AdaptationVerdict['band'];
+  decision: AdaptationVerdict['decision'];
+  /** Would `detectDuration`'s `absorptionPermitsLoadProgression` gate open,
+   *  reading THIS verdict? */
+  permitsLoadProgression: boolean;
+}
+
+export interface AdaptationComparisonRecord {
+  userUuid: string;
+  todayISO: string;
+  resolvedAt: string;
+  absorptionWindow: { fromISO: string; toISO: string };
+  representativeWindow: {
+    fromISO: string;
+    toISO: string;
+    extendedByDays: number;
+    reachedOuterBound: boolean;
+  };
+  prescribedWindows: PrescribedWindow[];
+  /** Best-effort. Empty when the second, log-only fetch failed — the
+   *  verdicts below are unaffected either way. */
+  observations: AdaptationComparisonObservation[];
+  actual_load_absorption: AdaptationVerdict;
+  representative_execution: AdaptationVerdict;
+  /** DURATION is the lever this reader actually gates today
+   *  (`detectDuration`'s first check) — see
+   *  docs/reports/absorption-reader-split-2026-09-01.md §6. VOLUME is a
+   *  separate question this record does not answer. */
+  durationLever: {
+    absorption: DurationLeverRead;
+    representative: DurationLeverRead;
+    /** Which reader is the one actually holding DURATION back, when they
+     *  disagree. `'agree'` when both permit or both block. When absorption
+     *  blocks and representative would permit, absorption is decisive
+     *  TODAY (it is the live, unpromoted reader). When representative
+     *  blocks and absorption would permit, representative is decisive only
+     *  in the counterfactual sense — "if this were promoted, this is what
+     *  would newly hold DURATION back." */
+    decisiveLimiter: 'actual_load_absorption' | 'representative_execution' | 'agree';
+  };
+  disagreesOnBandOrDecision: boolean;
+}
+
+/**
+ * Build one comparison record for `userUuid` at `todayArg` (default: the
+ * runner's local today). Returns null only when the underlying inputs
+ * themselves could not be loaded — the same posture `readAdaptationSplit`
+ * takes.
+ */
+export async function buildAdaptationComparisonRecord(
+  userUuid: string,
+  todayArg?: string,
+): Promise<AdaptationComparisonRecord | null> {
+  const todayISO = todayArg ?? (await runnerToday(userUuid));
+  const fromISO = daysBefore(todayISO, ADAPTATION_WINDOW_DAYS);
+
+  const [unfiltered, representative, windows, lookback, vdot] = await Promise.all([
+    quiet('adaptation input (unfiltered, comparison log)', () => loadAdaptationInput(userUuid, todayISO)),
+    quiet('adaptation input (representative, comparison log)', () => loadRepresentativeExecutionInput(userUuid, todayISO)),
+    quiet('prescribed windows (comparison log)', () => loadPrescribedWindows(userUuid, todayISO)),
+    quiet('representative lookback (comparison log)', () => representativeLookback(userUuid, todayISO, ADAPTATION_WINDOW_DAYS)),
+    quiet('current vdot (comparison log)', () => currentVdot(userUuid)),
+  ]);
+  if (!unfiltered || !representative) return null;
+
+  const absorptionVerdict = classifyAdaptation(unfiltered);
+  const representativeVerdict = classifyAdaptation(representative);
+
+  const windowsList = windows ?? [];
+  const wideFromISO = lookback?.fromISO ?? fromISO;
+
+  /* Best-effort second fetch, purely to name which dated rows each selection
+   * kept. Never allowed to affect the verdicts above, which are already
+   * final by the time this runs. */
+  const observations: AdaptationComparisonObservation[] = [];
+  try {
+    const [wideExec, wideVerdicts] = await Promise.all([
+      loadKeySessionExecutions(userUuid, wideFromISO, todayISO, vdot),
+      loadRecentTestPoints(userUuid, vdot, 200, wideFromISO, true),
+    ]);
+
+    const absorptionExecDates = new Set(
+      selectExecutionObservations(wideExec, fromISO, todayISO, null).map((r) => r.dateISO));
+    const representativeExecDates = new Set(
+      selectExecutionObservations(wideExec, wideFromISO, todayISO, windowsList).map((r) => r.dateISO));
+    const absorptionVerdDates = new Set(
+      selectVerdictObservations(wideVerdicts, fromISO, todayISO, null).map((r) => r.dateISO));
+    const representativeVerdDates = new Set(
+      selectVerdictObservations(wideVerdicts, wideFromISO, todayISO, windowsList).map((r) => r.dateISO));
+
+    for (const row of wideExec) {
+      const inA = absorptionExecDates.has(row.dateISO);
+      const inR = representativeExecDates.has(row.dateISO);
+      if (!inA && !inR) continue; // unreadable, or outside both windows — not a candidate for either reader
+      observations.push({
+        dateISO: row.dateISO,
+        kind: 'key_session',
+        detail: row.read?.state ?? 'UNREADABLE',
+        inAbsorption: inA,
+        inRepresentative: inR,
+        excludedFromRepresentativeReason: inA && !inR ? 'prescribed_non_normal' : null,
+        onlyInRepresentativeReason: !inA && inR ? 'representative_lookback_reach' : null,
+      });
+    }
+    for (const row of wideVerdicts) {
+      const inA = absorptionVerdDates.has(row.dateISO);
+      const inR = representativeVerdDates.has(row.dateISO);
+      if (!inA && !inR) continue;
+      observations.push({
+        dateISO: row.dateISO,
+        kind: 'target_verdict',
+        detail: row.verdict ?? 'null',
+        inAbsorption: inA,
+        inRepresentative: inR,
+        excludedFromRepresentativeReason: inA && !inR ? 'prescribed_non_normal' : null,
+        onlyInRepresentativeReason: !inA && inR ? 'representative_lookback_reach' : null,
+      });
+    }
+    observations.sort((a, b) => (a.dateISO < b.dateISO ? -1 : a.dateISO > b.dateISO ? 1 : 0));
+  } catch (err) {
+    console.warn('[adaptation] comparison observation detail unreadable:', err instanceof Error ? err.message : err);
+  }
+
+  const absorptionLever: DurationLeverRead = {
+    band: absorptionVerdict.band,
+    decision: absorptionVerdict.decision,
+    permitsLoadProgression: permitsLoadProgression(absorptionVerdict),
+  };
+  const representativeLever: DurationLeverRead = {
+    band: representativeVerdict.band,
+    decision: representativeVerdict.decision,
+    permitsLoadProgression: permitsLoadProgression(representativeVerdict),
+  };
+  let decisiveLimiter: 'actual_load_absorption' | 'representative_execution' | 'agree' = 'agree';
+  if (absorptionLever.permitsLoadProgression !== representativeLever.permitsLoadProgression) {
+    decisiveLimiter = absorptionLever.permitsLoadProgression
+      ? 'representative_execution'
+      : 'actual_load_absorption';
+  }
+
+  return {
+    userUuid,
+    todayISO,
+    resolvedAt: new Date().toISOString(),
+    absorptionWindow: { fromISO, toISO: todayISO },
+    representativeWindow: {
+      fromISO: wideFromISO,
+      toISO: todayISO,
+      extendedByDays: lookback?.extendedByDays ?? 0,
+      reachedOuterBound: lookback?.reachedOuterBound ?? false,
+    },
+    prescribedWindows: windowsList,
+    observations,
+    actual_load_absorption: absorptionVerdict,
+    representative_execution: representativeVerdict,
+    durationLever: {
+      absorption: absorptionLever,
+      representative: representativeLever,
+      decisiveLimiter,
+    },
+    disagreesOnBandOrDecision:
+      absorptionVerdict.band !== representativeVerdict.band
+      || absorptionVerdict.decision !== representativeVerdict.decision,
+  };
+}
+
+/* ── persistence ──────────────────────────────────────────────────────────
+ *
+ * `db/migrations/160_adaptation_shadow_log.sql` (drafted tonight by a
+ * concurrent session, NOT RUN — pending David's per-statement go per
+ * CLAUDE.md's DDL rule) is PACE-lever-only by its own header comment and by
+ * its column shape: `engine_previous`/`engine_proposed` are typed as
+ * `PaceMagnitude`, `phase_breakdown` as `PacePhaseOutcome[]`. This record is
+ * a DURATION-lever absorption/execution comparison with a materially
+ * different shape (a dated observation list, a duration-lever read per
+ * side, a decisive-limiter verdict) — inserting it into that table would
+ * either fail the column types or force a lossy reshape into columns named
+ * for a different lever. Not a clean additive fit, and this task is not
+ * authorized to draft a second migration (CLAUDE.md: DDL needs David's
+ * explicit per-statement go; only the already-proposed migration 160 is
+ * even a candidate for someone else to apply tonight).
+ *
+ * So persistence here follows the exact fallback pattern
+ * `lib/adaptation/shadow-compare.ts` established tonight for the identical
+ * problem: append one JSON line per call to a git-tracked file. A distinct
+ * filename (`*.absorption-duration.jsonl`) in the SAME directory, so the two
+ * shadow logs never interleave two different record shapes inside one file,
+ * while still landing in the one place a human already knows to look. Like
+ * the PACE mechanism, this is real, inspectable persistence for the
+ * verification and replay work in this task — and, same caveat, NOT the
+ * production answer once this is ever wired into a cron: a Railway/Vercel
+ * filesystem is ephemeral and a file write there would not survive the next
+ * deploy. That is a promotion-time concern; nothing here is wired into a
+ * cron today. */
+
+const COMPARISON_LOG_DIR = path.join(process.cwd(), '..', 'docs', 'reports', 'adaptation-shadow-log');
+
+export interface AdaptationComparisonPersistResult {
+  posture: 'file' | 'skipped';
+  detail: string;
+}
+
+async function persistComparisonRecordToFile(record: AdaptationComparisonRecord): Promise<string> {
+  await fs.mkdir(COMPARISON_LOG_DIR, { recursive: true });
+  const file = path.join(COMPARISON_LOG_DIR, `${record.userUuid}.absorption-duration.jsonl`);
+  await fs.appendFile(file, `${JSON.stringify(record)}\n`, 'utf8');
+  return file;
+}
+
+/** Persist one comparison record. NEVER throws — a persistence failure is
+ *  best-effort and logged, matching every other non-fatal step in this
+ *  file's neighbourhood (`shadow-compare.ts`'s `persistShadowCompareRecord`). */
+export async function persistAdaptationComparisonRecord(
+  record: AdaptationComparisonRecord,
+): Promise<AdaptationComparisonPersistResult> {
+  try {
+    const file = await persistComparisonRecordToFile(record);
+    return { posture: 'file', detail: file };
+  } catch (e) {
+    console.warn('[adaptation] comparison record persist failed:', e instanceof Error ? e.message : e);
+    return { posture: 'skipped', detail: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * THE SIBLING OF `readAdaptationSplit` THAT LOGS. Every call builds a
+ * comparison record and appends it to the git-tracked shadow log before
+ * returning — the "ongoing logging... every time it's called" the account
+ * owner asked for in place of promoting `representative_execution`. Still
+ * not called from any live path; still never mutates a plan.
+ */
+export async function readAdaptationSplitWithLog(
+  userUuid: string,
+  todayArg?: string,
+): Promise<{
+  split: AdaptationAbsorptionSplit;
+  record: AdaptationComparisonRecord;
+  persisted: AdaptationComparisonPersistResult;
+} | null> {
+  const record = await buildAdaptationComparisonRecord(userUuid, todayArg);
+  if (!record) return null;
+  const persisted = await persistAdaptationComparisonRecord(record);
+  return {
+    split: {
+      actual_load_absorption: record.actual_load_absorption,
+      representative_execution: record.representative_execution,
+    },
+    record,
+    persisted,
   };
 }
