@@ -44,6 +44,7 @@ import {
   loadPrescribedWindows,
   isPrescribedNonNormal,
   representativeLookback,
+  activePrescribedWindow,
   type PrescribedWindow,
 } from '@/lib/training/normal-window';
 import {
@@ -636,7 +637,19 @@ export async function loadRepresentativeExecutionInput(
     windows,
   );
 
-  return { ...base, ...filtered };
+  // The honest, proximate reason a HOLD-shaped verdict off THIS reader should
+  // reach for first — see `AdaptationInput.recentPrescribedWindow`'s own doc
+  // comment and docs/reports/adaptation-reason-honesty-fix-2026-09-01.md.
+  // Only this reader populates it: it is the one whose lookback widening can
+  // end up citing evidence from weeks before today, and `windows`/`todayISO`
+  // are already resolved right here for the filter above — a second read
+  // would be a second opinion about the same question.
+  const active = activePrescribedWindow(todayISO, windows);
+  const recentPrescribedWindow = active
+    ? { kind: active.kind, raceSlug: active.window.raceSlug, daysSinceRace: active.daysSinceRace }
+    : null;
+
+  return { ...base, ...filtered, recentPrescribedWindow };
 }
 
 /** Both halves of the split, for the shadow-replay tooling and its tests.

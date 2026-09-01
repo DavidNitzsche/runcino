@@ -284,6 +284,50 @@ export function isPrescribedNonNormal(
   return false;
 }
 
+/**
+ * WHICH prescribed window today itself sits inside, and whether today is
+ * still counting down to the race (`'taper'`) or counting up from it
+ * (`'post_race_recovery'`). `isPrescribedNonNormal` only answers yes/no; a
+ * caller that wants to STATE an honest reason for a habit-facing verdict
+ * needs to say which race and which side of race day today falls on, not
+ * just that today is excluded.
+ *
+ * Built for `readExecution`'s `representative_execution` reader
+ * (2026-09-01, `docs/reports/adaptation-reason-honesty-fix-2026-09-01.md`):
+ * a widened, filtered lookback can end up explaining a HOLD by citing
+ * sessions weeks old, when the truer, more proximate reason is sitting in
+ * plain sight — the runner is still inside the very window the lookback had
+ * to reach past. This is that reason, named.
+ *
+ * When more than one window covers today (a compound block — see
+ * `normal-window.ts`'s own header on chained races), the window with the
+ * LATEST `fromISO` wins: the most recently opened window is the one whose
+ * race the runner would actually name if asked "what's going on this week".
+ *
+ * Pure — no I/O, so falsifiable without a database (Rule 18).
+ */
+export interface ActivePrescribedWindow {
+  window: PrescribedWindow;
+  kind: 'taper' | 'post_race_recovery';
+  /** `daySpan(window.raceDateISO, todayISO)` — negative while still tapering
+   *  toward the race, 0 on race day, positive during recovery. */
+  daysSinceRace: number;
+}
+
+export function activePrescribedWindow(
+  todayISO: string,
+  windows: readonly PrescribedWindow[],
+): ActivePrescribedWindow | null {
+  let best: PrescribedWindow | null = null;
+  for (const w of windows) {
+    if (todayISO < w.fromISO || todayISO > w.toISO) continue;
+    if (!best || w.fromISO > best.fromISO) best = w;
+  }
+  if (!best) return null;
+  const daysSinceRace = daySpan(best.raceDateISO, todayISO);
+  return { window: best, kind: daysSinceRace >= 0 ? 'post_race_recovery' : 'taper', daysSinceRace };
+}
+
 /** The in-memory half of the filter · drop every row landing on a prescribed
  *  taper / race / recovery day. `dateOf` returns YYYY-MM-DD. */
 export function excludePrescribedDays<T>(

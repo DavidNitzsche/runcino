@@ -32,6 +32,7 @@ export default defineConfig({
     include: [
       'lib/adaptation/_shadow_run_absorption_split.script.ts',
       'lib/adaptation/_season_sweep_absorption_duration.script.ts',
+      'lib/adaptation/_falsify_reason_honesty.script.ts',
     ],
     testTimeout: 60_000,
     passWithNoTests: false,

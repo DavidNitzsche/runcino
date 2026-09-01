@@ -228,6 +228,40 @@ export interface AdaptationInput {
   niggleSeverity: number | null;
   illnessActive: boolean | null;
   injuryActive: boolean | null;
+
+  /* --- narration context (optional) ------------------------------------ */
+  /**
+   * Set when TODAY itself falls inside a doctrine-prescribed taper, race-day,
+   * or post-race recovery window (`activePrescribedWindow` against
+   * `loadPrescribedWindows`, `lib/training/normal-window.ts`).
+   *
+   * NARRATION ONLY — the mirror, for what the classifier SAYS, of Rule 8's
+   * corollary for what it SCORES. It changes nothing about the band, the
+   * decision or any dimension's score; the literal execution/internal-cost/
+   * recovery/consistency/trend reads are exactly as absorbed either way. What
+   * it changes is which sentence `summarise()` reaches for on a HOLD-shaped
+   * band: a runner three days post-race is better told "you just raced" than
+   * handed a reconstructed narrative built from sessions weeks distant that
+   * a widened, filtered lookback had to reach past THIS SAME window to find
+   * (`docs/reports/adaptation-reason-honesty-fix-2026-09-01.md`). The more
+   * proximate, more honestly-recognisable fact about this week wins.
+   *
+   * Optional, and left `undefined` by every existing caller/fixture: only a
+   * caller that has already resolved the runner's prescribed windows for
+   * today can honestly populate it. Today that is
+   * `loadRepresentativeExecutionInput` alone — the reader whose lookback
+   * widening is what creates the reaching-back risk in the first place.
+   * `loadAdaptationInput` (the live, unpromoted reader) reads a fixed 42-day
+   * window with no extension, so it never needed to reach past a recovery
+   * block to find evidence, and leaving it `undefined` there is correct, not
+   * an oversight.
+   */
+  recentPrescribedWindow?: {
+    kind: 'taper' | 'post_race_recovery';
+    raceSlug: string;
+    /** Negative while tapering, 0 on race day, positive during recovery. */
+    daysSinceRace: number;
+  } | null;
 }
 
 /* -------------------------------------------------------------- constants */
@@ -740,8 +774,29 @@ export function classifyAdaptation(input: AdaptationInput): AdaptationVerdict {
     stepMultiplier,
     dimensions,
     veto: null,
-    summary: summarise(band, mean, dimensions, trendGatePassed, progressionGatePassed),
+    summary: summarise(band, mean, dimensions, trendGatePassed, progressionGatePassed, input.recentPrescribedWindow),
   };
+}
+
+/**
+ * The proximate, honestly-recognisable reason for a HOLD-shaped band when
+ * today sits inside a prescribed taper or post-race recovery window —
+ * preferred over reaching into a dimension's reconstructed detail, per
+ * `AdaptationInput.recentPrescribedWindow`'s own doc comment. Null when no
+ * such context was supplied (every caller except
+ * `loadRepresentativeExecutionInput`) or when it was supplied but empty.
+ */
+function proximateHoldReason(
+  ctx: AdaptationInput['recentPrescribedWindow'],
+): string | null {
+  if (!ctx) return null;
+  if (ctx.kind === 'post_race_recovery') {
+    if (ctx.daysSinceRace === 0) return 'you raced today, and today is not a day to add stimulus';
+    const days = ctx.daysSinceRace === 1 ? '1 day' : `${ctx.daysSinceRace} days`;
+    return `you are ${days} past your race and still inside the scheduled recovery window — this is expected, not a shortfall`;
+  }
+  const days = Math.abs(ctx.daysSinceRace) === 1 ? '1 day' : `${Math.abs(ctx.daysSinceRace)} days`;
+  return `you are ${days} out from your race, inside the taper`;
 }
 
 /**
@@ -755,6 +810,7 @@ function summarise(
   dimensions: DimensionRead[],
   trendGatePassed: boolean,
   progressionGatePassed: boolean,
+  recentPrescribedWindow?: AdaptationInput['recentPrescribedWindow'],
 ): string {
   const weakest = dimensions
     .filter((d) => d.score != null && d.detail)
@@ -773,10 +829,19 @@ function summarise(
         return 'Recent sessions look good, but it is not yet enough weeks to call it a trend. Staying on the planned progression.';
       }
       return 'Training is landing about as expected. Continuing on the planned progression.';
-    case 'marginal':
+    case 'marginal': {
+      // A runner still inside a doctrine-prescribed taper or post-race
+      // recovery window is a more proximate, more honestly-recognisable
+      // reason to hold than any dimension's reconstructed detail — which,
+      // for a reader that widened its lookback to stay representative, can
+      // describe evidence weeks old (see `proximateHoldReason`'s own doc
+      // comment). Never changes the band or the decision — narration only.
+      const proximate = proximateHoldReason(recentPrescribedWindow);
+      if (proximate) return `Holding the current stimulus rather than adding to it — ${proximate}.`;
       return weakest?.detail
         ? `Holding the current stimulus rather than adding to it — ${weakest.detail}.`
         : 'Holding the current stimulus rather than adding to it. The last block has not been fully absorbed yet.';
+    }
     case 'poor':
       return weakest?.detail
         ? `The current load is not producing the response it should — ${weakest.detail}. Backing off is the productive move here.`
