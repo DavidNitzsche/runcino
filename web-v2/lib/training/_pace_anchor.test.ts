@@ -166,7 +166,13 @@ function maintenancePlanRouter(opts: {
         authored_state: { anchorSource: opts.anchorSource, anchorVdot: 50 },
       }] };
     }
-    if (sql.includes("reason = 'plan_adapt_recompute_paces'")) {
+    // 2026-09-01 · adapterMovedAnchorWithin's WHERE widened from
+    // `reason = 'plan_adapt_recompute_paces'` to
+    // `reason IN ('plan_adapt_recompute_paces', 'plan_adapt_pace_canary_applied')`
+    // (pace-anchor.ts, item 13 of docs/reports/pace-canary-infrastructure-
+    // 2026-09-01.md) — match on the quoted literal alone so this router keeps
+    // recognizing the query regardless of the `=` / `IN (...)` operator shape.
+    if (sql.includes("'plan_adapt_recompute_paces'")) {
       return { rows: opts.adapterMovedRecently ? [{ '?column?': 1 }] : [] };
     }
     // Maintenance arm's future-workouts read and every write: empty is fine.

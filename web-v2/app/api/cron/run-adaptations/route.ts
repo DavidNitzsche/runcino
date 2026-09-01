@@ -43,6 +43,7 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
 import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 import { runAndPersistPaceShadowCompare } from '@/lib/adaptation/shadow-compare';
+import { runPaceCanaryCycle } from '@/lib/adaptation/pace-canary';
 
 export const maxDuration = 120;
 
@@ -245,6 +246,33 @@ export async function POST(req: NextRequest) {
       const pullbackDecided = actions.some(reducesLoad);
       const bump = await tryAdaptiveBump(uid, applied > 0 || pullbackDecided).catch(() => null);
       if (bump) await bustBriefingCacheForEvent(uid, 'plan_swap');
+
+      // ── 2026-09-01 · OWNER-ONLY PACE CANARY (docs/reports/
+      //    pace-canary-infrastructure-2026-09-01.md) ────────────────────────
+      //
+      // Placed AFTER applyAdaptations/tryAdaptiveBump on purpose, unlike the
+      // shadow-compare call above: shadow-compare deliberately reads the
+      // PRE-mutation plan so its "did live agree with shadow" comparison
+      // starts from the same state as the live adapter. This is the one
+      // pathway in this loop that can itself WRITE pace_target_s_per_mi (see
+      // pace-canary.ts's header) — running it here means it evaluates
+      // against the plan AS IT STANDS after tonight's adaptation pass, not a
+      // stale pre-adaptation snapshot, avoiding two same-tick writers
+      // reasoning about different starting states.
+      //
+      // COMPLETELY INERT while PACE_CANARY_ENABLED is unset (default) or
+      // the runner is not in PACE_CANARY_ALLOWLIST (default: empty) — see
+      // lib/adaptation/pace-canary-config.ts's `resolvePaceCanaryGate`,
+      // which this call reaches first and which short-circuits before any
+      // database read. `_pace_canary.test.ts` / the adaptation harness
+      // suite prove the zero-write claim mechanically, not just by reading
+      // this comment.
+      try {
+        const canary = await runPaceCanaryCycle(uid);
+        if (canary.status === 'error') {
+          console.warn(`[pace-canary] ${uid}: ${canary.error}`);
+        }
+      } catch { /* logged inside · non-fatal, matches every other best-effort step here */ }
 
       // 2026-08-30 · the LTHR re-anchor USED TO BE HERE, and this is the
       // reason it is not any more.

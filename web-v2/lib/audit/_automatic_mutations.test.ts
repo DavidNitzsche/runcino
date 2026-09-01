@@ -208,6 +208,12 @@ const PLAN_WRITER_FILE_OWNERS: Record<string, string> = {
   'lib/plan/recompute-paces.ts': 'cron/snapshot-projections',
   'lib/plan/adapt.ts': 'cron/run-adaptations',
   'lib/plan/progression-pass.ts': 'cron/run-adaptations',
+  // 2026-09-01 · the owner-only PACE canary (docs/reports/
+  // pace-canary-infrastructure-2026-09-01.md). Reached from the same route
+  // as adapt.ts/progression-pass.ts, AFTER them — see the registry entry's
+  // note for the three independent gates (flag, allowlist, missing table)
+  // that keep it inert in every committed state.
+  'lib/adaptation/pace-canary.ts': 'cron/run-adaptations',
 
   // Runner-initiated, each with the route that reaches it.
   'lib/plan/injury-builder.ts':

@@ -106,17 +106,38 @@ export function anchorVdotFromState(
 }
 
 /**
- * Did the 03:00 adapter move this runner's pace anchor within the window?
+ * Did the 03:00 adapter — OR the owner-only PACE canary
+ * (`lib/adaptation/pace-canary.ts`, item 13 of the external-review spec
+ * answering `docs/reports/adaptation-authority-policy-brief-2026-09-01.md`)
+ * — move this runner's pace anchor within the window?
  *
  * Reads the adapter's own audit record (`plan_adapt_recompute_paces`
  * coach_intents rows, written inside the same `mutatePlan` transaction as the
  * pace rewrite) rather than any new state.
  *
+ * 2026-09-01 · WIDENED to also match `plan_adapt_pace_canary_applied` —
+ * the canary writes a `coach_intents` row inside the SAME transaction as its
+ * `pace_target_s_per_mi` rewrite, using this exact reason string
+ * (`pace-canary.ts`'s `applyEligiblePaceCanary`), specifically so this
+ * function needs no other change to cover it. The alternative — teaching
+ * `reanchor-plan.ts` a second, parallel "did the canary move it" check —
+ * would have been a second mechanism answering the same question this one
+ * already answers, which Rule 16 forbids. Consequence: for
+ * `ADAPTER_ANCHOR_DEFER_HOURS` (24h) after a canary application, the nightly
+ * self-heal (`reanchorActivePlan`) DEFERS to it exactly as it already defers
+ * to the adapter's own same-morning move — never silently overwriting a
+ * canary-applied row. After that window, if evidence still warrants a
+ * canonical reanchor, it fires and VISIBLY supersedes the canary's value —
+ * "visibly" because that reanchor writes its own `authored_state` stamp and
+ * its own `coach_intents` row (`plan_adapt_reanchor_*`), so an audit can see
+ * both events in order, not just the final number. Never a silent fight over
+ * the same column.
+ *
  * Returns `null` when the read FAILED — which is not the same answer as
  * `false`, and the caller must treat it as "could not tell" (the self-heal
  * fails toward deferring: a pace refresh skipped for one day is recoverable,
- * a double-write over the adapter's morning move is the bug this exists to
- * prevent).
+ * a double-write over the adapter's — or the canary's — morning move is the
+ * bug this exists to prevent).
  */
 export async function adapterMovedAnchorWithin(
   q: { query: typeof pool.query },
@@ -127,7 +148,7 @@ export async function adapterMovedAnchorWithin(
     const r = await q.query(
       `SELECT 1 FROM coach_intents
         WHERE COALESCE(user_uuid, user_id) = $1::uuid
-          AND reason = 'plan_adapt_recompute_paces'
+          AND reason IN ('plan_adapt_recompute_paces', 'plan_adapt_pace_canary_applied')
           AND ts >= NOW() - make_interval(hours => $2::int)
         LIMIT 1`,
       [userId, hours],

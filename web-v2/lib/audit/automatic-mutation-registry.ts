@@ -207,7 +207,7 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     route: 'app/api/cron/run-adaptations/route.ts',
     trigger: '0 3 * * *',
     reach: 'overwrites_engine_state',
-    changes: ['plan_workouts', 'training_plans', 'coach_intents', 'plan_workout_proposals', 'plan_proposals', 'coach_proposals', 'users.vdot_last_reviewed'],
+    changes: ['plan_workouts', 'training_plans', 'coach_intents', 'plan_workout_proposals', 'plan_proposals', 'coach_proposals', 'users.vdot_last_reviewed', 'pace_canary_applications'],
     idempotent: true,
     onPartialFailure: 'mutatePlan transaction with differential doctrine validation and rollback.',
     runnerSees: 'surfaced',
@@ -219,7 +219,18 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       + '(tryAdaptiveBump) is blocked for 48h after any applied pull-back intent (downgrade/shave/readiness red), '
       + 'not just same-tick. A day_actions skip is now a decision, not a debt: the skipped session is never '
       + 'rescheduled, a plan_adapt_skip_respected note intent records it, and it still reads as a non-running day '
-      + 'to gap and volume detection.',
+      + 'to gap and volume detection. '
+      + '2026-09-01 · lib/adaptation/pace-canary.ts (docs/reports/pace-canary-infrastructure-2026-09-01.md) is '
+      + 'reached from this same route, AFTER applyAdaptations/tryAdaptiveBump so it reads the post-adaptation '
+      + 'plan state. It is INERT by construction: PACE_CANARY_ENABLED is unset and PACE_CANARY_ALLOWLIST is '
+      + 'empty in every committed state (lib/adaptation/pace-canary-config.ts), and its own write path additionally '
+      + 'refuses with PERSISTENCE_TABLE_MISSING while db/migrations/161_pace_canary_applications.sql is drafted '
+      + 'but not applied — three independent gates, all closed today. When (if ever) enabled for an allowlisted '
+      + 'user, it writes ONLY pace_target_s_per_mi on unsealed threshold/tempo/cruise rows within a moving phase '
+      + '(reach: overwrites_engine_state, same as this route\'s existing recompute_paces limb), rate-limited to '
+      + 'one applied change per 7 days, atomically via the same mutatePlan boundary, with a full before/after '
+      + 'snapshot in pace_canary_applications and a one-call rollback (rollbackPaceCanaryApplication). '
+      + 'Reversible: yes, explicitly, unlike the rest of this route — see that table.',
   },
   {
     id: 'cron/silent-rebuild',
