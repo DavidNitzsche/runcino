@@ -91,6 +91,7 @@ import {
   type NormalizedPhase,
   type RunData,
 } from '@/lib/runs/run-shape';
+import type { WirePhaseVerdict } from '@/lib/training/execution-semantics';
 import { readProgressionSpec } from '@/lib/plan/progression-spec';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
 import {
@@ -372,7 +373,7 @@ export interface ActualRead {
    *  counters. Null when no work phase carried them. */
   toleranceShare: number | null;
   /** The watch's per-phase grades over the work phases, in order. */
-  workVerdicts: Array<'hit' | 'drifted' | 'missed' | 'incomplete'>;
+  workVerdicts: WirePhaseVerdict[];
 }
 
 /**

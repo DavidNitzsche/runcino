@@ -26,6 +26,8 @@ import {
   phaseVerdictLabel,
   sessionToleranceSec,
   EASY_PHASE_TOLERANCE_S_PER_MI,
+  WIRE_PHASE_VERDICTS,
+  type WirePhaseVerdict,
   type PaceShape,
   type SessionClass,
 } from '@/lib/training/execution-semantics';
@@ -137,20 +139,25 @@ export interface PhaseBreakdown {
    * the tolerance the server sent it, using the 5-second sample stream that
    * never leaves the watch (`WorkoutEngine.buildCompletion`):
    *
-   *   hit        · mean pace in band AND ≥70% of samples in band
-   *   drifted    · mean pace in band, under 70% of samples in band
-   *   missed     · mean pace outside the band
+   *   hit        · the completed segment AVERAGE was in the window, or under
+   *                the ceiling
+   *   fast       · quicker than the fast edge, or past the ceiling
+   *   slow       · slower than the slow edge. Never returned on a ceiling
+   *                phase — slower than a ceiling is correct running
    *   incomplete · the phase ended before reaching its target
+   *   drifted / missed · LEGACY, pre-2026-09-01 builds only. See
+   *                `WirePhaseVerdict` in `lib/training/execution-semantics.ts`
    *
-   * The two disagree, legitimately and often: a rep whose mean pace was fine
-   * but which sawed either side of the band is `status: 'on'` and
-   * `verdict: 'drifted'`, and the second is the one that carries the sample
-   * stream's evidence. Both travel; neither overwrites the other.
+   * The two can still disagree, and both travel; neither overwrites the other.
+   * They now disagree far less often, because both grade the segment average
+   * and both route through the same owner — before 2026-09-01 `status` used a
+   * ±10 s/mi band while this row shipped `tolerance_pace_sec: 8`, so the
+   * colour and the number beside it were answering different questions.
    *
    * Null on every treadmill phase and on any phase with no target — absence
    * of recording, never a judgement.
    */
-  verdict: 'hit' | 'drifted' | 'missed' | 'incomplete' | null;
+  verdict: WirePhaseVerdict | null;
   /** Seconds inside the pace band, as the device counted them. */
   time_in_tolerance_sec: number | null;
   /** Seconds outside it. `in + out` is the graded time, which is shorter than
@@ -1692,9 +1699,11 @@ export function mapWatchPhases(
   });
 }
 
-/** The four grades `WorkoutEngine.buildCompletion` can emit. Anything else on
- *  the wire is an era we do not know and is dropped rather than guessed at. */
-const PHASE_VERDICT_WORDS = new Set(['hit', 'drifted', 'missed', 'incomplete']);
+/** The grades `WorkoutEngine.buildCompletion` can emit, plus the two legacy
+ *  words that sit on rows already in the database. Owned by
+ *  `lib/training/execution-semantics.ts`; anything else on the wire is an era
+ *  we do not know and is dropped rather than guessed at. */
+const PHASE_VERDICT_WORDS = new Set<string>(WIRE_PHASE_VERDICTS);
 
 /** A tolerance counter, or null. Zero is a real reading (a rep the device
  *  graded and found entirely outside the band — David's 2026-08-11 recovery

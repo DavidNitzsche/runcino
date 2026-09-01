@@ -66,6 +66,11 @@
  * "this path does not record it", never as a zero.
  */
 
+import {
+  WIRE_PHASE_VERDICTS,
+  type WirePhaseVerdict,
+} from '@/lib/training/execution-semantics';
+
 /* ══════════════════════════════════════════════════════════════════════════
  * 1 · THE TYPE
  * ═══════════════════════════════════════════════════════════════════════ */
@@ -1463,13 +1468,23 @@ export function splitsWithHrAndPace(
  *  server's tolerance. `WorkoutEngine.buildCompletion`:
  *
  *    incomplete · the runner ended the phase before reaching its target
- *    hit        · mean pace in band AND ≥70% of 5s samples in band
- *    drifted    · mean pace in band, < 70% of samples in band
- *    missed     · mean pace outside the band
+ *    hit        · the completed segment AVERAGE was inside the window, or
+ *                 under the ceiling
+ *    fast       · quicker than the window's fast edge, or past the ceiling
+ *    slow       · slower than the window's slow edge. A ceiling phase can
+ *                 never be `slow` — slower than a ceiling is correct running
+ *    drifted    · LEGACY, pre-2026-09-01 builds only
+ *    missed     · LEGACY, pre-2026-09-01 builds only
  *
  *  Null when the phase had no target to grade against (recoveries, and every
- *  treadmill phase). */
-export type PhaseVerdict = 'hit' | 'drifted' | 'missed' | 'incomplete';
+ *  treadmill phase).
+ *
+ *  The vocabulary and the two legacy words are owned by
+ *  `lib/training/execution-semantics.ts` — see `WirePhaseVerdict` there for
+ *  why `missed` had to be split into `fast` and `slow` (it was returned on a
+ *  rep the runner ran THREE SECONDS A MILE QUICKER than asked) and why
+ *  `drifted` stopped being a verdict. */
+export type PhaseVerdict = WirePhaseVerdict;
 
 export type PhaseType = 'warmup' | 'work' | 'recovery' | 'cooldown';
 
@@ -1494,7 +1509,7 @@ export interface NormalizedPhase {
 }
 
 const PHASE_TYPES: readonly string[] = ['warmup', 'work', 'recovery', 'cooldown'];
-const PHASE_VERDICTS: readonly string[] = ['hit', 'drifted', 'missed', 'incomplete'];
+const PHASE_VERDICTS: readonly string[] = WIRE_PHASE_VERDICTS;
 
 /** Normalise `data.phases`. Returns [] when the row carries none. */
 export function runPhases(d: RunData): NormalizedPhase[] {

@@ -378,6 +378,63 @@ export const REP_SETTLE_ALLOWANCE_SEC = 30;
  */
 export type PhaseVerdict = 'hit' | 'fast' | 'slow' | 'incomplete' | 'not_graded';
 
+/**
+ * The verdict vocabulary that travels on the wire and sits in `runs.data.phases
+ * [].verdict` on rows already in the database.
+ *
+ * `hit` / `fast` / `slow` / `incomplete` are what a watch build from
+ * 2026-09-01 onward emits, and they are `PhaseVerdict` minus `not_graded`
+ * (which is expressed on the wire as an ABSENT verdict, not a word — Rule 11's
+ * third state, kept distinguishable).
+ *
+ * `drifted` and `missed` are LEGACY. They are still accepted, because they are
+ * on real production rows and a stored fact does not stop having happened, but
+ * no build emits them any more:
+ *
+ *   · `drifted` used to mean "the average landed but under 70% of the
+ *     5-second instantaneous samples were inside a ±8 s/mi band". On a 1-mile
+ *     GPS rep that is a measurement of the instrument, not of the runner — the
+ *     owner's 2026-09-01 reps at 422 / 429 / 422 against a 422-438 window
+ *     scored 29% / 57% / 35% and all three came back `drifted`. Raggedness is
+ *     real and still travels, as `timeInToleranceSec` /
+ *     `timeOutOfToleranceSec`, which `winTimeInTolerance` already renders as
+ *     "N% of work time inside the target band". It is no longer a VERDICT,
+ *     because at this band width the wrist cannot tell a ragged rep from a
+ *     noisy signal, and Rule 11 says do not assert what you cannot measure.
+ *   · `missed` conflated two opposite facts. The 2026-09-01 last rep was
+ *     `missed` for being THREE SECONDS A MILE QUICKER than the fast edge, on
+ *     the rep the watch's own cue had asked him to run at the pace of the
+ *     first. `fast` and `slow` are separate words because they are separate
+ *     events and they call for opposite coaching.
+ */
+export type WirePhaseVerdict = 'hit' | 'fast' | 'slow' | 'drifted' | 'missed' | 'incomplete';
+
+/** Every value a stored or incoming phase verdict may hold. */
+export const WIRE_PHASE_VERDICTS: readonly WirePhaseVerdict[] =
+  Object.freeze(['hit', 'fast', 'slow', 'drifted', 'missed', 'incomplete']);
+
+/** The two words no current build emits — see `WirePhaseVerdict`. */
+export const LEGACY_WIRE_VERDICTS: readonly WirePhaseVerdict[] =
+  Object.freeze(['drifted', 'missed']);
+
+/**
+ * Did this rep land the work?
+ *
+ * `fast` counts, for the reason `gradeSession` sets out at length: doctrine's
+ * own worked example calls a threshold set finishing five seconds past the
+ * fast edge upward evidence, and whether a fast rep was a soft target or an
+ * overcook is a HEART RATE question this layer does not answer.
+ * Legacy `drifted` counts too — its average was in band by definition.
+ */
+export function wireVerdictLandedTheWork(v: string | null | undefined): boolean {
+  return v === 'hit' || v === 'fast' || v === 'drifted';
+}
+
+/** Did this rep fall short of the intensity the session existed for? */
+export function wireVerdictFellShort(v: string | null | undefined): boolean {
+  return v === 'slow' || v === 'missed';
+}
+
 /** True for the verdicts that mean the runner did what was asked. */
 export function phaseVerdictIsGood(v: PhaseVerdict): boolean {
   return v === 'hit' || v === 'not_graded';

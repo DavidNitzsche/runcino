@@ -84,7 +84,17 @@ enum WatchRepUnit: String, Codable {
 /// missing `ruleOutcomes`: the wire carried it, nothing errored, and the
 /// feature simply never happened.
 struct WatchRule: Codable, Equatable {
-    /// "bail" | "abort" | "pass". Only `bail` draws a board.
+    /// "bail" | "abort" | "pass".
+    ///
+    /// CORRECTED 2026-09-01. This comment used to read "Only `bail` draws a
+    /// board", and it was accurate: the race `abort` rules were authored,
+    /// persisted, shipped over the wire, decoded here, and drew nothing. A
+    /// safety stop shipped inert. `WorkoutEngine.bailRule` now falls through
+    /// to an abort when no bail exists, and gates it on the rule's own
+    /// `metric` and `scope`.
+    ///
+    /// `pass` still draws nothing, and that is correct — a pass criterion is
+    /// a grading line, not something to interrupt a runner with.
     let kind: String
     /// "hr" | "pace".
     let metric: String?
@@ -122,6 +132,7 @@ struct WatchRule: Codable, Equatable {
     }
 
     var isBail: Bool { kind == "bail" }
+    var isAbort: Bool { kind == "abort" }
 }
 
 /// A line the coach says, and the same line drawn on the wrist for the three
@@ -163,6 +174,50 @@ struct WatchSpokenCue: Codable, Equatable, Identifiable {
     var isDrawable: Bool { !text.isEmpty }
 }
 
+/// PACE-SHAPE-1 (2026-09-01) · what a phase's `targetPaceSPerMi` MEANS.
+///
+/// The wrist used to grade every paced phase as a two-sided band, because the
+/// wire carried a target and a tolerance and nothing that said which KIND of
+/// target it was. So a cool-down at 8:54/mi under an 8:22/mi easy ceiling came
+/// back `missed` — a correct cool-down, graded a failure — and a between-rep
+/// jog was one legacy payload away from being graded at all.
+///
+///   · `window`  — hold it, ±`tolerancePaceSPerMi`, both sides. Quality reps.
+///   · `ceiling` — do not go FASTER than it. Slower is never a miss. Warm-up,
+///                 cool-down, easy and long running.
+///   · `none`    — no prescribed pace. Recovery jogs. Never pace-graded.
+///   · `effort`  — a target that is not a pace. Never pace-graded.
+///
+/// Additive on the wire: a payload that omits it falls back to `legacyDefault`
+/// below, which reproduces the old behaviour for work phases and fixes the two
+/// shapes that were unambiguously wrong (recovery, warm-up/cool-down) without
+/// needing the server to say so. The server owner is
+/// `web-v2/lib/training/execution-semantics.ts`; this enum never re-derives it.
+enum WatchPaceShape: String, Codable {
+    case window
+    case ceiling
+    case effort
+    case none
+
+    /// What a phase means when the server did not say.
+    ///
+    /// Deliberately NOT `.window` for every phase. A recovery has no prescribed
+    /// pace, and a warm-up/cool-down target is the easy band's fast edge — both
+    /// are true of every session ever authored, so an old payload gets the
+    /// right answer without a server round trip.
+    static func legacyDefault(for type: WatchPhaseType, hasTarget: Bool) -> WatchPaceShape {
+        guard hasTarget else { return .none }
+        switch type {
+        case .recovery: return .none
+        case .warmup, .cooldown: return .ceiling
+        default: return .window
+        }
+    }
+
+    /// Is this phase graded against a pace at all?
+    var isPaceGraded: Bool { self == .window || self == .ceiling }
+}
+
 struct WatchPhase: Codable, Identifiable {
     /// Stable identity for SwiftUI lists · the cursor index assigned at
     /// decode time (the backend payload has no per-phase id).
@@ -175,6 +230,10 @@ struct WatchPhase: Codable, Identifiable {
     let durationSec: Int
     let targetPaceSPerMi: Int?
     let tolerancePaceSPerMi: Int?
+    /// PACE-SHAPE-1 · what `targetPaceSPerMi` means. Never nil: an omitted wire
+    /// key resolves through `WatchPaceShape.legacyDefault`, so every consumer
+    /// can branch on it without a second absence check.
+    let paceShape: WatchPaceShape
     let haptic: WatchHaptic
     /// How this rep is measured. Defaults to `.time` so older payloads
     /// (and every non-rep phase) behave exactly as before.
@@ -211,6 +270,7 @@ struct WatchPhase: Codable, Identifiable {
     /// own position for labels + completion reporting.
     init(index: Int, type: WatchPhaseType, label: String, durationSec: Int,
          targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic,
+         paceShape: WatchPaceShape? = nil,
          repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil,
          isFinishSegment: Bool = false, isStrideSegment: Bool = false,
          ruleLabel: String? = nil, ruleEvidence: String? = nil, ruleJudgement: String? = nil) {
@@ -220,6 +280,8 @@ struct WatchPhase: Codable, Identifiable {
         self.durationSec = durationSec
         self.targetPaceSPerMi = targetPaceSPerMi
         self.tolerancePaceSPerMi = tolerancePaceSPerMi
+        self.paceShape = paceShape
+            ?? WatchPaceShape.legacyDefault(for: type, hasTarget: (targetPaceSPerMi ?? 0) > 0)
         self.haptic = haptic
         self.repUnit = repUnit
         self.distanceMi = distanceMi
@@ -244,7 +306,7 @@ struct WatchPhase: Codable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm, isFinishSegment
+        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, paceShape, haptic, repUnit, distanceMi, hrTargetBpm, isFinishSegment
         case isStrideSegment, ruleLabel, ruleEvidence, ruleJudgement
     }
 
@@ -266,6 +328,13 @@ struct WatchPhase: Codable, Identifiable {
         self.durationSec = try c.lenientInt(forKey: .durationSec)
         self.targetPaceSPerMi = c.lenientIntIfPresent(forKey: .targetPaceSPerMi)
         self.tolerancePaceSPerMi = c.lenientIntIfPresent(forKey: .tolerancePaceSPerMi)
+        // Same leniency doctrine as `type`/`haptic`/`repUnit` above: a shape
+        // string a newer server invents must read as unrecognised and fall
+        // back, never throw and take the whole workout down.
+        let decodedType = self.type
+        let decodedTarget = self.targetPaceSPerMi
+        self.paceShape = ((try? c.decodeIfPresent(WatchPaceShape.self, forKey: .paceShape)) ?? nil)
+            ?? WatchPaceShape.legacyDefault(for: decodedType, hasTarget: (decodedTarget ?? 0) > 0)
         self.haptic = (try? c.decode(WatchHaptic.self, forKey: .haptic)) ?? .start
         self.repUnit = try c.decodeIfPresent(WatchRepUnit.self, forKey: .repUnit) ?? .time
         self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
@@ -284,6 +353,10 @@ struct WatchPhase: Codable, Identifiable {
         try c.encode(durationSec, forKey: .durationSec)
         try c.encodeIfPresent(targetPaceSPerMi, forKey: .targetPaceSPerMi)
         try c.encodeIfPresent(tolerancePaceSPerMi, forKey: .tolerancePaceSPerMi)
+        // RESTAMP-2 applies here too. `persistSnapshot` stores the workout as
+        // JSON, so dropping this on the way OUT means a run resumed after a
+        // crash grades its cool-down as a two-sided band again.
+        try c.encode(paceShape, forKey: .paceShape)
         try c.encode(haptic, forKey: .haptic)
         try c.encode(repUnit, forKey: .repUnit)
         try c.encodeIfPresent(distanceMi, forKey: .distanceMi)

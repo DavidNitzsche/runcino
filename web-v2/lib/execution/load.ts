@@ -32,6 +32,7 @@ import {
   runDistanceMiSql,
   asRunData,
 } from '@/lib/runs/run-shape';
+import type { WirePhaseVerdict } from '@/lib/training/execution-semantics';
 import {
   actualStimulus,
   establishedPaceFor,
@@ -70,7 +71,7 @@ export interface KeySessionExecution {
   /** The device's own signals, carried through for surfaces and audits. */
   watchStatus: 'completed' | 'partial' | 'abandoned' | null;
   toleranceShare: number | null;
-  workVerdicts: Array<'hit' | 'drifted' | 'missed' | 'incomplete'>;
+  workVerdicts: WirePhaseVerdict[];
   replacedByRace: boolean;
 }
 

@@ -29,6 +29,17 @@ enum PaceZone: Equatable {
 struct PaceDriftEvaluator {
     let targetPaceSPerMi: Int
     let toleranceSPerMi: Int
+    /// PACE-SHAPE-1 (2026-09-01) · what the target means. A `.ceiling` phase
+    /// has NO slow edge: an easy run held 40 s/mi under its ceiling is a
+    /// correctly run easy day, and buzzing the runner to speed up is exactly
+    /// what Brief 03 forbids -- "the athlete should never need to speed up
+    /// merely to satisfy the bottom of an easy range."
+    ///
+    /// This evaluator is armed on every WORK phase, and on an easy or long run
+    /// the work phase's target IS the easy ceiling, so before this the wrist
+    /// turned amber and fired a sustained-drift haptic at a runner doing the
+    /// right thing.
+    let paceShape: WatchPaceShape
     /// Drift magnitude (s/mi) beyond which the zone is red.
     var hardDriftSPerMi: Int = 15
     /// How long a drift must persist before the haptic fires.
@@ -37,8 +48,9 @@ struct PaceDriftEvaluator {
     private var driftStartedAt: Date?
     private var firedForCurrentEpisode = false
 
-    init(targetPaceSPerMi: Int, toleranceSPerMi: Int) {
+    init(targetPaceSPerMi: Int, toleranceSPerMi: Int, paceShape: WatchPaceShape = .window) {
         self.targetPaceSPerMi = targetPaceSPerMi
+        self.paceShape = paceShape
         // A zero/negative tolerance would make every sample "drift";
         // clamp to a sane floor.
         let clampedTol = max(1, toleranceSPerMi)
@@ -64,7 +76,10 @@ struct PaceDriftEvaluator {
 
     mutating func update(currentPaceSPerMi: Int, now: Date = Date()) -> Result {
         let delta = currentPaceSPerMi - targetPaceSPerMi
-        let magnitude = abs(delta)
+        // PACE-SHAPE-1 · a ceiling has one edge. Slower than a ceiling is not
+        // a drift, so a positive delta contributes nothing to the magnitude
+        // and the runner is left alone.
+        let magnitude = (paceShape == .ceiling && delta > 0) ? 0 : abs(delta)
 
         // HYSTERESIS AT THE EDGES.
         //
