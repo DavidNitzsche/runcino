@@ -1288,13 +1288,25 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // (`loadPhaseBreakdown` in `lib/coach/run-state.ts`) — so a rep
         // breakdown was always one tap away, just never on the sheet the
         // runner opens first.
+        //
+        // `type` ADDED 2026-09-01, same sweep that fixed the field-name
+        // mismatch above. Once `mi`/`sec` started carrying real data this bug
+        // became visible one level up: `sectionPieces` had nothing to name a
+        // phase with, so it numbered rows "Section 1", "Section 2" — which
+        // read, in the runner's own words, as "some random bullshit". `type`
+        // is the SAME field `workAveragesFromPhases` above and the `phases`
+        // block feeding `deriveWin` already read off `completionPhases` —
+        // this is the one place that dropped it before handing the phase to
+        // the phone. Passed through raw (not narrowed to the four known
+        // values) because the narrowing already happens client-side, the same
+        // posture `run-shape.ts`'s `runPhases()` takes for its own callers.
         routePhases: indoor
           ? []
           : completionPhases.flatMap((ph: any) => {
               const mi = Number(ph.actualDistanceMi ?? ph.distanceMi ?? ph.distance_mi);
               const sec = Number(ph.actualDurationSec ?? ph.durationSec ?? ph.duration_sec);
               return Number.isFinite(mi) && mi > 0 && Number.isFinite(sec) && sec > 0
-                ? [{ mi, sec: Math.round(sec) }]
+                ? [{ mi, sec: Math.round(sec), type: typeof ph.type === 'string' ? ph.type : null }]
                 : [];
             }),
         hrZones: hrZoneRanges,

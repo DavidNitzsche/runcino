@@ -1165,20 +1165,34 @@ struct TodayAfterV5: View {
 
     /// Sections, from what this screen actually has.
     ///
-    /// TODAY'S PAYLOAD IS THINNER THAN RUN DETAIL'S, AND THE TABLE SAYS ONLY
-    /// WHAT IT KNOWS. `RunDetailV5` builds its pieces from
-    /// `phase_breakdown` — real labels, the asked pace, the watch's own grade
-    /// — and gets "Interval · 1 km, 6:45, asked 6:40, held it". All this
-    /// screen carries is `routePhases`, which is a distance and a duration per
-    /// phase. So the rows are numbered rather than named, and carry no target
-    /// and no verdict, because inventing either from a pace would be the phone
-    /// deciding what the plan asked for.
+    /// TODAY'S PAYLOAD IS THINNER THAN RUN DETAIL'S, BUT NOT SILENT ABOUT WHAT
+    /// EACH ROW IS. `RunDetailV5` builds its pieces from `phase_breakdown` —
+    /// real per-phase labels, the asked pace, the watch's own grade — and gets
+    /// "Interval · 1 km, 6:45, asked 6:40, held it". This screen's
+    /// `routePhases` carries only a distance, a duration and (since
+    /// 2026-09-01) the phase's `type` — no target and no verdict, because
+    /// inventing either from a pace would be the phone deciding what the plan
+    /// asked for. `type` is enough to NAME the row, though, and naming it is
+    /// the whole difference between a plan and a list: "Section 1", "Section
+    /// 2" numbered every phase off its position with no regard for what it
+    /// was, and read, in the runner's own words, as "some random bullshit" —
+    /// "needs to be warm up, interval 1, break, interval 2, etc. the plan."
     ///
-    /// Every piece draws `isWork: true` — not a claim that all of them are
-    /// work, but a refusal to claim which ones are. `isWork` drives ink weight
-    /// and nothing else, so uniform weight asserts no hierarchy; guessing
-    /// which phase was a rep from its pace would assert one that nothing on
-    /// this payload supports.
+    /// THE SAME WORDS THE REST OF THE APP ALREADY USES. "Interval N of M",
+    /// counted within the work phases only, is `LiveRunOutdoorV5.lineHead`'s
+    /// convention for the run in progress; "Recovery" is `RunDetailV5
+    /// .fallbackLabel`'s word for a jog between reps and the pre-run card's
+    /// own word for the same phase (`spec-card.ts`'s `recovery: 'Honest jog,
+    /// not standing.'`). One name per concept, so a runner who has already
+    /// met these words on the watch and before the run meets them again here.
+    ///
+    /// `isWork` now reads the phase's real type instead of asserting one
+    /// uniform weight for every row — the type is the reason it can, where
+    /// before nothing on this payload supported the claim.
+    ///
+    /// A PHASE WITH NO `type` (a payload from before 2026-09-01, or a future
+    /// era this screen does not recognise) still gets a row — it just falls
+    /// back to a numbered, unnamed one rather than guessing what it was.
     private var sectionPieces: [RepPiece] {
         let usable = model.routePhases.filter { $0.mi > 0 && $0.sec > 0 }
         // A SINGLE PHASE IS THE RUN, and the poster at the top of this screen
@@ -1186,6 +1200,13 @@ struct TodayAfterV5: View {
         // in a list of one is a section that says nothing — the same ruling
         // `RunDetailV5.repPieces` makes, for the same reason.
         guard usable.count > 1 else { return [] }
+        // WORK ORDINALS, COUNTED WITHIN THE WORK PHASES ONLY — "Interval 1",
+        // "Interval 2", not the phase's position among warm-ups and jogs.
+        // Same walk `LiveRunOutdoorV5`'s `workIndex` does for the live phase.
+        var workOrdinal: [Int: Int] = [:]
+        for (idx, p) in usable.enumerated() where p.type == "work" {
+            workOrdinal[idx] = workOrdinal.count + 1
+        }
         return usable.enumerated().map { i, p in
             // A DURATION IS NOT A PACE. Found 2026-09-01, the day `p.mi`/
             // `p.sec` first carried real data (a server field-name bug had
@@ -1200,9 +1221,17 @@ struct TodayAfterV5: View {
             // 8:36/mi) rendered as "18:04/mi" — 1084 seconds read back as a
             // pace. Divide by the phase's own distance first.
             let paceSecPerMi = p.mi > 0 ? Double(p.sec) / p.mi : Double(p.sec)
+            let label: String
+            switch p.type {
+            case "warmup":   label = "Warm Up"
+            case "cooldown": label = "Cool Down"
+            case "recovery": label = "Recovery"
+            case "work":     label = "Interval \(workOrdinal[i] ?? 1)"
+            default:         label = "Section \(i + 1)"
+            }
             return RepPiece(id: i,
-                     label: "Section \(i + 1)",
-                     isWork: true,
+                     label: label,
+                     isWork: p.type.map { $0 == "work" } ?? true,
                      actualPace: Units.formatPace(secPerMile: paceSecPerMi),
                      askedPace: nil,
                      detail: "\(Units.formatDistance(miles: p.mi, decimals: 2)) \(Units.distanceLabel())",
