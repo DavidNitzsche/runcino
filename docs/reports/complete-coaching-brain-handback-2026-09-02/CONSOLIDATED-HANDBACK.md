@@ -624,7 +624,38 @@ third defect sits beside them.
 **The run came in clean.** One canonical row, source `watch`, 5.98 mi, avg HR
 139, max 163, zones 62/29/8/1/0. No duplicate, nothing merged wrongly.
 
-**The data is complete and correct.** `runs.data.phases` holds THIRTEEN phases:
+**CORRECTION, and it is mine.** I first wrote that the data was complete and
+nothing was missing from the database. **That was wrong.** David's watch at the
+moment he stopped read **6.41 mi / 55:49**. The stored run is **5.98 mi /
+50:57**. **0.43 of a mile and 4 minutes 52 seconds of his run are missing**, and
+they are missing from the record, not from the screen.
+
+    watch at stop     6.41 mi    55:49  (3349 s)
+    stored run        5.98 mi    50:57  (3057 s)
+    gap               0.43 mi     4:52  ( 292 s)
+
+**The phases sum to exactly the stored figures**, 5.98 mi and 3057 s. So the run
+was truncated at the end of the last STRUCTURED phase — the sixth walk-back —
+and everything he ran after it was never recorded. His own words: "after the
+last stride I ran a bit longer."
+
+**It is not hiding anywhere.** No `workout_routes` row exists for 2026-09-02 and
+no distance sample reached `health_samples`. The truncated row is the only
+record.
+
+Two more things in that row point the same way. `clockAudit` reads
+`wallSec 4694, countedSec 3057, pausedSec 0, driftSec 1637` — the session spanned
+78 minutes of wall time and counted 51. And `recoveryExtensions` holds four
+entries, all on the final walk-back, each extending it by 30 seconds and every
+one carrying `repCount: 7` against a session prescribed as six. The watch was
+waiting for a seventh rep while he was already running on.
+
+**That also explains the sentence.** "All seven reps" is not only the composer
+counting the easy block — the watch itself recorded `repCount: 7`.
+
+**With that correction made**, the rest of what follows still stands: the
+thirteen phases that WERE captured are accurate, and the display defects below
+are real and separate. `runs.data.phases` holds:
 
 | Phase | Distance | Pace | Avg HR | Cadence |
 |---|---|---|---|---|
@@ -636,8 +667,8 @@ third defect sits beside them.
 | Stride 5 of 6 | 0.06 | 5:50 | 142 | 176 |
 | Stride 6 of 6 | 0.05 | 7:11 | 152 | 161 |
 
-plus six walk-backs. **They sum to 5.98 miles — exactly the run.** Nothing is
-missing from the database. Every defect is in the display.
+plus six walk-backs. They sum to 5.98 miles — exactly the STORED run, which is
+the point: the structure is faithful right up to where the recording stopped.
 
 **Defect 1 · the mile table shows five miles of a 5.98-mile run.** `data.splits`
 holds only five whole-mile entries and the table renders `splits`. The final 0.98
