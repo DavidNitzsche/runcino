@@ -47,7 +47,7 @@ function distFromLabel(label: string | null | undefined): number | null {
   return distanceMiFromLabel(label);
 }
 
-async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchor: Awaited<ReturnType<typeof reanchorActivePlan>>; raceRows: { updated: number; refused: number } | null }> {
+async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchor: Awaited<ReturnType<typeof reanchorActivePlan>>; raceRows: { updated: number; refused: number } | null; convergence: string | null }> {
   // Ratchet stored max_hr if a new ceiling was observed this year.
   // loadVdotInputs calls loadEffectiveMaxHr internally for the run-candidate
   // HR gate; we call it separately here for the ratchet side effect only.
@@ -175,7 +175,29 @@ async function snapshotForUser(userUuid: string, today: string): Promise<{ vdot:
     console.error('[snapshot-projections] race-row refresh failed:', userUuid, e);
   }
 
-  return { vdot, snapshots, reanchor, raceRows };
+  /* RULE 23 · CANNOT-CONVERGE-1 (2026-09-01) · SAY SO WHEN A PLAN IS STILL
+   * PRICED BY NOTHING, AFTER THIS JOB HAS HAD ITS TURN.
+   *
+   * The 2026-09-01 independent audit's second finding was not that convergence
+   * lagged — it was that for 6 of 7 live plans it had NEVER happened, and
+   * nobody knew: no alert, no staleness check, discovered only because a human
+   * queried `training_plans` by hand. `reanchorActivePlan` above now covers the
+   * runner with no measured VDOT (`reanchorOffCanonicalPrior`); this is the
+   * check that the coverage is actually holding.
+   *
+   * Runs AFTER the reanchor, so it judges the state that survives the fix, and
+   * best-effort: a failure to raise an alert must never fail the job that
+   * writes the runner's paces.
+   */
+  let convergence: string | null = null;
+  try {
+    const { alertOnUnconvergedPlan } = await import('@/lib/adaptation/authoring-convergence');
+    convergence = await alertOnUnconvergedPlan(userUuid);
+  } catch (e) {
+    console.error('[snapshot-projections] convergence check failed:', userUuid, e);
+  }
+
+  return { vdot, snapshots, reanchor, raceRows, convergence };
 }
 
 export async function POST(req: NextRequest) {

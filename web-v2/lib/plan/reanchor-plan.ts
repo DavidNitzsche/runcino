@@ -271,6 +271,128 @@ export function isReanchorDeferral(o: ReanchorOutcome): o is ReanchorDeferral {
 }
 
 /**
+ * CANNOT-CONVERGE-1 (2026-09-01) · THE ARM FOR A RUNNER WITH NO MEASURED VDOT.
+ *
+ * `reanchorActivePlan`'s GUARD 2 used to return null here, which meant a
+ * cold-start runner's plan kept whatever authoring gave it, forever. That was
+ * survivable only while authoring and the flex agreed; they never did, and the
+ * 2026-09-01 audit measured 6 of 7 live plans in production that had NEVER
+ * been through the canonical resolvers.
+ *
+ * WHAT THIS DOES, AND WHAT IT REFUSES TO DO.
+ *
+ *   · It re-prices the block off `resolvePrescribedPaceAnchors` — the same
+ *     canonical answer authoring now uses — so a plan written before
+ *     AUTHORING-CANONICAL-1 converges onto one brain.
+ *   · It stamps `reanchored_at` so `authoring-convergence.ts` can see that it
+ *     ran, and `season_anchor_source` / `season_anchor_provisional` from the
+ *     canonical THRESHOLD's own source mode. It does NOT write
+ *     `'measured_vdot'` and it does NOT clear the provisional flag: nothing
+ *     was measured, and saying otherwise is the laundering GUARD 2 exists to
+ *     prevent.
+ *   · It is a NO-OP on a plan already authored canonically. Such a plan has
+ *     nothing to converge with; re-writing its rows nightly would be churn
+ *     that the mutation boundary would have to fingerprint for no gain.
+ *
+ * RULE 23 · IT ENSURES ITS OWN PRECONDITION rather than assuming a sibling
+ * job ran. It resolves the anchors itself; nothing about being late changes
+ * what it does.
+ */
+async function reanchorOffCanonicalPrior(
+  userId: string,
+  today: string,
+): Promise<ReanchorOutcome> {
+  // `rowOrNull`, not a `.catch(() => ({rows: []}))`: a failed read and "this
+  // runner has no active plan" would otherwise be the same empty, and this
+  // function's whole job is to notice a plan nothing is pricing (Rule 11 ·
+  // lib/db/read.ts logs the failure).
+  const planRow = await rowOrNull<{
+    id: string; mode: string | null; race_id: string | null;
+    authored_state: Record<string, unknown> | null;
+  }>(
+    'reanchor-plan/canonical-prior/active-plan',
+    pool.query(
+      `SELECT id, mode, race_id, authored_state FROM training_plans
+        WHERE user_uuid = $1 AND archived_iso IS NULL
+        ORDER BY authored_iso DESC LIMIT 1`,
+      [userId],
+    ),
+  );
+  if (!planRow) return null;
+
+  const st = (planRow.authored_state ?? {}) as Record<string, any>;
+
+  // Already canonical at authoring — nothing to converge. Reported as a
+  // deferral rather than a bare null so a caller can tell "no work needed"
+  // from "no plan" (Rule 11).
+  if (st.pace_authoring?.source === 'canonical') return null;
+
+  const anchorRead = await resolvePrescribedPaceAnchors(userId, today);
+  if (!anchorRead.ok) {
+    console.error(
+      `[reanchorPlan] canonical-prior REFUSED · plan=${planRow.id} · `
+      + `anchors ${anchorRead.reason} · ${anchorRead.detail} · plan left untouched`,
+    );
+    return null;
+  }
+  const anchors = anchorRead.anchors;
+  // The canonical threshold's own derived VDOT. Null for a runner outside the
+  // [30,85] table, which `recomputePacesForPlan` handles: it prices from the
+  // anchors and reads this only for the race-target input and the stamp.
+  const priorVdot = anchors.basis.threshold.vdot;
+  const sourceMode = anchors.basis.threshold.sourceMode;
+
+  const boundary = await mutatePlan<{ workoutsUpdated: number; workoutsSealed: number } | null>({
+    userUuid: userId,
+    source: 'reanchor-plan/canonical-prior',
+    todayISO: today,
+    planId: planRow.id,
+    touches: 'derivations',
+    detail: { to_vdot: priorVdot, source_mode: sourceMode, measured: false },
+    apply: async (client) => {
+      await client.query(
+        `UPDATE training_plans
+            SET authored_state = COALESCE(authored_state, '{}'::jsonb) || jsonb_build_object(
+                  'pace_blend',
+                  COALESCE(authored_state->'pace_blend', '{}'::jsonb) || $2::jsonb
+                )
+          WHERE id = $1`,
+        [planRow.id, JSON.stringify({
+          // NOT `measured_vdot`. The canonical mode is carried through as it
+          // is, so a reader can see exactly how well this number is known.
+          season_anchor_vdot: priorVdot,
+          season_anchor_source: sourceMode,
+          season_anchor_provisional: sourceMode === 'user_prior' || sourceMode === 'population_prior',
+          reanchored_at: new Date().toISOString(),
+          reanchored_from: 'canonical_prior',
+        })],
+      );
+      const { recomputePacesForPlan } = await import('./recompute-paces');
+      const res = await recomputePacesForPlan(planRow.id, priorVdot ?? 0, {
+        source: 'reanchor_canonical_prior',
+        client,
+      });
+      return res
+        ? { workoutsUpdated: res.workoutsUpdated, workoutsSealed: res.workoutsSealed }
+        : null;
+    },
+  });
+
+  if (!boundary.ok || boundary.value == null) return null;
+  return {
+    planId: planRow.id,
+    mode: (planRow.mode === 'race-prep' || planRow.race_id != null) ? 'race-prep' : 'maintenance',
+    fromVdot: st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null,
+    toVdot: priorVdot ?? 0,
+    fromSource: (st.pace_blend?.season_anchor_source as string) ?? null,
+    workoutsUpdated: boundary.value.workoutsUpdated,
+    workoutsSealed: boundary.value.workoutsSealed,
+    // Nothing was measured, so nothing ended a calibration.
+    clearedProvisional: false,
+  };
+}
+
+/**
  * Re-anchor a user's ACTIVE plan to their measured fitness, whatever its mode.
  *
  * No-op (returns null) when there is no active plan, no measured VDOT, or no
@@ -284,9 +406,40 @@ export async function reanchorActivePlan(
   today: string,
   evidence?: ReanchorEvidence | null,
 ): Promise<ReanchorOutcome> {
-  // GUARD 2 · a measured read, or nothing happens. A provisional anchor is
-  // never upgraded off another provisional one.
-  if (measuredVdot == null || !Number.isFinite(measuredVdot) || measuredVdot <= 0) return null;
+  /* ── GUARD 2 · REVISED 2026-09-01 · A RUNNER WITH NO MEASURED VDOT IS NOT A
+   *    RUNNER THE APP MAY LEAVE ON LEGACY PRICES FOREVER ────────────────────
+   *
+   * This read `if (measuredVdot == null) return null` — and the caller
+   * (`snapshot-projections`) passes an EVIDENCE-ONLY `bestRecentVdot`. So a
+   * runner without a qualifying measured VDOT was never reanchored: not late,
+   * NEVER. The 2026-09-01 independent audit measured the consequence in
+   * production — 6 of 7 live plans had never been through the canonical
+   * resolvers, one of them for 24 days — and named it: "the population for
+   * which authoring pace-authority actually matters most is exactly the
+   * population the reanchor safety net never reaches."
+   *
+   * The guard's ORIGINAL reasoning is still right and is preserved: a
+   * PROVISIONAL anchor must never be "upgraded" off another provisional one,
+   * because that launders a guess into a measurement. What was wrong was the
+   * conclusion drawn from it — that the correct response is to do nothing.
+   *
+   * The correct response is to price the plan HONESTLY. The canonical
+   * resolvers always answer (their last rung is a prior), and every answer
+   * carries its own `source_mode` and confidence, so re-pricing a cold-start
+   * plan off `resolvePrescribedPaceAnchors` does not claim a measurement — it
+   * replaces the legacy cascade's number with the canonical layer's number at
+   * the SAME epistemic strength, correctly labelled. That is convergence
+   * (Constitution §8), not an upgrade.
+   *
+   * `reanchorOffCanonicalPrior` is deliberately a SEPARATE function rather
+   * than a null-tolerant `measuredVdot`: the measured arms stamp
+   * `season_anchor_source: 'measured_vdot'` and `season_anchor_provisional:
+   * false`, and a prior-priced rewrite must stamp neither. One function that
+   * did both would be one `if` away from writing "measured" over a guess.
+   */
+  if (measuredVdot == null || !Number.isFinite(measuredVdot) || measuredVdot <= 0) {
+    return reanchorOffCanonicalPrior(userId, today);
+  }
 
   const planRow = (await pool.query<{
     id: string; mode: string | null; race_id: string | null;

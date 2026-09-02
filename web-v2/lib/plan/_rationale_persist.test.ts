@@ -76,7 +76,7 @@ describe('RATIONALE-PERSIST-1 · the selector\'s rationale survives persistence'
 
         const shape = persistedDayShape(d, weekT, {
           lthr: null, maxHr: null, goalPaceSec: input.goalPaceSec ?? null,
-          easyAnchorTSec: weekT, goalIPaceEligible: false,
+          easyAnchorTSec: weekT,
         });
         expect(shape.workoutSpec, `${w.startISO} ${d.type} built no spec`).not.toBeNull();
 

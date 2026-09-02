@@ -72,12 +72,20 @@
  * taper are FIXED once authored; pace and distance flex on the weeks not yet
  * run."
  *
- * STILL NOT WIRED: `generate.ts`'s full-block authoring path. A brand-new block
- * is still composed off the old cascade, and it is scoped as its own pass for
- * the same reason this one was scoped separately from the capacity layer. That
- * is a MIGRATION, not a second truth (Constitution §8): the flex runs daily and
- * is the LAST writer on every unrun day, so a block authored on the old numbers
- * converges onto these ones and no surface ever shows two answers at once.
+ * FULLY WIRED as of 2026-09-01 (AUTHORING-CANONICAL-1). This paragraph used to
+ * read "STILL NOT WIRED: `generate.ts`'s full-block authoring path", and it was
+ * the honest statement of a scoped migration — but a header asserting an
+ * invariant nothing verifies is documentation rather than enforcement (Rule
+ * 20's prose corollary), and this one would have gone stale silently.
+ *
+ * `composePlan`, `composeMaintenancePlan`, `composeRecoveryPlan`,
+ * `persistComposedPlan` and `loadGeneratorInputs` now price every zone from
+ * `composePaceAnchors` through `load-prescription-anchors.ts`, and the whole
+ * goal-to-training-pace class the old cascade carried is DELETED rather than
+ * migrated. Authoring and the flex therefore agree by construction, which is
+ * stronger than the convergence argument this paragraph used to make: there is
+ * no longer a window in which a block is priced by one brain and rewritten by
+ * another. `scripts/check-goal-pace-leak.sh` is what holds it.
  *
  * `_prescription_resolver.audit.test.ts` remains the shadow-mode report and is
  * still read-only — it is now the before/after record for this promotion rather
@@ -1495,7 +1503,46 @@ export function composePaceAnchors(capacity: Immutable<ResolvedCapacity>): PaceA
     shakeoutCeilingSecPerMi: Math.round(
       point(shakeout) ?? capacity.easyCeiling.ceilingSecPerMi + SHAKEOUT_CEILING_PAD_S_PER_MI,
     ),
-    marathonSecPerMi: Math.round(point(marathon) ?? mp.paceSecPerMi),
+    /**
+     * MARATHON, WITH THE SAME §29 SEPARATION THE PRESCRIPTION ITSELF APPLIES.
+     *
+     * FOUND 2026-09-01, by wiring authoring to this function and watching it
+     * REFUSE to price a 15:00/mi marathoner (`_audit_slow_runner`'s below-table
+     * MARATHON persona): `marathon 999 s/mi is not faster than easy ceiling
+     * 987 s/mi`.
+     *
+     * The cause is this line's own `??`. `resolveCapacityPrescription` clamps
+     * the marathon window AND its point estimate against the easy ceiling
+     * (`bounds.mustStayFasterThan`, `windowPrescription`'s §29 block) — but for
+     * a runner on the POPULATION PRIOR it returns an `effort` shell with no
+     * pace at all, so `point()` is null and the fallback took the RAW,
+     * UNCLAMPED `marathonPaceFromDurability` value. The one runner for whom
+     * the clamp matters most is the one runner it was skipped for.
+     *
+     * WHY IT BITES SLOW RUNNERS SPECIFICALLY. The easy band opens a FIXED
+     * ~80 s/mi slower than threshold, while the Riegel carry from a ~1-hour
+     * anchor distance out to 26.2 mi is a PERCENTAGE (~12% at the population
+     * exponent). Those cross at roughly 800 s/mi of threshold: below that, the
+     * fitted marathon pace lands inside — and then past — the easy band. The
+     * ordering gate then reads a perfectly honest belief as an incoherent set
+     * and refuses, and since AUTHORING-CANONICAL-1 a refusal means no plan.
+     *
+     * NOT A LOOSENING OF THE GATE. The gate still refuses a genuinely
+     * incoherent set; what changes is that the fallback now respects the same
+     * neighbour separation the clamped path already did, so the two branches
+     * of one `??` stop disagreeing (Rule 16). A runner whose fitted marathon
+     * pace really does sit outside their easy band is prescribed at the slow
+     * edge of that band, which is the honest statement "your marathon is run
+     * at easy effort" — true of a six-hour marathoner and exactly what a coach
+     * would say.
+     */
+    marathonSecPerMi: Math.round(
+      point(marathon)
+      ?? Math.min(
+        mp.paceSecPerMi,
+        capacity.easyCeiling.ceilingSecPerMi - PRESCRIPTION_ZONE_SEPARATION_S,
+      ),
+    ),
     basis: {
       threshold: {
         sourceMode: capacity.threshold.sourceMode,

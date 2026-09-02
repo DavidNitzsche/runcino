@@ -68,7 +68,22 @@ describe('LABELTRUTH-1 · the reps a runner reads are the reps the watch runs', 
         if (groups.length !== 1) continue;
         const m = label.match(/(\d+)\s*[×x]\s*(\d+(?:\.\d+)?)\s*(m\b|km|mi|s\b|min)/i);
         if (!m) continue;
-        let spec: any; try { spec = buildWorkoutSpec(d.type, d.distanceMi, input.tPaceSec ?? 0, null, label).spec; } catch { continue; }
+        // AUTHORING-CANONICAL-1 · price the probe spec the way the ENGINE
+        // prices it. `input.tPaceSec` is a goal-derived scalar this harness
+        // invented; `composePlan` prices every day from the canonical anchors,
+        // and a rep-count clamp is pace-dependent, so probing at the wrong
+        // pace reports drift that does not exist on any real row.
+        const a = c.paceAnchors ?? null;
+        let spec: any;
+        try {
+          spec = buildWorkoutSpec(
+            d.type, d.distanceMi, a?.thresholdSecPerMi ?? input.tPaceSec ?? 0, null, label,
+            null, null,
+            a?.intervalSecPerMi ?? null,
+            a?.easyCeilingSecPerMi ?? null,
+            false, null, a,
+          ).spec;
+        } catch { continue; }
         const specReps = spec?.rep_count;
         if (specReps == null) continue;
         checked++;

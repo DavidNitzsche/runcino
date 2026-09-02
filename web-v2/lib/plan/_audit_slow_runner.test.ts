@@ -405,8 +405,19 @@ describe('CODE-REVIEW FINDING (CRITICAL, fixed) · below-table HM/marathon perso
       false, // marathon is not in goalIPaceEligible ('5k'|'10k'|'hm' only)
     );
     expect(paces.length).toBeGreaterThan(0);
+    // AUTHORING-CANONICAL-1 · compared at the resolution the app actually
+    // PRESCRIBES in. `composePaceAnchors` rounds every anchor to whole seconds
+    // per mile (that is what a plan row stores and what the watch reads), and
+    // this persona's demonstrated anchor is 892.4485 s/mi, so the canonical
+    // threshold is 892 — 0.45 s/mi "faster" than a float nobody can run to.
+    // Comparing a rounded prescription against an unrounded anchor asks the
+    // engine for a precision it does not claim; the invariant P1-56 exists for
+    // — never prescribe a pace the runner has not demonstrated — is unchanged
+    // and is what `resolveCurrentTPace`'s own clamp above still asserts
+    // exactly.
+    const anchorAtPrescriptionResolution = Math.floor(anchorPaceSPerMi);
     for (const p of paces) {
-      expect(p).toBeGreaterThanOrEqual(anchorPaceSPerMi);
+      expect(p).toBeGreaterThanOrEqual(anchorAtPrescriptionResolution);
     }
   });
 

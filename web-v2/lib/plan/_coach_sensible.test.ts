@@ -349,15 +349,28 @@ describe('COACH-SENSIBLE · would a coach hand this week to this runner?', () =>
     const [recoveryFloorMin] = recoveryMinutesBand();
     const [aerobicFloorMin] = generalAerobicMinutesBand();
     const easySec = easyPaceSecPerMi(built.composed as never);
-    // The calibration itself, asserted rather than described: the engine's easy
-    // pace is the CURRENT-fitness one, and for this runner — whose sub-3 goal
-    // is ahead of his fitness — that is meaningfully slower than the
-    // goal-blended threshold this gate used to price the mile off.
+    // AUTHORING-CANONICAL-1 (2026-09-01) · THE PREMISE OF THIS ASSERTION IS
+    // GONE, AND THAT IS THE FIX.
+    //
+    // It read `toBeGreaterThan`, and it was calibrated on a real defect: the
+    // block's plan-wide `tPaceSec` was `min(tPaceFromGoal(goal), currentT)`,
+    // i.e. the GOAL's threshold pace for this sub-3 runner, so an easy pace
+    // that merely equalled `tPaceSec + 80` would have been the easy band
+    // priced off an ambition. There is no goal blend any more: `tPaceSec` IS
+    // the canonical threshold capacity, and `resolveEasyCeiling`'s tier 2 is
+    // `easyBandFromTPace` of exactly that number — so equality is now the
+    // CORRECT answer and a strict `>` would be asserting a gap that only a
+    // defect could open.
+    //
+    // What the gate still catches, and why it is not deleted: an easy pace
+    // FASTER than the band off current fitness, which is the direction that
+    // hurts a runner.
     expect(
       easySec,
-      'the engine\'s easy pace has collapsed onto the goal-blended threshold · PACE-E-1 says ' +
-      'easy/long/recovery anchor to CURRENT fitness, and this gate is calibrated on that',
-    ).toBeGreaterThan((built.composed.tPaceSec ?? 0) + easyBandOffsetSec());
+      'the engine\'s easy pace is faster than doctrine\'s easy band off its own threshold · ' +
+      'PACE-E-1 says easy/long/recovery anchor to CURRENT fitness, and this gate is calibrated ' +
+      'on that',
+    ).toBeGreaterThanOrEqual((built.composed.tPaceSec ?? 0) + easyBandOffsetSec());
 
     const belowRecovery: string[] = [];
     const medianBelowAerobic: string[] = [];

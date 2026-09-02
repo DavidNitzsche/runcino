@@ -19,7 +19,13 @@ import { pool } from '@/lib/db/pool';
 //   cron_stale        — that answer was "too long ago", or "never".
 //   cron_precondition — a job ran with an input another job was supposed to
 //                       have refreshed and had not.
-export type AlertKind = 'cron_fail' | 'cron_ok' | 'cron_stale' | 'cron_precondition' | 'regen_fail' | 'asc_stall' | 'crash' | 'briefing_failure' | 'webhook_failure' | 'apns_send_failed' | 'notifications_cron_error' | 'dedup_flag_census' | 'dedup_absorption_invariant' | 'account_deleted' | 'unknown';
+//   plan_convergence  — CANNOT-CONVERGE-1 (2026-09-01) · a live plan carries
+//                       neither a canonical authoring stamp nor a canonical
+//                       reanchor stamp a full day after it was authored, so
+//                       nothing in the app is pricing it. Before this the
+//                       majority of production plans were in that state and
+//                       there was no alert of any kind (Rule 23).
+export type AlertKind = 'plan_convergence' | 'cron_fail' | 'cron_ok' | 'cron_stale' | 'cron_precondition' | 'regen_fail' | 'asc_stall' | 'crash' | 'briefing_failure' | 'webhook_failure' | 'apns_send_failed' | 'notifications_cron_error' | 'dedup_flag_census' | 'dedup_absorption_invariant' | 'account_deleted' | 'unknown';
 export type AlertSeverity = 'info' | 'warn' | 'error' | 'critical';
 
 export interface RaiseAlertInput {

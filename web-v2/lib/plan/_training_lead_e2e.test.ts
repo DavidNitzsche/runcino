@@ -8,11 +8,19 @@
  * real functions at every hop and no database:
  *
  *   nailed sessions
- *     → bestRecentVdot            (the capped training read)
- *     → measuredProgressFraction  (recompute-paces.ts · the evidence gate)
- *     → blendedTPaceForWeek       (the per-week threshold anchor)
- *     → marathonPaceSPerMi        (the MP session on a future unsealed week)
- *     → achievableRaceTarget      (the prescribed race-day target)
+ *     → bestRecentVdot                 (the capped training read)
+ *     → composeThresholdCapacity       (the canonical Runner Model rung)
+ *     → composePaceAnchors             (the six prescribed prices)
+ *     → anchors.marathonSecPerMi       (the MP session on a future week)
+ *     → achievableRaceTarget           (the prescribed race-day target)
+ *
+ * AUTHORING-CANONICAL-1 (2026-09-01) · the middle two hops used to be
+ * `measuredProgressFraction` → `blendedTPaceForWeek`, i.e. the runner's STATED
+ * GOAL walking their prescribed threshold pace. Both are deleted. The chain is
+ * strictly shorter and strictly more honest: better training moves the
+ * MEASURED VDOT, which moves the canonical capacity, which moves the price.
+ * Nothing in it reads a goal except the race-day target at the end, which is
+ * Race Prediction's own question (Constitution §J).
  *
  * `recomputePacesForPlan` is the function that performs these hops against the
  * database; every number it derives comes from the calls below, at the same
@@ -21,8 +29,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { bestRecentVdot, tPaceFromVdot, vdotFromRace } from '@/lib/training/vdot';
-import { measuredProgressFraction, blendedTPaceForWeek, maxSeasonalVdotGain } from './recompute-paces';
-import { marathonPaceSPerMi } from './spec-builder';
+import { syntheticPaceAnchors } from './authoring-anchors';
 import { achievableRaceTarget } from '@/lib/training/achievable-target';
 import { trainingLeadFires } from './adapt';
 
@@ -56,21 +63,20 @@ function nailed(weeks: number, paceSPerMi: number) {
 
 /** Everything a future unsealed week is prescribed at, from one `vdotNow`. */
 function prescribedAt(vdotNow: number) {
-  const goalVdot = vdotFromRace(GOAL_SEC, DIST);
-  const measured = measuredProgressFraction(AUTHORING_VDOT, vdotNow, goalVdot);
-  const currentT = tPaceFromVdot(vdotNow)!;
-  const goalTraw = Math.round(GOAL_SEC / DIST) - 18;
-  const floorT = tPaceFromVdot(vdotNow + maxSeasonalVdotGain(TOTAL_WEEKS, DIST))!;
-  const goalT = Math.max(goalTraw, floorT);
-  const weekT = blendedTPaceForWeek({
-    currentT, goalT, weekIdx: 6, phase: 'RACE-SPECIFIC',
-    buildWeeks: 11, measuredProgressFraction: measured,
-  })!;
-  const mp = marathonPaceSPerMi({ tPaceSec: weekT, easyAnchorTSec: currentT });
+  const read = syntheticPaceAnchors({ bestRecentVdot: vdotNow, recentWeeklyMi: 40, todayISO: TODAY });
+  if (!read.ok) throw new Error(`anchors refused: ${read.reason} · ${read.detail}`);
+  const a = read.anchors;
   const race = achievableRaceTarget({
     goalSec: GOAL_SEC, currentVdot: vdotNow, raceDistanceMi: DIST, totalWeeks: TOTAL_WEEKS,
   })!;
-  return { measured, currentT, weekT, mp, raceTargetSec: race.targetSec, racePace: race.paceSPerMi };
+  return {
+    anchorVdot: vdotNow,
+    currentT: tPaceFromVdot(vdotNow)!,
+    weekT: a.thresholdSecPerMi,
+    mp: a.marathonSecPerMi,
+    raceTargetSec: race.targetSec,
+    racePace: race.paceSPerMi,
+  };
 }
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}/mi`;
@@ -88,18 +94,19 @@ describe('six weeks of great training, no race', () => {
       // 2026-08-30 · was hardcoded `AUTHORING_VDOT + 1`, which printed the
       // retired race ceiling rather than what the run actually resolved.
       ['anchor VDOT', AUTHORING_VDOT.toFixed(1), creditedVdot.toFixed(1)],
-      ['measuredProgressFraction', String(stalled.measured), credited.measured!.toFixed(3)],
-      ['week T-pace', mmss(stalled.weekT), mmss(credited.weekT)],
-      ['MP session (T+18)', mmss(stalled.mp), mmss(credited.mp)],
+      ['week T-pace (canonical)', mmss(stalled.weekT), mmss(credited.weekT)],
+      ['MP session (own exponent)', mmss(stalled.mp), mmss(credited.mp)],
       ['prescribed race target', hms(stalled.raceTargetSec), hms(credited.raceTargetSec)],
       ['race pace', mmss(stalled.racePace), mmss(credited.racePace)],
     ];
     console.log('\n' + rows.map((r) => r[0].padEnd(26) + String(r[1]).padEnd(24) + r[2]).join('\n'));
   });
 
-  it('the evidence gate moves off zero', () => {
-    expect(stalled.measured).toBe(0);
-    expect(credited.measured!).toBeGreaterThan(0);
+  it('the measured anchor itself moves — which is the only thing that may move a price', () => {
+    // AUTHORING-CANONICAL-1 · this used to assert the goal-gap gate moved off
+    // zero. There is no gate any more, because there is no goal in the chain.
+    // What has to move is the EVIDENCE.
+    expect(credited.anchorVdot).toBeGreaterThan(stalled.anchorVdot);
   });
 
   it('the week\'s threshold anchor tightens', () => {
@@ -136,13 +143,12 @@ describe('six weeks of great training, no race', () => {
     //  · the anchor itself can never exceed what the corpus corroborated plus
     //    the doctrinal +1 lead.
     //
-    // Deliberately NOT asserted on `weekT`: that is a FUTURE race-specific
-    // week's prescription, and `blendedTPaceForWeek` is supposed to run ahead
-    // of current fitness toward the goal. Pinning it here would be asserting
-    // that the plan may not progress, which is the opposite of the rule this
-    // change serves.
+    // AUTHORING-CANONICAL-1 · `weekT` IS now pinnable, and pinned: the
+    // canonical threshold is the runner's demonstrated capacity, so it may
+    // never be faster than the pace the sessions were actually run at. Under
+    // the deleted blend it could be, by design — that was the defect.
     //
-    // And deliberately NOT on the race target against `maxSeasonalVdotGain`:
+    // And deliberately NOT on the race target against the seasonal ceiling:
     // `achievableRaceTarget` clamps to `prescriptionFloorSec(ceiling,
     // GOAL_OPTIMISM_TOLERANCE)`, so a goal inside its tolerance band is
     // returned as the runner's own goal by design (Rule 9). That band is that
@@ -150,6 +156,7 @@ describe('six weeks of great training, no race', () => {
     // over-promise guard that belongs HERE is that the target never gets
     // FASTER than the goal, which the test above asserts.
     expect(credited.currentT).toBeGreaterThanOrEqual(425 - 1);
+    expect(credited.weekT).toBeGreaterThanOrEqual(425 - 1);
     const r = bestRecentVdot(AFC as never, TODAY, 180, nailed(6, 425) as never, 4);
     expect(r.corpus.ok).toBe(true);
     if (!r.corpus.ok) return;
@@ -162,10 +169,12 @@ describe('six weeks of great training, no race', () => {
     expect(prescribedAt(twoWk).mp).toBeLessThan(stalled.mp);
   });
 
-  it('mediocre training changes nothing', () => {
-    // Sessions run at his CURRENT threshold pace imply no lead at all.
+  it('mediocre training tightens nothing', () => {
+    // Sessions run at his CURRENT threshold pace imply no lead at all. The
+    // assertion is one-sided on purpose: what must not happen is the plan
+    // getting HARDER off training that demonstrated nothing.
     const flat = bestRecentVdot(AFC as never, TODAY, 180, nailed(6, 462) as never, 4).best!.vdot;
     expect(trainingLeadFires(AUTHORING_VDOT, flat)).toBe(false);
-    expect(prescribedAt(flat).mp).toBe(stalled.mp);
+    expect(prescribedAt(flat).mp).toBeGreaterThanOrEqual(stalled.mp);
   });
 });

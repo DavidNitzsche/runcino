@@ -493,7 +493,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/plan/auto-rebuild.ts::resolveGoalTarget',
   'lib/plan/drift-monitor.ts::inferPlanAnchorVdot',
   'lib/plan/drift-monitor.ts::loadActivePlan',
-  'lib/plan/generate.ts::composeForUserInternal',
   'lib/plan/generate.ts::loadGeneratorInputs',
   'lib/plan/generate.ts::loadGeneratorInputs',
   'lib/plan/generate.ts::loadGeneratorInputs',
@@ -638,7 +637,14 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // carries no `vdot` field at all and distinguishes NO_SNAPSHOT from
 // READ_FAILED from STALE. `lib/adaptation/load.ts`'s copy (the one that did
 // NOT swallow) is the fourth caller and routes there too.
-export const EMPTIED_BASELINE = 369;
+// 2026-09-01 · -1 (369 → 368) from AUTHORING-CANONICAL-1 (the site that left is `composeForUserInternal`'s; the scanner keys on the enclosing symbol). `loadGeneratorInputs` used to
+// resolve the plan-wide threshold pace through `resolveCurrentTPace` over a
+// `bestRecentVdot` assembled from a `.catch`-guarded loader; that whole block
+// is deleted and replaced by `resolvePrescribedPaceAnchors`, whose refusal is
+// a TYPE (`PaceAnchorRead`'s branch carries no `anchors` field) rather than a
+// swallowed read. One fewer site, and the state it used to lose is now
+// something the caller cannot fail to branch on.
+export const EMPTIED_BASELINE = 368;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

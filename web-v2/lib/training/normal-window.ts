@@ -570,15 +570,54 @@ export async function normalWeeklyMileage(
   todayISO: string,
   windowDays = 28,
 ): Promise<NormalReading<number>> {
+  const detail = await normalWeeklyMileageDetail(userUuid, todayISO, windowDays);
+  return detail.ok
+    ? { ok: true, value: detail.value.weeklyMi, representativeDays: detail.representativeDays, excludedDays: detail.excludedDays }
+    : detail;
+}
+
+/**
+ * What `normalWeeklyMileage` measured, PLUS how many representative days the
+ * runner actually ran on. ONE definition — `normalWeeklyMileage` delegates
+ * here and reads the rate off this result, so the two can never disagree
+ * (Rule 16).
+ *
+ * ── WHY THE RUN-DAY COUNT IS A SEPARATE FACT FROM THE RATE ──────────────────
+ *
+ * A weekly rate answers "how much"; it cannot answer "how much of this runner
+ * have we actually seen". 0.5 mi/wk measured over a 28-day window is one short
+ * run, and 40 mi/wk is a month of full training — the same TYPE of number, two
+ * completely different amounts of evidence. `capacity-resolver.ts`'s
+ * `priorWeeklyMi` needs the second question answered to retire a self-reported
+ * onboarding prior CONTINUOUSLY rather than at the first logged step (Rule 9),
+ * and there is nothing in a rate to read it off.
+ *
+ * COUNTED ON THE FILTERED DAYS ONLY, exactly like the rate: a run inside a
+ * prescribed taper or post-race recovery window is not evidence of what this
+ * runner normally does (Rule 8), so it neither adds mileage nor buys coverage.
+ */
+export async function normalWeeklyMileageDetail(
+  userUuid: string,
+  todayISO: string,
+  windowDays = 28,
+): Promise<NormalReading<{ weeklyMi: number; runDays: number }>> {
   const { mileageByDay } = await import('@/lib/runs/volume');
   const w = await normalTrainingWindow(userUuid, todayISO, windowDays);
-  if (!w.sufficient) return readNormal(w, 0) as NormalReading<number>;
+  if (!w.sufficient) {
+    return readNormal(w, { weeklyMi: 0, runDays: 0 }) as NormalReading<{ weeklyMi: number; runDays: number }>;
+  }
   const byDay = await mileageByDay(userUuid, w.fromISO, w.toISO);
   let total = 0;
+  let runDays = 0;
   for (const [iso, { mi }] of byDay) {
-    if (!isPrescribedNonNormal(iso, w.windows)) total += mi;
+    if (isPrescribedNonNormal(iso, w.windows)) continue;
+    total += mi;
+    if (mi > 0) runDays++;
   }
-  return weeklyRateFromRepresentative(Math.round(total * 10) / 10, w);
+  const rate = weeklyRateFromRepresentative(Math.round(total * 10) / 10, w);
+  return rate.ok
+    ? { ok: true, value: { weeklyMi: rate.value, runDays }, representativeDays: rate.representativeDays, excludedDays: rate.excludedDays }
+    : rate;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

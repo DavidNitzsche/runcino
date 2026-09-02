@@ -185,7 +185,7 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     route: 'app/api/cron/snapshot-projections/route.ts',
     trigger: '30 7 * * * · collides on the minute with enrich-weather',
     reach: 'overwrites_engine_state',
-    changes: ['projection_snapshots', 'users.max_hr', 'runner_calibration', 'plan_workouts', 'training_plans.authored_state', 'pace_zone_events'],
+    changes: ['projection_snapshots', 'users.max_hr', 'runner_calibration', 'plan_workouts', 'training_plans.authored_state', 'pace_zone_events', 'ops_alerts'],
     idempotent: true,
     onPartialFailure:
       'Snapshots are independent upserts. The plan re-anchor runs through mutatePlan, so it rolls back whole. '
@@ -200,7 +200,16 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       + 'when a plan_adapt_recompute_paces intent exists within 24h it stands down with a recorded '
       + 'reanchor_skipped no-op in the cron response, unless its own move is a provisional-to-measured anchor '
       + 'upgrade (which the adapter cannot perform, and which must still fire to end a calibration intro). '
-      + 'Thresholds and the anchor cascade live in lib/training/pace-anchor.ts, shared with the adapter.',
+      + 'Thresholds and the anchor cascade live in lib/training/pace-anchor.ts, shared with the adapter. '
+      + '2026-09-01 · CANNOT-CONVERGE-1 · it now ALSO writes for a runner with NO measured VDOT. GUARD 2 '
+      + 'used to return null there, and since this cron passes an evidence-only bestRecentVdot that meant '
+      + 'such a runner was never re-anchored — not late, NEVER, which the independent audit measured as 6 '
+      + 'of 7 live plans, one at 24 days. reanchorOffCanonicalPrior re-prices the block off '
+      + 'resolvePrescribedPaceAnchors and stamps the CANONICAL source mode rather than measured_vdot, so '
+      + 'nothing is laundered into a measurement. It is a no-op on a plan already authored canonically. '
+      + 'The same pass raises an ops_alerts row (kind plan_convergence) for any live plan still carrying '
+      + 'no canonical pricing 24h after authoring — before this there was no alert of any kind, and the '
+      + 'state was found only because a human queried training_plans by hand (Rule 23).',
   },
   {
     id: 'cron/run-adaptations',

@@ -213,6 +213,8 @@ const ALLOW: Record<string, string> = {
     "TRAINING-ENGINE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
   "lib/training/goal-projection.ts":
     "TRAINING-ENGINE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
+  "lib/plan/authoring-shadow-compare.ts":
+    "SHADOW ONLY · the `Math.round(x*10)/10` rounds WEEK MILEAGE and PRICED-MILE totals for a structural DIFF between two engine compositions, at the same 0.1-mi resolution `ComposedWeek.weeklyMi` already carries. Nothing this module returns is rendered to a runner: it has no runtime importer (MODULE_ORPHANS), and its only consumers are two test files and the migration report. Engine arithmetic over engine numbers, not a formatting rule — routing it through lib/format/run.ts would format a comparison nobody reads as a run.",
   "lib/training/normal-window.ts":
     "Same case as lib/plan/sim-inputs.ts: the `Math.round(x*10)/10` is `normalWeeklyMileage` reproducing `weeklyAvgFromWindow`'s and `mileageByDay`'s own 0.1-mi rounding, because it is the RULE 8 twin of `recentWeeklyMileageMi` and the two must be byte-identical wherever the filter excludes nothing. Engine arithmetic standing in for a database read, not a rendered number — nothing this module returns is printed; callers hand it to the plan engine.",
   "lib/training/prescriptions.ts":
