@@ -629,6 +629,20 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
   // zero findings with NO answer-key edit, `_dosing_sweep_gate` stays at zero
   // enforced breaches, and this file's own doctrine-band test (peak weekly /
   // peak long) still passes unchanged.
+  /**
+   * 2026-09-02 · THE SNAPSHOT MOVED ONCE, ON PURPOSE, AND HERE IS WHY.
+   *
+   * Two lines: weeks 9 and 11, `5×7 min @ I-T transition · 60s jog` →
+   * `· 3:30 jog`. `Research/01`'s Interval row prescribes "Equal duration jog
+   * (≥0.5× rep)"; a seven-minute repetition followed by sixty seconds is
+   * 0.14× and was never doctrine. Nothing structural moved — the same weeks,
+   * the same phases, the same mileage, the same long runs, the same session
+   * families — which is what the first snapshot in this test asserts and what
+   * stayed byte-identical.
+   *
+   * A frozen snapshot exists so drift has to be argued rather than absorbed.
+   * This is the argument. Any FURTHER drift is still CRITICAL.
+   */
   it('FROZEN: per-week structural fingerprint is byte-stable', () => {
     COMBO_COUNT++;
     const fp = result.weeks.map((w, i) => {

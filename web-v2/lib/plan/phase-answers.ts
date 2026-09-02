@@ -48,6 +48,7 @@
  */
 
 import type { DistCategory } from './goal-tiers';
+import { roundTo } from '@/lib/format/run';
 import type { GoalTier, TierTarget } from './goal-tiers';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import type { SourceMode } from '@/lib/training/capacity-resolver';
@@ -169,7 +170,7 @@ const RACE_WORD: Record<DistCategory, string> = {
 };
 
 function mi(n: number): string {
-  return `${Math.round(n * 10) / 10} mi`;
+  return `${roundTo(n, 1)} mi`;
 }
 
 /**
