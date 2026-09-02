@@ -14,12 +14,12 @@ existing test, no script, no registry.
 
 ## 0 · The answer first
 
-**The suite is green and that is not the headline. It found five live
+**The suite is green and that is not the headline. It found six live
 disagreements**, and the reason it is green is that each one is registered as a
 ratcheted exemption whose own test fails in three directions — when it closes,
 when it changes shape, and when it spreads.
 
-**Three of the five are the same failure, and it is the failure this stage
+**Three of the six are the same failure, and it is the failure this stage
 exists to catch:** a blocker closed *in code* on 2026-09-02 whose fix is
 authoring-time, sitting on a block authored 2026-08-31. The ownership gates that
 closed those blockers pass, correctly, because they scan source. The runner's
@@ -42,7 +42,7 @@ the watch ships all three.**
 
 ## 1 · What was built
 
-`web-v2/lib/audit/_cross_surface_contract.test.ts`, 8 tests, ~830 lines.
+`web-v2/lib/audit/_cross_surface_contract.test.ts`, 9 tests, ~950 lines.
 
 Two blocks:
 
@@ -52,7 +52,7 @@ Two blocks:
   minimum length. Prints a loud warning when `DATABASE_URL_RO` is unset saying
   the live half did not run and its own passing is not evidence.
 - **`cross-surface contract · LIVE production (read-only)`** — 19 contracts,
-  **214 live readings**, plus one test per registered disagreement.
+  **218 live readings**, plus one test per registered disagreement.
 
 **Every reading on both sides of every comparison is a real production read.
 There is not one fixture in the file** (Rule 13 point 2). The phone side is the
@@ -110,14 +110,23 @@ Basis on the canonical side: `sourceMode: direct`, confidence 0.835, VDOT 47.8.
 `race-outlook.trainingPrescription.rangeSecPerMi[0]`, `marathon_range_s_per_mi[0]`
 on both MP rows, `finish_range_s_per_mi[0]` on all three M finishes.
 
-### 2.3 The race projection — **11982 s (3:19:42), 3 paths + a stamp, ok**
+### 2.3 The race projection — **11982 s (3:19:42), 7 paths + a stamp, ok**
 
 | # | Path |
 |---|---|
 | 1 | `race-outlook.expectedRaceDay.expectedSec` (basis `trajectory`, projected VDOT 50.4) |
-| 2 | `race-projection.raceProjectionFromOutlook().projectedSec` — **what `v5/races` and `v5/race/[slug]` render** |
+| 2 | `race-projection.raceProjectionFromOutlook().projectedSec` |
 | 3 | `goal_projection_snapshots.projected_sec`, latest row |
+| 4 | **iPhone `GET /api/v5/races` · panel stat `"Projected"` → `"3:19:42"`** |
+| 5 | **iPhone `GET /api/v5/races` · `trend[]` last point → `11982`** |
+| 6 | **iPhone `GET /api/v5/race/cim` · `projected` → `"3:19:42"`** |
+| 7 | **iPhone `GET /api/v5/race/cim` · `outlook.expected_race_day.sec` → `11982`** |
 | stamp | CIM row `race_execution.expected_race_day_sec` = **11981**, 1 s drift, inside the argued 5 s bound |
+
+Rows 4-7 are the two shipping iPhone race routes invoked for real. Reading the
+resolver they are *supposed* to call proves the resolver; reading the route
+proves the screen. `_race_projection.test.ts` greps for the former. Only this
+reads the latter — and adding those four readings is what surfaced §3.6.
 
 **Excluded under `TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION`:**
 `GET /api/targets/projection`.
@@ -171,7 +180,7 @@ target)` against the stored rule. Canonical: 437 / 457 / 443 / 465. Stored:
 
 ---
 
-## 3 · The five live disagreements
+## 3 · The six live disagreements
 
 Each is a `KNOWN_DISAGREEMENTS` entry carrying both paths, a **shape predicate**
 (not a hardcoded pair — see §5), the numbers observed, an argued reason, the
@@ -287,13 +296,60 @@ Demoted, not inert: the scorecard records this route's only Swift callers as v4
 views behind `-faffLegacy`. It is still a deployed authenticated route.
 `_race_projection.test.ts`'s hardcoded six-file scope cannot see it.
 
+### 3.6 `RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL` — **NEW, not in the scorecard** — 30 s/mi, one screen
+
+Found only because the projection contract was extended to call the two
+**shipping** iPhone race routes rather than the resolver they are supposed to
+call. The projection itself was clean through all seven paths. One field away:
+
+```
+GET /api/v5/race/cim   — one payload, one screen
+
+  outlook.execution.pace_s_per_mi   443   (7:23)
+  outlook.execution.strategy        "Controlled start · 7:23/mi average"
+  outlook.execution.reason          "Your goal (3:00:00) is faster than the likely
+                                     range's fast edge (3:13:28) · race to the
+                                     edge; the goal stays yours."
+
+  pacePlan[0]  Miles 0-2    Folsom Dam drop · Settle in         6:55/mi
+  pacePlan[1]  Miles 2-7    Orangevale rollers · Find rhythm    7:06/mi
+  pacePlan[2]  Miles 7-10   Fair Oaks hills · Find rhythm       6:55/mi
+  pacePlan[3]  Miles 10-11  Auburn Blvd descent · Find rhythm   6:45/mi
+  pacePlan[4]  Miles 11-26  Sacramento valley · LOCK GOAL PACE  6:48/mi
+
+  distance-weighted mean of the plan          413 s/mi
+  the stated 3:00:00 goal pace (10800/26.22)  412 s/mi
+  the prescribed execution target             443 s/mi
+```
+
+**The screen refuses the goal in prose, states a 7:23/mi target, and then hands
+the runner a mile-by-mile plan for the goal it just refused** — with the last
+fifteen miles labelled "Lock goal pace". Thirty seconds per mile, which over the
+marathon is thirteen minutes.
+
+Mechanism: `app/api/v5/race/[slug]/route.ts:141` calls
+`buildRacePacing({ goalSec, distanceMi, geometry })` and never sees
+`outlook.execution`, which the same handler resolves sixty lines below.
+
+This is Constitution §7's named anti-pattern — goal-derived prescription — and it
+is exactly the shape B1 deleted `derivePaces` for. **The race screen's pacing was
+never part of that sweep, and no source-scanning gate would find it:**
+`buildRacePacing` is a legitimate function called with a legitimate argument.
+Only comparing the two numbers on the rendered payload shows it.
+
+**Owner of the fix:** `app/api/v5/race/[slug]/route.ts:139-153` — `buildRacePacing`
+should take `outlook.execution.targetSec`, not the stated goal.
+**Closes when:** the plan's distance-weighted mean equals
+`race-outlook.execution.paceSecPerMi`.
+
 ---
 
 ## 4 · Falsification — every assertion, broken on purpose, on live data
 
-Eleven perturbations, each applied alone, each reverted before the next. Script:
-`scratchpad/s5/falsify.sh`; per-case logs `scratchpad/s5/F1.log … F11.log`;
-transcript `scratchpad/s5/falsify.out`. **All eleven were detected.**
+Sixteen perturbations, each applied alone, each reverted before the next.
+Scripts `scratchpad/s5/falsify.sh` and `falsify2.sh`; per-case logs
+`scratchpad/s5/F1.log … F16.log`; transcripts `falsify.out`, `falsify2.out`.
+**All sixteen were detected.**
 
 ```
 === F1 · a real, different production number injected into the threshold contract
@@ -350,7 +406,40 @@ F10 DETECTED
 F11 DETECTED
   AssertionError: the shakeout ceiling and the easy ceiling are the same number — two
   anchors have collapsed into one
+
+=== F12 · the iPhone races-route reading actually asserts
+F12 DETECTED
+  · projected finish · cim (s): 2 DIFFERENT NUMBERS across 7 paths —
+  (the reading replaced by the CURRENT-FITNESS expectation — again a real number
+   from the same payload family, not a synthetic one)
+
+=== F13 · the race-detail route reading actually asserts
+F13 DETECTED
+  · projected finish · cim (s): 2 DIFFERENT NUMBERS across 7 paths —
+  (replaced by the targets route's 11902)
+
+=== F14 · the new entry, STALE direction
+F14 DETECTED
+  Error: STALE EXEMPTION — RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL now AGREES (413).
+  Delete the registry entry and put the path back into its contract.
+
+=== F15 · the new entry, shape direction
+F15 DETECTED
+  Error: THE DISAGREEMENT MOVED — RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL still diverges
+  but no longer in the recorded shape.
+
+=== F16 · the new test refuses to report clean when the screen draws no plan
+F16 DETECTED
+  AssertionError: the race screen renders no pace plan — unreachable, not clean:
+  expected 0 to be greater than 0
 ```
+
+**F12 and F13 are the ones that matter most.** They are what turn "the shipping
+iPhone surfaces render 11982" from an inference about the resolver into a checked
+claim about the screen. Both falsifiers are real numbers the engine produces for
+neighbouring quantities — 12230 (current fitness) and 11902 (the targets route) —
+not synthetic values, so they test the gate against the mix-up that actually
+happens rather than one that never would.
 
 Two notes on method:
 
@@ -457,11 +546,12 @@ reaches the runner soonest:
 | 2 | Run `refreshRaceRowsForPlan` over `pln_9a57561debb776e5` so the four race rows' aborts are repriced | `lib/race/race-row-refresh.ts` | **watch, race day; CIM's is 7 s/mi TIGHT** |
 | 3 | Carry the ceiling, not the band centre, on a ceiling-shaped work phase | `lib/training/expand-spec.ts#expandEasy/#expandLong` | **watch, every easy and long day** |
 | 4 | Stamp or rewrite `authored_state.prescribed_race_pace` on the live plan | `lib/plan/generate.ts` (next authoring) | plan authoring |
-| 5 | Delete `/api/targets/projection`, or make it resolve `race-outlook` | `app/api/targets/projection/route.ts` | v4 shell only, but it feeds `classifyTrend`, which can rebuild |
+| 5 | Build the race pace plan from `outlook.execution.targetSec`, not `goalSec` | `app/api/v5/race/[slug]/route.ts:139-153` | **iPhone race screen, and it is the plan he would run CIM on** |
+| 6 | Delete `/api/targets/projection`, or make it resolve `race-outlook` | `app/api/targets/projection/route.ts` | v4 shell only, but it feeds `classifyTrend`, which can rebuild |
 
 Items 1, 2 and 4 are **data repairs on the runner's live plan**, which is a
 production write and therefore needs David's explicit go per the standing rule.
-Items 3 and 5 are code.
+Items 3, 5 and 6 are code.
 
 **A note on 1 and 2 that is worth more than either fix:** both are the *same
 gap*, and it is a gap in the gate design, not in the code. Rule 20's corollary
@@ -478,10 +568,11 @@ this suite now measures, and why it is worth running nightly rather than on push
 
 - `npx tsc --noEmit` — clean.
 - `npm run prebuild` (all 18 gates) — clean.
-- `npx vitest run lib/audit/_cross_surface_contract.test.ts` — 8/8, 19 contracts,
-  214 live readings.
-- Commits: `b56e795e` (the suite) and the falsification-record commit on
-  `stage5/cross-surface`. **Not merged to main.**
+- `npx vitest run lib/audit/_cross_surface_contract.test.ts` — 9/9, 19 contracts,
+  218 live readings.
+- Commits on `stage5/cross-surface`, all pushed, **not merged to main**:
+  `b56e795e` the suite · `eb41492b` the first eleven falsifications ·
+  `7ca25065` the sixth disagreement and five more falsifications.
 - **Disclosure:** nothing used `--no-verify`. The pre-push watch gate failed once
   with `Invalid config file "Secrets.xcconfig"` — that file is gitignored
   (`.gitignore:43`) and simply absent from this worktree. Rather than override, I
