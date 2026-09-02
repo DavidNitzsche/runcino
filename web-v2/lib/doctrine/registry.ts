@@ -308,6 +308,7 @@ import {
   AT_PACE_WEEKLY_SHARE_CAP,
   CRUISE_RECOVERY_MIN_PER_WORK_MI,
   INTERVAL_MIN_REPS,
+  INTERVAL_RECOVERY_MIN_FRACTION,
   INTERVAL_REP_MINUTES,
   CONTINUOUS_TEMPO_MINUTES,
   REPETITION_REP_METRES,
@@ -6093,6 +6094,66 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           `REPETITION_REP_MINUTES_MAX is ${REPETITION_REP_MINUTES_MAX}; doctrine says ${mins[1]} min`,
         );
+      }
+    },
+  },
+  {
+    id: 'PROGRESSION.interval-recovery-floor',
+    binds: [
+      'lib/prescription/levers.ts#INTERVAL_RECOVERY_MIN_FRACTION',
+      'lib/prescription/levers.ts#advanceShape',
+      'lib/prescription/trajectory.ts#seedShapeFrom',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    // Double-quoted, like every sibling claim on this section. Rule 7's format
+    // contract is that `check-doctrine.sh` reads this line with no TypeScript
+    // toolchain — a backslash-escaped apostrophe reaches it literally and the
+    // anchor stops resolving, which is exactly what happened on the first run
+    // of this claim (vitest green, `DOCTRINE FAIL · anchor no longer present`).
+    anchor: "### Dosing rules — Daniels' caps",
+    claim:
+      'A VO2max repetition recovers for roughly its own duration, and never for less than ' +
+      'half of it. The I row states both in one cell — the relation and the floor — so a ' +
+      'session that lengthens the rep without lengthening the jog walks past a bound ' +
+      'doctrine wrote down. Both routes to a longer rep (the duration lever and the density ' +
+      'lever) and the authored seed must respect it.',
+    check({ cite }) {
+      const t = cite.table();
+      const recoveryHeader = t.headers.find((h) => /recovery/i.test(h)) ?? '';
+      const paceHeader = t.headers.find((h) => /pace/i.test(h)) ?? t.headers[0];
+      const iRow = t.rows.find((r) => (r[paceHeader] ?? '').trim() === 'I');
+      if (!iRow) throw new Error('the dosing table no longer carries an I row');
+      const cell = (iRow[recoveryHeader] ?? '').replace(/[–—−]/g, '-');
+      // "Equal duration jog (>=0.5x rep)" — the parenthesised bound is the floor.
+      const m = cell.match(/(\d+(?:\.\d+)?)\s*[×xX]\s*rep/);
+      if (!m) {
+        throw new Error(
+          `the I row's recovery cell no longer states a floor this claim can read: "${cell}"`,
+        );
+      }
+      const stated = Number(m[1]);
+      if (INTERVAL_RECOVERY_MIN_FRACTION !== stated) {
+        throw new Error(
+          `INTERVAL_RECOVERY_MIN_FRACTION is ${INTERVAL_RECOVERY_MIN_FRACTION}; ` +
+            `the I row states ${stated}x rep`,
+        );
+      }
+      // …and both levers that can lengthen a rep must honour it. A 3x4 min set
+      // on a one-minute jog is under the floor already; each lever's step must
+      // not leave it there.
+      for (const lever of ['quality_duration', 'work_density'] as const) {
+        const out = advanceShape({
+          shape: { reps: 3, repMinutes: 4, recoveryMinutes: 1, paceSPerMi: 400, zone: 'ESTABLISHED' },
+          lever, stepMultiplier: 1, weeklyMi: 80, family: 'interval',
+        });
+        if (out.capped) continue;
+        const floor = out.shape.repMinutes * stated;
+        if (out.shape.reps > 1 && out.shape.recoveryMinutes + 1e-9 < floor) {
+          throw new Error(
+            `the ${lever} lever left a ${out.shape.reps}x${out.shape.repMinutes} min I set on a ` +
+              `${out.shape.recoveryMinutes} min jog; doctrine's floor is ${floor} min`,
+          );
+        }
       }
     },
   },

@@ -1189,6 +1189,33 @@ export function buildWorkoutSpec(
   const marathonPace = anchors
     ? anchors.marathonSecPerMi
     : marathonPaceSPerMi({ tPaceSec, easyAnchorTSec: easyAnchorT, goalPaceSPerMi });
+  /**
+   * MPRANGE-1 (2026-09-02) · THE HONEST BAND AROUND MARATHON PACE, PERSISTED.
+   *
+   * `resolvePrescribedPaceAnchors` now returns `marathonRangeSecPerMi` — the
+   * span from the population exponent to the runner's own raw fit, capped by a
+   * demonstrated rehearsal pace when one exists — beside the single
+   * `marathonSecPerMi` point. Its own doc comment states the contract: "every
+   * consumer that can show a band shows this one."
+   *
+   * A marathon-pace prescription is the one quality target in the block whose
+   * uncertainty is genuinely wider than the grader's tolerance: the point comes
+   * from carrying threshold out to 26.2 miles through a fitted exponent, and
+   * `Research/01` §"Pace zone width and lock-in rules" gives M "±5 sec/mi ...
+   * window for general MP segments" precisely because it is not a track split.
+   * Printing one number claimed a precision the anchor does not have; printing
+   * the THRESHOLD tolerance (±8) around it claimed the wrong precision.
+   *
+   * Persisted next to the pace it qualifies rather than as a lone top-level
+   * field, so a reader that finds a marathon pace finds its band in the same
+   * place and cannot pair a band with the wrong segment. Absent whenever the
+   * caller supplied no anchors (every legacy path), so those specs are
+   * byte-identical.
+   */
+  const marathonRange = anchors?.marathonRangeSecPerMi ?? null;
+  /** The band as a spec field, or `{}` to spread away when there is none. */
+  const mpRangeFields = (key: string): Record<string, unknown> =>
+    marathonRange ? { [key]: [marathonRange[0], marathonRange[1]] } : {};
   // DOCTRINE-STRIDES-1 · Research/04 §7.2 "Accelerate to mile-to-5K race pace".
   // True I-pace when the caller threaded one; else Daniels' I = T−33 (the same
   // relation the intervals branch documents below). 5K pace is the SLOW end of
@@ -1310,6 +1337,9 @@ export function buildWorkoutSpec(
               mi: s.mi,
               pace_s_per_mi: segPace(s.tag),
               label: s.tag,
+              // MPRANGE-1 · per SEGMENT, because a progression long can carry
+              // an M block and a T block and only one of them is this band.
+              ...(s.tag === 'M' ? mpRangeFields('range_s_per_mi') : {}),
               // SEGLONG-1 · easy running that follows THIS block, when the
               // label placed any there. Omitted entirely when zero so a
               // contiguous progression long's spec is byte-identical to the
@@ -1339,6 +1369,9 @@ export function buildWorkoutSpec(
             // segment list above uses, so a single-finish long and a segmented
             // one can never price the same tag differently (Rule 16).
             finish_pace_s_per_mi: finish.tag === 'HM' ? segAnchorT + 5 : marathonPace,
+            // MPRANGE-1 · the M finish is priced at `marathonPace`, so it
+            // carries that pace's band. An HM finish is a different zone.
+            ...(finish.tag === 'M' ? mpRangeFields('finish_range_s_per_mi') : {}),
             finish_label: finish.tag,
           }
         : {};
@@ -1457,6 +1490,9 @@ export function buildWorkoutSpec(
           warmup_mi: clampWuCdMi(Number(wu.toFixed(1))),
           tempo_distance_mi: Number(tempoDist.toFixed(1)),
           tempo_pace_s_per_mi: blockByEffort ? null : blockPace,
+          // MPRANGE-1 · only an `@ MP` block; a threshold tempo's band is the
+          // grader's tolerance and is not this quantity.
+          ...(atMarathonPace && !blockByEffort ? mpRangeFields('marathon_range_s_per_mi') : {}),
           ...(blockByEffort ? { by_effort: true } : {}),
           cooldown_mi: clampWuCdMi(Number(cd.toFixed(1))),
           hr_target_bpm: atMarathonPace ? null : (lthr ? Math.round(lthr * 0.92) : null),

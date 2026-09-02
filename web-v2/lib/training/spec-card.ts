@@ -151,14 +151,74 @@ export function fmtPace(sPerMi: number | null | undefined): string | null {
 }
 
 /**
- * WU/CD-CEIL-1 (2026-09-01) · "≤ 8:22 /mi" — a ceiling, not a target to
- * land on. `docs/PRODUCT_DECISIONS.md` 2026-08-31 settled this for easy
- * running generally; warm-up and cool-down are easy running, so they read
- * the same way. Null in, null out, same contract as `fmtPace`.
+ * WU/CD-CEIL-1 (2026-09-01) · a ceiling, not a target to land on.
+ * `docs/PRODUCT_DECISIONS.md` 2026-08-31 settled this for easy running
+ * generally; warm-up and cool-down are easy running, so they read the same
+ * way. Null in, null out, same contract as `fmtPace`.
+ *
+ * EASYCEIL-1 (2026-09-01) · THE GLYPH SAID THE OPPOSITE OF THE CONSTRAINT.
+ *
+ * This printed `≤ 8:22 /mi`. The quantity is SECONDS PER MILE, where a
+ * smaller number is a FASTER runner — so the constraint "do not run faster
+ * than 8:22" is `pace ≥ 8:22`, and the card was printing the inequality
+ * backwards. Read literally it licenses exactly the behaviour the ceiling
+ * exists to prevent. The grading agent recorded the same reading on
+ * 2026-09-01 ("the `≤` reads as a time bound and therefore as the opposite
+ * instruction") and left it alone as locked copy; this pass applies the
+ * ceiling to 164 more live rows, so spreading it was not an option.
+ *
+ * The fix is prose rather than a corrected `≥`, for two reasons: the
+ * decision's own words are "no faster than 8:10/mi", and an inequality
+ * against a clock is precisely the thing a reader has to stop and invert.
+ * `Research/01` §"Pace zone width and lock-in rules" gives E "±30 sec/mi
+ * (wide) | Never [lock]. Prescribe a window", and Brief 03 adds that "the
+ * athlete should never need to speed up merely to satisfy the bottom of an
+ * easy range" — which is what makes this one-sided.
  */
 export function fmtPaceCeiling(sPerMi: number | null | undefined): string | null {
   const p = fmtPaceNoUnit(sPerMi);
-  return p == null ? null : `≤ ${p} /mi`;
+  return p == null ? null : `no faster than ${p} /mi`;
+}
+
+/**
+ * MPRANGE-1 (2026-09-02) · "7:49-8:01 /mi" from an explicit `[fast, slow]`
+ * band the prescription layer resolved.
+ *
+ * Distinct from `fmtPaceBand`, which builds a band from a target and the
+ * GRADER's symmetric tolerance. This one is handed the two edges and prints
+ * them, because a resolved marathon band is not symmetric about its point and
+ * re-deriving one would lose that. Same rendering shape, so a runner reads one
+ * kind of thing; different provenance, so the two do not share a function
+ * (Rule 16 — one quantity, one name).
+ *
+ * Collapses to the single point when both edges round to the same clock, which
+ * is the honest output for a band tighter than a second per mile.
+ */
+export function fmtPaceRange(range: readonly [number, number] | null | undefined): string | null {
+  if (!range) return null;
+  const lo = fmtPaceNoUnit(range[0]);
+  const hi = fmtPaceNoUnit(range[1]);
+  if (lo == null || hi == null) return null;
+  return lo === hi ? `${lo} /mi` : `${lo}-${hi} /mi`;
+}
+
+/**
+ * EASYCEIL-1 · the CEILING a phase's band implies, in s/mi.
+ *
+ * The wire carries a target plus a symmetric tolerance, so an authored band
+ * `502-542` reaches this layer as `522 ± 20`. The ceiling is the band's FAST
+ * edge — `target - tolerance` — which is the number `vdot.ts` calls "the
+ * ceiling an easy-pace prescription must not cross" and the same edge
+ * `easyCeilingSec` carries for a warm-up.
+ *
+ * Falls back to the target itself when no tolerance rides along, so a phase
+ * with a bare target still states a ceiling rather than losing the number.
+ */
+function ceilingOfPhase(p: ExpandedPhase): number | null {
+  const t = p.targetPaceSPerMi;
+  if (t == null || !(t > 0)) return null;
+  const tol = p.tolerancePaceSPerMi;
+  return tol != null && tol > 0 ? t - tol : t;
 }
 
 /**
@@ -472,13 +532,63 @@ export function cardFromSpec(input: {
     const w = t.work;
     const isStride = w.isStrideSegment === true;
     /* QUALITY-BAND-1 · a band for genuine quality work (threshold, intervals,
-     * tempo), a bare point everywhere else. Easy/long/race/shakeout work
-     * stays a point on purpose — the 2026-08-31 "easy pace is a ceiling, not
-     * a band" decision is the opposite instruction for those, and this file
-     * does not re-open that here. */
+     * tempo).
+     *
+     * EASYCEIL-1 (2026-09-01) · …AND A CEILING FOR EASY RUNNING, which is what
+     * the 2026-08-31 decision actually says. The comment that stood here
+     * deferred this — "easy/long/race/shakeout work stays a point on purpose"
+     * — and a bare midpoint is neither a band nor a ceiling. It is the one
+     * shape the decision rules out most explicitly: a single number that
+     * "implies a target to land inside", printed on the run where the whole
+     * point is that the runner's own feel fills the gap.
+     *
+     * Measured over the read-only role on 2026-09-01, every non-archived
+     * plan: 164 future easy/long/recovery rows rendered a point. The owner's
+     * 15-mile long run printed `8:40 /mi` off an authored band of 502-537,
+     * and his easy days printed `8:42 /mi` off 502-542 — a number he was
+     * never asked to hold, on the days doctrine is loosest about pace.
+     *
+     * The ceiling is the band's own fast edge, so nothing is invented: the
+     * card now states the same edge the warm-up two steps above it states,
+     * and the same one `resolveEasyCeiling` owns.
+     *
+     * THREE DELIBERATE EXCLUSIONS, each a different question:
+     *   · a FINISH segment is race-pace work inside a long run — a target to
+     *     hold ("Find race rhythm and hold it home"), not a limit;
+     *   · a STRIDE is `Research/04` §7.2's "accelerate to mile-to-5K race
+     *     pace", a target by construction;
+     *   · RACE work is `Research/01`'s "lock to a single pace" row and is
+     *     owned by the race branch (Constitution §J). Untouched here. */
     const isQualityWork = type === 'threshold' || type === 'intervals' || type === 'tempo';
-    const paceStr = isQualityWork
+    const isEasyFamilyWork =
+      (type === 'easy' || type === 'long' || type === 'recovery' || type === 'shakeout')
+      && w.isFinishSegment !== true
+      && !isStride;
+    /* MPRANGE-1 (2026-09-02) · a marathon-pace target states ITS OWN band.
+     *
+     * `resolvePrescribedPaceAnchors.marathonRangeSecPerMi` is the honest span
+     * around marathon pace — population exponent to the runner's own raw fit,
+     * capped by a demonstrated rehearsal — and its contract says "every
+     * consumer that can show a band shows this one".
+     *
+     * It outranks both branches below, and for opposite reasons. Against the
+     * QUALITY band it wins because ±8 is the grader's threshold tolerance and
+     * says nothing about how well marathon pace is known — the point is
+     * threshold carried to 26.2 miles through a fitted exponent, and
+     * `Research/01` gives M its own "±5 sec/mi ... window for general MP
+     * segments" precisely because it is not a track split. Against the bare
+     * POINT (a long run's M finish took `fmtPace`) it wins because a single
+     * number claimed a precision the anchor does not have.
+     *
+     * Null on every session that is not priced at marathon pace, and on every
+     * row authored before the canonical anchors existed — those keep exactly
+     * the string they had. */
+    const paceStr = w.paceRangeSPerMi
+      ? fmtPaceRange(w.paceRangeSPerMi)
+      : isQualityWork
       ? fmtPaceBand(w.targetPaceSPerMi, w.tolerancePaceSPerMi)
+      : isEasyFamilyWork
+      ? fmtPaceCeiling(ceilingOfPhase(w))
       : fmtPace(w.targetPaceSPerMi);
     const recDur = fmtDuration(t.rec?.durationSec);
     // RECOVERY-BYFEEL-1 · `t.rec?.targetPaceSPerMi` is null for a between-rep
@@ -613,6 +723,64 @@ export function cardFromSpec(input: {
     })(),
     basis: 'spec',
   };
+}
+
+/**
+ * SPECSUMMARY-1 (2026-09-01) · THE SESSION'S FAMILY, READ OFF THE SPEC.
+ *
+ * The one phrase that names what KIND of session this is, for a surface that
+ * carries the workout's own prescription elsewhere and needs a short true
+ * description beside it. It states a family and, for a long run, whether the
+ * day carries race-pace work. It NEVER states a rep count, a rep distance or
+ * a block length — those live in the prescription itself, and a second place
+ * to say them is a second place for them to be wrong.
+ *
+ * ── WHY IT EXISTS ──────────────────────────────────────────────────────────
+ *
+ * `lib/watch/build-workout.ts` composed the wire's `summary` as
+ * `${miles} mi · ${prescriptionFor(...).headline}` — the GENERIC template,
+ * whose rep distance is a literal and whose rep count is dosed off weekly
+ * mileage rather than read off the day. It is the same generic-versus-authored
+ * split SPECFIRST-1 closed for the phone's card on 2026-08-24 and did not
+ * close here.
+ *
+ * Measured on the owner's live block, 2026-09-01, by composing the real
+ * `buildWatchToday` against production read-only (payloads in this lane's
+ * report):
+ *
+ *   row `10×60s hills @ 5K-10K effort · 2 min jog down` → "Intervals · 6 × 800m"
+ *   row `9×1km @ ST pace · 60s jog`                     → "Threshold · 4 × 1 mile reps"
+ *   row `2×90s + 4×60s + 4×30s + 4×15s` (Mona fartlek)  → "Intervals · 6 × 800m"
+ *   row `LONG`, spec with NO finish segment             → "Long run · marathon-pace finish"
+ *
+ * Four of the owner's plain long runs claimed a marathon-pace finish they do
+ * not have, and every rep session on the block was described with a rep count
+ * and a rep distance belonging to a different workout.
+ *
+ * ── WHAT THIS IS NOT ───────────────────────────────────────────────────────
+ *
+ * Not a headline, not a prescription. `WatchWorkout.name` already carries the
+ * authored `sub_label` — the actual session — and Rule 17 says the runner
+ * reads a sentence once, so this deliberately does NOT repeat it. It names
+ * the family, which is true whatever the structure, and stops.
+ *
+ * STATED PLAINLY, because a reader will ask: no watch screen draws `summary`
+ * today — `WatchWorkoutModels.swift` decodes it and no face renders it. This
+ * is a correctness fix on the WIRE, not a rendered defect; it is a false
+ * statement no runner has read yet. Worth fixing rather than deleting because
+ * the field IS decoded, and the next face to draw it would draw the template.
+ */
+export function specFamilyPhrase(spec: WorkoutSpec, type: WorkoutType): string {
+  const s = (spec ?? {}) as Record<string, unknown>;
+  if (type === 'long') {
+    const segs = Array.isArray(s.finish_segments) ? (s.finish_segments as unknown[]) : [];
+    const hasFinish = (Number(s.finish_mi) || 0) > 0 || segs.length > 0;
+    // The generic template's own two phrases, kept verbatim where they are
+    // TRUE — what changes is that they are now conditioned on the spec that
+    // decides which one applies.
+    return hasFinish ? 'Long run · marathon-pace finish' : 'Long run · aerobic';
+  }
+  return sessionRationale(type).headline;
 }
 
 /**
