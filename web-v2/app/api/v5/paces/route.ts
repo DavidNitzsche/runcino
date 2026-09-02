@@ -28,6 +28,8 @@ import { distanceMiFromLabel } from '@/lib/race/distance';
 import { formatRaceTime, parseRaceTime } from '@/lib/training/vdot';
 import { WATCH_PROVISIONAL_FINISH_LABEL, isProvisionalResult } from '@/lib/coach/races-state';
 import { outage } from '@/lib/route/failure';
+import { resolveHighIntensityCapacity } from '@/lib/training/capacity-resolver';
+import { zoneIsModelled, highIntensityCaption, type PaceZoneId } from '@/lib/faff/pace-zone-provenance';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,12 +131,22 @@ async function readPaces(req: NextRequest): Promise<NextResponse> {
     event.direction === 'slower' ? 'slower' : (raceConfirmsFitness ? 'faster-race' : 'faster-training');
   const modelled = direction !== 'faster-race';
 
+  // RULE ONE, PER ZONE (2026-09-02). `modelled` above is the EVENT's
+  // provenance and it is right for the threshold row. The interval and rep
+  // rows are a Daniels-table lookup whatever triggered the event, because this
+  // app has no direct high-intensity reader — so they read the high-intensity
+  // capacity's OWN source mode from the Runner Model (Constitution §C) and
+  // stay marked until a reader exists. See `lib/faff/pace-zone-provenance.ts`.
+  const highIntensity = await resolveHighIntensityCapacity(userId);
+  const zoneModelled = (id: string): boolean =>
+    zoneIsModelled(id as PaceZoneId, direction, highIntensity.sourceMode);
+
   const zonePaces = resolveZonePaces(event.fromVdot, event.toVdot);
   const zones = zonePaces.map((z) => ({
     id: z.id,
     name: z.name,
-    before: num(formatPaceMinSec(z.beforeSPerMi), modelled),
-    after: num(formatPaceMinSec(z.afterSPerMi), modelled),
+    before: num(formatPaceMinSec(z.beforeSPerMi), zoneModelled(z.id)),
+    after: num(formatPaceMinSec(z.afterSPerMi), zoneModelled(z.id)),
     delta: formatDeltaLabel(z.deltaSec),
   }));
 
@@ -197,7 +209,9 @@ async function readPaces(req: NextRequest): Promise<NextResponse> {
       : 'Threshold, interval and rep pace all moved. The evidence below is what changed. Nothing here is a diagnosis.';
 
   const caption = !modelled
-    ? null
+    // A race-confirmed threshold still leaves interval and rep on the table;
+    // the caption says so rather than letting two marked rows go unexplained.
+    ? highIntensityCaption(direction, highIntensity.sourceMode)
     : (isRaceEvidence && raceFinishProvisional
         ? 'Modelled from an unconfirmed finish · lock the chip time to confirm'
         : 'Modelled from training · not confirmed by a race');
