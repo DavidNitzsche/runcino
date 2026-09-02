@@ -15,6 +15,7 @@ import { loadActivePlan } from '@/lib/plan/lookup';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { coherentPace } from '@/lib/runs/coherence';
+import type { PhaseAnswer } from '@/lib/plan/phase-answers';
 
 export interface PlanWeek {
   /** plan_weeks.id — added 2026-08-19 for /api/v5/block so week rows carry a
@@ -156,6 +157,13 @@ export interface TrainingState {
     toLongShare: number;
     race: { slug: string; name: string; date: string; distanceMi: number };
   } | null;
+  /**
+   * PHASE-ANSWERS-1 (2026-09-01) · the structured answers the composer wrote
+   * for each phase, in `plan_phases` order (`authored_state.phase_answers`).
+   * Null on a block authored before the key existed; a surface then shows the
+   * phase without answers rather than inventing them.
+   */
+  phaseAnswers: PhaseAnswer[] | null;
 }
 
 export async function loadTrainingState(userId: string): Promise<TrainingState> {
@@ -174,16 +182,23 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       weekWindowDays: [],
       last_adapted_at: null,
       horizonRaise: null,
+      phaseAnswers: null,
     };
   }
 
   // 2026-06-03 · Rule 11 · read horizon_raise from authored_state.
-  const authRow = (await pool.query<{ horizon: any }>(
-    `SELECT authored_state->'horizon_raise' AS horizon FROM training_plans WHERE id = $1`,
+  // PHASE-ANSWERS-1 · and the phase answers, off the same row in the same read.
+  const authRow = (await pool.query<{ horizon: any; phase_answers: unknown }>(
+    `SELECT authored_state->'horizon_raise' AS horizon,
+            authored_state->'phase_answers' AS phase_answers
+       FROM training_plans WHERE id = $1`,
     [plan.id],
   ).catch(() => ({ rows: [] }))).rows[0];
   const horizonRaise = authRow?.horizon
     ? authRow.horizon as TrainingState['horizonRaise']
+    : null;
+  const phaseAnswers: PhaseAnswer[] | null = Array.isArray(authRow?.phase_answers)
+    ? (authRow!.phase_answers as PhaseAnswer[])
     : null;
 
   const phases: PlanPhase[] = (await pool.query(
@@ -452,5 +467,6 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     weekWindow, weekWindowDays,
     last_adapted_at: plan.last_adapted_at,
     horizonRaise,
+    phaseAnswers,
   };
 }

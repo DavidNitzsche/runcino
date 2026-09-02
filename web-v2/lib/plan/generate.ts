@@ -92,6 +92,9 @@ import {
   type PlanPrescription, type PlanDelta,
 } from './plan-delta';
 import { EASY_SHARE_FLOOR, SPEC_PROBE_T_PACE_SEC, weekIntensity, splitDay } from './intensity-distribution';
+// PHASE-ANSWERS-1 (2026-09-01) · every phase answers what / why now / evidence /
+// hold-progress-restructure in a structured field. See ./phase-answers.
+import { buildPhaseAnswers, type PhaseAnswer, type ThesisAtAuthoring } from './phase-answers';
 // DOCTRINE-DOSING-2 · the composer sizes to the SAME doctrine the gate checks.
 // Importing the budget from the module that measures the breach is what makes
 // the two unable to disagree — see that file's header.
@@ -2342,7 +2345,13 @@ async function detectMidBlock(userId: string): Promise<boolean | null> {
 
 export interface BlockPlan {
   totalWeeks: number;
-  phases: Array<{ label: string; weeks: number; rationale: string; citation: string }>;
+  phases: Array<{
+    label: string; weeks: number; rationale: string; citation: string;
+    /** PHASE-ANSWERS-1 · attached by `finalizeComposedPlan`, after every pass
+     *  that moves a mile, so the numbers it cites are the block that ships.
+     *  Absent on a raw `sizeBlocks` result. */
+    answers?: PhaseAnswer;
+  }>;
 }
 
 /**
@@ -8432,6 +8441,13 @@ export interface ComposePlanInput {
   rampBaseMi?: number;
   /** Transparency record for the above · lands in authored_state. */
   rampBaseEvidence?: RampBaseEvidence;
+  /**
+   * PHASE-ANSWERS-1 · the Coaching Thesis (Constitution §F) as resolved at
+   * authoring, CONSUMED here and quoted into each phase's answers. The
+   * composer never ranks a capacity itself. Absent on every pure caller, and
+   * the answers then say the limiter was not named (Rule 11).
+   */
+  thesisAtAuthoring?: ThesisAtAuthoring | null;
   easyDayMedianMi: number;
   /** 2026-06-03 · runner's recent peak long-run distance · floors the
    *  long-run sizing so the plan can't ask for a shorter long than the
@@ -9484,6 +9500,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // (absent) whenever it was the 28-day mean.
       ...(input.rampBaseEvidence ? { ramp_base: input.rampBaseEvidence } : {}),
       is_mid_block: input.isMidBlock,
+      // PHASE-ANSWERS-1 · the two authoring facts the phase answers quote that
+      // no other key carried: the quality density the runner's preferences
+      // seat, and the Coaching Thesis as the owner resolved it at authoring
+      // (an explicit null on a pure caller, never an omitted key · Rule 11).
+      quality_days_planned: input.qualityDows.length,
+      thesis_at_authoring: input.thesisAtAuthoring ?? null,
       t_pace_s_per_mi: input.tPaceSec,
       /**
        * PACE-E-1 · the pace the composer actually SIZED this block's easy days
@@ -11121,7 +11143,11 @@ async function persistPlan(client: PoolClient, args: {
       phaseIds.push(phaseId);
       const b = params.length;
       tuples.push(`($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7})`);
-      params.push(phaseId, planId, ph.label, cursor, cursor + ph.weeks - 1, ph.rationale, ph.citation);
+      // PHASE-ANSWERS-1 · `rationale` carries the phase's own "what are we
+      // developing" sentence, about THIS runner, in place of the one fixed
+      // string every block used to share. The full structured set lives on
+      // `authored_state.phase_answers` (no DDL · additive jsonb key).
+      params.push(phaseId, planId, ph.label, cursor, cursor + ph.weeks - 1, ph.answers?.developing ?? ph.rationale, ph.citation);
       cursor += ph.weeks;
     }
     if (tuples.length > 0) {
@@ -12033,6 +12059,89 @@ export function finalizeComposedPlan(
       if (retitled && retitled !== label) day.subLabel = retitled;
     }
   }
+
+  // PHASE-ANSWERS-1 · LAST, after every pass that can move a mile, so the
+  // numbers each phase cites (the block's peak week, its longest run, the
+  // race-pace longs a phase carries) describe the block that ships.
+  attachPhaseAnswers(composed, raceDistanceMi);
+}
+
+/**
+ * PHASE-ANSWERS-1 (2026-09-01) · the structured answers every phase owes.
+ *
+ * Reads only what the composer already stamped on `authoredState` and carried
+ * on the result: the ramp evidence, the habit readers, the canonical anchors'
+ * provenance, the embedded races, and the Coaching Thesis as resolved at
+ * authoring. Nothing is derived here that another owner owns (Constitution
+ * §H consumes §F and §C; it does not recreate them). The answers are attached
+ * to `blocks.phases[i].answers` and mirrored to `authored_state.phase_answers`
+ * in phase order, which is the order `persistPlan` writes `plan_phases`.
+ *
+ * Inert on a result whose composer stamped no `authoredState` at all.
+ */
+function attachPhaseAnswers(composed: ComposePlanResult, raceDistanceMi: number): void {
+  const st = composed.authoredState as Record<string, unknown> | undefined;
+  if (!st) return;
+  const cat = distanceCategoryOrNull(raceDistanceMi);
+  if (cat == null) return;
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const derived = (st['derived_from'] ?? {}) as Record<string, unknown>;
+  const ramp = (st['ramp_base'] ?? null) as
+    | { sustainedMi?: unknown; meanMi?: unknown; heldMi?: unknown; peakMi?: unknown; returning?: unknown; interruptionWeeks?: unknown; allowedInterruptionWeeks?: unknown }
+    | null;
+  const rampEvidence = ramp && num(ramp.sustainedMi) != null
+    ? {
+        sustainedMi: num(ramp.sustainedMi) ?? 0,
+        meanMi: num(ramp.meanMi) ?? 0,
+        heldMi: num(ramp.heldMi) ?? 0,
+        peakMi: num(ramp.peakMi) ?? 0,
+        returning: ramp.returning === true,
+        interruptionWeeks: num(ramp.interruptionWeeks) ?? 0,
+        allowedInterruptionWeeks: num(ramp.allowedInterruptionWeeks) ?? 0,
+      }
+    : null;
+  const tierRaw = (st['goal_tier'] ?? st['tier']) as GoalTier | undefined;
+  const tier: GoalTier | null =
+    tierRaw === 'elite' || tierRaw === 'advanced' || tierRaw === 'intermediate' || tierRaw === 'developing' ? tierRaw : null;
+  const band = (k: string): [number, number] | null => {
+    const b = st[k];
+    return Array.isArray(b) && b.length === 2 && num(b[0]) != null && num(b[1]) != null
+      ? [Number(b[0]), Number(b[1])]
+      : null;
+  };
+  const weeklyBand = band('tier_peak_weekly_band');
+  const longBand = band('tier_peak_long_band');
+  const tierTarget = weeklyBand && longBand
+    ? { peakWeeklyMileageBand: weeklyBand, peakLongMiBand: longBand }
+    : (tier ? { peakWeeklyMileageBand: TIER_TARGETS[cat][tier].peakWeeklyMileageBand, peakLongMiBand: TIER_TARGETS[cat][tier].peakLongMiBand } : null);
+  // The density the runner's preferences seat; on a composer that did not
+  // stamp it, the most quality days any authored week actually carries.
+  const qualityDowsPlanned = num(st['quality_days_planned'])
+    ?? Math.max(0, ...composed.weeks.map((w) => w.days.filter((d) => d.isQuality && !d.isLong && d.type !== 'race').length));
+  const thesis = (st['thesis_at_authoring'] ?? null) as ThesisAtAuthoring | null;
+  const embedded = (Array.isArray(st['embedded_races']) ? st['embedded_races'] : []) as EmbeddedRaceSummary[];
+  const answers = buildPhaseAnswers({
+    cat,
+    raceDistanceMi,
+    phases: composed.blocks.phases,
+    weeks: composed.weeks,
+    tier,
+    tierTarget,
+    qualityDowsPlanned,
+    rampEvidence,
+    recentLongMi: num(derived['recentLongMi']),
+    easyDayMedianMi: num(st['easy_day_median_mi']) ?? num(derived['easyDayMedianMi']),
+    // `derived_from` writes `?? null`, so an unmeasured habit and a failed read
+    // arrive here as the same null; both are said to be "not yet measured".
+    recentQualityPerWeek: num(derived['recentQualityPerWeek']),
+    anchors: composed.paceAnchors ?? null,
+    thesis: thesis && (thesis.source === 'resolved' || thesis.source === 'read_failed') ? thesis : null,
+    embeddedRaces: embedded.map((e) => ({ name: e.name, weekIdx: e.weekIdx, priority: e.priority, distanceMi: e.distanceMi })),
+    isMidBlock: st['is_mid_block'] === true,
+    allowedInterruptionWeeks: rampEvidence?.allowedInterruptionWeeks ?? null,
+  });
+  composed.blocks.phases = composed.blocks.phases.map((p, i) => ({ ...p, answers: answers[i] }));
+  st['phase_answers'] = answers;
 }
 
 /**
@@ -12591,6 +12700,73 @@ function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: numbe
       // RACEROLE-1 · window scaled by the ANSWERED effort, not the letter.
       return gap > 0 && gap <= postRaceNoQualityDays(e.distanceMi, effectiveRecoveryPriority(e));
     });
+    /* ── MPSPACING-1 (2026-09-01) · §16 IS STATED IN DAYS, AND THIS PASS
+     * CROSSES A WEEK BOUNDARY.
+     *
+     * `Research/04` §16: "MP long run + hard tempo within 5 days | Same energy
+     * system, same impact pattern, no recovery between."
+     *
+     * The engine honours that INSIDE a week — `DOCTRINE-MPLONG-1` removes the
+     * tempo slot from any week whose long carries marathon pace. This pass is
+     * the one place a marathon-pace long is authored WITHOUT that check having
+     * run, and it authors it on the last day of the last race-specific week:
+     * §4.6 dates the rehearsal "3 weeks pre-marathon; before taper begins".
+     * `taperMpDose` then puts §9.2's week-minus-3 session ("Final MP-specific
+     * (14-16 mi w/ 10-12 mi at MP)") in the FIRST taper week, two days later.
+     * Different weeks, so nothing looked.
+     *
+     * Measured on the owner's live CIM block `pln_9a57561debb776e5`:
+     *   2026-11-15  LONG 16 mi · 4 mi @ MP      (this pass)
+     *   2026-11-17  TEMPO 15 mi · 11 mi @ MP    (§9.2's session)
+     * Fifteen marathon-pace miles across three days, entering a taper.
+     *
+     * ── WHICH SESSION YIELDS, AND WHY IT IS THIS ONE ─────────────────────────
+     *
+     * §9.2's session is dated by the taper structure and is the larger MP
+     * rehearsal (11 mi against 4). §4.6's is the one doctrine itself says may
+     * lose its race pace: its Contraindications row reads "Not a fitness
+     * builder — keep effort controlled. If injury threat, skip MP segments",
+     * and its stated Purpose is "Final equipment, fueling, and timing
+     * rehearsal" — kit, race breakfast, fuelling intervals, none of which
+     * needs marathon-pace miles to rehearse.
+     *
+     * So the rehearsal still happens, on the day doctrine dates it, doing the
+     * job §4.6 names. It simply does not add a second marathon-pace session to
+     * the three days before the taper's own. The runner loses no MP rehearsal:
+     * they gain a bigger one two days later.
+     *
+     * NOT WIDENED BEYOND §16's OWN ROW. Only a QUALITY session carrying
+     * marathon pace inside the window suppresses the segments — the row names
+     * "hard tempo", not any hard day. A block with no such session is
+     * byte-identical to before. */
+    const rehearsalISO = dowDateInWeek(w.startISO, long.dow);
+    const collidingMp = composed.weeks.flatMap((wk) => {
+      const startDow = new Date(wk.startISO + 'T12:00:00Z').getUTCDay();
+      return wk.days
+        .filter((d) => d.isQuality && !d.isLong && d.type !== 'race' && /@\s*MP?\b/i.test(String(d.subLabel ?? '')))
+        .map((d) => ({
+          dateISO: addDays(wk.startISO, ((d.dow - startDow) % 7 + 7) % 7),
+          label: String(d.subLabel ?? ''),
+        }));
+    }).find((q) => {
+      const gap = Math.abs(daysBetween(rehearsalISO, q.dateISO));
+      return gap > 0 && gap < MP_LONG_TEMPO_MIN_GAP_DAYS;
+    });
+
+    if (collidingMp) {
+      long.longRunKind = 'dress_rehearsal';
+      // No `@ MP` in the label: `splitDay` reads the segment back out of it,
+      // so a label promising race pace the day does not carry would put the
+      // miles into every dosing and intensity count (Rule 16 · the label and
+      // the spec are one set of numbers).
+      long.subLabel = 'LONG';
+      long.notes =
+        'Dress rehearsal · Research/04 §4.6. Race kit, race breakfast, race fuelling, race-day '
+        + 'timing. Run it all at easy effort. The marathon-pace rehearsal is the session two days '
+        + 'later, and Research/04 §16 keeps the two apart.';
+      return;
+    }
+
     const dose = dressRehearsalDose(long.distanceMi, budgetMi, FAST_FINISH_MIN_MI, inPostRaceWindow, drTotalBand);
     if (!dose) return;
     long.longRunKind = 'dress_rehearsal';
@@ -12604,6 +12780,16 @@ function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: numbe
     return;
   }
 }
+
+/**
+ * MPSPACING-1 · `Research/04` §16's own window, in days.
+ *
+ * "| MP long run + hard tempo within 5 days | Same energy system, same impact
+ * pattern, no recovery between |". Bound by `LONGRUN.mp-tempo-spacing` in
+ * lib/doctrine/registry.ts, which parses the number out of that row rather
+ * than trusting this copy.
+ */
+export const MP_LONG_TEMPO_MIN_GAP_DAYS = 5;
 
 /**
  * DOWNHILL-2 (2026-08-29) · PROMOTE ONE RACE-PACE LONG TO THE DOWNHILL
@@ -14437,6 +14623,22 @@ async function loadGeneratorInputs(
   // `UNKNOWN_TERRAIN` and the block composes as it always has.
   const courseTerrain = await loadRaceCourseTerrain(userId, raceSlug ?? null, raceDistanceMi);
 
+  // PHASE-ANSWERS-1 · the Coaching Thesis, from its owner (Constitution §F),
+  // so the phase answers can say which capacity the block is built around
+  // without the composer ranking one itself. A failed read is recorded as a
+  // failed read, not as "no limiter" (Rule 11); it never refuses the plan,
+  // because the thesis is quoted into prose and prices nothing.
+  const thesisAtAuthoring: ThesisAtAuthoring = await (async () => {
+    try {
+      const { resolveCoachingThesis } = await import('@/lib/training/coaching-thesis');
+      const t = await resolveCoachingThesis(userId, todayISO);
+      return { primaryLimiter: t.primaryLimiter, priority: t.priority, confidence: t.confidence, source: 'resolved' as const };
+    } catch (e) {
+      logReadFailure('plan/generate · coaching thesis at authoring', e);
+      return { primaryLimiter: 'UNKNOWN' as const, priority: 'establish_evidence_before_prioritising' as const, confidence: null, source: 'read_failed' as const };
+    }
+  })();
+
   return {
     ok: true,
     compose: {
@@ -14444,6 +14646,7 @@ async function loadGeneratorInputs(
       goalSec,
       goalPaceSec,
       courseTerrain,
+      thesisAtAuthoring,
       raceDateISO,
       startMondayISO,
       level,

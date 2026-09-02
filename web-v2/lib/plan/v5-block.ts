@@ -173,7 +173,14 @@ function dayFraction(weekStartISO: string, todayISO: string): number {
 }
 
 export function buildPhases(state: TrainingState) {
-  return state.phases.map((p) => {
+  return state.phases.map((p, phaseIdx) => {
+    // PHASE-ANSWERS-1 (2026-09-01) · the phase's structured answers, by
+    // position: `authored_state.phase_answers` is written in the same order
+    // `plan_phases` is. ADDITIVE keys on the wire (`developing`, `whyNow`,
+    // `evidence`, `hold`, `progress`, `restructure`) — the phone's lenient
+    // decoder ignores what it does not read, and a block authored before the
+    // key existed carries none, so every key is absent rather than empty.
+    const answers = state.phaseAnswers?.[phaseIdx] ?? null;
     const weeksCount = Math.max(1, p.endWeekIdx - p.startWeekIdx + 1);
     const isCurrent =
       state.currentWeekIdx != null &&
@@ -194,6 +201,19 @@ export function buildPhases(state: TrainingState) {
       weeks: weeksCount,
       current: isCurrent,
       at,
+      // Spread, so a block with no answers carries no keys at all rather than
+      // six nulls. "This block predates the answers" and "this phase has no
+      // answer" are different facts and the wire says so by absence (Rule 11).
+      ...(answers
+        ? {
+            developing: answers.developing,
+            whyNow: answers.whyNow,
+            evidence: answers.evidence,
+            hold: answers.hold,
+            progress: answers.progress,
+            restructure: answers.restructure,
+          }
+        : {}),
     };
   });
 }

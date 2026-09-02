@@ -339,6 +339,13 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
     // Research/22's own plan durations, and the entry then sat here excusing a
     // table that was already watched. That is precisely how an allowlist rots:
     // nobody re-reads an entry once it has a paragraph attached to it.
+    'web-v2/lib/plan/phase-answers.ts#RACE_WORD':
+      'Not a physiology claim · it is the RUNNER-FACING NOUN for each distance ("5K", "half ' +
+      'marathon", "marathon"), used to write the phase-answer sentences. It asserts nothing ' +
+      'about training science, states no dose, no duration and no threshold, and no value in ' +
+      'it is read by any engine decision — every number those sentences quote comes from a ' +
+      'reading the composer was already handed. A claim over it would only assert that English ' +
+      'spells the distances correctly, which is not a doctrine question.',
     'web-v2/lib/plan/gap-report.ts#RENEGOTIATION_WINDOW_WEEKS':
       'Not a physiology claim · it is a product decision about how many weeks before race day ' +
       'a goal-renegotiation card surfaces. Nothing in Research/ states a renegotiation lead ' +

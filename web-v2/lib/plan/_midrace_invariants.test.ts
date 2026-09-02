@@ -39,6 +39,7 @@ import {
 } from './generate';
 import { tPaceFromGoal } from './spec-builder';
 import { GENERAL_RAMP_CEILING } from './goal-tiers';
+import { MP_LONG_TEMPO_MIN_GAP_DAYS } from './generate';
 import { DRESS_REHEARSAL } from './long-run-rows';
 
 const START_MONDAY = '2026-08-31';
@@ -163,16 +164,83 @@ describe('RAMP CEILING · the week after a tune-up', () => {
     expect(Number(strip!.to_mi)).toBe(0);
   });
 
-  it("§4.6's dress rehearsal survives that window, at §4.6's own dose", () => {
-    // LONGRUN-ROWS-1 · the point of separating the rows. The window removes
-    // §4.4's 8-16 mi session and does NOT remove §4.6's controlled rehearsal;
-    // inside the window that rehearsal takes the slow edge of its own band.
+  /* -- MPSPACING-1 (2026-09-01) - TWO CITED ROWS COLLIDE HERE, AND 16 WINS --
+   *
+   * LONGRUN-ROWS-1 asserted that 4.6's rehearsal SURVIVES the post-race
+   * no-quality window at the slow edge of its own MP band, while 4.4's
+   * 8-16 mi session is stripped. That reasoning is about `Research/00b`'s
+   * POST-RACE window and it still stands - the assertion below that carries
+   * it is unchanged.
+   *
+   * A SECOND window also lands on this exact day, and it is a different rule
+   * with a different citation. `Research/04` 16: "MP long run + hard tempo
+   * within 5 days | Same energy system, same impact pattern, no recovery
+   * between." On the owner's own frame - which is what this fixture is - the
+   * rehearsal falls on the last day of the last race-specific week and 9.2's
+   * week-minus-3 taper session (11 mi at MP) falls two days later.
+   *
+   * WHICH ROW GOVERNS. 16 does, and the decision is recorded here rather
+   * than left implicit:
+   *
+   *   - 16 is a named PROHIBITION with a stated mechanism and no exception
+   *     clause. 4.6 is a session description whose own Contraindications row
+   *     explicitly sanctions dropping the race-pace half of it ("Not a fitness
+   *     builder - keep effort controlled. If injury threat, skip MP segments").
+   *   - The runner loses no marathon-pace rehearsal by it. 9.2's session two
+   *     days later is 11 mi at MP against this one's 4 - the bigger rehearsal
+   *     is the one that survives.
+   *   - 4.6's stated PURPOSE, "Final equipment, fueling, and timing
+   *     rehearsal", needs kit, race breakfast and fuelling intervals, none of
+   *     which needs MP miles. The session still happens, on the day doctrine
+   *     dates it, doing the job its own row names.
+   *
+   * REVERSIBLE, and worth a second opinion: a defensible reading says 16's
+   * "MP long run" means 4.4's 8-16 mi session specifically and not 4.6's
+   * controlled 4-mile rehearsal, in which case the two never collide and the
+   * pre-MPSPACING-1 behaviour was right. That reading is recorded in the agent
+   * report as an open decision. What is NOT defensible is the state this
+   * replaced: fifteen marathon-pace miles across three days entering a taper,
+   * with no check able to see it because one sat in each week.
+   */
+  it("4.6's dress rehearsal survives that window, and 16 governs its race pace", () => {
     const raceWk = dayAt(composed, MALIBU.date)!.weekIdx;
     const long = composed.weeks[raceWk + 1].days.find((d) => d.isLong && d.type === 'long')!;
+    // UNCHANGED - the post-race window removes 4.4's session and not 4.6's.
+    // This is what LONGRUN-ROWS-1 exists to hold and it still holds.
     expect(long.longRunKind).toBe('dress_rehearsal');
+
+    // Is 9.2's taper MP session inside 16's window of this rehearsal? Asked
+    // of the composed block rather than assumed, so this invariant follows the
+    // engine if the taper's shape ever moves.
+    const isoOf = (wi: number, dow: number): string => {
+      const start = composed.weeks[wi].startISO;
+      const startDow = new Date(start + 'T12:00:00Z').getUTCDay();
+      return new Date(
+        Date.parse(start + 'T12:00:00Z') + (((dow - startDow) % 7 + 7) % 7) * 86400000,
+      ).toISOString().slice(0, 10);
+    };
+    const rehearsalISO = isoOf(raceWk + 1, long.dow);
+    const mpQualityWithinWindow = composed.weeks.some((w, wi) => w.days.some((d) => {
+      if (!d.isQuality || d.isLong || d.type === 'race') return false;
+      if (!/@\s*MP?\b/i.test(String(d.subLabel ?? ''))) return false;
+      const gap = Math.abs(
+        (Date.parse(isoOf(wi, d.dow) + 'T12:00:00Z') - Date.parse(rehearsalISO + 'T12:00:00Z')) / 86400000,
+      );
+      return gap > 0 && gap < MP_LONG_TEMPO_MIN_GAP_DAYS;
+    }));
+
     const mi = Number((long.subLabel ?? '').match(/([\d.]+)mi\s*@/)?.[1] ?? 0);
-    expect(mi, 'inside a post-race window the rehearsal is at the band floor').toBe(DRESS_REHEARSAL.mpMiBand[0]);
-    expect(long.notes).toMatch(/not a fitness test/i);
+    if (mpQualityWithinWindow) {
+      // 16 governs - the rehearsal keeps its job and loses its race pace.
+      expect(mi, "16: no MP segments within five days of the taper's MP session").toBe(0);
+      expect(long.subLabel).not.toMatch(/@\s*MP?\b/i);
+      expect(long.notes).toMatch(/race kit/i);
+      expect(long.notes).toMatch(/easy effort/i);
+    } else {
+      // No collision - LONGRUN-ROWS-1's original assertion, verbatim.
+      expect(mi, 'inside a post-race window the rehearsal is at the band floor').toBe(DRESS_REHEARSAL.mpMiBand[0]);
+      expect(long.notes).toMatch(/not a fitness test/i);
+    }
   });
 
   it('every post-tune-up week respects the general ramp ceiling off the last undistorted week', () => {
