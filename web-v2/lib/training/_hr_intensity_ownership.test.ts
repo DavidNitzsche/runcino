@@ -33,6 +33,43 @@
  * 0.78 of HRmax for an easy ceiling), so a runner with no LTHR on file is
  * prescribed HR off a THIRD derivation.
  *
+ * ── B7 · WHAT CLOSED, 2026-09-02 ────────────────────────────────────────────
+ *
+ * `lib/training/zones.ts` is now the owner of the PRESCRIBED half. It holds
+ * `FRIEL_PCT_LTHR_BY_INTENSITY` (Research/03 §6) and
+ * `DANIELS_PCT_HRMAX_BY_INTENSITY` / `DANIELS_PCT_HRMAX_TARGET` (§8), and
+ * `prescribedHrTargetBpm({ intensity, lthr, maxHr })` answers for every caller.
+ * Three sites migrated and the allowlist below shrank from seven to four:
+ *
+ *   spec-builder.ts   0.92 x lthr    → prescribedHrTargetBpm('threshold')
+ *   build-workout.ts  0.95 x maxHr   → prescribedHrTargetBpm('interval')
+ *   build-workout.ts  0.87 x maxHr   → prescribedHrTargetBpm('threshold')
+ *
+ * A FOURTH site was consolidated that this scanner never saw: the watch's
+ * interval uplift `Math.round(rawHrTarget * 1.05)`. It is a fraction of LTHR
+ * applied to a VARIABLE, so the regex below could not match it — the exact
+ * blind spot the Rule 22 note already declared. 1.05 is the centre of Friel
+ * Z5b, so it now comes from the table like everything else.
+ *
+ * ── THE RESIDUAL, NAMED RATHER THAN QUIETLY LEFT ────────────────────────────
+ *
+ * The easy CEILING is still three definitions of 0.78 x HRmax:
+ * `spec-builder#hrCapEasy`, the watch's `hrCeilingBpm` fallback, and
+ * `lib/coach/easy-discipline#EASY_HRMAX_CEILING_PCT`. It was NOT folded in on
+ * this pass, for reasons that are not convenience:
+ *
+ *   1. `lib/coach/**` was outside the editing agent's file boundary, so two of
+ *      three could have been merged and the third left standing — which is a
+ *      worse state than three, not a better one.
+ *   2. `EASY.cap-not-looser-than-daniels` in `lib/doctrine/registry.ts` parses
+ *      the literal out of `hrCapEasy`'s source text and carries an ARGUED
+ *      known-violation exemption about `MAX(lthrCap, maxHrCap)` being the
+ *      looser of two ceilings. Moving the arithmetic would have broken a live
+ *      claim and orphaned a real, documented finding.
+ *
+ * It is a ceiling, not a target, so `DANIELS_PCT_HRMAX_TARGET.easy` is `null`
+ * rather than a fourth copy of 0.78. Two allowlist rows below carry it.
+ *
  * ── WHAT THIS TEST DOES ─────────────────────────────────────────────────────
  *
  * It does NOT assert the fractions are wrong — that is a doctrine question and
@@ -59,6 +96,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+import {
+  FRIEL_PCT_LTHR_BY_INTENSITY,
+  DANIELS_PCT_HRMAX_BY_INTENSITY,
+  DANIELS_PCT_HRMAX_TARGET,
+  prescribedHrTargetBpm,
+  thresholdPassHrBpm,
+} from './zones';
 
 const ROOT = join(__dirname, '..', '..');
 
@@ -72,29 +116,19 @@ const HR_DERIVATION_ALLOWLIST: ReadonlyArray<{
 }> = [
   {
     file: 'lib/plan/spec-builder.ts', fraction: '0.78', anchor: 'maxHr',
-    reason: 'easy/long HR cap, the %HRmax half of max(89% LTHR, 78% HRmax). '
-      + 'Belongs in zones.ts beside aerobicCeilingBpm, which owns the LTHR half.',
-  },
-  {
-    file: 'lib/plan/spec-builder.ts', fraction: '0.92', anchor: 'lthr',
-    reason: 'THE FINDING. Authors workout_spec.hr_target_bpm for a tempo row '
-      + 'whose pace is the canonical Daniels T. 92% of LTHR is the top of '
-      + 'Friel Z3; the pace is Z4. No doctrine citation at the site.',
+    reason: 'RESIDUAL, argued in the header. The easy CEILING half of '
+      + 'max(89% LTHR, 78% HRmax). Not migrated on the B7 pass because '
+      + '`EASY.cap-not-looser-than-daniels` parses this literal out of the '
+      + 'source text and hangs an argued known-violation exemption on the '
+      + 'MAX(...) beside it, and the third copy of the same number lives in '
+      + '`lib/coach/**`, out of that pass\'s boundary. A ceiling, not a target.',
   },
   {
     file: 'lib/watch/build-workout.ts', fraction: '0.78', anchor: 'maxHr',
-    reason: 'the watch re-derives the easy ceiling when the plan row carries '
-      + 'no hr_cap_bpm. Second copy of the spec-builder line above.',
-  },
-  {
-    file: 'lib/watch/build-workout.ts', fraction: '0.95', anchor: 'maxHr',
-    reason: 'interval HR target when the runner has no LTHR. Research/03 §8 '
-      + 'is cited in the comment; the derivation still lives on the wrist path '
-      + 'rather than in the zone owner.',
-  },
-  {
-    file: 'lib/watch/build-workout.ts', fraction: '0.87', anchor: 'maxHr',
-    reason: 'threshold HR target when the runner has no LTHR. Same as above.',
+    reason: 'RESIDUAL. The watch re-derives the easy CEILING when the plan row '
+      + 'carries no hr_cap_bpm. Second copy of the spec-builder line above, '
+      + 'and it stays paired with it — migrating one of a matched pair is how '
+      + 'two surfaces start disagreeing. Same argument as that row.',
   },
   {
     file: 'lib/training/lthr.ts', fraction: '0.90', anchor: 'maxHr',
@@ -127,7 +161,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 /** `lthr * 0.92`, `maxHr * 0.78`, `lthrBpm * 0.975`, `max_hr * 0.8` … */
 const HR_FRACTION = /\b(lthr|lthrBpm|lthr_bpm|maxHr|maxHrBpm|max_hr)\s*\*\s*(0\.\d+)/gi;
 
-describe('HR intensity has no single owner (brain scorecard, 2026-09-02)', () => {
+describe('HR intensity ownership · the prescribed half is owned (B7, 2026-09-02)', () => {
   const files = [
     ...sourceFiles(join(ROOT, 'lib')),
     ...sourceFiles(join(ROOT, 'app')),
@@ -169,9 +203,194 @@ describe('HR intensity has no single owner (brain scorecard, 2026-09-02)', () =>
   });
 
   it('the count is pinned · consolidating one must update this file', () => {
-    // Seven sites. Five are prescriptive (spec-builder x2, build-workout x3);
-    // two answer a different question and are argued as such above. Lower this
-    // number when a site moves into zones.ts; it may never be raised.
-    expect(found.length).toBe(7);
+    // FOUR sites, down from seven (B7, 2026-09-02). Two are the easy-CEILING
+    // residual argued in the header; two answer a different question entirely
+    // (anchor estimation, evidence admissibility). Not one of the four is a
+    // prescribed intensity target any more — every one of those now resolves
+    // through `prescribedHrTargetBpm`.
+    //
+    // Lower this number when a site moves into zones.ts; it may never be
+    // raised. RATCHET.
+    expect(found.length).toBe(4);
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * B7 · THE OWNER ITSELF · 2026-09-02
+ *
+ * The block above pins WHERE derivations live. This one checks that the owner
+ * agrees with the research, by parsing the numbers OUT OF `Research/03` at run
+ * time rather than restating them — a check that hardcodes both sides only
+ * proves the test agrees with itself (Rule 18).
+ *
+ * ── RULE 22 · WHAT THIS BLOCK CANNOT FAIL ON ────────────────────────────────
+ *
+ *   · It cannot tell whether Friel's BAND is the right band for a given
+ *     Daniels intensity. That mapping (T pace -> Friel Z4) is a doctrine
+ *     judgement stated in `zones.ts`; this only checks the arithmetic against
+ *     the row that judgement names.
+ *   · It cannot see any caller. A module could stop calling
+ *     `prescribedHrTargetBpm` tomorrow and every assertion here still passes;
+ *     the allowlist scan above is what covers that, and only for fractions it
+ *     can pattern-match.
+ *   · It cannot see the wrist's Swift.
+ *   · It says nothing about the easy CEILING family, which is the declared
+ *     residual, not a covered case.
+ * ══════════════════════════════════════════════════════════════════════════ */
+describe('B7 · the HR prescription owner agrees with Research/03', () => {
+  const DOC = join(ROOT, '..', 'Research', '03-heart-rate-zones.md');
+  const doc = readFileSync(DOC, 'utf8');
+
+  it('LIVENESS · the doctrine file was actually read (Rule 18 §2)', () => {
+    expect(doc.length).toBeGreaterThan(2000);
+    expect(doc).toContain('### Friel 7-Zone Running HR Table');
+    expect(doc).toContain("## 8. Daniels' HR Zones");
+  });
+
+  /** The doc has SEVERAL percent tables. Slice to the one section first, or a
+   *  row label matches a %HRmax row in §4 and the check silently grades the
+   *  engine against the wrong table (it did, on the first run). */
+  function section(startsWith: string, endsWith: string): string {
+    const a = doc.indexOf(startsWith);
+    if (a < 0) throw new Error(`Research/03 has no section "${startsWith}"`);
+    const b = doc.indexOf(endsWith, a + startsWith.length);
+    if (b < 0) throw new Error(`Research/03 section "${startsWith}" is unterminated`);
+    return doc.slice(a, b);
+  }
+  const FRIEL_TABLE = section('### Friel 7-Zone Running HR Table', '### Friel Pace Zones');
+  const DANIELS_TABLE = section("## 8. Daniels' HR Zones", '### Notes');
+
+  /** `| 3 Tempo | 90-94% | ... |` -> [0.90, 0.94] */
+  function frielRow(label: string): [number, number] {
+    const re = new RegExp(`\\|\\s*${label}[^|]*\\|\\s*(\\d+)\\s*[\u2013-]\\s*(\\d+)\\s*%`, 'i');
+    const m = FRIEL_TABLE.match(re);
+    if (!m) throw new Error(`Research/03 Friel table has no row matching ${label}`);
+    return [Number(m[1]) / 100, Number(m[2]) / 100];
+  }
+
+  /** `| T (Threshold) | 86-92% | ... |` -> [0.86, 0.92] */
+  function danielsRow(pattern: string): [number, number] {
+    const re = new RegExp(`\\|\\s*${pattern}\\s*\\|\\s*(\\d+)\\s*[\u2013-]\\s*(\\d+)\\s*%`, 'i');
+    const m = DANIELS_TABLE.match(re);
+    if (!m) throw new Error(`Research/03 Daniels table has no row matching ${pattern}`);
+    return [Number(m[1]) / 100, Number(m[2]) / 100];
+  }
+
+  it("the Friel band per intensity is the doc's own row", () => {
+    // The doc publishes WHOLE-PERCENT runs (85-89, 90-94, ...) which tile the
+    // whole percents; their continuous extension is [floor, next floor), which
+    // is exactly what `FRIEL_7_ZONE_EDGES` encodes and what the table reuses.
+    // So the engine's floor must equal the doc's floor, and the engine's
+    // exclusive ceiling must be the doc's stated ceiling plus one point.
+    const cases: Array<[keyof typeof FRIEL_PCT_LTHR_BY_INTENSITY, string]> = [
+      ['easy', '2 Aerobic'],
+      ['marathon', '3 Tempo'],
+      ['threshold', '4 SubThreshold'],
+      ['interval', '5b Aerobic capacity'],
+    ];
+    for (const [intensity, row] of cases) {
+      const [lo, hi] = frielRow(row);
+      const band = FRIEL_PCT_LTHR_BY_INTENSITY[intensity];
+      expect(band, `${intensity} has no band`).not.toBeNull();
+      expect(band![0]).toBeCloseTo(lo, 5);
+      expect(band![1]).toBeCloseTo(hi + 0.01, 5);
+    }
+  });
+
+  it('repetition REFUSES rather than inventing an HR (Rule 11)', () => {
+    // §8's own note. Read it out of the doc so the refusal stays tied to the
+    // sentence that justifies it.
+    expect(doc).toMatch(/\*\*R\*\* workouts: HR unreliable/);
+    expect(FRIEL_PCT_LTHR_BY_INTENSITY.repetition).toBeNull();
+    expect(DANIELS_PCT_HRMAX_TARGET.repetition).toBeNull();
+    expect(prescribedHrTargetBpm({ intensity: 'repetition', lthr: 168, maxHr: 180 })).toBeNull();
+  });
+
+  it("every %HRmax band is the doc's own row, and every target sits inside it", () => {
+    const rows: Array<[keyof typeof DANIELS_PCT_HRMAX_BY_INTENSITY, string]> = [
+      ['easy', 'E \\(Easy\\)'],
+      ['marathon', 'M \\(Marathon\\)'],
+      ['threshold', 'T \\(Threshold\\)'],
+      ['interval', 'I \\(Interval / VO2max\\)'],
+    ];
+    for (const [intensity, pattern] of rows) {
+      const [lo, hi] = danielsRow(pattern);
+      const band = DANIELS_PCT_HRMAX_BY_INTENSITY[intensity];
+      expect(band, `${intensity} band missing`).not.toBeNull();
+      expect(band![0]).toBeCloseTo(lo, 5);
+      expect(band![1]).toBeCloseTo(hi, 5);
+      const target = DANIELS_PCT_HRMAX_TARGET[intensity];
+      if (target != null) {
+        expect(target, `${intensity} target ${target} is outside the doc row ${lo}-${hi}`)
+          .toBeGreaterThanOrEqual(lo);
+        expect(target).toBeLessThanOrEqual(hi);
+      }
+    }
+  });
+
+  it('REGRESSION · a threshold pace no longer carries a tempo heart rate', () => {
+    // The reference runner, LTHR 168, plan pln_9a57561debb776e5 row 2026-09-08.
+    // Before: hr_target_bpm 155 = round(168 x 0.92), the middle of Friel Z3,
+    // under a 430 s/mi pace that is the canonical Daniels T, judged against a
+    // pass line of 164. Three intensity statements on one row.
+    const LTHR = 168;
+    expect(Math.round(LTHR * 0.92)).toBe(155);          // the old number, proven
+    const t = prescribedHrTargetBpm({ intensity: 'threshold', lthr: LTHR });
+    expect(t).not.toBeNull();
+    expect(t!.bpm).not.toBe(155);
+    // ONE quantity, ONE name: the target and the line it is judged against are
+    // the same figure by construction - both are the centre of Friel Z4.
+    expect(t!.bpm).toBe(thresholdPassHrBpm(LTHR));
+    expect(t!.bpm).toBe(164);
+    expect(t!.anchor).toBe('lthr');
+    // And it is now within 2 bpm of what he demonstrably holds at that pace
+    // (162 bpm at 7:02/mi, 2026-09-01), against 7 bpm before.
+    expect(Math.abs(t!.bpm - 162)).toBeLessThanOrEqual(2);
+  });
+
+  it('LTHR beats %HRmax, and the fallback fires only without one', () => {
+    const both = prescribedHrTargetBpm({ intensity: 'interval', lthr: 168, maxHr: 180 });
+    expect(both!.anchor).toBe('lthr');
+    const fallback = prescribedHrTargetBpm({ intensity: 'interval', lthr: null, maxHr: 180 });
+    expect(fallback!.anchor).toBe('maxHr');
+    expect(fallback!.bpm).toBe(Math.round(180 * 0.95));  // the doc's I-row floor
+    expect(prescribedHrTargetBpm({ intensity: 'interval', lthr: null, maxHr: null })).toBeNull();
+  });
+
+  it('the watch interval uplift is the Friel Z5b centre, not a typed 1.05', () => {
+    // `build-workout` used to write `Math.round(rawHrTarget * 1.05)`. A
+    // fraction of LTHR applied to a VARIABLE, which the allowlist scanner
+    // above is structurally unable to see. The value is unchanged and the
+    // derivation is now the table's.
+    const src = readFileSync(join(ROOT, 'lib', 'watch', 'build-workout.ts'), 'utf8');
+    const live = src.split('\n').filter((l) => {
+      const t = l.trimStart();
+      return !t.startsWith('*') && !t.startsWith('//') && !t.startsWith('/*');
+    }).join('\n');
+    // NOT `not.toMatch(/rawHrTarget \* 1.05/)`. That was the first version and
+    // it was falsified in one line: renaming the variable made the gate green
+    // while the derivation stayed on the wrist. The check is now the CLASS —
+    // any decimal fraction applied to any HR-shaped identifier in this file.
+    //
+    // Fractions this file is still ALLOWED to carry are exactly the ones the
+    // allowlist above declares for it — today, the easy-ceiling residual.
+    // Anything else, under any variable name, is a derivation on the wrist.
+    const allowedHere = new Set(
+      HR_DERIVATION_ALLOWLIST
+        .filter((a) => a.file === 'lib/watch/build-workout.ts')
+        .map((a) => Number(a.fraction)),
+    );
+    const offenders = live.split('\n')
+      .map((l, i) => ({ l, n: i + 1 }))
+      .filter(({ l }) => {
+        const m = l.match(/\b[A-Za-z_$][\w$]*(?:[Hh][Rr]|[Bb]pm)[\w$]*\s*\*\s*(\d*\.\d+)/);
+        return m != null && !allowedHere.has(Number(m[1]));
+      })
+      .map(({ l, n }) => `${n}: ${l.trim()}`);
+    expect(offenders).toEqual([]);
+    const band = FRIEL_PCT_LTHR_BY_INTENSITY.interval!;
+    expect((band[0] + band[1]) / 2).toBeCloseTo(1.05, 5);
+    expect(prescribedHrTargetBpm({ intensity: 'interval', lthr: 164 })!.bpm)
+      .toBe(Math.round(164 * 1.05));
   });
 });

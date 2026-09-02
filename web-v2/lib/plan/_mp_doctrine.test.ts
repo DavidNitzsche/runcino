@@ -28,6 +28,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildSimPlan } from './sim-inputs';
 import { racePaceLongThisWeek, MP_LONG_CADENCE_WEEKS, TAPER_MP_DOSE } from './generate';
+import { prescribedHrTargetBpm } from '@/lib/training/zones';
 import { buildWorkoutSpec } from './spec-builder';
 import { weekIntensity, EASY_SHARE_FLOOR } from './intensity-distribution';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
@@ -596,7 +597,13 @@ describe('DOCTRINE-TAPERMP-1 · the MP block reaches the watch at marathon pace'
     const { spec } = buildWorkoutSpec('tempo', 8, T, 160, plain);
     const s = spec as Record<string, unknown>;
     expect(s.tempo_pace_s_per_mi).toBe(T);
-    expect(s.hr_target_bpm).toBe(Math.round(160 * 0.92));
+    // B7 (2026-09-02) · was `Math.round(160 * 0.92)` = 147, the middle of Friel
+    // Z3, on a block whose pace is Daniels T. The intensity the pace was
+    // prescribed at now decides the heart rate, through the zone owner.
+    // What this assertion protects is unchanged: an ordinary tempo keeps a
+    // target while an `@ MP` block carries none.
+    expect(s.hr_target_bpm).toBe(prescribedHrTargetBpm({ intensity: 'threshold', lthr: 160 })!.bpm);
+    expect(s.hr_target_bpm).toBe(156);   // round(160 x 0.975)
     expect(s.label).toBeUndefined();
     expect(subLabelFromSpec(spec as never)).toBe('2 mi WU · 4 mi @ T · 2 mi CD');
   });

@@ -43,7 +43,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { raceOpeningSegments } from '@/lib/race/distance-doctrine';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
-import { aerobicCeilingBpm } from '@/lib/training/zones';
+import { aerobicCeilingBpm, prescribedHrTargetBpm } from '@/lib/training/zones';
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { distanceMiFromLabel as sharedDistanceMiFromLabel } from '@/lib/race/distance';
@@ -1830,18 +1830,36 @@ export async function buildWatchToday(
   // so the watch matches what glance-adapter, seed, and recap already read.
   // Gated to intervals/threshold/tempo so easy/long work phases never show a
   // quality HR target (those sessions use hrCeilingBpm at the workout level).
-  const specHrBpm = wo.workout_spec
-    ? (Number((wo.workout_spec as Record<string, unknown>)?.lthr_bpm) ||
-       Number((wo.workout_spec as Record<string, unknown>)?.hr_target_bpm) || null)
+  //
+  // B7 (2026-09-02) · `lthr_bpm` IS AN ANCHOR, `hr_target_bpm` IS A TARGET.
+  // The old COALESCE read them as one quantity, and `spec-builder` writes
+  // `lthr_bpm: lthr` verbatim — the runner's raw LTHR. So a threshold row on
+  // the reference runner's live block carried WORK TARGET 168 beside its own
+  // pass rule of `avgHr <= 164`: the wrist asked for a heart rate the row then
+  // marked as a fail. One name for two quantities is what let that stand
+  // (Rule 16); they are read apart now and the anchor goes to the owner.
+  const specTargetBpm = wo.workout_spec
+    ? (Number((wo.workout_spec as Record<string, unknown>)?.hr_target_bpm) || null)
+    : null;
+  const specAnchorBpm = wo.workout_spec
+    ? (Number((wo.workout_spec as Record<string, unknown>)?.lthr_bpm) || null)
     : null;
   const isQualityWorkout = sessionClass === 'threshold' || sessionClass === 'interval';
   const isIntervalWorkout = sessionClass === 'interval';
-  const rawHrTarget = isQualityWorkout ? (specHrBpm ?? lthr ?? null) : null;
-  // %HRmax fallback when LTHR absent. Both figures are the BOTTOM of their
-  // Daniels row in Research/03 §8 ("Daniels' HR Zones": T 86-92 %HRmax,
-  // I 95-100 %HRmax), which is what "conservative" means here. Already the
-  // final target — must NOT receive the 1.05× interval uplift that LTHR
-  // sources use.
+  // B7 (2026-09-02) · THE WRIST NO LONGER OWNS AN HR DERIVATION.
+  //
+  // Three fractions lived here — `maxHr * 0.95`, `maxHr * 0.87` and the
+  // interval uplift `rawHrTarget * 1.05`. All three are now resolved by
+  // `prescribedHrTargetBpm` in `lib/training/zones.ts`, the zone owner, from
+  // the doctrine tables it already holds. The values are unchanged: §8's
+  // I-row floor (0.95) and the long-standing conservative T figure (0.87) for
+  // the %HRmax lane, and the centre of Friel Z5b ("Aerobic capacity, VO2max
+  // work 3-5 min", 103-106% LTHR) for the interval uplift — which is 1.05,
+  // exactly the multiplier that was typed here.
+  //
+  // The uplift is the one worth naming: `rawHrTarget * 1.05` did not match a
+  // scan for `lthr * <fraction>`, so a fraction of LTHR was being applied on
+  // the wrist that the ownership gate could not see at all.
   //
   // WATCH-TYPE-1 · the second arm read the RAW column (`wo.type === 'tempo'`)
   // while the gate above it reads `sessionClass`. Same doctrine row, two
@@ -1849,13 +1867,19 @@ export async function buildWatchToday(
   // `progression` are all T-intensity and all fell through to null, so a
   // runner with no LTHR on file got an HR reference on a tempo and none on
   // the identical threshold session. Keyed off the class, like its gate.
-  const maxHrFallback: number | null = !rawHrTarget && isQualityWorkout && maxHr
-    ? isIntervalWorkout ? Math.round(maxHr * 0.95)
-    :                     Math.round(maxHr * 0.87)
-    : null;
-  const workHrTargetBpm = rawHrTarget != null
-    ? (isIntervalWorkout ? Math.round(rawHrTarget * 1.05) : rawHrTarget)
-    : maxHrFallback;
+  const workIntensity = isIntervalWorkout ? 'interval' as const : 'threshold' as const;
+  // The anchor this row was authored against, else the live profile. An
+  // authored anchor wins so the wrist and the plan cannot be priced off two
+  // different LTHRs on the same session.
+  const effectiveLthr = isQualityWorkout ? (specAnchorBpm ?? lthr ?? null) : null;
+  const workHrTargetBpm: number | null = !isQualityWorkout
+    ? null
+    // A row that carries an explicit TARGET is honoured verbatim — the plan
+    // already asked the owner for it, and re-deriving here would be a second
+    // answer to a settled question.
+    : specTargetBpm
+      ?? prescribedHrTargetBpm({ intensity: workIntensity, lthr: effectiveLthr, maxHr })?.bpm
+      ?? null;
 
   if (expanded && expanded.length > 0) {
     // workout_spec drove the phase list · convert ExpandedPhase →

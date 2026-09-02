@@ -47,7 +47,7 @@ import {
 // `lib/plan/catalogue-rx.ts#anchorsFor` also reads — so the zones the catalogue
 // is allowed to anchor and the zones this file can pace cannot diverge.
 import { resolveZoneAnchors, zonePaceSec } from './zone-anchors';
-import { aerobicCeilingBpm, thresholdPassHrBpm } from '@/lib/training/zones';
+import { aerobicCeilingBpm, thresholdPassHrBpm, prescribedHrTargetBpm } from '@/lib/training/zones';
 import { roundTo } from '@/lib/format/run';
 import type { PaceZone } from '@/lib/workout-catalogue/types';
 // TYPE-ONLY. `prescription-resolver.ts` is pure — no pool, no query — so even a
@@ -60,7 +60,7 @@ import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver
 import {
   raceAbortHrBpm,
   raceCheckpointMi,
-  RACE_PACE_ABORT_FRACTION,
+  racePaceAbortRule,
 } from '@/lib/race/distance-doctrine';
 
 export type WorkoutSpec = Record<string, unknown> | null;
@@ -1100,12 +1100,14 @@ export function buildWorkoutSpec(
       // slower than the goal is already past it at the gun — so the rule either
       // fires on mile one of a well-run race or, once the row is honest, fires
       // where it was meant to. Same precedence as `racePace` above.
+      // B2 (2026-09-02) · ONE derivation, called by both writers. The rule is
+      // rewritten by `race-row-refresh` whenever the canonical execution
+      // target moves, and it must be the SAME function on both sides or the
+      // row carries a target and an abort anchored to two different numbers
+      // (the owner's CIM row: target 443, abort 458 = 1.05 × the stale seed).
       const abortAnchor = prescribedRacePaceSPerMi ?? goalPaceSPerMi;
-      if (abortAnchor != null) {
-        const abortPace = Math.round(abortAnchor * (1 + RACE_PACE_ABORT_FRACTION));
-        rules.push({ kind: 'abort', metric: 'pace', op: '>', value: abortPace, scope, action: 'switch_to_b_goal',
-          label: `${at} check: pace slower than ${Math.floor(abortPace / 60)}:${String(abortPace % 60).padStart(2, '0')}/mi · switch to the B plan` });
-      }
+      const paceAbort = racePaceAbortRule({ distanceMi: raceMi, targetPaceSecPerMi: abortAnchor });
+      if (paceAbort != null) rules.push({ ...paceAbort });
     }
     return rules.length > 0 ? rules : null;
   })();
@@ -1505,7 +1507,31 @@ export function buildWorkoutSpec(
           ...(atMarathonPace && !blockByEffort ? mpRangeFields('marathon_range_s_per_mi') : {}),
           ...(blockByEffort ? { by_effort: true } : {}),
           cooldown_mi: clampWuCdMi(Number(cd.toFixed(1))),
-          hr_target_bpm: atMarathonPace ? null : (lthr ? Math.round(lthr * 0.92) : null),
+          // B7 (2026-09-02) · THE HR TARGET IS DERIVED FROM THE INTENSITY THE
+          // PACE WAS PRESCRIBED AT, by the zone owner.
+          //
+          // This was `Math.round(lthr * 0.92)` — the MIDDLE OF FRIEL Z3, "Sub-LT
+          // steady" — on a block whose `tempo_pace_s_per_mi` is `blockPace`,
+          // which for a non-MP tempo IS the canonical Daniels T out of
+          // `resolveThresholdCapacity`. The row therefore prescribed a threshold
+          // pace, targeted a tempo heart rate, and was judged by the contingency
+          // rule above against `thresholdPassHrBpm` — a threshold one. Three
+          // intensity statements, two anchors, one row.
+          //
+          // Verified on the reference runner (LTHR 168), row 2026-09-08:
+          // pace 430 s/mi, target 155, pass ≤164 — while his own 2026-09-01
+          // threshold session held 162 bpm AT 7:02/mi. The target was 7 bpm
+          // below what he demonstrably runs at the pace it prescribes.
+          //
+          // `prescribedHrTargetBpm('threshold')` takes the centre of Friel Z4
+          // ("Just below LT", 95–99% LTHR) out of `FRIEL_7_ZONE_EDGES`, so the
+          // target and the pass line are now the SAME quantity by construction
+          // rather than two independent fractions that happened to differ.
+          // An `@ MP` block still carries no HR target — pace is the governor
+          // there, per the DOCTRINE-TAPERMP-1 note above.
+          hr_target_bpm: atMarathonPace
+            ? null
+            : (prescribedHrTargetBpm({ intensity: 'threshold', lthr, maxHr })?.bpm ?? null),
           // The authored prescription carries the block's IDENTITY, exactly as
           // it does for time-based rep sets above: `subLabelFromSpec` re-derives
           // a tempo label as "@ T", so without this an MP block would come back

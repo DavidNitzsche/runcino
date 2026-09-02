@@ -9964,8 +9964,33 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
        * `goal_realism.flag`, which is a boolean struck at a 15% VDOT threshold
        * and cannot express four of those five states.
        */
+      /*
+       * B2 (2026-09-02) · PROVENANCE ONLY. This blob is a record of what the
+       * runway said when the block was authored. It is NOT the prescribed race
+       * target and no reader may resolve a row against it — that question has
+       * one owner, `lib/race/race-outlook.ts`'s `execution`, which writes
+       * `plan_workouts.pace_target_s_per_mi` and `workout_spec.race_execution`
+       * through `refreshRaceRowsForPlan`.
+       *
+       * It was read back as the authoring seed until 2026-09-02, which is how
+       * the owner's plan came to hold 436 s/mi here and 443 s/mi on the row.
+       *
+       * Rule 10 · a persisted derived value carries its anchor. `anchor_vdot`
+       * is the threshold capacity this was computed from — so a reader can see
+       * that a `ceiling_vdot` of 47.1 was struck against a fitness that has
+       * since moved to 47.8, instead of reading a stale number as current.
+       * `authority: 'provenance_only'` is the posture, declared rather than
+       * assumed, and `lib/race/_race_target_ownership.test.ts` is what holds it.
+       *
+       * The rule's "at" is `training_plans.authored_iso`, on the same row. A
+       * `new Date()` here would have been a second timestamp for one moment
+       * AND non-deterministic — it broke `_travel_invariants`' byte-identical
+       * composition gate on the first run, which is the gate doing its job.
+       */
       prescribed_race_pace: achievableRace
         ? {
+            authority: 'provenance_only',
+            anchor_vdot: estimatedCurrentVdot ?? null,
             pace_s_per_mi: achievableRace.paceSPerMi,
             target_sec: achievableRace.targetSec,
             source: achievableRace.source,
@@ -14201,6 +14226,21 @@ async function persistComposedPlan(
    *  commit gate stands down and the rebuild lands as it always did. */
   let priorPrescription: PlanPrescription | null = null;
   let planDelta: PlanDelta | null = null;
+  /**
+   * B2 (2026-09-02) · the prescribed race target, from its ONE owner, resolved
+   * before the transaction opens. `race-outlook` reads no plan data (it reads
+   * runs, races and profile), so its answer here is byte-identical to the one
+   * `refreshRaceRowsForPlan` produces post-persist inside the transaction —
+   * which is exactly why seeding from it removes a second record rather than
+   * adding a second derivation.
+   */
+  const raceSeed = await (async () => {
+    const { resolveAuthoringRaceSeed } = await import('@/lib/race/race-row-refresh');
+    return resolveAuthoringRaceSeed(userId, raceSlug ?? null, todayISO);
+  })();
+  if (!raceSeed.ok && raceSlug) {
+    console.error(`[persistComposedPlan] race seed REFUSED · plan for ${userId} race=${raceSlug} · ${raceSeed.reason}${raceSeed.detail ? ` · ${raceSeed.detail}` : ''} · the race row is authored with no prescribed target and refreshRaceRowsForPlan will report the same refusal`);
+  }
   const boundary = await mutatePlan<string | undefined>({
     userUuid: userId,
     source: 'generate/persistComposedPlan',
@@ -14277,18 +14317,24 @@ async function persistComposedPlan(
         ?? (inputs.compose.belowTableAnchor
           ? Math.round(inputs.compose.belowTableAnchor.anchor.paceSPerMi)
           : null),
-      // RACEPACE-1 · read back out of the state this compose just authored,
-      // rather than recomputed here. A second derivation is a second chance to
-      // disagree, and `authored_state.prescribed_race_pace` is what every later
-      // reader (the recompute, the audit, the phone) will resolve the row
-      // against. Absent (maintenance/recovery composers, no goal) → null →
-      // the race branch falls back to `goalPaceSec` exactly as before.
-      prescribedRacePaceSec: ((): number | null => {
-        const p = (composed.authoredState as Record<string, unknown> | undefined)
-          ?.prescribed_race_pace as { pace_s_per_mi?: unknown } | null | undefined;
-        const v = p?.pace_s_per_mi;
-        return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
-      })(),
+      // B2 (2026-09-02) · THE SEED COMES FROM THE OWNER, NOT FROM
+      // `authored_state`. This used to read `prescribed_race_pace.pace_s_per_mi`
+      // — `achievableRaceTarget`'s number — back out of the state this compose
+      // had just authored. That made the plan hold TWO records of the
+      // prescribed race target: on the owner's block, `authored_state` said
+      // 436 s/mi (11430 s, `ceiling_vdot 47.1`, already stale against a live
+      // 47.8) while `refreshRaceRowsForPlan` wrote 443 s/mi (11610 s) onto the
+      // row. Which one the runner got depended on whether the refresh had run
+      // since authoring. `authored_state.prescribed_race_pace` is PROVENANCE
+      // now — what the runway said when the block was authored — and nothing
+      // reads it back as a value.
+      //
+      // `raceSeed` is resolved by `race-outlook` (the canonical owner) before
+      // the transaction, and the same resolver writes the row again seconds
+      // later inside it, so the two cannot disagree. A refusal seeds null and
+      // the race branch falls back exactly as it did with no goal (Rule 11:
+      // a refusal is not a number).
+      prescribedRacePaceSec: raceSeed.ok ? raceSeed.paceSecPerMi : null,
       // R3 + PACE-I-1 (2026-06-23) · 5K/10K/HM race goals get true VO2max I-pace intervals. HM was
       // excluded, but its quality day is explicitly labeled "6×800m @ I pace" (inlinePrescriptions) —
       // with iPace null it shipped the cruise T−18 default: a +6..+28 s/mi too-slow "VO2max" rep that
