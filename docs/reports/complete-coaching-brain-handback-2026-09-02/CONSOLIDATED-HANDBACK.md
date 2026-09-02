@@ -214,6 +214,13 @@ And the Block screen now reads, under "Where this goes":
 That is your coaching thesis, in the place it was written for. Two earlier
 reports claimed it was already there by reading the wiring. Both were wrong.
 
+**And Races, the third surface** (`renders/races-2026-09-02-verified.png`): CIM,
+95 days out, **Goal 3:00:00 · Projected 3:19:42 · Gap +19:42**. That projection
+is the same number the independent ownership audit read from a different path
+entirely, which is Rule 16 holding across three surfaces on live data rather
+than in a test. And your goal sits at 3:00:00, untouched, which is what four
+months of production data already said and what the screen now confirms.
+
 ---
 
 ## 6 · The brain's own completion criterion, scored independently
