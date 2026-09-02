@@ -397,6 +397,156 @@ export const PROGRESSION_CITE = /descend|each rep[^|]*faster|each mile[^|]*faste
 export function entryDeclaresProgression(entry: CatalogueEntry): boolean {
   return entry.zones.length >= 2 && entry.cites.some((c) => PROGRESSION_CITE.test(c));
 }
+
+/* ──────────────────────────────────────────── LADDER-TARGET-2 · the ladder */
+
+/**
+ * THE PACE LADDER A CUTDOWN WALKS, slowest first.
+ *
+ * `Research/04` §12.2 states one directly — "Pace example | 6 reps: MP+10, MP,
+ * MP-10, HM, T, 10K" — and §13.1's descending ladder states its own tail,
+ * "1600-1200-800-400" at 10K, 5K, 3K, mile. This is those two, in order, and
+ * nothing else: `E`, `M`, `ST`, `I` and `R` are Daniels TRAINING zones or
+ * duplicates of a race-pace anchor, and no cutdown row in §12 or §13 names one.
+ *
+ * The ORDER is doctrine, not convention, and it is checked at run time rather
+ * than trusted: `LADDER.descent-order-is-the-doc-s-own` reads the `% VO2max`
+ * column of §"Pace zone shorthand" and asserts this sequence is monotone
+ * non-decreasing through it. That is the same discipline every other
+ * doctrine-bound table here is held to (Rule 18: read the numbers out of the
+ * source, do not hardcode both sides).
+ */
+export const DESCENT_LADDER: readonly PaceZone[] = ['MP', 'HM', 'T', '10K', '5K', '3K', 'mile'];
+
+/** Seconds per mile in a kilometre's worth of the same pace difference. */
+const MI_PER_KM = 1.609344;
+
+/**
+ * The per-rep pace step this entry's OWN cited rows state, in s/mi.
+ *
+ * §12.2 "Each rep 5–15 s/mi faster" → 10. §12.3 "Each rep 5 s/mi faster" → 5.
+ * §11.2 "Each rep 2.5–5 s/km faster than the previous" → 3.75 s/km → 6 s/mi.
+ * Null when no cited row states one, and a null DECLINES the ladder rather
+ * than inventing a step — the brief's own alternative ("select a workout it
+ * can honestly prescribe") is better than a number nothing supports.
+ */
+export function perRepPaceStepSPerMi(entry: CatalogueEntry): number | null {
+  for (const c of entry.cites) {
+    const m = c.match(/(\d+(?:\.\d+)?)\s*(?:[–—-]\s*(\d+(?:\.\d+)?)\s*)?s\s*\/\s*(mi|km)\b/i);
+    if (!m) continue;
+    const lo = Number(m[1]);
+    const hi = m[2] ? Number(m[2]) : lo;
+    const mid = (lo + hi) / 2;
+    return Math.round(m[3].toLowerCase() === 'km' ? mid * MI_PER_KM : mid);
+  }
+  return null;
+}
+
+/**
+ * THE RUNGS OF A CUTDOWN, one per rep, as zone tokens the segment grammar reads.
+ *
+ * ── The defect this closes (brief §3.2.E) ───────────────────────────────────
+ *
+ * The catalogue already declared the ladder — `1k-cutdowns` carries zones
+ * `MP → 5K` and cites "Start at MP, finish at 5K" — and the prescription still
+ * shipped as `5×1km · MP → 5K`, which `buildWorkoutSpec` priced at the slot's
+ * ONE anchor and `subLabelFromSpec` then re-derived as `@ I`. One quantity,
+ * three answers (Rule 16). Measured over the archetype matrix by
+ * `_ladder_targets.test.ts`: 2,581 of 2,898 ladder sessions shipped one flat
+ * scalar.
+ *
+ * ── The construction ────────────────────────────────────────────────────────
+ *
+ * Walk `DESCENT_LADDER` from the entry's first declared zone to its last. That
+ * is exactly what §12.2's example does (MP → HM → T → 10K) and it is why the
+ * entry declares an ORDERED zone list at all.
+ *
+ *   reps === walk.length   the walk, one zone per rep.
+ *   reps  <  walk.length   an evenly spaced subset that keeps BOTH endpoints —
+ *                          "Start at MP, finish at 5K" is the sentence, and a
+ *                          subset that drops either end says something else.
+ *   reps  >  walk.length   open SLOWER than the first zone, which is the
+ *                          doc's own instruction: §12.2 Structure reads "Start
+ *                          slower than MP", and its example opens at MP+10.
+ *                          Each extra rung is one `perRepPaceStepSPerMi` above
+ *                          the one after it, so the whole set descends by the
+ *                          step the entry itself states.
+ *
+ * Returns null — decline, and let the caller keep the arrow label — when the
+ * entry's endpoints are not on the ladder, when the walk does not descend, or
+ * when the entry states no per-rep step and one is needed. Declining is the
+ * brief's stated alternative and is honest; guessing a middle rung is not.
+ */
+export function descentRungs(entry: CatalogueEntry, reps: number): string[] | null {
+  if (!Number.isInteger(reps) || reps < 2) return null;
+  if (entry.effortOnly) return null;
+  // THE ENTRY'S OWN CITED ROWS DECIDE, not its zone list. Caught by
+  // `_catalogue_wiring`'s doctrine check on the first run: §5.4's long tempo
+  // declares `HM` and `T` — the BAND its block sits in, not a walk — and
+  // without this it was rendered as a two-rung descent nothing in the doc
+  // states. `zoneClause` already draws exactly this line for the label
+  // (`PROGRESSION_CITE`); the prescription draws it from the same predicate so
+  // the two cannot disagree (Rule 16).
+  if (!entryDeclaresProgression(entry)) return null;
+  const zones = entry.zones;
+  if (zones.length < 2) return null;
+  const i0 = DESCENT_LADDER.indexOf(zones[0]);
+  const i1 = DESCENT_LADDER.indexOf(zones[zones.length - 1]);
+  if (i0 < 0 || i1 < 0 || i1 <= i0) return null;
+  const walk = DESCENT_LADDER.slice(i0, i1 + 1).map((z) => ZONE_LABEL[z]);
+
+  if (reps === walk.length) return walk;
+  if (reps < walk.length) {
+    return Array.from({ length: reps }, (_, i) =>
+      walk[Math.round((i * (walk.length - 1)) / (reps - 1))]);
+  }
+  const extra = reps - walk.length;
+  const step = perRepPaceStepSPerMi(entry);
+  if (step == null || !(step > 0)) return null;
+  // A three-digit offset is not a pace zone any more, it is a different run.
+  // `splitZoneOffset` reads at most three digits; refuse before we emit one.
+  const lead: string[] = [];
+  for (let k = extra; k >= 1; k--) {
+    const off = step * k;
+    if (off > 999) return null;
+    lead.push(`${walk[0]}+${off}`);
+  }
+  return [...lead, ...walk];
+}
+
+/**
+ * A descent rendered as an EXPLICIT SEQUENCE in the grammar `parseSegments`
+ * reads, so `segmentSpec` prices every rung separately.
+ *
+ * `5×1km · MP → 5K · 60s jog`  becomes
+ * `1km @ MP · 60s jog + 1km @ HM · 60s jog + 1km @ T · 60s jog +
+ *  1km @ 10K · 60s jog + 1km @ 5K`
+ *
+ * Same notation `renderSequenceSegments` already emits for §9.2's Mona fartlek
+ * and §10.2's combos, so nothing downstream is new: `parseSegments` expands it,
+ * `segmentSpec` builds `steps[]`, `expandSpecToPhases` flattens those into the
+ * phase list the watch has always received. No wire change.
+ *
+ * The last rung carries no recovery — a session's final rep has nothing to jog
+ * into, which `parseSegments` enforces anyway.
+ */
+function renderDescentReps(
+  entry: CatalogueEntry,
+  reps: number,
+  value: number,
+  unit: string,
+  recoverySec: number,
+): string | null {
+  const rungs = descentRungs(entry, reps);
+  if (!rungs) return null;
+  const size = repToken(value, unit);
+  if (!size) return null;
+  const rest = restToken(recoverySec);
+  const restClause = rest ? ` · ${rest} jog` : '';
+  return rungs
+    .map((z, i) => `${size} @ ${z}${i === rungs.length - 1 ? '' : restClause}`)
+    .join(' + ');
+}
 function zoneClause(entry: CatalogueEntry): string {
   if (entry.effortOnly) {
     // §8.1's pace column is "5K–10K effort", never a number, because a flat
@@ -552,6 +702,22 @@ export function renderPrescription(entry: CatalogueEntry, dose: Dose): string | 
     // rendered set to one when the week cannot afford the named dose — that is
     // its documented collapse — but the catalogue never AUTHORS one.
     if (dose.reps < 2) return null;
+    // LADDER-TARGET-2 (2026-09-02) · A CUTDOWN IS PRESCRIBED AS ITS RUNGS.
+    //
+    // An entry whose own cited rows say the reps descend renders as an
+    // explicit sequence, so every rung carries its own pace instead of the
+    // whole set collapsing to the slot's single anchor. See `descentRungs` for
+    // the construction and for when it declines.
+    //
+    // The structure's OWN recovery rule can veto it: §11.2 carries a "5 × 2K
+    // all at MP, no descent" variation beside its cutdown ones, and the entry
+    // declares the descent at entry level. The variation says so in words and
+    // is read rather than guessed at.
+    const structureForbidsDescent = /no descent/i.test(s.recoveryRule ?? '');
+    if (!structureForbidsDescent) {
+      const ladder = renderDescentReps(entry, dose.reps, s.rep.min, s.rep.unit, dose.recoverySec);
+      if (ladder) return ladder;
+    }
     // The family word keeps §8's effort-cued sets recognisable to
     // `buildWorkoutSpec`, whose `by_effort` gate reads the word "hill" out of
     // the prescription. Without it a hill session reaches the watch paced.

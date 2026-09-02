@@ -97,10 +97,19 @@ const TOLERANCE_MI = 0.2;
  */
 const CENSUS_BASELINE = {
   /** Sessions whose warm-up + cool-down exceeds the owner's answer for them. */
-  overOwner: 19430,
+  overOwner: 18393,
   /** Sessions whose warm-up + cool-down exceeds their own work + jog floats. */
-  legsOutweighWork: 20304,
+  legsOutweighWork: 19248,
 } as const;
+
+/**
+ * LOWERED 2026-09-02 by LADDER-TARGET-2, which did not set out to move it:
+ * 19,430 -> 18,393 and 20,304 -> 19,248. A cutdown now renders as an explicit
+ * per-rung sequence rather than as `N x size`, so `segmentSpec` sizes its
+ * warm-up and cool-down from the SESSION's own work rather than the uniform
+ * rep path's day budget — which is the same correction BOUNDARY-OWNER-1 exists
+ * to measure, arriving from a different direction. Re-measured, not argued.
+ */
 
 /**
  * The worst boundary:work ratio the corpus produces, and an OPEN FINDING.

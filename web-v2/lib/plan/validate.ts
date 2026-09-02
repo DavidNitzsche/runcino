@@ -30,6 +30,13 @@ import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/dist
 import type { PlanMode } from './goal-tiers';
 import { taperFactor, GENERAL_RAMP_CEILING } from './goal-tiers';
 import { planDosingFindings, type DosingFinding } from './dosing';
+// COMBINED-STRESS-1 (2026-09-02) · brief §5.4's transaction-level check. Imported
+// from the leaf module rather than from `generate.ts`, which imports THIS file.
+import {
+  combinedStressFindings, compoundProgressionFindings,
+  noQualityDaysAfterRace, effectiveRecoveryPriority,
+  type StressDay, type StressRace, type StressFinding,
+} from './combined-stress';
 
 // ── constraint table (doctrine caps) ─────────────────────────────────────────
 //
@@ -289,6 +296,18 @@ export interface ValidateOptions {
    * only needs the gate does not have to.
    */
   onDosing?: (findings: DosingFinding[]) => void;
+  /**
+   * COMBINED-STRESS-1 (2026-09-02) · receives EVERY combined-stress and
+   * one-primary-stressor finding, including the advisory ones. Same split, and
+   * the same reason, as `onDosing`: the enforced findings become violations
+   * unconditionally at the bottom of this function whether or not a caller
+   * passes this, and the advisory ones (compound progression) are worth a
+   * human's eye without being errors. Brief §5's `PlanValidationResult
+   * .stressLedger`, delivered as a callback rather than a return value because
+   * this function's contract is throw-or-nothing and every existing caller
+   * depends on that.
+   */
+  onStress?: (findings: StressFinding[]) => void;
 }
 
 // ── error type ────────────────────────────────────────────────────────────────
@@ -372,6 +391,69 @@ export function validateComposedPlan(
   const weekTravelEased = (w: { startISO: string }, actions: string[]): boolean =>
     travelShaped.some((t) => actions.includes(t.action)
       && t.date >= w.startISO && t.date <= addDays(w.startISO, 6));
+
+  /* ── COMBINED-STRESS-1 (2026-09-02) · the embedded races, dated ──────────
+   *
+   * `authoredState.embedded_races` is the composer's own record of which of
+   * the runner's B/C races it placed inside the block. Read the same guarded
+   * way `travel_shaped` is: a plan with no mid-block races carries no key and
+   * every check below is byte-identical to before.
+   *
+   * The EFFECTIVE priority is what doctrine grades recovery on — an answered
+   * "race it honestly" is an A effort whatever the calendar letter says
+   * (`Research/00b` §"Recovery by Effort"). `effectiveRecoveryPriority` is the
+   * one implementation and both the placement pass and this file call it.
+   */
+  const embeddedRaces: StressRace[] = (() => {
+    const raw = (result.authoredState as Record<string, unknown> | undefined)?.['embedded_races'];
+    if (!Array.isArray(raw)) return [];
+    const out: StressRace[] = [];
+    for (const r of raw) {
+      const e = r as { date?: unknown; distanceMi?: unknown; name?: unknown; priority?: unknown; plannedRole?: unknown };
+      if (typeof e.date !== 'string' || typeof e.distanceMi !== 'number' || !(e.distanceMi > 0)) continue;
+      const pri = e.priority === 'B' || e.priority === 'C' || e.priority === 'A' ? e.priority : null;
+      if (pri == null) continue;
+      const role = e.plannedRole === 'b_effort' || e.plannedRole === 'race' || e.plannedRole === 'mp_workout'
+        ? e.plannedRole : null;
+      out.push({
+        dateISO: e.date,
+        distanceMi: e.distanceMi,
+        name: typeof e.name === 'string' ? e.name : 'the tune-up',
+        effectivePriority: effectiveRecoveryPriority({ priority: pri, plannedRole: role }),
+      });
+    }
+    return out;
+  })();
+
+  /**
+   * POSTRACE-WEEK-1 (2026-09-02) · IS EVERY DAY OF THIS WEEK INSIDE A RACE'S
+   * NO-QUALITY WINDOW?
+   *
+   * D1's argued exemption for §5. `Research/00b` §"Recovery by Distance"
+   * publishes "Total recovery days (no quality)" as a doctrine number, and
+   * §"Recovery by Effort" scales it — for a B-effort half that is 7 days, which
+   * is a whole composed week. The engine correctly refuses to author quality
+   * inside it, and §5's "every quality-phase week requires at least one" then
+   * refuses the plan for obeying doctrine.
+   *
+   * The two rules are not equal. The recovery window is injury-motivated and
+   * cited to a table; "every quality week carries quality" is a SHAPE
+   * preference with no doctrine passage behind it — no research text says a
+   * recovery week must contain intensity, and §"The Reverse Taper Principle"
+   * says the opposite. So the cited rule wins and this is the exemption, not a
+   * loosening of §5: the general requirement is untouched, and only a week
+   * with NO day outside the window is excused. A week with even one eligible
+   * day still has to carry its session.
+   */
+  const weekFullyInsideRecoveryWindow = (w: { startISO: string }): boolean => {
+    if (embeddedRaces.length === 0) return false;
+    const days = Array.from({ length: 7 }, (_, i) => addDays(w.startISO, i));
+    return days.every((d) => embeddedRaces.some((r) => {
+      if (d <= r.dateISO) return false;
+      const gap = Math.round((Date.parse(d + 'T12:00:00Z') - Date.parse(r.dateISO + 'T12:00:00Z')) / 86_400_000);
+      return gap <= noQualityDaysAfterRace(r.distanceMi, r.effectivePriority);
+    }));
+  };
 
   // ── 0. vols / weeklyMi coherence (VOLS-SNAP) ─────────────────────────────
   // composed.vols is the volume-curve series a consumer receives alongside each week's weeklyMi.
@@ -701,6 +783,9 @@ export function validateComposedPlan(
     // (authored_state.travel_shaped). A week travel merely RELOCATED quality
     // within still carries it, so this only fires on the recorded ease.
     if (weekTravelEased(week, ['quality_eased'])) continue;
+    // POSTRACE-WEEK-1 · a week with no day outside a doctrine post-race
+    // no-quality window. See the argument beside `weekFullyInsideRecoveryWindow`.
+    if (weekFullyInsideRecoveryWindow(week)) continue;
     if (!week.days.some(d => d.isQuality)) {
       violations.push(
         `Week ${week.startISO} (${week.phase}): no quality sessions prescribed · ` +
@@ -898,6 +983,71 @@ export function validateComposedPlan(
   for (const f of dosing) {
     if (!f.enforced) continue;
     violations.push(`Week ${f.weekStartISO ?? '?'} (${f.phase ?? '?'}): ${f.message}`);
+  }
+
+  /* ── 11. COMBINED STRESS · race + long run + quality (brief §5.4) ────────
+   *
+   * The check the engine did not have. §1 asks whether the long run is legal,
+   * §5 whether the week carries quality, §9 whether hard days are spaced, and
+   * every one of them answered YES for the owner's 2026-09-26 race followed by
+   * a 2026-09-27 15.5-mile long — 21.7 miles with a race effort in them inside
+   * 24 hours. Nothing computed the PAIR.
+   *
+   * It runs LAST and on the final shipped week, after embedding and after
+   * every post-finalisation adjustment, which is the transaction-level check
+   * brief §5.1 asks for. A per-pass check would not have caught this weekend:
+   * the race arrives in `embedMidBlockRaces` long after `layoutWeek` has sized
+   * the long run, and nothing between them looks at both.
+   *
+   * WHAT THIS CANNOT FAIL ON (Rule 22):
+   *   · the block's own target race, which has no day after it inside the plan;
+   *   · a collision between two sessions neither of which is a race — §9's
+   *     stimulus-gap check owns that and is unchanged;
+   *   · a C-effort race in front of a long run, which `Research/00b`
+   *     §"Recovery by Effort" grades as a hard workout and this deliberately
+   *     accepts. That acceptance is RECORDED, on
+   *     `authoredState.placement_compromises`, so it is a decision on the
+   *     record rather than a check that never looked.
+   *   · intensity progression, which is not a number on `ComposedWeek`.
+   */
+  const stressDays: StressDay[] = [];
+  for (const week of weeks) {
+    const weekStartDow = new Date(week.startISO + 'T12:00:00Z').getUTCDay();
+    for (const d of week.days) {
+      stressDays.push({
+        dateISO: addDays(week.startISO, ((d.dow - weekStartDow) % 7 + 7) % 7),
+        weekStartISO: week.startISO,
+        type: d.type,
+        distanceMi: d.distanceMi,
+        isQuality: !!d.isQuality,
+        isLong: !!d.isLong,
+      });
+    }
+  }
+  const stress: StressFinding[] = embeddedRaces.length > 0
+    ? combinedStressFindings({
+        races: embeddedRaces,
+        days: stressDays,
+        noQualityDays: noQualityDaysAfterRace,
+        todayISO: ctx.todayISO,
+      })
+    : [];
+  // Advisory: the one-primary-stressor ledger. Reported through `onStress`,
+  // never fatal — see `compoundProgressionFindings` for why binding it today
+  // would refuse a rebound doctrine licenses.
+  const compound = compoundProgressionFindings({
+    weeks: weeks.map((w) => ({
+      startISO: w.startISO,
+      phase: w.phase,
+      weeklyMi: w.weeklyMi ?? 0,
+      longMi: Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)),
+      isCutback: w.isCutback,
+    })),
+  });
+  if (opts?.onStress) opts.onStress([...stress, ...compound]);
+  for (const f of stress) {
+    if (!f.enforced) continue;
+    violations.push(`Week ${f.weekStartISO} (${f.code}): ${f.message}`);
   }
 
   if (violations.length > 0) throw new PlanValidationError(violations);

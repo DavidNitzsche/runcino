@@ -642,6 +642,37 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
    *
    * A frozen snapshot exists so drift has to be argued rather than absorbed.
    * This is the argument. Any FURTHER drift is still CRITICAL.
+   *
+   * ── 2026-09-02, SECOND MOVE · LADDER-TARGET-2 ─────────────────────────────
+   *
+   * `david-marathon-structure` is BYTE-IDENTICAL. Same weeks, same phases,
+   * same weekly mileage, same long runs, same quality day types. Only
+   * `david-marathon-quality-vocab` moved, on exactly three lines, and all
+   * three are the same session written honestly:
+   *
+   *   wk8   7×1km · MP → 5K · 60s jog
+   *      →  1km @ MP+10 · 60s jog + 1km @ MP+5 · … + 1km @ 5K
+   *   wk10  4×2km · MP → T · 2 min jog
+   *      →  2km @ MP+6 · 2 min jog + … + 2km @ T
+   *   wk12  as wk8
+   *
+   * The old string NAMED a descent and shipped ONE pace: `buildWorkoutSpec`
+   * priced the whole set at the slot's single anchor and `subLabelFromSpec`
+   * re-derived the label from that spec, so a runner reading `MP → 5K` ran
+   * seven identical kilometres. Measured across the archetype matrix by
+   * `_ladder_targets.test.ts`: 2,581 of 2,898 ladder sessions shipped one flat
+   * scalar; the fix takes it to 497, all of them a different shape.
+   *
+   * The rungs are doctrine, not invented. `Research/04` §12.3 says "Start at
+   * MP, finish at 5K" and "Each rep 5 s/mi faster"; §11.2 says "Start slightly
+   * slower than MP; descend across reps to slightly faster than T" and "Each
+   * rep 2.5–5 s/km faster". The `+N` openers are §12.2's own Pace example
+   * shape ("6 reps: MP+10, MP, MP-10, HM, T, 10K"), and the step is read out
+   * of each entry's cited row at run time rather than chosen.
+   *
+   * Verified alongside: `_sweep_allusers`, `_maint_invariants` and
+   * `_dosing_sweep_gate` all stay at zero findings, and this file's own
+   * doctrine-band test passes unchanged. Any FURTHER drift is still CRITICAL.
    */
   it('FROZEN: per-week structural fingerprint is byte-stable', () => {
     COMBO_COUNT++;

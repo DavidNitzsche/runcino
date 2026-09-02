@@ -129,13 +129,28 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
     expect(wk.isCutback).toBe(true);
   });
 
-  it('Santa Monica recovery: no quality inside the 2-day post-10K window', () => {
-    // Recovery days are Mon Sep 14 + Tue Sep 15 (week 4). Tue is one of
-    // David's quality DOWs — it must have been converted to easy.
+  it('Santa Monica recovery: no quality inside the 4-day post-10K window', () => {
+    // D1 (2026-09-02) · THE WINDOW IS FOUR DAYS, NOT TWO.
+    //
+    // This test read "2-day" because the engine carried an uncited
+    // `distanceMi >= 12 ? 4 : >= 5 ? 2 : 1` fallback for an unanswered B race,
+    // sitting beside `ROLE_POST_QUALITY_FREE_DAYS` and below it in every row.
+    // The uncited constant is deleted; an unanswered B 10K now takes the
+    // b_effort row (4 days), which is `Research/00b` §"Recovery by Distance" ·
+    // "Total recovery days (no quality)" (10K: 5–7) scaled by §"Recovery by
+    // Effort" ("60–70% of A-race recovery duration").
+    //
+    // Recovery days are Mon Sep 14 through Thu Sep 17 (week 4). Tue AND Thu
+    // are David's quality DOWs — both must have been converted to easy.
     const wk4 = embedded.weeks[4];
-    expect(dayByDow(wk4, 1).isQuality).toBe(false);
-    expect(dayByDow(wk4, 2).isQuality).toBe(false);
+    for (const dow of [1, 2, 3, 4]) {
+      expect(dayByDow(wk4, dow).isQuality, `dow ${dow} inside the window`).toBe(false);
+    }
     expect(dayByDow(wk4, 2).type).toBe('easy');
+    // Thursday was quality in the baseline — the wider window is what converted
+    // it, and asserting that is what stops this test passing on a 2-day window.
+    expect(dayByDow(baseline.weeks[4], 4).isQuality).toBe(true);
+    expect(dayByDow(wk4, 4).isQuality).toBe(false);
     // Baseline had Tuesday as a quality day — the conversion is real.
     expect(dayByDow(baseline.weeks[4], 2).isQuality).toBe(true);
   });
@@ -160,38 +175,50 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
     expect(sunday.distanceMi).toBe(dayByDow(baseline.weeks[5], 0).distanceMi);
   });
 
-  it('Run Malibu (B half, Sun Nov 8) replaces the long and stands down 4 recovery days', () => {
+  it('Run Malibu (B half, Sun Nov 8) replaces the long and stands down 7 recovery days', () => {
+    // D1 (2026-09-02) · SEVEN, NOT FOUR, AND THE FOUR WAS NEVER CITED.
+    //
+    // `Research/00b` §"Recovery by Distance" · "Total recovery days (no
+    // quality)" gives a half marathon 10–14 days; §"Recovery by Effort" scales
+    // a B effort to "60–70% of A-race recovery duration" and states the worked
+    // answer in words — "For a B-race half marathon, expect 7–10 days of
+    // recovery rather than 14". `ROLE_POST_QUALITY_FREE_DAYS.hm.b_effort` is
+    // that 7. The engine used to answer 4 here from an uncited constant.
     const wk = embedded.weeks[11];
     const raceDay = dayByDow(wk, 0);
     expect(raceDay.type).toBe('race');
     expect(raceDay.distanceMi).toBeCloseTo(13.1, 5);
     expect(raceDay.isLong).toBe(true);
     expect(wk.isCutback).toBe(true);
-    // Recovery window Mon-Thu of week 12: every quality DOW inside it converted.
+    // The window is Mon Nov 9 through Sun Nov 15 — the WHOLE of week 12. No
+    // quality anywhere in it.
     const wk12 = embedded.weeks[12];
-    for (const dow of [1, 2, 3, 4]) {
-      expect(dayByDow(wk12, dow).isQuality).toBe(false);
+    for (const dow of [1, 2, 3, 4, 5, 6, 0]) {
+      expect(dayByDow(wk12, dow).isQuality, `dow ${dow} inside the 7-day window`).toBe(false);
     }
-    expect(dayByDow(wk12, 2).type).toBe('easy');
-    expect(dayByDow(wk12, 4).type).toBe('easy');
+    // FRIDAY IS THE ROW THAT MOVED. Under the uncited 4-day window it carried
+    // the restored quality session; under doctrine it is day 5 of 7 and is an
+    // easy day. Asserting it explicitly is what stops this test passing on the
+    // old constant.
+    expect(dayByDow(wk12, 5).type).toBe('easy');
     // The baseline is what the window converted FROM. Week 12 is a
     // marathon-pace long week under DOCTRINE-MPLONG-1 (Research/04 §4.4's
     // "every 2-3 weeks" cadence), so it authors ONE structured session beside
     // the MP long rather than two — §16 forbids pairing that long with a hard
-    // tempo. Tuesday is that session and the recovery window converts it;
-    // Thursday is already an easy day before the race is embedded at all.
-    // Asserted as "some quality inside the window, none after" so the check
+    // tempo. Asserted as "some quality inside the window" so the check
     // survives the next legitimate change to which weekday carries what.
     const baseWk12 = baseline.weeks[12];
-    expect(dayByDow(baseWk12, 2).isQuality).toBe(true);
-    expect([1, 2, 3, 4].filter((d) => dayByDow(baseWk12, d).isQuality).length).toBeGreaterThan(0);
-    expect(dayByDow(baseWk12, 4).type).toBe('easy');
-    // Quality RESUMES after the window — the displaced session lands on
-    // Friday (first easy day past recovery), never intervals (gap-1 rule).
-    const friday = dayByDow(wk12, 5);
-    expect(friday.isQuality).toBe(true);
-    expect(friday.type).not.toBe('intervals');
-    expect(friday.notes).toContain('Quality resumes');
+    expect([1, 2, 3, 4, 5].filter((d) => dayByDow(baseWk12, d).isQuality).length).toBeGreaterThan(0);
+    // AND THE PLAN STILL SHIPS. A doctrine recovery window that swallows a
+    // whole quality-phase week is accepted by validateComposedPlan §5 through
+    // POSTRACE-WEEK-1's argued exemption — the cited injury rule beats the
+    // uncited shape preference — not by weakening the quality requirement.
+    // Falsified: removing that exemption makes this line throw
+    // "Week 2026-11-09 (RACE-SPECIFIC): no quality sessions prescribed".
+    const finalized = composePlan(davidCimInput(CIM_MID_BLOCK));
+    finalizeComposedPlan(finalized, 26.2, 'advanced');
+    finalized.vols = finalized.weeks.map((w) => w.weeklyMi);
+    expect(() => validateComposedPlan(finalized, 26.2, 'race-prep', { todayISO: '2026-08-17', level: 'advanced', recentWeeklyMi: 50, isSteppingStoneToMarathon: false, priorPlanPeakLongMi: null, trailingAvgWeeklyMi: null })).not.toThrow();
   });
 
   it('MIDRACE-RESUME-1 · the resume day carries a real light-threshold prescription', () => {
@@ -199,7 +226,18 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
     // cruise-interval re-entry (Research/04 §5.3 light end, per Research/00b's
     // reverse-taper ordering), through the same parsePrescription →
     // buildWorkoutSpec machinery as every authored quality day.
-    const friday = dayByDow(embedded.weeks[12], 5);
+    //
+    // D1 (2026-09-02) · THIS MOVED FROM THE HALF TO THE 10K, AND IT IS THE
+    // OWNER'S OWN CASE NOW. Under the doctrine window the Malibu half's seven
+    // recovery days cover the whole of week 12, so nothing is restored there —
+    // the resume mechanism only fires when the window ENDS inside a week that
+    // still has an easy day after it. Santa Monica's four days do exactly
+    // that: Mon-Thu of week 4 are cleared and Friday Sep 18 carries the
+    // re-entry. That is the row the owner's live block ships (2026-09-18,
+    // "2×1.5 mi @ T · 3 min jog"), so the fixture and production now agree.
+    const friday = dayByDow(embedded.weeks[4], 5);
+    expect(friday.notes).toContain('Quality resumes');
+    expect(friday.type).not.toBe('intervals');   // gap-1 rule
     expect(friday.type).toBe('threshold');
     expect(friday.subLabel).toBe(MIDRACE_RESUME_RX);
     expect(friday.notes).toContain('Research/04 §5.3');

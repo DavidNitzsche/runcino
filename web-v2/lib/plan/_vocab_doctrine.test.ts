@@ -135,10 +135,26 @@ describe('DOCTRINE-VOCAB-1 · the plan carries the phase\'s vocabulary', () => {
       weeklyMileageBucket: 35, weeklyFrequency: 5, planWeeks: 16, goalTimeSec: 6300,
       longestRunBucket: '10+',
     });
+    // LADDER-TARGET-2 (2026-09-02) · §12.2 IS NOW PRESCRIBED, NOT NAMED.
+    //
+    // This matched the arrow label `MP → HM → T → 10K → 5K`, which read like
+    // the doc and shipped as ONE pace: the whole set was priced at the slot's
+    // single anchor and the label re-derived from that spec as `@ I`. The
+    // descent now renders as an explicit sequence, one rung per rep, each with
+    // its own zone — so the string to look for is the RUNGS. Asserted on the
+    // shape a cutdown must have (opens at or slower than MP, finishes at 5K,
+    // more than two rungs) rather than on an exact string, so the rotation and
+    // the rep-count band can move without this needing a re-measure.
+    const cutdowns = [...withCutdown].filter((s) => / \+ /.test(s) && /@ MP/.test(s) && /@ 5K$/.test(s));
     expect(
-      [...withCutdown].some((s) => /MP → HM → T → 10K → 5K/.test(s)),
+      cutdowns.length,
       `no §12.2 cutdown anywhere: ${[...withCutdown]}`,
-    ).toBe(true);
+    ).toBeGreaterThan(0);
+    for (const c of cutdowns) {
+      const rungs = c.split(' + ');
+      expect(rungs.length, `a cutdown with ${rungs.length} rung(s) is not a ladder: "${c}"`).toBeGreaterThan(2);
+      expect(rungs[0], `a §12.2 cutdown starts at or slower than MP: "${c}"`).toMatch(/@ MP(\+\d+)?\b/);
+    }
     expect(shapes.size).toBeGreaterThanOrEqual(6);
   });
 
