@@ -200,7 +200,6 @@ export function recommendFromAdaptation(verdict: {
   band: 'strong' | 'normal' | 'marginal' | 'poor';
   confidence: RecommendationConfidence;
   decision: 'STAY' | 'PROGRESS' | 'MODIFY' | 'PROTECT';
-  veto: 'pain' | 'illness' | 'injury_active' | null;
   summary: string;
   dimensions: ReadonlyArray<{ dimension: string; score: number | null; detail: string }>;
 }): Recommendation {
@@ -210,27 +209,13 @@ export function recommendFromAdaptation(verdict: {
       : { fact: d.detail || `${d.dimension.replace(/_/g, ' ')} read normally`, provenance: 'inferred' as const, confidence: verdict.confidence },
   );
 
-  // Vetoes first. The voice brief is explicit that as the consequence gets
-  // bigger the writing gets simpler, so these carry no cleverness.
-  if (verdict.veto) {
-    const action =
-      verdict.veto === 'injury_active'
-        ? 'Running stays off the plan while this is active.'
-        : verdict.veto === 'illness'
-          ? 'Skip the session. Recovery is the work today.'
-          : 'Do not run this one through. The pain signal is loud enough to stop for.';
-    return {
-      action,
-      change: 'This replaces what the plan had scheduled.',
-      reason: verdict.summary,
-      consequence:
-        verdict.veto === 'injury_active'
-          ? 'Stopping now is what keeps a short interruption from becoming a long one.'
-          : 'Training through this would cost more days than it buys.',
-      confidence: 'high',
-      evidence,
-    };
-  }
+  /* 2026-09-02 · the pain / illness / injury veto branch stood here, and it
+   * is gone with the vetoes themselves (`lib/adaptation/adaptation-model.ts`).
+   * It authored three sentences — "Running stays off the plan while this is
+   * active", "Skip the session. Recovery is the work today", "Do not run this
+   * one through" — off a symptom the runner had logged. That is the app
+   * telling him how his body is, which is the one thing the 2026-09-02 ruling
+   * removes. The verdict now speaks only about the training. */
 
   const weakest = verdict.dimensions
     .filter((d) => d.score != null && d.detail)

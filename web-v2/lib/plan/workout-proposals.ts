@@ -5,7 +5,7 @@
  * was annoying." This module replaces the silent-overnight-mutation
  * pattern with a proposal flow:
  *
- *   1. Evening cron runs detectAdaptations · for readiness_pullback
+ *   1. Evening cron runs detectAdaptations · for load-reducing
  *      kind, calls writeWorkoutProposals() instead of applyAdaptations
  *   2. Today view loads pending proposals via loadPendingProposals()
  *   3. Runner accepts via POST /api/plan/workout-proposals/:id/accept
@@ -70,9 +70,11 @@ export async function writeWorkoutProposals(
 
     // 2026-08-17 · prefer the trigger that PRODUCED this action (the
     // sourceTrigger tag) so a field-test proposal carries the field-test
-    // reason, not a readiness one. Legacy fallback order preserved.
+    // reason. The second rung used to be `readiness_pullback`, from when that
+    // was the modal proposal; it was deleted 2026-09-02 and the fallback is
+    // now just "the first trigger in the pass", which is what the third rung
+    // always said anyway.
     const triggerForAction = triggers.find((t) => t.kind === action.sourceTrigger)
-      ?? triggers.find((t) => t.kind === 'readiness_pullback')
       ?? triggers[0];
     // 2026-08-17 · citation scrub at the write site — the proposal
     // reason + why render verbatim on the Today banner.

@@ -23,10 +23,8 @@ import {
 
 assertHarnessDatabase();
 
-import {
-  resetToBase, shiftRealBlockOntoToday, plusDays, degradeReadinessSignals,
-} from './substrate';
-import { rampDiagnosis, bump, repaceTo, detect } from './drive';
+import { resetToBase, shiftRealBlockOntoToday, plusDays } from './substrate';
+import { rampDiagnosis, bump, repaceTo } from './drive';
 import { seeWeek, fingerprint, adaptationVerbTableMatchesComponent } from './observe';
 
 afterAll(async () => {
@@ -108,8 +106,7 @@ describe('FALSIFIER · world 3 · the volume-ramp check can go red, and names th
     await pool.query(
       `DELETE FROM coach_intents
         WHERE COALESCE(user_uuid, user_id) = $1::uuid AND ts >= NOW() - interval '7 days'
-          AND reason IN ('plan_adapt_downgrade','plan_adapt_shave',
-                         'readiness_convergence_red_no_quality','readiness_convergence_red_proposed')`,
+          AND reason IN ('plan_adapt_downgrade','plan_adapt_shave')`,
       [OWNER_UUID],
     );
 
@@ -173,29 +170,5 @@ describe('FALSIFIER · world 3 · the pace check can go red', () => {
     });
     expect(paced.length, 'no paced days to compare — the falsifier could not be posed').toBeGreaterThan(0);
     expect(faster.length, 'a DOWNWARD re-anchor satisfied the "paces got harder" check').toBe(0);
-  });
-});
-
-describe('FALSIFIER · world 2 · the readiness check discriminates', () => {
-  it('does not fire a pull-back on an untouched week', async () => {
-    await resetToBase();
-    await shiftRealBlockOntoToday();
-    // No `degradeReadinessSignals` call. If a pull-back fires anyway, world 2's
-    // readiness scenario proves nothing — it would be reporting a trigger the
-    // runner's own untouched data produces.
-    const { triggers } = await detect();
-    expect(
-      triggers.map((t) => t.kind),
-      'readiness_pullback fired on an UNTOUCHED week, so world 2 was never measuring the degradation',
-    ).not.toContain('readiness_pullback');
-  });
-
-  it('fires once the biometrics are moved, and only then', async () => {
-    await resetToBase();
-    const sub = await shiftRealBlockOntoToday();
-    const moved = await degradeReadinessSignals(7, sub.todayISO);
-    expect(moved, 'no readings were moved, so the scenario was not posed').toBeGreaterThan(0);
-    const { triggers } = await detect();
-    expect(triggers.map((t) => t.kind)).toContain('readiness_pullback');
   });
 });

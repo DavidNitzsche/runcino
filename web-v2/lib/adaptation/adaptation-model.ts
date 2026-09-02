@@ -28,22 +28,26 @@
  *     mean, never scored as zero. Too little evidence returns `normal` with low
  *     confidence — proceed as planned — not `marginal`.
  *
- * 2 · **Readiness informs, it never acts** (locked 2026-08-17). Daily readiness
- *     is not an input to this model. Only a SUSTAINED multi-week deviation in
- *     the runner's own recovery pattern contributes, and only as the weakest
- *     dimension. The locked ruling is about today's sleep score not cutting
- *     today's workout; a coach noticing that a runner has been under-recovering
- *     for a month and holding the progression is a different act, and is the
- *     entire point of this file. The boundary is timescale, and it is enforced
- *     here rather than left to the caller's discretion.
+ * 2 · **Readiness is not an input at any timescale** (2026-09-02). This used
+ *     to admit a sustained multi-week readiness deviation as the weakest
+ *     dimension, on the reasoning that the boundary was timescale rather than
+ *     kind. The owner has since ruled that he decides how ready he is, so the
+ *     boundary is kind: no HRV, RHR, sleep or readiness-snapshot signal reaches
+ *     this verdict, at any window length. `recoveryPctOfExpected` stays,
+ *     because bouncing back between hard sessions is measured from what the
+ *     runner RAN, not from how a morning read.
  *
  * 3 · **`strong` requires repeated evidence.** A single good session cannot
  *     unlock acceleration. The doctrine names this explicitly: "single good
  *     day, or repeated positive evidence?" The `trend` dimension is a gate on
  *     the top band, not just another term in the average.
  *
- * Pain, injury and illness are vetoes rather than weights — they route to
- * PROTECT regardless of how well everything else reads.
+ * There are no vetoes. Pain, injury and illness used to force PROTECT here;
+ * they were the app deciding the runner was not up to his training off a
+ * symptom he had logged, and they are gone with the detectors that fed them
+ * (2026-09-02). Every structural limit this verdict feeds — the ramp caps, the
+ * spike guard, the dosing caps, the one-primary-stressor rule — reads absorbed
+ * training load and is untouched.
  *
  * ## The execution dimension reads STATES, not a headcount
  *
@@ -112,8 +116,6 @@ export interface AdaptationVerdict {
    */
   stepMultiplier: number;
   dimensions: DimensionRead[];
-  /** Set when a veto fired. The band is forced and the dimensions are advisory. */
-  veto: 'pain' | 'illness' | 'injury_active' | null;
   /** One line in the coach register. Never a scold, never a cheer. */
   summary: string;
   /**
@@ -221,14 +223,6 @@ export interface AdaptationInput {
    *  hard sessions. From `computeRecoveryPhase` (`lib/coach/recovery-phase.ts`).
    *  Pass null when `dataInsufficient` — do not pass a defaulted zero. */
   recoveryPctOfExpected: number | null;
-  /**
-   * Count of days in the window where the runner sat below their OWN readiness
-   * normal by a meaningful margin, and the window length. Deliberately a
-   * sustained count rather than today's band — see rule 2 in the header.
-   * From `computeReadiness().personal.z` accumulated over the window.
-   */
-  readinessBelowNormalDays: number | null;
-  readinessWindowDays: number | null;
 
   /* --- consistency ----------------------------------------------------- */
   /** Planned vs actual weekly mileage over recent complete weeks, newest last. */
@@ -246,12 +240,6 @@ export interface AdaptationInput {
    *  `lib/training/goal-projection.ts:1551` already names this correctly and
    *  routes it to the wrong consumer. This is the right consumer. */
   adapterDowngrades: number | null;
-
-  /* --- vetoes ---------------------------------------------------------- */
-  /** Highest niggle severity reported in the window, 0–10. */
-  niggleSeverity: number | null;
-  illnessActive: boolean | null;
-  injuryActive: boolean | null;
 
   /* --- narration context (optional) ------------------------------------ */
   /**
@@ -293,8 +281,9 @@ export interface AdaptationInput {
 /**
  * Dimension weights. Execution and internal cost carry the most because they
  * are the most direct read on whether the last block of training landed.
- * Recovery is deliberately light — it is the dimension closest to the locked
- * readiness ruling, and it should colour a verdict rather than drive one.
+ * Recovery is deliberately light. It now reads only the runner's measured
+ * bounce-back between hard sessions, and it should colour a verdict rather
+ * than drive one.
  */
 export const DIMENSION_WEIGHTS: Record<AdaptationDimension, number> = {
   execution: 0.30,
@@ -364,21 +353,6 @@ export const EXECUTION_GATE = {
 export const PROGRESSION_GATE = {
   strongMinShare: 0.6,
 } as const;
-
-/** A niggle at or above this severity is a veto, not a weight. Matches the
- *  existing adapter threshold in `lib/plan/adapt.ts`. */
-export const NIGGLE_VETO_SEVERITY = 7;
-
-/** Readiness must sit below the runner's own normal on at least this share of
- *  the window before it counts against them. A month of ordinary life variance
- *  must not read as poor adaptation — the 2026-08-17 audit found the old
- *  detector fired on 23% of days and was measuring normal life, not
- *  overreaching. */
-export const READINESS_SUSTAINED_SHARE = 0.5;
-
-/** Minimum window before the readiness dimension is allowed to contribute at
- *  all. Below this it is a daily read, and daily reads do not act. */
-export const READINESS_MIN_WINDOW_DAYS = 21;
 
 /* --------------------------------------------------------------- helpers */
 
@@ -561,18 +535,10 @@ function readRecovery(input: AdaptationInput): DimensionRead {
     }
   }
 
-  // Readiness contributes ONLY as a sustained multi-week pattern. See rule 2.
-  const win = input.readinessWindowDays;
-  const below = input.readinessBelowNormalDays;
-  if (win != null && below != null && win >= READINESS_MIN_WINDOW_DAYS) {
-    const share = below / win;
-    if (share >= READINESS_SUSTAINED_SHARE) {
-      parts.push(clamp(-((share - READINESS_SUSTAINED_SHARE) * 6), -2, 0));
-      notes.push(`under own recovery normal on ${pct(share)} of the last ${win} days`);
-    } else {
-      parts.push(0.5);
-    }
-  }
+  // 2026-09-02 · a sustained readiness deviation used to contribute here.
+  // Removed with the rest of readiness's influence on training decisions; see
+  // rule 2 in the header. This dimension now reads only the runner's measured
+  // bounce-back between hard sessions.
 
   if (parts.length === 0) {
     return { dimension: 'recovery', score: null, weight: 0, detail: '' };
@@ -692,31 +658,21 @@ export function classifyAdaptation(input: AdaptationInput): AdaptationVerdict {
     readTrend(input),
   ];
 
-  /* --- vetoes first. These outrank every reading above. ----------------- */
-  let veto: AdaptationVerdict['veto'] = null;
-  if (input.injuryActive) veto = 'injury_active';
-  else if (input.illnessActive) veto = 'illness';
-  else if (input.niggleSeverity != null && input.niggleSeverity >= NIGGLE_VETO_SEVERITY) veto = 'pain';
-
-  if (veto) {
-    const summary =
-      veto === 'injury_active'
-        ? 'Training is on hold while the injury is active. Progression is not the question right now.'
-        : veto === 'illness'
-          ? 'You are ill. Recovery is the work today, and holding the progression costs you nothing.'
-          : 'The pain signal is loud enough that adding stress would be the wrong call this week.';
-    return {
-      band: 'poor',
-      confidence: 'high',
-      decision: 'PROTECT',
-      stepMultiplier: -1,
-      dimensions,
-      veto,
-      summary,
-      // A veto is a READ · the runner reported pain, illness or an injury.
-      evidenceSufficient: true,
-    };
-  }
+  /* 2026-09-02 · THE VETOES ARE GONE, and this comment is the record of it.
+   *
+   * An injury row, an open illness episode, or a niggle at 7/10 used to force
+   * `poor` / PROTECT here regardless of how the training itself read. Every one
+   * of those is the runner telling the app something about his own body, and
+   * the ruling is that what he does with that is his call. So the model grades
+   * TRAINING and nothing else, and this function no longer has a branch that
+   * can be reached without reading a dimension.
+   *
+   * This makes the model strictly less able to hold a runner back. That is the
+   * intended direction and it removes no structural limit: nothing downstream
+   * of this verdict is the thing that stops an unsafe week — the ramp caps, the
+   * ACWR read, the spike guard and the dosing caps do that, from absorbed load,
+   * and they are untouched.
+   */
 
   /* --- aggregate over KNOWN dimensions only ----------------------------- */
   const known = dimensions.filter((d) => d.score != null);
@@ -727,7 +683,6 @@ export function classifyAdaptation(input: AdaptationInput): AdaptationVerdict {
       decision: 'PROGRESS',
       stepMultiplier: 1,
       dimensions,
-      veto: null,
       summary: 'Not enough training evidence yet to read how you are absorbing the work. Proceeding as planned.',
       // THE REFUSAL, named. `PROGRESS` above means "take the calendar's own
       // step", not "this runner has demonstrated room for more" · see the
@@ -803,7 +758,6 @@ export function classifyAdaptation(input: AdaptationInput): AdaptationVerdict {
     decision,
     stepMultiplier,
     dimensions,
-    veto: null,
     summary: summarise(band, mean, dimensions, trendGatePassed, progressionGatePassed, input.recentPrescribedWindow),
     evidenceSufficient: true,
   };

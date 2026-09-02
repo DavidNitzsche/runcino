@@ -3,9 +3,9 @@
  *
  * David's 2026-06-02 call: the existing adapter only goes DOWN (shave,
  * downgrade) on pull-back signals. When a runner is HANDLING work well
- * (readiness pillars green, paces hit clean, low decoupling on longs),
- * the plan should push UP toward the tier's peak band · not leave
- * fitness on the table.
+ * (paces hit clean, low decoupling on longs, load inside its own band), the
+ * plan should push UP toward the tier's peak band · not leave fitness on the
+ * table.
  *
  * Architecture · companion to adapt.ts which handles pull-back:
  *
@@ -15,13 +15,39 @@
  *     ↓ returns an AdaptationAction['kind' = 'bump_distance']
  *   applyAdaptations() picks it up and mutates plan_workouts
  *
- * Gates · all must pass before a bump:
- *   · Readiness GREEN — at most one pillar dragging (CONVERGENCE.amberMinDomains)
+ * Gates · all must pass before a bump. EVERY ONE READS TRAINING:
+ *   · ACWR strictly below the Gabbett sweet-spot ceiling of 1.3, and readable
+ *     (`lib/coach/acwr.ts` · Research/15). Absorbed load, not a mood.
  *   · The last 2 prescribed key sessions in 14 days both EARNED PROGRESSION
  *     (`lib/execution/load.ts` · `earnsProgressionCredit`)
  *   · Last long run clean (aerobic decoupling < 5% if measurable)
  *   · Plan's current peak weekly is below tier upper band × 0.95
  *   · No bump applied in last 7 days (cooldown · absorption time)
+ *   · No load-reducing adaptation in the last 48h (`tryAdaptiveBump`)
+ *
+ * ── 2026-09-02 · RUNNER-OWNS-READINESS, AND WHAT REPLACED THE READINESS GATE
+ *
+ * The first gate used to be "readiness GREEN — at most one pillar dragging".
+ * The owner has ruled that he decides how ready he is, so a readiness snapshot
+ * may no longer decide whether his plan is allowed to grow. Deleting it alone
+ * would have made this module STRICTLY more permissive, which is the Rule 11
+ * failure in its worst direction: a missing input silently ENABLING a
+ * mechanism.
+ *
+ * So it is replaced, not dropped. `acwrHeadroom` asks the same question the
+ * readiness gate was reaching for — "is this runner already carrying more than
+ * he has built up to" — from the one source that is not an opinion about his
+ * body: what he actually ran. Research/15 puts the acute:chronic sweet spot at
+ * 0.8–1.3 and the injury risk above it; a runner at or past 1.3 has already
+ * taken this week's increase, and the plan adding another one on top is the
+ * exact stacking the ratio exists to catch.
+ *
+ * The bound is deliberately a REFUSAL and not a default (Rule 11): an
+ * unreadable ratio, and a ratio that cannot honestly be computed yet, both
+ * block the bump and say which of the two it was. A gate that cannot see must
+ * not wave a load increase through — that posture is unchanged from the
+ * readiness gate it replaces, and it is the reason this is a like-for-like
+ * swap rather than a relaxation.
  *
  * 2026-08-30 · THE SECOND GATE IS NEW, AND THE ONE IT REPLACED IS WHY THIS
  * WHOLE MODULE HAD NEVER RUN. It read `runs.data->>'type'` for a session type
@@ -42,8 +68,8 @@
  * This used to cite `Pfitzinger Faster Road Racing · adaptive load progression`,
  * which the gate could not open — and Faster Road Racing's plans are fixed
  * schedules, so there is no adaptive-progression protocol in it to cite. The
- * gates above (readiness green, last two qualities on pace, clean long,
- * 7-day cooldown) are ours, and so are MAX_LONG_BUMP_MI / MAX_WEEKLY_BUMP_MI.
+ * gates above (ACWR headroom, last two qualities on pace, clean long, 7-day
+ * cooldown) are ours, and so are MAX_LONG_BUMP_MI / MAX_WEEKLY_BUMP_MI.
  * +5 mi in a week is NOT inside Research/00a's per-week ramp band at low
  * volume — at 20 mpw it is +25% — which is exactly why the bump is bounded by
  * the tier band rather than by a percentage, and why it only fires when the
@@ -53,14 +79,16 @@
  *
  * Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
  * Cite: Research/00a-distance-running-training.md §"Practical load rules" — add
- *       stress one-at-a-time; the fatigue gate that the pull-back streak mirrors
+ *       stress one-at-a-time
+ * Cite: Research/15-recovery-readiness-monitoring.md §"Acute:Chronic Workload
+ *       Ratio" — the 0.8–1.3 sweet spot the `acwrHeadroom` gate reads
  */
 
 import { pool } from '@/lib/db/pool';
 import { attempt, rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { runDaySql, runDistanceMiSql, runNotMergedSql } from '@/lib/runs/run-shape';
-import { CONVERGENCE } from '@/lib/coach/convergence';
+import { computeAcwr } from '@/lib/coach/acwr';
 
 export interface RampOpportunity {
   /** Why we're bumping · explainer for the intent log. */
@@ -78,14 +106,20 @@ export interface RampOpportunity {
 }
 
 export interface RampSignals {
-  readinessGreen: boolean;
+  /** ACWR readable AND strictly below the sweet-spot ceiling. The structural
+   *  replacement for the deleted readiness gate — see the module header. */
+  acwrHeadroom: boolean;
   lastQualityOnPace: boolean;
   lastLongClean: boolean;
   belowTierUpper: boolean;
   noBumpRecent: boolean;
   /** Diagnostic detail · used for the intent's why-line and audit. */
   details: {
-    pullbackStreakDays: number;
+    /** The ratio itself, or null when it could not honestly be computed. */
+    acwr: number | null;
+    /** Why `acwr` is null · Rule 11, so "unreadable" and "not enough history
+     *  yet" stay distinguishable in the log line and the audit. */
+    acwrAbsentReason: string | null;
     lastQualityDeltaBpm: number | null;
     lastLongDecouplingPct: number | null;
     peakHeadroomMi: number;
@@ -96,10 +130,22 @@ export interface RampSignals {
 const COOLDOWN_DAYS = 7;
 const LONG_DECOUPLING_PCT_CAP = 5;
 
-/** A pillar must drag for at least this many days before it counts as a
- *  dragging DOMAIN. One bad night is not a trend — the sustain the old
- *  `pullbackStreakDays < 2` comparison was reaching for, stated per pillar. */
-const MIN_SUSTAINED_STREAK_DAYS = 2;
+/**
+ * The acute:chronic ratio at or above which this module refuses to add load.
+ *
+ * `Research/15-recovery-readiness-monitoring.md` §"Acute:Chronic Workload
+ * Ratio" puts the sweet spot at 0.8–1.3 and the elevated-risk band above it.
+ * Read as a CEILING ON ADDING, which is the only question asked here: the same
+ * research paragraph is explicit that a ratio is "not a stop-light", and
+ * nothing in this gate stops a runner training — it stops the ENGINE from
+ * prescribing more on top of an increase he has already taken.
+ *
+ * The number is doctrine's own and is not re-tuned here; Rule 9's continuity
+ * concern does not bite because the quantity either side of this edge is
+ * "bump / no bump this week", and a 7-day cooldown plus the tier ceiling mean
+ * a runner a hair either side gets the same plan one week later.
+ */
+const ACWR_ADD_LOAD_CEILING = 1.3;
 
 /** How far back the quality and long-run signals look. Unchanged from the
  *  window the dead queries used, so this fix moves the SOURCE and not the bar. */
@@ -151,65 +197,32 @@ export async function detectRampSignals(
 ): Promise<RampSignals> {
   // 2026-06-03 · runner TZ for "today" anchors.
   const today = await runnerToday(userId);
-  // 1. Readiness · no pull-back streaks ≥ 2 days
-  const readinessRow = await rowOrNull<{ streaks: unknown }>(
-    'plan/adaptive-ramp · readiness pull-back streaks',
-    pool.query<{ streaks: unknown }>(
-      `SELECT streaks
-       FROM readiness_snapshots
-      WHERE user_uuid = $1 AND snapshot_date >= $2::date - 1
-      ORDER BY snapshot_date DESC LIMIT 1`,
-      [userId, today],
-    ),
-  );
-  // A failed read is not "no pull-back streak". `.catch(() => undefined)` here
-  // gave `streaks = []`, `pullbackStreakDays = 0`, `readinessGreen = true` — a
-  // dropped connection read as a runner absorbing load well, and this gate is
-  // one of five that authorise PRESCRIBING MORE MILEAGE. The one signal that
-  // would stop a bump is exactly the one an unreadable table cannot show.
-  const readinessReadFailed = readinessRow === null;
-  const streaks = (readinessRow?.streaks as Array<{ direction?: string; days?: number; pillar?: string }> | undefined) ?? [];
-  /** Pillars dragging long enough to be a trend rather than one bad night. */
-  const sustained = streaks.filter(
-    (s) => s.direction === 'below' && Number(s.days ?? 0) >= MIN_SUSTAINED_STREAK_DAYS,
-  );
-  const draggingPillars = new Set(sustained.map((s) => s.pillar ?? 'unknown')).size;
-  // Kept for the diagnostic line and the bench · the longest single streak.
-  const pullbackStreakDays = sustained.reduce((max, s) => Math.max(max, Number(s.days ?? 0)), 0);
-
-  /* ── 2026-08-30 · ONE DRAGGING PILLAR IS GREEN EVERYWHERE ELSE ────────────
+  /* 1 · ABSORBED LOAD · is there room to add?
    *
-   * This read the LONGEST streak of ANY SINGLE pillar and blocked at two days:
-   * `pullbackStreakDays = max(days)`, `readinessGreen = pullbackStreakDays < 2`.
-   * So one pillar below its own baseline vetoed every bump, for as long as it
-   * stayed there.
+   * The structural replacement for the deleted readiness gate (2026-09-02).
+   * See the module header for why the swap, rather than the deletion, is what
+   * keeps this module from becoming more permissive.
    *
-   * On the owner's live account that is not hypothetical. His sleep pillar has
-   * run below baseline continuously since 2026-08-16 — 14 days and counting —
-   * while `readiness_snapshots.band` reads `ready` on every one of those days
-   * (scores 55-68). The upward path was permanently vetoed by a signal the
-   * readiness system itself grades as fine.
+   * RULE 11, THREE FACTS, KEPT APART. `computeAcwr` already separates them and
+   * this gate preserves the separation rather than collapsing it to a boolean
+   * and losing the reason:
    *
-   * It also disagreed with the rest of the app about what "readiness is
-   * dragging" means. `lib/coach/convergence.ts` is the definition: ≤1 domain
-   * is GREEN and nothing happens, 2 is amber and the runner is merely TOLD,
-   * and it takes 3 converging domains before a pull-back may touch the plan.
-   * The bar to ADD load was therefore stricter than the bar to CUT it by three
-   * whole domains — the fitter runner getting the weaker response, which is
-   * the Rule 9 signature, and the "readiness must not be harsh" ruling
-   * (2026-08-30: "some people just are lower ready scores and that's okay")
-   * pointed at the one path where harshness costs the runner progress.
+   *   · a real ratio           → compare it against the ceiling
+   *   · `acwr: null` + reason  → not enough history to answer honestly
+   *   · the read threw         → we could not look at all
    *
-   * The bar now reuses `CONVERGENCE.amberMinDomains` rather than a private
-   * number, so it is the same notion of corroboration (Rule 16): a bump is
-   * allowed exactly while readiness is GREEN — at most one dragging pillar.
-   * That is still the conservative side of doctrine; it is not a relaxation of
-   * any ceiling, only agreement with the ladder the app already publishes.
-   *
-   * A per-pillar streak must be sustained (>= 2 days) before it counts as a
-   * dragging domain at all, which is the sustain the old `< 2` comparison was
-   * reaching for. A failed read still closes the gate. */
-  const readinessGreen = !readinessReadFailed && draggingPillars < CONVERGENCE.amberMinDomains;
+   * The last two both REFUSE, and the refusal is logged with which one it was.
+   * A guard that cannot read its own evidence must not authorise more mileage,
+   * and "we have no chronic baseline yet" is precisely the state in which an
+   * added week is least defensible.
+   */
+  const acwrRead = await computeAcwr(userId, today).catch(() => null);
+  const acwrReadFailed = acwrRead === null;
+  const acwrValue = acwrRead?.acwr ?? null;
+  const acwrAbsentReason = acwrReadFailed
+    ? 'read_failed'
+    : (acwrRead?.reason ?? null);
+  const acwrHeadroom = acwrValue != null && acwrValue < ACWR_ADD_LOAD_CEILING;
 
   // 2. Last 2 quality sessions · did the runner actually deliver them?
   //
@@ -392,13 +405,14 @@ export async function detectRampSignals(
   const noBumpRecent = !bumpReadFailed && daysSinceLastBump >= COOLDOWN_DAYS;
 
   return {
-    readinessGreen,
+    acwrHeadroom,
     lastQualityOnPace,
     lastLongClean,
     belowTierUpper,
     noBumpRecent,
     details: {
-      pullbackStreakDays,
+      acwr: acwrValue,
+      acwrAbsentReason,
       lastQualityDeltaBpm,
       lastLongDecouplingPct,
       peakHeadroomMi: Number(peakHeadroomMi.toFixed(1)),
@@ -430,7 +444,7 @@ export async function detectGreenRampOpportunity(
     authoredState: plan.authored_state,
   });
 
-  const allGreen = signals.readinessGreen
+  const allGreen = signals.acwrHeadroom
     && signals.lastQualityOnPace
     && signals.lastLongClean
     && signals.belowTierUpper
@@ -621,41 +635,50 @@ export async function actionForAdaptiveRamp(
  * 2026-08-28 · PULL-DOWN / PUSH-UP GUARD WINDOW.
  *
  * The same-tick check (`pullbackApplied`) only knew about pull-backs applied
- * in THIS cron pass — a red-readiness downgrade applied Monday did not stop a
- * volume bump Tuesday. Doctrine spaces hard stimulus from recovery in DAYS,
- * not ticks: Research/00b-recovery-protocols.md §"The Hard-Easy Principle" —
- * "hard day → 1–2 easy/recovery/rest days → next hard day" — and a bump the
- * morning after a pull-back is the engine adding load into the exact window
- * the pull-back opened for recovery. So: no upward bump within 48 hours of
- * any APPLIED pull-back action.
+ * in THIS cron pass — a downgrade applied Monday did not stop a volume bump
+ * Tuesday. Doctrine spaces hard stimulus from recovery in DAYS, not ticks:
+ * Research/00b-recovery-protocols.md §"The Hard-Easy Principle" — "hard day →
+ * 1–2 easy/recovery/rest days → next hard day" — and a bump the morning after
+ * a pull-back is the engine adding load into the exact window the pull-back
+ * opened for recovery. So: no upward bump within 48 hours of any load-reducing
+ * adaptation.
  *
  * The evidence is the adapter's own coach_intents records — the downgrade and
  * shave intents `applyAdaptations` writes in the same transaction as the
- * mutation, plus the red-convergence record-only note for a red morning that
- * found nothing to soften (still a red morning). No new state.
+ * mutation. No new state.
  */
 export const PULLBACK_BUMP_LOOKBACK_HOURS = 48;
 
-/** The intent reasons that count as an applied pull-back / red-readiness
- *  morning. `plan_adapt_downgrade` covers readiness-red, niggle, gap and
- *  missed-workout anti-stacking downgrades; `plan_adapt_shave` covers volume
- *  and comeback shaves.
+/**
+ * The intent reasons that count as a recent load reduction.
  *
- *  DIRECTION-1 (2026-08-29) · `readiness_convergence_red_proposed` is the
- *  fourth, and it exists because pull-backs stopped applying unattended. The
- *  owner's rule is that load may rise unattended but may never fall
- *  unattended, so a convergent-red morning now PROPOSES its downgrade — which
- *  means the applied-downgrade row this guard used to key on is no longer
- *  written on exactly the mornings the guard matters most. The engine records
- *  the red verdict separately (a record-only note, no plan row touched) and
- *  this list reads it, so "we judged you red but you have not answered yet"
- *  still blocks a ramp. A guard that only notices pull-backs the runner
- *  accepted would wave load through on every unanswered one. */
+ * ── 2026-09-02 · RUNNER-OWNS-READINESS · WHY THIS LIST SHRANK, AND WHY THE
+ *    GUARD IS STILL FED ─────────────────────────────────────────────────────
+ *
+ * Two of the four entries were readiness records —
+ * `readiness_convergence_red_no_quality` and `readiness_convergence_red_proposed`
+ * — written by the deleted `readiness_pullback` limb. Nothing writes them any
+ * more, so leaving them here would have been a guard reading a column that can
+ * only ever be empty: the Rule 11 failure where a missing input silently stops
+ * a mechanism from mattering, dressed as a four-item list that still looks
+ * thorough.
+ *
+ * THE GUARD IS NOT NOW VACUOUS, and that was checked rather than assumed. Both
+ * survivors are still written by live, training-driven triggers:
+ *
+ *   · `plan_adapt_downgrade` — `missed_key_workout`'s anti-stacking downgrade,
+ *     and the training-gap comeback's first-quality-back downgrade.
+ *   · `plan_adapt_shave` — `volume_overshoot`'s 7-day shave, and the comeback
+ *     re-ramp's week shaves.
+ *
+ * So a real reduction still opens a real 48-hour window; what no longer opens
+ * one is the app's opinion about how the runner slept. The structural bound
+ * that replaces THAT half is `acwrHeadroom` in `detectRampSignals` — see the
+ * module header.
+ */
 export const PULLBACK_INTENT_REASONS = [
   'plan_adapt_downgrade',
   'plan_adapt_shave',
-  'readiness_convergence_red_no_quality',
-  'readiness_convergence_red_proposed',
 ] as const;
 
 /**
@@ -774,7 +797,9 @@ export async function tryAdaptiveBump(
 
 function composeReason(signals: RampSignals): string {
   const bits: string[] = [];
-  if (signals.readinessGreen) bits.push('readiness green');
+  if (signals.acwrHeadroom && signals.details.acwr != null) {
+    bits.push(`load ratio ${signals.details.acwr.toFixed(2)} inside its band`);
+  }
   if (signals.lastQualityOnPace) bits.push('quality on pace');
   if (signals.lastLongClean && signals.details.lastLongDecouplingPct != null) {
     bits.push(`long ${signals.details.lastLongDecouplingPct.toFixed(1)}% decoupling`);

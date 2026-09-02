@@ -188,7 +188,6 @@ export async function GET(req: NextRequest) {
           confidence: adaptation.confidence,
           decision: adaptation.decision,
           stepMultiplier: adaptation.stepMultiplier,
-          veto: adaptation.veto,
           summary: adaptation.summary,
           // Unreadable dimensions are returned WITH a null score rather than
           // dropped, so a consumer can show what we could not see. Omitting

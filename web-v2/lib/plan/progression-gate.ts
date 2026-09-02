@@ -99,16 +99,11 @@ export function resolveProgressionStep(args: {
 }): ProgressionDecision {
   const { planned, previous, verdict, weeklyMi, family, lever } = args;
 
-  // A veto is not a progression question. Protect, and let the injury,
-  // illness and niggle responses own what happens to the session itself.
-  if (verdict.veto) {
-    return {
-      action: 'BACK_OFF',
-      shape: reduce(previous ?? planned),
-      why: verdict.summary,
-      changed: true,
-    };
-  }
+  /* 2026-09-02 · the veto branch stood here and returned BACK_OFF on an
+   * injury row, an illness episode or a 7/10 niggle. The vetoes are gone
+   * (`lib/adaptation/adaptation-model.ts`) because they were the app deciding
+   * the runner was not up to his training off a symptom he had logged. What
+   * decides now is the band, which is graded from training only. */
 
   switch (verdict.band) {
     case 'strong': {

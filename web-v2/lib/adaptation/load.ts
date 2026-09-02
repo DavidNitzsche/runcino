@@ -33,7 +33,6 @@ import {
   runMaxHr,
 } from '@/lib/runs/run-shape';
 import { computeTrainingForm } from '@/lib/coach/training-form';
-import { resolveSafety } from '@/lib/safety/load-safety';
 import { computeRecoveryPhase } from '@/lib/coach/recovery-phase';
 import { loadEasyDiscipline, HEAT_CONFOUND_TEMP_F } from '@/lib/coach/easy-discipline';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
@@ -88,10 +87,6 @@ async function currentVdot(userUuid: string): Promise<number | null> {
  *  enough to describe the block the runner is actually in. */
 export const ADAPTATION_WINDOW_DAYS = 42;
 
-/** Readiness needs its own, longer window — the sustained-deviation test in
- *  the classifier is meaningless over a fortnight. */
-export const READINESS_WINDOW_DAYS = 28;
-
 function daysBefore(iso: string, n: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
 }
@@ -112,7 +107,6 @@ export async function loadAdaptationInput(
 ): Promise<AdaptationInput> {
   const todayISO = todayArg ?? (await runnerToday(userUuid));
   const fromISO = daysBefore(todayISO, ADAPTATION_WINDOW_DAYS);
-  const readinessFromISO = daysBefore(todayISO, READINESS_WINDOW_DAYS);
 
   /* Two things every query below depends on, and both were wrong the first
    * time this file was written. Both were caught by running the loader against
@@ -155,9 +149,7 @@ export async function loadAdaptationInput(
     rpe,
     longRuns,
     weekly,
-    readiness,
     downgrades,
-    safety,
     form,
     recovery,
     easy,
@@ -290,23 +282,12 @@ export async function loadAdaptationInput(
       ).rows,
     ),
 
-    /* Readiness as a SUSTAINED count against the runner's own normal — never
-     * today's band. See rule 2 in the classifier header. */
-    quiet('readiness', async () =>
-      (
-        await pool.query<{ total: string; below: string }>(
-          `WITH s AS (
-             SELECT score FROM readiness_snapshots
-              WHERE user_uuid = $1 AND snapshot_date >= $2::date AND snapshot_date < $3::date
-                AND score IS NOT NULL
-           ), norm AS (SELECT AVG(score) AS mean, GREATEST(STDDEV_SAMP(score), 1) AS sd FROM s)
-           SELECT COUNT(*)::text AS total,
-                  COUNT(*) FILTER (WHERE s.score < norm.mean - norm.sd)::text AS below
-             FROM s, norm`,
-          [userUuid, readinessFromISO, todayISO],
-        )
-      ).rows[0],
-    ),
+    /* 2026-09-02 · RUNNER-OWNS-READINESS. A `readiness_snapshots` query stood
+     * here, counting days the runner sat below his own normal so the recovery
+     * dimension could score them. It is deleted with the dimension: this
+     * verdict drives the live progression gate, and readiness may not drive a
+     * training decision. What the runner ran still speaks — `recovery` below
+     * reads his measured bounce-back between hard sessions, from runs. */
 
     quiet('adapter downgrades', async () =>
       (
@@ -319,27 +300,14 @@ export async function loadAdaptationInput(
       ).rows[0],
     ),
 
-    /* SAFETY · CONSUMED, NOT RE-AUTHORED (2026-09-02).
-     *
-     * Two queries used to sit here — `MAX(severity) FROM niggles` and
-     * `COUNT(*) FROM runner_injuries` — making this the fourth independent
-     * author of the safety picture (the 2026-09-02 brain scorecard, row 5).
-     * They are replaced by one call to the canonical owner.
-     *
-     * THE SWAP FIXED TWO LIVE DEFECTS, both of which are why re-typing a
-     * safety query per consumer is not a neutral choice:
-     *
-     *   1. The niggle query filtered `status = 'active'`. `niggles.status` is
-     *      `just_started` / `few_days` / `weeks` (migration 116) and has never
-     *      held the string 'active', so `niggleSeverity` was NULL for every
-     *      runner since it shipped and the `pain` veto could not fire. Rule 15:
-     *      a mechanism nothing can reach is untested, however many rows pass.
-     *   2. `illnessActive` was hard-coded null with the comment "no illness
-     *      signal is captured today". The signal existed the whole time in
-     *      `sick_episodes`; this consumer simply had no reader for it. The
-     *      owner reads it, so the `illness` veto now has an input.
-     */
-    quiet('safety', () => resolveSafety(userUuid)),
+    /* 2026-09-02 · RUNNER-OWNS-READINESS. `resolveSafety(userUuid)` stood
+     * here, supplying `niggleSeverity` / `illnessActive` / `injuryActive` to
+     * the classifier's vetoes. The vetoes are gone (see
+     * `lib/adaptation/adaptation-model.ts`) and so is the read: this verdict
+     * mutates the current week's quality-session shape through
+     * `detectProgressionGate`, so an illness the runner logged was reaching a
+     * live plan row. `lib/safety/load-safety.ts` still exists and is still the
+     * one owner of that picture for the surfaces that DISPLAY it. */
 
     quiet('training form', () => computeTrainingForm(userUuid)),
     quiet('recovery phase', () => computeRecoveryPhase(userUuid)),
@@ -428,8 +396,6 @@ export async function loadAdaptationInput(
   const evidenceWeeks = new Set<string>();
   for (const w of weekly ?? []) if (Number(w.actual) > 0) evidenceWeeks.add(w.wk);
 
-  const readinessTotal = readiness ? Number(readiness.total) : 0;
-
   /* Only the sessions a basis could actually describe. `readable: false`
    * covers two cases and neither is a finding about the runner: a plan row
    * whose intended stimulus we cannot state, and a run whose work no basis
@@ -465,8 +431,6 @@ export async function loadAdaptationInput(
       recovery && !recovery.dataInsufficient && recovery.percentRecovered != null
         ? recovery.percentRecovered / 100
         : null,
-    readinessBelowNormalDays: readinessTotal > 0 ? Number(readiness!.below) : null,
-    readinessWindowDays: readinessTotal > 0 ? readinessTotal : null,
 
     weeklyPlannedMi: weeklyPlannedMi.length > 0 ? weeklyPlannedMi : null,
     weeklyActualMi: weeklyActualMi.length > 0 ? weeklyActualMi : null,
@@ -483,18 +447,6 @@ export async function loadAdaptationInput(
     // dimension that gates progression.
     distinctEvidenceWeeks: (weekly?.length ?? 0) > 0 ? evidenceWeeks.size : null,
     adapterDowngrades: downgrades ? Number(downgrades.n) : null,
-
-    /* RULE 11 · three facts, and `null` is the one that means "no signal".
-     *
-     * On an UNKNOWN verdict (the safety read failed) all three stay null, so
-     * the veto cannot fire on a guess AND the model records that it could not
-     * see. It does mean progression is not itself blocked by an unknown, which
-     * is a residual named in the closure report rather than papered over here:
-     * this engine is shadow-only (`zero_mutation_verified` on every production
-     * row), so the honest fix belongs with whoever promotes it. */
-    niggleSeverity: safety && safety.known ? (safety.niggle?.severity ?? null) : null,
-    illnessActive: safety && safety.known ? safety.illness != null : null,
-    injuryActive: safety && safety.known ? safety.injury != null : null,
   };
 }
 
@@ -884,14 +836,14 @@ export interface AdaptationComparisonObservation {
 }
 
 /** Restated from `adaptation-engine.ts`'s own (unexported)
- *  `absorptionPermitsLoadProgression` — `decision === 'PROGRESS' && veto ==
+ *  `absorptionPermitsLoadProgression` — `decision === 'PROGRESS'`
  *  null` — rather than imported, because that file is owned by a concurrent
  *  session tonight and is on this task's do-not-touch list. The predicate is
  *  one line and doctrine-cited there; if it ever moves, this restatement
  *  goes stale in the same silent way `progressionLean` in the shadow-run
  *  script already accepted for the same reason. Flagged, not fixed. */
 function permitsLoadProgression(v: AdaptationVerdict): boolean {
-  return v.decision === 'PROGRESS' && v.veto == null;
+  return v.decision === 'PROGRESS';
 }
 
 export interface DurationLeverRead {

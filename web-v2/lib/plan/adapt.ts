@@ -97,9 +97,6 @@ import { logSealSkip } from './seal';
 import { mutatePlan } from './mutate';
 import { preserveProgressionSql } from './progression-spec';
 import { stripResearchCitations } from './strip-citations';
-// 2026-08-19 · the convergence rule's copy composer · one voice for every
-// sentence the runner reads about a readiness-driven change.
-import { convergenceCopyFromPhrases } from '@/lib/coach/convergence';
 import {
   applyProgressionReshape,
   loadProgressionWeek,
@@ -169,16 +166,29 @@ async function filterUnsealedWorkouts(
   return unsealed;
 }
 
+/**
+ * ── RUNNER-OWNS-READINESS (2026-09-02) ────────────────────────────────────
+ *
+ * The runner decides how ready he is. Nothing in this union infers it for
+ * him. `readiness_pullback`, `rhr_spike`, `sleep_crater`, `niggle_reported`,
+ * `sick_episode_active` and `injury_active` are deleted — not deprecated,
+ * not flagged off — along with their detectors, their actions and the
+ * proposals they wrote.
+ *
+ * What remains here reads TRAINING: what was scheduled, what was run, what
+ * the legs have absorbed. Nothing reads how a morning felt.
+ *
+ * The injury PLAN MODE (`lib/plan/injury-builder.ts`, the walk-run ladders)
+ * is untouched. That is a plan the runner chooses, not a verdict the app
+ * reaches about his body.
+ *
+ * `_readiness_trigger_removal_scan.test.ts` fails the build if any of these
+ * names comes back.
+ */
 export type AdaptationTriggerKind =
   | 'missed_key_workout'
-  | 'rhr_spike'           // retained for back-compat · NOT fired anymore (see readiness_pullback)
-  | 'sleep_crater'        // retained for back-compat · NOT fired anymore (see readiness_pullback)
-  | 'readiness_pullback'  // 2026-06-01 · multi-signal · supersedes the two above
   | 'volume_overshoot'
   | 'pr_bank'
-  | 'niggle_reported'     // Q-04 · active niggle severity threshold
-  | 'sick_episode_active' // Q-03 · active illness · propose, never auto
-  | 'injury_active'       // Q-08 · active runner_injuries row · propose
   | 'goal_changed'        // runner edited goal time → mark paces stale
   | 'training_gap'        // 2026-07-06 · unplanned layoff · Research/22 §14
   | 'field_test_due'      // 2026-08-17 · no race/test in 42d · Research/01:684-686
@@ -228,26 +238,6 @@ export interface AdaptationTrigger {
   evidence: Record<string, any>;
 }
 
-/**
- * Gap B3 (2026-08-19) · the structured convergence verdict, carried from
- * `AdaptationTrigger.evidence` onto an `AdaptationAction` and then into the
- * `coach_intents.value` jsonb column — see `AdaptationAction.convergence`.
- * Mirrors `ConvergenceVerdict` (lib/coach/convergence.ts) minus the per-domain
- * `phrase` (already flattened into the trigger's `evidence.phrases`).
- */
-export interface AdaptationConvergenceRecord {
-  grade: 'green' | 'amber' | 'red';
-  converging: string[];
-  domains: Array<{
-    domain: string;
-    dragging: boolean;
-    daysSustained: number;
-    suppressedBy: string | null;
-    counts: boolean;
-  }>;
-  rationale: string;
-}
-
 export interface AdaptationAction {
   /** 2026-08-17 · 'field_test' converts one quality day into a 30-minute
    *  threshold field test (type 'tempo', sub_label 'FIELD TEST'), spec
@@ -289,21 +279,6 @@ export interface AdaptationAction {
    * the daily self-heal and the race-authority fallback ever wrote one.
    */
   fromVdot?: number | null;
-  /**
-   * Gap B3 (2026-08-19) · the structured verdict `gradeConvergence()` graded
-   * this morning, carried from `detectReadinessPullback`'s trigger through to
-   * the `downgrade` action so `applyAdaptations` can persist it on the
-   * `coach_intents` row instead of letting it evaporate once the prose `why`
-   * is composed. Set only by the `readiness_pullback` red-grade case in
-   * `actionsForTrigger`; every other action kind leaves it undefined, which
-   * `writeIntent` records as `convergence: null`.
-   *
-   * Shape mirrors `ConvergenceVerdict` (lib/coach/convergence.ts) minus the
-   * `phrase` field the trigger's evidence already flattened into `phrases` —
-   * kept here as plain JSON (not the class type) because this is what a jsonb
-   * column holds, not a re-import of the grading module's internal shape.
-   */
-  convergence?: AdaptationConvergenceRecord | null;
   /** 2026-07-06 · 'note' actions · record-only. Writes a coach_intents
    *  row (reason = noteReason, field = workoutIds[0] ?? noteField) and
    *  mutates NOTHING in plan_workouts. Used for: dropped missed work
@@ -1259,13 +1234,9 @@ export function raceSuppressesOvershoot(
  * ACTION MOVES LOAD.
  *
  * Propose-first, because each reduces load or turns quality into easy:
- *   · readiness_pullback — downgrades today's quality day (2026-06-04).
  *   · field_test_due — spends a quality day on a test (2026-08-17 ·
  *     Research/01:708 "plan the test as a workout ... and surface why").
  *   · volume_overshoot — shaves the next 7 days 17%.
- *   · niggle_reported — downgrades to easy (5-6/10) or rest (>=7/10). The
- *     runner reported the niggle, but reporting a symptom is not the same as
- *     approving the loss of a session.
  *   · missed_key_workout — emits a reschedule AND an anti-stacking downgrade.
  *     Both are gated together ON PURPOSE: the downgrade exists only to offset
  *     the reschedule, so gating one and not the other would leave two quality
@@ -1283,10 +1254,8 @@ export function raceSuppressesOvershoot(
  */
 export const PROPOSE_FIRST_TRIGGERS: ReadonlySet<AdaptationTriggerKind> =
   new Set<AdaptationTriggerKind>([
-    'readiness_pullback',
     'field_test_due',
     'volume_overshoot',
-    'niggle_reported',
     'missed_key_workout',
   ]);
 
@@ -1378,36 +1347,14 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
     if (missed) triggers.push(missed);
   }
 
-  // 2. Readiness pullback · multi-signal composite (Research/15 + /00b).
-  //    Replaces the single-signal RHR + sleep detectors below as of
-  //    2026-06-01 · David's feedback: "I want it to read all the
-  //    information it needs. I don't know about a number Sunday at
-  //    5:50 AM making a call for Tuesday." Now reads the readiness
-  //    brief (5 pillars · Plews HRV · 3-day streak persistence ·
-  //    composite score) AND acts only on TODAY's workout.
-  const readinessPullback = await detectReadinessPullback(userId);
-  if (readinessPullback) triggers.push(readinessPullback);
-
-  // OLD detectors retained as dead code (function bodies kept for
-  // reference) but NOT pushed to triggers. Removing entirely would
-  // break test fixtures + tracked-issue analytics; the union type
-  // still includes the kinds so prior coach_intents rows resolve.
+  // 2026-09-02 · RUNNER-OWNS-READINESS. There is no readiness, illness,
+  // injury or niggle detector here any more, and there is no place for one.
+  // The runner decides how ready he is; this function reads what was
+  // scheduled and what was run, and nothing else.
 
   // 4. Volume overshoot
   const overshoot = await detectVolumeOvershoot(userId);
   if (overshoot) triggers.push(overshoot);
-
-  // 5. Niggle reported (Q-04 default: graduated severity response)
-  const niggle = await detectNiggleReported(userId);
-  if (niggle) triggers.push(niggle);
-
-  // 6. Sick episode active (Q-03 default: propose, don't auto-modify)
-  const sick = await detectSickEpisodeActive(userId);
-  if (sick) triggers.push(sick);
-
-  // 7. Active injury (Q-08 default: propose INJURY-mode adjustments)
-  const injury = await detectInjuryActive(userId);
-  if (injury) triggers.push(injury);
 
   // 8. PR_BANK · new race finish that implies VDOT jump > 1.5 pts
   const prBank = await detectPrBank(userId);
@@ -1451,11 +1398,15 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   //     30-minute threshold field test. Research/01:679-686 ("reassess
   //     fitness every 4-6 weeks ... ≥6 weeks since last race or test →
   //     schedule a 5K time trial or 30-min TT"). Per-finding context
-  //     filters (CLAUDE.md): suppressed during comeback re-entry and
-  //     while illness/injury/serious-niggle responses are active — a
-  //     compromised runner's test result would be noise, and the body
-  //     needs the recovery, not a time trial.
-  if (!inGapReentry && !sick && !injury && !(niggle && niggle.severity === 'override')) {
+  //     filter (CLAUDE.md): suppressed during comeback re-entry, where the
+  //     runner is rebuilding and a test result would describe the layoff
+  //     rather than the fitness.
+  //
+  //     2026-09-02 · the illness / injury / override-niggle terms are gone
+  //     with their detectors. The test is a PROPOSAL the runner accepts, so
+  //     the question of whether he feels up to a time trial is now asked of
+  //     him instead of answered for him.
+  if (!inGapReentry) {
     const fieldTest = await detectFieldTestDue(userId);
     if (fieldTest) triggers.push(fieldTest);
   }
@@ -1467,15 +1418,12 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   //     Per-finding context filters (CLAUDE.md locked 2026-05-19 round 4).
   //     Every guard below is this finding's own, not inherited:
   //
-  //     · COMPROMISED runner. Illness, an active injury, an override-severity
-  //       niggle or comeback re-entry all make recent execution unrepresentative
-  //       of how the runner absorbs training — and grading absorption is the
-  //       whole input to this gate. Reading a sick fortnight as poor adaptation
-  //       would hold a progression the runner had not actually failed. Those
-  //       four states also already own the plan's response (rest downgrades,
-  //       injury and illness proposals, the comeback re-ramp), so a reshape on
-  //       top would stack two answers to one question.
-  //     · GAP RE-ENTRY is inside `runnerIsCompromised` for the same reason.
+  //     · GAP RE-ENTRY (`runnerIsCompromised`). A comeback fortnight does not
+  //       describe how the runner absorbs training, and grading absorption is
+  //       the whole input to this gate; the comeback re-ramp already owns the
+  //       plan's response, so a reshape on top would stack two answers to one
+  //       question. Illness, injury and niggle used to sit here too and were
+  //       removed 2026-09-02 — see `runnerIsCompromised`.
   //     · DELOAD, RACE WEEK and TAPER are filtered inside `loadProgressionWeek`,
   //       where the week's own flags are read: the trajectory does not step on
   //       those weeks, so there is no proposed step to permit.
@@ -1503,39 +1451,41 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
  * Is this runner in a state where their recent training does not describe
  * their capability?
  *
- * Illness, an active injury, an override-severity niggle, or re-entry after a
- * training gap. All four make recent execution unrepresentative — and every
- * detector that reads execution as evidence has to know about them.
+ * ONE state answers that now: re-entry after a training gap. A layoff is a
+ * fact about what was RUN — days with no run in them — so a detector may read
+ * it without forming an opinion about the runner's body.
  *
- * 2026-08-17 · EXTRACTED so it has more than one consumer. The field-test
- * trigger applied exactly this condition inline, with a comment explaining
- * that "a compromised runner's test result would be noise". Meanwhile the
- * goal-gap auto-rebuild — a much larger action, which re-authors the whole
- * plan — applied none of it.
+ * 2026-09-02 · RUNNER-OWNS-READINESS. This used to answer with four states:
+ * illness, an active injury, an override-severity niggle, and gap re-entry.
+ * The first three are the app inferring that the runner is not up to his
+ * training, which is his call and not the engine's, and they are gone with the
+ * detectors that fed them. What they gated is unchanged in shape — the
+ * field-test trigger, the progression gate, and the three plan-drift lifecycle
+ * guards still ask this question and still fail closed on an unreadable
+ * answer — they simply no longer get a "yes" out of a symptom the runner
+ * reported.
  *
- * That gap was self-reinforcing in the worst way: the projection widens
- * BECAUSE of illness and injury. They crater `executionQuality`, which lowers
- * projected fitness, which widens the goal gap, which fired a rebuild that
- * baked a sick week into the plan's assumptions about the runner.
+ * CONSEQUENCE, STATED RATHER THAN DISCOVERED. Those call sites are now
+ * suppressed strictly less often. A field test may be proposed, and a
+ * progression step may be taken, during a week the runner has logged an
+ * illness. That is the ruling working as intended: he decides whether to run
+ * the session, and the app stops deciding for him. Every load-based guard
+ * behind these — ACWR, the ramp caps, the dosing caps, the spike guards —
+ * still reads what the legs actually absorbed and is untouched, so nothing
+ * here removes an injury ceiling.
  *
- * One predicate, two callers, so the two can no longer drift apart.
+ * NAME. This still reads "compromised" for what is now only a layoff window.
+ * Left as-is deliberately rather than renamed in the same change: the symbol
+ * is keyed by name in `lib/audit/coercion-registry.ts` and
+ * `lib/audit/automatic-mutation-registry.ts`, both ratchets with argued
+ * entries. A rename is a clean follow-up, not a silent side effect of this one.
  */
 export async function runnerIsCompromised(userId: string): Promise<
-  { compromised: false } | { compromised: true; reason: 'illness' | 'injury' | 'niggle' | 'gap_reentry' }
+  { compromised: false } | { compromised: true; reason: 'gap_reentry' }
 > {
   const gap = await detectTrainingGap(userId).catch(() => null);
   if (gap != null || (await hasRecentGapIntent(userId, 7).catch(() => false))) {
     return { compromised: true, reason: 'gap_reentry' };
-  }
-  if (await detectSickEpisodeActive(userId).catch(() => null)) {
-    return { compromised: true, reason: 'illness' };
-  }
-  if (await detectInjuryActive(userId).catch(() => null)) {
-    return { compromised: true, reason: 'injury' };
-  }
-  const niggle = await detectNiggleReported(userId).catch(() => null);
-  if (niggle && niggle.severity === 'override') {
-    return { compromised: true, reason: 'niggle' };
   }
   return { compromised: false };
 }
@@ -1557,9 +1507,9 @@ export async function runnerIsCompromised(userId: string): Promise<
  * through this one function, so a fifth call site cannot silently pick the
  * wrong direction again.
  *
- * `reason: 'injury'` on the failure branch is a placeholder, not a
- * diagnosis — the whole point of failing here is that we do NOT know which
- * of the four states applies, only that we could not rule any of them out.
+ * `reason: 'gap_reentry'` on the failure branch is a placeholder, not a
+ * diagnosis — the whole point of failing here is that we could not read the
+ * state at all, and an unreadable state must propose rather than prescribe.
  * Every call site branches on `.compromised` for the actual DECISION; two of
  * the four (the plan-drift plan-elapsed and recovery-complete guards) also
  * fold `.reason` into an internal `plan_proposals.reasons` audit field
@@ -1578,9 +1528,9 @@ export async function runnerIsCompromisedFailClosed(
   // untouched; only the test supplies a rejecting fake.
   check: (userId: string) => ReturnType<typeof runnerIsCompromised> = runnerIsCompromised,
 ): Promise<
-  { compromised: false } | { compromised: true; reason: 'illness' | 'injury' | 'niggle' | 'gap_reentry' }
+  { compromised: false } | { compromised: true; reason: 'gap_reentry' }
 > {
-  return check(userId).catch(() => ({ compromised: true, reason: 'injury' } as const));
+  return check(userId).catch(() => ({ compromised: true, reason: 'gap_reentry' } as const));
 }
 
 async function hasRecentGapIntent(userId: string, days: number): Promise<boolean> {
@@ -1820,14 +1770,6 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           await writeIntent(client, userId, reason, wid, {
             kind: a.kind, newType: a.newType, why: a.why,
             source_trigger: a.sourceTrigger ?? null,
-            // Gap B3 (2026-08-19) · the structured convergence verdict that
-            // justified this downgrade, additive alongside the existing prose
-            // `why`. Present only when this downgrade was driven by
-            // readiness_pullback (see actionsForTrigger's 'readiness_pullback'
-            // case, which is the only place that sets `a.convergence`); null
-            // for every other downgrade source (heat_bail, missed-session
-            // catch-up, etc), which have no convergence verdict to carry.
-            convergence: a.convergence ?? null,
           });
           touched++;
         }
@@ -2924,339 +2866,6 @@ async function detectTrainingGap(userId: string): Promise<AdaptationTrigger | nu
     severity: band === 'rebuild_propose' ? 'override' : 'warn',
     reason,
     evidence: { last_run_iso: lastRunISO, days_off: daysOff, band },
-  };
-}
-
-/**
- * THE CONVERGENCE CHECK · readiness may change a session, on convergence only.
- *
- * ── The ruling (owner, 2026-08-19) ───────────────────────────────────────
- *
- *   "Readiness may change a session — but only on a convergence of
- *    independent signals, never on one metric, and the change is settled
- *    the night before."
- *
- * This supersedes, and is the owner reconciling, the 2026-06-03 ruling that
- * readiness INFORMS and never mutates.
- *
- * ── What this replaces ───────────────────────────────────────────────────
- *
- * The old gate was a four-way OR:
- *
- *     if (!sustainedPullBack && !hasTieredStreak && !forcedByHardRule
- *         && !subjectiveFired) return null;
- *
- * `hasTieredStreak` is ONE streak in ONE pillar, and it downgraded the day's
- * quality session by itself. `subjectiveFired` is one bad post-run rating,
- * also by itself. Both are exactly what the ruling forbids, and both are gone.
- *
- * ── What decides now ─────────────────────────────────────────────────────
- *
- * `lib/coach/convergence.ts` — a pure, exhaustively tested rule that grades
- * five INDEPENDENT domains (autonomic, cardiac, sleep, load, subjective),
- * applies a per-domain context filter to each, and returns green / amber /
- * red. Three converging domains are needed before the plan may be touched;
- * two produce a note and nothing else; one, however extreme, produces nothing.
- * `lib/coach/_convergence.test.ts` proves the single-signal case for every
- * domain at maximum severity.
- *
- * ── Why sleep is allowed back in ─────────────────────────────────────────
- *
- * The old code excluded sleep from adapter-relevant pillars entirely, on the
- * owner's 2026-06-04 objection: "why did my plan change in the middle of the
- * night???" That objection was about a BEHAVIOURAL input auto-downgrading a
- * session ON ITS OWN. Under convergence it never can — sleep is one vote of
- * the three required — and the ruling's own example of a convergence worth
- * acting on is "three days of poor sleep and an elevated resting heart rate".
- * So sleep counts, and cannot act.
- *
- * ── The tier dimension, and where it went ────────────────────────────────
- *
- * The old gate was tier-aware, on the owner's 2026-06-03 ask: "I think the
- * plan adjustments and flags should be dependent on the level of the runner.
- * So advanced maybe let the runner push through things more?" An advanced
- * runner needed a 5-day streak where a beginner needed 3.
- *
- * That preference is NOT dropped — it moved to where it belongs. It still runs
- * in full in `lib/coach/health-actions.ts`, the Health page's WHAT TO DO panel
- * (`rules.streakDaysMin`, `rules.pullbackConsecutiveDays`,
- * `HARD_RULES.pullbackForcedAck`), which ADVISES. What is now tier-blind is
- * the bar for CHANGING THE PLAN, for two reasons:
- *
- *   · Research/15 has no tier dimension. The registry already holds this line
- *     elsewhere — TIER.acwr-is-not-tiered fails the build if a tier carries
- *     its own ACWR thresholds, and the sleep floor is asserted tier-blind for
- *     the same reason. A convergence bar that moved with experience would be
- *     the third invented tier axis, not the first principled one.
- *   · With five domains, requiring four of an advanced runner is most of the
- *     available evidence, and requiring two of a beginner is below the bar the
- *     ruling sets for everyone.
- *
- * So the old comment's claim that "plan and panel must agree" is deliberately
- * no longer true, and the disagreement is the point: the panel speaks at a
- * tier-tuned threshold, the plan changes only on convergence. Do not
- * re-converge them without re-opening the ruling.
- *
- * ── Severity and who decides ─────────────────────────────────────────────
- *
- * red   → 'override', and the action APPLIES in the 03:00 pass. The owner
- *         moved that cron himself so the day would be settled before he saw
- *         it; a proposal waiting in a banner is the thing he was fixing, not
- *         the thing he asked for. Reversibility is the control, the same call
- *         the owner made for `progression_gate` after proposals went 0-for-52.
- * amber → 'warn', and the action is a NOTE. Nothing in plan_workouts moves.
- */
-async function detectReadinessPullback(userId: string): Promise<AdaptationTrigger | null> {
-  try {
-    const { loadCoachState } = await import('@/lib/coach/state-loader');
-    const { loadReadinessBrief } = await import('@/lib/coach/readiness-brief');
-    const {
-      gradeConvergence, convergenceCopy, convergencePhrases,
-    } = await import('@/lib/coach/convergence');
-    const {
-      loadConvergenceSeries, loadConvergenceContext,
-    } = await import('@/lib/coach/convergence-loader');
-
-    const state = await loadCoachState(userId);
-    if (!state) return null;
-    const today = await runnerToday(userId);
-
-    // The runner's own report on a day that was PLANNED EASY. Quality and long
-    // days are excluded inside `subjectivePullbackSignal` — those are allowed
-    // to read hard. Best-effort: the objective domains still decide without it.
-    let subjectiveWreckedOnEasy = false;
-    let subjectiveDetail: Record<string, unknown> | null = null;
-    try {
-      const { loadYesterdaySignals, subjectivePullbackSignal } =
-        await import('@/lib/coach/acknowledge');
-      const sub = subjectivePullbackSignal(await loadYesterdaySignals(userId));
-      subjectiveWreckedOnEasy = sub.fired;
-      subjectiveDetail = sub.detail as Record<string, unknown> | null;
-    } catch { /* objective domains still decide */ }
-
-    const [series, context] = await Promise.all([
-      loadConvergenceSeries(userId, today, { subjectiveWreckedOnEasy }),
-      loadConvergenceContext(userId, today),
-    ]);
-
-    const verdict = gradeConvergence(series, context);
-    if (verdict.grade === 'green') return null;
-
-    // The brief is read for the HEADLINE and score only — evidence for the
-    // record, never a second opinion that could fire on its own.
-    const brief = await loadReadinessBrief(userId, state).catch(() => null);
-
-    // Copy is authored by the rule, in coach voice, naming the convergence
-    // rather than any metric. The concrete session swap is filled in by
-    // actionsForTrigger, which is the only place that knows what today holds.
-    const line = convergenceCopy(verdict, null);
-
-    return {
-      kind: 'readiness_pullback',
-      severity: verdict.grade === 'red' ? 'override' : 'warn',
-      reason: line ?? `Readiness convergence · ${verdict.rationale}.`,
-      evidence: {
-        convergenceGrade: verdict.grade,
-        converging: verdict.converging,
-        domains: verdict.domains.map((d) => ({
-          domain: d.domain,
-          dragging: d.dragging,
-          daysSustained: d.daysSustained,
-          suppressedBy: d.suppressedBy,
-          counts: d.counts,
-        })),
-        rationale: verdict.rationale,
-        // The authored fragments, so actionsForTrigger can re-author the line
-        // once it knows which session changed — one voice, one composer.
-        phrases: convergencePhrases(verdict),
-        baselineDays: series.baselineDays,
-        subjective: subjectiveWreckedOnEasy ? (subjectiveDetail ?? {}) : null,
-        score: brief?.score ?? null,
-        band: brief?.band ?? null,
-        headline: brief?.headline ?? null,
-      },
-    };
-  } catch (e) {
-    console.warn('[adapt] detectReadinessPullback failed:', e instanceof Error ? e.message : String(e));
-    return null;
-  }
-}
-
-/**
- * Re-author the convergence line once the concrete session is known.
- *
- * The detector cannot write this: it grades the evidence before anything has
- * looked at what today actually holds. The fragments it authored travel on the
- * trigger's evidence and are recombined by the SAME composer in
- * `lib/coach/convergence.ts`, so there is still exactly one place the sentence
- * is built.
- */
-function convergenceWhy(t: AdaptationTrigger, workoutType: string): string {
-  const raw = (t.evidence as Record<string, unknown> | undefined)?.phrases;
-  const phrases = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
-  const named = workoutType === 'long' ? 'long run' : `${workoutType} session`;
-  const line = convergenceCopyFromPhrases(phrases, {
-    from: named,
-    to: 'easy running',
-    movedTo: null,
-  });
-  return line ?? t.reason;
-}
-
-async function detectRhrSpike(userId: string): Promise<AdaptationTrigger | null> {
-  // 2026-06-03 · runner TZ.
-  const today = await runnerToday(userId);
-  const r = (await pool.query(
-    `WITH recent AS (
-       SELECT AVG(value) AS avg3 FROM health_samples
-        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
-          AND sample_date >= $2::date - 3
-     ), baseline AS (
-       SELECT AVG(value) AS avg14 FROM health_samples
-        WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'resting_hr'
-          AND sample_date BETWEEN $2::date - 17 AND $2::date - 4
-     )
-     SELECT recent.avg3, baseline.avg14,
-            recent.avg3 - baseline.avg14 AS delta
-       FROM recent, baseline`,
-    [userId, today]
-  )).rows[0];
-  if (!r || r.avg3 == null || r.avg14 == null) return null;
-  const delta = Number(r.delta);
-  if (delta >= 7) {
-    return {
-      kind: 'rhr_spike',
-      severity: delta >= 10 ? 'override' : 'warn',
-      reason: `Resting HR averaging ${Math.round(Number(r.avg3))} bpm, ${Math.round(delta)} above 14-day baseline.`,
-      evidence: { avg3: Number(r.avg3), avg14: Number(r.avg14), delta },
-    };
-  }
-  return null;
-}
-
-async function detectSleepCrater(userId: string): Promise<AdaptationTrigger | null> {
-  // 2026-06-03 · runner TZ.
-  const today = await runnerToday(userId);
-  const r = (await pool.query(
-    `SELECT COUNT(*) AS bad_nights
-       FROM health_samples
-      WHERE COALESCE(user_uuid, user_id) = $1 AND sample_type = 'sleep_hours'
-        AND sample_date >= $2::date - 3
-        AND value < 5`,
-    [userId, today]
-  )).rows[0];
-  const n = Number(r?.bad_nights ?? 0);
-  if (n >= 2) {
-    return {
-      kind: 'sleep_crater',
-      severity: 'override',
-      reason: `${n} nights < 5h sleep in the last 3 days.`,
-      evidence: { bad_nights: n },
-    };
-  }
-  return null;
-}
-
-/**
- * Q-04 default · NIGGLE_REPORTED triggers when an active niggle (cleared_at
- * IS NULL) crosses severity thresholds. Graduated response per
- * Research/05-injury-return-protocols.md §1.2-Pain-Monitoring-Rules:  // was §Pain-Stop-Rules · heading: ### 1.2 Pain Monitoring Rules
- *   - severity 5-6 → 'warn' · downgrade next quality day to easy
- *   - severity ≥ 7 → 'override' · suspend running for ~48h
- *
- * Cite: Research/05-injury-return-protocols.md §1.2-Pain-Monitoring-Rules (5/10
- *       interrupts the planned session; 7/10 rests the area).  // was §Pain-Stop-Rules · heading: ### 1.2 Pain Monitoring Rules
- */
-async function detectNiggleReported(userId: string): Promise<AdaptationTrigger | null> {
-  // Post-126: niggles uses canonical user_uuid. user_id (also uuid) kept
-  // for backward compat — COALESCE so unbackfilled rows still match.
-  const r = (await pool.query(
-    `SELECT id, body_part, side, severity, status, logged_at::text AS logged_at
-       FROM niggles
-      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
-      ORDER BY severity DESC, logged_at DESC LIMIT 1`,
-    [userId],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  if (!r) return null;
-  const severity = Number(r.severity);
-  if (severity < 5) return null;
-  return {
-    kind: 'niggle_reported',
-    severity: severity >= 7 ? 'override' : 'warn',
-    reason: severity >= 7
-      ? `Active ${r.body_part}${r.side ? ' (' + r.side + ')' : ''} niggle at ${severity}/10. Suspend running 48h.`
-      : `Active ${r.body_part}${r.side ? ' (' + r.side + ')' : ''} niggle at ${severity}/10. Downgrade next quality day.`,
-    evidence: { niggle_id: r.id, body_part: r.body_part, side: r.side, severity, status: r.status },
-  };
-}
-
-/**
- * Q-03 default · SICK_EPISODE_ACTIVE triggers when sick_episodes.cleared_at
- * IS NULL. By doctrine we DO NOT auto-modify the plan for illness — runner
- * agency matters. The trigger fires; actionsForTrigger writes a
- * coach_proposals row that the runner accepts/rejects from the UI.
- *
- * Cite: Research/05-injury-return-protocols.md §illness-return (above-the-
- *       neck cold = run easy; below-the-neck OR fever = no running).
- *       // TODO: no matching heading in Research/05 — illness protocol content not anchored
- */
-async function detectSickEpisodeActive(userId: string): Promise<AdaptationTrigger | null> {
-  // Post-126: sick_episodes uses canonical user_uuid.
-  const r = (await pool.query(
-    `SELECT id, symptoms, has_fever, started, logged_at::text AS logged_at
-       FROM sick_episodes
-      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
-      ORDER BY logged_at DESC LIMIT 1`,
-    [userId],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  if (!r) return null;
-  return {
-    kind: 'sick_episode_active',
-    severity: r.has_fever ? 'override' : 'warn',
-    reason: r.has_fever
-      ? 'Active illness with fever. Suspend running entirely until cleared.'
-      : 'Active illness reported. Above-the-neck symptoms: easy running only.',
-    evidence: {
-      episode_id: r.id,
-      has_fever: !!r.has_fever,
-      symptoms: r.symptoms,
-      started: r.started,
-    },
-  };
-}
-
-/**
- * Q-08 default · INJURY_ACTIVE triggers when `runner_injuries.resolved_date
- * IS NULL`. Like SICK_EPISODE_ACTIVE, this is a propose-only trigger —
- * the runner accepts/rejects the modified plan from the UI. Severity:
- * 'override' if severity in (moderate, major); 'warn' if 'minor'.
- *
- * Cite: Research/05-injury-return-protocols.md §General-Principles
- *       (pain ≥ 5/10 stops the session; structured return phases).
- */
-async function detectInjuryActive(userId: string): Promise<AdaptationTrigger | null> {
-  const r = (await pool.query(
-    `SELECT id, site, severity, return_protocol, start_date::text AS start_date
-       FROM runner_injuries
-      WHERE user_uuid = $1 AND resolved_date IS NULL
-      ORDER BY start_date DESC LIMIT 1`,
-    [userId],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  if (!r) return null;
-  const severe = r.severity === 'moderate' || r.severity === 'major';
-  return {
-    kind: 'injury_active',
-    severity: severe ? 'override' : 'warn',
-    reason: severe
-      ? `Active ${r.site} injury (${r.severity}). Switch to INJURY-mode walk-run + cross-train.`
-      : `Active ${r.site} injury (minor). Drop quality; easy mileage only with daily pain check.`,
-    evidence: {
-      injury_id: r.id,
-      site: r.site,
-      severity: r.severity,
-      return_protocol: r.return_protocol,
-      start_date: r.start_date,
-    },
   };
 }
 
@@ -4936,128 +4545,12 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       }
       return gapActions;
     }
-    case 'readiness_pullback': {
-      // 2026-06-01 · just-in-time window. Only act on TODAY's workout.
-      // The runner has another 24-72h to recover before any future
-      // quality day · don't pre-emptively flatten Tuesday from Sunday's
-      // data. If today's signals are still bad tomorrow, tomorrow's
-      // adapter run sees that and acts on tomorrow.
-      //
-      // Doctrine · David, 2026-06-01: "I don't know about a number
-      // Sunday at 5:50 AM making a call for Tuesday. That doesn't
-      // seem right." Right · just-in-time decisions only.
-      //
-      // 2026-08-19 · AMBER NEVER TOUCHES THE PLAN. Two converging domains
-      // are enough to tell the runner and not enough to change his day; the
-      // ruling permits a change only on a convergence, and the convergence
-      // bar for mutation is three (see lib/coach/convergence.ts). A note
-      // writes a coach_intents row and mutates nothing.
-      const grade = String(
-        (t.evidence as Record<string, unknown> | undefined)?.convergenceGrade ?? '',
-      );
-      if (grade !== 'red') {
-        return [{
-          kind: 'note',
-          noteReason: 'readiness_convergence_amber',
-          noteField: today,
-          noteValue: {
-            grade,
-            converging: (t.evidence as Record<string, unknown> | undefined)?.converging ?? [],
-          },
-          // A note is RECORD-ONLY · it writes a coach_intents row and mutates
-          // nothing. Routing it to the proposal writer would put a banner in
-          // front of the runner asking him to approve a change that does not
-          // exist, which is the 0-for-52 proposal problem in its purest form.
-          forceApplyNow: true,
-          why: t.reason,
-        }];
-      }
-
-      const todayKey = (await pool.query<{ id: string; type: string }>(
-        `SELECT pw.id, pw.type FROM plan_workouts pw
-            JOIN training_plans tp ON tp.id = pw.plan_id
-           WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
-             AND pw.type IN ('threshold','tempo','intervals','vo2max','long')
-             AND pw.date_iso = $2::text
-           LIMIT 1`,
-        [userId, today]
-      )).rows[0];
-      // Nothing hard scheduled · nothing to soften. A red morning on an easy
-      // day is a note, not a change: the day is already what a red morning
-      // would have asked for.
-      if (!todayKey) {
-        return [{
-          kind: 'note',
-          noteReason: 'readiness_convergence_red_no_quality',
-          noteField: today,
-          noteValue: { grade },
-          // Record-only · see the amber branch above.
-          forceApplyNow: true,
-          why: t.reason,
-        }];
-      }
-
-      // The session becomes easy running. A downgrade REDUCES load — it
-      // clears the pace target and the quality flag — so it cannot breach a
-      // dosing cap; `mutatePlan` re-validates the whole week regardless.
-      //
-      // Readiness does NOT re-anchor paces here or anywhere. What the runner
-      // is judged capable of comes from measured evidence; this changes only
-      // what is prescribed today.
-      //
-      // DIRECTION-1 (2026-08-29) · TWO actions, and the pairing matters.
-      //
-      // The downgrade is now PROPOSED — the owner does not want a session
-      // taken away while he sleeps. But the engine still has to REMEMBER that
-      // it judged this morning red, because `tryAdaptiveBump` refuses to raise
-      // load within 48h of a recorded pull-back and reads that memory out of
-      // `coach_intents`. Before this, the memory was a side-effect of the
-      // downgrade applying; once the downgrade only proposes, the row is never
-      // written, and the engine could judge a morning red, correctly decline
-      // to act unasked — and then push mileage UP the next morning with no
-      // record that anything was wrong. That is the one direction the owner's
-      // rule does NOT protect against, so it is closed explicitly here.
-      //
-      // The note mutates no plan row. It is a record, which is why it may
-      // still carry `forceApplyNow` under the narrowed contract.
-      return [{
-        kind: 'note',
-        noteReason: 'readiness_convergence_red_proposed',
-        noteField: today,
-        noteValue: { grade, workoutId: todayKey.id, proposed: true },
-        forceApplyNow: true,
-        why: t.reason,
-      }, {
-        kind: 'downgrade',
-        workoutIds: [todayKey.id],
-        newType: 'easy',
-        // The runner is told what changed and why, naming the convergence.
-        why: convergenceWhy(t, todayKey.type),
-        // Gap B3 · the structured verdict, so applyAdaptations can persist it
-        // on the coach_intents row instead of discarding everything but this
-        // prose `why`. `t.evidence` is exactly the shape detectReadinessPullback
-        // built (see its return above) — domains already carry dragging /
-        // daysSustained / suppressedBy / counts per the per-finding filter
-        // this rule applies (CLAUDE.md, locked 2026-05-19 round 4).
-        convergence: {
-          grade: grade as 'green' | 'amber' | 'red',
-          converging: Array.isArray((t.evidence as Record<string, unknown>)?.converging)
-            ? (t.evidence as Record<string, unknown>).converging as string[]
-            : [],
-          domains: Array.isArray((t.evidence as Record<string, unknown>)?.domains)
-            ? (t.evidence as Record<string, unknown>).domains as AdaptationConvergenceRecord['domains']
-            : [],
-          rationale: String((t.evidence as Record<string, unknown>)?.rationale ?? ''),
-        },
-      }];
-    }
     case 'heat_bail': {
       // DEPRECATED · detectHeatBail no longer runs (2026-08-27 · the runner
       // paces off feel and conditions on the day; nothing in this app
       // proposes a pace/session change because of heat any more). Case
       // retained so any in-flight coach_intents rows from the old path
-      // still resolve cleanly, the same pattern as rhr_spike/sleep_crater
-      // below — record-only, mutates nothing.
+      // still resolve cleanly — record-only, mutates nothing.
       return [{
         kind: 'note',
         noteReason: 'single_signal_not_actioned',
@@ -5065,42 +4558,6 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         noteValue: { trigger: t.kind, observed: t.reason },
         forceApplyNow: true,
         why: `${t.reason} Heat no longer changes a session in this app. Pace it by feel.`,
-      }];
-    }
-    case 'rhr_spike':
-    case 'sleep_crater': {
-      // DEPRECATED · these trigger kinds are no longer emitted by
-      // detectAdaptations (2026-06-01 · superseded by readiness_pullback).
-      // Case retained so any in-flight coach_intents rows from the old path
-      // still resolve cleanly.
-      //
-      // RULE TWO. This limb used to return `kind: 'downgrade'` with
-      // `why: t.reason`, and `t.reason` for these two detectors is a SINGLE
-      // METRIC in a sentence — "Resting HR averaging 54 bpm, 6 above 14-day
-      // baseline." / "3 nights < 5h sleep in the last 3 days." (see
-      // detectRhrSpike / detectSleepCrater above). One signal changing a
-      // session, with the copy naming the one cause: exactly the shape the
-      // convergence gate exists to prevent, sitting live behind a comment
-      // that says it is not fired anymore. Dormant is not the same as safe —
-      // it is one re-wire away, and nothing in the file stopped it.
-      //
-      // A stale row still deserves an honest resolution, so it now RECORDS
-      // rather than mutates, the same way an amber convergence does. If these
-      // signals should ever move a session again, they must come back through
-      // gradeConvergence and be spoken by convergenceCopyFromPhrases.
-      return [{
-        kind: 'note',
-        noteReason: 'single_signal_not_actioned',
-        noteField: today,
-        noteValue: { trigger: t.kind, observed: t.reason },
-        // Record-only, same contract as readiness_convergence_amber: it
-        // writes a coach_intents row and mutates nothing, so it must not be
-        // routed to the proposal writer.
-        forceApplyNow: true,
-        // States the observation and that nothing moved. One domain is a fact
-        // worth recording and not a reason to change a session, and this
-        // sentence has to be readable as that even if it ever surfaces.
-        why: `${t.reason} One signal on its own does not change a session, so today stands as written.`,
       }];
     }
     case 'volume_overshoot': {
@@ -5254,32 +4711,6 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       }
       return [];
     }
-    case 'niggle_reported': {
-      // Q-04 default. ≥7/10 → 48h suspension (downgrade next 2d to rest);
-      // 5-6/10 → downgrade next quality day to easy.
-      const severity = Number(t.evidence.severity ?? 0);
-      // 2026-06-03 · runner TZ via $2::date · was inline CURRENT_DATE which
-      // shifted at server-UTC midnight. The horizon ternary still selects
-      // 2 days (preserving existing behavior; bug-for-bug per the original).
-      const where = severity >= 7
-        ? `pw.date_iso::date BETWEEN $2::date AND $2::date + 2`
-        : `pw.type IN ('threshold','tempo','intervals','vo2max','long')
-            AND pw.date_iso::date BETWEEN $2::date AND $2::date + 2`;
-      const rows = (await pool.query(
-        `SELECT pw.id FROM plan_workouts pw
-            JOIN training_plans tp ON tp.id = pw.plan_id
-           WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL AND ${where}
-           ORDER BY pw.date_iso::date ASC`,
-        [userId, today]
-      )).rows;
-      if (rows.length === 0) return [];
-      return [{
-        kind: 'downgrade',
-        workoutIds: rows.map((r: any) => r.id),
-        newType: severity >= 7 ? 'rest' : 'easy',
-        why: t.reason,
-      }];
-    }
     case 'progression_gate': {
       // One action per session, so the seal filter, the intents log and the
       // adaptation-visibility surface all operate per row — the same grain as
@@ -5323,53 +4754,6 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         workoutIds: [wid],
         why: t.reason,
       }];
-    }
-    case 'sick_episode_active': {
-      // Q-03 default — propose, never auto-modify. Writes a coach_proposals
-      // row that the runner accepts/rejects from the UI. Returns no actions
-      // so applyAdaptations doesn't mutate plan_workouts.
-      try {
-        await pool.query(
-          `INSERT INTO coach_proposals (user_uuid, user_id, proposal_type, payload, status, created_at)
-           VALUES ($1::uuid, $1::text, 'illness_adjust', $2::jsonb, 'pending', NOW())
-           ON CONFLICT DO NOTHING`,
-          [userId, JSON.stringify({
-            reason: t.reason,
-            evidence: t.evidence,
-            suggested:
-              t.severity === 'override'
-                ? 'Suspend all running until cleared. Cross-train if symptoms allow.'
-                : 'Drop all quality. Run easy for 3-5 days; reassess.',
-          })],
-        );
-      } catch {
-        // Proposal write failure is non-fatal; runner still sees the
-        // niggle/sick UI surface even without a proposal row.
-      }
-      return [];
-    }
-    case 'injury_active': {
-      // Q-08 default — same propose-only pattern as illness. Walk-run +
-      // cross-train suggestion comes from Research/05; the runner
-      // accepts in the UI.
-      try {
-        await pool.query(
-          `INSERT INTO coach_proposals (user_uuid, user_id, proposal_type, payload, status, created_at)
-           VALUES ($1::uuid, $1::text, 'injury_adjust', $2::jsonb, 'pending', NOW())
-           ON CONFLICT DO NOTHING`,
-          [userId, JSON.stringify({
-            reason: t.reason,
-            evidence: t.evidence,
-            suggested:
-              t.severity === 'override'
-                ? 'Walk-run scaffold + cross-train. Pain-monitor in-session, 24h, location. Suspend running ≥ 5/10 pain.'
-                : 'Easy mileage only; daily pain check before each session. Drop quality. Reassess after 7 days.',
-          })],
-        );
-      } catch {
-        // Non-fatal — runner still sees the injury UI surface.
-      }
-      return [];
     }
     default:
       return [];

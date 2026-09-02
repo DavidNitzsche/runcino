@@ -105,38 +105,25 @@ export interface ReadinessBrief {
   headline: string;
   /** "Score down 6 from yesterday · HRV is the mover." */
   oneLineMover: string | null;
-  /** 2026-06-03 · "What should I DO today?" — concrete prescription
-   *  derived from band + active streaks + today's planned workout type +
-   *  subjective override (when present). Authored, not templated.
+  /* 2026-09-02 · RUNNER-OWNS-READINESS · THE `prescription` FIELD IS GONE.
    *
-   *  · action · imperative one-liner the runner can act on
-   *  · why    · one-line reasoning citing the trigger
-   *  · intent · structured intent for downstream comparison:
-   *      'cut'   · prescription reduces planned load (skip quality,
-   *                drop long, ease easy)
-   *      'plan'  · prescription holds the plan as-is
-   *      'send'  · prescription pushes (rare · for SHARP days)
-   *      'rest'  · prescription is full rest
-   *  · targetMinutes / targetMiles · the rough quantity the
-   *      prescription suggests · null when the action is
-   *      qualitative ("plan stands"). Used by the post-run reflection
-   *      to compare actual run to the morning's call.
+   * It held an imperative line composed from the readiness band —
+   * "Skip today's quality. Easy 30min only or full rest.", "Drop the long to
+   * 50-60% distance.", "Cut the easy to 30min." — plus a structured `intent`
+   * of 'cut' / 'plan' / 'send' / 'rest'.
    *
-   *  Examples:
-   *    SHARP + planned quality → action="Send it. Plan as scheduled."
-   *                              intent='send', target* null
-   *    PULL-BACK + sleep streak + planned easy → action="Cut the easy
-   *                              to 30min." intent='cut', targetMinutes=30
+   * The owner's ruling is that he decides how ready he is. A brief that shows
+   * him his own numbers respects that; a brief that reads those numbers and
+   * tells him to drop his long run does not, and it is worse now than it was
+   * before, because the engine no longer acts on readiness at all. A promise
+   * the system does not keep is worse than silence — CLAUDE.md Rule 20's
+   * corollary, pointed at prose.
    *
-   *  Null only on true cold-start (band='no-data') or when the
-   *  composition can't read today's planned workout. */
-  prescription: {
-    action: string;
-    why: string;
-    intent: 'cut' | 'plan' | 'send' | 'rest';
-    targetMinutes: number | null;
-    targetMiles: number | null;
-  } | null;
+   * What is left in this type is the READING: the score, the band, the
+   * headline, the mover, the pillars, the streaks and the trend. He can see
+   * everything the app can see. What he does about it is his.
+   */
+
   /** Score trend, 14-day. Includes today's row. */
   scoreTrend: { date: string; score: number; band: PillarBand }[];
   pillars: ReadinessPillarTile[];
@@ -148,7 +135,9 @@ export interface ReadinessBrief {
     subjectiveScore: number;   // 0-100 derived from 1-10 wellness
     objectiveScore: number;
     deltaAbs: number;
-    advice: string;
+    // 2026-09-02 · `advice` ("· Ease the day.") is gone with the
+    // prescription above. The GAP is the fact and it is worth showing; what
+    // to do about it is the runner's call.
   } | null;
   /** 2026-06-01 · today's morning subjective check-in state. Drives the
    *  Section-8 "How do you feel" prompt. answered=false → prompt renders ·
@@ -353,7 +342,6 @@ export async function loadReadinessBrief(
       label: 'BUILDING',
       headline: coldStart?.note ?? 'Connect Apple Health to start your baseline.',
       oneLineMover: null,
-      prescription: null,
       scoreTrend: [],
       pillars: [],
       streaks: [],
@@ -426,43 +414,10 @@ export async function loadReadinessBrief(
   const subjectiveCheckin = await loadSubjectiveCheckin(userId, date);
   const subjectiveOverride = computeSubjectiveOverride(breakdown, subjectiveCheckin);
 
-  // 2026-06-03 · prescription · concrete "what should I DO today" line
-  // based on band + active streaks + today's planned workout type +
-  // subjective override. Authored, not templated · the engine writes
-  // one line the runner can act on, citing the trigger.
-  // 2026-08-21 · web audit · RULE TWO. The prescription below may cut a
-  // session, and until now it decided that off ONE pillar streak plus the
-  // band. `gradeConvergence` is the module that owns this question, so the
-  // brief asks it rather than keeping a second, softer opinion. Failure to
-  // load is not a licence to prescribe — a null verdict means the brief can
-  // still speak but may not change the day.
-  const convergence = await (async () => {
-    try {
-      const [{ gradeConvergence }, { loadConvergenceSeries, loadConvergenceContext }] =
-        await Promise.all([
-          import('./convergence'),
-          import('./convergence-loader'),
-        ]);
-      const [series, context] = await Promise.all([
-        loadConvergenceSeries(userId, date, {
-          subjectiveWreckedOnEasy: subjectiveOverride != null
-            && subjectiveOverride.objectiveScore - subjectiveOverride.subjectiveScore >= 15,
-        }),
-        loadConvergenceContext(userId, date),
-      ]);
-      return gradeConvergence(series, context);
-    } catch {
-      return null;
-    }
-  })();
-
-  const prescription = composePrescription({
-    band: breakdown.band,
-    streaks,
-    todayWorkoutType: state.todayWorkout?.type ?? null,
-    subjectiveOverride,
-    convergence,
-  });
+  /* 2026-09-02 · `composePrescription` and the `gradeConvergence` load that
+   * fed it stood here. Both are deleted: the brief no longer authors an
+   * instruction, so it no longer needs a verdict to justify one. See the
+   * `prescription` field's obituary on the type above. */
 
   // 2026-06-01 · cold-start envelope (web agent brief §2). Null when
   // we have a score · only populated for band='no-data' runners.
@@ -599,7 +554,6 @@ export async function loadReadinessBrief(
     label: breakdown.label,
     headline,
     oneLineMover,
-    prescription,
     scoreTrend,
     pillars,
     streaks,
@@ -657,146 +611,6 @@ export async function loadReadinessBrief(
  * and it is still what `readiness.ts` computes from the runner's own
  * normal. It just no longer, on its own, changes what he runs.
  */
-function composePrescription(args: {
-  band: ReadinessBreakdown['band'] | 'no-data';
-  streaks: ReadinessStreak[];
-  todayWorkoutType: string | null;
-  subjectiveOverride: ReadinessBrief['subjectiveOverride'];
-  /** The convergence verdict for this morning. Null when it could not be
-   *  graded — which licenses nothing, per the docblock above. */
-  convergence: ConvergenceVerdict | null;
-}): ReadinessBrief['prescription'] {
-  const { band, streaks, todayWorkoutType, subjectiveOverride, convergence } = args;
-  if (band === 'no-data') return null;
-
-  // Local helper · consolidates the return shape and structures the
-  // 2026-06-03 intent + target fields downstream consumers (the
-  // post-run reflection in particular) read to compare actual run to
-  // the morning's call.
-  const rx = (
-    action: string,
-    why: string,
-    intent: 'cut' | 'plan' | 'send' | 'rest',
-    targets: { min?: number; mi?: number } = {},
-  ): ReadinessBrief['prescription'] => ({
-    action,
-    why,
-    intent,
-    targetMinutes: targets.min ?? null,
-    targetMiles: targets.mi ?? null,
-  });
-
-  // Subjective override takes precedence per Saw et al. doctrine.
-  if (subjectiveOverride) {
-    const sub = subjectiveOverride.subjectiveScore;
-    const obj = subjectiveOverride.objectiveScore;
-    if (sub - obj >= 15) {
-      return rx(
-        'Plan stands. You feel better than the numbers.',
-        `Subjective ${sub} vs objective ${obj} · trust the body when the gap is this wide.`,
-        'plan',
-      );
-    }
-    if (obj - sub >= 15) {
-      return rx(
-        // RULE TWO, in the copy. "Regardless of plan" is the violation said
-        // out loud: one gap between the runner's own read and the composite
-        // overriding the written session. The prescription is unchanged
-        // (`intent: 'cut'` is engine behaviour and is flagged separately);
-        // what changes is that the sentence no longer claims a single
-        // reading outranks the plan. It names the gap and what follows.
-        'Easy 20-30min or full rest today.',
-        `You read ${sub}, the numbers read ${obj}. Your own read is the one that counts on a gap this wide.`,
-        'cut',
-        { min: 25 },
-      );
-    }
-  }
-
-  const sleepStreak = streaks.find((s) => s.pillar === 'sleep');
-  const hrvStreak   = streaks.find((s) => s.pillar === 'hrv');
-  const chronicSignal = sleepStreak || hrvStreak;
-  const wType = (todayWorkoutType ?? '').toLowerCase();
-  const isQuality = wType === 'intervals' || wType === 'tempo' || wType === 'threshold';
-  const isLong    = wType === 'long';
-  const isEasy    = wType === 'easy' || wType === 'recovery';
-  const isRest    = wType === 'rest' || wType === '';
-
-  // THE CONVERGENCE, and the sentence that describes it. `convergencePhrases`
-  // is the same read-order list the adaptation layer and the phone use, so
-  // one morning is described in one vocabulary wherever it is read.
-  const converged = convergence?.converging.length ?? 0;
-  const mayCut = convergence?.grade === 'red';
-  const phrases = convergence ? convergencePhrases(convergence) : [];
-  const list = phrases.length === 0
-    ? null
-    : phrases.length === 1
-      ? phrases[0]
-      : `${phrases.slice(0, -1).join(', ')} and ${phrases[phrases.length - 1]}`;
-  // The WHY on any line that changes the day. Names what converged, never
-  // the band and never one pillar. Falls back to the domain count rather
-  // than to a metric name, because a count is still a convergence.
-  const why = list
-    ? `${list.charAt(0).toUpperCase()}${list.slice(1)}.`
-    : `${converged} independent signals are dragging together.`;
-
-  if (band === 'pull-back') {
-    // RED · three independent domains. This is the only rung that may cut.
-    if (mayCut) {
-      if (isQuality) return rx('Skip today\'s quality. Easy 30min only or full rest.', `${why} Don't add load on a depleted base.`, 'cut', { min: 30 });
-      if (isLong)    return rx('Drop the long to 50-60% distance. No pace targets · jog.', `${why} The long-run cost will compound.`, 'cut');
-      if (isEasy)    return rx('Cut the easy to 30min. Keep it conversational, walk if needed.', `${why} Pull back even on easy days.`, 'cut', { min: 30 });
-      return rx('Rest. Or 20-30min walk if you need to move.', `${why} The body needs the day off.`, 'rest', { min: 20 });
-    }
-    // AMBER, or a low band with no convergence behind it. The runner is told
-    // what the morning looks like and the day stands. This is the branch the
-    // old code filled with cuts — "Swap quality for easy", "Drop long to
-    // 70-80%" — on the band alone.
-    if (converged >= (convergence ? 2 : Infinity)) {
-      if (isQuality) return rx('Plan stands. Hold the prescribed effort, don\'t chase extra.', `${why} Two signals is worth knowing, not worth changing the day for.`, 'plan');
-      if (isLong)    return rx('Long as planned. No fast finish.', `${why} Two signals is worth knowing, not worth changing the day for.`, 'plan');
-      return rx('Plan stands.', `${why} Two signals is worth knowing, not worth changing the day for.`, 'plan');
-    }
-    if (isQuality) return rx('Plan stands. Warm up long and judge it off the first rep.', 'Score is below your own normal today, and nothing else is corroborating it.', 'plan');
-    if (isLong)    return rx('Long as planned. Cap the effort, no fast finish.', 'Score is below your own normal today, and nothing else is corroborating it.', 'plan');
-    if (isEasy)    return rx('Easy as planned.', 'Score is below your own normal today · easy is already the right call.', 'plan');
-    return rx('Rest as planned. Mobility if you want.', 'Rest day already matches the signal.', 'rest');
-  }
-
-  if (band === 'moderate') {
-    if (chronicSignal && chronicSignal.days >= 5) {
-      if (isQuality) return rx('Run quality as planned, but cap effort. Stop if pace slips badly.', `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · proceed with caution.`, 'plan');
-      if (isLong)    return rx('Long as planned, but slower than usual easy pace. No fast finish.', `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · build aerobic, skip the strain.`, 'plan');
-      return rx('Plan stands. Keep effort conservative.', `MODERATE band + ${chronicSignal.pillar.toUpperCase()} streak ${chronicSignal.days}d · run, don't push.`, 'plan');
-    }
-    if (isQuality) return rx('Plan stands. Hold the easy band on warm-up + recovery.', 'MODERATE band · execute, don\'t over-reach.', 'plan');
-    if (isLong)    return rx('Long as planned. Cap effort at "tired, not wrecked."', 'MODERATE band · build aerobic without paying the next-day tax.', 'plan');
-    return rx('Plan stands.', 'MODERATE band · within normal training band.', 'plan');
-  }
-
-  if (band === 'ready') {
-    if (isQuality) return rx('Plan stands. Execute the workout.', 'READY band · system is recovered.', 'plan');
-    if (isLong)    return rx('Long as planned. Optional fast finish if it feels right.', 'READY band · take the long as planned.', 'plan');
-    if (isEasy)    return rx('Plan stands. Easy as scheduled.', 'READY band · easy days build the base.', 'plan');
-    return rx('Plan stands.', 'READY band · run as scheduled.', 'plan');
-  }
-
-  if (band === 'sharp') {
-    // 2026-09-02 · "Send it" and "don't hold back" were slang standing in for
-    // an instruction, and on a QUALITY day they contradict the prescription
-    // sitting beside them: the session has a pace band, and "don't hold back"
-    // is the opposite of running one.
-    if (isQuality) return rx('Run the session as prescribed.', 'Recovery is good · take the targets as written.', 'send');
-    if (isLong)    return rx('Plan stands · fast finish if it\'s scheduled.', 'Recovery is good · use the day.', 'send');
-    if (isEasy)    return rx('Easy as planned · don\'t turn it into a hard day because you feel good.', 'SHARP band but easy day · banking days like this matter.', 'plan');
-    return rx('Plan stands.', 'SHARP band · run as scheduled.', 'plan');
-  }
-
-  // Avoid unused-var lint on isRest · kept for future use.
-  void isRest;
-  return null;
-}
-
 // ─── helpers ──────────────────────────────────────────────────────────────
 
 function breakdownIsEmpty(b: ReadinessBreakdown): boolean {
@@ -1474,7 +1288,6 @@ function computeSubjectiveOverride(
   subjectiveScore: number;
   objectiveScore: number;
   deltaAbs: number;
-  advice: string;
 } | null {
   if (!checkin.answered || checkin.rating == null) return null;
   if (breakdown.score == null) return null;
@@ -1483,20 +1296,13 @@ function computeSubjectiveOverride(
   const deltaAbs = Math.abs(objective - subjective100);
   if (deltaAbs < SUBJECTIVE_DISAGREE_THRESHOLD) return null;
 
-  // Direction · subjective lower or higher than objective changes the
-  // framing. Both directions are valid per the doctrine.
-  const subjectiveLower = subjective100 < objective;
-  const advice = subjectiveLower
-    ? `Your read is lower than the numbers (${subjective100} vs ${objective}). ` +
-      `When subjective and objective disagree, your read wins · Ease the day.`
-    : `Your read is higher than the numbers (${subjective100} vs ${objective}). ` +
-      `When subjective and objective disagree, your read wins · Proceed as planned.`;
-
+  // 2026-09-02 · the `advice` sentence ended "· Ease the day." / "· Proceed
+  // as planned." — an instruction composed from the gap. The gap itself is
+  // reported; the instruction is not.
   return {
     subjectiveScore: subjective100,
     objectiveScore: objective,
     deltaAbs,
-    advice,
   };
 }
 
