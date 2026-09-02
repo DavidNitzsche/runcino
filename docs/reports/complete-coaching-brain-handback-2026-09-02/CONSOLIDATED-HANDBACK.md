@@ -397,8 +397,21 @@ question: a mean over representative DAYS answers what you averaged; your plan
 generator is asking what you can sustain. One zero week moves a mean six miles
 and barely moves a median.
 
-Not changed, because it is a doctrine change to the reader that sizes every
-block. **Decision 7.**
+**Decision 7 is now implemented.** The estimator is the third-highest fully
+representative week, bound by assertion to the engine's existing sustained-rank
+constant rather than chosen freshly. On his record it answers **39.5 mi/wk**
+against the mean's 33.7. The case made for it is that 39.5 sits 1.5 miles above
+his own median where the mean sat below it — and nothing was fitted to the 43.5
+in the Rule 8 table, which was the explicit instruction.
+
+**One challenge to this section, checked and rejected.** The agent that
+implemented it reported back that the zero week and the 4.2-mile week "both sit
+inside the Americas Finest City window", which would mean Rule 8 already excludes
+them and they are not anomalies at all. That is wrong, and I verified it rather
+than relaying it. The AFC window runs 2026-08-02 to 2026-08-30; the two weeks are
+2026-06-29 and 2026-07-27, and `isPrescribedNonNormal` returns false for every
+day in both. They are genuinely unexplained low weeks, the estimator is
+genuinely solving for them, and the paragraphs above stand as written.
 
 ---
 
