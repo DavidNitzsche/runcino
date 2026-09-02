@@ -768,9 +768,27 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const thesis = todayPlanUnresolved
     ? null
     : await resolveCoachingThesis(userId, today);
-  const thesisIsForToday = thesis != null
-    && THESIS_QUALITY_TYPES.has((viewedPlannedType ?? '').toLowerCase());
   const addressedToday = thesis?.addressedBy.find((s) => s.dateIso === today) ?? null;
+  /* WHICH DAY THE THESIS IS ABOUT.
+   *
+   * The quality-type set alone was right while the limiter could only ever be
+   * THRESHOLD or HIGH_INTENSITY, whose families are exactly those three types.
+   * THESIS-V3 (2026-09-02) lets the runner's own race curve name DURABILITY as
+   * the limiter, and durability's key session is the LONG RUN - which is not
+   * in that set, so on the one day of the week that actually addresses the
+   * limiter the runner would have read the phase opener instead of the
+   * strategy. Measured on the owner's account: limiter DURABILITY, the week's
+   * only addressing session the 2026-09-06 long run, and the thesis lead
+   * suppressed on exactly that day.
+   *
+   * So the day the thesis speaks on is the day the thesis is ABOUT: a quality
+   * day as before, or the day the resolver itself named as addressing the
+   * limiter. `addressedBy` is the thesis's own list, so this adds no second
+   * opinion about which session serves the limiter (Rule 16) - it stops
+   * withholding the sentence on the day the thesis already picked. */
+  const thesisIsForToday = thesis != null
+    && (THESIS_QUALITY_TYPES.has((viewedPlannedType ?? '').toLowerCase())
+      || addressedToday != null);
 
   const why = todayPlanUnresolved
     // RULE 11 · an unresolved day says so. It does NOT borrow the phase

@@ -44,7 +44,12 @@ import { describe, it, expect, vi } from 'vitest';
 
 const RO = process.env.DATABASE_URL_RO;
 const OWNER = '0645f40c-951d-4ccc-b86e-9979cd26c795';
-const DATES = ['2026-09-03', '2026-09-08'] as const;
+/* 09-03 hills and 09-08 tempo are the two QUALITY days the original wiring
+ * spoke on. 09-06 is the week's LONG RUN, added with THESIS-V3: it is the
+ * session the resolver names as addressing the owner's DURABILITY limiter,
+ * and before the fix in app/api/v5/today/route.ts the thesis was suppressed
+ * on exactly that day (the quality-type set has no 'long'). */
+const DATES = ['2026-09-03', '2026-09-06', '2026-09-08'] as const;
 
 // The auth line, and ONLY the auth line. Declared as a bare object rather than
 // spread over `importOriginal` so the real module (and the pool it imports) is
@@ -54,7 +59,7 @@ vi.mock('@/lib/auth/session', () => ({
 }));
 
 describe.skipIf(!RO)('TODAY · the thesis-composed "why", rendered on the real route', () => {
-  it('renders 2026-09-03 (hills) and 2026-09-08 (tempo) from the live payload', async () => {
+  it('renders the two quality days AND the long run that addresses the limiter, from the live payload', async () => {
     process.env.DATABASE_URL = RO;
     const { GET } = await import('@/app/api/v5/today/route');
 

@@ -98,7 +98,15 @@ describe.skipIf(!RO)('COACHING THESIS · rendered against the owner\'s real acco
         prev = s.confidence;
       }
 
-      // The limiter is standings[0] when there is one, and it is rankable.
+      /* THE LIMITER IS EVIDENCED, AND ITS CONFIDENCE IS THE BASIS'S OWN.
+       *
+       * v3 (2026-09-02) · the limiter is no longer always `standings[0]`.
+       * `CURVE_SHAPE_EVIDENCE` lets the runner's own race curve name
+       * DURABILITY ahead of the confidence ordering (see the module header),
+       * so this asserts the property that actually has to hold on both bases:
+       * the limiter is a RANKABLE capacity, and `confidence`/`evidenceIds`
+       * are a pass-through of whatever evidence the basis rests on — never
+       * re-derived, never invented. */
       if (thesis.primaryLimiter === 'UNKNOWN') {
         expect(thesis.standings.every((s) => !s.rankable)).toBe(true);
         expect(thesis.confidence).toBeNull();
@@ -106,16 +114,29 @@ describe.skipIf(!RO)('COACHING THESIS · rendered against the owner\'s real acco
         expect(thesis.addressedBy).toEqual([]);
         expect(thesis.priority).toBe('establish_evidence_before_prioritising');
       } else {
-        expect(thesis.standings[0].capacity).toBe(thesis.primaryLimiter);
-        expect(thesis.standings[0].rankable).toBe(true);
+        const standing = thesis.standings.find((s) => s.capacity === thesis.primaryLimiter)!;
+        expect(standing.rankable).toBe(true);
         const byCapacity = { THRESHOLD: threshold, HIGH_INTENSITY: highIntensity, DURABILITY: durability };
         const primaryEstimate = byCapacity[thesis.primaryLimiter];
-        // Never a fallback rung. This is the whole fix.
+        // Never a fallback rung. This is the v2 fix, still held.
         expect(['direct', 'inferred', 'race_derived']).toContain(primaryEstimate.sourceMode);
-        // confidence/evidenceIds are a pass-through of the primary limiter's
-        // own resolved estimate — never re-derived, never invented.
-        expect(thesis.confidence).toBe(primaryEstimate.confidence);
-        expect(thesis.evidenceIds).toEqual(primaryEstimate.evidenceIds);
+
+        if (thesis.basis === 'CURVE_SHAPE_EVIDENCE') {
+          // The claim rests on the race curve, so it carries THAT component's
+          // confidence and race slugs — not the durability aggregate, which
+          // decoupling could inflate past what the shape claim earns.
+          expect(thesis.primaryLimiter).toBe('DURABILITY');
+          expect(thesis.curveShape.read).toBe('speed_biased');
+          if (thesis.curveShape.read !== 'unavailable') {
+            expect(thesis.confidence).toBe(thesis.curveShape.confidence);
+            expect(thesis.evidenceIds).toEqual(thesis.curveShape.evidenceIds);
+            expect(thesis.curveShape.rawExponent).toBeGreaterThan(thesis.curveShape.band[1]);
+          }
+        } else {
+          expect(thesis.basis).toBe('LOWEST_CONFIDENCE_AMONG_EVIDENCED');
+          expect(thesis.confidence).toBe(primaryEstimate.confidence);
+          expect(thesis.evidenceIds).toEqual(primaryEstimate.evidenceIds);
+        }
         expect(thesis.confidence!).toBeGreaterThanOrEqual(CAPACITY_CONFIDENCE_BANDS.populationPrior);
         expect(thesis.confidence!).toBeLessThanOrEqual(CAPACITY_CONFIDENCE_BANDS.directCeiling);
       }

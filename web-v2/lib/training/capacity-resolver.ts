@@ -556,8 +556,24 @@ export interface DurabilityCapacityEstimate extends CapacityEstimateBase {
    * side — the mechanism by which marathon pace is EARNED in the block.
    */
   trainingDurability?: DurabilityComponent<number>;
-  /** The raw (unshrunk) fitted exponent, when the race read produced one —
-   *  so a consumer can state the honest range around `enduranceExponent`. */
+  /**
+   * The RAW weighted log-log fit behind `raceExponent.value`, UNSHRUNK —
+   * `RaceExponentRead.rawFittedExponent`, carried through unchanged. Null
+   * whenever `raceExponent` is absent.
+   *
+   * TWO CONSUMERS, ONE FIELD, ONE NAME (Rule 16), and they arrived from
+   * opposite directions on the same day. Phase 1 added it so a consumer can
+   * state the honest RANGE around `enduranceExponent`; the Coaching Thesis
+   * needs it because doctrine's runner-type classification (`Research/02`
+   * §7.1, `CURVE_NEUTRAL_EXPONENT_BAND`) reads the SHAPE of the observed
+   * curve, and `lib/coach/limiter.ts` already spends the raw fit for exactly
+   * that reason ("the shrunk value would pull every runner toward the neutral
+   * band"). `raceExponent.value` stays the number to PRESCRIBE from.
+   *
+   * Optional so fixtures that build this estimate by hand and never read the
+   * shape stay valid; `composeDurability` always sets it, and
+   * `_thesis_golden.test.ts` pins that.
+   */
   rawFittedExponent?: number | null;
   /** Mean pace/HR drift across qualifying long runs, percentage points.
    *  Positive = HR climbed faster than pace over the back half. */
