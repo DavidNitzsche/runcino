@@ -39,11 +39,31 @@
  *     name for the correction, so the log reads as a history and not as a
  *     counter.
  *
- * The first value names the P0 threshold-contract correction, deployed as
- * `f967cab1` (Railway `708a200b`, 2026-09-02T01:23Z for the race-row refresh
- * that ran inside production against it).
+ * ── EPOCH HISTORY ─────────────────────────────────────────────────────────
+ *
+ *   1 · `2026-09-02.threshold-contract-f967cab1` — the P0 threshold-contract
+ *       correction (deployed `f967cab1`, Railway `708a200b`). Superseded the
+ *       same day, before the cron wrote a single record under it.
+ *   2 · `2026-09-02.phase1-durability-59fed35e` — CURRENT. Phase 1 of the
+ *       brain completion (`59fed35e` and the commits merged with it):
+ *       durability spends representativeness and names a single-long-race
+ *       exponent, capacity gains a cross-tier day-to-day continuity cap and a
+ *       `trainingDurability` component, prescription gains
+ *       `marathonRangeSecPerMi`, the threshold continuity chain is walked
+ *       rather than sampled, and the race outlook reports its own age. FIVE of
+ *       the eight pinned belief sources changed, and every one of them moves
+ *       what a belief RESOLVES to for the same activities — branch (a) of the
+ *       decision below. Shadow evidence restarts here.
+ *
+ * THE FIRST BUMP WAS NOT HYPOTHETICAL, and it is the strongest evidence this
+ * mechanism is needed: Phase 1 changed all five of those files and left
+ * `CAPACITY_MODEL_VERSION`, `PRESCRIPTION_MODEL_VERSION` and
+ * `RACE_OUTLOOK_MODEL_VERSION` at `1.0.0`. A promotion review filtering on
+ * those constants would have counted pre-Phase-1 records as current. The pin
+ * gate went red on exactly the five changed files and forced this entry to be
+ * written.
  */
-export const SHADOW_EVIDENCE_EPOCH = '2026-09-02.threshold-contract-f967cab1';
+export const SHADOW_EVIDENCE_EPOCH = '2026-09-02.phase1-durability-59fed35e';
 
 /** The epoch format: `YYYY-MM-DD.<slug>`. Pinned by test so a future value
  *  cannot drift into a bare counter or an undated label. */
@@ -98,18 +118,18 @@ export interface BeliefSourcePin {
 export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   {
     file: 'lib/training/capacity-resolver.ts',
-    digest: 'b9696cd4ec75eb97',
-    why: 'Pinned at the epoch. Owns threshold / high-intensity / easy-ceiling / durability capacity — every number the PACE lever compares a plan against.',
+    digest: '8d6fae2329013e6e',
+    why: 'Re-pinned at epoch 2 · Phase 1 added the cross-tier day-to-day continuity cap on the threshold belief and the trainingDurability component, so what capacity resolves to for the same activities moved.',
   },
   {
     file: 'lib/training/prescription-resolver.ts',
-    digest: '9f5f731e0bde03f2',
-    why: 'Pinned at the epoch. Turns capacity into the prescribed anchors a phase breakdown is priced from.',
+    digest: '734c9ff2672ea6b0',
+    why: 'Re-pinned at epoch 2 · Phase 1 added marathonRangeSecPerMi, so what the prescription resolves to moved.',
   },
   {
     file: 'lib/training/durability-anchor.ts',
-    digest: '4a8aa1ad46a6f54a',
-    why: 'Pinned at the epoch. The endurance exponent carries threshold to race distance, so a change here moves the marathon-pace anchor and the race outlook.',
+    digest: '3ee67060d8ec22d8',
+    why: 'Re-pinned at epoch 2 · Phase 1 weights race observations by representativeness and names a single-long-race exponent, which moves the endurance exponent and with it the marathon anchor.',
   },
   {
     file: 'lib/training/runner-state.ts',
@@ -128,12 +148,12 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/race/race-outlook.ts',
-    digest: 'a1f890d72ab89d3a',
-    why: 'Pinned at the epoch. The outlook the race rows and the expected-race-day number are resolved from.',
+    digest: '37c8b27e94f5c833',
+    why: 'Re-pinned at epoch 2 · Phase 1 made the outlook report its own age and record a material target change.',
   },
   {
     file: 'lib/training/pace-corpus.ts',
-    digest: 'ee2247d56d7cf0bf',
-    why: 'Pinned at the epoch. The threshold corpus and its admission rules — the P0 correction that created this epoch landed here.',
+    digest: '573503045116ea89',
+    why: 'Re-pinned at epoch 2 · Phase 1 walks the threshold continuity chain rather than sampling it, with a faithful per-day fallback, which moves which sessions carry the belief.',
   },
 ];
