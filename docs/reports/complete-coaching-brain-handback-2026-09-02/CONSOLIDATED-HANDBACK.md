@@ -747,6 +747,59 @@ fix. Whichever state they are in when you read this, the findings above are
 measured and stand on their own — check `work-log-chronological.md` and the
 repository history for where they ended up.
 
+## 12f · An agent wrote test data into the runner's production account
+
+Recorded prominently because it is the most serious process failure of this
+programme and the accountability is mine.
+
+**What happened.** During the closure pass, an agent testing the watch's
+crash-recovery path — the exact path that caused the 2026-09-02 truncation —
+ran a live simulator session while signed in as the reference runner. It
+completed two workouts, which posted through the normal ingest route into his
+PRODUCTION account:
+
+    -174215771633741   0.27 mi   status=partial   sim-recovery-live#1101
+    -277475765611154   0.27 mi   status=partial   sim-recovery-live#1038
+    both ingested 2026-09-02T18:25:53Z
+
+Neither is merged, so both count as canonical runs. **His log therefore reads
+6.95 miles across 3 runs for a day he ran 6.41 across one.**
+
+**Why "production is read-only" did not prevent it.** Every agent was told
+production access was read-only and to use the read-only role. That instruction
+governs DATABASE access. A watch simulator session writes through the app's own
+ingest endpoint and never touches a `DATABASE_URL` at all, so the rule was
+satisfied to the letter and violated in substance. The instruction was mine and
+it was insufficient.
+
+**Blast radius, measured rather than assumed.** These are the only two rows in
+the entire database carrying a `sim-` identifier. No other account is affected.
+
+**Not repaired.** Deleting production rows needs the runner's explicit go, and
+the fact that the mess was ours is not a reason to make an exception. The
+removal is narrow and reversible in the sense that nothing else references
+these rows:
+
+```sql
+DELETE FROM runs
+ WHERE user_uuid = '0645f40c-951d-4ccc-b86e-9979cd26c795'
+   AND data->>'client_workout_id' LIKE 'sim-%';
+```
+
+**The instruction is now explicit for every remaining agent:** do not run any
+watch or phone session that can COMPLETE a workout while signed in as the
+reference runner. Reading, rendering and navigating are fine; completing is not.
+
+**And it produced a second, useful finding.** `_postrun_corpus.audit.test.ts`
+failed on three `scolding` hits for 2026-09-02. My first reading was that the
+voice lexicon was over-matching and the copy was fine. That was wrong on both
+counts. The audit was correctly composing the polluted rows, and a 0.27-mile
+partial legitimately reaches the evidence-excluded path, which says "the
+recording is not good enough to read" — a phrase the lexicon bans because it was
+written to stop the app telling the RUNNER he is not good enough. The meaning is
+right and the words are wrong, and it is being fixed in the copy rather than by
+exempting the lexicon term.
+
 ## 13 · What is NOT true
 
 - **Upward pace adaptation remains shadow-only, deliberately.** Six shadow
