@@ -1,0 +1,2071 @@
+{
+ "numTotalTestSuites": 1695,
+ "numPassedTests": 8126,
+ "numFailedTests": 0,
+ "numPendingTests": 10,
+ "numTotalTests": 8136,
+ "skipped": [
+  "course-geometry backfill \u00b7 dry run against a live database reports every race carrying GPX and no geometry",
+  "course-geometry backfill \u00b7 dry run against a live database the shared writer, in dry run, plans exactly what the planner planned",
+  "CIM block as the cron will author it composes and prints",
+  "CIM block as the cron will author it same block on the days either side, in case the cron slips",
+  "what the plan engine sees of the course reads CIM and the tune-ups",
+  "does his CIM block contain a BASE phase? composes and prints the phases with the gate values that produced them",
+  "CIM block \u00b7 what the phone shows prints every session as persisted",
+  "CIM block \u00b7 the goal-relative pace path composes and prints",
+  "workout vocabulary + three-band split marathon build",
+  "workout vocabulary + three-band split half build"
+ ],
+ "files": [
+  {
+   "file": "lib/account/deletion-plan.test.ts",
+   "status": "passed",
+   "tests": 40
+  },
+  {
+   "file": "lib/adaptation/_absorption_split.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/adaptation/_adaptation_engine.audit.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/adaptation/_adaptation_engine.test.ts",
+   "status": "passed",
+   "tests": 72
+  },
+  {
+   "file": "lib/adaptation/_adaptation_model.test.ts",
+   "status": "passed",
+   "tests": 42
+  },
+  {
+   "file": "lib/adaptation/_authoring_convergence.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/adaptation/_duration_volume_density_replay_corpus.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/adaptation/_pace_replay_corpus.test.ts",
+   "status": "passed",
+   "tests": 18
+  },
+  {
+   "file": "lib/adaptation/_shadow_compare.audit.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/adaptation/pace-hr-compatibility.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/audit/_active_plan_scan.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/audit/_anchor_derivation_scan.test.ts",
+   "status": "passed",
+   "tests": 11
+  },
+  {
+   "file": "lib/audit/_automatic_mutations.test.ts",
+   "status": "passed",
+   "tests": 23
+  },
+  {
+   "file": "lib/audit/_client_graph.test.ts",
+   "status": "passed",
+   "tests": 24
+  },
+  {
+   "file": "lib/audit/_coercion_scan.test.ts",
+   "status": "passed",
+   "tests": 37
+  },
+  {
+   "file": "lib/audit/_generated_content_gate.test.ts",
+   "status": "passed",
+   "tests": 84
+  },
+  {
+   "file": "lib/audit/_normal_window_scan.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/audit/_swallow_scan.test.ts",
+   "status": "passed",
+   "tests": 26
+  },
+  {
+   "file": "lib/audit/_swallowed_failure_fixes.test.ts",
+   "status": "passed",
+   "tests": 29
+  },
+  {
+   "file": "lib/audit/_timezone_date_scan.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/auth/auth-takeover.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/auth/login-tz-capture.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/auth/password-change-revokes.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/auth/strava-state.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/conservation/_plan_conservation.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/conservation/_reader_lint.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/conservation/_run_conservation.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/conservation/_surface_figures.audit.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/coach/_acwr_continuity.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/coach/_adaptation_kind.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/coach/_coach_log_kinds.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/coach/_convergence.test.ts",
+   "status": "passed",
+   "tests": 34
+  },
+  {
+   "file": "lib/coach/_convergence_loader.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/coach/_heat_doctrine.test.ts",
+   "status": "passed",
+   "tests": 28
+  },
+  {
+   "file": "lib/coach/_hr_zone_bucket.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/coach/_limiter.test.ts",
+   "status": "passed",
+   "tests": 44
+  },
+  {
+   "file": "lib/coach/_limiter_continuity.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/coach/_memory.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/coach/_no_silent_refire.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/coach/_personal_goals_wiring.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/coach/_phase_breakdown.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/coach/_race_meta_sentinel.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/coach/_readiness_doctrine.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/coach/_reading_scope.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/coach/_recap_aerobic.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/coach/_recap_scope.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/coach/_recommendation.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/coach/_strength_doctrine.test.ts",
+   "status": "passed",
+   "tests": 14
+  },
+  {
+   "file": "lib/coach/_tier_doctrine.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/coach/acknowledge.test.ts",
+   "status": "passed",
+   "tests": 23
+  },
+  {
+   "file": "lib/coach/coach-log.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/coach/cold-start-personas.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/coach/data-shape-personas.test.ts",
+   "status": "passed",
+   "tests": 20
+  },
+  {
+   "file": "lib/coach/decision-cards.test.ts",
+   "status": "passed",
+   "tests": 29
+  },
+  {
+   "file": "lib/coach/easy-discipline.test.ts",
+   "status": "passed",
+   "tests": 33
+  },
+  {
+   "file": "lib/coach/episode-log.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/coach/firing-policy.test.ts",
+   "status": "passed",
+   "tests": 20
+  },
+  {
+   "file": "lib/coach/fitness-evidence.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/coach/health-actions.race-week.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/coach/health-actions.rule-two.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/coach/health-state.hrv-median.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/coach/heat-band.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/coach/hr-thirds.test.ts",
+   "status": "passed",
+   "tests": 20
+  },
+  {
+   "file": "lib/coach/log-state.enrich.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/coach/morning-brief.test.ts",
+   "status": "passed",
+   "tests": 14
+  },
+  {
+   "file": "lib/coach/race-replacement.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/coach/races-state.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/coach/run-purpose.test.ts",
+   "status": "passed",
+   "tests": 36
+  },
+  {
+   "file": "lib/coach/run-recap.test.ts",
+   "status": "passed",
+   "tests": 45
+  },
+  {
+   "file": "lib/coach/session-cue.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/coach/threshold-pattern.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/coach/voice-band-race-schema.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/coach/voice-band-wiring.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/coach/weather-adjust.test.ts",
+   "status": "passed",
+   "tests": 20
+  },
+  {
+   "file": "lib/doctrine/_doctrine_gate.test.ts",
+   "status": "passed",
+   "tests": 655
+  },
+  {
+   "file": "lib/doctrine/_doctrine_lint.test.ts",
+   "status": "passed",
+   "tests": 11
+  },
+  {
+   "file": "lib/email/send-from.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/evidence/_activity_evidence.audit.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/evidence/_activity_evidence.test.ts",
+   "status": "passed",
+   "tests": 50
+  },
+  {
+   "file": "lib/evidence/_reexamination.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/execution/_interpret.test.ts",
+   "status": "passed",
+   "tests": 23
+  },
+  {
+   "file": "lib/execution/_reconstruct.test.ts",
+   "status": "passed",
+   "tests": 24
+  },
+  {
+   "file": "lib/faff/_display_type_name.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/faff/_fitness_read.test.ts",
+   "status": "passed",
+   "tests": 25
+  },
+  {
+   "file": "lib/faff/_post_run_surfaces.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/faff/_prerun_card.test.ts",
+   "status": "passed",
+   "tests": 29
+  },
+  {
+   "file": "lib/faff/_race_plate.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/faff/_refusal_wire.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/faff/_session_type_coverage.test.ts",
+   "status": "passed",
+   "tests": 27
+  },
+  {
+   "file": "lib/faff/_stepped_day_plan.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/faff/_stepped_day_route.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/faff/_surface_contracts.test.ts",
+   "status": "passed",
+   "tests": 21
+  },
+  {
+   "file": "lib/faff/_surface_sweep.test.ts",
+   "status": "passed",
+   "tests": 23
+  },
+  {
+   "file": "lib/faff/_today_thesis.audit.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/faff/_v5_today.test.ts",
+   "status": "passed",
+   "tests": 21
+  },
+  {
+   "file": "lib/faff/_viewed_day.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/faff/_why_voice.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/faff/block-state.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/faff/effort-map.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/faff/glance-adapter.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/faff/goal-status.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/faff/key-workout-state.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/faff/race-countdown.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/faff/race-roles.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/faff/ramp-scope.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/faff/recap-voice.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/faff/train-goal-status.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/faff/unlogged-race-alert.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/faff/week-mileage.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/fitness/_fitness_model.test.ts",
+   "status": "passed",
+   "tests": 45
+  },
+  {
+   "file": "lib/format/_format_lint.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/notifications/_prompt_or_next_morning.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/notifications/_session_moved_sender.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/notifications/notifications-wire.test.ts",
+   "status": "passed",
+   "tests": 38
+  },
+  {
+   "file": "lib/onboarding/_onboarding_e2e.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/ops/_cron_ledger.test.ts",
+   "status": "passed",
+   "tests": 28
+  },
+  {
+   "file": "lib/ops/_cron_stale_alert.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/postrun-siege/_attribution.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/postrun-siege/_controls.test.ts",
+   "status": "passed",
+   "tests": 22
+  },
+  {
+   "file": "lib/postrun-siege/_parity.test.ts",
+   "status": "passed",
+   "tests": 14
+  },
+  {
+   "file": "lib/postrun-siege/_race_recency.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/postrun-siege/_siege.test.ts",
+   "status": "passed",
+   "tests": 1430
+  },
+  {
+   "file": "lib/prescription/_levers.test.ts",
+   "status": "passed",
+   "tests": 24
+  },
+  {
+   "file": "lib/prescription/_trajectory.test.ts",
+   "status": "passed",
+   "tests": 22
+  },
+  {
+   "file": "lib/race/_course_elevation.test.ts",
+   "status": "passed",
+   "tests": 30
+  },
+  {
+   "file": "lib/race/_course_elevation_trust_gate.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/race/_distance_category.test.ts",
+   "status": "passed",
+   "tests": 24
+  },
+  {
+   "file": "lib/race/_effective_target.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/race/_goal_framing_accept.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/race/_label_only_rows.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/race/_probe_course_geometry_backfill.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/race/_race_detail_pacing.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/race/_race_doctrine.test.ts",
+   "status": "passed",
+   "tests": 64
+  },
+  {
+   "file": "lib/race/_race_outlook_contract.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/race/_race_role_accept.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/race/_race_row_refresh_gate.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/race/_representativeness.test.ts",
+   "status": "passed",
+   "tests": 60
+  },
+  {
+   "file": "lib/race/_representativeness_upward.test.ts",
+   "status": "passed",
+   "tests": 18
+  },
+  {
+   "file": "lib/race/auto-result.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/race/b-goal.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/race/coach-goal-durability.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/race/coach-goal.test.ts",
+   "status": "passed",
+   "tests": 34
+  },
+  {
+   "file": "lib/race/course-geometry-source.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/race/distance.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/race/execution-plan.test.ts",
+   "status": "passed",
+   "tests": 27
+  },
+  {
+   "file": "lib/race/next-best-anchor.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/race/pacing.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/race/personal-records.test.ts",
+   "status": "passed",
+   "tests": 14
+  },
+  {
+   "file": "lib/race/race-role.test.ts",
+   "status": "passed",
+   "tests": 33
+  },
+  {
+   "file": "lib/race/races-user-scoping.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/race/slug-claim.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/plan/_adapt_invariants.test.ts",
+   "status": "passed",
+   "tests": 51
+  },
+  {
+   "file": "lib/plan/_anchor_fit.test.ts",
+   "status": "passed",
+   "tests": 20
+  },
+  {
+   "file": "lib/plan/_audit_connection_parity.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_audit_easy_anchor.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_audit_long_ramp.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_audit_maintenance_buckets.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_audit_nonrace.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/plan/_audit_pace_anchors.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_audit_periodization.test.ts",
+   "status": "passed",
+   "tests": 556
+  },
+  {
+   "file": "lib/plan/_audit_persist_realization.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_audit_persisted_quality.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/plan/_audit_placement.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/plan/_audit_slow_goal.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/plan/_audit_slow_runner.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/plan/_audit_stimulus_gap.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_audit_structural.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/plan/_audit_tier_experience.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_audit_volume.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_authoring_shadow_compare.audit.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_authoring_shadow_compare.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/plan/_backdate_guard.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/plan/_base_gate_invariant.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/plan/_bump_pullback_guard.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/plan/_catalogue_wiring.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/plan/_coach_sensible.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/plan/_coldstart_doctrine.test.ts",
+   "status": "passed",
+   "tests": 21
+  },
+  {
+   "file": "lib/plan/_convergence_downgrade.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/plan/_dosing_composer.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/plan/_dosing_doctrine.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/plan/_dosing_sweep_gate.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_downward_reanchor.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/plan/_goal_framing_card.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/plan/_goal_immutability.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/plan/_graded_miss.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/plan/_guard_fail_closed.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/plan/_heat_trigger.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/plan/_injury_doctrine.test.ts",
+   "status": "passed",
+   "tests": 28
+  },
+  {
+   "file": "lib/plan/_intensity_doctrine.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/plan/_label_distance_truth.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_label_truth.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_lifecycle_open_block.test.ts",
+   "status": "passed",
+   "tests": 30
+  },
+  {
+   "file": "lib/plan/_maint_invariants.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/plan/_maint_repro.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/plan/_midblock_window.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/plan/_midrace_goal.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/plan/_midrace_invariants.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/plan/_midrace_role.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/plan/_missed_dedup_durable.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/plan/_mp_doctrine.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/plan/_mutation_boundary.test.ts",
+   "status": "passed",
+   "tests": 33
+  },
+  {
+   "file": "lib/plan/_no_strength_rows.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/plan/_null_anchor_reachability.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/plan/_open_block_authoring.test.ts",
+   "status": "passed",
+   "tests": 22
+  },
+  {
+   "file": "lib/plan/_overshoot_continuity.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/plan/_overshoot_race_recency.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/plan/_overshoot_recovery.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/plan/_owned_days_reign.audit.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_owned_days_reign.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/plan/_plan_delta.test.ts",
+   "status": "passed",
+   "tests": 30
+  },
+  {
+   "file": "lib/plan/_plan_delta_blockswap.test.ts",
+   "status": "passed",
+   "tests": 14
+  },
+  {
+   "file": "lib/plan/_plan_drift_lifecycle.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/plan/_plan_undo.test.ts",
+   "status": "passed",
+   "tests": 20
+  },
+  {
+   "file": "lib/plan/_probe_cim_block.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_probe_cim_course.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_probe_cim_phases.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_probe_cim_sessions.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_probe_race_pace.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_probe_vocabulary.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_progression_dose_persisted.test.ts",
+   "status": "passed",
+   "tests": 11
+  },
+  {
+   "file": "lib/plan/_progression_gate.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/plan/_progression_pass.test.ts",
+   "status": "passed",
+   "tests": 18
+  },
+  {
+   "file": "lib/plan/_progression_spec.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/plan/_proposal_message.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/plan/_quality_day.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/plan/_quality_drift_hr.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/plan/_r3_adv_g_david.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_r3_adv_g_repro.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/plan/_r3_lowvol_taper.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_r3_lowvol_taper2.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_r3_n2_repro.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_race_pace_ceiling.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/plan/_race_role_card.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/plan/_race_runup.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_race_weekcount_invariant.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_ramp_readiness_bar.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/plan/_rationale_backfill.audit.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_rationale_persist.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_rebuild_derivations.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/plan/_recompute_paces.audit.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_recompute_paces.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/plan/_recovery_doctrine.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/plan/_recovery_half_duration.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_recovery_week_number.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/plan/_replan_scenarios.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/plan/_repro_live.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_repro_lowvol.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_restore_continuity.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/plan/_runner_compromised_fail_closed.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/plan/_screenshot_test.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_seglong_authoring.test.ts",
+   "status": "passed",
+   "tests": 14
+  },
+  {
+   "file": "lib/plan/_silent_rebuild_undoable.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/plan/_skip_respected.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/plan/_slot_allocation.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/plan/_spike_rule_gate.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_strict_n1_probe.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/_sublabel_voice.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_supersede_intents.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/_sweep_allusers.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_training_lead.test.ts",
+   "status": "passed",
+   "tests": 23
+  },
+  {
+   "file": "lib/plan/_training_lead_e2e.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/plan/_travel_invariants.test.ts",
+   "status": "passed",
+   "tests": 14
+  },
+  {
+   "file": "lib/plan/_v5_block_scenarios.test.ts",
+   "status": "passed",
+   "tests": 31
+  },
+  {
+   "file": "lib/plan/_variety_invariants.test.ts",
+   "status": "passed",
+   "tests": 39
+  },
+  {
+   "file": "lib/plan/_vocab_doctrine.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/plan/_wave1_smoke_dryrun.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/plan/_week_note_scrub.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/plan/_week_primary_run.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/plan/_week_read_agreement.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/plan/_zone_grammar.test.ts",
+   "status": "passed",
+   "tests": 26
+  },
+  {
+   "file": "lib/plan/adapter-bench.test.ts",
+   "status": "passed",
+   "tests": 11
+  },
+  {
+   "file": "lib/plan/adaptive-ramp.test.ts",
+   "status": "passed",
+   "tests": 22
+  },
+  {
+   "file": "lib/plan/block-preview.test.ts",
+   "status": "passed",
+   "tests": 18
+  },
+  {
+   "file": "lib/plan/calibration-intro.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/calibration.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/coaching-structural.test.ts",
+   "status": "passed",
+   "tests": 40
+  },
+  {
+   "file": "lib/plan/drift-proposal-policy.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/plan/generate-ultra.test.ts",
+   "status": "passed",
+   "tests": 11
+  },
+  {
+   "file": "lib/plan/generator-bench.test.ts",
+   "status": "passed",
+   "tests": 136
+  },
+  {
+   "file": "lib/plan/layout-from-prefs.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/pace-zones.test.ts",
+   "status": "passed",
+   "tests": 11
+  },
+  {
+   "file": "lib/plan/plan-engine.test.ts",
+   "status": "passed",
+   "tests": 58
+  },
+  {
+   "file": "lib/plan/plan-workouts-user-uuid.test.ts",
+   "status": "passed",
+   "tests": 2
+  },
+  {
+   "file": "lib/plan/race-lifecycle.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/plan/reanchor-plan.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/plan/return-ladder.test.ts",
+   "status": "passed",
+   "tests": 11
+  },
+  {
+   "file": "lib/plan/sim-inputs.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/plan/simulator-db-errors.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/plan/spec-completeness.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/plan/strip-citations.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/plan/validate.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/runs/_absorption_invariant.test.ts",
+   "status": "passed",
+   "tests": 30
+  },
+  {
+   "file": "lib/runs/_absorption_predicate.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/runs/_cadence_units.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/runs/_canonical_family.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/runs/_coherence_gate.test.ts",
+   "status": "passed",
+   "tests": 66
+  },
+  {
+   "file": "lib/runs/_coherence_regression.test.ts",
+   "status": "passed",
+   "tests": 27
+  },
+  {
+   "file": "lib/runs/_dedup-health.audit.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/runs/_identity_lint.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/runs/_ingest-audit.audit.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/runs/_ingest_integrity.test.ts",
+   "status": "passed",
+   "tests": 30
+  },
+  {
+   "file": "lib/runs/_ingest_split_reconciliation.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/runs/_pace_selfcheck.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/runs/_plan_date_join_lint.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/runs/_run_shape_lint.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/runs/_splits_repair_sql.audit.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/runs/_startutc-backfill-proposal.audit.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/runs/_vocabulary_split.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/runs/absorb-splits-verdict.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/runs/belt-averages.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/runs/circular-merge-repair.audit.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/runs/derive-splits.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/runs/distance-guard.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/runs/emptyish-erase.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/runs/energy.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/runs/identity.test.ts",
+   "status": "passed",
+   "tests": 18
+  },
+  {
+   "file": "lib/runs/ingest-survival.test.ts",
+   "status": "passed",
+   "tests": 24
+  },
+  {
+   "file": "lib/runs/log-enrich.test.ts",
+   "status": "passed",
+   "tests": 24
+  },
+  {
+   "file": "lib/runs/run-shape.test.ts",
+   "status": "passed",
+   "tests": 31
+  },
+  {
+   "file": "lib/runs/split-coverage.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/runs/split-sanity.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/runtime/day-key.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/runtime/request-memo.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/shoe/_mileage_provenance.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/shoe/lifespan.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/strava/_tcx_cadence.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/strava/build-tcx.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/strava/push-resolve.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/strava/push-unpushable.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/strava/webhook-alerts.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/strava/webhook-reconcile.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/strava/webhook-verify.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/terrain/grade-adjust.test.ts",
+   "status": "passed",
+   "tests": 43
+  },
+  {
+   "file": "lib/today/composition.test.ts",
+   "status": "passed",
+   "tests": 36
+  },
+  {
+   "file": "lib/today/post-race-composition.test.ts",
+   "status": "passed",
+   "tests": 20
+  },
+  {
+   "file": "lib/watch/_heat.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/watch/_session_class.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/watch/_watch_anchor_split.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/watch/_watch_cues_rules.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/watch/_watch_lobby.test.ts",
+   "status": "passed",
+   "tests": 22
+  },
+  {
+   "file": "lib/watch/_watch_recap_rows.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/watch/_wire_labels.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/watch/_zz_watch_payload_20260901.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/training/_audit_goalmode.test.ts",
+   "status": "passed",
+   "tests": 11
+  },
+  {
+   "file": "lib/training/_capacity_resolver.audit.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/training/_capacity_resolver.test.ts",
+   "status": "passed",
+   "tests": 45
+  },
+  {
+   "file": "lib/training/_coaching_thesis.audit.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/training/_coaching_thesis.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/training/_cold_start_fixtures.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/training/_durability_anchor.audit.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/training/_durability_anchor.test.ts",
+   "status": "passed",
+   "tests": 28
+  },
+  {
+   "file": "lib/training/_elevation_doctrine.test.ts",
+   "status": "passed",
+   "tests": 11
+  },
+  {
+   "file": "lib/training/_execution_semantics_owner.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/training/_goal_assessment.test.ts",
+   "status": "passed",
+   "tests": 32
+  },
+  {
+   "file": "lib/training/_goal_assessment_sample.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/training/_goal_floor_isolation.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/training/_heat_continuity.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/training/_heat_model_doctrine.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/training/_max_hr_lthr_floor.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/training/_normal_window.test.ts",
+   "status": "passed",
+   "tests": 25
+  },
+  {
+   "file": "lib/training/_pace_anchor.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/training/_pace_corpus.audit.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/training/_pace_corpus.test.ts",
+   "status": "passed",
+   "tests": 39
+  },
+  {
+   "file": "lib/training/_prescription_resolver.audit.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/training/_prescription_resolver.test.ts",
+   "status": "passed",
+   "tests": 48
+  },
+  {
+   "file": "lib/training/_projection_trend.test.ts",
+   "status": "passed",
+   "tests": 17
+  },
+  {
+   "file": "lib/training/_race_authority_durability.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/training/_race_card.test.ts",
+   "status": "passed",
+   "tests": 20
+  },
+  {
+   "file": "lib/training/_race_history.test.ts",
+   "status": "passed",
+   "tests": 3
+  },
+  {
+   "file": "lib/training/_race_projection.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/training/_spec_card.test.ts",
+   "status": "passed",
+   "tests": 21
+  },
+  {
+   "file": "lib/training/_target_continuity.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/training/_targets_projection_invariants.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/training/_threshold_evidence_contract.test.ts",
+   "status": "passed",
+   "tests": 21
+  },
+  {
+   "file": "lib/training/_vdot_corpus_anchor.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/training/_vdot_inputs_provisional.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/training/_vdot_split_clock.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/training/_watch_grader_parity.test.ts",
+   "status": "passed",
+   "tests": 13
+  },
+  {
+   "file": "lib/training/_workout_type.test.ts",
+   "status": "passed",
+   "tests": 12
+  },
+  {
+   "file": "lib/training/_zz_replay_20260901.test.ts",
+   "status": "passed",
+   "tests": 1
+  },
+  {
+   "file": "lib/training/biometrics-refresh.test.ts",
+   "status": "passed",
+   "tests": 23
+  },
+  {
+   "file": "lib/training/confidence-cross-span.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/training/expand-spec.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/training/fitness-trajectory-belowtable.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/training/fitness-trajectory-durability.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/training/goal-projection-ahead.test.ts",
+   "status": "passed",
+   "tests": 14
+  },
+  {
+   "file": "lib/training/goal-projection-belowtable.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/training/goal-projection-durability.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/training/goal-projection.test.ts",
+   "status": "passed",
+   "tests": 32
+  },
+  {
+   "file": "lib/training/goal-ready-belowtable.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/training/goal-ready.test.ts",
+   "status": "passed",
+   "tests": 10
+  },
+  {
+   "file": "lib/training/lillian-sim.test.ts",
+   "status": "passed",
+   "tests": 8
+  },
+  {
+   "file": "lib/training/lthr-reanchor.test.ts",
+   "status": "passed",
+   "tests": 22
+  },
+  {
+   "file": "lib/training/lthr.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/training/parse-race-time.test.ts",
+   "status": "passed",
+   "tests": 7
+  },
+  {
+   "file": "lib/training/targets-summary-belowtable.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/training/targets-summary-ultra.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/training/vdot-anchor-fade.test.ts",
+   "status": "passed",
+   "tests": 14
+  },
+  {
+   "file": "lib/training/vdot-goal-floor.test.ts",
+   "status": "passed",
+   "tests": 9
+  },
+  {
+   "file": "lib/training/vdot-inputs-window.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/training/vdot-race-authority.test.ts",
+   "status": "passed",
+   "tests": 31
+  },
+  {
+   "file": "lib/training/vdot-selection-order.test.ts",
+   "status": "passed",
+   "tests": 16
+  },
+  {
+   "file": "lib/training/vdot-slow-runner-floor.test.ts",
+   "status": "passed",
+   "tests": 34
+  },
+  {
+   "file": "lib/training/zone-stimulus.test.ts",
+   "status": "passed",
+   "tests": 6
+  },
+  {
+   "file": "lib/training/zones.test.ts",
+   "status": "passed",
+   "tests": 18
+  },
+  {
+   "file": "lib/wire-format/_format_vectors.test.ts",
+   "status": "passed",
+   "tests": 5
+  },
+  {
+   "file": "lib/workout-catalogue/_catalogue.test.ts",
+   "status": "passed",
+   "tests": 15
+  },
+  {
+   "file": "lib/workout-catalogue/_reachability.test.ts",
+   "status": "passed",
+   "tests": 4
+  },
+  {
+   "file": "lib/workout-catalogue/_select.test.ts",
+   "status": "passed",
+   "tests": 31
+  },
+  {
+   "file": "lib/workout-catalogue/_smoke.test.ts",
+   "status": "passed",
+   "tests": 1
+  }
+ ]
+}

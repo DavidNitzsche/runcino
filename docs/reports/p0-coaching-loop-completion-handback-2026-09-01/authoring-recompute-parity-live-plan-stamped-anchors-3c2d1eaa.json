@@ -1,0 +1,101 @@
+{
+ "user": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+ "today": "2026-09-01",
+ "planId": "pln_9a57561debb776e5",
+ "authoredISO": "2026-08-31 03:40:26.259869+00",
+ "anchorsMode": "stamped (no new evidence)",
+ "lastRecompute": {
+  "at": "2026-08-31T21:48:43.840Z",
+  "vdot": 47.9,
+  "model": "prescription_resolver",
+  "source": "prescription_wire_1_promotion",
+  "anchors": {
+   "basis": {
+    "marathon": {
+     "confidence": 0.7268354752028102,
+     "sourceMode": "direct",
+     "enduranceExponent": 1.0869051877057179,
+     "personallyEvidenced": true
+    },
+    "threshold": {
+     "vdot": 47.9,
+     "confidence": 0.7268354752028102,
+     "sourceMode": "direct"
+    },
+    "easyCeiling": {
+     "confidence": 0.6344908530086352,
+     "sourceMode": "direct"
+    },
+    "highIntensity": {
+     "confidence": 0.2914260240653357,
+     "sourceMode": "vdot_fallback"
+    }
+   },
+   "interval_s_per_mi": 407,
+   "marathon_s_per_mi": 475,
+   "threshold_s_per_mi": 430,
+   "repetition_s_per_mi": 371,
+   "easy_ceiling_s_per_mi": 502,
+   "shakeout_ceiling_s_per_mi": 532
+  },
+  "lthr_bpm": 168,
+  "max_hr_bpm": 183,
+  "workouts_updated": 77,
+  "measured_progress_fraction": null
+ },
+ "raceRowRefresh": {
+  "at": "2026-09-02T01:23:04.412Z",
+  "rows": [
+   {
+    "id": "wko_5069bc75e324a69a",
+    "date": "2026-09-13",
+    "pace": 429,
+    "action": "updated",
+    "reason": null
+   },
+   {
+    "id": "wko_613649879df83f38",
+    "date": "2026-09-26",
+    "pace": 435,
+    "action": "updated",
+    "reason": null
+   },
+   {
+    "id": "wko_04050ebcd66f81d6",
+    "date": "2026-11-08",
+    "pace": 438,
+    "action": "updated",
+    "reason": null
+   },
+   {
+    "id": "wko_8bfa8647379342ba",
+    "date": "2026-12-06",
+    "pace": 451,
+    "action": "updated",
+    "reason": null
+   }
+  ],
+  "source": "cron/snapshot-projections",
+  "refused": 0,
+  "updated": 4
+ },
+ "anchorsToday": {
+  "threshold": 430,
+  "interval": 407,
+  "repetition": 371,
+  "easyCeiling": 502,
+  "shakeoutCeiling": 532,
+  "marathon": 475,
+  "lthr": 168,
+  "maxHr": 183
+ },
+ "rowsCompared": 77,
+ "rowsChanged": 0,
+ "maxPaceDeltaSPerMi": 0,
+ "volumeWeightedMeanAbsDeltaSPerMi": 0,
+ "hrChanges": 0,
+ "bandChanges": 0,
+ "structuralChanges": 0,
+ "note": "structure (distance, type, day) is not repriced by a recompute by construction; race rows are owned by the race-row refresh and reported in the live-plan ledger",
+ "diffs": []
+}

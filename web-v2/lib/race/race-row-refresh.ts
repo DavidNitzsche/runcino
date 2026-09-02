@@ -70,6 +70,7 @@ export interface RaceRowRefreshResult {
 interface RaceRow {
   id: string;
   date_iso: string;
+  type: string;
   pace_target_s_per_mi: string | number | null;
   distance_mi: string | number | null;
   workout_spec: Record<string, unknown> | null;
@@ -94,6 +95,15 @@ async function raceSlugForRow(
   if (byDate) return byDate.slug;
   const plan = (await client.query<{ slug: string | null }>(
     `SELECT COALESCE(authored_state->>'race_slug', authored_state->'detail'->>'race_slug') AS slug
+       FROM training_plans WHERE id = $1`,
+    [planId],
+  )).rows[0];
+  return plan?.slug ?? null;
+}
+
+async function planRaceSlug(client: Queryable, planId: string): Promise<string | null> {
+  const plan = (await client.query<{ slug: string | null }>(
+    `SELECT COALESCE(authored_state->>'race_slug', authored_state->'detail'->>'race_slug', race_id) AS slug
        FROM training_plans WHERE id = $1`,
     [planId],
   )).rows[0];
@@ -195,7 +205,7 @@ async function refreshRaceRowsCore(
 ): Promise<RaceRowRefreshResult> {
 
   const rows = (await client.query<RaceRow>(
-    `SELECT pw.id::text AS id, pw.date_iso::text AS date_iso, pw.pace_target_s_per_mi, pw.distance_mi, pw.workout_spec,
+    `SELECT pw.id::text AS id, pw.date_iso::text AS date_iso, pw.type, pw.pace_target_s_per_mi, pw.distance_mi, pw.workout_spec,
             EXISTS (
               SELECT 1 FROM runs r
                WHERE r.user_uuid = $2::uuid
@@ -203,7 +213,7 @@ async function refreshRaceRowsCore(
                  AND ${runNotMergedSql('r')}
             ) AS sealed
        FROM plan_workouts pw
-      WHERE pw.plan_id = $1 AND pw.type = 'race'
+      WHERE pw.plan_id = $1 AND pw.type IN ('race', 'race_week_tuneup')
       ORDER BY pw.date_iso::date ASC`,
     [planId, userUuid],
   )).rows;
@@ -218,7 +228,12 @@ async function refreshRaceRowsCore(
     let slug: string | null = null;
     let race: RaceForOutlook | null = null;
     try {
-      slug = await raceSlugForRow(client, userUuid, planId, row.date_iso);
+      // A race-week tune-up is a rehearsal AT the race's execution pace, dated
+      // inside race week rather than on the race day, so it resolves the
+      // plan's race (never a race dated on its own day).
+      slug = row.type === 'race_week_tuneup'
+        ? await planRaceSlug(client, planId)
+        : await raceSlugForRow(client, userUuid, planId, row.date_iso);
       race = slug ? await loadRaceForOutlook(userUuid, slug, today) : null;
       if (race && !(race.distanceMi > 0) && row.distance_mi != null) race = { ...race, distanceMi: Number(row.distance_mi) };
     } catch (e) {

@@ -190,12 +190,17 @@ struct WatchWorkout: Codable {
     // it directly; until then, the pre-run body falls back to its existing
     // type-specific defaults so the UI is unaffected.
     let cue: String?
+    // 2026-09-01 · race-day HR guidance from the race-pace brain
+    // (lib/race/race-hr-guidance.ts via build-workout.ts `raceHr`). Additive:
+    // absent on non-race days and on older servers. `informationalOnly` means
+    // the band has no personal evidence behind it and may inform, never alarm.
+    let raceHr: WatchRaceHr?
 
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
         case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm
-        case displayHint, cue
+        case displayHint, cue, raceHr
     }
 
     init(workoutId: String, name: String, summary: String, totalEstimatedMinutes: Int,
@@ -203,7 +208,7 @@ struct WatchWorkout: Codable {
          readinessScore: Int? = nil, readinessLabel: String? = nil,
          distanceMi: Double? = nil, paceLabel: String? = nil,
          isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil,
-         fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil,
+         fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil, raceHr: WatchRaceHr? = nil,
          displayHint: String? = nil, cue: String? = nil) {
         self.workoutId = workoutId
         self.name = name
@@ -222,6 +227,7 @@ struct WatchWorkout: Codable {
         self.gelsMi = gelsMi
         self.fueling = fueling
         self.hrCeilingBpm = hrCeilingBpm
+        self.raceHr = raceHr
         self.displayHint = displayHint
         self.cue = cue
     }
@@ -246,6 +252,7 @@ struct WatchWorkout: Codable {
         self.hrCeilingBpm = try c.decodeIfPresent(Int.self, forKey: .hrCeilingBpm)
         self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
         self.cue = try c.decodeIfPresent(String.self, forKey: .cue)
+        self.raceHr = try c.decodeIfPresent(WatchRaceHr.self, forKey: .raceHr)
         // Re-stamp each phase with its cursor index. Mirror watch agent's
         // 2026-05-25 fix (e304b82 watch(decode): pass repUnit + distanceMi
         // through phase re-stamp) — without those fields the iPhone-side
@@ -514,4 +521,21 @@ enum PaceFormat {
         let m = (seconds % 3600) / 60
         return "\(h):\(String(format: "%02d", m))"
     }
+}
+
+
+/// Race-day heart-rate guidance (2026-09-01). Every field is a REFERENCE the
+/// race face may show beside the pace target; none of them is a ceiling the
+/// wrist alarms on for the length of a race. `checkpointAbortBpm` is the one
+/// figure the bail rule reads, at `checkpointMi`, and only when
+/// `informationalOnly` is false.
+struct WatchRaceHr: Codable, Equatable {
+    let expectedLoBpm: Int
+    let expectedHiBpm: Int
+    let earlyCeilingBpm: Int
+    let earlyThroughMi: Double
+    let lateAllowanceBpm: Int
+    let checkpointMi: Double?
+    let checkpointAbortBpm: Int?
+    let informationalOnly: Bool
 }
