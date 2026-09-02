@@ -286,8 +286,14 @@ function winTempo(input: WinInput, splits: NormalSplit[]): string | null {
   const paceStr = formatPace(paceForJudge);
   if (Math.abs(delta) <= 5) return `Held the line · ${paceStr} dead even`;
   if (v === 'fast')         return `Held the line · ${paceStr} slightly under target`;
-  // 'hit' but slower than the raw target · still inside the band.
-  return `Held form · ${paceStr} just off target`;
+  /* 'hit' · inside the window, either side of its midpoint.
+   *
+   * This said "Held form · just off target", and "off target" reads as SLOWER
+   * to a runner who may have been seven seconds a mile QUICKER — the same
+   * copy defect as the `missed` that started all of this, one register down.
+   * A mean inside the window landed; which side of the midpoint it sat on is
+   * not a fault in either direction, so the line says where it was and stops. */
+  return `Held the line · ${paceStr} inside the window`;
 }
 
 function winIntervals(input: WinInput, splits: NormalSplit[]): string | null {
@@ -619,6 +625,31 @@ function winRpeTrajectory(input: WinInput): string | null {
  * reps hit.
  */
 function winVerdictHit(input: WinInput): string | null {
+  /* VERDICT-1 (2026-09-01) · THE canonical grade first.
+   *
+   * This rung sits ABOVE the type dispatch, so it is the first sentence a
+   * structured session can produce — and it counted the DEVICE'S stored word.
+   * On the owner's 2026-09-01 row those words were drifted / drifted /
+   * drifted / missed, which `wireVerdictFellShort` reads as one rep short of
+   * the band on a set where every rep landed. The stored-word path survives
+   * for a caller with no plan row to classify against. */
+  const graded = input.grade && input.grade.work.graded >= 2
+    ? input.grade.phases.filter((p) => p.type === 'work' && p.verdict !== 'not_graded')
+    : null;
+  if (graded) {
+    const hits = graded.filter(phaseLandedTheWork).length;
+    const miss = graded.filter(phaseFellShort).length;
+    const notClean = graded.length - hits;
+    const hitRate = hits / graded.length;
+    if (hitRate >= 0.75 && notClean <= 1) {
+      return `Hit target band on ${hits} of ${graded.length} reps · clean execution.`;
+    }
+    if (hitRate < 0.5 && miss >= 2) {
+      return `Missed target band on ${miss} of ${graded.length} reps · pace was off today.`;
+    }
+    return null;
+  }
+
   const work = (input.splits ?? []).filter((s) =>
     s.type === 'work' && s.verdict != null
   );
