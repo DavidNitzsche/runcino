@@ -119,6 +119,26 @@ export type AuthoringReanchorConvergenceState =
    */
   | 'CANNOT_CONVERGE_NO_CANONICAL_PRICING';
 
+/**
+ * The union above as a VALUE, so the shadow log's DDL can be checked against
+ * it (`_shadow_log_schema.test.ts`): migration 160's CHECK admitted four
+ * states while this guard emitted five, and every fifth-state cycle failed its
+ * INSERT unnoticed. The `satisfies` clause plus the exhaustiveness type below
+ * make adding a state here without adding it to this array a compile error.
+ */
+export const AUTHORING_REANCHOR_CONVERGENCE_STATES = [
+  'AUTHORED_CANONICALLY',
+  'REANCHORED_CANONICALLY',
+  'AUTHORED_TOO_RECENTLY',
+  'REANCHOR_STATUS_UNKNOWN',
+  'CANNOT_CONVERGE_NO_CANONICAL_PRICING',
+] as const satisfies readonly AuthoringReanchorConvergenceState[];
+
+type _StatesAreExhaustive =
+  Exclude<AuthoringReanchorConvergenceState, (typeof AUTHORING_REANCHOR_CONVERGENCE_STATES)[number]> extends never
+    ? true : never;
+export type ConvergenceStatesAreExhaustive = _StatesAreExhaustive;
+
 export interface AuthoringReanchorConvergence {
   readable: boolean;
   planId: string | null;

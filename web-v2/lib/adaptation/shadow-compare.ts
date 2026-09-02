@@ -95,6 +95,48 @@ import {
 } from './authoring-convergence';
 import { checkPaceHrCompatibility, type PaceHrCompatibilityResult } from './pace-hr-compatibility';
 import { resolveHrCheckedSessions, resolveLthrContext } from './pace-hr-evidence';
+import { ADAPTATION_ENGINE_MODEL_VERSION } from './adaptation-engine';
+import { SHADOW_EVIDENCE_EPOCH } from './shadow-evidence-epoch';
+import { CAPACITY_MODEL_VERSION } from '@/lib/training/capacity-resolver';
+import { PRESCRIPTION_MODEL_VERSION } from '@/lib/training/prescription-resolver';
+import { RUNNER_STATE_MODEL_VERSION } from '@/lib/training/runner-state';
+import { ACTIVITY_EVIDENCE_MODEL_VERSION } from '@/lib/evidence/activity-evidence';
+import { REEXAMINATION_MODEL_VERSION } from '@/lib/evidence/reexamination';
+import { RACE_OUTLOOK_MODEL_VERSION } from '@/lib/race/race-outlook';
+
+/**
+ * WHICH BELIEFS this record was produced under — the versions of every model
+ * the engine consumed, plus the epoch that names the belief generation
+ * (`shadow-evidence-epoch.ts`). A promotion review filters on `epoch`; the
+ * versions beside it say which model moved when it does.
+ *
+ * Read live from each owner's own constant, never retyped: if
+ * `CAPACITY_MODEL_VERSION` moves, the next record says so without this file
+ * changing.
+ */
+export interface BeliefModelStamp {
+  epoch: string;
+  adaptationEngine: string;
+  capacity: string;
+  prescription: string;
+  runnerState: string;
+  activityEvidence: string;
+  reexamination: string;
+  raceOutlook: string;
+}
+
+export function currentBeliefModelStamp(): BeliefModelStamp {
+  return {
+    epoch: SHADOW_EVIDENCE_EPOCH,
+    adaptationEngine: ADAPTATION_ENGINE_MODEL_VERSION,
+    capacity: CAPACITY_MODEL_VERSION,
+    prescription: PRESCRIPTION_MODEL_VERSION,
+    runnerState: RUNNER_STATE_MODEL_VERSION,
+    activityEvidence: ACTIVITY_EVIDENCE_MODEL_VERSION,
+    reexamination: REEXAMINATION_MODEL_VERSION,
+    raceOutlook: RACE_OUTLOOK_MODEL_VERSION,
+  };
+}
 
 /** What the LIVE, mutating engine (`lib/plan/adapt.ts`) did for pace this
  *  same cycle — read-only, via `detectAdaptations`, never `applyAdaptations`.
@@ -154,6 +196,15 @@ export interface ShadowCompareRecord {
   todayISO: string;
   resolvedAt: string;
   modelVersion: string;
+  /**
+   * The belief generation this record was produced under. Absent on every
+   * record written before 2026-09-02, which is exactly the property a
+   * promotion review needs: those records compared a plan against beliefs the
+   * app no longer holds and are excluded by construction. Persisted INSIDE
+   * `capacity_belief` (Rule 10 · a persisted belief carries the model that
+   * produced it) — see `persistToTable`.
+   */
+  beliefModel: BeliefModelStamp;
 
   /** Part 3 · authoring/reanchor convergence guard. */
   convergence: AuthoringReanchorConvergence;
@@ -348,13 +399,14 @@ export async function runPaceShadowCompareCycle(
   };
 
   const finish = async (partial: Omit<ShadowCompareRecord,
-    'userUuid' | 'planId' | 'todayISO' | 'resolvedAt' | 'modelVersion' | 'convergence'
+    'userUuid' | 'planId' | 'todayISO' | 'resolvedAt' | 'modelVersion' | 'beliefModel' | 'convergence'
     | 'workoutFamily' | 'live' | 'mutation'
   >): Promise<ShadowCompareRecord> => {
     const checksumAfter = await checksumActivePlanWorkouts(userUuid);
     return {
       userUuid, planId: convergence.planId, todayISO: today, resolvedAt: resolvedNow,
       modelVersion: proposals?.modelVersion ?? 'unknown',
+      beliefModel: currentBeliefModelStamp(),
       convergence,
       workoutFamily: PACE_WORKOUT_FAMILY,
       live: liveObs,
@@ -573,7 +625,15 @@ async function persistToTable(record: ShadowCompareRecord): Promise<void> {
       record.engine.proposed ? JSON.stringify(record.engine.proposed) : null,
       record.engine.confidence, JSON.stringify(record.engine.refusals),
       record.finalDecision, record.finalDecisionReason,
-      record.capacityBelief ? JSON.stringify(record.capacityBelief) : null,
+      // Rule 10 · the persisted belief carries the model that produced it. The
+      // stamp rides INSIDE `capacity_belief` rather than in a column of its
+      // own, so it lands on the live table with no DDL and exactly where a
+      // reviewer looking at the belief will find it. A record with no
+      // capacity belief (an unreadable runner) carries no stamp, and is
+      // excluded from any promotion aggregate for the same reason.
+      record.capacityBelief
+        ? JSON.stringify({ ...record.capacityBelief, beliefModel: record.beliefModel })
+        : null,
       record.capacityBelief?.sourceMode ?? null,
       JSON.stringify(record.evidenceDates),
       JSON.stringify(record.representativeObservations), JSON.stringify(record.excludedObservations),
@@ -638,6 +698,29 @@ export async function persistShadowCompareRecord(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('[shadow-compare] table insert failed:', msg);
+      // Rule 23 · a schema that has fallen behind the code MUST be noticed.
+      // Migration 160's CHECK admits four convergence states and the guard now
+      // emits five; a `CANNOT_CONVERGE_NO_CANONICAL_PRICING` cycle — the very
+      // state a promotion review most needs to see — failed this INSERT and
+      // was only ever a console line. A check violation (SQLSTATE 23514) is
+      // raised as an ops alert so the pending migration (161) is a ticket, not
+      // a silent gap in the evidence. Best-effort: never fails the cycle.
+      const code = (e as { code?: unknown } | null)?.code;
+      if (code === '23514') {
+        try {
+          const { raiseAlert } = await import('@/lib/ops/alerts');
+          await raiseAlert({
+            kind: 'cron_precondition',
+            severity: 'warn',
+            message: `adaptation_shadow_log rejected a record by CHECK constraint · schema behind the code (migration 161 pending): ${msg}`,
+            metadata: {
+              user_uuid: record.userUuid, today_iso: record.todayISO,
+              convergence_state: record.convergence.state, engine_decision: record.engine.decision,
+            },
+            source: 'adaptation/shadow-compare',
+          });
+        } catch { /* the alert is itself best-effort */ }
+      }
       if (!allowFileFallback) {
         return {
           posture: 'skipped',
