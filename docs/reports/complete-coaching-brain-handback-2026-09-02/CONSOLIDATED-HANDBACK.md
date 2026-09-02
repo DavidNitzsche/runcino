@@ -15,34 +15,52 @@ claim either carries its evidence or is marked as not established.
 
 ---
 
-## 1 · The verdict, first
+## 1 · The verdict — CORRECTED
 
-**All five stages are complete, verified and deployed.** Fifty-nine commits to
-`main`, 8,639 tests passing, eighteen gates green on every push, and every
-commit that mattered confirmed as a successful Railway deployment rather than a
-successful `git push`.
+**An earlier version of this section opened "all five stages are complete."
+That was wrong, and it was contradicted by this document's own later sections.**
+What is true is narrower: the five stages of the directive were EXECUTED, and a
+large amount of engine work is merged, deployed and verified. The PROGRAMME is
+not complete, and the difference matters because the gap is where a runner gets
+hurt or misled.
 
-**The half of the coaching brain that PRICES your training is sound and verified
-on your screen. The halves that decide whether training is SAFE and whether it
-should CHANGE are still not owned by anyone.**
+Corrected, in four honest categories:
 
-The brain was independently scored against your own completion criterion and came
-back INCOMPLETE — eight of eighteen canonical coaching questions had two live
-owners. Six are now closed or gated, one was retired as not real, one is half
-done, and two are waiting on a decision from you.
+**Completed, deployed and verified on live data or on the screen**
+The six-anchor pace spine. Durability, with every competitor converted to a
+delegating adapter. The goal-derived pace ladder, deleted — including two
+instances that were writing a goal-derived pace into stored workout specs. The
+race pace plan, which was prescribing your goal pace while the same screen
+refused your goal. One post-run interpretation across three routes that
+previously gave two distances, two paces and a 404. The coaching thesis, on the
+Block screen. Heat, the workout catalogue, the plan-mutation boundary, and goal
+immutability.
 
-**Six numbers that were wrong are now right**, and they are the reason to read
-section 7. The largest was your race screen handing you a pace plan for a goal
-it had just refused in prose — thirty-one seconds per mile, thirteen minutes
-across a marathon, in the direction that ends one at mile 18.
+**Corrected in code but NOT yet in your live data**
+Three structural fixes sit in the generator and not in your plan, because
+authoring-time work does not reach an already-authored block. Until a rebuild,
+your 09-08 and 09-22 rows still ask for a heart rate they mark as a fail, and
+three race rows still carry an abort rule anchored to a target that no longer
+exists.
 
-**And one thing found at the very end is worse than anything above it.** Your
-2026-09-02 run was TRUNCATED at capture: your watch read 6.41 mi at the moment
-you stopped and 5.98 mi reached the database. Section 12e. It was found because
-you photographed your watch, not because anything in this system noticed.
+**Shadow-only, deliberately unvalidated**
+Upward pace adaptation. Six cycles, agreeing with the live engine zero times.
+That is evidence the path can reason and evidence it has not earned authority.
 
-**Eight decisions are yours**, listed next. One of them, the plan rebuild,
-changes what you see on your phone; the other six can wait as long as you like.
+**Not owned, not verified, or still broken**
+Safety has no canonical owner and four surfaces author the verdict
+independently. Your 2026-09-02 run was truncated at capture and 0.43 mi is
+absent from the record. The stride and post-run display fixes were incomplete at
+the time of writing. The targets route still labels four numbers "projection".
+The race-detail screen was never rendered. The Swift watch grader is covered
+only by a TypeScript port. `beliefTension` cannot fire. `loadRunDetail` has no
+canonical-row predicate. An earlier-day fetch failure can show another day's
+workout with no signal. `generate.ts` is still substantially a monolith.
+
+**The single most useful sentence for a reviewer:** the half of the brain that
+PRICES training is sound and verified; the halves that decide whether training
+is SAFE and whether it should CHANGE are not owned by anyone, and one capture
+path silently lost part of a real run.
 
 ## 2 · The eight decisions waiting on you
 
