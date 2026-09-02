@@ -67,6 +67,7 @@ import {
   selectLever,
   totalWorkMinutes,
   CRUISE_RECOVERY_MIN_PER_WORK_MI,
+  intervalRecoveryFloorMinutes,
   INTERVAL_MIN_REPS,
   INTERVAL_REP_MINUTES,
   LIMITER_LEVERS,
@@ -268,8 +269,31 @@ export function renderRoundTrips(shape: WorkShape, family: SessionFamily, paceTa
 export function seedShapeFrom(
   prescription: string | null | undefined,
   paceSPerMi: number,
+  /**
+   * IREC-1 (2026-09-01) · the cap family this seed belongs to, so an I seed
+   * can be held to doctrine's own recovery floor.
+   *
+   * The seed is the string `generate.ts` authored ("3×7 min @ I · 60s jog"),
+   * and for the generic rep session that string carried a flat sixty-second
+   * jog whatever the rep length — 0.14× rep on a seven-minute repetition,
+   * against `Research/01`'s I row of "Equal duration jog (≥0.5× rep)". The
+   * lever fix alone could not reach it: most sessions never pull the recovery
+   * lever at all, so the seed's number simply stood for the whole block.
+   *
+   * OPTIONAL, and absent means unchanged — every existing caller that does
+   * not pass a family (and every threshold seed, where a short jog IS the
+   * doctrine: §5.3's "1 min jog per mile of work") builds byte-identically.
+   */
+  family?: SessionFamily,
 ): WorkShape | null {
   if (!prescription || !(paceSPerMi > 0)) return null;
+
+  /** IREC-1 · raise an I seed's jog to doctrine's floor; leave every other
+   *  family exactly as authored. Raised, never lowered. */
+  const flooredRecovery = (recoveryMinutes: number, repMinutes: number): number =>
+    family === 'interval'
+      ? Math.max(recoveryMinutes, intervalRecoveryFloorMinutes(repMinutes))
+      : recoveryMinutes;
 
   const dist = parsePrescription(prescription);
   if (dist != null) {
@@ -277,9 +301,12 @@ export function seedShapeFrom(
     return {
       reps: dist.reps,
       repMinutes,
-      recoveryMinutes: dist.restS != null
-        ? dist.restS / 60
-        : Math.max(1, Math.round((repMinutes * 60) / paceSPerMi) * CRUISE_RECOVERY_MIN_PER_WORK_MI),
+      recoveryMinutes: flooredRecovery(
+        dist.restS != null
+          ? dist.restS / 60
+          : Math.max(1, Math.round((repMinutes * 60) / paceSPerMi) * CRUISE_RECOVERY_MIN_PER_WORK_MI),
+        repMinutes,
+      ),
       paceSPerMi,
       zone: 'ESTABLISHED',
     };
@@ -287,10 +314,11 @@ export function seedShapeFrom(
 
   const timed = parseTimeReps(prescription);
   if (timed != null) {
+    const repMinutes = Math.max(1, Math.round(timed.durationS / 60));
     return {
       reps: timed.reps,
-      repMinutes: Math.max(1, Math.round(timed.durationS / 60)),
-      recoveryMinutes: (timed.restS ?? 90) / 60,
+      repMinutes,
+      recoveryMinutes: flooredRecovery((timed.restS ?? 90) / 60, repMinutes),
       paceSPerMi,
       zone: 'ESTABLISHED',
     };
@@ -516,7 +544,9 @@ export class OverloadTrajectory {
     let track = this.tracks.get(family);
     let seeded = false;
     if (!track) {
-      const seed = seedShapeFrom(seedPrescription, pace);
+      // IREC-1 · the family the seed belongs to, so an I seed is held to
+      // doctrine own recovery floor. Threshold and R seeds are unchanged.
+      const seed = seedShapeFrom(seedPrescription, pace, family);
       if (!seed) return null;
       track = {
         shape: seed,

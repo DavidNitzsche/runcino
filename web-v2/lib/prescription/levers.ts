@@ -267,6 +267,61 @@ export const CONTINUOUS_TEMPO_MINUTES = { min: 20, max: 40 } as const;
 export const CRUISE_RECOVERY_MIN_PER_WORK_MI = 1;
 
 /**
+ * IREC-1 (2026-09-01) · A VO2max REPETITION'S JOG IS ROUGHLY THE REP, AND
+ * NEVER LESS THAN HALF OF IT.
+ *
+ * Doctrine states this twice, in two documents, and the engine honoured
+ * neither:
+ *
+ *   · `Research/01-pace-zones-vdot.md` §"Dosing rules — Daniels' caps", the I
+ *     row's "Recovery between reps" cell: **"Equal duration jog (≥0.5× rep)"**
+ *     — a relation AND an explicit floor.
+ *   · `Research/04-workout-vocabulary.md` §6's own lead: "recovery roughly
+ *     equals interval duration", restated per row in §6.1's table
+ *     ("2:30–4:00 jog (≈ rep time)", "2–3 min jog (≈ rep time)", …).
+ *
+ * The engine's generic rep sessions carried a flat sixty-second jog whatever
+ * the rep length. Live rows over the read-only role, 2026-09-01:
+ *
+ *   `6×5 min @ I pace · 60s jog`   300 s rep, 60 s jog  = 0.20× rep
+ *   `3×7 min @ I · 60s jog`        420 s rep, 60 s jog  = 0.14× rep
+ *   `3×6 min @ I · 60s jog`        360 s rep, 60 s jog  = 0.17× rep
+ *
+ * Five rows across three live accounts, and 1,481 findings across the
+ * archetype corpus. A five-minute repetition off a one-minute jog is not the
+ * §6 session doctrine describes — it is a sustained effort with a stumble in
+ * it, which is a THRESHOLD stimulus wearing a VO2max label, and §5.4's own
+ * contraindication row names the mirror-image error ("going too hard
+ * collapses the model").
+ *
+ * WHY A FLOOR AND NOT THE EQUALITY. Doctrine gives both: "equal duration" is
+ * the target, "≥0.5× rep" is the bound. The floor is what is enforced here
+ * because the SESSION is allowed to be denser than the ideal — that is what
+ * the `recovery_duration` lever is for, and `Research/04` §6.2 explicitly
+ * permits "mile repeats at HM pace (more reps, less rest)". What is not
+ * allowed is spending past the bound doctrine writes down.
+ *
+ * NOT APPLIED TO NAMED SESSIONS THAT STATE THEIR OWN RECOVERY. §12.3's 1K
+ * cutdowns prescribe "60–90 s jog" by name and §12.2's mile cutdowns
+ * "60–90 s jog (Daniels-style cruise rest)" — those are the doc's own cells
+ * for a different workout, they ride the catalogue's `recoverySec`, and they
+ * are correct at sixty seconds. This floor governs the GENERIC rep session
+ * the trajectory authors, which has no cited row of its own to read.
+ *
+ * Bound by `PROGRESSION.interval-recovery-floor`, which reads the ratio out
+ * of `Research/01`'s I row at run time rather than restating it.
+ */
+export const INTERVAL_RECOVERY_MIN_FRACTION = 0.5;
+
+/**
+ * The shortest jog, in minutes, doctrine allows between two I repetitions of
+ * `repMinutes`. Callers raise a recovery to this; they never lower one to it.
+ */
+export function intervalRecoveryFloorMinutes(repMinutes: number): number {
+  return repMinutes > 0 ? repMinutes * INTERVAL_RECOVERY_MIN_FRACTION : 0;
+}
+
+/**
  * The single pace step, seconds per mile, when the pace lever is finally
  * pulled. Deliberately small: this is "slightly faster" in the doctrine's
  * threshold progression, not a re-anchor. The re-anchor path is the fitness
@@ -491,6 +546,18 @@ export function advanceShape(args: {
           Math.round((next.repMinutes * 60) / next.paceSPerMi) * CRUISE_RECOVERY_MIN_PER_WORK_MI,
         );
       }
+      // IREC-1 · and a VO2max jog tracks the REP, because `Research/04` §6
+      // says "recovery roughly equals interval duration". Lengthening the rep
+      // without lengthening the jog walks the session past doctrine's floor
+      // one step at a time — which is how a 3×5 min set ends up on the same
+      // sixty seconds a 3×3 min set had. Raised, never lowered: a session
+      // already recovering generously keeps its own recovery.
+      if (next.reps > 1 && family === 'interval') {
+        next.recoveryMinutes = Math.max(
+          next.recoveryMinutes,
+          intervalRecoveryFloorMinutes(next.repMinutes),
+        );
+      }
       return {
         shape: next,
         change: `${shape.reps} x ${shape.repMinutes} min becomes ${next.reps} x ${next.repMinutes} min at the same effort`,
@@ -561,6 +628,26 @@ export function advanceShape(args: {
           capped: true,
         };
       }
+      // IREC-1 · THE OTHER ROUTE TO A LONGER REP.
+      //
+      // This lever merges reps, so it lengthens the repetition just as surely
+      // as the duration lever does — and REP-LENGTH-CEILING-1 already records
+      // that lesson one field over ("density and duration are two routes to
+      // the same number and only one of them was fenced"). Fencing only the
+      // duration arm left the corpus with `2×5 min @ I pace · 2 min jog`:
+      // a five-minute repetition off a two-minute jog, 0.4× rep, under
+      // `Research/01`'s "≥0.5× rep" floor by thirty seconds.
+      //
+      // Note this does NOT undo the lever. Density's promise is "same volume,
+      // less rest" measured across the SET — three reps become two, so the
+      // set loses a recovery interval outright — and the per-rep jog still
+      // has to be a jog doctrine recognises.
+      if (next.reps > 1 && family === 'interval') {
+        next.recoveryMinutes = Math.max(
+          next.recoveryMinutes,
+          intervalRecoveryFloorMinutes(next.repMinutes),
+        );
+      }
       return {
         shape: next,
         change: `${shape.reps} x ${shape.repMinutes} min becomes ${next.reps} x ${next.repMinutes} min · same volume, less rest`,
@@ -578,9 +665,25 @@ export function advanceShape(args: {
       if (family === 'repetition') {
         return { shape, change: 'doctrine does not shorten the rest on R work', capped: true };
       }
-      const wanted = Math.max(1, shape.recoveryMinutes - 1);
+      // IREC-1 · an I session's jog stops at half the rep. `Research/01`'s I
+      // row writes the bound into the same cell as the relation — "Equal
+      // duration jog (≥0.5× rep)" — so tightening past it is not a denser
+      // version of the workout, it is a different one. Unlike the R arm above
+      // this is a FLOOR rather than a refusal: the lever may still spend the
+      // room between "equal to the rep" and "half of it", which is what
+      // §6.2's "more reps, less rest" variation describes.
+      const floor = family === 'interval'
+        ? intervalRecoveryFloorMinutes(shape.repMinutes)
+        : 1;
+      const wanted = Math.max(1, floor, shape.recoveryMinutes - 1);
       if (wanted >= shape.recoveryMinutes) {
-        return { shape, change: 'recovery is already minimal', capped: true };
+        return {
+          shape,
+          change: family === 'interval' && floor >= shape.recoveryMinutes
+            ? 'an I jog stops at half the rep · Research/01 s I row'
+            : 'recovery is already minimal',
+          capped: true,
+        };
       }
       next.recoveryMinutes = wanted;
       return {
