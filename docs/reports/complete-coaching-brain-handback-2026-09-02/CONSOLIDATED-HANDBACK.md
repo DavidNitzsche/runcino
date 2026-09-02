@@ -139,7 +139,47 @@ rendering consumer picks the key nearest its anchor, so it reports his 5K range
 and never extrapolates. That is now a gate, falsified three ways before being
 trusted, and it caught a consumer I had missed by hand on its first run.
 
-## 6 · What is NOT true yet
+## 6 · Operational state, checked rather than assumed
+
+Three things were verified against production during the run. None of them were
+in scope; all three are cheap to state and expensive to discover later.
+
+**Rule 23's precondition fix is real and it earned its keep tonight.** The plan
+drift job calls the LTHR re-anchor itself and records whether it rewrote or
+found the anchor already fresh, rather than assuming the adaptations job ran
+first. Tonight the adaptations job fired 4 hours 44 minutes after its scheduled
+time. The order still held and the lateness was harmless, which is exactly the
+property the rule asked for.
+
+**Alerts are recorded but delivered to nobody.** Production carries forty
+environment variables and none of them configures the ops webhook, so the
+dispatch half of `lib/ops/alerts.ts` returns early every time. The database half
+works: fourteen alerts sit unacknowledged.
+
+Read them carefully, because the obvious reading is wrong. Nine of the fourteen
+say a scheduled job "has no recorded successful completion at all", naming
+plan-drift and run-adaptations among others. Those jobs are not dead. All nine
+were written at one instant on 2026-08-31, the day the cron ledger was
+introduced, when no job had yet written a completion to it. Sixty-one
+heartbeats have accumulated since and the newest is from this morning. It was a
+cold start, not an outage.
+
+That is the actual finding, and it is worse than a dead job would be: **an alert
+table nobody watches fills with resolved noise, and real signal arrives into a
+place where it will not be distinguished from it.** Rule 23 requires that a job
+which does not run be NOTICED. Recording it is not noticing it.
+
+The remaining five are real and open. One census error from 2026-08-22 reports
+load-bearing dedup flags dropping from eight to zero for the owner's account.
+Four Strava webhook rejections between 2026-08-12 and 2026-08-21 name an unknown
+subscription and an unknown owner, which reads like a stale webhook
+registration. Neither was investigated tonight; both are named here because
+nothing else would have named them.
+
+**Push credentials are configured.** All five APNs variables are set in
+production, which contradicts older notes claiming otherwise.
+
+## 7 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -156,7 +196,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 7 · PENDING sections
+## 8 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
