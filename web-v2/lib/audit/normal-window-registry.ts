@@ -365,27 +365,37 @@ export const HABIT_READERS: readonly HabitReader[] = [
   {
     file: 'lib/plan/goal-gap.ts',
     symbol: 'normalWeeklyMileage',
-    window: '28 days',
+    window: '28-day base, widened to 16 representative weeks',
     verdict: 'filtered',
     reason:
       'Feeds the limiter\'s volume signal and assessGoal\'s volume caution, both of which ' +
       'ask what he NORMALLY runs. composeCautions\' own in-taper guard is not enough: it ' +
       'goes quiet inside the window and speaks again a week after it closes, while the ' +
-      '28-day mean is still almost entirely taper.',
+      '28-day mean was still almost entirely taper. 2026-09-02: the mean is gone — the ' +
+      'reader is now a SUSTAINED-VOLUME order statistic (the 3rd-highest fully ' +
+      'representative week, the engine\'s own RAMP_BASE_SUSTAINED_RANK), and the 28 days ' +
+      'is a base the lookback widens from, never a window the answer is averaged over.',
   },
   {
     file: 'app/api/targets/projection/route.ts',
     symbol: 'normalWeeklyMileage',
-    window: '28 days',
+    window: '28-day base, widened to 16 representative weeks',
     verdict: 'filtered',
-    reason: 'Same assessGoal volume caution, reached from the Targets surface.',
+    reason:
+      'Same assessGoal volume caution, reached from the Targets surface. Reads the ' +
+      'sustained-volume order statistic since 2026-09-02, not a mean, and flattens the ' +
+      'typed refusal to null so a thin history suppresses the caution rather than ' +
+      'inventing a low number for it.',
   },
   {
     file: 'app/api/v5/races/route.ts',
     symbol: 'normalWeeklyMileage',
-    window: '28 days',
+    window: '28-day base, widened to 16 representative weeks',
     verdict: 'filtered',
-    reason: 'Same assessGoal volume caution, reached from the phone\'s Races card.',
+    reason:
+      'Same assessGoal volume caution, reached from the phone\'s Races card. Reads the ' +
+      'sustained-volume order statistic since 2026-09-02, not a mean, and flattens the ' +
+      'typed refusal to null the same way the Targets route does.',
   },
   {
     file: 'lib/onboarding/strava-history.ts',

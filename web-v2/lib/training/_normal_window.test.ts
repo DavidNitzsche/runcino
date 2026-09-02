@@ -32,8 +32,14 @@ import {
   REPRESENTATIVE_LOOKBACK_MAX_DAYS,
   REPRESENTATIVE_LOOKBACK_STEP_DAYS,
   REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS,
+  sustainedFromWeeks,
+  representativeWeeks,
+  SUSTAINED_WEEK_RANK,
+  SUSTAINED_LOOKBACK_WEEKS,
+  MIN_SUSTAINED_WEEKS,
   type NormalWindow,
 } from './normal-window';
+import { RAMP_BASE_SUSTAINED_RANK, RAMP_BASE_LOOKBACK_WEEKS } from '@/lib/plan/generate';
 import { CAPACITY_CONFIDENCE_HALF_LIFE_DAYS } from './capacity-resolver';
 import { TAPER_WEEKS_BY_DISTANCE } from './fitness-trajectory';
 import { postRaceRecoveryWeeks } from '@/lib/plan/goal-tiers';
@@ -370,5 +376,159 @@ describe('RULE 8 · the staleness discount', () => {
     // direction closes a module cycle (capacity-resolver reads this module's
     // siblings). If these ever diverge the fix is the constant, not the test.
     expect(REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS).toBe(CAPACITY_CONFIDENCE_HALF_LIFE_DAYS);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * SUSTAINED VOLUME · the estimator that replaced the mean (2026-09-02)
+ *
+ * WHAT THIS BLOCK CANNOT FAIL ON (Rule 22), stated before what it covers:
+ *   · Whether 3rd-highest is the RIGHT definition of sustained. It checks the
+ *     engine agrees with itself and that the statistic behaves; the doctrine
+ *     argument lives in normal-window.ts's header and in resolveRampBase's.
+ *   · Anything about one real runner. These are constructed series. The
+ *     owner's own nine-week record is measured in the closure report and is
+ *     reproduced in one case below as a regression anchor, not as coverage.
+ *   · Whether the WEEK BOUNDARY is right. It asserts trailing 7-day blocks,
+ *     which is what the code does; it cannot tell you that is the best choice.
+ * ═══════════════════════════════════════════════════════════════════════ */
+describe('SUSTAINED-1 · the sustained-volume estimator', () => {
+  // The owner's fully-representative weeks, most recent first, read off
+  // production on 2026-09-02 with Rule 8 applied. A regression anchor.
+  const OWNER = [23.1, 38.0, 49.6, 19.8, 19.8, 36.0, 39.5, 46.4, 38.7];
+
+  it("is the engine's own definition of sustained, not a second one", () => {
+    // RULE 16, held by assertion rather than by import: generate.ts imports
+    // this module, so a value import here would close a cycle. If these ever
+    // diverge the fix is the constant, not the test.
+    expect(SUSTAINED_WEEK_RANK).toBe(RAMP_BASE_SUSTAINED_RANK);
+    expect(SUSTAINED_LOOKBACK_WEEKS).toBe(RAMP_BASE_LOOKBACK_WEEKS);
+  });
+
+  it('the refusal floor is derived from the rank, not chosen', () => {
+    // The k-th highest of n has to sit in the upper half of its own sample or
+    // it is describing a middling week wearing the word "sustained".
+    expect(MIN_SUSTAINED_WEEKS).toBe(2 * SUSTAINED_WEEK_RANK);
+    expect(sustainedFromWeeks(OWNER.slice(0, MIN_SUSTAINED_WEEKS - 1))).toBeNull();
+    expect(sustainedFromWeeks(OWNER.slice(0, MIN_SUSTAINED_WEEKS))).not.toBeNull();
+  });
+
+  it("reads the owner's own record at 39.5, above his median and under his peak", () => {
+    const got = sustainedFromWeeks(OWNER)!;
+    expect(got.weeklyMi).toBe(39.5);
+    expect(got.rank).toBe(3);
+    // The case for the number: it is not buying optimism. It sits above his
+    // median week and well under his best, and the mean it replaced sits below
+    // the median because two 19.8 weeks drag it there.
+    const sorted = [...OWNER].sort((a, b) => b - a);
+    const median = sorted[(sorted.length - 1) / 2];
+    const mean = OWNER.reduce((a, b) => a + b, 0) / OWNER.length;
+    expect(median).toBe(38.0);
+    expect(Math.round(mean * 10) / 10).toBe(34.5);
+    expect(got.weeklyMi).toBeGreaterThan(median);
+    expect(got.weeklyMi).toBeLessThan(sorted[0]);
+    // …and the mean it replaced is BELOW his median, which is the defect.
+    expect(mean).toBeLessThan(median);
+  });
+
+  it('an isolated zero week does not move it, and moves the mean 3.4 mi', () => {
+    const withZero = [0, ...OWNER];
+    const mean = (xs: number[]) => Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10;
+    expect(sustainedFromWeeks(withZero)!.weeklyMi).toBe(sustainedFromWeeks(OWNER)!.weeklyMi);
+    expect(mean(OWNER)).toBe(34.5);
+    expect(mean(withZero)).toBe(31.1);
+  });
+
+  it('a 4.2-mile week does not move it either', () => {
+    expect(sustainedFromWeeks([4.2, ...OWNER])!.weeklyMi).toBe(39.5);
+  });
+
+  it('one — or two — anomalous HIGH weeks never BECOME the answer', () => {
+    // resolveRampBase's own argument, checked: "no single (or double) outlier
+    // week sets a base".
+    expect(sustainedFromWeeks([90, ...OWNER])!.weeklyMi).not.toBe(90);
+    expect(sustainedFromWeeks([90, 88, ...OWNER])!.weeklyMi).not.toBe(90);
+    expect(sustainedFromWeeks([90, 88, ...OWNER])!.weeklyMi).not.toBe(88);
+  });
+
+  it('a THIRD high week does move it, deliberately', () => {
+    // Stated as a limitation in the module header rather than hidden: three
+    // weeks at a level is not an anomaly, it is a training block, and a
+    // capacity question should read it as evidence.
+    const three = [90, 88, 86, ...OWNER];
+    expect(sustainedFromWeeks(three)!.weeklyMi).toBe(86);
+  });
+
+  it('is continuous and monotone in the data · Rule 9', () => {
+    // An order statistic is 1-Lipschitz: a hair of mileage anywhere moves the
+    // answer by at most that hair, and never downward. Walked across the swap
+    // point where two weeks trade rank, which is the only place a rank
+    // statistic could cliff.
+    let prev = -Infinity;
+    for (let bump = 0; bump <= 2.0001; bump += 0.05) {
+      const series = [...OWNER];
+      series[5] = 36.0 + bump; // walks 36.0 up through 38.0 and 38.7
+      const v = sustainedFromWeeks(series)!.weeklyMi;
+      expect(v, `a 0.05 mi step moved the answer by more than 0.05 at bump ${bump.toFixed(2)}`)
+        .toBeLessThanOrEqual(prev === -Infinity ? v : prev + 0.05 + 1e-9);
+      expect(v, 'more mileage produced a lower sustained reading').toBeGreaterThanOrEqual(
+        prev === -Infinity ? v : prev - 1e-9);
+      prev = v;
+    }
+  });
+
+  it('a partly-prescribed week is absent, not a low week · Rule 11', () => {
+    // The owner's "zero week" and "4.2-mile week" are both inside the Americas
+    // Finest City window. Counting them would report a taper as a collapse;
+    // scaling them to a 7-day rate would invent mileage he never ran.
+    const windows = prescribedWindowsFrom([AFC]);
+    const byDay = new Map<string, { mi: number }>();
+    // 8 mi on every day for four weeks back from 2026-09-02.
+    for (let d = 0; d < 28; d++) {
+      const iso = new Date(Date.UTC(2026, 8, 2) - d * 86400000).toISOString().slice(0, 10);
+      byDay.set(iso, { mi: 8 });
+    }
+    const weeks = representativeWeeks({
+      todayISO: '2026-09-02', fromISO: '2026-08-06', windows, mileageByDay: byDay,
+    });
+    // Every block in that reach overlaps the AFC window (2026-08-02..08-30),
+    // so none is fully representative and none is reported as a low week.
+    expect(weeks).toEqual([]);
+    // With no window at all the same days are four complete 56-mile weeks.
+    const clean = representativeWeeks({
+      todayISO: '2026-09-02', fromISO: '2026-08-06', windows: [], mileageByDay: byDay,
+    });
+    expect(clean.length).toBe(4);
+    expect(clean[0]).toEqual({ endISO: '2026-09-02', mi: 56 });
+    expect(clean.map((w) => w.endISO)).toEqual(
+      ['2026-09-02', '2026-08-26', '2026-08-19', '2026-08-12']);
+  });
+
+  it('a missing day is zero miles, not a missing week', () => {
+    // Absence of a row means he did not run that day, which is a real fact
+    // about a representative day. Only a PRESCRIBED day removes the week.
+    const byDay = new Map<string, { mi: number }>([['2026-09-02', { mi: 10 }]]);
+    const weeks = representativeWeeks({
+      todayISO: '2026-09-02', fromISO: '2026-08-01', windows: [], mileageByDay: byDay,
+    });
+    expect(weeks[0]).toEqual({ endISO: '2026-09-02', mi: 10 });
+    expect(weeks[1]).toEqual({ endISO: '2026-08-26', mi: 0 });
+  });
+
+  it('the median and the trimmed mean are what it is NOT, on the same record', () => {
+    // The alternatives, computed here so the choice is auditable rather than
+    // asserted in prose. Both land at or below his median; the estimator does
+    // not, and that difference is the whole point of the replacement.
+    const sorted = [...OWNER].sort((a, b) => b - a);
+    const trimN = Math.floor(sorted.length * 0.2);
+    const trimmed = sorted.slice(trimN, sorted.length - trimN);
+    const trimmedMean = Math.round((trimmed.reduce((a, b) => a + b, 0) / trimmed.length) * 10) / 10;
+    expect(trimmedMean).toBe(34.5);
+    expect(sustainedFromWeeks(OWNER)!.weeklyMi).toBeGreaterThan(trimmedMean);
+  });
+
+  it('rejects a series that is not numbers', () => {
+    expect(sustainedFromWeeks([NaN, NaN, NaN, NaN, NaN, NaN])).toBeNull();
+    expect(sustainedFromWeeks([-1, -1, -1, -1, -1, -1])).toBeNull();
   });
 });

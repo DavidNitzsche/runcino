@@ -81,6 +81,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOD="$ROOT/web-v2/lib/training/normal-window.ts"
 REG="$ROOT/web-v2/lib/audit/normal-window-registry.ts"
 GATE="$ROOT/web-v2/lib/audit/_normal_window_scan.test.ts"
+GATE_BEHAVIOUR="$ROOT/web-v2/lib/training/_normal_window.test.ts"
 fail=0
 
 say() { printf '%s\n' "$*"; }
@@ -105,10 +106,39 @@ else
     "export function representativeDayCount" \
     "export async function loadPrescribedWindows" \
     "export async function normalWeeklyMileage" \
-    "export type NormalReading"
+    "export type NormalReading" \
+    "export async function sustainedWeeklyMileage" \
+    "export function sustainedFromWeeks" \
+    "export function representativeWeeks" \
+    "export const SUSTAINED_WEEK_RANK" \
+    "export const SUSTAINED_LOOKBACK_WEEKS" \
+    "export const MIN_SUSTAINED_WEEKS"
   do
     grep -q "$sym" "$MOD" || bad "module lost '$sym'"
   done
+
+  # 2026-09-02 · the sustained-volume estimator replaced the mean, at David's
+  # ruling: "the question is sustainable training capacity, not arithmetic
+  # average mileage". Two things must stay true of it, and both are cheap to
+  # check without a toolchain:
+  #
+  #   1. It must not RE-DERIVE the rank. `SUSTAINED_WEEK_RANK` is bound by
+  #      assertion to `RAMP_BASE_SUSTAINED_RANK` in lib/plan/generate.ts (a
+  #      value import would close a module cycle), so the module has to name
+  #      that constant in the argument for its own, and `_normal_window.test.ts`
+  #      has to hold the equality. A module that stops mentioning it has quietly
+  #      become a second definition of "sustained".
+  #   2. The refusal floor must stay DERIVED from the rank rather than typed as
+  #      a literal, so it cannot drift below the point where the k-th highest
+  #      week stops sitting in the upper half of its own sample.
+  grep -q "RAMP_BASE_SUSTAINED_RANK" "$MOD" \
+    || bad "module no longer cites RAMP_BASE_SUSTAINED_RANK · 'sustained' has become a second definition"
+  grep -qE "MIN_SUSTAINED_WEEKS = 2 \* SUSTAINED_WEEK_RANK" "$MOD" \
+    || bad "MIN_SUSTAINED_WEEKS is no longer derived from the rank · a typed-in floor can drift"
+  grep -q "sustainedFromWeeks" "$GATE_BEHAVIOUR" 2>/dev/null \
+    || bad "the behaviour suite no longer exercises sustainedFromWeeks · the estimator is ungated"
+  grep -q "RAMP_BASE_SUSTAINED_RANK" "$GATE_BEHAVIOUR" 2>/dev/null \
+    || bad "the behaviour suite no longer holds SUSTAINED_WEEK_RANK === RAMP_BASE_SUSTAINED_RANK"
 
   # The doctrine numbers must be REUSED, never re-derived. A second copy of the
   # taper table is exactly the drift Rule 7's lint exists to catch, and Rule 8
