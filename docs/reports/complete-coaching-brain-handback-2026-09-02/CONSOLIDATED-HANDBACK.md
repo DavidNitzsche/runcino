@@ -559,7 +559,55 @@ a marathon, so the `flat_pace_s_per_mi` stored beside it says 7:03 where your
 3:00:00 goal actually needs 6:52. That field has no consumers anywhere in the
 app, so nothing shows you the wrong number. It is dead data, not a defect.
 
-## 15 · What is NOT true yet
+## 15 · The best sentence the engine writes reaches nobody
+
+Found by looking at the screen, which is the only way it could have been found.
+It also corrects a claim in Stage 1's own handback, so it is written up at
+length rather than folded away.
+
+**Stage 1 reported that Block's "WHERE THIS GOES" shows the coaching thesis.**
+It does not. On the deployed build, that line reads:
+
+> This is where the fitness gets built. Hit the quality sessions, let the easy
+> days stay easy.
+
+Generic phase copy, true of any runner in any quality block.
+
+**What the engine actually composed for you today**, resolved live from your own
+race curve:
+
+> Your races fade with distance faster than your speed predicts, so durability
+> is where the work goes. Your threshold holds, and this week's long run is the
+> session that builds it.
+
+That is the whole thesis of your block in two sentences, it is correct, it names
+the session that serves it, and it is sitting on the payload unread.
+
+**Why it never arrives.** The block sets its rendered line from a generic phase
+builder and ships the thesis alongside as a separate structured object. The
+iPhone app has no decoder for that object: the strings `Thesis`, `reviewTrigger`
+and `limiter` appear zero times in the entire Swift source. So the sentence is
+serialised, sent, and dropped on the floor.
+
+**Where the thesis DOES reach you**, so this is not overstated: on Today, on a
+QUALITY day only, its reasoning is baked into the "why" sentence server-side as
+a lead clause. That path works and needs no decoder, because it arrives as text
+in a field the app already renders. Today was an easy day, which is why the
+screen did not show it.
+
+**Why this matters beyond one line.** The audit scored the Coaching Thesis
+PARTIAL and described it as live on both iPhone surfaces. It is live on one.
+Two separate reports said this was working, both by reading code. One look at
+the screen said otherwise. That is Rule 13's entire argument, and it is the
+second time tonight that checking beat relaying.
+
+The fix is small and it renders on the app you already have, because it changes
+a string in a field the app already reads. It is handed to the agent that owns
+that file rather than done here, since it needs care about which states should
+prefer the thesis over the phase line — the thesis should not tell you durability
+is where the work goes during race week.
+
+## 16 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -576,7 +624,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 16 · PENDING sections
+## 17 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
