@@ -182,13 +182,22 @@ EOF
 # this one was meant to expire, and it is the proof the ratchet works.
 
 # ── 1 · LIVENESS ─────────────────────────────────────────────────────────────
-SCANNED=$(find "${TREES[@]}" \( -name '*.ts' -o -name '*.tsx' \) ! -name '*.test.ts' ! -name '*.test.tsx' ! -name '*.audit.test.ts' | wc -l | tr -d ' ')
+SCANNED=$(find "${TREES[@]}" \( -name '*.ts' -o -name '*.tsx' \) ! -name '._*' ! -name '*.test.ts' ! -name '*.test.tsx' ! -name '*.audit.test.ts' | wc -l | tr -d ' ')
 # 2026-09-02 · the floor rose with the trees. Three trees held ~246 files; the
-# seven hold roughly a thousand, so a 50-file floor would no longer notice the
-# scan losing `app/` entirely. This is a LIVENESS floor, not a target: it must
+# seven hold ~438, so a 50-file floor would no longer notice the scan losing
+# `app/` entirely.
+#
+# THE FLOOR WAS 500 FOR ONE COMMIT AND IT BROKE THE BUILD. It was set from a
+# local count of 876, which was double the truth: the working volume is exFAT
+# and macOS writes an AppleDouble `._foo.ts` sidecar beside every file, and
+# `find -name '*.ts'` matches those too. CI checks out a clean tree, counted
+# the real 438, and failed the floor it could never reach. Both `find` calls
+# now exclude `._*`, so the local and CI counts agree and the scan never tries
+# to read a sidecar as source. 300 is comfortably under 438 and still well
+# above what any single tree holds. This is a LIVENESS floor, not a target: it must
 # be low enough never to fail on an honest deletion and high enough to notice a
 # tree silently dropping out.
-if [ "$SCANNED" -lt 500 ]; then
+if [ "$SCANNED" -lt 300 ]; then
   echo "FAIL  check-goal-pace-leak · read only $SCANNED files · the scan is not looking at the app" >&2
   exit 1
 fi
@@ -230,7 +239,7 @@ while IFS= read -r f; do
     | awk 'BEGIN{inc=0} {line=$0; if (inc) { if (match(line,/\*\//)) { line=substr(line,RSTART+2); inc=0 } else next } while (match(line,/\/\*/)) { pre=substr(line,1,RSTART-1); rest=substr(line,RSTART+2); if (match(rest,/\*\//)) { line=pre substr(rest,RSTART+2) } else { line=pre; inc=1 } } print line}' \
     | grep -E "$PATTERN" | grep -vcE "$EXCLUDE")
   [ "$hits" -gt 0 ] && echo "$rel $hits" >> "$HITS_FILE"
-done < <(find "${TREES[@]}" \( -name '*.ts' -o -name '*.tsx' \) ! -name '*.test.ts' ! -name '*.test.tsx' ! -name '*.audit.test.ts')
+done < <(find "${TREES[@]}" \( -name '*.ts' -o -name '*.tsx' \) ! -name '._*' ! -name '*.test.ts' ! -name '*.test.tsx' ! -name '*.audit.test.ts')
 
 ALLOWED_COUNT=0
 UNEXPLAINED=0

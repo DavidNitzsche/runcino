@@ -221,7 +221,7 @@ scan_tree() {
         }
       }
     ' "$file" >> "$out" 2>/dev/null || true
-  done < <(find "$base" \( -name '*.ts' -o -name '*.tsx' \) \
+  done < <(find "$base" \( -name '*.ts' ! -name '._*' -o -name '*.tsx' \) \
              -not -path '*/node_modules/*' -not -path '*/.next/*' -print0 2>/dev/null)
 }
 
