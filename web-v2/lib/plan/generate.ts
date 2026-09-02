@@ -12321,6 +12321,10 @@ function attachPhaseAnswers(composed: ComposePlanResult, raceDistanceMi: number)
  */
 function applyDosingCaps(composed: ComposePlanResult): void {
   for (const w of composed.weeks) {
+    // BOUNDARY-OWNER-1 · what each day carried before the trimmer, so the
+    // give-back below can restore a day the week has no room to re-home from.
+    const beforeMi = new Map<number, number>();
+    for (const d of w.days) beforeMi.set(d.dow, d.distanceMi);
     // Up to three sweeps: trimming one pace can reveal that another shares a
     // day (a long run doses M through its finish and nothing else, but a rep
     // set that shortens changes no other bucket), and a rep count is a coarse
@@ -12407,6 +12411,87 @@ function applyDosingCaps(composed: ComposePlanResult): void {
       if (!moved) break;
     }
 
+
+    // BOUNDARY-OWNER-1 · RE-HOME WHAT THE TRIMMER FREED.
+    //
+    // A session that gave mileage back did so because its WORK got smaller, not
+    // because the week should. Those miles are ordinary easy running and belong
+    // on an easy day — Rule 12 ("easy running is sized before quality") and the
+    // brief §5.3 ("surplus flows to eligible aerobic days").
+    //
+    // Leaving them unspent is NOT an option here, and the reason is worth
+    // stating: the brief offers "bounded weekly underfill" as the alternative to
+    // distorting a session, but this engine does not express that state.
+    // `_quality_day` holds `|daySum − weeklyMi| < 0.6` and the conformance sweep
+    // holds WEEKLY_NEQ_REALIZED at zero — 1,078 archetypes failed it the moment
+    // the day was allowed to shrink without a home for the difference. Inventing
+    // an underfill tolerance here would be a second volume truth (Constitution
+    // §8), so the miles move instead.
+    //
+    // `w.weeklyMi` is DELIBERATELY NOT lowered to match. It is the week's TARGET
+    // volume — the denominator every Daniels percentage cap is taken against and
+    // what `vols`/`authored_state` snapshot. Lowering it would tighten those caps
+    // by exactly the mileage just freed, so a session trimmed to the cap would
+    // immediately breach the smaller cap; the sweep measured that feedback
+    // directly (a marathon week went clean → "doses 1.99 mi at I on 24.2 mi/wk"
+    // on the second pass).
+    //
+    // Bounded by invariants that already exist, not by new numbers: nothing
+    // lands on a rest, race, shakeout or quality day; no easy day may reach the
+    // week's long run (long-primacy); the top-up never exceeds what the week is
+    // short; and it moves in the same half-mile grain `layoutWeek` sizes easy
+    // days in.
+    const daySum = w.days.reduce((acc, d) => acc + (d.distanceMi || 0), 0);
+    let owed = Number((w.weeklyMi - daySum).toFixed(2));
+    if (owed >= 0.05) {
+      const longMi = Math.max(0, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi));
+      // Largest first, so the week's general-aerobic days absorb before the
+      // short recovery day after the long run — Rule 12's own shape: "a week has
+      // a short recovery day after the long run and longer aerobic days
+      // elsewhere".
+      const takers = w.days
+        .filter((d) => !d.isQuality && !d.isLong && d.type !== 'rest' && d.type !== 'race'
+          && d.type !== 'shakeout' && d.distanceMi > 0)
+        .sort((a, b) => b.distanceMi - a.distanceMi);
+      for (let pass = 0; pass < 8 && owed >= 0.5; pass++) {
+        let placed = false;
+        for (const d of takers) {
+          if (owed < 0.5) break;
+          const room = longMi > 0 ? longMi - 0.5 - d.distanceMi : Infinity;
+          if (room < 0.5) continue;
+          d.distanceMi = Number((d.distanceMi + 0.5).toFixed(1));
+          owed = Number((owed - 0.5).toFixed(2));
+          placed = true;
+        }
+        if (!placed) break;
+      }
+      // THE WEEK COULD NOT TAKE IT · give the remainder back to the session it
+      // came from, up to the size it was composed at.
+      //
+      // A three-day week is the case: long + two quality days and no standalone
+      // easy day exists, so `takers` is empty and there is nowhere for the
+      // freed mileage to go. Handing it back is the honest answer — the day
+      // returns to exactly what it was before the trim and the week is
+      // unchanged from `origin/main`. It is NOT a good answer (those miles are
+      // still boundary running around a smaller block, which is the defect this
+      // whole change is about), and the size of the remaining exposure is
+      // counted by `_boundary_run`'s census rather than hidden here.
+      //
+      // Rule 11: this is a THIRD state — not "the trim did not fire" and not
+      // "the surplus found a home", but "the week has no aerobic day to put it
+      // on". The shrink is bounded by what the week can absorb rather than
+      // being applied and then breaking `daySum ≈ weeklyMi`.
+      if (owed >= 0.05) {
+        for (const d of w.days) {
+          if (owed < 0.05) break;
+          const was = beforeMi.get(d.dow);
+          if (was == null || !(was > d.distanceMi)) continue;
+          const give = Math.min(owed, was - d.distanceMi);
+          d.distanceMi = Number((d.distanceMi + give).toFixed(1));
+          owed = Number((owed - give).toFixed(2));
+        }
+      }
+    }
   }
 }
 
@@ -12667,11 +12752,34 @@ function trimSessionDose(
   // 4 · a continuous block whose size leads the prescription ("5mi continuous
   //     tempo", "4mi continuous wave tempo · ±10 s/mi around T"). Only the
   //     leading number moves; the phrase after it is the workout's identity.
+  //
+  //     BOUNDARY-OWNER-1 (2026-09-02) · THE DAY COMES DOWN WITH THE BLOCK.
+  //
+  //     This is the branch that trimmed the owner's live 2026-09-08 session and
+  //     left the day where it was:
+  //
+  //       composed   8.5 mi day · "4.5mi continuous tempo" (§5.2)
+  //       Daniels' T cap on the 29.4 mi mini-taper week      2.94 mi
+  //       trimmed    "2mi continuous tempo", DAY LEFT AT 8.5
+  //       persisted  "2.1 mi WU · 2 mi @ T · 2.1 mi CD"
+  //
+  //     `buildWorkoutSpec` reads the block out of the label and splits whatever
+  //     is left of the day between the warm-up and the cool-down, so 2.5 miles
+  //     of threshold work the cap removed came back as easy legs. The runner
+  //     reads a session whose jogging is twice its workout, and nothing chose
+  //     it (brief §3.2.D; §5.3 rules the residual may not do this).
+  //
+  //     The day now loses exactly the miles the block lost. `weeklyMi` is
+  //     deliberately not lowered with it — it is the denominator every Daniels
+  //     percentage cap is taken against — so the gap is the bounded weekly
+  //     underfill the brief prefers to a distorted session.
   const lead = label.match(/^(\s*)([\d.]+)\s*mi\b/i);
   if (lead && !/\bE\s+w\//i.test(label)) {
     const want = Math.max(0.5, Math.floor(targetMi * 2) / 2);
-    if (want < Number(lead[2])) {
+    const had = Number(lead[2]);
+    if (want < had) {
       day.subLabel = label.replace(/^(\s*)[\d.]+(\s*mi\b)/i, `$1${want}$2`);
+      day.distanceMi = Number(Math.max(0.5, day.distanceMi - (had - want)).toFixed(1));
       return measure(day);
     }
   }

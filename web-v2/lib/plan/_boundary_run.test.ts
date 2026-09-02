@@ -35,7 +35,7 @@
  *
  * The census is a ratchet rather than a zero because the engine does not yet
  * satisfy the general invariant and saying otherwise would be the "gate that
- * cannot fail" this repo has shipped before (Rule 18). It measured 20,391
+ * cannot fail" this repo has shipped before (Rule 18). It measured 19,430
  * sessions whose legs exceed what `quality-day.ts` composes for them, mostly by
  * one to three tenths of a mile — `spec-builder`'s own warm-up floors are taken
  * against the DAY's budget while the owner's are taken against the SESSION, so
@@ -97,9 +97,9 @@ const TOLERANCE_MI = 0.2;
  */
 const CENSUS_BASELINE = {
   /** Sessions whose warm-up + cool-down exceeds the owner's answer for them. */
-  overOwner: 20391,
+  overOwner: 19430,
   /** Sessions whose warm-up + cool-down exceeds their own work + jog floats. */
-  legsOutweighWork: 20714,
+  legsOutweighWork: 20304,
 } as const;
 
 /**
