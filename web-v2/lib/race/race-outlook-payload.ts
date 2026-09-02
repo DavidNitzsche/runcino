@@ -40,6 +40,12 @@ export function raceOutlookPayload(o: RaceOutlook | null | undefined) {
       kind: o.trainingPrescription.kind,
       pace_s_per_mi: o.trainingPrescription.paceSecPerMi,
       pace: pace(o.trainingPrescription.paceSecPerMi),
+      pace_range: o.trainingPrescription.rangeSecPerMi
+        ? { lo: pace(o.trainingPrescription.rangeSecPerMi[0]), hi: pace(o.trainingPrescription.rangeSecPerMi[1]) }
+        : null,
+      evidence: o.trainingPrescription.evidence,
+      demonstrated_pace: pace(o.trainingPrescription.demonstratedPaceSecPerMi),
+      rests_on_one_long_race: o.trainingPrescription.restsOnOneLongRace,
       threshold_pace: pace(o.trainingPrescription.thresholdSecPerMi),
       endurance_exponent: o.trainingPrescription.enduranceExponent,
       personally_evidenced: o.trainingPrescription.personallyEvidenced,
@@ -103,6 +109,11 @@ export function raceOutlookPayload(o: RaceOutlook | null | undefined) {
       differs_from_previous: b.differsFromPrevious,
     })),
     change_triggers: o.changeTriggers,
+    staleness: {
+      newest_evidence: o.staleness.newestEvidenceISO,
+      evidence_age_days: o.staleness.evidenceAgeDays,
+      stale: o.staleness.stale,
+    },
     capacity: {
       threshold_pace: pace(o.capacity.thresholdSecPerMi),
       threshold_vdot: o.capacity.thresholdVdot,

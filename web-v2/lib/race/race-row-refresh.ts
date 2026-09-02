@@ -42,6 +42,7 @@ export type Queryable = Pick<PoolClient, 'query'>;
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 import { resolveRaceOutlook, loadRaceForOutlook, RACE_EXECUTION_BAND_S_PER_MI, type RaceOutlook, type RaceForOutlook } from './race-outlook';
+import { MEANINGFUL_MOVE_SEC } from '@/lib/training/projection-trend';
 
 export interface RaceRowRefreshResult {
   planId: string;
@@ -110,7 +111,18 @@ async function planRaceSlug(client: Queryable, planId: string): Promise<string |
   return plan?.slug ?? null;
 }
 
-export function raceExecutionSpecFields(o: RaceOutlook): Record<string, unknown> {
+/**
+ * 2026-09-02 · A MATERIAL CHANGE IS RECORDED, NOT SLIPPED IN. The refresh
+ * rewrites what the runner is told to run on the day. A move inside the noise
+ * band is housekeeping; a move past `MEANINGFUL_MOVE_SEC` — the same threshold
+ * the projection-changed notification uses, so one runner cannot be told a
+ * projection moved and a target did not for the same number of seconds — is
+ * something the runner is entitled to see, carried on the row itself as
+ * `previous_target_sec` + `material_change` for the race detail to say
+ * "this moved". It is REPORTED. Nothing here asks the runner to decide
+ * anything, and the stated goal is untouched.
+ */
+export function raceExecutionSpecFields(o: RaceOutlook, previous?: { target_sec?: unknown } | null): Record<string, unknown> {
   const x = o.execution;
   const pace = x.paceSecPerMi;
   return {
@@ -121,6 +133,12 @@ export function raceExecutionSpecFields(o: RaceOutlook): Record<string, unknown>
       model_version: o.modelVersion,
       resolved_at: o.resolvedAt,
       target_sec: x.targetSec,
+      previous_target_sec: typeof previous?.target_sec === 'number' ? previous.target_sec : null,
+      material_change: typeof previous?.target_sec === 'number' && x.targetSec != null
+        ? Math.abs(x.targetSec - previous.target_sec) >= MEANINGFUL_MOVE_SEC
+        : false,
+      evidence_age_days: o.staleness.evidenceAgeDays,
+      evidence_stale: o.staleness.stale,
       target_pace_s_per_mi: pace,
       source: x.source,
       stated_goal_sec: o.statedGoal.sec,
@@ -266,9 +284,9 @@ async function refreshRaceRowsCore(
       result.refused++;
       continue;
     }
-    const fields = raceExecutionSpecFields(outlook);
-    const after = { paceSecPerMi: outlook.execution.paceSecPerMi };
     const prevExec = (row.workout_spec?.race_execution ?? null) as { target_sec?: number } | null;
+    const fields = raceExecutionSpecFields(outlook, prevExec);
+    const after = { paceSecPerMi: outlook.execution.paceSecPerMi };
     const unchanged = before.paceSecPerMi === after.paceSecPerMi
       && prevExec?.target_sec === outlook.execution.targetSec
       && row.workout_spec != null && !('hr_cap_bpm' in row.workout_spec)
