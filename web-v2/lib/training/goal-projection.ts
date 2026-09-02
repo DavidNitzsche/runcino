@@ -65,6 +65,7 @@ import { predictRaceTime, vdotFromRace, tPaceFromVdot, vdotFromTpace, parseRaceT
 import { computeDecouplingTrend } from './decoupling-trend';
 import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
+import { resolveWorkoutVerdict, testPointVerdictFor, type WorkoutVerdict } from '@/lib/execution/verdict';
 import {
   classifySession,
   sessionToleranceSec,
@@ -1235,6 +1236,10 @@ export function judgeTestPointExecution(input: {
   actualDistanceMi: number | null;
   vdot: number | null;
   heatSlowdownPct: number;
+  /** VERDICT-1 · THE canonical grade for the day, when the caller resolved
+   *  one. Rung 1 reads it; a session graded `executed` is `on`, one graded
+   *  `off_target` is `slow`, and only a mixed set falls back to the mean. */
+  grade?: WorkoutVerdict | null;
 }): {
   actualS: number | null;
   verdict: 'on' | 'fast' | 'slow' | null;
@@ -1254,7 +1259,22 @@ export function judgeTestPointExecution(input: {
   );
   const hasTarget = targetS != null && targetS > 0;
 
-  // 1 · watch work-phase pace · the existing honest path, unchanged.
+  // 1 · watch work phases · THE canonical grade when the caller resolved one.
+  //     The per-rep verdicts decide; the mean is only asked when the set was
+  //     mixed, because a mean of 435 over a 425 and a 445 is not "on".
+  const g = input.grade;
+  if (g && g.basis === 'watch-phases' && g.work.graded > 0) {
+    const actualS = g.work.paceSPerMi ?? (watchWorkS != null && watchWorkS > 0 ? Math.round(watchWorkS) : null);
+    return {
+      actualS,
+      verdict: hasTarget
+        ? testPointVerdictFor(g, () => (actualS != null
+            ? heatAdjustedStatus(targetS!, actualS, heatSlowdownPct, tolerance) : null))
+        : null,
+      basis: 'work-phase-watch',
+    };
+  }
+  // 1b · the work-phase MEAN alone, for a caller with no grade.
   if (watchWorkS != null && watchWorkS > 0) {
     const actualS = Math.round(watchWorkS);
     return {
@@ -1411,6 +1431,7 @@ export async function loadRecentTestPoints(
     duration_s: string | null;
     weather: unknown;
     work_pace_s: number | string | null;
+    work_phases: unknown;
     workout_spec: WorkoutSpec;
     splits: unknown;
     splits_unreliable: boolean | null;
@@ -1424,7 +1445,8 @@ export async function loadRecentTestPoints(
     `SELECT dedup.date_iso, dedup.type, dedup.sub_label,
             dedup.distance_mi, dedup.pace_target_s, dedup.workout_spec,
             dedup.distance_actual, dedup.duration_s, dedup.weather,
-            dedup.splits, dedup.splits_unreliable, dedup.work_pace_s
+            dedup.splits, dedup.splits_unreliable, dedup.work_pace_s,
+            dedup.work_phases
        FROM (
          SELECT DISTINCT ON (pw.id)
                 pw.id AS pw_id, pw.date_iso, pw.type, pw.sub_label,
@@ -1455,7 +1477,22 @@ export async function loadRecentTestPoints(
                      AND (ci.ts AT TIME ZONE $3::text)::date = pw.date_iso::date
                      AND phase->>'type' = 'work'
                      AND (phase->>'actualPaceSPerMi')::numeric > 0
-                ) AS work_pace_s
+                ) AS work_pace_s,
+                -- VERDICT-1 · the LATEST completion's phase array for the day,
+                -- so the test point is graded by the canonical resolver rather
+                -- than by a comparator over the AVG above. Same date match.
+                (
+                  SELECT CASE jsonb_typeof(ci.value::jsonb)
+                           WHEN 'object' THEN ci.value::jsonb->'phases'
+                           ELSE NULL
+                         END
+                    FROM coach_intents ci
+                   WHERE COALESCE(ci.user_uuid, ci.user_id) = $1::uuid
+                     AND ci.reason = 'watch_completion'
+                     AND (ci.ts AT TIME ZONE $3::text)::date = pw.date_iso::date
+                   ORDER BY ci.id DESC
+                   LIMIT 1
+                ) AS work_phases
            FROM plan_workouts pw
            JOIN training_plans tp ON tp.id = pw.plan_id
            JOIN runs r
@@ -1536,6 +1573,13 @@ export async function loadRecentTestPoints(
       actualDistanceMi: r.distance_actual != null ? Number(r.distance_actual) || null : null,
       vdot,
       heatSlowdownPct,
+      grade: r.work_phases != null
+        ? resolveWorkoutVerdict({
+            type: r.type,
+            spec: (r.workout_spec ?? null) as unknown as Record<string, unknown> | null,
+            phases: r.work_phases,
+          })
+        : null,
     });
     const actualS = judged.actualS;
     const actualPace = actualS && actualS > 0

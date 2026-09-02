@@ -22,11 +22,14 @@
  */
 
 import type { WorkoutType, Phase } from './run-purpose';
-import { heatAdjustedStatus } from './heat-band';
 import {
+  classifySession,
+  gradeWorkPhase,
+  sessionToleranceSec,
   wireVerdictLandedTheWork,
   wireVerdictFellShort,
 } from '@/lib/training/execution-semantics';
+import { phaseFellShort, phaseLandedTheWork, type WorkoutVerdict } from '@/lib/execution/verdict';
 
 export interface WinInput {
   type: WorkoutType;
@@ -92,6 +95,14 @@ export interface WinInput {
     actualInclinePct?: number | null;
     completed?: boolean | null;
   }>;
+  /**
+   * VERDICT-1 (2026-09-01) · THE canonical grade for this run, from
+   * `lib/execution/verdict.ts`. When present, the interval and tempo win lines
+   * read the reps' verdicts and the work mean off it, never off the device's
+   * stored word and never through a local comparator. `phases` above is the
+   * legacy input for a caller that could not resolve a grade.
+   */
+  grade?: WorkoutVerdict | null;
 }
 
 /**
@@ -246,25 +257,36 @@ function winLong(input: WinInput, splits: NormalSplit[]): string | null {
 }
 
 function winTempo(input: WinInput, splits: NormalSplit[]): string | null {
+  void splits;
   // Prefer work-phase avg over whole-run avg (which is diluted by warmup/cooldown).
+  // VERDICT-1 · the canonical grade's duration-weighted work mean when the
+  // caller resolved one; the phase list's plain mean otherwise.
   const workPhases = (input.phases ?? []).filter(
     (p) => (p.type === 'work' || p.type === 'tempo' || p.type === 'threshold') && p.actualPaceSPerMi,
   );
-  const paceForJudge = workPhases.length > 0
-    ? workPhases.reduce((s, p) => s + (p.actualPaceSPerMi as number), 0) / workPhases.length
-    : input.actualPaceSPerMi;
+  const paceForJudge = input.grade?.work.paceSPerMi
+    ?? (workPhases.length > 0
+      ? workPhases.reduce((s, p) => s + (p.actualPaceSPerMi as number), 0) / workPhases.length
+      : input.actualPaceSPerMi);
 
   if (!paceForJudge || !input.plannedPaceSPerMi) return null;
-  // Same plain (unadjusted) band as the phase bars (loadPhaseBreakdown) and
-  // the done-state (computeTodayExecution). 'slow' = a real miss → no win.
-  // 'on' / 'fast' → a win, worded by how it landed.
-  const status = heatAdjustedStatus(input.plannedPaceSPerMi, paceForJudge, 0);
-  if (status === 'slow') return null;
+  /* VERDICT-1 · THE owner's grade, at THE owner's width. This was
+   * `heatAdjustedStatus(planned, pace, 0)` — a fourth comparator at its default
+   * width of ten, beside a phase panel graded at eight. The work mean is
+   * graded exactly as a work phase would be, against the class the plan row
+   * gives this session; a `slow` mean is a real miss and no win. */
+  const kind = input.grade?.sessionClass ?? classifySession(input.type, null);
+  const v = gradeWorkPhase({
+    targetSecPerMi: input.plannedPaceSPerMi,
+    avgSecPerMi: paceForJudge,
+    toleranceSec: sessionToleranceSec(kind),
+  });
+  if (v === 'slow' || v === 'not_graded') return null;
   const delta = paceForJudge - input.plannedPaceSPerMi;
   const paceStr = formatPace(paceForJudge);
   if (Math.abs(delta) <= 5) return `Held the line · ${paceStr} dead even`;
-  if (status === 'fast')    return `Held the line · ${paceStr} slightly under target`;
-  // 'on' but slower than the raw target · still inside the plain band.
+  if (v === 'fast')         return `Held the line · ${paceStr} slightly under target`;
+  // 'hit' but slower than the raw target · still inside the band.
   return `Held form · ${paceStr} just off target`;
 }
 
@@ -274,6 +296,11 @@ function winIntervals(input: WinInput, splits: NormalSplit[]): string | null {
   // gaps inflate mile times, mix rep + recovery paces, and can't
   // distinguish "4 reps" from "5 per-mile segments"). Phase data
   // carries the watch's own verdict per rep.
+  // VERDICT-1 · the canonical grade first. The stored-word path below is
+  // kept for a caller that holds only the device's payload and no plan row.
+  if (input.grade && input.grade.work.count >= 2) {
+    return winIntervalsFromGrade(input.grade);
+  }
   if (input.phases && input.phases.length > 0) {
     return winIntervalsFromPhases(input.phases);
   }
@@ -320,6 +347,30 @@ function winIntervals(input: WinInput, splits: NormalSplit[]): string | null {
  * than per-mile GPS splits that can't distinguish rep from recovery.
  * Cold-start: returns null when phase list is empty or has no work reps.
  */
+/**
+ * The interval win line off THE canonical grade. Same sentences as the
+ * stored-word path below, read off `GradedPhase.verdict` — which is what the
+ * recap, the phase panel and the done-state also read — so the win line can no
+ * longer count a rep the server graded `hit` as anything else.
+ */
+function winIntervalsFromGrade(grade: WorkoutVerdict): string | null {
+  const work = grade.phases.filter((p) => p.type === 'work');
+  if (work.length < 2) return null;
+  const hits = work.filter((p) => p.verdict === 'hit').length;
+  const missed = work.filter(phaseFellShort).length;
+  const total = work.length;
+  const nearTarget = work.filter(phaseLandedTheWork).length;
+  if (missed >= Math.ceil(total / 2)) return null;
+  if (hits === total) return `${total} on the rail · clean set.`;
+  if (nearTarget === total) {
+    const lastHalf = work.slice(Math.ceil(total / 2));
+    if (lastHalf.every(phaseLandedTheWork)) return `${total} on the rail · held form through the set.`;
+    return `${total} reps near target.`;
+  }
+  if (nearTarget > Math.floor(total / 2)) return `${nearTarget} of ${total} reps on target.`;
+  return null;
+}
+
 function winIntervalsFromPhases(
   phases: NonNullable<WinInput['phases']>,
 ): string | null {

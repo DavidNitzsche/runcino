@@ -33,7 +33,7 @@ import {
   ranBelowThresholdBand,
   ranInSubThresholdBand,
 } from '@/lib/training/threshold-band';
-import { hrCapBreached } from '@/lib/training/execution-semantics';
+import { classifySession, gradeWorkPhase, hrCapBreached, sessionToleranceSec } from '@/lib/training/execution-semantics';
 import {
   judgeWeather,
   type WeatherInput,
@@ -627,14 +627,28 @@ function tempoExecution(input: RecapInput): string | null {
     // up a hill was not "off the target" — it was the target, uphill.
     // Rounded before subtracting · vsTarget is printed as a whole-second gap.
     const vsTarget = Math.round(judgedPace(avgWork, input.terrain)) - target; // + = slower
-    if (Math.abs(vsTarget) <= 5) {
-      // Right on target — just report consistency
+    /* VERDICT-1 (2026-09-01) · "on the mark" IS the owner's `hit`, at the
+     * owner's width. This arm called ±5 on target and anything beyond it
+     * "under" or "off", beside a phase panel and a win line graded at ±8 for
+     * the same session class — the 2026-09-01 reps averaged 7 s/mi quick and
+     * read "on target" on one row and "ran under the target" on the next.
+     * The work mean is graded exactly as a work phase would be. */
+    const kind = classifySession(input.type, null);
+    const meanVerdict = gradeWorkPhase({
+      targetSecPerMi: target,
+      avgSecPerMi: Math.round(judgedPace(avgWork, input.terrain)),
+      toleranceSec: sessionToleranceSec(kind),
+    });
+    if (meanVerdict === 'hit') {
+      // Inside the window — say where in it, and report consistency.
+      const where = vsTarget <= -3 ? `, ${Math.abs(vsTarget)}s/mi quick`
+        : vsTarget >= 3 ? `, ${vsTarget}s/mi on the slow side` : '';
       return drift >= 8
-        ? `Hit the target early, faded ${drift}s across the block.`
+        ? `Hit the target early${where}, faded ${drift}s across the block.`
         : drift <= -8
           ? `Built into it · back half ${Math.abs(drift)}s quicker. ${spreadDesc} overall.`
-          : `Work miles landed on the ${paceLabel(target) ?? 'target'} mark · ${spreadDesc} through the block.`;
-    } else if (vsTarget < -5) {
+          : `Work miles landed inside the ${paceLabel(target) ?? 'target'} window${where} · ${spreadDesc} through the block.`;
+    } else if (meanVerdict === 'fast') {
       /* Ran under target · which is genuinely ambiguous, and the old copy
        * ("pushed the tempo today") read as approval for whichever it was.
        *

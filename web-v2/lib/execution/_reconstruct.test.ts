@@ -231,10 +231,14 @@ describe('actual stimulus', () => {
     expect(a?.stimulus.meanWorkPaceSPerMi).toBeCloseTo(446.5, 0);
   });
 
-  it('carries the device s own grades through instead of re-deriving them', () => {
+  it('carries THE canonical grade, never the device s stored word', () => {
+    // VERDICT-1 · the row stores the device's `missed` — a legacy word that
+    // conflated "too slow" with "too fast". The canonical resolver re-grades
+    // the work phase from its actuals as the session the plan row names, and
+    // this 446.5 s/mi block against its target is `slow`.
     const a = actualStimulus(watchRow, planned, tempoSession(), { vdot: VDOT });
     expect(a?.watchStatus).toBe('abandoned');
-    expect(a?.workVerdicts).toEqual(['missed']);
+    expect(a?.workVerdicts).toEqual(['slow']);
     // 1140 of 1780 graded seconds inside the band, per the device, against the
     // server's own tolerance. Nothing read this number before.
     expect(a?.toleranceShare).toBeCloseTo(1140 / 1780, 3);

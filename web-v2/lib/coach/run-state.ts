@@ -17,20 +17,13 @@ import { enrichOneActivity, WEATHER_VERSION_CURRENT } from '@/lib/weather/openme
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
 import { computeCadenceFatigue } from '@/lib/training/cadence-fatigue';
 import { deriveReadingScopes, type ReadingScopes } from './reading-scope';
-import { heatAdjustedStatus } from './heat-band';
 import {
   classifySession,
-  gradePhase,
-  paceShapeFor,
-  phaseToleranceSec,
-  phaseVerdictLabel,
-  sessionToleranceSec,
-  EASY_PHASE_TOLERANCE_S_PER_MI,
-  WIRE_PHASE_VERDICTS,
   type WirePhaseVerdict,
   type PaceShape,
   type SessionClass,
 } from '@/lib/training/execution-semantics';
+import { gradeStoredPhases } from '@/lib/execution/verdict';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { coerceShoeType, resolveShoeCapMi, type ShoeType } from '@/lib/shoe/lifespan';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
@@ -1074,7 +1067,28 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     : (actualTempF != null ? Math.max(0, Math.min(10, Math.round(actualTempF - 60))) : 0);
   const heatBumpBpm = heatSlowdownPct >= 6 ? heatBumpRawBpm : 0;
 
-  const phaseBreakdown = await loadPhaseBreakdown(userId, day, heatSlowdownPct);
+  const plannedRow = day
+    ? (await pool.query(
+        `SELECT pw.workout_spec, pw.sub_label, pw.distance_mi, pw.type
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+          WHERE tp.user_uuid = $1
+            AND tp.archived_iso IS NULL
+            AND pw.date_iso = $2
+          LIMIT 1`,
+        [userId, day],
+      ).catch(() => ({ rows: [] as any[] }))).rows[0]
+    : null;
+  // VERDICT-1 (2026-09-01) · the phase breakdown is graded as THE session the
+  // plan row says it was. This call used to pass no class, so on every
+  // completion recorded before the wire carried `tolerancePaceSPerMi` a work
+  // phase fell through to the unnamed-session width (30 s/mi) and the
+  // owner's 419-against-430 fourth rep read "On target" here while every
+  // other surface said "Quicker than target". One class, resolved once.
+  const phaseBreakdown = await loadPhaseBreakdown(
+    userId, day, heatSlowdownPct,
+    classifySession(String(plannedRow?.type ?? r.workoutType ?? ''), plannedRow?.workout_spec ?? null),
+  );
 
   // Per-split phase tagging · walks the phaseBreakdown's cumulative
   // distance map and assigns each mile's phase. The renderer uses this
@@ -1097,18 +1111,6 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // (plan-vs-actual surface). Selection: active plan + this run's date.
   // Skipped silently when no plan or no matching workout — page falls
   // back to the placeholder card.
-  const plannedRow = day
-    ? (await pool.query(
-        `SELECT pw.workout_spec, pw.sub_label, pw.distance_mi, pw.type
-           FROM plan_workouts pw
-           JOIN training_plans tp ON tp.id = pw.plan_id
-          WHERE tp.user_uuid = $1
-            AND tp.archived_iso IS NULL
-            AND pw.date_iso = $2
-          LIMIT 1`,
-        [userId, day],
-      ).catch(() => ({ rows: [] as any[] }))).rows[0]
-    : null;
   const planned_spec = plannedRow?.workout_spec ?? null;
   const planned_sub_label = plannedRow?.sub_label ?? null;
   const planned_distance_mi = plannedRow?.distance_mi != null
@@ -1532,6 +1534,7 @@ async function loadPhaseBreakdown(
   userId: string,
   date: string | null,
   heatSlowdownPct: number = 0,
+  sessionClass?: SessionClass,
 ): Promise<PhaseBreakdown[]> {
   if (!date) return [];
   // 2026-08-27 · the #HHmm-suffix branch was the fix P1-34 shipped for this
@@ -1565,7 +1568,7 @@ async function loadPhaseBreakdown(
   if (typeof payload === 'string') {
     try { payload = JSON.parse(payload); } catch { return []; }
   }
-  return mapWatchPhases(payload?.phases, heatSlowdownPct);
+  return mapWatchPhases(payload?.phases, heatSlowdownPct, sessionClass);
 }
 
 /**
@@ -1584,134 +1587,47 @@ export function mapWatchPhases(
   heatSlowdownPct: number = 0,
   sessionClass?: SessionClass,
 ): PhaseBreakdown[] {
-  const phases: any[] = Array.isArray(raw) ? raw : [];
-  if (phases.length === 0) return [];
-
-  return phases.map((p: any, i: number): PhaseBreakdown => {
-    const targetSPerMi = Number(p.targetPaceSPerMi) || null;
-    const actualSPerMi = Number(p.actualPaceSPerMi) || null;
-
-    const typeRaw = String(p.type ?? 'unknown').toLowerCase();
-    const type: PhaseBreakdown['type'] =
-      typeRaw === 'warmup' || typeRaw === 'cooldown' || typeRaw === 'recovery'
-        ? typeRaw
-        : (typeRaw === 'work' || typeRaw === 'rep' || typeRaw === 'tempo'
-            || typeRaw === 'threshold' || typeRaw === 'intervals' || typeRaw === 'race')
-          ? 'work'
-          : 'unknown';
-
-    /* PACE-SHAPE-1 (2026-09-01) · WHAT the target on this phase means, on a
-     * three-rung ladder, most-authoritative first:
-     *
-     *   1. `paceShape` off the wire. New watch builds send it, and it is the
-     *      server's own `paceShapeFor` round-tripped, so it is authored truth.
-     *   2. `paceShapeFor` recomputed here, when the caller told us the session
-     *      class. Covers every completion recorded before the field existed.
-     *   3. The phase type alone. A warm-up and a cool-down are easy running
-     *      whatever the session was, and a recovery carries no pace at all —
-     *      both of which are true without knowing the class.
-     *
-     * This is what stops the old two-sided grading. A 534 s/mi cool-down under
-     * a 502 s/mi ceiling used to come back "missed"; it is a correct
-     * cool-down, and a ceiling has no slow edge to miss. */
-    const wireShape: PaceShape | null =
-      p.paceShape === 'ceiling' || p.paceShape === 'window'
-        || p.paceShape === 'effort' || p.paceShape === 'none'
-        ? p.paceShape
-        : null;
-    const gradablePhaseType = type === 'unknown' ? 'work' : type;
-    const hasTarget = targetSPerMi != null && targetSPerMi > 0;
-    const paceShape: PaceShape =
-      wireShape
-      ?? (sessionClass
-          ? paceShapeFor(gradablePhaseType, sessionClass, { hasTarget })
-          : (!hasTarget ? 'none'
-             : gradablePhaseType === 'recovery' ? 'none'
-             : gradablePhaseType === 'warmup' || gradablePhaseType === 'cooldown' ? 'ceiling'
-             : 'window'));
-
-    /* The verdict, from THE owner. Was a local `heatAdjustedStatus` call at a
-     * FOURTH tolerance (±10) while this same function shipped
-     * `tolerance_pace_sec: 8` to the phone beside it — the row said 8 and was
-     * coloured at 10.
-     *
-     * A ceiling phase can only come back 'on' or 'fast'. Slower than a ceiling
-     * is correct running, and no surface may call it a miss. */
-    const toleranceSPerMi: number | null =
-      Number(p.tolerancePaceSPerMi)
-      || (sessionClass ? phaseToleranceSec(gradablePhaseType, sessionClass, { hasTarget }) : null)
-      || (hasTarget && paceShape === 'window' ? sessionToleranceSec(sessionClass ?? 'other') : null)
-      || (hasTarget && paceShape === 'ceiling' ? EASY_PHASE_TOLERANCE_S_PER_MI : null);
-
-    const verdict = gradePhase(
-      {
-        phaseType: gradablePhaseType,
-        targetSecPerMi: targetSPerMi,
-        avgSecPerMi: actualSPerMi,
-        toleranceSec: toleranceSPerMi,
-        completed: p.completed === false ? false : true,
-      },
-      // When the caller could not say, the shape resolved above is what the
-      // grade must follow, so route through a class that produces it.
-      sessionClass ?? (paceShape === 'window' ? 'threshold' : 'easy'),
-    );
+  void heatSlowdownPct;
+  /* VERDICT-1 (2026-09-01) · ONE resolver. This function used to re-derive the
+   * shape, the tolerance and the verdict itself, on a three-rung ladder of its
+   * own, and it was the second of four graders the same completion passed
+   * through. It is now a MAPPER over `lib/execution/verdict.ts`: the grade is
+   * the resolver's, and this only spells it in the phone's field names. A
+   * caller that cannot name the session passes nothing and gets the
+   * unnamed-session read, which the resolver states rather than guesses. */
+  const graded = gradeStoredPhases(raw, sessionClass ?? 'other');
+  return graded.phases.map((g, i): PhaseBreakdown => {
+    const type: PhaseBreakdown['type'] = g.type;
     const status: 'on' | 'fast' | 'slow' | null =
-      verdict === 'hit' ? 'on' : verdict === 'fast' ? 'fast' : verdict === 'slow' ? 'slow' : null;
-
+      g.verdict === 'hit' ? 'on' : g.verdict === 'fast' ? 'fast' : g.verdict === 'slow' ? 'slow' : null;
     return {
-      pace_shape: paceShape,
-      status_label: phaseVerdictLabel(verdict, paceShape),
-      index: Number(p.index ?? i) || i,
-      label: String(p.label ?? p.name ?? defaultLabel(type, i)),
+      pace_shape: g.shape,
+      status_label: g.statusLabel,
+      index: g.index,
+      label: g.label ?? defaultLabel(type, i),
       type,
-      target_pace: fmtPace(targetSPerMi),
-      target_pace_sec: targetSPerMi,
-      // THE owner's width when the completion did not carry one — never a
-      // second literal. The row the phone draws and the band it is graded
-      // against are now the same number by construction.
-      tolerance_pace_sec: toleranceSPerMi,
-      target_distance_mi: Number(p.targetDistanceMi) || null,
-      target_duration_sec: Number(p.targetDurationSec) || null,
-      actual_pace: fmtPace(actualSPerMi),
-      actual_distance_mi: Number(p.actualDistanceMi) || null,
-      actual_duration_sec: Number(p.actualDurationSec) || null,
-      // 2026-08-24 · bounded, the same way the run-level reading is. `Number()
-      // || null` turns a 0 into an absence correctly and lets a 4 or a 250
-      // through as a measurement — and the phase panel prints it beside the
-      // rep. A strap sentinel is not a heart rate at any level of the payload.
-      avg_hr: hrToNum(p.avgHr),
-      max_hr: hrToNum(p.maxHr),
-      avg_cadence: Number(p.avgCadence) || null,
-      completed: Boolean(p.completed ?? true),
+      target_pace: fmtPace(g.targetSecPerMi),
+      target_pace_sec: g.targetSecPerMi,
+      // THE owner's width, and the width the phase was GRADED at — the row the
+      // phone draws and the band it is graded against are one number.
+      tolerance_pace_sec: g.toleranceSec,
+      target_distance_mi: g.targetDistanceMi,
+      target_duration_sec: g.targetDurationSec,
+      actual_pace: fmtPace(g.avgSecPerMi),
+      actual_distance_mi: g.actualDistanceMi,
+      actual_duration_sec: g.actualDurationSec,
+      avg_hr: g.avgHr,
+      max_hr: g.maxHr,
+      avg_cadence: g.avgCadence,
+      completed: g.completed,
       status,
-      // Passed through, never re-derived. `PHASE_VERDICTS` is the same
-      // whitelist `lib/runs/run-shape.ts` applies, restated here rather than
-      // imported because this loader reads the coach_intents blob directly
-      // and that module reads `runs.data` — same vocabulary, two doors.
-      verdict: PHASE_VERDICT_WORDS.has(String(p.verdict))
-        ? (String(p.verdict) as PhaseBreakdown['verdict'])
-        : null,
-      // `Number(null)` is 0, and a zero here would claim the device graded
-      // this phase and found none of it in band. It did not grade it at all.
-      time_in_tolerance_sec: toleranceSec(p.timeInToleranceSec),
-      time_out_of_tolerance_sec: toleranceSec(p.timeOutOfToleranceSec),
+      // The DEVICE'S word, passed through as the stored fact it is. Never the
+      // verdict a surface prints — `status` / `status_label` are.
+      verdict: g.storedVerdict,
+      time_in_tolerance_sec: g.timeInToleranceSec,
+      time_out_of_tolerance_sec: g.timeOutOfToleranceSec,
     };
   });
-}
-
-/** The grades `WorkoutEngine.buildCompletion` can emit, plus the two legacy
- *  words that sit on rows already in the database. Owned by
- *  `lib/training/execution-semantics.ts`; anything else on the wire is an era
- *  we do not know and is dropped rather than guessed at. */
-const PHASE_VERDICT_WORDS = new Set<string>(WIRE_PHASE_VERDICTS);
-
-/** A tolerance counter, or null. Zero is a real reading (a rep the device
- *  graded and found entirely outside the band — David's 2026-08-11 recovery
- *  jog at index 6 is exactly that). Absent is not. */
-function toleranceSec(v: unknown): number | null {
-  if (v == null) return null;
-  const n = Number(v);
-  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 function defaultLabel(type: PhaseBreakdown['type'], i: number): string {

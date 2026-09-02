@@ -28,6 +28,8 @@ import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { composeRecap } from '@/lib/faff/recap-voice';
 import { mapWatchPhases } from '@/lib/coach/run-state';
+import { resolveWorkoutVerdict } from '@/lib/execution/verdict';
+import { classifySession } from '@/lib/training/execution-semantics';
 import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 import { reconcileRun, runCadenceSpm } from '@/lib/runs/coherence';
@@ -477,7 +479,11 @@ export async function GET(
   // readers of one blob with two field-name conventions is exactly the bug
   // class this repo keeps re-finding.
   const readings = deriveReadingScopes({
-    phases: mapWatchPhases(Array.isArray(data.phases) ? data.phases : []),
+    phases: mapWatchPhases(
+      Array.isArray(data.phases) ? data.phases : [],
+      0,
+      classifySession(String(planRow?.type ?? data.workoutType ?? ''), (planRow?.workout_spec ?? null) as Record<string, unknown> | null),
+    ),
     wholeHrBpm: actualAvgHr,
     // BOTH FEET · `cadence.units-split`. The raw key is a per-leg count on the
     // pre-May-2026 Strava imports and the recap read it as a step rate.
@@ -558,6 +564,13 @@ export async function GET(
   // 2026-06-01 · iPhone brief · synthesized win line.
   // 4-10 word coach-voice sentence summarizing how the run went.
   // Returns null when off-plan / DNF / no usable signal.
+  /* VERDICT-1 (2026-09-01) · THE canonical grade, resolved once from the
+   * plan row's own type and spec — the same class the wrist graded against. */
+  const grade = resolveWorkoutVerdict({
+    type: planRow?.type ?? (data.workoutType as string | null) ?? null,
+    spec: (planRow?.workout_spec ?? null) as Record<string, unknown> | null,
+    phases: Array.isArray(data.phases) ? data.phases : [],
+  });
   const win = deriveWin({
     type,
     phase,
@@ -568,6 +581,7 @@ export async function GET(
     actualPaceSPerMi,
     actualAvgHr,
     splits: splitsForRecap,
+    grade,
     phases: winPhases.length > 0 ? winPhases : undefined,
     verdict: recap.verdict,
     indoor: data.indoor === true,
