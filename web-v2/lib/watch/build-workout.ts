@@ -52,6 +52,11 @@ import { loadSettings } from '@/lib/coach/settings';
 // /api/plan/week and /api/v5/today read. Nothing about the week is
 // re-derived here — see projectWeekStrip.
 import { loadPlanWeek, type PlanWeekResult } from '@/lib/plan/week-loader';
+import { resolveWatchSafetyGate } from '@/lib/watch/safety-stop';
+// SAFETYSTOP-1 · the canonical safety owner. `build-workout.ts` used to be
+// author number four for injury and illness; it is a consumer now.
+import { resolveSafety } from '@/lib/safety/load-safety';
+import type { SafetyResolution } from '@/lib/safety/safety-verdict';
 import { adjustPhasesForHeat, heatNote, recordHeatEasing } from '@/lib/watch/heat';
 import { runFacts } from '@/lib/runs/run-facts';
 import { runAvgHr, runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
@@ -1129,36 +1134,50 @@ export function splitRuleRegisters(
   };
 }
 
-/** Injury / sick / week-off detection for the No-session board.
+/** The No-session board's reason, and the safety resolution behind it.
  *
- *  Three LIMIT-1 point reads mirroring `lib/coach/glance-state.ts` (the
- *  niggle/sick/injury block) and `/api/v5/today`'s AWAY scan, in that
- *  surface's own precedence: an open injury owns the day over a concurrent
- *  sick day, and both own it over travel. Read here rather than through
- *  `loadGlanceState` because the watch payload needs three booleans, not a
- *  readiness computation — and this endpoint is on the wrist's critical
- *  path. Every read degrades to null on failure: a missing table or a
- *  Postgres blip must not cost the runner their workout. */
+ *  ── SAFETYSTOP-1 (2026-09-02) · THIS USED TO BE AUTHOR NUMBER FOUR ─────────
+ *
+ *  It ran its own `runner_injuries` and `sick_episodes` point reads, "mirroring
+ *  `lib/coach/glance-state.ts`" by its own admission — a fourth independent
+ *  answer to a question `docs/BRAIN_CONSTITUTION.md` gives exactly one owner.
+ *  Both reads are gone. Injury and illness now come from
+ *  `lib/safety/load-safety.ts:resolveSafety`, which is that owner, and this
+ *  function does nothing but translate its verdict into the board's vocabulary.
+ *
+ *  WEEK OFF STAYS HERE, and that is not an oversight. A travel week is a
+ *  SCHEDULING fact about the calendar, not a statement about the runner's body,
+ *  and the safety owner correctly has no opinion about it.
+ *
+ *  THE OLD `.catch(() => null)` PER READ IS ALSO GONE. It made a healthy runner
+ *  and a failed database read the same fact — Rule 11 — and its comment argued
+ *  for it ("a Postgres blip must not cost the runner their workout"). The
+ *  owner's `SafetyResolution` carries that distinction as a TYPE now, and the
+ *  caller spends it: an unresolved check withholds the session rather than
+ *  quietly prescribing one. */
 async function loadNoSessionReason(
-  userId: string,
+  safety: SafetyResolution,
   today: string,
   planId: string | null,
-): Promise<{ reason: WatchNoSessionReason; resumesIso: string | null; injurySite: string | null } | null> {
-  const injury = (await pool.query<{ site: string }>(
-    `SELECT site FROM runner_injuries
-      WHERE user_uuid = $1 AND resolved_date IS NULL
-      ORDER BY start_date DESC LIMIT 1`,
-    [userId],
-  ).catch(() => ({ rows: [] as Array<{ site: string }> }))).rows[0];
-  if (injury) return { reason: 'injury', resumesIso: null, injurySite: injury.site ?? null };
-
-  const sick = (await pool.query<{ id: number }>(
-    `SELECT id FROM sick_episodes
-      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
-      ORDER BY logged_at DESC LIMIT 1`,
-    [userId],
-  ).catch(() => ({ rows: [] as Array<{ id: number }> }))).rows[0];
-  if (sick) return { reason: 'sick', resumesIso: null, injurySite: null };
+): Promise<{
+  reason: WatchNoSessionReason;
+  resumesIso: string | null;
+  injurySite: string | null;
+} | null> {
+  // Injury and illness · the canonical owner, not a fourth reader.
+  //
+  // The BOARD is driven by `driver` rather than by posture: it names WHICH
+  // signal owns the day, and the two questions are separate. A niggle can move
+  // the posture without there being a "Not today" board to draw for it, and
+  // the workout gate below reads posture on its own.
+  if (safety.known) {
+    if (safety.driver === 'injury' && safety.injury) {
+      return { reason: 'injury', resumesIso: null, injurySite: safety.injury.site ?? null };
+    }
+    if (safety.driver === 'illness') {
+      return { reason: 'sick', resumesIso: null, injurySite: null };
+    }
+  }
 
   // Week off · `replan-scenarios.ts`'s travel scenario zeroes the window's
   // rows and labels them AWAY. That is the only deliberate break this engine
@@ -1537,7 +1556,29 @@ export async function buildWatchToday(
   // or not the calendar still carries a session for it. When a workout DOES
   // exist it still ships beside this, so a deployed watch runs the session
   // unchanged and a 0821 build draws No session instead.
-  const noSession = await loadNoSessionReason(userId, today, String(plan.id)).catch(() => null);
+  // SAFETYSTOP-1 · the canonical owner is asked ONCE, here, and its answer
+  // drives both the No-session board and whether a runnable workout may leave.
+  //
+  // NOT wrapped in `.catch(() => null)`. `resolveSafety` already answers a
+  // failed read as `known: false` / `WITHHOLD_PENDING_CHECK`, which is a
+  // verdict this code must ACT on — swallowing it into a null would restore
+  // exactly the Rule 11 collapse this change removes. If it throws outright
+  // that is a real fault and the route's own error handler should see it.
+  const safety = await resolveSafety(userId);
+  // The outer `.catch(() => null)` that used to sit here is GONE, and the
+  // coercion gate is what made me look: it started reporting this line as a
+  // blind indirect the moment `loadNoSessionReason` stopped guarding its own
+  // reads. It was right. While that function ran two swallowed point reads of
+  // its own, the outer catch was redundant; now that injury and illness come
+  // from the safety owner, it would be the ONLY handler — swallowing, blind,
+  // the one failure nothing else can see.
+  //
+  // What remains inside that function is the AWAY week-off pair, both still
+  // individually guarded with their own argued exemption. So it can now only
+  // throw on a programming error, and a programming error on the wrist's
+  // critical path should reach the route's handler rather than quietly become
+  // "no board".
+  const noSession = await loadNoSessionReason(safety, today, String(plan.id));
 
   // A calendar day can briefly carry more than one row (e.g. an authored rest
   // placeholder plus a run moved in via /api/today/reschedule). Pick the
@@ -1568,6 +1609,7 @@ export async function buildWatchToday(
         resumesIso: noSession.resumesIso, injurySite: noSession.injurySite,
       })
     : null;
+
 
   if (!wo) {
     return {
@@ -2585,5 +2627,39 @@ export async function buildWatchToday(
     ? await loadCompletedRun(userId, today, wo).catch(() => null)
     : null;
 
+  // SAFETYSTOP-1 · THE ONE GATE. Everything above composed the session; this
+  // decides whether it is allowed to leave.
+  //
+  // This used to return the runnable `workout` beside a "Not today" board on
+  // an open injury — deliberately, for a fleet of older watch builds that
+  // could not draw the board. The telemetry says that fleet is one device on
+  // a current build (safety-stop.ts records the query and its limits), and the
+  // message branch below is the response shape EVERY build has always
+  // rendered, so withholding costs nothing and strands nobody.
+  //
+  // THREE withholding cases land here and they are different facts: safety
+  // stopped training, the check did not run, or running is licensed and this
+  // particular session is not. The runner gets a different sentence for each,
+  // and none of them gets a runnable session.
+  //
+  // `dayState` still rides along, so a build that can draw the No-session
+  // board still draws it. What is gone is the runnable session underneath it.
+  // The posture, mapped onto the wire. Resolved HERE rather than beside the
+  // `resolveSafety` call above because it needs `isQualityWorkout`, which the
+  // session composition upstream produces — and one answer to "is this
+  // quality" beats a second one computed early.
+  const safetyGate = resolveWatchSafetyGate(safety, isQualityWorkout);
+  if (safetyGate.kind === 'withhold') {
+    console.log(
+      `[watch/today] safety withheld the session · why=${safetyGate.why} · ${safety.explain}`,
+    );
+    return {
+      message: safetyGate.message,
+      weekStrip,
+      sessionMoved,
+      dayState: noSessionState,
+      completedToday,
+    };
+  }
   return { workout, weekStrip, sessionMoved, dayState: noSessionState, completedToday };
 }

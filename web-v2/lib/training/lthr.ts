@@ -127,8 +127,20 @@ export function lthrFromFieldTestPhases(
   if (!Array.isArray(phases) || phases.length === 0) return null;
   const isRestPhase = (p: FieldTestPhaseLike) =>
     /warm|cool|recover|rest/i.test(String(p.type ?? '') + ' ' + String(p.label ?? ''));
+  // OVERTIME-1 (2026-09-02) · the running AFTER the session is never the test.
+  //
+  // The watch now records what the runner did once the prescribed phases ran
+  // out, as a phase typed `overtime`. That segment is unbounded — a jog home
+  // can easily be longer than a 30-minute time trial — and this function
+  // picks the LONGEST non-rest phase. Without this line a field test followed
+  // by a twenty-minute jog home would set `profile.lthr` from the jog, and
+  // every HR ceiling in the block is derived from that number.
+  //
+  // It is excluded by TYPE rather than by the label regex above, because the
+  // label is prose and this is a fact about the phase.
+  const isOvertime = (p: FieldTestPhaseLike) => String(p.type ?? '') === 'overtime';
   const work = phases
-    .filter((p) => !isRestPhase(p))
+    .filter((p) => !isRestPhase(p) && !isOvertime(p))
     .reduce<FieldTestPhaseLike | null>((best, p) => {
       const d = Number(p.actualDurationSec) || 0;
       return d > (Number(best?.actualDurationSec) || 0) ? p : best;

@@ -1548,10 +1548,24 @@ final class WorkoutEngine: ObservableObject {
             planComplete = true
             phaseStart = .now
             phaseElapsedSec = 0
+            // OVERTIME-1 (2026-09-02) · MEASURE OVERTIME FROM HERE.
+            //
+            // This line was missing, and without it `phaseStartMi` stayed
+            // pinned to the START of the last prescribed phase for the whole
+            // of overtime — so every read of `phaseCoveredMi` after the plan
+            // ended double-counted that final phase's distance. Harmless
+            // while nothing recorded overtime; wrong the moment anything did,
+            // which is what the rest of this change does.
+            phaseStartMi = coveredMi
             if phaseAddedSec != 0 { phaseAddedSec = 0 }
             didFireAlmostDone = false
             phaseHrSum = 0; phaseHrCount = 0; phaseHrMax = 0
             phaseCadSum = 0; phaseCadCount = 0
+            // The per-phase sample buffers belong to the phase that just
+            // ended and were already banked into its result. Overtime gets
+            // its own, or it inherits the last walk-back's readings.
+            phaseHrSamples = []; phasePaceSamples = []; phaseLastSampleSec = -5
+            lastAggregateSec = bankedSec
             driftEval = nil
             paceZone = .onTarget
             paceDeltaSPerMi = 0
@@ -1637,8 +1651,12 @@ final class WorkoutEngine: ObservableObject {
                 // `.phase` is the board that was drawn for this: word, detail,
                 // and the band underneath. `.go` is the start of the RUN, and
                 // it now fires there — see `start()`.
-                let totalWorks = workout.phases.filter { $0.type == .work }.count
-                let n = workout.phases.prefix(currentIndex + 1).filter { $0.type == .work }.count
+                // REPCOUNT-1 · through the ONE resolver. These two lines used
+                // to recompute it inline, so the takeover board announced
+                // "Rep 2 of 7" on a six-stride session while the phase label
+                // three points away said "Stride 1 of 6".
+                let totalWorks = repCountForDisplay
+                let n = repIndexForDisplay
                 // The pace is said ONCE. The router draws the prescribed band
                 // under this board whenever the phase has a tolerance
                 // ("6:45-7:00 /mi"), so repeating the point target in the
@@ -1826,7 +1844,10 @@ final class WorkoutEngine: ObservableObject {
             hrSamples: hrsOut,
             timeInToleranceSec: timeInTol,
             timeOutOfToleranceSec: timeOutTol,
-            verdict: verdict
+            verdict: verdict,
+            // STRIDE-RT-1 · the flag the server sent, sent back. Only when
+            // true, so a non-stride phase's body is unchanged.
+            isStrideSegment: p.isStrideSegment ? true : nil
         ))
         // Tier 2: queue an RPE prompt for the recovery that follows a
         // completed work rep. We index the results array entry we just
@@ -2007,31 +2028,71 @@ final class WorkoutEngine: ObservableObject {
 
     // MARK: Read-only state the boards need
 
+    /// REPCOUNT-1 (2026-09-02) · WHICH WORK PHASES ARE *REPS*.
+    ///
+    /// THE DEFECT. This used to be `phases.filter { $0.type == .work }.count`
+    /// — every work phase, no exceptions. The owner's 2026-09-02 session was
+    /// authored as ONE 5-mile easy leg (a `.work` phase) followed by SIX
+    /// strides, and so the watch counted **seven reps** on a session whose own
+    /// phase labels read "Stride 1 of 6" … "Stride 6 of 6". The stored
+    /// completion still carries the evidence: four `recoveryExtensions`, every
+    /// one stamped `repCount: 7`, `beforeRepIndex: 7`, on a six-stride
+    /// workout. The runner was told "6 of 7" while running stride five.
+    ///
+    /// That is a Rule 16 violation in its most literal form: two names for one
+    /// quantity, disagreeing, on the same screen — the label said six, the
+    /// counter said seven.
+    ///
+    /// THE RULE. A rep is a work phase that takes part in the session's
+    /// work/recovery alternation — i.e. one that is IMMEDIATELY ADJACENT to a
+    /// `.recovery` phase on either side. A session body that simply precedes a
+    /// stride block (or follows a warm-up) touches no recovery and is not a
+    /// rep. Structural, not lexical: it does not read a label, so renaming
+    /// "Stride N of M" cannot break it — which is the failure mode the
+    /// incoming `isStrideSegment` comment already records for the board.
+    ///
+    /// THE FALLBACK IS LOAD-BEARING. A session with no recovery phases at all
+    /// — easy, long, tempo (warm-up · work · cool-down), just-run — has no
+    /// alternation to read, so it falls back to counting work phases, which
+    /// reproduces the OLD behaviour exactly. That is why an easy run still
+    /// reports 1 and the boards that route on session shape are untouched.
+    ///
+    /// Verified against the owner's own live payloads: strides 6 (was 7),
+    /// 10×60s hills 10 (unchanged), tempo 1 (unchanged), long 1 (unchanged).
+    ///
+    /// ONE resolver, and `repIndexForDisplay` / `nextWorkRepOrdinal` / the
+    /// "Rep n of m" takeover all read it — they used to compute the same
+    /// quantity inline, four times, and every copy was wrong the same way.
+    private var repPhaseIndices: [Int] {
+        let phases = workout.phases
+        let workIdx = phases.indices.filter { phases[$0].type == .work }
+        let inSeries = workIdx.filter { i in
+            (i > 0 && phases[i - 1].type == .recovery)
+                || (i + 1 < phases.count && phases[i + 1].type == .recovery)
+        }
+        return inSeries.isEmpty ? workIdx : inSeries
+    }
+
     /// How many work reps the session asked for. 1 on an easy/long/just-run
     /// session (the backend expands those as a single `.work` phase), which
     /// is why the boards route on session shape and not on this number.
-    var repCountForDisplay: Int {
-        workout.phases.filter { $0.type == .work }.count
-    }
+    var repCountForDisplay: Int { repPhaseIndices.count }
 
     /// 1-based ordinal of the rep the runner is IN, or — on a recovery /
     /// cooldown — the rep they just finished. 0 during a warm-up, before
     /// any rep has started, which a progress strip renders as "none done"
     /// rather than as rep zero.
     var repIndexForDisplay: Int {
-        let upTo = min(currentIndex + 1, workout.phases.count)
-        guard upTo > 0 else { return 0 }
-        return workout.phases.prefix(upTo).filter { $0.type == .work }.count
+        repPhaseIndices.filter { $0 <= currentIndex }.count
     }
 
     /// 1-based ordinal of the NEXT work rep after the current phase, or nil
     /// when the session has no more reps. This is the "before" half of an
     /// extension's "between reps two and three".
     private var nextWorkRepOrdinal: Int? {
-        guard let pos = workout.phases.indices.first(where: {
-            $0 > currentIndex && workout.phases[$0].type == .work
-        }) else { return nil }
-        return workout.phases.prefix(pos + 1).filter { $0.type == .work }.count
+        let reps = repPhaseIndices
+        guard let pos = reps.firstIndex(where: { $0 > currentIndex }) else { return nil }
+        return pos + 1
     }
 
     /// The live recovery countdown, including every "+30 sec" already
@@ -2434,6 +2495,132 @@ final class WorkoutEngine: ObservableObject {
         return [bailOutcome]
     }
 
+    // MARK: - Overtime · the running that happens after the plan runs out
+    //
+    // ─────────────────────────────────────────────────────────────────────
+    // OVERTIME-1 (2026-09-02) · THE RUN THAT WAS NEVER RECORDED
+    //
+    // David, on his 2026-09-02 session: "after the last stride I ran a bit
+    // longer." His watch read 6.41 mi / 55:49 when he stopped. The row this
+    // app stored reads 5.98 mi / 50:57 — 0.43 mi and 4:52 that were never
+    // written down.
+    //
+    // The clock and the metrics were ALREADY right: `tick()` has had an
+    // overtime branch since 2026-08-26 and kept counting the whole time. What
+    // did not exist was any RECORD of it. `results` holds one entry per
+    // PRESCRIBED phase and overtime is not a phase, so:
+    //
+    //   · the live path put overtime in the TOTALS (`tracker.distanceMi`,
+    //     `totalElapsedSec`) but nowhere in the breakdown, so the phases and
+    //     the totals disagreed with no way to see why; and
+    //   · `completionFromRecovery` — which has no live totals to read and
+    //     falls back to summing the phases — lost overtime COMPLETELY.
+    //
+    // The second is what happened. Every field of the stored row is that
+    // path's signature: `routePolyline` null, `avgCadence` null, `kcal` null,
+    // `movingSec` null (the recovery path sets none of them), a `ceilingLift`
+    // stamped `atSec: 3064` — SEVEN SECONDS PAST the 3057 the row claims as
+    // its whole duration — and a `completedAt` 78 minutes after the start of
+    // a 56-minute run. The HKWorkoutSession was gone by the time the app came
+    // back, so `stats.distanceMi` was nil and the phase sum became the answer.
+    //
+    // So overtime becomes a PHASE. It banks like any other, it rides the
+    // snapshot, and both completion paths carry it — which is also the only
+    // way the phase-sum fallback can ever be right again.
+    //
+    // Its type is `"overtime"`, not `"work"` and not `"cooldown"`. It is not
+    // work: folding a jog home into an interval session's work-weighted avg
+    // HR would be the exact defect `buildCompletion` already documents at
+    // length. It is not a cool-down: nobody prescribed it. The server's two
+    // normalisers both degrade an unrecognised type gracefully and keep the
+    // duration and the distance (`run-shape.ts` → `type: null`,
+    // `verdict.ts` → `'unknown'`), which is the correct reading: a segment
+    // that happened, that nothing graded, because nothing asked for it.
+
+    /// Seconds run after the last prescribed phase ended. Zero whenever the
+    /// plan is still in flight — `bankedSec` stops moving at plan-done, so
+    /// this is just the live phase clock with an honest name.
+    var overtimeSec: Int { planComplete ? max(0, totalElapsedSec - bankedSec) : 0 }
+
+    /// Miles run after the last prescribed phase ended.
+    var overtimeMi: Double { planComplete ? max(0, coveredMi - phaseStartMi) : 0 }
+
+    /// The overtime segment as a recordable phase, or nil when there was no
+    /// overtime worth a row.
+    ///
+    /// The floor is deliberately low — five seconds — because the question
+    /// this answers is "did the runner keep running", and the alternative to
+    /// a small honest row is a silent loss. It is not zero because ending the
+    /// session on the last beat of the last phase produces a 0-2 s tail that
+    /// is an artefact of the tap, not a run.
+    private var overtimePhaseIfAny: WatchCompletionPhase? {
+        Self.overtimePhase(
+            afterPhaseCount: workout.phases.count,
+            sec: overtimeSec,
+            mi: overtimeMi,
+            avgHr: phaseHrCount > 0 ? Int((Double(phaseHrSum) / Double(phaseHrCount)).rounded()) : nil,
+            maxHr: phaseHrMax > 0 ? phaseHrMax : nil,
+            avgCadence: phaseCadCount > 0 ? Int((Double(phaseCadSum) / Double(phaseCadCount)).rounded()) : nil,
+            paceSamples: phasePaceSamples.isEmpty ? nil : phasePaceSamples,
+            hrSamples: phaseHrSamples.isEmpty ? nil : phaseHrSamples
+        )
+    }
+
+    /// The one place an overtime phase is SHAPED, so the live path and the
+    /// crash-recovery path cannot describe the same segment two ways
+    /// (Rule 16). Returns nil below the floor.
+    static let overtimeMinSec = 5
+
+    static func overtimePhase(
+        afterPhaseCount: Int,
+        sec: Int,
+        mi: Double,
+        avgHr: Int? = nil,
+        maxHr: Int? = nil,
+        avgCadence: Int? = nil,
+        paceSamples: [PaceSample]? = nil,
+        hrSamples: [HRSample]? = nil
+    ) -> WatchCompletionPhase? {
+        // A WORKOUT WITH NO PHASES HAS NO "AFTER". Caught by
+        // `_HostileInputTests.zeroPhaseWorkoutShipsAZeroDurationAbandonedCompletion`
+        // on the first run of this change: an empty payload sets
+        // `planComplete` at `start()`, so without this guard the WHOLE run
+        // became one "After the session" row on a session that never began.
+        // Overtime is defined relative to a plan that ran out; with nothing
+        // prescribed there is nothing for it to be after, and that test's
+        // contract — a malformed payload ships no phases, while the TOTALS
+        // still carry every mile the runner ran — is the right one.
+        guard afterPhaseCount > 0 else { return nil }
+        guard sec >= overtimeMinSec else { return nil }
+        let avgPace: Int? = (mi > 0.02 && sec > 0) ? Int((Double(sec) / mi).rounded()) : nil
+        return WatchCompletionPhase(
+            index: afterPhaseCount,
+            type: "overtime",
+            label: "After the session",
+            targetPaceSPerMi: nil,
+            actualPaceSPerMi: avgPace,
+            actualDurationSec: sec,
+            actualDistanceMi: mi > 0 ? (mi * 100).rounded() / 100 : nil,
+            avgHr: avgHr,
+            maxHr: maxHr,
+            avgCadence: avgCadence,
+            // TRUE, and it is not a contradiction. `completed` answers "did
+            // this segment end the way it was meant to", and overtime ends
+            // exactly when the runner decides it does — there is no target it
+            // could fall short of. Marking it false would make
+            // `watchStoppedInsideWork` and every "did he finish" reader treat
+            // a runner who ran FURTHER as a runner who stopped early.
+            completed: true,
+            paceSamples: paceSamples,
+            hrSamples: hrSamples,
+            timeInToleranceSec: nil,
+            timeOutOfToleranceSec: nil,
+            // Nothing prescribed it, so nothing grades it. Rule 11: an
+            // ungraded segment and a segment that failed are different facts.
+            verdict: nil
+        )
+    }
+
     /// Fold every recorded decision onto a completion that has already been
     /// built. Shared by the live-finish path and the crash-recovery path so
     /// the two can never drift apart.
@@ -2586,6 +2773,20 @@ final class WorkoutEngine: ObservableObject {
         /// crash losing its splits is a smaller loss than one that will not
         /// restore at all.
         var mileSplits: [SnapshotSplit]?
+        /// OVERTIME-1 · the odometer at the moment this snapshot was written.
+        ///
+        /// The snapshot has always carried the run's TIME axis completely —
+        /// `bankedSec` plus `phaseElapsedSec` is the whole clock, overtime
+        /// included. It has never carried a distance total, only
+        /// `phaseStartMi`, so a recovery that could not reach the
+        /// HKWorkoutSession had no way to know how far the runner got and
+        /// fell back to summing the phases. On a run that ended in overtime
+        /// that sum is short by exactly the overtime — 0.43 mi, on the
+        /// session that produced this field.
+        ///
+        /// Optional and decoded leniently, for the same reason `mileSplits`
+        /// is: a run in flight when this shipped must still restore.
+        var totalDistanceMi: Double?
         let savedAtEpoch: Double
 
         // ─── The wrist decisions (0821 · 2026-08-21) ─────────────────
@@ -2679,6 +2880,7 @@ final class WorkoutEngine: ObservableObject {
             phaseStartMi: phaseStartMi,
             results: results,
             mileSplits: mileSplits.map { SnapshotSplit(unitIndex: $0.unitIndex, sec: $0.sec) },
+            totalDistanceMi: coveredMi > 0 ? coveredMi : nil,
             savedAtEpoch: Date.now.timeIntervalSince1970,
             decisions: decisionsForSnapshot
         )
@@ -2779,6 +2981,30 @@ final class WorkoutEngine: ObservableObject {
             ?? Date.now.addingTimeInterval(-Double(stats.elapsedSec))
 
         var phases = snapshot?.results ?? []
+        // OVERTIME-1 · THE BRANCH THAT LOST THE RUN.
+        //
+        // The `!snap.planComplete` guard below appends the phase that was in
+        // flight when the process died. When the plan HAD completed there was
+        // no such phase to append and this method simply moved on — which is
+        // correct only if nothing happens after the last prescribed phase.
+        // Something does: overtime, and the snapshot has been recording it in
+        // `phaseElapsedSec` the entire time, unread.
+        //
+        // So a plan-complete snapshot now appends its overtime the same way an
+        // in-flight one appends its live phase, through the same shaper the
+        // live path uses. `savedAtEpoch` is deliberately NOT used to extend
+        // the clock past the last snapshot: the engine credits only time it
+        // observed, which is the rule `resumeFromSnapshot` already states.
+        if let snap = snapshot, snap.planComplete, let w = workout {
+            let mi = max(0, (snap.totalDistanceMi ?? snap.phaseStartMi) - snap.phaseStartMi)
+            if let ot = overtimePhase(
+                afterPhaseCount: w.phases.count,
+                sec: max(0, snap.phaseElapsedSec),
+                mi: mi
+            ) {
+                phases.append(ot)
+            }
+        }
         if let snap = snapshot, !snap.planComplete,
            let w = workout, w.phases.indices.contains(snap.currentIndex) {
             // The phase in flight at the crash — duration as of the last
@@ -2853,7 +3079,14 @@ final class WorkoutEngine: ObservableObject {
         let phaseMaxHr = phases.compactMap { $0.maxHr }.max()
 
         let totalDist: Double? = {
+            // 1 · the live builder, when it survived. Ground truth.
             if let d = stats.distanceMi, d > 0.01 { return (d * 100).rounded() / 100 }
+            // 2 · OVERTIME-1 · the odometer the engine last saw. Strictly
+            // better than the phase sum: it is the whole run's distance as
+            // one reading, so it cannot be short by whatever the phases
+            // failed to account for. Only ever used when the builder is gone.
+            if let d = snapshot?.totalDistanceMi, d > 0.01 { return (d * 100).rounded() / 100 }
+            // 3 · sum what was banked.
             return phaseDistSum > 0.01 ? (phaseDistSum * 100).rounded() / 100 : nil
         }()
         let totalDur = stats.elapsedSec > 0 ? stats.elapsedSec : phaseDurSum
@@ -3003,6 +3236,14 @@ final class WorkoutEngine: ObservableObject {
         //
         // 2026-06-02: doctrine ships post Tier 2 RPE rescind audit. See
         // designs/briefs/watch-work-only-avg-hr-cadence-2026-06-02.md.
+        // OVERTIME-1 · the running after the plan ran out is a phase like any
+        // other from here down. Appended rather than pushed into `results` so
+        // the engine's own record of the PRESCRIBED session stays exactly what
+        // it was, and so a completion built twice cannot grow two tails.
+        let phasesOut = results + (overtimePhaseIfAny.map { [$0] } ?? [])
+        // Still `results`, deliberately: overtime is typed "overtime" and so
+        // could never enter this filter anyway, and saying `phasesOut` here
+        // would imply it might.
         let workPhases = results.filter { $0.type == "work" }
         let derivedAvgHr: Int? = {
             let weighted = workPhases.compactMap { p -> (Int, Int)? in
@@ -3069,7 +3310,7 @@ final class WorkoutEngine: ObservableObject {
             maxHr: maxHr > 0 ? maxHr : nil,
             avgCadence: derivedAvgCadence,
             kcal: kcal > 0 ? kcal : nil,
-            phases: results,
+            phases: phasesOut,
             routePolyline: routePolyline,
             elevGainFt: elevGainFt
         )

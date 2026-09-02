@@ -67,6 +67,20 @@ struct TodayHostV5: View {
                 content(model)
                     .id(model.dateISO)
                     .transition(.opacity)
+                    // STALEDAY-1 · never pass one day off as another.
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if let asked = otherDayOnScreen(model) {
+                            ErrorNote(
+                                text: "\(Self.dayName(asked)) did not load. "
+                                    + "You are looking at \(Self.dayName(model.dateISO)).",
+                                onRetry: { Task { await surface.load() } }
+                            )
+                            .padding(.horizontal, V5.S.gutter)
+                            .padding(.bottom, V5.S.s12)
+                            .background(V5.surfacePage)
+                            .transition(.opacity)
+                        }
+                    }
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -502,6 +516,73 @@ struct TodayHostV5: View {
     /// Not the date, then, but the tense. It keeps the header's promise that
     /// a screen called TODAY showing another day is a lie, without repeating
     /// what is already on screen twice.
+    // ─────────────────────────────────────────────────────────────────────
+    // STALEDAY-1 (2026-09-02) · A SCREEN MUST NEVER PASS ONE DAY OFF AS ANOTHER
+    //
+    // `V5Surface.load()` answers a failed read with `case .failed: stale =
+    // true` and deliberately leaves `model` alone. That is right, and
+    // SurfaceStoreV5's header argues it at length: a fetch that fails with a
+    // payload in hand means the screen is OLD, not wrong, and blanking it
+    // would be the worse answer.
+    //
+    // It is not merely old after a `rebind`. Tapping Tuesday the 1st moves
+    // `viewingDate` to the 1st and the strip's selection with it, at once,
+    // because a strip that waits on the network is the clunkiness David has
+    // rejected three separate times. If that read then FAILS, the header and
+    // the strip both say the 1st and every word below them is still Wednesday
+    // the 2nd's easy run. Nothing said so: `stale` is read only through
+    // `isOutage`, which requires `model == nil`, so with content in hand it
+    // lit exactly nothing. Reproduced on the simulator.
+    //
+    // This is the same lie the header's own doc comment already forbids —
+    // "a screen called TODAY showing another day without saying so is a lie"
+    // — arriving by a door that comment did not cover.
+    //
+    // THE FIX DOES NOT SLOW THE STRIP DOWN, which is what made a previous
+    // pass decline this. It does not drive the strip off `model.dateISO` and
+    // it makes nothing wait. It compares the day the runner ASKED for against
+    // the day the payload on screen is actually FOR — the payload's own
+    // `dateISO`, a fact, not a flag — and says so when they differ.
+    //
+    // `refreshing` is the whole reason this does not fire on every ordinary
+    // navigation: while the read is in flight the mismatch IS just a load,
+    // and the existing crossfade covers it. The note appears only once the
+    // read has come back and the day still has not changed.
+
+    /// The day the runner asked for, when the screen is showing a different
+    /// one and nothing is still in flight. Nil in the ordinary case.
+    private func otherDayOnScreen(_ model: V5Today) -> String? {
+        guard !surface.refreshing else { return nil }
+        // Home resolves through the payload's own today, never the device's —
+        // same reason `step` and `viewingDayLabel` do. A failed "back to
+        // today" is the identical lie and must light the identical note.
+        let asked = viewingDate ?? todayISO(model)
+        return asked == model.dateISO ? nil : asked
+    }
+
+    /// "Tuesday 1 September", for the one sentence that has to name two days
+    /// and cannot lean on the strip to disambiguate them.
+    private static let dayNameFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = .autoupdatingCurrent
+        // UTC, TO MATCH `Self.iso`. Caught by rendering it (Rule 13), not by
+        // reading it: `Self.iso` parses "2026-09-01" as UTC midnight, and a
+        // formatter left on the device's zone renders that instant as the
+        // evening of August 31 in any negative offset. On the simulator, in
+        // PDT, the note read "Monday, August 31 did not load. You are looking
+        // at Tuesday, September 1" on a screen showing Wednesday the 2nd —
+        // BOTH days off by one, on the one component whose entire job is to
+        // say which day you are actually looking at.
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.setLocalizedDateFormatFromTemplate("EEEEdMMMM")
+        return f
+    }()
+
+    private static func dayName(_ iso: String) -> String {
+        guard let d = Self.iso.date(from: iso) else { return iso }
+        return dayNameFormat.string(from: d)
+    }
+
     private var viewingDayLabel: String? {
         guard let viewingDate, let d = Self.iso.date(from: viewingDate) else { return nil }
         // Compared against the payload's own today, never the device's.
