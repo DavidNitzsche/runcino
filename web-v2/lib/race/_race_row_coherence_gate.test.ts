@@ -78,7 +78,16 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
  */
 function coherentWrite(row: RaceRowContractView, o: RaceOutlook) {
   const w = raceRowWrite({ row, outlook: o });
-  expect('refused' in w ? (w as { refused: string }).refused : 'coherent').toBe('coherent');
+  // The CODES only. The full refusal reads "CONTRACT_INCOHERENT · CODE: detail
+  // · CODE: detail", and vitest truncates a quoted value at about forty
+  // characters — so the prefix alone would fill the message and the class
+  // would be cut off, which is the same "reports nothing useful" failure one
+  // level down.
+  const verdict = 'refused' in w
+    ? ((w as { refused: string }).refused.match(/\b[A-Z][A-Z_]{5,}\b/g) ?? ['REFUSED'])
+        .filter((c) => c !== 'CONTRACT_INCOHERENT').join(',')
+    : 'coherent';
+  expect(verdict).toBe('coherent');
   return w as Exclude<typeof w, { refused: string }>;
 }
 
