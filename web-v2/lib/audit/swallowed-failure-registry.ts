@@ -510,7 +510,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/plan/goal-gap.ts::computeGoalGap',
   'lib/plan/goal-gap.ts::computeGoalGap',
   'lib/plan/goal-gap.ts::loadGoalAssessment',
-  'lib/plan/goal-gap.ts::loadLimiterForGoal',
   'lib/plan/goal-outlook.ts::writeGoalOutlookNote',
   'lib/plan/goal-outlook.ts::writeGoalOutlookNote',
   'lib/plan/goal-outlook.ts::writeGoalOutlookNote',
@@ -540,7 +539,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/plan/workout-proposals.ts::writeWorkoutProposals',
   'lib/race/auto-result.ts::detectAndLogProvisionalResults',
   'lib/race/auto-result.ts::detectAndLogProvisionalResults',
-  'lib/race/effective-race-target.ts::loadEffectiveRaceTarget',
   'lib/race/personal-records.ts::loadPersonalRecords',
   'lib/race/personal-records.ts::loadPersonalRecords',
   'lib/race/representativeness-inputs.ts::assessRaceRepresentativeness',
@@ -627,7 +625,12 @@ export const EMPTIED_KNOWN: readonly string[] = [
  * `EMPTIED_KNOWN.length` by `_swallow_scan.test.ts`, so the shell-readable
  * figure cannot drift away from the list it summarises.
  */
-export const EMPTIED_BASELINE = 374;
+// 2026-09-01 · P0 race-pace brain · 374 → 372: goal-gap's own race-performance
+// read is gone (the limiter reads the canonical durability curve) and the
+// projection-snapshot read in effective-race-target.ts is gone (it is an
+// adapter over the race outlook now). Neither site was fixed in place; both
+// were deleted with the second truth they served.
+export const EMPTIED_BASELINE = 372;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

@@ -233,7 +233,7 @@ export interface ReadinessBrief {
    *  Null when the runner has no active plan + goal (cold start). */
   gapReport: {
     headline: string;
-    trajectorySec: number;
+    expectedRaceDaySec: number;
     goalSec: number;
     gapSec: number;
     status: 'closing' | 'static' | 'widening' | 'unclosable';
@@ -1847,7 +1847,7 @@ async function loadGapReport(userId: string): Promise<ReadinessBrief['gapReport'
     if (!r) return null;
     return {
       headline: r.headline,
-      trajectorySec: r.trajectorySec,
+      expectedRaceDaySec: r.expectedRaceDaySec,
       goalSec: r.goalSec,
       gapSec: r.gapSec,
       status: r.status,

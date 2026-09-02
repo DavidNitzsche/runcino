@@ -290,6 +290,9 @@ export interface RecomputePacesResult {
    */
   measuredProgressFraction: null;
   workoutsUpdated: number;
+  /** 2026-09-01 · race rows refreshed through the dedicated race-row path. */
+  raceRowsUpdated: number;
+  raceRowsRefused: number;
   workoutsSealed: number;
   /**
    * weekIdx → the threshold pace that week was priced at, for audit surfaces.
@@ -388,10 +391,10 @@ export async function recomputePacesForPlan(
    *
    * Nothing below derives a TRAINING pace from any of them. Under the old
    * cascade `goalSec` reached `tPaceFromGoal` and shaped every quality session
-   * in the block; that path is gone, and `race` is in `RECOMPUTE_EXEMPT_TYPES`
-   * besides, so on today's engine no row reads them at all. They are threaded
-   * so that the day race rows come into scope they cannot come in anchored to
-   * something stale.
+   * in the block; that path is gone. `race` rows are excluded from the generic
+   * loop and refreshed by `lib/race/race-row-refresh.ts` (2026-09-01), which
+   * reads the race-pace brain, not these values. They are threaded so that the
+   * `buildWorkoutSpec` race branch has an authoring-time seed and nothing more.
    */
   const raceDistanceMi = Number(st.race_distance_mi ?? st.goal_distance_mi) || null;
   const goalPaceSec = st.goal_pace_s_per_mi != null ? Number(st.goal_pace_s_per_mi) : null;
@@ -578,6 +581,7 @@ export async function recomputePacesForPlan(
   const { subLabelFromSpec } = await import('@/lib/training/expand-spec');
 
   let updated = 0;
+  let raceRefresh = null as import('@/lib/race/race-row-refresh').RaceRowRefreshResult | null;
   let sealedCount = 0;
   const core = async (tx: { query: typeof pool.query }): Promise<void> => {
     for (const row of rows) {
@@ -608,9 +612,9 @@ export async function recomputePacesForPlan(
         false,              // effortCued · a recompute runs on measured evidence
                             // by definition, so the calibration intro is over
         // RACEPACE-1 · re-derived off the canonical threshold's VDOT, not
-        // carried forward. `RECOMPUTE_EXEMPT_TYPES` excludes `race`, so no row
-        // reads this today — it is threaded so that the day race rows come into
-        // scope they cannot come in still anchored to the authoring-time ceiling.
+        // carried forward. Race rows never reach this loop (they are refreshed
+        // by the dedicated race-row path below), so no row reads this; it is
+        // threaded so the builder's race branch has a coherent seed.
         prescribedRacePaceSec,
         // PRESCRIPTION-WIRE-1 · the six canonical anchors. This is the argument
         // that makes every derived pace below a READ rather than an offset.
@@ -635,6 +639,20 @@ export async function recomputePacesForPlan(
       );
       updated++;
     }
+    // 2026-09-01 · P0 · RACE ROWS ARE NOT PERMANENTLY EXEMPT. They are
+    // excluded from the generic loop above because a race pace is not a
+    // threshold offset — it is the race-pace brain's execution target — and
+    // then refreshed here through the dedicated canonical path, inside the
+    // same transaction, every time this recompute runs. The owner's CIM row
+    // sat at 7:16/mi for a whole block while every rehearsal moved; that
+    // was `race` in the exemption list and nothing on the other side of it.
+    const { refreshRaceRowsForPlan } = await import('@/lib/race/race-row-refresh');
+    raceRefresh = await refreshRaceRowsForPlan(planId, {
+      client: tx, todayISO: today, source: `recompute-paces/${opts?.source ?? 'standalone'}`,
+    }).catch((e) => {
+      console.error(`[recomputePacesForPlan] race-row refresh failed · plan=${planId}`, e);
+      return null;
+    });
     // Audit stamp · field-level jsonb merge (Rule 6 · never full-replace).
     await tx.query(
       `UPDATE training_plans
@@ -715,6 +733,8 @@ export async function recomputePacesForPlan(
     vdotNow,
     measuredProgressFraction: null,
     workoutsUpdated: updated,
+    raceRowsUpdated: raceRefresh?.updated ?? 0,
+    raceRowsRefused: raceRefresh?.refused ?? 0,
     workoutsSealed: sealedCount,
     weekT,
     anchors,

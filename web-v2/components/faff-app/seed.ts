@@ -913,22 +913,12 @@ function adaptGoalRace(glance: Glance | null, races: Races | null, profile: Prof
   let projected: string | null = null;
   let onTrack: boolean | null = null;
   let delta: string | null = null;
-  if (aRace && profile?.physiology.vdot && aRace.distance_mi) {
-    try {
-      const predicted = predictRaceTime(profile.physiology.vdot, aRace.distance_mi);
-      const goalSec = parseRaceTime(aRace.goal);
-      if (predicted) projected = formatRaceTime(predicted) ?? null;
-      if (predicted && goalSec) {
-        const diff = goalSec - predicted;
-        onTrack = diff >= -30; // 30s grace before flipping to behind
-        const m = Math.abs(Math.round(diff / 60));
-        const sec = Math.abs(Math.round(diff % 60));
-        delta = diff >= 0
-          ? (m > 0 ? `${m} min ahead` : `${sec} sec ahead`)
-          : (m > 0 ? `${m} min behind` : `${sec} sec behind`);
-      }
-    } catch { /* swallow */ }
-  }
+  // 2026-09-01 · P0 · this synchronous adapter no longer projects anything.
+  // "Projected" is the race-pace brain's expected race day, resolved in the
+  // async seed path below (`resolveRaceOutlookBySlug` →
+  // `raceProjectionFromOutlook`) and written onto the goal race there.
+  // A projection is a model of the runner and needs the runner's reads; an
+  // adapter over a glance row cannot honestly produce one.
   // Real phase label from plan_phases when training-state has it.
   // 2026-06-03 · use the CURRENT PHASE's own start/end span instead of
   // the plan's total weeks count. Old format "QUALITY phase · wk 1 / 11"
@@ -2619,8 +2609,14 @@ async function buildSeedInner(): Promise<FaffSeed> {
           vdotAnchorDateISO: projAnchorDate,
           vdotAnchorDistanceMi: projAnchorDist,
         });
-        // Override projection with plan-trusts-itself value.
-        goalRace.projected = formatGoalTime(gp.projectionSec) ?? goalRace.projected;
+        // 2026-09-01 · P0 · "Projected" is the race-pace brain's expected
+        // race day, mapped the same way every other surface maps it.
+        const { resolveRaceOutlookBySlug } = await import('@/lib/race/race-outlook');
+        const { raceProjectionFromOutlook } = await import('@/lib/training/race-projection');
+        const seedOutlook = await resolveRaceOutlookBySlug(userId, goalRace.slug).catch(() => null);
+        const seedProjection = raceProjectionFromOutlook(seedOutlook);
+        (goalRace as { projectedSec?: number | null }).projectedSec = seedProjection.projectedSec;
+        goalRace.projected = formatGoalTime(seedProjection.projectedSec ?? gp.projectionSec) ?? goalRace.projected;
         // Wire status + drift signals + raw VDOT projection so the
         // frontend can gate panels (only show "math is honest" when
         // OFF TRACK, etc).

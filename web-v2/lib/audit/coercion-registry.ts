@@ -546,8 +546,14 @@ export const HANDED_BACK_FAILS = false;
  * `PERIPHERAL_BASELINE` moves 182 → 181 (the site left the peripheral
  * bucket, it did not disappear — see the ratchet-cannot-be-traded-site-for-
  * site rule this file opens with).
+ *
+ * 2026-09-01 · P0 race-pace brain · 181 → 180. The brain's new modules were
+ * written without a single peripheral collapse (typed refusals, if/return
+ * guards, no blind `.catch`), and the migration removed one pre-existing
+ * site — `coach-goal-load.ts`'s `goalDistanceMi > 0 ? … : null` ternary,
+ * which guarded a value already positive-or-null by construction.
  */
-export const PERIPHERAL_BASELINE = 181;
+export const PERIPHERAL_BASELINE = 180;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
@@ -600,7 +606,7 @@ export const SCAN_FLOORS = {
  *
  * 2026-09-01 · a second argued exception, same shape as the first: two new
  * `lib/plan/goal-gap.ts::computeGoalGap::catch` entries. `computeGoalGap`
- * now resolves its `trajectorySec` through the canonical `resolveRaceProjection`
+ * now resolves its `expectedRaceDaySec` through the canonical `resolveRaceProjection`
  * (docs/reports/race-prediction-consolidation-2026-09-01.md), which means it
  * now reads a VDOT anchor and calls `computeGoalProjection` itself — the
  * EXACT two calls, with the EXACT same inline fallback shapes
@@ -610,7 +616,7 @@ export const SCAN_FLOORS = {
  * cold-start / "could not resolve" rather than throw). Both new sites fail
  * CLOSED, not silently confident: a failed anchor read zeroes `vdot`, which
  * starves `resolveRaceProjection` down to its own null return, and
- * `trajectorySec` then falls back to the pre-existing, independently-read
+ * `expectedRaceDaySec` then falls back to the pre-existing, independently-read
  * raw snapshot value with `trajectoryBasis: null` — never a fabricated
  * number, and the honest "could not resolve" fact survives in
  * `trajectoryBasis`. Arguing them differently from goal-outlook.ts's
@@ -724,15 +730,14 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/goal-gap.ts::computeGoalGap::catch',
   'lib/plan/goal-gap.ts::computeGoalGap::catch',
   'lib/plan/goal-gap.ts::computeGoalGap::catch',
-  // 2026-09-01 · the two new sites from computeGoalGap resolving
-  // trajectorySec through resolveRaceProjection — see the note above this
-  // array's declaration.
-  'lib/plan/goal-gap.ts::computeGoalGap::catch',
-  'lib/plan/goal-gap.ts::computeGoalGap::catch',
+  // 2026-09-01 · P0 race-pace brain: the two computeGoalGap sites that read a
+  // VDOT anchor and called computeGoalProjection are GONE (goal-gap now
+  // resolves the race outlook through resolveOutlookForGap, which returns
+  // null on a thrown read — the same posture as the lines it replaced, and
+  // `trajectoryBasis: null` tells the caller apart), as are goal-outlook's two and
+  // loadLimiterForGoal's performances.length (the limiter reads the canonical
+  // durability curve, no list to be empty).
   'lib/plan/goal-gap.ts::loadGoalAssessment::catch',
-  'lib/plan/goal-gap.ts::loadLimiterForGoal::performances.length',
-  'lib/plan/goal-outlook.ts::resolveGoalOutlookProjection::catch',
-  'lib/plan/goal-outlook.ts::resolveGoalOutlookProjection::catch',
   'lib/plan/history-shapes.ts::inflatedQualityPerWeek::v',
   'lib/plan/history-shapes.ts::renderHistory::easyMedianOf',
   'lib/plan/injury-builder.ts::buildInjuryPlan::catch',
@@ -770,7 +775,15 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/training/goal-projection.ts::computeGoalProjection::catch',
   'lib/training/goal-projection.ts::computeGoalProjection::catch',
   'lib/training/goal-projection.ts::computeGoalProjection::catch',
-  'lib/training/goal-projection.ts::computeGoalProjection::catch',
+  // 2026-09-01 · P0 · the SAME sites, moved by name: computeGoalProjection's
+  // marathon-block read now lives in computeCurrentEquivalence, and its three
+  // execution-signal reads (test points, over-performance bonus, missed-key
+  // drift) in resolveExecutionSignal, so the race outlook can call each half
+  // on its own. Nothing new collapses; the ids follow the enclosing symbol.
+  'lib/training/goal-projection.ts::computeCurrentEquivalence::catch',
+  'lib/training/goal-projection.ts::resolveExecutionSignal::catch',
+  'lib/training/goal-projection.ts::resolveExecutionSignal::catch',
+  'lib/training/goal-projection.ts::resolveExecutionSignal::catch',
   'lib/training/goal-projection.ts::detectAerobicDecouplingDrift::catch',
   'lib/training/goal-projection.ts::paceStrToSec::s',
   'lib/training/lthr-reanchor-store.ts::reanchorLthr::catch',

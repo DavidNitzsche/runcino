@@ -138,20 +138,21 @@ describe('projectFitnessTrajectory · runway cap scales with executionQuality', 
 // ── 3 · reachable/verdict from unrounded internals (no rounding flip) ─────────
 describe('projectFitnessTrajectory · reachable uses unrounded internals', () => {
   it('a gap that 0.1-rounds INTO the grace does not flip reachable to true', () => {
-    // Construct a knife-edge: the plan ceiling caps the gain at exactly 0.76
-    // (currentVdot 44 → plannedTargetVdot 44.76), goal VDOT 45. The honest,
-    // UNROUNDED gap is 45 - 44.76 = 0.24 (> the 0.2 grace → NOT reachable). But
-    // the 0.1-rounded projected VDOT (44.8) yields a rounded gap of 0.2, which a
-    // naive `roundedGap <= grace` check would read as reachable. Long runway +
-    // clean exec so neither runway nor execution is the limiter — the plan
-    // ceiling is, isolating the rounding behavior.
+    // Construct a knife-edge: the expected gain lands at exactly 0.76
+    // (currentVdot 44 → 44.76), goal VDOT 45. The honest, UNROUNDED gap is
+    // 45 - 44.76 = 0.24 (> the 0.2 grace → NOT reachable). But the 0.1-rounded
+    // projected VDOT (44.8) yields a rounded gap of 0.2, which a naive
+    // `roundedGap <= grace` check would read as reachable.
+    // 2026-09-01 · the gain is goal-free and sized from the runway scaled by
+    // execution (a plan ceiling no longer caps it), so the 0.76 is pinned by
+    // choosing the execution quality that yields it: 18 build weeks × rate × q.
+    const buildWeeks = 20 - taperWeeksForDistance(HM_MI);
     const traj = projectFitnessTrajectory({
       currentVdot: 44,
       goalSec: secForVdot(45, HM_MI),
       raceDistanceMi: HM_MI,
-      weeksToRace: 20, // buildWeeks 18, runway cap 6.3 — does not bind
-      executionQuality: 1.0,
-      plannedTargetVdot: 44.76, // plan ceiling caps the gain at 0.76 exactly
+      weeksToRace: 20,
+      executionQuality: 0.76 / (buildWeeks * BASE_BUILD_RATE),
     })!;
 
     // The 0.1-rounded gap (reconstructed from the rounded projectedVdot field)
@@ -162,8 +163,7 @@ describe('projectFitnessTrajectory · reachable uses unrounded internals', () =>
     // ...yet the honest (unrounded) verdict does NOT flip to reachable.
     expect(traj.reachable).toBe(false);
 
-    // Sanity: the gain really was pinned by the plan ceiling, not the runway.
-    expect(traj.runwayLimited).toBe(false);
+    // Sanity: the gain landed where it was pinned.
     expect(traj.projectedGainVdot).toBeCloseTo(0.76, 1);
   });
 });

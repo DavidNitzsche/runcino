@@ -12,7 +12,21 @@
  *   4. certification / registered render nothing when unknown
  */
 import { describe, it, expect } from 'vitest';
-import { resolveEffectiveRaceTarget, roundTargetSec } from './effective-race-target';
+import { effectiveTargetFromOutlook, roundTargetSec, type EffectiveRaceTarget } from './effective-race-target';
+import type { RaceOutlook } from './race-outlook';
+
+/** A minimal outlook whose execution target is `targetSec`, for the pacing composer. */
+function resolveEffectiveRaceTarget(goalSec: number, projectionSec: number | null): EffectiveRaceTarget {
+  if (projectionSec == null) return effectiveTargetFromOutlook(goalSec, null);
+  const edge = Math.ceil((projectionSec * 0.95) / 10) * 10; // the band edge, cleaned upward
+  const within = goalSec >= edge;
+  const fake = {
+    execution: { targetSec: within ? goalSec : edge, source: within ? 'stated_goal_within_range' : 'stated_goal_clamped_to_range_edge' },
+    expectedRaceDay: { expectedSec: projectionSec },
+    todayISO: '2026-09-01',
+  } as unknown as RaceOutlook;
+  return effectiveTargetFromOutlook(goalSec, fake);
+}
 import {
   composeRaceDetailPacing,
   certificationFromMeta,

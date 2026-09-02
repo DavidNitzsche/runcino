@@ -156,8 +156,7 @@ import {
   REGRESSION_DELTA_THRESHOLD,
 } from '@/lib/plan/adapt';
 import {
-  MAX_GOAL_OPTIMISM_FRACTION,
-  resolveEffectiveRaceTarget,
+  effectiveTargetFromOutlook,
 } from '@/lib/race/effective-race-target';
 import { maxSeasonalVdotGain } from '@/lib/plan/recompute-paces';
 import {
@@ -483,9 +482,9 @@ import {
   HARD_DAY_GAP_DAYS,
   INCOMPLETE_RECOVERY_WORKOUTS,
   LEVERS,
-  fitRiegelExponent,
   type Limiter,
 } from '@/lib/coach/limiter';
+import { fitRaceExponent } from '@/lib/training/durability-anchor';
 // ── Rule 7 · 2026-08-19 · constants that asserted physiology and cited a line
 // number, or cited nothing at all. See the claim block at the end of the file.
 import {
@@ -1157,6 +1156,70 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         '3 days, 1 overshoots the ceiling by 2. The engine takes 0 because over-resting a 5K ' +
         'runner costs a whole training week, and the sub-week protocol is carried by the ' +
         'day-level recovery composer rather than the plan-mode gate.',
+    },
+  },
+  {
+    id: 'CONVENTION.threshold-evidence-authority-model',
+    binds: [
+      'lib/training/pace-corpus.ts#THRESHOLD_SESSION_DURATION_RAMP_SEC',
+      'lib/training/pace-corpus.ts#THRESHOLD_HR_ABSENT_AUTHORITY',
+      'lib/training/pace-corpus.ts#THRESHOLD_HR_OUT_OF_BAND_FADE_HALF_WIDTHS',
+      'lib/training/pace-corpus.ts#PRESCRIBED_WINDOW_AUTHORITY',
+      'lib/training/pace-corpus.ts#EVIDENCE_ENGINE_INDETERMINATE_AUTHORITY',
+      'lib/training/pace-corpus.ts#EVIDENCE_ENGINE_UNAVAILABLE_AUTHORITY',
+      'lib/training/pace-corpus.ts#THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI',
+      'lib/training/pace-corpus.ts#classifyThresholdCandidatesDetailed',
+      'lib/training/pace-corpus.ts#thresholdPaceCorpus',
+      'lib/evidence/reexamination.ts#accumulateReexamination',
+    ],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| T (Threshold) |',
+    claim:
+      'The threshold pace corpus consumes the Evidence Engine and weights each observation (2026-09-01 ' +
+      'evidence contract): HR inside doctrine\'s T band is full authority, HR further out fades to ' +
+      'zero, an absent HR is reduced, a session under the doctrine floor ramps in rather than ' +
+      'vanishing, a prescribed-window session is reduced and non-representative, and one session\'s ' +
+      'arrival may move the corroborated level by at most a fixed amount per elapsed day. Every one ' +
+      'of those numbers is a CONVENTION for model stability, labelled as such in the source; the ' +
+      'doctrine grounds only the BAND (Research/03 §8) and the DIRECTION ("one run rarely rewrites ' +
+      'the runner"). The corpus may not stop reading the Evidence Engine, and repeated evidence that ' +
+      'the runner is SLOWER may never lower the corroboration bar for a faster belief.',
+    check() {
+      const src = sourceOf('web-v2/lib/training/pace-corpus.ts');
+      const lit = (name: string): number => {
+        const m = src.match(new RegExp(`export const ${name} = ([0-9.*\\s]+);`));
+        if (!m) throw new Error(`${name} is gone or no longer a literal`);
+        // eslint-disable-next-line no-new-func
+        return Number(new Function(`return (${m[1]});`)());
+      };
+      const ramp = lit('THRESHOLD_SESSION_DURATION_RAMP_SEC');
+      const floor = lit('THRESHOLD_MIN_SESSION_TOTAL_SEC');
+      if (!(ramp > 0 && ramp < floor)) throw new Error(`the duration ramp (${ramp}s) must sit strictly inside the doctrine floor (${floor}s)`);
+      for (const name of ['THRESHOLD_HR_ABSENT_AUTHORITY', 'PRESCRIBED_WINDOW_AUTHORITY',
+        'EVIDENCE_ENGINE_INDETERMINATE_AUTHORITY', 'EVIDENCE_ENGINE_UNAVAILABLE_AUTHORITY']) {
+        const v = lit(name);
+        if (!(v > 0 && v < 1)) throw new Error(`${name} is ${v} · a reduced authority must be strictly between 0 and 1, never full and never an exclusion`);
+      }
+      const fade = lit('THRESHOLD_HR_OUT_OF_BAND_FADE_HALF_WIDTHS');
+      if (!(fade > 0 && fade <= 2)) throw new Error(`the HR fade width (${fade} half-widths) must be positive and no wider than two band-widths`);
+      const cap = lit('THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI');
+      if (!(cap >= 2 && cap <= 15)) throw new Error(`the daily move cap (${cap} s/mi) must be a real bound: at least noise, well under a zone`);
+      if (!/CONVENTION for model stability/.test(src)) {
+        throw new Error('pace-corpus.ts no longer labels the authority numbers as conventions');
+      }
+      // The contract itself: the corpus reads the Evidence Engine and the
+      // classifier reads its verdict. Delete either and this fails.
+      if (!/classifyRecentActivities\(userId, cutoff, today\)/.test(src)) {
+        throw new Error('the threshold corpus no longer reads the Evidence Engine (classifyRecentActivities)');
+      }
+      if (!/evidenceKind === 'no_evidence'/.test(src) || !/reason: 'EVIDENCE_ENGINE_NO_THRESHOLD_EVIDENCE'/.test(src)) {
+        throw new Error('the classifier no longer excludes a run the Evidence Engine classified as demonstrating no threshold capacity');
+      }
+      if (!/p\.completed !== false/.test(src)) throw new Error('the phases reader no longer refuses abandoned work phases');
+      const reex = sourceOf('web-v2/lib/evidence/reexamination.ts');
+      if (!/direction === 'weaker'/.test(reex) || !/WEAKER_TENSION_DOES_NOT_RELAX_THE_BAR/.test(reex)) {
+        throw new Error('accumulateReexamination no longer refuses to relax the bar on weaker-direction tension');
+      }
     },
   },
   {
@@ -9629,7 +9692,9 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // 5 · Scope. Only the generic quality families lose their pace. Race day
       // and the race-week tune-up are priced off the runner's STATED GOAL, not
       // off the provisional fitness anchor, so neither carries the fabrication
-      // — and both are already exempt from the evidence-time pace recompute for
+      // — and both are priced by the race-pace brain's own refresh path
+      // (lib/race/race-row-refresh.ts, 2026-09-01), never by the generic
+      // evidence-time recompute loop, for
       // the same reason.
       for (const t of ['threshold', 'intervals', 'tempo']) {
         if (!EFFORT_CUED_TYPES.has(t)) {
@@ -9690,7 +9755,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   // ══ LIMITER · what is actually preventing the goal ════════════════════════
   {
     id: 'LIMITER.curve-shape-neutral-band',
-    binds: ['lib/coach/limiter.ts#CURVE_NEUTRAL_EXPONENT_BAND', 'lib/coach/limiter.ts#fitRiegelExponent'],
+    binds: ['lib/coach/limiter.ts#CURVE_NEUTRAL_EXPONENT_BAND', 'lib/training/durability-anchor.ts#fitRaceExponent'],
     doc: 'Research/02-race-time-prediction.md',
     anchor: '| Type | Diagnostic ratio | Riegel-equivalent exponent |',
     claim:
@@ -9731,13 +9796,20 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         );
       }
       // And the fit itself is doctrine's, not an invention: a runner whose long
-      // race is disproportionately slow must land above the band.
-      const speedy = fitRiegelExponent(
-        { distanceMi: 3.1, finishSeconds: 1200, ageDays: 0 },
-        { distanceMi: 26.2, finishSeconds: 12600, ageDays: 0 },
-      );
+      // race is disproportionately slow must land above the band. 2026-09-01:
+      // the ONE fit is the durability anchor's (`fitRaceExponent`); limiter.ts
+      // reads its raw exponent and carries no fit of its own.
+      const speedyRead = fitRaceExponent([
+        { slug: 'five', date: '2026-08-01', distanceMi: 3.1, finishSec: 1200, priority: 'A', weight: 1 },
+        { slug: 'mara', date: '2026-08-15', distanceMi: 26.2, finishSec: 12600, priority: 'A', weight: 1 },
+      ], { today: '2026-09-01' });
+      const speedy = speedyRead.ok ? speedyRead.rawFittedExponent : null;
       if (speedy == null || speedy <= combo[1]) {
-        throw new Error(`fitRiegelExponent does not put a 20:00 5K against a 3:30 marathon above the Combo band (got ${speedy})`);
+        throw new Error(`fitRaceExponent does not put a 20:00 5K against a 3:30 marathon above the Combo band (got ${speedy})`);
+      }
+      const lim = sourceOf('web-v2/lib/coach/limiter.ts');
+      if (/fitRiegelExponent|pickCurvePair/.test(lim)) {
+        throw new Error('limiter.ts has grown its own exponent fit again · the durability anchor is the one owner');
       }
     },
   },
@@ -15294,6 +15366,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'lib/plan/simulator.ts#simulate.confidence',
       'lib/plan/simulator.ts#simulate',
       'lib/plan/gap-report.ts#confidenceBand',
+      'lib/race/race-outlook.ts#composeRaceOutlook',
     ],
     doc: 'Research/02-race-time-prediction.md',
     anchor: '### 13.7 Confidence Intervals to Report with Predictions',
@@ -15386,10 +15459,16 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error('the confidence decay reaches zero · a projection worth nothing should not be published');
       }
 
-      // The band must still be what gap-report reads · a claim bound to a
-      // number nothing consumes guards nothing.
-      if (!/finalProjection\.p25Sec/.test(sourceOf('web-v2/lib/plan/gap-report.ts'))) {
-        throw new Error('gap-report.ts no longer reads the simulator band · re-point this claim at whatever sets the A/B/C goals');
+      // 2026-09-01 · P0 · the A/B/C a runner is shown now come from the
+      // race-outlook's likely race-day range, not the simulator's p25/p75.
+      // The simulator band is diagnostics; the claim keeps watching its
+      // sigma, and ALSO pins that gap-report reads the outlook range.
+      const gr = sourceOf('web-v2/lib/plan/gap-report.ts');
+      if (/finalProjection\.p25Sec/.test(gr)) {
+        throw new Error('gap-report.ts reads the simulator band for A/B/C again · the race-outlook likely range is the one owner');
+      }
+      if (!/likelyRangeSec/.test(gr)) {
+        throw new Error('gap-report.ts no longer reads the race-outlook likely range · re-point this claim at whatever sets the A/B/C goals');
       }
     },
     exempt: {
@@ -17110,7 +17189,8 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     binds: [
       'lib/training/achievable-target.ts#GOAL_OPTIMISM_TOLERANCE',
       'lib/training/achievable-target.ts#achievableRaceTarget',
-      'lib/race/effective-race-target.ts#MAX_GOAL_OPTIMISM_FRACTION',
+      'lib/race/race-outlook.ts#composeRaceOutlook',
+      'lib/race/effective-race-target.ts#effectiveTargetFromOutlook',
     ],
     doc: 'Research/20-mental-training.md',
     anchor: '### SMART criteria',
@@ -17144,14 +17224,22 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           `GOAL_OPTIMISM_TOLERANCE = ${GOAL_OPTIMISM_TOLERANCE}, doctrine's achievability band is ${tolerance}`,
         );
       }
-      // ONE number across both moments. This module cannot import the other
-      // (it must stay free of `pg` for client bundles), so the claim is what
-      // pins them — the same posture as TAPER.trajectory-build-weeks.
-      if (!near(MAX_GOAL_OPTIMISM_FRACTION, GOAL_OPTIMISM_TOLERANCE)) {
-        throw new Error(
-          `authoring bounds a prescribed target at ${GOAL_OPTIMISM_TOLERANCE} and execution at ` +
-            `${MAX_GOAL_OPTIMISM_FRACTION} · one runner, one race, two rules`,
-        );
+      // 2026-09-01 · P0 · ONE brain at the execution moment. The race-outlook
+      // reads the SAME tolerance (feasibility's "aggressive" band) and clamps
+      // a stated goal to the likely range's FAST EDGE — never past it, never
+      // back to the unreduced expectation. Execution surfaces consume the
+      // outlook through `effectiveTargetFromOutlook`; none may read a
+      // projection snapshot of its own any more.
+      const ro = sourceOf('web-v2/lib/race/race-outlook.ts');
+      if (!/GOAL_OPTIMISM_TOLERANCE/.test(ro)) {
+        throw new Error('race-outlook.ts no longer reads GOAL_OPTIMISM_TOLERANCE for feasibility · two tolerances again');
+      }
+      if (!/targetSec = roundRaceTargetSec\(likelyRangeSec\[0\]\)/.test(ro)) {
+        throw new Error('race-outlook.ts no longer clamps a beyond-range goal to the likely range\'s fast edge');
+      }
+      const et = sourceOf('web-v2/lib/race/effective-race-target.ts');
+      if (/projection_snapshots/.test(et.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '').replace(/^\s*\*.*$/gm, ''))) {
+        throw new Error('effective-race-target.ts reads projection_snapshots again · a second fitness read at the execution moment');
       }
 
       // ONE ceiling under threshold and race pace. The defect this replaces was
@@ -17219,15 +17307,16 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
             `${edge.toFixed(0)} s · the bound has stopped bounding`,
         );
       }
-      // The same, at the execution moment. One runner, one race, one formula.
-      const raced = resolveEffectiveRaceTarget(Math.round(12120 * 0.5), 12120);
-      const racedEdge = 12120 * (1 - tolerance);
-      if (raced.targetSec > racedEdge + 10 || raced.targetSec < racedEdge) {
-        throw new Error(
-          `execution clamps a beyond-band goal to ${raced.targetSec} s but the band edge is ` +
-            `${racedEdge.toFixed(0)} s · authoring rehearses the block at the edge, so racing ` +
-            'anywhere else is the pace step onto a start line that RACEPACE-1 exists to close',
-        );
+      // The same, at the execution moment: the adapter must be a pure read of
+      // the outlook's execution target, not a second rule.
+      const fake = {
+        execution: { targetSec: 11520, source: 'stated_goal_clamped_to_range_edge' },
+        expectedRaceDay: { expectedSec: 12120 },
+        todayISO: '2026-09-01',
+      } as unknown as Parameters<typeof effectiveTargetFromOutlook>[1];
+      const raced = effectiveTargetFromOutlook(Math.round(12120 * 0.5), fake);
+      if (raced.targetSec !== 11520 || raced.source !== 'projection') {
+        throw new Error('effectiveTargetFromOutlook no longer passes the outlook\'s execution target through unchanged');
       }
     },
   },

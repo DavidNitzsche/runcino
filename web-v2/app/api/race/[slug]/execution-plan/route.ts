@@ -24,7 +24,7 @@ import { parseRaceTime } from '@/lib/training/vdot';
 import { composeRaceExecutionPlan } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { resolveEffectiveRaceTarget } from '@/lib/race/effective-race-target';
+import { loadEffectiveRaceTarget } from '@/lib/race/effective-race-target';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,7 +83,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       ).then((r) => r.rows[0] ?? null).catch(() => null),
     ]);
 
-    const vdot = snapRow?.vdot != null ? Number(snapRow.vdot) : null;
 
     // Resolve fuel: per-race meta (this race) overrides the runner-level
     // default (users.fuel_*). isDefault flags when BOTH are empty so the
@@ -95,24 +94,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     // status enters only as a multiplier and the plan is a race-morning
     // artifact, not a drift gauge. on-track multiplier = the tightest
     // honest band; the note is context, not a promise.
-    let ci: { loSec: number; hiSec: number } | null = null;
-    if (snapRow?.projection_sec != null && snapRow.projection_sec > 0) {
-      const { computeConfidenceInterval } = await import('@/lib/training/goal-projection');
-      const band = computeConfidenceInterval({
-        centerSec: snapRow.projection_sec,
-        raceDistanceMi: distanceMi,
-        status: 'on-track',
-      });
-      if (band) ci = { loSec: band.lo, hiSec: band.hi };
-    }
-
-    // 2026-08-17 · coaching-loop reconciliation · pace off the EFFECTIVE
-    // target, not the raw goal. When the stated goal runs >5% faster than
-    // the latest projection, the splits/warm-up/triggers build on the
-    // projection (rounded) and the goal rides along as the stretch — the
-    // ambition stays on the board, the pacing stays runnable (Research/08
-    // §18.2: chasing an unrecoverable early deficit is the blow-up).
-    const effective = resolveEffectiveRaceTarget(goalSec, snapRow?.projection_sec ?? null);
+    // 2026-09-01 · P0 · THE race-pace brain. The execution target, the
+    // likely range the CI note frames, and the fitness figure all come off
+    // one resolved outlook for THIS race — not a projection snapshot the
+    // watch and the race page could each have read differently.
+    const effective = await loadEffectiveRaceTarget(userId, goalSec, distanceMi, { slug });
+    const range = effective.outlook?.expectedRaceDay.likelyRangeSec ?? null;
+    const ci: { loSec: number; hiSec: number } | null = range ? { loSec: range[0], hiSec: range[1] } : null;
+    const vdot = effective.outlook?.capacity.thresholdVdot ?? (snapRow?.vdot != null ? Number(snapRow.vdot) : null);
     // B-goal plumbing: the parsed B stays the slower backup. When the
     // stated goal was demoted to stretch, a B faster than the effective
     // target is no longer a fallback — the effective target already IS

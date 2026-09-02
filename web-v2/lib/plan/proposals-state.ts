@@ -424,7 +424,7 @@ function synthesizeMessage(
   // from the row's STRUCTURED fields instead.
   //
   // A retired row is composed with `projectedSec: null` on purpose: its
-  // `trajectory_sec` is the projection SNAPSHOT (today's equivalence), not the
+  // `expected_race_day_sec` is the projection SNAPSHOT (today's equivalence), not the
   // forward trajectory every other surface prints under the same word, and
   // reprinting it would re-open the Rule 16 defect. It states the situation
   // without a figure; the figure sits beside it, resolver-sourced.

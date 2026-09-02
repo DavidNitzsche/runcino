@@ -49,16 +49,25 @@ describe('P1-56 · projectFitnessTrajectory — below-table (honest slow) goal',
     })!;
     expect(traj.gapSec).not.toBeNull();
     expect(traj.gapSec!).toBeLessThan(0); // projected time is faster than the slow goal
-    // Sanity: gapSec should be close to (predictRaceTime(45, marathon) - SLOW_GOAL_SEC).
-    const expectedGap = (predictRaceTime(45, MARATHON_MI) ?? 0) - SLOW_GOAL_SEC;
-    expect(Math.abs(traj.gapSec! - expectedGap)).toBeLessThan(120); // within 2 min (execution/overperf noise)
+    // 2026-09-01 · the gain is GOAL-FREE (projectExpectedGain), so the projected
+    // time is predictRaceTime(current + gain), not predictRaceTime(current).
+    const expectedGap = (predictRaceTime(45 + traj.projectedGainVdot, MARATHON_MI) ?? 0) - SLOW_GOAL_SEC;
+    expect(Math.abs(traj.gapSec! - expectedGap)).toBeLessThan(120);
   });
 
-  it('projectedGainVdot is ~0 (no gain needed to hit an already-exceeded goal)', () => {
-    const traj = projectFitnessTrajectory({
+  it('2026-09-01 · the projected gain does NOT read the goal: a soft, already-exceeded goal earns the same gain as an ambitious one', () => {
+    // Falsified against the pre-P0 trajectory, which sized the gain as
+    // (goalVdot − currentVdot) × execution and therefore returned ~0 here —
+    // the goal used as evidence about improvement, which the P0 order forbids.
+    const soft = projectFitnessTrajectory({
       currentVdot: 45, goalSec: SLOW_GOAL_SEC, raceDistanceMi: MARATHON_MI, weeksToRace: 12,
     })!;
-    expect(traj.projectedGainVdot).toBeCloseTo(0, 1);
+    const ambitious = projectFitnessTrajectory({
+      currentVdot: 45, goalSec: 3 * 3600, raceDistanceMi: MARATHON_MI, weeksToRace: 12,
+    })!;
+    expect(soft.projectedGainVdot).toBeGreaterThan(0);
+    expect(soft.projectedGainVdot).toBeCloseTo(ambitious.projectedGainVdot, 6);
+    expect(soft.aheadOfGoal).toBe(true);
   });
 
   it('an off-the-top goal (impossibly fast, VDOT>85) still returns null — GOAL-4 in generate.ts is the doctrine-designated gate for that, this function trusts its caller', () => {

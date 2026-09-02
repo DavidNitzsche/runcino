@@ -52,7 +52,7 @@ function base(): LimiterInput {
     goalPaceSecPerMi: 412,
     experienceLevel: 'advanced',
     blockProgressFraction: null,
-    performances: null,
+    curve: null,
     fadeObservations: null,
     thresholdPaceStartSecPerMi: null,
     thresholdPaceNowSecPerMi: null,

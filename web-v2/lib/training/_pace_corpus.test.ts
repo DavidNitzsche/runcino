@@ -36,6 +36,7 @@ import {
   type PaceObservation,
   type CandidateRow,
   type HrContext,
+  fullAuthority,
 } from '@/lib/training/pace-corpus';
 import { vdotFromRun, tPaceFromVdot } from '@/lib/training/vdot';
 import type { PhaseBreakdown } from '@/lib/coach/run-state';
@@ -49,6 +50,7 @@ const ctxHrMaxOnly: HrContext = { maxHrBpm: MAX_HR, lthrBpm: null, lthrFresh: fa
 
 function obs(over: Partial<PaceObservation> & { id: string }): PaceObservation {
   return {
+    ...fullAuthority(),
     date: '2026-08-01',
     paceSecPerMi: 480,
     durationSec: 1800,

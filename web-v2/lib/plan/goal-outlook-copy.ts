@@ -19,7 +19,7 @@
  *
  * ── AND WHY A RETIRED ROW SHOWS NO NUMBER ──────────────────────────────────
  *
- * A `goal_renegotiation` row carries `trajectory_sec`, which sounds like the
+ * A `goal_renegotiation` row carries `expected_race_day_sec`, which sounds like the
  * projection and is not: it is the projection SNAPSHOT, today's current-fitness
  * equivalence (3:31:48 on the owner's CIM row), while every other surface shows
  * the forward trajectory (3:22:17) under the same word. Reprinting it would

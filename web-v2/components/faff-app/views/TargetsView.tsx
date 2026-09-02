@@ -52,7 +52,6 @@ import { resolveGoalStatus, formatGapClock, type GoalStatusRead } from '@/lib/fa
 import { resolveRaceRole, resolveProvenance } from '@/lib/faff/race-roles';
 import { personalGoalHorizon, personalGoalTypeLabel } from '@/lib/faff/personal-goal-copy';
 import { StatusChip } from '../StatusChip';
-import { resolveRaceProjection } from '@/lib/training/race-projection';
 import { isGoalOutlookKind } from '@/lib/plan/goal-immutability';
 import { Modelled } from '../Modelled';
 
@@ -123,14 +122,10 @@ export function TargetsView({
   // construction, which is the state that put 3:22:17, 3:31:48 and 3:42:23 on
   // three screens under one word. It now calls the resolver, like the Races
   // list and the race detail route do.
-  const { projectedSec } = resolveRaceProjection({
-    goalProjection: {
-      trajectory: traj ? { projectedSec: traj.projectedSec ?? null } : null,
-      vdotProjectionSec: goal.vdotProjectionSec ?? null,
-    },
-    vdot: null,
-    distanceMi: goal.distanceMi ?? null,
-  });
+  // 2026-09-01 · P0 · the seed resolves this through the race-pace brain
+  // (`resolveRaceOutlookBySlug` → `raceProjectionFromOutlook`); this client
+  // component only reads it. No precedence lives here.
+  const projectedSec = (goal as { projectedSec?: number | null }).projectedSec ?? null;
 
   // THE single status read. Every chip on this page comes from here.
   const status = resolveGoalStatus({

@@ -500,7 +500,7 @@ export interface CoachGoalTargets {
   /** +5 when Research/02 §13.1's specificity adjustment moved B · else null. */
   specificityAdjustedPct: number | null;
   /** How B was predicted. */
-  method: 'daniels-vdot' | 'personal-exponent';
+  method: 'daniels-vdot' | 'personal-exponent' | 'race-outlook';
   /** The fitted exponent when method === 'personal-exponent'. Sourced from
    *  `durability-anchor.ts#fitRaceExponent` (`RaceExponentRead.value`) —
    *  2026-09-01, see `projectWithDurabilityExponent`. */
@@ -569,6 +569,13 @@ export interface CoachGoalInput {
    *  section of this file's header for why. `ok: false` (or absent) falls
    *  through to the Daniels-vdot method, same as an absent fit used to. */
   durabilityExponent?: RaceExponentRead | null;
+  /**
+   * 2026-09-01 · P0 · THE race-pace brain's answer for this race, when the
+   * loader could resolve it. When present, B is the expected race-day result
+   * and A/C are the likely range's edges — one owner for every projection-
+   * shaped number. The equivalence branches below run only when this is null.
+   */
+  outlook?: { expectedSec: number; likelyRangeSec: readonly [number, number]; thresholdVdot: number | null } | null;
   todayISO: string;
 }
 
@@ -649,7 +656,13 @@ export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null 
   let personalExponent: number | null = null;
   let personalExponentConfidence: number | null = null;
   let anchorDistanceMi = input.vdotAnchorDistanceMi ?? null;
-  if (input.durabilityExponent) {
+  const outlookTiers = input.outlook ?? null;
+  if (outlookTiers) {
+    baseSec = outlookTiers.expectedSec;
+    method = 'race-outlook';
+    personalExponent = input.durabilityExponent?.ok ? input.durabilityExponent.value : null;
+    personalExponentConfidence = input.durabilityExponent?.ok ? input.durabilityExponent.confidence : null;
+  } else if (input.durabilityExponent) {
     const proj = projectWithDurabilityExponent(input.durabilityExponent, distanceMi);
     if (proj != null && input.durabilityExponent.ok) {
       baseSec = proj.sec;
@@ -700,7 +713,12 @@ export function deriveCoachGoal(input: CoachGoalInput): CoachGoalFraming | null 
   let aSec: number;
   let bSec: number;
   let cSec: number;
-  if (spec != null) {
+  if (outlookTiers) {
+    // The brain's likely race-day range IS the A/C band; hills shift all three.
+    aSec = roundTargetSec(outlookTiers.likelyRangeSec[0] + hillCost);
+    bSec = roundTargetSec(baseSec + hillCost);
+    cSec = roundTargetSec(outlookTiers.likelyRangeSec[1] + hillCost);
+  } else if (spec != null) {
     // One-sided shape: the raw equivalence is already the perfect-day
     // ceiling (§14.7: predictions here systematically over-predict), so it
     // IS the A. B carries §13.1's +5%. C sits one CI half-width past B —

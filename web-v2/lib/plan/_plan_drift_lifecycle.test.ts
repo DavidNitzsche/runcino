@@ -413,7 +413,7 @@ const GOAL_GAP_PLAN: PlanRow = {
 const WIDENING_GOAL_GAP = {
   status: 'widening', consecutiveWideningDays: 3,
   raceDateISO: '2026-12-06', raceSlug: 'cim-2026',
-  trajectorySec: 11500, goalSec: 10800, gapSec: 700,
+  expectedRaceDaySec: 11500, goalSec: 10800, gapSec: 700,
   weeksRemaining: 12, whatClosesIt: null, citation: null,
 };
 

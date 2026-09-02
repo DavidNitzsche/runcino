@@ -47,7 +47,8 @@ import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { assessGoal } from '@/lib/training/goal-assessment';
 import { computeGoalProjection } from '@/lib/training/goal-projection';
-import { resolveRaceProjection } from '@/lib/training/race-projection';
+import { raceProjectionFromOutlook } from '@/lib/training/race-projection';
+import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
 import { taperWeeksForDistance } from '@/lib/training/fitness-trajectory';
 import { normalWeeklyMileage } from '@/lib/training/normal-window';
 import { selectionAuthority, authorityTier, type AuthorityTier } from '@/lib/race/effort-authority';
@@ -381,27 +382,13 @@ async function handleGET(req: NextRequest) {
       // build, scaled by how the runner is actually executing it, projected to
       // race day. Reused, not reimplemented, so the two surfaces can't drift.
       // Falls back to the static equivalence at cold start or on failure.
-      const goalProjection = (distanceMi != null && distanceMi > 0 && goalSec != null && goalDateISO)
-        ? await computeGoalProjection({
-            userUuid: userId,
-            goalSec,
-            raceDistanceMi: distanceMi,
-            vdot,
-            daysToRace: nextA.days,
-            vdotAnchorDateISO: anchorDateISO,
-            vdotAnchorDistanceMi: anchorDistanceMi,
-          }).catch(() => null)
+      // 2026-09-01 · P0 · THE race-pace brain, the same two functions the
+      // detail route reads. "Projected" = `outlook.expectedRaceDay` (race
+      // day, this build, goal-free improvement).
+      const nextAOutlook = (distanceMi != null && distanceMi > 0)
+        ? await resolveRaceOutlookBySlug(userId, nextA.slug, todayISO).catch(() => null)
         : null;
-
-      // 2026-08-30 · the chain that used to live inline here is now
-      // `resolveRaceProjection`, shared with app/api/v5/race/[slug], which
-      // answered the SAME question with `predictRaceTime` alone: Races list
-      // 3:22:17, CIM detail 3:31:48, one tap apart. One function, one number.
-      // (The dropped `assessment.currentEquivalentSec` rung was
-      // `Math.round(predictRaceTime(currentVdot, distanceMi))` — the same
-      // value as the rung below it, not a distinct quantity. See the
-      // precedence note in lib/training/race-projection.ts.)
-      const { projectedSec } = resolveRaceProjection({ goalProjection, vdot, distanceMi });
+      const { projectedSec } = raceProjectionFromOutlook(nextAOutlook);
       const gapSec = (projectedSec != null && goalSec != null) ? projectedSec - goalSec : null;
 
       const stats: V5StatOut[] = [

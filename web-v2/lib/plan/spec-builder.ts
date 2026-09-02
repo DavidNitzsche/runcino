@@ -1611,13 +1611,15 @@ export function buildWorkoutSpec(
           // plan), not baked into the band.
           pace_target_s_per_mi_lo: racePace - 5,
           pace_target_s_per_mi_hi: racePace + 5,
-          // Race-effort HR ceiling per Research/08 §6.1: an HM races at
-          // 96-100% of LTHR · the old 0.95× cap sat BELOW honest HM
-          // effort and would alarm the entire race. Marathon+ → 92%.
-          // Sub-HM races run above LTHR · a ceiling is wrong there.
-          hr_cap_bpm: lthr
-            ? (dMi >= 25 ? Math.round(lthr * 0.92) : dMi >= 12 ? lthr : null)
-            : null,
+          // 2026-09-01 · P0 · a race row carries NO `hr_cap_bpm`. A single
+          // ceiling the wrist alarms on for 26 miles was the wrong shape
+          // (Research/08 §6.1 gives a race-effort RANGE, and the audit found
+          // the "cap" alarming through honest race effort). The race-pace
+          // brain's `race_hr` guidance — expected range, early ceiling, late
+          // allowance, checkpoint abort, informational flag — is written onto
+          // this row by `lib/race/race-row-refresh.ts` right after authoring
+          // and on every recompute; `hr_cap_bpm` stays absent by design.
+          hr_cap_bpm: null,
           fuel_mi: fuelMi(distance_mi),
           ...withRules,
         },

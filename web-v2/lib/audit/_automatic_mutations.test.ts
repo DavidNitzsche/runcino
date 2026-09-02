@@ -341,6 +341,12 @@ const PLAN_WRITER_SITE_OWNERS: Record<string, string> = {
   'lib/plan/reanchor-plan.ts::reanchorActivePlan': 'cron/snapshot-projections',
   'lib/plan/reanchor-plan.ts::reanchorMaintenance': 'cron/snapshot-projections',
   'lib/plan/recompute-paces.ts::core': 'cron/snapshot-projections',
+  // 2026-09-01 · P0 · the dedicated race-row path. Reached standalone from the
+  // daily snapshot cron (through mutatePlan, touches 'derivations') and INSIDE
+  // recompute-paces' transaction (same owner, same trigger); authoring's
+  // post-persist call runs under cron/plan-drift's boundary but the write is
+  // the same idempotent derivation, so one owner describes it honestly.
+  'lib/race/race-row-refresh.ts::refreshRaceRowsCore': 'cron/snapshot-projections',
   'lib/plan/adapt.ts::applyAdaptations': 'cron/run-adaptations',
   'lib/plan/adapt.ts::rebuildWorkoutDerivations': 'cron/run-adaptations',
   'lib/plan/progression-pass.ts::applyProgressionReshape': 'cron/run-adaptations',

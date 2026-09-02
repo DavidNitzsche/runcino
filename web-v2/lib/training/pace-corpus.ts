@@ -388,7 +388,14 @@ import {
 import {
   loadPrescribedWindows,
   excludePrescribedDays,
+  isPrescribedNonNormal,
+  REPRESENTATIVE_LOOKBACK_MAX_DAYS,
+  REPRESENTATIVE_LOOKBACK_STEP_DAYS,
+  REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS,
+  type PrescribedWindow,
 } from '@/lib/training/normal-window';
+import { SINGLE_ACTIVITY_EVIDENCE_CEILING } from '@/lib/evidence/activity-evidence';
+import { classifyRecentActivities } from '@/lib/evidence/load-activity-evidence';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1 · DOCTRINE-CITED BANDS AND FLOORS — bound by lib/doctrine/registry.ts
@@ -455,6 +462,68 @@ export const THRESHOLD_MAX_REP_SEC = 20 * 60;
  * rep in the same watch completion before the pooled observation counts.
  */
 export const THRESHOLD_MIN_SESSION_TOTAL_SEC = 20 * 60;
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 1b · THE AUTHORITY MODEL (2026-09-01 · the P0 evidence contract)
+ *
+ * Before this, the threshold corpus was a SECOND evidence engine: it admitted
+ * a session on `type === 'work'` + duration alone, ignored whether the phase
+ * was ever completed, computed an HR band distance and never read it, gave
+ * every admitted observation the same vote in a K-th-best order statistic,
+ * and never consulted `lib/evidence/activity-evidence.ts` — the service the
+ * Constitution names as the owner of "what did this run demonstrate". On the
+ * owner's real account (independent audit, 2026-09-01) the two supporting
+ * observations behind the live belief were an abandoned, HR-less treadmill
+ * tempo (`completed: false`, 2.86 of 4.0 mi) and an interval day at 91% of
+ * LTHR that the Evidence Engine had classified `no_evidence`; one completed
+ * session then moved the anchor 10 s/mi in a day while the hero-workout guard
+ * — computed by the Evidence Engine — said `anchorMoveCandidate: false`.
+ *
+ * The contract now: every observation carries a WEIGHT in [0, 1], assembled
+ * from four factors that are each reported (`ObservationAuthority`), and the
+ * order statistic is weighted (`thresholdPaceCorpus`). A factor of zero is an
+ * EXCLUSION with a named reason; nothing is silently dropped.
+ *
+ *   · HR       · inside the T band → 1; fading linearly to 0 across one further
+ *                half-width beyond either edge; absent → reduced, never full.
+ *   · duration · the doctrine floor stays where the registry pins it; a session
+ *                just under it ramps in over `THRESHOLD_SESSION_DURATION_RAMP_SEC`
+ *                instead of vanishing at one second (Rule 9).
+ *   · Evidence Engine · `capacities.threshold` for the same run: `evidence`
+ *                weight scaled so a single-activity-ceiling session is 1;
+ *                `indeterminate` reduced; `no_evidence` EXCLUDED — the owner of
+ *                that question has answered it; unavailable → reduced.
+ *   · context  · a prescribed taper / race-week / post-race window reduces
+ *                authority (Rule 8) and marks the observation non-representative,
+ *                so it can support a belief but cannot by itself clear a
+ *                representative-session bar downstream.
+ *
+ * Every number below is a CONVENTION for model stability — not a physiological
+ * claim — and is labelled as such in the doctrine registry. They shape how
+ * fast a belief may move, never which direction the evidence points.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** Sessions between (floor − ramp) and the floor ramp in linearly. CONVENTION. */
+export const THRESHOLD_SESSION_DURATION_RAMP_SEC = 5 * 60;
+/** Authority of a qualifying segment with NO heart-rate reading. CONVENTION. */
+export const THRESHOLD_HR_ABSENT_AUTHORITY = 0.5;
+/** Half-widths beyond the band edge over which HR authority fades to zero. CONVENTION. */
+export const THRESHOLD_HR_OUT_OF_BAND_FADE_HALF_WIDTHS = 1;
+/** Authority of a session inside a prescribed non-normal window (Rule 8). CONVENTION. */
+export const PRESCRIBED_WINDOW_AUTHORITY = 0.75;
+/** Authority when the Evidence Engine could not tell (`indeterminate`). CONVENTION. */
+export const EVIDENCE_ENGINE_INDETERMINATE_AUTHORITY = 0.75;
+/** Authority when the Evidence Engine read was unavailable for the row. CONVENTION. */
+export const EVIDENCE_ENGINE_UNAVAILABLE_AUTHORITY = 0.75;
+/**
+ * The most the newest session's arrival may move the corroborated threshold
+ * pace, per elapsed day since that session, s/mi. A stateless rate limit: the
+ * belief converges on the new evidence over days rather than in one step, and
+ * the same session is allowed twice the move the day after. CONVENTION for
+ * model stability — doctrine's "one run rarely rewrites the runner" states the
+ * direction, not this number.
+ */
+export const THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI = 5;
 
 /**
  * SPLIT-LEVEL WORK-SEGMENT SHAPE, not an absolute HR band — 2026-08-31,
@@ -738,7 +807,7 @@ export interface PaceObservation {
   /** Whether the pace came from a splits-aware segment, the whole run, or
    *  `coach_intents.value.phases` (the watch's own per-rep measurement —
    *  added 2026-08-31, see `thresholdSegmentFromPhases`). */
-  source: 'splits' | 'whole-run' | 'phases';
+  source: 'splits' | 'whole-run' | 'phases' | 'evidence-segments';
   /** Which HR basis classified this observation into its zone. Null only
    *  for a phase-derived observation with no heart-rate reading at all
    *  (e.g. a treadmill session with no strap) — every other source always
@@ -764,6 +833,117 @@ export interface PaceObservation {
    * Null exactly when `hrPct` is null.
    */
   hrBandDistance: number | null;
+  /** 0..1 · the vote this observation carries in the weighted order statistic.
+   *  1 for every easy-corpus observation (its gates are binary); the product of
+   *  `authority`'s four factors for a threshold observation. */
+  weight: number;
+  /**
+   * 0..1 · what this observation contributes toward the CORROBORATION bar
+   * (and toward confidence): `weight` × the age discount. Doctrine: stale
+   * evidence lowers CONFIDENCE, never the VALUE — so the level statistic
+   * interpolates on `weight`, and only the "is there enough evidence" check
+   * and the confidence read this. Undefined = same as `weight`.
+   */
+  supportWeight?: number;
+  /** False only when a phase-derived segment had abandoned work phases dropped
+   *  from its pool (the completed reps still count; the abandoned ones never). */
+  completed: boolean;
+  /** False when the run sits inside a prescribed taper / race-week / recovery
+   *  window. Such an observation supports a belief at reduced authority and
+   *  may NOT by itself clear a representative-session bar downstream. */
+  representative: boolean;
+  /** How `weight` was assembled. Reported, never re-derived downstream. */
+  authority: ObservationAuthority;
+}
+
+export type HrAuthority = 'in_band' | 'near_band' | 'out_of_band' | 'absent';
+export type EvidenceEngineVerdictKind = 'evidence' | 'no_evidence' | 'indeterminate' | 'unavailable';
+
+export type ObservationAuthorityReason =
+  | 'HR_IN_THRESHOLD_BAND'
+  | 'HR_NEAR_THRESHOLD_BAND'
+  | 'HR_ABSENT_REDUCED_AUTHORITY'
+  | 'SESSION_SHORT_OF_DOCTRINE_FLOOR'
+  | 'EVIDENCE_ENGINE_CORROBORATES'
+  | 'EVIDENCE_ENGINE_INDETERMINATE'
+  | 'EVIDENCE_ENGINE_UNAVAILABLE'
+  | 'SUPPORTING_EVIDENCE_ONLY_NOT_ANCHOR_MOVER'
+  | 'INSIDE_PRESCRIBED_WINDOW'
+  | 'ABANDONED_PHASES_DROPPED'
+  | 'PRICED_FROM_EVIDENCE_ENGINE_SEGMENTS'
+  | 'AGE_DISCOUNTED_BEYOND_BASE_WINDOW';
+
+export interface ObservationAuthority {
+  hr: HrAuthority;
+  hrFactor: number;
+  durationFactor: number;
+  evidenceKind: EvidenceEngineVerdictKind;
+  /** The Evidence Engine's own 0..1 threshold weight for the run, when read. */
+  evidenceWeight: number | null;
+  anchorMoveCandidate: boolean | null;
+  evidenceFactor: number;
+  contextFactor: number;
+  /** 1 inside the base lookback; halves every
+   *  `REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS` beyond it when the window had to
+   *  widen. Applied last, so an old session can support but never dominate. */
+  stalenessFactor: number;
+  ageDays: number | null;
+  reasons: ObservationAuthorityReason[];
+}
+
+export type ExclusionReason =
+  | 'LABEL_RACE'
+  | 'LABEL_NON_QUALITY_NO_THRESHOLD_EVIDENCE'
+  | 'EVIDENCE_ENGINE_NO_THRESHOLD_EVIDENCE'
+  | 'WORK_PHASES_ABANDONED'
+  | 'NO_QUALIFYING_SEGMENT'
+  | 'SESSION_BELOW_DURATION_FLOOR'
+  | 'HR_OUTSIDE_THRESHOLD_BAND'
+  | 'LABEL_NON_QUALITY_UNPRICEABLE'
+  | 'OUTSIDE_LOOKBACK_WINDOW';
+
+/** An observation the classifier looked at and refused, with the reason. Kept
+ *  so "why is this run not in my threshold evidence" is answerable. */
+export interface ExcludedObservation {
+  id: string;
+  date: string;
+  reason: ExclusionReason;
+  paceSecPerMi: number | null;
+  detail: string;
+}
+
+/** The Evidence Engine's verdict on one run's THRESHOLD capacity, as the
+ *  corpus consumes it (`lib/evidence/activity-evidence.ts#CapacityEvidence`). */
+export interface ThresholdEvidenceVerdict {
+  kind: 'evidence' | 'no_evidence' | 'indeterminate';
+  weight: number | null;
+  anchorMoveCandidate: boolean;
+  /** The Engine's own `threshold_like` segments — the ONLY admissible pricing
+   *  for a run whose plan label says easy/long/recovery. Pooling HR-in-zone
+   *  splits from a long run prices cardiac drift, not threshold (the owner's
+   *  2026-07-12 long run read 8:06/mi "threshold" that way). */
+  segments?: EvidenceSegmentRead[];
+}
+
+export interface EvidenceSegmentRead {
+  paceSecPerMi: number;
+  durationSec: number;
+  meanHrBpm: number | null;
+}
+
+/** Full authority — the easy corpus's observations, whose admission gates are
+ *  all binary and already applied. */
+export function fullAuthority(): Pick<PaceObservation, 'weight' | 'completed' | 'representative' | 'authority'> {
+  return {
+    weight: 1,
+    completed: true,
+    representative: true,
+    authority: {
+      hr: 'in_band', hrFactor: 1, durationFactor: 1,
+      evidenceKind: 'unavailable', evidenceWeight: null, anchorMoveCandidate: null,
+      evidenceFactor: 1, contextFactor: 1, stalenessFactor: 1, ageDays: null, reasons: [],
+    },
+  };
 }
 
 /**
@@ -812,6 +992,29 @@ export type EasyPaceRead =
       observations: number;
     };
 
+/** The move-cap record for a read that was not compared against a prior
+ *  (test fixtures, hand-built reads). */
+export function uncappedMoveCap(tPaceSecPerMi: number): ThresholdMoveCap {
+  return {
+    applied: false, uncappedSecPerMi: tPaceSecPerMi, priorSecPerMi: null,
+    allowedSecPerMi: null, newestDate: null, daysSinceNewest: null,
+  };
+}
+
+/** How the daily move cap treated this read. Reported on every ok read. */
+export interface ThresholdMoveCap {
+  applied: boolean;
+  /** The weighted read INCLUDING the newest session, s/mi. */
+  uncappedSecPerMi: number;
+  /** The weighted read EXCLUDING every observation on the newest date, s/mi.
+   *  Null when that read could not corroborate on its own (first evidence). */
+  priorSecPerMi: number | null;
+  /** How far the newest session was allowed to move the read, s/mi. */
+  allowedSecPerMi: number | null;
+  newestDate: string | null;
+  daysSinceNewest: number | null;
+}
+
 /** The threshold-pace corpus's answer. Refusal carries no `tPaceSecPerMi`
  *  (Rule 11). Mirrors `CorpusRead`'s shape one level down (VDOT → T-pace). */
 export type ThresholdPaceRead =
@@ -825,11 +1028,23 @@ export type ThresholdPaceRead =
       vdot: number;
       observations: number;
       supporting: PaceObservation[];
+      /** Σ weight over every admitted observation. The corroboration bar is
+       *  measured against THIS, not against a head count. */
+      weightedSupport: number;
+      /** Supporting observations outside any prescribed window. */
+      representativeSupporting: number;
+      excluded: ExcludedObservation[];
+      moveCap: ThresholdMoveCap;
+      /** The lookback the read settled on, days (base, or widened in steps). */
+      windowDays: number;
     }
   | {
       ok: false;
       reason: EasyPaceCorpusReason;
       observations: number;
+      weightedSupport: number;
+      excluded: ExcludedObservation[];
+      windowDays: number;
     };
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -863,55 +1078,156 @@ export function easyPaceCorpus(
 }
 
 /**
- * Pure · the threshold-pace read from a set of already-classified
- * observations. Converts each to a VDOT (`vdotFromTpace`), corroborates with
- * the SAME `corroboratedCorpusVdot` the fitness ceiling uses, converts back
- * (`tPaceFromVdot`). See "THE THRESHOLD DESIGN" in the file header for why
- * this reuses rather than reimplements the order statistic.
+ * Pure · the threshold-pace read from a set of already-classified, already-
+ * WEIGHTED observations.
+ *
+ * ── THE WEIGHTED ORDER STATISTIC ────────────────────────────────────────────
+ * `corroboratedCorpusVdot` (the fitness ceiling) is "the K-th best VDOT of N":
+ * every admitted observation has one vote and a new observation either takes a
+ * slot or does not. That is the shape that let one session move the owner's
+ * anchor 8 s/mi in a day — it displaced the third-fastest slot outright — and
+ * it is the shape Rule 9 forbids: a hair's difference in one observation's
+ * admissibility is a categorical change in the answer.
+ *
+ * This reader keeps the K-corroboration PRINCIPLE (the level is set by evidence
+ * that at least K observations' worth of authority agrees with or beats) and
+ * makes it continuous: observations are sorted fastest-first, their weights
+ * accumulate, and the level is the pace at which the running weight reaches K,
+ * interpolated between the two observations that straddle it. An observation
+ * at weight 0.5 pulls the level half as far as a full one; an observation whose
+ * weight goes 0 → 1 moves the answer smoothly, never in a step.
+ *
+ * ── THE DAILY MOVE CAP ─────────────────────────────────────────────────────
+ * Doctrine: "one run should rarely rewrite the runner". The Evidence Engine
+ * already computes a per-activity `anchorMoveCandidate`; that flag now reaches
+ * this reader through the weights (`ObservationAuthority`). Independently of
+ * the weights, the read is compared against the same read WITHOUT every
+ * observation on the newest date, and the difference is bounded by
+ * `THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI` per elapsed day since that date.
+ * Stateless, so it needs no persisted prior: the day after, the same session is
+ * allowed twice the move, and the belief converges on the evidence over days.
+ * Only applies when the without-read can itself corroborate; the FIRST
+ * corroboration is never capped against nothing.
  */
 export function thresholdPaceCorpus(
   observations: readonly PaceObservation[],
   minObservations: number = CORROBORATION_MIN_OBSERVATIONS,
+  opts?: {
+    todayISO?: string;
+    excluded?: readonly ExcludedObservation[];
+    windowDays?: number;
+    /** The read WITHOUT the newest date's observations, settled on its own
+     *  window by the caller. When omitted, computed from `observations`
+     *  alone (the pure-statistic path). */
+    priorRead?: ThresholdPaceRead | null;
+  },
 ): ThresholdPaceRead {
-  const byId = new Map<string, PaceObservation>();
-  const corpusObs: CorpusObservation[] = [];
-  for (const o of observations) {
-    if (!Number.isFinite(o.paceSecPerMi) || o.paceSecPerMi <= 0) continue;
-    const vdot = vdotFromTpace(o.paceSecPerMi);
-    if (vdot == null) continue;
-    // Keyed by id, matching corroboratedCorpusVdot's CorpusObservation shape.
-    // A duplicate id (two qualifying segments off the same run) keeps the
-    // FASTER read — the more informative of two observations of one effort.
-    const existing = byId.get(o.id);
-    if (!existing || o.paceSecPerMi < existing.paceSecPerMi) byId.set(o.id, o);
-    corpusObs.push({ id: o.id, date: o.date, vdot });
+  const excluded = [...(opts?.excluded ?? [])];
+  const windowDays = opts?.windowDays ?? PACE_CORPUS_LOOKBACK_DAYS;
+  const full = weightedThresholdLevel(observations, minObservations);
+  if (!full.ok) {
+    return {
+      ok: false, reason: full.reason, observations: full.observations,
+      weightedSupport: full.weightedSupport, excluded, windowDays,
+    };
   }
-  // Re-dedupe corpusObs by id after the byId pass settled the winner, so
-  // corroboratedCorpusVdot never double-counts one run as two observations.
-  const dedupedObs = [...byId.entries()].map(([id, o]) => {
-    const vdot = vdotFromTpace(o.paceSecPerMi)!;
-    return { id, date: o.date, vdot };
-  });
-  const corpusRead = corroboratedCorpusVdot(dedupedObs, minObservations);
-  if (!corpusRead.ok) {
-    return { ok: false, reason: corpusRead.reason, observations: corpusRead.observations };
+
+  let tPace = full.tPaceSecPerMi;
+  let vdot = full.vdot;
+  const newestDate = full.usable.reduce<string | null>(
+    (m, o) => (m == null || o.date > m ? o.date : m), null,
+  );
+  const moveCap: ThresholdMoveCap = {
+    applied: false, uncappedSecPerMi: full.tPaceSecPerMi, priorSecPerMi: null,
+    allowedSecPerMi: null, newestDate, daysSinceNewest: null,
+  };
+  if (opts?.todayISO && newestDate) {
+    const without: { ok: true; tPaceSecPerMi: number } | { ok: false } = opts.priorRead !== undefined
+      ? (opts.priorRead && opts.priorRead.ok ? { ok: true, tPaceSecPerMi: opts.priorRead.tPaceSecPerMi } : { ok: false })
+      : weightedThresholdLevel(full.usable.filter((o) => o.date !== newestDate), minObservations);
+    const daysSince = Math.max(0, Math.round(
+      (Date.parse(opts.todayISO + 'T12:00:00Z') - Date.parse(newestDate + 'T12:00:00Z')) / 86_400_000,
+    ));
+    moveCap.daysSinceNewest = daysSince;
+    if (without.ok) {
+      const allowed = THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI * (daysSince + 1);
+      moveCap.priorSecPerMi = without.tPaceSecPerMi;
+      moveCap.allowedSecPerMi = allowed;
+      const delta = full.tPaceSecPerMi - without.tPaceSecPerMi;
+      if (Math.abs(delta) > allowed) {
+        tPace = Math.round(without.tPaceSecPerMi + Math.sign(delta) * allowed);
+        vdot = vdotFromTpace(tPace) ?? vdot;
+        moveCap.applied = true;
+      }
+    }
   }
-  const tPace = tPaceFromVdot(corpusRead.vdot);
-  if (tPace == null) {
-    // Cannot happen in practice — corpusRead.vdot came FROM tPaceFromVdot's
-    // own inverse (vdotFromTpace) and is therefore always in [30,85] — kept
-    // as an honest refusal rather than a non-null assertion, per Rule 11.
-    return { ok: false, reason: 'no_observations', observations: corpusRead.observations };
-  }
-  const supporting = corpusRead.supporting
-    .map((s) => byId.get(s.id))
-    .filter((o): o is PaceObservation => o != null);
+
   return {
     ok: true,
     tPaceSecPerMi: tPace,
-    vdot: corpusRead.vdot,
-    observations: corpusRead.observations,
-    supporting,
+    vdot,
+    observations: full.observations,
+    supporting: full.supporting,
+    weightedSupport: full.weightedSupport,
+    representativeSupporting: full.supporting.filter((o) => o.representative).length,
+    excluded,
+    moveCap,
+    windowDays,
+  };
+}
+
+/** The weighted K-th-best level, uncapped. Pure. */
+function weightedThresholdLevel(
+  observations: readonly PaceObservation[],
+  minObservations: number,
+):
+  | { ok: true; tPaceSecPerMi: number; vdot: number; observations: number; weightedSupport: number; supporting: PaceObservation[]; usable: PaceObservation[] }
+  | { ok: false; reason: EasyPaceCorpusReason; observations: number; weightedSupport: number } {
+  // One observation per run: a duplicate id (two qualifying segments off the
+  // same run) keeps the FASTER read — the more informative of two observations
+  // of one effort — so the same real effort cannot vote twice.
+  const byId = new Map<string, PaceObservation>();
+  for (const o of observations) {
+    if (!Number.isFinite(o.paceSecPerMi) || o.paceSecPerMi <= 0) continue;
+    if (!(o.weight > 0)) continue;
+    if (vdotFromTpace(o.paceSecPerMi) == null) continue;
+    const existing = byId.get(o.id);
+    if (!existing || o.paceSecPerMi < existing.paceSecPerMi) byId.set(o.id, o);
+  }
+  const usable = [...byId.values()];
+  if (usable.length === 0) return { ok: false, reason: 'no_observations', observations: 0, weightedSupport: 0 };
+  const k = Math.max(1, minObservations);
+  // Fastest first == highest VDOT first == smallest s/mi first.
+  const sorted = [...usable].sort((a, b) => a.paceSecPerMi - b.paceSecPerMi);
+  const weightedSupport = sorted.reduce((acc, o) => acc + Math.min(1, o.supportWeight ?? o.weight), 0);
+  if (weightedSupport < k) {
+    return { ok: false, reason: 'insufficient_corroboration', observations: usable.length, weightedSupport };
+  }
+  let cum = 0;
+  let levelPace = sorted[sorted.length - 1].paceSecPerMi;
+  let idx = sorted.length - 1;
+  for (let i = 0; i < sorted.length; i++) {
+    const w = Math.min(1, sorted[i].weight);
+    const before = cum;
+    cum += w;
+    if (cum >= k) {
+      // Interpolate between the previous observation's pace (the level the
+      // running weight had reached) and this one's, by the share of this
+      // observation's weight needed to reach K.
+      const frac = w > 0 ? (k - before) / w : 1;
+      const prevPace = i === 0 ? sorted[0].paceSecPerMi : sorted[i - 1].paceSecPerMi;
+      levelPace = prevPace + (sorted[i].paceSecPerMi - prevPace) * Math.max(0, Math.min(1, frac));
+      idx = i;
+      break;
+    }
+  }
+  const tPace = Math.round(levelPace);
+  const vdot = vdotFromTpace(tPace);
+  if (vdot == null) return { ok: false, reason: 'no_observations', observations: usable.length, weightedSupport };
+  return {
+    ok: true, tPaceSecPerMi: tPace, vdot,
+    observations: usable.length, weightedSupport,
+    supporting: sorted.slice(0, idx + 1), usable,
   };
 }
 
@@ -920,9 +1236,12 @@ export function thresholdPaceCorpus(
  * ═══════════════════════════════════════════════════════════════════════ */
 
 interface ThresholdSegment {
+  /** Work phases dropped from the pool because the watch recorded them as
+   *  never completed. Only the phases reader can know this. */
+  abandonedPhases?: number;
   paceSecPerMi: number;
   durationSec: number;
-  source: 'splits' | 'whole-run' | 'phases';
+  source: 'splits' | 'whole-run' | 'phases' | 'evidence-segments';
   /** Null only for a phase-derived segment with no HR reading at all. */
   basis: HrBasis | null;
   /** See `PaceObservation.hrPct` — carried through unchanged. */
@@ -1147,8 +1466,15 @@ export function thresholdSegmentFromPhases(
   phases: readonly PhaseBreakdown[],
   ctx: HrContext,
 ): ThresholdSegment | null {
+  // 2026-09-01 · an abandoned phase is not a rep. The watch stamps
+  // `completed: false` on a work phase the runner stopped before its target;
+  // its partial distance and pace describe a rep that did not happen. The
+  // owner's 2026-08-06 treadmill (`completed: false`, 2.86 of 4.0 mi, no HR)
+  // was half of the live threshold belief through this gap.
+  const abandoned = phases.filter((p) => p.type === 'work' && p.completed === false).length;
   const qualifying = phases.filter((p) =>
     p.type === 'work'
+    && p.completed !== false
     && p.actual_duration_sec != null
     && p.actual_duration_sec >= THRESHOLD_MIN_QUALIFYING_SEC
     && p.actual_duration_sec <= THRESHOLD_MAX_REP_SEC
@@ -1172,11 +1498,19 @@ export function thresholdSegmentFromPhases(
     if (p.avg_hr != null && p.avg_hr > 0) { hrWeighted += p.avg_hr * sec; hrWeight += sec; }
   }
   if (totalMi <= 0) return null;
-  if (totalSec < THRESHOLD_MIN_SESSION_TOTAL_SEC || totalSec > THRESHOLD_MAX_QUALIFYING_SEC) return null;
+  // The doctrine floor is still the floor (`THRESHOLD_MIN_SESSION_TOTAL_SEC`,
+  // registry-bound). A session inside `THRESHOLD_SESSION_DURATION_RAMP_SEC`
+  // under it is RETURNED and ramped in by weight in `classifyThresholdCandidates`
+  // rather than vanishing at one second — the owner's 2026-08-04 (1161 s) and
+  // 2026-08-06 (1200 s) shapes differed by 39 s and one was half the runner
+  // model while the other did not exist (Rule 9).
+  if (totalSec < THRESHOLD_MIN_SESSION_TOTAL_SEC - THRESHOLD_SESSION_DURATION_RAMP_SEC
+      || totalSec > THRESHOLD_MAX_QUALIFYING_SEC) return null;
 
   const pooledHr = hrWeight > 0 ? hrWeighted / hrWeight : null;
   const { basis, pct } = hrZoneMatch(pooledHr, ctx, THRESHOLD_PCT_HRMAX_BAND, THRESHOLD_PCT_LTHR_BAND);
   return {
+    abandonedPhases: abandoned,
     paceSecPerMi: totalSec / totalMi,
     durationSec: totalSec,
     source: 'phases',
@@ -1238,6 +1572,7 @@ export function classifyEasyCandidates(
       hrBasis: basis,
       hrPct: pct,
       hrBandDistance: hrBandDistance(pct, easyBandFor(basis)),
+      ...fullAuthority(),
     });
   }
   return out;
@@ -1261,15 +1596,174 @@ export function classifyEasyCandidates(
 export function classifyThresholdCandidates(
   rows: readonly CandidateRow[],
   ctx: HrContext,
+  opts?: ThresholdClassifyOptions,
 ): PaceObservation[] {
+  return classifyThresholdCandidatesDetailed(rows, ctx, opts).observations;
+}
+
+export interface ThresholdClassifyOptions {
+  /** The Evidence Engine's per-run threshold verdicts, keyed by `runs.id`.
+   *  `undefined` = the read was not attempted; a map = it was, and a run
+   *  absent from it was not classified (treated as unavailable). */
+  evidence?: ReadonlyMap<string, ThresholdEvidenceVerdict> | null;
+  /** Prescribed taper / race-week / recovery windows (Rule 8 context). */
+  windows?: readonly PrescribedWindow[] | null;
+}
+
+/**
+ * Pure · classify candidate rows into WEIGHTED threshold observations, and
+ * return every exclusion with its reason (the evidence contract's
+ * "preserve provenance for every included and excluded observation").
+ *
+ * Admission order, and what each step may and may not decide:
+ *   1 · a `race` label is excluded outright — a race enters the model through
+ *       the durability exponent, never as routine T work.
+ *   2 · the Evidence Engine's verdict outranks the plan label. A day labelled
+ *       easy/long/recovery/shakeout is admissible when the Engine found
+ *       threshold evidence in it (the owner's 2026-08-30 long run carried 44
+ *       minutes of threshold-like work); a day labelled tempo is excluded when
+ *       the Engine says it demonstrated nothing.
+ *   3 · a segment reader must price it (phases → splits → whole-run). Abandoned
+ *       work phases are dropped before pooling; a row whose only work was
+ *       abandoned is excluded, not priced off the partial rep.
+ *   4 · the four authority factors multiply into `weight`; a zero factor is an
+ *       exclusion with its own reason.
+ */
+export function classifyThresholdCandidatesDetailed(
+  rows: readonly CandidateRow[],
+  ctx: HrContext,
+  opts?: ThresholdClassifyOptions,
+): { observations: PaceObservation[]; excluded: ExcludedObservation[] } {
   const out: PaceObservation[] = [];
+  const excluded: ExcludedObservation[] = [];
+  const evidence = opts?.evidence ?? null;
+  const windows = opts?.windows ?? null;
   for (const row of rows) {
-    if (labelExcludesThreshold(row.workoutTypeRaw)) continue;
-    const seg =
-      thresholdSegmentFromPhases(row.phases ?? [], ctx) ??
-      thresholdSegmentFromSplits(row.splits, ctx, row.distanceMi) ??
-      thresholdSegmentFromWholeRun(row, ctx);
-    if (seg == null) continue;
+    const norm = normalizeDataWorkoutType(row.workoutTypeRaw);
+    if (norm === 'race') {
+      excluded.push({ id: row.id, date: row.date, reason: 'LABEL_RACE', paceSecPerMi: null,
+        detail: 'a race is strategic effort, not routine threshold work; it reaches the model through the race exponent' });
+      continue;
+    }
+    const verdict = evidence?.get(row.id) ?? null;
+    const evidenceKind: EvidenceEngineVerdictKind = evidence == null ? 'unavailable' : (verdict?.kind ?? 'unavailable');
+    const labelNonQuality = norm === 'easy' || norm === 'recovery' || norm === 'long' || norm === 'shakeout';
+    if (labelNonQuality && evidenceKind !== 'evidence') {
+      excluded.push({ id: row.id, date: row.date, reason: 'LABEL_NON_QUALITY_NO_THRESHOLD_EVIDENCE', paceSecPerMi: null,
+        detail: `labelled ${norm}; the Evidence Engine ${evidenceKind === 'unavailable' ? 'was not read' : `read ${evidenceKind}`} for threshold` });
+      continue;
+    }
+    if (evidenceKind === 'no_evidence') {
+      excluded.push({ id: row.id, date: row.date, reason: 'EVIDENCE_ENGINE_NO_THRESHOLD_EVIDENCE', paceSecPerMi: null,
+        detail: 'the Evidence Engine classified this run as demonstrating no threshold capacity' });
+      continue;
+    }
+
+    const phaseSeg = labelNonQuality ? null : thresholdSegmentFromPhases(row.phases ?? [], ctx);
+    const abandonedWork = (row.phases ?? []).filter((p) => p.type === 'work' && p.completed === false).length;
+    // A non-quality label is priced ONLY off the Evidence Engine's own
+    // threshold_like segments. The corpus's split pooling admits every mile
+    // whose HR sat in the T zone, which on a long run is cardiac drift at easy
+    // pace — the owner's 2026-07-12 long run priced 8:06/mi as "threshold" that
+    // way. The Engine already separated the threshold-like blocks from the
+    // drift; this reads its answer instead of re-deriving a worse one.
+    // A quality or unlabelled row is priced by the corpus's own readers first
+    // (the watch's per-rep phases are the most direct measurement); when none
+    // qualifies, the Engine's threshold_like segments are the last honest
+    // read — an unlabelled 47-minute two-block session (the owner's
+    // 2026-08-23) is threshold evidence whether or not a watch structured it.
+    const seg = labelNonQuality
+      ? segmentFromEvidenceSegments(verdict?.segments ?? [], ctx)
+      : (phaseSeg ?? thresholdSegmentFromSplits(row.splits, ctx, row.distanceMi) ?? thresholdSegmentFromWholeRun(row, ctx)
+          ?? (evidenceKind === 'evidence' ? segmentFromEvidenceSegments(verdict?.segments ?? [], ctx) : null));
+    if (seg == null && labelNonQuality) {
+      excluded.push({ id: row.id, date: row.date, paceSecPerMi: null, reason: 'LABEL_NON_QUALITY_UNPRICEABLE',
+        detail: 'the Evidence Engine found threshold-like work but its segments do not amount to a priceable threshold session' });
+      continue;
+    }
+    if (seg == null) {
+      const completedWorkSec = (row.phases ?? [])
+        .filter((p) => p.type === 'work' && p.completed !== false && p.actual_duration_sec != null)
+        .reduce((acc, p) => acc + (p.actual_duration_sec as number), 0);
+      const belowRampFloor = abandonedWork === 0 && completedWorkSec > 0
+        && completedWorkSec < THRESHOLD_MIN_SESSION_TOTAL_SEC - THRESHOLD_SESSION_DURATION_RAMP_SEC;
+      excluded.push({
+        id: row.id, date: row.date, paceSecPerMi: null,
+        reason: abandonedWork > 0 ? 'WORK_PHASES_ABANDONED'
+          : belowRampFloor ? 'SESSION_BELOW_DURATION_FLOOR'
+          : 'NO_QUALIFYING_SEGMENT',
+        detail: abandonedWork > 0
+          ? `${abandonedWork} work phase(s) recorded as not completed and no completed segment qualified`
+          : belowRampFloor
+            ? `${Math.round(completedWorkSec)} s of completed work is under the ramp floor`
+            : 'no phase, split or whole-run segment qualified as threshold work',
+      });
+      continue;
+    }
+
+    const reasons: ObservationAuthorityReason[] = [];
+    // duration · ramp in over the last five minutes under the doctrine floor
+    const durationFactor = seg.durationSec >= THRESHOLD_MIN_SESSION_TOTAL_SEC
+      ? 1
+      : Math.max(0, Math.min(1,
+          (seg.durationSec - (THRESHOLD_MIN_SESSION_TOTAL_SEC - THRESHOLD_SESSION_DURATION_RAMP_SEC))
+            / THRESHOLD_SESSION_DURATION_RAMP_SEC));
+    if (durationFactor <= 0) {
+      excluded.push({ id: row.id, date: row.date, reason: 'SESSION_BELOW_DURATION_FLOOR', paceSecPerMi: seg.paceSecPerMi,
+        detail: `${Math.round(seg.durationSec)} s of qualifying work is under the ramp floor` });
+      continue;
+    }
+    if (durationFactor < 1) reasons.push('SESSION_SHORT_OF_DOCTRINE_FLOOR');
+
+    // HR · in band 1; fades to 0 one further half-width past either edge; absent reduced
+    let hr: HrAuthority;
+    let hrFactor: number;
+    if (seg.hrBandDistance == null) {
+      hr = 'absent'; hrFactor = THRESHOLD_HR_ABSENT_AUTHORITY; reasons.push('HR_ABSENT_REDUCED_AUTHORITY');
+    } else if (seg.hrBandDistance <= 1) {
+      hr = 'in_band'; hrFactor = 1; reasons.push('HR_IN_THRESHOLD_BAND');
+    } else {
+      const over = seg.hrBandDistance - 1;
+      hrFactor = Math.max(0, 1 - over / THRESHOLD_HR_OUT_OF_BAND_FADE_HALF_WIDTHS);
+      hr = hrFactor > 0 ? 'near_band' : 'out_of_band';
+      if (hrFactor > 0) reasons.push('HR_NEAR_THRESHOLD_BAND');
+    }
+    if (hrFactor <= 0) {
+      excluded.push({ id: row.id, date: row.date, reason: 'HR_OUTSIDE_THRESHOLD_BAND', paceSecPerMi: seg.paceSecPerMi,
+        detail: `pooled HR sat ${seg.hrBandDistance?.toFixed(2)} half-widths from the T-band centre (${seg.hrPct?.toFixed(3)} of ${seg.basis === 'pct_lthr' ? 'LTHR' : 'HRmax'})` });
+      continue;
+    }
+
+    // Evidence Engine · the owner of "what did this run demonstrate"
+    let evidenceFactor: number;
+    let evidenceWeight: number | null = null;
+    let anchorMoveCandidate: boolean | null = null;
+    if (evidenceKind === 'evidence' && verdict) {
+      evidenceWeight = verdict.weight;
+      anchorMoveCandidate = verdict.anchorMoveCandidate;
+      evidenceFactor = verdict.weight != null
+        ? Math.max(0, Math.min(1, verdict.weight / SINGLE_ACTIVITY_EVIDENCE_CEILING))
+        : 1;
+      reasons.push('EVIDENCE_ENGINE_CORROBORATES');
+      if (!verdict.anchorMoveCandidate) reasons.push('SUPPORTING_EVIDENCE_ONLY_NOT_ANCHOR_MOVER');
+    } else if (evidenceKind === 'indeterminate') {
+      anchorMoveCandidate = verdict?.anchorMoveCandidate ?? null;
+      evidenceFactor = EVIDENCE_ENGINE_INDETERMINATE_AUTHORITY;
+      reasons.push('EVIDENCE_ENGINE_INDETERMINATE');
+    } else {
+      evidenceFactor = EVIDENCE_ENGINE_UNAVAILABLE_AUTHORITY;
+      reasons.push('EVIDENCE_ENGINE_UNAVAILABLE');
+    }
+
+    // Context · Rule 8
+    const representative = !(windows && isPrescribedNonNormal(row.date, windows));
+    const contextFactor = representative ? 1 : PRESCRIBED_WINDOW_AUTHORITY;
+    if (!representative) reasons.push('INSIDE_PRESCRIBED_WINDOW');
+    if ((seg.abandonedPhases ?? 0) > 0) reasons.push('ABANDONED_PHASES_DROPPED');
+
+    if (seg.source === 'evidence-segments') reasons.push('PRICED_FROM_EVIDENCE_ENGINE_SEGMENTS');
+
+    const weight = hrFactor * durationFactor * evidenceFactor * contextFactor;
     out.push({
       id: row.id,
       date: row.date,
@@ -1279,9 +1773,44 @@ export function classifyThresholdCandidates(
       hrBasis: seg.basis,
       hrPct: seg.hrPct,
       hrBandDistance: seg.hrBandDistance,
+      weight,
+      completed: (seg.abandonedPhases ?? 0) === 0,
+      representative,
+      authority: {
+        hr, hrFactor, durationFactor, evidenceKind, evidenceWeight, anchorMoveCandidate,
+        evidenceFactor, contextFactor, stalenessFactor: 1, ageDays: null, reasons,
+      },
     });
   }
-  return out;
+  return { observations: out, excluded };
+}
+
+/** Pool the Evidence Engine's threshold_like segments into one pricing. */
+function segmentFromEvidenceSegments(
+  segments: readonly EvidenceSegmentRead[],
+  ctx: HrContext,
+): ThresholdSegment | null {
+  const usable = segments.filter((g) => Number.isFinite(g.paceSecPerMi) && g.paceSecPerMi > 0 && g.durationSec > 0);
+  if (usable.length === 0) return null;
+  let totalSec = 0, totalMi = 0, hrWeighted = 0, hrWeight = 0;
+  for (const g of usable) {
+    totalSec += g.durationSec;
+    totalMi += g.durationSec / g.paceSecPerMi;
+    if (g.meanHrBpm != null && g.meanHrBpm > 0) { hrWeighted += g.meanHrBpm * g.durationSec; hrWeight += g.durationSec; }
+  }
+  if (totalMi <= 0) return null;
+  if (totalSec < THRESHOLD_MIN_SESSION_TOTAL_SEC - THRESHOLD_SESSION_DURATION_RAMP_SEC
+      || totalSec > THRESHOLD_MAX_QUALIFYING_SEC) return null;
+  const pooledHr = hrWeight > 0 ? hrWeighted / hrWeight : null;
+  const { basis, pct } = hrZoneMatch(pooledHr, ctx, THRESHOLD_PCT_HRMAX_BAND, THRESHOLD_PCT_LTHR_BAND);
+  return {
+    paceSecPerMi: totalSec / totalMi,
+    durationSec: totalSec,
+    source: 'evidence-segments',
+    basis,
+    hrPct: pct,
+    hrBandDistance: basis != null ? hrBandDistance(pct, thresholdBandFor(basis)) : null,
+  };
 }
 
 /** Shared by `loadCandidateRows` and `loadPhasesByDate` so the two windows
@@ -1449,25 +1978,149 @@ export async function resolveEasyPaceCorpus(
   return easyPaceCorpus(filtered, opts?.minObservations);
 }
 
+/** Everything the threshold corpus needs, loaded ONCE so the capacity
+ *  resolver's two passes (base read, relaxed-bar read) classify the same
+ *  rows against the same Evidence Engine verdicts. */
+export interface ThresholdCorpusInputs {
+  todayISO: string;
+  /** The window the read starts from (`PACE_CORPUS_LOOKBACK_DAYS`). */
+  baseLookbackDays: number;
+  /** How far the rows below actually reach. */
+  maxLookbackDays: number;
+  rows: CandidateRow[];
+  ctx: HrContext;
+  windows: PrescribedWindow[];
+  /** Null when the Evidence Engine read failed — reported, never silently
+   *  substituted (Rule 11): every observation then carries
+   *  `EVIDENCE_ENGINE_UNAVAILABLE` and reduced authority. */
+  evidence: Map<string, ThresholdEvidenceVerdict> | null;
+}
+
+export async function loadThresholdCorpusInputs(
+  userId: string,
+  todayISO?: string,
+  opts?: { lookbackDays?: number },
+): Promise<ThresholdCorpusInputs> {
+  const today = todayISO ?? await runnerToday(userId);
+  const baseLookbackDays = opts?.lookbackDays ?? PACE_CORPUS_LOOKBACK_DAYS;
+  // Load the WIDEST window the read may settle on, once; the composer widens
+  // in `REPRESENTATIVE_LOOKBACK_STEP_DAYS` steps from the base only as far as
+  // corroboration needs, discounting what lies beyond the base by age.
+  const lookbackDays = Math.max(baseLookbackDays, REPRESENTATIVE_LOOKBACK_MAX_DAYS);
+  const cutoff = cutoffDateISO(today, lookbackDays);
+  const [rows, ctx, phasesByDate, windows, classified] = await Promise.all([
+    loadCandidateRows(userId, today, lookbackDays),
+    loadHrContext(userId, today),
+    loadPhasesByDate(userId, cutoff, today),
+    loadPrescribedWindows(userId, today).catch((err) => {
+      console.warn('[pace-corpus] prescribed windows read failed · context factors unavailable', err);
+      return [] as PrescribedWindow[];
+    }),
+    classifyRecentActivities(userId, cutoff, today).catch((err) => {
+      console.warn('[pace-corpus] Evidence Engine read failed · every observation carries reduced authority', err);
+      return null;
+    }),
+  ]);
+  const evidence = classified == null
+    ? null
+    : new Map<string, ThresholdEvidenceVerdict>(classified.map((c) => {
+        const t = c.result.capacities.threshold;
+        return [c.runId, {
+          kind: t.kind,
+          weight: t.kind === 'evidence' ? t.weight : null,
+          anchorMoveCandidate: c.result.anchorMoveCandidate,
+          segments: c.result.segments
+            .filter((g) => g.classification === 'threshold_like')
+            .map((g) => ({ paceSecPerMi: g.meanPaceSecPerMi, durationSec: g.spanSec, meanHrBpm: g.meanHrBpm })),
+        }];
+      }));
+  return {
+    todayISO: today,
+    baseLookbackDays,
+    maxLookbackDays: lookbackDays,
+    rows: rows.map((r) => ({ ...r, phases: phasesByDate.get(r.date) ?? [] })),
+    ctx,
+    windows,
+    evidence,
+  };
+}
+
+/** Pure · the corpus read from already-loaded inputs. */
+export function thresholdCorpusFromInputs(
+  inputs: ThresholdCorpusInputs,
+  minObservations?: number,
+): ThresholdPaceRead {
+  const k = minObservations ?? CORROBORATION_MIN_OBSERVATIONS;
+  const { observations, excluded } = classifyThresholdCandidatesDetailed(inputs.rows, inputs.ctx, {
+    evidence: inputs.evidence,
+    windows: inputs.windows,
+  });
+  const ageOf = (iso: string): number => Math.max(0, Math.round(
+    (Date.parse(inputs.todayISO + 'T12:00:00Z') - Date.parse(iso + 'T12:00:00Z')) / 86_400_000,
+  ));
+  // The narrowest window (base, base+step, … max) whose age-discounted
+  // authority reaches K. Beyond the base window an observation's weight halves
+  // every `REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS` — the SAME convention the
+  // adaptation engine's representative lookback applies (Rule 8: reach further
+  // back for evidence rather than cliff, and price its age).
+  const base = inputs.baseLookbackDays;
+  const discounted = (o: PaceObservation): PaceObservation => {
+    const age = ageOf(o.date);
+    const stalenessFactor = age <= base ? 1 : Math.pow(0.5, (age - base) / REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS);
+    const reasons = stalenessFactor < 1
+      ? [...o.authority.reasons, 'AGE_DISCOUNTED_BEYOND_BASE_WINDOW' as const]
+      : o.authority.reasons;
+    return { ...o, supportWeight: o.weight * stalenessFactor, authority: { ...o.authority, stalenessFactor, ageDays: age, reasons } };
+  };
+  const all = observations.map(discounted);
+  const settle = (pool: readonly PaceObservation[]): { windowDays: number; inWindow: PaceObservation[]; outside: ExcludedObservation[] } => {
+    let windowDays = base;
+    for (let w = base; w <= inputs.maxLookbackDays; w += REPRESENTATIVE_LOOKBACK_STEP_DAYS) {
+      windowDays = w;
+      const support = pool.filter((o) => (o.authority.ageDays ?? 0) <= w).reduce((acc, o) => acc + Math.min(1, o.supportWeight ?? o.weight), 0);
+      if (support >= k) break;
+    }
+    return {
+      windowDays,
+      inWindow: pool.filter((o) => (o.authority.ageDays ?? 0) <= windowDays),
+      outside: pool.filter((o) => (o.authority.ageDays ?? 0) > windowDays)
+        .map((o): ExcludedObservation => ({ id: o.id, date: o.date, reason: 'OUTSIDE_LOOKBACK_WINDOW', paceSecPerMi: o.paceSecPerMi,
+          detail: `${o.authority.ageDays} days old · the read settled on a ${windowDays}-day window` })),
+    };
+  };
+  const withNewest = settle(all);
+  // The prior for the daily move cap is the read the runner would have had
+  // WITHOUT the newest date's session(s), settled on ITS OWN window — a
+  // corpus that only reaches K by widening must widen again when the newest
+  // session is removed, or the cap would never find a prior to compare to.
+  const newestDate = all.reduce<string | null>((m, o) => (m == null || o.date > m ? o.date : m), null);
+  const priorPool = newestDate ? all.filter((o) => o.date !== newestDate) : [];
+  const priorSettled = settle(priorPool);
+  // An empty prior pool is a refusal from the corpus itself (insufficient
+  // corroboration), not a null manufactured here — Rule 11.
+  const priorRead = thresholdPaceCorpus(priorSettled.inWindow, k, { windowDays: priorSettled.windowDays });
+  return thresholdPaceCorpus(withNewest.inWindow, k, {
+    todayISO: inputs.todayISO,
+    excluded: [...excluded, ...withNewest.outside],
+    windowDays: withNewest.windowDays,
+    priorRead,
+  });
+}
+
 /**
  * Resolve the threshold-pace read from the runner's own classified training.
- * Deliberately NOT Rule 8-filtered — see "THE THRESHOLD DESIGN" above.
+ *
+ * Deliberately NOT Rule 8-FILTERED, and now Rule 8-WEIGHTED: a quality session
+ * inside a prescribed window is admitted at reduced authority and marked
+ * non-representative — it may support a belief; it may not, by itself, clear a
+ * representative-session bar downstream. See "THE THRESHOLD DESIGN" above and
+ * section 1b.
  */
 export async function resolveThresholdPaceCorpus(
   userId: string,
   todayISO?: string,
   opts?: { lookbackDays?: number; minObservations?: number },
 ): Promise<ThresholdPaceRead> {
-  const today = todayISO ?? await runnerToday(userId);
-  const lookbackDays = opts?.lookbackDays ?? PACE_CORPUS_LOOKBACK_DAYS;
-  const cutoff = cutoffDateISO(today, lookbackDays);
-  const [rows, ctx, phasesByDate] = await Promise.all([
-    loadCandidateRows(userId, today, lookbackDays),
-    loadHrContext(userId, today),
-    loadPhasesByDate(userId, cutoff, today),
-  ]);
-
-  const withPhases: CandidateRow[] = rows.map((r) => ({ ...r, phases: phasesByDate.get(r.date) ?? [] }));
-  const raw = classifyThresholdCandidates(withPhases, ctx);
-  return thresholdPaceCorpus(raw, opts?.minObservations);
+  const inputs = await loadThresholdCorpusInputs(userId, todayISO, { lookbackDays: opts?.lookbackDays });
+  return thresholdCorpusFromInputs(inputs, opts?.minObservations);
 }

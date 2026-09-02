@@ -1297,7 +1297,7 @@ export async function POST(req: NextRequest) {
                 JSON.stringify({
                   drift_kind: 'goal_gap_widening',
                   message: `Projection drifting away from goal for ${goalGap.consecutiveWideningDays} days · rebuild to close the gap?`,
-                  trajectory_sec: goalGap.trajectorySec,
+                  expected_race_day_sec: goalGap.expectedRaceDaySec,
                   goal_sec: goalGap.goalSec,
                   gap_sec: goalGap.gapSec,
                   weeks_remaining: goalGap.weeksRemaining,
@@ -1347,14 +1347,14 @@ export async function POST(req: NextRequest) {
             );
             const activePlanId = activePlanRow?.id ?? null;
             // RULE 16 · resolved independently through the same canonical
-            // `resolveRaceProjection` pair `goalGap.trajectorySec` itself now
+            // `resolveRaceProjection` pair `goalGap.expectedRaceDaySec` itself now
             // uses (fixed 2026-09-01 · see lib/plan/goal-gap.ts's field doc —
             // it used to alias the projection SNAPSHOT, today's equivalence,
             // while wearing the word "trajectory"). Kept as its own call
-            // rather than reading `goalGap.trajectorySec` directly because
+            // rather than reading `goalGap.expectedRaceDaySec` directly because
             // this note's Rule-11 refusal contract is STRICTER than
             // GoalGap's: this note shows no figure at all when live
-            // resolution fails, where `goalGap.trajectorySec` still falls
+            // resolution fails, where `goalGap.expectedRaceDaySec` still falls
             // back to the raw snapshot so `computeGoalGap`'s many other
             // consumers (gapSec, classifyTrend, ...) always have a number to
             // do arithmetic against. Same resolver, two honestly different
