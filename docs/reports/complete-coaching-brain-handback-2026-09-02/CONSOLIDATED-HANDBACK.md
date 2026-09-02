@@ -20,7 +20,7 @@ re-cut it.
 
 | Stage | Scope | State |
 |---|---|---|
-| 1 | Finish and lock the coaching brain | **On main, deployed** |
+| 1 | Finish and lock the coaching brain | **Landed and deployed — but scored INCOMPLETE, see 13** |
 | 2 | Plan-generation contracts | **Partial on main** · 5 of 9 brief phases; 4 in flight |
 | 3 | Coaching explanation contract | Not started |
 | 4 | Post-run experience | Not started |
@@ -440,7 +440,58 @@ previous handback recorded rather than a new finding: the watch's own compiled
 grading is covered by a TypeScript port rather than by the Swift that runs on
 his wrist. The wire is right. The wrist is unverified.
 
-## 13 · What is NOT true yet
+## 13 · The brain's own completion criterion, scored independently
+
+Your standard was verbatim: do not call the brain complete while any canonical
+coaching question still has competing live owners. It was audited independently
+against the Constitution's ownership table, eighteen rows, evidence per row. The
+full scorecard is `ownership-scorecard.md` beside this file.
+
+# BRAIN INCOMPLETE — 5 PASS · 5 PARTIAL · 8 FAIL
+
+**What is finished, said first, because the failures are unevenly distributed
+and the successes are the part that prices your block.** The six-anchor pace
+spine, verified agreeing across engine, plan, watch and stamp, with the legacy
+cascades deleted rather than deprecated. Durability: one exponent, every former
+competitor converted to a delegating adapter with the deletion recorded in the
+file. Heat: one model, one band, no Swift copy. The workout catalogue and its
+reachability gate. The plan-mutation boundary, where fourteen ad-hoc writers were
+consolidated into one and it holds. And goal immutability, proven both in source
+and in four months of production data: CIM has sat at 3:00:00 against a 3:19:42
+projection and has never moved.
+
+**The three blockers that survive contact with your data:**
+
+1. **Sixty seconds per mile.** A goal-derived pace ladder is live on iPhone and
+   watch. It prices your marathon at 412 s/mi off your typed 3:00:00 where the
+   canonical durability anchor says 472, and threshold at 394 against 430. It is
+   latent for you only because every row on your plan happens to carry a stored
+   band, so it is one absent workout spec from firing. An agent is closing it
+   now.
+2. **A hundred and eighty seconds.** Your plan holds two records of the
+   prescribed CIM target: 436 s/mi in `authored_state`, 443 on the race row.
+   Which one you get depends on which job ran last. Rule 23 sitting on top of
+   Rule 16.
+3. **Safety has no owner.** Four surfaces author the verdict independently, and
+   the phone refuses to prescribe on an open injury while the watch ships the
+   runnable workout beside its own "Not today" board. There have been 184
+   injury-adjustment proposals and zero accepted, over nine days.
+
+**And it corroborated the canary finding from a different direction.** The
+adaptation engine proposed PROGRESS on three consecutive days with the live
+recompute never firing, which turns Rule 21's zero from an inference into a
+dated, per-day production comparison.
+
+**The audit states its own gaps**, which is why it is worth trusting: nothing in
+it was verified by rendering, and no gate other than the one it added was
+falsified. Its three device-facing blockers should be confirmed on the phone
+before anyone acts on them.
+
+**The honest headline: the part of the brain that prices your training is
+sound, and the parts that decide whether training is SAFE and whether it should
+CHANGE are not yet owned by anyone.**
+
+## 14 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -457,7 +508,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 14 · PENDING sections
+## 15 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
