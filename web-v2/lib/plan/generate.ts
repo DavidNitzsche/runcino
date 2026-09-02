@@ -7989,18 +7989,54 @@ export function embedMidBlockRaces(
           delete nearest.raceGoalPaceSec;
         }
       }
-      // 1 easy day either side — no deeper mini-taper for a C race.
-      for (const off of [-1, 1]) {
-        const d = dayAt(o + off);
+      // One easy day BEFORE — no deeper mini-taper for a C race.
+      {
+        const d = dayAt(o - 1);
         if (d && d.type !== 'race' && d.isQuality && !d.isLong) {
           d.type = 'easy';
           d.isQuality = false;
           d.subLabel = 'EASY';
-          d.notes = off < 0
-            ? `Easy the day before ${race.name}.`
-            : `Easy the day after ${race.name}.`;
+          d.notes = `Easy the day before ${race.name}.`;
           delete d.raceGoalPaceSec;
-          touchedWeeks.add(Math.floor((o + off) / 7));
+          touchedWeeks.add(Math.floor((o - 1) / 7));
+        }
+      }
+      /* AFTER · THE DOCTRINE WINDOW, NOT ONE DAY (2026-09-02).
+       *
+       * This was a bare `+1`: exactly one easy day after a C race, cited to
+       * nothing. `Research/00b` §"Recovery by Effort" gives the C row its own
+       * number — "25–50% of A-race recovery duration; treat like a hard
+       * workout" — which for a 10K is 1.25 to 2.5 days of no quality, and the
+       * engine was answering the very bottom of it.
+       *
+       * Found by the new combined-stress check refusing a plan the composer
+       * had just authored: `_brain_acceptance`'s multi-race golden runner put
+       * an intervals session on day 2 after a C 10K and `validateComposedPlan`
+       * §11 raised `QUALITY_INSIDE_RECOVERY_WINDOW` against the same doctrine
+       * table. Two answers to one question (Rule 16) — and the composer's was
+       * the uncited one, exactly as it had been for an unanswered B race
+       * before D1.
+       *
+       * `noQualityDaysAfterRace` is the single resolver both now call, so the
+       * plan cannot be authored under one reading of the window and refused
+       * under another. The LONG RUN is deliberately untouched: D2 grades a C
+       * effort as a hard workout, not a race, so it does not consume the
+       * following long-run slot (see the D2 block below).
+       */
+      {
+        const window = noQualityDaysAfterRace(race.distanceMi, 'C');
+        for (let j = 1; j <= window; j++) {
+          const d = dayAt(o + j);
+          if (!d || d.type === 'race' || !d.isQuality || d.isLong) continue;
+          d.type = 'easy';
+          d.isQuality = false;
+          d.subLabel = 'EASY';
+          d.notes = j === 1
+            ? `Easy the day after ${race.name}.`
+            : `Easy. Day ${j} after ${race.name}; it was a hard session and takes its recovery.`;
+          delete d.raceGoalPaceSec;
+          clearWorkShape(d);
+          touchedWeeks.add(Math.floor((o + j) / 7));
         }
       }
     }

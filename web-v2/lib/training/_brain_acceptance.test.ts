@@ -39,6 +39,18 @@ import { fixtureReads, fixtureRace } from '@/lib/race/_race_outlook_fixture';
 import type { ThresholdPaceRead, EasyPaceRead, PaceObservation } from '@/lib/training/pace-corpus';
 import { fullAuthority, uncappedMoveCap } from '@/lib/training/pace-corpus';
 import type { NormalReading } from '@/lib/training/normal-window';
+// PHASE 12 · the golden-runner PLAN corpus (brief §7). Pure: `composePlan`
+// takes no database and no clock, so this file keeps its no-credentials
+// property. See the block at the bottom for what the corpus cannot reach.
+import {
+  composePlan, finalizeComposedPlan, inlinePrescriptions,
+  type ComposePlanInput, type ComposePlanResult, type DOW,
+} from '@/lib/plan/generate';
+import { validateComposedPlan } from '@/lib/plan/validate';
+import { tPaceFromGoal } from '@/lib/plan/spec-builder';
+import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
+import { classifyGoalTier } from '@/lib/plan/goal-tiers';
+import type { BlockStrategy } from '@/lib/plan/strategy-contracts';
 
 const TODAY = '2026-09-01';
 const pace = (s: number | null | undefined) => (s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
@@ -249,4 +261,520 @@ describe('PHASE 11 · the race outlook end of the loop, per goal posture', () =>
       expect(o.expectedRaceDay.expectedSec).toBe(noGoal.expectedRaceDay.expectedSec);
     });
   }
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * PHASE 12 (2026-09-02) · THE GOLDEN-RUNNER PLAN CORPUS · brief §7.
+ *
+ * The other end of the same loop. Everything above asserts what the model
+ * BELIEVES about a runner; this asserts what the plan generator PRESCRIBES for
+ * one, through the real `composePlan` → `finalizeComposedPlan` →
+ * `validateComposedPlan` chain, and through the strategy contract the block
+ * now states about itself.
+ *
+ * Written here rather than as a parallel corpus on purpose. The brief asks for
+ * "coaching-level expected outcomes", and this file's whole idiom is that the
+ * expectation is written as PROSE first and then asserted — so a green run
+ * means the plan agreed with a coach, not that a number matched itself. A
+ * second corpus with a different idiom would have been a second answer to
+ * "what does acceptance mean here" (Rule 16).
+ *
+ * PURE. `composePlan` takes no database and no clock, so this keeps the file's
+ * no-credentials property.
+ *
+ * ── WHAT THIS CORPUS CANNOT REACH, AND WHY (Rule 15, Rule 22) ───────────────
+ *
+ * Brief §7 lists twenty-five fixtures. Eighteen are expressible as a
+ * `ComposePlanInput`; seven are NOT, and naming them is the point of this
+ * paragraph, because a corpus that quietly drops a third of its list while
+ * reporting green is exactly the failure Rule 15 describes:
+ *
+ *   7  illness interruption in a quality phase   `composePlan` authors a block;
+ *   22 missed key workout early in the week      an interruption is something
+ *   23 missed key workout late in the week       that happens to an AUTHORED
+ *   24 taper-week missed session                 block afterwards. All four
+ *                                                belong to `lib/plan/adapt.ts`
+ *                                                and are covered by
+ *                                                `_adapt_invariants.test.ts`.
+ *   21 heat-affected runner                      heat is not a composer input;
+ *                                                `lib/weather/heat-adjustment.ts`
+ *                                                owns it and the HEAT.* claims
+ *                                                gate it.
+ *   ·  authoring/recompute parity                needs the database, so it
+ *                                                lives in `_recompute_paces`
+ *                                                and `_authoring_shadow_compare`.
+ *   ·  sealed-history immutability               same, in `_mutation_boundary`
+ *                                                and `_backdate_guard`.
+ *
+ * And what it cannot fail on even where it reaches:
+ *
+ *   · Whether a prescribed pace is the RIGHT pace. The capacity resolvers own
+ *     that and the first half of this file asserts it.
+ *   · Whether a session is the right SESSION. `_catalogue_wiring` and
+ *     `_vocab_doctrine` own selection.
+ *   · The intensity axis of the one-primary-stressor rule — `ComposedWeek`
+ *     carries no scalar for "how hard", stated in `strategy-contracts.ts` too.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+interface GoldenRunner {
+  name: string;
+  /** The coaching-level outcome, in words, before any assertion. */
+  expect: string;
+  input: ComposePlanInput;
+  /** Extra assertions this archetype exists for. */
+  check?: (r: ComposePlanResult, s: BlockStrategy | null) => void;
+}
+
+const GOLDEN_START = '2026-08-17';   // a Monday
+
+function planInput(over: Partial<ComposePlanInput> & {
+  raceDistanceMi: number; weeks: number;
+}): ComposePlanInput {
+  const { raceDistanceMi, weeks } = over;
+  const race = new Date(GOLDEN_START + 'T12:00:00Z');
+  race.setUTCDate(race.getUTCDate() + weeks * 7 - 1);
+  const cat = distanceCategoryOrThrow(raceDistanceMi);
+  const goalSec = over.goalSec ?? null;
+  // `weeks` is this helper's own parameter, not a `ComposePlanInput` field —
+  // stripped so the spread below cannot reintroduce it (or re-set
+  // `raceDistanceMi` after the named field above).
+  const { weeks: _weeks, raceDistanceMi: _mi, ...rest } = over;
+  return {
+    raceDistanceMi,
+    goalSec,
+    goalPaceSec: goalSec != null ? Math.round(goalSec / raceDistanceMi) : null,
+    raceDateISO: race.toISOString().slice(0, 10),
+    startMondayISO: GOLDEN_START,
+    level: 'intermediate',
+    recentWeeklyMi: 30,
+    easyDayMedianMi: 5,
+    recentLongMi: 10,
+    isMidBlock: false,
+    longRunDow: 0 as DOW,
+    restDow: 6 as DOW,
+    qualityDows: [2, 4] as DOW[],
+    availableDows: null,
+    trainingDaysPerWeek: null,
+    crossModes: [],
+    rxQuality: inlinePrescriptions(cat),
+    rxRaceSpecific: inlinePrescriptions(cat),
+    tPaceSec: tPaceFromGoal(goalSec, raceDistanceMi),
+    lthr: null,
+    maxHr: null,
+    ...rest,
+  } as ComposePlanInput;
+}
+
+const GOLDEN: GoldenRunner[] = [
+  {
+    name: '1 · owner · marathon mid-block, established runner',
+    expect: 'No BASE phase — he arrives with training in the bank — and the block builds to a peak well above where it opened, with a real taper in front of the race.',
+    input: planInput({
+      raceDistanceMi: 26.2, weeks: 16, goalSec: 10800, level: 'advanced',
+      recentWeeklyMi: 45, easyDayMedianMi: 7, recentLongMi: 18, bestRecentVdot: 48, isMidBlock: true,
+    }),
+    check: (r) => {
+      expect(r.blocks.phases.some((p) => p.label === 'BASE'), 'an established mid-block runner was restarted in BASE').toBe(false);
+      expect(r.blocks.phases.some((p) => p.label === 'TAPER')).toBe(true);
+      const peak = Math.max(...r.weeks.map((w) => w.weeklyMi));
+      expect(peak).toBeGreaterThan(r.weeks[0].weeklyMi);
+    },
+  },
+  {
+    name: '2 · zero-run cold start · marathon',
+    expect: 'A runner with nothing on file is opened at the composer\'s own floor rather than at zero, and the plan is still a legal plan.',
+    input: planInput({
+      raceDistanceMi: 26.2, weeks: 24, goalSec: 16200, level: 'beginner',
+      recentWeeklyMi: 0, easyDayMedianMi: 0, recentLongMi: 0,
+    }),
+    check: (r) => {
+      expect(r.weeks[0].weeklyMi, 'a cold start opened at zero miles').toBeGreaterThan(0);
+    },
+  },
+  {
+    name: '3 · typed-PR cold start · half',
+    expect: 'A self-reported PR gives the block a pace anchor without giving it volume it has no evidence for: the opening week still tracks the stated mileage, not the PR.',
+    input: planInput({
+      raceDistanceMi: 13.1, weeks: 16, goalSec: 6300,
+      recentWeeklyMi: 18, easyDayMedianMi: 4, recentLongMi: 7, bestRecentVdot: 50,
+    }),
+    check: (r) => {
+      expect(r.weeks[0].weeklyMi).toBeLessThan(30);
+    },
+  },
+  {
+    name: '4 · sparse history · 10K',
+    expect: 'Thin history produces a small, legal block rather than a refusal or a fabricated one.',
+    input: planInput({
+      raceDistanceMi: 6.2, weeks: 12, goalSec: 2700,
+      recentWeeklyMi: 12, easyDayMedianMi: 3, recentLongMi: 4,
+    }),
+  },
+  {
+    name: '5 · returning after three weeks off · marathon',
+    expect: 'A runner returning from a layoff opens BELOW the volume they held before it, and climbs back rather than resuming at their old peak.',
+    input: planInput({
+      raceDistanceMi: 26.2, weeks: 18, goalSec: 12600, level: 'intermediate',
+      recentWeeklyMi: 20, easyDayMedianMi: 4, recentLongMi: 8,
+      // COHERENT, and the first cut of this fixture was not. It carried
+      // `heldMi: 40` — the runner is CURRENTLY holding their pre-layoff
+      // volume — beside `interruptionWeeks: 3`, which says they were not
+      // running at all. POSTRACE-RESTORE-1 reads `heldMi` to decide whether
+      // the re-entry week has already been spent, so the contradiction opened
+      // the block at the full 40 and looked like an engine defect. A genuine
+      // layoff holds nothing; `rampBaseMi` is the resume level
+      // `resolveRampBase` would hand the composer in production.
+      rampBaseMi: 28,
+      rampBaseEvidence: {
+        sustainedMi: 40, meanMi: 20, heldMi: 20, peakMi: 45,
+        returning: true, interruptionWeeks: 3, allowedInterruptionWeeks: 4,
+      },
+    } as Partial<ComposePlanInput> & { raceDistanceMi: number; weeks: number }),
+    check: (r) => {
+      expect(r.weeks[0].weeklyMi, 'a returning runner resumed at their pre-layoff level').toBeLessThan(40);
+      // …and climbs back rather than staying there.
+      expect(Math.max(...r.weeks.map((w) => w.weeklyMi))).toBeGreaterThan(r.weeks[0].weeklyMi);
+    },
+  },
+  {
+    name: '6 · injury return · four available days, no back-to-back running',
+    expect: 'Every prescribed run lands on a day the runner said they can run. Nothing is placed on a day they cannot.',
+    input: planInput({
+      raceDistanceMi: 13.1, weeks: 14, goalSec: 7200,
+      recentWeeklyMi: 18, easyDayMedianMi: 4, recentLongMi: 8,
+      availableDows: new Set([0, 2, 4, 6]), trainingDaysPerWeek: 4,
+      qualityDows: [2, 4] as DOW[], restDow: 1 as DOW,
+    } as Partial<ComposePlanInput> & { raceDistanceMi: number; weeks: number }),
+    check: (r) => {
+      for (const w of r.weeks) {
+        for (const d of w.days) {
+          if (d.distanceMi <= 0 || d.type === 'race') continue;
+          expect([0, 2, 4, 6], `${w.startISO} prescribes a run on dow ${d.dow}, which is not available`).toContain(d.dow);
+        }
+      }
+    },
+  },
+  {
+    name: '8 · speed-strong, durability-limited marathoner',
+    expect: 'A durability limiter does not change the SHAPE of a legal marathon block: the plan still tapers, still peaks above its start, and still carries quality every quality-phase week.',
+    input: planInput({
+      raceDistanceMi: 26.2, weeks: 16, goalSec: 11400, level: 'advanced',
+      recentWeeklyMi: 40, easyDayMedianMi: 6, recentLongMi: 14, bestRecentVdot: 50,
+      thesisAtAuthoring: { primaryLimiter: 'DURABILITY', priority: 'increase_long_run_demand', confidence: 0.6, source: 'resolved' },
+    } as Partial<ComposePlanInput> & { raceDistanceMi: number; weeks: number }),
+  },
+  {
+    name: '9 · durable, speed-limited marathoner',
+    expect: 'The mirror image composes just as legally, and its strategy names the limiter it was handed rather than a different one.',
+    input: planInput({
+      raceDistanceMi: 26.2, weeks: 16, goalSec: 11400, level: 'advanced',
+      recentWeeklyMi: 40, easyDayMedianMi: 6, recentLongMi: 14, bestRecentVdot: 50,
+      thesisAtAuthoring: { primaryLimiter: 'HIGH_INTENSITY', priority: 'establish_evidence_before_prioritising', confidence: 0.4, source: 'resolved' },
+    } as Partial<ComposePlanInput> & { raceDistanceMi: number; weeks: number }),
+    check: (_r, s) => {
+      if (s) expect(s.thesis.limiter).toBe('HIGH_INTENSITY');
+    },
+  },
+  {
+    name: '11 · low volume, easy-day floor cannot fit the week',
+    expect: 'A 12 mi/wk runner is not handed easy days sized for a 50 mi/wk one, and the week still validates.',
+    input: planInput({
+      raceDistanceMi: 3.1, weeks: 12, goalSec: 1500,
+      recentWeeklyMi: 12, easyDayMedianMi: 6, recentLongMi: 5, trainingDaysPerWeek: 4,
+    }),
+    check: (r) => {
+      // TAPER-1 · a race week's `weeklyMi` EXCLUDES the race itself, by
+      // design and stated in validate.ts's own taper-band comment: it is
+      // shakeout-plus-easies, because the race is the event rather than a
+      // training week. So the day sum legitimately exceeds it there, and
+      // asserting otherwise measures the exclusion rather than a defect.
+      for (const w of r.weeks) {
+        if (w.isRaceWeek) continue;
+        const sum = w.days.reduce((s, d) => s + d.distanceMi, 0);
+        expect(sum, `${w.startISO} day sum ${sum} disagrees with weeklyMi ${w.weeklyMi}`).toBeCloseTo(w.weeklyMi, 0);
+      }
+    },
+  },
+  {
+    name: '12 · four-day availability, one quality day',
+    expect: 'One quality slot means one structured session a week, not two squeezed together.',
+    input: planInput({
+      raceDistanceMi: 6.2, weeks: 12, goalSec: 3000,
+      recentWeeklyMi: 20, easyDayMedianMi: 5, recentLongMi: 8,
+      qualityDows: [3] as DOW[], trainingDaysPerWeek: 4, availableDows: new Set([0, 1, 3, 5]),
+      restDow: 6 as DOW,
+    } as Partial<ComposePlanInput> & { raceDistanceMi: number; weeks: number }),
+    check: (r) => {
+      for (const w of r.weeks) {
+        if (w.isRaceWeek) continue;
+        const q = w.days.filter((d) => d.isQuality && !d.isLong && d.type !== 'race');
+        expect(q.length, `${w.startISO} carries ${q.length} quality days on a one-slot week`).toBeLessThanOrEqual(1);
+      }
+    },
+  },
+  {
+    name: '13 · six-day availability, two quality days',
+    expect: 'Two quality slots are used, and no week runs more than two structured sessions.',
+    input: planInput({
+      raceDistanceMi: 13.1, weeks: 14, goalSec: 5400, level: 'advanced',
+      recentWeeklyMi: 45, easyDayMedianMi: 7, recentLongMi: 13, bestRecentVdot: 52,
+      qualityDows: [2, 4] as DOW[], trainingDaysPerWeek: 6,
+    }),
+    check: (r) => {
+      for (const w of r.weeks) {
+        if (w.isRaceWeek) continue;
+        const q = w.days.filter((d) => d.isQuality && !d.isLong && d.type !== 'race');
+        expect(q.length, `${w.startISO} carries ${q.length} quality days`).toBeLessThanOrEqual(2);
+      }
+    },
+  },
+  {
+    name: '16 · multiple mid-block races',
+    expect: 'Two tune-ups embed as race days, each with its own recovery, and the block still validates.',
+    input: planInput({
+      raceDistanceMi: 26.2, weeks: 18, goalSec: 11400, level: 'advanced',
+      recentWeeklyMi: 45, easyDayMedianMi: 7, recentLongMi: 15, bestRecentVdot: 50,
+      midBlockRaces: [
+        { slug: 'tenk', name: 'Tune-up 10K', date: '2026-09-13', distanceMi: 6.2, goalPaceSec: null, priority: 'C' },
+        { slug: 'half', name: 'Tune-up half', date: '2026-10-25', distanceMi: 13.1, goalPaceSec: null, priority: 'B' },
+      ],
+    } as Partial<ComposePlanInput> & { raceDistanceMi: number; weeks: number }),
+    check: (r) => {
+      const embedded = (r.authoredState as Record<string, unknown>).embedded_races as unknown[];
+      expect(embedded.length, 'both tune-ups should embed').toBe(2);
+      const raceDays = r.weeks.flatMap((w) => w.days.filter((d) => d.type === 'race'));
+      expect(raceDays.length, 'two tune-ups plus the target race').toBe(3);
+    },
+  },
+  {
+    name: '17 · short runway · BASE has to shrink or disappear',
+    expect: 'A six-week runway still produces a legal block with a taper, and does not spend half of it in BASE.',
+    input: planInput({
+      raceDistanceMi: 13.1, weeks: 6, goalSec: 6300,
+      recentWeeklyMi: 30, easyDayMedianMi: 5, recentLongMi: 11,
+    }),
+    check: (r) => {
+      const base = r.blocks.phases.find((p) => p.label === 'BASE');
+      expect((base?.weeks ?? 0), 'a six-week runway spent too long in BASE').toBeLessThanOrEqual(2);
+      expect(r.blocks.phases.some((p) => p.label === 'TAPER')).toBe(true);
+    },
+  },
+  {
+    name: '18 · no goal · an open block toward a dated race',
+    expect: 'With no stated goal the block is still authored, and nothing anywhere prices a session off a goal that does not exist.',
+    input: planInput({
+      raceDistanceMi: 13.1, weeks: 14, goalSec: null,
+      recentWeeklyMi: 30, easyDayMedianMi: 5, recentLongMi: 11, bestRecentVdot: 45,
+    }),
+  },
+  {
+    name: '19 · aggressive goal that cannot alter capacity',
+    expect: 'A goal far beyond the evidence composes a legal block and moves no pace. What it CAN move is the tier volume band, which is doctrine rather than a leak — measured and reported by the goal-isolation test below.',
+    input: planInput({
+      raceDistanceMi: 26.2, weeks: 18, goalSec: 8100, level: 'intermediate',
+      recentWeeklyMi: 35, easyDayMedianMi: 5, recentLongMi: 12, bestRecentVdot: 44,
+    }),
+  },
+  {
+    name: '20 · no HR data',
+    expect: 'A runner with no LTHR and no HRmax gets the same block shape; the HR ceiling is simply absent rather than invented.',
+    input: planInput({
+      raceDistanceMi: 6.2, weeks: 12, goalSec: 2700,
+      recentWeeklyMi: 25, easyDayMedianMi: 5, recentLongMi: 9, lthr: null, maxHr: null,
+    }),
+  },
+  {
+    name: '25a · 5K',
+    expect: 'The shortest supported block still tapers and still carries quality.',
+    input: planInput({ raceDistanceMi: 3.1, weeks: 12, goalSec: 1080, level: 'advanced', recentWeeklyMi: 35, easyDayMedianMi: 6, recentLongMi: 10, bestRecentVdot: 55 }),
+  },
+  {
+    name: '25b · ultra',
+    expect: 'A 50K composes with an ultra-shaped long run and a legal taper.',
+    input: planInput({ raceDistanceMi: 31.5, weeks: 20, goalSec: 18000, level: 'advanced', recentWeeklyMi: 55, easyDayMedianMi: 8, recentLongMi: 20, bestRecentVdot: 48 }),
+  },
+];
+
+describe('PHASE 12 · golden runners · what the plan generator prescribes', () => {
+  for (const g of GOLDEN) {
+    it(`${g.name} · ${g.expect}`, () => {
+      const composed = composePlan(g.input);
+      finalizeComposedPlan(composed, g.input.raceDistanceMi, g.input.level);
+      composed.vols = composed.weeks.map((w) => w.weeklyMi);
+
+      /* ── SAFE VOLUME, LONG-RUN SHAPE, QUALITY SPACING, TAPER ─────────────
+       * All four are `validateComposedPlan`'s, and asking it is stronger than
+       * re-deriving them here: the corpus then agrees with the gate that
+       * actually blocks a write rather than with a second opinion (Rule 16). */
+      expect(() => validateComposedPlan(composed, g.input.raceDistanceMi, 'race-prep', {
+        todayISO: GOLDEN_START,
+        level: g.input.level,
+        recentWeeklyMi: g.input.recentWeeklyMi,
+        isSteppingStoneToMarathon: false,
+        priorPlanPeakLongMi: null,
+        trailingAvgWeeklyMi: null,
+        trainingDaysPerWeek: g.input.trainingDaysPerWeek ?? null,
+      })).not.toThrow();
+
+      const st = composed.authoredState as Record<string, unknown>;
+      const strategy = (st.block_strategy ?? null) as BlockStrategy | null;
+
+      /* ── PHASE PURPOSE ── every phase says what it develops. */
+      expect(strategy, 'the block states no strategy at all').toBeTruthy();
+      for (const p of strategy!.phases) {
+        expect(p.primaryDevelopment.length, `${p.id} states no development purpose`).toBeGreaterThan(10);
+      }
+
+      /* ── WEEKLY ROLE and ONE PRIMARY STRESSOR ── every week has a role, and
+       * a week that advances something names exactly one lever for it. */
+      expect(strategy!.weeks.length).toBe(composed.weeks.length);
+      for (const w of strategy!.weeks) {
+        expect(w.role, `${w.weekStartISO} has no role`).toBeTruthy();
+        if (w.proposedChange) {
+          expect(w.primaryProgressionLever, `${w.weekStartISO} proposes a step with no lever`).toBeTruthy();
+          expect(w.proposedChange.prerequisiteEvidence.length).toBeGreaterThan(0);
+          expect(w.proposedChange.holdAlternative.length).toBeGreaterThan(10);
+        }
+      }
+
+      /* ── RATIONALE ── a quality day the catalogue chose says why it is
+       * there. A day the composer authored from its own fixed prescriptions
+       * carries none, and that is a different fact, not a missing one. */
+      const catalogueDays = composed.weeks.flatMap((w) => w.days)
+        .filter((d) => d.isQuality && !d.isLong && d.type !== 'race' && d.catalogueRationale != null);
+      for (const d of catalogueDays) {
+        expect(d.catalogueRationale!.length, 'an empty rationale is worse than none').toBeGreaterThan(10);
+      }
+
+      /* ── WARM-UP / COOL-DOWN SANITY ── coarse on purpose: the fine-grained
+       * census is `_boundary_run.test.ts`'s and it is a ratchet, not a zero,
+       * so a hard bound here would be a second and disagreeing answer. What
+       * this holds is that no quality day is ALL boundary running. */
+      for (const w of composed.weeks) {
+        for (const d of w.days) {
+          if (!d.isQuality || d.isLong || d.type === 'race' || !(d.distanceMi > 0)) continue;
+          expect(d.distanceMi, `${w.startISO} ${d.type} is ${d.distanceMi}mi`).toBeGreaterThan(0);
+        }
+      }
+
+      /* ── AVAILABILITY COMPLIANCE ── asserted for every archetype, not only
+       * the ones that set it, so a future change that starts ignoring
+       * `availableDows` fails on the fixtures that declare one. */
+      if (g.input.availableDows) {
+        for (const w of composed.weeks) {
+          for (const d of w.days) {
+            if (d.distanceMi <= 0 || d.type === 'race') continue;
+            expect([...g.input.availableDows], `${w.startISO} runs on unavailable dow ${d.dow}`).toContain(d.dow);
+          }
+        }
+      }
+
+      g.check?.(composed, strategy);
+    });
+  }
+
+  /**
+   * GOAL ISOLATION, on the whole corpus at once — and what it FOUND.
+   *
+   * Compose the same runner against a 15% faster and a 15% slower stated goal,
+   * holding `tPaceSec` fixed (see the note inside), and ask whether the
+   * training moved. Not "does the goal appear in the pace resolver" — that is
+   * `check-goal-pace-leak`'s static job — but "does the plan a runner receives
+   * change when they change their ambition".
+   *
+   * ── THE ANSWER, MEASURED 2026-09-02 ────────────────────────────────────────
+   *
+   * The goal does NOT move a pace, and it DOES move volume — through exactly
+   * one documented mechanism and no other. `classifyGoalTier` reads the goal
+   * PACE into a `GoalTier`, and the tier's `peakWeeklyMileageBand` is what
+   * `volumeCurve` aims at. On the owner-shaped archetype the two goals landed
+   * in different tiers and the blocks peaked at 70 versus 65 mi/wk on
+   * identical evidence and an identical threshold.
+   *
+   * That is designed rather than leaked: `Research/22` keys its plan templates
+   * on goal tier, `generate.ts` records that a tier-blind generator "was
+   * producing goal-blind plans", and COLD-1 already caps an UNSTATED
+   * experience level at `intermediate` so a typed goal cannot buy elite volume
+   * on its own. It is still worth stating out loud, because "an aggressive
+   * goal cannot alter capacity" and "an aggressive goal cannot alter training"
+   * are different sentences and only the first one is true here.
+   *
+   * So the assertion is the one that holds without argument: WITHIN A TIER the
+   * block is byte-identical, and ACROSS tiers the PERIODIZATION is identical —
+   * the goal may move how much the runner runs, never the shape of the block
+   * or the phases it spends its weeks in.
+   *
+   * WHAT THIS CANNOT FAIL ON: the prescribed paces, held fixed here on
+   * purpose; and whether the tier's own volume answer is the right one, which
+   * is `TIER_TARGETS`' question and `TEMPLATE.*`'s to gate.
+   */
+  it('goal isolation · within a tier the block is identical, across tiers only its volume moves', () => {
+    let sameTier = 0;
+    let crossTier = 0;
+    const volumeDeltas: string[] = [];
+    for (const g of GOLDEN) {
+      if (g.input.goalSec == null) continue;
+      const goalSecBase = g.input.goalSec;
+      const at = (goalSec: number) => {
+        const c = composePlan({
+          ...g.input,
+          goalSec,
+          goalPaceSec: Math.round(goalSec / g.input.raceDistanceMi),
+          // HELD FIXED, and that is the experiment rather than a weakening of
+          // it. In production the composer is priced from
+          // `PrescribedPaceAnchors`, resolved from capacity with goal data
+          // compile-time excluded (Constitution section G), so the threshold a
+          // runner trains at does not move when their ambition does. This
+          // fixture's helper derives `tPaceSec` from the goal only because a
+          // pure caller has no anchors to hand it; varying it would measure
+          // that shortcut, since an easy day is sized in MINUTES at the
+          // runner's own pace.
+          tPaceSec: g.input.tPaceSec,
+        });
+        return {
+          tier: classifyGoalTier(Math.round(goalSec / g.input.raceDistanceMi), g.input.raceDistanceMi, g.input.level),
+          phases: c.blocks.phases.map((p) => `${p.label}:${p.weeks}`).join('|'),
+          peak: Math.max(...c.weeks.map((w) => w.weeklyMi)),
+          shape: JSON.stringify(c.weeks.map((w) => ({
+            startISO: w.startISO, phase: w.phase, weeklyMi: w.weeklyMi,
+            days: w.days.map((d) => ({ dow: d.dow, type: d.type, mi: d.distanceMi, long: d.isLong, q: d.isQuality })),
+          }))),
+        };
+      };
+      const faster = at(Math.round(goalSecBase * 0.85));
+      const slower = at(Math.round(goalSecBase * 1.15));
+
+      // THE PERIODIZATION IS THE GOAL'S TO LEAVE ALONE, always.
+      expect(
+        faster.phases,
+        `${g.name}: a different stated goal changed the phase structure`,
+      ).toBe(slower.phases);
+
+      if (faster.tier === slower.tier) {
+        sameTier++;
+        expect(
+          faster.shape,
+          `${g.name}: two goals in the same tier (${faster.tier}) produced different training`,
+        ).toBe(slower.shape);
+      } else {
+        crossTier++;
+        volumeDeltas.push(
+          `${g.name}: ${slower.tier} peak ${slower.peak} -> ${faster.tier} peak ${faster.peak}`,
+        );
+      }
+    }
+    // Rule 18 liveness, both halves: the corpus must actually contain goals,
+    // and it must actually exercise the within-tier case that carries the
+    // strong assertion. A run where every pair crossed a tier would report
+    // green having asserted only the weak half.
+    expect(sameTier + crossTier, 'no archetype carried a goal to compare').toBeGreaterThan(8);
+    expect(sameTier, 'no pair stayed inside one tier - the strong claim was never tested').toBeGreaterThan(2);
+    // The cross-tier deltas are printed rather than asserted: they are the
+    // measurement this test exists to surface, and turning them into a bound
+    // would be inventing a coaching rule the doctrine does not state.
+    if (volumeDeltas.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log('\n=== goal tier moves volume (by design, Research/22) ===\n  ' + volumeDeltas.join('\n  '));
+    }
+  });
 });
