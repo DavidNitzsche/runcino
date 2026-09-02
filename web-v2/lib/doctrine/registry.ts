@@ -6108,7 +6108,12 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'lib/prescription/trajectory.ts#seedShapeFrom',
     ],
     doc: 'Research/01-pace-zones-vdot.md',
-    anchor: '### Dosing rules — Daniels\' caps',
+    // Double-quoted, like every sibling claim on this section. Rule 7's format
+    // contract is that `check-doctrine.sh` reads this line with no TypeScript
+    // toolchain — a backslash-escaped apostrophe reaches it literally and the
+    // anchor stops resolving, which is exactly what happened on the first run
+    // of this claim (vitest green, `DOCTRINE FAIL · anchor no longer present`).
+    anchor: "### Dosing rules — Daniels' caps",
     claim:
       'A VO2max repetition recovers for roughly its own duration, and never for less than ' +
       'half of it. The I row states both in one cell — the relation and the floor — so a ' +
