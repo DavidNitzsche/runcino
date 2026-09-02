@@ -82,6 +82,20 @@ interface EvidenceOverrides {
   capacities?: Partial<Record<CapacityName, CapacityEvidence>>;
   anchorMoveCandidate?: boolean;
   tension?: boolean;
+  /**
+   * Was the classifier handed the runner's current belief.
+   *
+   * DEFAULT TRUE, and that default is the fix for closure 6 rather than a
+   * convenience. Until 2026-09-02 `load.ts` passed no belief at all, so every
+   * production classification refused with `no_belief_supplied` — and this
+   * factory hard-coded that refusal, which meant the suite asserted the
+   * app's own defect as its expected output. `load.ts` now resolves the
+   * belief through `resolveThresholdCapacity`, so the honest default here is
+   * a belief that WAS supplied and simply agreed with the observation.
+   *
+   * Set false to exercise the refusal arm, which one test below does.
+   */
+  beliefSupplied?: boolean;
   heat?: boolean;
   stimulus?: string;
 }
@@ -116,7 +130,7 @@ function evidenceFixture(o: EvidenceOverrides = {}): ActivityEvidenceResult {
           anchorEffect: 'no_change_flag_for_reexamination', reexaminationWeight: 0.4,
           reasons: ['SUSTAINED_WORK_FASTER_THAN_BELIEF'],
         }
-      : { ok: false, reason: 'no_belief_supplied' },
+      : { ok: false, reason: o.beliefSupplied === false ? 'no_belief_supplied' : 'observation_consistent_with_belief' },
     trainingLoad: { stimulus: o.stimulus ?? 'aerobic_maintenance', aerobicMinutes: 45, distanceMi: 6, primaryValue: 'Aerobic volume.' },
     anchorMoveCandidate: o.anchorMoveCandidate ?? false,
     anchorMoveReasons: [],
@@ -144,6 +158,13 @@ function makeInput(o: InputOverrides = {}): PostRunInput {
     hasActivePlan: true,
     activePlanId: 'pln_9a57561debb776e5',
     sensorLimited: false,
+    // 2026-09-02 · the strides / capture inputs. Defaults describe the
+    // 4 x 1 mile session these fixtures are built from: it prescribed no
+    // strides, and its recording was clean.
+    stridesPrescribed: 0,
+    recordedDistanceMi: 8.5,
+    recordedDurationSec: 4098,
+    clockAudit: null,
     ...o,
   } as PostRunInput;
 }

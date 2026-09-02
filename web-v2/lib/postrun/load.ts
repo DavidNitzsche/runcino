@@ -40,6 +40,7 @@ import { runDaySql, runDistanceMiSql, runIdentityMatchSql } from '@/lib/runs/run
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { resolveWorkoutVerdict, phasesFromCompletion } from '@/lib/execution/verdict';
 import { classifyStoredActivity } from '@/lib/evidence/load-activity-evidence';
+import { resolveThresholdCapacity } from '@/lib/training/capacity-resolver';
 import { displayTypeFor } from '@/lib/faff/v5-today';
 import { workHrCeiling, overallHrCeiling } from '@/lib/prescription/hr-ceiling';
 import { runAvgHr } from '@/lib/runs/run-shape';
@@ -209,9 +210,44 @@ export async function loadPostRunExperience(
   // would fold a database failure into that same null and the runner would
   // read "has not been read yet" over an outage. A throw reaches the route,
   // which omits the section rather than filling it with a guess.
+  /* ── THE CANONICAL CURRENT BELIEF (closure 6, 2026-09-02) ────────────────
+   *
+   * This call used to pass no options at all, so `currentBelief` was null on
+   * every post-run classification this app has ever run. The consequence is
+   * not that the tension read was weak — it is that it could not happen:
+   * `readBeliefTension` refuses immediately with `no_belief_supplied`, so
+   * `PostRunEvidenceImpact.role === 'CHALLENGES'` has never once been reached
+   * from a post-run surface, for any run, for any runner. A field that exists
+   * and cannot fire is exactly the failure this programme is about.
+   *
+   * `resolveThresholdCapacity` is the owner CLAUDE.md names by name — "one
+   * canonical resolver per derived value (`resolveThresholdCapacity()`, not
+   * four copies)" — and it is asked for the RUN'S OWN DATE, not today's, so a
+   * run opened from history is compared against the belief that stood when it
+   * happened rather than against a number resolved months later.
+   *
+   * RULE 11 ON THE FAILURE. A throw here must not become "no tension". It is
+   * caught, named, and passed as null — which `readEvidence` now reports as
+   * `CURRENT_BELIEF_NOT_SUPPLIED_TO_CLASSIFIER` and refuses to narrate as
+   * "supports your current threshold range". The belief resolver is a heavy
+   * multi-query read and a post-run screen must not fail because it did. */
+  let currentBelief: { thresholdPaceSecPerMi: number; thresholdConfidence: number; asOf: string } | null = null;
+  try {
+    const belief = await resolveThresholdCapacity(userId, dateISO);
+    if (belief?.paceSecPerMi != null && Number.isFinite(belief.paceSecPerMi)) {
+      currentBelief = {
+        thresholdPaceSecPerMi: belief.paceSecPerMi,
+        thresholdConfidence: belief.confidence,
+        asOf: dateISO,
+      };
+    }
+  } catch (e) {
+    console.error('[postrun/load] threshold belief unresolved — tension read will refuse:', e);
+  }
+
   let evidence: ActivityEvidenceResult | null = null;
   if (/^-?\d+$/.test(runRow.id)) {
-    evidence = await classifyStoredActivity(userId, runRow.id);
+    evidence = await classifyStoredActivity(userId, runRow.id, { currentBelief });
   }
 
   // ── the runner's own effort answer ───────────────────────────────────────
@@ -308,6 +344,66 @@ export async function loadPostRunExperience(
     hasActivePlan: activePlanId != null,
     activePlanId,
     sensorLimited,
+    /* THE SPEC'S OWN STRIDE COUNT. Three states, not two (Rule 11): a number
+     * is what the session asked for, 0 is a session that asked for none, and
+     * null is "there was no plan row to read", which is the only state that
+     * must not license the label-matching fallback in `isStridePhase`. */
+    stridesPrescribed: (() => {
+      const spec = planRow?.workout_spec;
+      if (!spec || typeof spec !== 'object') return null;
+      const n = Number((spec as Record<string, unknown>).strides_reps ?? 0);
+      return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
+    })(),
+    /* THE THREE QUANTITIES `readCapture` RECONCILES, read from three different
+     * places on the row because they are three different facts. On the
+     * 2026-09-02 run they are 6.41 mi, 5.98 mi and 5.00 mi, and every one of
+     * them is correct. */
+    recordedDistanceMi: Number.isFinite(Number(data.distanceMi)) ? Number(data.distanceMi) : null,
+    recordedDurationSec: Number.isFinite(Number(data.durationSec)) ? Number(data.durationSec) : null,
+    structuredDistanceMi: (() => {
+      const list = verdict.phases;
+      if (list.length === 0) return null;
+      let mi = 0;
+      let any = false;
+      for (const p of list) if (p.actualDistanceMi != null) { mi += p.actualDistanceMi; any = true; }
+      return any ? Math.round(mi * 100) / 100 : null;
+    })(),
+    structuredDurationSec: (() => {
+      const list = verdict.phases;
+      if (list.length === 0) return null;
+      let sec = 0;
+      let any = false;
+      for (const p of list) if (p.actualDurationSec != null) { sec += p.actualDurationSec; any = true; }
+      return any ? Math.round(sec) : null;
+    })(),
+    /* WHAT THE MILE TABLE CAN DRAW. Read straight off the stored array rather
+     * than through `pickSplits`, because the question here is only "how much of
+     * the run do these rows cover" — the richer which-array-wins resolution
+     * belongs to the surface that draws them, and duplicating it would be a
+     * second answer to a question that has an owner (Rule 16). A split with no
+     * length is one mile, which is the same convention `splitsCoverageMi`
+     * uses. */
+    splitCount: Array.isArray(data.splits) ? (data.splits as unknown[]).length : null,
+    splitDistanceMi: Array.isArray(data.splits)
+      ? Math.round((data.splits as Array<Record<string, unknown>>).reduce((a, sp) => {
+          const raw = sp.distanceMi ?? sp.distance_mi;
+          const d = raw == null ? 1 : Number(raw);
+          return a + (Number.isFinite(d) && d > 0 ? d : 1);
+        }, 0) * 100) / 100
+      : null,
+    /* PROVENANCE, because it changes what may be said. See `readCapture`. */
+    correctedManually: !!(data.manualCorrection && typeof data.manualCorrection === 'object'),
+    clockAudit: (() => {
+      const a = data.clockAudit;
+      if (!a || typeof a !== 'object') return null;
+      const r = a as Record<string, unknown>;
+      const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : null);
+      // `pausedSec` and `declinedSec` are deliberately NOT carried. No Swift
+      // file sends either, so the route's `Number(body.pausedSec) || 0` makes
+      // both structurally zero on every row, and a zero meaning "nobody said"
+      // must not travel beside three real measurements (Rule 11).
+      return { driftSec: n(r.driftSec), wallSec: n(r.wallSec), countedSec: n(r.countedSec) };
+    })(),
   };
   return composePostRunExperience(input);
 }
