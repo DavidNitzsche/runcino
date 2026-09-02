@@ -287,3 +287,44 @@ structures it was authored with in August.
 | `stage5-cross-surface.md` | The contract suite and its sixteen falsifications |
 | `renders/` | Device screenshots, including the verified prescription screen |
 | `evidence/` | Raw production snapshots |
+
+---
+
+## 11 · Accepted boundary, and what comes next
+
+The owner reviewed this document and accepted its stated boundary verbatim: the
+prescribed pace and HR system is trustworthy; structural plan improvements are
+implemented but not in his live plan; post-run interpretation is nearly complete
+and needs an app release; **adaptation is not yet trustworthy or canonically
+owned**; the app is not yet at "just works."
+
+**In progress:** the rebuild-anchoring fix, then an exact dry-run preview of his
+rebuilt plan against eleven stated proofs and a fifteen-week before/after diff.
+No live write until that preview is reviewed.
+
+**Required next, and not yet built — a hard mutation barrier.** He has ruled the
+production simulator write a serious process failure and specified the remedy
+technically rather than procedurally: production-derived verification must be
+genuinely read-only; simulator and automated test clients must be structurally
+unable to post activities, complete workouts, or mutate his account; environment
+labelling and connection-string policy are explicitly insufficient; and a test
+must prove production writes are refused during verification.
+
+That is the correct diagnosis. The instruction that failed was a convention, and
+a convention that can be satisfied to the letter while being violated in
+substance is not a control.
+
+**The final coaching-brain programme, defined and not started: adaptation
+consolidation.** One canonical Adaptation Engine; the three legacy
+training-mutation paths inventoried and removed; every proposed change flowing
+through the canonical owner carrying evidence, confidence, magnitude limits,
+safety state and explicit reasons; refusal preserved as a legitimate outcome;
+upward pace adaptation shadow-only until predetermined promotion criteria are
+met; proof that shadow evaluation cannot mutate live training; a gate proving
+legacy writers cannot continue once canonical authority is enabled; validation
+against his real training history; before/after plan diffs for every proposed
+mutation; and one adaptation decision explained identically by phone, watch,
+plan, post-run interpretation and race outlook.
+
+**That is the last system on the list in section 9.** When it closes, the answer
+to his question changes.
