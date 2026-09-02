@@ -1,5 +1,13 @@
 # faff.run · overnight handback · 2026-09-02
 
+**For an external reader.** This is the record of one working session on a
+running-coach app, written for its owner and shared for review. It is deliberately
+unflattering in places: every number that was wrong is stated with its magnitude,
+every claim that could not be verified says so, and four corrections to my own
+earlier statements are kept in rather than edited out. Two items were still open
+when it was written and are marked as such — they are findings with evidence, not
+gaps in the reasoning.
+
 Everything from one night's work, in one document. The chronological work log
 this was assembled from is `work-log-chronological.md` beside it, and the
 per-stage reports are the other siblings. Nothing here is a projection: every
@@ -715,7 +723,11 @@ EXECUTED with FULL stimulus, put avg work HR at 137 against your 151 ceiling, an
 said *"This supports your current ability to hold pace late. One session is not
 enough to move it."* The interpretation is sound. The presentation is not.
 
-Being fixed now.
+**Status of the fix.** The three display defects have a full diagnosis and a fix
+in progress at the time of writing; the capture truncation has a diagnosis and no
+fix. Whichever state they are in when you read this, the findings above are
+measured and stand on their own — check `work-log-chronological.md` and the
+repository history for where they ended up.
 
 ## 13 · What is NOT true
 
