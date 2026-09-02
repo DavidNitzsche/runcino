@@ -1113,6 +1113,12 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   const phaseBreakdown = await loadPhaseBreakdown(
     userId, day, heatSlowdownPct,
     classifySession(String(plannedRow?.type ?? r.workoutType ?? ''), plannedRow?.workout_spec ?? null),
+    // The same plan row the class comes from. See `mapWatchPhases`.
+    Number((plannedRow?.workout_spec as Record<string, unknown> | null | undefined)?.strides_reps ?? 0) || 0,
+    // SIMROW-1 · this run's own completion, by name.
+    (typeof (r as any).watchCompletionRef === 'string' && (r as any).watchCompletionRef)
+      || (typeof (r as any).client_workout_id === 'string' && (r as any).client_workout_id)
+      || null,
   );
 
   // Per-split phase tagging · walks the phaseBreakdown's cumulative
@@ -1555,12 +1561,79 @@ async function computeHeatSlowdownForRun(r: Record<string, unknown>): Promise<nu
   return j.slowdownPct ?? 0;
 }
 
+/**
+ * THE RUN'S OWN COMPLETION, BY NAME (SIMROW-1 · 2026-09-02).
+ *
+ * `loadPhaseBreakdown` matches `coach_intents` on the runner and the DAY, and a
+ * day is not a run. A field with no `-YYYY-MM-DD` suffix falls through to a
+ * timestamp comparison that every payload posted that day satisfies equally,
+ * and `ORDER BY ts DESC LIMIT 1` then takes whichever landed last. On
+ * 2026-09-02 that was `sim-recovery-live#1038` — a 3-phase, 0.27 mi simulator
+ * run — ahead of the owner's real 13-phase easy-plus-strides session. Rule 14:
+ * filtering on the runner is not filtering on the right rows.
+ *
+ * `watchCompletionRef` is the completion's own `workoutId`, stamped on the run
+ * row by the same POST that wrote the intent, so it names ONE payload.
+ *
+ * NO `.catch()`, deliberately (Rule 11). A swallow here would not degrade to
+ * nothing — the caller's next step is the date match, so it would degrade to
+ * SOMEBODY ELSE'S RUN, quietly, on the one screen that must be about this one.
+ *
+ * THE RESULT IS A UNION, AND ITS REFUSAL BRANCH CARRIES NO `phases` FIELD.
+ *
+ * "There is no ref, or no intent under it" and "the ref matched and the payload
+ * held no phases" are two different facts, and collapsing them to `null` would
+ * be Rule 11 broken inside the fix for a Rule 14 defect. They lead to OPPOSITE
+ * outcomes: the first is the caller's cue to try the day, and the second must
+ * NOT be — falling through on a matched-but-empty payload is how the date query
+ * gets a second chance to return somebody's simulator run, which is the whole
+ * thing this function exists to stop.
+ *
+ * The union shape is `normal-window.ts`'s `NormalReading<T>` pattern: the
+ * caller cannot read `.phases` until it has branched on `found`.
+ */
+type RefCompletion = { found: false } | { found: true; phases: unknown[] };
+
+async function completionPhasesByRef(
+  userId: string,
+  completionRef: string | null | undefined,
+): Promise<RefCompletion> {
+  if (!completionRef) return { found: false };
+  const res = await pool.query(
+    `SELECT value FROM coach_intents
+      WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
+        AND field = $2
+      ORDER BY ts DESC LIMIT 1`,
+    [userId, completionRef],
+  );
+  const raw = res.rows[0]?.value;
+  if (raw == null) return { found: false };
+  let v: any = raw;
+  if (typeof v === 'string') {
+    // A payload that will not parse is a payload we cannot read. That is a
+    // FAILED read of a row that exists, not an absent row: the caller must not
+    // go looking for a different run to draw instead.
+    try { v = JSON.parse(v); } catch { return { found: true, phases: [] }; }
+  }
+  const ph = Array.isArray(v) ? v : v?.phases;
+  return { found: true, phases: Array.isArray(ph) ? ph : [] };
+}
+
 async function loadPhaseBreakdown(
   userId: string,
   date: string | null,
   heatSlowdownPct: number = 0,
   sessionClass?: SessionClass,
+  stridesPrescribed?: number | null,
+  /* SIMROW-1 (2026-09-02) · the completion this RUN says it came from.
+   * See the query below — without it this function has read a simulator's
+   * payload on a day one was posted. */
+  completionRef?: string | null,
 ): Promise<PhaseBreakdown[]> {
+  const byRef = await completionPhasesByRef(userId, completionRef);
+  // FOUND IS THE BRANCH, NOT EMPTINESS. A completion that matched this run and
+  // carried nothing draws nothing; it does not send the day query hunting.
+  if (byRef.found) return mapWatchPhases(byRef.phases, heatSlowdownPct, sessionClass, stridesPrescribed);
   if (!date) return [];
   // 2026-08-27 · the #HHmm-suffix branch was the fix P1-34 shipped for this
   // fallback's flaw, but a treadmill completion's field (`trd_<uuid>`)
@@ -1584,6 +1657,10 @@ async function loadPhaseBreakdown(
                ELSE (ts AT TIME ZONE $3::text)::date = $2::date
           END
         )
+        -- SIMROW-1 · a simulator payload is never a runner's session. The
+        -- ref branch above is the real fix; this stops the legacy fallback
+        -- reaching for one when the ref is absent.
+        AND field NOT LIKE 'sim-%'
       ORDER BY ts DESC LIMIT 1`,
     [userId, date, tz]
   ).catch(() => ({ rows: [] }))).rows[0];
@@ -1593,7 +1670,7 @@ async function loadPhaseBreakdown(
   if (typeof payload === 'string') {
     try { payload = JSON.parse(payload); } catch { return []; }
   }
-  return mapWatchPhases(payload?.phases, heatSlowdownPct, sessionClass);
+  return mapWatchPhases(payload?.phases, heatSlowdownPct, sessionClass, stridesPrescribed);
 }
 
 /**
@@ -1611,6 +1688,7 @@ export function mapWatchPhases(
   raw: unknown,
   heatSlowdownPct: number = 0,
   sessionClass?: SessionClass,
+  stridesPrescribed?: number | null,
 ): PhaseBreakdown[] {
   void heatSlowdownPct;
   /* VERDICT-1 (2026-09-01) · ONE resolver. This function used to re-derive the
@@ -1620,7 +1698,14 @@ export function mapWatchPhases(
    * the resolver's, and this only spells it in the phone's field names. A
    * caller that cannot name the session passes nothing and gets the
    * unnamed-session read, which the resolver states rather than guesses. */
-  const graded = gradeStoredPhases(raw, sessionClass ?? 'other');
+  /* STRIDE-ROUNDTRIP-1 (2026-09-02) · the spec's own stride count travels with
+   * the session class, because the grader needs both to tell a 20-second
+   * acceleration from a rep. Without it the runner's 2026-09-02 easy day sent
+   * this phone six strides shaped `ceiling` with `status: 'fast'`, and four of
+   * them drew "Quicker than the ceiling" — a grade on a phase doctrine calls
+   * "Not a workout" (`Research/04` §7.2). With it they arrive `effort` /
+   * `not_graded` / `status: null`, which is what a form drill is. */
+  const graded = gradeStoredPhases(raw, sessionClass ?? 'other', { stridesPrescribed });
   return graded.phases.map((g, i): PhaseBreakdown => {
     const type: PhaseBreakdown['type'] = g.type;
     const status: 'on' | 'fast' | 'slow' | null =

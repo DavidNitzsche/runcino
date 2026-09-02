@@ -121,6 +121,23 @@ describe.skipIf(!RO)('post-run experience · live payload', () => {
 
     expect(out.dateISO).toBe('2026-09-02');
 
+    /* SIMROW-1 · IT READ *HIS* COMPLETION, not somebody's simulator run.
+     *
+     * Three `watch_completion` intents match this day in production:
+     * `sim-recovery-live#1038` (3 phases), `sim-recovery-live#1101` (3
+     * phases) and his own `...-2026-09-02#0919` (13 phases). The loader used
+     * to take the most recent by timestamp and got a simulator's 0.09 mi
+     * "Work" phase, which it then graded as his session — the live screen
+     * read "The work block came in ahead of the ceiling" over a run with no
+     * such block. Rule 14: filtering on the runner is not filtering on the
+     * right rows.
+     *
+     * This assertion is the falsifier. It failed against the unfixed loader
+     * and passes against the fixed one, and every assertion below it would
+     * also fail if the wrong payload were ever picked again. */
+    expect(out.capture.structuredDistanceMi).toBe(5.98);
+    expect(out.strides?.recorded).toBe(6);
+
     // 1 · THE EASY BLOCK IS NOT A REPETITION, and the strides are not reps of it.
     expect(out.execution.summary).not.toMatch(/seven|\breps?\b/i);
     expect(out.execution.summary).toBe(

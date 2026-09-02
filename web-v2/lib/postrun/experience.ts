@@ -464,7 +464,15 @@ function stimulusFor(input: PostRunInput): string | null {
  */
 export function isStridePhase(p: GradedPhase, stridesPrescribed: number | null): boolean {
   if (p.type !== 'work') return false;
+  // 1 · THE GRADER'S OWN ANSWER, which is where the question now lives.
+  if (p.isStrideSegment) return true;
+  // 2 · the same answer arriving as a shape, for a phase graded before
+  //     `GradedPhase.isStrideSegment` existed or by a caller that could not
+  //     name the spec. Nothing else in the vocabulary makes a work phase
+  //     `effort`.
   if (p.shape === 'effort') return true;
+  // 3 · the label rung, for a caller that graded without the spec but can
+  //     supply the count here. Conjunctive, always.
   return stridesPrescribed != null && stridesPrescribed > 0 && looksLikeStrideLabel(p.label);
 }
 
@@ -866,7 +874,13 @@ export function readCapture(input: PostRunInput): PostRunCapture {
      * its own and never a fabricated phase or split row. */
     const mileNote = input.splitCount != null && input.splitCount > 0 && input.splitDistanceMi != null
       && total - input.splitDistanceMi >= OVERTIME_MIN_MI
-      ? ` The mile table below covers the first ${numberWord(input.splitCount)}.`
+      /* NO "BELOW". Rendered on the simulator against his real row: this
+       * sentence draws inside `PostRunLearnedV5`, which sits AFTER the mile
+       * table on Today-after-run, so "the mile table below" pointed the runner
+       * past it at the log actions. A sentence that describes a layout is
+       * wrong the moment the layout moves; this one names the table and lets
+       * the eye find it. */
+      ? ` The mile table covers the first ${numberWord(input.splitCount)}.`
       : '';
     return {
       status: 'OVERTIME',
@@ -1036,7 +1050,17 @@ export function readEvidence(input: PostRunInput): PostRunEvidenceImpact {
     return {
       role: 'EXCLUDED',
       domains: [],
-      runnerSummary: 'This run is kept in your log but is not used to judge fitness, because the recording is not good enough to read.',
+      /* THE SENSOR IS THE SUBJECT, AND THE WORDS HAVE TO SAY SO.
+       *
+       * This read "the recording is not good enough to read", which
+       * `lib/faff/coach-lexicon.ts` correctly flags: "not good enough" is a
+       * banned term in the SCOLDING band, written to stop this app ever
+       * telling the runner he is not good enough. The sentence was about a
+       * recording and was honest — and a runner scanning it meets the phrase
+       * anyway, on a screen about his own run. The lexicon is right and the
+       * copy was wrong; "not clear enough to read" says the identical thing
+       * about a sensor and is better English about one. */
+      runnerSummary: 'This run is kept in your log but is not used to judge fitness, because the recording is not clear enough to read.',
       beliefChanged: false,
       planAuthorityEligible: false,
       reasons: ev.eligibility.rejections.slice(),
@@ -1272,7 +1296,8 @@ export function buildBriefing(
     });
   }
   if (evidence.role === 'EXCLUDED') {
-    whyNot.push({ code: 'evidence_excluded', display: 'The recording is not good enough for this run to inform fitness.' });
+    // Same substitution, same reason — see `readEvidence`'s EXCLUDED arm.
+    whyNot.push({ code: 'evidence_excluded', display: 'The recording is not clear enough for this run to inform fitness.' });
   }
 
   return {

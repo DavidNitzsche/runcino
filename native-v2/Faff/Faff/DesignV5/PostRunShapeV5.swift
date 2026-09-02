@@ -139,6 +139,28 @@ enum RunShapeV5: Equatable {
         case miles
         /// The pieces the session was actually made of.
         case sections
+        /// BOTH, in that order — the body as miles, the pieces appended below.
+        ///
+        /// The gap this closes was found on the runner's own 2026-09-02 screen.
+        /// His session was `EASY · 6x20s strides`: `workoutType` "easy" resolves
+        /// to `.steady`, `.steady` returns `.miles`, and `.miles` never draws a
+        /// section — so six 20-second accelerations, their six walk-backs, and
+        /// every pace and heart rate they recorded were not on the page at all.
+        /// His words: "not showing the strides."
+        ///
+        /// The original rule is right and is untouched: a session MADE of pieces
+        /// is not described by its miles, because mile two of a tune-up is
+        /// arithmetic over three different efforts. The gap was its INVERSE — a
+        /// steady session with pieces APPENDED. An easy run with strides is
+        /// genuinely both: five miles of continuous running that the mile table
+        /// describes exactly, plus a form drill on the end that it cannot see.
+        ///
+        /// The two tables answer different questions and the post-run brief
+        /// keeps them apart for that reason — §4C "Workout analysis" is the
+        /// plan at its true grain, §4D "Splits" is the pace record. This is not
+        /// Rule 17 duplication: the mile table says how the running went, the
+        /// piece list says what the session was built from.
+        case milesAndSections
         /// Neither is honest. Nothing is drawn.
         case none
     }
@@ -166,7 +188,28 @@ enum RunShapeV5: Equatable {
     func decomposition(hasSections: Bool, hasMiles: Bool) -> Decomposition {
         switch decomposition {
         case .sections: return hasSections ? .sections : (hasMiles ? .miles : .none)
-        case .miles:    return hasMiles ? .miles : (hasSections ? .sections : .none)
+        /* A STEADY SESSION THAT RECORDED PIECES DRAWS BOTH (2026-09-02).
+         *
+         * `hasSections` is the caller's own `!repPieces.isEmpty`, and `repPieces`
+         * is deliberately EMPTY on a single-phase session — a plain easy run
+         * records one phase, the poster already carries its distance, time and
+         * pace, and a list of one restating them is a section that says nothing.
+         * So this branch cannot fire on an ordinary easy or long run: it needs a
+         * session that actually recorded structure, which is the easy-plus-
+         * strides day and the long run with a marathon-pace finish.
+         *
+         * Miles first, which is both the chronology and the honesty: on a steady
+         * session the continuous body IS the run, and the pieces are what was
+         * added to it. */
+        case .miles:
+            if hasMiles && hasSections { return .milesAndSections }
+            return hasMiles ? .miles : (hasSections ? .sections : .none)
+        case .milesAndSections:
+            // Not reachable from `var decomposition`, which never returns it —
+            // the combination is a property of what the run RECORDED, resolved
+            // here. Handled so the switch stays exhaustive if that changes.
+            if hasMiles && hasSections { return .milesAndSections }
+            return hasMiles ? .miles : (hasSections ? .sections : .none)
         case .none:     return .none
         }
     }
@@ -337,6 +380,9 @@ enum RunShapeV5: Equatable {
         switch d {
         case .miles:    return "Mile by mile"
         case .sections: return self == .reps ? "Rep by rep" : "Piece by piece"
+        // The caller draws two headings and asks for each by name, so this
+        // combination has no single title of its own.
+        case .milesAndSections: return ""
         case .none:     return ""
         }
     }

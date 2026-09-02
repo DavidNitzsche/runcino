@@ -180,19 +180,71 @@ export async function loadPostRunExperience(
   // "this runner has no stored timezone" case by name; a catch here would also
   // swallow a database failure and answer it with Pacific, which is a guess
   // wearing a default's clothes (Rule 11).
-  const tz = await runnerTimezoneOrPacific(userId);
-  const intentRes = await pool.query<{ value: unknown }>(
-    `SELECT value FROM coach_intents
-      WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
-        AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
-                  THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-                  ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
-      ORDER BY ts DESC LIMIT 1`,
-    [userId, dateISO, tz],
-  );
-  const phases = intentRes.rows[0]
-    ? phasesFromCompletion(intentRes.rows[0].value)
-    : phasesFromCompletion(data.phases);
+  /* ── RULE 14 · WHICH COMPLETION IS *THIS RUN'S* (SIMROW-1, 2026-09-02) ────
+   *
+   * This read used to be "the runner's most recent `watch_completion` intent
+   * whose timestamp lands on the run's day", and on 2026-09-02 that returned a
+   * SIMULATOR PAYLOAD. Three intents matched the day in production:
+   *
+   *     sim-recovery-live#1038                              3 phases
+   *     sim-recovery-live#1101                              3 phases
+   *     0645f40c-...-2026-09-02#0919                       13 phases  ← his run
+   *
+   * `ORDER BY ts DESC LIMIT 1` took the first. So the post-run screen for his
+   * real easy-plus-strides session was composed from a 0.18 mi "Warm-up", a
+   * 0.09 mi "Work" at 344 against 391, and a "Recovery" — and it graded that
+   * as his workout. It is why the live screen read "The work block came in
+   * ahead of the ceiling" over a run that has no such block. Every number the
+   * runner saw belonged to somebody's test.
+   *
+   * The date branch cannot tell them apart by construction: a field with no
+   * `-YYYY-MM-DD` suffix falls through to a timestamp comparison, which is the
+   * same for every payload posted that day. This is exactly Rule 14's shape —
+   * filtering on the runner is not the same as filtering on the right rows.
+   *
+   * The run row already carries the answer. `watchCompletionRef` is the
+   * completion's own `workoutId`, stamped on the row by the same POST that
+   * wrote the intent, so it names ONE payload. Three rungs, most specific
+   * first, and each is a different fact:
+   *
+   *   1 · the intent this run says it came from;
+   *   2 · the run row's OWN `data.phases`, written verbatim by the same
+   *       request — a copy of the same array, on the row it belongs to;
+   *   3 · the legacy date match, for rows predating `watchCompletionRef`,
+   *       and now bounded to fields that look like a real completion so a
+   *       `sim-` payload can never win it.
+   */
+  const completionRef = [data.watchCompletionRef, data.client_workout_id]
+    .find((v) => typeof v === 'string' && v.length > 0) as string | undefined;
+
+  let intentValue: unknown = null;
+  if (completionRef) {
+    const byRef = await pool.query<{ value: unknown }>(
+      `SELECT value FROM coach_intents
+        WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
+          AND field = $2
+        ORDER BY ts DESC LIMIT 1`,
+      [userId, completionRef],
+    );
+    intentValue = byRef.rows[0]?.value ?? null;
+  }
+
+  let phases = intentValue != null ? phasesFromCompletion(intentValue) : [];
+  if (phases.length === 0) phases = phasesFromCompletion(data.phases);
+  if (phases.length === 0) {
+    const tz = await runnerTimezoneOrPacific(userId);
+    const intentRes = await pool.query<{ value: unknown }>(
+      `SELECT value FROM coach_intents
+        WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
+          AND field NOT LIKE 'sim-%'
+          AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
+                    THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
+                    ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
+        ORDER BY ts DESC LIMIT 1`,
+      [userId, dateISO, tz],
+    );
+    phases = phasesFromCompletion(intentRes.rows[0]?.value);
+  }
 
   // THE canonical grade. Never re-derived on a surface.
   const verdict = resolveWorkoutVerdict({

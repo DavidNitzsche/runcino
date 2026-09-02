@@ -46,6 +46,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { gradeStoredPhases } from '@/lib/execution/verdict';
+import { EASY_PHASE_TOLERANCE_S_PER_MI, gradeCeilingPhase } from '@/lib/training/execution-semantics';
 import { looksLikeStrideLabel, strideLabelFor } from '@/lib/training/expand-spec';
 import {
   composePostRunExperience,
@@ -291,6 +292,69 @@ describe('STRIDE-5 · the balance · a genuine repetition is still a repetition'
   });
 });
 
+/* ══════ TOLERANCE · Rule 11 · an absent slack is not a zero slack ═══════ */
+
+describe('TOLERANCE · a ceiling phase with no stored tolerance is not graded at zero', () => {
+  /* WHY THIS GATE EXISTS, AND IT IS NOT HYPOTHETICAL.
+   *
+   * Not one phase on the 2026-09-02 run carries `tolerancePaceSPerMi` — the
+   * field is absent from all thirteen. His easy block ran 515 s/mi against a
+   * 522 ceiling, and the wrist, which HAD the tolerance at the time, wrote
+   * `verdict: "hit"` onto the phase.
+   *
+   * Seven seconds a mile under a ceiling is a hit at any honest width and a
+   * FAST at a width of zero. So if any path ever compares 515 to 522 with no
+   * slack, this session flips to "The work block came in ahead of the
+   * ceiling" — a runner told he ran his easy day too hard because a number
+   * was missing. That is Rule 11 exactly: an absent tolerance is "don't
+   * know", never "zero".
+   *
+   * `gradeStoredPhases` gets this right by falling back to
+   * `phaseToleranceSec`, doctrine's own width, and this pins that behaviour
+   * so a future change to the tolerance ladder cannot silently reintroduce
+   * the zero. It reads the width out of `execution-semantics.ts` at run time
+   * rather than hardcoding it, so it checks the ENGINE and not itself.
+   */
+  const graded = gradeStoredPhases(REAL_0902_PHASES, 'easy', { stridesPrescribed: 6 });
+  const easyBlock = graded.phases[0];
+
+  it('confirms the fixture really carries no tolerance — the gate needs that to mean anything', () => {
+    for (const p of REAL_0902_PHASES) {
+      expect((p as Record<string, unknown>).tolerancePaceSPerMi).toBeUndefined();
+    }
+  });
+
+  it('falls back to doctrine\'s easy width rather than to zero', () => {
+    expect(easyBlock.shape).toBe('ceiling');
+    expect(easyBlock.toleranceSec).toBe(EASY_PHASE_TOLERANCE_S_PER_MI);
+    expect(easyBlock.toleranceSec).toBeGreaterThan(0);
+  });
+
+  it('grades the easy block HIT, agreeing with the verdict the wrist stored', () => {
+    // The wrist had the tolerance and wrote "hit". The server, recomputing,
+    // must reach the same answer — when it does not, one of them is reading a
+    // width the other never had (Rule 16).
+    expect(easyBlock.verdict).toBe('hit');
+    expect(REAL_0902_PHASES[0].verdict).toBe('hit');
+  });
+
+  it('and the sentence therefore says he stayed under it', () => {
+    const out = composePostRunExperience(input({ verdict: graded }));
+    expect(out.execution.summary).toMatch(/stayed under the ceiling/);
+    expect(out.execution.summary).not.toMatch(/ahead of the ceiling/);
+  });
+
+  it('FALSIFIER · at zero slack the same phase reads fast, which is the defect', () => {
+    // Run the engine's own rule at the width this gate exists to forbid, so
+    // the assertion above is shown to be load-bearing rather than incidental
+    // (Rule 18: a gate that has never failed is a hypothesis).
+    expect(gradeCeilingPhase({ ceilingSecPerMi: 522, avgSecPerMi: 515, completed: true, slackSec: 0 }))
+      .toBe('fast');
+    expect(gradeCeilingPhase({ ceilingSecPerMi: 522, avgSecPerMi: 515, completed: true, slackSec: EASY_PHASE_TOLERANCE_S_PER_MI }))
+      .toBe('hit');
+  });
+});
+
 /* ══════════ CAPTURE · Rule 11, applied to distance ══════════════════════ */
 
 describe('CAPTURE · three quantities, one total, and the runner can tell them apart', () => {
@@ -305,7 +369,7 @@ describe('CAPTURE · three quantities, one total, and the runner can tell them a
     expect(c.splitDistanceMi).toBe(5);
     expect(c.summary).toBe(
       '6.41 mi in total: 5.98 mi of the session, then 0.43 mi run on after the last '
-      + 'prescribed piece. The mile table below covers the first five.',
+      + 'prescribed piece. The mile table covers the first five.',
     );
   });
 

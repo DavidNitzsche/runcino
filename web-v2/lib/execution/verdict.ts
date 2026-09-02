@@ -86,6 +86,7 @@ import {
 // fields of the same payload (Rule 16).
 import { hrToNum, pos as num, runPhases, type NormalizedPhase, type RunData } from '@/lib/runs/run-shape';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
+import { looksLikeStrideLabel } from '@/lib/training/expand-spec';
 
 /* ══════════════════════════════ 1 · the shape ═══════════════════════════ */
 
@@ -109,6 +110,10 @@ export interface GradedPhase {
   avgCadence: number | null;
   completed: boolean;
   isFinishSegment: boolean;
+  /** Resolved by `gradeStoredPhases` on the two rungs its `GradeOptions`
+   *  describes. A stride is never pace-graded: its `shape` is `effort` and its
+   *  `verdict` is `not_graded`, because doctrine calls it "Not a workout". */
+  isStrideSegment: boolean;
   /** THE verdict. */
   verdict: PhaseVerdict;
   /** The word the runner reads for `verdict`, correct for `shape`. Null when
@@ -205,6 +210,25 @@ export interface GradeOptions {
   /** The recovery the plan prescribed, seconds, for every recovery phase that
    *  does not carry its own `targetDurationSec`. From `workout_spec.rep_rest_s`. */
   prescribedRecoverySec?: number | null;
+  /**
+   * STRIDE-ROUNDTRIP-1 (2026-09-02) · `workout_spec.strides_reps`.
+   *
+   * `byEffort` below has always been the right hook — `paceShapeFor` turns it
+   * into `effort`, which is never pace-graded — and it has never once fired,
+   * because the only thing that sets it is `p.isStrideSegment` and that marker
+   * does not survive the round trip. `appendStrides` sets it, `build-workout.ts`
+   * puts it on the prescription wire, the wrist decodes it, and
+   * `WatchCompletionPhase` (the outgoing struct) declares no such property. So
+   * every stored phase array in this database describes a 20-second
+   * acceleration as ordinary work, and the runner's 2026-09-02 screen graded
+   * four of his six strides as deviations for being quick.
+   *
+   * This licenses the LABEL rung: with the spec's own rep count in hand, a
+   * phase labelled by `strideLabelFor` is a stride. Absent or zero, only the
+   * marker rung applies — a label alone may never mint a stride, because a
+   * caller with no plan row must not have its phases relabelled by their text.
+   */
+  stridesPrescribed?: number | null;
 }
 
 /**
@@ -241,6 +265,7 @@ export function gradeStoredPhases(
    * of that here would be a second answer to a question that has an owner
    * (Rule 16), and the fields it does not carry — the ones below — are read
    * off the same element by position. */
+  const stridesPrescribed = Math.max(0, Math.round(Number(opts.stridesPrescribed ?? 0)) || 0);
   const list = phasesFromCompletion(raw)
     .filter((el): el is Record<string, unknown> => !!el && typeof el === 'object' && !Array.isArray(el));
   const normalized: NormalizedPhase[] = runPhases({ phases: list } as unknown as RunData);
@@ -253,7 +278,14 @@ export function gradeStoredPhases(
     const target = n.targetPaceSPerMi;
     const avg = n.actualPaceSPerMi;
     const hasTarget = target != null;
-    const byEffort = p.isStrideSegment === true;
+    /* THE MARKER, OR THE PLAN'S OWN COUNT PLUS THE AUTHORED LABEL.
+     *
+     * Rung 1 is authored truth and needs nothing else. Rung 2 is a FALLBACK and
+     * is written as one: it is conjunctive, so a label can never mint a stride
+     * on a session that prescribed none, and it exists only because the wrist
+     * does not send rung 1 back yet. See `GradeOptions.stridesPrescribed`. */
+    const byEffort = p.isStrideSegment === true
+      || (stridesPrescribed > 0 && looksLikeStrideLabel(n.label));
 
     const wireShape: PaceShape | null =
       p.paceShape === 'ceiling' || p.paceShape === 'window'
@@ -332,6 +364,10 @@ export function gradeStoredPhases(
       avgCadence: num(p.avgCadence ?? p.avg_cadence),
       completed,
       isFinishSegment: p.isFinishSegment === true,
+      /* THE ONE RESOLVED ANSWER, so no consumer re-derives it (Rule 16). The
+       * post-run composer, the phone's `phase_breakdown` and the win line all
+       * read this rather than each asking the question their own way. */
+      isStrideSegment: byEffort,
       verdict,
       statusLabel: phaseVerdictLabel(verdict, shape),
       // The DEVICE'S word, already whitelisted by `run-shape.ts`.
@@ -413,7 +449,11 @@ export function resolveWorkoutVerdict(args: ResolveWorkoutVerdictArgs): WorkoutV
   const spec = args.spec && typeof args.spec === 'object' ? args.spec : null;
   const sessionClass = classifySession(String(args.type ?? ''), spec);
   const restS = spec ? num(spec.rep_rest_s) : null;
-  return gradeStoredPhases(args.phases, sessionClass, { prescribedRecoverySec: restS });
+  const strides = spec ? num(spec.strides_reps) : null;
+  return gradeStoredPhases(args.phases, sessionClass, {
+    prescribedRecoverySec: restS,
+    stridesPrescribed: strides,
+  });
 }
 
 /* ══════════════════════ 5 · the consumers' shared reads ═════════════════ */

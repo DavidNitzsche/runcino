@@ -89,10 +89,25 @@ struct PostRunV5: Decodable, Equatable {
     let why: [String]
     /// One sentence for VoiceOver, spoken instead of the layout.
     let accessibilitySummary: String
+    /// WHAT THE RECORDING COVERS, when it does not cover the run.
+    ///
+    /// Rule 11 applied to distance: "we recorded 5.98 miles" and "he ran 5.98
+    /// miles" are two facts, and this screen used to print the first in a way
+    /// that could only be read as the second. Null when there is nothing to
+    /// say, and then nothing is drawn.
+    let capture: String?
+    /// The strides, when the session had them. Null when it did not.
+    ///
+    /// His 2026-09-02 easy day prescribed `6x20s strides`, ran all six, and
+    /// the screen showed none of them: `workoutType` "easy" resolves to
+    /// `.steady`, which decomposes to `.miles`, and the mile table cannot see
+    /// a 20-second acceleration. "Not showing the strides."
+    let strides: PostRunStridesV5?
 
     enum K: String, CodingKey {
         case version, runId, decisionVersion, headline, summary, cost
         case learned, change, changeState, changes, next, why, accessibilitySummary
+        case capture, strides
     }
 
     /// LENIENT BY DESIGN, and written out rather than borrowed.
@@ -120,13 +135,16 @@ struct PostRunV5: Decodable, Equatable {
         next = optStr(.next)
         why = strs(.why)
         accessibilitySummary = str(.accessibilitySummary)
+        capture = optStr(.capture)
+        strides = (try? c.decodeIfPresent(PostRunStridesV5.self, forKey: .strides)) ?? nil
     }
 
     /// Memberwise, for previews and tests only. The wire path is `init(from:)`.
     init(version: String, runId: String, decisionVersion: String, headline: String,
          summary: String, cost: String?, learned: String, change: String,
          changeState: String, changes: [String], next: String?, why: [String],
-         accessibilitySummary: String) {
+         accessibilitySummary: String,
+         capture: String? = nil, strides: PostRunStridesV5? = nil) {
         self.version = version
         self.runId = runId
         self.decisionVersion = decisionVersion
@@ -140,6 +158,86 @@ struct PostRunV5: Decodable, Equatable {
         self.next = next
         self.why = why
         self.accessibilitySummary = accessibilitySummary
+        self.capture = capture
+        self.strides = strides
+    }
+}
+
+extension PostRunLearnedV5 {
+    /// VoiceOver reads a sentence, not a row of columns.
+    ///
+    /// The accessibility contract requires every figure to be announced with
+    /// its unit, and a bare "0:20 5:47/mi 147" is three unlabelled numbers.
+    static func strideSpoken(_ r: PostRunStrideV5) -> String {
+        var parts: [String] = [r.label ?? "Stride \(r.ordinal)"]
+        if let d = r.duration { parts.append("\(d) seconds") }
+        if let p = r.pace { parts.append("at \(p)") }
+        if let hr = r.hr { parts.append("heart rate \(hr)") }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// One stride, as the runner reads it.
+///
+/// THERE IS NO VERDICT FIELD AND THERE MUST NOT BE ONE.
+/// `Research/04-workout-vocabulary.md` §7.2 calls a stride "relaxed",
+/// "~85-95% max effort" and, in as many words, "Not a workout" — which is why
+/// the server gives it a deliberately wide band and grades it `effort`, a
+/// shape that is never pace-graded at all. Four of his six came in at 347-365
+/// s/mi against a 401 target and the old screen reported them as deviations.
+/// Being quick is what a stride is FOR.
+struct PostRunStrideV5: Decodable, Equatable, Identifiable {
+    var id: Int { ordinal }
+    let ordinal: Int
+    let label: String?
+    /// "0:20".
+    let duration: String?
+    /// "5:47/mi". A reading, never a grade.
+    let pace: String?
+    let hr: Int?
+    let distanceMi: Double?
+
+    enum K: String, CodingKey { case ordinal, label, duration, pace, hr, distanceMi }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        ordinal = ((try? c.decodeIfPresent(Int.self, forKey: .ordinal)) ?? 0) ?? 0
+        label = (try? c.decodeIfPresent(String.self, forKey: .label)) ?? nil
+        duration = (try? c.decodeIfPresent(String.self, forKey: .duration)) ?? nil
+        pace = (try? c.decodeIfPresent(String.self, forKey: .pace)) ?? nil
+        hr = (try? c.decodeIfPresent(Int.self, forKey: .hr)) ?? nil
+        distanceMi = (try? c.decodeIfPresent(Double.self, forKey: .distanceMi)) ?? nil
+    }
+
+    init(ordinal: Int, label: String?, duration: String?, pace: String?, hr: Int?, distanceMi: Double?) {
+        self.ordinal = ordinal; self.label = label; self.duration = duration
+        self.pace = pace; self.hr = hr; self.distanceMi = distanceMi
+    }
+}
+
+struct PostRunStridesV5: Decodable, Equatable {
+    /// One sentence. Completion and distance, never compliance.
+    let summary: String
+    let rows: [PostRunStrideV5]
+    /// The walk-backs between them. Doctrine prescribes "Full walk-back or
+    /// 60-90 s jog - no fatigue between strides", so taking them is correct
+    /// execution and the runner is shown that he did, not graded on it.
+    let recoveryCount: Int
+    let recoveryDistanceMi: Double?
+
+    enum K: String, CodingKey { case summary, rows, recoveryCount, recoveryDistanceMi }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        summary = ((try? c.decodeIfPresent(String.self, forKey: .summary)) ?? "") ?? ""
+        rows = ((try? c.decodeIfPresent([PostRunStrideV5].self, forKey: .rows)) ?? []) ?? []
+        recoveryCount = ((try? c.decodeIfPresent(Int.self, forKey: .recoveryCount)) ?? 0) ?? 0
+        recoveryDistanceMi = (try? c.decodeIfPresent(Double.self, forKey: .recoveryDistanceMi)) ?? nil
+    }
+
+    init(summary: String, rows: [PostRunStrideV5], recoveryCount: Int, recoveryDistanceMi: Double?) {
+        self.summary = summary; self.rows = rows
+        self.recoveryCount = recoveryCount; self.recoveryDistanceMi = recoveryDistanceMi
     }
 }
 
@@ -168,13 +266,98 @@ struct PostRunLearnedV5: View {
             .filter { !$0.isEmpty }
     }
 
+    private var capture: String? {
+        guard let c = model.capture?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !c.isEmpty else { return nil }
+        return c
+    }
+
+    private var strides: PostRunStridesV5? {
+        guard let s = model.strides, !s.rows.isEmpty else { return nil }
+        return s
+    }
+
     /// Nothing to say means nothing drawn. A header over an empty tile is the
     /// same defect as a zero standing in for a missing reading.
-    private var hasContent: Bool { !learned.isEmpty || !change.isEmpty }
+    private var hasContent: Bool {
+        !learned.isEmpty || !change.isEmpty || capture != nil || strides != nil
+    }
 
     var body: some View {
         if hasContent {
             VStack(alignment: .leading, spacing: V5.S.s10) {
+                /* WHAT THE RECORDING COVERS, ABOVE EVERYTHING IT COVERS.
+                 *
+                 * A caveat printed under a total is a caveat nobody reads. When
+                 * the run's own numbers do not add up to the run — 6.41 mi
+                 * total, 5.98 mi of phases, 5.00 mi of mile rows on
+                 * 2026-09-02 — the sentence that reconciles them goes first, so
+                 * every figure below it is read as what it is. */
+                if let c = capture {
+                    Text(c)
+                        .font(.faffText(TypeScaleV5.body15))
+                        .foregroundStyle(V5.textSecondary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, V5.S.s4)
+                        .padding(.bottom, V5.S.s6)
+                }
+
+                /* THE STRIDES.
+                 *
+                 * Drawn HERE, in the one component both post-run screens
+                 * already share, rather than in each screen's own breakdown —
+                 * the brief's first P0 is that Today-after-run and Run Detail
+                 * are two compositions that can disagree, and a section added
+                 * to one of them would be that defect committed again.
+                 *
+                 * NOTHING IS GRADED. A pace and a heart rate are readings; no
+                 * row carries a target, a verdict or a status word, and
+                 * `PostRunStrideV5` has no field that could hold one. */
+                if let st = strides {
+                    VStack(alignment: .leading, spacing: V5.S.s10) {
+                        V5SectionLabel(text: "Strides")
+                            .padding(.horizontal, V5.S.s4)
+                        VStack(alignment: .leading, spacing: V5.S.s8) {
+                            ForEach(st.rows) { row in
+                                HStack(alignment: .firstTextBaseline, spacing: V5.S.s8) {
+                                    Text(row.label ?? "Stride \(row.ordinal)")
+                                        .font(.faffText(TypeScaleV5.body15))
+                                        .foregroundStyle(V5.textPrimary)
+                                    Spacer(minLength: V5.S.s8)
+                                    if let d = row.duration {
+                                        Text(d)
+                                            .font(.faffText(TypeScaleV5.label14))
+                                            .foregroundStyle(V5.textSecondary)
+                                    }
+                                    if let pace = row.pace {
+                                        Text(pace)
+                                            .font(.faffText(TypeScaleV5.label14))
+                                            .foregroundStyle(V5.textSecondary)
+                                    }
+                                    if let hr = row.hr {
+                                        Text("\(hr)")
+                                            .font(.faffText(TypeScaleV5.label14))
+                                            .foregroundStyle(V5.textQuiet)
+                                    }
+                                }
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel(Self.strideSpoken(row))
+                            }
+                            if !st.summary.isEmpty {
+                                Text(st.summary)
+                                    .font(.faffText(TypeScaleV5.label14))
+                                    .foregroundStyle(V5.textQuiet)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.top, V5.S.s4)
+                            }
+                        }
+                        .padding(.horizontal, V5.S.s4)
+                    }
+                    .padding(.bottom, V5.S.s6)
+                }
+
                 V5SectionLabel(text: "What this taught the coach")
                     .padding(.horizontal, V5.S.s4)
 

@@ -630,7 +630,26 @@ struct RunDetailV5: View {
     /// was a warm-up, a block and a cool-down. Naming a two-phase tempo "Rep
     /// by rep" would call something a rep that the plan never called one.
     var repSectionTitle: String {
-        workPhases.count >= 2 ? "Rep by rep" : "Piece by piece"
+        /* A STRIDE IS NOT A REP, AND NEITHER IS AN EASY BLOCK (2026-09-02).
+         *
+         * `workPhases` is every phase typed "work", which on the runner's
+         * easy-plus-strides day is his 5.0 mi easy block PLUS six 20-second
+         * accelerations — seven, so this returned "Rep by rep" over a session
+         * the plan never called a rep set. It is the same off-by-one the server
+         * composer had and the same one `WorkoutEngine.repCountForDisplay`
+         * still has on the wrist: one expression, three surfaces.
+         *
+         * `pace_shape == "effort"` is the server's resolved answer, arriving
+         * through `PhaseBreakdown` — not a second opinion formed here. A stride
+         * is the only thing that carries it on a work phase, because
+         * `paceShapeFor` returns `effort` for `byEffort` and nothing else does.
+         *
+         * "Piece by piece" is also the honest word when the pieces are a body
+         * and a drill rather than a set, which is why a steady session never
+         * reaches the rep wording at all. */
+        guard shape.decomposition != .miles else { return "Piece by piece" }
+        let reps = workPhases.filter { $0.pace_shape != "effort" }
+        return reps.count >= 2 ? "Rep by rep" : "Piece by piece"
     }
 
     /// The phases, as words.
@@ -834,6 +853,31 @@ struct RunDetailV5: View {
                                     hasMiles: !milePieces.isEmpty)
         switch d {
         case .sections:
+            RepBreakdownV5(title: repSectionTitle,
+                           pieces: repPieces,
+                           toleranceLine: toleranceLine)
+        /* BOTH, BODY FIRST (2026-09-02).
+         *
+         * An easy run with strides is two things at once and the screen used to
+         * draw only the first. `.milesAndSections` fires when a steady-shaped
+         * session ALSO recorded structure, which on a plain easy or long run it
+         * does not — `repPieces` is empty on a single-phase recording, by
+         * design. See `RunShapeV5.Decomposition.milesAndSections`.
+         *
+         * The mile table keeps the pace caption and the pace ramp; the piece
+         * list carries no caption of its own beyond its tolerance line, so
+         * nothing is said twice. */
+        case .milesAndSections:
+            MileBreakdownV5(title: shape.breakdownTitle(.miles),
+                            pieces: milePieces,
+                            paceLine: shape.showsPerMilePace
+                                ? RouteMapView.paceColumnCaption(splits: detail.splits,
+                                                                 phases: routePhaseSamples)
+                                : nil,
+                            paceColor: MileBreakdownV5.paceRamp(splits: detail.splits,
+                                                                phases: routePhaseSamples),
+                            allowsElevation: shape.showsElevation,
+                            allowsPace: shape.showsPerMilePace)
             RepBreakdownV5(title: repSectionTitle,
                            pieces: repPieces,
                            toleranceLine: toleranceLine)
