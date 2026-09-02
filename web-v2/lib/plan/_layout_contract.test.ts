@@ -33,6 +33,15 @@
  *   · A LATER, INTENDED change. The digest is a snapshot: when the composer is
  *     deliberately changed it moves, and the argument for moving it goes in
  *     the commit exactly as it does for `_audit_periodization`'s.
+ *
+ * ── DIGEST MOVES ────────────────────────────────────────────────────────────
+ *
+ *   · 2026-09-02 · LADDER-LENGTH-1. `restoreSteps` no longer emits a rung worth
+ *     a tenth of a mile, so a returning runner's block spends one fewer week
+ *     restoring and one more week climbing. Reaches only the 89 archetypes in
+ *     this corpus that carry a history at all — `composed` (8781), `days`
+ *     (699860) and `raceWeeks` (3969) are all unchanged, so no plan gained or
+ *     lost a day; the contents of some weeks moved.
  */
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';

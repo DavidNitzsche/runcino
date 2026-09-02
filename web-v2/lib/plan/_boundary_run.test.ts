@@ -97,10 +97,32 @@ const TOLERANCE_MI = 0.2;
  */
 const CENSUS_BASELINE = {
   /** Sessions whose warm-up + cool-down exceeds the owner's answer for them. */
-  overOwner: 18393,
+  overOwner: 18394,
   /** Sessions whose warm-up + cool-down exceeds their own work + jog floats. */
-  legsOutweighWork: 19248,
+  legsOutweighWork: 19249,
 } as const;
+
+/**
+ * RAISED BY ONE 2026-09-02 by LADDER-LENGTH-1, and this is the argued reason a
+ * ratchet demands before it is allowed to move the wrong way.
+ *
+ * LADDER-LENGTH-1 removed a Rule 9 cliff in `restoreSteps`: the ladder no
+ * longer emits a rung worth a tenth of a mile, so a returning runner's block
+ * spends one fewer week restoring and one more week climbing. That changes the
+ * COMPOSITION of the 89 archetypes in this corpus that carry a history at all
+ * — the only ones `restoreSteps` can reach — and one quality session in one of
+ * them lands in a different week, at a different size, on the far side of the
+ * owner's answer.
+ *
+ * WHAT DID NOT MOVE, which is why this is a corpus shift rather than a
+ * boundary-run regression: `worstRatio` is unchanged at 35.48, on the same
+ * archetype (`5k/intermediate/f3/m35/L0-3/goal`, `1x200m @ mile`), and every
+ * entry in the worst-over list is unchanged. The magnitude half of this gate
+ * did not budge; one session crossed a count.
+ *
+ * Both numbers moved by exactly one, together, which is the signature of a
+ * single session changing week — not of the reader changing its mind.
+ */
 
 /**
  * LOWERED 2026-09-02 by LADDER-TARGET-2, which did not set out to move it:

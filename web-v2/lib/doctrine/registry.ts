@@ -3155,28 +3155,55 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   // ══ CUTBACK / DOWN WEEKS ══════════════════════════════════════════════════
   {
     id: 'CUTBACK.cadence',
-    binds: ['lib/plan/generate.ts#cutbackCadence', 'lib/plan/seed-from-onboarding.ts#buildProgressiveCurve'],
+    binds: ['lib/plan/established-cadence.ts#VALID_CADENCES', 'lib/plan/seed-from-onboarding.ts#buildProgressiveCurve'],
     doc: 'Research/00b-recovery-protocols.md',
     anchor: '### Frequency',
     claim:
       'A cutback week comes every third or fourth week of load — three for injury-prone, ' +
       'returning, or late-block runners, four for the higher-mileage experienced. Every ' +
-      'cadence the engine uses must be one of the cycles doctrine lists.',
+      'cadence the engine uses must be one of the cycles doctrine lists, and it is chosen ' +
+      'from the runner’s demonstrated history, never from a reading taken today.',
+    /*
+     * CADENCE-AUTHORED-1 (2026-09-02) · RE-POINTED, AND THE OLD PATTERN WAS
+     * READING A COMMENT.
+     *
+     * This claim used to lift the two cadences out of
+     * `(tsbAtStart < -10) ? 3 : 4`. That expression is gone — the owner ruled
+     * daily training form out of the calendar entirely — and the cadences now
+     * come from `returningToLevel === true ? 3 : 4`.
+     *
+     * The re-point is not cosmetic. On the first run after the change this
+     * claim PASSED, because the removal's own explanatory comment quotes the
+     * old expression verbatim, and `sourceOf` hands the matcher the whole file
+     * including its comments. A gate that a comment can satisfy is Rule 18's
+     * named failure, so both patterns below now anchor on `return `, which a
+     * prose line explaining the history cannot produce.
+     *
+     * WHAT THE CLAIM STILL ASSERTS is unchanged: every cadence this engine
+     * authors is one of the cycles `Research/00b` §Frequency lists. What it no
+     * longer watches is a TSB threshold, because there is not one. The -10
+     * itself is not deleted from doctrine — `docs/PLAN_ENGINE_MID_BLOCK_
+     * DOCTRINE.md` §Rule 8 still states it, and that document was never this
+     * claim's citation. Whether §Rule 8 should now be marked superseded is a
+     * product call for whoever owns that document, and it is named in the
+     * handback rather than made here.
+     */
     check({ cite }) {
       const cycles = new Set(cite.table().rows.map((r) => parseBand(r.Cycle)[0]));
       const engineCadences = [
+        // Every cycle a block may CARRY, from the one place that defines the
+        // set. The 3 is reachable by inheritance from an existing block; the 4
+        // is what a new block is authored on.
+        ...matchLiteral(
+          sourceOf('web-v2/lib/plan/established-cadence.ts'),
+          /const VALID_CADENCES = new Set\(\[([\d, ]+)\]\);/,
+          'the cycles a block may carry',
+        )[1].split(',').map((s) => Number(s.trim())),
         Number(
           matchLiteral(
-            sourceOf('web-v2/lib/plan/generate.ts'),
-            /tsbAtStart < -10\) \? (\d+) : (\d+)/,
-            'cutbackCadence',
-          )[1],
-        ),
-        Number(
-          matchLiteral(
-            sourceOf('web-v2/lib/plan/generate.ts'),
-            /tsbAtStart < -10\) \? \d+ : (\d+)/,
-            'cutbackCadence',
+            sourceOf('web-v2/lib/plan/established-cadence.ts'),
+            /export const DEFAULT_CUTBACK_EVERY_N = (\d+);/,
+            'the cycle a new block is authored on',
           )[1],
         ),
         Number(

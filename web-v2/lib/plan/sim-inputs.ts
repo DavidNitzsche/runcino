@@ -553,7 +553,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       // `undefined` as "cold start, use the runner's prefs".
       recentQualityDistanceMi: sim.recentQualityDistanceMi ?? undefined,
       recentQualityPerWeek: sim.recentQualityPerWeek ?? undefined,
-      bestRecentVdot, bestRecentVdotSelfReported, tsbAtStart: undefined, horizonRaces: undefined,
+      bestRecentVdot, bestRecentVdotSelfReported, horizonRaces: undefined,
       isMidBlock: sim.isMidBlock ?? false,
       longRunDow, restDow, qualityDows, availableDows, trainingDaysPerWeek, crossModes,
       rxQuality, rxRaceSpecific, tPaceSec, paceAnchors, lthr: sim.lthr ?? null, maxHr: sim.maxHr ?? null,
