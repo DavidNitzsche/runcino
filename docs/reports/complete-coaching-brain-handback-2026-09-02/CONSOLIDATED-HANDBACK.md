@@ -28,10 +28,15 @@ section 7. The largest was your race screen handing you a pace plan for a goal
 it had just refused in prose — thirty-one seconds per mile, thirteen minutes
 across a marathon, in the direction that ends one at mile 18.
 
-**Seven decisions are yours**, listed next. One of them, the plan rebuild,
+**And one thing found at the very end is worse than anything above it.** Your
+2026-09-02 run was TRUNCATED at capture: your watch read 6.41 mi at the moment
+you stopped and 5.98 mi reached the database. Section 12e. It was found because
+you photographed your watch, not because anything in this system noticed.
+
+**Eight decisions are yours**, listed next. One of them, the plan rebuild,
 changes what you see on your phone; the other six can wait as long as you like.
 
-## 2 · The seven decisions waiting on you
+## 2 · The eight decisions waiting on you
 
 None is urgent. They are collected here so they are in one place rather than
 scattered through the evidence.
@@ -45,6 +50,7 @@ scattered through the evidence.
 | 5 | Should the one-primary-stressor rule bind, or stay advisory? | Advisory | §6 |
 | 6 | Which watch builds are still in the field? | Nothing changed | §8 |
 | 7 | Should the habit reader answer a mean or a sustained figure? | Left alone | §9 |
+| 8 | Repair the truncated 2026-09-02 run, or leave it as captured? | Not touched — it is a write to your data | §12e |
 
 **Decision 1 is the one that changes what you see.** Every structural plan fix
 from this programme is invisible on your phone until your plan is re-authored:
@@ -401,7 +407,7 @@ contradicts older notes.
 
 ---
 
-## 11 · Incidents, and three corrections I made to my own work
+## 11 · Incidents, and four corrections I made to my own work
 
 **Main went red for sixteen minutes.** Widening the leak gate raised its liveness
 floor to 500 files from a local count of 876. The local count was double the
@@ -426,6 +432,11 @@ per-step ladder paces should be additive wire keys, reasoning an older watch
 ignores unknown keys. The implementation needs no new key at all: the offset
 resolves into a field the spec already carries, so an old build grades the
 session identically. Recorded as a correction rather than quietly accepted.
+
+**And I told you today's run was complete when 0.43 of a mile was missing.** The
+fourth and worst of these, because it was an assurance rather than an
+overstatement, and because the thing that disproved it was your photograph rather
+than anything I ran. Section 12e carries the correction in full.
 
 **And I overstated an audit finding before checking it.** The scorecard called
 the watch injury behaviour an outright Constitution breach; the code documents it
@@ -732,6 +743,8 @@ Being fixed now.
   expander also feeds the grader.
 - **`/api/targets/projection` returns four numbers for one race**, three of them
   labelled projection. Section 12, finding 5. Open.
+- **Your 2026-09-02 run is missing 0.43 mi and 4:52**, and the fix for the
+  capture path is not written yet. The stored row is untouched pending decision 8.
 - **Charts and matched-effort comparison are untouched** — both P1 in the
   post-run brief.
 - **`beliefTension` never fires** in the new post-run composer, because its
