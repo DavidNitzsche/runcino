@@ -13,10 +13,7 @@ import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-a
 import { cardPaceTargets } from '@/lib/training/prescriptions';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 import { buildPoster, resolveDayState } from '@/lib/faff/glance-adapter';
-import {
-  loadLatestVdotWithAnchor,
-  resolveCurrentVdotSnapshot,
-} from '@/lib/training/projection-snapshots';
+import { resolveCurrentVdotSnapshot } from '@/lib/training/projection-snapshots';
 
 const UID = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const fmt = (s: number | null | undefined) =>
@@ -76,17 +73,13 @@ const fmt = (s: number | null | undefined) =>
   console.log('--- Poster · SPEC-LESS day (the branch this change moves) ---');
   console.log('  breakdown  ', JSON.stringify(posterNoSpec.workout_breakdown));
 
-  // ── B5 · the two snapshot readers, side by side ──────────────────────────
-  console.log('--- B5 · projection_snapshots readers ---');
-  const disciplined = await resolveCurrentVdotSnapshot(UID, g.today);
-  console.log('  resolveCurrentVdotSnapshot =', JSON.stringify(disciplined));
-  const legacy = (loadLatestVdotWithAnchor as unknown) as
-    | ((u: string) => Promise<unknown>)
-    | undefined;
-  if (typeof legacy === 'function') {
-    console.log('  loadLatestVdotWithAnchor   =', JSON.stringify(await legacy(UID)));
-  } else {
-    console.log('  loadLatestVdotWithAnchor   = DELETED (no longer exported)');
-  }
+  /* ── B5 · the canonical snapshot read ───────────────────────────────────
+   *
+   * `loadLatestVdotWithAnchor` is not imported here on purpose: it is a
+   * delegating shell with no query of its own, so a "side by side" would be
+   * comparing the resolver with itself. `_vdot_snapshot_owner.test.ts` is what
+   * asserts that, and importing the shell here would (correctly) fail it. */
+  console.log('--- B5 · resolveCurrentVdotSnapshot ---');
+  console.log('  ', JSON.stringify(await resolveCurrentVdotSnapshot(UID, g.today)));
   process.exit(0);
 })();

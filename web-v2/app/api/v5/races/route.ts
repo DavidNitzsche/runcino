@@ -40,7 +40,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import {
   loadRacesState, PROVISIONAL_FINISH_LABEL, WATCH_PROVISIONAL_FINISH_LABEL, type RaceRow,
 } from '@/lib/coach/races-state';
-import { loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
+import { resolveCurrentVdotSnapshot } from '@/lib/training/projection-snapshots';
 import { loadGoalProjectionSeries } from '@/lib/training/goal-projection-snapshots';
 import { composeProjectionTrend } from '@/lib/training/projection-trend';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
@@ -319,7 +319,30 @@ async function handleGET(req: NextRequest) {
       const goalSec = parseRaceTime(nextA.goal);
       const goalDateISO = nextA.date;
 
-      const { vdot, anchorDateISO, anchorDistanceMi } = await loadLatestVdotWithAnchor(userId);
+      /* SECOND-OWNER-5 (2026-09-02) · THE DISCIPLINED SNAPSHOT READ.
+       *
+       * This was `loadLatestVdotWithAnchor(userId)`: no age bound, no
+       * tie-break across the three rows production holds per snapshot_date,
+       * and a `.catch(() => ({ rows: [] }))` that made a failed read and an
+       * empty table the same answer. The value it returned fed `assessGoal`
+       * (Goal Feasibility, §L) and `detectHeat` on THIS surface — the primary
+       * iPhone races screen — and the owner's own snapshot history carries
+       * gaps of 7, 9 and 15 days, in a window where the value moved 3.6 VDOT
+       * in three days.
+       *
+       * `resolveCurrentVdotSnapshot` is the canonical read: total order,
+       * `VDOT_SNAPSHOT_MAX_AGE_DAYS` bound, and three distinguishable states.
+       * A refusal lands as `null` — which is what `assessGoal`'s `currentVdot`
+       * and `detectHeat`'s `vdot` already mean by "cannot say" — and it is
+       * LOGGED with its reason, so a stale snapshot and a database failure are
+       * still two facts here even though both surfaces render the same way. */
+      const vdotRead = await resolveCurrentVdotSnapshot(userId, todayISO);
+      if (!vdotRead.ok) {
+        console.warn(`[v5/races] current VDOT unavailable · ${vdotRead.reason} · ${vdotRead.detail}`);
+      }
+      const vdot = vdotRead.ok ? vdotRead.vdot : null;
+      const anchorDateISO = vdotRead.ok ? vdotRead.anchorDateISO : null;
+      const anchorDistanceMi = vdotRead.ok ? vdotRead.anchorDistanceMi : null;
       // RULE 8 · `assessGoal`'s volume caution is a HABIT question, so the
       // taper and post-race recovery windows this runner's own races
       // prescribed are excluded rather than diluted into a 28-day mean. A

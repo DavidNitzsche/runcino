@@ -103,7 +103,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireAdmin } from '@/lib/auth/session';
-import { buildWorkoutSpec, tPaceFromGoal } from '@/lib/plan/spec-builder';
+import { buildWorkoutSpec } from '@/lib/plan/spec-builder';
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import { preserveProgressionSql } from '@/lib/plan/progression-spec';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
@@ -160,19 +161,42 @@ export async function POST(req: NextRequest) {
     const goalDistMi =
       Number((meta as { distanceMi?: number }).distanceMi ?? 0) ||
       distanceMiFromLabel((meta as { distanceLabel?: string }).distanceLabel);
-    // `tPaceFromGoal` is the canonical derivation and carries the PACE-5 ultra
-    // guard: a 50K finish pace is an arbitrary slow target, not threshold, so
-    // it returns null rather than shipping finishPace−18 as "T". The old local
-    // copy had no such guard.
-    const t = goalSec > 0 && goalDistMi ? tPaceFromGoal(goalSec, goalDistMi) : null;
+    /* ── SECOND-OWNER-1b (2026-09-02) · T CAME OFF THE GOAL, AND WAS WRITTEN ──
+     *
+     * This was `const t = tPaceFromGoal(goalSec, goalDistMi)`, and `t` is the
+     * threshold pace every `buildWorkoutSpec` call below is built from — so a
+     * backfill PERSISTED the runner's aspiration into `plan_workouts
+     * .workout_spec` for every spec-less row on his active plan. Constitution
+     * §7 names the shape; measured on the owner's account the goal-derived
+     * answer is 394 s/mi against a canonical 430, and this route would have
+     * written the 394.
+     *
+     * `resolvePrescribedPaceAnchors(userId)` takes the user and the date and
+     * NOTHING ELSE, so no goal can reach it, and it is the same resolver plan
+     * authoring and the nightly flex price the block from — a backfilled row
+     * now lands on the number the rows beside it already carry (Rule 16).
+     *
+     * The PACE-5 ultra guard the old comment defended is not lost by this: it
+     * existed because a 50K FINISH pace is not a threshold pace, and nothing
+     * here reads a finish pace any more. The anchors are capacity, whatever the
+     * runner's goal distance is.
+     *
+     * `goalPaceSPerMi` stays and is still the goal: it is `buildWorkoutSpec`'s
+     * RACE-day argument, which Constitution §J says IS priced from the stated
+     * goal. Two different questions, and now two different values. */
+    const anchorRead = await resolvePrescribedPaceAnchors(userId);
+    const t = anchorRead.ok ? anchorRead.anchors.thresholdSecPerMi : null;
     const goalPaceSPerMi = goalSec > 0 && goalDistMi ? Math.round(goalSec / goalDistMi) : null;
 
     if (t == null) {
+      // Rule 11 · a REFUSED capacity read is not "no goal race". Say which.
       return NextResponse.json({
         ok: false,
-        error: goalDistMi != null && goalDistMi >= 31
-          ? 'ultra goal · T-pace is not derivable from finish pace (PACE-5). Regenerate the plan instead of backfilling.'
-          : 'no goal race with parseable goalDisplay + distance',
+        error: anchorRead.ok
+          ? 'the canonical pace anchors resolved but carry no threshold pace'
+          : `pace anchors REFUSED (${anchorRead.reason}): ${anchorRead.detail}. The runner has ` +
+            'no capacity read to price a spec from; backfilling off anything else would write ' +
+            'a number nobody resolved.',
         plans: planRows.map((p) => p.id),
       }, { status: 400 });
     }
