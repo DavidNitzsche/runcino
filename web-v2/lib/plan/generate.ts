@@ -85,6 +85,7 @@ import { dropLastSegment, keepFirstSegment, parsePrescription, parseSegments, pa
 // stimulus it can actually see.
 import { progressionSpecFields, RATIONALE_SPEC_KEY } from './progression-spec';
 import { validateComposedPlan } from './validate';
+import { deriveBlockStrategy } from './strategy-contracts';
 import { mutatePlan, snapshotPrescription, snapshotActivePrescription } from './mutate';
 // 2026-08-25 · the commit gate + the "what moved" line. See lib/plan/plan-delta.ts.
 import {
@@ -4056,9 +4057,29 @@ function longFinishSegment(
   }
 }
 
-function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false, thesisSlot = null,
-}: {
+/**
+ * LAYOUTWEEK-CONTRACT-1 (2026-09-02) · brief Phase 2, first cut.
+ *
+ * `layoutWeek` took FORTY inline-destructured parameters under an anonymous
+ * type literal, which is the shape the brief names as the thing to fix: "Each
+ * function takes a typed object, not forty positional/destructured
+ * parameters." An anonymous literal cannot be handed to a second function, so
+ * every responsibility the brief wants split out — `resolveWeekRole`,
+ * `resolveKeySessionSlots`, `resolveLongRunIntent` and the rest — would have
+ * had to re-declare its own slice of it, and the eight functions would have
+ * been eight new contracts instead of one shared one.
+ *
+ * Naming it is therefore the FIRST step rather than a cosmetic one: a
+ * responsibility can now be lifted out by taking a `Pick<LayoutWeekInput, …>`,
+ * which is what `layoutRaceWeek` below does.
+ *
+ * NOTHING ELSE CHANGED. The member list, its defaults and its doc comments are
+ * the ones that were inline, moved verbatim; `layoutWeek` destructures the
+ * object on its first line so its three thousand lines of body are untouched.
+ * `_layout_contract.test.ts` asserts the whole archetype matrix composes
+ * byte-identically across this change.
+ */
+export interface LayoutWeekInput {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
    *  phase ends (0 = last week of the phase). Drives the late-QUALITY
@@ -4198,168 +4219,205 @@ function layoutWeek({
    * for what happens when nothing paced is offerable.
    */
   thesisSlot?: ThesisSlotContext | null;
-}): DayPlan[] {
-  // Race week: all roads lead to race day.
-  if (isRaceWeek && raceDow != null) {
-    const days: DayPlan[] = [];
-    for (let d = 0; d < 7; d++) {
-      const dow = d as DOW;
-      if (dow === raceDow) {
+}
+
+/**
+ * LAYOUTWEEK-RACEWEEK-1 (2026-09-02) · brief Phase 2 · the race week, lifted
+ * out of the monolith.
+ *
+ * The first responsibility split the brief asks for, and it is the one that
+ * comes out CLEAN: the race-week branch reads six of `layoutWeek`'s forty
+ * inputs and nothing else, writes seven days from scratch, and returns before
+ * any of the standard week's sizing runs. It shared a three-thousand-line
+ * scope with the build week for no reason other than that it was written
+ * there.
+ *
+ * Its parameter is a `Pick<LayoutWeekInput, …>`, which is the point of naming
+ * that contract one commit earlier: a responsibility can now be lifted out
+ * without re-declaring its own slice of the composer's inputs. The remaining
+ * seven splits the brief lists (`resolveWeekLoadBudget`,
+ * `resolveKeySessionSlots`, `resolveLongRunIntent`,
+ * `resolveEasyAndMediumLongDays`, `allocateWeeklyMileage` …) are NOT done, and
+ * the handback says so rather than implying this was the whole of Phase 2.
+ *
+ * BEHAVIOUR PRESERVED, BYTE FOR BYTE. The body is the branch verbatim, one
+ * indent level out; `_layout_contract.test.ts` composes the whole archetype
+ * matrix on both sides of the change and compares the serialised weeks.
+ */
+function layoutRaceWeek(input: Pick<
+  LayoutWeekInput,
+  'phase' | 'raceDow' | 'raceDistanceMi' | 'trainingDaysPerWeek' | 'availableDows'
+>): DayPlan[] {
+  const { phase, raceDow, raceDistanceMi, trainingDaysPerWeek, availableDows } = input;
+  if (raceDow == null) return [];
+  const days: DayPlan[] = [];
+  for (let d = 0; d < 7; d++) {
+    const dow = d as DOW;
+    if (dow === raceDow) {
+      days.push({
+        dow, type: 'race', distanceMi: raceDistanceMi, isQuality: true, isLong: true,
+        subLabel: 'RACE', notes: 'Execute the plan. Pacing in race-week briefing.',
+      });
+    } else {
+      // Day before race: 2mi shakeout w/ strides. 2 days before: rest.
+      const daysBeforeRace = (raceDow - dow + 7) % 7;
+      if (daysBeforeRace === 1) {
+        // DOCTRINE-STRIDES-1 · the strides move from the notes into the
+        // sub_label. They have been in this row's copy since it was written
+        // and in no spec, so the day before every race the watch ran a flat
+        // 2-mile jog under a label promising four 20-second strides.
+        days.push({ dow, type: 'shakeout', distanceMi: 2, isQuality: false, isLong: false, subLabel: 'SHAKEOUT · 4×20s strides', notes: '2 mi easy. Loosen the legs.' });
+      } else if (daysBeforeRace === 2) {
+        days.push({ dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off feet. Hydrate.' });
+      } else if (daysBeforeRace === 5) {
+        // 2026-06-09 state-audit Tier 2.2 · the race-week tune-up.
+        // Research/08 §9.3: the race-prep session sits ~5 days out —
+        // HM/M: 4×1km at race pace w/ 90s jog; 5K/10K keep the
+        // shorter 2×0.5mi @ T primer. The audit found race week
+        // carried ZERO quality (last touch 10 days out) · legs go
+        // flat into the gun. This is also the WATCHING test point:
+        // hold race pace at honest HR here and the race plan is
+        // confirmed.
+        // RACEWK-SHARP-1 (2026-06-23) · marathon/ultra race-week sharpener must be 5K pace not race
+        // pace. Research/08 §9.3 "3 mi w/ 5×1min @ 5K pace, 4-5 days out" — MP is too slow to be a
+        // neuromuscular primer. TAPER-phase already used 5K pace (line 1269); race-week now matches.
+        // #12 follow-up (2026-08-18) · THE categorizer, not four raw mileage
+        // thresholds. These read `>= 31` against the canonical 31.07 ultra
+        // floor (so a 31.0-mile race was an ultra here and a marathon
+        // everywhere else), `>= 20` against the canonical 19.65 hm|m line,
+        // `>= 12` against nothing canonical at all, and `< 7` against 7.75 —
+        // four boundaries in one function, none of them the app's.
+        //
+        // The tune-up STRINGS stay as they are: they are Research/08 §9.3's
+        // race-week primers, and `Research/04`'s workout catalogue does not
+        // carry them (it is the training vocabulary, not the race-week
+        // template). What changes is which row a given race lands on.
+        const tuneCat = distanceCategoryOrNull(raceDistanceMi);
+        const isUltra = tuneCat === 'ultra';
+        const isMarathonPlus = tuneCat === 'm' || tuneCat === 'ultra';
+        const isLongRace = tuneCat === 'hm' || isMarathonPlus;
         days.push({
-          dow, type: 'race', distanceMi: raceDistanceMi, isQuality: true, isLong: true,
-          subLabel: 'RACE', notes: 'Execute the plan. Pacing in race-week briefing.',
+          dow, type: 'race_week_tuneup',
+          distanceMi: isLongRace ? 5 : 4,
+          isQuality: true, isLong: false,
+          // ULTRA-TUNE-1 (2026-06-23) · ultra race-week tune-up uses T-pace (threshold primer), NOT I-pace
+          // (5K pace). Ultra race pace is 10–14+ min/mi — running 5K-pace reps (30–40% faster than race
+          // pace) the week before a 100K is physiologically wrong. Research/00a §taper: "intensity preserved"
+          // at the runner's training intensity (threshold, not VO2max) for ultra. 5K-SHARP-1 · 5K/10K now
+          // uses 5K-pace reps (Research/00a §taper: "intensity preserved"). Shorter reps to match distance.
+          // The 5k row is the canonical categorizer's, not a `< 7` guess.
+          subLabel: isUltra ? '5×400m @ T pace · 90s jog'
+            : isMarathonPlus ? '5×400m @ 5K pace · 2min jog'
+            : isLongRace ? '4×1km @ race pace · 90s jog'
+            : tuneCat === '5k' ? '5×200m @ 5K pace · 90s jog'
+            : '4×400m @ 5K pace · 90s jog',  // 10K
+          notes: isUltra
+            ? 'Threshold strides, 5 days out. Hold T effort · just under comfortably hard. Brief neuromuscular prime.'
+            : isMarathonPlus
+            ? 'Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.'
+            : isLongRace
+            ? 'Race-pace primer, 5 days out. Hold goal pace, even reps, stop at 4. Confidence check, not a workout.'
+            : 'Short race-pace strides, 5 days out. Quick turnover · finish feeling sharp, not tired.',
         });
+      } else if (daysBeforeRace >= 3 && daysBeforeRace <= 4) {
+        // TAPER-RW-1 · time-based easy prescription (not distance). 35-45 min at conversational
+        // pace; the distance is a planning guide only.
+        // Cite: Research/08-pacing-and-race-week.md §"9.3 Day-by-day race week templates" —
+        // every published template puts the T-3/T-4 days at an easy run in minutes, not
+        // miles (marathon Wed 30-40 / Thu 0-30, half Wed 35-45 / Thu 30-40). Bound by
+        // TAPER.race-week-easy-duration. (Was `Daniels §Race-week sharpening`, a section
+        // the gate could not open — DOCTRINE-BOOK-7, 2026-08-17.)
+        //
+        // TAPER-RWT3-1 (2026-08-17) · T-3 splits by distance; it used to be a
+        // flat 35 min for every race. §9.3's half template makes T-3 "Easy + 6
+        // strides · 30-40 min" and its marathon template makes the same day
+        // "Rest or short easy shakeout · 0-30 min" — the marathon deliberately
+        // takes a near-rest day three out before the longest race on the
+        // board. 35 sits inside the half's row and five minutes over the
+        // marathon's ceiling, so the one number could not be right for both.
+        // The ultra has no §9.3 template of its own; it takes the marathon's
+        // row as the nearest and most conservative published one, which is
+        // consistent with §9.1 giving the ultra the longest taper and the
+        // deepest volume cut of any distance. T-4 is unchanged: 40 min sits
+        // inside both templates' Wednesday rows.
+        const raceWeekCat = distanceCategoryOf(raceDistanceMi);
+        const minEasyT3 = raceWeekCat === 'm' || raceWeekCat === 'ultra' ? 30 : 35;
+        const minEasy = daysBeforeRace === 4 ? 40 : minEasyT3;
+        days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: `EASY · ${minEasy} MIN`, notes: `${minEasy} min easy. Conversational effort throughout. Strides optional at end.` });
       } else {
-        // Day before race: 2mi shakeout w/ strides. 2 days before: rest.
-        const daysBeforeRace = (raceDow - dow + 7) % 7;
-        if (daysBeforeRace === 1) {
-          // DOCTRINE-STRIDES-1 · the strides move from the notes into the
-          // sub_label. They have been in this row's copy since it was written
-          // and in no spec, so the day before every race the watch ran a flat
-          // 2-mile jog under a label promising four 20-second strides.
-          days.push({ dow, type: 'shakeout', distanceMi: 2, isQuality: false, isLong: false, subLabel: 'SHAKEOUT · 4×20s strides', notes: '2 mi easy. Loosen the legs.' });
-        } else if (daysBeforeRace === 2) {
-          days.push({ dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off feet. Hydrate.' });
-        } else if (daysBeforeRace === 5) {
-          // 2026-06-09 state-audit Tier 2.2 · the race-week tune-up.
-          // Research/08 §9.3: the race-prep session sits ~5 days out —
-          // HM/M: 4×1km at race pace w/ 90s jog; 5K/10K keep the
-          // shorter 2×0.5mi @ T primer. The audit found race week
-          // carried ZERO quality (last touch 10 days out) · legs go
-          // flat into the gun. This is also the WATCHING test point:
-          // hold race pace at honest HR here and the race plan is
-          // confirmed.
-          // RACEWK-SHARP-1 (2026-06-23) · marathon/ultra race-week sharpener must be 5K pace not race
-          // pace. Research/08 §9.3 "3 mi w/ 5×1min @ 5K pace, 4-5 days out" — MP is too slow to be a
-          // neuromuscular primer. TAPER-phase already used 5K pace (line 1269); race-week now matches.
-          // #12 follow-up (2026-08-18) · THE categorizer, not four raw mileage
-          // thresholds. These read `>= 31` against the canonical 31.07 ultra
-          // floor (so a 31.0-mile race was an ultra here and a marathon
-          // everywhere else), `>= 20` against the canonical 19.65 hm|m line,
-          // `>= 12` against nothing canonical at all, and `< 7` against 7.75 —
-          // four boundaries in one function, none of them the app's.
-          //
-          // The tune-up STRINGS stay as they are: they are Research/08 §9.3's
-          // race-week primers, and `Research/04`'s workout catalogue does not
-          // carry them (it is the training vocabulary, not the race-week
-          // template). What changes is which row a given race lands on.
-          const tuneCat = distanceCategoryOrNull(raceDistanceMi);
-          const isUltra = tuneCat === 'ultra';
-          const isMarathonPlus = tuneCat === 'm' || tuneCat === 'ultra';
-          const isLongRace = tuneCat === 'hm' || isMarathonPlus;
-          days.push({
-            dow, type: 'race_week_tuneup',
-            distanceMi: isLongRace ? 5 : 4,
-            isQuality: true, isLong: false,
-            // ULTRA-TUNE-1 (2026-06-23) · ultra race-week tune-up uses T-pace (threshold primer), NOT I-pace
-            // (5K pace). Ultra race pace is 10–14+ min/mi — running 5K-pace reps (30–40% faster than race
-            // pace) the week before a 100K is physiologically wrong. Research/00a §taper: "intensity preserved"
-            // at the runner's training intensity (threshold, not VO2max) for ultra. 5K-SHARP-1 · 5K/10K now
-            // uses 5K-pace reps (Research/00a §taper: "intensity preserved"). Shorter reps to match distance.
-            // The 5k row is the canonical categorizer's, not a `< 7` guess.
-            subLabel: isUltra ? '5×400m @ T pace · 90s jog'
-              : isMarathonPlus ? '5×400m @ 5K pace · 2min jog'
-              : isLongRace ? '4×1km @ race pace · 90s jog'
-              : tuneCat === '5k' ? '5×200m @ 5K pace · 90s jog'
-              : '4×400m @ 5K pace · 90s jog',  // 10K
-            notes: isUltra
-              ? 'Threshold strides, 5 days out. Hold T effort · just under comfortably hard. Brief neuromuscular prime.'
-              : isMarathonPlus
-              ? 'Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.'
-              : isLongRace
-              ? 'Race-pace primer, 5 days out. Hold goal pace, even reps, stop at 4. Confidence check, not a workout.'
-              : 'Short race-pace strides, 5 days out. Quick turnover · finish feeling sharp, not tired.',
-          });
-        } else if (daysBeforeRace >= 3 && daysBeforeRace <= 4) {
-          // TAPER-RW-1 · time-based easy prescription (not distance). 35-45 min at conversational
-          // pace; the distance is a planning guide only.
-          // Cite: Research/08-pacing-and-race-week.md §"9.3 Day-by-day race week templates" —
-          // every published template puts the T-3/T-4 days at an easy run in minutes, not
-          // miles (marathon Wed 30-40 / Thu 0-30, half Wed 35-45 / Thu 30-40). Bound by
-          // TAPER.race-week-easy-duration. (Was `Daniels §Race-week sharpening`, a section
-          // the gate could not open — DOCTRINE-BOOK-7, 2026-08-17.)
-          //
-          // TAPER-RWT3-1 (2026-08-17) · T-3 splits by distance; it used to be a
-          // flat 35 min for every race. §9.3's half template makes T-3 "Easy + 6
-          // strides · 30-40 min" and its marathon template makes the same day
-          // "Rest or short easy shakeout · 0-30 min" — the marathon deliberately
-          // takes a near-rest day three out before the longest race on the
-          // board. 35 sits inside the half's row and five minutes over the
-          // marathon's ceiling, so the one number could not be right for both.
-          // The ultra has no §9.3 template of its own; it takes the marathon's
-          // row as the nearest and most conservative published one, which is
-          // consistent with §9.1 giving the ultra the longest taper and the
-          // deepest volume cut of any distance. T-4 is unchanged: 40 min sits
-          // inside both templates' Wednesday rows.
-          const raceWeekCat = distanceCategoryOf(raceDistanceMi);
-          const minEasyT3 = raceWeekCat === 'm' || raceWeekCat === 'ultra' ? 30 : 35;
-          const minEasy = daysBeforeRace === 4 ? 40 : minEasyT3;
-          days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: `EASY · ${minEasy} MIN`, notes: `${minEasy} min easy. Conversational effort throughout. Strides optional at end.` });
-        } else {
-          // TAPER-RW-1 · early race-week easy days also time-based (35-45 min)
-          const earlyEasy = daysBeforeRace > 5;
-          days.push({ dow, type: earlyEasy ? 'easy' : 'rest', distanceMi: earlyEasy ? 4 : 0, isQuality: false, isLong: false, subLabel: earlyEasy ? 'EASY · 40 MIN' : 'REST', notes: earlyEasy ? '40 min easy. Keep it truly easy · save the legs.' : '' });
-        }
+        // TAPER-RW-1 · early race-week easy days also time-based (35-45 min)
+        const earlyEasy = daysBeforeRace > 5;
+        days.push({ dow, type: earlyEasy ? 'easy' : 'rest', distanceMi: earlyEasy ? 4 : 0, isQuality: false, isLong: false, subLabel: earlyEasy ? 'EASY · 40 MIN' : 'REST', notes: earlyEasy ? '40 min easy. Keep it truly easy · save the legs.' : '' });
       }
     }
-    // 2026-06-21 · PLACE-A · availability in race week. The offset-based
-    // placement above is blind to availableDows — it could put the tune-up or
-    // a midweek easy on a day the runner said they can't run (the standard-week
-    // easy-fill respects availability; the race-week branch did not). When
-    // availableDows is set, relocate the shakeout + tune-up to the nearest
-    // available day in their window, and rest any non-race running day that
-    // isn't available. The RACE day is the sole exemption — it's fixed by the
-    // calendar. null availableDows → untouched (David / legacy).
-    const restRow = (dow: number, note: string): DayPlan => ({
-      dow: dow as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: note,
-    });
-    if (availableDows != null) {
-      const isAvail = (dow: number) => availableDows.has(dow) || dow === raceDow;
-      for (const role of ['shakeout', 'race_week_tuneup'] as const) {
-        const idx = days.findIndex((d) => d.type === role);
-        if (idx < 0 || isAvail(idx)) continue;
-        const window = role === 'shakeout' ? [1, 2, 3] : [5, 4, 6];
-        for (const off of window) {
-          const dow: number = ((raceDow - off) % 7 + 7) % 7;
-          if (dow !== raceDow && isAvail(dow) && days[dow].distanceMi === 0) {
-            days[dow] = { ...days[idx], dow: dow as DOW };
-            break;
-          }
+  }
+  // 2026-06-21 · PLACE-A · availability in race week. The offset-based
+  // placement above is blind to availableDows — it could put the tune-up or
+  // a midweek easy on a day the runner said they can't run (the standard-week
+  // easy-fill respects availability; the race-week branch did not). When
+  // availableDows is set, relocate the shakeout + tune-up to the nearest
+  // available day in their window, and rest any non-race running day that
+  // isn't available. The RACE day is the sole exemption — it's fixed by the
+  // calendar. null availableDows → untouched (David / legacy).
+  const restRow = (dow: number, note: string): DayPlan => ({
+    dow: dow as DOW, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: note,
+  });
+  if (availableDows != null) {
+    const isAvail = (dow: number) => availableDows.has(dow) || dow === raceDow;
+    for (const role of ['shakeout', 'race_week_tuneup'] as const) {
+      const idx = days.findIndex((d) => d.type === role);
+      if (idx < 0 || isAvail(idx)) continue;
+      const window = role === 'shakeout' ? [1, 2, 3] : [5, 4, 6];
+      for (const off of window) {
+        const dow: number = ((raceDow - off) % 7 + 7) % 7;
+        if (dow !== raceDow && isAvail(dow) && days[dow].distanceMi === 0) {
+          days[dow] = { ...days[idx], dow: dow as DOW };
+          break;
         }
-        days[idx] = restRow(idx, 'Off. Taper week · rest is the work now.');
       }
-      for (let d = 0; d < 7; d++) {
-        if (d !== raceDow && days[d].distanceMi > 0 && !isAvail(d)) {
-          days[d] = restRow(d, 'Off. Not one of your run days this week.');
-        }
+      days[idx] = restRow(idx, 'Off. Taper week · rest is the work now.');
+    }
+    for (let d = 0; d < 7; d++) {
+      if (d !== raceDow && days[d].distanceMi > 0 && !isAvail(d)) {
+        days[d] = restRow(d, 'Off. Not one of your run days this week.');
       }
     }
-    // 2026-06-10 · frequency cap also applies to race week. Without it a
-    // 3-day runner saw 6 running days in their race week (race + shakeout
-    // + tune-up + 3 easies). 2026-06-21 · PLACE-B · trim in priority order.
-    // RACEWEEK-TUNEUP-DROP-1 (2026-06-23) · previous order (easy → tune-up → shakeout)
-    // made a 2-day runner keep race + shakeout instead of race + tune-up. The tune-up
-    // is the week's key quality prime (§9.3); the shakeout is just a loosening jog.
-    // Correct order: easy → shakeout → tune-up. freq 1 → race only,
-    // freq 2 → race + tune-up. The race day always stays. NULL frequency → untouched.
-    if (trainingDaysPerWeek != null) {
-      let running = days.filter((d) => d.distanceMi > 0).length;
-      for (const role of ['easy', 'shakeout', 'race_week_tuneup'] as const) {
+  }
+  // 2026-06-10 · frequency cap also applies to race week. Without it a
+  // 3-day runner saw 6 running days in their race week (race + shakeout
+  // + tune-up + 3 easies). 2026-06-21 · PLACE-B · trim in priority order.
+  // RACEWEEK-TUNEUP-DROP-1 (2026-06-23) · previous order (easy → tune-up → shakeout)
+  // made a 2-day runner keep race + shakeout instead of race + tune-up. The tune-up
+  // is the week's key quality prime (§9.3); the shakeout is just a loosening jog.
+  // Correct order: easy → shakeout → tune-up. freq 1 → race only,
+  // freq 2 → race + tune-up. The race day always stays. NULL frequency → untouched.
+  if (trainingDaysPerWeek != null) {
+    let running = days.filter((d) => d.distanceMi > 0).length;
+    for (const role of ['easy', 'shakeout', 'race_week_tuneup'] as const) {
+      if (running <= trainingDaysPerWeek) break;
+      for (const d of days) {
         if (running <= trainingDaysPerWeek) break;
-        for (const d of days) {
-          if (running <= trainingDaysPerWeek) break;
-          if (d.type === role && d.distanceMi > 0) {
-            const wasTuneup = d.type === 'race_week_tuneup';
-            d.type = 'rest'; d.distanceMi = 0; d.subLabel = 'REST';
-            d.notes = wasTuneup
-              ? 'Off. Too few run days this week to fit the tune-up · rest is the work now.'
-              : 'Off. Taper week · rest is the work now.';
-            running--;
-          }
+        if (d.type === role && d.distanceMi > 0) {
+          const wasTuneup = d.type === 'race_week_tuneup';
+          d.type = 'rest'; d.distanceMi = 0; d.subLabel = 'REST';
+          d.notes = wasTuneup
+            ? 'Off. Too few run days this week to fit the tune-up · rest is the work now.'
+            : 'Off. Taper week · rest is the work now.';
+          running--;
         }
       }
     }
-    return days;
+  }
+  return days;
+}
+
+function layoutWeek(input: LayoutWeekInput): DayPlan[] {
+  const {
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false, thesisSlot = null,
+  } = input;
+  // LAYOUTWEEK-RACEWEEK-1 · the race week is its own responsibility now.
+  if (isRaceWeek && raceDow != null) {
+    return layoutRaceWeek({ phase, raceDow, raceDistanceMi, trainingDaysPerWeek, availableDows });
   }
 
   // Standard week: 1 long, 1-2 quality, rest = easy, 1 rest day.
@@ -7988,18 +8046,54 @@ export function embedMidBlockRaces(
           delete nearest.raceGoalPaceSec;
         }
       }
-      // 1 easy day either side — no deeper mini-taper for a C race.
-      for (const off of [-1, 1]) {
-        const d = dayAt(o + off);
+      // One easy day BEFORE — no deeper mini-taper for a C race.
+      {
+        const d = dayAt(o - 1);
         if (d && d.type !== 'race' && d.isQuality && !d.isLong) {
           d.type = 'easy';
           d.isQuality = false;
           d.subLabel = 'EASY';
-          d.notes = off < 0
-            ? `Easy the day before ${race.name}.`
-            : `Easy the day after ${race.name}.`;
+          d.notes = `Easy the day before ${race.name}.`;
           delete d.raceGoalPaceSec;
-          touchedWeeks.add(Math.floor((o + off) / 7));
+          touchedWeeks.add(Math.floor((o - 1) / 7));
+        }
+      }
+      /* AFTER · THE DOCTRINE WINDOW, NOT ONE DAY (2026-09-02).
+       *
+       * This was a bare `+1`: exactly one easy day after a C race, cited to
+       * nothing. `Research/00b` §"Recovery by Effort" gives the C row its own
+       * number — "25–50% of A-race recovery duration; treat like a hard
+       * workout" — which for a 10K is 1.25 to 2.5 days of no quality, and the
+       * engine was answering the very bottom of it.
+       *
+       * Found by the new combined-stress check refusing a plan the composer
+       * had just authored: `_brain_acceptance`'s multi-race golden runner put
+       * an intervals session on day 2 after a C 10K and `validateComposedPlan`
+       * §11 raised `QUALITY_INSIDE_RECOVERY_WINDOW` against the same doctrine
+       * table. Two answers to one question (Rule 16) — and the composer's was
+       * the uncited one, exactly as it had been for an unanswered B race
+       * before D1.
+       *
+       * `noQualityDaysAfterRace` is the single resolver both now call, so the
+       * plan cannot be authored under one reading of the window and refused
+       * under another. The LONG RUN is deliberately untouched: D2 grades a C
+       * effort as a hard workout, not a race, so it does not consume the
+       * following long-run slot (see the D2 block below).
+       */
+      {
+        const window = noQualityDaysAfterRace(race.distanceMi, 'C');
+        for (let j = 1; j <= window; j++) {
+          const d = dayAt(o + j);
+          if (!d || d.type === 'race' || !d.isQuality || d.isLong) continue;
+          d.type = 'easy';
+          d.isQuality = false;
+          d.subLabel = 'EASY';
+          d.notes = j === 1
+            ? `Easy the day after ${race.name}.`
+            : `Easy. Day ${j} after ${race.name}; it was a hard session and takes its recovery.`;
+          delete d.raceGoalPaceSec;
+          clearWorkShape(d);
+          touchedWeeks.add(Math.floor((o + j) / 7));
         }
       }
     }
@@ -12337,6 +12431,65 @@ export function finalizeComposedPlan(
   // numbers each phase cites (the block's peak week, its longest run, the
   // race-pace longs a phase carries) describe the block that ships.
   attachPhaseAnswers(composed, raceDistanceMi);
+
+  // BLOCK-STRATEGY-1 · after the phase answers, because it CARRIES them rather
+  // than restating them (Rule 17). Describes; changes nothing.
+  attachBlockStrategy(composed, raceDistanceMi);
+}
+
+/**
+ * BLOCK-STRATEGY-1 (2026-09-02) · brief §4.3's `BlockStrategy`, stamped onto
+ * the block that ships.
+ *
+ * Reads only the composed weeks, the phase answers attached one line above,
+ * and what the composer already stamped on `authoredState`. Derives no
+ * capacity, sizes nothing, moves nothing — `_strategy_contracts.test.ts`
+ * asserts the composed weeks are byte-identical with this pass and without it,
+ * because a description that changes what it describes is not one.
+ *
+ * Inert on a result whose composer stamped no `authoredState` (the pure unit
+ * fixtures), which is the same gating `attachPhaseAnswers` uses.
+ */
+function attachBlockStrategy(composed: ComposePlanResult, raceDistanceMi: number): void {
+  const st = composed.authoredState as Record<string, unknown> | undefined;
+  if (!st) return;
+  const cat = distanceCategoryOrNull(raceDistanceMi);
+  const thesis = (st['thesis_at_authoring'] ?? null) as ThesisAtAuthoring | null;
+  // The race date is not a key on `authoredState`; it is a DAY in the block,
+  // which is the more honest place to read it from — a stamped date and a
+  // composed race day could disagree, and the runner runs the day (Rule 16).
+  const raceDateISO = (() => {
+    for (let i = composed.weeks.length - 1; i >= 0; i--) {
+      const w = composed.weeks[i];
+      const d = w.days.find((x) => x.type === 'race');
+      if (!d) continue;
+      const startDow = new Date(w.startISO + 'T12:00:00Z').getUTCDay();
+      return addDays(w.startISO, ((d.dow - startDow) % 7 + 7) % 7);
+    }
+    return null;
+  })();
+  // The runner's STATED goal, in seconds, as `achievable-target` recorded it.
+  // Carried verbatim and never spent: `check-goal-pace-leak` is what keeps a
+  // goal out of the capacity path, and nothing downstream reads this field.
+  const prescribed = st['prescribed_race_pace'] as { goal_sec?: unknown } | null | undefined;
+  const goalSec = typeof prescribed?.goal_sec === 'number' ? prescribed.goal_sec : null;
+  const strategy = deriveBlockStrategy({
+    weeks: composed.weeks,
+    phases: composed.blocks.phases,
+    targetEvent: cat != null && raceDateISO
+      ? { distanceMi: raceDistanceMi, category: cat, dateISO: raceDateISO }
+      : null,
+    statedGoalSec: goalSec,
+    thesis: thesis
+      ? {
+          primaryLimiter: thesis.primaryLimiter,
+          priority: thesis.priority,
+          confidence: thesis.confidence,
+          source: thesis.source,
+        }
+      : null,
+  });
+  if (strategy) st['block_strategy'] = strategy;
 }
 
 /**

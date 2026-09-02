@@ -66,7 +66,10 @@ import {
 // ("Threshold" from sub_label "THRESHOLD", "Easy" from a bare type column).
 // One authoring path for "what does this day's type read as", not two.
 import { displayTypeFor } from '@/lib/faff/v5-today';
-import { resolveCoachingThesis, wireThesis, type ThesisWire } from '@/lib/training/coaching-thesis';
+import {
+  resolveCoachingThesis, wireThesis, composeCoachLine,
+  type ThesisWire, type CoachingThesis,
+} from '@/lib/training/coaching-thesis';
 
 // ── small local formatters — presentation only, no doctrine here ───────────
 
@@ -297,6 +300,89 @@ export function buildCoachLine(
     default:
       return null;
   }
+}
+
+/**
+ * BLOCK-THESIS-LINE-1 (2026-09-02) · THE LINE THE RUNNER READS UNDER
+ * "WHERE THIS GOES", when the Coaching Thesis has something better to say.
+ *
+ * ── The defect ──────────────────────────────────────────────────────────────
+ *
+ * The thesis is composed correctly, shipped correctly on `thesis`, and
+ * RENDERED NOWHERE: `Thesis`, `reviewTrigger` and `limiter` appear zero times
+ * in the whole of `native-v2`. So Block's "WHERE THIS GOES" reads the generic
+ * phase line — "This is where the fitness gets built" — while the sentence the
+ * engine actually composed for this runner ("Your races fade with distance
+ * faster than your speed predicts, so durability is where the work goes") is
+ * serialised, sent and dropped. Found by looking at the deployed screen, which
+ * is the only way it could have been found: every wire was correct.
+ *
+ * `coachLine` is a STRING in a field the app already renders, so putting the
+ * thesis there needs no app release. That is the whole of the fix.
+ *
+ * ── WHEN THE THESIS WINS, AND WHEN IT DOES NOT ──────────────────────────────
+ *
+ * The thesis answers "what is this block trying to move". That question is
+ * live only while the block is still building something, so it wins in BASE,
+ * QUALITY and RACE-SPECIFIC and never elsewhere:
+ *
+ *   TAPER, race week   the phase line carries a CALENDAR fact the thesis
+ *                      cannot ("volume drops, intensity stays sharp"), and
+ *                      "durability is where the work goes" during a taper is
+ *                      actively wrong — the work is finished.
+ *   RECOVERY           "easy running only, no quality" is the instruction.
+ *   MAINTENANCE        there is no block to have a thesis about, and that
+ *                      branch says when one opens.
+ *   block ended        BLOCK-ENDED-1's sentence is about the plan's state,
+ *                      not its strategy.
+ *
+ * `resolveCoachingThesis` does NOT refuse by phase — it answers for any
+ * runner on any day — so the gate is here rather than assumed there.
+ *
+ * ── RULE 11 · three facts ───────────────────────────────────────────────────
+ *
+ *   thesis === null          the resolver was not reached (no plan). Phase line.
+ *   limiter === 'UNKNOWN'    the resolver's OWN refusal, and its coach line
+ *                            says so honestly ("not enough direct evidence
+ *                            yet"). That is a claim about the MODEL, not an
+ *                            answer to "where this goes", so the phase line
+ *                            stands and the refusal keeps its own home on the
+ *                            `thesis` object. Explicit branch, not a fallthrough.
+ *   a named limiter          the thesis line.
+ *
+ * ── RULE 17 · the week tail belongs to Today, not here ──────────────────────
+ *
+ * `thesis.coachLine` ends "…and this week's long run is the session that
+ * builds it" when the week addresses the limiter — and Today already says
+ * that, through `thesisLeadClause`, on the day itself. Two screens, one claim.
+ * So Block asks the SAME composer for the block-level half by passing
+ * `addressedThisWeek: false`. It is one sentence writer with two registers,
+ * not a second sentence (Rule 16): nothing here writes prose.
+ */
+export function blockCoachLine(
+  state: TrainingState,
+  raceDistanceMi: number | null,
+  thesis: CoachingThesis | null,
+): string | null {
+  const phaseLine = buildCoachLine(state, raceDistanceMi);
+  if (!thesis) return phaseLine;
+  if (thesis.primaryLimiter === 'UNKNOWN') return phaseLine;
+
+  const lastWeek = state.weeks[state.weeks.length - 1];
+  if (lastWeek) {
+    const lastDay = new Date(Date.parse(lastWeek.startDate + 'T12:00:00Z') + 6 * 86400000)
+      .toISOString().slice(0, 10);
+    if (lastDay < state.today) return phaseLine;
+  }
+  const current = state.weeks.find((w) => w.isCurrent) ?? null;
+  if (current?.isRaceWeek) return phaseLine;
+  if (state.currentPhase !== 'BASE' && state.currentPhase !== 'QUALITY'
+    && state.currentPhase !== 'RACE-SPECIFIC') return phaseLine;
+
+  return composeCoachLine(thesis.primaryLimiter, thesis.heldConstant, {
+    basis: thesis.basis,
+    addressedThisWeek: false,
+  });
 }
 
 // ── weeks (all of them) ─────────────────────────────────────────────────
@@ -653,7 +739,9 @@ export async function loadV5Block(userId: string) {
   return {
     panel: buildPanel(state),
     phases: buildPhases(state),
-    coachLine: buildCoachLine(state, raceDistanceMi),
+    // BLOCK-THESIS-LINE-1 · the thesis when it has something better to say
+    // than the phase, the phase line otherwise. See `blockCoachLine`.
+    coachLine: blockCoachLine(state, raceDistanceMi, thesis),
     thesis: thesis ? wireThesis(thesis) : null,
     soFar: buildSoFar(state),
     weeks: buildWeeks(state),

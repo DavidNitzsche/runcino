@@ -1,0 +1,10 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`LAYOUTWEEK-CONTRACT-1 · the decomposition changed nothing > the whole archetype matrix composes byte-identically > layout-corpus-digest 1`] = `
+{
+  "composed": 8781,
+  "days": 699860,
+  "digest": "15513558d16ac90b2d8d10ac27609639089766220b433eca2a33df4575767c36",
+  "raceWeeks": 3969,
+}
+`;
