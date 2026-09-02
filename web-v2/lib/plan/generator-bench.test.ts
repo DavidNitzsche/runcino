@@ -36,6 +36,8 @@ import {
   type DOW,
 } from './generate';
 import { tPaceFromGoal } from './spec-builder';
+// BOUNDARY-OWNER-1 · the app's one split of a day into easy and at-pace miles.
+import { splitDay } from './intensity-distribution';
 
 describe('parseGoalSeconds · accepts multiple goal-time formats', () => {
   it.each([
@@ -340,26 +342,79 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
        * ──────────────────────────────────────────────────────────────── */
 
       // RULE 2 · quality distance floor.
+      //
       // Generator must not author a quality day shorter than runner's
       // typical quality distance (e.g. if recent tempos are 8mi, don't
       // author a 5mi tempo on week 1). GAP · layoutWeek currently sizes
       // qualityMiEach = round(weeklyMi × 0.22 / qualityDows.length),
       // which is goal-blind to recent baseline.
-      it('[mid-block] quality distance ≥ runner recent quality distance', () => {
+      //
+      // BOUNDARY-OWNER-1 (2026-09-02) · THE FLOOR MOVED FROM THE DAY'S TOTAL
+      // TO THE DAY'S WORK, ONCE, AND THIS IS THE CITATION.
+      //
+      // The assertion above read the floor against `q.distanceMi` — the whole
+      // day, warm-up and cool-down included. `layoutWeek` honoured it that way
+      // too, and on the owner's live CIM block the result was a 4.3-mile
+      // session inflated to 6.2 miles whose extra 1.9 became easy legs:
+      // "2.1 mi WU · 2 mi @ T · 2.1 mi CD", 4.2 miles of jogging around 2.0
+      // miles of threshold work (reproduced against production 2026-09-02 via
+      // `_probe_cim_sessions`; the brief's §3.2.D finding).
+      //
+      // Rule 2's own words are "don't author a shorter version of the workout
+      // this runner is already doing", and a workout is its WORK.
+      // `Research/04` §5.2/§5.3 state the easy legs separately from the
+      // at-pace band precisely because they are a different quantity, and
+      // `lib/plan/quality-day.ts` is this app's one owner of the day's size
+      // (Constitution §5). Reading a mileage floor against the day's total
+      // made an arithmetic remainder outrank that owner — the Rule 7 shape, a
+      // doctrine number spent on the quantity next to the one it was written
+      // about.
+      //
+      // So the floor is now asserted on the session's AT-PACE mileage, which
+      // is what Rule 2 is a claim about, and the day is whatever
+      // `composeQualityDay` composes around it. The doctrinally-sized path in
+      // `layoutWeek` no longer applies `qualityFloor`; the share-based
+      // fallback still does, unchanged.
+      it('[mid-block] quality WORK ≥ runner recent quality work', () => {
         if (!p.profile.midBlock) return; // cold-start exempt
         const floor = p.profile.midBlock.recentQualityDistanceMi;
         if (floor < 5) return; // only applies to non-trivial baselines
+        // The runner's recent quality DAY carried its own easy legs, so the
+        // comparable work figure is that day less doctrine's bottom-of-band
+        // warm-up and cool-down for a threshold session (§5.3's "2-3 mi E each
+        // side", spent at the bottom by `QUALITY_WARMUP_MI`/`QUALITY_COOLDOWN_MI`).
+        const workFloor = Math.max(1, floor - 4);
+        let checked = 0;
         for (const w of result.weeks) {
           if (w.phase !== 'QUALITY' && w.phase !== 'RACE-SPECIFIC') continue;
           if (w.isRaceWeek) continue;
+          // THRESHOLD-FAMILY ONLY. Rule 2's own example is a tempo ("if recent
+          // tempos are 8mi, don't author a 5mi tempo"), and it is a claim about
+          // the same KIND of session. `generate.ts`'s DOCTRINE-BASE-2 block
+          // already makes this argument in the engine: §6/§7/§8 work is a
+          // different session with a different day around it, governed by
+          // Daniels' 8%/5% I and R caps rather than by how long the runner's
+          // last tempo was, and "flooring eight fifteen-second hill sprints at
+          // a seven-mile day would wrap five easy miles around ninety seconds
+          // of work and call it quality". So an intervals/hills day is out of
+          // this floor's scope, not exempt from it.
           const qualityDays = w.days.filter((d) =>
-            d.type === 'tempo' || d.type === 'threshold' || d.type === 'intervals'
+            d.type === 'tempo' || d.type === 'threshold'
           );
           for (const q of qualityDays) {
-            // Allow a 1mi tolerance for rep-shape work where total varies
-            expect(q.distanceMi).toBeGreaterThanOrEqual(floor - 1);
+            const work = splitDay(q as never).qualityMi;
+            // A by-effort session prices no at-pace mileage; Rule 2 has nothing
+            // to say about it and `splitDay` reports zero.
+            if (!(work > 0)) continue;
+            checked++;
+            expect(
+              work,
+              `${w.startISO} ${q.type} "${q.subLabel}" work ${work}mi < floor ${workFloor}mi`,
+            ).toBeGreaterThanOrEqual(workFloor - 1);
           }
         }
+        // Rule 18 liveness: a floor asserted over zero sessions is not a floor.
+        expect(checked, 'no priced quality session reached the Rule 2 floor').toBeGreaterThan(0);
       });
 
       // RULE 3 · pace anchor blend.

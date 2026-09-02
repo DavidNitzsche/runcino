@@ -6459,9 +6459,44 @@ function layoutWeek({
         // around two-and-a-half at-pace ones and call it quality.
         : (phase === 'BASE' || qt === 'speed') && doctrinalDayMi != null
           ? Math.min(Math.round(doctrinalDayMi * 2) / 2, doctrinalDayCeiling)
+        // BOUNDARY-OWNER-1 (2026-09-02) · THE RECENT-QUALITY-DISTANCE FLOOR NO
+        // LONGER INFLATES A DOCTRINALLY-COMPOSED DAY.
+        //
+        // `qualityFloor` is mid-block Rule 2 — "don't author a shorter version
+        // of the workout this runner is already doing" — read as a floor on the
+        // DAY'S TOTAL MILEAGE. On a doctrinally-sized day that is a Rule 7
+        // shape: a number spent on a quantity it was not written about. Rule 2
+        // is a claim about the WORK; the day around the work is composed by
+        // `quality-day.ts`, which is this app's one owner of "how many miles is
+        // this quality day" (Constitution §5, one question one resolver).
+        //
+        // Measured on the owner's live CIM block, 2026-09-02, week of
+        // 2026-09-07 (`_probe_cim_sessions`, reproduced against production):
+        //
+        //     composeQualityDay('threshold', atPace 2.0)  →  4.3 mi
+        //     qualityFloor (recentQualityDistanceMi 7.2 − 1)  →  6.2 mi
+        //     slotMi = max(4.3, 6.2, 2)                   →  6.2 mi
+        //     spec-builder splits the 4.2 mi remainder    →  2.1 WU · 2 T · 2.1 CD
+        //
+        // 4.2 miles of warm-up and cool-down around 2 miles of threshold work.
+        // The runner reads a tempo session whose easy legs are twice its
+        // workout, and nothing chose that — it is the residual of an
+        // arithmetic floor. DAY-SIZE-1's own header states the principle this
+        // violated: the quality day is "composed, not shared out of the week's
+        // volume", and `layoutWeek` already sends what is left to the easy days
+        // via `remainingMi = weeklyMi - allocated`. So the surplus has a
+        // correct destination and does not need a home inside the session.
+        //
+        // `qualityFloorFreq` STAYS. It is the 2 mi run-coherence floor
+        // (RP-FREQ-FLOOR), a statement about what counts as a run at all, and
+        // `_maint_invariants`' MIN_RUN_DIST holds it at zero findings.
+        //
+        // `qualityFloor` is untouched on the share-based path below
+        // (`qualityMiEach`), which is where a day that doctrine did NOT size
+        // still needs a floor. Only the composed day is protected.
         : doctrinalDayMi != null
           ? Math.min(
-              Math.max(Math.round(doctrinalDayMi * 2) / 2, qualityFloor, qualityFloorFreq),
+              Math.max(Math.round(doctrinalDayMi * 2) / 2, qualityFloorFreq),
               doctrinalDayCeiling,
             )
         : qualityMiEach;
@@ -12280,6 +12315,7 @@ function applyDosingCaps(composed: ComposePlanResult): void {
       }
       if (!moved) break;
     }
+
   }
 }
 
@@ -12294,10 +12330,10 @@ function applyDosingCaps(composed: ComposePlanResult): void {
  * and §6.2 both define their workout BY the rep length). The caller reports
  * what it could not fix rather than pretending otherwise.
  *
- * The day's own distance never changes. What was hard becomes easy inside the
- * same session — a shorter tempo inside the same total, fewer reps with a
- * longer warm-up and cool-down — which is what keeps every structural invariant
- * intact and what lets `applyDosingCaps` converge.
+ * The day's own distance never changes on a rep-set trim. What was hard
+ * becomes easy inside the same session — fewer reps with a longer warm-up and
+ * cool-down — which is what keeps every structural invariant intact and what
+ * lets `applyDosingCaps` converge.
  */
 function trimSessionDose(
   day: DayPlan,
@@ -12347,8 +12383,24 @@ function trimSessionDose(
   }
 
   // 2 · an explicit three-segment prescription ("2 mi WU · 4 mi @ T · 2 mi CD").
-  //     The block shrinks and the cool-down absorbs it, so the segments still
-  //     sum to the day — the arithmetic DOCTRINE-TAPERMP-1 keeps honest.
+  //
+  //     BOUNDARY-OWNER-1 (2026-09-02) · THE COOL-DOWN NO LONGER ABSORBS THE CUT.
+  //
+  //     This used to read `${cd + block - want} mi CD`, which kept the segments
+  //     summing to a day whose total was never allowed to move — and produced
+  //     "2.1 mi WU · 2 mi @ T · 2.1 mi CD" on the owner's live block, 4.2 miles
+  //     of easy legs around 2.0 miles of threshold work. The legs are doctrine's
+  //     (`Research/04` §5.2/§5.3, "2-3 mi E each side", spent at the bottom of
+  //     the band by `quality-day.ts`), not a place to park unspent mileage.
+  //
+  //     The warm-up and cool-down now stay exactly as authored and the DAY comes
+  //     down by the miles the block lost, so the label, the spec and the
+  //     headline distance still describe one session (`totalDistanceMiFromSpec`
+  //     sums exactly these three segments for a `tempo` spec). The week's target
+  //     `weeklyMi` is deliberately NOT lowered with it: it is the denominator
+  //     every Daniels percentage cap is taken against, and lowering it would
+  //     tighten the cap by exactly the mileage just given back. The gap is the
+  //     bounded weekly underfill the brief §5.3 prefers to a distorted session.
   const seg = label.match(/^([\d.]+) mi WU · ([\d.]+) mi @ ([A-Za-z]+) · ([\d.]+) mi CD$/i);
   if (seg) {
     const wu = Number(seg[1]);
@@ -12356,7 +12408,8 @@ function trimSessionDose(
     const cd = Number(seg[4]);
     const want = Math.max(0.5, Math.floor(targetMi * 2) / 2);
     if (want < block) {
-      day.subLabel = `${wu} mi WU · ${want} mi @ ${seg[3]} · ${Number((cd + block - want).toFixed(1))} mi CD`;
+      day.subLabel = `${wu} mi WU · ${want} mi @ ${seg[3]} · ${cd} mi CD`;
+      day.distanceMi = Number((wu + want + cd).toFixed(1));
     }
     return measure(day);
   }
