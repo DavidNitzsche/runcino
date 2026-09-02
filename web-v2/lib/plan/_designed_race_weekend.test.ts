@@ -27,12 +27,19 @@
  *      20's "wired, tested and inert" failure).
  *   7. The validator refuses a pairing with no decision on the record, and one
  *      that grew past the grant it was issued under.
- *   8. His point 8: racing it harder than prescribed is DETECTED, and the
- *      reassessment is graded at the effort actually given.
+ *   8. His point 8, as re-scoped 2026-09-02: racing it harder than prescribed
+ *      is DETECTED and the comparison is graded at the effort actually given.
+ *      ADVISORY ONLY — nothing here asserts a plan row changes, because
+ *      nothing does.
  *
  * WHAT THIS CANNOT FAIL ON (Rule 22) — what it is structurally incapable of
  * catching, not what it covers:
  *
+ *   · A GATE ON SOMETHING THAT IS NOT DEMONSTRATED HISTORY. The declared-level
+ *     gate was removed 2026-09-02 and there is a test asserting a label cannot
+ *     change the verdict, but nothing here would catch a NEW gate added on a
+ *     readiness score or a confidence figure. That is a review obligation, not
+ *     a gated one.
  *   · WHETHER THE EVIDENCE IS TRUE. Every fixture hands the resolver numbers.
  *     If `demonstratedPairMi` were measured over a contaminated window (Rule
  *     8), or `loadGeneratorInputs` stopped calling `demonstratedPairMi`
@@ -54,12 +61,12 @@
  *     clock. A race run harder in effort but not in time reads as held.
  *
  * DISTRIBUTION (Rule 22): the exception has two verdicts and this file carries
- * 15 refusal cases against 8 grant cases. The imbalance is deliberate and is
- * the shape the ruling itself asks for: there are eleven named ways to be
+ * 13 refusal cases against 11 grant cases. The imbalance is deliberate and is
+ * the shape the ruling itself asks for: there are ten named ways to be
  * unqualified for this weekend and one way to be qualified. It is stated here
  * rather than left to be discovered, and the grant side is not tested only in
- * the small — it includes the full end-to-end composition, the validator
- * passing a granted block, and every declared level that should be allowed.
+ * the small — it includes the full end-to-end composition and the validator
+ * passing a granted block.
  *
  * LIVENESS (Rule 18): the doctrine test counts the rows it parsed out of
  * `Research/00b` and fails on zero, so a renamed heading cannot turn this file
@@ -73,7 +80,6 @@ import {
   resolveDesignedRaceWeekend,
   reassessDesignedWeekend,
   EXTENDED_RECOVERY_DAYS_AFTER_PAIR,
-  STRESS_BLOCK_DECLARED_LEVELS,
   SPIKE_RATIO_OVER_DEMONSTRATED_LONG,
   CONTROLLED_EFFORT_PACE_TOLERANCE,
   type DesignedWeekendEvidence,
@@ -172,7 +178,7 @@ describe('DESIGNEDWEEKEND-1 · the pairing is not a universal default', () => {
     expect(r.grant.combinedMi).toBeCloseTo(24.21, 5);
   });
 
-  it('every missing fact refuses under its OWN name · nine distinct codes', () => {
+  it('every missing fact refuses under its OWN name · ten distinct codes', () => {
     const cases: Array<[string, Partial<DesignedWeekendRequest>]> = [
       ['RACE_IS_NOT_A_C_EFFORT', { effectivePriority: 'B' }],
       ['NO_AUTHORED_PURPOSE', { authoredPurpose: '   ' }],
@@ -183,7 +189,6 @@ describe('DESIGNEDWEEKEND-1 · the pairing is not a universal default', () => {
       ['LONG_RUN_NOT_DEMONSTRATED', { evidence: { ...OWNER_EVIDENCE, demonstratedLongMi: 10 } }],
       ['NO_SUSTAINED_VOLUME_EVIDENCE', { evidence: { ...OWNER_EVIDENCE, sustainedWeeklyMi: null } }],
       ['PAIR_EXCEEDS_SUSTAINED_WEEK', { evidence: { ...OWNER_EVIDENCE, sustainedWeeklyMi: 22 } }],
-      ['APPETITE_NOT_DECLARED', { evidence: { ...OWNER_EVIDENCE, declaredLevel: 'intermediate' } }],
       ['NO_EXTENDED_RECOVERY_AFTER', { recoveryDaysAfter: EXTENDED_RECOVERY_DAYS_AFTER_PAIR - 1 }],
     ];
     const seen = new Set<string>();
@@ -193,26 +198,40 @@ describe('DESIGNEDWEEKEND-1 · the pairing is not a universal default', () => {
       seen.add(code);
     }
     // LIVENESS · the table above must actually be exercising distinct codes
-    // rather than one code eleven times.
-    expect(seen.size).toBe(11);
+    // rather than one code ten times.
+    expect(seen.size).toBe(10);
   });
 
-  it('no declared level at all refuses · an undeclared runner never asked for this', () => {
-    const r = resolveDesignedRaceWeekend(
-      ownerRequest({ evidence: { ...OWNER_EVIDENCE, declaredLevel: null } }),
-    );
-    expect(refusalOf(r)).toBe('APPETITE_NOT_DECLARED');
-  });
-
-  it('every level OUTSIDE the declared set is refused, and every level inside is granted', () => {
-    const all: NonNullable<DeclaredLevel>[] = ['beginner', 'intermediate', 'advanced', 'advanced_plus'];
-    for (const level of all) {
-      const r = resolveDesignedRaceWeekend(
-        ownerRequest({ evidence: { ...OWNER_EVIDENCE, declaredLevel: level } }),
-      );
-      const expected = STRESS_BLOCK_DECLARED_LEVELS.includes(level);
-      expect(r.permitted, `${level} · ${refusalOf(r)}`).toBe(expected);
+  /**
+   * REPLACES the two declared-level tests, 2026-09-02. They asserted that a
+   * runner declaring 'advanced' could have this weekend and one declaring
+   * 'intermediate' could not. The owner removed self-declared experience-level
+   * bands from training decisions entirely — his own row reads 'advanced'
+   * against a measured best week of 48.5 mi — so the gate is gone and this is
+   * the assertion that it stays gone.
+   */
+  it('a LABEL cannot buy this weekend, and cannot lose it either', () => {
+    const levels: DeclaredLevel[] = ['beginner', 'intermediate', 'advanced', 'advanced_plus', null];
+    const verdicts = levels.map((declaredLevel) =>
+      resolveDesignedRaceWeekend(ownerRequest({ evidence: { ...OWNER_EVIDENCE, declaredLevel } })));
+    for (let i = 0; i < levels.length; i++) {
+      expect(
+        verdicts[i].permitted,
+        `declared level ${String(levels[i])} changed the verdict · ${refusalOf(verdicts[i])}`,
+      ).toBe(true);
     }
+    // And the label is still RECORDED, because a grant's account of the runner
+    // should be complete even where a field is not gated on.
+    const g = verdicts[2];
+    if (!g.permitted) throw new Error('unreachable');
+    expect(g.grant.evidence.declaredLevel).toBe('advanced');
+  });
+
+  it('the same runner with a thin history is refused, whatever his label says', () => {
+    const r = resolveDesignedRaceWeekend(ownerRequest({
+      evidence: { ...OWNER_EVIDENCE, declaredLevel: 'advanced_plus', demonstratedPairMi: 19 },
+    }));
+    expect(refusalOf(r)).toBe('COMBINED_LOAD_NOT_DEMONSTRATED');
   });
 });
 

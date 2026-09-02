@@ -567,13 +567,19 @@ export async function composeRaceOutlook(
    */
   const isControlledCEffort = race.priority === 'C';
   if (isControlledCEffort) {
-    const thresholdCarrySec = thresholdSecPerMi > 0 && race.distanceMi > 0
-      ? thresholdSecPerMi * race.distanceMi
-      : null;
+    // Branched, not a ternary collapsing "no distance" into "no carry"
+    // (Rule 11, and `_coercion_scan` watches for exactly that shape). A
+    // distance we do not have cannot carry a threshold pace; the current
+    // projection stands alone there, and a null IT gives is a refusal that
+    // leaves `targetSec` null rather than a zero anybody could spend.
     const currentSec = currentProjection.expectedSec;
-    const ceilingSec = thresholdCarrySec != null && currentSec != null
-      ? Math.max(thresholdCarrySec, currentSec)
-      : (thresholdCarrySec ?? currentSec);
+    let ceilingSec: number | null;
+    if (thresholdSecPerMi > 0 && race.distanceMi > 0) {
+      const thresholdCarrySec = thresholdSecPerMi * race.distanceMi;
+      ceilingSec = currentSec != null ? Math.max(thresholdCarrySec, currentSec) : thresholdCarrySec;
+    } else {
+      ceilingSec = currentSec;
+    }
     if (ceilingSec != null) {
       // A slower stated goal is honoured; a faster one is echoed and not run to.
       targetSec = roundRaceTargetSec(goalSec != null ? Math.max(ceilingSec, goalSec) : ceilingSec);

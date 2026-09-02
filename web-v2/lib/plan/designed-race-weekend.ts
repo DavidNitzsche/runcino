@@ -93,10 +93,14 @@
  *   · A RACE THE COMPOSER WAS NEVER TOLD ABOUT. Not in `midBlockRaces`, not
  *     placed, not seen.
  *   · WHETHER 24.21 MILES IS WISE. It is not a physiological model. It asks
- *     whether the runner has already done this much, whether he declared an
- *     appetite for it, whether doctrine's own stress-block conditions are met,
- *     and whether somebody wrote down why. A runner can satisfy every one of
- *     those and still have a bad weekend.
+ *     whether the runner has already run this much, whether doctrine's own
+ *     stress-block conditions are met, and whether somebody wrote down why. A
+ *     runner can satisfy every one of those and still have a bad weekend.
+ *   · A RUNNER WHOSE HISTORY IS THIN BUT WHO COULD PLAINLY DO IT. Every gate
+ *     is demonstrated history, so a runner who has never happened to run two
+ *     big days back to back is refused even where a coach would say yes. That
+ *     is the intended direction: the exception buys an aggressive weekend and
+ *     the evidence has to have been earned.
  *   · THE SECOND HALF OF THE PAIR MOVING LATER. Three passes can still shorten
  *     the long run after the embed. `refreshPlacementCompromises` restates the
  *     record; the GRANT's own numbers are re-read there too, but a grant is
@@ -131,22 +135,50 @@ export type DeclaredLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced
  */
 export const EXTENDED_RECOVERY_DAYS_AFTER_PAIR = 3;
 
-/**
- * The levels whose declaration counts as an appetite for a designed stress
- * block.
+/*
+ * DETERMINISM (locked 2026-09-02): "given the same meaningful inputs, the
+ * generator should produce the same plan."
  *
- * `Research/00b`'s stress-block sentence requires that "the plan explicitly
- * calls for" it. A runner who has not declared advanced training has not asked
- * for one, and the engine may not decide on his behalf that he did. This is a
- * CONVENTION about which declared level constitutes the request, not a
- * physiological claim, and it is stated as one (Rule 7).
+ * Every gate below compares two measured quantities and none of them is a
+ * transient reading: the demonstrated pair is a MAXIMUM over a year of
+ * representative days, the demonstrated long run is a maximum over 28
+ * representative days, and sustained volume is the 3rd-highest of sixteen
+ * 7-day blocks — chosen precisely so one anomalous week cannot move it. None
+ * reads a clock, a mood, or a score.
  *
- * `EXPERIENCE_CAPS_MI` in `lib/plan/adapt.ts` already treats the same field as
- * a declared appetite for load, so this is a second reading of one setting
- * rather than a new one.
+ * WHERE THE OWNER ACTUALLY SITS, measured 2026-09-02, so the margins are a
+ * number in the record rather than a hope:
+ *
+ *   pair          29.4 mi demonstrated vs 24.21 proposed   margin 5.19 mi (21%)
+ *   long run      18.0 mi demonstrated, ceiling 19.8 vs 18 proposed   margin 1.8 mi (10%)
+ *   sustained     46.4 mi/wk vs 24.21 across the weekend   margin 22.2 mi
+ *
+ * The long-run gate is the tightest and is worth watching: it binds at 10%,
+ * which is doctrine's own spike ratio, so a block that grew his long run past
+ * 19.8 mi would refuse the weekend rather than shipping it. That is the
+ * correct direction and it is stated so the next reader does not find it by
+ * being surprised.
  */
-export const STRESS_BLOCK_DECLARED_LEVELS: readonly NonNullable<DeclaredLevel>[] =
-  ['advanced', 'advanced_plus'];
+
+/*
+ * NO DECLARED-LEVEL GATE. REMOVED 2026-09-02 AT THE OWNER'S RULING, and the
+ * removal is recorded here rather than left as an absence somebody re-adds.
+ *
+ * The first cut of this file gated the exception on `profile.experience_level`
+ * being 'advanced' or 'advanced_plus', reading it as the runner's declared
+ * appetite for a stress block. He ruled that out in the same pass that removed
+ * readiness from training decisions: "self-declared experience-level bands"
+ * carry no authority, because the label is typed at onboarding and does not
+ * measure anything. His own row reads `advanced` against a measured best week
+ * of 48.5 mi and zero weeks at 50+.
+ *
+ * So the whole test is DEMONSTRATED HISTORY: a combined load he has actually
+ * absorbed, a long run he has actually run, volume he actually holds. A label
+ * cannot buy this weekend and neither can a confidence score.
+ *
+ * `declaredLevel` and `declaredDaysPerWeek` are still RECORDED on the grant —
+ * they belong in the account of a decision — and neither is read by any gate.
+ */
 
 /**
  * How far past the runner's demonstrated longest run the second half of the
@@ -218,9 +250,6 @@ export type DesignedWeekendRefusalCode =
   | 'NO_SUSTAINED_VOLUME_EVIDENCE'
   /** The weekend asks for more than the runner's whole sustained week. */
   | 'PAIR_EXCEEDS_SUSTAINED_WEEK'
-  /** No declared level, or a level that is not a declaration of appetite for
-   *  a designed stress block. His point 6, the settings half. */
-  | 'APPETITE_NOT_DECLARED'
   /** Doctrine's second condition is unmet: the days after the pair are not
    *  extended recovery. His point 5. */
   | 'NO_EXTENDED_RECOVERY_AFTER';
@@ -254,11 +283,15 @@ export interface DesignedWeekendEvidence {
   /** Sustained weekly volume, mi/wk. The robust estimator, not a mean. Null =
    *  not measured. */
   sustainedWeeklyMi: number | null;
-  /** The runner's declared experience level. Null = never declared. */
+  /**
+   * The runner's declared experience level. RECORDED, NEVER GATED ON — see the
+   * note above `EXTENDED_RECOVERY_DAYS_AFTER_PAIR`. It is here so the grant's
+   * account of the runner is complete, and any gate that starts reading it has
+   * reintroduced a defect the owner ruled out by name.
+   */
   declaredLevel: DeclaredLevel;
-  /** The runner's declared training days per week. Null = never declared;
-   *  recorded for the account, not gated on (Rule 11: an undeclared frequency
-   *  is already its own defect class and is not this file's to punish). */
+  /** The runner's declared training days per week. Recorded, never gated on,
+   *  for the same reason. */
   declaredDaysPerWeek: number | null;
 }
 
@@ -431,19 +464,7 @@ export function resolveDesignedRaceWeekend(req: DesignedWeekendRequest): Designe
     );
   }
 
-  // 7 · DECLARED APPETITE (his point 6, the settings half).
-  const level = req.evidence.declaredLevel;
-  if (level == null || !STRESS_BLOCK_DECLARED_LEVELS.includes(level)) {
-    return refuse(
-      'APPETITE_NOT_DECLARED',
-      level == null
-        ? 'You have not told me what level you train at, so I will not design a hard weekend for you.'
-        : `You train at ${level} level. A designed stress block is not something I add without you asking for it.`,
-      CITE_STRESS_BLOCK,
-    );
-  }
-
-  // 8 · DOCTRINE'S SECOND CONDITION: FOLLOWED BY EXTENDED RECOVERY (his
+  // 7 · DOCTRINE'S SECOND CONDITION: FOLLOWED BY EXTENDED RECOVERY (his
   //     point 5). Measured from the long run, because the pair is the block.
   if (!(req.recoveryDaysAfter >= EXTENDED_RECOVERY_DAYS_AFTER_PAIR)) {
     return refuse(
