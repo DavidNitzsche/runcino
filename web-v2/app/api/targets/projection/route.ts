@@ -65,7 +65,7 @@ import { computePacingDiscipline } from '@/lib/coach/pacing-discipline';
 import { computeProjectionLevers } from '@/lib/coach/projection-levers';
 import { computeConfidenceInterval, computeConfidenceLabel, computeGoalProjection, reconcileStatusWithConfidence, marathonSpecificityAdjustment } from '@/lib/training/goal-projection';
 import { loadMarathonSpecificTraining } from '@/lib/training/plan-target';
-import { fitPersonalExponent, predictWithPersonalExponent, type PersonalExponentFit } from '@/lib/race/coach-goal';
+import { resolveRaceExponent, projectWithDurabilityExponent, type RaceExponentRead } from '@/lib/training/durability-anchor';
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { composeTargetsSummaryLine } from '@/lib/training/targets-summary';
 
@@ -740,12 +740,18 @@ export async function GET(req: NextRequest) {
     //     a sub-marathon anchor with no marathon block carries +5% one-sided
     //     and renders with the ~ modelled mark — the row the phone shows is
     //     the row doctrine says not to over-promise.
-    let personalExponentFit: PersonalExponentFit | null = null;
+    // 2026-09-02 · PHASE 12 · ONE EXPONENT. This route used to run
+    // `coach-goal.ts`'s own two-race fit over `loadVdotInputs`' race
+    // candidates — a second answer to the question `durability-anchor.ts`
+    // owns for the pace anchors, the race outlook, the coach-set tiers and
+    // the limiter. It now reads the canonical fit, so the equivalents table
+    // and the race outlook cannot disagree about the shape of this runner's
+    // curve. The canonical read also prices course, heat, taper and pacing
+    // into each race (representativeness) rather than refusing a hilly one
+    // outright, and it decays confidence rather than the value.
+    let personalExponentFit: RaceExponentRead | null = null;
     try {
-      const { runnerToday } = await import('@/lib/runtime/runner-tz');
-      const todayForFit = await runnerToday(userId);
-      const { raceCandidates: fitRaces } = await loadVdotInputs(userId, todayForFit);
-      personalExponentFit = fitPersonalExponent(fitRaces, todayForFit);
+      personalExponentFit = await resolveRaceExponent(userId);
     } catch { personalExponentFit = null; }
     const MARATHON_MI = 26.2188;
     const equivalentsSpec = (vdot != null && vdotAnchorDistanceMi != null
@@ -765,8 +771,8 @@ export async function GET(req: NextRequest) {
       ? STANDARD_RACES
           .map(r => {
             // §14 rule 3 · runner's own exponent when the fit exists.
-            const fitted = personalExponentFit != null
-              ? predictWithPersonalExponent(personalExponentFit, r.mi)
+            const fitted = personalExponentFit != null && personalExponentFit.ok
+              ? projectWithDurabilityExponent(personalExponentFit, r.mi)?.sec ?? null
               : null;
             let sec = fitted ?? predictRaceTime(vdot, r.mi);
             let specApplied = false;
@@ -877,14 +883,24 @@ export async function GET(req: NextRequest) {
       // The runner-specific Riegel exponent (Research/02 §11.4) when two
       // qualifying recent races exist; raceProjections rows then carry
       // method: 'personal-exponent'.
-      personalExponent: personalExponentFit != null
+      personalExponent: personalExponentFit != null && personalExponentFit.ok
         ? {
-            b: personalExponentFit.b,
-            races: personalExponentFit.races.map((r) => ({
-              slug: r.slug ?? null,
+            // The SHRUNK value the engine actually spends, plus the raw fit
+            // beside it, so a surface can show the belief and its edge
+            // without re-deriving either (2026-09-02, Phase 12: one exponent).
+            b: personalExponentFit.value,
+            rawFittedB: personalExponentFit.rawFittedExponent,
+            confidence: personalExponentFit.confidence,
+            restsOnOneLongRace: (personalExponentFit.reasons ?? []).includes('SINGLE_LONG_END_OBSERVATION'),
+            races: personalExponentFit.supporting.map((r) => ({
+              slug: r.slug,
               date: r.date,
-              distance_mi: r.distance_mi,
-              finish_seconds: r.finish_seconds,
+              distance_mi: r.distanceMi,
+              finish_seconds: r.finishSec,
+              // What representativeness did to it, so the table can say why a
+              // race counted for less than another (null when unassessed).
+              authority: r.representativeness?.authority ?? null,
+              tier: r.representativeness?.tier ?? null,
             })),
           }
         : null,

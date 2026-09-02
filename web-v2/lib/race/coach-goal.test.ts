@@ -14,20 +14,14 @@
 import { describe, it, expect } from 'vitest';
 import {
   deriveCoachGoal,
-  fitPersonalExponent,
-  predictWithPersonalExponent,
   courseIsHilly,
   gradeCourse,
   hillAdjustmentSec,
   inferDistanceMiFromNameOrSlug,
-  EXPONENT_FIT_WINDOW_DAYS,
-  PERSONAL_EXPONENT_MIN,
-  PERSONAL_EXPONENT_MAX,
   HILLY_GAIN_FT_PER_MI,
   STEEP_GAIN_FT_PER_MI,
   HILL_RATE_SEC_PER_MI_PER_100FT,
   HILL_EFFORT_LINE,
-  type ExponentFitRace,
 } from './coach-goal';
 import { goalFramingCard, gradeGetsTheAsk, isGoalFraming } from './goal-framing';
 import { predictRaceTime } from '@/lib/training/vdot';
@@ -39,15 +33,6 @@ const TENK = 6.21371;
 const FIVEK = 3.10686;
 const HM = 13.1094;
 const M = 26.2188;
-
-function fitRace(over: Partial<ExponentFitRace>): ExponentFitRace {
-  return {
-    slug: 'r', name: 'R', date: '2026-08-01', distance_mi: TENK,
-    finish_seconds: 2500, priority: 'B', provisional: false,
-    runner_authority_tier: null, hilly: false,
-    ...over,
-  };
-}
 
 describe('deriveCoachGoal · stated-goal untouchability', () => {
   it('refuses whenever a stated goal exists, whatever else is true', () => {
@@ -200,54 +185,6 @@ describe('marathonSpecificityAdjustment · gating', () => {
   });
 });
 
-describe('fitPersonalExponent · Research/02 §11.4', () => {
-  it('two qualifying races → the known b', () => {
-    // 20:00 5K + 41:40 10K: b = ln(2500/1200)/ln(2) ≈ 1.0590.
-    const fit = fitPersonalExponent([
-      fitRace({ slug: '5k', date: '2026-08-10', distance_mi: FIVEK, finish_seconds: 1200 }),
-      fitRace({ slug: '10k', date: '2026-08-20', distance_mi: TENK, finish_seconds: 2500 }),
-    ], TODAY);
-    expect(fit).not.toBeNull();
-    const expected = Math.log(2500 / 1200) / Math.log(TENK / FIVEK);
-    expect(fit!.b).toBeCloseTo(expected, 3);
-    expect(fit!.b).toBeGreaterThanOrEqual(PERSONAL_EXPONENT_MIN);
-    expect(fit!.b).toBeLessThanOrEqual(PERSONAL_EXPONENT_MAX);
-    // Projection to the half uses the fitted b off the nearer race (the 10K).
-    const hm = predictWithPersonalExponent(fit!, HM);
-    expect(hm).toBe(Math.round(2500 * Math.pow(HM / TENK, fit!.b)));
-  });
-
-  it('rejects: a lone race, C races, provisional times, hilly courses, stale races', () => {
-    const good = fitRace({ slug: 'good', date: '2026-08-20', distance_mi: FIVEK, finish_seconds: 1200 });
-    expect(fitPersonalExponent([good], TODAY)).toBeNull();
-    expect(fitPersonalExponent([good, fitRace({ priority: 'C' })], TODAY)).toBeNull();
-    expect(fitPersonalExponent([good, fitRace({ provisional: true })], TODAY)).toBeNull();
-    expect(fitPersonalExponent([good, fitRace({ hilly: true })], TODAY)).toBeNull();
-    expect(fitPersonalExponent([good, fitRace({ runner_authority_tier: 'compromised' })], TODAY)).toBeNull();
-    const staleDate = new Date(Date.parse(TODAY + 'T12:00:00Z') - (EXPONENT_FIT_WINDOW_DAYS + 5) * 86400000)
-      .toISOString().slice(0, 10);
-    expect(fitPersonalExponent([good, fitRace({ date: staleDate })], TODAY)).toBeNull();
-  });
-
-  it('rejects near-duplicate distances (noise amplification) and out-of-band exponents', () => {
-    // 5K + 4mi: distance ratio 1.29 < 1.5 → no fit.
-    expect(fitPersonalExponent([
-      fitRace({ date: '2026-08-20', distance_mi: FIVEK, finish_seconds: 1200 }),
-      fitRace({ date: '2026-08-15', distance_mi: 4.0, finish_seconds: 1600 }),
-    ], TODAY)).toBeNull();
-    // A 10K barely slower than the 5K → absurd flat exponent → rejected,
-    // not clamped.
-    expect(fitPersonalExponent([
-      fitRace({ date: '2026-08-20', distance_mi: FIVEK, finish_seconds: 1200 }),
-      fitRace({ date: '2026-08-15', distance_mi: TENK, finish_seconds: 1300 }),
-    ], TODAY)).toBeNull();
-  });
-
-  // 2026-09-01 · `deriveCoachGoal` no longer accepts `exponentFit` — this
-  // file's own two-race fit is not deriveCoachGoal's personal-exponent
-  // source any more. See coach-goal-durability.test.ts for the replacement
-  // (`durabilityExponent`, resourced from `durability-anchor.ts`).
-});
 
 describe('display-default helpers', () => {
   it('infers a distance from name/slug patterns only when the row has none', () => {

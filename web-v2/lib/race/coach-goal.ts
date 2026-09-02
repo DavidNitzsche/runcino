@@ -139,165 +139,31 @@ import type { RaceExponentRead } from '@/lib/training/durability-anchor';
 // below, at its original call site) but this file still calls it directly.
 import { projectWithDurabilityExponent } from '@/lib/training/durability-anchor';
 
-// ── Personal Riegel exponent (Research/02 §11.4) ────────────────────────────
+// ── Personal Riegel exponent ────────────────────────────────────────────────
+//
+// 2026-09-02 · PHASE 12 · THE LEGACY TWO-POINT FIT IS DELETED, NOT DEPRECATED.
+// This file used to carry its own `fitPersonalExponent` /
+// `predictWithPersonalExponent` / `EXPONENT_FIT_WINDOW_DAYS` — a second answer
+// to "how does this runner's time scale with distance", beside
+// `lib/training/durability-anchor.ts#fitRaceExponent`, which is the canonical
+// owner and the one the pace anchors, the race outlook and the limiter all
+// read. It had no production caller left after the 2026-09-01 migration; only
+// its own tests and two doctrine claims still referenced it, which is exactly
+// the "// legacy, don't use" state CLAUDE.md's implementation discipline
+// forbids. Both claims now bind the canonical fit and assert what it actually
+// does (see PREDICTION.personal-exponent-two-point-fit).
+//
+// The two behaviours the legacy fit enforced with binary gates are NOT lost;
+// they moved and changed shape deliberately:
+//   · FLAT COURSES — the legacy fit refused a race flagged hilly. The canonical
+//     loader instead runs every race through `assessRaceRepresentativeness`,
+//     which prices the course (and heat, and taper, and pacing) into the
+//     weight and corrects the time. A graded cost is a better instrument than
+//     a binary gate, and it is the same pipeline the fitness ceiling reads.
+//   · RECENT — the legacy fit refused a race older than 56 days. The canonical
+//     fit folds recency into CONFIDENCE and never into the value, which is the
+//     decay-confidence-not-value rule the whole capacity layer is built on.
 
-/** Riegel validity window (Research/02 §2.4 "1500m to marathon") — same
- *  bounds `predictRaceTimeFromAnchor` enforces in lib/training/vdot.ts. */
-const RIEGEL_MIN_DISTANCE_MI = 0.93;
-const RIEGEL_MAX_DISTANCE_MI = 26.22;
-
-/** Both races must sit inside the freshness window. Research/01 §"Freshness
- *  window": "within the last 8 weeks (≤56 days), the strongest race result is
- *  the canonical VDOT input" — and Research/02 §11.2 fits exponents from races
- *  "within the last 8 weeks". Same number as VDOT_FULL_VALUE_DAYS. */
-export const EXPONENT_FIT_WINDOW_DAYS = 56;
-
-/**
- * The band of fatigue exponents doctrine has observed for sub-ultra running.
- * Research/02 §6.1's exponent table runs from George 2017's women's-road
- * 1.0397 up through Riegel's running-only 1.0773, and §7.2's runner-type
- * table tops out at the Speedster's ~1.10-1.13 (ultra exponents 1.13-1.15
- * are §6.2's, out of scope below the marathon). A two-point fit outside
- * [1.03, 1.13] is not a runner type doctrine describes — it is two races
- * that are not comparable (one of them soft, short-course, or mis-measured),
- * so the fit is REJECTED, never clamped into range.
- */
-export const PERSONAL_EXPONENT_MIN = 1.03;
-export const PERSONAL_EXPONENT_MAX = 1.13;
-
-/**
- * Minimum distance ratio between the two fitted races. b's denominator is
- * ln(D2/D1): as the distances converge it goes to zero and per-race timing
- * noise (±1-3%, §11.1) blows up into an arbitrary exponent. 1.5 admits every
- * adjacent standard span (5K→10K = 2.0, 10K→HM = 2.11, HM→M = 2.0) and
- * rejects same-category near-duplicates, where §11.2 says to average VDOTs
- * instead of fitting a shape.
- */
-export const EXPONENT_FIT_MIN_DISTANCE_RATIO = 1.5;
-
-export interface ExponentFitRace {
-  /** Race identity for the basis line ("your 10K on Aug 3"). */
-  slug?: string | null;
-  name?: string | null;
-  date: string;               // ISO
-  distance_mi: number | null;
-  finish_seconds: number | null;
-  /** races.meta priority · graded by selectionAuthority. */
-  priority?: string | null;
-  /** Unconfirmed finish (watch/GPS match) — excluded: an exponent fit off a
-   *  time nobody confirmed bakes the GPS error into every projection. */
-  provisional?: boolean;
-  /** The runner's own report (POST /api/v5/race-authority) · a downgrade
-   *  disqualifies the race from the fit, same direction as bestRecentVdot. */
-  runner_authority_tier?: AuthorityTier | null;
-  /** Course judged hilly (caller derives from course geometry / meta). §11.2
-   *  rule 4 discards hilly races as prediction inputs. */
-  hilly?: boolean | null;
-}
-
-export interface PersonalExponentFit {
-  /** The fitted exponent b = ln(T2/T1) / ln(D2/D1). */
-  b: number;
-  /** The two races the fit came from, shorter distance first. */
-  races: [ExponentFitRace, ExponentFitRace];
-}
-
-function qualifiesForFit(r: ExponentFitRace, todayISO: string): boolean {
-  if (!r.date || !r.distance_mi || !r.finish_seconds) return false;
-  if (r.finish_seconds < 60) return false;
-  if (r.distance_mi < RIEGEL_MIN_DISTANCE_MI || r.distance_mi > RIEGEL_MAX_DISTANCE_MI) return false;
-  if (r.provisional === true) return false;
-  if (r.hilly === true) return false;
-  const age = (Date.parse(todayISO + 'T12:00:00Z') - Date.parse(r.date + 'T12:00:00Z')) / 86400000;
-  if (!Number.isFinite(age) || age < 0 || age > EXPONENT_FIT_WINDOW_DAYS) return false;
-  // Representative races only: A/B priority by doctrine's effort grading, and
-  // no downgrading runner report. A jogged C race or a "ran it sick" report is
-  // exactly the depleted-state input §11.2 rule 4 discards.
-  if (selectionAuthority(r.priority ?? null) < REPRESENTATIVE_FLOOR) return false;
-  const tier = r.runner_authority_tier ?? null;
-  if (tier != null && tier !== 'representative') return false;
-  return true;
-}
-
-/**
- * Fit the runner-specific Riegel exponent from their two most recent
- * qualifying races (Research/02 §11.4). Null whenever doctrine's conditions
- * for the fit are not met — the caller falls back to the Daniels equivalence,
- * which is always a valid answer.
- */
-export function fitPersonalExponent(
-  races: ExponentFitRace[],
-  todayISO: string,
-): PersonalExponentFit | null {
-  const pool = races
-    .filter((r) => qualifiesForFit(r, todayISO))
-    .sort((a, b) => b.date.localeCompare(a.date)); // most recent first
-  if (pool.length < 2) return null;
-
-  // Most recent race, paired with the most recent OTHER race far enough away
-  // in distance for the fit to be signal.
-  const first = pool[0];
-  const second = pool.find((r) => {
-    const ratio = Math.max(r.distance_mi!, first.distance_mi!) /
-                  Math.min(r.distance_mi!, first.distance_mi!);
-    return ratio >= EXPONENT_FIT_MIN_DISTANCE_RATIO;
-  });
-  if (!second) return null;
-
-  const [shorter, longer] = first.distance_mi! <= second.distance_mi!
-    ? [first, second] : [second, first];
-  const b =
-    Math.log(longer.finish_seconds! / shorter.finish_seconds!) /
-    Math.log(longer.distance_mi! / shorter.distance_mi!);
-  if (!Number.isFinite(b)) return null;
-  // Outside the doctrine-observed band → the races are not comparable.
-  // Rejected, not clamped (see PERSONAL_EXPONENT_MIN's doc).
-  if (b < PERSONAL_EXPONENT_MIN || b > PERSONAL_EXPONENT_MAX) return null;
-  return { b: Math.round(b * 10000) / 10000, races: [shorter, longer] };
-}
-
-/**
- * Project a race time at `targetDistanceMi` with the runner's own exponent:
- * T = T1 × (Dtarget/D1)^b, anchored on whichever of the two fitted races sits
- * closest to the target in log-distance (the smaller extrapolation). Null
- * outside Riegel's validity window — same refusal as predictRaceTimeFromAnchor.
- */
-export function predictWithPersonalExponent(
-  fit: PersonalExponentFit,
-  targetDistanceMi: number,
-): number | null {
-  if (!targetDistanceMi || targetDistanceMi <= 0) return null;
-  if (targetDistanceMi < RIEGEL_MIN_DISTANCE_MI || targetDistanceMi > RIEGEL_MAX_DISTANCE_MI) return null;
-  const anchor = [...fit.races].sort(
-    (a, b2) =>
-      Math.abs(Math.log(targetDistanceMi / a.distance_mi!)) -
-      Math.abs(Math.log(targetDistanceMi / b2.distance_mi!)),
-  )[0];
-  const t = anchor.finish_seconds! * Math.pow(targetDistanceMi / anchor.distance_mi!, fit.b);
-  return Number.isFinite(t) && t > 0 ? Math.round(t) : null;
-}
-
-/**
- * `deriveCoachGoal`'s ACTUAL personal-exponent source, 2026-09-01 —
- * projects at `targetDistanceMi` off the CANONICAL durability anchor's
- * fitted exponent (`durability-anchor.ts#fitRaceExponent`) instead of this
- * file's own `fitPersonalExponent`/`predictWithPersonalExponent` pair. Same
- * anchor-selection rule (nearest supporting race in log-distance), same
- * Riegel validity window — the only thing that changed is WHICH exponent
- * fit feeds it. See the "Personal Riegel exponent" section of this file's
- * header for why: two independent fits of the same physiological question
- * is exactly the shape Rule 16 (`CLAUDE.md`) exists to forbid, and
- * `durability-anchor.ts`'s shrinkage-weighted, Rule-11-typed fit is the more
- * rigorous of the two and already the doctrine's canonical resolver for
- * pace prescription.
- *
- * RELOCATED to `durability-anchor.ts` 2026-09-01 so
- * `lib/training/goal-projection.ts` can call the same function without a
- * circular import (`coach-goal.ts` itself imports
- * `marathonSpecificityAdjustment` from `goal-projection.ts`). Imported above
- * and re-exported here unchanged so this file's own call site (below) and
- * `coach-goal-durability.test.ts` needed no edits.
- */
 export { projectWithDurabilityExponent };
 
 // ── Course grading (Research/02 §13.2, read per mile) ───────────────────────

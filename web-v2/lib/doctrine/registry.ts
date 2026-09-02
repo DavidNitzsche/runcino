@@ -179,7 +179,6 @@ import {
 } from '@/lib/training/goal-projection';
 import {
   deriveCoachGoal,
-  fitPersonalExponent,
   courseIsHilly,
   gradeCourse,
   hillAdjustmentSec,
@@ -187,8 +186,6 @@ import {
   STEEP_GAIN_FT_PER_MI,
   HILL_RATE_SEC_PER_MI_PER_100FT,
   HILL_ADJUSTMENT_MAX_PCT,
-  EXPONENT_FIT_WINDOW_DAYS,
-  type ExponentFitRace,
 } from '@/lib/race/coach-goal';
 import { gradeGetsTheAsk } from '@/lib/race/goal-framing';
 import { expectedDaysForAnchor } from '@/lib/coach/recovery-phase';
@@ -17698,68 +17695,72 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   {
     id: 'PREDICTION.personal-exponent-two-point-fit',
     binds: [
-      'lib/race/coach-goal.ts#fitPersonalExponent',
-      'lib/race/coach-goal.ts#predictWithPersonalExponent',
+      'lib/training/durability-anchor.ts#fitRaceExponent',
+      'lib/training/durability-anchor.ts#loadRaceObservationsForDurability',
     ],
     doc: 'Research/02-race-time-prediction.md',
     anchor: '### 11.4 Two-Point Exponent Fit',
     claim:
       'With two recent races the runner-specific fatigue exponent is ' +
       'b = ln(T2/T1) / ln(D2/D1), used in place of the population default for a third ' +
-      'distance — and only when both races are recent and on flat courses.',
+      'distance — and only when both races are recent and on flat courses. ' +
+      '2026-09-02 · this claim moved from `lib/race/coach-goal.ts`\'s two-point fit, which is ' +
+      'DELETED, to the canonical `fitRaceExponent`. The formula is unchanged and asserted below ' +
+      'against the doc. The two caveats changed SHAPE, deliberately, and the claim asserts the new ' +
+      'shape rather than pretending the old gates survived: "flat courses" is now priced by ' +
+      '`assessRaceRepresentativeness` into the observation\'s weight and its corrected time (a ' +
+      'graded cost, the same pipeline the fitness ceiling reads, instead of a binary refusal), and ' +
+      '"recent" now moves CONFIDENCE and never the value — the decay-confidence-not-value rule the ' +
+      'whole capacity layer is built on. A binary staleness gate on the value would reintroduce ' +
+      'exactly the defect that rule exists to forbid.',
     check({ cite }) {
       const text = cite.text();
       if (!/b = ln\(T2 \/ T1\) \/ ln\(D2 \/ D1\)/.test(text)) {
         throw new Error('§11.4 no longer states the two-point formula · re-read the claim');
       }
       if (!/recent, on flat courses/.test(text)) {
-        throw new Error('§11.4 dropped the recent/flat caveat the qualifier enforces · re-read the claim');
+        throw new Error('§11.4 dropped the recent/flat caveat · re-read the claim');
       }
-      // The engine reproduces the doc's own formula, exactly.
+      // 1 · the canonical fit reproduces the doc's own formula, exactly.
       const FIVEK = 3.10686; const TENK = 6.21371;
-      const mk = (over: Partial<ExponentFitRace>): ExponentFitRace => ({
-        date: '2026-08-20', distance_mi: TENK, finish_seconds: 2500,
-        priority: 'B', provisional: false, hilly: false, ...over,
-      });
-      const races: ExponentFitRace[] = [
-        mk({ date: '2026-08-10', distance_mi: FIVEK, finish_seconds: 1200 }),
-        mk({}),
-      ];
-      const fit = fitPersonalExponent(races, '2026-08-28');
+      const fit = fitRaceExponent([
+        { slug: 'a', date: '2026-08-10', distanceMi: FIVEK, finishSec: 1200, priority: 'A', weight: 1 },
+        { slug: 'b', date: '2026-08-20', distanceMi: TENK, finishSec: 2500, priority: 'A', weight: 1 },
+      ], { today: '2026-08-28' });
       const expected = Math.log(2500 / 1200) / Math.log(TENK / FIVEK);
-      if (!fit || Math.abs(fit.b - expected) > 0.001) {
-        throw new Error(`fitted b ${fit?.b} != the doc's formula (${expected.toFixed(4)})`);
+      if (!fit.ok || Math.abs(fit.rawFittedExponent - expected) > 0.001) {
+        throw new Error(`fitted b ${fit.ok ? fit.rawFittedExponent : 'refused'} != the doc's formula (${expected.toFixed(4)})`);
       }
-      // The flat-course caveat is enforced, not decorative.
-      if (fitPersonalExponent([races[0], mk({ hilly: true })], '2026-08-28') != null) {
-        throw new Error('a hilly race qualified for the fit · §11.4 says flat courses');
+      // 2 · the course caveat is PRICED, not decorative: the loader runs every
+      //     observation through the representativeness assessor and spends the
+      //     result on the weight and on the time.
+      const src = sourceOf('web-v2/lib/training/durability-anchor.ts');
+      if (!/assessRaceRepresentativeness/.test(src)) {
+        throw new Error('the durability loader no longer prices course/heat/taper through the representativeness assessor');
       }
-      // And "recent" is Research/01's operative freshness window (checked
-      // value-for-value by PREDICTION.exponent-fit-freshness-window).
-      const staleDate = '2026-05-01'; // 119 days before the fixed today
-      if (fitPersonalExponent([races[0], mk({ date: staleDate })], '2026-08-28') != null) {
-        throw new Error('a stale race qualified for the fit · both inputs must be recent');
+      if (!/weight: o\.weight \* Math\.max\(0, Math\.min\(1, read\.authority\)\)/.test(src)) {
+        throw new Error('representativeness authority is computed but not spent on the observation weight');
       }
-    },
-  },
-  {
-    id: 'PREDICTION.exponent-fit-freshness-window',
-    binds: ['lib/race/coach-goal.ts#EXPONENT_FIT_WINDOW_DAYS'],
-    doc: 'Research/01-pace-zones-vdot.md',
-    anchor: '**Operative rule:** within the last 8 weeks',
-    claim:
-      "Recent means Research/01's operative freshness window — the last 8 weeks (≤56 " +
-      'days), the same window inside which a race result is the canonical fitness input.',
-    check({ cite }) {
-      const m = matchLiteral(
-        cite.text(), /within the last 8 weeks \(≤\s*(\d+)\s*days\)/,
-        'the operative freshness window',
-      );
-      const docDays = Number(m[1]);
-      if (EXPONENT_FIT_WINDOW_DAYS !== docDays) {
-        throw new Error(
-          `EXPONENT_FIT_WINDOW_DAYS = ${EXPONENT_FIT_WINDOW_DAYS} · doctrine's window is ${docDays} days`,
-        );
+      // 3 · recency moves confidence, never the value.
+      const fresh = fitRaceExponent([
+        { slug: 'a', date: '2026-08-10', distanceMi: FIVEK, finishSec: 1200, priority: 'A', weight: 1 },
+        { slug: 'b', date: '2026-08-20', distanceMi: TENK, finishSec: 2500, priority: 'A', weight: 1 },
+      ], { today: '2026-08-28' });
+      const stale = fitRaceExponent([
+        { slug: 'a', date: '2025-08-10', distanceMi: FIVEK, finishSec: 1200, priority: 'A', weight: 1 },
+        { slug: 'b', date: '2025-08-20', distanceMi: TENK, finishSec: 2500, priority: 'A', weight: 1 },
+      ], { today: '2026-08-28' });
+      if (!fresh.ok || !stale.ok) throw new Error('the canonical fit refused a two-race pair it should answer');
+      if (Math.abs(fresh.value - stale.value) > 1e-9) {
+        throw new Error('a year of elapsed time moved the exponent VALUE · decay confidence, not value');
+      }
+      if (!(stale.confidence < fresh.confidence)) {
+        throw new Error('a year of elapsed time did not lower the exponent CONFIDENCE');
+      }
+      // 4 · the deleted second answer stays deleted.
+      const cg = sourceOf('web-v2/lib/race/coach-goal.ts');
+      if (/export function fitPersonalExponent|export function predictWithPersonalExponent/.test(cg)) {
+        throw new Error('coach-goal.ts has grown a second exponent fit again · durability-anchor.ts is the one owner');
       }
     },
   },

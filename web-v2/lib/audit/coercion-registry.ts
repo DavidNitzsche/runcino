@@ -553,7 +553,10 @@ export const HANDED_BACK_FAILS = false;
  * site — `coach-goal-load.ts`'s `goalDistanceMi > 0 ? … : null` ternary,
  * which guarded a value already positive-or-null by construction.
  */
-export const PERIPHERAL_BASELINE = 180;
+// 2026-09-02 · PHASE 12 · 180 → 179. `lib/race/coach-goal.ts`'s legacy
+// two-point exponent fit is DELETED (the canonical `fitRaceExponent` owns the
+// question), and its `predictWithPersonalExponent::t` collapse went with it.
+export const PERIPHERAL_BASELINE = 179;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
