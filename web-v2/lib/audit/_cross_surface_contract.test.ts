@@ -305,19 +305,6 @@ const KNOWN_DISAGREEMENTS: readonly KnownDisagreement[] = [
     // both the observed count and the sample size.
     maxOccurrences: 3,
   },
-  {
-    id: 'TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION',
-    quantity: 'the projected finish for the goal race',
-    canonicalPath: 'race-outlook → raceProjectionFromOutlook (what iPhone v5/races and v5/race render)',
-    divergentPath: 'GET /api/targets/projection · projectionSec',
-    shape: (canonical, targets) => targets !== canonical,
-    observed:
-      "canonical 11982 (3:19:42, trajectory basis) · targets route 11902 (3:18:22, raw Daniels equivalence off projection_snapshots.vdot). The same response also carries summaryLine 'Projection 3:15:06' and raceProjections[Marathon] '3:29:17' — four numbers for one race in one payload, three of them labelled 'projection'. goal_projection_snapshots agrees with the canonical 11982; projection_snapshots(race_slug='cim') holds the 11902.",
-    reason:
-      "Known and demoted rather than closed: the scorecard's §(d) records this route's only Swift callers as v4 views behind `-faffLegacy`, so nothing on the shipping phone renders it. It is still a deployed authenticated route emitting a second 'Projected' for the same race, and the nightly cron still persists the 11902 that `goal-gap.ts#classifyTrend` reads and that can trigger a rebuild.",
-    owner: 'app/api/targets/projection/route.ts — the cleanest deletion in the audit (scorecard §26); until then, `_race_projection.test.ts`\'s hardcoded six-file scope cannot see it',
-    closesWhen: 'the route is deleted, or it resolves through race-outlook like every other consumer',
-  },
 ];
 
 const KNOWN_IDS = new Set(KNOWN_DISAGREEMENTS.map((k) => k.id));
@@ -653,6 +640,28 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
     ) as Response).json();
     const raceDetailProjected = timeFromWire(raceDetailBody.projected?.text);
     const raceDetailOutlookSec = raceDetailBody.outlook?.expected_race_day?.sec ?? null;
+    /* THE TARGETS ROUTE, back in the contract (2026-09-02).
+     *
+     * It was excluded under `TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION`: one
+     * payload for one race carrying FOUR numbers and calling three of them a
+     * projection — 11902 as `projectionSec`, 3:15:06 in `summaryLine`,
+     * 3:29:17 in `raceProjections[Marathon]`, against the 11982 every other
+     * surface rendered. `projectionSec` now resolves through `race-outlook`
+     * like every other "Projected" surface, the current-fitness equivalence is
+     * named `currentFitnessSec` and is not called a projection, and the
+     * cross-distance table is `equivalentTimes`.
+     *
+     * Three readings, not one, because closing this needed three things to be
+     * true at once: the number is canonical, the LEGACY ALIAS holds the same
+     * number (the v4 card reads `trajectoryProjectedSec ?? projectionSec`, so
+     * an alias left behind would put the old answer back on the screen), and
+     * the word "projection" appears on nothing else in the payload — asserted
+     * below, because "the number is right" is satisfied by a payload that
+     * still carries a second one under another key. */
+    const targetsRoute = await import('@/app/api/targets/projection/route');
+    const targetsBody: any = await (await targetsRoute.GET(
+      new NextRequest('https://faff.run/api/targets/projection') as never,
+    ) as Response).json();
     const gps = (await pool.query(
       `SELECT projected_sec FROM goal_projection_snapshots
         WHERE user_uuid = $1::uuid AND race_slug = $2
@@ -671,7 +680,36 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
       { path: 'iPhone GET /api/v5/races · trend[] last point', value: racesTrendLast },
       { path: `iPhone GET /api/v5/race/${goalSlug} · projected`, value: raceDetailProjected },
       { path: `iPhone GET /api/v5/race/${goalSlug} · outlook.expected_race_day.sec`, value: raceDetailOutlookSec },
-    ], 7, ['TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION']));
+      { path: 'GET /api/targets/projection · projectionSec', value: targetsBody.projectionSec ?? null },
+      { path: 'GET /api/targets/projection · trajectoryProjectedSec (legacy alias)', value: targetsBody.trajectoryProjectedSec ?? null },
+    ], 9));
+    // The targets route may not carry a SECOND number under the word. Two
+    // separate things: nothing else is labelled a projection, and the one
+    // number it does publish came from the owner rather than its own chain.
+    expect(targetsBody.projectionSource,
+      'the targets route answered from its own chain, not from race-outlook — the ' +
+      'number may agree today and will drift the moment either engine moves',
+    ).toBe('race_outlook');
+    expect('raceProjections' in targetsBody,
+      'the targets payload still publishes `raceProjections`. Its Marathon row is a ' +
+      'cross-distance EQUIVALENCE, materially incompatible with this race\'s projection ' +
+      '(3:29:17 against 3:19:42 on 2026-09-02), and two incompatible numbers may not ' +
+      'both be called a projection. It is `equivalentTimes`.',
+    ).toBe(false);
+    expect(Array.isArray(targetsBody.equivalentTimes) && targetsBody.equivalentTimes.length > 0,
+      'the equivalents table is gone rather than renamed — unreachable, not clean',
+    ).toBe(true);
+    expect(targetsBody.currentFitnessSec,
+      'the targets route publishes current fitness and the projection as ONE number. ' +
+      'They are different quantities (12230 against 11982 on 2026-09-02).',
+    ).not.toBe(targetsBody.projectionSec);
+    // The sentence the runner actually reads quotes the number beside it.
+    const summarySec = timeFromWire(String(targetsBody.summaryLine ?? '').match(/\d+:\d{2}:\d{2}/)?.[0] ?? null);
+    expect(summarySec,
+      `summaryLine quotes ${summarySec}s while the payload's projection is ` +
+      `${targetsBody.projectionSec}s. Rule 16: a sentence about a measurement is gated on ` +
+      'that measurement.',
+    ).toBe(targetsBody.projectionSec);
     results.push(stampContract(
       `projected finish · ${goalSlug} · race_execution.expected_race_day_sec`,
       projection.projectedSec, rowExpected == null ? null : Number(rowExpected), 5,
@@ -1093,33 +1131,4 @@ describe.skipIf(!RO)('cross-surface contract · registered disagreements (LIVE)'
       .not.toBe(goalPaceSecPerMi);
   }, 300_000);
 
-  it('TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION · /api/targets/projection does not resolve the owner', async () => {
-    process.env.DATABASE_URL = RO;
-    const { pool } = await import('@/lib/db/pool');
-    expect((await pool.query('SELECT current_user')).rows[0].current_user).toBe('faff_readonly');
-    const { runnerToday } = await import('@/lib/runtime/runner-tz');
-    const { loadActivePlanStrict } = await import('@/lib/plan/lookup');
-    const { resolveRaceOutlookBySlug } = await import('@/lib/race/race-outlook');
-    const { raceProjectionFromOutlook } = await import('@/lib/training/race-projection');
-    const { NextRequest } = await import('next/server');
-    const targets = await import('@/app/api/targets/projection/route');
-    const today = await runnerToday(REFERENCE_USER);
-    const plan = (await loadActivePlanStrict(REFERENCE_USER))!;
-    const outlook = await resolveRaceOutlookBySlug(REFERENCE_USER, plan.race_id!, today);
-    const canonical = raceProjectionFromOutlook(outlook).projectedSec;
-    expect(canonical, 'the canonical projection is unavailable — this entry is unreachable, not clean').not.toBeNull();
-    const res = await targets.GET(new NextRequest('https://faff.run/api/targets/projection') as never);
-    const body: any = await (res as Response).json();
-    expect(body.raceSlug, 'the targets route is answering about a different race').toBe(plan.race_id);
-    judge(entry('TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION'), canonical!, Number(body.projectionSec), {
-      routeVdot: Number(body.vdot), goalSec: Number(body.goalSec),
-    });
-    // The same payload's OTHER two numbers for the same race, printed as
-    // evidence rather than asserted — each has a different provenance and
-    // naming them is what makes "four numbers, one race" a checkable claim.
-    console.warn(
-      `[cross-surface] targets payload also carries summaryLine="${String(body.summaryLine).slice(0, 80)}" ` +
-      `and raceProjections=${JSON.stringify(body.raceProjections)}`,
-    );
-  }, 300_000);
 });
