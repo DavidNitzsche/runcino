@@ -16,13 +16,23 @@
  * machinery this app already owns and already gates in CI. Nothing here invents
  * a readiness rule, re-derives a threshold, or reads a biometric directly:
  *
- *   · `gradeConvergence` (lib/coach/convergence.ts) — five independent domains,
- *     per-domain context filters, green / amber / red. Every constant in it is
- *     bound by a `CONVERGENCE.*` registry claim.
- *   · `runnerIsCompromised` (lib/plan/adapt.ts) — illness, active injury,
- *     override-severity niggle, training-gap re-entry.
+ *   · `runnerIsCompromised` (lib/plan/adapt.ts) — training-gap re-entry.
  *   · `computeAcwr` (lib/coach/acwr.ts) — reported, never a driver. See below.
  *   · `loadConvergenceContext` — the race calendar, for the post-race window.
+ *
+ * ── 2026-09-02 · RUNNER-OWNS-READINESS · WHAT THIS MODULE NO LONGER READS ───
+ *
+ * `gradeConvergence` used to be the first signal in that list, and it was the
+ * only one that could take this module's decision past `proceed` on the
+ * strength of how a morning read. The owner has ruled that he decides how
+ * ready he is, so it is gone — along with the illness / injury / niggle arms
+ * of `runnerIsCompromised`, which were removed at the source the same day.
+ *
+ * What is left answers from TRAINING: whether he is inside a comeback window
+ * after a layoff, whether he is inside a post-race recovery window the
+ * calendar itself authored, and what his acute:chronic load is doing. None of
+ * those is an opinion about his body; all three are facts about what he ran
+ * and what the plan already said.
  *
  * §2's rule is the reason this file is a consolidator: a second implementation
  * of "is this runner ready" is doctrine already compromised. What did not exist
@@ -293,40 +303,27 @@ export function composeRunnerState(inputs: RunnerStateInputs): RunnerState {
  *
  *   illness      → `recover`. `Research/00b` treats an illness episode as
  *                  recovery time, not reduced training.
- *   injury       → `replace`. `lib/plan/injury-builder.ts` and
- *                  `Research/05`'s walk-run ladders own the substitute; the
- *                  right answer is "a protocol owns today", not "run less".
- *   niggle       → `reduce`. Only override-severity niggles reach here
- *                  (`runnerIsCompromised` filters the rest), and the engine's
- *                  own response to one is a softened day, not a stop.
+ *
+ * 2026-09-02 · the illness / injury / niggle rows are gone with the detectors
+ * that produced them. One row remains.
+ *
  *   gap_reentry  → `reduce`. The return-to-volume ladder
  *                  (`resolveRampBase`) is a graded re-entry, and BRIEF 11 is
  *                  explicit: "Never compress missed training into the return
  *                  period."
  */
-export const COMPROMISED_DECISION: Readonly<Record<'illness' | 'injury' | 'niggle' | 'gap_reentry', StateDecision>> =
+export const COMPROMISED_DECISION: Readonly<Record<'gap_reentry', StateDecision>> =
   Object.freeze({
-    illness: 'recover',
-    injury: 'replace',
-    niggle: 'reduce',
     gap_reentry: 'reduce',
   });
 
-/**
- * What a convergence grade argues for.
- *
- * MIRRORS `detectReadinessPullback`'s existing severities exactly — red is the
- * grade that may change the plan, amber is the grade that may only say
- * something — so the state layer agrees with the mutation path that already
- * ships. Changing one without the other is how two answers to one question
- * appear (§2).
+/* 2026-09-02 · `CONVERGENCE_DECISION` stood here, mapping green/amber/red
+ * onto proceed / proceed_with_caution / reduce. It mirrored
+ * `detectReadinessPullback`'s severities so the state layer and the mutation
+ * path could not disagree. Both are deleted: there is no readiness mutation
+ * path left for it to agree with, and a map from a readiness grade to a
+ * training decision is the exact object the ruling removes.
  */
-export const CONVERGENCE_DECISION: Readonly<Record<'green' | 'amber' | 'red', StateDecision>> =
-  Object.freeze({
-    green: 'proceed',
-    amber: 'proceed_with_caution',
-    red: 'reduce',
-  });
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 4 · THE DB SHELL
@@ -360,7 +357,7 @@ export async function resolveRunnerState(
 
   const [compromised, convergence, acwr] = await Promise.all([
     readCompromised(userId),
-    readConvergence(userId, today),
+    readRaceWindow(userId, today),
     readAcwr(userId, today),
   ]);
 
@@ -374,16 +371,16 @@ export async function resolveRunnerState(
   return composeRunnerState({ signals, readable, todayISO: today });
 }
 
-/** Illness / injury / niggle / gap re-entry, with a FAILED read kept distinct
- *  from a clean one (Rule 11 — see the file header for why the fail-closed
- *  wrapper is deliberately not used). */
+/** Training-gap re-entry, with a FAILED read kept distinct from a clean one
+ *  (Rule 11 — see the file header for why the fail-closed wrapper is
+ *  deliberately not used). */
 async function readCompromised(userId: string): Promise<RunnerStateSignal[]> {
   try {
     const { runnerIsCompromised } = await import('@/lib/plan/adapt');
     const r = await runnerIsCompromised(userId);
     if (!r.compromised) return [];
     return [{
-      kind: r.reason === 'gap_reentry' ? 'training_gap' : r.reason,
+      kind: 'training_gap',
       argues: COMPROMISED_DECISION[r.reason],
       driving: true,
       detail: `runnerIsCompromised · ${r.reason}`,
@@ -401,49 +398,19 @@ async function readCompromised(userId: string): Promise<RunnerStateSignal[]> {
 }
 
 /**
- * The five-domain convergence verdict, plus the post-race window the same
- * loader already resolves.
+ * The post-race recovery window.
  *
- * `gradeConvergence` is called, never re-implemented. The verdict's own
- * `domains[]` working travels into `evidence` unchanged so a consumer can see
- * which domains dragged and which were suppressed by a context filter — the
- * per-finding context discipline is inside that function and this layer must
- * not second-guess it.
+ * 2026-09-02 · this function used to lead with `gradeConvergence`'s five-domain
+ * readiness verdict and carried the post-race window along as a second signal
+ * off the same loader. The verdict is gone; the window stays, because it is
+ * not a reading of the runner at all — it is a fact the plan's own calendar
+ * authored, `postRaceRecoveryWeeks` after a race he actually ran.
  */
-async function readConvergence(userId: string, todayISO: string): Promise<RunnerStateSignal[]> {
+async function readRaceWindow(userId: string, todayISO: string): Promise<RunnerStateSignal[]> {
   try {
-    const { gradeConvergence } = await import('@/lib/coach/convergence');
-    const { loadConvergenceSeries, loadConvergenceContext } =
-      await import('@/lib/coach/convergence-loader');
-
-    // The runner's own report on a PLANNED-EASY day. Best-effort exactly as
-    // `detectReadinessPullback` treats it: the objective domains still decide
-    // without it, so a failure here is not an unreadable STATE.
-    let subjectiveWreckedOnEasy = false;
-    try {
-      const { loadYesterdaySignals, subjectivePullbackSignal } =
-        await import('@/lib/coach/acknowledge');
-      subjectiveWreckedOnEasy = subjectivePullbackSignal(await loadYesterdaySignals(userId)).fired;
-    } catch { /* objective domains still decide */ }
-
-    const [series, context] = await Promise.all([
-      loadConvergenceSeries(userId, todayISO, { subjectiveWreckedOnEasy }),
-      loadConvergenceContext(userId, todayISO),
-    ]);
-    const verdict = gradeConvergence(series, context);
-
-    const out: RunnerStateSignal[] = [{
-      kind: 'convergence',
-      argues: CONVERGENCE_DECISION[verdict.grade],
-      driving: true,
-      detail: `convergence ${verdict.grade} · ${verdict.rationale}`,
-      evidence: {
-        grade: verdict.grade,
-        converging: verdict.converging,
-        domains: verdict.domains,
-        baselineDays: series.baselineDays,
-      },
-    }];
+    const { loadConvergenceContext } = await import('@/lib/coach/convergence-loader');
+    const context = await loadConvergenceContext(userId, todayISO);
+    const out: RunnerStateSignal[] = [];
 
     const since = context.daysSinceLastRace;
     if (since != null && since <= context.postRaceWindowDays) {
@@ -465,8 +432,8 @@ async function readConvergence(userId: string, todayISO: string): Promise<Runner
       kind: 'unreadable',
       argues: 'proceed_with_caution',
       driving: true,
-      detail: 'the convergence verdict could not be read',
-      evidence: { reader: 'gradeConvergence', error: String(err) },
+      detail: 'the race calendar could not be read',
+      evidence: { reader: 'loadConvergenceContext', error: String(err) },
     }];
   }
 }

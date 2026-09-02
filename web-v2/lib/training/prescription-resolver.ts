@@ -1293,22 +1293,22 @@ function evidenceReason(mode: SourceMode | null): PrescriptionReasonCode {
  * 7 · STEP 2 · STATE MODIFIES TODAY'S ASK, NEVER THE CAPACITY (§7)
  * ═══════════════════════════════════════════════════════════════════════ */
 
-/** Purposes whose demand a readiness signal can meaningfully soften. An easy
- *  day is already what a red morning would have asked for — the engine's own
- *  `readiness_pullback` makes exactly this distinction, and returns a note
- *  rather than a change when nothing hard is scheduled. */
-const QUALITY_PURPOSES: ReadonlySet<WorkoutPurpose> = new Set<WorkoutPurpose>([
-  'threshold', 'interval', 'repetition', 'marathon_specific',
-]);
+/* 2026-09-02 · `QUALITY_PURPOSES` stood here — "purposes whose demand a
+ * readiness signal can meaningfully soften". Its only reader was the `reduce`
+ * limb of `applyState`, which replaced a quality day with an easy one. That
+ * limb is gone, so the set has no reader, and a constant kept "in case" is the
+ * dormant pseudo-authority this pass exists to remove. Deleted rather than
+ * left behind a comment someone will call anyway.
+ */
 
 /**
  * Apply the runner's state to the capacity-derived prescription.
  *
- * EVERY BRANCH BELOW WRITES ONLY TO THE OUTPUT. `args.capacity` is
- * `Immutable<>` and is not referenced here at all beyond the easy ceiling a
- * downgrade needs — which is READ, never assigned. That is §7 as code: state
- * changes what is asked of the runner today and cannot change what the runner
- * is judged capable of.
+ * EVERY BRANCH BELOW WRITES ONLY TO THE OUTPUT, and as of 2026-09-02 no
+ * branch changes the prescription at all — `args.capacity` is not read here
+ * any more. State is recorded on `stateAdjustment` and nothing else. §7 said
+ * state may change what is asked of the runner today and may never change what
+ * he is judged capable of; it now changes neither.
  *
  * WHAT EACH DECISION DOES, and why it is the engine's own response rather than
  * a new rule (§25):
@@ -1349,57 +1349,43 @@ function applyState(base: WorkoutPrescription, args: PrescriptionArgs): WorkoutP
   const reasons = [...base.reasons];
   if (!state.readable) reasons.push('STATE_UNREADABLE');
 
-  switch (state.decision) {
-    case 'proceed':
-      return { ...base, stateAdjustment: adjustment, reasons: [...reasons, 'STATE_PROCEED'] };
-
-    case 'proceed_with_caution':
-      // Nothing narrows. The prescription is already at the width its own
-      // evidence earned, and a cautious day is not a day to demand more
-      // precision on. Recorded so the caller can say why nothing tightened.
-      return {
-        ...base,
-        stateAdjustment: { ...adjustment, applied: 'no_tightening' },
-        reasons: [...reasons, 'STATE_WOULD_NOT_TIGHTEN'],
-      };
-
-    case 'reduce': {
-      if (!QUALITY_PURPOSES.has(base.purpose)) {
-        return {
-          ...base,
-          stateAdjustment: { ...adjustment, applied: 'no_tightening' },
-          reasons: [...reasons, 'STATE_WOULD_NOT_TIGHTEN'],
-        };
-      }
-      const easy = easyPrescription(base.purpose, args.capacity.easyCeiling, base.prescribedMi);
-      return {
-        ...easy,
-        // The PURPOSE the day was authored for is preserved, and the capacity
-        // basis says the easy ceiling answered. A caller reading this can see
-        // both what was asked for and what was given, which is §9's reason
-        // object in the shape this layer has.
-        purpose: base.purpose,
-        stateAdjustment: { ...adjustment, applied: 'replaced_with_easy' },
-        reasons: [...reasons, ...easy.reasons, 'STATE_REPLACED_QUALITY_WITH_EASY'],
-      };
-    }
-
-    case 'replace':
-    case 'recover':
-    case 'stop':
-      return {
-        ...base,
-        shape: 'none',
-        paceSecPerMi: null,
-        windowSecPerMi: null,
-        ceilingSecPerMi: null,
-        toleranceSecPerMi: null,
-        complianceBasis: 'not_evaluated',
-        prescribedMi: null,
-        stateAdjustment: { ...adjustment, applied: 'withheld' },
-        reasons: [...reasons, 'STATE_WITHHELD_PRESCRIPTION'],
-      };
+  /* ── 2026-09-02 · RUNNER-OWNS-READINESS · STATE RECORDS, IT NO LONGER ACTS
+   *
+   * This switch had three acting limbs and they are gone:
+   *
+   *   · `reduce`  replaced a quality day with an easy one.
+   *   · `replace` / `recover` / `stop` withheld the prescription entirely —
+   *     shape `none`, every pace null, `prescribedMi` null.
+   *
+   * Every decision past `proceed` was reachable only from a readiness
+   * convergence or from the illness / injury / niggle arms of
+   * `runnerIsCompromised`, and both of those were deleted at the source on the
+   * same day. What can still reach this function is a comeback window after a
+   * layoff and a post-race recovery window — and both of those are ALREADY IN
+   * THE PLAN. The comeback re-ramp authors the graded return; the taper and
+   * the post-race block author the recovery. Softening the day a second time
+   * here would be two answers to one question (§2), and the owner's word for
+   * the result is the plan cheapening itself.
+   *
+   * The decision is still RESOLVED and still RECORDED on `stateAdjustment`, so
+   * the shadow comparison and the audit surfaces can still see what the state
+   * layer thought. It changes no pace, no shape, no distance. That is the
+   * difference between an observation and an authority, and it is the whole
+   * of the ruling.
+   *
+   * `applied: 'no_tightening'` is the honest label for every branch: nothing
+   * narrowed, and the reason code says why. `STATE_WOULD_NOT_TIGHTEN` already
+   * meant exactly that on the `proceed_with_caution` limb, which is why it is
+   * reused rather than a new code invented.
+   */
+  if (state.decision === 'proceed') {
+    return { ...base, stateAdjustment: adjustment, reasons: [...reasons, 'STATE_PROCEED'] };
   }
+  return {
+    ...base,
+    stateAdjustment: { ...adjustment, applied: 'no_tightening' },
+    reasons: [...reasons, 'STATE_WOULD_NOT_TIGHTEN'],
+  };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
