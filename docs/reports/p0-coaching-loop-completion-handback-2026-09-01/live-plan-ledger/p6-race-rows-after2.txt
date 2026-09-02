@@ -1,0 +1,7 @@
+id | date_iso | type | pace | lo | hi | hrcap | exec_target | exec_source | resolved_at
+wko_5069bc75e324a69a | 2026-09-13 | race | 429 | 424 | 434 |  | 2660 | expected_race_day | 2026-09-02T01:23:02.368Z
+wko_613649879df83f38 | 2026-09-26 | race | 435 | 430 | 440 |  | 2700 | stated_goal_within_range | 2026-09-02T01:23:03.041Z
+wko_04050ebcd66f81d6 | 2026-11-08 | race | 438 | 433 | 443 |  | 5740 | stated_goal_clamped_to_range_edge | 2026-09-02T01:23:03.708Z
+wko_60e4afb00a4e2c33 | 2026-12-01 | race_week_tuneup | 451 | 446 | 456 |  | 11820 | stated_goal_clamped_to_range_edge | 2026-09-02T01:54:04.545Z
+wko_8bfa8647379342ba | 2026-12-06 | race | 451 | 446 | 456 |  | 11820 | stated_goal_clamped_to_range_edge | 2026-09-02T01:23:04.404Z
+(5 rows)
