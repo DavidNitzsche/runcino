@@ -382,7 +382,65 @@ behaviour was verified at the module boundary instead, and the gate added today
 asserts the structural property that keeps it safe rather than the number.
 Saying so is more useful than claiming a screenshot I do not have.
 
-## 11 · What is NOT true yet
+## 11 · Upward pace adaptation — why it stayed off, with the numbers
+
+The directive said not to activate live upward pace authority unless the
+promotion requirements are demonstrably satisfied. It stayed off. Here is the
+evidence, from `adaptation_shadow_log`, which is the record — not from the
+JSONL report artifact beside it, which holds a different and partly older set
+and would have given a different answer.
+
+The owner has **six shadow cycles**, spanning 2026-08-31 to 2026-09-02.
+
+| Measure | Value |
+|---|---|
+| Engine decision | PROGRESS, all six |
+| Final decision | PROGRESS, all six |
+| Agrees with live | **0 of 6** |
+| Live training lead fired | never |
+| Live recompute fired | never |
+| Zero mutation verified | all six |
+
+**Read both halves of that.** The shadow engine wants to push him up on every
+single cycle, and the live engine has fired nothing on every single cycle. That
+is Rule 21's asymmetry with a number attached, and it is the strongest evidence
+yet that the upward path is real rather than decorative.
+
+**And it is precisely why promoting it would have been wrong.** The record is
+three days long, it spans two model versions, and the candidate has never once
+matched production. A canary that disagrees with the live engine on 100% of its
+cycles is not a validated candidate; it is an untested divergence. Promotion
+requires agreement to be observed, not asserted, and there is no agreement to
+observe yet. The zero-mutation verification passing on all six is the one thing
+that IS established: the shadow provably changed nothing.
+
+The honest recommendation is to let it accumulate cycles under one model
+version and review the agreement rate then. Six cycles across three days cannot
+answer the question either way.
+
+## 12 · Two findings from the independent audit, verified closed
+
+Checked rather than assumed, since both were runner-visible.
+
+**The watch and phone tolerance mismatch is closed.** The audit found the watch
+grading tempo at plus or minus 8 while the phone printed plus or minus 20.
+`lib/training/execution-semantics.ts` is now the single owner, and the watch
+builder imports `sessionToleranceSec`, `phaseToleranceSec` and `paceShapeFor`
+from it rather than deriving its own. `classifySession` moved into that owner
+and the watch re-exports it, so the two cannot drift apart again.
+
+**Ceilings are no longer graded as bands, on the wire.** The prescription shape
+is now `ceiling | window | effort | none`, and the watch builder documents the
+distinction in its own words: a ceiling means do not go faster than it, and a
+correct 534 s/mi cool-down under a 502 ceiling is not a miss. A recovery now
+carries no pace target at all and is never pace-graded.
+
+**What is still open there** is the device half, and it is the same PARTIAL the
+previous handback recorded rather than a new finding: the watch's own compiled
+grading is covered by a TypeScript port rather than by the Swift that runs on
+his wrist. The wire is right. The wrist is unverified.
+
+## 13 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -399,7 +457,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 12 · PENDING sections
+## 14 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
