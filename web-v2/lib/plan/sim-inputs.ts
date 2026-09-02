@@ -52,7 +52,7 @@ import {
   HABIT_MIN_EASY_SAMPLES,
   type PrescribedSpan,
 } from './generate';
-import { lookupTierTarget, pickPlanMode, buildOpensISO, type PlanMode } from './goal-tiers';
+import { resolveLoadTier, pickPlanMode, buildOpensISO, type PlanMode } from './goal-tiers';
 import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { syntheticPaceAnchors } from './authoring-anchors';
@@ -576,7 +576,10 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
           return t != null ? Math.round(t / raceDistanceMi) : null;
         })()
       : null;
-    const tier = lookupTierTarget(goalPaceSec, raceDistanceMi, level, simDemonstrated).tier; // VAR-01 + COLD-1
+    // GOALVOL-1 · mirrors `composeForUserInternal`'s non-race branch exactly.
+    const tier = resolveLoadTier({
+      raceDistanceMi, level, demonstratedPaceSec: simDemonstrated, goalPaceSec,
+    }).tier; // VAR-01 + COLD-1 + GOALVOL-1
     if (mode !== 'recovery' && sim.goalMode === 'race') {
       nextRace = { slug: 'sim-race', name: 'Goal race', date: raceDateISO, distanceMi: raceDistanceMi, goalPaceSec };
     }

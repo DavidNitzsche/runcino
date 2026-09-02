@@ -49,7 +49,8 @@ import {
 import { validateComposedPlan } from '@/lib/plan/validate';
 import { tPaceFromGoal } from '@/lib/plan/spec-builder';
 import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
-import { classifyGoalTier } from '@/lib/plan/goal-tiers';
+import { resolveLoadTier } from '@/lib/plan/goal-tiers';
+import { predictRaceTime } from '@/lib/training/vdot';
 import type { BlockStrategy } from '@/lib/plan/strategy-contracts';
 
 const TODAY = '2026-09-01';
@@ -684,20 +685,28 @@ describe('PHASE 12 · golden runners · what the plan generator prescribes', () 
    *
    * ── THE ANSWER, MEASURED 2026-09-02 ────────────────────────────────────────
    *
-   * The goal does NOT move a pace, and it DOES move volume — through exactly
-   * one documented mechanism and no other. `classifyGoalTier` reads the goal
-   * PACE into a `GoalTier`, and the tier's `peakWeeklyMileageBand` is what
-   * `volumeCurve` aims at. On the owner-shaped archetype the two goals landed
-   * in different tiers and the blocks peaked at 70 versus 65 mi/wk on
-   * identical evidence and an identical threshold.
+   * The goal does NOT move a pace, and it moves volume in ONE direction only.
    *
-   * That is designed rather than leaked: `Research/22` keys its plan templates
-   * on goal tier, `generate.ts` records that a tier-blind generator "was
-   * producing goal-blind plans", and COLD-1 already caps an UNSTATED
-   * experience level at `intermediate` so a typed goal cannot buy elite volume
-   * on its own. It is still worth stating out loud, because "an aggressive
-   * goal cannot alter capacity" and "an aggressive goal cannot alter training"
-   * are different sentences and only the first one is true here.
+   * ── WHAT THIS PARAGRAPH USED TO SAY, AND WHY IT IS GONE (GOALVOL-1) ────────
+   *
+   * It read: "The goal DOES move volume ... on the owner-shaped archetype the
+   * two goals landed in different tiers and the blocks peaked at 70 versus 65
+   * mi/wk on identical evidence and an identical threshold. That is designed
+   * rather than leaked." The measurement was right and the verdict was wrong.
+   * David ruled on it 2026-09-02:
+   *
+   *   "A typed goal must not directly increase training volume. Volume must be
+   *    governed by demonstrated training history, durable/sustained volume,
+   *    recovery, plan phase, and safety constraints. The goal may influence
+   *    plan direction and required development, but it cannot manufacture
+   *    readiness for more load."
+   *
+   * The 70-versus-65 case is closed. `classifyCapacityTier` is now the ceiling
+   * and has no goal in its parameter tuple; `resolveLoadTier` is
+   * `min(capacity, goalDemand)`, so the goal may only ever narrow the band. The
+   * cross-tier deltas this test still prints are therefore all REDUCTIONS from
+   * a capacity ceiling — required development, which the ruling licenses — and
+   * `lib/plan/_goal_volume_seal.test.ts` is what asserts the direction.
    *
    * So the assertion is the one that holds without argument: WITHIN A TIER the
    * block is byte-identical, and ACROSS tiers the PERIODIZATION is identical —
@@ -705,8 +714,10 @@ describe('PHASE 12 · golden runners · what the plan generator prescribes', () 
    * or the phases it spends its weeks in.
    *
    * WHAT THIS CANNOT FAIL ON: the prescribed paces, held fixed here on
-   * purpose; and whether the tier's own volume answer is the right one, which
-   * is `TIER_TARGETS`' question and `TEMPLATE.*`'s to gate.
+   * purpose; whether the tier's own volume answer is the right one, which is
+   * `TIER_TARGETS`' question and `TEMPLATE.*`'s to gate; and the DIRECTION of a
+   * cross-tier delta, which it prints rather than asserts — that is
+   * `_goal_volume_seal.test.ts` §2 and §3.
    */
   it('goal isolation · within a tier the block is identical, across tiers only its volume moves', () => {
     let sameTier = 0;
@@ -732,7 +743,31 @@ describe('PHASE 12 · golden runners · what the plan generator prescribes', () 
           tPaceSec: g.input.tPaceSec,
         });
         return {
-          tier: classifyGoalTier(Math.round(goalSec / g.input.raceDistanceMi), g.input.raceDistanceMi, g.input.level),
+          // GOALVOL-1 (2026-09-02) · RESOLVED THE WAY THE COMPOSER RESOLVES IT.
+          //
+          // This read `classifyGoalTier(goalPace, distance, level)` and omitted
+          // `demonstratedPaceSec`, so the bucket this test sorts pairs into was
+          // a DIFFERENT quantity from the tier `composePlan` actually sized the
+          // block with (Rule 16). Golden runner 3 is where it showed: a
+          // self-reported VDOT 50 grades `advanced` at the half (419 s/mi
+          // equivalent against the 420 s/mi line), so the composer answers
+          // advanced/intermediate across that pair while this label answered
+          // intermediate/intermediate — and the strong within-tier assertion
+          // fired on two blocks the engine had deliberately sized differently.
+          // The proxy was wrong, not the engine: peak 55 vs 35 is the goal
+          // REDUCING from an advanced capacity, which is what the ruling
+          // licenses ("the goal may influence ... required development").
+          tier: resolveLoadTier({
+            raceDistanceMi: g.input.raceDistanceMi,
+            level: g.input.level,
+            demonstratedPaceSec: g.input.bestRecentVdot != null
+              ? (() => {
+                  const t = predictRaceTime(g.input.bestRecentVdot, g.input.raceDistanceMi);
+                  return t != null ? Math.round(t / g.input.raceDistanceMi) : null;
+                })()
+              : null,
+            goalPaceSec: Math.round(goalSec / g.input.raceDistanceMi),
+          }).tier,
           phases: c.blocks.phases.map((p) => `${p.label}:${p.weeks}`).join('|'),
           peak: Math.max(...c.weeks.map((w) => w.weeklyMi)),
           shape: JSON.stringify(c.weeks.map((w) => ({
@@ -774,7 +809,7 @@ describe('PHASE 12 · golden runners · what the plan generator prescribes', () 
     // would be inventing a coaching rule the doctrine does not state.
     if (volumeDeltas.length > 0) {
       // eslint-disable-next-line no-console
-      console.log('\n=== goal tier moves volume (by design, Research/22) ===\n  ' + volumeDeltas.join('\n  '));
+      console.log('\n=== a modest goal REDUCES volume below capacity (GOALVOL-1: reduction only) ===\n  ' + volumeDeltas.join('\n  '));
     }
   });
 });
