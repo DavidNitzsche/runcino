@@ -25,6 +25,9 @@ import {
   type PrescriptionStep,
 } from '@/lib/training/prescriptions';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
+// SPECSUMMARY-1 · the ONE owner of "what family of session is this", shared
+// with the phone's card so the two surfaces cannot name it differently.
+import { specFamilyPhrase } from '@/lib/training/spec-card';
 import {
   classifySession,
   hrCapBreached,
@@ -1973,7 +1976,30 @@ export async function buildWatchToday(
   const hrCeilingBpm = ceiling.bpm;
   const hrCeilingSource = ceiling.source;
 
-  const summary = `${distanceMi.toFixed(1)} mi · ${prescription.headline}`;
+  /* SPECSUMMARY-1 (2026-09-01) · the summary describes THE SPEC, not a template.
+   *
+   * This was `${distanceMi.toFixed(1)} mi · ${prescription.headline}`, and
+   * `prescription` is `prescriptionFor(...)` — the generic template whose rep
+   * distance is a literal and whose rep count is dosed off weekly mileage.
+   * SPECFIRST-1 closed exactly this split for the phone's card on 2026-08-24
+   * (`lib/training/spec-card.ts`'s header records the 40-of-41 measurement)
+   * and never reached this line, so the wire kept describing a different
+   * workout: "Intervals · 6 × 800m" over ten 60-second hills, "Threshold ·
+   * 4 × 1 mile reps" over nine sub-threshold kilometres, and a marathon-pace
+   * finish over four long runs whose specs carry none.
+   *
+   * `specFamilyPhrase` is the ONE owner of that phrase and it names a family
+   * rather than a structure — the structure is `workout.name`, which is the
+   * authored `sub_label`, and saying it twice is Rule 17.
+   *
+   * The template survives as the fallback for a row with NO spec, which is
+   * its stated job (`expand-spec.ts`'s header: "prescriptionFor() becomes a
+   * fallback ONLY when spec is null"). `expanded` is the same discriminator
+   * the phase list above already routed on, so the summary can no longer
+   * describe a session the phases do not run. */
+  const summary = expanded && expanded.length > 0
+    ? `${distanceMi.toFixed(1)} mi · ${specFamilyPhrase(wo.workout_spec, prescriptionType)}`
+    : `${distanceMi.toFixed(1)} mi · ${prescription.headline}`;
 
   const workout: WatchWorkout = {
     workoutId: `${userId}-${today}`,

@@ -616,6 +616,64 @@ export function cardFromSpec(input: {
 }
 
 /**
+ * SPECSUMMARY-1 (2026-09-01) · THE SESSION'S FAMILY, READ OFF THE SPEC.
+ *
+ * The one phrase that names what KIND of session this is, for a surface that
+ * carries the workout's own prescription elsewhere and needs a short true
+ * description beside it. It states a family and, for a long run, whether the
+ * day carries race-pace work. It NEVER states a rep count, a rep distance or
+ * a block length — those live in the prescription itself, and a second place
+ * to say them is a second place for them to be wrong.
+ *
+ * ── WHY IT EXISTS ──────────────────────────────────────────────────────────
+ *
+ * `lib/watch/build-workout.ts` composed the wire's `summary` as
+ * `${miles} mi · ${prescriptionFor(...).headline}` — the GENERIC template,
+ * whose rep distance is a literal and whose rep count is dosed off weekly
+ * mileage rather than read off the day. It is the same generic-versus-authored
+ * split SPECFIRST-1 closed for the phone's card on 2026-08-24 and did not
+ * close here.
+ *
+ * Measured on the owner's live block, 2026-09-01, by composing the real
+ * `buildWatchToday` against production read-only (payloads in this lane's
+ * report):
+ *
+ *   row `10×60s hills @ 5K-10K effort · 2 min jog down` → "Intervals · 6 × 800m"
+ *   row `9×1km @ ST pace · 60s jog`                     → "Threshold · 4 × 1 mile reps"
+ *   row `2×90s + 4×60s + 4×30s + 4×15s` (Mona fartlek)  → "Intervals · 6 × 800m"
+ *   row `LONG`, spec with NO finish segment             → "Long run · marathon-pace finish"
+ *
+ * Four of the owner's plain long runs claimed a marathon-pace finish they do
+ * not have, and every rep session on the block was described with a rep count
+ * and a rep distance belonging to a different workout.
+ *
+ * ── WHAT THIS IS NOT ───────────────────────────────────────────────────────
+ *
+ * Not a headline, not a prescription. `WatchWorkout.name` already carries the
+ * authored `sub_label` — the actual session — and Rule 17 says the runner
+ * reads a sentence once, so this deliberately does NOT repeat it. It names
+ * the family, which is true whatever the structure, and stops.
+ *
+ * STATED PLAINLY, because a reader will ask: no watch screen draws `summary`
+ * today — `WatchWorkoutModels.swift` decodes it and no face renders it. This
+ * is a correctness fix on the WIRE, not a rendered defect; it is a false
+ * statement no runner has read yet. Worth fixing rather than deleting because
+ * the field IS decoded, and the next face to draw it would draw the template.
+ */
+export function specFamilyPhrase(spec: WorkoutSpec, type: WorkoutType): string {
+  const s = (spec ?? {}) as Record<string, unknown>;
+  if (type === 'long') {
+    const segs = Array.isArray(s.finish_segments) ? (s.finish_segments as unknown[]) : [];
+    const hasFinish = (Number(s.finish_mi) || 0) > 0 || segs.length > 0;
+    // The generic template's own two phrases, kept verbatim where they are
+    // TRUE — what changes is that they are now conditioned on the spec that
+    // decides which one applies.
+    return hasFinish ? 'Long run · marathon-pace finish' : 'Long run · aerobic';
+  }
+  return sessionRationale(type).headline;
+}
+
+/**
  * The honest fallback · a plan row that genuinely carries no `workout_spec`.
  *
  * Every quality day on every active plan in production carries one (verified
