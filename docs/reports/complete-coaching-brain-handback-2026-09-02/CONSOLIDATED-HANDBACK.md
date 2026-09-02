@@ -668,7 +668,49 @@ Stages 3, 4 and 5 have not started and I am not going to pretend otherwise.
 What has happened instead is that Stage 1 turned out to be much larger than
 "done", and the evidence for that is in the scorecard rather than in my opinion.
 
-## 18 · What is NOT true yet
+## 18 · Main went red for sixteen minutes, and why that is worth a section
+
+Two deploys failed and production stopped taking changes. It is written up
+because the cause is a good one and the pattern will recur.
+
+Widening the goal-pace-leak gate raised its liveness floor to 500 files, taken
+from a local count of 876. **The local count was double the truth.** This
+working volume is exFAT, so macOS writes an AppleDouble `._foo.ts` sidecar
+beside every file — there are roughly four hundred thousand of them in this
+checkout — and `find -name '*.ts'` matches them. A clean CI checkout counted the
+real 438 and failed a floor it could never reach.
+
+Every local gate was green. `verify-commit.sh` was CLEAN, including a full
+build, in an isolated worktree. And production still did not deploy, because the
+break existed only where the sidecars do not.
+
+That is Rule 19's argument in one incident, and the reason the deployment status
+gets checked rather than the push result. Both `find` calls now exclude the
+sidecars, so the local and CI counts agree exactly at 438, and the floor is 300.
+The reasoning is written into the script so the next person raising it does not
+repeat it. One other gate had the same shape and was fixed alongside; its
+liveness controls are presence checks rather than counts, so it could not have
+failed this way, but it was reading sidecars as source.
+
+## 19 · Where the ten blockers stand
+
+| Blocker | State |
+|---|---|
+| B1 · goal-derived pace ladder | **Closed**, plus two worse persisting cases found by widening the gate |
+| B2 · two records of the race target | Open — needs the plan engine, which is in flight |
+| B3 · safety has no owner | Open — needs your call on which watch builds are in the field |
+| B4 · nothing asserts legacy writers stop on promotion | **Gated** |
+| B5 · second unbounded fitness read | **Closed** |
+| B6 · two descent coefficients | Open — a doctrine question, section 14 |
+| B7 · HR half of intensity has no owner | Gated only; the fix needs the plan engine |
+| B8 · readiness, and a failed injury read reading as "not injured" | **Half closed**; the other half is a product decision |
+| B9 · two rows pass by inspection with no gate | **Gated** |
+| B10 · parity gate reads the wrong copy | **Retired — not real** |
+
+Four closed, three gated, one retired, one half. The two that remain fully open
+need either the plan engine to be free or a decision from you.
+
+## 20 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -685,7 +727,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 19 · PENDING sections
+## 21 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
