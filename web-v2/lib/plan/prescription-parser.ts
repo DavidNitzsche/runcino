@@ -431,11 +431,46 @@ export interface ParsedSegment {
   unit: SegmentUnit;
   /** The zone this step runs at, null when the step declares none. */
   zone: PrescriptionZone | null;
+  /**
+   * LADDER-TARGET-2 (2026-09-02) · SECONDS PER MILE SLOWER THAN `zone`.
+   *
+   * The vocabulary a cutdown's opening rungs need and the grammar did not
+   * have. `Research/04` §12.2's own Pace example is "6 reps: MP+10, MP, MP-10,
+   * HM, T, 10K" and its Structure row says "Start slower than MP" — so a
+   * six-rep set between two zones has rungs doctrine states as an OFFSET from
+   * a zone, not as a zone. Without this a five-zone ladder could only ever
+   * express five reps, and every longer set collapsed to one flat number.
+   *
+   * ADDITIVE, and cheaply so. Only `+N` is read, never `-N`: a minus is
+   * already the band separator in a zone clause ("T-10K"), and admitting it
+   * here would make "MP-10" ambiguous between an offset and a band. Doctrine
+   * only needs the slow side — every cutdown opens slower than its first zone
+   * and finishes ON its last one — so the ambiguous half is not needed.
+   *
+   * It resolves to a NUMBER before the spec: `segmentSpec` adds it to the
+   * zone's own pace and writes the result into `SpecStep.pace_s_per_mi`, which
+   * is an existing field with existing consumers. No new wire key, no watch
+   * change, and a build that has never heard of an offset still receives the
+   * flat phase list it always received (`expandSpecToPhases`).
+   *
+   * 0 on every step that declares none, which is every step the engine wrote
+   * before this landed.
+   */
+  zoneOffsetSPerMi: number;
   /** Jog recovery AFTER this step, seconds. 0 for continuous work. */
   restS: number;
 }
 
-const STEP_RE = /^(\d+(?:\.\d+)?)\s*(mi|km|m|min|s)(?:\s*@\s*([A-Za-z0-9/\- ]+?))?$/;
+// The zone clause admits `+` so a step can name a doctrine offset ("MP+10").
+// See `ParsedSegment.zoneOffsetSPerMi` for why only the plus side is read.
+const STEP_RE = /^(\d+(?:\.\d+)?)\s*(mi|km|m|min|s)(?:\s*@\s*([A-Za-z0-9/\-+ ]+?))?$/;
+
+/** `"MP+10"` → zone clause `"MP"` and +10 s/mi. `"T-10K"` → itself and 0. */
+function splitZoneOffset(clause: string): { zoneText: string; offsetSPerMi: number } {
+  const m = clause.match(/^(.+?)\s*\+\s*(\d{1,3})$/);
+  if (!m) return { zoneText: clause, offsetSPerMi: 0 };
+  return { zoneText: m[1].trim(), offsetSPerMi: Number(m[2]) };
+}
 
 /** Split on a separator that is not inside parentheses. */
 function splitTopLevel(s: string, sep: string): string[] {
@@ -465,16 +500,23 @@ function parseStep(text: string): ParsedSegment | null {
   const value = parseFloat(m[1]);
   const unit = m[2] as SegmentUnit;
   if (!Number.isFinite(value) || value <= 0) return null;
-  const zones = m[3] ? zonesInClause(m[3]) : [];
+  const split = m[3] ? splitZoneOffset(m[3]) : null;
+  const zones = split ? zonesInClause(split.zoneText) : [];
   // A zone clause that names no zone at all is junk, not an empty zone.
   if (m[3] && zones.length === 0) return null;
+  // An offset with no zone to offset FROM is junk for the same reason.
+  if (split && split.offsetSPerMi > 0 && zones.length === 0) return null;
   let restS = 0;
   if (parts.length === 2) {
     const r = parseRest(parts[1]);
     if (r == null) return null;
     restS = r;
   }
-  return { value, unit, zone: zones.length ? zones[0] : null, restS };
+  return {
+    value, unit, zone: zones.length ? zones[0] : null,
+    zoneOffsetSPerMi: split?.offsetSPerMi ?? 0,
+    restS,
+  };
 }
 
 export function parseSegments(s: string | null | undefined): ParsedSegment[] | null {

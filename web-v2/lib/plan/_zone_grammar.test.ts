@@ -454,12 +454,12 @@ describe('DOCTRINE-DOSING · a multi-zone session is charged per segment', () =>
 
 describe('GRAMMAR-SEQ-1 · segment arithmetic', () => {
   it('converts every unit the grammar admits', () => {
-    expect(segmentMi({ value: 2, unit: 'mi', zone: null, restS: 0 }, 400)).toBe(2);
-    expect(segmentMi({ value: 1, unit: 'km', zone: null, restS: 0 }, 400)).toBeCloseTo(0.6214, 3);
-    expect(segmentMi({ value: 400, unit: 'm', zone: null, restS: 0 }, 400)).toBeCloseTo(0.2486, 3);
-    expect(segmentMi({ value: 3, unit: 'min', zone: null, restS: 0 }, 400)).toBeCloseTo(0.45, 2);
-    expect(segmentMi({ value: 90, unit: 's', zone: null, restS: 0 }, 400)).toBeCloseTo(0.225, 3);
+    expect(segmentMi({ value: 2, unit: 'mi', zone: null, zoneOffsetSPerMi: 0, restS: 0 }, 400)).toBe(2);
+    expect(segmentMi({ value: 1, unit: 'km', zone: null, zoneOffsetSPerMi: 0, restS: 0 }, 400)).toBeCloseTo(0.6214, 3);
+    expect(segmentMi({ value: 400, unit: 'm', zone: null, zoneOffsetSPerMi: 0, restS: 0 }, 400)).toBeCloseTo(0.2486, 3);
+    expect(segmentMi({ value: 3, unit: 'min', zone: null, zoneOffsetSPerMi: 0, restS: 0 }, 400)).toBeCloseTo(0.45, 2);
+    expect(segmentMi({ value: 90, unit: 's', zone: null, zoneOffsetSPerMi: 0, restS: 0 }, 400)).toBeCloseTo(0.225, 3);
     // A time-stated step is unconvertible without a pace, and says so.
-    expect(segmentMi({ value: 90, unit: 's', zone: null, restS: 0 }, null)).toBeNull();
+    expect(segmentMi({ value: 90, unit: 's', zone: null, zoneOffsetSPerMi: 0, restS: 0 }, null)).toBeNull();
   });
 });

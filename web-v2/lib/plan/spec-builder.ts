@@ -842,7 +842,14 @@ function segmentSpec(
     // own default rather than to a neighbouring zone's number — the selector
     // does not offer a session with an unanchored zone, so in a composed plan
     // this arm is only reachable from a restore/adapt path.
-    const pace = byEffort ? null : (zonePace ?? defaultPaceSec);
+    //
+    // LADDER-TARGET-2 (2026-09-02) · the doctrine offset is added HERE, so it
+    // resolves into `SpecStep.pace_s_per_mi` — an existing field with existing
+    // consumers — and no new key reaches the wire. `Research/04` §12.2's own
+    // Pace example is "MP+10, MP, MP-10, HM, T, 10K": the opening rungs of a
+    // cutdown are stated as an offset from a zone, and until this the grammar
+    // had no way to say one. See `ParsedSegment.zoneOffsetSPerMi`.
+    const pace = byEffort ? null : (zonePace ?? defaultPaceSec) + (seg.zoneOffsetSPerMi || 0);
     const mi = segmentMi(seg, pace ?? defaultPaceSec);
     const durationS = seg.unit === 's' ? seg.value : seg.unit === 'min' ? seg.value * 60 : null;
     steps.push({
@@ -855,7 +862,10 @@ function segmentSpec(
       duration_s: durationS != null ? Math.round(durationS) : null,
       pace_s_per_mi: pace,
       rest_s: Math.round(seg.restS),
-      zone: seg.zone ?? null,
+      // The label the runner reads carries the offset the pace carries, so the
+      // phase name and its number cannot disagree (Rule 16).
+      zone: seg.zone == null ? null
+        : seg.zoneOffsetSPerMi > 0 ? `${seg.zone}+${seg.zoneOffsetSPerMi}` : seg.zone,
     });
     if (mi != null) {
       workMi += mi;

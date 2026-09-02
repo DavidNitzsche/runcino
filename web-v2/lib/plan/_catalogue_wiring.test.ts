@@ -151,9 +151,18 @@ describe('VOCAB-CATALOGUE-1 · every rendered prescription round-trips', () => {
           recoverySec: structure.recoverySec?.min ?? 0,
         });
         if (s == null) continue;
+        // LADDER-TARGET-2 (2026-09-02) · a descent states its rep count as its
+        // RUNGS rather than as a leading multiplier — `1mi @ MP · 60s jog +
+        // 1mi @ HM · 60s jog + …` is five reps written out, because each one
+        // carries its own pace. The claim this test makes is unchanged and is
+        // about the COUNT: it must still come out of the entry's own band.
+        const seq = s.includes(' + ') ? s.split(' + ').length : null;
         const m = s.match(/^(\d+)×/);
-        expect(m, `${entry.slug}: "${s}" does not open with a rep count`).not.toBeNull();
-        const reps = Number(m![1]);
+        expect(
+          m ?? seq,
+          `${entry.slug}: "${s}" states no rep count, as a multiplier or as rungs`,
+        ).not.toBeNull();
+        const reps = seq ?? Number(m![1]);
         expect(reps, `${entry.slug}: ${reps} reps is outside doctrine's ${structure.reps.min}-${structure.reps.max}`)
           .toBeLessThanOrEqual(structure.reps.max);
         expect(reps).toBeGreaterThanOrEqual(structure.reps.min);
@@ -197,7 +206,31 @@ describe('VOCAB-CATALOGUE-1 · the composer consults it', () => {
     const rendered = renderPrescription(entry!, {
       structure: structure!, reps: 4, atPaceMinutes: 0, atPaceMi: 0, recoverySec: 120,
     });
-    expect(rendered, `§11.2 renders as "${rendered}"`).toMatch(/×2km · MP → T/);
+    // LADDER-TARGET-2 (2026-09-02) · THE WALK IS NOW PRESCRIBED, NOT NAMED.
+    //
+    // This used to assert the arrow label `4×2km · MP → T`, which read
+    // correctly and shipped as ONE pace: `buildWorkoutSpec` priced the whole
+    // set at the slot's single anchor and `subLabelFromSpec` re-derived it as
+    // `@ T`, so the descent the doc states never reached the runner (2,581 of
+    // 2,898 ladder sessions across the corpus — `_ladder_targets.test.ts`).
+    //
+    // A descent now renders as an explicit sequence in the segment grammar,
+    // one rung per rep, each carrying its own zone — so `segmentSpec` prices
+    // every rung separately. Four reps between MP and T walk MP+6 → MP → HM →
+    // T: the ladder MP-HM-T is three zones, the fourth rung opens SLOWER than
+    // MP (§11.2 "Start slightly slower than MP"), and the +6 is the entry's own
+    // cited step ("Each rep 2.5–5 s/km faster than the previous" → 3.75 s/km →
+    // 6 s/mi), read out of the cite rather than chosen.
+    //
+    // The assertion is on the SHAPE — endpoints, rung count, descent — not on
+    // the exact string, so a legitimate change to the rest token or the
+    // rounding does not break it while a collapse back to one zone does.
+    expect(rendered, `§11.2 renders as "${rendered}"`).toBeTruthy();
+    const rungs = rendered!.split(' + ');
+    expect(rungs.length, `§11.2 rendered ${rungs.length} rung(s), not the 4 reps asked for`).toBe(4);
+    expect(rungs[0], 'the first rung opens slower than MP, per §11.2\'s own Pace row').toMatch(/@ MP\+\d+/);
+    expect(rungs[rungs.length - 1], 'the last rung is the descent\'s stated end').toMatch(/@ T$/);
+    expect(rendered, 'every rung carries a zone').not.toMatch(/·\s*MP\s*→/);
 
     // And the marathon build still carries marathon-pace work, whichever of the
     // phase's MP entries the rotation lands on.

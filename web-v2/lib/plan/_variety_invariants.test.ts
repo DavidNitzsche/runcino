@@ -809,28 +809,58 @@ describe('VARIETY-R3-1 · 5K/10K advanced weeks carry the R day', () => {
     }
   });
 
-  it('the I+R share lands meaningfully above the two-day baseline (~4-6%)', () => {
-    for (const [name, composed] of [['5k', fiveK], ['10k', tenK]] as const) {
+  it('the I+R share lands meaningfully above the two-day baseline', () => {
+    /* LADDER-TARGET-2 (2026-09-02) · THE FLOOR IS MEASURED NOW, NOT WRITTEN
+     * DOWN.
+     *
+     * This assertion has been recalibrated twice against a hardcoded number,
+     * both times because a fix removed PHANTOM I MILES rather than because R3
+     * stopped working: DOSE-EFFORT-1 stopped billing effort-cued hills to the
+     * I bucket, and LADDER-TARGET-2 stopped billing a whole §12.3 cutdown to
+     * it (the session descends MP → HM → T → 10K → 5K; only its last rung is
+     * anywhere near I, and pricing all five at I was the defect). The measured
+     * 5K share fell 5.99% → 5.39% and the constant floor of 0.055 failed.
+     *
+     * A constant that has to be re-measured every time the engine gets more
+     * honest is not a floor, it is a treadmill — and, worse, it hardcodes both
+     * sides of a comparison (Rule 18). The claim this test actually makes is
+     * COMPARATIVE: "the third quality day lifts the I+R share meaningfully
+     * above what two quality days produce." So it now BUILDS the two-day
+     * runner and measures both. The engine can get as honest as it likes and
+     * the question stays the same one.
+     *
+     * WHAT THIS CANNOT FAIL ON: an engine that under-doses I on BOTH shapes
+     * equally. It asks whether the R day is doing work, not whether the
+     * absolute level is right — `weeklyDoseBudgetMi`'s per-pace caps, asserted
+     * two tests above, own that. */
+    const twoDay = {
+      '5k': r3build({
+        raceDistanceMi: 3.11, goalSec: 1050, weeks: 12, level: 'advanced',
+        recentWeeklyMi: 42, recentLongMi: 10, easyDayMedianMi: 6, bestRecentVdot: 58,
+        qualityDows: [2, 4] as DOW[],
+      }),
+      '10k': r3build({
+        raceDistanceMi: 6.22, goalSec: 2220, weeks: 14, level: 'advanced',
+        recentWeeklyMi: 50, recentLongMi: 13, easyDayMedianMi: 7, bestRecentVdot: 58,
+        qualityDows: [2, 4] as DOW[],
+      }),
+    } as const;
+    const shareOf = (composed: ReturnType<typeof r3build>) => {
       const weeks = qWeeks(composed);
-      const mean = weeks.reduce((s, w) => s + (w.weekMi > 0 ? (w.iMi + w.rMi) / w.weekMi : 0), 0) / weeks.length;
-      // RECALIBRATED · DOSE-EFFORT-1 (2026-08-30). `iMi` comes from `dayDoses`,
-      // which reads `dosePaceOf` — and that function used to bill every
-      // effort-cued hills session on the `intervals` slot (§7-§8's family is
-      // admitted there in QUALITY phase) against the I bucket, though `fits()`
-      // already gave it zero at-pace miles in the composer's own forward
-      // accounting. Both this test's numbers were measured with that phantom I
-      // dose still counted. Re-measured post-fix, holding everything else
-      // (archetype, rotation) fixed and varying only quality-day count:
-      //
-      //   5k  2-day 4.53% → 3-day 5.99% (+1.46pp)
-      //   10k 2-day 5.15% → 3-day 6.94% (+1.79pp)
-      //
-      // The R day still lands and still lifts the share by roughly the same
-      // absolute margin the original 0.068 floor was defending — the absolute
-      // level dropped because the phantom I miles are gone, not because R3
-      // stopped working. New floor sits between both corrected bands (highest
-      // 2-day 5.15%, lowest 3-day 5.99%), same placement logic as before.
-      expect(mean, `${name}: mean Q/RS I+R share ${(mean * 100).toFixed(2)}% has fallen back toward the two-day baseline`).toBeGreaterThan(0.055);
+      return weeks.reduce((s, w) => s + (w.weekMi > 0 ? (w.iMi + w.rMi) / w.weekMi : 0), 0) / weeks.length;
+    };
+    for (const [name, composed] of [['5k', fiveK], ['10k', tenK]] as const) {
+      const baseline = shareOf(twoDay[name]);
+      const mean = shareOf(composed);
+      // The margin the original 0.068 floor was defending, in absolute points:
+      // DOSE-EFFORT-1 re-measured it at +1.46pp (5K) and +1.79pp (10K). Held
+      // at one point, which is comfortably inside both and is a real lift
+      // rather than rounding.
+      expect(
+        mean - baseline,
+        `${name}: three quality days give an I+R share of ${(mean * 100).toFixed(2)}% against ` +
+        `${(baseline * 100).toFixed(2)}% for two — the R day is not lifting it`,
+      ).toBeGreaterThan(0.01);
     }
   });
 
