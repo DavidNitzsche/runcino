@@ -504,7 +504,40 @@ before anyone acts on them.
 sound, and the parts that decide whether training is SAFE and whether it should
 CHANGE are not yet owned by anyone.**
 
-## 14 · What is NOT true yet
+## 14 · A doctrine question only you can settle
+
+Two of your research documents disagree about how much a downhill gives back,
+both are implemented faithfully, and both are separately gated. This is not a
+code defect. It is doctrine contradicting doctrine.
+
+| Source | Says | Constant | Value |
+|---|---|---|---|
+| `Research/01` §Hills | downhills give back 60–70% | `DESCENT_GIVEBACK_FRACTION` | 0.65 |
+| `Research/11` §Pacing Rule for Hilly Courses | descents shave 5–15 s/mi against climbs adding 10–30 | `DESCENT_RECOVERY_FRACTION` | 0.50 |
+
+**What it is worth on your CIM course**, which is 691 ft of gain against 1002 ft
+of loss:
+
+| Coefficient | Course adjustment |
+|---|---|
+| 0.50, from `Research/11` | 50 seconds slower than flat |
+| 0.65, from `Research/01` | 10 seconds slower than flat |
+
+Forty seconds on your goal race, decided today by which module a caller happens
+to import. It is small, and it is exactly the kind of thing that should not be
+settled by an import. Somebody who owns the research needs to say which band
+governs a course adjustment. I did not pick one.
+
+**Two things I checked here that turned out to be fine**, recorded so nobody
+re-opens them. The audit reported `GRADE_COST_PER_PCT` typed twice with nothing
+holding the copies together; it is typed twice, but a doctrine claim fails the
+build if the two ever differ, so it is a naming smell rather than a live hazard.
+And your stored CIM course is 25.56 miles, which is two thirds of a mile short of
+a marathon, so the `flat_pace_s_per_mi` stored beside it says 7:03 where your
+3:00:00 goal actually needs 6:52. That field has no consumers anywhere in the
+app, so nothing shows you the wrong number. It is dead data, not a defect.
+
+## 15 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -521,7 +554,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 15 · PENDING sections
+## 16 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
