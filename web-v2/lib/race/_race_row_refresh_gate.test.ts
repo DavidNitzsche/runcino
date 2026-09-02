@@ -66,3 +66,31 @@ describe('RACE-ROW-STALENESS · every path that reprices a plan reprices its rac
     expect(hr.expected_range_bpm).toEqual(o.execution.hr!.expectedRangeBpm);
   });
 });
+
+describe('2026-09-02 · staleness is reported and a material change is recorded, never slipped in', () => {
+  it('the outlook says how old its newest evidence is, and does not refuse because of it', async () => {
+    const o = await composeRaceOutlook(fixtureRace(), '2026-09-01', fixtureReads());
+    expect(o.staleness.staleAfterDays).toBeGreaterThan(0);
+    expect(o.staleness).toHaveProperty('stale');
+    // Stale or not, a target is still produced — a stale belief and no belief
+    // are different facts (Rule 11).
+    expect(o.execution.targetSec).not.toBeNull();
+  });
+  it('a target that moves past the meaningful threshold carries its previous value and says so', async () => {
+    const o = await composeRaceOutlook(fixtureRace(), '2026-09-01', fixtureReads());
+    const target = o.execution.targetSec!;
+    const moved = raceExecutionSpecFields(o, { target_sec: target + 400 }).race_execution as Record<string, unknown>;
+    expect(moved.material_change).toBe(true);
+    expect(moved.previous_target_sec).toBe(target + 400);
+    const noise = raceExecutionSpecFields(o, { target_sec: target + 5 }).race_execution as Record<string, unknown>;
+    expect(noise.material_change).toBe(false);
+    const first = raceExecutionSpecFields(o, null).race_execution as Record<string, unknown>;
+    expect(first.material_change).toBe(false);
+    expect(first.previous_target_sec).toBeNull();
+  });
+  it('the threshold is the SAME one the projection-changed notification uses (one runner, one number)', () => {
+    const src = code('lib/race/race-row-refresh.ts');
+    expect(src).toMatch(/MEANINGFUL_MOVE_SEC/);
+    expect(src).not.toMatch(/material_change[\s\S]{0,120}>=\s*\d+\s*[;,)]/);
+  });
+});

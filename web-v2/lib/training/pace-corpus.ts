@@ -1150,7 +1150,15 @@ export function thresholdPaceCorpus(
     ));
     moveCap.daysSinceNewest = daysSince;
     if (without.ok) {
-      const allowed = THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI * (daysSince + 1);
+      // 2026-09-02 · SPARSE REGIME. Below the corroboration bar (K < 3, the
+      // relaxed-bar re-read) the newest observation IS the read, and letting
+      // the allowance grow with the days since the previous session let a
+      // single uncorroborated session move the anchor 26 s/mi across a
+      // quiet week (June 2026: 456 → 430 → 455 → 440 on one session each).
+      // An uncorroborated session earns one day's cap, however long the gap.
+      const allowed = minObservations < CORROBORATION_MIN_OBSERVATIONS
+        ? THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI
+        : THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI * (daysSince + 1);
       moveCap.priorSecPerMi = without.tPaceSecPerMi;
       moveCap.allowedSecPerMi = allowed;
       const delta = full.tPaceSecPerMi - without.tPaceSecPerMi;

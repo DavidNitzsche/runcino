@@ -136,7 +136,9 @@ import {
   type DurabilityCapacityEstimate,
   type SourceMode,
 } from '@/lib/training/capacity-resolver';
-import { POPULATION_ENDURANCE_PRIOR } from '@/lib/training/durability-anchor';
+import { POPULATION_ENDURANCE_PRIOR,
+  MARATHON_REHEARSAL_SPEND_CONFIDENCE,
+} from '@/lib/training/durability-anchor';
 import { TABLE_RACE_DISTANCE_MI } from '@/lib/training/vdot';
 import type { RunnerState, StateDecision } from '@/lib/training/runner-state';
 
@@ -511,6 +513,20 @@ export const ENDURANCE_EXPONENT_BOUNDS = Object.freeze({ min: 1.0, max: 1.20 });
 
 export interface MarathonPaceRead {
   paceSecPerMi: number;
+  /**
+   * 2026-09-02 · the honest range: the pace at the population exponent and at
+   * the runner's raw fitted exponent, ordered fast → slow, then capped from
+   * the fast side by a demonstrated rehearsal pace when one exists. A
+   * consumer that prints one number prints `paceSecPerMi`; one that can show
+   * a band shows this.
+   */
+  rangeSecPerMi: readonly [number, number];
+  /** Median pace held at marathon effort over doctrine's rehearsal distance,
+   *  on doctrine's number of occasions — null below the bar. */
+  demonstratedPaceSecPerMi: number | null;
+  /** Which evidence set the number: the exponent carry, or a rehearsal that
+   *  demonstrated a faster pace than the carry. */
+  source: 'exponent' | 'rehearsal';
   /** The exponent actually spent, after clamping. */
   enduranceExponent: number;
   /** The anchor distance the extrapolation started from, miles. */
@@ -592,9 +608,37 @@ export function marathonPaceFromDurability(args: {
   const { min, max } = ENDURANCE_EXPONENT_BOUNDS;
   const b = !Number.isFinite(raw) ? POPULATION_ENDURANCE_PRIOR : Math.max(min, Math.min(max, raw));
   const anchorDistanceMi = (THRESHOLD_ANCHOR_MINUTES * 60) / t;
-  const paceSecPerMi = t * Math.pow(TABLE_RACE_DISTANCE_MI.marathon / anchorDistanceMi, b - 1);
+  const carry = (exp: number) => t * Math.pow(TABLE_RACE_DISTANCE_MI.marathon / anchorDistanceMi, Math.max(min, Math.min(max, exp)) - 1);
+  const exponentPace = carry(b);
+  // The range: population prior to raw fit (or the value itself when no fit).
+  const rawExp = args.durability.rawFittedExponent ?? null;
+  const edges = rawExp != null && Number.isFinite(rawExp)
+    ? [carry(POPULATION_ENDURANCE_PRIOR), carry(rawExp)]
+    : [exponentPace, exponentPace];
+  let lo = Math.min(...edges, exponentPace);
+  let hi = Math.max(...edges, exponentPace);
+  // Rehearsal cap from the FAST side only (`Research/02` §12.2: low false
+  // positives — a pace held is a pace held; a pace not yet held is not
+  // evidence of anything, so the slow side never moves on its absence).
+  const demonstrated = args.durability.trainingDurability?.present
+    ? args.durability.trainingDurability.value
+    : null;
+  const demonstratedSpendable = args.durability.trainingDurability?.present
+    ? args.durability.trainingDurability.confidence >= MARATHON_REHEARSAL_SPEND_CONFIDENCE
+    : false;
+  let paceSecPerMi = exponentPace;
+  let source: MarathonPaceRead['source'] = 'exponent';
+  if (demonstrated != null && demonstratedSpendable && demonstrated < exponentPace) {
+    paceSecPerMi = demonstrated;
+    source = 'rehearsal';
+    lo = Math.min(lo, demonstrated);
+    hi = Math.max(hi, demonstrated);
+  }
   return {
     paceSecPerMi,
+    rangeSecPerMi: [lo, hi] as const,
+    demonstratedPaceSecPerMi: demonstrated,
+    source,
     enduranceExponent: b,
     anchorDistanceMi,
     exponentClamped: Number.isFinite(raw) && raw !== b,
@@ -1402,6 +1446,10 @@ export interface PrescribedPaceAnchors {
   /** The fast edge of a shakeout or recovery day — doctrine's recovery band,
    *  `SHAKEOUT_CEILING_PAD_S_PER_MI` slower than the easy ceiling. */
   shakeoutCeilingSecPerMi: number;
+  /** 2026-09-02 · the honest band around `marathonSecPerMi` (fast → slow):
+   *  population exponent to raw fit, capped by a demonstrated rehearsal pace.
+   *  Every consumer that can show a band shows this one. */
+  marathonRangeSecPerMi?: readonly [number, number];
   /** M and MP zones, and a long run's marathon-pace finish. Derived from
    *  threshold capacity through the runner's OWN endurance exponent. */
   marathonSecPerMi: number;
@@ -1433,6 +1481,11 @@ export interface PrescribedPaceAnchors {
       confidence: number;
       enduranceExponent: number;
       personallyEvidenced: boolean;
+      /** 2026-09-02 · 'rehearsal' when a demonstrated pace set the number. */
+      source?: 'exponent' | 'rehearsal';
+      demonstratedPaceSecPerMi?: number | null;
+      /** True when one long race set the exponent (`EXPONENT_RESTS_ON_ONE_LONG_RACE`). */
+      restsOnOneLongRace?: boolean;
     };
   };
 }
@@ -1543,6 +1596,10 @@ export function composePaceAnchors(capacity: Immutable<ResolvedCapacity>): PaceA
         capacity.easyCeiling.ceilingSecPerMi - PRESCRIPTION_ZONE_SEPARATION_S,
       ),
     ),
+    marathonRangeSecPerMi: [
+      Math.round(Math.min(mp.rangeSecPerMi[0], capacity.easyCeiling.ceilingSecPerMi - PRESCRIPTION_ZONE_SEPARATION_S)),
+      Math.round(Math.min(mp.rangeSecPerMi[1], capacity.easyCeiling.ceilingSecPerMi - PRESCRIPTION_ZONE_SEPARATION_S)),
+    ] as const,
     basis: {
       threshold: {
         sourceMode: capacity.threshold.sourceMode,
@@ -1562,6 +1619,9 @@ export function composePaceAnchors(capacity: Immutable<ResolvedCapacity>): PaceA
         confidence: Math.min(capacity.threshold.confidence, capacity.durability.confidence),
         enduranceExponent: mp.enduranceExponent,
         personallyEvidenced: mp.personallyEvidenced,
+        source: mp.source,
+        demonstratedPaceSecPerMi: mp.demonstratedPaceSecPerMi,
+        restsOnOneLongRace: capacity.durability.reasons.includes('EXPONENT_RESTS_ON_ONE_LONG_RACE'),
       },
     },
   };

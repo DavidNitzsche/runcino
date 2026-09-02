@@ -212,6 +212,7 @@ import {
   loadThresholdCorpusInputs,
   thresholdCorpusFromInputs,
   type ThresholdMoveCap,
+  THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI,
   type ExcludedObservation,
 } from '@/lib/training/pace-corpus';
 import {
@@ -224,6 +225,8 @@ import {
   resolveDecoupling,
   type RaceExponentRead,
   type DecouplingRead,
+  resolveTrainingDurability,
+  type TrainingDurabilityRead,
 } from '@/lib/training/durability-anchor';
 import {
   bestRecentVdot,
@@ -357,6 +360,11 @@ export type CapacityReasonCode =
   | 'PERSONAL_RIEGEL_EXPONENT'
   | 'POPULATION_ENDURANCE_PRIOR'
   | 'LONGITUDINAL_DECOUPLING'
+  | 'DAY_TO_DAY_CONTINUITY_CAPPED'
+  | 'CONTINUITY_UNAVAILABLE'
+  | 'MARATHON_REHEARSALS_DEMONSTRATED'
+  | 'NO_MARATHON_REHEARSAL_EVIDENCE'
+  | 'EXPONENT_RESTS_ON_ONE_LONG_RACE'
   // ── what the evidence looked like ──
   | 'THREE_RECENT_CORROBORATING_SESSIONS'
   | 'SPARSE_CORROBORATION'
@@ -424,6 +432,9 @@ export interface CapacityEstimateBase {
 export interface ThresholdCapacityEstimate extends CapacityEstimateBase {
   /** Daniels T-pace, s/mi. */
   paceSecPerMi: number;
+  /** 2026-09-02 · the day-to-day continuity cap across tiers (see
+   *  `applyDayToDayContinuity`). Null when yesterday could not be resolved. */
+  continuity?: { yesterdayPaceSecPerMi: number; applied: boolean; uncappedPaceSecPerMi: number } | null;
   /**
    * The equivalent VDOT, for the surfaces and conversions that still need one.
    * DERIVED DISPLAY, not the source of the number (§34's classification): the
@@ -538,20 +549,30 @@ export interface DurabilityCapacityEstimate extends CapacityEstimateBase {
   /** The fitted exponent's own read, or its argued absence. */
   raceExponent: DurabilityComponent<number>;
   /**
+   * 2026-09-02 · marathon rehearsals (`Research/02` §12.2/§12.4): the median
+   * pace the runner has HELD at marathon heart rate over the rehearsal
+   * distance, on the number of occasions doctrine requires. Present only past
+   * that bar. Consumed by `marathonPaceFromDurability` as a cap from the fast
+   * side — the mechanism by which marathon pace is EARNED in the block.
+   */
+  trainingDurability?: DurabilityComponent<number>;
+  /**
    * The RAW weighted log-log fit behind `raceExponent.value`, UNSHRUNK —
    * `RaceExponentRead.rawFittedExponent`, carried through unchanged. Null
    * whenever `raceExponent` is absent.
    *
-   * ADDED 2026-09-02 for the Coaching Thesis, and it is a pass-through, not a
-   * second number: `raceExponent.value` is the number to PRESCRIBE from (shrunk
-   * toward the population prior by evidence), while doctrine's runner-type
-   * classification (`Research/02` §7.1, `CURVE_NEUTRAL_EXPONENT_BAND`) reads
-   * the SHAPE of the observed curve, and `lib/coach/limiter.ts` already spends
-   * the raw fit for exactly that reason ("the shrunk value would pull every
-   * runner toward the neutral band"). Two consumers of one quantity, one
-   * field, one name (Rule 16). Optional so fixtures that build this estimate
-   * by hand and never read the shape stay valid; `composeDurability` always
-   * sets it, and `_thesis_golden.test.ts` pins that.
+   * TWO CONSUMERS, ONE FIELD, ONE NAME (Rule 16), and they arrived from
+   * opposite directions on the same day. Phase 1 added it so a consumer can
+   * state the honest RANGE around `enduranceExponent`; the Coaching Thesis
+   * needs it because doctrine's runner-type classification (`Research/02`
+   * §7.1, `CURVE_NEUTRAL_EXPONENT_BAND`) reads the SHAPE of the observed
+   * curve, and `lib/coach/limiter.ts` already spends the raw fit for exactly
+   * that reason ("the shrunk value would pull every runner toward the neutral
+   * band"). `raceExponent.value` stays the number to PRESCRIBE from.
+   *
+   * Optional so fixtures that build this estimate by hand and never read the
+   * shape stay valid; `composeDurability` always sets it, and
+   * `_thesis_golden.test.ts` pins that.
    */
   rawFittedExponent?: number | null;
   /** Mean pace/HR drift across qualifying long runs, percentage points.
@@ -1533,6 +1554,111 @@ export async function resolveThresholdCapacity(
   ]);
   const direct = thresholdCorpusFromInputs(corpusInputs);
   const base = composeThresholdCapacity({ direct, fallback, todayISO: today });
+  const { estimate: todayEstimate, tension } = await resolveThresholdWithTension(userId, today, corpusInputs, fallback, base);
+  // 2026-09-02 · DAY-TO-DAY CONTINUITY ACROSS TIERS (Phase 1 of the brain
+  // completion). The corpus caps a corroborated read against its own prior;
+  // nothing capped the belief when it changed TIER — a race-derived fallback
+  // one day, a relaxed one-session direct read the next — and June 2026
+  // flipped 456 → 430 → 455 → 430 on exactly that seam, with every individual
+  // day arithmetically correct.
+  //
+  // THE CHAIN IS WALKED, NOT SAMPLED, AND THE RECONSTRUCTION IS FAITHFUL.
+  // Comparing today against yesterday's UNCAPPED belief only moves the seam a
+  // day later. Reconstructing yesterday with a DIFFERENT procedure than the
+  // one that actually ran (today's fallback reused for every day, today's
+  // corroboration bar not applied) is worse: it erases the very move the cap
+  // exists to catch, which is what a first cut of this did — 2026-06-09's
+  // 26 s/mi fallback jump read as "no move" because both days were handed the
+  // same fallback. The walk below recomputes each day of the window from the
+  // same corpus rows FILTERED TO THAT DAY, with THAT DAY'S fallback, at the
+  // bar today's tension established, and carries the CAPPED value forward.
+  // The number returned is the one a runner reading the app every morning
+  // would actually have held.
+  //
+  // COST, AND WHEN IT IS PAID: only when today's read is not a fully
+  // corroborated direct one — the runner whose belief is unstable is exactly
+  // the runner this is for. The per-day fallbacks are loaded in parallel.
+  //
+  // WHAT THIS CANNOT SEE (Rule 22): tension is measured for today and applied
+  // to the whole window, so a past day whose bar was relaxed by a tension that
+  // has since expired is reconstructed at today's bar. Both directions of that
+  // error are bounded by the cap itself, which is the point.
+  const fullyCorroborated = (e: ThresholdCapacityEstimate) => e.sourceMode === 'direct'
+    && !e.reasons.includes('SPARSE_CORROBORATION')
+    && !e.reasons.includes('REEXAMINATION_LOWERED_THE_CORROBORATION_BAR');
+  if (fullyCorroborated(todayEstimate)) return todayEstimate;
+
+  const windowDays = Array.from({ length: THRESHOLD_CONTINUITY_WINDOW_DAYS }, (_, i) =>
+    new Date(Date.parse(today + 'T12:00:00Z') - (THRESHOLD_CONTINUITY_WINDOW_DAYS - i) * 86_400_000)
+      .toISOString().slice(0, 10));
+  let dayFallbacks: Array<Awaited<ReturnType<typeof loadVdotFallback>>> | null = null;
+  try {
+    dayFallbacks = await Promise.all(windowDays.map((d) => loadVdotFallback(userId, d)));
+  } catch {
+    dayFallbacks = null; // Rule 11 · reported below, never silently "no move"
+  }
+  if (!dayFallbacks) {
+    return { ...todayEstimate, reasons: [...todayEstimate.reasons, 'CONTINUITY_UNAVAILABLE'], continuity: null };
+  }
+  const bar = tension?.effectiveMinObservations;
+  let prior: ThresholdCapacityEstimate | null = null;
+  windowDays.forEach((day, i) => {
+    const dayInputs = { ...corpusInputs, todayISO: day, rows: corpusInputs.rows.filter((r) => r.date <= day) };
+    const dayEstimate = composeThresholdCapacity({
+      direct: thresholdCorpusFromInputs(dayInputs, bar),
+      fallback: dayFallbacks![i],
+      todayISO: day,
+      ...(tension ? { reexamination: tension } : {}),
+    });
+    prior = fullyCorroborated(dayEstimate) ? dayEstimate : applyDayToDayContinuity(dayEstimate, prior);
+  });
+  return applyDayToDayContinuity(todayEstimate, prior);
+}
+
+/**
+ * How far back the continuity walk reconstructs the belief. CONVENTION for
+ * model stability: long enough that a quiet week cannot hide a tier flip (the
+ * June 2026 incident spanned six days), short enough that the walk stays one
+ * parallel round trip.
+ */
+export const THRESHOLD_CONTINUITY_WINDOW_DAYS = 7;
+
+/**
+ * Pure · hold a belief within one day's move cap of yesterday's belief when
+ * either side is not a fully corroborated direct read. The corpus' own cap
+ * governs the corroborated regime; this governs the seams between tiers.
+ */
+export function applyDayToDayContinuity(
+  today: ThresholdCapacityEstimate,
+  yesterday: ThresholdCapacityEstimate | null,
+): ThresholdCapacityEstimate {
+  if (!yesterday) {
+    return { ...today, reasons: [...today.reasons, 'CONTINUITY_UNAVAILABLE'], continuity: null };
+  }
+  const delta = today.paceSecPerMi - yesterday.paceSecPerMi;
+  const cap = THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI;
+  if (Math.abs(delta) <= cap) {
+    return { ...today, continuity: { yesterdayPaceSecPerMi: yesterday.paceSecPerMi, applied: false, uncappedPaceSecPerMi: today.paceSecPerMi } };
+  }
+  const paceSecPerMi = Math.round(yesterday.paceSecPerMi + Math.sign(delta) * cap);
+  return {
+    ...today,
+    paceSecPerMi,
+    vdot: vdotFromTpace(paceSecPerMi),
+    reasons: [...today.reasons, 'DAY_TO_DAY_CONTINUITY_CAPPED'],
+    continuity: { yesterdayPaceSecPerMi: yesterday.paceSecPerMi, applied: true, uncappedPaceSecPerMi: today.paceSecPerMi },
+  };
+}
+
+/** Pass 2 · the belief-tension consumer, factored so the same two passes can
+ *  be run for yesterday. */
+async function resolveThresholdWithTension(
+  userId: string,
+  today: string,
+  corpusInputs: Awaited<ReturnType<typeof loadThresholdCorpusInputs>>,
+  fallback: Awaited<ReturnType<typeof loadVdotFallback>>,
+  base: ThresholdCapacityEstimate,
+): Promise<{ estimate: ThresholdCapacityEstimate; tension: ReexaminationPressure | null }> {
 
   /* ── PASS 2 · THE BELIEF-TENSION CONSUMER ────────────────────────────────
    *
@@ -1554,15 +1680,18 @@ export async function resolveThresholdCapacity(
    * pace; the compile-time assertion in section 8 still holds. */
   const tension = await loadRecentTension(userId, today, base);
   if (tension == null || tension.effectiveMinObservations >= CORROBORATION_MIN_OBSERVATIONS) {
-    return base;
+    return { estimate: base, tension: null };
   }
   const relaxedDirect = thresholdCorpusFromInputs(corpusInputs, tension.effectiveMinObservations);
-  return composeThresholdCapacity({
-    direct: relaxedDirect,
-    fallback,
-    todayISO: today,
-    reexamination: tension,
-  });
+  return {
+    estimate: composeThresholdCapacity({
+      direct: relaxedDirect,
+      fallback,
+      todayISO: today,
+      reexamination: tension,
+    }),
+    tension,
+  };
 }
 
 /**
@@ -1889,6 +2018,9 @@ export async function resolveEasyCeiling(
 export interface DurabilityInputs {
   raceExponent: RaceExponentRead;
   decoupling: DecouplingRead;
+  /** Optional so every existing caller and fixture keeps composing; absent
+   *  reads as "not corroborated", never as a demonstrated pace (Rule 11). */
+  trainingDurability?: TrainingDurabilityRead;
 }
 
 /**
@@ -1961,9 +2093,19 @@ export function capToLayerCeiling(confidence: number): number {
  */
 export function composeDurability(inputs: DurabilityInputs): DurabilityCapacityEstimate {
   const { raceExponent, decoupling } = inputs;
+  const training: TrainingDurabilityRead = inputs.trainingDurability ?? { ok: false, reason: 'no_observations', observations: 0 };
   const resolvedAt = new Date().toISOString();
   const reasons: CapacityReasonCode[] = [];
   const evidenceIds: string[] = [];
+  const trainingComponent: DurabilityComponent<number> = training.ok
+    ? {
+        present: true,
+        value: training.demonstratedPaceSecPerMi,
+        confidence: capToLayerCeiling(training.confidence),
+        sourceMode: 'direct',
+        evidenceIds: training.supporting.map((o) => o.id),
+      }
+    : { present: false, reason: training.reason, observations: training.observations };
 
   const raceComponent: DurabilityComponent<number> = raceExponent.ok
     ? {
@@ -2002,6 +2144,15 @@ export function composeDurability(inputs: DurabilityInputs): DurabilityCapacityE
   if (raceComponent.present && decouplingComponent.present) {
     reasons.push('TWO_INDEPENDENT_EVIDENCE_TYPES');
   }
+  if (trainingComponent.present) {
+    reasons.push('MARATHON_REHEARSALS_DEMONSTRATED');
+    evidenceIds.push(...trainingComponent.evidenceIds);
+  } else {
+    reasons.push('NO_MARATHON_REHEARSAL_EVIDENCE');
+  }
+  if (raceExponent.ok && (raceExponent.reasons ?? []).includes('SINGLE_LONG_END_OBSERVATION')) {
+    reasons.push('EXPONENT_RESTS_ON_ONE_LONG_RACE');
+  }
 
   const raceConf = raceComponent.present ? raceComponent.confidence : 0;
   const decouplingConf = decouplingComponent.present ? decouplingComponent.confidence : 0;
@@ -2022,6 +2173,7 @@ export function composeDurability(inputs: DurabilityInputs): DurabilityCapacityE
     enduranceExponent: raceComponent.present ? raceComponent.value : POPULATION_ENDURANCE_PRIOR,
     raceExponent: raceComponent,
     rawFittedExponent: raceExponent.ok ? raceExponent.rawFittedExponent : null,
+    trainingDurability: trainingComponent,
     decoupling: decouplingComponent,
     confidence: anyPresent
       ? combineIndependentConfidence(raceConf, decouplingConf)
@@ -2058,7 +2210,8 @@ export async function resolveDurability(
     resolveRaceExponent(userId),
     resolveDecoupling(userId),
   ]);
-  return composeDurability({ raceExponent, decoupling });
+  const trainingDurability = await resolveTrainingDurability(userId, todayISO);
+  return composeDurability({ raceExponent, decoupling, trainingDurability });
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

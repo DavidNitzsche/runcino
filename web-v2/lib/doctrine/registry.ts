@@ -478,7 +478,15 @@ import {
   LEVERS,
   type Limiter,
 } from '@/lib/coach/limiter';
-import { fitRaceExponent } from '@/lib/training/durability-anchor';
+import { fitRaceExponent,
+  MARATHON_REHEARSAL_MIN_SESSIONS,
+  MARATHON_REHEARSAL_WINDOW_DAYS,
+  MARATHON_REHEARSAL_MIN_SEGMENT_MI,
+  MARATHON_REHEARSAL_MIN_PRECEDING_MI,
+  MARATHON_TEMPO_MIN_SEGMENT_MI,
+  MARATHON_REHEARSAL_SPEND_CONFIDENCE,
+  RACE_EXPONENT_ENDPOINT_SATURATION
+} from '@/lib/training/durability-anchor';
 // ── Rule 7 · 2026-08-19 · constants that asserted physiology and cited a line
 // number, or cited nothing at all. See the claim block at the end of the file.
 import {
@@ -1150,6 +1158,89 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         '3 days, 1 overshoots the ceiling by 2. The engine takes 0 because over-resting a 5K ' +
         'runner costs a whole training week, and the sub-week protocol is carried by the ' +
         'day-level recovery composer rather than the plan-mode gate.',
+    },
+  },
+  /**
+   * PHASE 1 OF THE BRAIN COMPLETION (2026-09-02) · marathon rehearsals as the
+   * earned-progression evidence. Every constant in `durability-anchor.ts`'s
+   * rehearsal reader is read out of `Research/02` §12.2 / §12.4 at run time,
+   * so the bar the runner has to clear is doctrine's, not this file's.
+   */
+  {
+    id: 'CONVENTION.marathon-rehearsal-predictor',
+    binds: [
+      'lib/training/durability-anchor.ts#MARATHON_REHEARSAL_MIN_SESSIONS',
+      'lib/training/durability-anchor.ts#MARATHON_REHEARSAL_WINDOW_DAYS',
+      'lib/training/durability-anchor.ts#MARATHON_REHEARSAL_MIN_SEGMENT_MI',
+      'lib/training/durability-anchor.ts#MARATHON_REHEARSAL_MIN_PRECEDING_MI',
+      'lib/training/durability-anchor.ts#MARATHON_TEMPO_MIN_SEGMENT_MI',
+      'lib/training/durability-anchor.ts#MARATHON_REHEARSAL_SPEND_CONFIDENCE',
+      'lib/training/prescription-resolver.ts#marathonPaceFromDurability',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '### 12.2 Fast Finish Long Run',
+    claim:
+      'A marathon pace the runner has HELD at marathon effort over the rehearsal distance doctrine ' +
+      'specifies, on the number of occasions doctrine specifies, is a demonstrated pace: §12.2 says ' +
+      '"when 3–5 of these are completed in the final 8–12 weeks, holding goal MP for the final 6–10 ' +
+      'miles after 8–10 miles of easy pace is a strong predictor … low false positives", and §12.4 ' +
+      'grades "8–12 miles at projected marathon pace" the same way. The reader\'s bars are those ' +
+      'numbers. The demonstrated pace caps the exponent carry from the FAST side only — a pace held ' +
+      'is a pace held; a pace not yet held is not evidence of anything — and only above a stated ' +
+      'confidence floor, which is a CONVENTION for model stability and says so.',
+    check({ cite }) {
+      const text = cite.text();
+      const m = /when\s+(\d+)–(\d+) of these are completed in the final (\d+)–(\d+) weeks, holding goal MP for the final (\d+)–(\d+) miles after (\d+)–(\d+) miles of easy pace/.exec(text);
+      if (!m) throw new Error('Research/02 §12.2 no longer states the 3–5 / 8–12 weeks / 6–10 miles / 8–10 miles protocol');
+      const [, minSessions, , , maxWeeks, minSeg, , minPre] = m.map(Number);
+      if (MARATHON_REHEARSAL_MIN_SESSIONS !== minSessions) throw new Error(`MARATHON_REHEARSAL_MIN_SESSIONS ${MARATHON_REHEARSAL_MIN_SESSIONS} ≠ doctrine ${minSessions}`);
+      if (MARATHON_REHEARSAL_WINDOW_DAYS !== maxWeeks * 7) throw new Error(`MARATHON_REHEARSAL_WINDOW_DAYS ${MARATHON_REHEARSAL_WINDOW_DAYS} ≠ doctrine ${maxWeeks} weeks`);
+      if (MARATHON_REHEARSAL_MIN_SEGMENT_MI !== minSeg) throw new Error(`MARATHON_REHEARSAL_MIN_SEGMENT_MI ${MARATHON_REHEARSAL_MIN_SEGMENT_MI} ≠ doctrine ${minSeg}`);
+      if (MARATHON_REHEARSAL_MIN_PRECEDING_MI !== minPre) throw new Error(`MARATHON_REHEARSAL_MIN_PRECEDING_MI ${MARATHON_REHEARSAL_MIN_PRECEDING_MI} ≠ doctrine ${minPre}`);
+      const tempo = /(\d+)–(\d+) miles at projected marathon pace/.exec(sourceOf('Research/02-race-time-prediction.md'));
+      if (!tempo) throw new Error('Research/02 §12.4 no longer states the marathon-pace tempo distance');
+      if (MARATHON_TEMPO_MIN_SEGMENT_MI !== Number(tempo[1])) throw new Error(`MARATHON_TEMPO_MIN_SEGMENT_MI ${MARATHON_TEMPO_MIN_SEGMENT_MI} ≠ doctrine ${tempo[1]}`);
+      if (!(MARATHON_REHEARSAL_SPEND_CONFIDENCE > 0 && MARATHON_REHEARSAL_SPEND_CONFIDENCE < 1)) throw new Error('the spend floor must be a fraction');
+      const src = sourceOf('web-v2/lib/training/durability-anchor.ts');
+      if (!/MARATHON_REHEARSAL_SPEND_CONFIDENCE[\s\S]{0,400}CONVENTION for model stability/.test(src.slice(src.indexOf('CONVENTION for model stability · a rehearsal read') - 200)) && !/CONVENTION for model stability · a rehearsal read/.test(src)) {
+        throw new Error('the rehearsal spend floor must be labelled a CONVENTION for model stability in its own source');
+      }
+      // The cap works from the fast side only, and only when spendable.
+      const pr = sourceOf('web-v2/lib/training/prescription-resolver.ts');
+      if (!/demonstrated != null && demonstratedSpendable && demonstrated < exponentPace/.test(pr)) {
+        throw new Error('marathonPaceFromDurability no longer applies the rehearsal pace as a fast-side cap gated on confidence');
+      }
+    },
+  },
+  {
+    id: 'CONVENTION.exponent-endpoint-coverage',
+    binds: [
+      'lib/training/durability-anchor.ts#RACE_EXPONENT_ENDPOINT_SATURATION',
+      'lib/training/durability-anchor.ts#fitRaceExponent',
+    ],
+    doc: 'Research/02-race-time-prediction.md',
+    anchor: '### 11.1 Why Multiple Inputs Help',
+    claim:
+      '"A single race result is a noisy signal. Weather, course, pacing, taper, and field all add ' +
+      '±1–3% noise." With two distinct distances the log-log fit passes through the long-end ' +
+      'cluster exactly, so ONE marathon fixes the exponent and its residual is zero by construction. ' +
+      'The evidence score therefore also scores how many observations sit at each end of the ' +
+      'distance spread (a CONVENTION for model stability, labelled as such), and a single long-end ' +
+      'observation is named in the read so no consumer mistakes it for a corroborated curve.',
+    check({ cite }) {
+      if (!/single race result is a noisy signal/i.test(cite.text())) throw new Error('Research/02 §11.1 no longer states the single-race noise rule');
+      if (!(RACE_EXPONENT_ENDPOINT_SATURATION >= 2)) throw new Error('endpoint saturation must require more than one observation per end');
+      const src = sourceOf('web-v2/lib/training/durability-anchor.ts');
+      if (!/CONVENTION for model stability, not a\s+\* physiological finding/.test(src)) throw new Error('RACE_EXPONENT_ENDPOINT_SATURATION must be labelled a CONVENTION in its own source');
+      if (!/SINGLE_LONG_END_OBSERVATION/.test(src)) throw new Error('the fit no longer names a single long-end observation');
+      const r = fitRaceExponent([
+        { slug: 'h1', date: '2026-01-01', distanceMi: 13.1, finishSec: 5900, priority: 'A', weight: 1 },
+        { slug: 'h2', date: '2026-02-01', distanceMi: 13.1, finishSec: 5800, priority: 'A', weight: 1 },
+        { slug: 'm1', date: '2026-03-01', distanceMi: 26.2, finishSec: 12700, priority: 'A', weight: 1 },
+      ], { today: '2026-09-01' });
+      if (!r.ok || r.endpointScore !== 0 || !(r.reasons ?? []).includes('SINGLE_LONG_END_OBSERVATION')) {
+        throw new Error('one marathon against two halves must score 0 on endpoint coverage and be named');
+      }
     },
   },
   {
