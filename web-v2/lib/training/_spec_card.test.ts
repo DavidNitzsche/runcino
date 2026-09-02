@@ -51,12 +51,22 @@ function cardPaces(steps: ReturnType<typeof cardFromSpec>extends null ? never : 
 function phasePaces(spec: WorkoutSpec, totalMi: number, easy: number | null, type: string): string[] {
   const ph = expandSpecToPhases({ spec, totalMi, easyPaceSec: easy, easyCeilingSec: easy, recoveryPaceSec: easy, toleranceSec: 8 })!;
   const isQualityWork = type === 'threshold' || type === 'intervals' || type === 'tempo';
+  // EASYCEIL-1 (2026-09-01) · easy-family WORK prints as a ceiling too, off
+  // the band's fast edge — the same three exclusions the card makes (a
+  // finish segment and a stride are targets; race is the race branch's).
+  const isEasyFamily = type === 'easy' || type === 'long' || type === 'recovery' || type === 'shakeout';
   const out: string[] = [];
   for (const p of ph) {
     if (p.targetPaceSPerMi == null) continue;
+    const easyWork = p.type === 'work' && isEasyFamily
+      && p.isFinishSegment !== true && p.isStrideSegment !== true;
+    const ceil = p.tolerancePaceSPerMi != null && p.tolerancePaceSPerMi > 0
+      ? p.targetPaceSPerMi - p.tolerancePaceSPerMi
+      : p.targetPaceSPerMi;
     const s =
       (p.type === 'warmup' || p.type === 'cooldown') ? fmtPaceCeiling(p.targetPaceSPerMi)
       : (p.type === 'work' && isQualityWork) ? fmtPaceBand(p.targetPaceSPerMi, p.tolerancePaceSPerMi)
+      : easyWork ? fmtPaceCeiling(ceil)
       : fmtPace(p.targetPaceSPerMi);
     if (s) out.push(s);
   }

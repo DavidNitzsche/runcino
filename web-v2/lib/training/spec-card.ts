@@ -151,14 +151,52 @@ export function fmtPace(sPerMi: number | null | undefined): string | null {
 }
 
 /**
- * WU/CD-CEIL-1 (2026-09-01) · "≤ 8:22 /mi" — a ceiling, not a target to
- * land on. `docs/PRODUCT_DECISIONS.md` 2026-08-31 settled this for easy
- * running generally; warm-up and cool-down are easy running, so they read
- * the same way. Null in, null out, same contract as `fmtPace`.
+ * WU/CD-CEIL-1 (2026-09-01) · a ceiling, not a target to land on.
+ * `docs/PRODUCT_DECISIONS.md` 2026-08-31 settled this for easy running
+ * generally; warm-up and cool-down are easy running, so they read the same
+ * way. Null in, null out, same contract as `fmtPace`.
+ *
+ * EASYCEIL-1 (2026-09-01) · THE GLYPH SAID THE OPPOSITE OF THE CONSTRAINT.
+ *
+ * This printed `≤ 8:22 /mi`. The quantity is SECONDS PER MILE, where a
+ * smaller number is a FASTER runner — so the constraint "do not run faster
+ * than 8:22" is `pace ≥ 8:22`, and the card was printing the inequality
+ * backwards. Read literally it licenses exactly the behaviour the ceiling
+ * exists to prevent. The grading agent recorded the same reading on
+ * 2026-09-01 ("the `≤` reads as a time bound and therefore as the opposite
+ * instruction") and left it alone as locked copy; this pass applies the
+ * ceiling to 164 more live rows, so spreading it was not an option.
+ *
+ * The fix is prose rather than a corrected `≥`, for two reasons: the
+ * decision's own words are "no faster than 8:10/mi", and an inequality
+ * against a clock is precisely the thing a reader has to stop and invert.
+ * `Research/01` §"Pace zone width and lock-in rules" gives E "±30 sec/mi
+ * (wide) | Never [lock]. Prescribe a window", and Brief 03 adds that "the
+ * athlete should never need to speed up merely to satisfy the bottom of an
+ * easy range" — which is what makes this one-sided.
  */
 export function fmtPaceCeiling(sPerMi: number | null | undefined): string | null {
   const p = fmtPaceNoUnit(sPerMi);
-  return p == null ? null : `≤ ${p} /mi`;
+  return p == null ? null : `no faster than ${p} /mi`;
+}
+
+/**
+ * EASYCEIL-1 · the CEILING a phase's band implies, in s/mi.
+ *
+ * The wire carries a target plus a symmetric tolerance, so an authored band
+ * `502-542` reaches this layer as `522 ± 20`. The ceiling is the band's FAST
+ * edge — `target - tolerance` — which is the number `vdot.ts` calls "the
+ * ceiling an easy-pace prescription must not cross" and the same edge
+ * `easyCeilingSec` carries for a warm-up.
+ *
+ * Falls back to the target itself when no tolerance rides along, so a phase
+ * with a bare target still states a ceiling rather than losing the number.
+ */
+function ceilingOfPhase(p: ExpandedPhase): number | null {
+  const t = p.targetPaceSPerMi;
+  if (t == null || !(t > 0)) return null;
+  const tol = p.tolerancePaceSPerMi;
+  return tol != null && tol > 0 ? t - tol : t;
 }
 
 /**
@@ -472,13 +510,42 @@ export function cardFromSpec(input: {
     const w = t.work;
     const isStride = w.isStrideSegment === true;
     /* QUALITY-BAND-1 · a band for genuine quality work (threshold, intervals,
-     * tempo), a bare point everywhere else. Easy/long/race/shakeout work
-     * stays a point on purpose — the 2026-08-31 "easy pace is a ceiling, not
-     * a band" decision is the opposite instruction for those, and this file
-     * does not re-open that here. */
+     * tempo).
+     *
+     * EASYCEIL-1 (2026-09-01) · …AND A CEILING FOR EASY RUNNING, which is what
+     * the 2026-08-31 decision actually says. The comment that stood here
+     * deferred this — "easy/long/race/shakeout work stays a point on purpose"
+     * — and a bare midpoint is neither a band nor a ceiling. It is the one
+     * shape the decision rules out most explicitly: a single number that
+     * "implies a target to land inside", printed on the run where the whole
+     * point is that the runner's own feel fills the gap.
+     *
+     * Measured over the read-only role on 2026-09-01, every non-archived
+     * plan: 164 future easy/long/recovery rows rendered a point. The owner's
+     * 15-mile long run printed `8:40 /mi` off an authored band of 502-537,
+     * and his easy days printed `8:42 /mi` off 502-542 — a number he was
+     * never asked to hold, on the days doctrine is loosest about pace.
+     *
+     * The ceiling is the band's own fast edge, so nothing is invented: the
+     * card now states the same edge the warm-up two steps above it states,
+     * and the same one `resolveEasyCeiling` owns.
+     *
+     * THREE DELIBERATE EXCLUSIONS, each a different question:
+     *   · a FINISH segment is race-pace work inside a long run — a target to
+     *     hold ("Find race rhythm and hold it home"), not a limit;
+     *   · a STRIDE is `Research/04` §7.2's "accelerate to mile-to-5K race
+     *     pace", a target by construction;
+     *   · RACE work is `Research/01`'s "lock to a single pace" row and is
+     *     owned by the race branch (Constitution §J). Untouched here. */
     const isQualityWork = type === 'threshold' || type === 'intervals' || type === 'tempo';
+    const isEasyFamilyWork =
+      (type === 'easy' || type === 'long' || type === 'recovery' || type === 'shakeout')
+      && w.isFinishSegment !== true
+      && !isStride;
     const paceStr = isQualityWork
       ? fmtPaceBand(w.targetPaceSPerMi, w.tolerancePaceSPerMi)
+      : isEasyFamilyWork
+      ? fmtPaceCeiling(ceilingOfPhase(w))
       : fmtPace(w.targetPaceSPerMi);
     const recDur = fmtDuration(t.rec?.durationSec);
     // RECOVERY-BYFEEL-1 · `t.rec?.targetPaceSPerMi` is null for a between-rep
