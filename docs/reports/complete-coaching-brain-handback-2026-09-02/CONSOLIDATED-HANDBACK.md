@@ -813,6 +813,98 @@ written to stop the app telling the RUNNER he is not good enough. The meaning is
 right and the words are wrong, and it is being fixed in the copy rather than by
 exempting the lexicon term.
 
+## 12g · The closure pass
+
+Ordered by the runner after he rejected the programme as complete. Five
+workstreams, disjoint file boundaries. Per-stream reports are the
+`closure-*.md` and `postrun-breakdown.md` siblings of this file.
+
+### The largest defect was on nobody's list
+
+**Your post-run screen was composing your run from a simulator's payload.**
+Three `watch_completion` records matched 2026-09-02 in production — your real
+13-phase run and two `sim-recovery-live` rows of three phases and 0.27 mi — and
+the loader took the newest by timestamp. **Every number you read on that screen
+belonged to somebody's test.**
+
+The fix is not the deletion of those rows; it is that the loader now resolves
+through `watchCompletionRef`, which the run itself carries and which names
+exactly one payload. The same query and the same bug existed on the Run Detail
+path and is fixed there too. This would have bitten on any duplicate, from any
+source, forever.
+
+### The three defects you named
+
+| | Before | After |
+|---|---|---|
+| Sentence | "All seven reps landed, with four quicker than the ceiling." | "The work block stayed under the ceiling. Six strides after, walk-backs taken." |
+| Strides | Absent | Six rows with pace, duration and HR, **no verdict on any**, plus six walk-backs |
+| Miles | 5 rows, unexplained | Kept, with a reconciliation line naming 6.41 total / 5.98 structured / 0.43 overtime |
+
+The "seven" was traced rather than assumed: it comes from the server composer,
+and `recoveryExtensions[].repCount` is read by no server code — but the wrist
+and the phone's section title each committed the same expression independently.
+One quantity, three surfaces.
+
+### And one that had never worked for anyone
+
+**`beliefTension` was structurally dead.** `currentBelief` was null on every
+post-run classification ever run, so `CHALLENGES` had never fired for any
+runner, while the screen claimed to support your current threshold range. Now
+wired to the canonical resolver; your 2026-09-01 session reads `CHALLENGES`
+live.
+
+### The capture truncation, and what it actually was
+
+Not what I assumed. The row was written by the crash-recovery path, and every
+null on it is that path's signature. Two independent defects: overtime had been
+COUNTED since August and never RECORDED, and the rep counter counted every work
+phase — your one 5-mile easy leg plus six strides — which is where `repCount: 7`
+came from. **Reverting the fix reproduces your stored row to the digit: 5.98 mi
+/ 3057 s.**
+
+### The other closures
+
+- **Safety** has one owner. Four independent authors reduced to one, UNKNOWN
+  unreadable as safe by type, and two live defects found on the way: a niggle
+  query filtering on a value the column never holds, so **the pain veto had
+  never fired for anyone**, and a hard-coded `null` for illness.
+- **The targets route** carried four numbers for one race and called three
+  "projection". Now one canonical projection at 11982 resolved through the race
+  brain, with current-fitness named separately and not called a projection.
+- **`loadRunDetail`** resolved absorbed run ids to the discarded half — 118 of
+  your 274 rows are merge losers. It also found the recap route (whose own
+  comment claimed otherwise) and the shoe PATCH, which wrote assignments onto
+  losers. Zero of your miles were stranded by that, checked.
+- **Downhill giveback** had THREE values, not two, including a symmetric full
+  refund inside one multiplier. One owner at 0.50, and the doctrine claim now
+  parses `Research/01`'s own Minetti table at run time — which gives 0.50 to
+  0.60 and contradicts the same document's prose.
+- **Sustained volume** is the third-highest fully representative week, bound to
+  the engine's existing sustained-rank constant. **33.7 → 39.5 mi/wk**, sitting
+  1.5 mi above your median where the mean sat below it. Nothing fitted to 43.5.
+- **A typed goal can no longer raise volume.** Removed from the parameter tuple
+  with a compile-time assertion, so adding it back is a `tsc` error. Across
+  8,900 matrix cells: 1,395 moved down, **zero moved up**. Your block is
+  byte-identical.
+- **One primary stressor is binding**, and the old test was the wrong test — it
+  compared long-run MILES where the engine sizes the long as a share of the
+  week, so binding it as written would have refused every ramping week. It now
+  binds on the share: 8,781 plans, 91,199 transitions, zero findings, 23%
+  headroom to the nearest non-exempt week.
+- **The Swift watch grader** is now tested through `xcodebuild test` against
+  real code rather than a TypeScript port. `verdict` had **zero** Swift coverage
+  before; it has twelve tests now, including your 4×1 mile.
+
+### Found at integration, by the gates
+
+- A clock in the new post-run wire that prints **6:60** at 419.6 seconds. It
+  rounded the seconds after splitting them.
+- A phase-level cadence read needing an argued allowlist entry.
+
+Both were caught on the first run after the merge, which is what a ratchet is
+for.
+
 ## 13 · What is NOT true
 
 - **Upward pace adaptation remains shadow-only, deliberately.** Six shadow
