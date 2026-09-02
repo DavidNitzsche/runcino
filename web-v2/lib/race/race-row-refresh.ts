@@ -367,6 +367,32 @@ function rulesWithoutRaceAborts(existing: unknown): Array<Record<string, unknown
   return kept.length === existing.length ? null : kept;
 }
 
+/**
+ * ROW-CONTRACT-1 · THE ATOMICITY CHECK, AND IT LIVES IN THE DECIDER.
+ *
+ * Every return path of `raceRowWrite` goes through here. It projects the row as
+ * it would stand once the write lands and hands it to the contract checker; a
+ * write that would leave the prose naming one pace and the column carrying
+ * another comes back as a REFUSAL, not as a write the caller is trusted to
+ * validate afterwards.
+ *
+ * Placed here rather than at the call site on purpose, and the first version of
+ * this fix got that wrong. The check sat in the refresh loop, and switching it
+ * off left every assertion in the coherence gate passing — because they were
+ * reading the source for the string `CONTRACT_INCOHERENT` rather than
+ * exercising the behaviour. That is precisely the tamper-check any comment
+ * satisfies, which Rule 18 already caught once in this repo. Found by running
+ * the falsifier.
+ */
+function coherentOrRefused(
+  row: RaceRowContractView,
+  write: RaceRowWrite,
+): RaceRowWrite | { refused: string } {
+  const violations = raceRowContractViolations(applyWriteToRow(row, write));
+  if (violations.length === 0) return write;
+  return { refused: `CONTRACT_INCOHERENT · ${describeViolations(violations)}` };
+}
+
 export function raceRowWrite(args: {
   row: RaceRowContractView;
   outlook: RaceOutlook;
@@ -399,13 +425,13 @@ export function raceRowWrite(args: {
       // repricing would never land on the rows that need it most — the ones
       // where the target already settled and only the rule stayed behind.
       && JSON.stringify(fields.rules ?? null) === JSON.stringify(spec.rules ?? null);
-    return {
+    return coherentOrRefused(row, {
       paceTargetSecPerMi: pace,
       specDrops: [...RACE_SPEC_DROPS],
       specFields: fields,
       notes,
       unchanged,
-    };
+    });
   }
 
   // A race-week tune-up. `tuneupPaceAnchor` reads the prescription the spec
@@ -430,7 +456,7 @@ export function raceRowWrite(args: {
     const headline = repPaceOrNone(spec.rep_pace_s_per_mi) ?? row.paceTargetSecPerMi;
     if (headline == null) return { refused: 'TUNEUP_HAS_NO_PACE_OF_ITS_OWN' };
     const strippedRules = rulesWithoutRaceAborts(spec.rules);
-    return {
+    return coherentOrRefused(row, {
       paceTargetSecPerMi: headline,
       specDrops: [...TUNEUP_SPEC_DROPS],
       specFields: strippedRules == null ? {} : { rules: strippedRules },
@@ -438,7 +464,7 @@ export function raceRowWrite(args: {
       unchanged: headline === row.paceTargetSecPerMi
         && strippedRules == null
         && !TUNEUP_SPEC_DROPS.some((k) => spec[k] != null),
-    };
+    });
   }
 
   // A tune-up whose reps ARE at race pace. Both halves move, together — which
@@ -452,13 +478,13 @@ export function raceRowWrite(args: {
     && strippedRules == null
     && notes == null
     && !TUNEUP_SPEC_DROPS.some((k) => spec[k] != null);
-  return {
+  return coherentOrRefused(row, {
     paceTargetSecPerMi: pace,
     specDrops: [...TUNEUP_SPEC_DROPS],
     specFields: { rep_pace_s_per_mi: pace, ...(strippedRules == null ? {} : { rules: strippedRules }) },
     notes,
     unchanged,
-  };
+  });
 }
 
 /**
@@ -627,28 +653,15 @@ async function refreshRaceRowsCore(
     // field of its own.
     const write = raceRowWrite({ row: contractRowOf(row), outlook });
     if ('refused' in write) {
+      // CONTRACT_INCOHERENT arrives here too: a write that would leave the row
+      // contradicting itself is refused WHOLE and the stale row stands,
+      // because a stale row is at least a plan somebody could run (Rule 11).
+      console.error(`[race-row-refresh] REFUSED · plan=${planId} row=${row.id} ${row.date_iso} · ${write.refused}`);
       result.rows.push({ id: row.id, dateISO: row.date_iso, slug, action: 'refused', reason: write.refused, before, after: null, outlook: summary });
       result.refused++;
       continue;
     }
     const after = { paceSecPerMi: write.paceTargetSecPerMi };
-
-    // ROW-CONTRACT-1 · THE ATOMICITY CHECK, BEFORE THE WRITE.
-    //
-    // The row as it WOULD stand once this write lands, handed to the contract
-    // checker. A refresh that would leave the prose naming one pace and the
-    // column carrying another does not write half of it and log the rest: it
-    // refuses the row by name and leaves the stale row standing, because a
-    // stale row is at least a plan somebody could run (Rule 11).
-    const projected = applyWriteToRow(contractRowOf(row), write);
-    const violations = raceRowContractViolations(projected);
-    if (violations.length > 0) {
-      const reason = `CONTRACT_INCOHERENT · ${describeViolations(violations)}`;
-      console.error(`[race-row-refresh] REFUSED · plan=${planId} row=${row.id} ${row.date_iso} · ${reason}`);
-      result.rows.push({ id: row.id, dateISO: row.date_iso, slug, action: 'refused', reason, before, after: null, outlook: summary });
-      result.refused++;
-      continue;
-    }
 
     if (write.unchanged) {
       result.rows.push({ id: row.id, dateISO: row.date_iso, slug, action: 'unchanged', before, after, outlook: summary });

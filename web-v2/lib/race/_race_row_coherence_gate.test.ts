@@ -129,11 +129,13 @@ describe('ROW-CONTRACT-1 · a refreshed race row agrees with itself', () => {
     const w = raceRowWrite({ row, outlook: o });
     expect('refused' in w).toBe(false);
     const after = applyWriteToRow(row, w as never);
-    // After: the column moved AND the sentence moved with it.
+    // After: the column moved AND the sentence moved with it. The contract
+    // check goes FIRST so a falsification prints the violation CODE rather than
+    // two raw numbers — a gate should name the class it caught.
+    expect(raceRowContractViolations(after)).toEqual([]);
     expect(after.paceTargetSecPerMi).toBe(pace);
     expect(paceTokensSecPerMi(after.notes)).toEqual([pace]);
     expect(after.notes).toContain('B race · race effort');
-    expect(raceRowContractViolations(after)).toEqual([]);
   });
 
   it('3 · THE ABORT RULE IS REPRICED WITH THE TARGET, never left on the old anchor', async () => {
@@ -188,10 +190,10 @@ describe('ROW-CONTRACT-1 · a refreshed race row agrees with itself', () => {
     const w = raceRowWrite({ row: wrecked, outlook: o });
     expect('refused' in w).toBe(false);
     const after = applyWriteToRow(wrecked, w as never);
+    expect(raceRowContractViolations(after)).toEqual([]);
     expect(after.paceTargetSecPerMi).toBe(repPace);
     expect(after.spec?.race_execution).toBeUndefined();
     expect(after.spec?.race_hr).toBeUndefined();
-    expect(raceRowContractViolations(after)).toEqual([]);
   });
 
   it('5 · A TUNE-UP THAT IS AT RACE PACE MOVES BOTH HALVES TOGETHER', async () => {
@@ -210,9 +212,9 @@ describe('ROW-CONTRACT-1 · a refreshed race row agrees with itself', () => {
       notes: null, subLabel: label,
     };
     const after = applyWriteToRow(row, raceRowWrite({ row, outlook: o }) as never);
+    expect(raceRowContractViolations(after)).toEqual([]);
     expect(after.paceTargetSecPerMi).toBe(pace);
     expect(after.spec?.rep_pace_s_per_mi).toBe(pace);
-    expect(raceRowContractViolations(after)).toEqual([]);
   });
 
   it('6 · THE SENTENCE HAS ONE OWNER · authoring and the refresh compose it identically', () => {
@@ -252,16 +254,38 @@ describe('ROW-CONTRACT-1 · a refreshed race row agrees with itself', () => {
     }
   });
 
-  it('8 · THE WRITE IS ATOMIC · the refresh refuses rather than landing half a contract', () => {
-    // The SQL applies exactly what `raceRowWrite` returned: drop these keys,
-    // merge those, set that note. Nothing composes a field at the call site,
-    // which is what let the old version move a pace and leave the prose.
+  it('8 · THE WRITE IS ATOMIC · an incoherent contract comes back REFUSED, not half written', async () => {
+    // BEHAVIOURAL, and it was not always. The first version of this test read
+    // the source for the string `CONTRACT_INCOHERENT`, and the falsifier proved
+    // that worthless: switching the check off with `if (false)` left the string
+    // in the file and all nine tests green. Rule 18's tamper-check that any
+    // comment satisfies, in a gate written to enforce Rule 18.
+    //
+    // So the check moved into `raceRowWrite` and this drives it. A race row
+    // whose LABEL states a pace the outlook will not prescribe cannot be made
+    // coherent by any write this path can perform — the label is not its to
+    // rewrite — so the only honest answer is a refusal.
+    const o = await outlook();
+    const pace = o.execution.paceSecPerMi!;
+    const stuck: RaceRowContractView = {
+      type: 'race',
+      distanceMi: o.race.distanceMi,
+      paceTargetSecPerMi: pace,
+      spec: {},
+      notes: null,
+      subLabel: `RACE · ${Math.floor((pace + 45) / 60)}:${String((pace + 45) % 60).padStart(2, '0')}/mi`,
+    };
+    const w = raceRowWrite({ row: stuck, outlook: o });
+    expect('refused' in w, 'an unfixable contradiction is refused, never written').toBe(true);
+    expect((w as { refused: string }).refused).toMatch(/^CONTRACT_INCOHERENT/);
+    expect((w as { refused: string }).refused).toMatch(/LABEL_NAMES_ANOTHER_PACE/);
+
+    // And the statement the loop runs applies exactly what it was handed:
+    // remove these keys, merge those, set that note. Nothing composes a field
+    // at the call site, which is what let the old version move a pace and
+    // leave the prose behind.
     const s = read('lib/race/race-row-refresh.ts');
     expect(s).toMatch(/const write = raceRowWrite\(\{ row: contractRowOf\(row\), outlook \}\);/);
-    expect(s).toMatch(/const violations = raceRowContractViolations\(projected\);/);
-    expect(s).toMatch(/CONTRACT_INCOHERENT/);
-    // The refusal must sit BEFORE the UPDATE, or it is a log line, not a gate.
-    expect(s.indexOf('CONTRACT_INCOHERENT')).toBeLessThan(s.indexOf('UPDATE plan_workouts'));
     expect(s).toMatch(/workout_spec = \(COALESCE\(workout_spec, '\{\}'::jsonb\) - \$4::text\[\]\) \|\| \$3::jsonb/);
     expect(s).toMatch(/notes = COALESCE\(\$5, notes\)/);
   });

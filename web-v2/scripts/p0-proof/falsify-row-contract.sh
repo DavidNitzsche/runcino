@@ -65,7 +65,7 @@ run note-names-a-distance lib/training/spec-card.ts \
 
 # 6 · the atomicity check itself removed, so an incoherent contract would write.
 run atomicity-check-removed lib/race/race-row-refresh.ts \
-  "s/^    if \(violations\.length > 0\) \{$/    if (false) {/" \
+  "s/^  if \(violations\.length === 0\) return write;$/  if (true) return write;/" \
   "CONTRACT_INCOHERENT"
 
 echo
