@@ -348,6 +348,41 @@ struct WatchRunSurfaceV5: View {
             || router.confirm != nil
     }
 
+    /// Whether the recovery face is the board on screen — ONE definition, so
+    /// no second reader can decide it differently.
+    ///
+    /// Both halves matter and both were defects when they were absent:
+    ///
+    /// - `type == .recovery` · the board only makes sense inside the phase it
+    ///   is counting down.
+    /// - `!planComplete` · `advance()` leaves `currentIndex` parked on the
+    ///   last phase when the plan finishes, so a session whose final phase is
+    ///   a recovery still answers `.recovery` all through overtime — while
+    ///   `endCurrentPhase()` and `recordRecoveryExtension()` both guard
+    ///   `!planComplete` and do nothing. Drawing it there put two dead verbs
+    ///   in front of a runner who wanted to stop. Overtime takes the running
+    ///   face, which is what the branch below already says it is for.
+    ///
+    /// - `repUnit != .distance` · this board draws a CLOCK, and a distance
+    ///   recovery does not end on one. `advance()` finishes it on
+    ///   `phaseCoveredMi >= d`, so the clock would stall at zero with no
+    ///   relationship to when the rep ends — David, 2026-09-01: "if the
+    ///   section/interval is in distance the watch needs to count down using
+    ///   miles." Its "+30 sec" is dead there for the same reason:
+    ///   `phaseAddedSec` only moves the TIME test. A distance recovery keeps
+    ///   the phase board, which counts it down in miles, and reaches controls
+    ///   by the same edge swipe as every other phase.
+    ///
+    /// Rule 11 on the engine's own state: "the plan is done" and "we are in a
+    /// recovery" are different facts, and the board that answers one must not
+    /// be drawn for the other.
+    private var showsExtendRecovery: Bool {
+        guard let phase = engine.currentPhase else { return false }
+        return phase.type == .recovery
+            && phase.repUnit != .distance
+            && !engine.planComplete
+    }
+
     /// The runner's distance unit, straight off the payload.
     private var units: String? { engine.workout.unitsDistance }
     private var dist: (value: String, unit: String) {
@@ -419,14 +454,28 @@ struct WatchRunSurfaceV5: View {
                     .transition(.identity)   // rule 13: no motion
             }
 
-            // ── Controls, reached by tapping the face ────────────────────
-            // Not on a recovery: that phase answers its own question on the
-            // face (rule 11), and `controlsShowing` drives BOTH, so the
-            // opaque controls board was covering the +30 sec board one layer
-            // down. The seam was unreachable twice over.
-            if router.controlsShowing,
-               router.confirm == nil,
-               engine.currentPhase?.type != .recovery {
+            // ── Controls, reached by the edge swipe ─────────────────────
+            // ON EVERY PHASE, WITH NO EXCEPTION. This condition used to carry
+            // `engine.currentPhase?.type != .recovery`, because `controlsShowing`
+            // drove BOTH this board and the +30 sec board one layer down and
+            // the opaque one covered the other. Suppressing it here made the
+            // two boards mutually exclusive the wrong way round: for the whole
+            // of every recovery the only reachable verbs were "+30 sec" and
+            // "Go now", and the run could not be paused or ended.
+            //
+            // On 2026-09-02 that met the second half of the same defect. A
+            // plan whose last phase is a recovery parks `currentIndex` there
+            // when it completes (`advance()` sets planComplete and does not
+            // move the index), so an overtime runner got the recovery board —
+            // where BOTH its buttons are no-ops, since `endCurrentPhase()` and
+            // `recordRecoveryExtension()` each guard `!planComplete`. Three
+            // dead verbs and no fourth: 6.41 mi in, the run could not be
+            // ended from the watch at all.
+            //
+            // Same shape as the fuel takeover documented in `momentBoard`.
+            // Rule 8: nothing blocks the run, and End run is reachable from
+            // every board the reveal gesture can land on.
+            if router.controlsShowing, router.confirm == nil {
                 controlsLayer
             }
             if let confirm = router.confirm {
@@ -572,7 +621,7 @@ struct WatchRunSurfaceV5: View {
         // `tracker.isLuminanceReduced` (see WorkoutEngine's timer comment
         // "WRIST DOWN COSTS LESS") — that governs update FREQUENCY, not
         // which view this renders, and needs no change here.
-        if let phase = engine.currentPhase, phase.type == .recovery, router.controlsShowing {
+        if showsExtendRecovery {
             // RULE 11 · anything the runner can answer is answered where it is
             // asked. Extend recovery lives on the recovery face rather than in
             // controls, because it is only true for ninety seconds — and the
@@ -580,11 +629,17 @@ struct WatchRunSurfaceV5: View {
             // the number the runner is watching. That is the whole reason the
             // design draws it here.
             //
-            // This seam was declared, exposed as a modifier and wired at the
-            // call site, and nothing ever called it. A dead seam reads as
-            // finished work from every angle except the runner's.
+            // DRAWN UNCONDITIONALLY, not behind `controlsShowing`. Gating it
+            // on the reveal gesture was the exact burial the board's own doc
+            // comment forbids, and it cost more than reach: the gesture that
+            // reaches Pause and End run everywhere else landed HERE instead,
+            // so for the length of every recovery there was no way to pause or
+            // end the run. It is the recovery FACE now — the edge swipe below
+            // opens controls over it, the same as on every other face — and it
+            // carries the heart-rate row the phase board it replaces drew.
             FaceExtendRecoveryV5(
                 secondsRemaining: engine.recoveryRemainingSec,
+                heartRateBpm: WFmt.whole(tracker.heartRate),
                 onAddThirty: {
                     engine.recordRecoveryExtension(addedSec: 30)
                     onRecoveryExtend(30)
@@ -595,7 +650,10 @@ struct WatchRunSurfaceV5: View {
                 }
             )
             .contentShape(Rectangle())
-            .onTapGesture { router.controlsShowing = false }
+            .gesture(revealControlsGesture)
+            .accessibilityAction(.default) { router.controlsShowing = true }
+            .accessibilityLabel("Controls")
+            .accessibilityHint("Pause, lap or end the run")
         } else if engine.planComplete {
             // OVERTIME. The plan is done and the runner is still going.
             //

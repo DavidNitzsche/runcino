@@ -380,9 +380,20 @@ struct FaceSkipConfirmV5: View {
 /// +30 sec adds to the number the runner is watching, which is the whole
 /// reason it is drawn here rather than described. Do not freeze it, and do not
 /// re-render this view from a snapshot taken when the buttons appeared.
+///
+/// IT IS THE RECOVERY FACE, so it carries what that face carried. The board
+/// used to be a controls DESTINATION, reached by the same edge swipe that
+/// reaches Pause and End run everywhere else — which is why for the length of
+/// every recovery the run could not be paused or ended at all. It is now drawn
+/// as the phase's own face, and `heartRateBpm` is the row `phaseMetrics` drew
+/// beside the countdown on the board this one replaces: a recovery shows time
+/// left and heart rate, and no pace (a recovery is not asking for one).
 struct FaceExtendRecoveryV5: View {
     /// Live. The caller ticks this; `onAddThirty` should raise it by 30.
     let secondsRemaining: Int
+    /// Formatted bpm, or nil when the strap has not read one. NEVER a
+    /// placeholder digit — rule 2: a sensor we could not read draws no value.
+    var heartRateBpm: String? = nil
     let onAddThirty: () -> Void
     let onGoNow: () -> Void
 
@@ -392,7 +403,18 @@ struct FaceExtendRecoveryV5: View {
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    WKicker(text: "Recovery", color: WatchV5.valueMute)
+                    // The kicker line carries heart rate at its right edge
+                    // rather than on a row of its own: the two targets below
+                    // already own the bottom half of a 41mm board, and a
+                    // fourth stacked band is what pushes the hero number off
+                    // it. Nothing moves when the reading drops out.
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        WKicker(text: "Recovery", color: WatchV5.valueMute)
+                        Spacer(minLength: 0)
+                        if let heartRateBpm {
+                            WKicker(text: heartRateBpm + " bpm", color: WatchV5.valueMute)
+                        }
+                    }
                     // 52pt — the top of the hero band. The number the runner
                     // is watching, and the one the button changes.
                     Text(wClock(secondsRemaining))
@@ -402,6 +424,7 @@ struct FaceExtendRecoveryV5: View {
                         .minimumScaleFactor(0.6)
                 }
                 .padding(.leading, 2)
+                .padding(.trailing, 2)
 
                 Spacer(minLength: 0)
 

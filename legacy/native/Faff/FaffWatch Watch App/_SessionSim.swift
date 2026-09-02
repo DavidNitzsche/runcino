@@ -183,6 +183,48 @@ enum SessionSim {
                                label: "Heart rate over 173 and still climbing · drop to easy",
                                evidence: "Heart rate over 173 and still climbing",
                                judgement: "The stimulus is already banked · forcing the rest of the reps buys fatigue, not fitness.")])
+        case "recovery-end":
+            // THE 2026-09-02 DEAD END, reproduced.
+            //
+            // A plan whose LAST phase is a recovery. `advance()` sets
+            // planComplete and leaves currentIndex parked on it, so
+            // `currentPhase?.type` answers `.recovery` for the whole of
+            // overtime — while `endCurrentPhase()` and
+            // `recordRecoveryExtension()` both guard `!planComplete`.
+            //
+            // Before the fix that drew the recovery board with both its verbs
+            // dead, and the controls board was suppressed on `.recovery`, so
+            // there was no Pause and no End run on any reachable board.
+            //
+            // THE SHAPE IS DAVID'S OWN, not an invented one. His 2026-09-02
+            // plan was "EASY · 6x20s strides", and the strides template ends
+            // every one of them on a "Walk back" recovery — so this trap was
+            // waiting on every strides day, for every runner, not just his.
+            // Phase durations are shortened so overtime lands in seconds.
+            //
+            // Run it: -sim recovery-end -warp 60.
+            var sp = [phase(0, .work, "5.0 mi easy", sec: 120, target: 511, tol: 30)]
+            for r in 0..<6 {
+                sp.append(phase(sp.count, .work, "Stride \(r + 1) of 6", sec: 20))
+                sp.append(phase(sp.count, .recovery, "Walk back", sec: 60,
+                                haptic: .transitionRecovery))
+            }
+            return workout("sim-recovery-end", "Easy + 6 strides", sp)
+
+        case "recovery-live":
+            // A LIVE recovery, mid-plan — the other half of the same trap.
+            // The controls board was suppressed on `.recovery`, so for the
+            // whole of every recovery in every interval session there was no
+            // Pause and no End run. Long recovery so the state is inspectable.
+            //
+            // Run it: -sim recovery-live -warp 10.
+            return workout("sim-recovery-live", "Intervals", [
+                phase(0, .warmup, "Warm-up", sec: 30, haptic: .start),
+                phase(1, .work, "Work", sec: 30, target: 391, tol: 10),
+                phase(2, .recovery, "Recovery", sec: 600, haptic: .transitionRecovery),
+                phase(3, .work, "Work", sec: 30, target: 391, tol: 10),
+                phase(4, .cooldown, "Cool-down", sec: 300, haptic: .transitionCooldown),
+            ])
 
         case "km":
             return workout("sim-km", "Easy",
