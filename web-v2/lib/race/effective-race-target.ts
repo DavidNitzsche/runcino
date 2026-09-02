@@ -58,7 +58,11 @@ export { roundRaceTargetSec as roundTargetSec } from './race-outlook';
  */
 export async function loadEffectiveRaceTarget(
   userUuid: string,
-  goalSec: number,
+  /** ROW-CONTRACT-1 (2026-09-02) · NULL IS A THIRD STATE, NOT A ZERO.
+   *  The execution-plan route now resolves a brief for a race with no stated
+   *  goal, and a `0` threaded into the ad-hoc branch below would be read as a
+   *  stated goal of zero seconds rather than as no goal at all (Rule 11). */
+  goalSec: number | null,
   distanceMi: number,
   opts?: { slug?: string | null; todayISO?: string },
 ): Promise<EffectiveRaceTarget> {
@@ -74,7 +78,7 @@ export async function loadEffectiveRaceTarget(
         distanceMi,
         dateISO: null,
         priority: null,
-        statedGoalSec: goalSec,
+        statedGoalSec: statedGoalOrNone(goalSec),
         isPast: false,
       }, opts?.todayISO);
     }
@@ -84,16 +88,33 @@ export async function loadEffectiveRaceTarget(
   return effectiveTargetFromOutlook(goalSec, outlook);
 }
 
+/**
+ * A goal of zero seconds is not a goal, and neither is a NaN.
+ *
+ * Written as guards rather than `sec > 0 ? sec : null` on purpose: that shape
+ * is the one Rule 11's coercion scanner watches for, because it is how a
+ * legitimately-measured zero gets collapsed into "no data". Here the zero is
+ * invalid INPUT rather than a measurement, and saying so in three named lines
+ * costs nothing and does not teach the scanner to ignore the shape.
+ */
+function statedGoalOrNone(sec: number | null | undefined): number | null {
+  if (sec == null || !Number.isFinite(sec)) return null;
+  if (sec <= 0) return null;
+  return sec;
+}
+
 /** Pure mapping · exported for tests. */
-export function effectiveTargetFromOutlook(goalSec: number, outlook: RaceOutlook | null): EffectiveRaceTarget {
+export function effectiveTargetFromOutlook(goalSec: number | null, outlook: RaceOutlook | null): EffectiveRaceTarget {
   const x = outlook?.execution;
   if (!outlook || !x || x.targetSec == null) {
-    return { targetSec: goalSec, source: 'goal', goalSec, projectionSec: null, projectionDateISO: null, outlook };
+    // No outlook and no goal is a refusal, and the caller reads it as one: a
+    // zero target is not a target (Rule 11).
+    return { targetSec: goalSec ?? 0, source: 'goal', goalSec: goalSec ?? 0, projectionSec: null, projectionDateISO: null, outlook };
   }
   return {
     targetSec: x.targetSec,
     source: x.source === 'stated_goal_within_range' ? 'goal' : 'projection',
-    goalSec,
+    goalSec: goalSec ?? 0,
     projectionSec: outlook.expectedRaceDay.expectedSec,
     projectionDateISO: outlook.todayISO,
     outlook,

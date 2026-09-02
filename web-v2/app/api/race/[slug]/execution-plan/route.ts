@@ -54,9 +54,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     const distanceMi = Number(meta.distanceMi)
       || distanceMiFromLabel(meta.distanceLabel as string | null)
       || null;
-    if (!goalSec || !distanceMi) {
+    // ROW-CONTRACT-1 (2026-09-02) · GATE ON THE TARGET, NOT ON THE GOAL.
+    //
+    // This asked for `meta.goalDisplay` and 404'd without it, while every other
+    // race surface asks the outlook. So the owner's Santa Monica 10K — a B race
+    // eleven days out, with a resolved execution target of 43:00 and a pace
+    // plan drawn on his phone — had no race-morning brief at all: no warm-up
+    // timeline, no heat table, no B-goal trigger, no fuelling. Two owners of
+    // "does this race have a plan", disagreeing (Rule 16).
+    //
+    // The distance is still required, because a plan needs one and it cannot be
+    // inferred. The GOAL is not: `loadEffectiveRaceTarget` resolves the outlook
+    // whether or not one was stated, and `execution.targetSec` is what the
+    // brief is built from either way — it always was, three lines below.
+    if (!distanceMi) {
       return NextResponse.json(
-        { error: 'no goal time set · execution plan needs a goal' },
+        { error: 'no distance set · execution plan needs a distance' },
         { status: 404 },
       );
     }
@@ -98,7 +111,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     // likely range the CI note frames, and the fitness figure all come off
     // one resolved outlook for THIS race — not a projection snapshot the
     // watch and the race page could each have read differently.
-    const effective = await loadEffectiveRaceTarget(userId, goalSec, distanceMi, { slug });
+    // A stated goal enters as the goal; with none, the outlook's own target is
+    // both the goal and the target and `effectiveTargetFromOutlook` returns it
+    // unchanged. Rule 11 · a race with neither a goal nor a resolvable outlook
+    // is refused below by name rather than given an invented number.
+    const effective = await loadEffectiveRaceTarget(userId, goalSec ?? null, distanceMi, { slug });
+    if (!(effective.targetSec > 0)) {
+      return NextResponse.json(
+        { error: 'no target · the outlook could not resolve one and no goal is set' },
+        { status: 404 },
+      );
+    }
     const range = effective.outlook?.expectedRaceDay.likelyRangeSec ?? null;
     const ci: { loSec: number; hiSec: number } | null = range ? { loSec: range[0], hiSec: range[1] } : null;
     const vdot = effective.outlook?.capacity.thresholdVdot ?? (snapRow?.vdot != null ? Number(snapRow.vdot) : null);

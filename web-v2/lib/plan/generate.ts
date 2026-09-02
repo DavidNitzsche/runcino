@@ -52,7 +52,7 @@ import { isBaseBuildingPlan } from './plan-templates';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { isCoachedExternally, COACHED_SKIP_REASON } from './coached-gate';
 import { distanceMiOfMeta } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
-import { fmtPaceSlash } from '@/lib/format/run'; // MIDGOAL-1 (2026-08-30) · the one pace formatter, so a plan note and a screen read the same string
+import { raceTargetSentence } from '@/lib/race/race-row-note'; // ROW-CONTRACT-1 · the one owner of a race row's target sentence
 import { shapeTravelWindows, type TravelWindow } from './travel-windows'; // TRAVEL-1 (2026-08-28) · runner-declared travel shapes the composed block
 import { ROLE_POST_QUALITY_FREE_DAYS, isRaceRole } from '@/lib/race/race-role'; // RACEROLE-1 (2026-08-28) · answered tune-up roles
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
@@ -7908,13 +7908,19 @@ export function embedMidBlockRaces(
     // nothing about WHICH model produced the number. "Coach target" cannot be
     // stripped without the sentence losing its verb, and it names the author.
     // A runner-stated goal says "Target", because it is theirs.
+    //
+    // ROW-CONTRACT-1 (2026-09-02) · THE SENTENCE HAS ONE OWNER NOW.
+    // It used to be composed inline here and nowhere else, which is how it
+    // came to be frozen: `race-row-refresh` reprices the row minutes later,
+    // inside this same authoring transaction, and had no way to restate the
+    // prose. Both writers call `lib/race/race-row-note.ts`, so the number in
+    // the sentence and the number in the column cannot drift apart.
     if (slot.raceGoalPaceSec != null && Number.isFinite(slot.raceGoalPaceSec)) {
-      const paceStr = fmtPaceSlash(slot.raceGoalPaceSec);
-      if (paceStr) {
-        slot.notes += race.goalPaceIsCoachSet === true
-          ? ` Coach target ${paceStr}, set from your current fitness. Yours to change.`
-          : ` Target ${paceStr}.`;
-      }
+      const sentence = raceTargetSentence(
+        slot.raceGoalPaceSec,
+        race.goalPaceIsCoachSet === true ? 'coach' : 'runner',
+      );
+      if (sentence) slot.notes += ` ${sentence}`;
     }
     if (role === 'b_effort') slot.subLabel = 'RACE · B EFFORT';
     touchedWeeks.add(wi);

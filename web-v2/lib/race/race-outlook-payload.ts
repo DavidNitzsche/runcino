@@ -95,7 +95,6 @@ export function raceOutlookPayload(o: RaceOutlook | null | undefined) {
       gap_sec: o.goalFeasibility.gapSec,
       gap_to_range_edge_sec: o.goalFeasibility.gapToRangeEdgeSec,
     },
-    coach_set: o.coachSet ? { a_sec: o.coachSet.aSec, b_sec: o.coachSet.bSec, c_sec: o.coachSet.cSec, a: time(o.coachSet.aSec), b: time(o.coachSet.bSec), c: time(o.coachSet.cSec) } : null,
     bridge: o.bridge.map((b) => ({
       step: b.step,
       label: b.label,

@@ -20,7 +20,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { raceExecutionSpecFields } from './race-row-refresh';
+import { raceExecutionSpecFields, raceRowWrite } from './race-row-refresh';
 import { composeRaceOutlook } from './race-outlook';
 import { fixtureReads, fixtureRace } from './_race_outlook_fixture';
 
@@ -43,9 +43,22 @@ describe('RACE-ROW-STALENESS · every path that reprices a plan reprices its rac
     expect(raceBranch).toMatch(/hr_cap_bpm:\s*null/);
     expect(raceBranch).not.toMatch(/hr_cap_bpm:\s*lthr/);
   });
-  it('4 · the refresh merges field-level and DROPS hr_cap_bpm (Rule 6)', () => {
+  it('4 · the refresh merges field-level and DROPS hr_cap_bpm (Rule 6)', async () => {
     const s = code('lib/race/race-row-refresh.ts');
-    expect(s).toMatch(/workout_spec = \(COALESCE\(workout_spec, '\{\}'::jsonb\) - 'hr_cap_bpm'\) \|\| \$3::jsonb/);
+    // ROW-CONTRACT-1 (2026-09-02) · the key list moved out of the SQL literal
+    // and into `raceRowWrite`, so the row's whole contract is decided in one
+    // place. The statement is still asserted — it must remove keys and merge,
+    // never replace — but the CLAIM that a race row loses `hr_cap_bpm` is now
+    // asserted on the function's own output, which is the stronger check: a
+    // regex over SQL cannot tell whether the key is in the list it applies.
+    expect(s).toMatch(/workout_spec = \(COALESCE\(workout_spec, '\{\}'::jsonb\) - \$4::text\[\]\) \|\| \$3::jsonb/);
+    const o = await composeRaceOutlook(fixtureRace(), '2026-09-01', fixtureReads());
+    const w = raceRowWrite({
+      row: { type: 'race', distanceMi: o.race.distanceMi, paceTargetSecPerMi: null, spec: { hr_cap_bpm: 150 }, notes: null, subLabel: 'RACE' },
+      outlook: o,
+    });
+    expect('refused' in w).toBe(false);
+    expect((w as { specDrops: string[] }).specDrops).toContain('hr_cap_bpm');
     expect(s).toMatch(/AND \$\{runNotMergedSql\('r'\)\}/); // sealed = a canonical run exists that day
     // and a sealed or past row is skipped before anything is resolved for it
     expect(s).toMatch(/if \(row\.sealed \|\| row\.date_iso < today\)/);

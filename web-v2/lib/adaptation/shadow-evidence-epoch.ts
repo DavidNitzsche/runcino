@@ -148,8 +148,13 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/race/race-outlook.ts',
-    digest: '3d374860a9ca659f',
-    why: 'Re-pinned ALONE at epoch 3, branch (b), 2026-09-02 · CEFFORT-1 made `race.priority` load-bearing, so a C race is now priced as a controlled effort (Research/00b §"Recovery by Effort") instead of identically to an A race. What moved is `execution` — the target, the strategy label and the HR band for a C-effort DAY. What did NOT move is every belief a shadow record compares against: `capacity`, `currentProjection`, `expectedRaceDay` and `trainingPrescription` resolve byte-identically for the same activities, and an A or B race is untouched end to end (`_controlled_c_effort.test.ts` asserts that limb explicitly, as the control). A prescription for one day is not a belief about the runner, so no record written under epoch 3 compares against a number this changed, and bumping the epoch would discard the whole shadow corpus for a change that cannot move a single comparison. Stated rather than assumed, per this file\'s own instruction that the decision be made by someone who knows what they changed.',
+    digest: '5a329fe57882fb64',
+    why: 'Re-pinned ALONE at epoch 3, branch (b), 2026-09-02 · CEFFORT-1 made `race.priority` load-bearing, so a C race is now priced as a controlled effort (Research/00b §"Recovery by Effort") instead of identically to an A race. What moved is `execution` — the target, the strategy label and the HR band for a C-effort DAY. What did NOT move is every belief a shadow record compares against: `capacity`, `currentProjection`, `expectedRaceDay` and `trainingPrescription` resolve byte-identically for the same activities, and an A or B race is untouched end to end (`_controlled_c_effort.test.ts` asserts that limb explicitly, as the control). A prescription for one day is not a belief about the runner, so no record written under epoch 3 compares against a number this changed, and bumping the epoch would discard the whole shadow corpus for a change that cannot move a single comparison. Stated rather than assumed, per this file\'s own instruction that the decision be made by someone who knows what they changed. '
+      + 'Re-pinned ALONE again the same day (ROW-CONTRACT-1, also branch b): `coachSet` was DELETED. It was a '
+      + 'second A/B/C ladder over `expectedRaceDay.likelyRangeSec`, 40 s from the one `lib/race/coach-goal.ts` '
+      + 'owns and the race detail actually draws, and it was read by no route, no component and no Swift '
+      + 'model. Removing an output nothing consumes cannot move a belief: the same four resolvers named above '
+      + 'are untouched by it too.',
   },
   {
     file: 'lib/training/pace-corpus.ts',
