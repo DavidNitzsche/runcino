@@ -615,6 +615,60 @@ export function gradeSession(
 ): SessionGrade {
   const workPhases = phases.filter((p) => p.phaseType === 'work');
   const workVerdicts = workPhases.map((p) => gradePhase(p, kind));
+  const lateCollapse = lateCollapseOf(
+    workPhases.map((p) => ({ avgSecPerMi: p.avgSecPerMi, targetSecPerMi: p.targetSecPerMi })),
+  );
+  const recoveriesHonest = recoveriesHonestOf(opts?.recoveries ?? []);
+  return sessionLadder(workVerdicts, { lateCollapse, recoveriesHonest });
+}
+
+/**
+ * Late collapse · first vs last GRADED work phase, by pace.
+ *
+ * Exported on its own so `lib/execution/verdict.ts` — which grades each phase
+ * once and must not grade it again — can read the same collapse rule off the
+ * phases it already holds. ONE definition (Rule 16).
+ */
+export function lateCollapseOf(
+  work: readonly { avgSecPerMi?: number | null; targetSecPerMi?: number | null }[],
+): boolean {
+  const paced = work.filter(
+    (p) => p.avgSecPerMi != null && p.avgSecPerMi > 0 && p.targetSecPerMi != null && p.targetSecPerMi > 0,
+  );
+  if (paced.length < 3) return false;
+  const first = paced[0]!.avgSecPerMi!;
+  const last = paced[paced.length - 1]!.avgSecPerMi!;
+  return last - first > first * LATE_COLLAPSE_SHARE;
+}
+
+/**
+ * Recovery execution · absence is absence (Rule 11), never compliance.
+ * Exported for the same reason as `lateCollapseOf`.
+ */
+export function recoveriesHonestOf(
+  recs: readonly { prescribedSec?: number | null; actualSec?: number | null }[],
+): boolean | null {
+  const known = recs.filter(
+    (r) => r.prescribedSec != null && r.prescribedSec > 0 && r.actualSec != null && r.actualSec > 0,
+  );
+  if (known.length === 0) return null;
+  return known.every(
+    (r) => Math.abs(r.actualSec! - r.prescribedSec!) <= r.prescribedSec! * RECOVERY_DURATION_TOLERANCE,
+  );
+}
+
+/**
+ * THE session ladder, over per-phase verdicts that were graded ONCE.
+ *
+ * `gradeSession` grades and then calls this; `lib/execution/verdict.ts`
+ * grades through `gradePhase` per resolved shape and then calls this. Two
+ * callers, one ladder — the second implementation of it is the thing this
+ * export exists to prevent.
+ */
+export function sessionLadder(
+  workVerdicts: readonly PhaseVerdict[],
+  ctx: { lateCollapse: boolean; recoveriesHonest: boolean | null },
+): SessionGrade {
   const graded = workVerdicts.filter((v) => v !== 'not_graded').length;
   const hits = workVerdicts.filter((v) => v === 'hit').length;
   const fasts = workVerdicts.filter((v) => v === 'fast').length;
@@ -643,28 +697,7 @@ export function gradeSession(
    * under the intensity did not deliver the stimulus the session existed for,
    * and no other reader is going to discover that later. */
   const landed = hits + fasts;
-
-  // Late collapse · first vs last GRADED work phase, by pace.
-  const pacedWork = workPhases.filter(
-    (p) => p.avgSecPerMi != null && p.avgSecPerMi > 0 && p.targetSecPerMi != null && p.targetSecPerMi > 0,
-  );
-  let lateCollapse = false;
-  if (pacedWork.length >= 3) {
-    const first = pacedWork[0]!.avgSecPerMi!;
-    const last = pacedWork[pacedWork.length - 1]!.avgSecPerMi!;
-    lateCollapse = last - first > first * LATE_COLLAPSE_SHARE;
-  }
-
-  // Recovery execution · absence is absence (Rule 11), never compliance.
-  let recoveriesHonest: boolean | null = null;
-  const recs = (opts?.recoveries ?? []).filter(
-    (r) => r.prescribedSec != null && r.prescribedSec > 0 && r.actualSec != null && r.actualSec > 0,
-  );
-  if (recs.length > 0) {
-    recoveriesHonest = recs.every(
-      (r) => Math.abs(r.actualSec! - r.prescribedSec!) <= r.prescribedSec! * RECOVERY_DURATION_TOLERANCE,
-    );
-  }
+  const { lateCollapse, recoveriesHonest } = ctx;
 
   let verdict: SessionVerdict;
   if (graded === 0) verdict = 'not_graded';
