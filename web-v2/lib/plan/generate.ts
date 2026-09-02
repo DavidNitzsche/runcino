@@ -116,7 +116,7 @@ import {
   anchorsFor,
   newCatalogueHistory, recordCatalogueChoice, selectSlotWorkout, selectLongRunVariant,
   MARATHON_ROTATION_EXCLUDED, DOWNHILL_ONLY_SLUGS,
-  type CatalogueHistory, type ComposerSlot,
+  type CatalogueHistory, type ComposerSlot, type ThesisSlotContext,
 } from './catalogue-rx';
 import { capFamilyOf, type CapFamily, type PlacedSession } from '@/lib/workout-catalogue/select';
 import type { Tier, CatalogueEntry } from '@/lib/workout-catalogue/types';
@@ -4045,7 +4045,7 @@ function longFinishSegment(
 }
 
 function layoutWeek({
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false, thesisSlot = null,
 }: {
   phase: string; weekIdx: number;
   /** 2026-06-07 · Audit D follow-up · 0-indexed weeks remaining until this
@@ -4174,6 +4174,18 @@ function layoutWeek({
    * note and the sessions cannot disagree about what kind of race this is.
    */
   courseIsNetDownhill?: boolean;
+  /**
+   * THESIS-PLAN-1 (2026-09-02) · what the Coaching Thesis asks of this week's
+   * quality slots, or null when there is no thesis.
+   *
+   * Constitution §F is the boundary this respects: the composer does NOT rank a
+   * capacity, and nothing here computes one. It carries the limiter the Thesis
+   * already named and lets `selectSlotWorkout` prefer, inside doctrine's own
+   * placement for the slot, a session that can EVIDENCE it. See
+   * `ThesisSlotContext` in `catalogue-rx.ts` for the finding (brief §3.2.I) and
+   * for what happens when nothing paced is offerable.
+   */
+  thesisSlot?: ThesisSlotContext | null;
 }): DayPlan[] {
   // Race week: all roads lead to race day.
   if (isRaceWeek && raceDow != null) {
@@ -6020,6 +6032,9 @@ function layoutWeek({
             // repeats in the pool it landed in none, because a session the
             // runner had no use for was winning the rotation ahead of it.
             exclude: courseIsNetDownhill ? undefined : DOWNHILL_ONLY_SLUGS,
+            // THESIS-PLAN-1 · what the Coaching Thesis asks of this slot. Null
+            // on every caller that has no thesis; see `ThesisSlotContext`.
+            thesis: thesisSlot,
           })
         : null;
       if (choice?.ok) {
@@ -9253,6 +9268,79 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // per-cycle caps ("1× per training cycle") count the whole block.
   const catalogueHistory = newCatalogueHistory();
   /**
+   * THESIS-PLAN-1 (2026-09-02) · THE COACHING THESIS, CONSUMED.
+   *
+   * `thesisAtAuthoring` has reached this function since PHASE-ANSWERS-1 and has
+   * only ever been quoted into phase prose — `loadGeneratorInputs`' own comment
+   * said so: "the thesis is quoted into prose and prices nothing". The
+   * plan-generation brief §3.2.I is the cost: the Thesis named high-intensity
+   * evidence as the limiter and the block's first six weeks answered with
+   * effort-cued hills, which cannot produce a paced read of it. "Coincidental
+   * agreement is not strategy."
+   *
+   * WHICH FAMILIES CAN EVIDENCE WHICH LIMITER. Read off the catalogue's own
+   * `effortOnly` field and `Research/04`'s families, not invented here:
+   *
+   *   · HIGH_INTENSITY · §6's VO2max sessions and §7's repetitions are the
+   *     paced ones. §8's hills are `effortOnly` by the doc's own Pace column
+   *     ("5K-10K effort", never a number, "because a flat-ground pace is
+   *     unreachable on a 4-6% grade").
+   *   · THRESHOLD · §5's threshold family, §12's cutdowns and §10's combos all
+   *     carry a T or ST anchor.
+   *   · DURABILITY · null. Its evidence is the long run's DURATION and its
+   *     late-run behaviour, and the long slot is filled by
+   *     `selectLongRunVariant`, not by the quality slots this touches. Asking a
+   *     quality slot to evidence durability would be this file inventing a
+   *     capacity reading (Constitution §F forbids it).
+   *   · UNKNOWN · both threshold and high-intensity. `thesisPlanDirective`'s own
+   *     answer for an unnamed limiter is `emphasis: 'establish_evidence'`, and a
+   *     block that opens with only effort-cued work establishes none.
+   *
+   * A read that FAILED is not a limiter (Rule 11): `source === 'read_failed'`
+   * yields null here, the same as no thesis at all, and the phase answers
+   * already say which of the two happened.
+   */
+  const thesisSlot: ThesisSlotContext | null = (() => {
+    const t = input.thesisAtAuthoring;
+    if (!t || t.source !== 'resolved') return null;
+    switch (t.primaryLimiter) {
+      case 'HIGH_INTENSITY':
+        return {
+          limiter: 'HIGH_INTENSITY',
+          pacedEvidenceFamilies: ['vo2max', 'speed'],
+          doNotAddFamilies: null,
+          evidenceSlots: ['intervals', 'speed'],
+        };
+      case 'THRESHOLD':
+        return {
+          limiter: 'THRESHOLD',
+          pacedEvidenceFamilies: ['threshold', 'cutdown', 'combo'],
+          doNotAddFamilies: null,
+          evidenceSlots: ['threshold', 'tempo'],
+        };
+      case 'DURABILITY':
+        return {
+          limiter: 'DURABILITY',
+          pacedEvidenceFamilies: null,
+          // THESIS-PLAN-2 · `planEmphasisForLimiter('DURABILITY').doNotAdd` is
+          // the session family `'intervals'`; these are the CATALOGUE families
+          // that fill that slot (`SLOT_FAMILIES.intervals` in
+          // `workout-catalogue/select.ts`, minus the ones that also serve
+          // threshold). One mapping, read off the slot table rather than typed
+          // twice.
+          doNotAddFamilies: ['vo2max', 'hills', 'speed'],
+          evidenceSlots: null,
+        };
+      case 'UNKNOWN':
+        return {
+          limiter: 'UNKNOWN',
+          pacedEvidenceFamilies: ['vo2max', 'speed', 'threshold', 'cutdown', 'combo'],
+          doNotAddFamilies: null,
+          evidenceSlots: ['intervals', 'speed', 'threshold', 'tempo'],
+        };
+    }
+  })();
+  /**
    * AUTHORING-CANONICAL-1 · THE I-PACE ELIGIBILITY GATE IS DELETED, NOT MOVED.
    *
    * It read: a 5K/10K/HM goal earns a true Daniels I-pace; a marathon or ultra
@@ -9407,6 +9495,9 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // this is a descending race.
       courseIsNetDownhill:
         input.courseTerrain?.shape === 'net_downhill' && input.courseTerrain.trusted === true,
+      // THESIS-PLAN-1 · the Coaching Thesis, finally CONSUMED rather than only
+      // quoted. Resolved once for the block, above.
+      thesisSlot,
     });
     // 2026-06-23 · SP-4 · race-week chronology guard. layoutWeek positions
     // shakeout/tune-up/easy by a circular days-before-race offset that WRAPS, so for a

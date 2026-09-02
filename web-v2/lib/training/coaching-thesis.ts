@@ -743,20 +743,47 @@ export interface ThesisPlanDirective {
   confidence: number | null;
 }
 
+/**
+ * THESIS-PLAN-1 (2026-09-02) · the limiter → plan-emphasis mapping, extracted so
+ * there is exactly ONE of it (Rule 16).
+ *
+ * `thesisPlanDirective` needs a whole resolved `CoachingThesis`. The plan
+ * composer carries only the slice `ThesisAtAuthoring` persists — the limiter,
+ * the priority and the confidence — because that is all `authored_state` holds
+ * and all a pure `composePlan` caller can be handed. Both now read the same
+ * table, so a block cannot be built against one reading of the limiter while
+ * the coach line quotes another.
+ */
+export function planEmphasisForLimiter(limiter: ThesisLimiter): {
+  emphasis: ThesisPlanDirective['emphasis'];
+  keySessionFamily: SessionFamily | null;
+  doNotAdd: SessionFamily | null;
+} {
+  switch (limiter) {
+    case 'DURABILITY':
+      return { emphasis: 'durability', keySessionFamily: 'long', doNotAdd: 'intervals' };
+    case 'THRESHOLD':
+      return { emphasis: 'threshold', keySessionFamily: 'threshold', doNotAdd: null };
+    case 'HIGH_INTENSITY':
+      return { emphasis: 'high_intensity', keySessionFamily: 'intervals', doNotAdd: null };
+    case 'UNKNOWN':
+      return { emphasis: 'establish_evidence', keySessionFamily: null, doNotAdd: null };
+  }
+}
+
 export function thesisPlanDirective(thesis: CoachingThesis): ThesisPlanDirective {
   const hold = thesis.heldConstant
     .filter((h) => h.code !== 'NOT_LOOKED_AT_NO_DIRECT_READER')
     .map((h) => h.capacity);
-  switch (thesis.primaryLimiter) {
-    case 'DURABILITY':
-      return { emphasis: 'durability', keySessionFamily: 'long', hold, doNotAdd: 'intervals', basis: thesis.basis, confidence: thesis.confidence };
-    case 'THRESHOLD':
-      return { emphasis: 'threshold', keySessionFamily: 'threshold', hold, doNotAdd: null, basis: thesis.basis, confidence: thesis.confidence };
-    case 'HIGH_INTENSITY':
-      return { emphasis: 'high_intensity', keySessionFamily: 'intervals', hold, doNotAdd: null, basis: thesis.basis, confidence: thesis.confidence };
-    case 'UNKNOWN':
-      return { emphasis: 'establish_evidence', keySessionFamily: null, hold, doNotAdd: null, basis: thesis.basis, confidence: null };
-  }
+  const { emphasis, keySessionFamily, doNotAdd } = planEmphasisForLimiter(thesis.primaryLimiter);
+  return {
+    emphasis,
+    keySessionFamily,
+    hold,
+    doNotAdd,
+    basis: thesis.basis,
+    confidence: thesis.primaryLimiter === 'UNKNOWN' ? null : thesis.confidence,
+  };
 }
 
 function reviewTriggersFor(

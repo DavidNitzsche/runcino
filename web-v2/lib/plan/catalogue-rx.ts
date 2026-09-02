@@ -60,6 +60,11 @@ import type {
 } from '@/lib/workout-catalogue/types';
 import type { WorkoutFamily } from './workout-library-static';
 import { resolveZoneAnchors } from './zone-anchors';
+// THESIS-PLAN-1 · the catalogue is DATA, and the block needs to ask it which of
+// its entries can actually produce a paced read. `WORKOUT_CATALOGUE` is a pure
+// array of cited rows — no pool, no clock — so this import adds nothing to the
+// composer's runtime graph.
+import { WORKOUT_CATALOGUE } from '@/lib/workout-catalogue/catalogue';
 
 /* ─────────────────────────────────────────────────────────────── history ── */
 
@@ -126,6 +131,109 @@ export function recordCatalogueChoice(
 ): void {
   history.runs.push({ slug, weekIdx });
   history.cycleCounts[slug] = (history.cycleCounts[slug] ?? 0) + 1;
+}
+
+/* ─────────────────────────────────────────────────────── coaching thesis ── */
+
+/**
+ * THESIS-PLAN-1 (2026-09-02) · WHAT THE COACHING THESIS ASKS OF A SLOT.
+ *
+ * ── The defect ──────────────────────────────────────────────────────────────
+ *
+ * The Coaching Thesis has reached plan authoring since PHASE-ANSWERS-1, and
+ * `generate.ts:14630` said what it did there in as many words: "the thesis is
+ * quoted into prose and PRICES NOTHING". `thesisPlanDirective` — the projection
+ * of the thesis into the shape a composer consumes — had zero non-test callers.
+ *
+ * The plan-generation brief §3.2.I is the finding: "The Thesis identified
+ * high-intensity evidence as the limiter while the early block used unpaced
+ * hills that could not produce the specific evidence the Thesis said was
+ * needed; the first paced interval arrived weeks later. Hills may still be
+ * correct training, but the plan must explain whether it is developing
+ * economy/strength or resolving high-intensity uncertainty. Coincidental
+ * agreement is not strategy."
+ *
+ * Verified on the owner's live CIM block, 2026-09-02: weeks 1, 2 and 4 of
+ * QUALITY all carried `by_effort: true`, `rep_pace_s_per_mi: null` hill
+ * sessions (§8.3/§8.4). The first PACED rep set was week 6's `7×800 m @ I`.
+ *
+ * ── What this does, and deliberately no more ────────────────────────────────
+ *
+ * It does NOT re-rank the catalogue, override §15's placement, or add a session
+ * doctrine did not put on the slot. It asks ONE question, at the point where a
+ * slot is being filled: if the thesis says a capacity is the limiter, and the
+ * block has not yet authored a single session in that family that can produce a
+ * PACED read of it, then an effort-cued member of that family is not the right
+ * first pick — take the next session doctrine places on the same slot that can.
+ *
+ * `CatalogueEntry.effortOnly` is the catalogue's own field for exactly this
+ * ("True where the doc prescribes EFFORT and never a clock pace — every hill
+ * session, and the sprints"), so the question is answerable from cited data
+ * rather than from a judgment this module would have to invent (Constitution
+ * §F: the composer never ranks a capacity itself).
+ *
+ * If nothing paced is offerable — the week cannot afford it, §15 places none on
+ * this slot, the pace anchor is missing — the effort-cued session is taken and
+ * the rationale SAYS SO. A refusal to prescribe is not on the table here; the
+ * runner still gets doctrine's session for the slot.
+ */
+export interface ThesisSlotContext {
+  /** The limiter, from the Coaching Thesis. `UNKNOWN` is a fact, not a gap. */
+  limiter: 'THRESHOLD' | 'HIGH_INTENSITY' | 'DURABILITY' | 'UNKNOWN';
+  /**
+   * Catalogue families a paced read of the limiter can come from, or null when
+   * the limiter needs no paced session (durability's evidence is the long run's
+   * DURATION, and the long slot is chosen by `selectLongRunVariant`, not here).
+   */
+  pacedEvidenceFamilies: readonly WorkoutFamily[] | null;
+  /**
+   * THESIS-PLAN-2 · Constitution §F's `not_priority` — "what is deliberately not
+   * being emphasised" — as the catalogue families it names.
+   *
+   * This is a REPORTING obligation, not a ban, and the distinction is the whole
+   * point. `thesisPlanDirective`'s own words are "the family that must not be
+   * ADDED without explanation", and Constitution §15 says a coaching-strategy
+   * contradiction is "REPORTED, loudly, in the structured object" rather than
+   * silently resolved. Doctrine's own placement table (`Research/04` §15) puts
+   * hill and rep work in a marathon build's QUALITY phase; a thesis that says
+   * high-intensity is not the priority does not delete that phase, it means the
+   * plan owes the runner a sentence saying why the session is there anyway.
+   *
+   * Measured on the owner's live block, 2026-09-02: his thesis resolves
+   * DURABILITY / `increase_long_run_demand` with `doNotAdd: 'intervals'`, and
+   * weeks 1, 2 and 4 of QUALITY each carry a hill session on the intervals
+   * slot. Before this the plan said nothing about the tension; now the
+   * session's own rationale does.
+   */
+  doNotAddFamilies?: readonly WorkoutFamily[] | null;
+  /**
+   * The composer slots on which a paced read of the limiter could be placed.
+   *
+   * The preference has to be expressed against the SLOT, not against the
+   * evidence families, and the first cut of this got that wrong: excluding only
+   * entries whose own family can evidence the limiter never excludes anything,
+   * because an effort-cued session is by definition not in that set. `hills` is
+   * exactly the case — §8's sessions compete for the intervals and speed slots
+   * against §6's paced rep sets, and it was the hills that kept winning.
+   *
+   * (Found by falsifying the gate, not by review. Rule 18.)
+   */
+  evidenceSlots?: readonly ComposerSlot[] | null;
+}
+
+/** Whether the block has already authored a session that can produce a paced
+ *  read in one of `families`. Reads the catalogue's own `effortOnly` field. */
+export function blockHasPacedEvidence(
+  history: CatalogueHistory,
+  families: readonly WorkoutFamily[],
+): boolean {
+  const want = new Set(families);
+  for (const r of history.runs) {
+    const e = WORKOUT_CATALOGUE.find((x) => x.slug === r.slug);
+    if (!e) continue;
+    if (!e.effortOnly && want.has(e.family)) return true;
+  }
+  return false;
 }
 
 /** The selector's `recent` view of the history, in whole weeks back. */
@@ -689,6 +797,13 @@ export interface SlotRequest {
    * the defect it closes.
    */
   capFamilyRemainingMi?: Partial<Record<CapFamily, number>> | null;
+  /**
+   * THESIS-PLAN-1 · what the Coaching Thesis asks of this slot, or null when
+   * the caller has no thesis (every pure/synthetic caller, and a runner whose
+   * thesis read failed — Rule 11 keeps those two apart upstream and both
+   * arrive here as null, because neither is a limiter).
+   */
+  thesis?: ThesisSlotContext | null;
 }
 
 export type SlotChoice =
@@ -782,6 +897,11 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
     reason: 'no-quality-fits',
     detail: 'nothing was offered',
   };
+  // THESIS-PLAN-1 · sessions this slot passed over because they could not
+  // evidence the limiter, and whether the search ran out of paced options and
+  // had to take one anyway. Both reach the runner-facing rationale.
+  const thesisSkipped: string[] = [];
+  let thesisFellBack = false;
 
   // Bounded by the catalogue's own size: every pass either returns or removes
   // one entry from the running.
@@ -813,9 +933,58 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
       }
       lastRefusal = { reason: res.reason, detail: res.detail };
     }
-    if (!best) return { ok: false, ...lastRefusal };
+    if (!best) {
+      // THESIS-PLAN-1 · nothing paced was offerable on this slot. Re-run the
+      // search once with the thesis preference OFF rather than leaving the slot
+      // empty: doctrine's session for the slot is still the right training, and
+      // a plan that drops a quality day to hold a preference is worse than one
+      // that states the compromise. Rule 11 — this is a THIRD state, and the
+      // rationale distinguishes it from both "the thesis chose this" and "the
+      // thesis was never consulted".
+      if (thesisSkipped.length > 0 && !thesisFellBack) {
+        thesisFellBack = true;
+        for (const name of thesisSkipped) {
+          const e = WORKOUT_CATALOGUE.find((x) => x.name === name);
+          if (e) exclude.delete(e.slug);
+        }
+        continue;
+      }
+      return { ok: false, ...lastRefusal };
+    }
 
     const { entry, dose, rationale } = best;
+
+    // THESIS-PLAN-1 · the limiter's first session must be one that can EVIDENCE
+    // it. See `ThesisSlotContext` for the finding and the boundary.
+    const wantPaced = req.thesis?.pacedEvidenceFamilies ?? null;
+    const evidenceSlots = req.thesis?.evidenceSlots ?? null;
+    if (
+      wantPaced != null
+      && evidenceSlots != null
+      && evidenceSlots.includes(req.slot)
+      && entry.effortOnly
+      && !blockHasPacedEvidence(req.history, wantPaced)
+      && !thesisFellBack
+    ) {
+      exclude.add(entry.slug);
+      // Recorded as an ATTEMPT for the same reason a non-renderable shape is:
+      // the rotation is least-recently-used, and an entry that keeps being
+      // passed over without a trace stays permanently the stalest and burns the
+      // top of the rotation every week (see `CatalogueHistory.attempts`).
+      if (req.history.attempts && !req.history.attempts.some(
+        (a) => a.slug === entry.slug && a.weekIdx === req.weekIdx,
+      )) {
+        req.history.attempts.push({ slug: entry.slug, weekIdx: req.weekIdx });
+      }
+      thesisSkipped.push(entry.name);
+      lastRefusal = {
+        reason: 'thesis-needs-paced-evidence',
+        detail: `${entry.name} (${entry.section}) is prescribed by effort and cannot evidence `
+          + `${req.thesis!.limiter}, which the Coaching Thesis names as the limiter`,
+      };
+      continue;
+    }
+
     const prescription = req.slot === 'tempo' ? null : renderPrescription(entry, dose);
     const phrase = req.slot === 'tempo' ? renderContinuousPhrase(entry, dose) : null;
     if (prescription == null && phrase == null) {
@@ -836,6 +1005,23 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
       };
       continue;
     }
+    // THESIS-PLAN-1 · say what the thesis did, in the line the runner reads.
+    // Rule 20: a coaching decision nothing records is a decision nobody can
+    // check, and `selection_rationale` is where "why this session?" lives.
+    // THESIS-PLAN-2 · the `not_priority` family, placed anyway because doctrine
+    // places it. State the tension rather than let the two disagree in silence.
+    const notPriority = req.thesis?.doNotAddFamilies ?? null;
+    const notPriorityClause = notPriority && notPriority.includes(entry.family)
+      ? ` Thesis holds ${req.thesis!.limiter} as the limiter and does not prioritise this family; `
+        + `it is here because Research/04 §15 places it on this slot in ${req.enginePhase}.`
+      : '';
+    const thesisClause = thesisSkipped.length === 0
+      ? ''
+      : thesisFellBack
+        ? ` Thesis names ${req.thesis!.limiter} as the limiter and this week had no paced `
+          + `session available to evidence it; ${thesisSkipped[0]} stands as the slot's session.`
+        : ` Chosen over ${thesisSkipped[0]} because the Thesis names ${req.thesis!.limiter} as `
+          + `the limiter and an effort-cued session cannot evidence it.`;
     return {
       ok: true,
       entry,
@@ -844,7 +1030,7 @@ export function selectSlotWorkout(req: SlotRequest): SlotChoice {
       phrase,
       family: entry.family,
       note: catalogueNote(entry, dose),
-      rationale,
+      rationale: rationale + thesisClause + notPriorityClause,
     };
   }
   return { ok: false, ...lastRefusal };
