@@ -248,6 +248,7 @@ import {
   HOLD_BLOCK_MAX_WEEKS,
   HOLD_PROGRESSION_MIN_WEEKS,
   HOLD_CYCLE_GROWTH,
+  MP_LONG_TEMPO_MIN_GAP_DAYS,
 } from '@/lib/plan/generate';
 import {
   DRESS_REHEARSAL,
@@ -913,6 +914,55 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (TENK_PROGRESSION_FINISH_MI < FAST_FINISH_MIN_MI) {
         throw new Error(
           `TENK_PROGRESSION_FINISH_MI (${TENK_PROGRESSION_FINISH_MI}) is below FAST_FINISH_MIN_MI (${FAST_FINISH_MIN_MI}) — every tail would be authored and immediately zeroed`,
+        );
+      }
+    },
+  },
+
+  {
+    id: 'LONGRUN.mp-tempo-spacing',
+    binds: [
+      'lib/plan/generate.ts#MP_LONG_TEMPO_MIN_GAP_DAYS',
+      'lib/plan/generate.ts#authorDressRehearsal',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '## 16. Combinations to avoid',
+    claim:
+      'A marathon-pace long run and a hard marathon-pace tempo may not be run within the ' +
+      'window §16 names. The engine honoured this INSIDE a week (DOCTRINE-MPLONG-1 removes the ' +
+      'tempo slot from an MP-long week) while §16 is stated in DAYS, so the pair the dress ' +
+      'rehearsal (§4.6, last race-specific week) and the taper\'s week-minus-3 session (§9.2, ' +
+      'first taper week) form two days apart straddled the week boundary and no check could ' +
+      'see it. The engine\'s gap constant must equal the number in the row\'s own text.',
+    check({ cite }) {
+      // The window lives in the row's KEY, which is also its first column, so
+      // the number is read out of the doc rather than restated here (Rule 18:
+      // a check that hardcodes both sides only proves it agrees with itself).
+      const t = cite.table();
+      const row = t.rows.find((r) => /MP long run \+ hard tempo within/i.test(Object.values(r)[0] ?? ''));
+      if (!row) {
+        throw new Error(
+          'Research/04 §16 no longer carries the "MP long run + hard tempo within N days" row · ' +
+            'MP_LONG_TEMPO_MIN_GAP_DAYS is read off it',
+        );
+      }
+      const key = Object.values(row)[0] ?? '';
+      const m = /within\s+(\d+)\s+days/i.exec(key);
+      if (!m) {
+        throw new Error(`could not read the day window out of §16's row: "${key}"`);
+      }
+      const stated = Number(m[1]);
+      if (MP_LONG_TEMPO_MIN_GAP_DAYS !== stated) {
+        throw new Error(
+          `MP_LONG_TEMPO_MIN_GAP_DAYS is ${MP_LONG_TEMPO_MIN_GAP_DAYS}, §16 says ${stated} days`,
+        );
+      }
+      // And the rule must still be APPLIED. A constant nothing reads is the
+      // "wired, tested and inert" shape this codebase keeps shipping.
+      const src = sourceOf('web-v2/lib/plan/generate.ts');
+      if (!/MP_LONG_TEMPO_MIN_GAP_DAYS/.test(src.replace(/export const MP_LONG_TEMPO_MIN_GAP_DAYS[^;]*;/, ''))) {
+        throw new Error(
+          'MP_LONG_TEMPO_MIN_GAP_DAYS is declared and never read · the §16 spacing rule is inert',
         );
       }
     },

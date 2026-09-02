@@ -12700,6 +12700,73 @@ function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: numbe
       // RACEROLE-1 · window scaled by the ANSWERED effort, not the letter.
       return gap > 0 && gap <= postRaceNoQualityDays(e.distanceMi, effectiveRecoveryPriority(e));
     });
+    /* ── MPSPACING-1 (2026-09-01) · §16 IS STATED IN DAYS, AND THIS PASS
+     * CROSSES A WEEK BOUNDARY.
+     *
+     * `Research/04` §16: "MP long run + hard tempo within 5 days | Same energy
+     * system, same impact pattern, no recovery between."
+     *
+     * The engine honours that INSIDE a week — `DOCTRINE-MPLONG-1` removes the
+     * tempo slot from any week whose long carries marathon pace. This pass is
+     * the one place a marathon-pace long is authored WITHOUT that check having
+     * run, and it authors it on the last day of the last race-specific week:
+     * §4.6 dates the rehearsal "3 weeks pre-marathon; before taper begins".
+     * `taperMpDose` then puts §9.2's week-minus-3 session ("Final MP-specific
+     * (14-16 mi w/ 10-12 mi at MP)") in the FIRST taper week, two days later.
+     * Different weeks, so nothing looked.
+     *
+     * Measured on the owner's live CIM block `pln_9a57561debb776e5`:
+     *   2026-11-15  LONG 16 mi · 4 mi @ MP      (this pass)
+     *   2026-11-17  TEMPO 15 mi · 11 mi @ MP    (§9.2's session)
+     * Fifteen marathon-pace miles across three days, entering a taper.
+     *
+     * ── WHICH SESSION YIELDS, AND WHY IT IS THIS ONE ─────────────────────────
+     *
+     * §9.2's session is dated by the taper structure and is the larger MP
+     * rehearsal (11 mi against 4). §4.6's is the one doctrine itself says may
+     * lose its race pace: its Contraindications row reads "Not a fitness
+     * builder — keep effort controlled. If injury threat, skip MP segments",
+     * and its stated Purpose is "Final equipment, fueling, and timing
+     * rehearsal" — kit, race breakfast, fuelling intervals, none of which
+     * needs marathon-pace miles to rehearse.
+     *
+     * So the rehearsal still happens, on the day doctrine dates it, doing the
+     * job §4.6 names. It simply does not add a second marathon-pace session to
+     * the three days before the taper's own. The runner loses no MP rehearsal:
+     * they gain a bigger one two days later.
+     *
+     * NOT WIDENED BEYOND §16's OWN ROW. Only a QUALITY session carrying
+     * marathon pace inside the window suppresses the segments — the row names
+     * "hard tempo", not any hard day. A block with no such session is
+     * byte-identical to before. */
+    const rehearsalISO = dowDateInWeek(w.startISO, long.dow);
+    const collidingMp = composed.weeks.flatMap((wk) => {
+      const startDow = new Date(wk.startISO + 'T12:00:00Z').getUTCDay();
+      return wk.days
+        .filter((d) => d.isQuality && !d.isLong && d.type !== 'race' && /@\s*MP?\b/i.test(String(d.subLabel ?? '')))
+        .map((d) => ({
+          dateISO: addDays(wk.startISO, ((d.dow - startDow) % 7 + 7) % 7),
+          label: String(d.subLabel ?? ''),
+        }));
+    }).find((q) => {
+      const gap = Math.abs(daysBetween(rehearsalISO, q.dateISO));
+      return gap > 0 && gap < MP_LONG_TEMPO_MIN_GAP_DAYS;
+    });
+
+    if (collidingMp) {
+      long.longRunKind = 'dress_rehearsal';
+      // No `@ MP` in the label: `splitDay` reads the segment back out of it,
+      // so a label promising race pace the day does not carry would put the
+      // miles into every dosing and intensity count (Rule 16 · the label and
+      // the spec are one set of numbers).
+      long.subLabel = 'LONG';
+      long.notes =
+        'Dress rehearsal · Research/04 §4.6. Race kit, race breakfast, race fuelling, race-day '
+        + 'timing. Run it all at easy effort. The marathon-pace rehearsal is the session two days '
+        + 'later, and Research/04 §16 keeps the two apart.';
+      return;
+    }
+
     const dose = dressRehearsalDose(long.distanceMi, budgetMi, FAST_FINISH_MIN_MI, inPostRaceWindow, drTotalBand);
     if (!dose) return;
     long.longRunKind = 'dress_rehearsal';
@@ -12713,6 +12780,16 @@ function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: numbe
     return;
   }
 }
+
+/**
+ * MPSPACING-1 · `Research/04` §16's own window, in days.
+ *
+ * "| MP long run + hard tempo within 5 days | Same energy system, same impact
+ * pattern, no recovery between |". Bound by `LONGRUN.mp-tempo-spacing` in
+ * lib/doctrine/registry.ts, which parses the number out of that row rather
+ * than trusting this copy.
+ */
+export const MP_LONG_TEMPO_MIN_GAP_DAYS = 5;
 
 /**
  * DOWNHILL-2 (2026-08-29) · PROMOTE ONE RACE-PACE LONG TO THE DOWNHILL
