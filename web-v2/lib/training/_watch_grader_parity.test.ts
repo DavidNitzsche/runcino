@@ -49,8 +49,13 @@ import {
   EASY_PHASE_TOLERANCE_S_PER_MI,
   type PaceShape,
   type PhaseType,
+  type PhaseVerdict,
   type SessionClass,
 } from './execution-semantics';
+// CEIL-SLACK-1 · the SERVER'S real entry point, not a local reimplementation.
+// A gate that reimplements the thing it is checking proves only that the gate
+// agrees with itself.
+import { gradeStoredPhases } from '@/lib/execution/verdict';
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 
@@ -427,5 +432,62 @@ describe('EXECSEM-5c · the ceiling slack is doctrine s E width on both sides', 
     // The wrist's fallback when the wire carries no tolerance.
     expect(src).toMatch(/let slack = p\.tolerancePaceSPerMi \?\? 30/);
     expect(EASY_PHASE_TOLERANCE_S_PER_MI).toBe(30);
+  });
+
+  /* CEIL-SLACK-1 (2026-09-02) · AND THEY USE THE PHASE'S OWN SLACK WHEN IT HAS
+   * ONE, which the assertion above could not see.
+   *
+   * The wrist reads `p.tolerancePaceSPerMi ?? 30`; the server read nothing and
+   * always took the 30. The two therefore agreed only where the phase's own
+   * tolerance WAS 30 — warm-up and cool-down — and disagreed on every easy day
+   * (tolerance 20) and every long run (18). A gate that asserts two fallbacks
+   * match is structurally incapable of failing on the data (Rule 22), and this
+   * one had been green over a ten-second-a-mile divergence since the day it
+   * was written.
+   *
+   * These are the owner's real authored tolerances, off `pln_9a57561debb776e5`
+   * as of 2026-09-02. */
+  const CEILING_CASES: Array<{ what: string; target: number; tol: number; avg: number; expect: PhaseVerdict }> = [
+    // easy 2026-09-04 · band 502-542, centre 522, half-width 20.
+    { what: 'easy 8:15/mi against a 502 fast edge', target: 522, tol: 20, avg: 495, expect: 'fast' },
+    { what: 'easy 8:25/mi, inside the band', target: 522, tol: 20, avg: 505, expect: 'hit' },
+    // long 2026-09-06 · band 502-537, centre 520, half-width 18.
+    { what: 'long 8:10/mi against a 502 fast edge', target: 520, tol: 18, avg: 490, expect: 'fast' },
+    { what: 'long 8:40/mi, slower than the ceiling, which is not a miss', target: 520, tol: 18, avg: 520, expect: 'hit' },
+    // warm-up · the case that already agreed, kept so a fix cannot break it.
+    { what: 'warm-up 8:36/mi under a 502 ceiling', target: 502, tol: 30, avg: 516, expect: 'hit' },
+    { what: 'warm-up 7:40/mi, well through the ceiling', target: 502, tol: 30, avg: 460, expect: 'fast' },
+  ];
+
+  it('the server grades a ceiling at the phase s own slack, exactly as the wrist does', () => {
+    for (const c of CEILING_CASES) {
+      const phases = [{
+        index: 0, type: 'work', label: c.what, completed: true,
+        targetPaceSPerMi: c.target, tolerancePaceSPerMi: c.tol,
+        actualPaceSPerMi: c.avg, actualDistanceMi: 5, actualDurationSec: Math.round(5 * c.avg),
+        paceShape: 'ceiling',
+      }];
+      const graded = gradeStoredPhases(phases, 'easy');
+      expect(graded.phases[0].verdict, c.what).toBe(c.expect);
+      // And the wrist's own rule, run over the same numbers.
+      const wrist = c.avg < c.target - c.tol ? 'fast' : 'hit';
+      expect(graded.phases[0].verdict, `${c.what} · wrist said ${wrist}`).toBe(wrist);
+    }
+  });
+
+  it('LIVENESS · these cases actually reached the ceiling arm', () => {
+    // A ceiling case that silently graded as a window would satisfy the
+    // assertions above on four of the six rows by coincidence.
+    const phases = CEILING_CASES.map((c, i) => ({
+      index: i, type: 'work', completed: true,
+      targetPaceSPerMi: c.target, tolerancePaceSPerMi: c.tol,
+      actualPaceSPerMi: c.avg, actualDistanceMi: 5, actualDurationSec: Math.round(5 * c.avg),
+      paceShape: 'ceiling',
+    }));
+    const graded = gradeStoredPhases(phases, 'easy');
+    expect(graded.phases).toHaveLength(CEILING_CASES.length);
+    for (const p of graded.phases) expect(p.shape).toBe('ceiling');
+    // A ceiling has no slow edge, ever.
+    expect(graded.phases.some((p) => p.verdict === 'slow')).toBe(false);
   });
 });
