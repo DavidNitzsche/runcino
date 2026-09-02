@@ -136,15 +136,60 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       if (resolvedProvenance === 'measured') elevationFootnotes.push('Measured from GPS.');
     } catch { /* elevation is additive — never fail the detail over it */ }
 
+    // 2026-09-02 · P0 · THE PACE PLAN IS BUILT FROM THE TARGET, NEVER THE GOAL.
+    //
+    // This block used to pass `goalSec` — the runner's TYPED ASPIRATION —
+    // straight into `buildRacePacing`. The same response already carried the
+    // canonical execution target and prose explaining why the goal is out of
+    // reach, so the screen argued against the goal in words and then handed
+    // him a mile-by-mile plan for it, with a final phase labelled "Lock goal
+    // pace".
+    //
+    // Measured on the owner's CIM detail, 2026-09-02: stated target 7:23/mi,
+    // pace plan weighted mean 413 s/mi = 6:53/mi = exactly his 3:00:00 goal
+    // pace. THIRTY SECONDS PER MILE, thirteen minutes across the marathon, in
+    // the direction that ends a marathon at mile 18.
+    //
+    // Constitution §7 names this shape verbatim and
+    // `DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md` requires goal data be
+    // PHYSICALLY excluded from a capacity path rather than kept out by
+    // convention. No source scan found it because `buildRacePacing(goalSec)`
+    // is a legitimate call with a legitimately-named argument; it took a
+    // cross-surface contract reading both numbers off one live response.
+    //
+    // `outlook.execution.targetSec` is the one owner of "what should he run
+    // this race at" (`lib/race/race-outlook.ts`), and it already honours the
+    // stated goal exactly as far as doctrine allows — pulling the target no
+    // further than the fast edge of the likely range, and reporting which of
+    // those it did through `execution.source`.
+    //
+    // RULE 11 · when the outlook cannot resolve there is NO pace plan. The
+    // goal is not a fallback here; falling back to it is the defect.
+    const outlook = (!race.is_past && distanceMi > 0)
+      ? await resolveRaceOutlookBySlug(userId, race.slug, todayISO).catch(() => null)
+      : null;
+    const pacePlanTargetSec = outlook?.execution.targetSec ?? null;
+
     let pacePlan: V5RowOut[] = [];
-    if (goalSec && distanceMi > 0) {
+    if (pacePlanTargetSec && distanceMi > 0) {
       try {
         const geometryForPacing = (libRow?.geometry_json ?? courseGeometry) as CourseGeometryInput | null;
-        const pacing = buildRacePacing({ goalSec, distanceMi, geometry: geometryForPacing });
+        const pacing = buildRacePacing({
+          goalSec: pacePlanTargetSec, distanceMi, geometry: geometryForPacing,
+        });
         pacePlan = (pacing.phases ?? []).map((p, i) => ({
           id: `phase-${i}`,
           label: `Miles ${Math.round(p.start_mi)}-${Math.round(p.end_mi)}`,
-          sub: [p.label, p.cue].filter(Boolean).join(' · ') || null,
+          // RULE 16 · `buildRacePacing` labels its last phase "Goal pace",
+          // which was true while this block passed the goal and is a LIE now
+          // that it passes the target. On the owner's CIM the two are 31 s/mi
+          // apart, so a row reading "Goal pace · 7:19/mi" would state a pace
+          // that is not his goal pace under the words "goal pace". The
+          // shared builder keeps its label — the retrospective passes a real
+          // goal and is right to say so — and the caller that changed what it
+          // passes renames what it draws.
+          sub: [p.label === 'Goal pace' ? 'Target pace' : p.label, p.cue]
+            .filter(Boolean).join(' · ') || null,
           // `display` already carries its unit ("6:58/mi"); appending
           // another produced "6:55/mi/mi" on screen.
           value: num(p.display, true),
@@ -192,9 +237,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     // 2026-09-01 · P0 · THE race-pace brain. `resolveRaceOutlookBySlug` is
     // the one owner; `raceProjectionFromOutlook` is the one mapping to
     // "Projected". The list route reads the same two functions.
-    const outlook = (!race.is_past && distanceMi > 0)
-      ? await resolveRaceOutlookBySlug(userId, race.slug, todayISO).catch(() => null)
-      : null;
     const projection = raceProjectionFromOutlook(outlook);
     // The runner's fitness for the heat read below: the canonical threshold
     // capacity's VDOT, not a snapshot table's.

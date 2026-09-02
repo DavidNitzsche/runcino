@@ -318,23 +318,6 @@ const KNOWN_DISAGREEMENTS: readonly KnownDisagreement[] = [
     owner: 'app/api/targets/projection/route.ts — the cleanest deletion in the audit (scorecard §26); until then, `_race_projection.test.ts`\'s hardcoded six-file scope cannot see it',
     closesWhen: 'the route is deleted, or it resolves through race-outlook like every other consumer',
   },
-  {
-    id: 'RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL',
-    quantity: "the pace to run the goal race at — the mile-by-mile plan against the prescribed target",
-    canonicalPath: 'race-outlook.execution.paceSecPerMi (rendered on the SAME screen as "Controlled start · 7:23/mi average")',
-    divergentPath: 'GET /api/v5/race/[slug] · pacePlan[] · buildRacePacing({ goalSec, … }) — the distance-weighted mean of the phases',
-    // The plan's weighted mean IS the stated goal pace. That is the whole
-    // finding: the screen prices its own execution plan off the goal the
-    // engine explicitly declined one field away.
-    shape: (executionPace, planMeanPace, ctx) =>
-      planMeanPace !== executionPace && Math.abs(planMeanPace - ctx.goalPaceSecPerMi) <= 3,
-    observed:
-      'CIM 2026-12-06, one payload: execution.pace_s_per_mi 443 (7:23) and strategy "Controlled start · 7:23/mi average", beside pacePlan phases 6:55 · 7:06 · 6:55 · 6:45 · 6:48 whose distance-weighted mean is 413 s/mi — the stated 3:00:00 goal pace (412), grade-adjusted. 30 s/mi apart, and the last phase is labelled "Lock goal pace". The reason field one level up reads "Your goal (3:00:00) is faster than the likely range\'s fast edge (3:13:28) · race to the edge; the goal stays yours."',
-    reason:
-      'Constitution §7 names goal-derived prescription as the anti-pattern, and B1 deleted `derivePaces` for exactly this shape — but the race screen\'s pacing was never part of that sweep. `route.ts:141` calls `buildRacePacing({ goalSec, distanceMi, geometry })` and never sees `outlook.execution`. Fixing it means changing what the runner is told to run on race day, which is a coaching decision and not a test-file change.',
-    owner: 'app/api/v5/race/[slug]/route.ts:139-153 — `buildRacePacing` should take `outlook.execution.targetSec`, not the stated goal',
-    closesWhen: "the pace plan's distance-weighted mean equals race-outlook.execution.paceSecPerMi",
-  },
 ];
 
 const KNOWN_IDS = new Set(KNOWN_DISAGREEMENTS.map((k) => k.id));
@@ -1048,7 +1031,7 @@ describe.skipIf(!RO)('cross-surface contract · registered disagreements (LIVE)'
     judgeCount(entry('WATCH-CEILING-IS-THE-BAND-MIDPOINT'), seen, candidates);
   }, 600_000);
 
-  it('RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL · the race screen plans the goal, not the target', async () => {
+  it('CLOSED 2026-09-02 · the race screen plans the TARGET, and its mean equals the execution pace', async () => {
     process.env.DATABASE_URL = RO;
     const { pool } = await import('@/lib/db/pool');
     expect((await pool.query('SELECT current_user')).rows[0].current_user).toBe('faff_readonly');
@@ -1087,9 +1070,27 @@ describe.skipIf(!RO)('cross-surface contract · registered disagreements (LIVE)'
     const distanceMi = outlook!.race.distanceMi;
     expect(goalSec, 'no stated goal — this entry is unreachable, not clean').toBeTruthy();
     const goalPaceSecPerMi = Math.round(Number(goalSec) / Number(distanceMi));
-    judge(entry('RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL'), executionPace!, planMean, {
-      goalPaceSecPerMi, phases: phases.length, milesCovered: miles,
-    });
+    // CLOSED 2026-09-02. This was a registered disagreement: the screen stated
+    // a 7:23/mi execution target and prose refusing the 3:00:00 goal, then drew
+    // a pace plan whose weighted mean was 412 s/mi — the goal pace — with its
+    // last phase labelled "Lock goal pace". Thirty-one seconds per mile, about
+    // thirteen minutes across a marathon.
+    //
+    // `route.ts` now passes `outlook.execution.targetSec`, and this ratchet is
+    // what forced the entry's deletion: it failed with "STALE EXEMPTION —
+    // now AGREES (443)" the moment the fix landed. The assertion is kept, and
+    // inverted, so the disagreement cannot come back quietly.
+    //
+    // A tolerance of 3 s/mi, not 0: `buildRacePacing` grade-adjusts each phase
+    // over the course profile and the weighted mean is reconstructed from the
+    // ROUNDED "m:ss/mi" strings the screen actually draws.
+    expect(Math.abs(planMean - executionPace!),
+      `the race pace plan's weighted mean is ${planMean} s/mi against an execution `
+      + `target of ${executionPace} s/mi. The stated goal is ${goalPaceSecPerMi} s/mi. `
+      + `If the plan has drifted back toward the goal, this is Constitution §7 again.`)
+      .toBeLessThanOrEqual(3);
+    expect(planMean, 'the pace plan must not equal the stated goal pace')
+      .not.toBe(goalPaceSecPerMi);
   }, 300_000);
 
   it('TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION · /api/targets/projection does not resolve the owner', async () => {
