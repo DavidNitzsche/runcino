@@ -782,8 +782,12 @@ function composePrescription(args: {
   }
 
   if (band === 'sharp') {
-    if (isQuality) return rx('Send it. Plan as scheduled.', 'SHARP band · system is firing · don\'t hold back.', 'send');
-    if (isLong)    return rx('Send it. Plan stands · fast finish if it\'s scheduled.', 'SHARP band · use the day.', 'send');
+    // 2026-09-02 · "Send it" and "don't hold back" were slang standing in for
+    // an instruction, and on a QUALITY day they contradict the prescription
+    // sitting beside them: the session has a pace band, and "don't hold back"
+    // is the opposite of running one.
+    if (isQuality) return rx('Run the session as prescribed.', 'Recovery is good · take the targets as written.', 'send');
+    if (isLong)    return rx('Plan stands · fast finish if it\'s scheduled.', 'Recovery is good · use the day.', 'send');
     if (isEasy)    return rx('Easy as planned · don\'t turn it into a hard day because you feel good.', 'SHARP band but easy day · banking days like this matter.', 'plan');
     return rx('Plan stands.', 'SHARP band · run as scheduled.', 'plan');
   }
@@ -1287,9 +1291,13 @@ function confoundersFor(
       ];
     case 'load':
       return [
-        { pillar: 'load', categoryTag: 'LOAD',  explanation: 'Big week recently · sweet spot is 1.0-1.3', likely: false },
-        { pillar: 'load', categoryTag: 'LOAD',  explanation: 'Long layoff before this week · low chronic28', likely: false },
-        { pillar: 'load', categoryTag: 'LOAD',  explanation: 'Race week · taper drops ACWR by design', likely: false },
+        // 2026-09-02 · these three said "sweet spot is 1.0-1.3", "low
+        // chronic28" and "taper drops ACWR by design" at a runner. Model
+        // internals, and the last one names the metric outright. Same three
+        // causes, in words that mean something without the model.
+        { pillar: 'load', categoryTag: 'LOAD',  explanation: 'This week ran well above your recent normal', likely: false },
+        { pillar: 'load', categoryTag: 'LOAD',  explanation: 'A long layoff sits behind this week, so the baseline is thin', likely: false },
+        { pillar: 'load', categoryTag: 'LOAD',  explanation: 'Race week · the taper is meant to drop the load', likely: false },
       ];
     case 'hr_recovery':
       return [
@@ -1319,9 +1327,11 @@ function buildHeadline(
     return `${PILLAR_LABEL[s.pillar]} ${s.direction} for ${s.days} days · The trend matters more than today's number.`;
   }
   if (b.band === 'sharp') {
+    // 2026-09-02 · "The system is firing" was the engine describing its own
+    // state. Say what it means for the runner instead.
     return movers.length && movers[0].deltaPts > 0
-      ? `Sharp · The system is firing. ${movers[0].label.toLowerCase()}.`
-      : `Sharp · The system is firing.`;
+      ? `Sharp · You are well recovered. ${movers[0].label.toLowerCase()}.`
+      : `Sharp · You are well recovered.`;
   }
   if (b.band === 'ready') {
     // 2026-06-05 · multi-tenant audit Pattern 5 fix · cite-or-shut-up.

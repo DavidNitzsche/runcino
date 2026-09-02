@@ -85,13 +85,33 @@ function typeWord(type: string | null): string {
   return 'run';
 }
 
+/**
+ * THE SCORE CAME OUT, 2026-09-02.
+ *
+ * Every branch used to open `readiness ${score} · …` — "readiness 83 · solid",
+ * "readiness 91 · the system is firing". Two separate defects in one phrase:
+ *
+ *   · THE NUMBER. `docs/PRODUCT_UX_SIMPLIFICATION_DOCTRINE.md` lists
+ *     "readiness scores" under what demotes to internal, and its one rule is
+ *     that a surface only carries what changes what the runner does next. The
+ *     score does not: this composer's own comment says "Plan stands · score
+ *     informs. No re-prescription in any branch." A number the coach will not
+ *     act on has no business being the loudest thing in the sentence.
+ *   · "THE SYSTEM IS FIRING." A dashboard narrating its own state, in the
+ *     voice of the engine rather than the coach.
+ *
+ * The BAND still drives the sentence, because the band is what changes the
+ * instruction. `score` stays in the signature and is still the thing that
+ * decides whether there is a reading at all — a band with no score behind it
+ * is not a reading, and Rule 11 says absent and low are different facts.
+ */
 function bandPhrase(band: MorningBriefBand | null, score: number | null): string | null {
   if (band == null || band === 'no-data' || score == null) return null;
-  // Plan stands · score informs. No re-prescription in any branch.
-  if (band === 'sharp') return `readiness ${score} · the system is firing`;
-  if (band === 'ready') return `readiness ${score} · solid`;
-  if (band === 'moderate') return `readiness ${score} · keep the easy parts genuinely easy`;
-  return `readiness ${score} · low, so listen on the way · the plan stands`;
+  // Plan stands · band informs. No re-prescription in any branch.
+  if (band === 'sharp') return 'you are well recovered';
+  if (band === 'ready') return 'recovery looks normal';
+  if (band === 'moderate') return 'keep the easy parts genuinely easy';
+  return 'recovery is down, so listen on the way · the plan stands';
 }
 
 function fmtMi(mi: number): string {
@@ -107,7 +127,7 @@ function composeTodaySentence(i: MorningBriefInput): string {
   }
   if (t === 'race_week_tuneup') {
     const miPart = i.todayMi > 0 ? ` · ${fmtMi(i.todayMi)} mi` : '';
-    return `Tune-up today${miPart} · sharp, not heroic.`;
+    return `Tune-up today${miPart} · short and sharp, nothing to prove.`;
   }
   if (t === 'rest' || t === '' || t === 'unplanned') {
     // No readiness tail on a no-run day · "keep the easy parts easy"
@@ -135,7 +155,10 @@ function composeRecapSentence(i: MorningBriefInput): string | null {
       : cat === 'easy' ? 'easy run'
       : (i.yesterday.type ?? '').toLowerCase().startsWith('race') ? 'race'
       : 'run';
-    return `${fmtMi(i.yesterday.ranMi)} mi ${word} went in the book yesterday.`;
+    // 2026-09-02 · was "went in the book yesterday". Ledger voice: it
+    // describes what the app did with the run, not what the run did for the
+    // runner. Same three facts, said by a person.
+    return `You ran ${fmtMi(i.yesterday.ranMi)} mi yesterday, a ${word}.`;
   }
   return null;
 }

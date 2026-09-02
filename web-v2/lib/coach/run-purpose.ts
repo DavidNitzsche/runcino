@@ -113,7 +113,10 @@ export function derivePurpose(input: PurposeInput): PurposePayload {
       if (phase === 'BASE') {
         facts.push("Just put the miles in. The week's volume is what matters · not how fast any one run goes.");
       } else if (phase === 'PEAK' || phase === 'TAPER') {
-        facts.push("Easy means easy. Today is about recovering for the hard stuff coming up · don't get fancy.");
+        // 2026-09-02 · was "· don't get fancy." It scolds a decision the
+        // runner has not made yet, which is the punitive register the voice
+        // brief names. State what the day is for and stop.
+        facts.push('Easy means easy. Today is about recovering for the hard work coming up.');
       }
       return { verdict: 'Easy day.', facts };
     }
@@ -142,7 +145,10 @@ export function derivePurpose(input: PurposeInput): PurposePayload {
       if (phase === 'BUILD' || phase === 'PEAK') {
         facts.push("These sessions pay off over weeks · one good tempo doesn't change much, but ten of them changes your race time.");
       } else {
-        facts.push("If your pace starts creeping or your HR starts climbing, back off. Better to nail it than try too hard and bury yourself.");
+        // 2026-09-02 · was "Better to nail it than try too hard and bury
+        // yourself." Hype on one side, melodrama on the other, and neither
+        // half told the runner anything the first sentence had not.
+        facts.push('If your pace starts creeping or your HR starts climbing, back off. Controlled beats fast here.');
       }
       return { verdict: 'Tempo.', facts };
     }
@@ -164,7 +170,9 @@ export function derivePurpose(input: PurposeInput): PurposePayload {
         verdict: 'Mixed effort.',
         facts: [
           "Alternating efforts · push the surges, settle in between. Run by feel, not by clock.",
-          "The variety is the workout. Don't overthink it.",
+          // 2026-09-02 · was "Don't overthink it.", which dismisses the
+          // runner's own read of the session rather than answering it.
+          'The variety is the workout. There is no split to hit.',
         ],
       };
     }
@@ -213,7 +221,11 @@ export function derivePurpose(input: PurposeInput): PurposePayload {
         verdict: 'Rest day.',
         facts: [
           "Real rest. Sleep, eat, hydrate, walk if you want · no running.",
-          "You don't need a junk mile to feel productive. Resting IS the work today.",
+          // 2026-09-02 · was "You don't need a junk mile to feel productive."
+          // Rule 12 prices easy running as the base the week is built on;
+          // calling an unplanned mile junk contradicts that, and it is a
+          // sentence about the runner's motives rather than the day's job.
+          'Resting is the work today. The adaptation happens now, not on the run.',
         ],
       };
     }

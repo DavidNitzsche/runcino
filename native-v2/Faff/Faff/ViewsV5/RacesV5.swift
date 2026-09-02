@@ -698,7 +698,7 @@ enum RacesV5Sample {
     static let specs: [(key: String, spec: Spec)] = [
         ("ahead", Spec(
             shape: "decision", verdict: "comfortable",
-            question: "Fitness now supports more than the plan asked for \u{b7} VDOT reads at 51.2 against a goal that only needed 49.8.",
+            question: "Fitness now supports more than the plan asked for \u{b7} your current read projects about three minutes faster than Sub 3:30.",
             cautions: [
                 "Only two long runs have touched marathon effort",
                 "The last hard week ran short on sleep",
@@ -714,7 +714,7 @@ enum RacesV5Sample {
         )),
         ("behind", Spec(
             shape: "decision", verdict: "aggressive",
-            question: "The goal needs more than today\u{2019}s fitness shows \u{b7} VDOT reads 46.1 against the 49.8 that Sub 3:30 requires, with eight weeks left to close it.",
+            question: "The goal needs more than today\u{2019}s fitness shows \u{b7} your current read projects about four minutes slower than Sub 3:30, with eight weeks left to close it.",
             cautions: [
                 "Long runs have stalled at 12 mi for three weeks",
                 "Two threshold sessions were cut short this block",
@@ -779,7 +779,7 @@ enum RacesV5Sample {
             question: "Chip time locks Friday \u{b7} confirm the official time now, or leave it provisional until then.",
             cautions: [
                 "Two more long runs before the lock, not four",
-                "VDOT has moved twice already this block",
+                "Your fitness read has moved twice already this block",
                 "A wrong guess here means the wrong corral all day"
             ],
             safeTarget: nil, stretchTarget: nil,
@@ -815,7 +815,7 @@ enum RacesV5Sample {
         "detail": [
           {"id": "cb-1", "label": "Why it is on here", "sub": null, "value": {"text": "A real read", "modelled": false}, "action": null},
           {"id": "cb-2", "label": "Taper", "sub": null, "value": {"text": "Three easy days", "modelled": false}, "action": null},
-          {"id": "cb-3", "label": "Reads as", "sub": null, "value": {"text": "VDOT 49 if hit", "modelled": true}, "action": null}
+          {"id": "cb-3", "label": "Reads as", "sub": null, "value": {"text": "A Sub 1:36 read", "modelled": true}, "action": null}
         ],
         "authority": null
       },
@@ -846,7 +846,7 @@ enum RacesV5Sample {
         "dateLine": "16 Jul", "distance": "Half marathon", "priority": "B", "isPast": true,
         "result": {"text": "1:38:12", "modelled": false},
         "detail": [
-          {"id": "sb-1", "label": "Read", "sub": null, "value": {"text": "VDOT 47.9", "modelled": true}, "action": null},
+          {"id": "sb-1", "label": "Read", "sub": null, "value": {"text": "1:36 half equivalent", "modelled": true}, "action": null},
           {"id": "sb-2", "label": "Weight", "sub": null, "value": {"text": "Full for 7 more days", "modelled": false}, "action": null},
           {"id": "sb-3", "label": "Against goal", "sub": null, "value": {"text": "2:14 short", "modelled": false}, "action": null}
         ],
@@ -857,7 +857,7 @@ enum RacesV5Sample {
         "dateLine": "4 May", "distance": "10k", "priority": "C", "isPast": true,
         "result": {"text": "41:20", "modelled": false},
         "detail": [
-          {"id": "bb-1", "label": "Read", "sub": null, "value": {"text": "VDOT 46.2", "modelled": true}, "action": null},
+          {"id": "bb-1", "label": "Read", "sub": null, "value": {"text": "40:30 10k equivalent", "modelled": true}, "action": null},
           {"id": "bb-2", "label": "Weight", "sub": null, "value": {"text": "Decayed to nothing", "modelled": false}, "action": null},
           {"id": "bb-3", "label": "Against goal", "sub": null, "value": {"text": "Not comparable", "modelled": false}, "action": null}
         ],
@@ -868,7 +868,7 @@ enum RacesV5Sample {
         "dateLine": "8 Dec, last year", "distance": "Marathon", "priority": "A", "isPast": true,
         "result": {"text": "3:52:40", "modelled": false},
         "detail": [
-          {"id": "c25-1", "label": "Read", "sub": null, "value": {"text": "VDOT 43.8", "modelled": true}, "action": null},
+          {"id": "c25-1", "label": "Read", "sub": null, "value": {"text": "3:44 marathon equivalent", "modelled": true}, "action": null},
           {"id": "c25-2", "label": "Weight", "sub": null, "value": {"text": "History only", "modelled": false}, "action": null},
           {"id": "c25-3", "label": "To beat", "sub": null, "value": {"text": "22:40 quicker", "modelled": false}, "action": null}
         ],
@@ -879,7 +879,7 @@ enum RacesV5Sample {
 
     private static let evidenceJSON = """
     [
-      {"id": "ev-fitness", "label": "Fitness", "sub": "49.8 needed for Sub 3:30", "value": {"text": "VDOT 47.9", "modelled": false}, "action": null},
+      {"id": "ev-fitness", "label": "Fitness", "sub": "Sub 3:30 asks for about 1:33", "value": {"text": "1:36 half equivalent", "modelled": false}, "action": null},
       {"id": "ev-last-race", "label": "Last race", "sub": "Half marathon, 16 Jul \u{b7} full weight for 7 more days", "value": {"text": "63 days ago", "modelled": false}, "action": "open_race"}
     ]
     """

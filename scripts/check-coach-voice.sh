@@ -176,13 +176,140 @@ targets() {
     && printf '%s\n' "$ROOT/web-v2/lib/training/projection-trend.ts"
 }
 
-FILES="$(targets | sort -u)"
+FILES="$(targets | sort -u | grep -v '/lib/faff/coach-lexicon\.ts$')"
 COUNT="$(printf '%s\n' "$FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
 
-if [ "$COUNT" = "0" ]; then
-  say "  no user-facing sources found under native-v2/ or web-v2/ — nothing to check" >&2
+# ── THE LEXICON IS EXCLUDED FROM ITS OWN SCAN ────────────────────────────────
+#
+# `web-v2/lib/faff/coach-lexicon.ts` is the list of forbidden words. It sits in
+# a scanned directory and every entry is a double-quoted literal, so scanning
+# it would report the list as a violation of itself. The cost is named in that
+# file's own Rule 22 block: real runner copy could hide there and nothing would
+# catch it. There is none, and there must never be.
+
+# ── LIVENESS · A FLOOR, NOT A ZERO CHECK (Rule 18 point 2) ───────────────────
+#
+# This used to be `if COUNT == 0`. That catches a `find` that returns nothing
+# and nothing else — it cannot catch the far likelier rot, a directory renamed
+# out from under one `find` while the other eight keep the count comfortably
+# non-zero. Rule 18's own example in this repo is `check-modelled-mark.sh`,
+# whose guards scanned zero files and reported clean.
+#
+# THE FLOOR IS SET FROM A COUNT TAKEN WITH `! -name '._*'` APPLIED. Every
+# `find` above already excludes AppleDouble sidecars, and it matters: this
+# volume is exFAT and carries a `._foo.ts` beside every source file, so a
+# count taken without the exclusion is about DOUBLE what a clean CI checkout
+# sees, and a floor set from the inflated number passes locally and fails on
+# CI. Measured 2026-09-02, excluded: 301 files. The floor sits ~15% under, low
+# enough that ordinary deletion does not trip it and high enough that losing a
+# whole directory does.
+MIN_FILES=255
+
+if [ "$COUNT" -lt "$MIN_FILES" ]; then
+  say "  scanned $COUNT user-facing source file(s), floor is $MIN_FILES." >&2
+  say "  A directory has probably moved or been renamed. A gate that looks at" >&2
+  say "  fewer files than it used to is not passing, it is blind." >&2
   exit 1
 fi
+
+# ── THE WORD LISTS COME OUT OF THE LEXICON, NOT OUT OF THIS FILE ─────────────
+#
+# They used to be typed inline here, and three other copies existed elsewhere
+# that disagreed with this one and with each other (the audit is in the
+# lexicon's header). Rule 18: a check that hardcodes both sides only proves the
+# test agrees with itself. So the list has ONE home, in TypeScript where the
+# composers and the golden corpus can import it, and this script parses that
+# file's format contract at build time — the same posture `check-doctrine.sh`
+# takes when it reads numbers out of a Research doc.
+#
+# `_coach_lexicon.test.ts` asserts this parse and the module agree term for
+# term, so a format slip fails loudly instead of silently emptying the guard.
+LEXICON="$ROOT/web-v2/lib/faff/coach-lexicon.ts"
+if [ ! -f "$LEXICON" ]; then
+  say "  lib/faff/coach-lexicon.ts is missing · the word lists live there" >&2
+  exit 1
+fi
+
+# `{ band: 'hype', term: "nailed it", why: "..." },` → the term, for one band.
+# A jargon entry without `always: true` is Layer-1-only and is NOT scanned
+# file-wide; see the lexicon's own header for why that split exists.
+# Comment lines are dropped FIRST. The lexicon's own header states the format
+# contract by showing an example entry, and that example is a real-looking
+# line — the parse picked it up and returned "nailed it" twice on the first
+# run, which `_coach_lexicon.test.ts` caught immediately. A duplicate is
+# harmless to the awk loop; a doc comment that ever showed a term nobody meant
+# to enforce would not be.
+lex_terms() {
+  grep -vE '^[[:space:]]*(\*|//|/\*)' "$LEXICON" \
+  | case "$1" in
+      jargon) grep -E "band: 'jargon'" | grep -F 'always: true' ;;
+      *)      grep -E "band: '$1'" ;;
+    esac | sed -n 's/.*term: "\([^"]*\)".*/\1/p' | sed '/^$/d'
+}
+
+# ── THE JARGON GUARD RUNS ON A NARROWER SCOPE, AND HERE IS WHY ───────────────
+#
+# Guards 1-6 ask "would a coach ever type this", and the answer does not
+# depend on which module the string is in. The jargon guard asks a LAYER
+# question — `docs/PRODUCT_UX_SIMPLIFICATION_DOCTRINE.md` forbids Layer 3 in
+# Layer 1 and expects mechanism-naming in Layer 2 — and the answer therefore
+# does depend on where the string ends up.
+#
+# Run at the full scope it produced 69 findings, and reading them is what
+# settled this: `UPDATE users SET vdot_last_reviewed = $2` (SQL),
+# `Research/01-pace-zones-vdot.md §"Testing cadence"` (a doctrine citation),
+# `[reanchor] plan=... VDOT unchanged` (a log line), and a long tail of
+# `coach_intents.reason` strings that are an internal audit trail, not copy.
+# A guard that reports sixty non-defects to catch nine real ones gets an
+# allowlist bolted on within a week and then means nothing.
+#
+# So it runs on the surfaces that ARE Layer 1 and that ship: the v5 phone,
+# the composers behind it, the routes that author its payload, and lock-screen
+# copy. `lib/plan`, `lib/race`, `lib/watch`, `lib/execution` and
+# `lib/prescription` are engine-side and are checked by guards 1-6 only.
+#
+# WHAT THIS CANNOT FAIL ON, stated because narrowing a scope is exactly how a
+# gate loses its reach (Rule 22): a genuine VDOT leak authored inside
+# `lib/plan` and rendered on Today passes here. `auditExplanation` in
+# `lib/faff/explanation.ts` is the check that can see that one, because it
+# reads the composed sentence rather than the literal — but only for copy that
+# has been migrated onto the explanation contract, which today is Today's
+# "why" and nothing else.
+jargon_targets() {
+  find "$ROOT/native-v2/Faff/Faff/ViewsV5" \
+       "$ROOT/native-v2/Faff/Faff/DesignV5" \
+       -name '*.swift' ! -name '._*' 2>/dev/null
+  find "$ROOT/web-v2/lib/faff" \
+       "$ROOT/web-v2/app/api/v5" \
+       -name '*.ts' ! -name '._*' ! -name '*.test.ts' 2>/dev/null
+  [ -f "$ROOT/web-v2/lib/notifications/templates.ts" ] \
+    && printf '%s\n' "$ROOT/web-v2/lib/notifications/templates.ts"
+}
+JARGON_FILES="$(jargon_targets | sort -u | grep -v '/lib/faff/coach-lexicon\.ts$')"
+JARGON_COUNT="$(printf '%s\n' "$JARGON_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
+# Its own floor, for its own reason: this list is four `find`s where the main
+# one is ten, so losing one of them costs proportionally more.
+MIN_JARGON_FILES=62
+if [ "$JARGON_COUNT" -lt "$MIN_JARGON_FILES" ]; then
+  say "  the jargon guard scanned $JARGON_COUNT file(s), floor is $MIN_JARGON_FILES." >&2
+  exit 1
+fi
+
+HYPE="$(lex_terms hype | paste -sd '|' -)"
+SCOLD="$(lex_terms scolding | paste -sd '|' -)"
+MACHO="$(lex_terms macho | paste -sd '|' -)"
+APPV="$(lex_terms 'app-voice' | paste -sd '|' -)"
+JARGON="$(lex_terms jargon | paste -sd '|' -)"
+
+for pair in "hype:$HYPE" "scolding:$SCOLD" "macho:$MACHO" "app-voice:$APPV" "jargon:$JARGON"; do
+  name="${pair%%:*}"; val="${pair#*:}"
+  if [ -z "$val" ]; then
+    say "  the $name band parsed EMPTY out of coach-lexicon.ts." >&2
+    say "  Either the format contract in that file's header was broken, or the" >&2
+    say "  band was deleted. Both switch a guard off silently; neither is OK." >&2
+    exit 1
+  fi
+done
 
 # ── the scanner ──────────────────────────────────────────────────────────────
 #
@@ -191,7 +318,11 @@ fi
 # inside it, and tests the remaining prose. Findings go to stdout as
 # `file|line|guard|detail`; the shell below formats and counts them.
 FINDINGS="$(printf '%s\n' "$FILES" | sed '/^$/d' | while IFS= read -r f; do
-  awk -v F="$f" -v R="$ROOT/" '
+  # Layer-1 surface? Then the jargon guard applies to this file too.
+  if printf '%s\n' "$JARGON_FILES" | grep -Fqx "$f"; then DOJARGON=1; else DOJARGON=0; fi
+  awk -v F="$f" -v R="$ROOT/" \
+      -v HYPE="$HYPE" -v SCOLD="$SCOLD" -v MACHO="$MACHO" \
+      -v APPV="$APPV" -v JARGON="$JARGON" -v DOJARGON="$DOJARGON" '
     function emit(guard, detail,   p) {
       p = F; sub(R, "", p)
       printf "%s|%d|%s|%s\n", p, FNR, guard, substr(detail, 1, 120)
@@ -293,28 +424,47 @@ FINDINGS="$(printf '%s\n' "$FILES" | sed '/^$/d' | while IFS= read -r f; do
       # use: middot for a break, full stop for a sentence.
       if (t ~ /\342\200\224/ && t !~ /^[ ]*\342\200\224[ ]*$/) emit("em dash", lit)
 
-      # ── 4 · hype and scolding ───────────────────────────────────────────
+      # ── 4-5-7 · the lexicon bands ───────────────────────────────────────
+      #
+      # Every list below is parsed out of `web-v2/lib/faff/coach-lexicon.ts`
+      # by the shell above and handed in as a pipe-delimited variable. There
+      # is no word list in this file any more, which is the point: the
+      # composers, the golden corpus and this gate all read one list.
       low = tolower(t)
-      # 2026-08-21 · the second row is what the first row missed. The audit
-      # found praise that used none of the twenty obvious words and read
-      # exactly the same: "Solid work in the long run", "good sign", "Good
-      # rep", "exactly right", "Plan called for it, you delivered", "keep
-      # doing what you are doing". A pat on the back is a pat on the back
-      # whichever adjective carries it. (No apostrophes in this program:
-      # the whole awk script is inside a single-quoted shell string.)
-      split("amazing|awesome|incredible|epic|fantastic|superb|crushed it|crushing it|smashed it|nailed it|great job|well done|congrats|congratulations|keep it up|you got this|way to go|beast mode|woohoo|hooray|so proud|proud of you|solid work|solid effort|solid execution|good sign|strong sign|good rep|nice work|exactly right|you delivered|keep doing what|well played|exactly the setup", H, "|")
+      split(HYPE, H, "|")
       for (i in H) if (H[i] != "" && index(low, H[i]) > 0) { emit("hype", lit); break }
-      split("you failed|you should have|you did not bother|you didn\x27t bother|no excuses|not good enough|disappointing|you keep missing|unacceptable|be honest with yourself|stop making excuses|you let|slacking", G, "|")
+      split(SCOLD, G, "|")
       for (i in G) if (G[i] != "" && index(low, G[i]) > 0) { emit("scolding", lit); break }
 
-      # ── 5 · app voice ───────────────────────────────────────────────────
-      # What software says when it has nothing to say. None of these are
-      # borderline and none of them are things a coach has ever said.
-      # "malformed" and "check back" earn their place the same way: one
-      # names the request/response model at a runner, the other tells them
-      # to come back and service the screen.
-      split("something went wrong|please try again|try again in a moment|oops|malformed|check back|no data available|an error occurred|unable to load|failed to load|please reload|invalid input", A, "|")
+      # MACHO · new 2026-09-02. The register the voice brief calls punitive:
+      # "bail if", "cook the back half", "get fancy", "bury yourself", "junk
+      # mile", "hit the count", "system is firing", "went in the book". Every
+      # one was live in shipped copy on the day the band was written, and
+      # none of the four prior word lists in this repo contained any of them.
+      split(MACHO, M, "|")
+      for (i in M) if (M[i] != "" && index(low, M[i]) > 0) { emit("macho", lit); break }
+
+      split(APPV, A, "|")
       for (i in A) if (A[i] != "" && index(low, A[i]) > 0) { emit("app voice", lit); break }
+
+      # JARGON · the ALWAYS half only. VDOT, ACWR, TSB, source_mode, z-score:
+      # proprietary tokens with no runner meaning at any layer. The rest of
+      # the jargon band ("limiter", "readiness score") is a Layer-1 defect and
+      # legitimate under a "Why?" affordance, so a file-wide literal scan
+      # cannot judge it — `explanation.ts#auditExplanation` and
+      # `_voice_live.audit.test.ts` do, over the composed sentence.
+      #
+      # PROSE ONLY. A literal with no space in it is an identifier, a module
+      # path or a wire key — `@/lib/training/vdot`, `vdot_trend`,
+      # `tsb_overreach` — and none of those is a sentence a runner reads.
+      # Checking them produced 14 findings on the first run, every one an
+      # import statement, which would have made the guard useless by making it
+      # noisy. Guards 1-5 do not need this because no import path contains an
+      # exclamation mark or the words "great job".
+      if (DOJARGON == 1 && low ~ /[ ]/ && low !~ /^@?[a-z0-9_.\/-]+$/) {
+        split(JARGON, J, "|")
+        for (i in J) if (J[i] != "" && index(low, J[i]) > 0) { emit("engine jargon", lit); break }
+      }
     }
   ' "$f"
 done)"

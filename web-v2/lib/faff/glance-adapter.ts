@@ -1004,7 +1004,9 @@ export function buildSibling(glance: GlanceState, state: DayState): SiblingPaylo
         title,
         tiles: niggleTiles,
         prose: n
-          ? `Grade ${n.severity}/10 · ${formatBodyPart(n.body_part, n.side).toLowerCase()} · day ${n.days_active + 1}. Listen to it. Bail if grade jumps to 5 or pain doesn't fade after mile 2.${physioCue}`
+          // 2026-09-02 · was "Bail if grade jumps to 5". On an injury card of
+          // all places the instruction has to be literal: say stop the run.
+          ? `Grade ${n.severity}/10 · ${formatBodyPart(n.body_part, n.side).toLowerCase()} · day ${n.days_active + 1}. Listen to it. Stop the run if grade jumps to 5 or pain doesn't fade after mile 2.${physioCue}`
           : 'Listen to it. The body is the signal.',
         bail_trigger: 'pain > 4/10',
       };

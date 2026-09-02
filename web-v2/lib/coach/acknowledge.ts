@@ -176,7 +176,8 @@ export function composeAcknowledgeSentence(a: AcknowledgeInput): string {
   if (a.yesterdayCategory === 'quality') return `Yesterday's ${n} landed and you came out clean.`;
   if (a.yesterdayCategory === 'long') return `Long run banked and the body took it well.`;
   if (a.yesterdayCategory === 'easy') return `Yesterday's easy stayed easy.`;
-  return `Yesterday went in the book clean.`;
+  // 2026-09-02 · was "went in the book clean" · ledger voice.
+  return `Yesterday came out clean.`;
 }
 
 /**
