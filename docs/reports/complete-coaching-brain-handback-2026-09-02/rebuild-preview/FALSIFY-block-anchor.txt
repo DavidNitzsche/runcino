@@ -1,0 +1,135 @@
+
+=============== 0 · BASELINE (unbroken) ===============
+
+ RUN  v4.1.7 /Volumes/WP/06 Claude Code/Runcino/.claude/worktrees/agent-ad8d5f849f2e3afaa/web-v2
+
+
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+   Start at  14:57:58
+   Duration  655ms (transform 484ms, setup 12ms, import 579ms, tests 7ms, environment 0ms)
+
+
+=============== 1 · UNWIRE · loadGeneratorInputs stops receiving the anchor ===============
+): Promise<number | null> {
+  // 2026-06-03 fix · same bug as recentQualityDistanceMi. plan_workouts
+  // has no user_uuid column AND no...
+
+ ❯ lib/plan/_block_anchor.test.ts:252:17
+    250|     expect(src).toMatch(/const anchorRead = await resolveBlockAnchor\(…
+    251|     expect(src).toMatch(/const blockAnchorISO = anchorRead\.preserved …
+    252|     expect(src).toMatch(/loadGeneratorInputs\(userId, raceSlug, startA…
+       |                 ^
+    253|   });
+    254|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+=============== 2 · UNSNAP · week 0 stops reading the anchor ===============
+): Promise<number | null> {
+  // 2026-06-03 fix · same bug as recentQualityDistanceMi. plan_workouts
+  // has no user_uuid column AND no...
+
+ ❯ lib/plan/_block_anchor.test.ts:256:17
+    254|
+    255|   it('loadGeneratorInputs snaps week 0 through the anchor, and leaves …
+    256|     expect(src).toMatch(
+       |                 ^
+    257|       /const startMondayISO = weekStartBoundaryOf\(blockStartISO \?\? …
+    258|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+=============== 3 · LEAK THE ANCHOR INTO THE CLIP · BACKDATE-1 would stop holding ===============
+14325:      clipBeforeISO: blockAnchorISO,
+): Promise<number | null> {
+  // 2026-06-03 fix · same bug as recentQualityDistanceMi. plan_workouts
+  // has no user_uuid column AND no...
+
+ ❯ lib/plan/_block_anchor.test.ts:261:21
+    259|     // `clipBeforeISO` must still be the caller-named start and nothin…
+    260|     // if the anchor ever reaches it, BACKDATE-1 stops holding.
+    261|     expect(src).not.toMatch(/clipBeforeISO:\s*blockAnchorISO/);
+       |                     ^
+    262|   });
+    263| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+=============== 4 · WRONG ANCHOR · inherit today's week instead of the block's start ===============
+    197|     // …and with the anchor, the same two days answer identically.
+    198|     expect(decide({ todayISO: '2026-09-06' })).toMatchObject({ anchorI…
+       |                                                ^
+    199|     expect(decide({ todayISO: '2026-09-07' })).toMatchObject({ anchorI…
+    200|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 16 passed (19)
+   Start at  14:58:03
+   Duration  697ms (transform 520ms, setup 12ms, import 613ms, tests 12ms, environment 0ms)
+
+
+=============== 5 · DROP THE GRADUATION GUARD · a different race would inherit the old block ===============
+    127|     expect(decide({ target: { raceSlug: 'la-marathon', isOpenBlock: fa…
+    128|       .toMatchObject({ preserved: false, reason: 'different_target' });
+       |        ^
+    129|     // A goal-mode rebuild of a goal-mode plan matches on the goal's d…
+    130|     const goalPlan = { ...LIVE, raceId: null, goalISO: '2026-12-06' };
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 passed (19)
+   Start at  14:58:04
+   Duration  691ms (transform 519ms, setup 12ms, import 609ms, tests 9ms, environment 0ms)
+
+
+=============== 6 · DROP THE MODE GUARD · a recovery block would anchor a build ===============
+    120|     for (const mode of ['maintenance', 'recovery', null]) {
+    121|       expect(decide({ active: { ...LIVE, mode } })).toMatchObject({ pr…
+       |                                                     ^
+    122|     }
+    123|     expect(decide({ active: { ...LIVE, mode: 'race-prep' } }).preserve…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 passed (19)
+   Start at  14:58:05
+   Duration  688ms (transform 517ms, setup 11ms, import 610ms, tests 10ms, environment 0ms)
+
+
+=============== 7 · DROP THE CALLER-NAMED-START GUARD · onboarding would inherit a past start ===============
+    101|   it('caller_named_a_start · onboarding is untouched', () => {
+    102|     expect(decide({ startAnchor: 'today' })).toMatchObject({ preserved…
+       |                                              ^
+    103|     expect(decide({ startDateISO: '2026-09-14' })).toMatchObject({ pre…
+    104|     // …and the neighbour: the same runner with neither still preserve…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 passed (19)
+   Start at  14:58:06
+   Duration  676ms (transform 509ms, setup 13ms, import 594ms, tests 9ms, environment 0ms)
+
+
+=============== 8 · RESTORED ===============
+
+ RUN  v4.1.7 /Volumes/WP/06 Claude Code/Runcino/.claude/worktrees/agent-ad8d5f849f2e3afaa/web-v2
+
+
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+   Start at  14:58:07
+   Duration  650ms (transform 491ms, setup 11ms, import 577ms, tests 6ms, environment 0ms)
+
