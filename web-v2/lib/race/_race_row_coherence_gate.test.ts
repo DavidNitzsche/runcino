@@ -210,7 +210,13 @@ describe('ROW-CONTRACT-1 · a refreshed race row agrees with itself', () => {
     // already in this state.
     const after = applyWriteToRow(wrecked, coherentWrite(wrecked, o));
     expect(raceRowContractViolations(after)).toEqual([]);
-    expect(after.paceTargetSecPerMi).toBe(repPace);
+    // Named rather than compared as two numbers. Repricing the sharpener to the
+    // race target produces a row that is COHERENT and wrong — both halves move
+    // together, so the contract checker has nothing to say — and this is the
+    // doctrine assertion that catches it. A bare `toBe(401)` would print
+    // "expected 442 to be 401", which names neither the rule nor the race.
+    expect(after.paceTargetSecPerMi === repPace ? 'kept its own reps' : 'REPRICED_TO_RACE_PACE')
+      .toBe('kept its own reps');
     expect(after.spec?.race_execution).toBeUndefined();
     expect(after.spec?.race_hr).toBeUndefined();
   });

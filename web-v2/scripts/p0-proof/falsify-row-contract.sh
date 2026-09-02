@@ -46,7 +46,7 @@ run notes-frozen lib/race/race-row-refresh.ts \
 #     The 12-01 defect: a 7:23\/mi headline over 6:41 reps.
 run tuneup-repriced-to-race-pace lib/race/race-row-refresh.ts \
   "s/^  if \(anchor !== 'race_pace'\) \{$/  if (false) {/" \
-  "HEADLINE_DISAGREES_WITH_REPS"
+  "REPRICED_TO_RACE_PACE"
 
 # 3 · the race's execution block and HR band left standing on a tune-up.
 run tuneup-keeps-race-fields lib/race/race-row-refresh.ts \
