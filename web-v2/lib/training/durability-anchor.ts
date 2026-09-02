@@ -144,7 +144,12 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { parseRaceTime } from '@/lib/training/vdot';
+import { parseRaceTime, predictRaceTime } from '@/lib/training/vdot';
+import { assessRaceRepresentativeness } from '@/lib/race/representativeness-inputs';
+import { splitsWithHrAndPace, DECOUPLING_SPLIT_SHAPES } from '@/lib/runs/run-shape';
+import { applyHeatToPace } from '@/lib/weather/heat-adjustment';
+import { resolveThresholdHr } from '@/lib/training/lthr';
+import { RACE_HR_PCT_LTHR } from '@/lib/race/distance-doctrine';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { isProvisionalResult } from '@/lib/coach/races-state';
 import {
@@ -300,6 +305,25 @@ export const RACE_EXPONENT_TIME_COHERENCE_HALFLIFE_DAYS = 120;
  */
 export const RACE_EXPONENT_CONSISTENCY_LOOSE_LN = Math.log(1.08);
 
+/**
+ * 2026-09-02 · ENDPOINT COVERAGE — a CONVENTION for model stability, not a
+ * physiological finding. With two distinct distances the regression passes
+ * through the long-end cluster exactly, so ONE marathon sets the exponent and
+ * its residual is zero by construction: the consistency score cannot see it,
+ * the count score credits every half as evidence about the curve's slope.
+ * The evidence score therefore also asks how many observations sit at EACH
+ * end of the distance spread; a single long-end observation scores 0 here,
+ * three or more score 1. The marathon-anchor audit (2026-09-02) found the
+ * owner's whole 7:55 vs 7:40 marathon-pace difference resting on one race.
+ */
+export const RACE_EXPONENT_ENDPOINT_SATURATION = 3;
+
+export type RaceExponentFitReason =
+  | 'SINGLE_LONG_END_OBSERVATION'
+  | 'SINGLE_SHORT_END_OBSERVATION'
+  | 'REPRESENTATIVENESS_APPLIED'
+  | 'REPRESENTATIVENESS_UNAVAILABLE_FOR_SOME';
+
 export type RaceExponentReason =
   | 'no_races'
   | 'insufficient_races'
@@ -314,8 +338,45 @@ export interface DurabilityRaceObservation {
   finishSec: number;
   priority: string | null;
   /** `selectionAuthority(priority)`, capped downward by any runner-reported
-   *  authority tier — see `raceObservationsFromRows` below. */
+   *  authority tier — see `raceObservationsFromRows` below — and, since
+   *  2026-09-02 (Phase 1 of the brain completion), MULTIPLIED by the race's
+   *  representativeness authority (`assessRaceRepresentativeness`), the same
+   *  effort-class pipeline the fitness ceiling reads. A hot, hilly, untapered
+   *  or badly paced race is not a full-weight point on a distance-time curve. */
   weight: number;
+  /**
+   * 2026-09-02 · what representativeness did to this observation. `finishSec`
+   * above is the CORRECTED time (the seconds doctrine explains — course,
+   * heat, taper, pacing — removed, `Research/02` §11.2 "discard … without
+   * correction"); `rawFinishSec` is what was run. Null when the assessor could
+   * not read the race row (Rule 11: reported, weight and time left as they
+   * were, `representativenessReason` says so).
+   */
+  representativeness?: {
+    authority: number;
+    tier: 'representative' | 'compromised' | 'unrepresentative';
+    explainedPct: number;
+    rawFinishSec: number;
+    detractors: string[];
+  } | null;
+  representativenessReason?: 'ASSESSED' | 'ASSESSOR_UNAVAILABLE' | 'NOT_ASSESSED';
+}
+
+/**
+ * The VDOT a finish time implies at a distance — the inverse of
+ * `predictRaceTime`, by bisection on the Daniels table. Used only to give the
+ * representativeness assessor its `raceVdot` / `anchorVdot` inputs.
+ */
+export function vdotForFinish(distanceMi: number, finishSec: number): number | null {
+  if (!(distanceMi > 0) || !(finishSec > 0)) return null;
+  let lo = 20; let hi = 85;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    const t = predictRaceTime(mid, distanceMi);
+    if (t == null) return null;
+    if (t > finishSec) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
 }
 
 /** The race-exponent read. Refusal carries no `value` (Rule 11). */
@@ -348,6 +409,11 @@ export type RaceExponentRead =
        *  fake "perfect fit" signal, not a real consistency reading). */
       rmsLogResidual: number | null;
       races: number;
+      /** 2026-09-02 · how many observations sit at the shortest and the
+       *  longest distance; a long end of ONE means one race set the slope. */
+      endpointCounts?: { short: number; long: number };
+      endpointScore?: number;
+      reasons?: RaceExponentFitReason[];
       /** Count of distinct race distances (rounded to the nearest mile) in
        *  the fit. Needs >= 2 for a slope to exist at all. */
       distinctDistances: number;
@@ -476,9 +542,22 @@ export function fitRaceExponent(
   // there is no consistency signal to average in (see above), so it is
   // excluded rather than defaulted to a value that would misreport as
   // either full or zero confidence for information that does not exist.
+  // Endpoint coverage (CONVENTION, see RACE_EXPONENT_ENDPOINT_SATURATION).
+  const byDistance = new Map<number, number>();
+  for (const o of usable) byDistance.set(Math.round(o.distanceMi), (byDistance.get(Math.round(o.distanceMi)) ?? 0) + 1);
+  const distancesSorted = [...byDistance.keys()].sort((a, b) => a - b);
+  const nShort = byDistance.get(distancesSorted[0]) ?? 0;
+  const nLong = byDistance.get(distancesSorted[distancesSorted.length - 1]) ?? 0;
+  const endpointScore = clamp01((Math.min(nShort, nLong) - 1) / (RACE_EXPONENT_ENDPOINT_SATURATION - 1));
+  const fitReasons: RaceExponentFitReason[] = [];
+  if (nLong === 1) fitReasons.push('SINGLE_LONG_END_OBSERVATION');
+  if (nShort === 1) fitReasons.push('SINGLE_SHORT_END_OBSERVATION');
+  if (usable.some((o) => o.representativenessReason === 'ASSESSED')) fitReasons.push('REPRESENTATIVENESS_APPLIED');
+  if (usable.some((o) => o.representativenessReason === 'ASSESSOR_UNAVAILABLE')) fitReasons.push('REPRESENTATIVENESS_UNAVAILABLE_FOR_SOME');
+
   const evidenceComponents = residualComputable
-    ? [countScore, spreadScore, qualityScore, consistencyScore]
-    : [countScore, spreadScore, qualityScore];
+    ? [countScore, spreadScore, qualityScore, consistencyScore, endpointScore]
+    : [countScore, spreadScore, qualityScore, endpointScore];
   const evidenceScore = clamp01(evidenceComponents.reduce((s, x) => s + x, 0) / evidenceComponents.length);
 
   const value = evidenceScore * rawFittedExponent + (1 - evidenceScore) * POPULATION_ENDURANCE_PRIOR;
@@ -506,6 +585,9 @@ export function fitRaceExponent(
     rmsLogResidual,
     races: n,
     distinctDistances: distinctMi.size,
+    endpointCounts: { short: nShort, long: nLong },
+    endpointScore,
+    reasons: fitReasons,
     supporting: [...usable].sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
@@ -598,7 +680,66 @@ export async function loadRaceObservationsForDurability(
     const cap = runnerAuthorityCap(ar);
     if (cap != null) weight = Math.min(weight, cap);
 
-    out.push({ slug: r.slug, date, distanceMi, finishSec, priority, weight });
+    out.push({ slug: r.slug, date, distanceMi, finishSec, priority, weight, representativenessReason: 'NOT_ASSESSED' });
+  }
+  return applyRepresentativeness(userUuid, out);
+}
+
+/**
+ * 2026-09-02 · REPRESENTATIVENESS IS SPENT, NOT JUST COMPUTED (Phase 1 of the
+ * brain completion; the marathon-anchor audit of the same date is the
+ * incident). The fit used to weight by declared priority alone and regress on
+ * RAW finish times: a 69 °F, 722-ft half entered at full weight beside a
+ * February PR half, and the whole seven-month spread was read as curve
+ * shape. `Research/02` §11.2: "Discard any race run in heat > 18 °C, on a hilly
+ * course, or in a depleted state without correction"; §11.4: "Best when both
+ * races are recent, on flat courses, in similar weather."
+ *
+ * The anchor VDOT the assessor prices each race against is the best VDOT the
+ * runner's own admitted races imply — self-contained, so this module does not
+ * reach for the Runner Model and create a cycle. A race that reads FASTER than
+ * that anchor is priced on the upward limb (aids), a slower one on the
+ * downward limb (conditions); only the downward limb's explained seconds are
+ * removed from the time.
+ */
+async function applyRepresentativeness(
+  userUuid: string,
+  observations: DurabilityRaceObservation[],
+): Promise<DurabilityRaceObservation[]> {
+  const vdots = observations.map((o) => vdotForFinish(o.distanceMi, o.finishSec));
+  const anchorVdot = Math.max(...vdots.filter((v): v is number => v != null && Number.isFinite(v)), 0);
+  if (!(anchorVdot > 0)) return observations;
+  const out: DurabilityRaceObservation[] = [];
+  for (let i = 0; i < observations.length; i++) {
+    const o = observations[i];
+    const raceVdot = vdots[i];
+    let read: Awaited<ReturnType<typeof assessRaceRepresentativeness>> = null;
+    try {
+      read = raceVdot == null ? null : await assessRaceRepresentativeness({
+        userId: userUuid, raceSlug: o.slug, raceDateISO: o.date, distanceMi: o.distanceMi,
+        finishS: o.finishSec, anchorVdot, raceVdot,
+      });
+    } catch {
+      read = null;
+    }
+    if (!read) {
+      out.push({ ...o, representativeness: null, representativenessReason: 'ASSESSOR_UNAVAILABLE' });
+      continue;
+    }
+    const explained = read.direction === 'downward' ? Math.max(0, read.explainedPct) : 0;
+    out.push({
+      ...o,
+      weight: o.weight * Math.max(0, Math.min(1, read.authority)),
+      finishSec: Math.round(o.finishSec / (1 + explained / 100)),
+      representativeness: {
+        authority: read.authority,
+        tier: read.tier,
+        explainedPct: explained,
+        rawFinishSec: o.finishSec,
+        detractors: read.detractors.map((d) => `${d.factor}:${d.authorityCost}`),
+      },
+      representativenessReason: 'ASSESSED',
+    });
   }
   return out;
 }
@@ -1013,4 +1154,220 @@ export async function resolveDurabilityAnchor(userUuid: string): Promise<Durabil
     halfLifeDays: DURABILITY_HALF_LIFE_DAYS,
     computedAt: new Date().toISOString(),
   };
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * TRAINING DURABILITY · marathon rehearsals as predictor observations
+ * (2026-09-02 · Phase 1 of the brain completion)
+ *
+ * `Research/02` §12.2, Fast Finish Long Run: "when 3–5 of these are completed
+ * in the final 8–12 weeks, holding goal MP for the final 6–10 miles after
+ * 8–10 miles of easy pace is a strong predictor. Failing this workout is a
+ * clear signal that the goal is too aggressive… low false positives (rarely
+ * passes a runner who can't deliver the marathon)." §12.4, Race-Effort Tempo:
+ * "8–12 miles at projected marathon pace, in the final 3–5 weeks… a binary
+ * go/no-go signal." §12.5's matrix grades the fast-finish long run "Accurate"
+ * for every runner type, Speedster included — which is exactly the type the
+ * race exponent alone cannot tell apart from a badly paced marathon.
+ *
+ * This is the evidence Brief 06 names ("sustained race-specific work, quality
+ * performed late in long runs") and the mechanism the doctrine calls "earned":
+ * a marathon pace the runner has HELD, controlled and at marathon heart rate,
+ * over the rehearsal distance doctrine specifies, on the number of occasions
+ * doctrine specifies, is a demonstrated pace. It caps the exponent-derived
+ * prescription from the fast side (`marathonPaceFromDurability`), never the
+ * slow side, and it refuses below the corroboration bar. Pacing control is
+ * read from the runner's own mile splits, effort from heart rate against the
+ * marathon band `RACE_HR_PCT_LTHR.m`, and heat is priced out with the same
+ * model race conditions use.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** `Research/02` §12.2 · "3–5 of these". */
+export const MARATHON_REHEARSAL_MIN_SESSIONS = 3;
+/** `Research/02` §12.2 · "the final 8–12 weeks". */
+export const MARATHON_REHEARSAL_WINDOW_DAYS = 84;
+/** `Research/02` §12.2 · "the final 6–10 miles". */
+export const MARATHON_REHEARSAL_MIN_SEGMENT_MI = 6;
+/** `Research/02` §12.2 · "after 8–10 miles of easy pace". */
+export const MARATHON_REHEARSAL_MIN_PRECEDING_MI = 8;
+/** `Research/02` §12.4 · "8–12 miles at projected marathon pace". */
+export const MARATHON_TEMPO_MIN_SEGMENT_MI = 8;
+/** CONVENTION for model stability · `Research/08` §2 gives elite even pacing
+ *  a CV of 1.5–3%; a segment in which any mile sits more than this far from
+ *  the segment mean is not a HELD pace (a warm-up mile or a fade leaking into
+ *  the window fails this where a CV would average it away). */
+export const MARATHON_REHEARSAL_MAX_MILE_DEVIATION_PCT = 5;
+/** CONVENTION · a marathon-pace tempo (§12.4) is followed by a cool-down, not
+ *  by the rest of a long run: a held opening that fades into nine slower
+ *  miles is a run that went out too hard, not a rehearsal. */
+export const MARATHON_TEMPO_MAX_TRAILING_MI = 3;
+/** CONVENTION · a rehearsal segment is a step UP in pace from the miles before
+ *  it (§12.2 "progress from marathon pace"; §12.4 a tempo after its warm-up);
+ *  a segment slower than what preceded it is the back half of a positive
+ *  split, not a rehearsal. Percent faster than the preceding miles' mean. */
+export const MARATHON_REHEARSAL_MIN_STEP_FASTER_PCT = 3;
+/** CONVENTION for model stability · a rehearsal read below this confidence
+ *  (three sessions whose paces disagree by more than the pacing convention)
+ *  is REPORTED beside the exponent carry but not SPENT on the prescription. */
+export const MARATHON_REHEARSAL_SPEND_CONFIDENCE = 0.5;
+/** CONVENTION · the marathon HR band (`RACE_HR_PCT_LTHR.m` = 0.88–0.95) with
+ *  a two-point allowance either side for mile-average noise. A steady run at
+ *  easy-plus effort (≤ 85%) is not a marathon rehearsal. */
+export const MARATHON_REHEARSAL_HR_TOLERANCE = 0.02;
+
+export interface MarathonRehearsalObservation {
+  id: string;
+  date: string;
+  kind: 'fast_finish_long' | 'mp_tempo';
+  segmentMi: number;
+  precedingMi: number;
+  /** Heat-normalised to a 50 °F day, seconds per mile. */
+  paceSecPerMi: number;
+  rawPaceSecPerMi: number;
+  meanHrPctLthr: number;
+  cvPct: number;
+  tempF: number | null;
+}
+
+export type TrainingDurabilityReason = 'no_observations' | 'insufficient_corroboration' | 'no_lthr';
+
+export type TrainingDurabilityRead =
+  | {
+      ok: true;
+      /** The median demonstrated marathon-effort pace, s/mi, heat-normalised. */
+      demonstratedPaceSecPerMi: number;
+      confidence: number;
+      observations: number;
+      supporting: MarathonRehearsalObservation[];
+      reasons: string[];
+    }
+  | { ok: false; reason: TrainingDurabilityReason; observations: number };
+
+/** Standard-day pace for a segment run at `tempF`, via the race heat model. */
+function heatNormalisedPace(paceSecPerMi: number, tempF: number | null, distanceMi: number): number {
+  if (tempF == null || !Number.isFinite(tempF)) return paceSecPerMi;
+  const hotFactor = applyHeatToPace(1000, tempF, distanceMi) / 1000;
+  const coolFactor = applyHeatToPace(1000, 50, distanceMi) / 1000;
+  return (paceSecPerMi / hotFactor) * coolFactor;
+}
+
+/**
+ * Pure · does this run contain a marathon rehearsal? Scans the mile splits
+ * for the longest contiguous window (≥ 6 mi) whose pace is held (CV ≤ the
+ * convention) at marathon heart rate; classes it fast-finish when it closes
+ * the run after ≥ 8 preceding miles, MP-tempo when it is ≥ 8 mi anywhere.
+ */
+export function qualifyingMarathonRehearsal(row: {
+  id: string; date: string; distanceMi: number; splits: unknown; tempF: number | null; lthrBpm: number;
+}): MarathonRehearsalObservation | null {
+  if (!(row.lthrBpm > 0)) return null;
+  if (row.tempF != null && Number.isFinite(row.tempF) && row.tempF >= HEAT_CONFOUND_TEMP_F) return null;
+  const splits = splitsWithHrAndPace(row.splits, { shapes: DECOUPLING_SPLIT_SHAPES });
+  if (splits.length < MARATHON_REHEARSAL_MIN_SEGMENT_MI + 1) return null;
+  const [bandLo, bandHi] = RACE_HR_PCT_LTHR.m;
+  const lo = bandLo - MARATHON_REHEARSAL_HR_TOLERANCE;
+  const hi = bandHi + MARATHON_REHEARSAL_HR_TOLERANCE;
+  let best: MarathonRehearsalObservation | null = null;
+  for (let start = 0; start < splits.length; start++) {
+    for (let end = splits.length; end - start >= MARATHON_REHEARSAL_MIN_SEGMENT_MI; end--) {
+      const w = splits.slice(start, end);
+      const paces = w.map((x) => x.paceSec);
+      const mean = paces.reduce((a, b) => a + b, 0) / paces.length;
+      const maxDevPct = Math.max(...paces.map((x) => Math.abs(x - mean) / mean)) * 100;
+      if (maxDevPct > MARATHON_REHEARSAL_MAX_MILE_DEVIATION_PCT) continue;
+      const sd = Math.sqrt(paces.reduce((a, b) => a + (b - mean) * (b - mean), 0) / paces.length);
+      const cv = (sd / mean) * 100;
+      const hrPct = w.reduce((a, x) => a + x.hr, 0) / w.length / row.lthrBpm;
+      if (hrPct < lo || hrPct > hi) continue;
+      const segmentMi = w.length;
+      const precedingMi = start;
+      const closes = end === splits.length;
+      // A rehearsal is a SEGMENT inside a run (§12.2 "after 8–10 miles of
+      // easy pace"; §12.4 a tempo with its warm-up and cool-down). A whole
+      // steady run at marathon heart rate is a long run, not a rehearsal —
+      // it demonstrates the effort but not the shape doctrine grades.
+      const spansWholeRun = precedingMi === 0 && closes;
+      const trailingMi = splits.length - end;
+      if (precedingMi > 0) {
+        const before = splits.slice(0, start).map((x) => x.paceSec);
+        const beforeMean = before.reduce((a, b) => a + b, 0) / before.length;
+        if (mean > beforeMean * (1 - MARATHON_REHEARSAL_MIN_STEP_FASTER_PCT / 100)) continue;
+      }
+      const kind: MarathonRehearsalObservation['kind'] | null =
+        closes && precedingMi >= MARATHON_REHEARSAL_MIN_PRECEDING_MI ? 'fast_finish_long'
+        : !spansWholeRun && segmentMi >= MARATHON_TEMPO_MIN_SEGMENT_MI && trailingMi <= MARATHON_TEMPO_MAX_TRAILING_MI ? 'mp_tempo'
+        : null;
+      if (!kind) continue;
+      const obs: MarathonRehearsalObservation = {
+        id: row.id, date: row.date, kind, segmentMi, precedingMi,
+        paceSecPerMi: Math.round(heatNormalisedPace(mean, row.tempF, row.distanceMi)),
+        rawPaceSecPerMi: Math.round(mean), meanHrPctLthr: Math.round(hrPct * 1000) / 1000,
+        cvPct: Math.round(cv * 10) / 10, tempF: row.tempF,
+      };
+      if (!best || obs.segmentMi > best.segmentMi) best = obs;
+      break; // longest window from this start found
+    }
+  }
+  return best;
+}
+
+export async function loadMarathonRehearsals(userUuid: string, todayISO?: string): Promise<{ observations: MarathonRehearsalObservation[]; lthrBpm: number | null }> {
+  const today = todayISO ?? await runnerToday(userUuid);
+  const lthr = await resolveThresholdHr(userUuid);
+  if (!lthr) return { observations: [], lthrBpm: null };
+  const fromISO = isoDaysBefore(today, MARATHON_REHEARSAL_WINDOW_DAYS);
+  const canonicalIds = await getCanonicalRunIds(userUuid, fromISO, today);
+  if (canonicalIds.length === 0) return { observations: [], lthrBpm: lthr.bpm };
+  const rows = await pool.query<{ id: string; date: string; mi: number | string; splits: unknown; temp_f: string | null }>(
+    `SELECT r.id::text, ${runDateKeySql('r')} AS date, ${runDistanceMiSql('r')} AS mi,
+            ${runSplitsSql('r')} AS splits, ${runTempFSql('r')} AS temp_f
+       FROM runs r
+      WHERE r.user_uuid = $1::uuid
+        AND r.id = ANY($3::bigint[])
+        AND ${runDistanceMiSql('r')} >= $4
+        AND (${runDateKeySql('r')})::date >= $2::date
+        AND COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '') <> 'race'
+      ORDER BY (${runDateKeySql('r')})::date ASC`,
+    [userUuid, fromISO, canonicalIds, MARATHON_TEMPO_MIN_SEGMENT_MI],
+  ).then((r) => r.rows);
+  const observations: MarathonRehearsalObservation[] = [];
+  for (const r of rows) {
+    const obs = qualifyingMarathonRehearsal({
+      id: r.id, date: r.date, distanceMi: Number(r.mi), splits: r.splits,
+      tempF: r.temp_f != null ? Number(r.temp_f) : null, lthrBpm: lthr.bpm,
+    });
+    if (obs) observations.push(obs);
+  }
+  return { observations, lthrBpm: lthr.bpm };
+}
+
+/** Pure · the read. Median demonstrated pace; refuses below the doctrine bar. */
+export function aggregateMarathonRehearsals(
+  observations: readonly MarathonRehearsalObservation[],
+  opts: { lthrBpm: number | null; minSessions?: number } = { lthrBpm: null },
+): TrainingDurabilityRead {
+  if (!opts.lthrBpm) return { ok: false, reason: 'no_lthr', observations: observations.length };
+  const min = opts.minSessions ?? MARATHON_REHEARSAL_MIN_SESSIONS;
+  if (observations.length === 0) return { ok: false, reason: 'no_observations', observations: 0 };
+  if (observations.length < min) return { ok: false, reason: 'insufficient_corroboration', observations: observations.length };
+  const paces = [...observations].map((o) => o.paceSecPerMi).sort((a, b) => a - b);
+  const mid = Math.floor(paces.length / 2);
+  const median = paces.length % 2 ? paces[mid] : Math.round((paces[mid - 1] + paces[mid]) / 2);
+  const mean = paces.reduce((a, b) => a + b, 0) / paces.length;
+  const sd = Math.sqrt(paces.reduce((a, b) => a + (b - mean) * (b - mean), 0) / paces.length);
+  const countScore = clamp01((observations.length - min + 1) / 3);
+  const consistencyScore = clamp01(1 - (sd / mean) / 0.05);
+  const confidence = clamp01((countScore + consistencyScore) / 2);
+  const reasons = [
+    `${observations.length} rehearsals in the final ${MARATHON_REHEARSAL_WINDOW_DAYS} days`,
+    ...(observations.some((o) => o.kind === 'fast_finish_long') ? ['FAST_FINISH_LONG_RUNS'] : []),
+    ...(observations.some((o) => o.kind === 'mp_tempo') ? ['MARATHON_PACE_TEMPOS'] : []),
+  ];
+  return { ok: true, demonstratedPaceSecPerMi: median, confidence, observations: observations.length, supporting: [...observations], reasons };
+}
+
+export async function resolveTrainingDurability(userUuid: string, todayISO?: string): Promise<TrainingDurabilityRead> {
+  const { observations, lthrBpm } = await loadMarathonRehearsals(userUuid, todayISO);
+  return aggregateMarathonRehearsals(observations, { lthrBpm });
 }

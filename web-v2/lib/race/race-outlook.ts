@@ -145,6 +145,12 @@ export interface RaceOutlook {
   trainingPrescription: {
     kind: 'marathon_specific' | 'race_specific';
     paceSecPerMi: number;
+    /** 2026-09-02 · the honest band (fast → slow) from `anchors.marathonRangeSecPerMi`. */
+    rangeSecPerMi: readonly [number, number] | null;
+    /** 'rehearsal' when a demonstrated marathon-effort pace set the number. */
+    evidence: 'exponent' | 'rehearsal' | 'equivalence';
+    demonstratedPaceSecPerMi: number | null;
+    restsOnOneLongRace: boolean;
     source: 'canonical_anchors';
     enduranceExponent: number | null;
     personallyEvidenced: boolean;
@@ -179,6 +185,11 @@ export interface RaceOutlook {
   bridge: BridgeStep[];
   changeTriggers: string[];
   flags: string[];
+}
+
+/** The exponent carry the rehearsal beat — the slow edge of the band. */
+function carryPaceForWhy(anchors: PrescribedPaceAnchors): number {
+  return anchors.marathonRangeSecPerMi?.[1] ?? anchors.marathonSecPerMi;
 }
 
 function fmtTime(sec: number | null): string {
@@ -409,12 +420,18 @@ export async function composeRaceOutlook(
   const trainingPrescription: RaceOutlook['trainingPrescription'] = {
     kind: marathonLike ? 'marathon_specific' : 'race_specific',
     paceSecPerMi: Math.round(trainingPace),
+    rangeSecPerMi: marathonLike && anchors ? anchors.marathonRangeSecPerMi ?? null : null,
+    evidence: marathonLike && anchors ? anchors.basis.marathon.source ?? 'exponent' : 'equivalence',
+    demonstratedPaceSecPerMi: marathonLike && anchors ? anchors.basis.marathon.demonstratedPaceSecPerMi ?? null : null,
+    restsOnOneLongRace: marathonLike && anchors ? anchors.basis.marathon.restsOnOneLongRace ?? false : false,
     source: 'canonical_anchors',
     enduranceExponent: anchors?.basis.marathon.enduranceExponent ?? null,
     personallyEvidenced: anchors?.basis.marathon.personallyEvidenced ?? false,
     thresholdSecPerMi,
     whyThisPace: marathonLike
-      ? `Threshold ${fmtPace(thresholdSecPerMi)} carried to ${fmtMi(race.distanceMi) ?? 'the race distance'} through your own endurance exponent${anchors ? ` (${anchors.basis.marathon.enduranceExponent.toFixed(3)})` : ''}. This is today's capacity, not race day's; the rehearsal teaches the effort, the block earns the pace.`
+      ? (anchors?.basis.marathon.source === 'rehearsal'
+          ? `Held at marathon effort in your rehearsals (${fmtPace(anchors.basis.marathon.demonstratedPaceSecPerMi ?? trainingPace)}), which beats the ${fmtPace(carryPaceForWhy(anchors))} your race history alone would give. A pace you have held is yours.`
+          : `Threshold ${fmtPace(thresholdSecPerMi)} carried to ${fmtMi(race.distanceMi) ?? 'the race distance'} through your own endurance exponent${anchors ? ` (${anchors.basis.marathon.enduranceExponent.toFixed(3)})` : ''}${anchors?.basis.marathon.restsOnOneLongRace ? ', which rests on one marathon so far' : ''}. This is today's capacity, not race day's; the rehearsal teaches the effort, the block earns the pace.`)
       : `Today's projected race pace at ${fmtMi(race.distanceMi) ?? 'the race distance'} from current capacity.`,
   };
 
