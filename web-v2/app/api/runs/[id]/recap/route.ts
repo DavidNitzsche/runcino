@@ -27,7 +27,7 @@ import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { composeRecap } from '@/lib/faff/recap-voice';
-import { runIdentityMatchSql } from '@/lib/runs/run-shape';
+import { resolveCanonicalRunRowId } from '@/lib/runs/canonical-ref';
 import { loadPostRunExperience } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 import { mapWatchPhases } from '@/lib/coach/run-state';
@@ -93,19 +93,29 @@ export async function GET(
   const userId = auth;
   const { id } = await params;
 
-  // Load the canonical run. Accept either the bigint id or
-  // data->>activityId as a lookup key (Strava ids land in both shapes).
-  const runRow = (await pool.query<{
+  /* Load the canonical run.
+   *
+   * 2026-09-02 · this comment said "canonical" and the query did not. It
+   * matched on identity alone, and 43% of the reference runner's rows are
+   * merge losers whose ids collide with no canonical row — so every absorbed
+   * Strava id landed here on the DISCARDED half of the merge, and then
+   * `loadRunTwins(runRow.id)` below asked a loser for its twins and got none,
+   * degrading the ranked-instrument elevation read as well. Rule 19's
+   * corollary, exactly: a header comment asserting an invariant is not
+   * enforcement. `resolveCanonicalRunRowId` is the one place that answers
+   * "which row does this id mean", and IDENTITY-1 in
+   * lib/runs/_absorption_predicate.test.ts is what now catches the next copy. */
+  const ref = await resolveCanonicalRunRowId(userId, String(id));
+  const runRow = ref.ok ? (await pool.query<{
     id: string;
     data: Record<string, any>;
   }>(
     `SELECT id::text AS id, data
        FROM runs
-      WHERE user_uuid = $1
-        AND ${runIdentityMatchSql('$2')}
+      WHERE user_uuid = $1 AND id::text = $2
       LIMIT 1`,
-    [userId, String(id)],
-  )).rows[0];
+    [userId, ref.rowId],
+  )).rows[0] : undefined;
 
   if (!runRow) {
     return NextResponse.json({ error: 'run not found' }, { status: 404 });

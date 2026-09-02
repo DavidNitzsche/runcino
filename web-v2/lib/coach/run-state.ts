@@ -45,7 +45,8 @@ import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
   coherentPace, coherentMovingSec, coherentElapsedSec, runCadenceSpm,
 } from '@/lib/runs/coherence';
-import { runAvgHr, runMaxHr, runIdentityMatchSql, type RunData } from '@/lib/runs/run-shape';
+import { runAvgHr, runMaxHr, CANONICAL_ROW_SQL, type RunData } from '@/lib/runs/run-shape';
+import { resolveCanonicalRunRowId } from '@/lib/runs/canonical-ref';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
 import { resolveHrZoneShares } from './hr-zone-bucket';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
@@ -559,13 +560,25 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // Verified against production 2026-09-02: 15 of this runner's 155 canonical
   // rows carry NEITHER `data.id` NOR `data.activityId`, and were reachable
   // only through the synthetic `YYYY-MM-DD-mi` fallback below.
-  let row = (await pool.query(
+  //
+  // ── 2026-09-02 · CANONICAL-RUN SELECTION (Rule 14) ──────────────────────
+  //
+  // This lookup named the runner and never named the ROWS. 43% of the
+  // reference runner's `runs` are merge losers and no loser id collides with
+  // a canonical one, so every absorbed id resolved HERE, to the discarded
+  // half of the merge — 0 splits and no HR on a long run whose canonical row
+  // carries 13 splits and 159 bpm. The measurement, the three rungs and the
+  // reason a bare `AND ${CANONICAL_ROW_SQL}` would be the wrong fix all live
+  // in `lib/runs/canonical-ref.ts`, which is now the ONE place that answers
+  // "which row does this id mean" (Rule 14: one definition, not one per call
+  // site — `/api/runs/[id]/recap` and the shoe PATCH had the same defect).
+  const ref = await resolveCanonicalRunRowId(userId, activityId);
+  let row = ref.ok ? (await pool.query(
     `SELECT id, data, shoe_id, weather_enriched_at FROM runs
-      WHERE user_uuid = $1
-        AND ${runIdentityMatchSql('$2')}
+      WHERE user_uuid = $1 AND id::text = $2
       LIMIT 1`,
-    [userId, activityId]
-  )).rows[0];
+    [userId, ref.rowId]
+  )).rows[0] : undefined;
 
   // Fallback: synthetic id "YYYY-MM-DD-mi"
   if (!row) {
@@ -575,7 +588,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       const fb = (await pool.query(
         `SELECT id, data, shoe_id, weather_enriched_at FROM runs
           WHERE user_uuid = $1
-            AND NOT (data ? 'mergedIntoId')
+            AND ${CANONICAL_ROW_SQL}
             AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $2
             AND ABS((data->>'distanceMi')::numeric - $3::numeric) < 0.05
           ORDER BY data->>'startLocal' DESC LIMIT 1`,
