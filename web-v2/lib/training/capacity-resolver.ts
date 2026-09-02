@@ -1538,51 +1538,72 @@ export async function resolveThresholdCapacity(
   ]);
   const direct = thresholdCorpusFromInputs(corpusInputs);
   const base = composeThresholdCapacity({ direct, fallback, todayISO: today });
-  const todayEstimate = await resolveThresholdWithTension(userId, today, corpusInputs, fallback, base);
+  const { estimate: todayEstimate, tension } = await resolveThresholdWithTension(userId, today, corpusInputs, fallback, base);
   // 2026-09-02 · DAY-TO-DAY CONTINUITY ACROSS TIERS (Phase 1 of the brain
   // completion). The corpus caps a corroborated read against its own prior;
-  // nothing capped the belief when it changed TIER — a relaxed one-session
-  // read one day, the race-derived fallback the next — and June 2026 flipped
-  // 456 → 430 → 455 → 430 on exactly that seam.
+  // nothing capped the belief when it changed TIER — a race-derived fallback
+  // one day, a relaxed one-session direct read the next — and June 2026
+  // flipped 456 → 430 → 455 → 430 on exactly that seam, with every individual
+  // day arithmetically correct.
   //
-  // THE CHAIN IS WALKED, NOT SAMPLED. Comparing today against yesterday's
-  // UNCAPPED belief lets the pair 451 → 430 pass on the second day, because
-  // yesterday-as-resolved and yesterday-as-held are different numbers. The
-  // walk below recomputes the belief for each day of the window from the SAME
-  // corpus inputs (rows filtered to that day, so no future run leaks into a
-  // past belief) and carries the capped value forward, so the number returned
-  // is the one a runner reading the app every morning would actually have
-  // held. It is pure: no extra database read.
+  // THE CHAIN IS WALKED, NOT SAMPLED, AND THE RECONSTRUCTION IS FAITHFUL.
+  // Comparing today against yesterday's UNCAPPED belief only moves the seam a
+  // day later. Reconstructing yesterday with a DIFFERENT procedure than the
+  // one that actually ran (today's fallback reused for every day, today's
+  // corroboration bar not applied) is worse: it erases the very move the cap
+  // exists to catch, which is what a first cut of this did — 2026-06-09's
+  // 26 s/mi fallback jump read as "no move" because both days were handed the
+  // same fallback. The walk below recomputes each day of the window from the
+  // same corpus rows FILTERED TO THAT DAY, with THAT DAY'S fallback, at the
+  // bar today's tension established, and carries the CAPPED value forward.
+  // The number returned is the one a runner reading the app every morning
+  // would actually have held.
   //
-  // WHAT THE WALK CANNOT SEE (Rule 22): belief tension is applied to TODAY
-  // only — `loadRecentTension` is DB-backed and the walk is pure — so a day
-  // whose bar was relaxed in the past is reconstructed at the unrelaxed bar.
-  // That is the conservative direction: it can only make a historical day's
-  // belief refuse or sit nearer the fallback, never move it further.
+  // COST, AND WHEN IT IS PAID: only when today's read is not a fully
+  // corroborated direct one — the runner whose belief is unstable is exactly
+  // the runner this is for. The per-day fallbacks are loaded in parallel.
+  //
+  // WHAT THIS CANNOT SEE (Rule 22): tension is measured for today and applied
+  // to the whole window, so a past day whose bar was relaxed by a tension that
+  // has since expired is reconstructed at today's bar. Both directions of that
+  // error are bounded by the cap itself, which is the point.
   const fullyCorroborated = (e: ThresholdCapacityEstimate) => e.sourceMode === 'direct'
     && !e.reasons.includes('SPARSE_CORROBORATION')
     && !e.reasons.includes('REEXAMINATION_LOWERED_THE_CORROBORATION_BAR');
   if (fullyCorroborated(todayEstimate)) return todayEstimate;
-  const chain: ThresholdCapacityEstimate[] = [];
-  for (let back = THRESHOLD_CONTINUITY_WINDOW_DAYS; back >= 1; back--) {
-    const day = new Date(Date.parse(today + 'T12:00:00Z') - back * 86_400_000).toISOString().slice(0, 10);
-    const dayInputs = {
-      ...corpusInputs,
-      todayISO: day,
-      rows: corpusInputs.rows.filter((r) => r.date <= day),
-    };
-    const dayDirect = thresholdCorpusFromInputs(dayInputs);
-    const dayEstimate = composeThresholdCapacity({ direct: dayDirect, fallback, todayISO: day });
-    const prior = chain.length > 0 ? chain[chain.length - 1] : null;
-    chain.push(fullyCorroborated(dayEstimate) ? dayEstimate : applyDayToDayContinuity(dayEstimate, prior));
+
+  const windowDays = Array.from({ length: THRESHOLD_CONTINUITY_WINDOW_DAYS }, (_, i) =>
+    new Date(Date.parse(today + 'T12:00:00Z') - (THRESHOLD_CONTINUITY_WINDOW_DAYS - i) * 86_400_000)
+      .toISOString().slice(0, 10));
+  let dayFallbacks: Array<Awaited<ReturnType<typeof loadVdotFallback>>> | null = null;
+  try {
+    dayFallbacks = await Promise.all(windowDays.map((d) => loadVdotFallback(userId, d)));
+  } catch {
+    dayFallbacks = null; // Rule 11 · reported below, never silently "no move"
   }
-  return applyDayToDayContinuity(todayEstimate, chain.length > 0 ? chain[chain.length - 1] : null);
+  if (!dayFallbacks) {
+    return { ...todayEstimate, reasons: [...todayEstimate.reasons, 'CONTINUITY_UNAVAILABLE'], continuity: null };
+  }
+  const bar = tension?.effectiveMinObservations;
+  let prior: ThresholdCapacityEstimate | null = null;
+  windowDays.forEach((day, i) => {
+    const dayInputs = { ...corpusInputs, todayISO: day, rows: corpusInputs.rows.filter((r) => r.date <= day) };
+    const dayEstimate = composeThresholdCapacity({
+      direct: thresholdCorpusFromInputs(dayInputs, bar),
+      fallback: dayFallbacks![i],
+      todayISO: day,
+      ...(tension ? { reexamination: tension } : {}),
+    });
+    prior = fullyCorroborated(dayEstimate) ? dayEstimate : applyDayToDayContinuity(dayEstimate, prior);
+  });
+  return applyDayToDayContinuity(todayEstimate, prior);
 }
 
 /**
  * How far back the continuity walk reconstructs the belief. CONVENTION for
- * model stability: long enough that a quiet week cannot hide a tier flip
- * (the June 2026 incident spanned six days), short enough to stay pure.
+ * model stability: long enough that a quiet week cannot hide a tier flip (the
+ * June 2026 incident spanned six days), short enough that the walk stays one
+ * parallel round trip.
  */
 export const THRESHOLD_CONTINUITY_WINDOW_DAYS = 7;
 
@@ -1621,7 +1642,7 @@ async function resolveThresholdWithTension(
   corpusInputs: Awaited<ReturnType<typeof loadThresholdCorpusInputs>>,
   fallback: Awaited<ReturnType<typeof loadVdotFallback>>,
   base: ThresholdCapacityEstimate,
-): Promise<ThresholdCapacityEstimate> {
+): Promise<{ estimate: ThresholdCapacityEstimate; tension: ReexaminationPressure | null }> {
 
   /* ── PASS 2 · THE BELIEF-TENSION CONSUMER ────────────────────────────────
    *
@@ -1643,15 +1664,18 @@ async function resolveThresholdWithTension(
    * pace; the compile-time assertion in section 8 still holds. */
   const tension = await loadRecentTension(userId, today, base);
   if (tension == null || tension.effectiveMinObservations >= CORROBORATION_MIN_OBSERVATIONS) {
-    return base;
+    return { estimate: base, tension: null };
   }
   const relaxedDirect = thresholdCorpusFromInputs(corpusInputs, tension.effectiveMinObservations);
-  return composeThresholdCapacity({
-    direct: relaxedDirect,
-    fallback,
-    todayISO: today,
-    reexamination: tension,
-  });
+  return {
+    estimate: composeThresholdCapacity({
+      direct: relaxedDirect,
+      fallback,
+      todayISO: today,
+      reexamination: tension,
+    }),
+    tension,
+  };
 }
 
 /**
