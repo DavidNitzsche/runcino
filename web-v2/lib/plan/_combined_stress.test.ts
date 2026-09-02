@@ -29,7 +29,7 @@
  *     engine applies that reading and records it — not that the reading is
  *     correct. If the decision is ever reversed, these tests must be rewritten,
  *     not tightened.
- *   · The intensity axis of `compoundProgressionFindings`. That function sees
+ *   · The intensity axis of `compoundProgressionCheck`. That function sees
  *     weekly volume and long-run miles because those are numbers on
  *     `ComposedWeek`; session intensity is not, so a week that raises volume
  *     and quality density together is invisible to it and to this file.
@@ -48,13 +48,17 @@ import {
   RETURN_TO_LONG_DAYS, POST_RACE_PRIORITY_SCALE,
   returnToLongDays, longRunFactorAfterRace, raceConsumesLongRunSlot,
   noQualityDaysAfterRace, effectiveRecoveryPriority,
-  combinedStressFindings, compoundProgressionFindings,
+  combinedStressFindings, compoundProgressionCheck,
+  MIN_VOLUME_STEP, MIN_SHARE_POINTS, SHARE_MIN_COHERENT_LONG_MI,
   type StressDay, type StressRace, type PlacementRecord,
 } from './combined-stress';
 import {
   composePlan, finalizeComposedPlan, inlinePrescriptions,
   type ComposePlanInput, type ComposedWeek, type DOW, type DayPlan,
 } from './generate';
+import { SPIKE_MIN_COHERENT_ANCHOR_MI } from './generate';
+import { matrix, arcStr, simInputsForArc, type Arc } from './sim-matrix';
+import { buildSimPlan } from './sim-inputs';
 import { validateComposedPlan, PlanValidationError } from './validate';
 import { tPaceFromGoal } from './spec-builder';
 
@@ -242,19 +246,215 @@ describe('COMBINED-STRESS · findings', () => {
     expect(f).toEqual([]);
   });
 
-  it('compound progression is ADVISORY and skips a cutback rebound', () => {
-    const weeks = [
-      { startISO: 'w1', phase: 'QUALITY', weeklyMi: 40, longMi: 14 },
-      { startISO: 'w2', phase: 'QUALITY', weeklyMi: 48, longMi: 17 },
-    ];
-    const f = compoundProgressionFindings({ weeks });
-    expect(f.map((x) => x.code)).toEqual(['COMPOUND_PRIMARY_STRESSORS']);
-    expect(f[0].enforced).toBe(false);
-    const rebound = compoundProgressionFindings({
-      weeks: [{ ...weeks[0], isCutback: true }, weeks[1]],
-    });
-    expect(rebound).toEqual([]);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 3b · STRESSOR-1 · ONE PRIMARY STRESSOR PER WEEK, BINDING (2026-09-02)
+ *
+ * David's ruling: "Make one primary stressor per day binding by default.
+ * Exceptions must be explicitly typed, intentionally authored, and covered by
+ * an invariant. Accidental combinations must fail plan generation rather than
+ * ship as warnings."
+ *
+ * The test this replaces asserted `enforced === false` and that a cutback
+ * rebound produced NO finding at all. Both halves changed: the finding binds,
+ * and the rebound is now a TYPED, RECORDED exemption rather than a silent skip.
+ *
+ * WHAT THIS SECTION CANNOT FAIL ON (Rule 22):
+ *   · Whether the composer's chosen stressor is the RIGHT one. It asserts that
+ *     only one moved, never which.
+ *   · Intensity. `CompoundWeek` carries miles, not how hard a session is.
+ *   · A leak in the per-DAY half of the ruling. That is `validateComposedPlan`
+ *     §9 (SP-7, stimulus-gap adjacency), which was already fatal before this
+ *     work and is asserted separately in `_maint_invariants`.
+ * ═══════════════════════════════════════════════════════════════════════ */
+describe('STRESSOR-1 · one primary stressor per week is binding', () => {
+  const W = (startISO: string, weeklyMi: number, longMi: number, isCutback = false) =>
+    ({ startISO, phase: 'QUALITY', weeklyMi, longMi, isCutback });
+
+  it('a week that advances volume AND the long-run share is ENFORCED', () => {
+    // 40 → 48 mi (+20%) with the long 14 → 19 mi: share 35.0% → 39.6%... which
+    // is 4.6 points and does NOT fire. Pushed to 20 mi — share 41.7%, +6.7
+    // points — so the fixture is over the band rather than beside it.
+    const r = compoundProgressionCheck({ weeks: [W('w1', 40, 14), W('w2', 48, 20)] });
+    expect(r.findings.map((x) => x.code)).toEqual(['COMPOUND_PRIMARY_STRESSORS']);
+    expect(r.findings[0].enforced).toBe(true);
+    expect(r.exemptions).toEqual([]);
   });
+
+  it('a long run that grows WITH the week at a held share is ONE stressor', () => {
+    // The correction at the heart of STRESSOR-1. `layoutWeek` sizes the long as
+    // a share of the week (`Research/00a` §"Practical base-building rules" ·
+    // "Long run grows | Up to 25–30% of weekly volume"), so holding the share
+    // and raising the week MUST raise the long. The old test called that two
+    // stressors and would have refused every ramping week in the engine.
+    const r = compoundProgressionCheck({ weeks: [W('w1', 40, 14), W('w2', 48, 16.8)] });
+    expect(r.findings).toEqual([]);
+    expect(r.exemptions.map((e) => e.code)).toEqual(['LONG_COUPLED_TO_VOLUME']);
+  });
+
+  it('the long run moving ALONE is one stressor and never fires', () => {
+    const r = compoundProgressionCheck({ weeks: [W('w1', 40, 14), W('w2', 40, 20)] });
+    expect(r.findings).toEqual([]);
+  });
+
+  it('every typed exception is reachable, and each is RECORDED not skipped', () => {
+    // Rule 11 · "no finding" and "a finding that was excused" are different
+    // facts. Rule 15 · name the case that reaches each branch — these are them.
+    const cutback = compoundProgressionCheck({ weeks: [W('w1', 40, 14, true), W('w2', 48, 20)] });
+    expect(cutback.findings).toEqual([]);
+    expect(cutback.exemptions.map((e) => e.code)).toEqual(['PLANNED_CUTBACK']);
+
+    // A level already held earlier in this block: week 1 ran 50 mi / 21 mi.
+    const rebound = compoundProgressionCheck({
+      weeks: [W('w0', 50, 21), W('w1', 40, 14), W('w2', 48, 20)],
+    });
+    expect(rebound.findings).toEqual([]);
+    expect(rebound.exemptions.map((e) => e.code)).toEqual(['REBOUND_TO_HELD_LEVEL']);
+
+    const authored = compoundProgressionCheck({
+      weeks: [W('w1', 40, 14), W('w2', 48, 20)],
+      authoredCombinations: { w2: 'race-specific block opener, authored 2026-09-02' },
+    });
+    expect(authored.findings).toEqual([]);
+    expect(authored.exemptions.map((e) => e.code)).toEqual(['AUTHORED_COMBINATION']);
+    expect(authored.exemptions[0].detail).toContain('race-specific block opener');
+
+    // An UNTYPED authorization is not one. His ruling forbids an exception
+    // nobody argued for, so an empty reason is rejected and the week fires.
+    const empty = compoundProgressionCheck({
+      weeks: [W('w1', 40, 14), W('w2', 48, 20)],
+      authoredCombinations: { w2: '   ' },
+    });
+    expect(empty.findings.map((x) => x.code)).toEqual(['COMPOUND_PRIMARY_STRESSORS']);
+
+    // Below the authoring grid's coherence floor the check REFUSES to judge.
+    const tiny = compoundProgressionCheck({ weeks: [W('w1', 10, 3.5), W('w2', 11, 4.5)] });
+    expect(tiny.findings).toEqual([]);
+    expect(tiny.exemptions.map((e) => e.code)).toEqual(['BELOW_GRID_RESOLUTION']);
+
+    // Every exemption carries a citation. An exception with no argument is the
+    // thing the ruling forbids.
+    for (const r of [cutback, rebound, authored, tiny]) {
+      for (const e of r.exemptions) expect(e.citation.length).toBeGreaterThan(10);
+    }
+  });
+
+  it('the grid-coherence floor MIRRORS the spike rule and may not drift', () => {
+    // Rule 16 · one quantity, one name. The module graph forbids importing
+    // `SPIKE_MIN_COHERENT_ANCHOR_MI` into `combined-stress.ts` (generate.ts
+    // imports it, so it cannot import back, and validate.ts cannot import
+    // generate.ts either), so the constant is mirrored and this is the check
+    // that keeps the mirror honest. A drift fails here.
+    expect(SHARE_MIN_COHERENT_LONG_MI).toBe(SPIKE_MIN_COHERENT_ANCHOR_MI);
+  });
+
+  it('the volume lever must move for anything to fire (Rule 22 · what it cannot see)', () => {
+    // A share rise on a FLAT week is the long-run lever alone. Correct, and
+    // asserted so nobody later "fixes" it into a finding.
+    const r = compoundProgressionCheck({ weeks: [W('w1', 40, 12), W('w2', 40, 20)] });
+    expect(r.findings).toEqual([]);
+    expect(r.exemptions).toEqual([]);
+  });
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * 3c · STRESSOR-1 · THE WHOLE ARCHETYPE CORPUS, AND THE RULE 9 MARGIN
+ *
+ * Binding a threshold on a continuous quantity creates a cliff by
+ * construction: at 4.9 points the plan ships and at 5.1 it is refused. Rule 9's
+ * standard is that no real input may SIT on that edge, and that is measured
+ * rather than hoped. This walks every archetype the engine can author and
+ * reports how close the nearest non-exempt week actually gets.
+ *
+ * Measured on landing (2026-09-02): 8,781 plans, 87,230 week transitions, ZERO
+ * enforced findings, and the closest non-exempt week reached 3.85 points
+ * against the 5.00-point threshold — a 1.15-point margin, 23% of the
+ * threshold. Exemptions reached: LONG_COUPLED_TO_VOLUME 17,249 ·
+ * PLANNED_CUTBACK 131 · BELOW_GRID_RESOLUTION 106 · REBOUND_TO_HELD_LEVEL 8.
+ *
+ * WHAT THIS CANNOT FAIL ON: everything Rule 15 already says about this corpus —
+ * `sim-matrix` archetypes carry no history, no travel windows and no mid-block
+ * races on the cross-product half, so a compound progression that only arises
+ * from one of those is unreachable here. Section 4 below drives a real block
+ * with embedded races and is where that half is covered.
+ * ───────────────────────────────────────────────────────────────────────── */
+describe('STRESSOR-1 · the corpus, and how close it sits to the edge', () => {
+  it('no archetype the engine can author carries an enforced compound progression', () => {
+    let plans = 0;
+    let transitions = 0;
+    let findings = 0;
+    let closestNonExempt = -1;
+    let closestDetail = '';
+    const reached: Record<string, number> = {};
+    for (const a of matrix()) {
+      const built = buildSimPlan(simInputsForArc(a) as never);
+      if (!built.ok) continue;
+      plans++;
+      const weeks = (built.composed.weeks as unknown as Array<{
+        startISO: string; phase: string; weeklyMi: number; isCutback?: boolean;
+        days: Array<{ type: string; distanceMi: number; isLong?: boolean }>;
+      }>).map((w) => ({
+        startISO: w.startISO,
+        phase: w.phase,
+        weeklyMi: w.weeklyMi,
+        longMi: Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)),
+        isCutback: w.isCutback,
+      }));
+      transitions += Math.max(0, weeks.length - 1);
+      const r = compoundProgressionCheck({ weeks });
+      findings += r.findings.length;
+      if (r.findings.length > 0 && closestDetail === '') {
+        closestDetail = `FINDING ${arcStr(a as Arc)} :: ${r.findings[0].message}`;
+      }
+      for (const e of r.exemptions) reached[e.code] = (reached[e.code] ?? 0) + 1;
+
+      // The margin, computed with the same predicates the check uses, so the
+      // number reported is about the check rather than about a paraphrase.
+      let pmW = 0, pmL = 0;
+      for (let i = 1; i < weeks.length; i++) {
+        const prev = weeks[i - 1], cur = weeks[i];
+        pmW = Math.max(pmW, prev.weeklyMi); pmL = Math.max(pmL, prev.longMi);
+        if (!(prev.weeklyMi > 0 && prev.longMi > 0 && cur.weeklyMi > 0 && cur.longMi > 0)) continue;
+        if (!((cur.weeklyMi - prev.weeklyMi) / prev.weeklyMi > MIN_VOLUME_STEP)) continue;
+        if (prev.longMi < SHARE_MIN_COHERENT_LONG_MI) continue;
+        if (cur.isCutback || prev.isCutback) continue;
+        if (cur.weeklyMi <= pmW && cur.longMi <= pmL) continue;
+        const dShare = (cur.longMi / cur.weeklyMi) - (prev.longMi / prev.weeklyMi);
+        if (dShare > closestNonExempt) {
+          closestNonExempt = dShare;
+          if (findings === 0) {
+            closestDetail = `${arcStr(a as Arc)} wk ${cur.startISO} vol ${prev.weeklyMi}→${cur.weeklyMi} long ${prev.longMi}→${cur.longMi}`;
+          }
+        }
+      }
+    }
+    // eslint-disable-next-line no-console
+    console.log(
+      `\n=== STRESSOR-1 · ${plans} plans, ${transitions} transitions, ${findings} enforced findings\n` +
+      `    exemptions reached: ${JSON.stringify(reached)}\n` +
+      `    closest non-exempt week: ${(closestNonExempt * 100).toFixed(2)} points vs the ` +
+      `${(MIN_SHARE_POINTS * 100).toFixed(2)}-point band · margin ` +
+      `${((MIN_SHARE_POINTS - closestNonExempt) * 100).toFixed(2)} points\n` +
+      `    ${closestDetail}`,
+    );
+
+    // LIVENESS (Rule 18) · a walk that composed nothing reports clean.
+    expect(plans).toBeGreaterThan(8000);
+    expect(transitions).toBeGreaterThan(50_000);
+    // Rule 15 · every typed exception must be REACHABLE by some real archetype,
+    // or it is decoration. `AUTHORED_COMBINATION` is excluded: nothing in the
+    // engine authors one yet, by design, and section 3b reaches it directly.
+    for (const code of ['LONG_COUPLED_TO_VOLUME', 'PLANNED_CUTBACK', 'REBOUND_TO_HELD_LEVEL', 'BELOW_GRID_RESOLUTION']) {
+      expect(reached[code] ?? 0, `no archetype reached ${code}`).toBeGreaterThan(0);
+    }
+    // THE ASSERTION. Binding is safe only because this is zero.
+    expect(findings, closestDetail).toBe(0);
+    // RULE 9 · and the nearest real plan is not sitting on the edge. Stated as
+    // a bound rather than printed only, so a composer change that walks the
+    // corpus up to the threshold fails here instead of on somebody's phone.
+    expect(closestNonExempt).toBeLessThan(MIN_SHARE_POINTS * 0.9);
+  }, 600_000);
 });
 
 /* ──────────────────────────────────── 4 · the whole engine, on a real block */
@@ -386,6 +586,86 @@ describe('COMBINED-STRESS · the validator sees the pair', () => {
     validateComposedPlan(r, 26.2, 'race-prep', ctx, { onStress: (f) => { seen = f.map((x) => x.code); } });
     // The C block has no enforced finding; the ledger is still delivered, and
     // it is what brief §5's `stressLedger` asks for.
+    expect(Array.isArray(seen)).toBe(true);
+  });
+
+  /* ── STRESSOR-1 · THE BINDING IS WIRED, AND IT IS FALSIFIED HERE ──────────
+   *
+   * Rule 18 point 1: break the thing on purpose and watch the gate name it.
+   * `compoundProgressionCheck` returning a finding proves the FUNCTION works;
+   * only this proves `validateComposedPlan` actually raises it, which is the
+   * difference between a rule and a hypothesis (Rule 20).
+   *
+   * The plan is mutated rather than composed, deliberately: the composer does
+   * not author a compound progression anywhere in 8,781 archetypes (section
+   * 3c), so a fixture that waits for one would be a test that never runs. */
+  function compoundPlan() {
+    const r = collidingPlan();
+    // Find two consecutive future non-cutback weeks with a long run above the
+    // grid floor, and push the second one's long run up hard: volume +10% and
+    // the share past the five-point band, with no exemption available.
+    const idx = r.weeks.findIndex((w, i) =>
+      i > 0 && !w.isCutback && !r.weeks[i - 1].isCutback && !w.isRaceWeek
+      && w.startISO > '2026-09-01'
+      && Math.max(0, ...r.weeks[i - 1].days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)) >= 12);
+    expect(idx, 'no week in the fixture is eligible - the fixture, not the rule, is broken').toBeGreaterThan(0);
+    const prev = r.weeks[idx - 1];
+    const cur = r.weeks[idx];
+    const prevLong = Math.max(0, ...prev.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi));
+    // Above every prior peak in the block, so REBOUND_TO_HELD_LEVEL cannot
+    // excuse it; +12% volume and a long run at 45% of the week.
+    const blockPeakWeekly = Math.max(...r.weeks.map((w) => w.weeklyMi));
+    const blockPeakLong = Math.max(0, ...r.weeks.flatMap((w) =>
+      w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)));
+    cur.weeklyMi = Math.max(Math.round(prev.weeklyMi * 1.12), blockPeakWeekly + 1);
+    const long = cur.days.find((d) => d.isLong && d.type !== 'race');
+    expect(long, 'the chosen week has no long run').toBeTruthy();
+    long!.distanceMi = Math.max(Math.round(cur.weeklyMi * 0.45), blockPeakLong + 1);
+    r.vols = r.weeks.map((w) => w.weeklyMi);
+    return { plan: r, weekISO: cur.startISO, prevLong, curLong: long!.distanceMi };
+  }
+
+  it('a block carrying an unexcused compound progression is REFUSED', () => {
+    const { plan, weekISO } = compoundPlan();
+    let err: PlanValidationError | null = null;
+    try { validateComposedPlan(plan, 26.2, 'race-prep', ctx); } catch (e) { err = e as PlanValidationError; }
+    expect(err, 'the compound week must be refused, not warned about').toBeTruthy();
+    const text = err!.violations.join('\n');
+    expect(text).toContain('COMPOUND_PRIMARY_STRESSORS');
+    expect(text).toContain(weekISO);
+    // Rule 13 point 3 · assert the SHAPE of the message, not the absence of a
+    // pass. A refusal that says nothing useful is a refusal the next reader
+    // cannot act on.
+    expect(text).toMatch(/weekly volume \+\d/);
+    expect(text).toMatch(/long-run share \+\d/);
+    expect(text).toContain('hold one axis, or author the combination');
+  });
+
+  it('the same block ships once the combination is EXCUSED by the composer', () => {
+    // The other direction of the falsification, and the proof his "explicitly
+    // typed, intentionally authored" escape hatch is real rather than a
+    // comment: the identical week passes when it carries a stated reason.
+    const { plan, weekISO } = compoundPlan();
+    const excused = compoundProgressionCheck({
+      weeks: plan.weeks.map((w) => ({
+        startISO: w.startISO, phase: w.phase, weeklyMi: w.weeklyMi,
+        longMi: Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)),
+        isCutback: w.isCutback,
+      })),
+      authoredCombinations: { [weekISO]: 'deliberate race-specific overload, authored with a citation' },
+    });
+    expect(excused.findings).toEqual([]);
+    expect(excused.exemptions.some((e) => e.code === 'AUTHORED_COMBINATION' && e.weekStartISO === weekISO)).toBe(true);
+  });
+
+  it('the exemption ledger reaches a caller that asks for it', () => {
+    const r = collidingPlan();
+    let seen: string[] = [];
+    validateComposedPlan(r, 26.2, 'race-prep', ctx, {
+      onCompoundExemption: (e) => { seen = e.map((x) => x.code); },
+    });
+    // Rule 11 · a block that shipped with excused combinations and one that
+    // never had any must be distinguishable, and this callback is how.
     expect(Array.isArray(seen)).toBe(true);
   });
 });

@@ -412,58 +412,323 @@ export function combinedStressFindings(args: {
   return findings;
 }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * ONE PRIMARY STRESSOR PER WEEK · BINDING (STRESSOR-1, 2026-09-02)
+ *
+ * David's ruling, verbatim:
+ *
+ *   "Make one primary stressor per day binding by default. Exceptions must be
+ *    explicitly typed, intentionally authored, and covered by an invariant.
+ *    Accidental combinations must fail plan generation rather than ship as
+ *    warnings."
+ *
+ * ── WHERE THE TWO HALVES OF THAT RULING LIVE ────────────────────────────────
+ *
+ * The PER-DAY half was already binding before this change and is not here:
+ * `validateComposedPlan` §9 (SP-7, stimulus-gap adjacency, `Research/00b`
+ * §"Hard/Easy Alternation") pushes onto `violations`, which throws, so two
+ * hard stimuli landing on one day or on adjacent days already refuses a plan.
+ * Verified 2026-09-02 rather than assumed.
+ *
+ * This function is the PER-WEEK half — the one that was advisory, and the one
+ * `docs/ADAPTATION_PROGRESSION_DOCTRINE.md` states in those words: "progress
+ * one primary stressor at a time whenever possible ... that makes it impossible
+ * to know what caused success or failure and creates unnecessary load spikes."
+ *
+ * ── WHY THE OLD TEST WAS THE WRONG TEST ─────────────────────────────────────
+ *
+ * It fired when weekly volume AND long-run MILES both rose more than 5%. That
+ * is not two stressors, it is one stressor counted twice: `layoutWeek` sizes
+ * the long as `min(weeklyMi × longShare, peakLongMiBand[1])`, and
+ * `Research/00a` §"Practical base-building rules" defines the long run that way
+ * — "Long run grows | Up to 25–30% of weekly volume". Hold the share and raise
+ * the week, and the long HAS to rise; that is the volume lever expressed on the
+ * long day, and calling it a second stressor would refuse every ramping week
+ * the engine has ever authored.
+ *
+ * Measured on the owner's live CIM block the night this landed, the old test
+ * fired twice — on weeks whose long-run SHARE moved 2.3% and 2.6%, which is
+ * inside the composer's own half-mile rounding grid. Binding it as written
+ * would have refused his block for arithmetic.
+ *
+ * ── WHAT BINDS NOW ──────────────────────────────────────────────────────────
+ *
+ * A week is a compound progression when weekly volume advances materially AND
+ * the LONG-RUN SHARE advances materially. The share is the long run's
+ * independent lever: raising it is a decision to make the long harder relative
+ * to the week, over and above whatever the week itself did.
+ *
+ * MATERIALITY IS DOCTRINE'S OWN BAND WIDTH, in PERCENTAGE POINTS of the week.
+ * `Research/00a` §"Practical base-building rules" states the long run as "Long
+ * run grows | Up to 25–30% of weekly volume" — a band five points wide, and
+ * doctrine states no finer resolution on this quantity than that. A share move
+ * smaller than the width of doctrine's own latitude is inside it, not a
+ * progression past it. This is the same discipline CLAUDE.md records under
+ * Rule 9 as "a band has ONE edge": a band may be spent, once.
+ *
+ * A relative threshold was tried first and is wrong here. Five percent OF the
+ * share is 1.5 points on a 30% share and 1.0 point on a 20% one, so the same
+ * rule would have been three times stricter on a marathoner than on a 5K
+ * runner for no reason doctrine gives.
+ *
+ * THE SECOND FLOOR IS THE AUTHORING GRID, and it is not this file's invention.
+ * `generate.ts`'s `SPIKE_MIN_COHERENT_ANCHOR_MI` already declines to judge a
+ * long run below 5 mi, with a written argument: distances are authored on a
+ * half-mile grid, and below ~5 mi a single grid step is a larger move than
+ * doctrine's own ratio, so a check there is "an anchor-dependent, incoherent
+ * guard, not a strict one, which is worse than no guard at that grid
+ * resolution because it looks like protection and is not." Exactly the same
+ * degeneracy applies to the share, and measured on the corpus it is exactly
+ * where the residue landed: with the band applied, 106 archetype weeks still
+ * fired and EVERY ONE was a long run stepping 3.5 → 4.5 or 4.0 → 5.0 on a
+ * 10-11 mi/wk block. Those weeks are recorded as `BELOW_GRID_RESOLUTION`
+ * rather than passed silently — Rule 11: "I cannot tell" is a third answer.
+ *
+ * The floor is DUPLICATED here rather than imported, and that is a wiring
+ * compromise the module graph forces: `generate.ts` imports this file, so this
+ * file cannot import it back, and `validate.ts` cannot import `generate.ts`
+ * either. It is not a second owner — `_combined_stress.test.ts` asserts the two
+ * constants are EQUAL, so a drift fails the build rather than living quietly.
+ *
+ * ── RULE 9 · WHERE THE REAL PLANS SIT RELATIVE TO THE EDGE ──────────────────
+ *
+ * A binding threshold on a continuous quantity is a cliff by construction: at
+ * 4.9% the plan ships and at 5.1% it is refused. Rule 9's standard is that no
+ * real input may sit ON the edge, and that is measured, not asserted —
+ * `_combined_stress.test.ts` walks the whole archetype corpus and reports the
+ * largest share-rise any material-volume week actually authors, so the margin
+ * is a number in the log rather than a hope. If the composer ever authors near
+ * 5%, that is a finding about the composer.
+ *
+ * ── THE TYPED EXCEPTIONS (his second sentence) ──────────────────────────────
+ *
+ * Every exception is a NAMED CODE with a citation, and every one that fires is
+ * RECORDED and returned. "No finding" and "a finding that was excused" are
+ * different facts (Rule 11), and an exception nobody can count is a hole.
+ *
+ * ── WHAT THIS CANNOT FAIL ON (Rule 22) ──────────────────────────────────────
+ *
+ *   · INTENSITY. A week that raises volume and quality DENSITY together is
+ *     invisible: `ComposedWeek` carries miles and session labels, not a scalar
+ *     for how hard a session is. `OverloadTrajectory` logs the rep-shape levers
+ *     separately and nothing joins the two.
+ *   · A SHARE RISE WITH FLAT VOLUME. That is the long-run lever moving ALONE,
+ *     which is exactly one primary stressor and is the correct answer, not an
+ *     oversight.
+ *   · WHETHER THE ONE STRESSOR IS THE RIGHT ONE. Choosing between volume and
+ *     duration is the Adaptation Engine's question
+ *     (`docs/ADAPTATION_PROGRESSION_DOCTRINE.md`), not this file's.
+ *   · A WEEK WITH NO LONG RUN. A share needs a long run to be a share of; those
+ *     weeks are skipped rather than counted as zero (Rule 11).
+ * ═══════════════════════════════════════════════════════════════════════ */
+
 /**
- * ONE PRIMARY STRESSOR PER BUILD WEEK (brief §5.1, §3.2.B).
- *
- * A week may raise weekly volume OR the long run, not both by a material
- * amount. "Material" is the doctrine step each axis is allowed on its own —
- * `Research/00a` §"Volume progression rules" for the week, and the same
- * document's long-run rules for the long — so a week that moves both by less
- * than half of either's allowed step is progressing neither and is not a
- * finding.
- *
- * ADVISORY, not enforced, and deliberately so. The owner's live block raises
- * volume 33.5 → 49.2 and the long 12 → 15.5 in one step across a CUTBACK
- * boundary, where both numbers are returning to a level already held rather
- * than advancing past it. Making this fatal today would refuse his block for a
- * rebound doctrine licenses. It reports, the handback counts it, and the
- * decision to bind it belongs to whoever owns the volume curve.
- *
- * WHAT THIS CANNOT FAIL ON (Rule 22): a week that raises volume and INTENSITY
- * together, because intensity is not a number on `ComposedWeek` — it is the
- * shape of the sessions inside it, and the trajectory that owns those shapes
- * reports its own lever separately. This sees the two axes it can measure.
+ * The typed exceptions. Each is a real doctrine reading, and the enum exists so
+ * an intentional combination can be AUTHORED rather than the rule weakened.
  */
-export function compoundProgressionFindings(args: {
-  weeks: readonly { startISO: string; phase: string; weeklyMi: number; longMi: number; isCutback?: boolean }[];
-  /** Fraction of the previous week a volume rise must exceed to count. */
+export type CompoundStressExemption =
+  /** This week or the one before it is a prescribed deload. `Research/00a`
+   *  §"Volume progression rules" · "Down weeks | Every 3–4 wk, reduce by
+   *  20–30%" — the week either side of a planned reduction is absorbing or
+   *  rebounding, and neither is a progression. */
+  | 'PLANNED_CUTBACK'
+  /** Neither axis exceeds a level already reached earlier in this block. A
+   *  return to a load the runner has already run inside this same block is the
+   *  other half of the down-week row above: the reduction was the plan's, and
+   *  so is the recovery of it. */
+  | 'REBOUND_TO_HELD_LEVEL'
+  /** The long run grew only as far as the week's own step carried it — the
+   *  share held. `Research/00a` §"Practical base-building rules" · "Long run
+   *  grows | Up to 25–30% of weekly volume". One stressor, two numbers. */
+  | 'LONG_COUPLED_TO_VOLUME'
+  /** Explicitly authored, per week, by a caller that states why. Nothing in the
+   *  engine authors one today; it exists so a future intentional combination is
+   *  a typed decision on the record instead of a threshold somebody widened. */
+  | 'AUTHORED_COMBINATION'
+  /** The long run is below the authoring grid's coherence floor, so a share
+   *  move there cannot be told from rounding. A REFUSAL TO JUDGE, not a pass —
+   *  the same posture, the same floor and the same argument as
+   *  `generate.ts#SPIKE_MIN_COHERENT_ANCHOR_MI`. */
+  | 'BELOW_GRID_RESOLUTION';
+
+/** One excused week, with the reading that excused it. Written alongside the
+ *  findings so a block can be asked "how many combinations did you allow, and
+ *  on what grounds" — Rule 11, and his "covered by an invariant". */
+export interface CompoundExemptionRecord {
+  code: CompoundStressExemption;
+  weekStartISO: string;
+  detail: string;
+  citation: string;
+}
+
+export interface CompoundProgressionResult {
+  /** ENFORCED. `validateComposedPlan` raises these; a block carrying one does
+   *  not ship. */
+  findings: StressFinding[];
+  /** Every week where two axes rose and a typed exception excused it. */
+  exemptions: CompoundExemptionRecord[];
+}
+
+/**
+ * Fraction of the previous week a volume rise must exceed to count as the
+ * volume lever moving. Unchanged from the advisory version.
+ */
+export const MIN_VOLUME_STEP = 0.05;
+/**
+ * PERCENTAGE POINTS of weekly volume the long-run share must rise by to count
+ * as the long-run lever moving independently. 0.05 = five points.
+ *
+ * This is the width of `Research/00a` §"Practical base-building rules"' own
+ * band — "Long run grows | Up to 25–30% of weekly volume" — and doctrine states
+ * no finer resolution on the quantity. See the materiality note above.
+ */
+export const MIN_SHARE_POINTS = 0.05;
+/**
+ * The smallest long run this check will judge, in miles.
+ *
+ * MIRRORS `generate.ts#SPIKE_MIN_COHERENT_ANCHOR_MI` and must stay equal to
+ * it — `_combined_stress.test.ts` asserts that, because the module graph
+ * forbids importing it (see the note above). Same convention, same argument,
+ * same authoring grid.
+ */
+export const SHARE_MIN_COHERENT_LONG_MI = 5;
+
+const CITE_DOWN_WEEKS = 'Research/00a-distance-running-training.md §"Volume progression rules" · "Down weeks"';
+const CITE_LONG_SHARE = 'Research/00a-distance-running-training.md §"Practical base-building rules" · "Long run grows"';
+const CITE_GRID_FLOOR = 'lib/plan/generate.ts#SPIKE_MIN_COHERENT_ANCHOR_MI · Research/00a §"Practical load rules"';
+
+export interface CompoundWeek {
+  startISO: string;
+  phase: string;
+  weeklyMi: number;
+  longMi: number;
+  isCutback?: boolean;
+}
+
+export function compoundProgressionCheck(args: {
+  weeks: readonly CompoundWeek[];
+  /** Weeks whose combination is intentionally authored, keyed by `startISO`,
+   *  each carrying the reason it was authored. An entry with no reason is
+   *  rejected rather than honoured — an untyped exception is the thing his
+   *  ruling forbids. */
+  authoredCombinations?: Readonly<Record<string, string>>;
   volumeStepPct?: number;
-  /** Fraction of the previous long a long-run rise must exceed to count. */
-  longStepPct?: number;
-}): StressFinding[] {
-  const volStep = args.volumeStepPct ?? 0.05;
-  const longStep = args.longStepPct ?? 0.05;
-  const out: StressFinding[] = [];
+  /** PERCENTAGE POINTS, not a fraction of the share. See `MIN_SHARE_POINTS`. */
+  sharePoints?: number;
+}): CompoundProgressionResult {
+  const volStep = args.volumeStepPct ?? MIN_VOLUME_STEP;
+  const sharePoints = args.sharePoints ?? MIN_SHARE_POINTS;
+  const findings: StressFinding[] = [];
+  const exemptions: CompoundExemptionRecord[] = [];
+
+  // The largest weekly volume and long run already reached BEFORE each week,
+  // for `REBOUND_TO_HELD_LEVEL`. Walked forward so a week is only ever compared
+  // against load that precedes it in this block.
+  let priorMaxWeekly = 0;
+  let priorMaxLong = 0;
+
   for (let i = 1; i < args.weeks.length; i++) {
     const prev = args.weeks[i - 1];
     const cur = args.weeks[i];
-    if (cur.isCutback || prev.isCutback) continue;   // a rebound is not a progression
+    priorMaxWeekly = Math.max(priorMaxWeekly, args.weeks[i - 1].weeklyMi);
+    priorMaxLong = Math.max(priorMaxLong, args.weeks[i - 1].longMi);
+
+    // Rule 11 · a week with no long run has no share to compare, which is a
+    // different fact from a share that did not move. Skipped, not zeroed.
     if (!(prev.weeklyMi > 0) || !(prev.longMi > 0)) continue;
     if (!(cur.weeklyMi > 0) || !(cur.longMi > 0)) continue;
+
     const dVol = (cur.weeklyMi - prev.weeklyMi) / prev.weeklyMi;
+    const prevShare = prev.longMi / prev.weeklyMi;
+    const curShare = cur.longMi / cur.weeklyMi;
+    const dShare = curShare - prevShare;            // PERCENTAGE POINTS
     const dLong = (cur.longMi - prev.longMi) / prev.longMi;
-    if (dVol > volStep && dLong > longStep) {
-      out.push({
-        code: 'COMPOUND_PRIMARY_STRESSORS',
-        weekStartISO: cur.startISO,
-        dateISO: cur.startISO,
-        message:
-          `weekly volume +${(dVol * 100).toFixed(1)}% (${prev.weeklyMi}→${cur.weeklyMi}mi) and the long run ` +
-          `+${(dLong * 100).toFixed(1)}% (${prev.longMi}→${cur.longMi}mi) both advance · ` +
-          `doctrine progresses one primary stressor at a time`,
-        enforced: false,
-      });
+
+    if (!(dVol > volStep)) continue;               // the volume lever did not move
+
+    // The authoring grid's coherence floor, checked BEFORE the band so a week
+    // this function cannot honestly judge is recorded as a refusal rather than
+    // silently counted as coupled. Gated on the ANCHOR (`prev.longMi`), which
+    // is what `enforceSpikeRule` gates on.
+    if (prev.longMi < SHARE_MIN_COHERENT_LONG_MI) {
+      if (dShare > sharePoints) {
+        exemptions.push({
+          code: 'BELOW_GRID_RESOLUTION',
+          weekStartISO: cur.startISO,
+          detail:
+            `long ${prev.longMi}→${cur.longMi}mi is under the ${SHARE_MIN_COHERENT_LONG_MI}mi grid-coherence ` +
+            `floor · one half-mile step there is ${((0.5 / prev.longMi) * 100).toFixed(0)}% of the long run, ` +
+            `so a ${(dShare * 100).toFixed(1)}-point share move cannot be told from rounding`,
+          citation: CITE_GRID_FLOOR,
+        });
+      }
+      continue;
     }
+
+    if (!(dShare > sharePoints)) {
+      // Both numbers rose, and the reason is one lever. Recorded rather than
+      // silently passed, because "we looked and it was coupled" is a fact worth
+      // being able to count.
+      if (dLong > 0) {
+        exemptions.push({
+          code: 'LONG_COUPLED_TO_VOLUME',
+          weekStartISO: cur.startISO,
+          detail:
+            `volume +${(dVol * 100).toFixed(1)}%, long +${(dLong * 100).toFixed(1)}%, ` +
+            `long-run share ${(prevShare * 100).toFixed(1)}% → ${(curShare * 100).toFixed(1)}% ` +
+            `(${dShare >= 0 ? '+' : ''}${(dShare * 100).toFixed(2)} points, under the ${(sharePoints * 100).toFixed(0)}-point band)`,
+          citation: CITE_LONG_SHARE,
+        });
+      }
+      continue;
+    }
+
+    // Both levers moved. Which typed exception, if any, covers it?
+    const authored = args.authoredCombinations?.[cur.startISO];
+    if (authored != null && authored.trim().length > 0) {
+      exemptions.push({
+        code: 'AUTHORED_COMBINATION',
+        weekStartISO: cur.startISO,
+        detail: `volume +${(dVol * 100).toFixed(1)}%, share +${(dShare * 100).toFixed(1)} points · ${authored}`,
+        citation: 'authored by the composer',
+      });
+      continue;
+    }
+    if (cur.isCutback || prev.isCutback) {
+      exemptions.push({
+        code: 'PLANNED_CUTBACK',
+        weekStartISO: cur.startISO,
+        detail:
+          `volume +${(dVol * 100).toFixed(1)}%, share +${(dShare * 100).toFixed(1)} points across a planned ` +
+          `deload (${prev.isCutback ? 'the week before' : 'this week'} is a cutback)`,
+        citation: CITE_DOWN_WEEKS,
+      });
+      continue;
+    }
+    if (cur.weeklyMi <= priorMaxWeekly && cur.longMi <= priorMaxLong) {
+      exemptions.push({
+        code: 'REBOUND_TO_HELD_LEVEL',
+        weekStartISO: cur.startISO,
+        detail:
+          `volume +${(dVol * 100).toFixed(1)}%, share +${(dShare * 100).toFixed(1)} points, but ` +
+          `${cur.weeklyMi}mi ≤ the ${priorMaxWeekly}mi and ${cur.longMi}mi ≤ the ${priorMaxLong}mi ` +
+          `already run in this block`,
+        citation: CITE_DOWN_WEEKS,
+      });
+      continue;
+    }
+
+    findings.push({
+      code: 'COMPOUND_PRIMARY_STRESSORS',
+      weekStartISO: cur.startISO,
+      dateISO: cur.startISO,
+      message:
+        `weekly volume +${(dVol * 100).toFixed(1)}% (${prev.weeklyMi}→${cur.weeklyMi}mi) AND the long-run ` +
+        `share +${(dShare * 100).toFixed(1)} points (${(prevShare * 100).toFixed(1)}%→${(curShare * 100).toFixed(1)}%, ` +
+        `long ${prev.longMi}→${cur.longMi}mi) both advance · doctrine progresses one primary stressor at a ` +
+        `time (docs/ADAPTATION_PROGRESSION_DOCTRINE.md) · hold one axis, or author the combination`,
+      enforced: true,
+    });
   }
-  return out;
+  return { findings, exemptions };
 }
