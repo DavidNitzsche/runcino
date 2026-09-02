@@ -81,6 +81,51 @@ export function ranBelowThresholdBand(
 }
 
 /**
+ * The floor of Friel zone 4, as a multiple of LTHR.
+ *
+ * `Research/03` §6 (Friel): zone 4 is "SubThreshold · just below LT" at 95-99%
+ * of LTHR, and zone 5a is "At LT · cruise intervals" at 100-102%. So there are
+ * TWO lines under the seam, not one, and they mean different things.
+ */
+export const SUBTHRESHOLD_HR_FLOOR_OF_TARGET = 0.95;
+
+/**
+ * Did this session's heart rate land in Friel zone 4 — under the seam, but
+ * inside the sub-threshold band?
+ *
+ * WHY THIS EXISTS (2026-09-01). `ranBelowThresholdBand` alone treats 96% of
+ * LTHR and 80% of LTHR as the same fact, and they are not. The first is a
+ * correctly-run cruise-interval set; the second is a runner who never got
+ * near the intensity.
+ *
+ * The distinction is not academic — it decides which of two OPPOSITE coaching
+ * lines is true, on the same "ran quicker than the target" branch:
+ *
+ *   · quick pace, HR in Z4 → the pace cost him less than the model expected.
+ *     That is the classic soft-target signal, and doctrine's own zone table
+ *     says a mile rep with a 60-second jog between reps LIVES here: heart rate
+ *     sawtooths across the recoveries (`Research/03` §2, half-time ~30 s), so
+ *     a per-rep average pinned at 100-102% of LTHR is not physically what a
+ *     correctly-executed cruise set produces.
+ *   · quick pace, HR well UNDER Z4 → he did not reach the intensity at all,
+ *     and calling that a soft target starts the loop `slowQualityNeverReached
+ *     TheBand` already documents.
+ *
+ * Measured on the owner's real 2026-09-01 session: work-phase HR 158 / 161 /
+ * 164 / 166, mean 162 against LTHR 168 — 96.4%, the top of Z4, climbing rep
+ * over rep. The first line is the true one and the second would have been a
+ * scolding.
+ */
+export function ranInSubThresholdBand(
+  avgHrBpm: number | null | undefined,
+  hrTargetBpm: number | null | undefined,
+): boolean {
+  if (avgHrBpm == null || hrTargetBpm == null || !(hrTargetBpm > 0)) return false;
+  return avgHrBpm >= hrTargetBpm * SUBTHRESHOLD_HR_FLOOR_OF_TARGET
+      && avgHrBpm < hrTargetBpm * THRESHOLD_HR_FLOOR_OF_TARGET;
+}
+
+/**
  * Across a stretch of SLOWER-than-prescribed quality work, did the runner
  * mostly stay under the intensity?
  *

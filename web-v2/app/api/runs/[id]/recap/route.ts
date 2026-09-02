@@ -232,7 +232,7 @@ export async function GET(
   // uses these instead of unreliable per-mile splits.
   // Cold-start: returns [] when no watch_completion intent exists (any
   // runner's first run, non-Faff-watch sources, open easy runs).
-  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null; actualDistanceMi?: number | null; isFinishSegment?: boolean; actualSpeedMph?: number | null; actualInclinePct?: number | null; completed?: boolean | null }> = [];
+  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null; actualDistanceMi?: number | null; isFinishSegment?: boolean; actualSpeedMph?: number | null; actualInclinePct?: number | null; completed?: boolean | null; avgHr?: number | null; actualDurationSec?: number | null }> = [];
   if (date) {
     try {
       // 2026-08-27 · the #HHmm-suffix branch fixed the field-suffix check,
@@ -269,6 +269,10 @@ export async function GET(
           actualPaceSPerMi: Number(p.actualPaceSPerMi) || null,
           targetPaceSPerMi: Number(p.targetPaceSPerMi) || null,
           actualDistanceMi: Number(p.actualDistanceMi) || null,
+          // RULE 16 · carried so the recap's threshold-band sentences can be
+          // gated on the WORK heart rate rather than the whole run's.
+          avgHr: Number(p.avgHr) || null,
+          actualDurationSec: Number(p.actualDurationSec) || null,
           isFinishSegment: p.isFinishSegment === true,
           // BELT-WIN-1 · the treadmill console's own readings, carried so
           // `winTreadmill` has something to read. `completed` keeps its
@@ -480,7 +484,24 @@ export async function GET(
     wholeCadenceSpm: runCadenceSpm(data)?.spm ?? null,
   });
 
+  /* RULE 16 · the WORK heart rate for the threshold-band sentences.
+   *
+   * `actualAvgHr` is the whole run, and on a session with a 2.1-mile warm-up
+   * at 140 bpm and a 2.1-mile cool-down at 153 that is ten beats lower than
+   * the reps — enough to move the verdict across two Friel zone boundaries.
+   *
+   * Read off `readings.hr`, NOT re-derived: `deriveReadingScopes` is already
+   * the owner of "what may this run say about its own heart rate", it already
+   * refuses below `HR_REP_KINETICS_FLOOR_SEC` (a rep under two minutes has no
+   * interval over which an HR mean is true), and a second weighted mean here
+   * would be a second answer to one question. `scope === 'work'` is the only
+   * case that gives a work number; 'whole' and 'none' both mean there is no
+   * separate work reading, and the band arm falls back accordingly. */
+  const workAvgHrBpm: number | null =
+    readings.hr.scope === 'work' ? readings.hr.value : null;
+
   const recap = deriveRecap({
+    workAvgHrBpm,
     type,
     phase,
     plannedMi,

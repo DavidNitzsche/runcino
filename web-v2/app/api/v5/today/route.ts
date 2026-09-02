@@ -36,6 +36,8 @@ import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runt
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
+import { mapWatchPhases } from '@/lib/coach/run-state';
+import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
 import { resolveViewedPlanDay, viewedDayIsUnresolved } from '@/lib/faff/viewed-day';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
@@ -1051,7 +1053,31 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           // say anything about the threshold band at all.
           : (glance.lthr ?? null);
 
+      /* RULE 16 · WHAT THIS RUN MAY SAY ABOUT ITS OWN HEART RATE.
+       *
+       * `deriveReadingScopes` is the owner of that question and the recap
+       * already accepts its answer — the route just never supplied one, so
+       * every threshold-band sentence and every lead line here was gated on
+       * the WHOLE-RUN average. On a session with a 2.1-mile warm-up at 140 bpm
+       * and a 2.1-mile cool-down at 153 that is ten beats below the reps, and
+       * ten beats is two Friel zone boundaries at this LTHR: the run averaged
+       * 154 (91.7% of a 168 LTHR) and the four reps averaged 162 (96.4%),
+       * which sit on opposite sides of the zone-4 floor and therefore produce
+       * opposite verdicts.
+       *
+       * The resolver also refuses below `HR_REP_KINETICS_FLOOR_SEC`, so a
+       * sub-two-minute rep set says nothing about heart rate rather than
+       * reporting its own rise time. */
+      const recapReadings = deriveReadingScopes({
+        phases: mapWatchPhases(completionPhases),
+        wholeHrBpm: runAvgHr(data),
+      });
+      const recapWorkHr: number | null =
+        recapReadings.hr.scope === 'work' ? recapReadings.hr.value : null;
+
       const recap = deriveRecap({
+        workAvgHrBpm: recapWorkHr,
+        readings: recapReadings,
         type: purposeType, phase: purposePhase,
         plannedMi: todayPlan?.distanceMi ?? 0,
         plannedPaceSPerMi: askedPaceSPerMi,
