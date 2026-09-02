@@ -484,6 +484,30 @@ cannot fail on a wrong number every surface agrees about, that it cannot see
 Swift, and that it is ONE runner on ONE day — the opposite Rule 15 hole from the
 archetype sweep rather than a smaller one.
 
+## 12c · The race pace-plan fix, and exactly how far it is verified
+
+**Verified, on live production data:** calling `buildRacePacing` with each
+quantity in turn against your real CIM course gives
+
+    BEFORE (goal)    Settle 7:07 · Find rhythm 6:57 · Goal pace   6:48   mean 412 s/mi
+    AFTER  (target)  Settle 7:38 · Find rhythm 7:28 · Target pace 7:19   mean 443 s/mi
+
+**Gated:** the cross-surface contract calls the REAL route handler against your
+account and now asserts the pace plan's distance-weighted mean equals
+`race-outlook.execution.paceSecPerMi` and does NOT equal your goal pace. That
+assertion replaced the registered disagreement, which the ratchet itself forced
+me to delete the moment the fix landed.
+
+**NOT verified:** the race-detail SCREEN. I opened it on the simulator and it
+sat on its loading skeleton. The dev server's own log explains why and it is not
+a defect — that server answered `/api/v5/races` in **54 seconds**, because it is
+a cold Next dev build talking to the production database over the network, and
+the app gives up before it replies. The route was never requested.
+
+So this fix is proved at the payload the phone consumes, and not at the pixels.
+That is a weaker claim than the Today and Block renders in section 5, and it is
+the accurate one.
+
 ## 12b · Stage 4 · the post-run experience
 
 PENDING — in flight.
