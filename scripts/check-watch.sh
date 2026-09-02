@@ -23,7 +23,7 @@
 # already has that runs on a Mac: the pre-push hook (.githooks/pre-push, the
 # same hook that typechecks web-v2). See docs/design/watch-0821/FACE-QC.md.
 #
-# Three guards, exit 1 on any violation:
+# Four guards, exit 1 on any violation:
 #
 #   1. PROJECT       · `xcodegen generate` before anything else. native-v2's
 #      FRESHNESS       project.yml is the ONLY file that knows which sources
@@ -41,6 +41,25 @@
 #                      scripts/watch/geom.py against Apple's content box.
 #                      Skipped by --fast, and skipped honestly (not failed)
 #                      when no watch simulator is booted.
+#
+#   4. THE RUN IS  · every board the reveal gesture can land on must be one
+#      ENDABLE       the runner can end the run from. Source-level, because
+#                    the decision lives in private SwiftUI view members that
+#                    no test in the suite can reach.
+#
+#                    TWICE NOW. The fuel takeover (WMomentFuel) swallowed the
+#                    controls gesture on an opaque persistent board — "could
+#                    not pause, could not end the run ... forever on a
+#                    single-phase race". Then on 2026-09-02 the recovery board
+#                    did the same thing by a different route: `controlsShowing`
+#                    drove both boards and the controls layer excluded
+#                    `.recovery`, so every strides session ended on a "Walk
+#                    back" with three dead verbs and no fourth. David force-quit
+#                    and 0.43 mi of his run died with the process.
+#
+#                    A rule with no gate is a hypothesis (CLAUDE.md rule 20),
+#                    and a comment saying "controls are always reachable" is
+#                    documentation, not enforcement. This is the enforcement.
 #
 # Usage:
 #   bash scripts/check-watch.sh            # all three guards
@@ -366,7 +385,77 @@ else
   fi
 fi
 
+# ── 4 · THE RUN IS ENDABLE ───────────────────────────────────────────────────
+#
+# Liveness first (rule 18): a scanner that reports clean because it read
+# nothing is the worst outcome available, since it also reports confidence.
+ROUTER="$ROOT/legacy/native/Faff/FaffWatch Watch App/WatchRouterV5.swift"
+if [ ! -f "$ROUTER" ]; then
+  note "WATCH FAIL · WatchRouterV5.swift not found at $ROUTER"
+  note "  This guard cannot be deleted by moving the file it watches."
+  fail=1
+else
+  endable_read=$(wc -l < "$ROUTER" | tr -d ' ')
+  if [ "$endable_read" -lt 100 ]; then
+    note "WATCH FAIL · WatchRouterV5.swift is only $endable_read lines — guard 4 read nothing useful."
+    fail=1
+  fi
+
+  # 4a · the controls layer may not be gated on the phase type.
+  #
+  # `controlsLayer` is the ONLY board carrying Pause and End run. Any condition
+  # that suppresses it for a KIND of phase re-creates 2026-09-02 exactly. The
+  # window scanned is the `if router.controlsShowing` block in `body`.
+  ctrl_block=$(awk '/if router\.controlsShowing,/{f=1} f{print} f&&/controlsLayer/{exit}' "$ROUTER")
+  if [ -z "$ctrl_block" ]; then
+    note "WATCH FAIL · guard 4a found no 'if router.controlsShowing, ... controlsLayer' block."
+    note "  Either the controls layer moved or its condition was rewritten. Both need"
+    note "  a human to confirm End run is still reachable from every face."
+    fail=1
+  elif printf '%s' "$ctrl_block" | grep -q 'currentPhase?\.type'; then
+    note "WATCH FAIL · the controls board is suppressed for a phase TYPE:"
+    printf '%s\n' "$ctrl_block" | grep -n 'currentPhase?\.type' | sed 's/^/    /'
+    note "  Pause and End run live on that board and nowhere else, so this makes the"
+    note "  run unendable for the whole of that phase. That is the 2026-09-02 defect"
+    note "  (a strides session ending on a 'Walk back') and the fuel-takeover defect"
+    note "  before it. If a phase needs its own board, draw it as the FACE and let"
+    note "  the reveal gesture open controls over it — see showsExtendRecovery."
+    fail=1
+  fi
+
+  # 4b · a face-owning predicate must exclude overtime.
+  #
+  # `advance()` sets planComplete and does NOT move currentIndex, so the last
+  # phase answers its own type forever afterwards while every verb that acts on
+  # it guards `!planComplete`. A board drawn there is a board of dead buttons.
+  if ! grep -q 'private var showsExtendRecovery' "$ROUTER"; then
+    note "WATCH FAIL · showsExtendRecovery is gone. It is the single predicate that"
+    note "  decides whether the recovery board owns the face; without it the two"
+    note "  boards can disagree again (CLAUDE.md rule 16)."
+    fail=1
+  else
+    pred=$(awk '/private var showsExtendRecovery/{f=1} f{print} f&&/^    }/{exit}' "$ROUTER")
+    if ! printf '%s' "$pred" | grep -q '!engine\.planComplete'; then
+      note "WATCH FAIL · showsExtendRecovery no longer excludes overtime (!engine.planComplete):"
+      printf '%s\n' "$pred" | sed 's/^/    /'
+      note "  In overtime endCurrentPhase() and recordRecoveryExtension() are both"
+      note "  no-ops, so this board would draw two buttons that do nothing."
+      fail=1
+    fi
+  fi
+
+  # 4c · the summary boards keep a DRAWN way off.
+  #
+  # Both ended a run on tap-anywhere alone. David, 2026-09-02: "there is not
+  # done or save or anything button."
+  if ! grep -q 'var onDone: (() -> Void)? = nil' "$ROOT/legacy/native/Faff/FaffWatch Watch App/FacesFinishV5.swift"; then
+    note "WATCH FAIL · FinishSummaryBoard lost its drawn onDone control."
+    note "  Tap-anywhere is not an affordance on the last screen of a run."
+    fail=1
+  fi
+fi
+
 if [ "$fail" -eq 0 ]; then
-  echo "watch OK · ${tests_line:-tests passed}; ${render_note}"
+  echo "watch OK · ${tests_line:-tests passed}; ${render_note}; run endable (${endable_read} router lines read)"
 fi
 exit $fail
