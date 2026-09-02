@@ -38,6 +38,18 @@
  * 15 s/mi on any single mile. Both are read out of the doc by the doctrine
  * gate rather than pinned here — see ELEVATION.* in lib/doctrine/registry.ts.
  *
+ * ── ONE DESCENT COEFFICIENT, AND IT IS NOT DECLARED HERE (2026-09-02) ─────
+ *
+ * This file used to declare `DESCENT_RECOVERY_FRACTION = 0.5` while
+ * `lib/terrain/grade-adjust.ts` declared `DESCENT_GIVEBACK_FRACTION = 0.65`
+ * for the same physical quantity — planned courses discounting a hill one way
+ * and executed runs another, 40 seconds apart on the runner's own CIM course.
+ * The registry already cross-checked the two modules' CLIMB coefficients and
+ * nothing checked the descent. There is now ONE constant, it lives in
+ * `grade-adjust.ts` beside the climb coefficient it is a fraction OF, and this
+ * file imports it. David, 2026-09-02: "No caller may independently select
+ * another coefficient."
+ *
  * ── Why the per-foot form is grade-free ───────────────────────────────────
  *
  * A mile at grade g% climbs 52.8·g feet and costs flatPace × 0.033·g extra
@@ -48,6 +60,8 @@
  * The relation holds inside doctrine's stated linear band; beyond ~10-15%
  * grade it under-reads, which no road course reaches on a mean-grade basis.
  */
+
+import { DESCENT_GIVEBACK_FRACTION } from '@/lib/terrain/grade-adjust';
 
 /** Research/11 · fraction of pace added per 1% of uphill grade. */
 export const GRADE_COST_PER_PCT = 0.033;
@@ -66,11 +80,16 @@ const FT_PER_MI_PER_GRADE_PCT = 52.8;
 export const CLIMB_COST_PER_FT_PER_PACE_S = GRADE_COST_PER_PCT / FT_PER_MI_PER_GRADE_PCT;
 
 /**
- * Research/11 §"Pacing Rule for Hilly Courses" · the fraction of a climb's
- * cost that the matching descent hands back. Band midpoints: descents shave
- * 5-15 s/mi (10) against climbs adding 10-30 (20). Half.
+ * The fraction of a climb's cost the matching descent hands back.
+ *
+ * NOT declared here. `lib/terrain/grade-adjust.ts#DESCENT_GIVEBACK_FRACTION`
+ * is the one owner (see this file's header); it is re-exported under the same
+ * name so a reader of this module can see what it spends without a second
+ * literal existing. `Research/11` §"Pacing Rule for Hilly Courses" is what
+ * grounds it from this side: band midpoints, descents shave 5-15 s/mi (10)
+ * against climbs adding 10-30 (20). Half.
  */
-export const DESCENT_RECOVERY_FRACTION = 0.5;
+export { DESCENT_GIVEBACK_FRACTION } from '@/lib/terrain/grade-adjust';
 
 /** Research/11 · "shave 5–15 s/mi" · most a single mile of descent may take. */
 export const MAX_DESCENT_CREDIT_S_PER_MI = 15;
@@ -82,10 +101,18 @@ export const DESCENT_HARD_CAP_S_PER_MI = 20;
  * Even-effort pace multiplier for a sustained mean grade.
  *
  * Uphill: doctrine's energy cost, applied to pace, clamped to the band the
- * research states it holds over. Downhill: the same coefficient as a pace
- * credit, capped at the doctrine's per-mile ceiling — descending faster than
- * that buys time with quad damage you repay later (Research/11 §"Eccentric
- * Quad Loading and Late-Race Quad Failure").
+ * research states it holds over. Downhill: the same coefficient times the ONE
+ * descent giveback, capped at the doctrine's per-mile ceiling — descending
+ * faster than that buys time with quad damage you repay later (Research/11
+ * §"Eccentric Quad Loading and Late-Race Quad Failure").
+ *
+ * 2026-09-02 · the giveback factor is NEW here and it closes a third value for
+ * the same quantity. This branch applied the FULL climb coefficient as a
+ * credit — a symmetric refund, 1.0, inside the very file that declared 0.5 for
+ * the whole-course form six lines above. In practice the 15 s/mi ceiling was
+ * doing the asymmetry's job and hiding it: at a marathon pace of 472 s/mi the
+ * cap binds from about 0.96% of grade, so only descents shallower than that
+ * move at all. Small, and it was still a caller choosing its own coefficient.
  *
  * `flatPaceSPerMi` is needed only for the downhill cap, which doctrine
  * states in seconds rather than as a fraction.
@@ -98,7 +125,7 @@ export function gradePaceMultiplier(gradePct: number, flatPaceSPerMi: number): n
   }
   if (!isFinite(flatPaceSPerMi) || flatPaceSPerMi <= 0) return 1;
   const credit = Math.min(
-    GRADE_COST_PER_PCT * Math.abs(gradePct) * flatPaceSPerMi,
+    GRADE_COST_PER_PCT * DESCENT_GIVEBACK_FRACTION * Math.abs(gradePct) * flatPaceSPerMi,
     MAX_DESCENT_CREDIT_S_PER_MI,
   );
   return (flatPaceSPerMi - credit) / flatPaceSPerMi;
@@ -146,5 +173,5 @@ export function courseElevationCostSec(input: CourseElevationCostInput): number 
   const lossFt = Math.max(0, gainFt - (net ?? 0));
 
   const perFt = CLIMB_COST_PER_FT_PER_PACE_S * flatPaceSPerMi;
-  return perFt * (gainFt - DESCENT_RECOVERY_FRACTION * lossFt);
+  return perFt * (gainFt - DESCENT_GIVEBACK_FRACTION * lossFt);
 }

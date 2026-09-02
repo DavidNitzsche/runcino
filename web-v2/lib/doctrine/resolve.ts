@@ -52,6 +52,44 @@ export function sourceOf(repoRelPath: string): string {
 }
 
 /**
+ * Every non-test TypeScript source file under a repo-relative directory,
+ * repo-relative paths, sorted.
+ *
+ * For claims that must assert a constant has exactly ONE owner. Reading one
+ * named file proves the owner still declares it; only a walk proves nobody
+ * ELSE has declared a second copy — which is the failure
+ * `TERRAIN.descent-giveback` was blind to for a year while 0.65 and 0.50
+ * coexisted, each green against its own citation.
+ *
+ * `._*` is excluded explicitly: this repo lives on an exFAT volume where macOS
+ * writes AppleDouble sidecars, so a local walk sees roughly double what a
+ * clean CI checkout does. A count taken without that filter has already
+ * broken main once.
+ */
+export function sourceFilesUnder(repoRelDir: string): string[] {
+  const root = repoRoot();
+  const start = path.join(root, repoRelDir);
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === 'node_modules' || e.name === '.next' || e.name === '.git') continue;
+        walk(full);
+        continue;
+      }
+      if (e.name.startsWith('._')) continue;
+      if (!/\.tsx?$/.test(e.name) || /\.test\.tsx?$/.test(e.name)) continue;
+      out.push(path.relative(root, full).split(path.sep).join('/'));
+    }
+  };
+  walk(start);
+  return out.sort();
+}
+
+/**
  * Pull the numbers out of a source literal, e.g.
  * `matchLiteral(src, /const taperFactor = .*?0\.45.*?;/)`.
  * Fails loudly (naming the claim's binding) when the literal has been

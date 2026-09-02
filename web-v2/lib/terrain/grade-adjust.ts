@@ -37,17 +37,9 @@
  * already uses for course-aware race splits — the same physiology, applied to
  * a run that has already happened instead of one being planned.
  *
- * Downhill giveback. `Research/01-pace-zones-vdot.md` §"Hills (Grade-Adjusted
- * Pace)":
- *
- *     "Downhills give back roughly 60–70% of the loss for the same grade."
- *
- * Descending is NOT the mirror image of climbing. Gravity returns most of the
- * work but braking, eccentric quad loading and stride disruption eat the rest,
- * so a 3% descent does not refund what a 3% climb charged. We take 0.65, the
- * midpoint of doctrine's own band; `DOCTRINE_REGISTRY['TERRAIN.descent-
- * giveback']` parses "60–70%" out of the doc at run time and fails if the
- * constant ever leaves it.
+ * Downhill giveback. THE canonical coefficient for the whole app lives here —
+ * see `DESCENT_GIVEBACK_FRACTION` below for the doctrine, the divergence it
+ * closed, and the uncertainty it carries.
  *
  * THE ASYMMETRY IS THE WHOLE POINT. With a symmetric coefficient a rolling
  * loop would net to exactly zero and hills would be invisible to the engine —
@@ -107,16 +99,100 @@ const FT_PER_GRADE_PCT_MILE = FT_PER_MILE / 100; // 52.8
 export const GRADE_COST_PER_PCT = 0.033;
 
 /**
- * Fraction of the equivalent uphill cost that a descent of the same grade
- * gives back.
+ * THE fraction of the equivalent uphill cost that a descent of the same grade
+ * gives back. ONE owner, app-wide. Every consumer imports THIS — no caller
+ * may select another value (David, 2026-09-02).
  *
- * Cite: `Research/01-pace-zones-vdot.md` §"Hills (Grade-Adjusted Pace)" —
- * "Downhills give back roughly 60–70% of the loss for the same grade."
- * 0.65 is the midpoint of that band.
+ * ── WHY THIS CONSTANT HAS ONE OWNER NOW ───────────────────────────────────
  *
- * Watched by `DOCTRINE_REGISTRY['TERRAIN.descent-giveback']`.
+ * Until 2026-09-02 the app carried TWO named coefficients for this one
+ * physical quantity, each gated against its own citation and neither aware of
+ * the other:
+ *
+ *     lib/terrain/grade-adjust.ts   DESCENT_GIVEBACK_FRACTION  0.65
+ *                                   → executed runs: the recap, run detail,
+ *                                     and the VDOT candidates
+ *     lib/training/elevation-model.ts DESCENT_RECOVERY_FRACTION 0.50
+ *                                   → planned courses: race splits, the
+ *                                     Targets projection, representativeness
+ *
+ * `DOCTRINE_REGISTRY['TERRAIN.grade-cost-per-pct']` already cross-checks the
+ * two modules' CLIMB coefficients against each other and errors with
+ * "Planned courses and executed runs must cost a hill the same." Nothing did
+ * that for the descent, so the same hill was discounted two ways depending on
+ * which file the caller happened to import. On the runner's own CIM course
+ * the two answers are 43 seconds apart — see the measurement below.
+ *
+ * ── WHAT DOCTRINE ACTUALLY SAYS, ALL OF IT ────────────────────────────────
+ *
+ * Three passages, three answers, and this is the uncertainty the value
+ * carries rather than hides:
+ *
+ *   1. `Research/01` §"Hills (Grade-Adjusted Pace)", the prose rule:
+ *      "Downhills give back roughly 60–70% of the loss for the same grade."
+ *
+ *   2. `Research/01`'s OWN Minetti-derived lookup table, in the same section,
+ *      three rows above that sentence. Paired grades give the ratio directly:
+ *          −6% 0.83 (saves .17) vs +6% 1.34 (costs .34)  →  0.50
+ *          −4% 0.88 (saves .12) vs +4% 1.21 (costs .21)  →  0.57
+ *          −2% 0.94 (saves .06) vs +2% 1.10 (costs .10)  →  0.60
+ *      So the doc contradicts itself — 0.50-0.60 from the table it derived
+ *      from an energy-cost equation, 0.60-0.70 from the simpler rule beside
+ *      it — and the giveback FALLS as the grade steepens.
+ *
+ *   3. `Research/11` §"Pacing Rule for Hilly Courses" states both sides in
+ *      seconds: climbs +10-30 s/mi, descents −5-15 s/mi. Band midpoints,
+ *      10 back against 20 paid → 0.50.
+ *
+ * ── THE DECISION ──────────────────────────────────────────────────────────
+ *
+ * 0.50, chosen deliberately as the CONSERVATIVE end, by David on 2026-09-02:
+ * "Use one canonical owner and a conservative default of 50% downhill
+ * giveback until stronger evidence justifies a different value. No caller may
+ * independently select another coefficient. Record the uncertainty and make
+ * the value replaceable through the canonical course-adjustment contract."
+ *
+ * It is not an arbitrary conservative pick: it is what `Research/11` states
+ * outright and what `Research/01`'s own table gives at its steepest paired
+ * row. Only the "simpler rule" sentence is above it, and that sentence is the
+ * one `Research/01` itself supersedes with a polynomial.
+ *
+ * "Conservative" means UNDER-crediting a descent, and it is worth being exact
+ * about which way that cuts, because it is not the same on both sides and a
+ * blanket claim here would be the kind of unverified sentence Rule 20's
+ * corollary is about. Measured against production, 2026-09-02:
+ *
+ *   · COURSE PRICING (`courseElevationCostSec`, cost ∝ gain − k·loss). A
+ *     lower k prices a course as HARDER. The runner's CIM (723 ft gain,
+ *     −304 ft net, so 1027 ft of loss), at his prescribed 7:23/mi race pace:
+ *     0.65 → 15 s of course cost, 0.50 → 58 s. This is the conservative
+ *     direction for a race projection, and it is what the app already did —
+ *     elevation-model.ts was the 0.50 side of the divergence.
+ *
+ *   · EXECUTED-RUN JUDGING (`runGradeAdjustment`, flat = actual − cost +
+ *     gift, gift ∝ k). A lower k hands back less, so the flat-equivalent pace
+ *     comes out FASTER and a hilly run reads as marginally MORE fitness. That
+ *     is the direction this change actually moves, and it is the less
+ *     conservative one, so it was measured rather than assumed: of the 62
+ *     canonical runs since 2026-06-01, 45 carry a non-zero terrain
+ *     adjustment; the shift is about 1 s/mi on a typical day and 17.98 s/mi
+ *     at its largest (2026-08-26, 2807 ft of climb). It changes NOTHING
+ *     downstream: threshold capacity stays 430 s/mi at VDOT 47.8 with the
+ *     confidence identical to sixteen decimals, and the CIM expected race day
+ *     stays 11982 s.
+ *
+ * So the consolidation is conservative where it prices a race and neutral
+ * where it judges a run. If that second reading ever stops being neutral, it
+ * is the one to re-check first.
+ *
+ * REPLACEABLE: change this one literal. `TERRAIN.descent-giveback` re-reads
+ * both `Research/01` passages at run time, and its `single-owner` assertion
+ * fails if a second coefficient for this quantity reappears anywhere.
+ *
+ * Watched by `DOCTRINE_REGISTRY['TERRAIN.descent-giveback']` and
+ * `['ELEVATION.descent-gives-back-half']`.
  */
-export const DESCENT_GIVEBACK_FRACTION = 0.65;
+export const DESCENT_GIVEBACK_FRACTION = 0.50;
 
 /**
  * Grade beyond which the linear model is no longer claimed to hold, in
