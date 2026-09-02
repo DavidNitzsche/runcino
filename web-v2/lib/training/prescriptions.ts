@@ -4,9 +4,53 @@
  * HR targets, recovery, cooldown, the WHY. No coach abbreviations
  * unless the abbrev is glossed alongside.
  *
- * Pace targets are derived from a race goal (treated as FTP-equivalent)
- * using Daniels-/Friel-aligned %FTP bands. HR targets use Friel LTHR
- * zones. Without a race goal we leave paces qualitative and HR-driven.
+ * ── SECOND-OWNER-1 (2026-09-02) · THE GOAL-DERIVED PACE LADDER IS DELETED ───
+ *
+ * This file used to answer "what is this runner's threshold pace" ITSELF, and
+ * it answered it from the runner's TYPED GOAL:
+ *
+ *     const t = tPaceFromGoal(p.goal_seconds, p.goal_distance_mi);
+ *     easySecLo: t + 80, thresholdSec: t, intervalSec: t - 18,
+ *     repSec: t - 61, marathonSec: t + 18, …
+ *
+ * Constitution §7 names that shape verbatim as the anti-pattern
+ * (`if userHasGoal: trainingPace = goalPaceAdjusted`), BRIEF 03's hard rule is
+ * `goal ≠ current training capacity`, and
+ * `docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md` requires goal data to
+ * be PHYSICALLY excluded from a capacity resolver's inputs rather than kept
+ * apart by convention. Measured on the owner's own production account,
+ * 2026-09-02, against the canonical anchors for the SAME runner on the SAME
+ * day — his 3:00:00 CIM goal against `resolvePrescribedPaceAnchors`:
+ *
+ *     threshold   394 s/mi   vs   430   ·  36 s/mi too fast
+ *     interval    376        vs   401   ·  25 s/mi too fast
+ *     repetition  333        vs   365   ·  32 s/mi too fast
+ *     marathon    412        vs   472   ·  60 s/mi too fast
+ *     easy band   474-514    vs   ceiling 502 · opened 28 s/mi too fast
+ *
+ * A minute per mile at the marathon, in the dangerous direction, live on the
+ * iPhone Today card and on the wrist. `derivePaces` and `tPaceSecPerMi` are
+ * GONE — deleted, not deprecated, per the standing rule against leaving a
+ * migrated path behind as a comment somebody will call anyway.
+ *
+ * WHAT ANSWERS THE QUESTION NOW: `resolvePrescribedPaceAnchors`
+ * (`lib/training/load-prescription-anchors.ts` → `composePaceAnchors`), whose
+ * six anchors are composed from the four canonical capacity resolvers and are
+ * compile-time sealed against goal data. This file is now an ADAPTER over that
+ * set: it re-labels and formats, and it derives NOTHING. Threshold, interval,
+ * repetition and marathon are taken DIRECTLY off the anchors rather than
+ * re-derived by offset, because an offset applied here would be a third answer.
+ *
+ * WHAT IS REFUSED, AND WHY THAT IS THE RIGHT ANSWER (Rule 11): there is no easy
+ * BAND and no long BAND any more. Doctrine gives easy and long ONE number and
+ * it is a CEILING — `easyCeilingSecPerMi` is the fast edge a prescription must
+ * not cross, not the midpoint of a two-sided window. Inventing a width around
+ * it would be a new second answer with no owner, so a surface that needs a band
+ * gets `null` and falls back to effort cues. A refusal is a correct answer; a
+ * confident band measured off nothing is not.
+ *
+ * HR targets still come from the runner's own LTHR (Friel zones) and are
+ * untouched by this change: LTHR is a measurement, not a goal.
  *
  * Doctrine:
  *   Research/01-pace-zones-vdot.md (Daniels pace bands)
@@ -16,7 +60,7 @@
 
 import { computeZones, type ZoneTable } from './zones';
 import type { SessionType } from './workout-type';
-import { tPaceFromGoal } from '@/lib/plan/spec-builder';
+import type { PrescribedPaceAnchors } from './prescription-resolver';
 import { composeQualityDay } from '@/lib/plan/quality-day';
 import { atPaceSessionCapMi } from '@/lib/prescription/levers';
 
@@ -210,29 +254,34 @@ export interface Prescription {
 }
 
 export interface ProfileInputs {
+  /** The runner's own LTHR, for the Friel HR zones. A measurement. */
   lthr?: number | null;
-  goal_seconds?: number | null;        // race goal total seconds
-  goal_distance_mi?: number | null;    // race distance
+  /**
+   * SECOND-OWNER-1 · THE canonical six anchors, from
+   * `resolvePrescribedPaceAnchors`. Every pace this file prints comes off this
+   * object and nothing else.
+   *
+   * `null` means the anchor set was REFUSED or was never resolved — the caller
+   * has no capacity read for this runner. It is not "no goal" and it is not
+   * zero: every pace becomes `null` and every surface degrades to an effort
+   * cue, which is the only honest thing to print (Rule 11).
+   *
+   * The two goal fields this interface used to carry — `goal_seconds` and
+   * `goal_distance_mi` — are DELETED. They are the physical exclusion
+   * `docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md` asks for: a caller
+   * can no longer hand this file a goal, so it can no longer price a training
+   * pace from one, and that is a compile error rather than a review finding.
+   */
+  anchors?: PrescribedPaceAnchors | null;
+  /**
+   * A race's DISTANCE in miles — used ONLY as the `race` arm's `total_mi`.
+   * A distance is not a pace: this never reaches the ladder above, and the
+   * race arm prescribes no pace at all (see `case 'race'`).
+   */
+  raceDistanceMi?: number | null;
 }
 
-// ── Pace derivation ─────────────────────────────────────────────────────
-
-/**
- * Derive a Threshold Pace (s/mi) from a race goal. Null when there is no goal
- * to derive from, and callers fall back to HR-only cues.
- *
- * 2026-08-17 · DE-FORKED. This was a byte-identical copy of `tPaceFromGoal`
- * minus one branch: it had no PACE-5 ultra guard, so a 50K goal produced
- * `finishPace − 18` and called it "threshold". An ultra finish pace is an
- * arbitrary slow target well below threshold, and the canonical function
- * refuses it on purpose (Research/22:289/297/316 · ultra runs at "race-paced
- * effort"; Research/00a:311-312 · ultra threshold is fitness-anchored, never
- * finish-pace-derived). Delegating means the guard arrives for free and the
- * offsets can never drift apart again.
- */
-function tPaceSecPerMi(p: ProfileInputs): number | null {
-  return tPaceFromGoal(p.goal_seconds, p.goal_distance_mi);
-}
+// ── Pace formatting ─────────────────────────────────────────────────────
 
 function fmtPace(sPerMi: number | null): string | null {
   if (sPerMi == null || sPerMi <= 0 || !isFinite(sPerMi)) return null;
@@ -240,32 +289,39 @@ function fmtPace(sPerMi: number | null): string | null {
   return `${m}:${String(Math.round(sPerMi % 60)).padStart(2, '0')}`;
 }
 
-function fmtPaceRange(loS: number | null, hiS: number | null): string | null {
-  const lo = fmtPace(loS), hi = fmtPace(hiS);
-  if (!lo || !hi) return null;
-  // A zero-width band is one pace, not a range · "6:48 /mi", never
-  // "6:48-6:48 /mi". Tempo is the case that reaches this (tempo == T, both
-  // edges equal); the easy/long bands are genuinely wide and unaffected.
-  if (lo === hi) return `${lo} /mi`;
-  return `${lo}-${hi} /mi`;
+/**
+ * A CEILING rendered as a ceiling. `easyCeilingSecPerMi` is the fast edge of
+ * every easy, long and general-aerobic prescription — "do not run faster than
+ * this" — and printing it as a bare pace would read as a target to hit. There
+ * is no canonical easy BAND to print instead, and inventing a width around the
+ * ceiling would be a second answer with no owner (SECOND-OWNER-1).
+ */
+function fmtCeiling(sPerMi: number | null): string | null {
+  const p = fmtPace(sPerMi);
+  return p ? `no faster than ${p} /mi` : null;
 }
 
 /**
  * REP-DEDUP-1 (2026-08-29) · used to carry its own copy of every T-offset,
- * kept "in sync" with `derivePaces()` below by a comment ("Offsets mirror
- * `paces()` exactly") instead of by the compiler. That was the exact shape
- * the doctrine registry's `PACE.rep-offset` exemption caught: `derivePaces`'s
- * `repSec` and this function's `rep` field could each be edited without
- * touching the other. Now there is exactly one T-offset table — the one in
- * `derivePaces()` — and this function only formats it.
+ * kept "in sync" with the pace ladder by a comment instead of by the compiler.
+ *
+ * SECOND-OWNER-1 (2026-09-02) · there is no T-offset table here any more, in
+ * either copy. Every number below is read straight off the canonical anchors,
+ * so the two cannot drift apart because there is only one of them.
  */
 function paces(p: ProfileInputs) {
-  const d = derivePaces(p);
+  const d = cardPaceTargets(p);
   return {
-    easy:      fmtPaceRange(d.easySecLo, d.easySecHi),
-    long:      fmtPaceRange(d.longSecLo, d.longSecHi),
+    // Easy and long are ONE ceiling in doctrine ("long is easy effort with more
+    // volume" — `PrescribedPaceAnchors.easyCeilingSecPerMi`'s own contract), so
+    // they print the same string rather than two bands that were never
+    // separately resolved.
+    easy:      fmtCeiling(d.easyCeilingSec),
+    long:      fmtCeiling(d.easyCeilingSec),
+    shakeout:  fmtCeiling(d.shakeoutCeilingSec),
     marathon:  fmtPace(d.marathonSec),
-    tempo:     fmtPaceRange(d.tempoSecLo, d.tempoSecHi),
+    // PACE.tempo-is-threshold · a continuous tempo is run AT T.
+    tempo:     fmtPace(d.tempoSec),
     threshold: fmtPace(d.thresholdSec),
     interval:  fmtPace(d.intervalSec),
     rep:       fmtPace(d.repSec),
@@ -321,67 +377,77 @@ export function hrTargets(p: ProfileInputs) {
   };
 }
 
-// ── Derived pace/HR targets (exported for the /today Poster fallback) ─────
+// ── Canonical pace targets, adapted for the card surfaces ────────────────
 
-export interface DerivedPaceTargets {
-  /** Threshold pace, s/mi — the anchor everything else derives from. null w/o goal. */
-  tPaceSec: number | null;
-  easySecLo: number | null;
-  easySecHi: number | null;
-  longSecLo: number | null;
-  longSecHi: number | null;
-  tempoSecLo: number | null;
-  tempoSecHi: number | null;
+/**
+ * The card surfaces' view of the canonical anchor set. An ADAPTER, not a
+ * derivation: every field is either read straight off `PrescribedPaceAnchors`
+ * or is `null`. Nothing here applies an offset, a blend or a widening — the
+ * moment it did, this file would be a second answer again.
+ */
+export interface CardPaceTargets {
+  /** T · `anchors.thresholdSecPerMi`. */
   thresholdSec: number | null;
+  /** A continuous tempo IS threshold work · `PACE.tempo-is-threshold`. */
+  tempoSec: number | null;
+  /** I · `anchors.intervalSecPerMi`. */
   intervalSec: number | null;
+  /** R · `anchors.repetitionSecPerMi`. Null when the high-intensity ladder
+   *  cannot price a mile-column pace at all — the anchor set says so itself,
+   *  and a caller must branch rather than read a substituted I-pace. */
   repSec: number | null;
+  /** M · `anchors.marathonSecPerMi`, through the runner's own endurance
+   *  exponent. */
   marathonSec: number | null;
+  /** The honest span around `marathonSec` when the anchor set carries one. */
+  marathonRangeSec: readonly [number, number] | null;
+  /**
+   * The FAST EDGE of every easy, long and general-aerobic prescription — a
+   * CEILING, not the middle of a band. There is deliberately no `easySecLo` /
+   * `easySecHi` pair here and no `longSecLo` / `longSecHi` pair: doctrine
+   * resolves ONE number for easy and long, and the two-sided window this file
+   * used to print was `T + 80 … T + 120` off a GOAL-derived T. A surface that
+   * needs a band gets nothing and says "by feel" (Rule 11 — refusing is the
+   * answer; inventing a width would be a new second owner).
+   */
+  easyCeilingSec: number | null;
+  /** The fast edge of a shakeout or recovery day. Also a ceiling. */
+  shakeoutCeilingSec: number | null;
   /** Aerobic HR ceiling (Z2 upper from LTHR), bpm. null w/o LTHR. */
   aerobicCapBpm: number | null;
   zoneTable: ZoneTable | null;
 }
 
 /**
- * Derive a runner's training paces (raw s/mi) + aerobic HR cap from the same
- * inputs `prescriptionFor` uses — a race goal (→ T-pace) and LTHR (→ zones).
+ * Adapt the canonical anchors (+ the runner's LTHR zones) into the shape the
+ * Today card, the Poster fallback and the watch template read.
  *
- * Exported so the /today Poster's workout-breakdown fallback can render REAL
- * numbers (not fixed placeholders) whenever a per-workout `workout_spec` is
- * absent but the runner still has fitness data. Offsets mirror `paces()`
- * exactly; HR cap is the LTHR Z2 upper bound. Returns nulls when the runner
- * has no goal race / no LTHR — callers must then fall back to effort cues
- * (never invent a number). Doctrine: Research/01-pace-zones-vdot.md.
+ * SECOND-OWNER-1 (2026-09-02) · this replaces `derivePaces`, which built the
+ * whole ladder as offsets from `tPaceFromGoal(goal_seconds, goal_distance_mi)`.
+ * See this file's header for the measured cost on the owner's own account.
+ *
+ * Every number returned came out of the four canonical capacity resolvers, via
+ * `composePaceAnchors`. `p.anchors == null` — never resolved, or REFUSED by the
+ * coherence gate — yields nulls throughout and callers fall back to effort
+ * cues. It never falls back to a goal, a population pace, or a constant.
  */
-export function derivePaces(p: ProfileInputs): DerivedPaceTargets {
-  const t = tPaceSecPerMi(p);
+export function cardPaceTargets(p: ProfileInputs): CardPaceTargets {
+  const a = p.anchors ?? null;
   const z = p.lthr ? computeZones({ lthr: p.lthr }) : null;
   const z2 = z?.zones.find((x) => x.idx === 2) ?? null;
   return {
-    tPaceSec: t,
-    easySecLo: t != null ? t + 80 : null,   // T+80 · matches spec-builder
-    easySecHi: t != null ? t + 120 : null,   // T+120 · matches spec-builder
-    longSecLo: t != null ? t + 55 : null,
-    longSecHi: t != null ? t + 90 : null,
-    // PACE-T-2 (2026-08-29) · a continuous tempo is run AT threshold, so both
-    // edges are T. This was T+5..T+18 — the SEPARATE sub-threshold band
-    // (Research/04 §5.1 "Sub-threshold intervals ... ST (10-15 s/mi slower
-    // than T)") shipped under a tempo label, which is the exact defect
-    // spec-builder.ts's PACE-T-1 fixed on 2026-06-23 in the other copy of this
-    // derivation and this one was left behind. Research/04 §5.1 "Continuous
-    // tempo | 3-8 mi continuous | T" and §5.2 "Pace | T pace". Kept as a
-    // lo/hi pair rather than collapsed to one field because `midSec` and two
-    // band renderers read the pair; a zero-width band now renders as a single
-    // pace (see `fmtPaceRange`). Bound by `PACE.tempo-is-threshold`.
-    tempoSecLo: t,
-    tempoSecHi: t,
-    thresholdSec: t,
-    intervalSec: t != null ? t - 18 : null,
-    // T - 61s (~mile pace) · PACE.rep-offset. Was T-30 ("~5K pace" per this
-    // file's own former comment) until 2026-08-29 — that offset is I-pace
-    // territory, not R, so reps were training lactate clearance instead of
-    // the neuromuscular/economy stimulus R is prescribed for.
-    repSec: t != null ? t - 61 : null,
-    marathonSec: t != null ? t + 18 : null,
+    thresholdSec: a?.thresholdSecPerMi ?? null,
+    // PACE.tempo-is-threshold · Research/04 §5.1's "Continuous tempo" row
+    // prices the workout at T, flat, with no offset. Read off the SAME field
+    // as `thresholdSec` rather than copied through an offset, so the two
+    // cannot drift apart the way the old `tempoSecLo/Hi` pair did.
+    tempoSec: a?.thresholdSecPerMi ?? null,
+    intervalSec: a?.intervalSecPerMi ?? null,
+    repSec: a?.repetitionSecPerMi ?? null,
+    marathonSec: a?.marathonSecPerMi ?? null,
+    marathonRangeSec: a?.marathonRangeSecPerMi ?? null,
+    easyCeilingSec: a?.easyCeilingSecPerMi ?? null,
+    shakeoutCeilingSec: a?.shakeoutCeilingSecPerMi ?? null,
     aerobicCapBpm: z2?.upper ?? null,
     zoneTable: z,
   };
@@ -645,7 +711,7 @@ export function prescriptionFor(
         citation: rationale.citation,
         zones: hr?.table,
         steps: [
-          { label: 'Run', distance_mi: 2, pace_target: pc.easy ?? 'easy', hr_target: hr?.z1 ?? 'Z1',
+          { label: 'Run', distance_mi: 2, pace_target: pc.shakeout ?? 'easy', hr_target: hr?.z1 ?? 'Z1',
             note: 'Easy. Keep it under 25 minutes total.' },
           { label: 'Strides', reps: 4, duration: '20 sec',
             note: '4 × 20-second strides at near-race pace with full recovery between. NOT a workout · neuromuscular activation only.' },
@@ -654,7 +720,29 @@ export function prescriptionFor(
     }
 
     case 'race': {
-      const total = p.goal_distance_mi ?? 13.1;
+      /* SECOND-OWNER-1 (2026-09-02) · A RACE-DAY TARGET IS NOT THIS FILE'S TO
+       * NAME, AND THE DISTANCE IS NO LONGER FABRICATED.
+       *
+       * `total` was `p.goal_distance_mi ?? 13.1` — a half marathon asserted for
+       * any runner whose goal distance could not be read. An unknown distance
+       * is now zero, the same posture every other arm in this switch takes
+       * (LOWVOL-4), and the caller renders no number rather than the wrong one.
+       *
+       * The PACE was `pc.marathon`, which until today was `tPaceFromGoal(...)
+       * + 18` — the runner's typed goal, wearing a training-pace label, on the
+       * one screen where the difference is a DNF. Constitution §J gives "what
+       * should this runner run this race at" to Race Prediction
+       * (`achievableRaceTarget` → `race-outlook.execution`), and this module
+       * does not call it and must not guess at it. The canonical MARATHON
+       * TRAINING anchor is not that answer either: it is an M-pace for a
+       * training block, not a race-day target, and printing it here would be a
+       * different second owner rather than none.
+       *
+       * So the arm refuses and prescribes by effort (Rule 11). A race row on a
+       * real plan carries an authored `workout_spec`, and every surface prefers
+       * that; this template is the spec-less fallback, and a fallback that
+       * invents a race target is worse than one that declines to. */
+      const total = p.raceDistanceMi != null && p.raceDistanceMi > 0 ? p.raceDistanceMi : 0;
       return {
         type, total_mi: total,
         headline: 'Race day',
@@ -663,7 +751,7 @@ export function prescriptionFor(
         zones: hr?.table,
         steps: [
           { label: 'Race', distance_mi: total,
-            pace_target: pc.marathon ?? 'race pace',
+            pace_target: 'race pace',
             hr_target: hr?.z3 ?? 'Z3-Z4',
             note: 'Hold the plan in the first 5K. Pacing decisions made in mile 1 cost you in mile 12. Negative split if possible · go out controlled, finish strong.' },
         ],

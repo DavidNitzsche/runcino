@@ -81,7 +81,7 @@ import { persistedDayShape } from '@/lib/plan/generate';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
 import { shapePlanWeekDays, type PlanWorkoutRow, type PlanWeekResult } from '@/lib/plan/week-loader';
 import { projectWeekStrip } from '@/lib/watch/build-workout';
-import { prescriptionFor, derivePaces, narrowToPrescriptionType, type WorkoutType } from '@/lib/training/prescriptions';
+import { prescriptionFor, cardPaceTargets, narrowToPrescriptionType, type WorkoutType } from '@/lib/training/prescriptions';
 import { composeV5Today, displayTypeFor, subLabelIsName } from '@/lib/faff/v5-today';
 import { resolveCitation, parseBand } from '@/lib/doctrine/resolve';
 
@@ -619,7 +619,7 @@ function grade(r: Runner, rungs: number[], bands: string[]): void {
       const watchWeekMi = allRows
         .filter((x) => x.date_iso >= mondayStart && x.date_iso <= addDays(mondayStart, 6))
         .reduce((s, x) => s + Number(x.distance_mi), 0);
-      const p = { lthr: null, goal_seconds: null, goal_distance_mi: w.raceDistanceMi };
+      const p = { lthr: null, anchors: null, raceDistanceMi: w.raceDistanceMi };
       // The phone narrows the row's type before asking; the watch casts and
       // asks anyway. Both are reproduced exactly, because the difference is
       // one of the things under test.
@@ -737,10 +737,19 @@ function grade(r: Runner, rungs: number[], bands: string[]): void {
       /* ── LAW O9 · THE PACE ON THE SCREEN IS THE PACE IN THE ROW ──
        *
        * `persistPlan` writes `pace_target_s_per_mi` off the week's blended T.
-       * The panel's pace band comes from `derivePaces`, off the runner's typed
-       * GOAL. On a by-feel runner there is no goal, so the band must be absent
-       * rather than invented. */
-      const dp = derivePaces(p);
+       *
+       * SECOND-OWNER-1 (2026-09-02) · the panel's pace used to come from
+       * `derivePaces`, off the runner's typed GOAL, and this law existed to
+       * bound how far the two could diverge (45 s/mi). It now comes from
+       * `cardPaceTargets` over the CANONICAL anchors, which is the same
+       * `resolvePrescribedPaceAnchors` set the row itself was priced from, so
+       * the two agree by construction rather than by tolerance.
+       *
+       * The arc has no anchor read (`anchors: null`), so `dp.thresholdSec` is
+       * null and the law is vacuous here — which is the correct outcome and is
+       * stated rather than hidden: a runner with no capacity read gets NO pace
+       * on the screen, never an invented one. */
+      const dp = cardPaceTargets(p);
       const storedPace = w.weeks.flatMap((x) => [...x.paceById.entries()])
         .find(([id]) => id === todayRow.plan_workout_id)?.[1] ?? null;
       if (storedPace != null && (type === 'threshold' || type === 'tempo')) {
