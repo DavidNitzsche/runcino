@@ -138,6 +138,19 @@ struct WatchRule: Codable, Equatable {
         case kind, metric, op, value, scope, action, label, evidence, judgement
     }
 
+    /// Memberwise, for fixtures and the session simulator.
+    ///
+    /// The custom `init(from:)` below suppresses the synthesised one, and its
+    /// absence is why the bail and abort boards could not be driven from
+    /// `_SessionSim` at all: a harness could not construct a rule to breach.
+    init(kind: String, metric: String? = nil, op: String? = nil, value: Double? = nil,
+         scope: String? = nil, action: String? = nil, label: String? = nil,
+         evidence: String? = nil, judgement: String? = nil) {
+        self.kind = kind; self.metric = metric; self.op = op; self.value = value
+        self.scope = scope; self.action = action; self.label = label
+        self.evidence = evidence; self.judgement = judgement
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         // Lenient throughout: a rule the watch cannot read must never cost the

@@ -489,11 +489,24 @@ struct WatchRunSurfaceV5: View {
         // true from the moment the run starts, and `onChange` does not fire on
         // first evaluation — so the only edge it ever saw was true→false, and
         // the entire bail feature was one dead observer away from working.
-        .onChange(of: engine.milesAdrift) { _, _ in
-            guard engine.canOfferBail, engine.shouldOfferBailNow, router.pendingQuestion == nil else { return }
-            router.pendingQuestion = .bailOffered
-            Haptics.play(moment: .bailOffered)
-        }
+        //
+        // HR-SEMANTICS-2 (2026-09-01) · AND THERE ARE TWO EVIDENCE STREAMS.
+        //
+        // C-1 rewired `shouldOfferBailNow` so an `hr` rule is decided on
+        // `ruleBreachSec` — heart rate, sustained — and left this observer
+        // watching `milesAdrift`, which is the PACE evidence and never moves
+        // for a runner holding pace. So the HR arm re-entered the exact state
+        // the comment above describes: the rule accumulated past its 120-second
+        // sustain, `shouldOfferBailNow` went true, and nothing looked. Every
+        // HR bail and every race abort was one dead observer away from working,
+        // for the second time, in the same place.
+        //
+        // Found by driving it: `_SessionSim`'s `racebail` archetype at
+        // `-hr 180` breached the owner's real mile-10 abort and drew nothing.
+        // A behavioural claim about a board nobody has put on screen is a
+        // hypothesis (Rule 20).
+        .onChange(of: engine.milesAdrift) { _, _ in offerBailIfDue() }
+        .onChange(of: engine.ruleBreachSec) { _, _ in offerBailIfDue() }
         .onChange(of: tracker.distanceMi) { _, _ in fireDueCue() }
         .onChange(of: engine.currentIndex) { _, _ in fireDueCue() }
         .onChange(of: tracker.batteryPercent) { _, pct in
@@ -1249,6 +1262,19 @@ struct WatchRunSurfaceV5: View {
         let delta = paceSec - prev
         guard abs(delta) >= 3 else { return nil }
         return "\(abs(delta)) sec " + (delta < 0 ? "quicker" : "slower")
+    }
+
+    /// Put the bail or abort board up, if the rule's own evidence says so.
+    ///
+    /// One body, two observers (pace miles adrift, and sustained HR breach),
+    /// so the two evidence streams cannot drift apart again — which is exactly
+    /// what happened when `shouldOfferBailNow` learned to read heart rate and
+    /// this guard stayed wired to the pace one.
+    private func offerBailIfDue() {
+        guard engine.canOfferBail, engine.shouldOfferBailNow,
+              router.pendingQuestion == nil else { return }
+        router.pendingQuestion = .bailOffered
+        Haptics.play(moment: .bailOffered)
     }
 
     /// The session's ramp name, for the one moment that carries a colour
