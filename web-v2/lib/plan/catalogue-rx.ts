@@ -383,7 +383,20 @@ function repToken(value: number, unit: string): string | null {
  * state. `PROGRESSION_CITE` asks the doc, so a future entry that states a
  * progression renders as one without anybody remembering to add it.
  */
-const PROGRESSION_CITE = /descend|each rep[^|]*faster/i;
+/**
+ * A cited row that states the session DESCENDS across its reps.
+ *
+ * LADDER-TARGET-1 (2026-09-02) · exported so the gate that checks a ladder is
+ * not shipped with one flat scalar target reads the SAME predicate the label
+ * is rendered from, rather than a second list of slugs that would drift
+ * (Rule 16). `_ladder_targets.test.ts` is the caller.
+ */
+export const PROGRESSION_CITE = /descend|each rep[^|]*faster|each mile[^|]*faster|progressively faster/i;
+
+/** True when the entry's own cited rows say its reps descend. */
+export function entryDeclaresProgression(entry: CatalogueEntry): boolean {
+  return entry.zones.length >= 2 && entry.cites.some((c) => PROGRESSION_CITE.test(c));
+}
 function zoneClause(entry: CatalogueEntry): string {
   if (entry.effortOnly) {
     // §8.1's pace column is "5K–10K effort", never a number, because a flat
