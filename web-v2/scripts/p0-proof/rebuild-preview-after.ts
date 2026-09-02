@@ -594,7 +594,7 @@ async function main() {
   say('**Pace anchors and their confidence** — every price this block was composed at, with how well it is known', '',
     '```', JSON.stringify(cr.paceAnchors ?? null, null, 1), '```', '');
   const st = cr.authoredState as Record<string, unknown>;
-  for (const k of ['derived_from', 'ramp_base', 'goal_realism', 'prescribed_race_pace', 'pace_blend',
+  for (const k of ['derived_from', 'ramp_base', 'goal_vdot_sanity', 'prescribed_race_pace', 'pace_blend',
     'goal_tier', 'capacity_tier', 'load_tier_reduced_by_goal',
     'tier_peak_weekly_band', 'tier_peak_long_band', 'is_mid_block', 'horizon_raise', 'embedded_races',
     'long_run_race_pace_changes', 'travel_shaped']) {
