@@ -22,6 +22,11 @@
 # WHAT THE HOOK ACTUALLY RUNS (read from `.githooks/pre-push` and
 # `scripts/check-web-build.sh` directly — not assumed)
 #
+#   0. ALWAYS: `npm run prebuild` in web-v2 — the twenty gates Railway runs
+#      before it builds. Added 2026-09-02 because `check-web-build.sh` calls
+#      `npx next build` directly, bypassing the npm prebuild lifecycle, so a
+#      failing gate passed this script and failed the deploy.
+#
 #   1. ALWAYS: `scripts/check-web-build.sh` — `npx tsc --noEmit` in web-v2,
 #      then `npx next build` in web-v2. Note this calls `next build` via
 #      `npx`, NOT `npm run build`, so npm's `prebuild` lifecycle script (the
@@ -195,6 +200,38 @@ echo ""
 # ── 3 · same checks the hook runs, unconditionally ───────────────────────────
 RESULTS=()
 OVERALL=0
+
+# ── 3a · THE SHIPPING GATE CHAIN ──────────────────────────────────────────────
+# Added 2026-09-02, after main stopped deploying for three commits while this
+# script reported CLEAN on the same tree.
+#
+# `check-web-build.sh` runs `npx next build` DIRECTLY. That is deliberate there
+# (putting `next build` inside `prebuild` would be circular), but it means the
+# npm `prebuild` lifecycle never fires, so none of the twenty gates Railway runs
+# were in this script's scope. A gate failure therefore passed verification and
+# failed the deploy — Rule 19's own lesson one layer in: the chain that PROVES a
+# commit was not the chain that SHIPS it.
+#
+# The cause was two parallel branches colliding: one retired an identifier and
+# added a ratchet asserting it was gone, the other branched from an older base
+# and still read it. Nothing local could see it, because nothing local ran the
+# ratchet.
+#
+# Falsified before being trusted: reintroducing that identifier makes this
+# script FAIL and name the gate, the file and the assertion.
+info "Running the shipping prebuild gate chain (npm run prebuild — what Railway runs)"
+CHECK_START=$(date +%s)
+if ( cd "$WORKTREE_DIR/web-v2" && npm run prebuild ); then
+  pass "npm run prebuild (shipping gate chain) — PASS ($(( $(date +%s) - CHECK_START ))s)"
+  RESULTS+=("PASS  npm run prebuild (shipping gate chain)")
+else
+  fail "npm run prebuild — FAIL ($(( $(date +%s) - CHECK_START ))s)"
+  fail "This is what blocks the deploy. A green tsc and a green next build do not"
+  fail "override it — the gate chain runs first on Railway and stops the build."
+  RESULTS+=("FAIL  npm run prebuild (shipping gate chain)")
+  OVERALL=1
+fi
+echo ""
 
 info "Running scripts/check-web-build.sh against the isolated checkout (identical to what the hook runs)"
 CHECK_START=$(date +%s)

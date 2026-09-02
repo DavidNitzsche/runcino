@@ -130,8 +130,8 @@ describe.skipIf(!RUN)('CIM block · the goal-relative pace path', () => {
     }
 
     out.push('');
-    out.push('=== goal_realism ===');
-    out.push(JSON.stringify(st.goal_realism));
+    out.push('=== goal_vdot_sanity ===');
+    out.push(JSON.stringify(st.goal_vdot_sanity));
 
     fs.writeFileSync(OUT, out.join('\n'));
     expect(composed.weeks.length).toBeGreaterThan(0);
