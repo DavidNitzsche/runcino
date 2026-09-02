@@ -102,6 +102,30 @@ Mutation stays off, proven three ways (RO checksum on the owner's plan identical
 
 tsc clean · prebuild 18/18 · **8401 tests passed, 0 failed, 13 skipped** · doctrine 325 citations · watch gate 195 cases · both Xcode targets build · Railway `da878fbe` SUCCESS.
 
+## Rendered on the deployed build (Rule 13)
+
+`renders/stage1-block-thesis-deployed-3bf794c2.png` — the phone app, pointed at
+production, against the deployed brain. The Block screen's WHERE THIS GOES
+section carries the Coaching Thesis, in the runner's own terms:
+
+> Your races fade with distance faster than your speed predicts, so durability
+> is where the work goes. Your threshold holds, and this week's long run is the
+> session that builds it.
+>
+> This gets revisited when a new race result lands, or when a long race or a
+> race-pace long run shows your pace holding with distance.
+
+Every element of the thesis contract is present and correct on the screen: the
+primary limiter (durability), the evidence behind it (the fitted exponent —
+"races fade faster than your speed predicts"), what is deliberately held
+constant (threshold), the session that addresses it this week (the long run),
+and the review trigger. This is the belief layer reaching the runner as
+coaching rather than as a number.
+
+Today (`renders/`) shows the 2026-09-01 session read correctly: heart rate
+across the work 162 bpm, pace across the work 7:02 — the work segments, not
+whole-run averages.
+
 ## Remaining, carried into later stages
 
 - Plan generation does not yet consume `thesisPlanDirective` — the seam is tested, the wire is Stage 2's.
