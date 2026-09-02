@@ -67,6 +67,21 @@ import { buildWorkoutSpec, tuneupPaceAnchor } from '@/lib/plan/spec-builder';
 const ROOT = path.resolve(__dirname, '..', '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
+/**
+ * The write, asserted through its REASON.
+ *
+ * `expect('refused' in w).toBe(false)` fails with "expected true to be false",
+ * which tells the next reader nothing. Now that an incoherent contract is
+ * refused inside `raceRowWrite`, a broken invariant usually surfaces as a
+ * refusal rather than as a wrong field — so the assertion carries the refusal
+ * text and a falsification prints the class it broke.
+ */
+function coherentWrite(row: RaceRowContractView, o: RaceOutlook) {
+  const w = raceRowWrite({ row, outlook: o });
+  expect('refused' in w ? (w as { refused: string }).refused : 'coherent').toBe('coherent');
+  return w as Exclude<typeof w, { refused: string }>;
+}
+
 /** One outlook, resolved once, for every case below. Pure fixture, no clock. */
 async function outlook(goalSec: number | null = null): Promise<RaceOutlook> {
   return composeRaceOutlook({ ...fixtureRace(), statedGoalSec: goalSec }, '2026-09-01', fixtureReads());
@@ -126,9 +141,7 @@ describe('ROW-CONTRACT-1 · a refreshed race row agrees with itself', () => {
     expect(row.paceTargetSecPerMi).toBe(pace + 28);
     // Before: the row is coherent at the OLD pace.
     expect(raceRowContractViolations(row)).toEqual([]);
-    const w = raceRowWrite({ row, outlook: o });
-    expect('refused' in w).toBe(false);
-    const after = applyWriteToRow(row, w as never);
+    const after = applyWriteToRow(row, coherentWrite(row, o));
     // After: the column moved AND the sentence moved with it. The contract
     // check goes FIRST so a falsification prints the violation CODE rather than
     // two raw numbers — a gate should name the class it caught.
@@ -142,8 +155,7 @@ describe('ROW-CONTRACT-1 · a refreshed race row agrees with itself', () => {
     const o = await outlook();
     const pace = o.execution.paceSecPerMi!;
     const row = authoredRaceRow(o, 'Execute the plan.', pace + 22);
-    const w = raceRowWrite({ row, outlook: o });
-    const after = applyWriteToRow(row, w as never);
+    const after = applyWriteToRow(row, coherentWrite(row, o));
     const rules = (after.spec?.rules ?? []) as Array<Record<string, unknown>>;
     const paceAbort = rules.find((r) => r.kind === 'abort' && r.metric === 'pace');
     expect(paceAbort, 'a race row carries a mid-race pace abort').toBeTruthy();
@@ -187,9 +199,7 @@ describe('ROW-CONTRACT-1 · a refreshed race row agrees with itself', () => {
 
     // The refresh must HEAL it, not refuse it forever: rows in production are
     // already in this state.
-    const w = raceRowWrite({ row: wrecked, outlook: o });
-    expect('refused' in w).toBe(false);
-    const after = applyWriteToRow(wrecked, w as never);
+    const after = applyWriteToRow(wrecked, coherentWrite(wrecked, o));
     expect(raceRowContractViolations(after)).toEqual([]);
     expect(after.paceTargetSecPerMi).toBe(repPace);
     expect(after.spec?.race_execution).toBeUndefined();
@@ -211,7 +221,7 @@ describe('ROW-CONTRACT-1 · a refreshed race row agrees with itself', () => {
       spec: built.spec as Record<string, unknown>,
       notes: null, subLabel: label,
     };
-    const after = applyWriteToRow(row, raceRowWrite({ row, outlook: o }) as never);
+    const after = applyWriteToRow(row, coherentWrite(row, o));
     expect(raceRowContractViolations(after)).toEqual([]);
     expect(after.paceTargetSecPerMi).toBe(pace);
     expect(after.spec?.rep_pace_s_per_mi).toBe(pace);
