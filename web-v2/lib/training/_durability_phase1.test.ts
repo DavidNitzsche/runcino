@@ -9,6 +9,8 @@
  * Falsified 2026-09-02 — see the brain handback's falsification ledger.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   fitRaceExponent, qualifyingMarathonRehearsal, aggregateMarathonRehearsals,
   MARATHON_REHEARSAL_MIN_SESSIONS, RACE_EXPONENT_ENDPOINT_SATURATION, POPULATION_ENDURANCE_PRIOR,
@@ -178,5 +180,20 @@ describe('day-to-day continuity across tiers', () => {
     const r = applyDayToDayContinuity(est(430, 'direct', ['SPARSE_CORROBORATION']), null);
     expect(r.paceSecPerMi).toBe(430);
     expect(r.reasons).toContain('CONTINUITY_UNAVAILABLE');
+  });
+});
+
+describe('the loader actually SPENDS representativeness (source-bound · a pure test cannot see a DB loader)', () => {
+  const src = readFileSync(join(__dirname, 'durability-anchor.ts'), 'utf8');
+  it('the weight is multiplied by the assessor\'s authority', () => {
+    expect(src).toMatch(/weight:\s*o\.weight\s*\*\s*Math\.max\(0,\s*Math\.min\(1,\s*read\.authority\)\)/);
+  });
+  it('the finish time has the explained seconds removed, on the downward limb only', () => {
+    expect(src).toMatch(/finishSec:\s*Math\.round\(o\.finishSec\s*\/\s*\(1\s*\+\s*explained\s*\/\s*100\)\)/);
+    expect(src).toMatch(/read\.direction === 'downward'\s*\?\s*Math\.max\(0,\s*read\.explainedPct\)\s*:\s*0/);
+  });
+  it('an assessor that cannot read a race leaves the observation untouched and says so (Rule 11)', () => {
+    expect(src).toMatch(/representativenessReason:\s*'ASSESSOR_UNAVAILABLE'/);
+    expect(src).toMatch(/loadRaceObservationsForDurability[\s\S]{0,4000}return applyRepresentativeness\(userUuid, out\);/);
   });
 });
