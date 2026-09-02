@@ -49,7 +49,8 @@
  */
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { CANONICAL_ROW_SQL, type RunData } from '@/lib/runs/run-shape';
+import { CANONICAL_ROW_SQL, runDaySql, type RunData } from '@/lib/runs/run-shape';
+import { fmtMi, roundTo } from '@/lib/format/run';
 import { coherentPace } from '@/lib/runs/coherence';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import { THRESHOLD_ANCHOR_MINUTES, type PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
@@ -229,7 +230,7 @@ async function loadRaceHrEvidence(userUuid: string, todayISO: string): Promise<R
        FROM runs r
       WHERE r.user_uuid = $1::uuid
         AND ${CANONICAL_ROW_SQL}
-        AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal', 10)) >= ($2::date - INTERVAL '180 days')::text`,
+        AND ${runDaySql('r')} >= ($2::date - INTERVAL '180 days')::text`,
     [userUuid, todayISO],
   )).rows;
   const out: RaceHrEvidenceRow[] = [];
@@ -413,8 +414,8 @@ export async function composeRaceOutlook(
     personallyEvidenced: anchors?.basis.marathon.personallyEvidenced ?? false,
     thresholdSecPerMi,
     whyThisPace: marathonLike
-      ? `Threshold ${fmtPace(thresholdSecPerMi)} carried to ${race.distanceMi.toFixed(1)} mi through your own endurance exponent${anchors ? ` (${anchors.basis.marathon.enduranceExponent.toFixed(3)})` : ''}. This is today's capacity, not race day's; the rehearsal teaches the effort, the block earns the pace.`
-      : `Today's projected race pace at ${race.distanceMi.toFixed(1)} mi from current capacity.`,
+      ? `Threshold ${fmtPace(thresholdSecPerMi)} carried to ${fmtMi(race.distanceMi) ?? 'the race distance'} through your own endurance exponent${anchors ? ` (${anchors.basis.marathon.enduranceExponent.toFixed(3)})` : ''}. This is today's capacity, not race day's; the rehearsal teaches the effort, the block earns the pace.`
+      : `Today's projected race pace at ${fmtMi(race.distanceMi) ?? 'the race distance'} from current capacity.`,
   };
 
   // ── 4 · expected improvement (goal-free) ────────────────────────────────
@@ -453,12 +454,12 @@ export async function composeRaceOutlook(
     expectedSec,
     likelyRangeSec,
     confidence: expectedSec != null && currentProjection.confidence != null
-      ? Math.round(currentProjection.confidence * expectedImprovement.confidence * 100) / 100
+      ? roundTo(currentProjection.confidence * expectedImprovement.confidence, 2)
       : null,
-    projectedVdot: projectedVdot != null ? Math.round(projectedVdot * 10) / 10 : null,
+    projectedVdot: projectedVdot != null ? roundTo(projectedVdot, 1) : null,
     basis: expectedSec == null ? 'unavailable' : gain.basis === 'no_runway' ? 'current_projection' : 'trajectory',
     reasons: [
-      `${gain.gainVdot.toFixed(2)} VDOT expected from ${gain.buildWeeks} build weeks at execution ${gain.executionQuality}`,
+      `${roundTo(gain.gainVdot, 2)} VDOT expected from ${gain.buildWeeks} build weeks at execution ${gain.executionQuality}`,
       ...gain.reasons,
     ],
   };
@@ -549,7 +550,7 @@ export async function composeRaceOutlook(
       differsFromPrevious: null,
     },
     {
-      step: 'current_projection', label: `What you could race today at ${race.distanceMi.toFixed(1)} mi`,
+      step: 'current_projection', label: `What you could race today at ${fmtMi(race.distanceMi) ?? 'the race distance'}`,
       value: fmtTime(currentProjection.expectedSec), valueSec: currentProjection.expectedSec,
       paceSecPerMi: currentProjection.expectedSec != null && race.distanceMi > 0 ? Math.round(currentProjection.expectedSec / race.distanceMi) : null,
       rangeSec: currentProjection.likelyRangeSec, confidence: currentProjection.confidence,
@@ -569,7 +570,7 @@ export async function composeRaceOutlook(
     },
     {
       step: 'expected_improvement', label: 'Improvement the remaining block can deliver',
-      value: `+${gain.gainVdot.toFixed(1)} VDOT (${gain.gainRangeVdot[0].toFixed(1)}-${gain.gainRangeVdot[1].toFixed(1)})`,
+      value: `+${roundTo(gain.gainVdot, 1)} VDOT (${roundTo(gain.gainRangeVdot[0], 1)}-${roundTo(gain.gainRangeVdot[1], 1)})`,
       valueSec: null, paceSecPerMi: null, rangeSec: null, confidence: expectedImprovement.confidence,
       evidence: [
         `${gain.buildWeeks} build weeks · execution ${gain.executionQuality} from ${gainEvidenceCount} recent test points`,
@@ -611,7 +612,7 @@ export async function composeRaceOutlook(
     modelVersion: RACE_OUTLOOK_MODEL_VERSION,
     resolvedAt,
     todayISO: today,
-    race: { ...race, daysToRace, weeksToRace: weeksToRace != null ? Math.round(weeksToRace * 10) / 10 : null },
+    race: { ...race, daysToRace, weeksToRace: weeksToRace != null ? roundTo(weeksToRace, 1) : null },
     statedGoal: { sec: goalSec, paceSecPerMi: goalSec != null && race.distanceMi > 0 ? Math.round(goalSec / race.distanceMi) : null },
     capacity,
     currentProjection,

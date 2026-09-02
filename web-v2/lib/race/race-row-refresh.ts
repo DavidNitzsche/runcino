@@ -40,6 +40,7 @@ import type { PoolClient } from 'pg';
 /** Anything with `query` · the pool, a PoolClient, or a transaction handle. */
 export type Queryable = Pick<PoolClient, 'query'>;
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 import { resolveRaceOutlook, loadRaceForOutlook, RACE_EXECUTION_BAND_S_PER_MI, type RaceOutlook, type RaceForOutlook } from './race-outlook';
 
 export interface RaceRowRefreshResult {
@@ -198,8 +199,8 @@ async function refreshRaceRowsCore(
             EXISTS (
               SELECT 1 FROM runs r
                WHERE r.user_uuid = $2::uuid
-                 AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
-                 AND NOT (r.data ? 'mergedIntoId')
+                 AND ${runDaySql('r')}::date = pw.date_iso::date
+                 AND ${runNotMergedSql('r')}
             ) AS sealed
        FROM plan_workouts pw
       WHERE pw.plan_id = $1 AND pw.type = 'race'

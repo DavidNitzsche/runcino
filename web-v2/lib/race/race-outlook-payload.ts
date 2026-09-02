@@ -7,6 +7,7 @@
  */
 import type { RaceOutlook } from './race-outlook';
 import { formatRaceTime } from '@/lib/training/vdot';
+import { roundTo } from '@/lib/format/run';
 
 function pace(sec: number | null): string | null {
   if (sec == null || !Number.isFinite(sec)) return null;
@@ -45,12 +46,12 @@ export function raceOutlookPayload(o: RaceOutlook | null | undefined) {
       why: o.trainingPrescription.whyThisPace,
     },
     expected_improvement: {
-      gain_vdot: Math.round(o.expectedImprovement.gainVdot * 100) / 100,
-      gain_range_vdot: o.expectedImprovement.gainRangeVdot.map((v) => Math.round(v * 100) / 100),
+      gain_vdot: roundTo(o.expectedImprovement.gainVdot, 2),
+      gain_range_vdot: o.expectedImprovement.gainRangeVdot.map((v) => roundTo(v, 2)),
       build_weeks: o.expectedImprovement.buildWeeks,
       execution_quality: o.expectedImprovement.executionQuality,
       basis: o.expectedImprovement.basis,
-      confidence: Math.round(o.expectedImprovement.confidence * 100) / 100,
+      confidence: roundTo(o.expectedImprovement.confidence, 2),
     },
     expected_race_day: {
       sec: o.expectedRaceDay.expectedSec,
@@ -96,7 +97,7 @@ export function raceOutlookPayload(o: RaceOutlook | null | undefined) {
       value_sec: b.valueSec,
       pace: pace(b.paceSecPerMi),
       range: range(b.rangeSec),
-      confidence: b.confidence != null ? Math.round(b.confidence * 100) / 100 : null,
+      confidence: b.confidence != null ? roundTo(b.confidence, 2) : null,
       evidence: b.evidence,
       change_trigger: b.changeTrigger,
       differs_from_previous: b.differsFromPrevious,
@@ -106,7 +107,7 @@ export function raceOutlookPayload(o: RaceOutlook | null | undefined) {
       threshold_pace: pace(o.capacity.thresholdSecPerMi),
       threshold_vdot: o.capacity.thresholdVdot,
       source_mode: o.capacity.sourceMode,
-      confidence: Math.round(o.capacity.confidence * 100) / 100,
+      confidence: roundTo(o.capacity.confidence, 2),
       newest_evidence: o.capacity.newestEvidenceISO,
       durability_exponent: o.capacity.durabilityExponent,
       durability_races: o.capacity.durabilityRaces,
