@@ -283,7 +283,67 @@ re-running the generator says the code is fixed. It does not say the runner's
 plan is fixed. Those are two different sentences and this programme should only
 write the second one after the rebuild has actually run.
 
-## 9 · What is NOT true yet
+## 9 · The loop, traced on your live account
+
+The directive asked for proof of a coherent loop: evidence to beliefs to plan to
+prescription to evaluation to adaptation. Here is that chain on your real
+account today, read-only, hop by hop. Four hops hold. One does not, and it is
+the one in section 8.
+
+**Evidence to beliefs.** Threshold 430 s/mi, from a DIRECT read at confidence
+0.835, VDOT 47.8. Durability exponent 1.0825 with the raw fit at 1.110, marathon
+anchor 472 s/mi with a 460 to 488 band, carrying `restsOnOneLongRace: true`
+because one long race still fixes the exponent. High intensity is honest about
+being weaker: `vdot_fallback` at confidence 0.49.
+
+**Beliefs to plan.** Your active plan's stamped anchors are byte-for-byte the
+live resolver's:
+
+| Anchor | Plan stamp | Live resolver |
+|---|---|---|
+| Threshold | 430 | 430 |
+| Interval | 401 | 401 |
+| Repetition | 365 | 365 |
+| Marathon | 472 | 472 |
+| Easy ceiling | 502 | 502 |
+| Shakeout ceiling | 532 | 532 |
+
+Same exponent, same confidences, same source modes. There is no second answer
+sitting in your plan disagreeing with the brain. That is Rule 16 holding on live
+data rather than in a test.
+
+**Beliefs to heart rate.** Your anchor moved from 162 to 168 and the plan
+followed it correctly, in the one way that is easy to get wrong. All thirteen
+quality sessions carry `lthr_bpm` 168. Sixty future rows carry a 151 bpm
+ceiling, which is that new anchor. Four rows still carry 145, the old anchor's
+ceiling, and all four are dated 2026-08-26 to 2026-08-30 — in the past.
+
+That is not staleness, it is the correct posture. A completed session should
+record the ceiling you actually trained under, and Rule 10 names retroactively
+rewriting it as the bug rather than the fix. The engine drew the line in exactly
+the right place.
+
+**Plan to prescription.** Your week reads:
+
+| Date | Session | Distance | Pace | HR cap |
+|---|---|---|---|---|
+| 09-02 | easy, 6 × 20s strides | 5.0 | — | 151 |
+| 09-03 | 10 × 60s hills | 6.5 | — | — |
+| 09-04 | easy | 5.5 | — | 151 |
+| 09-05 | rest | — | — | — |
+| 09-06 | long | 15.0 | 8:40 | 151 |
+| 09-07 | easy, 6 × 20s strides | 4.5 | — | 151 |
+| 09-08 | tempo | 6.2 | 7:10 | — |
+
+The 7:10 is your threshold belief, unrounded and unchanged, arriving on the
+day. The long run at 8:40 sits inside the easy ceiling of 8:22 to 502 s/mi
+correctly.
+
+**Where it stops.** The 09-08 tempo is still `2.1 mi WU · 2 mi @ T · 2.1 mi CD`.
+The paces on that row are current; its SHAPE is from 2026-08-31. Section 8 is
+that gap and what it needs.
+
+## 10 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -300,7 +360,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 10 · PENDING sections
+## 11 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
