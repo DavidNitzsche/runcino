@@ -55,6 +55,7 @@ import { fmtPaceSlash } from '@/lib/format/run'; // MIDGOAL-1 (2026-08-30) · th
 import { shapeTravelWindows, type TravelWindow } from './travel-windows'; // TRAVEL-1 (2026-08-28) · runner-declared travel shapes the composed block
 import { ROLE_POST_QUALITY_FREE_DAYS, isRaceRole } from '@/lib/race/race-role'; // RACEROLE-1 (2026-08-28) · answered tune-up roles
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
+import { resolveBlockAnchor } from './block-anchor';
 // PLANVERSION-1 (2026-08-30) · the quality-habit readers describe what the
 // RUNNER RAN, so they read `runs` through the shared shape helpers rather than
 // joining `training_plans` (which duplicates a day once per plan version).
@@ -13896,16 +13897,39 @@ async function composeForUserInternal(
   // target — never a maintenance block instead of the build they asked for.
   const openTarget = (!raceSlug && !goalTarget) ? input.openTarget : undefined;
 
-  // 1. Load all DB-sourced inputs into a pure-data bundle.
-  const inputs = await loadGeneratorInputs(userId, raceSlug, startAnchor, startDateISO, goalTarget, openTarget);
-  if (!inputs.ok) return { ok: false, reason: inputs.reason };
-
   // 2026-06-03 · Rules 12 + 13 · pick plan mode based on temporal context.
   // race-prep: race is within build window
   // maintenance: race is too far out · hold aerobic base
   // recovery: another race finished recently · 1-2 week light-running
+  //
+  // BLOCKANCHOR-1 (2026-09-02) · this read moved ABOVE `loadGeneratorInputs`
+  // because the anchor decision needs it. Same reader, same arguments, one
+  // fewer call than before (`loadGeneratorInputs` also asked it, for RULE8-1).
   const todayISO = await runnerToday(userId);
   const { lastRaceFinished: dbLastRace, lastRaceDistanceMi: dbLastRaceMi } = await loadLastRaceFinished(userId, todayISO);
+
+  // BLOCKANCHOR-1 · WHEN A BLOCK ALREADY EXISTS, ITS REBUILD BEGINS WHERE IT
+  // BEGAN. Resolved HERE, at the one chokepoint every authoring path passes
+  // through, rather than wired per route: the coverage matrix in
+  // `docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md` and COACHED-GATE-1's own history
+  // both say a rule wired at each route is a rule that misses the routes
+  // nobody remembered. Onboarding is excluded by its own `startAnchor:
+  // 'today'`, and every refusal carries a named reason (Rule 11) which
+  // `scripts/p0-proof/rebuild-anchor-acceptance.ts` prints.
+  const anchorRead = await resolveBlockAnchor({
+    userId, todayISO, startAnchor, startDateISO,
+    target: {
+      raceSlug,
+      goalRaceDateISO: goalTarget?.raceDateISO,
+      isOpenBlock: !!openTarget,
+    },
+    lastFinishedRaceISO: dbLastRace?.date ?? null,
+  });
+  const blockAnchorISO = anchorRead.preserved ? anchorRead.anchorISO : null;
+
+  // 1. Load all DB-sourced inputs into a pure-data bundle.
+  const inputs = await loadGeneratorInputs(userId, raceSlug, startAnchor, startDateISO, goalTarget, openTarget, blockAnchorISO);
+  if (!inputs.ok) return { ok: false, reason: inputs.reason };
 
   // OPEN-TARGET-1 · the race the OPEN BLOCK is unwinding from, when the caller
   // named one. `loadLastRaceFinished` reads the runner's last A/B race dated
@@ -14634,6 +14658,19 @@ async function loadGeneratorInputs(
   startDateISO?: string,
   goalTarget?: { distanceMi: number; goalSec: number | null; raceDateISO: string },
   openTarget?: GenerateInput['openTarget'],
+  /**
+   * BLOCKANCHOR-1 (2026-09-02) · the ACTIVE block's own first day, when this
+   * authoring is a rebuild of that block. Week 0 snaps here instead of to the
+   * current week, so a rebuild occupies the same calendar and the same phase
+   * geometry the block was authored with. `null` on every other authoring —
+   * onboarding, a graduation, an open block, a first plan.
+   *
+   * Resolved by ONE function, `resolveBlockAnchor`, at `composeForUserInternal`.
+   * It does NOT touch `clipBeforeISO`: `persistsComposedDay` still refuses to
+   * author a new prescription onto a past day, and Rule 15 still carries a
+   * sealed one.
+   */
+  blockAnchorISO?: string | null,
 ): Promise<
   | { ok: true; compose: ComposePlanInput }
   | { ok: false; reason: string }
@@ -14893,7 +14930,13 @@ async function loadGeneratorInputs(
   // honest shape of a week you joined on Wednesday.
   const weekStartDow = (longRunDow + 1) % 7;  // day after the long run, per /api/plan/week
   const blockStartISO = requestedBlockStartISO(todayISO, startAnchor, startDateISO);
-  const startMondayISO = weekStartBoundaryOf(blockStartISO ?? todayISO, weekStartDow);
+  // BLOCKANCHOR-1 (2026-09-02) · a REBUILD begins where its block began. The
+  // three quantities stay separate and are read in the order they were
+  // separated: a caller-named first day wins outright (onboarding), else the
+  // active block's own start when this is that block's rebuild, else today.
+  // `clipBeforeISO` below is still `blockStartISO` and nothing else, so the
+  // backdate guard is untouched by this.
+  const startMondayISO = weekStartBoundaryOf(blockStartISO ?? blockAnchorISO ?? todayISO, weekStartDow);
   // LSP2-1 (2026-06-23) · a goalTarget race date is start+weeks*7 with NO weekday snap, so it lands on
   // day-0 of its week → SP-4 strips every tune-up/shakeout/easy that wraps onto the post-race days and
   // the final week collapses to a bare race day (all 7 start weekdays, prod-only — the sim snaps and
