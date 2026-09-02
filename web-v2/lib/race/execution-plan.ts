@@ -343,6 +343,18 @@ export function composeRaceExecutionPlan(args: {
   /** True when neither a per-race nor runner-default product was found,
    *  so the structured plan is built on documented defaults. */
   fuelIsDefault?: boolean;
+  /**
+   * CEFFORT-1 (2026-09-02) · 'controlled' for a C race.
+   *
+   * `Research/00b` §"Recovery by Effort" grades a C race as a hard workout
+   * substitute, "Strong effort, no taper". A hard workout has no closing
+   * push and no race-day abort ceiling: telling a runner to "push the final
+   * mile on feel" over a controlled effort is a sentence asserting a fact
+   * about an intensity it is not gated on (Rule 16), and it is exactly what
+   * this day must not say when an 18-mile long run follows it the next
+   * morning. Default 'race' leaves every existing caller byte-identical.
+   */
+  effortCharacter?: 'race' | 'controlled';
 }): RaceExecutionPlan | null {
   const { goalSec, distanceMi } = args;
   if (!goalSec || goalSec <= 0 || !distanceMi || distanceMi <= 0) return null;
@@ -390,7 +402,10 @@ export function composeRaceExecutionPlan(args: {
     } else if (startMi < opening.openingMi) {
       pace = opening.earlyPaceSPerMi;
       label = 'find rhythm';
-    } else if (startMi >= pushFromMi) {
+    } else if (startMi >= pushFromMi && args.effortCharacter !== 'controlled') {
+      // CEFFORT-1 · a controlled effort has no closing push. The PACE is
+      // unchanged either way (it is the same repaid number); what changes is
+      // that the row no longer tells him to empty the tank.
       pace = opening.repaidPaceSPerMi;
       label = 'push';
     } else {
@@ -418,7 +433,13 @@ export function composeRaceExecutionPlan(args: {
   // is the §18.2 unrecoverable zone — chasing it back is the blow-up.
   // The checkpoint itself is proportional (38% of the race), so a 5K's
   // check happens inside the 5K instead of at a mile it never reaches.
-  const triggerHr = raceAbortHrBpm({ distanceMi, lthr: args.lthr, maxHr: args.maxHr });
+  const triggerHr = raceAbortHrBpm({
+    distanceMi, lthr: args.lthr, maxHr: args.maxHr,
+    // CEFFORT-1 · the abort ceiling belongs to the effort prescribed, not to
+    // the distance alone. A 179 bpm trigger over a controlled 10K licenses
+    // the race the pace target no longer asks for.
+    effortCharacter: args.effortCharacter,
+  });
   const triggerPace = Math.round(goalPace * (1 + RACE_PACE_ABORT_FRACTION));
   const bGoalTriggers: BGoalTrigger[] = [{
     atMile: raceCheckpointMi(distanceMi),
@@ -546,10 +567,13 @@ export function composeRaceExecutionPlan(args: {
   const earlyLine = opening.openingMi > 1
     ? `Hold ${fmtPace(opening.earlyPaceSPerMi)} through ${Math.round(opening.openingMi)}. `
     : '';
-  const strategyLine =
-    openLine + earlyLine +
-    `Then it's ${fmtPace(opening.repaidPaceSPerMi)}s the rest of the way · the early patience comes back to you. ` +
-    `Push the final ${pushMiles === 1 ? 'mile' : `${pushMiles} miles`} on feel.`;
+  const strategyLine = args.effortCharacter === 'controlled'
+    ? openLine + earlyLine +
+      `Then it's ${fmtPace(opening.repaidPaceSPerMi)}s the rest of the way. ` +
+      'Controlled the whole way. This is the week\u2019s hard session, not a race, so finish it able to run tomorrow.'
+    : openLine + earlyLine +
+      `Then it's ${fmtPace(opening.repaidPaceSPerMi)}s the rest of the way · the early patience comes back to you. ` +
+      `Push the final ${pushMiles === 1 ? 'mile' : `${pushMiles} miles`} on feel.`;
   const ciNote = args.ci
     ? `Current fitness says ${fmtClock(args.ci.loSec)}–${fmtClock(args.ci.hiSec)}. The plan above is the path to the goal edge of that band.`
     : null;

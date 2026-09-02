@@ -46,6 +46,7 @@ import type { DistCategory } from './goal-tiers';
 import { POST_RACE_RECOVERY_WEEKS } from './goal-tiers';
 import { ROLE_POST_QUALITY_FREE_DAYS } from '@/lib/race/race-role';
 import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
+import type { DesignedWeekendGrant, DesignedWeekendRefusal } from './designed-race-weekend';
 
 /* ─────────────────────────────────────────────────────────── effort grading */
 
@@ -272,7 +273,11 @@ export type StressContradictionCode =
   | 'QUALITY_INSIDE_RECOVERY_WINDOW'
   /** Volume and long-run duration both advance materially in one build week.
    *  Doctrine's one-primary-stressor rule (brief §5.1). */
-  | 'COMPOUND_PRIMARY_STRESSORS';
+  | 'COMPOUND_PRIMARY_STRESSORS'
+  /** A C-effort race and a long run stand back to back on the SHIPPED block
+   *  carrying more than the grant that licensed them, or with no grant at all.
+   *  DESIGNEDWEEKEND-1. */
+  | 'UNGRANTED_RACE_LONG_PAIR';
 
 /**
  * The named outcomes a placement pass may record when it resolves a
@@ -305,6 +310,24 @@ export interface PlacementRecord {
   dateISO: string;
   detail: string;
   citation: string;
+  /**
+   * DESIGNEDWEEKEND-1 (2026-09-02) · the typed exception that licensed an
+   * `ACCEPT_AS_HARD_WORKOUT`, with the athlete-specific evidence it was granted
+   * on and the sentence the app shows for it.
+   *
+   * PRESENT ON EVERY ACCEPTANCE FROM HERE ON. An acceptance without one is a
+   * pairing granted to a runner nobody checked, which is exactly what the
+   * owner's ruling forbids, and `_designed_race_weekend.test.ts` asserts the
+   * composer never writes one.
+   */
+  designedWeekend?: DesignedWeekendGrant;
+  /**
+   * The NAMED refusal that produced a `REDUCE_DOSE` on a C-effort pairing.
+   * Recorded because "he has never run a weekend like this" and "I could not
+   * read his history" are different facts and the block should be able to say
+   * which one it acted on (Rule 11).
+   */
+  refusedDesignedWeekend?: DesignedWeekendRefusal;
 }
 
 export interface StressFinding {
@@ -407,6 +430,107 @@ export function combinedStressFindings(args: {
           message:
             `${d.type} on day ${gap} after ${race.name} · Research/00b ` +
             `"Total recovery days (no quality)" owes ${noQuality} day(s) at this effort`,
+          enforced: true,
+        });
+      }
+    }
+  }
+  return findings;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * DESIGNEDWEEKEND-1 (2026-09-02) · THE PAIR, RE-CHECKED ON THE BLOCK THAT
+ * SHIPS.
+ *
+ * `embedMidBlockRaces` decides. This asserts the decision still describes the
+ * plan, on the FINAL week, after every post-finalisation pass — which is the
+ * transaction-level check brief §5.1 asks for and the reason
+ * `refreshPlacementCompromises` exists at all: three later passes can move the
+ * day the embed recorded.
+ *
+ * TWO WAYS TO FAIL, and they are different facts:
+ *
+ *   · A C race with a long run inside its return-to-long window at more than
+ *     the curve allows, and NO grant on the record. That is the pairing being
+ *     available to a runner nobody checked, which is what the owner's ruling
+ *     forbids in one sentence.
+ *   · A grant on the record whose pair is SMALLER than what shipped. The
+ *     permission was issued for one weekend and the block carries a bigger
+ *     one, so the grant is no longer a true statement about the plan (Rule 16).
+ *
+ * WHAT THIS CANNOT FAIL ON (Rule 22):
+ *   · Whether the grant was correctly ISSUED. It re-checks the arithmetic
+ *     against the shipped days, not the evidence — `resolveDesignedRaceWeekend`
+ *     owns that and `_designed_race_weekend.test.ts` gates it.
+ *   · A pairing outside the C race's own return-to-long window. Past that day
+ *     doctrine says the long run is back and there is nothing to grant.
+ *   · A grant for a pair whose long run was removed entirely. There is no day
+ *     left to measure, and a decision that was overtaken is not a decision that
+ *     was wrong.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * One recorded decision about a race-plus-long-run pairing, off
+ * `placement_compromises`. `combinedMi` is the granted pair; NULL means the
+ * exception was REFUSED and recorded as such, which is a decision, not an
+ * absence (Rule 11).
+ */
+export interface ShippedPairDecision {
+  raceDateISO: string;
+  longDateISO: string;
+  combinedMi: number | null;
+}
+
+export function designedWeekendFindings(args: {
+  races: readonly StressRace[];
+  days: readonly StressDay[];
+  decisions: readonly ShippedPairDecision[];
+  /** Weeks fully in the past are sealed and are not re-graded. */
+  todayISO: string;
+}): StressFinding[] {
+  const findings: StressFinding[] = [];
+  const byDate = [...args.days].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+
+  for (const race of args.races) {
+    if (raceConsumesLongRunSlot(race.effectivePriority)) continue;   // §11 owns A and B
+    const returnDays = returnToLongDays(race.distanceMi, race.effectivePriority);
+    for (const d of byDate) {
+      if (d.dateISO <= race.dateISO) continue;
+      if (d.dateISO < args.todayISO) continue;                       // sealed
+      if (d.type === 'race') continue;
+      const gap = daysBetweenISO(race.dateISO, d.dateISO);
+      if (gap >= returnDays) break;                                  // dates ascend
+      if (!d.isLong || !(d.distanceMi > 0)) continue;
+
+      const combined = Math.round((race.distanceMi + d.distanceMi) * 100) / 100;
+      const decision = args.decisions.find(
+        (g) => g.raceDateISO === race.dateISO && g.longDateISO === d.dateISO,
+      );
+
+      if (!decision) {
+        findings.push({
+          code: 'UNGRANTED_RACE_LONG_PAIR',
+          weekStartISO: d.weekStartISO,
+          dateISO: d.dateISO,
+          message:
+            `${d.distanceMi}mi long run ${gap} day(s) after ${race.name} ` +
+            `(${race.distanceMi}mi, C effort) · ${combined.toFixed(2)}mi across the pair, and no decision ` +
+            `about the pairing is on the record · Research/00b "Hard/Easy Alternation" allows two hard days ` +
+            `back to back only where the plan explicitly calls for a stress block, so this weekend is either ` +
+            `granted on this runner's own evidence or cut back onto the return-to-long curve`,
+          enforced: true,
+        });
+        continue;
+      }
+      if (decision.combinedMi != null && combined > decision.combinedMi + 1e-9) {
+        findings.push({
+          code: 'UNGRANTED_RACE_LONG_PAIR',
+          weekStartISO: d.weekStartISO,
+          dateISO: d.dateISO,
+          message:
+            `${combined.toFixed(2)}mi across ${race.name} and the long run that follows it, against a ` +
+            `designed-weekend grant issued for ${decision.combinedMi.toFixed(2)}mi · the block grew past the ` +
+            `weekend the runner's evidence licensed`,
           enforced: true,
         });
       }
