@@ -89,11 +89,21 @@ describe.skipIf(!RO)('TODAY · the thesis-composed "why", rendered on the real r
       expect(['THRESHOLD', 'HIGH_INTENSITY', 'DURABILITY', 'UNKNOWN'])
         .toContain(body.thesis.limiter);
 
-      // The why is composed FROM it: on a quality day it opens on the limiter,
-      // not on the phase. Asserted on the SHAPE OF THE RESULT rather than on
-      // the absence of the old string (Rule 13 clause 3).
+      // The why is composed FROM it: on a quality day it opens on what the
+      // block is trying to move, not on the phase. Asserted on the SHAPE OF
+      // THE RESULT rather than on the absence of the old string (Rule 13
+      // clause 3) — the sentence must carry the thesis's own claim, in the
+      // words `why-voice.ts#thesisOpener` is the single owner of.
+      //
+      // THIS ASSERTION USED TO BE `toContain('limiter')`, and that is worth
+      // stating rather than quietly replacing: a gate was REQUIRING engine
+      // taxonomy in the one line the runner reads. It passed every day the
+      // defect shipped, because it was written from the same instinct as the
+      // code (Rule 22). The live sentence on 2026-09-02 was "Durability is
+      // the limiter right now, and this is the session that moves it."
       expect(typeof body.why).toBe('string');
-      expect(body.why.toLowerCase()).toContain('limiter');
+      expect(body.why, body.why).toMatch(/the thing to move right now/);
+      expect(body.why.toLowerCase(), body.why).not.toContain('limiter');
 
       // Coach voice, on the real sentence the runner reads.
       expect(body.why, body.why).not.toMatch(/[—!·]/);

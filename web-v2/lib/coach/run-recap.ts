@@ -892,12 +892,21 @@ function deriveRecapCore(input: RecapInput): RecapPayload {
   );
   if (takenBail) {
     facts.push(
+      // 2026-09-02 · "that's execution, not surrender" and "smart, not a
+      // fail" both answer a charge nobody made. Naming failure in order to
+      // deny it leaves the word on the screen. State what happened and what
+      // it bought. BAIL survives here and only here: it is the literal label
+      // on the race control the runner pressed, which is the one exemption
+      // the voice brief grants it.
       takenBail.kind === 'abort'
-        ? `You took the B plan at the checkpoint · that's execution, not surrender. Even splits from there beat a blow-up chasing A.`
-        : `You took the bail${takenBail.atMi != null ? ` at mile ${Number(takenBail.atMi).toFixed(0)}` : ''} · smart, not a fail. The stimulus was already banked; forcing the rest buys fatigue, not fitness.`,
+        ? `You took the B plan at the checkpoint. Even splits from there beat chasing A and blowing up.`
+        : `You took the bail${takenBail.atMi != null ? ` at mile ${Number(takenBail.atMi).toFixed(0)}` : ''}. The stimulus was already banked, and finishing the rest would have bought fatigue rather than fitness.`,
     );
   } else if (declinedBail) {
-    facts.push(`The ${String(declinedBail.label ?? 'bail line').toLowerCase()} tripped and you pushed through. Watch tomorrow's readiness.`);
+    // "and you pushed through" read as approval of an override this sentence
+    // exists to flag. It is also a description, not an instruction, and the
+    // plainer verb carries the fact without the endorsement.
+    facts.push(`The ${String(declinedBail.label ?? 'bail line').toLowerCase()} tripped and you kept going. Watch tomorrow's readiness.`);
   }
 
   // Voice doctrine (David, 2026-05-31): plain English. No PhD jargon.

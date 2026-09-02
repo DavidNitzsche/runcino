@@ -207,7 +207,10 @@ export function composeWeekCloseEntry(w: WeekCloseInput): { title: string; body:
     return { title: 'WEEK CLOSED', body: `Biggest week of the block · ${mi} mi · ${q}.` };
   }
   if (w.totalMi <= 0.3) {
-    return { title: 'WEEK CLOSED', body: `A zero week went in the book. The plan resumes where you are, not where the calendar says.` };
+    // 2026-09-02 · was "A zero week went in the book." Ledger voice, and on
+    // the one card where it matters most that the week is stated and not
+    // judged (Rule: a missed run is stated, never judged).
+    return { title: 'WEEK CLOSED', body: `No miles this week. The plan resumes where you are, not where the calendar says.` };
   }
   const plannedPart = w.plannedMi != null && w.plannedMi > 0
     ? ` of ${round1(w.plannedMi)} planned`

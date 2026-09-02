@@ -52,7 +52,13 @@ describe('composeWeekCloseEntry', () => {
 
   it('zero week is honest, not shaming', () => {
     const e = composeWeekCloseEntry({ ...base, totalMi: 0, qualityPlanned: 2, qualityDone: 0 });
-    expect(e.body).toContain('zero week');
+    // 2026-09-02 · the copy no longer SAYS "a zero week went in the book".
+    // "Went in the book" is ledger voice, and this test's own name asks for
+    // honest and not shaming — so the assertion moved to the two things that
+    // actually matter: the week is stated, and the plan is not withheld.
+    expect(e.body).toContain('No miles this week');
+    expect(e.body).toContain('resumes where you are');
+    expect(e.body.toLowerCase()).not.toMatch(/went in the book|failed|missed/);
     expect(e.body).not.toMatch(/!|—/);
   });
 

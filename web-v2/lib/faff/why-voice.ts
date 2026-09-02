@@ -43,6 +43,9 @@
  */
 
 import { stripResearchCitations } from '@/lib/plan/strip-citations';
+import {
+  layerOne, EXPLANATION_MODEL_VERSION, type CoachingExplanation,
+} from './explanation';
 
 export interface WhyFacts {
   /** RECOVERY · BASE · QUALITY · RACE-SPECIFIC · TAPER, or null. */
@@ -57,22 +60,45 @@ export interface WhyFacts {
   /** `derivePurpose`'s text — the floor when nothing better exists. */
   fallback: string | null;
   /**
-   * THE COACHING THESIS' own opening clause
-   * (`lib/training/coaching-thesis.ts#thesisLeadClause`), set on a quality day
-   * and null on every other.
+   * THE COACHING THESIS' LIMITER, structured — not its sentence.
+   *
+   * Set on the day the thesis is about (a quality day, or the day the
+   * resolver itself named as addressing the limiter) and null on every other.
    *
    * It REPLACES the phase opener rather than joining it, because they are the
    * same beat: "you're in the part of the block where the hard sessions do the
-   * work" and "threshold is the limiter right now" both answer why this week
-   * looks like this, and printing both is Rule 17's exact failure. The thesis
-   * clause is the stronger of the two — it names what the work is FOR, off the
-   * Runner Model's own capacities, where the phase opener names only where in
-   * the calendar the runner is standing.
+   * work" and "holding pace late is the thing to move" both answer why this
+   * week looks like this, and printing both is Rule 17's exact failure. The
+   * thesis clause is the stronger of the two — it names what the work is FOR,
+   * off the Runner Model's own capacities, where the phase opener names only
+   * where in the calendar the runner is standing.
    *
-   * Never composed here. Constitution §P: this module owns the register, the
-   * thesis owns the claim.
+   * ── WHY THIS IS A CAPACITY AND NOT A SENTENCE (changed 2026-09-02) ───────
+   *
+   * It used to be the string from `coaching-thesis.ts#thesisLeadClause`, and
+   * that string put Layer 3 on Layer 1. Measured on the owner's live account
+   * on 2026-09-02, through the real route, on three consecutive days:
+   *
+   *     "Durability is the limiter right now, and this is the session that
+   *      moves it. Keep it conversational throughout."
+   *
+   * "Limiter" is engine taxonomy. `docs/PRODUCT_UX_SIMPLIFICATION_DOCTRINE.md`
+   * is explicit that Layer 3 "must never leak directly into Layer 1", and the
+   * review brief §4 lists "Coaching Thesis taxonomy" among the things Today
+   * must not show. `check-coach-voice.sh` could not see it and never could:
+   * the sentence is assembled at run time from fragments that are each clean,
+   * which its own header names as its blind spot.
+   *
+   * So the thesis hands over WHICH capacity is limiting — its claim, which it
+   * owns — and this module says it in runner language, which is the register,
+   * which this module owns. Constitution §P, and the same split the header of
+   * this file already declared. There is exactly one composer of the sentence
+   * the runner reads, which is the point of Rule 16.
    */
-  thesisLead?: string | null;
+  thesisLimiter?: 'THRESHOLD' | 'HIGH_INTENSITY' | 'DURABILITY' | 'UNKNOWN' | null;
+  /** True when TODAY's session is one the thesis named as addressing the
+   *  limiter. Changes the tail of the lead, nothing else. */
+  thesisServesToday?: boolean;
   /**
    * The catalogue's own name for today's session, taken from the row's
    * persisted `selection_rationale`
@@ -144,6 +170,39 @@ function opener(f: WhyFacts): string | null {
 }
 
 /**
+ * THE LIMITER, IN RUNNER LANGUAGE.
+ *
+ * One phrase per capacity, saying the same thing the thesis says without the
+ * word that names the mechanism. A runner can act on "holding your pace late
+ * in a race"; nobody can act on "durability is the limiter".
+ *
+ * The tail is the only thing `servesToday` changes, and it is a real
+ * distinction the runner can check against the day in front of them: this
+ * session moves it, or the block does and today is something else.
+ *
+ * UNKNOWN returns null rather than a sentence. Rule 11 — "we could not name
+ * it" is a fact, but it is not a reason to run today's session, and printing
+ * a hedge in the opener would make the honest phase sentence sound weaker
+ * than it is. The phase opener takes the slot instead.
+ */
+const LIMITER_IN_RUNNER_WORDS: Record<'THRESHOLD' | 'HIGH_INTENSITY' | 'DURABILITY', string> = {
+  THRESHOLD: 'the pace you can hold for a long stretch is the thing to move right now',
+  HIGH_INTENSITY: 'your top-end speed is the thing to move right now',
+  DURABILITY: 'holding your pace late in a race is the thing to move right now',
+};
+
+export function thesisOpener(
+  limiter: WhyFacts['thesisLimiter'],
+  servesToday: boolean,
+): string | null {
+  if (!limiter || limiter === 'UNKNOWN') return null;
+  const claim = LIMITER_IN_RUNNER_WORDS[limiter];
+  return servesToday
+    ? `${claim}, and this is the session that does it`
+    : `${claim}, so that is what the block is building toward`;
+}
+
+/**
  * One or two sentences a coach would actually type.
  *
  * Order is reason, then instruction. The reason comes from the phase and the
@@ -151,15 +210,71 @@ function opener(f: WhyFacts): string | null {
  * fact, or the fallback — whichever the engine actually authored.
  */
 export function composeWhy(f: WhyFacts): string {
-  // THE THESIS OWNS THE OPENER WHEN IT HAS ONE. See `WhyFacts.thesisLead` for
-  // why it replaces the phase opener rather than joining it.
-  const lead = f.thesisLead?.trim() || opener(f);
+  const e = explainWhy(f, { decisionVersion: 'unversioned' });
+  return e ? layerOne(e) : '';
+}
+
+/**
+ * THE SAME SENTENCE, AS A TYPED EXPLANATION.
+ *
+ * `composeWhy` above is now a thin renderer over this, so there is ONE
+ * composer and the contract is not a parallel description of a string built
+ * somewhere else. `layerOne` joins verdict and reason with a single space,
+ * which is byte-for-byte what the old `sentence(lead) + " " + sentence(body)`
+ * produced - verified against the owner's live payload on seven consecutive
+ * days in `_voice_live.audit.test.ts`.
+ *
+ * WHY THE CONTRACT IS WIRED HERE RATHER THAN "PREPARED FOR LATER". Rule 21:
+ * "wired, tested and inert is this codebase's signature failure", and
+ * `check-generated-content.sh` GUARD 5 catches it - `explanation.ts` was a
+ * test-only orphan on its first prebuild run, which is exactly the
+ * `lib/plan/block-preview.ts` shape that guard was written for. A contract
+ * with no caller is the coaching thesis's old problem with better types.
+ *
+ * `spoken` is deliberately absent: this sentence is read on a screen, never
+ * spoken. See `CoachingExplanation.spoken` for why inventing one would have
+ * been worse than saying there is not one.
+ */
+export function explainWhy(
+  f: WhyFacts,
+  opts: { decisionVersion: string },
+): CoachingExplanation | null {
+  const parts = whyClauses(f);
+  if (!parts.verdict) return null;
+  return {
+    id: 'why:' + opts.decisionVersion,
+    modelVersion: EXPLANATION_MODEL_VERSION,
+    decisionVersion: opts.decisionVersion,
+    surfaceEvent: 'TODAY_BEFORE',
+    intent: 'PRESCRIBE',
+    verdict: parts.verdict,
+    reason: parts.reason,
+    /* THE CERTAINTY IS THE THESIS'S PRESENCE, AND NOTHING MORE.
+     *
+     * A day the thesis named is a day the Runner Model holds an evidenced
+     * capacity belief about, so the sentence is SUPPORTED. A day carrying
+     * only the phase opener is the calendar talking, which is true but is not
+     * a claim about this runner - TENTATIVE. Nothing here is entitled to say
+     * ESTABLISHED: this module renders a decision, it does not weigh the
+     * evidence behind it (Rule 22, and the contract header's third bullet). */
+    certainty: f.thesisLimiter && f.thesisLimiter !== 'UNKNOWN' ? 'SUPPORTED' : 'TENTATIVE',
+    facts: [],
+    accessibilitySummary: [parts.verdict, parts.reason].filter(Boolean).join(' '),
+    detail: { headline: 'Why this run', paragraphs: [], evidenceLabels: [] },
+  };
+}
+
+/** The two clauses, before they become either a string or an explanation. */
+function whyClauses(f: WhyFacts): { verdict: string; reason?: string } {
+  // THE THESIS OWNS THE OPENER WHEN IT HAS ONE. See `WhyFacts.thesisLimiter`
+  // for why it replaces the phase opener rather than joining it.
+  const lead = thesisOpener(f.thesisLimiter, f.thesisServesToday === true) || opener(f);
   const isRest = /^\s*(off|rest)\b/i.test(f.dayNote ?? '') || /^rest day/i.test(f.fallback ?? '');
 
   // A rest day needs no instruction. "You're eight days on from AFC, so this
   // week is still about absorbing it." is the whole message; adding "Off.
   // Still recovering." says it a second time in fragments.
-  if (lead && isRest) return sentence(lead);
+  if (lead && isRest) return { verdict: sentence(lead) };
 
   // THE CITATION SCRUB, WHICH THIS COMPOSER NEVER HAD.
   //
@@ -220,7 +335,7 @@ export function composeWhy(f: WhyFacts): string {
     .replace(/^\s*,\s*/, '')
     .trim();
 
-  if (!lead) return body ? sentence(body) : '';
-  if (!body) return sentence(lead);
-  return `${sentence(lead)} ${sentence(body)}`;
+  if (!lead) return { verdict: body ? sentence(body) : '' };
+  if (!body) return { verdict: sentence(lead) };
+  return { verdict: sentence(lead), reason: sentence(body) };
 }

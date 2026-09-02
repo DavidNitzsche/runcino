@@ -124,7 +124,11 @@ describe('derivePurpose · type=easy · phase context', () => {
     const p = derivePurpose({
       type: 'easy', phase: 'PEAK', raceDistanceMi: 26.2, plannedMi: 6,
     });
-    expect(p.facts.join(' ')).toMatch(/recovering for the hard stuff|don't get fancy/);
+    // 2026-09-02 · "don't get fancy" was removed as the punitive register the
+    // voice brief names, and it was HALF THIS ASSERTION - a test that would
+    // have accepted the scold as satisfying "emphasizes recovery" (Rule 22).
+    expect(p.facts.join(' ')).toMatch(/recovering for the hard work coming up/);
+    expect(p.facts.join(' ')).not.toMatch(/fancy|bury yourself/);
   });
 });
 

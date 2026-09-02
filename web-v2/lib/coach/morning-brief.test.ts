@@ -34,7 +34,12 @@ describe('composeMorningBrief', () => {
     const b = composeMorningBrief(base);
     expect(b.sentences.recap).toBeNull();
     expect(b.sentences.season).toBeNull();
-    expect(b.paragraph).toBe('Today is an easy run · 6 mi · readiness 72 · solid.');
+    // 2026-09-02 · the RAW READINESS SCORE came out of Layer 1. This test
+    // pinned "readiness 72 · solid", which is the number the UX doctrine
+    // demotes to internal and the composer's own comment says it will not act
+    // on. The band still drives the sentence; the score no longer appears.
+    expect(b.paragraph).toBe('Today is an easy run · 6 mi · recovery looks normal.');
+    expect(b.paragraph).not.toMatch(/readiness \d/);
   });
 
   it('acknowledge sentence wins sentence 1 when present', () => {
@@ -49,7 +54,9 @@ describe('composeMorningBrief', () => {
 
   it('neutral recap when yesterday ran but gave no subjective read', () => {
     const b = composeMorningBrief({ ...base, yesterday: { ranMi: 8.1, type: 'tempo' } });
-    expect(b.sentences.recap).toBe('8.1 mi tempo went in the book yesterday.');
+    // 2026-09-02 · "went in the book" describes what the app did with the run
+    // rather than what the runner did. Same three facts, said by a person.
+    expect(b.sentences.recap).toBe('You ran 8.1 mi yesterday, a tempo.');
   });
 
   it('pull-back band informs without re-prescribing · plan stands', () => {
@@ -116,7 +123,7 @@ describe('composeMorningBrief', () => {
     const b = composeMorningBrief({
       ...base, todayType: 'threshold', todayMi: 8, todayLabel: 'Cruise Intervals',
     });
-    expect(b.sentences.today).toBe('Today is cruise intervals · 8 mi · readiness 72 · solid.');
+    expect(b.sentences.today).toBe('Today is cruise intervals · 8 mi · recovery looks normal.');
   });
 
   it('voice · full paragraph carries no em dash, no exclamation, no citation', () => {

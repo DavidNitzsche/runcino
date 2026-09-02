@@ -24,7 +24,12 @@ describe('composeCue · voice-band tone branches', () => {
   const lockedGuidedDefaults: Array<[CueInput['type'], string]> = [
     ['easy', 'Keep the first mile slow. The pace finds itself by mile 3.'],
     ['tempo', 'Hold the line. Comfortably hard, not racing.'],
-    ['threshold', 'Run the band, not the cutoff. Drift early and you cook the back half.'],
+    // 2026-09-02 · the guided threshold cue changed, and the lock moved with
+    // it rather than the copy being left alone to keep this test green. What
+    // this file locks is that the three guided spellings agree with EACH
+    // OTHER — it is a wiring lock, not a copy freeze, and freezing "you cook
+    // the back half" forever was never its intent.
+    ['threshold', 'Run the band, not the cutoff. Drift early and the last reps pay for it.'],
     ['intervals', 'Even effort across the reps. Rep one sets the ceiling.'],
   ];
 

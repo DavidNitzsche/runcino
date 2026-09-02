@@ -31,9 +31,10 @@ import { composeRecap } from '@/lib/faff/recap-voice';
 import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/twins';
 import { resolveThresholdHr } from '@/lib/training/lthr';
 import { requireUserId } from '@/lib/auth/session';
-import { composeWhy } from '@/lib/faff/why-voice';
+import { explainWhy } from '@/lib/faff/why-voice';
+import { layerOne } from '@/lib/faff/explanation';
 import {
-  resolveCoachingThesis, thesisLeadClause, coachSafeSessionName, wireThesis,
+  resolveCoachingThesis, coachSafeSessionName, wireThesis,
 } from '@/lib/training/coaching-thesis';
 import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
@@ -746,9 +747,10 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // facts (Constitution §P, Rule 16). The thesis also travels on the payload
   // as `thesis`, so Block can say the same thing without re-deriving it.
   //
-  // QUALITY DAY, and only a quality day. `thesisLeadClause` replaces the phase
-  // opener, and doing that on an easy or rest day would put a limiter sentence
-  // over a run that is not about the limiter at all. Long runs are out too:
+  // QUALITY DAY, and only a quality day. The thesis opener replaces the phase
+  // opener, and doing that on an easy or rest day would put a strategy
+  // sentence over a run that is not about the limiter at all. Long runs are
+  // out too:
   // they carry their own rich note and the durability half of `addressedBy` is
   // a coarse `is_long` proxy the header already flags. So the three families
   // the thesis ranks and prescribes against, and nothing else.
@@ -791,6 +793,38 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     && (THESIS_QUALITY_TYPES.has((viewedPlannedType ?? '').toLowerCase())
       || addressedToday != null);
 
+  /* THE EXPLANATION, AND THE VERSION IT IS AN EXPLANATION OF.
+   *
+   * `explainWhy` returns the typed `CoachingExplanation`
+   * (`lib/faff/explanation.ts`) and `layerOne` renders the one-or-two-sentence
+   * string this wire field has always carried, so the phone needs no release
+   * — the About block reads `why` exactly as before.
+   *
+   * `decisionVersion` is the brief's §6.5 requirement, "surfaces must prove
+   * they render the same version", and it is assembled from the identities of
+   * the decisions this sentence explains rather than invented here: the
+   * ACTIVE PLAN (which day is prescribed), the DAY, and the COACHING THESIS's
+   * own model version and resolve stamp (which capacity is limiting). A
+   * second surface explaining this same day must produce this same string, and
+   * when Run Detail and the Watch migrate onto the contract that is the thing
+   * their cross-surface test will compare.
+   *
+   * `no-thesis` is a real value, not a placeholder: a day the thesis does not
+   * speak on IS a different decision from one it does, and collapsing the two
+   * into an empty string would be Rule 11 in the version field. */
+  const decisionVersion = [
+    `plan:${activePlan?.id ?? 'none'}`,
+    `day:${today}`,
+    thesis ? `thesis:${thesis.modelVersion}@${thesis.resolvedAt}` : 'thesis:no-thesis',
+  ].join('|');
+
+  /** `explainWhy` -> the typed explanation -> the string this field carries.
+   *  One helper so the route never renders the contract two different ways. */
+  const whyLine = (f: Parameters<typeof explainWhy>[0], o: { decisionVersion: string }) => {
+    const e = explainWhy(f, o);
+    return e ? layerOne(e) : '';
+  };
+
   const why = todayPlanUnresolved
     // RULE 11 · an unresolved day says so. It does NOT borrow the phase
     // opener, because "you're in the part of the block where the hard
@@ -798,16 +832,22 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     // have just failed to find, and it is the half of the old sentence that
     // made the other half sound authoritative.
     ? 'This block does not prescribe this day. Nothing is scheduled to run.'
-    : composeWhy({
+    : whyLine({
         phase: glance.phaseLabel,
         lastRaceName: lastRaceRow?.name ?? null,
         daysSinceRace: daysSinceLastRace,
         dayNote: todayWeekDay?.notes?.trim() || null,
         phaseRationale,
         fallback: [purpose.verdict, ...purpose.facts].filter(Boolean).join(' '),
-        thesisLead: thesisIsForToday && thesis
-          ? thesisLeadClause(thesis, addressedToday != null)
-          : null,
+        // THE CAPACITY, NOT THE SENTENCE. This used to pass
+        // `thesisLeadClause(...)`, whose output put the word "limiter" into
+        // the one line the runner reads on Today — Layer 3 in Layer 1, which
+        // `docs/PRODUCT_UX_SIMPLIFICATION_DOCTRINE.md` forbids outright. The
+        // thesis still owns WHICH capacity is limiting; `why-voice.ts` owns
+        // how that is said, which is the split its header always declared.
+        // See `WhyFacts.thesisLimiter` for the measured before/after.
+        thesisLimiter: thesisIsForToday && thesis ? thesis.primaryLimiter : null,
+        thesisServesToday: addressedToday != null,
         // Only when this session actually addresses the limiter. Naming the
         // catalogue pick on a session that does not serve the limiter would
         // read as the thesis endorsing it, which is appendix E Finding 7's
@@ -815,7 +855,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         thesisSessionName: thesisIsForToday && addressedToday
           ? coachSafeSessionName(addressedToday.selectionRationale)
           : null,
-      });
+      }, { decisionVersion });
 
   // ── Already ran today? → after_run (5b/5c) ─────────────────────────────
   const ranToday = glanceToday && glanceToday.doneMi >= 0.5;

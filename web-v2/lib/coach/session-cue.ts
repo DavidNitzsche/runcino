@@ -129,7 +129,10 @@ function composeTempoCue(input: CueInput): string {
     return 'Hold the line by effort. Heat lifts HR above target at the same pace.';
   }
   if (input.pillarDownStreak) {
-    return 'Bail if it feels off. One missed tempo doesn\'t cost a build.';
+    // 2026-09-02 · was "Bail if it feels off." BAIL is the label on a race
+    // emergency control, not a word a coach says about a Tuesday tempo. Say
+    // the action: stop the session.
+    return 'Stop the session if it feels off. One missed tempo does not cost a build.';
   }
   // Voice band · default (guided/null) stays byte-identical.
   if (input.voiceBand === 'calibration') {
@@ -155,7 +158,9 @@ function composeThresholdCue(input: CueInput): string {
   if (input.voiceBand === 'challenge') {
     return 'Run the band, not the cutoff. No early drift.';
   }
-  return 'Run the band, not the cutoff. Drift early and you cook the back half.';
+  // 2026-09-02 · was "Drift early and you cook the back half." Threat
+  // register, and it names something that does not happen. State the cost.
+  return 'Run the band, not the cutoff. Drift early and the last reps pay for it.';
 }
 
 function composeIntervalsCue(input: CueInput): string {
@@ -163,14 +168,18 @@ function composeIntervalsCue(input: CueInput): string {
     return 'Hold the first rep back. The set wins or loses on the opener.';
   }
   if (input.pillarDownStreak) {
-    return 'Quality over quantity. Bail if form breaks before the count.';
+    // 2026-09-02 · was "Bail if form breaks before the count." Two defects in
+    // one line: BAIL again, and "the count", which prices a session as a
+    // quota to be filled rather than a stimulus to be earned.
+    return 'Quality over quantity. End the rep if form breaks before the set does.';
   }
   // Voice band · default (guided/null) stays byte-identical.
   if (input.voiceBand === 'calibration') {
     return 'Even effort across the reps. First time at this pace is data, not a grade.';
   }
   if (input.voiceBand === 'challenge') {
-    return 'Even effort across the reps. Rep one sets the ceiling · hit the count.';
+    // 2026-09-02 · was "· hit the count." Same quota register as above.
+    return 'Even effort across the reps. Rep one sets the ceiling, so open conservative.';
   }
   return 'Even effort across the reps. Rep one sets the ceiling.';
 }
