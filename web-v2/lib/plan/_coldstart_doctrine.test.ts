@@ -21,7 +21,7 @@
  *   Non-negotiable rule 1 · time alone cannot increase fitness
  */
 import { describe, it, expect } from 'vitest';
-import { classifyGoalTier, lookupTierTarget, TIER_TARGETS } from './goal-tiers';
+import { classifyGoalTier, lookupLoadTierTarget, TIER_TARGETS } from './goal-tiers';
 import { weeklyAvgFromWindow, MIN_COVERAGE_DAYS } from '@/lib/runs/volume';
 import {
   paceBlendAnchorIsProvisional, isProvisionalAnchor,
@@ -64,14 +64,29 @@ describe('COLD-1 · goal pace alone must not authorize elite volume', () => {
     expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null)).toBe('intermediate');
     expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, undefined)).toBe('intermediate');
     // and the band the plan is actually built to comes down with it
-    const { target } = lookupTierTarget(SUB_3_PACE, MARATHON_MI, null);
+    const { target } = lookupLoadTierTarget({
+      raceDistanceMi: MARATHON_MI, level: null,
+      demonstratedPaceSec: null, goalPaceSec: SUB_3_PACE,
+    });
     expect(target.peakWeeklyMileageBand).toEqual(TIER_TARGETS.m.intermediate.peakWeeklyMileageBand);
     expect(target.peakWeeklyMileageBand[1]).toBeLessThan(TIER_TARGETS.m.advanced.peakWeeklyMileageBand[1]);
   });
 
   it('an EXPLICIT intermediate level never reaches elite off a typed goal', () => {
     const ELITE_PACE = Math.round((2 * 3600 + 20 * 60) / MARATHON_MI); // 5:20/mi
-    expect(classifyGoalTier(ELITE_PACE, MARATHON_MI, 'intermediate')).toBe('advanced');
+    // GOALVOL-1 (2026-09-02) · MOVED, from 'advanced' to 'intermediate', and it
+    // moved DOWN. This expectation was written when the goal SELECTED the load
+    // band and `INTERMEDIATE_LEVEL_TIER_CEILING` was the only thing stopping it
+    // at elite. David's ruling - "a typed goal must not directly increase
+    // training volume ... it cannot manufacture readiness for more load" - means
+    // the band is now the runner's CAPACITY (`classifyCapacityTier`), which for
+    // a stated intermediate level with no demonstrated pace is 'intermediate',
+    // and the goal may only reduce it. The ceiling still exists and still binds
+    // the moment demonstrated evidence lifts capacity to 'advanced'; it is no
+    // longer reachable by typing a number. The assertion this file's own title
+    // makes - "never reaches elite off a typed goal" - holds more strongly than
+    // before, not less.
+    expect(classifyGoalTier(ELITE_PACE, MARATHON_MI, 'intermediate')).toBe('intermediate');
   });
 
   it('DEMONSTRATED fitness lifts the unstated-level cap · a mileage self-report does not', () => {

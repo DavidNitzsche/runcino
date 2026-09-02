@@ -65,7 +65,30 @@ describe('A1 · long-run ramp shape', () => {
     // docs/spikeroll-1-handback.md §3b — "the engine's low-capacity long-run
     // ramp is designed to breach Research/00a:752, and a test has been
     // asserting that it does" — this is that fix, applied to the test itself.
-    expect(Math.max(...longs)).toBeGreaterThanOrEqual(16);
+    //
+    // GOALVOL-1 (2026-09-02) · MOVED ONCE, 16 → 15, and both ends are now
+    // pinned so it cannot drift silently in either direction again.
+    //
+    // This archetype is `experienceLevel: 'beginner'` with a 3:30 marathon goal
+    // (481 s/mi, which the pace table grades `intermediate`). Under the old
+    // classifier the typed goal SELECTED the intermediate row — peak 45-55
+    // mi/wk, long 20-22 mi — for a runner who had stated they were a beginner
+    // and demonstrated nothing. David's ruling closed that: the band is now the
+    // runner's CAPACITY, which for a beginner with no measured fitness is
+    // `developing`, and `Research/22` §"Marathon — Beginner" is the row that
+    // describes them: 30-45 mi/wk, 16-20 mi long. Measured across the change:
+    // peak weekly 34 → 31, peak long 15.5 → 15.0, peak still at week 14.
+    //
+    // The half-mile is not the point and the CEILING is: this ramp opens at a
+    // recent long of 5 mi and `Research/00a` §"Practical load rules" caps each
+    // long at 110% of the prior 30 days' longest, so 5 × 1.1^13 ≈ 17.3 mi is
+    // the most a 13-week climbing span can reach however big the tier's band
+    // is. The old assertion (>= 18, before SPIKEROLL-1) required the ramp to
+    // BREACH that ceiling; the assertion after it (>= 16) was the measurement
+    // rounded up. Neither watched the top. Both ends are stated now.
+    const SPIKE_CEILING_MI = Math.ceil(5 * 1.1 ** 13);        // 18
+    expect(Math.max(...longs)).toBeGreaterThanOrEqual(15);
+    expect(Math.max(...longs)).toBeLessThanOrEqual(SPIKE_CEILING_MI);
     // the peak arrives in the back half, not week 2
     const peakIdx = longs.indexOf(Math.max(...longs));
     expect(peakIdx).toBeGreaterThan(8);

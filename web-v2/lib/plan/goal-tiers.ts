@@ -11,12 +11,18 @@
  * intermediate / developing) per race distance · then provides tier
  * targets sourced directly from Research/22-plan-templates.md.
  *
- * Architecture:
- *   1. classifyGoalTier(goalPaceSec, raceDistanceMi) → GoalTier
- *   2. TIER_TARGETS[distance][tier] → { peakWeekly, peakLong, ...}
- *   3. generator ramps baseMi → tier.peakWeekly over the build
- *   4. peakLong respects tier.peakLong band (top of the band when
+ * Architecture (GOALVOL-1, 2026-09-02 — the goal no longer picks the row):
+ *   1. classifyCapacityTier(raceDistanceMi, level, demonstratedPaceSec)
+ *      → the CEILING. No goal in its parameter tuple, asserted at compile time.
+ *   2. goalDemandTier(goalPaceSec, ...) → required development, reduction only.
+ *   3. resolveLoadTier = min(capacity, demand) → GoalTier
+ *   4. TIER_TARGETS[distance][tier] → { peakWeekly, peakLong, ...}
+ *   5. generator ramps baseMi → tier.peakWeekly over the build
+ *   6. peakLong respects tier.peakLong band (top of the band when
  *      runner has runway, lower when conservative)
+ *
+ * See the GOALVOL-1 block above `classifyCapacityTier` for the ruling this
+ * implements and the residual it deliberately leaves open.
  *
  * Cite: Research/22-plan-templates.md
  * Cite: Research/00a-distance-running-training.md §periodization
@@ -1051,51 +1057,35 @@ const UNSTATED_LEVEL_TIER_CEILING: GoalTier = 'intermediate';
 /** An explicitly-intermediate runner has a stated base, but not an elite one. */
 const INTERMEDIATE_LEVEL_TIER_CEILING: GoalTier = 'advanced';
 
+/**
+ * @deprecated GOALVOL-1 (2026-09-02) · use `resolveLoadTier`.
+ *
+ * KEPT, and no longer the function it was. It is now a thin positional shim
+ * over `resolveLoadTier`, because a name with "Goal" in it must not be the
+ * thing that answers a LOAD question and every consumer of this name is asking
+ * one — the plan's volume band, and `lib/coach/limiter.ts`'s volume-shortfall
+ * bar, whose own comment promises the bar is "the same one the plan is
+ * actually built to". Re-pointing the body is what keeps that sentence TRUE
+ * after the split; leaving the old body would have left two answers to one
+ * question the day the composer moved (Constitution: one question, one owner).
+ *
+ * WHAT CHANGED FOR CALLERS. Nothing, unless the goal was raising the tier
+ * ABOVE the runner's evidence and experience — which is the defect. The result
+ * is now `min(classifyCapacityTier(...), goalDemandTier(...))`, so it is never
+ * higher than before and never higher than the goal-free answer.
+ *
+ * `lib/coach/limiter.ts` is the last caller outside this file's own tests. It
+ * belongs to the Coaching Thesis and is not this pass's to edit; it is reported
+ * as a residual so its owner can move it to `resolveLoadTier` by name.
+ */
 export function classifyGoalTier(
   goalPaceSec: number | null | undefined,
   raceDistanceMi: number,
   level?: ExperienceLevelInput,
-  /**
-   * COLD-1 · the runner's DEMONSTRATED equivalent race pace at this distance
-   * (s/mi), predicted from a measured VDOT by the caller. Lifts the
-   * unstated-level ceiling to whatever the evidence itself grades at — and
-   * nothing further. Omit (or pass null) when no measured fitness exists;
-   * the ceiling then holds, which is the cold-start case.
-   */
+  /** COLD-1 · demonstrated equivalent race pace (s/mi) from a MEASURED VDOT. */
   demonstratedPaceSec?: number | null,
 ): GoalTier {
-  // VAR-01 · experience CLAMPS the pace-derived tier. Research/22 has distinct per-experience
-  // templates (5K Beginner 12-15mi/3day vs Advanced 40-70mi/6-7day; M Beginner 30-35mi/20-long vs
-  // Advanced 65-90mi/22-24-long). The tier reflects training CAPACITY (experience), not only goal
-  // AMBITION (pace): an advanced runner with a soft goal still has the base for advanced volume; a
-  // beginner with an aggressive goal can't absorb advanced bands.
-  const cat = distanceCategoryOf(raceDistanceMi);
-
-  // COLD-1 · the ceiling an unstated level earns, possibly lifted by evidence.
-  const demonstratedTier =
-    demonstratedPaceSec != null && Number.isFinite(demonstratedPaceSec) && demonstratedPaceSec > 0
-      ? tierFromPace(demonstratedPaceSec, cat)
-      : null;
-  const unstatedCeiling: GoalTier =
-    demonstratedTier != null && TIER_ORD[demonstratedTier] > TIER_ORD[UNSTATED_LEVEL_TIER_CEILING]
-      ? demonstratedTier
-      : UNSTATED_LEVEL_TIER_CEILING;
-
-  if (goalPaceSec == null || !Number.isFinite(goalPaceSec) || goalPaceSec <= 0) {
-    // No goal yet → default off experience, not a hardcoded 'intermediate'.
-    return level === 'beginner' ? 'developing'
-      : (level === 'advanced' || level === 'advanced_plus') ? 'advanced'
-      : unstatedCeiling === 'intermediate' ? 'intermediate' : unstatedCeiling;
-  }
-  const tier = tierFromPace(goalPaceSec, cat);
-  // Clamp to experience capacity: advanced(+) never below advanced, beginner never above intermediate.
-  if (level === 'advanced' || level === 'advanced_plus') return TIER_ORD[tier] < TIER_ORD.advanced ? 'advanced' : tier;
-  if (level === 'beginner') return TIER_ORD[tier] > TIER_ORD.intermediate ? 'intermediate' : tier;
-  // COLD-1 · the two rungs that used to fall through unclamped.
-  if (level === 'intermediate') {
-    return TIER_ORD[tier] > TIER_ORD[INTERMEDIATE_LEVEL_TIER_CEILING] ? INTERMEDIATE_LEVEL_TIER_CEILING : tier;
-  }
-  return TIER_ORD[tier] > TIER_ORD[unstatedCeiling] ? unstatedCeiling : tier;
+  return resolveLoadTier({ raceDistanceMi, level, demonstratedPaceSec, goalPaceSec }).tier;
 }
 
 /**
@@ -1116,18 +1106,252 @@ export function distanceCategoryOf(raceDistanceMi: number): DistCategory {
   return distanceCategoryOrThrow(raceDistanceMi);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * GOALVOL-1 (2026-09-02) · A TYPED GOAL MAY NOT INCREASE TRAINING VOLUME.
+ *
+ * David's ruling, verbatim:
+ *
+ *   "A typed goal must not directly increase training volume. Volume must be
+ *    governed by demonstrated training history, durable/sustained volume,
+ *    recovery, plan phase, and safety constraints. The goal may influence plan
+ *    direction and required development, but it cannot manufacture readiness
+ *    for more load."
+ *
+ * ── WHAT WAS WRONG ─────────────────────────────────────────────────────────
+ *
+ * `TIER_TARGETS[cat][tier]` is the LOAD table: peak weekly mileage, peak long
+ * run, long-run share, quality sessions per week, training days, MLR ceiling.
+ * `lookupTierTarget` selected the row with `classifyGoalTier`, whose FIRST
+ * argument is the runner's typed goal pace. So a faster goal picked a higher
+ * row, and `volumeCurve`'s `max(tierTarget.peakWeeklyMileageBand[0], start ×
+ * 1.10)` spent it as a FLOOR on the block's peak.
+ *
+ * Measured on the marathon table: an `advanced`-level runner whose goal pace
+ * crosses the elite line (≤ 360 s/mi) moved from `advanced` [65, 90] to
+ * `elite` [70, 100] — five more miles a week at peak, on identical evidence
+ * and an identical threshold, because of a number they typed. The
+ * `advanced`/`advanced_plus` branch of `classifyGoalTier` was UNCLAMPED
+ * upward: `TIER_ORD[tier] < TIER_ORD.advanced ? 'advanced' : tier` floors the
+ * goal tier and never ceilings it.
+ *
+ * ── WHAT REPLACES IT ───────────────────────────────────────────────────────
+ *
+ * Two functions, and the split is the whole point.
+ *
+ *   `classifyCapacityTier(raceDistanceMi, level, demonstratedPaceSec)`
+ *      The CEILING. Its parameter tuple is asserted at COMPILE TIME to contain
+ *      no goal (see `_LoadTierIsCapacitySealed` at the bottom of this section),
+ *      which is what `docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md`
+ *      means by "goal data physically excluded from capacity resolvers'
+ *      inputs, not just conventionally kept separate". Same pattern as
+ *      `lib/training/capacity-resolver.ts`'s four resolvers.
+ *
+ *   `goalDemandTier(goalPaceSec, raceDistanceMi, level)`
+ *      REQUIRED DEVELOPMENT, which the ruling explicitly licenses the goal to
+ *      influence. It can only ever ask for LESS than capacity.
+ *
+ *   `resolveLoadTier(...) = min(capacityTier, goalDemandTier)`
+ *
+ * THE INVARIANT, stated the way the ruling states it: for any runner and any
+ * goal, the load tier is never HIGHER than the goal-free answer. A goal cannot
+ * widen the band; it can only narrow it. `_goal_volume_seal.test.ts` walks a
+ * goal-varied archetype across every tier boundary and asserts exactly that,
+ * and `scripts/check-goal-volume-leak.sh` keeps the seal wired.
+ *
+ * ── WHY THE REDUCTION HALF SURVIVES (the residual, stated out loud) ─────────
+ *
+ * `min` is one-directional against CAPACITY but it is not flat in the goal: a
+ * runner who types a faster goal moves from "reduced" back up to "capacity",
+ * and that is an increase caused by a typed number. Deleting the reduction
+ * half — `loadTier = capacityTier` outright — was tried on paper first and is
+ * the WRONG move today, because it breaks the ruling's purpose in the name of
+ * its letter:
+ *
+ *   An unstated-level runner with no measured fitness resolves to
+ *   `UNSTATED_LEVEL_TIER_CEILING` = 'intermediate'. On the marathon that is a
+ *   [45, 55] band, and `volumeCurve` spends the floor: a cold-start runner
+ *   reporting 15 mi/wk would be authored toward a 45 mi/wk peak. Today the
+ *   goal's reduction is the ONLY thing pulling them to 'developing' [30, 45].
+ *   Removing it makes the least-evidenced runner in the app train MORE.
+ *
+ * That is a real safety regression and fixing it properly means bounding the
+ * band floor by the runner's own reported base — a change to `volumeCurve`'s
+ * semantics, which is a separate decision about the volume curve and not one
+ * this ruling makes. Recorded here rather than quietly chosen: see the
+ * handback's residuals.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** The experience rungs the capacity bands are keyed on. `unstated` is a real
+ *  rung, not a missing value — `profile.experience_level` is NULL on real
+ *  production accounts (COLD-1). */
+type CapacityLevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | 'unstated';
+
+const capacityLevelKey = (level: ExperienceLevelInput): CapacityLevelKey =>
+  level === 'beginner' || level === 'intermediate' || level === 'advanced' || level === 'advanced_plus'
+    ? level
+    : 'unstated';
+
 /**
- * Convenience · lookup the tier-target for a (goal pace, race distance)
- * pair. Returns the full TierTarget struct.
+ * The tier band a stated experience level earns on its own, and the highest
+ * DEMONSTRATED evidence may lift it to.
+ *
+ * `floor` is the level's own claim about capacity and is also the answer when
+ * there is no demonstrated pace to read. `ceiling` is how far evidence may
+ * carry it — the Rule 21 half: the plan must be able to get harder, and the
+ * only thing that may make it harder is what the runner has shown.
+ *
+ * Every row reproduces what `classifyGoalTier`'s no-goal branch already
+ * answered, with two corrections that fall out of writing it as a table:
+ *
+ *   · `intermediate` no longer leaks past `INTERMEDIATE_LEVEL_TIER_CEILING`.
+ *     The old no-goal branch fell through to `unstatedCeiling`, so an
+ *     intermediate-level runner demonstrating elite pace reached `elite` while
+ *     the same runner WITH a goal was correctly capped at `advanced`.
+ *   · `advanced` may now be lifted by evidence. The old no-goal branch
+ *     returned a flat 'advanced' and ignored `demonstratedPaceSec` entirely,
+ *     so demonstrated elite fitness could not reach the elite band unless the
+ *     runner also typed an elite goal — the bar to go UP sitting on ambition
+ *     rather than evidence, which is Rule 21's exact complaint.
  */
-export function lookupTierTarget(
+const CAPACITY_BAND: Record<CapacityLevelKey, { floor: GoalTier; ceiling: GoalTier }> = {
+  beginner:      { floor: 'developing',   ceiling: 'intermediate' },
+  intermediate:  { floor: 'intermediate', ceiling: INTERMEDIATE_LEVEL_TIER_CEILING },
+  advanced:      { floor: 'advanced',     ceiling: 'elite' },
+  advanced_plus: { floor: 'advanced',     ceiling: 'elite' },
+  // COLD-1 · an unstated level is unknown capacity, not permission. Its floor
+  // IS `UNSTATED_LEVEL_TIER_CEILING` because with nothing demonstrated that
+  // constant is the whole answer; evidence lifts it and nothing else does.
+  unstated:      { floor: UNSTATED_LEVEL_TIER_CEILING, ceiling: 'elite' },
+};
+
+/** The lowest rung the goal may reduce a runner to. An `advanced` runner keeps
+ *  an advanced base whatever they enter — the floor half of VAR-01's clamp,
+ *  which is a statement about training CAPACITY and survives GOALVOL-1
+ *  untouched. Everyone else may be reduced to the bottom of the table. */
+const GOAL_DEMAND_FLOOR: Record<CapacityLevelKey, GoalTier> = {
+  beginner: 'developing',
+  intermediate: 'developing',
+  advanced: 'advanced',
+  advanced_plus: 'advanced',
+  unstated: 'developing',
+};
+
+const clampTier = (t: GoalTier, floor: GoalTier, ceiling: GoalTier): GoalTier =>
+  TIER_ORD[t] < TIER_ORD[floor] ? floor : TIER_ORD[t] > TIER_ORD[ceiling] ? ceiling : t;
+
+/**
+ * THE LOAD CEILING · what this runner's demonstrated fitness and stated
+ * experience support, with no goal anywhere in it.
+ *
+ * `demonstratedPaceSec` is an equivalent race pace at THIS distance, predicted
+ * by the caller from a MEASURED VDOT (races and qualifying runs). Null is the
+ * cold-start case and a real answer, not a failure (Rule 11): the level's own
+ * floor stands. A mileage self-report is deliberately not accepted here —
+ * feeding one in is how a typed goal used to authorize advanced-tier volume
+ * off zero evidence, and the same door would reopen it.
+ */
+export function classifyCapacityTier(
+  raceDistanceMi: number,
+  level: ExperienceLevelInput,
+  demonstratedPaceSec: number | null | undefined,
+): GoalTier {
+  const cat = distanceCategoryOf(raceDistanceMi);
+  const band = CAPACITY_BAND[capacityLevelKey(level)];
+  const demonstrated =
+    demonstratedPaceSec != null && Number.isFinite(demonstratedPaceSec) && demonstratedPaceSec > 0
+      ? tierFromPace(demonstratedPaceSec, cat)
+      : null;
+  return clampTier(demonstrated ?? band.floor, band.floor, band.ceiling);
+}
+
+/**
+ * REQUIRED DEVELOPMENT · how much training the stated goal asks for, floored
+ * by the runner's own experience.
+ *
+ * Never consulted on its own — `resolveLoadTier` takes the MINIMUM of this and
+ * the capacity ceiling, so this value can only ever REDUCE the band. Returns
+ * `'elite'` (the top of the ladder) when there is no goal, which is the
+ * identity element for that minimum: no goal, no reduction.
+ */
+export function goalDemandTier(
   goalPaceSec: number | null | undefined,
   raceDistanceMi: number,
-  level?: ExperienceLevelInput,
-  /** COLD-1 · demonstrated equivalent race pace (s/mi) from a MEASURED VDOT. */
-  demonstratedPaceSec?: number | null,
-): { tier: GoalTier; target: TierTarget } {
-  const tier = classifyGoalTier(goalPaceSec, raceDistanceMi, level, demonstratedPaceSec);
+  level: ExperienceLevelInput,
+): GoalTier {
+  if (goalPaceSec == null || !Number.isFinite(goalPaceSec) || goalPaceSec <= 0) return 'elite';
   const cat = distanceCategoryOf(raceDistanceMi);
-  return { tier, target: TIER_TARGETS[cat][tier] };
+  const floor = GOAL_DEMAND_FLOOR[capacityLevelKey(level)];
+  const t = tierFromPace(goalPaceSec, cat);
+  return TIER_ORD[t] < TIER_ORD[floor] ? floor : t;
 }
+
+/**
+ * THE TIER THE LOAD TABLE IS READ AT. One quantity, one name (Rule 16).
+ *
+ * `capacityTier` is carried on the result so a caller — and the block's own
+ * `authored_state` — can say whether the goal reduced anything, which is a
+ * different fact from "the goal had no effect" and from "there was no goal".
+ */
+export function resolveLoadTier(args: {
+  raceDistanceMi: number;
+  level: ExperienceLevelInput;
+  /** COLD-1 · demonstrated equivalent race pace (s/mi) from a MEASURED VDOT. */
+  demonstratedPaceSec: number | null | undefined;
+  /** Reduction only. Structurally incapable of raising the tier. */
+  goalPaceSec: number | null | undefined;
+}): { tier: GoalTier; capacityTier: GoalTier; reducedByGoal: boolean } {
+  const capacityTier = classifyCapacityTier(args.raceDistanceMi, args.level, args.demonstratedPaceSec);
+  const demand = goalDemandTier(args.goalPaceSec, args.raceDistanceMi, args.level);
+  const tier = TIER_ORD[demand] < TIER_ORD[capacityTier] ? demand : capacityTier;
+  return { tier, capacityTier, reducedByGoal: tier !== capacityTier };
+}
+
+/**
+ * Convenience · the LOAD table row for this runner. Replaces
+ * `lookupTierTarget`, which is DELETED: its first parameter was the goal, and
+ * the fix pattern this project uses (`fix(brain): delete the goal-derived pace
+ * ladder`) removes the goal INPUT rather than disciplining the call sites.
+ */
+export function lookupLoadTierTarget(args: {
+  raceDistanceMi: number;
+  level: ExperienceLevelInput;
+  demonstratedPaceSec: number | null | undefined;
+  goalPaceSec: number | null | undefined;
+}): { tier: GoalTier; capacityTier: GoalTier; reducedByGoal: boolean; target: TierTarget } {
+  const r = resolveLoadTier(args);
+  const cat = distanceCategoryOf(args.raceDistanceMi);
+  return { ...r, target: TIER_TARGETS[cat][r.tier] };
+}
+
+/* ── THE COMPILE-TIME GOAL-ISOLATION ASSERTION ─────────────────────────────
+ *
+ * Copied deliberately from `lib/training/capacity-resolver.ts` §8, including
+ * the `Equals` trick: mutual assignability is too weak, because
+ * `(a, b, c?: number) => X` IS assignable to `(a, b) => X`, so a goal could
+ * enter through the optional-argument door. Comparing the whole `Parameters<>`
+ * TUPLE closes it.
+ *
+ * Falsified before landing (Rule 18): adding `goalPaceSec?: number` to
+ * `classifyCapacityTier` makes `tsc --noEmit` fail on the line below.
+ */
+type _TierEquals<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+type _TierAssertTrue<T extends true> = T;
+
+/** The ONLY parameter tuple the capacity tier may have. A distance, a stated
+ *  experience level, and a DEMONSTRATED pace. Anything else — a goal, a goal
+ *  pace, a target finish, a bag that could carry one — is a compile error. */
+type CapacityTierParams = [
+  raceDistanceMi: number,
+  level: ExperienceLevelInput,
+  demonstratedPaceSec: number | null | undefined,
+];
+
+type _CapacityTierIsGoalFree = _TierAssertTrue<
+  _TierEquals<Parameters<typeof classifyCapacityTier>, CapacityTierParams>
+>;
+
+/** Exported so the assertion above is not dead code an unused-locals lint
+ *  could delete along with the guarantee it carries. Reading this type is
+ *  reading "the load ceiling cannot see the goal". */
+export type LoadCeilingIsGoalFree = _CapacityTierIsGoalFree;

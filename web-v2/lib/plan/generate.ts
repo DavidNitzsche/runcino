@@ -38,7 +38,7 @@ import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achi
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
-import { lookupTierTarget, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
+import { lookupLoadTierTarget, resolveLoadTier, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
   anchorSourceFromCapacityMode,
@@ -9045,12 +9045,20 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         return t != null ? Math.round(t / input.raceDistanceMi) : null;
       })()
     : null;
-  const { tier, target: baseTierTarget } = lookupTierTarget(
-    input.goalPaceSec,
-    input.raceDistanceMi,
-    input.level, // VAR-01 · experience clamps the pace-derived tier
+  // GOALVOL-1 (2026-09-02) · THE LOAD TABLE IS NOT READ AT THE GOAL'S TIER.
+  //
+  // `lookupTierTarget(input.goalPaceSec, ...)` used to sit here, and its first
+  // argument is why an `advanced` runner who typed a goal one second past the
+  // elite line moved from the [65, 90] band to [70, 100] on identical evidence.
+  // `lookupLoadTierTarget` takes a NAMED bag whose ceiling half
+  // (`classifyCapacityTier`) has no goal in its parameter tuple at all, and the
+  // goal enters only as a reduction. See the GOALVOL-1 block in goal-tiers.ts.
+  const { tier, capacityTier, reducedByGoal, target: baseTierTarget } = lookupLoadTierTarget({
+    raceDistanceMi: input.raceDistanceMi,
+    level: input.level, // VAR-01 · experience is capacity, not ambition
     demonstratedPaceSec, // COLD-1 · an unstated level is lifted only by evidence
-  );
+    goalPaceSec: input.goalPaceSec, // reduction only · never raises the band
+  });
 
   // 2026-06-03 · Rule 11 · horizon-aware long-run dials.
   // Find the most demanding A/B race within 24 weeks. If its tier's
@@ -9071,7 +9079,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
             return t != null ? Math.round(t / h.distanceMi) : null;
           })()
         : null;
-      const { target: ht } = lookupTierTarget(h.goalPaceSec, h.distanceMi, input.level, hDemonstrated); // VAR-01 + COLD-1
+      // GOALVOL-1 · the horizon race's LOAD row, on the same seal. A future
+      // race's typed goal may not lift this block's long-run dials either.
+      const { target: ht } = lookupLoadTierTarget({
+        raceDistanceMi: h.distanceMi, level: input.level,
+        demonstratedPaceSec: hDemonstrated, goalPaceSec: h.goalPaceSec,
+      }); // VAR-01 + COLD-1 + GOALVOL-1
       // Only LARGER bands count · we extend up, never contract down.
       if (ht.peakLongMiBand[1] > bestCap || ht.longRunShare > bestShare) {
         if (ht.peakLongMiBand[1] > bestCap) bestCap = ht.peakLongMiBand[1];
@@ -9906,6 +9919,14 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // 2026-06-02 · tier classification for downstream consumers
       // (gap-report, projection snapshots, brief).
       goal_tier: tier,
+      // GOALVOL-1 · the ceiling this block was authored under, and whether the
+      // stated goal reduced it. Three facts, not one (Rule 11): a block where
+      // the goal reduced nothing and a block with no goal at all both leave
+      // `goal_tier === capacity_tier`, and `load_tier_reduced_by_goal` is what
+      // tells them apart. A reader of an old stamp sees the field is absent and
+      // knows the seal predates it.
+      capacity_tier: capacityTier,
+      load_tier_reduced_by_goal: reducedByGoal,
       tier_peak_weekly_band: tierTarget.peakWeeklyMileageBand,
       tier_peak_long_band: tierTarget.peakLongMiBand,
       // 2026-06-03 · Rule 11 · horizon raise. Null when no future race
@@ -14022,7 +14043,16 @@ async function composeForUserInternal(
           return t != null ? Math.round(t / inputs.compose.raceDistanceMi) : null;
         })()
       : null;
-    const tier = lookupTierTarget(inputs.compose.goalPaceSec, inputs.compose.raceDistanceMi, inputs.compose.level, nrDemonstrated).tier; // VAR-01 + COLD-1
+    // GOALVOL-1 · maintenance and recovery read `MAINTENANCE_BY_TIER` and
+    // `TIER_TARGETS[holdCat][tier]` off this value, both of which are LOAD
+    // tables (days per week, quality per week, long share, the hold's own
+    // volume curve). Same seal as the race path.
+    const tier = resolveLoadTier({
+      raceDistanceMi: inputs.compose.raceDistanceMi,
+      level: inputs.compose.level,
+      demonstratedPaceSec: nrDemonstrated,
+      goalPaceSec: inputs.compose.goalPaceSec,
+    }).tier; // VAR-01 + COLD-1 + GOALVOL-1
     // DOCTRINE-4 · read only on the non-race branch (maintenance + recovery are
     // the two composers that anchor to peak); race-prep never touches it, so the
     // race path takes no extra query.

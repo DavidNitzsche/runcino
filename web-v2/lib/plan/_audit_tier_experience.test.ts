@@ -21,7 +21,20 @@ const peakWk = (r: any) => (r.ok ? Math.max(...r.composed.weeks.map((w: any) => 
 describe('VAR-01 · experience clamps the tier', () => {
   it('classifier clamps both directions', () => {
     // Fast marathon goal (sub-3 → advanced by pace); a beginner cannot absorb advanced bands.
-    expect(classifyGoalTier(410, 26.2, 'beginner')).toBe('intermediate');
+    //
+    // GOALVOL-1 (2026-09-02) · MOVED, 'intermediate' → 'developing', and it moved
+    // DOWN. The old expectation was the beginner CEILING doing the work: the goal
+    // set the tier and `min(goalTier, intermediate)` stopped it one rung short of
+    // advanced. David's ruling — "a typed goal must not directly increase training
+    // volume ... it cannot manufacture readiness for more load" — means the band is
+    // now the beginner's own CAPACITY, which with no demonstrated pace is
+    // 'developing'; the same runner with NO goal at all has always resolved to
+    // 'developing' (the line ten below asserts it), and a typed 6:50/mi is not
+    // evidence they can absorb 15 more miles a week. The ceiling still exists and
+    // still binds the moment demonstrated evidence lifts them — see
+    // `_goal_volume_seal.test.ts` §5, which asserts a beginner demonstrating elite
+    // pace reaches intermediate and stops there.
+    expect(classifyGoalTier(410, 26.2, 'beginner')).toBe('developing');
     expect(classifyGoalTier(410, 26.2, 'advanced')).toBe('advanced');
     // Soft marathon goal (~4:20 → developing by pace); an advanced runner keeps advanced capacity.
     expect(classifyGoalTier(595, 26.2, 'advanced')).toBe('advanced');
