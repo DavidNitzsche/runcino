@@ -294,7 +294,7 @@ export const WIND_GATE_MPH = 10;
  * flat row is, by doctrine's own measure, not a flat course either. The
  * magnitude of the help is not a mirror of the cost — the doc's own rule of
  * thumb says "downhills do not symmetrically refund the cost", which is the
- * asymmetry `elevation-model.ts` already encodes as `DESCENT_RECOVERY_FRACTION`
+ * asymmetry the engine encodes once as `DESCENT_GIVEBACK_FRACTION`
  * — but the question "is this course flat" has one answer for both directions.
  */
 export const FLAT_COURSE_GAIN_FT = 100;

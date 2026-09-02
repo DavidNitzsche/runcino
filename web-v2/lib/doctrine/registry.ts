@@ -411,7 +411,6 @@ import {
 import {
   GRADE_COST_PER_PCT as ELEV_GRADE_COST_PER_PCT,
   GRADE_LINEAR_LIMIT_PCT,
-  DESCENT_RECOVERY_FRACTION,
   MAX_DESCENT_CREDIT_S_PER_MI,
   DESCENT_HARD_CAP_S_PER_MI,
 } from '@/lib/training/elevation-model';
@@ -531,7 +530,7 @@ import {
   recommendRaceRole,
 } from '@/lib/race/race-role';
 import type { DoctrineClaim } from './types';
-import { matchLiteral, parseBand, parseBands, parsePaceBandSec, parsePctBand, resolveCitation, sourceOf } from './resolve';
+import { matchLiteral, parseBand, parseBands, parsePaceBandSec, parsePctBand, resolveCitation, sourceFilesUnder, sourceOf } from './resolve';
 import {
   SHOE_LIFESPAN,
   SHOE_TYPES,
@@ -6820,17 +6819,122 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'at a fraction of the loss. The asymmetry is the entire reason hills show up in a ' +
       'whole-run adjustment at all: with a symmetric coefficient every rolling loop would net ' +
       'to zero and terrain would be invisible to the engine.',
-    check({ cite }) {
-      const m = cite.text().match(/downhills give back roughly\s*(\d+)\s*[–-]\s*(\d+)\s*%/i);
+    exempt: {
+      'conservative-below-the-prose-band':
+        'DELIBERATE, and it is the reason this claim no longer simply asserts the prose band. ' +
+        'David, 2026-09-02: "Use one canonical owner and a conservative default of 50% downhill ' +
+        'giveback until stronger evidence justifies a different value. No caller may ' +
+        'independently select another coefficient. Record the uncertainty and make the value ' +
+        'replaceable through the canonical course-adjustment contract." The engine carried TWO ' +
+        'coefficients for this one quantity — 0.65 here for executed runs, 0.50 in ' +
+        'elevation-model.ts for planned courses — 43 seconds apart on the runner\'s own CIM ' +
+        'course, each green against its own citation because nothing compared them. Doctrine ' +
+        'does not speak with one voice either: §Hills\' prose says 60-70%, §Hills\' OWN ' +
+        'Minetti-derived table three rows above says 50-60% (and falling with grade), and ' +
+        'Research/11 §Pacing Rule\'s s/mi bands say 50%. Two of the three support 0.50 and it ' +
+        'is the conservative end of all three. Measured on production rather than asserted: ' +
+        'pricing a COURSE it is the conservative direction (CIM 723 ft gain / 1027 ft loss at ' +
+        'his 7:23/mi race pace goes from 15 s of course cost to 58 s), and judging an ' +
+        'EXECUTED run it hands back less, so a hilly run reads marginally fitter — 45 of the ' +
+        '62 canonical runs since 2026-06-01 move, about 1 s/mi typically and 17.98 s/mi at ' +
+        'most, while threshold capacity stays 430 s/mi at VDOT 47.8 and the CIM expected ' +
+        'race day stays 11982 s. The exemption is scoped to the conservative direction ' +
+        'only: 0.75 fails, 0.30 fails, and a second declaration anywhere fails — see the check.',
+    },
+    check({ cite, exempt }) {
+      const text = cite.text();
+      const m = text.match(/downhills give back roughly\s*(\d+)\s*[–-]\s*(\d+)\s*%/i);
       if (!m) {
         throw new Error(
           'the downhill-giveback sentence is no longer in §Hills (Grade-Adjusted Pace) · a change ' +
             'here changes how every executed run is judged',
         );
       }
-      within(DESCENT_GIVEBACK_FRACTION * 100, [Number(m[1]), Number(m[2])], 'DESCENT_GIVEBACK_FRACTION');
+      const [proseLo, proseHi] = [Number(m[1]), Number(m[2])];
+
+      // The same section's Minetti-derived lookup table, read at run time
+      // rather than quoted. Paired grades give the giveback directly:
+      // (1 - mult(-g)) / (mult(+g) - 1). It is the evidence the exemption
+      // below rests on, so it is PARSED, not asserted — if the table changes,
+      // or stops pairing grades, this claim must be re-argued rather than
+      // quietly keeping an argument the doc no longer supports.
+      const mult = new Map<number, number>();
+      for (const row of text.split('\n')) {
+        const r = row.match(/^\|\s*([–\-+]?\d+)%\s*\|\s*([0-9.]+)\s*\|/);
+        if (r) mult.set(Number(r[1].replace('–', '-')), Number(r[2]));
+      }
+      const tableRatios: number[] = [];
+      for (const [g, up] of mult) {
+        if (g <= 0) continue;
+        const down = mult.get(-g);
+        if (down == null || up <= 1) continue;
+        tableRatios.push((1 - down) / (up - 1));
+      }
+      if (tableRatios.length < 3) {
+        throw new Error(
+          'the §Hills lookup table no longer yields at least three paired grades · the ' +
+            'conservative-value argument below is READ from that table and cannot be checked ' +
+            'without it',
+        );
+      }
+      const tableLo = Math.min(...tableRatios) * 100;
+
+      // Never symmetric, never negative, in any posture. These hold with or
+      // without the exemption — Rule 18 point 3: the exemption excuses the
+      // ONE deviation on record and nothing else.
+      if (!(DESCENT_GIVEBACK_FRACTION > 0)) {
+        throw new Error('a descent that gives back nothing is Research/02\'s model, not this one');
+      }
       if (DESCENT_GIVEBACK_FRACTION >= 1) {
         throw new Error('a descent that gives back everything makes terrain invisible · doctrine says it does not');
+      }
+
+      // ONE OWNER. The gap this claim did not close for a year: the climb
+      // coefficient was cross-checked between the two modules and the descent
+      // was not, so 0.65 and 0.50 coexisted green. A second declaration of
+      // this quantity anywhere in lib/ fails here.
+      const scanned = sourceFilesUnder('web-v2/lib');
+      if (scanned.length < 400) {
+        throw new Error(
+          `the single-owner walk saw ${scanned.length} files under web-v2/lib · it has stopped ` +
+            'reading real source and would report clean about nothing (Rule 18 point 2)',
+        );
+      }
+      const declarers = scanned.filter((f) =>
+        /export\s+const\s+DESCENT_(GIVEBACK|RECOVERY)_FRACTION\s*=/.test(sourceOf(f)));
+      if (declarers.length === 0) {
+        throw new Error(
+          'no file declares DESCENT_GIVEBACK_FRACTION · the single-owner scan has stopped ' +
+            'matching and this assertion is dark (Rule 18 point 2)',
+        );
+      }
+      if (declarers.length > 1 || declarers[0] !== 'web-v2/lib/terrain/grade-adjust.ts') {
+        throw new Error(
+          `the descent giveback is declared in ${declarers.length} place(s): ${declarers.join(', ')}. ` +
+            'One owner, app-wide (David, 2026-09-02). Import lib/terrain/grade-adjust.ts.',
+        );
+      }
+
+      const pct = DESCENT_GIVEBACK_FRACTION * 100;
+      if (pct >= proseLo && pct <= proseHi) return;      // inside the prose band · nothing to excuse
+      if (pct > proseHi) {
+        throw new Error(
+          `DESCENT_GIVEBACK_FRACTION is ${pct}% · ABOVE §Hills' stated ${proseLo}-${proseHi}%. ` +
+            'The exemption covers the conservative direction only; crediting a descent MORE than ' +
+            'doctrine states has no argument on record.',
+        );
+      }
+      // Below the prose band. Allowed only while the deviation is argued AND
+      // the doc's own table still supports it.
+      if (!exempt('conservative-below-the-prose-band')) {
+        within(pct, [proseLo, proseHi], 'DESCENT_GIVEBACK_FRACTION');
+      }
+      if (pct < tableLo - 1e-9) {
+        throw new Error(
+          `DESCENT_GIVEBACK_FRACTION is ${pct}% · below even the lowest ratio §Hills' own Minetti ` +
+            `table implies (${tableLo.toFixed(1)}%). The exemption's argument is that the table ` +
+            'and Research/11 support a conservative value; below the table it supports nothing.',
+        );
       }
     },
   },
@@ -6931,7 +7035,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   {
     id: 'ELEVATION.descent-gives-back-half',
     binds: [
-      'lib/training/elevation-model.ts#DESCENT_RECOVERY_FRACTION',
+      'lib/terrain/grade-adjust.ts#DESCENT_GIVEBACK_FRACTION',
       'lib/training/elevation-model.ts#MAX_DESCENT_CREDIT_S_PER_MI',
       'lib/training/elevation-model.ts#DESCENT_HARD_CAP_S_PER_MI',
     ],
@@ -6952,9 +7056,9 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const [climbLo, climbHi] = parseBand(climbLine);
       const [descLo, descHi] = parseBand(descentLine);
       const ratio = ((descLo + descHi) / 2) / ((climbLo + climbHi) / 2);
-      if (Math.abs(DESCENT_RECOVERY_FRACTION - ratio) > 0.02) {
+      if (Math.abs(DESCENT_GIVEBACK_FRACTION - ratio) > 0.02) {
         throw new Error(
-          `DESCENT_RECOVERY_FRACTION is ${DESCENT_RECOVERY_FRACTION} · doctrine's bands ` +
+          `DESCENT_GIVEBACK_FRACTION is ${DESCENT_GIVEBACK_FRACTION} · doctrine's bands ` +
             `(climb ${climbLo}-${climbHi}, descent ${descLo}-${descHi} s/mi) give ${ratio.toFixed(2)}`,
         );
       }
@@ -10509,9 +10613,9 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (!/downhill/i.test(cite.text())) {
         throw new Error(`Research/02 §13.2 no longer discusses downhills · re-anchor the claim`);
       }
-      if (!(DESCENT_RECOVERY_FRACTION > 0 && DESCENT_RECOVERY_FRACTION < 1)) {
+      if (!(DESCENT_GIVEBACK_FRACTION > 0 && DESCENT_GIVEBACK_FRACTION < 1)) {
         throw new Error(
-          `DESCENT_RECOVERY_FRACTION is ${DESCENT_RECOVERY_FRACTION} · doctrine says a descent ` +
+          `DESCENT_GIVEBACK_FRACTION is ${DESCENT_GIVEBACK_FRACTION} · doctrine says a descent ` +
             'refunds SOME of the climb, neither none of it nor all of it',
         );
       }
