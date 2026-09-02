@@ -1575,17 +1575,21 @@ function buildRecentRun(r: V5RecentRunCtx): {
     action: null,
   }));
 
-  const doneMi = Math.round((r.weekDoneMi) * 10) / 10;
-  const whatThisDidToTheWeek: V5Row[] = [
-    {
-      id: 'week-total', label: 'This week',
-      sub: r.weekPlannedMi != null ? `${doneMi} of ${r.weekPlannedMi} mi done` : `${doneMi} mi done`,
-      value: r.weekPlannedMi != null && r.weekPlannedMi > 0
-        ? num(`${Math.round((doneMi / r.weekPlannedMi) * 100)}%`, false)
-        : null,
-      action: null,
-    },
-  ];
+  /* THE WEEKLY MILEAGE PERCENTAGE IS GONE (2026-09-02).
+   *
+   * It was the whole of "What this did" — "This week · 14.7 of 45 mi done ·
+   * 33%" — offered as the answer to what a run changed. The post-run brief's
+   * DELETE list names it: "weekly mileage percentage as the meaning of a run".
+   * A completion share is a fact about the WEEK, it is already on Block, and
+   * it says nothing about the session the runner just finished.
+   *
+   * What replaced it is `postRun` — the Evidence Engine's actual read of what
+   * the run contributed, the plan's actual response, and the next action when
+   * there is one. That is an answer; a percentage is a progress bar.
+   *
+   * The array survives because the flagged-niggle row still travels on it,
+   * with the action the phone needs to undo it. */
+  const whatThisDidToTheWeek: V5Row[] = [];
   if (r.niggleFlagged) {
     whatThisDidToTheWeek.push({
       id: 'niggle', label: `${r.niggleFlagged} flagged`,

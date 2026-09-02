@@ -56,6 +56,7 @@ import {
 // A gate that reimplements the thing it is checking proves only that the gate
 // agrees with itself.
 import { gradeStoredPhases } from '@/lib/execution/verdict';
+import { expandSpecToPhases } from './expand-spec';
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 
@@ -489,5 +490,129 @@ describe('EXECSEM-5c · the ceiling slack is doctrine s E width on both sides', 
     for (const p of graded.phases) expect(p.shape).toBe('ceiling');
     // A ceiling has no slow edge, ever.
     expect(graded.phases.some((p) => p.verdict === 'slow')).toBe(false);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * CEIL-MEANING-1 (2026-09-02) · `targetPaceSPerMi` MEANS TWO THINGS, AND THE
+ * TWO CURRENTLY AGREE BY COINCIDENCE.
+ *
+ * Under one `paceShape: 'ceiling'` the field carries:
+ *
+ *   WARM-UP / COOL-DOWN   the ceiling ITSELF (`WU/CD-CEIL-1`, 2026-09-01),
+ *                         paired with doctrine's E width, 30.
+ *   EASY / LONG WORK      the band CENTRE, paired with the band's own
+ *                         half-width — `expandEasy`/`expandLong` encode a band
+ *                         as centre plus half-width so `target +/- tolerance`
+ *                         reconstructs the authored band exactly, which is what
+ *                         `_watch_anchor_split.test.ts` asserts from the other
+ *                         side.
+ *
+ * Every reader — `PaceDrift.swift`, `WorkoutEngine.swift`, and now
+ * `gradeStoredPhases` — computes the effective ceiling as `target - tolerance`,
+ * so both encodings land on the same number today. That is one quantity under
+ * one name meaning two things, held together by a coincidence, and it is the
+ * shape that bites the day somebody changes a tolerance for an unrelated
+ * reason. This does not unify the field: it PINS the coincidence, on the
+ * owner's real authored specs, so the build says so the moment it stops
+ * holding.
+ *
+ * ── WHAT IT CANNOT FAIL ON (Rule 22) ──────────────────────────────────────
+ *   · It cannot tell you either encoding is RIGHT. It asserts they agree.
+ *   · It reads specs captured from production on 2026-09-02, not live rows, so
+ *     a future authoring change is invisible until someone recaptures them.
+ *   · It says nothing about phases with no target, which are correctly not
+ *     graded at all.
+ * ════════════════════════════════════════════════════════════════════════ */
+describe('CEIL-MEANING-1 · the two ceiling encodings still land on one number', () => {
+  /* THE REAL EXPANDER, NOT ARITHMETIC WRITTEN HERE.
+   *
+   * The first draft of this pin recomputed `mid` and `halfWidth` locally and
+   * asserted `mid - halfWidth === lo`. That is true of every symmetric band by
+   * construction — it passed a deliberate falsification (widening a band by 4
+   * s/mi) without blinking, because it was a tautology wearing a test's
+   * clothes. Rule 18: a check that hardcodes both sides only proves the test
+   * agrees with itself.
+   *
+   * So it runs `expandSpecToPhases` over the owner's real authored specs and
+   * asserts what comes OUT. It fails if `bandToleranceSec` stops returning the
+   * band's own half-width, if the centre is computed differently, or if either
+   * rounding changes — which is exactly the class of unrelated edit that would
+   * quietly separate the two encodings. */
+  const REAL_SPECS: Array<{ day: string; spec: Record<string, unknown>; mi: number; ceiling: number }> = [
+    // Read at `faff_readonly` off `pln_9a57561debb776e5`, 2026-09-02.
+    { day: '2026-09-02 easy', mi: 5, ceiling: 502,
+      spec: { kind: 'easy', pace_target_s_per_mi_lo: 502, pace_target_s_per_mi_hi: 542 } },
+    { day: '2026-09-04 easy', mi: 5.5, ceiling: 502,
+      spec: { kind: 'easy', pace_target_s_per_mi_lo: 502, pace_target_s_per_mi_hi: 542 } },
+    { day: '2026-09-06 long', mi: 15, ceiling: 502,
+      spec: { kind: 'long', pace_target_s_per_mi_lo: 502, pace_target_s_per_mi_hi: 537 } },
+    // An ODD-width band, where the symmetric wire cannot carry the half-width
+    // exactly. `bandToleranceSec` errs WIDE by one second on purpose; if that
+    // ever errs tight instead, the reconstructed ceiling moves and this says so.
+    { day: 'odd-width long 517-552', mi: 13, ceiling: 517,
+      spec: { kind: 'long', pace_target_s_per_mi_lo: 517, pace_target_s_per_mi_hi: 552 } },
+  ];
+
+  it('the band-centre encoding reconstructs the authored ceiling through the real expander', () => {
+    for (const r of REAL_SPECS) {
+      const phases = expandSpecToPhases({ spec: r.spec as never, totalMi: r.mi, easyPaceSec: 522, toleranceSec: 20 });
+      const work = (phases ?? []).find((p) => p.type === 'work');
+      expect(work, r.day).toBeTruthy();
+      const target = work!.targetPaceSPerMi!;
+      const tol = work!.tolerancePaceSPerMi!;
+      // The one subtraction every reader performs: PaceDrift.swift's off-target
+      // edge, WorkoutEngine.swift's `target - slack`, and gradeCeilingPhase's.
+      expect(target - tol, `${r.day} · effective ceiling`).toBe(r.ceiling);
+    }
+  });
+
+  it('the ceiling-itself encoding carries the SAME number, from the same specs', () => {
+    for (const r of REAL_SPECS) {
+      // A threshold day's warm-up on the same easy ceiling. `WU/CD-CEIL-1`
+      // puts the ceiling in `targetPaceSPerMi` directly, so the field means
+      // something different here than it does above — and both must name the
+      // same ceiling, which is the coincidence being pinned.
+      const phases = expandSpecToPhases({
+        spec: { kind: 'threshold', warmup_mi: 2, cooldown_mi: 2, rep_count: 2, rep_distance_mi: 1, rep_pace_s_per_mi: 430 } as never,
+        totalMi: 6, easyPaceSec: 522, easyCeilingSec: r.ceiling, toleranceSec: 8,
+      });
+      const wu = (phases ?? []).find((p) => p.type === 'warmup');
+      expect(wu, r.day).toBeTruthy();
+      expect(wu!.targetPaceSPerMi, `${r.day} · warm-up states the ceiling directly`).toBe(r.ceiling);
+    }
+  });
+
+  it('and the server grades both encodings through that same subtraction', () => {
+    for (const r of REAL_SPECS) {
+      const phases = expandSpecToPhases({ spec: r.spec as never, totalMi: r.mi, easyPaceSec: 522, toleranceSec: 20 });
+      const work = (phases ?? []).find((p) => p.type === 'work')!;
+      const target = work.targetPaceSPerMi!;
+      const tol = work.tolerancePaceSPerMi!;
+      const cases: Array<[number, PhaseVerdict]> = [
+        [r.ceiling + 5, 'hit'],   // slower than the ceiling is never a miss
+        [r.ceiling - 5, 'fast'],  // through it, past the slack
+      ];
+      for (const [avg, want] of cases) {
+        const asBand = gradeStoredPhases([{
+          index: 0, type: 'work', completed: true, paceShape: 'ceiling',
+          targetPaceSPerMi: target, tolerancePaceSPerMi: tol,
+          actualPaceSPerMi: avg, actualDistanceMi: 5, actualDurationSec: 5 * avg,
+        }], 'easy').phases[0].verdict;
+        expect(asBand, `${r.day} · band encoding at ${avg}`).toBe(want);
+      }
+    }
+  });
+
+  it('LIVENESS · the expander actually produced a graded ceiling phase', () => {
+    // A spec that expanded to nothing, or to a phase with no target, would
+    // satisfy nothing above and report clean.
+    let seen = 0;
+    for (const r of REAL_SPECS) {
+      const phases = expandSpecToPhases({ spec: r.spec as never, totalMi: r.mi, easyPaceSec: 522, toleranceSec: 20 });
+      const work = (phases ?? []).find((p) => p.type === 'work');
+      if (work?.targetPaceSPerMi != null && work.tolerancePaceSPerMi != null) seen += 1;
+    }
+    expect(seen).toBe(REAL_SPECS.length);
   });
 });

@@ -27,6 +27,7 @@ import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { composeRecap } from '@/lib/faff/recap-voice';
+import { runIdentityMatchSql } from '@/lib/runs/run-shape';
 import { loadPostRunExperience } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 import { mapWatchPhases } from '@/lib/coach/run-state';
@@ -101,7 +102,7 @@ export async function GET(
     `SELECT id::text AS id, data
        FROM runs
       WHERE user_uuid = $1
-        AND (id::text = $2 OR data->>'activityId' = $2 OR data->>'id' = $2)
+        AND ${runIdentityMatchSql('$2')}
       LIMIT 1`,
     [userId, String(id)],
   )).rows[0];

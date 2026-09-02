@@ -297,6 +297,20 @@ struct RunDetailV5: View {
                     }
 
                     recapSection
+
+                    // WHAT THE RUN TAUGHT THE COACH — the SAME component the
+                    // after-run sheet draws, over the SAME object. Not a view
+                    // that looks like the other one: one view, so a change to
+                    // what the runner reads cannot land on one screen and miss
+                    // the other. That divergence is the post-run brief's first
+                    // P0 and it was live on 2026-09-01.
+                    //
+                    // It sits UNDER the recap because the recap already states
+                    // the verdict and the cost from this same object; what the
+                    // run changed is the layer below the answer, not beside it.
+                    if let pr = detail.postRun {
+                        PostRunLearnedV5(model: pr)
+                    }
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s32)

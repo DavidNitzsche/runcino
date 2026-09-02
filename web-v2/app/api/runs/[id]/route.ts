@@ -23,6 +23,7 @@ import { loadRunDetail } from '@/lib/coach/run-state';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
+import { runIdentityMatchSql } from '@/lib/runs/run-shape';
 import { loadPostRunExperience } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 
@@ -107,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         `UPDATE runs
             SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
           WHERE user_uuid = $2
-            AND (data->>'id' = $3 OR data->>'activityId' = $3 OR id::text = $3)
+            AND ${runIdentityMatchSql('$3')}
        RETURNING id, shoe_id`,
         [shoeId, userId, id]
       );

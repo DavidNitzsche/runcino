@@ -266,8 +266,16 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
     'app/api/prescription/route.ts':
       'Reads startLat and startLng, which are not keys on any row (the real one is ' +
       'startLatLng). Same open question as openmeteo.',
-    'app/api/runs/[id]/recap/route.ts': 'id/activityId lookup · next batch.',
-    'app/api/runs/[id]/route.ts': 'Run detail · id/activityId/day/distance.',
+    /* `app/api/runs/[id]/recap/route.ts` WAS HERE and is now clean (2026-09-02).
+     * Its "id/activityId lookup" was the whole of its raw access, and it now
+     * calls `runIdentityMatchSql` — which exists because four call sites were
+     * each matching a different subset of the three id spellings, and two of
+     * them disagreed in production. A stale exemption fails until deleted, so
+     * this is the deletion rather than a comment beside a live entry. */
+    'app/api/runs/[id]/route.ts':
+      'Run detail PATCH · the shoe-assign fallbacks read day and distance directly. '
+      + 'Its id/activityId lookups now go through `runIdentityMatchSql`; the day and '
+      + 'distance reads in the two synthetic-id fallbacks are the remainder.',
     'app/api/strava/push-recent/route.ts': 'Push path · source/day.',
     'app/api/strava/webhook/route.ts': 'Webhook · day only.',
     'app/api/streak/route.ts': 'Day only · next batch.',

@@ -36,7 +36,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
-import { runDaySql } from '@/lib/runs/run-shape';
+import { runDaySql, runDistanceMiSql, runIdentityMatchSql } from '@/lib/runs/run-shape';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { resolveWorkoutVerdict, phasesFromCompletion } from '@/lib/execution/verdict';
 import { classifyStoredActivity } from '@/lib/evidence/load-activity-evidence';
@@ -110,7 +110,7 @@ async function loadRun(userId: string, ref: PostRunRef): Promise<RunRow | null> 
          FROM runs
         WHERE user_uuid = $1
           AND ${CANONICAL_ROW_SQL}
-          AND (id::text = $2 OR data->>'activityId' = $2 OR data->>'id' = $2)
+          AND ${runIdentityMatchSql('$2')}
         LIMIT 1`,
       [userId, String(ref.runId)],
     );
@@ -125,7 +125,7 @@ async function loadRun(userId: string, ref: PostRunRef): Promise<RunRow | null> 
         WHERE user_uuid = $1
           AND ${CANONICAL_ROW_SQL}
           AND ${runDaySql()} = $2
-        ORDER BY (data->>'distanceMi')::numeric DESC NULLS LAST
+        ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
         LIMIT 1`,
       [userId, ref.dateISO],
     );

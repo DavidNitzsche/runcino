@@ -45,7 +45,7 @@ import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
   coherentPace, coherentMovingSec, coherentElapsedSec, runCadenceSpm,
 } from '@/lib/runs/coherence';
-import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
+import { runAvgHr, runMaxHr, runIdentityMatchSql, type RunData } from '@/lib/runs/run-shape';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
 import { resolveHrZoneShares } from './hr-zone-bucket';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
@@ -562,7 +562,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   let row = (await pool.query(
     `SELECT id, data, shoe_id, weather_enriched_at FROM runs
       WHERE user_uuid = $1
-        AND (data->>'id' = $2 OR data->>'activityId' = $2 OR id::text = $2)
+        AND ${runIdentityMatchSql('$2')}
       LIMIT 1`,
     [userId, activityId]
   )).rows[0];

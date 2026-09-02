@@ -612,6 +612,14 @@ struct V5Today: Decodable, Equatable {
     let onTheBelt: [V5Stat]?
     let shoesWorn: V5Row?
     let whatThisDidToTheWeek: [V5Row]
+    /// THE CANONICAL POST-RUN INTERPRETATION.
+    ///
+    /// The same object `/api/runs/[id]` and `/api/runs/[id]/recap` return under
+    /// the same key, composed once by `lib/postrun/experience.ts`. Nil on a
+    /// server that predates the field and on a run it could not be composed
+    /// for — the section is then not drawn, which is honest; an empty section
+    /// under a heading is not.
+    let postRun: PostRunV5?
     let runId: String?
 
     // ── the state screens ──
@@ -1637,7 +1645,7 @@ extension V5Today {
         case askedVsRan, verdict, zoneShares, zoneTargets, zoneTarget, elevation, onTheBelt
         case routePolyline, elevGainFt, shoeOptions
         case routeSplits, routePhases, hrZones, paceBand, elevGainMeasured
-        case shoesWorn, whatThisDidToTheWeek, runId
+        case shoesWorn, whatThisDidToTheWeek, runId, postRun
         case changed, injury, weekOff, offSeason, notOnPhoneYet
         case paceNote, blockNote, sick
         case facts, win, conditionsNote, coachTip
@@ -1684,6 +1692,7 @@ extension V5Today {
         onTheBelt = c.opt(.onTheBelt)
         shoesWorn = c.opt(.shoesWorn)
         whatThisDidToTheWeek = c.list(.whatThisDidToTheWeek)
+        postRun = try? c.decodeIfPresent(PostRunV5.self, forKey: .postRun)
         runId = c.opt(.runId)
         changed = c.opt(.changed)
         injury = c.opt(.injury)
