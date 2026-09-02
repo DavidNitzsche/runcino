@@ -1,76 +1,95 @@
 /**
  * RULE 11 GATE · a failed open-injury read is not "no injury".
  *
+ * ── WHAT THIS FILE USED TO BE, AND WHY IT CHANGED (2026-09-02) ─────────────
+ *
  * `loadGlanceState` used to close its `runner_injuries` query with
  * `.catch(() => ({ rows: [] }))`. On a SAFETY signal that collapses two
  * opposite facts: "this runner has no open injury" and "we could not find
- * out". `activeInjury` is null either way, the surface proceeds as if clear,
- * and nothing anywhere records that the check did not run.
+ * out". Audit blocker B8 named it; the first fix made the two
+ * distinguishable via `injuryReadFailed`, and this gate pinned that fix by
+ * reading the source text of the query and its catch block.
  *
- * Audit blocker B8, 2026-09-02.
+ * That gate's own Rule 22 note recorded the half it deliberately did not
+ * cover: "It does NOT assert that any consumer behaves correctly when the
+ * read fails — deliberately, because that behaviour is an open product
+ * decision recorded in the code comment."
  *
- * WHAT THIS GATE CANNOT FAIL ON (Rule 22)
+ * The decision was taken on 2026-09-02. There is now ONE canonical safety
+ * owner (`lib/safety/**`) emitting NORMAL / CAUTION / MODIFY / STOP / UNKNOWN,
+ * the query itself has MOVED there, and `loadGlanceState` is a consumer. So
+ * this file no longer guards a query that lives here. It guards the
+ * DELEGATION, which is the thing that could now silently regress:
+ * a future edit re-adding a local read would restore the second author and
+ * every source-text assertion about the old catch would pass vacuously,
+ * because the text it looked for would simply be absent.
  *
- * It is a source-text check on ONE query in ONE file, so it cannot see the
- * same collapse anywhere else, and it cannot see it at all if the catch is
- * refactored into a helper. It does NOT assert that any consumer behaves
- * correctly when the read fails — deliberately, because that behaviour is an
- * open product decision recorded in the code comment: Today must not fabricate
- * a flare (an injury owns the whole screen) and must not silently prescribe as
- * if clear. This gate only guarantees the two facts stay distinguishable and
- * that the failure is logged rather than swallowed.
+ * The behavioural half — what the resolver ANSWERS on a failed read, and what
+ * the surfaces do with it — is `lib/safety/_safety_verdict.test.ts`.
+ *
+ * ── RULE 22 · WHAT THIS GATE CANNOT FAIL ON ────────────────────────────────
+ *
+ *   · It is a source-text check on ONE file. It cannot see a second author
+ *     anywhere else; `lib/safety/_safety_ownership.test.ts` is the scan that
+ *     can, across `lib` and `app`.
+ *   · It cannot tell whether the delegated verdict is CORRECT, only that the
+ *     delegation happens.
+ *   · It cannot see Swift.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SRC = readFileSync(join(__dirname, 'glance-state.ts'), 'utf8');
+const OWNER = join(__dirname, '..', 'safety');
 
-/** Strip comments. Without this the gate matches its own explanatory prose:
- *  the fix's comment QUOTES the old `.catch(() => ({ rows: [] }))` it replaced,
- *  and the first run of this gate failed on that quote rather than on code.
- *  A source-text gate must read code, not commentary about code. */
+/** Strip comments. A source-text gate must read code, not commentary about
+ *  code: the header above quotes the very shapes it forbids. */
 function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 }
 
-/** The injury query and everything up to the end of its catch block. */
-function injuryReadBlock(): string {
-  const start = SRC.indexOf('FROM runner_injuries');
-  expect(start, 'the open-injury query has moved or gone').toBeGreaterThan(0);
-  const end = SRC.indexOf('const activeInjury', start);
-  expect(end, 'could not find the end of the injury read').toBeGreaterThan(start);
-  return stripComments(SRC.slice(start, end));
-}
+describe('Rule 11 · the open-injury read is delegated, not re-authored', () => {
+  const code = stripComments(SRC);
 
-describe('Rule 11 · the open-injury read', () => {
-  it('LIVENESS · the file and the query are both actually there', () => {
+  it('LIVENESS · the file is really there and really has code in it', () => {
     expect(SRC.length).toBeGreaterThan(5000);
-    expect(SRC).toContain('FROM runner_injuries');
+    expect(code).toContain('export async function loadGlanceState');
   });
 
-  it('does not swallow the failure into an empty result', () => {
-    const block = injuryReadBlock();
-    // The exact shape that was there: a catch with no parameter, returning
-    // empty rows and telling nobody.
-    expect(block, 'a failed injury read must not be silently turned into '
-      + '"no open injury" — they are opposite facts on a safety signal')
-      .not.toMatch(/\.catch\(\s*\(\s*\)\s*=>/);
+  it('glance-state reads NO health table of its own', () => {
+    // The three that carry a safety signal. Any of them appearing here means
+    // a second author has grown back inside the consumer.
+    expect(code, 'loadGlanceState must consume lib/safety, not re-read the tables')
+      .not.toMatch(/FROM\s+(runner_injuries|sick_episodes|niggles)\b/i);
   });
 
-  it('logs the failure', () => {
-    expect(injuryReadBlock()).toContain('logReadFailure');
-    expect(SRC).toContain("from '@/lib/db/read'");
+  it('it calls the canonical owner', () => {
+    expect(code).toContain('loadSafetyInputs');
+    expect(code).toContain('classifySafety');
+    expect(SRC).toContain("from '@/lib/safety/load-safety'");
+    expect(SRC).toContain("from '@/lib/safety/safety-verdict'");
   });
 
-  it('records the failure in a field a consumer can branch on', () => {
-    expect(injuryReadBlock()).toContain('injuryReadFailed = true');
-    // and it must actually leave the function, or nothing downstream can see it
-    expect(SRC).toMatch(/\n\s*injuryReadFailed,/);
+  it('the owner it calls actually exists', () => {
+    // Otherwise the two assertions above are satisfied by a dangling import
+    // and this gate reports clean while nothing resolves.
+    expect(readFileSync(join(OWNER, 'load-safety.ts'), 'utf8')).toContain('export async function loadSafetyInputs');
+    expect(readFileSync(join(OWNER, 'safety-verdict.ts'), 'utf8')).toContain('export function classifySafety');
+  });
+
+  it('the verdict leaves the function, so a consumer can branch on it', () => {
+    expect(SRC).toMatch(/\n\s*safety,/);
+    expect(SRC).toContain('safety?: SafetyResolution;');
+  });
+
+  it('`injuryReadFailed` is DERIVED from the verdict, never decided locally', () => {
+    // It survives for the call sites that predate the owner. What must not
+    // survive is a second place deciding what a failed read means.
     expect(SRC).toContain('injuryReadFailed?: boolean');
-  });
-
-  it('the flag defaults to false, so a clean read is not reported as a failure', () => {
-    expect(SRC).toContain('let injuryReadFailed = false;');
+    expect(SRC).toMatch(/\n\s*injuryReadFailed,/);
+    expect(code, 'the flag must be computed from safety.unreadable, not set by a catch')
+      .toMatch(/injuryReadFailed\s*=\s*\n?\s*!safety\.known/);
+    expect(code).not.toContain('injuryReadFailed = true');
   });
 });

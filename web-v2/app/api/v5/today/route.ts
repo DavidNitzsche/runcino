@@ -40,6 +40,11 @@ import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runt
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
+import {
+  SAFETY_NOT_RESOLVED,
+  safetyVerdictLine,
+  type SafetyResolution,
+} from '@/lib/safety/safety-verdict';
 import { mapWatchPhases } from '@/lib/coach/run-state';
 import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
@@ -476,25 +481,45 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       })()
     : null;
 
+  /* ── SAFETY · ONE VERDICT, RESOLVED ONCE (Constitution §2.E, §29) ───────
+   *
+   * THIS ROUTE USED TO BE TWO OF THE FOUR AUTHORS of the safety verdict: an
+   * inline `verdictBySeverity` object literal keyed on injury severity, and an
+   * inline illness ternary on `has_fever`. Both are gone. The verdict comes
+   * from `lib/safety/safety-verdict.ts` and this file reads it.
+   *
+   * The three branches below are the three things a surface can be told:
+   *
+   *   STOP / MODIFY driven by an injury   -> the injury panel (unchanged)
+   *   STOP driven by an illness           -> the sick panel (unchanged)
+   *   UNKNOWN                             -> NOT CLEARED, nothing prescribed
+   *
+   * NORMAL and CAUTION fall through to the ordinary day, which is what they
+   * mean. CAUTION currently adds no panel of its own — see the deliverable's
+   * open items; a niggle already decorates the day through `resolveDayState`
+   * and a second sentence about the same niggle would be a Rule 17 defect.
+   */
+  const safety: SafetyResolution = glance.safety ?? SAFETY_NOT_RESOLVED;
+
   // ── Injury flare (Gap B13) — checked first; a flare owns the screen ────
-  if (glance.activeInjury) {
-    const inj = glance.activeInjury;
+  if (safety.known && safety.driver === 'injury' && safety.injury) {
+    const inj = {
+      site: safety.injury.site,
+      severity: safety.injury.severity,
+      start_date: safety.injury.startDateISO,
+      expected_return_date: safety.injury.expectedReturnDateISO,
+    };
     const daysSince = Math.max(0, Math.round(
       (Date.parse(today + 'T12:00:00Z') - Date.parse(inj.start_date + 'T12:00:00Z')) / 86400000,
     ));
     const since = daysSince === 0 ? 'Flagged today' : daysSince === 1 ? 'Flagged yesterday' : `Flagged ${daysSince} days ago`;
-    const verdictBySeverity: Record<string, string> = {
-      minor: `Easy running only. The ${inj.site} gets a few easy days before anything harder comes back.`,
-      moderate: `Rest, not run. The ${inj.site} gets time to settle before anything reintroduces load.`,
-      major: `Rest, not run. The ${inj.site} needs a real break. This is not a session to run through.`,
-    };
     const returnAvailable = inj.expected_return_date != null && today >= inj.expected_return_date;
     const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
     ctx.weekStripDays = weekStripDays;
     ctx.injury = {
       area: inj.site.charAt(0).toUpperCase() + inj.site.slice(1),
       since,
-      verdict: verdictBySeverity[inj.severity] ?? verdictBySeverity.moderate,
+      verdict: safetyVerdictLine(safety),
       whatChanged: [{
         id: 'this-week', label: 'This week',
         sub: glance.weekPlanned != null
@@ -523,13 +548,15 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // than gating a return-to-running ladder the way injury's does. An active
   // injury takes precedence over a concurrent sick day (rarer overlap, and
   // the injury's load restriction is the more specific one).
-  if (glance.activeSick) {
-    const sick = glance.activeSick;
+  if (safety.known && safety.driver === 'illness' && safety.illness) {
+    const sick = {
+      symptoms: [...safety.illness.symptoms],
+      has_fever: safety.illness.hasFever,
+      days_active: safety.illness.daysActive,
+    };
     const daysSince = Math.max(0, Math.floor(sick.days_active));
     const since = daysSince === 0 ? 'Flagged today' : daysSince === 1 ? 'Flagged yesterday' : `Flagged ${daysSince} days ago`;
-    const verdict = sick.has_fever
-      ? 'Rest, not run. A fever means the body is fighting something. Running adds load it does not have to spare.'
-      : 'Rest, not run. Whatever this is gets a real day off before anything asks more of you.';
+    const verdict = safetyVerdictLine(safety);
     const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
     ctx.weekStripDays = weekStripDays;
     ctx.sick = {
@@ -543,6 +570,56 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         { id: 'worse', label: 'Worse', sub: 'Worth a call with someone who can look at it', value: null, action: 'trend_worse' },
         { id: 'recovered', label: "I'm better, let's run", sub: 'Clears this and hands today back to the plan', value: null, action: 'trend_recovered' },
       ],
+    };
+    return NextResponse.json(composeV5Today(ctx));
+  }
+
+  /* ── SAFETY UNKNOWN — the check did not run ─────────────────────────────
+   *
+   * The runner's own ruling, 2026-09-02: "A failed safety read must never
+   * silently become 'not injured.' Do not fabricate an injury. Return an
+   * explicit UNKNOWN safety state. Prevent the app from confidently
+   * presenting a quality session as cleared until the check succeeds. Show a
+   * clear retry state and a conservative non-prescriptive fallback."
+   *
+   * All four clauses, in order:
+   *
+   *   · NOT the injury screen. `ctx.injury` stays null, so nothing tells the
+   *     runner they are hurt. An injury owns the whole screen and a Postgres
+   *     blip must not be able to blank a healthy day with a fabricated flare.
+   *   · NOT a prescription. No groups, no pace band, no HR ceiling. This is
+   *     the same shape `todayPlanUnresolved` already ships on `before_run`,
+   *     which is why every deployed client renders it without a new wire
+   *     enum value the client would have to learn.
+   *   · A RETRY THAT ACTUALLY EXISTS (Rule 20). The safety read is performed
+   *     per request, so reopening the screen genuinely re-runs it. The copy
+   *     promises exactly that and no gesture a build might not have. The row
+   *     carries `action: null` on purpose: a deployed client renders an
+   *     unknown action as an expanding row with an empty body, so an inert
+   *     button would be worse than an honest sentence.
+   *   · The week strip still draws. What is unknown is whether training is
+   *     allowed, not what week it is.
+   *
+   * PLACEMENT · after injury and illness (which cannot fire on an UNKNOWN
+   * verdict) and BEFORE week-off, off-season and the ordinary day. A travel
+   * week whose safety read failed therefore reads NOT CLEARED rather than
+   * WEEK OFF. Both prescribe nothing, so the cost is one less informative
+   * word on a screen that requires a database failure to reach.
+   */
+  if (!safety.known) {
+    console.warn(`[v5/today] ${safety.explain}`);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    ctx.weekStripDays = weekStripDays;
+    ctx.weekLine = weekLine;
+    ctx.safetyUnknown = {
+      verdict: safetyVerdictLine(safety),
+      rows: [{
+        id: 'safety-check',
+        label: 'Health check',
+        sub: 'Could not read your injury and illness log. Nothing is prescribed until it can.',
+        value: null,
+        action: null,
+      }],
     };
     return NextResponse.json(composeV5Today(ctx));
   }

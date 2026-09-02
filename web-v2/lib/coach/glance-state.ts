@@ -10,8 +10,9 @@
  * Cheap pg queries only — no Anthropic call. Page renders in ~200ms.
  */
 import { distanceMiOfMeta } from '@/lib/race/distance';
-import { logReadFailure } from '@/lib/db/read';
 import { pool } from '@/lib/db/pool';
+import { loadSafetyInputs } from '@/lib/safety/load-safety';
+import { classifySafety, type SafetyResolution } from '@/lib/safety/safety-verdict';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { loadReadinessBandBaseline } from './readiness-history';
 import { loadNextARace } from './race-lookup';
@@ -194,6 +195,19 @@ export interface GlanceState {
    * reading `activeInjury == null` as "safe".
    */
   injuryReadFailed?: boolean;
+  /**
+   * THE CANONICAL SAFETY VERDICT for this runner today
+   * (`lib/safety/safety-verdict.ts`). NORMAL / CAUTION / MODIFY / STOP, or an
+   * explicit UNKNOWN branch that carries no `state` field at all, so a
+   * consumer cannot read "we could not check" as "cleared" without first
+   * branching on `known`.
+   *
+   * `activeInjury`, `activeSick`, `activeNiggle` and `injuryReadFailed` above
+   * are all DERIVED from this and kept only for the call sites that predate
+   * it. New code reads `safety` and nothing else. Optional so pre-existing
+   * GlanceState fixtures and personas stay structurally valid.
+   */
+  safety?: SafetyResolution;
   // STRENGTH-3 (2026-08-17) · recommendedStrengthDays / strengthRecommendation
   // / strengthWeekStatus removed. See the note at the recommender call site.
 }
@@ -610,97 +624,74 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     [userId, today],
   ).catch(() => ({ rows: [] as any[] }));
   const todaySkipped = skipRow.rows.length > 0;
+  // ── SAFETY · DELEGATED TO THE CANONICAL OWNER, 2026-09-02 ──────────────
+  //
+  // THREE SEPARATE READS of `niggles`, `sick_episodes` and `runner_injuries`
+  // used to live here, and `lib/watch/build-workout.ts` kept its own copy of
+  // the same three with its own precedence. That duplication is how the wrist
+  // and the phone came to disagree about what an open injury means: the phone
+  // refused to prescribe, the watch drew a "Not today" board and shipped the
+  // runnable workout beside it.
+  //
+  // The queries are now `lib/safety/load-safety.ts` and the verdict is
+  // `lib/safety/safety-verdict.ts#classifySafety`. This loader is a CONSUMER.
+  // It keeps its three legacy fields below because a dozen call sites read
+  // them, but it decides nothing about them, and it no longer decides what a
+  // failed read means.
+  //
+  // Read count is unchanged (three LIMIT-1 point reads), now issued in
+  // parallel rather than in series.
+  //
+  // THE HALF DELIBERATELY LEFT OPEN when `injuryReadFailed` was added on
+  // 2026-09-02 ("what Today should DO when the injury check could not run")
+  // is answered by `safety`: an explicit UNKNOWN carrying a
+  // WITHHOLD_PENDING_CHECK posture. `injuryReadFailed` survives as a DERIVED
+  // alias so no existing consumer breaks; new code branches on
+  // `safety.known`, which does not compile until it has.
+  const safety = classifySafety(await loadSafetyInputs(userId));
+  const safeInjury = safety.known ? safety.injury : null;
+  const safeIllness = safety.known ? safety.illness : null;
+  const safeNiggle = safety.known ? safety.niggle : null;
 
-  // Niggle + Sick (P-NIGGLE-SICK, 2026-05-28). Two LIMIT-1 point reads
-  // against migrations 116/117. Partial indexes on (user_id, logged_at DESC)
-  // WHERE cleared_at IS NULL keep this ~O(1). Silent degrade to null if
-  // tables don't exist yet so the loader doesn't hard-fail.
-  const niggleRow = await pool.query(
-    `SELECT id, body_part, side, severity, status, logged_at,
-            EXTRACT(EPOCH FROM (now() - logged_at)) / 86400.0 AS days_active
-       FROM niggles
-      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
-      ORDER BY logged_at DESC
-      LIMIT 1`,
-    [userId],
-  ).catch(() => ({ rows: [] as any[] }));
-  const activeNiggle = niggleRow.rows[0]
+  const activeNiggle = safeNiggle
     ? {
-        id: Number(niggleRow.rows[0].id),
-        body_part: String(niggleRow.rows[0].body_part),
-        severity: Number(niggleRow.rows[0].severity),
-        side: niggleRow.rows[0].side ?? null,
-        status: niggleRow.rows[0].status,
-        logged_at: new Date(niggleRow.rows[0].logged_at).toISOString(),
-        days_active: Math.floor(Number(niggleRow.rows[0].days_active) || 0),
+        id: safeNiggle.id,
+        body_part: safeNiggle.bodyPart,
+        severity: safeNiggle.severity,
+        side: safeNiggle.side,
+        status: safeNiggle.status as 'just_started' | 'few_days' | 'weeks',
+        logged_at: safeNiggle.loggedAtISO,
+        days_active: safeNiggle.daysActive,
       }
     : null;
 
-  const sickRow = await pool.query(
-    `SELECT id, symptoms, started, has_fever, logged_at,
-            EXTRACT(EPOCH FROM (now() - logged_at)) / 86400.0 AS days_active
-       FROM sick_episodes
-      WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
-      ORDER BY logged_at DESC
-      LIMIT 1`,
-    [userId],
-  ).catch(() => ({ rows: [] as any[] }));
-  const activeSick = sickRow.rows[0]
+  const activeSick = safeIllness
     ? {
-        id: Number(sickRow.rows[0].id),
-        symptoms: Array.isArray(sickRow.rows[0].symptoms)
-          ? sickRow.rows[0].symptoms
-          : [],
-        has_fever: Boolean(sickRow.rows[0].has_fever),
-        started: sickRow.rows[0].started,
-        logged_at: new Date(sickRow.rows[0].logged_at).toISOString(),
-        days_active: Math.floor(Number(sickRow.rows[0].days_active) || 0),
+        id: safeIllness.id,
+        symptoms: [...safeIllness.symptoms],
+        has_fever: safeIllness.hasFever,
+        started: safeIllness.started as 'today' | 'yesterday' | 'few_days' | 'week_plus',
+        logged_at: safeIllness.loggedAtISO,
+        days_active: safeIllness.daysActive,
       }
     : null;
 
-  let injuryReadFailed = false;
-  // Gap B13 (2026-08-19) · open injury (runner_injuries.resolved_date IS
-  // NULL). One LIMIT-1 point read, same defensive posture as the niggle/sick
-  // reads immediately above — silent degrade to null if the table doesn't
-  // exist yet so the loader never hard-fails on it.
-  const injuryRow = await pool.query(
-    `SELECT id, site, severity, start_date::text AS start_date,
-            expected_return_date::text AS expected_return_date,
-            return_protocol, notes
-       FROM runner_injuries
-      WHERE user_uuid = $1 AND resolved_date IS NULL
-      ORDER BY start_date DESC
-      LIMIT 1`,
-    [userId],
-  ).catch((e) => {
-    // RULE 11 (2026-09-02) · this used to be `.catch(() => ({ rows: [] }))`,
-    // which made a FAILED read and "no open injury" the same answer on a
-    // SAFETY signal. A database hiccup rendered an injured runner uninjured
-    // and nothing anywhere said so. The read still degrades rather than
-    // hard-failing the whole loader — that posture was right — but it now
-    // degrades LOUDLY and the caller can tell the two apart.
-    //
-    // The remaining half is a product decision and is deliberately NOT taken
-    // here: what Today should DO when the injury check could not run. It must
-    // not fabricate a flare (an injury owns the whole screen, so a transient
-    // read error would blank the day), and it should not silently prescribe as
-    // if clear either. `injuryReadFailed` exists so that decision has
-    // something to branch on when it is made.
-    logReadFailure('coach/glance-state · open injury', e);
-    injuryReadFailed = true;
-    return { rows: [] as any[] };
-  });
-  const activeInjury = injuryRow.rows[0]
+  const activeInjury = safeInjury
     ? {
-        id: Number(injuryRow.rows[0].id),
-        site: String(injuryRow.rows[0].site),
-        severity: injuryRow.rows[0].severity as 'minor' | 'moderate' | 'major',
-        start_date: String(injuryRow.rows[0].start_date),
-        expected_return_date: injuryRow.rows[0].expected_return_date ?? null,
-        return_protocol: injuryRow.rows[0].return_protocol ?? null,
-        notes: injuryRow.rows[0].notes ?? null,
+        id: safeInjury.id,
+        site: safeInjury.site,
+        severity: safeInjury.severity,
+        start_date: safeInjury.startDateISO,
+        expected_return_date: safeInjury.expectedReturnDateISO,
+        return_protocol: safeInjury.returnProtocol,
+        notes: safeInjury.notes,
       }
     : null;
+
+  // DERIVED, never independently decided. True exactly when the canonical
+  // resolver could not read the injury signal.
+  const injuryReadFailed =
+    !safety.known && safety.unreadable.some((u) => u.signal === 'injury');
 
   const bandBaseline = await loadReadinessBandBaseline(userId, today);
   const readiness = computeReadiness({
@@ -839,5 +830,6 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     activeSick,
     activeInjury,
     injuryReadFailed,
+    safety,
   };
 }
