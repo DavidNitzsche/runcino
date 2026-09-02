@@ -181,6 +181,28 @@ export function fmtPaceCeiling(sPerMi: number | null | undefined): string | null
 }
 
 /**
+ * MPRANGE-1 (2026-09-02) · "7:49-8:01 /mi" from an explicit `[fast, slow]`
+ * band the prescription layer resolved.
+ *
+ * Distinct from `fmtPaceBand`, which builds a band from a target and the
+ * GRADER's symmetric tolerance. This one is handed the two edges and prints
+ * them, because a resolved marathon band is not symmetric about its point and
+ * re-deriving one would lose that. Same rendering shape, so a runner reads one
+ * kind of thing; different provenance, so the two do not share a function
+ * (Rule 16 — one quantity, one name).
+ *
+ * Collapses to the single point when both edges round to the same clock, which
+ * is the honest output for a band tighter than a second per mile.
+ */
+export function fmtPaceRange(range: readonly [number, number] | null | undefined): string | null {
+  if (!range) return null;
+  const lo = fmtPaceNoUnit(range[0]);
+  const hi = fmtPaceNoUnit(range[1]);
+  if (lo == null || hi == null) return null;
+  return lo === hi ? `${lo} /mi` : `${lo}-${hi} /mi`;
+}
+
+/**
  * EASYCEIL-1 · the CEILING a phase's band implies, in s/mi.
  *
  * The wire carries a target plus a symmetric tolerance, so an authored band
@@ -542,7 +564,28 @@ export function cardFromSpec(input: {
       (type === 'easy' || type === 'long' || type === 'recovery' || type === 'shakeout')
       && w.isFinishSegment !== true
       && !isStride;
-    const paceStr = isQualityWork
+    /* MPRANGE-1 (2026-09-02) · a marathon-pace target states ITS OWN band.
+     *
+     * `resolvePrescribedPaceAnchors.marathonRangeSecPerMi` is the honest span
+     * around marathon pace — population exponent to the runner's own raw fit,
+     * capped by a demonstrated rehearsal — and its contract says "every
+     * consumer that can show a band shows this one".
+     *
+     * It outranks both branches below, and for opposite reasons. Against the
+     * QUALITY band it wins because ±8 is the grader's threshold tolerance and
+     * says nothing about how well marathon pace is known — the point is
+     * threshold carried to 26.2 miles through a fitted exponent, and
+     * `Research/01` gives M its own "±5 sec/mi ... window for general MP
+     * segments" precisely because it is not a track split. Against the bare
+     * POINT (a long run's M finish took `fmtPace`) it wins because a single
+     * number claimed a precision the anchor does not have.
+     *
+     * Null on every session that is not priced at marathon pace, and on every
+     * row authored before the canonical anchors existed — those keep exactly
+     * the string they had. */
+    const paceStr = w.paceRangeSPerMi
+      ? fmtPaceRange(w.paceRangeSPerMi)
+      : isQualityWork
       ? fmtPaceBand(w.targetPaceSPerMi, w.tolerancePaceSPerMi)
       : isEasyFamilyWork
       ? fmtPaceCeiling(ceilingOfPhase(w))

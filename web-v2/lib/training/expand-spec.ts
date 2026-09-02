@@ -40,6 +40,21 @@ export interface ExpandedPhase {
    *  (set by expandLong when the spec carries finish_mi). Consumers route it
    *  to a FINISH face instead of the rep face. Absent/false everywhere else. */
   isFinishSegment?: boolean;
+  /**
+   * MPRANGE-1 (2026-09-02) · the honest band around a MARATHON-PACE target,
+   * `[fast, slow]` in s/mi, when the spec carries one.
+   *
+   * RENDER-ONLY, and deliberately separate from `tolerancePaceSPerMi`. That
+   * field is the width the session is GRADED against and it belongs to
+   * `execution-semantics.ts`; this is the width the prescription is KNOWN to,
+   * and it comes from `resolvePrescribedPaceAnchors`. Two questions, two
+   * names (Rule 16) — collapsing them would silently re-band the wrist's
+   * grading from the prescription layer, which is not this layer's call.
+   *
+   * Absent on every phase whose pace is not marathon pace, and on every spec
+   * authored without canonical anchors.
+   */
+  paceRangeSPerMi?: readonly [number, number] | null;
   /** DOCTRINE-STRIDES-1 · 2026-08-17 · True on each of the 4-8 short
    *  accelerations appended to an easy run, shakeout or standalone strides
    *  day (set by appendStrides when the spec carries strides_reps).
@@ -144,6 +159,22 @@ export interface ExpandSpecInput {
  * Telling a runner he has missed a band he is inside is the worse error, so the
  * rounding errs wide, and never excludes a pace the plan authored.
  */
+/**
+ * MPRANGE-1 · read a persisted `[fast, slow]` pace band off a spec field.
+ *
+ * Null for anything that is not two positive numbers in the right order — a
+ * malformed band is an absent band, never a half-read one, and a caller that
+ * gets null simply shows the point it already had (Rule 11: the three states
+ * stay distinguishable, and "no band" is a legitimate answer).
+ */
+function readPaceRange(v: unknown): readonly [number, number] | null {
+  if (!Array.isArray(v) || v.length !== 2) return null;
+  const lo = Number(v[0]);
+  const hi = Number(v[1]);
+  if (!(lo > 0) || !(hi > 0) || lo > hi) return null;
+  return [lo, hi] as const;
+}
+
 function bandToleranceSec(lo: number | null, hi: number | null): number | null {
   if (lo == null || hi == null) return null;
   return Math.max(1, Math.round((hi - lo) / 2));
@@ -326,6 +357,8 @@ function expandTempo(
       durationSec: Math.round(tempoMi * (tempoPace ?? DURATION_EST_S_PER_MI)),
       targetPaceSPerMi: tempoPace,
       tolerancePaceSPerMi: tempoPace != null ? tolerance : null,
+      // MPRANGE-1 · an `@ MP` block's own band, when the spec carries one.
+      paceRangeSPerMi: readPaceRange(s.marathon_range_s_per_mi),
     },
     {
       type: 'cooldown',
@@ -582,6 +615,8 @@ function expandLong(
         // contiguous long run, which is every long run authored before
         // segmented longs existed.
         recoveryMi: Number(seg?.recovery_mi) || 0,
+        // MPRANGE-1 · per-segment, since only the M blocks carry one.
+        range: readPaceRange(seg?.range_s_per_mi),
       }))
       .filter((seg) => seg.mi > 0 && seg.pace > 0);
     const segTotal = segs.reduce((a, seg) => a + seg.mi, 0);
@@ -612,6 +647,7 @@ function expandLong(
           durationSec: Math.round(seg.mi * seg.pace),
           targetPaceSPerMi: seg.pace,
           tolerancePaceSPerMi: 12,
+          paceRangeSPerMi: seg.range,
           isFinishSegment: true,
         });
         // SEGLONG-1 · the gap that makes a segmented long run segmented.
@@ -666,6 +702,7 @@ function expandLong(
         distanceMi: Number(finishMi.toFixed(1)),
         durationSec: Math.round(finishMi * finishPace),
         targetPaceSPerMi: finishPace,
+        paceRangeSPerMi: readPaceRange(s.finish_range_s_per_mi),
         // Finish is race-pace quality work · tighter band than the easy
         // build (never looser than 12 s/mi, the tempo tolerance).
         tolerancePaceSPerMi: easyTol != null ? Math.min(easyTol, 12) : 12,
