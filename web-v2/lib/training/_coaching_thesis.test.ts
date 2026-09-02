@@ -41,6 +41,7 @@ import {
   rankCapacities,
   priorityFor,
   composeCoachLine,
+  composeCoachingThesis,
   isRankableSourceMode,
   RANKABLE_SOURCE_MODES,
   COACHING_THESIS_MODEL_VERSION,
@@ -189,12 +190,49 @@ describe('the owner\'s 2026-08-31 and 2026-09-01 reads', () => {
     }
   });
 
-  it('carry durability\'s own sub-reads through, prior beside fit, no verdict', () => {
+  it('carry durability\'s own sub-reads through, prior beside fit', () => {
     const standings = rankCapacities(SEP01.threshold, SEP01.highIntensity, SEP01.durability);
     const d = standings.find((s) => s.capacity === 'DURABILITY')!;
     expect(d.durability?.raceExponent).toBeCloseTo(1.0869051877057179, 10);
     expect(d.durability?.populationPrior).toBeCloseTo(1.06, 10);
     expect(d.durability?.decouplingPct).toBeCloseTo(6.411111111111112, 10);
+  });
+
+  /* ── v3 (2026-09-02) · THE SAME TWO DAYS THROUGH THE FULL COMPOSER ─────────
+   *
+   * The confidence ranking above still says THRESHOLD on both days, and it is
+   * still stable. But the owner's durability estimate carries a RAW race-curve
+   * fit of 1.101 (five graded races; the marathon-anchor audit and
+   * lib/coach/limiter.ts both read it), which sits above doctrine's neutral
+   * band [1.06, 1.08] — a Speedster who fades with distance. v3 lets that
+   * evidence pick the limiter ahead of the confidence proxy, so the thesis and
+   * the goal-gap limiter stop contradicting each other (Rule 16). */
+  it('v3 · with the raw curve fit carried, BOTH days resolve DURABILITY on curve-shape evidence, and it is still stable', () => {
+    const withRaw = (d: DurabilityCapacityEstimate): DurabilityCapacityEstimate =>
+      ({ ...d, rawFittedExponent: 1.1012 });
+    const a = composeCoachingThesis({ ...AUG31, durability: withRaw(AUG31.durability), week: null, todayISO: '2026-08-31' });
+    const b = composeCoachingThesis({ ...SEP01, durability: withRaw(SEP01.durability), week: null, todayISO: '2026-09-01' });
+    for (const t of [a, b]) {
+      expect(t.primaryLimiter).toBe('DURABILITY');
+      expect(t.basis).toBe('CURVE_SHAPE_EVIDENCE');
+      expect(t.priority).toBe('increase_long_run_demand');
+      expect(t.curveShape.read).toBe('speed_biased');
+      // The claim rests on the race curve, so it carries the race component's
+      // own confidence and slugs, not the durability aggregate's 0.90.
+      expect(t.confidence).toBeCloseTo(0.62, 10);
+      expect(t.evidenceIds).toEqual(['la-marathon-2026']);
+      expect(t.reasons).toContain('CURVE_SHAPE_SPEED_BIASED_FADES_WITH_DISTANCE');
+      expect(t.coachLine).toMatch(/fade with distance/);
+    }
+    expect(a.primaryLimiter).toBe(b.primaryLimiter);
+  });
+
+  it('v3 · without the raw fit the composer refuses the shape read and falls back to the confidence basis, saying so', () => {
+    const t = composeCoachingThesis({ ...SEP01, week: null, todayISO: '2026-09-01' });
+    expect(t.curveShape.read).toBe('unavailable');
+    expect(t.basis).toBe('LOWEST_CONFIDENCE_AMONG_EVIDENCED');
+    expect(t.primaryLimiter).toBe('THRESHOLD');
+    expect(t.reasons).toContain('CURVE_SHAPE_UNAVAILABLE');
   });
 });
 
@@ -309,7 +347,7 @@ describe('priority mapping', () => {
     expect(priorityFor('HIGH_INTENSITY')).toBe('increase_high_intensity_demand');
   });
 
-  it('carries a bumped model version, because the ranking basis changed', () => {
-    expect(COACHING_THESIS_MODEL_VERSION).toBe('2.0.0');
+  it('carries a bumped model version, because the ranking basis changed (v2) and then the limiter basis changed (v3)', () => {
+    expect(COACHING_THESIS_MODEL_VERSION).toBe('3.0.0');
   });
 });

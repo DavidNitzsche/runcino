@@ -537,6 +537,23 @@ export interface DurabilityCapacityEstimate extends CapacityEstimateBase {
   enduranceExponent: number;
   /** The fitted exponent's own read, or its argued absence. */
   raceExponent: DurabilityComponent<number>;
+  /**
+   * The RAW weighted log-log fit behind `raceExponent.value`, UNSHRUNK —
+   * `RaceExponentRead.rawFittedExponent`, carried through unchanged. Null
+   * whenever `raceExponent` is absent.
+   *
+   * ADDED 2026-09-02 for the Coaching Thesis, and it is a pass-through, not a
+   * second number: `raceExponent.value` is the number to PRESCRIBE from (shrunk
+   * toward the population prior by evidence), while doctrine's runner-type
+   * classification (`Research/02` §7.1, `CURVE_NEUTRAL_EXPONENT_BAND`) reads
+   * the SHAPE of the observed curve, and `lib/coach/limiter.ts` already spends
+   * the raw fit for exactly that reason ("the shrunk value would pull every
+   * runner toward the neutral band"). Two consumers of one quantity, one
+   * field, one name (Rule 16). Optional so fixtures that build this estimate
+   * by hand and never read the shape stay valid; `composeDurability` always
+   * sets it, and `_thesis_golden.test.ts` pins that.
+   */
+  rawFittedExponent?: number | null;
   /** Mean pace/HR drift across qualifying long runs, percentage points.
    *  Positive = HR climbed faster than pace over the back half. */
   decoupling: DurabilityComponent<number>;
@@ -2004,6 +2021,7 @@ export function composeDurability(inputs: DurabilityInputs): DurabilityCapacityE
   return {
     enduranceExponent: raceComponent.present ? raceComponent.value : POPULATION_ENDURANCE_PRIOR,
     raceExponent: raceComponent,
+    rawFittedExponent: raceExponent.ok ? raceExponent.rawFittedExponent : null,
     decoupling: decouplingComponent,
     confidence: anyPresent
       ? combineIndependentConfidence(raceConf, decouplingConf)
