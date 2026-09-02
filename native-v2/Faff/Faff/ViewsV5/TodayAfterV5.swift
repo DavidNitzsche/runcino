@@ -1235,7 +1235,10 @@ struct TodayAfterV5: View {
                      actualPace: Units.formatPace(secPerMile: paceSecPerMi),
                      askedPace: nil,
                      detail: "\(Units.formatDistance(miles: p.mi, decimals: 2)) \(Units.distanceLabel())",
-                     verdictPhrase: nil,
+                     // VERDICT-1 · the canonical word, from the same resolver
+                     // run detail's phase panel reads. Nil on an ungraded
+                     // phase and on older payloads — no row invents one.
+                     verdictPhrase: p.statusLabel,
                      chosen: false)
         }
     }

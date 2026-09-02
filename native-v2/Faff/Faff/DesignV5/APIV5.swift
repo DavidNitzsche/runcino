@@ -189,6 +189,35 @@ struct V5RoutePhase: Decodable, Equatable {
     /// to a numbered, unnamed row only when this is nil — never guesses a
     /// phase's role from its pace.
     let type: String?
+    /// VERDICT-1 (2026-09-01) · THE canonical verdict for this phase —
+    /// "hit" | "fast" | "slow" | "incomplete" — from
+    /// `web-v2/lib/execution/verdict.ts`, the same resolver run detail's
+    /// phase panel reads. Nil when the phase was not pace-graded (a
+    /// recovery jog, a by-feel stride) and on older payloads.
+    let verdict: String?
+    /// The word for `verdict`, correct for the phase's pace shape ("Under
+    /// the ceiling", "Quicker than target"), composed server side so this
+    /// sheet and run detail read one sentence. Nil when nothing was graded.
+    let statusLabel: String?
+
+    enum K: String, CodingKey {
+        case mi, sec, type, verdict
+        case statusLabel = "status_label"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        mi = try c.decode(Double.self, forKey: .mi)
+        sec = try c.decode(Int.self, forKey: .sec)
+        type = try c.decodeIfPresent(String.self, forKey: .type)
+        verdict = try c.decodeIfPresent(String.self, forKey: .verdict)
+        statusLabel = try c.decodeIfPresent(String.self, forKey: .statusLabel)
+    }
+
+    init(mi: Double, sec: Int, type: String?, verdict: String? = nil, statusLabel: String? = nil) {
+        self.mi = mi; self.sec = sec; self.type = type
+        self.verdict = verdict; self.statusLabel = statusLabel
+    }
 }
 
 /// The pace window the session asked for, seconds per mile. When present the
