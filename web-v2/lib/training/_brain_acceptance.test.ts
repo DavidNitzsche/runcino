@@ -24,9 +24,9 @@ import { describe, it, expect } from 'vitest';
 import {
   composeThresholdCapacity, composeEasyCeiling, composeHighIntensityCapacity,
   composeDurability, CAPACITY_CONFIDENCE_BANDS,
-  type VdotFallbackRead, type ResolvedCapacity,
+  type VdotFallbackRead,
 } from '@/lib/training/capacity-resolver';
-import { composePaceAnchors } from '@/lib/training/prescription-resolver';
+import { composePaceAnchors, type ResolvedCapacity } from '@/lib/training/prescription-resolver';
 import { fitRaceExponent, type DurabilityRaceObservation, type DecouplingRead, type TrainingDurabilityRead } from '@/lib/training/durability-anchor';
 import { composeRaceOutlook } from '@/lib/race/race-outlook';
 import { fixtureReads, fixtureRace } from '@/lib/race/_race_outlook_fixture';
