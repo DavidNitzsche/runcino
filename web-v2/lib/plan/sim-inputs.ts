@@ -166,6 +166,18 @@ export interface SimBuildOk {
   mode: PlanMode;
   raceDistanceMi: number;
   composed: ComposePlanResult;
+  /**
+   * AUTHORING-CANONICAL-1 (2026-09-01) · the exact `ComposePlanInput` the
+   * race-prep composer was handed, or null on a maintenance/recovery build.
+   *
+   * Exposed so `compareArchetype` (`authoring-shadow-compare.ts`) can re-run
+   * the SAME archetype through the legacy pricing and diff the two. Rule 15's
+   * point, applied to this migration: the 11,598-archetype corpus could not
+   * reach the canonical layer at all before, so it was evidence about a path
+   * the app was about to stop using. Returning the input is what lets the
+   * corpus ask the question.
+   */
+  composeInput?: ComposePlanInput | null;
   derived: {
     mode: PlanMode;
     raceDistanceMi: number;
@@ -527,6 +539,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
   const rxRaceSpecific = rxOverride?.rxRaceSpecific ?? inlinePrescriptions(cat);
 
   let composed: ComposePlanResult;
+  let raceComposeInput: ComposePlanInput | null = null;
   if (mode === 'race-prep') {
     const input: ComposePlanInput = {
       raceDistanceMi, goalSec, goalPaceSec, raceDateISO, startMondayISO, level,
@@ -553,6 +566,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
         ? { rampBaseEvidence: rampEvidence, rampBaseMi: rampEvidence.baseMi }
         : {}),
     };
+    raceComposeInput = input;
     composed = composePlan(input);
   } else {
     // COLD-1 · demonstrated equivalent race pace from a MEASURED VDOT only (mirrors generatePlan).
@@ -632,6 +646,7 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
     mode,
     raceDistanceMi,
     composed,
+    composeInput: raceComposeInput,
     derived: {
       mode, raceDistanceMi, raceDateISO, startMondayISO, blockStartISO, buildOpensISO: buildOpens, goalPaceSec, tPaceSec,
       bestRecentVdot: bestRecentVdot ?? null, bestRecentVdotSelfReported, recentWeeklyMi, recentLongMi,

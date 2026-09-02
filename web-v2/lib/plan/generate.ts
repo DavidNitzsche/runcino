@@ -28,7 +28,7 @@ import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library-static';
 import { recoveryDayAfterLongMi } from './plan-templates';
-import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, tPaceFromGoal, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, EASY_BAND_WIDTH_S, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, EVIDENCE_RUN_FLOOR_MI, type BelowTableAnchor } from '@/lib/training/vdot';
 import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achievable-target';
@@ -9264,7 +9264,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // (easyAnchorT + 120). currentT is the current-fitness anchor, which is
       // what easy/long/recovery work paces off (PACE-E-1) — not the blended
       // goal pace, which would flatter a slow runner into a longer long.
-      easyPaceSecPerMi: currentT != null ? currentT + EASY_BAND_SLOW_OFFSET_SEC : null,
+      // AUTHORING-CANONICAL-1 · the same correction as `easy_pace_s_per_mi`
+      // below: DOCTRINE-3's long-run absolute-time cap is evaluated at the SLOW
+      // edge of the band the runner is actually prescribed, which with anchors
+      // is `easyCeiling + EASY_BAND_WIDTH_S` and not a fixed offset off the
+      // threshold scalar.
+      easyPaceSecPerMi: anchors.easyCeilingSecPerMi + EASY_BAND_WIDTH_S,
       // PROGRESSION-1 · the overload trajectory, stepped once per week in
       // ascending order. The paces are the ones persistPlan will pace the
       // session at, so the shape's at-pace caps are computed against the pace
@@ -9437,7 +9442,16 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
        * which is the same condition under which `layoutWeek` gets no easy pace
        * and every minute-based bound in it is inert.
        */
-      easy_pace_s_per_mi: currentT != null ? currentT + EASY_BAND_SLOW_OFFSET_SEC : null,
+      // AUTHORING-CANONICAL-1 · THE SLOW EDGE OF THE BAND THE ROWS ACTUALLY
+      // CARRY. This was `currentT + EASY_BAND_SLOW_OFFSET_SEC`, which matched
+      // the legacy band exactly (`EASY_BAND_LO_OFFSET_S` 80 + `EASY_BAND_WIDTH_S`
+      // 40 = 120 off the threshold scalar). With anchors the band is
+      // `[easyCeiling, easyCeiling + EASY_BAND_WIDTH_S]`, and for a runner whose
+      // easy ceiling came from a DIRECT read those two are different numbers —
+      // so the stamp would have described a band the plan does not prescribe
+      // (Rule 16). `_coach_sensible.test.ts` reads this field as "the pace
+      // layoutWeek sizes easy days at", which makes the drift load-bearing.
+      easy_pace_s_per_mi: anchors.easyCeilingSecPerMi + EASY_BAND_WIDTH_S,
       /**
        * RULE8-1 · the runner's own demonstrated easy day, as this authoring
        * read it — `easyDayMedianMi` over 28 REPRESENTATIVE days, the reading
@@ -13522,6 +13536,36 @@ async function persistComposedPlan(
       `UPDATE training_plans SET mode = $1 WHERE id = $2`,
       [mode, planId],
     );
+
+    /* ── RACE-ROW REFRESH SEAM · Phase 3 (`feat/race-pace-brain`) ────────────
+     *
+     * THE ONE LINE THAT GOES HERE, from the race-pace-brain coordinator:
+     *
+     *   await refreshRaceRowsForPlan(planId, { client, todayISO });
+     *
+     * inside this transaction (the standalone form routes itself through its
+     * own `mutatePlan` with `touches: 'derivations'`, which would nest here).
+     * It belongs AFTER the mode write and BEFORE the commit gate below, so the
+     * gate compares the plan as it will actually be read.
+     *
+     * IT IS NOT ADDED YET, and the reason is Rule 19's discipline rather than
+     * an oversight: `lib/race/race-row-refresh.ts` does not exist on `origin`
+     * at the time of writing (`git ls-remote --heads origin` has no
+     * `feat/race-pace-brain`), so importing it would break `tsc --noEmit` and
+     * `next build` on this branch and every verification claim in this pass
+     * would be unrunnable. A call to a module that is not there is not a
+     * seam, it is a broken build.
+     *
+     * WHAT THIS BRANCH GUARANTEES IN THE MEANTIME: the authoring-time race row
+     * is a SEED and nothing here competes with the refresh for authority. The
+     * migration deleted every goal→training-pace derivation and added none;
+     * the only `achievableRaceTarget` call left in authoring is the one that
+     * was already there (`composePlan`'s RACEPACE-1 bound), it still receives
+     * the same provisional-anchor gate, and the shadow compare asserts the
+     * race row moved by 0 s/mi on every real account and across the archetype
+     * corpus. Merging Phase 3 on top of this is a one-line insertion at this
+     * comment.
+     */
 
     // 2026-08-25 · THE COMMIT GATE. See RebuildRefused below for the argument.
     //

@@ -23,10 +23,11 @@
  * pre-fix code first (see each `it`'s own note) before being trusted.
  */
 import { describe, it, expect } from 'vitest';
-import { canonicalSpecForComposedDay } from './authoring-shadow-compare';
+import { specForComposedDay } from './generate';
 import type { DayPlan } from './generate';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import type { SourceMode } from '@/lib/training/capacity-resolver';
+import { achievableRaceTarget } from '@/lib/training/achievable-target';
 
 /** A coherent six-anchor set at a given threshold pace, s/mi. Mirrors the
  *  ordering `composePaceAnchors`'s coherence gate requires (interval <
@@ -57,10 +58,41 @@ const baseLegacy = {
   maxHr: 180,
   goalPaceSec: null as number | null,
   easyAnchorTSec: 470,
-  goalIPaceEligible: false,
   belowTableAnchor: null,
   prescribedRacePaceSec: null as number | null,
 };
+
+/**
+ * AUTHORING-CANONICAL-1 (2026-09-01) · these tests now drive the REAL
+ * authoring builder.
+ *
+ * They were written against `canonicalSpecForComposedDay`, a shadow twin that
+ * existed because `specForComposedDay` could not yet take anchors. It can, and
+ * every authoring caller now passes them, so the twin is deleted and this
+ * shim keeps the tests' shape while pointing them at the function that ships.
+ * A test of a twin proves things about the twin.
+ */
+function canonicalSpecForComposedDay(
+  d: DayPlan,
+  anchors: PrescribedPaceAnchors,
+  legacy: typeof baseLegacy,
+  totalWeeks: number,
+  goalSec: number | null,
+  raceDistanceMi: number,
+) {
+  const prescribedRacePaceSec = achievableRaceTarget({
+    goalSec, currentVdot: anchors.basis.threshold.vdot, raceDistanceMi, totalWeeks,
+  })?.paceSPerMi ?? null;
+  return specForComposedDay(d, anchors.thresholdSecPerMi, {
+    lthr: legacy.lthr,
+    maxHr: legacy.maxHr,
+    goalPaceSec: legacy.goalPaceSec,
+    easyAnchorTSec: anchors.easyCeilingSecPerMi,
+    belowTableAnchor: legacy.belowTableAnchor,
+    prescribedRacePaceSec,
+    anchors,
+  });
+}
 
 function day(overrides: Partial<DayPlan>): DayPlan {
   return {
@@ -240,4 +272,126 @@ describe('canonicalSpecForComposedDay · extreme inputs', () => {
     const d = day({ type: 'intervals', distanceMi: 5, subLabel: '6×400m @ R pace · 3 min jog' });
     expect(() => canonicalSpecForComposedDay(d, anchors, baseLegacy, 14, null, 26.2)).not.toThrow();
   });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE ARCHETYPE CORPUS · canonical vs legacy, with no database
+ *
+ * RULE 15, as the audit applied it to this migration: the DB-backed compare
+ * reads four accounts, three of them cold-start QA seeds, and
+ * `_sweep_allusers`' 11,598 archetypes could not reach the canonical pricing
+ * layer at all because `resolvePrescribedPaceAnchors` needs a `users` row. A
+ * corpus that cannot reach the mechanism is not evidence about it.
+ *
+ * `syntheticPaceAnchors` runs the IDENTICAL pure capacity cores on an
+ * archetype's own evidence fields, so the corpus reaches the layer now. This
+ * block walks a deterministic slice of the real matrix and reports, per
+ * archetype, every dimension the audit's §8 asked for: pace zones, phases,
+ * day types (long runs included), band edges, WU/CD, HR guidance, the race
+ * row, week volumes and structure, total priced miles, and both the MAX and
+ * the volume-weighted mean |Δ|.
+ *
+ * ── WHAT THIS CANNOT FAIL ON (Rule 22) ──────────────────────────────────────
+ *
+ *   · A synthetic runner has no pace corpus and no durability evidence, so
+ *     every archetype is priced off a FALLBACK rung and off the POPULATION
+ *     endurance exponent. The runner's own fitted exponent is the single
+ *     largest divergence on a real account, so this corpus UNDERSTATES the
+ *     marathon axis by construction and cannot exercise the direct rungs.
+ *   · It walks a SLICE, not all 11,598, because each archetype composes a
+ *     full block twice. The slice is deterministic (every Nth arc) so a
+ *     regression cannot hide behind a reshuffle.
+ *   · It reports. The only assertions are the ones that would be defects on
+ *     EITHER side: HR guidance must not move, and no day may be priced on one
+ *     leg and not the other.
+ * ═══════════════════════════════════════════════════════════════════════ */
+describe('ARCHETYPE CORPUS · canonical authoring vs the legacy cascade', () => {
+  it('reports the full canonical-vs-legacy diff across a deterministic slice of the sweep matrix', async () => {
+    const { matrix, simInputsForArc, arcStr } = await import('./sim-matrix');
+    const { buildSimPlan } = await import('./sim-inputs');
+    const { compareArchetype, aggregate } = await import('./authoring-shadow-compare');
+
+    const all = [...matrix()];
+    // Every 97th arc — coprime with every dimension size in the matrix, so the
+    // slice spans distances, levels, volumes and block lengths rather than
+    // sampling one corner of the cross-product.
+    const STRIDE = 97;
+    const arcs = all.filter((_, i) => i % STRIDE === 0);
+
+    const mmss = (s: number | null | undefined) => (s == null || !Number.isFinite(s) ? '  -  '
+      : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
+    const d3 = (s: number | null | undefined) => (s == null || !Number.isFinite(s) ? '   - '
+      : `${s > 0 ? '+' : (s < 0 ? '-' : ' ')}${String(Math.abs(Math.round(s))).padStart(3)}`);
+
+    let compared = 0;
+    let skipped = 0;
+    let structuralTotal = 0;
+    let hrDivergentArcs = 0;
+    let asymmetric = 0;
+    const rows: string[] = [];
+    const typeRoll = new Map<string, { days: number; mi: number; sumAbs: number }>();
+    let worstArc = { label: '', maxAbs: 0, cause: '' };
+
+    for (const a of arcs) {
+      const sim = buildSimPlan(simInputsForArc(a));
+      if (!sim.ok || !sim.composeInput) { skipped++; continue; }
+      const cmp = compareArchetype(sim.composeInput, sim.derived.distanceCategory);
+      if (!cmp.ok || !cmp.anchorRead.ok) { skipped++; continue; }
+      compared++;
+      const agg = aggregate(cmp.days);
+      structuralTotal += cmp.structural.length;
+      if (agg.hrDivergences > 0) hrDivergentArcs++;
+      asymmetric += cmp.days.filter((d) =>
+        (d.legacy.paceTargetSPerMi != null) !== (d.canonical.paceTargetSPerMi != null)).length;
+
+      for (const t of agg.byType) {
+        const cur = typeRoll.get(t.type) ?? { days: 0, mi: 0, sumAbs: 0 };
+        cur.days += t.days;
+        cur.mi += t.mi;
+        cur.sumAbs += t.sumAbsSMi;
+        typeRoll.set(t.type, cur);
+      }
+      if (agg.maxAbsDeltaSPerMi > worstArc.maxAbs) {
+        worstArc = {
+          label: arcStr(a),
+          maxAbs: agg.maxAbsDeltaSPerMi,
+          cause: agg.maxAbsDeltaDays.map((d) => `${d.type} "${d.subLabel ?? ''}"`).slice(0, 2).join(' · '),
+        };
+      }
+
+      const anc = cmp.anchorRead.anchors;
+      const totalLegacyMi = cmp.legacyWeeks.reduce((s, w) => s + w.weeklyMi, 0);
+      const totalCanonMi = cmp.canonicalWeeks.reduce((s, w) => s + w.weeklyMi, 0);
+      rows.push(
+        `${arcStr(a).padEnd(46)} T ${mmss(cmp.legacy.thresholdSecPerMi)}→${mmss(anc.thresholdSecPerMi)} `
+        + `I ${mmss(cmp.legacy.intervalSecPerMi)}→${mmss(anc.intervalSecPerMi)} `
+        + `MP ${mmss(cmp.legacy.marathonSecPerMi)}→${mmss(anc.marathonSecPerMi)}${cmp.legacy.marathonAtGoalPace ? '(goal)' : ''} `
+        + `| ${String(agg.pricedDays).padStart(3)}d ${agg.pricedMi.toFixed(0).padStart(4)}mi `
+        + `mean|Δ|${d3(agg.meanAbsDeltaSPerMi)} volWt${d3(agg.volumeWeightedMeanAbsSPerMi)} MAX${d3(agg.maxAbsDeltaSPerMi)} `
+        + `| vol ${totalLegacyMi.toFixed(0)}→${totalCanonMi.toFixed(0)}mi struct ${cmp.structural.length} hr ${agg.hrDivergences} dist ${agg.totalMiDivergences}`,
+      );
+    }
+
+    console.log(`\n══ ARCHETYPE CORPUS · ${compared} archetypes compared (${skipped} skipped, stride ${STRIDE} of ${all.length}) ══`);
+    for (const r of rows) console.log('  ' + r);
+
+    console.log('\nROLLED UP BY DAY TYPE (the long runs carried 93% of the divergence on the owner\'s block — they cannot be omitted here):');
+    const rolled = [...typeRoll.entries()].sort((a, b) => b[1].sumAbs - a[1].sumAbs);
+    for (const [type, v] of rolled) {
+      console.log(
+        `  ${type.padEnd(18)} ${String(v.days).padStart(5)} days ${v.mi.toFixed(0).padStart(7)} mi `
+        + `· Σ|Δ|×mi ${v.sumAbs.toFixed(0).padStart(8)} s·mi · vol-weighted mean |Δ| ${v.mi > 0 ? (v.sumAbs / v.mi).toFixed(1) : '-'} s/mi`,
+      );
+    }
+    console.log(`\nWORST SINGLE ARCHETYPE: ${worstArc.label || '(none)'} · MAX |Δ| ${worstArc.maxAbs.toFixed(0)} s/mi · ${worstArc.cause}`);
+    console.log(`STRUCTURAL DIFFS across the slice: ${structuralTotal}`);
+    console.log(`ARCHETYPES WITH ANY hr_cap_bpm DIVERGENCE: ${hrDivergentArcs}`);
+    console.log(`ASYMMETRIC-NULL DAYS (priced on one leg only): ${asymmetric}`);
+
+    // ── LIVENESS · a sweep that compared nothing must not report clean ───────
+    expect(compared, 'the archetype slice compared nothing — the corpus is not reaching the pricing layer').toBeGreaterThan(20);
+    // ── DEFECTS ON EITHER SIDE ──────────────────────────────────────────────
+    expect(hrDivergentArcs, 'hr_cap_bpm moved on some archetype · it is a function of lthr/maxHr only').toBe(0);
+    expect(asymmetric, 'some day is priced on one leg and not the other (Rule 11)').toBe(0);
+  }, 180_000);
 });

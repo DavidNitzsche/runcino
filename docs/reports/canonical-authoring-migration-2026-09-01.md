@@ -1,4 +1,260 @@
-# Canonical authoring migration — inventory, shadow mechanism, real diffs
+# Canonical authoring migration
+
+> **CORRECTED AND SUPERSEDED, 2026-09-01 (second pass).** Everything from
+> "Original report" down is the SHADOW-ONLY branch report, kept verbatim as the
+> record of how this arrived. The independent audit
+> (`docs/reports/independent-coaching-system-audit-2026-09-01/A-authoring-migration.md`)
+> found five errors in it, all of them aggregation errors rather than mechanism
+> errors. Each is corrected below, with the number that replaces it. **Read
+> this section, not the original, for what is true now.**
+
+## 0 · What changed since the original report
+
+The original report's own conclusion — *"do NOT switch initial authoring over"*
+— has been acted on and then closed. Authoring **is** canonical as of
+`AUTHORING-CANONICAL-1`: `composePlan`, `composeMaintenancePlan`,
+`composeRecoveryPlan`, `persistComposedPlan` and `loadGeneratorInputs` price
+every zone from `resolvePrescribedPaceAnchors`, the same seam
+`recompute-paces.ts` and `reanchor-plan.ts` already used. The entire
+goal-to-training-pace class is deleted, not migrated.
+
+So the *direction* of the comparison has inverted: the canonical leg is now
+what ships and the LEGACY leg is the reconstruction. That is stated in
+`authoring-shadow-compare.ts`'s header, along with what the reconstruction
+reproduces exactly (a fresh authoring) and what it does not (a mid-block
+rebuild, where the deleted goal blend actually moved a pace — so every figure
+below **understates** the change on that path).
+
+## 1 · The five corrections
+
+### 1.1 The largest divergence is MARATHON PACE, not a cruise-interval approximation
+
+The original §4 said the largest single-day divergence was *"+23s/mi (two
+hill-repeat days whose legacy leg used a cruise-interval `T - 18`
+approximation)"*. That is wrong on the cause and does not reproduce on the
+value.
+
+The mechanism is `spec-builder.ts`'s marathon-pace branch: the legacy path
+took `resolveMarathonPace({tPaceSec, easyAnchorTSec, goalPaceSPerMi})`, which
+returns the **goal pace** whenever it lands inside the marathon zone and
+otherwise falls to a flat **T+18 population offset**. Canonical takes
+`anchors.marathonSecPerMi` — threshold capacity carried to 26.2 miles through
+**the runner's own fitted Riegel exponent** (1.087, `personallyEvidenced:
+true`, confidence 0.79). On the owner's block that is **7:29/mi -> 7:43/mi**.
+The canonical number is slower, and it is the honest one; it is also the only
+one of the two that Constitution §G permits, because the other could be the
+goal.
+
+### 1.2 The eleven long runs are the whole story, and they were omitted
+
+The original headlined a **quality-days-only** stress proxy. Long runs are not
+quality days. They carry the majority of the volume-weighted divergence and
+did not appear in any summary.
+
+**Whole-block, all 32 priced days, 364.7 priced miles** (owner, `cim`,
+2026-09-01):
+
+| | |
+|---|---|
+| mean abs delta | **+11 s/mi** |
+| mean signed delta | +2 s/mi |
+| sum(abs delta x mi) | **4,376 s·mi** (signed 2,036) |
+| volume-weighted mean abs delta | **+12 s/mi** |
+| MAX abs delta | **+16 s/mi, on 11 days — every one of them a long run** |
+
+Note the gap between the absolute mean (+11) and the signed mean (+2): a
+signed mean lets a +16 long run and a -11 threshold day cancel, which is how a
+real divergence gets reported as nothing. Every aggregate in the mechanism is
+now computed on the absolute delta with the signed figure printed beside it.
+
+**By day type**, sorted by volume-weighted absolute delta so no group can be
+dropped again:
+
+| type | days | mi | mean delta | sum(abs x mi) |
+|---|---|---|---|---|
+| **long** | 11 | 172.8 | **+16 s/mi** | **2,765** |
+| tempo | 6 | 61.5 | -3 s/mi | 752 |
+| threshold | 5 | 39.2 | -11 s/mi | 439 |
+| intervals | 5 | 34.5 | -7 s/mi | 421 |
+| race | 4 | 51.7 | **0** | **0** |
+| race_week_tuneup | 1 | 5.0 | **0** | **0** |
+
+**By phase** (mean absolute delta): QUALITY 17 days +12 s/mi · RACE-SPECIFIC
+9 days +12 s/mi · TAPER 6 days +10 s/mi. The divergence is flat across the
+block, which is what a *pricing* change looks like and what a calendar ramp
+would not.
+
+### 1.3 The band edges, which the original table printed as "-"
+
+The 45 easy days are the largest single group in the block and carried no
+headline pace, so the original table showed a dash for all of them.
+
+| type | days | legacy band | canonical band | delta (fast edge) |
+|---|---|---|---|---|
+| easy | **45** | 8:31-9:11/mi | 8:22-9:02/mi | **-9 s/mi** |
+| long | 11 | 8:06-8:41/mi | 8:22-8:57/mi | **+16 s/mi** |
+| shakeout | 3 | 9:11-9:41/mi | 8:52-9:22/mi | **-19 s/mi** |
+
+The long-run row is the correction that matters most and it is not a tuning
+change: the legacy block paced **every long run at a band opening 8:06/mi
+against an easy band opening 8:31/mi** — a long run prescribed FASTER than an
+easy day, on a runner whose own doctrine (`spec-builder.ts`'s HR-cap comment)
+says "LONG IS EASY EFFORT, just more volume". Easy and long now share one fast
+edge; long keeps its own narrower width.
+
+### 1.4 The comparison is authoring-vs-authoring, not authoring-vs-what-the-runner-sees
+
+Stated plainly, because the original did not: this compares two AUTHORING
+outputs. On the owner's account the live rows already carry the canonical
+numbers, because the nightly reanchor rewrote them three and a half hours
+after the block was authored.
+
+Verified directly against production on 2026-09-01
+(`plan_workouts`, `pln_9a57561debb776e5`, future rows):
+
+| | live row | canonical authoring | |
+|---|---|---|---|
+| long `pace_target_s_per_mi` | **520** | 520 (8:40/mi) | match |
+| easy band `lo` | **502** | 502 (8:22/mi) | match |
+| shakeout band `lo` | **532** | 532 (8:52/mi) | match |
+
+Authoring and the flex now produce the same numbers for this runner, which is
+the whole point of the migration: there is no longer a window in which the
+plan the runner opens disagrees with the plan the engine believes.
+
+The benefit is concentrated on runners the reanchor never reached — see
+`CANNOT-CONVERGE-1`, which closes that hole separately.
+
+### 1.5 "Zero structural diffs" was guaranteed by construction. It no longer is.
+
+The original compared two legs that shared ONE composition — only
+`buildWorkoutSpec` was re-run — so workout selection, phases, distances and
+week volumes could not differ, and reporting "none" said nothing.
+
+The mechanism now **re-composes the block on both legs** (`composePlan` with a
+legacy-shaped anchor set, then `finalizeComposedPlan`, exactly as the real
+path runs it) and diffs phase, weekly mileage, long-run distance, quality-day
+count, run-day count and the day-type sequence, week by week.
+
+Owner, `cim`: **total block volume 606.5 mi -> 605.5 mi (-1.0 mi)**, **2
+structural diffs**, both half-mile week totals (wk3 49.2 -> 48.7, wk10 55.5 ->
+55) where a slower marathon pace moves a rep-count cap. Phases, long-run
+distances, quality density and day sequences are identical.
+
+That number is worth stating carefully, because the first run of the new
+mechanism reported **-35.3 mi** and it was wrong: the canonical leg arrived
+finalized (from `composeForUser`) and the legacy leg did not. Comparing a
+finalized composition against a raw one measured the missing pass, not the
+migration. Both legs now run `finalizeComposedPlan`.
+
+## 2 · What the mechanism cannot fail on (Rule 22)
+
+Written here as well as in the file header, because the original report had no
+such section and its "zero structural diffs" headline is what that omission
+costs:
+
+- **It cannot say which side is right.** It measures. The argument for the
+  canonical side is §1.1-1.3 and it is one reading for a human to weigh.
+- **The legacy leg reproduces a FRESH authoring exactly and a mid-block
+  rebuild not at all.** On a rebuild the deleted blend moved the prescribed
+  threshold up to 20 s/mi toward the goal at zero demonstrated progress, so
+  every figure here understates that path.
+- **The legacy structural leg is not a byte-legacy composition.** It re-runs
+  `composePlan` with legacy PRICES so that selection, trajectory caps and MP
+  sizing see the legacy numbers; the legacy leg's day SPECS come from the real
+  legacy builder (`anchors: null`).
+- **The DB corpus is four accounts**, one evidence-rich and three cold-start.
+  The archetype corpus covers the shape space and reaches the canonical layer
+  for the first time — but a synthetic runner has no pace corpus and no
+  durability evidence, so it can never exercise the DIRECT rungs or the
+  runner's own endurance exponent, which is the largest divergence on a real
+  account.
+- **A silent skip is now a failure.** `describe.skipIf(!RO)` reported green
+  with no database. An always-running liveness block states whether the
+  DB-backed comparison ran and fails unless `ALLOW_AUDIT_SKIP=1` acknowledges
+  the gap deliberately.
+
+## 3 · The other three real accounts
+
+| account | threshold sourceMode | legacy T | canonical T | mean abs delta | vol-wt mean | structural | hr | distance_mi |
+|---|---|---|---|---|---|---|---|---|
+| `qa-phone-onboard` | `user_prior` 0.15 | 7:56/mi | **8:39/mi** | +66 s/mi | +72 s/mi | 7 | 0 | 1 |
+| `qa-phone-verify` | `population_prior` 0.10 | 10:42/mi | 10:42/mi | (0 priced days) | | 15 | 0 | 0 |
+| `qa-race` | `user_prior` 0.15 | 9:23/mi | 9:23/mi | +53 s/mi | +53 s/mi | 22 | 0 | 0 |
+| `apple-review` | `user_prior` 0.15 | 8:23/mi | 8:23/mi | +26 s/mi | +29 s/mi | 0 | 0 | 0 |
+
+Two things to read off this table.
+
+**The cold-start gap the audit measured is closed or nearly so.** On `main`
+the canonical leg answered **10:42/mi — the flat VDOT-30 floor — for every one
+of these accounts**, against a legacy 7:42-7:56. `apple-review` and `qa-race`
+now agree with the legacy path exactly; `qa-phone-onboard`'s residual is 43
+s/mi and it is DELIBERATE: that account carries a typed PR, the typed-PR rung
+consumes it at `USER_PR_MAX_WEIGHT` (0.60) shrunk toward the mileage prior,
+and legacy's `PARITY-1` consumed it raw. The audit measured that residual at
+101 s/mi; conservatism accounts for what remains.
+
+**Every remaining divergence on these accounts is the long-run band**, the
+same +53 s/mi correction as §1.3, and the structural counts are dominated by
+the two maintenance blocks whose week shapes legitimately differ once the
+easy band moves.
+
+## 4 · The archetype corpus (Rule 15)
+
+`_sweep_allusers`' 11,687 archetypes could not reach the canonical pricing
+layer at all before this pass — `resolvePrescribedPaceAnchors` needs a `users`
+row. `syntheticPaceAnchors` runs the identical pure capacity cores on an
+archetype's own evidence fields, so the corpus reaches it now.
+
+A deterministic stride-97 slice (42 archetypes compared, spanning 5K to
+marathon, beginner to advanced_plus, 0 to 45 mi/wk):
+
+| type | days | mi | sum(abs x mi) | vol-weighted mean abs delta |
+|---|---|---|---|---|
+| **long** | 572 | 5,636 | **309,986** | **55.0 s/mi** |
+| tempo | 175 | 1,206 | 4,025 | 3.3 s/mi |
+| threshold | 62 | 412 | 1,180 | 2.9 s/mi |
+| intervals | 91 | 486 | 707 | 1.5 s/mi |
+| race_week_tuneup | 66 | 297 | 75 | 0.3 s/mi |
+| **race** | 42 | 525 | **0** | **0.0 s/mi** |
+
+Worst single archetype: MAX absolute delta **55 s/mi**, on long runs. **2**
+structural diffs across the whole slice. **0** archetypes with any
+`hr_cap_bpm` divergence. **0** asymmetric-null days.
+
+The corpus confirms what the owner's block shows: the migration is a
+long-run-band correction plus a marathon-pace correction, and it does not move
+race rows, HR guidance, warm-ups, cool-downs or structure.
+
+## 5 · What did NOT move
+
+Asserted, not printed — a nonzero count on either of the first two fails the
+suite:
+
+- **`hr_cap_bpm`**: 0 divergences, on the owner and on all four accounts and
+  across the archetype slice. It is a pure function of LTHR and HRmax and the
+  anchors never reach it.
+- **The race row**: 0 s/mi on every race and race-week tune-up row. Race
+  pricing is Phase 3's and this pass leaves it byte-identical, including the
+  provisional-anchor gate that decides whether `achievableRaceTarget` bounds a
+  goal at all. (An earlier version of the compare passed the canonical VDOT
+  unconditionally and reported a 109 s/mi race "divergence" that no shipped
+  plan has — a harness measuring itself.)
+- **Warm-up / cool-down**: 1.96 mi / 1.74 mi on both legs.
+- **Persisted `distance_mi`** (the spec's summed total, pace-dependent through
+  the rep-count cap, and named by the audit as unmeasured): 0 divergences on
+  the owner, 1 on `qa-phone-onboard`, 0 elsewhere.
+
+---
+
+# Original report (2026-09-01, first pass) — HISTORICAL
+
+Everything below is the branch report as written, before the corrections
+above. Its §4 largest-divergence claim, its quality-only stress proxy, its
+band-edge dashes, its "authoring vs the runner's plan" framing and its "zero
+structural diffs" are all superseded by §1.
+
+## (original title) Canonical authoring migration — inventory, shadow mechanism, real diffs
 
 **Scope.** `web-v2/lib/plan/generate.ts` (14,236 lines) still authors every
 plan through the legacy VDOT cascade (`lib/training/vdot.ts`) — zero

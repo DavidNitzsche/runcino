@@ -72,12 +72,20 @@
  * taper are FIXED once authored; pace and distance flex on the weeks not yet
  * run."
  *
- * STILL NOT WIRED: `generate.ts`'s full-block authoring path. A brand-new block
- * is still composed off the old cascade, and it is scoped as its own pass for
- * the same reason this one was scoped separately from the capacity layer. That
- * is a MIGRATION, not a second truth (Constitution §8): the flex runs daily and
- * is the LAST writer on every unrun day, so a block authored on the old numbers
- * converges onto these ones and no surface ever shows two answers at once.
+ * FULLY WIRED as of 2026-09-01 (AUTHORING-CANONICAL-1). This paragraph used to
+ * read "STILL NOT WIRED: `generate.ts`'s full-block authoring path", and it was
+ * the honest statement of a scoped migration — but a header asserting an
+ * invariant nothing verifies is documentation rather than enforcement (Rule
+ * 20's prose corollary), and this one would have gone stale silently.
+ *
+ * `composePlan`, `composeMaintenancePlan`, `composeRecoveryPlan`,
+ * `persistComposedPlan` and `loadGeneratorInputs` now price every zone from
+ * `composePaceAnchors` through `load-prescription-anchors.ts`, and the whole
+ * goal-to-training-pace class the old cascade carried is DELETED rather than
+ * migrated. Authoring and the flex therefore agree by construction, which is
+ * stronger than the convergence argument this paragraph used to make: there is
+ * no longer a window in which a block is priced by one brain and rewritten by
+ * another. `scripts/check-goal-pace-leak.sh` is what holds it.
  *
  * `_prescription_resolver.audit.test.ts` remains the shadow-mode report and is
  * still read-only — it is now the before/after record for this promotion rather

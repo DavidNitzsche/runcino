@@ -8,10 +8,16 @@
  * concretely by `docs/reports/pace-shadow-compare-2026-09-01.md` §3 as a
  * "cheap guard... not built tonight": a shadow-compare record must be able to
  * say whether the plan it just read has actually been through the canonical
- * capacity resolvers since it was authored, or whether it is still pricing
- * off `lib/plan/generate.ts`'s legacy VDOT cascade (32 call expressions, zero
- * references to `capacity-resolver.ts`, confirmed by that report as of
- * 2026-09-01 — generate.ts is NOT migrated yet).
+ * capacity resolvers since it was authored, or whether it is still pricing off
+ * `lib/plan/generate.ts`'s legacy VDOT cascade.
+ *
+ * WHEN THIS FILE WAS WRITTEN that was the normal case: authoring ran the
+ * cascade and only the nightly flex was canonical. AUTHORING-CANONICAL-1
+ * (2026-09-01) closed it, so a plan authored from here on is canonical at
+ * composition time and says so in `authored_state.pace_authoring`. The guard
+ * stays, and matters more rather than less: every plan authored BEFORE that
+ * date is still on the old prices until something re-anchors it, and the
+ * fifth state below exists because for most of them nothing ever would.
  *
  * ── FOUR STATES, NOT A BOOLEAN ──────────────────────────────────────────────
  *
@@ -345,8 +351,15 @@ export const CONVERGENCE_ALERT_AFTER_HOURS = 24;
 export async function alertOnUnconvergedPlan(
   userUuid: string,
 ): Promise<AuthoringReanchorConvergenceState | null> {
-  const c = await resolveAuthoringReanchorConvergence(userUuid).catch(() => null);
-  if (c == null || !c.readable) return null;
+  // NO `.catch(() => null)` HERE, deliberately (Rule 11 / check-coercion).
+  // `resolveAuthoringReanchorConvergence` already catches its own reads and
+  // returns an UNREADABLE shape, so the only thing an outer catch could
+  // swallow is a genuine programming error — and it would land as the same
+  // `null` a healthy "nothing to alert about" produces. The caller
+  // (`snapshot-projections`) wraps this in its own try/catch and LOGS, which
+  // is where a failure belongs.
+  const c = await resolveAuthoringReanchorConvergence(userUuid);
+  if (!c.readable) return null;
   if (c.state !== 'CANNOT_CONVERGE_NO_CANONICAL_PRICING') return c.state;
 
   const { raiseAlert } = await import('@/lib/ops/alerts');
