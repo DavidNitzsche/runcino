@@ -1027,6 +1027,36 @@ struct TodayAfterV5: View {
         switch d {
         case .sections:
             RepBreakdownV5(title: shape.breakdownTitle(.sections), pieces: sectionPieces)
+        /* MILES ONLY ON *THIS* SCREEN, and the strides come from `postRun`.
+         *
+         * `.milesAndSections` says the session is a steady body with pieces
+         * appended — an easy run with strides. Run Detail draws both, because
+         * its `phase_breakdown` carries each phase's own LABEL, its pace shape
+         * and its heart rate. This screen's `routePhases` carries only
+         * `{mi, sec, type, verdict, status_label}`: no label, because its
+         * stated job is colouring the route line. `sectionPieces` therefore
+         * names every work phase "Interval N", which over six 20-second
+         * accelerations would be seven intervals that the plan never
+         * prescribed — the same off-by-one, in the runner's own words, on the
+         * screen he sees first.
+         *
+         * So the pieces are not drawn from that payload. The strides reach
+         * this screen through `PostRunLearnedV5`, which both post-run screens
+         * already share and which reads the canonical composer's own answer.
+         * Enriching `routePhases` with labels and paces is a real follow-up
+         * and an additive wire change; until then this refuses rather than
+         * mislabels. */
+        case .milesAndSections:
+            MileBreakdownV5(title: shape.breakdownTitle(.miles),
+                            pieces: milePieces,
+                            paceLine: (shape.showsPerMilePace && !routeCaptionAlreadyShown)
+                                ? RouteMapView.paceColumnCaption(splits: model.routeSplits,
+                                                                 phases: routePhaseSamples)
+                                : nil,
+                            paceColor: MileBreakdownV5.paceRamp(splits: model.routeSplits,
+                                                                phases: routePhaseSamples),
+                            allowsElevation: shape.showsElevation,
+                            allowsPace: shape.showsPerMilePace)
         case .miles:
             MileBreakdownV5(title: shape.breakdownTitle(.miles),
                             pieces: milePieces,
