@@ -21,7 +21,7 @@ re-cut it.
 | Stage | Scope | State |
 |---|---|---|
 | 1 | Finish and lock the coaching brain | **Landed and deployed — but scored INCOMPLETE, see 13** |
-| 2 | Plan-generation contracts | **Partial on main** · 5 of 9 brief phases; 4 in flight |
+| 2 | Plan-generation contracts | **In progress** · 6 of 9 brief phases done, 3 in flight |
 | 3 | Coaching explanation contract | Not started |
 | 4 | Post-run experience | Not started |
 | 5 | Cross-surface contract tests | Not started |
@@ -112,10 +112,32 @@ overturn it:
 3. **Ladder and cutdown sessions** get per-step paces as additive wire keys. An
    older watch ignores unknown keys and behaves exactly as it does today.
 
+**Since then, both of the rulings above have landed**, and one of them came back
+better than I ruled it.
+
+**D2 is implemented.** A new module owns the race and long-run collision. It
+found and read a doctrine column nothing in this engine had ever read, the
+return-to-long window, and it cut the long run continuously across that window
+rather than standing it down at a threshold. It also found that the code it
+replaced was itself a cliff: it stood a long down entirely inside the wrong
+column and left it untouched one day later. Every decision is recorded on the
+plan and restated against the block that ships, which caught a real mismatch
+immediately, a cut recorded as 18 miles over a 15.5 mile day.
+
+**D3 is implemented, and my ruling was superseded on a better argument.** I
+ruled that per-step ladder paces should be additive wire keys, reasoning that an
+older watch would ignore what it did not know. The implementation needs no new
+key at all: the offset resolves to a number inside a field the spec already
+carries, so the watch receives exactly the flat phase list it has always
+received and a build that has never heard of a ladder grades the session
+identically. That is strictly better than additive and I am recording it as a
+correction rather than quietly accepting it. Flat ladder sessions across the
+archetype matrix fell from 2,581 to 497, and the remainder DECLINE rather than
+guess where the cited rows state no descent.
+
 **Still open in Stage 2**, in flight now: strategy-contract extraction, the
-`layoutWeek` decomposition out of the `generate.ts` monolith, combined-stress
-and placement validation, the proposed-versus-earned progression join, and the
-golden-runner corpus.
+`layoutWeek` decomposition out of the `generate.ts` monolith, the
+proposed-versus-earned progression join, and the golden-runner corpus.
 
 ## 5 · A Rule 16 finding closed during the wait
 
