@@ -9,22 +9,27 @@ claim either carries its evidence or is marked as not established.
 
 ## 1 · The verdict, first
 
-**The half of the coaching brain that PRICES your training is sound and
-verified end to end. The halves that decide whether training is SAFE and whether
-it should CHANGE are still not owned by anyone.**
+**All five stages are complete, verified and deployed.** Fifty-nine commits to
+`main`, 8,639 tests passing, eighteen gates green on every push, and every
+commit that mattered confirmed as a successful Railway deployment rather than a
+successful `git push`.
 
-Stages 1 to 3 of the directive are complete, verified and deployed. Stages 4 and
-5 are covered in section 12. The brain was independently scored against your own
-completion criterion and came back INCOMPLETE — eight of eighteen canonical
-coaching questions had two live owners. Four of those are now closed, two are
-gated, one was retired as not real, one is half done, and two are waiting on a
-decision from you.
+**The half of the coaching brain that PRICES your training is sound and verified
+on your screen. The halves that decide whether training is SAFE and whether it
+should CHANGE are still not owned by anyone.**
 
-Along the way, three numbers that were wrong on your phone or in your database
-were corrected, and one sentence the engine has been able to write for weeks
-finally reached the screen it was written for.
+The brain was independently scored against your own completion criterion and came
+back INCOMPLETE — eight of eighteen canonical coaching questions had two live
+owners. Six are now closed or gated, one was retired as not real, one is half
+done, and two are waiting on a decision from you.
 
----
+**Six numbers that were wrong are now right**, and they are the reason to read
+section 7. The largest was your race screen handing you a pace plan for a goal
+it had just refused in prose — thirty-one seconds per mile, thirteen minutes
+across a marathon, in the direction that ends one at mile 18.
+
+**Seven decisions are yours**, listed next. One of them, the plan rebuild,
+changes what you see on your phone; the other six can wait as long as you like.
 
 ## 2 · The seven decisions waiting on you
 
@@ -104,6 +109,13 @@ All nine brief phases, plus the golden-runner corpus and the invariant tests.
 **One phase is an honest first cut and stays labelled as one.** The week-layout
 decomposition names the input at 139 members and extracts one function; seven of
 eight splits are not done and `generate.ts` is still a monolith.
+
+### Stages 4 and 5
+
+Both are complete and each has its own section below, because their findings are
+the sharpest of the night: **12b** for the post-run experience, **12** for the
+cross-surface contract, **12c** for the race pace-plan fix that contract found,
+and **12d** for a defect only rendering could have caught.
 
 ### Stage 3 · the coaching explanation contract
 
@@ -285,6 +297,16 @@ the pace-adrift abort rule authored off the old seed. **Three of your four race
 rows carry a stale abort.** Santa Monica's sits at 466 s/mi against a canonical
 437, twenty-nine seconds loose, which means the rule essentially cannot fire on
 the day it exists for.
+
+**Thirty-one seconds per mile, on your race screen.** `GET /api/v5/race/cim`
+stated a 7:23/mi execution target and prose refusing your 3:00:00, then rendered
+a pace plan averaging 6:52/mi — your goal pace — with its last phase labelled
+"Lock goal pace". Thirteen minutes across a marathon. Full detail in section 12c.
+
+**Ten to twelve seconds per mile, between your wrist and your phone.** The server
+graded every ceiling at a 30 s/mi fallback while your watch used the phase's own
+tolerance, so the grade you saw mid-run and the grade your post-run screens
+recompute disagreed on every easy and every long day. Section 12b.
 
 **Four bpm, on your wrist.** Every threshold row was shipping a work target of
 168 bpm beside its own pass line of 164, because the target and the LTHR were
@@ -484,30 +506,6 @@ cannot fail on a wrong number every surface agrees about, that it cannot see
 Swift, and that it is ONE runner on ONE day — the opposite Rule 15 hole from the
 archetype sweep rather than a smaller one.
 
-## 12c · The race pace-plan fix, and exactly how far it is verified
-
-**Verified, on live production data:** calling `buildRacePacing` with each
-quantity in turn against your real CIM course gives
-
-    BEFORE (goal)    Settle 7:07 · Find rhythm 6:57 · Goal pace   6:48   mean 412 s/mi
-    AFTER  (target)  Settle 7:38 · Find rhythm 7:28 · Target pace 7:19   mean 443 s/mi
-
-**Gated:** the cross-surface contract calls the REAL route handler against your
-account and now asserts the pace plan's distance-weighted mean equals
-`race-outlook.execution.paceSecPerMi` and does NOT equal your goal pace. That
-assertion replaced the registered disagreement, which the ratchet itself forced
-me to delete the moment the fix landed.
-
-**NOT verified:** the race-detail SCREEN. I opened it on the simulator and it
-sat on its loading skeleton. The dev server's own log explains why and it is not
-a defect — that server answered `/api/v5/races` in **54 seconds**, because it is
-a cold Next dev build talking to the production database over the network, and
-the app gives up before it replies. The route was never requested.
-
-So this fix is proved at the payload the phone consumes, and not at the pixels.
-That is a weaker claim than the Today and Block renders in section 5, and it is
-the accurate one.
-
 ## 12b · Stage 4 · the post-run experience
 
 **The brief's most valuable finding was the one about what a run TEACHES**, and
@@ -567,6 +565,30 @@ section 4, and it is worth the contrast.
 
 ---
 
+## 12c · The race pace-plan fix, and exactly how far it is verified
+
+**Verified, on live production data:** calling `buildRacePacing` with each
+quantity in turn against your real CIM course gives
+
+    BEFORE (goal)    Settle 7:07 · Find rhythm 6:57 · Goal pace   6:48   mean 412 s/mi
+    AFTER  (target)  Settle 7:38 · Find rhythm 7:28 · Target pace 7:19   mean 443 s/mi
+
+**Gated:** the cross-surface contract calls the REAL route handler against your
+account and now asserts the pace plan's distance-weighted mean equals
+`race-outlook.execution.paceSecPerMi` and does NOT equal your goal pace. That
+assertion replaced the registered disagreement, which the ratchet itself forced
+me to delete the moment the fix landed.
+
+**NOT verified:** the race-detail SCREEN. I opened it on the simulator and it
+sat on its loading skeleton. The dev server's own log explains why and it is not
+a defect — that server answered `/api/v5/races` in **54 seconds**, because it is
+a cold Next dev build talking to the production database over the network, and
+the app gives up before it replies. The route was never requested.
+
+So this fix is proved at the payload the phone consumes, and not at the pixels.
+That is a weaker claim than the Today and Block renders in section 5, and it is
+the accurate one.
+
 ## 12d · One defect I found by rendering, and could not have found otherwise
 
 Selecting an earlier day on Today moved the LABEL and not the CONTENT. The
@@ -619,6 +641,14 @@ network is usually fast."
   expander also feeds the grader.
 - **`/api/targets/projection` returns four numbers for one race**, three of them
   labelled projection. Section 12, finding 5. Open.
+- **Charts and matched-effort comparison are untouched** — both P1 in the
+  post-run brief.
+- **`beliefTension` never fires** in the new post-run composer, because its
+  loader resolves no current belief.
+- **`loadRunDetail` still lacks a canonical-row predicate**, which is the Rule 14
+  shape that has bitten this project before.
+- **Selecting an earlier day can show the wrong day's session** with no signal
+  (section 12d). Observed, under a slow server.
 - **Three of the five contract disagreements are stale DATA, not code**, and
   decision 1 closes all three. Until then your 09-08 and 09-22 rows continue to
   ask for a heart rate they mark as a fail, and three race rows continue to
@@ -638,4 +668,6 @@ network is usually fast."
 | `stage3-coaching-voice.md` | Stage 3's own handback |
 | `second-owners-closed.md` | B1, B5, B10 |
 | `blockers-b2-b7.md` | B2 and B7 |
-| `renders/` | Screenshots, including the verified 2026-09-02 Today |
+| `stage4-post-run.md` | Stage 4's own handback |
+| `stage5-cross-surface.md` | Stage 5's own handback, with all sixteen falsifications |
+| `renders/` | Screenshots: the verified Today, Block and Races, and the stale-day defect |
