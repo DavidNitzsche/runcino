@@ -17,6 +17,11 @@
 //  reimplements the router's decisions: the archetypes below build a workout,
 //  the driver rolls the clock, and the shipping view decides what to draw.
 //
+//  IT IS SILENT BY DEFAULT (2026-09-01). Running the real engine means running
+//  the real voice, and a warped session speaks a mile split every few seconds
+//  out of the host machine's speakers. Pass `-speak` to hear it; do not pass it
+//  to review a board. See `SessionSim.speak`.
+//
 import SwiftUI
 
 enum SessionSim {
@@ -39,6 +44,24 @@ enum SessionSim {
     static var mockHr: Int? {
         let a = ProcessInfo.processInfo.arguments
         return a.firstIndex(of: "-hr").flatMap { $0 + 1 < a.count ? Int(a[$0 + 1]) : nil }
+    }
+
+    /// `-speak` · let the session TALK. Off by default, and that default is
+    /// the whole point.
+    ///
+    /// THIS HARNESS RUNS THE REAL ENGINE, which is its value and was also its
+    /// hazard: the engine says every mile split through `SpokenCues`, and at
+    /// `-warp 30` a mile passes about every seven seconds. Driving a marathon
+    /// to reach a mile-10 rule therefore reads "mile one, mile two…" out of
+    /// the machine's speakers for the whole run. That happened on 2026-09-01,
+    /// out loud, on the owner's machine, four times, while the thing under
+    /// review was a BOARD — a picture, needing no audio at all.
+    ///
+    /// So the harness is silent unless silence is the thing being reviewed.
+    /// Spoken cues are verified the way everything else here is: by asserting
+    /// the cue TEXT and its trigger in a test, and reading the payload.
+    static var speak: Bool {
+        ProcessInfo.processInfo.arguments.contains("-speak")
     }
 
     /// `-pacedrift <n>` · how far the mock's pace wanders, s/mi.
@@ -219,6 +242,12 @@ struct SessionSimView: View {
                 // HR-SEMANTICS-2 · `-hr <n>`, so a safety rule can be breached.
                 if let hr = SessionSim.mockHr { tracker.mockCenterHr = hr }
                 if let d = SessionSim.mockPaceDrift { tracker.mockPaceDriftS = d }
+                // MUTE FIRST, START SECOND. `SpokenCues.enabled` reads this key
+                // on every call, so writing it before `start()` silences the
+                // opening cue too. See `SessionSim.speak`.
+                if !SessionSim.speak {
+                    UserDefaults.standard.set(false, forKey: "spokenCues")
+                }
                 engine.start()
             }
     }

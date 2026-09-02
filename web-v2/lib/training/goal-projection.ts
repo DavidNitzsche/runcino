@@ -1264,7 +1264,11 @@ export function judgeTestPointExecution(input: {
   //     mixed, because a mean of 435 over a 425 and a 445 is not "on".
   const g = input.grade;
   if (g && g.basis === 'watch-phases' && g.work.graded > 0) {
-    const actualS = g.work.paceSPerMi ?? (watchWorkS != null && watchWorkS > 0 ? Math.round(watchWorkS) : null);
+    /* The canonical work mean, and no fallback. `g.work.paceSPerMi` is the
+     * duration-weighted mean across the graded work phases; when it is null
+     * the resolver could not measure the work, and reaching past it to the
+     * SQL AVG would answer a question the grade already declined (Rule 11). */
+    const actualS = g.work.paceSPerMi;
     return {
       actualS,
       verdict: hasTarget

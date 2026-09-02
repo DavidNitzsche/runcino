@@ -993,8 +993,14 @@ function num(v: unknown): number | null {
 }
 
 /** A finite POSITIVE number, or null. For quantities where zero is not a
- *  measurement (distance, duration, pace). */
-function pos(v: unknown): number | null {
+ *  measurement (distance, duration, pace).
+ *
+ *  EXPORTED 2026-09-01 for `lib/execution/verdict.ts`, which parses the same
+ *  stored phases and needs the same answer for the same fields. A second copy
+ *  there would be a second definition of "is this a measurement" over one
+ *  payload (Rule 16) — and it is exactly what the coercion ratchet counted,
+ *  correctly, because two of them is one too many. */
+export function pos(v: unknown): number | null {
   const n = num(v);
   return n != null && n > 0 ? n : null;
 }

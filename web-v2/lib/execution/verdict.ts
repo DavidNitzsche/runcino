@@ -81,6 +81,10 @@ import {
   type SessionGrade,
   type WirePhaseVerdict,
 } from '@/lib/training/execution-semantics';
+// `pos` is run-shape's own "a finite positive number, or null", imported as
+// `num` rather than re-written: it answers the same question about the same
+// fields of the same payload (Rule 16).
+import { hrToNum, pos as num, runPhases, type NormalizedPhase, type RunData } from '@/lib/runs/run-shape';
 
 /* ══════════════════════════════ 1 · the shape ═══════════════════════════ */
 
@@ -148,38 +152,23 @@ export interface WorkoutVerdict {
 
 /* ══════════════════════════════ 2 · parsing ═════════════════════════════ */
 
-const PHASE_TYPES: readonly string[] = ['warmup', 'work', 'recovery', 'cooldown'];
-
-/** Positive finite number or null. `Number(null)` is 0 and a 0 pace is an
- *  absence, so this is the one coercion every field below goes through. */
-function pos(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : null;
+/** The phase type as older payloads spell it, folded to the four the grader
+ *  knows. `run-shape.ts#runPhases` returns null for anything outside the four;
+ *  these five are older spellings of a WORK phase that some rows still carry,
+ *  and reading them as `unknown` would drop real reps out of the work set. */
+function phaseType(v: unknown): PhaseType | 'unknown' {
+  const t = String(v ?? '').toLowerCase();
+  if (t === 'warmup' || t === 'work' || t === 'recovery' || t === 'cooldown') return t as PhaseType;
+  if (t === 'rep' || t === 'tempo' || t === 'threshold' || t === 'intervals' || t === 'race') return 'work';
+  return 'unknown';
 }
 
-/** A heart rate a heart can produce, or null. Same bound `run-shape.ts`'s
- *  `hrToNum` applies — a strap sentinel is not a reading. */
-function hr(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) && n >= 30 && n <= 230 ? Math.round(n) : null;
-}
-
-/** Non-negative integer or null — the tolerance counters are seconds and a
- *  zero here is a real "graded, none of it in band". */
+/** A non-negative counter, or null. Zero is a REAL reading here — a rep the
+ *  device graded and found entirely outside the band — so it survives. */
 function counter(v: unknown): number | null {
   if (v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
-}
-
-/** The phase type as the wire spells it, folded to the four the grader knows.
- *  `rep` / `tempo` / `threshold` / `intervals` / `race` are older spellings of
- *  a work phase that some payloads still carry. */
-function phaseType(v: unknown): PhaseType | 'unknown' {
-  const t = String(v ?? '').toLowerCase();
-  if (PHASE_TYPES.includes(t)) return t as PhaseType;
-  if (t === 'rep' || t === 'tempo' || t === 'threshold' || t === 'intervals' || t === 'race') return 'work';
-  return 'unknown';
 }
 
 /**
@@ -235,15 +224,27 @@ export function gradeStoredPhases(
   sessionClass: SessionClass,
   opts: GradeOptions = {},
 ): WorkoutVerdict {
-  const list = phasesFromCompletion(raw);
+  /* THE NUMERIC CORE COMES FROM `run-shape.ts#runPhases`, not from a second
+   * parser written here.
+   *
+   * That module already owns "what is in a stored phase" — it knows the three
+   * eras (watch, treadmill, phone), which fields each populates, that a
+   * treadmill phase carries no verdict and no target, and that a heart rate
+   * outside 30-230 is a strap sentinel rather than a reading. Re-deriving any
+   * of that here would be a second answer to a question that has an owner
+   * (Rule 16), and the fields it does not carry — the ones below — are read
+   * off the same element by position. */
+  const list = phasesFromCompletion(raw)
+    .filter((el): el is Record<string, unknown> => !!el && typeof el === 'object' && !Array.isArray(el));
+  const normalized: NormalizedPhase[] = runPhases({ phases: list } as unknown as RunData);
   const classKnown = sessionClass !== 'other';
 
-  const phases: GradedPhase[] = list.map((el, i): GradedPhase => {
-    const p = (el && typeof el === 'object' && !Array.isArray(el) ? el : {}) as Record<string, unknown>;
-    const type = phaseType(p.type);
+  const phases: GradedPhase[] = normalized.map((n, i): GradedPhase => {
+    const p = list[i] ?? {};
+    const type: PhaseType | 'unknown' = n.type ?? phaseType(p.type);
     const gradable: PhaseType = type === 'unknown' ? 'work' : type;
-    const target = pos(p.targetPaceSPerMi);
-    const avg = pos(p.actualPaceSPerMi);
+    const target = n.targetPaceSPerMi;
+    const avg = n.actualPaceSPerMi;
     const hasTarget = target != null;
     const byEffort = p.isStrideSegment === true;
 
@@ -262,7 +263,7 @@ export function gradeStoredPhases(
             : gradable === 'warmup' || gradable === 'cooldown' ? 'ceiling'
             : 'window');
 
-    const wireTol = pos(p.tolerancePaceSPerMi);
+    const wireTol = num(p.tolerancePaceSPerMi);
     const toleranceSec: number | null =
       shape === 'none' || shape === 'effort' ? null
       : wireTol
@@ -271,7 +272,7 @@ export function gradeStoredPhases(
             : shape === 'ceiling' ? EASY_PHASE_TOLERANCE_S_PER_MI
             : sessionToleranceSec('other'));
 
-    const completed = p.completed === false ? false : true;
+    const completed = n.completed !== false;
 
     // ONE GRADE, ON THE RESOLVED SHAPE. `gradeWorkPhase` for a window,
     // `gradeCeilingPhase` for a ceiling, nothing for the rest — the same two
@@ -284,32 +285,27 @@ export function gradeStoredPhases(
           ? gradeCeilingPhase({ ceilingSecPerMi: target, avgSecPerMi: avg, completed })
           : 'not_graded';
 
-    const storedRaw = typeof p.verdict === 'string' ? p.verdict : null;
-    const storedVerdict = storedRaw != null && (WIRE_PHASE_VERDICTS as readonly string[]).includes(storedRaw)
-      ? (storedRaw as WirePhaseVerdict)
-      : null;
-
-    const idx = Number(p.index);
     return {
-      index: Number.isFinite(idx) ? idx : i,
+      index: n.index,
       type,
-      label: typeof p.label === 'string' ? p.label : (typeof p.name === 'string' ? p.name : null),
+      label: n.label,
       shape,
       targetSecPerMi: target,
       toleranceSec,
       avgSecPerMi: avg,
-      actualDurationSec: pos(p.actualDurationSec ?? p.durationSec ?? p.duration_sec),
-      actualDistanceMi: pos(p.actualDistanceMi ?? p.distanceMi ?? p.distance_mi),
-      targetDurationSec: pos(p.targetDurationSec),
-      targetDistanceMi: pos(p.targetDistanceMi),
-      avgHr: hr(p.avgHr ?? p.avg_hr),
-      maxHr: hr(p.maxHr ?? p.max_hr),
-      avgCadence: pos(p.avgCadence ?? p.avg_cadence),
+      actualDurationSec: n.actualDurationSec,
+      actualDistanceMi: n.actualDistanceMi,
+      targetDurationSec: num(p.targetDurationSec),
+      targetDistanceMi: num(p.targetDistanceMi),
+      avgHr: n.avgHr,
+      maxHr: hrToNum(p.maxHr ?? p.max_hr),
+      avgCadence: num(p.avgCadence ?? p.avg_cadence),
       completed,
       isFinishSegment: p.isFinishSegment === true,
       verdict,
       statusLabel: phaseVerdictLabel(verdict, shape),
-      storedVerdict,
+      // The DEVICE'S word, already whitelisted by `run-shape.ts`.
+      storedVerdict: n.verdict,
       timeInToleranceSec: counter(p.timeInToleranceSec),
       timeOutOfToleranceSec: counter(p.timeOutOfToleranceSec),
     };
@@ -345,9 +341,12 @@ export function gradeStoredPhases(
     landed: workPhases.filter((p) => p.verdict === 'hit' || p.verdict === 'fast').length,
     fellShort: workPhases.filter((p) => p.verdict === 'slow').length,
     incomplete: workPhases.some((p) => p.verdict === 'incomplete'),
-    paceSPerMi: sec > 0 && mi > 0 ? Math.round(sec / mi) : null,
-    hrAvg: hrWeight > 0 ? Math.round(hrW / hrWeight) : null,
-    distanceMi: mi > 0 ? Math.round(mi * 100) / 100 : null,
+    // `|| null` rather than a `> 0 ?` ternary: every one of these is an
+    // absence when it comes out zero (no work time, no reading, no distance),
+    // never a measured zero, so the house idiom says what it means.
+    paceSPerMi: (sec > 0 && mi > 0 ? Math.round(sec / mi) : 0) || null,
+    hrAvg: Math.round(hrW / (hrWeight || 1)) * (hrWeight > 0 ? 1 : 0) || null,
+    distanceMi: Math.round(mi * 100) / 100 || null,
   };
 
   return {
@@ -379,7 +378,7 @@ export interface ResolveWorkoutVerdictArgs {
 export function resolveWorkoutVerdict(args: ResolveWorkoutVerdictArgs): WorkoutVerdict {
   const spec = args.spec && typeof args.spec === 'object' ? args.spec : null;
   const sessionClass = classifySession(String(args.type ?? ''), spec);
-  const restS = spec ? pos(spec.rep_rest_s) : null;
+  const restS = spec ? num(spec.rep_rest_s) : null;
   return gradeStoredPhases(args.phases, sessionClass, { prescribedRecoverySec: restS });
 }
 
