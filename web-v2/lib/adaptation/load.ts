@@ -33,6 +33,7 @@ import {
   runMaxHr,
 } from '@/lib/runs/run-shape';
 import { computeTrainingForm } from '@/lib/coach/training-form';
+import { resolveSafety } from '@/lib/safety/load-safety';
 import { computeRecoveryPhase } from '@/lib/coach/recovery-phase';
 import { loadEasyDiscipline, HEAT_CONFOUND_TEMP_F } from '@/lib/coach/easy-discipline';
 import { computeAerobicDecoupling } from '@/lib/training/aerobic-decoupling';
@@ -156,8 +157,7 @@ export async function loadAdaptationInput(
     weekly,
     readiness,
     downgrades,
-    niggle,
-    injury,
+    safety,
     form,
     recovery,
     easy,
@@ -319,25 +319,27 @@ export async function loadAdaptationInput(
       ).rows[0],
     ),
 
-    quiet('niggles', async () =>
-      (
-        await pool.query<{ severity: number | null }>(
-          `SELECT MAX(severity) AS severity FROM niggles
-            WHERE user_uuid = $1 AND status = 'active' AND logged_at >= $2::date`,
-          [userUuid, fromISO],
-        )
-      ).rows[0],
-    ),
-
-    quiet('injuries', async () =>
-      (
-        await pool.query<{ n: string }>(
-          `SELECT COUNT(*)::text AS n FROM runner_injuries
-            WHERE user_uuid = $1 AND resolved_date IS NULL`,
-          [userUuid],
-        )
-      ).rows[0],
-    ),
+    /* SAFETY · CONSUMED, NOT RE-AUTHORED (2026-09-02).
+     *
+     * Two queries used to sit here — `MAX(severity) FROM niggles` and
+     * `COUNT(*) FROM runner_injuries` — making this the fourth independent
+     * author of the safety picture (the 2026-09-02 brain scorecard, row 5).
+     * They are replaced by one call to the canonical owner.
+     *
+     * THE SWAP FIXED TWO LIVE DEFECTS, both of which are why re-typing a
+     * safety query per consumer is not a neutral choice:
+     *
+     *   1. The niggle query filtered `status = 'active'`. `niggles.status` is
+     *      `just_started` / `few_days` / `weeks` (migration 116) and has never
+     *      held the string 'active', so `niggleSeverity` was NULL for every
+     *      runner since it shipped and the `pain` veto could not fire. Rule 15:
+     *      a mechanism nothing can reach is untested, however many rows pass.
+     *   2. `illnessActive` was hard-coded null with the comment "no illness
+     *      signal is captured today". The signal existed the whole time in
+     *      `sick_episodes`; this consumer simply had no reader for it. The
+     *      owner reads it, so the `illness` veto now has an input.
+     */
+    quiet('safety', () => resolveSafety(userUuid)),
 
     quiet('training form', () => computeTrainingForm(userUuid)),
     quiet('recovery phase', () => computeRecoveryPhase(userUuid)),
@@ -482,9 +484,17 @@ export async function loadAdaptationInput(
     distinctEvidenceWeeks: (weekly?.length ?? 0) > 0 ? evidenceWeeks.size : null,
     adapterDowngrades: downgrades ? Number(downgrades.n) : null,
 
-    niggleSeverity: niggle?.severity ?? null,
-    illnessActive: null, // no illness signal is captured today · see below
-    injuryActive: injury ? Number(injury.n) > 0 : null,
+    /* RULE 11 · three facts, and `null` is the one that means "no signal".
+     *
+     * On an UNKNOWN verdict (the safety read failed) all three stay null, so
+     * the veto cannot fire on a guess AND the model records that it could not
+     * see. It does mean progression is not itself blocked by an unknown, which
+     * is a residual named in the closure report rather than papered over here:
+     * this engine is shadow-only (`zero_mutation_verified` on every production
+     * row), so the honest fix belongs with whoever promotes it. */
+    niggleSeverity: safety && safety.known ? (safety.niggle?.severity ?? null) : null,
+    illnessActive: safety && safety.known ? safety.illness != null : null,
+    injuryActive: safety && safety.known ? safety.injury != null : null,
   };
 }
 

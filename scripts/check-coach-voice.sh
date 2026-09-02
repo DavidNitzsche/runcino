@@ -138,9 +138,16 @@ targets() {
   #   lib/prescription · the pace/HR instruction attached to a session
   #   lib/race         · race plate, strategy and retrospective copy
   #   lib/today        · the Today surface's own composed lines
+  # 2026-09-02 · `lib/safety` added. It is the canonical safety owner and it
+  # AUTHORS the sentence a runner reads on an injury, an illness and a failed
+  # health check — copy that used to live in `app/api/v5/today/route.ts`, which
+  # is scanned. Copy moving out of a scanned directory into an unscanned one is
+  # exactly how a gate quietly loses reach (the `lib/plan` hole Rule 20 names),
+  # so the directory is added in the same change that moved the strings.
   find "$ROOT/web-v2/lib/faff" \
        "$ROOT/web-v2/app/api/v5" \
        "$ROOT/web-v2/lib/coach" \
+       "$ROOT/web-v2/lib/safety" \
        "$ROOT/web-v2/lib/plan" \
        "$ROOT/web-v2/lib/watch" \
        "$ROOT/web-v2/lib/execution" \

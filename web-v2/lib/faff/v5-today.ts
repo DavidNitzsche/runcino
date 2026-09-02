@@ -991,6 +991,21 @@ export interface V5TodayContext {
     verdict: string;
     checkIn: V5Row[];
   } | null;
+  /**
+   * SAFETY UNKNOWN · the canonical safety check could not run
+   * (`lib/safety/safety-verdict.ts`, the `known: false` branch).
+   *
+   * Set ONLY by the route, and only when the resolver refused. It is NOT the
+   * injury panel and must never become it: fabricating a flare out of a failed
+   * read would blank a healthy runner's day, which is the failure the runner
+   * named directly when he ruled on this.
+   */
+  safetyUnknown?: {
+    /** `safetyVerdictLine` for the UNKNOWN branch. One author, one sentence. */
+    verdict: string;
+    /** The "Where you are" rows explaining the refusal. */
+    rows: V5Row[];
+  } | null;
   convergence: V5ConvergenceCtx | null;
 }
 
@@ -1708,6 +1723,29 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
       verdict: ctx.sick.verdict,
       checkIn: ctx.sick.checkIn,
     };
+    t.weekStrip = buildWeekStrip(ctx);
+    return t;
+  }
+
+  /* ── SAFETY UNKNOWN — a quiet panel that names a FAILURE, not an injury.
+   *
+   * Deliberately NOT a new `V5TodayStateWire` value. Adding one would make
+   * every deployed build decode a state it has never seen, on the screen whose
+   * whole job here is to be conservative. `before_run` with an empty group
+   * list and a quiet panel is the shape `todayPlanUnresolved` already ships,
+   * so this renders correctly on builds that shipped before it existed.
+   *
+   * The 56pt word is NOT CLEARED, on the same grammar as NOTHING SET: it says
+   * what is true (nothing has cleared today) without saying what is not known
+   * to be true (that the runner is hurt).
+   */
+  if (ctx.safetyUnknown) {
+    const t = EMPTY_TODAY(ctx.todayISO, 'before_run');
+    t.panel.quiet = true;
+    t.panel.type = 'NOT CLEARED';
+    t.panel.weekLine = ctx.weekLine;
+    t.why = ctx.safetyUnknown.verdict;
+    t.whereYouAre = ctx.safetyUnknown.rows;
     t.weekStrip = buildWeekStrip(ctx);
     return t;
   }

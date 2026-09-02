@@ -378,8 +378,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadGlanceState',
-  'lib/coach/glance-state.ts::loadGlanceState',
-  'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadStableBaseline',
   'lib/coach/heat-acclimatization.ts::computeHeatAcclimatization',
   'lib/coach/heat-acclimatization.ts::computeHeatAcclimatization',
@@ -663,7 +661,15 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // Merged with the SECOND-OWNER-1b step above: three sites left the ratchet in
 // one integration, and the number was taken from the gate's own count rather
 // than arithmetic on two branches.
-export const EMPTIED_BASELINE = 364;
+// 2026-09-02 · SAFETY-OWNER-1 · -2 (364 → 362). `loadGlanceState` no longer
+// reads `niggles` or `sick_episodes` at all. Both queries ended in
+// `.catch(() => ({ rows: [] }))` on a SAFETY signal, which made a failed read
+// and "this runner is not ill" the same answer — the same collapse B8 fixed
+// for the injury half one step above, still live on the other two. All three
+// reads moved to `lib/safety/load-safety.ts`, the canonical owner, where each
+// returns a tagged `SignalRead` whose failure branch carries no `value` field,
+// so the collapse is now a type error rather than a discipline.
+export const EMPTIED_BASELINE = 362;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
