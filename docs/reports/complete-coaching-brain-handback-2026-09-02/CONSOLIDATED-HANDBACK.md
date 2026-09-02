@@ -365,7 +365,15 @@ correctly.
 The paces on that row are current; its SHAPE is from 2026-08-31. Section 8 is
 that gap and what it needs.
 
-## 10 · Rendered on the phone, not read in the code
+## 10 · Rendered on the phone — WITH A CORRECTION THAT INVALIDATES HALF OF IT
+
+**Read section 21 first.** The simulator's app has not fetched anything since
+2026-09-01 17:14. Every screenshot below is data it cached then, and none of it
+reflects tonight's deploys. What the screenshots still prove is what the app
+rendered from a REAL payload — the splits, the route line, the executed
+warm-up — because those are yesterday's run and yesterday's plan, and they were
+true then. What they do NOT prove is that anything shipped tonight reaches the
+screen, and where I said so below, I was wrong.
 
 Rule 13's standard is the screen, with real data. The deployed build was opened
 on an iPhone simulator against the live account.
@@ -744,44 +752,45 @@ agent's own summary and it is not rounded up here.
    twice on your own block. Binding it today would refuse your plan over a
    cutback rebound. The default taken was advisory.
 
-## 21 · The thesis fix: correct on the server, NOT confirmed on the phone
+## 21 · Why nothing rendered tonight, and what that costs the evidence
 
-Reported this way because Rule 13 says an honest "I could not confirm this" is
-worth more than a confident claim that turns out to be wrong on your phone, and
-because this exact fix has now been declared working twice on evidence that was
-not the screen.
+The Block screen kept showing the old coach line after the fix deployed. I chased
+it and found the answer in the simulator's own storage.
 
-**What is proved.** Running the deployed code path against your live account,
-`loadV5Block` returns:
+    faff.cache.v5.block.at   = 2026-09-01 17:14:17
+    faff.cache.v5.today.at   = 2026-09-01 17:14:19
+    plist last modified      = 2026-09-01 17:14:26
+
+**The app has not fetched anything for eleven hours.** Every screen I looked at
+tonight was painted from a cache written yesterday evening. That is why Today
+showed the 2026-09-01 run and the Block header said September 1 while the server's
+runner date was September 2.
+
+**What this proves about the thesis fix: nothing was wrong with it.** Running the
+deployed code path against the live account, `loadV5Block` returns
 
 > Your races fade with distance faster than your speed predicts, so durability
 > is where the work goes. Your threshold holds.
 
-The old generic sentence is ABSENT from the payload entirely. Server-side the
-fix is correct, and it deployed successfully.
+and the old generic sentence is absent from the payload entirely. The server is
+correct and it deployed. The phone was simply never asked.
 
-**What is not proved.** The Block screen still renders the old line. I restarted
-the app, revisited the tab, waited for the refresh, and revisited again. It did
-not change.
+**What it costs, and this is the part worth having.** My earlier claim that Today
+still rendered correctly after the pace-ladder deletion — "no regression" — was
+made against that same stale cache and **proves nothing**. I have corrected
+section 10 rather than leaving it standing. The finding in section 15 is
+unaffected, because it did not rest on the screenshot: the block set its line
+from a generic phase builder in source, and the Swift app has zero decoders for
+the thesis object. Those were read from the code and are still true.
 
-**What I ruled out and what I did not.** The app fetches `/api/v5/block` from
-production with a twelve-hour `AppCache` entry, painting the cached value on
-frame one and refreshing behind it — by design, so a screen never appears empty.
-A restart did not clear it, which is expected since the cache is in
-UserDefaults. Whether the refresh ran and was ignored, failed quietly and fell
-back, or simply had not landed when I looked, I could not establish tonight.
+**Status, stated properly.** The thesis fix and the pace-ladder deletion are
+verified server-side against production data, and are NOT verified on a device.
+Nothing tonight has been confirmed on a screen. Whether the simulator's session
+has expired or it has no route to production, I did not chase further, because
+it is a property of that simulator rather than of the app.
 
-**So the correct status is: the server is fixed and the screen is unverified.**
-The likely explanation is benign and client-side, and the cache expires within
-twelve hours in any case. But "likely benign" is precisely the reasoning that
-declared the route line fixed twice while it was still invisible, so it is
-written down as an open item rather than closed.
-
-**What would settle it:** build and install the current app rather than using
-the build already on the simulator, or clear that one cache key and reopen
-Block. I did neither — the installed build is signed and carries a working
-session, and replacing it risks the account state on the device you actually
-look at.
+This is the second time tonight that checking beat assuming, and the first time
+it went against me.
 
 ## 22 · What is NOT true yet
 
