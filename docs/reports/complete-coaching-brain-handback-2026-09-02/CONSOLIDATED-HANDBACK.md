@@ -411,9 +411,83 @@ as a compatibility decision. Stated at its real strength in section 8.
 
 ---
 
-## 12 · Stages 4 and 5
+## 12 · Stage 5 · the cross-surface contract
 
-PENDING — filled in when both land.
+The directive's words for this stage were: automated contract tests that FAIL
+when surfaces disagree. That is what landed, and it did not come back clean.
+
+**Why it is not another source scan.** Four ownership gates already existed and
+all four check the same thing from the same angle — they read SOURCE and assert
+only the canonical owner computes a quantity. Each states the same hole in its
+own header: an owner can be consolidated in code while your plan still carries
+the number the old owner wrote. A source scan cannot see a stale row.
+
+So this suite reads no source. It resolves each quantity you can see on more than
+one surface through every LIVE path — the canonical resolver, the persisted plan
+row, the `authored_state` stamp, the iPhone Today wire payload by calling the
+route, the watch payload by calling the watch builder, the race row's execution
+blob, both projection snapshot tables and the targets route — and asserts they
+are one number. **Both sides of every comparison are real production reads. Not
+one fixture.**
+
+**19 contracts, 214 live readings**, covering threshold 430 across 17 paths,
+marathon 472 across 10, the aerobic ceiling 151 across 62, the easy ceiling 502
+across 60, the threshold pass line 164 across 20, the projected finish, and all
+four race targets and their abort rules.
+
+### The five live disagreements it found
+
+**Three are the same shape: a blocker closed in code today, sitting on a block
+authored 2026-08-31. Decision 1 closes all three.**
+
+1. **Your 2026-09-08 and 2026-09-22 rows ask for a heart rate they mark as a
+   fail.** They prescribe 430 s/mi beside `hr_target_bpm` 155 and a pass rule at
+   164. The canonical owner now answers 164; the 155 is the MARATHON row of the
+   same table. The wrist reads the row, so the watch ships the 155 too. This is
+   the exact class the directive said must be impossible — it is impossible in
+   code and still true in your data.
+2. **Three of your four race rows carry an abort rule anchored to a replaced
+   seed.** CIM's is 7 s/mi tight, so the B-goal switch fires early; Santa
+   Monica's is 29 s/mi loose, about 12% off, so it can never fire at all.
+3. **`authored_state` is still an unstamped second record** — 436 s/mi against
+   the row's 443, with a `ceiling_vdot` of 47.1 against a live 47.8.
+
+**Two are code, and are open findings:**
+
+4. **The watch is twenty seconds per mile stricter than the phone on every easy
+   day.** NEW — in neither audit. The phone's work step says "no faster than
+   8:22 /mi" (502); the watch ships the same session's work phase at 522, the
+   midpoint of the band rather than its fast edge, with the shape correctly
+   marked `ceiling`. So an 8:30/mi easy run is compliant on your phone and too
+   fast on your wrist. Warm-up and cool-down already agree, because a fix on
+   2026-09-01 corrected those two phase types and left the work phase behind.
+   Handed to the post-run stage, because the expander it lives in also feeds the
+   grader and the fix is a coaching decision about what a ceiling means when
+   grading, not a mechanical one.
+5. **The targets route returns four numbers for one race in one response**,
+   three of them labelled projection.
+
+### How it stays honest
+
+Each registered disagreement fails in THREE directions: the paths agreeing (a
+stale exemption to delete), diverging in a new shape (it moved), or more sites
+diverging than allowed (it spread). The shapes are predicates rather than
+hardcoded pairs, because pinning "155 vs 164" would go red the morning your LTHR
+moves, and a gate that cries wolf is a gate people switch off.
+
+**Its first run caught its own author**, reading `workout_spec.kind` instead of
+the row type and pulling a race row and two shakeouts into the easy-ceiling
+contract. Rule 14, name the population.
+
+**Seven things it cannot fail on** are written into its header, including that it
+cannot fail on a wrong number every surface agrees about, that it cannot see
+Swift, and that it is ONE runner on ONE day — the opposite Rule 15 hole from the
+archetype sweep rather than a smaller one.
+
+## 12b · Stage 4 · the post-run experience
+
+PENDING — in flight.
+
 
 ---
 
