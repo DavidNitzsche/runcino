@@ -25,6 +25,7 @@
 		121AAA50A62B2D18163E4040 /* K_TargetsProjectionDepth.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8C0E49F71B6BB27E246B9C6 /* K_TargetsProjectionDepth.swift */; };
 		12C8B803062A13AD7088FE18 /* TreadmillHRSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43619EB76197C5C19037C644 /* TreadmillHRSession.swift */; };
 		12CCD50936DC4C94D2F4B5B5 /* ChartsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */; };
+		139194B23E9B0471DE018B7F /* _CapturePastPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1FEB2ECFDE3A3747C78B7C /* _CapturePastPlanTests.swift */; };
 		14640A3705B32648E88B7E91 /* ReadinessBriefSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */; };
 		14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81938656B7079C01BB12693C /* ColdStartView.swift */; };
 		16105FF9F23FE470CECECD32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 139264554EDD5A64F64E384F /* Assets.xcassets */; };
@@ -72,6 +73,7 @@
 		3F8961DDB77A018095E82A1D /* ProView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 188559D9B23742DBC413C75E /* ProView.swift */; };
 		3FA40EF549EB399B802A3C9A /* Runs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761D6D9F643EAA00C64D9BBC /* Runs.swift */; };
 		3FB515DF78E0F551FEC0BB5F /* AddShoeV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81BE49875D680861EF42A9BB /* AddShoeV5.swift */; };
+		40237817D78ACB89364FBB70 /* _WatchGraderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BEFCA3A96093B6B587E8153 /* _WatchGraderTests.swift */; };
 		42367FE0DE8698D9FA9C4C79 /* TodayBeforeV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC98F967EA1071686B9F86C0 /* TodayBeforeV5.swift */; };
 		4268337743293417D7382EA7 /* HealthBarCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB5B89100A345745753B0C8B /* HealthBarCard.swift */; };
 		44DDBCF77E1B9D072A6A11C1 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 743648B82E2A21410A13F000 /* SettingsView.swift */; };
@@ -339,6 +341,7 @@
 		288A593E39610B2FC7AD4784 /* CartoConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CartoConfig.swift; sourceTree = "<group>"; };
 		29E036C5FD2EC231D2FCDC1A /* Watch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Watch.swift; sourceTree = "<group>"; };
 		2BC0F0DA346169545F683D08 /* WatchLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLayout.swift; sourceTree = "<group>"; };
+		2BEFCA3A96093B6B587E8153 /* _WatchGraderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = _WatchGraderTests.swift; sourceTree = "<group>"; };
 		2C7678F7233E8206F32F839F /* WireCorpus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireCorpus.swift; sourceTree = "<group>"; };
 		2D2748856DA0BE8CFF0A0E62 /* LearnArticleSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnArticleSheet.swift; sourceTree = "<group>"; };
 		2E0F934EAB1B1CC2AD163825 /* Primitives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Primitives.swift; sourceTree = "<group>"; };
@@ -532,11 +535,12 @@
 		F91DFD1C7C031A3F6120FA29 /* WorkoutEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutEngineTests.swift; sourceTree = "<group>"; };
 		F9E67560BFE144A0B9CA885E /* SpokenCues.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenCues.swift; sourceTree = "<group>"; };
 		F9F1D1BCD775FDA96459FBA9 /* WorkoutRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRootView.swift; sourceTree = "<group>"; };
+		FA1FEB2ECFDE3A3747C78B7C /* _CapturePastPlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = _CapturePastPlanTests.swift; sourceTree = "<group>"; };
 		FA3B687F7BD1375763E551FE /* NetworkFence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkFence.swift; sourceTree = "<group>"; };
 		FCA4369345EE34EAFD3E307C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
-		"TEMP_21107C8F-E85F-4E2B-BA61-09C7CFD6635A" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_D26A5AB0-0184-42B4-BD4B-C9762B277D9B" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -797,10 +801,12 @@
 			isa = PBXGroup;
 			children = (
 				646ACB5EC8B399B1371ADF76 /* _AutoPauseTests.swift */,
+				FA1FEB2ECFDE3A3747C78B7C /* _CapturePastPlanTests.swift */,
 				AD0EADAB6D2F2F5298478889 /* _DisplayedNumberTests.swift */,
 				F33906E8E9A4F77E54E81A16 /* _HostileInputTests.swift */,
 				8CC881ECD5A5FD781AFD226A /* _SessionTimelineTests.swift */,
 				3F3FDF938B5C16DF53F12404 /* _SpokenCueTests.swift */,
+				2BEFCA3A96093B6B587E8153 /* _WatchGraderTests.swift */,
 				C7DB675E54CD0F2EC9DFB306 /* FaffWatch_Watch_AppTests.swift */,
 				C3676EBC48CB66235C0EE731 /* PaceDriftTests.swift */,
 				F91DFD1C7C031A3F6120FA29 /* WorkoutEngineTests.swift */,
@@ -928,10 +934,10 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_42DAAC8A-A906-4B51-B7F8-633B1D862108" /* native-v2 */ = {
+		"TEMP_734FFEF1-D481-4250-8FEB-0F1E26A872F9" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_21107C8F-E85F-4E2B-BA61-09C7CFD6635A" /* Secrets.xcconfig */,
+				"TEMP_D26A5AB0-0184-42B4-BD4B-C9762B277D9B" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1134,10 +1140,12 @@
 				2A5B31B43354B2F1699E2B56 /* PaceDriftTests.swift in Sources */,
 				2C4B66907408D3B941C50726 /* WorkoutEngineTests.swift in Sources */,
 				F53F3625551185943AE4BACE /* _AutoPauseTests.swift in Sources */,
+				139194B23E9B0471DE018B7F /* _CapturePastPlanTests.swift in Sources */,
 				7AB7953665BFCFAD5C3CA866 /* _DisplayedNumberTests.swift in Sources */,
 				229CE8256592129ABC9D1B51 /* _HostileInputTests.swift in Sources */,
 				32456A20A94F80906BFDA1DE /* _SessionTimelineTests.swift in Sources */,
 				E83F147BC16854AF7D337438 /* _SpokenCueTests.swift in Sources */,
+				40237817D78ACB89364FBB70 /* _WatchGraderTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1412,7 +1420,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_21107C8F-E85F-4E2B-BA61-09C7CFD6635A" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_D26A5AB0-0184-42B4-BD4B-C9762B277D9B" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1639,7 +1647,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_21107C8F-E85F-4E2B-BA61-09C7CFD6635A" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_D26A5AB0-0184-42B4-BD4B-C9762B277D9B" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;

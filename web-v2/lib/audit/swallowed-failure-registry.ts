@@ -603,11 +603,8 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/watch/build-workout.ts::buildWatchToday',
   'lib/watch/build-workout.ts::buildWatchToday',
   'lib/watch/build-workout.ts::buildWatchToday',
-  'lib/watch/build-workout.ts::buildWatchToday',
   'lib/watch/build-workout.ts::loadCompletedRun',
   'lib/watch/build-workout.ts::loadCompletedRun',
-  'lib/watch/build-workout.ts::loadNoSessionReason',
-  'lib/watch/build-workout.ts::loadNoSessionReason',
   'lib/watch/build-workout.ts::loadNoSessionReason',
   'lib/weather/lookup.ts::baselineTempF',
   'lib/weather/lookup.ts::lookupTempF',
@@ -669,7 +666,21 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // reads moved to `lib/safety/load-safety.ts`, the canonical owner, where each
 // returns a tagged `SignalRead` whose failure branch carries no `value` field,
 // so the collapse is now a type error rather than a discipline.
-export const EMPTIED_BASELINE = 362;
+// 2026-09-02 · 362 → 359 (SAFETYSTOP-1, the watch half of the same fix). The
+// safety agent moved glance-state's three signal reads to the canonical owner;
+// `lib/watch/build-workout.ts` was author number FOUR and still ran its own
+// `runner_injuries` and `sick_episodes` point reads, each with
+// `.catch(() => ({ rows: [] }))` and a comment arguing for it — "a Postgres
+// blip must not cost the runner their workout". Both reads are deleted;
+// `loadNoSessionReason` now consumes `resolveSafety`, whose failure branch is
+// a type the caller has to spend. And it IS spent: an unresolved check now
+// withholds the runnable session rather than quietly prescribing one, so the
+// blip the old comment was protecting against no longer resolves to "fine".
+//
+// The week-off AWAY read stays, and keeps its argued exemption above: a
+// travel week is a scheduling fact about the calendar, not a claim about the
+// runner's body, and the safety owner correctly has no opinion on it.
+export const EMPTIED_BASELINE = 359;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

@@ -1216,13 +1216,35 @@ struct WatchCompletionPhase: Codable {
     /// `nil` for phases without a target.
     var timeOutOfToleranceSec: Int? = nil
 
-    /// Honest per-phase verdict derived watch-side:
-    ///   "hit"        ≥ 70% of phase within tolerance AND avg in band
-    ///   "drifted"    avg in band but < 70% of phase within tolerance
-    ///   "missed"     avg pace outside the tolerance band
-    ///   "incomplete" user ended the phase early before reaching target
-    /// `nil` for phases without a target pace (no band to compare against).
+    /// Honest per-phase verdict derived watch-side. PACE-SHAPE-1 (2026-09-01)
+    /// retired `drifted` / `missed` and the sample-share rule that produced
+    /// them; the live vocabulary is:
+    ///   "hit"        segment average inside the band (`.window`), or not
+    ///                faster than the ceiling (`.ceiling`)
+    ///   "fast"       segment average faster than the band / the ceiling
+    ///   "slow"       segment average slower than the band (`.window` only)
+    ///   "incomplete" user ended the phase early
+    /// `nil` for phases with nothing to grade (`.none` / `.effort`, or no
+    /// target pace). The vocabulary is owned by
+    /// `web-v2/lib/training/execution-semantics.ts`; this comment used to
+    /// document the retired words and nothing caught it (Rule 20's prose
+    /// corollary — a sentence nothing verifies is worse than silence).
     var verdict: String? = nil
+
+    /// STRIDE-RT-1 (2026-09-02) · the stride flag makes the RETURN trip.
+    ///
+    /// `expand-spec.ts` stamps `isStrideSegment: true` on every stride it
+    /// appends, `build-workout.ts` ships it, and `WatchPhase` has decoded it
+    /// since 2026-08-23 — and then it died on the wrist. The completed phases
+    /// the watch posted back carried no such key, so every server-side reader
+    /// of a finished run had to infer "this 20-second work phase was a stride"
+    /// from its label, which is the exact fragility the incoming-side comment
+    /// on `WatchPhase.isStrideSegment` was written to complain about.
+    ///
+    /// `Bool?`, and set only when TRUE, so an ordinary phase's encoded body is
+    /// byte-identical to what it sent before this existed (Swift synthesises
+    /// `encodeIfPresent` for an Optional, so nil omits the key entirely).
+    var isStrideSegment: Bool? = nil
 
     // ─── Tier 2 (2026-06-02) · subjective per-rep RPE ───────────────
     /// Rate of Perceived Exertion the runner tapped on the post-rep

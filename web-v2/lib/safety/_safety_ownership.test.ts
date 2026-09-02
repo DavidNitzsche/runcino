@@ -192,23 +192,20 @@ const ALLOWLIST: ReadonlyArray<{
       + 'Needs the row id, not the verdict.',
   },
 
-  /* ── THE ONE REMAINING SECOND AUTHOR ────────────────────────────────── */
-  {
-    file: 'lib/watch/build-workout.ts', table: 'runner_injuries', hits: 1, posture: 'OPEN',
-    reason: 'OPEN VIOLATION, deliberately not closed by this agent. '
-      + '`loadNoSessionReason` re-reads the injury signal and applies its own '
-      + 'precedence, and `build-workout.ts:2540` ships the runnable workout '
-      + 'BESIDE its "Not today" board, which breaks Constitution §31 outright. '
-      + 'The wrist is owned by the native/watch agent working in parallel; the '
-      + 'interface it must consume is `resolveSafety` + '
-      + '`mayEmitRunnableWorkout`. This row is what makes the violation '
-      + 'un-forgettable, and it is the row that should be DELETED when the '
-      + 'watch delegates.',
-  },
-  {
-    file: 'lib/watch/build-workout.ts', table: 'sick_episodes', hits: 1, posture: 'OPEN',
-    reason: 'OPEN VIOLATION, same as the row above: the illness half of the watch\'s duplicated precedence in `loadNoSessionReason`. Deletes together with it when the wrist consumes `resolveSafety`.',
-  },
+  /* ── THE LAST SECOND AUTHOR · CLOSED 2026-09-02 (SAFETYSTOP-1) ────────
+   *
+   * `lib/watch/build-workout.ts` held two OPEN rows here, and their own text
+   * said they were "the row that should be DELETED when the watch delegates".
+   * The watch delegates. `loadNoSessionReason`'s `runner_injuries` and
+   * `sick_episodes` point reads are gone; it takes a `SafetyResolution` and
+   * translates it into the No-session board's vocabulary only. The runnable
+   * workout is gated on the owner's own `mayEmitRunnableWorkout` and
+   * `mayEmitQualityWorkout` rather than on a posture the wrist re-read.
+   *
+   * Deleted rather than flipped to CONSUMER because the file no longer
+   * touches either table at all, and the staleness check below fails on a row
+   * naming a read that does not exist. `lib/watch/_safety_stop.test.ts` is
+   * what now asserts the wrist cannot ship a session Safety refused. */
 ];
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
