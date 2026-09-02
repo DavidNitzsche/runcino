@@ -30,6 +30,7 @@
  */
 import type { PostRunExperienceV1 } from './experience';
 import { certaintyHedge } from '@/lib/faff/explanation';
+import { fmtClock, fmtPaceSlash } from '@/lib/format/run';
 
 export interface PostRunWire {
   version: string;
@@ -116,10 +117,6 @@ export interface PostRunStridesWire {
   recoveryDistanceMi: number | null;
 }
 
-function mmss(sec: number | null): string | null {
-  if (sec == null || !Number.isFinite(sec) || sec < 0) return null;
-  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
-}
 
 export function postRunWire(x: PostRunExperienceV1): PostRunWire {
   const hedge = certaintyHedge(x.briefing.certainty);
@@ -161,8 +158,8 @@ export function postRunWire(x: PostRunExperienceV1): PostRunWire {
       rows: x.strides.strides.map((s) => ({
         ordinal: s.ordinal,
         label: s.label,
-        duration: mmss(s.durationSec),
-        pace: s.paceSecPerMi == null ? null : `${mmss(s.paceSecPerMi)}/mi`,
+        duration: fmtClock(s.durationSec),
+        pace: fmtPaceSlash(s.paceSecPerMi),
         hr: s.avgHr,
         distanceMi: s.distanceMi,
       })),

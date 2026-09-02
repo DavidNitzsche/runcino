@@ -236,6 +236,14 @@ describe('cadence units · one label, two units', () => {
         + 'the two entries above are allowed for, read in one place instead of '
         + 'three. It never touches the run-level key and imports no resolver, '
         + 'because a run-level unit question is not a phase-level one.',
+      'lib/postrun/experience.ts':
+        'reads `p.avgCadence` off a watch PHASE while composing the stride '
+        + 'breakdown, and nothing else. Same watch-authored, both-feet field the '
+        + 'three entries above are allowed for, and the same argument: a '
+        + 'run-level unit question is not a phase-level one. It never touches '
+        + 'the run-level key and imports no resolver. Added 2026-09-02 when the '
+        + 'stride breakdown started drawing per-stride cadence — the gate caught '
+        + 'it on the first CI run after the merge, which is the gate working.',
     };
     const files: string[] = [];
     const walk = (dir: string) => {
