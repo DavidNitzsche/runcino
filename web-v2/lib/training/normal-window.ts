@@ -549,6 +549,306 @@ export function weeklyRateFromRepresentative(
   return readNormal(w, rate);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE SUSTAINED-VOLUME ESTIMATOR · locked 2026-09-02 at the owner's ruling
+ *
+ * His words: "The question is sustainable training capacity, not arithmetic
+ * average mileage. Replace the fragile mean with a robust sustained-volume
+ * estimator that is resistant to isolated zero or anomalous weeks. Validate it
+ * against the historical training record and the known sustained-volume
+ * evidence. Do not hardcode 43.5; demonstrate why the selected method reaches a
+ * defensible answer. The estimator must have one canonical owner and explicit
+ * refusal behavior when representative evidence is insufficient."
+ *
+ * ── WHY THE MEAN WAS THE WRONG SHAPE ───────────────────────────────────────
+ *
+ * Rule 8 removed the taper days, correctly, and left a MEAN over whatever
+ * survived. A mean answers "how much did he average", and capacity is not an
+ * average: one interrupted week drags it down by its whole weight, and there is
+ * no weight at which a week the runner did not run tells you what he can carry.
+ * The old reader did not even hold a weekly series — it summed representative
+ * DAYS and divided by representativeDays/7 — so a fortnight of 45 and a
+ * fortnight of 20 were indistinguishable from four weeks of 32.5.
+ *
+ * ── THE METHOD, AND WHY IT IS NOT A NEW INVENTION ──────────────────────────
+ *
+ * The k-th HIGHEST fully-representative week, with k = `SUSTAINED_WEEK_RANK`.
+ *
+ * That is the engine's OWN existing definition of "sustained", not a second
+ * one: `lib/plan/generate.ts#resolveRampBase` reads the 3rd-highest of a
+ * 16-week series and states the argument in its own doc — "3rd-highest, so no
+ * single (or double) outlier week sets a base". The two constants are bound by
+ * ASSERTION rather than import, the same posture `MIN_REPRESENTATIVE_DAYS` and
+ * `REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS` already take here, because
+ * `generate.ts` imports this module and a value import would close a cycle.
+ * `_normal_window.test.ts` fails if they diverge.
+ *
+ * The argument is about an ABSOLUTE outlier count, not a percentile: whatever
+ * the sample size, discarding the two best weeks means no fluke and no pair of
+ * flukes can BE the answer, while a level reached three times inside a bounded
+ * recent window is not an anomaly at all — it is a training block, and that is
+ * exactly the evidence a capacity question wants.
+ *
+ * ── VALIDATED AGAINST THE OWNER'S OWN RECORD, 2026-09-02 ───────────────────
+ *
+ * His nine fully-representative weeks, trailing 7-day blocks, Rule 8 applied
+ * (the AFC window 2026-08-02..08-30 and the Big Sur / Sombrero windows are
+ * excluded, which is why the series stops at nine):
+ *
+ *     49.6  46.4  39.5  38.7  38.0  36.0  23.1  19.8  19.8
+ *
+ *   mean                       34.5   what the old reader spent
+ *   median                     38.0
+ *   20% trimmed mean           34.5
+ *   3rd-highest (THIS)         39.5
+ *   2nd-highest                46.4
+ *   live normalWeeklyMileage(90) 33.7  the number actually in production
+ *
+ * 39.5 is the answer, and the case for it is that it sits ONE AND A HALF MILES
+ * above his own median. The method is not buying optimism here — it is refusing
+ * to be dragged to 34.5 by the two 19.8 weeks a mean averages in, and it lands
+ * where his middling week already was. He ran 39.5 or better in three of nine
+ * weeks and 38 or better in five of nine.
+ *
+ * Why not the alternatives:
+ *   · MEDIAN (38.0) is robust and it is the wrong question — half a runner's
+ *     weeks are below his median BY DEFINITION, so it can only ever describe a
+ *     typical week, never a carryable one. On this record it is close, which is
+ *     the honest thing to say about it.
+ *   · TRIMMED MEAN (34.5) discards the tails and then averages the middle, so
+ *     it is still an average and still lands at the mean here. It answers the
+ *     question the owner said was the wrong one.
+ *   · A HIGH QUANTILE derived from rank/lookback (~82nd percentile) tracks
+ *     rank 3 closely but re-derives a threshold this engine had already argued.
+ *     Preferring the existing constant is Rule 16, not laziness.
+ *   · "SUSTAINED FOR N CONSECUTIVE WEEKS" reads 4 consecutive weeks at 35+ on
+ *     this record and 1 at 40+. It is the most literal reading of "sustained"
+ *     and it is brittle in exactly the way he asked me to avoid: a single
+ *     interrupted week resets the run to zero, so an isolated zero destroys the
+ *     answer instead of being ignored by it.
+ *
+ * NOTHING here is fitted to 43.5. CLAUDE.md's Rule 8 table records that figure
+ * from a wider, partly-unfiltered basis on 2026-08-30; this method is derived
+ * from `RAMP_BASE_SUSTAINED_RANK` and lands at 39.5, and the gap between the
+ * two is a fact about the two windows rather than a target to hit.
+ *
+ * ── WHAT IT RESISTS, AND WHAT IT DOES NOT (Rule 22) ────────────────────────
+ *
+ *   RESISTS · any number of low or zero weeks below the third rank. Adding a
+ *             0-mile week to the record above moves the mean 34.5 → 31.1 and
+ *             leaves this reading at 39.5, unchanged.
+ *   RESISTS · one or two anomalous HIGH weeks becoming the answer.
+ *   DOES NOT · a THIRD anomalous high week. By then it is not an anomaly, and
+ *             the method deliberately treats it as evidence.
+ *   DOES NOT · tell a capacity from a hard block that hurt him. This reads
+ *             volume and nothing else; readiness and injury are other owners'.
+ *   DOES NOT · answer for a runner with fewer than `MIN_SUSTAINED_WEEKS` weeks.
+ *             It refuses, which is the point.
+ *
+ * ── REFUSAL ────────────────────────────────────────────────────────────────
+ *
+ * Below `MIN_SUSTAINED_WEEKS` fully-representative weeks the reading refuses,
+ * through the same `NormalReading<T>` union whose refusal branch carries no
+ * `value` field. The floor is DERIVED, not chosen: the k-th highest of n must
+ * sit in the upper half of its own sample or it is not describing a sustained
+ * level, it is describing a middling-to-bad week. k <= n/2 gives n >= 2k = 6.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Which order statistic of the weekly series is "sustained".
+ *
+ * THE SAME NUMBER as `RAMP_BASE_SUSTAINED_RANK` in lib/plan/generate.ts, whose
+ * own doc carries the argument: "3rd-highest, so no single (or double) outlier
+ * week sets a base." Bound by assertion in `_normal_window.test.ts` rather than
+ * imported, because `generate.ts` imports this module and a value import would
+ * close a cycle — the same posture `MIN_REPRESENTATIVE_DAYS` takes against
+ * `MIN_COVERAGE_DAYS`. Do not "fix" it by importing; fix it by deleting the
+ * assertion, and the divergence arrives silently the next time either moves.
+ */
+export const SUSTAINED_WEEK_RANK = 3;
+
+/**
+ * How many weeks of ordinary training the estimator tries to see.
+ *
+ * THE SAME NUMBER as `RAMP_BASE_LOOKBACK_WEEKS` in lib/plan/generate.ts, bound
+ * the same way. 16 weeks is 112 days, which fits inside
+ * `REPRESENTATIVE_LOOKBACK_MAX_DAYS`; when prescribed windows eat into the
+ * reach the outer bound binds first and the series is simply shorter, which the
+ * reading reports rather than hides.
+ */
+export const SUSTAINED_LOOKBACK_WEEKS = 16;
+
+/**
+ * The fewest fully-representative weeks a sustained reading may be taken from.
+ *
+ * DERIVED, not chosen: the k-th highest of n weeks has to sit in the upper half
+ * of its own sample, or the "sustained" reading is really the runner's middling
+ * or bad week wearing the word. k <= n/2 gives n >= 2k.
+ */
+export const MIN_SUSTAINED_WEEKS = 2 * SUSTAINED_WEEK_RANK;
+
+/** One fully-representative trailing 7-day block. */
+export interface RepresentativeWeek {
+  /** Last day of the block, inclusive. */
+  endISO: string;
+  mi: number;
+}
+
+/** What a sustained-volume reading carries besides its number. */
+export interface SustainedWeeklyVolume {
+  /** THE reading · miles per week. */
+  weeklyMi: number;
+  /** Which order statistic produced it (1-based). */
+  rank: number;
+  /** Fully-representative weeks the series held. */
+  weeksObserved: number;
+  /** The series itself, most recent first. Evidence, for a caller that
+   *  explains the number or a test that argues about it. */
+  weeklySeriesMostRecentFirst: readonly number[];
+  /** What the arithmetic mean of the same series would have said. Carried so
+   *  the replacement is auditable at every call site rather than only here. */
+  meanWeeklyMi: number;
+  /** Representative days in the resolved window with any mileage on them.
+   *  A COVERAGE fact, not a rate — see `normalWeeklyMileageDetail`. */
+  runDays: number;
+  /** The lookback actually resolved, and whether the outer bound stopped it. */
+  lookbackDays: number;
+  reachedOuterBound: boolean;
+}
+
+/**
+ * The estimator itself. PURE, so the whole rule is falsifiable with no
+ * database (Rule 18) and so a test can argue about a series directly.
+ *
+ * Returns null when the series is too short to speak from — the caller turns
+ * that into the typed refusal, because only the caller knows the window.
+ *
+ * CONTINUOUS in the underlying data (Rule 9): an order statistic of a sorted
+ * vector is 1-Lipschitz, so a hair of extra mileage on any week moves the
+ * answer by at most that hair. Two adjacent weeks swapping rank changes the
+ * answer by the gap between them, which is zero at the moment they swap.
+ */
+export function sustainedFromWeeks(
+  weeklyMi: readonly number[],
+): { weeklyMi: number; rank: number } | null {
+  const usable = weeklyMi.filter((x) => Number.isFinite(x) && x >= 0);
+  if (usable.length < MIN_SUSTAINED_WEEKS) return null;
+  const rank = SUSTAINED_WEEK_RANK;
+  const sorted = [...usable].sort((a, b) => b - a);
+  return { weeklyMi: Math.round(sorted[rank - 1] * 10) / 10, rank };
+}
+
+/**
+ * Split a filtered daily series into fully-representative trailing 7-day
+ * blocks, most recent first. PURE.
+ *
+ * A block counts ONLY when all seven of its days are representative and inside
+ * the window. A partly-prescribed week is not a low week, it is a week we
+ * cannot read — Rule 11 — and scaling it up to a 7-day rate would invent
+ * mileage the runner never ran. On the owner's record this is what removes the
+ * "zero week" and the "4.2-mile week": both sit inside the Americas Finest City
+ * prescribed window, so they are absent rather than counted as collapses.
+ */
+export function representativeWeeks(args: {
+  todayISO: string;
+  fromISO: string;
+  windows: readonly PrescribedWindow[];
+  mileageByDay: ReadonlyMap<string, { mi: number }>;
+  maxWeeks?: number;
+}): RepresentativeWeek[] {
+  const { todayISO, fromISO, windows, mileageByDay } = args;
+  const maxWeeks = args.maxWeeks ?? SUSTAINED_LOOKBACK_WEEKS;
+  const out: RepresentativeWeek[] = [];
+  for (let w = 0; w < maxWeeks; w++) {
+    const endISO = isoShift(todayISO, -(w * 7));
+    const startISO = isoShift(endISO, -6);
+    if (startISO < fromISO) break;
+    let mi = 0;
+    let complete = true;
+    for (let d = 0; d < 7; d++) {
+      const iso = isoShift(endISO, -d);
+      if (isPrescribedNonNormal(iso, windows)) { complete = false; break; }
+      mi += mileageByDay.get(iso)?.mi ?? 0;
+    }
+    if (complete) out.push({ endISO, mi: Math.round(mi * 10) / 10 });
+  }
+  return out;
+}
+
+/**
+ * THE sustained-volume reading. One canonical owner; `normalWeeklyMileage` and
+ * `normalWeeklyMileageDetail` are narrowings of this and compute nothing of
+ * their own.
+ *
+ * `baseWindowDays` is the caller's floor, not its ceiling: the lookback is
+ * widened through `representativeLookback` until it holds
+ * `SUSTAINED_LOOKBACK_WEEKS` weeks of ORDINARY training, which is clause 1's
+ * sanctioned "extend after excluding" and never admits a prescribed day at any
+ * width. A weekly order statistic cannot be taken from a 28-day window.
+ */
+export async function sustainedWeeklyMileage(
+  userUuid: string,
+  todayISO: string,
+  baseWindowDays = 28,
+): Promise<NormalReading<SustainedWeeklyVolume>> {
+  const { mileageByDay } = await import('@/lib/runs/volume');
+  const w = await representativeLookback(userUuid, todayISO, baseWindowDays, {
+    targetRepresentativeDays: SUSTAINED_LOOKBACK_WEEKS * 7,
+  });
+  const byDay = await mileageByDay(userUuid, w.fromISO, w.toISO);
+
+  let runDays = 0;
+  for (const [iso, { mi }] of byDay) {
+    if (isPrescribedNonNormal(iso, w.windows)) continue;
+    if (mi > 0) runDays++;
+  }
+
+  const weeks = representativeWeeks({
+    todayISO, fromISO: w.fromISO, windows: w.windows, mileageByDay: byDay,
+  });
+  const series = weeks.map((x) => x.mi);
+  const est = sustainedFromWeeks(series);
+  const mean = series.length
+    ? Math.round((series.reduce((a, b) => a + b, 0) / series.length) * 10) / 10
+    : 0;
+
+  if (!est) {
+    return {
+      ok: false,
+      representativeDays: w.representativeDays,
+      excludedDays: w.excludedDays,
+      refusal: {
+        code: 'not-enough-representative-training',
+        message:
+          `Not enough representative training to answer. Reaching back ${w.windowDays} days from ` +
+          `${w.fromISO} found ${series.length} full week${series.length === 1 ? '' : 's'} of ` +
+          `ordinary training — under the ${MIN_SUSTAINED_WEEKS} a sustained-volume reading needs. ` +
+          `${w.excludedDays} day${w.excludedDays === 1 ? ' was' : 's were'} taper, race or ` +
+          `prescribed recovery.`,
+        windowFromISO: w.fromISO,
+        windowToISO: w.toISO,
+        needDays: MIN_SUSTAINED_WEEKS * 7,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    representativeDays: w.representativeDays,
+    excludedDays: w.excludedDays,
+    value: {
+      weeklyMi: est.weeklyMi,
+      rank: est.rank,
+      weeksObserved: series.length,
+      weeklySeriesMostRecentFirst: series,
+      meanWeeklyMi: mean,
+      runDays,
+      lookbackDays: w.windowDays,
+      reachedOuterBound: w.reachedOuterBound,
+    },
+  };
+}
+
 /**
  * THE habit answer to "what does this runner normally run in a week", filtered.
  *
@@ -601,23 +901,19 @@ export async function normalWeeklyMileageDetail(
   todayISO: string,
   windowDays = 28,
 ): Promise<NormalReading<{ weeklyMi: number; runDays: number }>> {
-  const { mileageByDay } = await import('@/lib/runs/volume');
-  const w = await normalTrainingWindow(userUuid, todayISO, windowDays);
-  if (!w.sufficient) {
-    return readNormal(w, { weeklyMi: 0, runDays: 0 }) as NormalReading<{ weeklyMi: number; runDays: number }>;
-  }
-  const byDay = await mileageByDay(userUuid, w.fromISO, w.toISO);
-  let total = 0;
-  let runDays = 0;
-  for (const [iso, { mi }] of byDay) {
-    if (isPrescribedNonNormal(iso, w.windows)) continue;
-    total += mi;
-    if (mi > 0) runDays++;
-  }
-  const rate = weeklyRateFromRepresentative(Math.round(total * 10) / 10, w);
-  return rate.ok
-    ? { ok: true, value: { weeklyMi: rate.value, runDays }, representativeDays: rate.representativeDays, excludedDays: rate.excludedDays }
-    : rate;
+  // 2026-09-02 · this used to BE the estimator: a sum over representative days
+  // divided by representativeDays/7. It is now a narrowing of
+  // `sustainedWeeklyMileage`, which is the one owner, so `weeklyMi` here and a
+  // sustained reading anywhere else cannot be two numbers (Rule 16).
+  const r = await sustainedWeeklyMileage(userUuid, todayISO, windowDays);
+  return r.ok
+    ? {
+        ok: true,
+        value: { weeklyMi: r.value.weeklyMi, runDays: r.value.runDays },
+        representativeDays: r.representativeDays,
+        excludedDays: r.excludedDays,
+      }
+    : r;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

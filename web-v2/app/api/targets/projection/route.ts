@@ -21,7 +21,9 @@
  *   {
  *     ok: true,
  *     status: "on_track" | "watch" | "off" | "race_week" | "cold",
- *     vdot, projectionSec, goalSec,
+ *     vdot, goalSec,
+ *     projectionSec, projectionBasis, projectionRangeSec, projectionSource,
+ *     currentFitnessSec, trajectoryAccruedSec, equivalentTimes,
  *     raceSlug, raceName, raceDate, daysAway, distanceMi, location,
  *     totalGapSec, fitnessSec,
  *     courseImpactSec, courseSource, courseElevGainFtPerMi,
@@ -44,12 +46,21 @@
  * best race/run implies VDOT < 30 (the Daniels table floor — see
  * lib/training/vdot.ts's doctrine comment) is NOT the same as a dataless
  * runner: vdot correctly stays null (extending the table would extrapolate
- * beyond research), but projectionSec/raceProjections are derived via
+ * beyond research), but currentFitnessSec/equivalentTimes are derived via
  * Riegel's power law (Research/02 §2, no VDOT floor) off the runner's own
  * demonstrated pace when the primary VDOT chain resolves nothing. Watch for
  * `projectionIsBelowTable: true` in the payload — that's the honest
  * "building baseline off a real below-table effort" state, distinct from
- * genuine cold-start (no data at all, projectionSec also null).
+ * genuine cold-start (no data at all, currentFitnessSec also null).
+ *
+ * 2026-09-02 · ONE PROJECTION. This route published FOUR numbers for one
+ * race and called three of them a projection - 11902 as `projectionSec`,
+ * 3:15:06 in `summaryLine`, 3:29:17 in `raceProjections[Marathon]` - beside
+ * the 11982 every other surface renders. `projectionSec` is now THE
+ * projection and it resolves through `lib/race/race-outlook.ts`; the
+ * current-fitness equivalence is `currentFitnessSec` and is not called a
+ * projection; the cross-distance table is `equivalentTimes`. See the ONE
+ * PROJECTION block in the handler for the full argument.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
@@ -249,7 +260,7 @@ export async function GET(req: NextRequest) {
     // 2026-07-07 · ultra-honesty audit P2-70 · the Daniels equivalence this
     // whole route runs on (predictRaceTime/vdotFromRace) stops being valid
     // past the marathon (Research/02 §6.2/§14 rule 6); DANIELS_MAX_VALID_DISTANCE_MI
-    // now nulls those functions out beyond it, so `projectionSec` and every
+    // now nulls those functions out beyond it, so `routeEquivalenceSec` and every
     // downstream gap/lever chunk below already degrade to honest zeros/nulls
     // for a 50K/50M/100K/100M target — no per-branch change needed there.
     // This flag is additive: it tells the client WHY the numbers are absent
@@ -273,7 +284,9 @@ export async function GET(req: NextRequest) {
     const series = await loadProjectionSeries(userId, distanceMi, 90);
     const latest = series.length > 0 ? series[series.length - 1] : null;
     let vdot = latest?.vdot ?? null;
-    let projectionSec = latest?.projectionSec ?? null;
+    // RENAMED 2026-09-02 · this local is the route's own Daniels chain and
+    // it never was the projection. See the ONE PROJECTION block below.
+    let routeEquivalenceSec = latest?.projectionSec ?? null;
 
     // Distance-agnostic fallback · the latest snapshot at ANY distance — the
     // same source the web seed reads (loadLatestVdotWithAnchor). Without this
@@ -313,8 +326,8 @@ export async function GET(req: NextRequest) {
     const vdotAnchorDistanceMi =
       anchor?.anchorDistanceMi ?? profileState?.physiology?.vdot_anchor_distance_mi ?? null;
     // Derive today's projected race time from whatever VDOT resolved.
-    if (projectionSec == null && vdot != null) {
-      projectionSec = predictRaceTime(vdot, distanceMi) ?? null;
+    if (routeEquivalenceSec == null && vdot != null) {
+      routeEquivalenceSec = predictRaceTime(vdot, distanceMi) ?? null;
     }
 
     // 2026-07-07 · AUDIT P1-13 · below-table honest projection. When NOTHING
@@ -323,7 +336,7 @@ export async function GET(req: NextRequest) {
     // floor of 30 (Research/01: "Range ~30 to 85+"). vdot correctly stays
     // null (extending the VDOT table below 30 would be extrapolating past
     // its cited range — CLAUDE.md "Engine must match research"), but
-    // projectionSec does NOT have to stay null: predictRaceTimeFromAnchor
+    // routeEquivalenceSec does NOT have to stay null: predictRaceTimeFromAnchor
     // uses Riegel's power law (Research/02 §2, cited independently of
     // Daniels — no VDOT floor at all) to give an honest same-or-cross-
     // distance projection off the runner's own demonstrated pace. This
@@ -333,7 +346,7 @@ export async function GET(req: NextRequest) {
     let belowTableAnchorPace: number | null = null;
     let belowTableAnchorRef: { finish_seconds: number; distance_mi: number; paceSPerMi: number } | null = null;
     let projectionIsBelowTable = false;
-    if (vdot == null && projectionSec == null) {
+    if (vdot == null && routeEquivalenceSec == null) {
       try {
         const { runnerToday } = await import('@/lib/runtime/runner-tz');
         const today = await runnerToday(userId);
@@ -343,7 +356,7 @@ export async function GET(req: NextRequest) {
         if (belowTableAnchor) {
           const riegel = predictRaceTimeFromAnchor(belowTableAnchor.anchor, distanceMi);
           if (riegel != null) {
-            projectionSec = riegel;
+            routeEquivalenceSec = riegel;
             belowTableAnchorPace = belowTableAnchor.anchor.paceSPerMi;
             belowTableAnchorRef = {
               finish_seconds: belowTableAnchor.finish_seconds,
@@ -390,12 +403,98 @@ export async function GET(req: NextRequest) {
       sec != null && specificity != null
         ? Math.round(sec * (1 + specificity.pct / 100))
         : sec;
-    projectionSec = applySpec(projectionSec);
+    // The route's OWN Daniels chain. It is NOT a projection any more — see the
+    // block below — it is the current-fitness equivalence, and it keeps its own
+    // name from here down so nothing can quietly re-label it.
+    let currentFitnessSec = applySpec(routeEquivalenceSec);
     // Race-day projection: a plan with no marathon block in it does not grow
     // one by race day, so the same one-sided penalty rides on the trajectory's
     // seconds (VDOT-space internals stay untouched — the penalty is not a
     // fitness statement, it is a prediction-error statement).
     const trajProjectedSecHonest = applySpec(traj?.projectedSec ?? null);
+
+    /* === ONE PROJECTION, RESOLVED BY ITS OWNER (2026-09-02) ===============
+     *
+     * David's requirement, verbatim: "/api/targets/projection must expose one
+     * clearly named canonical projection per meaning. It must not label
+     * multiple incompatible values as 'projection.'"
+     *
+     * Before this block, one payload for one race carried FOUR numbers and
+     * called three of them a projection:
+     *
+     *     projectionSec              11902  3:18:22  raw Daniels equivalence
+     *     summaryLine                       3:15:06  the trajectory
+     *     raceProjections[Marathon]  12557  3:29:17  cross-distance equivalence
+     *     trajectoryProjectedSec     11706  3:15:06  the trajectory again
+     *   canonical, everywhere else:  11982  3:19:42  race-outlook
+     *
+     * They were not all wrong — they were four DIFFERENT quantities wearing
+     * one word, which is Rule 16's own CIM incident restaged. So this is a
+     * naming and ownership change, not a deletion:
+     *
+     *   projectionSec       THE projection - the expected finish on race day,
+     *                       resolved through lib/race/race-outlook.ts like
+     *                       every other "Projected" surface. Plus
+     *                       projectionBasis and projectionRangeSec so the
+     *                       number carries its provenance and its own range.
+     *   currentFitnessSec   what today's fitness is worth at this distance.
+     *                       NOT called a projection anywhere on the wire.
+     *   trajectoryAccruedSec  the TODAY column - work accrued so far, now
+     *                       interpolated BETWEEN those two.
+     *   equivalentTimes     the 5K/10K/Half/Marathon table. Renamed from
+     *                       `raceProjections`: those are equivalences at other
+     *                       distances, and its Marathon row is materially
+     *                       incompatible with this race's projection.
+     *
+     * `trajectoryProjectedSec` stays on the wire holding the SAME number as
+     * `projectionSec` - it is the same quantity under a legacy name, and the
+     * v4 card reads `trajectoryProjectedSec ?? projectionSec`, so it is right
+     * either way. One number under two keys is an alias; two numbers under one
+     * word was the defect.
+     *
+     * NO race row means no outlook to resolve - `resolveRaceOutlookBySlug`
+     * needs a slug, and a goal-mode runner has none. That path keeps the
+     * route's own chain and says so through `projectionSource`. A race row
+     * exists or it does not, which is a discrete fact and not a threshold on a
+     * continuous quantity, so Rule 9 is not in play.
+     *
+     * The outlook already prices durability and marathon specificity, so
+     * `applySpec` is NOT applied on top of it - that would double-count the
+     * 13.1 penalty. `projectionSpecificity` stays in the payload as provenance
+     * for `equivalentTimes`, which is priced here. */
+    let projectionBasis: 'trajectory' | 'equivalence' | null = null;
+    let projectionRangeSec: readonly [number, number] | null = null;
+    let projectionSource: 'race_outlook' | 'route_equivalence' = 'route_equivalence';
+    let projectionSec: number | null = trajProjectedSecHonest ?? currentFitnessSec;
+    if (projectionSec != null) {
+      projectionBasis = trajProjectedSecHonest != null ? 'trajectory' : 'equivalence';
+    }
+    if (race?.slug) {
+      try {
+        const { resolveRaceOutlookBySlug } = await import('@/lib/race/race-outlook');
+        const { raceProjectionFromOutlook } = await import('@/lib/training/race-projection');
+        const { runnerToday } = await import('@/lib/runtime/runner-tz');
+        const outlook = await resolveRaceOutlookBySlug(userId, race.slug, await runnerToday(userId));
+        const owned = raceProjectionFromOutlook(outlook);
+        if (owned.projectedSec != null) {
+          projectionSec = owned.projectedSec;
+          projectionBasis = owned.basis;
+          projectionRangeSec = owned.likelyRangeSec;
+          projectionSource = 'race_outlook';
+          // The current-fitness expectation comes off the SAME object, so the
+          // two quantities this route separates cannot be resolved by two
+          // different engines and drift apart again.
+          if (outlook?.currentProjection?.expectedSec != null) {
+            currentFitnessSec = Math.round(outlook.currentProjection.expectedSec);
+          }
+        }
+      } catch (e) {
+        // A failed resolve leaves the route's own chain in place, labelled
+        // 'route_equivalence'. Rule 11: the client can tell which engine
+        // answered rather than reading one number for two possible meanings.
+        console.warn('[targets/projection] race-outlook unavailable, using the route chain:', e);
+      }
+    }
 
     // ─── 3. GapPanel chunks · per-race-per-runner ───────────────
     //   Mirrors the enrichment in seed.ts L1185-L1295 verbatim so the
@@ -572,18 +671,39 @@ export async function GET(req: NextRequest) {
         : ACCRUAL_EXEC_WEIGHT_WHEN_UNKNOWN;
       const executedFraction = calendarFraction * execWeight;
       const creditedFraction = Math.min(calendarFraction, executedFraction);
-      const accruedVdot = vdot + traj.projectedGainVdot * creditedFraction;
-      trajectoryAccruedSec = predictRaceTime(accruedVdot, distanceMi) ?? null;
-      // Hard clamp · never faster than the anchor. During a break (or any
-      // absence of executed gain) TODAY must not speed up.
-      const anchorSec = predictRaceTime(vdot, distanceMi);
-      if (trajectoryAccruedSec != null && anchorSec != null) {
-        trajectoryAccruedSec = Math.max(trajectoryAccruedSec, anchorSec);
+      if (projectionSource === 'race_outlook' && currentFitnessSec != null && projectionSec != null) {
+        /* 2026-09-02 · TODAY is interpolated between the two numbers this
+         * payload now names, instead of being computed from a THIRD fitness
+         * read. It used to run predictRaceTime over `vdot + gain x fraction`,
+         * anchored on the route's own snapshot VDOT — which, once
+         * `projectionSec` became the outlook's answer, would have printed a
+         * TODAY of 3:18:22 beside a race day of 3:19:42. TODAY reading faster
+         * than race day is not a small inconsistency, it is the screen saying
+         * the build makes him slower.
+         *
+         * The S4 doctrine is unchanged and so is its clamp: this credits
+         * executed work, it does not measure or decay fitness, and TODAY can
+         * never read faster than the current-fitness anchor. `max` of two
+         * continuous quantities is continuous and monotone by construction, so
+         * no Rule 9 cliff is introduced. */
+        trajectoryAccruedSec = Math.max(
+          Math.round(currentFitnessSec + (projectionSec - currentFitnessSec) * creditedFraction),
+          Math.min(currentFitnessSec, projectionSec),
+        );
+      } else {
+        const accruedVdot = vdot + traj.projectedGainVdot * creditedFraction;
+        trajectoryAccruedSec = predictRaceTime(accruedVdot, distanceMi) ?? null;
+        // Hard clamp · never faster than the anchor. During a break (or any
+        // absence of executed gain) TODAY must not speed up.
+        const anchorSec = predictRaceTime(vdot, distanceMi);
+        if (trajectoryAccruedSec != null && anchorSec != null) {
+          trajectoryAccruedSec = Math.max(trajectoryAccruedSec, anchorSec);
+        }
+        // SPEC-CENTER · the accrued TODAY estimate is a marathon prediction off
+        // the same sub-marathon evidence — it carries the same +5% or it reads
+        // faster than the projection it converges toward.
+        trajectoryAccruedSec = applySpec(trajectoryAccruedSec);
       }
-      // SPEC-CENTER · the accrued TODAY estimate is a marathon prediction off
-      // the same sub-marathon evidence — it carries the same +5% or it reads
-      // faster than the projection it converges toward.
-      trajectoryAccruedSec = applySpec(trajectoryAccruedSec);
     }
 
     // Status from the trajectory — the SAME logic web's TargetsView uses — so
@@ -636,7 +756,8 @@ export async function GET(req: NextRequest) {
     // goal-seeking trajectory) so it reads "where you'll likely finish" with
     // the goal sitting inside it, not the frozen current-fitness number.
     const confidenceInterval = computeConfidenceInterval({
-      centerSec: trajProjectedSecHonest ?? projectionSec,
+      // The band sits on the number the payload calls the projection.
+      centerSec: projectionSec,
       raceDistanceMi: distanceMi,
       status: goalStatus,
       pacing: { cv: executionCV, source: executionSource },
@@ -718,7 +839,8 @@ export async function GET(req: NextRequest) {
     const summaryLine = composeTargetsSummaryLine({
       status,
       goalSec,
-      projectedSec: trajProjectedSecHonest ?? projectionSec,
+      // The sentence quotes the ONE projection, not a fourth number.
+      projectedSec: projectionSec,
       goalSource,
       raceName: race?.name ?? null,
       daysAway,
@@ -779,7 +901,7 @@ export async function GET(req: NextRequest) {
         )
       : null;
     const fixedBelowTableAnchor = belowTableAnchorRef; // stable const for the closures below
-    const raceProjections = vdot != null
+    const equivalentTimes = vdot != null
       ? STANDARD_RACES
           .map(r => {
             // §14 rule 3 · runner's own exponent when the fit exists.
@@ -833,9 +955,25 @@ export async function GET(req: NextRequest) {
       // is how a client knows it is also race week.
       raceWeek,
       vdot,
+      /* THE projection - the expected finish on race day, resolved through
+       * lib/race/race-outlook.ts. `projectionBasis` says which quantity of the
+       * outlook produced it ('trajectory' = race day, 'equivalence' = today's
+       * fitness, when there is no runway to project across).
+       * `projectionSource` says WHICH ENGINE answered - Rule 11, so a client
+       * can tell the owner's answer from the route's fallback rather than
+       * reading one number for two possible meanings. */
       projectionSec,
+      projectionBasis,
+      projectionRangeSec,
+      projectionSource,
+      /* What today's fitness is worth at this distance. A DIFFERENT quantity
+       * from `projectionSec` and deliberately not called a projection: this
+       * route used to publish it under that word while three other numbers in
+       * the same payload wore it too. Off `race-outlook.currentProjection`
+       * whenever the owner answered. */
+      currentFitnessSec,
       // 2026-07-07 · AUDIT P1-13 · honest below-table state. When vdot is
-      // null but projectionSec is NOT (the Riegel fallback above fired),
+      // null but currentFitnessSec is NOT (the Riegel fallback above fired),
       // projectionIsBelowTable is true — the client should render a "building
       // baseline" / honest-fitness state (real projection, no VDOT number to
       // show) rather than either the old cold state OR pretending a VDOT
@@ -855,7 +993,7 @@ export async function GET(req: NextRequest) {
       distanceMi: race?.distance_mi ?? goalModeDistanceMi ?? null,
       location: race?.location ?? null,
       // 2026-07-07 · ultra-honesty audit P2-70 · true when distanceMi is past
-      // the Daniels validity range — vdot/projectionSec/trajectory/levers are
+      // the Daniels validity range — vdot/projection/trajectory/levers are
       // all honestly null/zeroed for this reason (see DANIELS_MAX_VALID_
       // DISTANCE_MI gate in lib/training/vdot.ts), not a cold-start/no-data
       // state. Client surfaces read this to render "not supported yet" copy
@@ -884,7 +1022,13 @@ export async function GET(req: NextRequest) {
       levers,
       heldDays: held,
       lastMove,
-      raceProjections,
+      /* Equivalent times at the four standard distances, from the runner's own
+       * durability exponent. RENAMED from `raceProjections` on 2026-09-02:
+       * these are equivalences at OTHER distances, and the Marathon row
+       * (3:29:17 against this race's 3:19:42) is materially incompatible with
+       * the projection above. Two incompatible numbers may not both be called
+       * a projection. */
+      equivalentTimes,
       confidenceInterval,
       confidenceLabel,
       // ─── 2026-08-28 · prediction-honesty provenance (additive) ─────────
@@ -919,11 +1063,15 @@ export async function GET(req: NextRequest) {
       // 2026-06-12 · upgrade gear (trajectory-derived) for the native Goal tab.
       // aheadOfGoal → render the "AHEAD" headline; planUnderBuilt → advisory
       // (rebuild is web-only); trajectoryProjectedSec is the goal-seeking
-      // projection (vs projectionSec, which stays current-fitness).
       aheadOfGoal: traj?.aheadOfGoal ?? false,
       planUnderBuilt: traj?.planUnderBuilt ?? null,
       overPerformanceBonusVdot: traj?.overPerformanceBonusVdot ?? 0,
-      trajectoryProjectedSec: trajProjectedSecHonest,
+      /* LEGACY ALIAS of `projectionSec`, holding the SAME number. The v4 card
+       * reads `trajectoryProjectedSec ?? projectionSec`, so it is correct
+       * either way; keeping the key means the shipping decode does not change
+       * while the payload stops carrying two answers. Delete it once no client
+       * reads it. */
+      trajectoryProjectedSec: projectionSec,
       // 2026-06-18 · the "TODAY" accrued estimate · anchor VDOT + gain accrued
       // so far based on fraction of plan completed. Moves week-by-week as training
       // accumulates; converges toward trajectoryProjectedSec by race day.
