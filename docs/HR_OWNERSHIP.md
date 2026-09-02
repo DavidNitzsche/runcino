@@ -21,7 +21,7 @@ kinetics, §14 coach-by-HR-vs-pace), `Research/08-pacing-and-race-week.md` §6.1
 | # | Number | Means | Owner (the ONE formula) | Value for the owner (LTHR 168, HRmax 183) |
 |---|---|---|---|---|
 | 1 | **Aerobic ceiling** | "Do not go above this on an easy day" | `zones.ts#aerobicCeilingBpm` = `ceil(LTHR × 0.90) − 1`, then `spec-builder.ts#hrCapEasy` takes `max(that, 0.78 × HRmax)`; the watch's `resolveHrCeiling` decides WHEN one exists | **151** |
-| 2 | **Expected threshold response** | "A correct threshold rep costs about this" | `zones.ts#thresholdPassHrBpm` = `round(LTHR × 0.975)` — the Friel Z4→Z5a seam; the BAND is `threshold-band.ts` (Z4 95–99 %, Z5a 100–102 %) | **164** (band 160–171) |
+| 2 | **Expected threshold response** | "A correct threshold rep costs about this" — a SEAM, with `threshold-band.ts`'s four arms either side of it (above the band / at LT / just under / well under) | `zones.ts#thresholdPassHrBpm` = `round(LTHR × 0.975)`, the Friel Z4→Z5a seam | **164** |
 | 3 | **Expected race response** | "Expect roughly this at race effort" | `race-hr-guidance.ts#resolveRaceHrGuidance` → `expectedRangeBpm` = `RACE_HR_PCT_LTHR[distance] × LTHR`, validated against the runner's own efforts within ±5 % of the execution pace | **148–160** (marathon) · **168–176** (10K) |
 | 4 | **Early-race ceiling** | "Under this through the opening block" | same resolver, `earlyCeilingBpm` = the range's LOW edge, through `raceCheckpointMi` (38 % of the distance) | **148 through mile 10** |
 | 5 | **Late-race allowance** | "Up to this late is drift, not a fault" | same resolver, `lateAllowanceBpm` = range high + `RACE_HR_LATE_DRIFT_ALLOWANCE_BPM` (5) — `Research/08` §6.1's own 3–5 bpm/hour | **165** |
@@ -51,6 +51,13 @@ Read this as the answer to "if I change row N, what moves?"
 | 5 Late-race allowance | race detail outlook | decoded, not drawn | no | never graded | — | what a well-run finish may reach | — |
 | 6 Pass / bail | execution plan bail line | `WatchRule` → the bail board, sustained 120 s | **no** — see §5 | `pass` reaches no card (open — see §5) | recap reads `ruleOutcomes` (bail ≠ fail) | — | — |
 | 7 Safety stop | execution plan bail line | the abort board, gated on `mile-N` scope | **no** — see §5 | never a grade | — | the A-goal abandonment | — |
+
+**Gated.** `web-v2/lib/race/_hr_ownership.test.ts` parses the "Value for the
+owner" column out of THIS FILE at run time and computes each row from the owner
+named beside it, at the owner's real anchors (LTHR 168, HRmax 183). A number
+that changes in the engine and not here — or here and not in the engine — fails.
+Rule 18: a check that hardcodes both sides only proves the test agrees with
+itself.
 
 ---
 

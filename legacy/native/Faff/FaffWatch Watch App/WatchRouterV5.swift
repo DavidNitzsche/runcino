@@ -506,7 +506,6 @@ struct WatchRunSurfaceV5: View {
         // A behavioural claim about a board nobody has put on screen is a
         // hypothesis (Rule 20).
         .onChange(of: engine.milesAdrift) { _, _ in offerBailIfDue() }
-        .onChange(of: engine.ruleBreachSec) { _, _ in offerBailIfDue() }
         .onChange(of: tracker.distanceMi) { _, _ in fireDueCue() }
         .onChange(of: engine.currentIndex) { _, _ in fireDueCue() }
         .onChange(of: tracker.batteryPercent) { _, pct in
