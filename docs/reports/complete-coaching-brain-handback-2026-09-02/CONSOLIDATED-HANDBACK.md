@@ -236,7 +236,54 @@ clean across his history, with 81 of 136 rows merged and zero merged rows
 pointing at a survivor that does not exist, so the 2026-08-22 dedup census alert
 is stale. Three fragments on one day may be legitimate. It is worth one look.
 
-## 8 · What is NOT true yet
+## 8 · The one thing that needs your go, and why nothing else did
+
+**Every structural plan fix from this programme is invisible on your phone
+until your plan is re-authored, and re-authoring it is your call, not mine.**
+
+The evidence is your own live plan. Stage 2 fixed the warm-up and cool-down
+ratio and its handback reports the tempo becoming `1.4 WU · 2 @ T · 1.3 CD`.
+Pulled from your active plan `pln_9a57561debb776e5` just now, the session on
+2026-09-08 still reads:
+
+    2026-09-08  tempo  6.2 mi  @ 7:10/mi   2.1 mi WU · 2 mi @ T · 2.1 mi CD
+
+The fix is merged, green, deployed and live in the generator. Your row is
+unchanged, because your plan was authored on 2026-08-31 and nothing re-lays-out
+an authored plan.
+
+**Why.** Pace recompute reprices an existing plan; it does not restructure one.
+That is why Stage 1's work DID reach you — it moved paces, and 76 of your
+workouts were repriced. Structure is different. The only paths that rebuild a
+block are the drift job's automatic rebuilds, which fire on race graduation, an
+elapsed plan, completed recovery or a widening goal gap, and the manual silent
+rebuild. **"The engine got better" is not one of the triggers.**
+
+**Why I did not just run it.** The silent rebuild archives your active plan and
+writes a new one. That is a write to your live training plan, and the deploy
+doctrine in CLAUDE.md is explicit that code changes deploy on approval while
+data writes need a separate explicit go. It is reversible and it surfaces an
+undo card for 24 hours, so it is not dangerous. It is still yours to decide,
+and deciding it for you while you slept would be exactly the kind of quiet
+irreversible-feeling change the doctrine was written after.
+
+When you want it, this is the command:
+
+```bash
+gh workflow run silent-rebuild.yml -f userUuid=0645f40c-951d-4ccc-b86e-9979cd26c795
+```
+
+**My recommendation: wait until the programme finishes.** Stages 3 and 4 have
+not run yet and Stage 2 is still in flight. One rebuild at the end lands
+everything at once. Rebuilding now would land a half-finished Stage 2 and then
+need doing again.
+
+**And it changes what any of this work may claim.** A measurement taken by
+re-running the generator says the code is fixed. It does not say the runner's
+plan is fixed. Those are two different sentences and this programme should only
+write the second one after the rebuild has actually run.
+
+## 9 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -253,7 +300,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 9 · PENDING sections
+## 10 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
