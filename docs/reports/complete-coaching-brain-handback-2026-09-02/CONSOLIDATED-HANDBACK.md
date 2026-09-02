@@ -21,8 +21,8 @@ re-cut it.
 | Stage | Scope | State |
 |---|---|---|
 | 1 | Finish and lock the coaching brain | **INCOMPLETE** · 8 of 18 rows have two live owners; 4 blockers closed, 1 retired, 1 half |
-| 2 | Plan-generation contracts | **In progress** · 6 of 9 brief phases on main, 3 in flight |
-| 3 | Coaching explanation contract | Not started |
+| 2 | Plan-generation contracts | **Complete, deployed** · all 9 phases plus the corpus; one phase is an honest first cut |
+| 3 | Coaching explanation contract | **In progress** |
 | 4 | Post-run experience | Not started |
 | 5 | Cross-surface contract tests | Not started |
 
@@ -710,7 +710,41 @@ failed this way, but it was reading sidecars as source.
 Four closed, three gated, one retired, one half. The two that remain fully open
 need either the plan engine to be free or a decision from you.
 
-## 20 · What is NOT true yet
+## 20 · Stage 2 is complete, and two more decisions are yours
+
+All nine brief phases landed, plus the golden-runner corpus and the invariant
+tests. Verified on the merge: 8,513 tests, nothing failing, all eighteen gates
+green, deployed.
+
+**What is worth knowing about it.** Block strategy, phase strategy and week
+intent are now stamped on every block, and a proposed progression names its
+lever, its from and to, the prerequisites with the module that owns each, and a
+concrete alternative if it holds. Its first gate asserts that describing the plan
+changes nothing about it, which is the right instinct.
+
+The golden-runner corpus is eighteen runners, and **seven of them are named as
+unreachable** with the suite that owns each rather than counted as coverage.
+That is Rule 15 turned on the corpus itself, and it is the opposite of what a
+coverage number usually does.
+
+**One phase is an honest first cut and stays labelled as one.** The week-layout
+decomposition names the input at 139 members and extracts one function; seven of
+eight splits are not done and `generate.ts` is still a monolith. That is the
+agent's own summary and it is not rounded up here.
+
+**Two decisions this raised, neither taken:**
+
+1. **Should a stated goal move training VOLUME?** The same runner with a goal 15
+   percent faster gets a peak of 70 mi/wk instead of 65, on identical evidence
+   and an identical threshold. The mechanism is doctrine-cited in both
+   directions. The default taken was to leave it alone, because your standing
+   rule is that the coach projects and never renegotiates a goal — but that rule
+   was written about PACE, and whether it reaches volume is genuinely your call.
+2. **Should the one-primary-stressor rule bind, or stay advisory?** It fires
+   twice on your own block. Binding it today would refuse your plan over a
+   cutback rebound. The default taken was advisory.
+
+## 21 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -727,7 +761,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 21 · PENDING sections
+## 22 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
