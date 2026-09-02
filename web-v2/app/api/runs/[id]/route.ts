@@ -23,6 +23,8 @@ import { loadRunDetail } from '@/lib/coach/run-state';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
+import { loadPostRunExperience } from '@/lib/postrun/load';
+import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireUserId(req);
@@ -48,6 +50,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       { status: 404 },
     );
   }
+  /* THE CANONICAL POST-RUN INTERPRETATION (2026-09-02).
+   *
+   * The same object `/api/v5/today` sends under the same key, from the same
+   * composer and the same loader. That is the brief's first P0: Today-after-run
+   * and Run Detail were two independently written compositions, and the fix is
+   * not two careful call sites but one answer read twice.
+   *
+   * A THROW BECOMES NULL, and the section is then not drawn. That is
+   * deliberate and it is the honest end of Rule 11's ladder for a display: the
+   * runner sees no section rather than a section holding a guess. The failure
+   * is logged where an operator can find it, because a silent null on a screen
+   * and a silent null in the logs together are how a broken read survives.
+   */
+  let postRun: PostRunWire | null = null;
+  try {
+    const x = await loadPostRunExperience(userId, { runId: id });
+    postRun = x ? postRunWire(x) : null;
+  } catch (e) {
+    console.error('[runs GET] post-run experience failed:', e);
+  }
+
   // 2026-05-31: cache dropped to revalidate-only. The original 5-minute
   // browser cache assumed run history was immutable, but shoe_id (PATCH
   // path below) and weather enrichment (cron) both mutate the payload.
@@ -56,7 +79,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // the picker wasn't saving. Now: never cache hard, always ask the
   // server. The query is cheap (single run, indexed) so the round-trip
   // tax is invisible.
-  return NextResponse.json(detail, {
+  return NextResponse.json({ ...detail, postRun }, {
     headers: { 'Cache-Control': 'private, no-cache, must-revalidate' },
   });
 }

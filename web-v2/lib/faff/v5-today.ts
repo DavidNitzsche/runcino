@@ -55,6 +55,7 @@
 // The only import this file has. `lib/runs/run-shape.ts` imports nothing
 // itself, so the composer stays pure and unit-testable without a database.
 import { reconcilePaceWithClock } from '../runs/run-shape';
+import type { PostRunWire } from '@/lib/postrun/wire';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Wire types — one-to-one with APIV5.swift
@@ -355,6 +356,18 @@ export interface V5Today {
   onTheBelt: V5Stat[] | null;
   shoesWorn: V5Row | null;
   whatThisDidToTheWeek: V5Row[];
+  /**
+   * THE CANONICAL POST-RUN INTERPRETATION.
+   *
+   * Composed by `lib/postrun/experience.ts` and loaded by
+   * `lib/postrun/load.ts` — the SAME object `/api/runs/[id]` returns under the
+   * same key. Two surfaces, one answer, and `decisionVersion` on it is what
+   * lets a test prove they render the same decision rather than assert it.
+   *
+   * Null on a run this route could not compose one for, and the phone then
+   * draws no briefing rather than an empty one.
+   */
+  postRun: PostRunWire | null;
   runId: string | null;
 
   changed: V5Convergence | null;
@@ -846,6 +859,10 @@ export interface V5RecentRunCtx {
 }
 
 export interface V5TodayContext {
+  /** The canonical post-run interpretation for the day's run. See
+   *  `V5Today.postRun`. Null before a run, and null when it could not be
+   *  composed — the surface then draws no briefing rather than an empty one. */
+  postRun?: PostRunWire | null;
   todayISO: string;
   /**
    * True when `todayISO` is a day the runner has STEPPED TO, not the day it
@@ -1630,6 +1647,7 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   onTheBelt: null,
   shoesWorn: null,
   whatThisDidToTheWeek: [],
+  postRun: null,
   runId: null,
   changed: null,
   injury: null,
@@ -1792,6 +1810,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.shoesWorn = built.shoesWorn;
     t.shoeOptions = built.shoeOptions;
     t.whatThisDidToTheWeek = built.whatThisDidToTheWeek;
+    t.postRun = ctx.postRun ?? null;
     t.runId = ctx.recentRun.runId;
     t.weekStrip = buildWeekStrip(ctx);
     return t;

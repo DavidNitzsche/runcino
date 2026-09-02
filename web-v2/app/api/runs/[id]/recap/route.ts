@@ -27,6 +27,8 @@ import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { composeRecap } from '@/lib/faff/recap-voice';
+import { loadPostRunExperience } from '@/lib/postrun/load';
+import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 import { mapWatchPhases } from '@/lib/coach/run-state';
 import { resolveWorkoutVerdict } from '@/lib/execution/verdict';
 import { classifySession } from '@/lib/training/execution-semantics';
@@ -609,6 +611,33 @@ export async function GET(
     coachTip: recap.coach_tip,
   });
 
+  /* THE BRIEFING WINS WHERE IT SPEAKS (2026-09-02) — the SAME rule, and the
+   * same object, as `/api/v5/today`'s after-run branch.
+   *
+   * `RunDetailV5` reads this route and `TodayAfterV5` reads that one, and
+   * until now each composed its own paragraph from the same five parts. On
+   * 2026-09-01 that produced "Tempo done, 4 mi @ 7:03, avg HR 162 across the 4
+   * reps..." here and "Tempo done, 8.5 mi total at 8:03/mi, avg HR 162 across
+   * the 4 reps." there — one run, two distances, two paces, one field name.
+   * They now render the same two sentences off the same
+   * `lib/postrun/experience.ts` composition, so a run cannot be graded one way
+   * on the sheet the runner opens first and another way in history.
+   *
+   * A throw becomes null and the raw recap stands, which is the behaviour this
+   * route has always had.
+   */
+  let brief: PostRunWire | null = null;
+  try {
+    const x = await loadPostRunExperience(userId, { runId: runRow.id });
+    brief = x ? postRunWire(x) : null;
+  } catch (e) {
+    console.error('[runs recap] post-run experience failed:', e);
+  }
+  const graded = brief != null
+    && brief.changeState !== 'UNKNOWN'
+    && brief.headline !== 'Run recorded'
+    && brief.headline !== 'Recorded, not graded';
+
   return NextResponse.json({
     ok: true,
     runId: runRow.id,
@@ -616,11 +645,12 @@ export async function GET(
     type,
     phase,
     ...recap,
-    verdict: spoken.body[0] ?? '',
-    facts: spoken.body.slice(1),
-    conditions_note: null,
-    coach_tip: null,
-    win: spoken.headline,
+    verdict: graded && brief ? brief.summary : (spoken.body[0] ?? ''),
+    facts: graded && brief ? (brief.cost ? [brief.cost] : []) : spoken.body.slice(1),
+    conditions_note: graded ? (recap.conditions_note ?? null) : null,
+    coach_tip: graded && brief ? (brief.next ?? recap.coach_tip ?? null) : null,
+    win: graded && brief ? brief.headline : spoken.headline,
+    postRun: brief,
     // E3: the target the verdict was judged against (frozen prescribed when a
     // watch completion exists, else the live plan) + the current plan target,
     // so consumers/falsifiers can see which contract was used and the divergence.

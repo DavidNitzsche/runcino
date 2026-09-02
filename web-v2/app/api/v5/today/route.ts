@@ -62,6 +62,8 @@ import { fmtPace as fmtPaceShared, fmtMinutesCasual } from '@/lib/format/run';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
+import { loadPostRunExperience } from '@/lib/postrun/load';
+import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 import { resolveWorkoutVerdict } from '@/lib/execution/verdict';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
@@ -1239,6 +1241,26 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         ? shoes.find((sh) => String(sh.id) === String(assignedShoeId)) ?? null
         : null;
 
+      /* THE CANONICAL POST-RUN INTERPRETATION (2026-09-02).
+       *
+       * Composed by `lib/postrun/experience.ts`, loaded by
+       * `lib/postrun/load.ts`, and returned under the SAME key by
+       * `/api/runs/[id]`. Two surfaces, one answer — which is the brief's
+       * first P0, and it is answered by one object being read twice rather
+       * than by two call sites being careful.
+       *
+       * A THROW BECOMES NULL and the phone draws no briefing. The failure is
+       * logged so that a section missing on the screen is not also missing
+       * from the record.
+       */
+      let postRun: PostRunWire | null = null;
+      try {
+        const x = await loadPostRunExperience(userId, { runId: runRow.id });
+        postRun = x ? postRunWire(x) : null;
+      } catch (e) {
+        console.error('[v5/today] post-run experience failed:', e);
+      }
+
       const recentRun: V5RecentRunCtx = {
         runId: runRow.id,
         distanceMi, durationSec, paceSPerMi,
@@ -1376,6 +1398,55 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
             conditionsNote: recap.conditions_note,
             coachTip: recap.coach_tip,
           });
+          /* THE BRIEFING WINS WHERE IT SPEAKS (2026-09-02).
+           *
+           * WHAT THIS ROUTE AND RUN DETAIL SAID ABOUT THE SAME RUN, captured
+           * from both real handlers against the owner's production account,
+           * read-only, on 2026-09-02:
+           *
+           *   THIS ROUTE   "Tempo done, 8.5 mi total at 8:03/mi, avg HR 162
+           *                 across the 4 reps."
+           *   RUN DETAIL   "Tempo done, 4 mi @ 7:03, avg HR 162 across the 4
+           *                 reps. Work miles landed inside the 7:10/mi window,
+           *                 7s/mi quick, consistent through the block."
+           *
+           * One run, one field name, two different distances and two different
+           * paces — 8.5 mi at 8:03 on the sheet he opens first, 4 mi at 7:03
+           * in history. Both are arithmetically true (whole run against work
+           * phases) and together they are Rule 16 broken on the runner's own
+           * phone. That is the brief's first P0, measured rather than argued.
+           *
+           * Both also call a THRESHOLD session "Tempo done", and both spend
+           * their one sentence paraphrasing numbers the poster two inches
+           * above already states — the brief's own DELETE item, "generic
+           * AI-style recap that only paraphrases distance/pace".
+           *
+           * So when the canonical interpretation has an actual verdict about
+           * the actual workout, it is what the runner reads. The recap's
+           * weather note and forward-looking tip SURVIVE — the briefing does
+           * not carry either — and the recap remains the whole answer on any
+           * run the briefing declines to grade.
+           *
+           * This ships as STRINGS into wire fields the app already renders, so
+           * no app release is needed for it (`TodayAfterV5.recapSection`). The
+           * structured `postRun` block below is the part that needs one.
+           */
+          const graded = postRun != null
+            && postRun.changeState !== 'UNKNOWN'
+            && postRun.headline !== 'Run recorded'
+            && postRun.headline !== 'Recorded, not graded';
+          if (graded && postRun) {
+            return {
+              win: postRun.headline,
+              verdict: postRun.summary,
+              // The cost sentence only, because the learning and the plan
+              // effect have their own section below and a screen does not say
+              // one thing twice.
+              facts: postRun.cost ? [postRun.cost] : [],
+              conditionsNote: recap.conditions_note ?? null,
+              coachTip: postRun.next ?? recap.coach_tip ?? null,
+            };
+          }
           return {
             verdict: spoken.body[0] ?? null,
             facts: spoken.body.slice(1),
@@ -1513,6 +1584,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       };
 
       const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+      ctx.postRun = postRun;
       ctx.todayPlan = todayPlan;
       ctx.todayPlanUnresolved = todayPlanUnresolved;
       ctx.weekLine = weekLine;
