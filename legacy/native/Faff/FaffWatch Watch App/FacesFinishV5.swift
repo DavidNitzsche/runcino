@@ -300,6 +300,17 @@ struct FinishSummaryBoard: View {
     let averages: [FinishSummaryRow]
     let splits: [FinishSummaryRow]
     var totals: [FinishSummaryRow] = []
+    /// The way off this board, DRAWN. Both call sites also keep a
+    /// tap-anywhere gesture, and for a while that gesture was the only exit
+    /// there was — David, 2026-09-02, looking at his own finished run: "there
+    /// is not done or save or anything button." The run was already saved by
+    /// the time this board renders (both callers POST first and build the
+    /// receipt from the response), so the board's job is to SAY so and let
+    /// him leave. An invisible affordance does neither.
+    ///
+    /// It sits at the very bottom of the scroll, below `totals`, so it cannot
+    /// push Mile 1 under the fold — see the first-screenful rule above.
+    var onDone: (() -> Void)? = nil
 
     var body: some View {
         WBoard(scrolls: true) {
@@ -320,6 +331,14 @@ struct FinishSummaryBoard: View {
                         WSummaryGroup(rows: totals,
                                       fill: WatchV5.surface1,
                                       valueSize: 14)
+                    }
+                    if let onDone {
+                        // Quiet, not filled. Nothing here is destructive and
+                        // nothing is pending — the run is saved and this is
+                        // the acknowledgement, so it takes the weight rule 7
+                        // gives a verb with no consequence behind it.
+                        WTarget(label: "Done", action: onDone)
+                            .padding(.top, 3)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
