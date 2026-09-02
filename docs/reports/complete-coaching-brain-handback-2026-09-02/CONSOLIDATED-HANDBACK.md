@@ -615,6 +615,66 @@ uncached day wait for the network before the strip moves, which contradicts your
 recorded preference — but it should not stay open on the strength of "the
 network is usually fast."
 
+## 12e · Today's run, traced — and the post-run breakdown you flagged
+
+You finished the 2026-09-02 easy run and said the post-run breakdown was awful:
+not showing all the miles, not showing the strides. You are right on both, and a
+third defect sits beside them.
+
+**The run came in clean.** One canonical row, source `watch`, 5.98 mi, avg HR
+139, max 163, zones 62/29/8/1/0. No duplicate, nothing merged wrongly.
+
+**The data is complete and correct.** `runs.data.phases` holds THIRTEEN phases:
+
+| Phase | Distance | Pace | Avg HR | Cadence |
+|---|---|---|---|---|
+| 5.0 mi easy | 5.00 | 8:35 | 137 | 165 |
+| Stride 1 of 6 | 0.05 | 6:41 | 147 | 171 |
+| Stride 2 of 6 | 0.06 | 5:47 | 147 | 177 |
+| Stride 3 of 6 | 0.06 | 5:49 | 149 | 174 |
+| Stride 4 of 6 | 0.05 | 6:05 | 152 | 157 |
+| Stride 5 of 6 | 0.06 | 5:50 | 142 | 176 |
+| Stride 6 of 6 | 0.05 | 7:11 | 152 | 161 |
+
+plus six walk-backs. **They sum to 5.98 miles — exactly the run.** Nothing is
+missing from the database. Every defect is in the display.
+
+**Defect 1 · the mile table shows five miles of a 5.98-mile run.** `data.splits`
+holds only five whole-mile entries and the table renders `splits`. The final 0.98
+of a mile — which contains every stride — is invisible.
+
+**Defect 2 · the six strides appear nowhere.** The phase data above is rich
+enough to draw them and nothing draws it. Your threshold run on 2026-09-01 DOES
+get a piece-by-piece section off the same structure, so the renderer exists and
+this session type is not reaching it.
+
+**Defect 3 · the sentence is wrong three ways.** It reads *"All seven reps
+landed, with four quicker than the ceiling."*
+
+1. **Seven reps** — it counts every `work` phase, so the 5-mile easy block is
+   being counted as a rep alongside the six strides.
+2. **Quicker than the ceiling** — four strides came in at 5:47 to 6:05 against a
+   6:41 target and were reported as deviations. **A stride is supposed to be
+   fast.** The engine's own code says so where it builds them, citing doctrine
+   calling a stride "relaxed", "85-95% max effort" and explicitly "not a
+   workout" — which is exactly why its band is deliberately wide. Grading a
+   stride for being quick is the defect.
+3. The whole framing belongs to a quality session. This was an easy day.
+
+**The root cause of the sentence, and it is a Rule 16 problem.** `appendStrides`
+sets `isStrideSegment: true` on every stride it builds. That flag is ABSENT from
+the stored completed phases — the watch round-trip drops it — so the post-run
+composer cannot tell a stride from a rep and treats both as `type: 'work'`. Two
+different things under one name, held apart by a marker that does not survive the
+trip.
+
+**What the engine got right on this run**, for balance: it classified the session
+EXECUTED with FULL stimulus, put avg work HR at 137 against your 151 ceiling, and
+said *"This supports your current ability to hold pace late. One session is not
+enough to move it."* The interpretation is sound. The presentation is not.
+
+Being fixed now.
+
 ## 13 · What is NOT true
 
 - **Upward pace adaptation remains shadow-only, deliberately.** Six shadow
