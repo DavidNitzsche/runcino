@@ -41,6 +41,18 @@ enum SessionSim {
         return a.firstIndex(of: "-hr").flatMap { $0 + 1 < a.count ? Int(a[$0 + 1]) : nil }
     }
 
+    /// `-pacedrift <n>` · how far the mock's pace wanders, s/mi.
+    ///
+    /// Set it small to model a runner HOLDING pace, which is the only way to
+    /// isolate an HR rule. With the default 18 against a 12 s race band the
+    /// mock drifts out of the band, `milesAdrift` moves, and a bail guard
+    /// wired to the PACE evidence fires for the wrong reason — which is
+    /// exactly what masked the dead-observer defect on its first falsification.
+    static var mockPaceDrift: Double? {
+        let a = ProcessInfo.processInfo.arguments
+        return a.firstIndex(of: "-pacedrift").flatMap { $0 + 1 < a.count ? Double(a[$0 + 1]) : nil }
+    }
+
     // MARK: Archetypes
 
     private static func phase(_ i: Int, _ t: WatchPhaseType, _ label: String,
@@ -206,6 +218,7 @@ struct SessionSimView: View {
                 tracker.mockCenterPace = target
                 // HR-SEMANTICS-2 · `-hr <n>`, so a safety rule can be breached.
                 if let hr = SessionSim.mockHr { tracker.mockCenterHr = hr }
+                if let d = SessionSim.mockPaceDrift { tracker.mockPaceDriftS = d }
                 engine.start()
             }
     }

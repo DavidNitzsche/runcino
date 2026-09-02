@@ -228,6 +228,14 @@ describe('cadence units · one label, two units', () => {
         + 'Raised with the owner 2026-08-24, not changed.',
       'lib/coach/run-state.ts': 'reads `p.avgCadence` off a watch PHASE as well as calling the resolver for the run.',
       'app/api/v5/today/route.ts': 'reads `ph.avgCadence` off a watch PHASE as well as calling the resolver.',
+      'lib/execution/verdict.ts':
+        'reads `p.avgCadence` off a watch PHASE and nothing else. It is the ONE '
+        + 'parser of the completion payload (VERDICT-1), so `mapWatchPhases` and '
+        + 'the Today route now take the phase\'s cadence from it rather than '
+        + 'each re-parsing the array — the same watch-authored, both-feet field '
+        + 'the two entries above are allowed for, read in one place instead of '
+        + 'three. It never touches the run-level key and imports no resolver, '
+        + 'because a run-level unit question is not a phase-level one.',
     };
     const files: string[] = [];
     const walk = (dir: string) => {
