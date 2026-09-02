@@ -744,7 +744,46 @@ agent's own summary and it is not rounded up here.
    twice on your own block. Binding it today would refuse your plan over a
    cutback rebound. The default taken was advisory.
 
-## 21 · What is NOT true yet
+## 21 · The thesis fix: correct on the server, NOT confirmed on the phone
+
+Reported this way because Rule 13 says an honest "I could not confirm this" is
+worth more than a confident claim that turns out to be wrong on your phone, and
+because this exact fix has now been declared working twice on evidence that was
+not the screen.
+
+**What is proved.** Running the deployed code path against your live account,
+`loadV5Block` returns:
+
+> Your races fade with distance faster than your speed predicts, so durability
+> is where the work goes. Your threshold holds.
+
+The old generic sentence is ABSENT from the payload entirely. Server-side the
+fix is correct, and it deployed successfully.
+
+**What is not proved.** The Block screen still renders the old line. I restarted
+the app, revisited the tab, waited for the refresh, and revisited again. It did
+not change.
+
+**What I ruled out and what I did not.** The app fetches `/api/v5/block` from
+production with a twelve-hour `AppCache` entry, painting the cached value on
+frame one and refreshing behind it — by design, so a screen never appears empty.
+A restart did not clear it, which is expected since the cache is in
+UserDefaults. Whether the refresh ran and was ignored, failed quietly and fell
+back, or simply had not landed when I looked, I could not establish tonight.
+
+**So the correct status is: the server is fixed and the screen is unverified.**
+The likely explanation is benign and client-side, and the cache expires within
+twelve hours in any case. But "likely benign" is precisely the reasoning that
+declared the route line fixed twice while it was still invisible, so it is
+written down as an open item rather than closed.
+
+**What would settle it:** build and install the current app rather than using
+the build already on the simulator, or clear that one cache key and reopen
+Block. I did neither — the installed build is signed and carries a working
+session, and replacing it risks the account state on the device you actually
+look at.
+
+## 22 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -761,7 +800,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 22 · PENDING sections
+## 23 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
