@@ -27,6 +27,11 @@
  *     two RULES match, not that the compiled watch executes the port. The
  *     source assertions in EXECSEM-5b are the only thing binding it to the
  *     real file, and they are text matches.
+ *   · It reads the watch sources at `legacy/native/…`, which is where they
+ *     live; `native-v2/Faff/FaffWatch Watch App` is a tracked SYMLINK to that
+ *     directory, not a second copy (see SECOND-OWNER-10 below). EXECSEM-5d
+ *     asserts the link, because the day it becomes a real directory this whole
+ *     file starts grading a tree that does not ship — and would stay green.
  *   · It says nothing about the LIVE colour on the wrist (`PaceDrift`), only
  *     about the recorded per-phase verdict.
  *   · It cannot see a payload the server never sends. If `build-workout.ts`
@@ -48,8 +53,38 @@ import {
 } from './execution-semantics';
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
+
+/* ── SECOND-OWNER-10 (2026-09-02) · THE "WRONG COPY" FINDING WAS NOT REAL ───
+ *
+ * An ownership audit reported that this gate binds to
+ * `legacy/native/Faff/FaffWatch Watch App/WorkoutEngine.swift` while the
+ * shipping target is `native-v2/`, that the two were byte-identical, and that
+ * the gate was therefore "one edit away from proving nothing". Its evidence
+ * was `diff -q` between the two paths returning 0.
+ *
+ * THERE IS ONLY ONE FILE. `native-v2/Faff/FaffWatch Watch App` is a TRACKED
+ * GIT SYMLINK (mode 120000, blob `../../legacy/native/Faff/FaffWatch Watch
+ * App`) — `native-v2/project.yml` says so at the watch target: "sources live
+ * in legacy/ for now, symlinked in by scripts/ship-testflight-v2.sh". The
+ * `diff -q` compared a symlink with its own target, which cannot differ, and
+ * the "two byte-identical 159,455-byte copies" were one file counted twice.
+ *
+ * So the paths below are UNCHANGED and deliberately so: `legacy/native/...` is
+ * the canonical, tracked, only copy of the watch grading engine, and pointing
+ * this gate at the symlink instead would make it depend on a link resolving
+ * rather than on a file existing — strictly more fragile, for no gain.
+ *
+ * What WAS missing is the assertion that keeps that true. If anyone ever
+ * replaces the symlink with a real directory, the second copy the audit feared
+ * comes into existence for real and this gate silently starts grading the one
+ * that does not ship. EXECSEM-5d below asserts the link, so that day fails
+ * loudly instead.
+ */
 const ENGINE = path.join(ROOT, 'legacy/native/Faff/FaffWatch Watch App/WorkoutEngine.swift');
 const MODELS = path.join(ROOT, 'legacy/native/Faff/FaffWatch Watch App/WatchWorkoutModels.swift');
+/** The path the shipping Xcode project compiles. A symlink, not a copy. */
+const SHIPPED_WATCH_DIR = path.join(ROOT, 'native-v2/Faff/FaffWatch Watch App');
+const SHIPPED_WIDGETS_DIR = path.join(ROOT, 'native-v2/Faff/FaffWatch Widgets');
 
 /* ════════════ the port · WorkoutEngine.swift, transcribed ════════════════ */
 
@@ -295,6 +330,92 @@ describe('EXECSEM-5b · the Swift still has the shape this file ports', () => {
       path.join(ROOT, 'legacy/native/Faff/FaffWatch Watch App/PaceDrift.swift'), 'utf8',
     );
     expect(drift).toMatch(/paceShape == \.ceiling && delta > 0/);
+  });
+});
+
+/* ═══ SECOND-OWNER-10 · the file this gate grades IS the file that ships ═══ */
+
+describe('EXECSEM-5d · one grading engine, one physical copy', () => {
+  /**
+   * WHY THIS EXISTS
+   *
+   * Everything above reads `legacy/native/Faff/FaffWatch Watch App/`. The
+   * Xcode target that produces the watch binary lists its sources as
+   * `Faff/FaffWatch Watch App` under `native-v2/`. Those are the same bytes
+   * ONLY because the second path is a symlink to the first — a tracked one
+   * (git mode 120000), so it exists in a fresh clone and in CI, not just where
+   * `ship-testflight-v2.sh` has run.
+   *
+   * That is a load-bearing fact nothing checked. Replace the symlink with a
+   * real directory — a `cp -R` during a merge is enough — and there are
+   * suddenly two copies of the grading engine, this suite grades the one that
+   * does not ship, and it stays green while the wrist diverges. That is the
+   * defect an ownership audit reported as already present; it was not, because
+   * of the link, and this is the assertion that keeps it not-present.
+   *
+   * WHAT THIS CANNOT FAIL ON (Rule 22, stated not implied):
+   *   · It checks the LINK, not the build. It cannot tell whether xcodegen
+   *     actually compiled these sources, or whether the archive that reached
+   *     TestFlight contains them.
+   *   · It cannot fail on a checkout where git materialised the symlink as a
+   *     text file (`core.symlinks=false`, some Windows clones). It reports
+   *     that case as a failure with the reason, which is the honest outcome,
+   *     but the underlying tree is not actually broken there.
+   *   · It says nothing about the WIDGETS sources beyond the same link check —
+   *     no parity port exists for those.
+   */
+  it('the shipping watch source path is a SYMLINK into the graded tree', () => {
+    for (const [linkPath, wantTarget] of [
+      [SHIPPED_WATCH_DIR, '../../legacy/native/Faff/FaffWatch Watch App'],
+      [SHIPPED_WIDGETS_DIR, '../../legacy/native/Faff/FaffWatch Widgets'],
+    ] as const) {
+      const rel = path.relative(ROOT, linkPath);
+      let st: fs.Stats;
+      try {
+        st = fs.lstatSync(linkPath);
+      } catch {
+        throw new Error(
+          `${rel} does not exist. The shipping Xcode target lists it as its source path ` +
+            '(native-v2/project.yml, target "FaffWatch Watch App"), so the watch cannot build ' +
+            'without it and this suite would be grading a tree nothing compiles.',
+        );
+      }
+      expect(
+        st.isSymbolicLink(),
+        `${rel} is no longer a symlink. It is now a SECOND PHYSICAL COPY of the watch ` +
+          'sources, and everything above this line grades ' +
+          `${path.relative(ROOT, ENGINE)} — the other one. Restore the link ` +
+          `(\`ln -s "${wantTarget}" "${rel}"\`) or re-point this whole file at whichever copy ` +
+          'actually ships. Two copies of the grading engine is a Rule 16 violation either way.',
+      ).toBe(true);
+      // RELATIVE, and pointing where this suite reads. An ABSOLUTE link
+      // resolves to whichever checkout minted it, which is the bug
+      // `ship-testflight-v2.sh`'s own comment records having been bitten by
+      // from a git worktree.
+      const target = fs.readlinkSync(linkPath);
+      expect(
+        target,
+        `${rel} points at "${target}". It must be the relative path into the tree this suite ` +
+          'grades; an absolute link compiles some other checkout\'s watch sources.',
+      ).toBe(wantTarget);
+    }
+  });
+
+  it('the link resolves to the exact file the port is checked against', () => {
+    // Assert the RESULT, not the absence of a defect (Rule 13 point 3): read
+    // the engine through the shipping path and require it to be byte-identical
+    // to what EXECSEM-5b read. This is the only assertion here that would also
+    // catch a link that is well-formed but points somewhere else entirely.
+    const throughShippingPath = path.join(SHIPPED_WATCH_DIR, 'WorkoutEngine.swift');
+    const shipped = fs.readFileSync(throughShippingPath);
+    const graded = fs.readFileSync(ENGINE);
+    expect(shipped.length).toBeGreaterThan(50_000);
+    expect(
+      shipped.equals(graded),
+      `the watch source reached through the shipping path (${path.relative(ROOT, throughShippingPath)}) ` +
+        `is not the file this suite grades (${path.relative(ROOT, ENGINE)}). ` +
+        `${shipped.length} bytes vs ${graded.length}.`,
+    ).toBe(true);
   });
 });
 

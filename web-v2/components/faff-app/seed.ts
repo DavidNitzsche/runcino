@@ -2598,12 +2598,18 @@ async function buildSeedInner(): Promise<FaffSeed> {
         // cold "we can't draw your gap" state while the same snapshot is shown
         // as "VDOT 47.9" two lines up. The iPhone surface never had this bug
         // because it already read series-first.
-        const { loadLatestVdotWithAnchor } = await import('@/lib/training/projection-snapshots');
-        const snap = await loadLatestVdotWithAnchor(userId)
-          .catch(() => ({ vdot: null, anchorDateISO: null, anchorDistanceMi: null }));
-        const projVdot = snap.vdot ?? profile?.physiology.vdot ?? null;
-        const projAnchorDate = snap.anchorDateISO ?? profile?.physiology.vdot_anchor_date ?? null;
-        const projAnchorDist = snap.anchorDistanceMi ?? profile?.physiology.vdot_anchor_distance_mi ?? null;
+        // SECOND-OWNER-5 (2026-09-02) · the canonical snapshot read. Was
+        // `loadLatestVdotWithAnchor(...).catch(...)` — unbounded age, no
+        // tie-break, and a catch-to-nulls stacked on the reader's own catch.
+        const { resolveCurrentVdotSnapshot } = await import('@/lib/training/projection-snapshots');
+        const snapRead = await resolveCurrentVdotSnapshot(userId);
+        if (!snapRead.ok) {
+          console.warn(`[seed] current VDOT unavailable · ${snapRead.reason} · ${snapRead.detail}`);
+        }
+        const snap = snapRead.ok ? snapRead : null;
+        const projVdot = snap?.vdot ?? profile?.physiology.vdot ?? null;
+        const projAnchorDate = snap?.anchorDateISO ?? profile?.physiology.vdot_anchor_date ?? null;
+        const projAnchorDist = snap?.anchorDistanceMi ?? profile?.physiology.vdot_anchor_distance_mi ?? null;
         const gp = await computeGoalProjection({
           userUuid: userId,
           goalSec: goalSecForGP,

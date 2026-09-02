@@ -20,8 +20,8 @@ re-cut it.
 
 | Stage | Scope | State |
 |---|---|---|
-| 1 | Finish and lock the coaching brain | **Landed and deployed — but scored INCOMPLETE, see 13** |
-| 2 | Plan-generation contracts | **In progress** · 6 of 9 brief phases done, 3 in flight |
+| 1 | Finish and lock the coaching brain | **INCOMPLETE** · 8 of 18 rows have two live owners; 4 blockers closed, 1 retired, 1 half |
+| 2 | Plan-generation contracts | **In progress** · 6 of 9 brief phases on main, 3 in flight |
 | 3 | Coaching explanation contract | Not started |
 | 4 | Post-run experience | Not started |
 | 5 | Cross-surface contract tests | Not started |
@@ -607,7 +607,68 @@ that file rather than done here, since it needs care about which states should
 prefer the thesis over the phase line — the thesis should not tell you durability
 is where the work goes during race week.
 
-## 16 · What is NOT true yet
+## 16 · Blockers closed since the scorecard
+
+Four of the ten are closed, one turned out not to exist, and one is half closed
+with the remaining half named. Detail in `second-owners-closed.md` beside this
+file.
+
+**B1 · the goal-derived pace ladder is deleted.** Not deprecated, not commented
+out. `derivePaces` and every input that fed it a goal are gone, and the card
+surfaces now ADAPT the canonical anchors rather than re-deriving them, which
+would have been a third answer. Where doctrine gives easy and long a ceiling and
+not a band, the surface now REFUSES rather than inventing a width. Proved on
+your real account by nulling today's spec, which is the exact case that fires
+it: `7:54–8:34/mi` became `no faster than 8:22/mi`.
+
+**And widening the gate found two worse ones.** The goal-pace-leak check only
+covered three trees; extended to seven, it went from 246 files to 876 and
+immediately caught two live goal-derived threshold paces that no display fix
+would ever have reached. `app/api/plan/restore` wrote 394 s/mi into restored
+workout rows, and the spec backfill route would have written the same number
+into every spec-less row in the database. **Those PERSIST.** A wrong number on a
+screen is gone on the next render; a wrong number in `workout_spec` is training.
+Both fixed rather than exempted.
+
+**B5 · one VDOT snapshot reader.** The unbounded reader had no age limit, no
+tie-break across the three rows a day production holds, and a catch that made a
+failed read and an empty table the same answer. Four callers moved to the
+disciplined one. Both return 47.7 today, so this changes nothing for you now and
+everything in the stale case it exists for.
+
+**B10 · not real, and the agent said so rather than shipping a fix.** The audit
+found a parity gate reading a legacy copy of the watch grader instead of the
+shipping one, and compared them with `diff`. They matched because the shipping
+path is a git SYMLINK into the legacy tree — the gate was reading the only copy
+that exists. The gate now asserts the symlink itself, so the day someone
+replaces it with a real file it fails loudly. A blocker correctly retired is
+worth as much as one closed.
+
+**B8 · half closed.** `loadGlanceState`'s open-injury read ended in a catch that
+returned no rows, so a database failure and "no open injury" were the same
+answer on a safety signal. It now logs loudly and carries a flag saying the
+check could not run.
+
+**The half I did not take is yours, and it is written into the code rather than
+left as a gap.** What should Today DO when the injury check cannot run? It must
+not fabricate a flare, because an injury owns the whole screen and a transient
+error would blank your day. It should not silently prescribe as if you are clear
+either. The flag exists so that decision has something to branch on.
+
+## 17 · Why I kept closing brain blockers instead of starting Stage 3
+
+Your directive set a strict order and put the brain first. The brain scored
+INCOMPLETE on its own stated criterion, with eight rows still carrying two live
+owners. So continuing on blockers is the directive being followed, not departed
+from — starting the coaching-voice stage on top of an engine that has two
+answers for "how hard should this workout be" would be building on the thing
+that is broken.
+
+Stages 3, 4 and 5 have not started and I am not going to pretend otherwise.
+What has happened instead is that Stage 1 turned out to be much larger than
+"done", and the evidence for that is in the scorecard rather than in my opinion.
+
+## 18 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -624,7 +685,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 17 · PENDING sections
+## 19 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after

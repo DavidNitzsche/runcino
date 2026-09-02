@@ -173,33 +173,70 @@ export async function loadLatestVdotForUser(userUuid: string): Promise<number | 
 }
 
 /**
- * Latest VDOT for a user, plus the anchor race/run metadata that produced it.
- * Used by profile-state so computeConfidenceInterval can apply §13.7
- * cross-prediction penalties (stale input, cross-distance) without re-running
- * the full VDOT chain on every load.
+ * DEPRECATED SHELL · SECOND-OWNER-5 (2026-09-02). Its OWN query is deleted;
+ * this delegates to `resolveCurrentVdotSnapshot` and flattens the refusal.
  *
- * anchorDateISO / anchorDistanceMi are null when the snapshot was written
- * before migration 125 or when no race/run anchor was available.
+ * ── WHAT IT WAS, AND WHAT IT COST ──────────────────────────────────────────
+ *
+ * A second, independent answer to "what is this runner's VDOT", sitting in
+ * this very file beside the disciplined one. Its query was
+ * `ORDER BY snapshot_date DESC LIMIT 1` with:
+ *
+ *   · NO AGE BOUND. `bestRecentVdot` fades a value (0.1 VDOT per 14 days past
+ *     56, expiring at 84); a snapshot is faded as of its OWN date and never
+ *     again, so a snapshot N days old is under-faded by exactly N days. The
+ *     owner's snapshot history carries real gaps of 7, 9 and 15 days, and in
+ *     one of those windows the value moved 44.1 → 46.3 → 47.7 in three days.
+ *     A 15-day gap there serves a number 3.6 VDOT wrong, confidently.
+ *   · NO TIE-BREAK. Production holds THREE rows per (user, snapshot_date);
+ *     which one came back was the planner's choice (Rule 14).
+ *   · A `.catch(() => ({ rows: [] }))`, so a failed read and an empty table
+ *     were the same answer (Rule 11).
+ *
+ * It had six live callers, one of them `app/api/v5/races` — the primary iPhone
+ * races surface — feeding Goal Feasibility (§L) and the heat detector.
+ *
+ * ── WHY IT IS A SHELL RATHER THAN DELETED ──────────────────────────────────
+ *
+ * Every caller this change could reach now calls `resolveCurrentVdotSnapshot`
+ * directly and branches on the refusal: `lib/coach/profile-state.ts`,
+ * `app/api/v5/races`, `app/api/targets/projection`, `components/faff-app/seed`.
+ *
+ * ONE importer remains — `lib/plan/goal-gap.ts` — and it is inside a tree
+ * another agent is concurrently rewriting, so editing it here would collide.
+ * The symbol survives for that single caller ONLY, with its own query gone, so
+ * the three defects above are fixed for it too without the file being touched.
+ * `lib/training/_vdot_snapshot_owner.test.ts` pins the importer set to exactly
+ * that one file and FAILS if anything else picks this up, or if `goal-gap.ts`
+ * stops importing it — at which point this function is deleted outright.
+ *
+ * ── THE ONE BEHAVIOURAL CHANGE, STATED ─────────────────────────────────────
+ *
+ * A snapshot older than `VDOT_SNAPSHOT_MAX_AGE_DAYS` now returns `vdot: null`
+ * where it used to return the stale number. That is the defect, not a
+ * regression: a value the app cannot honestly call current is not one to hand
+ * a goal-feasibility verdict. Measured on the reference runner 2026-09-02,
+ * both readers returned 47.7 with anchor 2026-09-01 / 4.03 mi and `ageDays: 0`,
+ * so today it is a no-op; it differs only in exactly the case it exists for.
+ *
+ * The flattening to `null` is itself a Rule 11 loss and is why this shape does
+ * not spread: the reason is logged here rather than discarded, and the caller
+ * that wants the three states calls the resolver.
  */
 export async function loadLatestVdotWithAnchor(
   userUuid: string,
 ): Promise<{ vdot: number | null; anchorDateISO: string | null; anchorDistanceMi: number | null }> {
-  const r = await pool.query<{ vdot: number; anchor_date: string | null; anchor_dist: number | null }>(
-    `SELECT vdot::float AS vdot,
-            vdot_anchor_date::text AS anchor_date,
-            vdot_anchor_distance_mi::float AS anchor_dist
-       FROM projection_snapshots
-      WHERE user_uuid = $1
-        AND vdot IS NOT NULL
-      ORDER BY snapshot_date DESC
-      LIMIT 1`,
-    [userUuid],
-  ).catch(() => ({ rows: [] }));
-  const row = r.rows[0];
+  const read = await resolveCurrentVdotSnapshot(userUuid);
+  if (!read.ok) {
+    console.warn(
+      `[projection-snapshots] loadLatestVdotWithAnchor · current VDOT unavailable · ${read.reason} · ${read.detail}`,
+    );
+    return { vdot: null, anchorDateISO: null, anchorDistanceMi: null };
+  }
   return {
-    vdot: row?.vdot ?? null,
-    anchorDateISO: row?.anchor_date ?? null,
-    anchorDistanceMi: row?.anchor_dist ?? null,
+    vdot: read.vdot,
+    anchorDateISO: read.anchorDateISO,
+    anchorDistanceMi: read.anchorDistanceMi,
   };
 }
 

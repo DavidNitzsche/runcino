@@ -10,6 +10,7 @@
  * Cheap pg queries only — no Anthropic call. Page renders in ~200ms.
  */
 import { distanceMiOfMeta } from '@/lib/race/distance';
+import { logReadFailure } from '@/lib/db/read';
 import { pool } from '@/lib/db/pool';
 import { computeReadiness, type ReadinessBreakdown } from './readiness';
 import { loadReadinessBandBaseline } from './readiness-history';
@@ -185,6 +186,14 @@ export interface GlanceState {
     return_protocol: string | null;
     notes: string | null;
   } | null;
+  /**
+   * RULE 11 · true when the open-injury read FAILED, as distinct from finding
+   * no open injury. `activeInjury` is null in both cases and they are opposite
+   * facts: one says the runner is clear, the other says we could not tell.
+   * A consumer that gates anything on injury must branch on this rather than
+   * reading `activeInjury == null` as "safe".
+   */
+  injuryReadFailed?: boolean;
   // STRENGTH-3 (2026-08-17) · recommendedStrengthDays / strengthRecommendation
   // / strengthWeekStatus removed. See the note at the recommender call site.
 }
@@ -649,6 +658,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       }
     : null;
 
+  let injuryReadFailed = false;
   // Gap B13 (2026-08-19) · open injury (runner_injuries.resolved_date IS
   // NULL). One LIMIT-1 point read, same defensive posture as the niggle/sick
   // reads immediately above — silent degrade to null if the table doesn't
@@ -662,7 +672,24 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
       ORDER BY start_date DESC
       LIMIT 1`,
     [userId],
-  ).catch(() => ({ rows: [] as any[] }));
+  ).catch((e) => {
+    // RULE 11 (2026-09-02) · this used to be `.catch(() => ({ rows: [] }))`,
+    // which made a FAILED read and "no open injury" the same answer on a
+    // SAFETY signal. A database hiccup rendered an injured runner uninjured
+    // and nothing anywhere said so. The read still degrades rather than
+    // hard-failing the whole loader — that posture was right — but it now
+    // degrades LOUDLY and the caller can tell the two apart.
+    //
+    // The remaining half is a product decision and is deliberately NOT taken
+    // here: what Today should DO when the injury check could not run. It must
+    // not fabricate a flare (an injury owns the whole screen, so a transient
+    // read error would blank the day), and it should not silently prescribe as
+    // if clear either. `injuryReadFailed` exists so that decision has
+    // something to branch on when it is made.
+    logReadFailure('coach/glance-state · open injury', e);
+    injuryReadFailed = true;
+    return { rows: [] as any[] };
+  });
   const activeInjury = injuryRow.rows[0]
     ? {
         id: Number(injuryRow.rows[0].id),
@@ -811,5 +838,6 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     activeNiggle,
     activeSick,
     activeInjury,
+    injuryReadFailed,
   };
 }

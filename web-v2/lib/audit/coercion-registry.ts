@@ -556,7 +556,12 @@ export const HANDED_BACK_FAILS = false;
 // 2026-09-02 · PHASE 12 · 180 → 179. `lib/race/coach-goal.ts`'s legacy
 // two-point exponent fit is DELETED (the canonical `fitRaceExponent` owns the
 // question), and its `predictWithPersonalExponent::t` collapse went with it.
-export const PERIPHERAL_BASELINE = 179;
+//
+// 2026-09-02 · SECOND-OWNER-5 · 179 → 178. `loadLatestVdotWithAnchor`'s own
+// query is deleted; it delegates to `resolveCurrentVdotSnapshot`, so its
+// `row?.vdot ?? null` collapse over a `.catch(() => ({ rows: [] }))` went with
+// it. The site did not move buckets — the read it collapsed no longer exists.
+export const PERIPHERAL_BASELINE = 178;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

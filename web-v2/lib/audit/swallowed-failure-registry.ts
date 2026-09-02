@@ -286,7 +286,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'app/api/cross-training/route.ts::GET',
   'app/api/injuries/[id]/route.ts::GET',
   'app/api/plan/change/route.ts::resolveTargetSlug',
-  'app/api/plan/restore/route.ts::deriveTPaceSec',
   'app/api/prescription/route.ts::GET',
   'app/api/prescription/route.ts::GET',
   'app/api/prescription/route.ts::GET',
@@ -376,7 +375,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   // (`lib/execution/verdict.ts`) instead. The remaining entry is the
   // coach_intents read.
   'lib/coach/glance-state.ts::computeTodayExecution',
-  'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadGlanceState',
@@ -595,7 +593,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/training/plan-target.ts::loadMarathonSpecificTraining',
   'lib/training/plan-target.ts::loadPlannedTargetVdot',
   'lib/training/projection-snapshots.ts::loadLatestVdotForUser',
-  'lib/training/projection-snapshots.ts::loadLatestVdotWithAnchor',
   'lib/training/projection-snapshots.ts::loadNearestSnapshot',
   'lib/training/projection-snapshots.ts::loadProjectionSeries',
   'lib/training/projection-snapshots.ts::loadProjectionSnapshot',
@@ -649,7 +646,24 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // a TYPE (`PaceAnchorRead`'s branch carries no `anchors` field) rather than a
 // swallowed read. One fewer site, and the state it used to lose is now
 // something the caller cannot fail to branch on.
-export const EMPTIED_BASELINE = 367;
+// 2026-09-02 · SECOND-OWNER-1b · -1 (366 → 365).
+// `app/api/plan/restore/route.ts::deriveTPaceSec` no longer reads `races` at
+// all. It used to fetch the goal row behind a `.catch(() => ({ rows: [] }))`
+// and hand `plan.goal.finish_time_s` to `tPaceFromGoal`, which then went
+// through `buildWorkoutSpec` into the restored row's persisted
+// `workout_spec` — so a failed race read and a runner with no goal both
+// produced "no spec", and a SUCCESSFUL read produced a threshold pace off the
+// runner's aspiration (394 s/mi against a canonical 430 on the owner's own
+// account). It now calls `resolvePrescribedPaceAnchors`, whose refusal is a
+// TYPE rather than a swallowed read.
+// 2026-09-02 · B8 · -1 (365 → 364). `loadGlanceState`'s open-injury read no
+// longer ends in `.catch(() => ({ rows: [] }))`. On a safety signal that made a
+// FAILED read and "no open injury" the same answer; it now logs through
+// logReadFailure and sets `injuryReadFailed` so the two stay distinguishable.
+// Merged with the SECOND-OWNER-1b step above: three sites left the ratchet in
+// one integration, and the number was taken from the gate's own count rather
+// than arithmetic on two branches.
+export const EMPTIED_BASELINE = 364;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
