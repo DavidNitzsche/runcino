@@ -640,7 +640,10 @@ describe('VERDICT-3 · the owner s 2026-09-01 4×1 mi, on every consumer', () =>
     // The work numbers every surface prints beside the verdict.
     expect(grade.work.paceSPerMi).toBe(423);
     expect(grade.work.hrAvg).toBe(162);
-    expect(grade.work.distanceMi).toBe(4);
+    // The work distance is the fixture's own four one-mile reps. The resolver
+    // does not carry it (see `WorkSummary`), so this sums the graded phases.
+    expect(grade.phases.filter((p) => p.type === 'work')
+      .reduce((a, p) => a + (p.actualDistanceMi ?? 0), 0)).toBe(4);
   });
 
   it('the win line says the set landed', () => {

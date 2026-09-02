@@ -85,6 +85,7 @@ import {
 // `num` rather than re-written: it answers the same question about the same
 // fields of the same payload (Rule 16).
 import { hrToNum, pos as num, runPhases, type NormalizedPhase, type RunData } from '@/lib/runs/run-shape';
+import { workAveragesFromPhases } from '@/lib/runs/work-averages';
 
 /* ══════════════════════════════ 1 · the shape ═══════════════════════════ */
 
@@ -136,9 +137,15 @@ export interface WorkSummary {
   paceSPerMi: number | null;
   /** Duration-weighted mean heart rate across the work phases, bpm. */
   hrAvg: number | null;
-  /** Total work distance, mi. */
-  distanceMi: number | null;
 }
+
+/* NO `distanceMi`. It was here, nothing in the app read it, and returning it
+ * meant either a third copy of the work-distance sum — which
+ * `check-derived-consistency` correctly flagged, since a pace, a duration and
+ * a distance from one arithmetic family sat in this block unreconciled — or
+ * widening `work-averages.ts` to carry a field for a single caller.
+ * Constitution §26: prefer deletion. A consumer that needs the work distance
+ * sums the graded phases it already holds. */
 
 export interface WorkoutVerdict {
   sessionClass: SessionClass;
@@ -327,13 +334,21 @@ export function gradeStoredPhases(
     },
   );
 
-  let sec = 0, mi = 0, hrW = 0, hrWeight = 0;
-  for (const p of workPhases) {
-    const s = p.actualDurationSec ?? 0;
-    if (s > 0) sec += s;
-    if (p.actualDistanceMi != null && p.actualDistanceMi > 0) mi += p.actualDistanceMi;
-    if (p.avgHr != null && s > 0) { hrW += p.avgHr * s; hrWeight += s; }
-  }
+  /* THE WORK NUMBERS COME FROM THEIR OWNER, not from arithmetic written here.
+   *
+   * `lib/runs/work-averages.ts` is the one place duration-weighted work
+   * averages are computed, and its own header says why: "the one thing that
+   * must not happen is two screens computing them two ways." A third copy here
+   * would be exactly that — and `check-derived-consistency` said so, flagging
+   * this block for holding a pace, a duration and a distance from one
+   * arithmetic family with none of them reconciled. */
+  const avgs = workAveragesFromPhases(workPhases.map((p) => ({
+    type: 'work',
+    sec: p.actualDurationSec,
+    mi: p.actualDistanceMi,
+    hr: p.avgHr,
+    cadence: p.avgCadence,
+  })));
   const graded = workPhases.filter((p) => p.verdict !== 'not_graded').length;
   const work: WorkSummary = {
     count: workPhases.length,
@@ -341,12 +356,8 @@ export function gradeStoredPhases(
     landed: workPhases.filter((p) => p.verdict === 'hit' || p.verdict === 'fast').length,
     fellShort: workPhases.filter((p) => p.verdict === 'slow').length,
     incomplete: workPhases.some((p) => p.verdict === 'incomplete'),
-    // `|| null` rather than a `> 0 ?` ternary: every one of these is an
-    // absence when it comes out zero (no work time, no reading, no distance),
-    // never a measured zero, so the house idiom says what it means.
-    paceSPerMi: (sec > 0 && mi > 0 ? Math.round(sec / mi) : 0) || null,
-    hrAvg: Math.round(hrW / (hrWeight || 1)) * (hrWeight > 0 ? 1 : 0) || null,
-    distanceMi: Math.round(mi * 100) / 100 || null,
+    paceSPerMi: avgs.paceSPerMi,
+    hrAvg: avgs.hrAvg,
   };
 
   return {
