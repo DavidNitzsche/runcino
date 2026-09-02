@@ -152,6 +152,11 @@ struct BlockV5: View {
                 if model.phases.count > 1 { arcSection }
                 coachSection
                 soFarSection
+                // WEEKANSWERS-1 (2026-09-02) · the block's own five answers.
+                // Absent on a block authored before them, which draws nothing.
+                if let answers = model.blockAnswers, !answers.isEmpty {
+                    blockAnswersSection(answers)
+                }
                 runLogRow
                 changePlanRow
                 weeksSection
@@ -313,6 +318,33 @@ struct BlockV5: View {
             ForEach(model.soFar) { row in
                 ListRow(label: row.label, sub: row.sub, value: row.value?.value)
             }
+        }
+    }
+
+    // MARK: How this block works
+    //
+    // WEEKANSWERS-1 (2026-09-02) · the five block-level answers, said ONCE
+    // here. Every sentence is the plan engine's own, derived from this block's
+    // numbers and stored on the plan — nothing on this screen is written by
+    // the client. Rule 17: these are NOT repeated on the fifteen week rows,
+    // which carry their own six answers about themselves.
+
+    private func blockAnswersSection(_ answers: [V5Answer]) -> some View {
+        ListGroup(header: "How this block works") {
+            VStack(alignment: .leading, spacing: V5.S.s14) {
+                ForEach(answers) { a in
+                    VStack(alignment: .leading, spacing: V5.S.s4) {
+                        V5SectionLabel(text: a.label, size: TypeScaleV5.label13)
+                        Text(a.text)
+                            .font(.faffText(15))
+                            .foregroundStyle(V5.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.horizontal, V5.S.tilePad)
+            .padding(.vertical, V5.S.s14)
         }
     }
 
@@ -1025,6 +1057,24 @@ private struct BlockWeekRow: View {
                             if let v = row.value?.value {
                                 FaffValueText(v, font: .faffText(14), color: V5.textSecondary)
                             }
+                        }
+                    }
+                    // WEEKANSWERS-1 (2026-09-02) · why this week looks like
+                    // this. Composed by the plan engine and stored on the plan,
+                    // so what the runner reads here is the block's own
+                    // arithmetic rather than a sentence written beside it.
+                    // Absent on a block authored before the answers existed,
+                    // which draws nothing at all rather than empty headings.
+                    if let answers = week.answers, !answers.isEmpty {
+                        ForEach(answers) { a in
+                            VStack(alignment: .leading, spacing: V5.S.s4) {
+                                V5SectionLabel(text: a.label, size: TypeScaleV5.label13)
+                                Text(a.text)
+                                    .font(.faffText(14))
+                                    .foregroundStyle(V5.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }

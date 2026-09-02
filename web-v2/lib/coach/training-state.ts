@@ -16,6 +16,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { coherentPace } from '@/lib/runs/coherence';
 import type { PhaseAnswer } from '@/lib/plan/phase-answers';
+import type { WeekAnswers, BlockAnswers } from '@/lib/plan/strategy-contracts';
 
 export interface PlanWeek {
   /** plan_weeks.id — added 2026-08-19 for /api/v5/block so week rows carry a
@@ -164,6 +165,21 @@ export interface TrainingState {
    * phase without answers rather than inventing them.
    */
   phaseAnswers: PhaseAnswer[] | null;
+  /**
+   * WEEKANSWERS-1 (2026-09-02) · the per-week and block-level answers the
+   * composer derived (`authored_state.block_strategy`).
+   *
+   * The owner's requirement is that the plan explain every week, and that the
+   * explanation be DERIVED and PERSISTED rather than written alongside it. It
+   * was already being derived and persisted; `block_strategy` reached no route,
+   * no component and no Swift file, which is the same as not existing. This is
+   * the read that ends that.
+   *
+   * Null on a block authored before the key existed. A surface then shows the
+   * week without an explanation rather than inventing one.
+   */
+  weekAnswers: Record<string, WeekAnswers> | null;
+  blockAnswers: BlockAnswers | null;
 }
 
 export async function loadTrainingState(userId: string): Promise<TrainingState> {
@@ -183,14 +199,17 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
       last_adapted_at: null,
       horizonRaise: null,
       phaseAnswers: null,
+      weekAnswers: null,
+      blockAnswers: null,
     };
   }
 
   // 2026-06-03 · Rule 11 · read horizon_raise from authored_state.
   // PHASE-ANSWERS-1 · and the phase answers, off the same row in the same read.
-  const authRow = (await pool.query<{ horizon: any; phase_answers: unknown }>(
+  const authRow = (await pool.query<{ horizon: any; phase_answers: unknown; block_strategy: unknown }>(
     `SELECT authored_state->'horizon_raise' AS horizon,
-            authored_state->'phase_answers' AS phase_answers
+            authored_state->'phase_answers' AS phase_answers,
+            authored_state->'block_strategy' AS block_strategy
        FROM training_plans WHERE id = $1`,
     [plan.id],
   ).catch(() => ({ rows: [] }))).rows[0];
@@ -200,6 +219,18 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   const phaseAnswers: PhaseAnswer[] | null = Array.isArray(authRow?.phase_answers)
     ? (authRow!.phase_answers as PhaseAnswer[])
     : null;
+  // WEEKANSWERS-1 · keyed by WEEK START rather than array position, so a
+  // surface matches an answer to a week by date. Position cannot be trusted
+  // here: a re-anchored block loses weeks off the front and every answer would
+  // slide one week early without anything looking wrong.
+  const strategy = (authRow?.block_strategy ?? null) as
+    { weeks?: Array<{ weekStartISO?: string; answers?: WeekAnswers }>; answers?: BlockAnswers } | null;
+  const weekAnswers: Record<string, WeekAnswers> | null = Array.isArray(strategy?.weeks)
+    ? Object.fromEntries(strategy.weeks
+        .filter((w) => typeof w?.weekStartISO === 'string' && w?.answers != null)
+        .map((w) => [w.weekStartISO as string, w.answers as WeekAnswers]))
+    : null;
+  const blockAnswers: BlockAnswers | null = strategy?.answers ?? null;
 
   const phases: PlanPhase[] = (await pool.query(
     `SELECT label, start_week_idx, end_week_idx FROM plan_phases WHERE plan_id = $1 ORDER BY start_week_idx`,
@@ -468,5 +499,7 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
     last_adapted_at: plan.last_adapted_at,
     horizonRaise,
     phaseAnswers,
+    weekAnswers,
+    blockAnswers,
   };
 }

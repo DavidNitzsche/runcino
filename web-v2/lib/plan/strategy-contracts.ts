@@ -132,6 +132,50 @@ export interface WeekIntent {
   longRunMi: number | null;
   qualityBudget: { sessions: number; atPaceMi: number };
   rationale: string;
+  /**
+   * WEEKANSWERS-1 (2026-09-02) · WHY THIS WEEK LOOKS LIKE THIS.
+   *
+   * The owner's requirement, verbatim: every planned week must answer why this
+   * mileage, why this long run, why these quality sessions, why this cutback,
+   * how it develops the previous week, and how it prepares for the marathon.
+   *
+   * Derived here from the numbers this block already holds — the previous
+   * week's own values, the block's peak, the week's marathon-pace miles, and
+   * the weeks left to race day — so the answers are the plan's arithmetic put
+   * into sentences rather than prose written alongside it. Nothing here reads
+   * a database, a clock, or a score.
+   *
+   * Rule 17: each answer is said once, in the week it belongs to, and the
+   * sentence that belongs to the BLOCK (how long runs progress, why the
+   * longest run is what it is) lives on `BlockStrategy.answers`, not repeated
+   * on fifteen weeks.
+   */
+  answers: WeekAnswers;
+}
+
+/** WEEKANSWERS-1 · the six questions, one sentence each, in coach voice. */
+export interface WeekAnswers {
+  whyMileage: string;
+  whyLongRun: string;
+  whyQuality: string;
+  /** Null on a week that is neither a cutback nor a recovery week — the
+   *  question does not apply, which is a different fact from an empty answer. */
+  whyCutback: string | null;
+  developsPrevious: string;
+  preparesForRace: string;
+}
+
+/**
+ * WEEKANSWERS-1 · the five BLOCK-level questions. Said once for the whole
+ * block, because they are statements about the block and Rule 17 forbids
+ * printing them on every week that happens to contain one.
+ */
+export interface BlockAnswers {
+  longRunProgression: string;
+  marathonSpecificStart: string;
+  marathonPaceProgression: string;
+  longestRunReason: string;
+  sustainRaceEffort: string;
 }
 
 export interface PhaseStrategy {
@@ -178,6 +222,8 @@ export interface BlockStrategy {
   peakLoadMi: number;
   phases: readonly PhaseStrategy[];
   weeks: readonly WeekIntent[];
+  /** WEEKANSWERS-1 · the five block-level questions, answered once. */
+  answers: BlockAnswers;
   /** The doctrine ceilings this block was authored and validated under, by
    *  name. Not values — the values belong to the constants that hold them. */
   fixedConstraints: readonly string[];
@@ -237,6 +283,33 @@ const qualitySessionsOf = (w: StrategyWeek): number =>
 const qualityMiOf = (w: StrategyWeek): number =>
   w.days.filter((d) => d.isQuality && !d.isLong && d.type !== 'race')
     .reduce((s, d) => s + d.distanceMi, 0);
+
+/**
+ * WEEKANSWERS-1 · marathon-pace miles the week's own prescriptions declare.
+ *
+ * Read off `subLabel`, which is where the composer states the segment — the
+ * same string `buildWorkoutSpec` parses back — so this cannot disagree with
+ * what the runner is asked to run. Long-run finishes and dedicated MP sessions
+ * both count; they are the same doctrine (`Research/04` §4.4, `Research/08`
+ * §9.2) and the runner's legs do not tell them apart.
+ */
+const mpMilesOfDay = (subLabel: string | null): number => {
+  let total = 0;
+  const re = /([0-9]+(?:\.[0-9]+)?)\s*mi\s*@\s*(?:M|MP)\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(subLabel ?? ''))) total += Number(m[1]);
+  return total;
+};
+
+const mpMilesOf = (w: StrategyWeek): number =>
+  Math.round(w.days.reduce((s, d) => s + mpMilesOfDay(d.subLabel), 0) * 10) / 10;
+
+/** The same miles, split by WHERE they sit. A runner reads "in the long run"
+ *  and "in a session" as two different asks, and they are. */
+const mpMilesInLongOf = (w: StrategyWeek): number =>
+  Math.round(w.days.filter((d) => d.isLong).reduce((s, d) => s + mpMilesOfDay(d.subLabel), 0) * 10) / 10;
+
+const mi = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 function roleOf(w: StrategyWeek, prev: StrategyWeek | null): WeekRole {
   if (w.isRaceWeek) return 'RACE';
@@ -367,6 +440,98 @@ export interface BlockStrategyInputs {
 }
 
 /**
+ * WEEKANSWERS-1 · the six per-week answers, derived from this week's own
+ * numbers and the one before it.
+ *
+ * Every sentence names a QUANTITY the runner can check against his own plan.
+ * A sentence that would be true of any week is not an answer, so where a
+ * question has no answer for this week the field says which fact is missing
+ * rather than filling in a platitude — and `whyCutback` is null outright on a
+ * week that is not one (Rule 11: not applicable is not the same as unknown).
+ *
+ * Coach voice: short, direct, no hype, no exclamation marks, no emoji, no em
+ * dashes. `check-coach-voice.sh` is the gate.
+ */
+function weekAnswers(args: {
+  w: StrategyWeek;
+  prev: StrategyWeek | null;
+  role: WeekRole;
+  blockPeakMi: number;
+  blockPeakLongMi: number;
+  weeksOut: number | null;
+}): WeekAnswers {
+  const { w, prev, role, blockPeakMi, blockPeakLongMi, weeksOut } = args;
+  const vol = w.weeklyMi;
+  const long = longMiOf(w);
+  const qCount = qualitySessionsOf(w);
+  const mp = mpMilesOf(w);
+  const prevVol = prev ? prev.weeklyMi : 0;
+  const prevLong = prev ? longMiOf(prev) : 0;
+  const sharePct = blockPeakMi > 0 ? Math.round((vol / blockPeakMi) * 100) : 0;
+  const out = weeksOut == null ? null : weeksOut;
+
+  const whyMileage =
+    role === 'RACE' ? `Race week. ${mi(vol)} mi, and almost all of it is the race.`
+    : role === 'TAPER' ? `${mi(vol)} mi, ${sharePct}% of this block's biggest week. Volume comes down so the work already done can surface.`
+    : role === 'CUTBACK' ? `${mi(vol)} mi against ${mi(prevVol)} mi last week. The reduction is deliberate and is what lets the next step land.`
+    : prev == null ? `${mi(vol)} mi. This is the load you are already holding, not a step up.`
+    : vol > prevVol ? `${mi(vol)} mi, up from ${mi(prevVol)}. The step is the week's main work.`
+    : `${mi(vol)} mi, the same as last week. Repeating a load is how it gets absorbed.`;
+
+  const whyLongRun =
+    long <= 0 ? 'No long run this week. The race day is the long effort.'
+    : role === 'TAPER' ? `${mi(long)} mi. The long run comes down with everything else; the distance is already in your legs.`
+    : long >= blockPeakLongMi ? `${mi(long)} mi, the longest run of the block. It is the session everything else is arranged around.`
+    : prevLong > 0 && long > prevLong ? `${mi(long)} mi, up from ${mi(prevLong)}. One step, taken because the last one was completed.`
+    : prevLong > 0 && long < prevLong ? `${mi(long)} mi, back from ${mi(prevLong)}. A shorter long run inside a reduced week.`
+    : `${mi(long)} mi. Holding the distance is what makes the next one repeatable.`;
+
+  // The marathon-pace miles, split by where they sit. A runner reads "inside
+  // the long run" and "in a session of its own" as two different asks.
+  const mpInLong = mpMilesInLongOf(w);
+  const mpInQuality = Math.round((mp - mpInLong) * 10) / 10;
+  const whyQuality =
+    qCount === 0 && mpInLong <= 0
+      ? 'No structured session this week. Easy running is the whole prescription.'
+    : qCount === 0
+      ? `No separate session. The ${mi(mpInLong)} mi at marathon pace inside the long run is the week's hard work.`
+    : mpInQuality > 0
+      ? `${qCount} structured session${qCount === 1 ? '' : 's'}, carrying ${mi(mpInQuality)} mi at marathon pace. Rehearsing race pace is the point of the week.`
+    : mpInLong > 0
+      ? `${qCount} structured session${qCount === 1 ? '' : 's'} beside a long run carrying ${mi(mpInLong)} mi at marathon pace. The long run is the harder of the two.`
+      : `${qCount} structured session${qCount === 1 ? '' : 's'}. They sit either side of the long run so neither compromises the other.`;
+
+  const whyCutback =
+    role === 'CUTBACK' ? `Down from ${mi(prevVol)} mi. Fatigue clears on the weeks you run less, not on the weeks you run more.`
+    : role === 'RECOVERY' ? 'Recovery week. Easy running only, until the legs are ready to be asked again.'
+    : null;
+
+  const developsPrevious =
+    prev == null ? 'Nothing precedes it. This week sets the load the rest of the block is measured from.'
+    // A taper week does not "develop" the week before it, whatever the
+    // arithmetic did coming out of a down week. It unwinds the block.
+    : role === 'TAPER' ? `It unwinds the block rather than adding to it. ${mi(vol)} mi against a peak of ${mi(blockPeakMi)}.`
+    : role === 'RACE' ? 'It does not build on anything. The work is behind you.'
+    : long > prevLong && vol > prevVol ? `Both the week and the long run step up, ${mi(prevVol)} to ${mi(vol)} mi and ${mi(prevLong)} to ${mi(long)} mi.`
+    : long > prevLong ? `The long run moves, ${mi(prevLong)} to ${mi(long)} mi. Everything else holds so only one thing is being asked.`
+    : vol > prevVol ? `The week moves, ${mi(prevVol)} to ${mi(vol)} mi, with the long run held at ${mi(long)}.`
+    : vol < prevVol ? `It takes load off last week's ${mi(prevVol)} mi so the next step has somewhere to land.`
+    : 'It repeats last week. A load you have held once is not yet a load you own.';
+
+  const preparesForRace = (() => {
+    const when = out == null ? '' : out === 0 ? 'Race week. ' : `${out} week${out === 1 ? '' : 's'} out. `;
+    if (role === 'RACE') return `${when}Everything that prepares you has already happened.`;
+    if (mp > 0) return `${when}${mi(mp)} mi at marathon pace rehearses the effort you have to hold on the day, not just the distance.`;
+    if (long >= blockPeakLongMi && long > 0) return `${when}The longest run of the block is where late-race fatigue gets practised.`;
+    if (role === 'TAPER') return `${when}Freshness is the work now. The fitness is made.`;
+    if (long > 0) return `${when}Time on your feet at ${mi(long)} mi builds the durability the last ten kilometres need.`;
+    return `${when}Easy volume is what everything harder is built on.`;
+  })();
+
+  return { whyMileage, whyLongRun, whyQuality, whyCutback, developsPrevious, preparesForRace };
+}
+
+/**
  * Derive the explicit strategy of a block that has already been composed.
  *
  * Pure. No clock, no database, no mutation of the input. Returns null only
@@ -375,6 +540,21 @@ export interface BlockStrategyInputs {
 export function deriveBlockStrategy(inputs: BlockStrategyInputs): BlockStrategy | null {
   const { weeks } = inputs;
   if (weeks.length === 0) return null;
+
+  // ── WEEKANSWERS-1 · the block-wide facts the per-week answers speak from ──
+  const blockPeakMi = Math.max(0, ...weeks.map((w) => w.weeklyMi));
+  const blockPeakLongMi = Math.max(0, ...weeks.map(longMiOf));
+  const raceISO = inputs.targetEvent?.dateISO ?? null;
+  const weeksOut = (startISO: string): number | null => {
+    if (!raceISO) return null;
+    const d = Math.round((Date.parse(`${raceISO}T12:00:00Z`) - Date.parse(`${startISO}T12:00:00Z`)) / 86400000);
+    return Math.max(0, Math.floor(d / 7));
+  };
+  const firstMpWeek = weeks.find((w) => mpMilesOf(w) > 0) ?? null;
+  const totalMpMi = Math.round(weeks.reduce((s, w) => s + mpMilesOf(w), 0) * 10) / 10;
+  const longestLongWeek = weeks.reduce<StrategyWeek | null>(
+    (best, w) => (best == null || longMiOf(w) > longMiOf(best) ? w : best), null);
+  const openingLongMi = longMiOf(weeks[0]);
 
   const intents: WeekIntent[] = weeks.map((w, i) => {
     // `weeks[-1]` is undefined, so this is an index lookup rather than a
@@ -433,6 +613,9 @@ export function deriveBlockStrategy(inputs: BlockStrategyInputs): BlockStrategy 
           : prev == null
             ? 'Opening week. This is the block starting load, not a step.'
             : 'Hold week. The load repeats so the last step can be absorbed.',
+      answers: weekAnswers({
+        w, prev, role, blockPeakMi, blockPeakLongMi, weeksOut: weeksOut(w.startISO),
+      }),
     };
   });
 
@@ -505,6 +688,37 @@ export function deriveBlockStrategy(inputs: BlockStrategyInputs): BlockStrategy 
     peakLoadMi: Math.max(...weeks.map((w) => w.weeklyMi)),
     phases: phaseStrategies,
     weeks: intents,
+    // ── WEEKANSWERS-1 · the five block-level answers, said ONCE ─────────────
+    //
+    // Each reads a quantity off the block that has just been derived above, so
+    // none of them can drift from the plan they describe. Rule 17: these belong
+    // to the block, not to every week that happens to contain one of them.
+    answers: {
+      longRunProgression: openingLongMi > 0 && blockPeakLongMi > 0
+        ? `The long run opens at ${mi(openingLongMi)} mi and climbs to ${mi(blockPeakLongMi)}, one step at a time, `
+          + 'and never more than a tenth further than the longest run of the previous month. '
+          + 'It steps back on every down week so the next step is taken on rested legs.'
+        : 'This block has no long-run progression to describe.',
+      marathonSpecificStart: firstMpWeek
+        ? `Marathon-pace work starts the week of ${firstMpWeek.startISO}`
+          + (weeksOut(firstMpWeek.startISO) != null ? `, ${weeksOut(firstMpWeek.startISO)} weeks out.` : '.')
+          + ' Threshold and hills come first because pace work is only worth doing on an aerobic base that can hold it.'
+        : 'No marathon-pace work is scheduled in this block.',
+      marathonPaceProgression: totalMpMi > 0
+        ? `${mi(totalMpMi)} mi at marathon pace across the block, in sessions that get longer as race day approaches `
+          + 'rather than more frequent. Two weeks between them, never on a down week.'
+        : 'No marathon-pace volume in this block.',
+      longestRunReason: longestLongWeek && blockPeakLongMi > 0
+        ? `${mi(blockPeakLongMi)} mi is the longest run, the week of ${longestLongWeek.startISO}. `
+          + 'It is set from the longest runs you have actually completed and what one training cycle adds to them, '
+          + 'not from a category. Nothing in the block asks for more than that.'
+        : 'This block has no long run to explain.',
+      sustainRaceEffort: totalMpMi > 0 && blockPeakLongMi > 0
+        ? `The long runs build the hours; the ${mi(totalMpMi)} mi at marathon pace inside and beside them build the effort. `
+          + `Running ${mi(blockPeakLongMi)} mi easy proves you can cover the distance. `
+          + 'Holding race pace late in a long run is what proves you can race it.'
+        : 'Without race-pace work this block builds distance, not race effort.',
+    },
     fixedConstraints: [
       'lib/plan/validate.ts#longRunCapMi',
       'lib/plan/validate.ts#ACWR_HIGH_RISK',
