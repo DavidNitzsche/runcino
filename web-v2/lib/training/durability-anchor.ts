@@ -147,6 +147,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { parseRaceTime, predictRaceTime } from '@/lib/training/vdot';
 import { assessRaceRepresentativeness } from '@/lib/race/representativeness-inputs';
 import { splitsWithHrAndPace, DECOUPLING_SPLIT_SHAPES } from '@/lib/runs/run-shape';
+import { roundTo } from '@/lib/format/run';
 import { applyHeatToPace } from '@/lib/weather/heat-adjustment';
 import { resolveThresholdHr } from '@/lib/training/lthr';
 import { RACE_HR_PCT_LTHR } from '@/lib/race/distance-doctrine';
@@ -1302,8 +1303,8 @@ export function qualifyingMarathonRehearsal(row: {
       const obs: MarathonRehearsalObservation = {
         id: row.id, date: row.date, kind, segmentMi, precedingMi,
         paceSecPerMi: Math.round(heatNormalisedPace(mean, row.tempF, row.distanceMi)),
-        rawPaceSecPerMi: Math.round(mean), meanHrPctLthr: Math.round(hrPct * 1000) / 1000,
-        cvPct: Math.round(cv * 10) / 10, tempF: row.tempF,
+        rawPaceSecPerMi: Math.round(mean), meanHrPctLthr: roundTo(hrPct, 3),
+        cvPct: roundTo(cv, 1), tempF: row.tempF,
       };
       if (!best || obs.segmentMi > best.segmentMi) best = obs;
       break; // longest window from this start found
