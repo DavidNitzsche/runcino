@@ -44,6 +44,7 @@ import {
   anchorSourceFromCapacityMode,
   CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
 } from './anchor-provenance';
+import { assessGoalVdotSanity } from './goal-vdot-sanity';
 import { syntheticPaceAnchors } from './authoring-anchors';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
@@ -9417,52 +9418,39 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   /** What the race row is prescribed at · null when there is no goal to bound. */
   const prescribedRacePaceSec = achievableRace?.paceSPerMi ?? null;
 
-  // Goal-realism guard: flag when the entered goal implies a VDOT >15% above
-  // the current estimate. Written to authoredState for the plan UI to surface;
-  // does not block generation. This is GOAL-SANITY VALIDATION — the one
-  // remaining legitimate `vdotFromRace(goalSec)` at authoring — and it prices
-  // nothing.
-  const goalVdot = input.goalSec != null
-    ? vdotFromRace(input.goalSec, input.raceDistanceMi)
-    : null;
-  // GOAL-3 (2026-06-23) · DIRECTION-AWARE realism flag. goalVdot is null OFF-TABLE (VDOT>85) — i.e. the
-  // MOST ambitious goals — so the old `goalVdot != null && >est×1.15` treated those (off-the-top) as
-  // NOT flagged (the flag inverted for the most absurd goals). When goalVdot is null, compare the goal
-  // TIME to the current-fitness predicted time: faster ⇒ off-the-top ⇒ flag; slower ⇒ off-the-bottom ⇒
-  // don't.
-  const currentPredicted = (input.goalSec != null && estimatedCurrentVdot != null)
-    ? predictRaceTime(estimatedCurrentVdot, input.raceDistanceMi)
-    : null;
-  const realismFlag = (goalVdot != null && estimatedCurrentVdot != null)
-    ? goalVdot > estimatedCurrentVdot * 1.15
-    : (input.goalSec != null && currentPredicted != null && input.goalSec < currentPredicted);
-  // COLD-3 (2026-08-17) · THE GUARD WAS SILENCED BY THE FABRICATION IT WAS
-  // MEANT TO CATCH. With no measured fitness the honest answer is neither true
-  // nor false. It is "not assessable yet" — which is a different thing to say
-  // to the runner, and the only honest thing the engine knows about an
-  // over-ambitious cold-start goal. `basis` names what the verdict rests on so
-  // a surface never has to guess. (Design/adaptive-progression-engine.md §A ·
-  // evidence-only.)
-  //
-  // AUTHORING-CANONICAL-1 · a null `estimatedCurrentVdot` (a runner off the
-  // Daniels table entirely) is now ALSO not assessable, rather than silently
-  // taking the time-comparison branch against a number that does not exist.
-  const goalRealism: {
-    flag: boolean;
-    assessable: boolean;
-    basis: AnchorSource;
-    goalVdot?: number;
-    estimatedCurrentVdot?: number;
-  } = (anchorIsProvisional || estimatedCurrentVdot == null)
-    ? {
-        flag: false,
-        assessable: false,
-        basis: seasonAnchorSource,
-        ...(goalVdot != null ? { goalVdot } : {}),
-      }
-    : realismFlag
-      ? { flag: true, assessable: true, basis: seasonAnchorSource, ...(goalVdot != null ? { goalVdot } : {}), estimatedCurrentVdot }
-      : { flag: false, assessable: true, basis: seasonAnchorSource, estimatedCurrentVdot };
+  /**
+   * GOAL-SANITY-NAME-1 (2026-09-02) · WAS `goalRealism`, AND THE NAME WAS THE
+   * DEFECT.
+   *
+   * This screen asks one narrow question — "does the typed goal demand a VDOT
+   * more than 15% above demonstrated threshold capacity?" — and it shipped
+   * under a name that promised the whole one. On 2026-09-02 the owner's block
+   * recorded `goal_realism.flag = false` while Goal Feasibility's canonical
+   * owner (`lib/race/race-outlook.ts` §7, Constitution §L) returned
+   * `unlikely_currently` on a 19:42 gap, at the same instant, for the same
+   * runner. Two answers to one question, and only the wrong one had an
+   * authoritative name.
+   *
+   * The predicate is unchanged. The name, the field names and the honesty of
+   * the record are. Remaining training time and uncertainty are NOT inputs and
+   * never were — see `./goal-vdot-sanity` for what this structurally cannot
+   * mean. It still prices nothing: this is the one remaining legitimate
+   * `vdotFromRace(goalSec)` at authoring, and no pace, week or goal is written
+   * from it.
+   */
+  const goalVdotSanity = assessGoalVdotSanity({
+    goalSec: input.goalSec,
+    raceDistanceMi: input.raceDistanceMi,
+    // COLD-3 (2026-08-17) · a provisional anchor makes this NOT ASSESSABLE
+    // rather than a false all-clear: the guard was once silenced by the
+    // fabrication it exists to catch. AUTHORING-CANONICAL-1 · so is a capacity
+    // off the Daniels table. Both branches live in the resolver now.
+    currentVdot: anchorIsProvisional ? null : estimatedCurrentVdot,
+    anchorSource: seasonAnchorSource,
+  });
+  /** The VDOT the goal demands · still recorded on `pace_blend` as the
+   *  baseline the adaptation and projection surfaces read. */
+  const goalVdot = goalVdotSanity.goalVdot;
 
   const composeBuildWeeks = blocks.phases.filter((p) => p.label !== 'TAPER')
     .reduce((s, p) => s + p.weeks, 0);
@@ -9968,7 +9956,15 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         easyDayMedianMi: input.easyDayMedianMi,
         tsbAtStart: input.tsbAtStart ?? null,
       },
-      goal_realism: goalRealism,
+      /**
+       * GOAL-SANITY-NAME-1 · the key is `goal_vdot_sanity`, not
+       * `goal_realism`. It names the predicate it holds. `lib/plan/
+       * goal-vdot-sanity.ts` owns the question; Constitution §L's Goal
+       * Feasibility owner is `lib/race/race-outlook.ts` §7 and is a different
+       * question with a different answer. `_goal_vdot_sanity_gate.test.ts`
+       * keeps the two apart, and keeps the old name from coming back.
+       */
+      goal_vdot_sanity: goalVdotSanity,
       /**
        * RACEPACE-1 · what this authoring decided the block may PRESCRIBE as a
        * race-relative target, and why.
@@ -9983,8 +9979,9 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
        * `optimism_fraction` is the raw distance between ambition and runway. It
        * is what a §8 feasibility read ("Supported / Reach / Stretch / Unlikely /
        * Unsupported") should be computed from, rather than from the older
-       * `goal_realism.flag`, which is a boolean struck at a 15% VDOT threshold
-       * and cannot express four of those five states.
+       * `goal_vdot_sanity.beyondSanityBand` (formerly `goal_realism.flag`),
+       * which is a boolean struck at a 15% VDOT band and cannot express four
+       * of those five states.
        */
       /*
        * B2 (2026-09-02) · PROVENANCE ONLY. This blob is a record of what the

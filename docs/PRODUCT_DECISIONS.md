@@ -6,6 +6,71 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-09-02 · `goal_realism` is renamed `goal_vdot_sanity`. A boolean is named for its predicate.
+
+**The complaint.** `goal_realism.flag` read `false` on the owner's live CIM
+block while the canonical Goal Feasibility owner (`lib/race/race-outlook.ts`
+§7, Constitution §L) read `unlikely_currently` against a 19:42 gap, at the same
+instant, for the same runner. As he put it, a flag called "goal realism"
+reading `false` while a twenty-minute gap stands looks incoherent.
+
+**The finding.** Both numbers were arithmetically correct. The screen only ever
+asked "does the typed goal demand a VDOT more than 15% above demonstrated
+threshold capacity?" It has **no runway input and no uncertainty input** —
+`totalWeeks` is computed six lines away and never passed to it, and the band is
+a fixed multiplier, not a confidence interval. So `false` means "inside the
+band" and nothing else: not currently demonstrated, and not reachable by race
+day. The band is in fact WIDER than the engine's own `MAX_BLOCK_GAIN_VDOT`
+(7.17 vs 5.0 VDOT at his anchor), so a goal can sit inside it and still be
+beyond a maximal single block — as his is, needing 5.70.
+
+The true→false transition was one input moving: canonical threshold capacity
+44.1 → 47.8, which pushed the 15% edge from 50.715 to 54.970, past the goal's
+53.5. Nothing about the goal, the runway or the outlook changed.
+
+**The decision.** His ruling was "if the flag answers a narrower question than
+its name implies, rename it." The predicate is kept exactly as it was; the name
+is not. `authored_state.goal_realism` → `goal_vdot_sanity`, field `flag` →
+`beyondSanityBand`, `estimatedCurrentVdot` → `anchorVdot`, API field
+`goalRealism` → `goalVdotSanity`. One resolver owns it,
+`lib/plan/goal-vdot-sanity.ts`, whose header names the canonical owner of the
+wider question so the next reader cannot mistake the two.
+
+Three defects fixed alongside, all found while verifying:
+
+- **Rule 11** · the not-flagged branch dropped `goalVdot` after computing it,
+  so one absence carried three meanings. `goalVdot` and `anchorVdot` are now
+  always present; `null` means genuinely absent.
+- **Rule 10 / Rule 16** · `reanchor-plan.ts` rewrites `pace_blend.
+  season_anchor_vdot` in place and left the screen frozen, so the live row held
+  47.7 and 44.1 for one quantity and the API served the older one. The read now
+  recomputes from the live anchor on the same row and declares its posture via
+  `anchorFreshness`.
+- **Rule 9** · the boolean flips on 0.01 VDOT (two seconds of marathon
+  equivalence) at the crossing point. Not smoothed — the graded answer already
+  exists at the canonical owner — but the continuous quantity it steps on
+  (`bandExcessVdot`) is now published beside it.
+
+**Gated** (Rule 20): `lib/plan/_goal_vdot_sanity_gate.test.ts` (eight guards, a
+liveness probe, a ratcheted allowlist, and a Rule 22 blind-spot declaration)
+and `scripts/check-goal-sanity-naming.sh`, wired into `web-v2` `prebuild`. Both
+falsified in both directions before being trusted; the falsification found a
+real bug in the shell gate itself.
+
+**Unchanged:** the predicate, the 1.15 band, the three-state `assessable`
+contract, and the stated goal. Nothing anywhere reads this flag to alter,
+renegotiate or downgrade a goal — verified by grep, by there being no consumer
+of `/api/coach/read` at all, and now by a gate.
+
+**Still open:** 1.15 has no doctrine claim (there is no `Research/` passage to
+bind it to); three producers of a §L feasibility verdict remain, logged as
+`ownership-scorecard.md` row 17; and `/api/coach/read` has no consumer, so
+deleting it would remove a stale second answer for free.
+
+Full working: `docs/reports/complete-coaching-brain-handback-2026-09-02/rebuild-preview/GOAL-REALISM.md`.
+
+---
+
 ## 2026-09-01 · Four calls on the migration handback's open questions. SETTLED.
 
 Response to `docs/reports/handback-2026-09-01.md` §11–§12, after external

@@ -3,7 +3,9 @@
  *
  * A live account — 0 runs, 0 races, a 30 mi/wk self-report and a typed 3:30
  * marathon goal — was handed a plan with a 13-mile long run and a threshold
- * session in week one, and the plan recorded `goal_realism: { flag: false }`:
+ * session in week one, and the plan recorded `goal_realism: { flag: false }` (renamed
+ * 2026-09-02 to `goal_vdot_sanity: { beyondSanityBand }` — see
+ * `lib/plan/goal-vdot-sanity.ts`):
  * an affirmative statement that the goal was realistic, made about a runner the
  * engine had never seen take a step.
  *
@@ -181,20 +183,26 @@ describe('COLD-3 · a mileage-derived anchor is marked, and readers refuse it', 
     expect(paceBlendAnchorIsProvisional(pb)).toBe(false);
   });
 
-  it('goal_realism reports NOT ASSESSABLE rather than a false all-clear', () => {
+  it('goal_vdot_sanity reports NOT ASSESSABLE rather than a false all-clear', () => {
     const built = buildSimPlan(COLD_START);
     expect(built.ok).toBe(true);
     if (!built.ok) return;
-    const gr = (built.composed.authoredState as Record<string, any>).goal_realism;
+    const gr = (built.composed.authoredState as Record<string, any>).goal_vdot_sanity;
     // The pre-fix value was exactly `{ flag: false }` — the guard silenced by
     // the fabrication it exists to catch: goal VDOT ~44.6 against a mileage-
-    // invented 40 is +11.5%, under the 15% trigger.
+    // invented 40 is +11.5%, under the 15% band.
     expect(gr.assessable).toBe(false);
     expect(gr.basis).toBe('provisional_mileage');
-    expect(Object.prototype.hasOwnProperty.call(gr, 'estimatedCurrentVdot')).toBe(false);
+    // GOAL-SANITY-NAME-1 · the anchor is an explicit null rather than an absent
+    // key. Rule 11: "there is no anchor" and "the key was dropped" were the
+    // same absence under the old shape, and the goal VDOT was dropped outright
+    // on the not-flagged branch. Both are now always present, possibly null.
+    expect(gr.anchorVdot).toBeNull();
+    expect(Object.prototype.hasOwnProperty.call(gr, 'goalVdot')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(gr, 'anchorVdot')).toBe(true);
   });
 
-  it('goal_realism still fires for a MEASURED runner with an over-ambitious goal', () => {
+  it('goal_vdot_sanity still fires for a MEASURED runner with an over-ambitious goal', () => {
     // Measured VDOT 40, goal 2:55 marathon (VDOT ~53) → +30%, well past 15%.
     const built = buildSimPlan({
       ...COLD_START, bestRecentVdotOverride: 40,
@@ -202,10 +210,13 @@ describe('COLD-3 · a mileage-derived anchor is marked, and readers refuse it', 
     });
     expect(built.ok).toBe(true);
     if (!built.ok) return;
-    const gr = (built.composed.authoredState as Record<string, any>).goal_realism;
+    const gr = (built.composed.authoredState as Record<string, any>).goal_vdot_sanity;
     expect(gr.assessable).toBe(true);
-    expect(gr.flag).toBe(true);
+    expect(gr.beyondSanityBand).toBe(true);
     expect(gr.basis).toBe('measured_vdot');
+    // The continuous quantity the boolean steps on is published beside it
+    // (Rule 9), and it agrees in sign with the boolean.
+    expect(gr.bandExcessVdot).toBeGreaterThan(0);
   });
 
   it('the reader predicate refuses a provisional anchor by either mark', () => {

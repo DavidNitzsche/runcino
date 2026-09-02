@@ -100,7 +100,7 @@ async function main() {
   L.push('## Refusals, fallbacks and uncertainty');
   L.push('');
   const st = (cr.authoredState ?? {}) as Record<string, unknown>;
-  const interesting = ['placement_compromises', 'travel_shaped', 'goal_realism', 'ramp_base',
+  const interesting = ['placement_compromises', 'travel_shaped', 'goal_vdot_sanity', 'ramp_base',
     'pace_blend', 'horizon_raise', 'is_mid_block', 'recent_avg_mpw', 'weeklyAvg4w',
     'tier_peak_weekly_band', 'tier_peak_long_band', 'block_anchor'];
   for (const k of interesting) {
