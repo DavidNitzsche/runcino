@@ -26,7 +26,6 @@ import {
   type FitnessEvidencePartialFinding,
 } from './fitness-evidence';
 import { classifyFinding, atLeastAsLoud } from './firing-policy';
-import { establishedPaceFor } from '@/lib/execution/reconstruct';
 import { interpretExecution, type Stimulus, type ExecutionContext } from '@/lib/execution/interpret';
 import type { KeySessionExecution } from '@/lib/execution/load';
 
@@ -61,33 +60,38 @@ function session(over: Partial<KeySessionExecution> = {}): KeySessionExecution {
     toleranceShare: 0.4,
     workVerdicts: ['hit', 'missed'],
     replacedByRace: false,
+    // F-5 · the interpreter's own value, carried on the row rather than
+    // recomputed by the finder. `T_PACE` is `establishedPaceFor('threshold',
+    // …)` for the anchor set this fixture stands in for.
+    establishedPaceSPerMi: T_PACE,
     ...over,
   };
 }
 
-const VDOT = 50;
+/** The threshold anchor this fixture's runner is priced at, s/mi. */
+const T_PACE = 400;
 
 describe('findPartialFitnessEvidence', () => {
   it('fires on PARTIAL_FAILED with evidence.fitness === high', () => {
-    const f = findPartialFitnessEvidence(session(), VDOT);
+    const f = findPartialFitnessEvidence(session());
     expect(f).not.toBeNull();
     expect(f!.dateISO).toBe('2026-08-12');
     expect(f!.domain).toBe('threshold');
     expect(f!.stimulusCompletion).toBe(0.55);
     expect(f!.actualPaceSPerMi).toBe(405);
-    expect(f!.establishedPaceSPerMi).toBe(establishedPaceFor('threshold', VDOT));
+    expect(f!.establishedPaceSPerMi).toBe(T_PACE);
   });
 
   it('does not fire when unreadable', () => {
-    expect(findPartialFitnessEvidence(session({ readable: false, read: null }), VDOT)).toBeNull();
+    expect(findPartialFitnessEvidence(session({ readable: false, read: null }))).toBeNull();
   });
 
   it('does not fire when read is null', () => {
-    expect(findPartialFitnessEvidence(session({ read: null }), VDOT)).toBeNull();
+    expect(findPartialFitnessEvidence(session({ read: null }))).toBeNull();
   });
 
   it('does not fire when planned is null', () => {
-    expect(findPartialFitnessEvidence(session({ planned: null }), VDOT)).toBeNull();
+    expect(findPartialFitnessEvidence(session({ planned: null }))).toBeNull();
   });
 
   it('does not fire on a different state, even with evidence.fitness high', () => {
@@ -99,7 +103,7 @@ describe('findPartialFitnessEvidence', () => {
         why: 'contrived',
       },
     });
-    expect(findPartialFitnessEvidence(s, VDOT)).toBeNull();
+    expect(findPartialFitnessEvidence(s)).toBeNull();
   });
 
   it('does not fire on PARTIAL_FAILED with lower evidence.fitness', () => {
@@ -112,7 +116,7 @@ describe('findPartialFitnessEvidence', () => {
           why: 'contrived',
         },
       });
-      expect(findPartialFitnessEvidence(s, VDOT)).toBeNull();
+      expect(findPartialFitnessEvidence(s)).toBeNull();
     }
   });
 
@@ -126,17 +130,20 @@ describe('findPartialFitnessEvidence', () => {
           why: 'contrived',
         },
       });
-      expect(findPartialFitnessEvidence(s, VDOT)).toBeNull();
+      expect(findPartialFitnessEvidence(s)).toBeNull();
     }
   });
 
-  it('defensive null-vdot path never throws and abstains', () => {
-    expect(findPartialFitnessEvidence(session(), null)).toBeNull();
+  it('a refused anchor set abstains rather than fabricating a pace', () => {
+    // Rule 11 · `establishedPaceSPerMi` is null when
+    // `resolvePrescribedPaceAnchors` refused, which is a real state and not a
+    // reason to reach for the old VDOT cascade.
+    expect(findPartialFitnessEvidence(session({ establishedPaceSPerMi: null }))).toBeNull();
   });
 
   it('defensive: no actual pace on the session abstains rather than fabricating one', () => {
     const s = session({ actual: stimulus({ meanWorkPaceSPerMi: null }) });
-    expect(findPartialFitnessEvidence(s, VDOT)).toBeNull();
+    expect(findPartialFitnessEvidence(s)).toBeNull();
   });
 });
 

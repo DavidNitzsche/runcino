@@ -25,6 +25,15 @@ import {
   type PrescriptionStep,
 } from '@/lib/training/prescriptions';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
+import {
+  classifySession,
+  hrCapBreached,
+  sessionToleranceSec,
+  paceShapeFor,
+  phaseToleranceSec,
+  type SessionClass,
+  type PaceShape,
+} from '@/lib/training/execution-semantics';
 import { parseRaceTime as parseRaceGoalSec, formatRaceTime } from '@/lib/training/vdot';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
@@ -63,6 +72,26 @@ export interface WatchPhase {
   durationSec: number;                // required, even for distance reps (estimate)
   targetPaceSPerMi?: number | null;
   tolerancePaceSPerMi?: number | null;
+  /**
+   * PACE-SHAPE-1 (2026-09-01) · WHAT `targetPaceSPerMi` MEANS on this phase.
+   *
+   * Additive and optional, so a deployed watch that has never heard of it
+   * decodes the payload unchanged and keeps its old behaviour. New builds
+   * grade off it, which is the whole point: without it the wrist had no way to
+   * tell "hold 430, both sides" from "do not go faster than 502", and graded
+   * both as a two-sided band. A correct 534 s/mi cool-down under a 502 ceiling
+   * came back `missed`, and a between-rep jog that carries no prescribed pace
+   * at all was one legacy row away from being graded too.
+   *
+   *   · `window`  — hold it, ±`tolerancePaceSPerMi`. Quality reps, race pace.
+   *   · `ceiling` — do not go FASTER than it. Warm-up, cool-down, easy, long.
+   *   · `none`    — no prescribed pace. Recovery jogs. Never pace-graded.
+   *   · `effort`  — a target that is not a pace. Never pace-graded.
+   *
+   * `lib/training/execution-semantics.ts` is the owner; this field is that
+   * module's `paceShapeFor` serialised, never a second derivation.
+   */
+  paceShape?: PaceShape;
   haptic: WatchHaptic;
   repUnit?: WatchRepUnit;
   distanceMi?: number | null;
@@ -458,10 +487,23 @@ function isEasyStep(step: PrescriptionStep): boolean {
 
 /** Convert one prescription step to one or more WatchPhases.
  *  Repeat blocks (step.recovery present) expand to N reps + (N-1) recoveries. */
-function stepToPhases(step: PrescriptionStep, defaultTolerance: number): WatchPhase[] {
+function stepToPhases(step: PrescriptionStep, sessionClass: SessionClass): WatchPhase[] {
   const phaseType = classifyStep(step);
   const easy = isEasyStep(step);
-  const { targetSec, toleranceSec } = parsePaceTarget(step.pace_target, defaultTolerance);
+  const defaultTolerance = sessionToleranceSec(sessionClass);
+  // `toleranceSec` from the parse is only consulted for an explicit RANGE
+  // string ("6:50-7:10"), which states its own half-width; a single-pace
+  // string falls back to the owner's table via `tolOf` below.
+  const { targetSec } = parsePaceTarget(step.pace_target, defaultTolerance);
+  /* PACE-SHAPE-1 · this legacy path builds phases from the generic
+   * prescription template rather than from an authored spec, and it was the
+   * one place a recovery could still ship a pace target (`recPace` below).
+   * The shape is asked of the SAME owner the spec path uses, so the two paths
+   * cannot disagree about what a warm-up's number means. */
+  const shapeOf = (t: WatchPhaseType, target: number | null) =>
+    paceShapeFor(t, sessionClass, { hasTarget: target != null && target > 0 });
+  const tolOf = (t: WatchPhaseType, target: number | null) =>
+    phaseToleranceSec(t, sessionClass, { hasTarget: target != null && target > 0 });
 
   // Repeat block: N reps (with recovery between, skipping after the last rep)
   if (step.recovery && step.reps != null && step.reps > 0) {
@@ -479,7 +521,8 @@ function stepToPhases(step: PrescriptionStep, defaultTolerance: number): WatchPh
         label: `Interval`,
         durationSec: repDurSec,
         targetPaceSPerMi: targetSec,
-        tolerancePaceSPerMi: toleranceSec,
+        tolerancePaceSPerMi: tolOf('work', targetSec),
+        paceShape: shapeOf('work', targetSec),
         haptic: 'transition-work',
         repUnit: 'distance',
         distanceMi: repDistMi,
@@ -489,8 +532,12 @@ function stepToPhases(step: PrescriptionStep, defaultTolerance: number): WatchPh
           type: 'recovery',
           label: `Recovery ${i + 1}/${reps - 1}`,
           durationSec: recDurSec,
-          targetPaceSPerMi: recPace.targetSec,
-          tolerancePaceSPerMi: recPace.toleranceSec,
+          // A recovery carries no prescribed pace (RECOVERY-BYFEEL-1) and is
+          // never pace-graded. `recPace` is left computed but unused rather
+          // than deleted, so the parse still validates the legacy string.
+          targetPaceSPerMi: null,
+          tolerancePaceSPerMi: null,
+          paceShape: 'none',
           haptic: 'transition-recovery',
           repUnit: 'time',
         });
@@ -512,7 +559,8 @@ function stepToPhases(step: PrescriptionStep, defaultTolerance: number): WatchPh
       label: step.label,
       durationSec: durSec,
       targetPaceSPerMi: targetSec,
-      tolerancePaceSPerMi: toleranceSec,
+      tolerancePaceSPerMi: tolOf(phaseType, targetSec),
+      paceShape: shapeOf(phaseType, targetSec),
       haptic,
       repUnit: 'distance',
       distanceMi: step.distance_mi,
@@ -527,7 +575,8 @@ function stepToPhases(step: PrescriptionStep, defaultTolerance: number): WatchPh
       label: step.label,
       durationSec: durSec,
       targetPaceSPerMi: targetSec,
-      tolerancePaceSPerMi: toleranceSec,
+      tolerancePaceSPerMi: tolOf(phaseType, targetSec),
+      paceShape: shapeOf(phaseType, targetSec),
       haptic: phaseType === 'cooldown' ? 'transition-cooldown' : 'transition-work',
       repUnit: 'time',
     }];
@@ -622,65 +671,17 @@ function distanceMiFromLabel(label: string | null | undefined): number | null {
 
 
 /**
- * ONE classification of what a session is, for the four decisions that need it.
+ * MOVED 2026-09-01 to `lib/training/execution-semantics.ts`, which is now THE
+ * owner of the session classification, the grading tolerance and what a phase's
+ * pace target means. Re-exported here so the wrist builder's existing callers
+ * and `_session_class.test.ts` keep their import path, and so a grep for
+ * `classifySession` still lands on the wire.
  *
- * 2026-08-17 · this function previously answered the question four times, with
- * four non-matching lists:
- *
- *   defaultTolerance   {threshold,intervals}→8  {tempo,race}→12  else→20
- *   isQualityWorkout   {intervals,vo2max,threshold,tempo}
- *   hrCeilingBpm       {easy,long}
- *   fuelingType        {long} {threshold,tempo,intervals} {rest} else easy
- *
- * `race_week_tuneup` is in NONE of them, and it is live in the plan — a
- * 5×400m at T pace shipped to the wrist with a ±20 s/mi band instead of ±8, no
- * HR target, no ceiling, and an easy-run fuelling plan. `PaceDrift.swift` then
- * derives `hardDrift = max(15, 20+5)`, so the rep never turns red: the watch
- * calls 6:50–7:30/mi "on target" on a 7:10 rep. `vo2max` has the same hole in
- * two of the four.
- *
- * Keyed off the SPEC's `kind` first, because the spec is authored truth and is
- * already correct where `plan_workouts.type` is not — a race-week tune-up
- * carries `kind: 'threshold'`. Falls back to `type` for the categories the spec
- * union has no member for (race, rest, shakeout).
+ * The reason it moved: the phone routed the SAME decision off
+ * `strictPrescriptionType` and got a different answer for `tempo` (±20 s/mi on
+ * the card, ±8 on the wrist, 21 live plan rows). One function, one answer.
  */
-export type SessionClass = 'easy' | 'long' | 'threshold' | 'interval' | 'race' | 'rest' | 'other';
-
-export function classifySession(
-  type: string,
-  spec: Record<string, unknown> | null | undefined,
-): SessionClass {
-  // Type wins where the spec union cannot express the answer. A race stashes
-  // as `kind: 'long'` because WorkoutSpec has no race member, so asking the
-  // spec first would classify race day as a long run.
-  if (type === 'race') return 'race';
-  if (type === 'rest') return 'rest';
-
-  const kind = typeof spec?.kind === 'string' ? spec.kind : null;
-  switch (kind) {
-    case 'intervals': return 'interval';
-    case 'threshold':
-    case 'tempo':     return 'threshold';
-    case 'long':      return 'long';
-    case 'easy':
-    case 'recovery':  return 'easy';
-  }
-
-  switch (type) {
-    case 'intervals':
-    case 'vo2max':            return 'interval';
-    case 'threshold':
-    case 'tempo':
-    case 'race_week_tuneup':
-    case 'fartlek':
-    case 'progression':       return 'threshold';
-    case 'long':              return 'long';
-    case 'easy':
-    case 'recovery':
-    case 'shakeout':          return 'easy';
-    default:                  return 'other';
-  }
-}
+export { classifySession, type SessionClass } from '@/lib/training/execution-semantics';
 
 // ── 0821 watch design · lobby builders ──────────────────────────────────
 
@@ -1344,7 +1345,9 @@ export function composeCompletedRows(input: {
       id: 'heart', label: 'Heart',
       sub: `under ${askedHrCap}`,
       value: avgHr != null ? `${avgHr}` : null,
-      tone: (avgHr != null && avgHr > askedHrCap) ? 'attention' : null,
+      // F-14 · THE cap comparison, from THE owner — the wrist row and the
+      // phone row and the recap all read one function now.
+      tone: hrCapBreached(avgHr, askedHrCap) ? 'attention' : null,
     });
   }
 
@@ -1721,11 +1724,10 @@ export async function buildWatchToday(
     (wo.workout_spec ?? null) as Record<string, unknown> | null,
   );
 
-  // Tolerance defaults · tight on work the runner is meant to hit precisely.
-  const defaultTolerance =
-    sessionClass === 'threshold' || sessionClass === 'interval' ? 8
-  : sessionClass === 'race'                                     ? 12
-  :                                                               20;
+  // Tolerance · THE owner, not a literal. `lib/training/execution-semantics.ts`
+  // holds the one table; this used to be one of five copies that had already
+  // drifted apart (see that module's header for the spread and the doctrine).
+  const defaultTolerance = sessionToleranceSec(sessionClass);
 
   // 5. Expand to phases · PREFER workout_spec (authored truth) over
   //    prescriptionFor() (generic template). Per iPhone agent's
@@ -1837,7 +1839,17 @@ export async function buildWatchToday(
         label: p.label,
         durationSec: p.durationSec ?? Math.round((p.distanceMi ?? 0) * (p.targetPaceSPerMi ?? 540)),
         targetPaceSPerMi: p.targetPaceSPerMi ?? null,
-        tolerancePaceSPerMi: p.tolerancePaceSPerMi ?? null,
+        // PACE-SHAPE-1 · the tolerance and the shape come from ONE owner, and
+        // they are asked the same question with the same arguments, so they
+        // cannot disagree about whether this phase is pace-graded at all.
+        tolerancePaceSPerMi: phaseToleranceSec(p.type, sessionClass, {
+          hasTarget: p.targetPaceSPerMi != null && p.targetPaceSPerMi > 0,
+          byEffort: p.isStrideSegment === true,
+        }),
+        paceShape: paceShapeFor(p.type, sessionClass, {
+          hasTarget: p.targetPaceSPerMi != null && p.targetPaceSPerMi > 0,
+          byEffort: p.isStrideSegment === true,
+        }),
         haptic: p.type === 'warmup'   ? 'start'
               : p.type === 'recovery' ? 'transition-recovery'
               : p.type === 'cooldown' ? 'transition-cooldown'
@@ -1854,7 +1866,7 @@ export async function buildWatchToday(
   } else {
     // Fallback · workout_spec absent or unrecognized kind.
     for (const step of prescription.steps) {
-      phases.push(...stepToPhases(step, defaultTolerance));
+      phases.push(...stepToPhases(step, sessionClass));
     }
   }
   if (phases.length === 0) {
@@ -1863,7 +1875,7 @@ export async function buildWatchToday(
       type: 'work',
       label: prescription.headline,
       durationSec: Math.round(distanceMi * 9 * 60),
-      targetPaceSPerMi: null, tolerancePaceSPerMi: null,
+      targetPaceSPerMi: null, tolerancePaceSPerMi: null, paceShape: 'none',
       haptic: 'start', repUnit: 'distance', distanceMi,
     });
   }

@@ -98,6 +98,7 @@
 import { pool } from '@/lib/db/pool';
 import { loadKeySessionExecutions, type KeySessionExecution } from '@/lib/execution/load';
 import type { IntensityDomain } from '@/lib/execution/interpret';
+import { resolveCurrentVdotSnapshot } from '@/lib/training/projection-snapshots';
 
 /**
  * How far back to look for a not-yet-logged occurrence. Same rationale and
@@ -200,23 +201,32 @@ export function composeRaceReplacementEntry(
 /* Best-effort, never throws, mirrors the house posture in coach-log.ts and
  * fitness-evidence.ts. Everything above is pure and is what the tests lock. */
 
-/** Same read `lib/adaptation/load.ts#currentVdot` uses — the cron-computed
- *  snapshot anchor, not a second opinion recomputed here. Duplicated rather
- *  than imported, same house rule `fitness-evidence.ts` documents: where a
- *  reader exists it is called; where one does not export this shape, each
- *  caller carries its own one-line copy. `loadKeySessionExecutions` requires
- *  a vdot argument even though this module's own finding never reads it. */
+/**
+ * THE current-VDOT read, from THE owner
+ * (`lib/training/projection-snapshots.ts#resolveCurrentVdotSnapshot`).
+ *
+ * F-6 (2026-09-01) · this file used to carry its OWN copy of the query, and
+ * justified it in a header comment citing a "house rule" — "where a reader
+ * does not exist, each caller carries its own one-line copy". Four files did
+ * exactly that, byte for byte, and a reader DID exist in
+ * `projection-snapshots.ts`; nobody called it. Three of the four wrapped the
+ * query in `.catch(() => ({ rows: [] }))`, so a FAILED READ became "no VDOT",
+ * which became `establishedPaceFor → null`, which suppressed the finding
+ * entirely. A guard that switches itself off when its input fails is Rule 11's
+ * defining shape.
+ *
+ * The resolver also closes two things no copy had: a total ORDER BY (Rule 14 —
+ * production holds three rows per user per snapshot_date and the tie-break was
+ * the planner's choice) and a staleness bound (a snapshot was faded as of its
+ * own date and never again, so an N-day-old row is under-faded by N days).
+ *
+ * `null` here still means "do not spend a VDOT", which is what every caller
+ * already did with it — but the REASON is now distinguishable upstream, and a
+ * stale or failed read is a refusal rather than a silent zero.
+ */
 async function currentVdot(userUuid: string): Promise<number | null> {
-  const r = await pool
-    .query<{ vdot: string | null }>(
-      `SELECT vdot::text FROM projection_snapshots
-        WHERE user_uuid = $1 AND vdot IS NOT NULL
-        ORDER BY snapshot_date DESC LIMIT 1`,
-      [userUuid],
-    )
-    .catch(() => ({ rows: [] as Array<{ vdot: string | null }> }));
-  const v = r.rows[0]?.vdot;
-  return v != null ? Number(v) : null;
+  const read = await resolveCurrentVdotSnapshot(userUuid);
+  return read.ok ? read.vdot : null;
 }
 
 /**

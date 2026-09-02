@@ -694,7 +694,18 @@ async function checkQualityDrift(
   }>(
     `SELECT pw.pace_target_s_per_mi::text AS planned,
             pw.type AS pw_type,
-            (pw.workout_spec->>'hr_target_bpm')::text AS hr_target_bpm,
+            -- C-3 (2026-09-01) · COALESCE to the LTHR.
+            -- This read hr_target_bpm ALONE, and hr_target_bpm is only
+            -- authored on tempo rows: spec-builder emits lthr_bpm for
+            -- threshold and intervals instead. So on every threshold and
+            -- interval row this came back NULL, ranAboveThresholdBand
+            -- returned false unconditionally, and the whole
+            -- fast-with-HR-over-the-band discriminator was dark on exactly
+            -- the sessions it exists for. Same anchor the recap now reads.
+            COALESCE(
+              (pw.workout_spec->>'hr_target_bpm')::text,
+              (pw.workout_spec->>'lthr_bpm')::text
+            ) AS hr_target_bpm,
             r.data->>'avgHr' AS avg_hr,
             CASE
               WHEN (r.data->>'avgPaceMinPerMi') ~ '^[0-9]+:[0-9]+$'

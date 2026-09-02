@@ -23,6 +23,10 @@
 
 import type { WorkoutType, Phase } from './run-purpose';
 import { heatAdjustedStatus } from './heat-band';
+import {
+  wireVerdictLandedTheWork,
+  wireVerdictFellShort,
+} from '@/lib/training/execution-semantics';
 
 export interface WinInput {
   type: WorkoutType;
@@ -325,13 +329,17 @@ function winIntervalsFromPhases(
   });
   if (work.length < 2) return null;
 
+  /* PACE-SHAPE-1 · "landed the work" and "fell short" come from the owner
+   * (`lib/training/execution-semantics.ts`), not from a local string compare.
+   * The verdict vocabulary grew `fast` and `slow` because the old `missed`
+   * conflated them, and this function counted a rep the runner ran THREE
+   * SECONDS A MILE QUICKER as a reason to suppress the win line entirely. */
   const hits    = work.filter((p) => p.verdict === 'hit').length;
-  const drifted = work.filter((p) => p.verdict === 'drifted').length;
-  const missed  = work.filter((p) => p.verdict === 'missed').length;
+  const missed  = work.filter((p) => wireVerdictFellShort(p.verdict)).length;
   const total   = work.length;
-  const nearTarget = hits + drifted;   // hit + close-enough-to-drifted
+  const nearTarget = work.filter((p) => wireVerdictLandedTheWork(p.verdict)).length;
 
-  // Majority missed → not a win; return null so recap shows truth.
+  // Majority fell short → not a win; return null so recap shows truth.
   if (missed >= Math.ceil(total / 2)) return null;
 
   // Clean sweep
@@ -339,10 +347,10 @@ function winIntervalsFromPhases(
     return `${total} on the rail · clean set.`;
   }
 
-  // All near target (every rep hit or drifted)
+  // Every rep landed the work.
   if (nearTarget === total) {
     const lastHalf = work.slice(Math.ceil(total / 2));
-    const lastNear = lastHalf.filter((p) => p.verdict === 'hit' || p.verdict === 'drifted').length;
+    const lastNear = lastHalf.filter((p) => wireVerdictLandedTheWork(p.verdict)).length;
     if (lastNear >= lastHalf.length) {
       return `${total} on the rail · held form through the set.`;
     }
@@ -564,11 +572,11 @@ function winVerdictHit(input: WinInput): string | null {
     s.type === 'work' && s.verdict != null
   );
   if (work.length < 2) return null;
-  const hits = work.filter((s) => s.verdict === 'hit').length;
-  const drift = work.filter((s) => s.verdict === 'drifted').length;
-  const miss = work.filter((s) => s.verdict === 'missed').length;
+  const hits = work.filter((s) => wireVerdictLandedTheWork(s.verdict)).length;
+  const miss = work.filter((s) => wireVerdictFellShort(s.verdict)).length;
+  const notClean = work.length - hits;
   const hitRate = hits / work.length;
-  if (hitRate >= 0.75 && drift + miss <= 1) {
+  if (hitRate >= 0.75 && notClean <= 1) {
     return `Hit target band on ${hits} of ${work.length} reps · clean execution.`;
   }
   if (hitRate < 0.5 && miss >= 2) {

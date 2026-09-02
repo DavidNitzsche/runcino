@@ -665,8 +665,19 @@ final class WorkoutEngine: ObservableObject {
     /// Arm a fresh pace-drift evaluator when the current phase is a WORK
     /// interval with a target pace; clear it otherwise.
     private func prepDrift() {
-        if let p = currentPhase, p.type == .work, let target = p.targetPaceSPerMi {
-            driftEval = PaceDriftEvaluator(targetPaceSPerMi: target, toleranceSPerMi: p.tolerancePaceSPerMi ?? 10)
+        // PACE-SHAPE-1 · a phase whose target is not pace-graded gets no live
+        // drift evaluator at all, and a `.ceiling` phase gets one that only
+        // reacts to the fast side. Before this, an easy or long run's work
+        // phase -- whose target IS the easy ceiling -- turned the wrist amber
+        // and fired a sustained-drift haptic at a runner correctly holding a
+        // relaxed pace.
+        if let p = currentPhase, p.type == .work, p.paceShape.isPaceGraded,
+           let target = p.targetPaceSPerMi {
+            driftEval = PaceDriftEvaluator(
+                targetPaceSPerMi: target,
+                toleranceSPerMi: p.tolerancePaceSPerMi ?? 10,
+                paceShape: p.paceShape
+            )
             tracker?.mockCenterPace = target          // sim mock crosses this band
         } else {
             driftEval = nil
@@ -1105,6 +1116,11 @@ final class WorkoutEngine: ObservableObject {
         } else if hrOverCeiling {
             hrOverCeiling = false
         }
+
+        // C-1 · the bail rule's OWN metric, evaluated against the same live
+        // reading. An `hr` rule is now gated on heart rate rather than on a
+        // pace count that its own evidence line never described.
+        noteRuleMetric(hrBpm: tracker?.heartRate ?? 0, tickSec: Self.tickHz)
 
         // Fuel cues — fire a notification haptic + a full-screen "Fuel now"
         // flip when elapsed crosses each gel mark from the prescribed plan
@@ -1709,24 +1725,83 @@ final class WorkoutEngine: ObservableObject {
             timeOutTol = nil
         }
 
-        // verdict: honest per-phase read for the recap engine.
-        //   incomplete · user ended before reaching the target
-        //   hit        · avg pace in band AND ≥ 70% of samples in band
-        //   drifted    · avg pace in band but < 70% of samples in band
-        //   missed     · avg pace outside the band
-        //   nil        · no target to grade against
+        // ── the per-phase verdict · PACE-SHAPE-1, 2026-09-01 ────────
+        //
+        // WHAT THIS USED TO DO, AND WHY IT WAS WRONG.
+        //
+        // It graded every paced phase as a two-sided band, and it decided that
+        // band from the SHARE OF INSTANTANEOUS 5-SECOND SAMPLES inside it:
+        // `hit` needed the average in band AND >=70% of samples in band, and
+        // anything short of that was `drifted` or `missed`.
+        //
+        // On 2026-09-01 the owner ran 4x1 mi at 422 / 429 / 422 / 419 s/mi
+        // against a 430 +/- 8 target, on a negative split, with 61 / 64 / 64 s
+        // recoveries against a prescribed 60 and work HR climbing 158 to 166
+        // under a 173 bail. Every rep average was inside the band or three
+        // seconds outside it. The watch returned drifted, drifted, drifted,
+        // missed. And `missed` reads as TOO SLOW to a runner who had just been
+        // told by this same watch to "run the last one at the pace of the
+        // first" and did exactly that, three seconds quicker.
+        //
+        // The sample share is the defect. A +/-8 s/mi window is 1.9% of a 430
+        // s/mi pace, and a wrist GPS pace estimate is a smoothed derivative
+        // whose settling time after a step change is tens of seconds. Rep 4
+        // spent 325 of its 422 seconds "out of band" precisely BECAUSE it
+        // averaged 419 -- three seconds under the fast edge -- so the noise sat
+        // just below it. That is a measurement of the instrument.
+        //
+        // WHAT IT DOES NOW. One rule per `paceShape`:
+        //
+        //   * `.window`  -- grade the COMPLETED SEGMENT AVERAGE against the
+        //     band. Research/01 "Pace zone width and lock-in rules" says to
+        //     judge an interval "by interval time, not by per-mile pace", and
+        //     the segment average IS the interval time expressed per mile.
+        //     Averaging over the whole rep absorbs the runner's acceleration
+        //     and the instrument's settling by construction, which is the same
+        //     reasoning `drift-monitor` and `run-recap` already apply to heart
+        //     rate (Research/03 section 2: HR half-time about 30 s).
+        //   * `.ceiling` -- one question only: did he go FASTER than the
+        //     ceiling. A warm-up or cool-down target is the easy band's fast
+        //     edge, so slower is correct running and can never be a miss. This
+        //     is what stops a 534 s/mi cool-down under a 502 ceiling reading
+        //     `missed` while a 516 s/mi warm-up against the SAME number read
+        //     `hit`.
+        //   * `.none` / `.effort` -- no verdict. A between-rep jog carries no
+        //     prescribed pace, and one run at 1034 s/mi because the runner was
+        //     catching his breath between two 422s is a correctly executed
+        //     recovery.
+        //
+        // THE WORDS. `hit` / `fast` / `slow` / `incomplete`, and nil for a
+        // phase with nothing to grade. `missed` is gone because it conflated
+        // two opposite events that call for opposite coaching; `drifted` is
+        // gone because at this band width the wrist cannot tell a ragged rep
+        // from a noisy signal, and Rule 11 says do not assert what you cannot
+        // measure. Raggedness still travels, unchanged, as
+        // `timeInToleranceSec` / `timeOutOfToleranceSec` -- which the server's
+        // `winTimeInTolerance` already renders as "N% of work time inside the
+        // target band". The server accepts both new words and both legacy ones
+        // (rows already in the database still carry them); the vocabulary is
+        // owned by `web-v2/lib/training/execution-semantics.ts`.
         let verdict: String? = {
-            guard let target = p.targetPaceSPerMi, let tol = p.tolerancePaceSPerMi,
-                  let avgPace = avgPace else { return nil }
+            guard p.paceShape.isPaceGraded,
+                  let target = p.targetPaceSPerMi, let avgPace = avgPace else { return nil }
             if !completed { return "incomplete" }
-            let avgInBand = abs(avgPace - target) <= tol
-            let inSec = timeInTol ?? 0
-            let outSec = timeOutTol ?? 0
-            let totalGraded = inSec + outSec
-            let pctInBand = totalGraded > 0 ? Double(inSec) / Double(totalGraded) : 0
-            if avgInBand && pctInBand >= 0.7 { return "hit" }
-            if avgInBand { return "drifted" }
-            return "missed"
+
+            if p.paceShape == .ceiling {
+                // Doctrine's own E width is the slack on the fast side
+                // (Research/01: E +/-30 sec/mi, wide), and Research/01's easy-run
+                // test says it in words: "briefly exceeding the easy ceiling
+                // downhill is not a compliance failure -- overall effort
+                // determines interpretation."
+                let slack = p.tolerancePaceSPerMi ?? 30
+                return avgPace < target - slack ? "fast" : "hit"
+            }
+
+            // `.window` -- the completed segment average, both sides.
+            let tol = p.tolerancePaceSPerMi ?? 10
+            if avgPace < target - tol { return "fast" }
+            if avgPace > target + tol { return "slow" }
+            return "hit"
         }()
 
         // Emit nil instead of an empty array when no samples landed —
@@ -1914,6 +1989,7 @@ final class WorkoutEngine: ObservableObject {
         bailAnswered = false
         bailTaken = false
         milesAdrift = 0
+        ruleBreachSec = 0
         totalPausedSec = 0
         ceilingLifted = false
         if !skippedRepOrdinals.isEmpty { skippedRepOrdinals = [] }
@@ -1981,22 +2057,123 @@ final class WorkoutEngine: ObservableObject {
     // must actually be adrift. Firing on a rule alone would ask the question
     // of somebody having a good day.
 
-    /// The plan's bail rule for this session, if it carries one.
-    var bailRule: WatchRule? { workout.rules?.first(where: { $0.isBail }) }
+    /// The plan's actionable rule for this session, if it carries one.
+    ///
+    /// C-1 (2026-09-01) · THIS USED TO BE `first(where: { $0.isBail })`, and
+    /// `WatchWorkoutModels.swift` said so in a comment: "Only `bail` draws a
+    /// board." So on race day the `abort` rules — "Mile 2 check: avgHr over
+    /// 179 · switch to the B plan" — were authored, persisted, shipped over
+    /// the wire, decoded, and drew NOTHING. A safety stop that is wired,
+    /// tested and inert is this codebase's signature failure (Rule 21), and on
+    /// a safety stop it is the worst place for it.
+    ///
+    /// A bail still wins when both exist: a bail is the coach asking, an abort
+    /// is the harder stop, and asking first is the right order.
+    var bailRule: WatchRule? {
+        workout.rules?.first(where: { $0.isBail })
+            ?? workout.rules?.first(where: { $0.isAbort })
+    }
+
+    /// The mile the rule's `scope` says it starts applying at, if it names one.
+    ///
+    /// Race aborts carry `scope: "mile-5"` and similar, because "abort if your
+    /// heart rate is over 179" is a statement about mile five of a marathon
+    /// and not about the first four hundred metres of it. A scope the watch
+    /// cannot parse gates nothing — Rule 11, an unreadable field is not a
+    /// licence to invent one.
+    private var ruleScopeFromMile: Double? {
+        guard let scope = bailRule?.scope,
+              scope.hasPrefix("mile-"),
+              let n = Double(scope.dropFirst(5)) else { return nil }
+        return n
+    }
+
+    /// Has the run reached the mile the rule's scope names?
+    private var ruleScopeReached: Bool {
+        guard let from = ruleScopeFromMile else { return true }
+        return coveredMi >= from
+    }
 
     /// Consecutive whole miles the runner has finished outside the band.
     /// Reset the moment a mile lands inside it — the question is about a
     /// pattern, not about one bad mile.
     @Published private(set) var milesAdrift: Int = 0
 
+    /// Sustained seconds the rule's own metric has been breached, for an HR
+    /// rule. Reset the moment it comes back under — the question is about a
+    /// pattern, not one hot sample.
+    @Published private(set) var ruleBreachSec: Int = 0
+
+    /// How long an HR rule must be breached before the board goes up.
+    ///
+    /// `Research/03` section 2: heart-rate kinetics have a half-time of about
+    /// 30 s and a plateau at 90-180 s, so an instantaneous sample says nothing
+    /// a runner could act on. Two minutes is inside that plateau band and is
+    /// the shortest window over which "over 173 and still climbing" is a
+    /// statement about the runner rather than about one beat.
+    static let hrRuleSustainSec = 120
+
+    /// The tick loop's period, seconds. `startTimer()` runs at 1 Hz.
+    static let tickHz = 1
+
     /// Whether to put the board up right now.
     ///
-    /// Deliberately conservative: two full miles adrift, on a session whose
-    /// plan carries a bail rule, and never in the first mile. A coach that
-    /// asks too early is a coach the runner stops believing.
+    /// C-1 (2026-09-01) · THIS USED TO BE `milesAdrift >= 2`, FULL STOP.
+    ///
+    /// `WatchRule` decodes `metric`, `op` and `value`, and nothing read any of
+    /// them: only `isBail`, `evidence` and `judgement` were ever touched. So
+    /// the board fired on two consecutive whole miles whose PACE left the
+    /// band, and then printed the server's HR-worded evidence over it —
+    /// "Heart rate over 173 and still climbing" — at a runner who might be at
+    /// 150 bpm and simply slow. And a runner genuinely at 180 bpm holding pace
+    /// was never offered the bail at all, which is the direction that matters,
+    /// because that is the one the rule exists for.
+    ///
+    /// Rule 16, in its own words: a sentence asserting a fact about a
+    /// measurement must be gated on that measurement or not said.
+    ///
+    /// Now the rule's own `metric` decides which signal is watched. `hr` reads
+    /// `tracker.heartRate` against `op`/`value` — the same shape
+    /// `hrOverCeiling` already uses a few hundred lines above, on the same
+    /// data — sustained for `hrRuleSustainSec`. `pace`, and any rule with no
+    /// metric at all, keeps the two-miles-adrift behaviour, which is what the
+    /// composed fallback evidence ("Two miles adrift") has always described.
     var shouldOfferBailNow: Bool {
-        guard bailRule != nil, !bailAnswered, state == .running else { return false }
+        guard let rule = bailRule, !bailAnswered, state == .running,
+              ruleScopeReached else { return false }
+        if rule.metric == "hr" {
+            return ruleBreachSec >= Self.hrRuleSustainSec
+        }
+        // Deliberately conservative on pace: two full miles adrift, and never
+        // in the first mile. A coach that asks too early is a coach the runner
+        // stops believing.
         return milesAdrift >= 2
+    }
+
+    /// Evaluate an HR-metric rule against the live wrist reading.
+    ///
+    /// Called once per tick. Pure accounting — it moves `ruleBreachSec` and
+    /// nothing else, so `shouldOfferBailNow` stays a computed read.
+    func noteRuleMetric(hrBpm: Int, tickSec: Int) {
+        guard let rule = bailRule, rule.metric == "hr",
+              let value = rule.value, hrBpm > 0 else {
+            if ruleBreachSec != 0 { ruleBreachSec = 0 }
+            return
+        }
+        let breached: Bool
+        switch rule.op {
+        case ">":  breached = Double(hrBpm) >  value
+        case ">=": breached = Double(hrBpm) >= value
+        case "<":  breached = Double(hrBpm) <  value
+        case "<=": breached = Double(hrBpm) <= value
+        default:
+            // Rule 11 · an operator the watch cannot read is not a breach and
+            // is not a pass. It is an unreadable rule, and an unreadable rule
+            // must never raise a safety board on a guess.
+            if ruleBreachSec != 0 { ruleBreachSec = 0 }
+            return
+        }
+        ruleBreachSec = breached ? ruleBreachSec + tickSec : 0
     }
 
     /// Called at each mile boundary with whether that mile finished in band.
@@ -2117,13 +2294,21 @@ final class WorkoutEngine: ObservableObject {
     /// is built at the moment the run ends, so `finish(save:)` first and
     /// `recordBail` second would end the run and then write the decision on
     /// a payload that has already been sealed.
-    func recordBail(taken: Bool, label: String = "Bail line") {
+    func recordBail(taken: Bool, label: String? = nil) {
         guard state == .running, !bailAnswered else { return }
         bailAnswered = true
         bailTaken = taken
+        /* C-1 (2026-09-01) · the label and the kind came from a HARDCODED
+         * default, so the recap could not name which rule it meant and read
+         * every board as a bail — including, once aborts started drawing, a
+         * race abort. The rule sent its own `label` and `kind` on the wire
+         * and neither was ever read. Rule 16: a sentence about a measurement
+         * is gated on that measurement, and "which rule tripped" is part of
+         * the measurement. The old default survives as the last fallback so a
+         * payload with no label still records something honest. */
         bailOutcome = RuleOutcome(
-            kind: "bail",
-            label: label,
+            kind: bailRule?.isAbort == true ? "abort" : "bail",
+            label: label ?? bailRule?.label ?? "Bail line",
             breached: true,
             actionTaken: taken,
             atMi: atMiNow()

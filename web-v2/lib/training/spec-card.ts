@@ -40,6 +40,7 @@
  */
 
 import { expandSpecToPhases, subLabelFromSpec, type ExpandedPhase } from './expand-spec';
+import { classifySession, sessionToleranceSec } from './execution-semantics';
 import { fmtPace as fmtPaceNoUnit, roundTo } from '@/lib/format/run';
 import { sessionRationale, type PrescriptionStep, type WorkoutType } from './prescriptions';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
@@ -170,12 +171,16 @@ export function fmtPaceCeiling(sPerMi: number | null | undefined): string | null
  * "precision should match the workout" licenses a NARROWER band, not a bare
  * point with no represented uncertainty at all. This layer has no access to
  * that confidence number — it only sees the phase's own
- * `tolerancePaceSPerMi`, which for threshold/interval work IS the doctrine-
- * documented band already in force: `cardTolerance` in `/api/v5/today`
- * (± 8 s/mi) is the same width the watch grades execution against. Showing
- * that width here — rather than inventing a second one from nothing — is
- * what closes the Rule 16 gap the trace found: the runner was graded on a
- * band he was never shown.
+ * `tolerancePaceSPerMi`.
+ *
+ * CORRECTED 2026-09-01. This docblock used to assert that "`cardTolerance` in
+ * `/api/v5/today` (± 8 s/mi) is the same width the watch grades execution
+ * against." That was TRUE for threshold and interval days and FALSE for tempo
+ * days, where the phone said ±20 and the wrist graded ±8 — and nothing checked
+ * it, which is Rule 20 exactly. The claim is now structural rather than
+ * asserted: both surfaces call `sessionToleranceSec` in
+ * `lib/training/execution-semantics.ts` with the same classifier, and
+ * `_execution_semantics_owner.test.ts` fails if either stops.
  *
  * A zero or missing tolerance falls back to a bare point, so a work phase
  * with no band in force (an effort-only rep, or a type this fix does not
@@ -379,7 +384,15 @@ export function cardFromSpec(input: {
     // pause. Kept non-null here rather than deleting the line, so a future
     // caller of strides on this path keeps its walk-back target.
     recoveryPaceSec: easyPaceSec,
-    toleranceSec: input.toleranceSec ?? 8,
+    /* THE tolerance, from THE owner — never a literal.
+     *
+     * This defaulted to a bare `8`, which happened to agree with the phone
+     * route's ternary for threshold and interval days and disagreed with it
+     * for every other type the caller could pass. Two copies of one number is
+     * how the five-way spread in `execution-semantics.ts`' header began. */
+    toleranceSec: input.toleranceSec ?? sessionToleranceSec(
+      classifySession(type, spec as unknown as Record<string, unknown>),
+    ),
     workPhaseLabel: type === 'race' ? 'Race effort' : type === 'shakeout' ? 'Shakeout' : undefined,
   });
   if (!phases || phases.length === 0) return null;

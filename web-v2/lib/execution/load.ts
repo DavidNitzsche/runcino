@@ -32,6 +32,9 @@ import {
   runDistanceMiSql,
   asRunData,
 } from '@/lib/runs/run-shape';
+import type { WirePhaseVerdict } from '@/lib/training/execution-semantics';
+import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import {
   actualStimulus,
   establishedPaceFor,
@@ -70,7 +73,20 @@ export interface KeySessionExecution {
   /** The device's own signals, carried through for surfaces and audits. */
   watchStatus: 'completed' | 'partial' | 'abandoned' | null;
   toleranceShare: number | null;
-  workVerdicts: Array<'hit' | 'drifted' | 'missed' | 'incomplete'>;
+  workVerdicts: WirePhaseVerdict[];
+  /**
+   * The pace this runner has established for THIS session's domain, s/mi, as
+   * the interpreter actually used it.
+   *
+   * Carried rather than left to be recomputed. `findPartialFitnessEvidence`
+   * used to call `establishedPaceFor` a second time with its own `vdot`
+   * argument, and its own comment named the hazard — "a different vdot
+   * argument than the one load.ts used could theoretically disagree". Rule 16:
+   * one quantity, one name, resolved once.
+   *
+   * Null when the anchor set was refused, which is a real answer (Rule 11).
+   */
+  establishedPaceSPerMi: number | null;
   replacedByRace: boolean;
 }
 
@@ -114,6 +130,42 @@ export async function loadKeySessionExecutions(
     [userUuid, fromISO, toISO],
   )).rows;
   if (owned.length === 0) return [];
+
+  /* F-5 · THE ANCHORS THE PLAN WAS PRICED FROM, not a second fitness.
+   *
+   * `establishedPaceFor` used to take a raw VDOT and apply its own offsets
+   * (`t - 30` for R, `t - 18` for I, `t + 100` for E) which were 11-46 s/mi
+   * SLOWER than what the prescription side actually uses. Every one erred the
+   * same way, which biased `failedAtKnownPace` toward true — a session that
+   * came apart at a pace well inside the prescription read as HIGH fitness
+   * evidence, and the number was printed at the runner.
+   *
+   * These are the same six numbers the plan builder prices a block from, off
+   * the same four capacity resolvers. `resolvePrescribedPaceAnchors` takes a
+   * userId and a date and nothing else, so no goal, race or readiness can
+   * reach the grader through it.
+   *
+   * RULE 11 · a refusal is carried, never patched over. `PaceAnchorRead`'s
+   * refusal branch has no `anchors` field, and `load-prescription-anchors.ts`
+   * states the rule in its own header: "A refusal must never be answered by
+   * reaching for the old VDOT cascade." A null anchor set means
+   * `establishedPaceSPerMi` is null, which means `failedAtKnownPace` cannot
+   * fire, which is the correct answer when nobody knows what pace this runner
+   * has established. */
+  let anchors: PrescribedPaceAnchors | null = null;
+  try {
+    const anchorRead = await resolvePrescribedPaceAnchors(userUuid, toISO);
+    anchors = anchorRead.ok ? anchorRead.anchors : null;
+  } catch {
+    // A THROWN read and a REFUSED one both mean "nobody knows this runner's
+    // established pace today", and both produce exactly the same downstream
+    // behaviour: `establishedPaceFor` returns null, `failedAtKnownPace`
+    // cannot fire, and no session is credited with high fitness evidence on
+    // an anchor nobody has. Written as try/catch rather than `.catch(() =>
+    // …)` so the collapse is visible and argued here rather than hidden in a
+    // one-liner (Rule 11).
+    anchors = null;
+  }
 
   const canonicalIds = await getCanonicalRunIds(userUuid, fromISO, toISO).catch(() => [] as string[]);
 
@@ -193,6 +245,7 @@ export async function loadKeySessionExecutions(
         planned: null, plannedBasis: null, actual: null, actualBasis: null,
         readable: false, read: null, earnsProgression: false,
         watchStatus: null, toleranceShare: null, workVerdicts: [], replacedByRace,
+        establishedPaceSPerMi: null,
       });
       continue;
     }
@@ -211,6 +264,7 @@ export async function loadKeySessionExecutions(
         actual: null, actualBasis: null,
         readable: false, read: null, earnsProgression: false,
         watchStatus: statusFallback, toleranceShare: null, workVerdicts: [], replacedByRace,
+        establishedPaceSPerMi: establishedPaceFor(planned.stimulus.domain, anchors),
       });
       continue;
     }
@@ -220,7 +274,7 @@ export async function loadKeySessionExecutions(
       watchStatusFallback: statusFallback,
       rpe: rpeByDay.get(row.date_iso) ?? null,
       replacedByRace,
-      establishedPaceSPerMi: establishedPaceFor(planned.stimulus.domain, vdot),
+      establishedPaceSPerMi: establishedPaceFor(planned.stimulus.domain, anchors),
     });
     const read = interpretExecution(planned.stimulus, actual?.stimulus ?? null, ctx);
 
@@ -237,6 +291,7 @@ export async function loadKeySessionExecutions(
       watchStatus: actual?.watchStatus ?? statusFallback,
       toleranceShare: actual?.toleranceShare ?? null,
       workVerdicts: actual?.workVerdicts ?? [],
+      establishedPaceSPerMi: ctx.establishedPaceSPerMi ?? null,
       replacedByRace,
     });
   }

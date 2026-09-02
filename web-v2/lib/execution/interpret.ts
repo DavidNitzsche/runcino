@@ -47,6 +47,7 @@
  */
 
 import { AT_PACE_SESSION_MI } from '@/lib/prescription/levers';
+import { COMPLETION_LADDER } from '@/lib/training/execution-semantics';
 
 /** Doctrine's seven states. */
 export type ExecutionState =
@@ -136,11 +137,17 @@ export interface ExecutionRead {
  * of work, 3 × 2 mi is 6 — twenty percent, and doctrine says that is the same
  * session run a different way.
  */
-export const EQUIVALENT_WORK_TOLERANCE = 0.25;
+export const EQUIVALENT_WORK_TOLERANCE = COMPLETION_LADDER.SAME_STIMULUS_WITHIN;
 
 /** Below this share of the intended stimulus a session stops being a version
- *  of the prescription and becomes a fragment of it. */
-export const PARTIAL_FLOOR = 0.4;
+ *  of the prescription and becomes a fragment of it.
+ *
+ *  F-14 · both constants now read the ONE completion ladder in
+ *  `lib/training/execution-semantics.ts`, which also holds `adapt.ts`'s
+ *  "counts as done" line and states in one place how the three relate. They
+ *  were three literals in two files with no stated relationship, and an 8 mi
+ *  threshold run at 5.0 mi got three different verdicts as a result. */
+export const PARTIAL_FLOOR = COMPLETION_LADDER.FRAGMENT_BELOW;
 
 /* --------------------------------------------------------------- helpers */
 

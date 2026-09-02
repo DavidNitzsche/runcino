@@ -113,6 +113,7 @@ import { paceTagOf } from '@/lib/prescription/trajectory';
 // header for why the composer's gate does not cover this one.
 import { dosingBreachIfWritten } from './dose-guard';
 import type { AdaptationBand } from '@/lib/adaptation/adaptation-model';
+import { COMPLETION_LADDER } from '@/lib/training/execution-semantics';
 
 /**
  * 2026-06-03 · Rule 15 · seal guard for adapter writes.
@@ -444,19 +445,24 @@ const DOW_OF_SHORTCODE: Record<string, number> = {
 
 /**
  * Workout-relative completion threshold (2026-07-06 · P1-40/P1-54).
- * A run covering ≥60% of the prescribed distance within ±1d counts as
- * done. The old flat ≥4mi gate declared every completed sub-4mi quality
- * session missed (5K-plan intervals are routinely ~3mi — the same
- * population the 2026-06-15 vdotRunFloorMi fix served) and let any 4mi
- * easy jog satisfy an unrelated 8mi tempo.
- * Cite: Research/22-plan-templates.md §14 — a 70%-volume comeback week
- * still banks the stimulus; ≥60% of a prescription is a completed-enough
- * session, not a missed one.
+ * A run covering `COMPLETION_LADDER.COUNTS_AS_DONE` of the prescribed
+ * distance within ±1d counts as done. The old flat ≥4mi gate declared every
+ * completed sub-4mi quality session missed (5K-plan intervals are routinely
+ * ~3mi — the same population the 2026-06-15 vdotRunFloorMi fix served) and
+ * let any 4mi easy jog satisfy an unrelated 8mi tempo.
+ *
+ * F-14 (2026-09-01) · the SHARE is no longer a literal here. It sits on the
+ * one completion ladder in `lib/training/execution-semantics.ts` beside
+ * `interpret.ts`'s two, with the relationship between all three stated and
+ * gated — an 8 mi threshold run at 5.0 mi used to be DONE here, `PARTIAL_*`
+ * there, and an uncoloured row on the phone, with nothing anywhere saying
+ * those were three different questions.
+ *
  * No prescribed distance → legacy 4mi fallback.
  */
 export function completionThresholdMi(prescribedMi: number | null): number {
   if (prescribedMi == null || !Number.isFinite(prescribedMi) || prescribedMi <= 0) return 4;
-  return Math.min(prescribedMi, Math.max(1, prescribedMi * 0.6));
+  return Math.min(prescribedMi, Math.max(1, prescribedMi * COMPLETION_LADDER.COUNTS_AS_DONE));
 }
 
 /**

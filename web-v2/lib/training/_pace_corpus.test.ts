@@ -454,6 +454,8 @@ function phase(over: Partial<PhaseBreakdown> & { type: PhaseBreakdown['type']; a
     target_pace: null,
     target_pace_sec: null,
     tolerance_pace_sec: null,
+    pace_shape: 'none',
+    status_label: null,
     target_distance_mi: null,
     target_duration_sec: null,
     actual_pace: null,

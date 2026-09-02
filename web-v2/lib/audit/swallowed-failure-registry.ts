@@ -369,7 +369,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/coach/easy-discipline.ts::loadEasyDiscipline',
   'lib/coach/episode-log.ts::<module>',
   'lib/coach/episode-log.ts::<module>',
-  'lib/coach/fitness-evidence.ts::currentVdot',
   'lib/coach/glance-state.ts::computeTodayExecution',
   'lib/coach/glance-state.ts::computeTodayExecution',
   'lib/coach/glance-state.ts::loadGlanceState',
@@ -396,7 +395,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/coach/quality-predictors.ts::computeQualityPredictors',
   'lib/coach/race-lookup.ts::loadNextARace',
   'lib/coach/race-lookup.ts::loadNextARace',
-  'lib/coach/race-replacement.ts::currentVdot',
   'lib/coach/races-state.ts::loadRacesState',
   'lib/coach/readiness-brief.ts::computeYesterdayPillars',
   'lib/coach/readiness-brief.ts::computeYesterdayPillars',
@@ -450,7 +448,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/coach/strength-recommender.ts::loadWeekWorkouts',
   'lib/coach/strength-status.ts::loadStrengthWeekStatus',
   'lib/coach/strength-status.ts::loadStrengthWeekStatus',
-  'lib/coach/threshold-pattern.ts::currentVdot',
   'lib/coach/training-form.ts::computeTrainingForm',
   'lib/coach/training-form.ts::computeTrainingForm',
   'lib/coach/training-state.ts::loadTrainingState',
@@ -630,7 +627,18 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // projection-snapshot read in effective-race-target.ts is gone (it is an
 // adapter over the race outlook now). Neither site was fixed in place; both
 // were deleted with the second truth they served.
-export const EMPTIED_BASELINE = 372;
+// 2026-09-01 · -3 (372 → 369), F-6. `lib/coach/fitness-evidence.ts`,
+// `lib/coach/race-replacement.ts` and `lib/coach/threshold-pattern.ts` each
+// carried a byte-identical `currentVdot` reader wrapped in
+// `.catch(() => ({ rows: [] }))`. A failed read became "no VDOT", which became
+// `establishedPaceFor → null`, which SUPPRESSED the finding entirely — a guard
+// that silently switched itself off when its own input failed, which is Rule
+// 11's defining shape. All three now call
+// `projection-snapshots.ts#resolveCurrentVdotSnapshot`, whose refusal branch
+// carries no `vdot` field at all and distinguishes NO_SNAPSHOT from
+// READ_FAILED from STALE. `lib/adaptation/load.ts`'s copy (the one that did
+// NOT swallow) is the fourth caller and routes there too.
+export const EMPTIED_BASELINE = 369;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

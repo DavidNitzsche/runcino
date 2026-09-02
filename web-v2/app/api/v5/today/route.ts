@@ -36,6 +36,8 @@ import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runt
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
+import { mapWatchPhases } from '@/lib/coach/run-state';
+import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
 import { resolveViewedPlanDay, viewedDayIsUnresolved } from '@/lib/faff/viewed-day';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
@@ -44,6 +46,13 @@ import {
   type WorkoutType as PrescriptionWorkoutType,
 } from '@/lib/training/prescriptions';
 import { cardFromSpec, cardWithoutSpec, cardForUnprescribableType, type SpecCard } from '@/lib/training/spec-card';
+import {
+  classifySession,
+  sessionToleranceSec,
+  paceShapeFor,
+  phaseVerdictLabel,
+  gradePhase,
+} from '@/lib/training/execution-semantics';
 import { splitRuleRegisters } from '@/lib/watch/build-workout';
 import { fmtPace as fmtPaceShared, fmtMinutesCasual } from '@/lib/format/run';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
@@ -1026,11 +1035,54 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         durationS: durationSec,
       } : null;
 
+      /* C-3 · the THRESHOLD anchor, distinct from the row's HR cap.
+       *
+       * `askedHrCap` is a COALESCE ladder (`hr_cap_bpm` → `hr_target_bpm` →
+       * `lthr_bpm`), so on a tempo row it is a hover target well under LT.
+       * Feeding it to `threshold-band.ts` told a tempo run at 160 bpm — the
+       * FLOOR of what this same app calls "Z4 Threshold" — that it had gone
+       * "past threshold". The band's anchor is the LTHR or there is no band. */
+      const recapLthrBpm: number | null =
+        planRow?.workout_spec && Number(planRow.workout_spec.lthr_bpm) > 0
+          ? Number(planRow.workout_spec.lthr_bpm)
+          // `glance.lthr` is the same resolved threshold the card's own HR
+          // bands are drawn from, three hundred lines below. Reading it rather
+          // than issuing a second `resolveThresholdHr` keeps the recap's band
+          // and the card's band on ONE number (Rule 16) and adds no swallowed
+          // read. Null is a real answer: with no LTHR the recap declines to
+          // say anything about the threshold band at all.
+          : (glance.lthr ?? null);
+
+      /* RULE 16 · WHAT THIS RUN MAY SAY ABOUT ITS OWN HEART RATE.
+       *
+       * `deriveReadingScopes` is the owner of that question and the recap
+       * already accepts its answer — the route just never supplied one, so
+       * every threshold-band sentence and every lead line here was gated on
+       * the WHOLE-RUN average. On a session with a 2.1-mile warm-up at 140 bpm
+       * and a 2.1-mile cool-down at 153 that is ten beats below the reps, and
+       * ten beats is two Friel zone boundaries at this LTHR: the run averaged
+       * 154 (91.7% of a 168 LTHR) and the four reps averaged 162 (96.4%),
+       * which sit on opposite sides of the zone-4 floor and therefore produce
+       * opposite verdicts.
+       *
+       * The resolver also refuses below `HR_REP_KINETICS_FLOOR_SEC`, so a
+       * sub-two-minute rep set says nothing about heart rate rather than
+       * reporting its own rise time. */
+      const recapReadings = deriveReadingScopes({
+        phases: mapWatchPhases(completionPhases),
+        wholeHrBpm: runAvgHr(data),
+      });
+      const recapWorkHr: number | null =
+        recapReadings.hr.scope === 'work' ? recapReadings.hr.value : null;
+
       const recap = deriveRecap({
+        workAvgHrBpm: recapWorkHr,
+        readings: recapReadings,
         type: purposeType, phase: purposePhase,
         plannedMi: todayPlan?.distanceMi ?? 0,
         plannedPaceSPerMi: askedPaceSPerMi,
         plannedPaceBandSPerMi: askedPaceBand,
+        lthrBpm: recapLthrBpm,
         plannedHrCap: askedHrCap,
         actualMi: distanceMi,
         actualPaceSPerMi: paceSPerMi,
@@ -1511,11 +1563,22 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const easyCeilingSec = easyBandRow?.lo != null ? Math.round(Number(easyBandRow.lo)) : null;
 
   const hrBands = hrTargets({ lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi });
-  // Same tolerance the watch applies, so the band the phone quotes is the band
-  // the wrist grades against.
-  const cardTolerance =
-    prescriptionType === 'threshold' || prescriptionType === 'intervals' ? 8
-    : prescriptionType === 'race' ? 12 : 20;
+  /* THE tolerance, from THE owner (`lib/training/execution-semantics.ts`).
+   *
+   * This used to be a local ternary over `strictPrescriptionType`, which maps
+   * `tempo → 'tempo'` — matching neither the `'threshold'` nor the
+   * `'intervals'` arm, so every tempo day fell to `: 20` while the wrist,
+   * classifying on `workout_spec.kind`, graded the same row at 8. 21 live plan
+   * rows. The comment that used to sit here claimed the two were the same
+   * width, and nothing checked it (Rule 20).
+   *
+   * `classifySession` reads the SPEC first for exactly this reason, so the
+   * phone and the wrist now answer from one function with one input. */
+  const cardSessionClass = classifySession(
+    todayPlan?.type ?? '',
+    (specRow?.workout_spec ?? null) as Record<string, unknown> | null,
+  );
+  const cardTolerance = sessionToleranceSec(cardSessionClass);
 
   const prescription: SpecCard | null = !todayPlan
     ? null

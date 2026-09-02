@@ -103,6 +103,10 @@ type DayLikeForInfluence = {
   doneAvgHr?: number | null;
   doneSplits?: Array<{ paceSec: number | null; hr: number | null }>;
   adaptation?: { wasAdapted?: boolean } | null;
+  /** The row's authored spec — threaded ONLY so `classifySession` can read
+   *  `spec.kind`, which is right where `type` is not (a race-week tune-up is
+   *  a threshold session and its `type` does not say so). */
+  spec?: { kind?: string } | null;
 };
 
 /**
@@ -140,6 +144,7 @@ function composeTrainingInfluenceForDay(
   const sameTypeStreak = d.id ? (sameTypeStreakById.get(d.id) ?? 1) : 1;
   return composeTrainingInfluence({
     type: t,
+    spec: (d.spec ?? null) as Record<string, unknown> | null,
     plannedPaceSec: d.paceSec ?? null,
     donePaceSec,
     doneAvgHr: d.doneAvgHr ?? null,

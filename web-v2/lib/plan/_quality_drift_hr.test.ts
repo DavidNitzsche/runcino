@@ -58,22 +58,37 @@ describe('the band edge is the doctrine one', () => {
 });
 
 describe('the recap says the right thing about a fast tempo', () => {
-  // The old copy was "pushed the tempo today", which reads as approval for
-  // whichever of the two explanations it was.
+  /* C-3 / C-6 (2026-09-01) · THE BAND IS READ OFF THE LTHR, AND IT HAS THREE
+   * ARMS, NOT TWO.
+   *
+   * These fixtures used to pass `plannedHrCap: 149` with no LTHR at all, and
+   * `run-recap.ts` fed that cap straight into `threshold-band.ts`. That is the
+   * defect, not the setup: `plannedHrCap` is a COALESCE ladder (`hr_cap_bpm` →
+   * `hr_target_bpm` → `lthr_bpm`), so on a TEMPO row it is a hover target well
+   * under LT. `ranAboveThresholdBand(160, 155)` is true, so a tempo run at 160
+   * bpm — the FLOOR of what this same app labels "Z4 Threshold · just below
+   * LT" — was told "that is past threshold, not more of it."
+   *
+   * A realistic tempo row: LTHR 168, `hr_target_bpm` 149. The Friel 5a band is
+   * 168.0 to 171.4, so 175 is over it, 170 is in it, and 160 and 154 are
+   * under it — and the last of those is the owner's real 2026-09-01 shape.
+   */
+  const TEMPO = {
+    type: 'tempo' as const, phase: 'BUILD' as const, plannedMi: 8,
+    plannedPaceSPerMi: 420, plannedHrCap: 149, lthrBpm: 168,
+    actualMi: 8, actualPaceSPerMi: 405, workPaceSPerMi: 405,
+  };
+  const splitsAt = (hr: number) => [
+    { mile: 1, paceSPerMi: 404, avgHr: hr - 2 },
+    { mile: 2, paceSPerMi: 406, avgHr: hr },
+    { mile: 3, paceSPerMi: 405, avgHr: hr + 1 },
+    { mile: 4, paceSPerMi: 405, avgHr: hr },
+  ];
+
   it('names the band when HR went with the pace', async () => {
     const { deriveRecap } = await import('@/lib/coach/run-recap');
     const r = deriveRecap({
-      type: 'tempo', phase: 'BUILD', plannedMi: 8,
-      plannedPaceSPerMi: 420, plannedHrCap: 149,
-      actualMi: 8, actualPaceSPerMi: 405,
-      workPaceSPerMi: 405,
-      actualAvgHr: 160, actualMaxHr: 172,
-      splits: [
-        { mile: 1, paceSPerMi: 404, avgHr: 158 },
-        { mile: 2, paceSPerMi: 406, avgHr: 160 },
-        { mile: 3, paceSPerMi: 405, avgHr: 161 },
-        { mile: 4, paceSPerMi: 405, avgHr: 162 },
-      ],
+      ...TEMPO, actualAvgHr: 175, actualMaxHr: 184, splits: splitsAt(175),
     });
     const all = r.facts.join(' ');
     expect(all).toMatch(/past threshold|bought with time/i);
@@ -83,21 +98,51 @@ describe('the recap says the right thing about a fast tempo', () => {
   it('calls it a soft lead when HR stayed inside the band', async () => {
     const { deriveRecap } = await import('@/lib/coach/run-recap');
     const r = deriveRecap({
-      type: 'tempo', phase: 'BUILD', plannedMi: 8,
-      plannedPaceSPerMi: 420, plannedHrCap: 149,
-      actualMi: 8, actualPaceSPerMi: 405,
-      workPaceSPerMi: 405,
-      actualAvgHr: 145, actualMaxHr: 152,
-      splits: [
-        { mile: 1, paceSPerMi: 404, avgHr: 144 },
-        { mile: 2, paceSPerMi: 406, avgHr: 145 },
-        { mile: 3, paceSPerMi: 405, avgHr: 146 },
-        { mile: 4, paceSPerMi: 405, avgHr: 145 },
-      ],
+      ...TEMPO, actualAvgHr: 170, actualMaxHr: 176, splits: splitsAt(170),
     });
     const all = r.facts.join(' ');
     expect(all).toMatch(/soft lead/i);
     expect(all).toMatch(/retest/i);
+  });
+
+  it('C-3 · a tempo at the Z4 FLOOR is not told it went past threshold', async () => {
+    // 160 bpm at LTHR 168 is 95.2% — Friel Z4, "SubThreshold · just below LT",
+    // which is exactly what a tempo session is for. Before the fix this read
+    // the 149 hover target as the band anchor and scolded him for it.
+    const { deriveRecap } = await import('@/lib/coach/run-recap');
+    const r = deriveRecap({
+      ...TEMPO, actualAvgHr: 160, actualMaxHr: 168, splits: splitsAt(160),
+    });
+    const all = r.facts.join(' ');
+    expect(all).not.toMatch(/past threshold/i);
+  });
+
+  it('C-6 · under the band is not a soft lead, and does not ask for faster targets', async () => {
+    // The owner's real 2026-09-01 shape: avg HR 154 against LTHR 168 — FOURTEEN
+    // BEATS below the band floor. The old middle arm was gated on nothing but
+    // "an HR and a cap both exist", asserted "with the heart rate still in the
+    // band", and then recommended the targets should catch up, i.e. get
+    // FASTER, off a session that never reached the intensity it existed for.
+    const { deriveRecap } = await import('@/lib/coach/run-recap');
+    const r = deriveRecap({
+      ...TEMPO, actualAvgHr: 154, actualMaxHr: 164, splits: splitsAt(154),
+    });
+    const all = r.facts.join(' ');
+    expect(all).not.toMatch(/soft lead/i);
+    expect(all).not.toMatch(/still in the band/i);
+    expect(all).toMatch(/under the threshold band/i);
+  });
+
+  it('with no LTHR the recap says so rather than guessing a band', async () => {
+    // Rule 11 · absent is not "in the band".
+    const { deriveRecap } = await import('@/lib/coach/run-recap');
+    const r = deriveRecap({
+      ...TEMPO, lthrBpm: null, actualAvgHr: 170, actualMaxHr: 176, splits: splitsAt(170),
+    });
+    const all = r.facts.join(' ');
+    expect(all).toMatch(/no heart rate to say/i);
+    expect(all).not.toMatch(/soft lead/i);
+    expect(all).not.toMatch(/past threshold/i);
   });
 });
 

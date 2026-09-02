@@ -60,6 +60,9 @@ function session(over: Partial<KeySessionExecution> = {}): KeySessionExecution {
     toleranceShare: null,
     workVerdicts: [],
     replacedByRace: true,
+    // F-5 · carried on the row now; null is the honest value for a fixture
+    // that never exercised the anchor path.
+    establishedPaceSPerMi: null,
     ...over,
   };
 }
