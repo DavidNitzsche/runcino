@@ -62,7 +62,10 @@ import type { ReadinessHistory } from './readiness-history';
 import type { ReadinessStreak } from './readiness-brief';
 import { tierRulesFor, HARD_RULES, type ExperienceLevel } from './tier-rules';
 import { hasRecoverySignal } from './state-presence';
-import { CONVERGENCE, type ConvergenceDomain } from './convergence';
+// `CONVERGENCE` went with the instruction branch of `voice()` (2026-09-02);
+// the domain vocabulary stays, because each rule still states what its
+// evidence spans.
+import type { ConvergenceDomain } from './convergence';
 
 /**
  * Chronic weekly volume in miles · `loadChronic28` is a 28-day mi/DAY

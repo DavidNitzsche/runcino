@@ -37,7 +37,6 @@ import type { CoachState } from '@/lib/topics/types';
 import { buildSynthesis } from './synthesis';
 import { computeTrainingForm } from './training-form';
 import { buildHealthActions, buildThresholdLine, type HealthAction } from './health-actions';
-import { convergencePhrases, type ConvergenceVerdict } from './convergence';
 
 export type PillarKey = 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
 export type PillarBand = 'sharp' | 'ready' | 'moderate' | 'pull-back' | 'no-data' | 'unknown';
