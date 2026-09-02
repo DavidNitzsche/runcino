@@ -54,7 +54,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
-import { loadProjectionSeries, loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
+import { loadProjectionSeries, resolveCurrentVdotSnapshot } from '@/lib/training/projection-snapshots';
 import { predictRaceTime, parseRaceTime, formatRaceTime, goalDistanceMiFromCode, DANIELS_MAX_VALID_DISTANCE_MI, predictRaceTimeFromAnchor, bestRecentVdot, VDOT_FULL_VALUE_DAYS, EVIDENCE_RUN_FLOOR_MI } from '@/lib/training/vdot';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { loadProfileState } from '@/lib/coach/profile-state';
@@ -288,7 +288,19 @@ export async function GET(req: NextRequest) {
     // dropped it, so the iPhone showed a falsely-confident ±2.5% band for the
     // same stale anchor. Load the anchor unconditionally (one cheap query) so we
     // have the date even when vdot came from the series — same snapshot source.
-    const anchor = await loadLatestVdotWithAnchor(userId).catch(() => null);
+    /* SECOND-OWNER-5 (2026-09-02) · the canonical snapshot read.
+     *
+     * Was `loadLatestVdotWithAnchor(userId).catch(() => null)` — unbounded age
+     * on a value whose whole purpose here is to decide whether the confidence
+     * band should be widened for a STALE anchor, plus a `.catch` on top of the
+     * reader's own `.catch`, so three different facts arrived as one null.
+     * `resolveCurrentVdotSnapshot` carries the age bound and the total order;
+     * a refusal is null, and the null still flows into the same rungs below. */
+    const anchorRead = await resolveCurrentVdotSnapshot(userId);
+    if (!anchorRead.ok) {
+      console.warn(`[targets/projection] current VDOT unavailable · ${anchorRead.reason} · ${anchorRead.detail}`);
+    }
+    const anchor = anchorRead.ok ? anchorRead : null;
     if (vdot == null && anchor?.vdot != null) vdot = anchor.vdot;
     // Last resort · the profile-state VDOT (also carries the anchor fallback).
     const profileState = await loadProfileState(userId).catch(() => null);

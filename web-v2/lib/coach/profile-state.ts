@@ -6,7 +6,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadSettings, type UserSettings } from '@/lib/coach/settings';
 import { computeZones, estimateLTHR, estimateMaxHRFromLTHR, type ZoneTable } from '@/lib/training/zones';
-import { loadLatestVdotWithAnchor } from '@/lib/training/projection-snapshots';
+import { resolveCurrentVdotSnapshot } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadNextARace } from './race-lookup';
 import { loadActivePlan } from '@/lib/plan/lookup';
@@ -321,8 +321,26 @@ export async function loadProfileState(userId: string): Promise<ProfileState> {
   // the full race-candidate chain. Falls back to null for cold-start users
   // who haven't had a cron run yet — display reads null as "no VDOT yet".
   const effMaxHr = await loadEffectiveMaxHr(userId, today);
-  const { vdot, anchorDateISO: vdotAnchorDate, anchorDistanceMi: vdotAnchorDistMi } =
-    await loadLatestVdotWithAnchor(userId);
+  /* SECOND-OWNER-5 (2026-09-02) · the canonical snapshot read.
+   *
+   * Was `loadLatestVdotWithAnchor` — unbounded age, no tie-break over the
+   * three rows production holds per snapshot_date, and a `.catch` that made a
+   * failed read and an empty table one answer. This value is not display-only:
+   * `app/api/targets/projection` reads `profileState.physiology.vdot` as a
+   * projection fallback, so a snapshot faded as of its own date and never
+   * again was reaching a coaching number.
+   *
+   * A REFUSAL is null here, which is what this field's own comment below
+   * already means by "no VDOT yet" — and it is logged with its reason, so
+   * cold-start, stale and read-failed stay three facts in the log even though
+   * the display shows one. */
+  const vdotRead = await resolveCurrentVdotSnapshot(userId, today);
+  if (!vdotRead.ok) {
+    console.warn(`[profile-state] current VDOT unavailable · ${vdotRead.reason} · ${vdotRead.detail}`);
+  }
+  const vdot = vdotRead.ok ? vdotRead.vdot : null;
+  const vdotAnchorDate = vdotRead.ok ? vdotRead.anchorDateISO : null;
+  const vdotAnchorDistMi = vdotRead.ok ? vdotRead.anchorDistanceMi : null;
 
   // 2026-06-09 · race-killers F1/F9 — anchor age + name. A 4-month-old
   // VDOT rendered with no provenance: "47.9" looked current while every

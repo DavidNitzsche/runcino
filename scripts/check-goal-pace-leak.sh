@@ -67,10 +67,24 @@
 #     that is correct — Constitution §J. `lib/race/` and
 #     `lib/training/achievable-target.ts` are excluded by design, not by
 #     oversight.
-#   · IT CANNOT SEE A LEAK OUTSIDE THE THREE TREES. `app/` routes and
-#     `lib/faff/` are not scanned; the v5 Today surface reads
-#     `tPaceFromGoal(goal_seconds, …)` for a DISPLAY pace and is a known, open,
-#     separately-owned question.
+#   · IT CANNOT SEE A LEAK OUTSIDE ITS TREES. Those are now seven —
+#     `lib/plan`, `lib/training`, `lib/prescription`, `lib/faff`, `lib/coach`,
+#     `lib/watch` and `app` — which is every tree that has ever priced a
+#     training pace in this repo. `components/` is NOT scanned: the web
+#     frontend is paused per CLAUDE.md and nothing there persists a pace.
+#     `legacy/` and `native-v2/` are not TypeScript and are out of reach by
+#     construction; a goal-derived pace written in Swift is invisible here.
+#
+#     This bullet used to read "`app/` routes and `lib/faff/` are not scanned;
+#     the v5 Today surface reads `tPaceFromGoal(goal_seconds, …)` for a DISPLAY
+#     pace and is a known, open, separately-owned question." Both halves are
+#     closed as of 2026-09-02: the trees are in, and the v5 Today ladder is
+#     deleted (SECOND-OWNER-1).
+#   · IT CANNOT JUDGE AN EXCLUSION IT WAS GIVEN. `EXCLUDE` carves one shape out
+#     of `goalT =` — a goal DATE, not a goal pace. It is pinned by its own
+#     positive and negative controls, but a second false-positive shape would
+#     have to be found the same way this one was: by widening the trees and
+#     reading every finding.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
@@ -79,10 +93,27 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAILED=0
 fail() { echo "FAIL  check-goal-pace-leak · $*" >&2; FAILED=1; }
 
+## ── THE TREES ───────────────────────────────────────────────────────────────
+#
+# 2026-09-02 · SECOND-OWNER-1 · `app/`, `lib/faff`, `lib/coach` and `lib/watch`
+# ADDED. The Rule 22 section above used to say, in as many words, that the
+# scan "cannot see a leak outside the three trees" and that "`app/` routes and
+# `lib/faff/` are not scanned; the v5 Today surface reads
+# `tPaceFromGoal(goal_seconds, …)` for a DISPLAY pace and is a known, open,
+# separately-owned question."
+#
+# That question is now closed — `derivePaces` is deleted and the card surfaces
+# read `resolvePrescribedPaceAnchors` — and a gate that still cannot look at
+# the two trees the defect was actually RENDERED from could not catch it coming
+# back at the site where it happened. So it looks there now.
 TREES=(
   "$ROOT/web-v2/lib/plan"
   "$ROOT/web-v2/lib/training"
   "$ROOT/web-v2/lib/prescription"
+  "$ROOT/web-v2/lib/faff"
+  "$ROOT/web-v2/lib/coach"
+  "$ROOT/web-v2/lib/watch"
+  "$ROOT/web-v2/app"
 )
 for d in "${TREES[@]}"; do
   [ -d "$d" ] || { echo "FAIL  check-goal-pace-leak · missing tree $d · the gate is watching nothing" >&2; exit 1; }
@@ -97,6 +128,23 @@ done
 # identifier reported that field as a leak on the first run of this gate, which
 # is the false-positive that makes a check get switched off.
 PATTERN='tPaceFromGoal[[:space:]]*\(|blendedTPaceForWeek[[:space:]]*\(|measuredProgressFraction[[:space:]]*\(|gatedBlendFraction[[:space:]]*\(|BLEND_GRACE_FRACTION|goalT[[:space:]]*=|goalTraw|goalTFloored|goalPaceSPerMi[[:space:]]*:[[:space:]]*(input\.goalPaceSec|goalPaceSec)'
+
+# ── THE EXCLUSION · one shape that is NOT a leak, named and argued ───────────
+#
+# 2026-09-02 · found by widening the trees. `goalT` was added to the pattern
+# because this repo shipped `const goalT = tPaceFromGoal(...)` — a goal-derived
+# THRESHOLD PACE. It also matches `lib/faff/block-state.ts`'s
+#
+#     const goalT = parseISO(goalDateISO);
+#
+# which is a goal DATE in milliseconds, differenced against the block's open
+# date to count weeks. A timestamp is not a pace and never becomes one.
+#
+# Exempting the FILE would have been the reflex and the wrong move: it would
+# have excused any future real leak in it. Excluding the SHAPE keeps every
+# other line in that file under the scan, and the negative control below pins
+# the exclusion so it cannot quietly widen into "any assignment to goalT".
+EXCLUDE='goalT[[:space:]]*=[[:space:]]*(parseISO|Date\.parse|new Date|dateOf|toMs)'
 
 # ── THE OWNERS · the two places a goal legitimately meets a pace ─────────────
 #
@@ -134,19 +182,36 @@ EOF
 # this one was meant to expire, and it is the proof the ratchet works.
 
 # ── 1 · LIVENESS ─────────────────────────────────────────────────────────────
-SCANNED=$(find "${TREES[@]}" -name '*.ts' ! -name '*.test.ts' ! -name '*.audit.test.ts' | wc -l | tr -d ' ')
-if [ "$SCANNED" -lt 50 ]; then
-  echo "FAIL  check-goal-pace-leak · read only $SCANNED files · the scan is not looking at the engine" >&2
+SCANNED=$(find "${TREES[@]}" \( -name '*.ts' -o -name '*.tsx' \) ! -name '*.test.ts' ! -name '*.test.tsx' ! -name '*.audit.test.ts' | wc -l | tr -d ' ')
+# 2026-09-02 · the floor rose with the trees. Three trees held ~246 files; the
+# seven hold roughly a thousand, so a 50-file floor would no longer notice the
+# scan losing `app/` entirely. This is a LIVENESS floor, not a target: it must
+# be low enough never to fail on an honest deletion and high enough to notice a
+# tree silently dropping out.
+if [ "$SCANNED" -lt 500 ]; then
+  echo "FAIL  check-goal-pace-leak · read only $SCANNED files · the scan is not looking at the app" >&2
   exit 1
 fi
 
 # ── 2 · CONTROLS · both directions, before any finding ───────────────────────
 POS='const goalT = tPaceFromGoal(input.goalSec, input.raceDistanceMi);'
 NEG='const currentT = anchors.thresholdSecPerMi;'
+# The exclusion gets its own pair, for the same reason the pattern does: an
+# EXCLUDE that stopped matching would silently reintroduce the false positive,
+# and an EXCLUDE that widened would silently swallow the real leak it is
+# carved out of.
+EXC_POS='  const goalT = parseISO(goalDateISO);'
+EXC_NEG='  const goalT = tPaceFromGoal(goalSec, goalDistanceMi);'
 echo "$POS" | grep -qE "$PATTERN" \
   || { echo "FAIL  check-goal-pace-leak · POSITIVE CONTROL failed · the matcher cannot see a leak it was handed" >&2; exit 1; }
 if echo "$NEG" | grep -qE "$PATTERN"; then
   echo "FAIL  check-goal-pace-leak · NEGATIVE CONTROL failed · the matcher flags canonical pricing" >&2
+  exit 1
+fi
+echo "$EXC_POS" | grep -qE "$EXCLUDE" \
+  || { echo "FAIL  check-goal-pace-leak · EXCLUDE POSITIVE CONTROL failed · a goal DATE is being reported as a goal PACE" >&2; exit 1; }
+if echo "$EXC_NEG" | grep -qE "$EXCLUDE"; then
+  echo "FAIL  check-goal-pace-leak · EXCLUDE NEGATIVE CONTROL failed · the exclusion has widened to swallow a real goal-derived pace" >&2
   exit 1
 fi
 
@@ -163,9 +228,9 @@ while IFS= read -r f; do
   # Strip block comments, line comments and blank lines before matching.
   hits=$(sed -e 's://.*$::' "$f" \
     | awk 'BEGIN{inc=0} {line=$0; if (inc) { if (match(line,/\*\//)) { line=substr(line,RSTART+2); inc=0 } else next } while (match(line,/\/\*/)) { pre=substr(line,1,RSTART-1); rest=substr(line,RSTART+2); if (match(rest,/\*\//)) { line=pre substr(rest,RSTART+2) } else { line=pre; inc=1 } } print line}' \
-    | grep -cE "$PATTERN")
+    | grep -E "$PATTERN" | grep -vcE "$EXCLUDE")
   [ "$hits" -gt 0 ] && echo "$rel $hits" >> "$HITS_FILE"
-done < <(find "${TREES[@]}" -name '*.ts' ! -name '*.test.ts' ! -name '*.audit.test.ts')
+done < <(find "${TREES[@]}" \( -name '*.ts' -o -name '*.tsx' \) ! -name '*.test.ts' ! -name '*.test.tsx' ! -name '*.audit.test.ts')
 
 ALLOWED_COUNT=0
 UNEXPLAINED=0

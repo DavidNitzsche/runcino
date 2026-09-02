@@ -32,7 +32,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { buildWorkoutSpec, tPaceFromGoal } from '@/lib/plan/spec-builder';
+import { buildWorkoutSpec } from '@/lib/plan/spec-builder';
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import { mutatePlan } from '@/lib/plan/mutate';
 
 export const dynamic = 'force-dynamic';
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
     let workoutSpec: unknown = null;
     let paceTargetSPerMi: number | null = null;
     if (restoredDistanceMi != null && restoredType !== 'rest') {
-      const tPaceSec = await deriveTPaceSec(client, userId, row.race_id);
+      const tPaceSec = await deriveTPaceSec(userId);
       if (tPaceSec != null) {
         const result = buildWorkoutSpec(restoredType, restoredDistanceMi, tPaceSec, null);
         workoutSpec = result.spec;
@@ -263,32 +264,37 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Derive T-pace from the race goal. Used to populate workout_spec on
- * restored quality workouts.
+ * The runner's THRESHOLD PACE, for the `workout_spec` a restored quality
+ * workout is rebuilt with.
  *
- * Returns null when the runner has no goal time set · caller should
- * fall back to leaving spec null (the runner can still execute the
- * workout by feel · the chip just won't show a headline pace).
+ * ── SECOND-OWNER-1b (2026-09-02) · IT USED TO READ THE GOAL ────────────────
+ *
+ * The body was:
+ *
+ *     const goalSec = Number(race.plan?.goal?.finish_time_s);
+ *     const goalDistanceMi = Number(race.meta?.distanceMi);
+ *     return tPaceFromGoal(goalSec, goalDistanceMi);
+ *
+ * so restoring a workout re-priced it off the runner's ASPIRATION and
+ * PERSISTED that through `buildWorkoutSpec` into `plan_workouts.workout_spec`.
+ * Constitution §7 names the shape; on the owner's own account the two answers
+ * are 394 s/mi (his 3:00:00 CIM goal) against 430 (canonical) — a restore
+ * would have written a threshold pace 36 s/mi too fast into a row he executes.
+ *
+ * `resolvePrescribedPaceAnchors` takes `(userId, today)` and nothing else, so
+ * the goal physically cannot reach it, and it is the SAME resolver plan
+ * authoring and the nightly flex price the block from — a restored row now
+ * lands on the same number as the row beside it (Rule 16).
+ *
+ * Rule 11: a REFUSED anchor set returns null, the caller leaves the spec null,
+ * and the runner executes by feel. It is not answered with a goal, and it is
+ * not answered with a stale constant.
  */
-async function deriveTPaceSec(
-  client: { query: typeof pool.query },
-  userId: string,
-  raceId: string | null,
-): Promise<number | null> {
-  if (!raceId) return null;
-  const race = (await client.query<{ meta: any; plan: any }>(
-    `SELECT meta, plan FROM races
-      WHERE user_uuid = $1::uuid AND slug = $2
-      LIMIT 1`,
-    [userId, raceId],
-  ).catch(() => ({ rows: [] }))).rows[0];
-  if (!race) return null;
-  const goalSec = Number(race.plan?.goal?.finish_time_s);
-  const goalDistanceMi = Number(race.meta?.distanceMi);
-  const fromGoal = tPaceFromGoal(goalSec, goalDistanceMi);
-  if (fromGoal != null) return fromGoal;
-  // No goal time set · the restored quality workout's spec will be
-  // null. Runner can still execute by feel · the chip just won't show
-  // a headline pace. This is honest cold-start behavior.
-  return null;
+async function deriveTPaceSec(userId: string): Promise<number | null> {
+  const read = await resolvePrescribedPaceAnchors(userId);
+  if (!read.ok) {
+    console.warn(`[plan/restore] pace anchors REFUSED · ${read.reason} · ${read.detail}`);
+    return null;
+  }
+  return read.anchors.thresholdSecPerMi;
 }
