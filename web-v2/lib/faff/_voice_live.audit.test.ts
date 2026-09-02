@@ -158,11 +158,14 @@ describe.skipIf(!RO)('TODAY · the voice, on the real payload', () => {
     console.log(`\n  ${stringsSeen} runner-readable strings scanned across ${DATES.length} days`);
 
     // LIVENESS (Rule 18 point 2). The walk is a hand-written field list, so
-    // the way it fails silently is by finding nothing. Seven days of a real
-    // block carry well over a hundred strings; the floor is set low enough
-    // that a quiet week does not trip it.
+    // the way it fails silently is by finding nothing. Measured 2026-09-02 on
+    // the owner's account: 64 strings across these seven days, six of them
+    // pre-run and one after-run. The floor sits well under that — a week with
+    // no completed run, no contingency rules and no weather loses most of the
+    // optional fields at once, and this must fail on "the walk broke", not on
+    // "the runner had a quiet week".
     expect(stringsSeen, 'the payload walk found almost nothing to check')
-      .toBeGreaterThan(60);
+      .toBeGreaterThan(35);
 
     expect(defects, defects.join('\n')).toEqual([]);
   }, 240_000);
