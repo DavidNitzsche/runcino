@@ -1,0 +1,27 @@
+SEALED HISTORY · 7 plan rows dated before 2026-09-02
+sha256 = df8b2ae4976ef24f8733765b16c96731499499f0a35475ff4b25bfcbecf9d144
+   2026-08-24  easy           4 mi  hr_cap=—  pace=—
+   2026-08-26  easy           7 mi  hr_cap=145  pace=—
+   2026-08-27  easy           7 mi  hr_cap=145  pace=—
+   2026-08-28  easy           7 mi  hr_cap=145  pace=—
+   2026-08-30  long          13 mi  hr_cap=145  pace=535
+   2026-08-31  easy         4.5 mi  hr_cap=151  pace=—
+   2026-09-01  threshold    8.5 mi  hr_cap=—  pace=430
+ERR column "startlocal" does not exist
+
+COMPLETED RUNS in block (8):
+   2026-08-24T10:14    4.02 mi  Run
+   2026-08-26T06:20    7.78 mi  Run
+   2026-08-27T16:43    3.14 mi  Treadmill
+   2026-08-28T17:59    6.32 mi  Run
+   2026-08-30T07:40   13.49 mi  Run
+   2026-08-31T10:21    6.18 mi  Run
+   2026-09-01T09:20    8.50 mi  Run
+   2026-09-02T09:19    6.41 mi  Run
+   total 55.84 mi
+runs sha256 = d8ad8b196287f1c7228f975ce69b8c48560d13a7367aa17f962209d29f320b20
+
+These two hashes are the proof obligation. After any rebuild, both must be
+recomputed and must match, byte for byte. The plan hash covers the seven rows
+dated before today; the runs hash covers what the runner actually ran. If the
+rebuild is correct, neither moves.
