@@ -519,6 +519,28 @@ export interface ProgressionWeekDiagnosis {
 }
 
 /**
+ * WHY a plan week takes no progression step, off the week's own flags — or
+ * null when it steps.
+ *
+ * THE one definition (Rule 16). This predicate decides `WEEK_TAKES_NO_STEP`
+ * for the density pass below, and since 2026-09-02 the Adaptation Engine's
+ * VOLUME and DURATION levers read the same answer through
+ * `lib/adaptation/load-adaptation-engine.ts` (`WeekAheadRead`), so the three
+ * levers cannot disagree about which weeks are sized down on purpose. Pure, so
+ * the engine's own tests can walk it without a database.
+ */
+export function weekRowNoStepReason(r: {
+  is_cutback: boolean | null;
+  is_race_week: boolean | null;
+  phase: string | null;
+}): 'CUTBACK' | 'RACE_WEEK' | 'TAPER' | null {
+  if (r.is_cutback === true) return 'CUTBACK';
+  if (r.is_race_week === true) return 'RACE_WEEK';
+  if ((r.phase ?? '') === 'TAPER') return 'TAPER';
+  return null;
+}
+
+/**
  * The same load, with the reason kept. `loadProgressionWeek` is the thin
  * wrapper so no existing caller changes behaviour by one byte.
  */
@@ -571,7 +593,7 @@ export async function diagnoseProgressionWeek(userId: string): Promise<Progressi
   ).catch(() => ({ rows: [] }))).rows;
   if (weekRows.length === 0) return { week: null, skip: 'NO_ROWS_IN_WEEK' };
 
-  if (weekRows.some((r) => r.is_cutback === true || r.is_race_week === true || (r.phase ?? '') === 'TAPER')) {
+  if (weekRows.some((r) => weekRowNoStepReason(r) != null)) {
     return { week: null, skip: 'WEEK_TAKES_NO_STEP' };
   }
 

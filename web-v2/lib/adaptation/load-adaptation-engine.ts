@@ -70,6 +70,7 @@ import { readTierUpper } from '@/lib/plan/adaptive-ramp';
 import {
   diagnoseProgressionWeek,
   resolveWeekProgression,
+  weekRowNoStepReason,
   type ProgressionResolution,
   type ProgressionWeekSkip,
 } from '@/lib/plan/progression-pass';
@@ -101,6 +102,7 @@ import {
   type PacePhaseRead,
   type QualitySessionRead,
   type VolumeToleranceRead,
+  type WeekAheadRead,
 } from './adaptation-engine';
 
 /**
@@ -311,6 +313,7 @@ export async function resolveAdaptationProposals(
     ? await pool.query<{
         long_ahead: string | number | null;
         week_ahead_mi: string | number | null;
+        quality_ahead: string | number | null;
       }>(
         `SELECT
            (SELECT MAX(distance_mi)
@@ -318,10 +321,39 @@ export async function resolveAdaptationProposals(
              WHERE plan_id = $1 AND date_iso BETWEEN $2 AND $3 AND type = 'long') AS long_ahead,
            (SELECT SUM(distance_mi)
               FROM plan_workouts
-             WHERE plan_id = $1 AND date_iso BETWEEN $2 AND $3) AS week_ahead_mi`,
+             WHERE plan_id = $1 AND date_iso BETWEEN $2 AND $3) AS week_ahead_mi,
+           (SELECT COUNT(*)
+              FROM plan_workouts
+             WHERE plan_id = $1 AND date_iso BETWEEN $2 AND $3 AND is_quality = true) AS quality_ahead`,
         [planRow.id, today, weekAheadEnd],
       ).then((r) => r.rows[0] ?? null).catch((e) => note('plan numbers', e))
     : null;
+
+  /* ── 6a · WHAT KIND OF WEEK IS AHEAD (1.1.0) ──────────────────────────────
+   *
+   * The plan's OWN flags for the rows in the week ahead, reduced through the
+   * SAME predicate the density pass uses (`weekRowNoStepReason`) so VOLUME,
+   * DURATION and DENSITY agree about which weeks take no step. A failed read
+   * is `readable: false` — the levers refuse on it rather than assuming the
+   * week steps (Rule 11). No plan is not a failed read: with no rows ahead the
+   * levers are silent anyway, and the flags are simply not a question. */
+  const weekAhead: WeekAheadRead = planRow
+    ? await pool.query<{
+        is_cutback: boolean | null; is_race_week: boolean | null; phase: string | null;
+      }>(
+        `SELECT wk.is_cutback, wk.is_race_week, ph.label AS phase
+           FROM plan_workouts pw
+           LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
+           LEFT JOIN plan_phases ph ON ph.id = wk.phase_id
+          WHERE pw.plan_id = $1 AND pw.date_iso BETWEEN $2 AND $3`,
+        [planRow.id, today, weekAheadEnd],
+      ).then((r): WeekAheadRead => {
+        const reasons = r.rows.map(weekRowNoStepReason).filter((x): x is NonNullable<typeof x> => x != null);
+        return reasons.length > 0
+          ? { readable: true, takesProgressionStep: false, reason: reasons[0] }
+          : { readable: true, takesProgressionStep: true };
+      }).catch((e): WeekAheadRead => { note('week ahead flags', e); return { readable: false }; })
+    : { readable: true, takesProgressionStep: true };
 
   /* ── 6b · THE PRESCRIBED PACE, GROUPED BY PHASE ───────────────────────────
    *
@@ -569,6 +601,8 @@ export async function resolveAdaptationProposals(
     },
     load: {
       currentWeeklyMi: num(planNumbers?.week_ahead_mi ?? null),
+      weekAhead,
+      qualitySessionsWeekAhead: num(planNumbers?.quality_ahead ?? null),
       recentWeeks: loadWeeks,
       historicalTolerance,
       tierWeeklyUpperMi: planRow?.authored_state
@@ -584,6 +618,7 @@ export async function resolveAdaptationProposals(
       // number rather than a second opinion about it. Written as a fraction
       // because the engine's cap arithmetic is in fractions.
       longRunWoWMaxFraction: 0.30,
+      weekAhead,
       recent: longRuns,
       // The TOLERATED ones, by the same argument. Mirrors `detectDuration`'s
       // own filter so the discount is priced off the runs that would carry the

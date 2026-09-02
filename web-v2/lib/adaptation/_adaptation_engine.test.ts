@@ -203,6 +203,9 @@ const baseInput = (): AdaptationEngineInput => ({
   },
   load: {
     currentWeeklyMi: 45,
+    // 1.1.0 · the neutral world is a PROGRESSION week with two quality days.
+    weekAhead: { readable: true, takesProgressionStep: true },
+    qualitySessionsWeekAhead: 2,
     recentWeeks: [
       { weekStartISO: '2026-08-24', completedMi: 20, scheduledMi: 45 },
       { weekStartISO: '2026-08-17', completedMi: 20, scheduledMi: 45 },
@@ -212,6 +215,7 @@ const baseInput = (): AdaptationEngineInput => ({
   },
   longRun: {
     prescribedLongMi: 16, longRunCapMi: 22, longRunWoWMaxFraction: 0.30,
+    weekAhead: { readable: true, takesProgressionStep: true },
     recent: [], lookback: freshLookback(),
   },
   density: { resolutions: [], gate: 'NO_AUTHORED_PROGRESSION_BLOCK' },
@@ -830,6 +834,7 @@ describe('ADAPTATION ENGINE · doctrine caps are never widened', () => {
     const i = baseInput();
     i.longRun = {
       prescribedLongMi: 21.5, longRunCapMi: 22, longRunWoWMaxFraction: 0.30,
+      weekAhead: { readable: true, takesProgressionStep: true },
       recent: [{
         activityId: 'l', dateISO: '2026-08-29', distanceMi: 21,
         durabilityEvidence: true, lateRunPacingCollapse: false,
@@ -1307,5 +1312,246 @@ describe('REVIEW §5 · one stimulus change per cycle, across decision types', (
       } as never],
     };
     expect(contradictionsIn(tampered)).toContain('MORE_THAN_ONE_STIMULUS_CHANGE');
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 1.1.0 · THE LOAD LEVERS KNOW WHAT WEEK IT IS, AND WHETHER THEY CAN SEE YOU
+ *
+ * Both sides of every new gate (Rule 22): the case it blocks, and the control
+ * case it must NOT block. A gate tested only on the side it refuses is a gate
+ * that can pass an engine which only refuses.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** A tolerated long run, as the Evidence Engine would grade it. */
+const toleratedLong = (dateISO = '2026-08-29') => ({
+  activityId: `long-${dateISO}`, dateISO, distanceMi: 16,
+  durabilityEvidence: true, lateRunPacingCollapse: false as boolean | null,
+  residualCardiovascularLoad: false as boolean | null, executionQuality: 'controlled' as const,
+});
+
+describe('1.1.0 · phase-aware LOAD levers · the week ahead decides before the evidence does', () => {
+  it('SCENARIO:HOLD · VOLUME · a cutback week ahead holds, whatever the load evidence says', () => {
+    const i = withAbsorbedLoad(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.load.weekAhead = { readable: true, takesProgressionStep: false, reason: 'CUTBACK' };
+    const set = composeAdaptation(i);
+    const volume = set.proposals.find((p) => p.target === 'VOLUME')!;
+    expect(volume.decision).toBe('HOLD');
+    expect(volume.reasonCodes).toEqual(['WEEK_AHEAD_TAKES_NO_PROGRESSION_STEP']);
+    expect(volume.explanation).toMatch(/cutback week/);
+    expect(volume.previous).toEqual(volume.proposed);
+  });
+
+  it('SCENARIO:HOLD · DURATION · a taper week ahead holds a long run the runner has plainly tolerated', () => {
+    const i = baseInput();
+    i.absorption = absorptionAt('strong');
+    i.longRun.recent = [toleratedLong()];
+    i.longRun.weekAhead = { readable: true, takesProgressionStep: false, reason: 'TAPER' };
+    const set = composeAdaptation(i);
+    const duration = set.proposals.find((p) => p.target === 'DURATION')!;
+    expect(duration.decision).toBe('HOLD');
+    expect(duration.reasonCodes).toEqual(['WEEK_AHEAD_TAKES_NO_PROGRESSION_STEP']);
+    expect(duration.explanation).toMatch(/inside the taper/);
+    expect(set.proposals.filter((p) => p.decision === 'PROGRESS')).toHaveLength(0);
+  });
+
+  it('SCENARIO:HOLD · a race week ahead names itself, and the long run does not grow into it', () => {
+    const i = withAbsorbedLoad(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.longRun.recent = [toleratedLong()];
+    const week = { readable: true, takesProgressionStep: false, reason: 'RACE_WEEK' } as const;
+    i.load.weekAhead = week;
+    i.longRun.weekAhead = week;
+    const set = composeAdaptation(i);
+    for (const t of ['VOLUME', 'DURATION'] as const) {
+      const p = set.proposals.find((x) => x.target === t)!;
+      expect(p.decision).toBe('HOLD');
+      expect(p.explanation).toMatch(/race week/);
+    }
+  });
+
+  it('SCENARIO:PROGRESS · VOLUME · the SAME evidence on a progression week still progresses · the control case', () => {
+    const i = withAbsorbedLoad(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.load.weekAhead = { readable: true, takesProgressionStep: true };
+    const set = composeAdaptation(i);
+    expect(primaryProgress(set)?.target).toBe('VOLUME');
+  });
+
+  it('SCENARIO:PROGRESS · DURATION · the SAME long run on a progression week grows · the control case', () => {
+    const i = baseInput();
+    i.absorption = absorptionAt('strong');
+    i.longRun.recent = [toleratedLong()];
+    i.longRun.weekAhead = { readable: true, takesProgressionStep: true };
+    const set = composeAdaptation(i);
+    expect(primaryProgress(set)?.target).toBe('DURATION');
+    expect(primaryProgress(set)?.proposed).toEqual({ unit: 'long_run_mi', value: 17 });
+  });
+
+  it('SCENARIO:INSUFFICIENT · week flags that could not be read refuse on both levers, and assert nothing', () => {
+    const i = withAbsorbedLoad(baseInput());
+    i.absorption = absorptionAt('strong');
+    i.longRun.recent = [toleratedLong()];
+    i.load.weekAhead = { readable: false };
+    i.longRun.weekAhead = { readable: false };
+    const set = composeAdaptation(i);
+    for (const t of ['VOLUME', 'DURATION'] as const) {
+      const p = set.proposals.find((x) => x.target === t)!;
+      expect(p.decision).toBe('INSUFFICIENT_EVIDENCE');
+      expect(p.reasonCodes).toEqual(['EVIDENCE_UNREADABLE']);
+    }
+    expect(contradictionsIn(set)).toEqual([]);
+  });
+
+  it('the week-ahead gate is DENSITY\'s own predicate, not a second definition of a no-step week', async () => {
+    // Rule 16 · one owner. The loader reduces `plan_weeks` flags through
+    // `weekRowNoStepReason` in progression-pass.ts, the same function that
+    // decides `WEEK_TAKES_NO_STEP` for the density gate.
+    const { weekRowNoStepReason } = await import('@/lib/plan/progression-pass');
+    expect(weekRowNoStepReason({ is_cutback: true, is_race_week: null, phase: 'QUALITY' })).toBe('CUTBACK');
+    expect(weekRowNoStepReason({ is_cutback: null, is_race_week: true, phase: null })).toBe('RACE_WEEK');
+    expect(weekRowNoStepReason({ is_cutback: false, is_race_week: false, phase: 'TAPER' })).toBe('TAPER');
+    expect(weekRowNoStepReason({ is_cutback: false, is_race_week: false, phase: 'QUALITY' })).toBeNull();
+    const src = readFileSync(path.join(__dirname, 'load-adaptation-engine.ts'), 'utf8');
+    expect(src).toMatch(/r\.rows\.map\(weekRowNoStepReason\)/);
+  });
+});
+
+describe('1.1.0 · Rule 11 · an absorption model that cannot see the runner does not license load', () => {
+  /** The classifier's own "fewer than two readable dimensions" verdict. */
+  const unreadableAbsorption = (): AdaptationVerdict => ({
+    ...absorptionAt('normal'), confidence: 'low', evidenceSufficient: false,
+  });
+
+  it('SCENARIO:INSUFFICIENT · VOLUME · a runner the absorption model could not read is refused, not permitted', () => {
+    // Before 1.1.0 this input produced a VOLUME PROGRESS: `decision === 'PROGRESS'`
+    // was the whole gate, and the classifier's "proceed as planned" default
+    // says PROGRESS. Historical tolerance then priced a +5 mi week for a runner
+    // three days into an account.
+    const i = withAbsorbedLoad(baseInput());
+    i.absorption = unreadableAbsorption();
+    const set = composeAdaptation(i);
+    const volume = set.proposals.find((p) => p.target === 'VOLUME')!;
+    expect(volume.decision).toBe('INSUFFICIENT_EVIDENCE');
+    expect(volume.reasonCodes).toEqual(['ABSORPTION_NOT_YET_READABLE']);
+    expect(set.proposals.filter((p) => p.decision === 'PROGRESS')).toHaveLength(0);
+    expect(contradictionsIn(set)).toEqual([]);
+  });
+
+  it('SCENARIO:INSUFFICIENT · DURATION · the same runner\'s long run is not grown either', () => {
+    const i = baseInput();
+    i.absorption = unreadableAbsorption();
+    i.longRun.recent = [toleratedLong()];
+    const set = composeAdaptation(i);
+    const duration = set.proposals.find((p) => p.target === 'DURATION')!;
+    expect(duration.decision).toBe('INSUFFICIENT_EVIDENCE');
+    expect(duration.reasonCodes).toEqual(['ABSORPTION_NOT_YET_READABLE']);
+  });
+
+  it('SCENARIO:PROGRESS · VOLUME · a READ verdict at LOW confidence still permits · the gate keys on sufficiency, not confidence', () => {
+    // Two readable dimensions is a read. Low confidence is the honest price of
+    // a thin read, and it belongs in the proposal's confidence, not in a refusal.
+    const i = withAbsorbedLoad(baseInput());
+    i.absorption = { ...absorptionAt('normal'), confidence: 'low', evidenceSufficient: true };
+    const set = composeAdaptation(i);
+    const volume = primaryProgress(set)!;
+    expect(volume.target).toBe('VOLUME');
+    expect(volume.confidence).toBeCloseTo(0.4, 5);
+  });
+
+  it('a legacy verdict literal with no `evidenceSufficient` field flows exactly as before', () => {
+    // The field is optional for the dozen hand-built fixtures outside this
+    // directory. Only an explicit `false` is a refusal.
+    const i = withAbsorbedLoad(baseInput());
+    const legacy = absorptionAt('strong');
+    delete (legacy as Partial<AdaptationVerdict>).evidenceSufficient;
+    i.absorption = legacy;
+    expect(primaryProgress(composeAdaptation(i))?.target).toBe('VOLUME');
+  });
+
+  it('the refusal is symmetric · the same unreadable runner is not REDUCED off this input either', () => {
+    const i = baseInput();
+    i.absorption = unreadableAbsorption();
+    const set = composeAdaptation(i);
+    expect(set.proposals.some((p) => p.decision === 'REDUCE')).toBe(false);
+  });
+
+  it('the classifier is the only producer, and it sets the field on every branch', async () => {
+    const { classifyAdaptation } = await import('./adaptation-model');
+    const blank = {
+      keySessionExecutions: null, keySessionsPlanned: null, keySessionsCompleted: null,
+      targetVerdicts: null, repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
+      decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null,
+      recoveryPctOfExpected: null, readinessBelowNormalDays: null, readinessWindowDays: null,
+      weeklyPlannedMi: null, weeklyActualMi: null, trainingForm: null,
+      distinctEvidenceWeeks: null, adapterDowngrades: null,
+      niggleSeverity: null, illnessActive: null, injuryActive: null,
+    };
+    expect(classifyAdaptation(blank).evidenceSufficient).toBe(false);
+    expect(classifyAdaptation({ ...blank, injuryActive: true }).evidenceSufficient).toBe(true);
+    expect(classifyAdaptation({
+      ...blank, targetVerdicts: ['on', 'on'], trainingForm: 'PRODUCTIVE', distinctEvidenceWeeks: 2,
+    }).evidenceSufficient).toBe(true);
+  });
+});
+
+describe('1.1.0 · REDUCE is sized off the week ahead, not off the density pass', () => {
+  it('SCENARIO:REDUCE · two quality days ahead reduce to one · previous is the real count', () => {
+    const i = baseInput();
+    i.state = stateAt('reduce');
+    i.load.qualitySessionsWeekAhead = 2;
+    const set = composeAdaptation(i);
+    const reduce = set.proposals.find((p) => p.decision === 'REDUCE')!;
+    expect(reduce.previous).toEqual({ unit: 'quality_sessions_per_week', value: 2 });
+    expect(reduce.proposed).toEqual({ unit: 'quality_sessions_per_week', value: 1 });
+  });
+
+  it('SCENARIO:REDUCE · before 1.1.0 the same cycle proposed 0 → 0 · the density count on a non-pass day', () => {
+    // The density gate returns no resolutions six days in seven. Reading its
+    // length as "quality sessions per week" made REDUCE a proposal that
+    // reduced nothing. The plan count is the number; the density count is
+    // only the fallback when the plan could not be counted (Rule 11).
+    const i = baseInput();
+    i.state = stateAt('reduce');
+    i.load.qualitySessionsWeekAhead = null;
+    i.density = { resolutions: [], gate: 'PASS_NOT_DUE_THIS_WEEK' };
+    const set = composeAdaptation(i);
+    const reduce = set.proposals.find((p) => p.decision === 'REDUCE')!;
+    expect(reduce.previous).toEqual({ unit: 'quality_sessions_per_week', value: 0 });
+  });
+});
+
+describe('1.1.0 · the three DURATION sentences are three facts', () => {
+  it('SCENARIO:HOLD · DURATION · a long run graded but run without control is a HOLD that says so', () => {
+    const i = baseInput();
+    i.absorption = absorptionAt('strong');
+    i.longRun.recent = [{ ...toleratedLong(), executionQuality: 'variable' }];
+    const set = composeAdaptation(i);
+    const duration = set.proposals.find((p) => p.target === 'DURATION')!;
+    expect(duration.decision).toBe('HOLD');
+    expect(duration.reasonCodes).toContain('LONG_RUN_EXECUTION_UNCONTROLLED');
+    expect(duration.reasonCodes).not.toContain('NO_LONG_RUN_EVIDENCE_IN_WINDOW');
+    expect(duration.explanation).toMatch(/not under control/);
+  });
+
+  it('SCENARIO:INSUFFICIENT · DURATION · a long run the Evidence Engine could not grade is still an absence', () => {
+    const i = baseInput();
+    i.absorption = absorptionAt('strong');
+    i.longRun.recent = [{ ...toleratedLong(), durabilityEvidence: false, executionQuality: 'indeterminate' }];
+    const set = composeAdaptation(i);
+    const duration = set.proposals.find((p) => p.target === 'DURATION')!;
+    expect(duration.decision).toBe('INSUFFICIENT_EVIDENCE');
+    expect(duration.reasonCodes).toEqual(['NO_LONG_RUN_EVIDENCE_IN_WINDOW']);
+  });
+
+  it('a refusal may not carry the new finding code either · the checker knows it', () => {
+    const set = composeAdaptation(baseInput());
+    const any = set.proposals.find((p) => p.target === 'DURATION')!;
+    const tampered: AdaptationProposalSet = {
+      ...set,
+      proposals: [{ ...any, decision: 'INSUFFICIENT_EVIDENCE', reasonCodes: ['LONG_RUN_EXECUTION_UNCONTROLLED'] } as never],
+    };
+    expect(contradictionsIn(tampered)).toContain('INSUFFICIENT_EVIDENCE_CLAIMS_A_FINDING');
   });
 });

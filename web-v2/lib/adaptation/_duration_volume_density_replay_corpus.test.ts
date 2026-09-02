@@ -160,6 +160,8 @@ const baseInput = (): AdaptationEngineInput => ({
   },
   load: {
     currentWeeklyMi: 45,
+    weekAhead: { readable: true, takesProgressionStep: true },
+    qualitySessionsWeekAhead: 2,
     recentWeeks: [
       { weekStartISO: '2026-08-24', completedMi: 20, scheduledMi: 45 },
       { weekStartISO: '2026-08-17', completedMi: 20, scheduledMi: 45 },
@@ -169,6 +171,7 @@ const baseInput = (): AdaptationEngineInput => ({
   },
   longRun: {
     prescribedLongMi: 16, longRunCapMi: 22, longRunWoWMaxFraction: 0.30,
+    weekAhead: { readable: true, takesProgressionStep: true },
     recent: [], lookback: freshLookback(),
   },
   density: { resolutions: [], gate: 'NO_AUTHORED_PROGRESSION_BLOCK' },
@@ -633,6 +636,12 @@ describe('DENSITY 9 · no authored progression block → an explicit NO_PROGRESS
 describe('DVD corpus · model version pin', () => {
   it('records the engine version this corpus ran against', () => {
     console.log('[DVD CORPUS] ADAPTATION_ENGINE_MODEL_VERSION =', ADAPTATION_ENGINE_MODEL_VERSION);
-    expect(ADAPTATION_ENGINE_MODEL_VERSION).toBe('1.0.0');
+    // 1.1.0 (2026-09-02) · the LOAD levers this corpus exercises gained three
+    // evidence requirements (see the constant's own changelog). Every fixture
+    // above still lands on its documented decision because each one describes
+    // a progression week with a READ absorption verdict — the new gates bite
+    // only on a cutback/race/taper week ahead or an unreadable runner, both
+    // covered in `_adaptation_engine.test.ts` on both sides.
+    expect(ADAPTATION_ENGINE_MODEL_VERSION).toBe('1.1.0');
   });
 });
