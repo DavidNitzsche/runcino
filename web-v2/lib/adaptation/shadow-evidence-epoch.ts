@@ -48,3 +48,92 @@ export const SHADOW_EVIDENCE_EPOCH = '2026-09-02.threshold-contract-f967cab1';
 /** The epoch format: `YYYY-MM-DD.<slug>`. Pinned by test so a future value
  *  cannot drift into a bare counter or an undated label. */
 export const SHADOW_EVIDENCE_EPOCH_PATTERN = /^\d{4}-\d{2}-\d{2}\.[a-z0-9][a-z0-9-]*$/;
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE GATE · why a version constant cannot be the filter
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * WHY THE EPOCH IS PINNED TO FILE DIGESTS AND NOT TO THE BELIEF MODELS' OWN
+ * VERSION CONSTANTS.
+ *
+ * The obvious design is "filter on `CAPACITY_MODEL_VERSION`". Measured on this
+ * repo, 2026-09-02, that design does not work: `origin/brain/beliefs-thesis`
+ * changes what the Coaching Thesis resolves (`c2ace1f4`, evidence-first primary
+ * limiter) and what the pace rules admit (`7dbdc788`), and leaves
+ * `CAPACITY_MODEL_VERSION` and `PRESCRIPTION_MODEL_VERSION` at `1.0.0` on both
+ * sides. The same was true of the Phase 1 durability/capacity work in flight
+ * while this was written. A belief can move without its own version constant
+ * moving, so a promotion review that filtered on those constants would count
+ * pre-correction records as current — the exact failure this mechanism exists
+ * to prevent.
+ *
+ * So the epoch is a SEPARATE stamp a human bumps, and this digest list is what
+ * makes "a human bumps it" a check rather than a hope (Rule 20: a product rule
+ * with no gate is a hypothesis). If any belief file below changes, the gate
+ * fails and the engineer landing the change makes ONE of two calls, explicitly:
+ *
+ *   · the change moves what a belief RESOLVES to for the same activities →
+ *     bump `SHADOW_EVIDENCE_EPOCH` and re-pin the digest. Shadow evidence
+ *     restarts from that epoch; older records stay as history, uncounted.
+ *   · the change is comments, types, tests or a refactor that cannot move a
+ *     resolved value → re-pin the digest alone, and say so in `why`.
+ *
+ * Neither branch is free, which is the point: the decision gets made by
+ * someone who knows what they changed, instead of being inherited by silence.
+ *
+ * The digest is the first 16 hex of the file's SHA-256. It is deliberately
+ * CONTENT, not an mtime or a git sha, so it is stable across worktrees,
+ * checkouts and rebases.
+ */
+export interface BeliefSourcePin {
+  /** Path relative to `web-v2/`. */
+  file: string;
+  /** First 16 hex characters of the file's SHA-256. */
+  digest: string;
+  /** Why the current digest was pinned — the last decision made about it. */
+  why: string;
+}
+
+export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
+  {
+    file: 'lib/training/capacity-resolver.ts',
+    digest: 'b9696cd4ec75eb97',
+    why: 'Pinned at the epoch. Owns threshold / high-intensity / easy-ceiling / durability capacity — every number the PACE lever compares a plan against.',
+  },
+  {
+    file: 'lib/training/prescription-resolver.ts',
+    digest: '9f5f731e0bde03f2',
+    why: 'Pinned at the epoch. Turns capacity into the prescribed anchors a phase breakdown is priced from.',
+  },
+  {
+    file: 'lib/training/durability-anchor.ts',
+    digest: '4a8aa1ad46a6f54a',
+    why: 'Pinned at the epoch. The endurance exponent carries threshold to race distance, so a change here moves the marathon-pace anchor and the race outlook.',
+  },
+  {
+    file: 'lib/training/runner-state.ts',
+    digest: '78aa27b7b8e54cd1',
+    why: 'Pinned at the epoch. The state that gates the whole upward path (STATE_BLOCKS_PROGRESS).',
+  },
+  {
+    file: 'lib/evidence/activity-evidence.ts',
+    digest: '1f84dadd9940fb1b',
+    why: 'Pinned at the epoch. Every control judgement the PACE lever trusts — executionQuality, late collapse, internal cost — is this file\'s output.',
+  },
+  {
+    file: 'lib/evidence/reexamination.ts',
+    digest: '4da0110f3112bac1',
+    why: 'Pinned at the epoch. Decides when belief tension relaxes the corroboration bar, which changes which sessions count.',
+  },
+  {
+    file: 'lib/race/race-outlook.ts',
+    digest: 'a1f890d72ab89d3a',
+    why: 'Pinned at the epoch. The outlook the race rows and the expected-race-day number are resolved from.',
+  },
+  {
+    file: 'lib/training/pace-corpus.ts',
+    digest: 'ee2247d56d7cf0bf',
+    why: 'Pinned at the epoch. The threshold corpus and its admission rules — the P0 correction that created this epoch landed here.',
+  },
+];

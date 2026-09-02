@@ -65,7 +65,58 @@ const PERMITTED_EXTERNAL_IMPORTS: ReadonlyArray<{ file: string; module: string; 
     names: ['runAndPersistPaceShadowCompare'],
     why: 'the shadow cycle; its result is read for `.error` only (guard 4)',
   },
+  {
+    file: 'app/api/cron/snapshot-projections/route.ts', module: '@/lib/adaptation/authoring-convergence',
+    names: ['<dynamic>'],
+    why:
+      'Rule 23\'s alert, not a proposal. `alertOnUnconvergedPlan` re-resolves the convergence '
+      + 'state AFTER the reanchor has had its turn and raises an ops_alerts row for a plan '
+      + 'nothing is pricing. It returns a state string the route only logs; the alert write is '
+      + 'to ops_alerts, never to a plan. This is the loudness Rule 23 requires and the reason '
+      + 'the fifth convergence state exists at all.',
+  },
+  {
+    file: 'lib/prescription/trajectory.ts', module: '@/lib/adaptation/adaptation-model',
+    names: ['classifyAdaptation'],
+    why:
+      'AUTHORING\'s neutral verdict. `authoringAdaptation()` calls the classifier on an '
+      + 'all-null input to get the "no evidence yet, proceed as planned" verdict the overload '
+      + 'trajectory is drawn against before a runner has any history. A classifier read, not a '
+      + 'proposal, and this file writes no plan row (guard 3b covers the writers). It reads '
+      + 'band and stepMultiplier only, so the `evidenceSufficient` field added in this pass '
+      + 'does not change what it authors.',
+  },
+  {
+    file: 'lib/plan/adapt.ts', module: '@/lib/adaptation/load', names: ['<dynamic>'],
+    why:
+      'THE ONE SEAM WHERE THIS LAYER REACHES A MUTATION, and it is not a proposal. '
+      + '`detectProgressionGate` reads the ABSORPTION VERDICT (`readAdaptation` -> '
+      + '`classifyAdaptation`) and hands it to `resolveWeekProgression`, whose resolutions '
+      + 'become a `progression_gate` action that `applyAdaptations` writes. That path is the '
+      + 'shipped density mechanism and PREDATES the Adaptation Engine; the verdict is a '
+      + 'classifier output, not an `AdaptationProposal`, and nothing here can reach '
+      + '`composeAdaptation`. Guard 3b is what actually holds the shadow boundary: no plan '
+      + 'writer may import the PROPOSAL path at all. Recorded rather than exempted quietly '
+      + 'because it is the one place a change to `adaptation-model.ts` can reach a runner\'s '
+      + 'plan, and a future edit to that file must know it.',
+  },
 ];
+
+/**
+ * The PROPOSAL path — what may never reach a plan writer. Distinct from the
+ * absorption classifier above, which legitimately does (via the progression
+ * gate) and always has.
+ */
+const PROPOSAL_PATH_MODULES = [
+  '@/lib/adaptation/adaptation-engine',
+  '@/lib/adaptation/load-adaptation-engine',
+  '@/lib/adaptation/shadow-compare',
+] as const;
+
+const PROPOSAL_PATH_SYMBOLS = [
+  'composeAdaptation', 'resolveAdaptationProposals', 'runPaceShadowCompareCycle',
+  'AdaptationProposalSet', 'AdaptationProposal',
+] as const;
 
 /**
  * Blank out line comments and block comments so PROSE cannot trip a code scan.
@@ -187,6 +238,35 @@ describe('guard 3 · the ratchet on who may import this layer', () => {
 
   it('liveness · the outside world does import this layer', () => {
     expect(found.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('guard 3b · no plan writer may import the PROPOSAL path, in any form', () => {
+  // The property that actually holds the shadow boundary. Guard 3 rations WHO
+  // may import this layer; this one says that whoever writes a plan row may not
+  // touch the proposal path at all — not the functions, not even the types,
+  // because a type is how a proposal gets threaded into a writer one refactor
+  // before the call does.
+  const planWriterFiles = OUTSIDE_FILES.filter((f) => {
+    const src = readFileSync(f, 'utf8');
+    return writesIn(src).some((w) => w.table === 'plan_workouts');
+  });
+
+  it('liveness · the plan writers were actually found', () => {
+    expect(planWriterFiles.length).toBeGreaterThanOrEqual(5);
+    expect(planWriterFiles.some((f) => f.endsWith('lib/plan/adapt.ts'))).toBe(true);
+  });
+
+  it('none of them names the proposal path', () => {
+    for (const f of planWriterFiles) {
+      const src = stripComments(readFileSync(f, 'utf8'));
+      for (const m of PROPOSAL_PATH_MODULES) {
+        expect(src, `${path.relative(WEB, f)} imports ${m}`).not.toContain(m);
+      }
+      for (const sym of PROPOSAL_PATH_SYMBOLS) {
+        expect(src, `${path.relative(WEB, f)} names ${sym}`).not.toMatch(new RegExp(`\\b${sym}\\b`));
+      }
+    }
   });
 });
 
