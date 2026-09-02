@@ -56,6 +56,33 @@ export interface WhyFacts {
   phaseRationale: string | null;
   /** `derivePurpose`'s text — the floor when nothing better exists. */
   fallback: string | null;
+  /**
+   * THE COACHING THESIS' own opening clause
+   * (`lib/training/coaching-thesis.ts#thesisLeadClause`), set on a quality day
+   * and null on every other.
+   *
+   * It REPLACES the phase opener rather than joining it, because they are the
+   * same beat: "you're in the part of the block where the hard sessions do the
+   * work" and "threshold is the limiter right now" both answer why this week
+   * looks like this, and printing both is Rule 17's exact failure. The thesis
+   * clause is the stronger of the two — it names what the work is FOR, off the
+   * Runner Model's own capacities, where the phase opener names only where in
+   * the calendar the runner is standing.
+   *
+   * Never composed here. Constitution §P: this module owns the register, the
+   * thesis owns the claim.
+   */
+  thesisLead?: string | null;
+  /**
+   * The catalogue's own name for today's session, taken from the row's
+   * persisted `selection_rationale`
+   * (`coaching-thesis.ts#coachSafeSessionName`), when there is one. Replaces
+   * `dayNote` as the body, so the sentence the runner reads about WHICH
+   * session this is comes from the selector's own record rather than from
+   * free-text notes. Null on a row authored before that field existed, and the
+   * body then falls back to `dayNote` exactly as before.
+   */
+  thesisSessionName?: string | null;
 }
 
 /** An interpunct is a field separator. Prose gets a comma. */
@@ -124,7 +151,9 @@ function opener(f: WhyFacts): string | null {
  * fact, or the fallback — whichever the engine actually authored.
  */
 export function composeWhy(f: WhyFacts): string {
-  const lead = opener(f);
+  // THE THESIS OWNS THE OPENER WHEN IT HAS ONE. See `WhyFacts.thesisLead` for
+  // why it replaces the phase opener rather than joining it.
+  const lead = f.thesisLead?.trim() || opener(f);
   const isRest = /^\s*(off|rest)\b/i.test(f.dayNote ?? '') || /^rest day/i.test(f.fallback ?? '');
 
   // A rest day needs no instruction. "You're eight days on from AFC, so this
@@ -157,7 +186,11 @@ export function composeWhy(f: WhyFacts): string {
   const dayNote = f.dayNote ? stripResearchCitations(f.dayNote) : null;
   const fallback = f.fallback ? stripResearchCitations(f.fallback) : null;
 
-  let body = deInterpunct(dayNote?.trim() || fallback?.trim() || '');
+  // The selector's own name for the session outranks the free-text note, and
+  // says the same words with better provenance — see `thesisSessionName`.
+  let body = deInterpunct(
+    f.thesisSessionName?.trim() || dayNote?.trim() || fallback?.trim() || '',
+  );
 
   // THE VERDICT IS A LABEL, NOT A SENTENCE. `derivePurpose` opens with a bare
   // noun — "Easy day.", "Tempo.", "Long run.", "Intervals." — which works as

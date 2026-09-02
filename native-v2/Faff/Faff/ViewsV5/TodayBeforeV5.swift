@@ -524,14 +524,30 @@ struct TodayBeforeV5: View {
 
     @ViewBuilder
     private var whySection: some View {
-        if let why = model.why, !why.isEmpty {
+        // ONE SENTENCE SET, NEVER TWO (Rule 17).
+        //
+        // `why` and `thesis.coachLine` are ALTERNATIVES here, not siblings.
+        // On a quality day the route composes `why` out of the very thesis
+        // this payload carries (`app/api/v5/today/route.ts`, the
+        // `thesisLeadClause` block), so drawing both would print the strategy
+        // twice on one screen. `why` wins because it is the composed,
+        // day-aware form; the thesis line is the fallback for the case where
+        // the day had nothing of its own to say and `why` came back empty —
+        // the strategy is better than a section that does not draw.
+        //
+        // The thesis' `reviewTrigger` is deliberately NOT drawn here. It is a
+        // statement about the BLOCK, and a sentence repeated on every quality
+        // day belongs to the block, not to the row. Block draws it.
+        let body = (model.why?.isEmpty == false ? model.why : nil)
+            ?? (model.thesis?.coachLine.isEmpty == false ? model.thesis?.coachLine : nil)
+        if let body, !body.isEmpty {
             VStack(alignment: .leading, spacing: V5.S.s10) {
                 // 2026-08-25 · David: rename from "Why this run"/"Why this
                 // day" to "About" — a deliberate deviation from the v5
                 // README spec (§"Why this run"), which should be updated to
                 // match rather than left to drift silently.
                 V5SectionLabel(text: "About", color: V5.textSecondary)
-                CoachSay(text: why, size: .md)
+                CoachSay(text: body, size: .md)
             }
         }
     }

@@ -270,10 +270,37 @@ struct BlockV5: View {
             V5SectionLabel(text: "Where this goes")
             if let coachLine = model.coachLine, !coachLine.isEmpty {
                 CoachSay(text: coachLine, size: .md)
-            } else {
+            } else if model.thesis == nil {
                 // RULE THREE: the coach has nothing honest to say right now —
                 // a designed silence, not a blank space where a line usually is.
                 Silence(reason: "Nothing new to say about this block right now.")
+            }
+            // THE COACHING THESIS · `BRAIN_CONSTITUTION.md` §F, once, here.
+            //
+            // `coachLine` above narrates WHERE in the block the runner is
+            // standing ("this is where the fitness gets built"). This says
+            // WHAT the block is currently trying to move, and what would
+            // change that. Two different claims, so they sit together without
+            // repeating each other (Rule 17) — and neither is composed on this
+            // device: the strings arrive whole from
+            // `lib/training/coaching-thesis.ts`, which is the same resolver
+            // Today composes its "About" line from, so the two screens cannot
+            // disagree about the strategy (Rule 16, Constitution §P).
+            //
+            // The review trigger lives HERE and nowhere else. It is a
+            // statement about the block, and Rule 17 is explicit that a
+            // sentence which would otherwise repeat per row belongs to the
+            // block.
+            if let thesis = model.thesis, !thesis.coachLine.isEmpty {
+                CoachSay(text: thesis.coachLine, size: .md)
+                if let trigger = thesis.reviewTrigger, !trigger.isEmpty {
+                    Text(trigger)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .padding(.horizontal, V5.S.s4)

@@ -472,6 +472,9 @@ struct V5Today: Decodable, Equatable {
     let groups: [V5Group]
     /// "Why this run".
     let why: String?
+    /// See `V5Thesis`. Absent on older servers, on a day that prescribes
+    /// nothing, and when the resolve failed.
+    let thesis: V5Thesis?
     let whereYouAre: [V5Row]
     let beforeYouGo: [V5Row]
     /// Today's own entry point onto 18a. Present only when the active plan
@@ -602,6 +605,46 @@ struct V5BlockNote: Decodable, Equatable {
     let body: String
 }
 
+/// THE COACHING THESIS · `BRAIN_CONSTITUTION.md` §F, on the wire.
+///
+/// "What are we currently trying to accomplish with this runner." Composed
+/// server-side by `lib/training/coaching-thesis.ts` off the Runner Model's own
+/// capacities and QUOTED here, never re-written: §P is explicit that the UI
+/// displays intelligence and does not create it, so this screen owns where the
+/// sentence sits and nothing about what it says.
+///
+/// Two fields, both rendered, and no third. The limiter, the priority code and
+/// the confidence stay on the server's own `CoachingThesis` — they are how the
+/// sentence was arrived at, not something a runner acts on, and a property the
+/// phone decodes but never draws is decoration.
+///
+/// On Today this is an ALTERNATIVE to `why`, never a sibling: the route
+/// composes `why` out of this thesis on every quality day, so the About
+/// section draws one of them and the runner never reads the strategy twice
+/// (Rule 17).
+struct V5Thesis: Decodable, Equatable {
+    /// Two sentences: what holds, then where the work goes.
+    let coachLine: String
+    /// What would change the strategy. Belongs to the BLOCK, not to a day —
+    /// see the Block screen's own comment for why it is drawn only there.
+    let reviewTrigger: String?
+}
+
+extension V5Thesis {
+    // Spelled as an explicit `enum K` rather than left to the synthesised
+    // conformance so `scripts/check-wire-keys.sh` can SEE these two keys. The
+    // gate's extractor reads `enum K: String, CodingKey` blocks; a struct that
+    // relies on synthesis is invisible to it, which is a green light over a
+    // road nobody is watching — the exact failure that script's own header
+    // describes.
+    enum K: String, CodingKey { case coachLine, reviewTrigger }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        coachLine = c.text(.coachLine)
+        reviewTrigger = c.opt(.reviewTrigger)
+    }
+}
+
 // MARK: - Block · GET /api/v5/block
 
 struct V5Block: Decodable, Equatable {
@@ -609,6 +652,8 @@ struct V5Block: Decodable, Equatable {
     /// The phase arc.
     let phases: [V5Phase]
     let coachLine: String?
+    /// See `V5Thesis`. The block-level strategy, drawn under `coachLine`.
+    let thesis: V5Thesis?
     /// "so far in this block".
     let soFar: [V5Row]
     /// All sixteen weeks. Not sampled — the design lists every one.
@@ -1490,7 +1535,7 @@ private extension KeyedDecodingContainer {
 
 extension V5Today {
     enum K: String, CodingKey {
-        case dateISO, state, panel, weekStrip, groups, why, whereYouAre, beforeYouGo
+        case dateISO, state, panel, weekStrip, groups, why, thesis, whereYouAre, beforeYouGo
         case askedVsRan, verdict, zoneShares, zoneTargets, zoneTarget, elevation, onTheBelt
         case routePolyline, elevGainFt, shoeOptions
         case routeSplits, routePhases, hrZones, paceBand, elevGainMeasured
@@ -1509,6 +1554,7 @@ extension V5Today {
         weekStrip = c.list(.weekStrip)
         groups = c.list(.groups)
         why = c.opt(.why)
+        thesis = try? c.decodeIfPresent(V5Thesis.self, forKey: .thesis)
         whereYouAre = c.list(.whereYouAre)
         beforeYouGo = c.list(.beforeYouGo)
         askedVsRan = c.list(.askedVsRan)
@@ -1571,12 +1617,13 @@ extension V5Panel {
 }
 
 extension V5Block {
-    enum K: String, CodingKey { case panel, phases, coachLine, soFar, weeks, library, scenarios }
+    enum K: String, CodingKey { case panel, phases, coachLine, thesis, soFar, weeks, library, scenarios }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
         panel = try c.decode(V5Panel.self, forKey: .panel)
         phases = c.list(.phases)
         coachLine = c.opt(.coachLine)
+        thesis = try? c.decodeIfPresent(V5Thesis.self, forKey: .thesis)
         soFar = c.list(.soFar)
         weeks = c.list(.weeks)
         library = c.list(.library)
