@@ -64,7 +64,7 @@ describe('SPECSUMMARY-1 · the summary states a family, never a structure', () =
     // call the summary used to make, and it invents a structure for a session
     // it has never seen. If this ever stops being true the fix is moot and the
     // gate above is measuring nothing.
-    const generic = prescriptionFor('intervals', 45, { lthr: null, goal_seconds: 10800, goal_distance_mi: 26.2 }, 6.5).headline;
+    const generic = prescriptionFor('intervals', 45, { lthr: null, anchors: null, raceDistanceMi: 26.2 }, 6.5).headline;
     expect(generic).toMatch(STATES_A_STRUCTURE);
     // …and it does not agree with the ten 60-second hills it was describing.
     expect(generic).not.toContain('60s');

@@ -23,6 +23,8 @@ import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import type { WorkoutSpec } from '@/lib/faff/types';
 import { fellShortShare, resolveWorkoutVerdict } from '@/lib/execution/verdict';
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
+import type { PaceAnchorRead } from '@/lib/training/prescription-resolver';
 import { roundTo } from '@/lib/format/run';
 
 export interface GlanceWeekDay {
@@ -90,12 +92,35 @@ export interface GlanceState {
   cadenceBaseline: number | null;
   daysToARace: number | null;
   nextARaceName: string | null;
-  // Pace-derivation inputs (Phase 47). LTHR + closest upcoming A-race goal →
-  // prescriptions.derivePaces() in glance-adapter, so the Poster fallback
-  // renders REAL pace/HR (never fixed placeholders) when a workout_spec is
-  // absent. null when the runner has no LTHR / no goal race.
+  // Pace-derivation input (Phase 47). LTHR → the Friel zone table, for the HR
+  // half of the Poster fallback. A measurement, not a goal. null when the
+  // runner has no LTHR.
   lthr: number | null;
-  raceGoalSeconds: number | null;
+  /**
+   * SECOND-OWNER-1 (2026-09-02) · THE canonical six pace anchors for this
+   * runner today, from `resolvePrescribedPaceAnchors`.
+   *
+   * This replaces `raceGoalSeconds` / `raceGoalDistanceMi`, which existed on
+   * this interface for exactly one purpose: feeding
+   * `prescriptions.derivePaces()` in `glance-adapter`, which priced the
+   * runner's whole training ladder off his TYPED GOAL. That function is
+   * deleted; see `lib/training/prescriptions.ts`'s header for the 36-to-60
+   * s/mi it was wrong by on the owner's own account.
+   *
+   * Carried as the full `PaceAnchorRead` rather than as unwrapped numbers so
+   * the refusal survives the trip: the `ok: false` branch has no `anchors`
+   * field at all, so a consumer cannot read one without branching, and a
+   * REFUSED anchor set can never be mistaken for a resolved one (Rule 11).
+   */
+  paceAnchors: PaceAnchorRead;
+  /**
+   * The closest upcoming A-race's DISTANCE in miles. A distance, not a goal
+   * time: it sizes the fuelling ramp (`computeFueling`) and the run's purpose
+   * (`derivePurpose`), and it cannot price a pace on its own —
+   * `tPaceFromGoal` needed the goal TIME, and that field
+   * (`raceGoalSeconds`) is deleted from this interface. Null when the runner
+   * has no upcoming A-race with a stated goal.
+   */
   raceGoalDistanceMi: number | null;
   readiness: ReadinessBreakdown;
   /**
@@ -711,13 +736,30 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     bandBaseline,
   );
 
-  // Pace-derivation inputs (Phase 47 · /today fallback). LTHR + the closest
-  // upcoming A-race goal feed prescriptions.derivePaces() in the adapter so
-  // the Poster shows REAL pace/HR when a per-workout spec is absent — instead
-  // of fixed, fitness-agnostic placeholder strings. Mirrors the profile+race
-  // reads in GET /api/prescription so the two paths agree.
+  // Pace inputs for the /today card and the Poster fallback.
+  //
+  // ── SECOND-OWNER-1 (2026-09-02) · THE GOAL READ IS GONE ────────────────────
+  //
+  // This block used to load the closest upcoming A-race's `goalDisplay` and
+  // distance and put them on `GlanceState`, for one consumer:
+  // `prescriptions.derivePaces()` in `glance-adapter`, which built the runner's
+  // entire training-pace ladder as offsets from his TYPED GOAL TIME. For the
+  // owner on 2026-09-02 that priced his marathon pace at 412 s/mi against the
+  // canonical 472, and his threshold at 394 against 430.
+  //
+  // The goal read is deleted along with the function it fed. What ships now is
+  // the canonical anchor set — `resolvePrescribedPaceAnchors`, whose inputs are
+  // `(userId, today)` and NOTHING ELSE, so a goal physically cannot reach it.
+  //
+  // Cost: four capacity resolvers on a path whose header calls itself a "fast
+  // read". Accepted deliberately — the alternative is a fast wrong number, and
+  // this replaces a `races` query that was itself a round trip.
   const lthr = prof?.lthr != null ? Number(prof.lthr) : null;
-  let raceGoalSeconds: number | null = null;
+  const paceAnchors = await resolvePrescribedPaceAnchors(userId, today);
+  // The race DISTANCE survives — it sizes the fuelling ramp and the run's
+  // purpose, neither of which is a pace. The goal TIME does not: without it
+  // `tPaceFromGoal` cannot be called at all, which is the physical exclusion
+  // rather than a convention.
   let raceGoalDistanceMi: number | null = null;
   {
     const goalRow = (await pool.query(
@@ -729,23 +771,11 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
         ORDER BY (meta->>'date') ASC LIMIT 1`,
       [userId, today]
     ).catch(() => ({ rows: [] as any[] }))).rows[0];
-    const meta = goalRow?.meta ?? {};
-    // 2026-06-03 · use the canonical parser · was a strict H:MM:SS regex
-    // that silently dropped "1:30" goals (David's AFC race) · cascaded
-    // into null pace targets across the glance + breakdown surfaces.
-    const { parseRaceTime } = await import('@/lib/training/vdot');
-    raceGoalSeconds = parseRaceTime(meta.goalDisplay);
-    // ONE PARSER. This was a fifth hand-rolled fork of the label reader —
-    // four branches, which covered marathon / half / 10K / 5K and silently
-    // returned nothing for 15K, every ultra the Add Race sheet offers, the
-    // "10 mile" and "20 mile" labels, the bare "26.2" / "13.1" literals, and
-    // the numeric fallback. Every one of those is a race whose goal pace
-    // could not be sized, and the failure is invisible: a null distance and
-    // an unknown distance look identical downstream.
-    //
-    // `distanceMiOfMeta` already prefers the numeric field and falls back to
-    // the label, which is exactly what these ten lines were trying to be.
-    raceGoalDistanceMi = distanceMiOfMeta(meta) ?? raceGoalDistanceMi;
+    // ONE PARSER. `distanceMiOfMeta` prefers the numeric field and falls back
+    // to the label, covering 15K, every ultra the Add Race sheet offers, the
+    // "10 mile" / "20 mile" labels and the bare "26.2" / "13.1" literals that
+    // a hand-rolled four-branch reader used to drop silently.
+    raceGoalDistanceMi = distanceMiOfMeta(goalRow?.meta ?? {});
   }
 
   // STRENGTH-3 (2026-08-17) · the strength-day recommender is UNWIRED.
@@ -774,7 +804,7 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     loadAcwr,
     cadenceBaseline,
     daysToARace, nextARaceName,
-    lthr, raceGoalSeconds, raceGoalDistanceMi,
+    lthr, paceAnchors, raceGoalDistanceMi,
     readiness,
     todayExecution,
     todaySkipped,

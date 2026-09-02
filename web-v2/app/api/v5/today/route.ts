@@ -45,7 +45,7 @@ import { loadPlanWeek } from '@/lib/plan/week-loader';
 import { resolveViewedPlanDay, viewedDayIsUnresolved } from '@/lib/faff/viewed-day';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
 import {
-  prescriptionFor, derivePaces, hrTargets, narrowToPrescriptionType, strictPrescriptionType,
+  prescriptionFor, cardPaceTargets, hrTargets, narrowToPrescriptionType, strictPrescriptionType,
   type WorkoutType as PrescriptionWorkoutType,
 } from '@/lib/training/prescriptions';
 import { cardFromSpec, cardWithoutSpec, cardForUnprescribableType, type SpecCard } from '@/lib/training/spec-card';
@@ -1539,7 +1539,20 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   }
 
   // ── Before-run panel: prescription, groups, dose, stats ────────────────
-  const dp = derivePaces({ lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi });
+  /* SECOND-OWNER-1 (2026-09-02) · THE CANONICAL ANCHORS, NOT THE TYPED GOAL.
+   *
+   * This was `derivePaces({ lthr, goal_seconds, goal_distance_mi })`, which
+   * built the whole ladder as offsets from `tPaceFromGoal(...)`. Measured on
+   * the owner's account the day it was deleted: threshold 394 s/mi against the
+   * canonical 430, marathon 412 against 472. `glance.paceAnchors` is
+   * `resolvePrescribedPaceAnchors`, whose inputs are `(userId, today)` and
+   * nothing else, and whose refusal branch carries no anchors at all — so a
+   * refusal produces nulls here and every consumer below degrades to an effort
+   * cue rather than to a number nobody resolved. */
+  const dp = cardPaceTargets({
+    lthr: glance.lthr,
+    anchors: glance.paceAnchors.ok ? glance.paceAnchors.anchors : null,
+  });
   /* PRERUN-1 · the day is named, or it is refused.
    *
    * `toPrescriptionType` closes with `default: return 'easy'` — the move
@@ -1556,13 +1569,18 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // used to invent their own number instead: the kicker (fixed) and the
   // fuelling duration estimate (fixed here). Null when we cannot read a pace —
   // callers must degrade, never substitute a constant.
+  //
+  // SECOND-OWNER-1 · the easy and long arms return NULL. They used to return
+  // the midpoint of a goal-derived band; doctrine resolves easy and long as a
+  // single CEILING and there is no canonical midpoint to take. A duration
+  // estimated at the ceiling would be the fastest run the runner is permitted,
+  // not the run he will do, so this refuses and the two consumers fall to the
+  // plan's own authored pace (`fuelPaceSPerMi`'s first rung) or to nothing.
   const paceForType =
-    prescriptionType === 'easy' ? midSec(dp.easySecLo, dp.easySecHi)
-    : prescriptionType === 'long' ? midSec(dp.longSecLo, dp.longSecHi)
-    : prescriptionType === 'tempo' ? midSec(dp.tempoSecLo, dp.tempoSecHi)
+    prescriptionType === 'tempo' ? dp.tempoSec
     : prescriptionType === 'threshold' ? dp.thresholdSec
     : prescriptionType === 'intervals' ? dp.intervalSec
-    : midSec(dp.easySecLo, dp.easySecHi);
+    : null;
   /* ── SPECFIRST-1 (2026-08-24) · THE CARD AND THE WATCH DESCRIBED DIFFERENT
    *    WORKOUTS ON EVERY QUALITY DAY ────────────────────────────────────────
    *
@@ -1650,7 +1668,8 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
    * should not silently move every time this ceiling does. */
   const easyCeilingSec = easyBandRow?.lo != null ? Math.round(Number(easyBandRow.lo)) : null;
 
-  const hrBands = hrTargets({ lthr: glance.lthr, goal_seconds: glance.raceGoalSeconds, goal_distance_mi: glance.raceGoalDistanceMi });
+  // HR zones come off the runner's own LTHR. A measurement, never a goal.
+  const hrBands = hrTargets({ lthr: glance.lthr });
   /* THE tolerance, from THE owner (`lib/training/execution-semantics.ts`).
    *
    * This used to be a local ternary over `strictPrescriptionType`, which maps
@@ -1708,12 +1727,13 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // prescribes nothing, and the fuel row simply does not appear. A missing
   // row beats an invented gel.
   //
-  // SPECFIRST-1 · and it now asks the PLAN first. `paceForType` is derived
-  // from the runner's LTHR and race goal; `plan_workouts.pace_target_s_per_mi`
-  // and the plan's own authored easy band are what the generator actually
-  // wrote for this day. Where a real stored number exists it wins, for the
-  // same reason the card's structure now does: read before derive. The
-  // derived figure stays as the last rung, and 0 (no gels) stays below that.
+  // SPECFIRST-1 · and it now asks the PLAN first.
+  // `plan_workouts.pace_target_s_per_mi` and the plan's own authored easy band
+  // are what the generator actually wrote for this day. Where a real stored
+  // number exists it wins, for the same reason the card's structure now does:
+  // read before derive. SECOND-OWNER-1 · the last rung, `paceForType`, is now
+  // the CANONICAL anchor for a quality type and NULL for easy/long (it used to
+  // be a goal-derived band midpoint). 0 (no gels) stays below that.
   const fuelPaceSPerMi =
     specRow?.pace_target_s_per_mi ?? (
       prescriptionType === 'easy' || prescriptionType === 'long' ? easyPaceAnchor : null
@@ -1853,11 +1873,20 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
    * work phase the card itself renders, ± the tolerance the watch grades
    * against. Same number, same source, one screen.
    *
-   * The derived band survives only as the LAST rung, for a day whose spec
-   * carries no pace at all (`by_effort` hills), and even then only for the
-   * aerobic types where a band off the goal is a defensible statement of
-   * intent rather than a target. A by-effort rep day gets no stat, which is
-   * correct: the plan declined to name a pace and so does the panel.
+   * SECOND-OWNER-1 (2026-09-02) · AND THE LAST RUNG IS GONE.
+   *
+   * It was `fmtBand(dp.easySecLo, dp.easySecHi)` for easy and the long
+   * equivalent — the goal-derived band, which the comment above defended as "a
+   * defensible statement of intent". It was not: on the owner's own account it
+   * opened 28 s/mi faster than his canonical easy ceiling, off a 3:00:00
+   * marathon he has not run. Doctrine resolves easy and long as ONE CEILING
+   * (`easyCeilingSecPerMi`), never a two-sided band, and there is no canonical
+   * band to put here instead.
+   *
+   * So a spec-less aerobic day now gets NO pace stat, exactly like a by-effort
+   * rep day: the plan declined to name a pace, and so does the panel. That is
+   * the refusal Rule 11 asks for, and the runner still sees the HR ceiling
+   * below and the effort cue on the card.
    */
   ctx.paceBandStat = !todayPlan || prescriptionType === 'rest' || unprescribable
     ? null
@@ -1866,9 +1895,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           ? fmtBand(prescription.workPaceSPerMi - prescription.workToleranceSPerMi,
                     prescription.workPaceSPerMi + prescription.workToleranceSPerMi)
           : fmtSingle(prescription.workPaceSPerMi))
-      : (prescriptionType === 'easy' ? fmtBand(dp.easySecLo, dp.easySecHi)
-        : prescriptionType === 'long' ? fmtBand(dp.longSecLo, dp.longSecHi)
-        : null);
+      : null;
   // A ceiling is a ceiling FOR SOMETHING. On a rest day there is no running
   // to hold under it, and the poster showed "HR ceiling 144 bpm" beside the
   // word REST. Same guard the pace band already has: no plan, no stat.

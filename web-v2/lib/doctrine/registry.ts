@@ -322,7 +322,10 @@ import {
   atPaceSessionCapMi,
 } from '@/lib/prescription/levers';
 import { ST_OFFSET_S_PER_MI, resolveZoneAnchors } from '@/lib/plan/zone-anchors';
-import { rPaceFromVdot, racePaceFromVdot, TABLE_RACE_DISTANCE_MI } from '@/lib/training/vdot';
+import { rPaceFromVdot, tPaceFromVdot, racePaceFromVdot, TABLE_RACE_DISTANCE_MI } from '@/lib/training/vdot';
+// SECOND-OWNER-1 · the card surfaces' adapter over the canonical anchor set,
+// exercised behaviourally by PACE.tempo-is-threshold and PACE.rep-offset.
+import { cardPaceTargets } from '@/lib/training/prescriptions';
 import { parsePrescription, parseSegments, parseZones } from '@/lib/plan/prescription-parser';
 import { SESSION_LADDER } from '@/lib/prescription/trajectory';
 import {
@@ -4351,14 +4354,21 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     id: 'PACE.tempo-is-threshold',
     binds: [
       'lib/plan/spec-builder.ts#buildWorkoutSpec.tempo',
-      // The second copy. `derivePaces` re-derives every zone off T for the
+      // The second copy. `derivePaces` re-derived every zone off T for the
       // spec-less fallback card, and this offset is the one that drifted:
       // spec-builder was corrected to tempo == T on 2026-06-23 (PACE-T-1) and
       // this copy kept the old sub-threshold band for two months, so a tempo
       // day with no authored spec rendered a pace 5-18 s/mi slower than the
-      // approved definition. Both literals are read below.
-      'lib/training/prescriptions.ts#derivePaces.tempoSecLo',
-      'lib/training/prescriptions.ts#derivePaces.tempoSecHi',
+      // approved definition.
+      //
+      // SECOND-OWNER-1 (2026-09-02) · that copy is deleted with the rest of
+      // the goal-derived ladder. `cardPaceTargets` carries ONE `tempoSec`
+      // instead of a lo/hi pair, and it reads the anchor set's
+      // `thresholdSecPerMi` field directly, so the two can no longer be edited
+      // apart. Checked BEHAVIOURALLY below rather than by regexing an
+      // expression, which is the assertion the old literal read was standing
+      // in for.
+      'lib/training/prescriptions.ts#cardPaceTargets.tempoSec',
     ],
     doc: 'Research/04-workout-vocabulary.md',
     anchor: '### 5.1 Threshold family overview',
@@ -4424,23 +4434,37 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         );
       }
 
-      // 3 · the fallback card's band is zero-width and also exactly T. Read
-      // whatever follows each key so a reintroduced `t + 5` is caught by
-      // value, not merely by the shape of the expression.
-      const src = sourceOf('web-v2/lib/training/prescriptions.ts');
-      for (const key of ['tempoSecLo', 'tempoSecHi'] as const) {
-        const expr = matchLiteral(
-          src,
-          new RegExp(`${key}:\\s*([^,\\n]+),`),
-          `derivePaces ${key}`,
-        )[1].trim();
-        if (expr !== 't') {
-          throw new Error(
-            `derivePaces.${key} is "${expr}" · a continuous tempo is run at T, so both edges of ` +
-              'the band are the bare threshold. "t + 5".."t + 18" is Research/04 §5.1\'s ' +
-              'SUB-THRESHOLD (ST) row wearing a tempo label — the exact drift PACE-T-2 closed.',
-          );
-        }
+      // 3 · the fallback card prices a tempo AT the canonical threshold —
+      // checked by BUILDING one, not by regexing an expression. A reintroduced
+      // `+ 5` fails here by value, and so does any other path that would put
+      // the card's tempo somewhere other than the anchor set's threshold.
+      const cardAnchors = {
+        thresholdSecPerMi: T_FIXTURE, intervalSecPerMi: 407, repetitionSecPerMi: 371,
+        easyCeilingSecPerMi: 502, shakeoutCeilingSecPerMi: 532, marathonSecPerMi: 475,
+        basis: {
+          threshold: { sourceMode: 'direct' as const, confidence: 0.7, vdot: 48 },
+          highIntensity: { sourceMode: 'vdot_fallback' as const, confidence: 0.3 },
+          easyCeiling: { sourceMode: 'direct' as const, confidence: 0.6 },
+          marathon: {
+            sourceMode: 'direct' as const, confidence: 0.7,
+            enduranceExponent: 1.0869, personallyEvidenced: true,
+          },
+        },
+      };
+      const card = cardPaceTargets({ lthr: null, anchors: cardAnchors });
+      if (card.tempoSec !== T_FIXTURE || card.tempoSec !== card.thresholdSec) {
+        throw new Error(
+          `cardPaceTargets priced a tempo at ${card.tempoSec} s/mi against a canonical ` +
+            `threshold of ${card.thresholdSec} · a continuous tempo is run AT T. ` +
+            'T+5..T+18 is Research/04 §5.1\'s SUB-THRESHOLD (ST) row wearing a tempo label — ' +
+            'the exact drift PACE-T-2 closed, and SECOND-OWNER-1 made structurally impossible ' +
+            'by reading one field twice.',
+        );
+      }
+      // A refused anchor set prices NO tempo. It must not fall back to a
+      // number the runner never earned (Rule 11).
+      if (cardPaceTargets({ lthr: null, anchors: null }).tempoSec !== null) {
+        throw new Error('cardPaceTargets invented a tempo pace with no canonical anchors');
       }
     },
   },
@@ -4554,25 +4578,89 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   },
   {
     id: 'PACE.rep-offset',
-    binds: ['lib/training/prescriptions.ts#derivePaces.rep'],
+    // SECOND-OWNER-1 (2026-09-02) · RE-POINTED, NOT DELETED.
+    //
+    // This bound `derivePaces.rep` — `repSec: t - 61`, where `t` was
+    // `tPaceFromGoal(goal_seconds, goal_distance_mi)`. That whole ladder is
+    // gone: the card surfaces now read `repetitionSecPerMi` off the canonical
+    // anchor set, which gets it from `rPaceFromVdot` (the published Mile
+    // column), and `cardPaceTargets` is an adapter that must not re-apply an
+    // offset of its own. So the claim now watches both halves of what it
+    // always meant: doctrine's own T→R gap against the engine's two curve
+    // functions, and the adapter passing the anchor through untouched.
+    binds: [
+      'lib/training/vdot.ts#rPaceFromVdot',
+      'lib/training/prescriptions.ts#cardPaceTargets.repSec',
+    ],
     doc: 'Research/01-pace-zones-vdot.md',
     anchor: '### Numerical equivalencies',
     claim:
       'Repetition pace is roughly mile race pace — 5:50 against a 6:51 threshold, 61 s/mi ' +
       'faster. It is the only pace targeting economy and recruitment rather than lactate ' +
-      'clearance, so substituting a slower one wastes the workout.',
+      'clearance, so substituting a slower one wastes the workout. The engine reads R off ' +
+      'the published Mile column rather than as an offset, so the gap is checked as a ' +
+      'CONSEQUENCE of the two curve functions rather than as a typed constant; and the card ' +
+      'adapter must hand the anchor through unchanged rather than re-deriving one.',
     check({ cite }) {
       const t = cite.table();
       const [tPace] = parsePaceBandSec(t.cell('Daniels T', 'Pace (min/mi)'));
       const [rPace] = parsePaceBandSec(t.cell('Daniels R', 'Pace (min/mi)'));
-      const off = Number(
-        matchLiteral(
-          sourceOf('web-v2/lib/training/prescriptions.ts'),
-          /repSec:\s*t\s*!=\s*null\s*\?\s*t\s*-\s*(\d+)\s*:\s*null/,
-          'derivePaces repSec',
-        )[1],
-      );
-      within(off, [tPace - rPace - 10, tPace - rPace + 10], 'repetition-pace offset off T');
+      const docGap = tPace - rPace;
+      // 1 · the ENGINE's own T and R curves, at the VDOT the doctrine row is
+      // written for, must reproduce doctrine's gap. Both sides read out of the
+      // source: `tPace`/`rPace` come from the cited table, and the VDOT is
+      // inverted from the table's own T pace rather than chosen here.
+      const vdotForRow = (() => {
+        for (let v = 30; v <= 85; v += 0.1) {
+          const tp = tPaceFromVdot(v);
+          if (tp != null && Math.abs(tp - tPace) <= 1) return v;
+        }
+        return null;
+      })();
+      if (vdotForRow == null) {
+        throw new Error(
+          `no VDOT in [30,85] produces Research/01's stated Daniels T pace of ${tPace} s/mi · ` +
+            'the T curve and the equivalencies table have come apart',
+        );
+      }
+      const engineR = rPaceFromVdot(vdotForRow);
+      const engineT = tPaceFromVdot(vdotForRow);
+      if (engineR == null || engineT == null) {
+        throw new Error(`the engine cannot price T or R at VDOT ${vdotForRow.toFixed(1)}`);
+      }
+      within(engineT - engineR, [docGap - 10, docGap + 10], 'repetition-pace gap below T');
+      // 2 · the card adapter is an ADAPTER. Hand it an anchor set and the
+      // repetition pace must come back byte-identical — a reintroduced offset
+      // (the `t - 61` this claim used to watch) fails here, and so does any
+      // substitution of I-pace for a null R (Rule 11).
+      const anchors = {
+        thresholdSecPerMi: 430, intervalSecPerMi: 401, repetitionSecPerMi: 365,
+        easyCeilingSecPerMi: 502, shakeoutCeilingSecPerMi: 532, marathonSecPerMi: 472,
+        basis: {
+          threshold: { sourceMode: 'direct' as const, confidence: 0.8, vdot: 47.8 },
+          highIntensity: { sourceMode: 'vdot_fallback' as const, confidence: 0.5 },
+          easyCeiling: { sourceMode: 'direct' as const, confidence: 0.6 },
+          marathon: {
+            sourceMode: 'direct' as const, confidence: 0.7,
+            enduranceExponent: 1.0869, personallyEvidenced: true,
+          },
+        },
+      };
+      const passed = cardPaceTargets({ lthr: null, anchors });
+      if (passed.repSec !== anchors.repetitionSecPerMi) {
+        throw new Error(
+          `cardPaceTargets returned repSec ${passed.repSec} for an anchor set whose ` +
+            `repetitionSecPerMi is ${anchors.repetitionSecPerMi} · the card surfaces must ` +
+            'ADAPT the canonical anchor, never re-derive one (SECOND-OWNER-1)',
+        );
+      }
+      // And a REFUSED anchor set yields null, not a substituted number.
+      if (cardPaceTargets({ lthr: null, anchors: null }).repSec !== null) {
+        throw new Error(
+          'cardPaceTargets invented a repetition pace with no anchors · a missing capacity ' +
+            'read is a refusal, never a fallback (Rule 11)',
+        );
+      }
     },
   },
 
