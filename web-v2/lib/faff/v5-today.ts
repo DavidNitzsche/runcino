@@ -980,6 +980,14 @@ export interface V5TodayContext {
     whatChanged: V5Row[];
     checkIn: V5Row[];
     returnAvailable: boolean;
+    /**
+     * The 56pt word. RULE 17: it used to be a hard-coded "Not today" for every
+     * severity, over a verdict line that on a MINOR injury reads "Easy running
+     * only." `lib/safety/safety-verdict.ts#safetyTitle` authors both, so the
+     * headline and the sentence under it cannot disagree again. Optional so
+     * pre-existing context builders stay valid; absent keeps the old word.
+     */
+    title?: string | null;
   } | null;
   /// See `V5Sick`. Checked in the route right after `injury` — a sick day
   /// takes the same "quiet panel, not today" treatment, sourced from a
@@ -1695,7 +1703,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   if (ctx.injury) {
     const t = EMPTY_TODAY(ctx.todayISO, 'injury_flare');
     t.panel.quiet = true;
-    t.panel.type = 'Not today';
+    t.panel.type = ctx.injury.title || 'Not today';
     t.injury = {
       area: ctx.injury.area,
       since: ctx.injury.since,
