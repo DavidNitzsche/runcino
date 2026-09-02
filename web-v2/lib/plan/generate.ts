@@ -129,6 +129,18 @@ import type { Tier, CatalogueEntry } from '@/lib/workout-catalogue/types';
 import {
   distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON,
 } from '@/lib/race/distance-category';
+// COMBINED-STRESS-1 (2026-09-02) · the placement pass's doctrine numbers. See
+// lib/plan/combined-stress.ts for what that module owns and why the constants
+// live there rather than here.
+import {
+  returnToLongDays,
+  longRunFactorAfterRace,
+  raceConsumesLongRunSlot,
+  postRaceNoQualityDays as postRaceNoQualityDaysImpl,
+  noQualityDaysAfterRace,
+  effectiveRecoveryPriority as effectiveRecoveryPriorityImpl,
+  type PlacementRecord,
+} from './combined-stress';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 export type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -7613,8 +7625,17 @@ export function embedMidBlockRaces(
      * marathon's pace. Null → the MP long carries no numeric target.
      */
     targetGoalPaceSec?: number | null;
+    /**
+     * COMBINED-STRESS-1 (2026-09-02) · sink for the typed placement decisions
+     * this pass makes (brief §5.5). Mutated in place; `composePlan` hands one
+     * in and writes it to `authoredState.placement_compromises`. Omitted →
+     * the decisions are still made, they are simply not recorded, which is
+     * what every existing unit caller wants.
+     */
+    compromises?: PlacementRecord[];
   },
 ): EmbeddedRaceSummary[] {
+  const compromises: PlacementRecord[] = opts.compromises ?? [];
   const totalDays = weeks.length * 7;
   const startDow = new Date(opts.startMondayISO + 'T12:00:00Z').getUTCDay();
   // Absolute-offset day accessor. Returns null outside the plan window and
@@ -7801,12 +7822,48 @@ export function embedMidBlockRaces(
       // floor (00b by-distance: half 10 · 10K 5 · 5K 4); role 'b_effort'
       // takes the B scale (00b: "expect 7–10 days of recovery rather than
       // 14" → half 7 · 10K 4 · 5K 3). ROLE_POST_QUALITY_FREE_DAYS is bound
-      // by RACEROLE.recovery-scale in lib/doctrine/registry.ts. Unanswered →
-      // the historical 4/2/1 easy-day window, byte-identical.
-      const roleCat = race.distanceMi >= 12 ? 'hm' : race.distanceMi >= 5 ? '10k' : '5k';
-      const recoveryDays = role === 'race' || role === 'b_effort'
-        ? ROLE_POST_QUALITY_FREE_DAYS[roleCat][role]
-        : race.distanceMi >= 12 ? 4 : race.distanceMi >= 5 ? 2 : 1;
+      // by RACEROLE.recovery-scale in lib/doctrine/registry.ts.
+      //
+      // D1 (2026-09-02) · THE UNCITED WINDOW IS GONE.
+      //
+      // This line used to fall back to `distanceMi >= 12 ? 4 : >= 5 ? 2 : 1`
+      // for an unanswered B race — three numbers with no citation, sitting
+      // beside a doctrine-bound table and BELOW it in every row (half 4 vs 7,
+      // 10K 2 vs 4, 5K 1 vs 3). Two answers to one question is a Rule 16
+      // violation whichever is right, and the uncited one was also the more
+      // permissive, which is the direction that costs a runner.
+      //
+      // An unanswered B race is a B effort by its own calendar letter, so it
+      // takes the b_effort row: `Research/00b` §"Recovery by Distance" ·
+      // "Total recovery days (no quality)", scaled by §"Recovery by Effort"'s
+      // "60–70% of A-race recovery duration". That is the same derivation
+      // `postRaceNoQualityDays` makes; ROLE_POST_QUALITY_FREE_DAYS is the
+      // pinned table and is used rather than re-derived.
+      //
+      // Consequence, measured on the owner's block: his Santa Monica 10K's
+      // window goes 2 → 4 days and his Run Malibu half's 4 → 7. The half's
+      // 7-day window covers the whole of the following composed week, which
+      // leaves that week with no quality at all — accepted by
+      // `validateComposedPlan` §5 through an argued, doctrine-cited exemption
+      // (see POSTRACE-WEEK-1 there), not by weakening the quality rule.
+      //
+      // `roleCat`'s own >=12 / >=5 thresholds are pre-existing and untouched:
+      // ROLE_POST_QUALITY_FREE_DAYS publishes only hm/10k/5k rows, so the
+      // canonical categorizer's 'm' and 'ultra' have nowhere to land here.
+      // The embedder refuses an ultra outright (ULTRA-OUT-1) and a marathon
+      // tune-up maps to the half row, which is the most conservative row that
+      // exists rather than a guess at one that does not.
+      // ONE RESOLVER (Rule 16). `noQualityDaysAfterRace` reads
+      // ROLE_POST_QUALITY_FREE_DAYS through the EFFECTIVE priority, which is
+      // the same mapping `role` expressed by hand: 'race' → the A row,
+      // 'b_effort' and unanswered-B → the b_effort row. The validator asks the
+      // identical function, so a plan cannot be authored under one reading of
+      // the window and refused under another — which is exactly what happened
+      // when §11 first ran against a second doctrine table.
+      const recoveryDays = noQualityDaysAfterRace(
+        race.distanceMi,
+        effectiveRecoveryPriorityImpl({ priority: race.priority, plannedRole: role }),
+      );
       let firstDisplacedQuality: Pick<DayPlan, 'type' | 'distanceMi' | 'subLabel' | 'notes'> | null = null;
       for (let j = 1; j <= recoveryDays; j++) {
         const d = dayAt(o + j);
@@ -7824,19 +7881,16 @@ export function embedMidBlockRaces(
           delete d.raceGoalPaceSec;
           clearWorkShape(d);
           touchedWeeks.add(wiJ);
-        } else if (d.isLong && race.distanceMi >= 12) {
-          // Deliberate long-rule exception (documented above): a half+ B race
-          // converts a long inside its recovery window to easy.
-          d.type = 'easy';
-          d.distanceMi = Math.min(d.distanceMi, 6);
-          d.isQuality = false;
-          d.isLong = false;
-          d.subLabel = 'EASY';
-          d.notes = `Post-race recovery · day ${j} after ${race.name}. The long run stands down this week; easy miles only.`;
-          delete d.raceGoalPaceSec;
-          clearWorkShape(d);
-          touchedWeeks.add(wiJ);
         }
+        // D2 (2026-09-02) · the long run is NOT handled here any more.
+        //
+        // This branch used to convert any long inside a half-or-longer B
+        // race's recovery window to a ≤6 mi easy day. Two things were wrong
+        // with it and both are Rule 9 shapes: it was a CLIFF (day 4 stood the
+        // long down entirely, day 5 left it untouched), and its trigger was
+        // the no-quality window, which is a different column of the doctrine
+        // table from the one that governs long runs. The long-run question is
+        // answered once, continuously, by the pass below.
       }
       // Quality RESUMES after the recovery window. When the window swallowed
       // every quality session of the week it ends in (a Sunday half's 4 easy
@@ -7946,6 +8000,98 @@ export function embedMidBlockRaces(
             : `Easy the day after ${race.name}.`;
           delete d.raceGoalPaceSec;
           touchedWeeks.add(Math.floor((o + off) / 7));
+        }
+      }
+    }
+
+    /* ── D2 · RACE AND LONG RUN ARE ONE TRANSACTION ─────────────────────
+     *
+     * The defect (brief §3.2.C), reproduced on the owner's live block before
+     * this pass existed:
+     *
+     *   2026-09-26 Sat  race 6.21 mi
+     *   2026-09-27 Sun  long 15.5 mi        → 21.7 mi in 24 hours
+     *
+     * "Race valid" and "long run valid" were separate questions and both
+     * answered yes. Nothing computed the pair.
+     *
+     * THE ARBITRATION, and it is between two citations that both apply:
+     * `Research/00b` §"Recovery by Distance" gives every raced distance a
+     * "Return to long runs" day, and `Research/22` §"Multi-Race Year
+     * Planning" (with the Pfitzinger Saturday-tune-up → Sunday-long pattern
+     * this function's own comments already cite) deliberately puts a race in
+     * front of a long. §"Recovery by Effort" settles which is speaking: a C
+     * race is a "hard workout substitute … treat like a hard workout", and a
+     * hard workout takes the §"Hard/Easy Alternation" gap, not a race's
+     * return-to-long window. An A or B EFFORT is a race and consumes the
+     * slot. `raceConsumesLongRunSlot` is that sentence.
+     *
+     * CONTINUOUS, NOT A CLIFF (Rule 9). The allowed long is
+     * `daysAfter / returnDays` of what the week planned, reaching the full
+     * long exactly on the doctrine day. There is no day on which shifting the
+     * race by one changes the plan in kind — which is precisely what the
+     * branch this replaces did.
+     *
+     * WHY IT SHORTENS RATHER THAN MOVES. Brief §5.4 offers "long run moves"
+     * first and this engine cannot take it: the composed week is anchored on
+     * `longRunDow` and the long is its last day by construction, so there is
+     * no later seat inside the week to move to. Moving it EARLIER would put
+     * it against the week's own quality day, trading one adjacency for
+     * another. So the compromise is REDUCE_DOSE, and it is recorded by name
+     * on `authoredState.placement_compromises` rather than applied silently
+     * (brief §5: "Do not silently repair an unsafe week without recording
+     * the change").
+     */
+    {
+      const effPriority = effectiveRecoveryPriorityImpl({ priority: race.priority, plannedRole: role });
+      if (raceConsumesLongRunSlot(effPriority)) {
+        const returnDays = returnToLongDays(race.distanceMi, effPriority);
+        for (let j = 1; j < Math.ceil(returnDays); j++) {
+          const d = dayAt(o + j);
+          if (!d || d.type === 'race' || !d.isLong || !(d.distanceMi > 0)) continue;
+          const factor = longRunFactorAfterRace(j, returnDays);
+          const was = d.distanceMi;
+          // Half-mile grain, the same increment every other distance in this
+          // composer moves in.
+          const now = Math.max(0.5, Math.round(was * factor * 2) / 2);
+          if (!(now < was)) continue;
+          d.distanceMi = now;
+          d.notes =
+            `Long run cut to ${now} mi · day ${j} after ${race.name} (${race.distanceMi} mi, ` +
+            `${effPriority} effort). Research/00b puts the long run back at day ` +
+            `${returnDays % 1 === 0 ? returnDays : returnDays.toFixed(1)}. Run it easy.`;
+          clearWorkShape(d);
+          delete d.raceGoalPaceSec;
+          compromises.push({
+            code: 'REDUCE_DOSE',
+            raceSlug: race.slug, raceName: race.name, raceDateISO: race.date,
+            dateISO: dowDateInWeek(weeks[Math.floor((o + j) / 7)].startISO, d.dow),
+            detail: `long ${was}mi → ${now}mi · day ${j} of a ${returnDays.toFixed(1)}-day return-to-long window`,
+            citation: 'Research/00b-recovery-protocols.md §"Recovery by Distance" (Return to long runs) · §"Recovery by Effort"',
+          });
+          touchedWeeks.add(Math.floor((o + j) / 7));
+        }
+      } else {
+        // The decision is recorded even when nothing changes, because "we
+        // looked and doctrine says this stands" and "nothing looked" are
+        // different facts (Rule 11) and only one of them is defensible.
+        const nextLong = (() => {
+          for (let j = 1; j <= 2; j++) {
+            const d = dayAt(o + j);
+            if (d && d.isLong && d.type !== 'race' && d.distanceMi > 0) return { d, j };
+          }
+          return null;
+        })();
+        if (nextLong) {
+          compromises.push({
+            code: 'ACCEPT_AS_HARD_WORKOUT',
+            raceSlug: race.slug, raceName: race.name, raceDateISO: race.date,
+            dateISO: dowDateInWeek(weeks[Math.floor((o + nextLong.j) / 7)].startISO, nextLong.d.dow),
+            detail:
+              `${nextLong.d.distanceMi}mi long run stands ${nextLong.j} day(s) after ${race.name} ` +
+              `(${race.distanceMi}mi, C effort) · ${(race.distanceMi + nextLong.d.distanceMi).toFixed(2)}mi across the pair`,
+            citation: 'Research/00b-recovery-protocols.md §"Recovery by Effort" (C race · treat like a hard workout) · Research/22-plan-templates.md §"Multi-Race Year Planning"',
+          });
         }
       }
     }
@@ -8102,35 +8248,22 @@ export function embedMidBlockRaces(
  * exactly that case ("expect 7–10 days of recovery rather than 14").
  *
  * Bound by `RECOVERY.priority-scale` in lib/doctrine/registry.ts.
+ *
+ * MOVED 2026-09-02 to `lib/plan/combined-stress.ts` and re-exported here so
+ * every existing importer is unchanged. Three passes read it now — the
+ * placement pass below, the no-quality window, and the final-plan combined-
+ * stress check — and a constant three passes share is not the monolith's
+ * property. There is one definition; this line is a name for it.
  */
-export const POST_RACE_PRIORITY_SCALE: Record<'A' | 'B' | 'C', number> = {
-  A: 1.0,
-  B: 0.70,
-  C: 0.50,
-};
+export { POST_RACE_PRIORITY_SCALE } from './combined-stress';
 
-/** Days of no quality owed after a mid-block tune-up of this distance and
- *  priority. Reads the A-race window off `POST_RACE_RECOVERY_WEEKS` (the
- *  by-distance table) and scales it per §"Recovery by Effort". */
-export function postRaceNoQualityDays(distanceMi: number, priority: 'A' | 'B' | 'C'): number {
-  const aRaceDays = POST_RACE_RECOVERY_WEEKS[distanceCategoryOf(distanceMi)] * 7;
-  return Math.round(aRaceDays * POST_RACE_PRIORITY_SCALE[priority]);
-}
-
-/** RACEROLE-1 (2026-08-28) · the recovery priority an embedded tune-up's
- *  no-quality window is scaled by, once the runner has ANSWERED the race-role
- *  card. Research/00b §"Recovery by Effort" keys recovery on EFFORT GIVEN,
- *  not the calendar letter: an honest ('race') tune-up recovers like an A
- *  effort, an MP-workout conversion is a hard session, not a race (C · "treat
- *  like a hard workout"), and an unanswered or 'b_effort' tune-up keeps its
- *  calendar priority. */
-export function effectiveRecoveryPriority(
-  e: Pick<EmbeddedRaceSummary, 'priority' | 'plannedRole'>,
-): 'A' | 'B' | 'C' {
-  if (e.plannedRole === 'race') return 'A';
-  if (e.plannedRole === 'mp_workout') return 'C';
-  return e.priority;
-}
+/**
+ * MOVED 2026-09-02 to `lib/plan/combined-stress.ts`, re-exported here so every
+ * existing importer is unchanged. Both are now read by the validator as well
+ * as by the placement pass, and the validator cannot import this file (the
+ * dependency runs the other way). One definition, two names for it.
+ */
+export { postRaceNoQualityDays, effectiveRecoveryPriority } from './combined-stress';
 
 /** The ISO date of `dow` inside a composed week, whatever weekday that week
  *  starts on. Same mapping `embedMidBlockRaces` walks with its absolute
@@ -8178,7 +8311,7 @@ export function enforceRampCeilingAfterEmbedding(
       const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
       if (long && splitDay(long).qualityMi > 0
         // RACEROLE-1 · window scaled by the ANSWERED effort, not the letter.
-        && daysBetween(e.date, dowDateInWeek(w.startISO, long.dow)) <= postRaceNoQualityDays(e.distanceMi, effectiveRecoveryPriority(e))
+        && daysBetween(e.date, dowDateInWeek(w.startISO, long.dow)) <= postRaceNoQualityDaysImpl(e.distanceMi, effectiveRecoveryPriorityImpl(e))
       ) setLongFinish(long, 0, `inside the post-race no-quality window after ${e.name}`);
     }
     // Ramp reference · the most recent week distorted by neither a tune-up nor
@@ -9562,8 +9695,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // 2026-08-17 · MIDRACE-1 · embed the runner's own B/C races that fall
   // inside the plan window as tune-up race days (see embedMidBlockRaces
   // doctrine block). Gated: no midBlockRaces → byte-identical output.
+  // COMBINED-STRESS-1 · the typed placement decisions the embed makes, kept
+  // so the block records them (brief §5.5) instead of only showing the result.
+  const placementCompromises: PlacementRecord[] = [];
   const embeddedRaces = (input.midBlockRaces && input.midBlockRaces.length > 0)
     ? embedMidBlockRaces(weeks, vols, {
+        compromises: placementCompromises,
         startMondayISO: input.startMondayISO,
         raceDateISO: input.raceDateISO,
         midBlockRaces: input.midBlockRaces,
@@ -9685,6 +9822,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // race days, by plan week. Empty array when none. Drives the plan
       // UI chip + the brief's tune-up framing.
       embedded_races: embeddedRaces,
+      // COMBINED-STRESS-1 (2026-09-02) · every typed placement decision the
+      // race embed made about a race and the long run that follows it —
+      // including the ones where the answer was "this stands, and here is the
+      // row that says so". Absent when no race sat near a long run. Brief
+      // §5.5's named compromises; see lib/plan/combined-stress.ts.
+      ...(placementCompromises.length > 0 ? { placement_compromises: placementCompromises } : {}),
       // RACE-RUNUP-1 · the dates the goal-race run-up guard rewrote, so a
       // block that had a long run inside race week says so on its own record
       // rather than only in a diff. Absent when it changed nothing, which is
@@ -12186,10 +12329,66 @@ export function finalizeComposedPlan(
     }
   }
 
+  // COMBINED-STRESS-1 · same reasoning, one pass earlier in the list: the
+  // placement record's numbers have to be the SHIPPED numbers.
+  refreshPlacementCompromises(composed);
+
   // PHASE-ANSWERS-1 · LAST, after every pass that can move a mile, so the
   // numbers each phase cites (the block's peak week, its longest run, the
   // race-pace longs a phase carries) describe the block that ships.
   attachPhaseAnswers(composed, raceDistanceMi);
+}
+
+/**
+ * COMBINED-STRESS-1 (2026-09-02) · RESTATE EACH PLACEMENT RECORD AGAINST THE
+ * BLOCK THAT SHIPS.
+ *
+ * `embedMidBlockRaces` records its decisions at the moment it makes them, and
+ * three later passes can still move the day it recorded — the ramp ceiling
+ * after embedding, `applyDosingCaps`, and the long-run smoother. Caught
+ * immediately on the owner's block: the record read "18mi long run stands 1
+ * day after Dodgers" while the plan shipped 15.5. One quantity, two answers
+ * (Rule 16), in a field whose entire job is to be the honest account of a
+ * decision.
+ *
+ * So the record's DECISION and CITATION are the embed's, and its NUMBERS are
+ * re-read here from the final day. A record whose day no longer exists (the
+ * long stood down entirely) keeps the embed's text — it is still a true
+ * statement about what was decided — rather than being deleted, because a
+ * decision that was made and then overtaken is not a decision that was never
+ * made.
+ */
+function refreshPlacementCompromises(composed: ComposePlanResult): void {
+  const st = composed.authoredState as Record<string, unknown> | undefined;
+  const raw = st?.['placement_compromises'];
+  if (!Array.isArray(raw) || raw.length === 0) return;
+  const dayOn = (iso: string): DayPlan | null => {
+    for (const w of composed.weeks) {
+      if (iso < w.startISO || iso > addDays(w.startISO, 6)) continue;
+      const startDow = new Date(w.startISO + 'T12:00:00Z').getUTCDay();
+      const dow = ((startDow + daysBetween(w.startISO, iso)) % 7) as DOW;
+      return w.days.find((d) => d.dow === dow) ?? null;
+    }
+    return null;
+  };
+  for (const r of raw as PlacementRecord[]) {
+    const d = dayOn(r.dateISO);
+    if (!d || !(d.distanceMi > 0)) continue;
+    if (r.code === 'ACCEPT_AS_HARD_WORKOUT') {
+      const raceDay = dayOn(r.raceDateISO);
+      const raceMi = raceDay?.distanceMi ?? 0;
+      const gap = daysBetween(r.raceDateISO, r.dateISO);
+      r.detail =
+        `${d.distanceMi}mi long run stands ${gap} day(s) after ${r.raceName} ` +
+        `(${raceMi}mi, C effort) · ${(raceMi + d.distanceMi).toFixed(2)}mi across the pair`;
+    } else if (r.code === 'REDUCE_DOSE') {
+      // The "was" half of the sentence is the embed's own record of what it
+      // cut FROM and cannot be re-derived here; only the shipped number is
+      // restated, so the record cannot claim a distance the plan does not
+      // carry.
+      r.detail = r.detail.replace(/→ [\d.]+mi/, `→ ${d.distanceMi}mi`);
+    }
+  }
 }
 
 /**
@@ -12950,7 +13149,7 @@ function authorDressRehearsal(composed: ComposePlanResult, raceDistanceMi: numbe
     ).some((e) => {
       const gap = daysBetween(e.date, dowDateInWeek(w.startISO, long.dow));
       // RACEROLE-1 · window scaled by the ANSWERED effort, not the letter.
-      return gap > 0 && gap <= postRaceNoQualityDays(e.distanceMi, effectiveRecoveryPriority(e));
+      return gap > 0 && gap <= postRaceNoQualityDaysImpl(e.distanceMi, effectiveRecoveryPriorityImpl(e));
     });
     /* ── MPSPACING-1 (2026-09-01) · §16 IS STATED IN DAYS, AND THIS PASS
      * CROSSES A WEEK BOUNDARY.

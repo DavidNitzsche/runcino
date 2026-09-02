@@ -247,6 +247,10 @@ import {
   HOLD_CYCLE_GROWTH,
   MP_LONG_TEMPO_MIN_GAP_DAYS,
 } from '@/lib/plan/generate';
+// COMBINED-STRESS-1 (2026-09-02) · the race→long-run window and its resolver.
+import {
+  RETURN_TO_LONG_DAYS, returnToLongDays, longRunFactorAfterRace,
+} from '@/lib/plan/combined-stress';
 import {
   DRESS_REHEARSAL,
   DRESS_REHEARSAL_WINDOW_DAYS,
@@ -18145,6 +18149,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     id: 'RACEROLE.recovery-scale',
     binds: [
       'lib/race/race-role.ts#ROLE_POST_QUALITY_FREE_DAYS',
+      'lib/plan/combined-stress.ts#noQualityDaysAfterRace',
       'lib/plan/generate.ts#embedMidBlockRaces',
       'lib/race/race-role-apply.ts#applyRaceRole',
     ],
@@ -18178,13 +18183,107 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           throw new Error(`${cat}: a B effort (${w.b_effort}d) owes more recovery than an honest race (${w.race}d)`);
         }
       }
-      // WIRED · both consumers actually spend the constant.
+      // WIRED · every consumer actually spends the constant.
+      //
+      // D1 (2026-09-02) · THE CHAIN GREW A LINK AND THE CLAIM FOLLOWS IT.
+      // `generate.ts` used to index the table inline. It now asks
+      // `noQualityDaysAfterRace`, which is the single resolver the placement
+      // pass AND `validateComposedPlan` §11 both call — so the plan cannot be
+      // authored under one reading of the window and refused under another.
+      // Both links are checked: the resolver must read the table, and the
+      // embedder must call the resolver. Dropping either would let an
+      // answered role stop changing the window, which is what this claim
+      // exists to prevent.
       for (const [file, needle] of [
-        ['web-v2/lib/plan/generate.ts', 'ROLE_POST_QUALITY_FREE_DAYS[roleCat][role]'],
+        ['web-v2/lib/plan/combined-stress.ts', 'ROLE_POST_QUALITY_FREE_DAYS[row]'],
+        ['web-v2/lib/plan/generate.ts', 'noQualityDaysAfterRace('],
         ['web-v2/lib/race/race-role-apply.ts', 'ROLE_POST_QUALITY_FREE_DAYS[cat][role]'],
       ] as const) {
         if (!sourceOf(file).includes(needle)) {
           throw new Error(`${file} shapes a role's recovery window without ROLE_POST_QUALITY_FREE_DAYS · the answered role would not change the window`);
+        }
+      }
+    },
+  },
+
+  /**
+   * COMBINED-STRESS-1 (2026-09-02) · the race → long-run window (brief §5.4).
+   *
+   * `Research/00b` §"Recovery by Distance" publishes a "Return to long runs"
+   * column that nothing in this engine read until the plan-generation audit
+   * found the owner's block placing a 15.5-mile long run the day after a race.
+   * The column is a different question from "Total recovery days (no quality)"
+   * — one is about intensity, one about duration — and reading either for the
+   * other is the exact Rule 7 shape the doctrine gate exists for.
+   */
+  {
+    id: 'RECOVERY.return-to-long-runs',
+    binds: [
+      'lib/plan/combined-stress.ts#RETURN_TO_LONG_DAYS',
+      'lib/plan/combined-stress.ts#returnToLongDays',
+      'lib/plan/combined-stress.ts#longRunFactorAfterRace',
+      'lib/plan/generate.ts#embedMidBlockRaces',
+    ],
+    doc: 'Research/00b-recovery-protocols.md',
+    anchor: '| Total recovery days (no quality) | Days of zero/very-light running |',
+    claim:
+      'A race pushes the runner\'s next LONG RUN out by the doc\'s own "Return to long runs" ' +
+      'column, scaled by the effort given (§"Recovery by Effort"). The engine table must equal ' +
+      'that column literal-for-literal, week rows converted at 7 days; the response across the ' +
+      'window must be continuous and monotone in days rather than a switch (Rule 9); and the ' +
+      'placement pass must actually spend it.',
+    check({ cite }) {
+      const t = cite.table();
+      const col = 'Return to long runs';
+      /** "Day 5–7" / "Week 2–3 (short)" / "Week 4" → days. */
+      const bandDays = (cell: string): [number, number] => {
+        const weeks = /week/i.test(cell);
+        const [lo, hi] = parseBand(cell);
+        return weeks ? [lo * 7, hi * 7] : [lo, hi];
+      };
+      for (const [engineKey, docRow] of [
+        ['5k', '5K'], ['10k', '10K'], ['hm', 'Half marathon'], ['m', 'Marathon'],
+        // Unreachable in the engine (ULTRA-OUT-1 refuses to embed an ultra and
+        // the target race is never one), stated rather than omitted because an
+        // absent row would read as zero. The deepest ultra row the doc carries.
+        ['ultra', '100-mile'],
+      ] as const) {
+        const band = bandDays(t.cell(docRow, col));
+        const engine = RETURN_TO_LONG_DAYS[engineKey];
+        if (engine[0] !== band[0] || engine[1] !== band[1]) {
+          throw new Error(
+            `RETURN_TO_LONG_DAYS.${engineKey} is [${engine}], Research/00b's "${docRow}" ` +
+            `${col} cell is [${band}]`,
+          );
+        }
+      }
+      // The B scale is the doc's own worked answer for a half: 10 × 0.70 = 7.
+      const bHalf = returnToLongDays(13.1, 'B');
+      if (Math.abs(bHalf - 7) > 1e-9) {
+        throw new Error(`returnToLongDays(half, B) = ${bHalf}, doctrine's 60-70% of day 10 is 7`);
+      }
+      // RULE 9 · continuous and monotone across the whole window. A switch
+      // here is what the branch this replaced was: it stood a long run down
+      // entirely on day 4 and left it untouched on day 5.
+      let prev = -1;
+      for (let d = 0; d <= bHalf + 2; d += 0.1) {
+        const f = longRunFactorAfterRace(d, bHalf);
+        if (f < prev - 1e-9) throw new Error(`longRunFactorAfterRace is not monotone at day ${d}`);
+        if (prev >= 0 && f - prev > 0.1 / bHalf + 1e-9) {
+          throw new Error(`longRunFactorAfterRace steps ${(f - prev).toFixed(4)} over 0.1 day at ${d} · that is a cliff`);
+        }
+        prev = f;
+      }
+      if (longRunFactorAfterRace(bHalf, bHalf) !== 1) {
+        throw new Error('the long run is not fully restored on the doctrine day');
+      }
+      // WIRED · the placement pass spends it, so the table is not decoration.
+      for (const [file, needle] of [
+        ['web-v2/lib/plan/generate.ts', 'returnToLongDays(race.distanceMi, effPriority)'],
+        ['web-v2/lib/plan/generate.ts', 'longRunFactorAfterRace(j, returnDays)'],
+      ] as const) {
+        if (!sourceOf(file).includes(needle)) {
+          throw new Error(`${file} no longer spends ${needle} · the race→long-run window would be decoration`);
         }
       }
     },
