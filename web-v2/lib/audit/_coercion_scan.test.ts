@@ -41,7 +41,7 @@ import {
   alternateIsAbsence, crossesBoundary, findBlindIndirect, maskSource,
 } from './coercion-scan';
 import {
-  COERCION_ARGUED, HANDED_BACK, HANDED_BACK_FAILS,
+  COERCION_ARGUED, HANDED_BACK, HANDED_BACK_FAILS, HANDED_BACK_KNOWN,
   LOAD_BEARING_KNOWN, PERIPHERAL_BASELINE, SCAN_FLOORS,
 } from './coercion-registry';
 
@@ -364,11 +364,66 @@ describe('handed back · real violations in files this session could not edit', 
     expect(HANDED_BACK.length).toBeGreaterThanOrEqual(0);
   });
 
-  it('fails the build once HANDED_BACK_FAILS is flipped', () => {
-    if (!HANDED_BACK_FAILS) return;
+  /* ────────────────────────────────────────────────────────────────────────
+   * THE FLAG DECIDES SEVERITY. IT DOES NOT DECIDE WHETHER THE CHECK RUNS.
+   *
+   * This was, verbatim, the anti-pattern Rule 18 names by example:
+   *
+   *     it('fails the build once HANDED_BACK_FAILS is flipped', () => {
+   *       if (!HANDED_BACK_FAILS) return;      // ← above the only assertion
+   *       expect(HANDED_BACK.map(h => h.id)).toEqual([]);
+   *     });
+   *
+   * FALSIFIED 2026-09-01 by replacing the assertion body with
+   * `expect(1).toBe(2)`: **35 tests passed.** The branch was unreachable dead
+   * code, it had never run, and it could not be falsified — which is exactly
+   * the mechanism that held F-4's seven live Rule 11 collapses open while the
+   * gate printed OK on every build.
+   *
+   * The assertion below ALWAYS executes. `HANDED_BACK_FAILS` chooses what is
+   * allowed, never whether anything is checked:
+   *   · false → only the ids on `HANDED_BACK_KNOWN` may be handed back, so a
+   *             NEW collapse added to the list fails the build today;
+   *   · true  → nothing may be handed back at all.
+   * And the ratchet fails in the other direction too: an id on the list that is
+   * no longer handed back must be deleted.
+   * ──────────────────────────────────────────────────────────────────────── */
+  it('no collapse is handed back that is not on the ratchet · the flag sets severity', () => {
+    const ids = HANDED_BACK.map((h) => h.id);
+    const allowed = HANDED_BACK_FAILS ? [] : HANDED_BACK_KNOWN;
+    const notAllowed = ids.filter((id) => !allowed.includes(id));
     expect(
-      HANDED_BACK.map((h) => h.id),
-      'HANDED_BACK_FAILS is on and these collapses are still present.',
+      notAllowed,
+      HANDED_BACK_FAILS
+        ? '\nHANDED_BACK_FAILS is on and these collapses are still present. Fix them or turn\n'
+          + 'the flag back off with a reason — do not delete the entries.\n'
+        : '\nA collapse was handed back that is not on HANDED_BACK_KNOWN. The list is a\n'
+          + 'ratchet and a staging area, not a home: route this to an owner and fix it,\n'
+          + 'rather than widening the list. Every id on it is a Rule 11 collapse that is\n'
+          + 'LIVE IN PRODUCTION RIGHT NOW.\n',
+    ).toEqual([]);
+  });
+
+  it('no ratchet entry outlives the collapse it names', () => {
+    const ids = new Set(HANDED_BACK.map((h) => h.id));
+    const stale = HANDED_BACK_KNOWN.filter((id) => !ids.has(id));
+    expect(
+      stale,
+      '\nThese ids are on HANDED_BACK_KNOWN but no longer appear in HANDED_BACK. Somebody\n'
+      + 'fixed them, which is the point — delete the lines. A stale exemption is a licence\n'
+      + 'nobody checked (Rule 18 point 4).\n',
+    ).toEqual([]);
+  });
+
+  it('every handed-back entry names an OWNER, not just a direction', () => {
+    // The reason F-4's seven sat for a week: the list recorded WHAT was wrong
+    // and never WHO was going to fix it, so "awaiting an owner" was true of all
+    // seven forever and nothing distinguished a routed one from an abandoned one.
+    const ownerless = HANDED_BACK.filter((h) => !h.owner || h.owner.trim().length < 12).map((h) => h.id);
+    expect(
+      ownerless,
+      '\nA handed-back collapse with no owner is not staged, it is abandoned. Name the\n'
+      + 'system that owns the decision (see docs/BRAIN_CONSTITUTION.md\'s ownership table).\n',
     ).toEqual([]);
   });
 

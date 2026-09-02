@@ -18,17 +18,22 @@
  * reads the same row over the read-only role and asserts these values still
  * match, so this fixture cannot drift from production without a test failing.
  *
- * `EASY_RUN_SPLITS` is NOT in the database. The 2026-08-31 row carries
- * `splits_unreliable: true` and `splits_validation: {deltaS: -110, durationS:
- * 3095, splitsSumS: 2985, droppedCount: 7}` — SEVEN splits were computed at
- * ingest and DROPPED, and the count matches the seven rows the reference case
- * §3 prints exactly. The array here is transcribed from that document, which
- * the runner read off his own watch. It is used as a SYNTHETIC fixture for the
- * general logic, and it is labelled as such rather than presented as a
- * database read. The audit test runs the SAME classifier against the row as it
- * actually stands — with no splits — and asserts the honestly degraded result,
- * so nothing here is smuggling a fabricated array into a claim about
- * production.
+ * `EASY_RUN_SPLITS` is transcribed from the reference case §3, which the
+ * runner read off his own watch, NOT from a database read. When it was
+ * written the 2026-08-31 row carried `splits_unreliable: true` and
+ * `splits_validation.droppedCount: 7` — seven splits computed at ingest and
+ * DROPPED — and the seven rows in §3 matched that count. The row was
+ * re-ingested on 2026-09-01 and now stores seven splits and a 3300 s elapsed
+ * clock of its own; the array here is still the document's, and is still used
+ * as a SYNTHETIC fixture for the general logic rather than presented as a
+ * database read. That the fixture and the row now happen to agree in shape
+ * changes nothing about which is which.
+ *
+ * The pre-re-ingest state has its own fixture in section D below
+ * (`EASY_RUN_DEGRADED`), because the classifier's behaviour on a
+ * splits-dropped row is worth pinning and production's data quality is not
+ * this suite's to pin. `_activity_evidence.audit.test.ts` branches on the
+ * row's live `splits_unreliable` rather than asserting either state.
  *
  * ── WHAT THIS SUITE CANNOT FAIL ON (Rule 22) ───────────────────────────────
  *
@@ -92,10 +97,10 @@ const EASY_RUN_SPLITS: EvidenceSplit[] = [
 ];
 
 /** The scalars are the LIVE row (`runs.id = -41598809443969`). `elapsedSec` is
- *  the ONE value that is not: the reference case §2 cites 55:00 elapsed
- *  against 51:35 moving, and the row stores only the one clock. The audit test
- *  asserts the row genuinely has no elapsed field, so this is a stated
- *  substitution rather than a hidden one. */
+ *  the reference case §2's 55:00 against 51:35 moving; the row stored only the
+ *  moving clock when this was written and has stored 3300 s since the
+ *  2026-09-01 re-ingest, which is the same number. Stated rather than
+ *  smuggled, and the audit test reads the row's clocks itself. */
 const EASY_RUN: RawActivityInput = {
   activityId: 'wko_F1BC81A2-9F57-402A-BB86-CAA8B2593CD3',
   date: '2026-08-31',
@@ -745,5 +750,93 @@ describe('falsifiers · the detectors can tell the difference', () => {
     // The activity is still admissible and still valuable training.
     expect(r.eligibility.admissible).toBe(true);
     expect(r.trainingLoad.stimulus).toBe('aerobic_development');
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * D · THE DEGRADED-ROW CASE, AS A FIXTURE
+ *
+ * WHY THIS LIVES HERE AND NOT IN THE AUDIT TEST.
+ *
+ * `_activity_evidence.audit.test.ts` used to assert this exact behaviour
+ * against the LIVE production row for 2026-08-31, pinning
+ * `splits_unreliable: true` and `droppedCount: 7` as facts. On 2026-09-01 the
+ * row was re-ingested from the watch, arrived with its seven splits and an
+ * elapsed clock, and both assertions went red — on ordinary ingest, with no
+ * code change. The behaviour under test was never production's to own: it is
+ * "what does the classifier do when the splits were computed and DROPPED",
+ * and a fixture can state that input exactly and forever.
+ *
+ * WHAT THIS CANNOT FAIL ON (Rule 22): it cannot tell whether any production
+ * row is still in this shape. That is the audit test's job, and it now
+ * branches on the row's live `splits_unreliable` instead of pinning it.
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/** The 2026-08-31 easy run EXACTLY as `runs.data` held it before the
+ *  2026-09-01 re-ingest: the seven splits reconciled to a 110 s shortfall and
+ *  were dropped, and the row stored only the moving clock. Scalars are the
+ *  live row's; `splits`/`elapsedSec` are the pre-re-ingest state. */
+const EASY_RUN_DEGRADED: RawActivityInput = {
+  ...EASY_RUN,
+  splits: [],
+  elapsedSec: null,
+  splitsUnreliable: true,
+  splitsReconciliation: { splitsSumS: 2985, durationS: 3095, deltaS: -110, count: 7 },
+};
+
+describe('easy run as the row held it before re-ingest · degraded-row fixture', () => {
+  const degraded = () =>
+    classifyActivityEvidence(EASY_RUN_DEGRADED, {
+      plannedWorkout: { intent: 'EASY', sourceType: 'easy' },
+    });
+
+  it('names the dropped splits per signal rather than rejecting the activity', () => {
+    const r = degraded();
+    expect(r.eligibility.admissible).toBe(true);
+    expect(r.eligibility.signalReasons).toContain('SPLITS_DROPPED_AT_INGEST');
+  });
+
+  it('REFUSES the drift read and leaves durability indeterminate (Rule 11)', () => {
+    const r = degraded();
+    expect(r.internalCost.ok).toBe(false);
+    if (!r.internalCost.ok) expect(r.internalCost.reason).toBe('no_hr_curve');
+    expect(r.capacities.durability.kind).toBe('indeterminate');
+    expect(r.capacities.durability.reasons).toContain('NO_HR_CURVE_TO_READ_INTERNAL_COST');
+    // Nothing enters the ledger off a refusal.
+    expect(r.ledger).toHaveLength(0);
+  });
+
+  it('cannot judge continuity, and says so rather than assuming the run was continuous', () => {
+    const r = degraded();
+    expect(r.eligibility.continuity.grade).toBe('unknown');
+    expect(r.eligibility.continuity.reasons).toContain('SPLITS_DROPPED_SO_COVERAGE_UNKNOWN');
+  });
+
+  it('still reaches the §9-11 / §14 conclusions the whole-activity fields support', () => {
+    const r = degraded();
+    expect(r.observedExecution).toBe('EASY');
+    expect(r.capacities.high_intensity.kind).toBe('no_evidence');
+    expect(r.capacities.threshold.kind).toBe('no_evidence');
+    expect(r.capacities.easy_ceiling.kind).toBe('no_evidence');
+    expect(r.anchorMoveCandidate).toBe(false);
+    expect(r.trainingLoad.stimulus).toBe('aerobic_development');
+  });
+
+  it('the SAME row with its splits restored refuses LESS, and never refuses more', () => {
+    // The falsifier for the whole fixture: better data must lift refusals in
+    // one direction only. Nothing that was "no" may become "yes".
+    const rich = easy();
+    const poor = degraded();
+    expect(poor.internalCost.ok).toBe(false);
+    expect(rich.internalCost.ok).toBe(true);
+    expect(poor.capacities.durability.kind).toBe('indeterminate');
+    expect(rich.capacities.durability.kind).toBe('evidence');
+    // …and the three capacities that were `no_evidence` stay `no_evidence`.
+    for (const k of ['high_intensity', 'threshold', 'easy_ceiling'] as const) {
+      expect(poor.capacities[k].kind).toBe('no_evidence');
+      expect(rich.capacities[k].kind).toBe('no_evidence');
+    }
+    expect(poor.anchorMoveCandidate).toBe(false);
+    expect(rich.anchorMoveCandidate).toBe(false);
   });
 });

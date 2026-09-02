@@ -70,6 +70,20 @@
 #   · web-v2/lib/notifications/templates.ts     (lock-screen copy)
 #   · web-v2/lib/coach             (the WEB command centre's composers)
 #   · web-v2/components/faff-app   (the WEB views)
+#   · web-v2/lib/plan              (the `why` on every workout · added 2026-09-01)
+#   · web-v2/lib/watch             (what the wrist renders mid-run)
+#   · web-v2/lib/execution         (the post-run grade)
+#   · web-v2/lib/prescription      (the instruction attached to a session)
+#   · web-v2/lib/race              (race plate, strategy, retrospective)
+#   · web-v2/lib/today             (Today's own composed lines)
+#
+# ── WHAT THIS GATE CANNOT FAIL ON (Rule 22) ─────────────────────────────────
+#
+# It cannot grade tone. Guards 4 and 5 are fixed phrase lists, so a scold or a
+# pat on the back written in words nobody thought to list passes. It cannot see
+# copy authored outside the directories above, which is the failure it just
+# spent a year having (see the 2026-09-01 note). And it cannot see a sentence
+# assembled at run time from fragments that are individually clean.
 #
 # ── 2026-08-21 · the web surface was added ───────────────────────────────────
 #
@@ -104,9 +118,35 @@ targets() {
   find "$ROOT/native-v2/Faff/Faff/ViewsV5" \
        "$ROOT/native-v2/Faff/Faff/DesignV5" \
        -name '*.swift' ! -name '._*' 2>/dev/null
+  # 2026-09-01 · SCOPE WIDENED to close Rule 20's own named gap.
+  #
+  # Rule 20 records it verbatim: "Coach voice — no em dashes. Locked, with a
+  # gate. The gate's scope excluded `lib/plan`, which authors the sentence
+  # attached to every workout, so 1,804 rows carried them." The rule was
+  # written down; the gate was never widened, and the composer went on
+  # emitting them.
+  #
+  # Falsified before widening: `"Great work! You crushed it — keep going."`
+  # placed in `lib/faff/goal-status.ts` FAILED and named the exclamation mark,
+  # the em dash and the hype; the byte-identical string in
+  # `lib/plan/block-preview.ts` PASSED, "189 user-facing source file(s) clean".
+  #
+  # The six directories added below all author sentences a runner reads:
+  #   lib/plan         · the `why` line on every workout, block previews
+  #   lib/watch        · what the wrist renders mid-run
+  #   lib/execution    · the post-run grade a runner reads on Today
+  #   lib/prescription · the pace/HR instruction attached to a session
+  #   lib/race         · race plate, strategy and retrospective copy
+  #   lib/today        · the Today surface's own composed lines
   find "$ROOT/web-v2/lib/faff" \
        "$ROOT/web-v2/app/api/v5" \
        "$ROOT/web-v2/lib/coach" \
+       "$ROOT/web-v2/lib/plan" \
+       "$ROOT/web-v2/lib/watch" \
+       "$ROOT/web-v2/lib/execution" \
+       "$ROOT/web-v2/lib/prescription" \
+       "$ROOT/web-v2/lib/race" \
+       "$ROOT/web-v2/lib/today" \
        -name '*.ts' ! -name '._*' ! -name '*.test.ts' 2>/dev/null
   find "$ROOT/web-v2/components/faff-app" \
        \( -name '*.ts' -o -name '*.tsx' \) \

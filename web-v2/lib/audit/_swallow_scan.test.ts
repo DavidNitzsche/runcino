@@ -25,6 +25,7 @@ import {
 import {
   SWALLOW_EXEMPTIONS,
   EMPTIED_BASELINE,
+  EMPTIED_KNOWN,
   SCAN_FLOORS,
 } from './swallowed-failure-registry';
 
@@ -327,25 +328,82 @@ describe('gate · a database failure may not become an answer', () => {
     expect(dupes.join('\n'), '\nA duplicate id means one of the two entries is never read.\n').toBe('');
   });
 
-  it('the EMPTIED ratchet does not slip', () => {
+  /* ────────────────────────────────────────────────────────────────────────
+   * THE EMPTIED RATCHET · keyed on IDENTITY, not on a count.
+   *
+   * It used to be `emptied.length <= EMPTIED_BASELINE && >= EMPTIED_BASELINE`,
+   * and that is a BUDGET, not a ratchet. Falsified 2026-09-01: one planted
+   * `.catch(() => ({ rows: [] }))` in `lib/plan/generate.ts` FAILED correctly
+   * on its own, and PASSED — "swallowed-failure OK · empty-result baseline
+   * 374" — as soon as an unrelated `.catch` was tidied out of
+   * `lib/strava/connection-status.ts`. A swallowed database read could be
+   * added to the plan engine and paid for with a peripheral cleanup.
+   *
+   * The two assertions below are the same pair `_coercion_scan.test.ts` runs
+   * over `LOAD_BEARING_KNOWN`, and they fail in both directions: a site seen
+   * more often than listed is NEW, a site listed more often than seen is
+   * STALE. Counts per id are significant.
+   *
+   * WHAT THIS CANNOT FAIL ON (Rule 22): it cannot fail on a swallowed read
+   * MOVING between two functions that are both already listed the same number
+   * of times, nor on one of the 374 legacy entries being wrong about whether
+   * it should be there at all — the list is an inventory transcribed from the
+   * scanner, not 374 arguments anybody made.
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  it('no EMPTIED site is added, anywhere', () => {
+    const allowed = new Map<string, number>();
+    for (const id of EMPTIED_KNOWN) allowed.set(id, (allowed.get(id) ?? 0) + 1);
+    const seen = new Map<string, number>();
+    for (const s of emptied) seen.set(s.id, (seen.get(s.id) ?? 0) + 1);
+
+    const added: string[] = [];
+    for (const [id, n] of seen) {
+      const cap = allowed.get(id) ?? 0;
+      if (n > cap) {
+        added.push(
+          `${id} · ${n} site(s), ${cap} on the ratchet\n` +
+          emptied.filter((s) => s.id === id).map(describeSite).join('\n'),
+        );
+      }
+    }
     expect(
-      emptied.length,
-      `\n${emptied.length} sites turn a database failure into an empty result, ` +
-      `and the baseline is ${EMPTIED_BASELINE}.\n\n` +
-      'A new one was added. Route it through lib/db/read.ts — `rowsOrNull` when the ' +
-      'caller can tell the difference, `rowsOrEmpty` (which still logs) when it ' +
-      'genuinely cannot.\n',
-    ).toBeLessThanOrEqual(EMPTIED_BASELINE);
+      added.join('\n'),
+      '\nA database failure is being turned into an empty result at a site the ratchet ' +
+      'does not carry.\n\n' +
+      'Route it through lib/db/read.ts — `rowsOrNull` when the caller can tell the ' +
+      'difference, `rowsOrEmpty` (which still logs) when it genuinely cannot.\n\n' +
+      'Do NOT pay for it by deleting an unrelated entry from EMPTIED_KNOWN. That trade ' +
+      'is the exact defect this list replaced: the old scalar baseline passed a new ' +
+      'swallow inside lib/plan/generate.ts because a peripheral one had been tidied.\n',
+    ).toBe('');
   });
 
-  it('the EMPTIED ratchet tightens when sites are fixed', () => {
+  it('no EMPTIED ratchet entry outlives the site it names', () => {
+    const seen = new Map<string, number>();
+    for (const s of emptied) seen.set(s.id, (seen.get(s.id) ?? 0) + 1);
+    const counted = new Map<string, number>();
+    const stale: string[] = [];
+    for (const id of EMPTIED_KNOWN) {
+      counted.set(id, (counted.get(id) ?? 0) + 1);
+      if ((counted.get(id) ?? 0) > (seen.get(id) ?? 0)) stale.push(id);
+    }
     expect(
-      emptied.length,
-      `\n${emptied.length} EMPTIED sites remain but EMPTIED_BASELINE is still ` +
-      `${EMPTIED_BASELINE}. Lower it to ${emptied.length} in ` +
-      'lib/audit/swallowed-failure-registry.ts.\n\n' +
-      'The ratchet only works if it is re-tightened. Leaving slack in it is how a ' +
-      'line drifts back up.\n',
-    ).toBeGreaterThanOrEqual(EMPTIED_BASELINE);
+      stale.join('\n'),
+      '\nThese ids are on the EMPTIED ratchet but no longer exist in the tree. Somebody ' +
+      'FIXED them, which is the point — delete the lines, and lower EMPTIED_BASELINE to ' +
+      'match, so the list can never drift back up.\n',
+    ).toBe('');
+  });
+
+  it('EMPTIED_BASELINE still summarises EMPTIED_KNOWN', () => {
+    // The shell gate reads the integer with sed on a cold container that has
+    // no TypeScript toolchain, so the two must not be able to disagree.
+    expect(
+      EMPTIED_KNOWN.length,
+      `\nEMPTIED_KNOWN holds ${EMPTIED_KNOWN.length} ids but EMPTIED_BASELINE says ` +
+      `${EMPTIED_BASELINE}. scripts/check-swallowed-failure.sh reads the integer and ` +
+      'would report a figure the list does not support.\n',
+    ).toBe(EMPTIED_BASELINE);
   });
 });

@@ -260,43 +260,92 @@ export const COERCION_ARGUED: readonly CoercionExemption[] = [
 export interface HandedBack {
   id: string;
   reason: string;
+  /**
+   * WHO owns the decision, per `docs/BRAIN_CONSTITUTION.md`'s ownership table.
+   *
+   * Added 2026-09-01. The reason F-4's seven sat unmoved for a week is that the
+   * list recorded WHAT was wrong and never WHO would fix it, so "awaiting an
+   * owner" was equally true of all seven forever and nothing told a routed
+   * entry apart from an abandoned one. The gate now requires this field.
+   */
+  owner: string;
 }
 
 export const HANDED_BACK: readonly HandedBack[] = [
   {
     id: 'lib/plan/adapt.ts::runnerIsCompromised::catch',
+    owner: 'Adaptation Engine · lib/plan/adapt.ts. The four EXTERNAL call sites were '
+      + 'reconciled 2026-08-31 (runnerIsCompromisedFailClosed); this is the INTERNAL half '
+      + 'and needs the five detectors to return a refusal rather than a false, which is a '
+      + 'signature change across all five.',
     reason: 'PERMISSIVE · five detector calls each `.catch(() => null | false)` — detectTrainingGap, hasRecentGapIntent, detectSickEpisodeActive, detectInjuryActive, detectNiggleReported. Any ONE failing reads as "not compromised" internally, before the function itself ever gets a chance to reject — so `runnerIsCompromised` currently cannot reject at all, and a database blip during any one of these five reads is silently absorbed into a clean `{compromised:false}` rather than surfacing as a failure. Still open; still this session\'s to route. NOT the same bug as the four EXTERNAL call sites disagreeing about what to do if the whole function ever DID reject — that was fixed 2026-08-31 via the exported `runnerIsCompromisedFailClosed` wrapper (all four call sites now agree, fail closed), and is a distinct, narrower fix that does nothing for the internal permissiveness recorded here.',
   },
   {
-    id: 'lib/plan/adapt.ts::detectTrainingGap::catch',
-    reason: 'PERMISSIVE · `mileageByDay(...).catch(() => new Map())` leaves lastRunISO null and returns "no training gap", so a failed volume read silently disables the whole layoff and comeback detector, and also feeds the compromised check above.',
-  },
-  {
-    id: 'lib/plan/adapt.ts::detectVolumeOvershoot::catch',
-    reason: 'PERMISSIVE · `observableCoverageDays(...).catch(() => 0)` collapses the chronic volume floor that bounds the shave baseline; the comment two lines above warns that a lower baseline makes the shave fire more readily rather than less.',
-  },
-  {
     id: 'lib/coach/readiness.ts::scoreReadiness::pillars',
+    owner: 'Readiness · lib/coach/readiness.ts. Fixing it means the score itself carrying a confidence or a refusal rather than a number, which is a Runner Model / UI contract change, not a local edit.',
     reason: 'PERMISSIVE · five nullable health inputs each gate BOTH their drag and their ceiling contribution, so a runner whose watch stopped syncing scores exactly the 70 baseline — indistinguishable from a genuinely fine day — and every downstream readiness pullback stays silent. Null ACWR additionally makes the load trim exactly 1.0.',
   },
   {
     id: 'lib/plan/generate.ts::composeForUserInternal::easyPaceSecPerMi',
-    reason: 'PERMISSIVE · `easyPaceSecPerMi && > 0 ? (GENERAL_AEROBIC_MAX_MINUTES*60)/easyPaceSecPerMi : Infinity` at generate.ts:6493 removes the 75-minute general-aerobic day cap entirely for a cold-start runner, so the medium-long pass can leave arbitrarily long easy days. A missing pace disables a ceiling, which is Rule 11\'s exact sentence.',
+    owner: 'Plan Generator · lib/plan/generate.ts. The sibling site (the absolute-time LONG-RUN cap, generate.ts:4544) was fixed 2026-09-01 and now REFUSES loudly instead of skipping silently; this entry is the remaining general-aerobic day cap, whose fix is the same shape and is queued behind it.',
+    reason: 'PERMISSIVE · `easyPaceSecPerMi && > 0 ? (GENERAL_AEROBIC_MAX_MINUTES*60)/easyPaceSecPerMi : Infinity` removes the 75-minute general-aerobic day cap entirely for a cold-start runner, so the medium-long pass can leave arbitrarily long easy days. A missing pace disables a ceiling, which is Rule 11\'s exact sentence. NARROWED 2026-09-01: the same collapse at the 3-hour long-run cap is fixed and no longer part of this entry.',
   },
   {
     id: 'lib/plan/progression-pass.ts::resolveShape::dayBudgetMi',
+    owner: 'Adaptation Engine · lib/plan/progression-pass.ts. Needs the day budget to be resolvable or explicitly refused at the caller, which is a resolveShape signature change shared with the composer.',
     reason: 'PERMISSIVE · clampToWeek runs unconditionally but clampToDay only when `dayBudgetMi != null && > 0`, so a recomputed shape with an unknown day budget is sized against the week and never against the day — the asymmetry the surrounding comment says causes sub_label/spec drift.',
   },
   {
     id: 'lib/plan/adapt.ts::chooseRescheduleDate::weeklyFrequency',
+    owner: 'Adaptation Engine · lib/plan/adapt.ts. Blocked on profile.weekly_frequency being NULL for 8 of 16 production profiles (CLAUDE.md Rule 11) — fixing the collapse without fixing the data would start refusing reschedules for half the accounts.',
     reason: 'PERMISSIVE · three nullable opts each gate a guard-continue, so a null longRunDow makes the LONG RUN DAY a valid makeup slot and a null restDow makes the REST DAY one. Worse, the frequency check needs BOTH weeklyFrequency and ctx.weekRunCount non-null, and the fallback object built for a day with no plan row is literally `{ runCount: 0, qualityOrLong: false, hasRestRow: false, weekRunCount: null }` — the default IS the skip-the-check value, and it is supplied for exactly the empty days a makeup lands on, so a stated frequency is silently unenforced where it matters most.',
   },
+];
+
+/**
+ * The ids that may be handed back, as a RATCHET · 2026-09-01.
+ *
+ * WHY THIS EXISTS. `HANDED_BACK_FAILS` was the only thing standing between
+ * this list and a build failure, and its assertion was dead code:
+ * `_coercion_scan.test.ts` read `if (!HANDED_BACK_FAILS) return;` on the line
+ * ABOVE its only `expect`. Falsified by replacing that expect with
+ * `expect(1).toBe(2)` — 35 tests passed. So the list had no gate at all: a new
+ * collapse could be appended and nothing anywhere would notice, which is how
+ * seven live Rule 11 collapses stayed open while the build printed OK.
+ *
+ * With this list, the assertion always runs and the flag only sets severity:
+ * flag off, an id NOT on this list fails; flag on, ANY id fails. Both
+ * directions are checked, and an id here that has left HANDED_BACK is stale
+ * and fails until deleted.
+ *
+ * 7 → 5 on 2026-09-01. Two were fixed rather than staged:
+ *   · `detectTrainingGap::catch` — `mileageByDay(...).catch(() => new Map())`
+ *     minted an empty history, which reads as "no gap" and silently disabled
+ *     the whole layoff-and-comeback detector (and fed the compromised check).
+ *     It now logs a structured refusal and returns null distinguishably.
+ *   · `detectVolumeOvershoot::catch` — `observableCoverageDays(...).catch(() => 0)`
+ *     collapsed the chronic-volume floor, and a zero LOWERS the bar, so a
+ *     database blip made the shave fire MORE readily. It now refuses the pass.
+ * A third, `generate.ts`'s 3-hour long-run time cap, is also fixed; its
+ * registry entry is narrowed to the general-aerobic cap that remains.
+ *
+ * This list may only shrink.
+ */
+export const HANDED_BACK_KNOWN: readonly string[] = [
+  'lib/plan/adapt.ts::runnerIsCompromised::catch',
+  'lib/coach/readiness.ts::scoreReadiness::pillars',
+  'lib/plan/generate.ts::composeForUserInternal::easyPaceSecPerMi',
+  'lib/plan/progression-pass.ts::resolveShape::dayBudgetMi',
+  'lib/plan/adapt.ts::chooseRescheduleDate::weeklyFrequency',
 ];
 
 /**
  * Set true once the HANDED_BACK sites are routed and fixed. Flipping this makes
  * them hard build failures instead of a printed report. It is meant to be
  * flipped; see the argument above.
+ *
+ * 2026-09-01 · this is no longer the ONLY thing checking the list. It sets
+ * SEVERITY; `HANDED_BACK_KNOWN` above is what makes the check run at all.
  */
 export const HANDED_BACK_FAILS = false;
 
@@ -634,7 +683,11 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/adapt.ts::detectProgressionGate::catch',
   'lib/plan/adapt.ts::detectReadinessPullback::catch',
   'lib/plan/adapt.ts::detectTrainingLead::catch',
-  'lib/plan/adapt.ts::detectVolumeOvershoot::catch',
+  // 2026-09-01 · 2 → 1. `observableCoverageDays(...).catch(() => 0)` is fixed:
+  // the handler now observes the error, logs a structured refusal, and returns
+  // null so the detector declines the pass instead of grading against a
+  // fabricated chronic floor. A zero there LOWERED the bar and made the shave
+  // fire more readily, which is the wrong direction for a reducing mechanism.
   'lib/plan/adapt.ts::detectVolumeOvershoot::catch',
   'lib/plan/adapt.ts::detectVolumeOvershoot::weeklyAvgFromWindow',
   'lib/plan/adapt.ts::rebuildWorkoutDerivations::catch',

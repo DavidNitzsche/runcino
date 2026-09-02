@@ -25,7 +25,9 @@
  *      the underlying change, so the plan follows automatically.
  *
  * This file does the SOFT detection. Pure function · no side effects.
- * Writes happen in the cron route (lib/plan/drift-cron.ts).
+ * Writes happen in the cron route itself,
+ * `app/api/cron/plan-drift/route.ts`. (This said `lib/plan/drift-cron.ts`,
+ * which does not exist and has no successor by that name.)
  *
  * Doctrine:
  *   · Research/00a §plan-adaptation · plans need re-authoring when  // TODO: no matching heading in Research/00a — content exists but heading not anchored

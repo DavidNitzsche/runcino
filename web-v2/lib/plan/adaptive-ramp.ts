@@ -759,7 +759,7 @@ export async function tryAdaptiveBump(
   if (touched <= 0) {
     console.warn(
       `[adaptive-ramp] bump did NOT land · user=${userId.slice(0, 8)} · `
-      + `${action.bumps.length} row(s) proposed, 0 changed — the mutation boundary refused the `
+      + `${action.bumps.length} row(s) proposed, 0 changed · the mutation boundary refused the `
       + 'batch or every target was sealed. Reporting no bump.',
     );
     return null;

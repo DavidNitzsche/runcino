@@ -327,7 +327,7 @@ export function planGeometryHydration(input: HydrationInput): HydrationPlan {
   // old typed number is the report drifting from reality.
   const measuredLost = resolved.provenance !== 'measured';
   const tail = measuredLost
-    ? ` Curated course_library value still wins — stored for the route line, not for the elevation.`
+    ? ` Curated course_library value still wins · stored for the route line, not for the elevation.`
     : '';
 
   return {

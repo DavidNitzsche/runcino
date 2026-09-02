@@ -4541,10 +4541,45 @@ function layoutWeek({
   // permitted pace overshoot the ceiling.
   //
   // Ultra is exempt by the doctrine sentence itself ("ultra athletes go longer").
-  if (longCat !== 'ultra' && easyPaceSecPerMi != null && easyPaceSecPerMi > 0) {
-    const timeCapMi = Math.floor(((LONG_RUN_MAX_HOURS * 3600) / easyPaceSecPerMi) * 2) / 2;
-    // Never cap below the coherence floor a long run needs to still be a long run.
-    if (timeCapMi >= 3) longMi = Math.min(longMi, timeCapMi);
+  //
+  // ── RULE 11 (2026-09-01) · AN UNREADABLE PACE IS A REFUSAL, NOT AN EXEMPTION
+  //
+  // This used to read `if (longCat !== 'ultra' && easyPaceSecPerMi != null &&
+  // easyPaceSecPerMi > 0) { … }` and nothing else. A missing easy pace SILENTLY
+  // DISABLED the 3-hour cap — the safest reading of the data producing the most
+  // aggressive plan, which is Rule 11's exact sentence: "a missing input must
+  // never silently disable a safety mechanism". For a 12:00/mi runner the cap
+  // binds at 15 mi; without it a distance-driven 20-miler is a four-hour long
+  // run, aimed at the cohort least equipped to absorb it.
+  //
+  // The cap still cannot be APPLIED without a pace — there is nothing to divide
+  // by, and inventing one would be worse. What changes is that the skip is now
+  // STATED rather than silent, so a plan authored without this ceiling can be
+  // told apart from one the ceiling did not bind on.
+  if (longCat !== 'ultra') {
+    if (easyPaceSecPerMi != null && easyPaceSecPerMi > 0) {
+      const timeCapMi = Math.floor(((LONG_RUN_MAX_HOURS * 3600) / easyPaceSecPerMi) * 2) / 2;
+      // Never cap below the coherence floor a long run needs to still be a long run.
+      if (timeCapMi >= 3) longMi = Math.min(longMi, timeCapMi);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn('[plan/generate] SAFETY CAP NOT APPLIED', {
+        cap: 'LONG_RUN_MAX_HOURS',
+        capHours: LONG_RUN_MAX_HOURS,
+        site: 'layoutWeek · absolute-time long-run cap',
+        reason: easyPaceSecPerMi == null
+          ? 'easyPaceSecPerMi is null · no easy-band anchor resolved for this week'
+          : 'easyPaceSecPerMi is not a positive number',
+        easyPaceSecPerMi,
+        weekIdx,
+        phase,
+        longMiUncapped: longMi,
+        doctrine: 'Research/00a §"Volume progression rules" · <3.0-3.5 h for marathoners',
+        consequence: 'The long run for this week is sized by DISTANCE only. It may exceed '
+          + `${LONG_RUN_MAX_HOURS} hours at this runner's own easy pace, and nothing downstream `
+          + 'knows the ceiling did not run.',
+      });
+    }
   }
   // RP-FREQ-FLOOR (2026-06-24) · race-prep analogue of MAINT-FREQ-FLOOR. A distance-driven long
   // (marathon/ultra DIST-1 above) can over-consume a small week's budget, pinning the easy days at
@@ -5124,7 +5159,7 @@ function layoutWeek({
       // The instruction IS the session. Run on the flat and this is just
       // another MP long — the eccentric loading, which is the whole point, only
       // happens on the descent.
-      ? `Downhill simulation. Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${mPaceWord} — on terrain that descends like your race. Find the closest gradient you can and run the race-pace section on it. Quads will feel this more than the pace suggests; that is the session working, and it is what stops the same damage arriving at mile 20 on race day.`
+      ? `Downhill simulation. Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${mPaceWord}, on terrain that descends like your race. Find the closest gradient you can and run the race-pace section on it. Quads will feel this more than the pace suggests; that is the session working, and it is what stops the same damage arriving at mile 20 on race day.`
       : `Steady ${longMi - finishMi}mi, then ${finishMi}mi at ${
           finishSeg!.tag === 'HM' ? 'half-marathon pace' : mPaceWord}.`,
   };
@@ -7013,7 +7048,7 @@ function layoutWeek({
         slots[pick]!.notes =
           'Easy to steady. Aerobic strength under fatigue, without the cost of a long run. '
           + (embeddedT
-            ? `Settle in, then run ${mlrTMi}mi at threshold somewhere in the middle and ease back to steady after — embedded, no stop either side. It should not leave you needing a recovery day.`
+            ? `Settle in, then run ${mlrTMi}mi at threshold somewhere in the middle and ease back to steady after. Embedded, no stop either side. It should not leave you needing a recovery day.`
             : 'Let the last few miles drift up if they want to.')
           + (strides ? ` Finish with ${strideReps} relaxed ${STRIDE_DURATION_S}-second strides, full recovery between.` : '');
       }
@@ -12470,7 +12505,7 @@ function authorDownhillSimulation(
   best.day.notes = `${best.day.notes ?? ''} Run the race-pace section on terrain that descends `
     + `like your course. Quads will feel this more than the pace suggests; that is the session `
     + `working, and it is what stops the same damage arriving at mile 20 on race day. Last `
-    + `race-pace downhill of the block — keep the taper's downhill running short and easy.`.trim();
+    + `race-pace downhill of the block. Keep the taper's downhill running short and easy.`.trim();
 }
 
 /** The plan's own race day, or null for a goal-mode or open block. */
@@ -13140,7 +13175,7 @@ async function composeForUserInternal(
       ),
     );
     if (priorPeakRow === null || trailingRow === null) {
-      return { ok: false, reason: 'could not read your training history · try again in a moment' };
+      return { ok: false, reason: 'could not read your training history · the plan you have stands' };
     }
     trailingAvgWeeklyMi = trailingRow?.avg_weekly != null
       ? Number(trailingRow.avg_weekly)
@@ -13804,7 +13839,7 @@ async function loadGeneratorInputs(
   // A plan authored on "no quality detected" when we simply could not look
   // rewrites a mid-build runner back to BASE. Refuse instead.
   if (isMidBlock === null) {
-    return { ok: false, reason: 'could not read your recent training · try again in a moment' };
+    return { ok: false, reason: 'could not read your recent training · the plan you have stands' };
   }
   let recentMi = await recentWeeklyMileage(userId);
   // RULE8-1 · the days the engine itself prescribed as taper / race week /
@@ -13827,7 +13862,7 @@ async function loadGeneratorInputs(
   // history. Refuse — the runner keeps the plan they have, and the refusal is
   // a correct answer with a reason on it, not an empty state.
   if (recentLongRead === null) {
-    return { ok: false, reason: 'could not read your recent runs · try again in a moment' };
+    return { ok: false, reason: 'could not read your recent runs · the plan you have stands' };
   }
   // RULE8-2 · the HABIT value where one could be measured, the literal 28-day
   // max otherwise. `spikeAnchorLongMi` below keeps the literal one for the

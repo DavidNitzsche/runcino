@@ -641,16 +641,17 @@ async function retentionReport(pool: Pool): Promise<RetentionReport> {
     pruneHeartbeatFound: heartbeatAt != null,
     pruneHeartbeatNote: heartbeatAt != null
       ? `Heartbeat found: cron/prune-adaptation-shadow-log last recorded success at ${heartbeatAt}.`
-      : 'No heartbeat row found in ops_alerts for cron/prune-adaptation-shadow-log. This is NOT '
-        + 'necessarily proof the job has never run: reading '
-        + 'app/api/cron/prune-adaptation-shadow-log/route.ts shows it never calls '
-        + 'lib/ops/cron-ledger.ts\'s recordCronSuccess() at all — the route can succeed every night via '
-        + 'its GitHub Actions schedule (.github/workflows/prune-adaptation-shadow-log.yml, 05:00 UTC) '
-        + 'and this query would still read empty. Confirmed empirically: zero rows in ops_alerts for '
-        + 'this source as of this report. Verify via GitHub Actions run history instead, or wire '
-        + 'recordCronSuccess into the route — out of scope for this read-only report. Separately: with '
-        + 'only hours of data and neither bound (180 days / 400 rows) anywhere close to binding yet, '
-        + 'this report also cannot yet empirically prove pruning WORKS — there is nothing to prune.',
+      : 'No heartbeat row found in ops_alerts for cron/prune-adaptation-shadow-log. The route '
+        + 'DOES stamp its own completion — app/api/cron/prune-adaptation-shadow-log/route.ts:44 '
+        + 'calls lib/ops/cron-ledger.ts\'s recordCronSuccess(\'prune-adaptation-shadow-log\') on '
+        + 'its success path — so an empty read here means the job has not completed successfully '
+        + 'since that wiring landed, not that the ledger cannot see it. (This note used to say the '
+        + 'route "never calls recordCronSuccess at all", which was true when written and stopped '
+        + 'being true the same day. A stale caveat turns a real absence into a shrug.) Check the '
+        + 'GitHub Actions run history for .github/workflows/prune-adaptation-shadow-log.yml '
+        + '(05:00 UTC) to tell a job that is not firing from one that is failing. Separately: with '
+        + 'neither bound (180 days / 400 rows) anywhere close to binding yet, this report cannot '
+        + 'yet empirically prove pruning WORKS — there is nothing to prune.',
   };
 }
 

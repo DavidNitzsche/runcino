@@ -130,12 +130,12 @@ export const RACE_OPENING_ALLOWANCE: Readonly<Record<RaceDistanceCategory, Openi
   '5k': {
     firstMileBandSPerMi: [-2, 5], firstMileSPerMi: 2,
     earlyBandSPerMi: [0, 0], earlySPerMi: 0, earlyThroughMi: 1,
-    citation: 'Research/08 §3.1 (:60) + §3.2 (:73-76) — "hit goal pace within 1-2 sec"',
+    citation: 'Research/08 §3.1 (:60) + §3.2 (:73-76) — "hit goal pace within 1-2 sec"',  // ok: citation strings quoting Research doc text; developer-facing provenance, never rendered at a runner
   },
   '10k': {
     firstMileBandSPerMi: [5, 10], firstMileSPerMi: 7,
     earlyBandSPerMi: [0, 0], earlySPerMi: 0, earlyThroughMi: 1,
-    citation: 'Research/08 §3.1 (:61) + §3.3 (:89-92) — 0-2 km GP+5-10, then at GP',
+    citation: 'Research/08 §3.1 (:61) + §3.3 (:89-92) — 0-2 km GP+5-10, then at GP',  // ok: citation strings quoting Research doc text; developer-facing provenance, never rendered at a runner
   },
   'hm': {
     firstMileBandSPerMi: [10, 15], firstMileSPerMi: 12,
@@ -150,7 +150,7 @@ export const RACE_OPENING_ALLOWANCE: Readonly<Record<RaceDistanceCategory, Openi
   'ultra': {
     firstMileBandSPerMi: [10, 20], firstMileSPerMi: 20,
     earlyBandSPerMi: [5, 10], earlySPerMi: 5, earlyThroughMi: 10,
-    citation: 'Research/08 §3.1 (:63) — no ultra row; the marathon band\'s conservative end',
+    citation: 'Research/08 §3.1 (:63) — no ultra row; the marathon band\'s conservative end',  // ok: citation strings quoting Research doc text; developer-facing provenance, never rendered at a runner
   },
 };
 
@@ -478,7 +478,7 @@ export const RACE_WARMUP: Readonly<Record<RaceDistanceCategory, WarmupProtocol>>
     totalMinBand: [5, 10], mode: 'walk', easyMin: 7, easyMiBand: null,
     drillsMin: 3, stridesBand: [0, 0], strides: 0, stridesPace: '',
     corralMinBeforeGun: 15,
-    citation: 'Research/10 (:141-146) — ultra warm-up is 10% of 5K: walk to start',
+    citation: 'Research/10 (:141-146) — ultra warm-up is 10% of 5K: walk to start',  // ok: citation strings quoting Research doc text; developer-facing provenance, never rendered at a runner
   },
 };
 
@@ -570,8 +570,8 @@ export interface RaceCarbRateRow {
  * number the app used to hand EVERY distance, correct only on this row.
  */
 export const RACE_CARB_G_PER_HR: Readonly<Record<RaceDistanceCategory, RaceCarbRateRow>> = {
-  '5k': { bandGPerHr: [0, 0], targetGPerHr: 0, citation: 'Research/18 §11 (:369) — 5K: 0 g/hr' },
-  '10k': { bandGPerHr: [0, 30], targetGPerHr: 0, citation: 'Research/18 §11 (:370) — 10K: 0-30, last third only' },
+  '5k': { bandGPerHr: [0, 0], targetGPerHr: 0, citation: 'Research/18 §11 (:369) — 5K: 0 g/hr' },  // ok: citation strings quoting Research doc text; developer-facing provenance, never rendered at a runner
+  '10k': { bandGPerHr: [0, 30], targetGPerHr: 0, citation: 'Research/18 §11 (:370) — 10K: 0-30, last third only' },  // ok: citation strings quoting Research doc text; developer-facing provenance, never rendered at a runner
   'hm': { bandGPerHr: [30, 60], targetGPerHr: 45, citation: 'Research/18 §11 (:371) + §1 (:27) GI threshold' },
   'm': { bandGPerHr: [60, 90], targetGPerHr: 75, citation: 'Research/18 §11 (:372)' },
   'ultra': { bandGPerHr: [60, 90], targetGPerHr: 75, citation: 'Research/18 §11 (:373)' },

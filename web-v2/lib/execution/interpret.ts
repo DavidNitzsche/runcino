@@ -194,7 +194,7 @@ export function interpretExecution(
         risk: hard ? 'watch' : 'none',
       },
       why: hard
-        ? 'Unplanned hard running. Recorded as load, not as credit — whether it was absorbed is next week s question.'
+        ? 'Unplanned hard running. Recorded as load, not as credit. Whether it was absorbed is next week s question.'
         : 'Unplanned easy running. Recorded as load, not as credit.',
     };
   }
@@ -206,7 +206,7 @@ export function interpretExecution(
       state: 'REPLACED',
       stimulusCompletion: 1,
       evidence: { execution: 'full', adaptation: 'neutral', fitness: 'high', risk: 'watch' },
-      why: 'A race stood in for this session. It carries better fitness evidence than the workout would have, and a higher recovery cost — the rest of the week has to account for it.',
+      why: 'A race stood in for this session. It carries better fitness evidence than the workout would have, and a higher recovery cost. The rest of the week has to account for it.',
     };
   }
 
@@ -258,7 +258,7 @@ export function interpretExecution(
       },
       why: identical
         ? 'Ran as prescribed.'
-        : 'Different shape, same stimulus — the work duration and the intensity both landed where the session intended. That is the session, run another way.',
+        : 'Different shape, same stimulus. The work duration and the intensity both landed where the session intended. That is the session, run another way.',
     };
   }
 
@@ -303,7 +303,7 @@ export function interpretExecution(
         risk: 'meaningful',
       },
       why: failedAtKnownPace
-        ? 'Stopped early at a pace that has been comfortable before. That is worth more than the missed reps — it says something about today, or about the last few weeks.'
+        ? 'Stopped early at a pace that has been comfortable before. That is worth more than the missed reps. It says something about today, or about the last few weeks.'
         : 'Stopped early with the effort coming apart. The work that happened still counts; it does not count as room for more.',
     };
   }

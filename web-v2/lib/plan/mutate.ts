@@ -928,7 +928,7 @@ export async function recordMutationOutcome(rec: {
     );
   } catch (e) {
     console.error(
-      `[plan/mutate] could not record outcome (${rec.outcome}, source=${rec.source}) — ` +
+      `[plan/mutate] could not record outcome (${rec.outcome}, source=${rec.source}) · ` +
       `is db/migrations/150_plan_mutation_rejections.sql applied? ·`,
       e instanceof Error ? e.message : e,
     );

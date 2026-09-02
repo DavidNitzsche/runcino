@@ -23,15 +23,22 @@
  *      day the PACE lever returns HOLD or INSUFFICIENT_EVIDENCE, so this is
  *      not just the one lucky upward day already seen in
  *      `_adaptation_engine.audit.test.ts`.
- *   4. PERSISTENCE POSTURE — the table does not exist (migration 160 is
- *      proposed, not run), so `persistShadowCompareRecord` with the file
- *      fallback allowed writes a real, inspectable file, and
+ *   4. PERSISTENCE POSTURE — `persistShadowCompareRecord` with the file
+ *      fallback EXPLICITLY opted into writes a real, inspectable file, and
  *      `runAndPersistPaceShadowCompare` (what the cron actually calls, file
  *      fallback OFF) reports `skipped` rather than either crashing or
  *      pretending an ephemeral file write is production persistence.
+ *
+ *      The file the opt-in case writes goes to a TEMP DIRECTORY, not to
+ *      `docs/reports/adaptation-shadow-log/`. Before 2026-09-01 the fallback
+ *      defaulted ON and this file did not redirect it, so every read-only run
+ *      of this audit appended three records to a git-tracked report and
+ *      dirtied the tree of whoever ran it. A test must not modify the repo it
+ *      is testing.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const RO = process.env.DATABASE_URL_RO;
@@ -68,11 +75,24 @@ describe.skipIf(!RO)('SHADOW-COMPARE · Part 2, real account', () => {
       record: Awaited<ReturnType<typeof runPaceShadowCompareCycle>>;
       persisted: Awaited<ReturnType<typeof persistShadowCompareRecord>>;
     }> = [];
-    for (let i = 0; i < 3; i += 1) {
-      const record = await runPaceShadowCompareCycle(OWNER, TODAY);
-      const persisted = await persistShadowCompareRecord(record, { allowFileFallback: true });
-      runs.push({ record, persisted });
+    // The file fallback is opted into HERE and nowhere else, and it is pointed
+    // at a temp directory so this read-only audit leaves the repo untouched.
+    const logDir = mkdtempSync(path.join(tmpdir(), 'faff-shadow-log-'));
+    const priorLogDir = process.env.FAFF_SHADOW_LOG_DIR;
+    process.env.FAFF_SHADOW_LOG_DIR = logDir;
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        const record = await runPaceShadowCompareCycle(OWNER, TODAY);
+        const persisted = await persistShadowCompareRecord(record, { allowFileFallback: true });
+        runs.push({ record, persisted });
+      }
+    } finally {
+      if (priorLogDir == null) delete process.env.FAFF_SHADOW_LOG_DIR;
+      else process.env.FAFF_SHADOW_LOG_DIR = priorLogDir;
     }
+    // The redirect worked, rather than the assertions below passing against a
+    // file in `docs/` (Rule 18 — assert the shape of the result).
+    expect(runs[0].persisted.detail.startsWith(logDir)).toBe(true);
 
     const after = await checksumPlanWorkouts(pool, OWNER);
 
@@ -100,8 +120,9 @@ describe.skipIf(!RO)('SHADOW-COMPARE · Part 2, real account', () => {
     console.log(`\nengine.decision across 3 runs: ${runs.map((r) => r.record.engine.decision).join(', ')}`);
     console.log(`3 runs identical (minus resolvedAt): ${rest.every((r) => JSON.stringify(r) === JSON.stringify(first))}`);
 
-    // 3 · PERSISTENCE, file posture (table not created — migration 160 is
-    // proposed, not run).
+    // 3 · PERSISTENCE, file posture. Migration 160 IS applied, so the table
+    // exists and the read-only role's INSERT is refused at the Postgres
+    // permission level; with the fallback opted into, that lands in a file.
     for (const { persisted } of runs) {
       expect(persisted.posture).toBe('file');
     }
@@ -110,6 +131,7 @@ describe.skipIf(!RO)('SHADOW-COMPARE · Part 2, real account', () => {
     const lines = readFileSync(filePath, 'utf8').trim().split('\n');
     console.log(`\npersisted file: ${filePath}`);
     console.log(`lines in file (this run appended 3): ${lines.length}`);
+    expect(lines).toHaveLength(3);
     const lastRecord = JSON.parse(lines[lines.length - 1]);
     expect(lastRecord.userUuid).toBe(OWNER);
     expect(lastRecord.engine.phaseBreakdown.length).toBeGreaterThan(0);

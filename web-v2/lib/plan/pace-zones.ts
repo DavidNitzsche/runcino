@@ -14,8 +14,11 @@
  * `lib/training/vdot.ts`, themselves gated by `PACE.threshold-anchor`,
  * `PACE.interval-offset`'s sibling and `PACE.repetition-is-mile-race-pace` —
  * never re-derived here from an offset or a ratio. Reinventing the table is
- * exactly the mistake `docs/2026-05-19-sim-sweep.md` documents for the
- * deprecated `E = M + 75` / `R = mile-pace` formulas.
+ * exactly the mistake the deprecated `E = M + 75` / `R = mile-pace` formulas
+ * made, before `pacesFromVdot` was re-architected onto `resolveTrainingPaces`.
+ * (This cited `docs/2026-05-19-sim-sweep.md`, which does not exist and has no
+ * successor; CLAUDE.md's branching section carries the account, and the claims
+ * named above are what actually enforce it.)
  *
  * Doctrine gate: `PACE.zone-reanchor-uses-bound-curve-functions` in
  * `lib/doctrine/registry.ts` checks this file's source calls those three

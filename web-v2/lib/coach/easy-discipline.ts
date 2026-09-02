@@ -750,17 +750,56 @@ export async function loadEasyDiscipline(
 
     const maxHr = await loadEffectiveMaxHr(userId, todayISO).catch(() => ({ bpm: null }));
 
-    // The prescription the app actually gave him · newest easy spec wins.
+    /* The prescription the app is actually giving him now · THE ACTIVE PLAN's
+     * nearest UPCOMING easy row.
+     *
+     * ── what this used to be, and what it cost (Rule 14, 2026-09-01) ───────
+     *
+     *   FROM plan_workouts
+     *  WHERE user_uuid = $1 AND type IN ('easy','recovery') …
+     *  ORDER BY date_iso DESC LIMIT 1
+     *
+     * Two defects in one statement, and they compounded:
+     *
+     * 1 · No `plan_id`, no join, no `archived_iso`. `plan_workouts` carries its
+     *     own `user_uuid`, so this read EVERY plan version the runner has ever
+     *     had — 52 of them on the owner's account. ACTIVEPLAN-1 could not see
+     *     it, because that scanner only inspected SQL mentioning
+     *     `training_plans`; it does now.
+     *
+     * 2 · The comment said "newest easy spec wins" and `ORDER BY date_iso DESC`
+     *     picks the FURTHEST-FUTURE SCHEDULED DAY, which is a different
+     *     quantity (Rule 16). An archived long-horizon block outranks a freshly
+     *     authored short one by construction.
+     *
+     * Measured read-only across all seven production users on 2026-09-01:
+     * THREE were reading an archived plan's band. For `606bcc38` the numbers
+     * actually differed — graded against 543 s/mi (9:03/mi) from a plan that no
+     * longer exists, while his active plan prescribes 583 s/mi (9:43/mi). A
+     * runner executing his current plan exactly as written would have been told
+     * he was running his easy days 40 s/mi too fast. The owner was safe only by
+     * accident: his CIM block runs further out than any archived plan.
+     *
+     * NEAREST UPCOMING, not most recent past: this surface grades him against
+     * what he is being asked to run, and a band he has already run past is
+     * history. `date_iso >= today ORDER BY date_iso ASC` says that in one
+     * clause, and it is the only ordering that cannot be satisfied by an
+     * archived block's stale horizon. */
     const spec = await pool
       .query<{ hr_cap_bpm: number | null; lo: number | null; hi: number | null }>(
-        `SELECT (workout_spec->>'hr_cap_bpm')::int              AS hr_cap_bpm,
-                (workout_spec->>'pace_target_s_per_mi_lo')::int AS lo,
-                (workout_spec->>'pace_target_s_per_mi_hi')::int AS hi
-           FROM plan_workouts
-          WHERE user_uuid = $1 AND type IN ('easy','recovery') AND workout_spec IS NOT NULL
-          ORDER BY date_iso DESC
+        `SELECT (pw.workout_spec->>'hr_cap_bpm')::int              AS hr_cap_bpm,
+                (pw.workout_spec->>'pace_target_s_per_mi_lo')::int AS lo,
+                (pw.workout_spec->>'pace_target_s_per_mi_hi')::int AS hi
+           FROM plan_workouts pw
+           JOIN training_plans tp ON tp.id = pw.plan_id
+          WHERE tp.user_uuid = $1
+            AND tp.archived_iso IS NULL
+            AND pw.type IN ('easy','recovery')
+            AND pw.workout_spec IS NOT NULL
+            AND pw.date_iso >= $2
+          ORDER BY pw.date_iso ASC
           LIMIT 1`,
-        [userId],
+        [userId, todayISO],
       )
       .catch(() => ({ rows: [] as { hr_cap_bpm: number | null; lo: number | null; hi: number | null }[] }));
     const s = spec.rows[0];

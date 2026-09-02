@@ -583,7 +583,7 @@ export const PEAK_HOLD_WEEKS: Record<DistCategory, number> = {
   '5k': 0,     // no 5K phase row names a peak phase · build → sharpen → taper
   '10k': 0,    // no 10K phase row names a peak phase · aerobic build → strength → race-specific → taper
   'hm': 0,     // no half phase row names a peak phase · endurance → LT → race-specific → taper
-  'm': 3,      // §"Marathon — Beginner" Phases row: "peak (3 wk)"
+  'm': 3,      // §"Marathon — Beginner" Phases row: "peak (3 wk)"  // ok: Research/22 section names are verbatim doctrine anchors the registry resolves against; rewriting the dash breaks the citation
   'ultra': 4,  // §"50 Mile" Phases row: "race-specific peak (4 wk)" · floor of the ultra rows
 };
 
@@ -955,13 +955,13 @@ export const MLR_MIN_MI = 8;
 export const TIER_TARGETS: Record<DistCategory, Record<GoalTier, TierTarget>> = {
   '5k': {
     elite:        { peakWeeklyMileageBand: [55, 80], peakLongMiBand: [10, 14], qualityPerWeek: 3, longRunShare: 0.18, daysPerWeek: 6, mlrPeakMi: null },
-    advanced:     { peakWeeklyMileageBand: [40, 70], peakLongMiBand: [8, 12],  qualityPerWeek: 3, longRunShare: 0.18, daysPerWeek: 6, mlrPeakMi: null }, // DOCTRINE-8 · Research/22 §"5K — Advanced" 40-70 mpw (was [35,50], floor below the row) · TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS · VARIETY-R3-1 (2026-08-28) · qualityPerWeek 2 → 3: the row's own sample week (Phase III, week 4) runs THREE structured sessions — "6×1000 m @ I", "4×1 mi @ T", "WU + 8×400 m @ R" — and its Key-workout column names "R reps (200-400 m)". The 2 was the answer key disagreeing with the doc's own week; the composer's third-day gate (R3_MIN_TRAINING_DAYS) reads this count.
+    advanced:     { peakWeeklyMileageBand: [40, 70], peakLongMiBand: [8, 12],  qualityPerWeek: 3, longRunShare: 0.18, daysPerWeek: 6, mlrPeakMi: null }, // DOCTRINE-8 · Research/22 §"5K — Advanced" 40-70 mpw (was [35,50], floor below the row) · TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS · VARIETY-R3-1 (2026-08-28) · qualityPerWeek 2 → 3: the row's own sample week (Phase III, week 4) runs THREE structured sessions — "6×1000 m @ I", "4×1 mi @ T", "WU + 8×400 m @ R" — and its Key-workout column names "R reps (200-400 m)". The 2 was the answer key disagreeing with the doc's own week; the composer's third-day gate (R3_MIN_TRAINING_DAYS) reads this count.  // ok: Research/22 section names are verbatim doctrine anchors the registry resolves against; rewriting the dash breaks the citation
     intermediate: { peakWeeklyMileageBand: [25, 35], peakLongMiBand: [6, 8],   qualityPerWeek: 2, longRunShare: 0.24, daysPerWeek: 4, mlrPeakMi: null },
     developing:   { peakWeeklyMileageBand: [16, 24], peakLongMiBand: [3.5, 5], qualityPerWeek: 1, longRunShare: 0.28, daysPerWeek: 3, mlrPeakMi: null },
   },
   '10k': {
     elite:        { peakWeeklyMileageBand: [65, 90], peakLongMiBand: [13, 17], qualityPerWeek: 3, longRunShare: 0.20, daysPerWeek: 6, mlrPeakMi: null },
-    advanced:     { peakWeeklyMileageBand: [50, 75], peakLongMiBand: [13, 15], qualityPerWeek: 3, longRunShare: 0.22, daysPerWeek: 6, mlrPeakMi: null }, // VARIETY-R3-1 (2026-08-28) · qualityPerWeek 2 → 3: §"10K — Advanced"'s sample week (race-specific, week 11) runs "5×1600 m @ 10K pace", "4×1 mi @ T" AND "WU + 10×400 m @ R" · TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS · DOCTRINE-8 · Research/22 §"10K — Advanced" 50-75 mpw (was [40,55]) · XTIER-1 (2026-06-23) · was [10,13] — Research/22:144 10K-Advanced peak long is 13-15mi; the old top sat at research's FLOOR (RC2-2 then drives it into band, clamped ≤30%/week)
+    advanced:     { peakWeeklyMileageBand: [50, 75], peakLongMiBand: [13, 15], qualityPerWeek: 3, longRunShare: 0.22, daysPerWeek: 6, mlrPeakMi: null }, // VARIETY-R3-1 (2026-08-28) · qualityPerWeek 2 → 3: §"10K — Advanced"'s sample week (race-specific, week 11) runs "5×1600 m @ 10K pace", "4×1 mi @ T" AND "WU + 10×400 m @ R" · TIERDAYS-1 (2026-08-19) · daysPerWeek 5 → 6, see the note above TIER_TARGETS · DOCTRINE-8 · Research/22 §"10K — Advanced" 50-75 mpw (was [40,55]) · XTIER-1 (2026-06-23) · was [10,13] — Research/22:144 10K-Advanced peak long is 13-15mi; the old top sat at research's FLOOR (RC2-2 then drives it into band, clamped ≤30%/week)  // ok: Research/22 section names are verbatim doctrine anchors the registry resolves against; rewriting the dash breaks the citation
     intermediate: { peakWeeklyMileageBand: [30, 42], peakLongMiBand: [9, 12],  qualityPerWeek: 2, longRunShare: 0.27, daysPerWeek: 5, mlrPeakMi: null },
     developing:   { peakWeeklyMileageBand: [22, 30], peakLongMiBand: [6, 8],   qualityPerWeek: 1, longRunShare: 0.33, daysPerWeek: 4, mlrPeakMi: null },
   },
@@ -977,9 +977,9 @@ export const TIER_TARGETS: Record<DistCategory, Record<GoalTier, TierTarget>> = 
   'm': {
     // Research/22 §"Marathon — Advanced" · sub-3, 60+ mpw base
     elite:        { peakWeeklyMileageBand: [70, 100], peakLongMiBand: [22, 25], qualityPerWeek: 3, longRunShare: 0.28, daysPerWeek: 7, mlrPeakMi: 17 },
-    advanced:     { peakWeeklyMileageBand: [65, 90],  peakLongMiBand: [22, 24], qualityPerWeek: 2, longRunShare: 0.29, daysPerWeek: 6, mlrPeakMi: 17 }, // DOCTRINE-8 · Research/22 §"Marathon — Advanced" 65-90 mpw / 22-24 mi long (was [55,75]/[20,22])
-    intermediate: { peakWeeklyMileageBand: [45, 55],  peakLongMiBand: [20, 22], qualityPerWeek: 2, longRunShare: 0.35, daysPerWeek: 5, mlrPeakMi: 15 }, // DOCTRINE-8 · Research/22 §"Marathon — Intermediate" 45-55 mpw / 20-22 mi long (was [40,55]/[18,20])
-    developing:   { peakWeeklyMileageBand: [30, 45],  peakLongMiBand: [16, 20], qualityPerWeek: 1, longRunShare: 0.54, daysPerWeek: 5, mlrPeakMi: null }, // DOCTRINE-8b · Research/22 §"Marathon — Beginner" sample peak week: 20mi long in a 37mi week
+    advanced:     { peakWeeklyMileageBand: [65, 90],  peakLongMiBand: [22, 24], qualityPerWeek: 2, longRunShare: 0.29, daysPerWeek: 6, mlrPeakMi: 17 }, // DOCTRINE-8 · Research/22 §"Marathon — Advanced" 65-90 mpw / 22-24 mi long (was [55,75]/[20,22])  // ok: Research/22 section names are verbatim doctrine anchors the registry resolves against; rewriting the dash breaks the citation
+    intermediate: { peakWeeklyMileageBand: [45, 55],  peakLongMiBand: [20, 22], qualityPerWeek: 2, longRunShare: 0.35, daysPerWeek: 5, mlrPeakMi: 15 }, // DOCTRINE-8 · Research/22 §"Marathon — Intermediate" 45-55 mpw / 20-22 mi long (was [40,55]/[18,20])  // ok: Research/22 section names are verbatim doctrine anchors the registry resolves against; rewriting the dash breaks the citation
+    developing:   { peakWeeklyMileageBand: [30, 45],  peakLongMiBand: [16, 20], qualityPerWeek: 1, longRunShare: 0.54, daysPerWeek: 5, mlrPeakMi: null }, // DOCTRINE-8b · Research/22 §"Marathon — Beginner" sample peak week: 20mi long in a 37mi week  // ok: Research/22 section names are verbatim doctrine anchors the registry resolves against; rewriting the dash breaks the citation
   },
   'ultra': {
     // Research/22 §"Ultramarathon" · peak long 22-32 mi or 5-7 hr

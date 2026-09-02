@@ -143,8 +143,10 @@
  * `POST_RACE_RECOVERY_WEEKS['5k']`, which also moves plan composition, so it is
  * a call for that table's owner and not a patch to make here.
  *
- * See `lib/audit/normal-window-exemptions.ts` for the argued exceptions and
+ * See `lib/audit/normal-window-registry.ts` for the argued exceptions (both
+ * the per-file pins and the per-STATEMENT SQL-fingerprint exemptions) and
  * `lib/audit/_normal_window_scan.test.ts` for the gate that keeps this honest.
+ * This pointed at `normal-window-exemptions.ts`, which has never existed.
  */
 import { pool } from '@/lib/db/pool';
 import { distanceCategoryOrNull, type DistanceCategory } from '@/lib/race/distance-category';

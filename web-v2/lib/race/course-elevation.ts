@@ -266,7 +266,7 @@ export function assessGeometryConfidence(
     // authority over a curated value.
     return {
       ...base, confidence: 'low',
-      reasons: ['track carries no coordinates — route cannot be verified'],
+      reasons: ['track carries no coordinates · route cannot be verified'],
       pointsPerMi: null, maxGapM: null,
       maxElevJumpM: maxAbsStep(withEle),
     };
@@ -298,19 +298,19 @@ export function assessGeometryConfidence(
   if (distanceRatio != null && distanceRatio < DISTANCE_MIN_RATIO) {
     return {
       ...out, confidence: 'reject',
-      reasons: [`track covers ${(distanceRatio * 100).toFixed(0)}% of the nominal distance — short of the course`],
+      reasons: [`track covers ${(distanceRatio * 100).toFixed(0)}% of the nominal distance · short of the course`],
     };
   }
   if (distanceRatio != null && distanceRatio > DISTANCE_MAX_RATIO) {
     return {
       ...out, confidence: 'reject',
-      reasons: [`track is ${(distanceRatio * 100).toFixed(0)}% of the nominal distance — longer than the course`],
+      reasons: [`track is ${(distanceRatio * 100).toFixed(0)}% of the nominal distance · longer than the course`],
     };
   }
   if (maxElevJumpM > MAX_ELEV_JUMP_M) {
     return {
       ...out, confidence: 'reject',
-      reasons: [`${maxElevJumpM.toFixed(0)} m elevation jump between consecutive samples — corrupt altitude data`],
+      reasons: [`${maxElevJumpM.toFixed(0)} m elevation jump between consecutive samples · corrupt altitude data`],
     };
   }
 
@@ -323,10 +323,10 @@ export function assessGeometryConfidence(
   };
 
   if (pointsPerMi != null && pointsPerMi < MIN_POINTS_PER_MI) {
-    degrade('low', `only ${pointsPerMi.toFixed(0)} elevation samples per mile — too coarse for gross gain`);
+    degrade('low', `only ${pointsPerMi.toFixed(0)} elevation samples per mile · too coarse for gross gain`);
   }
   if (maxGapM > MAX_GAP_M) {
-    degrade('low', `${maxGapM.toFixed(0)} m gap between consecutive points — signal dropout`);
+    degrade('low', `${maxGapM.toFixed(0)} m gap between consecutive points · signal dropout`);
   }
   if (nominal == null) {
     degrade('medium', 'no nominal distance to check the route against');

@@ -1041,9 +1041,17 @@ export async function buildAdaptationComparisonRecord(
 
 /* ── persistence ──────────────────────────────────────────────────────────
  *
- * `db/migrations/160_adaptation_shadow_log.sql` (drafted tonight by a
- * concurrent session, NOT RUN — pending David's per-statement go per
- * CLAUDE.md's DDL rule) is PACE-lever-only by its own header comment and by
+ * `db/migrations/160_adaptation_shadow_log.sql` IS APPLIED — verified against
+ * production 2026-09-01, `to_regclass('public.adaptation_shadow_log')` resolves
+ * and the table holds rows. This paragraph said "drafted tonight by a
+ * concurrent session, NOT RUN — pending David's per-statement go", which was
+ * true when written and is not now; the argument below does not depend on it
+ * either way, because the table being PACE-lever-only is a statement about its
+ * COLUMN SHAPE, not about whether it exists. Corrected rather than left,
+ * because a reader who trusts "NOT RUN" concludes the fallback is the only
+ * option available rather than the only option that FITS.
+ *
+ * It is PACE-lever-only by its own header comment and by
  * its column shape: `engine_previous`/`engine_proposed` are typed as
  * `PaceMagnitude`, `phase_breakdown` as `PacePhaseOutcome[]`. This record is
  * a DURATION-lever absorption/execution comparison with a materially

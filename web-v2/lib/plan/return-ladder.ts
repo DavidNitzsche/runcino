@@ -177,6 +177,6 @@ export function advancementGateLine(state: ReturnLadderState): string {
       : `${remaining} more silent sessions here and the next stage opens.`;
   }
   return state.advanceQueued
-    ? 'Silent again next time out and the stage moves — one advance a week.'
+    ? 'Silent again next time out and the stage moves. One advance a week.'
     : 'Silent during and silent the next morning moves you on. Anything else repeats the stage.';
 }
