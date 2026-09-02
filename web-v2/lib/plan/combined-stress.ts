@@ -18,6 +18,9 @@
  *                     → `combinedStressFindings`
  *   · the typed compromise a placement pass records when it resolves one
  *                     → `PlacementCompromise`
+ *   · whether a week advanced ONE primary stressor or two, and the typed
+ *     exception that excused it if it advanced two
+ *                     → `compoundProgressionCheck` / `CompoundStressExemption`
  *
  * WHAT IT DOES NOT OWN. It does not place anything and it does not size
  * anything. `embedMidBlockRaces` places; `layoutWeek` sizes. This file states
