@@ -249,3 +249,219 @@ describe('absorption predicate · the loser marker is mergedIntoId', () => {
     expect(stale, 'the allowlist may shrink; a migrated file must be removed from it').toEqual([]);
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * IDENTITY-1 · an identity lookup names the canonical population
+ *
+ * The sibling half of the rule above, and the half nothing watched.
+ *
+ * `runIdentityMatchSql` answers "WHICH run" and its own doc comment says so:
+ * "callers add their own `user_uuid` and canonical-row predicates: this
+ * fragment answers 'which run', never 'whose' (Rule 14 stays the caller's to
+ * state)." A sentence in a doc comment is documentation, not enforcement
+ * (Rule 20's corollary), and on 2026-09-02 one of its two callers had not
+ * stated it.
+ *
+ * What that cost, measured on production the same day with `faff_readonly`:
+ *
+ *   274 rows for the reference runner · 156 canonical · 118 MERGED LOSERS
+ *   0 of the 118 loser id strings also match a canonical row, so every one of
+ *     them resolved to the LOSER in `loadRunDetail`, deterministically.
+ *   Against the canonical survivor those losers differ on splits (44 of 118 —
+ *     most carrying ZERO splits against 5-13 on the survivor), average heart
+ *     rate (54), shoe (66) and elevation (58).
+ *
+ * `/api/runs/19966462921` — Strava's id for the 2026-08-30 13.49 mi long run —
+ * drew 0 splits, no average HR, 124 ft of climb and no weather. The canonical
+ * row for that same physical run carries 13 splits, 159 bpm, 230 ft and
+ * weather. One run, two answers, and the screen drew the discarded half.
+ *
+ * ── WHAT THIS CANNOT FAIL ON (Rule 22) ────────────────────────────────────
+ *
+ *  1. A query that reaches `runs` by identity WITHOUT calling the shared
+ *     fragment. It keys on the fragment's name, so a hand-typed
+ *     `data->>'activityId' = $2` is invisible here. `_run_shape_lint.test.ts`
+ *     is what pushes callers onto the fragment; this file assumes that worked.
+ *  2. Whether following `mergedIntoId` returns the RIGHT canonical row. It
+ *     checks that the population is named, not that the pointer is sound.
+ *  3. Anything about the runner scope. `user_uuid` is Rule 14's other half
+ *     and has its own scanners.
+ *  4. Multi-hop pointer chains. None exist today (checked: 0 rows whose
+ *     mergedIntoId target is itself absorbed) and nothing here would notice
+ *     if one appeared.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/** The shared fragment whose callers this rule watches. */
+const IDENTITY_FRAGMENT = 'runIdentityMatchSql(';
+
+/** Either spelling of the one canonical predicate. `CANONICAL_ROW_SQL` is
+ *  re-exported by run-shape.ts, so both names reach the same string, and the
+ *  first test in this file already proves the two agree. */
+const CANONICAL_MARKERS = ['CANONICAL_ROW_SQL', 'runNotMergedSql'];
+
+/**
+ * Every backtick template literal in a source file, un-nested.
+ *
+ * Crude on purpose: it tracks backticks and `${`/`}` depth and nothing else,
+ * because the only thing it has to get right is "which SQL string is this
+ * `${runIdentityMatchSql('$2')}` sitting inside". Escaped backticks are
+ * honoured; a backtick inside a `//` comment is not, which is why the caller
+ * strips comments first.
+ */
+function templateLiterals(src: string): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < src.length) {
+    if (src[i] !== '`') { i++; continue; }
+    let j = i + 1;
+    let depth = 0;
+    while (j < src.length) {
+      const c = src[j];
+      if (c === '\\') { j += 2; continue; }
+      if (depth === 0 && c === '`') break;
+      if (c === '$' && src[j + 1] === '{') { depth++; j += 2; continue; }
+      if (depth > 0 && c === '}') { depth--; j++; continue; }
+      j++;
+    }
+    out.push(src.slice(i + 1, j));
+    i = j + 1;
+  }
+  return out;
+}
+
+/**
+ * Statements allowed to call the identity fragment WITHOUT the canonical
+ * predicate, keyed on a fingerprint of the statement itself rather than the
+ * file — a file can legitimately hold both shapes, and `run-state.ts` does.
+ *
+ * RATCHET. May shrink, never grow, and a fingerprint that no longer matches
+ * an unguarded statement fails as stale.
+ */
+const IDENTITY_ALLOW: Array<{ file: string; statement: string; reason: string }> = [
+  {
+    file: 'lib/runs/canonical-ref.ts',
+    statement: 'AS merged_into_id',
+    reason:
+      'Rung 2 of resolveCanonicalRunRowId, the resolver this rule exists to point ' +
+      'callers at. This statement exists PRECISELY to find a merged loser — it is how a ' +
+      'stale Strava id keeps resolving instead of 404ing. It reads the POINTER and no run ' +
+      'data; the row handed back is fetched by rung 3 below it, which does carry ' +
+      'CANONICAL_ROW_SQL. Adding the predicate here would make the rung unreachable and ' +
+      're-404 all 118 of the reference runner\'s absorbed ids.',
+  },
+];
+
+describe('IDENTITY-1 · a lookup by run id names the canonical population', () => {
+  const scanned = sourceFiles();
+
+  function unguardedStatements(): Array<{ file: string; sql: string }> {
+    const out: Array<{ file: string; sql: string }> = [];
+    for (const abs of scanned) {
+      const src = fs.readFileSync(abs, 'utf8');
+      if (!src.includes(IDENTITY_FRAGMENT)) continue;
+      for (const sql of templateLiterals(stripComments(src))) {
+        if (!sql.includes(IDENTITY_FRAGMENT)) continue;
+        if (CANONICAL_MARKERS.some((m) => sql.includes(m))) continue;
+        out.push({ file: rel(abs), sql });
+      }
+    }
+    return out;
+  }
+
+  /** Every statement that calls the fragment, guarded or not — the liveness
+   *  denominator. A scan that stopped matching would read zero here. */
+  function allIdentityStatements(): Array<{ file: string; sql: string }> {
+    const out: Array<{ file: string; sql: string }> = [];
+    for (const abs of scanned) {
+      const src = fs.readFileSync(abs, 'utf8');
+      if (!src.includes(IDENTITY_FRAGMENT)) continue;
+      for (const sql of templateLiterals(stripComments(src))) {
+        if (sql.includes(IDENTITY_FRAGMENT)) out.push({ file: rel(abs), sql });
+      }
+    }
+    return out;
+  }
+
+  it('the scan reads real source and really finds the fragment', () => {
+    expect(scanned.length,
+      'the walk saw almost nothing. An empty walk reports clean, which is the worst ' +
+      'outcome available because it also reports confidence.',
+    ).toBeGreaterThanOrEqual(MIN_FILES_SCANNED);
+
+    const all = allIdentityStatements();
+    console.log(`\n=== IDENTITY-1 · ${scanned.length} files walked, ` +
+                `${all.length} statements call ${IDENTITY_FRAGMENT} ===`);
+    for (const s of all) console.log(`  ${s.file}`);
+    // Three today: loadRunDetail's canonical rung, loadRunDetail's absorbed
+    // rung, and lib/postrun/load.ts. Zero means the extractor or the fragment
+    // name has moved and this whole block has quietly stopped meaning anything.
+    expect(all.length,
+      'no statement calls runIdentityMatchSql. Either the fragment was renamed or the ' +
+      'template-literal extractor no longer sees SQL — either way this rule is dark.',
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  it('every identity lookup carries the canonical predicate, or an argued exemption', () => {
+    const findings = unguardedStatements()
+      .filter((f) => !IDENTITY_ALLOW.some(
+        (a) => a.file === f.file && f.sql.includes(a.statement),
+      ));
+    expect(findings.map((f) => `${f.file} :: ${f.sql.replace(/\s+/g, ' ').trim().slice(0, 120)}`),
+      'a query resolves a run BY ID and never says which rows it will accept. ' +
+      '43% of the reference runner\'s rows are merge losers and every loser id is ' +
+      'unique to the loser, so this is not a rare edge — it is the common case. ' +
+      'Add `AND ${CANONICAL_ROW_SQL}`; if the id must still resolve, follow ' +
+      'data.mergedIntoId to the survivor the way loadRunDetail does.',
+    ).toEqual([]);
+  });
+
+  it('the identity allowlist is a ratchet with no stale entries', () => {
+    const unguarded = unguardedStatements();
+    // Breadth is measured against EVERY identity statement in the file, not
+    // only the unguarded ones. Measuring against the unguarded set alone
+    // cannot see an over-broad fingerprint while a file holds exactly one
+    // unguarded statement — which is the situation here, and which is how
+    // falsifier F4 initially passed with the fingerprint widened to
+    // 'FROM runs'. Rule 18 point 3: the exemption must excuse the violating
+    // statement and nothing else.
+    const all = allIdentityStatements();
+    const stale: string[] = [];
+    for (const a of IDENTITY_ALLOW) {
+      expect(a.reason.length, `${a.file} exemption is too thin to be an argument`)
+        .toBeGreaterThan(80);
+      const breadth = all.filter((u) => u.file === a.file && u.sql.includes(a.statement));
+      const hit = unguarded.filter((u) => u.file === a.file && u.sql.includes(a.statement));
+      if (breadth.length > 1) {
+        stale.push(`${a.file} :: fingerprint matches ${breadth.length} identity statements — narrow it`);
+      } else if (hit.length === 0) {
+        stale.push(`${a.file} :: the exempted statement is guarded or gone — delete this entry`);
+      }
+    }
+    expect(stale, 'an exemption excuses exactly one live statement, or it goes').toEqual([]);
+  });
+
+  it('the extractor sees both shapes it has to see', () => {
+    // Falsification floor, both directions, on the two literal shapes that
+    // really occur. A guarded statement must NOT read as a finding and an
+    // unguarded one MUST — an extractor that returned [] would pass the
+    // second test above with an empty list and no sign anything was wrong.
+    const GUARDED =
+      "const q = `SELECT id FROM runs\n  WHERE user_uuid = $1\n    AND ${runIdentityMatchSql('$2')}"
+      + '\n    AND ${CANONICAL_ROW_SQL}\n  LIMIT 1`;';
+    const UNGUARDED =
+      "const q = `SELECT id FROM runs\n  WHERE user_uuid = $1\n    AND ${runIdentityMatchSql('$2')}"
+      + '\n  LIMIT 1`;';
+    const litsG = templateLiterals(stripComments(GUARDED));
+    const litsU = templateLiterals(stripComments(UNGUARDED));
+    expect(litsG.length, 'the extractor found no template literal at all').toBe(1);
+    expect(litsU.length, 'the extractor found no template literal at all').toBe(1);
+    expect(litsG[0].includes(IDENTITY_FRAGMENT)).toBe(true);
+    expect(CANONICAL_MARKERS.some((m) => litsG[0].includes(m)),
+      'a guarded statement read as unguarded — the rule would cry wolf and be deleted',
+    ).toBe(true);
+    expect(litsU[0].includes(IDENTITY_FRAGMENT)).toBe(true);
+    expect(CANONICAL_MARKERS.some((m) => litsU[0].includes(m)),
+      'an unguarded statement read as guarded — the rule cannot fail',
+    ).toBe(false);
+  });
+});

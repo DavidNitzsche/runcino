@@ -23,7 +23,8 @@ import { loadRunDetail } from '@/lib/coach/run-state';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
-import { runIdentityMatchSql } from '@/lib/runs/run-shape';
+import { CANONICAL_ROW_SQL } from '@/lib/runs/run-shape';
+import { resolveCanonicalRunRowId } from '@/lib/runs/canonical-ref';
 import { loadPostRunExperience } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 
@@ -102,16 +103,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'bad_shoe_id', reason: 'That is not a shoe in your garage.' }, { status: 400 });
     }
     try {
-      // First try the direct match (real Strava activityId in data.id /
-      // data.activityId, or the table's row id).
-      let updated = await pool.query(
-        `UPDATE runs
-            SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
-          WHERE user_uuid = $2
-            AND ${runIdentityMatchSql('$3')}
-       RETURNING id, shoe_id`,
-        [shoeId, userId, id]
-      );
+      /* First try the direct match, through the ONE resolver that answers
+       * "which row does this id mean" (lib/runs/canonical-ref.ts).
+       *
+       * 2026-09-02 · this was `runIdentityMatchSql` with no canonical
+       * predicate, so for the 118 absorbed rows on the reference runner's
+       * account — 43% of them, and no loser id collides with a canonical one
+       * — the shoe was written onto the merge LOSER. `lib/shoe/mileage.ts`
+       * computes shoe mileage from CANONICAL runs, so those miles never
+       * accrued and the pick did not come back on the next read: the same
+       * symptom the 2026-05-27 synthetic-id fallback below was added for
+       * ("I selected it, clicked off, came back. not there."), from a
+       * different cause. 66 of the 118 pairs already disagree on shoe_id.
+       *
+       * The resolver follows `mergedIntoId` rather than just adding the
+       * predicate, so an absorbed id still assigns — it assigns to the
+       * survivor, which is the row every reader will look at. */
+      const ref = await resolveCanonicalRunRowId(userId, id);
+      let updated = ref.ok
+        ? await pool.query(
+            `UPDATE runs
+                SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
+              WHERE user_uuid = $2
+                AND id::text = $3
+           RETURNING id, shoe_id`,
+            [shoeId, userId, ref.rowId]
+          )
+        : { rowCount: 0 } as { rowCount: number };
       // 2026-05-27: synthetic-id fallback. Watch-synced runs without a
       // first-party Strava id are referenced by "YYYY-MM-DD-mi" — that
       // matches the GET fallback in loadRunDetail. Without this, PATCH
@@ -126,7 +144,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             `UPDATE runs
                 SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
               WHERE user_uuid = $2
-                AND NOT (data ? 'mergedIntoId')
+                AND ${CANONICAL_ROW_SQL}
                 AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
                 AND ABS((data->>'distanceMi')::numeric - $4::numeric) < 0.05
            RETURNING id, shoe_id`,
@@ -148,7 +166,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             `UPDATE runs
                 SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
               WHERE user_uuid = $2
-                AND NOT (data ? 'mergedIntoId')
+                AND ${CANONICAL_ROW_SQL}
                 AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
            RETURNING id, shoe_id`,
             [shoeId, userId, dateMatch[1]]
