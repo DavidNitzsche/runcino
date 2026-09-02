@@ -22,9 +22,8 @@ import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runt
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import type { WorkoutSpec } from '@/lib/faff/types';
-import { heatAdjustedStatus } from './heat-band';
+import { fellShortShare, resolveWorkoutVerdict } from '@/lib/execution/verdict';
 import { roundTo } from '@/lib/format/run';
-import { coherentElapsedSec } from '@/lib/runs/coherence';
 
 export interface GlanceWeekDay {
   date: string;            // ISO YYYY-MM-DD
@@ -213,61 +212,27 @@ async function computeTodayExecution(
   const overreach = todayRow.plannedMi > 0 && todayRow.doneMi >= todayRow.plannedMi * 1.25;
 
   if (row?.value) {
-    let payload: unknown = row.value;
-    if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
-    const p = payload as { phases?: Array<Record<string, unknown>> } | null;
-
-    // Heat-adjust the target before judging, exactly as loadPhaseBreakdown
-    // (the phase panel) does — otherwise a run executed correctly for the heat
-    // reads "short" on the done-state while the panel shows it "on" (Jun 2/Jun 4
-    // both flip under ~8-11% slowdown). The watch's on-device `verdict` is
-    // weather-unaware, so we recompute from target/actual + the run's slowdown.
-    let slowdownPct = 0;
-    // 2026-08-24 · was `(data->>'durationSec')::int AS dur`, which is null on
-    // 133 of the 256 canonical rows — those carry their wall clock in
-    // `elapsedTimeS` instead. A null `durationS` makes `judgeWeather` charge
-    // the FULL marathon-distance heat penalty (Research/06 · the Maughan table
-    // is anchored there and scaled down for shorter efforts), and that number
-    // is the allowance this function then grades the runner's pace against.
-    // Too big an allowance forgives a genuine miss. The whole row comes back
-    // now so the reconciler answers the clock question once, the same way the
-    // recap route and run detail ask it.
-    const wr = (await pool.query(
-      `SELECT data
-         FROM runs WHERE user_uuid = $1 AND data->>'date' = $2
-           AND NOT (data ? 'mergedIntoId')
-         LIMIT 1`,
-      [userId, today],
-    ).catch(() => ({ rows: [] }))).rows[0] as { data?: Record<string, unknown> | null } | undefined;
-    const wrWeather = wr?.data && typeof wr.data === 'object'
-      ? (wr.data as Record<string, unknown>).weather as Record<string, unknown> | null | undefined
-      : null;
-    if (wrWeather) {
-      const w = wrWeather;
-      const { judgeWeather } = await import('./weather-adjust');
-      slowdownPct = judgeWeather({
-        tempF: typeof w.temp_f === 'number' ? w.temp_f : null,
-        tempF_peak: typeof w.temp_f_peak === 'number' ? w.temp_f_peak : null,
-        humidityPct: typeof w.humidity_pct === 'number' ? w.humidity_pct : null,
-        conditions: typeof w.conditions === 'string' ? w.conditions : null,
-        cloudCoverPct: typeof w.cloud_cover_pct === 'number' ? w.cloud_cover_pct : null,
-        windMph: typeof w.wind_mph === 'number' ? w.wind_mph : null,
-        durationS: coherentElapsedSec(wr!.data),
-      }).slowdownPct ?? 0;
-    }
-
-    // Only the WORK (quality) phases define the session. Cutting a warmup or
-    // cooldown short is NOT "coming up short" — David's call. 'short' fires when
-    // the quality block was cut short (a work phase didn't complete) or missed
-    // pace AFTER the heat allowance.
-    const workPhases = (Array.isArray(p?.phases) ? p!.phases : []).filter((ph) => ph.type === 'work');
-    const workCutShort = workPhases.some((ph) => ph.completed === false);
-    const ranWork = workPhases.filter((ph) => Number(ph.targetPaceSPerMi) > 0 && Number(ph.actualPaceSPerMi) > 0);
-    // Heat-honest miss · mirrors loadPhaseBreakdown's band (shared helper).
-    const missed = ranWork.filter((ph) =>
-      heatAdjustedStatus(Number(ph.targetPaceSPerMi), Number(ph.actualPaceSPerMi), slowdownPct) === 'slow'
-    ).length;
-    if (workCutShort || (ranWork.length > 0 && missed / ranWork.length >= 0.34)) return 'short';
+    /* VERDICT-1 (2026-09-01) · THE canonical grade, not a local comparator.
+     *
+     * This walked the work phases itself through `heatAdjustedStatus` at its
+     * default width of ten, after a weather query whose only purpose was to
+     * feed a heat allowance that comparator had stopped reading on
+     * 2026-08-27. The phase panel graded the same reps at eight. One session,
+     * two done-states. The grade is resolved once, as the session the plan
+     * row says it was, and this reads it.
+     *
+     * Only the WORK (quality) phases count — cutting a warm-up or cool-down
+     * short is NOT "coming up short" (David's call), and the resolver's
+     * ceiling phases do not vote. 'short' when a work phase did not complete,
+     * or at least about a third of the graded reps fell short — a single
+     * off-rep in a long set is still "nailed". */
+    const grade = resolveWorkoutVerdict({
+      type: todayRow.plannedType,
+      spec: (todayRow.plannedSpec ?? null) as Record<string, unknown> | null,
+      phases: row.value,
+    });
+    const shortShare = fellShortShare(grade);
+    if (grade.work.incomplete || (shortShare != null && shortShare >= 0.34)) return 'short';
   }
   // No negative signal from the phases → overreach (volume) or a clean hit.
   return overreach ? 'over' : 'nailed';

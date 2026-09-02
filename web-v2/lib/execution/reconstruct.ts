@@ -92,7 +92,8 @@ import {
   type RunData,
 } from '@/lib/runs/run-shape';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
-import type { WirePhaseVerdict } from '@/lib/training/execution-semantics';
+import { classifySession, type PhaseVerdict } from '@/lib/training/execution-semantics';
+import { gradeStoredPhases } from './verdict';
 import { readProgressionSpec } from '@/lib/plan/progression-spec';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
 import {
@@ -373,8 +374,12 @@ export interface ActualRead {
   /** Share of graded work time inside the pace band, per the device's own
    *  counters. Null when no work phase carried them. */
   toleranceShare: number | null;
-  /** The watch's per-phase grades over the work phases, in order. */
-  workVerdicts: WirePhaseVerdict[];
+  /** THE canonical per-phase grades over the work phases, in order — from
+   *  `lib/execution/verdict.ts`, graded as the session the plan row names.
+   *  VERDICT-1 (2026-09-01): this used to carry the DEVICE'S stored word,
+   *  which on the owner's 2026-09-01 row was `drifted / drifted / drifted /
+   *  missed` for a set the server grades hit / hit / hit / fast. */
+  workVerdicts: PhaseVerdict[];
 }
 
 /**
@@ -394,9 +399,10 @@ export function actualStimulus(
   const workPhases = phases.filter((p) => p.type === 'work');
   const watchStatus = runWatchStatus(runData) ?? ctx.watchStatusFallback ?? null;
   const toleranceShare = workToleranceShare(phases);
-  const workVerdicts = workPhases
-    .map((p) => p.verdict)
-    .filter((v): v is NonNullable<NormalizedPhase['verdict']> => v != null);
+  const workVerdicts = gradeStoredPhases(
+    runData.phases,
+    classifySession(String(session.type ?? ''), (session.spec ?? null) as Record<string, unknown> | null),
+  ).phases.filter((p) => p.type === 'work').map((p) => p.verdict);
 
   const finish = (
     basis: ActualBasis,

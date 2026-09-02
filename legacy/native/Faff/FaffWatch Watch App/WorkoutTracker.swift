@@ -210,6 +210,27 @@ final class WorkoutTracker: NSObject, ObservableObject {
     /// workout target of 6:31). Defaults to a threshold pace.
     var mockCenterPace = 391
 
+    /// The heart rate the simulator mock oscillates around, bpm.
+    ///
+    /// HR-SEMANTICS-2 (2026-09-01) · the mock was pinned at 164 ± 6, which is
+    /// a plausible threshold heart rate and is BELOW every bail and abort
+    /// trigger the plan authors (the owner's CIM abort is 163 and his
+    /// threshold bail 173). So the HR-metric safety boards could not be driven
+    /// on a simulator at all: `_SessionSim` ran a real engine against a stream
+    /// that was incapable of breaching them, and the boards had never been
+    /// seen. Settable so a session can be run at a heart rate that trips them.
+    var mockCenterHr = 164
+
+    /// How far the mock's pace wanders either side of `mockCenterPace`, s/mi.
+    ///
+    /// The default 18 is WIDER than a race band (±12), so the mock drifts in
+    /// and out of the band and `milesAdrift` moves. That is realistic for a
+    /// drifting runner and it MASKS the case that matters for an HR rule: a
+    /// runner HOLDING pace while heart rate climbs. Set it small to model
+    /// that — `milesAdrift` then never changes and only the HR stream moves,
+    /// which is the only way to isolate an HR-metric safety board.
+    var mockPaceDriftS = 18.0
+
     // ── Aggregates for the completion payload ─────────────────────
     private(set) var maxHr: Int = 0
     private var hrSum = 0
@@ -895,9 +916,9 @@ final class WorkoutTracker: NSObject, ObservableObject {
                 guard let self else { return }
                 if self.mockPaused { try? await Task.sleep(for: .seconds(1)); continue }
                 t += 1
-                let drift = Int((sin(t / 7) * 18).rounded())
+                let drift = Int((sin(t / 7) * self.mockPaceDriftS).rounded())
                 self.paceSPerMi = self.mockCenterPace + drift
-                self.heartRate = 164 + Int((sin(t / 11) * 6).rounded())
+                self.heartRate = self.mockCenterHr + Int((sin(t / 11) * 6).rounded())
                 self.cadence = 181 + Int((sin(t / 5) * 3).rounded())
                 // Mock distance accumulates at ~0.0045 mi/sec at warp=1.
                 // Scale up when warped so distance + time stay in sync.

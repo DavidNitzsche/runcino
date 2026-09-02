@@ -369,7 +369,12 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/coach/easy-discipline.ts::loadEasyDiscipline',
   'lib/coach/episode-log.ts::<module>',
   'lib/coach/episode-log.ts::<module>',
-  'lib/coach/glance-state.ts::computeTodayExecution',
+  // One, not two, since 2026-09-01: `computeTodayExecution` no longer runs the
+  // weather query it used to swallow. That query existed only to feed a heat
+  // allowance the pace comparator stopped reading on 2026-08-27, and the whole
+  // comparator is gone — the done-state reads the canonical verdict
+  // (`lib/execution/verdict.ts`) instead. The remaining entry is the
+  // coach_intents read.
   'lib/coach/glance-state.ts::computeTodayExecution',
   'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadGlanceState',
@@ -644,7 +649,7 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // a TYPE (`PaceAnchorRead`'s branch carries no `anchors` field) rather than a
 // swallowed read. One fewer site, and the state it used to lose is now
 // something the caller cannot fail to branch on.
-export const EMPTIED_BASELINE = 368;
+export const EMPTIED_BASELINE = 367;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

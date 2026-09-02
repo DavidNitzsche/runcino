@@ -83,6 +83,29 @@ enum WatchRepUnit: String, Codable {
 /// than the runner quietly failing — could not fire. Same silent class as the
 /// missing `ruleOutcomes`: the wire carried it, nothing errored, and the
 /// feature simply never happened.
+/// Race-day heart-rate guidance (2026-09-01). Every field is a REFERENCE the
+/// race face may show beside the pace target; none of them is a ceiling the
+/// wrist alarms on for the length of a race. `checkpointAbortBpm` is the one
+/// figure a rule may act on, at `checkpointMi`, and only when
+/// `informationalOnly` is false.
+///
+/// Mirrors `WatchRaceHr` in the phone's `Models/Watch.swift` field for field —
+/// they are two decoders of ONE server object (`lib/race/race-hr-guidance.ts`),
+/// and `check-wire-keys.sh` reads both against the emitter.
+struct WatchRaceHr: Codable, Equatable {
+    let expectedLoBpm: Int
+    let expectedHiBpm: Int
+    let earlyCeilingBpm: Int
+    let earlyThroughMi: Double
+    let lateAllowanceBpm: Int
+    let checkpointMi: Double?
+    let checkpointAbortBpm: Int?
+    /// True → the band has no personal evidence behind it, or the runner's own
+    /// efforts at this pace contradict it. No surface may grade or alarm on
+    /// it; show it as a reference and say why.
+    let informationalOnly: Bool
+}
+
 struct WatchRule: Codable, Equatable {
     /// "bail" | "abort" | "pass".
     ///
@@ -113,6 +136,19 @@ struct WatchRule: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case kind, metric, op, value, scope, action, label, evidence, judgement
+    }
+
+    /// Memberwise, for fixtures and the session simulator.
+    ///
+    /// The custom `init(from:)` below suppresses the synthesised one, and its
+    /// absence is why the bail and abort boards could not be driven from
+    /// `_SessionSim` at all: a harness could not construct a rule to breach.
+    init(kind: String, metric: String? = nil, op: String? = nil, value: Double? = nil,
+         scope: String? = nil, action: String? = nil, label: String? = nil,
+         evidence: String? = nil, judgement: String? = nil) {
+        self.kind = kind; self.metric = metric; self.op = op; self.value = value
+        self.scope = scope; self.action = action; self.label = label
+        self.evidence = evidence; self.judgement = judgement
     }
 
     init(from decoder: Decoder) throws {
@@ -435,6 +471,26 @@ struct WatchWorkout: Codable {
     // easy face's guardrail row flips red and holds until you drop back into
     // zone — the alert can't be hidden behind a swipe. nil → no ceiling.
     let hrCeilingBpm: Int?
+    /// RACE-DAY HEART RATE, AS A REFERENCE (2026-09-01).
+    ///
+    /// From `lib/race/race-hr-guidance.ts` via `build-workout.ts`. Every field
+    /// is something the race face may SHOW beside the pace target; none of
+    /// them is a ceiling the wrist alarms on for the length of a race — that
+    /// is the whole point of the object existing, because race day used to
+    /// carry a single `hr_cap_bpm` graded as a hard cap and the owner's own
+    /// half marathon came in one beat under it on his PR.
+    ///
+    /// `Research/08` §6.1: race HR is a BAND per distance, "guides, not laws",
+    /// with 3-5 bpm/hour of drift expected. `checkpointAbortBpm` is the ONE
+    /// figure a rule may act on, at `checkpointMi`, and only when
+    /// `informationalOnly` is false.
+    ///
+    /// HR-SEMANTICS-2 · THIS DID NOT EXIST HERE UNTIL NOW. `raceHr` was added
+    /// to `native-v2/Faff/Faff/Models/Watch.swift` — the PHONE'S mirror of
+    /// this model — and reported as "the watch decodes raceHr". The watch app
+    /// compiles THIS file, so the field arrived over WatchConnectivity and was
+    /// dropped on decode: nothing on the wrist had ever seen it.
+    let raceHr: WatchRaceHr?
     // Optional backend signal for which IN-RUN face flavour to render.
     // Recognised values (router falls back to phase-based defaults when nil
     // or unknown):
@@ -471,7 +527,7 @@ struct WatchWorkout: Codable {
     private enum CodingKeys: String, CodingKey {
         case workoutId, name, summary, totalEstimatedMinutes, phases, completionEndpoint, expiresAt
         case readinessScore, readinessLabel, distanceMi, paceLabel
-        case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm
+        case isRace, goalSec, strategyLabel, gelsMi, fueling, hrCeilingBpm, raceHr
         case displayHint, unitsDistance, rules, spokenCues, heatNote
     }
 
@@ -481,6 +537,7 @@ struct WatchWorkout: Codable {
          distanceMi: Double? = nil, paceLabel: String? = nil,
          isRace: Bool = false, goalSec: Int? = nil, strategyLabel: String? = nil, gelsMi: [Double]? = nil,
          fueling: WatchFueling? = nil, hrCeilingBpm: Int? = nil,
+         raceHr: WatchRaceHr? = nil,
          displayHint: String? = nil, unitsDistance: String? = nil,
          rules: [WatchRule]? = nil,
          spokenCues: [WatchSpokenCue]? = nil,
@@ -502,6 +559,7 @@ struct WatchWorkout: Codable {
         self.gelsMi = gelsMi
         self.fueling = fueling
         self.hrCeilingBpm = hrCeilingBpm
+        self.raceHr = raceHr
         self.displayHint = displayHint
         self.unitsDistance = unitsDistance
         self.rules = rules
@@ -534,6 +592,11 @@ struct WatchWorkout: Codable {
         // mitigation was applied to its two siblings and not to this.
         self.fueling = (try? c.decodeIfPresent(WatchFueling.self, forKey: .fueling)) ?? nil
         self.hrCeilingBpm = c.lenientIntIfPresent(forKey: .hrCeilingBpm)
+        // `try?`, like `fueling` / `rules` / `spokenCues` above. A band the
+        // runner is only meant to GLANCE at must never be the reason a
+        // race-morning payload fails to decode and the wrist shows
+        // yesterday's session on the start line.
+        self.raceHr = (try? c.decodeIfPresent(WatchRaceHr.self, forKey: .raceHr)) ?? nil
         self.displayHint = try c.decodeIfPresent(String.self, forKey: .displayHint)
         self.unitsDistance = try c.decodeIfPresent(String.self, forKey: .unitsDistance)
         // Lenient: a malformed rules array must never cost the workout.

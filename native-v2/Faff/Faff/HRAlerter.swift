@@ -10,12 +10,28 @@
 //  Toggle: profile.phone_hr_alerts (settings sheet). Cached locally to avoid a
 //  round-trip per sample.
 //
-//  ── C-12 (2026-09-01) · THREE DEFECTS, FIXED BEFORE THE TOGGLE IS WIRED ────
+//  ── HR-SEMANTICS-2 (2026-09-01) · NOW WIRED, TO ONE CEILING ────────────────
 //
-//  This alarm has never fired for anyone: `configure(enabled:ceiling:)` has no
-//  call site, so `ceilingBpm` is a `UserDefaults` value nothing writes. That is
-//  the only reason the three below were never seen on a phone, and it is not a
-//  reason to leave them. Fix it BEFORE wiring the settings toggle, not after.
+//  C-12 fixed three defects here and left the alarm dormant: `configure` had
+//  no call site, so `ceilingBpm` was a `UserDefaults` value nothing wrote.
+//  Wired, tested and inert is this codebase's signature failure (Rule 21), and
+//  on a safety mechanism it is the worst place for it.
+//
+//  It is armed from ONE number: `WatchWorkout.hrCeilingBpm`, the aerobic
+//  ceiling `lib/watch/build-workout.ts#resolveHrCeiling` resolves — and that
+//  resolver already answers the only question that matters here, which is WHEN
+//  a ceiling applies at all. It emits one for easy and long sessions only, and
+//  suppresses it on a long run carrying an HM/M finish, because a workout-level
+//  aerobic cap would alarm through the whole finish and coach the opposite of
+//  the prescription.
+//
+//  So the alarm is armed on an easy day and DISARMED on a quality day, a race
+//  and a long run with a fast finish — not by a rule written here, but because
+//  the plan sent no ceiling. `armedCeiling(toggleOn:workoutHrCeilingBpm:)` is
+//  that whole decision, pure and tested (`HRAlerterArmingTests`), because the
+//  bug this replaces was precisely an alarm firing off a number nobody set.
+//
+//  ── C-12 (2026-09-01) · THREE DEFECTS, FIXED BEFORE THE TOGGLE WAS WIRED ───
 //
 //  1 · IT FIRED AT 95% OF THE CEILING AND SAID "ABOVE YOUR N CEILING".
 //      `threshold = Double(ceiling) * 0.95`, then copy asserting the runner was
@@ -81,17 +97,62 @@ final class HRAlerter: ObservableObject {
     @Published var enabled: Bool = UserDefaults.standard.bool(forKey: "faff.phone_hr_alerts")
     @Published var ceilingBpm: Int? = UserDefaults.standard.object(forKey: "faff.phone_hr_ceiling") as? Int
 
+    /// THE arming decision, pure and total.
+    ///
+    /// Returns the ceiling this alarm should watch today, or nil for "do not
+    /// arm". A nil `workoutHrCeilingBpm` is the plan saying this session has no
+    /// aerobic ceiling — a quality day, a race, a long run with a race-pace
+    /// finish — and on those the alarm must be silent, because the runner is
+    /// SUPPOSED to be above any easy-day line. Rule 11: absent is not zero and
+    /// is not permission to reuse yesterday's number.
+    ///
+    /// Separated from `configure` so it can be tested without HealthKit, and
+    /// because it is the exact question the old code never asked: it read a
+    /// `UserDefaults` ceiling that nothing wrote and would have alarmed on any
+    /// session at all.
+    static func armedCeiling(toggleOn: Bool, workoutHrCeilingBpm: Int?) -> Int? {
+        guard toggleOn else { return nil }
+        guard let c = workoutHrCeilingBpm, c > 0 else { return nil }
+        return c
+    }
+
+    /// The settings toggle. Keeps whatever ceiling today's session set.
+    func configure(enabled: Bool) {
+        configure(enabled: enabled, ceiling: ceilingBpm)
+    }
+
     func configure(enabled: Bool, ceiling: Int?) {
+        let armed = Self.armedCeiling(toggleOn: enabled, workoutHrCeilingBpm: ceiling)
         self.enabled = enabled
         self.ceilingBpm = ceiling
         UserDefaults.standard.set(enabled, forKey: "faff.phone_hr_alerts")
         if let c = ceiling { UserDefaults.standard.set(c, forKey: "faff.phone_hr_ceiling") }
-        if enabled { Task { await start() } } else { stop() }
+        else { UserDefaults.standard.removeObject(forKey: "faff.phone_hr_ceiling") }
+        if armed != nil { Task { await start() } } else { stop() }
+    }
+
+    /// TODAY'S CEILING, from today's prescription.
+    ///
+    /// Called every time the phone refreshes the day's workout, so the alarm
+    /// tracks the plan rather than a stale stored number. Passing nil disarms
+    /// it for the day, which is what a quality session must do.
+    func applyTodaysCeiling(_ bpm: Int?) {
+        let armed = Self.armedCeiling(toggleOn: enabled, workoutHrCeilingBpm: bpm)
+        self.ceilingBpm = bpm
+        if let b = bpm { UserDefaults.standard.set(b, forKey: "faff.phone_hr_ceiling") }
+        else { UserDefaults.standard.removeObject(forKey: "faff.phone_hr_ceiling") }
+        // Reset the sustain clock: a new ceiling is a new question, and a
+        // breach measured against yesterday's number is not evidence.
+        breachStartedAt = nil
+        if armed != nil { Task { await start() } } else { stop() }
     }
 
     func start() async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
-        guard enabled, !observerActive else { return }
+        // The same arming decision `configure` / `applyTodaysCeiling` take,
+        // asked again here so a direct `start()` cannot bypass it.
+        guard Self.armedCeiling(toggleOn: enabled, workoutHrCeilingBpm: ceilingBpm) != nil,
+              !observerActive else { return }
 
         // Request notification permission once. Silent if already granted.
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])

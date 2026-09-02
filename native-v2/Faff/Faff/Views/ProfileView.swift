@@ -101,6 +101,14 @@ struct ProfileView: View {
                             get: { profileFields?.phone_hr_alerts ?? false },
                             set: { v in
                                 profileFields?.phone_hr_alerts = v
+                                // HR-SEMANTICS-2 · the toggle reaches the alarm.
+                                // It wrote the server and the struct and never
+                                // told `HRAlerter`, so turning it on started
+                                // nothing and turning it off stopped nothing.
+                                // The ceiling is whatever today's session set
+                                // (`applyTodaysCeiling`), never a number typed
+                                // here.
+                                HRAlerter.shared.configure(enabled: v)
                                 Task { _ = try? await API.updateProfile(["phone_hr_alerts": v]) }
                             }
                         ),

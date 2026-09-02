@@ -57,7 +57,7 @@ function session(over: Partial<KeySessionExecution> = {}): KeySessionExecution {
     earnsProgression: false,
     watchStatus: 'abandoned',
     toleranceShare: 0.4,
-    workVerdicts: ['hit', 'missed'],
+    workVerdicts: ['hit', 'slow'],
     replacedByRace: false,
     // F-5 · carried on the row now; null is the honest value for a fixture
     // that never exercised the anchor path.

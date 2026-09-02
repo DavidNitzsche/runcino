@@ -32,7 +32,7 @@ import {
   runDistanceMiSql,
   asRunData,
 } from '@/lib/runs/run-shape';
-import type { WirePhaseVerdict } from '@/lib/training/execution-semantics';
+import type { PhaseVerdict } from '@/lib/training/execution-semantics';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import {
@@ -73,7 +73,9 @@ export interface KeySessionExecution {
   /** The device's own signals, carried through for surfaces and audits. */
   watchStatus: 'completed' | 'partial' | 'abandoned' | null;
   toleranceShare: number | null;
-  workVerdicts: WirePhaseVerdict[];
+  /** THE canonical per-rep grades (`lib/execution/verdict.ts`), not the
+   *  device's stored word — see `ActualRead.workVerdicts`. */
+  workVerdicts: PhaseVerdict[];
   /**
    * The pace this runner has established for THIS session's domain, s/mi, as
    * the interpreter actually used it.

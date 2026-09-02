@@ -30,6 +30,7 @@
  */
 
 import { classifySession, sessionToleranceSec } from '@/lib/training/execution-semantics';
+import type { WorkoutVerdict } from '@/lib/execution/verdict';
 
 export type TrainingInfluenceKind =
   | 'on_track'
@@ -71,6 +72,14 @@ export interface InfluenceInput {
   raceDistanceMi: number | null;
   /** HR delta vs typical for this pace bucket · negative = improving. */
   hrOnPaceDelta: number | null;
+  /**
+   * VERDICT-1 (2026-09-01) · THE canonical grade for the workout, from
+   * `lib/execution/verdict.ts`, when the caller resolved one. "Slipping" is
+   * then the session's own `off_target` / `incomplete`, never a private
+   * pace-delta threshold. `donePaceSec` stays the fallback for a run with no
+   * phases.
+   */
+  grade?: WorkoutVerdict | null;
 }
 
 /**
@@ -96,8 +105,19 @@ export function composeTrainingInfluence(input: InfluenceInput): TrainingInfluen
     };
   }
 
+  // VERDICT-1 · the canonical grade decides "slipping" when it exists.
+  const g = input.grade;
+  if (g && g.basis === 'watch-phases' && g.work.graded > 0) {
+    if (g.session.verdict === 'off_target' || g.session.verdict === 'incomplete') {
+      const delta = g.work.paceSPerMi != null && input.plannedPaceSec != null
+        ? g.work.paceSPerMi - input.plannedPaceSec : 0;
+      return { kind: 'slipping', copy: composeSlippingCopy(input, Math.max(0, delta)) };
+    }
+  }
+
   // Need pace data to call a trajectory · short-circuit when missing.
-  if (input.plannedPaceSec == null || input.donePaceSec == null) {
+  const donePaceSec = input.donePaceSec ?? g?.work.paceSPerMi ?? null;
+  if (input.plannedPaceSec == null || donePaceSec == null) {
     // Adapted-and-restored with no execution data yet · still compromised
     // until we see actual paces land.
     if (input.wasAdapted && input.wasRestored) {
@@ -107,7 +127,7 @@ export function composeTrainingInfluence(input: InfluenceInput): TrainingInfluen
   }
 
   // Pace delta · seconds per mile. Negative = faster than planned.
-  const paceDelta = input.donePaceSec - input.plannedPaceSec;
+  const paceDelta = donePaceSec - input.plannedPaceSec;
   /* THE tolerance, from THE owner (`lib/training/execution-semantics.ts`).
    *
    * This was `input.type === 'long' ? 18 : 12` — a FIFTH width, driving the
@@ -116,8 +136,9 @@ export function composeTrainingInfluence(input: InfluenceInput): TrainingInfluen
    * evidence pipeline. Same run, five answers. */
   const tolerance = sessionToleranceSec(classifySession(input.type, input.spec ?? null));
 
-  // Slipping path · pace fell off by ≥ 2× tolerance.
-  if (paceDelta > tolerance * 2) {
+  // Slipping path · pace fell off by ≥ 2× tolerance. Only reached without a
+  // canonical grade — with one, the session verdict above already answered.
+  if (!(g && g.basis === 'watch-phases' && g.work.graded > 0) && paceDelta > tolerance * 2) {
     return {
       kind: 'slipping',
       copy: composeSlippingCopy(input, paceDelta),

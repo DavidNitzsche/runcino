@@ -489,11 +489,24 @@ struct WatchRunSurfaceV5: View {
         // true from the moment the run starts, and `onChange` does not fire on
         // first evaluation — so the only edge it ever saw was true→false, and
         // the entire bail feature was one dead observer away from working.
-        .onChange(of: engine.milesAdrift) { _, _ in
-            guard engine.canOfferBail, engine.shouldOfferBailNow, router.pendingQuestion == nil else { return }
-            router.pendingQuestion = .bailOffered
-            Haptics.play(moment: .bailOffered)
-        }
+        //
+        // HR-SEMANTICS-2 (2026-09-01) · AND THERE ARE TWO EVIDENCE STREAMS.
+        //
+        // C-1 rewired `shouldOfferBailNow` so an `hr` rule is decided on
+        // `ruleBreachSec` — heart rate, sustained — and left this observer
+        // watching `milesAdrift`, which is the PACE evidence and never moves
+        // for a runner holding pace. So the HR arm re-entered the exact state
+        // the comment above describes: the rule accumulated past its 120-second
+        // sustain, `shouldOfferBailNow` went true, and nothing looked. Every
+        // HR bail and every race abort was one dead observer away from working,
+        // for the second time, in the same place.
+        //
+        // Found by driving it: `_SessionSim`'s `racebail` archetype at
+        // `-hr 180` breached the owner's real mile-10 abort and drew nothing.
+        // A behavioural claim about a board nobody has put on screen is a
+        // hypothesis (Rule 20).
+        .onChange(of: engine.milesAdrift) { _, _ in offerBailIfDue() }
+        .onChange(of: engine.ruleBreachSec) { _, _ in offerBailIfDue() }
         .onChange(of: tracker.distanceMi) { _, _ in fireDueCue() }
         .onChange(of: engine.currentIndex) { _, _ in fireDueCue() }
         .onChange(of: tracker.batteryPercent) { _, pct in
@@ -1251,6 +1264,19 @@ struct WatchRunSurfaceV5: View {
         return "\(abs(delta)) sec " + (delta < 0 ? "quicker" : "slower")
     }
 
+    /// Put the bail or abort board up, if the rule's own evidence says so.
+    ///
+    /// One body, two observers (pace miles adrift, and sustained HR breach),
+    /// so the two evidence streams cannot drift apart again — which is exactly
+    /// what happened when `shouldOfferBailNow` learned to read heart rate and
+    /// this guard stayed wired to the pace one.
+    private func offerBailIfDue() {
+        guard engine.canOfferBail, engine.shouldOfferBailNow,
+              router.pendingQuestion == nil else { return }
+        router.pendingQuestion = .bailOffered
+        Haptics.play(moment: .bailOffered)
+    }
+
     /// The session's ramp name, for the one moment that carries a colour
     /// field — Fuel, race only, because at mile 14 a lit panel is what gets
     /// seen.
@@ -1477,6 +1503,37 @@ enum WatchLobbyAdapter {
         return "\(quick.value)–\(steady.value) \(quick.unit)"
     }
 
+    /// THE EXPECTED HEART RATE ON RACE DAY, AS A REFERENCE.
+    ///
+    /// HR-SEMANTICS-2 (2026-09-01). `raceHr` has been decoded by
+    /// `WatchWorkout` since the race-pace brain landed and drawn NOWHERE — a
+    /// field on the wire, parsed, and never seen. This is where it appears.
+    ///
+    /// It is a REFERENCE and nothing else. `Research/08` §6.1 states race
+    /// heart rate as a BAND per distance and says so in its own words: the
+    /// ceilings "are *guides*, not laws… Use HR as a backstop; pace and RPE
+    /// primary", with 3-5 bpm/hour of drift expected. So this is drawn in the
+    /// QUALIFIER register — the one the design reserves for something that
+    /// changes how the session is run without changing the dose — and never
+    /// as a band the wrist grades, never as a ceiling, never as an alarm. The
+    /// running boards do not carry it at all: `FacesPhaseV5` fixes the race
+    /// board at four metrics (pace, on-goal, distance, elapsed) and says a
+    /// fifth row is a rule-4 break, and a live number beside a range is read
+    /// as a target to hold, which is the one thing this must not become.
+    ///
+    /// `informationalOnly` is the band having no personal evidence behind it
+    /// (or the runner's own efforts at this pace contradicting it), and the
+    /// word changes with it — "roughly" — because the alternative is a
+    /// population figure worn as a personal one.
+    static func raceHrReference(for workout: WatchWorkout) -> String? {
+        guard workout.isRace, let hr = workout.raceHr else { return nil }
+        let lo = hr.expectedLoBpm, hi = hr.expectedHiBpm
+        guard lo > 0, hi >= lo else { return nil }
+        return hr.informationalOnly
+            ? "Expect roughly \(lo)-\(hi) bpm"
+            : "Expect \(lo)-\(hi) bpm"
+    }
+
     /// "9 DAYS OLD".
     ///
     /// Measured off the expiry the payload itself carries, because that is
@@ -1554,7 +1611,10 @@ struct WatchLobbySurfaceV5: View {
                     // in the qualifier slot the design reserves for a closing
                     // instruction. A race with no goal drops the register
                     // rather than drawing 0:00.
-                    qualifier: nil,
+                    // HR-SEMANTICS-2 · race morning's heart-rate REFERENCE.
+                    // Nil on every training day and on a race whose payload
+                    // carries no band — see `raceHrReference`.
+                    qualifier: WatchLobbyAdapter.raceHrReference(for: workout),
                     band: workout.isRace
                         ? (workout.goalSec.map { "Goal " + WFmt.clock($0) })
                         : WatchLobbyAdapter.band(for: workout),

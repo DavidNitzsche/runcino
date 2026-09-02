@@ -58,7 +58,7 @@ function session(over: Partial<KeySessionExecution> = {}): KeySessionExecution {
     earnsProgression: false,
     watchStatus: 'abandoned',
     toleranceShare: 0.4,
-    workVerdicts: ['hit', 'missed'],
+    workVerdicts: ['hit', 'slow'],
     replacedByRace: false,
     // F-5 · the interpreter's own value, carried on the row rather than
     // recomputed by the finder. `T_PACE` is `establishedPaceFor('threshold',

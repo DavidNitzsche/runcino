@@ -61,6 +61,7 @@ import { fmtPace as fmtPaceShared, fmtMinutesCasual } from '@/lib/format/run';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
+import { resolveWorkoutVerdict } from '@/lib/execution/verdict';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 // The five elevation / splits / merge SQL fragments that used to be imported
@@ -903,6 +904,15 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // to grade a tone against. See V5RecentRunCtx.askedHrIsHardCap's own
       // doc comment in lib/faff/v5-today.ts.
       const askedHrIsHardCap = Boolean(planRow?.workout_spec && Number(planRow.workout_spec.hr_cap_bpm) > 0);
+      /* VERDICT-1 (2026-09-01) · THE canonical grade for today's run, resolved
+       * ONCE here and read by the win line, the per-piece rows and nothing
+       * else that grades. The session class comes from the plan row — the
+       * same `classifySession` the wrist and run detail use. */
+      const grade = resolveWorkoutVerdict({
+        type: todayPlan?.type ?? (data.workoutType as string | null) ?? null,
+        spec: planRow?.workout_spec ?? null,
+        phases: completionPhases,
+      });
       // THE PRESCRIBED WINDOW, for the recap's band-adherence sentence. See
       // `RecapInput.plannedPaceBandSPerMi`: the phone's mile table stopped
       // colouring by this on 2026-08-30 and the fact now travels in words.
@@ -1309,6 +1319,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           verdict: recap.verdict,
           indoor,
           source: typeof data.source === 'string' ? data.source : undefined,
+          grade,
           phases: completionPhases.length > 0
             ? completionPhases.map((p: any) => ({
                 type: p.type ?? null,
@@ -1421,11 +1432,20 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // posture `run-shape.ts`'s `runPhases()` takes for its own callers.
         routePhases: indoor
           ? []
-          : completionPhases.flatMap((ph: any) => {
-              const mi = Number(ph.actualDistanceMi ?? ph.distanceMi ?? ph.distance_mi);
-              const sec = Number(ph.actualDurationSec ?? ph.durationSec ?? ph.duration_sec);
-              return Number.isFinite(mi) && mi > 0 && Number.isFinite(sec) && sec > 0
-                ? [{ mi, sec: Math.round(sec), type: typeof ph.type === 'string' ? ph.type : null }]
+          : grade.phases.flatMap((gp) => {
+              const mi = gp.actualDistanceMi ?? 0;
+              const sec = gp.actualDurationSec ?? 0;
+              return mi > 0 && sec > 0
+                ? [{
+                    mi,
+                    sec: Math.round(sec),
+                    type: gp.type === 'unknown' ? null : gp.type,
+                    // VERDICT-1 · the canonical verdict and its word, so the
+                    // per-piece rows on the sheet the runner opens first say
+                    // the same thing run detail's phase panel says.
+                    verdict: gp.verdict === 'not_graded' ? null : gp.verdict,
+                    status_label: gp.statusLabel,
+                  }]
                 : [];
             }),
         hrZones: hrZoneRanges,

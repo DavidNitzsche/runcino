@@ -331,7 +331,12 @@ export interface V5Today {
     distanceMi: number | null;
   }>;
   /** Workout phases, so reps colour at their true pace. Empty on a steady run. */
-  routePhases: Array<{ mi: number; sec: number; type: string | null }>;
+  routePhases: Array<{
+    mi: number; sec: number; type: string | null;
+    /** VERDICT-1 · the canonical per-phase verdict (`hit` / `fast` / `slow` /
+     *  `incomplete`) and its word. Null when the phase was not pace-graded. */
+    verdict?: string | null; status_label?: string | null;
+  }>;
   /** The runner's own HR zone bands. Empty at cold start. */
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
   /** The pace window the session asked for, seconds per mile. */
@@ -817,7 +822,12 @@ export interface V5RecentRunCtx {
     /** The mile's real length. Null when the source did not record one. */
     distanceMi: number | null;
   }>;
-  routePhases: Array<{ mi: number; sec: number; type: string | null }>;
+  routePhases: Array<{
+    mi: number; sec: number; type: string | null;
+    /** VERDICT-1 · the canonical per-phase verdict (`hit` / `fast` / `slow` /
+     *  `incomplete`) and its word. Null when the phase was not pace-graded. */
+    verdict?: string | null; status_label?: string | null;
+  }>;
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
   paceBand: { lo: number; hi: number } | null;
   weekDoneMi: number;

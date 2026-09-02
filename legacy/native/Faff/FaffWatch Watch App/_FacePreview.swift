@@ -385,6 +385,27 @@ struct FacePreviewView: View {
         case "lobbyintervals":
             return AnyView(V5LobbyPoster(session: V5LobbyFixtures.intervals,
                 pageCount: 3, pageIndex: 0) { })
+        case "lobbyracehr":
+            // HR-SEMANTICS-2 · race morning with the expected heart-rate
+            // reference in the qualifier register. The fixture uses the
+            // owner's real CIM guidance (148-160, validated against seven
+            // comparable efforts), and the string is composed by the ROUTER'S
+            // OWN adapter rather than typed here — this file's standing rule
+            // is that a fixture may only supply what the router supplies.
+            return AnyView(V5LobbyPoster(
+                session: V5LobbySession(
+                    ramp: .race, lede: "CIM", dose: "26.22 mi",
+                    qualifier: WatchLobbyAdapter.raceHrReference(for: WatchWorkout(
+                        workoutId: "p", name: "CIM", summary: "CIM",
+                        totalEstimatedMinutes: 197, phases: [],
+                        completionEndpoint: "/x", expiresAt: "2099-12-31T00:00:00Z",
+                        isRace: true, goalSec: 11820,
+                        raceHr: WatchRaceHr(expectedLoBpm: 148, expectedHiBpm: 160,
+                                            earlyCeilingBpm: 148, earlyThroughMi: 10,
+                                            lateAllowanceBpm: 165, checkpointMi: 10,
+                                            checkpointAbortBpm: 163, informationalOnly: false))),
+                    band: "Goal 3:17:00", bandSub: "7:26–7:36 /mi"),
+                pageCount: 2, pageIndex: 0, onStart: {}, onStartIndoors: nil))
         case "lobbyrace":
             return AnyView(V5LobbyPoster(session: V5LobbyFixtures.race,
                 pageCount: 3, pageIndex: 0) { })
