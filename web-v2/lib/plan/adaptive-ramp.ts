@@ -15,6 +15,14 @@
  *     ↓ returns an AdaptationAction['kind' = 'bump_distance']
  *   applyAdaptations() picks it up and mutates plan_workouts
  *
+ * ── 2026-09-02 · THE LAST ARROW IS CUT ───────────────────────────────────
+ *
+ * `tryAdaptiveBump` now refuses at `lib/plan/adaptation-authority.ts` — THE
+ * ONE SEAM — before it reads anything. The owner: "upward adaptation remains
+ * shadow-only and must remain incapable of changing the live plan." Nothing
+ * below detects less than it did; the writer is simply gone. Read the
+ * pipeline above as what this module WOULD do if the seam were opened.
+ *
  * Gates · all must pass before a bump. EVERY ONE READS TRAINING:
  *   · ACWR strictly below the Gabbett sweet-spot ceiling of 1.3, and readable
  *     (`lib/coach/acwr.ts` · Research/15). Absorbed load, not a mood.
@@ -80,10 +88,11 @@
  * Cite: Research/00a-distance-running-training.md §Volume-Progression-Rules  // was §progressive-overload · heading: ### Volume progression rules
  * Cite: Research/00a-distance-running-training.md §"Practical load rules" — add
  *       stress one-at-a-time
- * Cite: Research/15-recovery-readiness-monitoring.md §"Acute:Chronic Workload
- *       Ratio" — the 0.8–1.3 sweet spot the `acwrHeadroom` gate reads
+ * Cite: Research/15-wearable-data.md §"Acute:Chronic Workload Ratio (ACWR)"
+ *       — the 0.8-1.3 sweet spot the `acwrHeadroom` gate reads
  */
 
+import { automaticPlanMutationIsAuthorised } from '@/lib/plan/adaptation-authority';
 import { pool } from '@/lib/db/pool';
 import { attempt, rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
@@ -133,8 +142,8 @@ const LONG_DECOUPLING_PCT_CAP = 5;
 /**
  * The acute:chronic ratio at or above which this module refuses to add load.
  *
- * `Research/15-recovery-readiness-monitoring.md` §"Acute:Chronic Workload
- * Ratio" puts the sweet spot at 0.8–1.3 and the elevated-risk band above it.
+ * `Research/15-wearable-data.md` §"Acute:Chronic Workload Ratio (ACWR)" puts
+ * Gabbett's sweet spot at 0.8-1.3 and the caution band at 1.3-1.5.
  * Read as a CEILING ON ADDING, which is the only question asked here: the same
  * research paragraph is explicit that a ratio is "not a stop-light", and
  * nothing in this gate stops a runner training — it stops the ENGINE from
@@ -735,6 +744,21 @@ export async function tryAdaptiveBump(
   userId: string,
   pullbackApplied: boolean,
 ): Promise<{ bumps: number; longBumpMi: number; weeklyBumpMi: number; why: string } | null> {
+  // ── 2026-09-02 · SEALED AT THE ONE SEAM ──────────────────────────────────
+  //
+  // This is Rule 21's volume axis and the only upward lever the engine ever
+  // had. The owner's ruling: "upward adaptation remains shadow-only and must
+  // remain incapable of changing the live plan."
+  //
+  // The refusal is FIRST, before any read, so there is no path from this
+  // entry point to `applyAdaptations` while the seam is closed — a guard
+  // placed after the detection would still leave a live call site one edit
+  // away. The detector below (`actionForAdaptiveRamp`, `rampSignals`) is
+  // untouched and still unit-tested; it simply has no writer any more.
+  //
+  // To restore it, open `AUTOMATIC_ADAPTATION_AUTHORITY` in
+  // lib/plan/adaptation-authority.ts. There is no other switch.
+  if (!automaticPlanMutationIsAuthorised()) return null;
   if (pullbackApplied) return null;
   // 48h lookback · a pull-back applied on an EARLIER tick still blocks.
   // Fails closed: an unreadable intents table is not "no recent pull-back".
