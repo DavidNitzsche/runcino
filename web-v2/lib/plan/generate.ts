@@ -28,7 +28,7 @@ import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library-static';
 import { recoveryDayAfterLongMi } from './plan-templates';
-import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, EASY_BAND_WIDTH_S, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, EVIDENCE_RUN_FLOOR_MI, type BelowTableAnchor } from '@/lib/training/vdot';
 import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achievable-target';
@@ -9264,12 +9264,30 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // (easyAnchorT + 120). currentT is the current-fitness anchor, which is
       // what easy/long/recovery work paces off (PACE-E-1) — not the blended
       // goal pace, which would flatter a slow runner into a longer long.
-      // AUTHORING-CANONICAL-1 · the same correction as `easy_pace_s_per_mi`
-      // below: DOCTRINE-3's long-run absolute-time cap is evaluated at the SLOW
-      // edge of the band the runner is actually prescribed, which with anchors
-      // is `easyCeiling + EASY_BAND_WIDTH_S` and not a fixed offset off the
-      // threshold scalar.
-      easyPaceSecPerMi: anchors.easyCeilingSecPerMi + EASY_BAND_WIDTH_S,
+      /* AUTHORING-CANONICAL-1 · DOCTRINE-3's long-run absolute-TIME cap, and
+       * the ONE place this migration deliberately does NOT move onto the
+       * prescription layer's number.
+       *
+       * The literal answer is `anchors.easyCeilingSecPerMi +
+       * EASY_BAND_WIDTH_S` — the slow edge of the band the rows actually
+       * carry — and it was tried. It is wrong to ship inside a wiring pass,
+       * for a reason worth writing down: `resolveCapacityPrescription` widens
+       * an easy CEILING by an uncertainty pad, so a LOW-CONFIDENCE runner gets
+       * a slower assumed pace, and a slower assumed pace through a
+       * minutes-to-miles conversion CUTS THEIR LONG RUN. Measured on the
+       * `_audit_periodization` David-class fixture: peak long 22.5 mi -> 21
+       * mi, and 17 -> 16 on the cutback. That is a volume reduction caused by
+       * the engine being unsure, arriving through a channel nobody designed —
+       * exactly the asymmetry CLAUDE.md's hero statement warns about ("a coach
+       * whose only lever is do less").
+       *
+       * So the cap stays on the CAPACITY band's slow edge, which is
+       * byte-identical to what the legacy path used for every runner, and the
+       * decision about whether a confidence pad should be allowed to shorten a
+       * long run belongs to whoever owns DOCTRINE-3 rather than to this pass.
+       * `easy_pace_s_per_mi` below stamps the SAME number, so the plan still
+       * reports one easy pace and not two (Rule 16). */
+      easyPaceSecPerMi: currentT + EASY_BAND_SLOW_OFFSET_SEC,
       // PROGRESSION-1 · the overload trajectory, stepped once per week in
       // ascending order. The paces are the ones persistPlan will pace the
       // session at, so the shape's at-pace caps are computed against the pace
@@ -9442,16 +9460,20 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
        * which is the same condition under which `layoutWeek` gets no easy pace
        * and every minute-based bound in it is inert.
        */
-      // AUTHORING-CANONICAL-1 · THE SLOW EDGE OF THE BAND THE ROWS ACTUALLY
-      // CARRY. This was `currentT + EASY_BAND_SLOW_OFFSET_SEC`, which matched
-      // the legacy band exactly (`EASY_BAND_LO_OFFSET_S` 80 + `EASY_BAND_WIDTH_S`
-      // 40 = 120 off the threshold scalar). With anchors the band is
-      // `[easyCeiling, easyCeiling + EASY_BAND_WIDTH_S]`, and for a runner whose
-      // easy ceiling came from a DIRECT read those two are different numbers —
-      // so the stamp would have described a band the plan does not prescribe
-      // (Rule 16). `_coach_sensible.test.ts` reads this field as "the pace
-      // layoutWeek sizes easy days at", which makes the drift load-bearing.
-      easy_pace_s_per_mi: anchors.easyCeilingSecPerMi + EASY_BAND_WIDTH_S,
+      // AUTHORING-CANONICAL-1 · the SAME number the long-run time cap above
+      // is evaluated at, deliberately — `_coach_sensible.test.ts` reads this
+      // field as "the pace layoutWeek sizes easy days at", and a stamp that
+      // reported a different pace than the sizing used would make that gate
+      // measure a runner the engine never composed. See the argument beside
+      // `easyPaceSecPerMi` for why both stay on the capacity band's slow edge
+      // rather than the prescription-padded one.
+      //
+      // KNOWN, AND ARGUED: for a runner whose easy ceiling came from a DIRECT
+      // read this is within a second or two of `anchors.easyCeilingSecPerMi +
+      // EASY_BAND_WIDTH_S` (the owner: 540 vs 542), and for a low-confidence
+      // runner it is faster, because the prescription layer's uncertainty pad
+      // is not spent here.
+      easy_pace_s_per_mi: currentT + EASY_BAND_SLOW_OFFSET_SEC,
       /**
        * RULE8-1 · the runner's own demonstrated easy day, as this authoring
        * read it — `easyDayMedianMi` over 28 REPRESENTATIVE days, the reading
