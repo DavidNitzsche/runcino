@@ -122,9 +122,15 @@ constant (threshold), the session that addresses it this week (the long run),
 and the review trigger. This is the belief layer reaching the runner as
 coaching rather than as a number.
 
-Today (`renders/`) shows the 2026-09-01 session read correctly: heart rate
-across the work 162 bpm, pace across the work 7:02 — the work segments, not
-whole-run averages.
+Today (`renders/stage1-today-deployed-3bf794c2.png`) shows the 2026-09-01
+session read correctly: heart rate across the work 162 bpm, pace across the
+work 7:02 — the work segments, not whole-run averages.
+
+Races (`renders/stage1-races-deployed-3bf794c2.png`) shows the corrected race
+outlook the runner actually sees: **Goal 3:00:00 · Projected 3:19:41 · Gap
++19:41**, against 3:23:14 / +23:14 before Stage 1. The goal is untouched; what
+moved is the projection, and it moved because one badly-paced marathon stopped
+being allowed to fix the whole distance-time curve on its own.
 
 ## Remaining, carried into later stages
 
