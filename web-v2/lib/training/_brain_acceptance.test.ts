@@ -24,9 +24,15 @@ import { describe, it, expect } from 'vitest';
 import {
   composeThresholdCapacity, composeEasyCeiling, composeHighIntensityCapacity,
   composeDurability, CAPACITY_CONFIDENCE_BANDS,
-  type VdotFallbackRead, type ResolvedCapacity,
+  type VdotFallbackRead,
 } from '@/lib/training/capacity-resolver';
-import { composePaceAnchors } from '@/lib/training/prescription-resolver';
+// `ResolvedCapacity` is Pace Prescription's own input type and has always
+// lived here, never in the Runner Model layer — the four capacity estimates
+// are what capacity-resolver.ts exports, and the BAG of all four is what the
+// prescription consumes. Importing it from the resolver typechecked nowhere;
+// vitest erases a type-only import, so the suite ran green while
+// `tsc --noEmit` was red.
+import { composePaceAnchors, type ResolvedCapacity } from '@/lib/training/prescription-resolver';
 import { fitRaceExponent, type DurabilityRaceObservation, type DecouplingRead, type TrainingDurabilityRead } from '@/lib/training/durability-anchor';
 import { composeRaceOutlook } from '@/lib/race/race-outlook';
 import { fixtureReads, fixtureRace } from '@/lib/race/_race_outlook_fixture';
