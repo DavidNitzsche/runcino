@@ -1477,6 +1477,37 @@ enum WatchLobbyAdapter {
         return "\(quick.value)–\(steady.value) \(quick.unit)"
     }
 
+    /// THE EXPECTED HEART RATE ON RACE DAY, AS A REFERENCE.
+    ///
+    /// HR-SEMANTICS-2 (2026-09-01). `raceHr` has been decoded by
+    /// `WatchWorkout` since the race-pace brain landed and drawn NOWHERE — a
+    /// field on the wire, parsed, and never seen. This is where it appears.
+    ///
+    /// It is a REFERENCE and nothing else. `Research/08` §6.1 states race
+    /// heart rate as a BAND per distance and says so in its own words: the
+    /// ceilings "are *guides*, not laws… Use HR as a backstop; pace and RPE
+    /// primary", with 3-5 bpm/hour of drift expected. So this is drawn in the
+    /// QUALIFIER register — the one the design reserves for something that
+    /// changes how the session is run without changing the dose — and never
+    /// as a band the wrist grades, never as a ceiling, never as an alarm. The
+    /// running boards do not carry it at all: `FacesPhaseV5` fixes the race
+    /// board at four metrics (pace, on-goal, distance, elapsed) and says a
+    /// fifth row is a rule-4 break, and a live number beside a range is read
+    /// as a target to hold, which is the one thing this must not become.
+    ///
+    /// `informationalOnly` is the band having no personal evidence behind it
+    /// (or the runner's own efforts at this pace contradicting it), and the
+    /// word changes with it — "roughly" — because the alternative is a
+    /// population figure worn as a personal one.
+    static func raceHrReference(for workout: WatchWorkout) -> String? {
+        guard workout.isRace, let hr = workout.raceHr else { return nil }
+        let lo = hr.expectedLoBpm, hi = hr.expectedHiBpm
+        guard lo > 0, hi >= lo else { return nil }
+        return hr.informationalOnly
+            ? "Expect roughly \(lo)-\(hi) bpm"
+            : "Expect \(lo)-\(hi) bpm"
+    }
+
     /// "9 DAYS OLD".
     ///
     /// Measured off the expiry the payload itself carries, because that is
@@ -1554,7 +1585,10 @@ struct WatchLobbySurfaceV5: View {
                     // in the qualifier slot the design reserves for a closing
                     // instruction. A race with no goal drops the register
                     // rather than drawing 0:00.
-                    qualifier: nil,
+                    // HR-SEMANTICS-2 · race morning's heart-rate REFERENCE.
+                    // Nil on every training day and on a race whose payload
+                    // carries no band — see `raceHrReference`.
+                    qualifier: WatchLobbyAdapter.raceHrReference(for: workout),
                     band: workout.isRace
                         ? (workout.goalSec.map { "Goal " + WFmt.clock($0) })
                         : WatchLobbyAdapter.band(for: workout),

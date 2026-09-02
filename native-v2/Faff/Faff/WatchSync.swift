@@ -175,6 +175,23 @@ final class WatchSync: NSObject, ObservableObject {
             } else if let msg = obj["message"] as? String {
                 ctx["noWorkout"] = msg
             }
+
+            /* HR-SEMANTICS-2 (2026-09-01) · TODAY'S AEROBIC CEILING REACHES THE
+             * PHONE ALARM.
+             *
+             * `HRAlerter` has never fired for anyone: `configure` had no call
+             * site, so its ceiling was a `UserDefaults` value nothing wrote.
+             * This is the one place on the phone that already holds today's
+             * prescription, so it is where the number comes from — the SAME
+             * `hrCeilingBpm` the wrist guardrail uses, not a second derivation.
+             *
+             * Absent on a quality day, a race, and a long run with a race-pace
+             * finish (`resolveHrCeiling` suppresses it there on purpose), and
+             * nil DISARMS the alarm for the day rather than leaving yesterday's
+             * easy-day number watching a threshold session. */
+            let workoutDict = obj["workout"] as? [String: Any]
+            let todaysCeiling = (workoutDict?["hrCeilingBpm"] as? NSNumber)?.intValue
+            await MainActor.run { HRAlerter.shared.applyTodaysCeiling(todaysCeiling) }
             // THE GLANCE, ON BOTH BRANCHES.
             //
             // The 0821 lobby pages poster → breakdown → week, shows a session
