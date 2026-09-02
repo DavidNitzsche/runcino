@@ -798,7 +798,40 @@ reports did, and both were wrong.
 requires a dev server on port 3111, because that is what the installed build
 talks to. Rendering against production from that simulator is not possible.
 
-## 22 · What is NOT true yet
+## 22 · Rendered, on live data, after everything landed
+
+With the dev server serving the integration worktree, the app fetched and the
+screen finally showed tonight's work. `renders/today-2026-09-02-verified.png`.
+
+**Today, 2026-09-02, week 2 of 15:**
+
+| What it shows | Why it matters |
+|---|---|
+| about 52 min · EASY · 5 mi | The session, sized in minutes |
+| Pace band **8:22–9:02/mi** | 8:22 is 502 s/mi, the canonical easy ceiling, unrounded |
+| HR ceiling **151 bpm** | Derived from the re-anchored LTHR of 168, not the old 162 |
+| `5 mi — no faster than 8:22 /mi` | **The ceiling renders AS a ceiling** |
+| `6 × 20s strides — 6:41 /mi` | |
+| `1:00 walk back between — 8:42 /mi` | |
+
+The line that matters most is the third. Doctrine gives easy running ONE number
+and it is a ceiling, and the deleted goal-derived ladder used to invent a
+two-sided band around a number it had no right to. The screen now says "no
+faster than", which is the refusal that replaced it — the design choice
+described in section 16, observed working.
+
+**And the voice under it:** "Conversational. Cap the effort and hold form.
+Relaxed and fast. Not a workout, so walk back fully between." No prohibited
+word, no hype, no taxonomy leaking out of the engine.
+
+**What this verifies, precisely.** That the canonical anchors reach the runner's
+screen, that the easy ceiling arrives as a ceiling rather than a fabricated
+band, that the HR ceiling follows the re-anchored threshold, and that the voice
+work renders. It does NOT verify the quality-day thesis clause, because
+2026-09-02 is an easy day and that sentence only fires on a quality day. Saying
+which is which is the whole point.
+
+## 23 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -815,7 +848,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 23 · PENDING sections
+## 24 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
