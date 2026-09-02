@@ -85,6 +85,7 @@ import { dropLastSegment, keepFirstSegment, parsePrescription, parseSegments, pa
 // stimulus it can actually see.
 import { progressionSpecFields, RATIONALE_SPEC_KEY } from './progression-spec';
 import { validateComposedPlan } from './validate';
+import { deriveBlockStrategy } from './strategy-contracts';
 import { mutatePlan, snapshotPrescription, snapshotActivePrescription } from './mutate';
 // 2026-08-25 · the commit gate + the "what moved" line. See lib/plan/plan-delta.ts.
 import {
@@ -12337,6 +12338,65 @@ export function finalizeComposedPlan(
   // numbers each phase cites (the block's peak week, its longest run, the
   // race-pace longs a phase carries) describe the block that ships.
   attachPhaseAnswers(composed, raceDistanceMi);
+
+  // BLOCK-STRATEGY-1 · after the phase answers, because it CARRIES them rather
+  // than restating them (Rule 17). Describes; changes nothing.
+  attachBlockStrategy(composed, raceDistanceMi);
+}
+
+/**
+ * BLOCK-STRATEGY-1 (2026-09-02) · brief §4.3's `BlockStrategy`, stamped onto
+ * the block that ships.
+ *
+ * Reads only the composed weeks, the phase answers attached one line above,
+ * and what the composer already stamped on `authoredState`. Derives no
+ * capacity, sizes nothing, moves nothing — `_strategy_contracts.test.ts`
+ * asserts the composed weeks are byte-identical with this pass and without it,
+ * because a description that changes what it describes is not one.
+ *
+ * Inert on a result whose composer stamped no `authoredState` (the pure unit
+ * fixtures), which is the same gating `attachPhaseAnswers` uses.
+ */
+function attachBlockStrategy(composed: ComposePlanResult, raceDistanceMi: number): void {
+  const st = composed.authoredState as Record<string, unknown> | undefined;
+  if (!st) return;
+  const cat = distanceCategoryOrNull(raceDistanceMi);
+  const thesis = (st['thesis_at_authoring'] ?? null) as ThesisAtAuthoring | null;
+  // The race date is not a key on `authoredState`; it is a DAY in the block,
+  // which is the more honest place to read it from — a stamped date and a
+  // composed race day could disagree, and the runner runs the day (Rule 16).
+  const raceDateISO = (() => {
+    for (let i = composed.weeks.length - 1; i >= 0; i--) {
+      const w = composed.weeks[i];
+      const d = w.days.find((x) => x.type === 'race');
+      if (!d) continue;
+      const startDow = new Date(w.startISO + 'T12:00:00Z').getUTCDay();
+      return addDays(w.startISO, ((d.dow - startDow) % 7 + 7) % 7);
+    }
+    return null;
+  })();
+  // The runner's STATED goal, in seconds, as `achievable-target` recorded it.
+  // Carried verbatim and never spent: `check-goal-pace-leak` is what keeps a
+  // goal out of the capacity path, and nothing downstream reads this field.
+  const prescribed = st['prescribed_race_pace'] as { goal_sec?: unknown } | null | undefined;
+  const goalSec = typeof prescribed?.goal_sec === 'number' ? prescribed.goal_sec : null;
+  const strategy = deriveBlockStrategy({
+    weeks: composed.weeks,
+    phases: composed.blocks.phases,
+    targetEvent: cat != null && raceDateISO
+      ? { distanceMi: raceDistanceMi, category: cat, dateISO: raceDateISO }
+      : null,
+    statedGoalSec: goalSec,
+    thesis: thesis
+      ? {
+          primaryLimiter: thesis.primaryLimiter,
+          priority: thesis.priority,
+          confidence: thesis.confidence,
+          source: thesis.source,
+        }
+      : null,
+  });
+  if (strategy) st['block_strategy'] = strategy;
 }
 
 /**

@@ -64,6 +64,36 @@ describe.skipIf(!RUN)('stage2b · owner block placement', () => {
       out.push(`   cite: ${r.citation}`);
     }
     if (!Array.isArray(pc) || pc.length === 0) out.push('(none recorded)');
+    out.push('');
+    out.push('--- block_strategy ---');
+    const bs = (composed.authoredState as Record<string, unknown>)?.block_strategy as {
+      modelVersion: string; thesis: { limiter: string; source: string };
+      startingLoadMi: number; peakLoadMi: number;
+      phases: Array<{ id: string; kind: string; primaryProgressionLever: string | null; heldConstant: string[]; keyWorkoutFamilies: string[]; longRunStrategy: { minMi: number; maxMi: number; racePaceLongs: number } }>;
+      weeks: Array<{ weekStartISO: string; role: string; primaryProgressionLever: string | null; secondaryChanges: Array<{ lever: string; deltaFraction: number }>; proposedChange: { lever: string; from: number; to: number } | null; rationale: string }>;
+    } | undefined;
+    if (!bs) out.push('(none)');
+    else {
+      out.push(`${bs.modelVersion} · thesis ${bs.thesis.limiter} (${bs.thesis.source}) · start ${bs.startingLoadMi} peak ${bs.peakLoadMi}`);
+      for (const p of bs.phases) {
+        out.push(`  ${p.kind.padEnd(14)} ${p.id} lever=${p.primaryProgressionLever ?? '-'} held=[${p.heldConstant.join(',')}] families=[${p.keyWorkoutFamilies.join(',')}] long ${p.longRunStrategy.minMi}-${p.longRunStrategy.maxMi} racePaceLongs=${p.longRunStrategy.racePaceLongs}`);
+      }
+      for (const w of bs.weeks) {
+        const sec = w.secondaryChanges.map((c) => `${c.lever}+${(c.deltaFraction * 100).toFixed(1)}%`).join(' ');
+        out.push(`  ${w.weekStartISO} ${w.role.padEnd(8)} ${(w.primaryProgressionLever ?? '-').padEnd(19)} ${w.proposedChange ? `${w.proposedChange.from}→${w.proposedChange.to}` : ''} ${sec ? `· also ${sec}` : ''}`);
+      }
+    }
+    out.push('');
+    out.push('--- stress ledger (validateComposedPlan onStress) ---');
+    const { validateComposedPlan } = await import('./validate');
+    try {
+      validateComposedPlan(composed, 26.22, 'race-prep', {
+        todayISO: '2026-09-02', level: 'advanced', recentWeeklyMi: 43,
+        isSteppingStoneToMarathon: false, priorPlanPeakLongMi: null, trailingAvgWeeklyMi: null,
+      }, { onStress: (f) => { for (const x of f) out.push(`${x.enforced ? 'FATAL' : 'note '} ${x.code} ${x.weekStartISO} · ${x.message}`); } });
+    } catch (e) {
+      out.push(`(threw) ${(e as Error).message}`);
+    }
     const fs = await import('node:fs');
     fs.writeFileSync(process.env.FAFF_S2B_OUT ?? '/tmp/stage2b-owner-block.txt', out.join('\n'));
   }, 240_000);
