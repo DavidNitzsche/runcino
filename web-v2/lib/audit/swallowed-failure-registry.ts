@@ -381,7 +381,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadGlanceState',
-  'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadStableBaseline',
   'lib/coach/heat-acclimatization.ts::computeHeatAcclimatization',
   'lib/coach/heat-acclimatization.ts::computeHeatAcclimatization',
@@ -649,7 +648,7 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // a TYPE (`PaceAnchorRead`'s branch carries no `anchors` field) rather than a
 // swallowed read. One fewer site, and the state it used to lose is now
 // something the caller cannot fail to branch on.
-export const EMPTIED_BASELINE = 367;
+export const EMPTIED_BASELINE = 366;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
