@@ -25,6 +25,7 @@ import {
   type PrescriptionStep,
 } from '@/lib/training/prescriptions';
 import { expandSpecToPhases, type ExpandedPhase } from '@/lib/training/expand-spec';
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 // SPECSUMMARY-1 · the ONE owner of "what family of session is this", shared
 // with the phone's card so the two surfaces cannot name it differently.
 import { specFamilyPhrase } from '@/lib/training/spec-card';
@@ -1630,10 +1631,33 @@ export async function buildWatchToday(
       ORDER BY (meta->>'date') ASC LIMIT 1`,
     [userId, today]
   ).catch(() => ({ rows: [] }))).rows[0];
-  const goal_seconds = raceRow ? parseRaceGoalSec(raceRow.meta?.goalDisplay) : null;
   const goal_distance_mi = raceRow
     ? (Number(raceRow.meta?.distanceMi) || distanceMiFromLabel(raceRow.meta?.distanceLabel))
     : null;
+
+  /* SECOND-OWNER-1 (2026-09-02) · THE WRIST'S SPEC-LESS TEMPLATE IS PRICED
+   * FROM THE CANONICAL ANCHORS, NOT FROM THE RUNNER'S TYPED GOAL.
+   *
+   * `prescriptionFor` used to be handed `{ lthr, goal_seconds,
+   * goal_distance_mi }` and derived its entire pace ladder from
+   * `tPaceFromGoal(goal_seconds, goal_distance_mi)`. On the owner's own
+   * account that is a 3:00:00 CIM goal producing a 412 s/mi marathon pace
+   * against a canonical 472, and a 394 s/mi threshold against 430 — on the
+   * device he executes the session on. The goal SECONDS read is deleted along
+   * with it; only the race DISTANCE survives, and it sizes fuelling, not pace.
+   *
+   * `resolvePrescribedPaceAnchors` takes `(userId, today)` and nothing else,
+   * so the wrist and the phone are now priced off one resolver. A REFUSED
+   * anchor set yields no anchors and the template prescribes by effort — never
+   * by a substituted number. */
+  const anchorRead = await resolvePrescribedPaceAnchors(userId, today);
+  const paceAnchors = anchorRead.ok ? anchorRead.anchors : null;
+  if (!anchorRead.ok) {
+    logReadFailure(
+      `watch/build-workout · pace anchors REFUSED (${anchorRead.reason})`,
+      new Error(anchorRead.detail),
+    );
+  }
 
   // 3. Weekly mileage — the number `prescriptionFor` doses every quality
   // session against.
@@ -1718,7 +1742,7 @@ export async function buildWatchToday(
   const prescription = prescriptionFor(
     prescriptionType,
     weeklyMi,
-    { lthr, goal_seconds, goal_distance_mi },
+    { lthr, anchors: paceAnchors, raceDistanceMi: goal_distance_mi },
     distanceMi,
   );
 

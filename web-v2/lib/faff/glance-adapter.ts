@@ -25,7 +25,8 @@
 
 import type { GlanceState, GlanceWeekDay } from '@/lib/coach/glance-state';
 import { miNum, fmtPace as fmtPaceShared } from '@/lib/format/run';
-import { derivePaces } from '@/lib/training/prescriptions';
+import { cardPaceTargets } from '@/lib/training/prescriptions';
+import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import type {
   DayState,
   PosterPayload,
@@ -36,6 +37,24 @@ import type {
   MiniTile,
   Stat,
 } from '@/lib/faff/types';
+
+/**
+ * SECOND-OWNER-1 (2026-09-02) · unwrap the canonical anchor read, ONCE.
+ *
+ * `GlanceState.paceAnchors` is a `PaceAnchorRead` whose refusal branch carries
+ * no `anchors` field, so every consumer has to branch. This is that branch,
+ * written once rather than at each call site, and it maps a refusal to `null` —
+ * which `cardPaceTargets` turns into nulls throughout, so every surface falls
+ * back to an effort cue rather than to a number nobody resolved.
+ *
+ * A REFUSAL IS NOT A ZERO AND IT IS NOT A GOAL. What this replaced read the
+ * runner's typed goal time whenever it could not read his fitness, which is the
+ * exact Rule 11 collapse: the safest available input produced the most
+ * aggressive possible output.
+ */
+function anchorsOf(glance: GlanceState): PrescribedPaceAnchors | null {
+  return glance.paceAnchors.ok ? glance.paceAnchors.anchors : null;
+}
 
 // ──────────────────────────────────────────────────────────────────────
 // 1. Day-state resolver
@@ -246,13 +265,8 @@ function buildStatTrio(
   glance: GlanceState,
 ): Stat[] | null {
   if (!today) return null;
-  // Real paces from the runner's goal + LTHR (Phase 47) — used by the
-  // EST. TIME stat below so we never quote a time off a fixed pace constant.
-  const dp = derivePaces({
-    lthr: glance.lthr,
-    goal_seconds: glance.raceGoalSeconds,
-    goal_distance_mi: glance.raceGoalDistanceMi,
-  });
+  // SECOND-OWNER-1 · the canonical anchors, not a goal-derived ladder.
+  const dp = cardPaceTargets({ lthr: glance.lthr, anchors: anchorsOf(glance) });
   switch (state) {
     case 'easy':
       // Direction A3 deck · EASY keeps the body-context trio. The workout-
@@ -294,9 +308,16 @@ function buildStatTrio(
         }
       }
       // EST. TIME off the runner's own easy pace (quality days are mostly
-      // easy warmup/cooldown around the work) — a real, slightly-conservative
-      // estimate. "—" when we have no pace anchor (no goal race).
-      const qMid = dp.easySecLo != null && dp.easySecHi != null ? (dp.easySecLo + dp.easySecHi) / 2 : null;
+      // easy warmup/cooldown around the work).
+      //
+      // SECOND-OWNER-1 · this was the midpoint of a GOAL-DERIVED easy band
+      // (`T+80 … T+120` off the typed goal), so the estimate was quoted at a
+      // pace 28 s/mi faster than the runner's own easy ceiling. There is no
+      // canonical easy BAND — doctrine gives one CEILING — so the midpoint is
+      // gone and the plan's own authored easy band is the only anchor. No
+      // authored band anywhere in the week is a refusal, not a fabrication:
+      // the stat reads "—" rather than inventing a width around the ceiling.
+      const qMid = weekEasyPaceSec(glance);
       const estTime = today.plannedMi > 0 && qMid != null ? formatEstTime(today.plannedMi, qMid) : '—';
       return [
         {
@@ -313,9 +334,15 @@ function buildStatTrio(
       // Direction A3 deck · LONG switches to workout/horizon-context.
       // PLANNED MI · EST. TIME · TO RACE (or WEEK MI as fallback when
       // no A-race horizon is on the calendar).
-      // EST. TIME off the runner's own long-run pace band (Phase 47).
-      // "—" when we have no pace anchor (no goal race).
-      const lMid = dp.longSecLo != null && dp.longSecHi != null ? (dp.longSecLo + dp.longSecHi) / 2 : null;
+      // EST. TIME off the runner's own long-run pace.
+      //
+      // SECOND-OWNER-1 · was the midpoint of a GOAL-DERIVED long band
+      // (`T+55 … T+90` off the typed goal time). There is no canonical long
+      // band — doctrine prices long as easy effort under one ceiling — so the
+      // week's own authored easy/long spec band is the anchor, and "—" is the
+      // answer when the plan carries none. `weekEasyPaceSec` prefers an easy
+      // spec and falls back to a long spec, both authored from current fitness.
+      const lMid = weekEasyPaceSec(glance);
       const estTime = today.plannedMi > 0 && lMid != null ? formatEstTime(today.plannedMi, lMid) : '—';
       const horizon = glance.daysToARace != null
         ? { value: `${glance.daysToARace}d`, label: 'TO RACE', valueColor: 'race' as const }
@@ -401,13 +428,23 @@ function buildStatTrio(
  *
  * 2026-05-28 (migration 120) · when `today.plannedSpec` is present, real
  * Daniels-VDOT numbers are pulled from the per-workout spec the plan-builder
- * authored. 2026-05-29 (Phase 47) · when the spec is ABSENT (a workout
- * mutated post-authoring that null'd the spec), the fallbacks below derive
- * REAL pace/HR from the runner's goal + LTHR via `derivePaces()` — the same
- * deterministic math `prescriptionFor` uses. Only when the runner has no
- * goal race AND no LTHR do we drop to effort cues ("Easy · by feel"); we
- * never quote a fixed, fitness-agnostic pace. Doctrine: pace targets from
- * Research/01-pace-zones-vdot.md (T-pace offsets); HR cap = LTHR Z2 upper.
+ * authored.
+ *
+ * SECOND-OWNER-1 (2026-09-02) · when the spec is ABSENT (a workout mutated
+ * post-authoring that null'd the spec), the fallbacks below read the CANONICAL
+ * anchors — `resolvePrescribedPaceAnchors`, carried on `GlanceState` — through
+ * `cardPaceTargets`. They used to read `derivePaces()`, which built the whole
+ * ladder off the runner's TYPED GOAL: on the owner's own account that fallback
+ * opened the easy band 28 s/mi fast and quoted a threshold 36 s/mi fast.
+ *
+ * Two consequences the reader should expect:
+ *   · EASY and LONG print a CEILING ("no faster than 8:22/mi"), not a band.
+ *     Doctrine resolves one number for both and it is the fast edge; the
+ *     two-sided window that used to print here had no canonical owner.
+ *   · No anchors and no LTHR still drops to effort cues ("Easy · by feel").
+ *     A refused capacity read is a refusal, never a substituted number.
+ *
+ * Doctrine: `Research/01-pace-zones-vdot.md`; HR cap = LTHR Z2 upper.
  */
 function buildWorkoutBreakdown(
   state: DayState,
@@ -416,33 +453,33 @@ function buildWorkoutBreakdown(
 ): PosterBreakdownRow[] | null {
   if (!today) return null;
   const spec = today.plannedSpec;
-  // Derived once — real pace/HR anchors for every fallback branch below.
-  const dp = derivePaces({
-    lthr: glance.lthr,
-    goal_seconds: glance.raceGoalSeconds,
-    goal_distance_mi: glance.raceGoalDistanceMi,
-  });
-  // PACE-T-2 (2026-08-29) · a zero-width band renders as ONE pace. Tempo is
-  // run AT threshold, so its two edges are equal (see `derivePaces`), and
-  // "6:48–6:48/mi" reads as a broken range rather than a precise target. The
-  // easy and long bands are genuinely wide and print unchanged.
-  const band = (lo: number | null, hi: number | null): string | null => {
-    if (lo == null || hi == null) return null;
-    const a = fmtPace(lo), b = fmtPace(hi);
-    return a === b ? `${a}/mi` : `${a}–${b}/mi`;
-  };
-  const easyBand = band(dp.easySecLo, dp.easySecHi);
-  const longBand = band(dp.longSecLo, dp.longSecHi);
-  const tempoBand = band(dp.tempoSecLo, dp.tempoSecHi);
+  // Derived once — the CANONICAL pace/HR anchors for every fallback below.
+  const dp = cardPaceTargets({ lthr: glance.lthr, anchors: anchorsOf(glance) });
+  // PACE-T-2 (2026-08-29) · tempo is run AT threshold, so it is ONE pace, not
+  // a band: "6:48–6:48/mi" reads as a broken range rather than a precise
+  // target. `cardPaceTargets` now carries a single `tempoSec` for that reason.
+  const paceStr = (s: number | null): string | null => (s != null ? `${fmtPace(s)}/mi` : null);
+  // SECOND-OWNER-1 · a CEILING rendered as a ceiling. There is no easy band and
+  // no long band to print: doctrine gives easy and long one number and it is
+  // the fast edge. Both rows print the same string because they are the same
+  // prescription at different volumes.
+  const ceilingStr = (s: number | null): string | null =>
+    (s != null ? `no faster than ${fmtPace(s)}/mi` : null);
+  const easyBand = ceilingStr(dp.easyCeilingSec);
+  const longBand = ceilingStr(dp.easyCeilingSec);
+  const tempoBand = paceStr(dp.tempoSec);
   const aerobicCap = dp.aerobicCapBpm != null ? `${dp.aerobicCapBpm} bpm` : null;
-  // P1-47 fix 2026-07-06 · WU/CD "~N min" estimates ride the runner's own
-  // easy pace — the week's authored easy/long spec band first (generator
-  // derives it from current fitness · Research/01 §E-pace), then the
-  // goal-derived easy band. Never the old 8:30/mi (510 s) constant. No
-  // anchor anywhere → 'by feel', not a fabricated duration.
-  const easyAnchorSec = weekEasyPaceSec(glance)
-    ?? (dp.easySecLo != null && dp.easySecHi != null
-      ? Math.round((dp.easySecLo + dp.easySecHi) / 2) : null);
+  // P1-47 fix 2026-07-06 · WU/CD "~N min" estimates ride the runner's own easy
+  // pace — the week's authored easy/long spec band (the generator derives it
+  // from current fitness · Research/01 §E-pace). Never the old 8:30/mi (510 s)
+  // constant.
+  //
+  // SECOND-OWNER-1 · the second rung was the midpoint of the goal-derived easy
+  // band and it is deleted with it. The canonical easy CEILING is not a
+  // substitute: a duration estimated at the fastest pace the runner is allowed
+  // to run understates the run, and "no band" is the honest answer. No authored
+  // band → 'by feel', not a fabricated duration.
+  const easyAnchorSec = weekEasyPaceSec(glance);
   const estMinTail = (mi: number): string =>
     easyAnchorSec != null ? `~${Math.round((mi * easyAnchorSec) / 60)} min` : 'by feel';
 
@@ -480,11 +517,12 @@ function buildWorkoutBreakdown(
           },
         ];
       }
-      // No spec — derive real pace/HR from the runner's goal + LTHR
-      // (Phase 47). Effort cues only when the runner has neither.
-      const easyMid = dp.easySecLo != null && dp.easySecHi != null
-        ? (dp.easySecLo + dp.easySecHi) / 2 : null;
-      const minutes = mi > 0 && easyMid != null ? Math.round((mi * easyMid) / 60) : null;
+      // No spec — the CANONICAL ceiling for the pace row, the week's own
+      // authored band for the duration estimate. Effort cues when neither is
+      // readable. SECOND-OWNER-1 · the duration used to be estimated at the
+      // midpoint of a goal-derived band; there is no canonical band, and an
+      // estimate taken at the ceiling would understate the run, so it refuses.
+      const minutes = mi > 0 && easyAnchorSec != null ? Math.round((mi * easyAnchorSec) / 60) : null;
       return [
         { label: 'PACE', body: 'Conversational · Z2', tail: easyBand ?? 'Easy · by feel' },
         { label: 'HR CAP', body: 'Stay aerobic', tail: aerobicCap ?? 'Aerobic · Z2' },
@@ -670,9 +708,10 @@ function buildWorkoutBreakdown(
       // Fallback placeholders. TODO 2026-05-28 · pace tails ("3:02/mi",
       // "7:15/mi") + warmup/cooldown durations are placeholders per
       // Daniels VDOT R/I/T-pace doctrine.
-      // No spec — derive the WORK/TEMPO/PROGRESSION pace from the runner's
-      // goal (Phase 47); effort cue only when there's no goal race. Warmup/
-      // cooldown structure stays a sensible default (unknown without a spec).
+      // No spec — the WORK/TEMPO/PROGRESSION pace comes off the CANONICAL
+      // anchors (SECOND-OWNER-1; it used to come off the runner's typed goal);
+      // effort cue when the anchor set was refused. Warmup/cooldown structure
+      // stays a sensible default (unknown without a spec).
       if (subtype === 'tempo') {
         return [
           { label: 'WARMUP', body: '1.5 mi easy', tail: estMinTail(1.5) },
@@ -681,8 +720,14 @@ function buildWorkoutBreakdown(
         ];
       }
       if (subtype === 'progression') {
-        const progTail = easyBand && dp.thresholdSec != null
-          ? `${fmtPace(dp.easySecHi as number)} → ${fmtPace(dp.thresholdSec)}` : 'Easy → tempo';
+        // SECOND-OWNER-1 · the START of a progression was the SLOW edge of a
+        // goal-derived easy band, which no longer exists. The canonical easy
+        // number is a ceiling (its FAST edge), and a progression that starts
+        // at the fastest easy pace allowed and finishes at threshold is a
+        // narrower session than the one intended. Two ends, one of which has
+        // no canonical value, so the row states the shape and leaves the
+        // numbers to the authored spec (Rule 11).
+        const progTail = 'Easy → tempo';
         return [
           { label: 'WARMUP', body: '1 mi easy', tail: estMinTail(1) },
           { label: 'PROGRESSION', body: 'Build from easy to tempo', tail: progTail },

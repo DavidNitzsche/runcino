@@ -116,8 +116,22 @@ read -r -d '' ALLOWLIST <<'EOF'
 web-v2/lib/plan/spec-builder.ts|DEFINITION SITE + THE RACE BRANCH. `tPaceFromGoal` is defined here and `buildWorkoutSpec`'s `case race` prices race day off `goalPaceSPerMi`, which is Constitution §J and correct. The AUTHORING callers are gone (AUTHORING-CANONICAL-1); what remains are the definition, the race branch, and the restore/adapt fallbacks below that still import it. Shrinks to the race branch alone when `tPaceFromGoal` loses its last non-race caller.
 web-v2/lib/plan/adapt.ts|ADAPT-TIME RESTORE FALLBACK. `adapt.ts` re-derives a T-pace from the goal when it has to rebuild a single row and no anchor was handed to it. Phase 3 of the P0 order owns the adaptation path and will re-point it at `resolvePrescribedPaceAnchors`; migrating it here would collide with that work. OPEN — a real, if narrow, §G leak.
 web-v2/lib/plan/authoring-shadow-compare.ts|SHADOW ONLY, AND THE LAST PLACE THE LEGACY DERIVATION EXISTS. `legacyPricingFor` hands the stated goal to `resolveMarathonPace` because that is precisely what the pre-migration composer did, and a comparison that does not reproduce the leak cannot measure it - the goal-at-MP days are the single largest divergence in the whole block. The module has no runtime importer, is declared in MODULE_ORPHANS with that argument, and imports nothing that can persist. It is deleted the day the migration report stops needing a before.
-web-v2/lib/training/prescriptions.ts|DISPLAY SURFACE. `paces(p)` returns `tPaceFromGoal(p.goal_seconds, p.goal_distance_mi)` for the v5 Today card. It prices nothing that is persisted and nothing the runner is prescribed; it is a label. OPEN, and the UI phase owns it — but it IS a second answer to "what is this runner's threshold pace" and should be re-pointed at the canonical anchors.
 EOF
+
+# ── SECOND-OWNER-1 (2026-09-02) · ONE EXEMPTION CLOSED ───────────────────────
+#
+# `web-v2/lib/training/prescriptions.ts` was on that list, and its own reason
+# text said what to do about it: "it IS a second answer to 'what is this
+# runner's threshold pace' and should be re-pointed at the canonical anchors."
+# It has been. `derivePaces` and `tPaceSecPerMi` are DELETED; the file no longer
+# imports `tPaceFromGoal` at all, and `cardPaceTargets` reads the six anchors
+# from `resolvePrescribedPaceAnchors`. Measured on the owner's own account the
+# day it was removed, goal-derived against canonical: threshold 394 vs 430,
+# interval 376 vs 401, repetition 333 vs 365, marathon 412 vs 472.
+#
+# The entry is DELETED rather than kept with a "closed" note, because the
+# ratchet in section 4 below fails on a stale exemption — which is exactly how
+# this one was meant to expire, and it is the proof the ratchet works.
 
 # ── 1 · LIVENESS ─────────────────────────────────────────────────────────────
 SCANNED=$(find "${TREES[@]}" -name '*.ts' ! -name '*.test.ts' ! -name '*.audit.test.ts' | wc -l | tr -d ' ')

@@ -32,6 +32,62 @@
 
 import type { GlanceState, GlanceWeekDay } from '@/lib/coach/glance-state';
 import type { ReadinessBreakdown } from '@/lib/coach/readiness';
+import {
+  composePaceAnchors,
+  type PaceAnchorRead,
+  type ResolvedCapacity,
+} from '@/lib/training/prescription-resolver';
+
+/**
+ * SECOND-OWNER-1 (2026-09-02) · a persona's PACE ANCHORS.
+ *
+ * These fixtures used to carry `raceGoalSeconds` / `raceGoalDistanceMi`,
+ * because that is what `GlanceState` carried and what `derivePaces` priced the
+ * simulator's whole pace ladder from. Both are gone from the production path;
+ * the simulator has to feed the same shape the loader now feeds, which is a
+ * `PaceAnchorRead`.
+ *
+ * It is built by running a synthetic capacity through `composePaceAnchors` —
+ * the REAL composer, the one the live path uses — rather than by typing an
+ * anchor literal. A fixture that hand-wrote its own six numbers would be a
+ * place for the offsets to be re-invented, which is the defect this whole
+ * change removes. The only thing invented here is the runner's fitness, which
+ * is what a persona IS.
+ */
+function personaAnchors(thresholdSecPerMi: number, vdot: number): PaceAnchorRead {
+  const capacity: ResolvedCapacity = {
+    threshold: {
+      paceSecPerMi: thresholdSecPerMi, vdot, confidence: 0.7, sourceMode: 'direct',
+      evidenceIds: [], resolvedAt: '', reasons: [], modelVersion: '1.0.0',
+    },
+    highIntensity: {
+      intervalPaceSecPerMi: thresholdSecPerMi - 23,
+      repetitionPaceSecPerMi: thresholdSecPerMi - 59,
+      vdot, confidence: 0.3, sourceMode: 'vdot_fallback',
+      evidenceIds: [], resolvedAt: '', reasons: [], modelVersion: '1.0.0',
+    },
+    easyCeiling: {
+      ceilingSecPerMi: thresholdSecPerMi + 72, confidence: 0.6, sourceMode: 'direct',
+      evidenceIds: [], resolvedAt: '', reasons: [], modelVersion: '1.0.0',
+    },
+    durability: {
+      enduranceExponent: 1.0869,
+      raceExponent: { present: false, reason: 'fixture', observations: 0 },
+      decoupling: { present: false, reason: 'fixture', observations: 0 },
+      confidence: 0.5, sourceMode: 'population_prior',
+      evidenceIds: [], resolvedAt: '', reasons: [], modelVersion: '1.0.0',
+    },
+  };
+  return composePaceAnchors(capacity);
+}
+
+/** A persona with no fitness read at all — the REFUSAL branch, so the
+ *  simulator can render what a runner with no capacity evidence sees. */
+const NO_ANCHORS: PaceAnchorRead = {
+  ok: false,
+  reason: 'ANCHOR_NOT_FINITE',
+  detail: 'persona fixture · this runner has no capacity evidence to price from',
+};
 
 export type PersonaKey =
   | 'david'
@@ -239,7 +295,7 @@ function david(): GlanceState {
     daysToARace: 80,
     nextARaceName: "America's Finest City",
     lthr: 162,
-    raceGoalSeconds: 5700, // 1:35:00 half
+    paceAnchors: personaAnchors(430, 47.8), // T 7:10/mi · a 1:35 half runner
     raceGoalDistanceMi: 13.1,
     readiness: readinessReady(83),
     todaySkipped: false,
@@ -282,7 +338,7 @@ function lilian(): GlanceState {
     daysToARace: null,
     nextARaceName: null,
     lthr: null, // net-new: no goal, no LTHR → adapter shows by-feel cues
-    raceGoalSeconds: null,
+    paceAnchors: NO_ANCHORS, // new user · no capacity evidence yet
     raceGoalDistanceMi: null,
     readiness: readinessUnknown(),
     todaySkipped: false,
@@ -323,7 +379,7 @@ function tyler(): GlanceState {
     daysToARace: 3,
     nextARaceName: 'Brooklyn Half',
     lthr: 165,
-    raceGoalSeconds: 5400, // 1:30:00 half
+    paceAnchors: personaAnchors(405, 51.0), // T 6:45/mi · a 1:30 half runner
     raceGoalDistanceMi: 13.1,
     readiness: readinessSharp(88),
     todaySkipped: false,
@@ -368,7 +424,7 @@ function sarah(): GlanceState {
     daysToARace: 96,
     nextARaceName: 'Chicago Marathon',
     lthr: 158,
-    raceGoalSeconds: 13500, // 3:45:00 marathon
+    paceAnchors: personaAnchors(452, 44.0), // T 7:32/mi · a 3:45 marathoner
     raceGoalDistanceMi: 26.2,
     readiness: readinessPullBack(38),
     todaySkipped: false,
@@ -417,7 +473,7 @@ function marcus(): GlanceState {
     daysToARace: 63,
     nextARaceName: 'Portland Half',
     lthr: 160,
-    raceGoalSeconds: 6000, // 1:40:00 half
+    paceAnchors: personaAnchors(450, 44.5), // T 7:30/mi · a 1:40 half runner
     raceGoalDistanceMi: 13.1,
     readiness: readinessModerate(64),
     todaySkipped: false,
@@ -467,7 +523,7 @@ function helen(): GlanceState {
     daysToARace: 49,
     nextARaceName: 'Lake Tahoe Marathon',
     lthr: 156,
-    raceGoalSeconds: 14400, // 4:00:00 marathon
+    paceAnchors: personaAnchors(482, 40.5), // T 8:02/mi · a 4:00 marathoner
     raceGoalDistanceMi: 26.2,
     readiness: readinessModerate(68),
     todaySkipped: false,
@@ -509,7 +565,7 @@ function alex(): GlanceState {
     daysToARace: 42,
     nextARaceName: 'Long Beach Half',
     lthr: 168,
-    raceGoalSeconds: 5100, // 1:25:00 half
+    paceAnchors: personaAnchors(383, 54.0), // T 6:23/mi · a 1:25 half runner
     raceGoalDistanceMi: 13.1,
     readiness: readinessSharp(91),
     todaySkipped: false,
@@ -551,7 +607,7 @@ function maya(): GlanceState {
     daysToARace: 55,
     nextARaceName: 'Big Sur Marathon',
     lthr: 159,
-    raceGoalSeconds: 14100, // 3:55:00 marathon
+    paceAnchors: personaAnchors(473, 41.5), // T 7:53/mi · a 3:55 marathoner
     raceGoalDistanceMi: 26.2,
     readiness: readinessReady(78),
     todaySkipped: true,

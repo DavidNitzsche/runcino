@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { prescriptionFor, type WorkoutType } from '@/lib/training/prescriptions';
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import { canonicalSessionType } from '@/lib/training/workout-type';
 import { lookupTempF, baselineTempF } from '@/lib/weather/lookup';
 import {
@@ -72,8 +73,15 @@ export async function GET(req: NextRequest) {
     [userId, today]
   ).catch(() => ({ rows: [] }))).rows[0];
   const meta = raceRow?.meta ?? {};
-  const goal_seconds = parseGoalSeconds(meta.goalDisplay);
   const goal_distance_mi = meta.distanceMi ? Number(meta.distanceMi) : distanceMiFromLabel(meta.distanceLabel);
+
+  /* SECOND-OWNER-1 (2026-09-02) · the goal TIME read is deleted. It existed to
+   * feed `prescriptionFor`'s pace ladder, which derived every zone from
+   * `tPaceFromGoal(goal_seconds, goal_distance_mi)` — the runner's aspiration
+   * pricing his training. The ladder now reads the canonical anchors, whose
+   * inputs are `(userId, today)` and nothing else. The race DISTANCE survives:
+   * it sizes the fuelling ramp below, and a distance cannot price a pace. */
+  const anchorRead = await resolvePrescribedPaceAnchors(userId, today);
 
   // ── Weather: pull tempF for the workout date (forecast lookup).
   //
@@ -132,7 +140,7 @@ export async function GET(req: NextRequest) {
   }
 
   const prescription = prescriptionFor(type, weeklyMi, {
-    lthr, goal_seconds, goal_distance_mi,
+    lthr, anchors: anchorRead.ok ? anchorRead.anchors : null, raceDistanceMi: goal_distance_mi,
   }, isFinite(targetMi as number) ? (targetMi as number) : undefined);
 
   // ── Fueling: compute gels + carb intake per Research/18 ─────────
@@ -197,7 +205,7 @@ export async function GET(req: NextRequest) {
     deltaF: (tempF != null && baseline != null) ? Math.round(tempF - baseline) : null,
   } : null;
 
-  // Prescriptions are deterministic from (type, weeklyMi, lthr, goal_*).
+  // Prescriptions are deterministic from (type, weeklyMi, lthr, canonical anchors).
   // The same query string returns the same output until the runner's
   // profile changes — safe to cache aggressively client-side.
   return NextResponse.json({ ...prescription, weather_baseline }, {
