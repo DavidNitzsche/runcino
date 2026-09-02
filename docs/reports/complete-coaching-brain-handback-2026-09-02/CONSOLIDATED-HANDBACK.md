@@ -510,10 +510,88 @@ the accurate one.
 
 ## 12b · Stage 4 · the post-run experience
 
-PENDING — in flight.
+**The brief's most valuable finding was the one about what a run TEACHES**, and
+it was true. The Evidence Engine had been classifying every one of your
+activities for weeks and no post-run surface read a word of it — "What this did"
+was a weekly mileage percentage. Your 2026-09-01 session now says:
+
+> This supports your current threshold range and ability to hold pace late. One
+> session is not enough to move them.
+
+**Two post-run compositions disagreeing was half stale and half true, measured
+rather than argued.** Calling the three real handlers against production, before
+the change, on that same session:
+
+| Route | What it said |
+|---|---|
+| `/api/v5/today` | "Tempo done, 8.5 mi total at 8:03/mi, avg HR 162 across the 4 reps." |
+| `/api/runs/[id]/recap` | "Tempo done, 4 mi @ 7:03, avg HR 162 across the 4 reps…" |
+| `/api/runs/[id]` | **404** — on the id `/api/v5/today` had just handed the phone |
+
+One run, one field name, two distances, two paces, and a third route that could
+not open it. Both also called a THRESHOLD session "Tempo done". All three now
+read ONE loader and return byte-identical interpretations carrying the same
+`decisionVersion`, so parity is by construction rather than by call sites
+agreeing.
+
+**The third P0 was already fixed** on 2026-09-01, and was retired rather than
+implemented around.
+
+**CEIL-SLACK-1, and the diagnosis that had to be corrected twice.** Stage 5 found
+the watch shipping 522 where the phone shows 502 and called it a 20 s/mi
+contradiction. I agreed and handed it on. The Stage 4 agent made the change,
+watched seven tests fail, reverted it, and read the two wrist readers: the wire
+encodes a band as centre plus half-width and both readers subtract the tolerance,
+so the effective ceiling IS 502 on both. **Our diagnosis was wrong.**
+
+The real defect was one layer down. `gradeStoredPhases` graded every ceiling at a
+30 s/mi fallback while the wrist used the phase's own tolerance — so they agreed
+only where that tolerance happens to be 30, which is warm-up and cool-down, and
+disagreed everywhere else. **Ten to twelve seconds per mile between the grade you
+saw on your wrist and the grade the server recomputes for your post-run screens,
+on every easy and every long day.** The gate that should have caught it asserted
+the two FALLBACKS match — the one case where the missing slack is harmless.
+
+**Also found:** an HR-ceiling ladder retyped at three call sites, none of which
+read `spec.rules` where the plan's own doctrine-cited pass rule lives; and,
+sweeping the new composer over 40 of your real runs, a ceiling called a window,
+the sentence "one of two reps were finished", and an unbounded adaptation window
+reporting UPDATED on five historical days.
+
+**Nothing needs re-authoring for either of its fixes.** The grade is recomputed
+at read time from the stored phase's own tolerance, so every past run regrades
+correctly on deploy. That is the opposite of the plan-structure situation in
+section 4, and it is worth the contrast.
+
 
 
 ---
+
+## 12d · One defect I found by rendering, and could not have found otherwise
+
+Selecting an earlier day on Today moved the LABEL and not the CONTENT. The
+header read EARLIER with Tuesday the 1st selected, and the body kept showing
+Wednesday the 2nd's easy run — same 5 mi, same 8:22-9:02 band — with no
+indication anything had failed.
+
+`renders/stale-day-2026-09-01-under-09-02-content.png`.
+
+This is the failure Stage 4 named at `SurfaceStoreV5.swift:200` and declined to
+fix: a fetch that does not resolve leaves the model alone while the label moves,
+and the `stale` flag it sets is only read through a condition that requires the
+model to be nil. It renders one day's session under another day's date, silently.
+
+**The honest caveat.** I triggered it with a dev server answering in 28 to 60
+seconds against a 60-second client timeout — roughly fifty times slower than
+production. I cannot say this happens on your phone on a normal day.
+
+**But the trigger is exactly the condition a runner meets.** Bad signal at a
+trailhead is the same shape as a slow server, and the person most likely to see
+Tuesday's session under Wednesday's date is the one standing outside about to
+run. Stage 4 was right not to fix it unilaterally — the clean fix makes an
+uncached day wait for the network before the strip moves, which contradicts your
+recorded preference — but it should not stay open on the strength of "the
+network is usually fast."
 
 ## 13 · What is NOT true
 
