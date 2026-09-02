@@ -97,6 +97,22 @@ describe('absence of evidence is not evidence of poor adaptation', () => {
     expect(v.stepMultiplier).toBe(1);
   });
 
+  it('Rule 11 · and SAYS it could not see · the verdict names itself a refusal, not a read', () => {
+    // `PROGRESS` above means "the calendar's own step proceeds". It does not
+    // mean "this runner demonstrated room for more", and a consumer adding
+    // load beyond the plan must be able to tell (the Adaptation Engine's LOAD
+    // levers read this field). Both branches, so the field is never undefined
+    // on a classifier verdict.
+    expect(classifyAdaptation(blind()).evidenceSufficient).toBe(false);
+    expect(classifyAdaptation(baseline()).evidenceSufficient).toBe(true);
+    // A veto is a read: the runner reported something.
+    expect(classifyAdaptation({ ...blind(), illnessActive: true }).evidenceSufficient).toBe(true);
+    // Exactly two readable dimensions is the smallest read, and it IS a read.
+    const twoDims = classifyAdaptation({ ...blind(), targetVerdicts: ['on', 'on'], trainingForm: 'PRODUCTIVE' });
+    expect(twoDims.confidence).toBe('low');
+    expect(twoDims.evidenceSufficient).toBe(true);
+  });
+
   it('a runner with no HR data is not penalised for the missing dimension', () => {
     const noHr: AdaptationInput = {
       ...baseline(),

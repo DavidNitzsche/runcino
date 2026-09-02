@@ -116,6 +116,30 @@ export interface AdaptationVerdict {
   veto: 'pain' | 'illness' | 'injury_active' | null;
   /** One line in the coach register. Never a scold, never a cheer. */
   summary: string;
+  /**
+   * Rule 11 · whether the verdict above is a READ or a REFUSAL.
+   *
+   * `false` exactly when fewer than `MIN_DIMENSIONS_FOR_VERDICT` dimensions were
+   * readable: the classifier then returns `normal` / `PROGRESS` / step 1 so the
+   * CALENDAR's own planned step proceeds ("proceed as planned", rule 1 in the
+   * header). That is the right answer for the progression pass, which is
+   * deciding whether to take a step the plan already authored. It is the WRONG
+   * answer for anything that wants to add load BEYOND the plan — the Adaptation
+   * Engine's VOLUME and DURATION levers read `decision === 'PROGRESS'` as "the
+   * absorption model permits more", and until this field existed a runner the
+   * model could not see at all cleared that gate. "We could not judge" and "we
+   * judged, and it permits" are opposite facts; this field keeps them apart.
+   *
+   * OPTIONAL in the type for one reason only: every producer is
+   * `classifyAdaptation` (which always sets it), while a dozen hand-built
+   * fixtures across `lib/plan`, `lib/prescription` and `lib/doctrine` construct
+   * verdicts by literal and predate the field. An absent value therefore means
+   * "a fixture that did not say", never "insufficient" — the engine's gate
+   * treats only an explicit `false` as a refusal, so no consumer becomes
+   * quietly stricter on a legacy literal. `_adaptation_model.test.ts` pins that
+   * the classifier sets it on every branch.
+   */
+  evidenceSufficient?: boolean;
 }
 
 /* ------------------------------------------------------------------ inputs */
@@ -689,6 +713,8 @@ export function classifyAdaptation(input: AdaptationInput): AdaptationVerdict {
       dimensions,
       veto,
       summary,
+      // A veto is a READ · the runner reported pain, illness or an injury.
+      evidenceSufficient: true,
     };
   }
 
@@ -703,6 +729,10 @@ export function classifyAdaptation(input: AdaptationInput): AdaptationVerdict {
       dimensions,
       veto: null,
       summary: 'Not enough training evidence yet to read how you are absorbing the work. Proceeding as planned.',
+      // THE REFUSAL, named. `PROGRESS` above means "take the calendar's own
+      // step", not "this runner has demonstrated room for more" · see the
+      // field's doc comment.
+      evidenceSufficient: false,
     };
   }
 
@@ -775,6 +805,7 @@ export function classifyAdaptation(input: AdaptationInput): AdaptationVerdict {
     dimensions,
     veto: null,
     summary: summarise(band, mean, dimensions, trendGatePassed, progressionGatePassed, input.recentPrescribedWindow),
+    evidenceSufficient: true,
   };
 }
 

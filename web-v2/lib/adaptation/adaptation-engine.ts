@@ -138,6 +138,10 @@
  *     this engine must not grow a second opinion about session geometry.
  *   · It cannot tell whether the EVIDENCE WINDOW was the right one. It reads
  *     the lookback the loader hands it and trusts the `stalenessFactor` on it.
+ *   · It cannot catch a WRONG WEEK FLAG. `WeekAheadRead` is the plan's own
+ *     `is_cutback` / `is_race_week` / TAPER label, carried. A cutback week the
+ *     author forgot to flag is a progression week here, and a VOLUME proposal
+ *     will land on it.
  *
  * ── THE 2026-08-31 REVIEW · what changed and why ────────────────────────────
  *
@@ -251,9 +255,21 @@ export type AdaptationReasonCode =
   | 'NO_VOLUME_TOLERANCE_EVIDENCE'
   | 'LONG_RUN_TOLERATED_WITHOUT_COLLAPSE'
   | 'LONG_RUN_SHOWED_LATE_COLLAPSE'
+  /** A long run was graded and its execution was `variable` — a READ that
+   *  argues against growing it, not an absence (1.1.0; used to be reported
+   *  under `NO_LONG_RUN_EVIDENCE_IN_WINDOW`, a finding wearing an absence's
+   *  name). */
+  | 'LONG_RUN_EXECUTION_UNCONTROLLED'
   | 'NO_LONG_RUN_EVIDENCE_IN_WINDOW'
   | 'AT_TIER_CEILING'
   | 'STEP_CLAMPED_TO_RAMP_CAP'
+  /** The week the lever would move is a cutback, race week or taper. Doctrine
+   *  gives those weeks no progression step — the same rule the DENSITY gate
+   *  already applied (`WEEK_TAKES_NO_STEP`), now on every LOAD lever (1.1.0). */
+  | 'WEEK_AHEAD_TAKES_NO_PROGRESSION_STEP'
+  /** The absorption model could not read this runner (fewer than its minimum
+   *  readable dimensions). An absence, never a finding (1.1.0). */
+  | 'ABSORPTION_NOT_YET_READABLE'
   // ── DENSITY ──
   | 'PROGRESSION_GATE_RESOLVED_A_DENSER_SESSION'
   | 'PROGRESSION_GATE_RESOLVED_MORE_QUALITY_WORK'
@@ -278,8 +294,21 @@ export type AdaptationReasonCode =
  * §31 · version the model. MINOR when a lever's evidence requirement or the
  * ranking changes; PATCH when a reason code or a reported field moves without
  * changing a decision.
+ *
+ * 1.1.0 (2026-09-02, Phase 9 shadow finish) · MINOR, three evidence
+ * requirements moved on the LOAD levers:
+ *   · VOLUME and DURATION now HOLD when the week ahead is a cutback, race week
+ *     or taper (`WeekAheadRead`) — the rule DENSITY's gate already applied and
+ *     the two LOAD levers did not, so a +5 mi proposal could land on a taper.
+ *   · VOLUME and DURATION now refuse (`INSUFFICIENT_EVIDENCE`) when the
+ *     absorption model could not read the runner, instead of spending its
+ *     "proceed as planned" default as permission to add load beyond the plan.
+ *   · REDUCE sizes its magnitude off the week ahead's real quality-session
+ *     count rather than the density gate's resolution count, which is zero on
+ *     six days in seven.
+ * A shadow record stamped 1.0.0 was produced under the old requirements.
  */
-export const ADAPTATION_ENGINE_MODEL_VERSION = '1.0.0';
+export const ADAPTATION_ENGINE_MODEL_VERSION = '1.1.0';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 2 · THE PROPOSAL — §9's reason object, with the levers kept apart by type
@@ -605,10 +634,41 @@ export type VolumeToleranceRead =
     }
   | { ok: false; reason: 'NOT_ENOUGH_REPRESENTATIVE_TRAINING' | 'UNREADABLE' };
 
+/**
+ * WHAT KIND OF WEEK the LOAD levers would be moving.
+ *
+ * A cutback, a race week and a taper are weeks doctrine sizes DOWN on purpose
+ * (`Research/00a` §Volume progression rules · the cutback; `Research/08` §9.1
+ * · the taper). Proposing "take the week to +5 mi" against one of them is not a
+ * progression, it is undoing the plan's own recovery — and until 1.1.0 nothing
+ * stopped it: the DENSITY lever refused on `WEEK_TAKES_NO_STEP` while VOLUME and
+ * DURATION read `currentWeeklyMi` off the taper and added to it.
+ *
+ * The flags are the plan's own (`plan_weeks.is_cutback`, `is_race_week`,
+ * `plan_phases.label = 'TAPER'`) and the predicate is `weekRowNoStepReason` in
+ * `lib/plan/progression-pass.ts` — ONE definition, shared with the density
+ * gate, so the three levers cannot disagree about what a no-step week is
+ * (Rule 16). Rule 11: `readable: false` is a failed read of the flags and is
+ * its own state; the levers refuse on it rather than assuming the week steps.
+ */
+export type WeekAheadRead =
+  | { readable: true; takesProgressionStep: true }
+  | { readable: true; takesProgressionStep: false; reason: 'CUTBACK' | 'RACE_WEEK' | 'TAPER' }
+  | { readable: false };
+
 /** The VOLUME lever's slice. Absorbed load, and the ceiling it may not pass. */
 export interface LoadEvidence {
   /** The runner's current weekly prescription, mi. */
   currentWeeklyMi: number | null;
+  /** Whether the week ahead is one doctrine lets a LOAD lever grow. */
+  weekAhead: WeekAheadRead;
+  /**
+   * Quality sessions the plan prescribes in the week ahead. The REDUCE lever's
+   * `previous` magnitude — what a "one fewer quality session" reduction is one
+   * fewer OF. Null when the plan could not be counted (Rule 11), never zero
+   * for that reason.
+   */
+  qualitySessionsWeekAhead: number | null;
   /**
    * CURRENT-PLAN ABSORPTION. Completed-versus-scheduled for each of the recent
    * whole weeks, newest first. `null` scheduled means the week had no schedule
@@ -631,6 +691,9 @@ export interface LongRunEvidence {
   longRunCapMi: number | null;
   /** Max week-over-week growth as a fraction, e.g. 0.30. */
   longRunWoWMaxFraction: number | null;
+  /** The same read the VOLUME lever carries — one read in the loader, two
+   *  consumers, so the two LOAD levers cannot disagree about the week. */
+  weekAhead: WeekAheadRead;
   recent: LongRunRead[];
   lookback: EvidenceLookback;
 }
@@ -817,9 +880,56 @@ export const PROGRESS_LEVER_ORDER: readonly AdaptationLever[] = [
  *
  * `decision === 'PROGRESS'` covers bands `strong` AND `normal`, so this is not
  * a high bar — it is the absorption model's own line, used once.
+ *
+ * ── THREE ANSWERS, NOT TWO (1.1.0, Rule 11) ──────────────────────────────────
+ *
+ * `classifyAdaptation` returns `PROGRESS` in TWO situations that are opposite
+ * facts: the runner was read and is absorbing the work, and the runner could
+ * not be read at all (fewer than `MIN_DIMENSIONS_FOR_VERDICT` readable
+ * dimensions), where "proceed as planned" means the CALENDAR's own step may
+ * proceed. A boolean gate collapsed them, so a runner three days into an
+ * account, with a Strava import behind him, cleared the load gate and could be
+ * handed a +5 mi week off historical tolerance while the absorption model was
+ * saying "I cannot see you". The verdict now says which it was
+ * (`evidenceSufficient`), and the LOAD levers refuse on the second rather than
+ * spending it.
+ *
+ * ITS OPPOSITE NUMBER: `detectReduce` reads `band === 'poor'`, which an
+ * unreadable runner never is — so insufficient evidence blocks the upward LOAD
+ * path AND the downward one from this input. Symmetric, as Rule 21 requires.
  */
-function absorptionPermitsLoadProgression(v: AdaptationVerdict): boolean {
-  return v.decision === 'PROGRESS' && v.veto == null;
+type LoadAbsorptionGate = 'PERMITS' | 'HOLDS' | 'INSUFFICIENT';
+
+function loadAbsorptionGate(v: AdaptationVerdict): LoadAbsorptionGate {
+  if (v.evidenceSufficient === false) return 'INSUFFICIENT';
+  return v.decision === 'PROGRESS' && v.veto == null ? 'PERMITS' : 'HOLDS';
+}
+
+/**
+ * The reason a week ahead forbids a LOAD progression, said once for both
+ * levers. Null when the week steps. `readable: false` is returned as a
+ * refusal, not a hold — the flags could not be read, and a lever that assumed
+ * the week steps would be adding load on an assumption (Rule 11).
+ */
+function weekAheadBlock(
+  w: WeekAheadRead,
+): { decision: 'HOLD' | 'INSUFFICIENT_EVIDENCE'; code: AdaptationReasonCode; sentence: string } | null {
+  if (!w.readable) {
+    return {
+      decision: 'INSUFFICIENT_EVIDENCE',
+      code: 'EVIDENCE_UNREADABLE',
+      sentence: 'The week ahead could not be read from the plan, so nothing is added to it on an assumption.',
+    };
+  }
+  if (w.takesProgressionStep) return null;
+  const noun = w.reason === 'CUTBACK' ? 'a cutback week'
+    : w.reason === 'RACE_WEEK' ? 'race week'
+      : 'inside the taper';
+  return {
+    decision: 'HOLD',
+    code: 'WEEK_AHEAD_TAKES_NO_PROGRESSION_STEP',
+    sentence: `The week ahead is ${noun}, which takes no progression step by design.`,
+  };
 }
 
 /**
@@ -1139,6 +1249,23 @@ function detectVolume(
     resolvedAt: now, modelVersion: ADAPTATION_ENGINE_MODEL_VERSION,
   });
 
+  /* ── THE WEEK ITSELF, FIRST (1.1.0) ───────────────────────────────────────
+   * Before asking whether the runner has earned more, ask whether the week is
+   * one that may be given more. A cutback or a taper is sized down on purpose,
+   * and no amount of absorbed load is a reason to undo that. Checked before the
+   * evidence so the reason a runner reads is the proximate one. */
+  const weekBlock = weekAheadBlock(evidence.weekAhead);
+  if (weekBlock) {
+    return {
+      proposal: null,
+      hold: holdWith(
+        [weekBlock.code],
+        `Weekly volume holds at ${round1(current)} mi. ${weekBlock.sentence}`,
+        weekBlock.decision,
+      ),
+    };
+  }
+
   const scheduled = evidence.recentWeeks.filter((w) => w.scheduledMi != null && w.scheduledMi > 0);
   const absorbed = scheduled.filter((w) => w.completedMi >= (w.scheduledMi as number) * VOLUME_ABSORBED_SHARE);
 
@@ -1202,7 +1329,19 @@ function detectVolume(
     };
   }
 
-  if (!absorptionPermitsLoadProgression(absorption)) {
+  const gate = loadAbsorptionGate(absorption);
+  if (gate === 'INSUFFICIENT') {
+    return {
+      proposal: null,
+      hold: holdWith(
+        ['ABSORPTION_NOT_YET_READABLE'],
+        `Weekly volume stays at ${round1(current)} mi. There is not enough training evidence yet `
+          + 'to read how the load is being absorbed, so nothing is added beyond the plan.',
+        'INSUFFICIENT_EVIDENCE',
+      ),
+    };
+  }
+  if (gate === 'HOLDS') {
     return {
       proposal: null,
       hold: holdWith(
@@ -1320,11 +1459,39 @@ function detectDuration(
     resolvedAt: now, modelVersion: ADAPTATION_ENGINE_MODEL_VERSION,
   });
 
+  // THE WEEK ITSELF, FIRST (1.1.0) — the same check VOLUME makes, on the same
+  // read. A taper's long run is short by design.
+  const weekBlock = weekAheadBlock(evidence.weekAhead);
+  if (weekBlock) {
+    return {
+      proposal: null,
+      hold: holdWith(
+        [weekBlock.code],
+        `The long run holds at ${round1(current)} mi. ${weekBlock.sentence}`,
+        [],
+        weekBlock.decision,
+      ),
+    };
+  }
+
   // THE SAME GATE VOLUME USES. Both are LOAD-domain levers, so both ask the
   // absorption model the same question and get the same answer. See
-  // `absorptionPermitsLoadProgression` for the shadow-mode run that caught
-  // these two disagreeing.
-  if (!absorptionPermitsLoadProgression(absorption)) {
+  // `loadAbsorptionGate` for the shadow-mode run that caught these two
+  // disagreeing, and for why it has three answers rather than two.
+  const gate = loadAbsorptionGate(absorption);
+  if (gate === 'INSUFFICIENT') {
+    return {
+      proposal: null,
+      hold: holdWith(
+        ['ABSORPTION_NOT_YET_READABLE'],
+        `The long run stays at ${round1(current)} mi. There is not enough training evidence yet `
+          + 'to read how the load is being absorbed, so it is not grown beyond the plan.',
+        [],
+        'INSUFFICIENT_EVIDENCE',
+      ),
+    };
+  }
+  if (gate === 'HOLDS') {
     return {
       proposal: null,
       hold: holdWith(
@@ -1369,15 +1536,27 @@ function detectDuration(
     const unreadable = evidence.recent.every(
       (l) => !l.durabilityEvidence || l.executionQuality === 'indeterminate',
     );
+    // THREE sentences for three facts (1.1.0). The middle one — a graded long
+    // run whose execution was `variable` — used to be reported as
+    // `NO_LONG_RUN_EVIDENCE_IN_WINDOW` on a HOLD: a finding carrying an
+    // absence's name (Rule 16), and the one code a reader could not act on.
+    const codes: AdaptationReasonCode[] = collapsed
+      ? ['LONG_RUN_SHOWED_LATE_COLLAPSE']
+      : unreadable
+        ? ['NO_LONG_RUN_EVIDENCE_IN_WINDOW']
+        : ['LONG_RUN_EXECUTION_UNCONTROLLED'];
     return {
       proposal: null,
       hold: holdWith(
-        collapsed ? ['LONG_RUN_SHOWED_LATE_COLLAPSE'] : ['NO_LONG_RUN_EVIDENCE_IN_WINDOW'],
+        codes,
         collapsed
           ? `The long run holds at ${round1(current)} mi. The last one came apart over the `
             + 'closing miles.'
-          : `The long run stays at ${round1(current)} mi. Nothing in the window could be read `
-            + 'as the current distance being absorbed.',
+          : unreadable
+            ? `The long run stays at ${round1(current)} mi. Nothing in the window could be read `
+              + 'as the current distance being absorbed.'
+            : `The long run holds at ${round1(current)} mi. The last one was run, but not under `
+              + 'control, and that is not the distance being absorbed.',
         evidence.recent.map((l) => l.activityId),
         collapsed || !unreadable ? 'HOLD' : 'INSUFFICIENT_EVIDENCE',
       ),
@@ -1805,8 +1984,15 @@ export function composeAdaptation(input: AdaptationEngineInput): AdaptationPropo
 
   /* ── SAFETY FIRST · §19's override channel ──────────────────────────────
    * Computed before anything upward, and it BLOCKS the upward path outright
-   * rather than merely outranking it. "No downstream service can undo STOP." */
-  const qualityPerWeek = input.density.resolutions.length;
+   * rather than merely outranking it. "No downstream service can undo STOP."
+   *
+   * 1.1.0 · the magnitude is the week ahead's REAL quality-session count. It
+   * used to be `density.resolutions.length`, which is the number of progression
+   * resolutions the weekly pass returned — zero on the six days a week the pass
+   * is not due, so REDUCE proposed `0 → 0` on most days it fired. The density
+   * count remains the fallback only when the plan could not be counted
+   * (Rule 11: a null count is not a count of zero). */
+  const qualityPerWeek = input.load.qualitySessionsWeekAhead ?? input.density.resolutions.length;
   const reduce = detectReduce(input.state, input.absorption, qualityPerWeek, now);
   if (reduce) out.push(reduce);
 
@@ -2031,6 +2217,7 @@ const FINDING_REASON_CODES: ReadonlySet<AdaptationReasonCode> = new Set<Adaptati
   'LATE_SESSION_DETERIORATION',
   'LOAD_NOT_YET_ABSORBED',
   'LONG_RUN_SHOWED_LATE_COLLAPSE',
+  'LONG_RUN_EXECUTION_UNCONTROLLED',
   'ABSORPTION_MARGINAL',
   'ABSORPTION_POOR',
 ]);

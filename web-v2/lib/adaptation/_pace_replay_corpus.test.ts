@@ -203,6 +203,8 @@ const baseInput = (todayISO = TODAY): AdaptationEngineInput => ({
   },
   load: {
     currentWeeklyMi: 45,
+    weekAhead: { readable: true, takesProgressionStep: true },
+    qualitySessionsWeekAhead: 2,
     recentWeeks: [
       { weekStartISO: '2026-08-24', completedMi: 20, scheduledMi: 45 },
       { weekStartISO: '2026-08-17', completedMi: 20, scheduledMi: 45 },
@@ -212,6 +214,7 @@ const baseInput = (todayISO = TODAY): AdaptationEngineInput => ({
   },
   longRun: {
     prescribedLongMi: 16, longRunCapMi: 22, longRunWoWMaxFraction: 0.30,
+    weekAhead: { readable: true, takesProgressionStep: true },
     recent: [], lookback: freshLookback(),
   },
   density: { resolutions: [], gate: 'NO_AUTHORED_PROGRESSION_BLOCK' },
@@ -851,7 +854,12 @@ describe('corpus scope, stated in the file that carries it', () => {
     // across REAL elapsed days rather than synthetic ones — see
     // `pace-shadow-compare-2026-09-01.md` §2's determinism section for that
     // distinction, which still stands unresolved.
-    expect(ADAPTATION_ENGINE_MODEL_VERSION).toBe('1.0.0');
+    //
+    // 1.1.0 (2026-09-02) · MINOR. The PACE lever this corpus exercises did not
+    // change; the LOAD levers' evidence requirements did (week-ahead phase
+    // awareness, absorption sufficiency, REDUCE magnitude). Every PACE
+    // decision above reproduced byte-for-byte across the bump.
+    expect(ADAPTATION_ENGINE_MODEL_VERSION).toBe('1.1.0');
     expect(NON_MOVING_DECISIONS.has('HOLD')).toBe(true);
   });
 });
