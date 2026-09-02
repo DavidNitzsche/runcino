@@ -34,9 +34,10 @@ import { planDosingFindings, type DosingFinding } from './dosing';
 // from the leaf module rather than from `generate.ts`, which imports THIS file.
 import {
   combinedStressFindings, compoundProgressionCheck,
+  designedWeekendFindings,
   noQualityDaysAfterRace, effectiveRecoveryPriority,
   type StressDay, type StressRace, type StressFinding,
-  type CompoundExemptionRecord,
+  type CompoundExemptionRecord, type ShippedPairDecision,
 } from './combined-stress';
 
 // ── constraint table (doctrine caps) ─────────────────────────────────────────
@@ -1046,6 +1047,51 @@ export function validateComposedPlan(
         todayISO: ctx.todayISO,
       })
     : [];
+  /* ── 11c · THE DESIGNED RACE-PLUS-LONG-RUN WEEKEND (DESIGNEDWEEKEND-1) ───
+   *
+   * §11 above walks A and B efforts. This walks the C efforts it deliberately
+   * skips, and asks the question that used to have no asker at all: is this
+   * pairing GRANTED to this runner, and does the grant still describe the
+   * block that shipped? See `designedWeekendFindings`.
+   *
+   * The grants are read off `placement_compromises` — the composer's own
+   * record — rather than re-resolved here, because the evidence they were
+   * issued on is a database read the validator does not have and must not
+   * invent. One decision, one owner, re-checked against the days.
+   */
+  const pairDecisions: ShippedPairDecision[] = (() => {
+    const raw = (result.authoredState as Record<string, unknown> | undefined)?.['placement_compromises'];
+    if (!Array.isArray(raw)) return [];
+    const out: ShippedPairDecision[] = [];
+    for (const r of raw) {
+      const rec = r as {
+        raceDateISO?: unknown; dateISO?: unknown;
+        designedWeekend?: { combinedMi?: unknown };
+        refusedDesignedWeekend?: { code?: unknown };
+      };
+      if (typeof rec.raceDateISO !== 'string' || typeof rec.dateISO !== 'string') continue;
+      const granted = rec.designedWeekend?.combinedMi;
+      if (typeof granted === 'number' && granted > 0) {
+        out.push({ raceDateISO: rec.raceDateISO, longDateISO: rec.dateISO, combinedMi: granted });
+      } else if (typeof rec.refusedDesignedWeekend?.code === 'string') {
+        // A RECORDED REFUSAL is a decision. The composer looked, said no by
+        // name, and cut the long run onto doctrine's curve. Rule 11: that is a
+        // different fact from nobody having looked, and only the second is a
+        // violation.
+        out.push({ raceDateISO: rec.raceDateISO, longDateISO: rec.dateISO, combinedMi: null });
+      }
+    }
+    return out;
+  })();
+  const designed: StressFinding[] = embeddedRaces.length > 0
+    ? designedWeekendFindings({
+        races: embeddedRaces,
+        days: stressDays,
+        decisions: pairDecisions,
+        todayISO: ctx.todayISO,
+      })
+    : [];
+
   // ── 11b · ONE PRIMARY STRESSOR PER WEEK · BINDING (STRESSOR-1, 2026-09-02) ─
   //
   // This was ADVISORY, and the comment here said binding it "would refuse a
@@ -1075,11 +1121,11 @@ export function validateComposedPlan(
         isCutback: w.isCutback,
       })),
   });
-  if (opts?.onStress) opts.onStress([...stress, ...compound.findings]);
+  if (opts?.onStress) opts.onStress([...stress, ...designed, ...compound.findings]);
   if (opts?.onCompoundExemption && compound.exemptions.length > 0) {
     opts.onCompoundExemption(compound.exemptions);
   }
-  for (const f of [...stress, ...compound.findings]) {
+  for (const f of [...stress, ...designed, ...compound.findings]) {
     if (!f.enforced) continue;
     violations.push(`Week ${f.weekStartISO} (${f.code}): ${f.message}`);
   }

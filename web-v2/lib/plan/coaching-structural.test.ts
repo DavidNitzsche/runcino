@@ -155,7 +155,7 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
     expect(dayByDow(baseline.weeks[4], 2).isQuality).toBe(true);
   });
 
-  it('Dodgers (C 10K, Sat Sep 26) converts the nearest quality slot; the long run stays', () => {
+  it('Dodgers (C 10K, Sat Sep 26) converts the nearest quality slot', () => {
     const wk = embedded.weeks[5];
     const raceDay = dayByDow(wk, 6);
     expect(raceDay.type).toBe('race');
@@ -167,12 +167,43 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
     expect(dayByDow(wk, 4).type).toBe('rest');
     expect(dayByDow(baseline.weeks[5], 4).isQuality).toBe(true);
     expect(dayByDow(wk, 2).isQuality).toBe(true);
-    // Long-run displacement rule: next-day Sunday long is PRESERVED after
-    // a 10K (the Pfitz Saturday-tune-up → Sunday-long pattern).
+    // The Sunday long run is still the week's long run; whether it stands at
+    // full dose is the next test's question, not this one's.
     const sunday = dayByDow(wk, 0);
     expect(sunday.isLong).toBe(true);
     expect(sunday.type).toBe('long');
-    expect(sunday.distanceMi).toBe(dayByDow(baseline.weeks[5], 0).distanceMi);
+  });
+
+  /**
+   * DESIGNEDWEEKEND-1 (2026-09-02) · THE SUNDAY LONG RUN IS NO LONGER FREE.
+   *
+   * This assertion used to read "the next-day Sunday long is PRESERVED after a
+   * 10K (the Pfitz Saturday-tune-up → Sunday-long pattern)", unconditionally,
+   * for every runner. The owner ruled that out in one sentence: "it must not
+   * silently make this pairing available to every runner." `Research/22`'s own
+   * multi-race row says "1 short quality (Tue) + race (Sat); rest of week is
+   * E" — doctrine puts the race in the week and does NOT put a long run the
+   * next morning, and `Research/00b` §"Hard/Easy Alternation" allows two hard
+   * days back to back only where "the plan explicitly calls for a stress block
+   * followed by extended recovery".
+   *
+   * `davidCimInput` supplies no athlete evidence, so it is refused, by name,
+   * and the long run falls back onto doctrine's return-to-long curve. The
+   * granted twin — the same weekend for a runner whose own history supports it
+   * — is in `_designed_race_weekend.test.ts`.
+   */
+  it('the Sunday long after Dodgers is an athlete-specific decision, refused here by name', () => {
+    const wk = embedded.weeks[5];
+    const sunday = dayByDow(wk, 0);
+    expect(sunday.distanceMi).toBeLessThan(dayByDow(baseline.weeks[5], 0).distanceMi);
+    const rec = (Array.isArray(embedded.authoredState.placement_compromises)
+      ? embedded.authoredState.placement_compromises : []) as Array<{
+        code: string; raceSlug: string; refusedDesignedWeekend?: { code: string };
+      }>;
+    const decision = rec.find((r) => r.raceSlug === 'dodgers-10k');
+    expect(decision, 'the decision must be on the record').toBeTruthy();
+    expect(decision!.code).toBe('REDUCE_DOSE');
+    expect(decision!.refusedDesignedWeekend?.code).toBe('NO_COMBINED_LOAD_EVIDENCE');
   });
 
   it('Run Malibu (B half, Sun Nov 8) replaces the long and stands down 7 recovery days', () => {

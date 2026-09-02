@@ -177,7 +177,25 @@ export interface RaceOutlook {
     targetSec: number | null;
     paceSecPerMi: number | null;
     paceBandSecPerMi: readonly [number, number] | null;
-    source: 'expected_race_day' | 'stated_goal_within_range' | 'stated_goal_clamped_to_range_edge' | 'unavailable';
+    source: 'expected_race_day' | 'stated_goal_within_range' | 'stated_goal_clamped_to_range_edge' | 'controlled_c_effort' | 'unavailable';
+    /**
+     * CEFFORT-1 (2026-09-02) · WHAT KIND OF DAY THIS IS, and the field the
+     * rest of the object is priced from.
+     *
+     * `race.priority` was loaded by this resolver and read NOWHERE inside it,
+     * so a C race was priced exactly like an A race and the only restraint on
+     * the owner's Dodgers 10K was that he happened to have typed a soft goal.
+     * Change the goal to 43:00 and the engine prescribed an all-out 10K the
+     * day before an 18-mile long run. Restraint that depends on the runner
+     * typing a convenient number is not restraint.
+     *
+     * `Research/00b` §"Recovery by Effort" is the row that separates them: an
+     * A race is "Maximum, full taper, peak day"; a C race is "Strong effort,
+     * no taper", a "hard workout substitute", to be treated "like a hard
+     * workout". A hard workout is not run to an aspiration and is not run to
+     * a peak-day projection, because it gets neither the taper nor the day.
+     */
+    effortCharacter: 'race' | 'controlled_c_effort';
     strategyLabel: string | null;
     reasonVsExpected: string;
     hr: RaceHrGuidance | null;
@@ -508,7 +526,63 @@ export async function composeRaceOutlook(
   let targetSec: number | null = null;
   let source: RaceOutlook['execution']['source'] = 'unavailable';
   let reasonVsExpected = 'No projection could be resolved; nothing honest to run to.';
-  if (expectedSec != null && likelyRangeSec != null) {
+
+  /* ── CEFFORT-1 (2026-09-02) · A C RACE IS PRICED AS A CONTROLLED EFFORT ──
+   *
+   * `Research/00b` §"Recovery by Effort" · "C race / hard workout substitute |
+   * Strong effort, no taper | treat like a hard workout", against the A row's
+   * "Maximum, full taper, peak day". `Research/22` §"Multi-Race Year Planning"
+   * puts the C race in a training week as the week's quality session.
+   *
+   * TWO THINGS FOLLOW, and only the second is new arithmetic.
+   *
+   * 1 · THE STATED GOAL MAY NOT PULL A C RACE FASTER. On an A or B race the
+   *     goal pulls the target as far as the likely range's fast edge, which is
+   *     right for a race the runner is peaking for. On a hard workout it is
+   *     the defect: the number the runner typed becomes the intensity the
+   *     engine prescribes. A goal that is SLOWER is still honoured — asking
+   *     for less of a training race is a decision he is allowed to make.
+   *
+   * 2 · THE CEILING IS THE SLOWER OF TWO NUMBERS THE FILE ALREADY HAS:
+   *       · `currentProjection.expectedSec` — what the evidence says he could
+   *         race NOW. A race with no taper and no peak day may not be run to
+   *         `expectedRaceDay`, which prices a taper and a block of improvement
+   *         he has not banked yet.
+   *       · the THRESHOLD carry — `capacity.thresholdSecPerMi` over the
+   *         distance. `Research/04` §pace-zone table puts 10K race pace "Just
+   *         above T" and calls T "~1-hour race pace", which is doctrine's own
+   *         description of a strong controlled effort. For a race shorter than
+   *         the threshold anchor this is the slower of the two and it binds;
+   *         for a longer one the current projection is slower and IT binds.
+   *
+   *     `Math.max` in SECONDS is the slower of the two, is continuous and
+   *     monotone in both inputs, and spends the band once (Rule 9 · "a band
+   *     has ONE edge"). No new constant is introduced.
+   *
+   * WHAT THIS DELIBERATELY DOES NOT DO. It does not edit the stated goal
+   * (`goalFeasibility` below still compares against the runner's own number,
+   * untouched), and it does not change `currentProjection` or
+   * `expectedRaceDay` — a C race still measures the runner's fitness honestly;
+   * what changes is only what he is told to RUN on the day.
+   */
+  const isControlledCEffort = race.priority === 'C';
+  if (isControlledCEffort) {
+    const thresholdCarrySec = thresholdSecPerMi > 0 && race.distanceMi > 0
+      ? thresholdSecPerMi * race.distanceMi
+      : null;
+    const currentSec = currentProjection.expectedSec;
+    const ceilingSec = thresholdCarrySec != null && currentSec != null
+      ? Math.max(thresholdCarrySec, currentSec)
+      : (thresholdCarrySec ?? currentSec);
+    if (ceilingSec != null) {
+      // A slower stated goal is honoured; a faster one is echoed and not run to.
+      targetSec = roundRaceTargetSec(goalSec != null ? Math.max(ceilingSec, goalSec) : ceilingSec);
+      source = 'controlled_c_effort';
+      reasonVsExpected = goalSec != null && goalSec < ceilingSec
+        ? `C race. Run it as the week's hard session, not as a race. Your ${fmtTime(goalSec)} goal stays yours; ${fmtTime(targetSec)} is what this day is for.`
+        : 'C race. Run it as the week\u2019s hard session, controlled, and take the day\u2019s work rather than the result.';
+    }
+  } else if (expectedSec != null && likelyRangeSec != null) {
     if (goalSec == null) {
       targetSec = roundRaceTargetSec(expectedSec);
       source = 'expected_race_day';
@@ -529,9 +603,15 @@ export async function composeRaceOutlook(
   }
   const paceSecPerMi = targetSec != null && race.distanceMi > 0 ? Math.round(targetSec / race.distanceMi) : null;
   const opening = targetSec != null ? raceOpeningPlan({ goalSec: targetSec, distanceMi: race.distanceMi }) : null;
-  const strategyLabel = paceSecPerMi != null
-    ? `${opening ? 'Controlled start · ' : ''}${fmtPace(paceSecPerMi)} average`
-    : null;
+  // CEFFORT-1 · Rule 16 · the LABEL says which kind of day this is. "Goal
+  // pace" over a hard workout is the same defect class as "kept it aerobic"
+  // over a 159 bpm long run: a sentence asserting a fact about a measurement,
+  // not gated on it.
+  const strategyLabel = paceSecPerMi == null
+    ? null
+    : isControlledCEffort
+      ? `Controlled effort · ${fmtPace(paceSecPerMi)} average`
+      : `${opening ? 'Controlled start · ' : ''}${fmtPace(paceSecPerMi)} average`;
   const hr = paceSecPerMi != null
     ? resolveRaceHrGuidance({
         distanceMi: race.distanceMi,
@@ -539,6 +619,10 @@ export async function composeRaceOutlook(
         maxHrBpm: reads.maxHrBpm,
         executionPaceSecPerMi: paceSecPerMi,
         efforts: reads.hrEfforts,
+        // CEFFORT-1 · the HR band and the mid-race abort follow the same
+        // effort the pace does, or the two instruments contradict each other
+        // on one day (Rule 16).
+        effortCharacter: isControlledCEffort ? 'controlled' : 'race',
       })
     : null;
   const execution: RaceOutlook['execution'] = {
@@ -546,6 +630,7 @@ export async function composeRaceOutlook(
     paceSecPerMi,
     paceBandSecPerMi: paceSecPerMi != null ? [paceSecPerMi - RACE_EXECUTION_BAND_S_PER_MI, paceSecPerMi + RACE_EXECUTION_BAND_S_PER_MI] : null,
     source,
+    effortCharacter: isControlledCEffort ? 'controlled_c_effort' : 'race',
     strategyLabel,
     reasonVsExpected,
     hr,

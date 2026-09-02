@@ -23,12 +23,17 @@
  *   · A collision between two non-race sessions. `validateComposedPlan` §9
  *     owns hard-day spacing and is unchanged by this work; if §9 regressed,
  *     nothing here would notice.
- *   · Whether the C-effort ACCEPTANCE is the right coaching answer. It is a
- *     doctrine reading (`Research/00b` §"Recovery by Effort" · C row against
- *     `Research/22` §"Multi-Race Year Planning"), and this asserts that the
- *     engine applies that reading and records it — not that the reading is
- *     correct. If the decision is ever reversed, these tests must be rewritten,
- *     not tightened.
+ *   · Whether the C-effort DECISION is the right coaching answer. It is a
+ *     doctrine reading (`Research/00b` §"Recovery by Effort" · C row and
+ *     §"Hard/Easy Alternation" against `Research/22` §"Multi-Race Year
+ *     Planning"), and this asserts that the engine applies that reading and
+ *     records it — not that the reading is correct. If the decision is ever
+ *     reversed, these tests must be rewritten, not tightened. It was reversed
+ *     once already, on 2026-09-02, and rewriting is exactly what happened.
+ *   · The EVIDENCE gate itself. Every fixture here supplies none, so this file
+ *     only ever sees the refusal limb. The granted limb lives in
+ *     `_designed_race_weekend.test.ts` and nothing here would notice if it
+ *     broke.
  *   · The intensity axis of `compoundProgressionCheck`. That function sees
  *     weekly volume and long-run miles because those are numbers on
  *     `ComposedWeek`; session intensity is not, so a week that raises volume
@@ -502,19 +507,34 @@ const compromisesOf = (r: { authoredState: Record<string, unknown> }): Placement
     ? r.authoredState.placement_compromises : []) as PlacementRecord[];
 
 describe('COMBINED-STRESS · the placement pass, end to end', () => {
-  it('a C race in front of the long run is ACCEPTED, and the decision is recorded', () => {
+  /**
+   * REWRITTEN 2026-09-02 (DESIGNEDWEEKEND-1), and rewritten rather than
+   * loosened, which is what this file's own header says to do when the
+   * coaching decision changes.
+   *
+   * This used to assert that a C race in front of a long run is accepted FULL
+   * STOP, for any runner, on no evidence about him at all. The owner ruled
+   * that out in one sentence — "it must not silently make this pairing
+   * available to every runner" — so the unconditional acceptance is gone and
+   * what is asserted now is the DECISION being made and recorded by name.
+   * This fixture carries no athlete evidence, so the honest outcome for it is
+   * a refusal; `_designed_race_weekend.test.ts` carries the granted twin.
+   */
+  it('a C race in front of the long run is DECIDED, and the decision is recorded', () => {
     const c = composePlan(marathonInput(satTuneUp('C')));
     finalizeComposedPlan(c, 26.2, 'advanced');
     const wk = c.weeks[5];
     const sunday = dayByDow(wk, 0);
     expect(sunday.isLong).toBe(true);
-    expect(sunday.distanceMi).toBeGreaterThan(10);
     const rec = compromisesOf(c);
-    const accept = rec.find((x) => x.code === 'ACCEPT_AS_HARD_WORKOUT');
-    expect(accept, 'the acceptance must be on the record, not implicit').toBeTruthy();
-    expect(accept!.citation).toContain('Recovery by Effort');
+    // No evidence on this fixture → the exception is refused BY NAME and the
+    // long run falls back onto doctrine's own return-to-long curve.
+    expect(rec.find((x) => x.code === 'ACCEPT_AS_HARD_WORKOUT')).toBeFalsy();
+    const cut = rec.find((x) => x.code === 'REDUCE_DOSE');
+    expect(cut, 'the decision must be on the record, not implicit').toBeTruthy();
+    expect(cut!.refusedDesignedWeekend?.code).toBe('NO_COMBINED_LOAD_EVIDENCE');
     // Rule 16 · the recorded number is the SHIPPED number.
-    expect(accept!.detail).toContain(`${sunday.distanceMi}mi long run`);
+    expect(cut!.detail).toContain(`→ ${sunday.distanceMi}mi`);
   });
 
   it('a B race in front of the same long run SHORTENS it, and says by how much', () => {
@@ -524,6 +544,10 @@ describe('COMBINED-STRESS · the placement pass, end to end', () => {
     finalizeComposedPlan(c, 26.2, 'advanced');
     const bLong = dayByDow(b.weeks[5], 0).distanceMi;
     const cLong = dayByDow(c.weeks[5], 0).distanceMi;
+    // DESIGNEDWEEKEND-1 · with no athlete evidence BOTH are now cut, so the
+    // assertion is the one that still separates them: a B effort owes a longer
+    // return-to-long window than a C effort (`POST_RACE_PRIORITY_SCALE`), so it
+    // is cut FURTHER. Equal would mean the effort grade had stopped mattering.
     expect(bLong, `B long ${bLong} must be shorter than C long ${cLong}`).toBeLessThan(cLong);
     const rec = compromisesOf(b);
     const cut = rec.find((x) => x.code === 'REDUCE_DOSE');
