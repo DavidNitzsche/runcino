@@ -63,7 +63,7 @@
  * gate went red on exactly the five changed files and forced this entry to be
  * written.
  */
-export const SHADOW_EVIDENCE_EPOCH = '2026-09-02.phase1-durability-59fed35e';
+export const SHADOW_EVIDENCE_EPOCH = '2026-09-02.brain-integration-a670a6e1';
 
 /** The epoch format: `YYYY-MM-DD.<slug>`. Pinned by test so a future value
  *  cannot drift into a bare counter or an undated label. */
@@ -118,8 +118,8 @@ export interface BeliefSourcePin {
 export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   {
     file: 'lib/training/capacity-resolver.ts',
-    digest: '8d6fae2329013e6e',
-    why: 'Re-pinned at epoch 2 · Phase 1 added the cross-tier day-to-day continuity cap on the threshold belief and the trainingDurability component, so what capacity resolves to for the same activities moved.',
+    digest: 'cf92e16d481c0801',
+    why: 'Re-pinned at epoch 3 (brain integration) · epoch 2 pinned this file mid-Phase-1, before the continuity cap was made a faithful WALK (per-day fallback, per-day corroboration bar). That changed what the threshold belief resolves to for the same activities again — the owner\'s June replay moved from a 26 s/mi largest daily step to 9 — so the epoch bumps rather than the pin moving quietly. The pin caught it on the integration merge, which is exactly what it is for.',
   },
   {
     file: 'lib/training/prescription-resolver.ts',
