@@ -82,10 +82,11 @@
  *
  * WHAT `vdotNow` IS STILL FOR. It is no longer a pace source and nothing below
  * derives a prescription from it. It remains the caller's statement that
- * evidence moved — the reason this function was called at all — it still feeds
- * `achievableRaceTarget` (Race Prediction's own input, §J), and it is recorded
- * in the audit stamp so the next reader can tell which measurement occasioned a
- * rewrite. Kept rather than removed because the callers' gates
+ * evidence moved — the reason this function was called at all — and it is
+ * recorded in the audit stamp so the next reader can tell which measurement
+ * occasioned a rewrite. (It fed `achievableRaceTarget` until B2, 2026-09-02,
+ * deleted that call: its result reached no row, and the prescribed race target
+ * belongs to `race-outlook.execution`.) Kept rather than removed because the callers' gates
  * (`shouldReanchor`, the adapter's delta checks) are genuinely about a VDOT
  * delta and are not this function's to redesign.
  *
@@ -97,7 +98,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { seasonalVdotCeiling, achievableRaceTarget } from '@/lib/training/achievable-target';
+import { seasonalVdotCeiling } from '@/lib/training/achievable-target';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { buildWorkoutSpec } from './spec-builder';
 import { preserveProgressionSql, readSelectionRationale, RATIONALE_SPEC_KEY } from './progression-spec';
@@ -254,24 +255,21 @@ export async function recomputePacesForPlan(
   /**
    * THE GOAL, READ ONCE, FOR ONE CONSUMER.
    *
-   * These three are threaded to `achievableRaceTarget` and to
-   * `buildWorkoutSpec`'s `race` branch, and to nothing else. That branch is
-   * Race Prediction's (Constitution §J) and a race target legitimately reads a
-   * stated goal — it is the one prescription in this app that does.
+   * `goalPaceSec` is threaded to `buildWorkoutSpec` and to nothing else, and
+   * nothing below derives a TRAINING pace from it. Under the old cascade
+   * `goalSec` reached `tPaceFromGoal` and shaped every quality session in the
+   * block; that path is gone.
    *
-   * Nothing below derives a TRAINING pace from any of them. Under the old
-   * cascade `goalSec` reached `tPaceFromGoal` and shaped every quality session
-   * in the block; that path is gone. `race` rows are excluded from the generic
-   * loop and refreshed by `lib/race/race-row-refresh.ts` (2026-09-01), which
-   * reads the race-pace brain, not these values. They are threaded so that the
-   * `buildWorkoutSpec` race branch has an authoring-time seed and nothing more.
+   * B2 (2026-09-02) · `goalSec`, `raceDistanceMi` and `totalWeeks` were read
+   * here for one call — `achievableRaceTarget`, whose result reached no row,
+   * because `race` and `race_week_tuneup` are both in
+   * `RECOMPUTE_EXEMPT_TYPES`. That call is deleted (see the block below), so
+   * the three reads go with it rather than sitting here as an unused goal read
+   * inside the module whose whole point is that the goal does not price
+   * training. The prescribed race target is resolved by
+   * `lib/race/race-row-refresh.ts` from the race-pace brain.
    */
-  const raceDistanceMi = Number(st.race_distance_mi ?? st.goal_distance_mi) || null;
   const goalPaceSec = st.goal_pace_s_per_mi != null ? Number(st.goal_pace_s_per_mi) : null;
-  const goalSec = st.goal_sec != null
-    ? Number(st.goal_sec)
-    : (goalPaceSec != null && raceDistanceMi != null ? Math.round(goalPaceSec * raceDistanceMi) : null);
-  const totalWeeks = Number(st.total_weeks) || 0;
   /**
    * ANCHOR-STALE-2 (2026-08-30) · THE FROZEN THRESHOLD, KEPT ONLY AS A
    * FALLBACK FOR AN UNREADABLE PROFILE.
@@ -445,20 +443,24 @@ export async function recomputePacesForPlan(
    * silent one.
    */
 
-  // RACEPACE-1 · the achievable race target, re-run against TODAY's fitness.
-  // `currentVdot` is the CANONICAL threshold capacity's derived VDOT where one
-  // exists, not the caller's `vdotNow` — Race Prediction consumes the Runner
-  // Model (Constitution §J), and handing it a different fitness read than the
-  // one that priced the block would be two answers to one question (Rule 16).
-  // `vdotNow` remains the fallback for a runner whose threshold pace sits
-  // outside the table's [30,85] range and therefore has no derived VDOT at all.
-  const prescribedRacePaceSec = achievableRaceTarget({
-    goalSec,
-    currentVdot: anchors.basis.threshold.vdot ?? vdotNow,
-    raceDistanceMi,
-    totalWeeks,
-  })?.paceSPerMi ?? null;
-
+  /*
+   * B2 (2026-09-02) · DELETED, not disabled. This recompute used to re-run
+   * `achievableRaceTarget` here and thread the result into every
+   * `buildWorkoutSpec` call below as `prescribedRacePaceSec`.
+   *
+   * `RECOMPUTE_EXEMPT_TYPES` (:195) contains BOTH `race` and
+   * `race_week_tuneup`, so no row in this loop has ever read it — the previous
+   * comment said so itself ("Race rows never reach this loop … no row reads
+   * this; it is threaded so the builder's race branch has a coherent seed").
+   *
+   * A third live derivation of the prescribed race target, computed on every
+   * recompute and consumed by nothing, is not a coherent seed. It is a second
+   * answer waiting for a caller (Rule 16), and the caller it was waiting for
+   * would have got 436 s/mi while `refreshRaceRowsForPlan` — which this
+   * function invokes twenty lines below — wrote 443 onto the actual row.
+   *
+   * The race rows of this plan are priced by that call and by nothing else.
+   */
   const { subLabelFromSpec } = await import('@/lib/training/expand-spec');
 
   let updated = 0;
@@ -497,11 +499,11 @@ export async function recomputePacesForPlan(
         anchors.thresholdSecPerMi,
         false,              // effortCued · a recompute runs on measured evidence
                             // by definition, so the calibration intro is over
-        // RACEPACE-1 · re-derived off the canonical threshold's VDOT, not
-        // carried forward. Race rows never reach this loop (they are refreshed
-        // by the dedicated race-row path below), so no row reads this; it is
-        // threaded so the builder's race branch has a coherent seed.
-        prescribedRacePaceSec,
+        // B2 · null, and it must stay null. Race rows are exempt from this
+        // loop; the race branch of the builder is unreachable from here, and
+        // the prescribed race target has one owner (`race-outlook.execution`,
+        // written by `refreshRaceRowsForPlan` below).
+        null,
         // PRESCRIPTION-WIRE-1 · the six canonical anchors. This is the argument
         // that makes every derived pace below a READ rather than an offset.
         anchors,

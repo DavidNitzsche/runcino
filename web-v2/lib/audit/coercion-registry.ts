@@ -732,7 +732,6 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/generate.ts::loadGeneratorInputs::horizonRaces.length',
   'lib/plan/generate.ts::loadGeneratorInputs::midBlockRaces.length',
   'lib/plan/generate.ts::loadGeneratorInputs::travelWindows.length',
-  'lib/plan/generate.ts::persistComposedPlan::v',
   'lib/plan/generate.ts::reverseTaperCeilingMi::mi',
   'lib/plan/generate.ts::targetMinutesFor::mins',
   'lib/plan/goal-gap.ts::computeGoalGap::catch',

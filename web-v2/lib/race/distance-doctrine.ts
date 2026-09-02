@@ -404,6 +404,61 @@ export function raceAbortHrBpm(args: {
  */
 export const RACE_PACE_ABORT_FRACTION = 0.05;
 
+/**
+ * B2 (2026-09-02) · THE ONE DERIVATION OF THE RACE ROW'S PACE-ADRIFT ABORT.
+ *
+ * The rule is a function of ONE quantity — the pace the runner was told to
+ * race at — and that quantity has exactly one owner
+ * (`race-outlook.execution.paceSecPerMi`). Before this existed, `spec-builder`
+ * built the rule at authoring off the authoring seed and
+ * `race-row-refresh` rewrote the row's pace WITHOUT rewriting the rule, so
+ * the owner's CIM row shipped `target 443 s/mi` beside `abort if slower than
+ * 458 s/mi` — 458 being 1.05 × 436, the authoring seed the brain had already
+ * replaced. The runner read a target and an abort anchored to two different
+ * numbers on one row.
+ *
+ * Both writers now call this. Rule 16: one quantity, one derivation.
+ * Cite: `Research/08` §18.2 / §2.2 via `RACE_PACE_ABORT_FRACTION` above.
+ */
+export interface RacePaceAbortRule {
+  kind: 'abort';
+  metric: 'pace';
+  op: '>';
+  value: number;
+  scope: string;
+  action: 'switch_to_b_goal';
+  label: string;
+}
+
+export function racePaceAbortRule(args: {
+  /** Race distance, miles. Drives the checkpoint mile. */
+  distanceMi: number | null | undefined;
+  /** The prescribed race-day pace, s/mi. */
+  targetPaceSecPerMi: number | null | undefined;
+}): RacePaceAbortRule | null {
+  // Rule 11 · BOTH inputs are refused rather than defaulted. A rule with no
+  // anchor is not a conservative rule, it is an invented one — and the
+  // distance half mattered: this branch used to fall back to a literal
+  // "Mile 5" when the distance was missing, which put a 5K's checkpoint at a
+  // mile it never reaches and a marathon's a fifth of the way in. The same
+  // shape `raceCheckpointMi` was introduced to remove.
+  const target = args.targetPaceSecPerMi;
+  const distanceMi = args.distanceMi;
+  if (typeof target !== 'number' || !Number.isFinite(target) || target <= 0) return null;
+  if (typeof distanceMi !== 'number' || !Number.isFinite(distanceMi) || distanceMi <= 0) return null;
+  const checkpointMi = raceCheckpointMi(distanceMi);
+  const abortPace = Math.round(target * (1 + RACE_PACE_ABORT_FRACTION));
+  return {
+    kind: 'abort',
+    metric: 'pace',
+    op: '>',
+    value: abortPace,
+    scope: `mile-${checkpointMi}`,
+    action: 'switch_to_b_goal',
+    label: `Mile ${checkpointMi} check: pace slower than ${Math.floor(abortPace / 60)}:${String(abortPace % 60).padStart(2, '0')}/mi · switch to the B plan`,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // 3 · Warm-up · Research/08 §12.1 (:588-595) + Research/10 (:110-146)
 // ─────────────────────────────────────────────────────────────────────────

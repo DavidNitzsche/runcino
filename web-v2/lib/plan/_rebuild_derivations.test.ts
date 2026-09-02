@@ -87,8 +87,15 @@ describe('ANCHOR-STALE-3 · rebuildWorkoutDerivations HR anchors', () => {
     // The exact numbers, read off the two anchors rather than asserted as a
     // shape. These are the same values `recompute-paces.ts` produces — see
     // CONVERGENCE below — so a drift in either writer fails here.
-    expect(build('tempo', STORED_LTHR, EFFECTIVE_MAX_HR).hr_target_bpm).toBe(149);
-    expect(build('tempo', REANCHORED_LTHR, EFFECTIVE_MAX_HR).hr_target_bpm).toBe(155);
+    // B7 (2026-09-02) · these were 149 and 155 — `round(lthr × 0.92)`, the
+    // middle of FRIEL Z3 — on a tempo block whose pace is the canonical
+    // Daniels T. They are now the middle of Friel Z4, which is the band that
+    // pace belongs to, and note what that makes them: the SAME numbers as the
+    // `pass:158` / `pass:164` gate asserted eight lines below. The target and
+    // the line the row is judged against are one quantity now, and this test
+    // is where the two are read side by side.
+    expect(build('tempo', STORED_LTHR, EFFECTIVE_MAX_HR).hr_target_bpm).toBe(158);
+    expect(build('tempo', REANCHORED_LTHR, EFFECTIVE_MAX_HR).hr_target_bpm).toBe(164);
     expect(build('threshold', STORED_LTHR, EFFECTIVE_MAX_HR).lthr_bpm).toBe(162);
     expect(build('threshold', REANCHORED_LTHR, EFFECTIVE_MAX_HR).lthr_bpm).toBe(168);
     expect(build('intervals', STORED_LTHR, EFFECTIVE_MAX_HR).lthr_bpm).toBe(162);

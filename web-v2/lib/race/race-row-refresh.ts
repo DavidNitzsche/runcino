@@ -43,6 +43,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 import { resolveRaceOutlook, loadRaceForOutlook, RACE_EXECUTION_BAND_S_PER_MI, type RaceOutlook, type RaceForOutlook } from './race-outlook';
 import { MEANINGFUL_MOVE_SEC } from '@/lib/training/projection-trend';
+import { racePaceAbortRule } from '@/lib/race/distance-doctrine';
 
 export interface RaceRowRefreshResult {
   planId: string;
@@ -112,6 +113,43 @@ async function planRaceSlug(client: Queryable, planId: string): Promise<string |
 }
 
 /**
+ * B2 (2026-09-02) · THE ROW'S PACE-ADRIFT ABORT IS REPRICED WITH THE TARGET.
+ *
+ * `spec-builder` authors the rule from the authoring seed. This path rewrites
+ * the target and, before this function existed, did NOT rewrite the rule — so
+ * the row shipped the two anchored to different numbers. Verified on the
+ * owner's production CIM row 2026-09-02: `pace_target_s_per_mi 443` beside
+ * `"pace slower than 7:38/mi" (458)`, 458 being `round(1.05 × 436)` off the
+ * authoring seed the brain had already replaced. Correct is 465.
+ *
+ * Every rule the race path does not own survives untouched (Rule 6 in the
+ * jsonb array's own terms). If the outlook has no execution pace the rule is
+ * DROPPED rather than left standing on an abandoned anchor — an abort with no
+ * owner is not a conservative default, it is an invented number (Rule 11).
+ */
+export function rulesRepricedTo(
+  existing: unknown,
+  o: RaceOutlook,
+  distanceMi: number | null,
+): Array<Record<string, unknown>> {
+  const kept = Array.isArray(existing)
+    ? (existing as unknown[]).filter((r): r is Record<string, unknown> => {
+        if (r == null || typeof r !== 'object') return false;
+        const x = r as Record<string, unknown>;
+        return !(x.kind === 'abort' && x.metric === 'pace');
+      })
+    : [];
+  const repriced = racePaceAbortRule({
+    distanceMi,
+    targetPaceSecPerMi: o.execution.paceSecPerMi,
+  });
+  // Always an array, never null-for-empty. An empty list says "this path owns
+  // the field and there is nothing in it", which is a different fact from a
+  // missing field, and collapsing the two is exactly Rule 11's shape.
+  return repriced != null ? [...kept, { ...repriced }] : kept;
+}
+
+/**
  * 2026-09-02 · A MATERIAL CHANGE IS RECORDED, NOT SLIPPED IN. The refresh
  * rewrites what the runner is told to run on the day. A move inside the noise
  * band is housekeeping; a move past `MEANINGFUL_MOVE_SEC` — the same threshold
@@ -122,12 +160,19 @@ async function planRaceSlug(client: Queryable, planId: string): Promise<string |
  * "this moved". It is REPORTED. Nothing here asks the runner to decide
  * anything, and the stated goal is untouched.
  */
-export function raceExecutionSpecFields(o: RaceOutlook, previous?: { target_sec?: unknown } | null): Record<string, unknown> {
+export function raceExecutionSpecFields(
+  o: RaceOutlook,
+  previous?: { target_sec?: unknown } | null,
+  row?: { rules?: unknown; distanceMi?: number | null },
+): Record<string, unknown> {
   const x = o.execution;
   const pace = x.paceSecPerMi;
   return {
     ...(pace != null
       ? { pace_target_s_per_mi_lo: pace - RACE_EXECUTION_BAND_S_PER_MI, pace_target_s_per_mi_hi: pace + RACE_EXECUTION_BAND_S_PER_MI }
+      : {}),
+    ...(row !== undefined
+      ? { rules: rulesRepricedTo(row.rules, o, row.distanceMi ?? o.race.distanceMi) }
       : {}),
     race_execution: {
       model_version: o.modelVersion,
@@ -214,6 +259,56 @@ export async function refreshRaceRowsForPlan(
   return boundary.value ?? null;
 }
 
+/**
+ * B2 (2026-09-02) · THE AUTHORING SEED, RESOLVED BY THE OWNER.
+ *
+ * `composePlan` used to seed the race row from `achievableRaceTarget` and
+ * persist that number on `authored_state.prescribed_race_pace`, which
+ * `persistComposedPlan` then read BACK as the seed. Two records of one
+ * quantity: on the owner's plan, `authored_state` said 436 s/mi (11430 s,
+ * `ceiling_vdot 47.1`) while the race row said 443 s/mi (11610 s) — 180
+ * seconds apart, and which one the runner saw depended on whether the
+ * refresh had run since authoring (Rule 23 on top of Rule 16).
+ *
+ * The seed now comes from the same owner that writes the row moments later,
+ * so the two cannot disagree and the refresh reports `unchanged`.
+ * `race-outlook` reads no plan data, so resolving it before the plan is
+ * persisted gives the identical answer the post-persist refresh will.
+ *
+ * THREE STATES, never one (Rule 11): a pace, an explicit "no race to price"
+ * and an explicit failure. A caller that cannot tell them apart would seed a
+ * refusal as a number, which is the defect this closes.
+ */
+export type AuthoringRaceSeed =
+  | { ok: true; paceSecPerMi: number; targetSec: number | null; source: RaceOutlook['execution']['source'] }
+  | { ok: false; reason: 'NO_RACE' | 'OUTLOOK_UNAVAILABLE' | 'READ_FAILED'; detail?: string };
+
+export async function resolveAuthoringRaceSeed(
+  userUuid: string,
+  slug: string | null | undefined,
+  todayISO: string,
+): Promise<AuthoringRaceSeed> {
+  if (!slug) return { ok: false, reason: 'NO_RACE' };
+  let race: RaceForOutlook | null;
+  try {
+    race = await loadRaceForOutlook(userUuid, slug, todayISO);
+  } catch (e) {
+    return { ok: false, reason: 'READ_FAILED', detail: (e as Error).message };
+  }
+  if (!race || !(race.distanceMi > 0)) return { ok: false, reason: 'NO_RACE' };
+  let outlook: RaceOutlook;
+  try {
+    outlook = await resolveRaceOutlook(userUuid, race, todayISO);
+  } catch (e) {
+    return { ok: false, reason: 'READ_FAILED', detail: (e as Error).message };
+  }
+  const pace = outlook.execution.paceSecPerMi;
+  if (pace == null || !Number.isFinite(pace) || pace <= 0) {
+    return { ok: false, reason: 'OUTLOOK_UNAVAILABLE' };
+  }
+  return { ok: true, paceSecPerMi: pace, targetSec: outlook.execution.targetSec, source: outlook.execution.source };
+}
+
 async function refreshRaceRowsCore(
   client: Queryable,
   planId: string,
@@ -285,12 +380,22 @@ async function refreshRaceRowsCore(
       continue;
     }
     const prevExec = (row.workout_spec?.race_execution ?? null) as { target_sec?: number } | null;
-    const fields = raceExecutionSpecFields(outlook, prevExec);
+    // `racePaceAbortRule` refuses a non-positive distance itself, so nothing
+    // here needs to pre-empt it — one refusal, in the owner.
+    const fields = raceExecutionSpecFields(outlook, prevExec, {
+      rules: row.workout_spec?.rules,
+      distanceMi: row.distance_mi != null ? Number(row.distance_mi) : null,
+    });
     const after = { paceSecPerMi: outlook.execution.paceSecPerMi };
     const unchanged = before.paceSecPerMi === after.paceSecPerMi
       && prevExec?.target_sec === outlook.execution.targetSec
       && row.workout_spec != null && !('hr_cap_bpm' in row.workout_spec)
-      && row.workout_spec.race_hr != null;
+      && row.workout_spec.race_hr != null
+      // B2 · a row whose target is right but whose pace abort is still priced
+      // off an abandoned anchor is NOT unchanged. Without this clause the
+      // repricing would never land on the rows that need it most — the ones
+      // where the target already settled and only the rule stayed behind.
+      && JSON.stringify(fields.rules ?? null) === JSON.stringify(row.workout_spec.rules ?? null);
     if (unchanged) {
       result.rows.push({ id: row.id, dateISO: row.date_iso, slug, action: 'unchanged', before, after, outlook: summary });
       continue;

@@ -193,6 +193,171 @@ export function thresholdPassHrBpm(lthr: number): number {
   return Math.round(lthr * THRESHOLD_PASS_HR_FRACTION);
 }
 
+// ── B7 (2026-09-02) · THE HR HALF OF "HOW HARD SHOULD THIS WORKOUT BE" ─────
+//
+// `lib/training/load-prescription-anchors.ts` resolves SIX pace anchors and is
+// the single owner of prescribed pace. There was no equivalent for heart rate:
+// seven hand-written fractions of LTHR or HRmax lived across four modules, five
+// of them prescriptive, and they did not agree with the pace beside them.
+//
+// THE DEFECT, on the reference runner's live plan (LTHR 168), row 2026-09-08:
+//
+//     { kind: 'tempo', tempo_pace_s_per_mi: 430, hr_target_bpm: 155,
+//       rules: [ pass avgHr <= 164, … ] }
+//
+// 430 s/mi IS the canonical Daniels T out of `resolveThresholdCapacity`. 155 is
+// `round(168 × 0.92)` — the MIDDLE OF FRIEL Z3, "Sub-LT steady". 164 is
+// `thresholdPassHrBpm(168)`, the middle of Friel Z4, "Just below LT". So the
+// row prescribed a threshold pace, targeted a tempo heart rate, and was judged
+// against a threshold one — three intensity statements, two anchors, on one
+// row. He had run that pace at 162 bpm eight days earlier.
+//
+// The fix is not a better fraction. It is that the HR target is DERIVED FROM
+// THE INTENSITY THE PACE WAS PRESCRIBED AT, out of the same tables this file
+// already owns, so a block priced at T cannot carry an M heart rate.
+//
+// Both tables below are transcribed from `Research/03-heart-rate-zones.md` and
+// `lib/training/_hr_intensity_ownership.test.ts` re-parses them OUT OF THE DOC
+// at run time and asserts each value lies inside its published row — the check
+// reads one side from the source rather than hardcoding both (Rule 18).
+
+/** The intensity a prescription is priced at. One-for-one with the pace
+ *  anchors `resolvePrescribedPaceAnchors` resolves, so a caller that has a
+ *  pace anchor always has the matching name for its heart rate. */
+export type PrescribedIntensity = 'easy' | 'marathon' | 'threshold' | 'interval' | 'repetition';
+
+/**
+ * %LTHR band per intensity · `Research/03` §6 "Friel 7-Zone Running HR Table",
+ * as `[floor, next-row's-floor)` — the same half-open reading
+ * `FRIEL_7_ZONE_EDGES` above already uses, and for the same reason.
+ *
+ *   easy       Z2 Aerobic / Endurance   85–89%   "Long-run aerobic base"
+ *   marathon   Z3 Tempo                 90–94%   "Sub-LT steady"
+ *   threshold  Z4 SubThreshold          95–99%   "Just below LT"
+ *   interval   Z5b Aerobic capacity    103–106%  "VO2max work, 3–5 min"
+ *   repetition —                          —      §8: "R workouts: HR unreliable
+ *                                                (short, no steady state);
+ *                                                coach by pace + RPE"
+ */
+export const FRIEL_PCT_LTHR_BY_INTENSITY: Readonly<
+  Record<PrescribedIntensity, readonly [number, number] | null>
+> = {
+  easy: [FRIEL_7_ZONE_EDGES[0], FRIEL_7_ZONE_EDGES[1]],
+  marathon: [FRIEL_7_ZONE_EDGES[1], FRIEL_7_ZONE_EDGES[2]],
+  threshold: [FRIEL_7_ZONE_EDGES[2], FRIEL_7_ZONE_EDGES[3]],
+  interval: [FRIEL_7_ZONE_EDGES[4], FRIEL_7_ZONE_EDGES[5]],
+  repetition: null,
+};
+
+/**
+ * %HRmax band per intensity · `Research/03` §8 "Daniels' HR Zones", verbatim
+ * rows. The LTHR-absent lane only. §17's precedence is explicit that LTHR wins
+ * whenever it exists, and this table is ±10–15 bpm on an individual (§2), which
+ * is why the fallback targets below sit at a band EDGE rather than its centre.
+ */
+export const DANIELS_PCT_HRMAX_BY_INTENSITY: Readonly<
+  Record<PrescribedIntensity, readonly [number, number] | null>
+> = {
+  easy: [0.65, 0.78],
+  marathon: [0.80, 0.85],
+  threshold: [0.86, 0.92],
+  interval: [0.95, 1.00],
+  repetition: null,
+};
+
+/**
+ * The %HRmax figure each intensity is PRESCRIBED at when no LTHR exists.
+ * These are the values the wrist path has always used, moved here rather than
+ * changed — the instruction was to give them one owner, and re-picking a
+ * physiological number while consolidating would hide a doctrine change inside
+ * a refactor.
+ *
+ *   threshold  0.87  inside T (86–92%), one point above the floor. Conservative
+ *                    by intent; the wrist has carried exactly this since the
+ *                    fallback was written.
+ *   interval   0.95  the FLOOR of I (95–100%).
+ *
+ *   easy       null  NOT a target. Easy running is governed by a CEILING, and
+ *                    that ceiling has its own three-site family
+ *                    (`spec-builder#hrCapEasy`, the watch's `hrCeilingBpm`
+ *                    fallback, `lib/coach/easy-discipline#EASY_HRMAX_CEILING_PCT`)
+ *                    which is NOT consolidated here — see the residual note in
+ *                    `_hr_intensity_ownership.test.ts`. Adding a fourth
+ *                    definition of 0.78 to make this table look complete would
+ *                    make the problem worse, so this row refuses.
+ *   marathon   null  an `@ MP` block carries NO heart-rate target by design.
+ *                    `Research/03` §"Daniels' HR Zones" makes pace the governor
+ *                    for M work and `spec-builder` states the same in its own
+ *                    DOCTRINE-TAPERMP-1 note. Refused on doctrine, not missing.
+ *   repetition null  §8: HR is unreliable on short reps with no steady state.
+ */
+export const DANIELS_PCT_HRMAX_TARGET: Readonly<
+  Record<PrescribedIntensity, number | null>
+> = {
+  easy: null,
+  marathon: null,
+  threshold: 0.87,
+  interval: 0.95,
+  repetition: null,
+};
+
+export interface PrescribedHrTarget {
+  bpm: number;
+  /** Which physiological anchor produced it. §17: LTHR beats %HRmax. */
+  anchor: 'lthr' | 'maxHr';
+  fraction: number;
+  /** The doctrine row, for a surface that wants to say why. */
+  cite: string;
+}
+
+/**
+ * THE heart-rate target for a prescribed intensity.
+ *
+ * Rule 11, three states and they are distinguishable:
+ *   · a `PrescribedHrTarget`      — a number, with the anchor it came from
+ *   · `null` with no anchor       — nothing on file; the caller prescribes by
+ *                                   pace alone, which is Daniels' own posture
+ *                                   ("HR as a confirmation tool, not the
+ *                                   primary prescription", §8)
+ *   · `null` for `repetition`     — REFUSED on doctrine, not missing. §8: HR is
+ *                                   unreliable on short reps with no steady
+ *                                   state. Inventing one would be asserting
+ *                                   physiology the research declines to state.
+ *
+ * The LTHR lane takes the CENTRE of the Friel band, because LTHR is the
+ * individualized anchor (§17) and a centre is the honest reading of a row that
+ * spans five points. The %HRmax lane takes the edge named above.
+ */
+export function prescribedHrTargetBpm(args: {
+  intensity: PrescribedIntensity;
+  lthr?: number | null;
+  maxHr?: number | null;
+}): PrescribedHrTarget | null {
+  const { intensity } = args;
+  const lthr = typeof args.lthr === 'number' && args.lthr > 100 && args.lthr < 210 ? args.lthr : null;
+  const maxHr = typeof args.maxHr === 'number' && args.maxHr > 140 && args.maxHr < 230 ? args.maxHr : null;
+  const friel = FRIEL_PCT_LTHR_BY_INTENSITY[intensity];
+  if (lthr != null && friel != null) {
+    const fraction = (friel[0] + friel[1]) / 2;
+    return {
+      bpm: Math.round(lthr * fraction),
+      anchor: 'lthr',
+      fraction,
+      cite: 'Research/03 §6 (Friel 7-Zone Running HR Table)',
+    };
+  }
+  const pct = DANIELS_PCT_HRMAX_TARGET[intensity];
+  if (maxHr != null && pct != null) {
+    return {
+      bpm: Math.round(maxHr * pct),
+      anchor: 'maxHr',
+      fraction: pct,
+      cite: "Research/03 §8 (Daniels' HR Zones)",
+    };
+  }
+  return null;
+}
+
 /** Friel zones, condensed to the 5 most-actionable for marathoners.
  *  We collapse 5a/5b/5c (cruise/VO2/anaerobic) since the in-app coach
  *  uses Z5 = "max effort, save for hill repeats / VO2 reps". The detailed
