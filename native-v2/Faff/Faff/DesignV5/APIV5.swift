@@ -1744,7 +1744,9 @@ extension V5Panel {
 }
 
 extension V5Block {
-    enum K: String, CodingKey { case panel, phases, coachLine, thesis, soFar, weeks, library, scenarios }
+    enum K: String, CodingKey {
+        case panel, phases, coachLine, thesis, soFar, weeks, library, scenarios, blockAnswers
+    }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
         panel = try c.decode(V5Panel.self, forKey: .panel)
@@ -1755,6 +1757,11 @@ extension V5Block {
         weeks = c.list(.weeks)
         library = c.list(.library)
         scenarios = c.list(.scenarios)
+        // WEEKANSWERS-1 · `try?` and not `c.list`, because absent and empty are
+        // different facts here: a block authored before the answers existed
+        // carries no key and must draw no section, while an empty array would
+        // be a block that answered nothing and is worth seeing as a defect.
+        blockAnswers = try? c.decodeIfPresent([V5Answer].self, forKey: .blockAnswers)
     }
 }
 
