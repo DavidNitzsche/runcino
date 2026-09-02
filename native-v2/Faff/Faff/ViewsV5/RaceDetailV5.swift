@@ -96,6 +96,8 @@ struct RaceDetailV5: View {
 
                     coachGoalSection
 
+                    outlookSection
+
                     // Above the form rather than inside it: the result
                     // section stops drawing the moment a time is confirmed,
                     // and a reason has to survive whatever the refetch does
@@ -369,6 +371,71 @@ struct RaceDetailV5: View {
                 .font(.faffText(17, weight: .semibold))
                 .foregroundStyle(V5.textSecondary)
             FaffValueText(.modelled(display ?? "—"), font: .faffText(17, weight: .semibold))
+        }
+    }
+
+    // MARK: The race-pace brain · four quantities, one bridge
+    //
+    // 2026-09-01. "Projected" on the stat plate is `expectedRaceDay`; this
+    // section is the rest of the brain, so a runner can see WHY the number is
+    // what it is: what today's fitness would race, the pace the block trains
+    // at now (and why it may sit slower than race day), the improvement the
+    // remaining block is expected to earn, and what the day's execution
+    // target is against the stated goal. Every value is modelled, so every
+    // number wears the mark. Absent on older servers (additive decode).
+
+    @ViewBuilder
+    private var outlookSection: some View {
+        if let o = raceDetail.outlook, raceDetail.resultEntry?.isPast != true {
+            VStack(alignment: .leading, spacing: V5.S.s10) {
+                V5SectionLabel(text: "How the number is built").padding(.horizontal, V5.S.s4)
+                Tile {
+                    VStack(alignment: .leading, spacing: V5.S.s10) {
+                        outlookRow("Today's fitness would race", o.currentProjection.display, o.currentProjection.likelyRange)
+                        outlookRow(o.trainingPrescription.kind == "marathon_specific" ? "Marathon pace in training now" : "Race pace in training now", o.trainingPrescription.pace.map { "\($0)/mi" }, nil)
+                        outlookRow("Expected on race day", o.expectedRaceDay.display, o.expectedRaceDay.likelyRange)
+                        outlookRow("Run the day at", o.execution.targetDisplay.map { d in o.execution.pace.map { "\(d) · \($0)/mi" } ?? d }, nil)
+                        if let why = o.trainingPrescription.why, !why.isEmpty {
+                            Text(why)
+                                .font(.faffText(TypeScaleV5.label13))
+                                .foregroundStyle(V5.textQuiet)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let reason = o.execution.reason, !reason.isEmpty {
+                            Text(reason)
+                                .font(.faffText(TypeScaleV5.label13))
+                                .foregroundStyle(V5.textQuiet)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let hr = o.execution.hr, hr.expectedRangeBpm.count == 2 {
+                            Text(hr.informationalOnly
+                                 ? "Heart rate on the day: expect \(hr.expectedRangeBpm[0])-\(hr.expectedRangeBpm[1]) bpm · a reference, not a target"
+                                 : "Heart rate on the day: expect \(hr.expectedRangeBpm[0])-\(hr.expectedRangeBpm[1]) bpm")
+                                .font(.faffText(TypeScaleV5.label13))
+                                .foregroundStyle(V5.textQuiet)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func outlookRow(_ label: String, _ value: String?, _ range: V5OutlookRange?) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.faffText(TypeScaleV5.label13))
+                .foregroundStyle(V5.textSecondary)
+            Spacer(minLength: V5.S.s6)
+            VStack(alignment: .trailing, spacing: V5.S.s2) {
+                FaffValueText(.modelled(value ?? "not yet"), font: .faffText(17, weight: .semibold))
+                if let r = range, let lo = r.lo, let hi = r.hi {
+                    Text("\(lo) to \(hi)")
+                        .font(.faffText(TypeScaleV5.label12))
+                        .foregroundStyle(V5.textQuiet)
+                }
+            }
         }
     }
 

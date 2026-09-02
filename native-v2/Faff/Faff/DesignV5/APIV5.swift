@@ -1059,6 +1059,75 @@ struct V5RaceDetail: Decodable, Equatable {
     /// state one, the server goes silent here and the stated goal renders
     /// exactly as before. Absent on older servers (additive decode).
     let coachGoal: V5CoachGoal?
+    /// 2026-09-01 · the race-pace brain, serialised (`lib/race/race-outlook.ts`
+    /// via `race-outlook-payload.ts`). Four distinct quantities plus the
+    /// bridge between them. Additive: absent on older servers, and `var`
+    /// with a default so every preview's memberwise init still compiles.
+    var outlook: V5RaceOutlook? = nil
+}
+
+/// One quantity of the race outlook: a number with its display forms and,
+/// where the brain has one, a likely range and a confidence.
+struct V5OutlookQuantity: Decodable, Equatable {
+    let sec: Int?
+    let display: String?
+    let pace: String?
+    let likelyRange: V5OutlookRange?
+    let confidence: Double?
+    let basis: String?
+}
+
+struct V5OutlookRange: Decodable, Equatable {
+    let lo: String?
+    let hi: String?
+}
+
+struct V5OutlookHr: Decodable, Equatable {
+    let expectedRangeBpm: [Int]
+    let earlyCeilingBpm: Int?
+    let earlyThroughMi: Double?
+    let checkpointMi: Double?
+    let checkpointAbortBpm: Int?
+    let informationalOnly: Bool
+}
+
+struct V5OutlookExecution: Decodable, Equatable {
+    let targetDisplay: String?
+    let pace: String?
+    let source: String?
+    let reason: String?
+    let hr: V5OutlookHr?
+}
+
+struct V5OutlookTraining: Decodable, Equatable {
+    let kind: String?
+    let pace: String?
+    let why: String?
+}
+
+struct V5OutlookBridgeStep: Decodable, Equatable, Identifiable {
+    var id: String { step }
+    let step: String
+    let label: String
+    let value: String
+    let confidence: Double?
+    let differsFromPrevious: String?
+    let changeTrigger: String
+}
+
+struct V5OutlookFeasibility: Decodable, Equatable {
+    let status: String
+}
+
+/// The race-pace brain on the wire. Every field is named for the quantity it
+/// is; none of them is "the projection".
+struct V5RaceOutlook: Decodable, Equatable {
+    let currentProjection: V5OutlookQuantity
+    let trainingPrescription: V5OutlookTraining
+    let expectedRaceDay: V5OutlookQuantity
+    let execution: V5OutlookExecution
+    let goalFeasibility: V5OutlookFeasibility
+    let bridge: [V5OutlookBridgeStep]
 }
 
 /// The coach-set A/B/C framing from `lib/race/coach-goal.ts`.

@@ -1,0 +1,6 @@
+slug | goal | goal_s
+dodgers | 0:45:00 | 2700
+run-malibu | 1:30:00 | 5400
+cim | 3:00:00 | 10800
+santa-monica-10k-2026-09-13 |  | 
+(4 rows)

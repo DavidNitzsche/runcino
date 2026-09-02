@@ -1,0 +1,7 @@
+id | date_iso | type | pace | lo | hi | hrcap | has_exec | plan_id | race_slug
+wko_5069bc75e324a69a | 2026-09-13 | race | 444 | 439 | 449 |  | f | pln_9a57561debb776e5 | 
+wko_613649879df83f38 | 2026-09-26 | race | 435 | 430 | 440 |  | f | pln_9a57561debb776e5 | 
+wko_04050ebcd66f81d6 | 2026-11-08 | race | 425 | 420 | 430 | 168 | f | pln_9a57561debb776e5 | 
+wko_60e4afb00a4e2c33 | 2026-12-01 | race_week_tuneup | 425 |  |  |  | f | pln_9a57561debb776e5 | 
+wko_8bfa8647379342ba | 2026-12-06 | race | 436 | 431 | 441 | 155 | f | pln_9a57561debb776e5 | 
+(5 rows)

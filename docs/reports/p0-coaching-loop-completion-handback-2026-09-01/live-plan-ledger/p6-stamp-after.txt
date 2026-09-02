@@ -1,0 +1,38 @@
+jsonb_pretty
+{
+    "at": "2026-09-02T01:23:04.412Z",
+    "rows": [
+        {
+            "id": "wko_5069bc75e324a69a",
+            "date": "2026-09-13",
+            "pace": 429,
+            "action": "updated",
+            "reason": null
+        },
+        {
+            "id": "wko_613649879df83f38",
+            "date": "2026-09-26",
+            "pace": 435,
+            "action": "updated",
+            "reason": null
+        },
+        {
+            "id": "wko_04050ebcd66f81d6",
+            "date": "2026-11-08",
+            "pace": 438,
+            "action": "updated",
+            "reason": null
+        },
+        {
+            "id": "wko_8bfa8647379342ba",
+            "date": "2026-12-06",
+            "pace": 451,
+            "action": "updated",
+            "reason": null
+        }
+    ],
+    "source": "cron/snapshot-projections",
+    "refused": 0,
+    "updated": 4
+}
+(1 row)

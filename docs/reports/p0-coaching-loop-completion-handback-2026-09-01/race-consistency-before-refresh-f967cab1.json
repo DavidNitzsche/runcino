@@ -1,0 +1,1014 @@
+{
+ "user": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+ "today": "2026-09-01",
+ "resolvedAt": "2026-09-02T01:23:19.720Z",
+ "canonical": {
+  "anchors": {
+   "thresholdSecPerMi": 430,
+   "intervalSecPerMi": 401,
+   "repetitionSecPerMi": 365,
+   "easyCeilingSecPerMi": 502,
+   "shakeoutCeilingSecPerMi": 532,
+   "marathonSecPerMi": 475,
+   "basis": {
+    "threshold": {
+     "sourceMode": "direct",
+     "confidence": 0.8400000000000001,
+     "vdot": 47.8
+    },
+    "highIntensity": {
+     "sourceMode": "vdot_fallback",
+     "confidence": 0.5
+    },
+    "easyCeiling": {
+     "sourceMode": "direct",
+     "confidence": 0.6336475048158089
+    },
+    "marathon": {
+     "sourceMode": "direct",
+     "confidence": 0.8400000000000001,
+     "enduranceExponent": 1.0869051877057179,
+     "personallyEvidenced": true
+    }
+   }
+  },
+  "threshold": {
+   "pace": 430,
+   "vdot": 47.8,
+   "confidence": 0.8400000000000001,
+   "sourceMode": "direct",
+   "evidenceIds": [
+    "-258355938987883",
+    "-87627419857791",
+    "-2351254210708"
+   ],
+   "reasons": [
+    "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+    "THREE_RECENT_CORROBORATING_SESSIONS",
+    "OBSERVATIONS_AGREE",
+    "FRESH_EVIDENCE"
+   ]
+  },
+  "durability": {
+   "ok": true,
+   "value": 1.0869051877057179,
+   "confidence": 0.6209679155676007,
+   "evidenceScore": 0.6551267278916443,
+   "rawFittedExponent": 1.1010686765785074,
+   "populationPrior": 1.06,
+   "rmsLogResidual": 0.02498075341893887,
+   "races": 5,
+   "distinctDistances": 2,
+   "supporting": [
+    {
+     "slug": "rose-bowl-half-2026",
+     "date": "2026-01-18",
+     "distanceMi": 13.109,
+     "finishSec": 5918,
+     "priority": "A",
+     "weight": 1
+    },
+    {
+     "slug": "disney-half-2026",
+     "date": "2026-02-01",
+     "distanceMi": 13.109,
+     "finishSec": 5694,
+     "priority": "A",
+     "weight": 1
+    },
+    {
+     "slug": "la-marathon-2026",
+     "date": "2026-03-08",
+     "distanceMi": 26.219,
+     "finishSec": 12700,
+     "priority": "A",
+     "weight": 1
+    },
+    {
+     "slug": "sombrero-half",
+     "date": "2026-05-03",
+     "distanceMi": 13.16,
+     "finishSec": 6057,
+     "priority": "C",
+     "weight": 0.35
+    },
+    {
+     "slug": "americas-finest-city",
+     "date": "2026-08-16",
+     "distanceMi": 13.1,
+     "finishSec": 6113,
+     "priority": "A",
+     "weight": 1
+    }
+   ]
+  }
+ },
+ "races": {
+  "cim": {
+   "outlook": {
+    "race": {
+     "slug": "cim",
+     "name": "California International Marathon",
+     "distanceMi": 26.22,
+     "dateISO": "2026-12-06",
+     "priority": "A",
+     "statedGoalSec": 10800,
+     "isPast": false,
+     "daysToRace": 96,
+     "weeksToRace": 13.7
+    },
+    "statedGoal": {
+     "sec": 10800,
+     "paceSecPerMi": 412
+    },
+    "capacity": {
+     "thresholdSecPerMi": 430,
+     "thresholdVdot": 47.8,
+     "sourceMode": "direct",
+     "confidence": 0.8400000000000001,
+     "evidenceIds": [
+      "-258355938987883",
+      "-87627419857791",
+      "-2351254210708"
+     ],
+     "newestEvidenceISO": "2026-09-01",
+     "durabilityExponent": 1.0869051877057179,
+     "durabilityRawExponent": 1.1010686765785074,
+     "durabilityConfidence": 0.6209679155676007,
+     "durabilityRaces": 5,
+     "personallyEvidenced": true
+    },
+    "currentProjection": {
+     "expectedSec": 12390,
+     "likelyRangeSec": [
+      12018,
+      12762
+     ],
+     "confidence": 0.6209679155676007,
+     "basis": "durability_blend",
+     "danielsSec": 11881,
+     "durabilitySec": 12701,
+     "durabilityWeight": 0.6209679155676007,
+     "specificityAdjustmentPct": null,
+     "primaryLimiter": "endurance",
+     "reasons": [
+      "threshold direct · confidence 0.84",
+      "personal exponent 1.087 from 5 races · weight 0.62"
+     ]
+    },
+    "trainingPrescription": {
+     "kind": "marathon_specific",
+     "paceSecPerMi": 475,
+     "source": "canonical_anchors",
+     "enduranceExponent": 1.0869051877057179,
+     "personallyEvidenced": true,
+     "thresholdSecPerMi": 430,
+     "whyThisPace": "Threshold 7:10/mi carried to 26.2 mi through your own endurance exponent (1.087). This is today's capacity, not race day's; the rehearsal teaches the effort, the block earns the pace."
+    },
+    "expectedImprovement": {
+     "gainVdot": 2.5982142857142856,
+     "gainRangeVdot": [
+      1.9285714285714284,
+      2.6785714285714284
+     ],
+     "buildWeeks": 10.7,
+     "taperWeeks": 3,
+     "executionQuality": 0.97,
+     "responseFactor": 1,
+     "overPerformanceBonusVdot": 0,
+     "bindingCap": "runway",
+     "basis": "plan_stimulus_and_execution",
+     "reasons": [
+      "GAIN_BOUNDED_BY_RUNWAY",
+      "HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"
+     ],
+     "confidence": 0.585
+    },
+    "expectedRaceDay": {
+     "expectedSec": 12194,
+     "likelyRangeSec": [
+      11817,
+      12615
+     ],
+     "confidence": 0.36,
+     "projectedVdot": 50.4,
+     "basis": "trajectory",
+     "reasons": [
+      "2.6 VDOT expected from 10.7 build weeks at execution 0.97",
+      "GAIN_BOUNDED_BY_RUNWAY",
+      "HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"
+     ]
+    },
+    "execution": {
+     "targetSec": 11820,
+     "paceSecPerMi": 451,
+     "paceBandSecPerMi": [
+      446,
+      456
+     ],
+     "source": "stated_goal_clamped_to_range_edge",
+     "strategyLabel": "Controlled start · 7:31/mi average",
+     "reasonVsExpected": "Your goal (3:00:00) is faster than the likely range's fast edge (3:16:57) · race to the edge; the goal stays yours.",
+     "hr": {
+      "lthrBpm": 168,
+      "distanceCategory": "m",
+      "expectedRangeBpm": [
+       148,
+       160
+      ],
+      "earlyCeilingBpm": 148,
+      "earlyThroughMi": 10,
+      "lateAllowanceBpm": 165,
+      "checkpointMi": 10,
+      "checkpointAbortBpm": 163,
+      "informationalOnly": false,
+      "evidence": {
+       "comparableEfforts": 7,
+       "observedMeanHr": 154,
+       "conflictBpm": -11,
+       "efforts": [
+        {
+         "id": "-245190372869167",
+         "dateISO": "2026-08-30",
+         "distanceMi": 13.49,
+         "paceSecPerMi": 456.8569310600445,
+         "avgHr": 159,
+         "kind": "long"
+        },
+        {
+         "id": "-522630830",
+         "dateISO": "2026-05-03",
+         "distanceMi": 13.44,
+         "paceSecPerMi": 450.74404761904765,
+         "avgHr": 163,
+         "kind": "other"
+        },
+        {
+         "id": "-251580989059278",
+         "dateISO": "2026-06-18",
+         "distanceMi": 8.15,
+         "paceSecPerMi": 473.1288343558282,
+         "avgHr": 149,
+         "kind": "other"
+        },
+        {
+         "id": "-127657343028184",
+         "dateISO": "2026-06-21",
+         "distanceMi": 13.15,
+         "paceSecPerMi": 447.3764258555133,
+         "avgHr": 141,
+         "kind": "long"
+        },
+        {
+         "id": "-2351254210708",
+         "dateISO": "2026-06-23",
+         "distanceMi": 8.12,
+         "paceSecPerMi": 466.9950738916257,
+         "avgHr": 149,
+         "kind": "other"
+        },
+        {
+         "id": "-164786796432085",
+         "dateISO": "2026-08-09",
+         "distanceMi": 12.37,
+         "paceSecPerMi": 441.3096200485045,
+         "avgHr": 157,
+         "kind": "long"
+        },
+        {
+         "id": "17654375467",
+         "dateISO": "2026-03-08",
+         "distanceMi": 26.7,
+         "paceSecPerMi": 472.84644194756555,
+         "avgHr": 161.7,
+         "kind": "other"
+        }
+       ]
+      },
+      "reasons": [
+       "DOCTRINE_BAND_FOR_DISTANCE",
+       "VALIDATED_AGAINST_OWN_EFFORTS"
+      ],
+      "citation": "Research/08-pacing-and-race-week.md §6.1 (race HR ceilings by distance, %LTHR; drift 3-5 bpm/hour)"
+     }
+    },
+    "goalFeasibility": {
+     "status": "unlikely_currently",
+     "gapSec": 1394,
+     "gapToRangeEdgeSec": 1017,
+     "reasons": [
+      "expected 3:23:14 · range 3:16:57-3:30:15 · goal 3:00:00"
+     ]
+    },
+    "coachSet": null,
+    "bridge": [
+     {
+      "step": "current_capacity",
+      "label": "Current threshold capacity",
+      "value": "7:10/mi (VDOT 47.8)",
+      "valueSec": null,
+      "paceSecPerMi": 430,
+      "rangeSec": null,
+      "confidence": 0.8400000000000001,
+      "evidence": [
+       "run -258355938987883",
+       "run -87627419857791",
+       "run -2351254210708"
+      ],
+      "changeTrigger": "Three corroborating threshold sessions faster or slower than this, with heart rate in the band.",
+      "differsFromPrevious": null
+     },
+     {
+      "step": "current_projection",
+      "label": "What you could race today at 26.2 mi",
+      "value": "3:26:30",
+      "valueSec": 12390,
+      "paceSecPerMi": 473,
+      "rangeSec": [
+       12018,
+       12762
+      ],
+      "confidence": 0.6209679155676007,
+      "evidence": [
+       "threshold direct · confidence 0.84",
+       "personal exponent 1.087 from 5 races · weight 0.62"
+      ],
+      "changeTrigger": "A change in threshold capacity, or a new graded race that moves your endurance exponent.",
+      "differsFromPrevious": "Threshold pace carried to the race distance through your own endurance exponent, not the population table."
+     },
+     {
+      "step": "training_prescription",
+      "label": "Marathon-pace training now",
+      "value": "7:55/mi",
+      "valueSec": null,
+      "paceSecPerMi": 475,
+      "rangeSec": null,
+      "confidence": 0.8400000000000001,
+      "evidence": [
+       "Threshold 7:10/mi carried to 26.2 mi through your own endurance exponent (1.087). This is today's capacity, not race day's; the rehearsal teaches the effort, the block earns the pace."
+      ],
+      "changeTrigger": "The threshold anchor or the endurance exponent moving; rehearsals at this pace that stay controlled will move the anchor.",
+      "differsFromPrevious": "Same capacity, priced as a training stimulus: it may sit slower than race day because it is today's pace, not the pace the block is expected to earn."
+     },
+     {
+      "step": "expected_improvement",
+      "label": "Improvement the remaining block can deliver",
+      "value": "+2.6 VDOT (1.9-2.7)",
+      "valueSec": null,
+      "paceSecPerMi": null,
+      "rangeSec": null,
+      "confidence": 0.585,
+      "evidence": [
+       "10.7 build weeks · execution 0.97 from 2 recent test points",
+       "GAIN_BOUNDED_BY_RUNWAY",
+       "HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"
+      ],
+      "changeTrigger": "Executing key sessions moves this up; missed or uncontrolled sessions move it down; time passing alone never moves it.",
+      "differsFromPrevious": "Sized from the runway and how the plan is being executed, never from the goal."
+     },
+     {
+      "step": "expected_race_day",
+      "label": "Expected on race day",
+      "value": "3:23:14",
+      "valueSec": 12194,
+      "paceSecPerMi": 465,
+      "rangeSec": [
+       11817,
+       12615
+      ],
+      "confidence": 0.36,
+      "evidence": [
+       "2.6 VDOT expected from 10.7 build weeks at execution 0.97",
+       "GAIN_BOUNDED_BY_RUNWAY",
+       "HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"
+      ],
+      "changeTrigger": "Every input above; the range narrows as execution evidence accumulates.",
+      "differsFromPrevious": "Current projection plus the expected improvement, converted through the same equivalence."
+     },
+     {
+      "step": "execution_target",
+      "label": "What to run on the day",
+      "value": "3:17:00 · 7:31/mi",
+      "valueSec": 11820,
+      "paceSecPerMi": 451,
+      "rangeSec": null,
+      "confidence": 0.36,
+      "evidence": [
+       "Your goal (3:00:00) is faster than the likely range's fast edge (3:16:57) · race to the edge; the goal stays yours.",
+       "HR 148-160 expected"
+      ],
+      "changeTrigger": "The expected race-day range moving, or you changing your goal.",
+      "differsFromPrevious": "Pulled toward your goal as far as the likely range allows, and no further."
+     }
+    ],
+    "flags": []
+   },
+   "consumers": {
+    "race-projection.raceProjectionFromOutlook (Races list / Race detail \"Projected\")": {
+     "projectedSec": 12194,
+     "basis": "trajectory",
+     "likelyRangeSec": [
+      11817,
+      12615
+     ],
+     "confidenceInterval": null,
+     "confidenceLabel": null,
+     "confidence": 0.36
+    },
+    "effective-race-target.loadEffectiveRaceTarget (watch race day / execution plan / api race detail)": {
+     "targetSec": 11820,
+     "source": "projection",
+     "goalSec": 10800,
+     "projectionSec": 12194
+    },
+    "coach-goal-load.loadCoachGoalForRace (coach-set A/B/C · null when a goal is stated)": null,
+    "plan_workouts race row (plan row · watch reads its spec)": [
+     {
+      "id": "wko_8bfa8647379342ba",
+      "date_iso": "2026-12-06",
+      "type": "race",
+      "pace_target_s_per_mi": 451,
+      "distance_mi": "26.22",
+      "lo": "446",
+      "hi": "456",
+      "hr_cap_bpm": null,
+      "race_execution": {
+       "reason": "Your goal (3:00:00) is faster than the likely range's fast edge (3:16:57) · race to the edge; the goal stays yours.",
+       "source": "stated_goal_clamped_to_range_edge",
+       "target_sec": 11820,
+       "feasibility": "unlikely_currently",
+       "resolved_at": "2026-09-02T01:23:04.404Z",
+       "model_version": "1.0.0",
+       "threshold_vdot": 47.8,
+       "stated_goal_sec": 10800,
+       "likely_range_sec": [
+        11817,
+        12615
+       ],
+       "expected_gain_vdot": 2.5982142857142856,
+       "threshold_s_per_mi": 430,
+       "durability_exponent": 1.0869051877057179,
+       "target_pace_s_per_mi": 451,
+       "expected_race_day_sec": 12194,
+       "current_projection_sec": 12390,
+       "training_pace_s_per_mi": 475
+      },
+      "race_hr": {
+       "reasons": [
+        "DOCTRINE_BAND_FOR_DISTANCE",
+        "VALIDATED_AGAINST_OWN_EFFORTS"
+       ],
+       "evidence": {
+        "conflict_bpm": -11,
+        "observed_mean_hr": 154,
+        "comparable_efforts": 7
+       },
+       "lthr_bpm": 168,
+       "checkpoint_mi": 10,
+       "early_through_mi": 10,
+       "early_ceiling_bpm": 148,
+       "expected_range_bpm": [
+        148,
+        160
+       ],
+       "informational_only": false,
+       "late_allowance_bpm": 165,
+       "checkpoint_abort_bpm": 163
+      },
+      "plan_id": "pln_9a57561debb776e5"
+     }
+    ]
+   }
+  },
+  "santa-monica-10k-2026-09-13": {
+   "outlook": {
+    "race": {
+     "slug": "santa-monica-10k-2026-09-13",
+     "name": "Santa Monica 10k",
+     "distanceMi": 6.2,
+     "dateISO": "2026-09-13",
+     "priority": "B",
+     "statedGoalSec": null,
+     "isPast": false,
+     "daysToRace": 12,
+     "weeksToRace": 1.7
+    },
+    "statedGoal": {
+     "sec": null,
+     "paceSecPerMi": null
+    },
+    "capacity": {
+     "thresholdSecPerMi": 430,
+     "thresholdVdot": 47.8,
+     "sourceMode": "direct",
+     "confidence": 0.8400000000000001,
+     "evidenceIds": [
+      "-258355938987883",
+      "-87627419857791",
+      "-2351254210708"
+     ],
+     "newestEvidenceISO": "2026-09-01",
+     "durabilityExponent": 1.0869051877057179,
+     "durabilityRawExponent": 1.1010686765785074,
+     "durabilityConfidence": 0.6209679155676007,
+     "durabilityRaces": 5,
+     "personallyEvidenced": true
+    },
+    "currentProjection": {
+     "expectedSec": 2658,
+     "likelyRangeSec": [
+      2605,
+      2711
+     ],
+     "confidence": 0.6209679155676007,
+     "basis": "durability_blend",
+     "danielsSec": 2571,
+     "durabilitySec": 2711,
+     "durabilityWeight": 0.6209679155676007,
+     "specificityAdjustmentPct": null,
+     "primaryLimiter": "endurance",
+     "reasons": [
+      "threshold direct · confidence 0.84",
+      "personal exponent 1.087 from 5 races · weight 0.62"
+     ]
+    },
+    "trainingPrescription": {
+     "kind": "race_specific",
+     "paceSecPerMi": 429,
+     "source": "canonical_anchors",
+     "enduranceExponent": 1.0869051877057179,
+     "personallyEvidenced": true,
+     "thresholdSecPerMi": 430,
+     "whyThisPace": "Today's projected race pace at 6.2 mi from current capacity."
+    },
+    "expectedImprovement": {
+     "gainVdot": 0,
+     "gainRangeVdot": [
+      0,
+      0
+     ],
+     "buildWeeks": 0,
+     "taperWeeks": 2,
+     "executionQuality": 0.97,
+     "responseFactor": 1,
+     "overPerformanceBonusVdot": 0,
+     "bindingCap": "none",
+     "basis": "no_runway",
+     "reasons": [
+      "NO_BUILD_WEEKS_REMAIN",
+      "HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"
+     ],
+     "confidence": 0.6499999999999999
+    },
+    "expectedRaceDay": {
+     "expectedSec": 2658,
+     "likelyRangeSec": [
+      2605,
+      2711
+     ],
+     "confidence": 0.4,
+     "projectedVdot": 47.8,
+     "basis": "current_projection",
+     "reasons": [
+      "0 VDOT expected from 0 build weeks at execution 0.97",
+      "NO_BUILD_WEEKS_REMAIN",
+      "HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"
+     ]
+    },
+    "execution": {
+     "targetSec": 2660,
+     "paceSecPerMi": 429,
+     "paceBandSecPerMi": [
+      424,
+      434
+     ],
+     "source": "expected_race_day",
+     "strategyLabel": "Controlled start · 7:09/mi average",
+     "reasonVsExpected": "No stated goal · race to where this build is expected to land you.",
+     "hr": {
+      "lthrBpm": 168,
+      "distanceCategory": "10k",
+      "expectedRangeBpm": [
+       168,
+       176
+      ],
+      "earlyCeilingBpm": 168,
+      "earlyThroughMi": 2,
+      "lateAllowanceBpm": 181,
+      "checkpointMi": 2,
+      "checkpointAbortBpm": 179,
+      "informationalOnly": false,
+      "evidence": {
+       "comparableEfforts": 2,
+       "observedMeanHr": 149,
+       "conflictBpm": -32,
+       "efforts": [
+        {
+         "id": "-127657343028184",
+         "dateISO": "2026-06-21",
+         "distanceMi": 13.15,
+         "paceSecPerMi": 447.3764258555133,
+         "avgHr": 141,
+         "kind": "long"
+        },
+        {
+         "id": "-164786796432085",
+         "dateISO": "2026-08-09",
+         "distanceMi": 12.37,
+         "paceSecPerMi": 441.3096200485045,
+         "avgHr": 157,
+         "kind": "long"
+        }
+       ]
+      },
+      "reasons": [
+       "DOCTRINE_BAND_FOR_DISTANCE",
+       "VALIDATED_AGAINST_OWN_EFFORTS"
+      ],
+      "citation": "Research/08-pacing-and-race-week.md §6.1 (race HR ceilings by distance, %LTHR; drift 3-5 bpm/hour)"
+     }
+    },
+    "goalFeasibility": {
+     "status": "no_goal",
+     "gapSec": null,
+     "gapToRangeEdgeSec": null,
+     "reasons": [
+      "NO_STATED_GOAL"
+     ]
+    },
+    "coachSet": {
+     "aSec": 2605,
+     "bSec": 2660,
+     "cSec": 2710,
+     "basis": "expected_race_day_range"
+    },
+    "bridge": [
+     {
+      "step": "current_capacity",
+      "label": "Current threshold capacity",
+      "value": "7:10/mi (VDOT 47.8)",
+      "valueSec": null,
+      "paceSecPerMi": 430,
+      "rangeSec": null,
+      "confidence": 0.8400000000000001,
+      "evidence": [
+       "run -258355938987883",
+       "run -87627419857791",
+       "run -2351254210708"
+      ],
+      "changeTrigger": "Three corroborating threshold sessions faster or slower than this, with heart rate in the band.",
+      "differsFromPrevious": null
+     },
+     {
+      "step": "current_projection",
+      "label": "What you could race today at 6.2 mi",
+      "value": "44:18",
+      "valueSec": 2658,
+      "paceSecPerMi": 429,
+      "rangeSec": [
+       2605,
+       2711
+      ],
+      "confidence": 0.6209679155676007,
+      "evidence": [
+       "threshold direct · confidence 0.84",
+       "personal exponent 1.087 from 5 races · weight 0.62"
+      ],
+      "changeTrigger": "A change in threshold capacity, or a new graded race that moves your endurance exponent.",
+      "differsFromPrevious": "Threshold pace carried to the race distance through your own endurance exponent, not the population table."
+     },
+     {
+      "step": "training_prescription",
+      "label": "Race-pace training now",
+      "value": "7:09/mi",
+      "valueSec": null,
+      "paceSecPerMi": 429,
+      "rangeSec": null,
+      "confidence": 0.8400000000000001,
+      "evidence": [
+       "Today's projected race pace at 6.2 mi from current capacity."
+      ],
+      "changeTrigger": "The threshold anchor or the endurance exponent moving; rehearsals at this pace that stay controlled will move the anchor.",
+      "differsFromPrevious": null
+     },
+     {
+      "step": "expected_improvement",
+      "label": "Improvement the remaining block can deliver",
+      "value": "+0 VDOT (0-0)",
+      "valueSec": null,
+      "paceSecPerMi": null,
+      "rangeSec": null,
+      "confidence": 0.6499999999999999,
+      "evidence": [
+       "0 build weeks · execution 0.97 from 2 recent test points",
+       "NO_BUILD_WEEKS_REMAIN",
+       "HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"
+      ],
+      "changeTrigger": "Executing key sessions moves this up; missed or uncontrolled sessions move it down; time passing alone never moves it.",
+      "differsFromPrevious": "Sized from the runway and how the plan is being executed, never from the goal."
+     },
+     {
+      "step": "expected_race_day",
+      "label": "Expected on race day",
+      "value": "44:18",
+      "valueSec": 2658,
+      "paceSecPerMi": 429,
+      "rangeSec": [
+       2605,
+       2711
+      ],
+      "confidence": 0.4,
+      "evidence": [
+       "0 VDOT expected from 0 build weeks at execution 0.97",
+       "NO_BUILD_WEEKS_REMAIN",
+       "HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"
+      ],
+      "changeTrigger": "Every input above; the range narrows as execution evidence accumulates.",
+      "differsFromPrevious": "Current projection plus the expected improvement, converted through the same equivalence."
+     },
+     {
+      "step": "execution_target",
+      "label": "What to run on the day",
+      "value": "44:20 · 7:09/mi",
+      "valueSec": 2660,
+      "paceSecPerMi": 429,
+      "rangeSec": null,
+      "confidence": 0.4,
+      "evidence": [
+       "No stated goal · race to where this build is expected to land you.",
+       "HR 168-176 expected"
+      ],
+      "changeTrigger": "The expected race-day range moving, or you changing your goal.",
+      "differsFromPrevious": null
+     }
+    ],
+    "flags": []
+   },
+   "consumers": {
+    "race-projection.raceProjectionFromOutlook (Races list / Race detail \"Projected\")": {
+     "projectedSec": 2658,
+     "basis": "equivalence",
+     "likelyRangeSec": [
+      2605,
+      2711
+     ],
+     "confidenceInterval": {
+      "lo": 2605,
+      "hi": 2711,
+      "pct": 2,
+      "method": "research-span"
+     },
+     "confidenceLabel": null,
+     "confidence": 0.6209679155676007
+    },
+    "effective-race-target.loadEffectiveRaceTarget (watch race day / execution plan / api race detail)": null,
+    "coach-goal-load.loadCoachGoalForRace (coach-set A/B/C · null when a goal is stated)": {
+     "kind": "time",
+     "coachSet": true,
+     "modelled": true,
+     "aSec": 2605,
+     "bSec": 2660,
+     "cSec": 2710,
+     "aDisplay": "43:25",
+     "bDisplay": "44:20",
+     "cDisplay": "45:10",
+     "ciPct": 2,
+     "oneSided": false,
+     "specificityAdjustedPct": null,
+     "method": "race-outlook",
+     "personalExponent": 1.0869051877057179,
+     "personalExponentConfidence": 0.6209679155676007,
+     "vdotBasis": null,
+     "hillAdjustedSec": null,
+     "hillGainFtPerMi": null,
+     "effortLine": null,
+     "line": "Coach set from your current fitness. Yours to edit.",
+     "setAt": "2026-09-01"
+    },
+    "plan_workouts race row (plan row · watch reads its spec)": [
+     {
+      "id": "wko_5069bc75e324a69a",
+      "date_iso": "2026-09-13",
+      "type": "race",
+      "pace_target_s_per_mi": 429,
+      "distance_mi": "6.2",
+      "lo": "424",
+      "hi": "434",
+      "hr_cap_bpm": null,
+      "race_execution": {
+       "reason": "No stated goal · race to where this build is expected to land you.",
+       "source": "expected_race_day",
+       "target_sec": 2660,
+       "feasibility": "no_goal",
+       "resolved_at": "2026-09-02T01:23:02.368Z",
+       "model_version": "1.0.0",
+       "threshold_vdot": 47.8,
+       "stated_goal_sec": null,
+       "likely_range_sec": [
+        2605,
+        2711
+       ],
+       "expected_gain_vdot": 0,
+       "threshold_s_per_mi": 430,
+       "durability_exponent": 1.0869051877057179,
+       "target_pace_s_per_mi": 429,
+       "expected_race_day_sec": 2658,
+       "current_projection_sec": 2658,
+       "training_pace_s_per_mi": 429
+      },
+      "race_hr": {
+       "reasons": [
+        "DOCTRINE_BAND_FOR_DISTANCE",
+        "VALIDATED_AGAINST_OWN_EFFORTS"
+       ],
+       "evidence": {
+        "conflict_bpm": -32,
+        "observed_mean_hr": 149,
+        "comparable_efforts": 2
+       },
+       "lthr_bpm": 168,
+       "checkpoint_mi": 2,
+       "early_through_mi": 2,
+       "early_ceiling_bpm": 168,
+       "expected_range_bpm": [
+        168,
+        176
+       ],
+       "informational_only": false,
+       "late_allowance_bpm": 181,
+       "checkpoint_abort_bpm": 179
+      },
+      "plan_id": "pln_9a57561debb776e5"
+     }
+    ]
+   }
+  }
+ },
+ "goal-gap.computeGoalGap (Progress / plan drift / proposals)": {
+  "mode": "race",
+  "raceSlug": "cim",
+  "goalSec": 10800,
+  "expectedRaceDaySec": 12194,
+  "likelyRangeSec": [
+   11817,
+   12615
+  ],
+  "trajectoryBasis": "trajectory",
+  "gapSec": 1394,
+  "status": "unclosable",
+  "weeksRemaining": 13,
+  "whatClosesIt": [
+   "Gap is wider than what is typically closable in 13 weeks.",
+   "The goal stays on the board · the projection is what moves.",
+   "Training stays honest · race-day execution still matters at any goal."
+  ]
+ },
+ "gap-report.composeGapReport (morning brief / readiness brief)": {
+  "headline": "Tracking 3:23:14 · Gap to 3:00:00 is wider than 13 weeks can close.",
+  "expectedRaceDaySec": 12194,
+  "goalSec": 10800,
+  "gapSec": 1394,
+  "status": "unclosable",
+  "confidenceBand": {
+   "p25Sec": 11817,
+   "medianSec": 12194,
+   "p75Sec": 12615
+  },
+  "alternativeRanges": {
+   "a": {
+    "sec": 11817,
+    "label": "A-goal · stretch but possible"
+   },
+   "b": {
+    "sec": 12194,
+    "label": "B-goal · where you're tracking"
+   },
+   "c": {
+    "sec": 12615,
+    "label": "C-goal · safe + executable"
+   }
+  }
+ },
+ "goal-projection-resolve.resolveNextAGoalProjection (snapshot cron · projection-changed notification)": {
+  "raceSlug": "cim",
+  "goalSec": 10800,
+  "projectedSec": 12194,
+  "basis": "trajectory"
+ },
+ "goal-outlook.resolveGoalOutlookProjection (goal outlook note)": {
+  "projectedSec": 12194,
+  "basis": "trajectory"
+ },
+ "goalIsolation": {
+  "stated 3:00": {
+   "capacity": {
+    "threshold": 430,
+    "vdot": 47.8,
+    "confidence": 0.8400000000000001,
+    "exponent": 1.0869051877057179,
+    "evidenceIds": [
+     "-258355938987883",
+     "-87627419857791",
+     "-2351254210708"
+    ]
+   },
+   "currentProjectionSec": 12390,
+   "trainingPaceSecPerMi": 475,
+   "expectedGainVdot": 2.5982142857142856,
+   "expectedRaceDaySec": 12194,
+   "likelyRangeSec": [
+    11817,
+    12615
+   ],
+   "executionTargetSec": 11820,
+   "executionSource": "stated_goal_clamped_to_range_edge",
+   "feasibility": "unlikely_currently"
+  },
+  "soft 3:30": {
+   "capacity": {
+    "threshold": 430,
+    "vdot": 47.8,
+    "confidence": 0.8400000000000001,
+    "exponent": 1.0869051877057179,
+    "evidenceIds": [
+     "-258355938987883",
+     "-87627419857791",
+     "-2351254210708"
+    ]
+   },
+   "currentProjectionSec": 12390,
+   "trainingPaceSecPerMi": 475,
+   "expectedGainVdot": 2.5982142857142856,
+   "expectedRaceDaySec": 12194,
+   "likelyRangeSec": [
+    11817,
+    12615
+   ],
+   "executionTargetSec": 12600,
+   "executionSource": "stated_goal_within_range",
+   "feasibility": "comfortable"
+  },
+  "extreme 2:30": {
+   "capacity": {
+    "threshold": 430,
+    "vdot": 47.8,
+    "confidence": 0.8400000000000001,
+    "exponent": 1.0869051877057179,
+    "evidenceIds": [
+     "-258355938987883",
+     "-87627419857791",
+     "-2351254210708"
+    ]
+   },
+   "currentProjectionSec": 12390,
+   "trainingPaceSecPerMi": 475,
+   "expectedGainVdot": 2.5982142857142856,
+   "expectedRaceDaySec": 12194,
+   "likelyRangeSec": [
+    11817,
+    12615
+   ],
+   "executionTargetSec": 11820,
+   "executionSource": "stated_goal_clamped_to_range_edge",
+   "feasibility": "unlikely_currently"
+  },
+  "none": {
+   "capacity": {
+    "threshold": 430,
+    "vdot": 47.8,
+    "confidence": 0.8400000000000001,
+    "exponent": 1.0869051877057179,
+    "evidenceIds": [
+     "-258355938987883",
+     "-87627419857791",
+     "-2351254210708"
+    ]
+   },
+   "currentProjectionSec": 12390,
+   "trainingPaceSecPerMi": 475,
+   "expectedGainVdot": 2.5982142857142856,
+   "expectedRaceDaySec": 12194,
+   "likelyRangeSec": [
+    11817,
+    12615
+   ],
+   "executionTargetSec": 12190,
+   "executionSource": "expected_race_day",
+   "feasibility": "no_goal"
+  }
+ },
+ "cimRaceSpecificRows": [
+  {
+   "error": "error: column w.phase does not exist"
+  }
+ ],
+ "hr": {
+  "lthr": 168,
+  "lthr_method": "race_half · Americas Finest City · 2026-08-16",
+  "lthr_set_at": "2026-08-31 02:40:47.71583+00",
+  "hrmax": null,
+  "hrmax_observed": 183,
+  "rhr": 46,
+  "users_max_hr": 183
+ }
+}

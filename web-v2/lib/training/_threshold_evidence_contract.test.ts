@@ -25,6 +25,7 @@ import {
   THRESHOLD_ANCHOR_DAILY_MOVE_CAP_S_PER_MI,
   fullAuthority,
   type CandidateRow,
+  thresholdCorpusFromInputs,
   type HrContext,
   type PaceObservation,
   type ThresholdEvidenceVerdict,
@@ -317,4 +318,43 @@ describe('the owner\'s real 2026-09-01 shape, end to end through the pure layer'
     expect(read.tPaceSecPerMi).toBe(446);
     expect(read.excluded).toHaveLength(3);
   });
+});
+
+
+describe('staleness · lowers SUPPORT and confidence, never the LEVEL (decay confidence, not value)', () => {
+  /** Sessions at `pace` s/mi on `dates`, HR in band, Evidence Engine corroborating. */
+  function inputs(todayISO: string, sessions: Array<[string, number]>) {
+    return {
+      todayISO, baseLookbackDays: 60, maxLookbackDays: 120,
+      rows: sessions.map(([d, pace], i) => row({ id: `s${i}`, date: d, phases: fourByMile(pace, 162) })),
+      ctx, windows: [],
+      evidence: new Map(sessions.map((_, i) => [`s${i}`, evidence('evidence', 0.55, true)])),
+    };
+  }
+  // Two fresh sessions at 440 and three 100-day-old sessions at 425. Beyond
+  // the 60-day base an observation's SUPPORT halves every 28 days (0.37 at
+  // 100 days), so the five together corroborate K=3 (2 + 3×0.37 = 3.1) —
+  // and the LEVEL is the third-fastest at full level weight: 425.
+  const mixed: Array<[string, number]> = [['2026-08-30', 440], ['2026-08-25', 440], ['2026-05-24', 425], ['2026-05-22', 425], ['2026-05-20', 425]];
+  it('the level is read at full weight across the widened window · only the support is discounted', () => {
+    const read = thresholdCorpusFromInputs(inputs('2026-09-01', mixed), 3);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.tPaceSecPerMi).toBe(425);
+    expect(read.weightedSupport).toBeGreaterThanOrEqual(3);
+    expect(read.weightedSupport).toBeLessThan(3.5);
+    expect(read.windowDays).toBeGreaterThan(60);
+  });
+  it('the same five sessions all fresh read the same level with full support', () => {
+    const fresh: Array<[string, number]> = [['2026-08-30', 440], ['2026-08-25', 440], ['2026-08-20', 425], ['2026-08-18', 425], ['2026-08-16', 425]];
+    const read = thresholdCorpusFromInputs(inputs('2026-09-01', fresh), 3);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.tPaceSecPerMi).toBe(425);
+    expect(read.weightedSupport).toBeCloseTo(5, 1);
+  });
+  // Falsifier (recorded in the P0 handback's falsification ledger): discounting
+  // the LEVEL weight by age instead of the support weight reads 440 here — the
+  // stale-but-faster sessions slide down the order statistic on elapsed time
+  // alone, which is fitness decaying with the calendar.
 });

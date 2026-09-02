@@ -81,6 +81,12 @@ jobs:
       - name: Vitest · every file
         working-directory: web-v2
         env:
+          # 2026-09-01 · the authoring shadow-compare audit (Phase 4) refuses to
+          # skip silently: without DATABASE_URL_RO it FAILS unless the gap is
+          # acknowledged. This job has no secrets by design (see the header), and
+          # it already reports every DB-gated file as SKIPPED rather than passed,
+          # so the acknowledgement is deliberate here and nowhere else.
+          ALLOW_AUDIT_SKIP: '1'
           NEXT_TELEMETRY_DISABLED: '1'
         run: npx vitest run --reporter=default --reporter=json --outputFile=../vitest-results.json
 

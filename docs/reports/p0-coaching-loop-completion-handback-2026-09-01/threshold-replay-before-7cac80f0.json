@@ -1,0 +1,2048 @@
+[
+ {
+  "day": "2026-06-01",
+  "pace": 457,
+  "vdot": 44.6,
+  "conf": 0.7951,
+  "mode": "direct",
+  "ids": [
+   "17988861079",
+   "-1466010895152803",
+   "18047997225"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-06-02",
+  "pace": 430,
+  "vdot": 47.9,
+  "conf": 0.8455,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "17988861079",
+   "-1466010895152803"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-06-03",
+  "pace": 457,
+  "vdot": 44.6,
+  "conf": 0.7951,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "18047997225"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-06-04",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.813,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-06-05",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.8081,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-06",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.8034,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-07",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.7987,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-08",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.7942,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-09",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.7897,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-10",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.7854,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-11",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.7812,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-12",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.7771,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-13",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.7731,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-14",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.7692,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-15",
+  "pace": 437,
+  "vdot": 47,
+  "conf": 0.7653,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-1466010895152803",
+   "-1483290537416636"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-16",
+  "pace": 430,
+  "vdot": 47.9,
+  "conf": 0.8427,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-1466010895152803"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-06-17",
+  "pace": 430,
+  "vdot": 47.9,
+  "conf": 0.8378,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-1466010895152803"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_DISAGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-18",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.86,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-06-19",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8551,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-20",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8503,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-21",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8457,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-22",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8411,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-23",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8367,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-24",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8324,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-25",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8282,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-26",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8241,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-27",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.82,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-28",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8161,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-29",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8123,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-06-30",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8086,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-01",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.805,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-02",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.8014,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-03",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.798,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-04",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.7946,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-05",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.7913,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-06",
+  "pace": 426,
+  "vdot": 48.4,
+  "conf": 0.7881,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-251580989059278"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-07",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8797,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-07-08",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8748,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-09",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8701,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-10",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8654,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-11",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8609,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-12",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8565,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-13",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8521,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-14",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8479,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-15",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8438,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-16",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.9,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-07-17",
+  "pace": 405,
+  "vdot": 51.2,
+  "conf": 0.7928,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "STALE_EVIDENCE",
+   "REEXAMINATION_LOWERED_THE_CORROBORATION_BAR"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-07-18",
+  "pace": 405,
+  "vdot": 51.2,
+  "conf": 0.7906,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "STALE_EVIDENCE",
+   "REEXAMINATION_LOWERED_THE_CORROBORATION_BAR"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-19",
+  "pace": 405,
+  "vdot": 51.2,
+  "conf": 0.7884,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "STALE_EVIDENCE",
+   "REEXAMINATION_LOWERED_THE_CORROBORATION_BAR"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-20",
+  "pace": 405,
+  "vdot": 51.2,
+  "conf": 0.7862,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "STALE_EVIDENCE",
+   "REEXAMINATION_LOWERED_THE_CORROBORATION_BAR"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-21",
+  "pace": 405,
+  "vdot": 51.2,
+  "conf": 0.7841,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "STALE_EVIDENCE",
+   "REEXAMINATION_LOWERED_THE_CORROBORATION_BAR"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-22",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.8724,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-07-23",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.8682,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-24",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.8641,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-25",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.8601,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-26",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.8561,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-27",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.8523,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-28",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.8486,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-29",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.845,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-30",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.8414,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-07-31",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.838,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-01",
+  "pace": 408,
+  "vdot": 50.8,
+  "conf": 0.8346,
+  "mode": "direct",
+  "ids": [
+   "-3558250452245243",
+   "-27148287813731",
+   "-280549580846348"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-02",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8116,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-08-03",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8084,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-04",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8053,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-05",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8022,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-06",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8897,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-08-07",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8849,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-08",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8801,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-09",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8754,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-10",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8709,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-11",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8665,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-12",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8621,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-13",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8579,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-14",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8538,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-15",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.8498,
+  "mode": "direct",
+  "ids": [
+   "-27148287813731",
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-16",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8334,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-08-17",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8296,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-18",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8258,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-19",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8222,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-20",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8187,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-21",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8352,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-22",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8318,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-23",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8085,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-24",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8053,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-25",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.8022,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-26",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.7991,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-27",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.7962,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-28",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.7933,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-29",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.7904,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-30",
+  "pace": 421,
+  "vdot": 49,
+  "conf": 0.7876,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": false
+ },
+ {
+  "day": "2026-08-31",
+  "pace": 430,
+  "vdot": 47.9,
+  "conf": 0.7268,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002",
+   "-87627419857791"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ },
+ {
+  "day": "2026-09-01",
+  "pace": 420,
+  "vdot": 49.2,
+  "conf": 0.7884,
+  "mode": "direct",
+  "ids": [
+   "-280549580846348",
+   "-226755616416002"
+  ],
+  "reasons": [
+   "DIRECT_CORROBORATED_THRESHOLD_EVIDENCE",
+   "THREE_RECENT_CORROBORATING_SESSIONS",
+   "OBSERVATIONS_AGREE",
+   "FRESH_EVIDENCE",
+   "REEXAMINATION_LOWERED_THE_CORROBORATION_BAR"
+  ],
+  "supporting": null,
+  "excluded": null,
+  "moveCap": null,
+  "changed": true
+ }
+]
