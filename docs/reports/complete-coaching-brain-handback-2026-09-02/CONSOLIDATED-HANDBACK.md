@@ -472,10 +472,23 @@ projection and has never moved.
    prescribed CIM target: 436 s/mi in `authored_state`, 443 on the race row.
    Which one you get depends on which job ran last. Rule 23 sitting on top of
    Rule 16.
-3. **Safety has no owner.** Four surfaces author the verdict independently, and
-   the phone refuses to prescribe on an open injury while the watch ships the
-   runnable workout beside its own "Not today" board. There have been 184
-   injury-adjustment proposals and zero accepted, over nine days.
+3. **Safety has no owner.** Four surfaces author the verdict independently.
+   There have been 184 injury-adjustment proposals and zero accepted, over nine
+   days, so the safety-to-training arm has never once executed.
+
+   **One correction to the audit on this row, from checking the code myself.**
+   It reports the watch shipping a runnable workout beside its own "Not today"
+   board as breaking the Constitution outright. The behaviour is real, but it is
+   deliberate and `build-workout.ts` says so in its own words: an open injury is
+   resolved before the plan row is read, and "when a workout DOES exist it still
+   ships beside this, so a deployed watch runs the session unchanged and a 0821
+   build draws No session instead."
+
+   That is a backwards-compatibility posture for watches already in the field,
+   not an oversight. It is still a real concern — a watch that draws "Not today"
+   while offering a runnable session is ambiguous at exactly the wrong moment —
+   but closing it means deciding which watch builds are still out there, which
+   is your call rather than mine. I did not change it.
 
 **And it corroborated the canary finding from a different direction.** The
 adaptation engine proposed PROGRESS on three consecutive days with the live
