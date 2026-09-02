@@ -256,6 +256,41 @@ export function expandSpecToPhases(input: ExpandSpecInput): ExpandedPhase[] | nu
  *
  * A spec with no `strides_reps` returns the phases untouched.
  */
+/**
+ * THE label one stride carries, and the ONE definition of it (Rule 16).
+ *
+ * Written as a function rather than inline because a reader has to be able to
+ * RECOGNISE a stride from a completed phase, and until the wrist carries
+ * `isStrideSegment` back on the completion payload the label is the only
+ * marker that survives the round trip. Two places spelling the same string —
+ * one to author it, one to match it — is how a rename silently unteaches every
+ * consumer, so the matcher below is derived from this and lives beside it.
+ */
+export function strideLabelFor(repIndex0: number, reps: number): string {
+  return `Stride ${repIndex0 + 1} of ${reps}`;
+}
+
+/**
+ * Does this completed phase's label say it was one of the strides?
+ *
+ * A RECOVERY rung, never a first choice. `isStrideSegment` is the authored
+ * marker, it is what `lib/execution/verdict.ts` grades on, and it is what the
+ * watch's prescription wire already carries. What it does NOT do is come back:
+ * `WatchCompletionPhase` (the wrist's outgoing struct) declares no such
+ * property, so every stored phase array in this database describes six
+ * 20-second accelerations as ordinary work.
+ *
+ * Anchored at both ends so it cannot match a label that merely mentions
+ * strides ("Strides after the long run"), and paired at the call site with the
+ * spec's own `strides_reps` so a label alone can never invent a stride on a
+ * session that never prescribed one.
+ */
+const STRIDE_LABEL_RE = /^\s*stride\s+\d+\s+of\s+\d+\s*$/i;
+
+export function looksLikeStrideLabel(label: string | null | undefined): boolean {
+  return typeof label === 'string' && STRIDE_LABEL_RE.test(label);
+}
+
 function appendStrides(
   phases: ExpandedPhase[],
   s: Record<string, unknown>,
@@ -270,7 +305,7 @@ function appendStrides(
   for (let i = 0; i < reps; i++) {
     phases.push({
       type: 'work',
-      label: `Stride ${i + 1} of ${reps}`,
+      label: strideLabelFor(i, reps),
       distanceMi: null,
       durationSec,
       targetPaceSPerMi: stridePace,

@@ -70,6 +70,8 @@
  *     lexicon-clean and wrong for the session.
  */
 import type { WorkoutVerdict, GradedPhase } from '@/lib/execution/verdict';
+import { looksLikeStrideLabel } from '@/lib/training/expand-spec';
+import { sessionLadder } from '@/lib/training/execution-semantics';
 import type {
   ActivityEvidenceResult,
   CapacityEvidence,
@@ -175,6 +177,128 @@ export interface PostRunNextAction {
   summary: string | null;
 }
 
+/* ── STRIDES · 2026-09-02 ─────────────────────────────────────────────────
+ *
+ * A stride is NOT a rep, and this type exists so that no reader can treat it
+ * as one. `Research/04-workout-vocabulary.md` §7.2 calls a stride "relaxed",
+ * puts it at "~85-95% max effort", and says in as many words that it is
+ * "Not a workout" — which is why `appendStrides` gives it a deliberately wide
+ * 45 s/mi band and why `execution-semantics.ts` shapes it `effort`, a shape
+ * that is never pace-graded at all.
+ *
+ * The runner's 2026-09-02 easy day is why this is a type and not a filter. Six
+ * 20-second accelerations at 401/347/349/365/350/431 s/mi against a 401 target
+ * were folded into the session's WORK set alongside the 5.0 mi easy block, and
+ * the screen told him "All seven reps landed, with four quicker than the
+ * ceiling." Three separate wrongs in nine words: the easy block is not a rep,
+ * the strides are not reps of it, and a stride being quick is the point of a
+ * stride rather than a deviation from it.
+ *
+ * So strides travel as their own quantity, are never graded, and the sentence
+ * about them states COMPLETION and never compliance. */
+export interface PostRunStride {
+  /** 1-based, as the runner counts them. */
+  ordinal: number;
+  /** The wrist's own label, e.g. "Stride 4 of 6". */
+  label: string | null;
+  distanceMi: number | null;
+  durationSec: number | null;
+  paceSecPerMi: number | null;
+  avgHr: number | null;
+  avgCadence: number | null;
+  completed: boolean;
+}
+
+export interface PostRunStrides {
+  /** From `workout_spec.strides_reps`. Null when the spec was not read — which
+   *  is NOT zero, and is why the two are separate fields (Rule 11). */
+  prescribed: number | null;
+  /** What the wrist actually recorded. */
+  recorded: number;
+  /** Of those, the ones the wrist marked finished. */
+  completed: number;
+  strides: PostRunStride[];
+  /** The walk-backs between them. Doctrine prescribes "Full walk-back or
+   *  60-90 s jog — no fatigue between strides" (§7.2), so they are part of the
+   *  drill and the runner is shown that he took them, not graded on them. */
+  recoveryCount: number;
+  recoveryDistanceMi: number | null;
+  /** One sentence. States what was DONE. Never a verdict — see the header. */
+  summary: string;
+  /** How the strides were identified. `marker` is the authored
+   *  `isStrideSegment` surviving the round trip; `label` is the fallback that
+   *  reads the spec's rep count together with the authored label, and it is
+   *  named so a reader can tell which one answered (Rule 11). */
+  basis: 'marker' | 'label';
+}
+
+/* ── CAPTURE · Rule 11, applied to distance ───────────────────────────────
+ *
+ * "We recorded 5.98 miles" and "he ran 5.98 miles" are two different facts and
+ * this app had no way to say the first without implying the second.
+ *
+ * On 2026-09-02 the runner's watch read 6.41 mi / 55:49 when he stopped. What
+ * reached the database was 5.98 mi / 50:57 — the phase array summed to exactly
+ * the end of the last prescribed walk-back, and the 0.43 mi he ran after it was
+ * never uploaded. The row's own `clockAudit` says so: 4694 s of wall clock
+ * against 3057 s counted. Nothing anywhere read that field, so every surface
+ * drew 5.98 as the run.
+ *
+ * This does not guess the missing distance and must never be made to. It states
+ * that the recording is short and lets every number below it be read as what it
+ * is: a floor, not a measurement of the run. */
+export type CaptureStatus = 'RECONCILED' | 'OVERTIME' | 'SHORT' | 'UNKNOWN';
+
+/**
+ * THREE QUANTITIES, ONE TOTAL — and a screen that lets the runner tell them
+ * apart.
+ *
+ * The 2026-09-02 run is the worked example and it holds all three at once:
+ *
+ *   6.41 mi   the run's own total, repaired by hand from his watch display
+ *   5.98 mi   the thirteen phases: the structured session, strides included
+ *   5.00 mi   the five whole-mile split rows the mile table draws
+ *
+ * Every one of those is correct and they are three different questions. The
+ * mile table answers "what did the watch record per mile"; the phases answer
+ * "how was the session built"; the total answers "how far did he run". A
+ * screen that shows one of them and calls it the run is wrong three ways at
+ * once, and showing five miles of a 6.41-mile run is the specific way he
+ * noticed.
+ *
+ * The difference between the total and the phases is OVERTIME: real running,
+ * after the last prescribed phase, that belongs to the run without belonging
+ * to the workout. It is reported as exactly that. It is not dressed as a
+ * phase, it is not split into miles that nothing measured, and it is not
+ * hidden.
+ */
+export interface PostRunCapture {
+  status: CaptureStatus;
+  /** Null when there is nothing to reconcile, and the surface then draws
+   *  NOTHING — a row reading "capture OK" is furniture. */
+  summary: string | null;
+  /** The run's own total. What "how far did he run" means. */
+  totalDistanceMi: number | null;
+  totalDurationSec: number | null;
+  /** What the phases account for — the structured session. */
+  structuredDistanceMi: number | null;
+  structuredDurationSec: number | null;
+  /** Total minus structured. Null when they agree, which is most runs. */
+  overtimeDistanceMi: number | null;
+  overtimeDurationSec: number | null;
+  /** What the per-mile table can draw. Null when the loader read no splits. */
+  splitCount: number | null;
+  splitDistanceMi: number | null;
+  /** True when a human repaired the totals on this row. It travels because it
+   *  changes what may be SAID: a stale `clockAudit` must not be narrated as a
+   *  live shortfall once the number it complained about has been fixed. */
+  correctedManually: boolean;
+  /** Wall-clock seconds the tracker did not count, as the INGEST recorded it.
+   *  Diagnostic only, never rendered — see `readCapture`. */
+  uncountedSec: number | null;
+  reasons: string[];
+}
+
 export interface PostRunExperienceV1 {
   version: string;
   /** The run this is about. The brief's "make run-id the canonical identity". */
@@ -187,6 +311,11 @@ export interface PostRunExperienceV1 {
   evidence: PostRunEvidenceImpact;
   plan: PostRunPlanImpact;
   next: PostRunNextAction;
+  /** What the recording covers, and whether it covers the run. */
+  capture: PostRunCapture;
+  /** The strides, when the session had them. NULL when it did not — the
+   *  surface then draws nothing rather than an empty section. */
+  strides: PostRunStrides | null;
   /** Stage 3's typed contract, so `auditExplanation` reaches this copy. */
   briefing: CoachingExplanation;
 }
@@ -238,6 +367,43 @@ export interface PostRunInput {
   /** True when the run has no usable GPS or HR — a sensor-limited session
    *  withholds the conclusions that need the missing sensor. */
   sensorLimited: boolean;
+  /**
+   * `workout_spec.strides_reps` for the day.
+   *
+   * THREE STATES, and they are three facts (Rule 11): a number is what the
+   * session asked for, `0` is a session that prescribed none, and `null` is a
+   * spec this loader could not read. Only a positive number licenses the
+   * label-matching recovery rung, so a run with no plan row can never have a
+   * phase relabelled into a stride by its own text.
+   */
+  stridesPrescribed: number | null;
+  /** `runs.data.distanceMi` — the run's TOTAL. */
+  recordedDistanceMi: number | null;
+  recordedDurationSec: number | null;
+  /** What the phase array accounts for. A different quantity from the total
+   *  and named separately for that reason (Rule 16): on 2026-09-02 the total
+   *  is 6.41 mi and the thirteen phases are 5.98 of it. */
+  structuredDistanceMi: number | null;
+  structuredDurationSec: number | null;
+  /** What the per-mile table can draw — `runs.data.splits`. A THIRD quantity
+   *  again: five whole-mile rows on that same run. */
+  splitCount: number | null;
+  splitDistanceMi: number | null;
+  /** `runs.data.manualCorrection` is present. The totals on this row were
+   *  repaired by a human, which changes what the drift record is allowed to
+   *  claim — see `readCapture`. */
+  correctedManually: boolean;
+  /**
+   * `runs.data.clockAudit`, the watch-completion route's own drift record.
+   *
+   * Written by that route ONLY when the check fails, so its presence is
+   * already the finding. `pausedSec` and `declinedSec` are deliberately NOT
+   * read here: the route computes them as `Number(body.pausedSec) || 0`, no
+   * Swift file sends either field, and a zero that means "nobody said" must
+   * not be spent as a zero that means "nothing was paused". Only `driftSec`
+   * and the two totals are measurements.
+   */
+  clockAudit: { driftSec: number | null; wallSec: number | null; countedSec: number | null } | null;
 }
 
 /* ══════════════════════════════ 3 · execution ═══════════════════════════ */
@@ -269,8 +435,59 @@ function stimulusFor(input: PostRunInput): string | null {
   return raw ? raw : null;
 }
 
-function workPhases(v: WorkoutVerdict): GradedPhase[] {
-  return v.phases.filter((p) => p.type === 'work');
+/**
+ * IS THIS WORK PHASE A STRIDE — the one place that question is answered.
+ *
+ * Two rungs, most authoritative first, and the rung that answered travels with
+ * the answer so a reader is never guessing which one did:
+ *
+ *   1 · `shape === 'effort'`. This IS the authored `isStrideSegment` marker,
+ *       arriving through the grader: `verdict.ts` reads `p.isStrideSegment`
+ *       into `byEffort`, and `paceShapeFor` turns `byEffort` into `effort`
+ *       before anything else is considered. Nothing else in the phase
+ *       vocabulary produces `effort` on a work phase, so when the wrist starts
+ *       carrying the marker back this rung answers on its own.
+ *
+ *   2 · the SPEC's own rep count together with the AUTHORED label. The
+ *       marker does not currently survive the round trip — `appendStrides`
+ *       sets it, `build-workout.ts` puts it on the prescription wire, the
+ *       watch decodes it, and `WatchCompletionPhase` (the outgoing struct)
+ *       declares no such property — so every stored phase array in this
+ *       database describes six accelerations as ordinary work. Until that is
+ *       carried, this rung is what reaches the runner's already-stored runs.
+ *
+ * Rung 2 is a FALLBACK and is written as one. It is deliberately conjunctive:
+ * a label alone can never mint a stride, because the spec must also say the
+ * session prescribed some. The label form is `expand-spec.ts`'s own
+ * `strideLabelFor`, matched by its sibling `looksLikeStrideLabel`, so the
+ * authoring and the recognition cannot drift apart (Rule 16).
+ */
+export function isStridePhase(p: GradedPhase, stridesPrescribed: number | null): boolean {
+  if (p.type !== 'work') return false;
+  if (p.shape === 'effort') return true;
+  return stridesPrescribed != null && stridesPrescribed > 0 && looksLikeStrideLabel(p.label);
+}
+
+/** Which rung answered, for the record. */
+function strideBasis(v: WorkoutVerdict, stridesPrescribed: number | null): 'marker' | 'label' {
+  return v.phases.some((p) => p.type === 'work' && p.shape === 'effort') ? 'marker' : 'label';
+}
+
+/**
+ * THE SESSION'S WORK — which does not include its strides.
+ *
+ * A stride is a form drill appended to an easy day, not a piece of the work.
+ * Counting them here is what produced "All seven reps" over a session whose
+ * work was one 5.0 mi easy block, and it is the SAME arithmetic the wrist
+ * commits independently: `WorkoutEngine.repCountForDisplay` is
+ * `workout.phases.filter { $0.type == .work }.count`, which is why the run's
+ * own `recoveryExtensions` rows carry `repCount: 7` on a session prescribed as
+ * six strides. Two surfaces, one expression, one wrong answer — Rule 16 twice
+ * over. This fixes the half that reaches the sentence; the wrist's half is
+ * reported for the surface that owns it.
+ */
+function workPhases(v: WorkoutVerdict, stridesPrescribed: number | null): GradedPhase[] {
+  return v.phases.filter((p) => p.type === 'work' && !isStridePhase(p, stridesPrescribed));
 }
 
 /**
@@ -281,12 +498,48 @@ function workPhases(v: WorkoutVerdict): GradedPhase[] {
  * and whether the sensors were good enough to grade it. It never re-grades a
  * phase and never compares a pace.
  */
-export function readExecution(input: PostRunInput): PostRunExecution {
+export function readExecution(input: PostRunInput, strides: PostRunStrides | null): PostRunExecution {
   const v = input.verdict;
-  const s = v.session;
-  const work = workPhases(v);
+  const work = workPhases(v, input.stridesPrescribed);
+  /* THE SESSION GRADE, OVER THE RIGHT POPULATION (Rule 14).
+   *
+   * `v.session` is the canonical grade and it is not re-derived here — but it
+   * was laddered over EVERY `type: 'work'` phase, and on an easy-plus-strides
+   * day that population is wrong: it holds the 5.0 mi easy block AND six
+   * 20-second accelerations. That is what put `fasts: 4` and `graded: 7` into
+   * a sentence about a single easy block, and it is why the runner read "All
+   * seven reps landed, with four quicker than the ceiling."
+   *
+   * This is not a second grader. `sessionLadder` is THE ladder and its own
+   * header exists to be called from exactly here ("Two callers, one ladder —
+   * the second implementation of it is the thing this export exists to
+   * prevent"). Same function, same per-phase verdicts, graded once in
+   * `verdict.ts`; only the SET is corrected. `lateCollapse` and
+   * `recoveriesHonest` are taken from the canonical grade rather than
+   * recomputed, so nothing about them is re-decided here either.
+   *
+   * When the session has no strides the two populations are identical and the
+   * canonical object is used unchanged — so every other session in the app is
+   * byte-for-byte unaffected by this branch. */
+  const s = work.length === v.work.count
+    ? v.session
+    : sessionLadder(work.map((p) => p.verdict), {
+        lateCollapse: v.session.lateCollapse,
+        recoveriesHonest: v.session.recoveriesHonest,
+      });
   const reasons: string[] = [];
   const stimulus = stimulusFor(input);
+  /* THE STRIDES ARE APPENDED TO THE SENTENCE, NEVER GRADED INTO IT.
+   *
+   * One clause, stating completion, after the sentence about the work. A coach
+   * mentions that the strides got done; he does not report six 20-second
+   * accelerations against a target, because doctrine's own word for them is
+   * "Not a workout" (`Research/04` §7.2) and the band is wide precisely so
+   * they are not chased. Rule 17 keeps it to a summary: the per-stride rows
+   * live in the strides section and are not restated here. */
+  const strideClause = strides && strides.completed > 0
+    ? ` ${cap1(numberWord(strides.completed))} stride${strides.completed === 1 ? '' : 's'} after${strides.recoveryCount > 0 ? ', walk-backs taken' : ''}.`
+    : '';
 
   // A payload with no phases cannot be graded as a workout. That is a fact
   // about the recording, not a verdict about the runner.
@@ -299,7 +552,7 @@ export function readExecution(input: PostRunInput): PostRunExecution {
       headline: sensor ? 'Recorded, not graded' : 'Run recorded',
       summary: sensor
         ? 'The sensors did not cover enough of this run to grade it against the session.'
-        : 'This run carries no session structure, so there is nothing to grade it against.',
+        : `This run carries no session structure, so there is nothing to grade it against.${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'UNKNOWN',
       confidence: 'LOW',
@@ -312,7 +565,7 @@ export function readExecution(input: PostRunInput): PostRunExecution {
     return {
       status: 'INDETERMINATE',
       headline: 'Work done, no target to read it against',
-      summary: 'The work phases carried no prescribed pace, so this is a record of what was run rather than a grade.',
+      summary: `The work phases carried no prescribed pace, so this is a record of what was run rather than a grade.${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'UNKNOWN',
       confidence: 'LOW',
@@ -355,7 +608,7 @@ export function readExecution(input: PostRunInput): PostRunExecution {
     return {
       status: 'INCOMPLETE',
       headline: 'Session ended early',
-      summary: `${cap1(numberWord(s.hits + s.fasts))} of ${numberWord(work.length)} ${noun} ${s.hits + s.fasts === 1 ? 'was' : 'were'} finished before the session stopped.`,
+      summary: `${cap1(numberWord(s.hits + s.fasts))} of ${numberWord(work.length)} ${noun} ${s.hits + s.fasts === 1 ? 'was' : 'were'} finished before the session stopped.${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
@@ -368,9 +621,9 @@ export function readExecution(input: PostRunInput): PostRunExecution {
     return {
       status: 'SLOW',
       headline: 'Work landed outside the window',
-      summary: single
+      summary: (single
         ? `The work block ${outsideBound}.`
-        : `Most of the ${noun} ${outsideBound}.`,
+        : `Most of the ${noun} ${outsideBound}.`) + strideClause,
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
@@ -383,7 +636,7 @@ export function readExecution(input: PostRunInput): PostRunExecution {
     return {
       status: 'PARTIAL_PRODUCTIVE',
       headline: 'Mixed set',
-      summary: `Some of the ${noun} ${insideBound} and some did not.`,
+      summary: `Some of the ${noun} ${insideBound} and some did not.${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
@@ -400,9 +653,9 @@ export function readExecution(input: PostRunInput): PostRunExecution {
     return {
       status: 'FAST',
       headline: 'Quicker than prescribed throughout',
-      summary: single
+      summary: (single
         ? `The work block ${aheadOfBound}.`
-        : `${cap1(reps)} ${aheadOfBound}.`,
+        : `${cap1(reps)} ${aheadOfBound}.`) + strideClause,
       intendedStimulus: stimulus,
       stimulusDelivered: 'FULL',
       confidence: 'HIGH',
@@ -418,13 +671,248 @@ export function readExecution(input: PostRunInput): PostRunExecution {
   return {
     status: controlled ? 'CONTROLLED' : 'EXECUTED',
     headline: controlled ? 'Controlled work' : 'Work executed',
-    summary: s.fasts > 0
+    summary: (s.fasts > 0
       ? `${cap1(reps)} landed, with ${numberWord(s.fasts)} quicker than the ${bound}.`
-      : `${cap1(reps)} ${insideBound}.`,
+      : `${cap1(reps)} ${insideBound}.`) + strideClause,
     intendedStimulus: stimulus,
     stimulusDelivered: 'FULL',
     confidence: 'HIGH',
     reasons,
+  };
+}
+
+/* ═══════════════════ 3b · strides · 2026-09-02 ══════════════════════════ */
+
+function mi1(n: number): string {
+  return n.toFixed(2).replace(/0$/, '').replace(/\.$/, '');
+}
+
+/**
+ * The strides, as a drill that was DONE — never as a set that was graded.
+ *
+ * Closure 4 is the whole point of this function: doctrine calls a stride
+ * "relaxed", "~85-95% max effort" and "Not a workout" (`Research/04` §7.2), so
+ * the only honest things to say about one are that it happened, how long it
+ * was, and what the heart rate did. `appendStrides` gives them a 45 s/mi band
+ * for exactly this reason — its own comment says "a tight pace gate would turn
+ * a form drill into something to chase" — and the screen then chased them
+ * anyway, reporting four of the runner's six as deviations for being quick.
+ *
+ * There is no verdict field on `PostRunStride` and there must not be one. A
+ * consumer that wants to grade a stride has to add the concept itself, which
+ * is the point at which someone has to justify it against the citation above.
+ *
+ * Returns NULL — not an empty object — when the session had no strides, so the
+ * surface draws nothing rather than a section reading "0 strides".
+ */
+export function readStrides(input: PostRunInput): PostRunStrides | null {
+  const v = input.verdict;
+  const phases = v.phases.filter((p) => isStridePhase(p, input.stridesPrescribed));
+  if (phases.length === 0) return null;
+
+  const strides: PostRunStride[] = phases.map((p, i) => ({
+    ordinal: i + 1,
+    label: p.label,
+    distanceMi: p.actualDistanceMi,
+    durationSec: p.actualDurationSec,
+    paceSecPerMi: p.avgSecPerMi,
+    avgHr: p.avgHr,
+    avgCadence: p.avgCadence,
+    completed: p.completed,
+  }));
+  const completed = strides.filter((s) => s.completed).length;
+
+  /* THE WALK-BACKS ARE PART OF THE DRILL, so they are shown rather than
+   * dropped. Doctrine prescribes "Full walk-back or 60-90 s jog — no fatigue
+   * between strides", which makes taking them correct execution; and the
+   * runner's 2026-09-02 recovery segments carry 0.11-0.12 mi each, which is
+   * where a third of his missing 0.98 mi lives. A recovery phase that FOLLOWS
+   * a stride is a walk-back; one that follows a rep is not, so the position is
+   * what identifies it and not its label. */
+  const strideIdx = new Set(phases.map((p) => p.index));
+  const walkBacks = v.phases.filter(
+    (p) => p.type === 'recovery' && strideIdx.has(p.index - 1),
+  );
+  const recoveryMi = walkBacks.reduce<number | null>(
+    (acc, p) => (p.actualDistanceMi == null ? acc : (acc ?? 0) + p.actualDistanceMi),
+    null,
+  );
+
+  /* THE SENTENCE. Completion, distance, and nothing that reads as a grade.
+   *
+   * `prescribed` is stated only when it DISAGREES with what was recorded —
+   * saying "six of six" on a session that did six is the kind of arithmetic
+   * that reads as a report rather than a coach (Rule 17). */
+  const shortOfPrescribed = input.stridesPrescribed != null
+    && input.stridesPrescribed > 0
+    && completed < input.stridesPrescribed;
+  const strideMi = strides.reduce<number | null>(
+    (acc, s) => (s.distanceMi == null ? acc : (acc ?? 0) + s.distanceMi),
+    null,
+  );
+  /* RULE 17 · THIS DOES NOT REPEAT THE CARD.
+   *
+   * The execution sentence above already says the strides were done ("Six
+   * strides after, walk-backs taken"). Saying it again here in a longer font
+   * is the exact bloat this programme is about, so this section states the one
+   * thing the card does NOT carry and the mile table structurally cannot: how
+   * much of the run these segments are. On 2026-09-02 that is 0.98 mi — every
+   * inch of the distance the five-row mile table left off the screen.
+   *
+   * The count only appears when it DISAGREES with the prescription, because
+   * "six of six" is a report and "you were short two" is coaching. */
+  const coveredMi = strideMi != null || recoveryMi != null
+    ? Math.round(((strideMi ?? 0) + (recoveryMi ?? 0)) * 100) / 100
+    : null;
+  const covered = coveredMi != null
+    ? `${mi1(coveredMi)} mi of this run is the strides and their walk-backs.`
+    : 'The strides and their walk-backs close out the run.';
+  const summary = shortOfPrescribed
+    ? `${cap1(numberWord(completed))} of ${numberWord(input.stridesPrescribed!)} strides were recorded. ${covered}`
+    : covered;
+
+  return {
+    prescribed: input.stridesPrescribed,
+    recorded: strides.length,
+    completed,
+    strides,
+    recoveryCount: walkBacks.length,
+    recoveryDistanceMi: recoveryMi == null ? null : Math.round(recoveryMi * 100) / 100,
+    summary,
+    basis: strideBasis(v, input.stridesPrescribed),
+  };
+}
+
+/* ═══════════════════ 3c · capture · Rule 11 on distance ═════════════════ */
+
+/**
+ * Does the recording cover the run.
+ *
+ * The watch-completion route has computed this since it was written, warns to
+ * the console in words that could not be clearer — "Distance is integrated
+ * from the same clock, so it is short by the same share" — stores the result on
+ * the row, and NO SURFACE HAS EVER READ IT. Wired, detected and inert, which is
+ * this codebase's signature failure and the one it can least afford on a
+ * number the runner reads as a measurement.
+ *
+ * WHAT IS AND IS NOT A MEASUREMENT HERE. `driftSec`, `wallSec` and `countedSec`
+ * are computed from two timestamps and an uploaded total, so they are real.
+ * `pausedSec` and `declinedSec` are NOT: the route computes each as
+ * `Number(body.pausedSec) || 0`, and no Swift file in this repository sends
+ * either field, so both are structurally `0` on every row ever written. Reading
+ * that zero as "nothing was paused" would be Rule 11 broken inside the audit
+ * that exists to catch dropped time, so this function does not read them and
+ * the sentence it writes does not claim they were checked.
+ *
+ * IT NEVER GUESSES THE MISSING DISTANCE. It says the recording is short and
+ * how much wall clock went uncounted. The runner's own watch read 6.41 mi
+ * against the 5.98 stored; this function is not told that and must not invent
+ * it.
+ */
+/**
+ * The smallest gap between the total and the phases worth calling overtime.
+ *
+ * A tenth of a mile. Below it the difference is GPS rounding across thirteen
+ * phase boundaries, not running — the 2026-09-02 phases each carry two decimal
+ * places, so thirteen of them can disagree with the total by a few hundredths
+ * without anybody having run anywhere.
+ *
+ * A presentation threshold over a sensor's resolution, not a coaching decision:
+ * nothing categorical about the run turns on it, no verdict reads it, and the
+ * only thing that changes across it is whether one sentence is drawn (Rule 9).
+ */
+const OVERTIME_MIN_MI = 0.1;
+
+export function readCapture(input: PostRunInput): PostRunCapture {
+  const total = input.recordedDistanceMi;
+  const totalSec = input.recordedDurationSec;
+  const structured = input.structuredDistanceMi;
+  const structuredSec = input.structuredDurationSec;
+  const corrected = input.correctedManually;
+
+  const gapMi = total != null && structured != null ? Math.round((total - structured) * 100) / 100 : null;
+  const gapSec = totalSec != null && structuredSec != null ? totalSec - structuredSec : null;
+  const hasOvertime = gapMi != null && gapMi >= OVERTIME_MIN_MI;
+
+  const base = {
+    totalDistanceMi: total,
+    totalDurationSec: totalSec,
+    structuredDistanceMi: structured,
+    structuredDurationSec: structuredSec,
+    overtimeDistanceMi: hasOvertime ? gapMi : null,
+    overtimeDurationSec: hasOvertime ? gapSec : null,
+    splitCount: input.splitCount,
+    splitDistanceMi: input.splitDistanceMi,
+    correctedManually: corrected,
+    uncountedSec: input.clockAudit?.driftSec ?? null,
+  };
+
+  if (total == null || structured == null) {
+    return { status: 'UNKNOWN', summary: null, ...base, reasons: ['NO_TOTAL_OR_NO_PHASES_TO_RECONCILE'] };
+  }
+
+  if (hasOvertime) {
+    /* THE RECONCILIATION SENTENCE · three quantities, one total.
+     *
+     * Every number in it is present-tense and measured off this row, which is
+     * what makes it safe to state precisely — unlike `clockAudit.driftSec`,
+     * which is frozen at ingest and, on this very run, is now stale by design
+     * (the repair note says so: "clockAudit is left as the original ingest
+     * recorded it"). Reading a stale drift as a live shortfall after the total
+     * has been fixed would be Rule 10 broken inside the honesty machinery.
+     *
+     * The overtime is named for what it is. It is real running he did, it
+     * belongs to the run, and it belongs to no phase — so it gets a clause of
+     * its own and never a fabricated phase or split row. */
+    const mileNote = input.splitCount != null && input.splitCount > 0 && input.splitDistanceMi != null
+      && total - input.splitDistanceMi >= OVERTIME_MIN_MI
+      ? ` The mile table below covers the first ${numberWord(input.splitCount)}.`
+      : '';
+    return {
+      status: 'OVERTIME',
+      summary:
+        `${mi1(total)} mi in total: ${mi1(structured)} mi of the session, `
+        + `then ${mi1(gapMi)} mi run on after the last prescribed piece.${mileNote}`,
+      ...base,
+      reasons: ['TOTAL_EXCEEDS_STRUCTURED_PHASES'],
+    };
+  }
+
+  /* THE TOTAL ITSELF MAY BE SHORT — but only where nobody has already fixed it.
+   *
+   * `clockAudit` is written by the watch-completion route ONLY when its check
+   * fails, so its presence is the finding. What it cannot know is whether the
+   * total it complained about was later repaired, and on this run it was:
+   * `data.manualCorrection` records 5.98 → 6.41 from the runner's own watch
+   * display. Narrating the stale drift after that would tell him the recording
+   * is short when it is no longer short — a confident claim from a value whose
+   * anchor has moved (Rule 10), inside the one sentence whose whole job is to
+   * be trustworthy about coverage.
+   *
+   * The magnitude is never stated even when it is: `driftSec` is
+   * `completedAt − startedAt − countedSec`, and on a salvaged completion
+   * `completedAt` is when the payload was BUILT, not when the runner stopped.
+   * Here that is 1637 s against 292 s of real lost running — "about 27 minutes
+   * uncounted" would have been five times the truth, stated confidently, in a
+   * caveat about honesty (Rule 13 clause 4). */
+  const drift = input.clockAudit?.driftSec ?? null;
+  if (drift != null && drift > 0 && !corrected) {
+    return {
+      status: 'SHORT',
+      summary:
+        `The watch stopped counting before this run ended. It logged ${mi1(total)} mi, and its own clock `
+        + `recorded more elapsed time than it counted, so the distance, the splits and the paces below `
+        + `cover less than you ran.`,
+      ...base,
+      reasons: ['WALL_CLOCK_EXCEEDS_COUNTED_TIME'],
+    };
+  }
+
+  return {
+    status: 'RECONCILED',
+    summary: null,
+    ...base,
+    reasons: corrected ? ['TOTALS_CORRECTED_BY_HAND'] : ['PHASES_ACCOUNT_FOR_THE_RUN'],
   };
 }
 
@@ -566,6 +1054,33 @@ export function readEvidence(input: PostRunInput): PostRunEvidenceImpact {
     for (const r of c.reasons) reasons.push(`${cap.toUpperCase()}:${r}`);
   }
 
+  /* ── THE BELIEF MUST ACTUALLY HAVE BEEN SUPPLIED (closure 6, 2026-09-02) ──
+   *
+   * `BeliefTensionRead` is a discriminated union with three distinct refusals,
+   * and this file collapsed all three into `null`:
+   *
+   *   observation_consistent_with_belief   a MEASUREMENT — we compared, and it
+   *                                        agreed
+   *   no_comparable_observation            a measurement about the ACTIVITY —
+   *                                        nothing in it to compare
+   *   no_belief_supplied                   THE READ NEVER HAPPENED
+   *
+   * The third was the live state of every post-run surface. `load.ts` called
+   * `classifyStoredActivity(userId, runId)` with no options, so
+   * `currentBelief` was null on every call, so `readBeliefTension` refused with
+   * `no_belief_supplied` on every run — and the `CHALLENGES` arm below has
+   * therefore never fired for anyone, while the screen went on saying "This
+   * supports your current threshold range" as though the belief had been
+   * checked against. A sentence asserting a fact about a comparison, printed
+   * over a comparison that did not occur (Rule 16), and a field that exists and
+   * cannot fire (Rule 21's shape).
+   *
+   * The fix has two halves and both are required. `load.ts` now resolves the
+   * canonical belief through `resolveThresholdCapacity` — the owner CLAUDE.md
+   * names — and passes it in. And this arm now refuses out loud when it was
+   * not supplied, so the failure can never again be invisible. */
+  const beliefUnread = !ev.beliefTension.ok && ev.beliefTension.reason === 'no_belief_supplied';
+  if (beliefUnread) reasons.push('CURRENT_BELIEF_NOT_SUPPLIED_TO_CLASSIFIER');
   const tension = ev.beliefTension.ok ? ev.beliefTension : null;
   const words = listWords(supporting.map((d) => DOMAIN_WORD[d]));
 
@@ -610,6 +1125,22 @@ export function readEvidence(input: PostRunInput): PostRunEvidenceImpact {
     };
   }
 
+  /* "SUPPORTS YOUR CURRENT X" IS A CLAIM ABOUT A COMPARISON.
+   *
+   * It may only be said when the comparison ran. When the classifier was handed
+   * no belief, what is true is narrower and this says the narrower thing: the
+   * run demonstrated the capacity. Whether it agrees with the current number is
+   * a question nothing answered, so nothing asserts it (Rule 16). */
+  if (beliefUnread) {
+    return {
+      role: 'CORROBORATES',
+      domains: supporting,
+      runnerSummary: `This run says something about your ${words}. It has not been checked against your current number yet.`,
+      beliefChanged: false,
+      planAuthorityEligible: false,
+      reasons,
+    };
+  }
   return {
     role: 'CORROBORATES',
     domains: supporting,
@@ -787,7 +1318,9 @@ export function buildBriefing(
  * rather than assert it.
  */
 export function composePostRunExperience(input: PostRunInput): PostRunExperienceV1 {
-  const execution = readExecution(input);
+  const strides = readStrides(input);
+  const capture = readCapture(input);
+  const execution = readExecution(input, strides);
   const cost = readCost(input);
   const evidence = readEvidence(input);
   const plan = readPlan(input, evidence);
@@ -809,6 +1342,8 @@ export function composePostRunExperience(input: PostRunInput): PostRunExperience
     evidence,
     plan,
     next,
+    capture,
+    strides,
     briefing,
   };
 }
