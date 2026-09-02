@@ -130,6 +130,41 @@
  *  7. **`describe.skipIf(!RO)` means the whole live half vanishes with one
  *     unset variable.** The always-on registry block below is what stops that
  *     from being silent, and it is a much weaker check than the one it guards.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * RULE 18 · FALSIFIED, 2026-09-02 — every assertion broken on purpose first
+ *
+ * Eleven perturbations, each applied alone against live production data, each
+ * reverted before the next. The exact message each one produced is in the
+ * Stage 5 report; the shape of each is here so the next person can repeat it.
+ *
+ *   F1  a real but DIFFERENT production number (the marathon anchor) added to
+ *       the threshold contract  → "threshold pace (s/mi): 2 DIFFERENT NUMBERS
+ *       across 18 paths". Deliberately not a synthetic +1: the falsifier is a
+ *       number the engine actually produces, for a neighbouring quantity.
+ *   F2  liveness floor raised to 99 → "resolved 17 of 17 paths, floor is 99"
+ *   F3  a contract excluding under an id the registry does not hold →
+ *       "excludes a path under KNOWN id …, which the registry no longer holds"
+ *   F4  the stamp bound dropped to 0s → "STAMP DRIFT 1s exceeds the 0s bound
+ *       (live 11982, stamped 11981)" — which is also how the 1s drift that
+ *       lives on the row today was measured rather than assumed
+ *   F5  the canonical side made to equal the divergent one → "STALE EXEMPTION
+ *       — all 4 candidate sites now AGREE"
+ *   F6  an entry's `shape` replaced with `() => false` → "THE DISAGREEMENT
+ *       MOVED … a different defect is now producing this gap"
+ *   F7  `maxOccurrences` lowered from 4 to 2 → "THE DISAGREEMENT SPREAD — 4
+ *       sites diverge, the ratchet allows 2"
+ *   F8  every race row made to look like it agrees → "STALE EXEMPTION — all 4
+ *       candidate sites now AGREE"
+ *   F9  an entry's `owner` shortened to one character → "owner is too thin to
+ *       be an argued reason"
+ *   F10 the trajectory projection compared against itself → "two quantities
+ *       Rule 16 separated have collapsed back into one"
+ *   F11 the shakeout ceiling compared against itself → "two anchors have
+ *       collapsed into one"
+ *
+ * F5-F8 are the four ways a registry entry can stop meaning anything, and all
+ * four fail. That is the part worth checking again if this file is edited.
  */
 import { describe, it, expect, vi } from 'vitest';
 
