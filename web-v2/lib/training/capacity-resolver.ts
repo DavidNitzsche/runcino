@@ -1543,25 +1543,48 @@ export async function resolveThresholdCapacity(
   // completion). The corpus caps a corroborated read against its own prior;
   // nothing capped the belief when it changed TIER — a relaxed one-session
   // read one day, the race-derived fallback the next — and June 2026 flipped
-  // 456 → 430 → 455 → 430 on exactly that. A fully corroborated direct read
-  // already carries the corpus cap and is left alone; every other read is
-  // held within one day's cap of what the same resolver said yesterday.
-  const fullyCorroboratedDirect = todayEstimate.sourceMode === 'direct'
-    && !todayEstimate.reasons.includes('SPARSE_CORROBORATION')
-    && !todayEstimate.reasons.includes('REEXAMINATION_LOWERED_THE_CORROBORATION_BAR');
-  if (fullyCorroboratedDirect) return todayEstimate;
-  const yesterday = new Date(Date.parse(today + 'T12:00:00Z') - 86_400_000).toISOString().slice(0, 10);
-  let yesterdayEstimate: ThresholdCapacityEstimate | null = null;
-  try {
-    const yFallback = await loadVdotFallback(userId, yesterday);
-    const yInputs = { ...corpusInputs, todayISO: yesterday };
-    const yBase = composeThresholdCapacity({ direct: thresholdCorpusFromInputs(yInputs), fallback: yFallback, todayISO: yesterday });
-    yesterdayEstimate = await resolveThresholdWithTension(userId, yesterday, yInputs, yFallback, yBase);
-  } catch {
-    yesterdayEstimate = null; // Rule 11: reported as CONTINUITY_UNAVAILABLE, never as "no move"
+  // 456 → 430 → 455 → 430 on exactly that seam.
+  //
+  // THE CHAIN IS WALKED, NOT SAMPLED. Comparing today against yesterday's
+  // UNCAPPED belief lets the pair 451 → 430 pass on the second day, because
+  // yesterday-as-resolved and yesterday-as-held are different numbers. The
+  // walk below recomputes the belief for each day of the window from the SAME
+  // corpus inputs (rows filtered to that day, so no future run leaks into a
+  // past belief) and carries the capped value forward, so the number returned
+  // is the one a runner reading the app every morning would actually have
+  // held. It is pure: no extra database read.
+  //
+  // WHAT THE WALK CANNOT SEE (Rule 22): belief tension is applied to TODAY
+  // only — `loadRecentTension` is DB-backed and the walk is pure — so a day
+  // whose bar was relaxed in the past is reconstructed at the unrelaxed bar.
+  // That is the conservative direction: it can only make a historical day's
+  // belief refuse or sit nearer the fallback, never move it further.
+  const fullyCorroborated = (e: ThresholdCapacityEstimate) => e.sourceMode === 'direct'
+    && !e.reasons.includes('SPARSE_CORROBORATION')
+    && !e.reasons.includes('REEXAMINATION_LOWERED_THE_CORROBORATION_BAR');
+  if (fullyCorroborated(todayEstimate)) return todayEstimate;
+  const chain: ThresholdCapacityEstimate[] = [];
+  for (let back = THRESHOLD_CONTINUITY_WINDOW_DAYS; back >= 1; back--) {
+    const day = new Date(Date.parse(today + 'T12:00:00Z') - back * 86_400_000).toISOString().slice(0, 10);
+    const dayInputs = {
+      ...corpusInputs,
+      todayISO: day,
+      rows: corpusInputs.rows.filter((r) => r.date <= day),
+    };
+    const dayDirect = thresholdCorpusFromInputs(dayInputs);
+    const dayEstimate = composeThresholdCapacity({ direct: dayDirect, fallback, todayISO: day });
+    const prior = chain.length > 0 ? chain[chain.length - 1] : null;
+    chain.push(fullyCorroborated(dayEstimate) ? dayEstimate : applyDayToDayContinuity(dayEstimate, prior));
   }
-  return applyDayToDayContinuity(todayEstimate, yesterdayEstimate);
+  return applyDayToDayContinuity(todayEstimate, chain.length > 0 ? chain[chain.length - 1] : null);
 }
+
+/**
+ * How far back the continuity walk reconstructs the belief. CONVENTION for
+ * model stability: long enough that a quiet week cannot hide a tier flip
+ * (the June 2026 incident spanned six days), short enough to stay pure.
+ */
+export const THRESHOLD_CONTINUITY_WINDOW_DAYS = 7;
 
 /**
  * Pure · hold a belief within one day's move cap of yesterday's belief when
