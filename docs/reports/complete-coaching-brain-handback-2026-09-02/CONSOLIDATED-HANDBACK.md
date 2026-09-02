@@ -179,7 +179,64 @@ nothing else would have named them.
 **Push credentials are configured.** All five APNs variables are set in
 production, which contradicts older notes claiming otherwise.
 
-## 7 · What is NOT true yet
+## 7 · A finding on the habit reader, evidenced and NOT acted on
+
+Rule 8's filter works. Verified on the owner's live data today: over the fixed
+28-day window, 26 of 29 days were taper, race or prescribed recovery, and the
+reader REFUSED rather than reporting his post-race block as his normal. The
+refusal is typed, it carries its reason, and Rule 11 is satisfied. This is the
+mechanism doing exactly what it was written to do.
+
+Then the widening path takes over, reaches back to 56 days, finds 28
+representative days, and answers **34.0 mi/wk**.
+
+CLAUDE.md's own Rule 8 table records his sustained volume as **43.5 mi/wk** and
+labels it "truth". So the filtered reader and the rule that motivated it
+disagree by 9.5 miles a week, and that gap sizes his marathon block.
+
+**Why, queried raw rather than through the reader's own filter.** His real
+weekly mileage over twenty weeks:
+
+| Period | Weekly miles |
+|---|---|
+| Sustained build, May to late July | 37.6, 40.5, 39.7, 44.9, 40.1, 47.3, 43.2, 39.8, 47.5 |
+| Week of 2026-06-29 | zero, an eight-day gap with no logged reason |
+| Week of 2026-07-27 | 4.2, all of it on one day |
+| After the AFC half on 2026-08-17 | 23.2, 28.4, 34.8, 14.7 |
+
+Two genuinely low weeks sit inside the filtered window. Neither is taper and
+neither is prescribed recovery, so the filter correctly keeps them, and nothing
+is logged in `sick_episodes`, `runner_illnesses`, `runner_injuries` or `niggles`
+to explain either. They are real weeks he did not run.
+
+**The finding is not that the filter is wrong. It is Rule 16.** Two questions
+are sharing one name. `normalWeeklyMileage` returns a MEAN, which answers "what
+did he average". The question the plan generator asks it is "what can he
+sustain". A single zero week drags a mean of eight weeks down by roughly six
+miles; it barely moves a median. On his data the mean says 34 and the middle of
+his representative weeks says about 40.
+
+Rule 8's own table settles which question was meant: it calls the 28-day mean
+the DEFECT and the sustained figure the TRUTH.
+
+**It was not changed tonight, deliberately.** Two reasons. It is a doctrine
+change to a reader that sizes every block, and the plan engine that consumes it
+is being rewritten by another agent as I write this, so landing a volume shift
+underneath that work would make both changes impossible to attribute. The
+recommendation is a robust central estimate over representative WEEKS rather
+than a mean over representative DAYS, and it should land with the plan work
+settled and a before-and-after on his block.
+
+This is also the asymmetry CLAUDE.md warns about, in miniature: a bad week
+reliably lowers the number, and nothing symmetric raises it.
+
+**One smaller observation for whoever picks this up.** His 2026-08-01 carries
+three separate canonical rows of 2.0, 0.8 and 1.3 miles. Dedup is otherwise
+clean across his history, with 81 of 136 rows merged and zero merged rows
+pointing at a survivor that does not exist, so the 2026-08-22 dedup census alert
+is stale. Three fragments on one day may be legitimate. It is worth one look.
+
+## 8 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -196,7 +253,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 8 · PENDING sections
+## 9 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
