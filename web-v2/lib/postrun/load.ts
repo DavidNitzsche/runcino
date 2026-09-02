@@ -238,11 +238,27 @@ export async function loadPostRunExperience(
   // `null` on a failed read. See the header.
   let adaptations: PostRunAdaptation[] | null = null;
   try {
+    /* RULE 14 · THE WINDOW IS BOUNDED AT BOTH ENDS.
+     *
+     * This was `ts >= $3::date` with no upper bound, so every adaptation the
+     * engine had EVER recorded after a run's date counted as "the plan moved
+     * after this run". Swept over the runner's own 40 most recent runs on
+     * 2026-09-02, that reported `UPDATED` on five historical days whose
+     * "change" was a missed-long note filed a week later about a different
+     * run. A query that reads the right runner and the wrong rows is the
+     * defect Rule 14 is named for.
+     *
+     * Two days is the honest window: `run-adaptations` is a nightly cron, and
+     * Rule 23's own measurements have it firing five to twelve hours late, so
+     * one day is too tight to catch a late pass and three would reach the next
+     * run's. A pass that has not fired yet returns nothing, which reads as
+     * `UNCHANGED` — correct, because nothing has moved. */
     const rows = await pool.query<{ reason: string; value: unknown }>(
       `SELECT reason, value FROM coach_intents
         WHERE COALESCE(user_uuid, user_id) = $1
           AND reason = ANY($2::text[])
           AND ts >= $3::date
+          AND ts < ($3::date + INTERVAL '2 days')
         ORDER BY ts DESC
         LIMIT 8`,
       [userId, PLAN_CHANGE_REASONS as string[], dateISO],

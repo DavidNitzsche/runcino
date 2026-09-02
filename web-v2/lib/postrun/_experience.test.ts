@@ -282,6 +282,38 @@ describe('run-type states', () => {
     expect(out.execution.summary).not.toMatch(/\brep\b/i);
   });
 
+  it('LONG · a CEILING is called a ceiling, never a window', () => {
+    // Found by sweeping this composer over the runner's own 40 most recent
+    // runs: his 2026-08-30 long read "The work block came in ahead of the
+    // window" over a phase whose shape is `ceiling`. A ceiling has one edge,
+    // and calling it a window tells the runner he could have been too slow for
+    // a long run, which doctrine forbids outright.
+    const longPhases = [{
+      index: 0, type: 'work', label: '13.5 mi long run', completed: true, avgHr: 159,
+      actualDurationSec: 6300, actualDistanceMi: 13.5,
+      targetPaceSPerMi: 520, tolerancePaceSPerMi: 18, actualPaceSPerMi: 466,
+    }];
+    const out = compose({
+      phases: longPhases, sessionClass: 'long', plannedType: 'long', plannedTypeDisplay: 'Long',
+      workHrCeilingBpm: null, overallHrCeilingBpm: null, wholeRunHrBpm: 159,
+    });
+    expect(out.execution.status).toBe('FAST');
+    expect(out.execution.summary).toBe('The work block came in ahead of the ceiling.');
+    expect(out.execution.summary).not.toMatch(/window/);
+  });
+
+  it('INCOMPLETE · one rep of two reads as English, not as a template', () => {
+    // "one of two reps were finished before the session stopped." — from the
+    // same real-run sweep, on his 2026-07-25 eighteen-miler.
+    const cut = [
+      { index: 0, type: 'work', label: 'Rep 1', completed: true, actualDurationSec: 600, actualDistanceMi: 2, targetPaceSPerMi: 430, actualPaceSPerMi: 430 },
+      { index: 1, type: 'work', label: 'Rep 2', completed: false, actualDurationSec: 100, actualDistanceMi: 0.3, targetPaceSPerMi: 430, actualPaceSPerMi: 430 },
+    ];
+    const out = compose({ phases: cut, sessionClass: 'threshold' });
+    expect(out.execution.status).toBe('INCOMPLETE');
+    expect(out.execution.summary).toBe('One of two reps was finished before the session stopped.');
+  });
+
   it('SLOW · most of the work outside the window is stated, never judged', () => {
     const slow = REAL_0901_PHASES.map((p) => (p.type === 'work' ? { ...p, actualPaceSPerMi: 470 } : p));
     const out = compose({ phases: slow });

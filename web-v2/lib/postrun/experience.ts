@@ -328,12 +328,34 @@ export function readExecution(input: PostRunInput): PostRunExecution {
   const noun = single ? 'block' : 'reps';
   const reps = single ? 'the work block' : `all ${numberWord(work.length)} ${noun}`;
 
+  /* AND THE WORD FOR WHAT IT WAS GRADED AGAINST (2026-09-02).
+   *
+   * A threshold rep is graded against a WINDOW; an easy or long day's work is
+   * graded against a CEILING, which has one edge. Calling a ceiling a window
+   * says the runner could have been too slow for it, and doctrine is explicit
+   * that an easy run is never failed for being slow. Found by sweeping this
+   * composer over the runner's own 40 most recent runs: his 2026-08-30 long
+   * read "The work block came in ahead of the window" over a phase whose shape
+   * was `ceiling`. */
+  const shapes = new Set(work.filter((p) => p.verdict !== 'not_graded').map((p) => p.shape));
+  const bound = shapes.size === 1 && shapes.has('ceiling') ? 'ceiling'
+    : shapes.size === 1 && shapes.has('window') ? 'window'
+    : 'target';
+  const insideBound = bound === 'ceiling' ? 'stayed under the ceiling'
+    : bound === 'window' ? 'landed inside the window'
+    : 'landed on target';
+  const aheadOfBound = bound === 'ceiling' ? 'came in ahead of the ceiling'
+    : bound === 'window' ? 'came in ahead of the window'
+    : 'came in ahead of target';
+  const outsideBound = bound === 'ceiling' ? 'ran faster than the ceiling'
+    : 'sat outside the prescribed range';
+
   if (s.verdict === 'incomplete') {
     reasons.push('WORK_PHASE_ENDED_EARLY');
     return {
       status: 'INCOMPLETE',
       headline: 'Session ended early',
-      summary: `${numberWord(s.hits + s.fasts)} of ${numberWord(work.length)} ${noun} were finished before the session stopped.`,
+      summary: `${cap1(numberWord(s.hits + s.fasts))} of ${numberWord(work.length)} ${noun} ${s.hits + s.fasts === 1 ? 'was' : 'were'} finished before the session stopped.`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
@@ -347,8 +369,8 @@ export function readExecution(input: PostRunInput): PostRunExecution {
       status: 'SLOW',
       headline: 'Work landed outside the window',
       summary: single
-        ? 'The work block sat outside the prescribed range.'
-        : `Most of the ${noun} sat outside the prescribed range.`,
+        ? `The work block ${outsideBound}.`
+        : `Most of the ${noun} ${outsideBound}.`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
@@ -361,7 +383,7 @@ export function readExecution(input: PostRunInput): PostRunExecution {
     return {
       status: 'PARTIAL_PRODUCTIVE',
       headline: 'Mixed set',
-      summary: `Some of the ${noun} landed inside the window and some did not.`,
+      summary: `Some of the ${noun} ${insideBound} and some did not.`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
@@ -379,8 +401,8 @@ export function readExecution(input: PostRunInput): PostRunExecution {
       status: 'FAST',
       headline: 'Quicker than prescribed throughout',
       summary: single
-        ? 'The work block came in ahead of the window.'
-        : `${cap1(reps)} came in ahead of the window.`,
+        ? `The work block ${aheadOfBound}.`
+        : `${cap1(reps)} ${aheadOfBound}.`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'FULL',
       confidence: 'HIGH',
@@ -397,8 +419,8 @@ export function readExecution(input: PostRunInput): PostRunExecution {
     status: controlled ? 'CONTROLLED' : 'EXECUTED',
     headline: controlled ? 'Controlled work' : 'Work executed',
     summary: s.fasts > 0
-      ? `${cap1(reps)} landed, with ${numberWord(s.fasts)} quicker than the window.`
-      : `${cap1(reps)} landed inside the window.`,
+      ? `${cap1(reps)} landed, with ${numberWord(s.fasts)} quicker than the ${bound}.`
+      : `${cap1(reps)} ${insideBound}.`,
     intendedStimulus: stimulus,
     stimulusDelivered: 'FULL',
     confidence: 'HIGH',
