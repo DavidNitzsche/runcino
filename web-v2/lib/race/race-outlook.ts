@@ -55,6 +55,7 @@ import { coherentPace } from '@/lib/runs/coherence';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import { THRESHOLD_ANCHOR_MINUTES, type PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import { resolveThresholdCapacity, type ThresholdCapacityEstimate } from '@/lib/training/capacity-resolver';
+import { REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS } from '@/lib/training/normal-window';
 import { resolveRaceExponent, type RaceExponentRead } from '@/lib/training/durability-anchor';
 import {
   computeCurrentEquivalence,
@@ -77,6 +78,12 @@ export const RACE_OUTLOOK_MODEL_VERSION = '1.0.0';
  *  `spec-builder.ts`'s race branch has always written (`Research/08` §3:
  *  −5 controlled push, +5 allowance; the first-mile opening is structural). */
 export const RACE_EXECUTION_BAND_S_PER_MI = 5;
+
+/** How old the newest capacity evidence may be before the outlook says so.
+ *  `REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS` is the half-life the threshold
+ *  corpus already discounts support by; one half-life is the point at which
+ *  a belief is running on evidence worth half what it was. */
+export const RACE_OUTLOOK_STALE_AFTER_DAYS = REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS;
 
 /** Rounding for a runner-facing race target: nearest 10 s over an hour,
  *  nearest 5 s under. A target of 3:14:37 is noise pretending to be precision. */
@@ -182,6 +189,20 @@ export interface RaceOutlook {
     reasons: string[];
   };
   coachSet: { aSec: number; bSec: number; cSec: number; basis: 'expected_race_day_range' } | null;
+  /**
+   * 2026-09-02 · HOW OLD IS THIS. Rule 23's discipline pointed at a belief
+   * rather than a job: an outlook resolved from evidence nobody has added to
+   * in a month is not wrong, but a runner reading a race target deserves to
+   * know it is running on old evidence rather than on this week's work.
+   * `stale` is reported, never acted on — nothing downstream refuses because
+   * of it (a stale belief and no belief are different facts, Rule 11).
+   */
+  staleness: {
+    newestEvidenceISO: string | null;
+    evidenceAgeDays: number | null;
+    stale: boolean;
+    staleAfterDays: number;
+  };
   bridge: BridgeStep[];
   changeTriggers: string[];
   flags: string[];
@@ -617,6 +638,16 @@ export async function composeRaceOutlook(
     },
   ];
 
+  const evidenceAgeDays = newestEvidenceISO
+    ? Math.max(0, Math.round((Date.parse(today + 'T12:00:00Z') - Date.parse(newestEvidenceISO + 'T12:00:00Z')) / 86_400_000))
+    : null;
+  const staleness = {
+    newestEvidenceISO,
+    evidenceAgeDays,
+    stale: evidenceAgeDays != null && evidenceAgeDays > RACE_OUTLOOK_STALE_AFTER_DAYS,
+    staleAfterDays: RACE_OUTLOOK_STALE_AFTER_DAYS,
+  };
+
   const changeTriggers = [
     'Threshold capacity: three corroborated threshold sessions at a new pace with heart rate in the band.',
     'Durability: a graded race at a second distance, or repeated long runs with less late-run cardiac drift.',
@@ -639,6 +670,7 @@ export async function composeRaceOutlook(
     execution,
     goalFeasibility: feasibility,
     coachSet,
+    staleness,
     bridge,
     changeTriggers,
     flags,

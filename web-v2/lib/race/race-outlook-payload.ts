@@ -109,6 +109,11 @@ export function raceOutlookPayload(o: RaceOutlook | null | undefined) {
       differs_from_previous: b.differsFromPrevious,
     })),
     change_triggers: o.changeTriggers,
+    staleness: {
+      newest_evidence: o.staleness.newestEvidenceISO,
+      evidence_age_days: o.staleness.evidenceAgeDays,
+      stale: o.staleness.stale,
+    },
     capacity: {
       threshold_pace: pace(o.capacity.thresholdSecPerMi),
       threshold_vdot: o.capacity.thresholdVdot,

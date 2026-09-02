@@ -40,6 +40,7 @@ function slim(o: RaceOutlook) {
     execution: o.execution,
     goalFeasibility: o.goalFeasibility,
     coachSet: o.coachSet,
+    staleness: o.staleness,
     bridge: o.bridge,
     flags: o.flags,
   };
@@ -63,7 +64,7 @@ async function main() {
 
   // ── the two races ─────────────────────────────────────────────────────
   const races: Record<string, unknown> = {};
-  for (const slug of ['cim', 'santa-monica-10k-2026-09-13']) {
+  for (const slug of ['cim', 'santa-monica-10k-2026-09-13', 'run-malibu', 'dodgers']) {
     const race = await loadRaceForOutlook(USER, slug, today);
     if (!race) { races[slug] = { missing: true }; continue; }
     const outlook = await resolveRaceOutlook(USER, race, today);
