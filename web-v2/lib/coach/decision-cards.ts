@@ -289,20 +289,17 @@ const PLAN_ACCEPT_VERB: Record<string, string> = {
 /* ── per-source mappers ──────────────────────────────────────────────── */
 
 function fromCoachProposal(p: CoachProposalInput): CoachDecision {
-  // 2026-09-02 · the `illness_adjust` branch ("Take the recovery week" /
-  // "DROP THIS WEEK'S QUALITY") is deleted with the trigger that wrote the
-  // type. `injury_adjust` stays because the walk-run plan mode it opens is
-  // deliberately kept — see the header of
-  // app/api/coach/proposal/[id]/accept/route.ts for the fact that nothing
-  // currently writes it either.
-  const isInjury = p.proposal_type === 'injury_adjust';
-  const title = isInjury
-    ? 'Switch to an injury-return plan'
-    // The generic branch says what the change IS rather than naming the
-    // speaker in the third person, which is what it used to do on the card
-    // where the runner most needs to know what is being asked of them.
-    : 'There is a change to look at';
-  const acceptVerb = isInjury ? 'BUILD THE INJURY PLAN' : 'MAKE THE CHANGE';
+  // 2026-09-02 · both special-cased branches are gone. `illness_adjust` and
+  // `injury_adjust` are off the board entirely (PLAN_SIMPLIFICATION_DOCTRINE:
+  // illness, injury and automatic return-to-training ladders), and neither
+  // type can be written or accepted any more, so a card offering to "BUILD THE
+  // INJURY PLAN" would be a button that does nothing.
+  //
+  // The generic copy says what the change IS rather than naming the speaker in
+  // the third person, which is what it used to do on the card where the runner
+  // most needs to know what is being asked of them.
+  const title = 'There is a change to look at';
+  const acceptVerb = 'MAKE THE CHANGE';
   // reason = what we noticed, suggested = what we'd do. Both are already
   // coach-voice strings from lib/plan/adapt.ts.
   const body = [p.reason, p.suggested].map((s) => (s ?? '').trim()).filter(Boolean).join(' ');

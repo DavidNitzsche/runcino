@@ -22,14 +22,13 @@
 //  built to keep that boundary, not to look tidy.
 //
 //  ─────────────────────────────────────────────────────────────────────────
-//  RULE ONE AND RULE TWO, AS THEY LAND HERE
+//  RULE ONE, AS IT LANDS HERE
 //
 //  Every number on these four screens comes through `FaffValue` — a dose, a
 //  stat-plate value, a row value — so a modelled number cannot reach the
-//  screen without its amber tilde. None of the four states below assert a
-//  changed SESSION off one signal; 17a (changed overnight) is the screen that
-//  carries the three-domain convergence, and it is deliberately not one of
-//  these four.
+//  screen without its amber tilde. None of the four states below asserts a
+//  changed SESSION. The screen that did (17a, "changed overnight") was
+//  deleted 2026-09-02 with the readiness triggers behind it.
 //
 
 import SwiftUI
@@ -39,13 +38,13 @@ import Foundation
 //
 // The account sheet's body — runner name, week line, and rows — was
 // previously defined once inside `TodayBeforeV5` (the only screen wired to
-// open it) and nowhere else: `InjuryFlareV5`, `WeekOffV5`, `OffSeasonV5`,
-// `TodayChangedV5` (TodayChangedV5.swift) and `TodayAfterV5` all already
-// exposed an `onOpenAccount` closure, but the host never passed anything
-// but the `{}` default, so the account button on five screens did nothing.
-// Defined once, here, so `TodayHostV5` can present ONE sheet for every
-// place-screen branch that isn't `TodayBeforeV5` (which keeps its own,
-// using this same struct) rather than five copies of the same list.
+// open it) and nowhere else: `InjuryFlareV5`, `WeekOffV5`, `OffSeasonV5` and
+// `TodayAfterV5` all already exposed an `onOpenAccount` closure, but the host
+// never passed anything but the `{}` default, so the account button on those
+// screens did nothing. Defined once, here, so `TodayHostV5` can present ONE
+// sheet for every place-screen branch that isn't `TodayBeforeV5` (which keeps
+// its own, using this same struct) rather than a copy of the same list per
+// screen.
 
 struct AccountSheetBodyV5: View {
     let accountName: String

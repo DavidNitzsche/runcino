@@ -37,7 +37,6 @@ function verdict(band: AdaptationVerdict['band'], stepMultiplier = 1): Adaptatio
     decision: band === 'marginal' ? 'STAY' : 'PROGRESS',
     stepMultiplier,
     dimensions: [],
-    veto: null,
     summary: '',
   };
 }

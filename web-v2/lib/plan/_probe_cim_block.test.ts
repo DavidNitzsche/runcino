@@ -219,7 +219,6 @@ describe.skipIf(!RUN)('CIM block as the cron will author it', () => {
       out.push('authoredState.pace_blend = ' + JSON.stringify(as.pace_blend));
       out.push('authoredState.derived_from = ' + JSON.stringify(as.derived_from));
       out.push('authoredState keys = ' + Object.keys(as).join(', '));
-      out.push('authoredState.goal_vdot_sanity = ' + JSON.stringify(as.goal_vdot_sanity));
     }
 
     out.push('\n=== POLARIZED DISTRIBUTION (Research/01: 70-80% E · 10-15% M+T · 10-15% I+R) ===');

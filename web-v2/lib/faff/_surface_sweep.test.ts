@@ -291,7 +291,7 @@ function subLabelFor(cell: Cell): string | null {
   return SESSION_FOR[cell.state].subLabel;
 }
 
-function todayCtxFor(cell: Cell, withRun: boolean, convergenceDomains = 0): V5TodayContext {
+function todayCtxFor(cell: Cell, withRun: boolean): V5TodayContext {
   const b = BOUNDARY_DATES[cell.boundary];
   const s = { ...SESSION_FOR[cell.state], subLabel: subLabelFor(cell) };
   const st = cell.state;
@@ -329,37 +329,6 @@ function todayCtxFor(cell: Cell, withRun: boolean, convergenceDomains = 0): V5To
     sick: st === 'illness'
       ? { symptoms: ['Head cold', 'Fatigue'], hasFever: false, since: 'Flagged today', verdict: 'Rest, not run.', checkIn: [] }
       : null,
-    convergence: convergenceDomains > 0 ? convergenceFor(cell, convergenceDomains) : null,
-  };
-}
-
-/**
- * A persisted `coach_intents` convergence verdict.
- *
- * `domains` is how many the verdict names as converging. TWO must produce no
- * change payload at all — that is Rule 2, and the composer enforces it rather
- * than trusting the writer. THREE must produce one, and the sweep hands it a
- * domain whose own reading is MISSING, because `readings` only has to carry
- * entries for domains that counted and the composer's `?? ''` fallback is what
- * puts a labelled tile over blank space.
- */
-function convergenceFor(cell: Cell, domains: number): V5TodayContext['convergence'] {
-  const names = ['sleep', 'rhr', 'hrv', 'soreness'].slice(0, domains);
-  return {
-    updatedAt: '3:12 AM',
-    wasType: 'Threshold',
-    wasSubLabel: 'THRESHOLD',
-    verdict: {
-      grade: 'red',
-      converging: names,
-      domains: names.map((d) => ({ domain: d, dragging: true, daysSustained: 3, suppressedBy: null, counts: true })),
-      rationale: 'Three domains dragging for three days.',
-    },
-    // Deliberately short of the domain list: the last one has no reading.
-    readings: Object.fromEntries(names.slice(0, -1).map((d) => [d, { value: '6h 10m', baseline: '7h 20m' }])),
-    coachLine: cell.shape === 'zero_runs'
-      ? '' // no sentence — the composer must decline the whole story
-      : 'Sleep, resting heart rate and heart-rate variability have all been dragging for three days, so today is easy.',
   };
 }
 

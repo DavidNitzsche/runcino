@@ -143,7 +143,10 @@ struct CheckinResponse: Decodable {
 
 struct PendingProposal: Decodable, Identifiable {
     let id: Int
-    let proposal_type: String      // "injury_adjust" | "illness_adjust" | "swap"
+    // "injury_adjust" | "swap". `illness_adjust` was retired 2026-09-02 and
+    // is filtered out in `CoachDecisions.select` so a stale row cannot draw
+    // a card; the string is not a case the phone recognises any more.
+    let proposal_type: String
     let reason: String
     let suggested: String
     let created_at: String

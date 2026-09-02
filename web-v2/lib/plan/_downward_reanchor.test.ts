@@ -51,9 +51,12 @@ describe('recompute_paces cron routing', () => {
     expect(applyNow).toHaveLength(1);
     expect(proposeFirst).toHaveLength(0);
   });
-  it('readiness pullback still routes propose-first (unchanged)', () => {
+  it('a load-reducing downgrade still routes propose-first (unchanged)', () => {
+    // Retagged 2026-09-02 · was `readiness_pullback`, which is no longer a
+    // trigger. The property is DIRECTION-1 — a downgrade takes a session away
+    // and so must be proposed — and it holds on any limb that emits one.
     const actions: AdaptationAction[] = [
-      { kind: 'downgrade', workoutIds: ['w1'], newType: 'easy', why: 'pullback', sourceTrigger: 'readiness_pullback' },
+      { kind: 'downgrade', workoutIds: ['w1'], newType: 'easy', why: 'anti-stacking', sourceTrigger: 'missed_key_workout' },
     ];
     const { applyNow, proposeFirst } = partitionActionsForCron(actions);
     expect(applyNow).toHaveLength(0);

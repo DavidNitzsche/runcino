@@ -90,13 +90,33 @@ describe('buildHealthActions — race-week guard (F4)', () => {
     expect(out.length).toBe(1); // every fatigue + advisory action suppressed
   });
 
-  it('race morning keeps the illness hard rule (racing sick is medical, not taper noise)', () => {
+  /**
+   * 2026-09-02 · THIS TEST WAS INVERTED, DELIBERATELY.
+   *
+   * It used to assert that a logged illness produced a `sick` action on race
+   * morning that outranked the execute line — "Skip running today · easy walk
+   * only until symptoms clear." `PLAN_SIMPLIFICATION_DOCTRINE.md` (locked
+   * 2026-09-02) puts illness on the removal list, and the owner's ruling is
+   * that he decides how ready he is: "I've been training a long time. Pushed
+   * through a lot of things."
+   *
+   * Telling a runner not to start his goal race, at 5 AM, off a row he typed
+   * in himself, is the sharpest possible case of the thing he removed. So the
+   * rule is gone and this asserts its absence — a ratchet, so a future session
+   * that re-adds a medical exception has to delete this test in front of him
+   * rather than quietly restoring the sentence.
+   *
+   * What did NOT change: `activeSick` is still carried, still stored, and
+   * still shown wherever he reported it. The app knows; it does not instruct.
+   */
+  it('race morning does NOT re-add an illness instruction (his call, not the app\'s)', () => {
     const out = buildHealthActions(stressedArgs(0, { activeSick: true }));
-    // Final priority sort puts URGENT illness above the on-course execute
-    // line — correct: flu at 5 AM outranks the pep line.
-    expect(out[0].signal).toBe('sick');
-    expect(out.some((a) => a.signal === 'race_day')).toBe(true);
+    expect(out.some((a) => a.signal === 'sick')).toBe(false);
+    expect(out[0].signal).toBe('race_day');
     expect(out.some((a) => FATIGUE_SIGNALS.includes(a.signal))).toBe(false);
+    // Liveness · the arg actually reached the builder, so this is an absence
+    // the code produced and not an absence the fixture never posed.
+    expect(stressedArgs(0, { activeSick: true }).activeSick).toBe(true);
   });
 
   it('no race on the calendar → behavior unchanged', () => {

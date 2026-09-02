@@ -3,11 +3,17 @@
  *
  * A live account — 0 runs, 0 races, a 30 mi/wk self-report and a typed 3:30
  * marathon goal — was handed a plan with a 13-mile long run and a threshold
- * session in week one, and the plan recorded `goal_realism: { flag: false }` (renamed
- * 2026-09-02 to `goal_vdot_sanity: { beyondSanityBand }` — see
- * `lib/plan/goal-vdot-sanity.ts`):
- * an affirmative statement that the goal was realistic, made about a runner the
- * engine had never seen take a step.
+ * session in week one, and the plan recorded an affirmative statement that the
+ * goal was realistic, made about a runner the engine had never seen take a step.
+ *
+ * GOALSANITY-DELETE-1 (2026-09-02) · THE SCREEN THAT MADE THAT STATEMENT IS
+ * GONE, so the two tests that read it are gone with it. They are replaced by
+ * one that asserts the key is not written any more, because a deleted
+ * mechanism with no gate is a mechanism that comes back. The COLD-3 doctrine
+ * they carried — a provisional, mileage-invented anchor must never read as an
+ * all-clear — is unchanged and is still asserted here, against the provenance
+ * that survives: `pace_blend.season_anchor_source` /
+ * `season_anchor_provisional`, which is what every live reader actually reads.
  *
  * The structural cause was that every honest cold-start mechanism
  * (`calibrating`, `anchorSource: 'provisional_mileage'`, the maintenance
@@ -62,15 +68,21 @@ describe('COLD-1 · goal pace alone must not authorize elite volume', () => {
   // 22-24 mi long runs.
   const SUB_3_PACE = Math.round((2 * 3600 + 55 * 60) / MARATHON_MI);
 
-  it('an UNSTATED experience level (production NULL) caps at intermediate', () => {
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null)).toBe('intermediate');
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, undefined)).toBe('intermediate');
+  it('an UNSTATED experience level (production NULL) gets the bottom row, not a cap', () => {
+    // TIEREVIDENCE-1 (2026-09-02) · MOVED DOWN AGAIN, from 'intermediate' to
+    // 'developing'. COLD-1 named `UNSTATED_LEVEL_TIER_CEILING` a ceiling and
+    // spent it as a FLOOR, so an account with nothing demonstrated was PROMOTED
+    // to the middle of the table. COLD-1's own sentence — "an unstated level is
+    // unknown capacity, not permission" — is what this now applies literally.
+    // The claim this test makes is unchanged in kind and stronger in degree.
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null)).toBe('developing');
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, undefined)).toBe('developing');
     // and the band the plan is actually built to comes down with it
     const { target } = lookupLoadTierTarget({
       raceDistanceMi: MARATHON_MI, level: null,
       demonstratedPaceSec: null, goalPaceSec: SUB_3_PACE,
     });
-    expect(target.peakWeeklyMileageBand).toEqual(TIER_TARGETS.m.intermediate.peakWeeklyMileageBand);
+    expect(target.peakWeeklyMileageBand).toEqual(TIER_TARGETS.m.developing.peakWeeklyMileageBand);
     expect(target.peakWeeklyMileageBand[1]).toBeLessThan(TIER_TARGETS.m.advanced.peakWeeklyMileageBand[1]);
   });
 
@@ -88,7 +100,12 @@ describe('COLD-1 · goal pace alone must not authorize elite volume', () => {
     // longer reachable by typing a number. The assertion this file's own title
     // makes - "never reaches elite off a typed goal" - holds more strongly than
     // before, not less.
-    expect(classifyGoalTier(ELITE_PACE, MARATHON_MI, 'intermediate')).toBe('intermediate');
+    //
+    // TIEREVIDENCE-1 (2026-09-02) · MOVED AGAIN, to 'developing', and again
+    // downward. A stated 'intermediate' with no demonstrated pace is a word, not
+    // a measurement; it now caps rather than floors. The title's claim holds
+    // more strongly still.
+    expect(classifyGoalTier(ELITE_PACE, MARATHON_MI, 'intermediate')).toBe('developing');
   });
 
   it('DEMONSTRATED fitness lifts the unstated-level cap · a mileage self-report does not', () => {
@@ -97,8 +114,8 @@ describe('COLD-1 · goal pace alone must not authorize elite volume', () => {
     const t = predictRaceTime(advancedVdot, MARATHON_MI)!;
     const demonstratedPace = Math.round(t / MARATHON_MI);
     expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null, demonstratedPace)).toBe('advanced');
-    // No measurement → the cap holds, whatever was typed.
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null, null)).toBe('intermediate');
+    // No measurement → the bottom row, whatever was typed (TIEREVIDENCE-1).
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null, null)).toBe('developing');
   });
 
   it('the cold-start runner is never ramped to advanced-tier volume', () => {
@@ -111,11 +128,24 @@ describe('COLD-1 · goal pace alone must not authorize elite volume', () => {
     expect(peakWeekly).toBeLessThan(TIER_TARGETS.m.advanced.peakWeeklyMileageBand[0]);
   });
 
-  it('an explicit advanced level is unaffected (no demotion of a stated runner)', () => {
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, 'advanced')).toBe('advanced');
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, 'advanced_plus')).toBe('advanced');
-    expect(classifyGoalTier(null, MARATHON_MI, 'advanced')).toBe('advanced');
+  it('TIEREVIDENCE-1 · an explicit advanced level no longer earns the advanced band on its own', () => {
+    // THIS ASSERTION IS INVERTED ON PURPOSE, and it is the point of the change.
+    // It used to read "no demotion of a stated runner", which is the defect the
+    // owner named: his typed 'advanced' produced a 65-90 mi/wk band against a
+    // measured best week of 48.5 and demonstrated race pace that grades
+    // 'intermediate'. A word is not evidence, and the word was the only thing
+    // holding that band up.
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, 'advanced')).toBe('developing');
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, 'advanced_plus')).toBe('developing');
+    expect(classifyGoalTier(null, MARATHON_MI, 'advanced')).toBe('developing');
     expect(classifyGoalTier(null, MARATHON_MI, 'beginner')).toBe('developing');
+    // …and EVIDENCE still takes the same runner all the way up, so this is a
+    // change of what earns the band, not a ceiling on the band (Rule 21).
+    // (no goal passed: GOALVOL-1's reduction half would floor a 2:55 goal's own
+    // demand at 'advanced' and mask what the evidence earned.)
+    const eliteDemo = 330; // 5:30/mi
+    expect(classifyGoalTier(null, MARATHON_MI, 'advanced', eliteDemo)).toBe('elite');
+    expect(classifyGoalTier(null, MARATHON_MI, 'beginner', eliteDemo)).toBe('intermediate');
   });
 });
 
@@ -183,40 +213,35 @@ describe('COLD-3 · a mileage-derived anchor is marked, and readers refuse it', 
     expect(paceBlendAnchorIsProvisional(pb)).toBe(false);
   });
 
-  it('goal_vdot_sanity reports NOT ASSESSABLE rather than a false all-clear', () => {
-    const built = buildSimPlan(COLD_START);
-    expect(built.ok).toBe(true);
-    if (!built.ok) return;
-    const gr = (built.composed.authoredState as Record<string, any>).goal_vdot_sanity;
-    // The pre-fix value was exactly `{ flag: false }` — the guard silenced by
-    // the fabrication it exists to catch: goal VDOT ~44.6 against a mileage-
-    // invented 40 is +11.5%, under the 15% band.
-    expect(gr.assessable).toBe(false);
-    expect(gr.basis).toBe('provisional_mileage');
-    // GOAL-SANITY-NAME-1 · the anchor is an explicit null rather than an absent
-    // key. Rule 11: "there is no anchor" and "the key was dropped" were the
-    // same absence under the old shape, and the goal VDOT was dropped outright
-    // on the not-flagged branch. Both are now always present, possibly null.
-    expect(gr.anchorVdot).toBeNull();
-    expect(Object.prototype.hasOwnProperty.call(gr, 'goalVdot')).toBe(true);
-    expect(Object.prototype.hasOwnProperty.call(gr, 'anchorVdot')).toBe(true);
-  });
-
-  it('goal_vdot_sanity still fires for a MEASURED runner with an over-ambitious goal', () => {
-    // Measured VDOT 40, goal 2:55 marathon (VDOT ~53) → +30%, well past 15%.
-    const built = buildSimPlan({
-      ...COLD_START, bestRecentVdotOverride: 40,
-      goalTimeSec: 2 * 3600 + 55 * 60, raceDateISO: '2026-12-05',
-    });
-    expect(built.ok).toBe(true);
-    if (!built.ok) return;
-    const gr = (built.composed.authoredState as Record<string, any>).goal_vdot_sanity;
-    expect(gr.assessable).toBe(true);
-    expect(gr.beyondSanityBand).toBe(true);
-    expect(gr.basis).toBe('measured_vdot');
-    // The continuous quantity the boolean steps on is published beside it
-    // (Rule 9), and it agrees in sign with the boolean.
-    expect(gr.bandExcessVdot).toBeGreaterThan(0);
+  it('GOALSANITY-DELETE-1 · no goal-realism screen is written at all', () => {
+    // The screen this file was written around published a boolean about the
+    // runner's stated goal. It had no live consumer (the only reader was
+    // `GET /api/coach/read`, which nothing fetches) and it was a second answer
+    // to Constitution §L's Goal Feasibility question. Deleted 2026-09-02.
+    //
+    // Asserted on BOTH archetypes this file already builds — the cold-start
+    // runner the key most misrepresented, and the measured runner with an
+    // over-ambitious goal it used to fire on — so the check cannot pass by
+    // testing an archetype the composer happens to bail out of early.
+    for (const arc of [
+      COLD_START,
+      { ...COLD_START, bestRecentVdotOverride: 40,
+        goalTimeSec: 2 * 3600 + 55 * 60, raceDateISO: '2026-12-05' },
+    ]) {
+      const built = buildSimPlan(arc);
+      expect(built.ok).toBe(true);
+      if (!built.ok) return;
+      const st = built.composed.authoredState as Record<string, unknown>;
+      // Liveness first: a state object we failed to build would satisfy every
+      // absence assertion below for the wrong reason.
+      expect(Object.keys(st).length).toBeGreaterThan(5);
+      expect(Object.prototype.hasOwnProperty.call(st, 'goal_vdot_sanity')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(st, 'goal_realism')).toBe(false);
+      // The goal's VDOT survives on `pace_blend` as an OBSERVATIONAL record,
+      // and that is a different fact from a verdict about the goal.
+      const pb = st.pace_blend as Record<string, unknown>;
+      expect(Object.prototype.hasOwnProperty.call(pb, 'goal_vdot')).toBe(true);
+    }
   });
 
   it('the reader predicate refuses a provisional anchor by either mark', () => {

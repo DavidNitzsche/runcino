@@ -178,7 +178,21 @@ enum CoachDecisions {
         now: Date = Date()
     ) -> [CoachDecision] {
         var out: [CoachDecision] = []
-        for p in coachProposals { out.append(fromCoachProposal(p)) }
+        // `illness_adjust` and `injury_adjust` are both retired (2026-09-02
+        // ruling: readiness, illness, injury and automatic return-to-training
+        // ladders no longer make training decisions). Their detectors are
+        // gone, and so are their accept handlers — `injury_adjust` now falls
+        // through to a 501 and `buildInjuryPlan` refuses at its first line.
+        //
+        // A stale row can still be sitting in `coach_proposals`, and dropping
+        // only the BRANCH below would let it fall through to the generic
+        // "The coach has a proposal" card over a MAKE THE CHANGE button that
+        // the server would then refuse. A button that cannot do what it says
+        // is worse than no card. Suppress the rows instead.
+        let retiredProposalTypes: Set<String> = ["illness_adjust", "injury_adjust"]
+        for p in coachProposals where !retiredProposalTypes.contains(p.proposal_type) {
+            out.append(fromCoachProposal(p))
+        }
         for p in workoutProposals { out.append(fromWorkoutProposal(p, todayISO: todayISO)) }
         for p in planProposals {
             if let d = fromPlanProposal(p, now: now) { out.append(d) }
@@ -210,19 +224,21 @@ enum CoachDecisions {
 
     // MARK: Per-source mappers
 
+    /// NO SPECIAL-CASED BRANCHES LEFT (2026-09-02).
+    ///
+    /// `illness_adjust` and `injury_adjust` both had one. Both are retired
+    /// end to end — no detector writes them, no accept handler consumes them,
+    /// and `buildInjuryPlan` refuses unconditionally — so both are filtered
+    /// out in `select` above and no card of either type is ever built.
+    ///
+    /// The earlier version of this change kept the injury branch on the
+    /// reasoning that a named button was more honest than a vague one. That
+    /// was wrong once the accept handler went: the button named an action the
+    /// server will refuse. The walk-run plan returns when the runner has a way
+    /// to CHOOSE it, and that entry point will need its own card.
     private static func fromCoachProposal(_ p: PendingProposal) -> CoachDecision {
-        let isInjury = p.proposal_type == "injury_adjust"
-        let isIllness = p.proposal_type == "illness_adjust"
-        let title = isInjury
-            ? "Switch to an injury-return plan"
-            : isIllness
-                ? "Take the recovery week"
-                : "The coach has a proposal"
-        let acceptVerb = isInjury
-            ? "BUILD THE INJURY PLAN"
-            : isIllness
-                ? "DROP THIS WEEK'S QUALITY"
-                : "MAKE THE CHANGE"
+        let title = "The coach has a proposal"
+        let acceptVerb = "MAKE THE CHANGE"
         // reason = what we noticed, suggested = what we'd do. Both are
         // already coach-voice strings from lib/plan/adapt.ts.
         let body = [p.reason, p.suggested]

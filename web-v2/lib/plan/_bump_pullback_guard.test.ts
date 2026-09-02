@@ -2,8 +2,8 @@
  * lib/plan/_bump_pullback_guard.test.ts · the pull-down / push-up window.
  *
  * The defect (2026-08-28 audit): `tryAdaptiveBump` only skipped when
- * pull-back actions fired the SAME cron tick, so a red-readiness downgrade
- * applied Monday did not stop a volume bump Tuesday. Doctrine spaces hard
+ * pull-back actions fired the SAME cron tick, so a downgrade applied Monday
+ * did not stop a volume bump Tuesday. Doctrine spaces hard
  * from easy in DAYS (Research/00b §"The Hard-Easy Principle" · "hard day →
  * 1–2 easy/recovery/rest days → next hard day"), so the guard is now a
  * 48-hour lookback over the adapter's own applied pull-back intents.
@@ -12,8 +12,13 @@
  *   · pull-back Monday BLOCKS a bump Tuesday, ALLOWS one Thursday (pure)
  *   · the DB-shell path stands down before any ramp evaluation runs
  *   · the guard fails CLOSED when the intents read fails
+ *   · the reason list is NON-EMPTY and every entry is still written by
+ *     `adapt.ts` — otherwise the whole guard is a query over a column nothing
+ *     can populate, which is Rule 11's failure wearing a thorough-looking list
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 vi.mock('@/lib/db/pool', () => ({ pool: { query: vi.fn() } }));
 vi.mock('@/lib/runtime/runner-tz', () => ({
@@ -71,10 +76,35 @@ describe('1 · pullbackBlocksBump', () => {
     expect(PULLBACK_BUMP_LOOKBACK_HOURS).toBe(48);
   });
 
-  it('the reasons cover downgrade, shave, and the red-readiness record', () => {
-    expect([...PULLBACK_INTENT_REASONS]).toEqual(expect.arrayContaining([
-      'plan_adapt_downgrade', 'plan_adapt_shave', 'readiness_convergence_red_no_quality',
-    ]));
+  it('the reasons are exactly the two a live trigger still writes', () => {
+    // 2026-09-02 · was three, the third being
+    // `readiness_convergence_red_no_quality`. Readiness no longer produces a
+    // trigger, so nothing writes that row any more.
+    expect([...PULLBACK_INTENT_REASONS])
+      .toEqual(['plan_adapt_downgrade', 'plan_adapt_shave']);
+  });
+
+  it('RULE 11 · the list is non-empty and every entry is still WRITTEN by adapt.ts', () => {
+    // The failure this closes: shrink the list to nothing (or to reasons the
+    // adapter stopped emitting) and `recentPullbackTs` becomes a query that
+    // can only ever return no rows. The guard would then report "no pull-back
+    // on record" forever — a missing input silently disabling a safety
+    // mechanism — and every test above would still pass, because they all
+    // exercise `pullbackBlocksBump`, which never looks at the list.
+    expect(PULLBACK_INTENT_REASONS.length).toBeGreaterThan(0);
+
+    const adaptSrc = readFileSync(path.join(process.cwd(), 'lib', 'plan', 'adapt.ts'), 'utf8');
+    // Rule 18 §2 · liveness. An unreadable or empty file must not read as
+    // "every reason is present".
+    expect(adaptSrc.length, 'adapt.ts read as empty · this scan saw nothing')
+      .toBeGreaterThan(5_000);
+    for (const reason of PULLBACK_INTENT_REASONS) {
+      expect(
+        adaptSrc.includes(`'${reason}'`),
+        `${reason} is in PULLBACK_INTENT_REASONS but adapt.ts never writes it · `
+        + 'the 48h guard would be reading for a row that cannot exist',
+      ).toBe(true);
+    }
   });
 });
 

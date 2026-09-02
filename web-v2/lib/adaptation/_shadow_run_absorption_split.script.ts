@@ -50,18 +50,17 @@ function fmtVerdict(v: AdaptationVerdict): string {
   const dims = v.dimensions
     .map((d) => `${d.dimension}=${d.score == null ? 'null' : d.score.toFixed(2)}`)
     .join(' ');
-  return `${v.band}/${v.decision} conf=${v.confidence} step=${v.stepMultiplier} veto=${v.veto ?? '-'} [${dims}] :: ${v.summary}`;
+  return `${v.band}/${v.decision} conf=${v.confidence} step=${v.stepMultiplier} [${dims}] :: ${v.summary}`;
 }
 
 /** Would `resolveProgressionStep` (progression-gate.ts) treat this band
  *  differently — TAKE/ACCELERATE vs HOLD vs BACK_OFF? Pure function of the
- *  band + veto alone; see progression-gate.ts switch. Restated here rather
+ *  band alone; see progression-gate.ts switch. Restated here rather
  *  than imported so this script never has to construct the `planned` /
  *  `previous` / `weeklyMi` / `lever` / `family` arguments that function
  *  actually needs — the band transition is the load-bearing signal for "would
  *  this change", and is what this script diffs. */
 function progressionLean(v: AdaptationVerdict): 'ACCELERATE-eligible' | 'TAKE' | 'HOLD' | 'BACK_OFF' {
-  if (v.veto) return 'BACK_OFF';
   switch (v.band) {
     case 'strong': return 'ACCELERATE-eligible';
     case 'normal': return 'TAKE';
@@ -180,16 +179,11 @@ describe('absorption-reader-split shadow run (report tool, not a gate)', () => {
       lateDriftBpm: null,
       easyDiscipline: null,
       recoveryPctOfExpected: null,
-      readinessBelowNormalDays: null,
-      readinessWindowDays: null,
       weeklyPlannedMi: null,
       weeklyActualMi: null,
       trainingForm: null,
       distinctEvidenceWeeks: new Set(sessions.map((s) => s.dateISO.slice(0, 7))).size || null,
       adapterDowngrades: null,
-      niggleSeverity: null,
-      illnessActive: null,
-      injuryActive: null,
     };
   }
 

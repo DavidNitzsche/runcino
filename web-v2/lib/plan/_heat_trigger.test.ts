@@ -11,8 +11,11 @@
  * of heat any more. `detectHeatBail` is deleted; `heat_bail` is dropped from
  * `PROPOSE_FIRST_TRIGGERS`; the `'heat_bail'` case in `actionsForTrigger`
  * stays only to resolve any in-flight `coach_intents` rows from the old path
- * (a record-only 'note', the same pattern as the deprecated rhr_spike /
- * sleep_crater cases).
+ * (a record-only 'note'). 2026-09-02 · that sentence used to cite "the same
+ * pattern as the deprecated rhr_spike / sleep_crater cases" for company. Those
+ * cases are gone — readiness, illness, injury and niggle no longer influence
+ * training at all — so `heat_bail` is now the only deprecated limb left, and
+ * the comparison is deleted rather than left pointing at nothing.
  *
  * `lib/coach/_heat_doctrine.test.ts` holds the gate's NUMBERS against the
  * research — those stay correct, since `heatBandForConditions` still backs
@@ -36,45 +39,26 @@ describe('HEAT-1 REVERSED · the heat gate no longer changes a session', () => {
     expect(PROPOSE_FIRST_TRIGGERS.has('heat_bail')).toBe(false);
   });
 
-  it('readiness never changes a session unattended · not at amber, not at red', () => {
-    // The history of this one test is the history of the ruling:
-    //   · 2026-06-03 — "readiness still cannot apply either."
-    //   · 2026-08-19 — amended: convergent RED may apply, settled overnight.
-    //   · 2026-08-29 — reversed to the 06-03 position and generalised.
-    //     DIRECTION-1: load may rise unattended, it may never fall unattended.
-    //     So red proposes too, and the amendment above is gone.
+  it('DIRECTION-1 · which triggers must be proposed, and which may apply', () => {
+    // Re-homed 2026-09-02 out of a test whose first half posed a readiness
+    // amber/red pair. Readiness no longer produces a trigger of any kind, so
+    // that half is deleted; these membership checks are about DIRECTION-1 and
+    // survive it unchanged.
     //
-    // What has never changed, across all three, is the guard this test was
-    // written for: nobody may read the heat wiring as licence to let a
-    // wellness score mutate the plan by itself.
-    expect(PROPOSE_FIRST_TRIGGERS.has('readiness_pullback')).toBe(true);
-
-    const amber: AdaptationAction = {
-      kind: 'note', noteReason: 'readiness_convergence_amber',
-      sourceTrigger: 'readiness_pullback', why: 'two domains',
-    };
-    const red: AdaptationAction = {
-      kind: 'downgrade', workoutIds: ['wko_today'], newType: 'easy',
-      sourceTrigger: 'readiness_pullback', forceApplyNow: true, why: 'three domains',
-    };
-    const split = partitionActionsForCron([amber, red]);
-    // The RED DOWNGRADE now proposes — carrying forceApplyNow no longer buys
-    // it a bypass, because it takes a session away.
-    expect(split.proposeFirst).toEqual([red]);
-    // The amber NOTE applies, and that is not an inconsistency: it writes a
-    // coach_intents row and no plan row. Proposing a note would ask the runner
-    // to approve a change that does not exist, and the row is what stops the
-    // adaptive ramp raising load off an unanswered red morning.
-    expect(split.applyNow).toEqual([amber]);
-
-    // Still outside the gate, because none of these takes work away.
+    //   DIRECTION-1 (2026-08-29) · load may rise unattended, it may never
+    //   fall unattended.
+    //
+    // Outside the gate, because none of these takes work away.
     const applyNowKinds: AdaptationTriggerKind[] = ['pr_bank', 'goal_changed'];
     for (const k of applyNowKinds) expect(PROPOSE_FIRST_TRIGGERS.has(k)).toBe(false);
-    // And these joined it under DIRECTION-1, because each does.
-    const nowGated: AdaptationTriggerKind[] = [
-      'missed_key_workout', 'volume_overshoot', 'niggle_reported',
-    ];
+    // Inside it, because each does. `niggle_reported` used to sit in this
+    // list; it is not a trigger any more, so it is dropped rather than
+    // asserted about.
+    const nowGated: AdaptationTriggerKind[] = ['missed_key_workout', 'volume_overshoot'];
     for (const k of nowGated) expect(PROPOSE_FIRST_TRIGGERS.has(k)).toBe(true);
+    // Rule 18 §2 · liveness. An empty set would satisfy every `false`
+    // assertion above and report clean.
+    expect(PROPOSE_FIRST_TRIGGERS.size).toBeGreaterThanOrEqual(nowGated.length);
   });
 
   it('DIRECTION-1 · a stale heat_bail downgrade proposes, because it is a downgrade', () => {

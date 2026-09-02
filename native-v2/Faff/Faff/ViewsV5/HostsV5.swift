@@ -192,19 +192,6 @@ struct TodayHostV5: View {
         case .notOnPhoneYet:
             NotOnPhoneYetV5(reason: model.notOnPhoneYet, onOpenAccount: { accountOpen = true })
 
-        case .changedOvernight:
-            // RULE TWO. The story only exists when three independent domains
-            // converged. If the payload cannot show that, this is an ordinary
-            // Today and the app says nothing about a change.
-            if let changed = model.changed, changed.namesAConvergence {
-                TodayChangedV5(panel: model.panel, convergence: changed,
-                               onOpenAccount: { accountOpen = true })
-            } else {
-                TodayBeforeLiveV5(model: model, accountName: accountName,
-                              accountWeekLine: model.panel.weekLine ?? "",
-                              accountRows: [], fallbackCalendarWeeks: calendarWeeks(model))
-            }
-
         case .injuryFlare:
             if let injury = model.injury {
                 InjuryFlareV5(model: injury,

@@ -10,9 +10,7 @@ import {
   classifyAdaptation,
   progressionCreditShare,
   MIN_WEEKS_FOR_STRONG,
-  NIGGLE_VETO_SEVERITY,
   PROGRESSION_GATE,
-  READINESS_MIN_WINDOW_DAYS,
   type AdaptationInput,
   type KeySessionRead,
 } from './adaptation-model';
@@ -48,16 +46,11 @@ function baseline(): AdaptationInput {
     lateDriftBpm: [4, 5, 3],
     easyDiscipline: { established: false, read: null },
     recoveryPctOfExpected: 1.0,
-    readinessBelowNormalDays: 4,
-    readinessWindowDays: 28,
     weeklyPlannedMi: [40, 44, 46],
     weeklyActualMi: [40, 44, 46],
     trainingForm: 'PRODUCTIVE',
     distinctEvidenceWeeks: 4,
     adapterDowngrades: 0,
-    niggleSeverity: 0,
-    illnessActive: false,
-    injuryActive: false,
   };
 }
 
@@ -75,16 +68,11 @@ function blind(): AdaptationInput {
     lateDriftBpm: null,
     easyDiscipline: null,
     recoveryPctOfExpected: null,
-    readinessBelowNormalDays: null,
-    readinessWindowDays: null,
     weeklyPlannedMi: null,
     weeklyActualMi: null,
     trainingForm: null,
     distinctEvidenceWeeks: null,
     adapterDowngrades: null,
-    niggleSeverity: null,
-    illnessActive: null,
-    injuryActive: null,
   };
 }
 
@@ -105,8 +93,10 @@ describe('absence of evidence is not evidence of poor adaptation', () => {
     // on a classifier verdict.
     expect(classifyAdaptation(blind()).evidenceSufficient).toBe(false);
     expect(classifyAdaptation(baseline()).evidenceSufficient).toBe(true);
-    // A veto is a read: the runner reported something.
-    expect(classifyAdaptation({ ...blind(), illnessActive: true }).evidenceSufficient).toBe(true);
+    // 2026-09-02 · a line here read "a veto is a read: the runner reported
+    // something", posing `illnessActive`. Vetoes are gone — illness, injury
+    // and niggle no longer reach a training decision at all — so the case it
+    // covered no longer exists. The smallest-read case below is unaffected.
     // Exactly two readable dimensions is the smallest read, and it IS a read.
     const twoDims = classifyAdaptation({ ...blind(), targetVerdicts: ['on', 'on'], trainingForm: 'PRODUCTIVE' });
     expect(twoDims.confidence).toBe('low');
@@ -377,80 +367,32 @@ describe('rule 4 · training credit and progression credit are different currenc
   });
 });
 
-describe('vetoes outrank every other reading', () => {
-  it('an active injury protects regardless of how well training was going', () => {
-    const v = classifyAdaptation({ ...baseline(), injuryActive: true });
-    expect(v.decision).toBe('PROTECT');
-    expect(v.veto).toBe('injury_active');
-    expect(v.band).toBe('poor');
-  });
+describe('recovery is the lightest dimension, and cannot drive a verdict alone', () => {
+  /* 2026-09-02 · this describe was "readiness informs, it never acts (locked
+   * 2026-08-17)" and held four tests, three of whose SUBJECT was the readiness
+   * window (`readinessBelowNormalDays` / `READINESS_MIN_WINDOW_DAYS`). The
+   * owner has ruled that readiness influences no training decision, the fields
+   * are gone from `AdaptationInput`, and `readRecovery`'s readiness half is
+   * deleted — so those three are deleted rather than retagged: there is no
+   * surviving quantity for them to be about.
+   *
+   * The fourth is kept because its property never depended on readiness. The
+   * recovery dimension still reads `recoveryPctOfExpected`, it is still the
+   * lightest-weighted dimension, and "one bad dimension does not collapse a
+   * verdict" is exactly the guard that stops the engine's downward instinct
+   * getting a cheap lever (CLAUDE.md Rule 21). */
 
-  it('illness protects, and the copy treats it as recovery not toughness', () => {
-    const v = classifyAdaptation({ ...baseline(), illnessActive: true });
-    expect(v.veto).toBe('illness');
-    expect(v.decision).toBe('PROTECT');
-    expect(v.summary).toMatch(/recovery/i);
-  });
-
-  it('a loud pain signal vetoes', () => {
-    const v = classifyAdaptation({ ...baseline(), niggleSeverity: NIGGLE_VETO_SEVERITY });
-    expect(v.veto).toBe('pain');
-    expect(v.decision).toBe('PROTECT');
-  });
-
-  it('a quiet niggle does not veto', () => {
-    const v = classifyAdaptation({ ...baseline(), niggleSeverity: NIGGLE_VETO_SEVERITY - 1 });
-    expect(v.veto).toBeNull();
-  });
-});
-
-describe('readiness informs, it never acts (locked 2026-08-17)', () => {
-  it('a short readiness window is ignored entirely — daily reads do not act', () => {
-    const shortWindow: AdaptationInput = {
+  it('a fully negative recovery read does not collapse an otherwise excellent block', () => {
+    const onlyRecoveryBad: AdaptationInput = {
       ...baseline(),
-      recoveryPctOfExpected: null,
-      readinessBelowNormalDays: READINESS_MIN_WINDOW_DAYS - 1,
-      readinessWindowDays: READINESS_MIN_WINDOW_DAYS - 1,
-    };
-    const v = classifyAdaptation(shortWindow);
-    // Every readiness day below normal, but the window is too short to speak.
-    expect(v.dimensions.find((d) => d.dimension === 'recovery')!.score).toBeNull();
-  });
-
-  it('ordinary life variance does not read as poor adaptation', () => {
-    // The 2026-08-17 audit: the old detector fired on 23% of days and was
-    // measuring a 41-year-old with two kids and a company, not overreaching.
-    const normalLife: AdaptationInput = {
-      ...baseline(),
-      readinessBelowNormalDays: 11,
-      readinessWindowDays: 28,
-    };
-    const v = classifyAdaptation(normalLife);
-    expect(v.band).toBe('strong');
-  });
-
-  it('a sustained multi-week deviation does count, and only then', () => {
-    const sustained: AdaptationInput = {
-      ...baseline(),
-      readinessBelowNormalDays: 26,
-      readinessWindowDays: 28,
-    };
-    const v = classifyAdaptation(sustained);
-    const recovery = v.dimensions.find((d) => d.dimension === 'recovery')!;
-    expect(recovery.score).toBeLessThan(0);
-    expect(recovery.detail).toMatch(/own recovery normal/i);
-  });
-
-  it('readiness alone can never drive the verdict — it is the lightest dimension', () => {
-    const onlyReadinessBad: AdaptationInput = {
-      ...baseline(),
-      readinessBelowNormalDays: 28,
-      readinessWindowDays: 28,
       recoveryPctOfExpected: 0.4,
     };
-    const v = classifyAdaptation(onlyReadinessBad);
+    const v = classifyAdaptation(onlyRecoveryBad);
     // Recovery is fully negative, everything else is excellent. The verdict
     // must not collapse to marginal on the strength of recovery alone.
+    const recovery = v.dimensions.find((d) => d.dimension === 'recovery')!;
+    expect(recovery.score, 'the fixture did not actually pose a bad recovery read')
+      .toBeLessThan(0);
     expect(['strong', 'normal']).toContain(v.band);
   });
 });
@@ -511,7 +453,18 @@ describe('the verdict is explainable', () => {
   });
 
   it('the summary stays in the coach register — no hype, no exclamation marks', () => {
-    for (const input of [baseline(), blind(), { ...baseline(), injuryActive: true }]) {
+    // The third fixture was `{ ...baseline(), injuryActive: true }` — the
+    // veto copy path, which no longer exists. A poor block is posed instead,
+    // so the register is still checked on a NEGATIVE verdict and not only on
+    // the two easy ones.
+    const poor: AdaptationInput = {
+      ...baseline(),
+      keySessionExecutions: repeat(partial_failed, 8),
+      keySessionsCompleted: 4,
+      targetVerdicts: ['slow', 'slow', 'slow', 'slow', 'slow', 'slow'],
+      recoveryPctOfExpected: 0.4,
+    };
+    for (const input of [baseline(), blind(), poor]) {
       const v = classifyAdaptation(input);
       expect(v.summary).not.toMatch(/[!🔥]/);
       expect(v.summary.length).toBeGreaterThan(0);

@@ -44,10 +44,9 @@ const BLANK: AdaptationInput = {
   keySessionsPlanned: null, keySessionsCompleted: null, targetVerdicts: null,
   repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
   decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null,
-  recoveryPctOfExpected: null, readinessBelowNormalDays: null, readinessWindowDays: null,
+  recoveryPctOfExpected: null,
   weeklyPlannedMi: null, weeklyActualMi: null, trainingForm: null,
   distinctEvidenceWeeks: null, adapterDowngrades: null,
-  niggleSeverity: null, illnessActive: null, injuryActive: null,
 };
 
 /** Verdicts built from real signals through the real classifier. */
@@ -104,7 +103,9 @@ describe('fixtures land on the bands the scenarios describe', () => {
     expect(ABSORBING.band).toBe('strong');
     expect(STEADY.band).toBe('normal');
     expect(STRUGGLING.band).toBe('marginal');
-    expect(STRUGGLING.veto).toBeNull();   // a hold, not a protect
+    // A hold, not a protect. `veto` used to be asserted null here; the verdict
+    // no longer has one, so the same property is read off the decision.
+    expect(STRUGGLING.decision).not.toBe('PROTECT');
   });
 });
 

@@ -536,19 +536,6 @@ struct HealthView: View {
         return "RECOVERY & FORM · \(f.string(from: Date()).uppercased())"
     }
 
-    /// Single punchy band word for the big headline (the Health analog of
-    /// Today's TEMPO / Train's BUILD). Falls back to the score when the band
-    /// hasn't resolved yet.
-    private var readinessWord: String {
-        switch (readiness?.band ?? "").lowercased() {
-        case "sharp":    return "SHARP"
-        case "ready":    return "READY"
-        case "moderate": return "HOLD"
-        case "pullback": return "EASE"
-        default:         return readiness?.score.map { "\($0)" } ?? "—"
-        }
-    }
-
     /// Headline tint for the band word · green ready, amber hold, red ease.
     private var readinessBandColor: Color {
         switch (readiness?.band ?? "").lowercased() {
@@ -587,19 +574,23 @@ struct HealthView: View {
         .padding(.bottom, 10)
     }
 
-    /// Coach voice for the hero. Action phrase wrapped in **double
+    /// Coach voice for the hero. The emphasised phrase wrapped in **double
     /// asterisks** renders amber-bold via verdictAttributedText.
-    /// Backend can later ship rich copy by including the same
-    /// markdown spans in /api/readiness's verdict field.
+    ///
+    /// DESCRIPTIVE, NOT PRESCRIPTIVE (2026-09-02). "Watch the load." and
+    /// "Rest is the priority." told the runner what to do about a readiness
+    /// reading, and readiness no longer changes any training decision in this
+    /// app. Each band now names what moved the score and stops there. The
+    /// emphasis carries the reading, never an instruction.
     private var verdictMarkdown: String {
         guard let band = readiness?.band?.lowercased() else {
             return "Reading your body · needs more sleep data."
         }
         switch band {
-        case "sharp":    return "**Above baseline.** Recovery is dialed in."
+        case "sharp":    return "**Above baseline.** Recovery is running ahead of it."
         case "ready":    return "Body **on baseline.** All signals clear."
-        case "moderate": return "Sleep deficit pulling the score. **Watch the load.**"
-        case "pull-back", "pullback": return "**Recovery lagging.** Rest is the priority."
+        case "moderate": return "**Under baseline.** Sleep is what is pulling the score."
+        case "pull-back", "pullback": return "**Well under baseline.** Sleep and resting heart rate are both off."
         default:         return "Reading your body · needs more sleep data."
         }
     }

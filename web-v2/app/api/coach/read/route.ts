@@ -37,8 +37,6 @@ import { readAdaptation } from '@/lib/adaptation/load';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
 import { recommendFromAdaptation, renderShort } from '@/lib/coach/recommendation';
 import { pool } from '@/lib/db/pool';
-import { paceBlendAnchorIsProvisional } from '@/lib/plan/anchor-provenance';
-import { GOAL_VDOT_SANITY_BAND } from '@/lib/plan/goal-vdot-sanity';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,7 +57,7 @@ export async function GET(req: NextRequest) {
   const userId = auth;
   const todayISO = await runnerToday(userId);
 
-  const [fitness, adaptation, goalGap, goalVdotSanity] = await Promise.all([
+  const [fitness, adaptation, goalGap] = await Promise.all([
     quiet('fitness', async () => {
       const inputs = await loadVdotInputs(userId, todayISO);
       // FLOOR-1 (2026-08-19) · thread the run floor `loadVdotInputs` actually
@@ -80,93 +78,6 @@ export async function GET(req: NextRequest) {
     }),
     quiet('adaptation', () => readAdaptation(userId)),
     quiet('goal gap', () => computeGoalGap(userId)),
-    // GOAL-SANITY-NAME-1 (2026-09-02) · the active plan's GOAL-VDOT SANITY
-    // SCREEN. This was `goalRealism` until 2026-09-02, and the rename is the
-    // fix: it answers "is the typed goal more than 15% of VDOT above
-    // demonstrated threshold capacity", which is a narrower question than its
-    // old name promised. **It is not Goal Feasibility.** Constitution §L's
-    // owner is `lib/race/race-outlook.ts` §7, which reads the projection, its
-    // likely range and expected race day and returns comfortable / realistic /
-    // aggressive / unlikely_currently. Anything answering "is my goal
-    // realistic" reads that, never this.
-    //
-    // Rule 10 · RECOMPUTE, do not read the frozen boolean. `reanchor-plan.ts`
-    // rewrites `pace_blend.season_anchor_vdot` in place as capacity moves and
-    // leaves the authored screen untouched, so the persisted struct goes stale
-    // by design. On 2026-09-02 the owner's live row held
-    // `estimatedCurrentVdot: 44.1` beside a `season_anchor_vdot` of 47.7 — two
-    // numbers for one quantity (Rule 16), and the older one was the one being
-    // served. The inputs survive on the same row, so the posture here is
-    // recompute; the legacy read is the fallback for a row with no live anchor.
-    quiet('goal vdot sanity', async () => {
-      const row = (await pool.query<{
-        sanity: Record<string, unknown> | null;
-        realism: Record<string, unknown> | null;
-        blend: Record<string, unknown> | null;
-        measured_vdot: string | null;
-      }>(
-        `SELECT authored_state->'goal_vdot_sanity' AS sanity,
-                authored_state->'goal_realism'     AS realism,
-                authored_state->'pace_blend'       AS blend,
-                authored_state->'derived_from'->>'bestRecentVdot' AS measured_vdot
-           FROM training_plans
-          WHERE user_uuid = $1 AND archived_iso IS NULL
-          ORDER BY authored_iso DESC LIMIT 1`,
-        [userId],
-      )).rows[0];
-      const raw = (row?.sanity ?? row?.realism) as Record<string, unknown> | null | undefined;
-      if (!raw) return null;
-      const blend = row.blend as Record<string, unknown> | null;
-
-      // The live anchor and the goal VDOT the plan already recorded. Both sit
-      // on `pace_blend`, which the re-anchor keeps current.
-      const liveAnchor = typeof blend?.season_anchor_vdot === 'number' ? blend.season_anchor_vdot : null;
-      const recordedGoalVdot = typeof blend?.goal_vdot === 'number'
-        ? blend.goal_vdot
-        : (typeof raw.goalVdot === 'number' ? raw.goalVdot : null);
-
-      // Plans authored BEFORE the provenance landed carry neither `assessable`
-      // nor a marked `pace_blend`. Rather than defaulting them to "assessable"
-      // — the assumption that produced the cold-start bug — fall back to the
-      // Rule 10 transparency envelope, which records
-      // `derived_from.bestRecentVdot` and is null exactly when nothing was
-      // measured.
-      const nothingMeasured = row.measured_vdot == null;
-      const provisional = paceBlendAnchorIsProvisional(blend) || nothingMeasured;
-      const assessable = typeof raw.assessable === 'boolean' ? raw.assessable : !provisional;
-      const basis = (raw.basis as string | undefined)
-        ?? (provisional ? 'provisional_mileage' : 'measured_vdot');
-      const band = typeof raw.band === 'number' ? raw.band : GOAL_VDOT_SANITY_BAND;
-
-      const canRecompute = assessable && !provisional && liveAnchor != null && recordedGoalVdot != null;
-      const anchorVdot = canRecompute
-        ? liveAnchor
-        : (assessable && typeof raw.anchorVdot === 'number' ? raw.anchorVdot
-          : assessable && typeof raw.estimatedCurrentVdot === 'number' ? raw.estimatedCurrentVdot
-          : null);
-      const beyondSanityBand = canRecompute
-        ? recordedGoalVdot! > liveAnchor! * band
-        : assessable && (raw.beyondSanityBand === true || raw.flag === true);
-
-      return {
-        // Named for the predicate. A `false` here means the typed goal is
-        // inside the sanity band and NOTHING more: remaining training time and
-        // uncertainty are not inputs to it.
-        beyondSanityBand,
-        assessable,
-        basis,
-        goalVdot: recordedGoalVdot,
-        anchorVdot,
-        band,
-        // Rule 9 · the continuous quantity the boolean steps on, so a consumer
-        // can grade rather than read a cliff.
-        bandExcessVdot: recordedGoalVdot != null && anchorVdot != null
-          ? Math.round((recordedGoalVdot - anchorVdot * band) * 1000) / 1000
-          : null,
-        // Rule 10 · which posture produced the answer above.
-        anchorFreshness: canRecompute ? 'recomputed' : 'frozen_at_authoring',
-      };
-    }),
   ]);
 
   const recommendation = adaptation ? recommendFromAdaptation(adaptation) : null;
@@ -230,14 +141,11 @@ export async function GET(req: NextRequest) {
         }
       : null,
 
-    // GOAL-SANITY-NAME-1 · a SCREEN on the typed goal, not a feasibility
-    // verdict. `beyondSanityBand: false` means the goal is inside a fixed 15%
-    // VDOT band around demonstrated threshold capacity; it says nothing about
-    // whether the goal is reachable, because runway and uncertainty are not
-    // inputs. `assessable: false` means the plan's fitness anchor was a mileage
-    // self-report and there is no verdict at all — never render that as "goal
-    // looks fine." For "is my goal realistic", read Goal Feasibility
-    // (`lib/race/race-outlook.ts` §7 `goalFeasibility`).
-    goalVdotSanity: goalVdotSanity ?? null,
+    // GOALSANITY-DELETE-1 (2026-09-02) · the goal-VDOT sanity screen used to be
+    // emitted here and is DELETED. It had no live consumer — nothing in this
+    // repo fetched this route — and a second, narrower answer to "is my goal
+    // realistic" sitting beside Goal Feasibility is the competing ownership the
+    // Constitution forbids. For that question read Goal Feasibility
+    // (`lib/race/race-outlook.ts` §7 `goalFeasibility`), which is §L's owner.
   });
 }

@@ -190,10 +190,16 @@ describe('GOALVOL-1 §2 · the goal never widens the load band', () => {
     }
   });
 
-  it('the headline case · an advanced marathoner cannot type their way into the elite band', () => {
+  it('the headline case · a marathoner cannot type their way into a bigger band, by goal OR by level', () => {
     const M = 26.219;
-    const sub3 = lookupLoadTierTarget({ raceDistanceMi: M, level: 'advanced', demonstratedPaceSec: null, goalPaceSec: 412 });
-    const ambitious = lookupLoadTierTarget({ raceDistanceMi: M, level: 'advanced', demonstratedPaceSec: null, goalPaceSec: 355 });
+    // TIEREVIDENCE-1 (2026-09-02) · the DEMONSTRATED pace is now supplied,
+    // because with none the answer is the bottom row for every level and the
+    // two calls below would agree for the wrong reason. 412 s/mi grades
+    // 'advanced' at the marathon (the line is 420), which is what makes this an
+    // advanced marathoner rather than a runner who says he is one.
+    const DEMO_ADVANCED = 412;
+    const sub3 = lookupLoadTierTarget({ raceDistanceMi: M, level: 'advanced', demonstratedPaceSec: DEMO_ADVANCED, goalPaceSec: 412 });
+    const ambitious = lookupLoadTierTarget({ raceDistanceMi: M, level: 'advanced', demonstratedPaceSec: DEMO_ADVANCED, goalPaceSec: 355 });
     expect(sub3.tier).toBe('advanced');
     expect(ambitious.tier).toBe('advanced');
     expect(ambitious.target.peakWeeklyMileageBand).toEqual(TIER_TARGETS.m.advanced.peakWeeklyMileageBand);
@@ -201,6 +207,16 @@ describe('GOALVOL-1 §2 · the goal never widens the load band', () => {
     // assertion above is about something rather than trivially true.
     expect(TIER_TARGETS.m.elite.peakWeeklyMileageBand[0])
       .toBeGreaterThan(TIER_TARGETS.m.advanced.peakWeeklyMileageBand[0]);
+    // TIEREVIDENCE-1's half of the same sentence: the LEVEL cannot widen the
+    // band either. Same evidence, same goal, every level — nobody exceeds the
+    // row the evidence earns.
+    for (const level of LEVELS) {
+      const t = lookupLoadTierTarget({ raceDistanceMi: M, level, demonstratedPaceSec: DEMO_ADVANCED, goalPaceSec: 355 });
+      expect(
+        t.target.peakWeeklyMileageBand[0] <= TIER_TARGETS.m.advanced.peakWeeklyMileageBand[0],
+        `level '${level}' reached a band floor above what 412 s/mi demonstrates`,
+      ).toBe(true);
+    }
   });
 });
 
@@ -320,21 +336,30 @@ describe('GOALVOL-1 §4 · Rule 9 · no cliff, and no inversion', () => {
 describe('GOALVOL-1 §5 · Rule 21 · demonstrated evidence still lifts the band', () => {
   it('a marathoner who DEMONSTRATES elite pace reaches the elite band', () => {
     const M = 26.219;
+    // TIEREVIDENCE-1 · the no-evidence answer is the BOTTOM row for every
+    // level, not the level's own row. That widens the gap this test measures
+    // rather than closing it: evidence now has to carry the whole distance.
     const noEvidence = classifyCapacityTier(M, 'advanced', null);
     const demonstratedElite = classifyCapacityTier(M, 'advanced', 330); // 5:30/mi
-    expect(noEvidence).toBe('advanced');
+    expect(noEvidence).toBe('developing');
     expect(demonstratedElite).toBe('elite');
     expect(TIER_TARGETS.m[demonstratedElite].peakWeeklyMileageBand[0])
       .toBeGreaterThan(TIER_TARGETS.m[noEvidence].peakWeeklyMileageBand[0]);
   });
 
-  it('an UNSTATED level is lifted by evidence and by nothing else (COLD-1)', () => {
+  it('a level is lifted by evidence and by nothing else (COLD-1, TIEREVIDENCE-1)', () => {
     const M = 26.219;
-    expect(classifyCapacityTier(M, null, null)).toBe('intermediate');
+    // COLD-1 asserted this for an UNSTATED level only. It now holds for every
+    // level, which is the whole of TIEREVIDENCE-1 in one loop.
+    for (const level of LEVELS) {
+      expect(classifyCapacityTier(M, level, null)).toBe('developing');
+      // A goal at elite pace does not do it either.
+      expect(resolveLoadTier({ raceDistanceMi: M, level, demonstratedPaceSec: null, goalPaceSec: 330 }).tier)
+        .toBe('developing');
+    }
+    // and demonstrated elite pace does, up to each level's own ceiling.
     expect(classifyCapacityTier(M, null, 330)).toBe('elite');
-    // A goal at the same pace does not do it.
-    expect(resolveLoadTier({ raceDistanceMi: M, level: null, demonstratedPaceSec: null, goalPaceSec: 330 }).tier)
-      .toBe('intermediate');
+    expect(classifyCapacityTier(M, 'advanced', 330)).toBe('elite');
   });
 
   it('each stated level has a ceiling evidence may not pass', () => {
@@ -343,7 +368,8 @@ describe('GOALVOL-1 §5 · Rule 21 · demonstrated evidence still lifts the band
     expect(classifyCapacityTier(M, 'beginner', 300)).toBe('intermediate');
     // intermediate is capped at advanced (INTERMEDIATE_LEVEL_TIER_CEILING).
     expect(classifyCapacityTier(M, 'intermediate', 300)).toBe('advanced');
-    // and a level's own floor holds when the evidence is slower than it.
-    expect(classifyCapacityTier(M, 'advanced', 700)).toBe('advanced');
+    // TIEREVIDENCE-1 · and the level no longer floors: evidence slower than the
+    // word wins, because the evidence is the measurement.
+    expect(classifyCapacityTier(M, 'advanced', 700)).toBe('developing');
   });
 });

@@ -135,16 +135,11 @@ describe('adaptation verdicts become readable coaching', () => {
       lateDriftBpm: [4, 5],
       easyDiscipline: { established: false, read: null },
       recoveryPctOfExpected: 1,
-      readinessBelowNormalDays: 4,
-      readinessWindowDays: 28,
       weeklyPlannedMi: [40, 42, 44],
       weeklyActualMi: [40, 42, 44],
       trainingForm: 'PRODUCTIVE',
       distinctEvidenceWeeks: 4,
       adapterDowngrades: 0,
-      niggleSeverity: 0,
-      illnessActive: false,
-      injuryActive: false,
       ...over,
     };
   }
@@ -171,18 +166,6 @@ describe('adaptation verdicts become readable coaching', () => {
     expect(r.consequence).toMatch(/adapting|lands better/i);
   });
 
-  it('a veto is simple, not clever — the voice brief s final rule', () => {
-    const r = recommendFromAdaptation(classifyAdaptation(input({ injuryActive: true })));
-    expect(r.confidence).toBe('high');
-    expect(r.consequence).toMatch(/short interruption/i);
-    expect(renderShort(r)).not.toMatch(/[!🔥]/);
-  });
-
-  it('illness is framed as recovery, never as toughness', () => {
-    const r = recommendFromAdaptation(classifyAdaptation(input({ illnessActive: true })));
-    expect(r.action).toMatch(/recovery is the work/i);
-  });
-
   it('unreadable dimensions surface as missing evidence, not as findings', () => {
     const r = recommendFromAdaptation(
       classifyAdaptation(input({ decouplingVerdicts: null, lateDriftBpm: null, rpeReported: null, rpeHarderThanExpected: null, easyDiscipline: null })),
@@ -196,8 +179,18 @@ describe('adaptation verdicts become readable coaching', () => {
       {},
       { keySessionsCompleted: 4 },
       { keySessionsCompleted: 0, targetVerdicts: ['slow', 'slow', 'slow'] as Array<'slow'> },
-      { illnessActive: true },
-      { niggleSeverity: 9 },
+      // The last two fixtures were `{ illnessActive: true }` and
+      // `{ niggleSeverity: 9 }` — the two veto bands. Vetoes are gone, so the
+      // register is checked on the worst band the model can still reach from
+      // TRAINING alone: a block with nothing landing and recovery dragging.
+      {
+        keySessionExecutions: sessions(8, 0),
+        keySessionsCompleted: 0,
+        targetVerdicts: ['slow', 'slow', 'slow'] as Array<'slow'>,
+        repConsistency: ['fading', 'fading'] as Array<'fading'>,
+        recoveryPctOfExpected: 0.4,
+        trainingForm: 'OVERREACH' as const,
+      },
     ]) {
       const line = renderShort(recommendFromAdaptation(classifyAdaptation(input(over))));
       expect(line).not.toMatch(/[!🔥💪]/);

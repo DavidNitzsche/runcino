@@ -26,7 +26,6 @@ function verdict(
     decision: band === 'marginal' ? 'STAY' : 'PROGRESS',
     stepMultiplier: band === 'strong' ? 1.25 : band === 'normal' ? 1 : band === 'marginal' ? 0 : -0.5,
     dimensions: [],
-    veto: null,
     summary: 'summary',
     ...over,
   };
@@ -123,17 +122,6 @@ describe('the first session of a block has nothing to hold', () => {
     });
     expect(d.action).toBe('TAKE');
     expect(d.why).toMatch(/not much training evidence/i);
-  });
-});
-
-describe('a veto is not a progression question', () => {
-  it('protects regardless of band', () => {
-    const d = resolveProgressionStep({
-      ...base,
-      verdict: verdict('poor', { veto: 'injury_active', decision: 'PROTECT', summary: 'injury' }),
-    });
-    expect(d.action).toBe('BACK_OFF');
-    expect(d.why).toBe('injury');
   });
 });
 

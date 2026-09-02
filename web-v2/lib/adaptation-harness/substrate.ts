@@ -26,7 +26,7 @@
  * ## What each world adds on top
  *
  * A named, minimal mutation — a missed session, a session run faster than
- * prescribed, a week of poor readiness. Every one is declared in
+ * prescribed, a week under-run against its prescription. Every one is declared in
  * `worlds.harness.test.ts` and applied through the functions below, so a reader
  * can see exactly what was synthesised and exactly what was real.
  *
@@ -295,20 +295,22 @@ export async function shiftRealBlockOntoToday(opts?: {
     // They already run right up to today — his watch has been syncing the
     // whole time — so sliding them forward and then dropping what landed in
     // the future would open a 35-day hole ending TODAY, which is precisely the
-    // window every readiness, convergence and cooldown reader depends on. And
-    // an absent readiness row does not read as "unknown" in
-    // `detectRampSignals`: `rowOrNull` returns undefined for no rows, streaks
-    // come back empty, and the gate grades the runner GREEN. The harness would
-    // then be manufacturing its own permission to add mileage out of a hole it
-    // dug — the Rule 11 collapse, committed by the test instead of the engine.
+    // window the convergence and cooldown display readers depend on.
+    //
+    // 2026-09-02 · this comment used to argue the hole in terms of
+    // `detectRampSignals` grading an absent readiness row GREEN. That gate is
+    // gone: the runner owns his readiness, and the ramp's first gate now reads
+    // ACWR off `runs`, which IS shifted with the block. The hole would still
+    // be wrong for the display readers, so the rows still stay put — but the
+    // Rule 11 argument now belongs to `_acwr_ramp_bound.test.ts`, where the
+    // refusal it describes is actually asserted.
     //
     // The consequence is stated rather than hidden: the biometric series is his
     // real recent one and the executed runs are his real ones from the
     // corresponding weeks of the block. Both are real; they are five weeks
     // apart in provenance. Nothing in the adaptation path joins a run to a
     // biometric sample by date, so this decouples nothing the engine reads
-    // together — and it is why the readiness scenarios below move the
-    // biometrics themselves rather than a derived snapshot.
+    // together.
     for (const hop of [10000 + offsetDays, -10000]) {
       await client.query(
         `UPDATE day_actions SET date_iso = to_char(date_iso::date + $2::int, 'YYYY-MM-DD')

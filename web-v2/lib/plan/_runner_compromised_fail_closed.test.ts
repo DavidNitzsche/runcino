@@ -6,28 +6,36 @@
  * THE BUG. `runnerIsCompromised`'s four call sites disagreed about what an
  * unreadable compromised-check means:
  *
- *   · lib/plan/adapt.ts:4136 (inside detectProgressionGate) — FAILED OPEN,
+ *   · lib/plan/adapt.ts (inside detectProgressionGate) — FAILED OPEN,
  *     no comment. This gate can emit ACCELERATE (resolveWeekProgression in
  *     progression-gate.ts), the one path in the whole adaptation engine that
  *     pushes a runner's week HARDER — so failing open here could propose
- *     more quality density on a runner whose injury/illness/niggle/
- *     gap-reentry status a DB blip just made unreadable.
+ *     more quality density on a runner whose training-gap state a DB blip
+ *     just made unreadable.
  *   · app/api/cron/plan-drift/route.ts:527 and :758 — already FAILED CLOSED,
  *     with an explicit "an unreadable state must propose, not prescribe"
  *     comment (these stand in front of `fireAutoRebuild`).
  *   · app/api/cron/plan-drift/route.ts:1216 (goal-gap rebuild suppression)
  *     — FAILED OPEN, no comment, and could surface a "rebuild to close the
- *     gap?" card built on the exact evidence (illness/injury) the guard's
- *     own comment says contaminates that projection.
+ *     gap?" card built on the exact evidence the guard's own comment says
+ *     contaminates that projection.
  *
  * All four now go through `runnerIsCompromisedFailClosed`, which converts
  * ANY rejection of the underlying check into `{ compromised: true, reason:
- * 'injury' }` — a placeholder reason, since the whole point of failing here
- * is that we do NOT know which of the four states applies.
+ * 'gap_reentry' }`.
+ *
+ * 2026-09-02 · the placeholder reason was `'injury'`, and the check itself
+ * read four states: injury, illness, an override niggle, and gap re-entry.
+ * Illness, injury and niggle no longer influence any training decision, so
+ * `runnerIsCompromised` now reads the training-gap detectors ONLY and
+ * `'gap_reentry'` is its single reason. The placeholder moved with it. Note
+ * what the placeholder still is NOT: it is not a claim that the runner is
+ * re-entering after a gap, it is the refusal to rule that out — which is why
+ * the header below insists it never reaches runner-facing copy.
  *
  * WHY THIS FILE INJECTS THE CHECK RATHER THAN MOCKING `runnerIsCompromised`.
- * `runnerIsCompromised` itself cannot currently be made to reject: every one
- * of its five internal detector calls already ends in its own
+ * `runnerIsCompromised` itself cannot currently be made to reject: both of
+ * its remaining internal detector calls already end in their own
  * `.catch(() => null | false)` (a SEPARATE, already-documented finding —
  * `lib/audit/coercion-registry.ts`'s `HANDED_BACK` list, PERMISSIVE, still
  * open, explicitly deferred to its own owner). And a same-module function
@@ -52,9 +60,9 @@ describe('runnerIsCompromisedFailClosed · the underlying check rejects', () => 
 
     expect(result.compromised).toBe(true);
     if (result.compromised) {
-      // The placeholder reason: it does not claim to know WHICH state
-      // applies, only that it could not rule any of them out.
-      expect(result.reason).toBe('injury');
+      // The placeholder reason: it does not claim to know the runner IS in
+      // a gap re-entry, only that it could not rule it out.
+      expect(result.reason).toBe('gap_reentry');
     }
   });
 
@@ -68,7 +76,7 @@ describe('runnerIsCompromisedFailClosed · the underlying check rejects', () => 
   it('a rejected promise (not just a thrown error) also fails closed', async () => {
     const rejecting = () => Promise.reject(new Error('ECONNRESET'));
     const result = await runnerIsCompromisedFailClosed('user-1', rejecting);
-    expect(result).toEqual({ compromised: true, reason: 'injury' });
+    expect(result).toEqual({ compromised: true, reason: 'gap_reentry' });
   });
 });
 
@@ -80,9 +88,16 @@ describe('runnerIsCompromisedFailClosed · success path unchanged', () => {
   });
 
   it('passes through a genuine compromised:true with its real reason, unchanged', async () => {
-    const injured = async () => ({ compromised: true as const, reason: 'niggle' as const });
-    const result = await runnerIsCompromisedFailClosed('user-1', injured);
-    expect(result).toEqual({ compromised: true, reason: 'niggle' });
+    // Retagged 2026-09-02 · the fake used to return `reason: 'niggle'`, one of
+    // the four reasons the check could produce. Only `gap_reentry` survives,
+    // so the pass-through is proved on that. It is a weaker fixture than it
+    // was — with one reason in the union, "passes the reason through" and
+    // "returns the placeholder" produce the same value — so the test above it
+    // is the one that carries the fail-closed property, and this one only
+    // pins that a genuine true is not rewritten into something else.
+    const gapped = async () => ({ compromised: true as const, reason: 'gap_reentry' as const });
+    const result = await runnerIsCompromisedFailClosed('user-1', gapped);
+    expect(result).toEqual({ compromised: true, reason: 'gap_reentry' });
   });
 
   // Deliberately NOT tested here: calling `runnerIsCompromisedFailClosed`

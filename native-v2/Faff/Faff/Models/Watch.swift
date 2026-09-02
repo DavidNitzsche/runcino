@@ -155,7 +155,13 @@ struct WatchWorkout: Codable {
     // payload still decodes; the phone bridge fills them from the plan +
     // readiness read.
     let readinessScore: Int?
-    let readinessLabel: String?     // "Primed" / "Hold easy" / "Back off"
+    // The band word `/api/readiness` itself resolves: "SHARP" / "READY" /
+    // "MODERATE" / "PULL BACK" / "UNKNOWN" (lib/coach/readiness.ts, carried
+    // by lib/watch/build-workout.ts as `r.label ?? r.band`). It names where
+    // the score sits and instructs nothing. This comment used to read
+    // "Primed" / "Hold easy" / "Back off", which was both a wrong record of
+    // the wire and the instruction grammar the 2026-09-02 ruling removed.
+    let readinessLabel: String?
     let distanceMi: Double?
     let paceLabel: String?          // training-zone tag, e.g. "T", "I", "E"
     // Race day (watch-app.html §F). isRace flips the faces to the race
@@ -363,12 +369,21 @@ struct WatchFueling: Codable {
 
 /// The watch's slice of the phone's readiness read. Available any day
 /// (rest/race/workout), unlike the workout payload. `score == nil` means the
-/// read is suppressed (injured / no data) → the glance renders its empty state.
+/// read is suppressed (injured / no data).
+///
+/// The phone's mirror of the watch's own struct. `WatchSync.readinessPayload`
+/// is what actually fills it; read its header for why nothing in here may
+/// instruct.
 struct WatchReadiness: Codable {
     let score: Int?                 // 0–100, or nil when suppressed
-    let state: String               // "green" | "yellow" | "red"
-    let label: String               // "Primed" / "Hold easy" / "Back off"
-    let recommendation: String      // plain-language coach line (may be "")
+    let state: String               // "green" | "yellow" | "red" · a tint, not a verdict
+    // The band word from /api/readiness: "SHARP" / "READY" / "MODERATE" /
+    // "PULL BACK" / "UNKNOWN". Not the old "Primed / Hold easy / Back off"
+    // grammar, which this comment wrongly recorded and which instructed.
+    let label: String
+    // A WIRE KEY, not a recommendation. Filled from `formLine`, the TSB
+    // caption ("Form +8 · fresh"), which is a reading.
+    let recommendation: String      // may be ""
     let hrvMs: Int?                 // 7-day avg HRV
     let rhrBpm: Int?                // resting HR
     let suppressReason: String?     // present only when score is nil

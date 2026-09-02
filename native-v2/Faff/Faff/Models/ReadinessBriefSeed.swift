@@ -52,13 +52,12 @@ struct ReadinessBriefSeed: Decodable {
     // :226/:233 via buildHealthActions); the model just wasn't decoding them.
     let actions: [HealthAction]
     let actionsThreshold: String
-    let prescription: BriefPrescription?
 
     enum CodingKeys: String, CodingKey {
         case date, score, band, label, headline, oneLineMover,
              scoreTrend, pillars, streaks, movers,
              subjectiveOverride, coldStart, trendNote, composition, watchTomorrow,
-             actions, actionsThreshold, prescription
+             actions, actionsThreshold
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -79,7 +78,6 @@ struct ReadinessBriefSeed: Decodable {
         self.watchTomorrow = (try? c.decode([String].self, forKey: .watchTomorrow)) ?? []
         self.actions = (try? c.decode([HealthAction].self, forKey: .actions)) ?? []
         self.actionsThreshold = try c.decodeIfPresent(String.self, forKey: .actionsThreshold) ?? ""
-        self.prescription = try c.decodeIfPresent(BriefPrescription.self, forKey: .prescription)
     }
 }
 
@@ -103,27 +101,14 @@ struct HealthAction: Decodable, Identifiable {
     }
 }
 
-// MARK: - Prescription (today's run guidance)
-
-struct BriefPrescription: Decodable {
-    let action: String
-    let why: String
-    let intent: String
-    let targetMinutes: Int?
-    let targetMiles: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case action, why, intent, targetMinutes, targetMiles
-    }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.action        = try c.decodeIfPresent(String.self, forKey: .action) ?? ""
-        self.why           = try c.decodeIfPresent(String.self, forKey: .why) ?? ""
-        self.intent        = try c.decodeIfPresent(String.self, forKey: .intent) ?? "plan"
-        self.targetMinutes = try c.decodeIfPresent(Int.self,    forKey: .targetMinutes)
-        self.targetMiles   = try c.decodeIfPresent(Double.self, forKey: .targetMiles)
-    }
-}
+// ── NO `prescription` HERE, BY RULING (2026-09-02) ───────────────────────────
+//
+// `/api/readiness/brief` used to carry a `prescription` object (action / why /
+// intent / targetMinutes / targetMiles) and this file decoded it into
+// `BriefPrescription` for the sheet's TODAY'S RUN section. The runner's ruling
+// removed readiness from training decisions entirely, the server no longer
+// composes the object, and a decoder for a field nobody sends is an invitation
+// to re-render it. Deleted rather than left as a nil-forever property.
 
 // MARK: - Score trend point
 
@@ -259,21 +244,22 @@ struct ReadinessMover: Decodable, Identifiable {
 
 // MARK: - Subjective override
 
+/// The two scores and the gap between them. `advice` was removed with the
+/// prescription block above (2026-09-02): it was the sentence that told the
+/// runner which score to act on, and the server no longer composes it.
 struct SubjectiveOverride: Decodable {
     let subjectiveScore: Int
     let objectiveScore: Int
     let deltaAbs: Int
-    let advice: String
 
     enum CodingKeys: String, CodingKey {
-        case subjectiveScore, objectiveScore, deltaAbs, advice
+        case subjectiveScore, objectiveScore, deltaAbs
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.subjectiveScore = try c.decodeIfPresent(Int.self, forKey: .subjectiveScore) ?? 0
         self.objectiveScore = try c.decodeIfPresent(Int.self, forKey: .objectiveScore) ?? 0
         self.deltaAbs = try c.decodeIfPresent(Int.self, forKey: .deltaAbs) ?? 0
-        self.advice = try c.decodeIfPresent(String.self, forKey: .advice) ?? ""
     }
 }
 

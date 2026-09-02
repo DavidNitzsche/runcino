@@ -161,30 +161,32 @@ const ALLOWLIST: ReadonlyArray<{
   },
 
   /* ── consumers that re-derive rather than consume · RESIDUAL ─────────── */
-  {
-    file: 'lib/plan/adapt.ts', table: 'niggles', hits: 1, posture: 'CONSUMER',
-    reason: 'Q-03/Q-08 adaptation triggers. Asks the safety question to decide '
-      + 'whether to PROPOSE a plan change (Constitution §29 row 9), which is a '
-      + 'different decision, but re-derives the signal instead of consuming '
-      + '`resolveSafety`. Not migrated on this pass: `lib/plan/**` was outside '
-      + 'the closing agent\'s file boundary. Named as a residual in '
-      + 'docs/reports rather than left silent.',
-  },
-  {
-    file: 'lib/plan/adapt.ts', table: 'sick_episodes', hits: 1, posture: 'CONSUMER',
-    reason: 'Same as the niggle row above. The SICK_EPISODE_ACTIVE trigger re-derives the illness signal to decide whether to propose a plan change. Outside this agent\'s file boundary; named as a residual.',
-  },
-  {
-    file: 'lib/plan/adapt.ts', table: 'runner_injuries', hits: 1, posture: 'CONSUMER',
-    reason: 'Same as the two rows above. The INJURY_ACTIVE trigger re-derives the injury signal to decide whether to propose a plan change. Outside this agent\'s file boundary; named as a residual.',
-  },
+  /*
+   * CLOSED 2026-09-02 (RUNNER-OWNS-READINESS) · three `lib/plan/adapt.ts` rows
+   * stood here — `niggles`, `sick_episodes` and `runner_injuries`, each one a
+   * CONSUMER that re-derived the safety signal instead of consuming
+   * `resolveSafety`, each argued as "outside the closing agent's file
+   * boundary". They are not migrated; they are GONE. The owner ruled that
+   * readiness, illness, injury and a reported niggle stop influencing training
+   * decisions, so `detectNiggleReported`, `detectSickEpisodeActive` and
+   * `detectInjuryActive` are deleted along with their triggers and their
+   * `actionsForTrigger` limbs. `lib/plan/adapt.ts` reads none of the three
+   * health tables any more, which is why these rows had to go: this allowlist
+   * is a ratchet and a row whose site is clean fails until it is deleted.
+   */
   {
     file: 'lib/plan/injury-builder.ts', table: 'runner_injuries', hits: 1, posture: 'CONSUMER',
     reason: 'The return-to-run ladder needs the injury ROW (site, severity, '
-      + 'expected return), not the verdict, and it runs only on an ACCEPTED '
-      + '`injury_adjust` proposal. Production: 184 proposals, 0 accepted, so '
-      + 'this arm has never executed. Left in place because deleting an '
-      + 'unexecuted safety-to-training arm is a product call, not a cleanup.',
+      + 'expected return), not the verdict. REWORDED 2026-09-02: this used to '
+      + 'say it "runs only on an ACCEPTED `injury_adjust` proposal", and the '
+      + 'adapter can no longer produce that proposal at all — `detectInjuryActive` '
+      + 'and its `actionsForTrigger` limb are deleted, so nothing writes an '
+      + '`injury_adjust` row and the 184 historical ones (0 accepted) are the '
+      + 'last there will be. The builder is RETAINED because it is not that '
+      + 'arm: it is the walk-run plan mode the runner CHOOSES, entered from '
+      + 'the runner\'s own selection rather than from the engine deciding he is '
+      + 'hurt, which is exactly the distinction the owner\'s ruling draws. It '
+      + 'still needs the injury row to size the ladder.',
   },
   {
     file: 'lib/plan/return-checkin-store.ts', table: 'runner_injuries', hits: 1, posture: 'CONSUMER',

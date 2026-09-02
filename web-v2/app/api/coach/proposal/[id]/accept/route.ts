@@ -4,38 +4,33 @@
  * Accept a coach_proposals DB row (NOT the inline workout-swap proposal
  * at /api/coach/proposal — different shape).
  *
- * ── 2026-09-02 · READ THIS BEFORE TRUSTING THE ROUTE ────────────────────────
+ * ── 2026-09-02 · THE ILLNESS AND INJURY HANDLERS ARE BOTH GONE ─────────────
  *
- * These rows USED TO BE written by the adaptation engine in lib/plan/adapt.ts,
- * from the illness (Q-03) and injury (Q-08) triggers. Both triggers were
- * deleted when the owner ruled that he decides how ready he is and that
- * illness and injury are out of the engine for now. So:
+ * These rows used to be written by the adaptation engine in lib/plan/adapt.ts,
+ * from the illness (Q-03) and injury (Q-08) triggers. `PLAN_SIMPLIFICATION_
+ * DOCTRINE.md` (locked 2026-09-02) puts `illness`, `injury` and `automatic
+ * return-to-training ladders` on the removal list, and is explicit that the
+ * authority goes, not just the UI: "Delete unused proposal paths, triggers,
+ * queues, and competing ownership where safe."
  *
- *   · `illness_adjust`  — HANDLER DELETED. Nothing writes the type, and the
- *     handler only ever marked the row accepted and logged an intent. There
- *     was nothing to keep.
+ *   · `illness_adjust`  — deleted. Nothing wrote the type, and the handler
+ *     only marked the row accepted and logged an intent.
  *
- *   · `injury_adjust`   — HANDLER KEPT, AND CURRENTLY UNREACHABLE. This is the
- *     door into `buildInjuryPlan` and the walk-run ladder, which the removal
- *     brief explicitly preserved as "a plan type he can choose, not an
- *     inference the app draws about him", and which is doctrine-bound in CI by
- *     `INJURY.walk-run-ladder-is-encoded-verbatim`. But its only writer was the
- *     deleted detector, so today NO CODE PATH CAN PRODUCE A ROW OF THIS TYPE,
- *     and the ladder is reachable only by inserting one by hand.
+ *   · `injury_adjust`   — deleted. This was the door into `buildInjuryPlan`,
+ *     which ARCHIVES the runner's active race-prep plan and lands a fresh
+ *     `training_plans` row in walk-run mode. A second plan builder that can
+ *     retire his marathon block is precisely the "competing ownership" the
+ *     ruling names, and with its writer already removed it was unreachable
+ *     authority sitting behind a handler that read as live.
  *
- *     That is a real gap and it is stated here rather than hidden, because a
- *     route whose header describes a working feature that cannot be reached is
- *     the exact shape CLAUDE.md Rule 20's corollary warns about. Closing it
- *     means giving the runner a way to START an injury plan himself — a
- *     feature, and one the owner said to add later ("its a feature we can add
- *     in later"). Whoever adds it should write the runner-initiated writer and
- *     delete this paragraph, not re-add a detector.
+ * Neither is a secret switch away from returning. The walk-run ladder itself
+ * survives as doctrine data in `lib/plan/injury-protocols.ts` (still bound in
+ * CI by `INJURY.walk-run-ladder-is-encoded-verbatim`), so re-adding the mode
+ * later means writing a RUNNER-INITIATED entry point — the owner's own framing
+ * was "its a feature we can add in later" — not reviving a detector.
  *
- * Handles:
- *   - injury_adjust   → calls buildInjuryPlan(userId, injuryId); archives
- *                       the active race-prep plan and lands a fresh
- *                       training_plans row with mode_label='injury-return'
- *                       (walk-run scaffold per Research/05).
+ * Both types now fall through to the 501 at the bottom of this route, which is
+ * the honest answer if a historical row is ever replayed.
  *
  * Auth: opaque session token via userIdFromRequest. The proposal row's
  * user_uuid must match the caller — no cross-user accept.
@@ -53,7 +48,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
-import { buildInjuryPlan } from '@/lib/plan/injury-builder';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -129,64 +123,6 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
   // 2. Dispatch on proposal_type.
   const payload = (proposal.payload ?? {}) as Record<string, unknown>;
   const evidence = (payload.evidence ?? {}) as Record<string, unknown>;
-
-  if (proposal.proposal_type === 'injury_adjust') {
-    const injuryId = Number(evidence.injury_id);
-    if (!Number.isFinite(injuryId) || injuryId <= 0) {
-      return NextResponse.json(
-        { ok: false, error: 'proposal payload missing evidence.injury_id', proposal_id: proposalId },
-        { status: 400 },
-      );
-    }
-
-    // buildInjuryPlan does its own archive of the previous active plan
-    // and writes plan/phase/weeks/workouts. It's idempotent enough for
-    // a synthetic retry but we mark the proposal accepted FIRST so a
-    // concurrent call short-circuits at the status check above.
-    await pool.query(
-      `UPDATE coach_proposals SET status = 'accepted', responded_at = NOW() WHERE id = $1`,
-      [proposalId],
-    );
-
-    const result = await buildInjuryPlan({ userId, injuryId });
-    if (!result.ok) {
-      // Roll the proposal status back to 'pending' so the runner can
-      // retry once the underlying cause is fixed.
-      await pool.query(
-        `UPDATE coach_proposals SET status = 'pending', responded_at = NULL WHERE id = $1`,
-        [proposalId],
-      ).catch(() => {});
-      console.error('[proposal-accept] buildInjuryPlan failed:', result.reason);
-      return NextResponse.json(
-        { ok: false, error: 'buildInjuryPlan failed', proposal_id: proposalId, reason: result.reason ?? 'unknown' },
-        { status: 500 },
-      );
-    }
-
-    // Closed loop: write a coach_intents row so the next briefing voice
-    // can acknowledge the swap into INJURY-mode once.
-    await pool.query(
-      `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
-       VALUES ($1, $1, 'injury_plan_built', $2, $3)`,
-      [userId, String(proposalId), JSON.stringify({
-        injury_id: injuryId,
-        plan_id: result.plan_id,
-        weeks_generated: result.weeks_generated,
-        proposal_id: proposalId,
-      })],
-    ).catch(() => {});
-
-    await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});
-
-    return NextResponse.json({
-      ok: true,
-      action: 'accept',
-      proposal_id: proposalId,
-      proposal_type: proposal.proposal_type,
-      plan_id: result.plan_id,
-      weeks_generated: result.weeks_generated,
-    });
-  }
 
   /* 2026-09-02 · the `illness_adjust` limb stood here. It marked the row
    * accepted and wrote an `illness_acknowledged` intent — no plan rebuild, by

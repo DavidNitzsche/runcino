@@ -274,7 +274,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'app/api/cron/plan-drift/route.ts::POST',
   'app/api/cron/plan-drift/route.ts::POST',
   'app/api/cron/plan-drift/route.ts::POST',
-  'app/api/cron/plan-drift/route.ts::POST',
   'app/api/cron/promote-courses/route.ts::POST',
   'app/api/cron/readiness-snapshot/route.ts::POST',
   'app/api/cron/readiness-snapshot/route.ts::POST',
@@ -473,11 +472,8 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/plan/adapt.ts::detectFitnessRegression',
   'lib/plan/adapt.ts::detectFitnessRegression',
   'lib/plan/adapt.ts::detectGoalChanged',
-  'lib/plan/adapt.ts::detectInjuryActive',
-  'lib/plan/adapt.ts::detectNiggleReported',
   'lib/plan/adapt.ts::detectPrBank',
   'lib/plan/adapt.ts::detectPrBank',
-  'lib/plan/adapt.ts::detectSickEpisodeActive',
   'lib/plan/adapt.ts::detectTrainingGap',
   'lib/plan/adapt.ts::detectVolumeOvershoot',
   'lib/plan/adapt.ts::detectVolumeOvershoot',
@@ -680,7 +676,30 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // The week-off AWAY read stays, and keeps its argued exemption above: a
 // travel week is a scheduling fact about the calendar, not a claim about the
 // runner's body, and the safety owner correctly has no opinion on it.
-export const EMPTIED_BASELINE = 359;
+// 2026-09-02 · RUNNER-OWNS-READINESS · -3 (359 → 356). The owner ruled that
+// readiness, illness, injury and a reported niggle stop influencing training
+// decisions, so `lib/plan/adapt.ts` no longer detects them: `detectInjuryActive`
+// (`runner_injuries`), `detectSickEpisodeActive` (`sick_episodes`) and
+// `detectNiggleReported` (`niggles`) are DELETED, along with their triggers,
+// their `actionsForTrigger` limbs, and the three `.catch(() => ({ rows: [] }))`
+// each one carried. Those three catches are what leave the ratchet here.
+//
+// This is a deletion, not a fix, and the entry says so: nothing was rerouted
+// through `lib/db/read.ts`, the reads simply have no caller any more. The
+// count is the gate's own — `_swallow_scan.test.ts` named exactly these three
+// ids as stale and named no others, which is also the answer to "which of the
+// five `lib/plan/adapt.ts::actionsForTrigger` entries belonged to a removed
+// limb": none of them. Five emptied sites remain inside that function and all
+// five are still on the list.
+//
+// 2026-09-02 · RUNNER-OWNS-READINESS · -1 more (356 → 355), and this one is a
+// second file: `app/api/cron/plan-drift/route.ts::POST` drops from 10 listed
+// sites to 9 live ones. The goal-gap rebuild path that route ran is gone with
+// the rest of the compromised-state gating, and it took a
+// `.catch(() => ({ rows: [] }))` over the plan's own `training_plans` / `races`
+// lookup with it. Counted from the scanner (9 emptied sites in that symbol),
+// not from the diff.
+export const EMPTIED_BASELINE = 355;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

@@ -117,6 +117,34 @@ export function anchorVdotFromState(
  * fails toward deferring: a pace refresh skipped for one day is recoverable,
  * a double-write over the adapter's morning move is the bug this exists to
  * prevent).
+ *
+ * ── 2026-09-02 · THIS DEFERRAL IS NOW EFFECTIVELY DORMANT, AND THAT IS THE
+ *    CORRECT OUTCOME ─────────────────────────────────────────────────────
+ *
+ * The seal (lib/plan/adaptation-authority.ts) means the 03:00 adapter no
+ * longer applies a `recompute_paces` action unattended, so it no longer
+ * writes `plan_adapt_recompute_paces` from the cron. This read will
+ * therefore answer `false` on almost every night, and the 07:30 self-heal
+ * will re-anchor as though the adapter had found nothing — which is exactly
+ * what it does today when the adapter genuinely finds nothing.
+ *
+ * Said out loud rather than left to be discovered, because a deferral whose
+ * input stopped being written is the shape Rule 11 is about. Two things make
+ * it safe here rather than a guard that silently stopped guarding:
+ *
+ *   1. The guard's failure direction is UNCHANGED. It exists to stop a
+ *      DOUBLE write, and with one writer left there is no double to stop.
+ *      Reading `false` means "nobody else moved it", which is now true.
+ *   2. The row can still appear. `applyAdaptations` writes it on the
+ *      RUNNER-INITIATED accept path, and would write it again the moment the
+ *      seam is opened. The predicate is live, not dead — so this is not
+ *      deleted, and must not be.
+ *
+ * A refused recompute deliberately writes `plan_adapt_sealed`, NOT this
+ * reason. That is the whole point: if a refusal could set this flag, the
+ * self-heal would stand down for a re-pricing that never happened and the
+ * block's paces would freeze — the same 6 bpm-style staleness, on the pace
+ * axis, with nothing saying so.
  */
 export async function adapterMovedAnchorWithin(
   q: { query: typeof pool.query },

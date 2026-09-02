@@ -29,25 +29,14 @@
  *     `scripts/check-modelled-mark.sh` fails the build on the shapes that
  *     get this wrong silently.
  *
- * 2 · One signal never changes a session. `changed` (the `changed_overnight`
- *     payload) is built ONLY from a `coach_intents` row whose persisted
- *     verdict names ≥3 converging domains (`MIN_CONVERGING_DOMAINS`,
- *     matching `CONVERGENCE.redMinDomains` in lib/coach/convergence.ts,
- *     the actual gate that decided whether the plan mutated last night).
- *     Fewer than three and the whole `changed` object is omitted — never a
- *     partial one — which is the client-side enforcement the design contract
- *     asks for repeated at the point the payload is built, not just trusted
- *     upstream.
+ * 2 · 2026-09-02 · THE `changed_overnight` SURFACE IS GONE. It rendered the
+ *     readiness convergence that downgraded a session overnight, gated on
+ *     three converging domains. Readiness no longer changes a session at all
+ *     (PLAN_SIMPLIFICATION_DOCTRINE.md), the `coach_intents` payload it read
+ *     is no longer written, and a composer reading a field that can only be
+ *     null is the Rule 11 failure where a removed input silently disables a
+ *     surface. Deleted rather than left composing nothing.
  *
- * 3 · A refusal is a correct answer, not an empty state. `notOnPhoneYet` is
- *     the refusal for coached / just-run / distance-goal-without-a-race —
- *     `state` is set and every other Today field is left at its safe empty
- *     default rather than partially populated. `injury`, `weekOff` and
- *     `offSeason` are the same idea for their own screens: a quiet panel and
- *     a stated reason, never the data-outage look.
- *
- * 4 · Coach voice. Every string this file authors is short, direct, states a
- *     fact, and never scolds. Where a sentence is already authored elsewhere
  *     (`derivePurpose`, `deriveRecap`, `convergenceCopyFromPhrases`) this
  *     file quotes it rather than re-writing it, so the voice cannot fork.
  */
@@ -167,13 +156,8 @@ export interface V5ConvergedDomain {
   baseline: string;
 }
 
-export interface V5Convergence {
-  updatedAt: string;
-  wasType: string | null;
-  coachLine: string;
-  converged: V5ConvergedDomain[];
-  movedTo: V5Row | null;
-}
+/* 2026-09-02 · `V5Convergence` / `V5ConvergedDomain` deleted with the
+ * `changed_overnight` screen. The phone's matching structs went too. */
 
 export interface V5Injury {
   area: string;
@@ -218,7 +202,7 @@ export interface V5Sick {
 }
 
 export type V5TodayStateWire =
-  | 'before_run' | 'after_run' | 'changed_overnight' | 'injury_flare' | 'sick'
+  | 'before_run' | 'after_run' | 'injury_flare' | 'sick'
   | 'week_off' | 'off_season' | 'race_day' | 'not_on_phone_yet';
 
 export interface V5Today {
@@ -370,7 +354,6 @@ export interface V5Today {
   postRun: PostRunWire | null;
   runId: string | null;
 
-  changed: V5Convergence | null;
   injury: V5Injury | null;
   sick: V5Sick | null;
   weekOff: V5WeekOff | null;
@@ -393,7 +376,6 @@ export function num(text: string | null, modelled: boolean): V5Number {
   return { text, modelled };
 }
 
-const MIN_CONVERGING_DOMAINS = 3; // CONVERGENCE.redMinDomains, lib/coach/convergence.ts
 
 // ─────────────────────────────────────────────────────────────────────────
 // Small formatting helpers
@@ -710,27 +692,6 @@ export interface V5WeekOffCtx {
   nextUp: { label: string; sub: string } | null;
 }
 
-export interface V5ConvergenceCtx {
-  /** "3:12 AM" — the coach_intents row's own ts, runner-local. */
-  updatedAt: string;
-  wasType: string | null;
-  wasSubLabel: string | null;
-  /** The persisted structured verdict (Gap B3) — AdaptationConvergenceRecord
-   *  shape, read back as plain JSON from coach_intents.value.convergence. */
-  verdict: {
-    grade: 'green' | 'amber' | 'red';
-    converging: string[];
-    domains: Array<{ domain: string; dragging: boolean; daysSustained: number; suppressedBy: string | null; counts: boolean }>;
-    rationale: string;
-  };
-  /** Per-domain reading + the runner's own rolling baseline, keyed by
-   *  domain name — only entries for domains that COUNTED need be present. */
-  readings: Record<string, { value: string; baseline: string } | undefined>;
-  /** The already-composed prose (convergenceWhy's output) — quoted verbatim
-   *  as coachLine, never re-written here (one voice, one composer, per
-   *  lib/coach/convergence.ts's own doc comment). */
-  coachLine: string;
-}
 
 export interface V5RecentRunCtx {
   runId: string;
@@ -1014,7 +975,6 @@ export interface V5TodayContext {
     /** The "Where you are" rows explaining the refusal. */
     rows: V5Row[];
   } | null;
-  convergence: V5ConvergenceCtx | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1265,70 +1225,6 @@ function buildWeekStrip(ctx: V5TodayContext): V5WeekStripDay[] {
   });
 }
 
-function buildConvergence(c: V5ConvergenceCtx): V5Convergence | null {
-  // RULE 2, enforced here — not just upstream. A payload naming fewer than
-  // three converging domains is not a convergence story and must not reach
-  // the client as one.
-  if (c.verdict.converging.length < MIN_CONVERGING_DOMAINS) return null;
-
-  // …and the sentence has to exist. The gate above only counted domains, so a
-  // `plan_adapt_downgrade` row that carried its convergence but lost its `why`
-  // produced `state: 'changed_overnight'` with three domain tiles above a
-  // blank coach line: a screen that says the session changed and names
-  // nothing. `TodayChangedV5` renders `coachLine` verbatim and has no fallback
-  // of its own, and rightly so — the client must not compose an explanation.
-  // No sentence, no story: this is an ordinary Today.
-  if (!c.coachLine.trim()) return null;
-
-  const converged: V5ConvergedDomain[] = c.verdict.converging.map((domain, i) => {
-    const reading = c.readings[domain];
-    // A domain that counted toward the convergence but whose own reading we
-    // cannot render is unreadable, not measured. `'—'` shipped as
-    // `modelled: false` claimed a hard read of a dash.
-    const text = reading?.value ?? null;
-    return {
-      id: `${domain}-${i}`,
-      domain: domainDisplayName(domain),
-      value: num(text, false),
-      // …and the same argument applies to the line UNDER it, which `?? ''`
-      // left blank.
-      //
-      // The two halves of this tile come from different moments. `converging`
-      // was persisted to `coach_intents` overnight, when the domain had a
-      // reading worth converging on. `readings` is built at REQUEST time, and
-      // every entry in the route is behind its own null guard — no
-      // `hrvBaseline` this morning, no `readings.autonomic`. So a domain that
-      // genuinely drove last night's decision can arrive here with nothing to
-      // show for itself, and it drew as a fault-red dash over empty space,
-      // directly beneath a coach line saying that domain had been dragging for
-      // three days. The screen asserted the reading mattered and that it could
-      // not be read, at once.
-      //
-      // The dash is right — `.unreadable` means exactly "we could not read
-      // this", and this morning we cannot. The blank line under it was the
-      // defect: Rule 3 says a refusal states its reason rather than leaving a
-      // labelled row standing over nothing.
-      //
-      // The tile stays rather than being dropped, deliberately. It counted
-      // toward the ≥3 gate above, and silently removing it would leave the
-      // screen showing two tiles under a sentence about three domains — the
-      // same contradiction, moved.
-      baseline: reading?.baseline ?? 'No reading this morning',
-    };
-  });
-
-  return {
-    updatedAt: c.updatedAt,
-    wasType: c.wasType,
-    coachLine: c.coachLine,
-    converged,
-    // A downgrade driven by readiness convergence always replaces the
-    // session IN PLACE (lib/plan/adapt.ts's readiness_pullback case never
-    // reschedules) — movedTo is null, per the design contract's "do not
-    // invent a destination."
-    movedTo: null,
-  };
-}
 
 function domainDisplayName(domain: string): string {
   switch (domain) {
@@ -1676,7 +1572,6 @@ const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
   whatThisDidToTheWeek: [],
   postRun: null,
   runId: null,
-  changed: null,
   injury: null,
   sick: null,
   weekOff: null,
@@ -1866,20 +1761,13 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     return t;
   }
 
-  // ── changed_overnight (17a) — RULE 2 gate lives inside buildConvergence ─
-  const changed = ctx.convergence ? buildConvergence(ctx.convergence) : null;
-
-  const t = EMPTY_TODAY(ctx.todayISO, changed ? 'changed_overnight' : (ctx.raceDay ? 'race_day' : 'before_run'));
+  const t = EMPTY_TODAY(ctx.todayISO, ctx.raceDay ? 'race_day' : 'before_run');
   t.panel = {
-    dayState: changed ? 'rest' : dayStateWordFor(ctx.todayPlan?.type),
+    dayState: dayStateWordFor(ctx.todayPlan?.type),
     quiet: false,
     place: 'Today',
     dateLine: ctx.phaseLine ?? dateLineFor(ctx.todayISO),
-    weekLine: changed
-      ? (ctx.convergence
-          ? `Updated ${ctx.convergence.updatedAt}${ctx.convergence.wasType ? ' · was ' + ctx.convergence.wasType : ''}`
-          : ctx.weekLine)
-      : ctx.weekLine,
+    weekLine: ctx.weekLine,
     kicker: ctx.weatherKicker,
     // RULE 11 · "NOTHING SET" IS NOT "REST".
     //
@@ -1954,7 +1842,6 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   t.beforeYouGo = ctx.beforeYouGo;
   t.paceNote = ctx.paceNote;
   t.blockNote = ctx.blockNote ?? null;
-  t.changed = changed;
   t.weekStrip = buildWeekStrip(ctx);
   return t;
 }

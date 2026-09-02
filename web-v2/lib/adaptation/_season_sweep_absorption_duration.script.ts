@@ -55,7 +55,7 @@ function isoShiftLocal(iso: string, days: number): string {
 }
 
 function fmtVerdict(v: AdaptationComparisonRecord['actual_load_absorption']): string {
-  return `${v.band}/${v.decision} conf=${v.confidence} step=${v.stepMultiplier} veto=${v.veto ?? '-'}`;
+  return `${v.band}/${v.decision} conf=${v.confidence} step=${v.stepMultiplier}`;
 }
 
 function fmtRecord(d: string, r: AdaptationComparisonRecord): string {
@@ -187,15 +187,15 @@ describe('season-wide absorption/duration dual-reader sweep (report tool, not a 
       keySessionsCompleted: sessions.filter((s) => s.read.state !== 'MISSED').length,
       targetVerdicts: null, repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
       decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null, recoveryPctOfExpected: null,
-      readinessBelowNormalDays: null, readinessWindowDays: null, weeklyPlannedMi: null, weeklyActualMi: null,
+      weeklyPlannedMi: null, weeklyActualMi: null,
       trainingForm: null,
       distinctEvidenceWeeks: new Set(sessions.map((s) => s.dateISO.slice(0, 7))).size || null,
-      adapterDowngrades: null, niggleSeverity: null, illnessActive: null, injuryActive: null,
+      adapterDowngrades: null,
     };
   }
 
   function permits(v: AdaptationVerdict): boolean {
-    return v.decision === 'PROGRESS' && v.veto == null;
+    return v.decision === 'PROGRESS';
   }
 
   /* MASKING-1 (2026-09-01) fidelity fix: this used to reimplement the filter
@@ -228,8 +228,8 @@ describe('season-wide absorption/duration dual-reader sweep (report tool, not a 
     const flips = pa !== pr;
     const permissiveFlip = !pa && pr;
     console.log(`\n--- ${label} ${flips ? '  <<< DURATION GATE FLIPS >>>' : '  (duration gate agrees)'}${permissiveFlip ? '  <<< PERMISSIVE FLIP >>>' : ''} ---`);
-    console.log(`  absorption:     band=${a.band} decision=${a.decision} veto=${a.veto ?? '-'} permitsDuration=${pa}`);
-    console.log(`  representative: band=${r.band} decision=${r.decision} veto=${r.veto ?? '-'} permitsDuration=${pr}`);
+    console.log(`  absorption:     band=${a.band} decision=${a.decision} permitsDuration=${pa}`);
+    console.log(`  representative: band=${r.band} decision=${r.decision} permitsDuration=${pr}`);
     if (flips) {
       console.log(`  decisiveLimiter=${pa ? 'representative_execution' : 'actual_load_absorption'}`);
     }

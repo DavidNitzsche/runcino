@@ -20,8 +20,11 @@
  *
  * It PROPOSES. Per the locked no-reactive-coach rule the engine does
  * not silently rewrite a session; `proposeFirst` is true on every
- * non-normal verdict, mirroring how readiness_pullback hands the change
- * to the runner (lib/plan/adapt.ts PROPOSE_FIRST_TRIGGERS).
+ * non-normal verdict. (This used to cite `readiness_pullback` as the
+ * pattern it mirrored. That trigger no longer exists — see
+ * lib/coach/readiness.ts's header — so the rule is stated on its own
+ * terms: DIRECTION-1, load may rise unattended and may never fall
+ * unattended, enforced in lib/plan/adapt.ts's partitionActionsForCron.)
  */
 // Imported from the shared model rather than from weather-adjust (which
 // re-exports it) so this module has no dependency on the verdict engine —
@@ -368,7 +371,7 @@ export function evaluateHeatGate(input: HeatGateInput): HeatGateVerdict {
     action: best.action,
     fires,
     // Propose-first, never apply-now · the runner gates every plan
-    // change, same contract as readiness_pullback.
+    // change. DIRECTION-1, not a contract borrowed from another trigger.
     proposeFirst: fires,
     headline: best.headline,
     citation: best.citation,

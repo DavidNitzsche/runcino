@@ -269,9 +269,9 @@ export const RULES = {
     firm: true,
     what: 'A day moved, collapsed or duplicated in the week strip. The ramp arithmetic is noon-UTC anchored for exactly this reason; this is what proves it across both DST transitions.',
   },
-  RULE2_GATE: {
+  RETIRED_SURFACE: {
     firm: true,
-    what: 'A convergence story reached the client naming fewer than three converging domains. One signal changing a session, which is the thing Rule 2 exists to stop.',
+    what: 'A surface the owner retired came back onto the wire. `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` removed readiness\'s authority over training decisions, so the overnight-convergence story (`V5Today.changed`, state `changed_overnight`) is deleted rather than defaulted off. A composer that emits either again has restored a lever doctrine took out.',
   },
   STALE_WINDOW: {
     firm: false,
@@ -290,6 +290,25 @@ export const RULES = {
 export type RuleId = keyof typeof RULES;
 export const RULE_IDS = Object.keys(RULES) as RuleId[];
 export const FIRM_RULE_IDS = RULE_IDS.filter((r) => RULES[r].firm);
+
+/**
+ * Surfaces that have been DELETED, and must stay deleted.
+ *
+ * `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` took readiness, daily form and
+ * wearable signals out of every training decision: "removed — not hidden, not
+ * defaulted off". The overnight-convergence screen was the surface that told
+ * the runner readiness had changed his session, so it went with the authority
+ * behind it — `V5Today.changed`, `V5TodayContext.convergence`, the
+ * `changed_overnight` wire state and the iOS `TodayChangedV5` view.
+ *
+ * These names are written down because a TYPE deletion only stops the surface
+ * coming back through TypeScript. A composer that spreads an untyped row onto
+ * the payload, or that widens `state` to `string`, would put either back on the
+ * wire with nothing to say so. The sweep checks every composed payload against
+ * this list, so the deletion is a gate rather than a memory (Rule 20).
+ */
+export const RETIRED_WIRE_FIELDS = ['changed'] as const;
+export const RETIRED_WIRE_STATES = ['changed_overnight'] as const;
 
 export interface Finding {
   rule: RuleId;

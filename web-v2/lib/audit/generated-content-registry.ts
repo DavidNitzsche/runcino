@@ -191,9 +191,9 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
   },
   {
     id: 'readiness_snapshots.streaks',
-    verdict: 'internal',
-    holds: 'Active streaks at snapshot time, consumed as an engine input.',
-    reason: 'Read by lib/plan/adaptive-ramp.ts to decide whether a ramp is earned. An engine input, not copy.',
+    verdict: 'exempt',
+    holds: 'Active streaks at snapshot time: [{"pillar":"sleep","direction":"below","days":14,"startDate":"2026-08-16"}]. Written nightly by lib/coach/readiness-snapshot.ts.',
+    reason: 'UNREAD SINCE 2026-09-02, and the writer is what should be reconsidered, not the missing surface — the same posture as its sibling `pillars` above. It had exactly one reader: `lib/plan/adaptive-ramp.ts` gate 1, which graded a runner GREEN or not and so decided whether his plan was allowed to grow. The owner ruled that he decides how ready he is, that gate is deleted, and what replaced it (`acwrHeadroom`) reads the acute:chronic ratio off `runs` — training, not a readiness snapshot. Nothing else selects the column: `lib/coach/health-actions.ts` takes a `streaks` argument but is handed an in-memory array built from `history`, never this column, and every other reader of this table selects `score` and `band`. So the verdict is `exempt` rather than `internal`, and it says the column is unread rather than pretending a surface is owed one. The two honest repairs are the same two the `pillars` entry names: give it a reader that is legitimately allowed to exist under the ruling, or drop the column. Both are the owner\'s call.',
   },
   {
     id: 'calibration_sessions.pillars',

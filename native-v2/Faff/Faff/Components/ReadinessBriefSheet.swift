@@ -9,14 +9,22 @@
 //    · README.md (spec)
 //
 //  Content order:
-//    1. Subjective override (when present) · loud amber-red banner
+//    1. Subjective override (when present) · loud amber-red banner,
+//       the two scores side by side and nothing else
 //    2. Hero · 92pt ring (number only) + READINESS · LABEL + headline + oneLineMover
 //    3. 2×2 signal tiles (SLEEP / RECOVERY / RESTING HR / TRAINING LOAD)
 //       tap → 7-night mini sparkline
-//    4. TODAY'S RUN · action + why from BriefPrescription (when present)
 //
 //  Cold-start variant (band='no-data'): replaces the body with the
 //  baseline-building progress ring + connect HK CTA.
+//
+//  NO PRESCRIPTION, AND NOW LITERALLY NONE (2026-09-02). This sheet used to
+//  end on a TODAY'S RUN section drawn from the brief's `prescription` object,
+//  and the subjective-override banner ended on its `advice` line. Readiness no
+//  longer changes a training decision anywhere in this app, and the server no
+//  longer composes either field, so both are gone rather than left to render
+//  an empty heading. The sheet states the reading; the runner decides what to
+//  do with it.
 //
 //  Doctrine: dark-first · text always solid white · no prescription ·
 //  state both numbers (no derived deltas) · no em dashes.
@@ -233,10 +241,6 @@ struct ReadinessBriefSheet: View {
                 heroBlock(b)
                 sectionDivider.padding(.top, 22)
                 signalsGrid(b)
-                if let rx = b.prescription, !rx.action.isEmpty {
-                    sectionDivider.padding(.top, 22)
-                    todaysRunSection(rx)
-                }
             }
         }
     }
@@ -285,11 +289,9 @@ struct ReadinessBriefSheet: View {
                 }
                 Spacer(minLength: 0)
             }
-            Text(o.advice)
-                .font(.body(13.5, weight: .regular))
-                .foregroundStyle(.white)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+            // The two numbers, side by side, and no sentence under them.
+            // `advice` used to sit here telling the runner which of the two
+            // to trust and what to do about the gap. That is his call.
         }
         .padding(18)
         .background(
@@ -365,29 +367,6 @@ struct ReadinessBriefSheet: View {
         ) {
             ForEach(tiles) { p in
                 SignalTile(pillar: p)
-            }
-        }
-        .padding(.top, 16)
-    }
-
-    // MARK: - 4. Today's run prescription
-
-    private func todaysRunSection(_ rx: BriefPrescription) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TODAY'S RUN")
-                .font(.body(10.5, weight: .bold))
-                .tracking(2)
-                .foregroundStyle(Color.white.opacity(0.48))
-            Text(rx.action)
-                .font(.body(17, weight: .bold))
-                .foregroundStyle(.white)
-                .fixedSize(horizontal: false, vertical: true)
-            if !rx.why.isEmpty {
-                Text(rx.why)
-                    .font(.body(13.5, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.72))
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.top, 16)
