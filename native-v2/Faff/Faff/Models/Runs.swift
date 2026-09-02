@@ -311,6 +311,17 @@ struct RunDetail: Decodable, Identifiable {
     /// `hr.scope == .none` is a REFUSAL, not an absence. See `RunReading`.
     let readings: RunReadings?
 
+    /// THE CANONICAL POST-RUN INTERPRETATION.
+    ///
+    /// The same object `/api/v5/today` carries under the same key, composed
+    /// once by `web-v2/lib/postrun/experience.ts` and loaded by one loader for
+    /// all three routes. This screen and the after-run sheet therefore cannot
+    /// describe the same run differently — which they did, on 2026-09-01, with
+    /// two distances and two paces under one field name.
+    ///
+    /// Nil on a server that predates the field; the section is then not drawn.
+    let postRun: PostRunV5?
+
     enum CodingKeys: String, CodingKey {
         case id, date, start_local, name, source, type, type_display
         case distance_mi, pace, pace_s_per_mi, time_moving, time_elapsed, avg_speed_mph
@@ -323,6 +334,7 @@ struct RunDetail: Decodable, Identifiable {
         case zoneTargets
         case ceiling_lift, rep_skips, recovery_extensions
         case readings
+        case postRun
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -372,6 +384,7 @@ struct RunDetail: Decodable, Identifiable {
         self.rep_skips = (try? c.decode([RunRepSkip].self, forKey: .rep_skips)) ?? []
         self.recovery_extensions = (try? c.decode([RunRecoveryExtension].self, forKey: .recovery_extensions)) ?? []
         self.readings = try? c.decodeIfPresent(RunReadings.self, forKey: .readings)
+        self.postRun = try? c.decodeIfPresent(PostRunV5.self, forKey: .postRun)
     }
 }
 

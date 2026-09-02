@@ -655,11 +655,20 @@ function auditToday(out: V5Today, ctx: V5TodayContext, cell: Cell): Finding[] {
       'shoesWorn.sub');
   }
 
-  // A week whose planned total is unknown must not imply a share of it.
+  /* THE WEEKLY PERCENTAGE MAY NOT COME BACK (2026-09-02).
+   *
+   * This used to guard the `week-total` row against implying a share of an
+   * unknown planned total. The row is deleted — the post-run brief's DELETE
+   * list, "weekly mileage percentage as the meaning of a run" — and a check
+   * whose target no longer exists is a check that has quietly stopped meaning
+   * anything (Rule 18 clause 4). So it is inverted into a ratchet: the row
+   * reappearing is itself the finding, whatever value it carries. */
   const weekRow = out.whatThisDidToTheWeek.find((r) => r.id === 'week-total');
   check();
-  if (weekRow && ctx.recentRun?.weekPlannedMi == null && weekRow.value?.text != null) {
-    add('ZERO_FOR_UNKNOWN', `week planned total is unknown and the row still printed ${weekRow.value.text}`, 'whatThisDidToTheWeek');
+  if (weekRow) {
+    add('ZERO_FOR_UNKNOWN',
+      'the weekly mileage percentage is back under "what this did"; what a run changed is `postRun`',
+      'whatThisDidToTheWeek');
   }
 
   // ── absent is not the same as unreadable ─────────────────────────────

@@ -45,7 +45,7 @@ import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
   coherentPace, coherentMovingSec, coherentElapsedSec, runCadenceSpm,
 } from '@/lib/runs/coherence';
-import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
+import { runAvgHr, runMaxHr, runIdentityMatchSql, type RunData } from '@/lib/runs/run-shape';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
 import { resolveHrZoneShares } from './hr-zone-bucket';
 import { zoneTargetsForWorkout } from '@/lib/coach/zone-target';
@@ -547,10 +547,22 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // instead of waiting on the nightly cron at 00:30 PT. Without this,
   // David's morning interval workout (synced same-day, before the cron
   // pass) rendered WEATHER as "·" all day.
+  // 2026-09-02 · `id::text = $2` ADDED. The sibling route
+  // `/api/runs/[id]/recap` has always matched the row primary key as well as
+  // the two `data` spellings, and this one did not — so the SAME id string
+  // returned a recap and a 404 for the detail beside it, and any caller
+  // holding a PK (which is what `/api/v5/today` hands the phone as `runId`)
+  // could open one and not the other. Two routes about one run disagreeing on
+  // what names that run is Rule 16 at the identity layer, and the brief's
+  // "make run-id the canonical identity" is the same ask.
+  //
+  // Verified against production 2026-09-02: 15 of this runner's 155 canonical
+  // rows carry NEITHER `data.id` NOR `data.activityId`, and were reachable
+  // only through the synthetic `YYYY-MM-DD-mi` fallback below.
   let row = (await pool.query(
     `SELECT id, data, shoe_id, weather_enriched_at FROM runs
       WHERE user_uuid = $1
-        AND (data->>'id' = $2 OR data->>'activityId' = $2)
+        AND ${runIdentityMatchSql('$2')}
       LIMIT 1`,
     [userId, activityId]
   )).rows[0];

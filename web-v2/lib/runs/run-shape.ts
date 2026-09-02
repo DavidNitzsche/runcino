@@ -545,6 +545,31 @@ export function runDateKeySql(alias = ''): string {
   return `${col(alias)}->>'date'`;
 }
 
+/**
+ * EVERY SPELLING OF "THIS RUN'S ID", as one match predicate.
+ *
+ * A run is referred to by three different identities depending on where the
+ * reference came from: the row's own bigint primary key (what `/api/v5/today`
+ * hands the phone as `runId`), `data.activityId` (Strava's), and `data.id`
+ * (the watch's `<uuid>-<date>#<hhmm>`). Four call sites matched a DIFFERENT
+ * subset of those, and on 2026-09-02 that showed up as `/api/runs/[id]`
+ * returning 404 for an id `/api/runs/[id]/recap` accepted perfectly — the same
+ * run, the same string, two answers (Rule 16 at the identity layer).
+ *
+ * The parameter is the id, as text. Callers add their own `user_uuid` and
+ * canonical-row predicates: this fragment answers "which run", never "whose"
+ * (Rule 14 stays the caller's to state).
+ *
+ * Measured against production the same day: 15 of this runner's 155 canonical
+ * rows carry NEITHER `data.id` NOR `data.activityId`, so the primary-key rung
+ * is the only one that reaches them.
+ */
+export function runIdentityMatchSql(param: string, alias = ''): string {
+  const d = col(alias);
+  const idCol = alias ? `${alias}.id` : 'id';
+  return `(${idCol}::text = ${param} OR ${d}->>'activityId' = ${param} OR ${d}->>'id' = ${param})`;
+}
+
 /** Distance in miles, as numeric. Already miles — never divide by 1609. */
 export function runDistanceMiSql(alias = ''): string {
   return `(${col(alias)}->>'distanceMi')::numeric`;

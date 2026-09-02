@@ -1417,11 +1417,34 @@ struct TodayAfterV5: View {
 
     // MARK: - What this did to the week, and the niggle row
 
+    // WHAT THIS SECTION IS NOT ANY MORE.
+    //
+    // It was "What this did", and what it held was a weekly mileage
+    // percentage — 33% of 45 mi — plus the niggle row. A completion
+    // percentage is not an answer to what a run changed, and the post-run
+    // brief's DELETE list names it: "weekly mileage percentage as the meaning
+    // of a run". The real answer now arrives typed, from the Evidence Engine,
+    // through `PostRunLearnedV5`, which run detail draws from the same object.
+    //
+    // The percentage is NOT re-homed here. The week's progress belongs to the
+    // week, it is already on Block, and this screen is about one run. Deleting
+    // it is the point rather than a side effect.
+    //
+    // What survives is the niggle row, because it is an ACTION the runner can
+    // only take here, and it keeps its own header rather than living under a
+    // heading about what the coach learned.
+    @ViewBuilder
     private var whatThisDidSection: some View {
-        ListGroup(header: "What this did") {
-            ForEach(model.whatThisDidToTheWeek) { row in
+        if let pr = model.postRun {
+            PostRunLearnedV5(model: pr)
+        }
+        // Always drawn: the picker is the only way to flag a niggle, and an
+        // action the runner cannot find is an action that does not exist.
+        ListGroup(header: "Log") {
+            // The server's own flagged-niggle row, when it carries one.
+            ForEach(model.whatThisDidToTheWeek.filter { $0.action != nil }) { row in
                 ListRow(label: row.label, sub: row.sub, value: Self.fv(row.value),
-                        onTap: row.action != nil ? { onRowAction(row) } : nil)
+                        onTap: { onRowAction(row) })
             }
             // Only when the server is not already carrying one. Its row is
             // the persisted truth (with Undo); this screen's is the picker

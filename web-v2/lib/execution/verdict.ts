@@ -289,7 +289,30 @@ export function gradeStoredPhases(
       shape === 'window'
         ? gradeWorkPhase({ targetSecPerMi: target, avgSecPerMi: avg, toleranceSec, completed })
         : shape === 'ceiling'
-          ? gradeCeilingPhase({ ceilingSecPerMi: target, avgSecPerMi: avg, completed })
+          /* CEIL-SLACK-1 (2026-09-02) · THE PHASE'S OWN SLACK, which is what the
+           * wrist uses and what this call was missing.
+           *
+           * `WorkoutEngine.swift`'s ceiling arm reads `let slack =
+           * p.tolerancePaceSPerMi ?? 30`. This read no `slackSec` at all, so
+           * `gradeCeilingPhase` fell back to `EASY_PHASE_TOLERANCE_S_PER_MI`
+           * (30) on EVERY phase — and the two only agree where the phase's own
+           * tolerance happens to be 30, which is warm-up and cool-down and
+           * nothing else. Measured against the owner's live plan, 2026-09-02:
+           *
+           *   easy 2026-09-04  target 522, tolerance 20 · wrist calls 8:15/mi
+           *                    (495) FAST at 502; this called it HIT at 492
+           *   long 2026-09-06  target 520, tolerance 18 · wrist 502, server 490
+           *
+           * Ten to twelve seconds a mile of disagreement between the grade the
+           * runner was shown on the wrist and the grade the server recomputes
+           * for the post-run screens, on every easy and every long day. Rule
+           * 16, on the one quantity the two surfaces both call a verdict.
+           *
+           * `_watch_grader_parity.test.ts` could not see it: its EXECSEM-5c
+           * arm asserts the two FALLBACKS are both 30, which is the one case
+           * where a missing `slackSec` is harmless (Rule 22 — a gate that can
+           * only fail on the default cannot fail on the data). */
+          ? gradeCeilingPhase({ ceilingSecPerMi: target, avgSecPerMi: avg, completed, slackSec: toleranceSec ?? undefined })
           : 'not_graded';
 
     return {
