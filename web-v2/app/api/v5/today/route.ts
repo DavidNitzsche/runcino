@@ -42,6 +42,7 @@ import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 import {
   SAFETY_NOT_RESOLVED,
+  safetyTitle,
   safetyVerdictLine,
   type SafetyResolution,
 } from '@/lib/safety/safety-verdict';
@@ -520,6 +521,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       area: inj.site.charAt(0).toUpperCase() + inj.site.slice(1),
       since,
       verdict: safetyVerdictLine(safety),
+      title: safetyTitle(safety),
       whatChanged: [{
         id: 'this-week', label: 'This week',
         sub: glance.weekPlanned != null

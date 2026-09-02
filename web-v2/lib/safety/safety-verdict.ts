@@ -508,19 +508,28 @@ export function safetyVerdictLine(res: SafetyResolution): string {
 }
 
 /**
- * The short title a quiet panel uses. The watch's No-session board already
- * says "Not today" for both injury and illness; that string is kept.
+ * The short title a quiet panel uses, and on the phone the 56pt word at the
+ * top of the screen.
+ *
+ * RULE 17 · A SURFACE MUST NOT CONTRADICT THE SENTENCE UNDER IT. The phone
+ * printed "Not today" over EVERY injury severity, including a minor one whose
+ * own verdict line directly under it read "Easy running only." Two sentences,
+ * one screen, opposite instructions, and the larger one was the wrong one.
+ * Verified against the live production row on 2026-09-02 (the open left-calf
+ * injury, severity `minor`): posture EASY_ONLY, `mayEmitRunnableWorkout` true,
+ * and the headline told the runner not to run.
+ *
+ * The title now follows the POSTURE. "Not today" is reserved for the states
+ * that actually emit no runnable session; MODIFY says what it means.
  */
 export function safetyTitle(res: SafetyResolution): string {
   if (!res.known) return 'Not cleared';
-  switch (res.reason) {
-    case 'injury_minor':
-    case 'injury_moderate':
-    case 'injury_major':
-    case 'illness_fever':
-    case 'illness':
+  switch (res.state) {
+    case 'STOP':
       return 'Not today';
-    case 'niggle':
+    case 'MODIFY':
+      return 'Easy only';
+    case 'CAUTION':
       return 'Carrying something';
     default:
       return '';

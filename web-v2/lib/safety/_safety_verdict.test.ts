@@ -33,7 +33,7 @@
  * The counted balance, because a gate written by whoever wrote the engine
  * inherits its instinct. Cases below by outcome:
  *
- *     NORMAL 4 · CAUTION 2 · MODIFY 2 · STOP 5 · UNKNOWN 7
+ *     NORMAL 4 · CAUTION 2 · MODIFY 3 · STOP 6 · UNKNOWN 7
  *
  * UNKNOWN is the largest bucket on purpose. It is the branch with no
  * production precedent, the one the runner ruled on, and the one where a
@@ -143,6 +143,25 @@ describe('the four known states', () => {
     expect(safetyVerdictLine(maj)).toBe(
       'Rest, not run. The left calf needs a real break. This is not a session to run through.',
     );
+  });
+
+  it('RULE 17 · the 56pt word follows the posture, not the table it came from', () => {
+    // The phone printed "Not today" over EVERY injury severity, including a
+    // MINOR one whose own verdict line under it read "Easy running only."
+    // Verified against the live production row on 2026-09-02. The headline and
+    // the sentence now have one author and cannot disagree.
+    const minor = classifySafety({ ...clear, injury: injury('minor') });
+    expect(safetyTitle(minor)).toBe('Easy only');
+    expect(mayEmitRunnableWorkout(minor)).toBe(true);
+
+    const major = classifySafety({ ...clear, injury: injury('major') });
+    expect(safetyTitle(major)).toBe('Not today');
+    expect(mayEmitRunnableWorkout(major)).toBe(false);
+
+    // "Not today" is reserved for the states that really emit no session.
+    for (const c of [minor, major, classifySafety({ ...clear, illness: illness(false) })]) {
+      expect(safetyTitle(c) === 'Not today').toBe(!mayEmitRunnableWorkout(c));
+    }
   });
 
   it('STOP · moderate and major injuries emit no runnable workout (Constitution §31)', () => {
