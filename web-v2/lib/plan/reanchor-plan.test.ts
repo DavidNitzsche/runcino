@@ -18,6 +18,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   shouldReanchor, shouldReanchorRacePrep, refreshedPaceAndSpec, REANCHOR_VDOT_DELTA,
+  anchorsMovedFromStamp,
+  REANCHOR_ANCHOR_DELTA_S_PER_MI
 } from './reanchor-plan';
 import { buildWorkoutSpec } from './spec-builder';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
@@ -165,6 +167,39 @@ describe('refreshedPaceAndSpec — prices off the anchors, and nothing else', ()
     ] as const) {
       const spec = refreshedPaceAndSpec(type, dist, ANCHORS).spec as Record<string, number>;
       expect(spec.pace_target_s_per_mi_lo).toBeGreaterThan(ANCHORS.thresholdSecPerMi);
+    }
+  });
+});
+
+describe('2026-09-02 · the plan follows EVERY belief, not just the VDOT anchor', () => {
+  const stamp = {
+    threshold_s_per_mi: 430, interval_s_per_mi: 407, repetition_s_per_mi: 371,
+    easy_ceiling_s_per_mi: 502, shakeout_ceiling_s_per_mi: 532, marathon_s_per_mi: 475,
+  };
+  const live = {
+    thresholdSecPerMi: 430, intervalSecPerMi: 407, repetitionSecPerMi: 371,
+    easyCeilingSecPerMi: 502, shakeoutCeilingSecPerMi: 532, marathonSecPerMi: 475,
+  };
+  it('nothing moved · no reprice', () => {
+    expect(anchorsMovedFromStamp(stamp, live).moved).toBe(false);
+  });
+  it('the owner\'s real 2026-09-02 case · threshold unchanged, marathon and interval moved · REPRICE', () => {
+    const r = anchorsMovedFromStamp(stamp, { ...live, marathonSecPerMi: 472, intervalSecPerMi: 401 });
+    expect(r.moved).toBe(true);
+    expect(r.deltas.map((d) => d.key).sort()).toEqual(['interval_s_per_mi', 'marathon_s_per_mi']);
+  });
+  it('a move smaller than the rounding convention is arithmetic, not a changed belief', () => {
+    expect(anchorsMovedFromStamp(stamp, { ...live, marathonSecPerMi: 474 }).moved).toBe(false);
+    expect(REANCHOR_ANCHOR_DELTA_S_PER_MI).toBe(3);
+  });
+  it('no stamp reads as "cannot tell", never as "it moved" (Rule 11)', () => {
+    expect(anchorsMovedFromStamp(null, { ...live, marathonSecPerMi: 400 }).moved).toBe(false);
+    expect(anchorsMovedFromStamp(stamp, {}).moved).toBe(false);
+  });
+  it('every canonical anchor is watched, not a chosen few', () => {
+    for (const [k, v] of [['thresholdSecPerMi', 420], ['intervalSecPerMi', 397], ['repetitionSecPerMi', 361],
+      ['easyCeilingSecPerMi', 512], ['shakeoutCeilingSecPerMi', 542], ['marathonSecPerMi', 465]] as const) {
+      expect(anchorsMovedFromStamp(stamp, { ...live, [k]: v }).moved, `${k} is not watched`).toBe(true);
     }
   });
 });

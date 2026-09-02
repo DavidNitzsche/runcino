@@ -119,6 +119,69 @@ export interface ReanchorEvidence {
 export const REANCHOR_VDOT_DELTA = SELF_HEAL_REANCHOR_DELTA;
 
 /**
+ * 2026-09-02 · THE PLAN FOLLOWS EVERY BELIEF, NOT ONE OF THEM.
+ *
+ * The repricing gate read the VDOT anchor delta and nothing else, so a block
+ * stayed on stale prices whenever a belief OTHER than threshold moved. Found
+ * in production on this date: the durability correction moved the owner's
+ * marathon anchor 475 → 472 s/mi and new interval evidence moved his interval
+ * anchor 407 → 401, his threshold VDOT did not move, and the nightly job
+ * therefore repriced nothing. Two of his marathon-pace rehearsals and five
+ * interval sessions kept prices the Runner Model no longer holds.
+ *
+ * The plan already records what it was last priced at
+ * (`authored_state.pace_recompute.anchors`, the Rule 10 stamp), so the honest
+ * trigger is "has any canonical anchor moved from the stamp", with no new
+ * data and no new read.
+ *
+ * The threshold is a CONVENTION for model stability, not a physiological
+ * finding: a prescribed pace is written to the row in whole seconds per mile,
+ * and the composer's own rounding moves a band edge by up to a second, so a
+ * one-second difference is arithmetic rather than a changed belief. Three
+ * seconds per mile is the smallest move that survives that rounding on every
+ * anchor and is still invisible inside a workout — the same order as the
+ * `MEANINGFUL_MOVE_SEC` convention the race target uses, scaled to a pace.
+ */
+export const REANCHOR_ANCHOR_DELTA_S_PER_MI = 3;
+
+/** The six canonical anchors as the Rule 10 stamp records them. */
+const STAMPED_ANCHOR_KEYS = [
+  'threshold_s_per_mi', 'interval_s_per_mi', 'repetition_s_per_mi',
+  'easy_ceiling_s_per_mi', 'shakeout_ceiling_s_per_mi', 'marathon_s_per_mi',
+] as const;
+
+/**
+ * Pure · has any canonical anchor moved from what this plan was last priced
+ * at? Null stamp (a block authored before the stamp existed) returns false —
+ * "we cannot tell" is not "it moved", and the VDOT gate still covers that
+ * runner (Rule 11).
+ */
+export function anchorsMovedFromStamp(
+  stampedAnchors: unknown,
+  live: Partial<Record<'thresholdSecPerMi' | 'intervalSecPerMi' | 'repetitionSecPerMi' | 'easyCeilingSecPerMi' | 'shakeoutCeilingSecPerMi' | 'marathonSecPerMi', number | null>>,
+): { moved: boolean; deltas: Array<{ key: string; from: number; to: number; delta: number }> } {
+  const stamp = (stampedAnchors ?? null) as Record<string, unknown> | null;
+  if (!stamp) return { moved: false, deltas: [] };
+  const liveByKey: Record<string, number | null | undefined> = {
+    threshold_s_per_mi: live.thresholdSecPerMi,
+    interval_s_per_mi: live.intervalSecPerMi,
+    repetition_s_per_mi: live.repetitionSecPerMi,
+    easy_ceiling_s_per_mi: live.easyCeilingSecPerMi,
+    shakeout_ceiling_s_per_mi: live.shakeoutCeilingSecPerMi,
+    marathon_s_per_mi: live.marathonSecPerMi,
+  };
+  const deltas: Array<{ key: string; from: number; to: number; delta: number }> = [];
+  for (const key of STAMPED_ANCHOR_KEYS) {
+    const was = stamp[key] != null ? Number(stamp[key]) : null;
+    const now = liveByKey[key] ?? null;
+    if (was == null || now == null || !Number.isFinite(was) || !Number.isFinite(now)) continue;
+    const delta = now - was;
+    if (Math.abs(delta) >= REANCHOR_ANCHOR_DELTA_S_PER_MI) deltas.push({ key, from: was, to: now, delta });
+  }
+  return { moved: deltas.length > 0, deltas };
+}
+
+/**
  * Should we re-anchor? Yes when a measured read exists AND either the plan is
  * still on a provisional / calibrating anchor (one-time upgrade), or measured
  * fitness has diverged from the plan's anchor by >= the threshold.
@@ -568,7 +631,25 @@ async function reanchorRacePrep(
   force = false,
 ): Promise<ReanchorResult | null> {
   const paceBlend = st.pace_blend ?? null;
-  if (!force && !shouldReanchorRacePrep(paceBlend, measuredVdot)) return null;
+  // The plan follows EVERY belief: reprice when the VDOT anchor moved, or
+  // when any canonical anchor has drifted from the Rule 10 stamp (see
+  // `REANCHOR_ANCHOR_DELTA_S_PER_MI`).
+  let anchorDrift: ReturnType<typeof anchorsMovedFromStamp> = { moved: false, deltas: [] };
+  if (!force && !shouldReanchorRacePrep(paceBlend, measuredVdot)) {
+    // No `.catch`: the anchor read already returns a TYPED refusal for
+    // "cannot price this runner", so a throw here is a failure the cron's
+    // per-user handler must see rather than a silent "nothing moved"
+    // (Rule 11 — the three facts).
+    const liveAnchors = await resolvePrescribedPaceAnchors(userId, today);
+    anchorDrift = liveAnchors.ok
+      ? anchorsMovedFromStamp(st.pace_recompute?.anchors ?? null, liveAnchors.anchors)
+      : { moved: false, deltas: [] };
+    if (!anchorDrift.moved) return null;
+    console.log(
+      `[reanchor] plan=${planId} · VDOT unchanged but ${anchorDrift.deltas.length} anchor(s) drifted: `
+      + anchorDrift.deltas.map((d) => `${d.key} ${d.from}→${d.to}`).join(', '),
+    );
+  }
 
   const wasProvisional = paceBlendAnchorIsProvisional(paceBlend);
   const fromVdot = paceBlend?.season_anchor_vdot != null
