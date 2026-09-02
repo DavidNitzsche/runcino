@@ -31,7 +31,24 @@ async function haveDb(): Promise<boolean> {
   try { await pool.query('SELECT 1'); return true; } catch { return false; }
 }
 
-describe('post-run experience · live payload', () => {
+/**
+ * CI FIX 2026-09-02 · this file failed `test-full` on main. Its LIVENESS test
+ * asserts a database was reached, which is exactly right when one is
+ * CONFIGURED and wrong in a container where none is — CI has no
+ * `DATABASE_URL_RO`, so the file turned a missing credential into a red build.
+ *
+ * The guard is the same one `lib/faff/_voice_live.audit.test.ts` uses and the
+ * reason it passes CI: the whole describe is skipped when the read-only role is
+ * absent. That keeps Rule 18 clause 2 intact where it means something — with
+ * `DATABASE_URL_RO` set, LIVENESS still binds and still fails loudly on a
+ * container that reads nothing — while a machine that was never given
+ * credentials reports SKIPPED rather than FAILED, which is the honest of the
+ * two. Rule 11: "not configured" and "configured and broken" are different
+ * facts.
+ */
+const RO = process.env.DATABASE_URL_RO ?? process.env.DATABASE_URL;
+
+describe.skipIf(!RO)('post-run experience · live payload', () => {
   it("composes the owner's 2026-09-01 threshold session from real rows", async () => {
     if (!await haveDb()) { console.warn('NO DATABASE — this assertion did not run'); return; }
     const out = await loadPostRunExperience(OWNER, { runId: RUN_0901 });
