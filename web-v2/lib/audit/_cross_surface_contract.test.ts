@@ -51,7 +51,7 @@
  * ══════════════════════════════════════════════════════════════════════════
  * KNOWN DISAGREEMENTS ARE A RATCHET IN BOTH DIRECTIONS
  *
- * Four live disagreements existed when this file was written and none of them
+ * Six live disagreements existed when this file was written and none of them
  * is fixable inside a test file. They are registered in `KNOWN_DISAGREEMENTS`
  * below, each with the two paths, the shape of the divergence, an argued
  * reason, the module that owns the fix, and what closing it looks like.
@@ -134,7 +134,7 @@
  * ══════════════════════════════════════════════════════════════════════════
  * RULE 18 · FALSIFIED, 2026-09-02 — every assertion broken on purpose first
  *
- * Eleven perturbations, each applied alone against live production data, each
+ * Sixteen perturbations, each applied alone against live production data, each
  * reverted before the next. The exact message each one produced is in the
  * Stage 5 report; the shape of each is here so the next person can repeat it.
  *
@@ -162,6 +162,21 @@
  *       Rule 16 separated have collapsed back into one"
  *   F11 the shakeout ceiling compared against itself → "two anchors have
  *       collapsed into one"
+ *   F12 the iPhone races-route reading replaced by the CURRENT-FITNESS
+ *       expectation — again a real number from the same payload family, not a
+ *       synthetic one → "projected finish · cim (s): 2 DIFFERENT NUMBERS
+ *       across 7 paths"
+ *   F13 the same for the race-DETAIL route reading, replaced by the targets
+ *       route's 11902 → same finding. F12 and F13 together are what make
+ *       "the shipping iPhone surfaces render 11982" a checked claim rather
+ *       than an inference from the resolver they are supposed to call.
+ *   F14 the race pace plan's target made to equal the plan's own mean →
+ *       "STALE EXEMPTION — RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL now AGREES"
+ *   F15 that entry's goal-tracking tolerance narrowed to 0.0001 s →
+ *       "THE DISAGREEMENT MOVED"
+ *   F16 the race screen made to return an empty pace plan → "the race screen
+ *       renders no pace plan — unreachable, not clean". An entry whose site
+ *       has vanished must say so, not report clean.
  *
  * F5-F8 are the four ways a registry entry can stop meaning anything, and all
  * four fail. That is the part worth checking again if this file is edited.
@@ -303,6 +318,23 @@ const KNOWN_DISAGREEMENTS: readonly KnownDisagreement[] = [
     owner: 'app/api/targets/projection/route.ts — the cleanest deletion in the audit (scorecard §26); until then, `_race_projection.test.ts`\'s hardcoded six-file scope cannot see it',
     closesWhen: 'the route is deleted, or it resolves through race-outlook like every other consumer',
   },
+  {
+    id: 'RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL',
+    quantity: "the pace to run the goal race at — the mile-by-mile plan against the prescribed target",
+    canonicalPath: 'race-outlook.execution.paceSecPerMi (rendered on the SAME screen as "Controlled start · 7:23/mi average")',
+    divergentPath: 'GET /api/v5/race/[slug] · pacePlan[] · buildRacePacing({ goalSec, … }) — the distance-weighted mean of the phases',
+    // The plan's weighted mean IS the stated goal pace. That is the whole
+    // finding: the screen prices its own execution plan off the goal the
+    // engine explicitly declined one field away.
+    shape: (executionPace, planMeanPace, ctx) =>
+      planMeanPace !== executionPace && Math.abs(planMeanPace - ctx.goalPaceSecPerMi) <= 3,
+    observed:
+      'CIM 2026-12-06, one payload: execution.pace_s_per_mi 443 (7:23) and strategy "Controlled start · 7:23/mi average", beside pacePlan phases 6:55 · 7:06 · 6:55 · 6:45 · 6:48 whose distance-weighted mean is 413 s/mi — the stated 3:00:00 goal pace (412), grade-adjusted. 30 s/mi apart, and the last phase is labelled "Lock goal pace". The reason field one level up reads "Your goal (3:00:00) is faster than the likely range\'s fast edge (3:13:28) · race to the edge; the goal stays yours."',
+    reason:
+      'Constitution §7 names goal-derived prescription as the anti-pattern, and B1 deleted `derivePaces` for exactly this shape — but the race screen\'s pacing was never part of that sweep. `route.ts:141` calls `buildRacePacing({ goalSec, distanceMi, geometry })` and never sees `outlook.execution`. Fixing it means changing what the runner is told to run on race day, which is a coaching decision and not a test-file change.',
+    owner: 'app/api/v5/race/[slug]/route.ts:139-153 — `buildRacePacing` should take `outlook.execution.targetSec`, not the stated goal',
+    closesWhen: "the pace plan's distance-weighted mean equals race-outlook.execution.paceSecPerMi",
+  },
 ];
 
 const KNOWN_IDS = new Set(KNOWN_DISAGREEMENTS.map((k) => k.id));
@@ -433,6 +465,16 @@ function paceFromWire(text: string | null | undefined): number | null {
   if (all.length === 1) return all[0];
   return Math.round((all[0] + all[1]) / 2);
 }
+/** "3:19:42" → 11982. "19:42" → 1182. Null on anything else. */
+function timeFromWire(text: string | null | undefined): number | null {
+  if (!text) return null;
+  const m = text.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
+  return m[3] != null
+    ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])
+    : Number(m[1]) * 60 + Number(m[2]);
+}
+
 /** The FAST edge of whatever the wire printed — a ceiling, or a band's lo. */
 function fastEdgeFromWire(text: string | null | undefined): number | null {
   if (!text) return null;
@@ -608,6 +650,26 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
 
     // ── Q3 · THE RACE PROJECTION ───────────────────────────────────────────
     const projection = raceProjectionFromOutlook(goalOutlook);
+    // The two SHIPPING iPhone race surfaces, called for real. Reading the
+    // resolver they are supposed to call proves the resolver; reading the
+    // route proves the screen. `_race_projection.test.ts` greps for the
+    // former. Only this reads the latter.
+    const racesRoute = await import('@/app/api/v5/races/route');
+    const racesBody: any = await (await racesRoute.GET(
+      new NextRequest('https://faff.run/api/v5/races') as never,
+    ) as Response).json();
+    const racesProjected = timeFromWire(
+      (racesBody.panel?.stats ?? []).find((x: any) => /^projected$/i.test(x.label))?.value?.text,
+    );
+    const racesTrendLast = Array.isArray(racesBody.trend) && racesBody.trend.length
+      ? Number(racesBody.trend[racesBody.trend.length - 1]) : null;
+    const raceDetailRoute = await import('@/app/api/v5/race/[slug]/route');
+    const raceDetailBody: any = await (await raceDetailRoute.GET(
+      new NextRequest(`https://faff.run/api/v5/race/${goalSlug}`) as never,
+      { params: Promise.resolve({ slug: goalSlug! }) } as never,
+    ) as Response).json();
+    const raceDetailProjected = timeFromWire(raceDetailBody.projected?.text);
+    const raceDetailOutlookSec = raceDetailBody.outlook?.expected_race_day?.sec ?? null;
     const gps = (await pool.query(
       `SELECT projected_sec FROM goal_projection_snapshots
         WHERE user_uuid = $1::uuid AND race_slug = $2
@@ -622,7 +684,11 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
       { path: 'race-outlook.expectedRaceDay.expectedSec', value: goalOutlook!.expectedRaceDay.expectedSec },
       { path: 'race-projection.raceProjectionFromOutlook().projectedSec (what v5/races and v5/race render)', value: projection.projectedSec },
       { path: 'goal_projection_snapshots.projected_sec (latest)', value: gps ? Number(gps.projected_sec) : null },
-    ], 3, ['TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION']));
+      { path: 'iPhone GET /api/v5/races · panel stat "Projected"', value: racesProjected },
+      { path: 'iPhone GET /api/v5/races · trend[] last point', value: racesTrendLast },
+      { path: `iPhone GET /api/v5/race/${goalSlug} · projected`, value: raceDetailProjected },
+      { path: `iPhone GET /api/v5/race/${goalSlug} · outlook.expected_race_day.sec`, value: raceDetailOutlookSec },
+    ], 7, ['TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION']));
     results.push(stampContract(
       `projected finish · ${goalSlug} · race_execution.expected_race_day_sec`,
       projection.projectedSec, rowExpected == null ? null : Number(rowExpected), 5,
@@ -981,6 +1047,50 @@ describe.skipIf(!RO)('cross-surface contract · registered disagreements (LIVE)'
     }
     judgeCount(entry('WATCH-CEILING-IS-THE-BAND-MIDPOINT'), seen, candidates);
   }, 600_000);
+
+  it('RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL · the race screen plans the goal, not the target', async () => {
+    process.env.DATABASE_URL = RO;
+    const { pool } = await import('@/lib/db/pool');
+    expect((await pool.query('SELECT current_user')).rows[0].current_user).toBe('faff_readonly');
+    const { runnerToday } = await import('@/lib/runtime/runner-tz');
+    const { loadActivePlanStrict } = await import('@/lib/plan/lookup');
+    const { resolveRaceOutlookBySlug } = await import('@/lib/race/race-outlook');
+    const { NextRequest } = await import('next/server');
+    const detail = await import('@/app/api/v5/race/[slug]/route');
+    const today = await runnerToday(REFERENCE_USER);
+    const plan = (await loadActivePlanStrict(REFERENCE_USER))!;
+    const slug = plan.race_id!;
+    const outlook = await resolveRaceOutlookBySlug(REFERENCE_USER, slug, today);
+    const executionPace = outlook?.execution.paceSecPerMi ?? null;
+    expect(executionPace, 'no execution pace — this entry is unreachable, not clean').not.toBeNull();
+    const body: any = await (await detail.GET(
+      new NextRequest(`https://faff.run/api/v5/race/${slug}`) as never,
+      { params: Promise.resolve({ slug }) } as never,
+    ) as Response).json();
+    const phases: Array<{ label: string; value?: { text?: string } }> = body.pacePlan ?? [];
+    expect(phases.length, 'the race screen renders no pace plan — unreachable, not clean').toBeGreaterThan(0);
+    // Distance-weighted mean of the phases the SCREEN draws, from its own
+    // "Miles A-B" labels and its own "m:ss/mi" values. Parsed off the wire
+    // rather than recomputed, because the wire is what the runner reads.
+    let miles = 0; let seconds = 0;
+    for (const p of phases) {
+      const span = p.label.match(/Miles\s+(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)/);
+      const pace = paceFromWire(p.value?.text);
+      if (!span || pace == null) continue;
+      const mi = Number(span[2]) - Number(span[1]);
+      if (!(mi > 0)) continue;
+      miles += mi; seconds += mi * pace;
+    }
+    expect(miles, 'could not read a single pace-plan phase off the wire').toBeGreaterThan(0);
+    const planMean = Math.round(seconds / miles);
+    const goalSec = outlook!.statedGoal.sec;
+    const distanceMi = outlook!.race.distanceMi;
+    expect(goalSec, 'no stated goal — this entry is unreachable, not clean').toBeTruthy();
+    const goalPaceSecPerMi = Math.round(Number(goalSec) / Number(distanceMi));
+    judge(entry('RACE-PACE-PLAN-IS-PRICED-OFF-THE-GOAL'), executionPace!, planMean, {
+      goalPaceSecPerMi, phases: phases.length, milesCovered: miles,
+    });
+  }, 300_000);
 
   it('TARGETS-ROUTE-SHOWS-A-SECOND-PROJECTION · /api/targets/projection does not resolve the owner', async () => {
     process.env.DATABASE_URL = RO;
