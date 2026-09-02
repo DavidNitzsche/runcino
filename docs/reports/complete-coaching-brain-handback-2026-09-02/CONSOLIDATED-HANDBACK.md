@@ -512,6 +512,15 @@ PENDING — in flight.
   the new day's label with no signal (`SurfaceStoreV5.swift:200`). Found because
   of the dead dev server, but it is a code fact. Not fixed: the clean fix
   contradicts your recorded preference about uncached days.
+- **The watch is 20 s/mi stricter than the phone on every easy day** and 18 on
+  every long. Section 12, finding 4. Handed to the post-run stage because the
+  expander also feeds the grader.
+- **`/api/targets/projection` returns four numbers for one race**, three of them
+  labelled projection. Section 12, finding 5. Open.
+- **Three of the five contract disagreements are stale DATA, not code**, and
+  decision 1 closes all three. Until then your 09-08 and 09-22 rows continue to
+  ask for a heart rate they mark as a fail, and three race rows continue to
+  carry an abort rule anchored to a target that no longer exists.
 
 ---
 
