@@ -343,7 +343,46 @@ correctly.
 The paces on that row are current; its SHAPE is from 2026-08-31. Section 8 is
 that gap and what it needs.
 
-## 10 · What is NOT true yet
+## 10 · Rendered on the phone, not read in the code
+
+Rule 13's standard is the screen, with real data. The deployed build was opened
+on an iPhone simulator against the live account.
+
+**What renders correctly.** Your 2026-09-01 session shows as THRESHOLD, 8.50
+miles, 1:08:23, 8:03/mi, max heart rate 172, 162 across the work, cadence 170,
+69°F. Those agree with the database row. The route line draws with its pace
+gradient and its caption reads "Amber slowest, orange fastest. Colour reads
+speed, not a grade" — the contrast fix from earlier work is holding.
+
+**Your four by one mile, piece by piece**, which the independent audit flagged
+the WATCH as mis-grading:
+
+| Segment | Distance | Pace |
+|---|---|---|
+| Warm up | 2.10 mi | 8:36 |
+| Interval 1 | 1.01 mi | 7:00 |
+| Interval 2 | 1.01 mi | 7:07 |
+| Interval 3 | 1.00 mi | 7:03 |
+| Interval 4 | 1.01 mi | 6:58 |
+| Cool down | 2.11 mi | 8:53 |
+
+Four reps inside nine seconds of each other, against a 7:10 threshold belief.
+The phone renders that honestly. It is a well-executed session and it reads as
+one.
+
+**And it makes the Stage 2 finding concrete rather than theoretical.** You
+actually RAN a 2.10-mile warm-up and a 2.11-mile cool-down around four miles of
+work. The warm-up and cool-down were longer than the session. That is not a
+number in a generator, it is a morning of your training, and it is what the
+ratio fix is for.
+
+**One thing this could not verify.** The fitness row lives under "Where you are"
+on a Today that has no completed run, so a post-run screen does not carry it. Its
+behaviour was verified at the module boundary instead, and the gate added today
+asserts the structural property that keeps it safe rather than the number.
+Saying so is more useful than claiming a screenshot I do not have.
+
+## 11 · What is NOT true yet
 
 Stated plainly, because the failure mode this project has fought is a confident
 report that does not survive contact with the runner's phone.
@@ -360,7 +399,7 @@ report that does not survive contact with the runner's phone.
   locked" means Stage 1's work landed and verified, not that no coaching
   question anywhere has two live owners.
 
-## 11 · PENDING sections
+## 12 · PENDING sections
 
 Stage 3 evidence · Stage 4 evidence · Stage 5 cross-surface contract results ·
 the eighteen-row ownership scorecard · the final rendered-on-device proof after
