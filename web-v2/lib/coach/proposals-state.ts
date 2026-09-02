@@ -17,7 +17,8 @@ import { pool } from '@/lib/db/pool';
 
 export interface PendingProposal {
   id: number;
-  proposal_type: 'injury_adjust' | 'illness_adjust' | string;
+  // 2026-09-02 · 'illness_adjust' removed; nothing writes it.
+  proposal_type: 'injury_adjust' | string;
   reason: string;
   suggested: string;
   evidence: Record<string, unknown>;

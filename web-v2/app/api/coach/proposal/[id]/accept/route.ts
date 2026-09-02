@@ -2,20 +2,40 @@
  * POST /api/coach/proposal/[id]/accept
  *
  * Accept a coach_proposals DB row (NOT the inline workout-swap proposal
- * at /api/coach/proposal — different shape). These rows are written by
- * the adaptation engine in lib/plan/adapt.ts when a trigger demands a
- * propose-only response (Q-03 illness, Q-08 injury). Until this route
- * existed, the propose-only triggers wrote rows that nothing consumed.
+ * at /api/coach/proposal — different shape).
  *
- * Handles every proposal_type that requires an action on accept:
+ * ── 2026-09-02 · READ THIS BEFORE TRUSTING THE ROUTE ────────────────────────
+ *
+ * These rows USED TO BE written by the adaptation engine in lib/plan/adapt.ts,
+ * from the illness (Q-03) and injury (Q-08) triggers. Both triggers were
+ * deleted when the owner ruled that he decides how ready he is and that
+ * illness and injury are out of the engine for now. So:
+ *
+ *   · `illness_adjust`  — HANDLER DELETED. Nothing writes the type, and the
+ *     handler only ever marked the row accepted and logged an intent. There
+ *     was nothing to keep.
+ *
+ *   · `injury_adjust`   — HANDLER KEPT, AND CURRENTLY UNREACHABLE. This is the
+ *     door into `buildInjuryPlan` and the walk-run ladder, which the removal
+ *     brief explicitly preserved as "a plan type he can choose, not an
+ *     inference the app draws about him", and which is doctrine-bound in CI by
+ *     `INJURY.walk-run-ladder-is-encoded-verbatim`. But its only writer was the
+ *     deleted detector, so today NO CODE PATH CAN PRODUCE A ROW OF THIS TYPE,
+ *     and the ladder is reachable only by inserting one by hand.
+ *
+ *     That is a real gap and it is stated here rather than hidden, because a
+ *     route whose header describes a working feature that cannot be reached is
+ *     the exact shape CLAUDE.md Rule 20's corollary warns about. Closing it
+ *     means giving the runner a way to START an injury plan himself — a
+ *     feature, and one the owner said to add later ("its a feature we can add
+ *     in later"). Whoever adds it should write the runner-initiated writer and
+ *     delete this paragraph, not re-add a detector.
+ *
+ * Handles:
  *   - injury_adjust   → calls buildInjuryPlan(userId, injuryId); archives
  *                       the active race-prep plan and lands a fresh
  *                       training_plans row with mode_label='injury-return'
  *                       (walk-run scaffold per Research/05).
- *   - illness_adjust  → no plan rebuild; just marks accepted + writes a
- *                       coach_intents row so the next briefing voice can
- *                       acknowledge. (Drop-quality is already implied; the
- *                       runner takes the recovery week themselves.)
  *
  * Auth: opaque session token via userIdFromRequest. The proposal row's
  * user_uuid must match the caller — no cross-user accept.
@@ -168,25 +188,12 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
     });
   }
 
-  if (proposal.proposal_type === 'illness_adjust') {
-    // No plan rebuild; the runner self-manages an easy week.
-    await pool.query(
-      `UPDATE coach_proposals SET status = 'accepted', responded_at = NOW() WHERE id = $1`,
-      [proposalId],
-    );
-    await pool.query(
-      `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
-       VALUES ($1, $1, 'illness_acknowledged', $2, $3)`,
-      [userId, String(proposalId), JSON.stringify({ proposal_id: proposalId, payload })],
-    ).catch(() => {});
-    await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});
-    return NextResponse.json({
-      ok: true,
-      action: 'accept',
-      proposal_id: proposalId,
-      proposal_type: proposal.proposal_type,
-    });
-  }
+  /* 2026-09-02 · the `illness_adjust` limb stood here. It marked the row
+   * accepted and wrote an `illness_acknowledged` intent — no plan rebuild, by
+   * design. Deleted with the detector that wrote the type: an accept handler
+   * for a proposal nothing can produce is dead weight, and an unknown type
+   * already falls through to the 501 below, which is the honest answer if a
+   * historical row is ever replayed. */
 
   // Unknown proposal_type — accept the row but flag it.
   await pool.query(
