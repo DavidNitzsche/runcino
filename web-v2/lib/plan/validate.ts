@@ -33,9 +33,10 @@ import { planDosingFindings, type DosingFinding } from './dosing';
 // COMBINED-STRESS-1 (2026-09-02) · brief §5.4's transaction-level check. Imported
 // from the leaf module rather than from `generate.ts`, which imports THIS file.
 import {
-  combinedStressFindings, compoundProgressionFindings,
+  combinedStressFindings, compoundProgressionCheck,
   noQualityDaysAfterRace, effectiveRecoveryPriority,
   type StressDay, type StressRace, type StressFinding,
+  type CompoundExemptionRecord,
 } from './combined-stress';
 
 // ── constraint table (doctrine caps) ─────────────────────────────────────────
@@ -308,6 +309,19 @@ export interface ValidateOptions {
    * depends on that.
    */
   onStress?: (findings: StressFinding[]) => void;
+
+  /**
+   * STRESSOR-1 (2026-09-02) · every week where two progression levers moved
+   * and a TYPED exception excused it.
+   *
+   * Separate from `onStress` on purpose, and this is his "covered by an
+   * invariant" made checkable: an exemption is not a finding — nothing is
+   * wrong with the week — but it is also not nothing, and Rule 11 says a
+   * decision that was made and a decision that never arose are different
+   * facts. A block that ships with eleven `PLANNED_CUTBACK` exemptions and one
+   * that ships with none look identical through `onStress`.
+   */
+  onCompoundExemption?: (exemptions: CompoundExemptionRecord[]) => void;
 }
 
 // ── error type ────────────────────────────────────────────────────────────────
@@ -1032,20 +1046,40 @@ export function validateComposedPlan(
         todayISO: ctx.todayISO,
       })
     : [];
-  // Advisory: the one-primary-stressor ledger. Reported through `onStress`,
-  // never fatal — see `compoundProgressionFindings` for why binding it today
-  // would refuse a rebound doctrine licenses.
-  const compound = compoundProgressionFindings({
-    weeks: weeks.map((w) => ({
-      startISO: w.startISO,
-      phase: w.phase,
-      weeklyMi: w.weeklyMi ?? 0,
-      longMi: Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)),
-      isCutback: w.isCutback,
-    })),
+  // ── 11b · ONE PRIMARY STRESSOR PER WEEK · BINDING (STRESSOR-1, 2026-09-02) ─
+  //
+  // This was ADVISORY, and the comment here said binding it "would refuse a
+  // rebound doctrine licenses". David overruled that on 2026-09-02: "Make one
+  // primary stressor per day binding by default. Exceptions must be explicitly
+  // typed, intentionally authored, and covered by an invariant. Accidental
+  // combinations must fail plan generation rather than ship as warnings."
+  //
+  // The old comment was right about the rebound and wrong about what to do
+  // with it. The rebound is now a TYPED exception (`PLANNED_CUTBACK` /
+  // `REBOUND_TO_HELD_LEVEL`) with its own `Research/00a` citation, recorded
+  // rather than silently skipped — and the test itself was corrected, because
+  // a long run that grows with the week at a HELD SHARE is one stressor, not
+  // two. See `compoundProgressionCheck`.
+  //
+  // Sealed past weeks are excluded for the same reason §11 excludes them: a
+  // week the runner has already run cannot be re-authored, and refusing a
+  // rebuild over history would make the block unrepairable.
+  const compound = compoundProgressionCheck({
+    weeks: weeks
+      .filter((w) => addDays(w.startISO, 6) >= ctx.todayISO)
+      .map((w) => ({
+        startISO: w.startISO,
+        phase: w.phase,
+        weeklyMi: w.weeklyMi ?? 0,
+        longMi: Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)),
+        isCutback: w.isCutback,
+      })),
   });
-  if (opts?.onStress) opts.onStress([...stress, ...compound]);
-  for (const f of stress) {
+  if (opts?.onStress) opts.onStress([...stress, ...compound.findings]);
+  if (opts?.onCompoundExemption && compound.exemptions.length > 0) {
+    opts.onCompoundExemption(compound.exemptions);
+  }
+  for (const f of [...stress, ...compound.findings]) {
     if (!f.enforced) continue;
     violations.push(`Week ${f.weekStartISO} (${f.code}): ${f.message}`);
   }
