@@ -1762,7 +1762,8 @@ struct WatchFinishSurfaceV5: View {
                 duration: duration,
                 averages: averages,
                 splits: splits,
-                totals: totals
+                totals: totals,
+                onDone: onDone
             )
             // Tap anywhere to leave. Summary had NO exit before this change —
             // `onDone` was a stored parameter this view never called — so
@@ -1889,7 +1890,8 @@ struct WatchRecoveryReceiptV5: View {
             duration: WFmt.clock(summary.completion.totalDurationSec),
             averages: averages,
             splits: [],
-            totals: []
+            totals: [],
+            onDone: onDone
         )
         .onTapGesture(perform: onDone)
     }

@@ -448,6 +448,16 @@ struct FacePreviewView: View {
         case "racecomplete":
             return AnyView(FinishRaceCompleteBoard(raceName: "Marathon",
                 watchTime: "3:28:44", goalComparison: "Under 3:29:59") { })
+        case "receipt":
+            // THE RECEIPT DAVID ACTUALLY SAW, 2026-09-02 — his own numbers off
+            // the saved run row, not an invented fixture: 5.98 mi / 50:57,
+            // 8:31 pace, 139 avg. A recovered run draws no splits and no
+            // climb (`WatchRecoveryReceiptV5`), which is why this board was
+            // short and why the missing exit was the whole screen.
+            return AnyView(FinishSummaryBoard(distance: "5.98", duration: "50:57",
+                averages: [FinishSummaryRow("Pace", "8:31 /mi"),
+                           FinishSummaryRow("Heart", "139 avg")],
+                splits: [], totals: [], onDone: { }))
         case "summary":
             return AnyView(FinishSummaryBoard(distance: "6.02", duration: "48:12",
                 averages: [FinishSummaryRow("Pace", "8:01 /mi"),
