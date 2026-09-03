@@ -53,16 +53,23 @@
  *
  * ── HOW IT WAS FALSIFIED (Rule 18) ──────────────────────────────────────────
  *
- * Run in a worktree against the generator at `0fb97214`, before landing:
+ * Run against the generator at `0fb97214` with this file unchanged — verbatim
+ * output, two of fourteen red:
  *
- *   A → "the week after a planned deload is pinned to the deload's own long:
- *        expected 18 to be greater than 18.2" — the composed block returned
- *        14 → 18.0 where the pre-deload long of 19 licenses 24.7, and the
- *        peak long came out 22.0 instead of 22.5.
- *   B → "expected [ 10 ] to not include 10" — the cadence handed the session
- *        to the raced week and the phase got nothing.
- *   C → `longRunWoWCeilingMi` and `isPlannedDeloadWeek` did not exist; the
- *        validator's inline bridge returned true for a raced week.
+ *   A → "week 4: long pinned at the deload's own 14 × 1.30 while the
+ *        pre-deload long of 19 licenses 24.5: expected 18 to be greater
+ *        than 18"
+ *   B → "the session was handed to a week whose long run is a race:
+ *        expected [ 10 ] to not include 10"
+ *
+ * `C` cannot be falsified behaviourally: `longRunWoWCeilingMi` and
+ * `isPlannedDeloadWeek` did not exist, so the old tree does not compile against
+ * this file at all. Stated rather than claimed as a pass.
+ *
+ * The peak-long assertion is NOT among the two, and that is worth saying: this
+ * fixture hands the composer a `spikeAnchorLongMi` of 18, so the old ladder
+ * cleared 21.5 here even though the reference runner's real anchor of 13.5 left
+ * it at 20.5. It is a REGRESSION NET, not a reproduction.
  *
  * ── WHAT THIS GATE CANNOT FAIL ON (Rule 22) ─────────────────────────────────
  *
@@ -94,6 +101,17 @@
  *     side, against a suite that is 29 files to 2 on the other.
  *   · A REGRESSION IN THE LIVE ACCOUNT. It composes from fixtures, never from
  *     the database, so it says nothing about what any real plan holds.
+ *   · WHETHER THE ANSWERS ARE TRUE. The `WEEKANSWERS-1` block below checks that
+ *     every week carries all six, that each names a number off its own week,
+ *     and that the wire carries them. It cannot check that a sentence is the
+ *     right coaching thing to say — that is a reading, and it belongs to the
+ *     owner.
+ *   · THE ONE THRESHOLD THIS CHANGE ADDS. The deload bridge is skipped below a
+ *     5 mi pre-deload long (`SPIKE_MIN_COHERENT_ANCHOR_MI`, the same floor the
+ *     spike rule already applies for the same reason). It is a discontinuity of
+ *     at most half a mile on the authoring grid, on a population whose long run
+ *     is not the block's primary stressor, and it is REPORTED rather than
+ *     hidden. Nothing here walks it.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -107,6 +125,8 @@ import {
   longRunWoWCeilingMi, isPlannedDeloadWeek, validateComposedPlan, PlanValidationError,
 } from './validate';
 import { tPaceFromGoal } from './spec-builder';
+import { deriveBlockStrategy, type WeekAnswers, type BlockAnswers } from './strategy-contracts';
+import { buildWeeks, buildBlockAnswers } from './v5-block';
 
 const RESEARCH_ROOT = path.resolve(__dirname, '../../../Research');
 const doc = (f: string) => readFileSync(path.join(RESEARCH_ROOT, f), 'utf8');
@@ -307,6 +327,94 @@ describe('LONGRUN-DEMAND · the race-specific phase carries §4.4 marathon-pace 
 
   it('a block carrying tune-ups stays legal under the validator', () => {
     expect(longRunViolations(composed, input)).toEqual([]);
+  });
+});
+
+describe('WEEKANSWERS-1 · the plan explains itself, and the explanation reaches a surface', () => {
+  const { composed } = build();
+
+  it('every week carries all six answers, and only a cutback carries the cutback one', () => {
+    const strategy = deriveBlockStrategy({
+      weeks: composed.weeks,
+      phases: composed.blocks.phases.map((p) => ({ label: p.label, weeks: p.weeks, answers: p.answers })),
+      targetEvent: { distanceMi: 26.22, category: 'm', dateISO: addDays(START_MONDAY, 15 * 7 - 1) },
+      statedGoalSec: 10800,
+      thesis: null,
+    });
+    expect(strategy, 'no strategy derived for a composed block').not.toBeNull();
+    expect(strategy!.weeks.length).toBe(composed.weeks.length);
+    for (const w of strategy!.weeks) {
+      const a = w.answers;
+      for (const k of ['whyMileage', 'whyLongRun', 'whyQuality', 'developsPrevious', 'preparesForRace'] as const) {
+        expect(a[k], `${w.weekStartISO} · ${k} is empty`).toMatch(/\S/);
+      }
+      // Rule 11 · not applicable is not the same as unknown.
+      if (w.role === 'CUTBACK' || w.role === 'RECOVERY') expect(a.whyCutback).toMatch(/\S/);
+      else expect(a.whyCutback).toBeNull();
+    }
+    for (const k of ['longRunProgression', 'marathonSpecificStart', 'marathonPaceProgression',
+      'longestRunReason', 'sustainRaceEffort'] as const) {
+      expect(strategy!.answers[k], `block answer ${k} is empty`).toMatch(/\S/);
+    }
+  });
+
+  it('the answers name real numbers from this block, not generalities', () => {
+    const strategy = deriveBlockStrategy({
+      weeks: composed.weeks,
+      phases: composed.blocks.phases.map((p) => ({ label: p.label, weeks: p.weeks, answers: p.answers })),
+      targetEvent: { distanceMi: 26.22, category: 'm', dateISO: addDays(START_MONDAY, 15 * 7 - 1) },
+      statedGoalSec: 10800,
+      thesis: null,
+    });
+    const peakLong = Math.max(...composed.weeks.map(trainingLongMi));
+    // The sentence about the longest run states the block's actual longest run.
+    expect(strategy!.answers.longestRunReason).toContain(String(peakLong).replace(/\.0$/, ''));
+    // And every week's mileage answer states that week's own mileage.
+    for (const w of strategy!.weeks) {
+      const shown = String(Math.round(w.volumeMi * 10) / 10).replace(/\.0$/, '');
+      expect(w.answers.whyMileage, `${w.weekStartISO} does not state its own mileage`).toContain(shown);
+    }
+  });
+
+  it('the wire carries them · buildWeeks and buildBlockAnswers', () => {
+    // THE SURFACE, checked rather than assumed. `block_strategy` was derived
+    // and persisted for months and reached no route, no component and no Swift
+    // file — which is the same as not existing, and is why this assertion is
+    // here rather than a note saying the payload "should" carry them.
+    const answers: WeekAnswers = {
+      whyMileage: 'a', whyLongRun: 'b', whyQuality: 'c',
+      whyCutback: null, developsPrevious: 'd', preparesForRace: 'e',
+    };
+    const blockAnswers: BlockAnswers = {
+      longRunProgression: 'p', marathonSpecificStart: 'q', marathonPaceProgression: 'r',
+      longestRunReason: 's', sustainRaceEffort: 't',
+    };
+    const state = {
+      weeks: [{
+        id: 'wk0', idx: 0, phase: 'QUALITY', startDate: '2026-08-24', plannedMi: 46,
+        isRaceWeek: false, isCutback: false, isCurrent: true,
+        days: [] as never[],
+      }],
+      // Matched by DATE. A week with no entry gets no answers key at all.
+      weekAnswers: { '2026-08-24': answers },
+      blockAnswers,
+    } as unknown as Parameters<typeof buildWeeks>[0];
+
+    const wire = buildWeeks(state) as Array<{ answers?: Array<{ label: string; text: string }> }>;
+    // Five rows, not six: `whyCutback` is null on this week, so the row is
+    // absent rather than blank.
+    expect(wire[0].answers?.map((a) => a.text)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    const cut = buildWeeks({
+      ...state,
+      weekAnswers: { '2026-08-24': { ...answers, whyCutback: 'x' } },
+    } as typeof state) as typeof wire;
+    expect(cut[0].answers?.map((a) => a.text)).toEqual(['a', 'b', 'c', 'x', 'd', 'e']);
+    expect(buildBlockAnswers(state)?.map((a) => a.text)).toEqual(['p', 'q', 'r', 's', 't']);
+
+    // No answers for this week's date → the key is ABSENT, not empty.
+    const unmatched = buildWeeks({ ...state, weekAnswers: { '2020-01-01': answers } } as typeof state);
+    expect((unmatched[0] as { answers?: unknown }).answers).toBeUndefined();
+    expect(buildBlockAnswers({ ...state, blockAnswers: null } as typeof state)).toBeNull();
   });
 });
 
