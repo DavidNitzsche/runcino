@@ -1,0 +1,82 @@
+[
+    {
+        "type": "easy",
+        "notes": "Recovery easy · conversational, no surges.",
+        "is_long": false,
+        "date_iso": "2026-08-24",
+        "sub_label": "EASY",
+        "is_quality": false,
+        "distance_mi": "4",
+        "pace_target_s_per_mi": null
+    },
+    {
+        "type": "easy",
+        "notes": "Recovery easy · conversational, no surges.",
+        "is_long": false,
+        "date_iso": "2026-08-26",
+        "sub_label": "EASY",
+        "is_quality": false,
+        "distance_mi": "7",
+        "pace_target_s_per_mi": null
+    },
+    {
+        "type": "easy",
+        "notes": "Recovery easy · conversational, no surges.",
+        "is_long": false,
+        "date_iso": "2026-08-27",
+        "sub_label": "EASY",
+        "is_quality": false,
+        "distance_mi": "7",
+        "pace_target_s_per_mi": null
+    },
+    {
+        "type": "easy",
+        "notes": "Recovery easy · conversational, no surges.",
+        "is_long": false,
+        "date_iso": "2026-08-28",
+        "sub_label": "EASY",
+        "is_quality": false,
+        "distance_mi": "7",
+        "pace_target_s_per_mi": null
+    },
+    {
+        "type": "long",
+        "notes": "Long run back · easy effort.",
+        "is_long": true,
+        "date_iso": "2026-08-30",
+        "sub_label": "LONG",
+        "is_quality": false,
+        "distance_mi": "13",
+        "pace_target_s_per_mi": "535"
+    },
+    {
+        "type": "easy",
+        "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+        "is_long": false,
+        "date_iso": "2026-08-31",
+        "sub_label": "EASY · 6×20s strides",
+        "is_quality": false,
+        "distance_mi": "4.5",
+        "pace_target_s_per_mi": null
+    },
+    {
+        "type": "threshold",
+        "notes": "Cruise intervals · Research/04 §5.3.",
+        "is_long": false,
+        "date_iso": "2026-09-01",
+        "sub_label": "4×1 mi @ T pace · 1 min jog",
+        "is_quality": true,
+        "distance_mi": "8.5",
+        "pace_target_s_per_mi": "430"
+    },
+    {
+        "type": "easy",
+        "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+        "is_long": false,
+        "date_iso": "2026-09-02",
+        "sub_label": "EASY · 6×20s strides",
+        "is_quality": false,
+        "distance_mi": "5",
+        "pace_target_s_per_mi": null
+    }
+]

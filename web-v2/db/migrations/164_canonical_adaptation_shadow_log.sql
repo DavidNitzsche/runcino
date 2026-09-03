@@ -104,13 +104,12 @@
 -- Apply with: psql $DATABASE_URL -f web-v2/db/migrations/164_canonical_adaptation_shadow_log.sql
 -- REVERSED BY: DROP TABLE IF EXISTS canonical_adaptation_shadow_log;
 --
--- NOT YET APPLIED to production as of this commit. Per CLAUDE.md's
--- deployment doctrine, DDL / data writes need David's explicit per-statement
--- go, separate from code-change approval. The persistence code in this
--- directory already degrades gracefully (a "skipped" result, not a crash)
--- when this table does not exist, so landing the code ahead of the DDL is
--- safe — the live shadow evaluation runs, computes, and reports "no
--- persistence table yet" until this migration is applied.
+-- APPLIED to production 2026-09-03, authorized statement-by-statement per
+-- David's ruling that day. Full evidence in
+-- docs/migrations/164-canonical-adaptation-shadow-log-evidence-2026-09-03.md,
+-- including the first live shadow record (3/3 persisted for the owner's own
+-- account) and confirmation that plan_workouts/training_plans row counts
+-- were unaffected by both the DDL and the trigger.
 
 CREATE TABLE IF NOT EXISTS canonical_adaptation_shadow_log (
   id                  bigserial PRIMARY KEY,

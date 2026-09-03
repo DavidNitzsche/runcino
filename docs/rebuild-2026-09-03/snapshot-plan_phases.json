@@ -1,0 +1,32 @@
+[
+    {
+        "id": "phs_91058ab8011460b5",
+        "label": "QUALITY",
+        "plan_id": "pln_9a57561debb776e5",
+        "citation": "Research/04-workout-vocabulary.md §intervals-and-threshold",
+        "rationale": "Intervals + threshold sessions to lift aerobic ceiling.",
+        "user_uuid": null,
+        "end_week_idx": 7,
+        "start_week_idx": 0
+    },
+    {
+        "id": "phs_922bfb702760cc83",
+        "label": "RACE-SPECIFIC",
+        "plan_id": "pln_9a57561debb776e5",
+        "citation": "Research/00a-distance-running-training.md §race-specific",
+        "rationale": "Pace + long-run integration at race-specific demands.",
+        "user_uuid": null,
+        "end_week_idx": 11,
+        "start_week_idx": 8
+    },
+    {
+        "id": "phs_ffdd99239ef3c034",
+        "label": "TAPER",
+        "plan_id": "pln_9a57561debb776e5",
+        "citation": "Research/08-pacing-and-race-week.md §taper",
+        "rationale": "Volume drops sharply, intensity preserved. Sharpen, then race.",
+        "user_uuid": null,
+        "end_week_idx": 14,
+        "start_week_idx": 12
+    }
+]

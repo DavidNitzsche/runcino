@@ -19,6 +19,13 @@ final class WatchSync: NSObject, ObservableObject {
     @Published private(set) var lastSyncStatus: String?
     @Published private(set) var isPaired = false
     @Published private(set) var isWatchAppInstalled = false
+    /// Mirrors `WCSession.isReachable` as an observable value. Added for the
+    /// pre-run lobby (`RunLobbyV5`), which needs to show live watch
+    /// reachability without polling `WCSession.default` directly. Updated
+    /// wherever the delegate already reads reachability for its own logic —
+    /// this never changes what those call sites decide, it only publishes
+    /// the same fact somewhere a SwiftUI view can observe it.
+    @Published private(set) var isReachable = false
     /// True once the watch replies "ok" to a `startTreadmillHR` message.
     /// P-6: prior code returned `true` on reachability alone; this is the
     /// real ack flag for TreadmillView's "live HR" affordance.
@@ -137,8 +144,12 @@ final class WatchSync: NSObject, ObservableObject {
     /// foreground and reachability paths share one window).
     private var lastRefreshAt: Date = .distantPast
 
-    func refresh() async {
-        guard Date().timeIntervalSince(lastRefreshAt) > 60 else { return }
+    /// `force` bypasses the 60s throttle for an explicit runner-initiated
+    /// retry (the pre-run lobby's "Retry" button) — the throttle exists to
+    /// stop background triggers hammering the endpoint, not to make a
+    /// runner's own tap into a silent no-op.
+    func refresh(force: Bool = false) async {
+        guard force || Date().timeIntervalSince(lastRefreshAt) > 60 else { return }
         lastRefreshAt = Date()
         await pushTodayToWatch()
         flushPendingContextIfPossible()
@@ -636,6 +647,7 @@ final class WatchSync: NSObject, ObservableObject {
         let s = WCSession.default
         isPaired = s.isPaired
         isWatchAppInstalled = s.isWatchAppInstalled
+        isReachable = s.isReachable
     }
 }
 
@@ -672,7 +684,9 @@ extension WatchSync: WCSessionDelegate {
     /// foreground path (inside refresh()), so reachability flaps can't
     /// hammer /api/watch/today. (RK-4)
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
-        guard session.isReachable else { return }
+        let reachable = session.isReachable
+        Task { @MainActor in self.isReachable = reachable }
+        guard reachable else { return }
         Task { @MainActor in
             await self.refresh()
             // 2026-08-28 · the watch coming into reach is exactly the moment

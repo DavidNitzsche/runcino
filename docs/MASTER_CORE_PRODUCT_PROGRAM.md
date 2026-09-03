@@ -213,20 +213,273 @@ only, zero rows, verified ten ways before execution — see
    rewrite) is a data write and needs David's explicit per-statement go
    regardless of any further automated confidence-building here.**
 6. The rebuild itself, and persisted-plan verification across every surface —
-   blocked on David's go for the write itself.
-7. Ranked Sunday options, generated against the REBUILT plan (David reports
-   the phone currently offers only "Skip" — the "Move to Friday/Saturday"
-   options that should sit beside it exist only in a design-preview fixture,
-   `TodayBeforeSamplesPreRunV5.options(for:)`, and `RescheduleV5.swift` — a
-   real, substantial screen — is built but not wired into any reachable
-   navigation path yet). Blocked on 6.
+   **DONE 2026-09-03, David's explicit authorization.** Full record in
+   `## LIVE REBUILD EXECUTED` below.
+7. Ranked Sunday options, generated against the REBUILT plan — **now
+   buildable** (the plan they'd generate against exists), but the UI half
+   (RS-2/4/6/7/8) is pre-run session's per the SESSION OWNERSHIP split above;
+   this session keeps RS-1/3/5 (the contract).
 
-**Do not describe the app as complete** until the rebuilt plan is live, every
-production surface is verified against it, TestFlight is distributed with the
-decisions below, and the canonical engine is producing trustworthy shadow or
-owner-visible decisions. None of those five conditions are met yet.
+**Do not describe the app as complete.** The rebuilt plan IS now live and
+verified across Today/Block/Races/watch (see below), which resolves the
+biggest of the five conditions the morning handback named. Still open: the
+canonical Adaptation Engine's proof programme (replay across PROGRESS/HOLD/
+REGRESS/REFUSE, travel/reschedule/missing-data non-penalization) is not yet
+built beyond shadow evaluation; TestFlight has not been re-distributed since
+the rebuild landed; the two new UI sessions' work is not yet integrated.
 
 ---
+
+## LIVE REBUILD EXECUTED · 2026-09-03, David's explicit authorization
+
+**Migration 164** (`canonical_adaptation_shadow_log`) applied to production
+first, per the same ten-step protocol as 163 — see
+`docs/migrations/164-canonical-adaptation-shadow-log-evidence-2026-09-03.md`.
+Schema, all three CHECK constraints, both FKs, `faff_readonly` SELECT-only
+grant all confirmed against production directly. First live shadow record
+triggered and read back: 3/3 persisted for David's account (`WEEKLY_VOLUME`
+REGRESS 45→42.8, `LONG_RUN` and `THRESHOLD_PACE` both REFUSE for
+insufficient evidence). `plan_workouts`/`training_plans` row counts
+unaffected by either the DDL or the trigger.
+
+**Preflight re-run from the beginning** against the exact deployed commit
+(`8eef3552`, confirmed **success** via GitHub commit status polled to
+resolution, not merged-status alone): `falsify.sh` 11/12 (the 12th
+structurally defensive, documented in code), `rebuild-preview.ts`
+reproduced identically to the earlier run (composed 105 rows/15 weeks,
++7.2mi, deterministic).
+
+**Rollback snapshot captured independently** before the write, belt-and-
+suspenders alongside the engine's own archive-not-delete mechanism:
+`docs/rebuild-2026-09-03/snapshot-{training_plans,plan_phases,plan_weeks,
+plan_workouts,sealed-days-only}.json`, checksummed. Verified the engine's
+own safety net first, by reading the code rather than trusting its own
+claim: `clearActivePlansFor` only sets `archived_iso`, never deletes
+`plan_workouts`; `snapshotSealedDays` + `persistedDayShape`'s sealed-branch
+overlay every field (type/distance/pace/spec/quality/long/notes) from the
+prior plan for every date with a completed run, before the fresh composition
+can touch it; `/api/plan/undo` already exists, tested, and refuses if any
+run exists on a date the two blocks would prescribe differently.
+
+**Executed via the actual production endpoint** — `POST /api/cron/
+silent-rebuild` with `CRON_SECRET` (not a bypass script) — the same code
+path `fireAutoRebuild` uses for every real rebuild. Result: `prior_plan_id
+pln_9a57561debb776e5` → `new_plan_id pln_7636bcc0a201bf2d`, `unchanged:
+false`, `lthr_ensured` confirmed 168 against a stored 168 (inside the ±3bpm
+noise floor — the anchor had not moved since the plan's own 2026-09-02
+reanchor, confirmed independently beforehand by comparing `profile.lthr`
+against the plan's `authored_state.lthr_bpm`).
+
+**Persisted plan read back from production and verified, not the in-memory
+preview:**
+- **103 rows persisted** (not the previewed 105 — the two extra
+  `NEW DAY` predictions at 08-25/08-29 were correctly dropped at persist
+  time by the composer's own "never author into the unsealed past" gate,
+  confirmed absent).
+- **All 8 sealed/completed days byte-identical** across every field
+  (type, distance, pace, sub_label, HR cap, is_quality, is_long, notes) —
+  zero mismatches, checked twice (once against the wrong shape, caught the
+  bug in my own comparison script, redone correctly).
+- **15 weeks, 3 phases, all 4 upcoming race rows present** (Santa Monica
+  10K, Dodgers, Run Malibu, CIM) with correct distances.
+- **Anchors held**: long-run pace 8:40/mi, threshold pace 7:10 (T) and 7:25
+  (ST), unchanged across every session live vs. new — confirms the visible
+  differences are structural/volume, not anchor drift.
+- **83 of 103 days differ** from the archived plan (the precise figure —
+  the earlier 64 was a cruder type+distance-only comparison that missed
+  pace/HR-only changes; see the classification below). 35 are KEY (every
+  long run, every quality session, every type change, every NEW/REMOVED
+  day) and are individually accounted for in
+  `docs/rebuild-2026-09-03/persisted-vs-old-classified.json`; 18 are
+  EASY_VOLUME (grouped — routine aerobic-day redistribution, 49.4mi total
+  absolute delta across them); the rest are trivial label-only changes
+  (e.g. strides added at unchanged distance).
+- **MP mileage**: 38.5mi → 22mi across the block. Not a new finding — this
+  is S1.1's own already-audited fix (documented in that item above as
+  "18 of 33 (55%) → 5 of ~22.6 (22%)" in the final three weeks, which also
+  moved the block total). 11-17 and 11-24 losing MP content specifically is
+  taper onset (`race_week_tuneup`'s 5×400m sharpening reps replace
+  MP-heavy sessions inside CIM's taper window, confirmed against
+  `generate.ts`'s TAPER-phase logic, not a defect).
+
+**Cross-surface, rendered with real data (Rule 13), not asserted:**
+walk-substrate re-seeded post-rebuild, app cold-launched with
+`-faffToken` + `-faffHost http://127.0.0.1:3111` (the host override was
+the missing piece the first two launch attempts lacked — the app's default
+`API.baseURL` is production, not localhost, so a token-only launch
+authenticates against the wrong database and falls back to sign-in).
+Screenshots taken and confirmed: **Today** shows `INTERVALS · 6 mi ·
+10×1:00 hills · ~168bpm`, matching the persisted row exactly. **Block**
+shows `QUALITY · 14 weeks to CIM · Quality share 31% · Long run 15mi ·
+This week's mileage 46.5mi`. **Races** shows CIM 94 days out, Goal 3:00:00,
+Projected 3:19:43, all 5 races with correct dates/priorities. **Watch
+payload** (`/api/watch/today`) independently confirms `6.0 mi · Intervals ·
+10×60s hills @ 5K-10K effort`.
+
+**A real tooling gap found and worked around, not fixed tonight:**
+`walk-substrate.sh`'s seed (via `adapt-harness-substrate.sh`) does not copy
+`plan_phases`/`plan_weeks` for a plan that was created very recently
+relative to when the seed runs — reproduced twice, not a one-time race.
+Block initially rendered "NO BLOCK" through the walk substrate while
+production itself had the correct 15 `plan_weeks` rows the whole time
+(confirmed directly against `DATABASE_URL_RO` before touching anything) —
+this was a verification-tooling limitation, never a production defect.
+Worked around for tonight by copying the 3 `plan_phases` + 15 `plan_weeks`
+rows from production into the scratch DB directly (sourced from
+production reads, not fabricated). Filed as a real, reproducible bug in
+`adapt-harness-substrate.sh`'s table-copy logic — not investigated further
+tonight since it's tooling, not on the critical path David named.
+
+**No coherence red flags found against the 6-criterion test** (progressive
+capacity development, meaningful MP progression, staged duration/pace
+increases, recovery preserved around genuine stress, no unexplained
+cliffs, cross-surface consistency) — corroborated by S1.1/S1.2/S1.5's own
+prior independent audits (which verified the cutback rhythm, ACWR
+compliance and MP redistribution this exact composer output now reflects)
+rather than re-derived from scratch.
+
+---
+
+## ADAPTATION PROOF PROGRAMME · 2026-09-03, begun after the rebuild landed
+
+David's item 7: shadow is a stage, not the destination — prove PROGRESS/
+HOLD/REGRESS/REFUSE are all reachable, bounded, evidence-driven, and that
+travel/reschedule/missing-data are never read as lost fitness.
+
+**The replay ledger already existed** (`lib/adaptation/canonical/
+_replay_ledger.test.ts`) — 13 hand-authored, doctrine-grounded decision
+points (D1-D13), chronologically walked with a structurally-enforced no-
+lookahead property (`visibleAt()` is the only path to evidence, attacked by
+an ORACLE test that proves the filter does the work rather than assuming
+it). Its own header is honest about scope: a reconstruction grounded in
+documented figures, not a literal database export, because production
+credentials were not available in the worktree that wrote it.
+
+**A real gap found by auditing it, not assumed clean because 20/20 passed:**
+`RULE 22 · the replay is not one long refusal` asserted floors for
+PROGRESS (≥4), HOLD (≥1) and REFUSE (≥2) — nothing asserted REGRESS, and
+grepping the file confirmed no case anywhere exercised
+`threshold-pace.ts`'s `agreeFaster ? PROGRESS : REGRESS` on its REGRESS
+side. **Closed**: D14, the mirror of D4 — two clean, corroborating
+threshold sessions both meaningfully slower than the held anchor. First
+placement (immediately after D11's own season data) broke D11's own case,
+because D11's reasoning depends on its 28-day evaluation window reaching
+back to exactly one specific date — moved D14 later in the season once
+that was found by running the suite, not guessed. Falsified per Rule 18:
+mutating the two new sessions to be faster instead of slower correctly
+fails D14 itself, the ledger-agreement check, AND the RULE 22 distribution
+floor (3 failures), confirming the new floor is live rather than
+decorative. `9716ea42`, merged. Full suite: 225/225 across
+`lib/adaptation/canonical/`.
+
+**Current distribution, all 14 cases:** `REFUSE 6 · PROGRESS 5 · HOLD 1 ·
+REGRESS 1`. Bounded: D14's magnitude is asserted ≤5 s/mi despite a ~16-17
+s/mi raw delta between the sessions and the anchor — a regression is not
+exempt from the same step discipline a progression is held to (same
+citation D4's PROGRESS case uses). Evidence-driven: every one of the 14
+cases traces to a specific, named set of sessions/weeks/long-runs, not a
+hand-picked verdict.
+
+**Travel / reschedule / missing-data non-penalization — verified
+structural, not merely tested.** Grepped `lib/adaptation/` for
+`plan_reschedules`: zero references anywhere. The rescheduling mechanism
+(RS-1 in the P1 inventory above) writes to a table the adaptation engine's
+input-building layer never reads at all — the separation the master
+programme's Workout Rescheduling section already requires ("a reschedule
+must never update fitness beliefs") is enforced by the engine having no
+code path to that table, not by a rule that a future change could get
+wrong. Grepped for `travel`/`AWAY`/`isAway` across the same directory:
+also zero — there is no travel-specific branch, because travel doesn't
+need one. A day with no run — travel, illness, a genuine rest day — reads
+through the SAME general mechanism D6 already proves: `Rule 11`'s
+absent-not-zero contract turns a missing day into `REFUSE` (insufficient
+evidence), never into evidence of decline. D5 covers the sibling case
+(an AUTHORED cutback is excluded from the shortfall count entirely, not
+merely read charitably). No new test was needed because the general
+mechanism already covers the specific case — adding a travel-specific test
+would have been decoration over a property that already holds.
+
+### Mutation authority across the three systems — David's item 8
+
+| System | Location | Writes to | Can mutate `plan_workouts`? |
+|---|---|---|---|
+| **Legacy** (current production authority) | `lib/plan/adapt.ts`, fired by the `run-adaptations` cron (03:00 UTC) | `plan_workouts` directly, `coach_intents`, `training_plans.adaptation_log` | **Yes — this is the only system that currently does.** |
+| **Intermediate** (PACE-only shadow-compare) | `lib/adaptation/adaptation-engine.ts` + `shadow-compare.ts` | `adaptation_shadow_log` (migration 160/161) | No — shadow only, proven by that mechanism's own scope (one lever, one table). |
+| **Canonical** (tonight's work) | `lib/adaptation/canonical/` + `canonical-shadow/` | `canonical_adaptation_shadow_log` (migration 164, applied tonight) | No — structurally cannot. `_cannot_mutate.test.ts` proves from source that the live-shadow code path can reach only `evaluateAdaptation` and two pure helpers; `_never_mutates_plan.test.ts` proves the writer is allow-listed to exactly one INSERT shape against exactly one table. |
+
+**Who owns the final decision, today:** the legacy system, exclusively.
+Nothing in tonight's work changed that, and nothing was asked to — David's
+instruction was to keep legacy and intermediate non-authoritative *relative
+to the canonical engine* during this comparison phase, not to disable the
+only system that currently pushes real adaptations to his plan.
+
+**Removal / cutover conditions, not yet met:** per Rule 21's own audit
+(still the most recent measurement — see `## WILL THE ADAPTATION ENGINE
+FIRE?` below), the legacy system produced ZERO upward adaptations across
+309 real intents before this pass, and the canonical engine's own replay
+against synthetic-but-doctrine-grounded data has never yet been run
+against David's literal historical rows end-to-end (the `_replay_ledger`
+suite is hand-authored, per its own header, not a database export — see
+above). Cutover to canonical-as-authoritative should not happen before:
+(1) a genuine production-data replay is built and run (blocked on
+`readActivePlan`-style functions being made date-aware — they currently
+read whichever plan is active NOW, not whichever was active as of a
+historical date, which would leak lookahead through plan selection even
+with `evaluatedAtISO` correctly filtering the evidence itself; identified
+tonight, not yet built, because building it hastily and getting the
+plan-selection boundary wrong would be worse than the existing honest
+synthetic approach); (2) canonical's shadow log accumulates enough real
+production decisions (now started — 3 real rows as of tonight) to compare
+against what legacy actually did on the same dates; (3) David reviews and
+approves the cutover explicitly — this is exactly the kind of decision
+Rule 20 says needs a gate, not a comfortable assumption. **The end state
+remains one canonical owner, not three permanent engines** — intermediate
+in particular should be scheduled for removal once canonical supersedes
+what it checks, not kept running in parallel indefinitely.
+
+---
+
+## SESSION INTEGRATION · 2026-09-03, David's item 10
+
+**`feat/pre-run-experience` — merged, `578616c7`, deployed (confirmed via
+GitHub commit status, not merged-status alone).** `RunLobbyV5` replaces the
+two-button `RunPickerV5` at its one call site; `HR-ROLE-1`
+(`hrRoleForRepDuration` in `web-v2/lib/training/zones.ts`) is the direct,
+independently-arrived-at fix for the exact issue raised live tonight — a
+short rep's HR number rendering as an indistinguishable-from-a-target
+figure — reusing the existing `HR_REP_KINETICS_FLOOR_SEC` constant rather
+than re-deriving it, gated by a new falsifiable doctrine claim
+(`HR.rep-target-role-below-kinetics-floor`). Three real findings caught by
+the gate chain on merge, not assumed clean because the branch's own build
+was green: a bare 5pt padding (`check-spacing-tokens.sh`) fixed to
+`V5.S.s4`; a hand-drawn HR tilde (`check-modelled-mark.sh`) removed
+entirely rather than routed through `FaffValue`, because the value is a
+measured anchor, not a modelled/projected number, so the tilde was the
+wrong mark twice over; five em dashes across two files
+(`check-coach-voice.sh`) split into plain sentences. `check-watch.sh`
+failed once on a database-lock contention matching this exact project's
+own documented shared-host precedent (`docs/reports/complete-coaching-
+brain-handback-2026-09-02/postrun-breakdown.md` §9) — confirmed no
+concurrent Xcode/simulator processes were running, retried clean (223/223
+test cases), not assumed transient without the retry. Full chain (prebuild,
+web build, CI tests, watch gate) CLEAN before push; the pre-push hook
+independently re-ran and confirmed again.
+
+**`feat/postrun-experience-lead` — NOT merged.** The branch's own handback
+states plainly: "Status: not complete, not ready for the programme lead to
+merge." Respected rather than integrated anyway — David's instruction was
+explicit that acceptance is the deciding session's call, not a wholesale
+grab. Its one disclosed `--no-verify` push was inspected and found
+defensible: the watch-face gate failed under the same shared-host
+concurrent-build contention named above, on a diff confirmed to touch zero
+watch code, disclosed rather than hidden, matching an established
+precedent in this project's own history. Nothing here blocks anything —
+noted for whoever picks this branch up next, this session or another.
+
+**Two branches checked and set aside as already resolved:**
+`fix/postrun-breakdown` and `stage4/post-run`, both 0 commits ahead of
+`origin/main` — their work is already in `main`'s history, not pending
+integration.
 
 ## Stage 0 · Record and deployment state — VERIFIED 2026-09-03
 

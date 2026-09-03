@@ -543,8 +543,20 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                 }
             }
 
+            // VW-1 (a status-bar scrim over every AppBar screen) was tried
+            // and explicitly rejected by David — "the status bar skrim and
+            // fade is WRONG and should not be there" — twice now, most
+            // recently 2026-09-03. The struct itself (`StatusBarScrimV5`) is
+            // deleted from `ComponentsV5.swift`; do not re-add a call site
+            // here either.
+            //
+            // RunLobbyV5 (pre-run experience) replaces the bare two-button
+            // RunPickerV5 here: it shows what's about to start and whether
+            // the devices are ready before the runner commits. RunPickerV5
+            // itself is left in place (GalleryV5 still references it as a
+            // component sample) — only this, the one real call site, moved.
             V5SheetHost(isPresented: $runPickerOpen, title: "Start the run") {
-                RunPickerV5(
+                RunLobbyV5(
                     onOutdoor: { runPickerOpen = false; liveRun = .outdoor },
                     onTreadmill: { runPickerOpen = false; liveRun = .treadmill },
                     onCancel: { runPickerOpen = false }

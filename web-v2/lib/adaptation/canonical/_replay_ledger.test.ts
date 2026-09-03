@@ -43,6 +43,7 @@
  *   D11 · volume completed, pace flat         → volume PROGRESS, pace HOLD
  *   D12 · durability improvement              → long-run PROGRESS
  *   D13 · easy runs with strides              → not threshold evidence
+ *   D14 · consistent slower threshold sessions → threshold REGRESS
  *
  * ── RULE 22 · WHAT THIS REPLAY CANNOT FAIL ON ──────────────────────────────
  *
@@ -87,6 +88,8 @@ const WEEKS: WeekObservation[] = [
   week('2026-09-07', 48, 48.2),
   week('2026-09-14', 49, 49.1),
   week('2026-09-21', 49, 49.3),
+  week('2026-09-28', 49, 49.0),
+  week('2026-10-05', 49, 48.8),
 ];
 
 const SESSIONS: GradedSession[] = [
@@ -108,6 +111,18 @@ const SESSIONS: GradedSession[] = [
   // D11 · volume completed while pace stays exactly flat.
   session('t-sep16', '2026-09-16', { workPaceSecPerMi: measured(430), grade: 'FULL' }),
   session('t-sep23', '2026-09-23', { workPaceSecPerMi: measured(430), grade: 'FULL' }),
+  // D14 · a genuine regression, mirroring D4's shape exactly but in the
+  // other direction: two clean, corroborating threshold sessions, both
+  // meaningfully slower than the held 430s/mi anchor. `agreeFaster` in
+  // `threshold-pace.ts` is what decides PROGRESS vs REGRESS once sessions
+  // agree with each other — this is that branch's REGRESS side, which had
+  // no coverage anywhere in this file before tonight (confirmed by grep).
+  // Dated after D11's 12 Oct evaluation point on purpose: D11 depends on its
+  // 28-day window reaching back to exactly 14 Sep, and a session any earlier
+  // than 12 Oct would land inside that window and corrupt the case it is
+  // testing (found by running the suite — the first placement broke D11).
+  session('t-oct19', '2026-10-19', { workPaceSecPerMi: measured(447), grade: 'FULL' }),
+  session('t-oct26', '2026-10-26', { workPaceSecPerMi: measured(445), grade: 'FULL' }),
 ];
 
 const LONG_RUNS: LongRunObservation[] = [
@@ -448,6 +463,34 @@ describe('historical replay · chronological, no lookahead', () => {
       verdict: 'beneficial', disagreement: '',
     });
   });
+
+  it('D14 · two corroborating threshold sessions that agree SLOWER · REGRESS', () => {
+    // The mirror of D4, and the case Rule 22's audit found missing: nothing
+    // in this ledger had ever exercised threshold-pace.ts's `agreeFaster ?
+    // PROGRESS : REGRESS` branch on its REGRESS side. Two sessions 17-15s/mi
+    // slower than the held 430s/mi anchor, close enough to each other to
+    // corroborate rather than conflict (contrast D9, one faster one slower,
+    // which nets out below the floor and HOLDs).
+    const r = point({
+      id: 'D14', date: '2026-10-27', covers: 'consistent slower threshold sessions',
+      lever: 'THRESHOLD_PACE', expected: 'REGRESS',
+      subsequent: 'A minor illness in mid-October, confirmed after the fact; the anchor recovered within three weeks once training resumed normally.',
+      verdict: 'beneficial',
+    });
+    expect(r.actual).toBe('REGRESS');
+    // Symmetric with D4's assertion: bounded to the ordinary step, not the
+    // raw ~16s/mi delta — a regression is not exempt from the same magnitude
+    // discipline a progression is held to.
+    expect(r.magnitude).toMatch(/sec_per_mi/);
+    expect(Math.abs(Number(r.magnitude.split(' ')[0]))).toBeLessThanOrEqual(5);
+    // The step must move the pace SLOWER (a larger seconds-per-mile value),
+    // never faster — a REGRESS that improved the number would be the
+    // opposite of what its own name claims.
+    const input = visibleAt('2026-10-27');
+    const out = evaluateAdaptation(input);
+    const t = out.records.find((x) => x.lever === 'THRESHOLD_PACE')!;
+    expect(t.proposedAfterValue!).toBeGreaterThan(t.beforeValue);
+  });
 });
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -549,6 +592,12 @@ describe('the replay ledger', () => {
     // Every non-moving state is reached, so the ledger is not one-note.
     expect(dist.HOLD ?? 0).toBeGreaterThanOrEqual(1);
     expect(dist.REFUSE ?? 0).toBeGreaterThanOrEqual(2);
+    // D14 (2026-09-03) · REGRESS had zero coverage in this file before
+    // tonight, confirmed by grep — a genuine gap, not merely an untested
+    // corner. A suite that can assert PROGRESS/HOLD/REFUSE floors but not
+    // REGRESS is exactly Rule 22's "what can this gate not fail on" question
+    // pointed at itself.
+    expect(dist.REGRESS ?? 0, 'the replay never regresses').toBeGreaterThanOrEqual(1);
 
     // 2026-09-03 · `HOLD >= 2` was replaced by the line below, and the reason
     // is worth stating because a relaxed number usually IS a weakened gate.
