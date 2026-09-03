@@ -14461,6 +14461,11 @@ export function finalizeComposedPlan(
   // but never lower it, and the floor pass gets the last word on that number.
   applyDosingCaps(composed);
 
+  // ROLLING7-1 (2026-09-03) · the peak ceiling, enforced in the unit it is
+  // MEASURED in. Before the intensity floor, because it only ever removes easy
+  // miles and the floor's job is to check what is left.
+  enforceRollingSevenCeiling(composed);
+
   // DOCTRINE-TID-1 (2026-08-17) · the 80/20 constraint, which the engine has
   // never had in any form. Runs LAST, because every pass above moves mileage.
   applyIntensityFloor(composed);
@@ -15462,6 +15467,131 @@ function resizeMpSession(day: DayPlan, totalMi: number): void {
   // one would re-pace the block at marathon effort, which is a different
   // workout wearing the same shape.
   day.subLabel = `${wu} mi WU · ${mp} mi @ ${tag} · ${cd} mi CD`;
+}
+
+/**
+ * ROLLING7-1 (2026-09-03) · THE PEAK CEILING, ENFORCED IN THE UNIT IT IS
+ * MEASURED IN. Rule 16, on the two sides of a single inequality.
+ *
+ * `resolvePeakWeekly` measures the runner's demonstrated peak as a ROLLING
+ * 7-DAY maximum — its own header argues for that unit — and
+ * `load-progression-contract.ts` multiplies it by `PER_CYCLE_PEAK_GROWTH` to
+ * get `planned_peak_mi`. That ceiling was then enforced against the block's
+ * peak CALENDAR week.
+ *
+ * Measured on the reference block by the S1.5 load audit
+ * (`docs/reports/complete-coaching-brain-handback-2026-09-02/LOAD-AUDIT.md` §6):
+ * the peak calendar week is authored at 60.0 against a 60.1 ceiling and passes,
+ * while the block's true peak 7-day exposure is 62.0 — Tue 2026-10-06 through
+ * Mon 2026-10-12, straddling the week boundary:
+ *
+ *   10-06 8.5 · 10-07 12.0 · 10-08 6.5 · 10-09 8.5 · 10-10 0.0 · 10-11 18.5 · 10-12 8.0
+ *
+ * 62.0 / 52.3 = 1.185 against the engine's own 1.15. The plan exceeds its own
+ * stated ceiling by 1.9 mi and passes only because the comparison changes units
+ * halfway through.
+ *
+ * ── WHAT IT TAKES OFF, AND WHAT IT WILL NOT TOUCH ──────────────────────────
+ *
+ * EASY miles only, from the LATEST easy days in the offending window. A long
+ * run, a quality session and a race day are all decisions some other rule made
+ * for a reason; shaving one to satisfy a volume ceiling would be this pass
+ * overruling them silently. If the window cannot be brought under the ceiling
+ * on easy miles alone it is left alone rather than half-cut — a week that
+ * cannot comply is a finding for the validator, not something to disguise.
+ *
+ * Rule 9: `Math.min` against a continuous quantity. There is no threshold
+ * comparing two computed values, so a runner a tenth of a mile either side of
+ * the ceiling gets a plan a tenth of a mile different.
+ *
+ * Rule 11: a refused or absent ceiling is not a ceiling of infinity and not one
+ * of zero — the pass returns without touching anything and says so in
+ * `authored_state`, so a block that was never bounded can be told from one that
+ * was bounded and complied.
+ */
+export const ROLLING_SEVEN_DAYS = 7;
+
+function enforceRollingSevenCeiling(composed: ComposePlanResult): void {
+  const stamp = (composed.authoredState as Record<string, unknown>)['load_progression_contract'] as
+    { planned_peak_mi?: unknown } | null | undefined;
+  const raw = stamp?.planned_peak_mi;
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+    (composed.authoredState as Record<string, unknown>)['rolling_seven_ceiling'] = {
+      ceiling_mi: null,
+      refused: 'the load contract published no planned peak, so there is nothing to enforce',
+    };
+    return;
+  }
+  const ceilingMi = raw;
+
+  /** Every authored day in date order, with a handle back to its row. */
+  const series: { dateISO: string; day: DayPlan; weekIdx: number }[] = [];
+  for (const [wi, w] of composed.weeks.entries()) {
+    const weekStartDow = new Date(`${w.startISO}T12:00:00Z`).getUTCDay();
+    for (const d of w.days) {
+      if (!(d.distanceMi > 0)) continue;
+      series.push({ dateISO: addDays(w.startISO, ((d.dow - weekStartDow + 7) % 7)), day: d, weekIdx: wi });
+    }
+  }
+  series.sort((a, b) => (a.dateISO < b.dateISO ? -1 : a.dateISO > b.dateISO ? 1 : 0));
+
+  const trims: { date_iso: string; from_mi: number; to_mi: number; window_from: string; window_mi: number }[] = [];
+  let worstBefore = 0;
+  const shaveable = (x: { day: DayPlan }) =>
+    x.day.type === 'easy' && !x.day.isQuality && !x.day.isLong;
+
+  // Walk every 7-day window by DATE, not by index — rest days are absent from
+  // the series and a fixed-width index window would span more than a week.
+  for (let i = 0; i < series.length; i++) {
+    const windowStart = series[i].dateISO;
+    const windowEnd = addDays(windowStart, ROLLING_SEVEN_DAYS - 1);
+    const inWindow = () => series.filter((x) => x.dateISO >= windowStart && x.dateISO <= windowEnd);
+    let win = inWindow();
+    const sum = () => Math.round(win.reduce((a, x) => a + x.day.distanceMi, 0) * 10) / 10;
+    worstBefore = Math.max(worstBefore, sum());
+    if (sum() <= ceilingMi + 1e-9) continue;
+    // Latest easy days first: the earlier ones have already been counted into
+    // windows this walk has passed, and cutting the most recent keeps the
+    // week's shape closest to what the composer intended.
+    const targets = win.filter(shaveable).sort((a, b) => (a.dateISO < b.dateISO ? 1 : -1));
+    for (const t of targets) {
+      const over = Math.round((sum() - ceilingMi) * 10) / 10;
+      if (over <= 0) break;
+      // Never below the coherence floor an easy day needs to still be a run.
+      // The same coherence floor the mid-race ramp trim will not cut below.
+      const room = Math.max(0, Math.round((t.day.distanceMi - RAMP_TRIM_MIN_EASY_MI) * 10) / 10);
+      const cut = Math.min(over, room);
+      if (cut <= 0) continue;
+      const from = t.day.distanceMi;
+      t.day.distanceMi = Math.round((from - cut) * 10) / 10;
+      trims.push({ date_iso: t.dateISO, from_mi: from, to_mi: t.day.distanceMi, window_from: windowStart, window_mi: sum() });
+      win = inWindow();
+    }
+  }
+
+  // The weekly totals the rest of the engine reads have to follow the days.
+  for (const w of composed.weeks) {
+    w.weeklyMi = Math.round(w.days.reduce((a, d) => a + d.distanceMi, 0) * 10) / 10;
+  }
+  composed.vols = composed.weeks.map((w) => w.weeklyMi);
+
+  let worstAfter = 0;
+  for (let i = 0; i < series.length; i++) {
+    const windowEnd = addDays(series[i].dateISO, ROLLING_SEVEN_DAYS - 1);
+    worstAfter = Math.max(worstAfter, Math.round(series
+      .filter((x) => x.dateISO >= series[i].dateISO && x.dateISO <= windowEnd)
+      .reduce((a, x) => a + x.day.distanceMi, 0) * 10) / 10);
+  }
+  (composed.authoredState as Record<string, unknown>)['rolling_seven_ceiling'] = {
+    ceiling_mi: ceilingMi,
+    peak_rolling_seven_before_mi: worstBefore,
+    peak_rolling_seven_after_mi: worstAfter,
+    trims,
+    // Rule 11 · "it complied without trimming" and "it could not be brought
+    // under" are different facts, and both are different from "no ceiling".
+    within_ceiling: worstAfter <= ceilingMi + 1e-9,
+    citation: 'lib/plan/load-progression-contract.ts#PER_CYCLE_PEAK_GROWTH · Research/00a §"Volume progression rules"',
+  };
 }
 
 /**
