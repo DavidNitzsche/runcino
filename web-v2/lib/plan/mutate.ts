@@ -717,6 +717,35 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
   const client = await pool.connect();
   let releaseErr: Error | undefined;
 
+  /**
+   * PLANVERSION-1 (2026-09-03) · this is the ONE place `last_adapted_at`
+   * gets stamped for an in-place mutation, so no future writer can alter
+   * `plan_workouts` / `training_plans.authored_state` through this boundary
+   * without moving the version signal the client caches against.
+   *
+   * Found the hard way: `reanchor-plan.ts` (the daily `snapshot-projections`
+   * cron's own re-anchor, and the `race-authority` fallback) rewrites
+   * `pace_target_s_per_mi` and `authored_state` through `bypass`/`derivations`
+   * on this exact boundary, and neither path stamped the plan — a runner's
+   * prescribed paces could move with `planVersion` never noticing, so a
+   * cached client day would never invalidate. `check-planversion-ratchet.sh`
+   * is the gate this closes; see that script's header for the registry it
+   * verifies against.
+   *
+   * Deliberately excluded: `touches === 'authorship'` (a brand-new
+   * `training_plans` row — its `id` already differs, so `planVersion` moves
+   * without this) and the no-plan-id short-circuit at step 5 below (nothing
+   * was written). Every other exit that COMMITs a write to an EXISTING plan
+   * goes through this.
+   */
+  const stampAdapted = async (planIdToStamp: string | null) => {
+    if (!planIdToStamp) return;
+    await client.query(
+      `UPDATE training_plans SET last_adapted_at = NOW() WHERE id = $1`,
+      [planIdToStamp],
+    );
+  };
+
   const fail = (outcome: MutationOutcome, violations: string[], preExisting: string[], planId: string | null): MutatePlanResult<T> => ({
     ok: false, outcome, value: null, violations, preExisting, resolved: [], planId,
   });
@@ -744,6 +773,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     // 2 · the marked bypass. Runs the writes, records the decision, commits.
     if (opts.bypass) {
       const value = await opts.apply(client, planId ?? '');
+      if (touches !== 'authorship') await stampAdapted(planId);
       await client.query('COMMIT');
       console.warn(
         `[plan/mutate] BYPASS · source=${opts.source} plan=${planId ?? 'none'} · ${opts.bypass.reason}`,
@@ -812,6 +842,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         });
         return fail('undeclared_structural', v, [], afterPlanId);
       }
+      await stampAdapted(afterPlanId);
       await client.query('COMMIT');
       return { ok: true, outcome: 'applied', value, violations: [], preExisting: [], resolved: [], planId: afterPlanId };
     }
@@ -876,6 +907,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
       return fail('rejected', diff.introduced, diff.preExisting, afterPlanId);
     }
 
+    await stampAdapted(afterPlanId);
     await client.query('COMMIT');
     return {
       ok: true, outcome: 'applied', value,
