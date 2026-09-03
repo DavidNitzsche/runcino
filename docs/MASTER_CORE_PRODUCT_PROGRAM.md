@@ -74,9 +74,19 @@ only, zero rows, verified ten ways before execution — see
    section below.
 2. Easy-days-after-intervals typed validator rule — in progress (verify-commit
    running as of last check).
-3. VW-3 (the debug-session token path) — **DONE**, real root cause found (a
-   stuck SpringBoard permission dialog, not an auth race), pushed to
-   `fix/vw3-qa-token-path`, not yet merged to `main`.
+3. VW-3 (the debug-session token path) — **DONE and merged to `main`**
+   (`f2a13335`). Real root cause found, not guessed: instrumented
+   reproduction proved there was never a Keychain/auth race — every
+   `authorize(_:)` call found the token, zero exceptions across 100+ requests.
+   The actual blocker was the Notifications/HealthKit system permission
+   dialogs stacking on a fresh install, which SpringBoard owns and neither
+   `simctl launch` nor an agent's taps can dismiss — the exact same wall this
+   session hit twice tonight. Fixed by skipping both prompts on a
+   `-faffToken` QA launch specifically (`FaffApp.isQATokenLaunch`), never
+   touching the real sign-in/`TokenStore` path. Proven with a real screenshot
+   of his actual Today screen (INTERVALS, 6.5 mi, hill repeats) rendered
+   through the walk substrate, zero permission dialogs, 54/54 requests
+   authenticated.
 4. The canonical Adaptation Engine wired into live SHADOW evaluation — in
    progress.
 5. The full preflight, gating the rebuild — still blocked on 2 above landing.
