@@ -75,8 +75,17 @@ import { describe, it, expect } from 'vitest';
 import { evaluateAdaptation } from '@/lib/adaptation/canonical/evaluate';
 import type { CanonicalDecision, CanonicalDecisionRecord } from '@/lib/adaptation/canonical/decision-record';
 import type { CanonicalLever, CapacityBelief, GradedSession } from '@/lib/adaptation/canonical/input';
-import { measured } from '@/lib/adaptation/canonical/input';
+import { measured, prescribedNonNormalWeek } from '@/lib/adaptation/canonical/input';
 import { CANONICAL_LEVERS } from '@/lib/adaptation/canonical/input';
+import { qualifiesAsThresholdEvidence } from '@/lib/adaptation/canonical/admissibility';
+import {
+  THRESHOLD_MIN_QUALIFYING_SESSIONS,
+  THRESHOLD_EVIDENCE_WINDOW_DAYS,
+  VOLUME_MIN_CONSECUTIVE_WEEKS,
+  VOLUME_WEEK_COMPLETION_MIN_FRAC,
+  LONG_RUN_LOOKBACK_COUNT,
+  LONG_RUN_COMPLETION_MIN_FRAC,
+} from '@/lib/adaptation/canonical/contract-constants';
 import { realHistory } from './snapshot';
 import { buildInputAt, provenanceOf, SEED_THRESHOLD_SEC_PER_MI, weekStartOf } from './build-input';
 
@@ -176,7 +185,28 @@ function sessionBoundaries(): string[] {
  */
 const SENSITIVITY_WINDOW_DAYS = 28;
 
-function walk(opts: { poison?: boolean; preWindow?: boolean } = {}): WalkResult {
+function walk(opts: {
+  poison?: boolean;
+  preWindow?: boolean;
+  /**
+   * SENSITIVITY ONLY, and never the engine's behaviour · pretend every long run
+   * finished strong.
+   *
+   * 11 of his 15 long runs reach the engine with NO thirds at all, because the
+   * prescription varies pace across them ("LONG · 10mi @ HM" finishes fast by
+   * design) and Q13 forbids inferring deterioration from whole-run thirds in
+   * that case. The refusal is doctrine-correct, and its consequence is that the
+   * long-run lever's durability criterion cannot be evaluated for most of a
+   * marathon build.
+   *
+   * This flag replaces those thirds with a clean, comparable set to measure how
+   * much of the lever's inertia that one gap accounts for. It FABRICATES a
+   * positive durability answer, so it is an UPPER BOUND on what better
+   * segmentation could unlock and nothing more. It is never used by the pinned
+   * distribution, and the engine is not changed to behave this way.
+   */
+  assumeDurabilityReadable?: boolean;
+} = {}): WalkResult {
   const rows: LedgerRow[] = [];
   const records: WalkResult['records'] = [];
   const beliefTrail: WalkResult['beliefTrail'] = [];
@@ -224,13 +254,29 @@ function walk(opts: { poison?: boolean; preWindow?: boolean } = {}): WalkResult 
 
     const cutoff = new Date(Date.parse(`${p.date}T12:00:00Z`) - SENSITIVITY_WINDOW_DAYS * 86_400_000)
       .toISOString().slice(0, 10);
-    const input = opts.preWindow
+    const windowed = opts.preWindow
       ? {
         ...rawInput,
         qualitySessions: rawInput.qualitySessions.filter((s) => s.provenance.dateISO >= cutoff),
         longRuns: rawInput.longRuns.slice(-2),
       }
       : rawInput;
+
+    const input = opts.assumeDurabilityReadable
+      ? {
+        ...windowed,
+        longRuns: windowed.longRuns.map((l) => (l.thirds.comparable ? l : {
+          ...l,
+          thirds: {
+            middlePaceSecPerMi: measured(480),
+            finalPaceSecPerMi: measured(479),
+            middleHrBpm: measured(150),
+            finalHrBpm: measured(150),
+            comparable: true,
+          },
+        })),
+      }
+      : windowed;
 
     // A cutback boundary resets the per-cycle step counters, which is what
     // "one step per cutback cycle" means.
@@ -541,6 +587,44 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     expect(nonsense).toEqual([]);
   });
 
+  // The measurement the owner asked for: if PROGRESS is 0, WHICH bar is
+  // binding? This isolates the one that turned out to matter most.
+  it('SENSITIVITY · where the long-run lever is actually blocked', () => {
+    const optimistic = walk({ assumeDurabilityReadable: true });
+    const dist = distributionOf(optimistic);
+    const longRun = optimistic.rows.filter((r) => r.lever === 'LONG_RUN');
+    const byDecision: Record<string, number> = {};
+    for (const r of longRun) byDecision[r.decision] = (byDecision[r.decision] ?? 0) + 1;
+    // eslint-disable-next-line no-console
+    console.log(
+      'SENSITIVITY · assuming every long run could be read AND finished clean · '
+      + `all levers ${JSON.stringify(dist)} · LONG_RUN ${JSON.stringify(byDecision)}`,
+    );
+    // eslint-disable-next-line no-console
+    console.log('SENSITIVITY · long-run reasons under that assumption:\n'
+      + [...new Set(longRun.map((r) => `   ${r.decision} · ${r.reason.slice(0, 120)}`))].sort().join('\n'));
+
+    // LIVENESS · the probe must actually reach the engine, or it is measuring
+    // nothing and reporting confidence (Rule 18). It does: the long-run REASONS
+    // change, and "how the final third went could not be read" disappears.
+    const reasonsNow = new Set(longRun.map((r) => r.reason));
+    const reasonsBefore = new Set(RUN.rows.filter((r) => r.lever === 'LONG_RUN').map((r) => r.reason));
+    expect([...reasonsBefore].some((r) => /could not be read/.test(r))).toBe(true);
+    expect([...reasonsNow].some((r) => /could not be read/.test(r))).toBe(false);
+
+    // AND THE RESULT · the distribution does not move at all. The durability
+    // gap is real and it is NOT what holds this lever: every decision point it
+    // unblocks is caught immediately by the next criterion, which is either
+    // "one of the last 2 came in below 95%" or "a key session after one of
+    // these long runs did not go to plan". Both are Q22 criteria read off his
+    // real execution, not walls.
+    //
+    // Asserted as an equality rather than described in prose, so that the day
+    // better segmentation DOES unlock a proposal this test fails and somebody
+    // has to come and update the finding.
+    expect(dist).toEqual(distributionOf(RUN));
+  });
+
   it('SENSITIVITY · pre-windowing the evidence does not unlock a single increase', () => {
     // If the engine were inert only because `evaluateWeeklyVolume` never
     // windows `keySessions`, trimming the evidence to 28 days would let it
@@ -548,6 +632,163 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     // this runner's real execution, not about where one window lives.
     const dist = distributionOf(RUN_WINDOWED);
     expect(dist.PROGRESS).toBe(0);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 4b · RULE 21 · IS THE BAR A BAR, OR A WALL?
+ *
+ * Rule 21's standard, verbatim: "compute what the runner would have had to DO
+ * to trigger it, then check whether any week they have actually run would have.
+ * If none could, the bar is not a bar, it is a wall."
+ *
+ * PROGRESS is 0 on his real history. That is only an acceptable answer if the
+ * bars are clearable in principle and he did not clear them, and NOT acceptable
+ * if they are unclearable by construction. This section measures the distance
+ * between what he did and what each lever asks, using the LEVERS' OWN
+ * CONSTANTS and the engine's OWN admissibility predicate rather than a
+ * re-implementation, so it cannot drift from the thing it is describing.
+ *
+ * ── WHAT THIS SECTION CANNOT FAIL ON ───────────────────────────────────────
+ *
+ * It reads the same evidence pipeline the engine reads, so a session the
+ * evidence layer mis-graded is mis-counted here in exactly the same way. It
+ * measures whether the bar was REACHABLE, never whether it is the right bar.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('RULE 21 · what he would have had to do, against what he did', () => {
+  // Everything the engine ever saw, built once at the extract date.
+  const { input: ALL } = buildInputAt(
+    {
+      asOfISO: '2026-09-03',
+      boundary: 'WEEKLY_BOUNDARY',
+      // The same seed the walk starts from. The belief does not affect which
+      // evidence is ADMISSIBLE, which is all this section reads.
+      belief: {
+        thresholdPaceSecPerMi: SEED_THRESHOLD_SEC_PER_MI,
+        weeklyVolumeMi: 43.5,
+        longRunMi: 12,
+        supportingSessionCount: 0,
+        oldestSupportingDateISO: null,
+      },
+    },
+    SNAP,
+  );
+
+  it('THRESHOLD · the longest run of qualifying sessions inside one window', () => {
+    // The bar: at least THRESHOLD_MIN_QUALIFYING_SESSIONS qualifying sessions,
+    // on separate days, inside THRESHOLD_EVIDENCE_WINDOW_DAYS, all graded FULL
+    // or SUBSTANTIAL, admissible for road pace, and agreeing on direction.
+    const qualifying = ALL.qualitySessions
+      .filter((x) => qualifiesAsThresholdEvidence(x).admissible)
+      .map((x) => x.provenance.dateISO)
+      .sort();
+    const distinctDays = [...new Set(qualifying)];
+
+    // The best any 28-day window ever held.
+    let best = 0;
+    for (const anchor of distinctDays) {
+      const from = new Date(Date.parse(`${anchor}T12:00:00Z`)
+        - THRESHOLD_EVIDENCE_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+      best = Math.max(best, distinctDays.filter((d) => d > from && d <= anchor).length);
+    }
+    // The census that explains the zero better than any single bar does: how
+    // his quality sessions GRADED, before pace admissibility is even asked.
+    const byGrade: Record<string, number> = {};
+    for (const q of ALL.qualitySessions) byGrade[q.grade] = (byGrade[q.grade] ?? 0) + 1;
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `RULE 21 · THRESHOLD · ${distinctDays.length} qualifying sessions in 2026, `
+      + `best ${THRESHOLD_EVIDENCE_WINDOW_DAYS}-day window held ${best}, bar is `
+      + `${THRESHOLD_MIN_QUALIFYING_SESSIONS} · ${distinctDays.join(', ')}`
+      + `\n   grades across all ${ALL.qualitySessions.length} quality sessions · ${JSON.stringify(byGrade)}`,
+    );
+
+    // The bar is CLEARABLE on his data: a window did reach it. What it did not
+    // do is agree on direction, which is the 2026-09-02 record's 1-1 split.
+    // Asserted so that a future change making the bar unreachable fails here
+    // rather than quietly reporting another zero.
+    expect(best, 'no 28-day window ever held the corroboration bar').toBeGreaterThanOrEqual(
+      THRESHOLD_MIN_QUALIFYING_SESSIONS,
+    );
+  });
+
+  it('VOLUME · the longest run of consecutive weeks at the completion bar', () => {
+    // The bar: VOLUME_MIN_CONSECUTIVE_WEEKS consecutive NON-cutback weeks at
+    // >= VOLUME_WEEK_COMPLETION_MIN_FRAC of prescribed.
+    const ordinary = ALL.weeks.filter((w) => !prescribedNonNormalWeek(w).nonNormal);
+    const fracs = ordinary.map((w) => ({
+      week: w.weekStartISO,
+      frac: w.completedMi.ok && w.prescribedMi > 0 ? w.completedMi.value / w.prescribedMi : 0,
+    }));
+
+    let run = 0;
+    let best = 0;
+    for (const f of fracs) {
+      run = f.frac >= VOLUME_WEEK_COMPLETION_MIN_FRAC ? run + 1 : 0;
+      best = Math.max(best, run);
+    }
+    // eslint-disable-next-line no-console
+    console.log(
+      `RULE 21 · VOLUME · best consecutive run at >=${Math.round(VOLUME_WEEK_COMPLETION_MIN_FRAC * 100)}% `
+      + `was ${best}, bar is ${VOLUME_MIN_CONSECUTIVE_WEEKS} · `
+      + fracs.map((f) => `${f.week} ${Math.round(f.frac * 100)}%`).join(', '),
+    );
+
+    // At least one week cleared the bar, so the bar is not unreachable. He
+    // never strung three together, and THAT is the finding.
+    expect(fracs.some((f) => f.frac >= VOLUME_WEEK_COMPLETION_MIN_FRAC),
+      'not one single week ever reached the completion bar').toBe(true);
+    expect(best, 'if this reaches the bar, volume should be proposing and is not')
+      .toBeLessThan(VOLUME_MIN_CONSECUTIVE_WEEKS);
+  });
+
+  it('LONG RUN · how often consecutive long runs both met the completion bar', () => {
+    // The bar: the LONG_RUN_LOOKBACK_COUNT most recent prescribed long runs
+    // both at >= LONG_RUN_COMPLETION_MIN_FRAC, both fully recorded, neither
+    // deteriorating late, and the key session after them intact.
+    const fracs = ALL.longRuns.map((l) => ({
+      date: l.provenance.dateISO,
+      frac: l.completedMi.ok && l.prescribedMi > 0 ? l.completedMi.value / l.prescribedMi : 0,
+      truncated: l.provenance.truncation.truncated,
+      // Why the durability half of the bar could or could not be judged. These
+      // three are the inputs `assessDeterioration` needs, and naming them
+      // separately is what tells "he faded" apart from "nobody could tell"
+      // (Rule 11) when a long run holds the lever.
+      comparable: l.thirds.comparable,
+      hr: l.thirds.middleHrBpm.ok && l.thirds.finalHrBpm.ok,
+      pace: l.thirds.middlePaceSecPerMi.ok && l.thirds.finalPaceSecPerMi.ok,
+      followUp: l.followingKeySessionOk.ok ? String(l.followingKeySessionOk.value) : 'unknown',
+    }));
+
+    // eslint-disable-next-line no-console
+    console.log('RULE 21 · LONG RUN · durability readability, run by run:\n'
+      + fracs.map((f) => `   ${f.date} ${Math.round(f.frac * 100)}%`
+        + `${f.truncated ? ' TRUNCATED' : ''}`
+        + ` comparable=${f.comparable} pace=${f.pace} hr=${f.hr} followUp=${f.followUp}`).join('\n'));
+
+    let pairs = 0;
+    for (let i = 1; i < fracs.length; i += 1) {
+      const a = fracs[i - 1];
+      const b = fracs[i];
+      if (a.frac >= LONG_RUN_COMPLETION_MIN_FRAC && b.frac >= LONG_RUN_COMPLETION_MIN_FRAC
+        && !a.truncated && !b.truncated) pairs += 1;
+    }
+    // eslint-disable-next-line no-console
+    console.log(
+      `RULE 21 · LONG RUN · ${pairs} consecutive pairs both at `
+      + `>=${Math.round(LONG_RUN_COMPLETION_MIN_FRAC * 100)}% and both fully recorded, `
+      + `lookback is ${LONG_RUN_LOOKBACK_COUNT} · `
+      + fracs.map((f) => `${f.date} ${Math.round(f.frac * 100)}%${f.truncated ? ' cut' : ''}`).join(', '),
+    );
+
+    // The completion half of the bar IS cleared, repeatedly. What stops the
+    // lever is everything downstream of completion — deterioration, unreadable
+    // thirds, coherence with the week — and that is the finding, not the
+    // completion bar being a wall.
+    expect(pairs, 'no two consecutive long runs were ever both completed and fully recorded')
+      .toBeGreaterThan(0);
   });
 });
 
