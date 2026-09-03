@@ -1,8 +1,9 @@
 # Faff · complete handback
 
-**Status: sections 7 and 8 in flight.** Everything else is complete and
-verified. Two agents are working the last two items; this document is otherwise
-final and is sent now rather than held.
+**Status: section 7 complete and merged. Section 8 partially complete —
+the records are clean, the behaviour is not yet.** Everything else is done and
+verified. `main` is at `2de5ad60`, CLEAN through all twenty shipping gates plus
+`next build`.
 
 ---
 
@@ -188,44 +189,128 @@ path was **deleted**, not disabled.
 
 ---
 
-## 7 · The load progression contract · IN FLIGHT
+## 7 · The load progression contract · DONE
 
-The plan peaks at 60.0 mi against an evidence-derived band whose top is ~55.
-Not a live defect — the band bounds *adaptation*, which is disabled, not
-authoring. But the two authorities contradict each other, and if the adaptation
-seam is ever opened the upward path returns **inert**, which is the Rule 21
-failure this programme exists to stop.
+The plan peaked at 60.0 against a band whose top read ~55, and the two
+authorities contradicted each other. **Neither number was what it appeared to
+be, and the runner's own framing is what unlocked it** — ~55 was not a ceiling,
+it was an answer to a question nobody had asked precisely.
 
-The instruction that unlocked it was the runner's, not mine. I had been treating
-~55 as a ceiling the plan was violating. It is not a ceiling — it is an answer
-to a question nobody asked precisely:
+It turned out to have **two** distinct meanings, and neither was a limit:
 
-> *"A marathon plan may prescribe 60 miles later in the block even if
-> approximately 55 is the load supported today, provided the intervening weeks
-> deliberately build and demonstrate the capacity required for that peak."*
+1. It is `TIER_TARGETS.m.intermediate.peakWeeklyMileageBand[1]` — the peak
+   `Research/22` §"Marathon — Intermediate" publishes for that template. His
+   fifth option: **a historical evidence reference.** It now lives in
+   `template_peak_band_mi` and **bounds nothing.**
+2. Separately and by coincidence, 55.0 is also the demonstrated week that
+   *earns* headroom above a 60-mile peak.
 
-So one canonical, time-aware contract shared by authoring and adaptation,
-separating what is supported today, what may be authored next, what may be
-planned for later, and what evidence must accumulate before that planned load
-becomes actionable. 60 survives only if all eight of his conditions are proved;
-otherwise it is reduced and the reason stated. The same contract moves the
-demonstrated envelope forward as weeks are completed, which is what stops
-adaptation being inert when it is eventually promoted.
+`lib/plan/load-progression-contract.ts` is the one owner, pure, with no DB, no
+goal and no experience label. Its refusal branch carries no `mi` field, so a
+caller cannot read a load it was refused. Resolved in exactly two places —
+`composePlan` at authoring, and `detectRampSignals` for adaptation — through the
+same functions.
 
-## 8 · Removing the self-declared level · IN FLIGHT
+**The six questions, answered for him, measured:**
 
-`declaredLevel: "advanced"` still sits inside the Dodgers grant's `evidence`
-object. His ruling is the whole task: *"Do not merely stop reading it while
-continuing to persist it as purported evidence."* A field in a structure named
-`evidence` asserts authority whether or not anything reads it.
+| Question | Answer | Basis |
+|---|---|---|
+| What does the evidence support **now**? | **45.0 mi** | sustained week, floored by held 34.7 |
+| What may be authored for the **next** week? | **39.9 mi** | held 34.7 × 1.15 week-over-week |
+| What future peak may be **planned**? | **60.1 mi** | demonstrated peak 52.3 × 1.15 per-cycle |
+| What evidence makes it **actionable**? | a completed **55.0 mi** week | opens >5% headroom above a 60.0 peak |
+| What if he **doesn't** demonstrate it? | envelope does not advance | no cut, no re-phase |
+| What may **adaptation** propose today? | 60.1 | block peaks 60.0, so ~0 headroom — correctly refuses |
 
-The gate is a behavioural comparison rather than a grep: compose with each
-experience level **and with it absent**, and require byte-identical output
-across plan volume, peak mileage, long-run progression, race prescriptions,
-race-plus-long-run permission, cutback placement, adaptation eligibility, and
-any coaching explanation presented as evidence. Testing *absent* matters as much
-as the values — a sweep of present values cannot see a path that defaults when
-the field is missing.
+The planned envelope, week by week: **39.9 · 45.9 · 52.8 · 60.1 · 60.1 · 60.1 ·
+60.1** across seven climbing weeks.
+
+**The 60-mile peak stands, and all eight of his conditions are met.** It sits at
+week 8 of 15 after seven climbing weeks; cutbacks are authored every third week
+with no daily-state input; the peak long of 20.5 is under the 21.5 evidence
+ceiling; it needs no readiness, TSB, illness or injury; and it holds with
+adaptation disabled. The published band moved `[45,55]` → **`[45,60.1]`**, so
+the plan no longer exceeds its own ceiling.
+
+**Condition 5 — independence from the onboarding label — is the one that had
+been failing.** Before the change, the word he typed was worth **52.3 versus
+60**. Composed now at `null`, `beginner`, `intermediate`, `advanced` and
+`advanced_plus`, every weekly volume is byte-identical and the peak is 60.0 in
+all five. *Every weekly volume is unchanged from before this work: the plan did
+not move, the ceiling that contradicted it did.*
+
+**Adaptation is no longer inert.** It was inert because a well-authored block
+always spends its authoring-time headroom, so ceiling and peak were the same
+number by construction. The ceiling is now recomputed from his live demonstrated
+peak through the same resolver, and the bar — a 55.0 mi week, 5.2% above
+anything he has recorded — falls inside weeks 7 and 8 of his own block. It still
+cannot write: `tryAdaptiveBump` returns null on the authority check before
+reading anything, and the promotion, zero-mutation and single-seam gates are
+green.
+
+**Three things this work caught in itself**, which is the standard I want held:
+
+- It introduced a **third Rule 9 cliff** and its own gate caught it before
+  commit — a runway of `0` meant "unbounded" (60.1) while `1` meant a real bound
+  (52.3), a **7.8 mi step for one week of calendar**. Fixed the Rule 9 way: "no
+  calendar" is `null`, a data-presence fact, not a zero.
+- A doctrine claim **passed because its regex matched the file's own header
+  comment** — the "any comment satisfies it" shape Rule 18 catalogues. Both the
+  claim and the gate now strip comments.
+- On rebase it checked each of the four items I told it to preserve and found
+  **three were already on main**. Replaying them would have caused the exact
+  regression I was trying to avoid. It also judged its own measured-zero fix
+  worse than mine and kept mine.
+
+And one it handed back rather than editing a contested file: `composePlan` built
+the contract's demonstrated load with `||`, which treats a measured zero as
+absent — one line before the function that distinguishes them. So the
+`peak === 0` refusal was **unreachable from authoring**, and every measured zero
+was recorded as "never measured". Same outcome, wrong reason. A refusal that
+cannot be exercised is a refusal nobody can trust. Fixed.
+
+---
+
+## 8 · Removing the self-declared level · RECORDS CLEAN, BEHAVIOUR NOT YET
+
+**What is done.** Composing him now, `declaredLevel`, `experience_level`, the
+`READINESS` prerequisite and the dangling `scoreReadiness` are **all absent**
+from `authored_state`. `EXPERIENCE_CAPS_MI` is deleted, along with the volume
+overshoot detector's `SELECT experience_level`, its persisted `evidence: {cap,
+level}` and the runner-facing sentence *"advanced cap 80mi"*; that baseline now
+**refuses** rather than defaulting to `intermediate` → 60 mi/wk.
+`experience_level` is off the profile route's `PLAN_SHAPING` list, and the phone
+hint now reads *"Profile only. Your plan is built from what you have actually
+run."*
+
+The Dodgers grant is justified by four facts he ran, and the Rule 16 collision
+is resolved — the grant's 28-day reading is renamed `recentHabitLongMi`:
+
+```json
+{"demonstratedPairMi": 29.4, "demonstratedPairFromISO": "2026-04-25",
+ "recentHabitLongMi": 18, "sustainedWeeklyMi": 46.4}
+```
+
+**What is NOT done, and I am not rounding it up.** The gate he asked for is
+**red on 7 of its 8 dimensions**. The label still moves plan volume, peak,
+long-run progression, race prescriptions, weekend permission, adaptation
+eligibility and the coaching explanations. Only cutback placement is green.
+Three reads remain, each a separate decision:
+
+- `GENERAL_RAMP_CEILING[level]` — the week-over-week rate. Doctrine genuinely
+  states 1.20 for novices, so this one has a real citation behind it.
+- `classifyCapacityTier`'s floor — **this is what produces the
+  `composed_row_band_weekly: [65,90]`** still visible in the stamp, and it also
+  selects the long-run band and quality density.
+- `isBaseBuildingPlan` / `recoveryDayAfterLongMi` — the layout path.
+
+And one honest design problem, named rather than papered over: the workout
+library filters templates on `levelFit`, and **passing `undefined` does not
+narrow the filter, it switches it off** — the lowest-id template then wins for
+everyone, replacing a bad authority with an arbitrary one, in the direction that
+makes his sessions easier. The doctrine-correct answer is selection on
+demonstrated capacity, which `ADAPTATION_PROGRESSION_DOCTRINE.md` says is not
+yet built. An agent is on it.
 
 ### 8a · A third instance, found while this was in flight
 
@@ -351,121 +436,24 @@ programme, so the distinction is not academic.
 
 ## 12 · What remains
 
-Adaptation consolidation: one canonical engine, legacy mutators removed, every
-proposed change carrying evidence, confidence, magnitude limits and reasons,
-refusal preserved as a legitimate outcome, upward adaptation shadow-only until
-promotion criteria are met, and one decision explained identically on phone,
-watch, plan, post-run and race outlook.
+**Before a rebuild:**
 
-Everything else in this document is done.
+1. The level-inert gate green on all eight dimensions — three reads and one
+   design decision, named in §8.
+2. An external coaching review, now running: a reviewer with no stake in the
+   build, sandboxed read-only, asked whether a good marathon coach would sign
+   this plan for this runner. Not "does the code work" — the gates cover that.
+   It has been told explicitly that finding nothing material is a valid and
+   valuable answer, and not to manufacture findings.
 
----
+**After that:** the rebuild, then verification of the STORED plan rather than
+the generator, on Today, Block, workout detail, race detail, watch payload and
+post-run.
 
-## 13 · Three plan-level questions
-
-### 13.1 · Week 0 shows 46 composed miles. What is actually persisted is 38.0.
-
-The 46.0 in the table above is the composer's arithmetic, not the write. It was
-misleading and the correction belongs in this document.
-
-| Date | composed | written | why |
-|---|---|---|---|
-| 08-24 | 5.0 | **4.0** | sealed, carried |
-| 08-25 | 8.5 | **0.0** | past date with no live row — **not written** |
-| 08-26 | 5.0 | **7.0** | sealed, carried |
-| 08-27 | 8.0 | **7.0** | sealed, carried |
-| 08-28 | 5.0 | **7.0** | sealed, carried |
-| 08-29 | 0.0 | **0.0** | past date with no live row — not written |
-| 08-30 | 14.5 | **13.0** | sealed, carried |
-| | **46.0** | **38.0** | identical to the live plan's week 0 |
-
-Every past-dated row is carried verbatim, and the two dates the composer would
-have filled (08-25 at 8.5 mi, 08-29) are **not written**, because authoring a new
-prescription onto a past day is forbidden. So week 0 after a rebuild is
-byte-identical to week 0 today, and the sealed hash proves it.
-
-The same is true of 08-31 and 09-01 in week 1. Seven sealed rows, 51.0 mi,
-carried.
-
-### 13.2 · "33 miles at marathon pace" — at which pace? Four numbers, and two of them disagree.
-
-Four distinct quantities exist and they must not be conflated:
-
-| Quantity | Value | Owner |
-|---|---|---|
-| threshold anchor (T) | 430 s/mi · **7:10** | capacity resolver |
-| **marathon-specific TRAINING pace** | 472 s/mi · **7:52** (range 7:40-8:08) | `race-outlook.trainingPrescription`, durability exponent 1.0825 |
-| **CIM race-day EXECUTION target** | 443 s/mi · **7:23** | `race-outlook.execution` |
-| stated goal | 412 s/mi · **6:52** | the runner |
-
-The training pace is 29 s/mi slower than race-day execution, which is correct —
-it is derived from his durability exponent, not from the race target.
-
-**Two findings, both real:**
-
-**(a) The two derivations of marathon pace disagree by 24 s/mi.** Priced through
-`buildWorkoutSpec` from the T anchor alone, an `11 mi @ MP` session comes out at
-**448 s/mi (7:28)**. The canonical owner says **472 (7:52)**. His live rows carry
-472, because something downstream repriced them — so the number he sees is the
-right one, but only by a second pass. One quantity, two owners, 24 s/mi apart.
-That is a Rule 16 violation and it is the same shape as the three-projections
-defect.
-
-**(b) The marathon-pace miles embedded in long runs carry no marathon-pace
-number at all.** On his live plan:
-
-```
-2026-10-25  long  pace_target=520 (8:40)  "LONG · 11mi @ M"
-2026-11-15  long  pace_target=520 (8:40)  "LONG · 4mi @ M"
-2026-11-17  tempo pace_target=472 (7:52)  "2.5 mi WU · 11 mi @ MP · 1.5 mi CD"
-```
-
-The tempo sessions carry 7:52. The long runs carry **8:40 — the long-run easy
-pace** — and the eleven marathon-pace miles inside them have no target of their
-own on the row. So of the 33 miles credited to marathon pace, **18 sit on rows
-that state a marathon pace and 15 are embedded in long runs whose row prescribes
-8:40.**
-
-That is a defect in the answer this handback gave, not only in the engine. The
-honest statement is: **18 miles are prescribed at a stated marathon pace; 15 are
-labelled marathon-pace inside long runs whose row prescribes 8:40.**
-
-### 13.3 · Why 3:13:30 when the projection is 3:23:50?
-
-It is not arbitrary and it is not the goal. It is the **fast edge of the
-expected race-day range**, which already contains a modelled improvement.
-
-| | |
-|---|---|
-| current projection | 3:17:43 - 3:29:57 (11863-12597 s) |
-| **expected race day** | **3:13:28 - 3:26:51** (11608-12411 s) |
-| prescribed execution | **3:13:30** — the fast edge, 11610 |
-| stated goal | 3:00:00 — untouched, and never prescribed |
-
-The improvement is modelled explicitly:
-
-```json
-{"gainVdot":2.56,"gainRangeVdot":[1.90,2.64],"buildWeeks":10.6,"taperWeeks":3,
- "executionQuality":0.97,"responseFactor":1,"bindingCap":"runway",
- "basis":"plan_stimulus_and_execution","confidence":0.585,
- "reasons":["GAIN_BOUNDED_BY_RUNWAY","HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"]}
-```
-
-So the ten minutes come from **+2.56 VDOT across 10.6 build weeks plus a 3-week
-taper**, with the gain capped by the runway rather than by the stimulus — there
-is not enough time before CIM to model more, which is why `bindingCap` reads
-`runway`.
-
-**The caveat, which the engine states itself and which should not be lost:**
-`HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE`. The gain rate is a **population
-assumption**, not his demonstrated response to training — the app has never
-observed him complete a block and measured what he gained. Confidence **0.585**.
-
-So 3:13:30 is a defensible development target, and the progression in §2 is what
-it rests on: 33 marathon-pace miles, a long run climbing 14.5 → 20.5, and
-threshold work preceding race-specific work. But the ten minutes are **modelled,
-not evidenced**, and the first block he completes under this engine is what will
-replace the population rate with his own.
-
-That is also the honest answer to why upward adaptation matters: until it can
-observe his response, the improvement estimate rests on other runners.
+**The last system, unchanged:** adaptation consolidation. One canonical engine,
+legacy mutators removed, every proposed change carrying evidence, confidence,
+magnitude limits and reasons, refusal preserved, upward adaptation shadow-only
+until promotion criteria are met, and one decision explained identically on
+every surface. Section 7 moved the first stone — the ceiling adaptation reads is
+now real and resolvable rather than inert by construction — but the engine
+itself is still unowned.
