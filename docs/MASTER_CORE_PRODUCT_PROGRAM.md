@@ -151,6 +151,47 @@ All verified CLEAN through the full 20-gate shipping chain before merge.
 
 ---
 
+## BLOCKED ON THE OWNER  ·  three items
+
+**1 · Migration 163 (`plan_reschedules`) is not applied.** Rescheduling is built,
+verified and merged, but its decision table does not exist. DDL requires his
+explicit per-statement go — the one thing the execution authorization does not
+cover. **Apply refuses rather than making an unrecorded change**, which is the
+correct behaviour, so nothing is broken; the feature simply cannot complete an
+approval until the table exists.
+
+**2 · A doctrine divergence between his ruling and the validator.** `Q32` says
+**≥1** easy day after intervals; `validate.ts` §9 requires **2**. The
+rescheduling engine mirrors the validator, because a proposal built against the
+other number would be rejected at the boundary. **Consequence for the live case:
+Saturday 2026-09-05 — which the contract offers tentatively — does not actually
+clear Thursday's intervals gap.** One of the two numbers should move; that is
+his call, not mine.
+
+**3 · Three other paths can already move a workout** — `/api/today/reschedule`,
+`move_day`, and `PATCH /api/plan/workout` — and **none of them ranks, explains,
+or records lineage**. Rule 16: one quantity, one owner. They should be
+consolidated onto the canonical boundary or sealed.
+
+---
+
+## VERIFICATION GAP FOUND  ·  the watch gate had never run
+
+`check-watch.sh` **could not pass under `verify-commit` on any commit**: the
+isolated worktree is created with `git clean -fdx`, which deletes the gitignored
+`native-v2/Secrets.xcconfig` that `xcodegen` requires. Every watch-touching
+commit this programme verified reported the gate as `N/A` or failed it for an
+environmental reason.
+
+It passed for the first time on the rescheduling merge (129s) because that
+worktree happened to retain the file. **This is the same class as Rule 19 and as
+today's three deploy failures: the chain that proves a commit was not the chain
+that ships it.** Recorded rather than patched, because the fix touches how
+`verify-commit` builds its worktree and that script is load-bearing for
+everything else in flight.
+
+---
+
 ## P0 · The critical path
 
 Nothing may displace this.
