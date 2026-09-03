@@ -8,6 +8,14 @@ as work lands, not at the end.
 `Verified against production reads` · `Persisted` · `Rendered` · `Released` ·
 `Blocked` · `Deferred intentionally`
 
+**Polish priority order** (`RUNNER_EXPERIENCE_CONTRACT.md` Q60) — governs what
+gets attention when time is short:
+1. Correct prescription · 2. Correct capture · 3. Correct interpretation ·
+4. Correct adaptation · 5. Clear explanation · 6. Race and post-run depth ·
+7. Additional visual polish.
+*"A beautiful sentence attached to the wrong workout or wrong adaptation is not
+success."*
+
 **Prioritisation order when choosing the next task:**
 1. Anything that can prescribe incorrect training
 2. Anything that can corrupt, truncate or misattribute a run
