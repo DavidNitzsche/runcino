@@ -1025,7 +1025,23 @@ struct WeekStripV5: View {
     var onTap: ((WeekStripDayV5) -> Void)? = nil
 
     /// Page the whole strip a week at a time. -1 back, +1 forward.
-    var onPageWeek: ((Int) -> Void)? = nil
+    ///
+    /// WKSTRIP-RACE-1 (2026-09-03) · ASYNC ON PURPOSE. David: "the swipe
+    /// sometimes starts to change and then comes back." It was time-based,
+    /// not data-based: the recentre below fired on the next MainActor tick
+    /// unconditionally, while the host's own navigation is a real fetch that
+    /// can still be in flight. On a cache hit (`V5Surface.present`, the
+    /// common case — the host prefetches +/-7 days on every arrival) the
+    /// model updates almost immediately and the two races usually resolve
+    /// in the right order, which is why this was "sometimes." On a cache
+    /// miss (`V5Surface.rebind`, a real round trip) the model does not
+    /// update until the fetch lands — well after the recentre had already
+    /// fired — so the strip visibly snapped from the swiped-to week's ghost
+    /// numbers back to the OLD week's real ones, which reads as "it started
+    /// to change and then came back." Making the caller `async` and awaiting
+    /// it before recentring (below) ties the recentre to the thing it
+    /// actually depends on instead of to the clock.
+    var onPageWeek: ((Int) async -> Void)? = nil
 
     /// The strip is drawn INSIDE the panel, so it takes the ramp's ink. Unlike
     /// the screens that own the fill, this is a child of `DayPanel` and the
@@ -1103,16 +1119,24 @@ struct WeekStripV5: View {
         .frame(height: 80)
         .onChange(of: page) { _, p in
             guard p != 1, let onPageWeek else { return }
-            onPageWeek(p == 0 ? -1 : 1)
-            // `Task { @MainActor in ... }` rather than `DispatchQueue.main
-            // .async`. Both land the reset "next tick", but a GCD block is
-            // scheduled outside SwiftUI's own actor-isolated update cycle —
-            // it can land in the middle of a render pass SwiftUI is already
-            // mid-way through, rather than cleanly after one commits. A
-            // `Task` hop is still one MainActor turn, and MainActor turns
-            // are exactly what SwiftUI's own state commits run on, so this
-            // recentre lands where the framework's own updates do.
+            // WKSTRIP-RACE-1 · ONE Task, and the recentre is now the LAST
+            // thing in it, after the await — not a second, independently
+            // scheduled Task racing the first. `await` already lands back on
+            // the MainActor the moment `onPageWeek` finishes (it is only
+            // ever called from here, on this actor), so there is no
+            // DispatchQueue-vs-Task ordering question left to reason about.
             Task { @MainActor in
+                await onPageWeek(p == 0 ? -1 : 1)
+                // A second swipe can land WHILE this await is in flight —
+                // TabView lets the runner swipe back before the fetch for
+                // the first swipe has resolved. `page` will already reflect
+                // that newer gesture (including a genuine `1`, if they swiped
+                // straight back to where they started), and THIS closure's
+                // own `.onChange` firing for it is what will recentre it
+                // correctly. Forcing `page = 1` here regardless would cut
+                // that second swipe off mid-motion for a recentre that was
+                // never about it.
+                guard page == p else { return }
                 var t = Transaction()
                 t.disablesAnimations = true
                 withTransaction(t) { page = 1 }
@@ -1123,8 +1147,8 @@ struct WeekStripV5: View {
         // style already answers VoiceOver's own swipe-to-adjust, but a named
         // action is discoverable without guessing that a page control
         // accepts one.
-        .accessibilityAction(named: "Previous week") { onPageWeek?(-1) }
-        .accessibilityAction(named: "Next week") { onPageWeek?(1) }
+        .accessibilityAction(named: "Previous week") { Task { @MainActor in await onPageWeek?(-1) } }
+        .accessibilityAction(named: "Next week") { Task { @MainActor in await onPageWeek?(1) } }
     }
 
     /// One week of seven cells — `maxWidth`/`maxHeight: .infinity` plus

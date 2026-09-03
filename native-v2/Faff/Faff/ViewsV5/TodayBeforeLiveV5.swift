@@ -48,8 +48,9 @@ struct TodayBeforeLiveV5: View {
     /// `TodayHostV5.viewingDate`, straight through — see `TodayBeforeV5.stripDays()`.
     var selectedDateISO: String? = nil
     var onBackToToday: () -> Void = {}
-    /// Page the week strip. -1 back a week, +1 forward.
-    var onPageWeek: (Int) -> Void = { _ in }
+    /// Page the week strip. -1 back a week, +1 forward. Async — see
+    /// WKSTRIP-RACE-1 in ChartsV5.swift; the strip's recentre awaits this.
+    var onPageWeek: (Int) async -> Void = { _ in }
     var onOpenPacesMoved: () -> Void = {}
     var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
     /// Re-reads the Today surface after a write. Owned by `TodayHostV5`'s

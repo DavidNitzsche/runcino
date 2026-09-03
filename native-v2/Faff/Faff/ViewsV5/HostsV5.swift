@@ -290,7 +290,7 @@ struct TodayHostV5: View {
                          viewingDayLabel: viewingDayLabel,
                          selectedDateISO: viewingDate,
                          onBackToToday: { backToToday() },
-                         onPageWeek: { step($0 * 7, from: model) },
+                         onPageWeek: { await stepWeekAndWait($0 * 7, from: model) },
                          initials: initials,
                          onReportSick: { sym, started, fever in
                              Task { await reportSick(sym, started, fever) }
@@ -307,7 +307,7 @@ struct TodayHostV5: View {
                           viewingDayLabel: viewingDayLabel,
                           selectedDateISO: viewingDate,
                           onBackToToday: { backToToday() },
-                          onPageWeek: { step($0 * 7, from: model) },
+                          onPageWeek: { await stepWeekAndWait($0 * 7, from: model) },
                           onOpenPacesMoved: { path.append(.pacesMoved) },
                           onReportSick: { sym, started, fever in
                               Task { await reportSick(sym, started, fever) }
@@ -462,6 +462,25 @@ struct TodayHostV5: View {
         guard let d = Self.iso.date(from: base),
               let next = Calendar.current.date(byAdding: .day, value: days, to: d) else { return }
         goTo(Self.iso.string(from: next), todayISO: todayISO(model))
+    }
+
+    /// WKSTRIP-RACE-1 (2026-09-03) · `step`, but the caller waits for the
+    /// destination day to actually be the one `surface.model` reflects. The
+    /// week strip's own recentre awaits this — see ChartsV5.swift — instead
+    /// of firing on a fixed clock and racing whichever of `V5Surface.present`
+    /// (near-instant, a prefetched week) or `V5Surface.rebind` (a real round
+    /// trip) `goTo` happens to take.
+    ///
+    /// Reuses `step`/`goTo` verbatim rather than re-deriving the date
+    /// arithmetic or the same-day no-op guard — this only adds the await.
+    /// `navigationTask` is read AFTER `step` returns, synchronously, so it is
+    /// always the specific task `step`'s own `goTo` call just assigned, never
+    /// a later one from an overlapping navigation — the same "single flight,
+    /// cancelled and replaced" task `goTo` already guarantees for every other
+    /// caller is what this awaits, unchanged.
+    private func stepWeekAndWait(_ days: Int, from model: V5Today) async {
+        step(days, from: model)
+        await navigationTask?.value
     }
 
     /// The one way onto another day. Everything above funnels here so the

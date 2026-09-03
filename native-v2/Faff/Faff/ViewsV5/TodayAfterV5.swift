@@ -72,8 +72,9 @@ struct TodayAfterV5: View {
     /// `TodayHostV5.viewingDate`, straight through — see `stripDays()`.
     var selectedDateISO: String? = nil
     var onBackToToday: (() -> Void)? = nil
-    /// Page the week strip. -1 back a week, +1 forward.
-    var onPageWeek: (Int) -> Void = { _ in }
+    /// Page the week strip. -1 back a week, +1 forward. Async — see
+    /// WKSTRIP-RACE-1 in ChartsV5.swift; the strip's recentre awaits this.
+    var onPageWeek: (Int) async -> Void = { _ in }
     var initials: String? = nil
     /// Job 1 · "report sick" — a runner who just finished and feels off
     /// should not have to wait for tomorrow's Today to say so. Same
@@ -124,7 +125,7 @@ struct TodayAfterV5: View {
          viewingDayLabel: String? = nil,
          selectedDateISO: String? = nil,
          onBackToToday: (() -> Void)? = nil,
-         onPageWeek: @escaping (Int) -> Void = { _ in },
+         onPageWeek: @escaping (Int) async -> Void = { _ in },
          initials: String? = nil,
          onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }) {
         self.viewingDayLabel = viewingDayLabel
@@ -442,7 +443,7 @@ struct TodayAfterV5: View {
             // have run.
             WeekStripV5(days: stripDays(),
                         onTap: { day in onPickDay(day.id) },
-                        onPageWeek: { onPageWeek($0) })
+                        onPageWeek: { await onPageWeek($0) })
 
             VStack(alignment: .leading, spacing: V5.S.s2) {
                 if let kicker = model.panel.kicker {
