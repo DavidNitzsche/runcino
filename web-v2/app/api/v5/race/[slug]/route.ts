@@ -26,6 +26,8 @@ import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { raceProjectionFromOutlook, projectionCoachLine } from '@/lib/training/race-projection';
 import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
 import { raceOutlookPayload } from '@/lib/race/race-outlook-payload';
+import { raceLayers, raceLayersPayload } from '@/lib/race/race-page-layers';
+import { raceCourseContext, raceCourseContextPayload, pacingPlanDriftSec, pacingDriftToleranceSec } from '@/lib/race/race-course-context';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { resolveCourseElevation, type ResolveCourseElevationInput, type StoredGeometry } from '@/lib/race/course-elevation';
 import { loadActivePlan } from '@/lib/plan/lookup';
@@ -113,6 +115,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     /** Measured course gain (ft) when the resolver produced one — feeds the
      *  coach-goal hilly gate below, same read the footnotes are built from. */
     let resolvedGainFt: number | null = null;
+    /** RP-4/RP-5 · hoisted so the course context below reads the SAME resolve
+     *  the footnotes were built from. Two resolves would be two answers. */
+    let resolvedElevation: ReturnType<typeof resolveCourseElevation> | null = null;
     try {
       elevation = elevationSeriesFt(courseGeometry);
       const resolveInput: ResolveCourseElevationInput = {
@@ -120,6 +125,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         geometry: courseGeometry, nominalDistanceMi: distanceMi || null,
       };
       const resolved = resolveCourseElevation(resolveInput);
+      resolvedElevation = resolved;
       resolvedProvenance = resolved.provenance;
       resolvedGainFt = resolved.elevationGainFt ?? null;
       if (resolved.elevationGainFt != null) {
@@ -171,12 +177,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     const pacePlanTargetSec = outlook?.execution.targetSec ?? null;
 
     let pacePlan: V5RowOut[] = [];
+    /**
+     * Q26'S LOAD-BEARING PROPERTY, MEASURED RATHER THAN ASSUMED.
+     *
+     * "The split plan may redistribute effort for climbing and descending, but
+     * its total must reproduce the course-adjusted target. Never adjust the
+     * overall target and then apply another net course benefit inside the
+     * splits."
+     *
+     * `lib/race/pacing.ts` says in its header that it normalises the
+     * time-weighted total to the goal, and Rule 20 is explicit that a header
+     * comment asserting an invariant is documentation, not enforcement. So the
+     * drift is computed here from the phases actually built, and a plan that
+     * bought itself a second course benefit is dropped rather than drawn.
+     */
+    let pacingDriftSec: number | null = null;
     if (pacePlanTargetSec && distanceMi > 0) {
       try {
         const geometryForPacing = (libRow?.geometry_json ?? courseGeometry) as CourseGeometryInput | null;
         const pacing = buildRacePacing({
           goalSec: pacePlanTargetSec, distanceMi, geometry: geometryForPacing,
         });
+        pacingDriftSec = pacingPlanDriftSec(pacing.phases, pacePlanTargetSec);
         pacePlan = (pacing.phases ?? []).map((p, i) => ({
           id: `phase-${i}`,
           label: `Miles ${Math.round(p.start_mi)}-${Math.round(p.end_mi)}`,
@@ -196,6 +218,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
           action: null,
         }));
       } catch { /* pacing is additive */ }
+    }
+    // A drift beyond per-phase rounding is a SECOND course adjustment inside
+    // the splits, which is the one thing Q26 forbids by name. Refuse the plan
+    // rather than draw a ladder that does not add up to the number above it.
+    if (pacingDriftSec != null && Math.abs(pacingDriftSec) > pacingDriftToleranceSec(distanceMi)) {
+      pacePlan = [];
     }
 
     // Up to 3 marks, at each pace-phase boundary — real course structure,
@@ -435,6 +463,46 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       coachGoal,
       // 2026-09-01 · P0 · the four quantities and the bridge, additive.
       outlook: raceOutlookPayload(outlook),
+      /**
+       * RP-2 / RP-3 (2026-09-03) · THE FOUR LAYERS, WITH THE SET GUARANTEED
+       * COHERENT.
+       *
+       * `lib/race/race-page-layers.ts` is the one owner of which layers exist,
+       * what each is called, and which single one is actionable. It recomputes
+       * nothing — every number was resolved by `race-outlook.ts` — and it
+       * refuses rather than draws when the set would show several incompatible
+       * values under one word, which is the rule this page exists for.
+       *
+       * Sent only for a race still to come. A race already run has a result,
+       * and a layer set about how to pace it is not a thing to say about it.
+       */
+      raceLayers: (() => {
+        if (race.is_past) return null;
+        const l = raceLayers(outlook);
+        // Rule 11 · an incoherent set is a refusal, not a warning to render.
+        // The client is given nothing rather than something it must not draw,
+        // and the findings ride along so the failure is legible in a log
+        // rather than silent.
+        if (l && l.findings.length > 0) {
+          console.warn('[v5/race] incoherent layer set', { slug, findings: l.findings });
+        }
+        return raceLayersPayload(l);
+      })(),
+      /**
+       * RP-4 / RP-5 · the course described as a course. No second finish time:
+       * the canonical adjustment is computed for context and is gated on
+       * `elevationIsTrustedForAdjustment`, and `applied_to_target` is sent as
+       * false so no surface can imply a course-adjusted number it was not
+       * given. The missing link — a course-specific TARGET — belongs to
+       * `lib/race/race-outlook.ts` and is reported, not manufactured here.
+       */
+      courseContext: raceCourseContextPayload(
+        raceCourseContext({
+          resolved: resolvedElevation,
+          distanceMi,
+          flatPaceSecPerMi: outlook?.execution.paceSecPerMi ?? null,
+        }),
+      ),
     });
   } catch (err: unknown) {
     // Was `err?.message` in the body.
