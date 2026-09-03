@@ -888,6 +888,21 @@ export function runWorkoutTypeSql(alias = ''): string {
   return `${col(alias)}->>'workoutType'`;
 }
 
+/**
+ * `plannedWorkoutType` AS TEXT — the family the PLAN asked for, which is a
+ * different question from `workoutType`, the family the row turned out to be.
+ * Written by the watch completion path only, so it is NULL on every Strava
+ * row and on every manually-entered one. Null means "this row never came from
+ * a prescription", not "the prescription was easy".
+ *
+ * Unlike `workoutType` this carries ONE taxonomy — faff semantics — because
+ * nothing but faff ever wrote it. It is safe to compare against a semantic
+ * name directly.
+ */
+export function runPlannedWorkoutTypeSql(alias = ''): string {
+  return `${col(alias)}->>'plannedWorkoutType'`;
+}
+
 /** Which ingest path wrote the row. NULL on the oldest Strava rows — null
  *  means "old Strava", not "unknown". */
 export function runSourceSql(alias = ''): string {

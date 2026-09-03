@@ -40,7 +40,19 @@
  * question, argued at the top of `matched.ts`.
  */
 import { pool } from '@/lib/db/pool';
-import { CANONICAL_ROW_SQL, runDaySql, runIdentityMatchSql } from '@/lib/runs/run-shape';
+import {
+  CANONICAL_ROW_SQL,
+  runDaySql,
+  runDistanceMiSql,
+  runElevGainFtSql,
+  runIdentityMatchSql,
+  runPhasesSql,
+  runPlannedWorkoutTypeSql,
+  runTempFSql,
+  runWorkoutType,
+  runWorkoutTypeSql,
+  type RunData,
+} from '@/lib/runs/run-shape';
 import { resolveWorkoutVerdict, type WorkoutVerdict } from '@/lib/execution/verdict';
 import { displayTypeFor } from '@/lib/faff/v5-today';
 import { resolveStoredPhases } from './load';
@@ -188,25 +200,32 @@ export async function loadPostRunDetailExtras(
    * doc comment says so ("both call sites query `runs` unaliased"). Rewriting
    * the shared predicate to fit a local alias is how a shared predicate stops
    * being shared. */
-  const candRes = await pool.query<{ id: string; d: string; phases: unknown; meta: Record<string, any> }>(
+  const candRes = await pool.query<{
+    id: string;
+    d: string;
+    phases: unknown;
+    distance_mi: string | null;
+    elev_gain_ft: string | null;
+    temp_f: string | null;
+    workout_type: string | null;
+    planned_workout_type: string | null;
+  }>(
     `SELECT id::text AS id,
             ${runDaySql()} AS d,
             (SELECT jsonb_agg(e - 'hrSamples' - 'paceSamples')
-               FROM jsonb_array_elements(data->'phases') e) AS phases,
-            jsonb_build_object(
-              'distanceMi', data->'distanceMi',
-              'elevGainFt', data->'elevGainFt',
-              'tempF',      data->'tempF',
-              'workoutType', data->'workoutType',
-              'plannedWorkoutType', data->'plannedWorkoutType'
-            ) AS meta
+               FROM jsonb_array_elements(${runPhasesSql()}) e) AS phases,
+            ${runDistanceMiSql()}          AS distance_mi,
+            ${runElevGainFtSql()}          AS elev_gain_ft,
+            ${runTempFSql()}               AS temp_f,
+            ${runWorkoutTypeSql()}         AS workout_type,
+            ${runPlannedWorkoutTypeSql()}  AS planned_workout_type
        FROM runs
       WHERE user_uuid = $1
         AND ${CANONICAL_ROW_SQL}
         AND ${runDaySql()} < $2
         AND ${runDaySql()} >= $3
-        AND jsonb_typeof(data->'phases') = 'array'
-        AND jsonb_array_length(data->'phases') >= 3
+        AND jsonb_typeof(${runPhasesSql()}) = 'array'
+        AND jsonb_array_length(${runPhasesSql()}) >= 3
       ORDER BY ${runDaySql()} DESC
       LIMIT 60`,
     [
@@ -218,8 +237,18 @@ export async function loadPostRunDetailExtras(
   );
 
   const candidates: MatchCandidate[] = candRes.rows.map((r) => {
-    const d = r.meta ?? {};
-    const t = (d.plannedWorkoutType ?? d.workoutType ?? null) as string | null;
+    /* WHICH FAMILY THIS CANDIDATE BELONGS TO, in one taxonomy.
+     *
+     * `plannedWorkoutType` carries faff semantics and nothing else, so it can
+     * be read as-is. `workoutType` cannot: it flattens two eras into one
+     * column, and a Strava row arrives as the CODE `'1'`. Reading it raw is
+     * how `displayTypeFor` would have been handed a number to name a session
+     * with. `runWorkoutType` is the one place that knows both eras, so the
+     * fallback goes through it and a code that names no family stays null —
+     * which makes the basis sentence say "of the same structure" rather than
+     * invent a name. */
+    const t: string | null =
+      r.planned_workout_type || runWorkoutType({ workoutType: r.workout_type } as RunData).semantic;
     const read = readOf(resolveWorkoutVerdict({
       type: t,
       /* NO SPEC. A candidate gets no `plan_workouts` row on purpose — see the
@@ -234,9 +263,9 @@ export async function loadPostRunDetailExtras(
       dateISO: r.d,
       segments: read.segments,
       work: read.work,
-      totalDistanceMi: num(d.distanceMi),
-      elevGainFt: num(d.elevGainFt),
-      tempF: num(d.tempF),
+      totalDistanceMi: num(r.distance_mi),
+      elevGainFt: num(r.elev_gain_ft),
+      tempF: num(r.temp_f),
       weeksToRace: weeksToRaceAt(r.d, raceDates),
       /* A CANDIDATE NAMES ITS FAMILY ONLY IF ITS OWN ROW DOES. `displayTypeFor`
        * is the app's one enum-to-name table; a null here means the basis
