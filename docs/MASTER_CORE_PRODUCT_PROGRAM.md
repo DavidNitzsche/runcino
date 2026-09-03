@@ -1174,6 +1174,34 @@ here only; no speculative frameworks are being designed for them.
   DATA question — does `workout_spec` carry a treadmill-equivalent incline/
   speed target for a hill session at all — is programme-lead's (workout
   prescription). The RENDERING of that field on the workout card is pre-run
-  session's (workout-detail information hierarchy). Not yet investigated on
-  either side as of this entry; recorded so neither session assumes the other
-  has it.
+  session's (workout-detail information hierarchy).
+
+  **Data side investigated 2026-09-03.** `lib/plan/spec-builder.ts` prescribes
+  hill reps `by_effort` — deliberately no pace target — cited to
+  `Research/04-workout-vocabulary.md` §8.1: "Strong, controlled (~95% effort)"
+  / "5K-10K effort", never a pace, because a flat-ground pace target is
+  unreachable on an outdoor grade that varies. **That reasoning does not hold
+  on a treadmill**, where the grade is fixed and set by the runner — a
+  pace+incline pair is both meaningful and achievable there. The conversion
+  machinery already exists and is doctrine-cited: `lib/terrain/grade-adjust.ts`
+  (`gradeFactor`, `flatToGraded`, `gradedToFlat`, `treadmillEffectiveGradePct`,
+  the `TREADMILL_COST_PER_PCT`/`TREADMILL_AIR_RESISTANCE_GRADE_PCT` constants
+  watched by `DOCTRINE_REGISTRY['TERRAIN.treadmill-cost-per-pct']` and
+  `['TERRAIN.treadmill-air-resistance-grade']`) — but it is used ONLY on the
+  post-run/interpretation side (grading a completed run against its recorded
+  grade), never at prescription time. `spec-builder.ts` has zero references to
+  incline, treadmill, or grade at all.
+
+  **What building this would take**, not attempted here — it crosses into
+  three separate decisions: (1) a coaching call on what incline to prescribe
+  for a treadmill hill session (common convention is 4-8%; needs a doctrine
+  citation or an argued default, not an invented number); (2) `spec-builder.ts`
+  gaining a treadmill variant of the hill-rep spec that converts the
+  effort-band's flat-equivalent pace through `flatToGraded` at that incline —
+  straightforward given the existing functions, but it is new prescription
+  logic, not a data read; (3) knowing the runner intends THIS session on a
+  treadmill at all, which is a workout-selection/UX question inside pre-run
+  session's territory (workout-detail information hierarchy), not something
+  the engine can infer. Recorded as a scoped, three-part follow-up rather than
+  built partially — a treadmill pace/incline field with no way to ask "is this
+  a treadmill day" would ship dead.
