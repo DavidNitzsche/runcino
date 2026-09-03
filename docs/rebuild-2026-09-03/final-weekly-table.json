@@ -1,0 +1,137 @@
+[
+    {
+        "is_peak": false,
+        "long_mi": 13.0,
+        "week_mi": 38.0,
+        "week_idx": 0,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-08-24"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 15.0,
+        "week_mi": 46.5,
+        "week_idx": 1,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-08-31"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 0.0,
+        "week_mi": 24.4,
+        "week_idx": 2,
+        "is_cutback": true,
+        "is_race_week": false,
+        "week_start_iso": "2026-09-07"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 16.5,
+        "week_mi": 46.8,
+        "week_idx": 3,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-09-14"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 17.0,
+        "week_mi": 55.2,
+        "week_idx": 4,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-09-21"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 14.0,
+        "week_mi": 43.0,
+        "week_idx": 5,
+        "is_cutback": true,
+        "is_race_week": false,
+        "week_start_iso": "2026-09-28"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 18.5,
+        "week_mi": 59.5,
+        "week_idx": 6,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-10-05"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 20.0,
+        "week_mi": 59.6,
+        "week_idx": 7,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-10-12"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 15.0,
+        "week_mi": 46.0,
+        "week_idx": 8,
+        "is_cutback": true,
+        "is_race_week": false,
+        "week_start_iso": "2026-10-19"
+    },
+    {
+        "is_peak": true,
+        "long_mi": 21.5,
+        "week_mi": 60.0,
+        "week_idx": 9,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-10-26"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 0.0,
+        "week_mi": 43.2,
+        "week_idx": 10,
+        "is_cutback": true,
+        "is_race_week": false,
+        "week_start_iso": "2026-11-02"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 16.0,
+        "week_mi": 40.5,
+        "week_idx": 11,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-11-09"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 16.0,
+        "week_mi": 49.0,
+        "week_idx": 12,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-11-16"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 10.0,
+        "week_mi": 36.0,
+        "week_idx": 13,
+        "is_cutback": false,
+        "is_race_week": false,
+        "week_start_iso": "2026-11-23"
+    },
+    {
+        "is_peak": false,
+        "long_mi": 0.0,
+        "week_mi": 43.7,
+        "week_idx": 14,
+        "is_cutback": false,
+        "is_race_week": true,
+        "week_start_iso": "2026-11-30"
+    }
+]
