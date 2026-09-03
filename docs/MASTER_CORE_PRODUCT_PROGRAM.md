@@ -685,7 +685,43 @@ recentre-on-every-swipe logic (a snap-back transaction on every single page chan
 could read as micro-stutter even with animations disabled), and whether `onPageWeek`'s
 network round-trip stalls the NEXT swipe rather than just the content underneath it.
 
-Not touched tonight. Logged so it is not lost and not silently re-closed.
+**FIXED 2026-09-03, `14c567fa` — WKSTRIP-RACE-1.** David gave the exact
+symptom: *"the swipe sometimes starts to change and then comes back."* That
+sentence located the bug precisely once cross-referenced against the two files'
+actual reactive/async semantics — no guessing was needed:
+
+`WeekStripV5`'s recentre-to-center-page snap fired on a FIXED CLOCK (the next
+MainActor tick, unconditionally), while `TodayHostV5.goTo`'s week-fetch takes
+one of two paths with genuinely different completion timing. On a cache hit
+(`V5Surface.present` — the common case, since the host prefetches +/-7 days on
+every arrival) `model = known` is the FIRST synchronous statement, so content
+usually lands before the recentre fires — the "sometimes" it didn't revert. On a
+cache miss (`V5Surface.rebind`) there is no such statement: `model` does not
+update until the real network round trip completes, well after the recentre had
+already snapped back — so the strip visibly showed the swiped-to week's ghost
+numbers, then reverted to the OLD week's real ones. That is "started to change
+and then came back," exactly.
+
+Fix: `onPageWeek` is now `async`, and the recentre awaits it before firing —
+tied to what it actually depends on instead of to the clock. A new
+`stepWeekAndWait` on the host awaits the SPECIFIC `navigationTask` `goTo` just
+assigned (read synchronously right after the call, so an overlapping swipe can
+never make it await the wrong one), and a guard skips a stale recentre if a
+second swipe has already moved `page` again mid-await. The existing "single
+flight, cancelled and replaced" task discipline — already hardened through
+several earlier rounds of this exact defect class — is untouched; this only
+adds the await on top of it.
+
+**Verification status, stated plainly (Rule 13):** verified by tracing the
+actual causal chain through both files' real code, which is a demonstrated
+mechanism rather than a guess — but NOT watched live on a rendered swipe. The
+simulator's system Health-access confirmation dialog would not dismiss under
+repeated automated taps this session (many coordinates tried, clock visibly
+advancing, nothing registering) — the same VW-3 obstacle already logged above,
+surfacing on a different dialog than before. Compiles clean, all four call
+sites type-check. If this still isn't right when you feel it live, that
+mismatch — a reasoned fix compiling clean vs. an actual device confirming it —
+is exactly what VW-3 needs to close before the next UI-motion complaint.
 
 ---
 
