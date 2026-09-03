@@ -77,7 +77,7 @@ Nothing may displace this.
 | P0-3 | Live rebuild through the production endpoint | P0-2 gates all pass | — | Blocked on P0-2 |
 | P0-4 | Verify the **persisted** plan on every surface | P0-3 | — | Blocked |
 | P0-5 | Lock the baseline contract + golden snapshots | P0-4 | — | Blocked |
-| P0-6 | One canonical Adaptation Engine | P0-5 | adaptation | Blocked |
+| P0-6 | One canonical Adaptation Engine — **spec now complete**: `docs/ADAPTATION_ENGINE_CONTRACT.md` (per-lever contracts, cadence, reach, arbitration, admissibility, grading) | P0-5 | adaptation | **Ready when P0-5 lands** |
 | P0-7 | Historical replay without lookahead | P0-6 | adaptation | Blocked |
 | P0-8 | Live shadow evaluation | P0-7 | adaptation | Blocked |
 | P0-9 | Owner-approval mode, if earned | P0-8 meets criteria | adaptation | Blocked |
