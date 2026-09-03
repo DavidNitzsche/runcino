@@ -97,10 +97,19 @@ const TOLERANCE_MI = 0.2;
  */
 const CENSUS_BASELINE = {
   /** Sessions whose warm-up + cool-down exceeds the owner's answer for them. */
-  overOwner: 18394,
+  overOwner: 7735,
   /** Sessions whose warm-up + cool-down exceeds their own work + jog floats. */
-  legsOutweighWork: 19249,
+  legsOutweighWork: 8100,
 } as const;
+
+/* TIEREVIDENCE-2 (2026-09-02) · LOWERED, 18394 -> 7735 and 19249 -> 8100, by
+ * the ratchet's own staleness guard rather than by choice: it fails until the
+ * numbers come down. The corpus shrank because the self-declared experience
+ * level stopped selecting the load row, so the archetypes that used to compose
+ * against `advanced` and `advanced_plus` rows off a typed word now compose
+ * against the row their evidence earns, and a smaller week cannot carry the
+ * oversized warm-up/cool-down pairs this census counts. That is the ratchet
+ * moving in the direction it is allowed to move, and it may not go back up. */
 
 /**
  * RAISED BY ONE 2026-09-02 by LADDER-LENGTH-1, and this is the argued reason a

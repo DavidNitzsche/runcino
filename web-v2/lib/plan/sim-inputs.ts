@@ -51,7 +51,10 @@ import {
   HABIT_ELIGIBLE_DAYS,
   HABIT_MIN_EASY_SAMPLES,
   type PrescribedSpan,
+  // TIEREVIDENCE-2 · the SAME evidence→band derivation production uses.
+  authoringCapacityBand,
 } from './generate';
+import type { Tier } from '@/lib/workout-catalogue/types';
 import { resolveLoadTier, pickPlanMode, buildOpensISO, type PlanMode } from './goal-tiers';
 import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
@@ -150,6 +153,23 @@ export function simPrescribedSpans(
  *  LSP2-2 · only PRs from the last ~6mo ('<6mo' bucket) count as current fitness.
  *  A sub-3 marathon from 18 months ago does not reflect today's shape.
  *  Cite: Research/01 §"Fitness anchor recency"; Pfitzinger §"Using recent races". */
+/**
+ * TIEREVIDENCE-2 (2026-09-02) · the DEMONSTRATED capacity band this sim runner
+ * earns, for `resolvePrescriptions`' workout-library filter.
+ *
+ * The simulator mirrors production onboarding (PARITY-1), so it has to resolve
+ * the band the same way `loadGeneratorInputs` does and off the same evidence —
+ * the override when the harness supplies one (its way of saying "this runner
+ * has a race on file"), otherwise the self-reported race history. Both go
+ * through `authoringCapacityBand`, so there is one derivation.
+ */
+export function simCapacityBand(sim: SimInputs, raceDistanceMi: number): Tier {
+  const vdot = sim.bestRecentVdotOverride != null && sim.bestRecentVdotOverride > 0
+    ? sim.bestRecentVdotOverride
+    : bestVdotFromHistory(sim.raceHistory);
+  return authoringCapacityBand(raceDistanceMi, vdot ?? null);
+}
+
 function bestVdotFromHistory(rh: SimInputs['raceHistory']): number | undefined {
   let best: number | undefined;
   for (const e of rh) {
@@ -578,8 +598,8 @@ export function buildSimPlan(sim: SimInputs, rxOverride?: { rxQuality: ResolvedP
       : null;
     // GOALVOL-1 · mirrors `composeForUserInternal`'s non-race branch exactly.
     const tier = resolveLoadTier({
-      raceDistanceMi, level, demonstratedPaceSec: simDemonstrated, goalPaceSec,
-    }).tier; // VAR-01 + COLD-1 + GOALVOL-1
+      raceDistanceMi, demonstratedPaceSec: simDemonstrated, goalPaceSec,
+    }).tier; // COLD-1 + GOALVOL-1 + TIEREVIDENCE-2
     if (mode !== 'recovery' && sim.goalMode === 'race') {
       nextRace = { slug: 'sim-race', name: 'Goal race', date: raceDateISO, distanceMi: raceDistanceMi, goalPaceSec };
     }

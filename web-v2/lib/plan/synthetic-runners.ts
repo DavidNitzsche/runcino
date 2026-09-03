@@ -123,11 +123,26 @@ export const PERSONAS: SyntheticRunner[] = [
       weeksOut: 12,
     },
     expectedPlan: {
-      // Tier band from Research/22 (HM Advanced). The runner's base
-      // (35 mpw) is below the typical tier-base (45+), so the
-      // generator ramps from 35 toward the LOWER band (55) over 12
-      // weeks. ±10% tolerance in the bench.
-      peakWeeklyMileageBand: [50, 70],
+      /* TIEREVIDENCE-2 (2026-09-02) · MOVED, [50, 70] -> [35, 45], and the old
+       * comment is why. It read: "Tier band from Research/22 (HM Advanced).
+       * The runner's base (35 mpw) is below the typical tier-base (45+), so
+       * the generator ramps from 35 toward the LOWER band (55)."
+       *
+       * It states the problem in its own second sentence. `Research/22`
+       * §"Half Marathon — Advanced" opens "45+ mpw base, sub-1:30" — an ENTRY
+       * CONDITION this persona does not meet — and the only thing putting them
+       * on that row was `experienceLevel: 'advanced'`, the authority
+       * `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` §"What may not" removes. The
+       * persona reaches the composer with a 35 mi/wk base, a 1:30 GOAL (which
+       * may only reduce the row, never raise it) and no measured VDOT, so it
+       * is graded against §"Half Marathon — Intermediate"'s published 35-45
+       * and built to 39 — ten per cent above the base it actually reported.
+       *
+       * The persona's own `vdotAtStart: 48` would grade it differently and
+       * never reaches `composePlan`; see the note beside `bestRecentVdot` in
+       * generator-bench.ts for why that gap is named rather than closed here.
+       */
+      peakWeeklyMileageBand: [35, 45],
       qualityPerWeek: 2,
       longRunShare: 0.25,
       taperDepth: 'medium',

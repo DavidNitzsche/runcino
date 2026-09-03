@@ -198,6 +198,39 @@ describe('CADENCE-AUTHORED-1 · sweeping the old boundary produces an IDENTICAL 
   });
 });
 
+/**
+ * RATCHET · the largest block-total move half a mile of reported base may make.
+ * It may SHRINK and never grow, and it is a bound on ROUNDING, not on a
+ * formula switch — the two are different findings and this number only ever
+ * covers the first.
+ *
+ * TIEREVIDENCE-2 (2026-09-02) · RAISED 12 -> 14, and the measurement is the
+ * argument rather than the convenience. With the self-declared experience level
+ * removed, this CIM fixture's load row is `intermediate` (its demonstrated VDOT
+ * 48 grades ~7:04/mi at the marathon) instead of the `advanced` its typed level
+ * used to floor it to, so `peakWeeklyFloorMi` answers ~58 rather than 65 and
+ * the geometric climb is gentler. A gentler climb means the whole curve
+ * TRANSLATES with the base instead of pivoting on it, and `volumeCurve` rounds
+ * every week it emits to a whole mile — so all fourteen weeks cross a rounding
+ * boundary together:
+ *
+ *   base 49.5   [50, 50, 51, 38, 52, 53, 54, 40, 54, 54, 54, 44, 32, 24] = 650
+ *   base 50.0   [50, 51, 52, 39, 53, 54, 55, 41, 55, 55, 55, 45, 33, 25] = 663
+ *
+ * Every week +1 and nothing else moved: identical phases (QUALITY:7 |
+ * RACE-SPECIFIC:4 | TAPER:3), identical down weeks (the `dips` assertion below
+ * still holds at zero tolerance), identical tier. 13 miles is 14 weeks of
+ * `Math.round`, and the bound is `weeks x 1` by construction — there is no
+ * branch to fall off, which is exactly the distinction
+ * `_restore_continuity.test.ts` draws when it holds its own 107 single-mile
+ * deload-rounding steps as a named residual rather than a defect.
+ *
+ * The residual itself is `Math.round` inside `volumeCurve`'s emit, and closing
+ * it means emitting the curve at finer granularity — a change to every plan in
+ * the corpus, and not this commit's to make. Named so it can be.
+ */
+const MILEAGE_STEP_ALLOWED_MI = 14;
+
 describe('CADENCE-AUTHORED-1 · fitness and mileage still move the plan, proportionately', () => {
   it('mileage · small changes produce small changes', () => {
     // Rule 22 · a gate that only asserts "nothing changed" would pass an engine
@@ -216,7 +249,7 @@ describe('CADENCE-AUTHORED-1 · fitness and mileage still move the plan, proport
         d,
         `block total jumped ${d.toFixed(1)} mi for half a mile of reported base, between ` +
         `${walk[i - 1].mi} (${walk[i - 1].v.total}) and ${walk[i].mi} (${walk[i].v.total})`,
-      ).toBeLessThanOrEqual(12);
+      ).toBeLessThanOrEqual(MILEAGE_STEP_ALLOWED_MI);
       // And the calendar itself never re-phases on mileage.
       const dips = (v: Vec) => v.vols.map((x, k) => (k > 0 && x < v.vols[k - 1] * 0.9 ? k : -1)).filter((k) => k >= 0);
       expect(dips(walk[i].v), `the down weeks moved at base ${walk[i].mi}`).toEqual(dips(walk[0].v));

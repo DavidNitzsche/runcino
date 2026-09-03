@@ -1020,19 +1020,150 @@ const TIER_ORD: Record<GoalTier, number> = { developing: 0, intermediate: 1, adv
  * — the clamp below compares the two, and a comparison across two different
  * tables would be meaningless.
  */
+/**
+ * The pace edges themselves, extracted from the `switch` that used to hold
+ * them inline (TIEREVIDENCE-2, 2026-09-02).
+ *
+ * They are read TWICE now — once by `tierFromPace` to pick a discrete row, and
+ * once by `peakWeeklyFloorMi` to run a CONTINUOUS response through the same
+ * numbers (Rule 9: "doctrine's number is a control point, not a step"). Two
+ * copies of these thresholds would be two answers to one question, and a
+ * divergence would put the smooth curve's knee somewhere the row does not
+ * change (Rule 16).
+ *
+ *   5k   sub-17:00 elite · sub-18:30 advanced · sub-24:30 intermediate
+ *   10k  sub-35:40 elite · sub-40:24 advanced · sub-52:48 intermediate
+ *   hm   sub-1:18:35 elite · sub-1:31:42 advanced (covers 1:30) · sub-2:01:12
+ *   m    sub-2:37:12 elite · sub-3:03:24 advanced (covers sub-3) · sub-4:02:24
+ *   ultra ~30s/mi slower bands than the marathon
+ */
+export const TIER_PACE_EDGES: Record<DistCategory, { elite: number; advanced: number; intermediate: number }> = {
+  '5k':    { elite: 330, advanced: 360, intermediate: 480 },
+  '10k':   { elite: 345, advanced: 390, intermediate: 510 },
+  'hm':    { elite: 360, advanced: 420, intermediate: 555 },
+  'm':     { elite: 360, advanced: 420, intermediate: 555 },
+  'ultra': { elite: 420, advanced: 480, intermediate: 600 },
+};
+
 function tierFromPace(paceSec: number, cat: DistCategory): GoalTier {
-  switch (cat) {
-    case '5k': // sub-17:00 elite · sub-18:30 advanced · sub-24:30 intermediate
-      return paceSec <= 330 ? 'elite' : paceSec <= 360 ? 'advanced' : paceSec <= 480 ? 'intermediate' : 'developing';
-    case '10k': // sub-35:40 elite · sub-40:24 advanced · sub-52:48 intermediate
-      return paceSec <= 345 ? 'elite' : paceSec <= 390 ? 'advanced' : paceSec <= 510 ? 'intermediate' : 'developing';
-    case 'hm': // sub-1:18:35 elite · sub-1:31:42 advanced (covers 1:30) · sub-2:01:12 intermediate
-      return paceSec <= 360 ? 'elite' : paceSec <= 420 ? 'advanced' : paceSec <= 555 ? 'intermediate' : 'developing';
-    case 'm': // sub-2:37:12 elite · sub-3:03:24 advanced (covers sub-3) · sub-4:02:24 intermediate
-      return paceSec <= 360 ? 'elite' : paceSec <= 420 ? 'advanced' : paceSec <= 555 ? 'intermediate' : 'developing';
-    case 'ultra': // ~30s/mi slower bands than marathon
-      return paceSec <= 420 ? 'elite' : paceSec <= 480 ? 'advanced' : paceSec <= 600 ? 'intermediate' : 'developing';
+  const e = TIER_PACE_EDGES[cat];
+  return paceSec <= e.elite ? 'elite'
+    : paceSec <= e.advanced ? 'advanced'
+      : paceSec <= e.intermediate ? 'intermediate'
+        : 'developing';
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * TIEREVIDENCE-2 (2026-09-02) · RULE 9 · THE PEAK-VOLUME FLOOR RUNS
+ * CONTINUOUSLY THROUGH DOCTRINE'S NUMBERS INSTEAD OF STEPPING AT THEM.
+ *
+ * ── THE CLIFF, MEASURED ────────────────────────────────────────────────────
+ *
+ * `volumeCurve` spends `TIER_TARGETS[cat][tier].peakWeeklyMileageBand[0]` as
+ * the destination a block climbs to. While a self-declared experience level
+ * FLOORED the tier, that band barely moved with fitness; with the label removed
+ * the tier is `tierFromPace(demonstratedPaceSec)` alone, so the destination
+ * became a STEP FUNCTION OF THE RUNNER'S DEMONSTRATED PACE.
+ * `_cadence_robust.test.ts`'s VDOT walk measured it the first time this ran:
+ *
+ *   BLOCK TOTAL JUMPED 177 MILES BETWEEN VDOT 52 AND VDOT 52.25
+ *
+ * — a quarter of a VDOT point either side of the marathon's 7:00/mi line,
+ * moving the destination from the intermediate row's 45 to the advanced row's
+ * 65. Rule 9's own signature, and the fitter runner is the one who moves.
+ *
+ * ── WHY SMOOTHING, HERE, RATHER THAN DELETING ──────────────────────────────
+ *
+ * Rule 9 says to ask what the threshold answers before reaching for a smoother.
+ * Deleting it was written first and BACKED OUT, and the measurement is the
+ * argument: with the band gone the destination is `max(distance floor, base x
+ * 1.10)`, so a 5K runner reporting 15 mi/wk is built to 16 instead of doctrine's
+ * published 25 — the block stops being a build at all, and
+ * `_restore_continuity.test.ts` then reported 84 archetypes losing more than a
+ * mile of long run, because the long-run sizer's `weeklyMi x longCap /
+ * peakWeeklyMi` had lost the stable denominator the band was giving it. The
+ * band is answering a real question — "what peak is this runner's plan written
+ * toward" — and the answer has to keep existing.
+ *
+ * ── WHAT THIS IS, EXACTLY ──────────────────────────────────────────────────
+ *
+ * `Research/22`'s published peak floor is treated as the value for the CENTRE
+ * of the pace band the row is written for, and the response is linear between
+ * centres. That is the ACWR fix verbatim (`Research/15`: "not a stop-light ...
+ * a ratio of 1.4 in itself is not a verdict"): the doctrine numbers do not
+ * move, only the response between them becomes continuous.
+ *
+ * Centres, not edges, deliberately. Anchoring at the EDGES would make the value
+ * at 7:01/mi essentially the advanced row's 65 — every runner one second inside
+ * a band inheriting the faster band's volume, which is a systematic increase
+ * bought with nothing. Anchoring at the centres puts each row's own number on
+ * each row's typical runner and splits the difference at the boundary. The
+ * outermost bands are unbounded on one side and borrow their neighbour's width
+ * for a centre; beyond that the value is clamped, so it is monotone and bounded
+ * by doctrine's own extremes everywhere.
+ *
+ * RULE 11 · NO DEMONSTRATED PACE IS NOT A PACE OF ZERO. It is a data-presence
+ * fact, so it does not enter the interpolation at all: the answer is the
+ * `developing` row's floor — the least volume doctrine asks of anyone racing
+ * this distance, and the same constant `plannedPeakBound` calls its distance
+ * floor. Missing evidence takes the conservative destination, never the
+ * ambitious one (docs/PLAN_SIMPLIFICATION_DOCTRINE.md invariant 11).
+ *
+ * WHAT THIS CANNOT FIX (Rule 22): the tier ROW still steps at these same edges
+ * for everything that is not weekly volume — `peakLongMiBand`, `longRunShare`,
+ * `qualityPerWeek`, `daysPerWeek`, `mlrPeakMi`. Those steps are smaller and are
+ * inside `_cadence_robust`'s tolerance, and the long-run axis has its own
+ * evidence reader (`evidenceLongCeilingMi`) capping it at what the runner has
+ * actually run. They are named here rather than left implied.
+ *
+ * Cite: Research/22-plan-templates.md (the four rows' published peak bands)
+ * ══════════════════════════════════════════════════════════════════════════ */
+const TIER_LADDER: readonly GoalTier[] = ['elite', 'advanced', 'intermediate', 'developing'];
+
+/** The pace at the CENTRE of each tier's band, per category. The two outer
+ *  bands are unbounded on one side and borrow the adjacent band's width. */
+function tierPaceCentres(cat: DistCategory): Record<GoalTier, number> {
+  const e = TIER_PACE_EDGES[cat];
+  const advWidth = e.advanced - e.elite;
+  const intWidth = e.intermediate - e.advanced;
+  return {
+    elite: e.elite - advWidth / 2,
+    advanced: (e.elite + e.advanced) / 2,
+    intermediate: (e.advanced + e.intermediate) / 2,
+    developing: e.intermediate + intWidth / 2,
+  };
+}
+
+export function peakWeeklyFloorMi(
+  cat: DistCategory,
+  demonstratedPaceSec: number | null | undefined,
+): number {
+  const rows = TIER_TARGETS[cat];
+  if (demonstratedPaceSec == null || !Number.isFinite(demonstratedPaceSec) || demonstratedPaceSec <= 0) {
+    // Rule 9 · `null` and a NUMBER are different KINDS of answer and the
+    // distinction is deliberately not expressible as a pace, so this is not a
+    // discontinuity in a continuous input — it is the data-presence branch.
+    // It reads the SAME row `classifyCapacityTier` composes an unmeasured
+    // runner against, so the destination and the shape cannot disagree.
+    return rows[UNMEASURED_ROW_TIER].peakWeeklyMileageBand[0];
   }
+  const c = tierPaceCentres(cat);
+  const pace = demonstratedPaceSec;
+  // Faster than the fastest centre, or slower than the slowest: clamp.
+  if (pace <= c.elite) return rows.elite.peakWeeklyMileageBand[0];
+  if (pace >= c.developing) return rows.developing.peakWeeklyMileageBand[0];
+  for (let i = 0; i < TIER_LADDER.length - 1; i++) {
+    const fast = TIER_LADDER[i];
+    const slow = TIER_LADDER[i + 1];
+    if (pace > c[fast] && pace <= c[slow]) {
+      const t = (pace - c[fast]) / (c[slow] - c[fast]);
+      const a = rows[fast].peakWeeklyMileageBand[0];
+      const b = rows[slow].peakWeeklyMileageBand[0];
+      return Math.round((a + (b - a) * t) * 10) / 10;
+    }
+  }
+  // Unreachable: the clamps above cover both open ends.
+  return rows.developing.peakWeeklyMileageBand[0];
 }
 
 /**
@@ -1048,18 +1179,18 @@ function tierFromPace(paceSec: number, cat: DistCategory): GoalTier {
  * Per Design/adaptive-progression-engine.md ("Fitness must be demonstrated")
  * an unstated level is unknown capacity, not permission.
  *
- * TIEREVIDENCE-1 (2026-09-02) · NAMED A CEILING, SPENT AS A FLOOR, AND THAT IS
- * THE RESIDUAL. `CAPACITY_BAND.unstated.floor` is this constant with the
- * ceiling left at 'elite', so it does not cap an unevidenced account — it
- * PROMOTES one, from the bottom of the table to 'intermediate'. The published
- * bands no longer inherit that promotion (`demonstratedLoadCeilingTier` starts
- * every runner at `EVIDENCE_ABSENT_TIER`); the composed row still does. Left
- * standing rather than changed here because moving it moves the long-run band
- * and the quality counts too — see the TIEREVIDENCE-1 block below.
+ * TIEREVIDENCE-2 (2026-09-02) · CLOSED, BY DELETION. `UNSTATED_LEVEL_TIER_
+ * CEILING` and `INTERMEDIATE_LEVEL_TIER_CEILING` were the two constants that
+ * turned this comment's "unknown capacity, not permission" into a PROMOTION —
+ * both were spent as `CAPACITY_BAND[...].floor`, so an unevidenced account was
+ * lifted from the bottom of the table to 'intermediate' and a typed
+ * 'advanced' straight to the 65-90 mi/wk row. `docs/PLAN_SIMPLIFICATION_
+ * DOCTRINE.md` §"What may not" removes self-declared experience-level bands as
+ * decision authority outright, so there is no level left to floor: the tier is
+ * `tierFromPace(demonstratedPaceSec)` and, with nothing demonstrated,
+ * `EVIDENCE_ABSENT_TIER`. The sentence above still governs — it is just that
+ * "not permission" is now spelled 'developing' rather than 'intermediate'.
  */
-const UNSTATED_LEVEL_TIER_CEILING: GoalTier = 'intermediate';
-/** An explicitly-intermediate runner has a stated base, but not an elite one. */
-const INTERMEDIATE_LEVEL_TIER_CEILING: GoalTier = 'advanced';
 
 /**
  * @deprecated GOALVOL-1 (2026-09-02) · use `resolveLoadTier`.
@@ -1085,11 +1216,10 @@ const INTERMEDIATE_LEVEL_TIER_CEILING: GoalTier = 'advanced';
 export function classifyGoalTier(
   goalPaceSec: number | null | undefined,
   raceDistanceMi: number,
-  level?: ExperienceLevelInput,
   /** COLD-1 · demonstrated equivalent race pace (s/mi) from a MEASURED VDOT. */
   demonstratedPaceSec?: number | null,
 ): GoalTier {
-  return resolveLoadTier({ raceDistanceMi, level, demonstratedPaceSec, goalPaceSec }).tier;
+  return resolveLoadTier({ raceDistanceMi, demonstratedPaceSec, goalPaceSec }).tier;
 }
 
 /**
@@ -1185,15 +1315,13 @@ export function distanceCategoryOf(raceDistanceMi: number): DistCategory {
  * handback's residuals.
  * ═══════════════════════════════════════════════════════════════════════ */
 
-/** The experience rungs the capacity bands are keyed on. `unstated` is a real
- *  rung, not a missing value — `profile.experience_level` is NULL on real
- *  production accounts (COLD-1). */
-type CapacityLevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | 'unstated';
-
-const capacityLevelKey = (level: ExperienceLevelInput): CapacityLevelKey =>
-  level === 'beginner' || level === 'intermediate' || level === 'advanced' || level === 'advanced_plus'
-    ? level
-    : 'unstated';
+/* TIEREVIDENCE-2 (2026-09-02) · `CapacityLevelKey` / `capacityLevelKey` are
+ * DELETED. They existed only to index the three level-keyed tables below
+ * (`CAPACITY_BAND`, `CAPACITY_CEILING`, `GOAL_DEMAND_FLOOR`), all of which are
+ * also deleted. Guarded as REMOVED rather than as a comment nobody checks:
+ * `_declared_level_inert.test.ts` composes the same runner at every declared
+ * value and at both absences and asserts the block is byte-identical, so a
+ * reintroduced level-keyed table cannot come back quietly. */
 
 /* ══════════════════════════════════════════════════════════════════════════
  * TIEREVIDENCE-1 (2026-09-02) · WHAT A TYPED EXPERIENCE LEVEL MAY AND MAY NOT
@@ -1220,32 +1348,48 @@ const capacityLevelKey = (level: ExperienceLevelInput): CapacityLevelKey =>
  * 90 against a 48.5 mi/wk runner it was a ceiling nothing could ever reach,
  * which is a guard in name only (Rule 21).
  *
- * ── WHAT CHANGED, AND WHAT DELIBERATELY DID NOT ────────────────────────────
+ * ── TIEREVIDENCE-2 (2026-09-02) · THE RESIDUAL IS CLOSED ───────────────────
  *
- * `demonstratedLoadCeilingTier` below answers the evidence-only question — the
- * highest load row this runner's DEMONSTRATED performance earns, with the typed
- * level allowed to cap it and never to lift it — and `lib/plan/generate.ts`
- * spends it on the two PUBLISHED BANDS, which is the authority the owner named.
- *
- * `classifyCapacityTier` is UNCHANGED and still carries the level's floor,
- * because the row it selects is not only a volume band: it also sets
+ * TIEREVIDENCE-1 moved the two PUBLISHED bands onto evidence and left the
+ * COMPOSED row on the typed level, on the argument that the row also sets
  * `peakLongMiBand`, `longRunShare`, `qualityPerWeek`, `daysPerWeek` and
- * `mlrPeakMi`. Re-selecting the row from `demonstratedPaceSec` was implemented
- * and measured before being backed out, and the measurement is the argument:
- * on the frozen `INV-12 · advanced-marathon (David class)` fixture the peak
- * WEEKLY volume did not move at all (66 mi/wk either way) while the peak LONG
- * RUN fell from 22.5 mi to 20. A pace measurement shortening a marathoner's
- * long run is a category error — the long run's evidence is duration and
- * late-run behaviour, not race pace — and `classifyCapacityTier` has no volume
- * axis to answer it with. Adding one is the right next step and it is a
- * separate decision, because the only volume numbers available at that seam for
- * a cold-start runner (`recentWeeklyMi` off an onboarding bucket) are
- * SELF-REPORTS, and feeding a self-report into a capacity resolver is the door
- * GOALVOL-1 closed.
+ * `mlrPeakMi`, and that demoting it off a pace reading shortens a marathoner's
+ * long run on evidence that is not about long runs.
  *
- * So: the level still shapes the row the block is composed against, and it no
- * longer decides the numbers the adaptation engine binds on. The residual is
- * recorded rather than quietly chosen.
+ * That residual is now closed, and the argument that kept it open no longer
+ * holds, for a reason that had to be MEASURED rather than reasoned:
+ *
+ *   · THE WEEKLY AXIS DOES NOT MOVE FOR AN EVIDENCED RUNNER. `volumeCurve`
+ *     spends the row only as `doctrineTarget = max(band[0], start × 1.10)`,
+ *     and `cycleBoundedPeak` then IGNORES that target outright whenever a
+ *     demonstrated peak week exists — it returns `plannedPeakBound(...)`,
+ *     which reads the runner's own biggest week and nothing from this table.
+ *     The row is the target only for a runner with no measured volume at all,
+ *     which is exactly the runner Rule 11 says must get the conservative
+ *     answer. Measured on the reference runner: peak week 60.1 mi either way.
+ *   · THE LONG-RUN AXIS ALREADY HAS ITS OWN EVIDENCE READER.
+ *     `evidenceLongCeilingMi` (LONGEVIDENCE-1) caps the long run at the
+ *     runner's own demonstrated long grown by the per-cycle figure, so a row
+ *     demotion cannot shorten a long run below what the runner has actually
+ *     done. The category error TIEREVIDENCE-1 named is answered by that
+ *     reader, not by keeping a typed word.
+ *   · AND `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` §"What may not" removed
+ *     "self-declared experience-level bands" as decision authority outright,
+ *     naming this exact band: "`profile.experience_level` reads `advanced`
+ *     because he typed it at onboarding, yielding a peak band of 65-90 mi/wk
+ *     against a measured best week of 48.5". Decision authority "removed —
+ *     not hidden, not defaulted off".
+ *
+ * WHAT DELIBERATELY DID NOT CHANGE, and why there is no NEW threshold here
+ * (Rule 9): the tier is `tierFromPace(demonstratedPaceSec)` and nothing else.
+ * No volume axis was added. Adding one would have put a second threshold on a
+ * continuous quantity — `Research/22`'s rows publish base entry conditions
+ * ("50+ mpw base") and crossing 50.0 mi/wk would have moved the marathon band
+ * from [45, 55] to [65, 90], a ten-mile step for a tenth of a mile of base.
+ * The pace thresholds already exist, are already walked by
+ * `_goal_volume_seal.test.ts` §5 and `_restore_continuity.test.ts`, and the
+ * quantity that actually sizes an evidenced runner's block —
+ * `plannedPeakBound` — is continuous by construction and gated as such.
  * ═══════════════════════════════════════════════════════════════════════ */
 
 /**
@@ -1257,140 +1401,174 @@ const capacityLevelKey = (level: ExperienceLevelInput): CapacityLevelKey =>
 const EVIDENCE_ABSENT_TIER: GoalTier = 'developing';
 
 /**
- * How far DEMONSTRATED evidence may carry each stated experience level.
+ * TIEREVIDENCE-2 (2026-09-02) · `CAPACITY_CEILING`, `CAPACITY_BAND`,
+ * `GOAL_DEMAND_FLOOR` and `demonstratedLoadCeilingTier` are DELETED.
  *
- * The direction a self-report may safely move a load table: DOWN. A runner who
- * says they are a beginner is not handed an elite row however fast one race
- * went. Same ceilings `CAPACITY_BAND` carried; `unstated` is 'elite' because
- * COLD-1's `UNSTATED_LEVEL_TIER_CEILING` was a FLOOR wearing a ceiling's name
- * (its own comment: "with nothing demonstrated that constant is the whole
- * answer"), and a floor is exactly what this reading must not have.
+ * The three tables were the level-keyed authority itself: a floor, a ceiling
+ * and a reduction floor, all indexed by `profile.experience_level`. With the
+ * label removed as decision authority there is nothing left for them to be
+ * keyed on, and a table with one row is not a table.
+ *
+ * `demonstratedLoadCeilingTier` is deleted for a different reason, and it is
+ * Rule 16: it and `classifyCapacityTier` asked two questions ("how far up the
+ * table has the runner shown they belong" versus "which row is this block
+ * composed against") that differed ONLY by the level floor. Take the floor
+ * away and they are the same quantity, computed twice, under two names — the
+ * exact shape that put three different "projected finish" numbers on one
+ * runner's screen. There is now one name, `classifyCapacityTier`, and both the
+ * composed row and the published bands read it.
+ *
+ * Bound by `_declared_level_inert.test.ts` (behavioural, byte-identity across
+ * all four declared values and both absences) and by
+ * `scripts/check-goal-volume-leak.sh` guard 3 (the compile-time seal on the
+ * parameter tuple, which no longer has a level in it either).
  */
-const CAPACITY_CEILING: Record<CapacityLevelKey, GoalTier> = {
-  beginner:      'intermediate',
-  intermediate:  INTERMEDIATE_LEVEL_TIER_CEILING,
-  advanced:      'elite',
-  advanced_plus: 'elite',
-  unstated:      'elite',
-};
-
-/**
- * THE EVIDENCE-ONLY LOAD CEILING · the highest `TIER_TARGETS` row this runner's
- * DEMONSTRATED performance earns.
- *
- * A different question from `classifyCapacityTier`, and named for it (Rule 16):
- * that one asks "which row is this block composed against", this one asks "how
- * far up the table has the runner actually shown they belong". The typed
- * experience level may only CAP this; with nothing demonstrated the answer is
- * `EVIDENCE_ABSENT_TIER`, so missing data produces the conservative row and
- * never the ambitious one (Rule 11).
- *
- * Its parameter tuple is the same goal-free tuple `classifyCapacityTier` is
- * sealed on, and the compile-time assertion at the bottom of this file covers
- * both.
- */
-export function demonstratedLoadCeilingTier(
-  raceDistanceMi: number,
-  level: ExperienceLevelInput,
-  demonstratedPaceSec: number | null | undefined,
-): GoalTier {
-  const cat = distanceCategoryOf(raceDistanceMi);
-  const demonstrated =
-    demonstratedPaceSec != null && Number.isFinite(demonstratedPaceSec) && demonstratedPaceSec > 0
-      ? tierFromPace(demonstratedPaceSec, cat)
-      : null;
-  return clampTier(
-    demonstrated ?? EVIDENCE_ABSENT_TIER,
-    EVIDENCE_ABSENT_TIER,
-    CAPACITY_CEILING[capacityLevelKey(level)],
-  );
-}
-
-/**
- * The tier band a stated experience level earns on its own, and the highest
- * DEMONSTRATED evidence may lift it to.
- *
- * `floor` is the level's own claim about capacity and is also the answer when
- * there is no demonstrated pace to read. `ceiling` is how far evidence may
- * carry it — the Rule 21 half: the plan must be able to get harder, and the
- * only thing that may make it harder is what the runner has shown.
- *
- * TIEREVIDENCE-1 · the FLOOR half is the self-report, and it is the residual
- * recorded in the block above. It survives here because this row also sets the
- * long-run band, the long-run share and the quality/day counts, and demoting it
- * off a pace reading shortens a marathoner's long run on evidence that is not
- * about long runs. `demonstratedLoadCeilingTier` above is what the published
- * bands use instead.
- */
-const CAPACITY_BAND: Record<CapacityLevelKey, { floor: GoalTier; ceiling: GoalTier }> = {
-  beginner:      { floor: 'developing',   ceiling: CAPACITY_CEILING.beginner },
-  intermediate:  { floor: 'intermediate', ceiling: CAPACITY_CEILING.intermediate },
-  advanced:      { floor: 'advanced',     ceiling: CAPACITY_CEILING.advanced },
-  advanced_plus: { floor: 'advanced',     ceiling: CAPACITY_CEILING.advanced_plus },
-  // COLD-1 · an unstated level is unknown capacity, not permission.
-  unstated:      { floor: UNSTATED_LEVEL_TIER_CEILING, ceiling: CAPACITY_CEILING.unstated },
-};
-
-
-/** The lowest rung the goal may reduce a runner to. An `advanced` runner keeps
- *  an advanced base whatever they enter — the floor half of VAR-01's clamp,
- *  which is a statement about training CAPACITY and survives GOALVOL-1
- *  untouched. Everyone else may be reduced to the bottom of the table. */
-const GOAL_DEMAND_FLOOR: Record<CapacityLevelKey, GoalTier> = {
-  beginner: 'developing',
-  intermediate: 'developing',
-  advanced: 'advanced',
-  advanced_plus: 'advanced',
-  unstated: 'developing',
-};
 
 const clampTier = (t: GoalTier, floor: GoalTier, ceiling: GoalTier): GoalTier =>
   TIER_ORD[t] < TIER_ORD[floor] ? floor : TIER_ORD[t] > TIER_ORD[ceiling] ? ceiling : t;
 
 /**
- * THE LOAD CEILING · what this runner's demonstrated fitness and stated
- * experience support, with no goal anywhere in it.
+ * THE LOAD ROW · the highest `TIER_TARGETS` row this runner's DEMONSTRATED
+ * performance earns. No goal in it, and no self-declared experience band
+ * either.
  *
  * `demonstratedPaceSec` is an equivalent race pace at THIS distance, predicted
  * by the caller from a MEASURED VDOT (races and qualifying runs). Null is the
- * cold-start case and a real answer, not a failure (Rule 11): the level's own
- * floor stands. A mileage self-report is deliberately not accepted here —
- * feeding one in is how a typed goal used to authorize advanced-tier volume
- * off zero evidence, and the same door would reopen it.
+ * cold-start case and a real answer, not a failure (Rule 11): the answer is
+ * `EVIDENCE_ABSENT_TIER`, the bottom row, so an unread runner gets the
+ * conservative row and never the ambitious one. That is the direction
+ * `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` invariant 11 requires — "Missing or
+ * unreliable data cannot silently create a more aggressive plan."
+ *
+ * A mileage self-report is deliberately not accepted here — feeding one in is
+ * how a typed goal used to authorize advanced-tier volume off zero evidence,
+ * and the same door would reopen it. The runner's own reported base still
+ * governs their block through `volumeCurve`'s `max(band[0], start x 1.10)`,
+ * where it belongs: as a statement about where the ramp STARTS, not about
+ * which archetype's plan they are handed.
  */
 export function classifyCapacityTier(
   raceDistanceMi: number,
-  level: ExperienceLevelInput,
   demonstratedPaceSec: number | null | undefined,
 ): GoalTier {
   const cat = distanceCategoryOf(raceDistanceMi);
-  const band = CAPACITY_BAND[capacityLevelKey(level)];
   const demonstrated =
     demonstratedPaceSec != null && Number.isFinite(demonstratedPaceSec) && demonstratedPaceSec > 0
       ? tierFromPace(demonstratedPaceSec, cat)
       : null;
-  return clampTier(demonstrated ?? band.floor, band.floor, band.ceiling);
+  return demonstrated ?? UNMEASURED_ROW_TIER;
 }
 
 /**
- * REQUIRED DEVELOPMENT · how much training the stated goal asks for, floored
- * by the runner's own experience.
+ * THE ROW A BLOCK IS COMPOSED AGAINST WHEN NOTHING HAS BEEN MEASURED.
+ *
+ * COLD-1's own constant, kept at its own value and stripped of the thing that
+ * made it wrong. It used to be `CAPACITY_BAND.unstated.floor`, i.e. a floor
+ * indexed by `profile.experience_level` — so it also FLOORED a runner whose
+ * demonstrated pace graded below it, and a measured slow marathoner was held at
+ * the intermediate row by an absent word. Now it is what its name always said:
+ * the answer when there is no measurement at all, and nothing else.
+ *
+ * WHY NOT `EVIDENCE_ABSENT_TIER` ('developing') HERE TOO. Because this row and
+ * the published band are two different questions, which is the split
+ * TIEREVIDENCE-1 made and this commit keeps:
+ *
+ *   · THIS one asks "which of `Research/22`'s four templates should an unread
+ *     runner's block be SHAPED like" — the long-run band, the long-run share,
+ *     the quality count, the days, the MLR. A default template is not a
+ *     permission, and doctrine's middle row is the honest default for someone
+ *     the app has not seen race. Measured: dropping it to 'developing' built a
+ *     45 mi/wk half-marathoner to a 39 mi/wk peak against `Research/22`
+ *     §"Half Marathon — Intermediate"'s own published 35-45 band, and
+ *     `generator-bench.test.ts` failed on exactly that.
+ *   · `demonstratedLoadCeilingTier` asks "what CEILING may the adaptation
+ *     engine bind on", and there the answer must be the bottom row, because a
+ *     ceiling IS a permission and Rule 11 says an unread runner gets none.
+ *
+ * The runner's own reported base still governs the volume either way —
+ * `volumeCurve` takes `max(peakWeeklyFloorMi, base x 1.10)` — so this row is a
+ * SHAPE default, never a licence to out-train the base the runner reported.
+ */
+const UNMEASURED_ROW_TIER: GoalTier = 'intermediate';
+
+/**
+ * THE EVIDENCE-ONLY LOAD CEILING · the highest `TIER_TARGETS` row this runner's
+ * DEMONSTRATED performance earns, and the one the two PUBLISHED bands are read
+ * from (`authored_state.tier_peak_weekly_band` / `tier_peak_long_band`, which
+ * `lib/plan/adaptive-ramp.ts` spends as the ceiling an upward volume bump may
+ * never cross).
+ *
+ * TIEREVIDENCE-2 (2026-09-02) · the typed experience level that used to CAP
+ * this is gone; nothing else about it moved. With nothing demonstrated the
+ * answer is `EVIDENCE_ABSENT_TIER`, so a missing read produces the conservative
+ * ceiling and never the ambitious one (Rule 11).
+ *
+ * Kept SEPARATE from `classifyCapacityTier` deliberately — see
+ * `UNMEASURED_ROW_TIER` for why a default template and a permission ceiling
+ * are two questions and must not share one answer.
+ */
+export function demonstratedLoadCeilingTier(
+  raceDistanceMi: number,
+  demonstratedPaceSec: number | null | undefined,
+): GoalTier {
+  const cat = distanceCategoryOf(raceDistanceMi);
+  const demonstrated =
+    demonstratedPaceSec != null && Number.isFinite(demonstratedPaceSec) && demonstratedPaceSec > 0
+      ? tierFromPace(demonstratedPaceSec, cat)
+      : null;
+  return clampTier(demonstrated ?? EVIDENCE_ABSENT_TIER, EVIDENCE_ABSENT_TIER, 'elite');
+}
+
+/**
+ * TIEREVIDENCE-2 (2026-09-02) · THE ONE BRIDGE from the evidence-derived load
+ * tier to the four-rung `beginner | intermediate | advanced | advanced_plus`
+ * vocabulary the workout catalogue, the workout library's `levelFit` column and
+ * `Research/22`'s own row names are written in.
+ *
+ * It exists because those three vocabularies are the SAME four rungs under two
+ * spellings, and `profile.experience_level` used to be what supplied them.
+ * `TIER_TARGETS`' rows are already stated as that mapping in this file's own
+ * header — "developing = Beginner, intermediate = Intermediate, advanced =
+ * Advanced" — and `elite` is the engine's extrapolation above Advanced, so it
+ * takes the top rung.
+ *
+ * Rule 16: there is exactly one of these, so the row a block is composed
+ * against and the session a runner is prescribed can never be selected from two
+ * different readings of the same runner.
+ *
+ * Rule 9: this adds NO threshold. It is a total function on a value that is
+ * already discrete, and every threshold behind it (`tierFromPace`) predates it.
+ */
+export function capacityBandFor(tier: GoalTier): 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' {
+  switch (tier) {
+    case 'developing': return 'beginner';
+    case 'intermediate': return 'intermediate';
+    case 'advanced': return 'advanced';
+    case 'elite': return 'advanced_plus';
+  }
+}
+
+/**
+ * REQUIRED DEVELOPMENT · how much training the stated goal asks for.
  *
  * Never consulted on its own — `resolveLoadTier` takes the MINIMUM of this and
  * the capacity ceiling, so this value can only ever REDUCE the band. Returns
  * `'elite'` (the top of the ladder) when there is no goal, which is the
  * identity element for that minimum: no goal, no reduction.
+ *
+ * TIEREVIDENCE-2 (2026-09-02) · `GOAL_DEMAND_FLOOR` is gone with it. That table
+ * said "an `advanced` runner keeps an advanced base whatever they enter", which
+ * is a floor bought with a typed word — the same authority the doctrine
+ * removed, one function along. There is no floor now: a modest goal may reduce
+ * any runner to the bottom of the table, and the reduction is the only
+ * direction a goal has ever been allowed to move this.
  */
 export function goalDemandTier(
   goalPaceSec: number | null | undefined,
   raceDistanceMi: number,
-  level: ExperienceLevelInput,
 ): GoalTier {
   if (goalPaceSec == null || !Number.isFinite(goalPaceSec) || goalPaceSec <= 0) return 'elite';
-  const cat = distanceCategoryOf(raceDistanceMi);
-  const floor = GOAL_DEMAND_FLOOR[capacityLevelKey(level)];
-  const t = tierFromPace(goalPaceSec, cat);
-  return TIER_ORD[t] < TIER_ORD[floor] ? floor : t;
+  return tierFromPace(goalPaceSec, distanceCategoryOf(raceDistanceMi));
 }
 
 /**
@@ -1402,14 +1580,13 @@ export function goalDemandTier(
  */
 export function resolveLoadTier(args: {
   raceDistanceMi: number;
-  level: ExperienceLevelInput;
   /** COLD-1 · demonstrated equivalent race pace (s/mi) from a MEASURED VDOT. */
   demonstratedPaceSec: number | null | undefined;
   /** Reduction only. Structurally incapable of raising the tier. */
   goalPaceSec: number | null | undefined;
 }): { tier: GoalTier; capacityTier: GoalTier; reducedByGoal: boolean } {
-  const capacityTier = classifyCapacityTier(args.raceDistanceMi, args.level, args.demonstratedPaceSec);
-  const demand = goalDemandTier(args.goalPaceSec, args.raceDistanceMi, args.level);
+  const capacityTier = classifyCapacityTier(args.raceDistanceMi, args.demonstratedPaceSec);
+  const demand = goalDemandTier(args.goalPaceSec, args.raceDistanceMi);
   const tier = TIER_ORD[demand] < TIER_ORD[capacityTier] ? demand : capacityTier;
   return { tier, capacityTier, reducedByGoal: tier !== capacityTier };
 }
@@ -1422,7 +1599,6 @@ export function resolveLoadTier(args: {
  */
 export function lookupLoadTierTarget(args: {
   raceDistanceMi: number;
-  level: ExperienceLevelInput;
   demonstratedPaceSec: number | null | undefined;
   goalPaceSec: number | null | undefined;
 }): { tier: GoalTier; capacityTier: GoalTier; reducedByGoal: boolean; target: TierTarget } {
@@ -1446,12 +1622,12 @@ type _TierEquals<A, B> =
   (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type _TierAssertTrue<T extends true> = T;
 
-/** The ONLY parameter tuple the capacity tier may have. A distance, a stated
- *  experience level, and a DEMONSTRATED pace. Anything else — a goal, a goal
- *  pace, a target finish, a bag that could carry one — is a compile error. */
+/** The ONLY parameter tuple the capacity tier may have. A distance and a
+ *  DEMONSTRATED pace. Anything else — a goal, a goal pace, a target finish, a
+ *  bag that could carry one, and since TIEREVIDENCE-2 a self-declared
+ *  experience level — is a compile error. */
 type CapacityTierParams = [
   raceDistanceMi: number,
-  level: ExperienceLevelInput,
   demonstratedPaceSec: number | null | undefined,
 ];
 

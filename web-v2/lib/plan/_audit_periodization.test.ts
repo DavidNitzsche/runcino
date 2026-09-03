@@ -198,54 +198,147 @@ function repWorkdays(result: ComposePlanResult): Array<{ week: number; dow: numb
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// INVARIANT 10 · BEGINNER = NO STRUCTURED REPS
+// INVARIANT 10 · TIEREVIDENCE-2 (2026-09-02) · THE QUALITY VOCABULARY IS
+// DECIDED BY MEASURED VOLUME, NOT BY A TYPED WORD
+//
+// ── WHAT THIS INVARIANT USED TO SAY, AND WHY IT COULD NOT SURVIVE ───────────
+//
+// "a beginner plan must NOT contain structured interval reps", swept as
+// `buildInput({ level: 'beginner', ... })` across 309 cells. Every one of those
+// cells asserted that `profile.experience_level` CHANGES the plan — which is
+// the authority `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` §"What may not" removes
+// by name, and which `_declared_level_inert.test.ts` is the owner's own gate
+// against. Left as it was, this file would have been a 309-cell assertion that
+// the defect is still present.
+//
+// ── WHAT IT SAYS NOW, AND WHY IT IS STRONGER ───────────────────────────────
+//
+// The invariant behind it — a runner who cannot absorb the I/R machine must
+// not be handed it — is real and is KEPT. What changed is the evidence that
+// answers it. `plan-templates.ts` `unstatedLevelFor` (LOWVOL-2) already had the
+// doctrine-cited reading, in its own words: "Volume can only ever demote ...
+// a big week is not a demonstration of anything, whereas a week below the
+// beginner peak is a hard fact about what the runner can absorb." That is the
+// production behaviour for the 8-of-16 accounts whose `experience_level` is
+// NULL, and it is now the behaviour for all of them.
+//
+// So invariant 10 splits into the two things that are actually true:
+//
+//   10a · THE VOCABULARY DOES NOT MOVE WITH THE LABEL. The rep-day set is
+//         byte-identical across all four declarable values and both absences,
+//         for every one of the 309 cells. This is `_declared_level_inert`'s
+//         property asked of the whole matrix rather than of one runner, so it
+//         is a WIDER sweep than the one it replaces, not a narrower one.
+//
+//   10b · A RUNNER BELOW DOCTRINE'S BEGINNER PEAK BAND GETS NO STRUCTURED
+//         REPS. The protection survives, bought with the runner's own reported
+//         volume. `isBaseBuildingPlan` decides, and the cells it fires on are
+//         the ones asserted — which keeps this from being an assertion about
+//         an empty set (Rule 15).
+//
+// ── WHAT 10a/10b CANNOT FAIL ON (Rule 22) ──────────────────────────────────
+//
+//   · THE ROUTING BEING RIGHT. 10b asserts the low-volume runner is protected;
+//     it cannot tell whether a 15 mi/wk runner SHOULD be. `Research/22`
+//     §"5K — Intermediate" opens "For runners with a year of running, 15-20 mpw
+//     base" and prescribes I reps there, so doctrine itself puts reps at that
+//     volume — but "a year of running" is not a thing this app measures, and
+//     nothing here can notice that it is missing.
+//   · A LEAK THAT IS IDENTICAL ACROSS LEVELS. 10a proves sameness only. If the
+//     engine handed every runner the wrong session, both cases pass.
 // ════════════════════════════════════════════════════════════════════════════
-describe('INV-10 · beginner plans contain NO structured interval reps', () => {
+describe('INV-10a · the rep vocabulary does not move with the declared level', () => {
   for (const dist of DISTANCES) {
     for (const goal of dist.goals) {
       for (const vol of VOLUMES) {
         for (const wo of WEEKS_OUT) {
-          const id = `INV10/beginner/${dist.name}/${goal.tag}/vol${vol}/wo${wo}`;
+          const id = `INV10a/${dist.name}/${goal.tag}/vol${vol}/wo${wo}`;
           it(id, () => {
             COMBO_COUNT++;
-            const input = buildInput({
-              level: 'beginner', raceDistanceMi: dist.mi, goalSec: goal.sec,
-              weeksOut: wo, recentWeeklyMi: vol, recentLongMi: recentLongFor(dist.mi, vol),
+            const fingerprints = LEVELS.map((level) => {
+              const input = buildInput({
+                level, raceDistanceMi: dist.mi, goalSec: goal.sec,
+                weeksOut: wo, recentWeeklyMi: vol, recentLongMi: recentLongFor(dist.mi, vol),
+              });
+              // The OMITTED case as well as the null one: a `?? 'intermediate'`
+              // and a `=== null` behave differently across the two (Rule 11).
+              if (level == null) delete (input as { level?: unknown }).level;
+              return JSON.stringify(repWorkdays(composePlan(input)));
             });
-            let result: ComposePlanResult;
-            try {
-              result = composePlan(input);
-            } catch (e) {
+            // LIVENESS · six real compositions, not six exceptions swallowed.
+            expect(fingerprints).toHaveLength(LEVELS.length);
+            const ref = fingerprints[0];
+            for (let i = 1; i < fingerprints.length; i++) {
+              if (fingerprints[i] === ref) continue;
               record({
-                id, invariant: 'INV-10 (no crash)',
-                inputJson: JSON.stringify({ level: 'beginner', ...dist, goal, vol, wo }),
-                expected: 'composePlan returns a plan', actual: `threw: ${String(e)}`,
-                severity: 'critical',
-              });
-              throw e;
-            }
-            // Cross-check: isBaseBuildingPlan must agree this is a base-building plan.
-            const cat = distanceCategoryOrThrow(dist.mi);
-            const baseBuilding = isBaseBuildingPlan(cat, 'beginner');
-            const reps = repWorkdays(result);
-            if (reps.length > 0) {
-              const sample = reps.slice(0, 3).map(r => `wk${r.week} ${r.phase} ${r.type} "${r.subLabel}"`).join(' | ');
-              record({
-                id, invariant: 'INV-10 beginner-no-reps',
-                inputJson: JSON.stringify({ level: 'beginner', distanceMi: dist.mi, goalSec: goal.sec, weeksOut: wo, recentWeeklyMi: vol }),
-                expected: 'zero structured-rep days (base_building: light tempo/fartlek/strides only)',
-                actual: `${reps.length} rep day(s): ${sample}${baseBuilding ? '' : ' [isBaseBuildingPlan=FALSE — template disagreement]'}`,
+                id, invariant: 'INV-10a level-inert-vocabulary',
+                inputJson: JSON.stringify({ level: LEVELS[i], distanceMi: dist.mi, goalSec: goal.sec, weeksOut: wo, recentWeeklyMi: vol }),
+                expected: 'the structured-rep day set is identical at every declared level',
+                actual: `level ${String(LEVELS[i])} produced a different set from ${String(LEVELS[0])}`,
                 severity: 'critical',
               });
             }
-            expect(reps, `${id}: beginner leaked structured reps`).toHaveLength(0);
-            // And isBaseBuildingPlan must be true for every beginner distance.
-            expect(baseBuilding, `${id}: isBaseBuildingPlan should be true for beginner`).toBe(true);
+            for (let i = 1; i < fingerprints.length; i++) {
+              expect(
+                fingerprints[i],
+                `${id}: experience level ${String(LEVELS[i])} changed the structured-rep vocabulary. ` +
+                'A self-declared band has no authority over which session a runner is prescribed ' +
+                '(docs/PLAN_SIMPLIFICATION_DOCTRINE.md §"What may not").',
+              ).toBe(ref);
+            }
           });
         }
       }
     }
   }
+});
+
+describe('INV-10b · below doctrine\'s beginner peak band, no structured reps', () => {
+  // LIVENESS · counted across the whole sweep and asserted non-zero at the end,
+  // so a change that stopped `isBaseBuildingPlan` ever firing cannot make this
+  // suite report clean by asserting nothing (Rule 18 clause 2).
+  let PROTECTED_CELLS = 0;
+  for (const dist of DISTANCES) {
+    for (const goal of dist.goals) {
+      for (const vol of VOLUMES) {
+        for (const wo of WEEKS_OUT) {
+          const cat = distanceCategoryOrThrow(dist.mi);
+          if (!isBaseBuildingPlan(cat, null, vol)) continue;
+          const id = `INV10b/${dist.name}/${goal.tag}/vol${vol}/wo${wo}`;
+          it(id, () => {
+            COMBO_COUNT++;
+            PROTECTED_CELLS++;
+            const input = buildInput({
+              level: null, raceDistanceMi: dist.mi, goalSec: goal.sec,
+              weeksOut: wo, recentWeeklyMi: vol, recentLongMi: recentLongFor(dist.mi, vol),
+            });
+            const reps = repWorkdays(composePlan(input));
+            if (reps.length > 0) {
+              const sample = reps.slice(0, 3).map((r) => `wk${r.week} ${r.phase} ${r.type} "${r.subLabel}"`).join(' | ');
+              record({
+                id, invariant: 'INV-10b low-volume-no-reps',
+                inputJson: JSON.stringify({ distanceMi: dist.mi, goalSec: goal.sec, weeksOut: wo, recentWeeklyMi: vol }),
+                expected: 'zero structured-rep days (base_building: light tempo/fartlek/strides only)',
+                actual: `${reps.length} rep day(s): ${sample}`,
+                severity: 'critical',
+              });
+            }
+            expect(
+              reps,
+              `${id}: a runner reporting ${vol} mi/wk — below doctrine's own beginner peak band ` +
+              `for the ${dist.name} — was handed structured I/R reps`,
+            ).toHaveLength(0);
+          });
+        }
+      }
+    }
+  }
+  it('LIVENESS · the low-volume rule fired on real cells', () => {
+    expect(
+      PROTECTED_CELLS,
+      'no cell in the sweep was routed to base-building, so INV-10b asserted nothing',
+    ).toBeGreaterThan(10);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -345,7 +438,22 @@ describe('INV-11 · non-beginner plans carry real structured quality', () => {
 // race+volume must look meaningfully different. Concretely: at a volume where
 // the advanced plan carries rep work, the beginner plan at the identical
 // inputs must NOT. This catches a regression where level stops gating.
-describe('INV-11b · beginner & advanced plans diverge on structure', () => {
+/**
+ * TIEREVIDENCE-2 (2026-09-02) · INVERTED, for the same reason INV-10 was.
+ *
+ * This case asserted that two runners with byte-identical history — 30 mi/wk,
+ * the same goal, the same distance — get STRUCTURALLY DIFFERENT plans because
+ * one of them typed "beginner" and the other typed "advanced". That is the
+ * defect `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` §"What may not" removes, stated
+ * as a requirement.
+ *
+ * What it was really protecting is kept and is asserted twice over: the plan
+ * must still CARRY quality (a gate that only ever asks "did you correctly
+ * refuse?" passes an engine that can only refuse — Rule 22), and the low-volume
+ * runner must still be protected from the I/R machine (INV-10b, on the
+ * runner's own reported volume). What is deleted is the word deciding it.
+ */
+describe('INV-11b · two runners with the same history get the same structure', () => {
   for (const dist of DISTANCES.filter(d => d.name !== '50K')) {
     const id = `INV11b/${dist.name}`;
     it(id, () => {
@@ -354,22 +462,31 @@ describe('INV-11b · beginner & advanced plans diverge on structure', () => {
       const goalSec = dist.goals[1].sec;
       const beg = composePlan(buildInput({ level: 'beginner', raceDistanceMi: dist.mi, goalSec, weeksOut: 16, recentWeeklyMi: vol, recentLongMi: recentLongFor(dist.mi, vol) }));
       const adv = composePlan(buildInput({ level: 'advanced', raceDistanceMi: dist.mi, goalSec, weeksOut: 16, recentWeeklyMi: vol, recentLongMi: recentLongFor(dist.mi, vol) }));
-      const begReps = repWorkdays(beg).length;
-      const advReps = repWorkdays(adv).length;
-      // Beginner must be zero; advanced (non-ultra) should be > 0.
-      if (begReps !== 0) {
+      const begReps = JSON.stringify(repWorkdays(beg));
+      const advReps = JSON.stringify(repWorkdays(adv));
+      if (begReps !== advReps) {
         record({
-          id, invariant: 'INV-11b beginner-zero-reps',
+          id, invariant: 'INV-11b structure-is-level-inert',
           inputJson: JSON.stringify({ distanceMi: dist.mi, goalSec, vol }),
-          expected: 'beginner rep-count = 0', actual: `beginner rep-count = ${begReps}`,
+          expected: 'identical structured-rep days at 30 mi/wk whatever was typed',
+          actual: 'the declared level changed the structure',
           severity: 'critical',
         });
       }
-      expect(begReps, `${id}: beginner should have 0 reps`).toBe(0);
-      // Advanced must carry SOME quality (rep or T). If advanced also has 0,
-      // structure isn't gating at all.
-      const advQuality = adv.weeks.some(w => w.days.some(d => d.isQuality));
-      expect(advQuality, `${id}: advanced should carry quality`).toBe(true);
+      expect(begReps, `${id}: the declared level changed the rep structure`).toBe(advReps);
+      // ...and BOTH still carry quality. Rule 22: a sameness assertion is
+      // satisfied by two empty plans, so the thing being made the same has to
+      // be asserted to exist.
+      for (const [what, r] of [['beginner-typed', beg], ['advanced-typed', adv]] as const) {
+        expect(
+          r.weeks.some(w => w.days.some(d => d.isQuality)),
+          `${id}: the ${what} plan carries no quality at all`,
+        ).toBe(true);
+      }
+      expect(
+        repWorkdays(adv).length,
+        `${id}: a 30 mi/wk runner gets no structured session anywhere in a 16-week block`,
+      ).toBeGreaterThan(0);
     });
   }
 });
@@ -381,6 +498,44 @@ describe('INV-11b · beginner & advanced plans diverge on structure', () => {
 // 60 mpw base, 3:00:00 marathon, 16 weeks out, recentLong 14. We snapshot the
 // FULL plan structure and assert: (a) inline structure invariants, and (b) a
 // frozen byte-snapshot. Any drift here is CRITICAL.
+/**
+ * TIEREVIDENCE-2 (2026-09-02) · THE FROZEN SNAPSHOT MOVES, AND HERE IS EXACTLY
+ * WHAT MOVED AND WHY.
+ *
+ * This persona is `advanced`, 60 mi/wk, a 3:00 marathon goal, and — the part
+ * that matters — NO measured VDOT: `bestRecentVdot` is not on the input at all.
+ * With the self-declared experience level removed as decision authority, the
+ * only thing that ever put it on `TIER_TARGETS.m.advanced` is gone, and it
+ * composes against the row an unmeasured runner gets, `UNMEASURED_ROW_TIER`
+ * ('intermediate').
+ *
+ * WHAT DID NOT MOVE, which is the half worth stating first: every weekly
+ * volume, the phase arc, the cutback placement, and the quality types on every
+ * week. 60/61/62/45/63/64/65/49/66/66/66/51/66/54/40/44.2 — the persona's own
+ * 60 mi/wk base is what sizes its block (`max(peakWeeklyFloorMi, base × 1.10)`
+ * with the base arm winning), and that has nothing to do with the row.
+ *
+ * WHAT MOVED: the long run, by one to two and a half miles per week, and only
+ * because `peakLongMiBand[1]` is 22 on §"Marathon — Intermediate" against 24 on
+ * §"Marathon — Advanced". The peak long goes 22.5 -> 22.
+ *
+ *   wk2  17 -> 16     wk3  13 -> 12     wk4  18 -> 17     wk5  19 -> 18
+ *   wk6  20 -> 19     wk7  15 -> 14     wk8  21 -> 20     wk9  22 -> 20
+ *   wk10 22.5 -> 21   wk11 17 -> 16     wk12 22.5 -> 22   wk13 20 -> 18
+ *   wk14 15 -> 13
+ *
+ * A 22-mile peak long inside a 66 mi/wk week is 33% of the week; the 22.5 it
+ * replaces was 34%, against `Research/00a` §"Volume progression rules"' own
+ * "≤25-30% of weekly volume". So the move is toward doctrine's share cap, not
+ * away from it.
+ *
+ * AND THE REAL RUNNER IS UNAFFECTED, which is what "David protection" is for.
+ * The owner's own CIM authoring carries `demonstratedLongMi: 21.5` and a
+ * measured peak week, so `evidenceLongCeilingMi` — his own longest run, not a
+ * band — is what caps his long, and it is 21.5 before and after (measured on
+ * the `_declared_level_inert.test.ts` fixture, which is his real block). This
+ * persona differs from him in exactly one way: it has never been measured.
+ */
 describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
   // Reconstruct the persona's ComposePlanInput EXACTLY as the generator-bench
   // builds it (personaToComposeInput): start Monday 2026-01-05, race = start +

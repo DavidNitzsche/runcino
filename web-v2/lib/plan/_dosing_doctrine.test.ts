@@ -292,7 +292,19 @@ describe('DOCTRINE-DOSING-2 · the gate is FATAL, and the composer never reaches
     if (!wk) return;
     // Give the week a second threshold session at a full doctrinal dose. Nothing
     // else moves, so the only thing that can fail is the dosing cap.
-    const victim = wk.days.find((d: { type: string }) => d.type === 'easy');
+    // TIEREVIDENCE-2 (2026-09-02) · the LARGEST easy day, not the first one.
+    // The dose the validator counts for a session is bounded by the day's own
+    // distance, so converting a 3-mile recovery day into "5x1mi @ T" adds three
+    // miles at T, not five. That was enough to violate while this fixture
+    // composed against `TIER_TARGETS.m.advanced` — a row it reached because it
+    // typed `experienceLevel: 'advanced'`; on the evidence it carries (none: no
+    // `bestRecentVdotOverride`) it composes against a smaller row, its easy days
+    // are shorter, and the hand-built week stopped violating. The case is about
+    // the validator being ABLE to say no, so it hands it a session big enough
+    // to be the violation it names.
+    const victim = wk.days
+      .filter((d: { type: string }) => d.type === 'easy')
+      .sort((a: { distanceMi: number }, b: { distanceMi: number }) => b.distanceMi - a.distanceMi)[0];
     expect(victim).toBeTruthy();
     if (!victim) return;
     victim.type = 'threshold';

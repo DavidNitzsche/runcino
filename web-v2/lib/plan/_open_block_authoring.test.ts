@@ -230,23 +230,25 @@ describe('OPEN_BLOCK_SHAPE_ANCHOR_MI', () => {
       anchors.map((mi) => {
         const t = predictRaceTime(vdot, mi);
         const demonstrated = t != null ? Math.round(t / mi) : null;
-        // level null · the unstated-level path, the one that reads the
-        // demonstrated pace at all.
-        return classifyGoalTier(null, mi, null, demonstrated);
+        // TIEREVIDENCE-2 · there is no level argument any more; the
+        // demonstrated pace is the whole of the reading.
+        return classifyGoalTier(null, mi, demonstrated);
       }),
     );
     expect(tiersAt(60).size).toBeGreaterThan(1);
   });
 
   it('is inert once the demonstrated lift is withheld', () => {
-    // With no goal AND no demonstrated pace, `classifyGoalTier` is a pure
-    // function of experience level — the anchor distance cannot reach it. That
+    // With no goal AND no demonstrated pace, `classifyGoalTier` is a CONSTANT —
+    // the anchor distance cannot reach it, and since TIEREVIDENCE-2 neither can
+    // an experience level, because there is no longer a parameter for one. That
     // is the whole mechanism by which the convention stops mattering, so it is
     // asserted directly rather than argued.
-    for (const level of ['beginner', 'intermediate', 'advanced', 'advanced_plus', null] as const) {
-      const tiers = new Set([3.1, 6.2, 13.1, 26.2, 31.07].map((mi) => classifyGoalTier(null, mi, level, null)));
-      expect(`${level}: ${[...tiers].join('|')}`).toBe(`${level}: ${[...tiers][0]}`);
-    }
+    const tiers = new Set([3.1, 6.2, 13.1, 26.2, 31.07].map((mi) => classifyGoalTier(null, mi, null)));
+    expect([...tiers].join('|')).toBe([...tiers][0]);
+    // LIVENESS · and the constant is `UNMEASURED_ROW_TIER`, not some other
+    // constant that would satisfy the sameness assertion for free.
+    expect([...tiers][0]).toBe('intermediate');
   });
 
   it('the validator reaches the same verdict whichever row the anchor selects', () => {

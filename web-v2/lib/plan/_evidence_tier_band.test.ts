@@ -28,11 +28,10 @@
  * ── RULE 22 · WHAT THIS GATE CANNOT FAIL ON ─────────────────────────────────
  *
  *   · It cannot tell whether the tier ROW the block is composed against is
- *     right. `classifyCapacityTier` still carries the typed level's floor and
- *     that is a stated residual, argued in `goal-tiers.ts`'s TIEREVIDENCE-1
- *     block: re-selecting the row off a pace reading was measured to shorten a
- *     marathoner's peak long run by 2.5 mi at unchanged weekly volume. This
- *     gate watches the published BANDS, not the row.
+ *     right. TIEREVIDENCE-2 (2026-09-02) made the row and the published band
+ *     read ONE resolver (`classifyCapacityTier`, evidence-only), so the
+ *     residual this bullet used to record is closed — but "the same row" is
+ *     still not "the correct row", and this gate watches the BANDS.
  *   · It cannot see `adaptive-ramp.ts` ACT on the ceiling. It asserts the
  *     number the ceiling is read FROM. Whether a bump then fires, and whether a
  *     ceiling under the block's own peak correctly SKIPS the long bump rather
@@ -198,7 +197,11 @@ describe('TIEREVIDENCE-1 · the adaptive ceiling is evidence-derived', () => {
 
   it('guard 5 · with nothing demonstrated the ceiling is the bottom row, never the typed one', () => {
     const { state } = author(lvl('advanced_plus'));
-    const row = TIER_TARGETS.m[demonstratedLoadCeilingTier(MARATHON_MI, 'advanced_plus', null)];
+    // TIEREVIDENCE-2 · the typed level is not an argument any more, so the
+    // fixture's 'advanced_plus' can no longer be handed to it at all. The
+    // function and its answer are otherwise unchanged: a PERMISSION with
+    // nothing demonstrated is the bottom row.
+    const row = TIER_TARGETS.m[demonstratedLoadCeilingTier(MARATHON_MI, null)];
     // Rule 11: a missing read produces the CONSERVATIVE row, not the word's.
     expect(row.peakWeeklyMileageBand).toEqual(TIER_TARGETS.m.developing.peakWeeklyMileageBand);
     expect(readTierUpper(state, 'tier_peak_weekly_band'))

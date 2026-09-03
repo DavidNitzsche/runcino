@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateComposedPlan, PlanValidationError } from '@/lib/plan/validate';
 import { resolvePrescriptions } from '@/lib/plan/generate';
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
-import { buildSimPlan } from '@/lib/plan/sim-inputs';
+import { buildSimPlan, simCapacityBand } from '@/lib/plan/sim-inputs';
 import { SIM_DISTANCE_MI, type SimInputs, type SimDistance } from '@/lib/plan/sim-constants';
 import { requireUserId } from '@/lib/auth/session';
 import { outage } from '@/lib/route/failure';
@@ -39,9 +39,14 @@ export async function POST(req: NextRequest) {
       const cat = distanceCategoryOrNull(raceDistMi);
       try {
         if (cat == null) throw new Error('unknown sim distance');
+        // TIEREVIDENCE-2 · the workout library is filtered on DEMONSTRATED
+        // capacity, resolved the same way `loadGeneratorInputs` resolves it, so
+        // the sim keeps showing what the runner would actually get (PARITY-1).
+        // `experienceLevel` is still passed and is now ignored.
+        const rxBand = simCapacityBand(body as SimInputs, raceDistMi);
         const [rxQuality, rxRaceSpecific] = await Promise.all([
-          resolvePrescriptions(cat, 'quality', body.experienceLevel ?? null),
-          resolvePrescriptions(cat, 'race_specific', body.experienceLevel ?? null),
+          resolvePrescriptions(cat, 'quality', body.experienceLevel ?? null, rxBand),
+          resolvePrescriptions(cat, 'race_specific', body.experienceLevel ?? null, rxBand),
         ]);
         rxOverride = { rxQuality, rxRaceSpecific };
       } catch { /* resolution failure → inline fallback in buildSimPlan */ }

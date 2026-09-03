@@ -127,20 +127,25 @@ describe('GOALVOL-1 §1 · liveness', () => {
     const tiers = new Set<GoalTier>();
     let cells = 0;
     for (const [, mi] of DISTANCES) {
-      for (const level of LEVELS) {
-        for (const demo of DEMONSTRATED) {
-          for (let gp = 260; gp <= 700; gp += 5) {
-            tiers.add(resolveLoadTier({
-              raceDistanceMi: mi, level, demonstratedPaceSec: demo, goalPaceSec: gp,
-            }).tier);
-            cells++;
-          }
+      for (const demo of DEMONSTRATED) {
+        for (let gp = 260; gp <= 700; gp += 5) {
+          tiers.add(resolveLoadTier({
+            raceDistanceMi: mi, demonstratedPaceSec: demo, goalPaceSec: gp,
+          }).tier);
+          cells++;
         }
       }
     }
     // eslint-disable-next-line no-console
     console.log(`GOALVOL-1 walk · ${cells} cells, tiers observed: ${[...tiers].sort().join(', ')}`);
-    expect(cells).toBeGreaterThan(5000);
+    // TIEREVIDENCE-2 · LOWERED 5000 -> 1500, and the dimension it lost is the
+    // point: the walk used to multiply by five declared experience levels, and
+    // `resolveLoadTier` no longer has a level parameter to walk. 5 distances x
+    // 4 demonstrated paces x 89 goal steps = 1780. The floor is still well
+    // above what a broken fixture would produce, and the two assertions below
+    // (more than one tier observed, and elite REACHABLE) are what actually stop
+    // this from passing on a walk that saw nothing interesting.
+    expect(cells).toBeGreaterThan(1500);
     expect(tiers.size).toBeGreaterThanOrEqual(2);
     // The elite rung must be REACHABLE, or §2 could pass because nothing ever
     // reached the band the defect lived in.
@@ -152,21 +157,19 @@ describe('GOALVOL-1 §2 · the goal never widens the load band', () => {
   it('no goal, at any pace, produces a tier above the goal-free answer', () => {
     const violations: string[] = [];
     for (const [name, mi] of DISTANCES) {
-      for (const level of LEVELS) {
-        for (const demo of DEMONSTRATED) {
-          const capacity = classifyCapacityTier(mi, level, demo);
-          const capacityTarget = TIER_TARGETS[distanceCategoryOf(mi)][capacity];
-          for (let gp = 200; gp <= 900; gp += 1) {
-            const r = resolveLoadTier({ raceDistanceMi: mi, level, demonstratedPaceSec: demo, goalPaceSec: gp });
-            if (TIER_ORD[r.tier] > TIER_ORD[capacity]) {
-              violations.push(`${name}/${level}/demo=${demo}/goal=${gp}: ${r.tier} > capacity ${capacity}`);
-              continue;
-            }
-            const target = TIER_TARGETS[distanceCategoryOf(mi)][r.tier];
-            for (const [field, read] of LOAD_FIELDS) {
-              if (read(target) > read(capacityTarget)) {
-                violations.push(`${name}/${level}/demo=${demo}/goal=${gp}: ${field} ${read(target)} > ${read(capacityTarget)}`);
-              }
+      for (const demo of DEMONSTRATED) {
+        const capacity = classifyCapacityTier(mi, demo);
+        const capacityTarget = TIER_TARGETS[distanceCategoryOf(mi)][capacity];
+        for (let gp = 200; gp <= 900; gp += 1) {
+          const r = resolveLoadTier({ raceDistanceMi: mi, demonstratedPaceSec: demo, goalPaceSec: gp });
+          if (TIER_ORD[r.tier] > TIER_ORD[capacity]) {
+            violations.push(`${name}/demo=${demo}/goal=${gp}: ${r.tier} > capacity ${capacity}`);
+            continue;
+          }
+          const target = TIER_TARGETS[distanceCategoryOf(mi)][r.tier];
+          for (const [field, read] of LOAD_FIELDS) {
+            if (read(target) > read(capacityTarget)) {
+              violations.push(`${name}/demo=${demo}/goal=${gp}: ${field} ${read(target)} > ${read(capacityTarget)}`);
             }
           }
         }
@@ -177,23 +180,25 @@ describe('GOALVOL-1 §2 · the goal never widens the load band', () => {
 
   it('an absent goal and a slower-than-capacity goal both return the capacity answer', () => {
     for (const [, mi] of DISTANCES) {
-      for (const level of LEVELS) {
-        for (const demo of DEMONSTRATED) {
-          const capacity = classifyCapacityTier(mi, level, demo);
-          expect(resolveLoadTier({ raceDistanceMi: mi, level, demonstratedPaceSec: demo, goalPaceSec: null }).tier).toBe(capacity);
-          // `goalDemandTier` returns the top of the ladder with no goal, which
-          // is the identity element for the minimum. Stated as an assertion so
-          // a change to that sentinel cannot silently start reducing.
-          expect(goalDemandTier(null, mi, level)).toBe('elite');
-        }
+      for (const demo of DEMONSTRATED) {
+        const capacity = classifyCapacityTier(mi, demo);
+        expect(resolveLoadTier({ raceDistanceMi: mi, demonstratedPaceSec: demo, goalPaceSec: null }).tier).toBe(capacity);
+        // `goalDemandTier` returns the top of the ladder with no goal, which
+        // is the identity element for the minimum. Stated as an assertion so
+        // a change to that sentinel cannot silently start reducing.
+        expect(goalDemandTier(null, mi)).toBe('elite');
       }
     }
   });
 
   it('the headline case · an advanced marathoner cannot type their way into the elite band', () => {
     const M = 26.219;
-    const sub3 = lookupLoadTierTarget({ raceDistanceMi: M, level: 'advanced', demonstratedPaceSec: null, goalPaceSec: 412 });
-    const ambitious = lookupLoadTierTarget({ raceDistanceMi: M, level: 'advanced', demonstratedPaceSec: null, goalPaceSec: 355 });
+    // TIEREVIDENCE-2 · the runner is advanced because they DEMONSTRATED an
+    // advanced marathon pace, not because they typed the word. The claim under
+    // test is unchanged: a faster typed goal buys no band. 405 s/mi sits inside
+    // the advanced band (<= 420) and outside elite (<= 360).
+    const sub3 = lookupLoadTierTarget({ raceDistanceMi: M, demonstratedPaceSec: 405, goalPaceSec: 412 });
+    const ambitious = lookupLoadTierTarget({ raceDistanceMi: M, demonstratedPaceSec: 405, goalPaceSec: 355 });
     expect(sub3.tier).toBe('advanced');
     expect(ambitious.tier).toBe('advanced');
     expect(ambitious.target.peakWeeklyMileageBand).toEqual(TIER_TARGETS.m.advanced.peakWeeklyMileageBand);
@@ -285,24 +290,22 @@ describe('GOALVOL-1 §3 · end to end · a faster goal buys no volume', () => {
 describe('GOALVOL-1 §4 · Rule 9 · no cliff, and no inversion', () => {
   it('the peak band is monotone in goal pace and never inverts', () => {
     for (const [name, mi] of DISTANCES) {
-      for (const level of LEVELS) {
-        for (const demo of DEMONSTRATED) {
-          // Walk from very fast to very slow in one-second steps. The tier may
-          // step (a band IS discrete) but it may only ever step DOWN, so the
-          // fitter-goal runner never gets a plan that differs in kind from the
-          // neighbour one second away in the wrong direction.
-          let prev: number | null = null;
-          for (let gp = 200; gp <= 900; gp += 1) {
-            const t = resolveLoadTier({ raceDistanceMi: mi, level, demonstratedPaceSec: demo, goalPaceSec: gp }).tier;
-            const band = TIER_TARGETS[distanceCategoryOf(mi)][t].peakWeeklyMileageBand[0];
-            if (prev != null) {
-              expect(
-                band <= prev,
-                `${name}/${level}/demo=${demo}: peak band ROSE as the goal got slower at ${gp}s/mi (${prev} → ${band})`,
-              ).toBe(true);
-            }
-            prev = band;
+      for (const demo of DEMONSTRATED) {
+        // Walk from very fast to very slow in one-second steps. The tier may
+        // step (a band IS discrete) but it may only ever step DOWN, so the
+        // fitter-goal runner never gets a plan that differs in kind from the
+        // neighbour one second away in the wrong direction.
+        let prev: number | null = null;
+        for (let gp = 200; gp <= 900; gp += 1) {
+          const t = resolveLoadTier({ raceDistanceMi: mi, demonstratedPaceSec: demo, goalPaceSec: gp }).tier;
+          const band = TIER_TARGETS[distanceCategoryOf(mi)][t].peakWeeklyMileageBand[0];
+          if (prev != null) {
+            expect(
+              band <= prev,
+              `${name}/demo=${demo}: peak band ROSE as the goal got slower at ${gp}s/mi (${prev} → ${band})`,
+            ).toBe(true);
           }
+          prev = band;
         }
       }
     }
@@ -320,30 +323,36 @@ describe('GOALVOL-1 §4 · Rule 9 · no cliff, and no inversion', () => {
 describe('GOALVOL-1 §5 · Rule 21 · demonstrated evidence still lifts the band', () => {
   it('a marathoner who DEMONSTRATES elite pace reaches the elite band', () => {
     const M = 26.219;
-    const noEvidence = classifyCapacityTier(M, 'advanced', null);
-    const demonstratedElite = classifyCapacityTier(M, 'advanced', 330); // 5:30/mi
-    expect(noEvidence).toBe('advanced');
+    const noEvidence = classifyCapacityTier(M, null);
+    const demonstratedElite = classifyCapacityTier(M, 330); // 5:30/mi
+    expect(noEvidence).toBe('intermediate');
     expect(demonstratedElite).toBe('elite');
     expect(TIER_TARGETS.m[demonstratedElite].peakWeeklyMileageBand[0])
       .toBeGreaterThan(TIER_TARGETS.m[noEvidence].peakWeeklyMileageBand[0]);
   });
 
-  it('an UNSTATED level is lifted by evidence and by nothing else (COLD-1)', () => {
+  it('the band is lifted by evidence and by nothing else (COLD-1)', () => {
     const M = 26.219;
-    expect(classifyCapacityTier(M, null, null)).toBe('intermediate');
-    expect(classifyCapacityTier(M, null, 330)).toBe('elite');
+    // TIEREVIDENCE-2 · the composed row for an unmeasured runner is doctrine's
+    // middle template and the typed level is gone from the call. What that
+    // constant may NO LONGER do is floor a MEASURED runner above their own
+    // evidence, which is the line below it.
+    expect(classifyCapacityTier(M, null)).toBe('intermediate');
+    expect(classifyCapacityTier(M, 700)).toBe('developing');
+    expect(classifyCapacityTier(M, 330)).toBe('elite');
     // A goal at the same pace does not do it.
-    expect(resolveLoadTier({ raceDistanceMi: M, level: null, demonstratedPaceSec: null, goalPaceSec: 330 }).tier)
+    expect(resolveLoadTier({ raceDistanceMi: M, demonstratedPaceSec: null, goalPaceSec: 330 }).tier)
       .toBe('intermediate');
   });
 
-  it('each stated level has a ceiling evidence may not pass', () => {
+  it('the ladder is climbed in the order the evidence earns, and every rung is reachable', () => {
     const M = 26.219;
-    // beginner is capped at intermediate however fast the demonstrated pace.
-    expect(classifyCapacityTier(M, 'beginner', 300)).toBe('intermediate');
-    // intermediate is capped at advanced (INTERMEDIATE_LEVEL_TIER_CEILING).
-    expect(classifyCapacityTier(M, 'intermediate', 300)).toBe('advanced');
-    // and a level's own floor holds when the evidence is slower than it.
-    expect(classifyCapacityTier(M, 'advanced', 700)).toBe('advanced');
+    // TIEREVIDENCE-2 · the per-level ceilings this case used to assert are
+    // DELETED: they were a self-declaration capping a measurement, which is the
+    // authority the doctrine removed. What replaces them is the Rule 21
+    // property those ceilings were obscuring - the ladder is monotone in the
+    // DEMONSTRATED pace and every rung can actually be reached.
+    const rungs = [700, 500, 405, 330].map((pace) => classifyCapacityTier(M, pace));
+    expect(rungs).toEqual(['developing', 'intermediate', 'advanced', 'elite']);
   });
 });

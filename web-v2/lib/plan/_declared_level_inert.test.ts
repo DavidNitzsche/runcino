@@ -76,6 +76,25 @@
  *   · A DIFFERENCE OUTSIDE THE COMPOSED BLOCK. It compares the whole
  *     `ComposePlanResult`, which is broad, but a level-dependent side effect
  *     written to a module-level variable or a log line is invisible to it.
+ *   · A LEVEL READ ON A PATH THIS RUNNER'S EVIDENCE OVERRIDES, and this one was
+ *     FOUND rather than reasoned about (2026-09-02). Falsifying the gate by
+ *     making `volumeCurve`'s `doctrineTarget` depend on the label — `+ 5 mi if
+ *     advanced` — left all sixteen cases GREEN, because this fixture carries a
+ *     measured peak week (52.3 mi) and `cycleBoundedPeak` therefore discards
+ *     `doctrineTarget` outright and returns `plannedPeakBound`. The knob was
+ *     turned, the read happened, and nothing moved.
+ *
+ *     That is not a defect in the sweep, it is the shape of the engine: a
+ *     COLD-START path cannot be swept by an EVIDENCED runner. The fixture is
+ *     deliberately the owner's real block (see `inputAt`), so the paths his
+ *     evidence overrides are dark here by construction. Closing it means a
+ *     second fixture with no `rampBaseEvidence` and no `bestRecentVdot`, and
+ *     that is a real gap rather than a hypothetical one.
+ *
+ *     The falsification that DOES fire — reintroducing the old defect,
+ *     `input.level === 'advanced' ? TIER_TARGETS[cat].advanced : row` at the
+ *     composed-row seam — names six of the eight dimensions plus the whole
+ *     block, and its output is in the commit's report.
  *
  * DISTRIBUTION (Rule 22): this gate has one verdict, not two, so there is no
  * hold/accelerate imbalance to state. What there IS to state is the direction
@@ -92,7 +111,49 @@
  * `level === 'advanced' ? x : y` in the composer — makes this file name the
  * dimension that moved. The observed output is in the commit's report.
  *
- * ── THIS FILE IS DELIBERATELY RED ON FIRST LANDING ──────────────────────────
+ * ── CLOSED 2026-09-02 BY TIEREVIDENCE-2 · ALL EIGHT DIMENSIONS GREEN ───────
+ *
+ * The two causes named below are both fixed, and the fix is in the ENGINE, not
+ * here. Nothing in this file was loosened: the same six values, the same eight
+ * dimensions, the same whole-block byte comparison, plus the fourth argument on
+ * route 2 argued at `inputAt`, which makes the sweep stricter rather than
+ * kinder. Measured on the same fixture after the fix:
+ *
+ *   DIMENSION                        STATE   WHAT MOVED IT
+ *   plan volume                      GREEN   the load row is evidence-only
+ *   peak mileage                     GREEN   (was already green · the peak is
+ *                                            `plannedPeakBound`, not the row)
+ *   long-run progression             GREEN   evidence-only row + one capacity
+ *                                            band feeding the catalogue
+ *   race prescriptions               GREEN   the library filters on the band
+ *   race-plus-long-run permission    GREEN
+ *   cutback placement                GREEN
+ *   adaptation eligibility           GREEN   `classifyCapacityTier` publishes
+ *                                            both bands and composes the row
+ *   coaching explanation             GREEN
+ *
+ *   1. THE LOAD-TIER PATH · `CAPACITY_BAND`, `CAPACITY_CEILING` and
+ *      `GOAL_DEMAND_FLOOR` are DELETED, `classifyCapacityTier`'s parameter
+ *      tuple no longer has a level in it (compile-time, and pinned by
+ *      `scripts/check-goal-volume-leak.sh` guard 3), and
+ *      `demonstratedLoadCeilingTier` is deleted into it because with the level
+ *      floor gone the two were one quantity under two names. On this fixture
+ *      `composed_row_band_weekly` moves [65, 90] -> [45, 55]: the reference
+ *      runner is graded off a demonstrated 7:43/mi marathon-equivalent, which
+ *      is `Research/22` §"Marathon — Intermediate", not §"Marathon — Advanced"
+ *      (whose own entry line reads "Multiple marathons, 50+ mpw base").
+ *
+ *   2. THE WORKOUT LIBRARY'S OWN LEVEL FILTER · `resolvePrescriptions` keeps
+ *      the label as an accepted, unread argument — so this gate can go on
+ *      proving it is inert — and filters on `capacityBandFor(
+ *      classifyCapacityTier(...))` instead. The decision the previous pass
+ *      flagged rather than took is taken: NOT `undefined`, which switches the
+ *      filter off and hands everyone the lowest-id template, but the
+ *      evidence-derived rung, defaulting to `EVIDENCE_ABSENT_TIER`'s rung when
+ *      a caller supplies none (Rule 11 · missing evidence takes the
+ *      conservative session, never the arbitrary one).
+ *
+ * ── THE HISTORICAL RECORD, AS MEASURED WHEN THIS FILE LANDED RED ────────────
  *
  * Rule 12's precedent (`_coach_sensible.test.ts`, "deliberately red while it is
  * open"). The gate is the FINDING, not a claim that the finding is closed, and
@@ -149,7 +210,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  composePlan, finalizeComposedPlan, resolvePrescriptions,
+  composePlan, finalizeComposedPlan, resolvePrescriptions, authoringCapacityBand,
   type ComposePlanInput, type ComposePlanResult, type ComposedWeek,
   type DOW, type DayPlan, type LevelKey,
 } from './generate';
@@ -192,9 +253,22 @@ async function inputAt(v: SweepValue): Promise<ComposePlanInput> {
   // Passing a fixed `inlinePrescriptions()` here instead would hide the
   // workout library's own level filter, which is the subtlest of the three
   // routes and the one a reader of `ComposePlanInput` would never find.
+  //
+  // TIEREVIDENCE-2 (2026-09-02) · the FOURTH argument is the runner's
+  // DEMONSTRATED capacity band, and it is added here for a Rule 22 reason, not
+  // a convenience one. `resolvePrescriptions` now ignores the label and filters
+  // on that band instead; a sweep that passed only the label would still be
+  // byte-identical across all six values — trivially, because none of them
+  // reaches anything — while composing every block against the EVIDENCE-ABSENT
+  // rung, which is not the vocabulary a real runner is prescribed from. Passing
+  // it makes route 2 sweep the library the reference runner actually gets. It
+  // is FIXED across the six cases (it is a function of `bestRecentVdot`, which
+  // the fixture holds constant), so it cannot mask a difference the label
+  // caused: it is not the knob, it is the conditions the knob is turned under.
+  const capacityBand = authoringCapacityBand(26.2, 44);
   const [rxQuality, rxRaceSpecific] = await Promise.all([
-    resolvePrescriptions('m', 'quality', (level ?? null) as LevelKey),
-    resolvePrescriptions('m', 'race_specific', (level ?? null) as LevelKey),
+    resolvePrescriptions('m', 'quality', (level ?? null) as LevelKey, capacityBand),
+    resolvePrescriptions('m', 'race_specific', (level ?? null) as LevelKey, capacityBand),
   ]);
   const base = {
     raceDistanceMi: 26.2,

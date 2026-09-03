@@ -46,9 +46,9 @@ import { DEFAULT_CUTBACK_EVERY_N } from './established-cadence';
 // lib/plan/adaptive-ramp.ts. See that module's header for the ruling.
 import {
   plannedPeakBound, resolveLoadProgressionContract, loadContractStamp,
-  PER_CYCLE_PEAK_GROWTH, type DemonstratedLoad,
+  PER_CYCLE_PEAK_GROWTH, WEEKLY_STEP_GROWTH, type DemonstratedLoad,
 } from './load-progression-contract';
-import { lookupLoadTierTarget, resolveLoadTier, demonstratedLoadCeilingTier, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
+import { lookupLoadTierTarget, resolveLoadTier, classifyCapacityTier, demonstratedLoadCeilingTier, capacityBandFor, peakWeeklyFloorMi, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
   anchorSourceFromCapacityMode,
@@ -3590,8 +3590,11 @@ export function cycleBoundedPeak(
 function volumeCurve(
   baseMi: number,
   blocks: BlockPlan,
-  level: LevelKey,
   tierTarget: TierTarget,
+  /** TIEREVIDENCE-2 · the block's peak DESTINATION, continuous in the runner's
+   *  demonstrated pace (`peakWeeklyFloorMi`). Replaces the discrete read of
+   *  `tierTarget.peakWeeklyMileageBand[0]` this function used to make. */
+  peakFloorMi: number,
   /** DOCTRINE-1 · race distance category · sets the TAPER's depth
    *  (Research/08 §9.1) and the general-case ramp regime. */
   taperCat: DistCategory,
@@ -3631,13 +3634,33 @@ function volumeCurve(
   // max(6, base) == base == max(floor, base) when base >= floor >= 6.
   const TRUE_BEGINNER_MIN_MPW = 6;
   const start = Math.max(TRUE_BEGINNER_MIN_MPW, baseMi);
-  // Peak target · LOWER band of the tier so it's achievable from a
-  // realistic base. If the runner already exceeds the lower band,
-  // aim 10% above their current base (still respects tier doctrine).
-  const doctrineTarget = Math.max(
-    tierTarget.peakWeeklyMileageBand[0],
-    Math.round(start * 1.10),
-  );
+  /* ══════════════════════════════════════════════════════════════════════
+   * TIEREVIDENCE-2 (2026-09-02) · RULE 9 · THE PEAK DESTINATION IS CONTINUOUS
+   * IN THE RUNNER'S DEMONSTRATED FITNESS.
+   *
+   * This read `tierTarget.peakWeeklyMileageBand[0]` — a DISCRETE row selected,
+   * once the self-declared level was removed, by `tierFromPace` alone. That made
+   * the destination a step function of the runner's own demonstrated pace, and
+   * `_cadence_robust.test.ts`'s VDOT walk priced the step at a 177-MILE BLOCK
+   * TOTAL between VDOT 52 and 52.25.
+   *
+   * `peakWeeklyFloorMi` runs doctrine's four published floors as CONTROL POINTS
+   * with a continuous response between them; the numbers themselves are
+   * untouched. See its header in goal-tiers.ts for why centres rather than
+   * edges, why deleting the band outright was tried and backed out, and what it
+   * cannot fix.
+   *
+   * `start x 1.10` keeps its own meaning unchanged: a runner already above the
+   * doctrine floor aims ten per cent above where they actually are.
+   * ══════════════════════════════════════════════════════════════════════ */
+  // RULE 9 · NO `Math.round` ON THE BASE ARM. Rounding the destination to a
+  // whole mile is itself a threshold on a continuous quantity, and with the
+  // doctrine floor no longer pinning it, it became measurable: a base of 49.5
+  // rounded to 54 and 50.0 to 55, and `_cadence_robust.test.ts` priced that one
+  // mile at a 13-mile block total for half a mile of reported base. The
+  // geometric ramp rounds every week it emits, so nothing downstream needs an
+  // integer here — this rounding only ever added a step.
+  const doctrineTarget = Math.max(peakFloorMi, start * 1.10);
   // Build phases · everything before TAPER. Each is a ramp week or a
   // deload (every 4th non-taper week). We pre-mark deload positions
   // along the build span so the ramp targets the right week.
@@ -3711,7 +3734,18 @@ function volumeCurve(
   const idealFactor = climbWeeks > 1 && peakTarget > rampFrom
     ? Math.pow(peakTarget / rampFrom, 1 / climbSteps)
     : 1.0;
-  const rampCeilingWeekly = GENERAL_RAMP_CEILING[level ?? 'intermediate'];
+  // TIEREVIDENCE-2 (2026-09-02) · NOT KEYED ON `level`. `GENERAL_RAMP_CEILING`
+  // is a level-keyed table whose only split is TRAINED (1.15) vs NOVICE (1.20),
+  // and `level` is `profile.experience_level` — the authority
+  // `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` removes. `WEEKLY_STEP_GROWTH` is
+  // that same table's trained rung, read through the constant
+  // `load-progression-contract.ts` already exports, so the curve's ceiling and
+  // the contract's envelope cannot disagree (Rule 16 · they were two answers to
+  // "how fast may a week grow" and a declared beginner got 1.20 from one and
+  // 1.15 from the other). It is also the CONSERVATIVE rung: doctrine's novice
+  // figure is the FASTER one, so an unread runner may not inherit it
+  // (invariant 11 · missing data may not produce a more aggressive plan).
+  const rampCeilingWeekly = WEEKLY_STEP_GROWTH;
   const climbFactor = Math.min(rampCeilingWeekly, idealFactor);
 
   // Walk climb weeks · target = start * climbFactor^N where N is
@@ -4196,6 +4230,33 @@ export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
 }
 
 /**
+ * TIEREVIDENCE-2 (2026-09-02) · THE ONE PLACE AN AUTHORING CALLER TURNS ITS
+ * MEASURED EVIDENCE INTO THE FOUR-RUNG BAND THE WORKOUT LIBRARY IS INDEXED ON.
+ *
+ * `composePlan` derives the same band internally from the same two inputs; this
+ * exists because `resolvePrescriptions` is called BEFORE composition (by
+ * `loadGeneratorInputs` and by the plan simulator), so those callers need the
+ * answer a step early. Both read `classifyCapacityTier`, so there is one
+ * derivation and not two (Rule 16) — falsify by changing the tier thresholds
+ * and watching both move together.
+ *
+ * RULE 11 · no measured VDOT is not "no filter" and not "assume trained": it is
+ * `EVIDENCE_ABSENT_TIER`, which `capacityBandFor` spells 'beginner'.
+ */
+export function authoringCapacityBand(
+  raceDistanceMi: number,
+  bestRecentVdot: number | null | undefined,
+): Tier {
+  const demonstratedPaceSec = bestRecentVdot != null
+    ? (() => {
+        const t = predictRaceTime(bestRecentVdot, raceDistanceMi);
+        return t != null ? Math.round(t / raceDistanceMi) : null;
+      })()
+    : null;
+  return capacityBandFor(classifyCapacityTier(raceDistanceMi, demonstratedPaceSec));
+}
+
+/**
  * Resolve prescription strings for one plan, preferring the in-code workout
  * library (`workout-library-static.ts`, formerly the workout_library table).
  * Falls back to the inline catalog on any miss.
@@ -4206,10 +4267,37 @@ export function inlinePrescriptions(cat: DistCategory): ResolvedPrescriptions {
 export async function resolvePrescriptions(
   cat: DistCategory,
   phase: 'quality' | 'race_specific',
-  level: LevelKey,
+  /**
+   * TIEREVIDENCE-2 (2026-09-02) · ACCEPTED AND UNREAD. This was
+   * `profile.experience_level`, and it was route 2 of three by which the label
+   * reached the plan: `workout-library-static.ts`'s `matches()` drops every
+   * template whose `levelFit` excludes the declared band, so a word typed at
+   * onboarding chose which SESSION a runner was prescribed without touching a
+   * single mile. On the reference runner 'advanced' drew "8x3 min hills @
+   * T-10K effort" where an undeclared runner drew "6x90s hills".
+   *
+   * The parameter STAYS so `_declared_level_inert.test.ts` can keep turning
+   * this knob and proving nothing moves — a gate that can no longer express the
+   * defect cannot prove it is gone (Rule 18). It reaches nothing.
+   */
+  _declaredLevelInert: LevelKey,
+  /**
+   * THE REPLACEMENT · the runner's DEMONSTRATED capacity band, from
+   * `capacityBandFor(classifyCapacityTier(...))` — the same single reading that
+   * selects the load row and gates the workout catalogue (Rule 16).
+   *
+   * RULE 11 · `null`/omitted is NOT "no filter". Switching the filter off does
+   * not narrow the library, it removes the narrowing entirely and hands every
+   * runner the LOWEST-ID template — an arbitrary authority in place of a bad
+   * one, and in the direction that makes sessions easier. An unread runner gets
+   * the `beginner` rung instead, which is `EVIDENCE_ABSENT_TIER` spelled in
+   * this vocabulary and the same conservative answer the load row takes.
+   */
+  capacityBand?: Tier | null,
 ): Promise<ResolvedPrescriptions> {
+  void _declaredLevelInert;
   const fallback = inlinePrescriptions(cat);
-  const lvl = level ?? undefined;
+  const lvl: Tier = capacityBand ?? 'beginner';
 
   const phaseFit = phase === 'race_specific' ? 'race_specific' : 'quality';
 
@@ -4711,12 +4799,20 @@ export interface LayoutWeekInput {
    */
   catalogueHistory?: CatalogueHistory | null;
   /**
-   * The runner's experience tier, for the catalogue's contraindication rows
-   * (§8.5 "not for novice runners", §10.2 "practice each in isolation first").
-   * null → the catalogue is not consulted; the tier gate has no safe default
-   * and guessing one is how a beginner gets handed a Canova block.
+   * The runner's DEMONSTRATED capacity band, for the catalogue's
+   * contraindication rows (§8.5 "not for novice runners", §10.2 "practice each
+   * in isolation first"). null → the catalogue is not consulted; the gate has
+   * no safe default and guessing one is how a beginner gets handed a Canova
+   * block.
+   *
+   * TIEREVIDENCE-2 (2026-09-02) · was `level`, i.e.
+   * `profile.experience_level`. It is now `capacityBandFor(capacityTier)` —
+   * the rung the runner's demonstrated race pace earns, `developing` →
+   * 'beginner' with nothing demonstrated. Renamed rather than re-pointed so a
+   * reader cannot mistake it for the label again, and so `git grep level` in
+   * this file no longer finds a decision.
    */
-  level?: LevelKey;
+  capacityBand?: Tier | null;
   /**
    * DOWNHILL-2 (2026-08-29) · does the GOAL RACE run net downhill, on trusted
    * course data?
@@ -4938,7 +5034,7 @@ function layoutRaceWeek(input: Pick<
 
 function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   const {
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false, thesisSlot = null, noLongRunWeeks = undefined, evidenceLongCapMi = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, capacityBand = null, courseIsNetDownhill = false, thesisSlot = null, noLongRunWeeks = undefined, evidenceLongCapMi = null,
   } = input;
   // MPRACE-1 · the cadence walk's "this week has no long run" predicate. One
   // definition here so all four call sites below ask the same question.
@@ -5543,7 +5639,7 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
    * recorded as an attempt, ROTATION-ATTEMPT-1's own device, so the rotation
    * self-corrects instead of re-offering it forever.
    */
-  const longTier = (catalogueHistory != null && level != null) ? (level as Tier) : null;
+  const longTier = (catalogueHistory != null && capacityBand != null) ? capacityBand : null;
   const rotatesLongVariant = hasFinish && !baseBuilding
     && finishSeg!.kind !== 'progression'
     && !(phase === 'RACE-SPECIFIC' && racePaceTag === 'MP')
@@ -6233,7 +6329,7 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
      * `sizeFromPrescription`, so a refusal cannot become a breach either way.
      */
     const catalogueTier: Tier | null =
-      (catalogueHistory != null && level != null) ? (level as Tier) : null;
+      (catalogueHistory != null && capacityBand != null) ? capacityBand : null;
     const placedThisWeek: PlacedSession[] = [];
     // §16's rules about the long run only fire if the long run is visible to
     // them. It is placed above, and its race-pace finish names which of §4's
@@ -7742,7 +7838,11 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
          *     a fifth of the run, so it stays an embedded segment rather than
          *     becoming a tempo that happens to be long.
          */
-        const mlrTierAllows = level === 'advanced' || level === 'advanced_plus';
+        // TIEREVIDENCE-2 · the doc's own "(advanced)" tag, read off DEMONSTRATED
+        // capacity rather than off the word the runner typed. A runner whose
+        // evidence does not reach the advanced rung keeps the plain MLR, which
+        // is the conservative direction.
+        const mlrTierAllows = capacityBand === 'advanced' || capacityBand === 'advanced_plus';
         const mlrPhaseAllows = phase === 'QUALITY' || phase === 'RACE-SPECIFIC';
         const mlrTBudget = mlrTierAllows && mlrPhaseAllows
           ? weeklyDoseBudgetMi(weeklyMi, 'T', weekDoseContext)
@@ -7819,7 +7919,7 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
        * number doctrine actually states.
        */
       const doctrineAfterLongMi = raceDistanceMi != null && raceDistanceMi > 0
-        ? recoveryDayAfterLongMi(distanceCategoryOf(raceDistanceMi), level ?? null)
+        ? recoveryDayAfterLongMi(distanceCategoryOf(raceDistanceMi), capacityBand ?? null)
         : null;
       const recoveryCapMi = Math.max(
         (RECOVERY_RUN_MAX_MINUTES * 60) / easyPaceSecPerMi,
@@ -9118,7 +9218,6 @@ function dowDateInWeek(weekStartISO: string, dow: DOW): string {
 export function enforceRampCeilingAfterEmbedding(
   weeks: ComposedWeek[],
   vols: number[],
-  level: LevelKey,
   embedded: EmbeddedRaceSummary[],
   /** WKRESUME-1 · the largest week the runner held BEFORE this block. Same
    *  seed, same reason, as `enforceWeeklyRampCeiling`: this pass's own header
@@ -9134,7 +9233,18 @@ export function enforceRampCeilingAfterEmbedding(
   const seedMi = (priorLevelMi != null && Number.isFinite(priorLevelMi) && priorLevelMi > 0)
     ? priorLevelMi
     : 0;
-  const ceiling = GENERAL_RAMP_CEILING[level ?? 'intermediate'];
+  // TIEREVIDENCE-2 (2026-09-02) · NOT KEYED ON `level`. `GENERAL_RAMP_CEILING`
+  // is a level-keyed table whose only split is TRAINED (1.15) vs NOVICE (1.20),
+  // and `level` is `profile.experience_level` — the authority
+  // `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` removes. `WEEKLY_STEP_GROWTH` is
+  // that same table's trained rung, read through the constant
+  // `load-progression-contract.ts` already exports, so the curve's ceiling and
+  // the contract's envelope cannot disagree (Rule 16 · they were two answers to
+  // "how fast may a week grow" and a declared beginner got 1.20 from one and
+  // 1.15 from the other). It is also the CONSERVATIVE rung: doctrine's novice
+  // figure is the FASTER one, so an unread runner may not inherit it
+  // (invariant 11 · missing data may not produce a more aggressive plan).
+  const ceiling = WEEKLY_STEP_GROWTH;
   // RACEROLE-1 · an mp_workout conversion is a full training week (the race
   // day IS the week's long), not a mini-tapered cutback — it is neither a
   // distorted reference week nor a week anything needs to ramp-guard after.
@@ -9353,7 +9463,6 @@ function trimWeekToVolume(week: ComposedWeek, targetMi: number, protectLong = fa
 export function enforceWeeklyRampCeiling(
   weeks: ComposedWeek[],
   vols: number[],
-  level: LevelKey,
   /** WKRAMP-REC-1 · a whole-block ceiling in miles, for a block whose shape is
    *  downward by design. Null/undefined → the week-over-week rule above. */
   blockCeilingMi?: number | null,
@@ -9362,7 +9471,18 @@ export function enforceWeeklyRampCeiling(
    *  are the only reference, exactly as before. */
   priorLevelMi?: number | null,
 ): void {
-  const ceiling = GENERAL_RAMP_CEILING[level ?? 'intermediate'];
+  // TIEREVIDENCE-2 (2026-09-02) · NOT KEYED ON `level`. `GENERAL_RAMP_CEILING`
+  // is a level-keyed table whose only split is TRAINED (1.15) vs NOVICE (1.20),
+  // and `level` is `profile.experience_level` — the authority
+  // `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` removes. `WEEKLY_STEP_GROWTH` is
+  // that same table's trained rung, read through the constant
+  // `load-progression-contract.ts` already exports, so the curve's ceiling and
+  // the contract's envelope cannot disagree (Rule 16 · they were two answers to
+  // "how fast may a week grow" and a declared beginner got 1.20 from one and
+  // 1.15 from the other). It is also the CONSERVATIVE rung: doctrine's novice
+  // figure is the FASTER one, so an unread runner may not inherit it
+  // (invariant 11 · missing data may not produce a more aggressive plan).
+  const ceiling = WEEKLY_STEP_GROWTH;
   if (blockCeilingMi != null && Number.isFinite(blockCeilingMi) && blockCeilingMi > 0) {
     for (let wi = 0; wi < weeks.length; wi++) {
       const w = weeks[wi];
@@ -9864,8 +9984,9 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // goal enters only as a reduction. See the GOALVOL-1 block in goal-tiers.ts.
   const { tier, capacityTier, reducedByGoal, target: baseTierTarget } = lookupLoadTierTarget({
     raceDistanceMi: input.raceDistanceMi,
-    level: input.level, // VAR-01 · experience is capacity, not ambition
-    demonstratedPaceSec, // COLD-1 · an unstated level is lifted only by evidence
+    // TIEREVIDENCE-2 · `level` is GONE from this bag. The row is selected by
+    // what the runner has DEMONSTRATED and by nothing they typed.
+    demonstratedPaceSec, // COLD-1 · nothing demonstrated → the bottom row
     goalPaceSec: input.goalPaceSec, // reduction only · never raises the band
   });
 
@@ -9891,9 +10012,9 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // GOALVOL-1 · the horizon race's LOAD row, on the same seal. A future
       // race's typed goal may not lift this block's long-run dials either.
       const { target: ht } = lookupLoadTierTarget({
-        raceDistanceMi: h.distanceMi, level: input.level,
+        raceDistanceMi: h.distanceMi,
         demonstratedPaceSec: hDemonstrated, goalPaceSec: h.goalPaceSec,
-      }); // VAR-01 + COLD-1 + GOALVOL-1
+      }); // COLD-1 + GOALVOL-1 + TIEREVIDENCE-2 (no declared level in the bag)
       // Only LARGER bands count · we extend up, never contract down.
       if (ht.peakLongMiBand[1] > bestCap || ht.longRunShare > bestShare) {
         if (ht.peakLongMiBand[1] > bestCap) bestCap = ht.peakLongMiBand[1];
@@ -10071,7 +10192,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // RAMPBASE-1 · ramp from the runner's SUSTAINED base, not from a mandated
   // deload the engine itself prescribed. Falls back to the 28-day mean, which
   // is what every caller that does not supply the field gets.
-  const vols = volumeCurve(input.rampBaseMi ?? input.recentWeeklyMi, blocks, input.level, tierTarget, distanceCategoryOf(input.raceDistanceMi), rampEvidence, null, input.establishedCutbackEveryN);
+  const vols = volumeCurve(input.rampBaseMi ?? input.recentWeeklyMi, blocks, tierTarget, peakWeeklyFloorMi(distanceCategoryOf(input.raceDistanceMi), demonstratedPaceSec), distanceCategoryOf(input.raceDistanceMi), rampEvidence, null, input.establishedCutbackEveryN);
   // DIST-1 · plan-wide peak weekly volume · scales the marathon/ultra long to its doctrine band.
   const peakWeeklyMi = Math.max(1, ...vols);
   // #13 · the cadence volumeCurve used to deload, threaded into layoutWeek so
@@ -10566,8 +10687,16 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // LOWVOL-2 (2026-08-19) · the runner's own volume is passed so an UNSTATED
       // experience level cannot route a 5-10 mi/wk runner into the periodized
       // machine. A STATED level still wins outright.
+      // TIEREVIDENCE-2 · the STATED level is gone from this call, so the second
+      // argument is always null and `unstatedLevelFor` decides — the volume
+      // reading LOWVOL-2 already wrote and argued: "a big week is not a
+      // demonstration of anything, whereas a week below the beginner peak is a
+      // hard fact about what the runner can absorb". Deliberately NOT
+      // `capacityBandFor(capacityTier)`: that would route every runner with no
+      // race on file into the base-building template, which is a far bigger
+      // claim than doctrine's own volume test makes.
       baseBuilding: isBaseBuildingPlan(
-        distanceCategoryOf(input.raceDistanceMi), input.level, input.recentWeeklyMi,
+        distanceCategoryOf(input.raceDistanceMi), null, input.recentWeeklyMi,
       ),
       availableDows: input.availableDows ?? null,
       // DOCTRINE-3 · the long run's absolute-time cap is evaluated against the
@@ -10620,7 +10749,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // selector's least-recently-used rotation and its per-cycle caps see the
       // whole block rather than one week.
       catalogueHistory,
-      level: input.level,
+      // TIEREVIDENCE-2 · the DEMONSTRATED capacity band, not `input.level`. One
+      // reading (`capacityTier`, resolved once at the top of this function)
+      // selects the load row, the catalogue's contraindication gate and the
+      // workout library's `levelFit` filter, so a runner cannot be graded three
+      // ways inside one block (Rule 16).
+      capacityBand: capacityBandFor(capacityTier),
       // DOWNHILL-2 · the same signal `applyCourseGuidance` gates its note on,
       // read here so the sessions and the note cannot disagree about whether
       // this is a descending race.
@@ -10865,20 +10999,21 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     (w) => w.phase !== 'TAPER' && !w.isCutback,
   ).length;
   /**
-   * TIEREVIDENCE-1 · the row the runner's DEMONSTRATED performance earns, with
-   * the typed experience level allowed to cap it and never to lift it. This is
-   * the whole of the self-declaration's removal: the composed week still reads
-   * `tierTarget` (see `demonstratedLoadCeilingTier`'s own header for why that
-   * row keeps its floor), and the two numbers the ADAPTATION engine binds on
-   * read this instead. With nothing demonstrated it is the bottom row, so a
-   * missing read produces the conservative ceiling and never the ambitious one.
+   * TIEREVIDENCE-2 · the row the runner's DEMONSTRATED performance earns, with
+   * no typed experience level able to cap or lift it any more. Still a
+   * DIFFERENT question from the row `tierTarget` composes the week against, and
+   * still answered by a different function: this one is a PERMISSION the
+   * adaptation engine binds on, so with nothing demonstrated it is the bottom
+   * row, while the composed row falls back to doctrine's middle template. See
+   * `UNMEASURED_ROW_TIER` in goal-tiers.ts for the argument, and
+   * `_evidence_tier_band.test.ts` guard 5 for the gate.
    *
    * LOADCONTRACT-1 · this row is now a REFERENCE on the weekly axis. It still
    * selects the long-run band below, and it is still published, but the weekly
    * CEILING no longer comes from it — see the block above `publishedWeeklyBand`.
    */
   const evidenceRow = TIER_TARGETS[distanceCategoryOf(input.raceDistanceMi)][
-    demonstratedLoadCeilingTier(input.raceDistanceMi, input.level, demonstratedPaceSec)
+    demonstratedLoadCeilingTier(input.raceDistanceMi, demonstratedPaceSec)
   ];
   const loadContract = resolveLoadProgressionContract({
     demonstrated: loadDemonstrated,
@@ -11697,7 +11832,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     // than passed as null: a maintenance hold has no established block to
     // inherit from, and `MAINTENANCE.long-hold-progresses-gently` pins this
     // call ending on `holdPeakTarget`.
-    ? volumeCurve(targetWeekly, blocks, input.level, TIER_TARGETS[holdCat][input.tier], holdCat, null, holdPeakTarget)
+    ? volumeCurve(targetWeekly, blocks, TIER_TARGETS[holdCat][input.tier], TIER_TARGETS[holdCat][input.tier].peakWeeklyMileageBand[0], holdCat, null, holdPeakTarget)
     : null;
   /** Slow end of the engine's own easy band — the pace the runner is actually
    *  permitted to run at, so the minutes→miles conversion cannot imply a
@@ -13009,7 +13144,19 @@ export function reverseTaperCeilingMi(composed: ComposePlanResult): number | nul
 export function finalizeComposedPlan(
   composed: ComposePlanResult,
   raceDistanceMi: number,
-  level: LevelKey = null,
+  /**
+   * TIEREVIDENCE-2 (2026-09-02) · ACCEPTED AND UNREAD. This was route 3 of the
+   * three by which `profile.experience_level` reached the plan — a third
+   * positional argument nobody reading `ComposePlanInput` would find — and its
+   * only consumer was `GENERAL_RAMP_CEILING[level ?? 'intermediate']` inside
+   * the two ramp-ceiling passes, which now read `WEEKLY_STEP_GROWTH`.
+   *
+   * The parameter STAYS so `_declared_level_inert.test.ts` can keep turning
+   * this knob at every declared value and at both absences and prove the block
+   * does not move. Deleting it would make the gate unable to express the
+   * defect, which is a weaker guarantee, not a stronger one (Rule 18).
+   */
+  _declaredLevelInert: LevelKey = null,
   /** COURSE-PLAN-1 · the target race's measured terrain. Optional and
    *  defaulted so every existing caller is byte-identical; an unknown course
    *  composes exactly as it did before the plan engine could see one. */
@@ -13390,7 +13537,7 @@ export function finalizeComposedPlan(
   // second call converges and is a no-op whenever the first left nothing to do
   // — the same argument `smoothLongWoW` above makes for being called twice.
   const enforceGeneralRamp = () => enforceWeeklyRampCeiling(
-    composed.weeks, composed.vols, level,
+    composed.weeks, composed.vols,
     reverseTaperCeilingMi(composed),
     // WKRESUME-1 · the runner's pre-block level, when composePlan measured one.
     composed.rampAnchorMi ?? null,
@@ -13401,7 +13548,7 @@ export function finalizeComposedPlan(
       ?.embedded_races ?? []) as EmbeddedRaceSummary[];
     if (Array.isArray(embedded) && embedded.length > 0) {
       enforceRampCeilingAfterEmbedding(
-        composed.weeks, composed.vols, level, embedded,
+        composed.weeks, composed.vols, embedded,
         composed.rampAnchorMi ?? null,
       );
       enforceGeneralRamp();
@@ -15547,10 +15694,9 @@ async function composeForUserInternal(
     // volume curve). Same seal as the race path.
     const tier = resolveLoadTier({
       raceDistanceMi: inputs.compose.raceDistanceMi,
-      level: inputs.compose.level,
       demonstratedPaceSec: nrDemonstrated,
       goalPaceSec: inputs.compose.goalPaceSec,
-    }).tier; // VAR-01 + COLD-1 + GOALVOL-1
+    }).tier; // COLD-1 + GOALVOL-1 + TIEREVIDENCE-2
     // DOCTRINE-4 · read only on the non-race branch (maintenance + recovery are
     // the two composers that anchor to peak); race-prep never touches it, so the
     // race path takes no extra query.
@@ -16771,9 +16917,12 @@ async function loadGeneratorInputs(
 
   // 6. Prescriptions (in-code workout library)
   const cat = distanceCategoryOf(raceDistanceMi);
+  // TIEREVIDENCE-2 · the library is filtered on DEMONSTRATED capacity. `level`
+  // is still handed over and is still ignored — see `resolvePrescriptions`.
+  const rxBand = authoringCapacityBand(raceDistanceMi, bestRecentVdot ?? null);
   const [rxQuality, rxRaceSpecific] = await Promise.all([
-    resolvePrescriptions(cat, 'quality',        level),
-    resolvePrescriptions(cat, 'race_specific',  level),
+    resolvePrescriptions(cat, 'quality',        level, rxBand),
+    resolvePrescriptions(cat, 'race_specific',  level, rxBand),
   ]);
 
   // 7. T-pace + LTHR + maxHR · plan-wide goal-T (composePlan computes

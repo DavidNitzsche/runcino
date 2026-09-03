@@ -258,6 +258,17 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'surfaces. The 10K and the half share T-3 weeks because the trajectory settles at the ' +
       'same point for both, which the table\'s own header comment has said since it was ' +
       'written. Recorded as an unbound product table in UNBOUND_TABLES for the same reason.',
+    'web-v2/lib/plan/goal-tiers.ts#TIER_PACE_EDGES:hm==m':
+      'Deliberate, doctrine-cited, and older than the table. `tierFromPace` graded the half ' +
+      'and the marathon on the same pace edges from the day it was written, inside a switch ' +
+      'whose `hm` and `m` cases were byte-identical - this lint could not see it until ' +
+      'TIEREVIDENCE-2 (2026-09-02) extracted the switch to a table so `peakWeeklyFloorMi` ' +
+      'could read the SAME numbers instead of a second copy. Extraction is what made the share ' +
+      'visible; it did not create it. The share is also what Research/22 says: its two ' +
+      'ADVANCED cohort marks are "sub-1:30" for the half (5:24 min/mi at 13.11 mi = 412 s/mi) ' +
+      'and sub-3 for the marathon (412 s/mi at 26.22 mi), which are the same pace to the ' +
+      'second - the two rows describe one cohort running two distances. TIER.pace-edges-cover-' +
+      'the-published-cohorts is the claim that checks both against the doc.',
     // (DOCTRINE-1b, 2026-08-17) · the three CONSTRAINTS allowlist entries that
     // used to live here are DELETED. hm/m/ultra shared a flat 30% taper floor
     // and no ceiling at all; each row now carries its own floor AND its own
