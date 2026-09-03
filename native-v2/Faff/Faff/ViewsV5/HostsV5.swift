@@ -113,6 +113,43 @@ final class DayFetchCoordinator {
     }
 }
 
+// MARK: - Directional panel transition (PANELMOTION-1)
+//
+// "Later date: old content moves slightly left and fades; earlier date: old
+// content moves slightly right and fades; new content enters from the
+// corresponding direction... same-date refresh: crossfade only." A plain
+// `.move(edge:)` slides a full frame width, which reads as a page changing,
+// not a date changing — this moves by a fixed, small offset instead, the
+// "8-16pt, not theatrical" the polish pass asked for.
+private struct PanelSlideModifier: ViewModifier {
+    let offsetX: CGFloat
+    let opacity: Double
+    func body(content: Content) -> some View {
+        content.offset(x: offsetX).opacity(opacity)
+    }
+}
+
+private extension AnyTransition {
+    /// `sign` is +1 for a later date (content enters from the trailing edge,
+    /// exits toward leading) and -1 for an earlier one (reversed). A `sign`
+    /// of 0 (no directional read yet — first render) degrades to a plain
+    /// crossfade rather than guessing a direction nothing chose.
+    static func todayPanel(sign: Int, points: CGFloat = 12) -> AnyTransition {
+        guard sign != 0 else { return .opacity }
+        let enter = points * CGFloat(sign)
+        return .asymmetric(
+            insertion: .modifier(
+                active: PanelSlideModifier(offsetX: enter, opacity: 0),
+                identity: PanelSlideModifier(offsetX: 0, opacity: 1)
+            ),
+            removal: .modifier(
+                active: PanelSlideModifier(offsetX: -enter, opacity: 0),
+                identity: PanelSlideModifier(offsetX: 0, opacity: 1)
+            )
+        )
+    }
+}
+
 // MARK: - Today
 
 struct TodayHostV5: View {
@@ -432,7 +469,13 @@ struct TodayHostV5: View {
                     // instead of snapping.
                     content(matched)
                         .id(matched.dateISO)
-                        .transition(.opacity)
+                        // PANELMOTION-1 · `navDirection` is set synchronously
+                        // in `goTo`, so it always reflects the navigation
+                        // that produced THIS transition, never a later one —
+                        // there is no in-flight window where it could be
+                        // stale, because `.id` changing and `navDirection`
+                        // changing happen in the same `goTo` call.
+                        .transition(.todayPanel(sign: navDirection))
                         // Deliberately NOT a second "‹ Today" chip here.
                         // `PlaceHeaderV5` already draws one, inside the panel,
                         // the moment `viewingDayLabel` is non-nil — right at
@@ -801,6 +844,18 @@ struct TodayHostV5: View {
     /// pending card's failed phase.
     @State private var isOffline = false
 
+    /// PANELMOTION-1 (2026-09-04) · which way the runner just navigated, so
+    /// the workout panel can slide in the SAME direction as the date moved
+    /// instead of only crossfading. +1 = a later date (content slides in
+    /// from the trailing edge, old content exits leading), -1 = earlier
+    /// (reversed), 0 = no directional read yet (first render). Set
+    /// synchronously in `goTo`, where both the old and new date are known —
+    /// never derived inside `body`, so it never fights the transition it
+    /// drives. String comparison is safe and correct here because every
+    /// date on screen is `yyyy-MM-dd`, which sorts lexicographically exactly
+    /// like it sorts chronologically.
+    @State private var navDirection: Int = 0
+
     /// One week summary for `date`, if a cached week covers it. Cheaper
     /// than the full day and, per `pendingCard`'s own doc comment, what
     /// lets a still-loading date show its real type/dose instead of a bare
@@ -980,7 +1035,12 @@ struct TodayHostV5: View {
     /// header, the strip and the fetch can never disagree about which day
     /// the screen is on.
     private func goTo(_ iso: String, todayISO today: String) {
-        guard iso != (viewingDate ?? today) else { return }
+        let from = viewingDate ?? today
+        guard iso != from else { return }
+
+        // PANELMOTION-1 · the only place both the old and new date are known
+        // synchronously, before anything async starts.
+        navDirection = iso > from ? 1 : -1
 
         // ONE haptic, exactly here — the single place every navigation
         // (a day tap, a week-strip swipe, "Today") funnels through, and
@@ -1114,7 +1174,17 @@ struct TodayHostV5: View {
                     await fetchAndCacheWeek(anchoredOn: Self.iso.string(from: d))
                 }
             }()
-            _ = await (visible, prev, next)
+            // PRELOAD-1 (2026-09-04) · "at rest, the app already has ... the
+            // next two weeks." One week ahead was the swipe-adjacent case;
+            // this is the second, so a runner who swipes twice in a row
+            // still lands on cached content rather than a network round trip
+            // on the second swipe.
+            async let nextNext: Void = {
+                if let d = Calendar.current.date(byAdding: .day, value: 8, to: lastDate) {
+                    await fetchAndCacheWeek(anchoredOn: Self.iso.string(from: d))
+                }
+            }()
+            _ = await (visible, prev, next, nextNext)
         }
 
         guard !missing.isEmpty else { return }
