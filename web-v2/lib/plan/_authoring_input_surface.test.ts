@@ -34,6 +34,10 @@ const ALLOWED: Record<string, string[]> = {
     'recentWeeklyMi', 'recentLongMi', 'recentQualityPerWeek',
     'recentQualityDistanceMi', 'easyDayMedianMi', 'spikeAnchorLongMi',
     'rampBaseMi', 'rampBaseEvidence',
+    // DESIGNED-WEEKEND-1 · the heaviest two-day load he has actually absorbed,
+    // and when. Evidence for the race-plus-long-run grant, and the reason that
+    // grant is athlete-specific rather than a permission every runner gets.
+    'demonstratedPairMi', 'demonstratedPairFromISO',
   ],
   'demonstrated pace capacity': [
     'tPaceSec', 'bestRecentVdot', 'seasonAnchorVdot', 'seasonAnchorSource',
@@ -51,6 +55,12 @@ const ALLOWED: Record<string, string[]> = {
     'availableDows', 'trainingDaysPerWeek', 'longRunDow', 'qualityDows', 'restDow',
   ],
   'completed versus future dates': ['date', 'startMondayISO', 'isMidBlock'],
+  // CADENCE-1 · the block's OWN authored deload cadence, inherited on rebuild.
+  // This is the replacement for tsbAtStart: the cadence is a periodisation
+  // decision belonging to the block, not a reading taken on the morning of a
+  // rebuild. Doctrine: cutback weeks are authored into the plan, not triggered
+  // by daily state.
+  'the block\'s established cadence': ['establishedCutbackEveryN'],
   'race and tune-up schedule': [
     'horizonRaces', 'midBlockRaces', 'priority', 'plannedRole',
   ],
@@ -61,15 +71,16 @@ const ALLOWED: Record<string, string[]> = {
 /**
  * REMOVED AUTHORITIES still present on the interface.
  *
+ * `tsbAtStart` was struck from this list on 2026-09-02 when the removal landed.
+ * Measured before it went: walking training form across the old -10 threshold
+ * re-phased 7 of 15 weeks, moved one week by 16.0 mi and one long run by 6.0 mi.
+ * After removal, the same walk from -30 to +5 produces an IDENTICAL plan.
+ *
  * A RATCHET. It may shrink, never grow, and a stale entry FAILS — so the
  * removal cannot be quietly abandoned, and cannot be quietly forgotten once
  * done. Each carries the measured harm that put it on the list.
  */
 const STILL_PRESENT: Record<string, string> = {
-  tsbAtStart:
-    'Daily training form. cutbackCadence(tsb) = tsb < -10 ? 3 : 4 re-phased 13 '
-    + 'of 15 weeks when his form moved from -6 to -11. Doctrine: cutback weeks '
-    + 'are authored into the plan, not triggered by daily state.',
   level:
     'Self-declared experience-level band. profile.experience_level reads '
     + '"advanced" because he typed it at onboarding, yielding a 65-90 mi/wk peak '
