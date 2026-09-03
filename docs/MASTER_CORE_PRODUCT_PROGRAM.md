@@ -269,6 +269,60 @@ refusals confirmed):
 placement. It says nothing about whether the weekend should be prescribed at
 all — only that the evidence offered for it is honestly stated.
 
+
+## VISUAL WALK  ·  2026-09-03, and what it is and is not worth
+
+The owner asked for a visual walk: *"The app is also so buggy and clunky. It
+would be worth visually walking the app after pushing it to work though a lot of
+the visual issues and dead ends. No placeholder, etc."*
+
+**Read the confidence labels on these findings.** The walk ran against the
+CURRENT simulator binary (built 2026-09-03 01:31) but the app had **no valid
+session**, so every screen it drew came from its own 12-hour cache. Rule 13 says
+a display fix is verified by rendering with real data; a cache render is not
+that. The findings below are therefore split by what the evidence actually
+supports, and the substrate that would let the rest be settled is being built
+(`feat/visual-walk-substrate`).
+
+The walk was run against a dev server pinned to the READ-ONLY role, and every
+write path was probed and refused with a genuine permission denial — INSERT /
+UPDATE / DELETE on `runs`, UPDATE on `plan_workouts`, INSERT on `coach_intents`.
+That is P1-5's requirement met by construction rather than by care: the
+verification client was structurally incapable of writing his account. Two
+earlier probes in the same session refused for the WRONG reason (a missing env
+var, then a column type error) and were redone — a refusal that proves nothing
+is the failure Rule 18 exists to catch, and it happens on the way to a real one.
+
+### CONFIRMED · structural, data-independent
+
+| ID | Finding |
+|---|---|
+| **VW-1** | **Content scrolls under the status bar with nothing behind it.** Body text collides with the clock and the Dynamic Island — observed directly, twice, at two scroll positions. `AppBar` is rendered INSIDE the `ScrollView`, so it scrolls away and leaves the status bar sitting on raw content. Structural and app-wide: **all seven** `AppBar` screens (`CourseImportV5`, `RaceDetailV5`, `RunDetailV5`, `RunLogV5`, `SettingsV5`, `ShoesV5`, `TodayBeforeV5`) carry no `safeAreaInset`, sticky header, or scrim. The shell already publishes the real device inset as `\.v5TopInset` and `PanelV5` consumes it, so the mechanism exists and these screens simply do not use it. |
+
+### OBSERVED · needs the substrate before it is called a defect
+
+| ID | Finding |
+|---|---|
+| **VW-2** | **The run detail appeared to have no way out** — no back chevron, no Done, no tab bar, and the OS edge-swipe did nothing. `RunDetailHostV5` (`HostsV5.swift:1880`) DOES pass `onBack: { dismiss() }`, and `AppBar` draws the chevron whenever `onBack` is non-nil, so on the source as written this should not happen. The only call sites that omit `onBack` are in `ScreensCatalogV5`, which serves FIXTURES — and the screen showed 2026-09-01 / 8.5 mi / Asics Megablast 62.7 mi, where the fixture is 2026-08-11 / 6.34 mi. So it was not the catalog. Unresolved, and worth resolving: a detail screen with no exit is the worst class of the dead ends he named. |
+
+### THE COACHING FINDING, which outranks both
+
+On the 2026-09-01 interval session the app rendered: work pace **7:02/mi against
+7:10 asked** — faster than prescribed — with the spread across reps **4 s/mi
+tighter** than the comparable session and **3 s/mi faster by the last rep**
+where the previous one was 10 s/mi slower by the last rep. Every axis better.
+
+The coach's verdict, in full: *"This sits outside what your current threshold
+range predicts. It is noted, and the next session like it will settle whether
+the number moves."* Then: **"The plan is unchanged."**
+
+That is Rule 21 rendered on his phone. A session executed better than prescribed
+on pace, on evenness and on finish, and the response is a note. It is the same
+disposition the 309-intent audit measured as zero upward adaptations, seen from
+the runner's side rather than from the database's — and it is the direct answer
+to *"we have to ensure the adaption engine will fire."* It belongs to P0-6 and
+the replay harness, not to the visual pass.
+
 ---
 
 ## P1 · Known open items outside the critical path
