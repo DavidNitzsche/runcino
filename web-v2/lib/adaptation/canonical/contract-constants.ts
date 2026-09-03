@@ -150,6 +150,27 @@ export const VOLUME_MIN_CONSECUTIVE_WEEKS = 3;
  */
 export const VOLUME_WEEK_COMPLETION_MIN_FRAC = 0.95;
 
+/**
+ * Rule 9 · the REPRESENTATION tolerance on a completion bar. Not a band.
+ *
+ * `completed / prescribed >= 0.95` is a comparison between a bar and a
+ * quotient, and IEEE-754 does not let the quotient sit exactly on the bar: for
+ * **267 of the 1,999 prescriptions between 0.1 and 199.9 miles**, a week
+ * completed at precisely 95% of its own prescription evaluates to
+ * 0.9499999999999999 and fails. Whether the runner clears the criterion then
+ * depends on the third decimal place of a number nobody chose, which is Rule
+ * 9's cliff in its purest form — and it hid inside the counterfactual ladder,
+ * where five decision points credited at "exactly the bar" reported
+ * `Week completed at 95%, below the 95% bar`.
+ *
+ * This is not a widened threshold and must never become one. Contract Q21
+ * writes the bar as "≥~95%", and 1e-9 is a hundred million times smaller than
+ * the smallest difference any prescription can express; the closest the owner
+ * ever came on real data was 0.9023, forty-eight thousandths away. It exists so
+ * that 0.95 means 0.95.
+ */
+export const COMPLETION_FRACTION_EPSILON = 1e-9;
+
 /** "Movement: ≤~5% above the affected prescribed week." */
 export const VOLUME_MAX_STEP_FRAC = 0.05;
 

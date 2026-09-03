@@ -54,6 +54,65 @@
  * is the engine's own construction and its own stated rule for it is "the same
  * bar, the other way", so the cadence bound travels with it.
  *
+ * ── RULE 21 · THE THREE CONDITIONS THIS LEVER USED TO ENFORCE BUT NOT STATE ─
+ *
+ * Q21 lists five criteria and this file checks all five, so the accusation
+ * that it enforces UNDECLARED conditions is, on its face, wrong: "Key sessions
+ * FULL or defensible SUBSTANTIAL" and "Relevant long runs substantially
+ * completed" are both in the contract, in writing.
+ *
+ * What was undeclared is how they were READ, and the replay measured the cost.
+ * Crediting every one of his non-cutback weeks at exactly the 95% bar bought
+ * ZERO of 13 weekly boundaries a PROGRESS: the headline criterion, met in full,
+ * changed nothing. Three separate reasons, all of them here rather than in the
+ * contract:
+ *
+ * 1 · **The long-run criterion had no window at all.** `shortLongRuns` and the
+ *     deterioration walk read `input.longRuns` WHOLE while the weeks were
+ *     windowed to three. His 2026-07-05 long run — a week he did not run — was
+ *     still cited as contradictory evidence against the 2026-08-31 decision,
+ *     eight weeks later. Q21 says "RELEVANT long runs", and Rule 14 says a
+ *     query names the population it reads. It now reads the long runs inside
+ *     the weeks this decision is judging, which is what "relevant" means.
+ *
+ * 2 · **The complement of "counts as evidence" was spent as counter-evidence.**
+ *     `GRADES_THAT_COUNT_AS_EVIDENCE` is FULL and SUBSTANTIAL, and its own doc
+ *     comment says why DIFFERENT is not in it: "a different stimulus may still
+ *     be useful, but it is evidence about the lever it actually tested, not
+ *     about the one that was prescribed." This file then took every grade
+ *     outside that set and pushed it into `contradictory`, turning "not
+ *     evidence FOR" into "evidence AGAINST" — which is Rule 11's collapse, and
+ *     the grader is explicit about the fact it destroys. Its own fallback
+ *     branch returns DIFFERENT with the comment "the work happened, but the
+ *     evidence does not establish the intended stimulus was achieved. Not a
+ *     failure, and not a claim either." Five of his June sessions graded
+ *     DIFFERENT and blocked a volume step on that reading.
+ *
+ *     PARTIAL still blocks, and must: Q38 defines it as "not enough of the
+ *     intended session to receive the full training effect", which is a
+ *     load-absorption fact and exactly what this lever asks about.
+ *     INSUFFICIENT is excluded rather than counted, per Q38's "never translate
+ *     insufficient evidence into a bad workout".
+ *
+ * 3 · **A window of sessions that established nothing read as "criterion
+ *     satisfied".** The old test was `badKeySessions.length === 0`, which a
+ *     window whose every session graded DIFFERENT or INSUFFICIENT passes
+ *     vacuously. Q21's criterion is a POSITIVE one — key sessions FULL or
+ *     defensible SUBSTANTIAL — so key sessions that ran and established nothing
+ *     are a refusal, not a pass. That is the same clause tightening as the two
+ *     above loosen, and it is deliberate: this change is about reading each
+ *     fact as the fact it is, not about lowering a bar.
+ *
+ *     It does NOT fire on a window with no key sessions at all, which is a
+ *     base block prescribing only easy running. The first draft did, and
+ *     `_symmetry.test.ts` failed with the sentence this file exists to prevent:
+ *     "the upward path is unreachable on its own criterion, which is a wall."
+ *
+ * Rule 8 is also now applied PER FINDING rather than only per week. The lever
+ * already drops taper and recovery WEEKS from the completion test; it kept
+ * grading the sessions and long runs inside those same weeks. A key session
+ * run during a prescribed taper is not evidence about what he can absorb.
+ *
  * ── RULE 22 · WHAT THIS LEVER'S GATE CANNOT FAIL ON ────────────────────────
  *
  * It cannot fail on a prescribed week that was itself too small. Completion is
@@ -66,6 +125,22 @@
  * whose activities landed on the wrong dates reads as a shortfall and there is
  * nothing here that could tell the difference; `dataComplete` is a flag this
  * file trusts rather than verifies.
+ *
+ * It cannot tell "the plan prescribed no quality that week" from "the plan
+ * prescribed quality and none of it was run". `keySessions` carries GRADED
+ * sessions, so a prescribed session nobody ran never arrives here at all, and
+ * both cases reach this file as an empty window. It is read as the first,
+ * because a base block is the common case and walling it would be worse; the
+ * second would be better answered by an input that carried what was PRESCRIBED
+ * alongside what was graded, and no such field exists. Named rather than
+ * silently assumed, per Rule 11.
+ *
+ * It cannot fail on a WRONG GRADE. Every clause above moves a session between
+ * "supports", "blocks" and "neither" by reading `s.grade`, and if the stimulus
+ * grader mis-grades a session this file will confidently spend the wrong
+ * verdict. On the real replay 13 of his 24 quality sessions graded PARTIAL or
+ * DIFFERENT, and whether that census is right is `stimulus.ts`'s question, not
+ * this one's.
  */
 import {
   VOLUME_MIN_CONSECUTIVE_WEEKS,
@@ -85,7 +160,7 @@ import type {
   IncludedEvidence,
   Magnitude,
 } from '../decision-record';
-import { confidenceFrom, miText, nonMoving, type LeverVerdict } from './shared';
+import { confidenceFrom, meetsCompletionBar, miText, nonMoving, type LeverVerdict } from './shared';
 import { roundTo } from '@/lib/format/run';
 
 export interface WeeklyVolumeInput {
@@ -217,7 +292,7 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
       grade: null,
       weight: 1,
     };
-    if (c.frac >= VOLUME_WEEK_COMPLETION_MIN_FRAC) included.push(entry);
+    if (meetsCompletionBar(c.frac, VOLUME_WEEK_COMPLETION_MIN_FRAC)) included.push(entry);
     else {
       contradictory.push({
         activityId: entry.activityId,
@@ -227,7 +302,7 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
     }
   }
 
-  const allWeeksMet = completions.every((c) => c.frac >= VOLUME_WEEK_COMPLETION_MIN_FRAC);
+  const allWeeksMet = completions.every((c) => meetsCompletionBar(c.frac, VOLUME_WEEK_COMPLETION_MIN_FRAC));
 
   /* ── Key sessions · FULL or defensible SUBSTANTIAL ─────────────────────── */
 
@@ -250,6 +325,33 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
     ? nonCutback[nonCutback.length - 1].weekStartISO
     : input.todayISO;
 
+  /**
+   * Rule 8, applied PER FINDING rather than only per week.
+   *
+   * The weeks the plan prescribed as taper or recovery are already dropped
+   * from the completion test above. The sessions and long runs INSIDE those
+   * same weeks were still being graded, so a taper session that missed a
+   * meaningful portion of a deliberately reduced prescription read as evidence
+   * he cannot absorb his volume. The locked per-finding context-filter rule is
+   * explicit that a parent guard does not propagate to a child observation.
+   *
+   * A date is inside a non-normal week when it falls in the seven days from
+   * that week's start. Same arithmetic as `weekStartOf`, and there is no
+   * calendar helper on this side of the engine to borrow.
+   */
+  const nonNormalWeekStarts = input.weeks
+    .filter((w) => prescribedNonNormalWeek(w).nonNormal)
+    .map((w) => w.weekStartISO);
+  const DAY_MS = 86_400_000;
+  const insidePrescribedNonNormalWeek = (dateISO: string): string | null => {
+    const t = Date.parse(`${dateISO}T12:00:00Z`);
+    for (const ws of nonNormalWeekStarts) {
+      const s = Date.parse(`${ws}T12:00:00Z`);
+      if (t >= s && t < s + 7 * DAY_MS) return ws;
+    }
+    return null;
+  };
+
   for (const s of input.keySessions) {
     if (s.provenance.dateISO >= evidenceFromISO) continue;
     excludedList.push({
@@ -263,18 +365,78 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
     });
   }
 
-  const keySessionsInWindow = input.keySessions.filter(
-    (s) => s.provenance.dateISO >= evidenceFromISO,
-  );
+  const keySessionsInWindow: GradedSession[] = [];
+  for (const s of input.keySessions) {
+    if (s.provenance.dateISO < evidenceFromISO) continue;
+    const ws = insidePrescribedNonNormalWeek(s.provenance.dateISO);
+    if (ws !== null) {
+      excludedList.push({
+        activityId: s.provenance.activityId,
+        dateISO: s.provenance.dateISO,
+        reason: 'PRESCRIBED_RECOVERY_OR_TAPER',
+        detail:
+          `The session sits inside the week of ${ws}, which the plan prescribed as `
+          + 'taper or recovery. A session run during a week the plan told him to reduce '
+          + 'is not evidence about what he can absorb.',
+        stillAdmissibleFor: ['consistency', 'time on feet', 'the fact that the workout occurred'],
+      });
+      continue;
+    }
+    keySessionsInWindow.push(s);
+  }
 
-  const badKeySessions = keySessionsInWindow.filter(
-    (s) => !GRADES_THAT_COUNT_AS_EVIDENCE.has(s.grade) && s.grade !== 'INSUFFICIENT',
+  /* ── The three facts a grade can be, kept apart (Rule 11) ──────────────── */
+
+  // Q21 · "Key sessions FULL or defensible SUBSTANTIAL". This is the POSITIVE
+  // half of the criterion, and it is what `GRADES_THAT_COUNT_AS_EVIDENCE`
+  // means. Its complement is "does not support", not "argues against".
+  const supportingKeySessions = keySessionsInWindow.filter(
+    (s) => GRADES_THAT_COUNT_AS_EVIDENCE.has(s.grade),
   );
+  for (const s of supportingKeySessions) {
+    included.push({
+      activityId: s.provenance.activityId,
+      dateISO: s.provenance.dateISO,
+      what: `A key session graded ${s.grade}.`,
+      grade: s.grade,
+      weight: 1,
+    });
+  }
+
+  // Q38 · PARTIAL is "not enough of the intended session to receive the full
+  // training effect". That is a statement about work NOT ABSORBED, which is
+  // precisely the question this lever asks, so it blocks — the one grade below
+  // the bar that genuinely contradicts a volume increase.
+  const badKeySessions = keySessionsInWindow.filter((s) => s.grade === 'PARTIAL');
   for (const s of badKeySessions) {
     contradictory.push({
       activityId: s.provenance.activityId,
       dateISO: s.provenance.dateISO,
-      detail: `A key session graded ${s.grade}.`,
+      detail: 'A key session graded PARTIAL · a meaningful portion of the prescribed work was missed.',
+    });
+  }
+
+  // DIFFERENT and INSUFFICIENT: neither support nor block.
+  //
+  // DIFFERENT · Q38 · "a different stimulus may still be useful; it is not
+  // failure", and Q27 · "a session prescribed at a deliberately different
+  // effort supports the lever it actually tests, not the lever its nominal
+  // label implies". The work happened and the miles counted toward the week;
+  // what it does not do is establish the intended stimulus.
+  //
+  // INSUFFICIENT · Q38 · "Never translate insufficient evidence into a bad
+  // workout."
+  for (const s of keySessionsInWindow) {
+    if (s.grade !== 'DIFFERENT' && s.grade !== 'INSUFFICIENT') continue;
+    excludedList.push({
+      activityId: s.provenance.activityId,
+      dateISO: s.provenance.dateISO,
+      reason: s.grade === 'INSUFFICIENT' ? 'DATA_UNREADABLE' : 'GRADE_DOES_NOT_COUNT',
+      detail: s.grade === 'INSUFFICIENT'
+        ? 'The session could not be graded reliably, which is not the same as a session that went badly.'
+        : 'The session achieved a different stimulus from the one prescribed. It is evidence '
+          + 'about the lever it actually tested, and its miles still counted toward the week.',
+      stillAdmissibleFor: ['weekly volume', 'consistency', 'time on feet'],
     });
   }
 
@@ -300,7 +462,51 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
   // because it is asking about DURABILITY, which truncation makes unknowable.
   // This lever is asking whether the WEEKS were completed, and the recorded
   // miles answer that perfectly well.
-  const truncatedLongRuns = input.longRuns.filter((l) => l.provenance.truncation.truncated);
+  // ── THE WINDOW THAT WAS STILL MISSING ──────────────────────────────────
+  //
+  // The key sessions were windowed; the long runs were not. `input.longRuns`
+  // arrived whole, so his 2026-07-05 long run — a week in which he did not run
+  // at all — was still listed as contradictory evidence against the 2026-08-31
+  // decision, and three separate July long runs were re-spent at every
+  // boundary from August onward.
+  //
+  // Q21's own word is "RELEVANT long runs substantially completed", and Rule
+  // 14 says a query names the population it reads. The relevant population is
+  // the long runs inside the weeks this decision is judging — the same
+  // `evidenceFromISO` the key sessions use, because a second constant here
+  // would be a second opinion about one window (Rule 16). Rule 8's per-finding
+  // filter applies to them too.
+  const longRunsInWindow: LongRunObservation[] = [];
+  for (const l of input.longRuns) {
+    if (l.provenance.dateISO < evidenceFromISO) {
+      excludedList.push({
+        activityId: l.provenance.activityId,
+        dateISO: l.provenance.dateISO,
+        reason: 'OUTSIDE_EVIDENCE_WINDOW',
+        detail:
+          `The long run predates ${evidenceFromISO}, the first of the `
+          + `${VOLUME_MIN_CONSECUTIVE_WEEKS} weeks this decision reads.`,
+        stillAdmissibleFor: ['consistency', 'time on feet', 'the long-run lever'],
+      });
+      continue;
+    }
+    const ws = insidePrescribedNonNormalWeek(l.provenance.dateISO);
+    if (ws !== null) {
+      excludedList.push({
+        activityId: l.provenance.activityId,
+        dateISO: l.provenance.dateISO,
+        reason: 'PRESCRIBED_RECOVERY_OR_TAPER',
+        detail:
+          `The long run sits inside the week of ${ws}, which the plan prescribed as `
+          + 'taper or recovery. A shortened long run the plan asked for is not a long run he missed.',
+        stillAdmissibleFor: ['consistency', 'time on feet'],
+      });
+      continue;
+    }
+    longRunsInWindow.push(l);
+  }
+
+  const truncatedLongRuns = longRunsInWindow.filter((l) => l.provenance.truncation.truncated);
   for (const l of truncatedLongRuns) {
     excludedList.push({
       activityId: l.provenance.activityId,
@@ -314,10 +520,10 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
     });
   }
 
-  const shortLongRuns = input.longRuns.filter(
+  const shortLongRuns = longRunsInWindow.filter(
     (l) => !l.provenance.truncation.truncated
       && l.completedMi.ok && l.prescribedMi > 0
-      && l.completedMi.value / l.prescribedMi < LONG_RUN_COMPLETION_MIN_FRAC,
+      && !meetsCompletionBar(l.completedMi.value / l.prescribedMi, LONG_RUN_COMPLETION_MIN_FRAC),
   );
   for (const l of shortLongRuns) {
     contradictory.push({
@@ -329,9 +535,13 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
 
   /* ── No repeated late deterioration ────────────────────────────────────── */
 
+  // Q21 · "No REPEATED meaningful late-session deterioration", read over the
+  // same population as every other criterion above. It walked `input.longRuns`
+  // whole, which is the same unbounded-window defect: a session that fell away
+  // in June was still counting toward "repeated" in September.
   const pattern = deteriorationPattern([
     ...keySessionsInWindow.map((s) => assessDeterioration(s.thirds, s.provenance.truncation)),
-    ...input.longRuns.map((l) => assessDeterioration(l.thirds, l.provenance.truncation)),
+    ...longRunsInWindow.map((l) => assessDeterioration(l.thirds, l.provenance.truncation)),
   ]);
 
   /* ── HOLD paths, each naming exactly what is missing ───────────────────── */
@@ -370,7 +580,7 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
 
   /* ── REGRESS · the same bar, pointing the other way ────────────────────── */
 
-  const allWeeksMissed = completions.every((c) => c.frac < VOLUME_WEEK_COMPLETION_MIN_FRAC);
+  const allWeeksMissed = completions.every((c) => !meetsCompletionBar(c.frac, VOLUME_WEEK_COMPLETION_MIN_FRAC));
   if (allWeeksMissed) {
     // ── THE TWO QUANTITIES, AND WHY THE PROPOSAL NOW READS THE RIGHT ONE ──
     //
@@ -451,7 +661,7 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
   }
 
   if (!allWeeksMet) {
-    const missed = completions.filter((c) => c.frac < VOLUME_WEEK_COMPLETION_MIN_FRAC).length;
+    const missed = completions.filter((c) => !meetsCompletionBar(c.frac, VOLUME_WEEK_COMPLETION_MIN_FRAC)).length;
     return holdBecause(
       `Weekly volume stays at ${miText(before)}. `
       + `${missed} of the last ${VOLUME_MIN_CONSECUTIVE_WEEKS} non-cutback weeks came in below `
@@ -464,10 +674,55 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
   if (badKeySessions.length > 0) {
     return holdBecause(
       `Weekly volume stays at ${miText(before)}. The weeks were completed, but `
-      + `${badKeySessions.length} key session did not achieve its intended stimulus.`,
-      ['Key sessions in the next block graded FULL or SUBSTANTIAL.'],
-      'The volume was there. The quality inside it is not yet established.',
+      + `${badKeySessions.length} key session came in short of the work it prescribed.`,
+      ['Key sessions in the next block completed as prescribed.'],
+      'The weekly totals were there. The prescribed sessions inside them were not.',
     );
+  }
+
+  /* ── Rule 11 · sessions that established nothing are not sessions that ───
+   *              went well, and they are not an absence of sessions either ── */
+
+  // Q21 asks for "key sessions FULL or defensible SUBSTANTIAL". The old test
+  // was `badKeySessions.length === 0`, which a window whose every session
+  // graded DIFFERENT or INSUFFICIENT passes without reading anything — the
+  // vacuous-truth shape Rule 11 exists to stop.
+  //
+  // The condition is deliberately NOT "no supporting session": a window with
+  // NO key sessions at all is a base block, where the plan prescribed only
+  // easy running, and Q21's criterion is vacuously satisfied because there is
+  // nothing for it to be false of. `_symmetry.test.ts` caught the first draft
+  // of this clause doing the other thing and named it correctly — "the upward
+  // path is unreachable on its own criterion, which is a wall" — which is the
+  // Rule 21 defect this whole change exists to remove, reintroduced by the fix
+  // for it. A base-phase runner must be able to earn a volume step on easy
+  // running alone.
+  //
+  // So the refusal fires only when key sessions WERE run in the window and
+  // none of them established its intended stimulus. That is missing evidence
+  // about work that happened, which is a different fact from work that was
+  // never prescribed.
+  if (keySessionsInWindow.length > 0 && supportingKeySessions.length === 0) {
+    return nonMoving({
+      lever: LEVER,
+      decision: 'REFUSE',
+      beforeValue: before,
+      included,
+      excluded: excludedList,
+      contradictory,
+      windowDays,
+      confidence: conf(
+        'No key session in these weeks established the stimulus it was prescribed for.',
+        'Weekly volume moves on completed weeks WITH the quality inside them intact.',
+      ),
+      reason:
+        `Weekly volume stays at ${miText(before)}. The weekly totals were met, but no key `
+        + 'session in those weeks was completed as prescribed, so there is nothing that '
+        + 'establishes the quality inside the volume. That is missing evidence, not a bad week.',
+      whatWouldChangeIt: [
+        'One key session completed as prescribed, which would establish the criterion.',
+      ],
+    });
   }
 
   if (shortLongRuns.length > 0) {

@@ -50,6 +50,7 @@ import { evaluateWeeklyVolume } from './levers/weekly-volume';
 import { evaluateLongRun } from './levers/long-run';
 import type { CanonicalDecision } from './decision-record';
 import { measured, absent } from './input';
+import type { ComparableThirds } from './input';
 import {
   session, week, longRun, cleanThirds, decayingThirds,
   threeGoodWeeks, twoGoodLongRuns, twoFasterThresholdSessions,
@@ -124,14 +125,53 @@ describe('THRESHOLD PACE', () => {
     expect(v.proposedAfterValue).toBeGreaterThan(v.beforeValue);
   });
 
-  it('HOLD · one session is not corroboration, and the HOLD says what is missing', () => {
+  // 2026-09-03 · this and the four tests below expected HOLD and now expect
+  // REFUSE. Rule 11: too little qualifying evidence to evaluate the criterion
+  // is "I cannot judge", not "the anchor should stay", and the other two levers
+  // already refuse on exactly that fact. The substance each test asserts — the
+  // exclusion reason, the contradictory entry, what would change it — is
+  // unchanged; only the name of the non-move is.
+  it('REFUSE · one session is not corroboration, and the refusal says what is missing', () => {
     const v = threshold({
       sessions: [session('a', '2026-09-01', { workPaceSecPerMi: measured(420) })],
     });
-    expect(record('THRESHOLD_PACE', v.decision)).toBe('HOLD');
+    expect(record('THRESHOLD_PACE', v.decision)).toBe('REFUSE');
     expect(v.whatWouldChangeIt.join(' ')).toMatch(/1 more qualifying threshold session/);
     // Rule 21 · never silence.
     expect(v.reason.length).toBeGreaterThan(0);
+    expect(v.reason).toMatch(/One session is not corroboration/);
+  });
+
+  it('REFUSE · no qualifying session at all is a different fact from a contradiction', () => {
+    // Rule 11's three states, in the one place they are easiest to collapse.
+    // On the owner's real history 34 of 40 readings reached this branch, and
+    // every one was filed as a HOLD.
+    const v = threshold({ sessions: [] });
+    expect(record('THRESHOLD_PACE', v.decision)).toBe('REFUSE');
+    expect(v.reason).toMatch(/No qualifying threshold session/);
+    expect(v.reason).toMatch(/nothing to read the anchor against either way/);
+  });
+
+  it('HOLD · one faster and one slower is a CONTRADICTION, which holds (Q20)', () => {
+    // The 1-1 case, decided and written down. `agree >= 2 && agree >= 2 *
+    // disagree` cannot pass here, and that is the corroboration bar binding,
+    // not a malformed ratio: Q20's opening sentence is that a single training
+    // session never moves the anchor, and one session says faster. Loosening
+    // the ratio to resolve a 1-1 split would move the anchor on one session
+    // while looking like a rule about direction.
+    //
+    // It is a HOLD rather than a REFUSE because the evidence EXISTS and
+    // disagrees — Q20 · "contradiction -> HOLD, never a bouncing anchor" —
+    // which is the opposite fact from the refusal directly above.
+    const v = threshold({
+      sessions: [
+        session('fast', '2026-08-25', { workPaceSecPerMi: measured(420) }),
+        session('slow', '2026-09-01', { workPaceSecPerMi: measured(450) }),
+      ],
+    });
+    expect(record('THRESHOLD_PACE', v.decision)).toBe('HOLD');
+    expect(v.reason).toMatch(/point in both directions/);
+    expect(v.contradictory).toHaveLength(2);
   });
 
   it('HOLD · sessions that disagree produce a hold, never a bouncing anchor', () => {
@@ -157,7 +197,7 @@ describe('THRESHOLD PACE', () => {
         session('b', '2026-09-01', { workPaceSecPerMi: measured(421) }),
       ],
     });
-    expect(v.decision).toBe('HOLD');
+    expect(v.decision).toBe('REFUSE');
     expect(v.excluded.some((e) => e.reason === 'SINGLE_EXCEPTIONAL_PERFORMANCE')).toBe(true);
   });
 
@@ -168,7 +208,7 @@ describe('THRESHOLD PACE', () => {
         session('b', '2026-09-01', { workPaceSecPerMi: measured(424) }),
       ],
     });
-    expect(v.decision).toBe('HOLD');
+    expect(v.decision).toBe('REFUSE');
     const ex = v.excluded.find((e) => e.activityId === 'm')!;
     expect(ex.reason).toBe('WRONG_LEVER_FOR_THIS_SESSION');
     expect(ex.detail).toMatch(/durability and execution/);
@@ -203,7 +243,7 @@ describe('THRESHOLD PACE', () => {
         session('b', '2026-09-01', { workPaceSecPerMi: measured(424) }),
       ],
     });
-    expect(v.decision).toBe('HOLD');
+    expect(v.decision).toBe('REFUSE');
     const ex = v.excluded.find((e) => e.activityId === 't')!;
     expect(ex.reason).toBe('TREADMILL_CANNOT_PRICE_ROAD_PACE');
     expect(ex.stillAdmissibleFor).toContain('weekly volume');
@@ -217,7 +257,7 @@ describe('THRESHOLD PACE', () => {
         session('b', '2026-09-01', { workPaceSecPerMi: measured(424) }),
       ],
     });
-    expect(v.decision).toBe('HOLD');
+    expect(v.decision).toBe('REFUSE');
     expect(v.contradictory.some((c) => c.activityId === 'a')).toBe(true);
   });
 
@@ -388,6 +428,126 @@ describe('WEEKLY VOLUME', () => {
     expect(v.reason).toMatch(/fell away in their final phase/);
   });
 
+  /* ══════════════════════════════════════════════════════════════════════
+   * 2026-09-03 · Q21's criteria, read as the facts they are
+   *
+   * Rule 15 · which mechanism each case reaches is in its title. Rule 22 · none
+   * of these can fail on a WRONG GRADE: grades are fixture inputs here exactly
+   * as they are inputs to the lever.
+   * ═══════════════════════════════════════════════════════════════════ */
+
+  it('PROGRESS · a long run from OUTSIDE the evidence window does not block it', () => {
+    // Q21 says "RELEVANT long runs". The unbounded read let a long run from
+    // eight weeks before the window still contradict today's decision, which
+    // on real history meant one bad July long run blocked every step through
+    // the end of August.
+    const v = volume({
+      longRuns: [
+        longRun('ancient', '2026-06-01', 16, 0.5),
+        ...twoGoodLongRuns(),
+      ],
+    });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('PROGRESS');
+    const ex = v.excluded.find((e) => e.activityId === 'ancient')!;
+    expect(ex.reason).toBe('OUTSIDE_EVIDENCE_WINDOW');
+    expect(v.contradictory.some((c) => c.activityId === 'ancient')).toBe(false);
+  });
+
+  it('PROGRESS · a key session graded DIFFERENT does not count AGAINST a volume step', () => {
+    // Q38 · "a different stimulus may still be useful; it is not failure", and
+    // `GRADES_THAT_COUNT_AS_EVIDENCE`'s own doc comment: it is evidence about
+    // the lever it actually tested. The complement of "supports" is "does not
+    // support", never "argues against" (Rule 11).
+    const v = volume({
+      keySessions: [
+        session('k-good', '2026-08-25', { grade: 'SUBSTANTIAL' }),
+        session('k-diff', '2026-08-27', { grade: 'DIFFERENT' }),
+      ],
+    });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('PROGRESS');
+    const ex = v.excluded.find((e) => e.activityId === 'k-diff')!;
+    expect(ex.reason).toBe('GRADE_DOES_NOT_COUNT');
+    expect(ex.stillAdmissibleFor).toContain('weekly volume');
+    expect(v.contradictory.some((c) => c.activityId === 'k-diff')).toBe(false);
+  });
+
+  it('HOLD · a key session graded PARTIAL DOES block, because work was missed', () => {
+    // The other side of the same clause, and the reason it is not a weakening:
+    // Q38 defines PARTIAL as "not enough of the intended session", which is a
+    // statement about load NOT absorbed and is exactly this lever's question.
+    const v = volume({
+      keySessions: [
+        session('k-good', '2026-08-25', { grade: 'FULL' }),
+        session('k-part', '2026-08-27', { grade: 'PARTIAL' }),
+      ],
+    });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('HOLD');
+    expect(v.contradictory.some((c) => c.activityId === 'k-part')).toBe(true);
+    expect(v.reason).toMatch(/came in short of the work it prescribed/);
+  });
+
+  it('REFUSE · key sessions that established nothing are missing evidence, not a pass', () => {
+    // The vacuous-truth hole: `badKeySessions.length === 0` was satisfied by a
+    // window in which every session graded DIFFERENT.
+    const v = volume({
+      keySessions: [
+        session('k1', '2026-08-25', { grade: 'DIFFERENT' }),
+        session('k2', '2026-08-27', { grade: 'INSUFFICIENT' }),
+      ],
+    });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('REFUSE');
+    expect(v.reason).toMatch(/missing evidence, not a bad week/);
+  });
+
+  it('PROGRESS · a base block with NO key sessions still earns a volume step', () => {
+    // The anti-wall case, and it is here because the first draft of the clause
+    // above broke it. A runner doing only easy running has no key sessions for
+    // Q21's criterion to be false of, and must still be able to progress.
+    const v = volume({ keySessions: [] });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('PROGRESS');
+  });
+
+  it('PROGRESS · a key session inside a prescribed recovery week is not held against him', () => {
+    // Rule 8, per finding. The lever already dropped recovery WEEKS from the
+    // completion test and kept grading the sessions inside them.
+    // The recovery week sits BETWEEN the three non-cutback weeks the lever
+    // reads, so its session is inside the evidence window and is excluded for
+    // being prescribed-non-normal rather than for being old.
+    const v = volume({
+      weeks: [
+        week('2026-08-10', 47, 47.1),
+        week('2026-08-17', 30, 20, { authoredPlanMode: 'RECOVERY' }),
+        week('2026-08-24', 48, 48.1),
+        week('2026-08-31', 48, 47.9),
+      ],
+      keySessions: [
+        session('k-taper', '2026-08-19', { grade: 'PARTIAL' }),
+        session('k-good', '2026-08-25', { grade: 'FULL' }),
+      ],
+    });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('PROGRESS');
+    const ex = v.excluded.find((e) => e.activityId === 'k-taper')!;
+    expect(ex.reason).toBe('PRESCRIBED_RECOVERY_OR_TAPER');
+    expect(v.contradictory.some((c) => c.activityId === 'k-taper')).toBe(false);
+  });
+
+  it('PROGRESS · a week completed at EXACTLY the bar clears it (Rule 9)', () => {
+    // `completed / prescribed >= 0.95` is a comparison against a quotient, and
+    // for 267 of the 1,999 prescriptions between 0.1 and 199.9 miles a week
+    // completed at precisely 95% evaluates to 0.9499999999999999 and fails.
+    // 41.6 is one of them: 41.6 * 0.95 / 41.6 < 0.95 in IEEE-754. The
+    // assertion below is the Rule 18 liveness check on this fixture — if the
+    // arithmetic ever stops reproducing the cliff, the test that follows is
+    // proving nothing and says so rather than passing quietly.
+    const exact = (ws: string, p: number) => week(ws, p, p * 0.95);
+    expect((41.6 * 0.95) / 41.6 >= 0.95, 'the fixture no longer reproduces the cliff')
+      .toBe(false);
+    const v = volume({
+      weeks: [exact('2026-08-17', 41.6), exact('2026-08-24', 41.6), exact('2026-08-31', 41.6)],
+    });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('PROGRESS');
+  });
+
   it('HOLD · one step per cutback cycle', () => {
     const v = volume({ stepsTakenThisCycle: 1 });
     expect(record('WEEKLY_VOLUME', v.decision)).toBe('HOLD');
@@ -549,6 +709,40 @@ describe('LONG RUN', () => {
     expect(v.excluded[0].reason).toBe('TRUNCATED_PORTION_REQUIRED');
     // The critical property: truncation did not read as a strong finish.
     expect(v.decision).not.toBe('PROGRESS');
+  });
+
+  it('REFUSE · unreadable thirds are a refusal that NAMES the cause, not a hold', () => {
+    // Rule 11 · this used to be a HOLD, which made a lever that could not see
+    // look like a lever that had looked and decided. On the real replay the
+    // gate was blocked at 40 of 40 decision points and the dominant cause was
+    // an evidence-layer reader that could not parse a `m:ss` pace string.
+    //
+    // The truncation branch above ALREADY refused on the same fact — durability
+    // unknown — so the old split gave one fact two decisions on nothing but the
+    // shape of the missing data.
+    const why = 'the workout does not contain comparable work across its thirds';
+    const unreadable: ComparableThirds = {
+      middlePaceSecPerMi: absent<number>(why),
+      finalPaceSecPerMi: absent<number>(why),
+      middleHrBpm: absent<number>(why),
+      finalHrBpm: absent<number>(why),
+      comparable: false,
+    };
+    const v = long({
+      longRuns: [
+        longRun('l1', '2026-08-23', 16, 16, { thirds: unreadable }),
+        longRun('l2', '2026-08-30', 16, 16),
+      ],
+    });
+    expect(record('LONG_RUN', v.decision)).toBe('REFUSE');
+    // Rule 13's shape rule · assert what the reader gets, not the absence of
+    // the old string. The cause has to be in the sentence, or nobody can go
+    // and fix the recording.
+    expect(v.reason).toMatch(/cannot be judged either way/);
+    expect(v.reason).toMatch(/comparable work/);
+    const ex = v.excluded.find((e) => e.activityId === 'l1')!;
+    expect(ex.reason).toBe('DATA_UNREADABLE');
+    expect(ex.stillAdmissibleFor).toContain('weekly volume');
   });
 
   it('REFUSE · only one relevant long run', () => {

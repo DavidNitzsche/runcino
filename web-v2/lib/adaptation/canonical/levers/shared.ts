@@ -30,7 +30,19 @@ import type {
   CanonicalDecision,
 } from '../decision-record';
 import type { CanonicalLever } from '../input';
+import { COMPLETION_FRACTION_EPSILON } from '../contract-constants';
 import { fmtMi, fmtPaceSlash } from '@/lib/format/run';
+
+/**
+ * "Completed at or above the bar", with Rule 9's representation tolerance.
+ *
+ * ONE definition, because a bar compared four different ways in three files is
+ * four opinions about one number (Rule 16). See
+ * `COMPLETION_FRACTION_EPSILON` for why a bare `>=` is a cliff and why this is
+ * not a widened threshold.
+ */
+export const meetsCompletionBar = (observed: number, bar: number): boolean =>
+  observed >= bar - COMPLETION_FRACTION_EPSILON;
 
 export interface LeverVerdict {
   readonly lever: CanonicalLever;

@@ -32,9 +32,16 @@
  * downward path fired on a single signal while its upward path needed
  * corroboration. Here, one bad session moves nothing either.
  *
- * Falling one session short produces a HOLD that NAMES what is missing, never
- * silence. A lever that can only fail to fire is the Rule 21 defect in a
- * different hat.
+ * Falling short of the corroboration bar produces a REFUSAL that NAMES what is
+ * missing, never silence. A lever that can only fail to fire is the Rule 21
+ * defect in a different hat.
+ *
+ * It is a REFUSAL rather than a HOLD because Rule 11 separates "I cannot judge
+ * this" from "the anchor should stay", and because the other two levers already
+ * refuse on the same fact — too little evidence to evaluate the criterion. On
+ * the owner's real history 34 of 40 readings had no qualifying threshold
+ * session in the window at all, and calling each of them a HOLD made a lever
+ * that could not see look like a lever that had looked and decided.
  *
  * ── RULE 22 · WHAT THIS LEVER'S GATE CANNOT FAIL ON ────────────────────────
  *
@@ -262,10 +269,31 @@ export function evaluateThresholdPace(input: ThresholdPaceInput): LeverVerdict {
 
   if (distinct.length < THRESHOLD_MIN_QUALIFYING_SESSIONS) {
     const short = THRESHOLD_MIN_QUALIFYING_SESSIONS - distinct.length;
-    // Rule 21 · this is a HOLD that names what is missing, not silence.
+
+    /* ── Rule 11 · this is a REFUSAL, and it used to be a HOLD ───────────── */
+
+    // A HOLD says the anchor should stay. A REFUSE says the anchor cannot be
+    // judged. They are different facts, and this branch is the second one: the
+    // window contains too little qualifying evidence to evaluate the criterion
+    // at all. Its own confidence line already said so out loud — "No qualifying
+    // threshold session is available in the window" — under a decision that
+    // claimed the opposite kind of answer.
+    //
+    // The two sibling levers already draw this line the other way, so the old
+    // HOLD was a Rule 16 defect as well as a Rule 11 one: `weekly-volume`
+    // REFUSES when there are fewer than three non-cutback weeks to read, and
+    // `long-run` REFUSES when there are fewer than two long runs. Same
+    // sentence, same state, three names.
+    //
+    // It matters because the season report counts decisions. On the owner's
+    // real history **34 of 40 readings had no qualifying threshold session in
+    // the window at all**, and every one of them was filed as a HOLD — an
+    // engine that could not see reading as an engine that had looked and
+    // decided. Rule 11: a guard that cannot run is a refusal worth surfacing,
+    // not a default worth assuming.
     return nonMoving({
       lever: LEVER,
-      decision: 'HOLD',
+      decision: 'REFUSE',
       beforeValue: before,
       included,
       excluded: excludedList,
@@ -279,8 +307,11 @@ export function evaluateThresholdPace(input: ThresholdPaceInput): LeverVerdict {
       ),
       reason:
         `Threshold pace stays at ${paceText(before)}. `
-        + `${distinct.length} qualifying session${distinct.length === 1 ? '' : 's'} in the last ${window} days, `
-        + `and the anchor moves on ${THRESHOLD_MIN_QUALIFYING_SESSIONS}.`,
+        + (distinct.length === 0
+          ? `No qualifying threshold session in the last ${window} days, so there is nothing `
+            + 'to read the anchor against either way.'
+          : `${distinct.length} qualifying session in the last ${window} days, and the anchor `
+            + `moves on ${THRESHOLD_MIN_QUALIFYING_SESSIONS}. One session is not corroboration.`),
       whatWouldChangeIt: [
         `${short} more qualifying threshold session${short === 1 ? '' : 's'} on separate days within ${window} days, graded FULL or SUBSTANTIAL.`,
         'A well-executed 10K or half, which corroborates with one supporting training session.',

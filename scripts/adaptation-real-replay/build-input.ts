@@ -158,10 +158,44 @@ const cannot = (d: Diagnostics, s: string) => {
 interface NormSplit { paceSecPerMi: number | null; hrBpm: number | null; mi: number | null }
 
 /**
+ * `"8:19"` → 499. The fourth shape, and the one this reader could not see.
+ *
+ * ── WHY THIS FUNCTION EXISTS, AND WHAT ITS ABSENCE COST ────────────────────
+ *
+ * The `_upward_bar` report read "LONG_RUN/L4-durability-readable · 40 of 40
+ * readings could not be judged from the data", and the replay's own commentary
+ * attributed it to Q13: the prescription varies pace across a long run, so
+ * whole-run thirds are not comparable, and the refusal is doctrine-correct.
+ *
+ * That was true of four of his fifteen long runs and false of the rest. The
+ * real reason was here: **29 of his 146 split-carrying runs record pace ONLY as
+ * a `m:ss` clock string**, and `normSplit` read three numeric spellings and not
+ * that one. Five long runs — 2026-05-31, 06-14, 06-21, 06-27, 08-09 — arrived
+ * with a full set of per-mile paces AND per-mile heart rates on the row and
+ * were reported as `only 0 readable splits, too few to compare thirds`.
+ *
+ * Rule 11 in its most expensive form: "I could not read this" wearing the face
+ * of "his durability is not established", and it reached the runner as the
+ * long-run lever holding his distance. Nothing about the watch or his running
+ * was at fault; the reader could not parse a string that was already there.
+ */
+export function paceSecFromClock(v: unknown): number | null {
+  if (typeof v !== 'string') return null;
+  const m = /^\s*(\d{1,3}):([0-5]\d)(?:\.\d+)?\s*$/.exec(v);
+  if (m === null) return null;
+  const sec = Number(m[1]) * 60 + Number(m[2]);
+  // A per-mile pace outside 3:00-30:00 is a mis-parse, not a split. Refusing is
+  // the honest answer; guessing would put a confidently wrong number into a
+  // durability comparison, which is the failure this whole file is about.
+  return sec >= 180 && sec <= 1800 ? sec : null;
+}
+
+/**
  * Watch rows carry `{mile, pace, paceSecPerMi, hr}`; Strava rows carry
  * `{distance, moving_time, average_heartrate}`; some carry `{distanceMi,
- * paceSPerMi, avgHr}`. One reader, so a shape this file has not seen produces a
- * null rather than a silently wrong number.
+ * paceSPerMi, avgHr}`; and 29 of his rows carry `{mile, pace: "8:19", hr}` with
+ * no numeric pace at all. One reader, so a shape this file has not seen
+ * produces a null rather than a silently wrong number.
  */
 function normSplit(s: SnapSplit): NormSplit {
   const rec = s as unknown as Record<string, unknown>;
@@ -169,7 +203,8 @@ function normSplit(s: SnapSplit): NormSplit {
     num(rec.paceSecPerMi) ?? num(rec.paceSPerMi)
     ?? (num(rec.moving_time) !== null && num(rec.distance) !== null && num(rec.distance)! > 0
       ? num(rec.moving_time)! / (num(rec.distance)! / 1609.34)
-      : null);
+      : null)
+    ?? paceSecFromClock(rec.pace);
   const hr = num(rec.hr) ?? num(rec.avgHr) ?? num(rec.average_heartrate);
   const mi = num(rec.distanceMi)
     ?? (num(rec.distance) !== null ? num(rec.distance)! / 1609.34 : null)
