@@ -83,6 +83,42 @@ final class PhoneSync: NSObject, ObservableObject {
 
     private override init() { super.init() }
 
+    // MARK: - DUPLICATE-1 (2026-09-03) · publish this watch's own active session
+    //
+    // Purely additive, and deliberately NOT touching `WorkoutTracker.start()`
+    // or `WorkoutEngine`'s own state machine — this is a message ALONGSIDE
+    // the existing start/stop, not a change to when or how a run actually
+    // begins. The iPhone app (`WatchSync.swift`, native-v2) reads this via
+    // `didReceiveApplicationContext` before starting its own phone-side
+    // recording, so a runner who starts on the wrist and then opens the Run
+    // tab does not get a second, independent activity for the same run.
+    //
+    // First outgoing `updateApplicationContext` call from this file — every
+    // existing use of the channel is receive-only (`didReceiveApplicationContext`
+    // below). Sent standalone rather than merged with anything, since there
+    // is nothing else this file has ever pushed to merge with.
+    func publishActiveWorkout(id: String) {
+        guard WCSession.isSupported() else { return }
+        let s = WCSession.default
+        guard s.activationState == .activated else { return }
+        try? s.updateApplicationContext([
+            "activeWorkoutId": id,
+            "activeWorkoutStartedAt": Date().timeIntervalSinceReferenceDate,
+        ])
+    }
+
+    /// Sends an EMPTY context — not a context missing the key — so the
+    /// phone's own `didReceiveApplicationContext` (which reads "no
+    /// `activeWorkoutId` present" as "cleared," per WatchConnectivity's own
+    /// full-state-not-a-diff contract) sees the clear promptly rather than
+    /// waiting for some future context to happen to omit it.
+    func clearActiveWorkout() {
+        guard WCSession.isSupported() else { return }
+        let s = WCSession.default
+        guard s.activationState == .activated else { return }
+        try? s.updateApplicationContext([:])
+    }
+
     // MARK: Direct-to-backend writeback (independent of the iPhone bridge)
     //
     // The PRIMARY path for a finished workout is transferUserInfo → iPhone →

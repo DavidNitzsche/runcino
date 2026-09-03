@@ -149,6 +149,12 @@ final class WatchRootModel: ObservableObject {
                 tracker.markDistanceSourceUnavailable()
             }
             bind(engine)
+            // DUPLICATE-1 · published the moment this watch commits to the
+            // run (countdown is about to begin, `bind` has already wired
+            // the engine) — not deep inside `WorkoutTracker.start()`'s own
+            // HealthKit/audio-session sequencing, which this change
+            // deliberately does not touch.
+            PhoneSync.shared.publishActiveWorkout(id: workout.workoutId)
             engine.beginCountdown()
         }
     }
@@ -181,6 +187,11 @@ final class WatchRootModel: ObservableObject {
         didSendCompletion = false
         engine?.reset()
         engine = nil
+        // DUPLICATE-1 · one clear point for every exit (finished normally,
+        // discarded, crash-recovery's own reset path all funnel through
+        // here), rather than one call per exit that a future path could
+        // forget.
+        PhoneSync.shared.clearActiveWorkout()
     }
 
     // MARK: Crash recovery (RK-3 · 2026-06-09)
