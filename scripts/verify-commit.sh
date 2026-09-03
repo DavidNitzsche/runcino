@@ -325,6 +325,46 @@ else
 fi
 echo ""
 
+# ── THE TOOL CHECKS WHAT IT ACTUALLY RAN ─────────────────────────────────────
+#
+# On 2026-09-03 this script ran WITHOUT its prebuild section and reported CLEAN
+# on a commit CI then rejected on the write-barrier ratchet. Nothing was wrong
+# with the version on `main`: the copy being INVOKED came from a shared checkout
+# on a stale commit, and an amend from there reverted the file to a version
+# predating that section while keeping a newer edit. A verification tool with a
+# section quietly missing, reporting confidence.
+#
+# The first attempt at this check grepped the script for each section's name —
+# and could never fail, because its own list of names satisfied the grep. That
+# is the gate Rule 18 exists to catch, built while fixing the thing Rule 18
+# exists to catch.
+#
+# So it asserts what RAN, not what is written: every expected section must have
+# put a line in RESULTS. A section that is missing from the file produces no
+# line, and this fails. Add an entry when you add a section.
+EXPECTED=(
+  "npm run prebuild"
+  "check-web-build.sh"
+  "CI unit tests"
+  "check-watch.sh"
+)
+missing=""
+for want in "${EXPECTED[@]}"; do
+  found=0
+  for r in "${RESULTS[@]}"; do
+    case "$r" in *"$want"*) found=1; break ;; esac
+  done
+  [ "$found" = "1" ] || missing="$missing
+    · $want"
+done
+if [ -n "$missing" ]; then
+  fail "THIS RUN WAS INCOMPLETE — these sections produced no result at all:$missing"
+  fail "The copy of this script being run is missing them. Restore it with:"
+  fail "    git show origin/main:scripts/verify-commit.sh > scripts/verify-commit.sh"
+  OVERALL=1
+  RESULTS+=("FAIL  verify-commit is incomplete — sections did not run")
+fi
+
 TOTAL=$(( $(date +%s) - START_TS ))
 
 echo "─────────────────────────────────────────────────────────────────────"
