@@ -36,6 +36,17 @@
  *
  * ── DIGEST MOVES ────────────────────────────────────────────────────────────
  *
+ *   · 2026-09-03 · SENTENCEREP-1 / RUNNERLANG-2. `applyRunnerVoice` is a new
+ *     final pass in `finalizeComposedPlan`: a sentence true of every row of its
+ *     kind is said once per block, and a generic easy row says instead what
+ *     makes that day different. `composed` (8781), `days` (699860) and
+ *     `raceWeeks` (3969) are ALL unchanged — no plan gained or lost a day and
+ *     no race week moved. The pass touches `notes` and nothing else: no
+ *     distance, no placement, no label, no spec. That is exactly what a digest
+ *     over serialised weeks is supposed to catch, and every coaching gate named
+ *     above stays green across it. Falsified in `_sentence_repetition.test.ts`,
+ *     which fails when the retired sentence is put back on every easy row.
+ *
  *   · 2026-09-02 · LONGRUN-DEMAND-1 + CADENCE-1, merged. Two deliberate
  *     composer changes land together. `smoothLongWoW` no longer caps a long run
  *     against the CUTBACK week beside it — the validator has bridged planned

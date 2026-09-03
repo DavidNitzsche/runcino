@@ -213,6 +213,21 @@ COUNT="$(printf '%s\n' "$FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
 # `_runner_instruction.test.ts` runs `scanLayerOne` and `scanPunctuation` over
 # every replacement string in the table, so the only prose in that file a
 # runner can reach is checked by the lexicon itself.
+#
+# 2026-09-03 · AND THE PAYMENT HAD TO BE RE-MADE ONCE ALREADY. RUNNERLANG-2 put
+# two MORE tables of runner-facing copy in that same excluded file
+# (`BLOCK_STANDING_SENTENCES` and `EASY_DAY_ROLE_LINES`) and the coverage above
+# did not follow them, because it names the `to` column specifically. Measured:
+# a role line rewritten as "Short and easy — the session is tomorrow! Great
+# work." — an em dash, an exclamation mark and hype, three of guard four's five
+# bans in eleven words — left this script reporting "324 user-facing source
+# file(s) clean".
+#
+# `_sentence_repetition.test.ts` §"the copy in the module check-coach-voice
+# cannot see" now scans both new tables AND PINS THE MODULE'S EXPORT LIST, so a
+# third table cannot arrive unscanned the way the second one did. An exclusion
+# whose payment is written against one table is an exclusion that expires the
+# next time the file grows.
 
 # ── LIVENESS · A FLOOR, NOT A ZERO CHECK (Rule 18 point 2) ───────────────────
 #

@@ -251,3 +251,195 @@ export class BlockScopedSpeaker {
     return Array.from(this.said);
   }
 }
+
+/**
+ * ── RUNNERLANG-2 (2026-09-03) · THE SENTENCE THAT RODE EVERY ROW ────────────
+ *
+ * RUNNERLANG-1 replaced the WORDS and left the REPETITION exactly where it
+ * was. Measured on a freshly composed fourteen-week marathon block, after
+ * that change:
+ *
+ *   33  easy enough to talk in full sentences.
+ *   33  if the heart rate drifts up, slow down even when the pace still looks right.
+ *   28  off.
+ *   27  sleep, mobility, fuel.
+ *
+ * `Conversational. Z2 HR cap.` was printed 33 times. Its replacement is
+ * printed 33 times. The owner's complaint was not only that the words were
+ * wrong, it was that the plan says the same thing over and over, and a
+ * substitution table cannot see that. Which is Rule 20's corollary exactly:
+ * the rule was written down, the instance was fixed, and the gap stayed open
+ * because nothing could count.
+ *
+ * ── THE SPLIT ──────────────────────────────────────────────────────────────
+ *
+ * Rule 17: "If a surface repeats a sentence per row, the sentence belongs to
+ * the block, not the row." So each of these strings is one of two things and
+ * never both:
+ *
+ *   · A STANDING INSTRUCTION. True of every easy day in the block, and
+ *     therefore said once, on the first row it applies to, through
+ *     `BlockScopedSpeaker` — the same mechanism and the same precedent as the
+ *     terrain sentence, which went from eleven rows to one.
+ *   · A ROLE LINE. True of THIS row and not its neighbours, so it earns its
+ *     place on the row. The role is read off decisions the composer has
+ *     already made — what the day sits next to, and whether it is the week's
+ *     longest easy run — and nothing else. No branch on runner state, no
+ *     score, no tone. `easyDayRole` is a pure function of four booleans, which
+ *     is the whole of the judgement in this file.
+ *
+ * The `plain` role is deliberately the EMPTY STRING. A day with nothing
+ * specific to say about it says nothing: the row already carries its distance,
+ * its pace band and its HR ceiling, and those are what the runner acts on.
+ * Printing a generic sentence over them is the bloat, not a service.
+ *
+ * ── WHAT THIS COSTS, STATED PLAINLY ────────────────────────────────────────
+ *
+ * A runner who opens the app in week eight never reads the standing sentence,
+ * because it was said in week one. That is the same trade the terrain fix
+ * made and the same one a coach makes out loud. A fourteen-week block is not
+ * improved by repeating it thirty-three times.
+ *
+ * ── AND WHY THIS ONE RUNS AT AUTHORING, WHERE RUNNERLANG-1 RAN AT THE READ ─
+ *
+ * RUNNERLANG-1 is a per-string swap, so the read is the right place for it:
+ * it repairs every row already in `plan_workouts` with no data write. THIS
+ * pass cannot go there. "Said once" needs the whole block in hand, and
+ * `week-loader.ts` loads ONE WEEK at a time — and `/api/v5/today` calls the
+ * same loader and then picks a single day out of it. A week-scoped speaker at
+ * the read would therefore blank the note on Today for every runner whose
+ * today is not the first day of their week, which is six days in seven. That
+ * is a worse defect than the one it fixes, so it is not done.
+ *
+ * The consequence, stated rather than hidden: the block already persisted
+ * keeps its repetition until it is next authored. Measured on the owner's
+ * live block as `faff_readonly` on 2026-09-03, 103 rows, all with notes:
+ * "Conversational." 35 and "Z2 HR cap." 35, which `renderRunnerInstruction`
+ * turns into 35 of each replacement. Re-authoring is what spends this fix.
+ */
+
+/** A sentence true of every row of its kind in the block. Said once. */
+export interface StandingInstruction {
+  /** `BlockScopedSpeaker` key. Stable: it is what makes "once" mean once. */
+  id: string;
+  /** The exact seed the composer writes on the row, so the pass can find it. */
+  text: string;
+}
+
+/**
+ * Every sentence the composer may write on many rows that is true of the KIND
+ * of row rather than of this row. Said once each, in calendar order, by
+ * `applyRunnerVoice`.
+ *
+ * ── ONE SENTENCE PER ENTRY, AND WHY ────────────────────────────────────────
+ *
+ * The match is on a whole SENTENCE, never a substring, so an entry that
+ * spanned two sentences could be half-consumed by another entry and leave
+ * wreckage — "Off. Sleep, mobility, fuel." losing its "Off." to a bare "Off."
+ * entry is the citation scrub's "Cruise intervals.3." all over again. Entries
+ * are single sentences and the pass rebuilds the note from the sentences that
+ * survive, so a partial match is not expressible.
+ *
+ * ── HOW A ROW READS AFTERWARDS ─────────────────────────────────────────────
+ *
+ * The first row of the block that would have carried a sentence keeps it,
+ * exactly where the composer put it. Every later row loses that sentence and
+ * keeps everything else it was carrying, which is usually its own
+ * prescription. A rest row whose entire note was standing text ends up bare,
+ * and that is correct: the row already says REST, and Rule 17 plus the UX
+ * doctrine both say a row with nothing particular to add adds nothing.
+ *
+ * Adding an entry here is how a newly-repeated sentence is retired. Deleting
+ * the sentence from the composer instead is also correct, and is the better
+ * answer when the sentence was never worth saying at all.
+ */
+export const BLOCK_STANDING_SENTENCES: readonly StandingInstruction[] = [
+  // ── the easy day · the two sentences RUNNERLANG-1 put on 33 rows ─────────
+  { id: 'easy.talk-test', text: 'Easy enough to talk in full sentences.' },
+  { id: 'easy.hr-drift', text: 'If the heart rate drifts up, slow down even when the pace still looks right.' },
+  // ── the long run's own talk test · once per week, every week ─────────────
+  { id: 'long.talk-test', text: 'Easy the whole way, talking in full sentences.' },
+  // ── the medium-long run's PURPOSE ────────────────────────────────────────
+  //
+  // A purpose is the definition of a block-level sentence: it is true of the
+  // session kind, not of this Wednesday. The instruction halves of that note
+  // ("Easy to steady", the embedded threshold segment, "let the last few miles
+  // drift up") stay on the row, because they are what the runner does.
+  { id: 'mlr.purpose', text: 'Aerobic strength under fatigue, without the cost of a long run.' },
+  // ── rest ────────────────────────────────────────────────────────────────
+  //
+  // Eight sentences across six authoring sites, and a low-frequency week can
+  // hold four to six rest rows. "Off." was printed six times in one post-race
+  // week, over six rows that also all said "Post-race recovery."
+  { id: 'rest.off', text: 'Off.' },
+  { id: 'rest.sleep-mobility-fuel', text: 'Sleep, mobility, fuel.' },
+  { id: 'rest.sleep-hydrate-mobilize', text: 'Sleep, hydrate, mobilize.' },
+  { id: 'rest.post-race', text: 'Post-race recovery.' },
+  { id: 'rest.between-sessions', text: 'The day between sessions is where the adaptation happens.' },
+  { id: 'rest.not-a-run-day', text: 'Not one of your run days this week.' },
+  // ── taper and race week ─────────────────────────────────────────────────
+  //
+  // `Research/08` §9.3 gives T-4 and T-3 an easy run in minutes. The composer
+  // wrote the same two sentences on both rows; the DURATION differs and stays.
+  { id: 'raceweek.talk-test', text: 'Talk in full sentences the whole way.' },
+  { id: 'raceweek.strides-optional', text: 'Strides optional at end.' },
+  { id: 'taper.rest-is-the-work', text: 'Taper week · rest is the work now.' },
+  { id: 'raceweek.tuneup-rest', text: 'Race week for a tune-up · rest is the work now.' },
+  { id: 'raceweek.too-few-days', text: 'Too few run days this week to fit the tune-up · rest is the work now.' },
+];
+
+/**
+ * What this easy day is FOR, relative to the sessions around it. Read off the
+ * composed week, never off the runner.
+ */
+export type EasyDayRole = 'volume' | 'recovery' | 'between' | 'primer' | 'plain';
+
+/**
+ * One line per role. Each says something the neighbouring rows do not, which
+ * is the only reason a row-level sentence is allowed to exist.
+ *
+ * `plain` is empty on purpose. See the header.
+ */
+export const EASY_DAY_ROLE_LINES: Readonly<Record<EasyDayRole, string>> = {
+  volume: 'The week\'s longest easy run. This is where the aerobic volume comes from.',
+  recovery: 'Recovery day after the long run. Slower than your normal easy pace.',
+  between: 'Aerobic day between sessions. Keep it honest so tomorrow\'s work is there.',
+  primer: 'Short and easy. The session is tomorrow.',
+  plain: '',
+};
+
+/**
+ * The role, from facts the composer already resolved.
+ *
+ * Priority is fixed and ordered so the SHARPEST fact wins: being the week's
+ * longest easy run is a property of the week's own shape and it is what the
+ * runner needs to hear about that day, even when it also happens to sit next
+ * to a session.
+ *
+ * `recovery` sits ABOVE `primer`, and that order was measured rather than
+ * guessed. With the long run on Sunday and quality on Tuesday, Monday is both
+ * the day after the long run AND the day before a session; with `primer`
+ * first, `recovery` fired ZERO times across a whole fourteen-week block and
+ * the single most important easy day in the week was told "the session is
+ * tomorrow" instead. Rule 22: a verdict no case can reach is decoration. The
+ * long run is the week's largest stress, so recovering from it is the fact
+ * that governs the day.
+ *
+ * Pure and total. No default branch that could swallow a new fact silently.
+ */
+export function easyDayRole(f: {
+  /** This row is the longest easy run of its week (ties broken by the caller). */
+  isLongestEasyOfWeek: boolean;
+  /** Tomorrow is the long run or a quality session. */
+  nextIsHard: boolean;
+  /** Yesterday was the long run. */
+  prevWasLong: boolean;
+  /** Yesterday was a quality session. */
+  prevWasQuality: boolean;
+}): EasyDayRole {
+  if (f.isLongestEasyOfWeek) return 'volume';
+  if (f.prevWasLong) return 'recovery';
+  if (f.nextIsHard) return 'primer';
+  if (f.prevWasQuality) return 'between';
+  return 'plain';
+}
