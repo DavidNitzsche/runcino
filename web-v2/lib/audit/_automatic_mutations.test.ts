@@ -378,6 +378,14 @@ const PLAN_WRITER_SITE_OWNERS: Record<string, string> = {
     'runner-initiated: reached from POST /api/plan/change and POST /api/plan/replan, both runner '
     + 'actions. lib/plan/v5-block.ts also imports it but calls only proposeChange and the read-only '
     + 'gates, never applyChange.',
+  'lib/plan/reschedule.ts::writeEdits':
+    'runner-initiated: reached ONLY from applyReschedule and undoReschedule in the same file, and '
+    + 'both of those only from POST /api/plan/reschedule, which requires an option id AND the '
+    + 'proposal token the runner actually read (a stale token is a 409). No cron imports '
+    + 'lib/plan/reschedule.ts; _reschedule_not_adaptation.test.ts walks the import graph in the '
+    + 'other direction and fails if this module ever reaches the adaptation seam. Every write goes '
+    + 'through mutatePlan, and the recommendation path that precedes it issues nothing but SELECTs '
+    + '(asserted against a recording transaction in _reschedule_contract.test.ts).',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -45,8 +45,39 @@ struct FaffApp: App {
         #endif
     }
 
+    /// DEBUG-only API host override, the sibling of `-faffToken`.
+    ///
+    /// CLAUDE.md Rule 13 requires a runner-facing change to be verified by
+    /// RENDERING it against real data. Doing that against a local server has
+    /// so far meant hand-editing `API.baseURL` and the ATS block — a temporary
+    /// edit to two shared files, which is exactly the risk the launch-argument
+    /// mechanism below was introduced to remove. This is that mechanism, one
+    /// file lower:
+    ///
+    ///     xcrun simctl launch <udid> run.faff.app -faffHost http://127.0.0.1:3117
+    ///
+    /// Never compiled into a release build, so it cannot point a shipped app
+    /// anywhere. `NSAllowsLocalNetworking` in project.yml is what lets the
+    /// simulator reach a plain-HTTP local host; nothing else is relaxed.
+    private static func applyHostOverrideIfAsked() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffHost"), i + 1 < args.count,
+              let url = URL(string: args[i + 1]), url.host != nil else { return }
+        API.baseURL = url
+        #endif
+    }
+
+    private static func rescheduleDateIfAsked() -> String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffReschedule"), i + 1 < args.count else { return nil }
+        let d = args[i + 1]
+        return d.count == 10 ? d : nil
+    }
+
     var body: some Scene {
         WindowGroup {
+            let _ = FaffApp.applyHostOverrideIfAsked()
             let _ = FaffApp.seedQATokenIfAsked()
             let _ = A11yDump.installIfRequested()
             // Design QA, reached by a launch argument so that looking at the
@@ -57,6 +88,13 @@ struct FaffApp: App {
                 GalleryV5()
             } else if ProcessInfo.processInfo.arguments.contains("-faffV5Screens") {
                 ScreensCatalogV5()
+            } else if let date = FaffApp.rescheduleDateIfAsked() {
+                // The rescheduling decision, opened straight onto one date, so
+                // it can be rendered and read on device without walking the
+                // whole app first:
+                //     -faffReschedule 2026-09-06
+                RescheduleHostV5(dateISO: date)
+                    .preferredColorScheme(.dark)
             } else {
             RootContainer()
                 // v3 is dark-first. Effort mesh paints behind every screen;
