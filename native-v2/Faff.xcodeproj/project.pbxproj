@@ -247,6 +247,7 @@
 		F78C87C61CF8C1E957424497 /* FaffWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB78B57C63F6CAA75CB24270 /* FaffWatchApp.swift */; };
 		F9DA343CAB8DDF3C41954887 /* Archivo-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3ED7487505A037C4114A81C1 /* Archivo-Variable.ttf */; };
 		F9EAEA6A32A4C57CDB1EAE91 /* V5PlanSheetCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E415054AF8F3E0C1B04391 /* V5PlanSheetCopyTests.swift */; };
+		FACEBAA69F1C4822991FE9B5 /* LiveRunTreadmillNominalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */; };
 		FC0ECB647C054902767A8C7E /* BlockV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95083B2C82E448D42B6FAF88 /* BlockV5.swift */; };
 		FC7CC4B4CFF3A0981F28C2FC /* PacesMovedV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2AB92DBD2E38DE9C55813DC /* PacesMovedV5.swift */; };
 		FCE849E5CE19B79865639C37 /* WatchRelayQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */; };
@@ -564,7 +565,8 @@
 		FCA4369345EE34EAFD3E307C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
-		"TEMP_FE260EB8-9A46-4DB0-BB55-68B2ACAD0B5C" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
+		"TEMP_BFF76EAF-2243-4CBE-8439-01B9B020389D" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -608,6 +610,7 @@
 				C55E4F4FBC346F8A31E8DE6D /* DayFetchCoordinatorTests.swift */,
 				902F9B952BC025BB545BF8E8 /* HRAlerterArmingTests.swift */,
 				58ADF42EDED4C71FB0AD2CDD /* Info.plist */,
+				FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */,
 				FA3B687F7BD1375763E551FE /* NetworkFence.swift */,
 				8AFF6EE9836728CE662BA316 /* OpenEndedSessionTests.swift */,
 				0C7F0C958D7BCB61A44F07CC /* PlanVersionInvalidationTests.swift */,
@@ -970,10 +973,10 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_CDEDD55C-B559-4057-B436-08ED182283EC" /* native-v2 */ = {
+		"TEMP_46B110E1-51EA-4C48-9D50-12579BD6FBD2" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_FE260EB8-9A46-4DB0-BB55-68B2ACAD0B5C" /* Secrets.xcconfig */,
+				"TEMP_BFF76EAF-2243-4CBE-8439-01B9B020389D" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1237,6 +1240,7 @@
 				F1CA1817A927220804808DA0 /* FormatVectors.generated.swift in Sources */,
 				EFA8FC960084833E322AAAD8 /* HRAlerterArmingTests.swift in Sources */,
 				29B789653D987A0A4AF3B3B5 /* LifecycleSweepTests.swift in Sources */,
+				FACEBAA69F1C4822991FE9B5 /* LiveRunTreadmillNominalTests.swift in Sources */,
 				C67F80D498970CE5809D709B /* NetworkFence.swift in Sources */,
 				8A6D45456669247805119032 /* OpenEndedSessionTests.swift in Sources */,
 				BBA603C1BA581CA74ECEFB35 /* PlanVersionInvalidationTests.swift in Sources */,
@@ -1468,7 +1472,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_FE260EB8-9A46-4DB0-BB55-68B2ACAD0B5C" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_BFF76EAF-2243-4CBE-8439-01B9B020389D" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1695,7 +1699,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_FE260EB8-9A46-4DB0-BB55-68B2ACAD0B5C" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_BFF76EAF-2243-4CBE-8439-01B9B020389D" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;

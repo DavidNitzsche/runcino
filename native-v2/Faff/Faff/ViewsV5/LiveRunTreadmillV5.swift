@@ -430,7 +430,7 @@ struct LiveRunTreadmillV5: View {
                 // live belt reading at End — the same fallback shape legacy
                 // uses for an unreached segment, inherited here rather than
                 // introduced.
-                "actualSpeedMph": act.map { $0.avgSpeedMph } ?? nominalMph(for: phase),
+                "actualSpeedMph": act.map { $0.avgSpeedMph } ?? Self.nominalMph(for: phase),
                 "actualInclinePct": act.map { $0.avgInclinePct } ?? 1.0,
             ]
             if let act, act.durationSec > 0 {
@@ -547,23 +547,61 @@ struct LiveRunTreadmillV5: View {
     private func configurePlanIfNeeded() {
         guard !configured || session.startedAt == nil else { return }
         configured = true
+        // TREADMILL-HILL-2 (2026-09-03 correction) · this was the actual gap
+        // TREADMILL-HILL-1 left open. That fix taught `defaultSpeedMph`/
+        // `defaultInclinePct` — the ONE-TIME seed read at `init`, before the
+        // plan has even loaded — to read `treadmillSpeedMph`/
+        // `treadmillInclinePct`. It never touched THIS function, which builds
+        // the real per-segment plan `BeltSession.autoAdvanceIfDue()` actually
+        // walks and auto-advances through. So the very first screen could
+        // show 7.7 mph while the segment machine underneath it still carried
+        // a flat, type-keyed 7.0 mph guess and a hardcoded 1.0% incline for
+        // EVERY phase — the auto-transition into the hill reps themselves,
+        // and every recovery/cooldown after, never got the real numbers.
+        // `nominalMph`/`nominalInclinePct` are now the one place both the
+        // seed and the segment plan read from, so a future fix here cannot
+        // fix one and miss the other again.
         session.configure(plan: effectivePhases.map {
             BeltSession.SegmentPlan(durationSec: $0.durationSec,
-                                    targetMph: nominalMph(for: $0),
-                                    targetInclinePct: 1.0)
+                                    targetMph: Self.nominalMph(for: $0),
+                                    targetInclinePct: Self.nominalInclinePct(for: $0))
         })
     }
 
-    private func nominalMph(for phase: WatchPhase) -> Double {
+    /// The ONE rule for a phase's belt speed — pace target first, then the
+    /// server's doctrine-cited treadmill pair (TREADMILL-HILL-1), then a
+    /// flat type-keyed guess. `static` and parameterized on a single
+    /// `WatchPhase` (not `plan: LiveRunPlanV5?`) specifically so the initial
+    /// seed (`defaultSpeedMph`, read at `init` before the segment plan
+    /// exists) and the real per-segment plan (`configurePlanIfNeeded`) and
+    /// the "Next" line (`nextLineText`) are physically the same function
+    /// call, not three call sites that have to be kept in step by hand —
+    /// which is exactly how TREADMILL-HILL-1 fixed the seed and missed the
+    /// segment plan underneath it.
+    static func nominalMph(for phase: WatchPhase) -> Double {
         if let target = phase.targetPaceSPerMi, target > 0 {
             return (3600.0 / Double(target) * 10).rounded() / 10
         }
+        // TREADMILL-HILL-1 · a by-effort hill rep carries no pace target on
+        // purpose (outdoor grade varies) — this is the treadmill-specific
+        // pair the server derives for exactly that case, not a second
+        // fallback guess. See WatchPhase.treadmillSpeedMph's doc comment.
+        if let speed = phase.treadmillSpeedMph, speed > 0 { return speed }
         switch phase.type {
         case .warmup:   return 5.5
         case .work:     return 7.0
         case .recovery: return 5.0
         case .cooldown: return 5.0
         }
+    }
+
+    /// Sibling of `nominalMph` — same priority, same server field, same
+    /// reason it is `static` and phase-parameterized. A phase with no
+    /// doctrine-cited grade (every paced phase, every non-hill effort phase)
+    /// gets the flat 1.0% "reproduces outdoor flat" default.
+    static func nominalInclinePct(for phase: WatchPhase) -> Double {
+        if let incline = phase.treadmillInclinePct, incline > 0 { return incline }
+        return 1.0
     }
 
     // MARK: - Top row
@@ -589,13 +627,23 @@ struct LiveRunTreadmillV5: View {
             : walk.phase.label
     }
 
+    /// Announces the upcoming segment's target the SAME way
+    /// `configurePlanIfNeeded` will actually set the belt when the auto-
+    /// advance crosses into it (`nominalMph`/`nominalInclinePct` — one
+    /// computation, read by both) — so this line can never promise a number
+    /// the segment machine does not then deliver. Incline is stated only
+    /// when it departs from flat (> 1.0%): a paced phase reading "Next ·
+    /// 7:10 /mi pace · 1.0% incline" would bury the one number that matters
+    /// (speed) behind a fact that is never in question on a flat segment.
     private var nextLineText: String? {
         guard let walk, let next = walk.nextPhase else { return nil }
-        if let target = next.targetPaceSPerMi, target > 0 {
-            let mph = (3600.0 / Double(target) * 10).rounded() / 10
-            return "Next \u{00b7} \(Units.formatSpeed(mph: mph)) \(Units.speedLabel()) in \(walk.remainingShort)"
-        }
-        return "Next \u{00b7} \(next.label) in \(walk.remainingShort)"
+        let mph = Self.nominalMph(for: next)
+        let speedText = "\(Units.formatSpeed(mph: mph)) \(Units.speedLabel())"
+        let incline = Self.nominalInclinePct(for: next)
+        let target = incline > 1.0
+            ? "\(speedText) \u{00b7} \(FaffFmt.oneDecimal(incline) ?? "0.0")% incline"
+            : speedText
+        return "Next \u{00b7} \(next.label) \u{00b7} \(target) in \(walk.remainingShort)"
     }
 
     // MARK: - Speed tile
@@ -704,28 +752,22 @@ struct LiveRunTreadmillV5: View {
         session.stepIncline(delta)
     }
 
+    /// The very first screen's suggestion, before the plan has even loaded
+    /// (`init` runs before `.task`/`.onAppear`) — keyed off the session's
+    /// first WORK phase specifically ("what you'll want for the hard part"),
+    /// via the exact same `nominalMph` the real segment plan
+    /// (`configurePlanIfNeeded`) uses for every phase. Falls to the flat 8.0
+    /// only when there is no plan at all yet (an unstructured run, or the
+    /// plan genuinely has no work phase).
     private static func defaultSpeedMph(plan: LiveRunPlanV5?) -> Double {
         guard let phase = plan?.phases.first(where: { $0.type == .work }) else { return 8.0 }
-        if let target = phase.targetPaceSPerMi, target > 0 {
-            return (3600.0 / Double(target) * 10).rounded() / 10
-        }
-        // TREADMILL-HILL-1 · a by-effort hill rep carries no pace target on
-        // purpose (outdoor grade varies) — this is the treadmill-specific
-        // pair the server derives for exactly that case, not a second
-        // fallback guess. See WatchPhase.treadmillSpeedMph's doc comment.
-        if let speed = phase.treadmillSpeedMph, speed > 0 { return speed }
-        return 8.0
+        return nominalMph(for: phase)
     }
 
-    /// TREADMILL-HILL-1 · sibling of `defaultSpeedMph`. 1.0% is this file's
-    /// prior flat-run default (`TREADMILL_AIR_RESISTANCE_GRADE_PCT` — a
-    /// belt at 1% reproduces outdoor flat, per Research/01), correct for
-    /// any session with no incline prescription. A hill rep's own doctrine-
-    /// cited grade (Research/04 §8.3) overrides it when present.
+    /// Sibling of `defaultSpeedMph` — same phase, same shared function.
     private static func defaultInclinePct(plan: LiveRunPlanV5?) -> Double {
-        guard let phase = plan?.phases.first(where: { $0.type == .work }),
-              let incline = phase.treadmillInclinePct, incline > 0 else { return 1.0 }
-        return incline
+        guard let phase = plan?.phases.first(where: { $0.type == .work }) else { return 1.0 }
+        return nominalInclinePct(for: phase)
     }
 
     // MARK: - Stat row
