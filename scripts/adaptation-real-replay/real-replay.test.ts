@@ -102,6 +102,7 @@ const POISON: GradedSession = {
   tests: 'THRESHOLD',
   grade: 'FULL',
   workPaceSecPerMi: measured(360),
+  thresholdEquivalentPaceSecPerMi: measured(360),
   thirds: {
     middlePaceSecPerMi: measured(360),
     finalPaceSecPerMi: measured(358),
@@ -463,7 +464,35 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     // are NOT an endorsement — PROGRESS 0 is the headline FINDING of this
     // replay and it is written up as one.
     expect(RUN.rows.length).toBe(120);
-    expect(dist).toEqual({ PROGRESS: 0, HOLD: 94, REGRESS: 20, REFUSE: 6 });
+    // 2026-09-03 · re-pinned after the eight findings this replay raised were
+    // fixed. The move, and what caused each part of it:
+    //
+    //   PROGRESS   0 ->   0   unchanged, and it is still the headline finding
+    //   HOLD      94 -> 102
+    //   REGRESS   20 ->   4   the cadence bound now applies to BOTH directions
+    //   REFUSE     6 ->  14   a week with no prescribed long run now refuses
+    //                         honestly instead of holding at "no distance"
+    //
+    // The REGRESS collapse is the substantive change. The contract's "one step
+    // per cutback cycle" used to sit below the REGRESS early return in both
+    // movable levers, so it governed only the upward path and the same missed
+    // weeks were re-spent at every weekly boundary. Sixteen of the twenty
+    // downward records were that repetition.
+    expect(dist).toEqual({ PROGRESS: 0, HOLD: 102, REGRESS: 4, REFUSE: 14 });
+  });
+
+  it('the belief no longer walks below the volume he demonstrably ran', () => {
+    // The defect this replaces: 43.5 -> 30.2 mi/wk across seven applied steps,
+    // landing within 4.5 mi of the 31.6 figure CLAUDE.md Rule 8 already lists
+    // as a defect, while two of the three weeks in the final window read 39.8
+    // and 47.5 mi completed.
+    const weekly = RUN.beliefTrail.map((b) => b.weekly);
+    const lowest = Math.min(...weekly);
+    expect(lowest, 'the volume belief fell below his sustained level again')
+      .toBeGreaterThan(35);
+    // And it is still ALLOWED to fall. A floor that never binds downward would
+    // be the opposite defect, and this asserts the lever still eases.
+    expect(lowest).toBeLessThan(weekly[0]);
   });
 
   it('THE FINDING · the engine never proposes an increase on his real data', () => {
@@ -481,6 +510,35 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     const dist = distributionOf(RUN);
     expect(dist.PROGRESS).toBe(0);
     expect(dist.REGRESS).toBeGreaterThan(0);
+  });
+
+  // Rule 20 · `evaluate.ts` computed `INV_WITHIN_LEVER_BOUND` from the day it
+  // was written and had already marked the 2026-07-27 long-run record
+  // `passed: false`. Nothing read it, so a record the engine itself knew was
+  // invalid shipped through six green test files. The invariants are asserted
+  // here, on the real rows, rather than merely computed.
+  it('no record on his real history ships with a failed invariant', () => {
+    const failures = RUN.records.flatMap(({ date, record }) => record.invariants
+      .filter((i) => !i.passed)
+      .map((i) => `${date} ${record.lever} ${record.decision} · ${i.id} · ${i.detail}`));
+    expect(failures).toEqual([]);
+  });
+
+  it('and no REGRESS on his real history proposes an increase', () => {
+    const upward = RUN.rows.filter(
+      (r) => r.decision === 'REGRESS' && r.magnitude.startsWith('+'),
+    ).map((r) => `${r.decisionDate} ${r.lever} ${r.magnitude} · ${r.reason}`);
+    expect(upward).toEqual([]);
+  });
+
+  // Rule 17, and the coach-voice half of finding 8. `miText(0)` renders "no
+  // distance", and three distinct reason strings reached the runner as "The
+  // long run stays at no distance."
+  it('no reason string tells the runner a lever stays at "no distance"', () => {
+    const nonsense = RUN.rows
+      .filter((r) => /no distance|no pace/.test(r.reason))
+      .map((r) => `${r.decisionDate} ${r.lever} · ${r.reason}`);
+    expect(nonsense).toEqual([]);
   });
 
   it('SENSITIVITY · pre-windowing the evidence does not unlock a single increase', () => {

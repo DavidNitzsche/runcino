@@ -391,7 +391,99 @@ describe('WEEKLY VOLUME', () => {
   it('HOLD · one step per cutback cycle', () => {
     const v = volume({ stepsTakenThisCycle: 1 });
     expect(record('WEEKLY_VOLUME', v.decision)).toBe('HOLD');
-    expect(v.reason).toMatch(/one increase per cutback cycle/);
+    expect(v.reason).toMatch(/one step per cutback cycle/);
+  });
+
+  // Rule 21 · the cadence bound used to sit BELOW the REGRESS early return, so
+  // "one step per cutback cycle" governed only the upward path. Replayed on
+  // real history that let the same three missed weeks be re-spent at seven
+  // consecutive boundaries, walking the belief 43.5 to 30.2 mi/wk. These two
+  // cases are the same evidence pointed both ways against the same counter.
+  it('HOLD · the cycle cap binds the DOWNWARD step too, on the same counter', () => {
+    const missed = [week('2026-08-17', 47, 30), week('2026-08-24', 48, 31), week('2026-08-31', 48, 29)];
+    const free = volume({ weeks: missed, stepsTakenThisCycle: 0 });
+    expect(record('WEEKLY_VOLUME', free.decision)).toBe('REGRESS');
+
+    const spent = volume({ weeks: missed, stepsTakenThisCycle: 1 });
+    expect(record('WEEKLY_VOLUME', spent.decision)).toBe('HOLD');
+    expect(spent.reason).toMatch(/one step per cutback cycle/);
+  });
+
+  // The compounding defect itself, in its own units. `allWeeksMissed` is
+  // measured against the PRESCRIPTION and moves the BELIEF, and on 2026-08-17
+  // the belief was cut to 33.5 while two of the three weeks read 39.8 and 47.5
+  // mi completed. A belief already at or below demonstrated work has nothing to
+  // ease.
+  it('HOLD · a belief already below what he ran is not eased further', () => {
+    const v = volume({
+      currentWeeklyMi: 35,
+      // Every week missed a prescription from a bigger block, and every week
+      // was still run at or above the belief being reduced.
+      weeks: [week('2026-08-17', 60, 39.8), week('2026-08-24', 60, 42.1), week('2026-08-31', 60, 47.5)],
+    });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('HOLD');
+    expect(v.reason).toMatch(/What was missed was a larger prescription, not this level/);
+  });
+
+  it('REGRESS · and it still eases when he genuinely ran less than the belief', () => {
+    // The falsifier for the case above: same shape, lower completed miles.
+    const v = volume({
+      currentWeeklyMi: 35,
+      weeks: [week('2026-08-17', 60, 24.0), week('2026-08-24', 60, 26.1), week('2026-08-31', 60, 22.5)],
+    });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('REGRESS');
+    expect(v.proposedAfterValue!).toBeLessThan(35);
+    // And never below the mean he actually ran across those same weeks.
+    expect(v.proposedAfterValue!).toBeGreaterThanOrEqual(24.2);
+  });
+
+  it('REFUSE · a week the plan has not authored yet is not a week prescribed at zero', () => {
+    const v = volume({ weeks: threeGoodWeeks(), nextWeekPrescribedMi: 0 });
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('REFUSE');
+    expect(v.reason).not.toMatch(/no distance/);
+  });
+
+  // Rule 8 · the production row for the owner's post-race recovery block says
+  // `is_cutback FALSE` on two weeks its own plan authored `mode: 'recovery'`.
+  it('a recovery-mode plan is read as a cutback even when the flag says otherwise', () => {
+    const v = volume({
+      weeks: [
+        week('2026-08-10', 47, 47.2),
+        week('2026-08-17', 17, 28.4, { isCutback: false, authoredPlanMode: 'RECOVERY' }),
+        week('2026-08-24', 20, 18.5, { isCutback: false, authoredPlanMode: 'RECOVERY' }),
+      ],
+    });
+    // Two of three weeks are excluded, so there are not three to read.
+    expect(record('WEEKLY_VOLUME', v.decision)).toBe('REFUSE');
+    const excludedWeeks = v.excluded.filter((e) => e.reason === 'PRESCRIBED_RECOVERY_OR_TAPER');
+    expect(excludedWeeks.length).toBe(2);
+    expect(excludedWeeks[0].detail).toMatch(/flag and the plan\s+disagree|flag and the plan disagree/);
+  });
+
+  it('FALSIFIER · the same two weeks under a BUILD plan are NOT excluded', () => {
+    const v = volume({
+      weeks: [
+        week('2026-08-10', 47, 47.2),
+        week('2026-08-17', 17, 28.4, { isCutback: false, authoredPlanMode: 'BUILD' }),
+        week('2026-08-24', 20, 18.5, { isCutback: false, authoredPlanMode: 'BUILD' }),
+      ],
+    });
+    expect(v.excluded.filter((e) => e.reason === 'PRESCRIBED_RECOVERY_OR_TAPER').length).toBe(0);
+  });
+
+  it('a key session older than the weeks being read is windowed out, not held against him', () => {
+    const v = volume({
+      weeks: threeGoodWeeks(),
+      longRuns: twoGoodLongRuns(),
+      keySessions: [
+        session('old', '2026-06-11', { grade: 'DIFFERENT' }),
+        session('new', '2026-08-25', { grade: 'FULL' }),
+      ],
+    });
+    expect(v.contradictory.some((c) => c.dateISO === '2026-06-11')).toBe(false);
+    expect(v.excluded.some(
+      (e) => e.dateISO === '2026-06-11' && e.reason === 'OUTSIDE_EVIDENCE_WINDOW',
+    )).toBe(true);
   });
 });
 
@@ -512,6 +604,51 @@ describe('LONG RUN', () => {
   it('HOLD · one increase per cutback cycle', () => {
     const v = long({ stepsTakenThisCycle: 1 });
     expect(record('LONG_RUN', v.decision)).toBe('HOLD');
+    expect(v.reason).toMatch(/one step per cutback cycle/);
+  });
+
+  it('HOLD · the cycle cap binds the DOWNWARD step too, on the same counter', () => {
+    const short = [longRun('lr-1', '2026-08-23', 16, 13.0), longRun('lr-2', '2026-08-30', 16, 13.2)];
+    expect(record('LONG_RUN', long({ longRuns: short, stepsTakenThisCycle: 0 }).decision)).toBe('REGRESS');
+    const spent = long({ longRuns: short, stepsTakenThisCycle: 1 });
+    expect(record('LONG_RUN', spent.decision)).toBe('HOLD');
+    expect(spent.reason).toMatch(/one step per cutback cycle/);
+  });
+
+  // 2026-07-27, the record that started this. `Math.max(meanCompleted, before -
+  // step)` had no upper clamp, so both long runs missing LARGER prescriptions
+  // proposed `+1.5 long_run_mi` under a sentence reading "the long run eases".
+  it('HOLD · both short of a LARGER prescription never proposes an increase', () => {
+    const v = long({
+      nextLongRunMi: 12,
+      longRuns: [
+        longRun('lr-1', '2026-07-19', 19, 18.0),
+        longRun('lr-2', '2026-07-26', 17, 9.09),
+      ],
+    });
+    expect(record('LONG_RUN', v.decision)).toBe('HOLD');
+    expect(v.magnitude).toBeNull();
+    expect(v.reason).toMatch(/What was missed was a longer prescription, not this distance/);
+  });
+
+  it('REGRESS · and it still eases when both came in below the affected distance', () => {
+    // The falsifier for the case above: same shape, completed BELOW `before`.
+    const v = long({
+      nextLongRunMi: 16,
+      longRuns: [
+        longRun('lr-1', '2026-08-23', 18, 14.0),
+        longRun('lr-2', '2026-08-30', 18, 14.4),
+      ],
+    });
+    expect(record('LONG_RUN', v.decision)).toBe('REGRESS');
+    expect(v.magnitude!.value).toBeLessThan(0);
+    expect(v.proposedAfterValue!).toBeLessThan(16);
+  });
+
+  it('REFUSE · a week that schedules no long run is not a long run of zero', () => {
+    const v = long({ nextLongRunMi: 0 });
+    expect(record('LONG_RUN', v.decision)).toBe('REFUSE');
+    expect(v.reason).not.toMatch(/no distance/);
   });
 });
 

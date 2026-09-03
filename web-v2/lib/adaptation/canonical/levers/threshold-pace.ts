@@ -47,6 +47,29 @@
  * This lever only ever moves the carried belief by a bounded step; if the
  * belief arrived wrong, every proposal is wrong by the same amount and nothing
  * here notices.
+ *
+ * And it cannot fail on the RACE EQUIVALENCE being wrong, only on it being
+ * absent. `thresholdEquivalentPaceSecPerMi` arrives already converted by the
+ * evidence layer, which calls the canonical pace owner; a mis-calibrated
+ * conversion produces a confidently wrong anchor here and this file could not
+ * tell. What it can no longer do is spend a race's FINISH pace as a threshold
+ * measurement, because it never reads that field.
+ *
+ * ── THE 2:1 RULE AT THE MINIMUM EVIDENCE COUNT, STATED HONESTLY ────────────
+ *
+ * The direction rule is a RATIO with an integer floor, so at exactly
+ * `THRESHOLD_MIN_QUALIFYING_SESSIONS` sessions it can only be satisfied by
+ * 2-0: at the minimum count the majority rule IS unanimity. The real replay
+ * reached that case on 2026-09-02, one session either way, and held.
+ *
+ * That is worth naming, and it is NOT the wall the unanimity rule was. The
+ * binding constraint at 1-1 is Q20's corroboration bar, not the ratio: one
+ * session says faster, and Q20's opening sentence is that a single training
+ * session must never move the anchor. Loosening the ratio to resolve a 1-1
+ * split would move the anchor on one session while appearing to be a rule about
+ * direction, which is the forbidden thing wearing a different hat. The HOLD is
+ * the contract's answer and it names what is missing, which is what Rule 21
+ * asks of a bar.
  */
 import {
   THRESHOLD_MIN_QUALIFYING_SESSIONS,
@@ -134,8 +157,24 @@ export function evaluateThresholdPace(input: ThresholdPaceInput): LeverVerdict {
       continue;
     }
 
-    // `workPaceSecPerMi.ok` was already established by the admissibility gate.
-    const paceSecPerMi = s.workPaceSecPerMi.ok ? s.workPaceSecPerMi.value : before;
+    // Q20's distance ruling, spent correctly. This reads
+    // `thresholdEquivalentPaceSecPerMi` and NEVER `workPaceSecPerMi`, because
+    // for a race the second is a finish pace over 6.2 or 13.1 miles and the two
+    // sit on opposite sides of threshold. `qualifiesAsThresholdEvidence` has
+    // already established the field is readable, so the fallback below is
+    // unreachable rather than a silent substitution; it exists because the type
+    // is honest about the branch and this file must not assert past it.
+    if (!s.thresholdEquivalentPaceSecPerMi.ok) {
+      excludedList.push({
+        activityId: s.provenance.activityId,
+        dateISO: s.provenance.dateISO,
+        reason: 'DATA_UNREADABLE',
+        detail: 'What this session says about threshold pace could not be established.',
+        stillAdmissibleFor: ['weekly volume', 'consistency', 'time on feet'],
+      });
+      continue;
+    }
+    const paceSecPerMi = s.thresholdEquivalentPaceSecPerMi.value;
     qualifying.push({ s, paceSecPerMi, deterioration: det.verdict });
   }
 
@@ -311,11 +350,31 @@ export function evaluateThresholdPace(input: ThresholdPaceInput): LeverVerdict {
 
   if (!agreeFaster && !agreeSlower) {
     // Contract · "contradiction → HOLD, never a bouncing anchor."
-    for (const q of slower.length < faster.length ? slower : faster) {
+    //
+    // ── WHICH SESSIONS ARE THE CONTRADICTION, AND THE BUG THAT WAS HERE ───
+    //
+    // This used to record only the smaller side, picked by
+    // `slower.length < faster.length ? slower : faster`. That expression is
+    // FALSE at a tie, so at one session either way it recorded the FASTER
+    // side — and on 2026-09-02 the owner's best threshold work of the block, a
+    // FULL-graded set at 7:02/mi, was filed as evidence against itself while
+    // the half it disagreed with was not filed at all.
+    //
+    // At a tie there is no minority. Both sides dispute the anchor, in opposite
+    // directions, and that is exactly what this branch's own sentence says:
+    // "Recent sessions point in both directions." Recording only one of them
+    // made the record contradict the sentence printed over it, which is a
+    // Rule 16 defect on the audit trail rather than on the decision.
+    //
+    // So every session that differs from the anchor is recorded when NEITHER
+    // direction is established. Below, where a direction IS established, the
+    // minority is well defined and only it is recorded — that code is unchanged
+    // and correct.
+    for (const q of [...faster, ...slower]) {
       contradictory.push({
         activityId: q.s.provenance.activityId,
         dateISO: q.s.provenance.dateISO,
-        detail: `Points the other way at ${paceText(q.paceSecPerMi)} against an anchor of ${paceText(before)}.`,
+        detail: `Points at ${paceText(q.paceSecPerMi)} against an anchor of ${paceText(before)}, with no agreeing session.`,
       });
     }
     return nonMoving({

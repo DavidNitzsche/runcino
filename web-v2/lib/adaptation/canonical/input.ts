@@ -187,10 +187,65 @@ export interface GradedSession {
   readonly grade: StimulusGrade;
   /** Work pace the session demonstrated, when it is admissible for pace. */
   readonly workPaceSecPerMi: Measured<number>;
+  /**
+   * What this session says about THRESHOLD specifically, in s/mi.
+   *
+   * ── WHY THIS IS A SEPARATE FIELD AND NOT `workPaceSecPerMi` ──────────────
+   *
+   * For a threshold workout the two are the same number and the evidence layer
+   * sets them equal. For a RACE they are not, and the first version of this
+   * type had only one of them, so the threshold lever compared a race's FINISH
+   * pace straight to the threshold anchor.
+   *
+   * That is a category error wearing the right units. A half is raced for over
+   * an hour and a 10K for well under one, so the two sit on opposite sides of
+   * threshold: the owner's 2026-08-16 half at 7:47/mi lands about 5 s/mi off
+   * his threshold-equivalent, which hid the defect, and his 2026-09-13 Santa
+   * Monica 10K takes the same path in the opposite direction, where it will not
+   * hide.
+   *
+   * The equivalence itself is a PACE-PRESCRIPTION question and this engine does
+   * not own it (`docs/BRAIN_CONSTITUTION.md` · one question, one canonical
+   * owner). So the conversion is made by the evidence layer, which calls the
+   * canonical Daniels owner, and arrives here already made — exactly as this
+   * file's header requires of every other physiological judgement. What the
+   * engine owns is the impossibility of spending the wrong number, and it owns
+   * it by having a differently named field for it (Rule 16).
+   *
+   * Rule 11 · absent when the conversion could not be made (a finish outside
+   * the tabulated VDOT range, say). An absent equivalence excludes the session
+   * from threshold evidence; it never falls back to the finish pace.
+   */
+  readonly thresholdEquivalentPaceSecPerMi: Measured<number>;
   readonly thirds: ComparableThirds;
   /** Race distance when this session was a race, else null. */
   readonly raceDistance: 'FIVE_K' | 'TEN_K' | 'HALF' | 'MARATHON' | null;
 }
+
+/**
+ * What the plan that authored a week was FOR.
+ *
+ * Rule 8 · "It cannot look at taper and recover as my 'normal'. Ever." In this
+ * engine the whole of that protection used to rest on `WeekObservation
+ * .isCutback`, a single boolean copied from one production column, and the
+ * replay found the column wrong: `pln_eb73331e19230ad9`, authored `mode:
+ * 'recovery'` the day after the owner's A-race half, carries `is_cutback FALSE`
+ * on both its weeks and `is_peak TRUE` on the second. Read naively, two weeks
+ * of prescribed post-race recovery become an ordinary week completed at 167%,
+ * which is evidence FOR an increase.
+ *
+ * So the week carries two facts rather than one, and the levers reconcile them.
+ * A row whose flag disagrees with the mode of the plan that wrote it is
+ * recognised as a disagreement and resolved toward the mode, because the mode
+ * is the authoring INTENT and the flag is a derived stamp. Rule 11 · `UNKNOWN`
+ * is its own state: a week whose authoring plan could not be identified is not
+ * a week authored as ordinary.
+ */
+export type AuthoredPlanMode = 'BUILD' | 'RECOVERY' | 'TAPER' | 'UNKNOWN';
+
+/** Prescribed intents that are never the runner's normal. Rule 8. */
+export const NON_NORMAL_PLAN_MODES: ReadonlySet<AuthoredPlanMode> =
+  new Set<AuthoredPlanMode>(['RECOVERY', 'TAPER']);
 
 /** One prescribed-versus-completed week. */
 export interface WeekObservation {
@@ -198,9 +253,61 @@ export interface WeekObservation {
   readonly prescribedMi: number;
   /** Rule 11 · a week nobody could read is not a week at zero. */
   readonly completedMi: Measured<number>;
+  /**
+   * The week's own authored flag. Trusted to say YES, never trusted to say NO:
+   * see `authoredPlanMode` for why, and `prescribedNonNormalWeek` for the
+   * reconciliation every reader must use instead of this field alone.
+   */
   readonly isCutback: boolean;
+  /** The mode of the plan that authored this week. Rule 8's second witness. */
+  readonly authoredPlanMode: AuthoredPlanMode;
   /** Whether every activity in the week was readable and correctly attributed. */
   readonly dataComplete: boolean;
+}
+
+/**
+ * Rule 8, resolved in ONE place so no lever has to get it right on its own.
+ *
+ * Returns whether the week was PRESCRIBED as non-normal, and which witness
+ * said so, so an exclusion record can name the disagreement rather than hiding
+ * it behind a boolean.
+ */
+export function prescribedNonNormalWeek(w: WeekObservation): {
+  readonly nonNormal: boolean;
+  /** True when the flag and the plan mode disagree. Worth reporting. */
+  readonly witnessesDisagree: boolean;
+  readonly detail: string;
+} {
+  const byMode = NON_NORMAL_PLAN_MODES.has(w.authoredPlanMode);
+  if (byMode && !w.isCutback) {
+    return {
+      nonNormal: true,
+      witnessesDisagree: true,
+      detail:
+        `The week is not flagged as a cutback, but the plan that authored it was `
+        + `written as a ${w.authoredPlanMode.toLowerCase()} block. The flag and the plan `
+        + 'disagree, and a week the plan told him to reduce is not a week he fell short of.',
+    };
+  }
+  if (w.isCutback && !byMode) {
+    return {
+      nonNormal: true,
+      witnessesDisagree: false,
+      detail:
+        'An authored cutback week. The contract counts consecutive NON-cutback '
+        + 'weeks, and a week the plan told him to reduce is not a week he fell short of.',
+    };
+  }
+  if (w.isCutback && byMode) {
+    return {
+      nonNormal: true,
+      witnessesDisagree: false,
+      detail:
+        `An authored cutback week inside a ${w.authoredPlanMode.toLowerCase()} block. `
+        + 'A week the plan told him to reduce is not a week he fell short of.',
+    };
+  }
+  return { nonNormal: false, witnessesDisagree: false, detail: 'An ordinary authored week.' };
 }
 
 /** One prescribed-versus-completed long run. */

@@ -46,9 +46,11 @@ import {
   type EvaluationBoundary, type GradedSession, type LongRunObservation,
   type Measured, type PaceRepresentativenessFlag, type Provenance,
   type Truncation, type WeekObservation, type CanonicalLever,
+  type AuthoredPlanMode,
 } from '@/lib/adaptation/canonical/input';
 import { gradeStimulus, type StimulusGrade } from '@/lib/adaptation/canonical/stimulus';
 import { HEAT_HR_CONFOUNDER } from '@/lib/weather/heat-adjustment';
+import { tPaceFromVdot, vdotFromRace } from '@/lib/training/vdot';
 import {
   gradeWorkPhase, sessionToleranceSecFor,
 } from '@/lib/training/execution-semantics';
@@ -490,6 +492,39 @@ export function buildSession(
     if (provisional) {
       note(d, `${r.date} · ${race.name} is flagged provisional, so it is admitted as SUBSTANTIAL rather than FULL.`);
     }
+
+    // ── THE EQUIVALENCE STEP A RACE NEEDS AND A WORKOUT DOES NOT ─────────
+    //
+    // A race's FINISH pace is an average over 6.2 or 13.1 miles, and a 10K and
+    // a half are raced at different fractions of threshold. Handing the raw
+    // number to the threshold lever compared two quantities that are not the
+    // same quantity: his 2026-08-16 half at 7:47/mi happens to land within
+    // ~5 s/mi of his threshold-equivalent, which hid it, and his 2026-09-13
+    // Santa Monica 10K takes the same path in the OPPOSITE direction.
+    //
+    // The conversion is a PACE-PRESCRIPTION question and this harness does not
+    // own it (`docs/BRAIN_CONSTITUTION.md` · one question, one canonical
+    // owner). So it calls the owner: the repo's Daniels table, inverted from
+    // the finish and read back at T. Rule 11 · when the finish falls outside
+    // the tabulated VDOT range the answer is an explicit absence, never the
+    // finish pace as a substitute.
+    const raceVdot = vdotFromRace(finishS, distMi);
+    const tEquivalent = raceVdot === null ? null : tPaceFromVdot(raceVdot);
+    const thresholdEquivalent: Measured<number> =
+      raceDistance !== 'TEN_K' && raceDistance !== 'HALF'
+        ? absent<number>(
+          `a ${raceDistance} is not clean threshold evidence, so no threshold equivalence is derived`,
+        )
+        : tEquivalent === null || !Number.isFinite(tEquivalent)
+          ? absent<number>(
+            'the finish falls outside the tabulated VDOT range, so no threshold equivalence could be derived',
+          )
+          : measured(tEquivalent);
+    if (thresholdEquivalent.ok && pace !== null) {
+      note(d, `${r.date} · ${race.name} finish pace ${Math.round(pace)} s/mi converts to a threshold `
+        + `equivalent of ${Math.round(thresholdEquivalent.value)} s/mi at VDOT ${raceVdot}.`);
+    }
+
     return {
       grade: provisional ? 'SUBSTANTIAL' : 'FULL',
       session: {
@@ -499,6 +534,7 @@ export function buildSession(
         workPaceSecPerMi: pace === null
           ? failed('race pace could not be derived from races.actual_result')
           : measured(pace),
+        thresholdEquivalentPaceSecPerMi: thresholdEquivalent,
         // `races.actual_result.miles` is EMPTY on every one of his races, so
         // there are no per-mile race splits to build thirds from. Q13 gets an
         // honest refusal rather than whole-run thirds off the training row.
@@ -599,6 +635,16 @@ export function buildSession(
     targetWorkPaceSecPerMi: pres.targetPaceSecPerMi,
     actualWorkPaceSecPerMi: actualWorkPace,
     meanWorkHrBpm: meanWorkHr,
+    // C4's per-repetition half. Each work phase carries its own `avgHr` from
+    // its own sample window, which is exactly the granularity Q12's "averages
+    // can hide failed repetitions" is about. Rule 11 · a phase with no HR is an
+    // explicit absence in this array, never a silent pass.
+    workSegmentHrBpm: work.map((ph) => {
+      const hr = num(ph.avgHr);
+      return hr === null
+        ? absent<number>('this work segment recorded no heart rate')
+        : measured(hr);
+    }),
     hrCeilingBpm: pres.hrCeilingBpm === null
       ? absent<number>('the prescription carried no HR ceiling')
       : measured(pres.hrCeilingBpm),
@@ -629,6 +675,10 @@ export function buildSession(
       tests,
       grade: assessment.grade,
       workPaceSecPerMi: actualWorkPace,
+      // For a prescribed workout the two quantities ARE the same number: the
+      // work pace is already the pace held over the threshold work itself, with
+      // no distance to convert away. The equivalence step exists for races.
+      thresholdEquivalentPaceSecPerMi: actualWorkPace,
       thirds,
       raceDistance: null,
     },
@@ -742,16 +792,30 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
       // week — 28.4 mi run against a 17 mi recovery prescription, 167% — would
       // count as a completed week supporting an increase.
       //
-      // The plan's `mode` carries the fact the week row lost, so it is read
-      // here. The underlying row is still wrong and is reported as a defect.
+      // The plan's `mode` carries the fact the week row lost. It used to be
+      // reconciled INTO `isCutback` right here, which fixed the number and hid
+      // the defect from the engine — so the engine still had a Rule 8
+      // protection resting on one boolean that production had got wrong, and
+      // only this harness knew. Both witnesses are now handed over as they
+      // stand and `prescribedNonNormalWeek` reconciles them inside the engine,
+      // which is where the resilience belongs. The underlying row is still
+      // wrong and is still reported as a defect; nothing here repairs it.
       const planIsRecovery = p?.mode === 'recovery';
+      const authoredPlanMode: AuthoredPlanMode = p === null || p === undefined
+        ? 'UNKNOWN'
+        : planIsRecovery
+          ? 'RECOVERY'
+          : p.mode === 'taper'
+            ? 'TAPER'
+            : 'BUILD';
       if (planIsRecovery && pw && !pw.isCutback) {
         note(d, `week ${ws} · plan ${p!.planId} is mode 'recovery' but plan_weeks.is_cutback is false. `
-          + 'Rule 8 · read as a cutback from the plan mode, and the row is a defect.');
+          + 'Rule 8 · the engine reconciles the two witnesses, and the row is a defect.');
       }
-      const isCutback = planIsRecovery || (pw ? (pw.isCutback || pw.isRaceWeek) : false);
+      const isCutback = pw ? (pw.isCutback || pw.isRaceWeek) : false;
       if (!pw && prescribedMi > 0) {
-        note(d, `week ${ws} · no plan_weeks row, so its cutback status is unknown and read as false.`);
+        note(d, `week ${ws} · no plan_weeks row, so its cutback flag is unknown and read as false. `
+          + `The plan mode is ${authoredPlanMode}, which is the engine's second witness.`);
       }
 
       return {
@@ -759,6 +823,7 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
         prescribedMi,
         completedMi,
         isCutback,
+        authoredPlanMode,
         dataComplete: unreadable.length === 0,
       };
     })
@@ -899,7 +964,15 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
   // The taper is the first race week's block, resolved from the plan's own
   // week flags rather than re-derived from a doctrine table this file does not
   // own. `BLOCK_SHAPE[cat].taperWeeks` already decided it at authoring.
-  const raceWeek = planWeeksOfCurrent.find((w) => w.isRaceWeek);
+  //
+  // And it is the first race week that has NOT ALREADY HAPPENED. Reading
+  // `find(w => w.isRaceWeek)` unconditionally returned the AFC half's race week
+  // for the whole of the block that followed it, so at 2026-08-03 this handed
+  // the engine a taper start of 2026-07-27 — a boundary a week in the past,
+  // which bounded a proposal for the week of 2026-08-10 to nothing. The engine
+  // now refuses to be bounded by a boundary the change has already passed, and
+  // this stops handing it one.
+  const raceWeek = planWeeksOfCurrent.find((w) => w.isRaceWeek && w.weekStartISO >= asOf);
   const taperStartISO = raceWeek
     ? planWeeksOfCurrent.find((w) => w.weekIdx === raceWeek.weekIdx - 2)?.weekStartISO ?? raceWeek.weekStartISO
     : null;

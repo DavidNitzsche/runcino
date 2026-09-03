@@ -31,8 +31,28 @@
  * PROGRESS needs three consecutive weeks at 95%. REGRESS needs the same three
  * weeks to have MISSED that bar, with readable data proving they were missed
  * rather than unrecorded. Neither direction fires on one week, and neither
- * fires on absent data. The asymmetry that produced five downgrades and zero
- * upgrades is not reproduced here.
+ * fires on absent data.
+ *
+ * The paragraph above used to end "the asymmetry that produced five downgrades
+ * and zero upgrades is not reproduced here", and it was WRONG — an unenforced
+ * claim in a header, which Rule 20 says is worse than silence because it stops
+ * the next reader checking. Replayed against the owner's real history the file
+ * produced 15 REGRESS records and 0 PROGRESS, and the asymmetry was structural
+ * and one line long: `stepsTakenThisCycle >= VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE`
+ * sat BELOW the REGRESS branch's early return, so the contract's "one step per
+ * cutback cycle" bound governed only the upward path. The same three missed
+ * July weeks were therefore re-spent at every weekly boundary, each time
+ * multiplying the belief down again: 43.5 mi/wk to 30.2 across seven applied
+ * steps off what was substantially one piece of evidence.
+ *
+ * The bound is now checked ONCE, above both branches, in the lever's own units
+ * and with the same constant. That is not a loosened guard: the contract's
+ * `VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE` is applied to more of this file than it
+ * was, not to less. Rule 21's instruction is to put a threshold beside its
+ * opposite number and justify any asymmetry; there is no citation for one here,
+ * because the contract does not define a REGRESS at all. This lever's REGRESS
+ * is the engine's own construction and its own stated rule for it is "the same
+ * bar, the other way", so the cadence bound travels with it.
  *
  * ── RULE 22 · WHAT THIS LEVER'S GATE CANNOT FAIL ON ────────────────────────
  *
@@ -41,6 +61,11 @@
  * under-prescribed week looks identical to one who hits 95% of a correct week.
  * Whether the baseline is aggressive enough is the plan generator's question
  * and this lever cannot see it.
+ *
+ * It cannot fail on a week that was mis-attributed rather than missed. A week
+ * whose activities landed on the wrong dates reads as a shortfall and there is
+ * nothing here that could tell the difference; `dataComplete` is a flag this
+ * file trusts rather than verifies.
  */
 import {
   VOLUME_MIN_CONSECUTIVE_WEEKS,
@@ -50,6 +75,7 @@ import {
   CONTRACT_DOC,
 } from '../contract-constants';
 import type { GradedSession, LongRunObservation, WeekObservation } from '../input';
+import { prescribedNonNormalWeek } from '../input';
 import { GRADES_THAT_COUNT_AS_EVIDENCE } from '../stimulus';
 import { assessDeterioration, deteriorationPattern } from '../deterioration';
 import { LONG_RUN_COMPLETION_MIN_FRAC } from '../contract-constants';
@@ -87,17 +113,21 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
 
   /* ── The relevant weeks · non-cutback, most recent first ───────────────── */
 
+  // Rule 8, and the reason it is resolved by `prescribedNonNormalWeek` rather
+  // than by reading `w.isCutback` here: the real production row for the owner's
+  // post-race recovery block says `is_cutback FALSE` on two weeks the plan
+  // itself was authored `mode: 'recovery'` to prescribe as recovery. A Rule 8
+  // protection resting on one boolean is a protection resting on one column
+  // being right, and that column was not.
   const nonCutback: WeekObservation[] = [];
   for (const w of [...input.weeks].reverse()) {
-    if (w.isCutback) {
+    const intent = prescribedNonNormalWeek(w);
+    if (intent.nonNormal) {
       excludedList.push({
         activityId: `week:${w.weekStartISO}`,
         dateISO: w.weekStartISO,
         reason: 'PRESCRIBED_RECOVERY_OR_TAPER',
-        detail:
-          'An authored cutback week. The contract counts consecutive '
-          + 'NON-cutback weeks, and a week the plan told him to reduce is not a '
-          + 'week he fell short of.',
+        detail: intent.detail,
         stillAdmissibleFor: ['consistency', 'time on feet'],
       });
       continue;
@@ -201,7 +231,43 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
 
   /* ── Key sessions · FULL or defensible SUBSTANTIAL ─────────────────────── */
 
-  const badKeySessions = input.keySessions.filter(
+  // ── THE WINDOW THAT WAS MISSING ────────────────────────────────────────
+  //
+  // `weeks` is windowed to `VOLUME_MIN_CONSECUTIVE_WEEKS` above; `keySessions`
+  // was not windowed at all. It received `input.qualitySessions` whole and
+  // marked every session below SUBSTANTIAL as contradictory FOREVER, so the
+  // 2026-09-02 volume record carried 19 contradictory items, one of which was
+  // "2026-06-11 A key session graded DIFFERENT" — a June session contradicting
+  // a September decision. Nothing in `input.ts` said the caller must
+  // pre-window, so the lever windows its own evidence, which is where the
+  // decision about what is relevant to THIS question belongs.
+  //
+  // The window is not a new number. It is the span of the weeks this lever
+  // actually read, so the sessions considered are exactly the sessions inside
+  // the weeks being judged. A separate constant here would be a second opinion
+  // about the same window (Rule 16).
+  const evidenceFromISO = nonCutback.length > 0
+    ? nonCutback[nonCutback.length - 1].weekStartISO
+    : input.todayISO;
+
+  for (const s of input.keySessions) {
+    if (s.provenance.dateISO >= evidenceFromISO) continue;
+    excludedList.push({
+      activityId: s.provenance.activityId,
+      dateISO: s.provenance.dateISO,
+      reason: 'OUTSIDE_EVIDENCE_WINDOW',
+      detail:
+        `The session predates ${evidenceFromISO}, the first of the `
+        + `${VOLUME_MIN_CONSECUTIVE_WEEKS} weeks this decision reads.`,
+      stillAdmissibleFor: ['consistency', 'time on feet', 'the fact that the workout occurred'],
+    });
+  }
+
+  const keySessionsInWindow = input.keySessions.filter(
+    (s) => s.provenance.dateISO >= evidenceFromISO,
+  );
+
+  const badKeySessions = keySessionsInWindow.filter(
     (s) => !GRADES_THAT_COUNT_AS_EVIDENCE.has(s.grade) && s.grade !== 'INSUFFICIENT',
   );
   for (const s of badKeySessions) {
@@ -264,18 +330,96 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
   /* ── No repeated late deterioration ────────────────────────────────────── */
 
   const pattern = deteriorationPattern([
-    ...input.keySessions.map((s) => assessDeterioration(s.thirds, s.provenance.truncation)),
+    ...keySessionsInWindow.map((s) => assessDeterioration(s.thirds, s.provenance.truncation)),
     ...input.longRuns.map((l) => assessDeterioration(l.thirds, l.provenance.truncation)),
   ]);
+
+  /* ── HOLD paths, each naming exactly what is missing ───────────────────── */
+
+  const holdBecause = (reason: string, missing: string[], sentence: string) =>
+    nonMoving({
+      lever: LEVER,
+      decision: 'HOLD',
+      beforeValue: before,
+      included,
+      excluded: excludedList,
+      contradictory,
+      windowDays,
+      confidence: conf(sentence),
+      reason,
+      whatWouldChangeIt: missing,
+    });
+
+  /* ── The cadence bound · ABOVE both branches, which is the fix ─────────── */
+
+  // See the header. This check used to sit below the REGRESS early return, so
+  // "one step per cutback cycle" governed only the upward path and the same
+  // three missed weeks were re-spent at every weekly boundary. It is checked
+  // once, before either direction may move, in this lever's own units.
+  //
+  // Rule 21 asks for the bar up beside the bar down. They are now the same
+  // line of code, so there is nothing left to justify.
+  if (input.stepsTakenThisCycle >= VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE) {
+    return holdBecause(
+      `Weekly volume stays at ${miText(before)}. It has already moved once in `
+      + 'this cycle, and the contract allows one step per cutback cycle.',
+      ['The next cutback boundary, after which the lever is available again.'],
+      'The evidence supports a change. The cycle does not.',
+    );
+  }
 
   /* ── REGRESS · the same bar, pointing the other way ────────────────────── */
 
   const allWeeksMissed = completions.every((c) => c.frac < VOLUME_WEEK_COMPLETION_MIN_FRAC);
   if (allWeeksMissed) {
+    // ── THE TWO QUANTITIES, AND WHY THE PROPOSAL NOW READS THE RIGHT ONE ──
+    //
+    // `allWeeksMissed` is measured against what the PLAN PRESCRIBED. The value
+    // it moves is the carried BELIEF about sustainable weekly volume. Rule 16:
+    // two different quantities under one decision, and on the owner's real
+    // history they pointed opposite ways. At 2026-08-17 the belief was cut to
+    // 33.5 mi/wk while two of the three weeks in the window read 39.8 and 47.5
+    // mi completed. Every week had missed a 46-64 mi prescription written by
+    // the PREVIOUS block, and the sentence "the prescribed level is running
+    // ahead of what is being absorbed" was true of the prescription and false
+    // of the number it moved.
+    //
+    // So the proposal is floored at the volume he DEMONSTRABLY RAN across the
+    // same weeks. That floor is continuous, monotone in the evidence, and
+    // cannot walk the belief below work he has actually done. It is not a
+    // weakened guard: the doctrine step bound `VOLUME_MAX_STEP_FRAC` still
+    // applies unchanged and still bounds how far one step may fall.
     const mean = completions.reduce((a, c) => a + c.frac, 0) / completions.length;
+    const demonstratedMi = roundTo(
+      completions.reduce((a, c) => a + (c.week.completedMi.ok ? c.week.completedMi.value : 0), 0)
+      / completions.length,
+    );
+
+    // Missing a bigger prescription and being unable to carry this level are
+    // opposite facts (Rule 11). When the mean he actually ran already meets the
+    // belief, the evidence is about the prescription, not about the belief.
+    if (demonstratedMi >= before) {
+      return holdBecause(
+        `Weekly volume stays at ${miText(before)}. `
+        + `The last ${VOLUME_MIN_CONSECUTIVE_WEEKS} non-cutback weeks all came in below what was `
+        + `prescribed, but they averaged ${miText(demonstratedMi)}, which is already at or above `
+        + `${miText(before)}. What was missed was a larger prescription, not this level.`,
+        [
+          `A week completed at ${Math.round(VOLUME_WEEK_COMPLETION_MIN_FRAC * 100)}% of prescribed, `
+          + 'which would let the level move rather than hold.',
+          `A run of weeks averaging below ${miText(before)}, which would ease the level.`,
+        ],
+        `All ${VOLUME_MIN_CONSECUTIVE_WEEKS} weeks missed their prescription, and all `
+        + `${VOLUME_MIN_CONSECUTIVE_WEEKS} averaged ${miText(demonstratedMi)}.`,
+      );
+    }
+
     const proposed = roundTo(before * mean);
     const cap = before * VOLUME_MAX_STEP_FRAC;
-    const bounded = Math.max(proposed, roundTo(before - cap));
+    const bounded = Math.min(
+      before,
+      Math.max(proposed, roundTo(before - cap), demonstratedMi),
+    );
     return {
       lever: LEVER,
       decision: 'REGRESS',
@@ -298,28 +442,13 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
       reason:
         `Weekly volume eases from ${miText(before)} to ${miText(bounded)}. `
         + `The last ${VOLUME_MIN_CONSECUTIVE_WEEKS} non-cutback weeks all came in below what was prescribed, `
-        + 'so the prescribed level is running ahead of what is being absorbed.',
+        + `and averaged ${miText(demonstratedMi)}, so the prescribed level is running ahead of what is `
+        + 'being absorbed.',
       whatWouldChangeIt: [
         'A completed week at the prescribed volume, which would hold the current level.',
       ],
     };
   }
-
-  /* ── HOLD paths, each naming exactly what is missing ───────────────────── */
-
-  const holdBecause = (reason: string, missing: string[], sentence: string) =>
-    nonMoving({
-      lever: LEVER,
-      decision: 'HOLD',
-      beforeValue: before,
-      included,
-      excluded: excludedList,
-      contradictory,
-      windowDays,
-      confidence: conf(sentence),
-      reason,
-      whatWouldChangeIt: missing,
-    });
 
   if (!allWeeksMet) {
     const missed = completions.filter((c) => c.frac < VOLUME_WEEK_COMPLETION_MIN_FRAC).length;
@@ -360,16 +489,33 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
     );
   }
 
-  if (input.stepsTakenThisCycle >= VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE) {
-    return holdBecause(
-      `Weekly volume stays at ${miText(before)}. It has already stepped up once in `
-      + 'this cycle, and the contract allows one increase per cutback cycle.',
-      ['The next cutback boundary, after which the lever is available again.'],
-      'The evidence supports more. The cycle does not.',
-    );
-  }
-
   /* ── The clause that makes this a coach and not a ratchet ──────────────── */
+
+  // Rule 11 · a week the plan has not authored yet is not a week prescribed at
+  // zero, and every sentence below is built from `miText(nextWeekPrescribedMi)`,
+  // which renders 0 as "no distance". On the real replay five decision points
+  // sat between one block ending on race day and the next being authored, so
+  // the plan genuinely prescribed nothing ahead. There is no week for a
+  // proposal to raise, and saying so is the honest output.
+  if (!(input.nextWeekPrescribedMi > 0)) {
+    return nonMoving({
+      lever: LEVER,
+      decision: 'REFUSE',
+      beforeValue: before,
+      included,
+      excluded: excludedList,
+      contradictory,
+      windowDays,
+      confidence: conf(
+        'No volume is prescribed for the week a proposal would affect.',
+        'The next block has not been authored, so there is no week to raise.',
+      ),
+      reason:
+        `Weekly volume stays at ${miText(before)}. The plan prescribes nothing for the week `
+        + 'a proposal would affect, so there is no week to move.',
+      whatWouldChangeIt: ['The next block being authored, which gives the proposal a week to reach.'],
+    });
+  }
 
   const planAlreadyProgresses =
     input.nextWeekPrescribedMi >= before * (1 + VOLUME_MAX_STEP_FRAC);

@@ -24,6 +24,9 @@
  * · A wrong upstream segmentation. Condition 7 is a flag this file trusts.
  * · The tolerance constants themselves. Cases sit clearly inside or outside
  *   the bands, so moving 3% to 4% would not fail anything here.
+ * · Whether the per-segment HR bar reused from Q12.2 is the RIGHT fraction for
+ *   the HR channel. The cases below sit clearly either side of it, so the file
+ *   proves the mechanism runs and cannot argue with the number it runs at.
  */
 import { describe, it, expect } from 'vitest';
 import { gradeStimulus, type StimulusInput, type StimulusGrade } from './stimulus';
@@ -39,6 +42,7 @@ const clean = (o?: Partial<StimulusInput>): StimulusInput => ({
   actualWorkPaceSecPerMi: measured(429),
   meanWorkHrBpm: measured(168),
   hrCeilingBpm: measured(172),
+  workSegmentHrBpm: [measured(166), measured(167), measured(169), measured(170)],
   hrReliable: true,
   majorLateCollapse: measured(false),
   prescribedRecoverySeconds: 240,
@@ -67,6 +71,32 @@ describe('FULL · the work was done as prescribed', () => {
 });
 
 describe('SUBSTANTIAL · conditions explain it, the stimulus survived', () => {
+  // Q12 · "averages can hide failed repetitions", and C4 was itself an average.
+  // The owner's 2026-09-01 threshold set is the real case: reps at 158, 161,
+  // 164 and 166 bpm against a 164 ceiling, mean 162.2, so the mean cleared and
+  // the breach on the last rep was invisible to the grade.
+  it('a rep over the ceiling under a clean mean costs FULL, not the evidence', () => {
+    const i = clean({
+      meanWorkHrBpm: measured(162),
+      hrCeilingBpm: measured(164),
+      workSegmentHrBpm: [measured(158), measured(161), measured(164), measured(166)],
+    });
+    expect(grade(i)).toBe('SUBSTANTIAL');
+    const c4 = gradeStimulus(i).conditions.find((c) => c.id === 'C4_HR_COMPATIBLE')!;
+    // MET, and the record says out loud what the average hid.
+    expect(c4.verdict).toBe('MET');
+    expect(c4.detail).toContain('1 of 4 work segments ran above the ceiling');
+  });
+
+  it('and the same set with every rep under the ceiling is FULL', () => {
+    // The falsifier for the case above: the ONLY difference is the last rep.
+    expect(grade(clean({
+      meanWorkHrBpm: measured(162),
+      hrCeilingBpm: measured(164),
+      workSegmentHrBpm: [measured(158), measured(161), measured(163), measured(164)],
+    }))).toBe('FULL');
+  });
+
   it('heat slowed the pace, HR and structure support the session', () => {
     const g = grade(clean({
       actualWorkPaceSecPerMi: measured(450),
@@ -113,6 +143,17 @@ describe('PARTIAL · a meaningful portion missed, stated without scolding', () =
 });
 
 describe('DIFFERENT · it became another workout, which is not failure', () => {
+  it('GUARD · a clean MEAN cannot carry a set that broke the ceiling on most reps', () => {
+    // Mean 163 against a ceiling of 164, so the old average-only C4 read MET.
+    // Half the repetitions ran over it, which is below Q12.2's ≥75% acceptable
+    // fraction, so C4 is NOT_MET and `paceCannotRescueExcessiveEffort` fires.
+    expect(grade(clean({
+      meanWorkHrBpm: measured(163),
+      hrCeilingBpm: measured(164),
+      workSegmentHrBpm: [measured(150), measured(152), measured(174), measured(176)],
+    }))).toBe('DIFFERENT');
+  });
+
   it('GUARD · pace in range must not validate clearly excessive effort', () => {
     // Q12's second failure sentence. The doctrine's Example B in HR terms.
     const g = grade(clean({ meanWorkHrBpm: measured(182), hrCeilingBpm: measured(172) }));

@@ -58,8 +58,10 @@ import {
   idempotencyKeyFor,
   NO_PLAN_DIFF,
   NON_MOVING_DECISIONS,
+  type CanonicalDecision,
   type CanonicalDecisionRecord,
   type InvariantResult,
+  type Magnitude,
   type PlanDiff,
   type PlanDiffEntry,
   type RollbackInfo,
@@ -213,6 +215,20 @@ function toRecord(
 
   const planDiff = moves && suppressedBy === null ? buildDiff(input, v) : NO_PLAN_DIFF;
 
+  // `suppressedBy` above is the RECORD's suppression, and it is strictly wider
+  // than arbitration's: the cadence rule and the idempotency key both suppress
+  // here, after `arbitrate` has returned. `checkInvariants` used to be handed
+  // `a` and read `a.suppressedBy`, so on a session-boundary proposal it saw an
+  // unsuppressed moving verdict beside an empty plan diff and reported
+  // INV_SUPPRESSION_IS_EXPLAINED as FAILED. Two of the owner's real records
+  // carried that failure, and it went unnoticed for the same reason the
+  // long-run bound breach did: nothing asserted the invariant list.
+  //
+  // Rule 16 · one fact, one name. The arbitrated verdict is passed through
+  // with the record's own suppression substituted, so the invariant reads the
+  // suppression that actually emptied the diff.
+  const arbitratedForInvariants: ArbitratedVerdict = { ...a, suppressedBy };
+
   return {
     contractVersion: CANONICAL_ADAPTATION_CONTRACT_VERSION,
     athleteId: input.athleteId,
@@ -240,7 +256,7 @@ function toRecord(
     magnitude: v.magnitude,
     affectedWorkoutIds: planDiff.entries.map((e) => e.workoutId),
     planDiff,
-    invariants: checkInvariants(input, a, planDiff),
+    invariants: checkInvariants(input, arbitratedForInvariants, planDiff),
 
     reason: v.reason,
     whatWouldChangeIt: v.whatWouldChangeIt,
@@ -358,7 +374,7 @@ function buildDiff(input: CanonicalAdaptationInput, v: LeverVerdict): PlanDiff {
     });
     return {
       entries,
-      reachEndsISO: input.plan.nextCutbackBoundaryISO,
+      reachEndsISO: nextBoundaryAfterTheChange(input, [input.plan.nextCutbackBoundaryISO]),
       reachRule: 'Weekly volume reaches only to the next cutback boundary, then re-evaluates.',
       touchesCompletedHistory: false,
     };
@@ -373,7 +389,7 @@ function buildDiff(input: CanonicalAdaptationInput, v: LeverVerdict): PlanDiff {
   });
   return {
     entries,
-    reachEndsISO: earliest([
+    reachEndsISO: nextBoundaryAfterTheChange(input, [
       input.plan.nextCutbackBoundaryISO,
       input.plan.nextRaceBoundaryISO,
       input.plan.taperStartISO,
@@ -382,6 +398,34 @@ function buildDiff(input: CanonicalAdaptationInput, v: LeverVerdict): PlanDiff {
       'The long run reaches only to the next cutback, tune-up race or taper boundary.',
     touchesCompletedHistory: false,
   };
+}
+
+/**
+ * Where a proposal's reach stops · "NEXT" MEANS NEXT RELATIVE TO THE CHANGE.
+ *
+ * The contract bounds a volume change at "the next cutback boundary" and a
+ * long-run change at "the next cutback, tune-up race or taper boundary". This
+ * used to be `earliest()` over the three raw fields, which reads them relative
+ * to TODAY, and a caller can legitimately hold a boundary that today is still
+ * ahead of the evaluation date but is already behind the week the proposal
+ * would affect.
+ *
+ * The owner's real 2026-08-03 decision is the case: the taper for his AFC half
+ * had begun on 2026-07-27, the affected week started 2026-08-10, and the
+ * long-run record shipped a diff entry dated eight days past its own declared
+ * reach. `INV_REACH_RESPECTS_BOUNDARY` computed that failure correctly and
+ * nothing read it, which is the same Rule 20 gap as the bound breach.
+ *
+ * A boundary the change has already passed does not bound the change. Null when
+ * none is left, which is the same "nothing bounds this" the threshold lever
+ * already carries, rather than a boundary in the past that bounds it to nothing.
+ */
+function nextBoundaryAfterTheChange(
+  input: CanonicalAdaptationInput,
+  candidates: ReadonlyArray<string | null>,
+): string | null {
+  const from = input.plan.nextWeekStartISO;
+  return earliest(candidates.filter((c) => c !== null && c >= from));
 }
 
 function buildRollback(v: LeverVerdict, diff: PlanDiff): RollbackInfo {
@@ -430,12 +474,44 @@ function checkInvariants(
       : 'No movement proposed.',
   });
 
+  // ── THE INVARIANT THE BOUND CHECK ABOVE CANNOT MAKE ────────────────────
+  //
+  // A magnitude can be inside its limit and still point the wrong way. The
+  // real replay produced a LONG_RUN record on 2026-07-27 reading `REGRESS`,
+  // `+1.5 long_run_mi`, and "The long run eases from 12 mi to 13.5 mi." — an
+  // increase, labelled a regression, over a sentence saying the opposite. The
+  // bound check DID see that one, because +1.5 also exceeded its limit of 1,
+  // and it recorded `passed: false` where nothing was reading. A move of +0.5
+  // would have been inside the bound and just as wrong.
+  //
+  // So direction is asserted on its own terms, per lever and per unit:
+  //
+  //   long_run_mi · weekly_mi  larger is more · PROGRESS raises, REGRESS lowers
+  //   sec_per_mi               SMALLER is faster, so the signs invert
+  //
+  // Rule 16 · the decision word, the sign of the number and the sentence
+  // printed over it are three statements about the same fact, and they must
+  // agree or the record is not a record.
+  const dir = directionOf(v);
+  out.push({
+    id: 'INV_DIRECTION_MATCHES_DECISION',
+    passed: dir.ok,
+    detail: dir.detail,
+  });
+
+  // Rule 21 · "a log that records that something happened but not what is not a
+  // log". The detail used to be the reach RULE and nothing else, so a failure
+  // said which rule was broken and not by what. It now names the entries.
+  const pastReach = diff.reachEndsISO === null
+    ? []
+    : diff.entries.filter((e) => e.dateISO > diff.reachEndsISO!);
   out.push({
     id: 'INV_REACH_RESPECTS_BOUNDARY',
-    passed:
-      diff.reachEndsISO === null
-      || diff.entries.every((e) => e.dateISO <= diff.reachEndsISO!),
-    detail: diff.reachRule,
+    passed: pastReach.length === 0,
+    detail: pastReach.length === 0
+      ? diff.reachRule
+      : `${diff.reachRule} Reach ends ${diff.reachEndsISO}, and `
+        + `${pastReach.map((e) => `${e.workoutId} is dated ${e.dateISO}`).join(', ')}.`,
   });
 
   out.push({
@@ -463,6 +539,66 @@ function checkInvariants(
   });
 
   return out;
+}
+
+/**
+ * Whether a verdict's decision word, its magnitude sign and its proposed value
+ * all describe the same movement. Exported so a gate can falsify it against
+ * hand-built verdicts rather than only against whatever the levers happen to
+ * emit (Rule 18).
+ *
+ * `sec_per_mi` is the one unit where the arithmetic sign and the coaching
+ * direction disagree: a FASTER threshold pace is a SMALLER number, so PROGRESS
+ * there is negative. Naming that here rather than at four call sites is the
+ * whole reason this is a function.
+ */
+export function directionOf(v: {
+  readonly decision: CanonicalDecision;
+  readonly magnitude: Magnitude | null;
+  readonly beforeValue: number;
+  readonly proposedAfterValue: number | null;
+}): { readonly ok: boolean; readonly detail: string } {
+  if (NON_MOVING_DECISIONS.has(v.decision)) {
+    return v.magnitude === null && v.proposedAfterValue === null
+      ? { ok: true, detail: 'A non-moving decision proposes no value and no magnitude.' }
+      : { ok: false, detail: `${v.decision} carries a proposal, which a non-moving decision may not.` };
+  }
+
+  if (v.magnitude === null || v.proposedAfterValue === null) {
+    return { ok: false, detail: `${v.decision} must carry both a magnitude and a proposed value.` };
+  }
+
+  // The magnitude must actually be the move it claims to describe.
+  const implied = v.proposedAfterValue - v.beforeValue;
+  if (Math.abs(implied - v.magnitude.value) > 0.051) {
+    return {
+      ok: false,
+      detail:
+        `The magnitude ${v.magnitude.value} does not describe the move from `
+        + `${v.beforeValue} to ${v.proposedAfterValue}.`,
+    };
+  }
+
+  // Faster is a smaller number of seconds per mile; further is a larger number
+  // of miles. `improves` is "the value moved the way PROGRESS means".
+  const improves = v.magnitude.unit === 'sec_per_mi'
+    ? v.magnitude.value < 0
+    : v.magnitude.value > 0;
+  const want = v.decision === 'PROGRESS';
+
+  return improves === want
+    ? {
+      ok: true,
+      detail:
+        `${v.decision} moves ${v.beforeValue} to ${v.proposedAfterValue} `
+        + `(${v.magnitude.value} ${v.magnitude.unit}), which is the direction it names.`,
+    }
+    : {
+      ok: false,
+      detail:
+        `${v.decision} proposes ${v.magnitude.value} ${v.magnitude.unit}, which moves `
+        + `${v.beforeValue} to ${v.proposedAfterValue} in the opposite direction.`,
+    };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

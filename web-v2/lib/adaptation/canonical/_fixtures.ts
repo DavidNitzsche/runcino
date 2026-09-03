@@ -86,19 +86,32 @@ export const prov = (
   ...opts,
 });
 
+/**
+ * A graded session.
+ *
+ * `thresholdEquivalentPaceSecPerMi` defaults to the work pace, which is the
+ * evidence layer's own rule for a NON-RACE session: for a threshold workout the
+ * two quantities are the same number. A RACE fixture should set it explicitly,
+ * because a finish pace over 6.2 or 13.1 miles is not a threshold measurement
+ * and the default would be the very defect the field exists to make impossible.
+ */
 export const session = (
   id: string,
   dateISO: string,
   opts?: Partial<GradedSession> & { provOpts?: Partial<Provenance> },
-): GradedSession => ({
-  provenance: prov(id, dateISO, opts?.provOpts),
-  tests: 'THRESHOLD',
-  grade: 'FULL' as StimulusGrade,
-  workPaceSecPerMi: measured(THRESHOLD_ANCHOR_SEC),
-  thirds: cleanThirds(),
-  raceDistance: null,
-  ...opts,
-});
+): GradedSession => {
+  const workPaceSecPerMi = opts?.workPaceSecPerMi ?? measured(THRESHOLD_ANCHOR_SEC);
+  return {
+    provenance: prov(id, dateISO, opts?.provOpts),
+    tests: 'THRESHOLD',
+    grade: 'FULL' as StimulusGrade,
+    workPaceSecPerMi,
+    thresholdEquivalentPaceSecPerMi: workPaceSecPerMi,
+    thirds: cleanThirds(),
+    raceDistance: null,
+    ...opts,
+  };
+};
 
 export const week = (
   weekStartISO: string,
@@ -110,6 +123,7 @@ export const week = (
   prescribedMi,
   completedMi: measured(completedMi),
   isCutback: false,
+  authoredPlanMode: 'BUILD',
   dataComplete: true,
   ...opts,
 });

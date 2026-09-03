@@ -39,6 +39,12 @@
  * the criterion the contract names, so a 20-mile shuffle at two minutes per
  * mile slower than prescribed passes the completion bar. `followingKeySessionOk`
  * is the only signal that would catch it and it arrives from outside.
+ *
+ * It cannot fail on a long run matched to the wrong prescription. The pairing
+ * of a completed run to the week that asked for it happens upstream, and on the
+ * real replay two long runs slipped their prescribed date by up to six days and
+ * were matched by week. A run graded against a neighbouring week's number would
+ * be graded confidently and wrongly, and nothing in this file could tell.
  */
 import {
   LONG_RUN_LOOKBACK_COUNT,
@@ -117,6 +123,32 @@ export function evaluateLongRun(input: LongRunInput): LeverVerdict {
       sentence,
       limitation,
     });
+
+  /* ── Rule 11 · a week with no long run is not a long run of zero ────────── */
+
+  // `before` is the plan's `nextWeekLongRunMi`, and it is 0 in any week the
+  // plan schedules no long run at all. Every sentence below is built from
+  // `miText(before)`, and `miText(0)` renders "no distance", so the runner read
+  // "The long run stays at no distance." three different ways on the real
+  // replay. That is not a formatting slip: a lever proposing a change to a
+  // quantity that does not exist in the affected week has nothing to move, and
+  // the honest output is a refusal that says so (Rule 11 · absent is not zero).
+  if (!(before > 0)) {
+    return nonMoving({
+      lever: LEVER,
+      decision: 'REFUSE',
+      beforeValue: before,
+      windowDays,
+      confidence: conf(
+        'The affected week schedules no long run.',
+        'There is no prescribed long run for a proposal to move.',
+      ),
+      reason:
+        'The long run is not evaluated this week. The plan schedules no long run in '
+        + 'the week a proposal would affect, so there is nothing to move.',
+      whatWouldChangeIt: ['The next week whose plan contains a long run.'],
+    });
+  }
 
   /* ── The two most recent relevant long runs ────────────────────────────── */
 
@@ -213,6 +245,44 @@ export function evaluateLongRun(input: LongRunInput): LeverVerdict {
     }
   });
 
+  /* ── HOLD and REFUSE helpers ───────────────────────────────────────────── */
+
+  const hold = (reason: string, missing: string[], sentence: string) =>
+    nonMoving({
+      lever: LEVER,
+      decision: 'HOLD',
+      beforeValue: before,
+      included,
+      excluded: excludedList,
+      contradictory,
+      windowDays,
+      confidence: conf(sentence),
+      reason,
+      whatWouldChangeIt: missing,
+    });
+
+  /* ── The cadence bound · ABOVE both branches ───────────────────────────── */
+
+  // Q22 gives this lever "one increase per cutback cycle", and this check used
+  // to sit below the REGRESS branch's early return, so the bound governed only
+  // the upward path. Replayed against the owner's real history that produced 5
+  // long-run REGRESS records and 0 PROGRESS, with the same short long runs
+  // re-spent at successive boundaries.
+  //
+  // Rule 21 asks for the bar up to be placed beside the bar down and any
+  // asymmetry justified. There is no citation for one: Q22 defines an increase
+  // bound and defines no REGRESS at all, because the REGRESS is this engine's
+  // own construction under its own stated rule, "the same bar, the other way".
+  // The cadence bound travels with it, so both directions are now one line.
+  if (input.stepsTakenThisCycle >= LONG_RUN_MAX_STEPS_PER_CUTBACK_CYCLE) {
+    return hold(
+      `The long run stays at ${miText(before)}. It has already moved once in this `
+      + 'cycle, and the contract allows one step per cutback cycle.',
+      ['The next cutback boundary, after which the lever is available again.'],
+      'The evidence supports a change. The cycle does not.',
+    );
+  }
+
   /* ── REGRESS · the same bar, the other way ─────────────────────────────── */
 
   const bothMissed = completions.every((c) => c.frac < LONG_RUN_COMPLETION_MIN_FRAC);
@@ -220,9 +290,68 @@ export function evaluateLongRun(input: LongRunInput): LeverVerdict {
     const meanCompleted = completions.reduce(
       (a, c) => a + (c.l.completedMi.ok ? c.l.completedMi.value : 0), 0,
     ) / completions.length;
-    const proposed = Math.max(
-      roundTo(meanCompleted),
-      roundTo(before - LONG_RUN_MAX_STEP_MI),
+
+    // ── THE CLAMP THAT WAS MISSING, AND THE DEFECT IT PRODUCED ────────────
+    //
+    // `Math.max` bounds the proposal from BELOW, so a regression can never
+    // fall more than a mile. It said nothing about the top, and the real
+    // replay walked straight through the gap on 2026-07-27:
+    //
+    //     decision   REGRESS
+    //     magnitude  +1.5 long_run_mi   (limit 1, LONG_RUN_MAX_STEP_MI)
+    //     reason     "The long run eases from 12 mi to 13.5 mi."
+    //
+    // Three defects in one record: an upward move labelled REGRESS, a
+    // magnitude half a mile past the cap the record itself names, and a coach
+    // sentence contradicting its own number (Rule 16).
+    //
+    // The arithmetic that produced it is worth naming, because clamping alone
+    // would have hidden it rather than answered it. `bothMissed` is measured
+    // against each long run's OWN PRESCRIPTION, and the value it moves is
+    // `nextLongRunMi`. Those are two different quantities, and on that date
+    // they pointed opposite ways: he ran 18.0 mi and 9.09 mi against
+    // prescriptions of 17 and 19, so both "missed", while the mean he actually
+    // completed (13.5 mi) sat well ABOVE the 12 mi the next week prescribes.
+    //
+    // A runner whose demonstrated long runs already meet or exceed the
+    // distance a proposal would affect has not shown that distance is too much
+    // for him. He has shown that a LARGER prescription was. So the level is
+    // held, and the sentence says which of the two facts it is reading. Rule 11
+    // applies in its usual form: missing a bigger prescription and being unable
+    // to cover this one are opposite facts, and the old code spent them as one.
+    if (roundTo(meanCompleted) >= before) {
+      return nonMoving({
+        lever: LEVER,
+        decision: 'HOLD',
+        beforeValue: before,
+        included,
+        excluded: excludedList,
+        contradictory,
+        windowDays,
+        confidence: conf(
+          `Both recent long runs came in short of their prescribed distance, and both `
+          + `still averaged ${miText(roundTo(meanCompleted))}.`,
+          'The prescriptions that were missed were longer than the distance this week asks for.',
+        ),
+        reason:
+          `The long run stays at ${miText(before)}. Both recent long runs came in short of `
+          + `what was prescribed, but they averaged ${miText(roundTo(meanCompleted))}, which is `
+          + `already at or beyond ${miText(before)}. What was missed was a longer prescription, `
+          + 'not this distance.',
+        whatWouldChangeIt: [
+          `A long run completed at ${LONG_RUN_COMPLETION_MIN_FRAC * 100}% or better, which would `
+          + 'let the distance move rather than hold.',
+          `A long run that comes in below ${miText(before)}, which would ease the level.`,
+        ],
+      });
+    }
+
+    const proposed = Math.min(
+      before,
+      Math.max(
+        roundTo(meanCompleted),
+        roundTo(before - LONG_RUN_MAX_STEP_MI),
+      ),
     );
     return {
       lever: LEVER,
@@ -252,20 +381,6 @@ export function evaluateLongRun(input: LongRunInput): LeverVerdict {
   }
 
   /* ── HOLD and REFUSE paths ─────────────────────────────────────────────── */
-
-  const hold = (reason: string, missing: string[], sentence: string) =>
-    nonMoving({
-      lever: LEVER,
-      decision: 'HOLD',
-      beforeValue: before,
-      included,
-      excluded: excludedList,
-      contradictory,
-      windowDays,
-      confidence: conf(sentence),
-      reason,
-      whatWouldChangeIt: missing,
-    });
 
   if (!bothCompleted) {
     return hold(
@@ -353,15 +468,6 @@ export function evaluateLongRun(input: LongRunInput): LeverVerdict {
       + 'in the build, which is not enough for a longer long run to be absorbed and pay off.',
       ['Nothing in this block. The evidence is recorded for the next one.'],
       'The evidence supports more. There is not enough runway left to spend it.',
-    );
-  }
-
-  if (input.stepsTakenThisCycle >= LONG_RUN_MAX_STEPS_PER_CUTBACK_CYCLE) {
-    return hold(
-      `The long run stays at ${miText(before)}. It has already increased once in this `
-      + 'cycle, and the contract allows one increase per cutback cycle.',
-      ['The next cutback boundary, after which the lever is available again.'],
-      'The evidence supports more. The cycle does not.',
     );
   }
 

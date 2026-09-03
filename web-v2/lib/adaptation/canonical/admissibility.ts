@@ -252,6 +252,25 @@ export function qualifiesAsThresholdEvidence(s: GradedSession): AdmissibilityVer
     };
   }
 
+  // Q20's distance ruling has a second half the first version of this gate did
+  // not enforce. Admitting a 10K or a half is not the same as knowing what it
+  // says about THRESHOLD: a race is run over 6.2 or 13.1 miles at a different
+  // fraction of threshold, so its finish pace needs an equivalence step before
+  // it can be compared to an anchor. That step belongs to the pace owner and
+  // arrives on `thresholdEquivalentPaceSecPerMi`. When it could not be made —
+  // a finish outside the tabulated range, say — the honest answer is that this
+  // session cannot price threshold, not that its finish pace will do (Rule 11).
+  if (!s.thresholdEquivalentPaceSecPerMi.ok) {
+    return {
+      admissible: false,
+      reason: 'DATA_UNREADABLE',
+      detail:
+        'What this session says about threshold pace could not be established. '
+        + 'A race finish pace is not a threshold measurement without an equivalence step.',
+      stillAdmissibleFor: ALWAYS_GOOD_FOR,
+    };
+  }
+
   return ADMIT;
 }
 

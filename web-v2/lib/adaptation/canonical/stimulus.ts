@@ -121,6 +121,22 @@ export interface StimulusInput {
   /** C4 · mean work HR against the canonical ceiling for this session. */
   readonly meanWorkHrBpm: Measured<number>;
   readonly hrCeilingBpm: Measured<number>;
+  /**
+   * C4 · mean HR of EACH work segment, in prescribed order.
+   *
+   * Q12's own reason for having seven conditions rather than a pace-OR-HR rule
+   * is that "averages can hide failed repetitions", and C4 was itself an
+   * average. The real replay found the case: the owner's 2026-09-01 threshold
+   * set ran 158, 161, 164 and 166 bpm against a 164 ceiling. The
+   * duration-weighted mean is 162.2, so C4 read MET and the breach on the last
+   * rep was invisible to the grade — and FULL is the grade that unlocks the
+   * larger 5 s/mi anchor step.
+   *
+   * Rule 11 · an empty array is "no segment HR was recorded", which is not the
+   * same as "no segment breached". C4 falls back to the mean alone in that
+   * case and says so in its detail line rather than claiming a clean set.
+   */
+  readonly workSegmentHrBpm: readonly Measured<number>[];
   /** Whether the HR trace is trustworthy at all. Q12's HR discount reasons. */
   readonly hrReliable: boolean;
 
@@ -247,17 +263,46 @@ export function gradeStimulus(input: StimulusInput): StimulusAssessment {
   const hrReadable = input.hrReliable && input.meanWorkHrBpm.ok && input.hrCeilingBpm.ok;
   let hrCredible = false;
   let hrAboveCeiling = false;
+  /** Set when the mean cleared the ceiling but an individual repetition did not. */
+  let hrSegmentBreach = false;
   if (!input.hrReliable) {
     add('C4_HR_COMPATIBLE', 'DISCOUNTED', 'Heart rate not reliable for this session.');
   } else if (!hrReadable) {
     add('C4_HR_COMPATIBLE', 'UNREADABLE', 'Heart rate or its ceiling could not be read.');
   } else {
     hrCredible = true;
-    hrAboveCeiling = input.meanWorkHrBpm.value > input.hrCeilingBpm.value;
+    const ceiling = input.hrCeilingBpm.value;
+
+    // The per-repetition half of C4. The bar is Q12.2's own ≥75%
+    // individually-acceptable fraction, which is the only per-segment tolerance
+    // the doctrine states; it is applied to the channel Q12's preamble says the
+    // average was hiding. That reuse is deliberate and it is the arguable part
+    // of this condition, so it is written down rather than resolved silently:
+    // Q12.4 asks for HR "compatible with threshold work and not materially
+    // contradicting the pace result" and does not put a number on it.
+    const readableSegments = input.workSegmentHrBpm.filter((m) => m.ok);
+    const overCeiling = readableSegments.filter(
+      (m) => m.ok && m.value > ceiling,
+    ).length;
+    const compliantFrac = readableSegments.length === 0
+      ? null
+      : (readableSegments.length - overCeiling) / readableSegments.length;
+
+    const meanOverCeiling = input.meanWorkHrBpm.value > ceiling;
+    const tooManySegmentsOver =
+      compliantFrac !== null && compliantFrac < STIMULUS_MIN_ACCEPTABLE_SEGMENT_FRAC;
+
+    hrAboveCeiling = meanOverCeiling || tooManySegmentsOver;
+    hrSegmentBreach = !hrAboveCeiling && overCeiling > 0;
+
+    const segmentDetail = readableSegments.length === 0
+      ? ' No per-segment heart rate was recorded, so only the average could be read.'
+      : ` ${overCeiling} of ${readableSegments.length} work segments ran above the ceiling.`;
+
     add(
       'C4_HR_COMPATIBLE',
       hrAboveCeiling ? 'NOT_MET' : 'MET',
-      `Mean work HR ${input.meanWorkHrBpm.value} against ceiling ${input.hrCeilingBpm.value}.`,
+      `Mean work HR ${input.meanWorkHrBpm.value} against ceiling ${ceiling}.${segmentDetail}`,
     );
   }
 
@@ -369,8 +414,23 @@ export function gradeStimulus(input: StimulusInput): StimulusAssessment {
   // evidence, so the ordinary 3 s/mi step remains fully available. What the
   // missing channel costs is the larger step, which is exactly the thing that
   // should cost more.
+  //
+  // The per-repetition clause, and why it costs the LARGER STEP rather than the
+  // grade's status as evidence. A set whose mean sat under the ceiling but
+  // whose individual repetitions did not is Q38's SUBSTANTIAL exactly: "the
+  // workout still did its job, with an adjustment or small execution
+  // difference". It still counts as evidence, so the ordinary 3 s/mi step
+  // remains fully available and the runner loses nothing he earned. What it
+  // does not do is unlock `THRESHOLD_STRONG_EVIDENCE_MIN_SESSIONS`, because the
+  // contract's rule for the larger step is "larger movement requires stronger
+  // and more numerous evidence", and a set that ran over its prescribed ceiling
+  // on the way home is not stronger evidence that the pace should move.
+  //
+  // This is the same principle already applied one paragraph above to a missing
+  // channel, and `ADAPTATION_PROGRESSION_DOCTRINE`'s own sentence for it: a
+  // fast-but-uncontrolled session is not evidence pace should move.
   if (paceCredible && paceWithinTolerance && hrCredible && !hrAboveCeiling && noLateCollapse) {
-    return finish('FULL', discountedChannel);
+    return finish(hrSegmentBreach ? 'SUBSTANTIAL' : 'FULL', discountedChannel);
   }
 
   /* ── SUBSTANTIAL · conditions explain it, the stimulus survived ────────── */
