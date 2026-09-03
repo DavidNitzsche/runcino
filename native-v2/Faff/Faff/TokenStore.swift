@@ -48,6 +48,42 @@ final class TokenStore: ObservableObject {
     @Published var expiresAt: String?
     @Published var userUuid: String?
 
+    #if DEBUG
+    /// VW-3 · the QA-token seed path (`FaffApp.seedQATokenIfAsked`) sets the
+    /// token via the ordinary Keychain-backed `set(...)` below, and on a
+    /// locally-built, ad-hoc/unsigned simulator binary the write can fail
+    /// silently: `keychainWrite`'s `SecItemAdd` status is never checked, so a
+    /// keychain-access-group entitlement mismatch drops the item with no
+    /// error. `token` (this `@Published` field) still reads "signed in" —
+    /// it was set in memory in the same call — but `readToken()`,
+    /// `readTokenStatus()` and `authorize(_:)` all re-read Keychain fresh, so
+    /// every outbound request goes with no Authorization header.
+    ///
+    /// Reproduced directly, 2026-09-03: a real, unexpired, unrevoked
+    /// walk-substrate session token, confirmed matching in the database,
+    /// still 401'd on every single request (`/api/races`, `/api/profile`,
+    /// `/api/strava/status`, `/api/today/purpose`, `/api/coach/intents`,
+    /// `/api/forecast/...`) after a `-faffToken` launch on this machine —
+    /// the server was never the problem.
+    ///
+    /// Rather than chase the exact SecItem failure mode on this machine, the
+    /// QA path stops depending on the Keychain round-trip at all: an
+    /// in-memory override, checked first by every read below, ahead of
+    /// whatever Keychain does or does not hold. `#if DEBUG` keeps it out of
+    /// every non-DEBUG build, same as the seed path itself.
+    nonisolated(unsafe) private static var debugOverrideToken: String?
+
+    /// Seed a QA session without depending on the Keychain write landing.
+    /// Still calls `set(...)` so the ordinary in-memory `@Published` surface
+    /// and a best-effort Keychain write both happen exactly as before —
+    /// this only adds a read path that cannot be defeated by that write
+    /// silently failing.
+    func seedDebugToken(_ token: String) {
+        TokenStore.debugOverrideToken = token
+        set(token: token, expiresAt: nil, userUuid: nil)
+    }
+    #endif
+
     private init() {
         TokenStore.migrateFromUserDefaultsIfNeeded()
         self.token = TokenStore.keychainRead(K.token)

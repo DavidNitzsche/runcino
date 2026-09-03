@@ -116,28 +116,42 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     /// already in hand: the 200ms would be 200ms of the day the runner just
     /// left, on a tap that had nothing left to wait for.
     func present(_ known: Model, refreshWith newFetch: @escaping () async throws -> API.V5Fetch<Model>) async {
-        // NOT A HARD CUT ANY MORE. David, third round: "the motion is there
-        // but then everything just sort of flashes... we need things to move
-        // and to be slick."
-        //
-        // This used to force `disablesAnimations = true` on the assignment
-        // below, reasoning that the screen's own 200ms crossfade
-        // (`.animation(V5.Motion.fill, value: surface.model?.dateISO)` in
-        // `HostsV5`) was "200ms of the day you just left, on a tap that had
-        // nothing left to wait for." That reasoning mistook the fade for a
-        // delay. It is not a delay — it is motion, cheap and instant to
-        // START, and motion is exactly what was missing: the strip's own
-        // drag genuinely slides, and then the panel underneath it snapped
-        // with no transition at all, which reads as a flash sitting in the
-        // middle of a slide.
-        //
-        // Plain assignment, no transaction override, lets the ambient
-        // `.animation(value:)` already on the screen pick it up — the SAME
-        // 200ms fade a network-driven `rebind` was already using, so a
-        // cached day and a freshly fetched one move exactly the same way.
+        presentSync(known)
+        await refreshBehind(newFetch)
+    }
+
+    /// STATEGATE-1 (2026-09-03) · the synchronous half of `present`, split out
+    /// so a caller can paint a cache hit on THIS tick — no `await`, no Task
+    /// scheduling gap — rather than the async gap `Task { await
+    /// surface.present(...) }` leaves between "navigation requested" and
+    /// "model actually updated." That gap used to be invisible (the OLD
+    /// model just stayed on screen through it), which is exactly the defect:
+    /// a caller gating render on "does `model` match the selected date" would
+    /// see a false mismatch for one frame on every cache-hit navigation,
+    /// the FAST, COMMON case. Calling this directly, synchronously, before
+    /// any Task exists, closes that gap to zero.
+    ///
+    /// NOT A HARD CUT ANY MORE. David, third round: "the motion is there but
+    /// then everything just sort of flashes... we need things to move and to
+    /// be slick." This used to force `disablesAnimations = true`, reasoning
+    /// that the screen's own 200ms crossfade was "200ms of the day you just
+    /// left, on a tap that had nothing left to wait for." That reasoning
+    /// mistook the fade for a delay. Plain assignment lets the ambient
+    /// `.animation(value:)` already on the screen pick it up — the SAME
+    /// 200ms fade a network-driven `rebind` already uses, so a cached day and
+    /// a freshly fetched one move exactly the same way.
+    func presentSync(_ known: Model) {
         model = known
         stale = false
         absentReason = nil
+    }
+
+    /// The async half of `present` — refetch behind whatever is already on
+    /// screen (a `presentSync`'d cache hit, most callers; a still-current
+    /// `model`, if a caller wants only the refresh). Never touches `model`
+    /// itself except through `load()`'s own success path, so a refresh that
+    /// fails leaves the visible content exactly where `presentSync` put it.
+    func refreshBehind(_ newFetch: @escaping () async throws -> API.V5Fetch<Model>) async {
         fetch = newFetch
         await load()
     }

@@ -543,10 +543,6 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                 }
             }
 
-            // VW-1 · above the content, below the sheets. One scrim for all
-            // seven AppBar screens rather than seven copies of it.
-            StatusBarScrimV5()
-
             V5SheetHost(isPresented: $runPickerOpen, title: "Start the run") {
                 RunPickerV5(
                     onOutdoor: { runPickerOpen = false; liveRun = .outdoor },

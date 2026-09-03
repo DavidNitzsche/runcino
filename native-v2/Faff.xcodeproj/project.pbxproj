@@ -54,6 +54,7 @@
 		2D92791A3F6EEE6824DBACB3 /* StravaConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309A3C38F033A266C6A92A5D /* StravaConnection.swift */; };
 		2FFA12FF938E115A5971545D /* WatchWorkoutModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */; };
 		303AD12FAA2419ECDCF2D562 /* V5ContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */; };
+		5694D643011F423394792BCB /* TodayNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79DEB973DA55261D5FF1AD0 /* TodayNavigationTests.swift */; };
 		30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2B62D9179AAC7D41426156 /* FaffApp.swift */; };
 		32456A20A94F80906BFDA1DE /* _SessionTimelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC881ECD5A5FD781AFD226A /* _SessionTimelineTests.swift */; };
 		335EB81D74D63A27EC090AF5 /* BeltTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 176915BD59E5A612696563E5 /* BeltTracker.swift */; };
@@ -476,6 +477,7 @@
 		ADEF9EEB865458FD9FBA9054 /* FaffPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffPayloads.swift; sourceTree = "<group>"; };
 		ADFCB78F95CAC1B19C758D37 /* Heatmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Heatmap.swift; sourceTree = "<group>"; };
 		AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5ContractTests.swift; sourceTree = "<group>"; };
+		C79DEB973DA55261D5FF1AD0 /* TodayNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayNavigationTests.swift; sourceTree = "<group>"; };
 		B2AB92DBD2E38DE9C55813DC /* PacesMovedV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacesMovedV5.swift; sourceTree = "<group>"; };
 		B2D9D5E8A322A900CD7832D7 /* ForegroundWork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForegroundWork.swift; sourceTree = "<group>"; };
 		B4EABD5D3321534861E82F02 /* HRAlerter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRAlerter.swift; sourceTree = "<group>"; };
@@ -599,6 +601,7 @@
 				15FB44D69A865618A457AB74 /* SignInFlowTests.swift */,
 				18AB8CD445EBE4A2FEB8649C /* TrendBarsHonestyTests.swift */,
 				AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */,
+				C79DEB973DA55261D5FF1AD0 /* TodayNavigationTests.swift */,
 				F3A738F6B07437E922761372 /* V5ContrastTests.swift */,
 				F61803F39A7F14262E27C4D4 /* V5GaugeGeometryTests.swift */,
 				82E415054AF8F3E0C1B04391 /* V5PlanSheetCopyTests.swift */,
@@ -1224,6 +1227,7 @@
 				2451806AE6B1A339E0700729 /* SweepPositiveControlTests.swift in Sources */,
 				A5BCB6A9D833E416B3B654E1 /* TrendBarsHonestyTests.swift in Sources */,
 				303AD12FAA2419ECDCF2D562 /* V5ContractTests.swift in Sources */,
+				5694D643011F423394792BCB /* TodayNavigationTests.swift in Sources */,
 				F70FE052B115F95BFC68C5BD /* V5ContrastTests.swift in Sources */,
 				06D85202CC7B5FEA024A919D /* V5GaugeGeometryTests.swift in Sources */,
 				F9EAEA6A32A4C57CDB1EAE91 /* V5PlanSheetCopyTests.swift in Sources */,
