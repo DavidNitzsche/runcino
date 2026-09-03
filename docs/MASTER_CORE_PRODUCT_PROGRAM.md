@@ -137,6 +137,20 @@ that doctrine and is a hard dependency of P0-6.
 
 ---
 
+## LANDED  ·  2026-09-03
+
+All verified CLEAN through the full 20-gate shipping chain before merge.
+
+| Work | Status | Headline |
+|---|---|---|
+| **S1.3 Dodgers evidence** | **Deployed** | Volume and ordering are now separately branded unions that share no member, so the false substitution cannot type-check. Volume with races excluded is **27.85 mi** (was 29.42, which was a 2.61 shakeout + the Big Sur **marathon**). Ordering computed, not asserted: 11 pairs open with a hard effort and **the furthest he has ever run the morning after one is 9.01 mi** — NOVEL. Volume gates the grant; **ordering is narrated, never gated**, because gating on novelty would overturn his ruling by the back door |
+| **S1.6 Runner language** | **Deployed** | `conversational` **13,184 → 0** · `Z2 HR cap` **4,334 → 0** · terrain sentence **11 → 1** per block. *"Easy enough to talk in full sentences. If the heart rate drifts up, slow down even when the pace still looks right."* The **number** stays on the HR row and out of prose (Rule 10 — a stamped ceiling goes stale; his moved 162→168 mid-block) |
+| **PR post-run** | **Deployed** (needs app release to be visible) | **His 2026-09-02 run could not be opened at all** — a `#` in the run id became a URL fragment, so the phone requested a run that does not exist and drew *"That run is not in your log any more"* over the exact run he complained about. Every watch-completed run has that id shape. Also: coach card was ninth, the recording-honesty sentence was **last** beneath everything it qualifies, all six strides were shown a pace target they were never given, and `coverage` shipped on every response decoded by nobody |
+| **P1-5 Write barrier** | **Deployed** | Two halves, because the incident had two. **`vitest.setup.ts` loads the production READ-WRITE url into every test process, and 78 test files reach the pool** — every one was a single `pool.query('UPDATE …')` from repeating the incident. 16 scripts fenced, including one that defaulted its base URL to `https://www.faff.run` and minted a real session, and two that ran `UPDATE training_plans SET archived_iso` on his account **while auditing it**. Falsification is decisive: with the barrier removed the INSERT **reached the real production host** and bounced only off wrong credentials |
+| **S1.5 Load audit** | **Merged** | Both reviewer numbers TRUE, both inferences FALSE. Found the real defect: demonstrated peak measured **rolling-7**, ceiling enforced on the **calendar week** — the block's true rolling-7 peak is 62.0 against its own 60.1 ceiling |
+
+---
+
 ## P0 · The critical path
 
 Nothing may displace this.
