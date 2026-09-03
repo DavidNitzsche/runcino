@@ -115,6 +115,16 @@ enum API {
     /// what to do with the body / status.
     static func authedSend(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var req = request
+        // TIMEOUT-1 (2026-09-04) · "a request that connects but never
+        // responds must leave loading and enter a retryable failure state."
+        // `URLSession.shared`'s own default (`timeoutIntervalForRequest`,
+        // 60s) is not a per-request setting a caller can see or reason
+        // about, and 60s is long enough that a runner watching the Today
+        // pending card would read it as hung, not "still trying." Every
+        // authenticated request funnels through here — one bound covers
+        // Today, the week strip, and everything else — and a caller that
+        // has already set its own (a longer upload, say) is left alone.
+        if req.timeoutInterval == 60 { req.timeoutInterval = 12 }
         API.stampClientEnvironment(&req)
         // Snapshot the token before the request (nonisolated keychain read — no
         // main-actor hop). Used below to guard against three spurious/missed-
@@ -1582,6 +1592,13 @@ struct TodayWorkoutWrapper: Decodable {
 // highlight it without re-computing.
 struct PlanWeek: Decodable {
     let plan_id: String?
+    /// PLANVERSION-1 · `${training_plans.id}:${last_adapted_at}` — same
+    /// field, same doc comment, as `V5Today.planVersion`. Lets a week
+    /// summary cached client-side (see `TodayHostV5.weekCache`) be
+    /// invalidated the same way a full day is: a re-anchor that moves this
+    /// runner's paces overnight must not leave a STALE provisional dose
+    /// showing under a fresh date.
+    let plan_version: String?
     let week_start_iso: String?
     let week_end_iso: String?
     let today_iso: String
@@ -1593,11 +1610,12 @@ struct PlanWeek: Decodable {
     // briefly null, days array missing. Strict decode would nuke the
     // whole Today week strip; defensive defaults keep it rendering.
     enum CodingKeys: String, CodingKey {
-        case plan_id, week_start_iso, week_end_iso, today_iso, days, message
+        case plan_id, plan_version, week_start_iso, week_end_iso, today_iso, days, message
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.plan_id = try c.decodeIfPresent(String.self, forKey: .plan_id)
+        self.plan_version = try c.decodeIfPresent(String.self, forKey: .plan_version)
         self.week_start_iso = try c.decodeIfPresent(String.self, forKey: .week_start_iso)
         self.week_end_iso = try c.decodeIfPresent(String.self, forKey: .week_end_iso)
         self.today_iso = try c.decodeIfPresent(String.self, forKey: .today_iso) ?? ""
