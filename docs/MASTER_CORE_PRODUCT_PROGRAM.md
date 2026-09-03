@@ -57,6 +57,69 @@ narrative as history, not as current status.
 
 ---
 
+## EXECUTION AUTHORIZATION  ·  2026-09-03
+
+Full autonomous authority granted, superseding the earlier no-write hold, within
+these bounds.
+
+**Authorized:** merge verified work · push · deploy verified server changes ·
+**one canonical rebuild of the live plan** when every preflight passes · verify
+the persisted result · roll back on any invariant failure · build the canonical
+Adaptation Engine · historical replay · live shadow · owner-visible proposals ·
+**build, validate and DISTRIBUTE a TestFlight release** to the existing internal
+tester account · fix in-scope reversible defects found along the way.
+
+**Not authorized:** modifying completed activities or sealed prescriptions ·
+repairing the truncated 09-02 run without separate evidence-backed approval ·
+simulator or test workouts on his account · fabricated evidence · changing stated
+race goals · **applying adaptation proposals on his behalf** · another user's
+data · unrelated bulk migrations · destructive cleanup without snapshot and
+explicit authorization · public App Store release or external testers.
+
+### Sequencing, ruled
+
+```
+Verified baseline rebuild
+  → persisted-plan verification
+    → ranked rescheduling analysis
+      → runner decision
+```
+
+Sunday 2026-09-06 is **not** moved automatically. Options are computed against
+the **rebuilt** plan and left for him. If the rebuild changes that Sunday, show
+the previous workout, the rebuilt workout, every proposed scheduling change, what
+would move, and each option's training value and tradeoff. **His absence is never
+read as missed training, reduced readiness, or adaptation evidence.**
+
+### Preflight failure, ruled
+
+No write · diagnose the exact cause · fix only when understood, in scope,
+reversible and testable · **strengthen regression protection** · **re-run the
+complete preflight from the beginning** · confirm the corrected revision is on
+`origin/main`, CI green, and that exact revision deployed. *"Do not repeatedly
+patch and write against partially verified states."*
+
+Stop and wait if: the failure exposes an unresolved coaching decision · the cause
+cannot be explained · the fix would alter completed history or another user's
+data · it needs a destructive or unauthorized production action · **rollback
+cannot be proved** · or correcting the gate would weaken protection without clear
+evidence.
+
+### Release states — a merged change is NOT a released one
+
+Track every app-side item as exactly one of: **build-ready · uploaded ·
+processed · distributed · installed · device-verified.**
+
+**Watch compatibility is a hard gate.** He may run while away. State whether the
+watch component changed and whether his installed watch build stays compatible
+with production. **Never make an already-scheduled workout unusable without a
+verified compatible path.** If the watch build is not sufficiently verified for
+live recording, **distribute the phone build and preserve compatibility with the
+installed watch build**, and name any feature he should avoid until both devices
+update. **Do not force-install.**
+
+---
+
 ## THE CENTRAL PRODUCT REQUIREMENT
 
 `docs/PROGRESSIVE_BASELINE_DOCTRINE.md`, locked 2026-09-03.
