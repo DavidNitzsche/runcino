@@ -59,7 +59,8 @@ import { resolveSafety } from '@/lib/safety/load-safety';
 import type { SafetyResolution } from '@/lib/safety/safety-verdict';
 import { adjustPhasesForHeat, heatNote, recordHeatEasing } from '@/lib/watch/heat';
 import { runFacts } from '@/lib/runs/run-facts';
-import { runAvgHr, runDaySql, runNotMergedSql, runDistanceMiSql, runPlannedWorkoutTypeSql } from '@/lib/runs/run-shape';
+import { runAvgHr } from '@/lib/runs/run-shape';
+import { resolveDayExecutions } from '@/lib/execution/day-resolver';
 import { terrainAdjustedTargetSPerMi, treadmillEffectiveGradePct } from '@/lib/terrain/grade-adjust';
 import { fmtMi, fmtMi2 } from '@/lib/format/run';
 
@@ -1311,24 +1312,23 @@ async function loadSessionMoved(
 async function loadCompletedRun(
   userId: string,
   today: string,
-  wo: { distance_mi: number | string | null; pace_target_s_per_mi: number | null; workout_spec: any },
+  wo: { id?: string | null; distance_mi: number | string | null; pace_target_s_per_mi: number | null; workout_spec: any },
 ): Promise<WatchCompletedRun | null> {
-  // TWO-RUNS-ONE-DAY-1 (2026-09-03) · same fix as app/api/v5/today/route.ts's
-  // loadCompletedRun sibling, same reason: prefer the run actually recorded
-  // AS today's plan execution (plannedWorkoutType set by
-  // POST /api/watch/workouts/complete) over merely the biggest run of the
-  // day, so a second, unrelated run doesn't outrank the tracked one on the
-  // watch face either.
-  const runRow = (await pool.query<{ id: string; data: Record<string, any> }>(
-    `SELECT id::text AS id, data FROM runs
-      WHERE user_uuid = $1 AND ${runNotMergedSql()}
-        AND ${runDaySql()} = $2
-      ORDER BY (${runPlannedWorkoutTypeSql()} IS NOT NULL) DESC,
-               ${runDistanceMiSql()} DESC NULLS LAST
-      LIMIT 1`,
-    [userId, today],
-  ).catch(() => ({ rows: [] as any[] }))).rows[0];
-  if (!runRow) return null;
+  // WORKOUT-EXECUTION-ID-1 (2026-09-03) · replaces TWO-RUNS-ONE-DAY-1, which
+  // did not hold — see the long explanation on its sibling in
+  // app/api/v5/today/route.ts. Same root cause here: `plannedWorkoutType` is
+  // populated on ~1 of 276 of David's own rows, so the old ORDER BY was
+  // almost always inert and this face kept drawing the day's biggest run as
+  // "today's session, done" regardless of whether it had anything to do with
+  // `wo`. Now uses the one canonical resolver and requires an EXACT or
+  // LEGACY-TYPE match against THIS specific `plan_workouts` row — not merely
+  // "a run exists on this date" — before the wrist calls it complete.
+  const resolved = await resolveDayExecutions(userId, today).catch(() => null);
+  const matched = wo.id
+    ? resolved?.prescriptions.find((p) => p.id === wo.id)?.matchedRun ?? null
+    : null;
+  if (!matched) return null;
+  const runRow = { id: matched.runId, data: matched.data as Record<string, any> };
 
   const data = runRow.data ?? {};
   // Elapsed basis — the lobby's own hero prints the elapsed clock beside

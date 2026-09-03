@@ -277,8 +277,31 @@ export interface RunData {
   workoutTypeSource?: string;
 
   /** The plan's prescribed type for the day, when known. 1 row — effectively
-   *  unpopulated; do not build on it. */
+   *  unpopulated; do not build on it. The completion route stamps the SAME
+   *  semantic value into `workoutType` (with `workoutTypeSource: 'plan'`)
+   *  instead — see that pair, not this key, for "did the plan say this run
+   *  was X". WORKOUT-EXECUTION-ID-1 (2026-09-03): a fix that ordered runs by
+   *  `plannedWorkoutType IS NOT NULL` was live for one session and never
+   *  fired for any runner, because this key is the one that's dead. */
   plannedWorkoutType?: string;
+
+  /**
+   * The EXACT `plan_workouts.id` a run satisfies — the durable execution
+   * link, not a re-derivable guess from type or distance. Stamped by
+   * `/api/watch/workouts/complete` at write time, from the same
+   * `plan_workouts` row lookup that already produces `workoutType` /
+   * `workoutTypeSource` below, so it names the identical prescription those
+   * two describe by type. Absent on every row from before
+   * WORKOUT-EXECUTION-ID-1 (2026-09-03), and on any row a passive sync wrote
+   * (Strava, HealthKit import, manual entry) — those can carry `workoutType`
+   * evidence but never this field, because nothing but the app's own live
+   * tracker resolves a specific day's prescription at write time.
+   *
+   * THE canonical resolver, `lib/execution/day-resolver.ts`, is the only
+   * code that should read this to decide completion. A caller checking it
+   * directly re-derives the exact bug WORKOUT-EXECUTION-ID-1 closed.
+   */
+  planWorkoutId?: string;
 
   /**
    * Activity type. MIXED SEMANTICS: 'Run' on Strava-era rows (Strava's
@@ -901,6 +924,13 @@ export function runWorkoutTypeSql(alias = ''): string {
  */
 export function runPlannedWorkoutTypeSql(alias = ''): string {
   return `${col(alias)}->>'plannedWorkoutType'`;
+}
+
+/** THE durable execution link — see `planWorkoutId` on `RunData` for why
+ *  this, and not `plannedWorkoutType` above, is the field a completion check
+ *  should read. */
+export function runPlanWorkoutIdSql(alias = ''): string {
+  return `${col(alias)}->>'planWorkoutId'`;
 }
 
 /** Which ingest path wrote the row. NULL on the oldest Strava rows — null
