@@ -42,6 +42,12 @@ import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 // NEW block is authored on. Stated once, in the module that also defines which
 // cycles a block may carry.
 import { DEFAULT_CUTBACK_EVERY_N } from './established-cadence';
+// LOADCONTRACT-1 · the ONE answer to "how much load", shared with
+// lib/plan/adaptive-ramp.ts. See that module's header for the ruling.
+import {
+  plannedPeakBound, resolveLoadProgressionContract, loadContractStamp,
+  PER_CYCLE_PEAK_GROWTH, type DemonstratedLoad,
+} from './load-progression-contract';
 import { lookupLoadTierTarget, resolveLoadTier, demonstratedLoadCeilingTier, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
@@ -919,7 +925,20 @@ export function resolvePeakWeekly(dailyMi: readonly number[]): number {
   return Math.round(peak * 10) / 10;
 }
 
-async function recentPeakWeeklyMileage(userId: string, todayISO: string): Promise<number> {
+/**
+ * LOADCONTRACT-1 · EXPORTED so `lib/plan/adaptive-ramp.ts` recomputes its
+ * ceiling off the SAME quantity, the same window and the same canonical-row
+ * predicate that authoring sized the block with. Rule 16: a second
+ * implementation of "the runner's biggest week" is a second chance to disagree
+ * about where their ceiling is, which is the defect LOADCONTRACT-1 exists to
+ * close rather than to relocate.
+ *
+ * RULE 8 · deliberately UNFILTERED, and it is the corollary's safe side. This
+ * is a MAXIMUM over a rolling window, so excluding taper and post-race
+ * recovery days cannot raise it and can only remove a week that was, by
+ * definition, not the peak. Filtering would cost work and change no answer.
+ */
+export async function recentPeakWeeklyMileage(userId: string, todayISO: string): Promise<number> {
   const { mileageByDay, isoDaysBefore } = await import('@/lib/runs/volume');
   const WINDOW_DAYS = PEAK_WEEK_LOOKBACK_DAYS;
   const fromISO = isoDaysBefore(todayISO, WINDOW_DAYS);
@@ -3456,30 +3475,49 @@ export type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus
  * WKPEAK-1 (2026-08-25) · the tier's peak target, reconciled against the peak
  * the runner has actually run.
  *
- * Three bounds, in the order they bind:
+ * LOADCONTRACT-1 (2026-09-02) · THE BODY NOW DELEGATES, AND THE TYPED
+ * EXPERIENCE LEVEL IS GONE FROM IT.
  *
- *   · `min(doctrineTarget, measuredPeak × CYCLE_GROWTH_CEILING)` — the row of
- *     Research/00a §"Volume progression rules" that says how much a trained
- *     athlete's base grows per training CYCLE. See CYCLE_GROWTH_CEILING for why
- *     this axis was unbounded while the weekly one was bounded twice.
+ * This function and `lib/plan/adaptive-ramp.ts`'s ceiling were two answers to
+ * one question — how much load may this block peak at — and they disagreed on
+ * the reference runner by five miles a week, which made the upward adaptation
+ * path unreachable by construction (see `load-progression-contract.ts`'s
+ * header for the measurement). There is now ONE implementation of the
+ * arithmetic, `plannedPeakBound`, and both callers read it.
  *
- *   · `≥ measuredPeak` — a build that peaks at the runner's existing peak has
- *     built nothing, so the ceiling may never pull the target BELOW what they
- *     have already held. When their peak is at or above the tier target this
- *     bound is what keeps the plan honest in the other direction.
+ * The bounds it applies, and what changed:
  *
- *   · `≥ TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0]` — the least
- *     volume doctrine asks of ANYONE racing this distance. Without it a runner
- *     with a thin measured history (a long break inside the look-back, an
- *     account that has only just connected Strava) would be walked down to a
- *     marathon build peaking in the twenties. The guard may move a runner
- *     around inside the table for their distance; it may not take them out
- *     from under it.
+ *   · `≤ measuredPeak × PER_CYCLE_PEAK_GROWTH` — unchanged in value. The row
+ *     of Research/00a §"Volume progression rules" that says how much a trained
+ *     athlete's base grows per training CYCLE. What changed is that the trained
+ *     rung is now selected by having MEASURED the runner rather than by the
+ *     word they typed at onboarding: `docs/PLAN_SIMPLIFICATION_DOCTRINE.md`
+ *     removes self-declared experience bands as decision authority, and this
+ *     was one of the two places a label reached the volume curve.
  *
- * REFUSES RATHER THAN GUESSES. `peakMi === 0` means nothing was measured — the
- * cold-start case, and every synthetic archetype in the sweep. The function
- * returns the doctrine target untouched, which is a refusal to bound rather
- * than a bound computed off an invented number.
+ *   · `≤ climbFrom × WEEKLY_STEP_GROWTH ^ climbWeeks` — NEW, and it replaces
+ *     the old `min(doctrineTarget, …)`. A peak the calendar cannot be walked
+ *     to at doctrine's own weekly rate is not a target, and bounding by the
+ *     TIER TARGET instead was how the label got in: the owner's block targeted
+ *     65 because `profile.experience_level` said `advanced`, and would have
+ *     targeted 45 — below his own demonstrated 52.3, a build that builds
+ *     nothing — had it said `intermediate`.
+ *
+ *   · `≥ measuredPeak` — unchanged. A build that peaks at the runner's
+ *     existing peak has built nothing, so no bound may pull the target BELOW
+ *     what they have already held.
+ *
+ *   · `≥ TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0]` — unchanged.
+ *     The least volume doctrine asks of ANYONE racing this distance. The guard
+ *     may move a runner around inside the table for their distance; it may not
+ *     take them out from under it.
+ *
+ * REFUSES RATHER THAN GUESSES. `peakMi` absent or zero means nothing was
+ * measured — the cold-start case, and every synthetic archetype in the sweep
+ * (Rule 15: `SimInputs` carries no history, so `peakMi` is 0 for all 11,687
+ * arcs). The function returns the doctrine target untouched, which is a
+ * refusal to bound rather than a bound computed off an invented number, and it
+ * is why this change is byte-identical across the corpus.
  *
  * A TARGET, NOT A MEASUREMENT. Nothing here claims the runner CAN hold the
  * returned volume. It is the destination the block is authored toward, and the
@@ -3491,19 +3529,26 @@ export type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus
 export function cycleBoundedPeak(
   doctrineTargetMi: number,
   evidence: RampBaseEvidence | null,
-  level: LevelKey,
   cat: DistCategory,
+  /** LOADCONTRACT-1 · how many CLIMBING weeks stand between the base and the
+   *  peak. Bounds the target by what the block can actually be walked to at
+   *  doctrine's week-over-week rate. `null` — the default, and what every
+   *  caller that has not computed a calendar passes — means "no calendar", a
+   *  data-presence fact rather than a runway of zero. See `plannedPeakBound`
+   *  for why that distinction may not be spelled `0` (Rule 9). */
+  climbWeeksToPeak: number | null = null,
 ): number {
-  const measuredPeak = evidence?.peakMi ?? 0;
-  const ceilFactor = CYCLE_GROWTH_CEILING[level ?? 'intermediate'];
-  if (!(measuredPeak > 0) || ceilFactor == null) return doctrineTargetMi;
-  const distanceFloorMi = TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0];
-  const cycleCeilingMi = Math.round(measuredPeak * ceilFactor * 10) / 10;
-  return Math.max(
-    Math.min(doctrineTargetMi, cycleCeilingMi),
-    measuredPeak,
-    distanceFloorMi,
-  );
+  const r = plannedPeakBound({
+    demonstratedPeakWeeklyMi: evidence?.peakMi ?? null,
+    climbFromMi: evidence?.heldMi ?? evidence?.meanMi ?? null,
+    climbWeeksToPeak,
+    distanceFloorMi: TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0],
+  });
+  // Rule 11 · a refusal is "nothing was measured", and the caller's correct
+  // response is to keep the doctrine target untouched — not to substitute a
+  // number this function invented. Every synthetic archetype and every cold
+  // start lands here, which is why the corpus is byte-identical.
+  return r.known ? r.mi : doctrineTargetMi;
 }
 
 /* DOCTRINE-7 (2026-08-17) · VOLUME_FLOOR_MPW and RAMP_PCT are DELETED here.
@@ -3593,15 +3638,6 @@ function volumeCurve(
     tierTarget.peakWeeklyMileageBand[0],
     Math.round(start * 1.10),
   );
-  // WKPEAK-1 · …and no further above the peak the runner has actually run than
-  // doctrine's per-cycle growth figure allows. See `cycleBoundedPeak`.
-  // HOLD-PROGRESS-1 · unless the caller states the destination outright — the
-  // maintenance hold's target is its own base × HOLD_CYCLE_GROWTH, already
-  // inside Research/00a's per-cycle band, not the tier's race-prep peak.
-  const peakTarget = peakTargetOverrideMi != null
-    ? peakTargetOverrideMi
-    : cycleBoundedPeak(doctrineTarget, evidence ?? null, level, taperCat);
-
   // Build phases · everything before TAPER. Each is a ramp week or a
   // deload (every 4th non-taper week). We pre-mark deload positions
   // along the build span so the ramp targets the right week.
@@ -3616,6 +3652,18 @@ function volumeCurve(
     deloadMask.push(i > 0 && (i + 1) % cutbackEveryN === 0);
   }
   const climbWeeks = deloadMask.filter((d) => !d).length;
+
+  // WKPEAK-1 · …and no further above the peak the runner has actually run than
+  // doctrine's per-cycle growth figure allows. See `cycleBoundedPeak`.
+  // HOLD-PROGRESS-1 · unless the caller states the destination outright — the
+  // maintenance hold's target is its own base × HOLD_CYCLE_GROWTH, already
+  // inside Research/00a's per-cycle band, not the tier's race-prep peak.
+  // LOADCONTRACT-1 · moved BELOW the deload mask so `climbWeeks` — an integer
+  // read off the calendar, not a comparison of two computed quantities (Rule 9)
+  // — can bound the target by what the block is actually able to climb to.
+  const peakTarget = peakTargetOverrideMi != null
+    ? peakTargetOverrideMi
+    : cycleBoundedPeak(doctrineTarget, evidence ?? null, taperCat, climbWeeks);
 
   // Geometric ramp factor across climb weeks (skipping deloads).
   // DOCTRINE-7 (2026-08-17) · the ceiling is the GENERAL-CASE ramp, keyed to
@@ -10768,10 +10816,38 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   }, 0);
   /** The runner's own biggest 7-day block in the look-back. 0 = not measured. */
   const demonstratedPeakWeeklyMi = rampEvidence?.peakMi ?? 0;
-  const cycleGrowth = CYCLE_GROWTH_CEILING[input.level ?? 'intermediate'];
-  const evidenceWeeklyCeilingMi = demonstratedPeakWeeklyMi > 0 && cycleGrowth != null
+  /**
+   * LOADCONTRACT-1 · the per-cycle growth figure, no longer keyed on
+   * `input.level`. `CYCLE_GROWTH_CEILING`'s table is unchanged and still
+   * doctrine-pinned; what changed is that the TRAINED rung is selected by
+   * having measured this runner rather than by the word they typed. See
+   * `load-progression-contract.ts` and `evidenceLongCeilingMi`, which has read
+   * the table this way since LONGEVIDENCE-1.
+   */
+  const cycleGrowth: number = PER_CYCLE_PEAK_GROWTH;
+  const evidenceWeeklyCeilingMi = demonstratedPeakWeeklyMi > 0
     ? Math.round(demonstratedPeakWeeklyMi * cycleGrowth * 10) / 10
     : null;
+  /**
+   * LOADCONTRACT-1 · the contract itself, resolved ONCE at authoring off what
+   * this authoring measured, and stamped so adaptation can RECOMPUTE it (Rule
+   * 10) rather than trust a frozen array.
+   */
+  const loadDemonstrated: DemonstratedLoad = {
+    peakWeeklyMi: rampEvidence ? (rampEvidence.peakMi || null) : null,
+    sustainedWeeklyMi: rampEvidence ? (rampEvidence.sustainedMi || null) : null,
+    heldWeeklyMi: rampEvidence ? (rampEvidence.heldMi || null) : null,
+    meanWeeklyMi: rampEvidence ? (rampEvidence.meanMi || null) : null,
+    asOfISO: input.startMondayISO,
+  };
+  const loadDistanceFloorMi =
+    TIER_TARGETS[distanceCategoryOf(input.raceDistanceMi)].developing.peakWeeklyMileageBand[0];
+  /** Climbing weeks in the authored block — the same integer `volumeCurve`
+   *  bounded the target with, re-derived from the composed calendar so the
+   *  stamp records what was actually spent. */
+  const loadClimbWeeks = weeks.filter(
+    (w) => w.phase !== 'TAPER' && !w.isCutback,
+  ).length;
   /**
    * TIEREVIDENCE-1 · the row the runner's DEMONSTRATED performance earns, with
    * the typed experience level allowed to cap it and never to lift it. This is
@@ -10780,10 +10856,51 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
    * row keeps its floor), and the two numbers the ADAPTATION engine binds on
    * read this instead. With nothing demonstrated it is the bottom row, so a
    * missing read produces the conservative ceiling and never the ambitious one.
+   *
+   * LOADCONTRACT-1 · this row is now a REFERENCE on the weekly axis. It still
+   * selects the long-run band below, and it is still published, but the weekly
+   * CEILING no longer comes from it — see the block above `publishedWeeklyBand`.
    */
   const evidenceRow = TIER_TARGETS[distanceCategoryOf(input.raceDistanceMi)][
     demonstratedLoadCeilingTier(input.raceDistanceMi, input.level, demonstratedPaceSec)
   ];
+  const loadContract = resolveLoadProgressionContract({
+    demonstrated: loadDemonstrated,
+    climbWeeksToPeak: loadClimbWeeks,
+    distanceFloorMi: loadDistanceFloorMi,
+    templatePeakBandMi: evidenceRow.peakWeeklyMileageBand,
+  });
+  /* ════════════════════════════════════════════════════════════════════════
+   * LOADCONTRACT-1 (2026-09-02) · THE UPPER IS A LOAD CEILING, NOT A TEMPLATE'S
+   * PUBLISHED PEAK, AND THE TWO WERE BEING `min`-ed INTO A NUMBER THAT MEANT
+   * NEITHER.
+   *
+   * MEASURED on the reference runner, 2026-09-02, before this change:
+   *
+   *   authored peak week          60.0   (`cycleBoundedPeak`: 52.3 × 1.15)
+   *   published ceiling           55.0   (`min(55, 60.1)`, the 55 from
+   *                                       TIER_TARGETS.m.intermediate)
+   *   `belowTierUpper`            false, on every tick, forever
+   *
+   * The block peaked five miles above its own published ceiling, so the upward
+   * volume path was unreachable BY CONSTRUCTION — Rule 21's exact signature,
+   * and `ceilingCanNeverBind` had already been written to report it rather than
+   * fix it.
+   *
+   * The two numbers are different quantities, and the owner named the
+   * distinction himself: the 55 is "a historical evidence reference rather than
+   * a hard ceiling" — the peak `Research/22` §"Marathon — Intermediate"
+   * publishes for that TEMPLATE — while the ceiling the adaptation engine binds
+   * on has to be "maximum future planned load". `min` of the two is neither.
+   *
+   * So the upper is now the contract's `plannedPeakLoad`, and the template band
+   * is carried beside it under its own name where nothing spends it as a bound.
+   *
+   * RULE 11 · with no demonstrated volume the contract REFUSES, and the
+   * template row's own upper stands exactly as it did before. That is every
+   * synthetic archetype and every cold start, which is why the corpus does not
+   * move.
+   * ════════════════════════════════════════════════════════════════════════ */
   const publishedWeeklyBand: [number, number] = [
     // The FLOOR keeps the doctrine row's own meaning — "the smallest peak this
     // row is written for" — because that is what every existing reader of a
@@ -10793,9 +10910,18 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     // every build week's long against `[0]` as a per-week lower bound, which is
     // a different quantity, and Rule 16 is not served by making one field mean
     // two things in two readers.
-    evidenceRow.peakWeeklyMileageBand[0],
-    evidenceWeeklyCeilingMi != null
-      ? Math.min(evidenceRow.peakWeeklyMileageBand[1], evidenceWeeklyCeilingMi)
+    // …and never above the upper. A template floor sitting above a runner's own
+    // evidence-derived ceiling is an incoherent pair, and the old
+    // `min(rowTop, evidenceCeiling)` could produce one too. A band is read as an
+    // interval; it may not be published inverted.
+    Math.min(
+      evidenceRow.peakWeeklyMileageBand[0],
+      loadContract.plannedPeakLoad.known
+        ? loadContract.plannedPeakLoad.mi
+        : evidenceRow.peakWeeklyMileageBand[1],
+    ),
+    loadContract.plannedPeakLoad.known
+      ? loadContract.plannedPeakLoad.mi
       : evidenceRow.peakWeeklyMileageBand[1],
   ];
   const publishedLongBand: [number, number] = [
@@ -10991,6 +11117,24 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         authored_peak_weekly_mi: authoredPeakWeeklyMi,
         authored_peak_long_mi: authoredPeakLongMi,
       },
+      /**
+       * LOADCONTRACT-1 · the whole load contract this block was authored under,
+       * stamped so `lib/plan/adaptive-ramp.ts` can RECOMPUTE the ceiling
+       * against live evidence rather than trust `tier_peak_weekly_band`'s
+       * frozen array (Rule 10). Every field is an input to `plannedPeakBound`,
+       * which is what makes the recompute possible at all — a stamp that
+       * recorded only the answer would leave the reader exactly as stuck as the
+       * array does.
+       *
+       * It is the ONE place the five quantities the owner named are written
+       * down under distinct names: what is supported today, what may be added
+       * next week, what may be planned at the peak, what must be demonstrated
+       * before that peak is actionable, and what happens if it is not.
+       */
+      load_progression_contract: loadContractStamp(loadContract, {
+        climbWeeksToPeak: loadClimbWeeks,
+        distanceFloorMi: loadDistanceFloorMi,
+      }),
       // 2026-06-03 · Rule 11 · horizon raise. Null when no future race
       // raises the long-run cap above the current tier's. Drives the
       // chip on the plan UI ("LONG-RUN CAP · 22mi · setting up CIM").
