@@ -508,7 +508,9 @@ function rationaleFor(a: {
           : `${a.mpMi} miles at marathon effort — the block’s largest marathon-specific session.`,
         whyThisWeek: `${weeksOut} weeks out: far enough back that the block can absorb it, close enough that it still counts.`,
         supportedBy,
-        prepares: 'The consolidation touch and the sharpening session that carry it into race week.',
+        // Rule 16 · this named a "consolidation touch" that Step C refuses to
+        // author, so the sentence promised a session the plan does not contain.
+        prepares: 'The final sharpening session that carries it into race week.',
         rehearses,
       };
     case 'sharpening':
