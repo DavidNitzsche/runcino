@@ -397,6 +397,88 @@ the live plan.
 
 ---
 
+## 9a · Every week, every session, and its role
+
+The engine's own role label per week, with the quality sessions it prescribes.
+Composed read-only; nothing here is written.
+
+| Wk | Start | Mi | Long run | Quality sessions | Role |
+|---|---|---|---|---|---|
+| 0 | 08-24 | 46.0 | 14.5 | 4.5mi wave tempo · 8×3 min hills @ T-10K | HOLD |
+| 1 | 08-31 | 50.0 | 15.0 | 5×1mi @ T · 60s jog · 10×60s hills @ 5K-10K | BUILD |
+| 2 | 09-07 | 24.4 | RACE 6.2 | 1.5mi tempo · **Santa Monica 10k** | CUTBACK |
+| 3 | 09-14 | 48.0 | 16.5 | 2×1.5 mi @ T · 3 min jog | BUILD |
+| 4 | 09-21 | 56.2 | 17.0 | 5mi mile cutdowns · **Dodgers 10K (C)** | BUILD |
+| 5 | 09-28 | 42.0 | 13.0 | 6×800m @ I pace · 2 min jog | CUTBACK |
+| 6 | 10-05 | 59.5 | 18.5 | 4.5mi cutdowns · 5×1km ladder MP→5K | BUILD |
+| 7 | 10-12 | **60.0** | 19.0 · **4mi @ M + 2mi @ T** | 5K/mile speed ladder | HOLD |
+| 8 | 10-19 | 45.0 | 14.0 | 4.5mi tempo · 8×3 min @ I pace | CUTBACK |
+| 9 | 10-26 | 59.5 | **20.5 · 11mi @ MP** | 6×1km ladder MP+5→5K | BUILD |
+| 10 | 11-02 | 44.6 | RACE 13.1 | 2.5mi wave tempo · **Run Malibu HM** | CUTBACK |
+| 11 | 11-09 | 40.5 | 16.0 | **none** — post-race | CUTBACK |
+| 12 | 11-16 | 49.0 | 18.0 | 2.5 WU · **11 mi @ MP** · 1.5 CD | TAPER |
+| 13 | 11-23 | 36.0 | 13.0 | 2 WU · **7 mi @ MP** · 1 CD | TAPER |
+| 14 | 11-30 | 44.2 | RACE 26.2 | 5×400m @ 5K · **CIM** | RACE |
+
+**The taper, day by day.** Three weeks, 60.0 → 49.0 → 36.0 → race week.
+
+```
+11-16 easy      4.0  EASY · 6×20s strides      11-23 easy      3.5  EASY · 6×20s strides
+11-17 tempo    15.0  2.5 WU · 11 mi @ MP · 1.5 11-24 tempo    10.0  2 WU · 7 mi @ MP · 1 CD
+11-18 easy      4.0  EASY · 6×20s strides      11-25 easy      3.5  EASY · 6×20s strides
+11-19 easy      4.0  EASY                      11-26 easy      3.0  EASY
+11-20 easy      4.0  EASY                      11-27 easy      3.0  EASY
+11-21 rest      0.0                            11-28 rest      0.0
+11-22 long     18.0  LONG                      11-29 long     13.0  LONG
+
+11-30 easy 4.0 · 12-01 tune-up 5.0 (5×400m @ 5K) · 12-02 easy 4.0 · 12-03 easy 3.0
+12-04 rest · 12-05 shakeout 2.0 (4×20s strides) · 12-06 RACE 26.2
+```
+
+The final long run is 18.0 mi, two weeks out. Taper weeks sit at 82%, 60% and
+(excluding the race itself) 30% of the 60.0 peak. **One advisory dosing finding**
+sits here and is unenforced under doctrine's taper exemption: the 11 mi @ MP is
+22.45% of a 49-mile week against a 20% cap.
+
+Week 11 carries **no quality at all** — it follows the half marathon.
+
+---
+
+## 9b · Determinism, and proof nothing can mutate the stored plan
+
+**Determinism.** Composed three times against the same inputs:
+
+```
+run 1  f80399fed8069f7e2fd60853c616383d4dc7db27703a1257104f76e82d3adee5
+run 2  f80399fed8069f7e2fd60853c616383d4dc7db27703a1257104f76e82d3adee5
+run 3  f80399fed8069f7e2fd60853c616383d4dc7db27703a1257104f76e82d3adee5
+```
+
+Identical. And the removed inputs cannot vary the plan because they are no
+longer inputs: `tsbAtStart` is gone from `ComposePlanInput` entirely, walking
+training form from −30 to +5 produces an identical plan, and readiness, sleep,
+HRV, resting HR, illness and injury reach the composer at no point.
+
+The one input that CAN still vary the plan is the self-declared experience
+level. That is §8, and it is not finished.
+
+**Nothing automatic can mutate the stored plan.** Three gates, 51 tests, all
+green:
+
+- `_promotion_contract.test.ts` — the shadow engine writes nothing, and its only
+  importer is the comparator.
+- `_seal_single_seam.test.ts` — there is exactly ONE adaptation seam, default
+  off. It caught a real mistake during this work: an agent sealed the injury
+  builder behind a second dormant flag, and the gate refused it because a second
+  switch guarding a second plan writer is the state being removed. The refusal is
+  now hardcoded with no flag to flip.
+- `_automatic_mutations.test.ts` — every statement that can write a plan row is
+  declared, including sealed ones, so re-opening a seal cannot go unlisted.
+
+`tryAdaptiveBump` returns null on the authority check before it reads anything.
+
+---
+
 ## 10a · How the numbers in this document were checked
 
 Three of the runner's questions each found an error in the previous draft, which
