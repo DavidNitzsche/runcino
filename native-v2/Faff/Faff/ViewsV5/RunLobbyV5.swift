@@ -277,7 +277,7 @@ enum RunLobbyLocationReadiness: Equatable {
         switch self {
         case .authorized:     return "Location ready for outdoor GPS."
         case .notDetermined:  return "Outdoor mode will ask for location access when you start."
-        case .denied:         return "Location is off. Outdoor pace and route need it — enable it in Settings, or run Treadmill instead."
+        case .denied:         return "Location is off. Outdoor pace and route need it. Enable it in Settings, or run Treadmill instead."
         }
     }
 
@@ -500,7 +500,7 @@ enum RunLobbyRaceBrief {
         lines.append("Hold \(hr.expectedLoBpm)\u{2013}\(hr.expectedHiBpm) bpm through most of the race.")
         lines.append("Through mile \(String(format: "%.0f", hr.earlyThroughMi)): stay under \(hr.earlyCeilingBpm) bpm, even if it feels slow.")
         if hr.lateAllowanceBpm > hr.expectedHiBpm {
-            lines.append("Late miles may drift up to \(hr.lateAllowanceBpm) bpm as you close — that's expected, not a fault.")
+            lines.append("Late miles may drift up to \(hr.lateAllowanceBpm) bpm as you close. That's expected, not a fault.")
         }
         if let checkpointMi = hr.checkpointMi, let abortBpm = hr.checkpointAbortBpm {
             lines.append("If HR is over \(abortBpm) bpm at mile \(String(format: "%.0f", checkpointMi)), back off the goal pace and finish easy.")
@@ -804,7 +804,7 @@ struct RunLobbyV5: View {
             lines.append("Keep heart rate under \(ceiling) bpm.")
         }
         if RunLobbySegments.hasObservationalHr(w.phases) {
-            lines.append("Effort and controlled form govern this — the reps are too short for heart rate to guide pace live. Don't chase it.")
+            lines.append("Effort and controlled form govern this. The reps are too short for heart rate to guide pace live. Don't chase it.")
         }
         return lines
     }
