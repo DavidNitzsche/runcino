@@ -390,7 +390,7 @@ function notesFor(type: string, isCutback: boolean): string {
     if (isCutback) {
       return 'Cutback long run, shorter, easier, no workout within it. Let the body absorb the last block of work.';
     }
-    return 'Long run at easy conversational pace. Duration builds durability; pace is irrelevant today.';
+    return 'Long run at an easy pace you can talk through. Duration builds durability; pace is irrelevant today.';
   }
   if (type === 'threshold') {
     // LOWVOL-3 · the rep count lives on the label, derived from the week's own
@@ -404,7 +404,7 @@ function notesFor(type: string, isCutback: boolean): string {
   if (isCutback) {
     return 'Cutback easy, shorter, slower, no agenda. Move blood through the legs and get out of the way of recovery.';
   }
-  return 'Easy run. Conversational pace. If you can\'t hold a sentence, you\'re running someone else\'s workout.';
+  return 'Easy run. If you cannot hold a full sentence, you are running someone else\'s workout.';
 }
 
 /** Drop a single weekly volume target across the day-of-week shape.

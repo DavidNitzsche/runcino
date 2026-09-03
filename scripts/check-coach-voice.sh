@@ -47,6 +47,11 @@
 #       "check back". Same narrowness as guard 4 — these are not borderline,
 #       and a coach has never said any of them.
 #
+#   7 · NO SHORTHAND. A phrase standing where an instruction should be and
+#       telling the runner nothing he can act on: "Conversational", "Z2 HR
+#       cap", "Stay aerobic". Added 2026-09-02 on the owner's own reading of
+#       his composed block. Same narrowness as guards 4 and 5.
+#
 #   6 · NO EXCEPTION PRINTED AT A RUNNER. `setErr(e instanceof Error ?
 #       e.message : String(e))` and its siblings put a JavaScript error
 #       message into a state variable that a component then renders as
@@ -185,7 +190,9 @@ targets() {
     && printf '%s\n' "$ROOT/web-v2/lib/training/projection-trend.ts"
 }
 
-FILES="$(targets | sort -u | grep -v '/lib/faff/coach-lexicon\.ts$')"
+FILES="$(targets | sort -u \
+  | grep -v '/lib/faff/coach-lexicon\.ts$' \
+  | grep -v '/lib/plan/runner-instruction\.ts$')"
 COUNT="$(printf '%s\n' "$FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
 
 # ── THE LEXICON IS EXCLUDED FROM ITS OWN SCAN ────────────────────────────────
@@ -195,6 +202,17 @@ COUNT="$(printf '%s\n' "$FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
 # it would report the list as a violation of itself. The cost is named in that
 # file's own Rule 22 block: real runner copy could hide there and nothing would
 # catch it. There is none, and there must never be.
+#
+# ── AND SO IS THE REWRITE TABLE, FOR THE SAME REASON ────────────────────────
+#
+# 2026-09-02 · `web-v2/lib/plan/runner-instruction.ts` is the table that
+# RETIRES those phrases, so its `find:` regexes necessarily spell them out.
+# Scanning it would report the cure as the disease.
+#
+# The cost is the same and it is closed rather than merely named:
+# `_runner_instruction.test.ts` runs `scanLayerOne` and `scanPunctuation` over
+# every replacement string in the table, so the only prose in that file a
+# runner can reach is checked by the lexicon itself.
 
 # ── LIVENESS · A FLOOR, NOT A ZERO CHECK (Rule 18 point 2) ───────────────────
 #
@@ -309,8 +327,9 @@ SCOLD="$(lex_terms scolding | paste -sd '|' -)"
 MACHO="$(lex_terms macho | paste -sd '|' -)"
 APPV="$(lex_terms 'app-voice' | paste -sd '|' -)"
 JARGON="$(lex_terms jargon | paste -sd '|' -)"
+SHORTHAND="$(lex_terms shorthand | paste -sd '|' -)"
 
-for pair in "hype:$HYPE" "scolding:$SCOLD" "macho:$MACHO" "app-voice:$APPV" "jargon:$JARGON"; do
+for pair in "hype:$HYPE" "scolding:$SCOLD" "macho:$MACHO" "app-voice:$APPV" "jargon:$JARGON" "shorthand:$SHORTHAND"; do
   name="${pair%%:*}"; val="${pair#*:}"
   if [ -z "$val" ]; then
     say "  the $name band parsed EMPTY out of coach-lexicon.ts." >&2
@@ -331,7 +350,8 @@ FINDINGS="$(printf '%s\n' "$FILES" | sed '/^$/d' | while IFS= read -r f; do
   if printf '%s\n' "$JARGON_FILES" | grep -Fqx "$f"; then DOJARGON=1; else DOJARGON=0; fi
   awk -v F="$f" -v R="$ROOT/" \
       -v HYPE="$HYPE" -v SCOLD="$SCOLD" -v MACHO="$MACHO" \
-      -v APPV="$APPV" -v JARGON="$JARGON" -v DOJARGON="$DOJARGON" '
+      -v APPV="$APPV" -v JARGON="$JARGON" -v DOJARGON="$DOJARGON" \
+      -v SHORTHAND="$SHORTHAND" '
     function emit(guard, detail,   p) {
       p = F; sub(R, "", p)
       printf "%s|%d|%s|%s\n", p, FNR, guard, substr(detail, 1, 120)
@@ -455,6 +475,21 @@ FINDINGS="$(printf '%s\n' "$FILES" | sed '/^$/d' | while IFS= read -r f; do
 
       split(APPV, A, "|")
       for (i in A) if (A[i] != "" && index(low, A[i]) > 0) { emit("app voice", lit); break }
+
+      # SHORTHAND · new 2026-09-02 (RUNNERLANG-1). A phrase that occupies the
+      # place an instruction should be while telling the runner nothing he can
+      # act on: "Conversational", "Z2 HR cap", "Stay aerobic", "· Z2". Blocked
+      # everywhere, because there is no layer at which an adjective is a
+      # prescription. David, reading his own composed block:
+      # "Replace them with direct running instructions that tell me what to do."
+      #
+      # File-wide like guards 4-5, not Layer-1-only like jargon, and that is
+      # the argued difference: a zone INDEX legitimately names a mechanism
+      # under a "Why?" affordance, but "conversational" does not become an
+      # instruction at any depth of the UI. NOTE: no apostrophes inside this
+      # awk program, ever. It is single-quoted, so one would end it.
+      split(SHORTHAND, S2, "|")
+      for (i in S2) if (S2[i] != "" && index(low, S2[i]) > 0) { emit("shorthand", lit); break }
 
       # JARGON · the ALWAYS half only. VDOT, ACWR, TSB, source_mode, z-score:
       # proprietary tokens with no runner meaning at any layer. The rest of

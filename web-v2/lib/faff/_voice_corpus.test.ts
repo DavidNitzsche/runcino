@@ -71,12 +71,12 @@ const CORPUS: Array<{ state: string; e: CoachingExplanation }> = [
     state: 'easy run, controlled',
     e: ex({
       verdict: 'Good easy miles.',
-      reason: 'Effort stayed conversational and heart rate was stable.',
+      reason: 'Effort stayed easy and heart rate was stable.',
       consequence: 'The plan stays the same.',
       certainty: 'ESTABLISHED',
       facts: [{ kind: 'OBSERVED', code: 'HR_STABLE', display: 'Average heart rate 138, inside the easy range.' }],
       spoken: { short: 'Good easy miles. Nothing changes.' },
-      accessibilitySummary: 'Good easy miles. Effort stayed conversational. The plan stays the same.',
+      accessibilitySummary: 'Good easy miles. Effort stayed easy. The plan stays the same.',
     }),
   },
   {

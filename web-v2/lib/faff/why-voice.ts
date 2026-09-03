@@ -329,8 +329,13 @@ function whyClauses(f: WhyFacts): { verdict: string; reason?: string } {
 
   // A trailing fragment reads as a note to self. Give it a verb.
   body = body
-    .replace(/^conversational pace\b/i, 'Keep it conversational')
-    .replace(/^conversational\b/i, 'Keep it conversational')
+    // RUNNERLANG-1 (2026-09-02) · the note no longer opens "Conversational",
+    // so the two rules that gave THAT fragment a verb are re-pointed at the
+    // fragment that replaced it. Kept rather than deleted: the job here is
+    // "an opening fragment reads as a note to self", and the new opener is
+    // one too.
+    .replace(/^easy enough to talk\b/i, 'Keep it easy enough to talk')
+    .replace(/^easy the whole way\b/i, 'Keep it easy the whole way')
     .replace(/^easy means easy\b/i, 'Easy means easy')
     .replace(/^\s*,\s*/, '')
     .trim();

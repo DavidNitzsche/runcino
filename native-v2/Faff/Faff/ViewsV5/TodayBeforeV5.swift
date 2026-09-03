@@ -1005,7 +1005,7 @@ extension V5Today {
           "title": "Easy run",
           "note": null,
           "steps": [
-            { "id": "g-easy-run-1", "main": "Conversational the whole way", "sub": { "text": "8:50 \\u00b7 9:35 /mi", "modelled": false } }
+            { "id": "g-easy-run-1", "main": "Easy the whole way, talking in full sentences", "sub": { "text": "8:50 \\u00b7 9:35 /mi", "modelled": false } }
           ]
         }
       ],

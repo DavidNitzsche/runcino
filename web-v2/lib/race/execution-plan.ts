@@ -486,7 +486,7 @@ export function composeRaceExecutionPlan(args: {
   const drillsAt = stridesAt + wu.drillsMin;
   const easyAt = drillsAt + wu.easyMin;
   const easyStep = wu.mode === 'jog'
-    ? `Easy jog ${wu.easyMiBand ? `${wu.easyMiBand[0]}-${wu.easyMiBand[1]} miles` : `${wu.easyMin} min`} (${wu.easyMin} min). Conversational, nothing more.`
+    ? `Easy jog ${wu.easyMiBand ? `${wu.easyMiBand[0]}-${wu.easyMiBand[1]} miles` : `${wu.easyMin} min`} (${wu.easyMin} min). Talk in full sentences, and nothing faster.`
     : `Walk ${wu.easyMin} min, or jog 3-5 min if you want the legs turning over. The first miles of the race are the rest of the warm-up.`;
   const drillsStep = wu.mode === 'jog'
     ? 'Drills: leg swings, A-skips, 2×30s high knees.'

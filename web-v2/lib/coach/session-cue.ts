@@ -67,7 +67,7 @@ export function composeCue(input: CueInput): string | null {
     case 'easy':
       return composeEasyCue(input);
     case 'recovery':
-      return 'Conversational. If you can\'t talk, you\'re going too hard.';
+      return 'Slower than your easy day. If you cannot talk in full sentences, slow down.';
     case 'tempo':
       return composeTempoCue(input);
     case 'threshold':
@@ -102,7 +102,7 @@ function composeEasyCue(input: CueInput): string {
     return 'Easy effort. Listen to the body, not the watch.';
   }
   if (input.plannedMi >= 8) {
-    return 'Conversational pace. The volume is the workout, not the pace.';
+    return 'Easy enough to talk in full sentences. The volume is the workout, not the pace.';
   }
   // Voice band · default (guided/null) stays byte-identical.
   if (input.voiceBand === 'calibration') {
@@ -191,7 +191,7 @@ function composeLongCue(input: CueInput): string {
   if (input.plannedMi >= 18) {
     return 'First half easy, second half is the workout. Trust the build.';
   }
-  return 'Conversational through the middle. Close the last 2 with intent.';
+  return 'Easy through the middle, talking in full sentences. Close the last 2 with intent.';
 }
 
 function composeRaceCue(input: CueInput): string {

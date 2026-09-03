@@ -82,7 +82,10 @@ describe('P1-49 · no fabricated HR caps or fuel checkpoints', () => {
     const g = withToday(lilian(), { plannedType: 'easy', plannedMi: 4, plannedSpec: spec, doneMi: 0 });
     const rows = buildPoster(g, 'easy').workout_breakdown!;
     const hrRow = rows.find((r) => r.label === 'HR CAP')!;
-    expect(hrRow.tail).toBe('Aerobic · Z2');
+    // RUNNERLANG-1 (2026-09-02) · the refusal used to name a zone, which is
+    // the taxonomy the shorthand band retired. The assertion this test exists
+    // for is unchanged and is the line below: no bpm nobody measured.
+    expect(hrRow.tail).toBe('by feel');
     expect(JSON.stringify(rows)).not.toContain('148 bpm');
   });
 
@@ -95,7 +98,7 @@ describe('P1-49 · no fabricated HR caps or fuel checkpoints', () => {
     const rows = buildPoster(g, 'long').workout_breakdown!;
     expect(rows.some((r) => r.label === 'FUEL')).toBe(false);
     const hrRow = rows.find((r) => r.label === 'HR CAP')!;
-    expect(hrRow.tail).toBe('Aerobic ceiling');
+    expect(hrRow.tail).toBe('by feel');
     expect(JSON.stringify(rows)).not.toContain('145 bpm');
   });
 

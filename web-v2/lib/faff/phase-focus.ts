@@ -114,7 +114,7 @@ function paceEmphasis(bucket: DistanceBucket): {
     case '10k':      return { buildQuality: 'threshold and VO2max', peakLoad: 'race-pace tolerance', raceVerb: 'hold' };
     case 'half':     return { buildQuality: 'threshold and race-pace volume', peakLoad: 'race-pace simulations', raceVerb: 'hold' };
     case 'marathon': return { buildQuality: 'threshold and marathon-pace volume', peakLoad: 'race-day rehearsals', raceVerb: 'hold' };
-    case 'ultra':    return { buildQuality: 'aerobic depth and back-to-back longs', peakLoad: 'multi-hour Z2 + nutrition rehearsal', raceVerb: 'manage' };
+    case 'ultra':    return { buildQuality: 'aerobic depth and back-to-back longs', peakLoad: 'multi-hour easy running and nutrition rehearsal', raceVerb: 'manage' };
     default:         return { buildQuality: 'threshold work', peakLoad: 'high-volume training', raceVerb: 'execute' };
   }
 }
