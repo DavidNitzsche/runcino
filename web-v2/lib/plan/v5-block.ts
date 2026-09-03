@@ -42,6 +42,7 @@
  * plain read (`loadPlanShape`, `anotherRaceBlockGate`) — never `applyChange`.
  * Nothing in this module writes a row.
  */
+import { weekContainsRace } from './race-week';
 import { dateWords as usDateWords } from '@/lib/format/date';
 import { loadTrainingState, type TrainingState, type PlanWeek } from '@/lib/coach/training-state';
 import { loadSettings } from '@/lib/coach/settings';
@@ -452,7 +453,12 @@ export function suppressThesisLineIfBlockAlreadySaidIt(
 
 export function weekFlag(w: PlanWeek): string {
   if (w.isCurrent) return 'This week';
-  if (w.isRaceWeek) return 'Race week';
+  // RACEWEEK-1 · `isRaceWeek` is the GOAL race's week and nothing else, so
+  // this line labelled his 10K week "QUALITY" ten days out. A week the runner
+  // RACES IN is the question a label is asking, and `weekContainsRace` answers
+  // it from the week's own days — which means his live block reads correctly
+  // without rewriting a persisted row.
+  if (weekContainsRace(w)) return 'Race week';
   // TAPER-NOT-CUTBACK-1 (2026-08-24) · the taper is not a cutback, and the
   // taper is the more important word. `planWeekFlags` stops writing the column
   // that way for blocks authored from here on; this is what the two production

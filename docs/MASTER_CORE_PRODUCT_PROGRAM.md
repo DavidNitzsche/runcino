@@ -323,6 +323,41 @@ the runner's side rather than from the database's — and it is the direct answe
 to *"we have to ensure the adaption engine will fire."* It belongs to P0-6 and
 the replay harness, not to the visual pass.
 
+
+## OPEN DECISION FOR THE OWNER · does a tune-up race week behave like a race week?
+
+Raised by RACEWEEK-1 (fixed 2026-09-03) and deliberately NOT decided here.
+
+`plan_weeks.is_race_week` holds the GOAL race's week alone. That is the
+composer's intent — tune-up races live in their own set — and the column is not
+wrong. What was wrong is that readers spelled it "is race week" and answered a
+different question with it. Measured on the ACTIVE plan:
+
+| Week | Race | `is_race_week` |
+|---|---|---|
+| 2026-09-07 | Santa Monica 10k · 2026-09-13 | **FALSE** |
+| 2026-09-21 | Dodgers · 2026-09-26 | **FALSE** |
+| 2026-11-02 | Run Malibu · 2026-11-08 | **FALSE** |
+| 2026-11-30 | CIM · 2026-12-06 | TRUE |
+
+Three of four, and the nearest **ten days out**. The Block screen announced
+**"QUALITY"** over the week he races. The LABEL is fixed — `weekContainsRace`
+resolves from the week's own `type: 'race'` days, so his live block now reads
+correctly with no persisted row rewritten.
+
+**What is not fixed, on purpose.** Two readers still consult the column directly
+and should keep doing so until he rules:
+
+1. `libraryPhaseKey` pulls the workout library into `race_week` mode on the goal
+   race only. Should a B race do that too?
+2. The adaptation guards in `adapt.ts` exclude race weeks from quality counting
+   and from ramp checks. A tune-up race week is currently counted as ordinary
+   training.
+
+Both are coaching-behaviour changes with real blast radius, and Rule 21 cuts
+both ways here: treating every B race as a race week is another way to make the
+plan easier. Not a labelling fix's call to make.
+
 ---
 
 ## P1 · Known open items outside the critical path
