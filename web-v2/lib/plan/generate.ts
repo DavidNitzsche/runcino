@@ -42,6 +42,7 @@ import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 // NEW block is authored on. Stated once, in the module that also defines which
 // cycles a block may carry.
 import { DEFAULT_CUTBACK_EVERY_N } from './established-cadence';
+import { isNonBuildingPhaseLabel } from './non-building-week';
 // LOADCONTRACT-1 · the ONE answer to "how much load", shared with
 // lib/plan/adaptive-ramp.ts. See that module's header for the ruling.
 import {
@@ -13479,9 +13480,39 @@ export function persistedDayShape(
  * the block chart read them — and neither is re-derivable by a reader, which
  * is why they are written rather than computed at read time.
  *
- *   is_peak     the highest-mileage non-race week; first occurrence wins, so a
- *               block that ties its peak twice marks the earlier one.
+ *   is_peak     the highest-mileage BUILDING week; first occurrence wins, so a
+ *               block that ties its peak twice marks the earlier one. Race
+ *               week, TAPER and RECOVERY are not candidates, and a block with
+ *               no building week has no peak at all.
  *   is_cutback  a drop of more than 15% off the week before.
+ *
+ * PEAK-NOT-NONBUILDING-1 (2026-09-03) · `is_peak` excluded RACE WEEK and
+ * nothing else, so the argmax of a block with no building week landed on
+ * whichever week happened to be largest. A post-race recovery block is a
+ * REVERSE taper — `RECOVERY_WEEKLY_PCT_OF_BASE` rises every week for every
+ * distance — so its argmax is always its LAST week, and the engine stamped the
+ * heaviest week of a prescribed recovery block as the runner's peak.
+ *
+ * Measured on production 2026-09-03 (`faff_readonly`): 4 recovery plans, 6
+ * weeks, `is_peak = TRUE` on FOUR of them — `pln_36fe43db78fe177d` wk 1,
+ * `pln_eb73331e19230ad9` wk 1 (the week after the owner's A-race half),
+ * `pln_974c307d22ee0f61` wk 1 and `pln_0e635603799fd7b1` wk 0, the last two
+ * being single-week blocks whose ONLY week was stamped the peak. All four are
+ * archived, so none reached a runner; the writer is armed for the next runner
+ * who finishes a race, which is every runner.
+ *
+ * This is Rule 8 on the AUTHORING side. Rule 8's readers were taught about
+ * recovery blocks on 2026-09-02/03 (`prescribedNonNormalWeek` reconciles the
+ * week flag against `training_plans.mode`; `weekRowNoStepReason` gained the
+ * RECOVERY label), but the row they read still ASSERTED the opposite — that the
+ * heaviest week of a prescribed recovery block was this runner's peak. A reader
+ * that has to correct its own input is one reader away from being wrong.
+ *
+ * `is_cutback` is deliberately NOT forced true on a recovery week. See
+ * `non-building-week.ts` for the argument: the column means "a deload inserted
+ * INTO a build", the phase label is the honest carrier of "prescribed easing",
+ * and `established-cadence.ts` derives the runner's deload CADENCE from the
+ * spacing of these flags. `_recovery_block_flags.test.ts` is the gate.
  *
  * TAPER-NOT-CUTBACK-1 (2026-08-24) · `is_cutback` now excludes TAPER weeks as
  * well as race week. A taper week always drops more than 15% — by design, that
@@ -13503,10 +13534,21 @@ export function planWeekFlags(
   weeks: Array<{ isRaceWeek: boolean; phase: string; days: Array<{ distanceMi: number }> }>,
 ): { isPeakByWeek: boolean[]; isCutbackByWeek: boolean[]; weeklyMiles: number[] } {
   const weeklyMiles = weeks.map((w) => w.days.reduce((s, d) => s + d.distanceMi, 0));
-  const maxMi = Math.max(...weeklyMiles.filter((_, i) => !weeks[i].isRaceWeek), 0);
+  // PEAK-NOT-NONBUILDING-1 (2026-09-03) · a week the plan is easing through on
+  // purpose is not a candidate for the block's peak. Race week was already
+  // excluded; TAPER and RECOVERY are the rest of it, read from the one owner of
+  // "the plan is deliberately not building" (`non-building-week.ts`, Rule 16)
+  // rather than spelled a second way here.
+  const peakEligible = (i: number) =>
+    !weeks[i].isRaceWeek && !isNonBuildingPhaseLabel(weeks[i].phase);
+  const eligible = weeklyMiles.filter((_, i) => peakEligible(i));
+  // Rule 11 · a block with no eligible week has NO peak. The old `Math.max(...,
+  // 0)` floor answered 0 here, and `mi === maxMi` then matched the first
+  // zero-mile week, so a block that is entirely non-building still stamped one.
+  const maxMi = eligible.length > 0 ? Math.max(...eligible) : null;
   let peakMarked = false;
   const isPeakByWeek = weeklyMiles.map((mi, i) => {
-    if (!weeks[i].isRaceWeek && mi === maxMi && !peakMarked) {
+    if (maxMi != null && maxMi > 0 && peakEligible(i) && mi === maxMi && !peakMarked) {
       peakMarked = true;
       return true;
     }

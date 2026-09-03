@@ -239,6 +239,54 @@ the rows, and the fact that a Rule 8 protection rests on a field nothing gates.
 Correcting it made the engine **more** regressive here (REGRESS 17 → 20), because
 excluding the recovery weeks leaves only the missed July weeks in the window.
 
+#### RESOLVED 2026-09-03 · the `is_peak` half, and a correction to the scope
+
+The writer is `planWeekFlags` in `lib/plan/generate.ts`. It marked the
+highest-mileage NON-RACE week, and a recovery block is a reverse taper, so its
+argmax is always its last week. PEAK-NOT-NONBUILDING-1 now excludes every week
+the plan is easing through on purpose, read from `non-building-week.ts` (Rule
+16, one owner) rather than spelled a second time.
+
+Two corrections to what is written above.
+
+**It is four rows, not one.** Measured on production 2026-09-03 via
+`faff_readonly`: 4 recovery plans, 6 weeks, `is_peak = TRUE` on FOUR of them —
+`pln_36fe43db78fe177d` wk 1, `pln_eb73331e19230ad9` wk 1, `pln_974c307d22ee0f61`
+wk 1 and `pln_0e635603799fd7b1` wk 0. The last two are single-week blocks, so
+their ONLY week — a prescribed post-race recovery week — is recorded as the
+runner's peak. Across the whole column, 43 rows carry `is_peak` and exactly
+those 4 are wrong; no taper week and no race week is affected. Repair SQL is
+prepared but NOT executed at `docs/repairs/2026-09-03-recovery-block-is-peak.sql`.
+
+**`is_cutback = FALSE` is not settled as a defect, and is deliberately left
+alone.** The note above says the protection "rests on a field nothing gates".
+That was true when it was written and is no longer: `prescribedNonNormalWeek`
+(canonical `input.ts`) reconciles the flag against `training_plans.mode`, and
+`weekRowNoStepReason` gained the RECOVERY phase label. `non-building-week.ts`
+argues that FALSE is CORRECT — `is_cutback` means "a deload inserted INTO a
+build", the phase label is the honest carrier, and `established-cadence.ts`
+derives the runner's deload cadence from the spacing of these flags. Forcing it
+TRUE would also make the persisted week rationale read *"Cutback week. Every
+fourth week comes down so the three around it can go up"* on a post-race
+recovery week. Left as an open decision rather than taken silently either way.
+
+**A third thing the new gate found.** `non-building-week.ts` states that
+`is_cutback` is false on every recovery week "by construction", because the
+block rises. That holds for all six production rows and at 5, 6 and unset days
+a week — but NOT at three. A marathon recovery block for a 3-day-a-week runner
+composes **6 → 15 → 12 → 18 mi**: week 2 drops 20% off week 1, so the >15% rule
+fires honestly and `weekRowNoStepReason` answers CUTBACK rather than RECOVERY.
+The week is still correctly no-step, so nothing unsafe follows, but the block is
+not the monotonic reverse taper the doctrine describes and the logged reason is
+the coarser of two true words. Not fixed here; recorded.
+
+The gate is `lib/plan/_recovery_block_flags.test.ts` (1200 composed blocks,
+2080 weeks, with its own liveness count), wired into the Rule 8 shell gate
+`scripts/check-normal-window.sh` as guard 4 so it runs in the web-v2 prebuild.
+Falsified in both directions before being trusted (Rule 18): reverting the
+writer fails 4 of its 6 assertions naming 1200 offending weeks, and deleting the
+gate file fails guard 4.
+
 ### 7 · `evaluateWeeklyVolume` never windows its key sessions
 
 `weeks` is windowed to three. `keySessions` is not windowed at all — it receives

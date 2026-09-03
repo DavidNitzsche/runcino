@@ -34,7 +34,7 @@
 # why no existing gate saw any of it: they all sample the OUTPUT and ask whether
 # each point is legal, and a number measured over the wrong window is legal.
 #
-# ── THREE GUARDS, exit 1 on any violation ───────────────────────────────────
+# ── FOUR GUARDS, exit 1 on any violation ────────────────────────────────────
 #
 #   1 · SHAPE   · the shared filter module and the registry both exist, export
 #                 the symbols the rest of the app imports, and the registry has
@@ -53,6 +53,14 @@
 #                 reporting clean when the predicate stops matching. Two gates
 #                 in this repo have shipped green because they scanned zero
 #                 files; that is the failure this probe exists to prevent.
+#
+#   4 · AUTHOR- · guards 1-3 police the READERS. This one polices the ROW they
+#     ING         read. `lib/plan/_recovery_block_flags.test.ts` composes every
+#                 recovery-block shape through the real composer and the real
+#                 flag writer and asserts that none of them is authored as an
+#                 ordinary week, and that none is stamped the block PEAK.
+#                 Added 2026-09-03 after the replay found four production
+#                 recovery weeks carrying `is_peak = TRUE`.
 #
 # ── IF THE GATE FIRES ───────────────────────────────────────────────────────
 #
@@ -82,6 +90,8 @@ MOD="$ROOT/web-v2/lib/training/normal-window.ts"
 REG="$ROOT/web-v2/lib/audit/normal-window-registry.ts"
 GATE="$ROOT/web-v2/lib/audit/_normal_window_scan.test.ts"
 GATE_BEHAVIOUR="$ROOT/web-v2/lib/training/_normal_window.test.ts"
+AUTHORING_GATE="$ROOT/web-v2/lib/plan/_recovery_block_flags.test.ts"
+FLAG_WRITER="$ROOT/web-v2/lib/plan/generate.ts"
 fail=0
 
 say() { printf '%s\n' "$*"; }
@@ -214,6 +224,61 @@ else
     bad "vitest gate failed · output follows"
     tail -40 /tmp/_normwin.log
   fi
+fi
+
+# ── GUARD 4 · the AUTHORING side ────────────────────────────────────────────
+#
+# Guards 1-3 police the READERS: nothing may answer "what does this runner
+# normally do" over a window that contains a taper. They cannot see a row that
+# LIES about which weeks those were, and on 2026-09-03 the replay found one:
+# `pln_eb73331e19230ad9`, `mode: 'recovery'`, authored the day after the owner's
+# A-race half, with `is_peak = TRUE` on the second of its two prescribed
+# recovery weeks. Four of the six recovery weeks in production carry it. A
+# reader that has to correct its own input is one reader away from being wrong,
+# so the row is gated here too.
+say "guard 4 · authoring · a recovery block is never written as ordinary"
+if [ ! -f "$AUTHORING_GATE" ]; then
+  bad "authoring gate missing: $AUTHORING_GATE · Rule 20 · the writer is ungated again"
+else
+  grep -qE "describe\(['\"]RECOVERYFLAGS-1" "$AUTHORING_GATE" \
+    || bad "authoring gate lost its RECOVERYFLAGS-1 describe block"
+  grep -qE "it\(['\"]LIVENESS" "$AUTHORING_GATE" \
+    || bad "authoring gate lost its liveness probe · a sweep that composes nothing reports clean"
+  # It must drive the REAL composer and the REAL writer, or it proves only that
+  # the test agrees with itself (Rule 18).
+  for sym in "composeRecoveryPlan" "planWeekFlags" "isNonBuildingPhaseLabel" "weekRowNoStepReason"; do
+    grep -q "$sym" "$AUTHORING_GATE" || bad "authoring gate no longer drives '$sym'"
+  done
+  # And the writer must still read the one owner of "deliberately not building"
+  # rather than spelling the phase list a second time (Rule 16).
+  #
+  # GATEAUDIT · the bare symbol is NOT enough. `generate.ts` names
+  # `isNonBuildingPhaseLabel` in planWeekFlags' own doc comment, so a grep for
+  # the word survives deleting the code — which is exactly how
+  # check-automatic-mutations' guard 2 shipped satisfiable by a comment.
+  # Demand the expression, on the eligibility predicate, with its argument.
+  grep -qE '!isNonBuildingPhaseLabel\(weeks\[i\]\.phase\)' "$FLAG_WRITER" \
+    || bad "planWeekFlags no longer excludes non-building weeks from is_peak · a recovery block will be stamped with a PEAK week again"
+  [ "$fail" = "0" ] && say "  ok · authoring gate present, drives the real composer"
+fi
+
+if [ -d "$ROOT/web-v2/node_modules" ]; then
+  # --reporter=verbose so the sweep's own liveness line reaches the log. A
+  # guard that prints "ok ·" with nothing after it is the hollow-green shape
+  # this rule exists to prevent, so the count is REQUIRED, not just echoed.
+  if ( cd "$ROOT/web-v2" && npx vitest run --reporter=verbose lib/plan/_recovery_block_flags.test.ts >/tmp/_recflags.log 2>&1 ); then
+    swept=$(grep -oE 'swept [0-9]+ recovery blocks, [0-9]+ weeks' /tmp/_recflags.log | tail -1)
+    if [ -z "$swept" ]; then
+      bad "authoring gate passed but printed no sweep count · it may have composed nothing"
+    else
+      say "  ok · $swept"
+    fi
+  else
+    bad "authoring gate failed · output follows"
+    tail -40 /tmp/_recflags.log
+  fi
+else
+  say "  skip · no node_modules (cold container) · the shape checks above stand"
 fi
 
 if [ "$fail" != "0" ]; then

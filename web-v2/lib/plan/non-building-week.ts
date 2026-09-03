@@ -22,12 +22,32 @@
  * A recovery block is a REVERSE TAPER: `RECOVERY_WEEKLY_PCT_OF_BASE` in
  * `lib/plan/goal-tiers.ts` rises every week for every distance. So
  * `is_cutback` — defined in `generate.ts#planWeekFlags` as a >15% drop off the
- * week before — is FALSE on every recovery week by construction, and correctly
+ * week before — is FALSE on a recovery week that actually rises, and correctly
  * so. Measured on production 2026-09-03, `faff_readonly`: 4 recovery plans, 6
- * weeks, `is_cutback = FALSE` on all six, and `is_peak = TRUE` on exactly one
- * week of each because the argmax of a monotonically rising block is always
- * its last week. `pln_eb73331e19230ad9` week 1 (23.0 mi, the week after his
- * A-race half) is flagged the PEAK week of its block.
+ * weeks, `is_cutback = FALSE` on all six, and `is_peak = TRUE` on FOUR of the
+ * six because the argmax of a rising block is always its last week.
+ * `pln_eb73331e19230ad9` week 1 (23.0 mi, the week after his A-race half) is
+ * flagged the PEAK week of its block.
+ *
+ * CORRECTION 2026-09-03 · this paragraph said `is_cutback` was false on every
+ * recovery week "BY CONSTRUCTION". That is not true, and the sweep in
+ * `_recovery_block_flags.test.ts` is what found it: the claim holds for all six
+ * production rows and for every block composed at 5, 6 and unset days a week,
+ * but NOT at three. A marathon recovery block for a 3-day-a-week runner
+ * composes 6 -> 15 -> 12 -> 18 mi, because the run-day cap bites unevenly
+ * across the reverse taper's percentages. Week 2 drops 20% off week 1, the
+ * >15% rule fires honestly, and the flag outranks the label, so
+ * `weekRowNoStepReason` answers CUTBACK rather than RECOVERY there. The week is
+ * still correctly NO-STEP, which is the property the levers depend on, so
+ * nothing unsafe follows — but the block is not the monotonic reverse taper
+ * doctrine describes, and this module may not claim an invariant it does not
+ * have (Rule 18 pointed at prose: gate the sentence or delete it). What is
+ * gated is the weaker, true statement, in `_recovery_block_flags.test.ts`
+ * assertion 2: every recovery week is NO-STEP, and the phase-label rung always
+ * reads RECOVERY whatever the flag did.
+ *
+ * `is_peak` was the separate half, and it WAS a defect on all four rows. Fixed
+ * by PEAK-NOT-NONBUILDING-1 in `planWeekFlags`, which reads this module.
  *
  * With no cutback flag and no RECOVERY case, `weekRowNoStepReason` returned
  * null for a post-race recovery week and all three progression levers would
