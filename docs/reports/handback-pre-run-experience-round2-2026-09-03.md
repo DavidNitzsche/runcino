@@ -1,5 +1,19 @@
 # Pre-run experience — round 2 handback
 
+**Addendum, same day:** after this round was written up, David flagged the "BEFORE YOU
+START" device-readiness block (§3 below) directly — a screenshot of it, with "wtf is all
+this?" — and then the actual correction: **"None of this is needed. The runs start from the
+watch."** Commit `e4e8be08` removes it: `RunLobbyRecordingLine`, `RunLobbyHrLine`,
+`RunLobbyLocationReadiness` (and their tests), the `readinessSection`/`readinessRow` view code,
+and the `locationReadiness` state that fed it — 231 lines net removed. `recordingOwner` and
+`outdoorSubtitle` stay, because Decision 1's actual watch-vs-phone routing lives in
+`HostsV5.swift` and never read this section in the first place; only the visible checklist and
+its Retry button are gone. The lobby now goes straight from workout guidance to
+Outdoor/Treadmill/Cancel. Rendered against the real hills workout after the change (artifact 08)
+before committing. Test count dropped from 195 to 185 (the 10 deleted tests belonged to the
+deleted types) — full suite still green. **§3 and artifact 01 below describe the state that has
+since been removed; read them as history, not current behavior.**
+
 3 September 2026 · pre-run experience lead · branch `feat/pre-run-experience`, **not on `main`**
 
 Round 1 (the lobby, grouped segments, `PendingRunPlanV5`) was reviewed and merged/deployed
