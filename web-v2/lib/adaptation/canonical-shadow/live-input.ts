@@ -75,7 +75,7 @@ import {
 } from '@/lib/adaptation/canonical/input';
 import { gradeStimulus, type StimulusInput } from '@/lib/adaptation/canonical/stimulus';
 import {
-  asRunData, runDay, runDistanceMi, runPaceSecPerMi, runAvgHr, runPhases,
+  asRunData, runDay, runDaySql, runDistanceMi, runPaceSecPerMi, runAvgHr, runPhases,
   runNotMergedSql, splitsWithHrAndPace, type RunData,
 } from '@/lib/runs/run-shape';
 import { wireVerdictLandedTheWork } from '@/lib/training/execution-semantics';
@@ -218,9 +218,9 @@ async function readRecentRuns(userUuid: string, sinceISO: string): Promise<RunRo
     `SELECT id::text AS id, data
        FROM runs
       WHERE user_uuid = $1::uuid
-        AND COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) >= $2
+        AND ${runDaySql()} >= $2
         AND ${runNotMergedSql()}
-      ORDER BY COALESCE(data->>'date', LEFT(data->>'startLocal', 10)) ASC`,
+      ORDER BY ${runDaySql()} ASC`,
     [userUuid, sinceISO],
   );
   return r.rows;

@@ -213,7 +213,11 @@ export async function runAndPersistCanonicalShadowEvaluation(
     };
   }
 
-  const results: LiveShadowEvaluationResult['records'] = [];
+  const results: Array<{
+    lever: CanonicalDecisionRecord['lever'];
+    decision: CanonicalDecisionRecord['decision'];
+    persisted: boolean;
+  }> = [];
   for (const r of evaluation.records) {
     const persisted = await persistOne(userUuid, r);
     results.push({ lever: r.lever, decision: r.decision, persisted });
