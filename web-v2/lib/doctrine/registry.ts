@@ -352,7 +352,7 @@ import {
 } from '@/lib/terrain/grade-adjust';
 import {
   aerobicCeilingBpm, friel7Zones, judgeEasyRunHr, lthrZones, pctMaxZones, tanakaMaxHr, zoneIdxForBpm,
-  FRIEL_5_ZONE_EDGES, FRIEL_7_ZONE_EDGES, PCT_MAX_ZONE_BANDS,
+  FRIEL_5_ZONE_EDGES, FRIEL_7_ZONE_EDGES, PCT_MAX_ZONE_BANDS, hrRoleForRepDuration,
 } from '@/lib/training/zones';
 import { deriveReadingScopes, HR_REP_KINETICS_FLOOR_SEC } from '@/lib/coach/reading-scope';
 import { lthrFromMaxHr, lthrFromRace } from '@/lib/training/lthr';
@@ -5194,6 +5194,39 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (shortRep.hr.scope !== 'none') {
         throw new Error(
           `reps of ${doctrineSec - 1}s produced an HR reading at scope '${shortRep.hr.scope}' · doctrine says ignore HR`,
+        );
+      }
+    },
+  },
+  {
+    id: 'HR.rep-target-role-below-kinetics-floor',
+    binds: ['lib/training/zones.ts#hrRoleForRepDuration'],
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '### Decision Table',
+    claim:
+      'A rep shorter than the same kinetics floor `HR.rep-kinetics-floor` already binds must never ' +
+      'have its heart-rate number rendered as a live TARGET — doctrine says pace/RPE governs and HR ' +
+      'reads late. The bpm itself is not changed or hidden; only its role is downgraded to ' +
+      "observational, which is the prescribe-side half of the SAME refusal reading-scope's read side " +
+      'already makes, off the identical constant.',
+    check() {
+      // Below the floor: never 'target'. This is the exact defect a real
+      // render surfaced — ten 60-second hill reps each showing an identical,
+      // precise "HR ~176" indistinguishable from a real target.
+      if (hrRoleForRepDuration(HR_REP_KINETICS_FLOOR_SEC - 1) !== 'observational') {
+        throw new Error(
+          `hrRoleForRepDuration(${HR_REP_KINETICS_FLOOR_SEC - 1}) is ` +
+          `'${hrRoleForRepDuration(HR_REP_KINETICS_FLOOR_SEC - 1)}' · a rep below the kinetics floor ` +
+          "must resolve 'observational', never 'target'",
+        );
+      }
+      // At and above the floor: a real target, or the two doctrine
+      // constants have drifted apart from each other.
+      if (hrRoleForRepDuration(HR_REP_KINETICS_FLOOR_SEC) !== 'target') {
+        throw new Error(
+          `hrRoleForRepDuration(${HR_REP_KINETICS_FLOOR_SEC}) is not 'target' · this must be exactly ` +
+          'HR_REP_KINETICS_FLOOR_SEC, the same constant HR.rep-kinetics-floor binds, or the two claims ' +
+          'are silently reading two different floors',
         );
       }
     },

@@ -52,7 +52,7 @@ final class PendingRunPlanV5 {
     static let shared = PendingRunPlanV5()
     private init() {}
 
-    enum Snapshot {
+    enum Snapshot: Equatable {
         /// A real workout, fetched and about to start.
         case workout(WatchWorkout)
         /// The fetch answered — cleanly — with "no workout today" (rest day,
@@ -61,11 +61,19 @@ final class PendingRunPlanV5 {
         case none
     }
 
+    /// The date this snapshot was fetched FOR — `workoutId`'s own embedded
+    /// date is a private wire detail (`"<uid>-<date>"`) this file must not
+    /// parse; the lobby already knows what date it asked for, and that is
+    /// the honest source for "did this snapshot survive to the date it
+    /// claims to be." Stamped alongside every `record` so a snapshot can
+    /// never silently outlive a midnight rollover.
+    private(set) var dateISO: String?
     private var snapshot: Snapshot?
     private var capturedAt: Date = .distantPast
 
-    func record(_ s: Snapshot) {
+    func record(_ s: Snapshot, dateISO: String) {
         snapshot = s
+        self.dateISO = dateISO
         capturedAt = Date()
     }
 
@@ -74,10 +82,68 @@ final class PendingRunPlanV5 {
     /// instant only as long as the runner acts on the lobby promptly.  Ten
     /// minutes covers a runner who reads the lobby, ties their shoes, and
     /// taps Start; past that, a fresh fetch is more honest than a held one.
-    func consume(maxAge: TimeInterval = 600) -> Snapshot? {
+    /// `expectedDateISO`, when passed, additionally refuses a snapshot
+    /// recorded for a DIFFERENT date — the guard against a cached workout
+    /// from another day or plan version ever reaching Start, independent of
+    /// the age check (a snapshot can be young in wall-clock time and still
+    /// belong to the wrong day if the device date rolled over underneath it).
+    func consume(maxAge: TimeInterval = 600, expectedDateISO: String? = nil) -> Snapshot? {
         guard let snapshot, Date().timeIntervalSince(capturedAt) <= maxAge else { return nil }
+        if let expectedDateISO, let recordedDateISO = dateISO, recordedDateISO != expectedDateISO {
+            self.snapshot = nil
+            self.dateISO = nil
+            return nil
+        }
         self.snapshot = nil
+        self.dateISO = nil
         return snapshot
+    }
+
+    #if DEBUG
+    /// Test seam only — `WatchSync`'s equivalent pattern. Never used by
+    /// product code; a singleton's state must not bleed between test cases.
+    func resetForTesting() {
+        snapshot = nil
+        dateISO = nil
+        capturedAt = .distantPast
+    }
+    #endif
+}
+
+// MARK: - Recording owner (Decision 1 · Apple Watch execution)
+
+/// Which device is the SOLE recorder for a session about to start. Resolved
+/// once, off the same `RunLobbyWatchReadiness` the lobby already shows the
+/// runner — never re-derived independently at the point a run actually
+/// starts, because two different answers to "who is recording this" is
+/// exactly the shape that produces two independently-persisted activities
+/// for one run.
+enum RunLobbyRecordingOwner: Equatable {
+    /// A compatible, reachable watch holds (or is about to receive) the
+    /// canonical workout and executes it. The phone shows companion status
+    /// only and never starts its own tracking session for this run.
+    case watch
+    /// No usable watch — the phone is the sole recorder, exactly as it is
+    /// today. Also the answer whenever the watch's last sync is unknown or
+    /// failed: "reachable" alone does not prove the watch actually holds
+    /// today's workout, and the phone recording is always available as the
+    /// safe fallback per "optional watch absence must never block a run."
+    case phone
+
+    /// `watchReadiness.ready` means paired + installed + reachable — but
+    /// that alone only proves the watch CAN be talked to, not that today's
+    /// workout actually landed there. `lastSync` carrying `WatchSync`'s own
+    /// "Synced …" success string (set only after `pushTodayToWatch()`
+    /// actually completes, `WatchSync.swift`) is the closest signal this
+    /// app has to "the watch has the canonical workout" without a two-way
+    /// handshake this pass does not build. A reachable watch with no
+    /// successful sync on record falls back to phone — the conservative
+    /// direction, since the alternative is claiming an execution surface
+    /// that may not have anything to execute.
+    static func resolve(_ watchReadiness: RunLobbyWatchReadiness) -> Self {
+        guard case .ready(let lastSync) = watchReadiness,
+              let lastSync, lastSync.hasPrefix("Synced") else { return .phone }
+        return .watch
     }
 }
 
@@ -105,23 +171,91 @@ enum RunLobbyWatchReadiness: Equatable {
         return isReachable ? .ready(lastSync: lastSyncStatus) : .unreachable(lastSync: lastSyncStatus)
     }
 
-    /// One line, stated plainly — never a promise the build can't back up.
-    var line: String {
-        switch self {
-        case .noWatch:
-            return "No Apple Watch paired. Recording and heart rate are on your phone."
-        case .notInstalled:
-            return "Faff isn't installed on your watch. Recording and heart rate are on your phone."
-        case .ready(let lastSync):
-            return "Watch connected" + (lastSync.map { " · \($0)" } ?? "") + "."
-        case .unreachable(let lastSync):
-            return "Watch not reachable right now" + (lastSync.map { " · last \($0)" } ?? "") + ". Recording continues on your phone."
-        }
-    }
-
     /// Only the unreachable case has anything a retry could fix — a genuinely
     /// absent or uninstalled watch has no connection to retry.
     var offersRetry: Bool { if case .unreachable = self { return true }; return false }
+}
+
+// MARK: - Recording + HR honesty (pure, testable)
+//
+// CORRECTION (2026-09-03) · the line this replaces —
+// "No Apple Watch paired. Recording and heart rate are on your phone." — was
+// wrong on its face: an iPhone does not inherently provide running heart
+// rate, and "no watch" says nothing about whether ANY heart-rate source is
+// connected. Device choice (paired or not) is not the same fact as HR
+// availability, and the old line claimed the second from the first. These
+// two types render the two facts the runner actually needs — who records,
+// and whether heart rate is connected — each true on its own terms.
+
+/// WHO records this session, in words, given the same `RunLobbyRecordingOwner`
+/// decision the console will make. One line states both the owner AND why,
+/// so a phone-recorded run because the watch is not ready explains the
+/// capability difference before the runner commits, not after.
+enum RunLobbyRecordingLine: Equatable {
+    case watchWillRecord(lastSync: String?)
+    case phoneWillRecord(watchReason: String?)
+
+    static func resolve(owner: RunLobbyRecordingOwner, watch: RunLobbyWatchReadiness) -> Self {
+        switch owner {
+        case .watch:
+            if case .ready(let lastSync) = watch { return .watchWillRecord(lastSync: lastSync) }
+            return .watchWillRecord(lastSync: nil)
+        case .phone:
+            switch watch {
+            case .noWatch:
+                return .phoneWillRecord(watchReason: nil)
+            case .notInstalled:
+                return .phoneWillRecord(watchReason: "Faff isn't installed on your watch.")
+            case .unreachable:
+                return .phoneWillRecord(watchReason: "Your watch is paired but not reachable right now.")
+            case .ready:
+                // Reachable, but resolve() above only grants `.watch` when
+                // the last sync actually succeeded — reachable-with-no-
+                // confirmed-sync is exactly the gap between "can talk to
+                // it" and "it has today's workout."
+                return .phoneWillRecord(watchReason: "Your watch hasn't confirmed today's workout yet.")
+            }
+        }
+    }
+
+    var line: String {
+        switch self {
+        case .watchWillRecord(let lastSync):
+            return "Your Apple Watch will execute and record this run." + (lastSync.map { " \($0)." } ?? "")
+        case .phoneWillRecord(let reason):
+            return "Your phone will record this run." + (reason.map { " \($0)" } ?? "")
+        }
+    }
+
+    /// True whenever there is a watch-side reason a retry (re-sync) could
+    /// fix. A genuinely absent or uninstalled watch has no sync to retry.
+    var offersWatchRetry: Bool {
+        if case .phoneWillRecord(let reason) = self { return reason != nil }
+        return false
+    }
+}
+
+/// WHETHER heart rate will be available, resolved from the SAME owner
+/// decision — never from watch pairing alone. A watch that is paired but not
+/// the recording owner is not a live HR source: the wrist only streams
+/// samples fast enough to matter during ITS OWN active workout session, not
+/// merely by being worn while the phone records.
+enum RunLobbyHrLine: Equatable {
+    case connectedFromWatch
+    case unavailable
+
+    static func resolve(owner: RunLobbyRecordingOwner) -> Self {
+        owner == .watch ? .connectedFromWatch : .unavailable
+    }
+
+    var line: String {
+        switch self {
+        case .connectedFromWatch:
+            return "Heart rate is connected from your Apple Watch."
+        case .unavailable:
+            return "No heart-rate source is available. Your phone can record GPS and pace; heart rate will be unavailable."
+        }
+    }
 }
 
 // MARK: - Location readiness (pure, testable)
@@ -160,6 +294,12 @@ struct RunLobbySegmentGroup: Identifiable, Equatable {
     let id: Int
     let title: String
     let detail: String?
+    /// True when this row's HR number (if any) is `.observational` — too
+    /// short a rep for HR to reach the effort, per `WatchPhase.hrRole`. The
+    /// row still shows the number; this only changes HOW it reads (never a
+    /// live target) so a runner does not chase a signal that has not
+    /// caught up yet.
+    let hrIsObservational: Bool
 }
 
 enum RunLobbySegments {
@@ -211,13 +351,18 @@ enum RunLobbySegments {
         return m > 0 ? "\(m) min" : "\(p.durationSec) sec"
     }
 
+    /// HR-ROLE-1 · `.observational` reads as "reads ~N", never "HR ~N" — the
+    /// wording itself is the signal that this number is not something to
+    /// chase, on top of the workout-level caution `executionGuidance` adds
+    /// once for the whole session rather than repeating it every row
+    /// (Rule 17).
     private static func detail(_ p: WatchPhase) -> String? {
         var parts: [String] = []
         if let pace = p.targetPaceSPerMi {
             parts.append(Units.formatPace(secPerMile: pace))
         }
         if let hr = p.hrTargetBpm {
-            parts.append("HR ~\(hr)")
+            parts.append(p.effectiveHrRole == .observational ? "reads ~\(hr)" : "HR ~\(hr)")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -231,8 +376,9 @@ enum RunLobbySegments {
         var i = 0
         var nextId = 0
 
-        func emit(title: String, detail: String?) {
-            rows.append(RunLobbySegmentGroup(id: nextId, title: title, detail: detail))
+        func emit(title: String, detail: String?, hrIsObservational: Bool = false) {
+            rows.append(RunLobbySegmentGroup(id: nextId, title: title, detail: detail,
+                                              hrIsObservational: hrIsObservational))
             nextId += 1
         }
 
@@ -301,18 +447,29 @@ enum RunLobbySegments {
                 if let recovery {
                     pieces.append("\(length(recovery)) recovery")
                 }
-                emit(title: title, detail: pieces.isEmpty ? nil : pieces.joined(separator: " · "))
+                emit(title: title, detail: pieces.isEmpty ? nil : pieces.joined(separator: " · "),
+                     hrIsObservational: work.hrTargetBpm != nil && work.effectiveHrRole == .observational)
                 i = j
                 grouped = true
                 break
             }
             if !grouped {
                 emit(title: p.label.isEmpty ? p.type.rawValue.capitalized : p.label,
-                     detail: [length(p), detail(p)].compactMap { $0 }.joined(separator: " · "))
+                     detail: [length(p), detail(p)].compactMap { $0 }.joined(separator: " · "),
+                     hrIsObservational: p.hrTargetBpm != nil && p.effectiveHrRole == .observational)
                 i += 1
             }
         }
         return rows
+    }
+
+    /// One workout-level sentence, said ONCE, when any work phase in the
+    /// session carries an observational HR role — the caution belongs to
+    /// the session, not to every row that has an observational number
+    /// (Rule 17: a sentence that would otherwise repeat per row belongs to
+    /// the block instead).
+    static func hasObservationalHr(_ phases: [WatchPhase]) -> Bool {
+        phases.contains { $0.type == .work && $0.hrTargetBpm != nil && $0.effectiveHrRole == .observational }
     }
 }
 
@@ -347,6 +504,49 @@ enum RunLobbyRaceBrief {
     }
 }
 
+// MARK: - The device's own "today"
+
+/// The device's real calendar day, `yyyy-MM-dd`. A run can only ever be
+/// recorded NOW, so the device's own clock — not a server-resolved date — is
+/// the right reference for "does this snapshot still belong to today,"
+/// mirroring `InjuryPreviewHostV5.tomorrowISO()`'s own reasoning.
+enum RunLobbyDate {
+    static func todayISO() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = .current
+        return f.string(from: Date())
+    }
+}
+
+// MARK: - Plan-change detection (pure, testable)
+
+/// Answers "did the PRESCRIPTION change" between two reads of today's
+/// workout — used right before Start to catch a plan rebuild, an approved
+/// reschedule, or an adaptation that landed while the lobby sat open.
+enum RunLobbyPlanCheck {
+    /// Compares the prescription, never the envelope. `readinessScore`,
+    /// `readinessLabel`, and `expiresAt` are freshness/telemetry metadata
+    /// that can legitimately differ between two fetches moments apart with
+    /// nothing about the WORKOUT having changed — folding them into this
+    /// comparison would manufacture a false "the plan changed" on every
+    /// routine re-check, which trains a runner to ignore the real ones.
+    static func prescriptionChanged(_ shown: WatchWorkout?, _ fresh: WatchWorkout?) -> Bool {
+        switch (shown, fresh) {
+        case (nil, nil): return false
+        case (nil, _?), (_?, nil): return true
+        case (let a?, let b?):
+            return a.workoutId != b.workoutId
+                || a.name != b.name
+                || a.phases != b.phases
+                || a.distanceMi != b.distanceMi
+                || a.isRace != b.isRace
+                || a.goalSec != b.goalSec
+                || a.hrCeilingBpm != b.hrCeilingBpm
+        }
+    }
+}
+
 // MARK: - Workout fetch state (Rule 11: three facts, never one)
 
 enum RunLobbyWorkoutState {
@@ -358,6 +558,40 @@ enum RunLobbyWorkoutState {
     /// it, because "no plan" and "couldn't reach the server" are different
     /// facts and call for different sentences.
     case failed
+
+    /// Neither state carries a canonical workout to run structured — the
+    /// shared condition the "no canonical workout" UI branches on, so the
+    /// two callers of it (the section body, the button-row swap) can never
+    /// disagree about which states qualify.
+    var hasNoCanonicalWorkout: Bool {
+        switch self {
+        case .none, .failed: return true
+        case .loading, .ready: return false
+        }
+    }
+
+    var workout: WatchWorkout? {
+        if case .ready(let w) = self { return w }
+        return nil
+    }
+}
+
+// MARK: - Workout title (pure, testable)
+
+/// Splits the backend's authored `name` — which for a structured session
+/// bakes the full prescription into one string, e.g.
+/// `"10×60s hills @ 5K-10K effort · 2 min jog down"` — into a short
+/// headline and an optional descriptor, so the primary heading a runner
+/// reads first is a NAME, not a paragraph. Never rewrites the words
+/// themselves — canonical text stays canonical — this only decides where
+/// the line break goes.
+enum RunLobbyTitle {
+    static func split(_ name: String) -> (headline: String, descriptor: String?) {
+        guard let r = name.range(of: " @ ") else { return (name, nil) }
+        let headline = String(name[..<r.lowerBound])
+        let descriptor = String(name[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+        return (headline.isEmpty ? name : headline, descriptor.isEmpty ? nil : descriptor)
+    }
 }
 
 // MARK: - The lobby
@@ -375,6 +609,20 @@ struct RunLobbyV5: View {
     @ObservedObject private var watchSync = WatchSync.shared
     @State private var workoutState: RunLobbyWorkoutState = .loading
     @State private var locationReadiness: RunLobbyLocationReadiness = .resolve(CLLocationManager().authorizationStatus)
+    /// The concise "why this workout" line, read from the SAME canonical
+    /// sentence Today already shows (`V5Today.why` / `.thesis.coachLine`) —
+    /// never a new coaching sentence authored here. Purely additive: a
+    /// failure of this fetch never blocks or degrades anything else in the
+    /// lobby, it just leaves this one line absent.
+    @State private var purpose: String?
+    /// Double-tap guard, and what disables the start tiles while a re-fetch
+    /// is verifying nothing changed underneath the lobby.
+    @State private var isStarting = false
+    /// Set when the pre-start re-verification finds the prescription differs
+    /// from what was shown — `workoutState` is updated to the fresh read
+    /// FIRST, so this alert's "review" action is reviewing the real update,
+    /// not a stale display of the old one.
+    @State private var planChanged = false
 
     private var watchReadiness: RunLobbyWatchReadiness {
         .resolve(isPaired: watchSync.isPaired,
@@ -383,45 +631,76 @@ struct RunLobbyV5: View {
                  lastSyncStatus: watchSync.lastSyncStatus)
     }
 
+    private var recordingOwner: RunLobbyRecordingOwner { .resolve(watchReadiness) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s20) {
             workoutSection
             readinessSection
-            VStack(alignment: .leading, spacing: V5.S.s16) {
-                choice(title: "Outdoor", sub: "GPS pace and route", action: { start(onOutdoor) })
-                choice(title: "Treadmill", sub: "Speed and incline, no GPS", action: { start(onTreadmill) })
-
-                // PICKERTRUTH-1 · gated on the same fact the live screen
-                // reads, so the sheet cannot promise what the build cannot
-                // do. Kept verbatim from RunPickerV5 rather than restated,
-                // per Rule 17 — one wording for one fact.
-                Text(PhoneRunTracker.backgroundRecordingAvailable
-                     ? "An outdoor run keeps recording with your screen locked and the phone in a pocket. Closing the app ends it."
-                     : "This build can only record while the app is open. Keep the screen on until you end the run.")
-                    .font(.faffText(TypeScaleV5.label13))
-                    .foregroundStyle(V5.textQuiet)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, V5.S.s4)
-
-                FaffButton("Cancel", variant: .ghost, size: .md, action: onCancel)
-            }
+            startSection
         }
         .task { await loadWorkout() }
+        .alert("Your plan updated", isPresented: $planChanged) {
+            Button("Review") {}
+        } message: {
+            Text("What's about to start has changed since you opened this screen. Review it below before starting.")
+        }
     }
 
-    // MARK: Start — record the shown plan so the console reads the SAME one
+    // MARK: Start — re-verify, then record the shown plan so the console reads the SAME one
 
-    private func start(_ go: @escaping () -> Void) {
-        switch workoutState {
-        case .ready(let w): PendingRunPlanV5.shared.record(.workout(w))
-        case .none:         PendingRunPlanV5.shared.record(.none)
-        case .loading, .failed: break // nothing to hand forward; the console fetches its own
+    /// Re-fetches immediately before handing off, because a plan rebuild, an
+    /// approved reschedule, or an adaptation can land while this sheet sits
+    /// open. Never silently starts an obsolete prescription: if the fresh
+    /// read differs from what was shown, this stops and asks the runner to
+    /// review rather than proceeding (`planChanged`). A re-fetch that FAILS
+    /// is a different fact from a re-fetch that CHANGED — per "never block a
+    /// run for optional data," a failed re-verification proceeds with what
+    /// was already shown rather than stopping the runner over a network blip.
+    private func start(_ go: @escaping () -> Void) async {
+        guard !isStarting else { return }
+        isStarting = true
+        defer { isStarting = false }
+
+        let shown = workoutState.workout
+        do {
+            let fresh = try await API.fetchWatchWorkout()
+            if RunLobbyPlanCheck.prescriptionChanged(shown, fresh) {
+                workoutState = fresh.map { .ready($0) } ?? .none
+                planChanged = true
+                return
+            }
+            recordAndGo(fresh ?? shown, go: go)
+        } catch {
+            recordAndGo(shown, go: go)
+        }
+    }
+
+    /// `unstructured` records `.none` explicitly (an honest "no target,
+    /// started anyway") rather than leaving `PendingRunPlanV5` untouched —
+    /// so the console never independently re-fetches and possibly finds a
+    /// workout the runner just explicitly chose to skip.
+    private func recordAndGo(_ workout: WatchWorkout?, go: @escaping () -> Void) {
+        if let workout {
+            PendingRunPlanV5.shared.record(.workout(workout), dateISO: RunLobbyDate.todayISO())
+        } else {
+            PendingRunPlanV5.shared.record(.none, dateISO: RunLobbyDate.todayISO())
         }
         go()
     }
 
     private func loadWorkout() async {
         locationReadiness = .resolve(CLLocationManager().authorizationStatus)
+        async let purposeFetch: String? = {
+            // Best-effort, additive only — see `purpose`'s doc comment.
+            guard case .ok(let today) = try? await API.fetchV5Today() else { return nil }
+            // Same precedence TodayBeforeV5 itself uses (`why` then
+            // `thesis.coachLine`) — the ONE existing rule, read again here,
+            // not a second one invented for this screen.
+            if let why = today.why, !why.isEmpty { return why }
+            if let coachLine = today.thesis?.coachLine, !coachLine.isEmpty { return coachLine }
+            return nil
+        }()
         do {
             if let w = try await API.fetchWatchWorkout() {
                 workoutState = .ready(w)
@@ -431,6 +710,7 @@ struct RunLobbyV5: View {
         } catch {
             workoutState = .failed
         }
+        purpose = await purposeFetch
     }
 
     // MARK: - What's about to start
@@ -441,17 +721,19 @@ struct RunLobbyV5: View {
         case .loading:
             Skeleton(lines: 3)
         case .failed:
-            ErrorNote(text: "Couldn't load today's workout. You can still run without a target.",
+            ErrorNote(text: "Couldn't load today's planned workout. Starting now will record an unstructured run.",
                       onRetry: { Task { workoutState = .loading; await loadWorkout() } })
         case .none:
-            Silence(reason: "Nothing scheduled today. This will record as a free run.")
+            Silence(reason: "Nothing scheduled today. Starting now will record an unstructured run.")
         case .ready(let w):
             workoutCard(w)
         }
     }
 
     private func workoutCard(_ w: WatchWorkout) -> some View {
-        VStack(alignment: .leading, spacing: V5.S.s12) {
+        let title = RunLobbyTitle.split(w.name)
+        return VStack(alignment: .leading, spacing: V5.S.s12) {
+            // 1 · exact workout being started
             HStack(alignment: .firstTextBaseline) {
                 V5SectionLabel(text: "Today · about to start", color: V5.textQuiet, size: TypeScaleV5.label12)
                 Spacer(minLength: 0)
@@ -461,29 +743,65 @@ struct RunLobbyV5: View {
                         .foregroundStyle(V5.textSecondary)
                 }
             }
-            Text(w.name)
+            Text(title.headline)
                 .font(.faffDisplay(20))
                 .foregroundStyle(V5.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let descriptor = title.descriptor {
+                Text(descriptor)
+                    .font(.faffText(TypeScaleV5.body15))
+                    .foregroundStyle(V5.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if w.isRace {
                 raceBrief(w)
             } else {
-                if let cue = w.cue, !cue.isEmpty {
-                    Text(cue)
+                // 2 · concise purpose
+                if let purpose {
+                    Text(purpose)
                         .font(.faffText(TypeScaleV5.body15))
                         .foregroundStyle(V5.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let ceiling = w.hrCeilingBpm {
-                    Text("Keep heart rate under \(ceiling) bpm.")
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.attention)
-                }
+                // 3 · grouped structure
                 segmentPreview(w.phases)
+                // 4 · primary execution guidance
+                let guidance = executionGuidanceLines(w)
+                if !guidance.isEmpty {
+                    VStack(alignment: .leading, spacing: V5.S.s4) {
+                        ForEach(Array(guidance.enumerated()), id: \.offset) { _, line in
+                            Text(line)
+                                .font(.faffText(TypeScaleV5.label13))
+                                .foregroundStyle(V5.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.top, V5.S.s2)
+                }
             }
         }
         .padding(V5.S.tilePad)
         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+    }
+
+    /// The coach's own cue, then any workout-level HR framing — a session
+    /// ceiling (easy/long) or, per the HR-role fix, the one-time caution
+    /// that this session's reps are too short for heart rate to govern
+    /// live. Never both a ceiling and the short-rep caution: doctrine gates
+    /// `hrCeilingBpm` to easy/long sessions only, and the short-rep role
+    /// only ever appears on quality-session work phases, so the two facts
+    /// cannot co-occur on one workout.
+    private func executionGuidanceLines(_ w: WatchWorkout) -> [String] {
+        var lines: [String] = []
+        if let cue = w.cue, !cue.isEmpty { lines.append(cue) }
+        if let ceiling = w.hrCeilingBpm {
+            lines.append("Keep heart rate under \(ceiling) bpm.")
+        }
+        if RunLobbySegments.hasObservationalHr(w.phases) {
+            lines.append("Effort and controlled form govern this — the reps are too short for heart rate to guide pace live. Don't chase it.")
+        }
+        return lines
     }
 
     private func segmentPreview(_ phases: [WatchPhase]) -> some View {
@@ -498,7 +816,11 @@ struct RunLobbyV5: View {
                     if let detail = row.detail {
                         Text(detail)
                             .font(.faffText(TypeScaleV5.label13))
-                            .foregroundStyle(V5.textSecondary)
+                            // Quieter than the target-pace detail beside it —
+                            // an observational HR reading is not the same
+                            // KIND of fact as a pace to hold, and should not
+                            // read with the same weight.
+                            .foregroundStyle(row.hrIsObservational ? V5.textQuiet : V5.textSecondary)
                             .multilineTextAlignment(.trailing)
                     }
                 }
@@ -536,14 +858,20 @@ struct RunLobbyV5: View {
         }
     }
 
-    // MARK: - Device readiness
+    // MARK: - Device and recording readiness
 
     private var readinessSection: some View {
-        VStack(alignment: .leading, spacing: V5.S.s8) {
+        let recording = RunLobbyRecordingLine.resolve(owner: recordingOwner, watch: watchReadiness)
+        let hr = RunLobbyHrLine.resolve(owner: recordingOwner)
+        return VStack(alignment: .leading, spacing: V5.S.s8) {
             V5SectionLabel(text: "Before you start", color: V5.textQuiet, size: TypeScaleV5.label12)
-            readinessRow(text: watchReadiness.line,
-                         warn: watchReadiness.offersRetry,
-                         retry: watchReadiness.offersRetry ? { Task { await WatchSync.shared.refresh(force: true) } } : nil)
+            // 5 · who records, and 6 · the actual blocking problem (if the
+            // watch isn't ready, that reason IS the blocking-problem slot —
+            // stated once here, not duplicated as a second row).
+            readinessRow(text: recording.line,
+                         warn: recording.offersWatchRetry,
+                         retry: recording.offersWatchRetry ? { Task { await WatchSync.shared.refresh(force: true) } } : nil)
+            readinessRow(text: hr.line, warn: false, retry: nil)
             readinessRow(text: locationReadiness.line, warn: locationReadiness.isBlockingForOutdoor,
                          retry: nil,
                          openSettings: locationReadiness.isBlockingForOutdoor)
@@ -572,6 +900,58 @@ struct RunLobbyV5: View {
                 })
             }
         }
+    }
+
+    // MARK: - 7 · start choice, 8 · cancel
+
+    /// The subtitle on "Outdoor" tells the truth about WHO executes it —
+    /// "GPS pace and route" undersells what actually happens when the watch
+    /// is the recording owner, and overstates it when watch HR isn't
+    /// actually connected. Treadmill is unaffected: it always needs the
+    /// phone's own belt-speed/incline input regardless of watch presence,
+    /// matching the legacy routing's own scope (Outdoor-only).
+    private var outdoorSubtitle: String {
+        recordingOwner == .watch ? "Executes and records on your Apple Watch" : "GPS pace and route"
+    }
+
+    @ViewBuilder
+    private var startSection: some View {
+        VStack(alignment: .leading, spacing: V5.S.s16) {
+            if workoutState.hasNoCanonicalWorkout {
+                // "Do not present the normal workout-start action when no
+                // canonical workout has been loaded" — the tiles below are
+                // relabelled, not the ordinary Outdoor/Treadmill choice, so
+                // the state reads as unmistakably different rather than
+                // silently identical to a real prescribed run.
+                if case .failed = workoutState {
+                    FaffButton("Retry workout", variant: .secondary, size: .md,
+                               action: { Task { workoutState = .loading; await loadWorkout() } })
+                }
+                choice(title: "Start unstructured · Outdoor", sub: "GPS pace and route, no plan",
+                       action: { Task { await start(onOutdoor) } })
+                choice(title: "Start unstructured · Treadmill", sub: "Speed and incline, no plan",
+                       action: { Task { await start(onTreadmill) } })
+            } else {
+                choice(title: "Outdoor", sub: outdoorSubtitle, action: { Task { await start(onOutdoor) } })
+                choice(title: "Treadmill", sub: "Speed and incline, no GPS", action: { Task { await start(onTreadmill) } })
+            }
+
+            // PICKERTRUTH-1 · gated on the same fact the live screen
+            // reads, so the sheet cannot promise what the build cannot
+            // do. Kept verbatim from RunPickerV5 rather than restated,
+            // per Rule 17 — one wording for one fact.
+            Text(PhoneRunTracker.backgroundRecordingAvailable
+                 ? "An outdoor run keeps recording with your screen locked and the phone in a pocket. Closing the app ends it."
+                 : "This build can only record while the app is open. Keep the screen on until you end the run.")
+                .font(.faffText(TypeScaleV5.label13))
+                .foregroundStyle(V5.textQuiet)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, V5.S.s4)
+
+            FaffButton("Cancel", variant: .ghost, size: .md, action: onCancel)
+        }
+        .opacity(isStarting ? 0.5 : 1)
+        .allowsHitTesting(!isStarting)
     }
 
     private func choice(title: String, sub: String, action: @escaping () -> Void) -> some View {

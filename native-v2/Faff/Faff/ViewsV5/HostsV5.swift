@@ -1739,7 +1739,13 @@ struct LiveRunHostV5: View {
             // wrapped in `.some`) — exactly the Rule 11 distinction this
             // holder exists to keep separate. Binding first removes the
             // ambiguity instead of relying on which one Swift picks.
-            if let snapshot = PendingRunPlanV5.shared.consume() {
+            // `expectedDateISO` refuses a snapshot recorded for a different
+            // calendar day — the guard against a cached workout from
+            // another date or plan version ever reaching Start, independent
+            // of the age check (a midnight rollover between the lobby
+            // opening and this task running is otherwise invisible to a
+            // pure elapsed-time check).
+            if let snapshot = PendingRunPlanV5.shared.consume(expectedDateISO: RunLobbyDate.todayISO()) {
                 switch snapshot {
                 case .workout(let w): plan = LiveRunPlanV5(workout: w, sessionType: w.name)
                 case .none:           plan = nil

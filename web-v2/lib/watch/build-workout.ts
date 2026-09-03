@@ -43,7 +43,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { raceOpeningSegments } from '@/lib/race/distance-doctrine';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
-import { aerobicCeilingBpm, prescribedHrTargetBpm } from '@/lib/training/zones';
+import { aerobicCeilingBpm, prescribedHrTargetBpm, hrRoleForRepDuration } from '@/lib/training/zones';
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { distanceMiFromLabel as sharedDistanceMiFromLabel } from '@/lib/race/distance';
@@ -106,9 +106,29 @@ export interface WatchPhase {
   distanceMi?: number | null;
   /** HR target for work phases on quality sessions (intervals/threshold/tempo).
    *  Sourced from workout_spec.lthr_bpm → profile.lthr → null.
-   *  Null on warmup/recovery/cooldown and on easy/long workouts.
-   *  Watch renders this as a reference; floor/ceiling semantics are a face-display decision. */
+   *  Null on warmup/recovery/cooldown and on easy/long workouts. */
   hrTargetBpm?: number | null;
+  /** HR-ROLE-1 (2026-09-03) · WHAT `hrTargetBpm` means, mirroring `paceShape`.
+   *  Used to read "floor/ceiling semantics are a face-display decision" —
+   *  which is exactly the bug: a rendering surface cannot correctly choose
+   *  between "target" and "reference" from the bpm number alone, and every
+   *  short rep (a 60s hill) was rendering the same precise-looking number as
+   *  a 15-minute tempo repeat, inviting a runner to chase a signal that
+   *  Research/03 §13 says has not caught up to the effort yet.
+   *
+   *    · 'target'        — hover near it. The rep is long enough (≥ the
+   *                         kinetics floor below) for HR to reach something
+   *                         close to steady state.
+   *    · 'observational' — the number is real and worth reading AFTER the
+   *                         rep, never worth CHASING during it. Render it
+   *                         quietly, never as a live target.
+   *
+   *  `null` only when `hrTargetBpm` itself is null. Never independently
+   *  re-derive this on a consumer — see `hrRoleFor` below, the one place
+   *  that decides it, off `HR_REP_KINETICS_FLOOR_SEC` — the SAME floor
+   *  `lib/coach/reading-scope.ts` already uses to gate whether a post-run
+   *  verdict may even be drawn from a rep this short. */
+  hrRole?: 'target' | 'observational' | null;
   /** 2026-06-08 · True on the long-run HM/M finish segment. Optional on the
    *  wire — old watch builds omit/ignore it (field defaults to false there);
    *  new builds route it to the FINISH face instead of the rep face. */
@@ -1927,10 +1947,12 @@ export async function buildWatchToday(
     // workout_spec drove the phase list · convert ExpandedPhase →
     // WatchPhase (same shape, just need to add haptic + repUnit + hrTargetBpm).
     for (const p of expanded) {
+      const phaseDurationSec = p.durationSec ?? Math.round((p.distanceMi ?? 0) * (p.targetPaceSPerMi ?? 540));
+      const phaseHrTargetBpm = p.type === 'work' ? workHrTargetBpm : null;
       phases.push({
         type: p.type,
         label: p.label,
-        durationSec: p.durationSec ?? Math.round((p.distanceMi ?? 0) * (p.targetPaceSPerMi ?? 540)),
+        durationSec: phaseDurationSec,
         targetPaceSPerMi: p.targetPaceSPerMi ?? null,
         // PACE-SHAPE-1 · the tolerance and the shape come from ONE owner, and
         // they are asked the same question with the same arguments, so they
@@ -1949,7 +1971,8 @@ export async function buildWatchToday(
               :                         'transition-work',
         repUnit: p.distanceMi != null ? 'distance' : 'time',
         distanceMi: p.distanceMi ?? null,
-        hrTargetBpm: p.type === 'work' ? workHrTargetBpm : null,
+        hrTargetBpm: phaseHrTargetBpm,
+        hrRole: phaseHrTargetBpm != null ? hrRoleForRepDuration(phaseDurationSec) : null,
         // Emit ONLY when true so non-finish phases omit it on the wire
         // (JSON.stringify drops undefined) — keeps the optional-field contract.
         isFinishSegment: p.isFinishSegment ? true : undefined,
@@ -2393,6 +2416,10 @@ export async function buildWatchToday(
             haptic: i === 0 ? ('start' as const) : ('transition-work' as const),
             repUnit: 'distance' as const,
             hrTargetBpm: race.hrTargetBpm ?? null,
+            // `race` is itself one of the already-built phases above, so its
+            // `hrRole` was already decided by the one function — carried
+            // over, not re-derived, for a segment that inherits its bpm.
+            hrRole: race.hrTargetBpm != null ? (race.hrRole ?? 'target') : null,
           })));
         } else {
           race.targetPaceSPerMi = Math.round(raceGoalSec / raceDistMi);
