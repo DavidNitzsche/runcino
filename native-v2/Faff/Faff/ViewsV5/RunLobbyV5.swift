@@ -362,7 +362,12 @@ enum RunLobbySegments {
             parts.append(Units.formatPace(secPerMile: pace))
         }
         if let hr = p.hrTargetBpm {
-            parts.append(p.effectiveHrRole == .observational ? "reads ~\(hr)" : "HR ~\(hr)")
+            // No hand-drawn tilde (check-modelled-mark.sh rule one) — and
+            // rightly so beyond the gate: this bpm is a measured LTHR-based
+            // anchor, not a modelled/projected number, so the tilde would
+            // have been the wrong mark even where it's typed by FaffValue.
+            // The word choice alone carries the distinction.
+            parts.append(p.effectiveHrRole == .observational ? "reads \(hr)" : "HR \(hr)")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
