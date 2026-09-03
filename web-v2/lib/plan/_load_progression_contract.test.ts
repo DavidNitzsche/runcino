@@ -61,6 +61,7 @@ import {
   type LoadContractStamp,
 } from './load-progression-contract';
 import { composePlan, cycleBoundedPeak, type DOW, type LevelKey } from './generate';
+import { readTierUpper, readTierUpperOrNull } from './adaptive-ramp';
 import { CYCLE_GROWTH_CEILING, TIER_TARGETS } from './goal-tiers';
 
 const src = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
@@ -365,6 +366,29 @@ describe('LOADCONTRACT-1 · one time-aware load authority', () => {
       expect(body.toLowerCase(), `the contract names removed authority "${removed}"`)
         .not.toContain(removed.toLowerCase());
     }
+  });
+
+  // ── G9 · the stamped-ceiling reader keeps absence and measurement apart ──
+  it('G9 · readTierUpperOrNull answers null for an absent band, never a number', () => {
+    // Rule 18 · this assertion exists because the behavioural suites CANNOT see
+    // the defect: a reader that answered 0 for an absent band still fails
+    // closed downstream (`belowTierUpper` is false either way), so every gate
+    // stayed green while the ceiling's SOURCE was misreported as `stamped` for
+    // a plan that carries no stamp. Falsified: making the reader return 0 for
+    // an absent band passes `_guard_fail_closed`, `_acwr_ramp_bound` and every
+    // other suite in this file, and fails only here.
+    expect(readTierUpperOrNull({}, 'tier_peak_weekly_band')).toBeNull();
+    expect(readTierUpperOrNull({ tier_peak_weekly_band: null }, 'tier_peak_weekly_band')).toBeNull();
+    expect(readTierUpperOrNull({ tier_peak_weekly_band: [45] }, 'tier_peak_weekly_band')).toBeNull();
+    expect(readTierUpperOrNull({ tier_peak_weekly_band: [45, 'x'] }, 'tier_peak_weekly_band')).toBeNull();
+    // …and a PRESENT band flows through as the number it holds, including a
+    // corrupt 0, which must stay a measurement so it fails closed at the
+    // consumer rather than being reclassified as "no ceiling recorded".
+    expect(readTierUpperOrNull({ tier_peak_weekly_band: [45, 60.1] }, 'tier_peak_weekly_band')).toBe(60.1);
+    expect(readTierUpperOrNull({ tier_peak_weekly_band: [0, 0] }, 'tier_peak_weekly_band')).toBe(0);
+    // The sentinel-carrying sibling is deliberately unchanged: `planUpgrade`'s
+    // `min(old + 1, upper)` clamp wants the 0.
+    expect(readTierUpper({}, 'tier_peak_weekly_band')).toBe(0);
   });
 
   // ── SOURCING · the doctrine figures are read, never re-typed ────────────

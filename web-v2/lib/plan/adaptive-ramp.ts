@@ -392,7 +392,6 @@ export async function detectRampSignals(
    * `automaticPlanMutationIsAuthorised()` before it reads anything, and that
    * is unchanged. This makes the gate ANSWERABLE; it does not make it act.
    * ════════════════════════════════════════════════════════════════════════ */
-  const stampedWeeklyUpper = readTierUpper(activePlan.authoredState, 'tier_peak_weekly_band');
   const tierLongUpper = readTierUpper(activePlan.authoredState, 'tier_peak_long_band');
   const loadStamp = readLoadContractStamp(activePlan.authoredState);
   // Rule 11 · three states. A read that FAILS is not "no demonstrated peak",
@@ -411,14 +410,17 @@ export async function detectRampSignals(
     liveDemonstratedPeakWeeklyMi: livePeak.ok ? livePeak.value : null,
     // Rule 11 · `readTierUpper` returns 0 BOTH for a plan that carries no band
     // (pre-tier-system) and for a band whose upper is genuinely 0, so testing
-    // the VALUE collapses absence into measurement. Presence is read off the
-    // stamp itself instead: absent stays null, and a present band flows through
-    // as the number it holds — including a corrupt 0, which fails closed at
-    // `recomputeAdaptationCeiling` rather than being silently reclassified as
-    // "no ceiling recorded".
-    stampedCeilingMi: Array.isArray(activePlan.authoredState['tier_peak_weekly_band'])
-      ? stampedWeeklyUpper
-      : null,
+    // the VALUE collapses absence into measurement. `readTierUpperOrNull` reads
+    // PRESENCE structurally instead: absent is null, and a present band flows
+    // through as the number it holds — including a corrupt 0, which fails
+    // closed at `recomputeAdaptationCeiling` rather than being silently
+    // reclassified as "no ceiling recorded".
+    //
+    // The shape check lives in the reader rather than here (Rule 16): an
+    // `Array.isArray` at the call site is a second copy of what `readTierUpper`
+    // already knows about the band, and two copies is two chances to disagree
+    // about what "no ceiling recorded" means.
+    stampedCeilingMi: readTierUpperOrNull(activePlan.authoredState, 'tier_peak_weekly_band'),
   });
   // Rule 11 · an UNKNOWN ceiling and a ceiling measured at zero are different
   // facts, and `? mi : 0` made them the same number. The unknown case is now a
@@ -752,6 +754,33 @@ export function readLoadContractStamp(
     return null;
   }
   return s as unknown as LoadContractStamp;
+}
+
+/**
+ * LOADCONTRACT-1 · `readTierUpper` with the sentinel removed.
+ *
+ * `readTierUpper` answers `0` BOTH for a plan that carries no band at all
+ * (pre-tier-system) and for a band whose upper is genuinely 0, so any caller
+ * that needs to tell absence from measurement has to re-derive the shape check
+ * this function already performs. Re-deriving it as `upper > 0 ? upper : null`
+ * is the zero-erasure `check-coercion.sh` names; re-deriving it as
+ * `Array.isArray(state[key]) ? upper : null` is correct but puts knowledge of
+ * the band's SHAPE at the call site, where it can drift from the reader's.
+ *
+ * So the distinction lives here once, as a type (Rule 16). `readTierUpper` is
+ * unchanged because `planUpgrade`'s clamp genuinely wants the 0 —
+ * `min(old + 1, 0)` followed by `if (capped > old)` is a correct refusal — and
+ * its exported shape is depended on by
+ * `lib/adaptation/load-adaptation-engine.ts`.
+ */
+export function readTierUpperOrNull(
+  authoredState: Record<string, unknown>,
+  key: 'tier_peak_weekly_band' | 'tier_peak_long_band',
+): number | null {
+  const band = authoredState[key];
+  if (!Array.isArray(band) || band.length !== 2) return null;
+  const upper = Number(band[1]);
+  return Number.isFinite(upper) ? upper : null;
 }
 
 export function readTierUpper(
