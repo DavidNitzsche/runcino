@@ -105,6 +105,7 @@ function input(o: Partial<PostRunInput> = {}): PostRunInput {
     plannedType: 'easy',
     plannedTypeDisplay: 'Easy',
     plannedDistanceMi: 5,
+    raceMatched: false,
     verdict: gradeStoredPhases(REAL_0902_PHASES, 'easy'),
     evidence: null,
     workHrCeilingBpm: null,

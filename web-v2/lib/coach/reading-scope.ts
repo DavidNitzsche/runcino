@@ -210,11 +210,24 @@ export function medianWorkDurationSec(phases: ScopePhase[]): number | null {
   return d.length % 2 === 1 ? d[mid] : Math.round((d[mid - 1] + d[mid]) / 2);
 }
 
-/** Plain-English name for the work, sized to how much of it there was. */
-function workLabel(n: number): string {
+/**
+ * Plain-English name for the work, sized to how much of it there was.
+ *
+ * `unit` DEFAULTS TO "reps" for the same reason this whole file keys on
+ * STRUCTURE rather than type (see the file header): most of this runner's
+ * history has no reliable semantic type to key a better word off. But
+ * "reps" is flatly wrong for the one shape that IS reliably typed — a race.
+ * The 2026-08-16 Americas Finest City half stores five course segments
+ * (Point Loma Climb, The Drop, Mission Bay...) as work phases, and this
+ * function called them "the 5 reps," which a runner correctly read as
+ * nonsense: a hill climb and a bay-front mile are not repetitions of the
+ * same thing. `races` rows are unambiguous, so a caller that knows this run
+ * IS one may say so.
+ */
+function workLabel(n: number, unit: string = 'rep'): string {
   if (n === 1) return 'on the work';
-  if (n === 2) return 'across both reps';
-  return `across the ${n} reps`;
+  if (n === 2) return `across both ${unit}s`;
+  return `across the ${n} ${unit}s`;
 }
 
 export interface ReadingScopeInput {
@@ -233,6 +246,14 @@ export interface ReadingScopeInput {
   wholePaceSPerMi?: number | null;
   /** Work-only average pace (`RunDetail.pace_work_s_per_mi`). */
   workPaceSPerMi?: number | null;
+  /**
+   * The plain-English singular for one work phase, when the caller knows
+   * something more honest than "rep" — "segment" for a race's course
+   * segments, chiefly. Undefined keeps the existing "rep" default, which is
+   * the right answer for the structure-only majority of this runner's
+   * history (see the file header for why type cannot be the general key).
+   */
+  workUnit?: string;
 }
 
 /**
@@ -293,13 +314,13 @@ export function deriveReadingScopes(input: ReadingScopeInput): ReadingScopes {
         if (v == null) {
           return { scope: 'none' as const, value: null, note: null };
         }
-        return { scope: 'work' as const, value: v, note: workLabel(work.length) };
+        return { scope: 'work' as const, value: v, note: workLabel(work.length, input.workUnit) };
       })();
 
   const cadence: ScopedReading = (() => {
     const v = input.workCadenceSpm ?? weightedMean(work, (p) => p.avg_cadence);
     if (v == null) return { scope: 'none' as const, value: null, note: null };
-    return { scope: 'work' as const, value: v, note: workLabel(work.length) };
+    return { scope: 'work' as const, value: v, note: workLabel(work.length, input.workUnit) };
   })();
 
   // PACE FALLS BACK RATHER THAN REFUSING. If the work phases carried no pace
@@ -309,7 +330,7 @@ export function deriveReadingScopes(input: ReadingScopeInput): ReadingScopes {
   const pace: ScopedReading = (() => {
     const w = input.workPaceSPerMi;
     if (w != null && Number.isFinite(w) && w > 0) {
-      return { scope: 'work' as const, value: Math.round(w), note: workLabel(work.length) };
+      return { scope: 'work' as const, value: Math.round(w), note: workLabel(work.length, input.workUnit) };
     }
     return { scope: 'whole' as const, value: input.wholePaceSPerMi ?? null, note: null };
   })();

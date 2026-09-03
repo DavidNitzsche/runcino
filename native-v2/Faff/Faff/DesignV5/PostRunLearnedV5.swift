@@ -382,34 +382,17 @@ struct PostRunLearnedV5: View {
         static let capture = Sections(rawValue: 1 << 0)
         /// The stride rows. Layer 2, with the rest of the session.
         static let strides = Sections(rawValue: 1 << 1)
-        /// Learned / changed / next / why. Layer 3.
-        static let meaning = Sections(rawValue: 1 << 2)
-        static let all: Sections = [.capture, .strides, .meaning]
+        // `.meaning` (learned/change/next/why) REMOVED 2026-09-03 —
+        // `PostRunVerdictV5` (DesignV5/WorkoutResultV5.swift) draws that
+        // content now, over the same `PostRunV5` object, as one coaching
+        // read rather than a second card under this one's `.capture`
+        // sentence. Both call sites (`RunDetailV5`, `TodayAfterV5`) were
+        // updated in the same pass; nothing constructs this case anymore,
+        // so it is gone rather than kept as an unreachable option.
+        static let all: Sections = [.capture, .strides]
     }
 
     var includes: Sections = .all
-
-    /// Collapsed by default. The disclosure exists for the runner who wants
-    /// the provenance; the four in ten who never open it are not shown a
-    /// paragraph they did not ask for.
-    @State private var whyOpen = false
-
-    private var learned: String {
-        model.learned.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    private var change: String {
-        model.change.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    private var next: String? {
-        guard let n = model.next?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !n.isEmpty else { return nil }
-        return n
-    }
-    private var why: [String] {
-        model.why
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
 
     private var capture: String? {
         guard let c = model.capture?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -431,7 +414,6 @@ struct PostRunLearnedV5: View {
     private var hasContent: Bool {
         (includes.contains(.capture) && capture != nil)
             || (includes.contains(.strides) && strides != nil)
-            || (includes.contains(.meaning) && (!learned.isEmpty || !change.isEmpty))
     }
 
     var body: some View {
@@ -518,101 +500,10 @@ struct PostRunLearnedV5: View {
                     .padding(.bottom, V5.S.s6)
                 }
 
-                if includes.contains(.meaning), hasMeaning { meaningBlock }
             }
         }
     }
 
-    /// Layer 3 · what the run taught the coach, what the plan did about it and
-    /// what is left to say.
-    ///
-    /// Extracted so `includes` can place it without the capture sentence and
-    /// the strides having to travel with it. Nothing about the copy changed.
-    private var hasMeaning: Bool { !learned.isEmpty || !change.isEmpty }
-
-    @ViewBuilder
-    private var meaningBlock: some View {
-        V5SectionLabel(text: "What this taught the coach")
-            .padding(.horizontal, V5.S.s4)
-
-        VStack(alignment: .leading, spacing: V5.S.s14) {
-            if !learned.isEmpty {
-                Text(learned)
-                    .font(.faffText(TypeScaleV5.body17))
-                    .foregroundStyle(V5.textPrimary)
-                    .lineSpacing(4)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if !change.isEmpty {
-                VStack(alignment: .leading, spacing: V5.S.s6) {
-                    Text(change)
-                        .font(.faffText(TypeScaleV5.body15))
-                        .foregroundStyle(V5.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                    // Only on the state that has them, and each on its
-                    // own line — a plan change the runner cannot see
-                    // itemised is an announcement, not an explanation.
-                    ForEach(model.changes, id: \.self) { line in
-                        Text(line)
-                            .font(.faffText(TypeScaleV5.label14))
-                            .foregroundStyle(V5.textQuiet)
-                            .lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-
-            if let n = next {
-                Text(n)
-                    .font(.faffText(TypeScaleV5.body15))
-                    .foregroundStyle(V5.textPrimary)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if !why.isEmpty {
-                Button {
-                    withAnimation(V5.Motion.expand) { whyOpen.toggle() }
-                } label: {
-                    HStack(spacing: V5.S.s6) {
-                        Text(whyOpen ? "Hide why" : "Why")
-                            .font(.faffText(TypeScaleV5.label14, weight: .semibold))
-                            .foregroundStyle(V5.textSecondary)
-                        Spacer(minLength: 0)
-                    }
-                    // 44pt, per the accessibility contract, on a row
-                    // whose visible text is 14pt.
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                // The state is ANNOUNCED, not left to the caret. A
-                // disclosure whose expanded state is only visual is
-                // invisible to VoiceOver.
-                .accessibilityLabel(whyOpen ? "Hide why" : "Why")
-                .accessibilityAddTraits(whyOpen ? [.isButton, .isSelected] : .isButton)
-
-                if whyOpen {
-                    VStack(alignment: .leading, spacing: V5.S.s6) {
-                        ForEach(why, id: \.self) { line in
-                            Text(line)
-                                .font(.faffText(TypeScaleV5.label14))
-                                .foregroundStyle(V5.textQuiet)
-                                .lineSpacing(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .transition(.opacity)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, V5.S.tilePad)
-        .padding(.vertical, V5.S.s14)
-        .background(V5.materialTile,
-                    in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
-    }
-
+    // `hasMeaning`/`meaningBlock` (learned/change/next/why, Layer 3) REMOVED
+    // 2026-09-03 with the `.meaning` case above — see that removal's comment.
 }

@@ -209,10 +209,21 @@ struct TodayAfterV5: View {
                  */
                 WorkoutResultFactsV5(workPaceText: model.paceWork)
 
-                recapSection
-
+                // The recording's own honesty, above every number it is
+                // about — unchanged position/reasoning. `.capture` only:
+                // `.meaning` is now `PostRunVerdictV5` below, over the same
+                // object, so the two cannot drift (Rule 16).
                 if let pr = model.postRun {
-                    PostRunLearnedV5(model: pr, includes: [.capture, .meaning])
+                    PostRunLearnedV5(model: pr, includes: .capture)
+                }
+
+                // ONE COACHING READ, not two cards from two sources — same
+                // component, same reasoning as `RunDetailV5`'s own pass.
+                // See `PostRunVerdictV5`'s header.
+                if let pr = model.postRun {
+                    PostRunVerdictV5(model: pr,
+                                     conditions: model.conditionsNote,
+                                     coachTip: model.coachTip)
                 }
 
                 // Compact supporting context — effort (now the ONE picker,
@@ -600,85 +611,12 @@ struct TodayAfterV5: View {
         .minimumScaleFactor(0.5)
     }
 
-    // MARK: - What the coach actually said
-    //
-    // THIS SCREEN USED TO DRAW ONE SENTENCE OUT OF FIVE.
-    //
-    // `deriveRecap` returns a verdict, one or two supporting facts, an
-    // optional conditions note and an optional forward-looking tip;
-    // `run-win.ts` adds a short headline. All five are composed on every
-    // request. This view rendered `verdict` and nothing else, and the wire did
-    // not even carry the rest — they were written, returned, and dropped
-    // between the engine and the glass.
-    //
-    // THE ORDER IS THE READING ORDER, and it matches the web surface so the
-    // two do not tell the same run in different sequences:
-    //
-    //   win        · the headline. Four to ten words, the most specific thing
-    //                the engine can say. Null far more often than not.
-    //   verdict    · the fuller read. Always present on a finished run.
-    //   facts      · the evidence under it, quieter, one line each.
-    //   conditions · what the weather did, quieter still.
-    //   tip        · the only line about NEXT time, and the only one that
-    //                leaves the tile — a caveat gets quieter treatment than
-    //                the thing it qualifies.
-    //
-    // RULE THREE. Every one of these is optional and a null is the engine
-    // declining, not a gap. The tile is not drawn at all when it would be
-    // empty, and no line gets a heading of its own that could survive its
-    // content going away.
-    //
-    // NOT RE-WORDED HERE. Every string is quoted verbatim from the composer,
-    // which is the same contract `coachLine` keeps on the changed-overnight
-    // screen. One voice, one author.
-
-    @ViewBuilder
-    private var recapSection: some View {
-        let verdict = model.verdict?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let win = model.win?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let facts = model.facts.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        let conditions = model.conditionsNote?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        if !verdict.isEmpty || !win.isEmpty || !facts.isEmpty || !conditions.isEmpty {
-            Tile {
-                if !win.isEmpty {
-                    Text(win)
-                        .font(.faffText(TypeScaleV5.body17, weight: .semibold))
-                        .foregroundStyle(V5.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !verdict.isEmpty {
-                    Text(verdict)
-                        .font(.faffText(TypeScaleV5.body17))
-                        .foregroundStyle(V5.textPrimary)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                ForEach(facts, id: \.self) { fact in
-                    Text(fact)
-                        .font(.faffText(TypeScaleV5.body15))
-                        .foregroundStyle(V5.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !conditions.isEmpty {
-                    // No "CONDITIONS" label. The web surface carries one
-                    // because it sits in a column of unrelated callouts; here
-                    // it is the fourth line of one paragraph by the same
-                    // author, and a heading would break it into two voices.
-                    Text(conditions)
-                        .font(.faffText(TypeScaleV5.label14))
-                        .foregroundStyle(V5.textQuiet)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-
-        if let tip = model.coachTip?.trimmingCharacters(in: .whitespacesAndNewlines), !tip.isEmpty {
-            CoachCaveat(text: tip)
-        }
-    }
+    // `recapSection` REMOVED 2026-09-03. `win`/`verdict`/`facts`/
+    // `conditionsNote`/`coachTip` are the same canonical composition
+    // `PostRunVerdictV5` now draws from `model.postRun` (`headline`/
+    // `summary`/`cost`), called above with `conditionsNote`/`coachTip`
+    // passed through as the two fields `postRun` does not itself carry.
+    // See `PostRunVerdictV5`'s own header.
 
     // MARK: - Asked vs ran
     //

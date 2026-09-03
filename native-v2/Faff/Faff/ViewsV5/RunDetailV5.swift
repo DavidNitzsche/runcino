@@ -279,19 +279,19 @@ struct RunDetailV5: View {
                                         workPaceText: workPaceHeroText,
                                         consistencyText: consistencySentence)
 
-                    // The coach's answer — headline, execution sentence,
-                    // cost — server-composed, unchanged content, moved up.
-                    recapSection
-
-                    // WHAT THE RUN TAUGHT THE COACH, AND WHAT CHANGED — the
-                    // SAME component the after-run sheet draws, over the
-                    // SAME object, now beside the sentence it is the
-                    // continuation of rather than three sections and a chart
-                    // away from it. `.meaning` only: `.capture` and
-                    // `.strides` are drawn where each belongs (immediately
-                    // above, and with the session's own pieces in Layer 2).
+                    // ONE COACHING READ, not two cards from two sources.
+                    // `PostRunVerdictV5` replaces the former `recapSection`
+                    // card AND `PostRunLearnedV5(.meaning)`'s card — headline,
+                    // execution sentence, plan status, all server-composed
+                    // and all from the SAME `postRun` object, visible without
+                    // a tap; cost, the full evidence sentence, itemised plan
+                    // changes and the disclosure reasons behind one "Why".
+                    // Reviewed against this project's own Strava references:
+                    // neither shows the coach's answer as two stacked cards.
                     if let pr = detail.postRun {
-                        PostRunLearnedV5(model: pr, includes: .meaning)
+                        PostRunVerdictV5(model: pr,
+                                         conditions: recap?.conditions_note,
+                                         coachTip: recap?.coach_tip)
                     }
 
                     // Compact supporting context. Two columns, not a
@@ -642,61 +642,13 @@ struct RunDetailV5: View {
         return out
     }
 
-    // MARK: - What the coach actually said
-    //
-    // `RunRecap` decodes `facts`, `win` and `conditions_note` and this screen
-    // drew `verdict` and `coach_tip`. The other three arrived on every fetch
-    // and were discarded — the same drop 5b had, in a second place.
-    //
-    // Same order, same reasoning, same one-voice rule as `TodayAfterV5`'s
-    // `recapSection`. Kept as two implementations rather than one shared
-    // component on purpose: 5b reads `V5Today` and this reads `RunRecap`, two
-    // wire shapes that carry the same five strings under different names, and
-    // a shared view would need an adapter longer than either body.
-
-    @ViewBuilder
-    private var recapSection: some View {
-        let verdict = recap?.verdict.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let win = recap?.win?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let facts = (recap?.facts ?? []).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        let conditions = recap?.conditions_note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        if !verdict.isEmpty || !win.isEmpty || !facts.isEmpty || !conditions.isEmpty {
-            Tile {
-                if !win.isEmpty {
-                    Text(win)
-                        .font(.faffText(TypeScaleV5.body17, weight: .semibold))
-                        .foregroundStyle(V5.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !verdict.isEmpty {
-                    Text(verdict)
-                        .font(.faffText(TypeScaleV5.body17))
-                        .foregroundStyle(V5.textPrimary)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                ForEach(facts, id: \.self) { fact in
-                    Text(fact)
-                        .font(.faffText(TypeScaleV5.body15))
-                        .foregroundStyle(V5.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !conditions.isEmpty {
-                    Text(conditions)
-                        .font(.faffText(TypeScaleV5.label14))
-                        .foregroundStyle(V5.textQuiet)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-
-        if let tip = recap?.coach_tip?.trimmingCharacters(in: .whitespacesAndNewlines), !tip.isEmpty {
-            CoachCaveat(text: tip)
-        }
-    }
+    // `recapSection` REMOVED 2026-09-03. Its content — `recap.win`/
+    // `.verdict`/`.facts`/`.conditions_note`/`.coach_tip` — is the SAME
+    // canonical composition `PostRunVerdictV5` now draws from `detail
+    // .postRun` (`headline`/`summary`/`cost`), with `recap` supplying only
+    // the two fields `postRun` does not carry (`conditions_note`,
+    // `coach_tip`) as explicit parameters. See the call site above and
+    // `PostRunVerdictV5`'s own header for why this stopped being two cards.
 
     // MARK: - Rep by rep · P44's phase breakdown, finally drawn
     //

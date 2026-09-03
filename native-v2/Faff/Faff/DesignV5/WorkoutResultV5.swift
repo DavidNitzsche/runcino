@@ -158,3 +158,214 @@ enum WorkConsistencyV5 {
         return "\(repWord.capitalized)s ranged \(fastest) to \(slowest)/mi."
     }
 }
+
+// MARK: - PostRunVerdictV5 · one coaching read, not four cards
+//
+// ─────────────────────────────────────────────────────────────────────────
+// THE PROBLEM THIS REPLACES
+//
+// The redesign's own first draft still made a runner parse the answer to
+// "how did it go" out of four separately-carded blocks stacked in a row:
+// `recapSection`'s headline+summary+cost card, then `PostRunLearnedV5
+// (.meaning)`'s learned+change card underneath it — each in its own
+// `V5.materialTile` rounded rectangle, each with its own vertical padding,
+// reading as four ideas from four authors rather than one coach's answer.
+// Rendered and reviewed against the Strava references this project already
+// has: neither reference does this. One verdict, one voice, one paragraph;
+// depth is a tap away, not a second card down.
+//
+// THE FIX. `headline` (bold) and `summary` sit together as the answer to
+// "how did it go" — that pairing was already this contract's Layer 1A.
+// Immediately under it, ONE short plan-status clause — "Plan unchanged." /
+// "Plan updated." / "Under review." — because that is the one fact from
+// Layer 1B a runner reads even at a glance, and the brief's own hero example
+// keeps it on its own line for exactly that reason. Everything else this
+// object carries — the physiological cost, the full evidence sentence
+// (`learned`), the itemised plan changes, the disclosure reasons, the
+// weather/conditions note — sits behind ONE "Why" toggle, so the runner who
+// wants depth gets all of it in one place instead of four.
+//
+// NO CARD. This is the answer the whole page exists to give, so it sits on
+// the page's own background like the headline of anything else worth
+// reading — not boxed apart from it. The card treatment stays for what it
+// was always more honest for: reference detail further down the page.
+struct PostRunVerdictV5: View {
+    let model: PostRunV5
+    /// From `RunRecap.conditions_note` / `V5Today.conditionsNote` — not on
+    /// `PostRunV5` itself (see the wire's own doc comment), so the caller
+    /// supplies it. Folded into the disclosure, never onto the visible line.
+    var conditions: String? = nil
+    /// From `RunRecap.coach_tip` / `V5Today.coachTip`. Forward-looking, so it
+    /// stays visible under the disclosure rather than inside it — a runner
+    /// closing "Why" should not lose the one line about tomorrow.
+    var coachTip: String? = nil
+
+    @State private var whyOpen = false
+
+    private var headline: String { model.headline.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var summary: String { model.summary.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var cost: String? {
+        let c = model.cost?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (c?.isEmpty ?? true) ? nil : c
+    }
+    private var learned: String? {
+        let l = model.learned.trimmingCharacters(in: .whitespacesAndNewlines)
+        return l.isEmpty ? nil : l
+    }
+    private var change: String? {
+        let c = model.change.trimmingCharacters(in: .whitespacesAndNewlines)
+        return c.isEmpty ? nil : c
+    }
+    private var conditionsTrimmed: String? {
+        let c = conditions?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (c?.isEmpty ?? true) ? nil : c
+    }
+    private var why: [String] {
+        model.why.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+    private var changes: [String] {
+        model.changes.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+    private var next: String? {
+        let n = model.next?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (n?.isEmpty ?? true) ? nil : n
+    }
+
+    /// The one line a runner reads even without opening "Why" — never the
+    /// full `change` sentence, which can run to two sentences once it
+    /// carries the disambiguating clause `readPlan` now adds (the
+    /// 2026-08-16 fix). A CODE drives the word, per the design contract's
+    /// "never encode an outcome only by colour" rule applied to text: the
+    /// sentence changing would silently break this switch, the code cannot.
+    private var planStatusLine: String? {
+        switch model.changeState {
+        case "UNCHANGED":         return "Plan unchanged."
+        case "UPDATED":           return "Plan updated."
+        case "HELD_FOR_EVIDENCE": return "Under review."
+        case "NO_PLAN", "UNKNOWN": return nil
+        default:                  return nil
+        }
+    }
+
+    private var hasDisclosureContent: Bool {
+        cost != nil || learned != nil || !changes.isEmpty || conditionsTrimmed != nil || !why.isEmpty
+    }
+
+    var body: some View {
+        if !headline.isEmpty || !summary.isEmpty {
+            VStack(alignment: .leading, spacing: V5.S.s10) {
+                if !headline.isEmpty {
+                    Text(headline)
+                        .font(.faffText(TypeScaleV5.body17, weight: .semibold))
+                        .foregroundStyle(V5.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !summary.isEmpty {
+                    Text(summary)
+                        .font(.faffText(TypeScaleV5.body17))
+                        .foregroundStyle(V5.textPrimary)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let planStatusLine {
+                    Text(planStatusLine)
+                        .font(.faffText(TypeScaleV5.body15))
+                        .foregroundStyle(V5.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if hasDisclosureContent {
+                    Button {
+                        withAnimation(V5.Motion.expand) { whyOpen.toggle() }
+                    } label: {
+                        HStack(spacing: V5.S.s6) {
+                            Text(whyOpen ? "Hide why" : "Why")
+                                .font(.faffText(TypeScaleV5.label14, weight: .semibold))
+                                .foregroundStyle(V5.textSecondary)
+                            Spacer(minLength: 0)
+                        }
+                        // 44pt target on a row whose visible text is 14pt —
+                        // the accessibility contract's own minimum.
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(whyOpen ? "Hide why" : "Why")
+                    .accessibilityAddTraits(whyOpen ? [.isButton, .isSelected] : .isButton)
+
+                    if whyOpen {
+                        VStack(alignment: .leading, spacing: V5.S.s10) {
+                            if let cost {
+                                Text(cost)
+                                    .font(.faffText(TypeScaleV5.body15))
+                                    .foregroundStyle(V5.textSecondary)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let learned {
+                                Text(learned)
+                                    .font(.faffText(TypeScaleV5.body15))
+                                    .foregroundStyle(V5.textSecondary)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let change {
+                                Text(change)
+                                    .font(.faffText(TypeScaleV5.body15))
+                                    .foregroundStyle(V5.textSecondary)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            ForEach(changes, id: \.self) { line in
+                                Text(line)
+                                    .font(.faffText(TypeScaleV5.label14))
+                                    .foregroundStyle(V5.textQuiet)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let conditionsTrimmed {
+                                Text(conditionsTrimmed)
+                                    .font(.faffText(TypeScaleV5.label14))
+                                    .foregroundStyle(V5.textQuiet)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            ForEach(why, id: \.self) { line in
+                                Text(line)
+                                    .font(.faffText(TypeScaleV5.label14))
+                                    .foregroundStyle(V5.textQuiet)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .transition(.opacity)
+                    }
+                }
+
+                if let next {
+                    Text(next)
+                        .font(.faffText(TypeScaleV5.body15))
+                        .foregroundStyle(V5.textPrimary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let coachTip {
+                    // NOT `CoachCaveat` — that component carries its own
+                    // 4pt horizontal inset, tuned for sitting alone at a
+                    // section's top level. Nested here it would pull one
+                    // line out of alignment with every other line in this
+                    // flush paragraph. Same visual treatment (quiet, 13pt),
+                    // no borrowed padding.
+                    Text(coachTip)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // NO CARD (see the file header). Flush with the page's own
+            // gutter, not a tile's internal padding.
+        }
+    }
+}

@@ -2,13 +2,17 @@
 
 Branch `feat/postrun-experience-lead`, base `origin/main@8a242994`.
 Worktree `.claude/worktrees/postrun-experience`. Two commits: `ee11a0ff` (RPE
-capture), `1a368b82` (the redesign this report is mostly about).
+capture), `1a368b82` (the redesign this report is mostly about). A third
+round's fixes are described in §13 and are UNCOMMITTED as of this revision —
+see that section for the exact diff and what still needs doing before a
+commit.
 
 **Status: not complete, not ready for the programme lead to merge.** This
 revision closes the specific defects a first round of review found in
 `ee11a0ff`'s companion redesign and adds the redesign that round asked for.
-It is a large step past the first handback, not the final word — see §12 for
-what is still genuinely open.
+It is a large step past the first handback, not the final word — §12 records
+what was open after round 2; §13 records what round 3 closed and what is
+still open now.
 
 ---
 
@@ -413,3 +417,155 @@ rendering the corpus surfaced. That is a deliberate boundary, not an
 oversight: the assignment is post-run experience, and treating every
 adjacent finding as in-scope is how a hierarchy pass turns into an
 unbounded audit.
+
+---
+
+## 13 · Round 3 — a third rejection, a real product-experience redesign, and a canonical-contract fix
+
+David's round-3 instruction was explicit that this was not done: "It reads
+like an internal evidence report presented as a long stack of dark cards. It
+is dense, visually flat, overly verbose." He supplied 7 Strava reference
+screenshots by Photos-library path; **those paths are not readable by this
+agent** (macOS TCC blocks file access to Photos-library derivatives even via
+Bash/Read — confirmed by repeated `EPERM` across both tools). This was
+reported to him directly; the redesign below proceeded on the WRITTEN
+direction (7-step story order, the 12 numbered requirements, the acceptance
+standard) rather than stalling on the images. **If David exports those 7
+images to a plain folder (Desktop, Downloads, or drag-and-drop into chat),
+they should be reviewed against this round's layout before merge** — that
+comparison has not happened yet.
+
+### What round 3 actually fixed, in the order it was found
+
+**1 · Card-stacking, further reduced.** Round 2 left two adjacent cards doing
+overlapping work on both screens: a server-composed `recapSection` (headline
++ verdict sentence) directly above `PostRunLearnedV5(.meaning)` ("what this
+taught the coach" — learned/change/next, its own "Why" disclosure). Both drew
+from the same `postRun` object. Consolidated into one component,
+`PostRunVerdictV5` (`DesignV5/WorkoutResultV5.swift`), used identically by
+both `RunDetailV5` and `TodayAfterV5`: headline, summary, and a one-line plan
+status are ALWAYS visible with no card background; a single "Why" disclosure
+(one `@State`, 44pt accessible tap target) reveals cost/learned/change/next
+underneath. `recapSection` and `PostRunLearnedV5`'s `.meaning` case /
+`meaningBlock` are deleted, not commented out.
+
+**2 · A real semantic-error, found by rendering the actual corpus (Rule 13).**
+David's round-3 instruction named this directly: "The half marathon must
+never say 'Across the 5 reps.' Those are course segments." Rendering the
+Americas Finest City half (a real production run, five named segments — Point
+Loma Climb, The Drop, Mission Bay, Harbor Approach, Balboa Finish) after the
+first pass at this fix showed it had NOT taken effect: the reading-scope grid
+caption AND the verdict's own summary sentence ("Most of the reps sat outside
+the prescribed range") both still said "reps." Tracing it down:
+
+- The word choice in `reading-scope.ts`'s `workLabel()` and the separate
+  execution-summary composer in `experience.ts` (`readExecution`'s `noun`)
+  both branched on `plannedType === 'race'` — the plan's own answer to "what
+  was PRESCRIBED for the day." **That field is null on any race with no
+  matching `plan_workouts` row**, which the AFC half is: `matchedWorkout` is
+  null, `planned_spec` is null, there was never a plan day for it. So the
+  branch that was supposed to fire never could, for exactly the runs that
+  need it — a historical or unplanned race is the common case, not an edge
+  case.
+- The fix is a canonical-contract change, per this brief's own instruction
+  ("if the backend cannot provide the causal distinction, do not invent it
+  on the phone — fix the canonical contract"). `matchRaceForRun` against the
+  `races` table is this app's one existing, tested answer to "is this run
+  ACTUALLY a race" (already used for the run log's display name in
+  `lib/coach/run-state.ts`). `lib/postrun/load.ts` — the one shared loader
+  both surfaces already go through — now runs the same query and threads a
+  new `raceMatched: boolean` onto `PostRunInput`, documented as a DIFFERENT
+  fact from `plannedType` on purpose (Rule 16: prescribed and actual are not
+  the same claim, and a run that races on a day the plan called easy should
+  not silently look plan-prescribed). `run-state.ts`'s own `workUnit` derivation
+  was pointed at the same signal already computed for the display name
+  (`matchedRace`), rather than re-deriving a second, wrong one.
+- Verified by rendering, real data, after the fix: grid caption reads
+  "Heart rate, across the 5 segments"; the verdict summary reads "Most of the
+  segments sat outside the prescribed range"; the piece list's own section
+  header (pre-existing Swift-side logic, unaffected) already correctly read
+  "PIECE BY PIECE" rather than "REP BY REP." Screenshots:
+  `screenshots/round3-verdict-consolidated-top.png`,
+  `screenshots/round3-race-segments-wording.png`.
+
+**3 · The plan-moved-vs-not-enough-evidence contradiction, actually explained.**
+Round 2 already diagnosed this as two true, independent facts (the Evidence
+Engine's per-run classification vs. a separate `vdot_auto_recalc` adaptation)
+rather than a bug in either sentence, and added a clarifying clause in
+`lib/postrun/experience.ts`'s `readPlan()` when the evidence role is
+CORROBORATES (the role that reads as "this alone would not have moved the
+belief") AND a real adaptation reason maps to a plain-language cause. Two
+defects in that first attempt, both found and fixed only by reading the LIVE
+rendered sentence, not the diff:
+
+- The clause did not compile with the coach-voice em-dash gate at first
+  (`_postrun_corpus.audit.test.ts`, a real 40-run production-read audit) —
+  fixed by writing two plain sentences instead.
+- The composed sentence for `vdot_auto_recalc` did not PARSE: "The plan
+  changed your race result recalculated your fitness baseline directly,"
+  because `describeAdaptationCause()`'s four branches were a mix of
+  prepositional phrases ("for scheduling reasons") and one full clause
+  ("your race result recalculated..."), sharing one template that only
+  worked for the phrases. Only caught by reading the actual rendered "Why"
+  disclosure on the AFC half (`screenshots/round3-why-disclosure-contradiction-fix.png`)
+  — this would not have been caught by the test suite, which only checks the
+  em-dash rule and stride semantics, not English grammar. Fixed by making
+  all four branches complete "The plan changed because ___" instead. Live
+  rendered result: *"The plan moved after this run. The plan changed because
+  your race result recalculated your fitness baseline directly. That is not
+  the same as this run's own evidence moving the estimate above."*
+
+**4 · RPE canonical-row integrity (round 2 work, verified again this round).**
+`/api/runs/[id]/rpe` now resolves through `resolveCanonicalRunRowId` on both
+GET and POST rather than keying `post_run_rpe.activity_id` on the literal
+request id — an absorbed run's id used to write an RPE nobody's canonical run
+ever reads again. POST refuses outright (404/409) rather than falling back;
+GET falls back to the literal id only for the non-adversarial `no_such_run`
+case. Seven new tests in `lib/runs/_rpe_route_canonical_integrity.test.ts`
+(relocated from beside `route.ts` — `vitest.config.ts`'s `include` is
+`lib/**` only, a deliberate pre-existing convention with zero `app/**` tests
+anywhere in this codebase; widening it was judged out of scope for an RPE fix
+and not done).
+
+### What was NOT done this round — stated plainly, per Rule 13
+
+- **The 7 Strava reference images.** Still unreadable by this agent. Not
+  reviewed against this layout.
+- **Chart-row touch synchronization.** Named open in round 2 (§12), unchanged
+  this round — no work was done on it.
+- **Today/RunDetail full unification.** Both surfaces already share ONE
+  loader (`lib/postrun/load.ts`, confirmed by header comment and by grep —
+  "the brief's first P0... one loader is a parity you get by construction")
+  and now share the SAME `PostRunVerdictV5` component. What is NOT unified:
+  everything outside that shared verdict block — Layer 2 onward on each
+  screen is still two separately-composed views (`RunDetailV5`,
+  `TodayAfterV5`), not one canonical presentation model. Calling that "done"
+  would overstate what changed.
+- **Additional real-run states** (truncated recording, missed/partial
+  workout, missing HR, rescheduled workout, treadmill) — not attempted this
+  round; round 2's §12 already named this open and it stayed open.
+- **The full visual acceptance pass** (Dynamic Island device, smaller
+  device, Dynamic Type, VoiceOver, Reduce Motion) — not attempted this
+  round beyond the two renders cited above.
+- **This work is UNCOMMITTED.** `git status` on this worktree shows the
+  above as modified/untracked files on `feat/postrun-experience-lead`. It
+  has not been committed or pushed, per this branch's standing instruction
+  not to merge to `main` directly — but per this repo's own deployment
+  doctrine an approved fix that is not committed is at risk of loss, so this
+  should be committed to the working branch before the session ends even
+  though it is not being merged.
+
+### Verification method, stated per Rule 13
+
+Every claim above about rendered text was confirmed by: rebuilding the
+native app (`xcodebuild -project Faff.xcodeproj -scheme Faff -destination
+"id=<sim>" build` — NOT with an explicit `-sdk` override, which forces the
+watch-only targets onto the wrong SDK and fails the build with an unrelated
+WatchKit error), installing fresh onto the simulator (a stale install was
+caught mid-verification precisely because Rule 13 says render, don't assume —
+the first render after the backend fix still showed "reps" and the OLD
+two-card layout, which turned out to be a stale binary, not a failed fix),
+fetching the real `-faffRunDetail` payload from the walk-substrate
+(`walk-server.sh` against `faff_visual_walk_postrun`, a read-only production
+copy) for the actual Americas Finest City half, and screenshotting the
+result. No fixture was substituted for this verification.

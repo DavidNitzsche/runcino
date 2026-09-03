@@ -148,6 +148,7 @@ function makeInput(o: InputOverrides = {}): PostRunInput {
     plannedType: 'threshold',
     plannedTypeDisplay: 'Threshold',
     plannedDistanceMi: 8.5,
+    raceMatched: false,
     verdict,
     evidence: o.evidence !== undefined ? o.evidence : evidenceFixture(),
     workHrCeilingBpm: workHrCeiling(REAL_0901_SPEC)?.bpm ?? null,

@@ -205,4 +205,44 @@ describe('deriveReadingScopes · refusing rather than falling back', () => {
     const r = deriveReadingScopes({ phases: belt, wholeHrBpm: 140 });
     expect(r.hr.scope).toBe('none');
   });
+
+  // 2026-09-03 · A RACE'S COURSE SEGMENTS ARE NOT "REPS".
+  //
+  // The real 2026-08-16 Americas Finest City half stores five work phases —
+  // Point Loma Climb, The Drop, Mission Bay, and two more — and this
+  // function's default label called them "the 5 reps." A runner correctly
+  // read that as nonsense: a hill climb and a bay-front mile are not
+  // repetitions of the same thing, they are stages of one course. `workUnit`
+  // is the fix; this pins that a caller passing it changes the note without
+  // changing the scope, the value, or anything else in the read.
+  it('names a race\'s stages "segments" when the caller says so, and reps otherwise', () => {
+    const courseStages: ScopePhase[] = [
+      { type: 'work', actual_duration_sec: 872, avg_hr: 163, avg_cadence: 168 },
+      { type: 'work', actual_duration_sec: 1036, avg_hr: 167, avg_cadence: 165 },
+      { type: 'work', actual_duration_sec: 2587, avg_hr: 169, avg_cadence: 162 },
+      { type: 'work', actual_duration_sec: 1400, avg_hr: 178, avg_cadence: 160 },
+      { type: 'work', actual_duration_sec: 495, avg_hr: 181, avg_cadence: 164 },
+    ];
+    const asReps = deriveReadingScopes({ phases: courseStages, wholeHrBpm: 170 });
+    expect(asReps.hr.note).toBe('across the 5 reps');
+
+    const asRace = deriveReadingScopes({
+      phases: courseStages, wholeHrBpm: 170, workUnit: 'segment',
+    });
+    expect(asRace.hr.note).toBe('across the 5 segments');
+    expect(asRace.cadence.note).toBe('across the 5 segments');
+    // The scope decision and the value are unaffected by the word choice —
+    // `workUnit` only ever touches `note`.
+    expect(asRace.hr.scope).toBe(asReps.hr.scope);
+    expect(asRace.hr.value).toBe(asReps.hr.value);
+    expect(asRace.isRepSet).toBe(asReps.isRepSet);
+  });
+
+  it('still says "on the work" for a single-segment race block, workUnit or not', () => {
+    const oneStage: ScopePhase[] = [
+      { type: 'work', actual_duration_sec: 1800, avg_hr: 165 },
+    ];
+    const r = deriveReadingScopes({ phases: oneStage, workUnit: 'segment' });
+    expect(r.hr.note).toBe('on the work');
+  });
 });

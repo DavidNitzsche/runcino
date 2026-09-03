@@ -337,6 +337,16 @@ export interface PostRunInput {
   /** The runner-facing name for that type, from `displayTypeFor`. */
   plannedTypeDisplay: string | null;
   plannedDistanceMi: number | null;
+  /**
+   * This run matches a recorded `races` row for its own date (RACEWORD-1,
+   * 2026-09-03) — a DIFFERENT fact from `plannedType === 'race'`, which is
+   * null on any race with no matching `plan_workouts` row (unplanned entry,
+   * or a race that predates the plan). "Most of the reps sat outside the
+   * prescribed range" over the Americas Finest City half's five named course
+   * segments is why this exists: that run has no plan row at all, so the
+   * word choice below needs the runner's actual race history, not the plan.
+   */
+  raceMatched: boolean;
   /** THE canonical grade. Never re-derived here. */
   verdict: WorkoutVerdict;
   /** The Evidence Engine's read, or null when the classification could not be
@@ -584,9 +594,14 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
   // The runner's word for the work, chosen off the SHAPE of the session
   // rather than a template: four one-mile pieces are reps, one continuous
   // block is not, and calling a tempo "rep 1 of 1" is how a screen stops
-  // sounding like a coach.
+  // sounding like a coach. A RACE's stages are a third shape again — not
+  // repetitions of one thing, so "Most of the reps sat outside the
+  // prescribed range" over Point Loma Climb / The Drop / Mission Bay /
+  // Harbor Approach is a category error, not a style choice. See
+  // `raceMatched`'s own doc comment on `PostRunInput` for why this cannot
+  // read `input.plannedType` instead.
   const single = work.length === 1;
-  const noun = single ? 'block' : 'reps';
+  const noun = single ? 'block' : input.raceMatched ? 'segments' : 'reps';
   const reps = single ? 'the work block' : `all ${numberWord(work.length)} ${noun}`;
 
   /* AND THE WORD FOR WHAT IT WAS GRADED AGAINST (2026-09-02).
@@ -1177,6 +1192,59 @@ export function readEvidence(input: PostRunInput): PostRunEvidenceImpact {
 
 /* ══════════════════════════════ 6 · plan ════════════════════════════════ */
 
+/**
+ * WHY THE PLAN MOVED, in the runner's own words — when it is honest to say.
+ *
+ * The defect this closes, from the real 2026-08-16 Americas Finest City
+ * half: the evidence sentence said "This supports your current threshold
+ * range. One session is not enough to move it" — CORROBORATES,
+ * `beliefChanged: false` — directly beside "The plan moved after this run."
+ * A runner reads those two sentences as contradicting each other, because
+ * nothing said WHY the plan moved if not because of what this run's own
+ * evidence just declined to move.
+ *
+ * The two are not actually in tension — they are two DIFFERENT MECHANISMS
+ * answering two different questions, and the real row proves it:
+ * `coach_intents` on that date carries `reason: 'vdot_auto_recalc'`, `field:
+ * 'vdot'` — a race-result VDOT recalculation off the Daniels equivalency
+ * tables, which is a different, more direct computation than the Evidence
+ * Engine's per-activity capacity classification (`readEvidence`, above) that
+ * produced the "one session is not enough" sentence. The plan moved; the
+ * THRESHOLD belief specifically did not; both are true at once, and the
+ * runner is owed the sentence that says so rather than left to read a
+ * contradiction into two true facts.
+ *
+ * ONLY THE REASON CODE ALREADY ON `coach_intents.reason` IS READ. Nothing
+ * here re-derives whether an adaptation was "really" evidence-driven — that
+ * is the Adaptation Engine's own classification, cited verbatim by its own
+ * name. An unrecognised reason produces no clause at all (Rule 11: silence
+ * over a guess), so this can only ever ADD an honest sentence, never
+ * fabricate one for a reason it does not recognise.
+ */
+// Each string here completes the sentence "The plan changed because ___." —
+// a clause, not a prepositional phrase, so `vdot_auto_recalc`'s own full
+// clause ("your race result recalculated...") and the others ("of scheduling
+// reasons") can share one template without one of them reading as a sentence
+// fragment stapled onto another (RACEWORD-1's sibling defect, 2026-09-03: the
+// first draft read "The plan changed your race result recalculated your
+// fitness baseline directly," which does not parse).
+function describeAdaptationCause(reason: string): string | null {
+  if (reason === 'vdot_auto_recalc') {
+    return 'your race result recalculated your fitness baseline directly';
+  }
+  if (reason === 'plan_adapt_reschedule' || reason === 'plan_adapt_gap'
+    || reason === 'plan_adapt_drop_missed' || reason === 'plan_adapt_missed_noted') {
+    return 'of scheduling reasons';
+  }
+  if (reason === 'plan_adapt_downgrade' || reason === 'plan_adapt_long_floor') {
+    return 'training load needed managing';
+  }
+  if (reason === 'plan_adapt_overridden') {
+    return 'you asked for a change';
+  }
+  return null;
+}
+
 export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): PostRunPlanImpact {
   if (!input.hasActivePlan) {
     return { status: 'NO_PLAN', runnerSummary: 'There is no plan for this to change.', changes: [], sealedHistoryChanged: false };
@@ -1187,9 +1255,26 @@ export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): 
     return { status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.', changes: [], sealedHistoryChanged: false };
   }
   if (input.adaptations.length > 0) {
+    // THE CLARIFYING CLAUSE, ONLY WHEN THE TWO SENTENCES COULD OTHERWISE
+    // READ AS CONTRADICTING EACH OTHER. `evidence.beliefChanged` is false in
+    // every branch this engine currently returns (see `readEvidence`
+    // above), so gating on it alone would append the clause to every single
+    // run with an adaptation — most of which have nothing to reconcile,
+    // because the evidence sentence above did not make a claim the plan
+    // sentence could contradict (CONTEXT_ONLY, an unread belief, a genuine
+    // CHALLENGES). The clause is worth adding specifically when the evidence
+    // role told the runner "this did not move something" in so many words —
+    // CORROBORATES is the one role that does, which is exactly the role the
+    // real defect fired under.
+    const causes = input.adaptations
+      .map((a) => describeAdaptationCause(a.reason))
+      .filter((c): c is string => c != null);
+    const clause = evidence.role === 'CORROBORATES' && causes.length > 0
+      ? ` The plan changed because ${causes[0]}. That is not the same as this run's own evidence moving the estimate above.`
+      : '';
     return {
       status: 'UPDATED',
-      runnerSummary: 'The plan moved after this run.',
+      runnerSummary: `The plan moved after this run.${clause}`,
       changes: input.adaptations.map((a) => a.display),
       sealedHistoryChanged: false,
     };

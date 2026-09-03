@@ -665,6 +665,18 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   //
   // Both loads are best-effort: a failure returns the row's own name, which is
   // what this function did before.
+  //
+  // THE SAME `raceMatch` ALSO ANSWERS "is this a race" for the readings below
+  // (RACEWORD-1, 2026-09-03). `plannedRow?.type === 'race'` is the plan's
+  // OWN answer to a different question — what was PRESCRIBED for the day —
+  // and is null on every race that predates a plan or was never scheduled as
+  // one, which the Americas Finest City half is: no `plan_workouts` row, so
+  // `plannedRow` is null and `r.type` is Strava's raw activity kind ('Run').
+  // Neither carries race information; `matchRaceForRun` against the `races`
+  // table is the one place this app already answers the question honestly,
+  // for the display name above. Reusing it here rather than re-deriving a
+  // second "is this a race" from a field that cannot answer it.
+  let matchedRace: RaceForMatch | null = null;
   const runDisplayName = await (async (): Promise<string | null> => {
     const canonicalRowId = row.id != null ? String(row.id) : null;
     const runDate = String(r.date || (r.startLocal ?? '').slice(0, 10) || '').slice(0, 10);
@@ -715,6 +727,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       const raceMatch = runDate
         ? matchRaceForRun({ date: runDate, distanceMi, workoutTypeHint }, racesForMatch)
         : null;
+      matchedRace = raceMatch;
       // Race name > canonical non-generic > best twin non-generic. Identical
       // precedence to log-state.ts, because it is the same two calls.
       return raceMatch?.name ?? coalesceRunName(r.name ?? null, twins);
@@ -1413,6 +1426,16 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       workCadenceSpm: workAvgs.cadenceAvg,
       wholePaceSPerMi: paceSPerMi,
       workPaceSPerMi: workAvgs.paceSPerMi,
+      // "Across the 5 reps" over the Americas Finest City half's five course
+      // segments (Point Loma Climb, The Drop, Mission Bay...) is not a typo
+      // of severity, it is a category error — a race's stages are not
+      // repetitions of one thing. First attempt at this fix compared
+      // `plannedRow?.type` against `'race'`, which is null on exactly the
+      // runs that need it: an unplanned or historical race has no matched
+      // `plan_workouts` row, so that check silently never fired for the AFC
+      // half itself. `matchedRace` (above) is the same signal already proven
+      // for this run's display name — reused, not re-derived.
+      workUnit: matchedRace != null ? 'segment' : undefined,
     }),
 
     has_route: Boolean(r.summaryPolyline || r.routePolyline || r.startLatLng),
