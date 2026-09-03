@@ -25,3 +25,16 @@ These two hashes are the proof obligation. After any rebuild, both must be
 recomputed and must match, byte for byte. The plan hash covers the seven rows
 dated before today; the runs hash covers what the runner actually ran. If the
 rebuild is correct, neither moves.
+
+────────────────────────────────────────────────────────────────────────
+RE-VERIFIED 2026-09-02, after the pairing, goal-sanity, race-spec,
+input-surface and removal work — five agents, many composes, many merges.
+
+  plan history   7 rows   df8b2ae4976ef24f8733765b16c96731499499f0a35475ff4b25bfcbecf9d144   MATCH
+  completed runs 8 runs   d8ad8b196287f1c7228f975ce69b8c48560d13a7367aa17f962209d29f320b20   MATCH
+  active plan    pln_9a57561debb776e5, authored 2026-08-30, 103 rows (was 103)
+
+Both hashes are byte-identical to the originals. Nothing in this programme has
+written to the runner's plan or to his runs. The control is the point: a claim
+that no write occurred is worth what the check behind it is worth, and this one
+would fail loudly if a single field on a single past row had moved.
