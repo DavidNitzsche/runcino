@@ -1,0 +1,263 @@
+/**
+ * lib/postrun/detail-load.ts · the reads behind the run-detail-only sections.
+ *
+ * ── WHY THESE TWO ARE NOT ON THE POST-RUN WIRE ────────────────────────────
+ *
+ * `wire.ts` says what it is for in its own header: "the brief's §4 Layer 1 and
+ * Layer 3 and nothing else" — the answer, and what it meant. The chart stack
+ * and the matched workout are Layer 2 and Layer 3's context: things a runner
+ * reaches by scrolling into a single run, on one screen, deliberately.
+ *
+ * `/api/v5/today` carries the post-run wire on every load of the day's card.
+ * Hanging eight hundred wrist samples and a six-month candidate scan off that
+ * response would put a chart nobody is looking at into the payload of the
+ * most-loaded screen in the app. So these compose on `/api/runs/[id]` only,
+ * and the Today response is unchanged.
+ *
+ * ── ONE PHASE LADDER, NOT TWO (Rule 16) ───────────────────────────────────
+ *
+ * The raw phase elements are read through `resolveStoredPhases`, exported by
+ * `load.ts`, which is the same three-rung ladder the experience composer uses
+ * and the one SIMROW-1 hardened. Re-deriving "which completion is this run's"
+ * here is precisely how this screen would end up describing a different
+ * session from the card above it.
+ *
+ * ── RULE 14 · THE POPULATION ──────────────────────────────────────────────
+ *
+ * Every read here states its scope: this user by uuid, canonical rows only
+ * (`CANONICAL_ROW_SQL`), and — for candidates — a bounded date window. No
+ * query in this file joins `plan_workouts` for a candidate run, because the
+ * active plan holds no row for a session run before the last re-authoring and
+ * reaching across archived versions to find one is Rule 14's own example.
+ *
+ * ── NO SQL AGGREGATES, AND THAT IS DELIBERATE ─────────────────────────────
+ *
+ * The candidate query selects rows and reduces them in TypeScript. Not for
+ * performance — for honesty: `check-normal-window.sh`'s scanner watches for
+ * `AVG(`, `SUM(`, `MAX(` over this runner's own `runs`, because that is the
+ * shape of a reader that quietly turns a taper into a habit. Nothing here
+ * aggregates his training. It names ONE prior session, which is a different
+ * question, argued at the top of `matched.ts`.
+ */
+import { pool } from '@/lib/db/pool';
+import { CANONICAL_ROW_SQL, runDaySql, runIdentityMatchSql } from '@/lib/runs/run-shape';
+import { resolveWorkoutVerdict, type WorkoutVerdict } from '@/lib/execution/verdict';
+import { displayTypeFor } from '@/lib/faff/v5-today';
+import { resolveStoredPhases } from './load';
+import { composePostRunAnalysis, type PostRunAnalysis } from './analysis';
+import {
+  pickMatchedWorkout, MATCH_WINDOW_DAYS,
+  type MatchCandidate, type MatchSegment, type MatchResult, type WorkReading,
+} from './matched';
+
+export interface PostRunDetailExtras {
+  /** PR-8 / PR-9 / PR-10 / PR-11. Null when the run recorded nothing to draw. */
+  analysis: PostRunAnalysis | null;
+  /** PR-15. Carries its own refusal sentence when there is no honest match. */
+  match: MatchResult;
+}
+
+interface Row { id: string; data: Record<string, any> }
+
+/**
+ * A graded verdict reduced to what `matched.ts` reads.
+ *
+ * The segments AND the canonical work figures together, because they come from
+ * one grading pass and must describe one session. `WorkSummary.paceSPerMi` and
+ * `.hrAvg` are the app's owner for "the mean pace and heart rate across the
+ * reps"; `matched.ts` receives them rather than recomputing them.
+ */
+function readOf(v: WorkoutVerdict): { segments: MatchSegment[]; work: WorkReading } {
+  return {
+    segments: v.phases.map((p) => ({
+      kind: p.type,
+      paceSecPerMi: p.avgSecPerMi,
+      distanceMi: p.actualDistanceMi,
+      durationSec: p.actualDurationSec,
+      avgHr: p.avgHr,
+      targetSecPerMi: p.targetSecPerMi,
+      isStride: p.isStrideSegment,
+    })),
+    work: { paceSecPerMi: v.work.paceSPerMi, hrBpm: v.work.hrAvg },
+  };
+}
+
+function num(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Weeks from a date to the runner's next goal race after it.
+ *
+ * The block-position key from Q44. NULL when no goal race is known for that
+ * date, and null is neutral in the ranking rather than a penalty — a runner
+ * with no race on the calendar simply ranks on the other four keys.
+ */
+function weeksToRaceAt(dateISO: string, raceDates: string[]): number | null {
+  const t = Date.parse(`${dateISO}T00:00:00Z`);
+  if (!Number.isFinite(t)) return null;
+  let best: number | null = null;
+  for (const r of raceDates) {
+    const rt = Date.parse(`${r}T00:00:00Z`);
+    if (!Number.isFinite(rt) || rt < t) continue;
+    const w = (rt - t) / (7 * 86_400_000);
+    if (best == null || w < best) best = w;
+  }
+  return best == null ? null : Math.round(best);
+}
+
+export async function loadPostRunDetailExtras(
+  userId: string,
+  runIdRef: string,
+): Promise<PostRunDetailExtras | null> {
+  const runRes = await pool.query<Row>(
+    `SELECT id::text AS id, data
+       FROM runs
+      WHERE user_uuid = $1
+        AND ${CANONICAL_ROW_SQL}
+        AND ${runIdentityMatchSql('$2')}
+      LIMIT 1`,
+    [userId, runIdRef],
+  );
+  const row = runRes.rows[0];
+  if (!row) return null;
+
+  const data = row.data ?? {};
+  const dateISO = String(data.date ?? String(data.startLocal ?? '').slice(0, 10));
+
+  /* THE ACTIVE PLAN'S ROW FOR THIS RUN'S DAY. For the CURRENT run only — it
+   * is what gives the grader the session class and the stride count, and what
+   * lets the basis sentence name the session family. Candidates get none, on
+   * purpose; see the Rule 14 note in the header. */
+  const planRes = await pool.query<{
+    type: string | null; sub_label: string | null; workout_spec: Record<string, unknown> | null;
+  }>(
+    `SELECT pw.type, pw.sub_label, pw.workout_spec
+       FROM plan_workouts pw
+       JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE tp.user_uuid = $1::uuid
+        AND tp.archived_iso IS NULL
+        AND pw.date_iso = $2
+      ORDER BY pw.id ASC
+      LIMIT 1`,
+    [userId, dateISO],
+  );
+  const planRow = planRes.rows[0] ?? null;
+
+  const rawPhases = await resolveStoredPhases(userId, dateISO, data);
+  const currentType = planRow?.type ?? (data.workoutType as string | null) ?? null;
+  const verdict = resolveWorkoutVerdict({
+    type: currentType,
+    spec: (planRow?.workout_spec ?? null) as never,
+    phases: rawPhases,
+  });
+
+  const analysis = composePostRunAnalysis({
+    rawPhases,
+    gradedPhases: verdict.phases,
+    rawSplits: data.splits,
+    totalDistanceMi: num(data.distanceMi),
+  });
+
+  /* ── the goal races, for the block-position key ────────────────────────── */
+  /* `races` stores the date inside `meta`, not as a column — see
+   * `lib/race/auto-result.ts`, which is the shape every other reader uses. */
+  const raceRes = await pool.query<{ d: string }>(
+    `SELECT meta->>'date' AS d
+       FROM races
+      WHERE user_uuid = $1::uuid AND meta->>'date' IS NOT NULL`,
+    [userId],
+  );
+  const raceDates = raceRes.rows.map((r) => r.d).filter((d): d is string => !!d);
+
+  /* ── the candidates ───────────────────────────────────────────────────────
+   *
+   * Bounded by date and by the presence of a phase array with real structure.
+   * `jsonb_array_length(...) >= 3` is a cheap structural pre-filter and not a
+   * judgement: a segmented session is a warm-up, at least two reps and
+   * something after them, so nothing with fewer than three elements can pass
+   * `matched.ts`'s two-work-segment gate anyway. Filtering it in SQL keeps a
+   * six-month scan from detoasting a hundred single-phase easy runs.
+   *
+   * `hrSamples` and `paceSamples` are STRIPPED in the query. A candidate is
+   * read for its phase averages only, and the raw rows carry roughly eight
+   * hundred samples each — pulling them for twenty candidates would move
+   * megabytes to compute a handful of medians. */
+  /* UNALIASED, because `CANONICAL_ROW_SQL` is unaliased by design — its own
+   * doc comment says so ("both call sites query `runs` unaliased"). Rewriting
+   * the shared predicate to fit a local alias is how a shared predicate stops
+   * being shared. */
+  const candRes = await pool.query<{ id: string; d: string; phases: unknown; meta: Record<string, any> }>(
+    `SELECT id::text AS id,
+            ${runDaySql()} AS d,
+            (SELECT jsonb_agg(e - 'hrSamples' - 'paceSamples')
+               FROM jsonb_array_elements(data->'phases') e) AS phases,
+            jsonb_build_object(
+              'distanceMi', data->'distanceMi',
+              'elevGainFt', data->'elevGainFt',
+              'tempF',      data->'tempF',
+              'workoutType', data->'workoutType',
+              'plannedWorkoutType', data->'plannedWorkoutType'
+            ) AS meta
+       FROM runs
+      WHERE user_uuid = $1
+        AND ${CANONICAL_ROW_SQL}
+        AND ${runDaySql()} < $2
+        AND ${runDaySql()} >= $3
+        AND jsonb_typeof(data->'phases') = 'array'
+        AND jsonb_array_length(data->'phases') >= 3
+      ORDER BY ${runDaySql()} DESC
+      LIMIT 60`,
+    [
+      userId,
+      dateISO,
+      new Date(Date.parse(`${dateISO}T00:00:00Z`) - MATCH_WINDOW_DAYS * 86_400_000)
+        .toISOString().slice(0, 10),
+    ],
+  );
+
+  const candidates: MatchCandidate[] = candRes.rows.map((r) => {
+    const d = r.meta ?? {};
+    const t = (d.plannedWorkoutType ?? d.workoutType ?? null) as string | null;
+    const read = readOf(resolveWorkoutVerdict({
+      type: t,
+      /* NO SPEC. A candidate gets no `plan_workouts` row on purpose — see the
+       * Rule 14 note in the header — so the grader falls back to the phase
+       * types and to the targets frozen on the phases themselves, which is
+       * what the session actually recorded. */
+      spec: null as never,
+      phases: Array.isArray(r.phases) ? r.phases : [],
+    }));
+    return {
+      runId: r.id,
+      dateISO: r.d,
+      segments: read.segments,
+      work: read.work,
+      totalDistanceMi: num(d.distanceMi),
+      elevGainFt: num(d.elevGainFt),
+      tempF: num(d.tempF),
+      weeksToRace: weeksToRaceAt(r.d, raceDates),
+      /* A CANDIDATE NAMES ITS FAMILY ONLY IF ITS OWN ROW DOES. `displayTypeFor`
+       * is the app's one enum-to-name table; a null here means the basis
+       * sentence says "of the same structure" instead of naming a family, and
+       * that is the honest version rather than a guessed one. */
+      sessionTypeDisplay: t ? displayTypeFor(t, null) : null,
+    };
+  });
+
+  const currentRead = readOf(verdict);
+  const current: MatchCandidate = {
+    runId: row.id,
+    dateISO,
+    segments: currentRead.segments,
+    work: currentRead.work,
+    totalDistanceMi: num(data.distanceMi),
+    elevGainFt: num(data.elevGainFt),
+    tempF: num(data.tempF),
+    weeksToRace: weeksToRaceAt(dateISO, raceDates),
+    sessionTypeDisplay: currentType ? displayTypeFor(currentType, planRow?.sub_label ?? null) : null,
+  };
+
+  return { analysis, match: pickMatchedWorkout(current, candidates) };
+}

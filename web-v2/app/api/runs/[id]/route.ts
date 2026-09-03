@@ -27,6 +27,9 @@ import { CANONICAL_ROW_SQL } from '@/lib/runs/run-shape';
 import { resolveCanonicalRunRowId } from '@/lib/runs/canonical-ref';
 import { loadPostRunExperience } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
+import { loadPostRunDetailExtras } from '@/lib/postrun/detail-load';
+import type { PostRunAnalysis } from '@/lib/postrun/analysis';
+import type { MatchResult } from '@/lib/postrun/matched';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireUserId(req);
@@ -73,6 +76,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     console.error('[runs GET] post-run experience failed:', e);
   }
 
+  /* THE RUN-DETAIL-ONLY SECTIONS · the chart stack (PR-8 to PR-11) and the
+   * matched workout (PR-15).
+   *
+   * On this route and NOT on `/api/v5/today`, deliberately: these are Layer 2
+   * and Layer 3 context, reached by opening one run, and the wrist samples
+   * behind the charts have no business in the payload of the day card. See
+   * `lib/postrun/detail-load.ts`.
+   *
+   * Same failure posture as `postRun` above and for the same reason: a throw
+   * becomes null, the section is not drawn, and the failure is logged where an
+   * operator can find it. `analysis` and `match` are separately nullable
+   * because they fail for separate reasons — a run can have a full chart stack
+   * and no defensible comparator, which is the common case. */
+  let analysis: PostRunAnalysis | null = null;
+  let match: MatchResult = { matched: null, refusal: null };
+  try {
+    const extras = await loadPostRunDetailExtras(userId, id);
+    if (extras) { analysis = extras.analysis; match = extras.match; }
+  } catch (e) {
+    console.error('[runs GET] post-run detail extras failed:', e);
+  }
+
   // 2026-05-31: cache dropped to revalidate-only. The original 5-minute
   // browser cache assumed run history was immutable, but shoe_id (PATCH
   // path below) and weather enrichment (cron) both mutate the payload.
@@ -81,7 +106,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // the picker wasn't saving. Now: never cache hard, always ask the
   // server. The query is cheap (single run, indexed) so the round-trip
   // tax is invisible.
-  return NextResponse.json({ ...detail, postRun }, {
+  return NextResponse.json({
+    ...detail,
+    postRun,
+    analysis,
+    /* THE COMPARISON, OR THE SENTENCE SAYING WHY THERE IS NONE. Both travel,
+     * because Q44 asks for the refusal to be stated and Rule 11 says a null
+     * with nothing beside it is indistinguishable on screen from a section
+     * that failed to load. `null` here means "not applicable to this run" —
+     * an easy day has no segmented comparator and never will. */
+    matchedWorkout: match.matched,
+    matchedRefusal: match.refusal,
+  }, {
     headers: { 'Cache-Control': 'private, no-cache, must-revalidate' },
   });
 }

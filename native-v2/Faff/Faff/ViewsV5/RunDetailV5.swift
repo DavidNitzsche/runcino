@@ -345,6 +345,39 @@ struct RunDetailV5: View {
                         zoneSection
                     }
 
+                    /* ═══ THE SHAPE OF THE RUN · PR-8 to PR-12 ═══════════
+                     *
+                     * BELOW the rep list and the mile table, and that order is
+                     * the brief's: "workout analysis before generic charts".
+                     * A runner opening a tune-up wants rep three, and rep
+                     * three is not something a chart can hand him — mile two
+                     * of that session is the back of rep one, a jog and the
+                     * front of rep two averaged into one bar. Evidence at the
+                     * grain the session was run at first; the shape of the
+                     * whole run underneath it.
+                     *
+                     * BELOW the zone bar too, because the zone bar answers
+                     * "where did the heart sit" and this chart answers "when".
+                     * The bar is the summary and the chart is the detail, and
+                     * a summary above its own detail is the way round every
+                     * other section on this screen already runs.
+                     *
+                     * NOTHING HERE IS SAID TWICE (Rule 17). The chart prints
+                     * no average pace, no average heart rate and no per-mile
+                     * numbers — the stats row, the reading rows and the mile
+                     * table already carry all three. It draws an axis, a
+                     * shape, and the value under the runner's finger.
+                     *
+                     * RULE THREE. Absent entirely on a run that recorded no
+                     * series — a manual entry, an older treadmill row — rather
+                     * than a header over an empty plot.
+                     */
+                    if let a = detail.analysis {
+                        RunAnalysisV5(analysis: a,
+                                      gradeAdjustedSecPerMi: detail.grade_adjusted_pace_s_per_mi,
+                                      terrainLabel: detail.terrain_label)
+                    }
+
                     /* ═══ LAYER 3 · WHAT IT MEANT ════════════════════════ */
 
                     // EVIDENCE BEFORE JUDGEMENT. 8a's rule, kept and moved to
@@ -372,6 +405,22 @@ struct RunDetailV5: View {
                     if let pr = detail.postRun {
                         PostRunLearnedV5(model: pr, includes: .meaning)
                     }
+
+                    /* THE ONE COMPARABLE PRIOR SESSION · PR-15.
+                     *
+                     * Layer 3, and specifically AFTER what the run taught the
+                     * coach. The brief files matched effort under "meaning and
+                     * context", and context is what it is: the learning claim
+                     * above stands on this run's own evidence, and this says
+                     * where that sits against the last time he did the same
+                     * session. Putting it first would make the comparison read
+                     * as the finding, which it is not.
+                     *
+                     * At most one, hidden entirely when nothing is defensible,
+                     * and carrying its own sentence when it looked and refused.
+                     */
+                    MatchedWorkoutV5(matched: detail.matchedWorkout,
+                                     refusal: detail.matchedRefusal)
 
                     /* ═══ LAYER 4 · THE RECORD ═══════════════════════════
                      *
