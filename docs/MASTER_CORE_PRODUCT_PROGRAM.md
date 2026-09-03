@@ -214,10 +214,10 @@ Nothing may displace this.
 
 | ID | Product area | Current behaviour | Desired | Priority | Status |
 |---|---|---|---|---|---|
-| **S1.1** | Marathon-specific progression | 18 of 33 MP miles (55%) fall in the last three weeks; the 6-10-weeks-out window gets **4 MP miles in one session** against doctrine's 10-14 every 2-3 weeks | Race-specific phase re-authored so meaningful MP work happens in its window and progresses into the taper; each session persists purpose, pace, why-this-week, what supports it, what it prepares, and whether it rehearses current capability or projected execution | 1 | Ready |
-| **S1.2** | Long-run progression | Exactly one run reaches 20+ (20.5), a mile under his demonstrated 21.5, in a block whose thesis is `DURABILITY` | Number and placement of 20+ runs derived from evidence; longest run 20.5 / 21 / 21.5 with the reason persisted. Big Sur is a race and is not evidence of training-long capacity | 1 | Ready |
+| **S1.1** | Marathon-specific progression | 18 of 33 MP miles (55%) fall in the last three weeks; the 6-10-weeks-out window gets **4 MP miles in one session** against doctrine's 10-14 every 2-3 weeks | **DONE.** Landed via `feat/race-specific-progression`; audited and hardened 2026-09-03. MP in the last three weeks **55% → 22%**; the 6-10-week window **4 mi in one session → 8 mi at 49 days** | 1 | **Done** |
+| **S1.2** | Long-run progression | Exactly one run reaches 20+ (20.5), a mile under his demonstrated 21.5, in a block whose thesis is `DURABILITY` | **DONE.** Runs at 20+ went **one (20.5) → two (20.0 and 21.5)**; longest is now **21.5**, his own demonstrated ceiling rather than a mile under it. Big Sur is excluded BY NAME — `demonstratedLongMi` carries `NOT IN (SELECT date FROM races)`, so a raced marathon cannot raise a training-long ceiling. Taper longs 16 at −2 wk / 10 at −1 wk per Q18 | 1 | **Done** |
 | **S1.3** | Dodgers weekend evidence | Grant claims *"You have run 29.4mi across two days before"* — that pair is a **2.61 mi shakeout + the 26.81 mi Big Sur Marathon**. Every other large pair in his history is big-first-small-second. He has **never** run long after a hard effort | Keep the session; represent it honestly as an owner-authorised, evidence-informed **novel** demand. Volume supported by prior weekends; the hard-short-first ordering stated as novel | 1 | **VERIFIED against production reads 2026-09-03** — see below |
-| **S1.4** | The four marathon paces | Training MP 7:52, projection-derived 7:47, CIM execution 7:23, goal 6:52 — all live, he rehearses 29 s/mi slower than he is told to race | A typed contract naming all five quantities, plus a defensible week-by-week progression from current sustainable marathon effort toward 7:23 — or change the progression, the target, or both | 1 | Ready |
+| **S1.4** | The four marathon paces | Training MP 7:52, projection-derived 7:47, CIM execution 7:23, goal 6:52 — all live, he rehearses 29 s/mi slower than he is told to race | **DONE.** `lib/training/marathon-pace-contract.ts` names **six** quantities, one resolver each, and `stated_goal_clamped_to_range_edge` is deleted. **The active execution target is 7:46, not 7:23** — Q7 rules it is the projection-derived number; 7:23 survives as the conditional upside with five criteria attached. MP progresses 7:52 → 7:46 across the block and holds through the taper; the block's last rehearsal is 7:46, so the seam gap is 0 | 1 | **Done** |
 | **S1.5** | Monthly / sustained load | External review claims ~30% growth in rolling 28-day load and a 7-week stretch at ~52.9 against a best sustained 5 weeks at ~42.6 | **VERIFIED 2026-09-03 · BOTH CLAIMS TRUE, NO CORRECTION WARRANTED** — `docs/reports/s1-5-sustained-load-audit-2026-09-03.md`. Growth +30.4% composed / +32.1% written; 7-week best 52.90 against a history best-5 of 42.56. Coherent on every axis: rolling-7 peak 60.1 = 52.3 x 1.15 exactly, cutbacks 22-29% every 2-3 weeks, worst ACWR 1.20 against a 1.5 red line, longest run 21.5 = his demonstrated best. The +30% decomposes as 1.148 peak (doctrine spent ONCE) x 1.136 density, and the density term is the removal of chaos — 8 of his 36 history weeks are under 25 mi, including a 0.00 and a 4.16. **The live defect is DELIVERY, not load** — see below | 1 | **Verified against production reads** |
 | **S1.6** | Runner-facing language | *"Conversational."* and *"Z2 HR cap."* appeared **33 times each** in a composed block; one terrain sentence 11 times (Rule 17) | **DONE 2026-09-03.** RUNNERLANG-1 substituted the words and left the repetition exactly where it was — 33 stayed 33. This pass says each sentence **once per week**: worst per-week repetition across an 11-block corpus **33 → 0**, gated by `scripts/check-sentence-repetition.sh` in `prebuild`, falsified four ways (disabling the pass → 340 findings). Roles come from `easyDayRole`, a pure function of four booleans the composer already resolved — no prose brain. **Runs at AUTHORING, so his live block keeps its 35x until P0-3 re-authors it.** | 1 | **Done** |
 
@@ -465,6 +465,68 @@ the live one has not.
 Rule 21's question is now one SQL query, because every adaptation records what it
 did and in which direction, with direction DERIVED from the action rather than
 passed in, and a switch with no default so a new kind is a compile error.
+
+
+## STAGE 1 · what the progression audit found on top
+
+S1.1, S1.2 and S1.4 had ALREADY LANDED via `feat/race-specific-progression`
+when the audit started — this file said `Ready` for all three, which was stale.
+Verified against the real account read-only, never a fixture:
+
+| | before Stage 1 | now |
+|---|---|---|
+| MP miles in the last three weeks | 18 of 33 (**55%**) | 5 of ~22.6 (**22%**) |
+| `Research/04` §4.4's 6-10-week window | **4 mi in one session** | 8 mi at 49 days |
+| Runs at 20+ | one (20.5) | **two — 20.0 and 21.5** |
+| Longest run | 20.5, a mile under his demonstrated 21.5 | **21.5**, his own ceiling |
+| MP across the block | flat | 7:52 → 7:46, held through the taper |
+
+### Five further defects, found and fixed
+
+1. **The block's largest marathon session was its smallest.** `peak_stimulus`
+   carries an `[8,10]` band and composed at **6** — smaller than the development
+   rung three weeks earlier, pace going up while volume went down. The dose fade
+   measured against a `[42,70]` window while the peak sits at `[24,42]`, outside
+   it on all but one day, so the fade ran to completion and the band was inert.
+   Fixed by measuring the UNION `[28,70]`, which removes a cliff (42 d → 8 mi,
+   41 d → 6 mi) rather than relocating one. Corpus effect: **30 of 4,886
+   archetypes change, all 30 UPWARD**, mean +3.15 mi.
+2. **A Daniels cap escape the fade had been hiding.** The upward move immediately
+   produced `8.5 mi at M on 39.7 mi/wk` — 21.41% against the 20% ceiling. **Bound
+   the cap, did not loosen it.** Zero enforced breaches now. This is Rule 21's
+   standing instruction working as intended: spend the headroom, and when
+   spending it hits a real ceiling, the ceiling wins.
+3. **Two producers of `rehearses`** (Rule 16). On his live block that stamped
+   `forecast_development` on the Run Malibu rung, which has no prescribed pace at
+   all, and on a runner with no band headroom it labelled every rung a forecast
+   while printing "develops by **0 s/mi**".
+4. **Ten doctrine claims where there were none**, including **three cited by name
+   in prose that did not exist** — among them the claim named as what pins the
+   contract's pace band to `race-outlook`'s. The two numbers were genuinely
+   unpinned while a comment said they were not. Rule 20, exactly.
+5. **Two dead tests.** One guarded by `if (peak && !development)` on a calendar
+   that always grows a development rung — the body never ran. And nothing
+   asserted the ladder reaches Q8's `later` rung at all: every committed
+   assertion was a ceiling, none a floor (Rule 22).
+
+Falsified sixteen ways, each break named by its gate and restored.
+
+### One thing found and deliberately not fixed — his call
+
+A marathon-pace block can be most of the long run it sits inside:
+`marathon/beginner` composes **4.5 mi at MP inside a 6.5 mi long run (69%)**. It
+passes every cap because Daniels bounds the session against WEEKLY mileage, not
+against the run it lives in. Pre-dates this change, and the bound would be
+doctrine-derived (§4.4's "Easy warmup 2-4 mi") and would apply to everyone —
+which is why it was not taken unilaterally while the simplification doctrine
+defers generalised beginner safeguards.
+
+### And one thing that is correct but worth knowing
+
+**His block never reaches the ladder's `later` rung (7:40)**, because Run Malibu
+takes the peak-stimulus slot and a race rung holds the pace. Correct for his
+calendar. It means his authored progression is **one pace step plus a hold**, not
+three.
 
 ---
 
