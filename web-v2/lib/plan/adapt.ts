@@ -96,6 +96,7 @@ import { logSealSkip } from './seal';
 import { mutatePlan } from './mutate';
 import { preserveProgressionSql } from './progression-spec';
 import { stripResearchCitations } from './strip-citations';
+import { buildAdaptationLogEntry } from './adaptation-log';
 import {
   applyProgressionReshape,
   loadProgressionWeek,
@@ -2143,12 +2144,25 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
       [userId]
     );
     if (touched > 0) {
+      // 2026-09-03 · Rule 21 · "a log that records that something happened but
+      // not what is not a log". `{ts, n}` is produced identically by a pass
+      // that raised three weeks and one that cut three sessions, so the
+      // engine's own log could not answer "has this ever pushed up" and
+      // establishing that zero required querying `coach_intents` sideways.
+      //
+      // PURELY ADDITIVE. `ts` and `n` keep their exact meaning, because
+      // consumers derive "last changed" as `max(adaptation_log.ts)`; `did`
+      // carries what moved, which way, on which lever, and on what evidence.
+      // Direction is DERIVED from each action rather than passed in — see
+      // `adaptation-log.ts` for why a caller that could label its own change
+      // would eventually label a downgrade an adjustment.
+      const entry = buildAdaptationLogEntry(actions, touched, new Date().toISOString());
       await client.query(
         `UPDATE training_plans
             SET adaptation_log = COALESCE(adaptation_log, '[]'::jsonb)
-              || jsonb_build_object('ts', NOW(), 'n', $2::int)
+              || jsonb_build_object('ts', NOW(), 'n', $2::int, 'did', $3::jsonb)
           WHERE user_uuid = $1 AND archived_iso IS NULL`,
-        [userId, touched]
+        [userId, touched, JSON.stringify(entry.did)]
       );
     }
       return touched;
