@@ -244,10 +244,19 @@ describe('PHASE 11 · every archetype produces a coaching-defensible belief set'
 });
 
 describe('PHASE 11 · the race outlook end of the loop, per goal posture', () => {
+  /* EXECTARGET-1 (2026-09-03) · RULING MOVE. All three postures used to name a
+   * DIFFERENT execution source, because the goal chose the target: clamped to
+   * the range edge when unreachable, the goal itself when inside, the expected
+   * race day when absent. `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q7 rules the
+   * active number is the projection-derived one, so the source is the same in
+   * all three — and THAT is now the coaching expectation worth asserting: the
+   * posture changes what the runner is TOLD about his goal, and changes the
+   * prescription not at all. The feasibility column, which is where the posture
+   * genuinely lives, is unchanged. */
   const cases = [
-    { name: 'aggressive goal', goalSec: 2 * 3600 + 30 * 60, expect: 'The goal is echoed untouched, the day is raced at the likely range fast edge, and feasibility says it is unlikely on current evidence.', source: 'stated_goal_clamped_to_range_edge', feasibility: 'unlikely_currently' },
-    { name: 'realistic goal', goalSec: null as number | null, expect: 'With no goal the target IS the expected race day and a coach set is offered.', source: 'expected_race_day', feasibility: 'no_goal' },
-    { name: 'soft goal', goalSec: 4 * 3600, expect: 'A goal slower than the expected result is raced as stated, and called comfortable.', source: 'stated_goal_within_range', feasibility: 'comfortable' },
+    { name: 'aggressive goal', goalSec: 2 * 3600 + 30 * 60, expect: 'The goal is echoed untouched, the day is raced on current evidence, and feasibility says the goal is unlikely on it.', source: 'current_evidence', feasibility: 'unlikely_currently' },
+    { name: 'realistic goal', goalSec: null as number | null, expect: 'With no goal the target is still current evidence, and feasibility says there is no goal.', source: 'current_evidence', feasibility: 'no_goal' },
+    { name: 'soft goal', goalSec: 4 * 3600, expect: 'A goal slower than current evidence is called comfortable, and still does not set the target.', source: 'current_evidence', feasibility: 'comfortable' },
   ];
   for (const c of cases) {
     it(`${c.name} · ${c.expect}`, async () => {
@@ -255,6 +264,9 @@ describe('PHASE 11 · the race outlook end of the loop, per goal posture', () =>
       expect(o.execution.source).toBe(c.source);
       expect(o.goalFeasibility.status).toBe(c.feasibility);
       expect(o.statedGoal.sec).toBe(c.goalSec);
+      // Q7 · and the target itself is the same number in every posture.
+      const bare = await composeRaceOutlook(fixtureRace({ statedGoalSec: null }), TODAY, fixtureReads());
+      expect(o.execution.targetSec).toBe(bare.execution.targetSec);
       // The goal never touches capacity or expected improvement.
       const noGoal = await composeRaceOutlook(fixtureRace({ statedGoalSec: null }), TODAY, fixtureReads());
       expect(o.capacity.thresholdSecPerMi).toBe(noGoal.capacity.thresholdSecPerMi);

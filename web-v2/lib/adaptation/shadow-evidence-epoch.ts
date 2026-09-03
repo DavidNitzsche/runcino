@@ -148,13 +148,24 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/race/race-outlook.ts',
-    digest: '5a329fe57882fb64',
+    digest: 'b2bc402ea22c691e',
     why: 'Re-pinned ALONE at epoch 3, branch (b), 2026-09-02 · CEFFORT-1 made `race.priority` load-bearing, so a C race is now priced as a controlled effort (Research/00b §"Recovery by Effort") instead of identically to an A race. What moved is `execution` — the target, the strategy label and the HR band for a C-effort DAY. What did NOT move is every belief a shadow record compares against: `capacity`, `currentProjection`, `expectedRaceDay` and `trainingPrescription` resolve byte-identically for the same activities, and an A or B race is untouched end to end (`_controlled_c_effort.test.ts` asserts that limb explicitly, as the control). A prescription for one day is not a belief about the runner, so no record written under epoch 3 compares against a number this changed, and bumping the epoch would discard the whole shadow corpus for a change that cannot move a single comparison. Stated rather than assumed, per this file\'s own instruction that the decision be made by someone who knows what they changed. '
       + 'Re-pinned ALONE again the same day (ROW-CONTRACT-1, also branch b): `coachSet` was DELETED. It was a '
       + 'second A/B/C ladder over `expectedRaceDay.likelyRangeSec`, 40 s from the one `lib/race/coach-goal.ts` '
       + 'owns and the race detail actually draws, and it was read by no route, no component and no Swift '
       + 'model. Removing an output nothing consumes cannot move a belief: the same four resolvers named above '
-      + 'are untouched by it too.',
+      + 'are untouched by it too. '
+      + 'Re-pinned ALONE a third time, 2026-09-03, branch (b), for EXECTARGET-1 and CEFFORT-2, and the branch '
+      + 'is argued rather than assumed. EXECTARGET-1 changes `execution.targetSec` from the stated goal '
+      + 'clamped to the forecast range\'s fast edge to `currentProjection.expectedSec`, adds '
+      + '`conditionalUpside` and `blockSeam`, and deletes two `execution.source` values '
+      + '(docs/PROGRESSIVE_BASELINE_DOCTRINE.md Q7). CEFFORT-2 reprices a C race from the threshold carry to '
+      + '0.6 of the span between threshold and the marathon anchor. Both move ONE DAY\'S PRESCRIPTION. The '
+      + 'four resolvers a shadow record compares against — `capacity`, `currentProjection`, '
+      + '`expectedRaceDay`, `trainingPrescription` — are byte-identical for the same activities, and '
+      + '`_race_outlook_contract.test.ts` asserts each of them is unchanged by the stated goal across three '
+      + 'postures. The new `blockSeam` READS `authored_state`; it resolves no belief and feeds none. Bumping '
+      + 'the epoch would discard the whole shadow corpus for a change that cannot move a single comparison.',
   },
   {
     file: 'lib/training/pace-corpus.ts',

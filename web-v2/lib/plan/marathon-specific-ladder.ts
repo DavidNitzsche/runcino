@@ -144,11 +144,19 @@ export type MarathonSpecificRole =
   | 'introduction'
   | 'development'
   | 'peak_stimulus'
-  | 'consolidation'
   | 'sharpening';
 
-/** Where the marathon-effort miles live. */
-export type MarathonSpecificVehicle = 'long_run' | 'tune_up_race' | 'easy_run_touch';
+/**
+ * Where the marathon-effort miles live.
+ *
+ * There is no standalone-session vehicle, and that is a decision rather than a
+ * gap: the owner's ruling is that "embedding marathon effort inside long runs is
+ * generally more valuable than adding large standalone marathon-pace tempos",
+ * and the one standalone session the rulings do ask for (Q16's post-race touch)
+ * cannot be placed without cutting into `Research/00b`'s post-race no-quality
+ * window — see Step C.
+ */
+export type MarathonSpecificVehicle = 'long_run' | 'tune_up_race';
 
 /**
  * Dose bands per role, in miles at marathon effort. Each is the owner's stated
@@ -161,11 +169,6 @@ export const MP_ROLE_DOSE_MI: Record<MarathonSpecificRole, readonly [number, num
   development: [6, 8],
   /** "~8-10 marathon-effort miles" when no tune-up race takes this rung. */
   peak_stimulus: [8, 10],
-  /**
-   * Q16 · the week after the tune-up race: "~3 miles at currently supported
-   * marathon effort, embedded in an otherwise easy run". A touch, not a session.
-   */
-  consolidation: [3, 3],
   /** Q18 · "a small controlled marathon-effort component… not another peak workout." */
   sharpening: [3, 4],
 };
@@ -342,13 +345,35 @@ export function resolveMarathonSpecificLadder(
   }
   build.reverse();  // calendar order · earliest first
 
-  // ── STEP C · the post-race touch ──────────────────────────────────────────
-  // Q16, verbatim: "Thursday or Friday · ~3 miles at currently supported
-  // marathon effort · embedded in an otherwise easy run · comfortable warm-up
-  // and cool-down · no threshold finish · no attempt to prove new fitness."
-  // Only after a tune-up race, because that is the week the ruling is about.
-  const touchWeekIdx = peakIsRace && peakWeekIdx != null && peakWeekIdx + 1 < raceWeekIdx
-    ? peakWeekIdx + 1 : null;
+  /* ── STEP C · THE POST-RACE TOUCH, AND WHY IT IS NOT AUTHORED ─────────────
+   *
+   * Q16, verbatim: "Thursday or Friday · ~3 miles at currently supported
+   * marathon effort · embedded in an otherwise easy run · comfortable warm-up
+   * and cool-down · no threshold finish · no attempt to prove new fitness."
+   *
+   * IT IS NOT IMPLEMENTED, DELIBERATELY, AND THE REFUSAL IS RECORDED.
+   *
+   * `Research/00b` §"Recovery by Distance" gives a half 10-14 total recovery
+   * days with no quality, which `postRaceNoQualityDays` scales to 10 days for a
+   * B effort. Thursday and Friday of the week after a Sunday race are days 4
+   * and 5 — both inside it, on every shape this ladder can produce. So the
+   * ruling and the guard genuinely disagree, and there is no calendar on which
+   * the session could be authored without weakening the window.
+   *
+   * Building the vehicle anyway would have shipped a mechanism nothing can
+   * reach — Rule 15's failure, and Rule 21's "wired, tested and inert", which
+   * this codebase has now paid for three times. So the decision is FLAGGED
+   * rather than taken quietly (CLAUDE.md, operating boundary 2: "a decision
+   * with two defensible answers is stated, with the options, and paused on"),
+   * and it reaches the runner's own plan as a persisted refusal rather than as
+   * an absence nobody can explain.
+   */
+  if (peakIsRace && peakWeekIdx != null && peakWeekIdx + 1 < raceWeekIdx) {
+    note(peakWeekIdx + 1,
+      'the ruling’s ~3 mi marathon-effort touch (Thursday or Friday) would sit inside the '
+      + 'tune-up’s post-race no-quality window · Research/00b §"Recovery by Distance" · '
+      + 'the week is left easy and the conflict is stated rather than resolved here');
+  }
 
   // ── STEP D · the sharpening rung ──────────────────────────────────────────
   // Q18 · the two-weeks-out long "may carry a small controlled marathon-effort
@@ -376,7 +401,6 @@ export function resolveMarathonSpecificLadder(
     plan.push({ wi, role: k === 0 ? 'introduction' : 'development', vehicle: 'long_run' });
   }
   if (peakWeekIdx != null) plan.push({ wi: peakWeekIdx, role: 'peak_stimulus', vehicle: peakIsRace ? 'tune_up_race' : 'long_run' });
-  if (touchWeekIdx != null) plan.push({ wi: touchWeekIdx, role: 'consolidation', vehicle: 'easy_run_touch' });
   if (sharpenWeekIdx != null) plan.push({ wi: sharpenWeekIdx, role: 'sharpening', vehicle: 'long_run' });
   plan.sort((a, b) => a.wi - b.wi);
 
@@ -485,14 +509,6 @@ function rationaleFor(a: {
         whyThisWeek: `${weeksOut} weeks out: far enough back that the block can absorb it, close enough that it still counts.`,
         supportedBy,
         prepares: 'The consolidation touch and the sharpening session that carry it into race week.',
-        rehearses,
-      };
-    case 'consolidation':
-      return {
-        purpose: `${a.mpMi} miles at the marathon effort you have already supported, inside an otherwise easy run. Keeps the rhythm without asking for anything new.`,
-        whyThisWeek: `${weeksOut} weeks out, the week after the race. The race was the stimulus; this week absorbs it.`,
-        supportedBy,
-        prepares: 'The final sharpening session before race week.',
         rehearses,
       };
     case 'sharpening':

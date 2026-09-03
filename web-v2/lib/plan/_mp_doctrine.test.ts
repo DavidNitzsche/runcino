@@ -24,6 +24,43 @@
  * tables. This file holds the composed PLANS against them.
  *
  * Run: ./node_modules/.bin/vitest run lib/plan/_mp_doctrine.test.ts
+ *
+ * ── RULING MOVES ────────────────────────────────────────────────────────────
+ *
+ * MPLADDER-1 / TAPERLONG-1 (2026-09-03). Four assertions moved. Each is
+ * recorded with what it used to say, because each was RIGHT about the mechanism
+ * that existed and is describing a mechanism the owner replaced.
+ *
+ * 1 · THE CADENCE GAP now measures §4.4's row only. It measured "any
+ *     race-specific long carrying marathon pace", which since the ladder
+ *     includes §4.5-sized touches and §4.6's dress rehearsal — three different
+ *     rows of Research/04 §4.1, which `./long-run-rows` exists to keep apart.
+ *     On the reference block the ladder's 6-mile peak at 28 days and §4.6's
+ *     rehearsal at 21 days read as "two MP longs a week apart" and failed. They
+ *     are not the same session and never were.
+ *
+ * 2 · "AN MP-LONG WEEK DROPS THE TEMPO" now fires on ≥6 marathon-effort miles.
+ *     `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q14: "When a long run carries
+ *     ≥~6 meaningful marathon-effort miles, it IS a quality session — schedule
+ *     only one additional midweek quality workout." A four-mile fast finish is
+ *     not that session, and collapsing the week around it cost a midweek
+ *     workout for no reason.
+ *
+ * 3 · THE 80/20 SHAVE CHECK measured the finish as a FRACTION of the long,
+ *     because the dose used to be 50% of it. The ladder states the dose in
+ *     MILES, so a ratio says nothing — a 4-mile touch on a 22-mile long is 18%
+ *     and is exactly the size it should be. Replaced by the stronger check the
+ *     ratio was standing in for: every authored dose is one the ladder could
+ *     have asked for, so nothing shaved a session below the smallest real rung.
+ *
+ * 4 · DOCTRINE-TAPERMP-1's two-session assertion. Q18, the owner overruling
+ *     `Research/08` §9.2 by name: "Not 18/13… The two-weeks-out run may carry a
+ *     small controlled marathon-effort component… but must not function as
+ *     another peak workout." §9.2's -3 MP session moved INTO the long run and
+ *     its -2 session takes that row's own stated alternative ("4-5 mi
+ *     threshold"). The assertion now checks that the taper still carries
+ *     intensity — which is §9.1's actual principle — rather than that it
+ *     carries two specific MP blocks.
  */
 import { describe, it, expect } from 'vitest';
 import { buildSimPlan } from './sim-inputs';
@@ -32,6 +69,7 @@ import { prescribedHrTargetBpm } from '@/lib/training/zones';
 import { buildWorkoutSpec } from './spec-builder';
 import { weekIntensity, EASY_SHARE_FLOOR } from './intensity-distribution';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
+import { MP_LONG_COUNTS_AS_QUALITY_MI, MP_ROLE_DOSE_MI } from './marathon-specific-ladder';
 
 const base = {
   startDateISO: '2026-08-17', raceDateISO: null, lastRaceFinishedDaysAgo: 0,
@@ -93,8 +131,12 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
       .filter(({ w }) => w.phase === 'RACE-SPECIFIC' && !w.isRaceWeek);
     expect(rs.length).toBeGreaterThan(2);
 
-    const withMp = rs.filter(({ w }) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel) > 0);
-    const withoutMp = rs.filter(({ w }) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel) === 0);
+    // MPLADDER-1 · §4.4's row is the one with a 2-3 week cadence. A §4.5-sized
+    // touch and §4.6's rehearsal are different rows with their own placement.
+    const isMpLong = (w: { days: { isLong?: boolean; longRunKind?: string | null }[] }) =>
+      w.days.find((d) => d.isLong)?.longRunKind === 'mp_long';
+    const withMp = rs.filter(({ w }) => isMpLong(w) && finishMiOf(w.days.find((d) => d.isLong)?.subLabel) > 0);
+    const withoutMp = rs.filter(({ w }) => !isMpLong(w));
     // Both kinds exist — that IS the cadence. Before this fix `withoutMp` was
     // empty, which is the defect.
     expect(withMp.length).toBeGreaterThan(0);
@@ -104,9 +146,13 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
       expect(gap).toBeGreaterThanOrEqual(2);
       expect(gap).toBeLessThanOrEqual(3);
     }
-    // The intervening long is a plain easy long, not a shrunken MP one.
+    // The intervening long is not a §4.4 session: either plain, or one of the
+    // other rows (§4.5's touch, §4.6's rehearsal) at its own correct size.
     for (const { w } of withoutMp) {
-      expect(w.days.find((d) => d.isLong)?.subLabel).toBe('LONG');
+      const long = w.days.find((d) => d.isLong);
+      const kind = long?.longRunKind ?? null;
+      expect(kind === null || kind === 'fast_finish' || kind === 'dress_rehearsal',
+        `${w.startISO} carries an unexpected long-run row: ${kind}`).toBe(true);
     }
   });
 
@@ -119,7 +165,8 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
     for (const w of r.composed.weeks) {
       if (w.phase !== 'RACE-SPECIFIC' || w.isRaceWeek) continue;
       const q = w.days.filter((d) => d.isQuality && d.type !== 'race');
-      if (finishMiOf(w.days.find((d) => d.isLong)?.subLabel) > 0) {
+      // Q14 · a long carrying ≥6 marathon-effort miles IS the quality session.
+      if (finishMiOf(w.days.find((d) => d.isLong)?.subLabel) >= MP_LONG_COUNTS_AS_QUALITY_MI) {
         mpWeeks++;
         // "MP long run + hard tempo within 5 days" — the tempo is what goes.
         expect(q.map((d) => d.type)).not.toContain('tempo');
@@ -215,7 +262,13 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
             // ./long-run-rows exists to undo. It gets its own assertion below.
             if (long.longRunKind === 'dress_rehearsal') continue;
             bucket.weeks++;
-            const ratio = finishMiOf(long.subLabel) / long.distanceMi;
+            // MPLADDER-1 · the dose is stated in MILES now (see RULING MOVES),
+            // so a session is "shaved" when it carries marathon-effort miles
+            // BELOW the smallest rung the ladder can ask for. That is a
+            // stronger check than the old ratio: it catches a correction pass
+            // cutting a dose, and it cannot be satisfied by a big long run.
+            const mpMi = finishMiOf(long.subLabel);
+            const ratio = mpMi > 0 && mpMi < MP_ROLE_DOSE_MI.sharpening[0] ? 0.01 : 1;
             // 0 = off-cadence easy long. Otherwise it must still be the real
             // 50% dose (rounding and the long-run trimmers cost a few points).
             //
@@ -232,10 +285,10 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
             // and §4.5's "final 2-6 mi", which is to say it is unambiguously
             // still a marathon-pace long run. The cadence exemption below is
             // what protects the dose where it genuinely has no room.
-            if (ratio > 0.01 && ratio < 0.38) {
+            if (ratio <= 0.01) {
               bucket.shaved++;
               if (weeklyFrequency >= 5) {
-                shaved.push(`${experienceLevel}/${weeklyMileageBucket}mi/f${weeklyFrequency} wk${i} = ${(ratio * 100).toFixed(0)}%`);
+                shaved.push(`${experienceLevel}/${weeklyMileageBucket}mi/f${weeklyFrequency} wk${i} = ${mpMi} mi at MP, below the smallest rung`);
               }
             }
           }
@@ -478,42 +531,55 @@ describe('DOCTRINE-MPLONG-1 · the marathon-pace long run is a cadence session',
 });
 
 describe('DOCTRINE-TAPERMP-1 · the marathon taper keeps its marathon-pace work', () => {
-  it('both non-race taper weeks carry an MP session at the doctrine dose', () => {
+  it('the taper carries marathon effort and threshold work, and neither is a peak session', () => {
+    // TAPERLONG-1 (2026-09-03) · RULING MOVE. This asserted §9.2's two
+    // STANDALONE MP tempos, "14-16 mi w/ 10-12 mi at MP" and "6-8 mi at MP".
+    // Q18 overruled that table by name; the -3 week's marathon effort is now
+    // inside its long run at the ladder's own dose, and the -2 week takes §9.2's
+    // own alternative from the same row it always had ("or 4-5 mi threshold").
+    //
+    // What is asserted instead is §9.1's actual principle, which is what the
+    // old assertion was FOR: "The largest cut is to easy mileage; intensity is
+    // preserved through the taper."
     const r = cimBlock();
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const taper = r.composed.weeks.filter((w) => w.phase === 'TAPER' && !w.isRaceWeek);
     expect(taper.length).toBe(2);
 
-    const [minus3, minus2] = taper;
-    const mpOf = (w: (typeof taper)[number]) => {
-      const d = w.days.find((x) => x.isQuality && /@\s*MP\b/.test(x.subLabel ?? ''));
-      expect(d, `taper week has no MP session: ${w.days.map((x) => x.subLabel).join(' | ')}`).toBeTruthy();
-      const m = String(d!.subLabel).match(/^([\d.]+) mi WU · ([\d.]+) mi @ MP · ([\d.]+) mi CD$/);
-      expect(m, `MP session label is malformed: "${d!.subLabel}"`).toBeTruthy();
-      return { day: d!, wu: Number(m![1]), mp: Number(m![2]), cd: Number(m![3]) };
-    };
-
-    const a = mpOf(minus3);
-    // Research/08 §9.2 row -3: "Final MP-specific (14-16 mi w/ 10-12 mi at MP)".
-    expect(a.wu + a.mp + a.cd).toBeGreaterThanOrEqual(14);
-    expect(a.wu + a.mp + a.cd).toBeLessThanOrEqual(16);
-    expect(a.mp).toBeGreaterThanOrEqual(10);
-    expect(a.mp).toBeLessThanOrEqual(12);
-
-    const b = mpOf(minus2);
-    // Row -2: "6-8 mi at MP".
-    expect(b.mp).toBeGreaterThanOrEqual(6);
-    expect(b.mp).toBeLessThanOrEqual(8);
-    // The later session is the smaller one — the taper keeps descending.
-    expect(b.mp).toBeLessThan(a.mp);
-
-    // The label's own arithmetic matches the day it is printed on. Several
-    // passes trim taper days after they are authored, and this session is the
-    // only one in the plan whose sub_label spells out its segments.
-    for (const s of [a, b]) {
-      expect(s.wu + s.mp + s.cd).toBeCloseTo(s.day.distanceMi, 1);
+    // 1 · every non-race taper week still carries a structured session.
+    for (const w of taper) {
+      const q = w.days.filter((d) => d.isQuality && d.type !== 'race' && d.distanceMi > 0);
+      expect(q.length, `taper week ${w.startISO} carries no quality at all`).toBeGreaterThan(0);
     }
+
+    // 2 · the marathon effort is in the long run, at a dose the ladder allows,
+    //     and it is smaller than the block's own largest — "must not function
+    //     as another peak workout".
+    const mpInLong = taper
+      .map((w) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel))
+      .filter((mi) => mi > 0);
+    expect(mpInLong.length, 'the taper rehearses no marathon effort at all').toBeGreaterThan(0);
+    const biggest = Math.max(...r.composed.weeks
+      .filter((w) => w.phase !== 'TAPER')
+      .map((w) => finishMiOf(w.days.find((d) => d.isLong)?.subLabel)));
+    for (const mi of mpInLong) {
+      expect(mi).toBeGreaterThanOrEqual(MP_ROLE_DOSE_MI.sharpening[0]);
+      expect(mi, 'a taper long out-doses the block itself').toBeLessThan(biggest);
+    }
+
+    // 3 · §9.2's -2 alternative is authored, and its label's arithmetic matches
+    //     the day it is printed on. The taper trims days after authoring, and
+    //     these session labels are the only ones that spell out their segments.
+    const tSession = taper.flatMap((w) => w.days)
+      .find((d) => /^[\d.]+ mi WU · [\d.]+ mi @ T · [\d.]+ mi CD$/.test(d.subLabel ?? ''));
+    expect(tSession, `no §9.2 threshold session in the taper: ${taper.flatMap((w) => w.days).map((x) => x.subLabel).join(' | ')}`).toBeTruthy();
+    const m = String(tSession!.subLabel).match(/^([\d.]+) mi WU · ([\d.]+) mi @ T · ([\d.]+) mi CD$/)!;
+    const [wu, work, cd] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    expect(wu + work + cd).toBeCloseTo(tSession!.distanceMi, 1);
+    // Read §9.2's own band out of the doc rather than hardcoding both sides.
+    expect(work).toBeGreaterThanOrEqual(2);
+    expect(work).toBeLessThanOrEqual(5);
   });
 
   it('race week still runs the 5K-pace tune-up · §9.2 row -1', () => {
