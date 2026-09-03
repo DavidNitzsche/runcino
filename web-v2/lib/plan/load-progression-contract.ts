@@ -373,6 +373,21 @@ export function plannedPeakBound(args: {
       + 'keeps its template band',
     );
   }
+  // Rule 11 · a MEASURED zero is a measurement, which is why `positive` no
+  // longer folds it into absence. It is refused HERE, at the consumer, with its
+  // own reason: `peak * PER_CYCLE_PEAK_GROWTH` is 0, and a bound of zero would
+  // pull the target below both the runner's own peak and the distance floor —
+  // exactly what RAMP.cycle-over-cycle-peak-growth forbids. Distinguishing the
+  // two costs one branch and keeps "we never measured him" separate from "we
+  // measured him at zero" for every reader downstream.
+  if (peak === 0) {
+    return refused(
+      'demonstrated peak week measured ZERO · a per-cycle bound grown from zero '
+      + 'is zero, and doctrine forbids pulling the target below the peak the '
+      + 'runner has held or the distance floor. Distinct from no measurement '
+      + 'at all: this runner was read, and read as having run nothing',
+    );
+  }
   const floorMi = Math.max(peak, args.distanceFloorMi);
   const cycleBoundMi = peak * PER_CYCLE_PEAK_GROWTH;
   // What the block can actually climb to from where the runner is, at
