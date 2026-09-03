@@ -439,6 +439,48 @@ what it checks, not kept running in parallel indefinitely.
 
 ---
 
+## SESSION INTEGRATION · 2026-09-03, David's item 10
+
+**`feat/pre-run-experience` — merged, `578616c7`, deployed (confirmed via
+GitHub commit status, not merged-status alone).** `RunLobbyV5` replaces the
+two-button `RunPickerV5` at its one call site; `HR-ROLE-1`
+(`hrRoleForRepDuration` in `web-v2/lib/training/zones.ts`) is the direct,
+independently-arrived-at fix for the exact issue raised live tonight — a
+short rep's HR number rendering as an indistinguishable-from-a-target
+figure — reusing the existing `HR_REP_KINETICS_FLOOR_SEC` constant rather
+than re-deriving it, gated by a new falsifiable doctrine claim
+(`HR.rep-target-role-below-kinetics-floor`). Three real findings caught by
+the gate chain on merge, not assumed clean because the branch's own build
+was green: a bare 5pt padding (`check-spacing-tokens.sh`) fixed to
+`V5.S.s4`; a hand-drawn HR tilde (`check-modelled-mark.sh`) removed
+entirely rather than routed through `FaffValue`, because the value is a
+measured anchor, not a modelled/projected number, so the tilde was the
+wrong mark twice over; five em dashes across two files
+(`check-coach-voice.sh`) split into plain sentences. `check-watch.sh`
+failed once on a database-lock contention matching this exact project's
+own documented shared-host precedent (`docs/reports/complete-coaching-
+brain-handback-2026-09-02/postrun-breakdown.md` §9) — confirmed no
+concurrent Xcode/simulator processes were running, retried clean (223/223
+test cases), not assumed transient without the retry. Full chain (prebuild,
+web build, CI tests, watch gate) CLEAN before push; the pre-push hook
+independently re-ran and confirmed again.
+
+**`feat/postrun-experience-lead` — NOT merged.** The branch's own handback
+states plainly: "Status: not complete, not ready for the programme lead to
+merge." Respected rather than integrated anyway — David's instruction was
+explicit that acceptance is the deciding session's call, not a wholesale
+grab. Its one disclosed `--no-verify` push was inspected and found
+defensible: the watch-face gate failed under the same shared-host
+concurrent-build contention named above, on a diff confirmed to touch zero
+watch code, disclosed rather than hidden, matching an established
+precedent in this project's own history. Nothing here blocks anything —
+noted for whoever picks this branch up next, this session or another.
+
+**Two branches checked and set aside as already resolved:**
+`fix/postrun-breakdown` and `stage4/post-run`, both 0 commits ahead of
+`origin/main` — their work is already in `main`'s history, not pending
+integration.
+
 ## Stage 0 · Record and deployment state — VERIFIED 2026-09-03
 
 Resolved from the repository, CI and the deployment provider, not from the

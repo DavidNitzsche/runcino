@@ -90,7 +90,7 @@ struct LiveRunWatchCompanionV5: View {
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.textQuiet)
             if !watchSync.isReachable {
-                Alert(text: "Your watch isn't reachable right now. If it's already recording, that continues on its own — this screen just can't confirm it until the watch comes back in range.",
+                Alert(text: "Your watch isn't reachable right now. If it's already recording, that continues on its own. This screen just can't confirm it until the watch comes back in range.",
                       tone: .attention)
                     .padding(.top, V5.S.s8)
             }
@@ -103,7 +103,7 @@ struct LiveRunWatchCompanionV5: View {
                 .font(.faffText(TypeScaleV5.label12, weight: .semibold))
                 .tracking(1.2)
                 .foregroundStyle(V5.textQuiet)
-            Text("Your watch is recording this run. Closing this screen does not stop it — end the run on your wrist when you're done.")
+            Text("Your watch is recording this run. Closing this screen does not stop it. End the run on your wrist when you're done.")
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.textQuiet)
                 .multilineTextAlignment(.center)
