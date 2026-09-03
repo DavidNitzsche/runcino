@@ -334,8 +334,11 @@ struct SettingsV5: View {
 
     private var dataSection: some View {
         ListGroup(header: "Data", footer: "Your watch keeps recording either way.") {
+            // Rule 17 · the connection state is ONE fact, said once. It used to
+            // be passed as both `sub` and `value`, so the row rendered
+            // "Strava / Not connected" above "Not connected" — the same two
+            // words printed twice, six points apart, on one row.
             ListRow(label: "Strava",
-                    sub: model.stravaConnected ? "Connected" : "Not connected",
                     value: .measured(model.stravaConnected ? "Connected" : "Not connected"),
                     onTap: onToggleStrava)
             ListRow(label: "Email", value: .measured(model.email))
