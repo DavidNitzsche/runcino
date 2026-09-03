@@ -505,7 +505,7 @@ function rationaleFor(a: {
       return {
         purpose: a.vehicle === 'tune_up_race'
           ? 'The block’s largest race-specific demand. It replaces the long run and a quality session rather than sitting on top of them.'
-          : `${a.mpMi} miles at marathon effort — the block’s largest marathon-specific session.`,
+          : `${a.mpMi} miles at marathon effort · the block’s largest marathon-specific session.`,
         whyThisWeek: `${weeksOut} weeks out: far enough back that the block can absorb it, close enough that it still counts.`,
         supportedBy,
         // Rule 16 · this named a "consolidation touch" that Step C refuses to
