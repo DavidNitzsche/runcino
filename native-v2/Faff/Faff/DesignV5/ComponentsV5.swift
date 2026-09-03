@@ -107,6 +107,58 @@ struct Tile<Content: View>: View {
 // Pushed screens are AppBar + plain list. They do NOT get a gradient panel —
 // that is the shell exception the README names.
 
+/// VW-1 · THE STATUS BAR SITS ON THE CONTENT, AND NOTHING WAS BEHIND IT.
+///
+/// Observed on the build of 2026-09-03: body text scrolled up under the clock
+/// and the Dynamic Island and collided with them — "Temperature, from weather"
+/// rendered through "2:36". Not one screen's bug. `AppBar` is drawn INSIDE the
+/// `ScrollView` on every screen that has one, which is deliberate (the big
+/// title is meant to scroll away), so on all seven of them the status bar ends
+/// up over raw body copy.
+///
+/// The fix is a scrim, not a pinned header, because the scrolling title is the
+/// design's intent and pinning it would change every one of those screens. It
+/// lives in the shell's ZStack so there is ONE of it rather than seven, and it
+/// reads the device's real inset from `\.v5TopInset` — the value the shell
+/// already measures at the root and publishes, and which `PanelV5` already
+/// consumes. Nothing new is measured.
+///
+/// It is opaque across the status bar itself and fades out below it, so content
+/// dissolves rather than ending on a hard line. Non-interactive: it must never
+/// eat a tap meant for the content it covers.
+///
+/// WHAT THIS CANNOT FIX (Rule 22): it hides the collision, it does not create
+/// space. A screen whose first element needs to be READ at rest still has to
+/// pad itself below the inset — the scrim only governs what happens to content
+/// scrolling past.
+struct StatusBarScrimV5: View {
+    @Environment(\.v5TopInset) private var topInset
+
+    /// How far past the inset the fade runs. Enough to be a fade rather than a
+    /// band, short enough not to dim a resting headline.
+    private static let fade: CGFloat = 16
+
+    var body: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                stops: [
+                    .init(color: V5.surfacePage, location: 0),
+                    .init(color: V5.surfacePage, location: topInset <= 0 ? 0.6
+                          : topInset / (topInset + Self.fade)),
+                    .init(color: V5.surfacePage.opacity(0), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: topInset + Self.fade)
+            Spacer(minLength: 0)
+        }
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 struct AppBar: View {
     let title: String
     /// A quiet line above the title. Race detail puts the date here.
