@@ -223,10 +223,23 @@ struct TodayHostV5: View {
                 navigatingHeader(for: date)
                 switch phase {
                 case .loading:
-                    RoundedRectangle(cornerRadius: V5.R.panel, style: .continuous)
-                        .fill(V5.surface1).frame(height: 380)
-                    Skeleton(lines: 3)
-                    Skeleton(lines: 2)
+                    // A11Y · the 380pt placeholder is a bare Shape, which
+                    // publishes nothing to the accessibility tree (see
+                    // `Skeleton`'s own header comment for the exact failure
+                    // mode) — VoiceOver silently skipped straight from the
+                    // header to the first `Skeleton`'s "Loading" and then
+                    // heard a SECOND, redundant "Loading" from the next one.
+                    // Grouped into one element with one label naming the
+                    // date, so a VoiceOver runner hears the same fact a
+                    // sighted runner sees once: this day is loading.
+                    VStack(spacing: V5.S.betweenGroups) {
+                        RoundedRectangle(cornerRadius: V5.R.panel, style: .continuous)
+                            .fill(V5.surface1).frame(height: 380)
+                        Skeleton(lines: 3)
+                        Skeleton(lines: 2)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Loading \(Self.dayName(date))’s workout")
                 case .failed:
                     ErrorNote(
                         text: "Can't reach faff. \(Self.dayName(date)) did not load.",
@@ -1069,6 +1082,14 @@ struct TodayHostV5: View {
 
     private var coldStart: some View {
         ScrollView {
+            // A11Y · same fix as `navigatingCard`'s `.loading` case: the
+            // 380pt placeholder is a bare Shape (publishes nothing to the
+            // accessibility tree) and the two `Skeleton`s each independently
+            // announced "Loading", so the FIRST thing a VoiceOver runner
+            // heard on a cold launch was a silent gap then a duplicated
+            // "Loading". One element, one label — there is no date to name
+            // yet here (no payload has ever landed), so "Loading your plan"
+            // rather than a specific day.
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 // The panel's own height, reserved. Nothing appears or
                 // disappears and reflows.
@@ -1078,6 +1099,8 @@ struct TodayHostV5: View {
                 Skeleton(lines: 3)
                 Skeleton(lines: 2)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Loading your plan")
             .padding(.horizontal, V5.S.gutter)
         }
         .background(V5.surfacePage)
