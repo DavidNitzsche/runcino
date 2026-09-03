@@ -8,6 +8,27 @@
  *
  * Falsified 2026-09-01 against a deliberately broken compose (goal used as
  * the improvement, target allowed past the fast edge): both named failures.
+ *
+ * ── RULING MOVES ────────────────────────────────────────────────────────────
+ *
+ * EXECTARGET-1 (2026-09-03). Three assertions in this file MOVED, and they are
+ * recorded here rather than quietly re-baselined, because they asserted the
+ * defect:
+ *
+ *   was  execution.source === 'expected_race_day'                 (no goal)
+ *   was  execution.source === 'stated_goal_within_range'          (goal inside)
+ *   was  execution.source === 'stated_goal_clamped_to_range_edge' (goal beyond)
+ *   now  execution.source === 'current_evidence'                  (all three)
+ *
+ * `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q7, locked 2026-09-03: the active
+ * execution number is the PROJECTION-derived one, and "3:13:30 must not be
+ * labelled the current execution target merely because it is the fast edge of
+ * a wide range." On the owner's CIM that edge carried confidence 0.23 and told
+ * him to race 7:22/mi while the whole block rehearsed 7:52.
+ *
+ * These three failing before the change and passing after IS the falsification
+ * for EXECTARGET-1: the gates encoded the behaviour that was removed, and they
+ * named it precisely when the removal landed.
  */
 import { describe, it, expect } from 'vitest';
 import { composeRaceOutlook, raceOutlookInvariants, roundRaceTargetSec } from './race-outlook';
@@ -48,10 +69,13 @@ describe('RaceOutlook · the goal is never evidence', () => {
     expect(soft.expectedRaceDay.expectedSec).toBe(hard.expectedRaceDay.expectedSec);
     expect(soft.currentProjection.expectedSec).toBe(hard.currentProjection.expectedSec);
   });
-  it('no goal at all still projects, and the execution target IS the expected race day', async () => {
+  it('no goal at all still projects, and the execution target IS today’s evidence', async () => {
     const o = await outlookFor(null);
-    expect(o.execution.source).toBe('expected_race_day');
-    expect(o.execution.targetSec).toBe(roundRaceTargetSec(o.expectedRaceDay.expectedSec!));
+    expect(o.execution.source).toBe('current_evidence');
+    expect(o.execution.targetSec).toBe(roundRaceTargetSec(o.currentProjection.expectedSec!));
+    // The forecast survives as a forecast, and is faster than the target — that
+    // difference is the block's intent, and it is what the upside is drawn from.
+    expect(o.expectedRaceDay.expectedSec!).toBeLessThan(o.currentProjection.expectedSec!);
     // ROW-CONTRACT-1 (2026-09-02) · the outlook's own A/B/C ladder is GONE, and
     // this assertion is now that it stays gone. It was a second producer of a
     // quantity `lib/race/coach-goal.ts` already owns, 40 seconds apart from it
@@ -60,38 +84,80 @@ describe('RaceOutlook · the goal is never evidence', () => {
   });
 });
 
-describe('RaceOutlook · execution target · the goal pulls no further than the likely range\'s fast edge', () => {
-  it('a goal inside the range is raced as stated', async () => {
+describe('RaceOutlook · execution target · the goal never reaches it · Q7', () => {
+  it('the target is the SAME number whatever the goal says', async () => {
+    // The strongest form of "the goal is not evidence": walk the goal from
+    // comfortable to absurd and the prescription does not move at all.
+    const none = await outlookFor(null);
+    const soft = await outlookFor(4 * 3600);
+    const hard = await outlookFor(2 * 3600 + 20 * 60);
+    expect(soft.execution.targetSec).toBe(none.execution.targetSec);
+    expect(hard.execution.targetSec).toBe(none.execution.targetSec);
+    expect(hard.execution.source).toBe('current_evidence');
+    // ...and each still echoes the runner's own number, untouched.
+    expect(hard.statedGoal.sec).toBe(2 * 3600 + 20 * 60);
+    expect(hard.goalFeasibility.status).toBe('unlikely_currently');
+  });
+
+  it('the target is never the goal and never a compromise between goal and projection', async () => {
+    // "Do not average the projection and goal to manufacture a compromise
+    // target." Both failure modes named, on a goal well inside the old range.
     const base = await outlookFor(null);
     const inside = Math.round((base.expectedRaceDay.likelyRangeSec![0] + base.expectedRaceDay.expectedSec!) / 2);
     const o = await outlookFor(inside);
-    expect(o.execution.source).toBe('stated_goal_within_range');
-    expect(o.execution.targetSec).toBe(inside);
+    expect(o.execution.targetSec).not.toBe(inside);
+    const midpoint = Math.round((inside + o.currentProjection.expectedSec!) / 2);
+    expect(o.execution.targetSec).not.toBe(midpoint);
+    expect(o.execution.targetSec).toBe(roundRaceTargetSec(o.currentProjection.expectedSec!));
   });
-  it('a goal beyond the fast edge is clamped TO the edge, and the goal stays the goal', async () => {
-    const base = await outlookFor(null);
-    const edge = base.expectedRaceDay.likelyRangeSec![0];
-    const o = await outlookFor(Math.round(edge * 0.8));
-    expect(o.execution.source).toBe('stated_goal_clamped_to_range_edge');
-    expect(o.execution.targetSec).toBe(roundRaceTargetSec(edge));
-    expect(o.statedGoal.sec).toBe(Math.round(edge * 0.8));
-    expect(o.goalFeasibility.status).toBe('unlikely_currently');
+
+  it('the forecast’s fast edge survives as a conditional upside with criteria · Q7 layer four', async () => {
+    const o = await outlookFor(2 * 3600 + 20 * 60);
+    expect(o.conditionalUpside).not.toBeNull();
+    expect(o.conditionalUpside!.targetSec).toBeLessThan(o.execution.targetSec!);
+    expect(o.conditionalUpside!.criteria.length).toBeGreaterThanOrEqual(4);
+    // It is an UPSIDE, not a prescription: it changes nothing about what he is
+    // told to run, and it does not move with the goal either.
+    const soft = await outlookFor(5 * 3600);
+    expect(soft.conditionalUpside!.targetSec).toBe(o.conditionalUpside!.targetSec);
   });
-  it('Rule 9 · the execution target is continuous and monotone as the goal crosses the edge', async () => {
+
+  it('the seam reports whether the block rehearses the pace the day asks for', async () => {
+    // No plan to read is a refusal that says so, not a silent pass (Rule 11).
+    const none = await outlookFor(3 * 3600);
+    expect(none.blockSeam!.credible).toBe(false);
+    expect(none.blockSeam!.reason).toContain('no marathon-effort session');
+    const target = none.execution.paceSecPerMi!;
+    // A plan whose last rehearsal is at the target IS credible.
+    const carried = await composeRaceOutlook(
+      fixtureRace({ statedGoalSec: 3 * 3600 }), TODAY,
+      fixtureReads({ plannedLastRehearsalPaceSecPerMi: target }),
+    );
+    expect(carried.blockSeam!.credible).toBe(true);
+    // A plan 30 s/mi slower than the day asks for is NOT — which is the exact
+    // shape of the defect this whole change exists for.
+    const adrift = await composeRaceOutlook(
+      fixtureRace({ statedGoalSec: 3 * 3600 }), TODAY,
+      fixtureReads({ plannedLastRehearsalPaceSecPerMi: target + 30 }),
+    );
+    expect(adrift.blockSeam!.credible).toBe(false);
+    expect(adrift.blockSeam!.reason).toContain('not carried by the training');
+  });
+
+  it('Rule 9 · the execution target is FLAT as the goal walks across the old edge', async () => {
+    // The cliff this walk was written for cannot exist any more, because the
+    // decision the goal used to hinge on is gone. A flat line is the strongest
+    // continuity result available, and the walk is kept to prove it stays flat.
     const base = await outlookFor(null);
     const edge = base.expectedRaceDay.likelyRangeSec![0];
     let prev: number | null = null;
-    let worstJump = 0; let worstInversion = 0;
+    let worstJump = 0;
     for (let g = Math.round(edge) - 40; g <= Math.round(edge) + 40; g += 1) {
       const t = (await outlookFor(g)).execution.targetSec!;
-      if (prev != null) {
-        worstJump = Math.max(worstJump, Math.abs(t - prev));
-        worstInversion = Math.max(worstInversion, prev - t);
-      }
+      if (prev != null) worstJump = Math.max(worstJump, Math.abs(t - prev));
       prev = t;
     }
-    expect(worstJump).toBeLessThanOrEqual(10);
-    expect(worstInversion).toBeLessThanOrEqual(0);
+    expect(worstJump).toBe(0);
   });
 });
 
