@@ -271,7 +271,7 @@ cannot be exercised is a refusal nobody can trust. Fixed.
 
 ---
 
-## 8 · Removing the self-declared level · RECORDS CLEAN, BEHAVIOUR NOT YET
+## 8 · Removing the self-declared level · DONE, 8/8 GREEN
 
 **What is done.** Composing him now, `declaredLevel`, `experience_level`, the
 `READINESS` prerequisite and the dangling `scoreReadiness` are **all absent**
@@ -291,26 +291,40 @@ is resolved — the grant's 28-day reading is renamed `recentHabitLongMi`:
  "recentHabitLongMi": 18, "sustainedWeeklyMi": 46.4}
 ```
 
-**What is NOT done, and I am not rounding it up.** The gate he asked for is
-**red on 7 of its 8 dimensions**. The label still moves plan volume, peak,
-long-run progression, race prescriptions, weekend permission, adaptation
-eligibility and the coaching explanations. Only cutback placement is green.
-Three reads remain, each a separate decision:
+**Now complete. The gate passes all 16 cases** — the eight dimensions plus a
+whole-block byte comparison, across four declared values and both absences.
+Nothing in it was loosened; one argument was ADDED so the workout library is
+exercised under realistic conditions rather than trivially.
 
-- `GENERAL_RAMP_CEILING[level]` — the week-over-week rate. Doctrine genuinely
-  states 1.20 for novices, so this one has a real citation behind it.
-- `classifyCapacityTier`'s floor — **this is what produces the
-  `composed_row_band_weekly: [65,90]`** still visible in the stamp, and it also
-  selects the long-run band and quality density.
-- `isBaseBuildingPlan` / `recoveryDayAfterLongMi` — the layout path.
+`classifyCapacityTier` is now `tierFromPace(demonstratedPaceSec)` with no level
+in its parameters. `CAPACITY_BAND`, `CAPACITY_CEILING` and `GOAL_DEMAND_FLOOR`
+— a floor, a ceiling and a reduction floor, all indexed on the typed word — are
+deleted. The workout library filters `levelFit` on the evidence-derived rung,
+**not** on `undefined`, which would have switched the filter off and handed
+everyone the lowest-id template.
 
-And one honest design problem, named rather than papered over: the workout
-library filters templates on `levelFit`, and **passing `undefined` does not
-narrow the filter, it switches it off** — the lowest-id template then wins for
-everyone, replacing a bad authority with an arbitrary one, in the direction that
-makes his sessions easier. The doctrine-correct answer is selection on
-demonstrated capacity, which `ADAPTATION_PROGRESSION_DOCTRINE.md` says is not
-yet built. An agent is on it.
+**Three more reads were found beyond the two I named:**
+`GENERAL_RAMP_CEILING[level ?? 'intermediate']` at three sites, the MLR
+embedded-T and contraindication gates, and `lib/coach/limiter.ts`'s volume bar —
+which promised to be *"the same one the plan is built to"* and was not.
+
+**It introduced a cliff and removed it.** Its own VDOT walk caught **177 block
+miles between VDOT 52 and 52.25**. Deleting the band outright was tried first
+and backed out: a 5K runner at 15 mi/wk was built to 16 instead of 25. The
+destination is now doctrine's four published floors as control points with a
+continuous, monotone response.
+
+**And it recorded a blindness in its own gate**, which is the part I value most:
+injecting a level read into `doctrineTarget` left the gate GREEN, because this
+runner's measured peak makes `cycleBoundedPeak` discard that value. An evidenced
+fixture cannot sweep a cold-start path. That is written into the gate's Rule 22
+section rather than left for someone to discover.
+
+**Measured on his real plan, not a fixture** — the agent opened no database
+connection, so I ran this myself: peak week **60.0 unchanged**, written total
+**694.4 unchanged**, `composed_row_band_weekly` **[65,90] → [45,55]**, long band
+**[22,24] → [20,22]**, and the long-run ceiling still resolves to his
+demonstrated **21.5**, so the band is not what binds it.
 
 ### 8a · A third instance, found while this was in flight
 
