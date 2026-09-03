@@ -105,10 +105,10 @@ export interface DeletionPlan {
  * scripts/check-deletion-plan-fixture.sh enforces on a schedule and on
  * every PR that touches this module.
  */
-const PROD_TABLE_COUNT_AT_LAST_PROBE = 44; // 2026-08-24, faff_readonly
+const PROD_TABLE_COUNT_AT_LAST_PROBE = 46; // 2026-09-03, faff_readonly
 const FLOOR_MARGIN = 9;
 export const MIN_USER_KEYED_TABLES =
-  PROD_TABLE_COUNT_AT_LAST_PROBE - FLOOR_MARGIN; // 35
+  PROD_TABLE_COUNT_AT_LAST_PROBE - FLOOR_MARGIN; // 37
 
 /**
  * Throws if `tableCount` is below the sanity floor. Call this on the

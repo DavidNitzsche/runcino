@@ -5,9 +5,10 @@
  * The endpoint itself needs a scratch DB to integration-test, so the
  * ordering/predicate logic lives in a pure function and is exercised here
  * against fixtures — including a fixture mirroring the REAL prod schema
- * shape, re-captured by read-only probe on 2026-08-24 (44 user-keyed
- * base tables; 49 FK constraints collapsing to 44 distinct child->parent
- * edges; runs->shoes is still the one NO ACTION edge among them).
+ * shape, re-captured by read-only probe on 2026-09-03 (46 user-keyed
+ * base tables; 47 distinct child->parent edges; runs->shoes is still the
+ * one NO ACTION edge among them). Migration 163 (plan_reschedules) is what
+ * moved the count from the prior 2026-08-24 capture's 44/44.
  *
  * The fixture is a STATIC INPUT to a pure planner — the live route
  * enumerates pg_catalog itself, so a stale fixture never mis-deletes
@@ -73,9 +74,9 @@ void idOnly; // no prod table is user_id-only today; kept so the contract's thir
 
 const prodTables: UserKeyedTable[] = ([
   // >>> PROD-TABLES
+  ['adaptation_shadow_log', uuidOnly],
   ['calibration_sessions', uuidOnly],
   ['check_ins', both],
-  ['coach_actions', both],
   ['coach_intents', both],
   ['coach_proposals', both],
   ['coach_reads_cache', both],
@@ -85,6 +86,7 @@ const prodTables: UserKeyedTable[] = ([
   ['day_actions', both],
   ['deleted_activity_ids', uuidOnly],
   ['device_tokens', both],
+  ['goal_projection_snapshots', uuidOnly],
   ['health_samples', both],
   ['niggles', both],
   ['notifications_log', both],
@@ -94,6 +96,7 @@ const prodTables: UserKeyedTable[] = ([
   ['plan_mutations', uuidOnly],
   ['plan_phases', uuidOnly],
   ['plan_proposals', uuidOnly],
+  ['plan_reschedules', uuidOnly],
   ['plan_weeks', uuidOnly],
   ['plan_workout_proposals', uuidOnly],
   ['plan_workouts', uuidOnly],
@@ -114,10 +117,10 @@ const prodTables: UserKeyedTable[] = ([
   ['strength_sessions', both],
   ['subjective_checkins', uuidOnly],
   ['training_plans', both],
+  ['travel_windows', uuidOnly],
   ['user_prefs', both],
-  ['workout_completions', both],
   ['workout_routes', both],
-  // <<< PROD-TABLES
+    // <<< PROD-TABLES
 ] as [string, string[]][]).map(([table, userCols]) => ({ table, userCols }));
 
 /**
@@ -132,8 +135,9 @@ const prodTables: UserKeyedTable[] = ([
  */
 const prodEdges: FkEdge[] = [
   // >>> PROD-EDGES
+  e('adaptation_shadow_log', 'training_plans'),
+  e('adaptation_shadow_log', 'users'),
   e('check_ins', 'users'),
-  e('coach_actions', 'users'),
   e('coach_intents', 'users'),
   e('coach_proposals', 'users'),
   e('coach_reads_cache', 'users'),
@@ -152,6 +156,8 @@ const prodEdges: FkEdge[] = [
   e('plan_mutations', 'users'),
   e('plan_phases', 'training_plans'),
   e('plan_phases', 'users'),
+  e('plan_reschedules', 'training_plans'),
+  e('plan_reschedules', 'users'),
   e('plan_weeks', 'plan_phases'),
   e('plan_weeks', 'training_plans'),
   e('plan_weeks', 'users'),
@@ -172,11 +178,11 @@ const prodEdges: FkEdge[] = [
   e('sick_recovery', 'sick_episodes'),
   e('strength_sessions', 'users'),
   e('training_plans', 'users'),
+  e('travel_windows', 'users'),
   e('user_prefs', 'users'),
   e('users', 'users'),
-  e('workout_completions', 'users'),
   e('workout_routes', 'users'),
-  // <<< PROD-EDGES
+    // <<< PROD-EDGES
 ];
 // Non-CASCADE edges above, and why they matter:
 //   runs -> shoes    ON DELETE NO ACTION — the edge that makes order real.
@@ -244,7 +250,7 @@ describe('assertSufficientTableCount', () => {
     // Read off the fixture rather than a literal, so a re-capture cannot
     // leave this test asserting a count prod no longer has — which is
     // exactly what happened to the 2026-07-06 "49".
-    expect(prodTables.length).toBe(44);
+    expect(prodTables.length).toBe(46);
     expect(() => assertSufficientTableCount(prodTables.length)).not.toThrow();
   });
 

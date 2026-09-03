@@ -63,8 +63,13 @@
 -- Apply with: psql $DATABASE_URL -f web-v2/db/migrations/163_plan_reschedules.sql
 -- REVERSED BY: DROP TABLE IF EXISTS plan_reschedules;
 --
--- NOT APPLIED. This is DDL against production and needs David's explicit
--- per-statement go before it is executed.
+-- APPLIED to production 2026-09-03, under David's explicit statement-shape
+-- authorization. Verified: isolated-DB dry run (twice, idempotent), FK and
+-- CHECK constraint behavior (six cases), rollback, and cross-user scoping
+-- in the code that uses this table. Full evidence in
+-- docs/migrations/163-plan-reschedules-evidence-2026-09-03.md. Schema
+-- creation only — no reschedule row exists yet, and moving Sunday's long
+-- run remains a separate, still-unapproved decision.
 
 CREATE TABLE IF NOT EXISTS plan_reschedules (
   id                     text PRIMARY KEY,

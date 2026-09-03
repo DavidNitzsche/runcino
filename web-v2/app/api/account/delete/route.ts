@@ -29,8 +29,8 @@
  *     during the 2026-07-06 probe.)
  *   - Runtime enumeration is itself sanity-floored
  *     (assertSufficientTableCount / MIN_USER_KEYED_TABLES in
- *     lib/account/deletion-plan.ts, currently 35 vs. prod's real 44 —
- *     re-probed 2026-08-24, and kept honest by
+ *     lib/account/deletion-plan.ts, currently 37 vs. prod's real 46 —
+ *     re-probed 2026-09-03, and kept honest by
  *     scripts/check-deletion-plan-fixture.sh) before anything is
  *     deleted — a near-empty or empty enumeration result refuses with a
  *     500 instead of silently deleting only `users` and orphaning
