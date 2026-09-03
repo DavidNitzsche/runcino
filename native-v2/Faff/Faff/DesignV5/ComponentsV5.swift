@@ -1482,6 +1482,67 @@ struct PlaceHeaderV5: View {
     }
 }
 
+// MARK: - The persistent Today header + week-strip shell
+
+/// TODAYSHELL-1 (2026-09-04) · the header + week-line + week-strip cluster,
+/// factored into ONE definition so a date with no cached content yet can
+/// draw the EXACT same shell as a date that has one.
+///
+/// Previously this cluster was hand-rolled, verbatim, inside both
+/// `TodayBeforeV5` and `TodayAfterV5` — and absent entirely from the
+/// loading/failed navigation card, which built a second, header-less,
+/// strip-less screen instead. That is why tapping an uncached date tore
+/// down the whole screen — header, strip and all — rather than leaving
+/// them mounted with only the content below changing.
+///
+/// David, P0, 2026-09-04, on build 254: "tapping a future day replaces the
+/// entire Today screen with a giant unexplained skeleton; the week strip
+/// disappears; the page changes into a different layout." And, the
+/// standing rule this restates, 2026-08-21: "If I go back to a past run,
+/// it should not change like this and remove the week strip etc. Keep
+/// everything just change the info below the week strip."
+///
+/// A child of `DayPanel`, so `@Environment(\.v5PanelInk)` resolves to the
+/// panel's own fill — same as `PlaceHeaderV5` and `WeekStripV5`, both of
+/// which this simply composes rather than re-implements.
+struct TodayHeaderStripV5: View {
+    let place: String
+    var viewingDayLabel: String? = nil
+    let weekLine: String?
+    let weekStripDays: [WeekStripDayV5]
+    var onBackToToday: (() -> Void)? = nil
+    var onCalendar: (() -> Void)? = nil
+    var initials: String? = nil
+    var onAccount: (() -> Void)? = nil
+    var onPickDay: (WeekStripDayV5) -> Void = { _ in }
+    var onPageWeek: ((Int) async -> Void)? = nil
+
+    @Environment(\.v5PanelInk) private var panelInk
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: V5.S.s8) {
+            PlaceHeaderV5(place: place,
+                          viewingDayLabel: viewingDayLabel,
+                          onBackToToday: onBackToToday,
+                          onCalendar: onCalendar,
+                          initials: initials,
+                          onAccount: onAccount)
+
+            HStack(spacing: V5.S.s12) {
+                Spacer(minLength: 0)
+                Text(weekLine ?? "")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(panelInk.secondary)
+                    .opacity(weekLine == nil ? 0 : 1)
+            }
+
+            WeekStripV5(days: weekStripDays,
+                        onTap: onPickDay,
+                        onPageWeek: onPageWeek)
+        }
+    }
+}
+
 // MARK: - WristDecisions · 8b
 //
 // The four decisions the watch sends up — bail taken, ceiling lifted, rep

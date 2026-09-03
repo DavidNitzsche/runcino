@@ -211,81 +211,215 @@ struct TodayHostV5: View {
         }
     }
 
-    /// The loading/failed states — a genuinely different screen from
-    /// `content(_:)`, never the old day's workout with a note on top. Reuses
-    /// the same reserved-shape skeleton `coldStart` already draws, so a
-    /// loading day never introduces a layout this brief hasn't already
-    /// established as the honest "not read yet" shape.
+    /// TODAYSHELL-1 (2026-09-04) · THE PERSISTENT SHELL, FOR REAL THIS TIME.
+    ///
+    /// David, P0, on build 254: "tapping a future day replaces the entire
+    /// Today screen with a giant unexplained skeleton; the week strip
+    /// disappears; the page changes into a different layout... I cannot
+    /// tell whether a day, workout, week, or plan is loading; navigation
+    /// feels coupled to network requests."
+    ///
+    /// The old `navigatingCard`/`navigatingHeader` this replaces built a
+    /// SECOND, unrelated screen — its own header (no calendar button, no
+    /// account button, no week line), and no `WeekStripV5` at all. Every
+    /// `.loading`/`.failed` readiness therefore tore the whole panel down
+    /// and rebuilt a different one, which is externally indistinguishable
+    /// from "the app changed pages." `TodayHeaderStripV5` (ComponentsV5.swift)
+    /// is the fix at the root: the SAME header+strip cluster `TodayBeforeV5`
+    /// and `TodayAfterV5` draw for a MATCHED day is what this draws too, so
+    /// the runner's finger never sees a different screen — only the content
+    /// beneath the strip changes, exactly as 22b's cross-day rule already
+    /// requires for a cached day (David, 2026-08-21: "Keep everything just
+    /// change the info below the week strip").
+    ///
+    /// `weekStripDays(for:)` below is what makes this possible even when
+    /// NOTHING has loaded for `date` yet: it degrades gracefully from an
+    /// exact cached day, to the currently-loaded model (if its week still
+    /// covers `date`), to a week computed by pure DATE ARITHMETIC — the
+    /// same technique `WeekStripV5.neighbour(_:)` already uses for its own
+    /// un-fetched neighbour pages — so the strip always has something
+    /// honest to draw.
     @ViewBuilder
-    private func navigatingCard(for date: String, phase: NavigatingPhase) -> some View {
+    private func pendingCard(for date: String, phase: PendingPhase) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-                navigatingHeader(for: date)
-                switch phase {
-                case .loading:
-                    // A11Y · the 380pt placeholder is a bare Shape, which
-                    // publishes nothing to the accessibility tree (see
-                    // `Skeleton`'s own header comment for the exact failure
-                    // mode) — VoiceOver silently skipped straight from the
-                    // header to the first `Skeleton`'s "Loading" and then
-                    // heard a SECOND, redundant "Loading" from the next one.
-                    // Grouped into one element with one label naming the
-                    // date, so a VoiceOver runner hears the same fact a
-                    // sighted runner sees once: this day is loading.
-                    VStack(spacing: V5.S.betweenGroups) {
-                        RoundedRectangle(cornerRadius: V5.R.panel, style: .continuous)
-                            .fill(V5.surface1).frame(height: 380)
-                        Skeleton(lines: 3)
-                        Skeleton(lines: 2)
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Loading \(Self.dayName(date))’s workout")
-                case .failed:
-                    ErrorNote(
-                        text: "Can't reach faff. \(Self.dayName(date)) did not load.",
-                        onRetry: { Task { await surface.load() } }
+                DayPanel(fill: .quiet) {
+                    TodayHeaderStripV5(
+                        place: "Today",
+                        viewingDayLabel: viewingDayLabel,
+                        weekLine: weekLine(for: date),
+                        weekStripDays: weekStripDays(for: date),
+                        onBackToToday: { backToToday() },
+                        // No calendar sheet here — this card has no full
+                        // `V5Today` to build one from (that is what is
+                        // still loading). The account sheet is hoisted onto
+                        // `TodayHostV5` itself and works regardless.
+                        onCalendar: nil,
+                        initials: initials,
+                        onAccount: { accountOpen = true },
+                        onPickDay: { day in
+                            if let iso = Self.isoDate(embeddedIn: day.id) ?? day.dateISO {
+                                goTo(iso, todayISO: knownTodayISO ?? date)
+                            }
+                        },
+                        onPageWeek: { await stepWeekFromWanted($0, wanted: date) }
                     )
+
+                    switch phase {
+                    case .loading(let summary):
+                        pendingContentBody(for: date, summary: summary)
+                    case .failed:
+                        ErrorNote(
+                            text: "Can't reach faff. \(Self.dayName(date)) did not load.",
+                            onRetry: { retryPending(date) }
+                        )
+                    case .offlineNoCache:
+                        ErrorNote(
+                            text: "\(Self.dayName(date))’s workout isn’t available offline.",
+                            onRetry: { retryPending(date) }
+                        )
+                    }
                 }
             }
             .padding(.horizontal, V5.S.gutter)
-            .padding(.top, V5.S.s24)
+            .padding(.bottom, V5.S.s24)
+            .v5PageWidth()
         }
         .background(V5.surfacePage)
-        .accessibilityElement(children: .contain)
     }
 
-    private enum NavigatingPhase { case loading, failed }
-
-    /// The one way back out of a loading or failed card — there is no
-    /// `PlaceHeaderV5` here to carry it (there is no `model` to give it), so
-    /// this is not a duplicate of anything: it is the ONLY "‹ Today" in
-    /// either of these two screens.
+    /// The content region alone — what changes while the header and strip
+    /// stay put. A week-summary hit (from `weekCache`, a much cheaper read
+    /// than the full day) renders the real type/dose/duration immediately,
+    /// satisfying "if additional information is loading, render the
+    /// available plan information immediately and quietly enrich it
+    /// afterward"; with nothing cached at all, a single compact, labeled
+    /// line — never the old 380pt anonymous rectangle.
     @ViewBuilder
-    private func navigatingHeader(for date: String) -> some View {
-        HStack(alignment: .center, spacing: V5.S.s12) {
-            Text(Self.dayName(date))
-                .font(.faffDisplay(20))
-                .textCase(.uppercase)
-                .tracking(20 * 0.02)
-                .foregroundStyle(V5.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Spacer(minLength: V5.S.s8)
-            Button(action: { backToToday() }) {
-                HStack(spacing: V5.S.s4) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Today")
-                        .font(.faffText(TypeScaleV5.label13, weight: .semibold))
+    private func pendingContentBody(for date: String, summary: PlanDay?) -> some View {
+        if let summary {
+            VStack(alignment: .leading, spacing: V5.S.s2) {
+                if let sub = summary.sub_label, !sub.isEmpty {
+                    Text(sub)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
                 }
-                .foregroundStyle(V5.textPrimary)
-                .padding(.horizontal, V5.S.s12)
-                .frame(height: 34)
-                .background(V5.materialControl, in: Capsule())
+                Text(summary.type.capitalized)
+                    .faffDisplayV5(TypeScaleV5.display44)
+                    .foregroundStyle(V5.textPrimary)
             }
-            .buttonStyle(V5PressStyle())
-            .accessibilityLabel("Back to today")
+            if summary.distance_mi > 0 {
+                Text(Self.miles(summary.distance_mi))
+                    .font(.faffText(28, weight: .semibold))
+                    .foregroundStyle(V5.textPrimary)
+            }
+            HStack(spacing: V5.S.s8) {
+                ProgressView().tint(V5.textQuiet).controlSize(.small)
+                Text("Getting the full session…")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+            }
+            .padding(.top, V5.S.s8)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(summary.type), \(Self.miles(summary.distance_mi)). Getting the full session.")
+        } else {
+            HStack(spacing: V5.S.s8) {
+                ProgressView().tint(V5.textQuiet)
+                Text("Loading \(Self.dayName(date))’s workout…")
+                    .font(.faffText(TypeScaleV5.body15))
+                    .foregroundStyle(V5.textQuiet)
+            }
+            .padding(.vertical, V5.S.s16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
         }
+    }
+
+    private enum PendingPhase {
+        case loading(summary: PlanDay?)
+        case failed
+        case offlineNoCache
+    }
+
+    private static func miles(_ mi: Double) -> String {
+        let whole = mi.truncatingRemainder(dividingBy: 1) == 0
+        return String(format: whole ? "%.0f mi" : "%.1f mi", mi)
+    }
+
+    /// Re-run the fetch for a pending date, whether it is currently
+    /// `.failed` or `.offlineNoCache` — both retry the same way. Not a
+    /// blanket `surface.load()` (that only ever re-reads `viewingDate`);
+    /// this re-enters `goTo` so a retry on a date the runner has since
+    /// swiped past does not silently override a newer selection.
+    private func retryPending(_ date: String) {
+        goTo(date, todayISO: knownTodayISO ?? date)
+    }
+
+    /// The best available week-strip data for `date` — exact cached day,
+    /// else the loaded model if its own week still covers `date`, else a
+    /// week computed by pure date arithmetic. See `pendingCard`'s own doc
+    /// comment for why this exists.
+    /// The plate marks `date` — the day the runner is WAITING on, not
+    /// whichever the last-loaded `model` happens to say is its own today —
+    /// same reasoning as `TodayBeforeV5.stripDays()`'s own `selectedDateISO`
+    /// remap: the pill moves the instant the tap registers, never after a
+    /// round trip.
+    private func weekStripDays(for date: String) -> [WeekStripDayV5] {
+        func selected(_ days: [WeekStripDayV5]) -> [WeekStripDayV5] {
+            days.map { var d = $0; d.isToday = d.dateISO == date; return d }
+        }
+        if let exact = dayCache[date] {
+            return selected(exact.weekStrip.map { $0.strip })
+        }
+        if let current = surface.model,
+           let first = current.weekStrip.first?.dateISO,
+           let last = current.weekStrip.last?.dateISO,
+           (first...last).contains(date) {
+            return selected(current.weekStrip.map { $0.strip })
+        }
+        guard let reference = surface.model?.weekStrip, reference.count == 7,
+              let refFirstISO = reference.first?.dateISO,
+              let refFirstDate = Self.iso.date(from: refFirstISO),
+              let wantedDate = Self.iso.date(from: date) else { return [] }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let refWeekday = cal.component(.weekday, from: refFirstDate)
+        var start = wantedDate
+        var guardCount = 0
+        while cal.component(.weekday, from: start) != refWeekday, guardCount < 7 {
+            start = cal.date(byAdding: .day, value: -1, to: start) ?? start
+            guardCount += 1
+        }
+        return selected((0..<7).compactMap { (offset: Int) -> WeekStripDayV5? in
+            guard let d = cal.date(byAdding: .day, value: offset, to: start) else { return nil }
+            let iso = Self.iso.string(from: d)
+            let refDay = reference[offset].strip
+            return WeekStripDayV5(id: "ghost:\(iso)", dateISO: iso,
+                                   letter: refDay.letter, weekday: refDay.weekday,
+                                   number: String(cal.component(.day, from: d)),
+                                   state: .rest, isToday: false, isDone: false, isRest: true)
+        })
+    }
+
+    private func weekLine(for date: String) -> String? {
+        if let exact = dayCache[date] { return exact.panel.weekLine }
+        if let current = surface.model,
+           let first = current.weekStrip.first?.dateISO,
+           let last = current.weekStrip.last?.dateISO,
+           (first...last).contains(date) {
+            return current.panel.weekLine
+        }
+        return nil
+    }
+
+    /// `WeekStripV5`'s own paging, generalized off an arbitrary `wanted`
+    /// date rather than always `viewingDate ?? model.dateISO` — the pending
+    /// card has no `model` for `wanted` to read that from.
+    private func stepWeekFromWanted(_ weeks: Int, wanted: String) async {
+        guard let d = Self.iso.date(from: wanted),
+              let next = Calendar.current.date(byAdding: .day, value: weeks * 7, to: d) else { return }
+        goTo(Self.iso.string(from: next), todayISO: knownTodayISO ?? wanted)
+        await navigationTask?.value
     }
 
     var body: some View {
@@ -327,9 +461,17 @@ struct TodayHostV5: View {
                         }
                         .animation(V5.Motion.fill, value: surface.stale)
                 case .loading(let date):
-                    navigatingCard(for: date, phase: .loading)
+                    pendingCard(for: date, phase: .loading(summary: weekSummary(for: date)))
                 case .failed(let date):
-                    navigatingCard(for: date, phase: .failed)
+                    // isOffline is a best-effort local signal (see its own
+                    // doc comment) — genuine loss vs. any other failure
+                    // changes the copy, never the mechanism: both retry
+                    // through the exact same `retryPending`.
+                    if isOffline && dayCache[date] == nil {
+                        pendingCard(for: date, phase: .offlineNoCache)
+                    } else {
+                        pendingCard(for: date, phase: .failed)
+                    }
                 }
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
@@ -428,7 +570,10 @@ struct TodayHostV5: View {
             // very first navigation of the session. Priming today's own
             // neighbours here means that first tap gets the instant path
             // too, not just the second one onward.
-            if let m = surface.model { await prefetchAround(m.dateISO) }
+            if let m = surface.model {
+                await prefetchAround(m.dateISO)
+                await fetchAndCacheWeek(anchoredOn: m.dateISO)
+            }
         }
         // Learn the real today the instant any payload actually carries it —
         // see `todayISO(_:)`. A plain side effect, not a render-time read: a
@@ -450,7 +595,16 @@ struct TodayHostV5: View {
             if let m = surface.model {
                 dayCache[m.dateISO] = m
                 reconcileDayCache(against: m)
+                // Any payload landing is proof the network is reachable
+                // right now, whatever caused an earlier failure.
+                isOffline = false
             }
+        }
+        // WEEKCACHE-1 · best-effort transport-level signal — see
+        // `isOffline`'s own doc comment for exactly what this can and
+        // cannot promise.
+        .onReceive(NotificationCenter.default.publisher(for: .faffReachabilityLost)) { _ in
+            isOffline = true
         }
         .refreshable { await surface.load() }
         .v5ReloadOnForeground { await surface.load() }
@@ -620,6 +774,64 @@ struct TodayHostV5: View {
     /// change" and must not wipe a cache that was never populated under a
     /// different plan in the first place.
     @State var lastKnownPlanVersion: String?
+
+    /// WEEKCACHE-1 (2026-09-04) · `GET /api/plan/week` for the visible week
+    /// plus its immediate neighbours, keyed by `week_start_iso`. Far
+    /// cheaper than a full day and — per `loadPlanWeek`'s own doc comment —
+    /// already the SAME loader `/api/v5/today`'s own `weekStrip` calls
+    /// internally, so this is not a new server-side cost, only a new
+    /// client-side use of an existing one. What lets a date with no full
+    /// detail yet still show its real type/dose immediately: "if
+    /// additional information is loading, render the available plan
+    /// information immediately and quietly enrich it afterward."
+    @State private var weekCache: [String: PlanWeek] = [:]
+    /// Anchor dates currently being fetched — a week is not known by its
+    /// OWN start date until the response names it, so dedup keys on
+    /// whatever date was actually requested, not on a week_start_iso this
+    /// call cannot yet know.
+    @State private var weekFetchInFlight: Set<String> = []
+
+    /// Best-effort, local-only connectivity signal. Set the instant a
+    /// request fails at the TRANSPORT level (`API.authedSend`'s own catch
+    /// posts `.faffReachabilityLost` before any HTTP status exists to
+    /// read) and cleared the moment any fetch actually lands — never
+    /// authoritative, only enough to choose between "can't reach faff"
+    /// (a real, worth-retrying error) and "isn't available offline" (a
+    /// state the runner should read as expected, not alarming) on the
+    /// pending card's failed phase.
+    @State private var isOffline = false
+
+    /// One week summary for `date`, if a cached week covers it. Cheaper
+    /// than the full day and, per `pendingCard`'s own doc comment, what
+    /// lets a still-loading date show its real type/dose instead of a bare
+    /// "Loading…" label.
+    private func weekSummary(for date: String) -> PlanDay? {
+        for week in weekCache.values {
+            if let day = week.days.first(where: { $0.date_iso == date }) { return day }
+        }
+        return nil
+    }
+
+    /// Fetch and cache the week containing `date`, deduped by the anchor
+    /// date actually requested. PLANVERSION-1 applies here too: a plan
+    /// re-anchor that changes `planVersion` invalidates cached week
+    /// summaries the same way it invalidates cached full days, so a
+    /// provisional dose from before a re-anchor can never survive to be
+    /// shown as if it were still current.
+    private func fetchAndCacheWeek(anchoredOn date: String) async {
+        if weekCache.values.contains(where: { w in
+            guard let s = w.week_start_iso, let e = w.week_end_iso else { return false }
+            return (s...e).contains(date)
+        }) { return }
+        guard !weekFetchInFlight.contains(date) else { return }
+        weekFetchInFlight.insert(date)
+        defer { weekFetchInFlight.remove(date) }
+        guard let week = try? await API.fetchPlanWeek(date: date), let start = week.week_start_iso else { return }
+        if let known = lastKnownPlanVersion, let fresh = week.plan_version, known != fresh {
+            weekCache.removeAll()
+        }
+        weekCache[start] = week
+    }
 
     /// A day cached under a plan the runner no longer has must never be
     /// handed back as though it still applied.
@@ -791,6 +1003,14 @@ struct TodayHostV5: View {
         let param: String? = isHome ? nil : iso
         let refresh: () async throws -> API.V5Fetch<V5Today> = { try await API.fetchV5Today(date: param) }
 
+        // WEEKCACHE-1 · fired the instant a navigation starts, not awaited —
+        // a week summary is what the pending card upgrades to on a cache
+        // miss (see `pendingContentBody`), so the earlier this lands the
+        // sooner a "Loading…" label becomes a real type/dose. Independent
+        // of `navigationTask`: it never touches `surface.model`, same
+        // reasoning as `prefetchAround` below.
+        if dayCache[iso] == nil { Task { await fetchAndCacheWeek(anchoredOn: iso) } }
+
         navigationTask?.cancel()
         if let known = dayCache[iso] {
             // STATEGATE-1 · painted SYNCHRONOUSLY, this line, not inside the
@@ -874,6 +1094,29 @@ struct TodayHostV5: View {
         }
 
         let missing = wanted.filter { dayCache[$0] == nil }
+
+        // WEEKCACHE-1 · "fetch and cache: the visible week; the immediately
+        // previous week; the immediately next week" — three week-summary
+        // reads, run alongside the per-day prefetch below rather than
+        // gating on it, since a summary is useful even for a day whose
+        // full detail prefetch hasn't landed yet.
+        if let strip = surface.model?.weekStrip, let first = strip.first?.dateISO,
+           let last = strip.last?.dateISO,
+           let firstDate = Self.iso.date(from: first), let lastDate = Self.iso.date(from: last) {
+            async let visible: Void = fetchAndCacheWeek(anchoredOn: first)
+            async let prev: Void = {
+                if let d = Calendar.current.date(byAdding: .day, value: -1, to: firstDate) {
+                    await fetchAndCacheWeek(anchoredOn: Self.iso.string(from: d))
+                }
+            }()
+            async let next: Void = {
+                if let d = Calendar.current.date(byAdding: .day, value: 1, to: lastDate) {
+                    await fetchAndCacheWeek(anchoredOn: Self.iso.string(from: d))
+                }
+            }()
+            _ = await (visible, prev, next)
+        }
+
         guard !missing.isEmpty else { return }
 
         // ONE call into the bounded, deduplicating coordinator — never more
@@ -1082,7 +1325,7 @@ struct TodayHostV5: View {
 
     private var coldStart: some View {
         ScrollView {
-            // A11Y · same fix as `navigatingCard`'s `.loading` case: the
+            // A11Y · same fix as `pendingCard`'s `.loading` case: the
             // 380pt placeholder is a bare Shape (publishes nothing to the
             // accessibility tree) and the two `Skeleton`s each independently
             // announced "Loading", so the FIRST thing a VoiceOver runner
