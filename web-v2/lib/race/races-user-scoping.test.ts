@@ -65,12 +65,35 @@ const stripSqlComments = (s: string) => s.replace(/--[^\n]*/g, ' ');
 
 const RACES_REF = /\b(?:FROM|JOIN|UPDATE|INTO|DELETE\s+FROM)\s+races\b/i;
 
+/** Block and line comments, removed. Prose uses backticks; SQL scanners must
+ *  not read prose. String literals are left alone — a `//` inside one is rare
+ *  in this codebase and removing it would be the more dangerous error. */
+function stripJsComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
+
 /** Every backtick template literal in app/ + lib/ that is races SQL. */
 function racesStatements(): Array<{ file: string; sql: string }> {
   const out: Array<{ file: string; sql: string }> = [];
   for (const dir of ['app', 'lib']) {
     for (const file of walk(path.join(ROOT, dir))) {
-      const src = readFileSync(file, 'utf8');
+      // 2026-09-03 · STRIP JS COMMENTS FIRST.
+      //
+      // This scanner finds SQL by looking for backtick template literals. Prose
+      // uses backticks too, so a JSDoc line like "`adapt.ts` issues four
+      // separate `FROM races` reads" hands the matcher a span that reads as a
+      // template literal containing `FROM races` — and the gate then reports a
+      // correctly-scoped file as unscoped. `lib/plan/reschedule.ts` tripped it
+      // that way on the day it landed, while its own query carried
+      // `WHERE user_uuid = $1::uuid`.
+      //
+      // Same shape as the doctrine claim fixed earlier the same day, whose
+      // regex was satisfied by the phrase sitting in its own file header: a
+      // gate that reads prose is a gate reporting on the wrong thing. It fails
+      // safe in one direction and falsely in the other, and both are wrong.
+      const src = stripJsComments(readFileSync(file, 'utf8'));
       for (const m of src.matchAll(/`([^`]*)`/g)) {
         const sql = stripSqlComments(m[1]);
         if (!RACES_REF.test(sql)) continue;

@@ -146,6 +146,7 @@
  *   · never uses a clock, a locale or `Math.random`. `todayISO` is passed in.
  */
 import { createHash } from 'crypto';
+import { roundTo } from '@/lib/format/run';
 import type { PoolClient } from 'pg';
 import { pool } from '@/lib/db/pool';
 import { mutatePlan } from '@/lib/plan/mutate';
@@ -589,7 +590,9 @@ export interface RescheduleSummary {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DOW_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const round1 = (n: number): number => Math.round(n * 10) / 10;
+/** One owner for tenth-of-a-mile rounding: `lib/format/run.ts`. A hand-rolled
+ *  copy is what `_format_lint` exists to catch, and it caught this one. */
+const round1 = (n: number): number => roundTo(n);
 const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 const roundHalf = (n: number): number => Math.round(n * 2) / 2;
 

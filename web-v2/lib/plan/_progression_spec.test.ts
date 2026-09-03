@@ -240,6 +240,15 @@ describe('PROGRESSION-PERSIST-1 · the work shape survives persistence', () => {
     // `races.actual_result`. A new writer added later must land in one of these
     // two lists on purpose.
     const NOT_PRESERVED: Record<string, string> = {
+    'web-v2/lib/plan/reschedule.ts':
+      '2026-09-03 · RESCHEDULE-1. A reschedule CARRIES the spec rather than composing one: '
+      + '`e.after.workoutSpec` is the row\'s own existing spec, moved to a new date unchanged, '
+      + 'and `RescheduleContract`\'s SAME_INSTANCE path asserts byte-identity of everything but '
+      + 'the date. Running it through `preserveProgressionSql` would merge a block into itself. '
+      + 'The one case that DOES change the prescription — REVISED_VERSION, a shortened long run — '
+      + 'authors a new version with its own `stimulusPreservation: PARTIAL`, which is the honest '
+      + 'record the merge would hide. Per Q40: never convert an undercompleted workout to FULL by '
+      + 'rewriting the prescription.',
       'web-v2/lib/plan/adapt.ts':
         'Two writers, both deliberate: the adapter downgrading a quality day to easy/rest, and the ' +
         'field-test replacement. Both make the row a DIFFERENT session, so a block describing the ' +
