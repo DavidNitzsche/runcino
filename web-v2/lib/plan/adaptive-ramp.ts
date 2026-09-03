@@ -345,6 +345,20 @@ export async function detectRampSignals(
   // 4. Plan's current peak weekly · is there headroom?
   const tierWeeklyUpper = readTierUpper(activePlan.authoredState, 'tier_peak_weekly_band');
   const tierLongUpper = readTierUpper(activePlan.authoredState, 'tier_peak_long_band');
+  /* TIEREVIDENCE-2 · say so out loud when this gate is structurally unable to
+   * pass, rather than reporting the same `false` a runner with no headroom
+   * gets. See `ceilingCanNeverBind`. */
+  for (const key of ['tier_peak_weekly_band', 'tier_peak_long_band'] as const) {
+    const verdict = ceilingCanNeverBind(activePlan.authoredState, key);
+    if (verdict.inert) {
+      console.warn(
+        `[adaptive-ramp] INERT GATE · ${key} ceiling ${verdict.ceiling} sits at or below `
+        + `this block's own authored peak ${verdict.authoredPeak} · belowTierUpper can never `
+        + `pass for this plan. The upward path is unreachable until the ceiling is recomputed `
+        + `from live demonstrated volume (Rule 10) · user=${userId.slice(0, 8)}`,
+      );
+    }
+  }
   const peakRow = await rowOrNull<{ peak_weekly: number | null; peak_long: number | null }>(
     'plan/adaptive-ramp · plan peak weekly headroom',
     pool.query<{ peak_weekly: number | null; peak_long: number | null }>(
@@ -610,6 +624,69 @@ export function readTierUpper(
   // means planBump's "newDist <= oldDist" check fires · no bump
   // applied. Safer than guessing a tier ceiling that might be wrong.
   return 0;
+}
+
+/**
+ * TIEREVIDENCE-2 (2026-09-02) · IS THIS CEILING CAPABLE OF EVER BINDING?
+ *
+ * ── THE DEFECT THIS NAMES ──────────────────────────────────────────────────
+ *
+ * `tier_peak_weekly_band` became EVIDENCE-derived the same day (a typed
+ * `advanced` may no longer buy a 65-90 mi/wk ceiling the runner has never
+ * touched). But the composed block is still shaped by the capacity tier's
+ * FLOOR, so a plan can be authored whose own peak week sits ABOVE its
+ * published ceiling. On the owner's block that is not hypothetical: ceiling
+ * ~55, authored peak ~55.8.
+ *
+ * When that happens `belowTierUpper` is false on every tick, for every
+ * runner, forever — and `detectGreenRampOpportunity` returns null with no
+ * record of why. That is CLAUDE.md Rule 21's named signature: wired,
+ * doctrine-bound, cron-mounted and INERT. It is the same shape as the four
+ * mechanisms Rule 15 found dark across 11,598 archetypes, and it would have
+ * been invisible for exactly the same reason — nothing distinguishes "the
+ * runner has no headroom today" from "this gate can never pass".
+ *
+ * ── WHY THIS IS A REFUSAL AND NOT A FIX ────────────────────────────────────
+ *
+ * The honest fix is a Rule 10 RECOMPUTE: re-derive the ceiling from the
+ * runner's LIVE demonstrated peak × `cycle_growth_ceiling` rather than
+ * trusting the array frozen at authoring, using the `tier_band_anchor` stamp
+ * `composePlan` now writes for precisely this purpose. Then the ceiling rises
+ * as he actually runs 50-, 52-, 55-mile weeks and the upward path re-opens as
+ * it is earned.
+ *
+ * That is not done here, deliberately. `readTierUpper` is pure over
+ * `authoredState` and holds no live evidence, so the recompute belongs at the
+ * call site with a reader beside it — a change to what the engine PRESCRIBES,
+ * which under `AUTOMATIC_ADAPTATION_AUTHORITY: false` nothing may act on
+ * today anyway. Inventing it here would be a physiology decision taken by a
+ * helper function.
+ *
+ * So this reports the condition instead, and the caller logs it. Rule 11: a
+ * guard that cannot run is a refusal worth surfacing, never a silent false.
+ * Whoever opens the adaptation seam must resolve this first — see
+ * `lib/plan/adaptation-authority.ts`.
+ */
+export function ceilingCanNeverBind(
+  authoredState: Record<string, unknown>,
+  key: 'tier_peak_weekly_band' | 'tier_peak_long_band',
+): { inert: true; ceiling: number; authoredPeak: number } | { inert: false } {
+  const anchor = authoredState.tier_band_anchor;
+  if (anchor == null || typeof anchor !== 'object') return { inert: false };
+  const a = anchor as Record<string, unknown>;
+  const authoredPeak = Number(
+    key === 'tier_peak_weekly_band' ? a.authored_peak_weekly_mi : a.authored_peak_long_mi,
+  );
+  const ceiling = readTierUpper(authoredState, key);
+  if (!Number.isFinite(authoredPeak) || authoredPeak <= 0 || ceiling <= 0) {
+    return { inert: false };
+  }
+  // `belowTierUpper` asks whether the plan's peak sits under the ceiling with
+  // room to spare (see its own 0.95 factor at the call site). A peak already
+  // at or above the ceiling can never satisfy it.
+  return authoredPeak >= ceiling
+    ? { inert: true, ceiling, authoredPeak }
+    : { inert: false };
 }
 
 /**

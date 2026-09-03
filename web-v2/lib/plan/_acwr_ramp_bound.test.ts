@@ -93,7 +93,7 @@ vi.mock('@/lib/execution/load', async (importOriginal) => ({
 import { pool } from '@/lib/db/pool';
 import { computeAcwr, type AcwrAbsentReason, type AcwrResult } from '@/lib/coach/acwr';
 import { loadKeySessionExecutions } from '@/lib/execution/load';
-import { detectRampSignals } from './adaptive-ramp';
+import { detectRampSignals, ceilingCanNeverBind } from './adaptive-ramp';
 
 const UUID = '00000000-0000-0000-0000-000000000042';
 
@@ -341,5 +341,63 @@ describe('ACWR ramp bound · a runner already carrying an increase is refused', 
     const allGreen = s.acwrHeadroom && s.lastQualityOnPace && s.lastLongClean
       && s.belowTierUpper && s.noBumpRecent;
     expect(allGreen, 'the ramp stayed green with the load ratio past its ceiling').toBe(false);
+  });
+});
+
+/**
+ * TIEREVIDENCE-2 · the inert-gate detector.
+ *
+ * Appended 2026-09-02. `tier_peak_weekly_band` became evidence-derived while
+ * the composed block is still shaped by the capacity tier's floor, so a plan
+ * can be authored whose own peak week sits ABOVE its published ceiling — the
+ * owner's block does, at ~55.8 against ~55. `belowTierUpper` is then false on
+ * every tick forever, which is indistinguishable from "no headroom today"
+ * unless something says otherwise. That is CLAUDE.md Rule 21's signature:
+ * wired, doctrine-bound, cron-mounted and inert.
+ *
+ * WHAT THIS CANNOT FAIL ON (Rule 22): it tests the DETECTOR, not the ramp. It
+ * cannot tell whether the ceiling is the right number, cannot see the live
+ * demonstrated peak the Rule 10 recompute would use, and has no opinion on
+ * whether the bump would fire if the ceiling were correct. It only asserts
+ * that a structurally-unreachable gate is NAMED rather than reported as an
+ * ordinary refusal.
+ */
+describe('TIEREVIDENCE-2 · an unreachable ceiling is named, not silently false', () => {
+  const anchored = (authoredPeak: number, ceiling: number) => ({
+    tier_peak_weekly_band: [30, ceiling],
+    tier_band_anchor: { authored_peak_weekly_mi: authoredPeak, authored_peak_long_mi: 18 },
+  });
+
+  it('reports INERT when the block peak sits at or above its own ceiling', () => {
+    const v = ceilingCanNeverBind(anchored(55.8, 55), 'tier_peak_weekly_band');
+    expect(v.inert).toBe(true);
+    if (v.inert) {
+      expect(v.ceiling).toBe(55);
+      expect(v.authoredPeak).toBe(55.8);
+    }
+  });
+
+  it('reports INERT at exact equality · headroom of zero is still no headroom', () => {
+    expect(ceilingCanNeverBind(anchored(55, 55), 'tier_peak_weekly_band').inert).toBe(true);
+  });
+
+  it('does NOT report inert when real headroom exists', () => {
+    expect(ceilingCanNeverBind(anchored(45, 55), 'tier_peak_weekly_band').inert).toBe(false);
+  });
+
+  it('Rule 11 · an absent stamp is "cannot tell", never "inert"', () => {
+    expect(ceilingCanNeverBind({ tier_peak_weekly_band: [30, 55] }, 'tier_peak_weekly_band').inert)
+      .toBe(false);
+    expect(ceilingCanNeverBind({}, 'tier_peak_weekly_band').inert).toBe(false);
+  });
+
+  it('Rule 11 · a zero or missing peak is not a finding either', () => {
+    expect(ceilingCanNeverBind(anchored(0, 55), 'tier_peak_weekly_band').inert).toBe(false);
+    expect(
+      ceilingCanNeverBind(
+        { tier_peak_weekly_band: [30, 55], tier_band_anchor: {} },
+        'tier_peak_weekly_band',
+      ).inert,
+    ).toBe(false);
   });
 });
