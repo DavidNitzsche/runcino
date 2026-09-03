@@ -8160,10 +8160,8 @@ export const DESIGNED_WEEKEND_PURPOSE =
 const NO_DESIGNED_WEEKEND_EVIDENCE: DesignedWeekendEvidence = {
   demonstratedPairMi: null,
   demonstratedPairFromISO: null,
-  demonstratedLongMi: null,
+  recentHabitLongMi: null,
   sustainedWeeklyMi: null,
-  declaredLevel: null,
-  declaredDaysPerWeek: null,
 };
 
 function clearWorkShape(d: DayPlan): void {
@@ -10667,8 +10665,15 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         // DESIGNEDWEEKEND-1 · the athlete-specific evidence, assembled from
         // the readers that already own each number. Nothing is derived here:
         // the sustained week is the ramp-base estimator's, the long run is the
-        // Rule-8-filtered habit reader's, the pair is `demonstratedPairMi`'s,
-        // and the two declared fields are the runner's own settings.
+        // Rule-8-filtered habit reader's, and the pair is
+        // `demonstratedPairMi`'s.
+        //
+        // DECLAREDLEVEL-0 (2026-09-02) · `declaredLevel` and
+        // `declaredDaysPerWeek` used to be assembled here too, unread. They
+        // are gone: a field inside an object named `evidence` asserts
+        // authority whether or not a gate reads it, and the owner ruled that
+        // persisting the label as purported evidence is the same defect as
+        // gating on it. Every remaining field is a number he ran.
         designedWeekendEvidence: {
           demonstratedPairMi: input.demonstratedPairMi ?? null,
           demonstratedPairFromISO: input.demonstratedPairFromISO ?? null,
@@ -10678,12 +10683,10 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
           // caller never reported — the exact collapse `_coercion_scan`
           // watches for. The resolver names a non-positive reading
           // NO_LONG_RUN_EVIDENCE, in one place.
-          demonstratedLongMi: input.recentLongMi,
+          recentHabitLongMi: input.recentLongMi,
           sustainedWeeklyMi: (input.rampBaseEvidence?.sustainedMi ?? 0) > 0
             ? input.rampBaseEvidence!.sustainedMi
             : null,
-          declaredLevel: input.level,
-          declaredDaysPerWeek: input.trainingDaysPerWeek ?? null,
         },
       })
     : [];

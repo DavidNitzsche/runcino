@@ -114,11 +114,6 @@
  * Cite: Research/22-plan-templates.md §"Multi-Race Year Planning"
  */
 
-/** The experience levels a runner can declare. Mirrors `LevelKey` in
- *  `generate.ts`, restated here so this file stays a leaf with no imports —
- *  `_designed_race_weekend.test.ts` asserts the two unions are identical. */
-export type DeclaredLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
-
 /* ─────────────────────────────────────────────────────────── the constants */
 
 /**
@@ -161,23 +156,37 @@ export const EXTENDED_RECOVERY_DAYS_AFTER_PAIR = 3;
  */
 
 /*
- * NO DECLARED-LEVEL GATE. REMOVED 2026-09-02 AT THE OWNER'S RULING, and the
- * removal is recorded here rather than left as an absence somebody re-adds.
+ * NO DECLARED LEVEL. NOT AS A GATE, AND NOT AS A RECORD EITHER.
  *
- * The first cut of this file gated the exception on `profile.experience_level`
- * being 'advanced' or 'advanced_plus', reading it as the runner's declared
- * appetite for a stress block. He ruled that out in the same pass that removed
- * readiness from training decisions: "self-declared experience-level bands"
- * carry no authority, because the label is typed at onboarding and does not
- * measure anything. His own row reads `advanced` against a measured best week
- * of 48.5 mi and zero weeks at 50+.
+ * REMOVED IN TWO STEPS, and the second is the one that matters. The first cut
+ * of this file GATED the exception on `profile.experience_level` being
+ * 'advanced' or 'advanced_plus', reading it as the runner's declared appetite
+ * for a stress block. That gate went on 2026-09-02 with the rest of the
+ * self-declared experience-level bands: the label is typed at onboarding and
+ * measures nothing, and his own row reads `advanced` against a measured best
+ * week of 48.5 mi and zero weeks at 50+.
  *
- * So the whole test is DEMONSTRATED HISTORY: a combined load he has actually
+ * But the field stayed on the grant's `evidence` object, unread, "for the
+ * account of the decision". He ruled that out too, and named the reason:
+ *
+ *   "Do not merely stop reading it while continuing to persist it as
+ *    purported evidence."
+ *
+ * A field sitting inside an object called `evidence` ASSERTS AUTHORITY whether
+ * or not anything reads it. The next person to touch this code reasonably
+ * assumes it counts, and re-gating on it is then a one-line change nobody
+ * argues about. So `declaredLevel` and `declaredDaysPerWeek` are gone from the
+ * type, from every construction site, and from what is persisted on the
+ * placement record. `profile.experience_level` survives as inert profile data
+ * the runner can see and edit; it reaches nothing here.
+ *
+ * The whole test is DEMONSTRATED HISTORY: a combined load he has actually
  * absorbed, a long run he has actually run, volume he actually holds. A label
  * cannot buy this weekend and neither can a confidence score.
  *
- * `declaredLevel` and `declaredDaysPerWeek` are still RECORDED on the grant —
- * they belong in the account of a decision — and neither is read by any gate.
+ * Enforced by `_declared_level_inert.test.ts`, which composes the same runner
+ * at every declared level and with none, and asserts the block is byte-
+ * identical — so this paragraph is a check rather than a promise (Rule 20).
  */
 
 /**
@@ -277,22 +286,24 @@ export interface DesignedWeekendEvidence {
   demonstratedPairMi: number | null;
   /** The day the demonstrated pair started, so the record can name it. */
   demonstratedPairFromISO: string | null;
-  /** The longest single run the runner has demonstrated (habit reading, Rule
-   *  8 filtered by the caller). Null = not measured. */
-  demonstratedLongMi: number | null;
+  /**
+   * The longest single run in the runner's RECENT HABIT window — 28
+   * representative days, Rule 8 filtered by the caller. Null = not measured.
+   *
+   * RULE 16 · this was called `demonstratedLongMi`, which is the name
+   * `ComposePlanInput` already uses for a DIFFERENT quantity: the longest run
+   * over a YEAR with races and their prescribed windows excluded. On the
+   * owner they read 18.0 and 21.5 — one name, two numbers, and the composer
+   * passes the 28-day one in here. Renamed rather than re-pointed, because
+   * the 28-day habit read is the right input for "is this long run a spike":
+   * `SPIKE_RATIO_OVER_DEMONSTRATED_LONG` cites a prior-30-day window, and a
+   * year-wide maximum would license a long run off a distance he ran in
+   * March.
+   */
+  recentHabitLongMi: number | null;
   /** Sustained weekly volume, mi/wk. The robust estimator, not a mean. Null =
    *  not measured. */
   sustainedWeeklyMi: number | null;
-  /**
-   * The runner's declared experience level. RECORDED, NEVER GATED ON — see the
-   * note above `EXTENDED_RECOVERY_DAYS_AFTER_PAIR`. It is here so the grant's
-   * account of the runner is complete, and any gate that starts reading it has
-   * reintroduced a defect the owner ruled out by name.
-   */
-  declaredLevel: DeclaredLevel;
-  /** The runner's declared training days per week. Recorded, never gated on,
-   *  for the same reason. */
-  declaredDaysPerWeek: number | null;
 }
 
 /** The permission, once granted. Persisted verbatim on the placement record. */
@@ -429,7 +440,7 @@ export function resolveDesignedRaceWeekend(req: DesignedWeekendRequest): Designe
   }
 
   // 5 · LONG-RUN HISTORY.
-  const long = req.evidence.demonstratedLongMi;
+  const long = req.evidence.recentHabitLongMi;
   if (long == null || !Number.isFinite(long) || long <= 0) {
     return refuse(
       'NO_LONG_RUN_EVIDENCE',

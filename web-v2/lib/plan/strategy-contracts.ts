@@ -83,10 +83,56 @@ export type ProgressionStatus = 'PROPOSED' | 'EARNED' | 'HELD' | 'REDUCED' | 'RE
  * spends its first page on.
  */
 export interface EvidenceRequirement {
-  kind: 'ABSORPTION' | 'EXECUTION' | 'READINESS' | 'CAPACITY';
+  /**
+   * DECLAREDLEVEL-0 (2026-09-02) · `'READINESS'` IS GONE FROM THIS UNION.
+   *
+   * It was one of four kinds, and `prerequisitesFor('weekly_volume')` emitted
+   * one: "No readiness pull-back is active", owned by
+   * `lib/coach/readiness.ts#scoreReadiness`. That single requirement was three
+   * defects stacked on each other, and it was LIVE — it landed in
+   * `authored_state.block_strategy`, and on the owner's own reference block
+   * week 4 (2026-09-21, 48 → 56.2 mi) was presented to him with it as one of
+   * the two prerequisites justifying the step up.
+   *
+   *   1. READINESS PULL-BACKS DO NOT EXIST. The owner removed readiness from
+   *      training decisions entirely (`docs/PLAN_SIMPLIFICATION_DOCTRINE.md`
+   *      §"What may not": "readiness · illness · injury · daily training form
+   *      or TSB · sleep, HRV, resting HR, wearable readiness"). So the plan
+   *      cited, as evidence supporting a decision, a mechanism that had been
+   *      deleted.
+   *   2. `scoreReadiness` DOES NOT EXIST EITHER. `lib/coach/readiness.ts`
+   *      exports `computeReadiness`; there has never been a `scoreReadiness`
+   *      in it. The `owner` field — the one field on this interface whose
+   *      whole job is to be checkable — pointed at nothing, and the existing
+   *      contract test asserted only that it MATCHED `/#|\.ts/`, which a
+   *      dangling symbol passes. Rule 18: a check that cannot fail on the
+   *      thing it is for.
+   *   3. It is the `declaredLevel` prohibition in a different field name: "do
+   *      not merely stop reading it while continuing to persist it as
+   *      purported evidence." Removing readiness from the DECISION while a
+   *      persisted explanation still claimed it as the reason is the same
+   *      half-measure the owner ruled out by name.
+   *
+   * The kind is removed from the union, not merely unused, so a future
+   * requirement cannot quietly re-cite readiness. Its absence is enforced
+   * behaviourally by `_declared_level_inert.test.ts`, which resolves every
+   * `owner` string in `prerequisitesFor` against the real file and symbol.
+   */
+  kind: 'ABSORPTION' | 'EXECUTION' | 'CAPACITY';
   /** Coach-register statement of what has to be true. */
   statement: string;
-  /** `path#symbol` of the service that answers it. */
+  /**
+   * `path#symbol` of the service that answers it — repo-relative from
+   * `web-v2/`, with the `#symbol` half optional when the whole module is the
+   * owner.
+   *
+   * IT MUST RESOLVE. This is a persisted, runner-visible claim about which
+   * part of the engine will answer a prerequisite, and a dangling one is worse
+   * than silence because it stops the next reader from checking (Rule 20's
+   * corollary). `_declared_level_inert.test.ts` reads every value
+   * `prerequisitesFor` can return and fails on a missing file or a missing
+   * declaration.
+   */
   owner: string;
 }
 
@@ -326,18 +372,32 @@ function roleOf(w: StrategyWeek, prev: StrategyWeek | null): WeekRole {
   return (w.weeklyMi - prev.weeklyMi) / prev.weeklyMi > MATERIAL_FRACTION ? 'BUILD' : 'HOLD';
 }
 
-/** The prerequisite for advancing a given lever, by NAME of the owner that
- *  answers it. See `EvidenceRequirement` for why these carry no numbers. */
-function prerequisitesFor(lever: ProgressionLever): EvidenceRequirement[] {
+/**
+ * The prerequisite for advancing a given lever, by NAME of the owner that
+ * answers it. See `EvidenceRequirement` for why these carry no numbers.
+ *
+ * EXPORTED for `_declared_level_inert.test.ts`, which calls it for every
+ * `ProgressionLever` and resolves each `owner` string against the real file
+ * and symbol. Reading these out of the function beats parsing the source: a
+ * regex over a switch statement is exactly the kind of check that quietly
+ * stops matching and then reports clean (Rule 18).
+ */
+export function prerequisitesFor(lever: ProgressionLever): EvidenceRequirement[] {
   switch (lever) {
     case 'weekly_volume':
+      // DECLAREDLEVEL-0 · the second requirement here was
+      // `{ kind: 'READINESS', statement: 'No readiness pull-back is active.',
+      // owner: 'lib/coach/readiness.ts#scoreReadiness' }`. Deleted: readiness
+      // has no authority over a plan decision, and the owner it named has
+      // never existed. See `EvidenceRequirement` for the full account.
+      //
+      // ONE prerequisite is the honest count, not a gap to be filled. Volume
+      // advances when the weeks before it were absorbed, and there is exactly
+      // one service that answers that.
       return [
         { kind: 'ABSORPTION',
           statement: 'The weeks before this one were absorbed, and the acute-to-chronic load stays inside doctrine.',
           owner: 'lib/plan/adaptive-ramp.ts#tryAdaptiveBump' },
-        { kind: 'READINESS',
-          statement: 'No readiness pull-back is active.',
-          owner: 'lib/coach/readiness.ts#scoreReadiness' },
       ];
     case 'long_run_duration':
       return [

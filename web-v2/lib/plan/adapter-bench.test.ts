@@ -20,50 +20,24 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { EXPERIENCE_CAPS_MI } from './adapt';
-import { TIER_TARGETS, classifyGoalTier, distanceCategoryOf } from './goal-tiers';
-
-describe('Adapter · EXPERIENCE_CAPS vs tier targets', () => {
-  it('experience caps do not false-fire on doctrine-aligned advanced HM plans', () => {
-    // Advanced HM tier peak weekly band · [55, 85]. With smart-dedup +
-    // 1.25 overshoot multiplier, adapter fires at advanced_cap × 1.25.
-    // For advanced (75 mpw cap), overshoot at 93.75. Tier peak (85)
-    // sits comfortably below · no false fires.
-    const advCap = EXPERIENCE_CAPS_MI.advanced;
-    const adv1_30_hm = TIER_TARGETS.hm.advanced;
-    expect(advCap * 1.25).toBeGreaterThan(adv1_30_hm.peakWeeklyMileageBand[1]);
-  });
-
-  it('experience caps line up with tier targets across all distances', () => {
-    // Each experience cap × 1.25 should exceed the matching tier's
-    // peak upper. Means a tier-driven plan never accidentally
-    // triggers volume_overshoot just for being doctrine-compliant.
-    const levelToTier: Record<keyof typeof EXPERIENCE_CAPS_MI, 'developing' | 'intermediate' | 'advanced' | 'elite'> = {
-      beginner: 'developing',
-      intermediate: 'intermediate',
-      advanced: 'advanced',
-      advanced_plus: 'elite',
-    };
-    for (const cat of Object.keys(TIER_TARGETS) as Array<keyof typeof TIER_TARGETS>) {
-      for (const lvl of Object.keys(EXPERIENCE_CAPS_MI) as Array<keyof typeof EXPERIENCE_CAPS_MI>) {
-        const tierName = levelToTier[lvl];
-        const tierUpper = TIER_TARGETS[cat][tierName].peakWeeklyMileageBand[1];
-        const cap = EXPERIENCE_CAPS_MI[lvl];
-        // Cap × 1.25 should be ≥ tier upper · adapter doesn't fire on
-        // doctrine plans. Some ultra/marathon distances need higher
-        // caps · note tolerance.
-        const passes = cap * 1.25 >= tierUpper * 0.95;
-        if (!passes) {
-          console.warn(
-            `[adapter-audit] ${cat}/${tierName} (level=${lvl}) tier upper ${tierUpper} > cap*1.25 = ${cap * 1.25} · adapter would false-fire on a doctrine-aligned plan.`,
-          );
-        }
-        // Soft check · log but don't fail · this surfaces tier/cap
-        // mismatches as warnings for follow-up tuning.
-      }
-    }
-  });
-});
+/*
+ * DECLAREDLEVEL-0 (2026-09-02) · THE 'Adapter · EXPERIENCE_CAPS vs tier
+ * targets' SUITE IS DELETED, along with the `EXPERIENCE_CAPS_MI` /
+ * `TIER_TARGETS` / `classifyGoalTier` imports it needed.
+ *
+ * Its subject was the mapping from a self-declared experience label to a
+ * weekly-volume ceiling (beginner→developing, advanced_plus→elite), and
+ * whether that ceiling sat clear of the tier bands the generator prescribes.
+ * The owner removed self-declared experience-level bands from every plan and
+ * adaptation decision, `EXPERIENCE_CAPS_MI` is deleted from `adapt.ts`, and
+ * `detectVolumeOvershoot` now grades against the runner's own chronic load or
+ * refuses. There is no level→cap relationship left for this to keep honest.
+ *
+ * Worth naming on the way out, because it is Rule 18's own example: the second
+ * case ended `// Soft check · log but don't fail`. It computed a pass/fail,
+ * printed a warning when it failed, and asserted nothing. It could not fail,
+ * for any input, ever — and it reported green for as long as it existed.
+ */
 
 describe('Adapter · shave operation invariants', () => {
   // Shave reduces distance by fraction · documented in adapt.ts:233-242

@@ -36,10 +36,14 @@
  * catching, not what it covers:
  *
  *   · A GATE ON SOMETHING THAT IS NOT DEMONSTRATED HISTORY. The declared-level
- *     gate was removed 2026-09-02 and there is a test asserting a label cannot
- *     change the verdict, but nothing here would catch a NEW gate added on a
- *     readiness score or a confidence figure. That is a review obligation, not
- *     a gated one.
+ *     gate went on 2026-09-02 and the field itself went with it, and there is
+ *     a test asserting the evidence object holds nothing but numbers he ran.
+ *     But nothing here would catch a NEW gate added on a readiness score or a
+ *     confidence figure. That is a review obligation, not a gated one.
+ *   · WHETHER THE DECLARED LEVEL REACHES THE PLAN BY ANOTHER ROUTE. This file
+ *     only sees the designed-weekend resolver and the composer path that feeds
+ *     it. `_declared_level_inert.test.ts` is the cross-cutting behavioural
+ *     sweep that answers that question for the whole composed block.
  *   · WHETHER THE EVIDENCE IS TRUE. Every fixture hands the resolver numbers.
  *     If `demonstratedPairMi` were measured over a contaminated window (Rule
  *     8), or `loadGeneratorInputs` stopped calling `demonstratedPairMi`
@@ -84,7 +88,6 @@ import {
   CONTROLLED_EFFORT_PACE_TOLERANCE,
   type DesignedWeekendEvidence,
   type DesignedWeekendRequest,
-  type DeclaredLevel,
 } from './designed-race-weekend';
 import {
   composePlan, finalizeComposedPlan, inlinePrescriptions,
@@ -99,25 +102,26 @@ import { tPaceFromGoal } from './spec-builder';
 
 /**
  * The owner's own numbers, measured against production 2026-09-02 and not
- * invented: sustained 46.4 mi/wk, longest 18.0 mi, best two-day total 29.4 mi
- * starting 2026-04-25, declared advanced, six days a week.
+ * invented: sustained 46.4 mi/wk, longest recent-habit long run 18.0 mi, best
+ * two-day total 29.4 mi starting 2026-04-25.
+ *
+ * DECLAREDLEVEL-0 (2026-09-02) · `declaredLevel: 'advanced'` and
+ * `declaredDaysPerWeek: 6` used to sit in this fixture because they sat in the
+ * type. Both are gone from `DesignedWeekendEvidence` — not merely ungated, but
+ * absent — so there is nothing left in this object that the runner did not run.
  */
 const OWNER_EVIDENCE: DesignedWeekendEvidence = {
   demonstratedPairMi: 29.4,
   demonstratedPairFromISO: '2026-04-25',
-  demonstratedLongMi: 18,
+  recentHabitLongMi: 18,
   sustainedWeeklyMi: 46.4,
-  declaredLevel: 'advanced',
-  declaredDaysPerWeek: 6,
 };
 
 const NO_EVIDENCE: DesignedWeekendEvidence = {
   demonstratedPairMi: null,
   demonstratedPairFromISO: null,
-  demonstratedLongMi: null,
+  recentHabitLongMi: null,
   sustainedWeeklyMi: null,
-  declaredLevel: null,
-  declaredDaysPerWeek: null,
 };
 
 /** The owner's weekend: Dodgers 10K Saturday, 18 miles Sunday. */
@@ -185,8 +189,8 @@ describe('DESIGNEDWEEKEND-1 · the pairing is not a universal default', () => {
       ['LONG_RUN_CARRIES_QUALITY', { longCarriesQuality: true }],
       ['NO_COMBINED_LOAD_EVIDENCE', { evidence: { ...OWNER_EVIDENCE, demonstratedPairMi: null } }],
       ['COMBINED_LOAD_NOT_DEMONSTRATED', { evidence: { ...OWNER_EVIDENCE, demonstratedPairMi: 20 } }],
-      ['NO_LONG_RUN_EVIDENCE', { evidence: { ...OWNER_EVIDENCE, demonstratedLongMi: null } }],
-      ['LONG_RUN_NOT_DEMONSTRATED', { evidence: { ...OWNER_EVIDENCE, demonstratedLongMi: 10 } }],
+      ['NO_LONG_RUN_EVIDENCE', { evidence: { ...OWNER_EVIDENCE, recentHabitLongMi: null } }],
+      ['LONG_RUN_NOT_DEMONSTRATED', { evidence: { ...OWNER_EVIDENCE, recentHabitLongMi: 10 } }],
       ['NO_SUSTAINED_VOLUME_EVIDENCE', { evidence: { ...OWNER_EVIDENCE, sustainedWeeklyMi: null } }],
       ['PAIR_EXCEEDS_SUSTAINED_WEEK', { evidence: { ...OWNER_EVIDENCE, sustainedWeeklyMi: 22 } }],
       ['NO_EXTENDED_RECOVERY_AFTER', { recoveryDaysAfter: EXTENDED_RECOVERY_DAYS_AFTER_PAIR - 1 }],
@@ -203,33 +207,45 @@ describe('DESIGNEDWEEKEND-1 · the pairing is not a universal default', () => {
   });
 
   /**
-   * REPLACES the two declared-level tests, 2026-09-02. They asserted that a
-   * runner declaring 'advanced' could have this weekend and one declaring
-   * 'intermediate' could not. The owner removed self-declared experience-level
-   * bands from training decisions entirely — his own row reads 'advanced'
-   * against a measured best week of 48.5 mi — so the gate is gone and this is
-   * the assertion that it stays gone.
+   * DECLAREDLEVEL-0, second cut (2026-09-02). The first cut deleted the
+   * declared-level GATE and left the field recorded on the grant's evidence,
+   * and this test asserted the label could not change the verdict while still
+   * being written down. The owner ruled that half-measure out by name — "do
+   * not merely stop reading it while continuing to persist it as purported
+   * evidence" — so the assertion is now that the field is ABSENT from the
+   * evidence the grant carries, at compile time and at run time.
+   *
+   * The behavioural half of this claim — that changing or deleting
+   * `profile.experience_level` cannot move the composed plan at all — is
+   * `_declared_level_inert.test.ts`, which sweeps the whole authoring path.
+   * This one guards the shape of the record.
    */
-  it('a LABEL cannot buy this weekend, and cannot lose it either', () => {
-    const levels: DeclaredLevel[] = ['beginner', 'intermediate', 'advanced', 'advanced_plus', null];
-    const verdicts = levels.map((declaredLevel) =>
-      resolveDesignedRaceWeekend(ownerRequest({ evidence: { ...OWNER_EVIDENCE, declaredLevel } })));
-    for (let i = 0; i < levels.length; i++) {
-      expect(
-        verdicts[i].permitted,
-        `declared level ${String(levels[i])} changed the verdict · ${refusalOf(verdicts[i])}`,
-      ).toBe(true);
-    }
-    // And the label is still RECORDED, because a grant's account of the runner
-    // should be complete even where a field is not gated on.
-    const g = verdicts[2];
-    if (!g.permitted) throw new Error('unreachable');
-    expect(g.grant.evidence.declaredLevel).toBe('advanced');
+  it('the grant records NO declared label, in the type or on the object', () => {
+    const r = resolveDesignedRaceWeekend(ownerRequest());
+    expect(r.permitted, refusalOf(r)).toBe(true);
+    if (!r.permitted) throw new Error('unreachable');
+    const keys = Object.keys(r.grant.evidence);
+    // Run-time: no declared field survives on what is persisted.
+    expect(keys.filter((k) => /declared|level|tier/i.test(k))).toEqual([]);
+    // And the fields that DO survive are the ones the owner listed as able to
+    // justify this weekend, every one of them a number he ran.
+    expect(keys.sort()).toEqual([
+      'demonstratedPairFromISO', 'demonstratedPairMi', 'recentHabitLongMi', 'sustainedWeeklyMi',
+    ]);
+    // Compile-time, and FALSIFIABLE (Rule 18): if either key were put back on
+    // `DesignedWeekendEvidence`, the conditional resolves to `false` and the
+    // `= true` initialiser stops compiling. Verified by adding
+    // `declaredLevel: DeclaredLevel` back to the interface and watching
+    // `tsc --noEmit` name this line.
+    type EvidenceKeys = keyof typeof r.grant.evidence;
+    const noDeclaredKeys: 'declaredLevel' | 'declaredDaysPerWeek' extends EvidenceKeys
+      ? false : true = true;
+    expect(noDeclaredKeys).toBe(true);
   });
 
-  it('the same runner with a thin history is refused, whatever his label says', () => {
+  it('the same runner with a thin history is refused · nothing else can save it', () => {
     const r = resolveDesignedRaceWeekend(ownerRequest({
-      evidence: { ...OWNER_EVIDENCE, declaredLevel: 'advanced_plus', demonstratedPairMi: 19 },
+      evidence: { ...OWNER_EVIDENCE, demonstratedPairMi: 19 },
     }));
     expect(refusalOf(r)).toBe('COMBINED_LOAD_NOT_DEMONSTRATED');
   });
@@ -613,17 +629,13 @@ describe('DESIGNEDWEEKEND-1 · reassessment when the race is run harder', () => 
 });
 
 /* ══════════════════════════════════════════════════════════════════════
- * 7 · THE MIRRORED TYPE (Rule 16 · one quantity, one name)
+ * 7 · THE MIRRORED TYPE · DELETED WITH THE UNION IT MIRRORED
+ *
+ * This suite asserted `DeclaredLevel` (restated in `designed-race-weekend.ts`
+ * so the file stays a leaf) accepted exactly the values `LevelKey` accepts —
+ * a Rule 16 guard against two definitions of one quantity. `DeclaredLevel` is
+ * gone: nothing in the designed-weekend path holds a level any more, so there
+ * is no second definition left to keep honest. Deleted rather than loosened,
+ * per Rule 18's ratchet clause — an exemption whose target is clean fails
+ * until it is removed, and so does a test whose subject no longer exists.
  * ══════════════════════════════════════════════════════════════════════ */
-
-describe('DESIGNEDWEEKEND-1 · the level union is not a second definition', () => {
-  it('DeclaredLevel and LevelKey accept the same values', () => {
-    // `designed-race-weekend.ts` restates the union to stay a leaf. This is
-    // the assertion that keeps the restatement honest — a level added to
-    // `LevelKey` and not here would compile until this line.
-    const asLevelKey: LevelKey[] = ['beginner', 'intermediate', 'advanced', 'advanced_plus', null];
-    const asDeclared: DeclaredLevel[] = asLevelKey;
-    const back: LevelKey[] = asDeclared;
-    expect(back.length).toBe(5);
-  });
-});

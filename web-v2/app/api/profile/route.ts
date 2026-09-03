@@ -50,9 +50,29 @@ const USERS_ALLOWED = new Set([
   'fuel_brand', 'fuel_gel_carbs_g', 'fuel_target_g_per_hr',
 ]);
 
-// Editing any of these reshapes the training plan → fire a rebuild.
+/**
+ * Editing any of these reshapes the training plan → fire a rebuild.
+ *
+ * DECLAREDLEVEL-0 (2026-09-02) · `experience_level` was on this list and is
+ * not any more. Two things were wrong with it, and the second is the one the
+ * owner named:
+ *
+ *   · IT NO LONGER RESHAPES ANYTHING. Self-declared experience-level bands
+ *     carry no plan authority (`docs/PLAN_SIMPLIFICATION_DOCTRINE.md` §"What
+ *     may not"), so a rebuild fired on this key re-authored a block that could
+ *     only come back identical — churning the runner's block identity and week
+ *     counter for nothing.
+ *   · IT WROTE A DECISION RECORD SAYING OTHERWISE. `rebuildActivePlanForPrefs`
+ *     persists `plan_proposals.reasons = { trigger: 'prefs_changed', fields:
+ *     ['experience_level'], ... }`, which is a stored, runner-visible claim
+ *     that the label caused a replan. "Do not merely stop reading it while
+ *     continuing to persist it as purported evidence."
+ *
+ * The field is still writable and still shown on the profile — inert
+ * biographical data, exactly like `city`.
+ */
 const PLAN_SHAPING = new Set([
-  'weekly_frequency', 'experience_level', 'weekly_mileage_target',
+  'weekly_frequency', 'weekly_mileage_target',
 ]);
 
 /**

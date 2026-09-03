@@ -42,10 +42,18 @@ import {
   overshootFires,
   overshootBaseline,
   MEANINGFUL_SCHEDULE_MI,
-  EXPERIENCE_CAPS_MI,
 } from './adapt';
 
-const CAP = EXPERIENCE_CAPS_MI.beginner;
+/*
+ * DECLAREDLEVEL-0 (2026-09-02) · the fallback baseline used to be
+ * `EXPERIENCE_CAPS_MI[level]`, a weekly-volume ceiling keyed to the word the
+ * runner typed at onboarding. The table is deleted and `detectVolumeOvershoot`
+ * now passes its own chronic weekly load in that argument slot, refusing when
+ * it has neither a schedule nor a chronic read. The ARITHMETIC these cases lock
+ * is untouched, so they keep their numbers — as a plain constant that claims
+ * nothing about who is allowed to run what.
+ */
+const CAP = 45;
 
 /** A window a plan genuinely covers · the case the proxy got wrong. */
 const covered = (scheduledDays = 3) => ({ scheduledDays });
