@@ -24,9 +24,9 @@
  *   2. NO ACCEPTOR. The `injury_adjust` limb of
  *      `app/api/coach/proposal/[id]/accept/route.ts` is deleted; that type now
  *      falls through to a 501.
- *   3. NO EXECUTION. `buildInjuryPlan` refuses unconditionally at its first
- *      statement (see `INJURY_RETURN_MODE`), so even a hand-inserted row or a
- *      future call cannot archive a block.
+ *   3. NO EXECUTION. `buildInjuryPlan` returns a refusal unconditionally, with
+ *      no flag to flip and no database read on the way, so even a
+ *      hand-inserted row or a future call cannot archive a block.
  *
  * WHY THE FILE SURVIVES AT ALL. Its walk-run ladder, cadence rules and BSI
  * clearance gate are doctrine-bound in CI by `INJURY.walk-run-ladder-is-
@@ -39,9 +39,9 @@
  *
  * SO IT IS DEFERRED DATA, NOT DORMANT AUTHORITY. When the feature returns it
  * needs a RUNNER-INITIATED entry point — him choosing an injury plan — not a
- * revived detector. Whoever builds that deletes `INJURY_RETURN_MODE` and this
- * banner together. `_injury_mode_sealed.test.ts` fails if the refusal is
- * removed while the writer is still absent.
+ * revived detector. Whoever builds that rewires `buildInjuryPlan` to
+ * `buildInjuryPlanBody` and deletes this banner. `_injury_mode_sealed.test.ts`
+ * fails if the refusal is removed while the writer is still absent.
  *
  * When `runner_injuries.resolved_date IS NULL`, the regular race-prep
  * plan is the wrong scaffold. This generator produces either a
@@ -383,33 +383,41 @@ export function injuryWeekShape(
 }
 
 /**
- * Whether INJURY-return mode may build a plan. `false` since 2026-09-02 — see
- * the banner at the top of this file. Typed as the literal `false` so opening
- * it is a compile-visible edit rather than a value that can drift.
- *
- * This is NOT a second adaptation seam. `lib/plan/adaptation-authority.ts`
- * governs whether the engine may change a block it already authored; this
- * governs whether a whole different KIND of plan may be built at all, and it
- * is a deferred product feature rather than a lever the engine could pull.
- */
-export const INJURY_RETURN_MODE: false = false;
-
-/**
  * Build an INJURY-mode plan for the runner. REFUSES — see the file banner.
  *
- * Kept as a named refusal rather than deleted so that a caller reintroduced by
- * accident gets an honest `{ ok: false }` with a reason the runner's session
- * can log, instead of a missing import or, far worse, a silently archived
- * marathon block.
+ * ── WHY THIS IS A HARDCODED RETURN AND NOT A FLAG ──────────────────────────
+ *
+ * The first version of this seal used an exported `INJURY_RETURN_MODE: false`.
+ * `_seal_single_seam.test.ts` failed it, and was right to: the owner asked for
+ * "exactly one future adaptation boundary, disabled by default", and his
+ * objection to the state he is leaving is precisely that several dormant
+ * switches each look harmless on their own. A second default-off boolean
+ * guarding a second plan writer is that state, rebuilt.
+ *
+ * It is also not a candidate for `NOT_A_SEAM`, because the honest argument
+ * that exemption asks for — "this can never gate a plan mutation" — is false
+ * here. Building an injury plan IS a plan mutation; it archives the block.
+ *
+ * So there is no switch. Reviving the mode means deleting a hardcoded return
+ * and the banner above it, which is a visible, arguable edit rather than
+ * flipping a constant. The refusal is a named `{ ok: false }` rather than a
+ * deleted function so that a caller reintroduced by accident gets an honest
+ * reason it can log, instead of a missing import or — far worse — a silently
+ * archived marathon block.
  */
 export async function buildInjuryPlan(input: InjuryBuildInput): Promise<InjuryBuildResult> {
-  if (!(INJURY_RETURN_MODE as boolean)) {
-    return {
-      ok: false,
-      reason: 'injury-return mode is not available · the runner owns this call, '
-        + 'and the app no longer builds a walk-run plan off an injury row',
-    };
-  }
+  void input;
+  return {
+    ok: false,
+    reason: 'injury-return mode is not available · the runner owns this call, '
+      + 'and the app no longer builds a walk-run plan off an injury row',
+  };
+}
+
+/** Unreachable while `buildInjuryPlan` refuses above. Retained only because
+ *  four live `INJURY.*` doctrine claims read constants and helpers in this
+ *  module against `Research/05` at run time — see the file banner. */
+async function buildInjuryPlanBody(input: InjuryBuildInput): Promise<InjuryBuildResult> {
   const { userId, injuryId } = input;
 
   // Load the injury row. `site`, `notes` and `return_protocol` all feed

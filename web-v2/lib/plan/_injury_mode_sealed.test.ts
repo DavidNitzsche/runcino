@@ -32,16 +32,25 @@
  *     opinion on whether the runner has any way to handle an injury at all,
  *     which is a real gap and a product question, not a test's to answer.
  *
+ * ── WHY THERE IS NO FLAG TO ASSERT ─────────────────────────────────────────
+ *
+ * An earlier version of this seal exported `INJURY_RETURN_MODE: false` and
+ * guard 3 asserted it. `_seal_single_seam.test.ts` rejected that — the owner
+ * asked for exactly ONE default-off adaptation boundary, and a second dormant
+ * switch guarding a second plan writer is the state he is removing. The
+ * refusal is now a hardcoded return, so this file asserts the BEHAVIOUR
+ * instead of a constant, which is the stronger check anyway.
+ *
  * ── FALSIFIED (Rule 18) ────────────────────────────────────────────────────
  *
- * Flipping `INJURY_RETURN_MODE` to `true` fails guard 3 with
+ * Making `buildInjuryPlan` delegate to its retained body fails guard 3 with
  * "buildInjuryPlan did not refuse". Re-adding an `injury_adjust` limb to the
  * accept route fails guard 2. Observed output is in the session report.
  */
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { INJURY_RETURN_MODE, buildInjuryPlan } from './injury-builder';
+import { buildInjuryPlan } from './injury-builder';
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -79,13 +88,10 @@ describe('INJURY-SEALED-1 · the app does not put the runner on a walk-run plan'
     expect(route.includes('buildInjuryPlan')).toBe(false);
   });
 
-  it('guard 3 · NO EXECUTION · buildInjuryPlan refuses when actually called', () => {
-    // The load-bearing check. Unlike the two above this does not read source
-    // text, so a caller the scanners cannot see still cannot archive a block.
-    expect(INJURY_RETURN_MODE).toBe(false);
-  });
-
-  it('guard 3b · the refusal is real, not a type-level claim', async () => {
+  it('guard 3 · NO EXECUTION · buildInjuryPlan refuses when actually called', async () => {
+    // The load-bearing check. Unlike the source scans above it CALLS the
+    // function, so a caller the scanners cannot see still cannot archive a
+    // block.
     const r = await buildInjuryPlan({ userId: 'no-such-user', injuryId: 1 });
     expect(r.ok, 'buildInjuryPlan did not refuse').toBe(false);
     expect(r.reason, 'the refusal must say why, not fail silently').toBeTruthy();
@@ -95,7 +101,7 @@ describe('INJURY-SEALED-1 · the app does not put the runner on a walk-run plan'
   it('guard 4 · the refusal comes FIRST, before any database read', () => {
     const src = read('lib/plan/injury-builder.ts');
     const fn = src.indexOf('export async function buildInjuryPlan');
-    const refusal = src.indexOf('INJURY_RETURN_MODE as boolean', fn);
+    const refusal = src.indexOf('injury-return mode is not available', fn);
     const firstQuery = src.indexOf('pool.query', fn);
     expect(fn).toBeGreaterThan(-1);
     expect(refusal).toBeGreaterThan(fn);
@@ -104,6 +110,19 @@ describe('INJURY-SEALED-1 · the app does not put the runner on a walk-run plan'
       'the seal no longer precedes the first query · a refused build must not '
       + 'touch the database on its way to saying no',
     ).toBeLessThan(firstQuery);
+  });
+
+  it('guard 4b · there is no boolean flag guarding the refusal · ONE seam only', () => {
+    // `_seal_single_seam.test.ts` owns the general rule; this asserts the
+    // specific shape it rejected, so the flag cannot come back locally and
+    // then be argued into that gate's exemption list.
+    const src = code(read('lib/plan/injury-builder.ts'));
+    expect(
+      /export const INJURY_RETURN_MODE/.test(src),
+      'the refusal is guarded by a second default-off switch again. The owner '
+      + 'asked for exactly one adaptation boundary; this is a plan writer, so '
+      + 'it cannot honestly claim it never gates a plan mutation.',
+    ).toBe(false);
   });
 
   it('guard 5 · the doctrine claims that justify keeping the file are still live', () => {
