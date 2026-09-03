@@ -15,16 +15,32 @@
  * rows cannot support an input, the honest output is `absent(...)` and a line
  * in the diagnostics, not a default.
  *
- * ── NO LOOKAHEAD IS ONE FUNCTION, AND IT IS THE ONLY DOOR ──────────────────
+ * ── NO LOOKAHEAD IS A TYPE, NOT A PREDICATE ────────────────────────────────
  *
- * `buildInputAt({ asOfISO, ... })` filters EVERY collection through one local
- * `before()` predicate, `day(iso) < asOf`. Runs, plan versions, plan weeks,
- * prescriptions and race results all pass through it. `real-replay.test.ts`
- * then attacks it three ways: no record cites INCLUDED evidence dated on or
- * after its own decision point; the same for EXCLUDED and CONTRADICTORY
- * evidence; and a fabricated spectacular session planted in the future never
- * reaches an earlier decision. Deleting the comparison was run and watched —
- * 537 leaks and 40 poison citations — before any of it was trusted.
+ * It used to be one local `before()` closure, `day(iso) < asOf`, applied by
+ * hand to every collection, with three attack tests proving after the fact that
+ * nobody had forgotten. That is the shape Rule 20 calls a hypothesis: a
+ * convention plus a test, where the next person to add a fourth collection has
+ * to remember, and nothing stops them if they do not.
+ *
+ * It is now `asof.ts` and `sealed-history.ts`. This file receives a
+ * `SealedHistory`, whose collections have no array surface at all — no
+ * `filter`, no `find`, no `length`, no iterator — so the only way to obtain a
+ * row is to name a moment. Outcomes come back branded `Evidence<T>` and
+ * artifacts branded `Authored<T>`, and the two share no member, so a
+ * prescription can never be spent as a result. Prescriptions and week flags are
+ * gated by their PLAN's authoring rather than by their own date, which is the
+ * axis that actually matters: next Tuesday's prescription is not lookahead, and
+ * last Tuesday's prescription written by a plan authored tomorrow is.
+ *
+ * The three attack tests in `real-replay.test.ts` remain and still pass — no
+ * record cites INCLUDED evidence dated on or after its own decision point; the
+ * same for EXCLUDED and CONTRADICTORY evidence; and a fabricated spectacular
+ * session planted in the future never reaches an earlier decision. They are now
+ * a second line rather than the only one. Deleting the old comparison was run
+ * and watched — 537 leaks and 40 poison citations — before any of it was
+ * trusted, and `_asof_fence.test.ts` falsifies the type-level fence the way a
+ * type-level fence has to be falsified, at compile time.
  *
  * ── RULE 22 · WHAT THIS FILE CANNOT BE CAUGHT ON ───────────────────────────
  *
@@ -55,9 +71,16 @@ import {
   gradeWorkPhase, sessionToleranceSecFor,
 } from '@/lib/training/execution-semantics';
 import {
-  planInForceAt, realHistory,
-  type RealHistorySnapshot, type SnapPhase, type SnapRun, type SnapSplit, type SnapWorkout,
+  type SnapPhase, type SnapRace, type SnapRun, type SnapSplit, type SnapWeek, type SnapWorkout,
 } from './snapshot';
+import {
+  asOf as asOfOf, narrow, narrowAuthored,
+  type AsOf, type Authored, type Evidence,
+} from './asof';
+import {
+  allVisiblePlans, planInForce, sealedHistory,
+  type SealedHistory,
+} from './sealed-history';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * THE RUNNER, AND THE TWO FACTS THE BRIEF PINS
@@ -467,7 +490,13 @@ export interface BuiltSession { session: GradedSession; grade: StimulusGrade }
  * prescription cannot supply a denominator. Both are recorded in diagnostics.
  */
 export function buildSession(
-  snap: RealHistorySnapshot,
+  /**
+   * Race RESULTS, as evidence. `Evidence<SnapRace>` and not the sealed
+   * collection, because this function prices a run that has already happened
+   * and must not be able to reach for a race that has not: the type it holds
+   * cannot produce one.
+   */
+  raceResults: Evidence<SnapRace>,
   r: SnapRun,
   w: SnapWorkout | null,
   d: Diagnostics,
@@ -476,7 +505,7 @@ export function buildSession(
 
   /* ── A race reads from `races.actual_result`, never from the run ───────── */
 
-  const race = snap.races.find((x) => x.dateISO === r.date && x.finishS !== null);
+  const race = raceResults.find((x) => x.dateISO === r.date && x.finishS !== null);
   if (race) {
     const finishS = num(race.finishS)!;
     const distMi = num(race.distanceMi) ?? r.distanceMi ?? 0;
@@ -708,32 +737,46 @@ export interface BuiltInput {
 
 /**
  * THE ONLY DOOR. Everything a decision point can see comes through here, and
- * every collection is filtered by `dateISO < asOfISO`.
+ * nothing reaches it except through `asof.ts`'s two branded views.
  */
-export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): BuiltInput {
-  const snap = snapshot ?? realHistory();
+export function buildInputAt(args: BuildArgs, snapshot?: SealedHistory): BuiltInput {
+  const snap = snapshot ?? sealedHistory();
   const asOf = day(args.asOfISO);
+  /** The moment, as the fence's own unforgeable token. */
+  const A: AsOf = asOfOf(asOf);
   const d: Diagnostics = { couldNotBuild: [], notes: [] };
 
-  /** THE FILTER. Strictly before, exactly as the engine's own ledger does it. */
+  /**
+   * The last remaining hand-written temporal predicate, and it guards exactly
+   * one thing: the test-only poison session, which is a fabricated
+   * `GradedSession` rather than a row from any sealed collection. It cannot go
+   * through the fence because it never came from the extract, so it is checked
+   * here — deliberately, and named, so the exception is visible rather than
+   * looking like the old convention surviving.
+   */
   const before = (iso: string | null | undefined): boolean =>
     typeof iso === 'string' && iso.length >= 10 && day(iso) < asOf;
 
-  const runs = snap.runs.filter((r) => before(r.date));
+  const runs = snap.runs.before(A);
+  const raceResults = snap.races.before(A);
+  const visiblePlans = snap.plans.before(A);
 
   /* ── The plan in force, and the prescriptions it carried ───────────────── */
 
-  const asOfStamp = `${asOf}T00:00:00Z`;
-  const currentPlan = planInForceAt(snap, addDays(asOf, -1), asOfStamp);
+  const inForceYesterday = planInForce(visiblePlans, addDays(asOf, -1), A);
+  const currentPlan = inForceYesterday?.plan ?? null;
   if (!currentPlan) {
     cannot(d, `${asOf} · no plan was in force, so there is no prescription to compare against.`);
   }
 
   /** The prescription for one date, from the plan that was live on that date. */
   const prescriptionOn = (dayISO: string): SnapWorkout | null => {
-    const p = planInForceAt(snap, dayISO, asOfStamp);
+    const p = planInForce(visiblePlans, dayISO, A);
     if (!p) return null;
-    return snap.planWorkouts.find((w) => w.planId === p.planId && w.dateISO === dayISO) ?? null;
+    return narrowAuthored(
+      snap.planWorkouts.ofPlan(p.visible, 'PRESCRIPTION_IS_AUTHORED_IN_ADVANCE'),
+      (w) => w.dateISO === dayISO,
+    )[0] ?? null;
   };
 
   /* ── WEEKS · prescribed against completed ──────────────────────────────── */
@@ -743,9 +786,19 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
       // Weeks with a prescription but no runs are weeks too. Dropping them would
       // turn "he ran nothing" into "the week does not exist", which is Rule 11's
       // exact confusion in a different place.
-      snap.planWorkouts
-        .filter((w) => before(w.dateISO))
-        .map((w) => weekStartOf(w.dateISO)),
+      //
+      // Every VISIBLE plan version, not just the one in force, because this is
+      // enumerating which weeks the plan ever spoke about and a week can be
+      // prescribed by a version that was later archived. Rule 14 still holds:
+      // the set is bounded by what was authored before this moment, and the
+      // per-week prescription below is resolved by `prescriptionOn`, which
+      // picks exactly one plan per date.
+      narrowAuthored(
+        snap.planWorkouts.ofAnyVisiblePlan(
+          allVisiblePlans(visiblePlans, A), 'PRESCRIPTION_IS_AUTHORED_IN_ADVANCE',
+        ),
+        (w) => w.dateISO < asOf,
+      ).map((w) => weekStartOf(w.dateISO)),
     );
   const weeks: WeekObservation[] = [...new Set(weekStarts)]
     .sort()
@@ -768,8 +821,13 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
         ? failed(`${unreadable.length} activities in this week have no readable distance`)
         : measured(sum(inWeek.map((r) => r.distanceMi ?? 0)));
 
-      const p = planInForceAt(snap, ws, asOfStamp);
-      const pw = p ? snap.planWeeks.find((x) => x.planId === p.planId && x.weekStartISO === ws) : null;
+      const p = planInForce(visiblePlans, ws, A);
+      const pw = p
+        ? narrowAuthored(
+          snap.planWeeks.ofPlan(p.visible, 'PLAN_WEEK_STRUCTURE_IS_AUTHORED_IN_ADVANCE'),
+          (x) => x.weekStartISO === ws,
+        )[0] ?? null
+        : null;
 
       // The plan's OWN cutback flag, which is the authored truth the volume
       // lever asks for: "a week the plan told him to reduce is not a week he
@@ -800,16 +858,16 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
       // stand and `prescribedNonNormalWeek` reconciles them inside the engine,
       // which is where the resilience belongs. The underlying row is still
       // wrong and is still reported as a defect; nothing here repairs it.
-      const planIsRecovery = p?.mode === 'recovery';
+      const planIsRecovery = p?.plan.mode === 'recovery';
       const authoredPlanMode: AuthoredPlanMode = p === null || p === undefined
         ? 'UNKNOWN'
         : planIsRecovery
           ? 'RECOVERY'
-          : p.mode === 'taper'
+          : p.plan.mode === 'taper'
             ? 'TAPER'
             : 'BUILD';
       if (planIsRecovery && pw && !pw.isCutback) {
-        note(d, `week ${ws} · plan ${p!.planId} is mode 'recovery' but plan_weeks.is_cutback is false. `
+        note(d, `week ${ws} · plan ${p!.plan.planId} is mode 'recovery' but plan_weeks.is_cutback is false. `
           + 'Rule 8 · the engine reconciles the two witnesses, and the row is a defect.');
       }
       const isCutback = pw ? (pw.isCutback || pw.isRaceWeek) : false;
@@ -845,7 +903,7 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
   const qualitySessions: GradedSession[] = [];
   for (const r of runs) {
     const w = prescriptionOn(r.date);
-    const built = buildSession(snap, r, w, d);
+    const built = buildSession(raceResults, r, w, d);
     if (built) qualitySessions.push(built.session);
   }
   if (args.poison && before(args.poison.provenance.dateISO)) {
@@ -912,7 +970,7 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
     if (!after) {
       followingKeySessionOk = absent('no key session has followed this long run yet');
     } else {
-      const b = buildSession(snap, after.r, after.w, d);
+      const b = buildSession(raceResults, after.r, after.w, d);
       followingKeySessionOk = b === null
         ? absent('the following key session could not be graded')
         : measured(b.grade === 'FULL' || b.grade === 'SUBSTANTIAL');
@@ -934,10 +992,7 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
   const nextWeekStart = weekStartOf(addDays(asOf, 7));
   const nextWeekDays = Array.from({ length: 7 }, (_, i) => addDays(nextWeekStart, i));
   const nextPres = nextWeekDays
-    .map((x) => {
-      const p = planInForceAt(snap, x, asOfStamp);
-      return p ? snap.planWorkouts.find((w) => w.planId === p.planId && w.dateISO === x) ?? null : null;
-    })
+    .map((x) => prescriptionOn(x))
     .filter((w): w is SnapWorkout => w !== null);
 
   const nextWeekPrescribedMi = sum(nextPres.map((w) => num(w.distanceMi) ?? 0));
@@ -952,13 +1007,20 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
     cannot(d, `${asOf} · the plan in force prescribes nothing for the week starting ${nextWeekStart}.`);
   }
 
-  const planWeeksOfCurrent = currentPlan
-    ? snap.planWeeks.filter((w) => w.planId === currentPlan.planId).sort((a, b) => a.weekIdx - b.weekIdx)
+  const planWeeksOfCurrent: readonly SnapWeek[] = inForceYesterday
+    ? [...snap.planWeeks.ofPlan(inForceYesterday.visible, 'PLAN_WEEK_STRUCTURE_IS_AUTHORED_IN_ADVANCE')]
+      .sort((a, b) => a.weekIdx - b.weekIdx)
     : [];
   const nextCutbackBoundaryISO =
     planWeeksOfCurrent.find((w) => w.weekStartISO > asOf && w.isCutback)?.weekStartISO ?? null;
+  // The race CALENDAR, through the fence's forward door. What comes back has no
+  // `finishS` field at all, so the next-boundary read cannot become a read of a
+  // result that has not happened.
   const nextRaceBoundaryISO =
-    snap.races.filter((r) => r.dateISO !== null && r.dateISO > asOf)
+    narrowAuthored(
+      snap.races.fromInclusive(A, 'RACE_DATE_IS_PUBLISHED_IN_ADVANCE'),
+      (r) => r.dateISO !== null && r.dateISO > asOf,
+    )
       .map((r) => r.dateISO!)
       .sort()[0] ?? null;
   // The taper is the first race week's block, resolved from the plan's own
@@ -977,11 +1039,11 @@ export function buildInputAt(args: BuildArgs, snapshot?: RealHistorySnapshot): B
     ? planWeeksOfCurrent.find((w) => w.weekIdx === raceWeek.weekIdx - 2)?.weekStartISO ?? raceWeek.weekStartISO
     : null;
 
-  const futureThresholdSessionIds = currentPlan
-    ? snap.planWorkouts
-      .filter((w) => w.planId === currentPlan.planId && w.dateISO >= asOf
-        && (w.type === 'threshold' || w.type === 'tempo'))
-      .map((w) => w.workoutId)
+  const futureThresholdSessionIds = inForceYesterday
+    ? narrowAuthored(
+      snap.planWorkouts.ofPlan(inForceYesterday.visible, 'PRESCRIPTION_IS_AUTHORED_IN_ADVANCE'),
+      (w) => w.dateISO >= asOf && (w.type === 'threshold' || w.type === 'tempo'),
+    ).map((w) => w.workoutId)
     : [];
 
   const zero = { THRESHOLD_PACE: 0, WEEKLY_VOLUME: 0, LONG_RUN: 0 } as const;
