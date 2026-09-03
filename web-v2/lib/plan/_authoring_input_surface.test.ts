@@ -34,9 +34,17 @@ const ALLOWED: Record<string, string[]> = {
     'recentWeeklyMi', 'recentLongMi', 'recentQualityPerWeek',
     'recentQualityDistanceMi', 'easyDayMedianMi', 'spikeAnchorLongMi',
     'rampBaseMi', 'rampBaseEvidence',
-    // DESIGNED-WEEKEND-1 · the heaviest two-day load he has actually absorbed,
-    // and when. Evidence for the race-plus-long-run grant, and the reason that
-    // grant is athlete-specific rather than a permission every runner gets.
+    // LONGEVIDENCE-1 · long-run history, which the doctrine names as an allowed
+    // input in its own right: the longest run he has actually completed in
+    // normal training over the last year, races and their prescribed windows
+    // excluded. It sets the block's long-run ceiling in place of the tier band
+    // keyed to `level` — the authority this file's own ratchet is removing.
+    'demonstratedLongMi',
+    // DESIGNED-WEEKEND-1 · the same history read on the axis a race-plus-long-run
+    // weekend actually proposes: the heaviest two-consecutive-day total he has
+    // absorbed in representative training, and the day it started. This is what
+    // makes that grant athlete-specific rather than a permission every runner
+    // gets.
     'demonstratedPairMi', 'demonstratedPairFromISO',
   ],
   'demonstrated pace capacity': [

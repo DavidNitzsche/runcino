@@ -36,6 +36,20 @@
  *
  * ── DIGEST MOVES ────────────────────────────────────────────────────────────
  *
+ *   · 2026-09-02 · LONGRUN-DEMAND-1 + CADENCE-1, merged. Two deliberate
+ *     composer changes land together. `smoothLongWoW` no longer caps a long run
+ *     against the CUTBACK week beside it — the validator has bridged planned
+ *     deloads since CUTBACK-LONG-1, and the authoring pass that actually cuts
+ *     never got the same exemption, so it trimmed longs below a limit nothing
+ *     reported as breached. And `racePaceLongThisWeek` now knows about races as
+ *     well as deloads: a race replaces the long run on the runner's long day, so
+ *     the marathon-pace cadence used to anchor on a deload, step once onto the
+ *     raced week and stop, giving a whole RACE-SPECIFIC phase zero MP long runs.
+ *     `composed` (8781), `days` (699860) and `raceWeeks` (3969) are ALL
+ *     unchanged: no plan gained or lost a day, and no race week moved. What
+ *     moved is the contents of long-run and marathon-pace weeks, which is the
+ *     intended change. Every coaching gate named above stays green across it.
+ *
  *   · 2026-09-02 · LADDER-LENGTH-1. `restoreSteps` no longer emits a rung worth
  *     a tenth of a mile, so a returning runner's block spends one fewer week
  *     restoring and one more week climbing. Reaches only the 89 archetypes in

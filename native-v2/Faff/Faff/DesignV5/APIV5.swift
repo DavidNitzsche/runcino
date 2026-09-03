@@ -695,6 +695,13 @@ struct V5Block: Decodable, Equatable {
     let soFar: [V5Row]
     /// All sixteen weeks. Not sampled — the design lists every one.
     let weeks: [V5BlockWeek]
+    /// WEEKANSWERS-1 (2026-09-02) · the block's five answers: how the long runs
+    /// progress, where marathon pace starts, how it builds, why the longest run
+    /// is that distance, and how the block prepares race effort rather than
+    /// mileage. Derived by the composer and stored on the plan; nil on a block
+    /// authored before they existed. Said ONCE here, never repeated per week
+    /// (Rule 17) — the per-week answers are `V5BlockWeek.answers`.
+    let blockAnswers: [V5Answer]?
     /// The 59-session catalogue.
     let library: [V5Workout]
     /// The five change-the-plan scenarios this runner can actually reach right
@@ -727,6 +734,19 @@ struct V5BlockWeek: Decodable, Equatable, Hashable, Identifiable {
     let days: [V5BlockDay]
     /// Long run / quality count / mileage, revealed when the row expands.
     let detail: [V5Row]
+    /// WEEKANSWERS-1 (2026-09-02) · why this week looks like this: the
+    /// mileage, the long run, the sessions, the cutback where there is one,
+    /// how it builds on the week before, and how it prepares race day.
+    /// Derived by the composer and stored on the plan. Optional so a block
+    /// authored before they existed still decodes and simply shows none.
+    let answers: [V5Answer]?
+}
+
+/// WEEKANSWERS-1 · one question and its answer, in coach voice.
+struct V5Answer: Decodable, Equatable, Hashable, Identifiable {
+    let id: String
+    let label: String
+    let text: String
 }
 
 struct V5BlockDay: Decodable, Equatable, Hashable, Identifiable {
@@ -1724,7 +1744,9 @@ extension V5Panel {
 }
 
 extension V5Block {
-    enum K: String, CodingKey { case panel, phases, coachLine, thesis, soFar, weeks, library, scenarios }
+    enum K: String, CodingKey {
+        case panel, phases, coachLine, thesis, soFar, weeks, library, scenarios, blockAnswers
+    }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
         panel = try c.decode(V5Panel.self, forKey: .panel)
@@ -1735,6 +1757,11 @@ extension V5Block {
         weeks = c.list(.weeks)
         library = c.list(.library)
         scenarios = c.list(.scenarios)
+        // WEEKANSWERS-1 · `try?` and not `c.list`, because absent and empty are
+        // different facts here: a block authored before the answers existed
+        // carries no key and must draw no section, while an empty array would
+        // be a block that answered nothing and is worth seeing as a defect.
+        blockAnswers = try? c.decodeIfPresent([V5Answer].self, forKey: .blockAnswers)
     }
 }
 

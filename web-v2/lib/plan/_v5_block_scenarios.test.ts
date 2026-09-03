@@ -225,6 +225,7 @@ function trainingState(over: Partial<TrainingStateShape> = {}): TrainingStateSha
     weekWindow: { startISO: '2026-08-24', endISO: '2026-08-30' },
     weekWindowDays: days,
     last_adapted_at: null, horizonRaise: null, phaseAnswers: null,
+    weekAnswers: null, blockAnswers: null,
     ...over,
   };
 }

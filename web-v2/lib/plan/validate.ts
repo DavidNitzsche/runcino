@@ -173,6 +173,69 @@ const CONSTRAINTS: Record<DistCategory, PlanConstraints> = {
   'ultra': { longRunWoWMaxPct: 30, taperDropMinPct: 40, taperDropMaxPct: 70 },
 };
 
+/**
+ * CUTBACK-LONG-2 (2026-09-02) · ONE definition of the long run's week-over-week
+ * ceiling, because there were two and they disagreed.
+ *
+ * CUTBACK-LONG-1 gave THIS validator a bridge over a planned deload — "the
+ * rebound to a level the block already held is not a ramp" — and stopped there.
+ * `generate.ts`'s `smoothLongWoW`, the pass that actually TRIMS the long run at
+ * authoring, kept a flat `prev × 1.30` with no memory of the week before the
+ * deload. So the authoring side cut long runs this file would have accepted,
+ * and nothing could tell: the validator only ever reports what is ILLEGAL, and
+ * a long run trimmed below the limit is legal.
+ *
+ * Measured on the reference marathoner's CIM block (0645f40c, 2026-09-02): the
+ * peak long was capped at `floor(16.0 × 1.30 × 2)/2 = 20.5` off a CUTBACK
+ * week's 16.0, while the load week before that deload had already carried 19.5.
+ * The bridged ceiling is 25.0, and the binding doctrine guards (the 110%/30-day
+ * spike rule and `layoutWeek`'s ramp ceiling) then land the week at 22.0 — above
+ * the 21.5 the runner has already run. The whole regression was one guard
+ * missing the exemption its twin already had.
+ *
+ * This is the "one doctrinal quantum, N disagreeing constants" pattern named a
+ * few lines above, in the same file, about the same kind of number.
+ *
+ * Cite: Research/00b-recovery-protocols.md §"What Cutback Weeks Are Not" — a
+ * planned reduction is the design, so the return to load is not a ramp error.
+ *
+ * `prevLongMi` is the immediately preceding week's long. `bridgeLongMi` is the
+ * long of the week BEFORE a planned cutback, and is spent only when
+ * `prevWasPlannedCutback` — a cutback that is also a race week is NOT a planned
+ * deload for this purpose (the race is the load), matching §4's own test.
+ * Returns the raw ceiling in miles; callers round to their own grid.
+ */
+/**
+ * CUTBACK-LONG-2 · is this week a PLANNED DELOAD, the thing the bridge above
+ * is allowed to step over?
+ *
+ * `isCutback` alone is not that question, and `_midrace_invariants.test.ts`
+ * already records why in its own header: `embedMidBlockRaces` "flags the
+ * tune-up week `isCutback`, which is exactly the flag the validator's
+ * week-over-week check exempts". A week the runner RACED is not a week the
+ * plan told him to go easy — the race is the load, and `Research/00b`
+ * §"Post-Race Recovery" is the doctrine that governs the days after it. So a
+ * week carrying a race day is never bridged over, at either call site.
+ */
+export function isPlannedDeloadWeek(w: {
+  isCutback?: boolean; isRaceWeek?: boolean; days: ReadonlyArray<{ type: string }>;
+} | null | undefined): boolean {
+  if (!w?.isCutback || w.isRaceWeek) return false;
+  return !w.days.some((d) => d.type === 'race');
+}
+
+export function longRunWoWCeilingMi(
+  cat: DistCategory,
+  prevLongMi: number,
+  opts?: { bridgeLongMi?: number; prevWasPlannedCutback?: boolean },
+): number {
+  const pct = CONSTRAINTS[cat].longRunWoWMaxPct;
+  const anchor = (opts?.prevWasPlannedCutback && (opts.bridgeLongMi ?? 0) > 0)
+    ? Math.max(prevLongMi, opts.bridgeLongMi as number)
+    : prevLongMi;
+  return anchor * (1 + pct / 100);
+}
+
 // Context-aware long-run cap. Kept separate from CONSTRAINTS because it
 // isn't a single value per distance — it varies by experience + horizon.
 function longRunCapMi(cat: DistCategory, ctx: PlanValidationContext): number {
@@ -618,11 +681,18 @@ export function validateComposedPlan(
     // limit is applied to the pre-cutback long instead of being waived.
     // Consecutive cutbacks cannot occur (cadence is every 3rd or 4th week),
     // so `i - 2` is always a load week when `i - 1` is a curve deload.
-    if (weeks[i - 1]?.isCutback && !weeks[i - 1]?.isRaceWeek) {
+    //
+    // CUTBACK-LONG-2 · the ceiling itself now lives in `longRunWoWCeilingMi`,
+    // which `generate.ts`'s `smoothLongWoW` also calls. Same numbers, one
+    // definition — see that function's header for the defect this closes.
+    const prevWasPlannedCutback = isPlannedDeloadWeek(weeks[i - 1]);
+    if (prevWasPlannedCutback) {
       const bridge = longByWeek[i - 2] ?? 0;
-      if (bridge > 0 && curr <= bridge * (1 + c.longRunWoWMaxPct / 100)) continue;
+      if (bridge > 0 && curr <= longRunWoWCeilingMi(cat, prev, {
+        bridgeLongMi: bridge, prevWasPlannedCutback: true,
+      })) continue;
     }
-    if (prev > 0 && curr > prev * (1 + c.longRunWoWMaxPct / 100)) {
+    if (prev > 0 && curr > longRunWoWCeilingMi(cat, prev)) {
       const pct = Math.round(((curr - prev) / prev) * 100);
       violations.push(
         `Week ${i}: long run jumps ${prev}mi → ${curr}mi (${pct}% increase > ${c.longRunWoWMaxPct}% WoW limit)`,

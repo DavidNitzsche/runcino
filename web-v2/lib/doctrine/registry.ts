@@ -1014,7 +1014,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       );
       matchLiteral(
         src,
-        /const qualityIntensityLongWeek = phase === 'QUALITY' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN\);/,
+        /const qualityIntensityLongWeek = phase === 'QUALITY' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt\);/,
         'the QUALITY intensity-long cadence flag walks the same picker as the race-specific arm',
       );
     },
@@ -8065,7 +8065,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const src = sourceOf('web-v2/lib/plan/generate.ts');
       matchLiteral(
         src,
-        /const racePaceLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN\);/,
+        /const racePaceLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt\);/,
         'the race-pace-long cadence flag is distance-blind',
       );
       matchLiteral(

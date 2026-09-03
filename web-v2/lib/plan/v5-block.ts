@@ -406,6 +406,28 @@ export function buildWeeks(state: TrainingState) {
   return state.weeks.map((w) => {
     const qualityCount = w.days.filter((d) => d.isQuality && d.type !== 'race').length;
     const longMi = Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.mi));
+    // WEEKANSWERS-1 (2026-09-02) · WHY THIS WEEK LOOKS LIKE THIS, on the week.
+    //
+    // Matched by START DATE, not by position: a re-anchored block loses weeks
+    // off the front and a positional match would slide every explanation one
+    // week early with nothing looking wrong.
+    //
+    // Rule 17: the block-level sentences (how the long runs progress, why the
+    // longest run is the distance it is) are NOT repeated here. They are on the
+    // block once, in `buildBlockAnswers`.
+    const answers = state.weekAnswers?.[w.startDate] ?? null;
+    const answerRows = answers
+      ? ([
+          { id: `${w.id}-why-mileage`, label: 'Why this mileage', text: answers.whyMileage },
+          { id: `${w.id}-why-long`, label: 'Why this long run', text: answers.whyLongRun },
+          { id: `${w.id}-why-quality`, label: 'Why these sessions', text: answers.whyQuality },
+          ...(answers.whyCutback
+            ? [{ id: `${w.id}-why-cutback`, label: 'Why the cutback', text: answers.whyCutback }]
+            : []),
+          { id: `${w.id}-develops`, label: 'How it builds on last week', text: answers.developsPrevious },
+          { id: `${w.id}-prepares`, label: 'How it prepares you', text: answers.preparesForRace },
+        ])
+      : [];
 
     return {
       id: w.id,
@@ -438,8 +460,30 @@ export function buildWeeks(state: TrainingState) {
         { id: `${w.id}-quality`, label: 'Quality sessions', sub: null, value: num(String(qualityCount), false), action: null, tone: 'neutral' },
         { id: `${w.id}-mileage`, label: 'Mileage', sub: null, value: num(`${fmtMi(w.plannedMi)} mi`, false), action: null, tone: 'neutral' },
       ],
+      // Additive and absent when the block predates the answers, so a phone
+      // decoding an older plan sees no key rather than an empty list (Rule 11).
+      ...(answerRows.length > 0 ? { answers: answerRows } : {}),
     };
   });
+}
+
+/**
+ * WEEKANSWERS-1 · the block's own five answers, once.
+ *
+ * Absent when the block predates them. Never repeated onto the weeks — Rule 17
+ * is the reason this is a separate builder and not six more `detail` rows on
+ * fifteen week rows.
+ */
+export function buildBlockAnswers(state: TrainingState) {
+  const a = state.blockAnswers;
+  if (!a) return null;
+  return [
+    { id: 'block-long-progression', label: 'How the long runs progress', text: a.longRunProgression },
+    { id: 'block-mp-start', label: 'Where marathon pace starts', text: a.marathonSpecificStart },
+    { id: 'block-mp-progression', label: 'How marathon pace builds', text: a.marathonPaceProgression },
+    { id: 'block-longest', label: 'Why the longest run is what it is', text: a.longestRunReason },
+    { id: 'block-race-effort', label: 'How this prepares race effort', text: a.sustainRaceEffort },
+  ];
 }
 
 // ── workout library (Gap B1) ────────────────────────────────────────────
@@ -745,6 +789,9 @@ export async function loadV5Block(userId: string) {
     thesis: thesis ? wireThesis(thesis) : null,
     soFar: buildSoFar(state),
     weeks: buildWeeks(state),
+    // WEEKANSWERS-1 · the block's five answers. Null when the block predates
+    // them, so the phone shows the block without them rather than five blanks.
+    blockAnswers: buildBlockAnswers(state),
     library,
     scenarios,
   };

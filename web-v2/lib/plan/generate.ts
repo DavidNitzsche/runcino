@@ -90,7 +90,7 @@ import { dropLastSegment, keepFirstSegment, parsePrescription, parseSegments, pa
 // `plan_workouts.workout_spec` so the adaptation model can hold or modify a
 // stimulus it can actually see.
 import { progressionSpecFields, RATIONALE_SPEC_KEY } from './progression-spec';
-import { validateComposedPlan } from './validate';
+import { validateComposedPlan, longRunWoWCeilingMi, isPlannedDeloadWeek } from './validate';
 import { deriveBlockStrategy } from './strategy-contracts';
 import { mutatePlan, snapshotPrescription, snapshotActivePrescription } from './mutate';
 // 2026-08-25 · the commit gate + the "what moved" line. See lib/plan/plan-delta.ts.
@@ -1907,6 +1907,133 @@ async function demonstratedPairMi(
     if (best == null || total > best.mi) best = { mi: total, fromISO: d };
   }
   return best;
+}
+
+/**
+ * LONGEVIDENCE-1 (2026-09-02) · THE LONGEST RUN THIS RUNNER HAS ACTUALLY DONE.
+ *
+ * ── WHY IT EXISTS ────────────────────────────────────────────────────────────
+ *
+ * The block's long-run ceiling was `TIER_TARGETS[cat][tier].peakLongMiBand[1]`
+ * and nothing else — a number keyed to `profile.experience_level`, which is a
+ * word the runner typed at onboarding. The owner's ruling, 2026-09-02: "My
+ * actual history — not an onboarding label — must determine appropriate load",
+ * and for the long run specifically, "choose from evidence, not from the old
+ * plan or a generic tier."
+ *
+ * `recentPeakLongMi` cannot answer this. Both of its halves are 28-day
+ * questions on purpose — one literal for the spike rule, one representative for
+ * the habit floor — and a block ceiling is neither. Measured on the reference
+ * marathoner: his 28-day habit long is 18.0 mi and he has completed 21.5.
+ * Sizing a fifteen-week build's ceiling off 18 would tell a runner his cycle
+ * may not reach a distance he has already run, which is CLAUDE.md's "current
+ * fitness is a SAFETY FLOOR, not a ceiling" inverted.
+ *
+ * ── WHAT IT READS ────────────────────────────────────────────────────────────
+ *
+ * The longest single canonical run over the runner's ELIGIBLE days in the last
+ * year — Rule 8's habit lane, so every taper lead-in and post-race recovery
+ * window is excluded by `spans`, and with them the races themselves: a raced
+ * marathon sits inside its own prescribed span and never reaches this number.
+ * That is the correct exclusion twice over, because a race is not a training
+ * long run and `Research/00b` governs the days around it.
+ *
+ * Rule 11: null is a FAILED READ, distinct from a runner with no long runs,
+ * who reads 0. The caller must not treat them alike.
+ */
+export const DEMONSTRATED_LONG_ELIGIBLE_DAYS = 365;
+
+async function demonstratedLongMi(
+  userId: string,
+  todayISO: string,
+  spans: readonly PrescribedSpan[],
+): Promise<number | null> {
+  const days = eligibleDaysBack(todayISO, DEMONSTRATED_LONG_ELIGIBLE_DAYS, spans,
+    DEMONSTRATED_LONG_ELIGIBLE_DAYS);
+  if (days.length === 0) return 0;
+  // A RACE IS NOT A TRAINING LONG RUN, and `races` is the authority on which
+  // days were races (CLAUDE.md, race-data source-of-truth). Rule 8's prescribed
+  // spans do NOT cover this on their own: the loader builds a span for the
+  // runner's LAST race only, so without this the reference marathoner's
+  // demonstrated long read 26.8 — Big Sur — and the block's ceiling would have
+  // been set by a marathon he raced in April.
+  const r = await rowOrNull<{ mi: string | null }>(
+    'plan/generate · demonstratedLongMi',
+    pool.query<{ mi: string | null }>(
+      `SELECT MAX(${runDistanceMiSql('r')})::text AS mi
+         FROM runs r
+        WHERE r.user_uuid = $1::uuid
+          AND NOT (r.data ? 'mergedIntoId')
+          AND (${runDaySql('r')})::date = ANY($2::date[])
+          AND (${runDaySql('r')})::date NOT IN (
+            SELECT (meta->>'date')::date FROM races
+             WHERE user_uuid = $1::uuid AND meta->>'date' ~ '^\\d{4}-\\d{2}-\\d{2}$'
+          )`,
+      [userId, days],
+    ),
+  );
+  if (r === null || r === undefined) return null;
+  const v = Math.round(Number(r.mi ?? 0) * 10) / 10;
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+/**
+ * LONGEVIDENCE-1 · the block's long-run ceiling, from the runner rather than
+ * from the label on their profile.
+ *
+ * Two readings, and the block takes the larger:
+ *
+ *   · WHAT HE HAS ALREADY DONE — `demonstratedLongMi`. A distance already
+ *     completed in normal training is a floor on what this cycle may ask for,
+ *     not a ceiling. CLAUDE.md: "Current fitness is a SAFETY FLOOR, not a
+ *     ceiling."
+ *   · WHAT DOCTRINE LICENSES HIM TO ADD — his recent normal-training long grown
+ *     by one cycle's allowance. `Research/00a` §"Volume progression rules" ·
+ *     "Year-on-year base growth | 5-15% per training cycle for trained
+ *     athletes", which is the same row and the same reading
+ *     `CYCLE_GROWTH_CEILING` already takes for weekly volume. Beginners have no
+ *     per-cycle figure in that row (the table states it for TRAINED athletes),
+ *     so this arm is simply unavailable to them and the demonstrated value
+ *     stands alone.
+ *
+ * The tier band is still applied, as a CAP rather than as the driver: doctrine
+ * publishes a peak-long band per distance and no block should exceed the top of
+ * it, but nothing licenses a band keyed to a self-declared word to REACH up and
+ * set a runner's ceiling on its own.
+ *
+ * Returns null when there is no long-run evidence at all — a cold-start runner,
+ * or a failed read. The caller keeps the band, which is the only answer
+ * available for someone with no history, and Rule 11 keeps the two apart at the
+ * call site rather than here.
+ */
+export function evidenceLongCeilingMi(args: {
+  demonstratedLongMi: number | null;
+  recentLongMi: number;
+  tierPeakLongMi: number;
+}): number | null {
+  // MEASURED EVIDENCE IS THE GATE, and it is the whole gate. Without a
+  // demonstrated long run there is nothing here to reason from: a self-reported
+  // "longest run 0-3 mi" at onboarding is a starting point, not a capability
+  // ceiling, and `Research/22`'s beginner marathon rows build such a runner to
+  // a 16-20 mi long — many times what one cycle's 15% would license. Applying
+  // the growth arm to a self-report crushed 8,781 archetypes' long runs to a
+  // few miles on the first run of this function. So: no measured long run, no
+  // evidence ceiling, and the band stands as the only answer available.
+  const demonstrated = args.demonstratedLongMi != null && args.demonstratedLongMi > 0
+    ? args.demonstratedLongMi : 0;
+  if (!(demonstrated > 0)) return null;
+  // NOT KEYED ON `level`. `CYCLE_GROWTH_CEILING` is a level-keyed table and
+  // `level` is `profile.experience_level`, a word typed at onboarding — the
+  // authority INPUT-SURFACE-1 removes and the owner ruled against by name.
+  // Doctrine states the 5-15% figure "for trained athletes", and this arm only
+  // runs when a measured long run EXISTS, so trained is evidenced here rather
+  // than declared. `CYCLE_GROWTH_CEILING.intermediate` is that same reading of
+  // the same row (see its own comment); it is read through the constant rather
+  // than retyped so the two cannot diverge.
+  const growth = CYCLE_GROWTH_CEILING.intermediate;
+  const grown = growth != null && args.recentLongMi > 0 ? args.recentLongMi * growth : 0;
+  const earned = Math.max(demonstrated, grown);
+  return Math.min(args.tierPeakLongMi, Math.round(earned * 2) / 2);
 }
 
 /**
@@ -4146,26 +4273,65 @@ export const MP_LONG_CADENCE_WEEKS = 2;
  * and the deload mask is the same `(i + 1) % cutbackEveryN === 0` formula
  * `volumeCurve` and `layoutWeek` already share, so this needs no knowledge of
  * the plan beyond what `layoutWeek` is handed.
+ *
+ * ── MPRACE-1 (2026-09-02) · A WEEK WITH NO LONG RUN CANNOT CARRY ONE ──────
+ *
+ * `noLongRunAt` names the weeks whose long-run SLOT is a tune-up race day.
+ * `embedMidBlockRaces` sets `slot.isLong = wasLong` — a mid-block race landing
+ * on the long-run day REPLACES the long — and this walk knew only about
+ * deloads, so it could hand §4.4's marathon-pace long to a week that has no
+ * long run to put it in. The session was then not moved, not reported and not
+ * authored: it simply did not exist.
+ *
+ * Measured on the reference marathoner's CIM block (0645f40c, 2026-09-02). The
+ * RACE-SPECIFIC phase is weeks 8-11. The anchor is week 11, a deload, so it
+ * stepped to week 10 — Run Malibu, a half marathon ON his long-run Sunday — and
+ * stopped. Stepping back from there lands on week 8, also a deload, and then on
+ * week 7, which is outside the phase. Net: the phase whose own recorded purpose
+ * is "race-pace durability" authored `racePaceLongsInPhase: 0`. The engine
+ * printed that zero into `authored_state` and nothing read it.
+ *
+ * A race week is a stronger version of the case this function already handles:
+ * a deload week COULD carry the session and doctrine says it should not, while
+ * a raced week physically cannot. So it takes the same latitude — `Research/04`
+ * §4.4's "Every 2-3 weeks during marathon specific phase" — and steps back.
+ *
+ * The step-back is a bounded LOOP rather than the single `i -= 1` it replaces,
+ * because two unavailable weeks can now sit next to each other (10 is raced,
+ * 11 is a deload) where two deloads could not. With no mid-block races
+ * `noLongRunAt` is always false and the loop runs at most one step, which is
+ * the old behaviour literal-for-literal — `_mp_spacing.test.ts` and the
+ * `MPLONG.*` doctrine claims walk the no-race case unchanged.
  */
 export function racePaceLongThisWeek(
   weekIdx: number,
   weeksToPhaseEnd: number,
   cutbackEveryN: number,
+  /** MPRACE-1 · true for a week whose long-run day is an embedded tune-up
+   *  race, so there is no long run for the session to live in. Omitted (every
+   *  plan with no mid-block races) → byte-identical to the deload-only walk. */
+  noLongRunAt: (weekIdx: number) => boolean = () => false,
 ): boolean {
   const isCutbackAt = (i: number) => i > 0 && (i + 1) % cutbackEveryN === 0;
+  const cannotCarry = (i: number) => isCutbackAt(i) || noLongRunAt(i);
+  /** Nearest week at or before `i` that can actually hold the session. */
+  const stepBack = (i: number): number => {
+    let j = i;
+    for (let guard = 0; j > 0 && cannotCarry(j) && guard < 500; guard++) j -= 1;
+    return j;
+  };
   // Anchor on the phase's LAST week — the one closest to the race — and step
   // back. Anchoring on the first week instead would make the cadence depend on
   // where the phase happens to start, so a 15- and a 16-week build would put
   // the final MP long a different distance from race day.
-  let i = weekIdx + weeksToPhaseEnd;
-  if (isCutbackAt(i)) i -= 1;
+  let i = stepBack(weekIdx + weeksToPhaseEnd);
   // The sequence descends strictly, so this terminates; the guard is belt and
   // braces against a caller passing a degenerate cutbackEveryN.
   for (let guard = 0; i >= 0 && guard < 500; guard++) {
     if (i === weekIdx) return true;
     if (i < weekIdx) return false;
-    let next = i - MP_LONG_CADENCE_WEEKS;
-    if (isCutbackAt(next)) next -= 1;   // stretch to the 3-week end of the band
+    const next = stepBack(i - MP_LONG_CADENCE_WEEKS);  // stretch to the 3-week end of the band
+    if (next >= i) return false;                       // no earlier week can carry it
     i = next;
   }
   return false;
@@ -4392,6 +4558,10 @@ export interface LayoutWeekInput {
   recentLongMi?: number;
   /** RULE8-2 · literal prior-28-day max · the single-session spike anchor. */
   spikeAnchorLongMi?: number;
+  /** LONGEVIDENCE-1 · the block's long-run ceiling, resolved from the runner's
+   *  own demonstrated long runs by `evidenceLongCeilingMi` and already bounded
+   *  by the tier band. Null → no long-run evidence; the band stands alone. */
+  evidenceLongCapMi?: number | null;
   /** 2026-06-03 · Rule 2 · runner's typical quality-day distance ·
    *  floors qualityMiEach so plan never asks for a shorter tempo/
    *  threshold than the runner is already running. */
@@ -4412,6 +4582,22 @@ export interface LayoutWeekInput {
    *  long-run-floor relaxation lands on the weeks the volume curve actually
    *  cut. 3 under TSB<-10, else 4. Defaults to 4 (legacy mod-4) when omitted. */
   cutbackEveryN?: number;
+  /**
+   * MPRACE-1 (2026-09-02) · week indices whose LONG-RUN DAY is a mid-block
+   * tune-up race, so the week has no long run for §4.4's marathon-pace long
+   * (or §4.5's fast finish, or §4.3's progression tail) to live in.
+   *
+   * Derived in `composePlan` from the same three facts `embedMidBlockRaces`
+   * uses to decide it — the race date, the block's start Monday and the
+   * runner's long-run day-of-week — because the embed itself runs AFTER the
+   * whole layout loop and `layoutWeek` cannot see it. `MPRACE.long-slot-
+   * prediction-matches-the-embed` in the doctrine registry asserts the two
+   * agree on the composed plan rather than leaving the duplication unchecked.
+   *
+   * Omitted / empty (every plan with no mid-block races) → the cadence walk is
+   * byte-identical to the deload-only one.
+   */
+  noLongRunWeeks?: ReadonlySet<number>;
   /** 2026-06-20 · base-building (beginner) plan: quality days are LIGHT (a
    *  short tempo / fartlek with surges), never structured I/R reps, and only
    *  in the sharpen phase. Gated to level==='beginner' (templateFor), so
@@ -4705,8 +4891,11 @@ function layoutRaceWeek(input: Pick<
 
 function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   const {
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false, thesisSlot = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, level = null, courseIsNetDownhill = false, thesisSlot = null, noLongRunWeeks = undefined, evidenceLongCapMi = null,
   } = input;
+  // MPRACE-1 · the cadence walk's "this week has no long run" predicate. One
+  // definition here so all four call sites below ask the same question.
+  const noLongRunAt = (i: number) => noLongRunWeeks?.has(i) === true;
   // LAYOUTWEEK-RACEWEEK-1 · the race week is its own responsibility now.
   if (isRaceWeek && raceDow != null) {
     return layoutRaceWeek({ phase, raceDow, raceDistanceMi, trainingDaysPerWeek, availableDows });
@@ -4797,9 +4986,28 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   // the 50K race distance (31.1mi). Cap at 95% of raceDistanceMi for ultra so training long
   // never exceeds the race; for 100K (62.1mi) the tier cap of 32 already dominates so the
   // min() is a no-op. All non-ultra distances (marathon peak 22-25mi < 26.2mi) are unaffected.
-  const longCap = (longCat === 'ultra')
+  // LONGEVIDENCE-1 (2026-09-02) · THE CEILING COMES FROM THE RUNNER, AND THE
+  // BAND CAPS IT.
+  //
+  // `peakLongMiBand[1]` is keyed to `profile.experience_level` — a word typed
+  // at onboarding — and it was the ONLY thing setting how far this block's long
+  // run could climb. The owner's ruling: "My actual history — not an onboarding
+  // label — must determine appropriate load", and for the long run, "choose
+  // from evidence, not from the old plan or a generic tier."
+  //
+  // `evidenceLongCapMi` is that number: the greater of what he has already run
+  // in normal training and what `Research/00a`'s per-cycle growth row licenses
+  // him to add to his recent normal-training long, already `min`-ed against the
+  // band by `evidenceLongCeilingMi`. Absent (cold start, or a failed read the
+  // caller decided not to refuse on) the band stands alone, which is the only
+  // answer available for a runner with no long runs — Rule 11 keeps "no
+  // evidence" and "evidence says small" apart, because they are opposite facts.
+  const bandLongCap = (longCat === 'ultra')
     ? Math.min(tierTarget.peakLongMiBand[1], Math.round(raceDistanceMi * 0.95))
     : tierTarget.peakLongMiBand[1];
+  const longCap = evidenceLongCapMi != null && evidenceLongCapMi > 0
+    ? Math.min(bandLongCap, evidenceLongCapMi)
+    : bandLongCap;
   // 2026-06-23 · DIST-1 · long-run SIZE, research-grounded:
   //   5k/10k/hm — share of the week (Research/00a:184, ≤25-30%); weeklyMi × longShare
   //     already lands inside the tier's peakLongMiBand, so keep it.
@@ -4898,7 +5106,28 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
     // generator rounds to.
     const seed = Math.floor(spikeAnchorMi * 1.10 * 2) / 2;      // week-0 ≤110% of recent
     const stepCeil = spikeAnchorMi * Math.pow(1.10, weekIdx);   // ≤10%/step geometric climb
-    const peakWeekIdx = Math.max(1, totalWeeks - 4);           // reach the cap ~3-4 wk before race
+    // LONGARRIVE-1 (2026-09-02) · THE RAMP MUST ARRIVE ON A WEEK THAT CAN
+    // CARRY THE LONG RUN.
+    //
+    // `totalWeeks - 4` is "~3-4 weeks before the race" and is otherwise
+    // correct. It is also, for a three-week deload cadence, frequently a
+    // CUTBACK — and a cutback week's long is deliberately small, so the ramp
+    // aims at a week that will never hold the number, and the block's biggest
+    // real long lands a step short of the ceiling the engine computed for it.
+    // Measured on the reference marathoner: ceiling 21.5, arrival week 11 (a
+    // deload), biggest real long 20.0 — a ceiling the block was structurally
+    // incapable of reaching, which is Rule 21's "wired, tested and inert" in
+    // the one place it costs the most.
+    //
+    // Step back to the nearest earlier week that is not a deload, the same
+    // latitude and the same helper shape `racePaceLongThisWeek` already uses
+    // for §4.4's cadence. With a four-week cadence the arrival week is usually
+    // already a load week and this is a no-op.
+    const peakWeekIdx = (() => {
+      let i = Math.max(1, totalWeeks - 4);                    // reach the cap ~3-4 wk before race
+      for (let g = 0; i > 1 && i > 0 && (i + 1) % cutbackEveryN === 0 && g < 500; g++) i -= 1;
+      return Math.max(1, i);
+    })();
     const linearTarget = seed + Math.max(0, longCap - seed) * Math.min(1, weekIdx / peakWeekIdx);
     return Math.max(longFloor, seed, Math.round(Math.min(stepCeil, linearTarget)));
   })();
@@ -5103,7 +5332,7 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   // week? Both the marathon's MP long (§4.4) and the half's fast-finish long
   // (§4.5) carry "Every 2–3 weeks", so both walk the same cadence.
   const racePaceLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag != null
-    && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN);
+    && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt);
   // VARIETY-LONG-1 (2026-08-28) · the QUALITY warm-in ramp is ALSO on the
   // cadence now. The ramp is §4.5's shape at every step (this function's own
   // comment says so), and §4.5's Frequency row — "Every 2–3 weeks" — does not
@@ -5117,7 +5346,7 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   // step and never lands on a deload. Off-cadence warm-in weeks run plain.
   // Bound by LONGRUN.intensity-cadence.
   const qualityIntensityLongWeek = phase === 'QUALITY' && racePaceTag != null
-    && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN);
+    && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt);
   // The MARATHON-only consequences hang off this narrower flag: §16's forbidden
   // "MP long run + hard tempo" pairing (the half's race-specific mix is
   // threshold + intervals, which §16 does not name) and DAY-SIZE-1's at-pace
@@ -5153,7 +5382,7 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   // the smaller session the sample week prescribes alongside both, and it
   // spends the M budget, which neither structured slot touches.
   const tenKProgressionWeek = cat === '10k' && !baseBuilding
-    && phase === 'RACE-SPECIFIC' && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN);
+    && phase === 'RACE-SPECIFIC' && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt);
   const finishSeg = longFinishSegment(
     phase, weeksToPhaseEnd, racePaceTag,
     // VARIETY-LONG-1 · one cadence, whichever phase asks. RACE-SPECIFIC weeks
@@ -9206,6 +9435,12 @@ export interface ComposePlanInput {
    *  30 d". Undefined falls back to `recentLongMi`, which is what every caller
    *  that does not supply it got before. */
   spikeAnchorLongMi?: number;
+  /** LONGEVIDENCE-1 (2026-09-02) · the longest run this runner has actually
+   *  completed in normal training over the last year, races and their
+   *  prescribed windows excluded. Drives the block's long-run ceiling instead
+   *  of the tier band, which becomes a cap. Undefined / null → no long-run
+   *  evidence, and the band stands alone (a cold-start runner). */
+  demonstratedLongMi?: number | null;
   /**
    * DESIGNEDWEEKEND-1 (2026-09-02) · the largest total this runner has actually
    * run across TWO CONSECUTIVE CALENDAR DAYS, in representative training.
@@ -9484,6 +9719,24 @@ export interface ComposePlanResult {
    * 0 and the pass is byte-identical.
    */
   rampAnchorMi?: number;
+  /**
+   * PEAKLOAD-1 (2026-09-02) · THE BLOCK'S DECLARED PEAK WEEK, IN MILES.
+   *
+   * `max(...vols)` at composition time — the volume curve's own peak, which is
+   * the number `deriveBlockStrategy` publishes as `peakLoadMi` and the number
+   * the runner is shown. `layoutWeek` sizes each day against its own floors and
+   * can hand back a week that sums ABOVE the budget it was given (WKRAMP-1's
+   * header says so in as many words), so the plan could ship a week larger than
+   * the peak its own strategy declares. Two answers to "what is the biggest
+   * week in this block" is Rule 16, and the owner has ruled on the number:
+   * "Retain the proposed 58.5-mile peak … Do not raise mileage to satisfy the
+   * self-declared 'advanced' category."
+   *
+   * Carried so `finalizeComposedPlan` can hold the shipped plan to it. Absent →
+   * the cap does not run and composition is byte-identical, which is every
+   * caller that predates this field.
+   */
+  budgetPeakWeeklyMi?: number;
 }
 
 /**
@@ -10089,6 +10342,55 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
    */
   const iPaceForWeek = (t: number | null): number | null => (t == null ? null : anchors.intervalSecPerMi);
 
+  /**
+   * MPRACE-1 (2026-09-02) · WHICH WEEKS WILL HAVE NO LONG RUN.
+   *
+   * `embedMidBlockRaces` runs after this whole loop and sets `slot.isLong =
+   * wasLong`, so a tune-up race landing on the runner's long-run day REPLACES
+   * the long. `layoutWeek` therefore cannot see it, and the §4.4 cadence walk
+   * was handing the block's marathon-pace long to a week that would have no
+   * long run to hold it. See `racePaceLongThisWeek`'s header for the measured
+   * case: a four-week race-specific phase authored ZERO race-pace longs.
+   *
+   * Derived from the same three facts the embed decides on — the race date,
+   * `startMondayISO` and `longRunDow` — and from nothing else, so the two
+   * cannot drift apart on anything but a code change. The prediction is
+   * CHECKED rather than assumed: `MPRACE.long-slot-prediction-matches-the-embed`
+   * recomposes a block with an embedded long-day race and asserts the weeks
+   * this set names are exactly the weeks that ship without a training long.
+   *
+   * The plan's own race week is excluded, matching `dayAt`'s guard — that
+   * week's structure belongs to the race-week composer, and the cadence walk
+   * never reaches it (TAPER carries no race-pace long).
+   */
+  /**
+   * LONGEVIDENCE-1 · this block's long-run ceiling, resolved ONCE here and
+   * handed to every week, so no week can re-derive a different answer to
+   * "how far may the long run climb" (Rule 16). Recorded in
+   * `authored_state.long_run_ceiling` below with the two readings that
+   * produced it, so the answer is auditable rather than inferred.
+   */
+  const evidenceLongCapMi = evidenceLongCeilingMi({
+    demonstratedLongMi: input.demonstratedLongMi ?? null,
+    recentLongMi: input.recentLongMi,
+    tierPeakLongMi: tierTarget.peakLongMiBand[1],
+  });
+
+  const noLongRunWeeks: ReadonlySet<number> = (() => {
+    const out = new Set<number>();
+    for (const r of input.midBlockRaces ?? []) {
+      if (!r?.date || !(r.distanceMi > 0)) continue;
+      if (r.date >= input.raceDateISO) continue;
+      const off = daysBetween(input.startMondayISO, r.date);
+      if (off < 0 || off >= totalWeeks * 7) continue;
+      const wi = Math.floor(off / 7);
+      if (wi === totalWeeks - 1) continue;                  // the plan's own race week
+      const startDow = new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay();
+      if (((startDow + off) % 7) === input.longRunDow) out.add(wi);
+    }
+    return out;
+  })();
+
   const weeks: ComposedWeek[] = [];
   let phaseCursor = 0;
   let phaseWkRemaining = blocks.phases[0].weeks;
@@ -10161,6 +10463,8 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       tierTarget,
       trainingDaysPerWeek: input.trainingDaysPerWeek,
       cutbackEveryN,  // #13 · same cadence as volumeCurve's deload mask
+      noLongRunWeeks, // MPRACE-1 · weeks whose long-run day is a tune-up race
+      evidenceLongCapMi, // LONGEVIDENCE-1 · his own long runs, not the tier label
       // 2026-06-20 · beginner = base-building structure (light fartlek, no
       // structured I/R reps). Gated to level==='beginner', so intermediate/
       // advanced (incl. David) are unchanged.
@@ -10367,6 +10671,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     // be a volume the runner reached REPEATEDLY, which is the same reading
     // `resolveRampBase` already takes of the same series.
     ...(rampEvidence?.sustainedMi ? { rampAnchorMi: rampEvidence.sustainedMi } : {}),
+    budgetPeakWeeklyMi: peakWeeklyMi,   // PEAKLOAD-1 · the block's declared peak
     // AUTHORING-CANONICAL-1 · the plan-wide threshold is now the CANONICAL
     // anchor, not `input.tPaceSec` (which was `min(goalT, currentT)` — the
     // goal's own threshold pace whenever the goal was ambitious). One number,
@@ -10451,6 +10756,30 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       load_tier_reduced_by_goal: reducedByGoal,
       tier_peak_weekly_band: tierTarget.peakWeeklyMileageBand,
       tier_peak_long_band: tierTarget.peakLongMiBand,
+      /**
+       * LONGEVIDENCE-1 · WHY THE LONGEST RUN IS THE DISTANCE IT IS.
+       *
+       * The owner's fourth question, answered by the engine and stored, not
+       * written into a report. Both readings are kept, not just the winner, so
+       * a reader can see which one bound and by how much — and so a band that
+       * is not binding cannot be mistaken for the reason.
+       */
+      long_run_ceiling: {
+        ceilingMi: evidenceLongCapMi,
+        demonstratedLongMi: input.demonstratedLongMi ?? null,
+        recentNormalLongMi: input.recentLongMi,
+        cycleGrowth: CYCLE_GROWTH_CEILING.intermediate,
+        tierBandTopMi: tierTarget.peakLongMiBand[1],
+        boundBy: evidenceLongCapMi == null
+          ? 'tier_band_no_evidence'
+          : evidenceLongCapMi >= tierTarget.peakLongMiBand[1]
+            ? 'tier_band'
+            : (input.demonstratedLongMi ?? 0)
+                >= input.recentLongMi * (CYCLE_GROWTH_CEILING.intermediate as number)
+              ? 'demonstrated_long_run'
+              : 'cycle_growth_allowance',
+        citation: 'Research/00a-distance-running-training.md §"Volume progression rules"',
+      },
       // 2026-06-03 · Rule 11 · horizon raise. Null when no future race
       // raises the long-run cap above the current tier's. Drives the
       // chip on the plan UI ("LONG-RUN CAP · 22mi · setting up CIM").
@@ -12309,20 +12638,103 @@ export function finalizeComposedPlan(
   // rescale shrinks one taper week's long without touching the next, which
   // can re-introduce the very >30% jump this smoother exists to prevent
   // (workflow CRITICAL · marathon got zero plans on a ~17-week runway).
+  //
+  // ── CUTBACK-LONG-2 (2026-09-02) · THE DELOAD BRIDGE THIS PASS NEVER GOT ───
+  //
+  // The ceiling is now `validate.ts#longRunWoWCeilingMi`, the SAME function
+  // `validateComposedPlan` §4 asks. It was not, and the two disagreed: §4 got
+  // CUTBACK-LONG-1's bridge over a planned deload on 2026-08-28 and this pass —
+  // the one that actually CUTS the long run — kept a flat `prev × 1.30`. So
+  // authoring trimmed long runs the validator would have passed, and no gate
+  // could see it, because a validator only reports what is illegal and a long
+  // run trimmed BELOW the limit is legal.
+  //
+  // Measured on the reference marathoner's CIM block: week 9's long was capped
+  // at 20.5 = floor(16.0 × 1.30) off the CUTBACK week beside it, while the load
+  // week before that deload had already carried 19.5 — so the block peaked
+  // below the 21.5 the runner has already run, in a block whose own thesis is
+  // `increase_long_run_demand`. No guard is weakened here: the 110%/30-day
+  // spike rule (`enforceSpikeRule`), `layoutWeek`'s ramp ceiling and the tier
+  // long cap all still run, and one of them is what the week now lands on.
+  //
+  // The bridge is spent only over a PLANNED deload that is not a race week,
+  // which is §4's own test, and `prevWeek` walks composed weeks in order so
+  // "the week before the cutback" is the last week that carried a training
+  // long — a race week between them does not reset the chain, exactly as
+  // `prevLong` already did not.
+  // ── WHAT THIS DOES TO THE WEEK'S TOTAL, AND WHY NOTHING PAYS FOR IT ───────
+  //
+  // The old pass DELETED the miles it took off the long, so a week whose long
+  // it cut also shipped smaller. Letting the long stand therefore returns those
+  // miles to the week: on the reference block the realized peak week moves
+  // 58.5 -> 60.0, and every one of the 1.5 miles is long-run mileage. No easy
+  // day and no quality session changes anywhere in the block.
+  //
+  // Paying for the longer long run by trimming the easy days was written and
+  // then REMOVED. Rule 12 is explicit that easy running is sized first and is
+  // not the pool other sessions draw from — "cut quality, not the aerobic
+  // base" — and taking two miles off a 60-mile week's easy days to fund the
+  // long is that rule in reverse. Holding the week at 58.5 would mean deleting
+  // 1.5 miles from the long run, which is reinstating the defect.
+  //
+  // So the week's SIZE is left to the mechanism that owns it — the volume
+  // curve, and `enforceWeeklyRampCeiling` behind it, both untouched here.
   const smoothLongWoW = () => {
+    const cat = distanceCategoryOf(raceDistanceMi);
+    // The bridge ANCHOR is read by index, exactly as `validateComposedPlan` §4
+    // reads `longByWeek[i - 2]`, and from the same expression — so the two
+    // spend the identical number or neither spends one. A week with no
+    // training long (a tune-up race takes the slot) reads 0 and the bridge is
+    // simply not available, which is the validator's behaviour and is the
+    // stricter of the two readings.
+    const longByWeek = composed.weeks.map((w) =>
+      Math.max(0, ...w.days.filter((d) => d.isLong && d.type !== 'race').map((d) => d.distanceMi)));
     let prevLong = 0;
-    for (const week of composed.weeks) {
+    for (const [wi, week] of composed.weeks.entries()) {
       const day = week.days.find((d) => d.isLong && d.type !== 'race' && d.distanceMi > 0);
       if (!day) continue;
+      // The IMMEDIATELY preceding week, exactly as `validateComposedPlan` §4
+      // reads `weeks[i - 1]` — not the last week that happened to carry a
+      // training long. The difference is the whole point on a tune-up week:
+      // its long IS the race, so it carries no training long, and walking
+      // past it would bridge over a week the runner raced.
+      const prevWeek = composed.weeks[wi - 1] ?? null;
+      const bridgeLong = longByWeek[wi - 2] ?? 0;
       if (prevLong > 0) {
-        const ceil = Math.floor(prevLong * 1.30 * 2) / 2;
+        // COHERENCE FLOOR · the same 5 mi `enforceSpikeRule` already applies,
+        // for the same reason and with the measured evidence behind it.
+        //
+        // Below five miles a half-mile step is a tenth of the whole long run
+        // and several percent of the week, and the week does not have the
+        // miles to absorb it: on the archetype corpus, bridging a 3.0 mi
+        // cutback long to a 3.5 mi one moved 28 §12/§13 ladder sessions from a
+        // real multi-rung shape to a single flat rung, because the long took
+        // the rep budget the ladder needed to express itself
+        // (`_ladder_targets.test.ts`'s census, 497 -> 525). That is a worse
+        // session traded for a rounding-scale long run, on a population whose
+        // long run is not the block's primary stressor in the first place —
+        // `Research/22`'s 5K and 10K rows run every long plain E.
+        //
+        // The block this exists for is nowhere near the floor: the reference
+        // marathoner's bridged anchors are 18.0 and 19.5 mi.
+        const prevWasPlannedCutback = isPlannedDeloadWeek(prevWeek)
+          && bridgeLong >= SPIKE_MIN_COHERENT_ANCHOR_MI;
+        const ceil = Math.floor(
+          longRunWoWCeilingMi(cat, prevLong, { bridgeLongMi: bridgeLong, prevWasPlannedCutback }) * 2,
+        ) / 2;
         if (day.distanceMi > ceil) {
           const trim = day.distanceMi - ceil;
           day.distanceMi = ceil;
           week.weeklyMi = Math.max(0, Math.round((week.weeklyMi - trim) * 10) / 10);
         }
       }
+      // `prevLong` stays the last week that CARRIED a training long rather than
+      // the previous array slot, which is the pre-existing behaviour and is
+      // stricter than the validator: after a raced week `longByWeek[i-1]` is 0
+      // and §4 applies no limit at all, while this keeps the last real long as
+      // the reference. Only the bridge anchor is index-read.
       prevLong = day.distanceMi;
+      longByWeek[wi] = day.distanceMi;
     }
   };
 
@@ -12534,6 +12946,34 @@ export function finalizeComposedPlan(
     w.weeklyMi = Math.round(w.days.reduce((s, d) => s + ((d.type !== 'race' || !w.isRaceWeek) ? d.distanceMi : 0), 0) * 10) / 10;
   }
 
+  // ── SPIKEORDER-1 (2026-09-02) · THE SPIKE RULE SETTLES THE LONGS BEFORE
+  //    ANYTHING READS A WEEKLY PEAK ────────────────────────────────────────
+  //
+  // MIDRACE-ORDER-1, directly below, states the principle this obeys: "a
+  // reference is only worth reading once every pass that can lower it has run."
+  // `enforceSpikeRule` lowers long runs, and a long run is the largest single
+  // component of a week — so a ramp ceiling that runs before it measures weeks
+  // against a peak the spike rule is about to remove, and pays for a trim the
+  // week did not need out of the EASY days, which then stay cut after the long
+  // is shortened anyway.
+  //
+  // Measured on `_midrace_invariants.test.ts`'s CIM fixture: week 8's long
+  // stood at 21.5 when the ramp ceiling read it and at 16.5 when it shipped, so
+  // the peak week lost six miles of easy running to a ceiling that was never
+  // exceeded by the plan that ships — and the post-race week then became the
+  // block's peak, which is the exact invariant MIDRACE-RAMP-1 exists to hold.
+  //
+  // The spike rule keeps every property its own header argues for: it still
+  // runs inside `finalizeComposedPlan` on the plan that ships rather than on
+  // `layoutWeek`'s pre-finalization curve, still after both WoW smoothers, and
+  // still BEFORE COH-4 (see the note at its old call site, retained below).
+  // What changes is only that the ramp ceilings now read final longs. It also
+  // removes the one PERMISSIVE reading left in the old order — MIDRACE-RAMP-1
+  // trims without `protectLong`, so a long it shortened used to feed the spike
+  // rule's rolling anchor as if the runner had never been prescribed the
+  // longer one.
+  enforceSpikeRule();
+
   // ── THE TWO RAMP CEILINGS, IN THE ORDER THEY HAVE TO RUN ─────────────────
   //
   // WKRAMP-1 (2026-08-19) · the general ramp ceiling, on every week's REALIZED
@@ -12585,6 +13025,44 @@ export function finalizeComposedPlan(
     }
   }
 
+  // ── PEAKLOAD-1 (2026-09-02) · THE PLAN SHIPS THE PEAK IT DECLARES ─────────
+  //
+  // `layoutWeek`'s per-day floors can push a week's realized sum above the
+  // volume-curve budget it was handed — WKRAMP-1's own header says so — and
+  // VOL-1 then reports that number honestly. On the reference marathoner that
+  // meant `block_strategy.peakLoadMi` read 58.5 while three weeks shipped at
+  // 60.0: two answers to "what is the biggest week in this block" (Rule 16),
+  // with the runner shown the smaller one.
+  //
+  // The owner's ruling, 2026-09-02, is on the number itself: "Retain the
+  // proposed 58.5-mile peak unless new evidence contradicts it. Do not raise
+  // mileage to satisfy the self-declared 'advanced' category." His best week
+  // ever is 48.5 and he has never run 50, so 58.5 is already +20.6% on an
+  // all-time best; a further 1.5 arriving as a layout artefact is not evidence.
+  //
+  // `protectLong` is deliberate and is the Rule 12 trade stated out loud: the
+  // long run is the session the block exists to build and is bounded by its own
+  // doctrine (the 110%/30-day spike rule, the week-over-week limit, the tier
+  // cap), so a weekly-total cap must not pay for itself out of it. What it does
+  // pay out of is the easy days, which Rule 12 protects as a FLOOR rather than
+  // as untouchable — `layoutWeek` set that floor from the runner's own easy-day
+  // median and `trimWeekToVolume` keeps every surviving run above its junk-run
+  // minimum. The alternative is shipping a week the block's own strategy says
+  // is not its peak.
+  //
+  // Only ever REMOVES miles, and only above a budget the composer itself set,
+  // so it cannot make any week harder and is a no-op for every plan whose
+  // layout stayed inside its budget.
+  if (composed.budgetPeakWeeklyMi != null && composed.budgetPeakWeeklyMi > 0) {
+    const cap = composed.budgetPeakWeeklyMi;
+    for (const [wi, w] of composed.weeks.entries()) {
+      if (w.isRaceWeek || w.phase === 'TAPER') continue;   // taper is COH-4's, race week is its own
+      if (!((w.weeklyMi ?? 0) > cap + 0.05)) continue;
+      trimWeekToVolume(w, cap, true);
+      if (Array.isArray(composed.vols) && wi < composed.vols.length) composed.vols[wi] = w.weeklyMi;
+    }
+  }
+
   // SPIKEROLL-1 · runs HERE, deliberately BEFORE the taper rescale (COH-4,
   // directly below) rather than after it. Both orderings satisfy "read the
   // plan that ships, not `layoutWeek`'s pre-finalization curve" — the hand-
@@ -12610,6 +13088,15 @@ export function finalizeComposedPlan(
   // Placed HERE, COH-4 computes `nonTaperPeakR` off the ALREADY spike-trimmed
   // weeks, so the taper is sized against the peak that actually ships and the
   // two stay consistent by construction — no separate reconciliation needed.
+  //
+  // SPIKEORDER-1 (2026-09-02) · this is now the SECOND call. The first runs
+  // before the ramp ceilings so they read final long runs (see that call site
+  // for the six miles of easy running the old order cost). This one stays
+  // because MIDRACE-RAMP-1's trim does not protect the long, so a long it
+  // shortens changes the rolling anchor a later week reads — and the pass only
+  // ever removes miles, so a second call converges and is a no-op whenever the
+  // first left nothing to do. Same argument `smoothLongWoW` makes for being
+  // called three times.
   enforceSpikeRule();
 
   // 2026-06-23 · COH-4 · PROGRESSIVE taper enforcement, AFTER VOL-1 so it sees each week's REALIZED
@@ -12792,6 +13279,43 @@ export function finalizeComposedPlan(
   // for calling it a second: "only ever REMOVE miles, so ... the second call
   // converges and is a no-op whenever the first left nothing to do."
   smoothLongWoW();
+
+  // ── TAPERMP-ANCHOR-1 (2026-09-02) · THE MP SESSION IS SIZED OFF THE LONG,
+  //    SO IT IS RE-SIZED WHEN THE LONG MOVES ─────────────────────────────────
+  //
+  // `taperMpDose` is handed `qualityCeiling = min(longMi, 0.6 × weeklyMi)`, so
+  // §9.2's marathon-pace taper session is a value DERIVED from that week's long
+  // run — and every trimmer that shortens the long afterwards leaves it
+  // holding an anchor that no longer exists. Rule 10, inside the composer.
+  //
+  // The quality-or-easy re-cap several hundred lines above used to be the last
+  // pass that touched a long run, and is not any more: `authorDressRehearsal`
+  // authors §4.6's rehearsal long after it, and the `smoothLongWoW()` call
+  // directly above trims that rehearsal against the previous week's long. A
+  // week whose long is cut there ships the older, larger MP session beside it,
+  // and the validator reports "tempo N mi exceeds the long N mi · the long must
+  // be the week's longest run" — which `_sweep_allusers` catches on a 25 mi/wk
+  // marathoner carrying §9.2's 11-mile MP session against an 11-mile long.
+  //
+  // A pre-existing hole rather than one CUTBACK-LONG-2 opened; the numbers
+  // simply had not broken it before. Scoped to `isMpTaperSession` — the one
+  // session in the plan sized off the long AND carrying its own segment
+  // arithmetic in its sub_label — because the general "cap every quality day at
+  // the long" version of this was written first and REJECTED: on a 5K runner
+  // whose longest run is three miles it re-cuts §12/§13 ladder sessions that
+  // were authored at their full shape, collapsing 28 more of them to a single
+  // flat rung (`_ladder_targets.test.ts`'s ratchet, 497 -> 525). Trimming the
+  // day without re-authoring the session is not the same as sizing it right.
+  for (const w of composed.weeks) {
+    const longMi = Math.max(0, ...w.days.filter((d) => d.isLong).map((d) => d.distanceMi));
+    if (longMi <= 0) continue;
+    for (const d of w.days) {
+      if (d.isLong || !isMpTaperSession(d) || d.distanceMi <= longMi) continue;
+      w.weeklyMi = Math.max(0, Math.round((w.weeklyMi - (d.distanceMi - longMi)) * 10) / 10);
+      d.distanceMi = longMi;
+      resizeMpSession(d, d.distanceMi);
+    }
+  }
 
   // DOCTRINE-DOSING-2 (2026-08-18) · Daniels' dosing caps, reconciled after
   // every pass that moved mileage. Runs BEFORE the intensity floor: it only
@@ -15543,6 +16067,9 @@ async function loadGeneratorInputs(
   }
   const easyFloor = await easyDayMedianMi(userId, todayISO, prescribedSpans);
   const recentLongRead = await recentPeakLongMi(userId, todayISO, prescribedSpans);
+  // LONGEVIDENCE-1 · the same prescribed spans, so a raced marathon and the
+  // taper that led into it are excluded from what this runner "has done".
+  const demonstratedLong = await demonstratedLongMi(userId, todayISO, prescribedSpans);
   // A plan authored on a failed read is a plan authored on a fabricated
   // history. Refuse — the runner keeps the plan they have, and the refusal is
   // a correct answer with a reason on it, not an empty state.
@@ -15966,6 +16493,11 @@ async function loadGeneratorInputs(
       easyDayMedianMi: easyFloor ?? 0,
       recentLongMi: recentLong,
       spikeAnchorLongMi,
+      // LONGEVIDENCE-1 · the block's long-run ceiling comes from HIS long runs.
+      // Rule 11: `null` is the read failing, which leaves the tier band in
+      // place; a runner who has simply never run long reads 0 and gets the same
+      // band for a different and correct reason. The two are not collapsed.
+      demonstratedLongMi: demonstratedLong,
       // DESIGNEDWEEKEND-1 · see `demonstratedPairMi`.
       demonstratedPairMi: pairRead?.mi ?? null,
       demonstratedPairFromISO: pairRead?.fromISO ?? null,
