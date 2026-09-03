@@ -507,22 +507,41 @@ export function composePostRunAnalysis(input: PostRunAnalysisInput): PostRunAnal
   if (!samples.some((s) => s.paceSecPerMi != null || s.hrBpm != null)) return null;
 
   const bands = bandsFrom(input.gradedPhases);
+  const elevation = elevationSeries(splits, input.totalDistanceMi);
 
-  /* THE SPAN THE AXIS COVERS. What the STRUCTURE covers, never the run's
-   * total: on 2026-09-02 the phases account for 5.98 of a 6.41 mile run, and
-   * stretching the axis to 6.41 would draw four tenths of empty chart that
-   * looks like a sensor dropout. What the run's total is, and how it differs
-   * from what the phases cover, is `PostRunCapture`'s sentence to say — it is
-   * already said, above the numbers, and saying it again in a chart axis
-   * would be Rule 17.
+  /* ── THE SPAN THE AXIS COVERS · THE UNION OF EVERY LAYER ────────────────
    *
-   * The last BAND's end and not the last SAMPLE's position, where there are
-   * bands: the samples stop a beat before the phase does, and an axis a
-   * fraction shorter than the bands drawn on it puts the cool-down's right
-   * edge past the end of the chart. */
+   * As far as ANY layer has something to draw, and no further.
+   *
+   * THE UNION, AND NOT THE SAMPLES ALONE, WHICH IS A CORRECTION. This took
+   * the furthest sample and the last band, and on the owner's 2026-08-23 run
+   * that was wrong in a way only a render showed. The run is 11.01 miles; the
+   * watch recorded ONE phase covering 5.00 of them; the splits cover 11.88.
+   * So the axis was 4.98 miles long, the mile ticks read 1 to 4 under a
+   * heading that says "the shape of the run", and the elevation layer — which
+   * has readings for the whole 11.88 — was silently cropped to its first
+   * five. Three layers, two spans, on a component whose entire premise is
+   * that they share one.
+   *
+   * Extending to the union does not invent anything. Past mile five the pace
+   * and heart layers have no readings, so they are null, so the line BREAKS —
+   * which is the honest-gaps rule already doing its job, and it says the true
+   * thing: the watch stopped recording detail there and the run went on.
+   *
+   * AND NOT THE RUN'S OWN TOTAL. `totalDistanceMi` is not in this maximum,
+   * deliberately: on 2026-09-02 it is 6.41 against 5.98 of phases, and
+   * stretching the axis to a distance NO layer has a reading for would draw
+   * four tenths of empty chart that reads as a sensor dropout. That
+   * difference is `PostRunCapture`'s sentence to say, it is already said
+   * above the numbers, and repeating it as chart furniture is Rule 17.
+   *
+   * The last BAND's end counts, not just the last sample: samples stop a beat
+   * before their phase does, and an axis a fraction shorter than the bands
+   * drawn on it puts the cool-down's right edge past the end of the chart. */
   const spanMi = Math.max(
     samples.reduce((m, s) => Math.max(m, s.atMi), 0),
     bands.length > 0 ? bands[bands.length - 1].toMi : 0,
+    elevation && elevation.length > 0 ? elevation[elevation.length - 1].atMi : 0,
   );
   if (!(spanMi > 0)) return null;
 
@@ -554,8 +573,6 @@ export function composePostRunAnalysis(input: PostRunAnalysisInput): PostRunAnal
   const hasPace = points.some((p) => p.paceSecPerMi != null);
   const hasHr = points.some((p) => p.hrBpm != null);
   if (!hasPace && !hasHr) return null;
-
-  const elevation = elevationSeries(splits, input.totalDistanceMi);
 
   return {
     version: POST_RUN_ANALYSIS_VERSION,

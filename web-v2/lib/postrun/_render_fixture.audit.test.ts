@@ -56,6 +56,13 @@ const RUNS: Record<string, string> = {
   'run-0901.json': '-258355938987883',
   // The easy-plus-strides session — charts, stride bands, and NO comparator.
   'run-0902.json': '-145861381014809',
+  /* THE ELEVATION CASE. Eleven of the owner's last fourteen runs record no
+   * per-mile elevation at all, so neither run above draws that layer and
+   * PR-10 could not be rendered from them. This one's splits carry `elev_ft`,
+   * which is what the layer is built from. Kept in the list precisely because
+   * a feature that only ever renders on rows nobody has is a feature nobody
+   * has seen. */
+  'run-0823.json': '-55341764239083',
 };
 
 describe.skipIf(!RO || !OUT_DIR)('capture the run-detail payload for rendering', () => {

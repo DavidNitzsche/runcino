@@ -111,6 +111,39 @@ describe('the shared axis · PR-11 is structural, not a promise', () => {
     expect(last).toBeGreaterThan(a.bands[a.bands.length - 1].fromMi);
   });
 
+  it('REGRESSION · the axis is the UNION of the layers, not the samples alone', () => {
+    /* The owner's 2026-08-23 run: 11.01 miles, of which the watch recorded ONE
+     * phase covering 5.00, and twelve split rows covering the lot. The axis
+     * used to be the samples' 4.98 — so the mile ticks read 1 to 4 under a
+     * heading saying "the shape of the run", and the elevation layer, which
+     * has readings for the whole distance, was cropped to its first five.
+     *
+     * Found by rendering. Three layers, two spans, on a component whose whole
+     * premise is that they share one.
+     *
+     * FALSIFIER: drop the elevation term from the `spanMi` maximum and the
+     * elevation series runs off the end of the axis again. */
+    const a = composePostRunAnalysis({
+      rawPhases: [{ ...samples(60, 5.0, 515, 140) }],
+      gradedPhases: [graded({ index: 0, type: 'work', actualDistanceMi: 5.0 })],
+      rawSplits: Array.from({ length: 11 }, (_, i) => ({
+        mile: i + 1, pace: '8:40', hr: 140, elev_ft: i % 2 === 0 ? 12 : -8,
+      })),
+      totalDistanceMi: 11.01,
+    })!;
+    const lastElev = a.elevation![a.elevation!.length - 1].atMi;
+    const lastPoint = a.points[a.points.length - 1].atMi;
+    // The axis reaches the elevation layer's end, not the samples'.
+    expect(lastPoint).toBeGreaterThan(10);
+    expect(lastPoint).toBeGreaterThanOrEqual(lastElev - a.bucketMi);
+    // And past the samples the pace layer is a GAP, not a continuation.
+    const beyond = a.points.filter((p) => p.atMi > 6);
+    expect(beyond.length).toBeGreaterThan(10);
+    expect(beyond.every((p) => p.paceSecPerMi === null)).toBe(true);
+    // Which the spoken summary says out loud rather than leaving to the eye.
+    expect(a.accessibilitySummary).toMatch(/recorded nothing/);
+  });
+
   it('spans what the phases cover, not the run total · the overtime is prose', () => {
     /* On 2026-09-02 the phases account for 5.98 of a 6.41 mile run. Stretching
      * the axis to 6.41 draws four tenths of empty chart that reads as a sensor
