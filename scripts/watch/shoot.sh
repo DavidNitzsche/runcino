@@ -33,14 +33,60 @@ set -euo pipefail
 # under one green line. An agent verifying a face change by rendering it saw
 # somebody else's code and had no way to tell.
 #
-# Same resolution as the gate, with the literal kept as the fallback for the
-# case it was written for: invocation from somewhere that is not a git tree.
-# Anchored on THIS FILE, not on the caller's cwd — the gate invokes this by
-# absolute path from wherever the push happened, and a cwd-relative answer
-# would reintroduce the same wrong-tree bug through a different door.
-ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -z "$ROOT" ] || [ ! -d "$ROOT/native-v2" ]; then
-  ROOT="/Volumes/WP/06 Claude Code/Runcino"
+# WORKTREE-RENDER-2 (2026-09-03) · WORKTREE-RENDER-1 WAS FALSE IN THE ONE
+# CONTEXT THAT MATTERS: A GIT HOOK.
+#
+# The fix above resolved ROOT with `git -C "$(dirname "$0")" rev-parse
+# --show-toplevel`. Correct when a human runs the script. But `git push` EXPORTS
+# `GIT_DIR` into the hook environment, and an exported GIT_DIR outranks `-C`, so
+# inside the pre-push hook that same command returns
+#
+#     …/scripts/watch          ← the script's own directory, not the repo root
+#
+# `$ROOT/native-v2` is not a directory there, so the guard below fired and ROOT
+# silently became the HARDCODED MAIN CHECKOUT. The seventh way to judge a
+# screenshot of the wrong binary, and the same wrong-TREE bug WORKTREE-RENDER-1
+# was written to kill, walking back in through the git-hook door.
+#
+# It is not theoretical and it is not rare: it is what happens on EVERY pre-push
+# from a linked worktree, which is how every agent session in this repo works.
+# Measured 2026-09-03 — a board added in a worktree rendered blank 6 times out
+# of 6 under the hook and correctly every time when run by hand, because the
+# hook was building a tree that did not contain it. The staleness assert cannot
+# see this: it compares the binary against the SAME wrong tree's sources, which
+# are perfectly self-consistent.
+#
+# `check-watch.sh` is unaffected — its expression is a BARE `git rev-parse
+# --show-toplevel` with the pushing worktree as cwd, which GIT_DIR resolves
+# correctly. So the gate's tests and source guards were always honest about the
+# pushed commit and only the RENDER half was looking elsewhere, under one green
+# line. Verified both expressions under a hook-shaped GIT_DIR before writing
+# this.
+#
+# The fix uses no git at all, so there is nothing for GIT_DIR to redirect: walk
+# up from this file's own real location to the first directory that carries the
+# two things a render needs. And FAIL rather than fall back — a hardcoded path
+# is a guess, and this file's entire subject is not guessing about which binary
+# you are looking at.
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *)  SELF="$(cd "$(dirname "$SELF")" && pwd)/$LINK" ;;
+  esac
+done
+ROOT="$(cd "$(dirname "$SELF")" && pwd)"
+while [ "$ROOT" != "/" ]; do
+  if [ -d "$ROOT/native-v2" ] && [ -d "$ROOT/legacy/native/Faff" ]; then break; fi
+  ROOT="$(dirname "$ROOT")"
+done
+if [ "$ROOT" = "/" ]; then
+  echo "shoot.sh: could not find the repo root above $(dirname "$SELF")." >&2
+  echo "  Looked for a directory holding BOTH native-v2/ and legacy/native/Faff/." >&2
+  echo "  Refusing to guess: rendering the wrong tree is the defect this file exists" >&2
+  echo "  to prevent, and a fallback path is a guess wearing a default's clothes." >&2
+  exit 1
 fi
 PROJ="$ROOT/native-v2"
 WATCH="$ROOT/legacy/native/Faff/FaffWatch Watch App"
