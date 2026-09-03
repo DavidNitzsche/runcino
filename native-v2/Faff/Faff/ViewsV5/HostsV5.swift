@@ -309,6 +309,7 @@ struct TodayHostV5: View {
                           onBackToToday: { backToToday() },
                           onPageWeek: { await stepWeekAndWait($0 * 7, from: model) },
                           onOpenPacesMoved: { path.append(.pacesMoved) },
+                          onOpenRace: { slug in path.append(.raceDetail(slug: slug)) },
                           onReportSick: { sym, started, fever in
                               Task { await reportSick(sym, started, fever) }
                           },

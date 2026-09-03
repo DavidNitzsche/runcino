@@ -480,6 +480,9 @@ struct V5Today: Decodable, Equatable {
     /// notification is the lock-screen half; this is what the runner finds
     /// when they open Today. Absent on older servers.
     let blockNote: V5BlockNote?
+    /// DECISION-2 · race content on Today. Non-nil only on a race day whose
+    /// resolver succeeded. Absent on older servers.
+    let race: V5Race?
 
     // ── after a run ──
     /// The asked-vs-ran table. Effort is the only tappable row.
@@ -603,6 +606,35 @@ struct V5Today: Decodable, Equatable {
 struct V5BlockNote: Decodable, Equatable {
     let title: String
     let body: String
+}
+
+/// DECISION-2 (2026-09-03) · race content on Today, not only in the pre-run
+/// lobby. Every field here is a straight decode of `web-v2/lib/faff/race-
+/// on-today.ts`'s `V5RaceOnToday` — that file's own header is the ownership
+/// statement: nothing on this struct is computed by the phone, and nothing
+/// here is a second answer to a question `WatchWorkout` (the lobby's own
+/// race fields) or race-detail already answer. `executionTargetSec` and
+/// `goalSec` are deliberately separate fields — never merge them into one
+/// "target" the way a stale surface once did (Rule 16's CIM incident).
+struct V5Race: Decodable, Equatable {
+    let slug: String
+    let name: String
+    let distanceMi: Double
+    /// "race" or "controlled_c_effort" — `RaceOutlook.execution.effortCharacter`
+    /// verbatim, not re-worded here.
+    let role: String
+    let priority: String?
+    /// THE CURRENT PRESCRIBED EXECUTION TARGET. Never the goal.
+    let executionTargetSec: Int?
+    /// The runner's STATED goal, kept visibly distinct from the execution
+    /// target above. `nil` when none was stated.
+    let goalSec: Int?
+    let strategyLabel: String?
+    /// The one canonical HR sentence, `raceHrLine()` verbatim.
+    let hrLine: String?
+    let checkpointMi: Double?
+    let checkpointAbortBpm: Int?
+    let fuelingSummary: String?
 }
 
 /// THE COACHING THESIS · `BRAIN_CONSTITUTION.md` §F, on the wire.
@@ -1843,7 +1875,7 @@ extension V5Today {
         case routeSplits, routePhases, hrZones, paceBand, elevGainMeasured
         case shoesWorn, whatThisDidToTheWeek, runId, postRun
         case injury, weekOff, offSeason, notOnPhoneYet
-        case paceNote, blockNote, sick
+        case paceNote, blockNote, sick, race
         case facts, win, conditionsNote, coachTip
         case hrAvg, hrMax, cadenceAvg, tempF, workoutType
         case hrAvgWork, cadenceAvgWork, paceWork
@@ -1897,6 +1929,7 @@ extension V5Today {
         paceNote = c.opt(.paceNote)
         blockNote = c.opt(.blockNote)
         sick = c.opt(.sick)
+        race = c.opt(.race)
     }
 }
 

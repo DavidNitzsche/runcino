@@ -239,6 +239,12 @@ export interface V5Today {
   /// The push notification (`renderBlockStarted`) is the lock-screen half of
   /// this; the note is what the runner finds when they open Today.
   blockNote: { title: string; body: string } | null;
+  /// DECISION-2 (2026-09-03) · race content on Today, not only in the
+  /// pre-run lobby. Non-null only on a race day (`ctx.raceDay`) whose
+  /// resolver succeeded — see `lib/faff/race-on-today.ts`'s header for the
+  /// full ownership statement. Optional so a pre-existing context builder
+  /// stays valid, matching `thesis?` just above.
+  race?: V5RaceOnToday | null;
 
   askedVsRan: V5Row[];
   verdict: string | null;
@@ -395,6 +401,7 @@ import { fmtMi, fmtMi2, fmtClock, fmtPaceSlash as fmtPace } from '@/lib/format/r
 import { canonicalSessionType } from '@/lib/training/workout-type';
 import { hrCapBreached } from '@/lib/training/execution-semantics';
 import type { ThesisWire } from '@/lib/training/coaching-thesis';
+import type { V5RaceOnToday } from './race-on-today';
 export { fmtMi, fmtClock, fmtPace };
 
 const TRACK_M = [200, 300, 400, 600, 800, 1000, 1200, 1500] as const;
@@ -905,6 +912,11 @@ export interface V5TodayContext {
   blockNote?: { title: string; body: string } | null;
 
   raceDay: boolean;
+  /// See `V5Today.race`. Resolved by the route (needs DB access this pure
+  /// composer doesn't have) via `lib/faff/race-on-today.ts`; `undefined` on
+  /// a pre-existing context builder that predates this field, `null` when
+  /// `raceDay` is true but the resolver found or built nothing.
+  raceOnToday?: V5RaceOnToday | null;
 
   /**
    * PRERUN-1 · WHAT TO DO IF IT GOES WRONG.
@@ -1842,6 +1854,10 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   t.beforeYouGo = ctx.beforeYouGo;
   t.paceNote = ctx.paceNote;
   t.blockNote = ctx.blockNote ?? null;
+  // DECISION-2 · race content on Today. `ctx.raceOnToday` is already fully
+  // resolved (see `lib/faff/race-on-today.ts`'s header) — this line
+  // threads it through, it does not compute anything.
+  t.race = ctx.raceOnToday ?? null;
   t.weekStrip = buildWeekStrip(ctx);
   return t;
 }

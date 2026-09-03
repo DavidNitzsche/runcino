@@ -52,6 +52,7 @@ struct TodayBeforeLiveV5: View {
     /// WKSTRIP-RACE-1 in ChartsV5.swift; the strip's recentre awaits this.
     var onPageWeek: (Int) async -> Void = { _ in }
     var onOpenPacesMoved: () -> Void = {}
+    var onOpenRace: (String) -> Void = { _ in }
     var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
     /// Re-reads the Today surface after a write. Owned by `TodayHostV5`'s
     /// own `V5Surface<V5Today>` — this view never holds a surface of its
@@ -101,6 +102,7 @@ struct TodayBeforeLiveV5: View {
             onBackToToday: onBackToToday,
             onPageWeek: onPageWeek,
             onOpenPacesMoved: onOpenPacesMoved,
+            onOpenRace: onOpenRace,
             onReportSick: onReportSick
         )
         .task { await prefetch() }
