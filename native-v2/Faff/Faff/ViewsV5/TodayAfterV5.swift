@@ -46,9 +46,6 @@ struct TodayAfterV5: View {
     let model: V5Today
 
     var onOpenAccount: () -> Void
-    /// The runner answered "how hard was it". Leaves the screen: the caller
-    /// persists it.
-    var onLogEffort: (Int) -> Void
     /// A body part was picked in the niggle picker. Leaves the screen: the
     /// caller persists it.
     var onFlagNiggle: (String) -> Void
@@ -81,13 +78,6 @@ struct TodayAfterV5: View {
     /// expand-in-place row as the before-run screen; see `SickV5.swift`.
     var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
 
-    /// Which asked-vs-ran / per-mile row is expanded in place. Keyed by the
-    /// row's own server id, per the "identity is the server id" rule — never
-    /// a single shared bool, so a future payload with more than one
-    /// actionable row would not cross-wire two rows to one disclosure.
-    @State private var expandedRowID: String?
-    @State private var pendingEffort: Int?
-
     @State private var niggleOpen = false
     @State private var niggleFlagged: String?
 
@@ -114,7 +104,6 @@ struct TodayAfterV5: View {
 
     init(model: V5Today,
          onOpenAccount: @escaping () -> Void = {},
-         onLogEffort: @escaping (Int) -> Void = { _ in },
          onFlagNiggle: @escaping (String) -> Void = { _ in },
          onOpenInjuryFlare: @escaping () -> Void = {},
          onChangeShoe: @escaping () -> Void = {},
@@ -135,7 +124,6 @@ struct TodayAfterV5: View {
         self.initials = initials
         self.model = model
         self.onOpenAccount = onOpenAccount
-        self.onLogEffort = onLogEffort
         self.onFlagNiggle = onFlagNiggle
         self.onOpenInjuryFlare = onOpenInjuryFlare
         self.onChangeShoe = onChangeShoe
@@ -144,13 +132,6 @@ struct TodayAfterV5: View {
         self.onPushStrava = onPushStrava
         self.onPickDay = onPickDay
         self.onReportSick = onReportSick
-
-        // The one row the server marks actionable in this table is effort.
-        // If it has not been answered yet, the scale opens by default —
-        // the prototype's own behaviour — rather than waiting for a tap.
-        let effortRow = model.askedVsRan.first(where: { $0.action != nil })
-        let notAnswered = effortRow?.value?.text == nil
-        _expandedRowID = State(initialValue: notAnswered ? effortRow?.id : nil)
     }
 
 
@@ -209,22 +190,68 @@ struct TodayAfterV5: View {
                         CoachSay(text: note.body, size: .md)
                     }
                 }
-                // Effort, then the readings, as one column. The gap between
-                // them is the row gap, not the group gap — they are one list
-                // of numbers about one run, not two subjects.
+
+                /* ═══ LAYER 1 · THE WORKOUT RESULT ═══════════════════════
+                 *
+                 * 2026-09-03 · brought into line with `RunDetailV5`'s same
+                 * pass, over what THIS payload can honestly support. `model
+                 * .paceWork` is the same server-computed work-phase average
+                 * `RunDetailV5.pace_work` is; completion count and rep-to-
+                 * rep consistency are NOT drawn here, because `V5RoutePhase`
+                 * carries no `completed` flag and no `pace_shape`, so this
+                 * screen cannot tell a true rep from a stride the way
+                 * `phase_breakdown`'s `pace_shape == "effort"` lets
+                 * `RunDetailV5` do. Showing a confident count or a
+                 * consistency sentence anyway would be exactly the kind of
+                 * client-side guess Rule 1 exists to stop. Flagged as a
+                 * missing canonical dependency in the handback rather than
+                 * quietly worked around.
+                 */
+                WorkoutResultFactsV5(workPaceText: model.paceWork)
+
+                recapSection
+
+                if let pr = model.postRun {
+                    PostRunLearnedV5(model: pr, includes: [.capture, .meaning])
+                }
+
+                // Compact supporting context — effort (now the ONE picker,
+                // see `askedVsRanSection`'s own header) and the rest of what
+                // the watch recorded, as one column.
                 VStack(alignment: .leading, spacing: 0) {
                     askedVsRanSection
                     readingSection
                 }
-                recapSection
+
+                /* ═══ LAYER 2 · WORKOUT ANALYSIS ═══════════════════════ */
+
                 if !model.groups.isEmpty {
                     groupsTile
                 }
+                if let pr = model.postRun {
+                    PostRunLearnedV5(model: pr, includes: .strides)
+                }
+
+                /* ═══ LAYER 3 · CHARTS AND COMPARISON ═══════════════════
+                 *
+                 * NOT BUILT ON THIS SCREEN. `V5Today` carries no `analysis`
+                 * and no `matchedWorkout` — `RunDetailV5` is the only screen
+                 * with the synchronized chart and the matched-effort
+                 * comparison, because those two fields are simply absent
+                 * from this payload. Named here, not silently skipped: see
+                 * the handback for the missing-dependency entry this is.
+                 */
+
+                /* ═══ LAYER 4 · DETAILED EVIDENCE ═══════════════════════ */
+
                 if let shares = model.zoneShares, !shares.isEmpty {
                     zoneTile(shares)
                 }
                 routeOrBeltCard
                 breakdownSection
+
+                /* ═══ LAYER 5 · ACTIONS ══════════════════════════════════ */
+
                 if let shoe = model.shoesWorn {
                     ListGroup(header: "Shoes you wore") {
                         shoeRow(shoe)
@@ -677,74 +704,26 @@ struct TodayAfterV5: View {
         }
     }
 
+    /// 2026-09-03 · THE EFFORT ROW NO LONGER DRAWS HERE.
+    ///
+    /// This ForEach used to special-case the one row the server marks
+    /// actionable (`row.action != nil`, always effort) into a ten-button
+    /// picker at 29pt per cell — the component's own prior comment named the
+    /// defect outright: "Ten cells in a row across a phone cannot each be
+    /// 44... it is reported rather than quietly altered." It was also, as of
+    /// this pass, a SECOND effort-logging control on the same screen:
+    /// `RPECaptureRow` (Layer 5, the "Log" group below) writes the exact same
+    /// `POST /api/runs/[id]/rpe` this row's `onLogEffort` called directly —
+    /// two pickers for one number is worse than the accessibility defect
+    /// either one has alone. The actionable row is filtered out here; its
+    /// job belongs to the one accessible picker now.
     private var askedVsRanSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(model.askedVsRan) { row in
-                if row.action != nil {
-                    ExpandingRow(label: row.label,
-                                 sub: row.sub,
-                                 value: Self.fv(row.value),
-                                 question: row.sub.map { "How hard was it \u{00B7} \($0)" } ?? "How hard was it",
-                                 isExpanded: expandedBinding(for: row.id)) {
-                        effortScale
-                    }
-                } else {
-                    ListRow(label: row.label, sub: row.sub, value: Self.fv(row.value))
-                }
+            ForEach(model.askedVsRan.filter { $0.action == nil }) { row in
+                ListRow(label: row.label, sub: row.sub, value: Self.fv(row.value))
             }
         }
         .padding(.horizontal, V5.S.s4)
-    }
-
-    private func expandedBinding(for id: String) -> Binding<Bool> {
-        Binding(
-            get: { expandedRowID == id },
-            set: { isOpen in expandedRowID = isOpen ? id : (expandedRowID == id ? nil : expandedRowID) }
-        )
-    }
-
-    private var effortScale: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 10), spacing: 4) {
-            ForEach(1...10, id: \.self) { n in
-                Button {
-                    pendingEffort = n
-                    onLogEffort(n)
-                    withAnimation(V5.Motion.expand) { expandedRowID = nil }
-                } label: {
-                    Text("\(n)")
-                        // TEN CELLS IN A ROW ACROSS A PHONE IS 29 POINTS EACH.
-                        //
-                        // Scaled with the reading register, "10" outgrew its
-                        // cell at the first accessibility size and rendered as
-                        // "…" — the top of the effort scale, unreachable,
-                        // where the runner is being asked to pick a number.
-                        // The grid is a fixed graphic; its digits are sized to
-                        // the cell. The question above it still scales, and
-                        // every cell is named for VoiceOver below.
-                        .font(.faffText(16, scales: false))
-                        .foregroundStyle(pendingEffort == n ? V5.actionPrimaryText : V5.textPrimary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 46)
-                        .background(pendingEffort == n ? V5.signal : V5.materialTile,
-                                    in: RoundedRectangle(cornerRadius: V5.R.r10, style: .continuous))
-                }
-                .buttonStyle(V5PressStyle())
-                // TEN BUTTONS CALLED "1" THROUGH "10", AND NOTHING SAYING
-                // WHAT THEY WERE FOR OR WHICH ONE WAS ALREADY CHOSEN.
-                //
-                // The scale opens in place under the Effort row, so a sighted
-                // runner reads the question from the row above. VoiceOver
-                // moves focus into the expansion and the question is behind
-                // it. And the chosen number is drawn as an orange fill, which
-                // is a colour — nothing announced it.
-                //
-                // The cells are 29pt wide. Ten of them across a phone cannot
-                // each be 44, so the width is the design's to change, not
-                // this file's; it is reported rather than quietly altered.
-                .accessibilityLabel("Effort \(n) of 10")
-                .accessibilityAddTraits(pendingEffort == n ? [.isSelected] : [])
-            }
-        }
     }
 
     // MARK: - Per-mile instruction groups, with actual numbers
@@ -1270,7 +1249,9 @@ struct TodayAfterV5: View {
                      // run detail's phase panel reads. Nil on an ungraded
                      // phase and on older payloads — no row invents one.
                      verdictPhrase: p.statusLabel,
-                     chosen: false)
+                     chosen: false,
+                     kind: RepPiece.Kind.of(type: p.type, isWork: p.type.map { $0 == "work" } ?? true),
+                     durationSec: p.sec)
         }
     }
 
@@ -1466,9 +1447,11 @@ struct TodayAfterV5: View {
     // heading about what the coach learned.
     @ViewBuilder
     private var whatThisDidSection: some View {
-        if let pr = model.postRun {
-            PostRunLearnedV5(model: pr)
-        }
+        // `PostRunLearnedV5` no longer drawn here (2026-09-03) — `.capture`
+        // and `.meaning` moved to Layer 1, `.strides` to Layer 2, each with
+        // the rest of the section it belongs beside. This group is now
+        // Layer 5's Log, exactly what its header already says it is.
+        //
         // Always drawn: the picker is the only way to flag a niggle, and an
         // action the runner cannot find is an action that does not exist.
         ListGroup(header: "Log") {

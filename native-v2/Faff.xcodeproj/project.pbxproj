@@ -23,6 +23,7 @@
 		10AA3116544E4E9AE0559A9B /* SessionHygiene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 872674AC672B720B19FB3D93 /* SessionHygiene.swift */; };
 		10B0FB5796B31155C12CDF83 /* ScreensCatalogV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1AFCF59C06ED8C5C087F66C /* ScreensCatalogV5.swift */; };
 		121AAA50A62B2D18163E4040 /* K_TargetsProjectionDepth.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8C0E49F71B6BB27E246B9C6 /* K_TargetsProjectionDepth.swift */; };
+		1275E399631B2E935D4C63D7 /* WorkoutResultV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E594B2B0E865304C5E181D2 /* WorkoutResultV5.swift */; };
 		12C8B803062A13AD7088FE18 /* TreadmillHRSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43619EB76197C5C19037C644 /* TreadmillHRSession.swift */; };
 		12CCD50936DC4C94D2F4B5B5 /* ChartsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */; };
 		139194B23E9B0471DE018B7F /* _CapturePastPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1FEB2ECFDE3A3747C78B7C /* _CapturePastPlanTests.swift */; };
@@ -152,6 +153,7 @@
 		9FD3746AE67B05A44D1CC065 /* WatchLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BC0F0DA346169545F683D08 /* WatchLayout.swift */; };
 		A11A3E74B3A9B30D43030CAA /* B_Provenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46AEF8CAC73238CD1F086945 /* B_Provenance.swift */; };
 		A2205010201940343C1796E2 /* ToolkitPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B4214411E5A308A6B07D6E4 /* ToolkitPayloads.swift */; };
+		A2221A3F9596AA26A0DA2BE4 /* RPECaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5588DFAB05E7FC333B1F14 /* RPECaptureTests.swift */; };
 		A2BEE994D2DF7B2FCF1B1290 /* FaffWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B66BB20F1C8DE49B6D9600 /* FaffWidgetBundle.swift */; };
 		A2E9E71A2FA154AA15B03FC3 /* NotificationInboxSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 430D66F00D99D78BC50D43E3 /* NotificationInboxSheet.swift */; };
 		A4B00D17F9CD81D6D57E75E3 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3021BAFCB3395A359AD25A3C /* TodayView.swift */; };
@@ -365,6 +367,7 @@
 		3B93A292D47A0897A9E97E59 /* MileBreakdownV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MileBreakdownV5.swift; sourceTree = "<group>"; };
 		3C2B62D9179AAC7D41426156 /* FaffApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffApp.swift; sourceTree = "<group>"; };
 		3C5CA8D8B53BA60480112C8E /* CoachDecisionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachDecisionCard.swift; sourceTree = "<group>"; };
+		3E594B2B0E865304C5E181D2 /* WorkoutResultV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutResultV5.swift; sourceTree = "<group>"; };
 		3ECBCD6E9046A23C7E277F44 /* _SessionSim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = _SessionSim.swift; sourceTree = "<group>"; };
 		3ED5967D6ADA9E9585BF4286 /* SweepPositiveControlTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweepPositiveControlTests.swift; sourceTree = "<group>"; };
 		3ED7487505A037C4114A81C1 /* Archivo-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Archivo-Variable.ttf"; sourceTree = "<group>"; };
@@ -419,6 +422,7 @@
 		7946847F45F40D00337CF5F6 /* FaffWatch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "FaffWatch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "FaffWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7A2DDEC15725161C4032FEC9 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
+		7A5588DFAB05E7FC333B1F14 /* RPECaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPECaptureTests.swift; sourceTree = "<group>"; };
 		7BF7E6E0D868BFA61684A1B5 /* SickV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SickV5.swift; sourceTree = "<group>"; };
 		7C1BECCB43A8C9B865BBDCA7 /* HealthSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSeed.swift; sourceTree = "<group>"; };
 		7CBC6B190CCB38D107978B08 /* PhoneRunTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRunTracker.swift; sourceTree = "<group>"; };
@@ -552,7 +556,7 @@
 		FCA4369345EE34EAFD3E307C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
-		"TEMP_F764A96A-B85B-44C3-BCBD-9DAE11C032E5" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_52C599CA-728D-438F-B161-4B1494777011" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -584,6 +588,7 @@
 				08D8D54D02FCF021937FDB44 /* RunAnalysisV5.swift */,
 				F7CFE2D883A30CAC352006F8 /* TokensV5.swift */,
 				C62B9760D4B508FC2FF8DBD0 /* ValuesV5.swift */,
+				3E594B2B0E865304C5E181D2 /* WorkoutResultV5.swift */,
 			);
 			path = DesignV5;
 			sourceTree = "<group>";
@@ -599,6 +604,7 @@
 				FA3B687F7BD1375763E551FE /* NetworkFence.swift */,
 				8AFF6EE9836728CE662BA316 /* OpenEndedSessionTests.swift */,
 				3A85664CAD8235007F2987E2 /* RecorderConcurrencyTests.swift */,
+				7A5588DFAB05E7FC333B1F14 /* RPECaptureTests.swift */,
 				15FB44D69A865618A457AB74 /* SignInFlowTests.swift */,
 				18AB8CD445EBE4A2FEB8649C /* TrendBarsHonestyTests.swift */,
 				AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */,
@@ -952,10 +958,10 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_43EDED2C-CF5E-4173-B757-EB7DACB61126" /* native-v2 */ = {
+		"TEMP_DB1B74AC-993A-44F6-AD0C-12F05788C736" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_F764A96A-B85B-44C3-BCBD-9DAE11C032E5" /* Secrets.xcconfig */,
+				"TEMP_52C599CA-728D-438F-B161-4B1494777011" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1220,6 +1226,7 @@
 				29B789653D987A0A4AF3B3B5 /* LifecycleSweepTests.swift in Sources */,
 				C67F80D498970CE5809D709B /* NetworkFence.swift in Sources */,
 				8A6D45456669247805119032 /* OpenEndedSessionTests.swift in Sources */,
+				A2221A3F9596AA26A0DA2BE4 /* RPECaptureTests.swift in Sources */,
 				EFAA4C1C630B5B39F42C3003 /* RecorderConcurrencyTests.swift in Sources */,
 				AE498C495063F6C98677718F /* RegisterSweepTests.swift in Sources */,
 				6BE40F3E6AA911AD15D8C08E /* SignInFlowTests.swift in Sources */,
@@ -1396,6 +1403,7 @@
 				5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */,
 				0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */,
 				3BA6B12FCF16C3B5BD62797B /* WeekStrip.swift in Sources */,
+				1275E399631B2E935D4C63D7 /* WorkoutResultV5.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1444,7 +1452,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_F764A96A-B85B-44C3-BCBD-9DAE11C032E5" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_52C599CA-728D-438F-B161-4B1494777011" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1671,7 +1679,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_F764A96A-B85B-44C3-BCBD-9DAE11C032E5" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_52C599CA-728D-438F-B161-4B1494777011" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;

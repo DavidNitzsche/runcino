@@ -232,67 +232,77 @@ struct RunDetailV5: View {
 
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
 
-                    /* ═══ LAYER 1 · THE IMMEDIATE ANSWER ═════════════════
+                    /* ═══ LAYER 1 · THE WORKOUT RESULT ═══════════════════
                      *
-                     * `docs/0901/post-run-experience-review-and-brief-2026-09-02.md`
-                     * §4: identity and overview, then ONE compact coach card.
-                     * The programme calls the same two things PR-1 and PR-2,
-                     * and PR-2 says "near the top" in as many words.
+                     * REBUILT 2026-09-03, against a rendered review of this
+                     * exact screen on the real 2026-09-01 fixture. The
+                     * previous Layer 1 (still the right IDEA — identity,
+                     * then one compact coach card, near the top) led with
+                     * `statsRow`'s whole-run pace at the same 20pt weight as
+                     * everything else. On a 4×1mi threshold day that number
+                     * was 8:02/mi — warm-up, four reps and cool-down averaged
+                     * together — while the meaningful result, 7:02/mi across
+                     * the four work miles, was decoded on the wire
+                     * (`pace_work`, P42+P45) and drawn NOWHERE on this
+                     * screen. "All required data exists somewhere on the
+                     * page" is not the same claim as "the page answers the
+                     * question first."
                      *
-                     * THIS SCREEN DID NOT DO THAT. The order was stats,
-                     * reading, reps, splits, zones, route, shoes, decisions,
-                     * and only then the coach — the answer arrived ninth, past
-                     * the map and the shoe row, which is the brief's "current
-                     * hierarchy is not decisive enough" exactly.
-                     *
-                     * WHAT THIS OVERTURNS, AND WHY. The recap used to sit
-                     * under the wrist decisions on 8a's rule that "a verdict
-                     * that arrives before its evidence reads as a mood". That
-                     * rule is not discarded — it is applied where it bites.
-                     * The decisions are evidence for what the run TAUGHT, not
-                     * for what it WAS, so they now sit directly above the
-                     * learning claim in Layer 3 and the ordering they were
-                     * written to protect is intact. What a coach says first is
-                     * the answer; a runner who opens a finished session and
-                     * has to scroll past a shoe row to find out how it went is
-                     * being made to do the coach's work.
+                     * THE ORDER NOW: did I execute it (`WorkoutResultFactsV5`
+                     * — completion, work pace, rep-to-rep spread, none of it
+                     * a coaching judgement, all of it arithmetic over
+                     * already-graded numbers) → the coach's own sentence
+                     * (`recapSection`, server-composed) → what it taught and
+                     * what changed (`PostRunLearnedV5(.meaning)`, the SAME
+                     * object `TodayAfterV5` draws) → THEN the compact
+                     * supporting context a Strava-style page still owes the
+                     * runner (distance, time, the scoped readings), in a
+                     * two-column grid rather than the four-row single-column
+                     * card this replaces. Whole-run pace still appears — in
+                     * that grid, beside distance and time, at its actual
+                     * weight as a secondary fact about the whole outing
+                     * rather than the headline number for a session it does
+                     * not describe.
                      */
-                    statsRow
 
-                    /* THE RECORDING'S OWN HONESTY, ABOVE EVERY NUMBER IT IS
-                     * ABOUT.
-                     *
-                     * `wire.ts` says of this sentence: "this sentence goes
-                     * ABOVE the numbers, because a caveat under a total is a
-                     * caveat nobody reads." `PostRunLearnedV5`'s header says
-                     * the same thing about itself. Both were false in
-                     * composition until now — the block that carries it was
-                     * drawn LAST on this screen, under the stats, the splits,
-                     * the zone bar, the route and the shoes. Rule 20: a claim
-                     * in a comment that nothing verifies is not a fact, and
-                     * `_postrun_wire_consumed.audit.test.ts` is now the thing
-                     * that verifies the field is read at all.
-                     *
-                     * On the 2026-09-02 run this is the difference between a
-                     * screen that shows five mile rows for a 6.41 mi run and
-                     * one that says so first. "Not showing all the miles."
-                     */
+                    // Recording honesty, above every number it is about —
+                    // unchanged position and reasoning from the prior pass.
                     if let pr = detail.postRun {
                         PostRunLearnedV5(model: pr, includes: .capture)
                     }
 
-                    // The coach's answer, second. Layer 1B.
+                    // Did I execute it, what was the meaningful result —
+                    // before the coach's own sentence, because the coach's
+                    // sentence is ABOUT these facts and reads better with
+                    // them already in view than as an unsupported assertion.
+                    WorkoutResultFactsV5(completion: workCompletion,
+                                        workPaceText: workPaceHeroText,
+                                        consistencyText: consistencySentence)
+
+                    // The coach's answer — headline, execution sentence,
+                    // cost — server-composed, unchanged content, moved up.
                     recapSection
 
-                    /* ═══ LAYER 2 · WHAT THE SESSION WAS ═════════════════ */
-
-                    if !readingRows.isEmpty {
-                        ListGroup(header: "Reading") {
-                            ForEach(readingRows, id: \.0) { row in
-                                ListRow(label: row.0, value: row.1)
-                            }
-                        }
+                    // WHAT THE RUN TAUGHT THE COACH, AND WHAT CHANGED — the
+                    // SAME component the after-run sheet draws, over the
+                    // SAME object, now beside the sentence it is the
+                    // continuation of rather than three sections and a chart
+                    // away from it. `.meaning` only: `.capture` and
+                    // `.strides` are drawn where each belongs (immediately
+                    // above, and with the session's own pieces in Layer 2).
+                    if let pr = detail.postRun {
+                        PostRunLearnedV5(model: pr, includes: .meaning)
                     }
+
+                    // Compact supporting context. Two columns, not a
+                    // four-row single-column card — the same facts
+                    // (`readingRows`) the old "Reading" `ListGroup` held,
+                    // plus the distance/time this screen's poster used to
+                    // lead with, now sized as what they are: secondary.
+                    SessionDetailsGridV5(scopeCaption: sessionDetailScope,
+                                        metrics: sessionDetailMetrics)
+
+                    /* ═══ LAYER 2 · WORKOUT ANALYSIS ═════════════════════ */
 
                     // THE REPS COME BEFORE THE SPLIT CHART, and on a rep
                     // session that ordering is the whole point. A runner
@@ -312,6 +322,71 @@ struct RunDetailV5: View {
                                        toleranceLine: toleranceLine)
                     }
 
+                    /* THE STRIDES ARE PART OF THE SESSION, so they are drawn
+                     * with it, in Layer 2, rather than below the map. */
+                    if let pr = detail.postRun {
+                        PostRunLearnedV5(model: pr, includes: .strides)
+                    }
+
+                    /* ═══ LAYER 3 · CHARTS AND COMPARISON ════════════════
+                     *
+                     * BELOW the rep list, and that order is the brief's:
+                     * "workout analysis before generic charts". A runner
+                     * opening a tune-up wants rep three, and rep three is
+                     * not something a chart can hand him — mile two of that
+                     * session is the back of rep one, a jog and the front of
+                     * rep two averaged into one bar. Evidence at the grain
+                     * the session was run at first; the shape of the whole
+                     * run underneath it.
+                     *
+                     * NOTHING HERE IS SAID TWICE (Rule 17). The chart prints
+                     * no average pace, no average heart rate and no per-mile
+                     * numbers — the facts block, the coach's sentence and
+                     * the supporting-context grid already carry all three.
+                     * It draws an axis, a shape, and the value under the
+                     * runner's finger.
+                     *
+                     * RULE THREE. Absent entirely on a run that recorded no
+                     * series — a manual entry, an older treadmill row —
+                     * rather than a header over an empty plot.
+                     */
+                    if let a = detail.analysis {
+                        RunAnalysisV5(analysis: a,
+                                      gradeAdjustedSecPerMi: detail.grade_adjusted_pace_s_per_mi,
+                                      terrainLabel: detail.terrain_label)
+                    }
+
+                    /* THE ONE COMPARABLE PRIOR SESSION · PR-15.
+                     *
+                     * Directly after the chart it is a comparison FOR — the
+                     * brief files matched effort under "charts and
+                     * comparison", and this is the last thing in that layer
+                     * so it reads as context on the shape just shown, not as
+                     * a second, competing verdict ahead of the evidence
+                     * below it.
+                     *
+                     * At most one, hidden entirely when nothing is
+                     * defensible, and carrying its own sentence when it
+                     * looked and refused.
+                     */
+                    MatchedWorkoutV5(matched: detail.matchedWorkout,
+                                     refusal: detail.matchedRefusal)
+
+                    /* ═══ LAYER 4 · DETAILED EVIDENCE ════════════════════
+                     *
+                     * Everything true about the run that the layers above
+                     * already answered the QUESTIONS for. Reached by
+                     * scrolling, never in front of the answer.
+                     */
+
+                    // EVIDENCE, not a mood ahead of its own evidence. The
+                    // runner's own decisions (a ceiling lift, a chosen skip,
+                    // extra recovery) are detail about execution, read here
+                    // rather than asserted as part of the headline verdict.
+                    if !resolvedDecisions.isEmpty {
+                        WristDecisionsV5(decisions: resolvedDecisions)
+                    }
+
                     // The breakdown, drawn only when a decomposition of this
                     // run means anything. `splitsMeaningful` is the SERVER's
                     // judgement (see lib/coach/reading-scope.ts) — an 8x400
@@ -326,110 +401,17 @@ struct RunDetailV5: View {
                     // zone the session asked for is unreachable across that
                     // span by construction — so the bar can only ever report a
                     // miss on a session that was executed.
-                    /* THE STRIDES ARE PART OF THE SESSION, so they are drawn
-                     * with it and not below the map.
-                     *
-                     * His complaint on 2026-09-02 was two things at once —
-                     * "not showing all the miles, not showing the strides" —
-                     * and the strides half was answered by adding the rows to
-                     * a block that renders after the route and the shoe row.
-                     * Six 20-second accelerations are what that easy day
-                     * actually WAS; the mile table above cannot see them and
-                     * the rep list cannot grade them, so this is the piece
-                     * that completes the session, immediately under it. */
-                    if let pr = detail.postRun {
-                        PostRunLearnedV5(model: pr, includes: .strides)
-                    }
-
                     if hasZoneData, detail.readings?.zoneBarMeaningful ?? true {
                         zoneSection
                     }
 
-                    /* ═══ THE SHAPE OF THE RUN · PR-8 to PR-12 ═══════════
-                     *
-                     * BELOW the rep list and the mile table, and that order is
-                     * the brief's: "workout analysis before generic charts".
-                     * A runner opening a tune-up wants rep three, and rep
-                     * three is not something a chart can hand him — mile two
-                     * of that session is the back of rep one, a jog and the
-                     * front of rep two averaged into one bar. Evidence at the
-                     * grain the session was run at first; the shape of the
-                     * whole run underneath it.
-                     *
-                     * BELOW the zone bar too, because the zone bar answers
-                     * "where did the heart sit" and this chart answers "when".
-                     * The bar is the summary and the chart is the detail, and
-                     * a summary above its own detail is the way round every
-                     * other section on this screen already runs.
-                     *
-                     * NOTHING HERE IS SAID TWICE (Rule 17). The chart prints
-                     * no average pace, no average heart rate and no per-mile
-                     * numbers — the stats row, the reading rows and the mile
-                     * table already carry all three. It draws an axis, a
-                     * shape, and the value under the runner's finger.
-                     *
-                     * RULE THREE. Absent entirely on a run that recorded no
-                     * series — a manual entry, an older treadmill row — rather
-                     * than a header over an empty plot.
-                     */
-                    if let a = detail.analysis {
-                        RunAnalysisV5(analysis: a,
-                                      gradeAdjustedSecPerMi: detail.grade_adjusted_pace_s_per_mi,
-                                      terrainLabel: detail.terrain_label)
-                    }
-
-                    /* ═══ LAYER 3 · WHAT IT MEANT ════════════════════════ */
-
-                    // EVIDENCE BEFORE JUDGEMENT. 8a's rule, kept and moved to
-                    // where it actually bites: the runner's own decisions are
-                    // evidence for what the run TAUGHT, so they sit directly
-                    // above the learning claim rather than above the recap.
-                    // A verdict that arrives before its evidence reads as a
-                    // mood; the recap in Layer 1 states what happened, and
-                    // that is not the judgement this rule was written about.
-                    if !resolvedDecisions.isEmpty {
-                        WristDecisionsV5(decisions: resolvedDecisions)
-                    }
-
-                    // WHAT THE RUN TAUGHT THE COACH — the SAME component the
-                    // after-run sheet draws, over the SAME object. Not a view
-                    // that looks like the other one: one view, so a change to
-                    // what the runner reads cannot land on one screen and miss
-                    // the other. That divergence is the post-run brief's first
-                    // P0 and it was live on 2026-09-01.
-                    //
-                    // `.meaning` only. The capture sentence and the strides
-                    // from this same object are drawn in Layers 1 and 2, where
-                    // each belongs — one component still owns all three
-                    // pieces of copy, so the two post-run screens cannot drift.
-                    if let pr = detail.postRun {
-                        PostRunLearnedV5(model: pr, includes: .meaning)
-                    }
-
-                    /* THE ONE COMPARABLE PRIOR SESSION · PR-15.
-                     *
-                     * Layer 3, and specifically AFTER what the run taught the
-                     * coach. The brief files matched effort under "meaning and
-                     * context", and context is what it is: the learning claim
-                     * above stands on this run's own evidence, and this says
-                     * where that sits against the last time he did the same
-                     * session. Putting it first would make the comparison read
-                     * as the finding, which it is not.
-                     *
-                     * At most one, hidden entirely when nothing is defensible,
-                     * and carrying its own sentence when it looked and refused.
-                     */
-                    MatchedWorkoutV5(matched: detail.matchedWorkout,
-                                     refusal: detail.matchedRefusal)
-
-                    /* ═══ LAYER 4 · THE RECORD ═══════════════════════════
-                     *
-                     * The brief's Layer 4: route, shoes, source. Reference
-                     * material, reached by scrolling, and never in front of
-                     * the answer.
-                     */
-
                     if shape.showsRoute { routeSection }
+
+                    /* ═══ LAYER 5 · ACTIONS ══════════════════════════════
+                     *
+                     * Secondary to the interpretation above them, and to the
+                     * record they sit beside — never interrupting the story.
+                     */
 
                     if let shoe = wornShoe {
                         ListGroup(header: "Shoes worn") {
@@ -439,11 +421,9 @@ struct RunDetailV5: View {
                         }
                     }
 
-                    // The brief's "Add effort/RPE where supported" (Actions),
-                    // kept secondary to the interpretation above it and, on
-                    // this screen, to the record it sits beside — same row
-                    // `TodayAfterV5`'s "Log" group draws, over the same API,
-                    // so a rating made from either screen is the same rating.
+                    // The brief's "Add effort/RPE where supported", over the
+                    // same API `TodayAfterV5`'s "Log" group draws, so a
+                    // rating made from either screen is the same rating.
                     ListGroup(header: "Log") {
                         RPECaptureRow(runId: detail.id)
                     }
@@ -472,6 +452,18 @@ struct RunDetailV5: View {
            !name.isEmpty, !Self.genericNames.contains(name.lowercased()) {
             return name
         }
+        // THE STRUCTURED IDENTITY, WHEN THE DATA CAN SAY ONE HONESTLY.
+        //
+        // A generic device name falls through to `type_display` below, which
+        // is a category — "Threshold" — not the session. "4 × 1 mile
+        // threshold" is what the runner actually asks "what workout was
+        // this" to mean, and it is real, structured data (`structuredIdentity`
+        // requires an even rep set with a shared prescribed distance), not
+        // an invented description. Checked before `type_display` so the one
+        // title the AppBar shows is the richer one when it is honestly
+        // available, rather than drawing a second, better title lower on
+        // the page and leaving this one thin (Rule 17).
+        if let structured = structuredIdentity { return structured }
         // AN ENUM IS NOT A NAME.
         //
         // This used to title-case `detail.type` and hand it to the display
@@ -523,18 +515,9 @@ struct RunDetailV5: View {
         return f
     }()
 
-    // MARK: - Stats row · Distance / Time / Pace, same poster the after-run
-    // screen reads (5b's `done.distance` / `done.time` / `done.pace`).
-
-    private var statsRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
-            stat("Distance", .measured(FaffFmt.milesUnit(detail.distance_mi)))
-            stat("Time", .measured(detail.time_moving ?? detail.time_elapsed))
-            stat("Pace", .measured(detail.pace.map { "\($0)/mi" }), asked: askedPaceText)
-        }
-        .padding(V5.S.tilePad)
-        .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
-    }
+    // MARK: - Distance / Time / Pace · folded into `sessionDetailMetrics`
+    // below (2026-09-03 redesign). Kept as three separate facts on the wire
+    // side, not a poster: see the Layer 1 comment in `body`.
 
     /// The pace the coach's verdict was judged against, when printing it
     /// beside a whole-run average is an honest comparison.
@@ -562,22 +545,6 @@ struct RunDetailV5: View {
               let sec = recap?.evaluatedPaceSPerMi, sec > 0,
               let text = FaffFmt.pace(secPerMi: Double(sec)) else { return nil }
         return text
-    }
-
-    private func stat(_ label: String, _ value: FaffValue, asked: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: V5.S.s6) {
-            Text(label)
-                .font(.faffText(TypeScaleV5.label12))
-                .foregroundStyle(V5.textQuiet)
-            FaffValueText(value, font: .faffText(20, weight: .semibold), color: V5.textPrimary)
-            if let asked {
-                Text("asked \(asked)")
-                    .font(.faffText(TypeScaleV5.label12))
-                    .foregroundStyle(V5.textQuiet)
-                    .accessibilityLabel("asked estimated \(asked) per mile")
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Reading · avg/max HR, cadence, temperature — whatever the run
@@ -841,7 +808,9 @@ struct RunDetailV5: View {
                 askedPace: (p.type == "work" && p.pace_shape != "effort") ? p.target_pace : nil,
                 detail: Self.pieceDetail(p),
                 verdictPhrase: isChosenSkip ? nil : Self.verdictPhrase(p),
-                chosen: isChosenSkip
+                chosen: isChosenSkip,
+                kind: RepPiece.Kind.of(type: p.type, isWork: p.type == "work"),
+                durationSec: p.actual_duration_sec
             )
         }
     }
@@ -962,6 +931,155 @@ struct RunDetailV5: View {
               let inside = FaffFmt.clock(sec: Double(inSec)),
               let graded = FaffFmt.clock(sec: Double(total)) else { return nil }
         return "The watch had you inside the target pace for \(inside) of the \(graded) of work it graded."
+    }
+
+    // MARK: - Workout result facts · Layer 1's "did I execute it, what was
+    // the meaningful result" — computed once here so the hero, and nothing
+    // else, reads phase data to answer it.
+
+    /// True work reps only — never a stride, never a warm-up/cool-down/jog.
+    /// The same filter `repSectionTitle` already applies to name the
+    /// section, read once here to answer a different question.
+    private var trueWorkReps: [PhaseBreakdown] {
+        workPhases.filter { $0.pace_shape != "effort" }
+    }
+
+    /// "4 of 4 completed." Nil when this was not a rep session — an easy or
+    /// long run has nothing to complete in this sense, and the fact block
+    /// draws nothing rather than a completion count nobody asked for.
+    ///
+    /// GATED ON `isRepStyleSession`, added after rendering the real corpus
+    /// (not just the one fixture this pass started from) turned up the
+    /// defect it exists to stop: `trueWorkReps.count >= 2` alone is also
+    /// true of a marathon-specific long run built from an easy segment plus
+    /// a marathon-pace segment — two PURPOSES, not two repeats of the same
+    /// thing — and the first draft of this property read that as "1 of 2
+    /// completed," which is exactly the "reps ranged" framing this brief
+    /// asked for on an interval day, wrongly applied to a long run.
+    var workCompletion: (done: Int, total: Int)? {
+        guard isRepStyleSession else { return nil }
+        let reps = trueWorkReps
+        guard reps.count >= 2 else { return nil }
+        return (reps.filter(\.completed).count, reps.count)
+    }
+
+    /// The work-phase-only average — `pace_work`, server-computed since
+    /// P42+P45, decoded on this screen since before it was ever drawn.
+    /// Formatted once, here. Same `isRepStyleSession` gate as
+    /// `workCompletion` and for the same reason.
+    var workPaceHeroText: String? {
+        guard isRepStyleSession, trueWorkReps.count >= 2,
+              let p = detail.pace_work, !p.isEmpty else { return nil }
+        return "\(p)/mi"
+    }
+
+    /// One factual sentence about rep-to-rep spread — arithmetic over the
+    /// watch's own graded paces, not a second verdict. See `WorkConsistencyV5`.
+    /// Same `isRepStyleSession` gate: two segments of a long run are not
+    /// "reps" that "ranged" between two paces, they are two different
+    /// prescriptions.
+    var consistencySentence: String? {
+        guard isRepStyleSession else { return nil }
+        let paces = trueWorkReps.compactMap { p -> Double? in
+            guard let mi = p.actual_distance_mi, mi > 0,
+                  let sec = p.actual_duration_sec else { return nil }
+            return Double(sec) / mi
+        }
+        return WorkConsistencyV5.sentence(repPaceSecPerMi: paces, repWord: "rep")
+    }
+
+    /// True for a session type where "reps" is honestly the word for its
+    /// work phases — threshold, interval, tempo, VO2max. Shared with
+    /// `structuredIdentity`'s own gate (`structuredIdentityTypes`) so the
+    /// title and the facts block agree about which sessions get the
+    /// rep-shaped treatment; a session type that qualifies for one and not
+    /// the other would be its own inconsistency.
+    private var isRepStyleSession: Bool {
+        guard let display = detail.type_display?.lowercased() else { return false }
+        return Self.structuredIdentityTypes.contains(display)
+    }
+
+    /// Session types where "N × distance TYPE" reads as a real title rather
+    /// than a mismatched sentence. Deliberately NOT every rep session:
+    /// `testTheTitleIsAWordNotAColumnValue`'s 2026-08-11 fixture is a
+    /// race-week tune-up built from 4×1km reps, and "4 × 0.62 mi tune-up" is
+    /// not a phrase a coach would say — a tune-up is the genre regardless of
+    /// its internal rep count, the way a race stays "Half Marathon" whatever
+    /// its splits looked like. Threshold/interval/tempo sessions are named
+    /// BY their rep structure in a way a tune-up or a race is not; this list
+    /// is that distinction, made explicit rather than left to guess one
+    /// fixture at a time.
+    private static let structuredIdentityTypes: Set<String> = [
+        "threshold", "interval", "intervals", "tempo", "vo2max", "vo2",
+    ]
+
+    /// The structured identity — "4 × 1 mile threshold" — when the session
+    /// is an even rep set of a type this reads naturally for, and the data
+    /// says so honestly. Feeds `title` below; never drawn a second time in
+    /// the body, so the AppBar carries it exactly once (Rule 17).
+    private var structuredIdentity: String? {
+        // GATED ON `type_display`, NOT THE RAW `type` ENUM.
+        //
+        // The real 2026-09-01 fixture this feature exists for carries
+        // `type: "easy"` and `type_display: "Threshold"` — the raw wire enum
+        // and the server's own resolved, doctrine-aware label disagree, and
+        // `type_display` is the one every other title fallback on this
+        // screen already trusts (see `title`, three cases up). Gating on
+        // `type` would have silently disabled this for the exact session
+        // that motivated it.
+        guard let display = detail.type_display?.lowercased(),
+              Self.structuredIdentityTypes.contains(display) else { return nil }
+        let reps = trueWorkReps
+        guard reps.count >= 2 else { return nil }
+        let distances = reps.compactMap { $0.target_distance_mi ?? $0.actual_distance_mi }
+        guard distances.count == reps.count, let first = distances.first,
+              distances.allSatisfy({ abs($0 - first) < 0.05 }) else { return nil }
+        let kind = (detail.type_display ?? detail.type ?? "")
+            .trimmingCharacters(in: .whitespaces).lowercased()
+        guard !kind.isEmpty else { return nil }
+        let distText: String
+        if abs(first - 1.0) < 0.05 { distText = "1 mile" }
+        else if first < 1.0 { distText = "\(String(format: "%.2f", first)) mi" }
+        else { distText = "\(String(format: "%.1f", first)) mile" }
+        return "\(reps.count) \u{00D7} \(distText) \(kind)"
+    }
+
+    /// The compact supporting-context grid — distance, time, and the same
+    /// scoped readings the old single-column "Reading" card carried, in a
+    /// two-column layout that stops secondary metrics outweighing the
+    /// coaching answer above them.
+    private var sessionDetailMetrics: [SessionDetailsGridV5.Metric] {
+        var out: [SessionDetailsGridV5.Metric] = [
+            .init("Distance", .measured(FaffFmt.milesUnit(detail.distance_mi))),
+            .init("Time", .measured(detail.time_moving ?? detail.time_elapsed)),
+            .init("Pace", .measured(detail.pace.map { "\($0)/mi" }), sub: askedPaceText),
+        ]
+        for (label, value) in readingRows {
+            // The grid states its scope once in `sessionDetailScope`, so a
+            // per-row label that only exists to carry that qualifier — same
+            // string, comma-joined — is redundant here (Rule 17). The label
+            // that remains is the metric's own name.
+            let bare = label.split(separator: ",").first.map(String.init) ?? label
+            out.append(.init(bare, value))
+        }
+        return out
+    }
+
+    /// Stated once, above the grid, rather than folded into every row's own
+    /// label — "Heart rate, across the 4 reps" / "Cadence, across the 4
+    /// reps" repeated the same three words twice on one small card.
+    ///
+    /// `note` IS ALREADY THE FULL PHRASE, not a bare noun. `readingRows`
+    /// (above) reads it as `"Heart rate, \(note)"` — so a server note of
+    /// "across both reps" is written to continue directly after the comma.
+    /// The first draft of this caption prepended its own "Across ", and on
+    /// the 2026-07-25 long-run fixture — whose note is exactly "across both
+    /// reps" — the two concatenated into "ACROSS ACROSS BOTH REPS", caught
+    /// by rendering the real corpus rather than the one fixture this pass
+    /// started from.
+    private var sessionDetailScope: String? {
+        guard let r = detail.readings, !r.hr.isWhole, let note = r.hr.note else { return nil }
+        return note.prefix(1).uppercased() + note.dropFirst()
     }
 
     // MARK: - Splits

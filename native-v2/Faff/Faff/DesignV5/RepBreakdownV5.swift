@@ -73,6 +73,34 @@ import SwiftUI
 
 /// A single phase, already turned into words by the caller.
 struct RepPiece: Identifiable, Equatable {
+    /// What kind of phase this is, for LAYOUT only — never a grade. A row's
+    /// kind decides how tall it draws and where the timeline strip lights
+    /// up; it says nothing about how the phase went.
+    ///
+    /// 2026-09-03 · added to fix the "wall of similarly styled rows"
+    /// finding: every phase drew at the same row height regardless of
+    /// whether it was the work the runner opened the screen to see or a
+    /// one-minute jog between two of it. `isWork` alone could not express
+    /// "warm-up and cool-down are real distance and deserve more than one
+    /// line, but still less than a rep" — this can.
+    enum Kind: Equatable {
+        case warmup, work, recovery, cooldown, other
+
+        /// Classified from the phase's own wire type. One switch, called at
+        /// both construction sites (`RunDetailV5.repPieces`,
+        /// `TodayAfterV5.repPieces`), so the two screens cannot classify a
+        /// phase differently.
+        static func of(type: String?, isWork: Bool) -> Kind {
+            switch type {
+            case "warmup":   return .warmup
+            case "cooldown": return .cooldown
+            case "recovery": return .recovery
+            case "work":     return .work
+            default:         return isWork ? .work : .other
+            }
+        }
+    }
+
     /// The phase's own index in the workout. Identity is never the label —
     /// "Interval · 1 km" repeats four times in one session.
     let id: Int
@@ -80,7 +108,8 @@ struct RepPiece: Identifiable, Equatable {
     /// What the watch called it. "Warm-up", "Interval · 1 km", "Jog 1:30".
     let label: String
 
-    /// True for a work rep. Drives ink weight and nothing else.
+    /// True for a work rep. Drives ink weight; `kind` (below) drives row
+    /// height and is the finer-grained read of the same phase.
     let isWork: Bool
 
     /// The pace that was run, formatted with its unit. Measured.
@@ -100,6 +129,19 @@ struct RepPiece: Identifiable, Equatable {
 
     /// The runner chose to stop this rep. Not a lapse, and not graded.
     let chosen: Bool
+
+    /// Layout classification. Defaults to `.work`/`.other` from `isWork` for
+    /// any caller that has not been updated to pass one explicitly, so this
+    /// field could be added without a coordinated two-call-site release.
+    var kind: Kind = .other
+
+    /// The phase's own recorded duration, in seconds — the raw number
+    /// `detail` already renders as a formatted clock string. Carried
+    /// separately, not parsed back out of that string, so the timeline
+    /// strip's proportions are real seconds rather than prose read
+    /// backwards. Nil draws a nominal sliver rather than vanishing the
+    /// segment from the shape.
+    var durationSec: Int? = nil
 }
 
 // MARK: - The section
@@ -123,6 +165,16 @@ struct RepBreakdownV5: View {
         if !pieces.isEmpty || toleranceLine != nil {
             VStack(alignment: .leading, spacing: V5.S.s10) {
                 V5SectionLabel(text: title).padding(.horizontal, V5.S.s4)
+
+                // THE SHAPE, BEFORE THE LIST. A runner scanning ten hill
+                // reps for the first time gets the proportions in one
+                // glance — work lit, everything around it quiet, the same
+                // "which segment is which kind" read `RunAnalysisV5`'s phase
+                // bands give the chart, at list scale rather than axis
+                // scale. Non-interactive: touching it does nothing yet (see
+                // this component's own header for why the chart-row sync
+                // the brief asks for is not built).
+                if pieces.count > 2 { timelineStrip.padding(.horizontal, V5.S.s14) }
 
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(pieces) { piece in
@@ -160,15 +212,92 @@ struct RepBreakdownV5: View {
 
     // MARK: - A row
 
+    @ViewBuilder
     private func row(_ p: RepPiece) -> some View {
-        // Work reps in full ink, everything around them quiet. Structure,
-        // never outcome — a missed rep and a hit rep are the same weight.
-        let primary = p.isWork ? V5.textPrimary : V5.textSecondary
+        // COMPACT, ONE LINE, for a recovery jog or a bookend. This is the
+        // fix for "piece by piece becomes a long wall of similarly styled
+        // rows" — a ten-rep hill session used to draw its nine jogs at the
+        // same three-line height as its ten reps, so the reps the runner
+        // actually came to read were 47% of a twenty-row list by count and
+        // nowhere near that by attention. A jog is one fact (how long, how
+        // fast) and gets one line to state it in.
+        switch p.kind {
+        case .recovery:
+            compactRow(p)
+        case .warmup, .cooldown:
+            // A BOOKEND KEEPS ITS DETAIL LINE — it carries real distance and
+            // a real duration, which a runner reading "warm-up" alone
+            // cannot judge — but drops the trailing note line a work rep
+            // gets, since a ceiling phase's note ("Under the ceiling") is
+            // already implied by pace-shape convention and repeating it on
+            // both bookends of every session is exactly Rule 17's target.
+            bookendRow(p)
+        case .work, .other:
+            fullRow(p)
+        }
+    }
+
+    /// The one-line treatment: a recovery jog, in full.
+    private func compactRow(_ p: RepPiece) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: V5.S.s10) {
+            Text(p.label)
+                .font(.faffText(TypeScaleV5.label14))
+                .foregroundStyle(V5.textQuiet)
+            if let detail = p.detail {
+                Text(detail)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+            }
+            Spacer(minLength: V5.S.s8)
+            if let pace = p.actualPace {
+                Text(pace)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+            }
+        }
+        .padding(.horizontal, V5.S.tilePad)
+        .padding(.vertical, V5.S.s6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken(p))
+    }
+
+    /// The two-line treatment: a warm-up or cool-down — real distance, no
+    /// trailing note.
+    private func bookendRow(_ p: RepPiece) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
+            VStack(alignment: .leading, spacing: V5.S.s2) {
+                Text(p.label)
+                    .font(.faffText(TypeScaleV5.body15))
+                    .foregroundStyle(V5.textSecondary)
+                if let detail = p.detail {
+                    Text(detail)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let pace = p.actualPace {
+                Text(pace)
+                    .font(.faffText(TypeScaleV5.body15, weight: .medium))
+                    .foregroundStyle(V5.textSecondary)
+            }
+        }
+        .padding(.horizontal, V5.S.tilePad)
+        .padding(.vertical, V5.S.s9)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken(p))
+    }
+
+    /// The full treatment: a work rep, unchanged from before this pass.
+    private func fullRow(_ p: RepPiece) -> some View {
+        // Work reps in full ink. Structure, never outcome — a missed rep
+        // and a hit rep are the same weight.
+        let primary = V5.textPrimary
 
         return HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
             VStack(alignment: .leading, spacing: V5.S.s4) {
                 Text(p.label)
-                    .font(.faffText(p.isWork ? TypeScaleV5.body17 : TypeScaleV5.body15))
+                    .font(.faffText(TypeScaleV5.body17))
                     .foregroundStyle(primary)
                 if let detail = p.detail {
                     Text(detail)
@@ -194,7 +323,7 @@ struct RepBreakdownV5: View {
                 // mark for absence.
                 if let pace = p.actualPace {
                     FaffValueText(.measured(pace),
-                                  font: .faffText(p.isWork ? 17 : 15, weight: .semibold),
+                                  font: .faffText(17, weight: .semibold),
                                   color: primary)
                 }
                 if let asked = p.askedPace {
@@ -215,6 +344,42 @@ struct RepBreakdownV5: View {
         // stops the row sounding like a confession.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spoken(p))
+    }
+
+    // MARK: - The timeline strip
+    //
+    // A proportional bar, one segment per piece, sized by its share of the
+    // session's TOTAL DURATION (not distance — a 20-second stride and a
+    // 90-second jog are both short in miles and this is a TIME shape, the
+    // same axis the coach's own "how did the reps go" question runs on).
+    // Work segments draw in the one accent; everything else quiet. No
+    // labels, no numbers — the rows below already carry every figure this
+    // strip could print, and a second copy of them here would be Rule 17.
+    private var timelineStrip: some View {
+        let total = pieces.reduce(0.0) { $0 + Self.weight($1) }
+        return GeometryReader { geo in
+            HStack(spacing: 1.5) {
+                ForEach(pieces) { p in
+                    let w = total > 0 ? Self.weight(p) / total : 0
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(p.isWork ? V5.signal : V5.plotQuiet.opacity(0.6))
+                        .frame(width: max(geo.size.width * w, p.isWork ? 3 : 1.5))
+                }
+            }
+            .frame(width: geo.size.width)
+        }
+        .frame(height: 6)
+        .accessibilityHidden(true)
+    }
+
+    /// Real seconds, when the phase carries them — a genuine time-weighted
+    /// strip, not a decorative approximation. A phase with no recorded
+    /// duration (an older payload, a chosen skip) still draws a nominal
+    /// sliver so it stays visible as a segment in the shape, rather than
+    /// vanishing and silently shrinking every segment beside it.
+    private static func weight(_ p: RepPiece) -> Double {
+        guard let sec = p.durationSec, sec > 0 else { return 8 }
+        return Double(sec)
     }
 
     /// The one line under a row, or none.
