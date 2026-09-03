@@ -228,7 +228,7 @@ struct RunDetailV5: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                AppBar(title: title, eyebrow: eyebrow, onBack: onBack)
+                AppBar(title: title, eyebrow: eyebrow, subtitle: titleSubtitle, onBack: onBack)
 
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
 
@@ -262,14 +262,13 @@ struct RunDetailV5: View {
 
                     // §2 · ACTIVITY-SPECIFIC RESULT STATISTICS. Three shapes
                     // — rep-style, marathon-pace long run, or the existing
-                    // generic grid — see `activityStats`'s own header. The
-                    // scope caption is suppressed for the two specific
-                    // shapes: their own labels ("MP pace", "Rep range")
-                    // already say what they are, and captioning them with a
-                    // sentence written for the generic grid's bare "Pace"/
-                    // "Heart rate" rows would describe nothing on screen.
-                    SessionDetailsGridV5(scopeCaption: usesActivitySpecificStats ? nil : sessionDetailScope,
-                                        metrics: activityStats)
+                    // generic grid — see `activityStats`'s own header.
+                    // NO grid-wide scope caption (SCOPE-MIX-1): Distance/
+                    // Time/Pace are always whole-activity and a caption
+                    // written for the HR/cadence rows' own scope would
+                    // misdescribe them. Each row that needs to say what it
+                    // covers carries that inline now.
+                    SessionDetailsGridV5(scopeCaption: nil, metrics: activityStats)
 
                     // §3 · ONE COACHING READ. `PostRunVerdictV5` carries its
                     // own card now (TYPESYS-1) — headline, execution
@@ -394,7 +393,36 @@ struct RunDetailV5: View {
         return name.contains(" @ ")
     }
 
+    /// IDENTITY-1, 2026-09-04 · "Little adventure today" is a real, personal
+    /// name — it passes every check `title` runs below — but printing it
+    /// alone as the 20pt title hides that this was a marathon-specific long
+    /// run (10 mi easy into 4 mi at marathon pace), which is the fact a
+    /// runner scanning their history actually needs. Distinct from
+    /// `structuredIdentity`: that composes a title FROM the rep data for
+    /// threshold/interval-shaped sessions; this only fires for the long-run
+    /// shape `marathonPacePhase` already detects, and it does not replace
+    /// the personal name — it demotes it to `titleSubtitle`, the way a race
+    /// keeps its real name primary and this keeps the runner's own words
+    /// too, just not load-bearing for "what was this session."
+    private var marathonLongRunIdentity: String? {
+        marathonPacePhase != nil ? "Marathon-specific long run" : nil
+    }
+
+    /// The personal name, when `title` demoted it to a subtitle. Nil for
+    /// every other case — a generic or serialized name already falls
+    /// through to a structured title with nothing personal left to keep,
+    /// and an ordinary run keeps its own name as the title, not a subtitle.
+    var titleSubtitle: String? {
+        guard let name = detail.name?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty, !Self.genericNames.contains(name.lowercased()),
+              !nameIsSerializedRecord, marathonLongRunIdentity != nil else { return nil }
+        return name
+    }
+
     var title: String {
+        if let marathonIdentity = marathonLongRunIdentity, titleSubtitle != nil {
+            return marathonIdentity
+        }
         if let name = detail.name?.trimmingCharacters(in: .whitespacesAndNewlines),
            !name.isEmpty, !Self.genericNames.contains(name.lowercased()),
            !nameIsSerializedRecord {
@@ -829,29 +857,7 @@ struct RunDetailV5: View {
     /// the switch below is the fallback for a payload from an older backend
     /// and for the two legacy verdict words still sitting on stored rows.
     static func verdictPhrase(_ p: PhaseBreakdown) -> String? {
-        // A ceiling phase gets its word whatever its type — a warm-up and a
-        // cool-down are exactly the phases this fixes.
-        if p.pace_shape == "ceiling" {
-            switch p.verdict {
-            case "fast":       return "Over the ceiling"
-            case "hit":        return "Under the ceiling"
-            case "incomplete": return "Ended before its target"
-            default:           return p.status_label
-            }
-        }
-        guard p.type == "work" else { return nil }
-        if let label = p.status_label, !label.isEmpty { return label }
-        switch p.verdict {
-        case "hit":        return "In the band"
-        case "fast":       return "Quicker than the band"
-        case "slow":       return "Slower than the band"
-        // LEGACY, from builds before 2026-09-01. Kept because stored rows
-        // carry them; no build emits them.
-        case "drifted":    return "In and out of the band"
-        case "missed":     return "Outside the band"
-        case "incomplete": return "Ended before its target"
-        default:           return nil
-        }
+        phaseVerdictPhrase(paceShape: p.pace_shape, verdict: p.verdict, statusLabel: p.status_label, type: p.type)
     }
 
     /// The watch's tolerance arithmetic across the work, as one sentence.
@@ -871,10 +877,46 @@ struct RunDetailV5: View {
     /// duration — the device only counts a second it had a pace for — so the
     /// denominator is graded time, not elapsed time, and the sentence says so
     /// rather than quietly presenting one as the other.
+    /// TOLERANCE-LANGUAGE-1, 2026-09-04 · this summed BLINDLY across every
+    /// work phase regardless of `pace_shape`, and on the marathon-specific
+    /// long run that produced a sentence that was arithmetically correct
+    /// and substantively misleading: "inside the target pace for 50:45 of
+    /// 1:57:55" (43%) sitting directly under two phases whose own headline
+    /// verdict was "stayed under the ceiling" — because `time_in_tolerance
+    /// _sec` measures a NARROW two-sided band around the target pace, a
+    /// stricter and different question from "did you ever exceed the
+    /// ceiling" (the session's own graded standard for a ceiling-shaped
+    /// phase). A runner who held a constant, honestly-slower-than-target
+    /// pace for an entire ceiling phase is "out of tolerance" by this
+    /// narrow-band measure nearly the whole time while correctly passing
+    /// the ceiling check — proven against this exact run: the easy phase's
+    /// own `time_in_tolerance_sec`/`_out_` summed to 2525/2715 (48% in) and
+    /// the marathon-pace phase to 520/1315 (28% in), both real, both
+    /// consistent with slower-than-asked pace held throughout, neither in
+    /// conflict with "stayed under the ceiling" — they are simply not the
+    /// same fact, and the old sentence's "the target pace" language
+    /// implied they were.
+    ///
+    /// Restricted to WINDOW-shaped work only, where "target pace" is an
+    /// honest description of what was graded. A ceiling-shaped session's
+    /// pace story is now the new provenance-adjacent clause on the postRun
+    /// verdict itself (`readExecution`'s CEILING-VS-PACE-1), which names
+    /// the actual asked-vs-actual numbers per phase rather than a summed
+    /// percentage that cannot be read against a ceiling at all.
     var toleranceLine: String? {
         var inSec = 0, outSec = 0
         var counted = 0
-        for p in workPhases {
+        // EXCLUDE ceiling, not REQUIRE window. A payload from before
+        // `pace_shape` shipped (the 2026-08-11 tune-up fixture this line's
+        // own test is built from) carries no shape at all on any phase —
+        // requiring `== "window"` silently zeroed every one of them and
+        // broke `testToleranceLineIgnoresWarmupAndCooldown`, caught by
+        // that gate rather than by a render. `pace_shape` only exists to
+        // name the ONE case this sentence must not include (a ceiling, per
+        // the header above); a phase with no shape opinion at all reads the
+        // same as one graded to a window, which is what every phase in this
+        // fixture — and every rep session before this field existed — was.
+        for p in workPhases where p.pace_shape != "ceiling" {
             guard let i = p.time_in_tolerance_sec, let o = p.time_out_of_tolerance_sec else { continue }
             inSec += i; outSec += o; counted += 1
         }
@@ -1022,20 +1064,6 @@ struct RunDetailV5: View {
     /// ACTIVITY-SPECIFIC RESULT STATISTICS (required hierarchy §2). Three
     /// shapes, in order of specificity — a session either earns one of the
     /// first two or falls through to the existing generic grid, which
-    /// already serves an easy run and a race correctly. NOT a fourth branch
-    /// for races specifically: `type_display` is wrong for an unplanned
-    /// race (reads "Easy" on the Americas Finest City half — a separate,
-    /// already-flagged defect, `lib/coach/run-state.ts`'s own type
-    /// resolution, not this screen's to silently patch around), so there is
-    /// no reliable client-side race signal yet. The generic grid's own
-    /// Distance/Time/Pace/HR already matches what a race needs.
-    /// True when `activityStats` took one of the two specific branches
-    /// rather than falling through to the generic grid — see that
-    /// property's own header for why the scope caption is suppressed then.
-    private var usesActivitySpecificStats: Bool {
-        (isRepStyleSession && workCompletion != nil) || marathonPacePhase != nil
-    }
-
     private var activityStats: [SessionDetailsGridV5.Metric] {
         // Shape 1 — a rep-style session with a real completion count:
         // completed, work pace, rep range, total distance, time.
@@ -1085,6 +1113,20 @@ struct RunDetailV5: View {
         return sessionDetailMetrics
     }
 
+    /// SCOPE-MIX-1, 2026-09-04. This grid used to sit under ONE caption
+    /// ("Across the 5 segments") that only ever described `readingRows`
+    /// (HR/cadence, which the server may scope to the work) while Distance/
+    /// Time/Pace above them are ALWAYS whole-activity totals — never
+    /// scoped to the work at all. "ON THE WORK" over a grid whose first
+    /// row reads 6.4 mi (the whole run, not the 5.98 mi the session
+    /// actually covered) is exactly the population/label mismatch David
+    /// flagged directly against this render. No global caption for this
+    /// grid any more: Distance/Time/Pace stay unlabeled (a bare number
+    /// with no scope word reads as "the whole thing" by default, which is
+    /// what it is), and each reading keeps its OWN scope suffix inline —
+    /// "Heart rate, across the 5 segments" / "Heart rate, max" — so a row
+    /// that needs to say what it covers still can, without implicating
+    /// rows next to it that do not share that scope.
     private var sessionDetailMetrics: [SessionDetailsGridV5.Metric] {
         var out: [SessionDetailsGridV5.Metric] = [
             .init("Distance", .measured(FaffFmt.milesUnit(detail.distance_mi))),
@@ -1092,46 +1134,9 @@ struct RunDetailV5: View {
             .init("Pace", .measured(detail.pace.map { "\($0)/mi" }), sub: askedPaceText),
         ]
         for (label, value) in readingRows {
-            // The grid states its scope once in `sessionDetailScope`, so a
-            // per-row label that only exists to carry that qualifier — same
-            // string, comma-joined — is redundant here (Rule 17).
-            //
-            // ONLY STRIP THE SCOPE SUFFIX ITSELF, not everything after the
-            // first comma. "Heart rate, max" is a DIFFERENT metric from
-            // "Heart rate, across the 5 segments" — the comma there names
-            // which reading this is, not a scope qualifier — and a blind
-            // `split(separator: ",").first` truncated it to bare "Heart
-            // rate", indistinguishable on screen from the average shown two
-            // rows away. A 178 bpm max read as if it were the 168 bpm
-            // average is exactly the ambiguity Rule 16 exists to prevent.
-            // Caught by David directly against the real Americas Finest
-            // City half, not by any test — the compact grid and the
-            // detailed "Reading" section below it disagreed about what
-            // "Heart rate" meant on the same screen.
-            let scopeSuffix = sessionDetailScope.map { ", " + $0.prefix(1).lowercased() + $0.dropFirst() }
-            let bare = (scopeSuffix != nil && label.hasSuffix(scopeSuffix!))
-                ? String(label.dropLast(scopeSuffix!.count))
-                : label
-            out.append(.init(bare, value))
+            out.append(.init(label, value))
         }
         return out
-    }
-
-    /// Stated once, above the grid, rather than folded into every row's own
-    /// label — "Heart rate, across the 4 reps" / "Cadence, across the 4
-    /// reps" repeated the same three words twice on one small card.
-    ///
-    /// `note` IS ALREADY THE FULL PHRASE, not a bare noun. `readingRows`
-    /// (above) reads it as `"Heart rate, \(note)"` — so a server note of
-    /// "across both reps" is written to continue directly after the comma.
-    /// The first draft of this caption prepended its own "Across ", and on
-    /// the 2026-07-25 long-run fixture — whose note is exactly "across both
-    /// reps" — the two concatenated into "ACROSS ACROSS BOTH REPS", caught
-    /// by rendering the real corpus rather than the one fixture this pass
-    /// started from.
-    private var sessionDetailScope: String? {
-        guard let r = detail.readings, !r.hr.isWhole, let note = r.hr.note else { return nil }
-        return note.prefix(1).uppercased() + note.dropFirst()
     }
 
     // MARK: - Splits

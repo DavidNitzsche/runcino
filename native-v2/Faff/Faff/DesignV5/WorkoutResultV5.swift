@@ -204,14 +204,26 @@ struct PostRunVerdictV5: View {
 
     private var headline: String { model.headline.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var summary: String { model.summary.trimmingCharacters(in: .whitespacesAndNewlines) }
-    /// PROVENANCE-1, 2026-09-03. Visible, not behind "Why" — same reasoning
-    /// as Strava's own zone chart stating its basis in the open rather than
-    /// behind a disclosure: a runner reading "asked 7:08" and "Slower than
-    /// target" needs to know in the same glance whether that target came
-    /// from the coaching app or from his own watch, not after a tap.
+    /// PROVENANCE-1, 2026-09-03. The FACT stays visible, not behind "Why" —
+    /// a runner reading "asked 7:08" needs to know in the same glance
+    /// whether that target came from the coaching app or his own watch.
+    /// PROVENANCE-2, 2026-09-04: the full server sentence was too heavy for
+    /// that glance — "still visually heavy and reads like a disclaimer"
+    /// (David, directly against this render). The full sentence now lives
+    /// in the Why disclosure (`targetProvenanceTrimmed`, unchanged, moved);
+    /// this is a short label derived from it for the compact line the card
+    /// actually shows. Derived rather than a new wire field: the server
+    /// sentence already names "race" only when it is one
+    /// (`describeAdaptationCause`'s sibling in `experience.ts` composes it
+    /// that way), so checking for the word is a real signal, not a guess
+    /// invented on the phone.
     private var targetProvenanceTrimmed: String? {
         let t = model.targetProvenanceNote?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (t?.isEmpty ?? true) ? nil : t
+    }
+    private var targetProvenanceShortLabel: String? {
+        guard let t = targetProvenanceTrimmed else { return nil }
+        return t.localizedCaseInsensitiveContains("race") ? "Watch race plan" : "Watch-built workout"
     }
     private var cost: String? {
         let c = model.cost?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -258,6 +270,7 @@ struct PostRunVerdictV5: View {
 
     private var hasDisclosureContent: Bool {
         cost != nil || learned != nil || !changes.isEmpty || conditionsTrimmed != nil || !why.isEmpty
+            || targetProvenanceTrimmed != nil
     }
 
     var body: some View {
@@ -296,15 +309,21 @@ struct PostRunVerdictV5: View {
                         .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if let targetProvenanceTrimmed {
-                    Text(targetProvenanceTrimmed)
-                        .font(.faffText(TypeScaleV5.label13, weight: .semibold))
-                        .foregroundStyle(V5.textSecondary)
-                        .padding(.horizontal, V5.S.s10)
-                        .padding(.vertical, V5.S.s6)
-                        .background(V5.materialTile, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, V5.S.s4)
+                // COMPACT LINE, not the full sentence — "Compared with:
+                // Watch race plan", same weight/scale as a metadata row,
+                // never a disclaimer paragraph. The full explanation moved
+                // to the Why disclosure, appended alongside `learned`/
+                // `change` below.
+                if let targetProvenanceShortLabel {
+                    HStack(spacing: V5.S.s4) {
+                        Text("Compared with:")
+                            .foregroundStyle(V5.textQuiet)
+                        Text(targetProvenanceShortLabel)
+                            .foregroundStyle(V5.textSecondary)
+                            .fontWeight(.semibold)
+                    }
+                    .font(.faffText(TypeScaleV5.label13))
+                    .padding(.top, V5.S.s2)
                 }
             }
             .padding(V5.S.s16)
@@ -346,6 +365,19 @@ struct PostRunVerdictV5: View {
 
                     if whyOpen {
                         VStack(alignment: .leading, spacing: V5.S.s10) {
+                            // The full provenance sentence, now that the
+                            // visible card only carries the compact label
+                            // (PROVENANCE-2). First in the disclosure since
+                            // it explains the label the runner just tapped
+                            // through, not a runner-up fact behind cost/
+                            // learned/change.
+                            if let targetProvenanceTrimmed {
+                                Text(targetProvenanceTrimmed)
+                                    .font(.faffText(TypeScaleV5.body15))
+                                    .foregroundStyle(V5.textSecondary)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                             if let cost {
                                 Text(cost)
                                     .font(.faffText(TypeScaleV5.body15))

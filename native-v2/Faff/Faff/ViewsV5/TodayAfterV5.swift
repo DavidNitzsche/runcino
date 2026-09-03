@@ -196,21 +196,21 @@ struct TodayAfterV5: View {
                  * support:
                  *
                  *   1. identity          → `panel` (above)
-                 *   2. activity stats    → `WorkoutResultFactsV5` — the
-                 *      real gap, not papered over: `V5Today` carries no
-                 *      `phase_breakdown` equivalent (`V5RoutePhase` has no
-                 *      `completed` flag, no `pace_shape`, no per-phase
-                 *      duration), so this screen cannot build RunDetailV5's
-                 *      richer `activityStats` (completion count, rep range,
-                 *      marathon-pace-vs-easy split) or its `workoutAnalysis
-                 *      Section` bar chart. `model.paceWork` is the one
-                 *      number both screens genuinely share
-                 *      (`RunDetailV5.pace_work`, same server computation).
-                 *      REQUIRES a wire change to `/api/v5/today` to close —
-                 *      named here as exactly that, not quietly worked
-                 *      around, and not attempted in this pass: reshaping a
-                 *      second live endpoint's contract under this
-                 *      timeline risked breaking what already works.
+                 *   2. activity stats    → `marathonPaceStatsGrid` when
+                 *      this session is a marathon-specific long run (the
+                 *      shape RunDetailV5's `activityStats` Shape 2 also
+                 *      special-cases), else `WorkoutResultFactsV5`.
+                 *      PARITY-1, 2026-09-04 · `routePhases` now carries
+                 *      `label`/`pace_shape`/`target_pace`/`actual_pace`/
+                 *      `avg_hr` (same five fields `PhaseBreakdown` always
+                 *      had), closing the wire gap this comment used to
+                 *      describe. STILL NOT PORTED: the rep-style Shape 1
+                 *      (completion count, rep range) — that needs a
+                 *      `completed` flag and a total rep count this wire
+                 *      still does not carry, and `workoutAnalysisSection`'s
+                 *      bar chart, deferred rather than rushed under this
+                 *      pass's timeline. `model.paceWork` remains the
+                 *      fallback for every other session shape.
                  *   3. Coach's Read      → `PostRunVerdictV5`, the SAME
                  *      component, same `postRun` object as RunDetailV5 —
                  *      genuinely canonical, not a parallel implementation.
@@ -222,7 +222,11 @@ struct TodayAfterV5: View {
                  *   7. Splits            → `breakdownSection`.
                  *   8. Secondary evidence → everything below.
                  */
-                WorkoutResultFactsV5(workPaceText: model.paceWork)
+                if let grid = marathonPaceStatsGrid {
+                    SessionDetailsGridV5(scopeCaption: nil, metrics: grid)
+                } else {
+                    WorkoutResultFactsV5(workPaceText: model.paceWork)
+                }
 
                 if let pr = model.postRun {
                     PostRunLearnedV5(model: pr, includes: .capture)
@@ -1164,28 +1168,82 @@ struct TodayAfterV5: View {
             // 8:36/mi) rendered as "18:04/mi" — 1084 seconds read back as a
             // pace. Divide by the phase's own distance first.
             let paceSecPerMi = p.mi > 0 ? Double(p.sec) / p.mi : Double(p.sec)
+            // PARITY-1, 2026-09-04 · `p.label` is the server's own phase
+            // name ("10.0 mi easy", "Interval · 1 km") now that `routePhases`
+            // carries it — the SAME string run detail's `phase_breakdown`
+            // has always shown. Falls back to the generic numbered label
+            // only for a payload from before this date.
             let label: String
-            switch p.type {
-            case "warmup":   label = "Warm Up"
-            case "cooldown": label = "Cool Down"
-            case "recovery": label = "Recovery"
-            case "work":     label = "Interval \(workOrdinal[i] ?? 1)"
-            default:         label = "Section \(i + 1)"
+            if let real = p.label, !real.isEmpty {
+                label = real
+            } else {
+                switch p.type {
+                case "warmup":   label = "Warm Up"
+                case "cooldown": label = "Cool Down"
+                case "recovery": label = "Recovery"
+                case "work":     label = "Interval \(workOrdinal[i] ?? 1)"
+                default:         label = "Section \(i + 1)"
+                }
             }
             return RepPiece(id: i,
                      label: label,
                      isWork: p.type.map { $0 == "work" } ?? true,
                      actualPace: Units.formatPace(secPerMile: paceSecPerMi),
-                     askedPace: nil,
+                     // Same rule `RunDetailV5.repPieces` applies: a recovery
+                     // jog's target is a band the watch needed to draw
+                     // something, not a real prescription, and a stride is
+                     // never pace-graded at all (`pace_shape == "effort"`).
+                     askedPace: (p.type == "work" && p.paceShape != "effort") ? p.targetPace : nil,
                      detail: "\(Units.formatDistance(miles: p.mi, decimals: 2)) \(Units.distanceLabel())",
                      // VERDICT-1 · the canonical word, from the same resolver
-                     // run detail's phase panel reads. Nil on an ungraded
-                     // phase and on older payloads — no row invents one.
-                     verdictPhrase: p.statusLabel,
+                     // run detail's phase panel reads — now the full
+                     // pace-shape-aware phrase (`phaseVerdictPhrase`), not
+                     // just the bare `status_label`, so a ceiling phase
+                     // reads "Under the ceiling" here exactly as it does on
+                     // run detail rather than falling through to nil.
+                     verdictPhrase: phaseVerdictPhrase(paceShape: p.paceShape, verdict: p.verdict,
+                                                        statusLabel: p.statusLabel, type: p.type),
                      chosen: false,
                      kind: RepPiece.Kind.of(type: p.type, isWork: p.type.map { $0 == "work" } ?? true),
                      durationSec: p.sec)
         }
+    }
+
+    /// PARITY-1, 2026-09-04 · `RunDetailV5.marathonPacePhase`'s twin, off
+    /// `V5RoutePhase` now that `routePhases` carries `label`. Same detection
+    /// rule (a work phase whose own label names marathon pace), so the two
+    /// screens agree on whether a session IS this shape without either
+    /// guessing from a pace value.
+    private var marathonPacePhase: V5RoutePhase? {
+        model.routePhases.first {
+            $0.type == "work" && ($0.label?.lowercased().contains("marathon pace") ?? false)
+        }
+    }
+
+    private var marathonEasyPhase: V5RoutePhase? {
+        guard marathonPacePhase != nil else { return nil }
+        return model.routePhases.first {
+            $0.type == "work" && !($0.label?.lowercased().contains("marathon pace") ?? false)
+        }
+    }
+
+    /// The marathon-pace stats grid — `RunDetailV5.activityStats`' Shape 2,
+    /// off the same server-computed label/pace/HR fields, now that
+    /// `routePhases` carries them (closes the gap this file's own header
+    /// comment on `sectionPieces` used to name). Total distance/time/pace
+    /// are deliberately NOT repeated here — `askedVsRanSection` /
+    /// `readingSection` already state them once on this screen, and
+    /// restating them in a second grid would be Rule 17 on this file's own
+    /// page rather than across two screens.
+    private var marathonPaceStatsGrid: [SessionDetailsGridV5.Metric]? {
+        guard let mp = marathonPacePhase else { return nil }
+        let easy = marathonEasyPhase
+        return [
+            .init("MP distance", .measured(Units.formatDistance(miles: mp.mi, decimals: 1) + " " + Units.distanceLabel())),
+            .init("MP pace", .measured(mp.actualPace.map { "\($0)/mi" }), sub: mp.targetPace.map { "\($0)/mi" }),
+            .init("Easy pace", .measured(easy?.actualPace.map { "\($0)/mi" }), sub: easy?.targetPace.map { "\($0)/mi" }),
+            .init("MP heart rate", .measured(mp.avgHr.map { "\($0) bpm" })),
+        ]
     }
 
     @ViewBuilder

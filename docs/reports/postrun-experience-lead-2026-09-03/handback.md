@@ -873,14 +873,218 @@ Fixed, rebuilt, re-rendered, confirmed correct.
 - **VoiceOver, Reduce Motion, extreme Dynamic Type, other device
   sizes** — deferred per David's own explicit instruction, not
   attempted.
-- **`/api/v5/today` phase-level parity** — the gap named above under
-  "the one canonical model, honestly."
+- **`/api/v5/today` phase-level parity** — CLOSED for the marathon-pace
+  case in §16 below. The rep-style Shape 1 (completion count, rep
+  range) is still open — see §16's own "what's still not done."
+
+---
+
+## 16 · Round 5 — the correctness pass (2026-09-04)
+
+David's instruction was explicit: *"Digest is approved visually as the
+correct direction... This is substantially better and should now
+receive a focused correctness and language pass — not another
+redesign. Do not merge yet."* Ten numbered items. What follows is
+item-by-item, with the render evidence and the two real bugs this
+pass found beyond the original ten.
+
+### What shipped, verified by rendering against real production data
+
+**1 · "Reps" language, marathon long run.** `experience.ts`'s `noun`
+selection now detects a genuine multi-purpose structure — two work
+phases with DIFFERENT target paces, not `raceMatched` — and says
+"portions" (or "both portions" for exactly two, matching David's own
+"Both phases" example rather than the grammatically odd "all two
+portions" a first pass produced). A true rep set (shared target pace)
+still says "reps," confirmed live on the Sept 1 interval fixture:
+"All four reps landed, with one quicker than the window." Regression
+test `PORTIONS-1` in `_experience.test.ts` uses the REAL 2026-06-27
+long-run phases (10.0 mi easy / 4.0 mi @ marathon pace) and asserts
+`rep`/`reps`/`repetition`/`work block`/`segments` never appear.
+
+**2 · "Work executed" vs. a real pace shortfall.** A new `paceShortfalls`
+clause in `readExecution` fires only when a ceiling-shaped phase was
+respected (doctrine-correct — never fails a ceiling for being slow)
+AND the actual pace missed the prescribed pace by more than tolerance.
+It composes an honest combined sentence instead of the old blanket
+"Work executed." Live render, marathon long run: **"Structure
+completed, pace below target / You completed both portions and stayed
+under the HR ceiling, but 10.0 mi easy averaged 8:48/mi against
+8:00/mi prescribed."** Verified this does NOT fire when there is no
+real shortfall — the Sept 2 easy day's "5.0 mi easy" phase ran 8:35
+against an 8:42 ceiling (faster, not slower) and correctly still reads
+"Work executed."
+
+**3 · The tolerance-percentage sentence, reconciled.** Traced "The
+watch had you inside the target pace for 50:45 of the 1:57:55 of work
+it graded" to real per-phase data: the arithmetic was correct, the
+sentence was answering a stricter, different question (adherence to a
+narrow two-sided band) than what surrounded it implied. Restricted
+`toleranceLine` to phases the sentence's own "target pace" language is
+honest for. **First cut over-restricted it** (`pace_shape == "window"`
+exactly) and broke `FaffTests`' `testToleranceLineIgnoresWarmupAndCooldown`
+— caught by the test suite, not a render: the 2026-08-11 tune-up
+fixture predates `pace_shape` shipping on any phase, so the strict
+equality zeroed every phase. Fixed to exclude only `pace_shape ==
+"ceiling"` explicitly, which is backward-compatible with a payload
+carrying no shape opinion at all and still correct for the marathon
+long run (both phases ceiling-shaped, correctly excluded — the
+sentence is absent there now rather than misleading). Per-phase
+pace/HR dual verdicts (the rest of item 3's ask) were NOT built as a
+new UI element — see "what's still not done" below.
+
+**4 · Race language.** New branch in the `off_target` verdict, gated
+on `raceMatched && targetProvenance === 'self_authored'`. Live render,
+Americas Finest City half: **"Slower than your race plan / Four of
+five course segments were slower than the pacing plan you set on your
+Watch."** — matches David's example text exactly.
+
+**5 · Compact provenance line.** `PostRunVerdictV5` now shows "Compared
+with: Watch-built workout" / "Watch race plan" as a one-line label; the
+full sentence ("These targets came from the workout you built on your
+watch...") moved into the Why-disclosure body. Confirmed on both the
+race and the marathon long run.
+
+**6 · Easy-run recording-integrity + the "ON THE WORK" scope mismatch.**
+`PostRunLearnedV5` now shows a compact, tappable "0.4 mi recorded
+after the planned workout" that expands to the full sentence on tap,
+built from `coverage.overtimeDistanceMi` (structured data, not parsed
+prose). Separately, `RunDetailV5.sessionDetailMetrics` no longer draws
+a grid-wide caption — Distance/Time/Pace stay unlabeled (always
+whole-activity) and each reading row (HR, cadence) keeps its own
+inline scope suffix ("Heart rate, across the 5 segments"). This
+reverts an earlier session's own suffix-stripping fix, which had
+caused the mismatch when combined with this pass's new stats work —
+documented in the `SCOPE-MIX-1` comment at the call site.
+
+**7 · Structured-identity-primary title.** New `RunDetailV5.title`
+branch: when a session has a detected marathon-pace phase AND a
+genuine personal name, the structured identity ("Marathon-specific
+long run") becomes the PRIMARY title and the personal name demotes to
+a new `AppBar.subtitle` slot underneath. Live render:
+**"MARATHON-SPECIFIC LONG RUN" / "Little adventure today"** — exactly
+David's own example. `AppBar` gained the optional `subtitle` param;
+every other call site is unaffected (defaults to nil).
+
+**8 · Polish.** Partially addressed as a byproduct of 1-7 (provenance
+compaction, stat-grid alignment already correct in the existing
+`SessionDetailsGridV5`). NOT separately touched: uppercase-titling
+intensity, "Why styled as an obvious disclosure" beyond its existing
+chevron-row treatment, race finish-time emphasis. Lower priority than
+items 1-7 and 9-10 by the instruction's own ordering; not attempted
+this pass given time.
+
+**9 · Today-after-run parity — the wire half.** `web-v2/app/api/v5
+/today/route.ts`'s `routePhases` now carries `label`, `pace_shape`,
+`target_pace`, `actual_pace`, `avg_hr` — the same five fields
+`PhaseBreakdown` (run detail's wire type) has always had, read off the
+SAME `grade.phases` (`GradedPhase[]`) this route already computed.
+Verified against real production data: fetched `/api/v5/today?date=
+2026-09-01` from the walk-substrate and confirmed the wire emits e.g.
+`{"label": "Interval · 1 mi", "pace_shape": "window", "target_pace":
+"7:10", "actual_pace": "7:02", "avg_hr": 158}` for the real Sept 1
+session. `V5RoutePhase` (Swift) decodes all five. `TodayAfterV5` now
+builds the SAME marathon-pace stats grid (`marathonPaceStatsGrid`) run
+detail's `activityStats` Shape 2 does, off the same detection rule
+(a work phase whose label names marathon pace). A shared
+`phaseVerdictPhrase(paceShape:verdict:statusLabel:type:)` free function
+replaces two independently-maintained switch statements — `RunDetailV5
+.verdictPhrase` now delegates to it, and `TodayAfterV5.sectionPieces`
+calls it directly, so a ceiling phase reads "Under the ceiling" on
+BOTH screens by construction. `sectionPieces` also now uses the real
+`label` instead of a numbered fallback, and a real `askedPace` where
+one exists.
+
+**NOT VERIFIED BY RENDERING.** This is the one piece of the whole pass
+that could not be confirmed on the actual `TodayAfterV5` screen, and
+it is reported as such rather than claimed. Reaching that screen with
+real "after_run" data needs the walk-substrate's QA-token sign-in to
+hold through live navigation, which is the documented VW-3 blocker
+(this session's own memory record: *"the installed build is a DEV
+build... `-faffToken` doesn't hold, so Rule 13 is unsatisfiable for
+phone display fixes until VW-3 is fixed"*). Spending more of this
+pass's remaining time fighting a known, already-diagnosed blocker
+would have been the wrong call. What IS verified: the wire payload
+(`curl` against the real `faff_readonly` copy, shown above), the Swift
+decode (the project builds clean with the new fields), and the logic
+parity (`marathonPacePhase`/`marathonEasyPhase`/`phaseVerdictPhrase`
+are the identical functions/detection rule run detail already proved
+correct in §§1-7 above, just re-pointed at `V5RoutePhase` instead of
+`PhaseBreakdown`). Still genuinely open: the rep-style Shape 1
+(completion count, rep range) needs a `completed` flag and a total rep
+count this wire still does not carry, and `workoutAnalysisSection`'s
+bar chart was not ported. Both deferred rather than rushed.
+
+**10 · Verification.** Rebuilt clean (`xcodebuild ... build`,
+`BUILD SUCCEEDED`, no `-sdk` flag per the standing trap). Re-rendered
+all four real fixtures — interval, easy, race, marathon long run —
+first-screen AND scrolled-to-bottom, saved as `round5-{interval,easy,
+race,long}-{top,bottom}.png` in this report's `screenshots/` folder.
+`FaffTests` (XCTest, `-only-testing:FaffTests`): **TEST SUCCEEDED**
+after the tolerance-line fix above. `web-v2` vitest, `lib/postrun/`:
+**141 passed, 3 skipped, 0 failed** (up from 136 passed pre-pass — the
+5 new regression tests). Every displayed population/target/verdict/
+provenance source was traced to real wire data at least once in the
+items above, not assumed. Branch `feat/postrun-experience-lead` is
+committed with these changes and reconciled with `origin/main` per the
+merge instructions below.
+
+### Two real bugs found beyond the original ten items
+
+Both caught by literally reading the rendered screen, not by code
+review — Rule 13 doing exactly the job it exists for.
+
+**PORTIONS-1, the render.** The marathon long run's page showed "No
+comparable 2 × 7 mi session in the last six months." — a real
+production sentence, composed by `lib/postrun/matched.ts`'s
+comparator search. Root cause: `signatureOf` computes `repDistanceMi`
+as the MEDIAN of a session's work-segment distances, which is a
+meaningful "rep distance" for genuine reps and a fabricated number for
+two segments of 10 mi and 4 mi — the median (7) describes neither. The
+gate at `pickMatchedWorkout` already refuses to search when
+`workCount < 2` with an explicit doctrine comment ("a long run gets no
+comparator here... left undone rather than done wrongly") — this run
+has `workCount === 2` and slipped past that exact intent. Fixed with a
+new `SessionSignature.isMultiPurposeStructure` flag (the same
+distinct-target-pace signal `experience.ts`'s item-1 fix uses),
+checked at the same gate. **Found a second instance of the same bug
+rendering the race**: "No comparable 5 × 2.2 mi session" — the AFC
+half's five course segments (1.0 to 5.4 mi) hold close enough target
+paces to slip past the pace-based signal alone, so a second signal was
+added (work-segment distances varying by more than 40% from their own
+median). Both fixed, both regression-tested against the real fixture
+shapes (`_matched.test.ts`, `PORTIONS-1` describe block, two new
+cases), both confirmed gone by re-fetching the real wire payload
+(`matchedWorkout: null, matchedRefusal: null`) and re-rendering. The
+genuine rep-matching case (Sept 1 interval vs. its 16 June predecessor)
+was re-verified live to confirm neither fix broke it: **"Compared with
+your previous 4 × 1 mi threshold session, 11 weeks ago"** still renders
+correctly.
+
+### What's still not done, stated plainly
+
+- **Item 3's per-phase pace+HR dual-verdict UI.** The session-level
+  Coach's Read sentence now states both dimensions explicitly (item
+  2's fix). A structural per-ROW breakdown in Piece-by-Piece was
+  considered and NOT built: `RepBreakdownV5`'s own header comment is a
+  locked, David-approved design decision that explicitly rejects
+  grading every row in isolation ("no amber, no red, no green... a
+  list that grades every rep in isolation would be arguing with the
+  coach's own verdict"). Adding a second per-row grading axis sits in
+  real tension with that decision rather than extending it cleanly.
+  Flagging this as a decision rather than silently picking a side.
+- **Item 8's remaining polish** — uppercase-titling intensity, the
+  Why-disclosure's visual treatment, race finish-time emphasis.
+- **Item 9's rep-style Shape 1 on Today**, and its bar chart — see
+  above.
+- **TodayAfterV5 itself, unverified by rendering** — see above, and
+  the standing VW-3 blocker it depends on.
 
 ### Programme-lead merge instructions
 
-1. **Do not merge yet** — David's own instruction, pending his review
-   of the native renders above (and ideally a live device look, not
-   just these screenshots).
+1. **Do not merge yet** — David's own instruction, and this pass
+   still leaves two items (3's per-phase UI, 9's Shape 1) genuinely
+   open, plus one screen (`TodayAfterV5`) unverified by render.
 2. When reviewing, the fastest path to seeing this live: `git checkout
    feat/postrun-experience-lead` in a worktree, `xcodebuild -project
    native-v2/Faff.xcodeproj -scheme Faff -destination "id=<simulator>"
@@ -892,6 +1096,9 @@ Fixed, rebuilt, re-rendered, confirmed correct.
    bundled sample fixture, per Rule 13.
 3. Once approved: fast-forward merge only, after `git fetch` — this
    repo's own standing rule, and `main` may have moved.
-4. The `/api/v5/today` wire-parity gap (§ above) is real, load-bearing
-   for the "one canonical model" requirement, and not a quick fix —
-   worth its own scoped pass rather than folding into this merge.
+4. Before merging, resolve item 3's flagged design tension (per-row
+   dual verdicts vs. `RepBreakdownV5`'s no-scorecard rule) — that is a
+   decision, not a bug, and belongs to whoever owns this surface next.
+5. `TodayAfterV5`'s render is unverified; confirm it live (once VW-3 is
+   fixed, or via a real signed-in device) before treating item 9 as
+   fully closed rather than wire-complete.

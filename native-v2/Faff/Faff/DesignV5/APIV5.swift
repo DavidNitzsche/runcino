@@ -200,9 +200,36 @@ struct V5RoutePhase: Decodable, Equatable {
     /// sheet and run detail read one sentence. Nil when nothing was graded.
     let statusLabel: String?
 
+    /// PARITY-1, 2026-09-04 · the same five fields `PhaseBreakdown` (run
+    /// detail's own wire type) carries, added so `TodayAfterV5` can build
+    /// the SAME `activityStats` / marathon-pace-phase detection run detail
+    /// does, off the same `GradedPhase[]` this route already computed —
+    /// see the header comment on `routePhases` in `today/route.ts`. Nil on
+    /// a payload from before this date; every caller already treats a nil
+    /// stat field as "fall back to the generic grid", the same posture
+    /// `type` above has had since 2026-09-01.
+    let label: String?
+    /// "window" | "ceiling" | "effort" | "none". Same values `PhaseBreakdown
+    /// .pace_shape` carries — `RunDetailV5.marathonPacePhase`'s detection
+    /// and `activityStats`' ceiling-vs-window handling read this, not
+    /// `verdict`, because a ceiling phase and a window phase disagree on
+    /// what "under" means.
+    let paceShape: String?
+    /// Bare `"7:14"` — no unit, matching `PhaseBreakdown.target_pace` /
+    /// `.actual_pace` exactly so the two Swift call sites format it
+    /// identically ("asked 7:14/mi" is composed client-side on both).
+    let targetPace: String?
+    let actualPace: String?
+    let avgHr: Int?
+
     enum K: String, CodingKey {
         case mi, sec, type, verdict
         case statusLabel = "status_label"
+        case label
+        case paceShape = "pace_shape"
+        case targetPace = "target_pace"
+        case actualPace = "actual_pace"
+        case avgHr = "avg_hr"
     }
 
     init(from decoder: Decoder) throws {
@@ -212,11 +239,20 @@ struct V5RoutePhase: Decodable, Equatable {
         type = try c.decodeIfPresent(String.self, forKey: .type)
         verdict = try c.decodeIfPresent(String.self, forKey: .verdict)
         statusLabel = try c.decodeIfPresent(String.self, forKey: .statusLabel)
+        label = try c.decodeIfPresent(String.self, forKey: .label)
+        paceShape = try c.decodeIfPresent(String.self, forKey: .paceShape)
+        targetPace = try c.decodeIfPresent(String.self, forKey: .targetPace)
+        actualPace = try c.decodeIfPresent(String.self, forKey: .actualPace)
+        avgHr = try c.decodeIfPresent(Int.self, forKey: .avgHr)
     }
 
-    init(mi: Double, sec: Int, type: String?, verdict: String? = nil, statusLabel: String? = nil) {
+    init(mi: Double, sec: Int, type: String?, verdict: String? = nil, statusLabel: String? = nil,
+         label: String? = nil, paceShape: String? = nil, targetPace: String? = nil,
+         actualPace: String? = nil, avgHr: Int? = nil) {
         self.mi = mi; self.sec = sec; self.type = type
         self.verdict = verdict; self.statusLabel = statusLabel
+        self.label = label; self.paceShape = paceShape
+        self.targetPace = targetPace; self.actualPace = actualPace; self.avgHr = avgHr
     }
 }
 

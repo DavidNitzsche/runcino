@@ -163,6 +163,11 @@ struct AppBar: View {
     let title: String
     /// A quiet line above the title. Race detail puts the date here.
     var eyebrow: String? = nil
+    /// A quiet line BELOW the title (IDENTITY-1, 2026-09-04) — the runner's
+    /// own personal name for a session whose structured identity ("Marathon-
+    /// specific long run") is the more useful primary title. Nil for every
+    /// other call site; the personal name stays the title itself there.
+    var subtitle: String? = nil
     var onBack: (() -> Void)? = nil
     /// A single trailing icon button, opposite the back chevron. Only race
     /// detail needs one so far (edit) — kept as one optional SF Symbol slot
@@ -207,6 +212,11 @@ struct AppBar: View {
                     .textCase(.uppercase)
                     .tracking(20 * 0.02)
                     .foregroundStyle(V5.textPrimary)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
+                }
             }
             Spacer(minLength: 0)
             if let trailingIcon, let onTrailing {

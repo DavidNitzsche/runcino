@@ -1617,6 +1617,20 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                     // the same thing run detail's phase panel says.
                     verdict: gp.verdict === 'not_graded' ? null : gp.verdict,
                     status_label: gp.statusLabel,
+                    // PARITY-1, 2026-09-04 · run detail's `activityStats` /
+                    // `workoutAnalysisSection` read `label`, `target_pace`,
+                    // `actual_pace`, `avg_hr` and `pace_shape` straight off
+                    // `PhaseBreakdown` — none of which this wire carried, so
+                    // the immediate post-run sheet fell back to a generic
+                    // grid every time even though the same `GradedPhase[]`
+                    // this route already computed (`grade.phases`, above)
+                    // had all five. Same names run detail's own wire uses,
+                    // so one Swift decoder reads either payload.
+                    label: gp.label,
+                    pace_shape: gp.shape,
+                    target_pace: fmtPaceShared(gp.targetSecPerMi),
+                    actual_pace: fmtPaceShared(gp.avgSecPerMi),
+                    avg_hr: gp.avgHr,
                   }]
                 : [];
             }),

@@ -436,6 +436,67 @@ describe("PROVENANCE-1 · an unplanned race never claims the app's authorship", 
   });
 });
 
+/* ────────── PORTIONS-1, 2026-09-04 · a long run is not a rep set ───────── */
+
+describe('PORTIONS-1 · a marathon-specific long run reads as two portions, never reps', () => {
+  // The owner's REAL 2026-06-27 "Little adventure today": 10.0 mi easy into
+  // 4.0 mi at marathon pace, self-authored on the watch (no plan_workouts
+  // row). Read out of the walk-substrate copy of `faff_readonly` — this is
+  // the exact shape that shipped "All two reps stayed under the ceiling",
+  // which reads as a two-repetition interval set, and the exact shape that
+  // shipped "Work executed" over a marathon-effort mile run 28 sec/mi slow.
+  const REAL_LONG_PHASES = [
+    { index: 0, type: 'work', label: '10.0 mi easy', completed: true, avgHr: 145,
+      actualDurationSec: 5280, actualDistanceMi: 10.0,
+      targetPaceSPerMi: 480, tolerancePaceSPerMi: 30, actualPaceSPerMi: 528 },
+    { index: 1, type: 'work', label: '4.0 mi @ marathon pace', completed: true, avgHr: 163,
+      actualDurationSec: 1848, actualDistanceMi: 4.0,
+      targetPaceSPerMi: 434, tolerancePaceSPerMi: 30, actualPaceSPerMi: 462 },
+  ];
+
+  const out = compose({
+    phases: REAL_LONG_PHASES,
+    sessionClass: 'long',
+    plannedType: 'long',
+    plannedTypeDisplay: 'Long',
+    raceMatched: false,
+    targetProvenance: 'self_authored',
+    workHrCeilingBpm: null,
+    overallHrCeilingBpm: null,
+    wholeRunHrBpm: 149,
+  });
+
+  it('never calls the two phases reps, a repetition, a work block, or segments', () => {
+    // Doctrine forbids failing a ceiling-shaped phase for being slow, so the
+    // SESSION grades as satisfied (ceiling respected) even though every
+    // phase ran slower than its own prescribed pace — which is exactly why
+    // the sentence composing that fact must not borrow rep-set language.
+    expect(out.execution.status).toBe('PARTIAL_PRODUCTIVE');
+    expect(out.execution.summary).not.toMatch(/\brep\b/i);
+    expect(out.execution.summary).not.toMatch(/\breps\b/i);
+    expect(out.execution.summary).not.toMatch(/repetition/i);
+    expect(out.execution.summary).not.toMatch(/\bwork block\b/i);
+    expect(out.execution.summary).not.toMatch(/\bsegments?\b/i);
+    expect(out.execution.summary).toMatch(/\bboth portions\b/i);
+  });
+
+  it('never turns "stayed under the HR ceiling" into "work executed"', () => {
+    // The exact incoherence this closes: doctrine correctly never fails a
+    // ceiling phase for running slow, but the OLD sentence reported that as
+    // "Work executed" — collapsing "the ceiling was respected" into "the
+    // prescribed pace was achieved", which it was not.
+    expect(out.execution.headline).toBe('Structure completed, pace below target');
+    expect(out.execution.headline).not.toMatch(/executed/i);
+    expect(out.execution.summary).toMatch(/8:48\/mi against 8:00\/mi prescribed/);
+    expect(out.execution.summary).toMatch(/stayed under the HR ceiling/);
+  });
+
+  it('attributes the targets to the watch workout, not the app, for a self-authored long run', () => {
+    expect(out.execution.targetProvenance).toBe('self_authored');
+    expect(out.execution.targetProvenanceNote).toMatch(/workout you built on your watch/i);
+  });
+});
+
 /* ─────────────────────────── Rule 11, as a type ────────────────────────── */
 
 describe('Rule 11 · three facts, never one', () => {

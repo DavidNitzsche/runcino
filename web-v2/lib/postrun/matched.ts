@@ -162,6 +162,20 @@ export interface SessionSignature {
   recoveryPaceSecPerMi: number | null;
   /** Feet of climb per mile of running. Null when the run measured none. */
   elevPerMi: number | null;
+  /**
+   * PORTIONS-1, 2026-09-04 · true when the work segments are two or more
+   * DIFFERENT prescriptions (a marathon-specific long run's easy-then-MP
+   * shape) rather than repetitions of one. `repDistanceMi`'s median over a
+   * 10.0 mi easy phase and a 4.0 mi marathon-pace phase reports "7 mi" — a
+   * number that describes neither phase — and `structureWord` then composed
+   * "No comparable 2 × 7 mi session", read directly off a real render.
+   * Distinguished by the same structural signal `experience.ts`'s
+   * `isMultiPurposeStructure` uses: real reps of one thing share ONE target
+   * pace; this run's two phases do not, by construction. Checked here so
+   * every caller — the gate below, `structureWord`, a future one — inherits
+   * the same answer rather than re-deriving it.
+   */
+  isMultiPurposeStructure: boolean;
 }
 
 function median(xs: number[]): number | null {
@@ -197,9 +211,27 @@ export function signatureOf(segments: MatchSegment[], reading: WorkReading): Ses
   const workDistances = work.map((s) => s.distanceMi).filter((d): d is number => d != null && d > 0);
   const workPaces = work.map((s) => s.paceSecPerMi).filter((p): p is number => p != null && p > 0);
   const targets = work.map((s) => s.targetSecPerMi).filter((t): t is number => t != null && t > 0);
+  // Bucketed to 5 s/mi, same rounding `experience.ts` uses for the same
+  // question, so the two files cannot disagree about what "one shared
+  // target" means for a session that happens to reach both.
+  const distinctWorkTargets = new Set(targets.map((t) => Math.round(t / 5)));
+  // PORTIONS-1, 2026-09-04 · a SECOND signal, found rendering a real race:
+  // the target-pace check above says nothing about a course whose segments
+  // hold roughly one race pace across wildly different lengths — the
+  // Americas Finest City half's five segments (1.0 to 5.4 mi) share close
+  // enough target paces to slip past the pace check, and `repDistanceMi`'s
+  // median composed "No comparable 5 × 2.2 mi session" over a race that was
+  // never a rep set. A real rep's own GPS noise stays within a few percent
+  // of its neighbours; these two sessions' spreads are 2-5×. The threshold
+  // is generous on purpose — it only needs to separate "reps of one thing"
+  // from "segments of very different lengths", not draw a tight band.
+  const distanceMedian = median(workDistances);
+  const distancesVaryWidely = workDistances.length >= 2 && distanceMedian != null && distanceMedian > 0
+    && workDistances.some((d) => Math.abs(d - distanceMedian) / distanceMedian > 0.4);
 
   return {
     workCount: work.length,
+    isMultiPurposeStructure: work.length >= 2 && (distinctWorkTargets.size > 1 || distancesVaryWidely),
     repDistanceMi: median(workDistances),
     totalWorkMi: workDistances.length > 0
       ? Math.round(workDistances.reduce((a, b) => a + b, 0) * 100) / 100
@@ -235,6 +267,7 @@ export function elevPerMiOf(c: MatchCandidate): number | null {
 /** Why a candidate was refused. Kept for the test, and for a future log. */
 export type MatchRefusal =
   | 'no-work-segments'
+  | 'not-a-rep-structure'
   | 'rep-distance-differs'
   | 'segment-count-differs'
   | 'intensity-differs'
@@ -261,6 +294,12 @@ export function refuse(a: SessionSignature, b: SessionSignature): MatchRefusal |
    * one work segment every figure below collapses into the run's own average
    * pace, which is the comparison Q44 forbids. */
   if (a.workCount < 2 || b.workCount < 2) return 'no-work-segments';
+
+  // PORTIONS-1, 2026-09-04 · the candidate side of the same gate the caller
+  // already applies to `now` — a historical marathon-specific long run is
+  // not a defensible comparator for a genuine rep session either, and its
+  // `repDistanceMi` is the same fabricated median.
+  if (a.isMultiPurposeStructure || b.isMultiPurposeStructure) return 'not-a-rep-structure';
 
   if (a.repDistanceMi != null && b.repDistanceMi != null && a.repDistanceMi > 0) {
     const off = Math.abs(b.repDistanceMi - a.repDistanceMi) / a.repDistanceMi;
@@ -662,6 +701,12 @@ export function pickMatchedWorkout(
    * session" under every easy run is furniture, and the UX doctrine's test is
    * whether a line changes what the runner understands or does next. */
   if (nowSig.workCount < 2) return { matched: null, refusal: null };
+  // PORTIONS-1, 2026-09-04 · same posture as the gate above, for the same
+  // reason: a marathon-specific long run's easy-then-MP shape has TWO work
+  // segments but is not a rep set, and `repDistanceMi`'s median across them
+  // is not a real rep distance. Left undone rather than done wrongly, same
+  // as the workCount<2 case this doc comment already argues for.
+  if (nowSig.isMultiPurposeStructure) return { matched: null, refusal: null };
 
   const ranked = candidates
     .filter((c) => c.runId !== current.runId)

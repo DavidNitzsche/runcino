@@ -144,6 +144,41 @@ struct RepPiece: Identifiable, Equatable {
     var durationSec: Int? = nil
 }
 
+// MARK: - Shared verdict phrasing
+
+/// PARITY-1, 2026-09-04 · the ONE place a graded phase's `(pace_shape,
+/// verdict, status_label, type)` becomes the word a runner reads —
+/// `RunDetailV5.verdictPhrase(_:)` now delegates to this rather than
+/// re-deriving the same switch, and `TodayAfterV5.sectionPieces` calls it
+/// directly off `V5RoutePhase`'s own four matching fields. Two wire types,
+/// one function, so the same graded phase reads the same word on both
+/// screens by construction rather than by two authors agreeing to.
+func phaseVerdictPhrase(paceShape: String?, verdict: String?, statusLabel: String?, type: String?) -> String? {
+    // A ceiling phase gets its word whatever its type — a warm-up and a
+    // cool-down are exactly the phases this fixes.
+    if paceShape == "ceiling" {
+        switch verdict {
+        case "fast":       return "Over the ceiling"
+        case "hit":        return "Under the ceiling"
+        case "incomplete": return "Ended before its target"
+        default:           return statusLabel
+        }
+    }
+    guard type == "work" else { return nil }
+    if let label = statusLabel, !label.isEmpty { return label }
+    switch verdict {
+    case "hit":        return "In the band"
+    case "fast":       return "Quicker than the band"
+    case "slow":       return "Slower than the band"
+    // LEGACY, from builds before 2026-09-01. Kept because stored rows carry
+    // them; no build emits them.
+    case "drifted":    return "In and out of the band"
+    case "missed":     return "Outside the band"
+    case "incomplete": return "Ended before its target"
+    default:           return nil
+    }
+}
+
 // MARK: - The section
 
 struct RepBreakdownV5: View {

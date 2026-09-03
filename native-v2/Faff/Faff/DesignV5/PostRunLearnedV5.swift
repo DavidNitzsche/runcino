@@ -406,10 +406,33 @@ struct PostRunLearnedV5: View {
 
     var includes: Sections = .all
 
+    /// CAPTURE-COMPACT-1, 2026-09-04. The full reconciliation sentence made
+    /// a normal run open like an error report: "6.41 mi in total: 5.98 mi
+    /// of the session, then 0.43 mi run on after the last prescribed
+    /// piece. The mile table covers the first five." — three clauses, above
+    /// everything else on the screen, for what is usually a completely
+    /// unremarkable fact (the watch kept recording after the workout
+    /// ended). Condensed to one line built from the STRUCTURED number
+    /// (`model.coverage.overtimeDistanceMi`) rather than a substring of the
+    /// prose — the full sentence is one tap away, not parsed apart.
+    @State private var captureExpanded = false
+
     private var capture: String? {
         guard let c = model.capture?.trimmingCharacters(in: .whitespacesAndNewlines),
               !c.isEmpty else { return nil }
         return c
+    }
+
+    /// The compact line, when the reconciliation is honestly summarisable
+    /// as ONE fact — overtime running after the last prescribed piece, the
+    /// common case. Nil when there is no overtime to name (so the full
+    /// sentence, whatever else it says, is shown outright rather than a
+    /// compact line claiming nothing happened) or the coverage numbers
+    /// themselves are absent.
+    private var compactCaptureLine: String? {
+        guard let overtime = model.coverage?.overtimeDistanceMi, overtime > 0,
+              let text = FaffFmt.milesUnit(overtime) else { return nil }
+        return "\(text) recorded after the planned workout"
     }
 
     private var strides: PostRunStridesV5? {
@@ -444,17 +467,38 @@ struct PostRunLearnedV5: View {
                  * directly under the stats poster, so the sentence reaches the
                  * runner before the numbers rather than after all of them. */
                 if includes.contains(.capture), let c = capture {
-                    Text(c)
-                        .font(.faffText(TypeScaleV5.body15))
-                        .foregroundStyle(V5.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, V5.S.s4)
-                        .padding(.bottom, V5.S.s6)
-                        // The sentence is the run's own honesty about itself,
-                        // and VoiceOver must reach it in the same position a
-                        // sighted reader does — before the figures it qualifies.
+                    if let compactCaptureLine, !captureExpanded {
+                        Button {
+                            withAnimation(V5.Motion.expand) { captureExpanded = true }
+                        } label: {
+                            HStack(spacing: V5.S.s4) {
+                                Text(compactCaptureLine)
+                                    .font(.faffText(TypeScaleV5.label13, weight: .semibold))
+                                    .foregroundStyle(V5.textSecondary)
+                                    .lineSpacing(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, V5.S.s4)
+                            .frame(minHeight: 32)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                         .accessibilityLabel(c)
+                        .accessibilityHint("Double tap for the full recording note")
+                    } else {
+                        Text(c)
+                            .font(.faffText(TypeScaleV5.body15))
+                            .foregroundStyle(V5.textSecondary)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, V5.S.s4)
+                            .padding(.bottom, V5.S.s6)
+                            // The sentence is the run's own honesty about itself,
+                            // and VoiceOver must reach it in the same position a
+                            // sighted reader does — before the figures it qualifies.
+                            .accessibilityLabel(c)
+                    }
                 }
 
                 /* THE STRIDES.
