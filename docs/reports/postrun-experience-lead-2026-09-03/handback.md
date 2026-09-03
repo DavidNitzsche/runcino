@@ -1,18 +1,21 @@
 # Post-run experience — lead handback (revised)
 
 Branch `feat/postrun-experience-lead`, base `origin/main@8a242994`.
-Worktree `.claude/worktrees/postrun-experience`. Two commits: `ee11a0ff` (RPE
-capture), `1a368b82` (the redesign this report is mostly about). A third
-round's fixes are described in §13 and are UNCOMMITTED as of this revision —
-see that section for the exact diff and what still needs doing before a
-commit.
+Worktree `.claude/worktrees/postrun-experience`. Commits, in order:
+`ee11a0ff` (RPE capture), `1a368b82` (the round-2 redesign), `ddf7083b`
+(round 3 — verdict consolidation, race-segment wording, RPE canonical
+writes), `fe2dcf2a` (round 3 cont'd — self-authored race-target provenance,
+HR label ambiguity). All four are committed and pushed to
+`origin/feat/postrun-experience-lead`. §14 covers round 4, currently in
+concept review and NOT YET a code change — see that section before assuming
+anything below §14 reflects the current on-screen layout.
 
 **Status: not complete, not ready for the programme lead to merge.** This
 revision closes the specific defects a first round of review found in
 `ee11a0ff`'s companion redesign and adds the redesign that round asked for.
 It is a large step past the first handback, not the final word — §12 records
-what was open after round 2; §13 records what round 3 closed and what is
-still open now.
+what was open after round 2; §13 records what round 3 closed; §14 is the
+current round-4 visual reset, still at the concept stage.
 
 ---
 
@@ -569,3 +572,326 @@ fetching the real `-faffRunDetail` payload from the walk-substrate
 (`walk-server.sh` against `faff_visual_walk_postrun`, a read-only production
 copy) for the actual Americas Finest City half, and screenshotting the
 result. No fixture was substituted for this verification.
+
+---
+
+## 14 · Round 4 — a full visual reset, still at the concept stage (2026-09-03)
+
+David rejected the round-3 layout outright: "the current post-run screen
+looks bad... Do not merge it, and do not keep polishing the same layout." His
+instruction split cleanly in two — preserve everything in §13/earlier
+(canonical resolution, RPE, semantic fixes, coaching-consequence data, the
+shared loader) and replace the visual composition entirely, starting from
+concepts, not another pass at the existing SwiftUI views.
+
+**This section is a status update on the concept work, not a final
+delivery.** No SwiftUI file has changed as part of round 4. Everything below
+lives in one HTML artifact — real data, no fixtures, but not yet the app.
+
+### What happened, in order
+
+1. **Two real data defects, found before any visual work started**, per
+   David's explicit instruction to fix the data before designing around it:
+   - The Americas Finest City half's per-segment "asked" paces looked
+     invented. Traced to the actual stored data (not guessed): they are
+     real, embedded in the run's own recorded phases, submitted through the
+     watch-completion pipeline — a race-day pacing plan David built on his
+     watch, with no `plan_workouts` row behind it. Not fabrication;
+     misattribution. Fixed in `fe2dcf2a` (§13) with a `targetProvenance`
+     fact threaded end-to-end and a visible caption. This was CODE, already
+     committed — round 4 did not touch it again.
+   - A compact grid's label-shortening logic was truncating "Heart rate,
+     max" down to bare "Heart rate," indistinguishable from the average
+     shown two rows up. Also `fe2dcf2a`, also already committed.
+
+2. **Three concept directions**, built as one HTML artifact using David's
+   own real Sept 1 interval set, Sept 2 easy run, and the AFC half — not
+   placeholder data — after he supplied 7 Strava reference screenshots
+   directly in chat (the Photos-library paths he first gave were unreadable
+   to this agent; screenshots pasted into chat resolved it):
+   - **Digest** — closest reading of the Strava references: bold headline
+     naming workout + prescription in one line, borderless stat grid, one
+     coaching card, colour-coded work/recovery bar chart, inline-bar splits.
+   - **Finish Line** — the bold direction: full-bleed poster hero over a
+     dark accent gradient carrying the one number that matters most for
+     that run's shape, horizontally-swipeable moment cards instead of a
+     table.
+   - **Splits** — the run as a sequence: one continuous vertical timeline
+     carrying every phase and every mile split as the same kind of row.
+
+   **David selected Digest.**
+
+3. **Iteration on Digest, each round caught directly against the render:**
+   - Added a Route section using REAL decoded GPS (Google polyline decode
+     of David's own `route_polyline`, haversine-distance mile-bucketing
+     against his real splits for pace colour) — not a placeholder shape.
+     The easy run genuinely has no GPS on its real row
+     (`has_route: false`), so it shows "No GPS recorded" rather than
+     fabricating a track.
+   - Moved Route to the top, then to its final position (stats → Coach's
+     read → Route) on further direction.
+   - Added a procedural terrain texture behind the route line (an
+     `feTurbulence` SVG filter) once told a flat black backdrop wasn't
+     acceptable — captioned honestly as a stand-in, since the artifact
+     sandbox cannot load real map tiles; the real build reads this
+     straight off the CartoDB dark tiles already wired into the existing
+     route card.
+   - Fixed a real bug David caught, not me: the race segments' "Workout
+     analysis" bars were ALL full-width, because the mock data for those
+     five rows had no duration field, so every bar fell back to the same
+     default. Added the real per-segment durations.
+   - Fixed a second bug David caught: the splits bars were flat dark-gray
+     on dark-gray — unreadably low contrast on a black ground. Recoloured
+     with the same orange→amber pace language now used consistently
+     everywhere a pace gets compared on the page.
+   - Removed every divider rule from Digest on request — section breaks
+     are whitespace only now.
+   - **Attempted a merge of "Workout analysis" and "Piece by piece" into
+     one list** (background-tinted duration bars behind each work-rep
+     card). David's reaction: "oh god. hideous wtf" / "go back to how it
+     was." Reverted in full — the two sections are separate again, exactly
+     as they were before that attempt. Recorded here so the idea isn't
+     quietly retried: a translucent orange fill sized to duration, sitting
+     behind full text and a status pill, was the specific thing that
+     failed, not the general idea of showing the two together — if this
+     gets revisited, the merge needs an actual design pass, not a
+     mechanical overlay.
+
+### Where it stands right now
+
+**Live artifact:** https://claude.ai/code/artifact/6f69950d-8418-4a7a-9501-6f5536f63be7
+— Digest, Finish Line, and Splits, switchable, each against the interval
+set, the easy run, and the AFC half.
+
+**Current Digest section order:** date/title → stat grid → Coach's read →
+Route (GPS + procedural terrain, real data) → Workout analysis (bar chart,
+every phase) → Piece by piece (full-detail cards, work reps only) → Splits.
+No dividers; whitespace only.
+
+### What is NOT done — stated plainly, per Rule 13
+
+- **No SwiftUI implementation of Digest exists yet.** Everything above is
+  the HTML artifact. `RunDetailV5`/`TodayAfterV5` are unchanged since
+  `fe2dcf2a`.
+- **The long-run/marathon-specific first-screenful** David's brief called
+  for (marathon-effort distance/pace, durability/fade, easy-vs-effort
+  visual separation) has not been built in any concept — none of the three
+  exemplar runs is a marathon-block long run. Needs a fourth data pull
+  before implementation.
+- **No real-device render, no interaction recording, no scroll-performance
+  check** — none of that is meaningful yet because there is no build to
+  render. Rule 13 applies fully once implementation starts; it cannot apply
+  to an HTML concept artifact today.
+- **VoiceOver, Reduce Motion, Dynamic Type extremes, other device sizes** —
+  explicitly deferred by David's own instruction, recorded here so it isn't
+  forgotten rather than because it's due now.
+- **The other two concepts (Finish Line, Splits) are unrefined** relative
+  to Digest — they have not been through the same iteration pass, because
+  Digest was selected first.
+
+### Next steps, in order
+
+1. Confirm Digest's current section order and content is actually right
+   before implementation starts (this doc, or another look at the
+   artifact).
+2. Pull one real long/marathon-block run and design that first-screenful
+   in the artifact before writing Swift, per David's own "design the first
+   screenful first, and it must change by activity type" instruction.
+3. Implement Digest in `RunDetailV5` and `TodayAfterV5`, reading from the
+   existing shared `PostRunExperienceV1`/wire contract — extending it only
+   where a real gap shows up (the artifact's route/terrain section is the
+   likely candidate, since the real app already has route data flowing
+   into a MapLibre view and this would reuse that, not invent a new field).
+4. Render on the simulator against real accounts, per Rule 13 — no
+   fixture, no sample data, the actual corpus this whole assignment has
+   been using throughout.
+5. Full accessibility/device-size pass, per §"What is NOT done" above,
+   once the core experience is confirmed right.
+6. Final round-4 handback: exact canonical-model changes (if any), test
+   results, real screenshots, interaction recording, remaining deferred
+   work — the shape David specified in his reset message.
+
+---
+
+## 15 · Round 4 — Digest implemented in the native app (2026-09-04)
+
+David approved Digest and gave an explicit "do not stop for another
+concept confirmation" — this section is the implementation, verification
+and honest accounting he then asked for, in the same shape as his
+reset message's own delivery list.
+
+**Branch:** `feat/postrun-experience-lead`. **Commits this round, in
+order:** `fe2dcf2a` (§13, provenance/HR-label fixes, already reported),
+`5f36786f` (this implementation). **Both pushed** to
+`origin/feat/postrun-experience-lead`. Not merged — David's own
+instruction: "Do not merge until the native renders are reviewed."
+
+### What changed, and where
+
+All in `native-v2/Faff/Faff/`:
+
+- **`ViewsV5/RunDetailV5.swift`** — the body now follows the required
+  8-section hierarchy literally (identity → activity stats → Coach's
+  Read → Route → Workout Analysis → Piece by Piece → Splits →
+  secondary evidence). `WorkoutResultFactsV5` is removed from the body
+  — the new activity-specific stats say the same three facts
+  (completion, work pace, consistency) and printing them twice was
+  the exact repetition Rule 17 exists to catch.
+- **`DesignV5/WorkoutResultV5.swift`** — `PostRunVerdictV5` (Coach's
+  Read) rebuilt to the three-level typography system, carded for the
+  first time.
+- **`ViewsV5/TodayAfterV5.swift`** — the same section reorder, over
+  what that screen's payload can support (see the real gap named
+  below).
+
+### The presentation-model changes, exactly
+
+1. **`activityStats: [SessionDetailsGridV5.Metric]`** (new,
+   `RunDetailV5.swift`). Three shapes:
+   - Rep-style (gated on the existing `isRepStyleSession` +
+     `workCompletion`): Completed, Work pace, Rep range (computed from
+     `actual_distance_mi`/`actual_duration_sec` on `trueWorkReps`,
+     min-max), Total, Time.
+   - Marathon-specific long run (new `marathonPacePhase` /
+     `marathonEasyPhase`, detected off the phase LABEL containing
+     "marathon pace" — real production data already writes "10.0 mi
+     easy" / "4.0 mi @ marathon pace" for exactly this session shape,
+     no new wire field needed): Total distance, Total time, MP
+     distance, MP pace (sub: asked), Easy pace (sub: asked), MP heart
+     rate.
+   - Everything else: unchanged, the existing `sessionDetailMetrics`
+     grid (Distance/Time/Pace/HR/HR max/Cadence/Temperature as
+     available) — already correct for an easy run and a race.
+2. **`title`** — a device name matching the watch's own serialization
+   pattern (`" @ "` as the marker — a real event name does not carry a
+   pace clause) is now treated as generic and falls through to the
+   existing `structuredIdentity` resolver. A real human-chosen name
+   (David's own "Little adventure today" on the long-run fixture) is
+   never overridden — this only catches the "Intervals ·
+   4×1.0mi @ 7:02" shape.
+3. **`workoutAnalysisSection`** (new) — one bar per phase, width
+   proportional to `actual_duration_sec`, full orange for work, orange
+   at 40% opacity for a work phase run at easy effort inside a harder
+   session, quiet grey for warm-up/recovery/cool-down. No new hue —
+   the locked palette stays orange/amber/red.
+4. **`PostRunVerdictV5`** — the visible card now carries exactly
+   section label + 18pt/bold verdict + 15pt supporting sentence +
+   (when present) a 13pt provenance caption row. Plan status, "Why",
+   `next` and the coach's tip moved outside the border.
+
+**Target provenance is visibly shown** on the race and the long-run
+screens (screenshots below) — "These segment targets are the pace
+plan you set for this race, not one from the app." / "This session's
+targets came from the workout you built on your watch, not from the
+app's plan." — inside the Coach's Read card, at the same readable
+scale as the verdict above it, not a shrinking disclaimer.
+
+### The one canonical model, honestly — what's shared and what isn't
+
+`PostRunVerdictV5` reads the SAME `postRun` object
+(`PostRunExperienceV1`/wire) on both screens — genuinely one model,
+not two implementations agreeing by convention. That was already true
+before this round.
+
+**What is NOT shared, and why, named rather than worked around:**
+`V5Today` (TodayAfterV5's payload, `/api/v5/today`) carries no
+`phase_breakdown` equivalent — `V5RoutePhase` has no `completed` flag,
+no `pace_shape`, no per-phase duration. So `activityStats` and
+`workoutAnalysisSection` — both built directly off `RunDetail
+.phase_breakdown` — cannot be ported to TodayAfterV5 without a wire
+change to `/api/v5/today`. That change was judged out of scope for
+this pass: reshaping a second live endpoint's contract under this
+timeline risked breaking what already works, and the user's own
+instruction was explicit — "Implement chart/phase synchronization
+only after phases have stable shared identifiers. Do not align
+independent arrays by incidental index." `V5Today` does not yet have
+those identifiers. **This is the load-bearing remaining gap for full
+canonical parity**, and closing it is a `/api/v5/today` wire task, not
+a view-layer one.
+
+### Verified by rendering — real production data, all four types
+
+Per Rule 13: built, installed fresh, rendered on the simulator against
+the actual walk-substrate read-only production copy, for each of the
+four required run types. Screenshots in
+`docs/reports/postrun-experience-lead-2026-09-03/screenshots/`:
+
+- `round4-native-interval.png` — Sept 1, `4 × 1 MILE THRESHOLD`
+  (title fix confirmed: no more "Intervals · 4×1.0mi @ 7:02"),
+  Completed 4 of 4 / Work pace 7:02/mi / Rep range 6:57-7:06/mi /
+  Total 8.5 mi / Time 1:08:18, Coach's Read carded and readable,
+  route map real (CartoDB dark tiles, pace-gradient polyline).
+- `round4-native-easy.png` — Sept 2, title "EASY", the honest
+  "No GPS for this run." state (this run genuinely has none —
+  `has_route: false`), Workout Analysis showing the 5.0mi easy block
+  and six strides at their real proportional widths.
+- `round4-native-race.png` — the Americas Finest City half, provenance
+  chip rendering correctly and readably, real route map with SAN DIEGO
+  / CORONADO labels visible on actual basemap tiles.
+- `round4-native-long-top.png` / `round4-native-long-bottom.png` — the
+  Jun 27 marathon-specific long run (the new activity-specific design):
+  Total distance 14 mi, Total time 1:58:58, MP distance 4 mi, MP pace
+  7:42/mi (asked 7:14/mi), Easy pace 8:48/mi (asked 8:00/mi), MP heart
+  rate 163 bpm; Workout Analysis visibly dims the easy-effort bar
+  against the full-orange marathon-pace bar; Piece by Piece, the
+  existing tolerance sentence, the synchronized pace chart and matched-
+  workout comparison all correctly relegated to §8 secondary evidence.
+
+**A real bug was caught and fixed against this exact render, not in
+review**: the MP/Easy pace sub-labels first read "asked asked
+7:14/mi" — `SessionDetailsGridV5.Metric` already prepends "asked " to
+its own `sub` parameter, and the new code was doing it a second time.
+Fixed, rebuilt, re-rendered, confirmed correct.
+
+### What was NOT completed this pass — stated plainly, per Rule 13
+
+- **No scroll/chart-interaction recording.** Static screenshots only.
+  A recording of the synchronized chart's touch interaction and a full
+  scroll pass was not captured this round.
+- **No full bottom-to-top screenshot set for all four runs** — only
+  the long run has both a top and a scrolled-down capture. The other
+  three have their first screenful confirmed; their §5-§8 sections
+  were visually spot-checked during the same session but not
+  individually screenshotted.
+- **TodayAfterV5 was not rendered this pass.** The code change is
+  real (Route moved up, same reorder principle applied), the project
+  builds clean with it included, but no simulator render of the
+  Today-after-run screen specifically was captured — RunDetailV5 was
+  this pass's verification focus given the time this hierarchy rebuild
+  took. Stated as unverified rather than claimed.
+- **No automated test suite was run this pass.** No `web-v2` files
+  changed (this round is Swift-only), so the existing `vitest` suite
+  was not re-run; there is no equivalent fast Swift unit-test signal
+  for this UI-layer change in this codebase's current test coverage.
+  The verification standard applied was Rule 13's — render, don't
+  assume — not a test suite.
+- **The race title still reads "AMERICAS FINEST CITY"**, not "America's
+  Finest City Half Marathon" per David's own example. The device's
+  `name` field carries the shorter form and this pass did not add
+  logic to append a distance-category suffix to a real event name —
+  a smaller, separate follow-up if the exact wording matters.
+- **VoiceOver, Reduce Motion, extreme Dynamic Type, other device
+  sizes** — deferred per David's own explicit instruction, not
+  attempted.
+- **`/api/v5/today` phase-level parity** — the gap named above under
+  "the one canonical model, honestly."
+
+### Programme-lead merge instructions
+
+1. **Do not merge yet** — David's own instruction, pending his review
+   of the native renders above (and ideally a live device look, not
+   just these screenshots).
+2. When reviewing, the fastest path to seeing this live: `git checkout
+   feat/postrun-experience-lead` in a worktree, `xcodebuild -project
+   native-v2/Faff.xcodeproj -scheme Faff -destination "id=<simulator>"
+   build` (do NOT pass `-sdk iphonesimulator` — that forces the
+   watch-only targets onto the wrong SDK and fails the build with an
+   unrelated WatchKit error, a real trap this pass hit twice), then
+   render against a real account via the walk-substrate harness
+   (`scripts/walk-server.sh` + `-faffRunDetail`) rather than the
+   bundled sample fixture, per Rule 13.
+3. Once approved: fast-forward merge only, after `git fetch` — this
+   repo's own standing rule, and `main` may have moved.
+4. The `/api/v5/today` wire-parity gap (§ above) is real, load-bearing
+   for the "one canonical model" requirement, and not a quick fix —
+   worth its own scoped pass rather than folding into this merge.
