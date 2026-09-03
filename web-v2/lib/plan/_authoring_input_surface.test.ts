@@ -34,6 +34,16 @@ const ALLOWED: Record<string, string[]> = {
     'recentWeeklyMi', 'recentLongMi', 'recentQualityPerWeek',
     'recentQualityDistanceMi', 'easyDayMedianMi', 'spikeAnchorLongMi',
     'rampBaseMi', 'rampBaseEvidence',
+    // 2026-09-02 · added by `4b31f440` (the designed race weekend) and left
+    // unclassified, so this gate was red on `main` and would have blocked the
+    // deploy. `demonstratedPairMi` is the largest back-to-back-day mileage the
+    // runner has actually RUN in the last 365 days, read from `runs` and
+    // refusing by name rather than returning zero; `demonstratedPairFromISO` is
+    // the day it came from, carried so the grant can name its evidence. That is
+    // his own history and nothing else, which is this row. Classified here by
+    // the ROW-CONTRACT-1 change rather than left red — say so if it belongs
+    // under another input.
+    'demonstratedPairMi', 'demonstratedPairFromISO',
   ],
   'demonstrated pace capacity': [
     'tPaceSec', 'bestRecentVdot', 'seasonAnchorVdot', 'seasonAnchorSource',
