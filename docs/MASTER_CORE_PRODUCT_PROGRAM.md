@@ -217,7 +217,7 @@ Nothing may displace this.
 | **S1.2** | Long-run progression | Exactly one run reaches 20+ (20.5), a mile under his demonstrated 21.5, in a block whose thesis is `DURABILITY` | Number and placement of 20+ runs derived from evidence; longest run 20.5 / 21 / 21.5 with the reason persisted. Big Sur is a race and is not evidence of training-long capacity | 1 | Ready |
 | **S1.3** | Dodgers weekend evidence | Grant claims *"You have run 29.4mi across two days before"* — that pair is a **2.61 mi shakeout + the 26.81 mi Big Sur Marathon**. Every other large pair in his history is big-first-small-second. He has **never** run long after a hard effort | Keep the session; represent it honestly as an owner-authorised, evidence-informed **novel** demand. Volume supported by prior weekends; the hard-short-first ordering stated as novel | 1 | **VERIFIED against production reads 2026-09-03** — see below |
 | **S1.4** | The four marathon paces | Training MP 7:52, projection-derived 7:47, CIM execution 7:23, goal 6:52 — all live, he rehearses 29 s/mi slower than he is told to race | A typed contract naming all five quantities, plus a defensible week-by-week progression from current sustainable marathon effort toward 7:23 — or change the progression, the target, or both | 1 | Ready |
-| **S1.5** | Monthly / sustained load | External review claims ~30% growth in rolling 28-day load and a 7-week stretch at ~52.9 against a best sustained 5 weeks at ~42.6. **Unverified** | Measure from canonical populations. Document if false; if true, judge coherence against cutbacks, rolling-7-day peak, long-run history, density and his aggressive preference. No new arbitrary limiter; any correction smooth and deterministic | 1 | Ready |
+| **S1.5** | Monthly / sustained load | External review claims ~30% growth in rolling 28-day load and a 7-week stretch at ~52.9 against a best sustained 5 weeks at ~42.6 | **VERIFIED 2026-09-03 · BOTH CLAIMS TRUE, NO CORRECTION WARRANTED** — `docs/reports/s1-5-sustained-load-audit-2026-09-03.md`. Growth +30.4% composed / +32.1% written; 7-week best 52.90 against a history best-5 of 42.56. Coherent on every axis: rolling-7 peak 60.1 = 52.3 x 1.15 exactly, cutbacks 22-29% every 2-3 weeks, worst ACWR 1.20 against a 1.5 red line, longest run 21.5 = his demonstrated best. The +30% decomposes as 1.148 peak (doctrine spent ONCE) x 1.136 density, and the density term is the removal of chaos — 8 of his 36 history weeks are under 25 mi, including a 0.00 and a 4.16. **The live defect is DELIVERY, not load** — see below | 1 | **Verified against production reads** |
 | **S1.6** | Runner-facing language | *"Conversational."* and *"Z2 HR cap."* appear **37 times**; the downhill instruction **12 times** (Rule 17) | Direct instructions: how the effort should feel, the actual HR ceiling, what to prioritise, what to do when pace and effort disagree, how to execute the end. Derived from canonical decisions, not a separate prose brain | 1 | Ready |
 
 
@@ -357,6 +357,38 @@ and should keep doing so until he rules:
 Both are coaching-behaviour changes with real blast radius, and Rule 21 cuts
 both ways here: treating every B race as a race week is another way to make the
 plan easier. Not a labelling fix's call to make.
+
+
+## THE PLAN ON HIS PHONE IS THE ONE THAT IS WRONG  ·  measured 2026-09-03
+
+The S1.5 audit's most useful finding is not about load at all. `ROLLING7-1` is
+merged, and **the plan on his phone predates it**. `pln_9a57561debb776e5`,
+authored 2026-08-31, carries:
+
+- peak rolling-7 of **61.5 against a 60.1 ceiling** — 1.176x his demonstrated
+  peak, where the ceiling is 1.15x
+- a **1.23 long-run spike** on 2026-10-04
+- `load_progression_contract` and `tier_band_anchor` both **null**, so nothing on
+  the phone can be measured against a ceiling at all
+
+Composed on current `main` the same runner comes out at exactly 60.1 — the fix
+works, it is merged, and he is not running it. **A recompute reprices; it does
+not re-lay-out.** Only a re-author delivers this, which is P0-3.
+
+The cost of the correction, composed both ways on the real runner: **1.3 mi off
+two easy days across fifteen weeks.** That is the whole price of being inside the
+ceiling.
+
+Falsified per Rule 18: removing `enforceRollingSevenCeiling` fails all six cases
+and regresses the Rule 9 continuity walk to 1.5 mi of output per 0.1 mi of input.
+
+### One trap worth naming
+
+`NOT (data ? 'mergedIntoId')` and `absorbed_into_canonical_at IS NULL` currently
+return **identical** answers for this runner — 156 rows, 1166.54 mi — because the
+six stale-stamped canonical rows are gone. The wrong predicate gives the right
+answer today. That is the trap, not the absolution: `CANONICAL_ROW_SQL` stays the
+only definition (Rule 14).
 
 ---
 
