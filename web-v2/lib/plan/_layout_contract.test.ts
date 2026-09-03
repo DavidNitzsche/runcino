@@ -82,6 +82,30 @@
  *     this corpus that carry a history at all — `composed` (8781), `days`
  *     (699860) and `raceWeeks` (3969) are all unchanged, so no plan gained or
  *     lost a day; the contents of some weeks moved.
+ *
+ *   · 2026-09-03 · MPLADDER-1 + LONGARRIVE-2 + TAPERLONG-1, together. The
+ *     MARATHON's marathon-effort work, long-run curve and taper long runs all
+ *     moved; every other distance is untouched, and this corpus is dominated by
+ *     the 5K, 10K and half arcs, which is why the counts do not move at all:
+ *     `composed` 8781, `days` 699860, `raceWeeks` 3969 — IDENTICAL. No plan
+ *     gained or lost a day, no race week appeared or vanished. What changed is
+ *     the CONTENT of marathon days, which is exactly what the three changes
+ *     were for and the reason a content digest is the right instrument.
+ *
+ *     What moved, per `docs/PROGRESSIVE_BASELINE_DOCTRINE.md`:
+ *       - marathon-effort dose and placement now come from
+ *         `marathon-specific-ladder.ts` (Q1/Q8/Q14) instead of three
+ *         mechanisms that did not know about each other;
+ *       - the long-run ramp's arrival week steps back off a week whose long-run
+ *         slot is a tune-up race (LONGARRIVE-2), which raises the peak long to
+ *         the runner's own demonstrated ceiling;
+ *       - the marathon taper's long runs take Q18's 14-16 / 8-10 bands and its
+ *         standalone MP tempo becomes §9.2's threshold alternative.
+ *
+ *     The behavioural gates that own each of those went red first and were
+ *     re-argued rather than re-baselined: `_mp_doctrine`, `_longrun_demand`,
+ *     `_variety_invariants`, `_boundary_run` and the doctrine registry all
+ *     carry their own RULING MOVES sections for this change.
  */
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';

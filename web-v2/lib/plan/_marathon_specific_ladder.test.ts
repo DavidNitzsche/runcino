@@ -69,12 +69,17 @@ describe('MPLADDER-1 · placement', () => {
       '3:introduction:long_run:4',
       '7:development:long_run:8',
       '10:peak_stimulus:tune_up_race:0',
-      '11:consolidation:easy_run_touch:3',
       '12:sharpening:long_run:4',
     ]);
     // "Approximately four meaningful marathon-specific sessions before race
-    // week" — four that carry marathon-effort miles, plus the race.
-    expect(l.rungs.filter((r) => r.mpMi > 0).length).toBe(4);
+    // week": three that carry marathon-effort miles, plus the tune-up race.
+    // The fourth the ruling names — Q16's ~3 mi touch the week after the race —
+    // is refused and recorded, because Research/00b's post-race no-quality
+    // window covers the day it asks for. The refusal is asserted below rather
+    // than being an absence nobody can see.
+    expect(l.rungs.filter((r) => r.mpMi > 0).length).toBe(3);
+    expect(l.skipped.some((x) => x.weekIdx === 11 && /post-race no-quality window/.test(x.reason)),
+      'the Q16 conflict is not recorded').toBe(true);
   });
 
   it('the first marathon-effort running is not seven weeks out', () => {
@@ -106,9 +111,6 @@ describe('MPLADDER-1 · placement', () => {
     const l = resolveMarathonSpecificLadder(c);
     for (const r of l.rungs) {
       if (r.vehicle === 'tune_up_race') continue;
-      // Q16's post-race touch is an easy run, deliberately exempt from the
-      // deload rule — it is not a quality session.
-      if (r.vehicle === 'easy_run_touch') continue;
       expect(c.isDeloadWeek(r.weekIdx), `rung on deload week ${r.weekIdx}`).toBe(false);
       expect(c.isTuneUpRaceWeek(r.weekIdx)).toBe(false);
       expect(c.isDesignedWeekendLong(r.weekIdx)).toBe(false);
@@ -183,7 +185,7 @@ describe('MPLADDER-1 · pace ladder position', () => {
     for (let i = 1; i < ts.length; i++) expect(ts[i]).toBeGreaterThanOrEqual(ts[i - 1]);
     expect(ts[0]).toBe(MARATHON_EFFORT_LADDER_T.early);
     // The taper rungs HOLD rather than stepping.
-    const taper = l.rungs.filter((r) => r.role === 'consolidation' || r.role === 'sharpening');
+    const taper = l.rungs.filter((r) => r.role === 'sharpening');
     const supported = Math.max(...l.rungs.filter((r) => r.role === 'introduction' || r.role === 'development').map((r) => r.ladderT));
     for (const r of taper) expect(r.ladderT).toBe(supported);
   });

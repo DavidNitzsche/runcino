@@ -158,11 +158,26 @@ describe('CONTINUOUS-TARGET-1 · execution · the same rule, the same shape', as
   await primeExecution(Math.round(EDGE_SEC - 61), Math.round(EDGE_SEC + 61));
   const r = sweep(executedAt, boundSec);
 
-  it('the walk crosses the edge (liveness)', async () => {
+  it('the walk crosses the edge, and the target does not notice · liveness', async () => {
+    // EXECTARGET-1 (2026-09-03) · RULING MOVE. This asserted that the two sides
+    // of the old edge produced two DIFFERENT execution sources — which was the
+    // liveness proof that the walk was actually crossing something.
+    // `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q7 removed the goal's pull, so
+    // there is no edge in the execution target any longer: the strongest
+    // liveness statement available is that the walk really does span the old
+    // boundary in the GOAL, and that the raced target is identical on both
+    // sides. A continuity gate whose quantity has become constant has not
+    // stopped meaning anything — it now proves the cliff cannot come back.
     const lo = await composeRaceOutlook(fixtureRace({ statedGoalSec: Math.round(EDGE_SEC - 60) }), '2026-09-01', EXEC_READS);
     const hi = await composeRaceOutlook(fixtureRace({ statedGoalSec: Math.round(EDGE_SEC + 60) }), '2026-09-01', EXEC_READS);
-    expect(lo.execution.source).toBe('stated_goal_clamped_to_range_edge');
-    expect(hi.execution.source).toBe('stated_goal_within_range');
+    expect(lo.statedGoal.sec).toBeLessThan(EDGE_SEC);
+    expect(hi.statedGoal.sec).toBeGreaterThan(EDGE_SEC);
+    expect(lo.execution.source).toBe('current_evidence');
+    expect(hi.execution.source).toBe('current_evidence');
+    expect(lo.execution.targetSec).toBe(hi.execution.targetSec);
+    // ...and the two sides still land on OPPOSITE sides of feasibility, which
+    // is where the goal's posture legitimately lives.
+    expect(lo.goalFeasibility.status).not.toBe(hi.goalFeasibility.status);
   });
 
   it('the raced target is CONTINUOUS across the edge', () => {

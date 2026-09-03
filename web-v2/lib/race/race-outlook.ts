@@ -454,7 +454,14 @@ async function loadPlannedLastRehearsalPace(userUuid: string): Promise<number | 
   const ladder = (row?.authored_state ?? {})['marathon_specific_ladder'] as
     { last_rehearsal_pace_s_per_mi?: unknown } | null | undefined;
   const v = ladder?.last_rehearsal_pace_s_per_mi;
-  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+  // Rule 11 · an if/return guard, not a ternary over the value. "No plan",
+  // "a plan with no ladder" and "a stamp that is not a pace" are all the same
+  // ANSWER here — there is no rehearsal to compare against — but they must not
+  // be reached by collapsing a number, because a zero stamped into that field
+  // would be a corrupt write and not an absent one.
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  if (v <= 0) return null;
+  return v;
 }
 
 export async function loadRaceOutlookReads(
