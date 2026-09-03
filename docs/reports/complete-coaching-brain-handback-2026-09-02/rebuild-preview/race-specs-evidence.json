@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-02T22:59:06.715Z",
+  "generated_at": "2026-09-03T00:02:11.894Z",
   "todayISO": "2026-09-02",
   "db_role": {
     "cu": "faff_readonly",
@@ -120,6 +120,8 @@
           }
         ]
       },
+      "notes": "Santa Monica 10k. B race · race effort. Recovery days follow before quality resumes. Coach target 6:56/mi, set from your current fitness. Yours to change.",
+      "sub_label": "RACE",
       "sealed": false
     },
     {
@@ -155,6 +157,8 @@
           }
         ]
       },
+      "notes": "Dodgers. C race · this is the week's quality session. Run it as the workout. Target 7:15/mi.",
+      "sub_label": "RACE",
       "sealed": false
     },
     {
@@ -194,6 +198,8 @@
           }
         ]
       },
+      "notes": "Run Malibu. B race · race effort. Recovery days follow before quality resumes. Target 6:52/mi.",
+      "sub_label": "RACE",
       "sealed": false
     },
     {
@@ -233,6 +239,8 @@
           }
         ]
       },
+      "notes": "Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.",
+      "sub_label": "5×400m @ 5K pace · 2min jog",
       "sealed": false
     },
     {
@@ -275,6 +283,8 @@
           }
         ]
       },
+      "notes": "Execute the plan. Pacing in race-week briefing.",
+      "sub_label": "RACE",
       "sealed": false
     }
   ],
@@ -359,7 +369,7 @@
             "paceSecPerMi": 443
           },
           "after": {
-            "paceSecPerMi": 443
+            "paceSecPerMi": 425
           },
           "outlook": {
             "statedGoalSec": 10800,
@@ -401,47 +411,78 @@
     "captured_writes": [
       {
         "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
+        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,\n              notes = COALESCE($5, notes)\n        WHERE id = $1",
         "values": [
           "wko_5069bc75e324a69a",
           416,
-          "{\"pace_target_s_per_mi_lo\":411,\"pace_target_s_per_mi_hi\":421,\"rules\":[{\"op\":\">\",\"kind\":\"abort\",\"label\":\"Mile 2 check: avgHr over 179 · switch to the B plan\",\"scope\":\"mile-2\",\"value\":179,\"action\":\"switch_to_b_goal\",\"metric\":\"hr\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":437,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:17/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:57:25.187Z\",\"target_sec\":2580,\"previous_target_sec\":2580,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":416,\"source\":\"expected_race_day\",\"stated_goal_sec\":null,\"current_projection_sec\":2579,\"expected_race_day_sec\":2579,\"likely_range_sec\":[2527,2631],\"expected_gain_vdot\":0,\"training_pace_s_per_mi\":416,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"no_goal\",\"reason\":\"No stated goal · race to where this build is expected to land you.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[168,176],\"early_ceiling_bpm\":168,\"early_through_mi\":2,\"late_allowance_bpm\":181,\"checkpoint_mi\":2,\"checkpoint_abort_bpm\":179,\"informational_only\":true,\"evidence\":{\"comparable_efforts\":0,\"observed_mean_hr\":null,\"conflict_bpm\":null},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"NO_COMPARABLE_EFFORTS_POPULATION_REFERENCE\",\"NO_COMPARABLE_EFFORTS_INFORMATIONAL_ONLY\"]}}"
+          "{\"pace_target_s_per_mi_lo\":411,\"pace_target_s_per_mi_hi\":421,\"rules\":[{\"op\":\">\",\"kind\":\"abort\",\"label\":\"Mile 2 check: avgHr over 179 · switch to the B plan\",\"scope\":\"mile-2\",\"value\":179,\"action\":\"switch_to_b_goal\",\"metric\":\"hr\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":437,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:17/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-03T00:00:22.456Z\",\"target_sec\":2580,\"previous_target_sec\":2580,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":416,\"source\":\"expected_race_day\",\"stated_goal_sec\":null,\"current_projection_sec\":2579,\"expected_race_day_sec\":2579,\"likely_range_sec\":[2527,2631],\"expected_gain_vdot\":0,\"training_pace_s_per_mi\":416,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"no_goal\",\"reason\":\"No stated goal · race to where this build is expected to land you.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[168,176],\"early_ceiling_bpm\":168,\"early_through_mi\":2,\"late_allowance_bpm\":181,\"checkpoint_mi\":2,\"checkpoint_abort_bpm\":179,\"informational_only\":true,\"evidence\":{\"comparable_efforts\":0,\"observed_mean_hr\":null,\"conflict_bpm\":null},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"NO_COMPARABLE_EFFORTS_POPULATION_REFERENCE\",\"NO_COMPARABLE_EFFORTS_INFORMATIONAL_ONLY\"]}}",
+          [
+            "hr_cap_bpm",
+            "race_execution",
+            "race_hr"
+          ],
+          "Santa Monica 10k. B race · race effort. Recovery days follow before quality resumes. Coach target 6:56/mi, set from your current fitness. Yours to change."
         ]
       },
       {
         "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
+        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,\n              notes = COALESCE($5, notes)\n        WHERE id = $1",
         "values": [
           "wko_613649879df83f38",
           435,
-          "{\"pace_target_s_per_mi_lo\":430,\"pace_target_s_per_mi_hi\":440,\"rules\":[{\"op\":\">\",\"kind\":\"abort\",\"label\":\"Mile 2 check: avgHr over 179 · switch to the B plan\",\"scope\":\"mile-2\",\"value\":179,\"action\":\"switch_to_b_goal\",\"metric\":\"hr\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":457,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:37/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:57:30.774Z\",\"target_sec\":2700,\"previous_target_sec\":2700,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":435,\"source\":\"stated_goal_within_range\",\"stated_goal_sec\":2700,\"current_projection_sec\":2584,\"expected_race_day_sec\":2576,\"likely_range_sec\":[2524,2630],\"expected_gain_vdot\":0.34642857142857136,\"training_pace_s_per_mi\":416,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"comfortable\",\"reason\":\"Your goal is at or slower than the expected result · race to your goal.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[168,176],\"early_ceiling_bpm\":168,\"early_through_mi\":2,\"late_allowance_bpm\":181,\"checkpoint_mi\":2,\"checkpoint_abort_bpm\":179,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":3,\"observed_mean_hr\":154,\"conflict_bpm\":-27},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}"
+          "{\"pace_target_s_per_mi_lo\":430,\"pace_target_s_per_mi_hi\":440,\"rules\":[{\"op\":\">\",\"kind\":\"abort\",\"label\":\"Mile 2 check: avgHr over 179 · switch to the B plan\",\"scope\":\"mile-2\",\"value\":179,\"action\":\"switch_to_b_goal\",\"metric\":\"hr\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":457,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:37/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-03T00:00:28.253Z\",\"target_sec\":2700,\"previous_target_sec\":2700,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":435,\"source\":\"stated_goal_within_range\",\"stated_goal_sec\":2700,\"current_projection_sec\":2584,\"expected_race_day_sec\":2576,\"likely_range_sec\":[2524,2630],\"expected_gain_vdot\":0.34642857142857136,\"training_pace_s_per_mi\":416,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"comfortable\",\"reason\":\"Your goal is at or slower than the expected result · race to your goal.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[168,176],\"early_ceiling_bpm\":168,\"early_through_mi\":2,\"late_allowance_bpm\":181,\"checkpoint_mi\":2,\"checkpoint_abort_bpm\":179,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":3,\"observed_mean_hr\":154,\"conflict_bpm\":-27},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}",
+          [
+            "hr_cap_bpm",
+            "race_execution",
+            "race_hr"
+          ],
+          null
         ]
       },
       {
         "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
+        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,\n              notes = COALESCE($5, notes)\n        WHERE id = $1",
         "values": [
           "wko_04050ebcd66f81d6",
           422,
-          "{\"pace_target_s_per_mi_lo\":417,\"pace_target_s_per_mi_hi\":427,\"rules\":[{\"op\":\">\",\"kind\":\"abort\",\"label\":\"Mile 5 check: avgHr over 171 · switch to the B plan\",\"scope\":\"mile-5\",\"value\":171,\"action\":\"switch_to_b_goal\",\"metric\":\"hr\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":443,\"scope\":\"mile-5\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 5 check: pace slower than 7:23/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:57:36.284Z\",\"target_sec\":5530,\"previous_target_sec\":5530,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":422,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":5400,\"current_projection_sec\":5762,\"expected_race_day_sec\":5673,\"likely_range_sec\":[5526,5839],\"expected_gain_vdot\":1.8360714285714284,\"training_pace_s_per_mi\":440,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"aggressive\",\"reason\":\"Your goal (1:30:00) is faster than the likely range's fast edge (1:32:06) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[161,168],\"early_ceiling_bpm\":161,\"early_through_mi\":5,\"late_allowance_bpm\":173,\"checkpoint_mi\":5,\"checkpoint_abort_bpm\":171,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":1,\"observed_mean_hr\":157,\"conflict_bpm\":-16},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}"
+          "{\"pace_target_s_per_mi_lo\":417,\"pace_target_s_per_mi_hi\":427,\"rules\":[{\"op\":\">\",\"kind\":\"abort\",\"label\":\"Mile 5 check: avgHr over 171 · switch to the B plan\",\"scope\":\"mile-5\",\"value\":171,\"action\":\"switch_to_b_goal\",\"metric\":\"hr\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":443,\"scope\":\"mile-5\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 5 check: pace slower than 7:23/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-03T00:00:33.777Z\",\"target_sec\":5530,\"previous_target_sec\":5530,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":422,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":5400,\"current_projection_sec\":5762,\"expected_race_day_sec\":5673,\"likely_range_sec\":[5526,5839],\"expected_gain_vdot\":1.8360714285714284,\"training_pace_s_per_mi\":440,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"aggressive\",\"reason\":\"Your goal (1:30:00) is faster than the likely range's fast edge (1:32:06) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[161,168],\"early_ceiling_bpm\":161,\"early_through_mi\":5,\"late_allowance_bpm\":173,\"checkpoint_mi\":5,\"checkpoint_abort_bpm\":171,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":1,\"observed_mean_hr\":157,\"conflict_bpm\":-16},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}",
+          [
+            "hr_cap_bpm",
+            "race_execution",
+            "race_hr"
+          ],
+          "Run Malibu. B race · race effort. Recovery days follow before quality resumes. Coach target 7:02/mi, set from your current fitness. Yours to change."
         ]
       },
       {
         "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
+        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,\n              notes = COALESCE($5, notes)\n        WHERE id = $1",
         "values": [
           "wko_60e4afb00a4e2c33",
-          443,
-          "{\"pace_target_s_per_mi_lo\":438,\"pace_target_s_per_mi_hi\":448,\"rules\":[{\"op\":\"<=\",\"kind\":\"pass\",\"label\":\"Pass: avgHr ≤ 164 on the work\",\"scope\":\"work\",\"value\":164,\"action\":null,\"metric\":\"hr\"},{\"op\":\">\",\"kind\":\"bail\",\"label\":\"HR over 173 and climbing · finish easy, the stimulus is banked\",\"scope\":\"work\",\"value\":173,\"action\":\"drop_to_easy\",\"metric\":\"hr\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":465,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:45/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:57:41.868Z\",\"target_sec\":11610,\"previous_target_sec\":11610,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":443,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":10800,\"current_projection_sec\":12230,\"expected_race_day_sec\":11982,\"likely_range_sec\":[11608,12411],\"expected_gain_vdot\":2.5635714285714286,\"training_pace_s_per_mi\":472,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"unlikely_currently\",\"reason\":\"Your goal (3:00:00) is faster than the likely range's fast edge (3:13:28) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[148,160],\"early_ceiling_bpm\":148,\"early_through_mi\":10,\"late_allowance_bpm\":165,\"checkpoint_mi\":10,\"checkpoint_abort_bpm\":163,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":4,\"observed_mean_hr\":155,\"conflict_bpm\":-10},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}"
+          425,
+          "{}",
+          [
+            "race_execution",
+            "race_hr",
+            "pace_target_s_per_mi_lo",
+            "pace_target_s_per_mi_hi"
+          ],
+          null
         ]
       },
       {
         "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
+        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,\n              notes = COALESCE($5, notes)\n        WHERE id = $1",
         "values": [
           "wko_8bfa8647379342ba",
           443,
-          "{\"pace_target_s_per_mi_lo\":438,\"pace_target_s_per_mi_hi\":448,\"rules\":[{\"op\":\">\",\"kind\":\"abort\",\"label\":\"Mile 10 check: avgHr over 163 · switch to the B plan\",\"scope\":\"mile-10\",\"value\":163,\"action\":\"switch_to_b_goal\",\"metric\":\"hr\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":465,\"scope\":\"mile-10\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 10 check: pace slower than 7:45/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:57:47.656Z\",\"target_sec\":11610,\"previous_target_sec\":11610,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":443,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":10800,\"current_projection_sec\":12230,\"expected_race_day_sec\":11982,\"likely_range_sec\":[11608,12411],\"expected_gain_vdot\":2.5635714285714286,\"training_pace_s_per_mi\":472,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"unlikely_currently\",\"reason\":\"Your goal (3:00:00) is faster than the likely range's fast edge (3:13:28) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[148,160],\"early_ceiling_bpm\":148,\"early_through_mi\":10,\"late_allowance_bpm\":165,\"checkpoint_mi\":10,\"checkpoint_abort_bpm\":163,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":4,\"observed_mean_hr\":155,\"conflict_bpm\":-10},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}"
+          "{\"pace_target_s_per_mi_lo\":438,\"pace_target_s_per_mi_hi\":448,\"rules\":[{\"op\":\">\",\"kind\":\"abort\",\"label\":\"Mile 10 check: avgHr over 163 · switch to the B plan\",\"scope\":\"mile-10\",\"value\":163,\"action\":\"switch_to_b_goal\",\"metric\":\"hr\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":465,\"scope\":\"mile-10\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 10 check: pace slower than 7:45/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-03T00:00:45.200Z\",\"target_sec\":11610,\"previous_target_sec\":11610,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":443,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":10800,\"current_projection_sec\":12230,\"expected_race_day_sec\":11982,\"likely_range_sec\":[11608,12411],\"expected_gain_vdot\":2.5635714285714286,\"training_pace_s_per_mi\":472,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"unlikely_currently\",\"reason\":\"Your goal (3:00:00) is faster than the likely range's fast edge (3:13:28) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[148,160],\"early_ceiling_bpm\":148,\"early_through_mi\":10,\"late_allowance_bpm\":165,\"checkpoint_mi\":10,\"checkpoint_abort_bpm\":163,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":4,\"observed_mean_hr\":155,\"conflict_bpm\":-10},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}",
+          [
+            "hr_cap_bpm",
+            "race_execution",
+            "race_hr"
+          ],
+          null
         ]
       },
       {
@@ -449,7 +490,7 @@
         "text": "UPDATE training_plans\n          SET authored_state = COALESCE(authored_state, '{}'::jsonb)\n              || jsonb_build_object('race_row_refresh', $2::jsonb)\n        WHERE id = $1",
         "values": [
           "pln_9a57561debb776e5",
-          "{\"at\":\"2026-09-02T22:57:47.848Z\",\"source\":\"authoring\",\"updated\":5,\"refused\":0,\"rows\":[{\"id\":\"wko_5069bc75e324a69a\",\"date\":\"2026-09-13\",\"action\":\"updated\",\"reason\":null,\"pace\":416},{\"id\":\"wko_613649879df83f38\",\"date\":\"2026-09-26\",\"action\":\"updated\",\"reason\":null,\"pace\":435},{\"id\":\"wko_04050ebcd66f81d6\",\"date\":\"2026-11-08\",\"action\":\"updated\",\"reason\":null,\"pace\":422},{\"id\":\"wko_60e4afb00a4e2c33\",\"date\":\"2026-12-01\",\"action\":\"updated\",\"reason\":null,\"pace\":443},{\"id\":\"wko_8bfa8647379342ba\",\"date\":\"2026-12-06\",\"action\":\"updated\",\"reason\":null,\"pace\":443}]}"
+          "{\"at\":\"2026-09-03T00:00:45.400Z\",\"source\":\"authoring\",\"updated\":5,\"refused\":0,\"rows\":[{\"id\":\"wko_5069bc75e324a69a\",\"date\":\"2026-09-13\",\"action\":\"updated\",\"reason\":null,\"pace\":416},{\"id\":\"wko_613649879df83f38\",\"date\":\"2026-09-26\",\"action\":\"updated\",\"reason\":null,\"pace\":435},{\"id\":\"wko_04050ebcd66f81d6\",\"date\":\"2026-11-08\",\"action\":\"updated\",\"reason\":null,\"pace\":422},{\"id\":\"wko_60e4afb00a4e2c33\",\"date\":\"2026-12-01\",\"action\":\"updated\",\"reason\":null,\"pace\":425},{\"id\":\"wko_8bfa8647379342ba\",\"date\":\"2026-12-06\",\"action\":\"updated\",\"reason\":null,\"pace\":443}]}"
         ]
       }
     ]
@@ -530,12 +571,12 @@
           "id": "rebuild_03_2026-12-01",
           "dateISO": "2026-12-01",
           "slug": "cim",
-          "action": "updated",
+          "action": "unchanged",
           "before": {
             "paceSecPerMi": 401
           },
           "after": {
-            "paceSecPerMi": 443
+            "paceSecPerMi": 401
           },
           "outlook": {
             "statedGoalSec": 10800,
@@ -571,53 +612,68 @@
           }
         }
       ],
-      "updated": 5,
+      "updated": 4,
       "refused": 0
     },
     "captured_writes": [
       {
         "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
+        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,\n              notes = COALESCE($5, notes)\n        WHERE id = $1",
         "values": [
           "rebuild_00_2026-09-13",
           416,
-          "{\"pace_target_s_per_mi_lo\":411,\"pace_target_s_per_mi_hi\":421,\"rules\":[{\"kind\":\"abort\",\"metric\":\"hr\",\"op\":\">\",\"value\":179,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: avgHr over 179 · switch to the B plan\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":437,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:17/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:57:53.407Z\",\"target_sec\":2580,\"previous_target_sec\":null,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":416,\"source\":\"expected_race_day\",\"stated_goal_sec\":null,\"current_projection_sec\":2579,\"expected_race_day_sec\":2579,\"likely_range_sec\":[2527,2631],\"expected_gain_vdot\":0,\"training_pace_s_per_mi\":416,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"no_goal\",\"reason\":\"No stated goal · race to where this build is expected to land you.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[168,176],\"early_ceiling_bpm\":168,\"early_through_mi\":2,\"late_allowance_bpm\":181,\"checkpoint_mi\":2,\"checkpoint_abort_bpm\":179,\"informational_only\":true,\"evidence\":{\"comparable_efforts\":0,\"observed_mean_hr\":null,\"conflict_bpm\":null},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"NO_COMPARABLE_EFFORTS_POPULATION_REFERENCE\",\"NO_COMPARABLE_EFFORTS_INFORMATIONAL_ONLY\"]}}"
+          "{\"pace_target_s_per_mi_lo\":411,\"pace_target_s_per_mi_hi\":421,\"rules\":[{\"kind\":\"abort\",\"metric\":\"hr\",\"op\":\">\",\"value\":179,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: avgHr over 179 · switch to the B plan\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":437,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:17/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-03T00:00:51.123Z\",\"target_sec\":2580,\"previous_target_sec\":null,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":416,\"source\":\"expected_race_day\",\"stated_goal_sec\":null,\"current_projection_sec\":2579,\"expected_race_day_sec\":2579,\"likely_range_sec\":[2527,2631],\"expected_gain_vdot\":0,\"training_pace_s_per_mi\":416,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"no_goal\",\"reason\":\"No stated goal · race to where this build is expected to land you.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[168,176],\"early_ceiling_bpm\":168,\"early_through_mi\":2,\"late_allowance_bpm\":181,\"checkpoint_mi\":2,\"checkpoint_abort_bpm\":179,\"informational_only\":true,\"evidence\":{\"comparable_efforts\":0,\"observed_mean_hr\":null,\"conflict_bpm\":null},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"NO_COMPARABLE_EFFORTS_POPULATION_REFERENCE\",\"NO_COMPARABLE_EFFORTS_INFORMATIONAL_ONLY\"]}}",
+          [
+            "hr_cap_bpm",
+            "race_execution",
+            "race_hr"
+          ],
+          null
         ]
       },
       {
         "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
+        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,\n              notes = COALESCE($5, notes)\n        WHERE id = $1",
         "values": [
           "rebuild_01_2026-09-26",
           435,
-          "{\"pace_target_s_per_mi_lo\":430,\"pace_target_s_per_mi_hi\":440,\"rules\":[{\"kind\":\"abort\",\"metric\":\"hr\",\"op\":\">\",\"value\":179,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: avgHr over 179 · switch to the B plan\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":457,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:37/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:57:58.901Z\",\"target_sec\":2700,\"previous_target_sec\":null,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":435,\"source\":\"stated_goal_within_range\",\"stated_goal_sec\":2700,\"current_projection_sec\":2584,\"expected_race_day_sec\":2576,\"likely_range_sec\":[2524,2630],\"expected_gain_vdot\":0.34642857142857136,\"training_pace_s_per_mi\":416,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"comfortable\",\"reason\":\"Your goal is at or slower than the expected result · race to your goal.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[168,176],\"early_ceiling_bpm\":168,\"early_through_mi\":2,\"late_allowance_bpm\":181,\"checkpoint_mi\":2,\"checkpoint_abort_bpm\":179,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":3,\"observed_mean_hr\":154,\"conflict_bpm\":-27},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}"
+          "{\"pace_target_s_per_mi_lo\":430,\"pace_target_s_per_mi_hi\":440,\"rules\":[{\"kind\":\"abort\",\"metric\":\"hr\",\"op\":\">\",\"value\":179,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: avgHr over 179 · switch to the B plan\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":457,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:37/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-03T00:00:56.737Z\",\"target_sec\":2700,\"previous_target_sec\":null,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":435,\"source\":\"stated_goal_within_range\",\"stated_goal_sec\":2700,\"current_projection_sec\":2584,\"expected_race_day_sec\":2576,\"likely_range_sec\":[2524,2630],\"expected_gain_vdot\":0.34642857142857136,\"training_pace_s_per_mi\":416,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"comfortable\",\"reason\":\"Your goal is at or slower than the expected result · race to your goal.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[168,176],\"early_ceiling_bpm\":168,\"early_through_mi\":2,\"late_allowance_bpm\":181,\"checkpoint_mi\":2,\"checkpoint_abort_bpm\":179,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":3,\"observed_mean_hr\":154,\"conflict_bpm\":-27},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}",
+          [
+            "hr_cap_bpm",
+            "race_execution",
+            "race_hr"
+          ],
+          null
         ]
       },
       {
         "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
+        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,\n              notes = COALESCE($5, notes)\n        WHERE id = $1",
         "values": [
           "rebuild_02_2026-11-08",
           422,
-          "{\"pace_target_s_per_mi_lo\":417,\"pace_target_s_per_mi_hi\":427,\"rules\":[{\"kind\":\"abort\",\"metric\":\"hr\",\"op\":\">\",\"value\":171,\"scope\":\"mile-5\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 5 check: avgHr over 171 · switch to the B plan\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":443,\"scope\":\"mile-5\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 5 check: pace slower than 7:23/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:58:04.410Z\",\"target_sec\":5530,\"previous_target_sec\":null,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":422,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":5400,\"current_projection_sec\":5762,\"expected_race_day_sec\":5673,\"likely_range_sec\":[5526,5839],\"expected_gain_vdot\":1.8360714285714284,\"training_pace_s_per_mi\":440,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"aggressive\",\"reason\":\"Your goal (1:30:00) is faster than the likely range's fast edge (1:32:06) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[161,168],\"early_ceiling_bpm\":161,\"early_through_mi\":5,\"late_allowance_bpm\":173,\"checkpoint_mi\":5,\"checkpoint_abort_bpm\":171,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":1,\"observed_mean_hr\":157,\"conflict_bpm\":-16},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}"
+          "{\"pace_target_s_per_mi_lo\":417,\"pace_target_s_per_mi_hi\":427,\"rules\":[{\"kind\":\"abort\",\"metric\":\"hr\",\"op\":\">\",\"value\":171,\"scope\":\"mile-5\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 5 check: avgHr over 171 · switch to the B plan\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":443,\"scope\":\"mile-5\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 5 check: pace slower than 7:23/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-03T00:01:02.252Z\",\"target_sec\":5530,\"previous_target_sec\":null,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":422,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":5400,\"current_projection_sec\":5762,\"expected_race_day_sec\":5673,\"likely_range_sec\":[5526,5839],\"expected_gain_vdot\":1.8360714285714284,\"training_pace_s_per_mi\":440,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"aggressive\",\"reason\":\"Your goal (1:30:00) is faster than the likely range's fast edge (1:32:06) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[161,168],\"early_ceiling_bpm\":161,\"early_through_mi\":5,\"late_allowance_bpm\":173,\"checkpoint_mi\":5,\"checkpoint_abort_bpm\":171,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":1,\"observed_mean_hr\":157,\"conflict_bpm\":-16},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}",
+          [
+            "hr_cap_bpm",
+            "race_execution",
+            "race_hr"
+          ],
+          "Run Malibu. B race · race effort. Recovery days follow before quality resumes. Coach target 7:02/mi, set from your current fitness. Yours to change."
         ]
       },
       {
         "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
-        "values": [
-          "rebuild_03_2026-12-01",
-          443,
-          "{\"pace_target_s_per_mi_lo\":438,\"pace_target_s_per_mi_hi\":448,\"rules\":[{\"kind\":\"pass\",\"metric\":\"hr\",\"op\":\"<=\",\"value\":164,\"scope\":\"work\",\"action\":null,\"label\":\"Pass: avgHr ≤ 164 on the work\"},{\"kind\":\"bail\",\"metric\":\"hr\",\"op\":\">\",\"value\":173,\"scope\":\"work\",\"action\":\"drop_to_easy\",\"label\":\"HR over 173 and climbing · finish easy, the stimulus is banked\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":465,\"scope\":\"mile-2\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 2 check: pace slower than 7:45/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:58:09.874Z\",\"target_sec\":11610,\"previous_target_sec\":null,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":443,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":10800,\"current_projection_sec\":12230,\"expected_race_day_sec\":11982,\"likely_range_sec\":[11608,12411],\"expected_gain_vdot\":2.5635714285714286,\"training_pace_s_per_mi\":472,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"unlikely_currently\",\"reason\":\"Your goal (3:00:00) is faster than the likely range's fast edge (3:13:28) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[148,160],\"early_ceiling_bpm\":148,\"early_through_mi\":10,\"late_allowance_bpm\":165,\"checkpoint_mi\":10,\"checkpoint_abort_bpm\":163,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":4,\"observed_mean_hr\":155,\"conflict_bpm\":-10},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}"
-        ]
-      },
-      {
-        "kind": "CAPTURED_WRITE",
-        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb\n        WHERE id = $1",
+        "text": "UPDATE plan_workouts\n          SET pace_target_s_per_mi = $2,\n              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,\n              notes = COALESCE($5, notes)\n        WHERE id = $1",
         "values": [
           "rebuild_04_2026-12-06",
           443,
-          "{\"pace_target_s_per_mi_lo\":438,\"pace_target_s_per_mi_hi\":448,\"rules\":[{\"kind\":\"abort\",\"metric\":\"hr\",\"op\":\">\",\"value\":163,\"scope\":\"mile-10\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 10 check: avgHr over 163 · switch to the B plan\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":465,\"scope\":\"mile-10\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 10 check: pace slower than 7:45/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-02T22:58:15.529Z\",\"target_sec\":11610,\"previous_target_sec\":null,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":443,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":10800,\"current_projection_sec\":12230,\"expected_race_day_sec\":11982,\"likely_range_sec\":[11608,12411],\"expected_gain_vdot\":2.5635714285714286,\"training_pace_s_per_mi\":472,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"unlikely_currently\",\"reason\":\"Your goal (3:00:00) is faster than the likely range's fast edge (3:13:28) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[148,160],\"early_ceiling_bpm\":148,\"early_through_mi\":10,\"late_allowance_bpm\":165,\"checkpoint_mi\":10,\"checkpoint_abort_bpm\":163,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":4,\"observed_mean_hr\":155,\"conflict_bpm\":-10},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}"
+          "{\"pace_target_s_per_mi_lo\":438,\"pace_target_s_per_mi_hi\":448,\"rules\":[{\"kind\":\"abort\",\"metric\":\"hr\",\"op\":\">\",\"value\":163,\"scope\":\"mile-10\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 10 check: avgHr over 163 · switch to the B plan\"},{\"kind\":\"abort\",\"metric\":\"pace\",\"op\":\">\",\"value\":465,\"scope\":\"mile-10\",\"action\":\"switch_to_b_goal\",\"label\":\"Mile 10 check: pace slower than 7:45/mi · switch to the B plan\"}],\"race_execution\":{\"model_version\":\"1.0.0\",\"resolved_at\":\"2026-09-03T00:01:13.850Z\",\"target_sec\":11610,\"previous_target_sec\":null,\"material_change\":false,\"evidence_age_days\":1,\"evidence_stale\":false,\"target_pace_s_per_mi\":443,\"source\":\"stated_goal_clamped_to_range_edge\",\"stated_goal_sec\":10800,\"current_projection_sec\":12230,\"expected_race_day_sec\":11982,\"likely_range_sec\":[11608,12411],\"expected_gain_vdot\":2.5635714285714286,\"training_pace_s_per_mi\":472,\"threshold_s_per_mi\":430,\"threshold_vdot\":47.8,\"durability_exponent\":1.082514135966284,\"feasibility\":\"unlikely_currently\",\"reason\":\"Your goal (3:00:00) is faster than the likely range's fast edge (3:13:28) · race to the edge; the goal stays yours.\"},\"race_hr\":{\"lthr_bpm\":168,\"expected_range_bpm\":[148,160],\"early_ceiling_bpm\":148,\"early_through_mi\":10,\"late_allowance_bpm\":165,\"checkpoint_mi\":10,\"checkpoint_abort_bpm\":163,\"informational_only\":false,\"evidence\":{\"comparable_efforts\":4,\"observed_mean_hr\":155,\"conflict_bpm\":-10},\"reasons\":[\"DOCTRINE_BAND_FOR_DISTANCE\",\"VALIDATED_AGAINST_OWN_EFFORTS\"]}}",
+          [
+            "hr_cap_bpm",
+            "race_execution",
+            "race_hr"
+          ],
+          null
         ]
       },
       {
@@ -625,7 +681,7 @@
         "text": "UPDATE training_plans\n          SET authored_state = COALESCE(authored_state, '{}'::jsonb)\n              || jsonb_build_object('race_row_refresh', $2::jsonb)\n        WHERE id = $1",
         "values": [
           "pln_9a57561debb776e5",
-          "{\"at\":\"2026-09-02T22:58:15.720Z\",\"source\":\"authoring\",\"updated\":5,\"refused\":0,\"rows\":[{\"id\":\"rebuild_00_2026-09-13\",\"date\":\"2026-09-13\",\"action\":\"updated\",\"reason\":null,\"pace\":416},{\"id\":\"rebuild_01_2026-09-26\",\"date\":\"2026-09-26\",\"action\":\"updated\",\"reason\":null,\"pace\":435},{\"id\":\"rebuild_02_2026-11-08\",\"date\":\"2026-11-08\",\"action\":\"updated\",\"reason\":null,\"pace\":422},{\"id\":\"rebuild_03_2026-12-01\",\"date\":\"2026-12-01\",\"action\":\"updated\",\"reason\":null,\"pace\":443},{\"id\":\"rebuild_04_2026-12-06\",\"date\":\"2026-12-06\",\"action\":\"updated\",\"reason\":null,\"pace\":443}]}"
+          "{\"at\":\"2026-09-03T00:01:14.045Z\",\"source\":\"authoring\",\"updated\":4,\"refused\":0,\"rows\":[{\"id\":\"rebuild_00_2026-09-13\",\"date\":\"2026-09-13\",\"action\":\"updated\",\"reason\":null,\"pace\":416},{\"id\":\"rebuild_01_2026-09-26\",\"date\":\"2026-09-26\",\"action\":\"updated\",\"reason\":null,\"pace\":435},{\"id\":\"rebuild_02_2026-11-08\",\"date\":\"2026-11-08\",\"action\":\"updated\",\"reason\":null,\"pace\":422},{\"id\":\"rebuild_03_2026-12-01\",\"date\":\"2026-12-01\",\"action\":\"unchanged\",\"reason\":null,\"pace\":401},{\"id\":\"rebuild_04_2026-12-06\",\"date\":\"2026-12-06\",\"action\":\"updated\",\"reason\":null,\"pace\":443}]}"
         ]
       }
     ]
@@ -635,6 +691,9 @@
       "date_iso": "2026-09-13",
       "type": "race",
       "distance_mi": 6.2,
+      "sub_label": "RACE",
+      "authored_notes": "Santa Monica 10k. B race · race effort. Recovery days follow before quality resumes. Coach target 6:56/mi, set from your current fitness. Yours to change.",
+      "finished_notes": "Santa Monica 10k. B race · race effort. Recovery days follow before quality resumes. Coach target 6:56/mi, set from your current fitness. Yours to change.",
       "authored_pace_target_s_per_mi": 416,
       "refresh_action": "updated",
       "refresh_reason": null,
@@ -666,7 +725,7 @@
         ],
         "race_execution": {
           "model_version": "1.0.0",
-          "resolved_at": "2026-09-02T22:57:53.407Z",
+          "resolved_at": "2026-09-03T00:00:51.123Z",
           "target_sec": 2580,
           "previous_target_sec": null,
           "material_change": false,
@@ -718,6 +777,9 @@
       "date_iso": "2026-09-26",
       "type": "race",
       "distance_mi": 6.21,
+      "sub_label": "RACE",
+      "authored_notes": "Dodgers. C race · this is the week's quality session. Run it as the workout. Target 7:15/mi.",
+      "finished_notes": "Dodgers. C race · this is the week's quality session. Run it as the workout. Target 7:15/mi.",
       "authored_pace_target_s_per_mi": 435,
       "refresh_action": "updated",
       "refresh_reason": null,
@@ -749,7 +811,7 @@
         ],
         "race_execution": {
           "model_version": "1.0.0",
-          "resolved_at": "2026-09-02T22:57:58.901Z",
+          "resolved_at": "2026-09-03T00:00:56.737Z",
           "target_sec": 2700,
           "previous_target_sec": null,
           "material_change": false,
@@ -800,6 +862,9 @@
       "date_iso": "2026-11-08",
       "type": "race",
       "distance_mi": 13.1,
+      "sub_label": "RACE",
+      "authored_notes": "Run Malibu. B race · race effort. Recovery days follow before quality resumes. Target 6:52/mi.",
+      "finished_notes": "Run Malibu. B race · race effort. Recovery days follow before quality resumes. Coach target 7:02/mi, set from your current fitness. Yours to change.",
       "authored_pace_target_s_per_mi": 412,
       "refresh_action": "updated",
       "refresh_reason": null,
@@ -835,7 +900,7 @@
         ],
         "race_execution": {
           "model_version": "1.0.0",
-          "resolved_at": "2026-09-02T22:58:04.410Z",
+          "resolved_at": "2026-09-03T00:01:02.252Z",
           "target_sec": 5530,
           "previous_target_sec": null,
           "material_change": false,
@@ -886,10 +951,13 @@
       "date_iso": "2026-12-01",
       "type": "race_week_tuneup",
       "distance_mi": 4.5,
+      "sub_label": "5×400m @ 5K pace · 2min jog",
+      "authored_notes": "Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.",
+      "finished_notes": "Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.",
       "authored_pace_target_s_per_mi": 401,
-      "refresh_action": "updated",
+      "refresh_action": "unchanged",
       "refresh_reason": null,
-      "refreshed_pace_target_s_per_mi": 443,
+      "refreshed_pace_target_s_per_mi": 401,
       "finished_spec": {
         "kind": "threshold",
         "warmup_mi": 1.4,
@@ -918,72 +986,17 @@
             "scope": "work",
             "action": "drop_to_easy",
             "label": "HR over 173 and climbing · finish easy, the stimulus is banked"
-          },
-          {
-            "kind": "abort",
-            "metric": "pace",
-            "op": ">",
-            "value": 465,
-            "scope": "mile-2",
-            "action": "switch_to_b_goal",
-            "label": "Mile 2 check: pace slower than 7:45/mi · switch to the B plan"
           }
-        ],
-        "pace_target_s_per_mi_lo": 438,
-        "pace_target_s_per_mi_hi": 448,
-        "race_execution": {
-          "model_version": "1.0.0",
-          "resolved_at": "2026-09-02T22:58:09.874Z",
-          "target_sec": 11610,
-          "previous_target_sec": null,
-          "material_change": false,
-          "evidence_age_days": 1,
-          "evidence_stale": false,
-          "target_pace_s_per_mi": 443,
-          "source": "stated_goal_clamped_to_range_edge",
-          "stated_goal_sec": 10800,
-          "current_projection_sec": 12230,
-          "expected_race_day_sec": 11982,
-          "likely_range_sec": [
-            11608,
-            12411
-          ],
-          "expected_gain_vdot": 2.5635714285714286,
-          "training_pace_s_per_mi": 472,
-          "threshold_s_per_mi": 430,
-          "threshold_vdot": 47.8,
-          "durability_exponent": 1.082514135966284,
-          "feasibility": "unlikely_currently",
-          "reason": "Your goal (3:00:00) is faster than the likely range's fast edge (3:13:28) · race to the edge; the goal stays yours."
-        },
-        "race_hr": {
-          "lthr_bpm": 168,
-          "expected_range_bpm": [
-            148,
-            160
-          ],
-          "early_ceiling_bpm": 148,
-          "early_through_mi": 10,
-          "late_allowance_bpm": 165,
-          "checkpoint_mi": 10,
-          "checkpoint_abort_bpm": 163,
-          "informational_only": false,
-          "evidence": {
-            "comparable_efforts": 4,
-            "observed_mean_hr": 155,
-            "conflict_bpm": -10
-          },
-          "reasons": [
-            "DOCTRINE_BAND_FOR_DISTANCE",
-            "VALIDATED_AGAINST_OWN_EFFORTS"
-          ]
-        }
+        ]
       }
     },
     {
       "date_iso": "2026-12-06",
       "type": "race",
       "distance_mi": 26.22,
+      "sub_label": "RACE",
+      "authored_notes": "Execute the plan. Pacing in race-week briefing.",
+      "finished_notes": "Execute the plan. Pacing in race-week briefing.",
       "authored_pace_target_s_per_mi": 443,
       "refresh_action": "updated",
       "refresh_reason": null,
@@ -1022,7 +1035,7 @@
         ],
         "race_execution": {
           "model_version": "1.0.0",
-          "resolved_at": "2026-09-02T22:58:15.529Z",
+          "resolved_at": "2026-09-03T00:01:13.850Z",
           "target_sec": 11610,
           "previous_target_sec": null,
           "material_change": false,
@@ -1070,10 +1083,42 @@
       }
     }
   ],
+  "contract_findings": [
+    {
+      "date_iso": "2026-09-13",
+      "type": "race",
+      "violations": [],
+      "detail": ""
+    },
+    {
+      "date_iso": "2026-09-26",
+      "type": "race",
+      "violations": [],
+      "detail": ""
+    },
+    {
+      "date_iso": "2026-11-08",
+      "type": "race",
+      "violations": [],
+      "detail": ""
+    },
+    {
+      "date_iso": "2026-12-01",
+      "type": "race_week_tuneup",
+      "violations": [],
+      "detail": ""
+    },
+    {
+      "date_iso": "2026-12-06",
+      "type": "race",
+      "violations": [],
+      "detail": ""
+    }
+  ],
   "outlooks": {
     "dodgers": {
       "modelVersion": "1.0.0",
-      "resolvedAt": "2026-09-02T22:58:21.197Z",
+      "resolvedAt": "2026-09-03T00:01:19.790Z",
       "todayISO": "2026-09-02",
       "race": {
         "slug": "dodgers",
@@ -1247,7 +1292,6 @@
           "expected 42:56 · range 42:04-43:50 · goal 45:00"
         ]
       },
-      "coachSet": null,
       "staleness": {
         "newestEvidenceISO": "2026-09-01",
         "evidenceAgeDays": 1,
@@ -1365,7 +1409,7 @@
     },
     "run-malibu": {
       "modelVersion": "1.0.0",
-      "resolvedAt": "2026-09-02T22:58:26.682Z",
+      "resolvedAt": "2026-09-03T00:01:25.223Z",
       "todayISO": "2026-09-02",
       "race": {
         "slug": "run-malibu",
@@ -1523,7 +1567,6 @@
           "expected 1:34:33 · range 1:32:06-1:37:19 · goal 1:30:00"
         ]
       },
-      "coachSet": null,
       "staleness": {
         "newestEvidenceISO": "2026-09-01",
         "evidenceAgeDays": 1,
@@ -1641,7 +1684,7 @@
     },
     "cim": {
       "modelVersion": "1.0.0",
-      "resolvedAt": "2026-09-02T22:58:32.099Z",
+      "resolvedAt": "2026-09-03T00:01:30.802Z",
       "todayISO": "2026-09-02",
       "race": {
         "slug": "cim",
@@ -1826,7 +1869,6 @@
           "expected 3:19:42 · range 3:13:28-3:26:51 · goal 3:00:00"
         ]
       },
-      "coachSet": null,
       "staleness": {
         "newestEvidenceISO": "2026-09-01",
         "evidenceAgeDays": 1,
@@ -1944,7 +1986,7 @@
     },
     "santa-monica-10k-2026-09-13": {
       "modelVersion": "1.0.0",
-      "resolvedAt": "2026-09-02T22:58:38.123Z",
+      "resolvedAt": "2026-09-03T00:01:36.543Z",
       "todayISO": "2026-09-02",
       "race": {
         "slug": "santa-monica-10k-2026-09-13",
@@ -2093,12 +2135,6 @@
         "reasons": [
           "NO_STATED_GOAL"
         ]
-      },
-      "coachSet": {
-        "aSec": 2525,
-        "bSec": 2580,
-        "cSec": 2630,
-        "basis": "expected_race_day_range"
       },
       "staleness": {
         "newestEvidenceISO": "2026-09-01",
@@ -2871,9 +2907,144 @@
       }
     },
     "santa-monica-10k-2026-09-13": {
-      "route_status": 404,
-      "reason": "no goal time set · execution plan needs a goal",
-      "goal_display": null
+      "route_status": 200,
+      "effective_target": {
+        "target_sec": 2580,
+        "source": "projection",
+        "goal_sec": 0,
+        "projection_sec": 2579
+      },
+      "plan": {
+        "goalSec": 2580,
+        "goalPaceSPerMi": 416,
+        "distanceMi": 6.2,
+        "bGoalSec": null,
+        "bGoalPaceSPerMi": null,
+        "firstMileAllowanceSPerMi": 7,
+        "splits": [
+          {
+            "mile": 1,
+            "distanceMi": 1,
+            "paceSPerMi": 423,
+            "cumulativeSec": 423,
+            "label": "settle"
+          },
+          {
+            "mile": 2,
+            "distanceMi": 1,
+            "paceSPerMi": 415,
+            "cumulativeSec": 838,
+            "label": "goal pace"
+          },
+          {
+            "mile": 3,
+            "distanceMi": 1,
+            "paceSPerMi": 415,
+            "cumulativeSec": 1253,
+            "label": "goal pace"
+          },
+          {
+            "mile": 4,
+            "distanceMi": 1,
+            "paceSPerMi": 415,
+            "cumulativeSec": 1667,
+            "label": "goal pace"
+          },
+          {
+            "mile": 5,
+            "distanceMi": 1,
+            "paceSPerMi": 415,
+            "cumulativeSec": 2082,
+            "label": "goal pace"
+          },
+          {
+            "mile": 6,
+            "distanceMi": 1,
+            "paceSPerMi": 415,
+            "cumulativeSec": 2497,
+            "label": "push"
+          },
+          {
+            "mile": 7,
+            "distanceMi": 0.2,
+            "paceSPerMi": 415,
+            "cumulativeSec": 2580,
+            "label": "push"
+          }
+        ],
+        "bGoalTriggers": [
+          {
+            "atMile": 2,
+            "hrAboveBpm": 179,
+            "paceSlowerThanSPerMi": 437,
+            "action": "Back off 15 s/mi for 2 miles and reassess. Finishing strong beats blowing up."
+          }
+        ],
+        "heatRules": [
+          {
+            "ifStartTempAtLeastF": 65,
+            "addSPerMi": 6,
+            "note": "65°F at the gun · add 6s/mi to every split. The heat is physics, not fitness."
+          },
+          {
+            "ifStartTempAtLeastF": 70,
+            "addSPerMi": 10,
+            "note": "70°F at the gun · add 10s/mi to every split. The heat is physics, not fitness."
+          },
+          {
+            "ifStartTempAtLeastF": 75,
+            "addSPerMi": 14,
+            "note": "75°F at the gun · add 14s/mi and consider racing the B plan from the start."
+          },
+          {
+            "ifStartTempAtLeastF": 80,
+            "addSPerMi": 19,
+            "note": "80°F at the gun · add 19s/mi and consider racing the B plan from the start."
+          }
+        ],
+        "warmup": [
+          {
+            "minutesBeforeGun": 24,
+            "clock": "6:36 AM",
+            "step": "Easy jog 1.5-2.5 miles (10 min). Conversational, nothing more."
+          },
+          {
+            "minutesBeforeGun": 14,
+            "clock": "6:46 AM",
+            "step": "Drills: leg swings, A-skips, 2×30s high knees."
+          },
+          {
+            "minutesBeforeGun": 9,
+            "clock": "6:51 AM",
+            "step": "4 × 20s strides at 10K pace. Full recovery between."
+          },
+          {
+            "minutesBeforeGun": 5,
+            "clock": "6:55 AM",
+            "step": "In the corral. Sips of water only from here."
+          }
+        ],
+        "fueling": [
+          "No carb load needed. Normal training carbs, 5-7 g/kg/day.",
+          "Race morning: breakfast 1.5 g/kg carbs, 2.5-3h out. Nothing new.",
+          "On course: nothing. Water at the aid stations if it is warm.",
+          "Caffeine: pre-race only. Normal coffee 45-60 min before the gun. Nothing on course."
+        ],
+        "fuelingPlan": {
+          "targetCarbsPerHourG": 0,
+          "recommendedServings": 0,
+          "productName": "SIS",
+          "carbsPerServingG": 40,
+          "totalCarbsG": 0,
+          "scheduleMi": [],
+          "scheduleMin": [],
+          "isDefault": false,
+          "shortLine": "No on-course fuel needed · pre-race breakfast covers a race this short.",
+          "citation": "Research/18 §11 (:370) — 10K: 0-30, last third only"
+        },
+        "strategyLine": "Open at 7:03 for the first mile. Then it's 6:55s the rest of the way · the early patience comes back to you. Push the final mile on feel.",
+        "ciNote": "Current fitness says 42:07–43:51. The plan above is the path to the goal edge of that band."
+      }
     }
   },
   "phone_pace_plans": {
