@@ -680,8 +680,15 @@ struct RunLobbyV5: View {
         case .loading:
             Skeleton(lines: 3)
         case .failed:
-            ErrorNote(text: "Couldn't load today's planned workout. Starting now will record an unstructured run.",
-                      onRetry: { Task { workoutState = .loading; await loadWorkout() } })
+            // FAILRECOVERY-1 (2026-09-03 correction) · no `onRetry` here.
+            // The old shape had Retry inside this card, a SECOND "Retry
+            // workout" button in `startSection` below, and (until the same
+            // fix) an Apple Watch Retry row too — three ways to ask for the
+            // same thing on one screen. One primary recovery action now:
+            // `startSection`'s "Retry workout". This card only explains,
+            // once — "Explain the state once" — and leaves acting on it to
+            // the one button.
+            ErrorNote(text: "Today's planned workout couldn't be loaded. You can retry or intentionally record an unstructured run.")
         case .none:
             Silence(reason: "Nothing scheduled today. Starting now will record an unstructured run.")
         case .ready(let w):
@@ -861,29 +868,45 @@ struct RunLobbyV5: View {
     private var startSection: some View {
         let unstructured = workoutState.hasNoCanonicalWorkout
         VStack(alignment: .leading, spacing: V5.S.s12) {
+            // FAILRECOVERY-1 (2026-09-03 correction) · "Use one primary
+            // recovery action for the workout: Retry workout. Then show
+            // execution alternatives only after the user understands they
+            // are intentionally starting without the plan." Only `.failed`
+            // gets a Retry — `.none` already answered cleanly ("nothing
+            // scheduled"), and there is nothing there to retry.
             if case .failed = workoutState {
                 FaffButton("Retry workout", variant: .secondary, size: .md,
                            action: { Task { workoutState = .loading; await loadWorkout() } })
             }
 
-            // "Apple Watch is my normal path... but do not silently choose
-            // the phone merely because the Watch is temporarily
-            // unreachable" — an unreachable/unpaired/unsynced watch renders
-            // as a compact status with Retry, NEVER as a tappable choice
-            // that would quietly hand off to the phone instead.
-            if watchCanExecute {
-                choice(title: unstructured ? "Start unstructured · Apple Watch" : "Apple Watch",
-                       sub: "Executes and records on your watch",
-                       action: { Task { await start(onWatch) } })
+            if unstructured {
+                // "Do not show an Apple Watch Retry row when no canonical
+                // workout has loaded; first recover the workout, then
+                // evaluate Watch sync." The watch tile/blocked-row is
+                // entirely absent here — recovering the workout, not
+                // troubleshooting the watch, is the one thing this state
+                // asks the runner to do.
+                choice(title: "Record unstructured outdoors", sub: "GPS pace and route, no plan",
+                       action: { Task { await start(onOutdoor) } })
+                choice(title: "Record unstructured treadmill", sub: "Speed and incline, no plan",
+                       action: { Task { await start(onTreadmill) } })
             } else {
-                watchBlockedRow
+                // "Apple Watch is my normal path... but do not silently
+                // choose the phone merely because the Watch is temporarily
+                // unreachable" — an unreachable/unpaired/unsynced watch
+                // renders as a compact status with Retry, NEVER as a
+                // tappable choice that would quietly hand off to the phone.
+                if watchCanExecute {
+                    choice(title: "Apple Watch", sub: "Executes and records on your watch",
+                           action: { Task { await start(onWatch) } })
+                } else {
+                    watchBlockedRow
+                }
+                choice(title: "Outdoor on iPhone", sub: "GPS pace and route",
+                       action: { Task { await start(onOutdoor) } })
+                choice(title: "Treadmill", sub: "Speed and incline, no GPS",
+                       action: { Task { await start(onTreadmill) } })
             }
-            choice(title: unstructured ? "Start unstructured · Outdoor" : "Outdoor on iPhone",
-                   sub: unstructured ? "GPS pace and route, no plan" : "GPS pace and route",
-                   action: { Task { await start(onOutdoor) } })
-            choice(title: unstructured ? "Start unstructured · Treadmill" : "Treadmill",
-                   sub: unstructured ? "Speed and incline, no plan" : "Speed and incline, no GPS",
-                   action: { Task { await start(onTreadmill) } })
 
             // PICKERTRUTH-1 · gated on the same fact the live screen
             // reads, so this screen cannot promise what the build cannot

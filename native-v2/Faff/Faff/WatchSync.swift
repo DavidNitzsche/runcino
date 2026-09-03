@@ -31,6 +31,66 @@ final class WatchSync: NSObject, ObservableObject {
     /// real ack flag for TreadmillView's "live HR" affordance.
     @Published private(set) var treadmillSessionConfirmed = false
 
+    // MARK: - DUPLICATE-1 (2026-09-03) · cross-device recording lock
+    //
+    // Explicit tile selection (Decision 1) closes the routing path THROUGH
+    // this app's own lobby — it does nothing about a runner starting the
+    // watch directly from its face and separately starting the phone (or
+    // the reverse). "Add a shared live-session identity communicated
+    // through WatchConnectivity... before phone recording begins, check
+    // for an active Watch session."
+    //
+    // `applicationContext` is the right primitive: it always carries the
+    // FULL current state (not a diff), is delivered even across a
+    // disconnection (queued and redelivered on reconnect), and the watch
+    // side (`PhoneSync.publishActiveWorkout`, legacy/native's watch target)
+    // publishes through the identical channel this file already uses to
+    // push readiness and today's workout — one shared primitive, not a
+    // second wire invented for this.
+    //
+    // A missing key on a fresh context is read as "no active workout," per
+    // Rule 11 (three facts: an id, an explicit absence, or "never told") —
+    // this file has never once received an application context before this
+    // round, so `watchActiveWorkoutId` starts `nil` and stays that way
+    // until the watch actually says otherwise.
+    @Published private(set) var watchActiveWorkoutId: String?
+    private var watchActiveWorkoutStampedAt: Date?
+
+    /// A staleness ceiling, not the primary mechanism — the watch is
+    /// expected to clear its own flag on End, the same way it clears
+    /// `treadmillSessionConfirmed`'s underlying session. This exists only
+    /// so a flag the watch failed to clear (a killed process, a crash
+    /// mid-run) cannot block every future phone start forever — Rule 11
+    /// again: a stale "yes" and a live "yes" are different facts, and only
+    /// one of them should still gate a start hours later.
+    private static let activeWorkoutStaleAfter: TimeInterval = 6 * 60 * 60
+
+    /// What `LiveRunHostV5` actually reads before starting the phone
+    /// tracker for `.outdoor` — the raw id alone does not answer "is this
+    /// still true right now."
+    var watchActiveWorkoutIsCurrent: Bool {
+        guard watchActiveWorkoutId != nil, let stampedAt = watchActiveWorkoutStampedAt else { return false }
+        return Date().timeIntervalSince(stampedAt) <= Self.activeWorkoutStaleAfter
+    }
+
+    /// The phone's own half of the same handshake — published so the watch
+    /// (once it reads this app's context) can refuse a direct-from-wrist
+    /// start while the phone already owns a session. Symmetric with
+    /// `watchActiveWorkoutId`: `nil` clears the key entirely rather than
+    /// sending an empty string, so a stale reader cannot mistake "cleared"
+    /// for "started, empty id."
+    func publishPhoneActiveWorkout(id: String?) {
+        var ctx = lastContext ?? [:]
+        if let id {
+            ctx["phoneActiveWorkoutId"] = id
+            ctx["phoneActiveWorkoutStartedAt"] = Date().timeIntervalSinceReferenceDate
+        } else {
+            ctx.removeValue(forKey: "phoneActiveWorkoutId")
+            ctx.removeValue(forKey: "phoneActiveWorkoutStartedAt")
+        }
+        sendContext(ctx)
+    }
+
     private var pendingContext: [String: Any]?
 
     // MARK: Readiness → watch glance (P1-30 · 2026-07-06)
@@ -667,6 +727,23 @@ extension WatchSync: WCSessionDelegate {
 
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
     nonisolated func sessionDidDeactivate(_ session: WCSession) { session.activate() }
+
+    /// DUPLICATE-1 · the watch's half of the handshake, received. Always the
+    /// FULL current context (WatchConnectivity's own contract, not a diff),
+    /// so a context that omits `activeWorkoutId` is read as "no longer
+    /// active" — never "unchanged, ask again later." This is the one
+    /// applicationContext-receiving delegate method on the phone; nothing
+    /// previously read anything the watch sent back through this channel.
+    nonisolated func session(_ session: WCSession,
+                             didReceiveApplicationContext applicationContext: [String: Any]) {
+        let id = applicationContext["activeWorkoutId"] as? String
+        let stampedAt = (applicationContext["activeWorkoutStartedAt"] as? TimeInterval)
+            .map { Date(timeIntervalSinceReferenceDate: $0) }
+        Task { @MainActor in
+            self.watchActiveWorkoutId = id
+            self.watchActiveWorkoutStampedAt = id != nil ? (stampedAt ?? Date()) : nil
+        }
+    }
 
     /// Watch sent a large completion via transferFile (audit RK-2 fallback: payloads
     /// >60 KB exceed transferUserInfo cap; the watch uses transferFile instead).
