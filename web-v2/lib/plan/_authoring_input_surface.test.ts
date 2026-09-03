@@ -97,7 +97,22 @@ const STILL_PRESENT: Record<string, string> = {
     'Self-declared experience-level band. profile.experience_level reads '
     + '"advanced" because he typed it at onboarding, yielding a 65-90 mi/wk peak '
     + 'band against a measured best week of 48.5 and zero weeks at 50+. '
-    + 'Doctrine: his actual history, not an onboarding label, determines load.',
+    + 'Doctrine: his actual history, not an onboarding label, determines load. '
+    + 'LOADCONTRACT-1 (2026-09-02) · REMOVED FROM THE PEAK-LOAD AXIS. '
+    + '`cycleBoundedPeak` no longer takes it and the published weekly ceiling no '
+    + 'longer reads it; the block now peaks identically at every level and at '
+    + 'none (_load_progression_contract.test.ts G2, falsified). Three reads '
+    + 'remain and each is a separate decision this pass deliberately did not '
+    + 'make: (1) GENERAL_RAMP_CEILING[level], the WEEK-OVER-WEEK climb rate, '
+    + 'where doctrine genuinely states a different figure for novices (1.20) and '
+    + 'moving it changes every beginner archetype in the 11,687-arc corpus; '
+    + '(2) classifyCapacityTier`s floor, which also selects the long-run band, '
+    + 'quality density and day count, and demoting it off a pace reading was '
+    + 'measured to shorten a marathoner`s long run by 2.5 mi (goal-tiers.ts '
+    + 'TIEREVIDENCE-1); (3) isBaseBuildingPlan / recoveryDayAfterLongMi, which '
+    + 'are week-SHAPE reads owned by the layout path. The field cannot be struck '
+    + 'from this list until all three are resolved, and saying so here is the '
+    + 'honest state rather than an unmarked gap (Rule 20).',
   bestRecentVdotSelfReported:
     'Self-reported capacity. Same class as the label above: a number he stated '
     + 'rather than one he demonstrated.',

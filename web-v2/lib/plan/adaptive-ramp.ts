@@ -93,6 +93,13 @@
  */
 
 import { automaticPlanMutationIsAuthorised } from '@/lib/plan/adaptation-authority';
+// LOADCONTRACT-1 · the ceiling is recomputed through the SAME resolver
+// `composePlan` sized the block with. Rule 16: two readers of one band is two
+// chances to disagree about where a runner's ceiling is.
+import {
+  recomputeAdaptationCeiling, ADAPTATION_HEADROOM_SHARE,
+  type LoadContractStamp,
+} from '@/lib/plan/load-progression-contract';
 import { pool } from '@/lib/db/pool';
 import { attempt, rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
@@ -133,6 +140,17 @@ export interface RampSignals {
     lastLongDecouplingPct: number | null;
     peakHeadroomMi: number;
     daysSinceLastBump: number;
+    /**
+     * LOADCONTRACT-1 · the weekly ceiling this evaluation actually used, and
+     * where it came from. Rule 11: a ceiling recomputed from today's evidence
+     * and one inherited from authoring are different facts, and a log that
+     * cannot tell them apart cannot answer "has this ever pushed up" — which is
+     * exactly the ambiguity Rule 21 found had hidden a zero-upgrade engine.
+     */
+    tierWeeklyUpperMi: number;
+    tierWeeklyUpperSource: 'recomputed' | 'stamped' | 'none';
+    /** The live demonstrated peak week the recompute used. Null when unread. */
+    liveDemonstratedPeakMi: number | null;
   };
 }
 
@@ -343,19 +361,77 @@ export async function detectRampSignals(
       || lastLongDecouplingPct < LONG_DECOUPLING_PCT_CAP);
 
   // 4. Plan's current peak weekly · is there headroom?
-  const tierWeeklyUpper = readTierUpper(activePlan.authoredState, 'tier_peak_weekly_band');
+  /* ════════════════════════════════════════════════════════════════════════
+   * LOADCONTRACT-1 (2026-09-02) · THE CEILING IS RECOMPUTED, NOT INHERITED.
+   *
+   * `readTierUpper` reads an array frozen at authoring. TIEREVIDENCE-2 named
+   * the consequence and refused to fix it: on the reference runner the frozen
+   * ceiling sat BELOW the block's own peak, so `belowTierUpper` was false on
+   * every tick for every runner, forever — Rule 21's "wired, doctrine-bound,
+   * cron-mounted and INERT".
+   *
+   * The honest fix, which TIEREVIDENCE-2 wrote down and deferred, is Rule 10's
+   * RECOMPUTE posture: re-derive the bound from the runner's LIVE demonstrated
+   * peak through the same resolver `composePlan` sized the block with, using
+   * the `load_progression_contract` stamp that authoring now writes for exactly
+   * this purpose. That is what happens below.
+   *
+   * WHY THIS IS WHAT MAKES THE UPWARD PATH REACHABLE, and why it is not a
+   * loosened guard. A well-authored block spends the headroom it has, so a
+   * ceiling struck at authoring and the peak composed against it are the SAME
+   * number by construction — comparing them can only ever answer "no". The
+   * quantity that legitimately moves is the EVIDENCE: as the runner completes
+   * bigger weeks their demonstrated peak rises, the per-cycle bound rises with
+   * it, and headroom opens because it was EARNED. Nothing here weakens a
+   * doctrine figure; `PER_CYCLE_PEAK_GROWTH` is the same 1.15 the authoring
+   * spent, read from the same table.
+   *
+   * STILL SHADOW-ONLY. `tryAdaptiveBump` returns null on
+   * `automaticPlanMutationIsAuthorised()` before it reads anything, and that
+   * is unchanged. This makes the gate ANSWERABLE; it does not make it act.
+   * ════════════════════════════════════════════════════════════════════════ */
+  const stampedWeeklyUpper = readTierUpper(activePlan.authoredState, 'tier_peak_weekly_band');
   const tierLongUpper = readTierUpper(activePlan.authoredState, 'tier_peak_long_band');
+  const loadStamp = readLoadContractStamp(activePlan.authoredState);
+  // Rule 11 · three states. A read that FAILS is not "no demonstrated peak",
+  // and neither is a genuine zero — `attempt` keeps the failure distinct, and
+  // `recomputeAdaptationCeiling` falls back to the stamped ceiling rather than
+  // to a number it invented.
+  const livePeak = await attempt(
+    'plan/adaptive-ramp · live demonstrated peak week',
+    (async () => {
+      const { recentPeakWeeklyMileage } = await import('@/lib/plan/generate');
+      return recentPeakWeeklyMileage(userId, today);
+    })(),
+  );
+  const recomputed = recomputeAdaptationCeiling({
+    stamp: loadStamp,
+    liveDemonstratedPeakWeeklyMi: livePeak.ok ? livePeak.value : null,
+    stampedCeilingMi: stampedWeeklyUpper > 0 ? stampedWeeklyUpper : null,
+  });
+  const tierWeeklyUpper = recomputed.ceiling.known ? recomputed.ceiling.mi : 0;
   /* TIEREVIDENCE-2 · say so out loud when this gate is structurally unable to
    * pass, rather than reporting the same `false` a runner with no headroom
-   * gets. See `ceilingCanNeverBind`. */
+   * gets. See `ceilingCanNeverBind`. Kept, and now reporting on the RECOMPUTED
+   * ceiling for the weekly band — a plan whose stamped ceiling was inert at
+   * authoring is exactly the plan whose recompute must be checked, and saying
+   * "inert" about a number nothing reads any more would be the same class of
+   * stale claim Rule 20 warns about. */
   for (const key of ['tier_peak_weekly_band', 'tier_peak_long_band'] as const) {
-    const verdict = ceilingCanNeverBind(activePlan.authoredState, key);
+    const verdict = ceilingCanNeverBind(
+      activePlan.authoredState,
+      key,
+      key === 'tier_peak_weekly_band' && recomputed.ceiling.known
+        ? recomputed.ceiling.mi
+        : undefined,
+    );
     if (verdict.inert) {
       console.warn(
         `[adaptive-ramp] INERT GATE · ${key} ceiling ${verdict.ceiling} sits at or below `
         + `this block's own authored peak ${verdict.authoredPeak} · belowTierUpper can never `
-        + `pass for this plan. The upward path is unreachable until the ceiling is recomputed `
-        + `from live demonstrated volume (Rule 10) · user=${userId.slice(0, 8)}`,
+        + `pass for this plan. Ceiling source=${recomputed.source}. The upward path re-opens `
+        + `when the runner's demonstrated peak week rises (Rule 10 recompute) · `
+        + `user=${userId.slice(0, 8)}`,
       );
     }
   }
@@ -383,8 +459,14 @@ export async function detectRampSignals(
   const peakReadFailed = peakRow === null;
   const currentPeakWeekly = Number(peakRow?.peak_weekly ?? 0);
   const peakHeadroomMi = tierWeeklyUpper - currentPeakWeekly;
+  // LOADCONTRACT-1 · the share is `ADAPTATION_HEADROOM_SHARE`, not a literal,
+  // because `peakEarnedWhen` computes the demonstrated volume that would
+  // satisfy exactly this line and the two must agree by construction (Rule 16).
+  // A ceiling the recompute could not resolve is 0, and 0 makes this false —
+  // a refusal, never full headroom.
   const belowTierUpper = !peakReadFailed
-    && peakHeadroomMi > tierWeeklyUpper * 0.05;  // ≥ 5% headroom
+    && recomputed.ceiling.known
+    && peakHeadroomMi > tierWeeklyUpper * ADAPTATION_HEADROOM_SHARE;
 
   // 5. Cooldown · no bump applied in last 7 days
   //
@@ -440,6 +522,9 @@ export async function detectRampSignals(
       lastLongDecouplingPct,
       peakHeadroomMi: Number(peakHeadroomMi.toFixed(1)),
       daysSinceLastBump,
+      tierWeeklyUpperMi: tierWeeklyUpper,
+      tierWeeklyUpperSource: recomputed.source,
+      liveDemonstratedPeakMi: livePeak.ok ? livePeak.value : null,
     },
   };
 }
@@ -474,7 +559,13 @@ export async function detectGreenRampOpportunity(
     && signals.noBumpRecent;
   if (!allGreen) return null;
 
-  const tierWeeklyUpper = readTierUpper(plan.authored_state, 'tier_peak_weekly_band');
+  // LOADCONTRACT-1 · the SAME ceiling `belowTierUpper` was decided against, not
+  // a second read of the frozen band. Re-reading `authored_state` here would
+  // hand `planUpgrade` a different ceiling from the one that granted the
+  // opportunity — Rule 16, and the direction of the disagreement (the frozen
+  // band is the lower of the two) would have silently capped every bump back to
+  // authoring-time evidence.
+  const tierWeeklyUpper = signals.details.tierWeeklyUpperMi;
   const tierLongUpper = readTierUpper(plan.authored_state, 'tier_peak_long_band');
   const peakRow = await pool.query<{ peak_weekly: number; peak_long: number }>(
     `SELECT MAX(weekly)::numeric AS peak_weekly, MAX(long_mi)::numeric AS peak_long
@@ -612,6 +703,31 @@ export const planBump = planUpgrade;
  * readers of one band is two chances to disagree about where a runner's
  * ceiling is, and this one already knows the pre-tier-system case.
  */
+/**
+ * LOADCONTRACT-1 · the `load_progression_contract` stamp `composePlan` writes,
+ * or null on a block authored before it existed.
+ *
+ * Rule 11 · null here is "this block predates the contract", which is a real
+ * and different fact from "the contract refused to bound". The caller's
+ * response to null is to fall back to the frozen band, not to assume anything.
+ *
+ * Deliberately structural rather than a cast: a stamp missing the two fields
+ * the recompute actually needs (`climb_weeks_to_peak`, `distance_floor_mi`) is
+ * not a stamp this function may hand back, because `plannedPeakBound` would
+ * then silently bound off `undefined`.
+ */
+export function readLoadContractStamp(
+  authoredState: Record<string, unknown>,
+): LoadContractStamp | null {
+  const raw = authoredState.load_progression_contract;
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const s = raw as Record<string, unknown>;
+  if (typeof s.climb_weeks_to_peak !== 'number' || typeof s.distance_floor_mi !== 'number') {
+    return null;
+  }
+  return s as unknown as LoadContractStamp;
+}
+
 export function readTierUpper(
   authoredState: Record<string, unknown>,
   key: 'tier_peak_weekly_band' | 'tier_peak_long_band',
@@ -670,6 +786,18 @@ export function readTierUpper(
 export function ceilingCanNeverBind(
   authoredState: Record<string, unknown>,
   key: 'tier_peak_weekly_band' | 'tier_peak_long_band',
+  /**
+   * LOADCONTRACT-1 · the ceiling actually in force, when the caller has
+   * recomputed one (Rule 10). Omitted, this reads the frozen band exactly as
+   * before — which is still the right question for the long band and for any
+   * caller that holds no live evidence.
+   *
+   * This is what turns the detector from a permanent finding into a live one:
+   * a block whose STAMPED ceiling was inert stops being inert the moment the
+   * runner's demonstrated peak earns a higher one, and the warning must stop
+   * firing then or it becomes the stale claim Rule 20 warns about.
+   */
+  ceilingInForceMi?: number,
 ): { inert: true; ceiling: number; authoredPeak: number } | { inert: false } {
   const anchor = authoredState.tier_band_anchor;
   if (anchor == null || typeof anchor !== 'object') return { inert: false };
@@ -677,7 +805,9 @@ export function ceilingCanNeverBind(
   const authoredPeak = Number(
     key === 'tier_peak_weekly_band' ? a.authored_peak_weekly_mi : a.authored_peak_long_mi,
   );
-  const ceiling = readTierUpper(authoredState, key);
+  const ceiling = ceilingInForceMi != null && Number.isFinite(ceilingInForceMi)
+    ? ceilingInForceMi
+    : readTierUpper(authoredState, key);
   if (!Number.isFinite(authoredPeak) || authoredPeak <= 0 || ceiling <= 0) {
     return { inert: false };
   }

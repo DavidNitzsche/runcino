@@ -2592,35 +2592,91 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         }
         within(v, [lo, hi], `CYCLE_GROWTH_CEILING.${level}`);
       }
-      // The generator must READ the table rather than carry its own factor.
-      if (!/CYCLE_GROWTH_CEILING\[/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
-        throw new Error('generate.ts does not read CYCLE_GROWTH_CEILING · the peak target is bounded by its own number');
+      /* LOADCONTRACT-1 (2026-09-02) · THE TABLE IS STILL THE SOURCE, READ ONE
+       * HOP AWAY, AND THIS ASSERTION FOLLOWS THE HOP RATHER THAN BEING RELAXED
+       * TO PASS.
+       *
+       * `generate.ts` used to read `CYCLE_GROWTH_CEILING[input.level]` — the
+       * table, keyed on a word the runner typed at onboarding. The per-cycle
+       * bound now lives in `lib/plan/load-progression-contract.ts`, which reads
+       * the TRAINED rung of the same table and gates it on having measured the
+       * runner. So the old regex would have gone red for a change that made the
+       * sourcing stricter, not looser.
+       *
+       * Two assertions replace the one, which is why this is a tightening: the
+       * contract must read the table, AND the generator must read the contract.
+       * Either link broken and the peak target is bounded by a number nobody
+       * sourced. Falsified both ways before landing (Rule 18): re-typing 1.15
+       * into the contract fails the first, and inlining a literal into
+       * `generate.ts` fails the second.
+       */
+      // COMMENTS STRIPPED FIRST, and the ASSIGNMENT matched — not the bare name.
+      // Falsified 2026-09-02: re-typing `= 1.15` as a literal passed the naive
+      // `/CYCLE_GROWTH_CEILING\./` test, because the file's own header comment
+      // says "CYCLE_GROWTH_CEILING.intermediate" in prose. That is the exact
+      // `grep -q "GUARD 0"` shape CLAUDE.md Rule 18 catalogues: a check any
+      // comment satisfies. Re-falsified after this change and it now fails.
+      const contractSrc = sourceOf('web-v2/lib/plan/load-progression-contract.ts')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '');
+      if (!/PER_CYCLE_PEAK_GROWTH[^=]*=\s*CYCLE_GROWTH_CEILING\./.test(contractSrc)) {
+        throw new Error(
+          'load-progression-contract.ts does not ASSIGN PER_CYCLE_PEAK_GROWTH from ' +
+            'CYCLE_GROWTH_CEILING · the per-cycle peak bound is carrying its own factor',
+        );
       }
-      // The two floors, exercised rather than asserted: for every distance and
-      // every trained level, a runner whose measured peak is ABSURDLY small
-      // still gets at least what the distance's own developing row asks, and a
-      // runner already above the tier target is never built below themselves.
+      if (!/WEEKLY_STEP_GROWTH[^=]*=\s*GENERAL_RAMP_CEILING\./.test(contractSrc)) {
+        throw new Error(
+          'load-progression-contract.ts does not ASSIGN WEEKLY_STEP_GROWTH from ' +
+            'GENERAL_RAMP_CEILING · the week-over-week figure is carrying its own number',
+        );
+      }
+      if (!/PER_CYCLE_PEAK_GROWTH/.test(sourceOf('web-v2/lib/plan/generate.ts'))) {
+        throw new Error(
+          'generate.ts does not read PER_CYCLE_PEAK_GROWTH · the peak target is bounded by ' +
+            'its own number rather than by the contract that sources the doctrine table',
+        );
+      }
+      // The two floors, exercised rather than asserted: for every distance, a
+      // runner whose measured peak is ABSURDLY small still gets at least what
+      // the distance's own developing row asks, and a runner already above the
+      // tier target is never built below themselves.
+      //
+      // LOADCONTRACT-1 · the `level` argument is gone from `cycleBoundedPeak`
+      // (the whole point), so the inner loop that varied it is gone with it.
+      // Nothing is lost: it asserted the same three properties three times over
+      // three level values that all mapped to the same 1.15 rung.
       for (const cat of CATS) {
         const developingFloor = TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0];
         const advTarget = TIER_TARGETS[cat].advanced.peakWeeklyMileageBand[0];
-        for (const level of ['intermediate', 'advanced', 'advanced_plus'] as const) {
-          const tiny = cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: 2 }, level, cat);
-          if (tiny < developingFloor) {
-            throw new Error(
-              `cycleBoundedPeak(${cat}/${level}) took a 2 mi/wk runner to ${tiny}, below the ` +
-                `${developingFloor} the ${cat} developing row asks of anyone racing it`,
-            );
-          }
-          const big = cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: advTarget + 20 }, level, cat);
-          if (big < advTarget + 20) {
-            throw new Error(
-              `cycleBoundedPeak(${cat}/${level}) built a ${advTarget + 20} mi/wk runner down to ${big}`,
-            );
-          }
-          // Nothing measured → nothing bounded. A refusal, not a guess.
-          if (cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: 0 }, level, cat) !== advTarget) {
-            throw new Error(`cycleBoundedPeak(${cat}/${level}) bounded a target with no measured peak`);
-          }
+        const tiny = cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: 2 }, cat);
+        if (tiny < developingFloor) {
+          throw new Error(
+            `cycleBoundedPeak(${cat}) took a 2 mi/wk runner to ${tiny}, below the ` +
+              `${developingFloor} the ${cat} developing row asks of anyone racing it`,
+          );
+        }
+        const big = cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: advTarget + 20 }, cat);
+        if (big < advTarget + 20) {
+          throw new Error(
+            `cycleBoundedPeak(${cat}) built a ${advTarget + 20} mi/wk runner down to ${big}`,
+          );
+        }
+        // Nothing measured → nothing bounded. A refusal, not a guess.
+        if (cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: 0 }, cat) !== advTarget) {
+          throw new Error(`cycleBoundedPeak(${cat}) bounded a target with no measured peak`);
+        }
+        // LOADCONTRACT-1 · and the per-cycle figure is the bound that actually
+        // binds a runner in range, rather than the tier target it used to be
+        // `min`-ed against. A runner at the advanced target grows by the
+        // doctrine factor, not to a table row a label selected.
+        const inRange = cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: advTarget }, cat);
+        const expected = Math.round(advTarget * CYCLE_GROWTH_CEILING.intermediate! * 10) / 10;
+        if (Math.abs(inRange - expected) > 0.15) {
+          throw new Error(
+            `cycleBoundedPeak(${cat}) put a ${advTarget} mi/wk runner at ${inRange}; the ` +
+              `per-cycle row allows ${expected}`,
+          );
         }
       }
     },
