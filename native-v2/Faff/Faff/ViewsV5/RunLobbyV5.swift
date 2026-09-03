@@ -884,7 +884,7 @@ struct RunLobbyV5: View {
             Circle()
                 .fill(warn ? V5.attention : V5.textQuiet)
                 .frame(width: 6, height: 6)
-                .padding(.top, 5)
+                .padding(.top, V5.S.s4)
             Text(text)
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(warn ? V5.textPrimary : V5.textQuiet)
