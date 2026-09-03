@@ -400,6 +400,8 @@ only definition (Rule 14).
 | P1-2 | Plan / phone | `TrainingPlanDay` has no `notes` field, so the Dodgers pairing purpose reaches Today's `why` line but **not** the week view | Discovered |
 | P1-3 | Plan / phone | Block screen shows nothing until the plan is re-authored (`block_strategy.answers` postdates the live plan). Compiles; **not rendered** | Blocked on P0-3 |
 | P1-4 | Watch | Swift grading verified only by a TypeScript port | Discovered |
+| P1-9 | Watch | ~~Watch does not draw `raceHr`~~ — **CLOSED**, verified 2026-09-03. `WatchRouterV5.raceHrReference` is wired into the lobby as the session qualifier (`WatchRouterV5.swift:1675`), and the watch model decodes the field. HR-SEMANTICS-2 landed it | Closed |
+| P1-10 | Phone | ~~`HRAlerter` unwired~~ — **CLOSED**, verified 2026-09-03. `FaffApp.swift:161` starts it and `WatchSync.swift:194` applies today's ceiling from the SAME `hrCeilingBpm` the wrist guardrail uses, so there is no second derivation. `nil` DISARMS rather than leaving yesterday's easy-day number watching a threshold session. The "has never fired for anyone" line in that file is the past-tense bug description, not a live state | Closed |
 | P1-5 | Data integrity | **Production write barrier** — verification tooling must be structurally incapable of writing his account. Owner ruled this required after the simulator incident | Discovered |
 | P1-6 | Naming | `demonstratedLongMi` still means two things — 21.5 (365d, races excluded) on `ComposePlanInput`, 18 (28d habit) in the grant, now renamed `recentHabitLongMi` there. Crossing line `generate.ts:10681` | Partially resolved |
 | P1-7 | Race page | Coherent race page per the P1 inventory | Discovered |
