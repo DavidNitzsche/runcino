@@ -1,0 +1,23 @@
+{
+  "//": "The harness lives outside web-v2 (see vitest.config.ts for why), so web-v2's own tsconfig does not cover it. This one does, with the same @ alias vitest resolves, so `npx tsc --noEmit -p scripts/adaptation-real-replay` type-checks it against the real engine types.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "typeRoots": ["../../web-v2/node_modules/@types"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../web-v2/*"],
+      "vitest": ["../../web-v2/node_modules/vitest"]
+    }
+  },
+  "include": ["*.ts"]
+}
