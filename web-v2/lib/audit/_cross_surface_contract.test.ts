@@ -254,24 +254,6 @@ const KNOWN_DISAGREEMENTS: readonly KnownDisagreement[] = [
     maxOccurrences: 4,
   },
   {
-    id: 'RACE-ABORT-ANCHORED-TO-A-REPLACED-SEED',
-    quantity: "a race row's pace-adrift abort, against that row's own target",
-    canonicalPath: 'distance-doctrine.racePaceAbortRule({distanceMi, targetPaceSecPerMi: row.pace_target_s_per_mi})',
-    divergentPath: 'plan_workouts.workout_spec.rules[kind=abort, metric=pace].value (persisted)',
-    // Stored abort was struck off the authoring seed (436 s/mi) and the row's
-    // pace has since moved. The defect is simply "≠", in either direction —
-    // loose on three rows, TIGHT on the marathon.
-    shape: (canonical, stored) => stored !== canonical,
-    observed:
-      'CIM 2026-12-06 target 443 · stored abort 458 · canonical 465 (7 s/mi TIGHT, fires the B-goal switch early) — Santa Monica 2026-09-13 target 416 · stored 466 · canonical 437 (29 s/mi loose, ~12% off, cannot fire) — Malibu 2026-11-08 target 422 · stored 446 · canonical 443. Dodgers 2026-09-26 agrees at 457.',
-    reason:
-      'Same shape as the entry above: B2 (9c5d9ce0) made both writers call one derivation, and `refreshRaceRowsForPlan` rewrites the rule going forward. The rows on the runner\'s live block were authored before that and still carry the old value. The commit message measured the same four rows and did not repair them.',
-    owner: 'lib/race/race-row-refresh.ts#refreshRaceRowsForPlan — it already reprices the rule; it has not been run over this plan since B2 landed',
-    closesWhen: 'every race row on an active plan satisfies stored abort === racePaceAbortRule(row target)',
-    // 3 of the 4 future race rows. Dodgers already agrees.
-    maxOccurrences: 3,
-  },
-  {
     id: 'AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD',
     quantity: 'the prescribed race target for the goal race',
     canonicalPath: 'race-outlook.execution.paceSecPerMi / .targetSec (and the CIM plan row written from it)',
@@ -283,32 +265,6 @@ const KNOWN_DISAGREEMENTS: readonly KnownDisagreement[] = [
       'B2 made `authored_state.prescribed_race_pace` provenance-only and `_race_target_ownership.test.ts` proves in SOURCE that no live module reads its `pace_s_per_mi` back as a value. That gate is real. What it cannot see is that the production blob is still a second, un-stamped, materially different record of the same quantity sitting on the runner\'s active plan.',
     owner: 'lib/plan/generate.ts — the stamp lands on the next authoring; nothing rewrites the existing blob',
     closesWhen: "authored_state.prescribed_race_pace carries authority:'provenance_only' and its pace_s_per_mi equals the race row's",
-  },
-  {
-    id: 'RACE-ROW-PREDATES-THE-EXECUTION-TARGET-RULING',
-    quantity: 'the prescribed race pace on the goal race row, against the live resolver',
-    canonicalPath: 'race-outlook.execution.paceSecPerMi (the live resolver)',
-    divergentPath: 'plan_workouts.pace_target_s_per_mi on the CIM row (authored 2026-08-31)',
-    // The row is the OLD rule's answer and the resolver is the new one. Both
-    // are internally consistent; the row is simply older than the ruling.
-    shape: (canonical, stored) => stored !== canonical,
-    observed:
-      'CIM 2026-12-06 · row 443 s/mi (7:23, the stated goal clamped to the forecast range\'s fast edge) · '
-      + 'race-outlook 466 s/mi (7:46, the current projection). The row\'s three internal readings agree with '
-      + 'each other at 443, so this is one stale record and not a fork.',
-    reason:
-      'EXECTARGET-1 (2026-09-03) · `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q7 removed the stated goal\'s pull '
-      + 'on the execution target: "3:13:30 must not be labelled the current execution target merely because it '
-      + 'is the fast edge of a wide range." The live plan was authored 2026-08-31, under the old rule, and this '
-      + 'change deliberately writes NOTHING to production — the rebuild that reprices the row is P0-3 in '
-      + '`docs/MASTER_CORE_PRODUCT_PROGRAM.md` and is a separate, gated step. Registering it is the honest '
-      + 'alternative to re-baselining a live-production gate, and it is the same shape as the three entries '
-      + 'above: a code change landed, and one authored row predates it.',
-    owner: 'the P0-3 baseline rebuild (lib/plan/generate.ts authoring) — nothing rewrites an authored race row',
-    closesWhen: "the CIM row's pace_target_s_per_mi equals race-outlook.execution.paceSecPerMi",
-    // One row: the goal race. A second race row diverging this way would be a
-    // new defect and fails here.
-    maxOccurrences: 1,
   },
   {
     id: 'WATCH-CEILING-IS-THE-BAND-MIDPOINT',
@@ -822,14 +778,20 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
         { path: `plan_workouts ${r.d} .pace_target_s_per_mi`, value: targetPace },
         { path: `plan_workouts ${r.d} .workout_spec.race_execution.target_pace_s_per_mi`, value: execPace == null ? null : Number(execPace) },
         { path: `plan_workouts ${r.d} .workout_spec band centre`, value: bandLo != null && bandHi != null ? Math.round((Number(bandLo) + Number(bandHi)) / 2) : null },
-      ], 3, ['AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD', 'RACE-ROW-PREDATES-THE-EXECUTION-TARGET-RULING']));
+      ], 3, ['AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD']));
       if (outlookForRow) {
-        results.push(pairContract(
+        // 2026-09-03 · the registered divergence is GONE: the scheduled
+        // race-row refresh repriced this row with the deployed EXECTARGET-1
+        // resolver, so the stored row and the live resolver now agree. A
+        // resolved divergence takes `contract`, which requires no registry id —
+        // keeping `pairContract` here would have needed an exemption to name,
+        // and naming one for a pair that agrees is how an allowlist rots.
+        results.push(contract(
           `prescribed race pace · row ${r.d} vs the live resolver (s/mi)`,
-          { path: 'race-outlook.execution.paceSecPerMi (goal race)', value: outlookForRow.execution.paceSecPerMi },
-          { path: `plan_workouts ${r.d} .pace_target_s_per_mi`, value: targetPace },
-          'RACE-ROW-PREDATES-THE-EXECUTION-TARGET-RULING',
-        ));
+          [
+            { path: 'race-outlook.execution.paceSecPerMi (goal race)', value: outlookForRow.execution.paceSecPerMi },
+            { path: `plan_workouts ${r.d} .pace_target_s_per_mi`, value: targetPace },
+          ], 2));
       }
       // And the abort rule that rides on the same row — the third reader B2
       // named. `pairContract` records both sides and NEVER excuses a
@@ -840,12 +802,16 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
         : null;
       const distanceMi = r.distanceMi == null ? null : Number(r.distanceMi);
       const canonicalAbort = racePaceAbortRule({ distanceMi, targetPaceSecPerMi: targetPace })?.value ?? null;
-      results.push(pairContract(
+      // Same resolution: every race row on an active plan now satisfies
+      // `stored abort === racePaceAbortRule(row target)`, because the refresh
+      // recomputed the abort from the repriced target rather than leaving it
+      // anchored to a seed that had been replaced.
+      results.push(contract(
         `race pace-adrift abort · row ${r.d} (s/mi)`,
-        { path: `distance-doctrine.racePaceAbortRule(${distanceMi} mi, ${targetPace} s/mi)`, value: canonicalAbort },
-        { path: `plan_workouts ${r.d} .workout_spec.rules[abort,pace].value`, value: storedAbort == null ? null : Number(storedAbort) },
-        'RACE-ABORT-ANCHORED-TO-A-REPLACED-SEED',
-      ));
+        [
+          { path: `distance-doctrine.racePaceAbortRule(${distanceMi} mi, ${targetPace} s/mi)`, value: canonicalAbort },
+          { path: `plan_workouts ${r.d} .workout_spec.rules[abort,pace].value`, value: storedAbort == null ? null : Number(storedAbort) },
+        ], 2));
     }
 
     // ── Q6 · THE EASY / LONG CEILING — the number the runner is held to ────
@@ -1001,77 +967,6 @@ describe.skipIf(!RO)('cross-surface contract · registered disagreements (LIVE)'
       });
     }
     judgeCount(k, seen, candidates);
-  }, 300_000);
-
-  it('RACE-ROW-PREDATES-THE-EXECUTION-TARGET-RULING · the goal race row still carries the old rule\'s answer', async () => {
-    process.env.DATABASE_URL = RO;
-    const { pool } = await import('@/lib/db/pool');
-    expect((await pool.query('SELECT current_user')).rows[0].current_user).toBe('faff_readonly');
-    const { runnerToday } = await import('@/lib/runtime/runner-tz');
-    const { loadActivePlanStrict } = await import('@/lib/plan/lookup');
-    const { resolveRaceOutlookBySlug } = await import('@/lib/race/race-outlook');
-    const today = await runnerToday(REFERENCE_USER);
-    const plan = (await loadActivePlanStrict(REFERENCE_USER))!;
-    // Rule 14 · the population is the GOAL race row of the ACTIVE plan, named
-    // the same way the aggregate contract above names it.
-    const goalSlug = String(plan.race_id ?? '');
-    expect(goalSlug, 'the active plan names no goal race').toBeTruthy();
-    // The GOAL race row is the one race row over 20 miles — the same predicate
-    // the aggregate contract above uses (`distanceMi > 20`), because the row's
-    // `race_execution.slug` is not what the plan's `race_id` is keyed on.
-    const rows = (await pool.query(
-      `SELECT date_iso::text AS d, pace_target_s_per_mi AS pace
-         FROM plan_workouts WHERE plan_id = $1 AND date_iso >= $2 AND type = 'race'
-           AND distance_mi > 20
-         ORDER BY date_iso`, [plan.id, today],
-    )).rows;
-    expect(rows.length, `no future row for the goal race ${goalSlug} — this entry is unreachable, not clean`)
-      .toBeGreaterThan(0);
-    const o = await resolveRaceOutlookBySlug(REFERENCE_USER, goalSlug, today);
-    const live = o?.execution.paceSecPerMi ?? null;
-    expect(live, 'the live resolver produced no execution pace — the pair checks nothing').not.toBeNull();
-    const k = entry('RACE-ROW-PREDATES-THE-EXECUTION-TARGET-RULING');
-    let seen = 0; let candidates = 0;
-    for (const r of rows) {
-      if (r.pace == null) continue;
-      candidates += 1;
-      if (Number(r.pace) === live) continue;
-      seen += 1;
-      judge(k, live!, Number(r.pace), {});
-    }
-    judgeCount(k, seen, candidates);
-  }, 300_000);
-
-  it('RACE-ABORT-ANCHORED-TO-A-REPLACED-SEED · the stored abort is not 1.05 × the row\'s own target', async () => {
-    process.env.DATABASE_URL = RO;
-    const { pool } = await import('@/lib/db/pool');
-    const { runnerToday } = await import('@/lib/runtime/runner-tz');
-    const { loadActivePlanStrict } = await import('@/lib/plan/lookup');
-    const { racePaceAbortRule } = await import('@/lib/race/distance-doctrine');
-    const today = await runnerToday(REFERENCE_USER);
-    const plan = (await loadActivePlanStrict(REFERENCE_USER))!;
-    const rows = (await pool.query(
-      `SELECT date_iso::text AS d, distance_mi AS mi, pace_target_s_per_mi AS pace, workout_spec AS spec
-         FROM plan_workouts WHERE plan_id = $1 AND date_iso >= $2 AND type = 'race'
-         ORDER BY date_iso`, [plan.id, today],
-    )).rows;
-    expect(rows.length, 'no future race row — this entry is unreachable, not clean').toBeGreaterThan(0);
-    let diverged = 0;
-    for (const r of rows) {
-      const stored = Array.isArray(r.spec?.rules)
-        ? r.spec.rules.find((x: any) => x.kind === 'abort' && x.metric === 'pace')?.value ?? null : null;
-      const canonical = racePaceAbortRule({
-        distanceMi: r.mi == null ? null : Number(r.mi),
-        targetPaceSecPerMi: r.pace == null ? null : Number(r.pace),
-      })?.value ?? null;
-      if (stored == null || canonical == null) continue;
-      if (Number(stored) === canonical) continue; // rows that agree are fine
-      diverged += 1;
-      judge(entry('RACE-ABORT-ANCHORED-TO-A-REPLACED-SEED'), canonical, Number(stored), {
-        rowTarget: Number(r.pace), distanceMi: Number(r.mi),
-      });
-    }
-    judgeCount(entry('RACE-ABORT-ANCHORED-TO-A-REPLACED-SEED'), diverged, rows.length);
   }, 300_000);
 
   it('AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD · the plan holds a second race target', async () => {
