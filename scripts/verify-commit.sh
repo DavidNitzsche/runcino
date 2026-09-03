@@ -245,6 +245,45 @@ else
 fi
 echo ""
 
+# ── 3b · the unit tests CI gates on ──────────────────────────────────────────
+#
+# WHY THIS EXISTS, and it is the same hole Rule 19 names.
+#
+# On 2026-09-03 this script reported CLEAN at 7de5375f while `main` was RED.
+# Both statements were true. `npm run prebuild` runs the twenty shipping gates
+# and `check-web-build.sh` runs the compiler, and neither of them runs a single
+# vitest file — but `.github/workflows/surface-sweep.yml` does, and it is what caught
+# eight raw jsonb reads in a new loader. A verification tool that can say CLEAN
+# about a commit CI will reject is worse than no tool, because it is confidently
+# wrong at exactly the moment somebody is relying on it to skip the hook.
+#
+# The globs are READ OUT OF THE WORKFLOW at run time rather than copied here.
+# Rule 18: a check that hardcodes both sides only proves it agrees with itself,
+# and a list duplicated into this file would drift the first time CI's changed.
+# If the parse finds nothing, that is a FAILURE and not a skip — a gate that
+# reports clean because it looked at nothing is the worst outcome available.
+SWEEP_WF="$WORKTREE_DIR/.github/workflows/surface-sweep.yml"
+CI_TEST_GLOBS="$(grep -E '^[[:space:]]*run:[[:space:]]*npx vitest run ' "$SWEEP_WF" 2>/dev/null | head -1 | sed -e 's/.*npx vitest run //' -e 's/[[:space:]]*$//')"
+if [ -z "$CI_TEST_GLOBS" ]; then
+  fail "could not read the vitest globs out of $SWEEP_WF — refusing to report a"
+  fail "result I cannot back. Fix the parse or the workflow path; do not skip this."
+  RESULTS+=("FAIL  CI unit tests (could not read the globs from sweep.yml)")
+  OVERALL=1
+else
+  info "Running the unit tests CI gates on: $CI_TEST_GLOBS"
+  CHECK_START=$(date +%s)
+  # shellcheck disable=SC2086 -- the globs are a deliberate multi-arg word split
+  if ( cd "$WORKTREE_DIR/web-v2" && npx vitest run $CI_TEST_GLOBS --reporter=dot ); then
+    pass "CI unit tests — PASS ($(( $(date +%s) - CHECK_START ))s)"
+    RESULTS+=("PASS  CI unit tests ($CI_TEST_GLOBS)")
+  else
+    fail "CI unit tests — FAIL ($(( $(date +%s) - CHECK_START ))s)"
+    RESULTS+=("FAIL  CI unit tests ($CI_TEST_GLOBS)")
+    OVERALL=1
+  fi
+fi
+echo ""
+
 # ── 4 · watch gate, only if this commit touches watch paths (dispatcher logic) ─
 # Mirrors .githooks/pre-push's touches_watch(), scaled from a push range
 # (remote..local) to a single commit (parent..commit). A root commit (no
