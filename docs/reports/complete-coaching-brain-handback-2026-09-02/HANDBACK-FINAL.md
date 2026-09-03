@@ -1,7 +1,8 @@
 # Faff · complete handback
 
-**Status: DRAFT — two sections pending.** Sections 7 and 8 are placeholders
-until the load-progression contract and the `declaredLevel` removal land.
+**Status: sections 7 and 8 in flight.** Everything else is complete and
+verified. Two agents are working the last two items; this document is otherwise
+final and is sent now rather than held.
 
 ---
 
@@ -160,15 +161,83 @@ path was **deleted**, not disabled.
 
 ---
 
-## 7 · The load progression contract
+## 7 · The load progression contract · IN FLIGHT
 
-_PENDING._
+The plan peaks at 60.0 mi against an evidence-derived band whose top is ~55.
+Not a live defect — the band bounds *adaptation*, which is disabled, not
+authoring. But the two authorities contradict each other, and if the adaptation
+seam is ever opened the upward path returns **inert**, which is the Rule 21
+failure this programme exists to stop.
 
----
+The instruction that unlocked it was the runner's, not mine. I had been treating
+~55 as a ceiling the plan was violating. It is not a ceiling — it is an answer
+to a question nobody asked precisely:
 
-## 8 · Removing the self-declared level
+> *"A marathon plan may prescribe 60 miles later in the block even if
+> approximately 55 is the load supported today, provided the intervening weeks
+> deliberately build and demonstrate the capacity required for that peak."*
 
-_PENDING._
+So one canonical, time-aware contract shared by authoring and adaptation,
+separating what is supported today, what may be authored next, what may be
+planned for later, and what evidence must accumulate before that planned load
+becomes actionable. 60 survives only if all eight of his conditions are proved;
+otherwise it is reduced and the reason stated. The same contract moves the
+demonstrated envelope forward as weeks are completed, which is what stops
+adaptation being inert when it is eventually promoted.
+
+## 8 · Removing the self-declared level · IN FLIGHT
+
+`declaredLevel: "advanced"` still sits inside the Dodgers grant's `evidence`
+object. His ruling is the whole task: *"Do not merely stop reading it while
+continuing to persist it as purported evidence."* A field in a structure named
+`evidence` asserts authority whether or not anything reads it.
+
+The gate is a behavioural comparison rather than a grep: compose with each
+experience level **and with it absent**, and require byte-identical output
+across plan volume, peak mileage, long-run progression, race prescriptions,
+race-plus-long-run permission, cutback placement, adaptation eligibility, and
+any coaching explanation presented as evidence. Testing *absent* matters as much
+as the values — a sweep of present values cannot see a path that defaults when
+the field is missing.
+
+### 8a · A third instance, found while this was in flight
+
+The same defect exists in a different field name, and it reaches the runner.
+`lib/plan/strategy-contracts.ts:331-341` still returns, as the prerequisite
+evidence justifying a weekly-volume increase:
+
+```ts
+{ kind: 'READINESS',
+  statement: 'No readiness pull-back is active.',
+  owner: 'lib/coach/readiness.ts#scoreReadiness' },
+```
+
+Composing today, **week 4 (2026-09-21, 48 → 56.2 mi) is presented to him with
+"No readiness pull-back is active" as one of the two prerequisites justifying
+the step up.** Readiness pull-backs no longer exist. And `scoreReadiness` does
+not exist either — the `owner` field names a deleted function.
+
+That is Rule 20's corollary in the place it does most harm: a claim nothing
+verifies, in prose the runner reads, stopping the next person from checking. It
+was found on the FIRST owner string checked, which says little for the other
+four, so the gate is being extended to assert that every `owner` resolves to a
+symbol that exists. **A dangling owner should fail loudly** — that is what would
+have caught this at the moment readiness was deleted, rather than it surfacing
+hours later in composed output.
+
+This matters because the explanations are otherwise good, and he will read them:
+
+> **Why the longest run is what it is** · "20.5 mi is the longest run, the week
+> of 2026-10-26. It is set from the longest runs you have actually completed and
+> what one training cycle adds to them, not from a category."
+
+> **How it prepares race effort** · "The long runs build the hours; the 33 mi at
+> marathon pace inside and beside them build the effort. Running 20.5 mi easy
+> proves you can cover the distance. Holding race pace late in a long run is
+> what proves you can race it."
+
+An explanation that cites deleted machinery as its justification is worse than
+no explanation.
 
 ---
 
