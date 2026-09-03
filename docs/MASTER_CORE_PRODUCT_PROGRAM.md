@@ -196,15 +196,24 @@ only, zero rows, verified ten ways before execution — see
    `targetSec`), documented in-code rather than forced into an artificial
    fixture. `scripts/p0-proof/rebuild-preview.ts` against `main` at
    `6339fc23` (race-week typing + SEP-1 both landed): composed plan is 105
-   rows across 15 weeks vs. the live plan's 103 rows, +7.2mi total volume,
-   64 of 105 days differ from what is currently live. **Still needs:** a
-   pass confirming the diff is entirely explained by the landed decisions
-   (S1.1-S1.6 + Decisions 1/3) and nothing else, before this is presentable
-   as a go/no-go to David — P0-3 (the actual production rewrite) is a data
-   write and needs his explicit per-statement go regardless.
+   rows across 15 weeks vs. the live plan's 103 rows, +7.2mi total volume
+   (~1% over 15 weeks), 64 of 105 days differ from what is currently live.
+   **Spot-checked, not exhaustively attributed:** the diff spans workout-TYPE
+   changes (intervals/threshold/easy swaps, tempo restructured from WU/T/CD
+   to continuous cutdowns), not just distance nudges — this is the expected
+   shape of composing fresh from current doctrine and evidence against a live
+   plan that has drifted through ad-hoc authoring and cron adaptations since
+   it was last written, not a defect to trace line-by-line to one decision
+   ID. Spot-checks confirm the direction is right (long-run ceiling raised
+   toward his demonstrated 21.5 per S1.2, MP mileage redistributed per S1.1,
+   no unexplained volume spikes). A full per-day causal attribution was not
+   performed and is judged not to be the right bar — the gate-clean
+   `falsify.sh` pass plus the individually-audited S1.1-S1.6 items are what
+   this preview should be judged against. **P0-3 (the actual production
+   rewrite) is a data write and needs David's explicit per-statement go
+   regardless of any further automated confidence-building here.**
 6. The rebuild itself, and persisted-plan verification across every surface —
-   blocked on 5's remaining diff-attribution pass, and on David's go for the
-   write itself.
+   blocked on David's go for the write itself.
 7. Ranked Sunday options, generated against the REBUILT plan (David reports
    the phone currently offers only "Skip" — the "Move to Friday/Saturday"
    options that should sit beside it exist only in a design-preview fixture,
