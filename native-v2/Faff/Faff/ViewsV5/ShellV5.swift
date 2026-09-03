@@ -604,9 +604,16 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RunCon
                 ), showRun: showRun)
             }
 
-            // VW-1 · above the content, below the sheets. One scrim for all
-            // seven AppBar screens rather than seven copies of it.
-            StatusBarScrimV5()
+            // VW-1 (a status-bar scrim over every AppBar screen) was tried
+            // and explicitly rejected by David — "the status bar skrim and
+            // fade is WRONG and should not be there" — twice now, most
+            // recently 2026-09-03. The struct itself (`StatusBarScrimV5`) is
+            // deleted from `ComponentsV5.swift`; do not re-add a call site
+            // here either.
+            //
+            // No sheet here any more (2026-09-03 correction) — RunLobbyV5
+            // is the Run tab's own NavigationStack root, above, not a
+            // V5SheetHost presented over whichever tab the runner was on.
         }
         // ── THE END OF ONBOARDING HAD NOWHERE TO LAND ────────────────────
         //

@@ -48,6 +48,12 @@ export interface PlanWeekDay {
 
 export interface PlanWeekResult {
   plan_id: string | null;
+  /** PLANVERSION-1 · `${training_plans.id}:${last_adapted_at}` — see
+   *  `app/api/v5/today/route.ts`'s doc comment on the field of the same
+   *  name for why `plan_id` alone does not catch an in-place re-anchor.
+   *  Optional — existing fixture-shaped results across this codebase's
+   *  test suite predate it. */
+  plan_version?: string | null;
   week_start_iso: string | null;
   week_end_iso: string | null;
   today_iso: string;
@@ -134,7 +140,7 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
 
   // Active plan
   const plan = (await pool.query(
-    `SELECT id FROM training_plans
+    `SELECT id, last_adapted_at FROM training_plans
       WHERE user_uuid = $1 AND archived_iso IS NULL
       ORDER BY authored_iso DESC LIMIT 1`,
     [userId]
@@ -143,6 +149,7 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
   if (!plan) {
     return {
       plan_id: null,
+      plan_version: null,
       week_start_iso: null,
       week_end_iso: null,
       today_iso: today,
@@ -150,6 +157,13 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
       message: 'No active plan.',
     };
   }
+
+  // PLANVERSION-1 · same construction as the Today route's own
+  // `planVersion` — see that file's doc comment for why `id` alone is not
+  // enough. Kept as one local computation here rather than importing the
+  // route's, since this loader has no dependency on the `app/api` route
+  // tree and shouldn't grow one for a two-field string join.
+  const planVersion = `${plan.id}:${plan.last_adapted_at ?? 'none'}`;
 
   const rows = (await pool.query(
     // `notes` is the generator's own per-day reason ("Recovery easy ·
@@ -257,6 +271,7 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
 
   return {
     plan_id: plan.id,
+    plan_version: planVersion,
     week_start_iso: weekStart,
     week_end_iso: weekEnd,
     today_iso: today,
