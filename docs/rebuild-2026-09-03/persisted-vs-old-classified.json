@@ -1,0 +1,2548 @@
+{
+  "plan_old": "pln_9a57561debb776e5",
+  "plan_new": "pln_7636bcc0a201bf2d",
+  "total_dates": 103,
+  "identical": 20,
+  "differing": 83,
+  "buckets": {
+    "KEY": {
+      "count": 35,
+      "days": [
+        {
+          "date": "2026-09-03",
+          "kind": "CHANGED",
+          "old": {
+            "type": "intervals",
+            "notes": "Medium hill repeats \u00b7 Research/04 \u00a78.3. Run the climb by effort, not pace. Jog down, full recovery, repeat.",
+            "is_long": false,
+            "date_iso": "2026-09-03",
+            "sub_label": "10\u00d760s hills @ 5K-10K effort \u00b7 2 min jog down",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "6.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "intervals",
+            "notes": "Medium hill repeats \u00b7 Research/04 \u00a78.3. Run the climb by effort, not pace. Jog down, full recovery, repeat.",
+            "is_long": false,
+            "date_iso": "2026-09-03",
+            "sub_label": "10\u00d760s hills @ 5K-10K effort \u00b7 2 min jog down",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "6",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi"
+          ]
+        },
+        {
+          "date": "2026-09-06",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Conversational throughout. Build the engine. Course drops 304 ft. Run at least 60% of this on downhill-similar terrain \u00b7 Research/11 \u00a7net-downhill adjustments.",
+            "is_long": true,
+            "date_iso": "2026-09-06",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "15",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Build the engine.",
+            "is_long": true,
+            "date_iso": "2026-09-06",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "15",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-07",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-07",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-09-07",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "sub_label",
+            "hr_cap_bpm",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-08",
+          "kind": "CHANGED",
+          "old": {
+            "type": "tempo",
+            "notes": "Continuous tempo \u00b7 Research/04 \u00a75.2. Single block, no recovery.",
+            "is_long": false,
+            "date_iso": "2026-09-08",
+            "sub_label": "2.1 mi WU \u00b7 2 mi @ T \u00b7 2.1 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "6.2",
+            "pace_target_s_per_mi": "430"
+          },
+          "new": {
+            "type": "tempo",
+            "notes": "Continuous tempo \u00b7 Research/04 \u00a75.2. Single block, no recovery.",
+            "is_long": false,
+            "date_iso": "2026-09-08",
+            "sub_label": "1.5 mi WU \u00b7 3.5 mi @ T \u00b7 1.2 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "6.2",
+            "pace_target_s_per_mi": "430"
+          },
+          "changed_fields": [
+            "sub_label"
+          ]
+        },
+        {
+          "date": "2026-09-14",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-09-14",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Recovery day after the long run. Slower than your normal easy pace. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-14",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "sub_label",
+            "hr_cap_bpm",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-17",
+          "kind": "CHANGED",
+          "old": {
+            "type": "intervals",
+            "notes": "Long hill repeats \u00b7 Research/04 \u00a78.4. Run the climb by effort, not pace. Jog down, full recovery, repeat.",
+            "is_long": false,
+            "date_iso": "2026-09-17",
+            "sub_label": "7\u00d73 min hills @ T-10K effort",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "7",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Post-race recovery \u00b7 day 4 after Santa Monica 10k. Easy only; quality resumes after the recovery window.",
+            "is_long": false,
+            "date_iso": "2026-09-17",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "sub_label",
+            "hr_cap_bpm",
+            "is_quality",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-18",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-18",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "threshold",
+            "notes": "Cruise-interval re-entry \u00b7 Research/04 \u00a75.3, light end. First quality back after Santa Monica 10k \u00b7 short T reps with a generous jog before full sessions return (Research/00b reverse taper). Quality resumes after Santa Monica 10k recovery.",
+            "is_long": false,
+            "date_iso": "2026-09-18",
+            "sub_label": "2\u00d71.50 mi @ T pace \u00b7 3 min jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "9.3",
+            "pace_target_s_per_mi": "430"
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "pace_target_s_per_mi",
+            "sub_label",
+            "hr_cap_bpm",
+            "is_quality",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-20",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Conversational throughout. Build the engine. Course drops 304 ft. Run at least 60% of this on downhill-similar terrain \u00b7 Research/11 \u00a7net-downhill adjustments.",
+            "is_long": true,
+            "date_iso": "2026-09-20",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "12",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Modified block. Easy 11mi, then 3mi at marathon effort for your current fitness, 1mi easy, then 2mi at marathon effort for your current fitness. The second block is the session: you are practising getting back to race pace on tired legs, so keep the easy mile honest and short.",
+            "is_long": true,
+            "date_iso": "2026-09-20",
+            "sub_label": "LONG \u00b7 3mi @ M + 1mi @ E + 2mi @ M",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "16.5",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-22",
+          "kind": "CHANGED",
+          "old": {
+            "type": "tempo",
+            "notes": "Continuous mile cutdowns \u00b7 Research/04 \u00a712.5. Each mile ~10\u201315 s/mi faster than prior. Start controlled. Each rep a little faster. The last one is the point.",
+            "is_long": false,
+            "date_iso": "2026-09-22",
+            "sub_label": "2.5 mi WU \u00b7 4 mi @ T \u00b7 2.5 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "9",
+            "pace_target_s_per_mi": "430"
+          },
+          "new": {
+            "type": "tempo",
+            "notes": "Continuous mile cutdowns \u00b7 Research/04 \u00a712.5. Each mile ~10\u201315 s/mi faster than prior. Start controlled. Each rep a little faster. The last one is the point.",
+            "is_long": false,
+            "date_iso": "2026-09-22",
+            "sub_label": "2 mi WU \u00b7 5.5 mi @ T \u00b7 2 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "9.5",
+            "pace_target_s_per_mi": "430"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label"
+          ]
+        },
+        {
+          "date": "2026-09-26",
+          "kind": "CHANGED",
+          "old": {
+            "type": "race",
+            "notes": "Dodgers. C race \u00b7 this is the week's quality session. Run it as the workout. Coach target 7:35/mi, set from your current fitness. Yours to change.",
+            "is_long": false,
+            "date_iso": "2026-09-26",
+            "sub_label": "RACE",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "6.21",
+            "pace_target_s_per_mi": "455"
+          },
+          "new": {
+            "type": "race",
+            "notes": "Dodgers. C race \u00b7 this is the week's quality session. Run it as the workout, controlled. Tomorrow's 17-mile long run is the other half of this weekend, and running today controlled is what buys it.",
+            "is_long": false,
+            "date_iso": "2026-09-26",
+            "sub_label": "RACE",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "6.21",
+            "pace_target_s_per_mi": "455"
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-27",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Conversational throughout. Build the engine. Course drops 304 ft. Run at least 60% of this on downhill-similar terrain \u00b7 Research/11 \u00a7net-downhill adjustments.",
+            "is_long": true,
+            "date_iso": "2026-09-27",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "15.5",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "17 miles the morning after Dodgers. The race is the quality session and the long run the next morning is the point of it. Racing controlled, then running long on tired legs, is marathon-specific work you cannot get from either day alone. Easy the whole way. The distance is the work, not the pace.",
+            "is_long": true,
+            "date_iso": "2026-09-27",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "17",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-28",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-28",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-09-28",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "sub_label",
+            "hr_cap_bpm",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-29",
+          "kind": "CHANGED",
+          "old": {
+            "type": "threshold",
+            "notes": "Sub-threshold / Norwegian intervals \u00b7 Research/04 \u00a75.4.",
+            "is_long": false,
+            "date_iso": "2026-09-29",
+            "sub_label": "9\u00d71km @ ST pace \u00b7 60s jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "10.5",
+            "pace_target_s_per_mi": "445"
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Easy. Day 2 after Dodgers and the long run that followed it. The weekend was the work; quality resumes after this.",
+            "is_long": false,
+            "date_iso": "2026-09-29",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "9",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "pace_target_s_per_mi",
+            "sub_label",
+            "hr_cap_bpm",
+            "is_quality",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-01",
+          "kind": "CHANGED",
+          "old": {
+            "type": "intervals",
+            "notes": "800m repeats \u00b7 Research/04 \u00a76.4.",
+            "is_long": false,
+            "date_iso": "2026-10-01",
+            "sub_label": "8\u00d7800 m @ I \u00b7 2 min jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8.5",
+            "pace_target_s_per_mi": "401"
+          },
+          "new": {
+            "type": "intervals",
+            "notes": "800m repeats \u00b7 Research/04 \u00a76.4.",
+            "is_long": false,
+            "date_iso": "2026-10-01",
+            "sub_label": "7\u00d7800 m @ I \u00b7 2 min jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8",
+            "pace_target_s_per_mi": "401"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label"
+          ]
+        },
+        {
+          "date": "2026-10-04",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Conversational throughout. Build the engine. Course drops 304 ft. Run at least 60% of this on downhill-similar terrain \u00b7 Research/11 \u00a7net-downhill adjustments.",
+            "is_long": true,
+            "date_iso": "2026-10-04",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "19",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Build the engine.",
+            "is_long": true,
+            "date_iso": "2026-10-04",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "14",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-06",
+          "kind": "CHANGED",
+          "old": {
+            "type": "tempo",
+            "notes": "WU, continuous tempo block, CD. Just below threshold.",
+            "is_long": false,
+            "date_iso": "2026-10-06",
+            "sub_label": "2 mi WU \u00b7 5 mi @ T \u00b7 2 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "9",
+            "pace_target_s_per_mi": "430"
+          },
+          "new": {
+            "type": "tempo",
+            "notes": "Continuous mile cutdowns \u00b7 Research/04 \u00a712.5. Each mile ~10\u201315 s/mi faster than prior. Start controlled. Each rep a little faster. The last one is the point.",
+            "is_long": false,
+            "date_iso": "2026-10-06",
+            "sub_label": "2 mi WU \u00b7 4.5 mi @ T \u00b7 2 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8.5",
+            "pace_target_s_per_mi": "430"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-08",
+          "kind": "CHANGED",
+          "old": {
+            "type": "intervals",
+            "notes": "1K cutdowns \u00b7 Research/04 \u00a712.3. Start controlled. Each rep a little faster. The last one is the point.",
+            "is_long": false,
+            "date_iso": "2026-10-08",
+            "sub_label": "7\u00d71 km @ I \u00b7 1 min jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8",
+            "pace_target_s_per_mi": "401"
+          },
+          "new": {
+            "type": "intervals",
+            "notes": "1K cutdowns \u00b7 Research/04 \u00a712.3. Start controlled. Each rep a little faster. The last one is the point.",
+            "is_long": false,
+            "date_iso": "2026-10-08",
+            "sub_label": "1km @ MP \u00b7 60s jog + 1km @ HM \u00b7 60s jog + 1km @ T \u00b7 60s jog + 1km @ 10K \u00b7 60s jog + 1km @ 5K",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "6.5",
+            "pace_target_s_per_mi": "430"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "pace_target_s_per_mi",
+            "sub_label"
+          ]
+        },
+        {
+          "date": "2026-10-11",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Modified block. Easy 13.5mi, then 3.5mi at marathon effort for your current fitness, 1mi easy, then 2mi at marathon effort for your current fitness. The second block is the session: you are practising getting back to race pace on tired legs, so keep the easy mile honest and short. Course drops 304 ft. Run at least 60% of this on downhill-similar terrain \u00b7 Research/11 \u00a7net-downhill adjustments.",
+            "is_long": true,
+            "date_iso": "2026-10-11",
+            "sub_label": "LONG \u00b7 3.5mi @ M + 1mi @ E + 2mi @ M",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "20",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Build the engine.",
+            "is_long": true,
+            "date_iso": "2026-10-11",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "18.5",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-13",
+          "kind": "CHANGED",
+          "old": {
+            "type": "threshold",
+            "notes": "Sub-threshold / Norwegian intervals \u00b7 Research/04 \u00a75.4.",
+            "is_long": false,
+            "date_iso": "2026-10-13",
+            "sub_label": "7\u00d71km @ ST pace \u00b7 60s jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "9",
+            "pace_target_s_per_mi": "445"
+          },
+          "new": {
+            "type": "threshold",
+            "notes": "Sub-threshold / Norwegian intervals \u00b7 Research/04 \u00a75.4.",
+            "is_long": false,
+            "date_iso": "2026-10-13",
+            "sub_label": "9\u00d71km @ ST pace \u00b7 60s jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "10.5",
+            "pace_target_s_per_mi": "445"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label"
+          ]
+        },
+        {
+          "date": "2026-10-15",
+          "kind": "CHANGED",
+          "old": {
+            "type": "intervals",
+            "notes": "Mona fartlek \u00b7 Research/04 \u00a79.2. Continuous run. Surge, float, surge. The float is a jog, not a stop.",
+            "is_long": false,
+            "date_iso": "2026-10-15",
+            "sub_label": "2\u00d790s @ 5K \u00b7 90s jog + 4\u00d760s @ 5K \u00b7 60s jog + 4\u00d730s \u00b7 30s jog + 4\u00d715s @ mile \u00b7 15s jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "6.5",
+            "pace_target_s_per_mi": "397"
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-15",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "pace_target_s_per_mi",
+            "sub_label",
+            "hr_cap_bpm",
+            "is_quality",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-18",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Conversational throughout. Build the engine. Course drops 304 ft. Run at least 60% of this on downhill-similar terrain \u00b7 Research/11 \u00a7net-downhill adjustments.",
+            "is_long": true,
+            "date_iso": "2026-10-18",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "15",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Modified block. Easy 11mi, then 5mi at marathon effort for your current fitness, 1mi easy, then 3mi at marathon effort for your current fitness. The second block is the session: you are practising getting back to race pace on tired legs, so keep the easy mile honest and short.",
+            "is_long": true,
+            "date_iso": "2026-10-18",
+            "sub_label": "LONG \u00b7 5mi @ M + 1mi @ E + 3mi @ M",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "20",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-20",
+          "kind": "CHANGED",
+          "old": {
+            "type": "threshold",
+            "notes": "Cruise intervals \u00b7 Research/04 \u00a75.3.",
+            "is_long": false,
+            "date_iso": "2026-10-20",
+            "sub_label": "4\u00d71 mi @ T pace \u00b7 1 min jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8.5",
+            "pace_target_s_per_mi": "430"
+          },
+          "new": {
+            "type": "tempo",
+            "notes": "Continuous tempo \u00b7 Research/04 \u00a75.2. Single block, no recovery.",
+            "is_long": false,
+            "date_iso": "2026-10-20",
+            "sub_label": "2 mi WU \u00b7 4.5 mi @ T \u00b7 2 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8.5",
+            "pace_target_s_per_mi": "430"
+          },
+          "changed_fields": [
+            "type",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-22",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-10-22",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "intervals",
+            "notes": "WU 1.5mi, reps, CD 1mi. Hold pace, even splits.",
+            "is_long": false,
+            "date_iso": "2026-10-22",
+            "sub_label": "8\u00d73 min @ I pace \u00b7 90s jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8",
+            "pace_target_s_per_mi": "401"
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "pace_target_s_per_mi",
+            "sub_label",
+            "hr_cap_bpm",
+            "is_quality",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-25",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Steady 10mi, then 11mi at marathon effort for your current fitness. Course drops 304 ft. Run at least 60% of this on downhill-similar terrain \u00b7 Research/11 \u00a7net-downhill adjustments. Run the race-pace section on terrain that descends like your course. Quads will feel this more than the pace suggests; that is the session working, and it is what stops the same damage arriving at mile 20 on race day. Last race-pace downhill of the block \u2014 keep the taper's downhill running short and easy.",
+            "is_long": true,
+            "date_iso": "2026-10-25",
+            "sub_label": "LONG \u00b7 11mi @ M",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "19.5",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Build the engine.",
+            "is_long": true,
+            "date_iso": "2026-10-25",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "15",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-27",
+          "kind": "CHANGED",
+          "old": {
+            "type": "tempo",
+            "notes": "Continuous mile cutdowns \u00b7 Research/04 \u00a712.5. Each mile ~10\u201315 s/mi faster than prior. Start controlled. Each rep a little faster. The last one is the point.",
+            "is_long": false,
+            "date_iso": "2026-10-27",
+            "sub_label": "2 mi WU \u00b7 6 mi @ T \u00b7 2 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "10",
+            "pace_target_s_per_mi": "430"
+          },
+          "new": {
+            "type": "tempo",
+            "notes": "Wave tempo \u00b7 Research/04 \u00a710.3. Alternate \u00b15\u201315 s/mi around T pace, 30 s to 2 min per segment. One continuous block, rolling either side of threshold. No stopping.",
+            "is_long": false,
+            "date_iso": "2026-10-27",
+            "sub_label": "2 mi WU \u00b7 6 mi @ T \u00b7 2 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "10",
+            "pace_target_s_per_mi": "430"
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-29",
+          "kind": "CHANGED",
+          "old": {
+            "type": "intervals",
+            "notes": "WU 1.5mi, reps, CD 1mi. Hold pace, even splits.",
+            "is_long": false,
+            "date_iso": "2026-10-29",
+            "sub_label": "6\u00d75 min @ I pace \u00b7 60s jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8.5",
+            "pace_target_s_per_mi": "401"
+          },
+          "new": {
+            "type": "intervals",
+            "notes": "WU 1.5mi, reps, CD 1mi. Hold pace, even splits.",
+            "is_long": false,
+            "date_iso": "2026-10-29",
+            "sub_label": "9\u00d73 min @ I pace \u00b7 90s jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8.5",
+            "pace_target_s_per_mi": "401"
+          },
+          "changed_fields": [
+            "sub_label"
+          ]
+        },
+        {
+          "date": "2026-11-01",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Conversational throughout. Build the engine. Course drops 304 ft. Run at least 60% of this on downhill-similar terrain \u00b7 Research/11 \u00a7net-downhill adjustments.",
+            "is_long": true,
+            "date_iso": "2026-11-01",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "21.5",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Build the engine.",
+            "is_long": true,
+            "date_iso": "2026-11-01",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "21.5",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-03",
+          "kind": "CHANGED",
+          "old": {
+            "type": "threshold",
+            "notes": "1K cutdowns \u00b7 Research/04 \u00a712.3. Start controlled. Each rep a little faster. The last one is the point.",
+            "is_long": false,
+            "date_iso": "2026-11-03",
+            "sub_label": "4\u00d71km \u00b7 MP \u2192 5K \u00b7 60s jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8",
+            "pace_target_s_per_mi": "401"
+          },
+          "new": {
+            "type": "tempo",
+            "notes": "Continuous mile cutdowns \u00b7 Research/04 \u00a712.5. Each mile ~10\u201315 s/mi faster than prior. Start controlled. Each rep a little faster. The last one is the point.",
+            "is_long": false,
+            "date_iso": "2026-11-03",
+            "sub_label": "2 mi WU \u00b7 6 mi @ T \u00b7 2 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "10",
+            "pace_target_s_per_mi": "430"
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "pace_target_s_per_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-13",
+          "kind": "CHANGED",
+          "old": {
+            "type": "threshold",
+            "notes": "Cruise-interval re-entry \u00b7 Research/04 \u00a75.3, light end. First quality back after Run Malibu \u00b7 short T reps with a generous jog before full sessions return (Research/00b reverse taper). Quality resumes after Run Malibu recovery.",
+            "is_long": false,
+            "date_iso": "2026-11-13",
+            "sub_label": "2\u00d71.50 mi @ T pace \u00b7 3 min jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8.5",
+            "pace_target_s_per_mi": "430"
+          },
+          "new": {
+            "type": "easy",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-11-13",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "pace_target_s_per_mi",
+            "sub_label",
+            "hr_cap_bpm",
+            "is_quality",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-15",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Dress rehearsal \u00b7 Research/04 \u00a74.6. Steady 12mi, then 4mi at marathon pace. Race kit, race breakfast, race fuelling. Controlled effort, not a fitness test. Course drops 304 ft. Run at least 60% of this on downhill-similar terrain \u00b7 Research/11 \u00a7net-downhill adjustments.",
+            "is_long": true,
+            "date_iso": "2026-11-15",
+            "sub_label": "LONG \u00b7 4mi @ M",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "16",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Dress rehearsal \u00b7 Research/04 \u00a74.6. Steady 12mi, then 4mi at marathon pace. Race kit, race breakfast, race fuelling. Controlled effort, not a fitness test.",
+            "is_long": true,
+            "date_iso": "2026-11-15",
+            "sub_label": "LONG \u00b7 4mi @ M",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "16",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-17",
+          "kind": "CHANGED",
+          "old": {
+            "type": "tempo",
+            "notes": "Marathon effort at the fitness you have shown, not goal pace. Not faster. This is a rehearsal, not a test.",
+            "is_long": false,
+            "date_iso": "2026-11-17",
+            "sub_label": "2.5 mi WU \u00b7 11 mi @ MP \u00b7 1.5 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "15",
+            "pace_target_s_per_mi": "472"
+          },
+          "new": {
+            "type": "race_week_tuneup",
+            "notes": "Two sharp half-mile reps just above T-pace. Keep it brief. Legs stay fresh.",
+            "is_long": false,
+            "date_iso": "2026-11-17",
+            "sub_label": "5\u00d7400m @ 5K pace \u00b7 2min jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "4",
+            "pace_target_s_per_mi": "401"
+          },
+          "changed_fields": [
+            "type",
+            "distance_mi",
+            "pace_target_s_per_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-22",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Easy long, hold pace. Quality lives in the race itself. Course drops 304 ft. Downhill running stays short and easy from here \u00b7 Research/11 \u00a7late-taper trap.",
+            "is_long": true,
+            "date_iso": "2026-11-22",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "19",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Steady 11mi, then 5mi at marathon effort for your current fitness. Course drops 304 ft. Downhill running stays short and easy from here \u00b7 Research/11 \u00a7late-taper trap.",
+            "is_long": true,
+            "date_iso": "2026-11-22",
+            "sub_label": "LONG \u00b7 5mi @ M",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "16",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-24",
+          "kind": "CHANGED",
+          "old": {
+            "type": "tempo",
+            "notes": "Marathon effort at the fitness you have shown, not goal pace. Not faster. This is a rehearsal, not a test.",
+            "is_long": false,
+            "date_iso": "2026-11-24",
+            "sub_label": "2 mi WU \u00b7 7 mi @ MP \u00b7 1 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "10",
+            "pace_target_s_per_mi": "472"
+          },
+          "new": {
+            "type": "tempo",
+            "notes": "WU, continuous tempo block, CD. Just below threshold.",
+            "is_long": false,
+            "date_iso": "2026-11-24",
+            "sub_label": "2.5 mi WU \u00b7 4.5 mi @ T \u00b7 1 mi CD",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "8",
+            "pace_target_s_per_mi": "430"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "pace_target_s_per_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-29",
+          "kind": "CHANGED",
+          "old": {
+            "type": "long",
+            "notes": "Easy long, hold pace. Quality lives in the race itself. Course drops 304 ft. Downhill running stays short and easy from here \u00b7 Research/11 \u00a7late-taper trap.",
+            "is_long": true,
+            "date_iso": "2026-11-29",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "14",
+            "pace_target_s_per_mi": "520"
+          },
+          "new": {
+            "type": "long",
+            "notes": "Easy long, hold pace. Quality lives in the race itself.",
+            "is_long": true,
+            "date_iso": "2026-11-29",
+            "sub_label": "LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "10",
+            "pace_target_s_per_mi": "520"
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-12-01",
+          "kind": "CHANGED",
+          "old": {
+            "type": "race_week_tuneup",
+            "notes": "Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.",
+            "is_long": false,
+            "date_iso": "2026-12-01",
+            "sub_label": "5\u00d7400m @ 5K pace \u00b7 2min jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": "425"
+          },
+          "new": {
+            "type": "race_week_tuneup",
+            "notes": "Five sharp 5K-pace reps, 5 days out. Brief neuromuscular primer. Legs stay fresh.",
+            "is_long": false,
+            "date_iso": "2026-12-01",
+            "sub_label": "5\u00d7400m @ 5K pace \u00b7 2min jog",
+            "hr_cap_bpm": null,
+            "is_quality": true,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": "401"
+          },
+          "changed_fields": [
+            "pace_target_s_per_mi"
+          ]
+        }
+      ]
+    },
+    "EASY_VOLUME": {
+      "count": 18,
+      "days": [
+        {
+          "date": "2026-09-04",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-09-04",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Aerobic day between sessions. Keep it honest so tomorrow's work is there.",
+            "is_long": false,
+            "date_iso": "2026-09-04",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-16",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-16",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "The week's longest easy run. This is where the aerobic volume comes from. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-16",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "6.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-23",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-23",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "6.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Easy to steady. Aerobic strength under fatigue, without the cost of a long run. Let the last few miles drift up if they want to.",
+            "is_long": false,
+            "date_iso": "2026-09-23",
+            "sub_label": "MEDIUM-LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "9.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-14",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-14",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Easy to steady. Let the last few miles drift up if they want to.",
+            "is_long": false,
+            "date_iso": "2026-10-14",
+            "sub_label": "MEDIUM-LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "10",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-16",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-10-16",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-10-16",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-21",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Easy to steady. Aerobic strength under fatigue, without the cost of a long run. Let the last few miles drift up if they want to. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-21",
+            "sub_label": "MEDIUM-LONG \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "12",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "The week's longest easy run. This is where the aerobic volume comes from. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-21",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-23",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-10-23",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Aerobic day between sessions. Keep it honest so tomorrow's work is there.",
+            "is_long": false,
+            "date_iso": "2026-10-23",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-28",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Easy to steady. Aerobic strength under fatigue, without the cost of a long run. Let the last few miles drift up if they want to. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-28",
+            "sub_label": "MEDIUM-LONG \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "9",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Short and easy. The session is tomorrow. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-28",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-04",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Easy to steady. Aerobic strength under fatigue, without the cost of a long run. Let the last few miles drift up if they want to. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-04",
+            "sub_label": "MEDIUM-LONG \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "10",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "The week's longest easy run. This is where the aerobic volume comes from. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-04",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.6",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-05",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-11-05",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Easy. Inside the mini-taper for Run Malibu \u00b7 no quality this close.",
+            "is_long": false,
+            "date_iso": "2026-11-05",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "6",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-16",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-16",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "The week's longest easy run. This is where the aerobic volume comes from. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-16",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-18",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-18",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Aerobic day between sessions. Keep it honest so tomorrow's work is there. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-18",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-19",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-11-19",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-11-19",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-20",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-11-20",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-11-20",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-23",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-23",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "The week's longest easy run. This is where the aerobic volume comes from. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-23",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-25",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-25",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Aerobic day between sessions. Keep it honest so tomorrow's work is there. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-25",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-26",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-11-26",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-11-26",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-27",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-11-27",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-11-27",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        }
+      ]
+    },
+    "TRIVIAL": {
+      "count": 30,
+      "days": [
+        {
+          "date": "2026-09-05",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-09-05",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-09-05",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-09",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-09",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "The week's longest easy run. This is where the aerobic volume comes from. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-09",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-12",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-09-12",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-09-12",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-19",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-09-19",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-09-19",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-21",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-21",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Recovery day after the long run. Slower than your normal easy pace. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-21",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-24",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Dodgers takes this week's quality slot; rest moves here.",
+            "is_long": false,
+            "date_iso": "2026-09-24",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "Dodgers takes this week's quality slot; rest moves here.",
+            "is_long": false,
+            "date_iso": "2026-09-24",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-25",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-09-25",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Short and easy. The session is tomorrow. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-25",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "8",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-09-30",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-30",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "6.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Short and easy. The session is tomorrow. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-09-30",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "6",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-02",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-10-02",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Aerobic day between sessions. Keep it honest so tomorrow's work is there. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-02",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "6",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-03",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-10-03",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-10-03",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-05",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-05",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Recovery day after the long run. Slower than your normal easy pace. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-05",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-07",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Easy to steady. Aerobic strength under fatigue, without the cost of a long run. Let the last few miles drift up if they want to. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-07",
+            "sub_label": "MEDIUM-LONG \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "12",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Easy to steady. Let the last few miles drift up if they want to.",
+            "is_long": false,
+            "date_iso": "2026-10-07",
+            "sub_label": "MEDIUM-LONG",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "12",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-09",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-10-09",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Aerobic day between sessions. Keep it honest so tomorrow's work is there. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-09",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "8.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "sub_label",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-10",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-10-10",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-10-10",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-12",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-12",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Recovery day after the long run. Slower than your normal easy pace. Finish with 6 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-12",
+            "sub_label": "EASY \u00b7 6\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.1",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-17",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-10-17",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-10-17",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-19",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-19",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Recovery day after the long run. Slower than your normal easy pace. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-19",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-24",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-10-24",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-10-24",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-26",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-26",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Recovery day after the long run. Slower than your normal easy pace. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-10-26",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-30",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap.",
+            "is_long": false,
+            "date_iso": "2026-10-30",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "7.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "The week's longest easy run. This is where the aerobic volume comes from.",
+            "is_long": false,
+            "date_iso": "2026-10-30",
+            "sub_label": "EASY",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "8",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-10-31",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-10-31",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-10-31",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-02",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-02",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Recovery day after the long run. Slower than your normal easy pace. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-02",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "distance_mi",
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-07",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-11-07",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-11-07",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-09",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-09",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Recovery day after the long run. Slower than your normal easy pace. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-09",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4.5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-11",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "Conversational. Z2 HR cap. Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-11",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "Finish with 8 relaxed 20-second strides, full recovery between.",
+            "is_long": false,
+            "date_iso": "2026-11-11",
+            "sub_label": "EASY \u00b7 8\u00d720s strides",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "5",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-14",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-11-14",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-11-14",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-21",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-11-21",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-11-21",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-11-28",
+          "kind": "CHANGED",
+          "old": {
+            "type": "rest",
+            "notes": "Off. Sleep, mobility, fuel.",
+            "is_long": false,
+            "date_iso": "2026-11-28",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "rest",
+            "notes": "",
+            "is_long": false,
+            "date_iso": "2026-11-28",
+            "sub_label": "REST",
+            "hr_cap_bpm": null,
+            "is_quality": false,
+            "distance_mi": "0",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-12-02",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "40 min easy. Conversational effort throughout. Strides optional at end.",
+            "is_long": false,
+            "date_iso": "2026-12-02",
+            "sub_label": "EASY \u00b7 40 MIN",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "40 min easy. Talk in full sentences the whole way. Strides optional at end.",
+            "is_long": false,
+            "date_iso": "2026-12-02",
+            "sub_label": "EASY \u00b7 40 MIN",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "4",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        },
+        {
+          "date": "2026-12-03",
+          "kind": "CHANGED",
+          "old": {
+            "type": "easy",
+            "notes": "30 min easy. Conversational effort throughout. Strides optional at end.",
+            "is_long": false,
+            "date_iso": "2026-12-03",
+            "sub_label": "EASY \u00b7 30 MIN",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3",
+            "pace_target_s_per_mi": null
+          },
+          "new": {
+            "type": "easy",
+            "notes": "30 min easy.",
+            "is_long": false,
+            "date_iso": "2026-12-03",
+            "sub_label": "EASY \u00b7 30 MIN",
+            "hr_cap_bpm": "151",
+            "is_quality": false,
+            "distance_mi": "3",
+            "pace_target_s_per_mi": null
+          },
+          "changed_fields": [
+            "notes"
+          ]
+        }
+      ]
+    }
+  }
+}

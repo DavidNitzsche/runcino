@@ -1,0 +1,235 @@
+{
+    "id": "pln_9a57561debb776e5",
+    "mode": "race-prep",
+    "race_id": "cim",
+    "user_id": "me",
+    "goal_iso": "2026-12-06",
+    "user_uuid": "0645f40c-951d-4ccc-b86e-9979cd26c795",
+    "archived_iso": null,
+    "authored_iso": "2026-08-31T03:40:26.259869+00:00",
+    "adaptation_log": [
+    ],
+    "archive_reason": null,
+    "authored_state": {
+        "mode": "race-prep",
+        "course": {
+            "shape": "net_downhill",
+            "net_ft": -304,
+            "gain_ft": 723,
+            "loss_ft": 1041,
+            "trusted": true,
+            "confidence": "high",
+            "provenance": "measured",
+            "vert_per_10mi": 276,
+            "geometry_source": "course_geometry"
+        },
+        "lthr_bpm": 168,
+        "citations": [
+            "Research/04-workout-vocabulary.md §intervals-and-threshold",
+            "Research/00a-distance-running-training.md §race-specific",
+            "Research/08-pacing-and-race-week.md §taper"
+        ],
+        "goal_tier": "advanced",
+        "ramp_base": {
+            "baseMi": 34.7,
+            "heldMi": 34.7,
+            "lifted": false,
+            "meanMi": 31.6,
+            "peakMi": 52.3,
+            "returning": true,
+            "sustainedMi": 45,
+            "heldByCurrent": true,
+            "interruptionWeeks": 0,
+            "allowedInterruptionWeeks": 4
+        },
+        "pace_blend": {
+            "goal_vdot": 53.5,
+            "build_weeks": 12,
+            "reanchored_at": "2026-09-02T05:55:06.673Z",
+            "season_anchor_vdot": 47.7,
+            "season_anchor_source": "measured_vdot",
+            "season_anchor_provisional": false,
+            "measured_progress_fraction": 0
+        },
+        "total_weeks": 15,
+        "weeklyAvg4w": 31.6,
+        "derived_from": {
+            "tsbAtStart": -6,
+            "recentLongMi": 18,
+            "bestRecentVdot": 44.1,
+            "recentWeeklyMi": 31.6,
+            "easyDayMedianMi": 6,
+            "spikeAnchorLongMi": 13.5,
+            "recentQualityPerWeek": 1.5,
+            "recentQualityDistanceMi": 7.5
+        },
+        "generated_at": "2026-08-31T03:40:26.304Z",
+        "goal_realism": {
+            "flag": true,
+            "basis": "measured_vdot",
+            "goalVdot": 53.5,
+            "assessable": true,
+            "estimatedCurrentVdot": 44.1
+        },
+        "is_mid_block": true,
+        "horizon_raise": null,
+        "embedded_races": [
+            {
+                "date": "2026-09-13",
+                "name": "Santa Monica 10k",
+                "slug": "santa-monica-10k-2026-09-13",
+                "weekIdx": 2,
+                "priority": "B",
+                "distanceMi": 6.2,
+                "plannedRole": null
+            },
+            {
+                "date": "2026-09-26",
+                "name": "Dodgers",
+                "slug": "dodgers",
+                "weekIdx": 4,
+                "priority": "C",
+                "distanceMi": 6.21,
+                "plannedRole": null
+            },
+            {
+                "date": "2026-11-08",
+                "name": "Run Malibu",
+                "slug": "run-malibu",
+                "weekIdx": 10,
+                "priority": "B",
+                "distanceMi": 13.1,
+                "plannedRole": null
+            }
+        ],
+        "pace_recompute": {
+            "at": "2026-09-02T05:55:11.109Z",
+            "vdot": 47.7,
+            "model": "prescription_resolver",
+            "source": "reanchor_fitness_shift",
+            "anchors": {
+                "basis": {
+                    "marathon": {
+                        "source": "exponent",
+                        "confidence": 0.8400000000000001,
+                        "sourceMode": "direct",
+                        "enduranceExponent": 1.082514135966284,
+                        "restsOnOneLongRace": true,
+                        "personallyEvidenced": true,
+                        "demonstratedPaceSecPerMi": null
+                    },
+                    "threshold": {
+                        "vdot": 47.8,
+                        "confidence": 0.8400000000000001,
+                        "sourceMode": "direct"
+                    },
+                    "easyCeiling": {
+                        "confidence": 0.6336475048158089,
+                        "sourceMode": "direct"
+                    },
+                    "highIntensity": {
+                        "confidence": 0.5,
+                        "sourceMode": "vdot_fallback"
+                    }
+                },
+                "interval_s_per_mi": 401,
+                "marathon_s_per_mi": 472,
+                "threshold_s_per_mi": 430,
+                "repetition_s_per_mi": 365,
+                "easy_ceiling_s_per_mi": 502,
+                "shakeout_ceiling_s_per_mi": 532
+            },
+            "lthr_bpm": 168,
+            "max_hr_bpm": 183,
+            "workouts_updated": 76,
+            "rationales_written": 12,
+            "measured_progress_fraction": null
+        },
+        "recent_avg_mpw": 31.6,
+        "pace_zone_event": {
+            "atISO": "2026-09-02T05:55:11.121Z",
+            "toVdot": 47.7,
+            "fromVdot": 46.3,
+            "direction": "faster",
+            "acknowledgedAt": "2026-09-03T06:54:06.847Z",
+            "evidenceSource": "training",
+            "evidenceRaceSlug": null
+        },
+        "t_pace_s_per_mi": 394,
+        "race_distance_mi": 26.22,
+        "race_row_refresh": {
+            "at": "2026-09-03T12:13:01.960Z",
+            "rows": [
+                {
+                    "id": "wko_5069bc75e324a69a",
+                    "date": "2026-09-13",
+                    "pace": 416,
+                    "action": "updated",
+                    "reason": null
+                },
+                {
+                    "id": "wko_613649879df83f38",
+                    "date": "2026-09-26",
+                    "pace": 455,
+                    "action": "updated",
+                    "reason": null
+                },
+                {
+                    "id": "wko_04050ebcd66f81d6",
+                    "date": "2026-11-08",
+                    "pace": 440,
+                    "action": "updated",
+                    "reason": null
+                },
+                {
+                    "id": "wko_60e4afb00a4e2c33",
+                    "date": "2026-12-01",
+                    "pace": 425,
+                    "action": "unchanged",
+                    "reason": null
+                },
+                {
+                    "id": "wko_8bfa8647379342ba",
+                    "date": "2026-12-06",
+                    "pace": 466,
+                    "action": "updated",
+                    "reason": null
+                }
+            ],
+            "source": "cron/snapshot-projections",
+            "refused": 0,
+            "updated": 4
+        },
+        "goal_pace_s_per_mi": 412,
+        "tier_peak_long_band": [
+            22,
+            24
+        ],
+        "prescribed_race_pace": {
+            "source": "projected_ceiling",
+            "goal_sec": 10800,
+            "target_sec": 11430,
+            "ceiling_sec": 12029,
+            "ceiling_vdot": 47.1,
+            "pace_s_per_mi": 436,
+            "basis_modelled": true,
+            "optimism_fraction": 0.10216975642198022,
+            "goal_pace_s_per_mi": 412
+        },
+        "tier_peak_weekly_band": [
+            65,
+            90
+        ],
+        "long_run_race_pace_changes": [
+            {
+                "kind": "modified_block",
+                "to_mi": 5.5,
+                "reason": "gave hard miles back to hold the 75% easy floor",
+                "from_mi": 12,
+                "date_iso": "2026-10-11",
+                "week_start_iso": "2026-10-05"
+            }
+        ]
+    },
+    "last_adapted_at": "2026-09-03T07:53:41.641024+00:00"
+}
