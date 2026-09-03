@@ -50,6 +50,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireAdmin } from '@/lib/auth/session';
+import { logReadFailure } from '@/lib/db/read';
 import { runAndPersistCanonicalShadowEvaluation } from '@/lib/adaptation/canonical-shadow/run-live-shadow-evaluation';
 
 export const dynamic = 'force-dynamic';
@@ -71,14 +72,22 @@ interface ShadowRow {
   idempotency_key: string;
 }
 
-async function tableExists(): Promise<boolean> {
+/** Rule 11 · three states, because "confirmed absent" and "the read
+ *  failed" license different sentences to an operator -- the first says
+ *  "wait for the migration", the second says "check the connection", and
+ *  collapsing them would let a transient failure masquerade as a schema
+ *  state that was never true. */
+type TableProbe = 'exists' | 'absent' | 'unreadable';
+
+async function probeTable(): Promise<TableProbe> {
   try {
     const r = await pool.query<{ reg: string | null }>(
       `SELECT to_regclass('public.canonical_adaptation_shadow_log')::text AS reg`,
     );
-    return r.rows[0]?.reg != null;
-  } catch {
-    return false;
+    return r.rows[0]?.reg != null ? 'exists' : 'absent';
+  } catch (e) {
+    logReadFailure('canonical-adaptation-shadow/probeTable', e);
+    return 'unreadable';
   }
 }
 
@@ -140,7 +149,8 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userUuid = auth;
 
-  if (!(await tableExists())) {
+  const probe = await probeTable();
+  if (probe === 'absent') {
     return NextResponse.json({
       ok: true,
       records: [],
@@ -148,6 +158,19 @@ export async function GET(req: NextRequest) {
         + '(migration 164 not applied) — the live evaluation code is wired and will '
         + 'persist here once the migration lands.',
     });
+  }
+  if (probe === 'unreadable') {
+    // Rule 11 · a distinct, honest state from `absent` — this is NOT "the
+    // migration has not landed", it is "the check itself failed", and
+    // telling an operator the wrong one of those two is worse than telling
+    // them neither.
+    return NextResponse.json({
+      ok: false,
+      records: [],
+      note: 'Could not check whether canonical_adaptation_shadow_log exists — the read '
+        + 'itself failed. See server logs (canonical-adaptation-shadow/probeTable) rather '
+        + 'than treating this as "migration not applied".',
+    }, { status: 503 });
   }
 
   const detail = new URL(req.url).searchParams.get('detail') === '1';

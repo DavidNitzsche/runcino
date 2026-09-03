@@ -22,6 +22,7 @@
  * idempotent.
  */
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 
 export const CANONICAL_ADAPTATION_SHADOW_LOG_RETENTION_DAYS = 180;
 export const CANONICAL_ADAPTATION_SHADOW_LOG_MAX_ROWS_PER_USER = 1200;
@@ -40,7 +41,13 @@ async function tableExists(): Promise<boolean> {
       `SELECT to_regclass('public.canonical_adaptation_shadow_log')::text AS reg`,
     );
     return r.rows[0]?.reg != null;
-  } catch {
+  } catch (e) {
+    // Rule 11 · logged rather than silently folded into the same `false` a
+    // genuinely absent table returns. The consequence for THIS caller is
+    // identical either way (skip pruning, report ran:false) and that is the
+    // argued simplification — but the failure itself must stay visible in
+    // the logs rather than reading as an ordinary pre-migration state.
+    logReadFailure('canonical-adaptation-shadow-log-retention/tableExists', e);
     return false;
   }
 }
