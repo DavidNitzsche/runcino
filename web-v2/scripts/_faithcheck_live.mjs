@@ -6,6 +6,11 @@
 // the offline sidecar to diff against composePlan().
 //
 // Test user only (b8b75dd8…). Resets state after each case.
+// PRODUCTION WRITE BARRIER · this file is verification tooling, so it is fenced.
+// The fence refuses any database write unless DATABASE_URL is provably loopback,
+// and stamps every outgoing request X-Faff-Verification so middleware.ts refuses
+// a mutation that would reach production. See scripts/_verification-fence.mjs.
+import './_verification-fence.mjs';
 import { readFileSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import pg from 'pg';

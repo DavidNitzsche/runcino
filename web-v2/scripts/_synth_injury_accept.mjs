@@ -24,6 +24,11 @@
  * available, we fall through to a parity-check SQL replay (less strict but
  * still confirms the shape).
  */
+// PRODUCTION WRITE BARRIER · this file is verification tooling, so it is fenced.
+// The fence refuses any database write unless DATABASE_URL is provably loopback,
+// and stamps every outgoing request X-Faff-Verification so middleware.ts refuses
+// a mutation that would reach production. See scripts/_verification-fence.mjs.
+import './_verification-fence.mjs';
 import pg from 'pg';
 import fs from 'fs';
 import { spawnSync } from 'child_process';

@@ -25,6 +25,11 @@
 // Run from web-v2:  node scripts/_audit_live_extended.mjs
 // JSON summary:     node scripts/_audit_live_extended.mjs --json
 // ─────────────────────────────────────────────────────────────────────────
+// PRODUCTION WRITE BARRIER · this file is verification tooling, so it is fenced.
+// The fence refuses any database write unless DATABASE_URL is provably loopback,
+// and stamps every outgoing request X-Faff-Verification so middleware.ts refuses
+// a mutation that would reach production. See scripts/_verification-fence.mjs.
+import './_verification-fence.mjs';
 import pg from 'pg';
 import fs from 'node:fs';
 

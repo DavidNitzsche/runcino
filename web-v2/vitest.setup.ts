@@ -44,3 +44,37 @@ for (const file of ['.env.local', '.env']) {
     process.env[key] = m[2].trim().replace(/^["']|["']$/g, '');
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AND THEN FENCE IT.
+//
+// The block above is the reason a fence is needed. It has just loaded
+// `.env.local` into this test process, and on a developer machine that file's
+// `DATABASE_URL` is the PRODUCTION READ-WRITE url. 78 test files under `lib/**`
+// reach `lib/db/pool`; before this line the only things between any of them and
+// the owner's live training history were a directory exclusion in
+// `vitest.config.ts` and one hand-written fence inside `lib/adaptation-harness`.
+//
+// An agent once ran a live simulator session signed in as his production
+// account and wrote two junk activity rows into his real history. His ruling:
+// "Simulator and automated test clients must be unable to post activities,
+// complete workouts, or mutate my production account. Environment labelling or
+// connection-string policy alone is insufficient."
+//
+// So this runs AFTER the loader, in every worker, before any test module is
+// evaluated — early enough that a test constructing its own `new Pool(...)`
+// gets the patched prototype too. It refuses every mutating statement unless
+// the target database is provably loopback; a production or unidentifiable
+// target refuses (Rule 11). The local harnesses keep working, because a
+// loopback scratch database is exactly what they point at.
+//
+// `lib/verify/_production_write_barrier.test.ts` is the proof, and it fails if
+// this import is removed.
+//
+// DYNAMIC on purpose. A static `import` is HOISTED above the loader block, so
+// the barrier would be armed before `DATABASE_URL` existed and its startup line
+// would report "DATABASE_URL is not set" on a machine where it very much is.
+// The per-query decision reads the environment at call time either way, so the
+// only thing that would have been wrong is the sentence in the log — which is
+// exactly the kind of confidently-wrong report this whole file is about.
+await import('./lib/verify/install-barrier');
