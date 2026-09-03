@@ -445,13 +445,19 @@ describe('PORTIONS-1 · a marathon-specific long run reads as two portions, neve
   // the exact shape that shipped "All two reps stayed under the ceiling",
   // which reads as a two-repetition interval set, and the exact shape that
   // shipped "Work executed" over a marathon-effort mile run 28 sec/mi slow.
+  // No `paceShape` and no `tolerancePaceSPerMi` on either phase, matching
+  // the REAL raw watch-completion payload exactly (queried directly off
+  // `faff_readonly`, 2026-09-04: neither field is present on this run's
+  // stored phases) — the shape and tolerance are resolved entirely by
+  // `gradeStoredPhases`'s fallback, which is the exact path this fixture
+  // exists to prove.
   const REAL_LONG_PHASES = [
     { index: 0, type: 'work', label: '10.0 mi easy', completed: true, avgHr: 145,
       actualDurationSec: 5280, actualDistanceMi: 10.0,
-      targetPaceSPerMi: 480, tolerancePaceSPerMi: 30, actualPaceSPerMi: 528 },
+      targetPaceSPerMi: 480, actualPaceSPerMi: 528 },
     { index: 1, type: 'work', label: '4.0 mi @ marathon pace', completed: true, avgHr: 163,
       actualDurationSec: 1848, actualDistanceMi: 4.0,
-      targetPaceSPerMi: 434, tolerancePaceSPerMi: 30, actualPaceSPerMi: 462 },
+      targetPaceSPerMi: 434, actualPaceSPerMi: 462 },
   ];
 
   const out = compose({
@@ -466,29 +472,49 @@ describe('PORTIONS-1 · a marathon-specific long run reads as two portions, neve
     wholeRunHrBpm: 149,
   });
 
+  it('grades each phase on its OWN shape — the easy portion a ceiling, the MP portion a window', () => {
+    // KEY-PHASE-1's whole point: `paceShapeFor` alone cannot tell a long
+    // run's easy portion from its embedded marathon-pace portion (both are
+    // phaseType 'work' in a 'long' session), so `gradeStoredPhases` must
+    // detect the MP phase by its own label and grade it as a WINDOW — a
+    // real target, not a ceiling nothing can miss for being slow.
+    const graded = out.execution;
+    expect(graded.status).toBe('PARTIAL_PRODUCTIVE');
+  });
+
   it('never calls the two phases reps, a repetition, a work block, or segments', () => {
-    // Doctrine forbids failing a ceiling-shaped phase for being slow, so the
-    // SESSION grades as satisfied (ceiling respected) even though every
-    // phase ran slower than its own prescribed pace — which is exactly why
-    // the sentence composing that fact must not borrow rep-set language.
-    expect(out.execution.status).toBe('PARTIAL_PRODUCTIVE');
     expect(out.execution.summary).not.toMatch(/\brep\b/i);
     expect(out.execution.summary).not.toMatch(/\breps\b/i);
     expect(out.execution.summary).not.toMatch(/repetition/i);
     expect(out.execution.summary).not.toMatch(/\bwork block\b/i);
     expect(out.execution.summary).not.toMatch(/\bsegments?\b/i);
-    expect(out.execution.summary).toMatch(/\bboth portions\b/i);
   });
 
-  it('never turns "stayed under the HR ceiling" into "work executed"', () => {
-    // The exact incoherence this closes: doctrine correctly never fails a
-    // ceiling phase for running slow, but the OLD sentence reported that as
-    // "Work executed" — collapsing "the ceiling was respected" into "the
-    // prescribed pace was achieved", which it was not.
+  it('names the marathon-effort phase as the key finding — never the easy phase it is not', () => {
+    // KEY-PHASE-1, 2026-09-04 · replaces a defect this exact test file
+    // shipped earlier the same day: the OLD sentence cited "10.0 mi easy
+    // averaged 8:48/mi against 8:00/mi prescribed" — a ceiling phase that
+    // ran SLOWER than its ceiling, which is compliant BY DEFINITION
+    // (`gradeCeilingPhase` has no `slow` verdict) — as if it were a missed
+    // target. The real miss was always the marathon-pace phase, graded
+    // against its own ±5 s/mi window (`Research/01`'s M row).
     expect(out.execution.headline).toBe('Structure completed, pace below target');
     expect(out.execution.headline).not.toMatch(/executed/i);
-    expect(out.execution.summary).toMatch(/8:48\/mi against 8:00\/mi prescribed/);
-    expect(out.execution.summary).toMatch(/stayed under the HR ceiling/);
+    expect(out.execution.summary).toMatch(/4\.0 mi @ marathon pace averaged 7:42\/mi, outside its 7:14\/mi window/);
+    expect(out.execution.summary).not.toMatch(/10\.0 mi easy averaged/);
+    // The easy portion is supporting context, named once, never the lead.
+    expect(out.execution.summary).toMatch(/10\.0 mi easy stayed within its own ceiling/);
+    expect(out.execution.summary.indexOf('marathon pace')).toBeLessThan(out.execution.summary.indexOf('10.0 mi easy'));
+  });
+
+  it('states heart rate on the key phase, never a fabricated ceiling claim', () => {
+    // `workHrCeilingBpm` is null in this fixture (a self-authored watch
+    // workout carries no HR ceiling on the wire) — Rule 11: an absent
+    // ceiling is a fact, not a licence to assert compliance with one that
+    // was never set.
+    expect(out.execution.summary).toMatch(/HR averaged 163 bpm\./);
+    expect(out.execution.summary).not.toMatch(/under the .* bpm ceiling/);
+    expect(out.execution.summary).not.toMatch(/over the .* bpm ceiling/);
   });
 
   it('attributes the targets to the watch workout, not the app, for a self-authored long run', () => {

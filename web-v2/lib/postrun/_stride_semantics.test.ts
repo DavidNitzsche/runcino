@@ -171,12 +171,20 @@ describe("STRIDE-1 · the runner's real 2026-09-02 easy day", () => {
     expect(out.execution.summary).not.toMatch(/\breps?\b/i);
   });
 
-  it('describes the session as one easy work block plus strides', () => {
+  it('describes the session as one easy run plus strides', () => {
     // The SHAPE of the result, not the absence of the defect (Rule 13 cl. 3).
+    // EASY-VOICE-1, 2026-09-04 · "The work block stayed under the ceiling"
+    // was composer vocabulary, not something a coach says about a run that
+    // got done — replaced with activity-appropriate language. `recoveries
+    // Honest` has nothing to evaluate on a single-block session (there are
+    // no between-rep recoveries to judge), so this shape now earns
+    // `CONTROLLED` outright rather than falling to the ambiguous `EXECUTED`
+    // a null `recoveriesHonest` produced.
+    expect(out.execution.headline).toBe('Easy run complete');
     expect(out.execution.summary).toBe(
-      'The work block stayed under the ceiling. Six strides after, walk-backs taken.',
+      'You kept the run controlled, staying under the pace ceiling. Six strides after, walk-backs taken.',
     );
-    expect(out.execution.status).toBe('EXECUTED');
+    expect(out.execution.status).toBe('CONTROLLED');
     expect(out.execution.intendedStimulus).toBe('Easy');
   });
 
@@ -342,7 +350,10 @@ describe('TOLERANCE · a ceiling phase with no stored tolerance is not graded at
 
   it('and the sentence therefore says he stayed under it', () => {
     const out = composePostRunExperience(input({ verdict: graded }));
-    expect(out.execution.summary).toMatch(/stayed under the ceiling/);
+    // EASY-VOICE-1, 2026-09-04 · "staying under the pace ceiling", not
+    // "stayed under the ceiling" — the activity-appropriate rewrite of the
+    // same claim, still gated on the same real `hit` grade above.
+    expect(out.execution.summary).toMatch(/staying under the pace ceiling/);
     expect(out.execution.summary).not.toMatch(/ahead of the ceiling/);
   });
 

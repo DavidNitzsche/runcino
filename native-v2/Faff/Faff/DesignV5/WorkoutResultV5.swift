@@ -268,6 +268,21 @@ struct PostRunVerdictV5: View {
         }
     }
 
+    /// STATUS-ROW-1, 2026-09-04 · a small SF Symbol so "Plan unchanged." reads
+    /// as a deliberate status row rather than a stray sentence that trailed
+    /// off the card above it — a bare line with no visual weight was David's
+    /// own complaint. Stays OUTSIDE the card (the reasoning above is
+    /// unchanged: this is a fact, not the card's conclusion); only the
+    /// row's own presentation changes.
+    private var planStatusIcon: String? {
+        switch model.changeState {
+        case "UNCHANGED":         return "checkmark.circle.fill"
+        case "UPDATED":           return "arrow.triangle.2.circlepath"
+        case "HELD_FOR_EVIDENCE": return "clock.fill"
+        default:                  return nil
+        }
+    }
+
     private var hasDisclosureContent: Bool {
         cost != nil || learned != nil || !changes.isEmpty || conditionsTrimmed != nil || !why.isEmpty
             || targetProvenanceTrimmed != nil
@@ -338,10 +353,17 @@ struct PostRunVerdictV5: View {
             // header note above.
             VStack(alignment: .leading, spacing: V5.S.s10) {
                 if let planStatusLine {
-                    Text(planStatusLine)
-                        .font(.faffText(TypeScaleV5.body15, weight: .medium))
-                        .foregroundStyle(V5.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: V5.S.s6) {
+                        if let planStatusIcon {
+                            Image(systemName: planStatusIcon)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(V5.textQuiet)
+                        }
+                        Text(planStatusLine)
+                            .font(.faffText(TypeScaleV5.body15, weight: .medium))
+                            .foregroundStyle(V5.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 if hasDisclosureContent {
@@ -352,6 +374,16 @@ struct PostRunVerdictV5: View {
                             Text(whyOpen ? "Hide why" : "Why")
                                 .font(.faffText(TypeScaleV5.label14, weight: .semibold))
                                 .foregroundStyle(V5.textSecondary)
+                            // DISCLOSURE-1, 2026-09-04 · a chevron is the one
+                            // affordance iOS runners already read as "this
+                            // expands" — bare text reads as a label, not a
+                            // control. Rotates flat-to-down on open, the same
+                            // direction every other disclosure in this system
+                            // (`RepBreakdownV5`'s chart toggle) already turns.
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(V5.textQuiet)
+                                .rotationEffect(.degrees(whyOpen ? 90 : 0))
                             Spacer(minLength: 0)
                         }
                         // 44pt target on a row whose visible text is 14pt —

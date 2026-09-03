@@ -74,6 +74,8 @@ import {
   wireVerdictFellShort,
   WIRE_PHASE_VERDICTS,
   EASY_PHASE_TOLERANCE_S_PER_MI,
+  MP_PHASE_TOLERANCE_S_PER_MI,
+  looksLikeMarathonPaceLabel,
   type PaceShape,
   type PhaseType,
   type PhaseVerdict,
@@ -292,24 +294,44 @@ export function gradeStoredPhases(
         || p.paceShape === 'effort' || p.paceShape === 'none'
         ? p.paceShape
         : null;
+    // MP-EMBEDDED-1, 2026-09-04 · `paceShapeFor` grades every work phase of a
+    // `long` session as a ceiling, because it sees a phase TYPE and a
+    // SESSION class, never the phase's own intent. A marathon-specific long
+    // run's embedded MP segment is not the easy running around it —
+    // `Research/01`'s M row: "window for general MP segments" — and the
+    // owner's real 2026-06-27 long run ("10.0 mi easy" into "4.0 mi @
+    // marathon pace", self-authored on the watch, no `paceShape` on either
+    // phase) proved the gap: the MP phase graded `ceiling`, so 462 s/mi
+    // against a 434 s/mi marathon pace read as compliant no matter how
+    // slow, and the post-run copy that tried to name the gap anyway
+    // (`experience.ts`'s since-reverted `paceShortfalls`) inverted ceiling
+    // semantics instead. Checked ONLY when the wire itself is silent —
+    // `wireShape`, `p.paceShape` from the device, always wins outright, per
+    // Rule 10 (a stamped anchor is read, not second-guessed).
+    const looksLikeMP = wireShape == null && gradable === 'work' && hasTarget
+      && looksLikeMarathonPaceLabel(n.label);
     const shape: PaceShape =
       wireShape
-      ?? (classKnown
-          ? paceShapeFor(gradable, sessionClass, { hasTarget, byEffort })
-          : byEffort ? 'effort'
-            : !hasTarget ? 'none'
-            : gradable === 'recovery' ? 'none'
-            : gradable === 'warmup' || gradable === 'cooldown' ? 'ceiling'
-            : 'window');
+      ?? (looksLikeMP
+          ? 'window'
+          : classKnown
+            ? paceShapeFor(gradable, sessionClass, { hasTarget, byEffort })
+            : byEffort ? 'effort'
+              : !hasTarget ? 'none'
+              : gradable === 'recovery' ? 'none'
+              : gradable === 'warmup' || gradable === 'cooldown' ? 'ceiling'
+              : 'window');
 
     const wireTol = num(p.tolerancePaceSPerMi);
     const toleranceSec: number | null =
       shape === 'none' || shape === 'effort' ? null
       : wireTol
-        ?? (classKnown
-            ? phaseToleranceSec(gradable, sessionClass, { hasTarget, byEffort })
-            : shape === 'ceiling' ? EASY_PHASE_TOLERANCE_S_PER_MI
-            : sessionToleranceSec('other'));
+        ?? (looksLikeMP
+            ? MP_PHASE_TOLERANCE_S_PER_MI
+            : classKnown
+              ? phaseToleranceSec(gradable, sessionClass, { hasTarget, byEffort })
+              : shape === 'ceiling' ? EASY_PHASE_TOLERANCE_S_PER_MI
+              : sessionToleranceSec('other'));
 
     const completed = n.completed !== false;
 

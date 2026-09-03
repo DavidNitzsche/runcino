@@ -310,6 +310,10 @@ import {
   SHAKEOUT_CEILING_PAD_S_PER_MI,
   resolveCapacityPrescription,
 } from '@/lib/training/prescription-resolver';
+// MP-EMBEDDED-1 · same clearance as the block above — pure, no pool at any
+// depth (Rule 19), the same seal `lib/execution/verdict.ts`'s own header
+// cites for this exact module.
+import { MP_PHASE_TOLERANCE_S_PER_MI } from '@/lib/training/execution-semantics';
 import {
   AT_PACE_SESSION_MI,
   AT_PACE_WEEKLY_SHARE_CAP,
@@ -4625,6 +4629,60 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
             `MARATHON_OFFSET_S is ${MARATHON_OFFSET_S} · the constant and the derivation have drifted`,
         );
       }
+    },
+  },
+  {
+    id: 'PACE.marathon-embedded-window-tolerance',
+    // MP-EMBEDDED-1, 2026-09-04 · a marathon-specific long run's embedded MP
+    // segment ("10.0 mi easy" into "4.0 mi @ marathon pace") was grading as a
+    // CEILING, because `paceShapeFor` sees a phase TYPE ('work') and a
+    // SESSION class ('long'), never per-phase intent — every work phase in a
+    // long run reads ceiling uniformly, so a marathon-pace phase running
+    // 28 s/mi off its own target read as fully compliant no matter how slow.
+    // `gradeStoredPhases` now detects the phase by its own label
+    // (`looksLikeMarathonPaceLabel`) and grades it as a WINDOW instead, at
+    // doctrine's own M-pace width.
+    binds: [
+      'lib/training/execution-semantics.ts#MP_PHASE_TOLERANCE_S_PER_MI',
+      'lib/training/execution-semantics.ts#looksLikeMarathonPaceLabel',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '## Pace zone width and lock-in rules',
+    claim:
+      'Marathon pace gets a ±5 sec/mi window for general MP segments (locked tighter only for ' +
+      'race-simulation / dress-rehearsal) — not a ceiling, which has no far edge and can never ' +
+      'fail for being slow. An MP segment embedded in an otherwise-easy long run is the general ' +
+      'case, so it is graded at this width.',
+    check({ cite }) {
+      const t = cite.table();
+      const cell = t.cell('M', 'Default range (sec/mi)');
+      const m = /±\s*(\d+(?:\.\d+)?)\s*sec\/mi/.exec(cell);
+      if (!m) {
+        throw new Error(`PACE.marathon-embedded-window-tolerance: could not parse "${cell}" as ±N sec/mi`);
+      }
+      const docValue = Number(m[1]);
+      if (MP_PHASE_TOLERANCE_S_PER_MI !== docValue) {
+        throw new Error(
+          `MP_PHASE_TOLERANCE_S_PER_MI is ${MP_PHASE_TOLERANCE_S_PER_MI} while the M row says ` +
+            `±${docValue} sec/mi — the constant and the doctrine have drifted`,
+        );
+      }
+      // "window for general MP segments" — the same row, same cell, and the
+      // one word this whole claim exists to hold the engine to. If the doc
+      // is ever edited to say "ceiling" here, the claim must fail loudly
+      // rather than silently keep grading a window.
+      const lockCell = t.cell('M', 'Lock to specific pace?');
+      if (!/window for general mp segments/i.test(lockCell)) {
+        throw new Error(
+          `PACE.marathon-embedded-window-tolerance: the M row no longer says "window for general ` +
+            `MP segments" (reads "${lockCell}") — re-read the doctrine before trusting this claim`,
+        );
+      }
+      // The derivation is still there to spend it, not a "// legacy" comment
+      // nobody calls (Rule 20).
+      const src = sourceOf('web-v2/lib/training/execution-semantics.ts');
+      matchLiteral(src, /export const MP_PHASE_TOLERANCE_S_PER_MI\s*=\s*5\s*;/, 'MP_PHASE_TOLERANCE_S_PER_MI');
+      matchLiteral(src, /export function looksLikeMarathonPaceLabel\(/, 'looksLikeMarathonPaceLabel');
     },
   },
   {

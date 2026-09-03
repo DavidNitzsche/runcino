@@ -1073,32 +1073,244 @@ correctly.
   coach's own verdict"). Adding a second per-row grading axis sits in
   real tension with that decision rather than extending it cleanly.
   Flagging this as a decision rather than silently picking a side.
-- **Item 8's remaining polish** — uppercase-titling intensity, the
-  Why-disclosure's visual treatment, race finish-time emphasis.
+- **Item 8's remaining polish** — uppercase-titling intensity,
+  race finish-time emphasis. (The Why-disclosure chevron and the
+  plan-status icon are now done — see §17.)
 - **Item 9's rep-style Shape 1 on Today**, and its bar chart — see
   above.
-- **TodayAfterV5 itself, unverified by rendering** — see above, and
-  the standing VW-3 blocker it depends on.
 
-### Programme-lead merge instructions
+---
 
-1. **Do not merge yet** — David's own instruction, and this pass
-   still leaves two items (3's per-phase UI, 9's Shape 1) genuinely
-   open, plus one screen (`TodayAfterV5`) unverified by render.
-2. When reviewing, the fastest path to seeing this live: `git checkout
-   feat/postrun-experience-lead` in a worktree, `xcodebuild -project
+## 17 · Round 6 — the pace-shape correctness pass (2026-09-04)
+
+David's message after round 5 was a P0: round 5's "Structure completed,
+pace below target" verdict cited a **ceiling**-shaped phase (the easy
+portion, 8:00 ceiling, actual 8:48) as a missed target — but a ceiling
+means "do not run faster than this," and running slower is compliant
+by construction, never a miss. The fix that produced that sentence
+(`paceShortfalls` in round 5) inverted ceiling semantics outright. His
+message set ten requirements. All ten are addressed below; two are
+partial and named as such.
+
+### 1 · Stop treating pace ceilings as pace targets — FIXED
+
+The offending `paceShortfalls` clause is deleted from `experience.ts`.
+Root-caused with a direct DB query against the real run's stored
+watch-completion phases (`faff_readonly` via the walk-substrate copy):
+**neither phase carried a `paceShape` on the wire at all** — the
+session's `workoutType` was `"long"`, and `paceShapeFor` (`lib/training
+/execution-semantics.ts`) grades every `work`-type phase of a `long`
+session as a ceiling uniformly, with no way to see per-phase intent.
+The embedded marathon-pace segment ("4.0 mi @ marathon pace") was
+therefore graded as a ceiling too — which is the real engine gap,
+not a copy bug. See item 3 below for the fix.
+
+The `readExecution` verdict path now composes its sentence entirely
+from each phase's own **already-graded** `verdict` (`hit`/`fast`/
+`slow`, resolved by `gradeCeilingPhase`/`gradeWorkPhase` in
+`lib/execution/verdict.ts`) rather than re-deriving direction from raw
+`actual - target` arithmetic. That is the structural fix: there is now
+no code path in the post-run composer that can disagree with the
+canonical grader about which side of a boundary a phase failed on.
+
+### 2 · Audit the complete grading path for shape direction — DONE
+
+Audited `execution-semantics.ts` and `verdict.ts` directly (not
+reproduced independently) — `gradeCeilingPhase` and `gradeWorkPhase`
+were ALREADY correct; the defect was entirely in `experience.ts`
+bypassing them. The real shape set is `PrescriptionShape` = `ceiling |
+window | effort | none` — four values, not six. There is no distinct
+`floor`, `target`, or `observational` shape in this engine; the
+request to audit those is answered by `docs/reports/postrun-
+experience-lead-2026-09-03/pace-shape-truth-table.md`, which maps the
+six requested categories onto the real four rather than inventing
+types that don't exist, states the direction convention explicitly
+(smaller s/mi = faster), and gives the full truth table.
+
+### 3 · Boundary tests for every shape, plus the five real examples — DONE
+
+New file `web-v2/lib/training/_pace_shape_direction.test.ts`, 38 cases:
+comfortably compliant / exactly at boundary / just inside tolerance /
+just outside tolerance / much faster / much slower / missing pace /
+missing shape / legacy payload, for ceiling and window; the effort/none
+refusal cases; `paceShapeFor`'s own type+class resolution; and all
+five of David's named real-shaped examples with the plain-language
+verdict beside each (reproduced in the truth-table doc). Every
+assertion states the expected verdict in a comment, per his explicit
+ask.
+
+### 4 · What the Watch workout actually prescribed — DETERMINED, and the gap fixed at the engine
+
+Queried the raw stored phases directly (`select data->'phases' from
+runs where id::text like '%132305279286285%'`, `faff_visual_walk_
+postrun`): **no `paceShape` field exists on either phase** — the watch
+did not stamp shape intent on the wire at all, and the device's own
+`verdict` field reads `"missed"` on BOTH phases (the wrist's own
+two-sided grading, not evidence of ceiling-vs-window intent). So this
+is squarely the "serialized as a ceiling when it should have been a
+window" case David named — and per his own instruction ("fix the
+prescription and Watch contract rather than compensating in post-run
+copy"), the fix landed at the ENGINE: `gradeStoredPhases` now detects
+a marathon-pace-labelled work phase in a `long`-classified session
+(`looksLikeMarathonPaceLabel`, matching `/marathon[\s-]*pace/i` on the
+phase's own label) and grades it as a window at `Research/01`'s M-pace
+width (±5 s/mi — "window for general MP segments"), UNLESS the wire
+carries an explicit `paceShape`, which always wins (Rule 10). Doctrine-
+registered as `PACE.marathon-embedded-window-tolerance`, reading the
+±5 figure out of the doc table at run time, not hardcoded.
+
+### 5 · Prioritize the key phase — DONE
+
+New `KEY-PHASE-1` branch in `experience.ts`'s `uneven`-verdict path:
+for a multi-purpose long run, the WINDOW-shaped phase (the marathon-
+effort work — the prescription the whole session exists for, per
+`Research/04` §4.1) is named first, with its own pace-vs-window
+compliance and HR; the ceiling-shaped supporting phase is named after,
+as context. Live-verified summary: *"4.0 mi @ marathon pace averaged
+7:42/mi, outside its 7:14/mi window. HR averaged 163 bpm. 10.0 mi easy
+stayed within its own ceiling."* — completion, pace compliance against
+the REAL shape, HR, and the supporting phase, in that order, naming
+neither phase generically.
+
+### 6 · No cluttered per-row scorecard — HONORED, resolved as directed
+
+Per his explicit resolution ("keep phase rows factual and compact...
+let the canonical session-level Coach's Read combine the dimensions"),
+no second per-row grading system was added. `RepBreakdownV5`'s rows
+already carry actual pace, actual HR, the prescribed value, and one
+neutral status phrase (`phaseVerdictPhrase` — "Under the ceiling" /
+"On target" / "Outside the band"); nothing new was layered on top.
+This closes round 5's flagged item-3 tension: the resolution was
+"compact rows, canonical combined judgement," not a second axis.
+
+### 7 · The verification-record error — INVESTIGATED, fixed, and the process hardened
+
+`round5-long-top.png` genuinely was the iPhone home screen. Root
+cause, confirmed directly (not guessed): a fresh install's FIRST launch
+races the app's own notification-permission request against the
+`-faffRunDetail` fixture path, and depending on timing the app can
+background to SpringBoard before or during the screenshot. **Not a
+crash** — no crash report exists in `CoreSimulator`'s `CrashReporter`
+for the affected window, and the OS log shows an ordinary background/
+foreground cycle. Separately, a second contributor was found and
+eliminated: after running `xcodebuild test`, the SAME installed binary
+carried leftover XCTest network-fence state into a subsequent `simctl
+launch`, corrupting one render before the true cause was isolated.
+
+Fixed procedurally, not by adding new product code: every launch used
+for verification from this point on passes `-faffToken <value>`
+(already-existing DEBUG-only machinery in `FaffApp.swift` — see its own
+header comment, "skip the interactive prompt on a QA-token launch:
+nothing can dismiss it headlessly") alongside `-faffRunDetail`, which
+this pass had NOT been doing. Combined with confirming the app's data
+container is stable (`xcrun simctl get_app_container`) before AND
+after each launch, this made every subsequent capture deterministic —
+zero further mismatches across 10 renders (8 fixture screenshots + 2
+live Today-after-run screenshots).
+
+**All eight `round6-*.png` files were opened and read back, in full,
+by this agent before being described as correct** — not assumed from
+a successful `xcrun` exit code. `round5-*.png` deleted from the report
+directory (superseded, not just supplemented).
+
+### 8 · Remaining visual polish — PARTIALLY DONE
+
+Done and verified: the "Why" disclosure now carries a rotating chevron
+(flat closed, 90° open) instead of bare text — an actual control
+affordance, not a label. "Plan unchanged."/"Plan updated." now carries
+a small status icon (checkmark / refresh / clock) so it reads as a
+deliberate status row rather than a stray sentence — kept OUTSIDE the
+Coach's Read card on purpose (an earlier session's own reasoning:
+it's a fact, not the card's conclusion; David's complaint was read as
+about the row's visual weight, not its position). Both live-verified
+on the AFC race render (§ screenshots).
+
+NOT done, named honestly rather than rushed: less-aggressive
+all-uppercase title intensity, and stronger race finish-time emphasis.
+Both are typographic changes with wider blast radius (the uppercase
+tracking is shared `AppBar` styling, touching every screen that uses
+it) that this pass chose not to make without a dedicated look at the
+consequences elsewhere in the app.
+
+### 9 · Today-after-run parity — RENDER-VERIFIED, closing round 5's biggest open gap
+
+Round 5 left this wire-complete but explicitly UNVERIFIED by render,
+blocked on a documented QA-token issue. That block is resolved: `
+-faffToken` combined with `-faffHost http://127.0.0.1:3112` genuinely
+authenticates against the walk-substrate copy (confirmed by the "DN"
+avatar and real week-strip data), and tapping September 1 in the week
+strip navigates to the real `TodayAfterV5` "after_run" state for the
+owner's actual threshold session. Two real screenshots
+(`round6-today-top.png`, `round6-today-bottom.png`), both read back
+and verified:
+
+- Top: distance/time/pace, readings, and Coach's Read — **"Controlled
+  work / All four reps landed, with one quicker than the window."** —
+  the exact same sentence RunDetailV5 renders for the identical real
+  activity, proving the shared canonical `postRun` object is genuinely
+  shared, not paraphrased twice.
+- Scrolled: HR-zone bar, route, and **Piece by Piece with real phase
+  labels** — "Warm Up" / "Interval 1" / "Recovery" — and real per-phase
+  verdicts ("Under the ceiling" / "On target"), confirming this pass's
+  `sectionPieces` fix (real `label` + `phaseVerdictPhrase`) end-to-end
+  on the actual second entry point, not just in source.
+
+Still genuinely open: the rep-style Shape 1 stats grid (completion
+count, rep range) on Today needs a `completed` flag and total rep
+count the wire still does not carry, and `workoutAnalysisSection`'s bar
+chart was not ported. Neither was attempted this pass.
+
+### 10 · Final verification before merge
+
+- **Pace-shape truth table**: `docs/reports/postrun-experience-lead-
+  2026-09-03/pace-shape-truth-table.md`.
+- **Boundary-direction test results**: `_pace_shape_direction.test.ts`,
+  38/38 passed.
+- **Watch serialization / provenance for the long run**: §4 above —
+  no `paceShape` field on either phase, device `verdict: "missed"` on
+  both, confirmed by direct query against `faff_readonly`.
+- **Corrected screenshots**: `round6-{interval,easy,race,long}-
+  {top,bottom}.png` and `round6-today-{top,bottom}.png`, all ten read
+  back and verified by this agent, not assumed.
+- **Full scroll and chart-interaction recording**: NOT captured this
+  pass (screenshots at rest and mid-scroll only) — named as not done
+  rather than implied.
+- **Build and full core test results**: `xcodebuild build` → BUILD
+  SUCCEEDED (full clean rebuild, derived data wiped, to eliminate any
+  possibility of a stale artifact after the round-5 false alarm on
+  that front); `xcodebuild test -only-testing:FaffTests` → **TEST
+  SUCCEEDED**; `web-v2` vitest across `lib/postrun/`, `lib/execution/`,
+  `lib/training/`, `lib/doctrine/` → **2028+ passed, 0 failed**
+  (includes the new 38-case boundary suite and the corrected
+  assertions in three pre-existing test files that had encoded the old,
+  wrong wording).
+- **Exact commit hash**: see the commit this handback ships with —
+  reported in the same message that links this file.
+- **Current-`main` reconciliation**: performed as the last step before
+  push; see the commit/push log.
+- **Programme-lead merge instructions**: below, superseding round 5's.
+
+### Programme-lead merge instructions (superseding round 5's)
+
+1. **Do not merge yet** — David's own standing instruction for this
+   branch. This round closes the P0 and both named open items from
+   round 5's own list (item 3's per-phase UI was resolved as directed,
+   `TodayAfterV5` is now render-verified) — what remains open is item
+   8's two typographic items and item 9's Shape 1, both named above,
+   neither P0.
+2. Fastest path to seeing this live: `git checkout feat/postrun-
+   experience-lead`, then a **clean** build — `xcodebuild -project
    native-v2/Faff.xcodeproj -scheme Faff -destination "id=<simulator>"
-   build` (do NOT pass `-sdk iphonesimulator` — that forces the
-   watch-only targets onto the wrong SDK and fails the build with an
-   unrelated WatchKit error, a real trap this pass hit twice), then
-   render against a real account via the walk-substrate harness
-   (`scripts/walk-server.sh` + `-faffRunDetail`) rather than the
-   bundled sample fixture, per Rule 13.
-3. Once approved: fast-forward merge only, after `git fetch` — this
-   repo's own standing rule, and `main` may have moved.
-4. Before merging, resolve item 3's flagged design tension (per-row
-   dual verdicts vs. `RepBreakdownV5`'s no-scorecard rule) — that is a
-   decision, not a bug, and belongs to whoever owns this surface next.
-5. `TodayAfterV5`'s render is unverified; confirm it live (once VW-3 is
-   fixed, or via a real signed-in device) before treating item 9 as
-   fully closed rather than wire-complete.
+   clean build` (no `-sdk` flag, per the standing WatchKit trap). Use
+   `-faffToken <any-non-empty-string>` alongside `-faffRunDetail` for
+   any fixture-based render — omitting it is what caused round 5's
+   verification-record error.
+3. Once approved: fast-forward merge only, after `git fetch` — `main`
+   may have moved.
+4. `Research/01-pace-zones-vdot.md`'s M-pace row and `Research/04-
+   workout-vocabulary.md` §4.1 are now load-bearing doctrine citations
+   (`PACE.marathon-embedded-window-tolerance`) — a future edit to
+   either table is doctrine-gated, not free-floating prose.
+5. Item 9's rep-style Shape 1 (completion count, rep range) on Today
+   needs a wire change (`completed` flag + total rep count on
+   `routePhases`) before it can be built — scoped, not attempted here.

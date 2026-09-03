@@ -140,8 +140,14 @@ describe.skipIf(!RO)('post-run experience · live payload', () => {
 
     // 1 · THE EASY BLOCK IS NOT A REPETITION, and the strides are not reps of it.
     expect(out.execution.summary).not.toMatch(/seven|\breps?\b/i);
+    // EASY-VOICE-1, 2026-09-04 · "The work block stayed under the ceiling"
+    // is composer vocabulary for a run that got done, not "work" that got
+    // "executed" — replaced with activity-appropriate language for a single
+    // ceiling-shaped block. The compliance claim is unchanged and still
+    // gated on the real grade (a ceiling can never fail for being slow).
+    expect(out.execution.headline).toBe('Easy run complete');
     expect(out.execution.summary).toBe(
-      'The work block stayed under the ceiling. Six strides after, walk-backs taken.',
+      'You kept the run controlled, staying under the pace ceiling. Six strides after, walk-backs taken.',
     );
     expect(out.execution.intendedStimulus).toBe('Easy');
 

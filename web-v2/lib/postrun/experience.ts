@@ -758,6 +758,65 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
 
   if (s.verdict === 'uneven') {
     reasons.push('WORK_PIECES_DISAGREE');
+    /* KEY-PHASE-1, 2026-09-04 · replaces the since-deleted `paceShortfalls`
+     * check, which INVERTED ceiling semantics: it flagged a ceiling phase
+     * running SLOWER than its ceiling as a "shortfall", when doctrine is
+     * explicit a ceiling never fails for being slow — "10.0 mi easy
+     * averaged 8:48/mi against 8:00/mi prescribed" was reported as a miss
+     * when 8:48 is compliant with an 8:00 ceiling by construction. That
+     * defect is now impossible by construction too: `MP_PHASE_TOLERANCE_
+     * S_PER_MI` (`execution-semantics.ts`) makes `gradeStoredPhases` grade
+     * a marathon-pace-labelled phase as a WINDOW, not a ceiling, so a real
+     * miss on that phase surfaces as `slow`/`fast` through the SAME ladder
+     * every other window phase uses — this branch only NAMES which phase
+     * within an `isMultiPurposeStructure` session earned the mixed verdict,
+     * it does not re-decide anything `sessionLadder` already decided.
+     *
+     * Research/04-workout-vocabulary.md §4.1: a marathon-pace long run's
+     * whole point is "marathon-specific economy" — the window-shaped phase
+     * IS the prescription this session exists for, and a ceiling phase
+     * beside it is safety context. Prioritized per that: which block, was
+     * its pace compliant with ITS OWN shape, was HR appropriate, then the
+     * supporting phase. */
+    if (isMultiPurposeStructure) {
+      const keyPhases = work.filter((p) => p.shape === 'window' && p.verdict !== 'not_graded');
+      if (keyPhases.length > 0) {
+        const key = keyPhases[0];
+        const support = work.filter((p) => p !== key);
+        const keyLabel = key.label ?? 'the key block';
+        const keyActual = fmtPaceSlash(key.avgSecPerMi);
+        const keyTarget = fmtPaceSlash(key.targetSecPerMi);
+        const paceLine = keyActual && keyTarget
+          ? key.verdict === 'slow'
+            ? `averaged ${keyActual}, outside its ${keyTarget} window`
+            : key.verdict === 'fast'
+              ? `averaged ${keyActual}, ahead of its ${keyTarget} window`
+              : `averaged ${keyActual}, inside its ${keyTarget} window`
+          : 'was completed';
+        const hrLine = key.avgHr == null ? ''
+          : input.workHrCeilingBpm != null
+            ? ` HR averaged ${key.avgHr} bpm, ${key.avgHr <= input.workHrCeilingBpm ? 'under' : 'over'} the ${input.workHrCeilingBpm} bpm ceiling.`
+            : ` HR averaged ${key.avgHr} bpm.`;
+        const supportNames = support.map((p) => p.label).filter((l): l is string => !!l);
+        const supportLine = supportNames.length > 0
+          ? ` ${cap1(listWords(supportNames))} stayed within ${supportNames.length === 1 ? 'its' : 'their'} own ceiling.`
+          : '';
+        reasons.push('KEY_PHASE_NAMED');
+        return {
+          status: 'PARTIAL_PRODUCTIVE',
+          headline: key.verdict === 'slow' ? 'Structure completed, pace below target'
+            : key.verdict === 'fast' ? 'Structure completed, pace ahead of target'
+            : 'Structure completed',
+          summary: `${cap1(keyLabel)} ${paceLine}.${hrLine}${supportLine}${strideClause}`,
+          intendedStimulus: stimulus,
+          stimulusDelivered: 'PARTIAL',
+          confidence: 'HIGH',
+          targetProvenance: input.targetProvenance,
+          targetProvenanceNote,
+          reasons,
+        };
+      }
+    }
     return {
       status: 'PARTIAL_PRODUCTIVE',
       headline: 'Mixed set',
@@ -765,55 +824,6 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
-      targetProvenance: input.targetProvenance,
-      targetProvenanceNote,
-      reasons,
-    };
-  }
-
-  /* CEILING-VS-PACE-1, 2026-09-04 · every graded phase can "land" — respect
-   * its own ceiling — while a real pace prescription underneath that
-   * ceiling was missed by a wide margin, and doctrine's "a ceiling phase
-   * never fails for being slow" (Rule 8-adjacent: easy running is not
-   * failed for being slow) is a rule about GRADING, not about REPORTING.
-   * The two got collapsed into one word here: a marathon-specific long
-   * run's "4.0 mi @ marathon pace" phase averaged 7:42/mi against a
-   * 7:14/mi target — 28 s/mi past its own graded tolerance — and still
-   * read "Controlled work... stayed under the ceiling" with no mention
-   * that the pace itself was well off. The STATUS this session earns does
-   * not change (a ceiling-graded phase that respected its ceiling is a
-   * real pass, not a failure to be invented); the SENTENCE now says both
-   * true things instead of only the flattering one.
-   *
-   * `> toleranceSec` — not `> 0` — because the tolerance band is the
-   * doctrine-set width a pace is allowed to drift within; this only fires
-   * for a phase that missed even that.
-   */
-  const paceShortfalls = work.filter((p) => {
-    if (p.shape !== 'ceiling' || p.verdict === 'not_graded') return false;
-    if (p.avgSecPerMi == null || p.targetSecPerMi == null || p.toleranceSec == null) return false;
-    return p.avgSecPerMi - p.targetSecPerMi > p.toleranceSec;
-  });
-  if (paceShortfalls.length > 0 && s.verdict === 'executed') {
-    reasons.push('CEILING_RESPECTED_BUT_PACE_SHORTFALL');
-    const detail = paceShortfalls
-      .map((p) => {
-        const actual = fmtPaceSlash(p.avgSecPerMi);
-        const asked = fmtPaceSlash(p.targetSecPerMi);
-        const label = p.label ?? 'work';
-        return actual && asked ? `${label} averaged ${actual} against ${asked} prescribed` : null;
-      })
-      .filter((t): t is string => t != null)
-      .join('; ');
-    return {
-      status: 'PARTIAL_PRODUCTIVE',
-      headline: 'Structure completed, pace below target',
-      summary: (single
-        ? `You stayed under the HR ceiling, but ${detail}.`
-        : `You completed ${reps} and stayed under the HR ceiling, but ${detail}.`) + strideClause,
-      intendedStimulus: stimulus,
-      stimulusDelivered: 'PARTIAL',
-      confidence: 'HIGH',
       targetProvenance: input.targetProvenance,
       targetProvenanceNote,
       reasons,
@@ -843,6 +853,33 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
   reasons.push('EVERY_WORK_PIECE_LANDED');
   if (s.recoveriesHonest) reasons.push('RECOVERIES_TAKEN_AS_PRESCRIBED');
   if (!s.lateCollapse) reasons.push('NO_LATE_COLLAPSE');
+  /* EASY-VOICE-1, 2026-09-04 · "Work executed" is composer vocabulary — a
+   * single ceiling-shaped block (an ordinary easy or long run, no reps to
+   * land) is not a "work" that gets "executed", it is a run that got done.
+   * By this point in the function the phase has already earned a genuine
+   * `hit` (a `fast` ceiling verdict routed to the branch above, and a
+   * ceiling can never grade `slow` — `gradeCeilingPhase` has no slow
+   * verdict), so "stayed under the ceiling" is asserted only because the
+   * grade actually proves it, per Rule 16 — never asserted merely because
+   * the session happens to be shaped that way. */
+  if (single && bound === 'ceiling') {
+    reasons.push('SINGLE_CEILING_BLOCK');
+    const runWord = input.plannedType === 'long' ? 'Long run'
+      : input.plannedType === 'recovery' ? 'Recovery run'
+      : input.plannedType === 'shakeout' ? 'Shakeout'
+      : 'Easy run';
+    return {
+      status: 'CONTROLLED',
+      headline: `${runWord} complete`,
+      summary: `You kept the run controlled, staying under the pace ceiling.${strideClause}`,
+      intendedStimulus: stimulus,
+      stimulusDelivered: 'FULL',
+      confidence: 'HIGH',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
+      reasons,
+    };
+  }
   // CONTROLLED is the word for landed-and-held-together; EXECUTED for landed
   // where the shape of the set is not something this grade can speak to.
   const controlled = s.recoveriesHonest === true && !s.lateCollapse;
