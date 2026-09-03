@@ -375,7 +375,28 @@ struct BlockV5: View {
                         stage = .menu
                         planSheetOpen = true
                     })
+            // RS-7 · the plan surface's own door into the rescheduling
+            // decision. Distinct from "Change the plan" above, which asks the
+            // runner to name BOTH days: this one asks only which days are out
+            // and lets the coach rank the rest. `docs/RESCHEDULING_CONTRACT.md`.
+            if let day = nextMovableDayISO {
+                RescheduleEntryRowV5(dateISO: day, phrasing: .findTheBestDay)
+            }
         }
+    }
+
+    /// The next future day that carries a session worth moving. The row is
+    /// hidden rather than shown-and-refusing when the block has none, because
+    /// a door that always opens onto "there is nothing prescribed" is worse
+    /// than no door.
+    private var nextMovableDayISO: String? {
+        for week in model.weeks {
+            for day in week.days where day.isFuture {
+                guard let iso = day.dateISO, let type = day.type else { continue }
+                if type != "rest" && type != "race" { return iso }
+            }
+        }
+        return nil
     }
 
     // MARK: Every week
