@@ -21,6 +21,10 @@ export interface FixtureOpts {
   anchorsRefuse?: boolean;
   /** Override the equivalence function entirely (e.g. to refuse). */
   equivalenceAt?: RaceOutlookReads['equivalenceAt'];
+  /** EXECTARGET-1 · the block's last authored marathon-effort pace. Undefined
+   *  means "no plan to read", which is the fixture's honest default and a
+   *  different fact from a plan that rehearses nothing (Rule 11). */
+  plannedLastRehearsalPaceSecPerMi?: number | null;
 }
 
 export function fixtureRace(over: Partial<RaceForOutlook> = {}): RaceForOutlook {
@@ -81,5 +85,6 @@ export function fixtureReads(o: FixtureOpts = {}): RaceOutlookReads {
     lthrBpm: o.lthrBpm === undefined ? 168 : o.lthrBpm,
     maxHrBpm: o.maxHrBpm === undefined ? 180 : o.maxHrBpm,
     hrEfforts: [],
+    plannedLastRehearsalPaceSecPerMi: o.plannedLastRehearsalPaceSecPerMi ?? null,
   };
 }

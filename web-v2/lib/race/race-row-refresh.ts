@@ -405,7 +405,12 @@ export function raceRowWrite(args: {
   // Whose number this is, from the owner's own verdict rather than a second
   // reading of the goal. A target that IS the stated goal is the runner's;
   // anything the runway bounded or the projection set is the coach's.
-  const voice: RaceTargetVoice = outlook.execution.source === 'stated_goal_within_range' ? 'runner' : 'coach';
+  // EXECTARGET-1 (2026-09-03) · the execution target no longer reads the stated
+  // goal at all (Q7: "3:13:30 must not be labelled the current execution target
+  // merely because it is the fast edge of a wide range"), so every target this
+  // row can carry is the coach's. The runner's number is echoed beside it as
+  // `statedGoal` and is never overwritten.
+  const voice: RaceTargetVoice = 'coach';
 
   if (row.type === 'race') {
     const prevExec = (spec.race_execution ?? null) as { target_sec?: number } | null;

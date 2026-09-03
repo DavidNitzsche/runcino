@@ -20,10 +20,20 @@
  *                         remaining block can defensibly deliver
  *                         (`projectExpectedGain`, goal-free), converted through
  *                         the same equivalence. A range and a confidence.
- *   execution             what he should actually run on the day: the expected
- *                         race-day result, pulled toward a stated goal only as
- *                         far as the likely range's fast edge. Plus HR guidance
- *                         resolved on its own evidence (`race-hr-guidance.ts`).
+ *   execution             what he should actually run on the day. EXECTARGET-1
+ *                         (2026-09-03): the CURRENT PROJECTION, not the
+ *                         forecast and never the goal. `PROGRESSIVE_BASELINE_
+ *                         DOCTRINE.md` Q7 — "the projection-derived value, used
+ *                         wherever one current execution number is required...
+ *                         3:13:30 must not be labelled the current execution
+ *                         target merely because it is the fast edge of a wide
+ *                         range." Plus HR guidance resolved on its own evidence
+ *                         (`race-hr-guidance.ts`).
+ *   conditionalUpside     the forecast's fast edge, carried as an upside with
+ *                         its criteria attached rather than as a prescription.
+ *   blockSeam             whether the plan actually rehearses the pace this day
+ *                         asks for. "Race day cannot ask for a pace the block
+ *                         never made credible."
  *
  * The audit that ordered this found NINE distinct CIM numbers live at once,
  * three of them wearing "projects" or "tracking". The rule now: two surfaces
@@ -34,6 +44,12 @@
  *
  *   capacity → current projection → training pace → expected improvement →
  *   expected race day → execution target
+ *
+ * The last step now goes BACK to the current projection rather than forward
+ * past the forecast, which is the point: the forecast is what the block is
+ * designed to deliver and the execution target is what the evidence carries
+ * today. A runner reading the bridge sees both, in that order, with the
+ * conditional upside beside them.
  *
  * Every step carries a value, its evidence, a confidence, what would change
  * it, and why it differs from the step before. Adjacent steps are derived
@@ -71,6 +87,10 @@ import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { raceOpeningPlan } from '@/lib/race/distance-doctrine';
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { resolveRaceHrGuidance, type RaceHrGuidance, type RaceHrEvidenceRow } from '@/lib/race/race-hr-guidance';
+// EXECTARGET-1 · the marathon pace contract names the quantities and owns the
+// seam arithmetic; this file supplies the race-side numbers and reads the
+// block's authored rehearsal pace. Neither recomputes the other's.
+import { marathonSeam, CONDITIONAL_UPSIDE_CRITERIA, type MarathonSeam } from '@/lib/training/marathon-pace-contract';
 
 export const RACE_OUTLOOK_MODEL_VERSION = '1.0.0';
 
@@ -78,6 +98,25 @@ export const RACE_OUTLOOK_MODEL_VERSION = '1.0.0';
  *  `spec-builder.ts`'s race branch has always written (`Research/08` §3:
  *  −5 controlled push, +5 allowance; the first-mile opening is structural). */
 export const RACE_EXECUTION_BAND_S_PER_MI = 5;
+
+/**
+ * CEFFORT-2 (2026-09-03) · where a controlled C effort sits between the
+ * runner's threshold and his marathon anchor.
+ *
+ * The owner's ruling on the Dodgers 10K: "Pace ~7:30-7:40/mi, or equivalent
+ * controlled steady-to-marathon effort... the physiological intent must stay
+ * below a true 10K race effort." On his anchors (T 7:10, M 7:52) 0.6 of that
+ * span is 7:35, and `RACE_EXECUTION_BAND_S_PER_MI` around it is 7:30-7:40 —
+ * his stated band exactly, resolved from his own two anchors rather than
+ * pinned to one runner's clock times, so it moves with him.
+ *
+ * The number is a coaching call, not a research constant, and it is written
+ * here as one. What IS doctrine is that the day sits on the marathon side of
+ * steady: `Research/00b` §"Recovery by Effort" makes a C race a "hard workout
+ * substitute" to be treated "like a hard workout", and this one falls the day
+ * before a long run.
+ */
+export const CONTROLLED_EFFORT_SPAN_SHARE = 0.6;
 
 /** How old the newest capacity evidence may be before the outlook says so.
  *  `REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS` is the half-life the threshold
@@ -177,7 +216,16 @@ export interface RaceOutlook {
     targetSec: number | null;
     paceSecPerMi: number | null;
     paceBandSecPerMi: readonly [number, number] | null;
-    source: 'expected_race_day' | 'stated_goal_within_range' | 'stated_goal_clamped_to_range_edge' | 'controlled_c_effort' | 'unavailable';
+    /**
+     * EXECTARGET-1 (2026-09-03) · `stated_goal_within_range` and
+     * `stated_goal_clamped_to_range_edge` are REMOVED, not defaulted off. Both
+     * were the stated goal reaching the prescription, and `PROGRESSIVE_BASELINE
+     * _DOCTRINE.md` Q7 rules that the active number is the projection-derived
+     * one. `expected_race_day` goes with them: the block's forecast is a
+     * forecast and lives in `expectedRaceDay`, and its fast edge lives in
+     * `conditionalUpside` with its criteria attached.
+     */
+    source: 'current_evidence' | 'controlled_c_effort' | 'unavailable';
     /**
      * CEFFORT-1 (2026-09-02) · WHAT KIND OF DAY THIS IS, and the field the
      * rest of the object is priced from.
@@ -200,6 +248,41 @@ export interface RaceOutlook {
     reasonVsExpected: string;
     hr: RaceHrGuidance | null;
   };
+  /**
+   * EXECTARGET-1 (2026-09-03) · Q7's fourth layer · A FASTER OUTCOME THAT IS
+   * NOT THE PRESCRIPTION.
+   *
+   * The fast edge of `expectedRaceDay.likelyRangeSec` — the number that used to
+   * BE the execution target because a fast goal pulled it there — carried as
+   * what it actually is: available if the block earns it, with the criteria
+   * stated rather than implied.
+   *
+   * Nothing evaluates the criteria and promotes it. `PLAN_SIMPLIFICATION_
+   * DOCTRINE.md` has adaptation disabled, and a conditional that quietly
+   * promoted itself would be exactly the automatic mutation doctrine removed.
+   * Null when there is no forecast, or when the forecast is not faster than
+   * today's evidence — an "upside" that is not an upside is refused, not
+   * renamed (Rule 11).
+   */
+  conditionalUpside: {
+    targetSec: number;
+    paceSecPerMi: number | null;
+    criteria: readonly string[];
+    confidence: number | null;
+  } | null;
+  /**
+   * EXECTARGET-1 · THE SEAM · does the block make this target credible?
+   *
+   * The owner's standard, verbatim: "Race day cannot ask for a pace the block
+   * never made credible." Resolved against the marathon-effort pace the plan
+   * ACTUALLY authored, read from `training_plans.authored_state`, so a dose
+   * the dosing caps or the intensity floor shaved away cannot be counted as a
+   * rehearsal that happened.
+   *
+   * Null when there is no active plan to read, which is a different fact from a
+   * plan that rehearses nothing (Rule 11) — `marathonSeam` says which.
+   */
+  blockSeam: MarathonSeam | null;
   goalFeasibility: {
     status: 'no_goal' | 'comfortable' | 'realistic' | 'aggressive' | 'unlikely_currently' | 'unavailable';
     gapSec: number | null;
@@ -340,6 +423,38 @@ export interface RaceOutlookReads {
   maxHrBpm: number | null;
   /** The runner's own sustained efforts near race intensity (HR evidence). */
   hrEfforts: RaceHrEvidenceRow[];
+  /**
+   * EXECTARGET-1 · the LAST marathon-effort pace the active plan actually
+   * authored, from `authored_state.marathon_specific_ladder`. Null when there
+   * is no active plan, or when the plan predates the ladder — which is a
+   * different fact from a plan that rehearses nothing, and `marathonSeam`
+   * reports it as one (Rule 11).
+   *
+   * Read here rather than computed, because `lib/plan/marathon-specific-ladder`
+   * owns the sequence and this module may not answer that question a second
+   * time (Rule 16).
+   */
+  plannedLastRehearsalPaceSecPerMi: number | null;
+}
+
+/**
+ * The block's last authored marathon-effort pace, from the ACTIVE plan.
+ *
+ * Rule 14 · the population is named: this user, the one plan that is not
+ * archived. `clearActivePlansFor` archives rather than deletes, so a join on
+ * `user_uuid` alone reads every version this runner has ever had.
+ */
+async function loadPlannedLastRehearsalPace(userUuid: string): Promise<number | null> {
+  const row = (await pool.query<{ authored_state: Record<string, unknown> | null }>(
+    `SELECT authored_state FROM training_plans
+      WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+      ORDER BY authored_iso DESC LIMIT 1`,
+    [userUuid],
+  )).rows[0];
+  const ladder = (row?.authored_state ?? {})['marathon_specific_ladder'] as
+    { last_rehearsal_pace_s_per_mi?: unknown } | null | undefined;
+  const v = ladder?.last_rehearsal_pace_s_per_mi;
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
 }
 
 export async function loadRaceOutlookReads(
@@ -347,13 +462,14 @@ export async function loadRaceOutlookReads(
   race: RaceForOutlook,
   today: string,
 ): Promise<RaceOutlookReads> {
-  const [anchorRead, threshold, durabilityRead, maxHr, lthrBpm, hrEfforts] = await Promise.all([
+  const [anchorRead, threshold, durabilityRead, maxHr, lthrBpm, hrEfforts, plannedLastRehearsalPaceSecPerMi] = await Promise.all([
     resolvePrescribedPaceAnchors(userUuid, today),
     resolveThresholdCapacity(userUuid, today),
     resolveRaceExponent(userUuid).catch((): RaceExponentRead => ({ ok: false, reason: 'no_races', races: 0 })),
     loadEffectiveMaxHr(userUuid, today).catch(() => ({ bpm: null as number | null })),
     loadLthr(userUuid),
     loadRaceHrEvidence(userUuid, today),
+    loadPlannedLastRehearsalPace(userUuid),
   ]);
   const thresholdSecPerMi = anchorRead.ok ? anchorRead.anchors.thresholdSecPerMi : threshold.paceSecPerMi;
   const anchorDistanceMi = thresholdSecPerMi > 0 ? (THRESHOLD_ANCHOR_MINUTES * 60) / thresholdSecPerMi : null;
@@ -374,6 +490,7 @@ export async function loadRaceOutlookReads(
     lthrBpm,
     maxHrBpm: maxHr.bpm,
     hrEfforts,
+    plannedLastRehearsalPaceSecPerMi,
   };
 }
 
@@ -590,8 +707,51 @@ export async function composeRaceOutlook(
     const currentSec = currentProjection.expectedSec;
     let ceilingSec: number | null;
     if (thresholdSecPerMi > 0 && race.distanceMi > 0) {
+      /* ── CEFFORT-2 (2026-09-03) · THRESHOLD IS NOT "CONTROLLED" ────────────
+       *
+       * CEFFORT-1's ceiling was the THRESHOLD carry, and on the owner's Dodgers
+       * 10K that priced the day at 45:00 · 7:15/mi against a 7:10/mi threshold.
+       * The owner, ruling on it:
+       *
+       *   "That is effectively a sustained threshold effort, not an obviously
+       *    restrained race, and is too hard to describe as controlled before a
+       *    17-mile long run."
+       *
+       * Meanwhile the authored rationale for that same day says "Dodgers is
+       * prescribed as a controlled effort, not a race". The sentence and the
+       * number disagreed, and Rule 16 says a sentence asserting a fact about a
+       * measurement is gated on that measurement — so the NUMBER moves.
+       *
+       * His prescription: "Pace ~7:30-7:40/mi, or equivalent controlled
+       * steady-to-marathon effort... the physiological intent must stay below a
+       * true 10K race effort."
+       *
+       * THE BAND, IN OWNED QUANTITIES RATHER THAN CLOCK TIMES. A controlled
+       * effort sits between the runner's marathon anchor and his threshold —
+       * the span doctrine calls steady — and it is taken at the marathon side
+       * of that span's middle. On this runner (T 7:10, M 7:52) that is 7:31 to
+       * 7:41, which is his stated band, resolved from his own anchors so it
+       * moves with him instead of being pinned to one runner's clock.
+       *
+       * `Research/00b` §"Recovery by Effort" is the doctrine underneath: a C
+       * race is "Strong effort, no taper", a "hard workout substitute", to be
+       * treated "like a hard workout". A hard workout for a marathoner in this
+       * phase is marathon-to-steady effort, not a threshold time trial, and it
+       * is the day BEFORE a long run here.
+       *
+       * Falls back to the old threshold carry when there is no marathon anchor
+       * — a refusal to invent a band rather than a silently narrower one.
+       */
       const thresholdCarrySec = thresholdSecPerMi * race.distanceMi;
-      ceilingSec = currentSec != null ? Math.max(thresholdCarrySec, currentSec) : thresholdCarrySec;
+      const marathonAnchorSecPerMi = anchors?.marathonSecPerMi ?? null;
+      const controlledSecPerMi = marathonAnchorSecPerMi != null && marathonAnchorSecPerMi > thresholdSecPerMi
+        ? thresholdSecPerMi + (marathonAnchorSecPerMi - thresholdSecPerMi) * CONTROLLED_EFFORT_SPAN_SHARE
+        : null;
+      const controlledCarrySec = controlledSecPerMi != null ? controlledSecPerMi * race.distanceMi : null;
+      // The slower of what he could race today and what a controlled effort
+      // costs. `Math.max` in SECONDS, continuous and monotone in both inputs.
+      const restraintSec = controlledCarrySec ?? thresholdCarrySec;
+      ceilingSec = currentSec != null ? Math.max(restraintSec, currentSec) : restraintSec;
     } else {
       ceilingSec = currentSec;
     }
@@ -603,24 +763,60 @@ export async function composeRaceOutlook(
         ? `C race. Run it as the week's hard session, not as a race. Your ${fmtTime(goalSec)} goal stays yours; ${fmtTime(targetSec)} is what this day is for.`
         : 'C race. Run it as the week\u2019s hard session, controlled, and take the day\u2019s work rather than the result.';
     }
-  } else if (expectedSec != null && likelyRangeSec != null) {
-    if (goalSec == null) {
-      targetSec = roundRaceTargetSec(expectedSec);
-      source = 'expected_race_day';
-      reasonVsExpected = 'No stated goal · race to where this build is expected to land you.';
-    } else if (goalSec >= expectedSec) {
-      targetSec = goalSec;
-      source = 'stated_goal_within_range';
-      reasonVsExpected = 'Your goal is at or slower than the expected result · race to your goal.';
-    } else if (goalSec >= likelyRangeSec[0]) {
-      targetSec = goalSec;
-      source = 'stated_goal_within_range';
-      reasonVsExpected = `Your goal sits inside the likely range (${fmtTime(likelyRangeSec[0])}-${fmtTime(likelyRangeSec[1])}) · race to it.`;
-    } else {
-      targetSec = roundRaceTargetSec(likelyRangeSec[0]);
-      source = 'stated_goal_clamped_to_range_edge';
-      reasonVsExpected = `Your goal (${fmtTime(goalSec)}) is faster than the likely range's fast edge (${fmtTime(likelyRangeSec[0])}) · race to the edge; the goal stays yours.`;
-    }
+  } else if (currentProjection.expectedSec != null) {
+    /* ── EXECTARGET-1 (2026-09-03) · THE ACTIVE NUMBER IS THE CURRENT-EVIDENCE
+     *    ONE, AND THE GOAL'S PULL IS REMOVED. ─────────────────────────────────
+     *
+     * `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q7, locked 2026-09-03:
+     *
+     *   | Aspirational goal              3:00            never used as capacity
+     *   | Active current-evidence target ~3:24 · 7:47/mi  the PROJECTION-derived
+     *   |                                value, used wherever one current
+     *   |                                execution number is required
+     *   | Likely range                   the canonical current-evidence range
+     *   | Conditional upside             ~3:13-3:15      with explicit criteria
+     *
+     *   "3:13:30 must not be labelled the current execution target merely
+     *    because it is the fast edge of a wide range." And: "Do not average the
+     *    projection and goal to manufacture a compromise target."
+     *
+     * WHAT WAS HERE, AND WHAT IT COST. `stated_goal_clamped_to_range_edge` took
+     * the fast edge of `expectedRaceDay.likelyRangeSec` whenever the goal was
+     * faster than it. On the owner's CIM, measured at the 2026-08-30 authoring
+     * instant, that range's own confidence is 0.23 and the gain behind it
+     * carries the reason `HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE`. So a
+     * 3:00 goal — being faster than everything — selected the most optimistic
+     * point the model can produce, and he was told to race 7:22/mi while the
+     * whole block rehearsed 7:52. Twenty-nine seconds a mile, over 26.2 miles,
+     * with nothing in the plan at that pace.
+     *
+     * That is the goal reaching a prescription. `PLAN_SIMPLIFICATION_DOCTRINE`
+     * invariant 10 forbids deriving current capacity from an aspirational goal,
+     * and the standing rule is that the coach projects and never renegotiates a
+     * stated goal — this was the same violation running the other way, arriving
+     * through the race door instead of the training door.
+     *
+     * The pull is REMOVED rather than re-weighted (Constitution: prefer
+     * deletion before addition). No confidence threshold was introduced, no
+     * blend, no new constant — a threshold on `expectedRaceDay.confidence`
+     * would have been a fresh Rule 9 boundary standing in for a question it
+     * cannot ask. `stated_goal_clamped_to_range_edge` and
+     * `stated_goal_within_range` are gone from the union.
+     *
+     * The forecast is NOT deleted with it: `expectedRaceDay` still says where
+     * the block is designed to land him, and `conditionalUpside` below carries
+     * its fast edge with the criteria that would make it active. Q7 asks for
+     * four layers and this produces four.
+     */
+    const currentSec = currentProjection.expectedSec;
+    targetSec = roundRaceTargetSec(currentSec);
+    source = 'current_evidence';
+    const range = currentProjection.likelyRangeSec;
+    reasonVsExpected = goalSec == null
+      ? `Race to what your evidence carries today${range ? ` (${fmtTime(range[0])}-${fmtTime(range[1])})` : ''}.`
+      : goalSec >= currentSec
+        ? `Your goal (${fmtTime(goalSec)}) is at or slower than what your evidence carries today · this is comfortably inside it.`
+        : `Today's evidence says ${fmtTime(currentSec)}${range ? ` (${fmtTime(range[0])}-${fmtTime(range[1])})` : ''}. The block is built to move that forward; your ${fmtTime(goalSec)} goal stays yours and is not what this day is priced at yet.`;
   }
   const paceSecPerMi = targetSec != null && race.distanceMi > 0 ? Math.round(targetSec / race.distanceMi) : null;
   const opening = targetSec != null ? raceOpeningPlan({ goalSec: targetSec, distanceMi: race.distanceMi }) : null;
@@ -732,10 +928,15 @@ export async function composeRaceOutlook(
       value: `${fmtTime(targetSec)} · ${fmtPace(paceSecPerMi)}`, valueSec: targetSec, paceSecPerMi,
       rangeSec: null, confidence: expectedRaceDay.confidence,
       evidence: [reasonVsExpected, ...(hr ? [`HR ${hr.expectedRangeBpm[0]}-${hr.expectedRangeBpm[1]} expected${hr.informationalOnly ? ' (reference only)' : ''}`] : [])],
-      changeTrigger: 'The expected race-day range moving, or you changing your goal.',
-      differsFromPrevious: source === 'stated_goal_clamped_to_range_edge'
-        ? 'Pulled toward your goal as far as the likely range allows, and no further.'
-        : source === 'stated_goal_within_range' ? 'Your goal, because it sits inside the likely range.' : null,
+      changeTrigger: 'Your current projection moving — which is what the block is built to do.',
+      // EXECTARGET-1 · the step now differs from the one before it by going
+      // BACK to current evidence, and says so. The forecast above it is the
+      // block's intent; this is what today's evidence carries.
+      differsFromPrevious: source === 'controlled_c_effort'
+        ? 'A C race is run as the week’s hard session, so it is priced as a controlled effort rather than as a race.'
+        : source === 'current_evidence'
+          ? 'Today’s evidence, not the forecast above it. The block is built to move that forward; race day is not priced on training that has not happened yet.'
+          : null,
     },
   ];
 
@@ -769,6 +970,28 @@ export async function composeRaceOutlook(
     expectedImprovement,
     expectedRaceDay,
     execution,
+    /* EXECTARGET-1 · Q7's fourth layer. The fast edge of the block's own
+     * forecast, carried as an upside rather than as the prescription. Refused
+     * when it is not actually faster than what he is being told to run today,
+     * because an "upside" that is not an upside is a second name for the same
+     * number (Rule 16). */
+    conditionalUpside: (() => {
+      const edge = expectedRaceDay.likelyRangeSec?.[0] ?? null;
+      if (edge == null || targetSec == null || edge >= targetSec) return null;
+      return {
+        targetSec: roundRaceTargetSec(edge),
+        paceSecPerMi: race.distanceMi > 0 ? Math.round(edge / race.distanceMi) : null,
+        criteria: CONDITIONAL_UPSIDE_CRITERIA,
+        confidence: expectedRaceDay.confidence,
+      };
+    })(),
+    /* EXECTARGET-1 · "Race day cannot ask for a pace the block never made
+     * credible." Measured against what the plan AUTHORED, never what a ladder
+     * intended. */
+    blockSeam: marathonSeam({
+      lastRehearsalSecPerMi: reads.plannedLastRehearsalPaceSecPerMi,
+      executionSecPerMi: paceSecPerMi,
+    }),
     goalFeasibility: feasibility,
     staleness,
     bridge,

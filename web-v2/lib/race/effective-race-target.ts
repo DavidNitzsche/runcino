@@ -113,7 +113,12 @@ export function effectiveTargetFromOutlook(goalSec: number | null, outlook: Race
   }
   return {
     targetSec: x.targetSec,
-    source: x.source === 'stated_goal_within_range' ? 'goal' : 'projection',
+    // EXECTARGET-1 (2026-09-03) · the execution target is never the stated goal
+    // any more — `stated_goal_within_range` is gone from the union because Q7
+    // rules the active number is the projection-derived one. So this is always
+    // 'projection', and saying so is more honest than a comparison that can no
+    // longer be true.
+    source: 'projection',
     goalSec: goalSec ?? 0,
     projectionSec: outlook.expectedRaceDay.expectedSec,
     projectionDateISO: outlook.todayISO,
