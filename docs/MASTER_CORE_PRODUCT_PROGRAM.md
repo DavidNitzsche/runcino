@@ -653,6 +653,40 @@ had run through it had run nothing. Fixed with its own config.
 **Still unwired.** None of this reaches the phone: the mutation guard is
 untouched.
 
+
+## OPEN · the week strip is still clunky, per David 2026-09-03 — do not close this again without him confirming
+
+**Do not treat this as fixed.** `WeekStripV5` (`native-v2/Faff/Faff/DesignV5/ChartsV5.swift`)
+already carries a real `TabView(.page)` rewrite (`42474f49`), landed BEFORE TestFlight build
+250 — so it is in his currently-installed build, and he is calling it clunky on the CURRENT
+shipped version, not an old one. That commit's own header records this is at minimum the
+sixth round of the same complaint:
+
+> David, sixth round: "I told you so many times to look back and how the old design did it.
+> that was right."
+
+and an earlier round, quoted in the same file:
+
+> David: "the week strip doesnt actually slide or move... we need things to move and to be
+> slick."
+
+He raised it again 2026-09-03, explicitly asking NOT to derail the active work to chase it
+right now: *"It's also the week strip is really clunky and hard to use. Not smooth. I don't
+want to derail the larger thing right now but it's an issue in the app."*
+
+**What NOT to do next time this is picked up:** guess at a fix and ship it. Per Rule 13, a
+feel/motion complaint like this cannot be verified by reading the code — the TabView port
+was already "verified" once by its own commit title and he is still unhappy with it live.
+It needs an actual device session (or, at minimum, the walk substrate + simulator once VW-3
+is fixed) where the swipe is driven and watched, ideally with him present or with a screen
+recording, before touching the implementation again. Candidates worth checking rather than
+assuming: the fixed `.frame(height: 80)` with no real content measurement, the three-page
+recentre-on-every-swipe logic (a snap-back transaction on every single page change, which
+could read as micro-stutter even with animations disabled), and whether `onPageWeek`'s
+network round-trip stalls the NEXT swipe rather than just the content underneath it.
+
+Not touched tonight. Logged so it is not lost and not silently re-closed.
+
 ---
 
 ## P1 · Known open items outside the critical path
