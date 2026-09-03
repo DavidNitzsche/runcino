@@ -274,13 +274,44 @@ enum RunLobbySegments {
     /// non-actionable case.
     private static func detail(_ p: WatchPhase) -> String? {
         var parts: [String] = []
-        if let pace = p.targetPaceSPerMi {
-            parts.append(Units.formatPace(secPerMile: pace))
-        }
+        if let pace = paceText(p) { parts.append(pace) }
         if let hr = p.hrTargetBpm, p.effectiveHrRole == .target {
             parts.append("HR \(hr)")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// PACESHAPE-1 (2026-09-03 correction) · "Do not show a naked 8:22/mi
+    /// where the underlying prescription is a pace ceiling" — a warm-up or
+    /// cool-down's number is the easy band's FAST edge, not a midpoint to
+    /// hover on, and the old rendering could not tell the two apart. Reads
+    /// `effectivePaceShape` (`WatchPaceShape` — one server-owned field,
+    /// `lib/training/execution-semantics.ts#paceShapeFor`, never re-derived
+    /// here) to pick the phrasing that preserves the actual meaning:
+    /// `.ceiling` → "no faster than X/mi", `.window` → the two-sided range
+    /// `tolerancePaceSPerMi` already carries, `.effort`/`.none` → no pace at
+    /// all (a hill rep or a by-feel recovery has none to show).
+    private static func paceText(_ p: WatchPhase) -> String? {
+        guard let target = p.targetPaceSPerMi else { return nil }
+        switch p.effectivePaceShape {
+        case .none, .effort:
+            // A stray target on a phase the server marked as carrying none —
+            // should not happen, but showing nothing is the safe reading,
+            // never a number the shape says is not there to hit.
+            return nil
+        case .ceiling:
+            return "no faster than \(Units.formatPace(secPerMile: target))"
+        case .window:
+            guard let tol = p.tolerancePaceSPerMi, tol > 0 else {
+                return Units.formatPace(secPerMile: target)
+            }
+            let lo = target - tol, hi = target + tol
+            // Faster pace is the SMALLER seconds-per-mile — the low end of
+            // the clock range is the high end of the effort range. One
+            // trailing unit, not two — `formatPace` on the second value
+            // supplies it.
+            return "\(Units.formatPaceBare(secPerMile: lo))\u{2013}\(Units.formatPace(secPerMile: hi))"
+        }
     }
 
     /// Builds the preview rows. Warm-up and cooldown bookend as their own
@@ -538,17 +569,50 @@ struct RunLobbyV5: View {
     /// not a stale display of the old one.
     @State private var planChanged = false
 
+    /// (2026-09-03 correction) · this used to be a bare `VStack` with no
+    /// `ScrollView`, no header and no top alignment — the shape a sheet's
+    /// own host (`V5SheetHost`) supplied for free when this was presented as
+    /// a bottom sheet. Moved into a real tab (§1 above) with nothing to
+    /// replace that, the same content rendered centered in whatever space
+    /// the tab gave it: an "enormous empty black area" above the card, David
+    /// called it, and he was right — the fix is not spacing, it is that this
+    /// screen never had its own top-anchored scroll container at all. Today,
+    /// Block and Races each open a `ScrollView` at their own root
+    /// (`TodayBeforeV5`, `BlockV5`); Run gets the same shape now, plus the
+    /// plain "RUN" header those three answer with a fuller day/block/race
+    /// panel that has no equivalent concept here.
     var body: some View {
-        VStack(alignment: .leading, spacing: V5.S.s20) {
-            workoutSection
-            startSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: V5.S.s20) {
+                runHeader
+                workoutSection
+                startSection
+            }
+            .padding(.horizontal, V5.S.gutter)
+            .padding(.top, V5.S.s16)
+            .padding(.bottom, V5.S.s24)
+            .v5PageWidth()
         }
+        .background(V5.surfacePage)
+        .scrollIndicators(.hidden)
         .task { await loadWorkout() }
         .alert("Your plan updated", isPresented: $planChanged) {
             Button("Review") {}
         } message: {
             Text("What's about to start has changed since you opened this screen. Review it below before starting.")
         }
+    }
+
+    /// A plain header, not the full day/block/race panel `PlaceHeaderV5`
+    /// draws for the other three tabs — Run has no gradient, no calendar, no
+    /// account disc to put in one; "RUN" said once, at the same weight those
+    /// screens say their own name, is the whole job.
+    private var runHeader: some View {
+        Text("RUN")
+            .font(.faffDisplay(20))
+            .textCase(.uppercase)
+            .tracking(20 * 0.02)
+            .foregroundStyle(V5.textPrimary)
     }
 
     // MARK: Start — re-verify, then record the shown plan so the console reads the SAME one
@@ -631,11 +695,14 @@ struct RunLobbyV5: View {
     /// fueling prose (those stay on Today and Races) — just enough to
     /// confirm which race this is and the pacing strategy for it.
     private func workoutCard(_ w: WatchWorkout) -> some View {
-        let title = RunLobbyTitle.split(w.name)
         return VStack(alignment: .leading, spacing: V5.S.s8) {
             // 1 · exact workout being started
-            V5SectionLabel(text: "Today", color: V5.textQuiet, size: TypeScaleV5.label12)
-            Text(title.headline)
+            // "TODAY" alone, beneath a header that already says "RUN", read
+            // as two competing screen titles. "TODAY'S WORKOUT" says what
+            // this card actually is — the confirmation of the one canonical
+            // workout Run is about to start.
+            V5SectionLabel(text: "Today's workout", color: V5.textQuiet, size: TypeScaleV5.label12)
+            Text(Self.displayHeadline(w))
                 .font(.faffDisplay(20))
                 .foregroundStyle(V5.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -674,6 +741,29 @@ struct RunLobbyV5: View {
         }
         .padding(V5.S.tilePad)
         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+    }
+
+    /// LABELCONSISTENCY-1 (2026-09-03 correction) · "Use consistent
+    /// typography: 10 × 1 min hills. Not 10×60s hills in one place and
+    /// 10 × 1 min Hill in another." Those two strings came from two
+    /// INDEPENDENT computations of the same fact — `RunLobbyTitle.split`
+    /// parsing the canonical authored name's compact shorthand, and
+    /// `RunLobbySegments.summarize` building its own phrase from the phases
+    /// directly — and nothing tied them together. Rather than reconcile two
+    /// strings after the fact (guesswork on freeform text), this makes them
+    /// the SAME string: when the workout reduces to exactly one grouped work
+    /// block (every quality session with a single rep pattern — the common
+    /// case, and the one in the report), the headline IS that row's own
+    /// title, so it is physically the same text the structure row shows two
+    /// lines down. Falls back to the canonical name's own headline for
+    /// anything that does not reduce to one block (a mixed session, a race)
+    /// rather than guessing at a phrase for a shape this rule was not
+    /// written for.
+    static func displayHeadline(_ w: WatchWorkout) -> String {
+        let rows = RunLobbySegments.summarize(w.phases)
+        let workRows = rows.filter { $0.title != "Warm-up" && $0.title != "Cooldown" }
+        if workRows.count == 1 { return workRows[0].title }
+        return RunLobbyTitle.split(w.name).headline
     }
 
     private func headerLine(_ w: WatchWorkout) -> String {
