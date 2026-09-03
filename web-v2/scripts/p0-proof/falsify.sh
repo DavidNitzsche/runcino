@@ -28,7 +28,7 @@ run staleness-lowers-support-not-level lib/training/pace-corpus.ts \
 run goal-isolation-gain-reads-goal lib/race/race-outlook.ts \
   "s/executionQuality: signal\?\.executionQuality \?\? null,/executionQuality: (signal?.executionQuality ?? 1) * (race.statedGoalSec ? 10800 \/ race.statedGoalSec : 1),/" lib/race/_race_outlook_contract.test.ts "×"
 run execution-target-past-fast-edge lib/race/race-outlook.ts \
-  "s/targetSec = roundRaceTargetSec\(likelyRangeSec\[0\]\);/targetSec = goalSec;/" lib/race/_race_outlook_contract.test.ts "×"
+  "s/edge == null \|\| targetSec == null \|\| edge >= targetSec/edge == null || targetSec == null/" lib/race/_race_outlook_contract.test.ts "×"
 run hr-informational-without-evidence lib/race/race-hr-guidance.ts \
   "s/const informationalOnly = comparable.length === 0 \|\| /const informationalOnly = /" lib/race/_race_outlook_contract.test.ts "×"
 run race-row-staleness-recompute-skips-refresh lib/plan/recompute-paces.ts \

@@ -145,8 +145,9 @@ only, zero rows, verified ten ways before execution — see
 **Status, kept current rather than left at first-write:**
 1. Race-week TYPED coaching distinctions — **DONE**, `8e0180d8`, see the
    section below.
-2. Easy-days-after-intervals typed validator rule — in progress (verify-commit
-   running as of last check).
+2. Easy-days-after-intervals typed validator rule (SEP-1) — **DONE and merged
+   to `main`** (`8a242994`). See `docs/PRODUCT_DECISIONS.md`'s SEP-1 entry for
+   the full ruling and the fatal-vs-advisory split.
 3. VW-3 (the debug-session token path) — **DONE and merged to `main`**
    (`f2a13335`). Real root cause found, not guessed: instrumented
    reproduction proved there was never a Keychain/auth race — every
@@ -160,11 +161,50 @@ only, zero rows, verified ten ways before execution — see
    of his actual Today screen (INTERVALS, 6.5 mi, hill repeats) rendered
    through the walk substrate, zero permission dialogs, 54/54 requests
    authenticated.
-4. The canonical Adaptation Engine wired into live SHADOW evaluation — in
-   progress.
-5. The full preflight, gating the rebuild — still blocked on 2 above landing.
+4. The canonical Adaptation Engine wired into live SHADOW evaluation — **code
+   complete, on `feat/canonical-shadow-evaluation` (`c1356e0c`/`59910cd4`),
+   not yet merged.** A new `canonical_adaptation_shadow_log` table
+   (migration 164) rather than reusing the existing intermediate
+   `adaptation_shadow_log` — that table's columns are typed against the
+   PACE-only mechanism's own vocabulary (a 3-way `engine_decision` CHECK,
+   `hr_compat_verdict`/`convergence_state` enums) and the canonical engine's
+   4-way PROGRESS/HOLD/REGRESS/REFUSE decision with 3 levers does not fit it
+   without either half-null rows or a second parallel column set (Rule 16).
+   Migration 164 is **written, not applied** — needs David's per-statement
+   go, same as 163. Mutation guard (`_cannot_mutate.test.ts` guard 4)
+   rewritten to a narrow allowlist and falsified 9 ways; `_never_mutates_
+   plan.test.ts` proves every write targets only the new table. Reuses the
+   existing `run-adaptations` 03:00 UTC cron, plus an on-demand admin route
+   (`GET/POST /api/admin/canonical-adaptation-shadow`) so the owner can
+   inspect what the canonical engine would have decided in parallel with
+   legacy `adapt.ts` and the intermediate PACE-only shadow-compare, without
+   any of the three influencing each other. `verify-commit.sh` was blocked
+   by a real shared-disk exhaustion (the repo's worktree volume hit 100%,
+   30GB free, across ~105 accumulated agent worktrees) — cleaned up to
+   ~195GB free 2026-09-03, retry in progress as of this entry.
+5. The full preflight, gating the rebuild — **run 2026-09-03.**
+   `scripts/p0-proof/falsify.sh` (mutate-and-restore, no DB writes): 11 of 12
+   named invariants falsified correctly (threshold admission, one-session
+   move cap, staleness-vs-support, goal isolation, HR informational-without-
+   evidence, race-row staleness/HR-cap, sealed-history refresh, projection
+   self-computation, effective-target second rule, limiter self-fitting).
+   The 12th (`execution-target-past-fast-edge`) had gone stale against
+   EXECTARGET-1's rewrite of `race-outlook.ts` — retargeted at the current
+   `conditionalUpside` refusal guard, and found to be a defensive branch that
+   is structurally unreachable under the current formula (`edge`'s
+   confidence-interval half-width always makes it strictly faster than
+   `targetSec`), documented in-code rather than forced into an artificial
+   fixture. `scripts/p0-proof/rebuild-preview.ts` against `main` at
+   `6339fc23` (race-week typing + SEP-1 both landed): composed plan is 105
+   rows across 15 weeks vs. the live plan's 103 rows, +7.2mi total volume,
+   64 of 105 days differ from what is currently live. **Still needs:** a
+   pass confirming the diff is entirely explained by the landed decisions
+   (S1.1-S1.6 + Decisions 1/3) and nothing else, before this is presentable
+   as a go/no-go to David — P0-3 (the actual production rewrite) is a data
+   write and needs his explicit per-statement go regardless.
 6. The rebuild itself, and persisted-plan verification across every surface —
-   blocked on 5.
+   blocked on 5's remaining diff-attribution pass, and on David's go for the
+   write itself.
 7. Ranked Sunday options, generated against the REBUILT plan (David reports
    the phone currently offers only "Skip" — the "Move to Friday/Saturday"
    options that should sit beside it exist only in a design-preview fixture,
@@ -361,8 +401,8 @@ Nothing may displace this.
 
 | ID | Task | Depends on | Owner | Status |
 |---|---|---|---|---|
-| P0-1 | Correct the baseline plan (S1.1-S1.6 below) | S0-1 | plan engine | In progress |
-| P0-2 | Final no-write preview, internally falsified | P0-1 | — | Ready |
+| P0-1 | Correct the baseline plan (S1.1-S1.6 below) | S0-1 | plan engine | **Done** — S1.1-S1.6 all Done/Verified, see table below |
+| P0-2 | Final no-write preview, internally falsified | P0-1 | — | **Preflight run 2026-09-03** — see below |
 | P0-3 | Live rebuild through the production endpoint | P0-2 gates all pass | — | Blocked on P0-2 |
 | P0-4 | Verify the **persisted** plan on every surface | P0-3 | — | Blocked |
 | P0-5 | Lock the baseline contract + golden snapshots | P0-4 | — | Blocked |
