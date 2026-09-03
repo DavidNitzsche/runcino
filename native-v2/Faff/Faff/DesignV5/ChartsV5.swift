@@ -476,7 +476,41 @@ struct TrendBars: View {
     /// magnitude, centred on it, and every bar keeps `barFloorFraction` of
     /// the height. Equal values draw equal, mid-height bars. A small real
     /// change draws as a small change. A large one still fills the chart.
-    private static let domainFloorFraction = 0.02
+    ///
+    /// ── THE FLOOR WAS TOO SMALL TO DO THE JOB IT WAS WRITTEN FOR ────────
+    ///
+    /// The paragraph above is right and the number under it was not. At 0.02
+    /// the padded domain only engages when a series moves LESS than 2% of its
+    /// own magnitude. Anything above that falls straight back to plain
+    /// min-max normalisation — which maps the series minimum to
+    /// `barFloorFraction` and its maximum to full height, ALWAYS. So the
+    /// drawn spread is a constant 5.55x (1.0 / 0.18) no matter whether the
+    /// underlying series moved 3% or 300%. The padding could not exaggerate a
+    /// tiny change, and did nothing at all about a moderate one.
+    ///
+    /// Measured on the rendered Races screen, 2026-09-03: a projected finish
+    /// moving 3:19:43 to 3:30:13 — **5.2%** — drew bar heights of
+    /// 289 / 103 / 53 / 53 / 54 image pixels. The first bar is 5.4x the last,
+    /// and the last three are the 0.18 floor, clamped. A five-percent change
+    /// drawn as a cliff, under a caption that correctly says "Faster by
+    /// 10m 30s". The picture and the sentence disagreed, and the picture is
+    /// what gets believed.
+    ///
+    /// 0.20 sizes the domain to the change that would actually be a story.
+    /// A training quantity moving a fifth of its own magnitude — a 3:20
+    /// marathon projection reaching 4:00, a weekly volume going half again —
+    /// is a transformation, and THAT is what should fill the chart. The 5.2%
+    /// above now occupies about a quarter of the domain and draws as a
+    /// 1.4x slope, which is what it is.
+    ///
+    /// Bars at identical values still draw identically. That is not the
+    /// defect it looks like: three consecutive days holding the same
+    /// projection SHOULD draw the same height, and saying so is the chart
+    /// being honest about its own resolution rather than inventing movement.
+    ///
+    /// Gated by `TrendBarsHonestyTests`, which asserts the drawn spread stays
+    /// proportionate to the real one rather than pinning these two constants.
+    private static let domainFloorFraction = 0.20
     private static let barFloorFraction: CGFloat = 0.18
 
     /// The shape of the run, not every bar in it. Reading out twelve weeks of
@@ -497,7 +531,10 @@ struct TrendBars: View {
              + "The highlighted read is number \(hi + 1) of \(values.count)."
     }
 
-    private func barHeight(_ v: Double, in full: CGFloat) -> CGFloat {
+    /// Internal rather than private so `TrendBarsHonestyTests` can measure the
+    /// REAL function the view draws with, instead of a re-derived copy that
+    /// could only ever prove the test agrees with itself.
+    func barHeight(_ v: Double, in full: CGFloat) -> CGFloat {
         let lo = values.min() ?? 0
         let hiV = values.max() ?? 1
         let mid = (lo + hiV) / 2

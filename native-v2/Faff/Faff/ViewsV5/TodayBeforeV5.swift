@@ -782,11 +782,34 @@ struct TodayBeforeV5: View {
                                 // has nothing to open, so it stays a plain
                                 // row with no chevron — "never a chevron on a
                                 // row that has nothing to open."
+                                // ── A FUTURE DAY OPENS TOO ──────────────────
+                                //
+                                // This used to be gated on
+                                // `day.status != nil || day.isToday`, so only
+                                // days that were DONE or today could be
+                                // opened. The comment above it reasoned that
+                                // "a day that has not happened yet has nothing
+                                // to open", and that is not true of this app:
+                                // `/api/v5/today?date=` answers for any date,
+                                // the week strip already steps forward onto
+                                // Friday and Sunday, and the niggle preview
+                                // opens TOMORROW through exactly this read.
+                                //
+                                // It also read as broken. This screen's whole
+                                // job is what is coming, and tapping the next
+                                // session did nothing — not even a press
+                                // state, because a nil `onTap` draws a plain
+                                // row rather than a button.
+                                //
+                                // The chevron rule the old comment cites still
+                                // holds and is now satisfied honestly: every
+                                // row here HAS something to open, so every row
+                                // may carry one.
                                 ListRow(label: day.label, sub: day.sub, value: day.status, raised: day.isToday,
-                                        onTap: (day.status != nil || day.isToday) ? {
+                                        onTap: {
                                             onPickDay(day.id)
                                             withAnimation(V5.Motion.fill) { calendarOpen = false }
-                                        } : nil)
+                                        })
                             }
                         }
                         // `scrollTo` addresses this id. ForEach's own identity
