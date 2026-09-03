@@ -81,51 +81,6 @@ final class RunLobbyRecordingOwnerTests: XCTestCase {
     }
 }
 
-final class RunLobbyRecordingLineTests: XCTestCase {
-    func test_watchOwnerStatesExecutionAndRecording() {
-        let line = RunLobbyRecordingLine.resolve(owner: .watch, watch: .ready(lastSync: "Synced 9:00 AM"))
-        XCTAssertTrue(line.line.contains("Apple Watch"))
-        XCTAssertTrue(line.line.contains("execute"))
-        XCTAssertFalse(line.offersWatchRetry, "already executing on watch — nothing to retry")
-    }
-
-    func test_noWatchAtAllNamesNoWatchWithNoRetry() {
-        let line = RunLobbyRecordingLine.resolve(owner: .phone, watch: .noWatch)
-        XCTAssertTrue(line.line.contains("phone"))
-        XCTAssertFalse(line.line.contains("Apple Watch"), "must not mention a watch that does not exist")
-        XCTAssertFalse(line.offersWatchRetry)
-    }
-
-    func test_unreachableWatchOffersRetryAndNamesTheReason() {
-        let line = RunLobbyRecordingLine.resolve(owner: .phone, watch: .unreachable(lastSync: "Synced 8:00 AM"))
-        XCTAssertTrue(line.line.contains("not reachable"))
-        XCTAssertTrue(line.offersWatchRetry)
-    }
-
-    func test_reachableButUnsyncedWatchNamesThatSpecificReason() {
-        let line = RunLobbyRecordingLine.resolve(owner: .phone, watch: .ready(lastSync: nil))
-        XCTAssertTrue(line.line.contains("hasn't confirmed"))
-        XCTAssertTrue(line.offersWatchRetry)
-    }
-}
-
-final class RunLobbyHrLineTests: XCTestCase {
-    func test_watchOwnerMeansHrConnected() {
-        XCTAssertEqual(RunLobbyHrLine.resolve(owner: .watch), .connectedFromWatch)
-        XCTAssertTrue(RunLobbyHrLine.resolve(owner: .watch).line.contains("Apple Watch"))
-    }
-
-    func test_phoneOwnerNeverClaimsHrFromDeviceChoiceAlone() {
-        // This is the corrected-bug case: "no watch" must not be rendered as
-        // "recording and heart rate are on your phone" — an iPhone does not
-        // inherently provide running heart rate.
-        let hr = RunLobbyHrLine.resolve(owner: .phone)
-        XCTAssertEqual(hr, .unavailable)
-        XCTAssertTrue(hr.line.lowercased().contains("unavailable"))
-        XCTAssertFalse(hr.line.contains("connected"), "must not claim a connection that was not verified")
-    }
-}
-
 final class RunLobbyTitleTests: XCTestCase {
     func test_splitsHeadlineFromDescriptorAtAtSign() {
         let (headline, descriptor) = RunLobbyTitle.split("10\u{00D7}60s hills @ 5K-10K effort \u{00B7} 2 min jog down")
@@ -208,29 +163,6 @@ final class RunLobbyPlanCheckTests: XCTestCase {
                           totalEstimatedMinutes: a.totalEstimatedMinutes, phases: [differentPhase],
                           completionEndpoint: a.completionEndpoint, expiresAt: a.expiresAt)
         XCTAssertTrue(RunLobbyPlanCheck.prescriptionChanged(a, b))
-    }
-}
-
-final class RunLobbyLocationReadinessTests: XCTestCase {
-    func test_deniedIsBlockingForOutdoor() {
-        let r = RunLobbyLocationReadiness.resolve(.denied)
-        XCTAssertTrue(r.isBlockingForOutdoor)
-        XCTAssertTrue(r.line.contains("Treadmill"), "a blocked runner must be told the fallback, not just the problem")
-    }
-
-    func test_restrictedIsTreatedAsDenied() {
-        XCTAssertEqual(RunLobbyLocationReadiness.resolve(.restricted), .denied)
-    }
-
-    func test_notDeterminedIsNotBlocking() {
-        let r = RunLobbyLocationReadiness.resolve(.notDetermined)
-        XCTAssertFalse(r.isBlockingForOutdoor, "never block a run for optional/not-yet-asked permission")
-    }
-
-    func test_authorizedIsReady() {
-        let r = RunLobbyLocationReadiness.resolve(.authorizedWhenInUse)
-        XCTAssertEqual(r, .authorized)
-        XCTAssertFalse(r.isBlockingForOutdoor)
     }
 }
 

@@ -6,12 +6,19 @@
 //  WHY THIS EXISTS
 //
 //  `RunPickerV5` (ShellV5.swift) was two buttons and one static sentence. A
-//  runner tapping RUN had no way to see, before committing: what workout is
-//  about to start, whether the watch has it, whether location is granted, or
-//  whether the phone even has a target to hold. All of that was discovered
-//  only AFTER tapping Outdoor/Treadmill and landing in the live console —
-//  which is the wrong side of the commit for "device readiness" and "what am
-//  I about to do."
+//  runner tapping RUN had no way to see, before committing, what workout was
+//  about to start — that was discovered only AFTER tapping Outdoor/Treadmill
+//  and landing in the live console, which is the wrong side of the commit
+//  for "what am I about to do."
+//
+//  DEVICE READINESS IS NOT THIS SCREEN'S JOB (2026-09-03 correction) — an
+//  earlier version of this file also carried a "Before you start" block
+//  (who records, HR source, location) modelled on the phone being the place
+//  a run gets started. It isn't: runs start from the watch. That block is
+//  removed; this screen previews the workout only. `recordingOwner` and
+//  `outdoorSubtitle` below still exist because the phone-fallback Outdoor/
+//  Treadmill tiles need to say the truth about what tapping them does, not
+//  because this screen gates on device state before starting.
 //
 //  MISMATCH RISK THIS CLOSES
 //
@@ -33,7 +40,6 @@
 //
 
 import SwiftUI
-import CoreLocation
 
 // MARK: - The one fetch, handed forward
 
@@ -174,114 +180,6 @@ enum RunLobbyWatchReadiness: Equatable {
     /// Only the unreachable case has anything a retry could fix — a genuinely
     /// absent or uninstalled watch has no connection to retry.
     var offersRetry: Bool { if case .unreachable = self { return true }; return false }
-}
-
-// MARK: - Recording + HR honesty (pure, testable)
-//
-// CORRECTION (2026-09-03) · the line this replaces —
-// "No Apple Watch paired. Recording and heart rate are on your phone." — was
-// wrong on its face: an iPhone does not inherently provide running heart
-// rate, and "no watch" says nothing about whether ANY heart-rate source is
-// connected. Device choice (paired or not) is not the same fact as HR
-// availability, and the old line claimed the second from the first. These
-// two types render the two facts the runner actually needs — who records,
-// and whether heart rate is connected — each true on its own terms.
-
-/// WHO records this session, in words, given the same `RunLobbyRecordingOwner`
-/// decision the console will make. One line states both the owner AND why,
-/// so a phone-recorded run because the watch is not ready explains the
-/// capability difference before the runner commits, not after.
-enum RunLobbyRecordingLine: Equatable {
-    case watchWillRecord(lastSync: String?)
-    case phoneWillRecord(watchReason: String?)
-
-    static func resolve(owner: RunLobbyRecordingOwner, watch: RunLobbyWatchReadiness) -> Self {
-        switch owner {
-        case .watch:
-            if case .ready(let lastSync) = watch { return .watchWillRecord(lastSync: lastSync) }
-            return .watchWillRecord(lastSync: nil)
-        case .phone:
-            switch watch {
-            case .noWatch:
-                return .phoneWillRecord(watchReason: nil)
-            case .notInstalled:
-                return .phoneWillRecord(watchReason: "Faff isn't installed on your watch.")
-            case .unreachable:
-                return .phoneWillRecord(watchReason: "Your watch is paired but not reachable right now.")
-            case .ready:
-                // Reachable, but resolve() above only grants `.watch` when
-                // the last sync actually succeeded — reachable-with-no-
-                // confirmed-sync is exactly the gap between "can talk to
-                // it" and "it has today's workout."
-                return .phoneWillRecord(watchReason: "Your watch hasn't confirmed today's workout yet.")
-            }
-        }
-    }
-
-    var line: String {
-        switch self {
-        case .watchWillRecord(let lastSync):
-            return "Your Apple Watch will execute and record this run." + (lastSync.map { " \($0)." } ?? "")
-        case .phoneWillRecord(let reason):
-            return "Your phone will record this run." + (reason.map { " \($0)" } ?? "")
-        }
-    }
-
-    /// True whenever there is a watch-side reason a retry (re-sync) could
-    /// fix. A genuinely absent or uninstalled watch has no sync to retry.
-    var offersWatchRetry: Bool {
-        if case .phoneWillRecord(let reason) = self { return reason != nil }
-        return false
-    }
-}
-
-/// WHETHER heart rate will be available, resolved from the SAME owner
-/// decision — never from watch pairing alone. A watch that is paired but not
-/// the recording owner is not a live HR source: the wrist only streams
-/// samples fast enough to matter during ITS OWN active workout session, not
-/// merely by being worn while the phone records.
-enum RunLobbyHrLine: Equatable {
-    case connectedFromWatch
-    case unavailable
-
-    static func resolve(owner: RunLobbyRecordingOwner) -> Self {
-        owner == .watch ? .connectedFromWatch : .unavailable
-    }
-
-    var line: String {
-        switch self {
-        case .connectedFromWatch:
-            return "Heart rate is connected from your Apple Watch."
-        case .unavailable:
-            return "No heart-rate source is available. Your phone can record GPS and pace; heart rate will be unavailable."
-        }
-    }
-}
-
-// MARK: - Location readiness (pure, testable)
-
-enum RunLobbyLocationReadiness: Equatable {
-    case authorized
-    case notDetermined
-    case denied
-
-    static func resolve(_ status: CLAuthorizationStatus) -> Self {
-        switch status {
-        case .authorizedAlways, .authorizedWhenInUse: return .authorized
-        case .denied, .restricted: return .denied
-        default: return .notDetermined
-        }
-    }
-
-    var line: String {
-        switch self {
-        case .authorized:     return "Location ready for outdoor GPS."
-        case .notDetermined:  return "Outdoor mode will ask for location access when you start."
-        case .denied:         return "Location is off. Outdoor pace and route need it. Enable it in Settings, or run Treadmill instead."
-        }
-    }
-
-    var isBlockingForOutdoor: Bool { self == .denied }
 }
 
 // MARK: - Segment preview (pure, testable)
@@ -613,7 +511,6 @@ struct RunLobbyV5: View {
 
     @ObservedObject private var watchSync = WatchSync.shared
     @State private var workoutState: RunLobbyWorkoutState = .loading
-    @State private var locationReadiness: RunLobbyLocationReadiness = .resolve(CLLocationManager().authorizationStatus)
     /// The concise "why this workout" line, read from the SAME canonical
     /// sentence Today already shows (`V5Today.why` / `.thesis.coachLine`) —
     /// never a new coaching sentence authored here. Purely additive: a
@@ -641,7 +538,6 @@ struct RunLobbyV5: View {
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s20) {
             workoutSection
-            readinessSection
             startSection
         }
         .task { await loadWorkout() }
@@ -695,7 +591,6 @@ struct RunLobbyV5: View {
     }
 
     private func loadWorkout() async {
-        locationReadiness = .resolve(CLLocationManager().authorizationStatus)
         async let purposeFetch: String? = {
             // Best-effort, additive only — see `purpose`'s doc comment.
             guard case .ok(let today) = try? await API.fetchV5Today() else { return nil }
@@ -863,51 +758,7 @@ struct RunLobbyV5: View {
         }
     }
 
-    // MARK: - Device and recording readiness
-
-    private var readinessSection: some View {
-        let recording = RunLobbyRecordingLine.resolve(owner: recordingOwner, watch: watchReadiness)
-        let hr = RunLobbyHrLine.resolve(owner: recordingOwner)
-        return VStack(alignment: .leading, spacing: V5.S.s8) {
-            V5SectionLabel(text: "Before you start", color: V5.textQuiet, size: TypeScaleV5.label12)
-            // 5 · who records, and 6 · the actual blocking problem (if the
-            // watch isn't ready, that reason IS the blocking-problem slot —
-            // stated once here, not duplicated as a second row).
-            readinessRow(text: recording.line,
-                         warn: recording.offersWatchRetry,
-                         retry: recording.offersWatchRetry ? { Task { await WatchSync.shared.refresh(force: true) } } : nil)
-            readinessRow(text: hr.line, warn: false, retry: nil)
-            readinessRow(text: locationReadiness.line, warn: locationReadiness.isBlockingForOutdoor,
-                         retry: nil,
-                         openSettings: locationReadiness.isBlockingForOutdoor)
-        }
-        .padding(.horizontal, V5.S.s4)
-    }
-
-    private func readinessRow(text: String, warn: Bool, retry: (() -> Void)?, openSettings: Bool = false) -> some View {
-        HStack(alignment: .top, spacing: V5.S.s8) {
-            Circle()
-                .fill(warn ? V5.attention : V5.textQuiet)
-                .frame(width: 6, height: 6)
-                .padding(.top, V5.S.s4)
-            Text(text)
-                .font(.faffText(TypeScaleV5.label13))
-                .foregroundStyle(warn ? V5.textPrimary : V5.textQuiet)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let retry {
-                FaffButton("Retry", variant: .secondary, size: .md, full: false, action: retry)
-            }
-            if openSettings {
-                FaffButton("Settings", variant: .secondary, size: .md, full: false, action: {
-                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                    UIApplication.shared.open(url)
-                })
-            }
-        }
-    }
-
-    // MARK: - 7 · start choice, 8 · cancel
+    // MARK: - Start choice, cancel
 
     /// The subtitle on "Outdoor" tells the truth about WHO executes it —
     /// "GPS pace and route" undersells what actually happens when the watch
