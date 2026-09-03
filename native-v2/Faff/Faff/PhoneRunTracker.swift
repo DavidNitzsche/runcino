@@ -224,6 +224,13 @@ final class PhoneRunTracker: NSObject, ObservableObject {
     /// prompt. Without it the runner ends up on a live-looking console
     /// frozen at 0:00 with nothing saying that nothing is recording.
     private var startWhenAuthorized = false
+    /// The canonical workoutId from the Start call that set
+    /// `startWhenAuthorized`, carried across to the deferred re-invocation
+    /// in `locationManagerDidChangeAuthorization` — without this, a first-
+    /// ever permission prompt (or any re-grant) would silently drop back to
+    /// a synthetic `phone_<uuid>` id on exactly the runs most likely to be
+    /// a runner's first-ever session.
+    private var pendingCanonicalWorkoutId: String?
 
     // Incremental polyline · see `appendRoutePoint`.
     private var polylineAcc = ""
@@ -282,18 +289,41 @@ final class PhoneRunTracker: NSObject, ObservableObject {
     /// Being called before the OS has answered the permission prompt is the
     /// NORMAL first-run path, not an error: the request is remembered and
     /// the run begins by itself the moment authorization lands.
-    func start() {
+    /// DECISION-1 · `canonicalWorkoutId`, when the caller has one (today's
+    /// real prescribed workout), is stamped onto this run's completion
+    /// instead of a synthetic `phone_<uuid>` — "the phone fallback must
+    /// preserve the same workout identity" even when the phone, not the
+    /// watch, ends up recording. A synthetic id is unrelated to the day's
+    /// prescription and cannot be reconciled back to it; the canonical one
+    /// is the SAME id the watch would have used for this same calendar
+    /// workout. `nil` (no canonical workout loaded — a genuinely
+    /// unstructured run) keeps the prior synthetic-id behavior exactly.
+    /// DECISION-1 · pure, directly testable without any CoreLocation setup.
+    /// `canonical` wins (the direct call's own argument); `pending` is the
+    /// deferred-permission carry-forward; a synthetic id is the last resort,
+    /// only for a genuinely unstructured/no-plan run.
+    static func resolveStartWorkoutId(canonical: String?, pending: String?) -> String {
+        canonical ?? pending ?? "phone_\(UUID().uuidString)"
+    }
+
+    func start(canonicalWorkoutId: String? = nil) {
         guard state != .running else { return }
         guard authorizationGranted else {
             startWhenAuthorized = true
+            pendingCanonicalWorkoutId = canonicalWorkoutId
             requestPermission()
             return
         }
         startWhenAuthorized = false
 
         if workoutId == nil {
-            // First start of this session.
-            workoutId = "phone_\(UUID().uuidString)"
+            // First start of this session. `canonicalWorkoutId` is the
+            // direct call's own argument; `pendingCanonicalWorkoutId` is
+            // what a deferred re-invocation (permission just granted)
+            // carries forward from the ORIGINAL call — exactly one of the
+            // two is ever non-nil for a given start.
+            workoutId = Self.resolveStartWorkoutId(canonical: canonicalWorkoutId, pending: pendingCanonicalWorkoutId)
+            pendingCanonicalWorkoutId = nil
             startedAt = .now
         } else if state == .paused {
             // Resume · close out the open pause interval.

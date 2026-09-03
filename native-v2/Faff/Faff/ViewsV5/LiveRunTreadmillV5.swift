@@ -158,7 +158,11 @@ struct LiveRunTreadmillV5: View {
         self._hr = ObservedObject(wrappedValue: hr)
         self.onPause = onPause
         self.onEnd = onEnd
-        let id = "trd_\(UUID().uuidString)"
+        // DECISION-1 · prefer the canonical id ("the phone fallback must
+        // preserve the same workout identity") when today's real prescribed
+        // workout was loaded; fall back to the prior synthetic id only for
+        // a genuinely unstructured/no-plan run (`plan?.workoutId == nil`).
+        let id = plan?.workoutId ?? "trd_\(UUID().uuidString)"
         self.workoutId = id
         self._session = StateObject(wrappedValue: BeltSession(
             workoutId: id,

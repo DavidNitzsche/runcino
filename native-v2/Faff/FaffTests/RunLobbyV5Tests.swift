@@ -526,3 +526,28 @@ final class PendingRunPlanV5Tests: XCTestCase {
                      "a refused snapshot must not linger for a later, unrelated consume to pick up")
     }
 }
+
+// MARK: - Decision 1 · the phone's own completion identity
+
+final class PhoneRunTrackerCanonicalIdTests: XCTestCase {
+    func test_directCanonicalIdWins() {
+        let id = PhoneRunTracker.resolveStartWorkoutId(canonical: "u1-2026-09-03", pending: "u1-2026-09-02")
+        XCTAssertEqual(id, "u1-2026-09-03")
+    }
+
+    func test_pendingIsUsedWhenNoDirectCanonicalId() {
+        // The deferred-permission path: Start ran before authorization
+        // landed, and the re-invocation from
+        // `locationManagerDidChangeAuthorization` calls `start()` with no
+        // argument — losing the ORIGINAL call's canonical id here would
+        // silently fall back to a synthetic id on exactly the runs most
+        // likely to be a runner's first-ever session.
+        let id = PhoneRunTracker.resolveStartWorkoutId(canonical: nil, pending: "u1-2026-09-03")
+        XCTAssertEqual(id, "u1-2026-09-03")
+    }
+
+    func test_bothNilProducesASyntheticPhoneId() {
+        let id = PhoneRunTracker.resolveStartWorkoutId(canonical: nil, pending: nil)
+        XCTAssertTrue(id.hasPrefix("phone_"), "an unstructured run must still get SOME id: \(id)")
+    }
+}

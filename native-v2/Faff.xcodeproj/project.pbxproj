@@ -92,6 +92,7 @@
 		4E88DDDEE13FBFC793505EDE /* G_Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE323D928DA355934197F38B /* G_Settings.swift */; };
 		50AB24CF8800755A3B9CCA79 /* FaffComplicationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B9D4547CDA7A3180224CA48 /* FaffComplicationViews.swift */; };
 		5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */; };
+		52645EAF7718A0D150819DBB /* LiveRunWatchCompanionV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7593F73EC3646CF56553C4DB /* LiveRunWatchCompanionV5.swift */; };
 		528D47BC25D2A7F0CDB54874 /* SurfaceStoreV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B817BE00E8380E26CE5AC512 /* SurfaceStoreV5.swift */; };
 		533CAEF551723F2A36BFBA9C /* FaffWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2606EFDB59295AF72C865CB /* FaffWidgetSnapshot.swift */; };
 		53BF589D416A19346C3E3869 /* SickV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF7E6E0D868BFA61684A1B5 /* SickV5.swift */; };
@@ -411,6 +412,7 @@
 		71C4F2E6374884D975BBC496 /* FacesLobbyV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacesLobbyV5.swift; sourceTree = "<group>"; };
 		743648B82E2A21410A13F000 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7483C37B55D5EABF86C7B744 /* E_Nudges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E_Nudges.swift; sourceTree = "<group>"; };
+		7593F73EC3646CF56553C4DB /* LiveRunWatchCompanionV5.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveRunWatchCompanionV5.swift; sourceTree = "<group>"; };
 		75CB12F69B8E91BD1846A268 /* RaceDayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaceDayView.swift; sourceTree = "<group>"; };
 		760B92E89CF0E2EF5EEB8265 /* TreadmillHRView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillHRView.swift; sourceTree = "<group>"; };
 		761D6D9F643EAA00C64D9BBC /* Runs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runs.swift; sourceTree = "<group>"; };
@@ -554,7 +556,7 @@
 		FCA4369345EE34EAFD3E307C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
-		"TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -791,6 +793,7 @@
 				0891DA9583913A7F36C7268C /* TodayBeforeSamplesPreRunV5.swift */,
 				CC98F967EA1071686B9F86C0 /* TodayBeforeV5.swift */,
 				8FCBEC856C1DF94056E0B70B /* TravelV5.swift */,
+				7593F73EC3646CF56553C4DB /* LiveRunWatchCompanionV5.swift */,
 			);
 			path = ViewsV5;
 			sourceTree = "<group>";
@@ -955,14 +958,6 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_241383D1-C05E-4560-9BE9-570CB3389105" /* native-v2 */ = {
-			isa = PBXGroup;
-			children = (
-				"TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC" /* Secrets.xcconfig */,
-			);
-			path = "native-v2";
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -978,8 +973,6 @@
 				3D03D9822507A5256A710E80 /* PBXTargetDependency */,
 			);
 			name = FaffTests;
-			packageProductDependencies = (
-			);
 			productName = FaffTests;
 			productReference = 801D9B1925F0DC65C5E66C0D /* FaffTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -996,8 +989,6 @@
 			dependencies = (
 			);
 			name = "FaffWatch Widgets";
-			packageProductDependencies = (
-			);
 			productName = "FaffWatch Widgets";
 			productReference = 574046EFA57DAA5E3FA61AB5 /* FaffWatch Widgets.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -1014,8 +1005,6 @@
 				1848BF697DA6AE688BEC132D /* PBXTargetDependency */,
 			);
 			name = "FaffWatch Watch AppTests";
-			packageProductDependencies = (
-			);
 			productName = "FaffWatch Watch AppTests";
 			productReference = 7946847F45F40D00337CF5F6 /* FaffWatch Watch AppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -1056,8 +1045,6 @@
 				E18ECFC0A4A87A41AF4994CB /* PBXTargetDependency */,
 			);
 			name = "FaffWatch Watch App";
-			packageProductDependencies = (
-			);
 			productName = "FaffWatch Watch App";
 			productReference = 79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */;
 			productType = "com.apple.product-type.application";
@@ -1400,6 +1387,7 @@
 				5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */,
 				0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */,
 				3BA6B12FCF16C3B5BD62797B /* WeekStrip.swift in Sources */,
+				52645EAF7718A0D150819DBB /* LiveRunWatchCompanionV5.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1448,7 +1436,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC" /* Secrets.xcconfig */;
+			baseConfigurationReference = TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1675,7 +1663,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC" /* Secrets.xcconfig */;
+			baseConfigurationReference = TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
