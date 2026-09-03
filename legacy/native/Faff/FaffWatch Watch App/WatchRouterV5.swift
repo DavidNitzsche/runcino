@@ -771,6 +771,11 @@ struct WatchRunSurfaceV5: View {
             // nil NAMES the sensor on the board rather than drawing a dash.
             // True on a belt too — a missing strap is a missing strap.
             heartRate: tracker.heartRate > 0 ? WFmt.whole(tracker.heartRate) : nil,
+            // Page 1 is the board an easy or long run spends its whole time on,
+            // and the easy/Z2/heat ceiling is exactly the session that carries
+            // one — so the guardrail belongs here as much as on a phase board.
+            // Same resolver, so the two surfaces cannot disagree (rule 16).
+            heartRateGrade: hrCeilingGrade,
             distance: dist.value,
             distanceUnit: dist.unit,
             elapsed: WFmt.clock(engine.totalElapsedSec)
@@ -904,10 +909,90 @@ struct WatchRunSurfaceV5: View {
         return WorkoutMetric(value: WFmt.short(engine.phaseRemainingSec), role: timeRole)
     }
 
+    /// How close to the ceiling the guardrail starts warning, in bpm.
+    ///
+    /// NOT a physiological claim, and deliberately not a second breach
+    /// threshold: `engine.hrOverCeiling` remains the only thing that answers
+    /// "is he over it" (rule 16). This is display LEAD TIME — how much notice
+    /// the row gives before that flips.
+    ///
+    /// Five, because heart rate's response half-time is about 30 seconds
+    /// (`Research/03` §2, the same figure `recordCurrentPhase` and the drift
+    /// monitor already reason from), so at the couple-of-bpm-per-minute drift
+    /// of a marathon-effort segment five bpm is roughly a minute of warning —
+    /// long enough to ease off before the breach, short enough that the row is
+    /// not amber for the whole run.
+    private static let hrCeilingApproachBpm = 6
+
+    /// Q41 · THE HEART-RATE CEILING IS A SECONDARY GUARDRAIL, NOT A VERDICT.
+    ///
+    /// The runner-experience contract asks for the ceiling to turn **amber on
+    /// approach or excess**, with **no red failure state from a momentary
+    /// excursion**. Until 2026-09-03 the HR row on every board was built as
+    ///
+    ///     WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")
+    ///
+    /// with no `grade:` at all, so it was `.neutral` white from the first beat
+    /// of a marathon segment to the last. The ONLY thing the ceiling drove was
+    /// `FaceCeilingBreachV5`, a full-screen three-second takeover — which is a
+    /// takeover, not a guardrail, and says nothing on approach.
+    ///
+    /// Amber and never red: `.drifting` resolves to `WatchV5.attention`, and
+    /// `MetricGrade` has no red case to reach for. That is the contract's "no
+    /// red failure state" enforced by the type rather than by discipline.
+    ///
+    /// Three states, per rule 11, and they are not the same fact:
+    ///   · no ceiling in the payload, or no HR reading → `.neutral`. An absent
+    ///     ceiling is NOT "comfortably under one".
+    ///   · the runner lifted it for today → `.neutral`. The limit is not in
+    ///     force, `engine.hrOverCeiling` already stops flipping, and a row
+    ///     still amber against a lifted ceiling would be the second answer
+    ///     rule 16 forbids.
+    ///   · at or approaching the ceiling → `.drifting`.
+    private var hrCeilingGrade: MetricGrade {
+        guard let ceiling = engine.workout.hrCeilingBpm, ceiling > 0,
+              !engine.ceilingLifted else { return .neutral }
+        let hr = tracker.heartRate
+        guard hr > 0 else { return .neutral }
+        // Excess is the ENGINE's answer, not a second copy of the comparison.
+        if engine.hrOverCeiling { return .drifting }
+        return hr >= ceiling - Self.hrCeilingApproachBpm ? .drifting : .neutral
+    }
+
+    /// Q41 · what to say when PACE AND HEART RATE DISAGREE, and nothing when
+    /// they do not.
+    ///
+    /// The disagreement is the specific case the contract names: the runner is
+    /// executing the prescription correctly — pace inside the prescribed band
+    /// — and the heart rate is over its ceiling anyway, which on a hot or
+    /// tired day is the honest reading and not a failure of execution. The
+    /// instruction is to *protect the effort rather than force pace*.
+    ///
+    /// Gated on the measurement, per rule 16. It returns nil when:
+    ///   · there is no band, so "on target" is not a claim this run can make;
+    ///   · pace is OUT of band, where the two agree that it is too hard and a
+    ///     reassurance would be false;
+    ///   · pace is untrusted (a belt, a dropped signal), where the watch does
+    ///     not know whether they disagree and must not assert that they do.
+    private var paceHrConflictLine: String? {
+        guard paceGrade == .inBand, workoutBand != nil else { return nil }
+        return "Pace is on target \(WatchV5.separator) hold the effort, not the pace."
+    }
+
+    /// The heart-rate row, graded. One constructor, because five boards drew
+    /// this row and a grade added to four of them is exactly the split rule 16
+    /// is about. nil when there is no reading — the row is dropped rather than
+    /// drawn as a zero.
+    private var hrMetric: WorkoutMetric? {
+        guard let hr = WFmt.whole(tracker.heartRate) else { return nil }
+        return WorkoutMetric(value: hr, unit: "bpm",
+                             grade: hrCeilingGrade, role: "Heart rate")
+    }
+
     /// WHICH numbers, in what order. The only genuinely product decision on
     /// these boards — everything else belongs to the foundation.
     private func phaseMetrics(_ phase: WatchPhase) -> [WorkoutMetric] {
-        let hr = WFmt.whole(tracker.heartRate)
+        let hr = hrMetric
         let paced = WorkoutMetric(value: livePace.value, unit: livePace.unit,
                                   grade: paceGrade.workoutGrade, role: "Pace")
 
@@ -918,12 +1003,12 @@ struct WatchRunSurfaceV5: View {
             var m: [WorkoutMetric] = [
                 remainingMetric(for: phase, timeRole: "Time left", distanceRole: "Distance left")
             ]
-            if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
+            if let hr { m.append(hr) }
             return m
 
         case .warmup, .cooldown:
             var m = [remainingMetric(for: phase, timeRole: "Time left", distanceRole: "Distance left"), paced]
-            if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
+            if let hr { m.append(hr) }
             m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
             return m
 
@@ -949,7 +1034,7 @@ struct WatchRunSurfaceV5: View {
                 // go. Elapsed is the honest number here, same shape as the
                 // race board above.
                 var m = [WorkoutMetric(value: WFmt.clock(engine.totalElapsedSec), role: "Elapsed"), paced]
-                if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
+                if let hr { m.append(hr) }
                 m.append(WorkoutMetric(value: dist.value, unit: dist.unit, role: "Distance"))
                 return m
             }
@@ -971,7 +1056,7 @@ struct WatchRunSurfaceV5: View {
                 if let c = WFmt.whole(tracker.cadence) {
                     m.append(WorkoutMetric(value: c, unit: "spm", role: "Cadence"))
                 }
-                if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
+                if let hr { m.append(hr) }
                 return m
             }
             var m = [remainingMetric(for: phase, timeRole: "Time left in rep", distanceRole: "Distance left in rep"), paced]
@@ -982,7 +1067,7 @@ struct WatchRunSurfaceV5: View {
                 // instant.
                 m.append(WorkoutMetric(value: avg.value, unit: "avg", role: "Average pace"))
             }
-            if let hr { m.append(WorkoutMetric(value: hr, unit: "bpm", role: "Heart rate")) }
+            if let hr { m.append(hr) }
             let rep = WFmt.distance(engine.phaseCoveredMi, units: units)
             m.append(WorkoutMetric(value: rep.value, unit: rep.unit, role: "Rep distance"))
             return m
@@ -1135,7 +1220,8 @@ struct WatchRunSurfaceV5: View {
         case .ceilingBreach:
             FaceCeilingBreachV5(
                 bpm: WFmt.whole(tracker.heartRate) ?? "--",
-                ceiling: WFmt.whole(engine.workout.hrCeilingBpm) ?? "--"
+                ceiling: WFmt.whole(engine.workout.hrCeilingBpm) ?? "--",
+                line: paceHrConflictLine
             )
         case .spokenCue(let text):
             // The coach's line in its own register with NOTHING else on the

@@ -45,6 +45,15 @@ struct RunFaceV6: View {
     /// band says "you are wrong" and refuses to say what right was.
     var band: (start: Double, end: Double, marker: Double, inBand: Bool)? = nil
     let heartRate: String?
+    /// Q41 · the HR ceiling as a SECONDARY GUARDRAIL — amber on approach or
+    /// excess, and amber is as far as it goes: `MetricGrade` has no red case,
+    /// so "no red failure state from a momentary excursion" is a property of
+    /// the type rather than a rule someone has to remember.
+    ///
+    /// Defaults to `.neutral` so a caller that has no ceiling to reason about
+    /// keeps today's white row. The router owns the decision
+    /// (`hrCeilingGrade`); this is only where it lands.
+    var heartRateGrade: MetricGrade = .neutral
     let distance: String
     var distanceUnit: String = "mi"
     let elapsed: String
@@ -64,7 +73,8 @@ struct RunFaceV6: View {
             WorkoutMetricStack(band: band, bandRow: 0, metrics: [
                 WorkoutMetric(value: pace, unit: paceUnit, grade: grade, role: "Pace"),
                 heartRate.map {
-                    WorkoutMetric(value: $0, unit: "bpm", role: "Heart rate")
+                    WorkoutMetric(value: $0, unit: "bpm",
+                                  grade: heartRateGrade, role: "Heart rate")
                 } ?? WorkoutMetric(value: "No heart signal", fault: true,
                                    role: "Heart rate unavailable"),
                 WorkoutMetric(value: distance, unit: distanceUnit, role: "Distance"),

@@ -78,6 +78,19 @@ struct FacePreviewView: View {
             // Worst case in every slot at once.
             return AnyView(RunFaceV6(pace: "10:59", grade: .drifting, band: offBand,
                       heartRate: "204", distance: "100.0", elapsed: "5:59:59"))
+        case "p1hrceiling":
+            // Q41 · THE DISAGREEMENT, ON THE RUNNING FACE.
+            //
+            // Pace green and inside the band; heart rate amber against its
+            // ceiling. This is the state the contract is actually about — the
+            // runner executing correctly on a hot day — and until 2026-09-03
+            // it could not be drawn, because the HR row took no grade. Two
+            // colours on one board is the whole point: the pace says the
+            // prescription is being met and the heart rate says what it is
+            // costing. Amber, never red: `MetricGrade` has no red case.
+            return AnyView(RunFaceV6(pace: "7:38", grade: .onTarget, band: inBand,
+                      heartRate: "166", heartRateGrade: .drifting,
+                      distance: "8.72", elapsed: "1:14:28"))
         // MARK: Page 2
 
         case "p2":
@@ -284,6 +297,15 @@ struct FacePreviewView: View {
                 judgement: "The stimulus is already banked \(sep) forcing the rest buys fatigue, not fitness.",
                 onCutItShort: {}, onRunItOut: {}))
         case "ceiling":
+            // The WORST case, deliberately (FACE-QC rule 19): the breach board
+            // carrying the pace/HR disagreement line, which is the longest it
+            // can ever be. A board reviewed without the sentence is a board
+            // nobody checked the sentence on.
+            return AnyView(FaceCeilingBreachV5(
+                bpm: "178", ceiling: "168",
+                line: "Pace is on target \(sep) hold the effort, not the pace."))
+        case "ceilingbare":
+            // The same board when pace and HR do NOT disagree — no line at all.
             return AnyView(FaceCeilingBreachV5(bpm: "178", ceiling: "168"))
         case "ceilingoverride":
             return AnyView(FaceCeilingOverrideV5(bpm: "174", ceiling: "165",

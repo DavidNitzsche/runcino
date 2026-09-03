@@ -645,6 +645,20 @@ struct FaceCeilingBreachV5: View {
     /// The limit itself, so the reading is legible against something.
     let ceiling: String
 
+    /// Q41 · THE ONE SENTENCE FOR WHEN PACE AND HEART RATE DISAGREE.
+    ///
+    /// The contract asks for "a concise instruction when they disagree —
+    /// *protect the effort rather than forcing pace*". This board stated a
+    /// number and a limit and gave no instruction at all, so a runner holding
+    /// a prescribed pace correctly, on a hot day, with HR reading high, was
+    /// shown a breach and left to guess which of the two to obey.
+    ///
+    /// nil when they do NOT disagree — over the ceiling AND off the band is
+    /// not a conflict, it is simply too hard, and the board should not invent
+    /// a reassurance for it. Silence beats a sentence that is not true of this
+    /// run (rule 16: a sentence about a measurement is gated on it).
+    var line: String? = nil
+
     var body: some View {
         WBoard {
             VStack(alignment: .leading, spacing: 6) {
@@ -656,6 +670,13 @@ struct FaceCeilingBreachV5: View {
                 Text("Ceiling is \(ceiling)")
                     .font(WatchV5.number(18))
                     .foregroundStyle(WatchV5.valueDim)
+
+                // `WCoachLine`, not a bare Text: this is prose, and prose is
+                // Instrument Sans in this design. The same component the
+                // override board below already uses for the same register.
+                if let line {
+                    WCoachLine(text: line, size: 15, color: WatchV5.valueDim)
+                }
 
                 Spacer(minLength: 0)
             }
