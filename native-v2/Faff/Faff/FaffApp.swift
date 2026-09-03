@@ -68,6 +68,66 @@ struct FaffApp: App {
         #endif
     }
 
+    /// DEBUG-only run-detail render harness, the third sibling of
+    /// `-faffToken` and `-faffHost`.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHY IT EXISTS
+    ///
+    /// CLAUDE.md Rule 13: a change to something the runner sees is verified by
+    /// RENDERING it, with real data. For the run-detail screen that has meant
+    /// signing the simulator in — which mints a row in the production
+    /// `sessions` table. `lib/verify/install-barrier` exists to make
+    /// verification tooling structurally incapable of writing production, and
+    /// it is right to. So the two requirements collided: render with real
+    /// data, and write nothing.
+    ///
+    /// This resolves it. The server writes its REAL response for a REAL run to
+    /// a file — same loaders, same production rows, same shape as
+    /// `/api/runs/[id]` — and the app decodes it with the REAL decoder and
+    /// draws it with the REAL view:
+    ///
+    ///     xcrun simctl launch <udid> run.faff.app -faffRunDetail run-0901.json
+    ///
+    /// The file is read from the app's own Documents directory, which on a
+    /// simulator is an ordinary directory on the host.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHAT IT DOES AND DOES NOT PROVE
+    ///
+    /// It proves the decode and the drawing, over data no fixture generated.
+    /// It does NOT exercise the network hop or the auth layer, and anything
+    /// verified this way should say so. That is a smaller claim than "I opened
+    /// the app and looked", and a much larger one than "the test passed".
+    ///
+    /// Never compiled into a release build, so no shipped app can be pointed
+    /// at a file. It renders; it cannot mutate anything, here or upstream.
+    private static func runDetailFixtureIfAsked() -> RunDetail? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffRunDetail"), i + 1 < args.count else { return nil }
+        let name = args[i + 1]
+        guard let dir = FileManager.default.urls(for: .documentDirectory,
+                                                 in: .userDomainMask).first else { return nil }
+        let url = dir.appendingPathComponent(name)
+        guard let data = try? Data(contentsOf: url) else {
+            NSLog("[faffRunDetail] no file at \(url.path)")
+            return nil
+        }
+        do {
+            return try JSONDecoder().decode(RunDetail.self, from: data)
+        } catch {
+            // LOUD. A harness that silently falls through to the normal app
+            // would produce a screenshot of the sign-in screen and an agent
+            // reporting that it had rendered the feature.
+            NSLog("[faffRunDetail] decode failed: \(error)")
+            return nil
+        }
+        #else
+        return nil
+        #endif
+    }
+
     private static func rescheduleDateIfAsked() -> String? {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-faffReschedule"), i + 1 < args.count else { return nil }
@@ -88,6 +148,11 @@ struct FaffApp: App {
                 GalleryV5()
             } else if ProcessInfo.processInfo.arguments.contains("-faffV5Screens") {
                 ScreensCatalogV5()
+            } else if let fixture = FaffApp.runDetailFixtureIfAsked() {
+                // One run, drawn from a real server payload. See
+                // `runDetailFixtureIfAsked` for why this road exists.
+                RunDetailV5(detail: fixture)
+                    .preferredColorScheme(.dark)
             } else if let date = FaffApp.rescheduleDateIfAsked() {
                 // The rescheduling decision, opened straight onto one date, so
                 // it can be rendered and read on device without walking the

@@ -322,6 +322,63 @@ struct RunDetail: Decodable, Identifiable {
     /// Nil on a server that predates the field; the section is then not drawn.
     let postRun: PostRunV5?
 
+    /// PR-8 to PR-11 · THE SYNCHRONISED CHART STACK.
+    ///
+    /// Pace, heart rate and elevation on ONE distance axis, with the session's
+    /// own phase boundaries placed on it. Composed by
+    /// `web-v2/lib/postrun/analysis.ts`, which builds the axis once so the
+    /// layers cannot disagree about where mile three is.
+    ///
+    /// Nil when the run recorded nothing to draw — a manual entry, an older
+    /// treadmill row — and the phone then draws no chart section at all rather
+    /// than an empty one. Also nil on a server that predates the field.
+    let analysis: RunAnalysis?
+
+    /// PR-15 · the one comparable prior session, or nothing.
+    ///
+    /// Never "the nearest run of the same distance": matched by intended
+    /// stimulus and structure, per `docs/RUNNER_EXPERIENCE_CONTRACT.md` Q44.
+    let matchedWorkout: MatchedWorkout?
+
+    /// WHY there is no comparison, when one was looked for and refused.
+    ///
+    /// THREE STATES AND NOT TWO (Rule 11), which is why this is a separate
+    /// field from `matchedWorkout` rather than an empty case inside it:
+    ///
+    ///   a workout + no refusal · here is the comparison
+    ///   no workout + a refusal · we looked, nothing was defensible, and this
+    ///                            sentence says so
+    ///   no workout + no refusal· this kind of run has no comparator of this
+    ///                            kind. Draw nothing, say nothing.
+    ///
+    /// The third is the common one — an easy run — and printing "no comparable
+    /// session" under every one of them would be furniture.
+    let matchedRefusal: String?
+
+    /// PR-12 · WHAT THIS RUN'S EFFORT WAS WORTH ON THE FLAT, seconds per mile.
+    ///
+    /// Resolved server-side by `lib/terrain/grade-adjust.ts`, which owns the
+    /// one course-adjustment coefficient in this app. It has been on this
+    /// payload since 2026-08-17 and nothing decoded it; the comment at the top
+    /// of `RunDetailV5` said so in as many words.
+    ///
+    /// THE RULE THAT COMES WITH IT, from that module's own header: "grade-
+    /// adjusted pace is for judging effort. It is NEVER what the runner ran."
+    /// So it may only be drawn BESIDE the real pace, never instead of it, it
+    /// carries `terrain_label` with it, and it is a MODELLED number — the
+    /// output of a linear cost model, not a measurement — so it renders
+    /// through `FaffValue.modelled` and wears the amber tilde.
+    let grade_adjusted_pace_s_per_mi: Int?
+
+    /// `hill-adjusted` | `descent-adjusted` | `incline-adjusted`, or nil when
+    /// the terrain did not move the read far enough to be worth showing.
+    ///
+    /// NIL IS THE COMMON ANSWER and it is the gate: on a flat road run the
+    /// adjusted pace equals the real pace exactly and nothing renders. A screen
+    /// that drew the adjusted pace without checking this would print the same
+    /// number twice under two names on almost every run (Rule 17).
+    let terrain_label: String?
+
     enum CodingKeys: String, CodingKey {
         case id, date, start_local, name, source, type, type_display
         case distance_mi, pace, pace_s_per_mi, time_moving, time_elapsed, avg_speed_mph
@@ -335,6 +392,8 @@ struct RunDetail: Decodable, Identifiable {
         case ceiling_lift, rep_skips, recovery_extensions
         case readings
         case postRun
+        case analysis, matchedWorkout, matchedRefusal
+        case grade_adjusted_pace_s_per_mi, terrain_label
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -385,7 +444,129 @@ struct RunDetail: Decodable, Identifiable {
         self.recovery_extensions = (try? c.decode([RunRecoveryExtension].self, forKey: .recovery_extensions)) ?? []
         self.readings = try? c.decodeIfPresent(RunReadings.self, forKey: .readings)
         self.postRun = try? c.decodeIfPresent(PostRunV5.self, forKey: .postRun)
+        self.analysis = try? c.decodeIfPresent(RunAnalysis.self, forKey: .analysis)
+        self.matchedWorkout = try? c.decodeIfPresent(MatchedWorkout.self, forKey: .matchedWorkout)
+        self.matchedRefusal = try? c.decodeIfPresent(String.self, forKey: .matchedRefusal)
+        self.grade_adjusted_pace_s_per_mi = c.decodeFlexInt(forKey: .grade_adjusted_pace_s_per_mi)
+        self.terrain_label = try? c.decodeIfPresent(String.self, forKey: .terrain_label)
     }
+}
+
+// MARK: - The chart stack  (PR-8 · PR-9 · PR-10 · PR-11)
+
+/// One column of the stack, on the shared distance axis.
+///
+/// EVERY FIELD IS INDEPENDENTLY OPTIONAL AND NIL MEANS NO READING. Not zero,
+/// not "carry the last one forward". A line drawn through a nil is a
+/// measurement the run does not have, and the post-run brief asks for
+/// "pauses/sensor gaps marked rather than interpolated as truth". The 2026-09-01
+/// warm-up opens with five samples carrying no heart rate at all — the strap
+/// had not caught — and drawing that as a plunge to zero is the lie.
+struct RunAnalysisPoint: Decodable, Equatable {
+    /// Cumulative miles from the start of the run. THE shared x-axis.
+    let atMi: Double
+    let paceSecPerMi: Int?
+    let hrBpm: Int?
+}
+
+/// A phase of the session, placed on the same axis the points sit on.
+struct RunAnalysisBand: Decodable, Equatable, Identifiable {
+    var id: Int { index }
+    let index: Int
+    let label: String?
+    /// `warmup` | `work` | `recovery` | `cooldown` | `unknown`.
+    let kind: String
+    let fromMi: Double
+    let toMi: Double
+    /// The target to draw ACROSS THIS BAND ONLY, seconds per mile.
+    ///
+    /// Nil wherever the phase was not pace-graded — every recovery jog, every
+    /// stride, every unplanned run. A single target line ruled across a whole
+    /// session is the "whole-run average misrepresents an interval session"
+    /// failure drawn instead of written, and it is the thing this surface most
+    /// has to avoid.
+    let targetSecPerMi: Int?
+    let toleranceSec: Int?
+    /// True for a stride. Doctrine calls a stride "not a workout"; it carries
+    /// no target and is never a miss.
+    let isStride: Bool
+
+    var isWork: Bool { kind == "work" && !isStride }
+}
+
+struct RunAnalysisElevationPoint: Decodable, Equatable {
+    let atMi: Double
+    /// Feet RELATIVE to the start, cumulated from per-mile signed changes.
+    ///
+    /// NOT AN ALTITUDE. Nothing in this app stores one — there is no field on
+    /// a run row that could produce the reference's 690-to-730-feet chart. This
+    /// answers "where were the climbs" and refuses to answer "how high was I",
+    /// and the caption on the chart says so.
+    let ft: Double
+}
+
+struct RunAnalysis: Decodable, Equatable {
+    let version: String
+    /// `SAMPLED` · the watch's own five-second readings.
+    /// `PER_MILE` · one point per split row, the only grain a Strava-synced
+    ///              run offers.
+    ///
+    /// Two facts, named rather than blended: a chart built from thirteen mile
+    /// rows and one built from eight hundred wrist readings are not the same
+    /// claim, and the runner is entitled to know which is in front of him.
+    let grain: String
+    /// How wide one column is, miles. The resolution claim, stated.
+    let bucketMi: Double
+    let points: [RunAnalysisPoint]
+    /// Empty on an unstructured recording. Never one band spanning everything.
+    let bands: [RunAnalysisBand]
+    /// Nil when no split on this run recorded an elevation change — which is
+    /// eleven of the owner's last fourteen runs. The section is then absent,
+    /// not flat.
+    let elevation: [RunAnalysisElevationPoint]?
+    let hasPace: Bool
+    let hasHr: Bool
+    /// For VoiceOver, and for a reader who cannot see the chart at all.
+    let accessibilitySummary: String
+
+    var isSampled: Bool { grain == "SAMPLED" }
+}
+
+// MARK: - The matched workout  (PR-15)
+
+/// One row of the comparison. Both sides are already formatted server-side.
+struct MatchedWorkoutLine: Decodable, Equatable, Identifiable {
+    var id: String { label }
+    let label: String
+    let now: String
+    let then: String
+    /// The difference as a fragment, or nil when a difference is not worth
+    /// stating — a heart rate one beat apart, a pace one second apart. Never a
+    /// verdict word: the judgement belongs to the coach card above (Rule 17).
+    let delta: String?
+}
+
+struct MatchedWorkout: Decodable, Equatable {
+    /* NO `runId`. The server composes one and this deliberately does not read
+     * it — see `NOT_DECODED_BY_DESIGN` in
+     * `web-v2/lib/postrun/_detail_wire_consumed.audit.test.ts`. Opening the
+     * compared run from this card needs a navigation route that does not
+     * exist, and a stored property nothing can act on is the same defect as
+     * `coverage`: composed, documented, and read by no screen. It comes back
+     * when the tap target does. */
+    let dateISO: String
+    /// ALWAYS STATED, and never merely "matched run" — Q44 in as many words.
+    /// "Compared with your previous 4 × 1 mi threshold session, 11 weeks ago."
+    let basis: String
+    let lines: [MatchedWorkoutLine]
+    /// What could not be compared, and why. A card that silently drops its
+    /// heart-rate row looks identical to one over a run that had no strap.
+    let withheld: [String]
+    /* NO `accessibilitySummary`. The server no longer composes one — a
+     * combined VoiceOver label REPLACES the rows it summarises, so the
+     * comparison would have been read as a single sentence with none of its
+     * figures in it. See `MatchedWorkout` in `web-v2/lib/postrun/matched.ts`.
+     * The rows read better as themselves. */
 }
 
 /// One whole-run average, and the interval it is actually the average of.

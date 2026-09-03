@@ -136,6 +136,69 @@ async function loadRun(userId: string, ref: PostRunRef): Promise<RunRow | null> 
 }
 
 /**
+ * THE STORED PHASE ARRAY FOR ONE RUN. One owner, three rungs.
+ *
+ * Extracted from `loadPostRunExperience` on 2026-09-03 so that
+ * `detail-load.ts` — which needs the RAW elements for their `paceSamples`
+ * and `hrSamples`, which `GradedPhase` deliberately does not carry — reads
+ * the same array through the same ladder rather than writing a second one.
+ * A second copy of this resolution is a second answer to "which completion is
+ * this run's", and the answer that copy would most likely give is the one
+ * SIMROW-1 was written to stop.
+ *
+ * The three rungs, most specific first, and each a different fact:
+ *
+ *   1 · the intent this run NAMES via `watchCompletionRef` — one payload, by
+ *       id, so a simulator row posted the same day cannot win;
+ *   2 · the run row's OWN `data.phases`, written verbatim by the same request;
+ *   3 · the legacy date match for rows predating `watchCompletionRef`,
+ *       bounded so a `sim-` field can never satisfy it.
+ *
+ * NOT WRAPPED IN A CATCH. `runnerTimezoneOrPacific` already answers "this
+ * runner has no stored timezone" by name; a catch here would also swallow a
+ * database failure and answer it with Pacific, which is a guess wearing a
+ * default's clothes (Rule 11).
+ */
+export async function resolveStoredPhases(
+  userId: string,
+  dateISO: string,
+  data: Record<string, any>,
+): Promise<unknown[]> {
+  const completionRef = [data.watchCompletionRef, data.client_workout_id]
+    .find((v) => typeof v === 'string' && v.length > 0) as string | undefined;
+
+  let intentValue: unknown = null;
+  if (completionRef) {
+    const byRef = await pool.query<{ value: unknown }>(
+      `SELECT value FROM coach_intents
+        WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
+          AND field = $2
+        ORDER BY ts DESC LIMIT 1`,
+      [userId, completionRef],
+    );
+    intentValue = byRef.rows[0]?.value ?? null;
+  }
+
+  let phases = intentValue != null ? phasesFromCompletion(intentValue) : [];
+  if (phases.length === 0) phases = phasesFromCompletion(data.phases);
+  if (phases.length === 0) {
+    const tz = await runnerTimezoneOrPacific(userId);
+    const intentRes = await pool.query<{ value: unknown }>(
+      `SELECT value FROM coach_intents
+        WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
+          AND field NOT LIKE 'sim-%'
+          AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
+                    THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
+                    ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
+        ORDER BY ts DESC LIMIT 1`,
+      [userId, dateISO, tz],
+    );
+    phases = phasesFromCompletion(intentRes.rows[0]?.value);
+  }
+  return phases;
+}
+
+/**
  * Compose the canonical post-run experience for one run.
  *
  * Returns null ONLY when there is no such run for this runner. Every other
@@ -214,37 +277,7 @@ export async function loadPostRunExperience(
    *       and now bounded to fields that look like a real completion so a
    *       `sim-` payload can never win it.
    */
-  const completionRef = [data.watchCompletionRef, data.client_workout_id]
-    .find((v) => typeof v === 'string' && v.length > 0) as string | undefined;
-
-  let intentValue: unknown = null;
-  if (completionRef) {
-    const byRef = await pool.query<{ value: unknown }>(
-      `SELECT value FROM coach_intents
-        WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
-          AND field = $2
-        ORDER BY ts DESC LIMIT 1`,
-      [userId, completionRef],
-    );
-    intentValue = byRef.rows[0]?.value ?? null;
-  }
-
-  let phases = intentValue != null ? phasesFromCompletion(intentValue) : [];
-  if (phases.length === 0) phases = phasesFromCompletion(data.phases);
-  if (phases.length === 0) {
-    const tz = await runnerTimezoneOrPacific(userId);
-    const intentRes = await pool.query<{ value: unknown }>(
-      `SELECT value FROM coach_intents
-        WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
-          AND field NOT LIKE 'sim-%'
-          AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
-                    THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-                    ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
-        ORDER BY ts DESC LIMIT 1`,
-      [userId, dateISO, tz],
-    );
-    phases = phasesFromCompletion(intentRes.rows[0]?.value);
-  }
+  const phases = await resolveStoredPhases(userId, dateISO, data);
 
   // THE canonical grade. Never re-derived on a surface.
   const verdict = resolveWorkoutVerdict({
