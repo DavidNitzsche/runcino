@@ -281,7 +281,7 @@ const NOTE = {
   repGeneric: 'Same effort on every rep, first to last.',
   stride: 'Relaxed and fast. Not a workout, so walk back fully between.',
   tempo: 'Continuous and controlled. If the breathing turns ragged, ease off 5 to 10 sec/mi.',
-  easy: 'Conversational. Cap the effort and hold form.',
+  easy: 'Easy enough to talk in full sentences. If the pace and the effort disagree, run the effort.',
   long: 'Time on feet beats pace. Fuel around 45 min in, then every 30.',
   // ROW-CONTRACT-1 (2026-09-02) · this note named TWO distances, under a header
   // three lines above forbidding exactly that. It read "Hold the plan through

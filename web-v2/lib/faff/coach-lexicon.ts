@@ -61,6 +61,11 @@
  *                everywhere.
  *   jargon     · engine taxonomy. NOT blocked everywhere, and that is the
  *                point — see the next block. Blocked in LAYER 1 only.
+ *   shorthand  · a phrase that occupies the place an instruction should be
+ *                while telling the runner nothing he can act on:
+ *                "Conversational", "Z2 HR cap", "Stay aerobic". Blocked
+ *                everywhere, because there is no layer at which an adjective
+ *                is a prescription.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * WHY `jargon` IS SPLIT IN TWO, AND WHY THAT IS NOT A LOOPHOLE
@@ -121,7 +126,7 @@
  *     calls `scanLayerOne`, and nothing will say so.
  */
 
-export type LexiconBand = 'hype' | 'scolding' | 'macho' | 'app-voice' | 'jargon';
+export type LexiconBand = 'hype' | 'scolding' | 'macho' | 'app-voice' | 'jargon' | 'shorthand';
 
 export interface LexiconEntry {
   band: LexiconBand;
@@ -250,13 +255,28 @@ export const COACH_LEXICON: LexiconEntry[] = [
   { band: 'jargon', term: "training stress", why: "Model vocabulary." },
   { band: 'jargon', term: "aerobic decoupling", why: "Same." },
   { band: 'jargon', term: "taxonomy", why: "Same." },
+
+  // ── shorthand · engine vocabulary standing in for an instruction ────────
+  // NEW 2026-09-02 (RUNNERLANG-1). The owner, reading his own composed block:
+  // "Remove phrases such as 'Conversational', 'Z2 HR cap', engine taxonomy,
+  // internal rule names, unsupported coaching shorthand. Replace them with
+  // direct running instructions that tell me what to do."
+  //
+  // This band is not about tone. Every term here is a phrase that OCCUPIES
+  // the place an instruction should be while telling the runner nothing he
+  // can act on. Blocked everywhere, because there is no layer at which an
+  // adjective is a prescription.
+  { band: 'shorthand', term: "conversational", why: "An adjective standing in for an instruction, and it was the most-printed word in the block. Say the talk test as an action: 'Easy enough to talk in full sentences.'" },
+  { band: 'shorthand', term: "z2 hr cap", why: "Names a zone MODEL at a runner who can only watch a number. The ceiling is on the HR row, as 'Keep it under · 151 bpm'." },
+  { band: 'shorthand', term: "· z2", why: "The same zone label as a stat body ('Conversational · Z2', 'Aerobic · Z2'). A zone index is not something a wrist displays." },
+  { band: 'shorthand', term: "stay aerobic", why: "Names a physiological system instead of an action. The row it sat on already carried the bpm." },
 ];
 /* eslint-enable max-len */
 
 /** Terms the file-wide shell gate blocks, by band. */
 export function shellBands(): Record<string, string[]> {
   const out: Record<string, string[]> = {
-    hype: [], scolding: [], macho: [], 'app-voice': [], jargon: [],
+    hype: [], scolding: [], macho: [], 'app-voice': [], jargon: [], shorthand: [],
   };
   for (const e of COACH_LEXICON) {
     if (e.band === 'jargon' && !e.always) continue; // Layer 1 only
@@ -279,7 +299,7 @@ export interface LexiconFinding {
  */
 export function scanCopy(
   text: string | null | undefined,
-  bands: readonly LexiconBand[] = ['hype', 'scolding', 'macho', 'app-voice'],
+  bands: readonly LexiconBand[] = ['hype', 'scolding', 'macho', 'app-voice', 'shorthand'],
 ): LexiconFinding[] {
   if (!text) return [];
   const low = text.toLowerCase();
@@ -298,7 +318,7 @@ export function scanCopy(
  * defect class the shell gate names as its own blind spot.
  */
 export function scanLayerOne(text: string | null | undefined): LexiconFinding[] {
-  return scanCopy(text, ['hype', 'scolding', 'macho', 'app-voice', 'jargon']);
+  return scanCopy(text, ['hype', 'scolding', 'macho', 'app-voice', 'jargon', 'shorthand']);
 }
 
 /**

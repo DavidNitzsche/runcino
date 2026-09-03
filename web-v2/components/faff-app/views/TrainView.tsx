@@ -1824,7 +1824,7 @@ function PlanDayPanel({
         segments.push({ label: 'FINISH', body: `${finishMi.toFixed(1)} mi @ ${finishLabel ?? 'finish pace'}`, tail: `${fmtPace(finishPace)}/mi` });
       } else {
         if (lo && hi) segments.push({ label: 'PACE', body: 'Aerobic build', tail: `${fmtPace(lo)}–${fmtPace(hi)}/mi` });
-        if (spec.hr_cap_bpm) segments.push({ label: 'HR CAP', body: 'Stay aerobic', tail: `${spec.hr_cap_bpm} bpm` });
+        if (spec.hr_cap_bpm) segments.push({ label: 'HR CAP', body: 'Keep it under', tail: `${spec.hr_cap_bpm} bpm` });
         if (fuelMi && fuelMi.length > 0) segments.push({ label: 'FUEL', body: 'Gel · water · gel', tail: `mi ${fuelMi.join(' · ')}` });
       }
     } else if (kind === 'tempo' || kind === 'threshold') {
@@ -1858,7 +1858,7 @@ function PlanDayPanel({
     } else if (kind === 'easy') {
       const lo = spec.pace_target_s_per_mi_lo as number | undefined;
       const hi = spec.pace_target_s_per_mi_hi as number | undefined;
-      if (lo && hi) segments.push({ label: 'PACE', body: 'Easy · conversational', tail: `${fmtPace(lo)}–${fmtPace(hi)}/mi` });
+      if (lo && hi) segments.push({ label: 'PACE', body: 'Easy · full sentences', tail: `${fmtPace(lo)}–${fmtPace(hi)}/mi` });
     } else if (kind === 'progression') {
       const wu = spec.warmup_mi as number | undefined;
       const start = spec.prog_start_s_per_mi as number | undefined;
@@ -1923,7 +1923,7 @@ function PlanDayPanel({
         </div>
       ) : day.type !== 'rest' ? (
         <div style={{ marginTop: 16, fontSize: 13, color: 'rgba(255,255,255,.45)' }}>
-          {day.type === 'easy' || day.type === 'recovery' ? 'Easy aerobic run. Conversational pace throughout.' : 'See full plan for session detail.'}
+          {day.type === 'easy' || day.type === 'recovery' ? 'Easy aerobic run. Talk in full sentences the whole way.' : 'See full plan for session detail.'}
         </div>
       ) : null}
 

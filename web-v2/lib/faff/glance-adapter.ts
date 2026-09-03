@@ -56,6 +56,21 @@ function anchorsOf(glance: GlanceState): PrescribedPaceAnchors | null {
   return glance.paceAnchors.ok ? glance.paceAnchors.anchors : null;
 }
 
+/**
+ * RUNNERLANG-1 (2026-09-02) · the HR ceiling, as a number or not at all.
+ *
+ * One resolver for the three states Rule 11 keeps apart: the row's own
+ * authored cap, the live-profile-derived cap, and NO readable ceiling — which
+ * returns null so the caller says "by feel" rather than printing a population
+ * bpm dressed as this runner's. Written once because two rows in this file
+ * ask the same question and used to answer it with two different fallback
+ * strings ('Aerobic · Z2' and 'Aerobic ceiling'), which is Rule 16.
+ */
+function easyCapTail(specCapBpm: number | null, profileCap: string | null): string | null {
+  if (specCapBpm != null) return `${specCapBpm} bpm`;
+  return profileCap ?? null;
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // 1. Day-state resolver
 // ──────────────────────────────────────────────────────────────────────
@@ -496,7 +511,11 @@ function buildWorkoutBreakdown(
         return [
           {
             label: 'PACE',
-            body: 'Conversational · Z2',
+            // RUNNERLANG-1 (2026-09-02) · was 'Conversational · Z2'. An
+            // adjective and a zone label, neither of which is an instruction.
+            // The band is already in the tail; the body says what to do with
+            // it.
+            body: 'Easy all the way',
             tail: `${fmtPace(spec.pace_target_s_per_mi_lo)}–${fmtPace(spec.pace_target_s_per_mi_hi)}/mi`,
           },
           {
@@ -507,8 +526,15 @@ function buildWorkoutBreakdown(
             // population bpm shown as theirs is a fabrication. Fall back to
             // the live-profile-derived cap, then the effort cue. Never a
             // number we can't source. Doctrine: Research/03 §6 Z2 ceiling.
-            body: 'Stay aerobic',
-            tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm` : (aerobicCap ?? 'Aerobic · Z2'),
+            // RUNNERLANG-1 · THIS ROW IS WHERE THE NUMBER LIVES, so it is
+            // the row that has to read as an instruction. "Stay aerobic ·
+            // 151 bpm" names a physiological system; "Keep it under · 151
+            // bpm" is the thing the runner does with his wrist. Rule 11: the
+            // three states stay three — a spec cap, the live profile cap, or
+            // no readable ceiling at all, which says by feel rather than
+            // printing a population number as his.
+            body: easyCapTail(spec.hr_cap_bpm, aerobicCap) ? 'Keep it under' : 'Easy effort',
+            tail: easyCapTail(spec.hr_cap_bpm, aerobicCap) ?? 'by feel',
           },
           {
             label: 'DURATION',
@@ -524,8 +550,8 @@ function buildWorkoutBreakdown(
       // estimate taken at the ceiling would understate the run, so it refuses.
       const minutes = mi > 0 && easyAnchorSec != null ? Math.round((mi * easyAnchorSec) / 60) : null;
       return [
-        { label: 'PACE', body: 'Conversational · Z2', tail: easyBand ?? 'Easy · by feel' },
-        { label: 'HR CAP', body: 'Stay aerobic', tail: aerobicCap ?? 'Aerobic · Z2' },
+        { label: 'PACE', body: 'Easy all the way', tail: easyBand ?? 'Easy · by feel' },
+        { label: 'HR CAP', body: aerobicCap ? 'Keep it under' : 'Easy effort', tail: aerobicCap ?? 'by feel' },
         {
           label: 'DURATION',
           body: minutes != null ? `~${minutes} min on feet` : 'Time on feet',
@@ -590,8 +616,8 @@ function buildWorkoutBreakdown(
           },
           {
             label: 'HR CAP',
-            body: 'Long-day ceiling',
-            tail: spec.hr_cap_bpm != null ? `${spec.hr_cap_bpm} bpm` : (aerobicCap ?? 'Aerobic ceiling'),
+            body: easyCapTail(spec.hr_cap_bpm, aerobicCap) ? 'Keep it under' : 'Easy effort',
+            tail: easyCapTail(spec.hr_cap_bpm, aerobicCap) ?? 'by feel',
           },
         ];
         if (spec.fuel_mi.length > 0) {

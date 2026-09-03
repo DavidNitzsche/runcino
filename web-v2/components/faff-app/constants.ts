@@ -194,7 +194,7 @@ export const PLAN_CUES: Record<EffortKey, { fuel: [string,string][]; cues: strin
   },
   recovery: {
     fuel: [['Before','Water'],['Carry','Nothing'],['During',' · ']],
-    cues: ['Keep it conversational the whole way.','Slower than feels right is correct.','Stop if anything tweaks. It’s recovery.'],
+    cues: ['Talk in full sentences the whole way.','Slower than feels right is correct.','Stop if anything tweaks. It’s recovery.'],
   },
   long: {
     fuel: [['Before','24 oz + carbs'],['Carry','2 flasks PF 60'],['During','Gel @ 5 / 10 / 15']],

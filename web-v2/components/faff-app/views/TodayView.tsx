@@ -1686,11 +1686,16 @@ function deriveCoachLine(
  */
 function planEffortLabel(t: EffortKey): { copy: string; ratio: string } {
   const TABLE: Record<EffortKey, { copy: string; ratio: string }> = {
-    recovery:  { copy: 'Very easy · Z1',        ratio: '2 / 10' },
-    easy:      { copy: 'Conversational · Z2',   ratio: '3 / 10' },
-    long:      { copy: 'Aerobic · Z2-Z3',       ratio: '5 / 10' },
-    tempo:     { copy: 'Comfortably hard · Z4', ratio: '7 / 10' },
-    intervals: { copy: 'Hard · Z5 spikes',      ratio: '9 / 10' },
+    // RUNNERLANG-1 (2026-09-02) · the zone INDEX left this table. A runner
+    // watches a pace and a heart rate, not a Friel band number, and the ratio
+    // column beside it already says how hard the day is. The whole column
+    // moved, not only the two entries the gate names, because half a table
+    // speaking two vocabularies is worse than either one.
+    recovery:  { copy: 'Very easy',             ratio: '2 / 10' },
+    easy:      { copy: 'Easy · full sentences', ratio: '3 / 10' },
+    long:      { copy: 'Steady aerobic',        ratio: '5 / 10' },
+    tempo:     { copy: 'Comfortably hard',      ratio: '7 / 10' },
+    intervals: { copy: 'Hard · full recovery',  ratio: '9 / 10' },
     race:      { copy: 'All-out · race effort', ratio: '10 / 10' },
     rest:      { copy: 'Rest · no stress',      ratio: '0 / 10' },
   };
@@ -1765,7 +1770,7 @@ function hrTargetLabel(d: FaffSeed['week'][number]): { value: string; sub: strin
     // the Sun 6/7 card showing "<144 bpm · Z3" when 144 IS the Z2 upper
     // cap. Labeling it Z3 implied long runs should run in Z3, which
     // contradicts the cap value. Both easy + long now show Z2.
-    return { value: `< ${d.hrCap}`, sub: ` bpm · Z2 cap`, modelled: true };
+    return { value: `< ${d.hrCap}`, sub: ` bpm ceiling`, modelled: true };
   }
   // "by feel" is a refusal, not a modelled number · it takes no mark.
   return { value: 'by feel', sub: '', modelled: false };

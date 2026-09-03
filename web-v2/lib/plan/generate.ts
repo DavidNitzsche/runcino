@@ -79,6 +79,7 @@ import {
   dressRehearsalDose,
 } from './long-run-rows';
 import { type CourseTerrain, UNKNOWN_TERRAIN, loadRaceCourseTerrain } from './course-profile';
+import { BlockScopedSpeaker } from './runner-instruction'; // RULE 17 · a block sentence is said once
 // PROGRESSION-1 (2026-08-17) · the authored default overload trajectory.
 // `Design/adaptive-progression-engine.md` §3's "calendar proposes" half: the
 // plan carries a lever-driven trajectory so a block progresses by duration,
@@ -5023,7 +5024,7 @@ function layoutRaceWeek(input: Pick<
         const raceWeekCat = distanceCategoryOf(raceDistanceMi);
         const minEasyT3 = raceWeekCat === 'm' || raceWeekCat === 'ultra' ? 30 : 35;
         const minEasy = daysBeforeRace === 4 ? 40 : minEasyT3;
-        days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: `EASY · ${minEasy} MIN`, notes: `${minEasy} min easy. Conversational effort throughout. Strides optional at end.` });
+        days.push({ dow, type: 'easy', distanceMi: 3 + (daysBeforeRace === 4 ? 1 : 0), isQuality: false, isLong: false, subLabel: `EASY · ${minEasy} MIN`, notes: `${minEasy} min easy. Talk in full sentences the whole way. Strides optional at end.` });
       } else {
         // TAPER-RW-1 · early race-week easy days also time-based (35-45 min)
         const earlyEasy = daysBeforeRace > 5;
@@ -5966,7 +5967,7 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
       : `LONG · ${finishMi}mi @ ${finishSeg!.tag}`,
     notes: !hasFinish
       ? (phase === 'TAPER' ? 'Easy long, hold pace. Quality lives in the race itself.'
-        : 'Conversational throughout. Build the engine.')
+        : 'Easy the whole way, talking in full sentences. Build the engine.')
       : modifiedBlockSeg
       // Says what the session IS for, because the shape is the point and a
       // runner who treats the gap as a rest stop has run a different workout.
@@ -7637,7 +7638,7 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   }
   for (const { dow } of emptySlots) {
     slots[dow] = easyDowSet.has(dow)
-      ? { dow, type: 'easy', distanceMi: perEasy + (extraHalfDows.has(dow) ? 0.5 : 0), isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational. Z2 HR cap.' }
+      ? { dow, type: 'easy', distanceMi: perEasy + (extraHalfDows.has(dow) ? 0.5 : 0), isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Easy enough to talk in full sentences. If the heart rate drifts up, slow down even when the pace still looks right.' }
       : { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Sleep, mobility, fuel.' };
   }
 
@@ -8133,7 +8134,7 @@ function frontLoadFirstRun(
   dest.isQuality = false;
   dest.isLong = false;
   dest.subLabel = 'EASY';
-  dest.notes = 'First run. Ease in at a conversational pace · the week settles into its rhythm from here.';
+  dest.notes = 'First run. Ease in at a pace you can talk through · the week settles into its rhythm from here.';
   donor.type = 'rest';
   donor.distanceMi = 0;
   donor.isQuality = false;
@@ -12054,7 +12055,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     slots[input.longRunDow] = {
       dow: input.longRunDow, type: 'long', distanceMi: wkLong, isQuality: false, isLong: true,
       subLabel: 'LONG',
-      notes: 'Conversational. Maintenance long · holding aerobic base.',
+      notes: 'Easy enough to talk in full sentences. Maintenance long · holding aerobic base.',
     };
     // Quality day (skip when tier shape has qualityPerWeek=0).
     // 2026-06-21 · #5 · a 0-1 day/week runner can't fit a quality session on
@@ -12188,7 +12189,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     }
     for (const { dow } of easySlots) {
       if (pickedDows.has(dow)) {
-        slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Conversational throughout.' };
+        slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Easy the whole way, talking in full sentences.' };
       } else {
         slots[dow] = { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off.' };
       }
@@ -12607,7 +12608,7 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
     for (let i = 0; i < easySlots.length; i++) {
       const { dow } = easySlots[i];
       if (i < targetEasyCount) {
-        slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Recovery easy · conversational, no surges.' };
+        slots[dow] = { dow, type: 'easy', distanceMi: perEasy, isQuality: false, isLong: false, subLabel: 'EASY', notes: 'Recovery easy · talk in full sentences, and no surges.' };
       } else {
         slots[dow] = { dow, type: 'rest', distanceMi: 0, isQuality: false, isLong: false, subLabel: 'REST', notes: 'Off. Still recovering.' };
       }
@@ -15249,7 +15250,12 @@ function authorDownhillSimulation(
   best.day.notes = `${best.day.notes ?? ''} Run the race-pace section on terrain that descends `
     + `like your course. Quads will feel this more than the pace suggests; that is the session `
     + `working, and it is what stops the same damage arriving at mile 20 on race day. Last `
-    + `race-pace downhill of the block. Keep the taper's downhill running short and easy.`.trim();
+    // RULE 17 (2026-09-02) · this closed with "Keep the taper's downhill
+    // running short and easy", which is word for word what applyCourseGuidance
+    // says on the first long run inside the late-taper window. One block, one
+    // sentence: the taper line is said where it becomes true, and this session
+    // note stops repeating it in advance.
+    + `race-pace downhill of the block.`.trim();
 }
 
 /** The plan's own race day, or null for a goal-mode or open block. */
@@ -15291,7 +15297,7 @@ function raceDayISO(composed: ComposePlanResult): string | null {
  *
  * Runs dead last, after every pass that can rewrite a long run's notes.
  */
-function applyCourseGuidance(
+export function applyCourseGuidance(
   composed: ComposePlanResult,
   terrain: CourseTerrain,
   raceDistanceMi: number,
@@ -15302,6 +15308,21 @@ function applyCourseGuidance(
   if (!raceISO) return;
   const drop = terrain.netFt != null ? `${Math.abs(terrain.netFt)} ft` : 'a net drop';
   const sharePct = Math.round(NET_DOWNHILL_LONG_RUN_SHARE * 100);
+  // RULE 17 (2026-09-02) · THE TERRAIN INSTRUCTION BELONGS TO THE BLOCK.
+  //
+  // This appended the same twenty-word sentence to EVERY non-race-week long
+  // run - eleven of them in the owner's fourteen-week CIM block, then a
+  // twelfth in the taper. "If a surface repeats a sentence per row, the
+  // sentence belongs to the block, not the row." A coach says run the
+  // downhills when he prescribes the block and then trusts the runner.
+  //
+  // Nothing about the DECISION changed: same measured elevation, same
+  // trust gate, same doctrine dose. Only the number of times it is said.
+  // Two ids, not one, because the late-taper line is a different fact and a
+  // state change the runner has to be told about - `BlockScopedSpeaker`
+  // keys on the id so a genuine change of instruction is never swallowed
+  // as a repeat.
+  const speaker = new BlockScopedSpeaker();
   for (const w of composed.weeks) {
     if (w.isRaceWeek) continue;
     const long = w.days.find((d) => d.isLong && d.type === 'long' && d.distanceMi > 0);
@@ -15309,8 +15330,10 @@ function applyCourseGuidance(
     const daysToRace = daysBetween(dowDateInWeek(w.startISO, long.dow), raceISO);
     // §"Avoid the Late-Taper Trap" - the last ten to fourteen days.
     long.notes += daysToRace <= LATE_TAPER_DOWNHILL_DAYS
-      ? ` Course drops ${drop}. Downhill running stays short and easy from here · Research/11 §late-taper trap.`
-      : ` Course drops ${drop}. Run at least ${sharePct}% of this on downhill-similar terrain · Research/11 §net-downhill adjustments.`;
+      ? speaker.say('course.late-taper',
+        ` Course drops ${drop}. Downhill running stays short and easy from here · Research/11 §late-taper trap.`)
+      : speaker.say('course.find-the-terrain',
+        ` Course drops ${drop}. Run at least ${sharePct}% of your long-run miles on terrain that drops like it · Research/11 §net-downhill adjustments.`);
   }
 }
 
@@ -15529,7 +15552,7 @@ function setLongFinish(day: DayPlan, finishMi: number, reason = 'unrecorded'): v
   if (finishMi <= 0) {
     trace(0);
     day.subLabel = 'LONG';
-    day.notes = 'Conversational throughout. Build the engine.';
+    day.notes = 'Easy the whole way, talking in full sentences. Build the engine.';
     // The row identity goes with the segment it described.
     day.longRunKind = null;
     return;

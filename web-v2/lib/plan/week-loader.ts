@@ -15,6 +15,7 @@ import { loadSettings } from '@/lib/coach/settings';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
 import { runDaySql } from '@/lib/runs/run-shape';
 import { stripResearchCitations } from './strip-citations';
+import { renderRunnerInstruction } from './runner-instruction';
 
 export interface PlanWeekDay {
   /** A plan day's IDENTITY is its row id, not its date. Null on a
@@ -94,9 +95,24 @@ export interface PlanWeekResult {
  * Idempotent and a no-op on a string with no citation, so a note that never
  * had one is byte-identical.
  */
+/*
+ * RUNNERLANG-1 (2026-09-02) · AND THE RUNNER READS AN INSTRUCTION.
+ *
+ * The second pass is `renderRunnerInstruction`, applied here for the same
+ * reason and by the same argument as the scrub above: it repairs every row
+ * already in `plan_workouts` with no data write and no re-authoring, which
+ * matters because the owner's fourteen-week CIM block is composed and live.
+ * The authoring sites were fixed in the same change, so on a plan composed
+ * from today forward this pass is a byte-identical no-op.
+ *
+ * ORDER IS DELIBERATE: scrub, then rewrite. The scrub can drop a whole
+ * citation-led sentence, and the rewrite should see the prose the runner
+ * will actually read rather than a sentence that is about to disappear.
+ * Both passes are idempotent, so a double application is harmless.
+ */
 function dayNoteFor(raw: string | null | undefined): string | null {
   if (typeof raw !== 'string') return null;
-  const scrubbed = stripResearchCitations(raw).trim();
+  const scrubbed = renderRunnerInstruction(stripResearchCitations(raw))?.trim() ?? '';
   return scrubbed.length > 0 ? scrubbed : null;
 }
 
