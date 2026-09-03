@@ -66,10 +66,10 @@ describe('MPLADDER-1 · placement', () => {
   it('the reference block gets the sequence the owner asked for', () => {
     const l = resolveMarathonSpecificLadder(cimCalendar());
     expect(l.rungs.map((r) => `${r.weekIdx}:${r.role}:${r.vehicle}:${r.mpMi}`)).toEqual([
-      '3:introduction:long_run:4',
+      '3:introduction:long_run:5',
       '7:development:long_run:8',
       '10:peak_stimulus:tune_up_race:0',
-      '12:sharpening:long_run:4',
+      '12:sharpening:long_run:5',
     ]);
     // "Approximately four meaningful marathon-specific sessions before race
     // week": three that carry marathon-effort miles, plus the tune-up race.
@@ -138,6 +138,53 @@ describe('MPLADDER-1 · placement', () => {
     }
   });
 
+  it('WHY rung 1\u2019s 8-9-week window is empty · the calendar, proved rather than asserted', () => {
+    /* DOSE-BAND-2 (2026-09-03) · the coordinator asked for the calendar that
+     * proves this, not a sentence claiming it. Here it is, computed.
+     *
+     * The owner's rung 1 sits 8-9 weeks out and rung 2 sits 6-7 weeks out. On
+     * the reference calendar each window contains exactly ONE week that can
+     * carry a marathon-effort long, the other being a planned cutback — and the
+     * two usable weeks are SEVEN DAYS APART. `Research/04` §4.4's "Every 2-3
+     * weeks" and `Research/00a` §"Long-run rules of thumb" ("intensity inserts
+     * come 1 in every 2-3 long runs") both forbid filling both, so exactly one
+     * of the two windows can be served.
+     *
+     * The ladder serves rung 2's, because 49 days is the centre of §4.4's own
+     * 6-10-week window and because it leaves a three-week gap to the tune-up
+     * race rather than four. Rung 1's dose is then delivered at the next
+     * available week back rather than not at all.
+     */
+    const c = cimCalendar();
+    const raceMs = Date.parse(`${c.raceDateISO}T12:00:00Z`);
+    const daysOut = (wi: number) => Math.round((raceMs - Date.parse(`${c.longRunISOByWeek[wi]}T12:00:00Z`)) / DAY);
+    const usable = (wi: number) =>
+      !c.isDeloadWeek(wi) && !c.isTuneUpRaceWeek(wi) && !c.isDesignedWeekendLong(wi) && wi < c.totalWeeks - 1;
+    const inWindow = (lo: number, hi: number) =>
+      [...Array(c.totalWeeks).keys()].filter((wi) => daysOut(wi) >= lo && daysOut(wi) <= hi);
+
+    const rung1 = inWindow(56, 63);      // 8-9 weeks out
+    const rung2 = inWindow(42, 49);      // 6-7 weeks out
+    const rung1Usable = rung1.filter(usable);
+    const rung2Usable = rung2.filter(usable);
+    const show = (ws: number[]) => ws.map((wi) => `wk${wi}@${daysOut(wi)}d${usable(wi) ? '' : ' (unusable)'}`).join(', ');
+
+    expect(rung1Usable.length, `rung 1's window holds no usable week at all: ${show(rung1)}`).toBe(1);
+    expect(rung2Usable.length, `rung 2's window holds no usable week at all: ${show(rung2)}`).toBe(1);
+    // THE FINDING: they are adjacent, so the cadence can serve only one.
+    expect(
+      rung2Usable[0] - rung1Usable[0],
+      `rung 1 (${show(rung1)}) and rung 2 (${show(rung2)}) are not adjacent — `
+      + 'the constraint this case records has gone and both windows can now be filled',
+    ).toBeLessThan(MP_LADDER_MIN_GAP_WEEKS);
+
+    // And the ladder serves rung 2's window, not rung 1's.
+    const l = resolveMarathonSpecificLadder(c);
+    const dev = l.rungs.find((r) => r.role === 'development')!;
+    expect(dev.weekIdx).toBe(rung2Usable[0]);
+    expect(l.rungs.some((r) => r.weekIdx === rung1Usable[0]), 'the adjacent week was used after all').toBe(false);
+  });
+
   it('skipped weeks carry a reason · Rule 11', () => {
     const l = resolveMarathonSpecificLadder(cimCalendar());
     expect(l.skipped.length).toBeGreaterThan(0);
@@ -148,10 +195,17 @@ describe('MPLADDER-1 · placement', () => {
 describe('MPLADDER-1 · dose', () => {
   it('no rung exceeds what the block has already authored by more than one dose band', () => {
     const l = resolveMarathonSpecificLadder(cimCalendar());
+    // DOSE-BAND-2 · the earned rule bounds a STEP between rungs. The first rung
+    // has nothing to step from and is bounded by its own doctrine band instead,
+    // so it is checked against the band and the rule starts at the second.
     let largest = 0;
-    for (const r of l.rungs) {
+    for (const [k, r] of l.rungs.entries()) {
       if (r.vehicle === 'tune_up_race') { largest = Math.max(largest, MP_ROLE_DOSE_MI.peak_stimulus[1]); continue; }
-      expect(r.mpMi, `${r.role} jumped past the earned ceiling`).toBeLessThanOrEqual(largest + MP_EARNED_STEP_MI);
+      if (k === 0) {
+        expect(r.mpMi, 'the opening rung left its own band').toBeLessThanOrEqual(MP_ROLE_DOSE_MI[r.role][1]);
+      } else {
+        expect(r.mpMi, `${r.role} jumped past the earned ceiling`).toBeLessThanOrEqual(largest + MP_EARNED_STEP_MI);
+      }
       largest = Math.max(largest, r.mpMi);
     }
   });
@@ -251,7 +305,10 @@ describe('MPLADDER-1 · refusal', () => {
     //     exactly where they were, so what is measured is the window edge and
     //     nothing else.
     const walk: { dose: number; rungs: number }[] = [];
-    for (let shift = 0; shift <= 20; shift++) {
+    // The development rung sits 49 days out, so the walk has to reach below
+    // §4.4's 42-day edge to cross anything. -10 does; a positive-only walk
+    // never left the window and the liveness assertion below caught that.
+    for (let shift = -10; shift <= 20; shift++) {
       const l = resolveMarathonSpecificLadder({
         ...base,
         raceDateISO: iso(new Date(Date.parse(`${base.raceDateISO}T12:00:00Z`) + shift * DAY)),

@@ -169,8 +169,18 @@ export const MP_ROLE_DOSE_MI: Record<MarathonSpecificRole, readonly [number, num
   development: [6, 8],
   /** "~8-10 marathon-effort miles" when no tune-up race takes this rung. */
   peak_stimulus: [8, 10],
-  /** Q18 · "a small controlled marathon-effort component… not another peak workout." */
-  sharpening: [3, 4],
+  /**
+   * "~2 weeks out: reduced-volume sharpening, no more than ~4-5
+   * marathon-effort miles unless preceding evidence strongly supports more."
+   * Q18 bounds the same session from the other side: "a small controlled
+   * marathon-effort component… not another peak workout."
+   *
+   * DOSE-BAND-2 (2026-09-03) · WAS [3, 4], which sat UNDER the owner's own
+   * floor. His sentence caps this rung at 4-5 and does not license going below
+   * it; the earned-step rule is what stops a block that has not built to it
+   * from taking the top.
+   */
+  sharpening: [4, 5],
 };
 
 /** Why a rung exists, in the runner's own terms. Persisted per session. */
@@ -434,11 +444,25 @@ export function resolveMarathonSpecificLadder(
       largest = Math.max(largest, MP_ROLE_DOSE_MI.peak_stimulus[1]);
       ladderT = supportedT;
     } else {
-      // The band's top, unless the block has not earned it yet. `largest` is
-      // what THIS PLAN has already authored, never what the runner has run —
-      // authoring has no execution to read (adaptation is disabled) and
-      // pretending otherwise would be a second brain.
-      mpMi = Math.max(band[0], Math.min(band[1], Math.max(band[0], largest + MP_EARNED_STEP_MI)));
+      /* The band's top, unless the block has not earned it yet. `largest` is
+       * what THIS PLAN has already authored, never what the runner has run —
+       * authoring has no execution to read (adaptation is disabled) and
+       * pretending otherwise would be a second brain.
+       *
+       * DOSE-BAND-2 (2026-09-03) · THE EARNED RULE BOUNDS A STEP, AND THE
+       * FIRST RUNG HAS NOTHING TO STEP FROM.
+       *
+       * `largest` is 0 before the first rung, so `largest + MP_EARNED_STEP_MI`
+       * came to exactly the introduction band's FLOOR and the block's first
+       * marathon-effort session could never be anything but four miles — the
+       * rule bounding a quantity it was never written about. The ruling that
+       * produced it is explicitly about a late, large dose: "not automatically
+       * excessive, but inappropriate if earlier progression has not earned it."
+       * An opening rung is bounded by its own band, which is doctrine; the step
+       * rule applies from the second rung on.
+       */
+      const earnedCeilingMi = largest > 0 ? largest + MP_EARNED_STEP_MI : band[1];
+      mpMi = Math.max(band[0], Math.min(band[1], Math.max(band[0], earnedCeilingMi)));
       /* §4.4's larger dose belongs in §4.4's window; outside it the session
        * fades to §4.5's fast-finish size rather than being dropped, so the rung
        * still happens.
