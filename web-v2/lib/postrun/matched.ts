@@ -424,7 +424,17 @@ export interface MatchedWorkout {
    * one over a run that had no strap (Rule 11).
    */
   withheld: string[];
-  accessibilitySummary: string;
+  /* NO `accessibilitySummary`. There was one, and the card turned out to have
+   * no use for it: a combined VoiceOver label REPLACES the children it
+   * summarises, so the comparison would have been read as a single sentence
+   * with none of its seven figures in it. The rows are labelled text in a
+   * sensible reading order and read better as themselves.
+   *
+   * Deleted rather than kept behind an exemption. A field composed,
+   * documented and read by no screen is exactly the `coverage` failure the
+   * post-run wire gate was written for, and "we might need it" is not a
+   * reason. `PostRunAnalysis` keeps its summary, where the content really is
+   * a drawing and a screen reader has nothing else to go on. */
 }
 
 function fmtPace(sec: number | null): string | null {
@@ -594,7 +604,6 @@ export function composeMatchedWorkout(
     basis,
     lines,
     withheld,
-    accessibilitySummary: `${basis} ${lines.length} figures compared.`,
   };
 }
 

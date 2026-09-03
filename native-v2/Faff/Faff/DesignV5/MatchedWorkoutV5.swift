@@ -104,8 +104,15 @@ struct MatchedWorkoutV5: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(m.accessibilitySummary)
+        /* NO COMBINED LABEL. It had `.accessibilityElement(children: .combine)`
+         * with `accessibilitySummary` as the label, and that REPLACES the
+         * children rather than summarising them — so VoiceOver would have read
+         * "Compared with your previous 4 × 1 mi threshold session, 11 weeks
+         * ago. 7 figures compared." and then none of the seven figures.
+         *
+         * The rows are labelled text in a sensible reading order and are
+         * better read as themselves. The summary is not wasted: it is what the
+         * chart above uses, where the content genuinely is a drawing. */
     }
 
     private static let column: CGFloat = 84

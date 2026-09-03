@@ -200,10 +200,18 @@ struct RunAnalysisV5: View {
                 }
                 gradeAdjustedRow
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(analysis.accessibilitySummary)
         }
     }
+
+    /* NO `.accessibilityElement(children: .combine)` ON THE TILE, and that is
+     * a correction rather than an omission.
+     *
+     * It was there, with the spoken summary as the tile's label — and
+     * combining the children swallows the layer picker, so a VoiceOver user
+     * could not have switched to the heart-rate or elevation layer at all.
+     * The summary belongs to the PLOT, which is the one part of this tile that
+     * is genuinely opaque to a screen reader; the picker stays three ordinary
+     * buttons and the caption stays ordinary text. See `plot`. */
 
     // MARK: Header
 
@@ -371,6 +379,19 @@ struct RunAnalysisV5: View {
             )
         }
         .frame(height: Self.plotHeight)
+        /* THE SPOKEN CHART. A drawing is opaque to a screen reader, so the
+         * server's summary stands in for it — it names the layers present, the
+         * GRAIN they were drawn at, how many work segments are marked, and how
+         * many columns recorded nothing.
+         *
+         * THE ACCESSIBLE DATA TABLE the brief also asks for is already on this
+         * screen, twice, above this tile: `MileBreakdownV5` reads every mile's
+         * pace, heart rate and elevation change, and `RepBreakdownV5` reads
+         * every rep against its target. Adding a third rendering of the same
+         * numbers underneath the chart would be Rule 17 with a VoiceOver
+         * excuse. */
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(analysis.accessibilitySummary)
     }
 
     /// The ink for the WORK pass. The base pass is always `V5.plotInk`.

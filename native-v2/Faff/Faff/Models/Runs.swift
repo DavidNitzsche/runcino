@@ -562,7 +562,11 @@ struct MatchedWorkout: Decodable, Equatable {
     /// What could not be compared, and why. A card that silently drops its
     /// heart-rate row looks identical to one over a run that had no strap.
     let withheld: [String]
-    let accessibilitySummary: String
+    /* NO `accessibilitySummary`. The server no longer composes one — a
+     * combined VoiceOver label REPLACES the rows it summarises, so the
+     * comparison would have been read as a single sentence with none of its
+     * figures in it. See `MatchedWorkout` in `web-v2/lib/postrun/matched.ts`.
+     * The rows read better as themselves. */
 }
 
 /// One whole-run average, and the interval it is actually the average of.
