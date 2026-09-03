@@ -176,7 +176,11 @@ export async function resolveDayExecutions(
   )).rows;
 
   const canonicalIds = await getCanonicalRunIds(userUuid, dateISO, nextDayISO(dateISO))
-    .catch(() => [] as string[]);
+    .catch((err: unknown) => {
+      console.warn('[day-resolver] canonical run ids unreadable:',
+        err instanceof Error ? err.message : err);
+      return [] as string[];
+    });
 
   const runRows = canonicalIds.length === 0 ? [] : (await pool.query<RunRow>(
     `SELECT id::text AS id, data, shoe_id

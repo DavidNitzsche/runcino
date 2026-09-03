@@ -125,7 +125,11 @@ async function loadRun(userId: string, ref: PostRunRef): Promise<RunRow | null> 
     // app/api/v5/today/route.ts's fuller account). Now shares THE canonical
     // resolver with the Today poster, so a run-detail page opened by date
     // can never disagree with what the hero card that linked here showed.
-    const resolved = await resolveDayExecutions(userId, ref.dateISO).catch(() => null);
+    const resolved = await resolveDayExecutions(userId, ref.dateISO).catch((err: unknown) => {
+      console.warn('[postrun/load] day resolver unreadable:',
+        err instanceof Error ? err.message : err);
+      return null;
+    });
     const matched = resolved ? primaryPrescription(resolved)?.matchedRun ?? null : null;
     if (matched) return { id: matched.runId, data: matched.data as Record<string, any> };
 

@@ -1323,7 +1323,11 @@ async function loadCompletedRun(
   // `wo`. Now uses the one canonical resolver and requires an EXACT or
   // LEGACY-TYPE match against THIS specific `plan_workouts` row — not merely
   // "a run exists on this date" — before the wrist calls it complete.
-  const resolved = await resolveDayExecutions(userId, today).catch(() => null);
+  const resolved = await resolveDayExecutions(userId, today).catch((err: unknown) => {
+    console.warn('[watch/build-workout] day resolver unreadable:',
+      err instanceof Error ? err.message : err);
+    return null;
+  });
   const matched = wo.id
     ? resolved?.prescriptions.find((p) => p.id === wo.id)?.matchedRun ?? null
     : null;

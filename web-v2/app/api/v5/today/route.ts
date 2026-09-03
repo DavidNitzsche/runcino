@@ -971,7 +971,11 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
    * prescription (rest / unplanned) is unaffected: any logged run still
    * renders as before, because there is nothing it could be misattributed
    * against. */
-  const resolvedToday = await resolveDayExecutions(userId, today).catch(() => null);
+  const resolvedToday = await resolveDayExecutions(userId, today).catch((err: unknown) => {
+    console.warn('[v5/today] day resolver unreadable:',
+      err instanceof Error ? err.message : err);
+    return null;
+  });
   const todayPrimary = resolvedToday ? primaryPrescription(resolvedToday) : null;
   const prescriptionUnmatched = todayPrimary != null && todayPrimary.matchedRun == null;
   const ranToday = glanceToday && glanceToday.doneMi >= 0.5 && !prescriptionUnmatched;
