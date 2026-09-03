@@ -397,6 +397,44 @@ the live plan.
 
 ---
 
+## 8b · The removal inventory
+
+Every former plan-changing authority, what it could do, and what it is now.
+
+| Authority | Could change | Now |
+|---|---|---|
+| `readiness_pullback` | downgrade today's quality session | **deleted** — trigger, detector, action, proposal writer |
+| `rhr_spike`, `sleep_crater` | same, superseded | **deleted** — were already dead enum members |
+| `sick_episode_active` | propose a plan change | **deleted** |
+| `injury_active` | propose a plan change | **deleted** |
+| `niggle_reported` | severity threshold → plan change | **deleted** |
+| `AdaptationVerdict.veto` | forced PROTECT in the **live** progression gate | **deleted** |
+| readiness half of `readRecovery` | fed the above | **deleted** |
+| `readiness_snapshots` / `resolveSafety` reads | fed the above | **deleted** |
+| `gradeConvergence` in runner-state | graded the morning | **deleted** |
+| `applyState` in the prescription resolver | could blank a session entirely | **record-only** |
+| readiness brief `prescription` object | told him what to do | **deleted** |
+| `health-actions` training instructions | told him what to do | **deleted** |
+| `changed_overnight` surface | read a payload nothing writes | **deleted end to end** |
+| injury walk-run ladder | archived the block, built an injury plan | **sealed 3 ways** — no writer, no acceptor, refuses before any DB read |
+| `tsbAtStart` | re-phased 7 of 15 weeks | **removed from `ComposePlanInput`** |
+| `cutbackCadence(tsb)` | deload every 3rd vs 4th week | **authored once, inherited** |
+| `goal_realism` flag | nothing (no live consumer) | **renamed, then removed** |
+| `EXPERIENCE_CAPS_MI` | volume overshoot baseline | **deleted** — now refuses rather than defaulting to 60 mi/wk |
+| `experience_level` on `PLAN_SHAPING` | fired a rebuild | **removed** — the rebuild could only return identical output |
+| `declaredLevel` in the weekend grant | sat inside `evidence` | **deleted** |
+| `READINESS` prerequisite in explanations | cited as justification for a volume step | **deleted**, and the kind removed from the union |
+| `scoreReadiness` owner string | named a function that never existed | **deleted**, and every remaining owner now verified to resolve |
+| `experience_level` (profile field) | — | **inert** — displayed, writable, reaches no decision |
+| `level` in the composer | **still moves the plan** | **§8, not finished** |
+
+The 48-hour brake on upward adaptation went with the pullbacks. It was replaced
+deliberately, not dropped: an **ACWR < 1.3** gate (`Research/15`, Gabbett) that
+fails closed on an unreadable *and* a not-yet-computable ratio, so missing data
+produces less upward movement, never more.
+
+---
+
 ## 9a · Every week, every session, and its role
 
 The engine's own role label per week, with the quality sessions it prescribes.
@@ -538,6 +576,25 @@ Provenance for every claim here:
 Where a figure came from an agent I have said so rather than absorbing it into
 my own voice. Two agent claims were checked and corrected earlier in this
 programme, so the distinction is not academic.
+
+---
+
+## 10b · CI, deployment and gates
+
+| | |
+|---|---|
+| `main` | `353c53a2` |
+| last CLEAN `verify-commit` | `2de5ad60` — prebuild chain PASS, tsc + `next build` PASS |
+| last **successful deploy** | `2e45677f` |
+| shipping prebuild gates | **20**, all green |
+| `validateComposedPlan` | no violations, 1 unenforced taper advisory |
+| mutation gates | 51 tests green |
+| doctrine gate | 700+ claims green |
+| coercion ratchet | peripheral baseline 177, held |
+
+`verify-commit.sh` now runs the same twenty gates Railway runs, first, before
+`tsc` and `next build`. That change was made because it reported CLEAN on a tree
+that would not deploy.
 
 ---
 
