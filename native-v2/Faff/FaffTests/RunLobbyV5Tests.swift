@@ -326,6 +326,11 @@ final class PendingRunPlanV5Tests: XCTestCase {
         // through to its own fetch instead.
         let holder = PendingRunPlanV5.shared
         holder.record(.workout(workout()))
-        XCTAssertNil(holder.consume(maxAge: 0), "maxAge: 0 must treat any prior capture as stale")
+        // A negative maxAge, not zero: `Date()` calls microseconds apart can
+        // report a genuinely zero elapsed interval on a fast run, which made
+        // `maxAge: 0` a flaky assertion (elapsed <= 0 sometimes true rather
+        // than false). Negative forces "stale" deterministically, since
+        // elapsed is never negative.
+        XCTAssertNil(holder.consume(maxAge: -1), "a negative maxAge must treat any prior capture as stale")
     }
 }
