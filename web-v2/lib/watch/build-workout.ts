@@ -61,6 +61,7 @@ import type { SafetyResolution } from '@/lib/safety/safety-verdict';
 import { adjustPhasesForHeat, heatNote, recordHeatEasing } from '@/lib/watch/heat';
 import { runFacts } from '@/lib/runs/run-facts';
 import { runAvgHr, runDaySql, runNotMergedSql, runDistanceMiSql, runPlannedWorkoutTypeSql } from '@/lib/runs/run-shape';
+import { terrainAdjustedTargetSPerMi, treadmillEffectiveGradePct } from '@/lib/terrain/grade-adjust';
 import { fmtMi, fmtMi2 } from '@/lib/format/run';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
@@ -130,6 +131,29 @@ export interface WatchPhase {
    *  `lib/coach/reading-scope.ts` already uses to gate whether a post-run
    *  verdict may even be drawn from a rep this short. */
   hrRole?: 'target' | 'observational' | null;
+  /** TREADMILL-HILL-1 (2026-09-03) · a belt speed + incline for a WORK phase
+   *  that has no `targetPaceSPerMi` because it is prescribed by effort — a
+   *  hill repeat, whose outdoor pace target is deliberately absent since a
+   *  flat-ground number is unreachable on varying grade (Research/04 §8.1).
+   *  On a treadmill the grade IS fixed, so a pace+incline pair is meaningful
+   *  again — this is that pair, present ONLY when the phase's own label
+   *  names it a hill rep (`/hill/i.test(label)`) and canonical pace anchors
+   *  were resolvable. Never present for a genuinely paced phase (redundant
+   *  with `targetPaceSPerMi`) or a non-hill effort phase (no doctrine band
+   *  to convert). `inclinePct` is the doctrine-cited midpoint of Research/04
+   *  §8.3's 4-6% grade band for medium hill repeats (60-90s, matching this
+   *  app's only hill-rep shape); `speedMph` is that grade applied to the
+   *  midpoint of the runner's threshold/interval anchors (the "5K-10K
+   *  effort" band's own two named ends) via the SAME treadmill grade model
+   *  `lib/terrain/grade-adjust.ts` already uses for post-run judging —
+   *  reused, not re-derived. Built at prescription time so the treadmill
+   *  flow can read a real number instead of falling back to a flat default
+   *  that ignores the hill structure entirely (found live, 2026-09-03: a
+   *  runner's actual hill session opened at a flat 8.0mph with no incline
+   *  because `LiveRunTreadmillV5.swift`'s own default only knows
+   *  `targetPaceSPerMi`). */
+  treadmillInclinePct?: number | null;
+  treadmillSpeedMph?: number | null;
   /** 2026-06-08 · True on the long-run HM/M finish segment. Optional on the
    *  wire — old watch builds omit/ignore it (field defaults to false there);
    *  new builds route it to the FINISH face instead of the rep face. */
@@ -1960,6 +1984,23 @@ export async function buildWatchToday(
     for (const p of expanded) {
       const phaseDurationSec = p.durationSec ?? Math.round((p.distanceMi ?? 0) * (p.targetPaceSPerMi ?? 540));
       const phaseHrTargetBpm = p.type === 'work' ? workHrTargetBpm : null;
+      // TREADMILL-HILL-1 · see WatchPhase.treadmillInclinePct's doc comment.
+      // Scoped to WORK phases the phase's own label names as a hill rep and
+      // that carry no pace target at all — never a paced phase (redundant)
+      // and never a non-hill effort phase (no doctrine band to convert).
+      let treadmillInclinePct: number | null = null;
+      let treadmillSpeedMph: number | null = null;
+      if (p.type === 'work' && p.targetPaceSPerMi == null && /hill/i.test(p.label)
+          && paceAnchors?.thresholdSecPerMi && paceAnchors?.intervalSecPerMi) {
+        const DOCTRINE_HILL_INCLINE_PCT = 5; // Research/04 §8.3 · medium hill repeats, midpoint of the 4-6% band
+        const flatTargetSPerMi = Math.round((paceAnchors.thresholdSecPerMi + paceAnchors.intervalSecPerMi) / 2);
+        const effGrade = treadmillEffectiveGradePct(DOCTRINE_HILL_INCLINE_PCT);
+        const gradedPaceSPerMi = Math.round(terrainAdjustedTargetSPerMi(flatTargetSPerMi, effGrade, 'treadmill'));
+        if (gradedPaceSPerMi > 0) {
+          treadmillInclinePct = DOCTRINE_HILL_INCLINE_PCT;
+          treadmillSpeedMph = Math.round((3600 / gradedPaceSPerMi) * 10) / 10;
+        }
+      }
       phases.push({
         type: p.type,
         label: p.label,
@@ -1984,6 +2025,8 @@ export async function buildWatchToday(
         distanceMi: p.distanceMi ?? null,
         hrTargetBpm: phaseHrTargetBpm,
         hrRole: phaseHrTargetBpm != null ? hrRoleForRepDuration(phaseDurationSec) : null,
+        treadmillInclinePct,
+        treadmillSpeedMph,
         // Emit ONLY when true so non-finish phases omit it on the wire
         // (JSON.stringify drops undefined) — keeps the optional-field contract.
         isFinishSegment: p.isFinishSegment ? true : undefined,

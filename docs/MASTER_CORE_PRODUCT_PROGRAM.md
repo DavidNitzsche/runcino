@@ -439,6 +439,61 @@ what it checks, not kept running in parallel indefinitely.
 
 ---
 
+## TWO-RUNS-ONE-DAY-1 · found live by David, 2026-09-03, fixed same day
+
+He started an easy run with a friend from Apple Workouts, not the Faff app,
+on the same day as a prescribed hill-repeat session he had not yet gone out
+to run. The app rendered the friend's run as `INTERVALS, done` — his own
+words: "I like that it brought it in but the run I did was just some easy
+miles with a friend and not meant to replace this workout." He also
+confirmed the shape explicitly: "so it should be treated as 2 runs in one
+day," and that both should still count to week/day totals.
+
+**Root cause, confirmed by reading the code, not guessed:** three separate
+"pick today's run" queries (`app/api/v5/today/route.ts`'s poster,
+`lib/watch/build-workout.ts`'s watch face, `lib/postrun/load.ts`'s run-detail
+load — explicitly cross-referenced in that file's own comment as sharing the
+poster's pick) all ordered candidates by literally the biggest distance
+logged that day, with no check that the run corresponds to the day's
+prescription at all. A Rule 14 population bug — "today's run" was never the
+population the runner meant.
+
+**Fix:** prefer the run actually recorded AS an execution of today's plan
+(`plannedWorkoutType`, stamped by `POST /api/watch/workouts/complete` — the
+one endpoint both `PhoneRunTracker` and the watch companion post to, per
+`PhoneRunTracker.swift`'s own header) over merely the day's largest run.
+Applied at all three sites (Rule 16). Three superficially-similar queries
+(`races-state.ts`, `drift-monitor.ts`, `representativeness-inputs.ts`)
+checked and correctly left alone — different questions entirely.
+
+**His other two requirements were already true, verified rather than
+assumed:** `canonicalMileageByDay` (feeding week/day totals) sums ALL
+canonical runs for a date, not just the selected one — confirmed by reading
+`mileageByDay`'s query. `GET /api/log` (`RunLogV5`, "Everything you've
+logged, splits and all") lists all canonical runs globally-limited, not
+deduped per day — confirmed the same way. Neither needed a change; both were
+verified structurally true before telling him so.
+
+**Falsified per Rule 18** against a controlled two-run scenario matching the
+exact shape that broke: a SMALLER tracked workout against a LARGER untracked
+run (the case the old `ORDER BY` got backwards, not merely a case it happened
+to get right by coincidence). Old query picks the untracked 4.48mi run; new
+query correctly picks the tracked 3.9mi one.
+
+**Merging this against a diverged `main`** (the week-strip session's
+PLANVERSION-1/STATEGATE-1 work had landed in the meantime) surfaced three
+unrelated, real, now-closed findings — a test-fragile literal `/**` inside a
+`//` comment eating 5.6KB of unrelated code as "comment", and two stale
+`KNOWN_DISAGREEMENTS` registry entries the rebuild's own pace-recompute pass
+closed (their `closesWhen` conditions confirmed met live, not assumed) — full
+detail in that commit's own message, `596cb412`.
+
+**Deployed and confirmed** (GitHub commit status polled to resolution) before
+he went to run the actual session. Backend-only — no app build needed, live
+the moment it deployed.
+
+---
+
 ## SESSION INTEGRATION · 2026-09-03, David's item 10
 
 **`feat/pre-run-experience` — merged, `578616c7`, deployed (confirmed via
