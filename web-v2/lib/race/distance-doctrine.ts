@@ -359,6 +359,34 @@ export const RACE_HR_PCT_LTHR: Readonly<Record<RaceDistanceCategory, readonly [n
   'ultra': [0.88, 0.95],
 };
 
+/**
+ * CEFFORT-1 (2026-09-02) · the row a CONTROLLED C effort reads instead of its
+ * own distance's.
+ *
+ * `Research/00b` §"Recovery by Effort" grades a C race as a "hard workout
+ * substitute", "Strong effort, no taper", to be treated "like a hard workout".
+ * `Research/04` §pace-zone table places 10K race pace "Just above T" and calls
+ * T "~1-hour race pace" — so a controlled effort over a 10K is run at the
+ * intensity a runner holds for the NEXT distance up, and that is the row this
+ * function returns.
+ *
+ * A CONVENTION about which published row to read, stated as one (Rule 7): it
+ * asserts no new physiology and introduces no new number. Every value still
+ * comes out of `Research/08` §6.1's own table, so the band and the abort
+ * trigger stay inside doctrine rather than being softened by a fudge factor.
+ *
+ * The marathon row is its own floor. There is no slower row in the table, and
+ * inventing one is exactly what this avoids.
+ */
+export function controlledEffortHrCategory(cat: RaceDistanceCategory): RaceDistanceCategory {
+  switch (cat) {
+    case '5k': return '10k';
+    case '10k': return 'hm';
+    case 'hm': return 'm';
+    default: return 'm';
+  }
+}
+
 export const RACE_HR_PCT_MAX: Readonly<Record<RaceDistanceCategory, readonly [number, number]>> = {
   '5k': [0.95, 1.00],
   '10k': [0.92, 0.96],
@@ -384,9 +412,15 @@ export function raceAbortHrBpm(args: {
   distanceMi: number;
   lthr?: number | null;
   maxHr?: number | null;
+  /** CEFFORT-1 · 'controlled' reads the next-longer row (see
+   *  `controlledEffortHrCategory`). A C race's abort trigger must belong to
+   *  the effort actually prescribed, or the ceiling licenses an all-out race
+   *  the pace target no longer asks for. */
+  effortCharacter?: 'race' | 'controlled';
 }): number | null {
-  const cat = raceDistanceCategory(args.distanceMi);
-  if (cat == null) return null;
+  const raw = raceDistanceCategory(args.distanceMi);
+  if (raw == null) return null;
+  const cat = args.effortCharacter === 'controlled' ? controlledEffortHrCategory(raw) : raw;
   if (args.lthr != null && args.lthr > 0) {
     return Math.round(args.lthr * RACE_HR_PCT_LTHR[cat][1]) + RACE_HR_TRIGGER_MARGIN_BPM;
   }

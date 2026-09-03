@@ -46,6 +46,7 @@
  */
 import {
   RACE_HR_PCT_LTHR,
+  controlledEffortHrCategory,
   raceAbortHrBpm,
   raceCheckpointMi,
   raceDistanceCategory,
@@ -104,7 +105,10 @@ export type RaceHrReason =
   | 'NO_COMPARABLE_EFFORTS_POPULATION_REFERENCE'
   | 'OWN_EFFORTS_EXCEED_BAND_INFORMATIONAL_ONLY'
   | 'NO_LTHR'
-  | 'NO_COMPARABLE_EFFORTS_INFORMATIONAL_ONLY';
+  | 'NO_COMPARABLE_EFFORTS_INFORMATIONAL_ONLY'
+  /** CEFFORT-1 · the band shown is the next-longer distance's row, because
+   *  this day is a controlled C effort and not a race. */
+  | 'CONTROLLED_C_EFFORT_BAND';
 
 export function resolveRaceHrGuidance(args: {
   distanceMi: number;
@@ -112,10 +116,20 @@ export function resolveRaceHrGuidance(args: {
   maxHrBpm: number | null;
   executionPaceSecPerMi: number;
   efforts: readonly RaceHrEvidenceRow[];
+  /**
+   * CEFFORT-1 (2026-09-02) · 'controlled' for a C race, whose day is a hard
+   * workout rather than a race (`Research/00b` §"Recovery by Effort"). The
+   * band and the abort trigger both move to the next-longer row so the two
+   * instruments describe ONE effort (Rule 16). Default 'race' keeps every
+   * existing caller byte-identical.
+   */
+  effortCharacter?: 'race' | 'controlled';
 }): RaceHrGuidance | null {
-  const cat = raceDistanceCategory(args.distanceMi);
-  if (cat == null) return null;
+  const raw = raceDistanceCategory(args.distanceMi);
+  if (raw == null) return null;
   if (args.lthrBpm == null || !(args.lthrBpm > 0)) return null;
+  const controlled = args.effortCharacter === 'controlled';
+  const cat = controlled ? controlledEffortHrCategory(raw) : raw;
   const lthr = args.lthrBpm;
   const [lo, hi] = RACE_HR_PCT_LTHR[cat];
   const expectedRangeBpm: [number, number] = [Math.round(lthr * lo), Math.round(lthr * hi)];
@@ -124,7 +138,7 @@ export function resolveRaceHrGuidance(args: {
   const comparable = args.efforts.filter((e) =>
     e.avgHr > 0
     && Math.abs(e.paceSecPerMi - pace) / pace <= RACE_HR_EVIDENCE_PACE_TOLERANCE
-    && (cat === 'm' || cat === 'ultra' ? e.kind !== 'race' : true),
+    && (raw === 'm' || raw === 'ultra' ? e.kind !== 'race' : true),
   );
   const observedMeanHr = comparable.length > 0
     ? comparable.reduce((a, e) => a + e.avgHr, 0) / comparable.length
@@ -136,6 +150,7 @@ export function resolveRaceHrGuidance(args: {
   // informational for the opposite reason. Enforcement needs evidence.
   const informationalOnly = comparable.length === 0 || (conflictBpm != null && conflictBpm > 0);
   const reasons: RaceHrReason[] = ['DOCTRINE_BAND_FOR_DISTANCE'];
+  if (controlled) reasons.push('CONTROLLED_C_EFFORT_BAND');
   if (comparable.length === 0) reasons.push('NO_COMPARABLE_EFFORTS_POPULATION_REFERENCE');
   else if (conflictBpm != null && conflictBpm > 0) reasons.push('OWN_EFFORTS_EXCEED_BAND_INFORMATIONAL_ONLY');
   if (comparable.length === 0) reasons.push('NO_COMPARABLE_EFFORTS_INFORMATIONAL_ONLY');
@@ -148,7 +163,10 @@ export function resolveRaceHrGuidance(args: {
     earlyThroughMi: checkpointMi,
     lateAllowanceBpm,
     checkpointMi,
-    checkpointAbortBpm: raceAbortHrBpm({ distanceMi: args.distanceMi, lthr, maxHr: args.maxHrBpm }),
+    checkpointAbortBpm: raceAbortHrBpm({
+      distanceMi: args.distanceMi, lthr, maxHr: args.maxHrBpm,
+      effortCharacter: args.effortCharacter,
+    }),
     informationalOnly,
     evidence: {
       comparableEfforts: comparable.length,
@@ -164,6 +182,12 @@ export function resolveRaceHrGuidance(args: {
 /** One runner-facing line, worded for the semantics — never "cap" for a band. */
 export function raceHrLine(g: RaceHrGuidance): string {
   const [lo, hi] = g.expectedRangeBpm;
+  // CEFFORT-1 · Rule 16 · the sentence names the effort the band belongs to.
+  if (g.reasons.includes('CONTROLLED_C_EFFORT_BAND')) {
+    return g.informationalOnly
+      ? `Expect roughly ${lo}-${hi} bpm. This is a controlled effort, not a race, so treat it as a reference rather than a line to hold.`
+      : `Expect ${lo}-${hi} bpm. Controlled, not all out. If you are over ${g.checkpointAbortBpm ?? hi} at mile ${g.checkpointMi}, ease off; the day after this one is the work.`;
+  }
   if (g.informationalOnly) {
     return `Expect roughly ${lo}-${hi} bpm at race effort. Your own efforts at this pace have run higher, so this is a reference, not a line to hold.`;
   }
