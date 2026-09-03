@@ -94,6 +94,77 @@ Nothing may displace this.
 
 ---
 
+## P1 · Post-run experience  (references supplied 2026-09-03)
+
+**Reference material:** `docs/0901/post-run-strava-references/` (7 screenshots)
+and `docs/0901/post-run-experience-review-and-brief-2026-09-02.md` (849 lines).
+Used for **hierarchy, density, progressive disclosure, charts and mobile
+readability** — not for branding or social features.
+
+The page must answer, within seconds: what workout did I complete · did I
+execute its intended structure · how did each important segment go · what did
+the system learn · did that evidence change the plan · how does this move me
+toward the race goal.
+
+| ID | Item | Depends on | App release | Status |
+|---|---|---|---|---|
+| PR-1 | Activity identity + headline stats block | — | iPhone | Discovered |
+| PR-2 | Coach card near the top (the "intelligence" slot), coaching-specific | canonical decision record | iPhone | Discovered |
+| PR-3 | **Workout analysis before generic charts** — work segments evaluated separately from warm-up, recoveries, cool-down, against the intended target | phase identity | iPhone | Discovered |
+| PR-4 | Intended vs completed structure comparison | authored spec | iPhone | Discovered |
+| PR-5 | Interval-by-interval results | phase identity | iPhone | Discovered |
+| PR-6 | **Complete splits including partial miles** — the reference ends in a 0.4 mi split; the owner's 09-02 run was truncated by 0.43 mi | capture fix | iPhone | Discovered |
+| PR-7 | **Strides preserved as strides** | phase identity | iPhone | Implemented, awaiting release |
+| PR-8 | Pace chart | — | iPhone | Discovered |
+| PR-9 | HR chart + zone summary | HR data present | iPhone | Discovered |
+| PR-10 | Elevation chart | — | iPhone | Discovered |
+| PR-11 | Pace/HR overlay where readable | PR-8, PR-9 | iPhone | Discovered |
+| PR-12 | Grade-adjusted pace where supported | course adjustment owner | iPhone | Discovered |
+| PR-13 | Route / map where available | — | iPhone | Discovered |
+| PR-14 | Conditions, only when trustworthy | weather provenance | iPhone | Discovered |
+| PR-15 | Matched-run / matched-workout comparison | canonical run set | iPhone | Discovered |
+| PR-16 | Execution consistency + late-session behaviour | phase identity | iPhone | Discovered |
+| PR-17 | Workout purpose · stimulus achieved · evidence contributed | canonical decision | iPhone | Discovered |
+| PR-18 | Beliefs changed or held · **adaptation proposed or refused** | **P0-6** | iPhone | Blocked on adaptation |
+| PR-19 | Effect on future training | P0-6 | iPhone | Blocked |
+| PR-20 | Data-quality warnings · capture reconciliation · honest handling of missing HR/GPS/phases/truncation | Rule 11 | iPhone | Discovered |
+
+**Rules for this surface:** never let a whole-run average misrepresent an
+interval session; never invent HR, weather, zone, route or physiological
+conclusions; keep **facts, coaching interpretations and plan consequences
+visually distinct**; progressive disclosure rather than everything above the
+fold.
+
+---
+
+## P1 · Race page
+
+Must not show several incompatible values under the word "projection". Distinguish
+stored facts, live external data, model outputs and coaching decisions.
+
+| ID | Item | Depends on | Status |
+|---|---|---|---|
+| RP-1 | Identity: name, date, distance, location, priority, days remaining | — | Partially exists |
+| RP-2 | **Goal vs current projection vs prescribed execution target, visually distinct** | **S1.4** | Blocked on S1.4 |
+| RP-3 | How remaining training could move the outlook | S1.4 | Blocked |
+| RP-4 | Course profile / elevation where reliable | course source-of-truth | Partially exists |
+| RP-5 | Course-adjusted pacing | canonical giveback coefficient (0.50) | Partially exists |
+| RP-6 | Mile / segment pacing plan | RP-2 | Exists, verify |
+| RP-7 | Effort and HR guidance | race-hr-guidance | Exists |
+| RP-8 | Conservative opening guidance · late-race decision points · abort rules | — | Exists, verify |
+| RP-9 | Weather only when trustworthy and temporally appropriate | provenance | Discovered |
+| RP-10 | Tune-up relationship · race-week sessions · taper state | plan | Discovered |
+| RP-11 | Completed race-specific workouts + evidence behind the outlook | S1.1 | Blocked on S1.1 |
+| RP-12 | How the outlook has changed over time | projection history | Discovered |
+| RP-13 | Post-race result and retrospective | — | Exists |
+
+**Sequencing decision (mine):** RP-2 and RP-3 are held until S1.4 lands, because
+the four-marathon-pace contract defines exactly the quantities this page must
+keep apart. Building the page first would bake in the ambiguity it exists to
+remove.
+
+---
+
 ## Deferred intentionally
 
 General onboarding · cold-start coaching · first-plan personalisation for
