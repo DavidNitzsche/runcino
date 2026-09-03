@@ -569,54 +569,67 @@ struct TodayBeforeV5: View {
     // and the goal are rendered as two separate numbers, never merged.
 
     @ViewBuilder
+    /// Prioritized, not one flat block (2026-09-03 correction) — "Do not
+    /// place every race field into one enormous block. Prioritize race
+    /// name, active execution target, and essential strategy. Goal, detailed
+    /// fueling, and deeper explanation can be secondary." Name/target/
+    /// strategy render together at full weight; goal, HR guidance and
+    /// fueling follow as a visually quieter group below — still every field,
+    /// still goal kept distinct from the target (Rule 16), just not
+    /// competing for the same first glance.
     private var raceSection: some View {
         if let race = model.race {
-            VStack(alignment: .leading, spacing: V5.S.s10) {
-                HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
-                    V5SectionLabel(
-                        text: race.role == "controlled_c_effort" ? "Controlled effort today" : "Race day",
-                        color: V5.textPrimary)
-                    Spacer(minLength: 0)
-                    Text(Units.formatDistance(miles: race.distanceMi) + " " + Units.distanceLabel())
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.textSecondary)
-                }
-                Text(race.name)
-                    .font(.faffDisplay(22))
-                    .foregroundStyle(V5.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: V5.S.s12) {
+                // Primary: identity, active execution target, strategy.
+                VStack(alignment: .leading, spacing: V5.S.s10) {
+                    HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
+                        V5SectionLabel(
+                            text: race.role == "controlled_c_effort" ? "Controlled effort today" : "Race day",
+                            color: V5.textPrimary)
+                        Spacer(minLength: 0)
+                        Text(Units.formatDistance(miles: race.distanceMi) + " " + Units.distanceLabel())
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.textSecondary)
+                    }
+                    Text(race.name)
+                        .font(.faffDisplay(22))
+                        .foregroundStyle(V5.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                if race.executionTargetSec != nil || race.goalSec != nil {
-                    HStack(alignment: .top, spacing: V5.S.s24) {
-                        if let target = race.executionTargetSec, let clock = FaffFmt.raceTime(sec: Double(target)) {
-                            raceClock(label: "Today's target", clock: clock, emphasized: true)
-                        }
-                        // Kept visibly distinct from the execution target
-                        // above — never the same number, never adjacent
-                        // without a label of its own (Rule 16).
-                        if let goal = race.goalSec, let clock = FaffFmt.raceTime(sec: Double(goal)) {
-                            raceClock(label: "Goal", clock: clock, emphasized: false)
-                        }
+                    if let target = race.executionTargetSec, let clock = FaffFmt.raceTime(sec: Double(target)) {
+                        raceClock(label: "Today's target", clock: clock, emphasized: true)
+                    }
+                    if let strategy = race.strategyLabel {
+                        Text(strategy)
+                            .font(.faffText(TypeScaleV5.body15))
+                            .foregroundStyle(V5.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
-                if let strategy = race.strategyLabel {
-                    Text(strategy)
-                        .font(.faffText(TypeScaleV5.body15))
-                        .foregroundStyle(V5.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let hr = race.hrLine {
-                    Text(hr)
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let fueling = race.fuelingSummary {
-                    Text(fueling)
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.textQuiet)
-                        .fixedSize(horizontal: false, vertical: true)
+                // Secondary: the stated goal (kept visibly distinct from the
+                // target above — never the same number, never unlabeled,
+                // per Rule 16), HR guidance, fueling. Quieter type, a step
+                // down from the primary group rather than stacked at equal
+                // weight with it.
+                if race.goalSec != nil || race.hrLine != nil || race.fuelingSummary != nil {
+                    VStack(alignment: .leading, spacing: V5.S.s6) {
+                        if let goal = race.goalSec, let clock = FaffFmt.raceTime(sec: Double(goal)) {
+                            raceClock(label: "Goal", clock: clock, emphasized: false)
+                        }
+                        if let hr = race.hrLine {
+                            Text(hr)
+                                .font(.faffText(TypeScaleV5.label13))
+                                .foregroundStyle(V5.textQuiet)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let fueling = race.fuelingSummary {
+                            Text(fueling)
+                                .font(.faffText(TypeScaleV5.label13))
+                                .foregroundStyle(V5.textQuiet)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
 
                 FaffButton("Full race detail", variant: .secondary, size: .md,
