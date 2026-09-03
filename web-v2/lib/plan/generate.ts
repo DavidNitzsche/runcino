@@ -38,6 +38,10 @@ import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achi
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
+// CADENCE-AUTHORED-1 · doctrine's default cutback cycle, and the only cadence a
+// NEW block is authored on. Stated once, in the module that also defines which
+// cycles a block may carry.
+import { DEFAULT_CUTBACK_EVERY_N } from './established-cadence';
 import { lookupLoadTierTarget, resolveLoadTier, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
@@ -1171,14 +1175,87 @@ export function restoreSteps(
   // past sustained. Continuous and monotone in `heldMi`.
   const held = Math.max(0, heldMi || 0);
   const first = Math.min(sustainedMi, Math.max(start, held + stepMi));
-  const steps: number[] = [Math.round(first * 10) / 10];
-  let v = first;
-  // The bound is arithmetic, not a policy cap: start ≥ 0.70 × sustained and a
-  // step is 0.15 × sustained, so this can only ever run twice. The guard is
+  // ── LADDER-LENGTH-1 (2026-09-02) · Rule 9 · THE LADDER'S LENGTH IS A COUNT ──
+  //
+  // ── WHAT THIS REPLACES ────────────────────────────────────────────────────
+  //
+  // A loop that walked `v += stepMi` and asked `v < sustainedMi - 1e-9` each
+  // time. That is a threshold on a continuous quantity, evaluated repeatedly,
+  // with a FLOATING-POINT epsilon standing in for a training-meaningful one —
+  // and it emitted a rung whenever the last full step landed a hair short of
+  // the sustained level.
+  //
+  // MEASURED 2026-09-02, walking the owner's real CIM block (sustained 46.4,
+  // base 34.2) across the demonstrated-volume axis in 0.02 mi increments:
+  //
+  //   held 32.44  ->  ladder [39.4, 46.3, 46.4]   block total 662.5 mi
+  //   held 32.46  ->  ladder [39.5, 46.4]         block total 672.0 mi
+  //
+  // A THIRD RUNG WORTH ONE TENTH OF A MILE — 46.3 then 46.4, which
+  // `volumeCurve` rounds to the same whole week, 46 — cost a whole climbing
+  // week, because `volumeCurve` spends `resumeSteps.length` weeks on the ladder
+  // and starts its geometric climb after them. 9.5 mi of block total and 5.5 mi
+  // on one authored week (42 -> 47.5), for two hundredths of a mile of history.
+  //
+  // AND IT SAT ON DOCTRINE'S OWN NUMBER. `first` is `max(start, held + step)`
+  // and `start` is floored at `RAMP_BASE_RESUME_FRACTION x sustained`, so the
+  // gap this loop closes is at most two steps by construction — which puts
+  // `ceil`'s boundary at exactly `held === 0.70 x sustained`, the level
+  // `Research/22` §14 and `Research/00b`'s reverse taper both resume a runner
+  // at, and therefore the level this engine's own recovery blocks park runners
+  // on. Research/22 §14's canonical ladder — 70% -> 85% -> full — evaluates to
+  // exactly 2.0 steps, so doctrine's own stated case sat one ULP from
+  // returning three rungs. A threshold whose boundary is the most-populated
+  // point in its own domain is Rule 9's worst case, not its edge case.
+  //
+  // ── WHAT IT ASKS INSTEAD ──────────────────────────────────────────────────
+  //
+  // The honest question is an INTEGER: how many weeks does doctrine's ladder
+  // take from here? `RESTORE_STEP_FRACTION` is not an independent ceiling —
+  // its own definition derives it as the QUOTIENT of doctrine's arrival
+  // ("70% of pre-interruption volume to 100% in two steps, so a step is 15% of
+  // sustained"). Doctrine states the ARRIVAL; 15% is what you get when you
+  // divide it. So the count is `gap / step` read into whole weeks the way any
+  // rate is read into whole weeks — to NEAREST — and the gap is then divided
+  // evenly across them so the ladder still arrives exactly at sustained.
+  //
+  //   · held 0, start 0.70 x sustained  -> 2.00 steps -> [70%, 85%, 100%]
+  //     Research/22 §14 verbatim, and now the CENTRE of its basin rather than
+  //     its edge.
+  //   · held == start (the entry week already run) -> 1.00 -> [start, sustained]
+  //     POSTRACE-RESTORE-1, unchanged.
+  //   · a runner at 99% of sustained    -> 0.07 -> 1 -> [99%, 100%]
+  //     the one-week nudge, unchanged.
+  //   · the owner, 1.011 steps of gap   -> 1 -> [39.4, 46.4]
+  //     the defect above, gone: no week is spent moving him a tenth of a mile.
+  //
+  // NO INJURY GUARD IS WEAKENED. Rounding to nearest can make one rung up to
+  // half a step larger than doctrine's quotient, and that week is still graded
+  // by `enforceWeeklyRampCeiling` against `GENERAL_RAMP_CEILING[level]` and the
+  // runner's own prior peak, and by `validate.ts` §3 and §6 (ACWR) after that.
+  // Those are the ceilings; this is a schedule inside them.
+  //
+  // ── WHAT IS STILL DISCRETE, AND WHY THAT IS ALLOWED ───────────────────────
+  //
+  // A ladder has a whole number of rungs, and Rule 9 permits a discrete
+  // behaviour — what it forbids is a decision hinging on a hair. The count
+  // still changes, now at `gap == 1.5 steps`, i.e. `first == 0.775 x
+  // sustained`. That is not a doctrine number, not a level any protocol
+  // resumes a runner at, and not a value this engine floors anything to — so
+  // nothing parks runners on it, which is the whole difference from the
+  // boundary it replaces. Stated plainly rather than claimed away: the residual
+  // is real, it is walked by `_restore_continuity.test.ts`, and it is sited
+  // where the domain is thin instead of where the domain is dense.
+  const remaining = Math.max(0, sustainedMi - first);
+  // The cap is arithmetic, not policy: `first` >= 0.70 x sustained and a step is
+  // 0.15 x sustained, so `remaining / stepMi` can never exceed 2. The guard is
   // here so a future change to either number cannot spin.
-  while (v < sustainedMi - 1e-9 && steps.length < RESUME_SEQUENCE.length) {
-    v = Math.min(sustainedMi, v + stepMi);
-    steps.push(Math.round(v * 10) / 10);
+  const weeks = remaining > 0
+    ? Math.min(RESUME_SEQUENCE.length - 1, Math.max(1, Math.round(remaining / stepMi)))
+    : 0;
+  const steps: number[] = [Math.round(first * 10) / 10];
+  for (let k = 1; k <= weeks; k++) {
+    steps.push(Math.round((first + (remaining * k) / weeks) * 10) / 10);
   }
   return steps;
 }
@@ -1369,7 +1446,30 @@ export function resolveRampBase(opts: {
   };
   if (interruption > opts.allowedInterruptionWeeks) return evidence;   // a layoff, not a deload
   const lifted = resumeLevel > mean;
-  const liftedBase = lifted ? Math.round(resumeLevel * 10) / 10 : mean;
+  // LIFTEDBASE-CONTINUOUS-1 (2026-09-02) · Rule 9 · the branch was a `max`
+  // written as an `if`, and its two arms ROUNDED DIFFERENTLY.
+  //
+  // `lifted` is `resumeLevel > mean`, so `lifted ? resumeLevel : mean` is
+  // exactly `max(resumeLevel, mean)` — the switch never selected a different
+  // BEHAVIOUR, only a different arm of the same maximum. But the lifted arm
+  // rounded to a tenth and the other did not, so the value stepped DOWN by up
+  // to 0.05 mi at the crossing and back up immediately after. Non-monotone, on
+  // a hair, at doctrine's own resume level.
+  //
+  // Measured 2026-09-02 on a synthetic runner sitting where it can bind
+  // (sustained 46.4, demonstrated volume 10, so nothing else floors the base):
+  // mean 32.46 authored a 649.5 mi block, mean 32.48 authored 648.0, mean 32.50
+  // authored 649.5 again — 1.5 mi of block total and a whole mile on one week,
+  // out and back, for four hundredths of a mile of input. THE FITTER RUNNER GOT
+  // THE WORSE PLAN for exactly one step's width, which is Rule 9's signature.
+  //
+  // Written as the maximum it always was. One rounding, applied once, and the
+  // mean is a floor under the result so the "base is never below the 28-day
+  // mean" invariant (RAMPBASE.resume-from-pre-interruption-volume, and
+  // `_restore_continuity`'s own sweep) cannot be rounded through. `lifted`
+  // survives as a REPORTED fact — `composePlan`'s base-rebuilt gate and the
+  // registry claims still read it — but it no longer selects anything.
+  const liftedBase = Math.max(mean, Math.round(resumeLevel * 10) / 10);
   // ── CURRENTVOL-1 (2026-08-30) · never ramp from below where the runner IS ──
   //
   // RAMPBASE-1 stated the rule — "a runner resumes at a fraction of their
@@ -3017,22 +3117,116 @@ export function sizeBlocks(totalWeeks: number, raceDistanceMi: number, isMidBloc
 
 /**
  * Cutback (deload) cadence · how many weeks between recovery weeks.
- * 2026-06-03 · mid-block doctrine RULE 8: when Banister TSB at generate-
- * time is < -10 (high cumulative load), deload every 3rd week instead of
- * every 4th. null/cold-start → mod-4. Cite docs/PLAN_ENGINE_MID_BLOCK_
- * DOCTRINE.md §Rule 8; Pfitzinger Faster Road Racing §"recovery weeks
- * under load".
  *
- * #13 (audit 2026-06-16) · ONE definition shared by volumeCurve (which
- * cuts the weekly mileage) and layoutWeek (which relaxes the long-run
- * floor on cut weeks). They previously diverged — volumeCurve cut at
- * this cadence while layoutWeek hardcoded mod-4 — so on a TSB<-10
- * runner's deloaded week (mod-3) the long run was pinned to full peak
- * against a reduced budget and the easy days absorbed the cut, the
- * opposite of a deload.
+ * `Research/00b` §"Frequency" publishes the cycle as a PROFILE table, not as a
+ * formula: "Default for most runners | 3 weeks load -> 1 week cutback",
+ * "Injury-prone / older / returning from injury | 2 weeks load -> 1 week
+ * cutback". The two cycles this engine authors are those two rows.
+ *
+ * #13 (audit 2026-06-16) · ONE definition shared by volumeCurve (which cuts
+ * the weekly mileage) and layoutWeek (which relaxes the long-run floor on cut
+ * weeks). They previously diverged — volumeCurve cut at this cadence while
+ * layoutWeek hardcoded mod-4 — so on a 3-week-cadence runner's deloaded week
+ * the long run was pinned to full peak against a reduced budget and the easy
+ * days absorbed the cut, the opposite of a deload. Both call sites still read
+ * THIS function; nothing below changes that, and nothing below may.
+ *
+ * ── CADENCE-AUTHORED-1 (2026-09-02) · DAILY STATE IS OUT OF THE CALENDAR ────
+ *
+ * The owner, 2026-09-02: "Cutback weeks are authored into the plan, not
+ * triggered by daily state." He lists daily training form and TSB among the
+ * inputs whose decision authority is REMOVED rather than smoothed.
+ *
+ * ── WHAT WAS HERE, AND WHAT IT COST ────────────────────────────────────────
+ *
+ * `return (tsbAtStart < -10) ? 3 : 4` — a Banister TSB reading taken at the
+ * instant of authoring, deciding the deload calendar for a whole block.
+ * MEASURED on the owner's real CIM block, 2026-09-02, walking that input:
+ *
+ *   tsb -10.05 -> cadence 3 · deloads in weeks 3, 6, 9, 12 · block 691.0 mi
+ *   tsb -10.00 -> cadence 4 · deloads in weeks 4, 8, 12    · block 698.5 mi
+ *
+ * SEVEN OF FIFTEEN WEEKS re-phase. Worst single week 16.0 mi (41 -> 57), worst
+ * long run 6.0 mi (21 -> 15), block total 7.5 mi — for five hundredths of a
+ * point. His live reading was -11: ONE POINT from the line, on a quantity his
+ * own envelope showed moving TWELVE POINTS IN SEVEN DAYS (trend7 -12, so +1 a
+ * week earlier).
+ *
+ * And the sign of the harm was the worst available. A run that fails to sync
+ * reads as "did not train": ATL falls, TSB RISES, the runner crosses back above
+ * the line and the block LOSES a down week. Recovery removed because a phone
+ * did not upload — Rule 11's exact shape, absent read as recovered.
+ *
+ * ── WHAT DECIDES IT NOW ────────────────────────────────────────────────────
+ *
+ * Two facts, both authored, neither daily:
+ *
+ * 1 · THE BLOCK'S OWN ANSWER. A block that already has a cadence keeps it.
+ *     `establishedEveryN` comes from `readEstablishedCutbackCadence` — the
+ *     active block's `authored_state.cutback_every_n`, or its own cutback
+ *     weeks for a block authored before that key existed. A rebuild inherits
+ *     the calendar; it does not re-open it. This is the owner's "a mid-block
+ *     rebuild must preserve established block intent".
+ *
+ * 2 · AT INITIAL AUTHORING ONLY, the runner's DEMONSTRATED HISTORY, read
+ *     through `RampBaseEvidence.returning` — is there a level this runner has
+ *     held repeatedly that they are currently below, within the interruption
+ *     the authoring is entitled to look through? That is a sixteen-week
+ *     measurement, and it is the closest thing the engine knows to
+ *     `Research/00b`'s "returning" row. A runner returning to a level gets the
+ *     tighter cycle; everyone else gets doctrine's default.
+ *
+ * There is no third input, and in particular no reading taken today. Sweeping
+ * training form across any range now produces an IDENTICAL plan, which is what
+ * `_cadence_robust.test.ts` asserts.
+ *
+ * ── WHAT IS NOT WEAKENED ───────────────────────────────────────────────────
+ *
+ * The deloads themselves are untouched: same two cadences, same 0.80 depth,
+ * same long-run relaxation. What changed is who decides, not how much is cut.
+ * And the tighter cycle is now reachable from EVIDENCE rather than from a
+ * reading — the owner's own block, which had cadence 3 before this change,
+ * still has it, and now because of what he has run.
+ *
+ * ── THE DOCTRINE CLAIM ─────────────────────────────────────────────────────
+ *
+ * `CUTBACK.cadence` binds this function to `Research/00b` §Frequency and
+ * asserts every cadence the engine uses is one doctrine lists. It read the two
+ * numbers out of the old ternary by regex; it now reads them out of the two
+ * returns below. The claim is unchanged in what it asserts — the citation it
+ * loses is `docs/PLAN_ENGINE_MID_BLOCK_DOCTRINE.md` §Rule 8, which was never
+ * what `CUTBACK.cadence` cited. See the report for that call.
  */
-function cutbackCadence(tsbAtStart?: number): number {
-  return (typeof tsbAtStart === 'number' && tsbAtStart < -10) ? 3 : 4;
+function cutbackCadence(
+  /** The active block's own cadence, or null at initial authoring. */
+  establishedEveryN?: number | null,
+): number {
+  if (establishedEveryN === 3 || establishedEveryN === 4) return establishedEveryN;
+  // Research/00b §Frequency · "Default for most runners | 3 weeks load ->
+  // 1 week cutback". A new block is authored on that row, always.
+  return DEFAULT_CUTBACK_EVERY_N;
+}
+
+/**
+ * CADENCE-AUTHORED-1 (2026-09-02) · WHY THIS CUTBACK WEEK, in coach voice.
+ *
+ * The owner's requirement alongside the removal: every planned week must be
+ * able to answer "why this cutback or recovery week." A cadence that cannot
+ * explain itself is the same problem as a cadence decided by a reading — the
+ * runner cannot tell a deliberate down week from the plan losing its nerve.
+ *
+ * ONE definition, called once per week at persist time, so the sentence lands
+ * on the week it is about and is not repeated anywhere else (Rule 17). It
+ * states the cadence and the reason for THAT cadence, both of which are
+ * authored facts the block already carries — nothing here re-derives anything.
+ *
+ * Voice: short, direct, no hype, no exclamation marks, no emoji, no em dashes.
+ */
+export function cutbackWeekRationale(everyN: number): string {
+  return everyN === 3
+    ? 'Cutback week. Every third week comes down while you build back to the '
+      + 'volume you have held before.'
+    : 'Cutback week. Every fourth week comes down so the three around it can go up.';
 }
 
 /**
@@ -3230,10 +3424,6 @@ function volumeCurve(
   /** DOCTRINE-1 · race distance category · sets the TAPER's depth
    *  (Research/08 §9.1) and the general-case ramp regime. */
   taperCat: DistCategory,
-  /** 2026-06-03 · Rule 8 · Banister TSB at generate-time. When < -10
-   *  (high cumulative stress), shift cutback frequency from every 4th
-   *  week to every 3rd week. null = cold-start, falls back to mod-4. */
-  tsbAtStart?: number,
   /** WKPEAK-1 + WKRESUME-1 · what the authoring MEASURED about this runner.
    *  Null (every synthetic archetype, every cold start) leaves the curve
    *  byte-identical: no cycle ceiling, no resume ramp. */
@@ -3245,6 +3435,9 @@ function volumeCurve(
    *  ceiling, same cutback cadence and 0.80 deload, same post-deload re-entry
    *  cap. Null (every race-prep caller) leaves the curve byte-identical. */
   peakTargetOverrideMi?: number | null,
+  /** CADENCE-STABLE-1 · the cadence this block was already authored with, or
+   *  null on an initial authoring. See `cutbackCadence`. */
+  establishedCutbackEveryN?: number | null,
 ): number[] {
   const vols: number[] = [];
   // 2026-06-03 · mid-block doctrine RULE 4 (monotonic volume floor) ·
@@ -3291,7 +3484,7 @@ function volumeCurve(
   // 2026-06-03 · mid-block doctrine RULE 8 (cutback frequency).
   // #13 · shared cadence so layoutWeek's long-run-floor relaxation lands
   // on the SAME weeks this curve actually deloads. Cite §Rule 8.
-  const cutbackEveryN = cutbackCadence(tsbAtStart);
+  const cutbackEveryN = cutbackCadence(establishedCutbackEveryN);
   const deloadMask: boolean[] = [];
   for (let i = 0; i < buildWeeks; i++) {
     deloadMask.push(i > 0 && (i + 1) % cutbackEveryN === 0);
@@ -4593,7 +4786,7 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   //     they just did · 2026-06-03 fix · David's plan was sizing
   //     Sun 6/7 at 9mi when his 5/31 long was 12.36mi).
   // Allow cutback weeks to step slightly below the recentLong floor.
-  // #13 · cadence threaded from volumeCurve (same cutbackCadence(tsb)) so a
+  // #13 · cadence threaded from volumeCurve (the same cutbackCadence call) so a
   // TSB<-10 runner's mod-3 deload weeks relax the long-run floor on the weeks
   // the volume curve actually cut — not the stale hardcoded mod-4. For
   // non-taper weeks layoutWeek's absolute weekIdx equals volumeCurve's build-
@@ -9057,9 +9250,31 @@ export interface ComposePlanInput {
    *  conservativeVdotFromMileage, which floors at VDOT 30 and can prescribe
    *  faster than the runner's own demonstrated race pace. */
   belowTableAnchor?: BelowTableAnchor | null;
-  /** Banister TSB at generate-time · shifts cutback frequency to every
-   *  3rd week when TSB < -10 (Rule 8). Optional · falls back to mod-4. */
-  tsbAtStart?: number;
+  /**
+   * CADENCE-AUTHORED-1 (2026-09-02) · `tsbAtStart` IS DELETED, NOT DEPRECATED.
+   *
+   * It carried a Banister TSB reading taken at the instant of authoring, and
+   * its one consumer was `cutbackCadence`. The owner's ruling, 2026-09-02:
+   * "Cutback weeks are authored into the plan, not triggered by daily state."
+   * A field left behind as "legacy, do not use" is a field somebody calls, so
+   * it is gone from the input, from `volumeCurve`, and from `authored_state`.
+   * `computeTrainingForm` is no longer read on the authoring path at all.
+   *
+   * If a future authoring decision genuinely needs daily state, it does not
+   * revive this field — it argues for itself first.
+   */
+  /**
+   * CADENCE-STABLE-1 (2026-09-02) · the deload cadence this block was ALREADY
+   * authored with, on a mid-block rebuild. Null / absent on an initial
+   * authoring, and on every synthetic caller, which leaves the curve
+   * byte-identical.
+   *
+   * A deload cadence is a periodisation decision that belongs to the block, so
+   * a rebuild inherits it rather than re-deriving it from this morning's
+   * training form. `readEstablishedCutbackCadence` recovers it; `cutbackCadence`
+   * decides what may override it.
+   */
+  establishedCutbackEveryN?: number | null;
   /** 2026-06-03 · Rule 11 · horizon races · A/B-priority races within 24
    *  weeks of raceDateISO. When any has a LARGER tier band than the
    *  current race's tier, long-run dials (cap + share) extend toward
@@ -9552,13 +9767,13 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // RAMPBASE-1 · ramp from the runner's SUSTAINED base, not from a mandated
   // deload the engine itself prescribed. Falls back to the 28-day mean, which
   // is what every caller that does not supply the field gets.
-  const vols = volumeCurve(input.rampBaseMi ?? input.recentWeeklyMi, blocks, input.level, tierTarget, distanceCategoryOf(input.raceDistanceMi), input.tsbAtStart, rampEvidence);
+  const vols = volumeCurve(input.rampBaseMi ?? input.recentWeeklyMi, blocks, input.level, tierTarget, distanceCategoryOf(input.raceDistanceMi), rampEvidence, null, input.establishedCutbackEveryN);
   // DIST-1 · plan-wide peak weekly volume · scales the marathon/ultra long to its doctrine band.
   const peakWeeklyMi = Math.max(1, ...vols);
   // #13 · the cadence volumeCurve used to deload, threaded into layoutWeek so
   // its long-run-floor relaxation lands on the same weeks. Same helper, same
   // input → guaranteed agreement.
-  const cutbackEveryN = cutbackCadence(input.tsbAtStart);
+  const cutbackEveryN = cutbackCadence(input.establishedCutbackEveryN);
 
   // 2026-06-03 · mid-block doctrine RULE 5 (quality density ramp).
   // When the runner's recent quality habit is below their prefs/tier
@@ -10168,6 +10383,15 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // (absent) whenever it was the 28-day mean.
       ...(input.rampBaseEvidence ? { ramp_base: input.rampBaseEvidence } : {}),
       is_mid_block: input.isMidBlock,
+      /**
+       * CADENCE-STABLE-1 (2026-09-02) · the deload cadence THIS block was
+       * authored with, so the next rebuild inherits it rather than re-deriving
+       * it from that morning's training form. Written always, never
+       * conditionally, so a reader can tell "authored at 4" from "authored
+       * before this key existed" (Rule 11) — the second answers null and falls
+       * back to reading the block's own cutback weeks.
+       */
+      cutback_every_n: cutbackEveryN,
       // PHASE-ANSWERS-1 · the two authoring facts the phase answers quote that
       // no other key carried: the quality density the runner's preferences
       // seat, and the Coaching Thesis as the owner resolved it at authoring
@@ -10263,7 +10487,10 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         recentQualityDistanceMi: input.recentQualityDistanceMi ?? null,
         bestRecentVdot: input.bestRecentVdot ?? null,
         easyDayMedianMi: input.easyDayMedianMi,
-        tsbAtStart: input.tsbAtStart ?? null,
+        // CADENCE-AUTHORED-1 · `tsbAtStart` was recorded here as a derived-from
+        // input. It is not an input any more, and a persisted number that looks
+        // like one is worse than no number (Rule 20's corollary for prose,
+        // applied to a jsonb key).
       },
       /**
        * GOAL-SANITY-NAME-1 · the key is `goal_vdot_sanity`, not
@@ -10733,7 +10960,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
   // ceiling, every-4th-week 0.80 cutback, post-deload re-entry cap) with only
   // the peak target overridden. `blocks` carries a single MAINTENANCE phase
   // and no TAPER, so every week is a "build" week to the curve; its deload
-  // mask ((i+1) % cutbackCadence(undefined)=4 === 0, i>0 → weeks 4, 8, 12, 16)
+  // mask ((i+1) % cutbackCadence(null)=4 === 0, i>0 → weeks 4, 8, 12, 16)
   // is the same set maintenanceWeek's own isCutback marks, so the week's
   // volume and its long-run step-down land on the same weeks. Shorter holds,
   // cold starts and unresolvable-race holds stay flat (§7's shape) — null
@@ -10746,7 +10973,19 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
     && !noVolumeSignal
     && targetWeekly > 0
   )
-    ? volumeCurve(targetWeekly, blocks, input.level, TIER_TARGETS[holdCat][input.tier], holdCat, undefined, null, holdPeakTarget)
+    // CADENCE-AUTHORED-1 · `tsbAtStart` was the sixth positional argument and
+    // is deleted, so this call shifted by one. It passed `undefined, null,
+    // holdPeakTarget` and would have become `evidence=undefined,
+    // peakTarget=null, establishedCadence=holdPeakTarget` — silently dropping
+    // the hold's own peak target, which `tsc` cannot see because all three
+    // parameters accept `number | null | undefined`. Caught by
+    // `_audit_nonrace`'s HOLD-PROGRESS-1 growth band (1.45 against a 1.15
+    // ceiling), not by the compiler.
+    // The trailing `establishedCutbackEveryN` is deliberately OMITTED rather
+    // than passed as null: a maintenance hold has no established block to
+    // inherit from, and `MAINTENANCE.long-hold-progresses-gently` pins this
+    // call ending on `holdPeakTarget`.
+    ? volumeCurve(targetWeekly, blocks, input.level, TIER_TARGETS[holdCat][input.tier], holdCat, null, holdPeakTarget)
     : null;
   /** Slow end of the engine's own easy band — the pace the runner is actually
    *  permitted to run at, so the minutes→miles conversion cannot imply a
@@ -11895,6 +12134,10 @@ async function persistPlan(client: PoolClient, args: {
   const workoutRows: unknown[][] = [];
 
   const { isPeakByWeek, isCutbackByWeek } = planWeekFlags(args.weeks);
+  // CADENCE-AUTHORED-1 · the cadence THIS block was authored with, read back
+  // from the same key the next rebuild will inherit. Falls to doctrine's
+  // default row only when the composer wrote no key, which is a pure caller.
+  const authoredCutbackEveryN = args.authoredState['cutback_every_n'] === 3 ? 3 : 4;
 
   for (let wi = 0; wi < args.weeks.length; wi++) {
     const w = args.weeks[wi];
@@ -11912,7 +12155,14 @@ async function persistPlan(client: PoolClient, args: {
       // emits only the remaining weeks, so its array position is not its
       // number. Everything else numbers itself by position, as before.
       [weekId, planId, w.blockWeekIdx ?? wi, w.startISO, phaseForWeek(wi), w.isRaceWeek,
-       `${w.phase} · week ${(w.blockWeekIdx ?? wi) + 1}`, isPeakByWeek[wi], isCutbackByWeek[wi]]
+       // CADENCE-AUTHORED-1 · a cutback week says WHY it is a cutback week.
+       // Every other week keeps the phase label it has always carried; the
+       // sentence is gated on the flag it describes (Rule 16) and appears on
+       // that week only (Rule 17).
+       isCutbackByWeek[wi]
+         ? cutbackWeekRationale(authoredCutbackEveryN)
+         : `${w.phase} · week ${(w.blockWeekIdx ?? wi) + 1}`,
+       isPeakByWeek[wi], isCutbackByWeek[wi]]
     );
 
     for (const d of w.days) {
@@ -15395,13 +15645,23 @@ async function loadGeneratorInputs(
   const maxHr = await loadEffectiveMaxHr(userId).then((r) => r.bpm).catch(() => null);
   // Banister TSB · drives Rule 8 cutback frequency. Pull from training
   // form helper which already EWMAs CTL/ATL from runs.
-  const tsbAtStart = await (async () => {
-    try {
-      const { computeTrainingForm } = await import('@/lib/coach/training-form');
-      const f = await computeTrainingForm(userId);
-      return f?.tsb;
-    } catch { return undefined; }
-  })();
+  //
+  // CADENCE-ROBUST-1 (2026-09-02) · Rule 9 · reads `tsbSustained`, NOT `tsb`.
+  // The one consumer of this field is `cutbackCadence`, which decides the
+  // deload cadence for the whole block — measured at 7 of 15 weeks re-phased
+  // and 16 mi on a single week for a hair of input. `tsb` is one instant and
+  // this account's moved twelve points in seven days; `tsbSustained` is the
+  // mean over two ATL windows and answers the sustained-load question §Rule 8
+  // actually poses. See `cutbackCadence` for the measurement.
+  //
+  // CADENCE-AUTHORED-1 (2026-09-02) · the cadence the runner's CURRENT block is
+  // already built on. Null on an initial authoring, which is the only time the
+  // cadence is chosen. See `lib/plan/established-cadence.ts`.
+  //
+  // The `computeTrainingForm` call that used to sit here is GONE, not disabled:
+  // the authoring path no longer reads daily training form for any decision.
+  const { readEstablishedCutbackCadence } = await import('./established-cadence');
+  const establishedCutbackEveryN = await readEstablishedCutbackCadence(userId);
   // 2026-06-03 · Rule 11 · horizon races · A/B-priority races within 24
   // weeks of the current race day. Filtered to "longer distance than
   // current race" — sharpening races (5K/10K after a HM) don't raise
@@ -15728,7 +15988,7 @@ async function loadGeneratorInputs(
       // resolveCurrentTPace calls; null when bestRecentVdot is already set (a
       // measured VDOT always wins, this is a fallback signal only).
       belowTableAnchor: bestRecentVdot == null ? belowTableAnchor : null,
-      tsbAtStart,
+      establishedCutbackEveryN,
       horizonRaces: horizonRaces.length > 0 ? horizonRaces : undefined,
       midBlockRaces: midBlockRaces.length > 0 ? midBlockRaces : undefined,
       // TRAVEL-1 · undefined (not []) when none, so the composer's gate and

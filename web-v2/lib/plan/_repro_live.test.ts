@@ -40,7 +40,6 @@ function build(o: Partial<ComposePlanInput> & { raceMi: number; goalSec: number;
     recentQualityDistanceMi: o.recentQualityDistanceMi,
     recentQualityPerWeek: o.recentQualityPerWeek,
     bestRecentVdot: undefined,
-    tsbAtStart: 0,
     isMidBlock: o.isMidBlock ?? true,
     longRunDow: 0 as DOW,
     restDow: 6 as DOW,

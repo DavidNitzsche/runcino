@@ -449,3 +449,239 @@ describe('LONGSIZE-CONTINUOUS-1 · more volume never buys a shorter long run', (
     ).toBeLessThanOrEqual(LONG_ROUNDING_STEPS_ALLOWED);
   }, 300_000);
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * LADDER-LENGTH-1 (2026-09-02) · Rule 9 · the return ladder's LENGTH.
+ *
+ * ── THE DEFECT ─────────────────────────────────────────────────────────────
+ *
+ * `restoreSteps` walked `v += stepMi` and asked `v < sustainedMi - 1e-9` each
+ * time round, so it emitted a rung whenever the last full doctrine step landed
+ * a hair short of the sustained level. `volumeCurve` spends one plan week per
+ * rung and starts its geometric climb after them, so a rung worth a tenth of a
+ * mile cost a whole climbing week.
+ *
+ * MEASURED on the owner's real CIM block, 2026-09-02, walking his demonstrated
+ * volume in 0.02 mi increments (sustained 46.4, base 34.2):
+ *
+ *   held 32.44 -> ladder [39.4, 46.3, 46.4] -> block 662.5 mi -> wk4 = 42.0
+ *   held 32.46 -> ladder [39.5, 46.4]       -> block 672.0 mi -> wk4 = 47.5
+ *
+ * 9.5 mi of block total and 5.5 mi on one authored week, for two hundredths of
+ * a mile of history — and 46.3 and 46.4 author the same whole week, 46.
+ *
+ * AND THE BOUNDARY WAS DOCTRINE'S OWN NUMBER. `first` is
+ * `max(start, held + step)` with `start` floored at 0.70 x sustained, so
+ * `ceil`'s boundary sits at `held == 0.70 x sustained` — `Research/22` §14's
+ * resume level and `Research/00b`'s reverse-taper level, which is to say the
+ * level this engine's own recovery blocks prescribe — and equivalently at
+ * `start == 0.85 x sustained`, which is `RESUME_SEQUENCE[1]`. Two of doctrine's
+ * three published rungs sat ON the threshold.
+ *
+ * ── WHAT THIS GATE ASSERTS ─────────────────────────────────────────────────
+ *
+ * Walk the demonstrated volume across the old boundary and require the LADDER
+ * LENGTH not to change and the composed block not to step. Falsified against
+ * the unfixed loop before landing (see the numbers above).
+ *
+ * ── WHAT THIS GATE CANNOT FAIL ON (Rule 22) ────────────────────────────────
+ *
+ * · The residual boundary. The count is still discrete and still moves, now at
+ *   `first == 0.775 x sustained`; this walk does not cover it, deliberately —
+ *   its whole claim is that the boundary is no longer where doctrine parks
+ *   runners, not that it is gone. Measured there on the same block: 14.5 mi.
+ * · The 0.1 mi quantisation of `heldMi` itself, which moves an authored week by
+ *   up to a mile. That is the engine's own output resolution, it is monotone,
+ *   and MAX_TOTAL_STEP_MI admits it.
+ * · Any runner the ladder never reaches: `returning` false, no history, or an
+ *   interruption past the allowance. Those go to the comeback protocols and
+ *   this file says nothing about them.
+ * ══════════════════════════════════════════════════════════════════════════ */
+describe('LADDER-LENGTH-1 · the ladder does not gain a week for a tenth of a mile', () => {
+  it('Research/22 §14 is exact, and now sits in the middle of its basin', () => {
+    // Entry at the resume level with nothing held: doctrine's own row, and the
+    // gap is exactly two steps. Under `ceil` that was one ULP from a third rung.
+    expect(restoreSteps(RESUME_LEVEL, SUSTAINED, 0))
+      .toEqual(RESUME_SEQUENCE.map((f) => Math.round(SUSTAINED * f * 10) / 10));
+    // A hair either side of doctrine's own case returns the same LENGTH.
+    for (const eps of [-0.05, -0.01, 0, 0.01, 0.05]) {
+      expect(
+        restoreSteps(RESUME_LEVEL + eps, SUSTAINED, 0).length,
+        `the ladder changed length ${eps} mi from doctrine's own entry rung`,
+      ).toBe(RESUME_SEQUENCE.length);
+    }
+  });
+
+  it('a ladder of more than one step spends no week on a vestigial rung', () => {
+    // The old loop's signature: [39.4, 46.3, 46.4] — two steps after the entry
+    // rung, of which the second moved the runner 0.1 mi and authored the same
+    // whole week (46) as the one before it. Even division makes every step of a
+    // multi-step ladder at least 0.75 of a doctrine step by construction.
+    //
+    // HONEST SCOPE, and it is why this reads `s.length > 2`: a ladder of ONE
+    // step is the arrival, and for a runner already within a step of sustained
+    // that arrival is legitimately small (held 37.7 of a 45 sustained gives
+    // [44.5, 45]). That is `Research/22` §14's one-week nudge, it predates this
+    // change, and it is unchanged by it — the defect was a SPARE rung, not a
+    // short final one.
+    const MIN_STEP_MI = SUSTAINED * RESTORE_STEP_FRACTION * 0.5;
+    for (let h = 0; h <= SUSTAINED; h += 0.1) {
+      const held = Math.round(h * 10) / 10;
+      const s = restoreSteps(Math.max(RESUME_LEVEL, held), SUSTAINED, held);
+      if (s.length <= 2) continue;
+      for (let i = 1; i < s.length; i++) {
+        expect(
+          s[i] - s[i - 1],
+          `held=${held.toFixed(1)} · ladder ${JSON.stringify(s)} spends a plan week moving the ` +
+          `runner from ${s[i - 1]} to ${s[i]} — less than half of doctrine's own ` +
+          `${(SUSTAINED * RESTORE_STEP_FRACTION).toFixed(2)} mi step`,
+        ).toBeGreaterThanOrEqual(MIN_STEP_MI);
+      }
+    }
+  });
+
+  it('the ladder LENGTH is continuous across the old `ceil` boundary', () => {
+    // held == 0.70 x sustained is where the old boundary sat.
+    let prev: number | null = null;
+    const flips: string[] = [];
+    for (let h = RESUME_LEVEL - 1.5; h <= RESUME_LEVEL + 1.5 + 1e-9; h += 0.02) {
+      const held = Math.round(h * 10) / 10;            // the engine's own resolution
+      const start = Math.max(33, RESUME_LEVEL, held);  // baseMi, mean pinned above the lift
+      const n = restoreSteps(start, SUSTAINED, held).length;
+      if (prev != null && n !== prev) flips.push(`${held} (${prev} -> ${n} rungs)`);
+      prev = n;
+    }
+    expect(
+      flips,
+      `the ladder changed length inside a 3 mi neighbourhood of doctrine's own resume level ` +
+      `(${RESUME_LEVEL} mi): ${flips.join(', ')}. Against the unfixed loop this reports a flip at ` +
+      '31.5 — 2 rungs at or above the resume level, 3 rungs a tenth below it',
+    ).toEqual([]);
+  });
+
+  it('the composed block does not step across it either', () => {
+    /** The CIM shape, with the 28-day mean PINNED so only the demonstrated
+     *  volume moves — the axis the defect actually lives on. */
+    function blockAt(heldMi: number) {
+      const series = [heldMi, heldMi, 45, 45, 45, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40];
+      const evidence = resolveRampBase({
+        meanWeeklyMi: 33, weeklySeries: series, allowedInterruptionWeeks: 4, peakWeeklyMi: 52.3,
+      });
+      const r = composePlan({
+        raceDistanceMi: 26.2, goalSec: 10800, goalPaceSec: 412,
+        raceDateISO: '2026-12-06', startMondayISO: '2026-08-31', level: 'advanced',
+        recentWeeklyMi: 33, easyDayMedianMi: 6, recentLongMi: 13,
+        recentQualityDistanceMi: 8, recentQualityPerWeek: 2, bestRecentVdot: 48,
+        isMidBlock: true,
+        longRunDow: 0, restDow: 6, qualityDows: [2, 4],
+        trainingDaysPerWeek: 6, crossModes: [],
+        rxQuality: { threshold: '4×1mi @ T pace · 60s jog', intervals: '5×3 min @ I pace · 90s jog', tempo: 'continuous tempo', families: {} },
+        rxRaceSpecific: { threshold: '4×1mi @ T pace · 60s jog', intervals: '5×3 min @ I pace · 90s jog', tempo: 'continuous tempo', families: {} },
+        tPaceSec: 400, lthr: 162, maxHr: 188,
+        rampBaseEvidence: evidence, rampBaseMi: evidence.baseMi,
+      } as never) as { vols: number[] };
+      return { vols: r.vols, total: Math.round(r.vols.reduce((a, b) => a + b, 0) * 10) / 10 };
+    }
+
+    // One authored mile per week is the engine's own rounding; the block-total
+    // ceiling admits that on the weeks the ladder actually touches. The 9.5 mi
+    // the old loop produced is far outside it.
+    const MAX_TOTAL_STEP_MI = 3.0;
+    const MAX_WEEK_STEP_MI = 1.5;
+    const walk: Array<{ held: number; vols: number[]; total: number }> = [];
+    for (let h = RESUME_LEVEL - 1.5; h <= RESUME_LEVEL + 1.5 + 1e-9; h += 0.02) {
+      const held = Math.round(h * 100) / 100;
+      walk.push({ held, ...blockAt(held) });
+    }
+    // Liveness · a walk that composed nothing reports clean (Rule 18 clause 2).
+    expect(walk.length, 'the walk composed nothing').toBeGreaterThan(100);
+    expect(
+      new Set(walk.map((w) => w.total)).size,
+      'the walk produced one constant block — it is not reaching the ladder at all',
+    ).toBeGreaterThan(1);
+
+    for (let i = 1; i < walk.length; i++) {
+      const d = Math.abs(walk[i].total - walk[i - 1].total);
+      expect(
+        d,
+        `block total stepped ${d.toFixed(1)} mi between held=${walk[i - 1].held} ` +
+        `(${walk[i - 1].total} mi) and held=${walk[i].held} (${walk[i].total} mi). ` +
+        'Against the unfixed loop this reports 9.5 mi at the resume level, where the ladder ' +
+        'gains a rung worth a tenth of a mile and the climb loses a week',
+      ).toBeLessThanOrEqual(MAX_TOTAL_STEP_MI);
+      const width = Math.min(walk[i].vols.length, walk[i - 1].vols.length);
+      for (let k = 0; k < width; k++) {
+        const dw = Math.abs(walk[i].vols[k] - walk[i - 1].vols[k]);
+        expect(
+          dw,
+          `week ${k + 1} stepped ${dw.toFixed(1)} mi between held=${walk[i - 1].held} and ` +
+          `held=${walk[i].held} · ${walk[i - 1].vols.join('/')} -> ${walk[i].vols.join('/')}`,
+        ).toBeLessThanOrEqual(MAX_WEEK_STEP_MI);
+      }
+    }
+  }, 120_000);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * LIFTEDBASE-CONTINUOUS-1 (2026-09-02) · Rule 9 · `lifted` selected an arm of
+ * a maximum, and the two arms rounded differently.
+ *
+ * `lifted` is `resumeLevel > mean`, so `lifted ? resumeLevel : mean` IS
+ * `max(resumeLevel, mean)` — but the lifted arm rounded to a tenth and the
+ * other did not, so `baseMi` stepped DOWN by up to 0.05 mi at the crossing and
+ * straight back up. Measured 2026-09-02 on a runner where it can bind
+ * (sustained 46.4, demonstrated volume 10): mean 32.46 -> a 649.5 mi block,
+ * mean 32.48 -> 648.0, mean 32.50 -> 649.5. Out and back, one authored mile,
+ * for four hundredths of a mile of input.
+ *
+ * CANNOT FAIL ON (Rule 22): a runner whose demonstrated volume floors the base
+ * above both arms — which is the reference runner, for whom the whole switch is
+ * inert. That is measured separately and is exactly why this walk pins the
+ * demonstrated volume low.
+ * ══════════════════════════════════════════════════════════════════════════ */
+describe('LIFTEDBASE-CONTINUOUS-1 · the base is monotone through the lift', () => {
+  /**
+   * The fixture has to be CHOSEN, not assumed — this is where the first draft
+   * of this gate was wrong and reported clean against the unfixed branch.
+   *
+   * The defect's size is `round1(resumeLevel) - resumeLevel`, so it is INVISIBLE
+   * for a sustained level whose 70% already lands on a tenth. `SUSTAINED = 45`
+   * gives 31.4999…, which rounds to 31.5, a difference of 4e-15 — the walk
+   * crossed the lift and measured nothing. Both sustained levels below are
+   * picked so 70% of them sits mid-tenth, one rounding each way:
+   *
+   *   46.4 -> 32.48, rounds UP   -> the base STEPS DOWN at the crossing
+   *   44.9 -> 31.43, rounds DOWN -> the base sits BELOW the 28-day mean
+   */
+  for (const sustained of [46.4, 44.9]) {
+    const rl = sustained * RAMP_BASE_RESUME_FRACTION;
+    it(`baseMi is monotone and never below the mean · sustained ${sustained}`, () => {
+      // Demonstrated volume pinned LOW so nothing else can mask the arm selected.
+      const series = [10, 10, sustained, sustained, sustained, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40];
+      let prev = -Infinity;
+      let sawLifted = false;
+      let sawUnlifted = false;
+      for (let m = rl - 0.4; m <= rl + 0.4 + 1e-9; m += 0.005) {
+        const mean = Math.round(m * 1000) / 1000;
+        const e = resolveRampBase({
+          meanWeeklyMi: mean, weeklySeries: series, allowedInterruptionWeeks: 4,
+        });
+        if (e.lifted) sawLifted = true; else sawUnlifted = true;
+        expect(
+          e.baseMi,
+          `baseMi FELL from ${prev} to ${e.baseMi} as the 28-day mean ROSE to ${mean} ` +
+          `(lifted=${e.lifted}). Against the unfixed branch this reports the drop at ` +
+          `${rl.toFixed(3)}, where the rounded resume level hands over to the raw mean`,
+        ).toBeGreaterThanOrEqual(prev - 1e-9);
+        expect(
+          e.baseMi,
+          `baseMi ${e.baseMi} is BELOW the 28-day mean ${mean} (lifted=${e.lifted}). The lifted ` +
+          'arm rounded the resume level DOWN past the mean it was supposed to beat',
+        ).toBeGreaterThanOrEqual(mean - 1e-9);
+        prev = e.baseMi;
+      }
+      expect(sawLifted && sawUnlifted, 'the walk never crossed the lift — it asserts nothing')
+        .toBe(true);
+    });
+  }
+});
