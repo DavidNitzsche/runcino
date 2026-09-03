@@ -39,7 +39,12 @@ struct FaffApp: App {
     /// correct on its own merits, not merely a workaround for the stuck
     /// dialog. `#if DEBUG` for the same reason as the token seed itself: this
     /// must not exist in a build that reaches a real device.
-    private static var isQATokenLaunch: Bool {
+    ///
+    /// Not `private` — `HRAlerter.start()` reads it too (see that call site's
+    /// comment). This was the ONE guarded call site for a while; the gap is
+    /// what let a second, unguarded `requestAuthorization` wedge a verification
+    /// run behind the exact dialog this flag exists to skip.
+    static var isQATokenLaunch: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("-faffToken")
         #else

@@ -91,19 +91,29 @@ struct LiveRunPlanV5 {
     /// CURRENT phase's own `hrTargetBpm` instead, and is a different KIND of
     /// value, not a tighter ceiling — see `heartReference(walk:plan:)` below.
     let workoutHrCeilingBpm: Int?
+    /// DECISION-1 · the canonical id from the backend (`WatchWorkout.workoutId`,
+    /// `"<uid>-<date>"`), carried alongside the plan so a recording console
+    /// that only holds `LiveRunPlanV5` (not the raw `WatchWorkout`) can still
+    /// stamp its completion with the SAME identity the watch would use for
+    /// this same calendar workout, instead of a synthetic id unrelated to
+    /// the day's prescription. `nil` on an unstructured/no-plan run.
+    let workoutId: String?
 
     init(workout: WatchWorkout, sessionType: String) {
         self.sessionType = sessionType
         self.totalMi = workout.distanceMi
         self.phases = workout.phases
         self.workoutHrCeilingBpm = workout.hrCeilingBpm
+        self.workoutId = workout.workoutId
     }
 
-    init(sessionType: String, totalMi: Double?, phases: [WatchPhase], workoutHrCeilingBpm: Int?) {
+    init(sessionType: String, totalMi: Double?, phases: [WatchPhase], workoutHrCeilingBpm: Int?,
+         workoutId: String? = nil) {
         self.sessionType = sessionType
         self.totalMi = totalMi
         self.phases = phases
         self.workoutHrCeilingBpm = workoutHrCeilingBpm
+        self.workoutId = workoutId
     }
 }
 

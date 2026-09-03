@@ -16,6 +16,11 @@
  * we used so the UI can say so.
  */
 
+// HR-ROLE-1 · the SAME floor the read side already uses to decide whether an
+// HR verdict may even be drawn on a rep this short. Imported, not
+// re-declared, so the prescribe-side corollary below can never drift from it.
+import { HR_REP_KINETICS_FLOOR_SEC } from '@/lib/coach/reading-scope';
+
 export type ZoneMethod = 'lthr-friel' | 'pct-mhr';
 
 export interface HRZone {
@@ -356,6 +361,32 @@ export function prescribedHrTargetBpm(args: {
     };
   }
   return null;
+}
+
+/**
+ * HR-ROLE-1 (2026-09-03) · WHAT an hrTargetBpm means to a runner watching it
+ * live, given how long the rep actually runs — the prescribe-side corollary
+ * of `lib/coach/reading-scope.ts`'s `HR_REP_KINETICS_FLOOR_SEC` (the read
+ * side already refuses to draw an HR verdict from a rep this short; this is
+ * the same refusal, asked before the run instead of after it).
+ *
+ * `Research/03-heart-rate-zones.md` §13 ("Implications by Rep Duration")
+ * gives HR "half-time of ~30 s on intensity step-up, plateauing at
+ * 90-180 s" and marks every row under 90 s as pace-primary, HR unreliable;
+ * §14's decision table names hill repeats and any rep under 2 minutes as
+ * "Ignore HR" by name. `HR_REP_KINETICS_FLOOR_SEC` (120 s) is the more
+ * conservative of the two candidate cutoffs the doctrine supports, and using
+ * the SAME constant the read side already binds keeps prescribe and read
+ * from ever citing two different numbers for one physiological fact.
+ *
+ * This never changes the bpm itself — a bug found rendering this against a
+ * real account's ten 60-second hill reps was that every rep showed an
+ * identical, precise-looking "HR ~176" with nothing distinguishing it from a
+ * 15-minute tempo target, inviting a runner to chase a signal that has not
+ * caught up to the effort yet. The number stays; only its role changes.
+ */
+export function hrRoleForRepDuration(durationSec: number): 'target' | 'observational' {
+  return durationSec < HR_REP_KINETICS_FLOOR_SEC ? 'observational' : 'target';
 }
 
 /** Friel zones, condensed to the 5 most-actionable for marathoners.

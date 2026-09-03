@@ -547,8 +547,13 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
             // seven AppBar screens rather than seven copies of it.
             StatusBarScrimV5()
 
+            // RunLobbyV5 (pre-run experience) replaces the bare two-button
+            // RunPickerV5 here: it shows what's about to start and whether
+            // the devices are ready before the runner commits. RunPickerV5
+            // itself is left in place (GalleryV5 still references it as a
+            // component sample) — only this, the one real call site, moved.
             V5SheetHost(isPresented: $runPickerOpen, title: "Start the run") {
-                RunPickerV5(
+                RunLobbyV5(
                     onOutdoor: { runPickerOpen = false; liveRun = .outdoor },
                     onTreadmill: { runPickerOpen = false; liveRun = .treadmill },
                     onCancel: { runPickerOpen = false }
