@@ -28,6 +28,72 @@ success."*
 
 ---
 
+## ONE CURRENT TRUTH  ·  resolved 2026-09-03, correcting the handback's contradiction
+
+David: *"One reporting correction: the handback ends by saying the rebuild
+waits on progression work, while section 9 says the progression work has
+landed. Resolve the actual repository status and report one current truth."*
+
+Both sentences were individually true and, read together, misleading. Here is
+the one statement that replaces both:
+
+**The progression ENGINE CODE is complete, audited, and on `main`.**
+S1.1/S1.2/S1.4 (marathon-specific progression, long-run progression, the
+marathon-pace contract) landed via `feat/race-specific-progression` before
+tonight's audit even started; the audit verified it against his real account,
+found and fixed five further defects on top of it (the dose-fade window, the
+Daniels cap escape it exposed, the duplicate `rehearses` label, ten missing
+doctrine claims, two dead tests), and falsified every gate sixteen ways. This
+part is DONE, not pending.
+
+**The LIVE PLAN on his phone has NOT been rebuilt with any of it.**
+`pln_9a57561debb776e5`, his active plan, was authored 2026-08-31 — before
+every engine fix that landed tonight. "The rebuild waits on progression work"
+meant *waited on the engine work being finished before it is safe to spend a
+rebuild on it*, which is now true in the past tense: the engine work finished,
+so the rebuild is now the very next unblocked step, not still-blocked.
+
+**What actually changed on his live plan tonight, without a rebuild:** three
+targeted READ-TIME fixes that correct how the EXISTING persisted plan is
+labelled and served, none of which required re-authoring anything —
+RACEWEEK-1 (Santa Monica/Dodgers/Run Malibu weeks stopped reading "QUALITY"),
+WKSTRIP-RACE-1 (the week-strip swipe race, shipped as TestFlight build 251),
+and the recovery-block-is-peak flag fix (production-verified, four archived
+plans affected, his active plan was not one of them). None of these are the
+progression rebuild. All three are live now.
+
+**Also landed tonight, unrelated to progression:** the production write
+barrier now judges the actual connection issuing a statement rather than
+`process.env.DATABASE_URL` (closes a real gap the visual-walk-substrate build
+exposed); Migration 163 (`plan_reschedules`) is applied to production, schema
+only, zero rows, verified ten ways before execution — see
+`docs/migrations/163-plan-reschedules-evidence-2026-09-03.md`.
+
+**Still genuinely open, in dependency order:**
+1. Race-week TYPED coaching distinctions (goal/tune-up/controlled/contains) —
+   in progress, see the section below.
+2. Easy-days-after-intervals typed validator rule — in progress.
+3. VW-3 (the debug-session token path) — in progress.
+4. The full preflight, gating the rebuild.
+5. The rebuild itself, and persisted-plan verification across every surface.
+6. Ranked Sunday options, generated against the REBUILT plan (David reports
+   the phone currently offers only "Skip" — the "Move to Friday/Saturday"
+   options that should sit beside it exist only in a design-preview fixture,
+   `TodayBeforeSamplesPreRunV5.options(for:)`, and `RescheduleV5.swift` — a
+   real, substantial screen — is built but not wired into any reachable
+   navigation path yet. This is the gap item 8 below closes).
+7. The canonical Adaptation Engine wired into live SHADOW evaluation (still
+   unwired from the live path by design — a hard mutation guard forbids any
+   importer under `web-v2/lib|app`; this is correct and stays until shadow
+   evaluation is proven).
+
+**Do not describe the app as complete** until the rebuilt plan is live, every
+production surface is verified against it, TestFlight is distributed with the
+decisions below, and the canonical engine is producing trustworthy shadow or
+owner-visible decisions. None of those five conditions are met yet.
+
+---
+
 ## Stage 0 · Record and deployment state — VERIFIED 2026-09-03
 
 Resolved from the repository, CI and the deployment provider, not from the
