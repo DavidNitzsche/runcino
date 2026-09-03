@@ -41,15 +41,17 @@ const ALLOWED: Record<string, string[]> = {
     // keyed to `level` — the authority this file's own ratchet is removing.
     'demonstratedLongMi',
     // DESIGNED-WEEKEND-1 · the same history read on the axis a race-plus-long-run
-    // weekend actually proposes: the heaviest two-consecutive-day total he has
-    // absorbed in representative training, and the day it started. This is what
-    // makes that grant athlete-specific rather than a permission every runner
-    // gets.
-    // Both were added by the designed-race-weekend commit without a
-    // classification, which made this gate red on `main` — a second instance of
-    // the collision class that had already broken the deploy once today. The
-    // ratchet caught it rather than the deploy doing so, which is the point.
-    'demonstratedPairMi', 'demonstratedPairFromISO',
+    // weekend actually proposes. This is what makes that grant athlete-specific
+    // rather than a permission every runner gets.
+    //
+    // EVIDENCE-HONESTY-1 (2026-09-02) · ONE FIELD REPLACES TWO, and the surface
+    // got SMALLER while saying more. It was `demonstratedPairMi` plus
+    // `demonstratedPairFromISO`: one number and its date, which the grant then
+    // spent as though it settled both how much he has absorbed across two days
+    // AND whether he has ever run a hard effort and gone long the next morning.
+    // Those are two claims and they disagree on this runner, so they are now
+    // two separately-typed values behind one field.
+    'designedWeekendPairEvidence',
   ],
   'demonstrated pace capacity': [
     'tPaceSec', 'bestRecentVdot', 'seasonAnchorVdot', 'seasonAnchorSource',

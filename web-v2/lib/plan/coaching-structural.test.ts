@@ -200,8 +200,14 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
       ? embedded.authoredState.placement_compromises : []) as Array<{
         code: string; raceSlug: string; refusedDesignedWeekend?: { code: string };
       }>;
-    const decision = rec.find((r) => r.raceSlug === 'dodgers-10k');
-    expect(decision, 'the decision must be on the record').toBeTruthy();
+    // EVIDENCE-HONESTY-1 (2026-09-02) · the Dodgers slug can now carry TWO
+    // records: the owner's 17-mile cap on a designed weekend's second day, and
+    // then the evidence refusal. Select the one carrying the refusal rather
+    // than the first one for the slug.
+    const forDodgers = rec.filter((r) => r.raceSlug === 'dodgers-10k');
+    expect(forDodgers.length, 'the decision must be on the record').toBeGreaterThan(0);
+    const decision = forDodgers.find((r) => r.refusedDesignedWeekend != null);
+    expect(decision, 'the refusal must be named on the record').toBeTruthy();
     expect(decision!.code).toBe('REDUCE_DOSE');
     expect(decision!.refusedDesignedWeekend?.code).toBe('NO_COMBINED_LOAD_EVIDENCE');
   });

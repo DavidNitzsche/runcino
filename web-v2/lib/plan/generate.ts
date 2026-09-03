@@ -155,8 +155,12 @@ import {
 } from './combined-stress';
 import {
   resolveDesignedRaceWeekend,
+  resolvePairVolumeEvidence,
+  resolvePairOrderingEvidence,
   EXTENDED_RECOVERY_DAYS_AFTER_PAIR,
+  DESIGNED_WEEKEND_LONG_CAP_MI,
   type DesignedWeekendEvidence,
+  type HistoricalDayReading,
 } from './designed-race-weekend';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
@@ -1862,14 +1866,25 @@ async function recentPeakLongMi(
  * 365 is not a new constant: it is the bound `eligibleDaysBack` already
  * defaults to, spent explicitly here rather than inherited silently.
  *
- * ── A RACE DAY INSIDE THE WINDOW COUNTS, ON PURPOSE ────────────────────────
+ * ── A RACE DAY USED TO COUNT. IT NO LONGER DOES, FOR VOLUME ────────────────
  *
- * The thing being proposed HAS a race in it. A weekend of a race plus a long
- * run is the closest evidence available for a weekend of a race plus a long
- * run, and excluding it would leave the reader measuring something else. What
- * IS excluded is the taper and post-race recovery around the runner's last
- * race, through the same `prescribedSpans` every other habit reader here uses
- * (one definition of which days count, Rule 8).
+ * The original argument here was that "the thing being proposed HAS a race in
+ * it", so a weekend containing a race is the closest available evidence. That
+ * reasoning is what produced the false sentence: the pair it selected was a
+ * 2.61 mi shakeout followed by the BIG SUR MARATHON, which is not a race plus
+ * a long run, and not training either.
+ *
+ * EVIDENCE-HONESTY-1 splits the question. Race days are excluded from the
+ * VOLUME claim — the same exclusion `demonstratedLongMi` twenty lines down
+ * already makes, for the same stated reason, that a race is not a training
+ * long run. They still count for the ORDERING claim, where a race is the
+ * canonical hard first day and dropping it would understate his history. Two
+ * questions, two populations, and the reader hands both to
+ * `designed-race-weekend.ts` rather than deciding either here.
+ *
+ * What remains excluded from BOTH is the taper and post-race recovery around
+ * the runner's last race, through the same `prescribedSpans` every other habit
+ * reader here uses (one definition of which days count, Rule 8).
  *
  * NAMED GAP (Rule 22): `prescribedSpans` carries only the MOST RECENT race, so
  * a taper eighteen months of races ago is not excluded from a 365-day window.
@@ -1883,22 +1898,71 @@ async function recentPeakLongMi(
  */
 export const DEMONSTRATED_PAIR_LOOKBACK_DAYS = 365;
 
-async function demonstratedPairMi(
+/**
+ * EVIDENCE-HONESTY-1 (2026-09-02) · THIS READER NO LONGER ANSWERS THE QUESTION,
+ * IT SUPPLIES THE DAYS.
+ *
+ * It used to return one number — the heaviest two-day total — and the grant
+ * spent that number as though it settled BOTH how much he has absorbed across
+ * two days AND whether he has ever run this arrangement. On this runner those
+ * two answers disagree, and the sentence he read was false in shape: his
+ * 29.4 mi pair is a 2.61 mi shakeout followed by the Big Sur Marathon.
+ *
+ * So the SQL now returns the eligible days themselves, with the two facts that
+ * decide what each day may be cited for, and
+ * `resolvePairVolumeEvidence` / `resolvePairOrderingEvidence` in
+ * `lib/plan/designed-race-weekend.ts` compute the two claims separately. The
+ * window stays exactly where it was (Rule 8's `eligibleDaysBack`, 365 days);
+ * what moved is the grading, to the file that owns the decision.
+ *
+ * THE TWO FACTS PER DAY:
+ *   · `wasRace` — `races` is the authority (CLAUDE.md §Race-data
+ *     source-of-truth). Race days are dropped from the VOLUME claim, the same
+ *     exclusion `demonstratedLongMi` already makes for the long-run ceiling.
+ *   · `wasHardEffort` — the runner's own row graded tempo / threshold /
+ *     intervals, or a race. NULL, not false, when the row carries no workout
+ *     grade at all: 62 of this runner's 149 days are Strava-era rows holding
+ *     `type: 'Run'`, and calling those "not hard" would be a claim nobody
+ *     measured (Rule 11).
+ *
+ * Returns null when the read failed. NEVER an empty array for a failure: an
+ * empty window is "he has no eligible history" and null is "I could not look",
+ * and the resolvers answer them under different names.
+ */
+async function designedWeekendHistory(
   userId: string,
   todayISO: string,
   spans: readonly PrescribedSpan[],
-): Promise<{ mi: number; fromISO: string } | null> {
+): Promise<HistoricalDayReading[] | null> {
   const days = eligibleDaysBack(
     todayISO,
     DEMONSTRATED_PAIR_LOOKBACK_DAYS,
     spans,
     DEMONSTRATED_PAIR_LOOKBACK_DAYS,
   );
-  if (days.length < 2) return null;
-  const r = await rowsOrNull<{ d: string; mi: string | null }>(
-    'plan/generate · demonstratedPairMi',
-    pool.query<{ d: string; mi: string | null }>(
-      `SELECT (${runDaySql('r')})::date::text AS d, SUM(${runDistanceMiSql('r')})::text AS mi
+  if (days.length < 2) return [];
+  const r = await rowsOrNull<{
+    d: string; mi: string | null; hard: boolean | null; was_race: boolean | null;
+  }>(
+    'plan/generate · designedWeekendHistory',
+    pool.query<{ d: string; mi: string | null; hard: boolean | null; was_race: boolean | null }>(
+      `SELECT (${runDaySql('r')})::date::text AS d,
+              SUM(${runDistanceMiSql('r')})::text AS mi,
+              -- NULL when NO row on the day carries a workout grade at all.
+              -- BOOL_OR over NULLIF gives exactly that: false only when a
+              -- grade was present and was not a hard one.
+              BOOL_OR(
+                CASE WHEN COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '')
+                          IN ('tempo','threshold','intervals','race','long','easy','recovery')
+                     THEN COALESCE(${runWorkoutTypeSql('r')}, ${runTypeSql('r')}, '')
+                            IN ('tempo','threshold','intervals','race')
+                     ELSE NULL END
+              ) AS hard,
+              BOOL_OR(EXISTS (
+                SELECT 1 FROM races x
+                 WHERE x.user_uuid = r.user_uuid
+                   AND x.meta->>'date' = (${runDaySql('r')})::date::text
+              )) AS was_race
          FROM runs r
         WHERE r.user_uuid = $1::uuid
           AND NOT (r.data ? 'mergedIntoId')
@@ -1908,23 +1972,18 @@ async function demonstratedPairMi(
     ),
   );
   if (r == null) return null;
-  const byDay = new Map<string, number>();
+  const out: HistoricalDayReading[] = [];
   for (const row of r) {
     const v = Number(row.mi ?? 0);
-    if (Number.isFinite(v) && v > 0) byDay.set(row.d, v);
+    if (!Number.isFinite(v) || v <= 0) continue;
+    out.push({
+      dateISO: row.d,
+      mi: v,
+      wasRace: row.was_race === true,
+      wasHardEffort: row.hard,
+    });
   }
-  if (byDay.size === 0) return null;
-  // Both days must be eligible. A pair whose second half is a taper day is not
-  // a pair this runner trained.
-  const eligible = new Set(days);
-  let best: { mi: number; fromISO: string } | null = null;
-  for (const [d, v] of byDay) {
-    const next = addDays(d, 1);
-    if (!eligible.has(next)) continue;
-    const total = Math.round((v + (byDay.get(next) ?? 0)) * 10) / 10;
-    if (best == null || total > best.mi) best = { mi: total, fromISO: d };
-  }
-  return best;
+  return out;
 }
 
 /**
@@ -8306,8 +8365,13 @@ export const DESIGNED_WEEKEND_PURPOSE =
  * zero somebody could mistake for a measurement.
  */
 const NO_DESIGNED_WEEKEND_EVIDENCE: DesignedWeekendEvidence = {
-  demonstratedPairMi: null,
-  demonstratedPairFromISO: null,
+  // READ_FAILED, not NONE_FOUND. A caller that supplied no evidence has not
+  // told us the runner has no history; it has told us nothing, and those are
+  // different refusals (Rule 11).
+  pairVolume: { evidenceOf: 'two-day-volume', kind: 'READ_FAILED' },
+  pairOrdering: {
+    evidenceOf: 'hard-then-long-ordering', kind: 'UNDETERMINED', reason: 'read-failed',
+  },
   recentHabitLongMi: null,
   sustainedWeeklyMi: null,
 };
@@ -8905,12 +8969,54 @@ export function embedMidBlockRaces(
           longDateISO,
           longMi: nl.d.distanceMi,
           longCarriesQuality: !!nl.d.isQuality || nl.d.raceGoalPaceSec != null,
+          // OWNER RULING 2026-09-02 · "easy throughout, no marathon-pace
+          // finish, no progression finish". `isQuality` does not answer either
+          // of these: a long run graded easy can still carry a fast-finish or
+          // a marathon-pace segment, and both were reachable before this.
+          // Stated from `longRunKind`, which is the field that records what
+          // race-pace shape a long run was authored with.
+          longCarriesProgressionFinish:
+            nl.d.longRunKind === 'progression' || nl.d.longRunKind === 'fast_finish',
+          longCarriesMarathonPaceFinish:
+            nl.d.longRunKind === 'mp_long' || nl.d.longRunKind === 'dress_rehearsal'
+            || nl.d.longRunKind === 'modified_block'
+            || nl.d.longRunKind === 'downhill_simulation',
           gapDays: nl.j,
           recoveryDaysAfter,
           evidence: opts.designedWeekendEvidence ?? NO_DESIGNED_WEEKEND_EVIDENCE,
           authoredPurpose: DESIGNED_WEEKEND_PURPOSE,
         });
         let verdict = ask(countRecovery());
+        /*
+         * THE CAP IS AUTHORED TO, NOT FALLEN BACK FROM.
+         *
+         * Owner ruling 2026-09-02: the second day of this weekend is 16-17
+         * miles, not 18. A plain refusal would drop the long run onto the
+         * return-to-long curve, which at one day past a 10K cuts far BELOW the
+         * 17 he asked for — a worse answer than the one being corrected. So
+         * the composer authors to the cap the refusal names and re-asks, which
+         * is the same shape it already uses one branch down for
+         * `NO_EXTENDED_RECOVERY_AFTER`: the resolver owns the decision, the
+         * composer owns the days.
+         *
+         * The gate stays live. A caller that cannot author the day still gets
+         * the refusal, and a long run over the cap that is ALSO unqualified on
+         * evidence is still refused after the cap is applied.
+         */
+        if (!verdict.permitted && verdict.refusal.code === 'LONG_RUN_EXCEEDS_DESIGNED_CAP') {
+          nl.d.distanceMi = DESIGNED_WEEKEND_LONG_CAP_MI;
+          touchedWeeks.add(Math.floor((o + nl.j) / 7));
+          compromises.push({
+            code: 'REDUCE_DOSE',
+            raceSlug: race.slug, raceName: race.name, raceDateISO: race.date,
+            dateISO: longDateISO,
+            detail:
+              `long run held to ${DESIGNED_WEEKEND_LONG_CAP_MI}mi · the second day of a designed `
+              + `race-plus-long-run weekend, ${nl.j} day(s) after ${race.name}`,
+            citation: verdict.refusal.citation,
+          });
+          verdict = ask(countRecovery());
+        }
         // THE COMPOSER'S HALF OF DOCTRINE'S CONDITION. `Research/00b`
         // §"Hard/Easy Alternation" licenses a stress block only when the plan
         // "explicitly calls for" it AND it is "followed by extended recovery".
@@ -9613,20 +9719,29 @@ export interface ComposePlanInput {
    *  evidence, and the band stands alone (a cold-start runner). */
   demonstratedLongMi?: number | null;
   /**
-   * DESIGNEDWEEKEND-1 (2026-09-02) · the largest total this runner has actually
-   * run across TWO CONSECUTIVE CALENDAR DAYS, in representative training.
+   * DESIGNEDWEEKEND-1 (2026-09-02) · the athlete-specific evidence the
+   * race-plus-long-run exception is gated on and narrated from.
    *
-   * The ONLY evidence that answers "has he absorbed a combined load like the
-   * one this weekend proposes" on the axis the weekend proposes it — see
-   * `lib/plan/designed-race-weekend.ts`. UNDEFINED IS NOT ZERO and must not be
-   * read as one: it means nobody measured, and the resolver refuses by name
-   * (`NO_COMBINED_LOAD_EVIDENCE`) rather than granting on a blank (Rule 11).
-   * Every synthetic caller leaves it undefined, and every one of them is
-   * therefore refused the exception, which is the point.
+   * EVIDENCE-HONESTY-1 (2026-09-02) · this replaces the two scalars
+   * `demonstratedPairMi` / `demonstratedPairFromISO`. They carried ONE number
+   * that the grant then spent as though it answered TWO questions — how much
+   * this runner has absorbed across two days, and whether he has ever run a
+   * hard effort and gone long the next morning. On the reference marathoner
+   * those answers disagree, and the grant asserted the second off the first.
+   * The shape is now two separately-typed claims that cannot be substituted
+   * for each other; see `lib/plan/designed-race-weekend.ts`.
+   *
+   * ONLY THE PAIR HALVES. The long-run and sustained-volume halves of
+   * `DesignedWeekendEvidence` are assembled by the composer from
+   * `recentLongMi` and `rampBaseEvidence`, which it already holds. Carrying
+   * them here too would give two owners one value (Rule 16).
+   *
+   * UNDEFINED IS NOT ZERO and must not be read as one: it means nobody
+   * measured, and the resolver refuses by name rather than granting on a blank
+   * (Rule 11). Every synthetic caller leaves it undefined, and every one of
+   * them is therefore refused the exception, which is the point.
    */
-  demonstratedPairMi?: number | null;
-  /** The first day of the demonstrated pair above, so the grant can name it. */
-  demonstratedPairFromISO?: string | null;
+  designedWeekendPairEvidence?: Pick<DesignedWeekendEvidence, 'pairVolume' | 'pairOrdering'>;
   /** 2026-06-03 · mid-block runner doctrine carriers. Optional · all
    *  default to 0/undefined for cold-start runners. Bench persona
    *  "david-mid-block" exercises each as a gap-rule assertion. See
@@ -10857,8 +10972,13 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         // persisting the label as purported evidence is the same defect as
         // gating on it. Every remaining field is a number he ran.
         designedWeekendEvidence: {
-          demonstratedPairMi: input.demonstratedPairMi ?? null,
-          demonstratedPairFromISO: input.demonstratedPairFromISO ?? null,
+          // EVIDENCE-HONESTY-1 · the two claims arrive already separated, from
+          // the resolvers that own each. Nothing is combined or re-derived
+          // here; an absent input stays a refusal rather than becoming a zero.
+          pairVolume: input.designedWeekendPairEvidence?.pairVolume
+            ?? NO_DESIGNED_WEEKEND_EVIDENCE.pairVolume,
+          pairOrdering: input.designedWeekendPairEvidence?.pairOrdering
+            ?? NO_DESIGNED_WEEKEND_EVIDENCE.pairOrdering,
           // Passed through, not coerced. `recentLongMi` is a number whose 0
           // already documents "no recoverable baseline" (see its field doc),
           // so re-spelling that as null would be inventing an absence the
@@ -16615,7 +16735,7 @@ async function loadGeneratorInputs(
   // by name; it is never floored to zero, because a zero here would read as
   // "he has never run two days back to back", which is a claim about the
   // runner rather than about the read (Rule 11).
-  const pairRead = await demonstratedPairMi(userId, todayISO, prescribedSpans);
+  const pairDays = await designedWeekendHistory(userId, todayISO, prescribedSpans);
   // 2026-06-10 persona-suite fix · cold-start race plans. A brand-new
   // runner has NO runs, so recentMi/recentLong read 0 and the ramp from
   // zero to race-prep peaks trips the progression validator (26.2mi
@@ -17030,9 +17150,21 @@ async function loadGeneratorInputs(
       // place; a runner who has simply never run long reads 0 and gets the same
       // band for a different and correct reason. The two are not collapsed.
       demonstratedLongMi: demonstratedLong,
-      // DESIGNEDWEEKEND-1 · see `demonstratedPairMi`.
-      demonstratedPairMi: pairRead?.mi ?? null,
-      demonstratedPairFromISO: pairRead?.fromISO ?? null,
+      // DESIGNEDWEEKEND-1 / EVIDENCE-HONESTY-1 · see `designedWeekendHistory`.
+      // The two claims are computed separately, from the same days, by the
+      // file that owns the decision. The ordering question is asked against
+      // the CAP rather than against whatever long run the composer lands on,
+      // because the cap is the largest second day this weekend can carry, so
+      // it is the demand the runner's history is being asked about.
+      //
+      // Only the PAIR halves are carried here. The long-run and sustained
+      // halves are assembled by the composer from `recentLongMi` and
+      // `rampBaseEvidence`, which it already holds — one owner per value
+      // (Rule 16), rather than this loader and the composer both deciding.
+      designedWeekendPairEvidence: {
+        pairVolume: resolvePairVolumeEvidence(pairDays),
+        pairOrdering: resolvePairOrderingEvidence(pairDays, DESIGNED_WEEKEND_LONG_CAP_MI),
+      },
       // PLANVERSION-1 (2026-08-30) · a MEASURED ZERO SURVIVES AS ZERO.
       //
       // These were `x > 0 ? x : undefined`, and `undefined` is what
