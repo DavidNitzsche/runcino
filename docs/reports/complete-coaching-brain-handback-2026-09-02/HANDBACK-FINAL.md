@@ -444,6 +444,42 @@ Week 11 carries **no quality at all** — it follows the half marathon.
 
 ---
 
+## 9c · The pace, HR and effort contracts
+
+Anchors: threshold **430 s/mi (7:10)**, LTHR **168**, max HR **183**, easy
+ceiling **151 bpm**.
+
+| Quantity | Value | Owner |
+|---|---|---|
+| threshold (T) | 7:10/mi | capacity resolver |
+| marathon-pace TRAINING | 7:52/mi, range 7:40-8:08 | `race-outlook.trainingPrescription` |
+| long-run / easy | 8:40/mi headline, HR cap 151 | spec builder off the easy anchor |
+| CIM race-day execution | 7:23/mi | `race-outlook.execution` |
+| stated goal (never prescribed) | 6:52/mi | the runner |
+
+Of **96 future rows**: **61** carry an HR cap, **15** carry warm-up and
+cool-down, **21** carry pass/abort rules.
+
+**The rules, verbatim:**
+
+- Quality work — pass: *"avgHr ≤ 164 on the work"*; bail: *"HR over 173 and
+  climbing · finish easy, the stimulus is banked"*.
+- Long runs with a fast finish — bail: *"HR over 173 mid-finish · cut the finish
+  in half, jog home"*.
+- Races, distance-scaled checkpoints: **mile 2 at 179 bpm** for a 10K, **mile 5
+  at 171** for the half, **mile 10 at 163** for CIM — each *"switch to the B
+  plan"*.
+
+**One correction to that last row, because the number differs by race role.**
+The figures above come from a harness that calls the spec builder with seven of
+its twelve arguments, so it prices every 10K as a full race. Through the
+complete production path the **Dodgers C race carries HR 161-168 with a mile-2
+abort at 171**, not 168-176 and 179. The A and B races are unaffected. Race
+pacing is owned by `race-row-refresh`, and the harness's race column is labelled
+an artifact in the detail file rather than deleted, so the limit stays visible.
+
+---
+
 ## 9b · Determinism, and proof nothing can mutate the stored plan
 
 **Determinism.** Composed three times against the same inputs:
