@@ -76,7 +76,7 @@ import { computeShoeMileage } from '@/lib/shoe/mileage';
 // The five elevation / splits / merge SQL fragments that used to be imported
 // here went with the inline twin query — `lib/runs/twins.ts` builds that
 // statement now, in one place, for all four surfaces.
-import { runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
+import { runDaySql, runNotMergedSql, runDistanceMiSql, runPlannedWorkoutTypeSql } from '@/lib/runs/run-shape';
 import { runFacts } from '@/lib/runs/run-facts';
 import { beltAverages } from '@/lib/runs/belt-averages';
 import { loadPaceZoneEvent } from '@/lib/plan/pace-drop-event';
@@ -923,11 +923,39 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // ── Already ran today? → after_run (5b/5c) ─────────────────────────────
   const ranToday = glanceToday && glanceToday.doneMi >= 0.5;
   if (ranToday) {
+    /* TWO-RUNS-ONE-DAY-1 (2026-09-03) · picking the WRONG run of the day is
+     * not a display bug, it's a misattribution one (Rule 14 — the query
+     * named the wrong population). This used to pick the single BIGGEST run
+     * of the day, full stop — so a friend's unrelated 4.48mi easy run,
+     * synced from Apple Workouts, outranked nothing (it was the only run
+     * yet), and rendered as "INTERVALS, done" on a day prescribing 10x1:00
+     * hill reps the runner had not yet gone out to run. Found live,
+     * 2026-09-03, David's own account.
+     *
+     * The fix is not "prefer whichever run is closer to the prescribed
+     * distance" — a mismatched run can coincidentally be close, and a
+     * genuinely short or long real attempt at the workout should not lose
+     * to a coincidence. It is: prefer the run that was actually recorded AS
+     * an execution of today's plan. `plannedWorkoutType` is stamped by
+     * POST /api/watch/workouts/complete — the one endpoint both
+     * PhoneRunTracker and the watch companion post to (same shape, same
+     * route, per PhoneRunTracker.swift's own header) — directly from the
+     * plan_workouts row it read at completion time. A row with it set did
+     * not merely happen to exist on this date; it is what the runner
+     * actually recorded, live, as this session. A synced/manual/Strava row
+     * never carries it (nothing else in this codebase writes that key).
+     *
+     * Falls back to the prior biggest-distance ordering when NO run today
+     * carries that signal — the best available guess when nothing was
+     * tracked live, unchanged from before this fix, and not a regression:
+     * a runner logging exactly one run a day, the overwhelmingly common
+     * case, sees no behavior change at all. */
     const runRow = (await pool.query<{ id: string; data: Record<string, any> }>(
       `SELECT id::text AS id, data, shoe_id FROM runs
         WHERE user_uuid = $1 AND ${runNotMergedSql()}
           AND ${runDaySql()} = $2
-        ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
+        ORDER BY (${runPlannedWorkoutTypeSql()} IS NOT NULL) DESC,
+                 ${runDistanceMiSql()} DESC NULLS LAST
         LIMIT 1`,
       [userId, today],
     ).catch(() => ({ rows: [] as any[] }))).rows[0];

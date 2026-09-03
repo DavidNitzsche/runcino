@@ -59,7 +59,7 @@ import { resolveSafety } from '@/lib/safety/load-safety';
 import type { SafetyResolution } from '@/lib/safety/safety-verdict';
 import { adjustPhasesForHeat, heatNote, recordHeatEasing } from '@/lib/watch/heat';
 import { runFacts } from '@/lib/runs/run-facts';
-import { runAvgHr, runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
+import { runAvgHr, runDaySql, runNotMergedSql, runDistanceMiSql, runPlannedWorkoutTypeSql } from '@/lib/runs/run-shape';
 import { fmtMi, fmtMi2 } from '@/lib/format/run';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
@@ -1289,11 +1289,18 @@ async function loadCompletedRun(
   today: string,
   wo: { distance_mi: number | string | null; pace_target_s_per_mi: number | null; workout_spec: any },
 ): Promise<WatchCompletedRun | null> {
+  // TWO-RUNS-ONE-DAY-1 (2026-09-03) · same fix as app/api/v5/today/route.ts's
+  // loadCompletedRun sibling, same reason: prefer the run actually recorded
+  // AS today's plan execution (plannedWorkoutType set by
+  // POST /api/watch/workouts/complete) over merely the biggest run of the
+  // day, so a second, unrelated run doesn't outrank the tracked one on the
+  // watch face either.
   const runRow = (await pool.query<{ id: string; data: Record<string, any> }>(
     `SELECT id::text AS id, data FROM runs
       WHERE user_uuid = $1 AND ${runNotMergedSql()}
         AND ${runDaySql()} = $2
-      ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
+      ORDER BY (${runPlannedWorkoutTypeSql()} IS NOT NULL) DESC,
+               ${runDistanceMiSql()} DESC NULLS LAST
       LIMIT 1`,
     [userId, today],
   ).catch(() => ({ rows: [] as any[] }))).rows[0];

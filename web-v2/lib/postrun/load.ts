@@ -36,7 +36,7 @@
  */
 import { pool } from '@/lib/db/pool';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
-import { runDaySql, runDistanceMiSql, runIdentityMatchSql } from '@/lib/runs/run-shape';
+import { runDaySql, runDistanceMiSql, runIdentityMatchSql, runPlannedWorkoutTypeSql } from '@/lib/runs/run-shape';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { resolveWorkoutVerdict, phasesFromCompletion } from '@/lib/execution/verdict';
 import { classifyStoredActivity } from '@/lib/evidence/load-activity-evidence';
@@ -118,15 +118,18 @@ async function loadRun(userId: string, ref: PostRunRef): Promise<RunRow | null> 
     if (r.rows[0]) return r.rows[0];
   }
   if (ref.dateISO) {
-    // The day's LONGEST canonical run — the same pick `/api/v5/today` makes
-    // for its poster, so the two cannot describe different runs.
+    // TWO-RUNS-ONE-DAY-1 (2026-09-03) · the same pick `/api/v5/today` makes
+    // for its poster, so the two cannot describe different runs — prefer
+    // the run actually recorded as today's plan execution
+    // (plannedWorkoutType) over merely the day's longest.
     const r = await pool.query<RunRow>(
       `SELECT id::text AS id, data
          FROM runs
         WHERE user_uuid = $1
           AND ${CANONICAL_ROW_SQL}
           AND ${runDaySql()} = $2
-        ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
+        ORDER BY (${runPlannedWorkoutTypeSql()} IS NOT NULL) DESC,
+                 ${runDistanceMiSql()} DESC NULLS LAST
         LIMIT 1`,
       [userId, ref.dateISO],
     );
