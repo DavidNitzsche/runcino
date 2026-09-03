@@ -343,11 +343,38 @@ struct WatchWorkout: Codable, Equatable {
         // WorkoutTodayCard renderer loses rep distance + can't distinguish
         // distance vs time reps.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
+        // PACESHAPE-1 (2026-09-03 correction) · this re-stamp had the EXACT
+        // same defect three separate times over: `repUnit`/`distanceMi` were
+        // the 2026-05-25 fix this comment already cites; `hrRole` (HR-ROLE-1)
+        // and `treadmillInclinePct`/`treadmillSpeedMph` (TREADMILL-HILL-1)
+        // were BOTH added to `WatchPhase` since, and BOTH silently dropped
+        // right here, because this list was never updated to carry them —
+        // every field added to the struct after this map was written had to
+        // be added here too, by hand, and nothing enforced it.
+        //
+        // Found because `hrRole`'s drop was INVISIBLE: `effectiveHrRole`
+        // defaults dropped-to-nil to `.observational`, which happens to be
+        // the correct answer for the by-effort hill reps this session kept
+        // testing against — so HR-ROLE-1 "worked" in every render this
+        // session did, by coincidence, while silently misclassifying any
+        // REAL `.target` HR phase (a tempo session's genuine HR target) as
+        // observational instead. `treadmillInclinePct`/`treadmillSpeedMph`
+        // had no such lucky default — TREADMILL-HILL-2's own fix, wired and
+        // unit-tested against hand-built `WatchPhase` values (which never
+        // pass through this decoder at all), never once fired against real
+        // decoded data because of this exact line.
+        //
+        // Every field the memberwise init accepts is threaded through now.
+        // The next field added to `WatchPhase` will still need a line here —
+        // Swift has no "spread the rest" for a memberwise init — but at
+        // least this sweep closes every gap that existed today.
         self.phases = raw.enumerated().map { (i, p) in
             WatchPhase(index: i, type: p.type, label: p.label, durationSec: p.durationSec,
                        targetPaceSPerMi: p.targetPaceSPerMi,
                        tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic,
-                       repUnit: p.repUnit, distanceMi: p.distanceMi, hrTargetBpm: p.hrTargetBpm)
+                       repUnit: p.repUnit, distanceMi: p.distanceMi, hrTargetBpm: p.hrTargetBpm,
+                       hrRole: p.hrRole, treadmillInclinePct: p.treadmillInclinePct,
+                       treadmillSpeedMph: p.treadmillSpeedMph, paceShape: p.paceShape)
         }
     }
 }
