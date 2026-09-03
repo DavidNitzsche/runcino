@@ -77,6 +77,14 @@ struct WatchPhase: Codable, Identifiable, Equatable {
     /// See `WatchHrRole`. Absent on an older payload — `effectiveHrRole`
     /// below is what every consumer should read, never this raw field.
     let hrRole: WatchHrRole?
+    /// TREADMILL-HILL-1 (2026-09-03) · a belt speed + incline for a WORK
+    /// phase that is prescribed by effort (no `targetPaceSPerMi`) and whose
+    /// label names it a hill rep. See the server's `WatchPhase.
+    /// treadmillInclinePct` doc comment (web-v2/lib/watch/build-workout.ts)
+    /// for the full derivation. nil on every non-hill or already-paced
+    /// phase, and on any payload from before this field existed.
+    let treadmillInclinePct: Double?
+    let treadmillSpeedMph: Double?
 
     /// The backend payload omits `index` (the phases array is ordered
     /// and the watch walks it with a cursor).  We assign it during
@@ -85,7 +93,8 @@ struct WatchPhase: Codable, Identifiable, Equatable {
     init(index: Int, type: WatchPhaseType, label: String, durationSec: Int,
          targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic,
          repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil,
-         hrRole: WatchHrRole? = nil) {
+         hrRole: WatchHrRole? = nil, treadmillInclinePct: Double? = nil,
+         treadmillSpeedMph: Double? = nil) {
         self.index = index
         self.type = type
         self.label = label
@@ -97,10 +106,12 @@ struct WatchPhase: Codable, Identifiable, Equatable {
         self.distanceMi = distanceMi
         self.hrTargetBpm = hrTargetBpm
         self.hrRole = hrRole
+        self.treadmillInclinePct = treadmillInclinePct
+        self.treadmillSpeedMph = treadmillSpeedMph
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm, hrRole
+        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm, hrRole, treadmillInclinePct, treadmillSpeedMph
     }
 
     /// Decoding without an index — used only when a phase is decoded in
@@ -118,6 +129,8 @@ struct WatchPhase: Codable, Identifiable, Equatable {
         self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
         self.hrTargetBpm = try c.decodeIfPresent(Int.self, forKey: .hrTargetBpm)
         self.hrRole = try c.decodeIfPresent(WatchHrRole.self, forKey: .hrRole)
+        self.treadmillInclinePct = try c.decodeIfPresent(Double.self, forKey: .treadmillInclinePct)
+        self.treadmillSpeedMph = try c.decodeIfPresent(Double.self, forKey: .treadmillSpeedMph)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -132,6 +145,8 @@ struct WatchPhase: Codable, Identifiable, Equatable {
         try c.encodeIfPresent(distanceMi, forKey: .distanceMi)
         try c.encodeIfPresent(hrTargetBpm, forKey: .hrTargetBpm)
         try c.encodeIfPresent(hrRole, forKey: .hrRole)
+        try c.encodeIfPresent(treadmillInclinePct, forKey: .treadmillInclinePct)
+        try c.encodeIfPresent(treadmillSpeedMph, forKey: .treadmillSpeedMph)
     }
 
     /// The role to actually use. An absent wire value (older payload, or a
