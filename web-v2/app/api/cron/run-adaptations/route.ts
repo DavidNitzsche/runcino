@@ -156,6 +156,42 @@ export async function POST(req: NextRequest) {
         }
       } catch { /* logged inside · non-fatal, per the file's own contract */ }
 
+      // ── CANONICAL ADAPTATION ENGINE · LIVE SHADOW EVALUATION ─────────────
+      //
+      // David: "Wire the canonical Adaptation Engine into live shadow
+      // evaluation only... Keep live automatic mutation disabled." Reuses
+      // THIS cron's existing daily cadence rather than a new schedule — Rule
+      // 23: a second schedule is a second thing that can silently stop
+      // firing, and there is no reason this evaluation needs to run on any
+      // cadence other than the one the legacy and intermediate shadow passes
+      // already use. Placed immediately after the pace shadow-compare call,
+      // for the same reason that one sits before `applyAdaptations`: reading
+      // it here means every shadow mechanism in this loop looks at the same
+      // pre-mutation plan state.
+      //
+      // `runAndPersistCanonicalShadowEvaluation` is entirely read-only over
+      // a SEPARATE, independently fenced connection
+      // (`lib/adaptation/canonical-shadow/read-only-db.ts` —
+      // `DATABASE_URL_RO` plus a statement allow-list) and its one write is
+      // allow-listed to a single INSERT shape against
+      // `canonical_adaptation_shadow_log`
+      // (`lib/adaptation/canonical-shadow/shadow-log-writer.ts`). It does
+      // not assume this cycle's LTHR re-anchor (above) or anything else has
+      // already run — it reads the plan's CURRENTLY authored state itself
+      // (Rule 23) — and it never throws: any failure is caught, logged, and
+      // reported in its own result, exactly like the pace shadow-compare
+      // call above it. Best-effort: never blocks the real adaptation pass.
+      try {
+        const { runAndPersistCanonicalShadowEvaluation } =
+          await import('@/lib/adaptation/canonical-shadow/run-live-shadow-evaluation');
+        const canonicalShadow = await runAndPersistCanonicalShadowEvaluation(uid);
+        if (!canonicalShadow.ran) {
+          console.warn(`[canonical-shadow] ${uid}: ${canonicalShadow.detail}`);
+        }
+      } catch (e) {
+        console.warn(`[canonical-shadow] ${uid} threw:`, e instanceof Error ? e.message : e);
+      }
+
       // 2026-06-04 · split actions into APPLY-NOW vs PROPOSE-FIRST.
       // David's complaint: "I dont want to wake up to change runs ·
       // that was annoying." Readiness-pullback adaptations now write

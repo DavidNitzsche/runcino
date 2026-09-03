@@ -28,6 +28,79 @@ success."*
 
 ---
 
+## SESSION OWNERSHIP  ·  coordination update, David 2026-09-03 (see also `## OPEN · the week strip is still clunky` below for the pre-existing week-strip session)
+
+David has opened two additional focused sessions — **pre-run** and **post-run**
+— to increase parallel progress without moving anyone off the critical path
+below. Three UI-touching sessions now run alongside this programme-lead
+session; ownership is split so no two can write competing answers to the same
+question.
+
+**Pre-run session owns:** workout presentation below the week strip · workout-
+detail information hierarchy · pre-run coaching language · segment preview ·
+run sheet/lobby · phone/watch readiness presentation · the transition from
+planned workout to active recording · pre-run loading/empty/stale/error
+states. **Does not own:** week-strip paging, top-bar nav, selected-date state,
+week caching, workout prescription, pace/HR calculation, plan generation,
+adaptation decisions, post-run interpretation.
+
+**Post-run session owns:** completed-run detail · post-run information
+hierarchy · post-run graphics/charts · intended-vs-completed presentation ·
+structured segment presentation · matched-workout presentation · data-quality
+and reconciliation presentation · rendering canonical stimulus and adaptation
+decisions after a run (`PR-1` through `PR-20` above are this session's
+inventory). **Does not own:** evidence admission rules, stimulus grading
+rules, fitness beliefs, plan generation, adaptation decisions, race
+projection, workout prescription, week-strip navigation.
+
+**Existing week-strip session continues to own:** Today/Upcoming top bar ·
+safe-area behaviour · horizontal week paging · selected-date and visible-
+workout state · week loading/caching · stale-response protection · plan-
+version invalidation in navigation · calendar navigation performance. The
+status-bar scrim fix (`DAYPANEL-SCRIM-1`, orphaned local commit `2cce812f`,
+never pushed) belongs here — not reintroduced from this session without a new
+instruction.
+
+**This session (programme-lead) continues to own:** canonical coaching
+contracts · plan generation and baseline correction · live-plan rebuild ·
+pace, HR, race, evidence and load ownership · canonical stimulus grades · the
+canonical Adaptation Engine · the rescheduling decision contract (`RS-1`
+through `RS-8` above — the CONTRACT and mutation path; `RS-4`/`RS-7`'s UI
+entry points hand to pre-run once the contract is ready) · production writes ·
+cross-surface consistency · integration into `main` · CI, deployment,
+TestFlight and final verification.
+
+**Overlap check against this session's own in-flight work, done 2026-09-03:**
+Decision 1 (race-week typing), Decision 3/SEP-1 (easy-days separation) and the
+canonical-shadow-evaluation wiring all touched `web-v2/lib/plan/**` and
+`web-v2/lib/adaptation/**` only — no Swift, no `native-v2/**`, no post-run or
+pre-run surface. No competing UI was created and none needs to be handed back.
+
+**Integration rules for handbacks from the two new sessions:** inspect the
+actual diff · identify overlap with current `main` · rebase or cherry-pick
+their commits (never merge a branch wholesale without review) · reject
+duplicate decision logic · ensure all UI consumes canonical contracts rather
+than re-deriving them · run the complete `verify-commit.sh` chain · render the
+integrated experience (Rule 13) · update this document · include accepted
+work in the next TestFlight build.
+
+**Shared-file protocol:** the session owning the canonical state or contract
+makes the shared change; the other session consumes it through an interface.
+Where that cannot be cleanly separated, one session stops editing the file and
+returns its required change as an integration note instead of resolving the
+conflict manually — never let concurrent manual conflict resolution silently
+combine two state models.
+
+**The critical path is unchanged and still programme-lead's:**
+`correct baseline → safe live rebuild → persisted verification → canonical
+Adaptation Engine → historical replay → live shadow → owner-visible proposals
+→ integrated TestFlight release`. The intended final product flow the three
+UI sessions serve: `select the correct workout → understand it before running
+→ execute and record it correctly → understand what happened afterward → turn
+that evidence into the right next prescription`.
+
+---
+
 ## ONE CURRENT TRUTH  ·  resolved 2026-09-03, correcting the handback's contradiction
 
 David: *"One reporting correction: the handback ends by saying the rebuild
@@ -72,8 +145,9 @@ only, zero rows, verified ten ways before execution — see
 **Status, kept current rather than left at first-write:**
 1. Race-week TYPED coaching distinctions — **DONE**, `8e0180d8`, see the
    section below.
-2. Easy-days-after-intervals typed validator rule — in progress (verify-commit
-   running as of last check).
+2. Easy-days-after-intervals typed validator rule (SEP-1) — **DONE and merged
+   to `main`** (`8a242994`). See `docs/PRODUCT_DECISIONS.md`'s SEP-1 entry for
+   the full ruling and the fatal-vs-advisory split.
 3. VW-3 (the debug-session token path) — **DONE and merged to `main`**
    (`f2a13335`). Real root cause found, not guessed: instrumented
    reproduction proved there was never a Keychain/auth race — every
@@ -87,11 +161,59 @@ only, zero rows, verified ten ways before execution — see
    of his actual Today screen (INTERVALS, 6.5 mi, hill repeats) rendered
    through the walk substrate, zero permission dialogs, 54/54 requests
    authenticated.
-4. The canonical Adaptation Engine wired into live SHADOW evaluation — in
-   progress.
-5. The full preflight, gating the rebuild — still blocked on 2 above landing.
+4. The canonical Adaptation Engine wired into live SHADOW evaluation — **code
+   complete, on `feat/canonical-shadow-evaluation` (`c1356e0c`/`59910cd4`),
+   not yet merged.** A new `canonical_adaptation_shadow_log` table
+   (migration 164) rather than reusing the existing intermediate
+   `adaptation_shadow_log` — that table's columns are typed against the
+   PACE-only mechanism's own vocabulary (a 3-way `engine_decision` CHECK,
+   `hr_compat_verdict`/`convergence_state` enums) and the canonical engine's
+   4-way PROGRESS/HOLD/REGRESS/REFUSE decision with 3 levers does not fit it
+   without either half-null rows or a second parallel column set (Rule 16).
+   Migration 164 is **written, not applied** — needs David's per-statement
+   go, same as 163. Mutation guard (`_cannot_mutate.test.ts` guard 4)
+   rewritten to a narrow allowlist and falsified 9 ways; `_never_mutates_
+   plan.test.ts` proves every write targets only the new table. Reuses the
+   existing `run-adaptations` 03:00 UTC cron, plus an on-demand admin route
+   (`GET/POST /api/admin/canonical-adaptation-shadow`) so the owner can
+   inspect what the canonical engine would have decided in parallel with
+   legacy `adapt.ts` and the intermediate PACE-only shadow-compare, without
+   any of the three influencing each other. `verify-commit.sh` was blocked
+   by a real shared-disk exhaustion (the repo's worktree volume hit 100%,
+   30GB free, across ~105 accumulated agent worktrees) — cleaned up to
+   ~195GB free 2026-09-03, retry in progress as of this entry.
+5. The full preflight, gating the rebuild — **run 2026-09-03.**
+   `scripts/p0-proof/falsify.sh` (mutate-and-restore, no DB writes): 11 of 12
+   named invariants falsified correctly (threshold admission, one-session
+   move cap, staleness-vs-support, goal isolation, HR informational-without-
+   evidence, race-row staleness/HR-cap, sealed-history refresh, projection
+   self-computation, effective-target second rule, limiter self-fitting).
+   The 12th (`execution-target-past-fast-edge`) had gone stale against
+   EXECTARGET-1's rewrite of `race-outlook.ts` — retargeted at the current
+   `conditionalUpside` refusal guard, and found to be a defensive branch that
+   is structurally unreachable under the current formula (`edge`'s
+   confidence-interval half-width always makes it strictly faster than
+   `targetSec`), documented in-code rather than forced into an artificial
+   fixture. `scripts/p0-proof/rebuild-preview.ts` against `main` at
+   `6339fc23` (race-week typing + SEP-1 both landed): composed plan is 105
+   rows across 15 weeks vs. the live plan's 103 rows, +7.2mi total volume
+   (~1% over 15 weeks), 64 of 105 days differ from what is currently live.
+   **Spot-checked, not exhaustively attributed:** the diff spans workout-TYPE
+   changes (intervals/threshold/easy swaps, tempo restructured from WU/T/CD
+   to continuous cutdowns), not just distance nudges — this is the expected
+   shape of composing fresh from current doctrine and evidence against a live
+   plan that has drifted through ad-hoc authoring and cron adaptations since
+   it was last written, not a defect to trace line-by-line to one decision
+   ID. Spot-checks confirm the direction is right (long-run ceiling raised
+   toward his demonstrated 21.5 per S1.2, MP mileage redistributed per S1.1,
+   no unexplained volume spikes). A full per-day causal attribution was not
+   performed and is judged not to be the right bar — the gate-clean
+   `falsify.sh` pass plus the individually-audited S1.1-S1.6 items are what
+   this preview should be judged against. **P0-3 (the actual production
+   rewrite) is a data write and needs David's explicit per-statement go
+   regardless of any further automated confidence-building here.**
 6. The rebuild itself, and persisted-plan verification across every surface —
-   blocked on 5.
+   blocked on David's go for the write itself.
 7. Ranked Sunday options, generated against the REBUILT plan (David reports
    the phone currently offers only "Skip" — the "Move to Friday/Saturday"
    options that should sit beside it exist only in a design-preview fixture,
@@ -239,13 +361,24 @@ cover. **Apply refuses rather than making an unrecorded change**, which is the
 correct behaviour, so nothing is broken; the feature simply cannot complete an
 approval until the table exists.
 
-**2 · A doctrine divergence between his ruling and the validator.** `Q32` says
-**≥1** easy day after intervals; `validate.ts` §9 requires **2**. The
-rescheduling engine mirrors the validator, because a proposal built against the
-other number would be rejected at the boundary. **Consequence for the live case:
-Saturday 2026-09-05 — which the contract offers tentatively — does not actually
-clear Thursday's intervals gap.** One of the two numbers should move; that is
-his call, not mine.
+**2 · RESOLVED 2026-09-03.** David ruled in full: ordinary interval/threshold
+sessions need "at least ONE" easy/rest day, same as `Q32` always said — the
+validator's old **2** for intervals was the number that was wrong. He also gave
+the complete typed rule for long runs (under ~16mi fully easy → 1; 16-18mi → 1-2
+by the run's own authored intensity; 18-plus or any marathon-pace-carrying long
+→ 2, regardless of distance) and confirmed back-to-back demanding sessions stay
+gated behind the designed-race-weekend grant, never a general exception.
+Implemented in `requiredSeparationDays()` (`lib/plan/validate.ts` §9, SEP-1) and
+mirrored in `reschedule.ts`'s `requiredRecoveryDaysAfter`; both now agree.
+**Consequence for the live case:** Saturday 2026-09-05 now DOES clear Thursday's
+intervals gap (one intervening day, one required) — see
+`_reschedule_contract.test.ts`'s updated Q32 tests. The 16-18mi/18-plus/
+marathon-pace band's fuller "normally TWO" target is computed and reported
+(`SEPARATION_BAND_SHORTFALL`, advisory) but not yet fatal — `scheduleQuality` in
+`generate.ts` does not yet place quality against the long run's own
+classification, and making it fatal was falsified against real composer output
+before landing (see the fix commit's message). Promoting it to fatal is a
+composer follow-up, not yet done.
 
 **3 · Three other paths can already move a workout** — `/api/today/reschedule`,
 `move_day`, and `PATCH /api/plan/workout` — and **none of them ranks, explains,
@@ -277,8 +410,8 @@ Nothing may displace this.
 
 | ID | Task | Depends on | Owner | Status |
 |---|---|---|---|---|
-| P0-1 | Correct the baseline plan (S1.1-S1.6 below) | S0-1 | plan engine | In progress |
-| P0-2 | Final no-write preview, internally falsified | P0-1 | — | Ready |
+| P0-1 | Correct the baseline plan (S1.1-S1.6 below) | S0-1 | plan engine | **Done** — S1.1-S1.6 all Done/Verified, see table below |
+| P0-2 | Final no-write preview, internally falsified | P0-1 | — | **Preflight run 2026-09-03** — see below |
 | P0-3 | Live rebuild through the production endpoint | P0-2 gates all pass | — | Blocked on P0-2 |
 | P0-4 | Verify the **persisted** plan on every surface | P0-3 | — | Blocked |
 | P0-5 | Lock the baseline contract + golden snapshots | P0-4 | — | Blocked |
@@ -870,6 +1003,13 @@ execute its intended structure · how did each important segment go · what did
 the system learn · did that evidence change the plan · how does this move me
 toward the race goal.
 
+**Owner (2026-09-03 coordination update):** the **post-run session** owns this
+whole inventory as UI/presentation work. Programme-lead retains everything
+each row *depends on* — canonical decision record, phase identity, authored
+spec, canonical run set, evidence admission, adaptation decisions (P0-6) — the
+post-run session consumes those through their existing interfaces and does not
+re-derive them.
+
 | ID | Item | Depends on | App release | Status |
 |---|---|---|---|---|
 | PR-1 | Activity identity + headline stats block | — | iPhone | Discovered |
@@ -948,6 +1088,18 @@ the runner supplied a constraint. **Separate typed decisions, owners, records an
 mutation paths.** A reschedule must never update fitness beliefs or count as
 evidence the plan was too demanding.
 
+**Owner (2026-09-03 coordination update):** split down the server/iPhone line
+already in the table. **Programme-lead** keeps RS-1 (the contract + mutation
+path), RS-3 (candidate generation/ranking) and RS-5 (atomic apply) — these are
+the rescheduling decision contract named in the SESSION OWNERSHIP section
+above. **Pre-run session** owns RS-2, RS-4, RS-6, RS-7 and RS-8 — the
+constraint-capture UI, per-option display, undo control, entry points and
+post-approval summary — consuming RS-1/RS-3/RS-5 through their interface
+rather than re-deriving ranking or mutation logic. This item was previously
+blocked on the live rebuild in this session; the split does not change that —
+pre-run's UI work can proceed against the RS-1/RS-3 contract shape without
+waiting on the rebuild, but RS-5's actual writes stay gated on it.
+
 | ID | Item | Depends on | App release | Status |
 |---|---|---|---|---|
 | RS-1 | Canonical rescheduling boundary — its own module and mutation path, distinct from the adaptation seam | — | server | Ready |
@@ -1010,3 +1162,46 @@ here only; no speculative frameworks are being designed for them.
 - I independently inspect every conclusion, verify the changes, reconcile
   cross-surface consequences, and decide acceptance. Final judgement is not
   delegated.
+- **2026-09-03 addendum, per SESSION OWNERSHIP above:** three UI-touching
+  sessions now run in parallel (pre-run, post-run, week-strip), each on its
+  own branch/worktree, none merging to `main` directly. This session
+  integrates their handbacks under the same rules as any agent's, plus: no
+  UI may re-derive a canonical value it can consume through an existing
+  interface, and a shared-file conflict is resolved by one session yielding
+  the file (never by manually combining two state models).
+- **Treadmill incline/speed display** (David, 2026-09-03, hill-repeat workout
+  card screenshot — HR target shown, no incline/speed): split ownership. The
+  DATA question — does `workout_spec` carry a treadmill-equivalent incline/
+  speed target for a hill session at all — is programme-lead's (workout
+  prescription). The RENDERING of that field on the workout card is pre-run
+  session's (workout-detail information hierarchy).
+
+  **Data side investigated 2026-09-03.** `lib/plan/spec-builder.ts` prescribes
+  hill reps `by_effort` — deliberately no pace target — cited to
+  `Research/04-workout-vocabulary.md` §8.1: "Strong, controlled (~95% effort)"
+  / "5K-10K effort", never a pace, because a flat-ground pace target is
+  unreachable on an outdoor grade that varies. **That reasoning does not hold
+  on a treadmill**, where the grade is fixed and set by the runner — a
+  pace+incline pair is both meaningful and achievable there. The conversion
+  machinery already exists and is doctrine-cited: `lib/terrain/grade-adjust.ts`
+  (`gradeFactor`, `flatToGraded`, `gradedToFlat`, `treadmillEffectiveGradePct`,
+  the `TREADMILL_COST_PER_PCT`/`TREADMILL_AIR_RESISTANCE_GRADE_PCT` constants
+  watched by `DOCTRINE_REGISTRY['TERRAIN.treadmill-cost-per-pct']` and
+  `['TERRAIN.treadmill-air-resistance-grade']`) — but it is used ONLY on the
+  post-run/interpretation side (grading a completed run against its recorded
+  grade), never at prescription time. `spec-builder.ts` has zero references to
+  incline, treadmill, or grade at all.
+
+  **What building this would take**, not attempted here — it crosses into
+  three separate decisions: (1) a coaching call on what incline to prescribe
+  for a treadmill hill session (common convention is 4-8%; needs a doctrine
+  citation or an argued default, not an invented number); (2) `spec-builder.ts`
+  gaining a treadmill variant of the hill-rep spec that converts the
+  effort-band's flat-equivalent pace through `flatToGraded` at that incline —
+  straightforward given the existing functions, but it is new prescription
+  logic, not a data read; (3) knowing the runner intends THIS session on a
+  treadmill at all, which is a workout-selection/UX question inside pre-run
+  session's territory (workout-detail information hierarchy), not something
+  the engine can infer. Recorded as a scoped, three-part follow-up rather than
+  built partially — a treadmill pace/incline field with no way to ask "is this
+  a treadmill day" would ship dead.

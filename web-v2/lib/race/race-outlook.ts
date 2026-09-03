@@ -977,6 +977,17 @@ export async function composeRaceOutlook(
      * number (Rule 16). */
     conditionalUpside: (() => {
       const edge = expectedRaceDay.likelyRangeSec?.[0] ?? null;
+      // `edge >= targetSec` is a defensive refusal, not a routinely-reached
+      // branch: `edge` is `min(fastSec, expectedSec) - ciHalf` with `ciHalf`
+      // strictly positive whenever a confidence interval is computed (block 2
+      // above), so under every fixture composition tried 2026-09-03 (including
+      // a no-runway race) `edge` came out strictly faster than `targetSec` by
+      // construction. Kept as a guard against a future change to that formula
+      // rather than deleted — Rule 15 flags it as untested by the current
+      // corpus, and it is recorded here as argued-unreachable rather than
+      // silently left looking covered (`falsify.sh`'s
+      // `execution-target-past-fast-edge` check confirms the guard's presence
+      // but cannot currently falsify it for the same reason).
       if (edge == null || targetSec == null || edge >= targetSec) return null;
       return {
         targetSec: roundRaceTargetSec(edge),

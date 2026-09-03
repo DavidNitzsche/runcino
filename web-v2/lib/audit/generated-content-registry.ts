@@ -347,6 +347,14 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
     holds: 'What the runner said about a pair of shoes.',
     surface: { file: 'web-v2/lib/coach/run-state.ts', token: 'notes' },
   },
+
+  // -- the canonical Adaptation Engine's live shadow evaluation -------------
+  {
+    id: 'canonical_adaptation_shadow_log.reason',
+    verdict: 'internal',
+    holds: "The canonical engine's own coach-voice sentence for one lever's decision, e.g. \"The training data for this evaluation could not be read.\" or a PROGRESS/HOLD/REGRESS/REFUSE explanation citing the evidence it read.",
+    reason: 'Read by app/api/admin/canonical-adaptation-shadow (GET), an admin-gated diagnostic endpoint per docs/ADAPTATION_ENGINE_CONTRACT.md\'s "reasonable minimum bar" for owner-visible tonight -- see that route\'s own header. Classified internal, not surfaced: the reader is an operator diagnostic (requireAdmin-gated JSON), not a runner-facing screen, and the route\'s own header names explicitly what a fuller phone surface would still need (a native build, a product decision on whether a fourth lever that has never once returned PROGRESS belongs on a runner-facing screen at all). Reclassify to surfaced if/when that decision lands and a real UI renders it.',
+  },
 ];
 
 /**
@@ -358,32 +366,6 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
  * feature is not.
  */
 export const MODULE_ORPHANS: Record<string, string> = {
-  'web-v2/lib/adaptation/canonical/evaluate.ts':
-    'THE CANONICAL ADAPTATION ENGINE\'S ONE ENTRY POINT, and the reason every other module in this directory is on this list. Built to docs/ADAPTATION_ENGINE_CONTRACT.md (locked 2026-09-03). IT HAS NO IMPORTER BECAUSE HAVING ONE IS THE THING THAT MUST NOT EXIST YET. docs/PLAN_SIMPLIFICATION_DOCTRINE.md defers adaptation outright: "upward and downward automatic adaptation stay disabled", "exactly one future adaptation boundary, disabled by default". The brief that produced this engine required it to be STRUCTURALLY incapable of mutating a plan rather than merely configured not to, so the absence of a caller is the deliverable and not an oversight. _cannot_mutate.test.ts guard 4 asserts that nothing under lib/ or app/ imports this directory, nested paths included, and fails the moment a caller appears. That guard exists because the pre-existing _zero_mutation_scan.test.ts guard 3 ratchets on a single path segment and therefore cannot see a nested import at all. The engine is exercised end to end by six test files including a 13-point historical replay with a no-lookahead tripwire, so this is not untested code: it is finished, gated, and waiting on an owner decision. WIRING IT IS THAT DECISION, per the contract\'s own promotion posture (a proposal is owner-visible and "does not promote automatically during the initial authority phase"), not a cleanup. THIS ENTRY EXPIRES when the owner grants the engine authority, at which point guard 4 and this list must be revised together.',
-  'web-v2/lib/adaptation/canonical/input.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. This module is the typed input surface, and its emptiness is load-bearing: the forbidden inputs (readiness, sleep, HRV, resting HR, TSB, self-declared experience) are excluded by the type having nowhere to put them, which _forbidden_inputs.test.ts asserts against the source.',
-  'web-v2/lib/adaptation/canonical/decision-record.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. The typed, versioned record every evaluation emits, including on a refusal. It is the answer to Rule 21\'s "a log that records that something happened but not what is not a log".',
-  'web-v2/lib/adaptation/canonical/contract-constants.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. Every bound the contract states with a tilde, resolved to a number exactly once with the sentence it came from, so no call site can form a second opinion about the same bound.',
-  'web-v2/lib/adaptation/canonical/stimulus.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. The five-outcome stimulus grader with the seven conditions and the one-noisy-channel rule. The simple pace-OR-HR rule it replaces was explicitly rejected by PROGRESSIVE_BASELINE_DOCTRINE.md Q12.',
-  'web-v2/lib/adaptation/canonical/deterioration.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. Q13\'s late-session deterioration detector, counted in sessions rather than segments.',
-  'web-v2/lib/adaptation/canonical/admissibility.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. Q27-Q29 lever-specific admissibility: an activity excluded from pricing pace still counts toward volume, and the record says so rather than silently dropping it.',
-  'web-v2/lib/adaptation/canonical/plan-load.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. The common projected plan-load representation the contract requires for evaluating the combined effect of proposals. Deliberately not a training-load model, and only ever read as a difference.',
-  'web-v2/lib/adaptation/canonical/arbitration.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. Plan-level arbitration: independent evidence, dependency-aware mutation, and suppressed proposals recorded with their reason.',
-  'web-v2/lib/adaptation/canonical/levers/shared.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. The verdict type every lever returns. No lever signature takes a GoalRequirement, which is how goal-poisoning is excluded structurally rather than by convention.',
-  'web-v2/lib/adaptation/canonical/levers/threshold-pace.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. The threshold-anchor evidence contract.',
-  'web-v2/lib/adaptation/canonical/levers/weekly-volume.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. The weekly-volume evidence contract.',
-  'web-v2/lib/adaptation/canonical/levers/long-run.ts':
-    'Part of the canonical Adaptation Engine. See the entry for \'web-v2/lib/adaptation/canonical/evaluate.ts\' for why this whole directory is deliberately unwired, and gated that way. The long-run-distance evidence contract.',
   'web-v2/lib/adaptation/canonical/_fixtures.ts':
     'A FIXTURE SET for the canonical Adaptation Engine, which is a fine reason by this gate\'s own text. It builds real CanonicalAdaptationInput values from the documented figures for the one real runner (a 7:10 threshold anchor, 47-50 mile weeks, a 16-mile long run, a December marathon) so all six test files drive the REAL engine from one corpus rather than six copies that would drift apart. Runtime code must never import it.',
   'web-v2/lib/adaptation/canonical/_falsify_gates.script.ts':

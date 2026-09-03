@@ -77,6 +77,71 @@ observation from race role.
 
 ---
 
+## 2026-09-03 · SEP-1 · the separation rule is typed by the preceding session's demand, not a flat two-day gap. SETTLED.
+
+**What was wrong.** `validate.ts` §9 required intervals to carry 2 easy/rest
+days before the next demanding session and everything else (threshold, tempo,
+any long run regardless of size) only 1 — a divergence from
+`RESCHEDULING_CONTRACT.md` Q32's own table, which had always said "≥1" for
+intervals too. `reschedule.ts` knew about the gap and deliberately mirrored the
+(wrong) validator number rather than Q32, because a proposal judged against a
+different number than the boundary that will actually judge it is worse than
+no proposal — flagged in the master program as an open call for David.
+
+**His ruling, in full** (2026-09-03): ordinary interval or threshold session →
+at least ONE complete easy or rest day. Long run under ~16mi and fully easy →
+at least ONE. Long run 16-18mi → normally ONE to TWO depending on the run's
+own authored intensity (a marathon-pace or progression finish reads the top of
+the band; a mostly-easy long reads the bottom). Long run 18-plus miles, OR any
+long run carrying substantial marathon-pace effort regardless of total
+distance → normally TWO. Back-to-back demanding sessions are permitted ONLY
+through an explicit authored transaction — the Dodgers-weekend shape already
+built in `designed-race-weekend.ts` — never a general validator loophole. Both
+easy AND rest days count as low-stress separation.
+
+**What shipped.** `requiredSeparationDays()` in `lib/plan/validate.ts`,
+typed off the preceding session's `distanceMi` / `isQuality` /
+`raceGoalPaceSec` / `longRunKind` — the same fields `generate.ts`'s
+designed-weekend caller already reads to classify a long run's finish, reused
+rather than re-derived (Rule 16). §9 now also reads the `placement_compromises`
+grant §11c already parses, so a designed weekend's own long run defers to that
+transaction's more specific findings instead of being re-litigated by the
+generic gap check. `reschedule.ts`'s `requiredRecoveryDaysAfter`, which had
+documented the divergence, is realigned to match — intervals is 1 there too now.
+
+**FATAL vs ADVISORY, and why.** The ruling's own wording splits cleanly: "at
+least ONE" (ordinary quality, and the immediate-next-day rule for a long run
+of any size) is an absolute floor and is enforced as fatal. "Normally TWO" for
+an elevated long run is a doctrine target, not phrased as an unconditional
+floor, and enforcing it as fatal was falsified against real `buildSimPlan` /
+`_combined_stress` composer output before landing: `scheduleQuality` in
+`generate.ts` places quality sessions against the OTHER quality sessions'
+types, not against the long run's own classification, so real marathon blocks
+routinely place tempo/threshold only one day after an 18mi-plus Sunday long —
+which a fatal 2-day gate would have rejected, with nothing having told the
+composer to avoid it. A narrower composer-side fix (threading the long run's
+required gap into `scheduleQuality`) was attempted and reverted: it introduced
+a new cross-week `Research/04` §16 violation (`_mp_spacing.test.ts`), because
+`scheduleQuality` only reasons about one week at a time and the fuller
+2-day band interacts with neighbouring weeks' marathon-pace placement in ways
+a single-week search cannot see. The "normally TWO" shortfall is instead
+computed and reported through `onStress` as `SEPARATION_BAND_SHORTFALL`
+(`enforced: false`) — visible, not silently discarded (Rule 20/21) — pending
+that composer follow-up.
+
+**Verification.** `_sep1_boundary_walk.test.ts` — the three worked examples
+from the ruling, a Rule 9 boundary walk (0.1mi steps, 14-22mi) confirming the
+only discontinuities are the named 1-day steps at 16mi/18mi, the resolved
+intervals-vs-threshold divergence, the Dodgers-grant regression (validates
+clean with the grant, fatal without it, and a recorded REFUSAL does not
+exempt), and the fatal/advisory split itself. Falsified per Rule 18 against
+both the actual prior code and a truly universal flat-two-day rule; the
+worked-example regressions fail correctly under the latter. Full `lib/plan/`
+suite (2,671 tests) green except one pre-existing DB-liveness test this
+environment cannot run (`DATABASE_URL_RO` unset).
+
+---
+
 ## 2026-09-03 · RUNNERLANG-2 · a sentence true of every row of its kind is said once, and Rule 17 finally has a gate. SETTLED.
 
 **What was wrong.** RUNNERLANG-1 (2026-09-02) answered the owner's instruction
