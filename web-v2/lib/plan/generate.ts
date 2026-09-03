@@ -93,7 +93,12 @@ import {
   dressRehearsalDose,
 } from './long-run-rows';
 import { type CourseTerrain, UNKNOWN_TERRAIN, loadRaceCourseTerrain } from './course-profile';
-import { BlockScopedSpeaker } from './runner-instruction'; // RULE 17 · a block sentence is said once
+import {
+  BlockScopedSpeaker, // RULE 17 · a block sentence is said once
+  BLOCK_STANDING_SENTENCES,
+  EASY_DAY_ROLE_LINES,
+  easyDayRole,
+} from './runner-instruction';
 // PROGRESSION-1 (2026-08-17) · the authored default overload trajectory.
 // `Design/adaptive-progression-engine.md` §3's "calendar proposes" half: the
 // plan carries a lever-driven trajectory so a block progresses by duration,
@@ -14478,6 +14483,11 @@ export function finalizeComposedPlan(
   // longs that note already covers and its own sentence is more specific.
   authorDownhillSimulation(composed, courseTerrain, raceDistanceMi);
 
+  // RUNNERLANG-2 (2026-09-03) · Rule 17. LAST of the note-touching passes, so
+  // it sees the final text of every row and can leave what the passes above
+  // appended standing. See `applyRunnerVoice`.
+  applyRunnerVoice(composed);
+
   // LONGRUN-TRACE-1 (2026-08-25) · collect every race-pace segment a later pass
   // shortened or removed, so a session disappearing is a thing the audit
   // surface can read rather than an absence somebody has to notice. Written
@@ -15965,6 +15975,120 @@ export function applyCourseGuidance(
         ` Course drops ${drop}. Downhill running stays short and easy from here · Research/11 §late-taper trap.`)
       : speaker.say('course.find-the-terrain',
         ` Course drops ${drop}. Run at least ${sharePct}% of your long-run miles on terrain that drops like it · Research/11 §net-downhill adjustments.`);
+  }
+}
+
+/**
+ * RUNNERLANG-2 (2026-09-03) · RULE 17, ON THE ROWS THAT CARRY THE BLOCK.
+ *
+ * The standing easy-day and rest-day sentences are said ONCE, and every easy
+ * row that has something particular to say says that instead. See
+ * `runner-instruction.ts`'s RUNNERLANG-2 header for the measurement this comes
+ * from and for why `plain` is an empty string.
+ *
+ * WHERE IT RUNS. Last of the note-touching passes, for the same reason
+ * `applyCourseGuidance` runs after the intensity floor: `setLongFinish` and
+ * the strides pass both rewrite or append to `notes`, and this has to see the
+ * final text. It only ever REMOVES the seed it recognises and PREPENDS to what
+ * is left, so a strides sentence, a terrain sentence or a long-run finish that
+ * an earlier pass appended survives untouched. That is the citation-scrub
+ * lesson: a substitution that can empty its input is the bug.
+ *
+ * ORDER. Chronological across the whole block, not per week, because "what
+ * did yesterday hold" crosses the Sunday boundary and a per-week walk would
+ * read the first day of every week as having no yesterday.
+ */
+const STANDING_BY_TEXT = new Map(BLOCK_STANDING_SENTENCES.map((s) => [s.text, s]));
+
+/**
+ * The generic easy-day seed, and the ONLY note a role line may be added to.
+ * Read off the standing table rather than retyped, so the two cannot drift.
+ */
+const GENERIC_EASY_SEED = BLOCK_STANDING_SENTENCES.find((s) => s.id === 'easy.talk-test')!.text;
+
+export function applyRunnerVoice(composed: ComposePlanResult): void {
+  const speaker = new BlockScopedSpeaker();
+
+  // Flatten to real calendar order. `days` is keyed by dow and a week may
+  // start on any weekday, so the dow index is NOT the chronological index.
+  const flat: { day: DayPlan; iso: string; weekIdx: number }[] = [];
+  composed.weeks.forEach((w, weekIdx) => {
+    for (const d of w.days) flat.push({ day: d, iso: dowDateInWeek(w.startISO, d.dow), weekIdx });
+  });
+  flat.sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0));
+
+  // The week's longest easy row, resolved once per week. Ties go to the
+  // EARLIEST day, so the answer does not depend on array order.
+  const longestEasyISO = new Map<number, string>();
+  {
+    const best = new Map<number, { mi: number; iso: string }>();
+    for (const e of flat) {
+      if (e.day.type !== 'easy' || e.day.distanceMi <= 0) continue;
+      const cur = best.get(e.weekIdx);
+      if (!cur || e.day.distanceMi > cur.mi) best.set(e.weekIdx, { mi: e.day.distanceMi, iso: e.iso });
+    }
+    for (const [k, v] of best) longestEasyISO.set(k, v.iso);
+  }
+
+  const isHard = (d: DayPlan | undefined): boolean =>
+    !!d && (d.isQuality || d.isLong || d.type === 'race' || d.type === 'race_week_tuneup');
+
+  for (let i = 0; i < flat.length; i++) {
+    const { day, iso, weekIdx } = flat[i];
+    const prev = flat[i - 1]?.day;
+    const next = flat[i + 1]?.day;
+
+    // ── standing sentences · each said once, in calendar order ────────────
+    //
+    // Whole-sentence matching, and the note is REBUILT from the sentences that
+    // survive. Substring matching would let a bare "Off." entry eat the front
+    // of "Off. Sleep, mobility, fuel." and leave a fragment behind, which is
+    // the citation scrub's failure exactly.
+    //
+    // The FIRST row that would have carried a sentence keeps it, in place, so
+    // week one reads as the composer wrote it. Everything the entry does not
+    // name is untouched, so a strides sentence, a terrain sentence or an
+    // embedded threshold segment appended by an earlier pass survives.
+    // Only a row that was carrying the GENERIC easy seed gets a role line.
+    // A travel day, a recovery-week easy, a race-week easy and the
+    // medium-long run all already say what they are, and adding a second
+    // description of the same day is the Rule 17 defect rather than a cure
+    // for it. This also keeps the change's blast radius equal to its subject:
+    // the rows that were carrying boilerplate, and no others.
+    const wasGenericEasy = day.notes.includes(GENERIC_EASY_SEED);
+
+    let afterLastStanding = 0;
+    if (day.notes.length > 0) {
+      const kept: string[] = [];
+      for (const raw of day.notes.split(/(?<=\.)\s+/)) {
+        const sentence = raw.trim();
+        if (!sentence) continue;
+        const standing = STANDING_BY_TEXT.get(sentence);
+        if (!standing) { kept.push(sentence); continue; }
+        if (speaker.say(standing.id, standing.text)) { kept.push(sentence); afterLastStanding = kept.length; }
+      }
+      day.notes = kept.join(' ');
+    }
+
+    // ── the easy row's own role ───────────────────────────────────────────
+    if (day.type !== 'easy' || !wasGenericEasy) continue;
+    // Race week has its own day-by-day copy from `Research/08` §9.3 and its own
+    // briefing, so it is left alone for the same reason.
+    if (composed.weeks[weekIdx]?.isRaceWeek) continue;
+    const role = easyDayRole({
+      isLongestEasyOfWeek: longestEasyISO.get(weekIdx) === iso,
+      nextIsHard: isHard(next),
+      prevWasLong: !!prev?.isLong,
+      prevWasQuality: !!prev?.isQuality,
+    });
+    const line = EASY_DAY_ROLE_LINES[role];
+    if (!line) continue;
+    // The role line is the fact about THIS day, so it leads — except on the
+    // one row that still carries the block's standing instruction, where it
+    // goes after it: the rule is stated before the day's particular.
+    const parts = day.notes.split(/(?<=\.)\s+/).filter((s) => s.trim().length > 0);
+    parts.splice(afterLastStanding, 0, line);
+    day.notes = parts.join(' ').replace(/[ \t]{2,}/g, ' ').trim();
   }
 }
 

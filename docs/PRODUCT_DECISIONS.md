@@ -6,6 +6,101 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-09-03 · RUNNERLANG-2 · a sentence true of every row of its kind is said once, and Rule 17 finally has a gate. SETTLED.
+
+**What was wrong.** RUNNERLANG-1 (2026-09-02) answered the owner's instruction
+to "remove phrases such as 'Conversational', 'Z2 HR cap' ... replace them with
+direct running instructions" by swapping the WORDS. It left the REPETITION
+exactly where it was. Measured on a freshly composed fourteen-week marathon
+block the day after it shipped, 105 rows carrying notes:
+
+| sentence | before | after RUNNERLANG-1 |
+|---|---|---|
+| `Conversational.` / its replacement | 33 | 33 |
+| `Z2 HR cap.` / its replacement | 33 | 33 |
+| `Off.` | 28 | 28 |
+| `Sleep, mobility, fuel.` | 27 | 27 |
+| the medium-long-run purpose | 11 | 11 |
+
+Thirty-three rows carrying one sentence became thirty-three rows carrying a
+longer one. **Nothing in the repository could tell**, because nothing counted:
+`check-coach-voice.sh` grades words one at a time, `_block_says_it_once.test.ts`
+watches one pair of strings on the Block screen, and `runner-instruction.ts` is
+a substitution table that sees one string at a time by construction. Rule 17
+had been a hypothesis since the day it was locked (Rule 20).
+
+**The rule, and why the WEEK is the unit.** A runner-facing sentence appears on
+at most one row of any one week. The week is the screen the plan surface draws,
+and the design contract's standing rule is that no content is printed twice on
+one screen. It is also the unit that does not punish a real role line:
+"Recovery day after the long run" is a fact about one row a week for fourteen
+weeks, where the same sentence on three rows of one week is a fact about none
+of them.
+
+**The mechanism, and what it is not.** `BLOCK_STANDING_SENTENCES` (15 entries)
+plus `applyRunnerVoice`, a final pass in `finalizeComposedPlan`: a sentence
+true of the KIND of row is said once, on the first row that would have carried
+it, by the `BlockScopedSpeaker` the terrain fix already introduced. A generic
+easy row then says what makes THAT day different, from `EASY_DAY_ROLE_LINES` —
+a fixed table of five keyed on `easyDayRole`, a pure function of four booleans
+the composer had already resolved. There is no branch on runner state, no
+score and no tone, because the owner's binding constraint is that explanations
+derive from structured canonical decisions and not from a separate prose brain.
+
+**Three calls worth recording.**
+
+1. **`plain` is the empty string.** A day with nothing particular to say says
+   nothing. The row already carries its distance, its pace band and its HR
+   ceiling, and those are what the runner acts on; a generic sentence printed
+   over them is the bloat, not a service.
+2. **`recovery` outranks `primer`, and that order was measured.** With the long
+   run on Sunday and quality on Tuesday, Monday is both the day after the long
+   run and the day before a session. With `primer` first, `recovery` fired ZERO
+   times across a whole block and the most important easy day in the week was
+   told "the session is tomorrow". Rule 22: a verdict no case can reach is
+   decoration. The gate now counts every verdict.
+3. **This pass runs at AUTHORING, where RUNNERLANG-1 runs at the READ.** "Said
+   once" needs the whole block in hand, and `week-loader.ts` loads one week at a
+   time — `/api/v5/today` calls the same loader and picks a single day out of
+   it, so a week-scoped speaker at the read would blank Today's note six days in
+   seven. **Consequence, stated rather than hidden: the block already persisted
+   keeps its repetition until it is next authored.** Measured on the owner's
+   live block as `faff_readonly`, 103 rows: `Conversational.` 35 and `Z2 HR
+   cap.` 35. Re-authoring (P0-3) is what spends this fix.
+
+**The gate.** `scripts/check-sentence-repetition.sh`, sibling of
+`check-coach-voice.sh` and wired into `web-v2` `prebuild`. Three guards (table
+and registry shape, gate present, run it) over
+`lib/plan/_sentence_repetition.test.ts`, which composes 11 blocks spanning four
+distances, three experience rungs and 2-to-6 run days, reads the RENDERED text
+the phone gets, and counts per week. Liveness is stated, not implied: 11/11
+blocks composed, 541 rows read, 1249 sentences read. Exemptions live in
+`lib/audit/sentence-repetition-registry.ts`, are a ratchet, and carry one
+argument only — **a prescription is not prose**: cutting a strides rep count or
+a race-week duration would leave the row telling the runner to do less, not
+just to read less.
+
+Falsified four ways before it was trusted (Rule 18): disabling the pass
+produces **340 findings**; a deliberately stale exemption fails until deleted;
+removing the call to `applyRunnerVoice` fails guard 1; deleting the gate file
+fails guard 2. The two live exemption patterns are asserted NOT to match the
+sentence the whole gate exists for, so granting them cannot switch the check
+off.
+
+**A second hole, found while closing the first.** `check-coach-voice.sh`
+excludes `lib/plan/runner-instruction.ts` from its scan — correctly, because
+that file's regexes spell out the phrases guard 7 forbids — and paid for the
+exclusion by scanning the rewrite table's `to` column. RUNNERLANG-2 put two MORE
+tables of runner-facing copy in that same file and the payment did not follow
+them. Measured: a role line rewritten as *"Short and easy — the session is
+tomorrow! Great work."* — an em dash, an exclamation mark and hype, three of
+guard four's five bans in eleven words — left the gate reporting **"324
+user-facing source file(s) clean"**. Closed by scanning both new tables with the
+lexicon's own `scanLayerOne`/`scanPunctuation` AND pinning the module's export
+list, so a third table cannot arrive unscanned the way the second one did.
+
+---
+
 ## 2026-09-02 · TIEREVIDENCE-2 · the self-declared experience level reaches NO plan decision. SETTLED.
 
 **The ruling this closes**, in the owner's words: *"Add a gate proving that
