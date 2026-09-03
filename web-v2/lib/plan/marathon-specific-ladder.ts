@@ -396,9 +396,20 @@ export function resolveMarathonSpecificLadder(
   // ── assemble, in calendar order, applying the earned cap ──────────────────
   const plan: { wi: number; role: MarathonSpecificRole; vehicle: MarathonSpecificVehicle }[] = [];
   for (const [k, wi] of build.entries()) {
-    // Calendar order: the earliest build rung is the introduction, anything
-    // after it is development. There are at most two.
-    plan.push({ wi, role: k === 0 ? 'introduction' : 'development', vehicle: 'long_run' });
+    /* The rung NEAREST THE PEAK is the development one; anything before it is
+     * an introduction. There are at most two.
+     *
+     * Keyed to the end of the list rather than the start, because that is the
+     * position that does not move when an earlier rung appears or disappears.
+     * The other way round produced a Rule 9 cliff: push the race one day past
+     * `MP_LADDER_FIRST_DAYS` and the introduction rung falls out of the window,
+     * which re-labelled the SURVIVING rung from development to introduction and
+     * cut its dose from 8 miles to 4 — a categorically different session for
+     * one day of calendar. Anchored here, that same day costs 8 → 6: the
+     * earned-step cap doing its job, because a block with one marathon-effort
+     * session has not earned what a block with two has, and it moves DOWN.
+     */
+    plan.push({ wi, role: k === build.length - 1 ? 'development' : 'introduction', vehicle: 'long_run' });
   }
   if (peakWeekIdx != null) plan.push({ wi: peakWeekIdx, role: 'peak_stimulus', vehicle: peakIsRace ? 'tune_up_race' : 'long_run' });
   if (sharpenWeekIdx != null) plan.push({ wi: sharpenWeekIdx, role: 'sharpening', vehicle: 'long_run' });
@@ -428,11 +439,23 @@ export function resolveMarathonSpecificLadder(
       // authoring has no execution to read (adaptation is disabled) and
       // pretending otherwise would be a second brain.
       mpMi = Math.max(band[0], Math.min(band[1], Math.max(band[0], largest + MP_EARNED_STEP_MI)));
-      // §4.4's larger dose belongs in §4.4's window; outside it the session is
-      // trimmed to §4.5's fast-finish size rather than dropped, so the rung
-      // still happens.
-      if (mpMi > MP_FAST_FINISH_MAX_MI && (d < MP_LONG_WINDOW_DAYS[0] || d > MP_LONG_WINDOW_DAYS[1])) {
-        mpMi = MP_FAST_FINISH_MAX_MI;
+      /* §4.4's larger dose belongs in §4.4's window; outside it the session
+       * fades to §4.5's fast-finish size rather than being dropped, so the rung
+       * still happens.
+       *
+       * IT FADES RATHER THAN STEPS, and that is Rule 9 applied to a doctrine
+       * number. A hard trim made a rung at 42 days out an eight-mile session
+       * and one at 41 days a six-mile one — two miles of marathon-pace work for
+       * one day of calendar, which is a cliff whichever side of it is right.
+       * Rule 9's own guidance is the ACWR case: "Doctrine's number is a control
+       * point, not a step... only the RESPONSE runs continuously through
+       * them." §4.4's window stays exactly where it is; the dose crosses it
+       * over one cadence week.
+       */
+      const outsideByDays = Math.max(0, MP_LONG_WINDOW_DAYS[0] - d, d - MP_LONG_WINDOW_DAYS[1]);
+      if (outsideByDays > 0 && mpMi > MP_FAST_FINISH_MAX_MI) {
+        const fade = Math.min(1, outsideByDays / (MP_LADDER_MIN_GAP_WEEKS * 7 / 2));
+        mpMi = Math.round((mpMi - (mpMi - MP_FAST_FINISH_MAX_MI) * fade) * 2) / 2;
       }
       largest = Math.max(largest, mpMi);
       // Q8's pace ladder. Duration is the primary early lever, so the pace steps

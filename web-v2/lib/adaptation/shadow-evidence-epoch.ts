@@ -148,7 +148,7 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/race/race-outlook.ts',
-    digest: 'b2bc402ea22c691e',
+    digest: 'fd5cf1c7ec13af65',
     why: 'Re-pinned ALONE at epoch 3, branch (b), 2026-09-02 · CEFFORT-1 made `race.priority` load-bearing, so a C race is now priced as a controlled effort (Research/00b §"Recovery by Effort") instead of identically to an A race. What moved is `execution` — the target, the strategy label and the HR band for a C-effort DAY. What did NOT move is every belief a shadow record compares against: `capacity`, `currentProjection`, `expectedRaceDay` and `trainingPrescription` resolve byte-identically for the same activities, and an A or B race is untouched end to end (`_controlled_c_effort.test.ts` asserts that limb explicitly, as the control). A prescription for one day is not a belief about the runner, so no record written under epoch 3 compares against a number this changed, and bumping the epoch would discard the whole shadow corpus for a change that cannot move a single comparison. Stated rather than assumed, per this file\'s own instruction that the decision be made by someone who knows what they changed. '
       + 'Re-pinned ALONE again the same day (ROW-CONTRACT-1, also branch b): `coachSet` was DELETED. It was a '
       + 'second A/B/C ladder over `expectedRaceDay.likelyRangeSec`, 40 s from the one `lib/race/coach-goal.ts` '
@@ -165,7 +165,9 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
       + '`expectedRaceDay`, `trainingPrescription` — are byte-identical for the same activities, and '
       + '`_race_outlook_contract.test.ts` asserts each of them is unchanged by the stated goal across three '
       + 'postures. The new `blockSeam` READS `authored_state`; it resolves no belief and feeds none. Bumping '
-      + 'the epoch would discard the whole shadow corpus for a change that cannot move a single comparison.',
+      + 'the epoch would discard the whole shadow corpus for a change that cannot move a single comparison. '
+      + 'Re-pinned once more the same day for a one-character copy fix (an em dash to a middle dot in a '
+      + 'bridge step`s changeTrigger), which is branch (b) by inspection.',
   },
   {
     file: 'lib/training/pace-corpus.ts',
