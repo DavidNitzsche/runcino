@@ -182,6 +182,66 @@ remove.
 
 ---
 
+## P1 · Workout rescheduling  (added 2026-09-03)
+
+**Runner-initiated. Explicitly NOT travel detection or missed-training
+automation, both of which are deferred.** The system never detects travel, never
+assumes reduced readiness, never silently alters the plan. The runner says:
+
+> *"I cannot complete this workout on its scheduled day. Show me the best way to
+> preserve its training value with the least disruption to the rest of the
+> plan."*
+
+**Live acceptance case:** the long run on **Sunday 2026-09-06, 15.0 mi** — he is
+away that weekend.
+
+**Rescheduling is not adaptation.** Adaptation changes training because
+demonstrated capacity changed. Rescheduling changes calendar placement because
+the runner supplied a constraint. **Separate typed decisions, owners, records and
+mutation paths.** A reschedule must never update fitness beliefs or count as
+evidence the plan was too demanding.
+
+| ID | Item | Depends on | App release | Status |
+|---|---|---|---|---|
+| RS-1 | Canonical rescheduling boundary — its own module and mutation path, distinct from the adaptation seam | — | server | Ready |
+| RS-2 | Constraint capture: unavailable dates, or dates he CAN run. **Never assume a preference when availability is unknown** — ask, or show the viable choices | RS-1 | iPhone | Ready |
+| RS-3 | Candidate generation + ranking: move earlier · later · swap with easy/rest · shift a small sequence · keep the long run and move the following quality · split the stimulus only where it still serves the purpose · **shorten or replace only as a last resort** | RS-1 | server | Ready |
+| RS-4 | Per-option display: new date · moved · unchanged · long-run distance and purpose · separation from surrounding hard sessions · rolling-load change · effect on next long run, race, cutback, taper · training value preserved · tradeoffs · **why the coach ranks it there** | RS-3 | iPhone | Ready |
+| RS-5 | Atomic, idempotent, validated, reversible application. **Nothing writes until he approves** | RS-3 | server | Ready |
+| RS-6 | Undo | RS-5 | iPhone | Ready |
+| RS-7 | UI entry points on workout detail and the plan surface — *"Move workout" · "Can't do this day" · "Find the best day"*, in plain language, no load terminology | RS-4 | iPhone | Ready |
+| RS-8 | Post-approval summary: what moved · why · what is unchanged · any instruction for the rearranged days | RS-5 | iPhone | Ready |
+
+**Preservation order:** the long run's intended stimulus → adequate separation
+from hard sessions → the important surrounding quality work → training
+continuity → weekly or rolling load → the remainder of the block. *"Do not
+sacrifice another key workout unless no viable arrangement exists. If a tradeoff
+is unavoidable, name it clearly."*
+
+**Calendar weeks are not physiologically sacred.** Moving a Sunday long run to
+Monday must not be rejected merely because mileage crosses a Monday-Sunday
+reporting boundary. **Evaluate rolling workload and recovery spacing.**
+
+**A reschedule must not:** modify completed or sealed history · change the stated
+race goal · reprice capacity · count as negative fitness evidence · trigger a
+base restart, pullback or adaptation · create accidental consecutive hard
+sessions · break the taper or race calendar · duplicate or lose a workout · leave
+notes, pace, HR, segments or explanations attached to the wrong date · silently
+reduce the workout · rewrite the entire block when a local move suffices.
+
+**The preferred option makes the smallest coherent change**, not merely the move
+to the nearest empty date. The surrounding training is evaluated as **one
+transaction** — moving Sunday to Monday may require Tuesday's quality to move,
+and that session should be **preserved rather than deleted**.
+
+**Required proof:** the actual surrounding schedule · the candidates · the ranked
+recommendation · the complete diff · invariant results · rendered UI · **no write
+during recommendation** · a test proving rescheduling does not invoke adaptation
+· a test proving a manually unavailable day is **not** read as failed training ·
+a test proving undo works.
+
+---
+
 ## Deferred intentionally
 
 General onboarding · cold-start coaching · first-plan personalisation for
