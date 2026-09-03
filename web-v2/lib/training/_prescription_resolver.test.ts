@@ -242,17 +242,35 @@ describe('§7/§11 · fatigue · state changes today, never capacity', () => {
     expect(tired.stateAdjustment.decision).toBe('reduce');
   });
 
-  it('reduce turns a quality session into easy running at the same distance', () => {
+  /**
+   * 2026-09-02 · INVERTED, DELIBERATELY.
+   *
+   * This asserted that `reduce` replaced the runner's threshold session with
+   * easy running at the same distance. `docs/PLAN_SIMPLIFICATION_DOCTRINE.md`
+   * removes readiness, illness and injury from training decisions, and with
+   * their detectors deleted the only states that can still reach `applyState`
+   * are a comeback window after a layoff and a post-race recovery window —
+   * both of which the PLAN ITSELF already authored. Softening the day a second
+   * time here would be two answers to one question.
+   *
+   * So `applyState` records and does not act, and this is the ratchet on that.
+   * A future session that re-adds the downgrade has to delete this test in
+   * front of the owner rather than quietly restoring a lever he removed.
+   */
+  it('reduce RECORDS but does not soften · applyState has no authority', () => {
     const cap = ownerCapacity();
     const rx = call('threshold', cap, stateOf('reduce'), 8.5);
-    expect(rx.shape).toBe('ceiling');
-    expect(rx.purpose).toBe('threshold');           // what was asked for
-    expect(rx.capacityBasis.capacity).toBe('easy_ceiling'); // what was given
+    // The ask is untouched: still a threshold session, still priced off
+    // threshold capacity, still 8.5 miles.
+    expect(rx.purpose).toBe('threshold');
+    expect(rx.capacityBasis.capacity).not.toBe('easy_ceiling');
     expect(rx.prescribedMi).toBe(8.5);
-    expect(rx.reasons).toContain('STATE_REPLACED_QUALITY_WITH_EASY');
-    // Demand went DOWN: the prescribed ceiling is slower than the threshold
-    // target it replaced.
-    expect(rx.ceilingSecPerMi!).toBeGreaterThan(cap.threshold.paceSecPerMi);
+    expect(rx.reasons).not.toContain('STATE_REPLACED_QUALITY_WITH_EASY');
+    // But the verdict is still VISIBLE — the distinction between removing an
+    // authority and blinding the reader (Rule 11: recorded, not erased).
+    expect(rx.stateAdjustment.decision).toBe('reduce');
+    expect(rx.stateAdjustment.applied).toBe('no_tightening');
+    expect(rx.reasons).toContain('STATE_WOULD_NOT_TIGHTEN');
   });
 
   it('reduce does not touch an easy day, because an easy day is already the answer', () => {
@@ -263,13 +281,24 @@ describe('§7/§11 · fatigue · state changes today, never capacity', () => {
     expect(tired.prescribedMi).toBe(7);
   });
 
-  it('recover, replace and stop withhold the prescription entirely', () => {
+  /**
+   * 2026-09-02 · INVERTED for the same reason as `reduce` above, and this is
+   * the sharper half: these three limbs used to blank the prescription
+   * outright — shape `none`, every pace null, no distance. `recover` and
+   * `stop` were reachable only from the deleted illness / injury / niggle
+   * arms; `replace` existed to hand the day to the walk-run ladder, which is
+   * itself sealed now. A state that withheld a session on evidence the engine
+   * no longer collects would have been a silent blank day.
+   */
+  it('recover, replace and stop no longer withhold the prescription', () => {
     for (const d of ['recover', 'replace', 'stop'] as const) {
       const rx = call('threshold', ownerCapacity(), stateOf(d), 8);
-      expect(rx.shape).toBe('none');
-      expect(rx.paceSecPerMi).toBeNull();
-      expect(rx.prescribedMi).toBeNull();
-      expect(rx.reasons).toContain('STATE_WITHHELD_PRESCRIPTION');
+      expect(rx.shape, `${d} blanked the session`).not.toBe('none');
+      expect(rx.prescribedMi, `${d} erased the distance`).toBe(8);
+      expect(rx.reasons).not.toContain('STATE_WITHHELD_PRESCRIPTION');
+      // Recorded, not acted on.
+      expect(rx.stateAdjustment.decision).toBe(d);
+      expect(rx.stateAdjustment.applied).toBe('no_tightening');
     }
   });
 

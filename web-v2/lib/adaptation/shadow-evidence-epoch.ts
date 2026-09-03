@@ -63,7 +63,7 @@
  * gate went red on exactly the five changed files and forced this entry to be
  * written.
  */
-export const SHADOW_EVIDENCE_EPOCH = '2026-09-02.brain-integration-a670a6e1';
+export const SHADOW_EVIDENCE_EPOCH = '2026-09-02.runner-owns-readiness';
 
 /** The epoch format: `YYYY-MM-DD.<slug>`. Pinned by test so a future value
  *  cannot drift into a bare counter or an undated label. */
@@ -123,8 +123,8 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/training/prescription-resolver.ts',
-    digest: '734c9ff2672ea6b0',
-    why: 'Re-pinned at epoch 2 · Phase 1 added marathonRangeSecPerMi, so what the prescription resolves to moved.',
+    digest: '1658609e04cf69be',
+    why: 'Re-pinned at epoch 4 (runner owns readiness) · `applyState` no longer acts. Its `reduce` limb used to replace a quality session with easy running at the same distance, and its `recover` / `replace` / `stop` limbs blanked the prescription outright (shape `none`, every pace null). Both are deleted: the states that reached them came from the readiness convergence and from the illness / injury / niggle arms of `runnerIsCompromised`, all removed on 2026-09-02 per PLAN_SIMPLIFICATION_DOCTRINE.md. The decision is still resolved and still recorded on `stateAdjustment`; it changes no pace, shape or distance. This is case (a), not (b) — the same activities now resolve to a DIFFERENT prescription on any day the state was not `proceed` — so the epoch bumps rather than the pin moving quietly.',
   },
   {
     file: 'lib/training/durability-anchor.ts',
@@ -133,8 +133,8 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/training/runner-state.ts',
-    digest: '78aa27b7b8e54cd1',
-    why: 'Pinned at the epoch. The state that gates the whole upward path (STATE_BLOCKS_PROGRESS).',
+    digest: '2056981b58a4be45',
+    why: 'Re-pinned at epoch 4 (runner owns readiness) · `gradeConvergence` is no longer an input. It was the only signal that could carry this resolver past `proceed` on how a morning read, and the illness / injury / niggle arms of `runnerIsCompromised` went with it, so `COMPROMISED_DECISION` is down to a single `gap_reentry` row and `CONVERGENCE_DECISION` is deleted. What remains reads training: a comeback window, a post-race window the calendar authored, and ACWR. Case (a): the same activities resolve to a different state.',
   },
   {
     file: 'lib/evidence/activity-evidence.ts',
