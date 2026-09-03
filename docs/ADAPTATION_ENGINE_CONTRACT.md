@@ -258,3 +258,58 @@ defensible ceiling.
 > *"Pace remains important because this is race-specific training. HR is a
 > ceiling and corroborating signal — not an alternative target that allows any
 > pace to count."*
+
+---
+
+# Presentation rulings · locked 2026-09-03
+
+## Race execution lock  (Q37)
+
+Lock the primary execution plan **~10 days before the A race**, after the last
+session expected to materially change the fitness evidence.
+
+Re-evaluate at: the final major marathon-specific workout · the 10-day lock · any
+late-arriving evidence correction **before** the lock.
+
+**After locking:** fitness-based target changes require **runner approval** ·
+preserve the uncertainty range · a **separate conditions layer** may adjust
+pacing execution for material weather or course conditions · **never represent a
+weather adjustment as changed fitness** · ordinary daily fluctuation must not
+reopen the target.
+
+**By ~3 days out:** one clear primary plan, one conservative fallback, and
+**explicit switch criteria**.
+
+## What each stimulus grade means to the runner  (Q38)
+
+| Grade | The sentence | Rule |
+|---|---|---|
+| `FULL` | *You completed the workout and achieved its intended training effect.* | name the strongest supporting evidence; **do not say "perfect"** |
+| `SUBSTANTIAL` | *The workout still did its job, with an adjustment or small execution difference.* | explain what differed and why the benefit was substantially preserved |
+| `PARTIAL` | *You completed useful work, but not enough of the intended session to receive the full training effect.* | state what was completed and what was missing, **without scolding** |
+| `DIFFERENT` | *This became a different workout from the one prescribed.* | explain the stimulus actually achieved — **a different stimulus may still be useful; it is not failure** |
+| `INSUFFICIENT` | *There is not enough reliable information to judge the workout.* | name the missing or unreliable data. **Never translate insufficient evidence into a bad workout.** |
+
+**Every grade carries a separate plan-consequence line:** no plan change ·
+evidence recorded, more confirmation needed · adaptation proposal available ·
+existing proposal held or refused.
+
+> *"Do not imply causation between the grade and a plan change unless the
+> canonical Adaptation Engine made that decision."*
+
+## Confidence display  (Q39)
+
+**Never show raw confidence decimals in the normal coaching experience.**
+Translate uncertainty through: a useful range · evidence count and type · a
+plain-language limitation · **what evidence would make the conclusion stronger.**
+
+His examples:
+
+> *"This is supported by two recent threshold sessions."*
+> *"This rests mainly on a population expectation; your own response is not
+> established yet."*
+> *"The range is wide because only one comparable long race is available."*
+
+Raw values, model versions and component weights stay in the **auditable decision
+detail**. An advanced diagnostic view may expose them later; they must not lead
+the runner-facing experience.
