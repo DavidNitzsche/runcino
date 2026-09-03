@@ -584,6 +584,75 @@ the statement is issued on. With `DATABASE_URL` pointing at loopback, the barrie
 would have PERMITTED a write on a production client. Filed to fence the barrier
 per connection.
 
+
+## THE UPWARD BAR, AFTER THE FIX  ·  and the zero is honest
+
+```
+before   PROGRESS 0 · HOLD 102 · REGRESS 4 · REFUSE 14
+after    PROGRESS 0 · HOLD  63 · REGRESS 4 · REFUSE 53
+```
+
+**PROGRESS stays zero and that is now a defensible answer rather than a
+suspicious one.** He never completed three consecutive non-cutback weeks at 95%:
+best run was **2**, best worst-week **90.2%**. What moved is the line between
+"the coach decided" and "the engine could not judge" — **39 records that read as
+coaching decisions were missing evaluations** and now say so.
+
+**My brief to the agent was wrong on one point and it did not paper over it.**
+The contract DOES declare both extra conditions; Q21 names key sessions and long
+runs explicitly. What was undeclared was how they were READ:
+
+- **No window on the long-run criterion.** Weeks were windowed to three, long runs
+  were read whole — so a long run from 2026-07-05, a week he did not run, was
+  cited against the 2026-08-31 decision **eight weeks later**. Q21's own word is
+  "*relevant*".
+- **The complement of "counts as evidence" was spent as counter-evidence.** The
+  grade set's own doc comment says DIFFERENT is excluded because it is evidence
+  about a different lever; the code then treated everything outside the set as
+  contradictory. Five June sessions blocked a volume step on that. PARTIAL still
+  blocks, per Q38 — "not enough of the intended session" is a load fact.
+- **Rule 8 applied per week rather than per finding** — the taper weeks were
+  dropped but the sessions inside them were still graded.
+- **A vacuous pass**: zero bad key sessions satisfied the bar even when nothing
+  had established anything. Now a refusal — but ONLY when key sessions ran. The
+  first draft refused on an empty window too, and the symmetry gate caught it
+  with the exact sentence this work exists to remove: *"the upward path is
+  unreachable on its own criterion, which is a wall."* A base block on easy
+  running alone must still be able to earn a step.
+- **Rule 9, found while measuring:** `completed/prescribed >= 0.95` rejects a week
+  completed at EXACTLY the bar for **267 of 1,999** prescriptions. His best
+  worst-week is 48 thousandths away from it.
+
+### The long-run blockage was a reader bug, not a watch problem
+
+**29 of his 146 split-carrying runs record pace only as a clock string** —
+`"8:19"` — on rows that also carry a full set of per-mile heart rates, and the
+harness read three numeric spellings and not the fourth. Parsing it takes
+comparable long runs from **4 of 15 to 8 of 15**, and the remaining seven divide
+honestly: six genuine refusals where the prescription really does vary pace, and
+one week he did not run. `L4-durability-readable` goes NO → **YES**.
+
+### The 1-1 threshold case is a correct HOLD
+
+Kept, with the citation: the binding clause at one-faster-one-slower is the
+corroboration bar, not the ratio, and Q20's opening sentence is that a single
+session never moves the anchor. Loosening the ratio would move the anchor on one
+session while looking like a rule about direction. **The other half was real** —
+34 of 40 readings had no qualifying session at all and the lever called each a
+HOLD while its own confidence line said none was available. That is a REFUSE now,
+matching what the other two levers already return on the same fact, so the old
+HOLD was a Rule 16 defect as well.
+
+### And the falsifier had never worked
+
+`npm run test:falsify`'s documented command exited "No test files found" —
+`vitest.config.ts` includes only `*.test.ts`, and a CLI file argument FILTERS
+that include rather than adding to it. Every falsification anyone believed they
+had run through it had run nothing. Fixed with its own config.
+
+**Still unwired.** None of this reaches the phone: the mutation guard is
+untouched.
+
 ---
 
 ## P1 · Known open items outside the critical path
