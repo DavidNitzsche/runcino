@@ -1432,7 +1432,36 @@ extension API {
         // Leading slash: `v5` concatenates onto `baseURL.absoluteString`
         // rather than appending a path component, so every path it is given
         // carries its own separator.
-        try await v5("/api/runs/\(id)", cache: nil, as: RunDetail.self)
+        //
+        // ── THE ID IS PERCENT-ENCODED, AND THAT IS NOT A NICETY (2026-09-02) ──
+        //
+        // `v5` builds its URL with `URL(string:)` over a concatenated string.
+        // A run id containing `#` therefore ends the PATH and starts a
+        // FRAGMENT, and a fragment is never sent to a server. The request
+        // leaves the phone addressed to a run that does not exist.
+        //
+        // This is not hypothetical and it is not an edge case. Watch-completed
+        // runs carry ids of the form `<user-uuid>-<date>#<hhmm>` — the `#0919`
+        // disambiguates two runs on one day — and BOTH of this runner's two
+        // most recent runs are that shape. Opening either from the run log
+        // produced, on the simulator against his real rows:
+        //
+        //     GET /api/runs/0645f40c-…-2026-09-02      404
+        //
+        // against a canonical row whose `data.id` is
+        // `0645f40c-…-2026-09-02#0919`. The screen then drew the route's own
+        // decline sentence — "That run is not in your log any more" — over a
+        // run that is in his log, is his most recent, and is the one he
+        // complained about. A correct answer to the wrong question, which is
+        // the worst kind of 404 because nothing about it looks broken.
+        //
+        // `urlPathAllowed` keeps `/` and encodes `#`, `?` and space, so the
+        // whole id survives as one path segment. The sibling readers in
+        // `API.swift` use `appendingPathComponent`, which already does this —
+        // this call site is the one that concatenates, and so the one that
+        // had to say it.
+        let safe = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await v5("/api/runs/\(safe)", cache: nil, as: RunDetail.self)
     }
 
     // ── writes ──

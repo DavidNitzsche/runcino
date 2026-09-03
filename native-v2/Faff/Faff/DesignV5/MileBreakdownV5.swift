@@ -159,6 +159,21 @@ struct MileBreakdownV5: View {
     /// `paceColor` and every figure draws in plain ink.
     var paceLine: String? = nil
 
+    /// WHAT THESE ROWS COVER, when they do not cover the run.
+    ///
+    /// Nil on almost every run, where the rows ARE the run and a qualifier
+    /// would be furniture. It exists for the case the reconciliation sentence
+    /// at the top of the screen structurally cannot reach: that sentence is
+    /// only composed when the run has OVERTIME or a failed clock, so a run
+    /// whose phases account for the whole distance but whose stored splits
+    /// stop short — five rows on a six-mile run — got no note anywhere, and
+    /// the table read as the whole run.
+    ///
+    /// It is therefore never a restatement (Rule 17). The caller passes it
+    /// ONLY when the capture sentence is absent; when that sentence exists it
+    /// already names this table and this line is not drawn.
+    var coverageLine: String? = nil
+
     /// SECONDS PER MILE → THE COLOUR THE ROUTE LINE PAINTS AT THAT PACE.
     ///
     /// Supplied by the caller, from `RouteMapView.runPaceColorFn`, rather than
@@ -207,6 +222,16 @@ struct MileBreakdownV5: View {
         if !pieces.isEmpty {
             VStack(alignment: .leading, spacing: V5.S.s10) {
                 V5SectionLabel(text: title).padding(.horizontal, V5.S.s4)
+
+                // ABOVE the rows, not under them. A qualifier printed below a
+                // table is read after the table has already been believed.
+                if let coverageLine {
+                    Text(coverageLine)
+                        .font(.faffText(TypeScaleV5.label12))
+                        .foregroundStyle(V5.textQuiet)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, V5.S.s4)
+                }
 
                 VStack(alignment: .leading, spacing: 0) {
                     header

@@ -231,7 +231,60 @@ struct RunDetailV5: View {
                 AppBar(title: title, eyebrow: eyebrow, onBack: onBack)
 
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+
+                    /* ═══ LAYER 1 · THE IMMEDIATE ANSWER ═════════════════
+                     *
+                     * `docs/0901/post-run-experience-review-and-brief-2026-09-02.md`
+                     * §4: identity and overview, then ONE compact coach card.
+                     * The programme calls the same two things PR-1 and PR-2,
+                     * and PR-2 says "near the top" in as many words.
+                     *
+                     * THIS SCREEN DID NOT DO THAT. The order was stats,
+                     * reading, reps, splits, zones, route, shoes, decisions,
+                     * and only then the coach — the answer arrived ninth, past
+                     * the map and the shoe row, which is the brief's "current
+                     * hierarchy is not decisive enough" exactly.
+                     *
+                     * WHAT THIS OVERTURNS, AND WHY. The recap used to sit
+                     * under the wrist decisions on 8a's rule that "a verdict
+                     * that arrives before its evidence reads as a mood". That
+                     * rule is not discarded — it is applied where it bites.
+                     * The decisions are evidence for what the run TAUGHT, not
+                     * for what it WAS, so they now sit directly above the
+                     * learning claim in Layer 3 and the ordering they were
+                     * written to protect is intact. What a coach says first is
+                     * the answer; a runner who opens a finished session and
+                     * has to scroll past a shoe row to find out how it went is
+                     * being made to do the coach's work.
+                     */
                     statsRow
+
+                    /* THE RECORDING'S OWN HONESTY, ABOVE EVERY NUMBER IT IS
+                     * ABOUT.
+                     *
+                     * `wire.ts` says of this sentence: "this sentence goes
+                     * ABOVE the numbers, because a caveat under a total is a
+                     * caveat nobody reads." `PostRunLearnedV5`'s header says
+                     * the same thing about itself. Both were false in
+                     * composition until now — the block that carries it was
+                     * drawn LAST on this screen, under the stats, the splits,
+                     * the zone bar, the route and the shoes. Rule 20: a claim
+                     * in a comment that nothing verifies is not a fact, and
+                     * `_postrun_wire_consumed.audit.test.ts` is now the thing
+                     * that verifies the field is read at all.
+                     *
+                     * On the 2026-09-02 run this is the difference between a
+                     * screen that shows five mile rows for a 6.41 mi run and
+                     * one that says so first. "Not showing all the miles."
+                     */
+                    if let pr = detail.postRun {
+                        PostRunLearnedV5(model: pr, includes: .capture)
+                    }
+
+                    // The coach's answer, second. Layer 1B.
+                    recapSection
+
+                    /* ═══ LAYER 2 · WHAT THE SESSION WAS ═════════════════ */
 
                     if !readingRows.isEmpty {
                         ListGroup(header: "Reading") {
@@ -273,9 +326,59 @@ struct RunDetailV5: View {
                     // zone the session asked for is unreachable across that
                     // span by construction — so the bar can only ever report a
                     // miss on a session that was executed.
+                    /* THE STRIDES ARE PART OF THE SESSION, so they are drawn
+                     * with it and not below the map.
+                     *
+                     * His complaint on 2026-09-02 was two things at once —
+                     * "not showing all the miles, not showing the strides" —
+                     * and the strides half was answered by adding the rows to
+                     * a block that renders after the route and the shoe row.
+                     * Six 20-second accelerations are what that easy day
+                     * actually WAS; the mile table above cannot see them and
+                     * the rep list cannot grade them, so this is the piece
+                     * that completes the session, immediately under it. */
+                    if let pr = detail.postRun {
+                        PostRunLearnedV5(model: pr, includes: .strides)
+                    }
+
                     if hasZoneData, detail.readings?.zoneBarMeaningful ?? true {
                         zoneSection
                     }
+
+                    /* ═══ LAYER 3 · WHAT IT MEANT ════════════════════════ */
+
+                    // EVIDENCE BEFORE JUDGEMENT. 8a's rule, kept and moved to
+                    // where it actually bites: the runner's own decisions are
+                    // evidence for what the run TAUGHT, so they sit directly
+                    // above the learning claim rather than above the recap.
+                    // A verdict that arrives before its evidence reads as a
+                    // mood; the recap in Layer 1 states what happened, and
+                    // that is not the judgement this rule was written about.
+                    if !resolvedDecisions.isEmpty {
+                        WristDecisionsV5(decisions: resolvedDecisions)
+                    }
+
+                    // WHAT THE RUN TAUGHT THE COACH — the SAME component the
+                    // after-run sheet draws, over the SAME object. Not a view
+                    // that looks like the other one: one view, so a change to
+                    // what the runner reads cannot land on one screen and miss
+                    // the other. That divergence is the post-run brief's first
+                    // P0 and it was live on 2026-09-01.
+                    //
+                    // `.meaning` only. The capture sentence and the strides
+                    // from this same object are drawn in Layers 1 and 2, where
+                    // each belongs — one component still owns all three
+                    // pieces of copy, so the two post-run screens cannot drift.
+                    if let pr = detail.postRun {
+                        PostRunLearnedV5(model: pr, includes: .meaning)
+                    }
+
+                    /* ═══ LAYER 4 · THE RECORD ═══════════════════════════
+                     *
+                     * The brief's Layer 4: route, shoes, source. Reference
+                     * material, reached by scrolling, and never in front of
+                     * the answer.
+                     */
 
                     if shape.showsRoute { routeSection }
 
@@ -285,31 +388,6 @@ struct RunDetailV5: View {
                                     sub: shoeMileageSub(shoe),
                                     onTap: onChangeShoe)
                         }
-                    }
-
-                    // EVIDENCE BEFORE JUDGEMENT. 8a's rule, which applies
-                    // to 8b for the same reason: a verdict that arrives
-                    // before its evidence reads as a mood. The decisions are
-                    // the runner's own, so they sit above the coach's line,
-                    // never under it.
-                    if !resolvedDecisions.isEmpty {
-                        WristDecisionsV5(decisions: resolvedDecisions)
-                    }
-
-                    recapSection
-
-                    // WHAT THE RUN TAUGHT THE COACH — the SAME component the
-                    // after-run sheet draws, over the SAME object. Not a view
-                    // that looks like the other one: one view, so a change to
-                    // what the runner reads cannot land on one screen and miss
-                    // the other. That divergence is the post-run brief's first
-                    // P0 and it was live on 2026-09-01.
-                    //
-                    // It sits UNDER the recap because the recap already states
-                    // the verdict and the cost from this same object; what the
-                    // run changed is the layer below the answer, not beside it.
-                    if let pr = detail.postRun {
-                        PostRunLearnedV5(model: pr)
                     }
                 }
                 .padding(.horizontal, V5.S.gutter)
@@ -678,7 +756,31 @@ struct RunDetailV5: View {
                 // which is what a jog between two hard kilometres is supposed
                 // to look like. Printing "asked 8:57" beside it would assert
                 // a prescription the plan never wrote.
-                askedPace: p.type == "work" ? p.target_pace : nil,
+                // A STRIDE IS NEVER SHOWN A TARGET (2026-09-02, from a render).
+                //
+                // `p.type == "work"` alone printed "asked 6:41" beside every
+                // one of the runner's six strides, and the sixth — 7:11 — read
+                // as a thirty-second miss. `Research/04-workout-vocabulary.md`
+                // §7.2 calls a stride "relaxed", puts it at 85-95% of max
+                // effort and says in as many words that it is "Not a workout",
+                // which is why the server grades it `effort`, a shape that is
+                // never pace-graded, and why `PostRunStrideV5` has no field
+                // that could hold a target at all.
+                //
+                // So the same screen carried both treatments of one quantity:
+                // this list asserting a prescription, and the strides section
+                // two inches below correctly asserting none (Rule 16). The
+                // ask was never real — `appendStrides` gives a stride a
+                // deliberately wide 45 s/mi band precisely so nothing grades
+                // it — and printing it invites the runner to subtract two
+                // numbers the plan never put in the same sentence.
+                //
+                // `pace_shape` is the server's own resolved answer arriving
+                // through `PhaseBreakdown`, not a second opinion formed here:
+                // `paceShapeFor` returns `effort` for `byEffort` and for
+                // nothing else. It is the same field `repSectionTitle` already
+                // reads one screen up to keep a stride from being counted a rep.
+                askedPace: (p.type == "work" && p.pace_shape != "effort") ? p.target_pace : nil,
                 detail: Self.pieceDetail(p),
                 verdictPhrase: isChosenSkip ? nil : Self.verdictPhrase(p),
                 chosen: isChosenSkip
@@ -839,6 +941,21 @@ struct RunDetailV5: View {
                                totalMi: detail.distance_mi > 0 ? detail.distance_mi : nil)
     }
 
+    /// WHAT THE MILE TABLE COVERS, when the reconciliation sentence has not
+    /// already said it.
+    ///
+    /// The two are mutually exclusive on purpose (Rule 17). `postRun.capture`
+    /// is prose at the top of the screen and, when it exists, it already names
+    /// this table. It exists only for a run with overtime or a failed clock —
+    /// so a run whose splits stop short of a distance the phases fully account
+    /// for said nothing anywhere, and the table read as the run.
+    ///
+    /// Nil is the common answer and draws nothing.
+    var mileCoverageLine: String? {
+        guard let pr = detail.postRun, pr.capture == nil else { return nil }
+        return pr.coverage?.mileTableQualifier
+    }
+
     /// The samples the route map normalises its pace ramp across, built the
     /// same way `routeBody` builds the map's own. One expression, read twice,
     /// so the table and the line cannot be handed different runs.
@@ -874,6 +991,7 @@ struct RunDetailV5: View {
                                 ? RouteMapView.paceColumnCaption(splits: detail.splits,
                                                                  phases: routePhaseSamples)
                                 : nil,
+                            coverageLine: mileCoverageLine,
                             paceColor: MileBreakdownV5.paceRamp(splits: detail.splits,
                                                                 phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,
@@ -894,6 +1012,7 @@ struct RunDetailV5: View {
                                 ? RouteMapView.paceColumnCaption(splits: detail.splits,
                                                                  phases: routePhaseSamples)
                                 : nil,
+                            coverageLine: mileCoverageLine,
                             paceColor: MileBreakdownV5.paceRamp(splits: detail.splits,
                                                                 phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,

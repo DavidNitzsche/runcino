@@ -103,11 +103,26 @@ struct PostRunV5: Decodable, Equatable {
     /// `.steady`, which decomposes to `.miles`, and the mile table cannot see
     /// a 20-second acceleration. "Not showing the strides."
     let strides: PostRunStridesV5?
+    /// THE SAME RECONCILIATION AS NUMBERS.
+    ///
+    /// `wire.ts` has emitted this block since it was written and, until now,
+    /// NO Swift file decoded it — `check-wire-keys.sh` runs in the other
+    /// direction (a key the phone reads must be a key the server writes) and
+    /// so could not see it. `_postrun_wire_consumed.audit.test.ts` is the gate
+    /// that can.
+    ///
+    /// It is not a second copy of `capture`. That sentence says, in words and
+    /// at the top of the screen, that the run and the recording differ. These
+    /// numbers let the MILE TABLE name the quantity it actually holds — "first
+    /// 5.0 of 6.4 mi" — which is a label on a table, not a sentence, and is
+    /// the one thing prose two sections above cannot do for a runner whose eye
+    /// lands on the table first.
+    let coverage: PostRunCoverageV5?
 
     enum K: String, CodingKey {
         case version, runId, decisionVersion, headline, summary, cost
         case learned, change, changeState, changes, next, why, accessibilitySummary
-        case capture, strides
+        case capture, strides, coverage
     }
 
     /// LENIENT BY DESIGN, and written out rather than borrowed.
@@ -137,6 +152,7 @@ struct PostRunV5: Decodable, Equatable {
         accessibilitySummary = str(.accessibilitySummary)
         capture = optStr(.capture)
         strides = (try? c.decodeIfPresent(PostRunStridesV5.self, forKey: .strides)) ?? nil
+        coverage = (try? c.decodeIfPresent(PostRunCoverageV5.self, forKey: .coverage)) ?? nil
     }
 
     /// Memberwise, for previews and tests only. The wire path is `init(from:)`.
@@ -144,7 +160,8 @@ struct PostRunV5: Decodable, Equatable {
          summary: String, cost: String?, learned: String, change: String,
          changeState: String, changes: [String], next: String?, why: [String],
          accessibilitySummary: String,
-         capture: String? = nil, strides: PostRunStridesV5? = nil) {
+         capture: String? = nil, strides: PostRunStridesV5? = nil,
+         coverage: PostRunCoverageV5? = nil) {
         self.version = version
         self.runId = runId
         self.decisionVersion = decisionVersion
@@ -160,6 +177,94 @@ struct PostRunV5: Decodable, Equatable {
         self.accessibilitySummary = accessibilitySummary
         self.capture = capture
         self.strides = strides
+        self.coverage = coverage
+    }
+}
+
+/// The run, the session and the mile table as THREE QUANTITIES.
+///
+/// Every one of them is correct and they answer different questions, which is
+/// exactly why a screen that draws one of them and calls it the run is wrong
+/// three ways at once. On the 2026-09-02 run they are 6.41, 5.98 and 5.00.
+///
+/// NOTHING HERE IS EVER ADDED UP OR FILLED IN. The 1.41 mi the mile table does
+/// not describe is not a sixth row, not a partial split and not a guess — it
+/// is simply outside what the splits measured, and the table says so in its
+/// own heading instead of implying otherwise by silence.
+struct PostRunCoverageV5: Decodable, Equatable {
+    /// The run's own total. What "how far did he run" means.
+    let totalDistanceMi: Double?
+    /// What the phase list accounts for — the structured session.
+    let structuredDistanceMi: Double?
+    /// Real running after the last prescribed piece. Nil when there was none.
+    let overtimeDistanceMi: Double?
+    let overtimeDurationSec: Int?
+    /// How many rows the mile table can draw, and how far they cover.
+    let splitCount: Int?
+    let splitDistanceMi: Double?
+
+    enum K: String, CodingKey {
+        case totalDistanceMi, structuredDistanceMi, overtimeDistanceMi
+        case overtimeDurationSec, splitCount, splitDistanceMi
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        func dbl(_ k: K) -> Double? { (try? c.decodeIfPresent(Double.self, forKey: k)) ?? nil }
+        func int(_ k: K) -> Int? { (try? c.decodeIfPresent(Int.self, forKey: k)) ?? nil }
+        totalDistanceMi = dbl(.totalDistanceMi)
+        structuredDistanceMi = dbl(.structuredDistanceMi)
+        overtimeDistanceMi = dbl(.overtimeDistanceMi)
+        overtimeDurationSec = int(.overtimeDurationSec)
+        splitCount = int(.splitCount)
+        splitDistanceMi = dbl(.splitDistanceMi)
+    }
+
+    init(totalDistanceMi: Double?, structuredDistanceMi: Double?,
+         overtimeDistanceMi: Double?, overtimeDurationSec: Int?,
+         splitCount: Int?, splitDistanceMi: Double?) {
+        self.totalDistanceMi = totalDistanceMi
+        self.structuredDistanceMi = structuredDistanceMi
+        self.overtimeDistanceMi = overtimeDistanceMi
+        self.overtimeDurationSec = overtimeDurationSec
+        self.splitCount = splitCount
+        self.splitDistanceMi = splitDistanceMi
+    }
+
+    /// THE TABLE NAMES THE QUANTITY IT HOLDS, or says nothing.
+    ///
+    /// Nil unless the mile rows fall materially short of the run — most runs,
+    /// where the rows ARE the run and a qualifier would be furniture. The
+    /// threshold is the server's own `OVERTIME_MIN_MI` (0.1), not a second
+    /// opinion formed here.
+    ///
+    /// IT IS NOT THE CAPTURE SENTENCE RESTATED, and the caller is required to
+    /// keep it that way: `RunDetailV5` passes it ONLY when `capture` is nil.
+    ///
+    /// The hole it fills is one that sentence structurally cannot. `capture`
+    /// is composed only for a run with OVERTIME or a failed clock, so a run
+    /// whose phases account for the whole distance while its stored splits
+    /// stop short — five rows on a six-mile run, which is what `runs.splits`
+    /// actually holds on plenty of rows — produced no note ANYWHERE, and the
+    /// table read as the run. Rule 11: "the splits cover five miles" and "he
+    /// ran five miles" are two facts, and a screen that can only say the
+    /// second has lost the one that mattered.
+    ///
+    /// The count is spelled and the distances are numerals, which is the
+    /// design contract's own split: numerals are for measurements, and a row
+    /// count is not one.
+    var mileTableQualifier: String? {
+        guard let total = totalDistanceMi, total > 0,
+              let covered = splitDistanceMi, covered > 0,
+              let n = splitCount, n > 0,
+              total - covered >= 0.1 else { return nil }
+        let words = ["zero", "one", "two", "three", "four", "five", "six",
+                     "seven", "eight", "nine", "ten"]
+        let count = n < words.count ? words[n] : "\(n)"
+        let rows = n == 1 ? "row" : "rows"
+        return "These \(count) \(rows) cover "
+            + "\(String(format: "%.1f", covered)) of the "
+            + "\(String(format: "%.1f", total)) mi you ran."
     }
 }
 
@@ -244,6 +349,46 @@ struct PostRunStridesV5: Decodable, Equatable {
 /// The section both post-run screens draw under the analysis.
 struct PostRunLearnedV5: View {
     let model: PostRunV5
+
+    /* ── WHY THIS COMPONENT CAN BE DRAWN IN PIECES (2026-09-02) ────────────
+     *
+     * It carried three things that belong to three different LAYERS of the
+     * brief's hierarchy, and drawing them as one block forced all three to the
+     * bottom of the screen:
+     *
+     *   capture   Layer 1. "A caveat printed under a total is a caveat nobody
+     *             reads" — this component's own header says so, and
+     *             `wire.ts` says "this sentence goes ABOVE the numbers". Both
+     *             were false in composition: `RunDetailV5` drew this block
+     *             last, under the stats, the splits, the zone bar, the route
+     *             and the shoes. Rule 20 — a claim in a comment that nothing
+     *             verifies is not a fact.
+     *   strides   Layer 2. They are the session. The runner's complaint was
+     *             "not showing the strides", and answering it by putting them
+     *             below the route map answers it only technically.
+     *   meaning   Layer 3, which is where it already was and where it belongs.
+     *
+     * `includes` defaults to `.all`, so a caller that wants the whole block in
+     * one place — `TodayAfterV5`, whose after-run sheet is a single scroll
+     * with no Layer 4 to sink anything into — is unchanged, byte for byte.
+     * ONE component still owns this copy either way, which is the point of it
+     * existing: the divergence between the two post-run screens is the brief's
+     * first P0, and two views that merely looked alike is how that happened.
+     */
+    struct Sections: OptionSet {
+        let rawValue: Int
+        init(rawValue: Int) { self.rawValue = rawValue }
+        /// The recording-honesty sentence. Layer 1, above every number it is about.
+        static let capture = Sections(rawValue: 1 << 0)
+        /// The stride rows. Layer 2, with the rest of the session.
+        static let strides = Sections(rawValue: 1 << 1)
+        /// Learned / changed / next / why. Layer 3.
+        static let meaning = Sections(rawValue: 1 << 2)
+        static let all: Sections = [.capture, .strides, .meaning]
+    }
+
+    var includes: Sections = .all
+
     /// Collapsed by default. The disclosure exists for the runner who wants
     /// the provenance; the four in ten who never open it are not shown a
     /// paragraph they did not ask for.
@@ -279,8 +424,14 @@ struct PostRunLearnedV5: View {
 
     /// Nothing to say means nothing drawn. A header over an empty tile is the
     /// same defect as a zero standing in for a missing reading.
+    ///
+    /// It asks `includes` as well as the model, so a caller that requested one
+    /// section and got nothing for it draws NOTHING — not an empty stack whose
+    /// parent still spends a gap on it.
     private var hasContent: Bool {
-        !learned.isEmpty || !change.isEmpty || capture != nil || strides != nil
+        (includes.contains(.capture) && capture != nil)
+            || (includes.contains(.strides) && strides != nil)
+            || (includes.contains(.meaning) && (!learned.isEmpty || !change.isEmpty))
     }
 
     var body: some View {
@@ -292,8 +443,13 @@ struct PostRunLearnedV5: View {
                  * the run's own numbers do not add up to the run — 6.41 mi
                  * total, 5.98 mi of phases, 5.00 mi of mile rows on
                  * 2026-09-02 — the sentence that reconciles them goes first, so
-                 * every figure below it is read as what it is. */
-                if let c = capture {
+                 * every figure below it is read as what it is.
+                 *
+                 * "First" is now a fact about the SCREEN and not only about
+                 * this stack: `RunDetailV5` asks for `.capture` on its own,
+                 * directly under the stats poster, so the sentence reaches the
+                 * runner before the numbers rather than after all of them. */
+                if includes.contains(.capture), let c = capture {
                     Text(c)
                         .font(.faffText(TypeScaleV5.body15))
                         .foregroundStyle(V5.textSecondary)
@@ -301,6 +457,10 @@ struct PostRunLearnedV5: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, V5.S.s4)
                         .padding(.bottom, V5.S.s6)
+                        // The sentence is the run's own honesty about itself,
+                        // and VoiceOver must reach it in the same position a
+                        // sighted reader does — before the figures it qualifies.
+                        .accessibilityLabel(c)
                 }
 
                 /* THE STRIDES.
@@ -314,7 +474,7 @@ struct PostRunLearnedV5: View {
                  * NOTHING IS GRADED. A pace and a heart rate are readings; no
                  * row carries a target, a verdict or a status word, and
                  * `PostRunStrideV5` has no field that could hold one. */
-                if let st = strides {
+                if includes.contains(.strides), let st = strides {
                     VStack(alignment: .leading, spacing: V5.S.s10) {
                         V5SectionLabel(text: "Strides")
                             .padding(.horizontal, V5.S.s4)
@@ -358,88 +518,101 @@ struct PostRunLearnedV5: View {
                     .padding(.bottom, V5.S.s6)
                 }
 
-                V5SectionLabel(text: "What this taught the coach")
-                    .padding(.horizontal, V5.S.s4)
-
-                VStack(alignment: .leading, spacing: V5.S.s14) {
-                    if !learned.isEmpty {
-                        Text(learned)
-                            .font(.faffText(TypeScaleV5.body17))
-                            .foregroundStyle(V5.textPrimary)
-                            .lineSpacing(4)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if !change.isEmpty {
-                        VStack(alignment: .leading, spacing: V5.S.s6) {
-                            Text(change)
-                                .font(.faffText(TypeScaleV5.body15))
-                                .foregroundStyle(V5.textSecondary)
-                                .lineSpacing(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                            // Only on the state that has them, and each on its
-                            // own line — a plan change the runner cannot see
-                            // itemised is an announcement, not an explanation.
-                            ForEach(model.changes, id: \.self) { line in
-                                Text(line)
-                                    .font(.faffText(TypeScaleV5.label14))
-                                    .foregroundStyle(V5.textQuiet)
-                                    .lineSpacing(3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                    }
-
-                    if let n = next {
-                        Text(n)
-                            .font(.faffText(TypeScaleV5.body15))
-                            .foregroundStyle(V5.textPrimary)
-                            .lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if !why.isEmpty {
-                        Button {
-                            withAnimation(V5.Motion.expand) { whyOpen.toggle() }
-                        } label: {
-                            HStack(spacing: V5.S.s6) {
-                                Text(whyOpen ? "Hide why" : "Why")
-                                    .font(.faffText(TypeScaleV5.label14, weight: .semibold))
-                                    .foregroundStyle(V5.textSecondary)
-                                Spacer(minLength: 0)
-                            }
-                            // 44pt, per the accessibility contract, on a row
-                            // whose visible text is 14pt.
-                            .frame(minHeight: 44)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        // The state is ANNOUNCED, not left to the caret. A
-                        // disclosure whose expanded state is only visual is
-                        // invisible to VoiceOver.
-                        .accessibilityLabel(whyOpen ? "Hide why" : "Why")
-                        .accessibilityAddTraits(whyOpen ? [.isButton, .isSelected] : .isButton)
-
-                        if whyOpen {
-                            VStack(alignment: .leading, spacing: V5.S.s6) {
-                                ForEach(why, id: \.self) { line in
-                                    Text(line)
-                                        .font(.faffText(TypeScaleV5.label14))
-                                        .foregroundStyle(V5.textQuiet)
-                                        .lineSpacing(3)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                            .transition(.opacity)
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, V5.S.tilePad)
-                .padding(.vertical, V5.S.s14)
-                .background(V5.materialTile,
-                            in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
+                if includes.contains(.meaning), hasMeaning { meaningBlock }
             }
         }
     }
+
+    /// Layer 3 · what the run taught the coach, what the plan did about it and
+    /// what is left to say.
+    ///
+    /// Extracted so `includes` can place it without the capture sentence and
+    /// the strides having to travel with it. Nothing about the copy changed.
+    private var hasMeaning: Bool { !learned.isEmpty || !change.isEmpty }
+
+    @ViewBuilder
+    private var meaningBlock: some View {
+        V5SectionLabel(text: "What this taught the coach")
+            .padding(.horizontal, V5.S.s4)
+
+        VStack(alignment: .leading, spacing: V5.S.s14) {
+            if !learned.isEmpty {
+                Text(learned)
+                    .font(.faffText(TypeScaleV5.body17))
+                    .foregroundStyle(V5.textPrimary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !change.isEmpty {
+                VStack(alignment: .leading, spacing: V5.S.s6) {
+                    Text(change)
+                        .font(.faffText(TypeScaleV5.body15))
+                        .foregroundStyle(V5.textSecondary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // Only on the state that has them, and each on its
+                    // own line — a plan change the runner cannot see
+                    // itemised is an announcement, not an explanation.
+                    ForEach(model.changes, id: \.self) { line in
+                        Text(line)
+                            .font(.faffText(TypeScaleV5.label14))
+                            .foregroundStyle(V5.textQuiet)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            if let n = next {
+                Text(n)
+                    .font(.faffText(TypeScaleV5.body15))
+                    .foregroundStyle(V5.textPrimary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !why.isEmpty {
+                Button {
+                    withAnimation(V5.Motion.expand) { whyOpen.toggle() }
+                } label: {
+                    HStack(spacing: V5.S.s6) {
+                        Text(whyOpen ? "Hide why" : "Why")
+                            .font(.faffText(TypeScaleV5.label14, weight: .semibold))
+                            .foregroundStyle(V5.textSecondary)
+                        Spacer(minLength: 0)
+                    }
+                    // 44pt, per the accessibility contract, on a row
+                    // whose visible text is 14pt.
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                // The state is ANNOUNCED, not left to the caret. A
+                // disclosure whose expanded state is only visual is
+                // invisible to VoiceOver.
+                .accessibilityLabel(whyOpen ? "Hide why" : "Why")
+                .accessibilityAddTraits(whyOpen ? [.isButton, .isSelected] : .isButton)
+
+                if whyOpen {
+                    VStack(alignment: .leading, spacing: V5.S.s6) {
+                        ForEach(why, id: \.self) { line in
+                            Text(line)
+                                .font(.faffText(TypeScaleV5.label14))
+                                .foregroundStyle(V5.textQuiet)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .transition(.opacity)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, V5.S.tilePad)
+        .padding(.vertical, V5.S.s14)
+        .background(V5.materialTile,
+                    in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
+    }
+
 }
