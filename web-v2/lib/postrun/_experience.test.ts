@@ -149,6 +149,7 @@ function makeInput(o: InputOverrides = {}): PostRunInput {
     plannedTypeDisplay: 'Threshold',
     plannedDistanceMi: 8.5,
     raceMatched: false,
+    targetProvenance: 'plan',
     verdict,
     evidence: o.evidence !== undefined ? o.evidence : evidenceFixture(),
     workHrCeilingBpm: workHrCeiling(REAL_0901_SPEC)?.bpm ?? null,
@@ -387,6 +388,51 @@ describe('run-type states', () => {
     const out = compose({ evidence: evidenceFixture({ admissible: false }) });
     expect(out.evidence.role).toBe('EXCLUDED');
     expect(out.evidence.planAuthorityEligible).toBe(false);
+  });
+});
+
+/* ────────────── PROVENANCE-1, 2026-09-03 · whose target this was ───────── */
+
+describe("PROVENANCE-1 · an unplanned race never claims the app's authorship", () => {
+  // The exact shape that found this defect: the Americas Finest City half,
+  // a real production run with five named course segments and NO matching
+  // `plan_workouts` row — `raceMatched` is true, `targetProvenance` is
+  // `'self_authored'`, and the segments still carry real, correctly-graded
+  // per-mile targets from David's own watch.
+
+  it("SELF-AUTHORED RACE · the note names the runner's own pacing plan, never the app's", () => {
+    const out = compose({
+      raceMatched: true,
+      targetProvenance: 'self_authored',
+      phases: REAL_0901_PHASES.map((p) => (p.type === 'work' ? { ...p, actualPaceSPerMi: 470 } : p)),
+    });
+    expect(out.execution.targetProvenance).toBe('self_authored');
+    expect(out.execution.targetProvenanceNote).not.toBeNull();
+    // The exact failure mode this closes: language that reads as if the
+    // COACHING APP set these targets, when no `plan_workouts` row exists.
+    expect(out.execution.targetProvenanceNote).toMatch(/pace plan you set/i);
+    expect(out.execution.targetProvenanceNote).not.toMatch(/the app (asked|prescribed)/i);
+  });
+
+  it("SELF-AUTHORED, NOT A RACE · still attributed to the runner's own watch workout", () => {
+    const out = compose({
+      raceMatched: false,
+      targetProvenance: 'self_authored',
+      phases: REAL_0901_PHASES.map((p) => (p.type === 'work' ? { ...p, actualPaceSPerMi: 470 } : p)),
+    });
+    expect(out.execution.targetProvenanceNote).toMatch(/workout you built on your watch/i);
+  });
+
+  it('PLAN-BACKED · the ordinary case needs no extra caption', () => {
+    const out = compose({ targetProvenance: 'plan' });
+    expect(out.execution.targetProvenance).toBe('plan');
+    expect(out.execution.targetProvenanceNote).toBeNull();
+  });
+
+  it('NO TARGET AT ALL · nothing to attribute, so nothing is said', () => {
+    const out = compose({ phases: [], targetProvenance: 'none' });
+    expect(out.execution.targetProvenance).toBe('none');
+    expect(out.execution.targetProvenanceNote).toBeNull();
   });
 });
 

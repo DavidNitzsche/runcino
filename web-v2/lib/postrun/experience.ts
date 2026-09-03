@@ -107,6 +107,33 @@ export interface PostRunExecution {
   intendedStimulus: string | null;
   stimulusDelivered: StimulusDelivered;
   confidence: 'HIGH' | 'MODERATE' | 'LOW';
+  /**
+   * WHO SET THE TARGET this execution was graded against (PROVENANCE-1,
+   * 2026-09-03). `'plan'` when a `plan_workouts` row authored it — the
+   * coaching app's own prescription. `'self_authored'` when the per-phase
+   * targets live only in the run's own recorded phases
+   * (`data.phases[].targetPaceSPerMi`) with NO matching plan row — a
+   * structured workout the runner built on the watch himself, most often a
+   * race-day pacing plan for a course's segments. `'none'` when nothing
+   * graded the work at all.
+   *
+   * This is a DIFFERENT fact from `raceMatched` on `PostRunInput`, and from
+   * whether the grade itself is a window, a ceiling, or a target — those
+   * describe WHAT the comparison is; this describes WHOSE it is. Collapsing
+   * them was the actual defect on the Americas Finest City half: the per-
+   * segment "asked 7:08" / "Slower than target" language is not invented —
+   * David's own watch carried genuine per-segment pace targets for that
+   * race — but the copy read as if the coaching app had prescribed them,
+   * when there was no `plan_workouts` row for that day at all.
+   */
+  targetProvenance: 'plan' | 'self_authored' | 'none';
+  /** ONE caption stating that provenance in the runner's own words, shown
+   *  once near the graded comparison rather than folded into every phase
+   *  row — same pattern Strava's own zone chart uses ("Based on a Marathon
+   *  race time of 3:40:31"). Null when `targetProvenance` is `'plan'` (the
+   *  ordinary case needs no extra explanation) or `'none'` (nothing to
+   *  attribute). */
+  targetProvenanceNote: string | null;
   /** Machine codes, never rendered. */
   reasons: string[];
 }
@@ -347,6 +374,12 @@ export interface PostRunInput {
    * word choice below needs the runner's actual race history, not the plan.
    */
   raceMatched: boolean;
+  /** See `PostRunExecution.targetProvenance` for the full doc — this is the
+   *  same fact, computed once in `lib/postrun/load.ts` from whether a
+   *  `plan_workouts` row exists for the day versus whether the run's own
+   *  stored phases carry embedded `targetPaceSPerMi` values with no such
+   *  row backing them. */
+  targetProvenance: 'plan' | 'self_authored' | 'none';
   /** THE canonical grade. Never re-derived here. */
   verdict: WorkoutVerdict;
   /** The Evidence Engine's read, or null when the classification could not be
@@ -574,6 +607,8 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'UNKNOWN',
       confidence: 'LOW',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote: null,
       reasons,
     };
   }
@@ -587,9 +622,25 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'UNKNOWN',
       confidence: 'LOW',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote: null,
       reasons,
     };
   }
+
+  /* THE PROVENANCE NOTE (PROVENANCE-1, 2026-09-03), from here down — every
+   * remaining branch shows phase-level target language ("asked X",
+   * "prescribed range", "On target"/"Slower than target"), so from here on
+   * the note travels with it. A self-authored race pacing plan reads
+   * "outside the window" the exact same way a coach-prescribed session
+   * does; only WHOSE window it was differs, and that is the one fact this
+   * app was silent about on the Americas Finest City half. See
+   * `PostRunExecution.targetProvenance`'s own doc for the full reasoning. */
+  const targetProvenanceNote = input.targetProvenance === 'self_authored'
+    ? (input.raceMatched
+        ? "These segment targets are the pace plan you set for this race, not one from the app."
+        : "This session's targets came from the workout you built on your watch, not from the app's plan.")
+    : null;
 
   // The runner's word for the work, chosen off the SHAPE of the session
   // rather than a template: four one-mile pieces are reps, one continuous
@@ -635,6 +686,8 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
       reasons,
     };
   }
@@ -650,6 +703,8 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
       reasons,
     };
   }
@@ -663,6 +718,8 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
       reasons,
     };
   }
@@ -682,6 +739,8 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'FULL',
       confidence: 'HIGH',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
       reasons,
     };
   }
@@ -700,6 +759,8 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
     intendedStimulus: stimulus,
     stimulusDelivered: 'FULL',
     confidence: 'HIGH',
+    targetProvenance: input.targetProvenance,
+    targetProvenanceNote,
     reasons,
   };
 }

@@ -1009,9 +1009,24 @@ struct RunDetailV5: View {
         for (label, value) in readingRows {
             // The grid states its scope once in `sessionDetailScope`, so a
             // per-row label that only exists to carry that qualifier — same
-            // string, comma-joined — is redundant here (Rule 17). The label
-            // that remains is the metric's own name.
-            let bare = label.split(separator: ",").first.map(String.init) ?? label
+            // string, comma-joined — is redundant here (Rule 17).
+            //
+            // ONLY STRIP THE SCOPE SUFFIX ITSELF, not everything after the
+            // first comma. "Heart rate, max" is a DIFFERENT metric from
+            // "Heart rate, across the 5 segments" — the comma there names
+            // which reading this is, not a scope qualifier — and a blind
+            // `split(separator: ",").first` truncated it to bare "Heart
+            // rate", indistinguishable on screen from the average shown two
+            // rows away. A 178 bpm max read as if it were the 168 bpm
+            // average is exactly the ambiguity Rule 16 exists to prevent.
+            // Caught by David directly against the real Americas Finest
+            // City half, not by any test — the compact grid and the
+            // detailed "Reading" section below it disagreed about what
+            // "Heart rate" meant on the same screen.
+            let scopeSuffix = sessionDetailScope.map { ", " + $0.prefix(1).lowercased() + $0.dropFirst() }
+            let bare = (scopeSuffix != nil && label.hasSuffix(scopeSuffix!))
+                ? String(label.dropLast(scopeSuffix!.count))
+                : label
             out.append(.init(bare, value))
         }
         return out

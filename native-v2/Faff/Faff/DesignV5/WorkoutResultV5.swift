@@ -204,6 +204,15 @@ struct PostRunVerdictV5: View {
 
     private var headline: String { model.headline.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var summary: String { model.summary.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// PROVENANCE-1, 2026-09-03. Visible, not behind "Why" — same reasoning
+    /// as Strava's own zone chart stating its basis in the open rather than
+    /// behind a disclosure: a runner reading "asked 7:08" and "Slower than
+    /// target" needs to know in the same glance whether that target came
+    /// from the coaching app or from his own watch, not after a tap.
+    private var targetProvenanceTrimmed: String? {
+        let t = model.targetProvenanceNote?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (t?.isEmpty ?? true) ? nil : t
+    }
     private var cost: String? {
         let c = model.cost?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (c?.isEmpty ?? true) ? nil : c
@@ -271,6 +280,12 @@ struct PostRunVerdictV5: View {
                     Text(planStatusLine)
                         .font(.faffText(TypeScaleV5.body15))
                         .foregroundStyle(V5.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let targetProvenanceTrimmed {
+                    Text(targetProvenanceTrimmed)
+                        .font(.faffText(TypeScaleV5.label12))
+                        .foregroundStyle(V5.textQuiet)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 

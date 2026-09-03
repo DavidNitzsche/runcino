@@ -68,6 +68,16 @@ struct PostRunV5: Decodable, Equatable {
     let headline: String
     /// Already drawn by the recap tile as `verdict`.
     let summary: String
+    /// WHOSE target `summary` and the per-segment readings below were graded
+    /// against, when that is not the ordinary plan-authored case
+    /// (PROVENANCE-1, 2026-09-03). Null when the plan itself set the target
+    /// or nothing graded the work at all. Non-null when the run's own
+    /// recorded phases carried targets with no matching plan day behind them
+    /// — a workout the runner built on the watch himself, most often a
+    /// race-day pacing plan. See `lib/postrun/wire.ts`'s doc for the
+    /// Americas Finest City half, the run that found this gap: five real
+    /// per-segment targets, graded correctly, attributed to nobody.
+    let targetProvenanceNote: String?
     /// Already drawn by the recap tile as the first `fact`. Null when nothing
     /// honest can be said about what the session cost.
     let cost: String?
@@ -120,7 +130,7 @@ struct PostRunV5: Decodable, Equatable {
     let coverage: PostRunCoverageV5?
 
     enum K: String, CodingKey {
-        case version, runId, decisionVersion, headline, summary, cost
+        case version, runId, decisionVersion, headline, summary, targetProvenanceNote, cost
         case learned, change, changeState, changes, next, why, accessibilitySummary
         case capture, strides, coverage
     }
@@ -142,6 +152,7 @@ struct PostRunV5: Decodable, Equatable {
         decisionVersion = str(.decisionVersion)
         headline = str(.headline)
         summary = str(.summary)
+        targetProvenanceNote = optStr(.targetProvenanceNote)
         cost = optStr(.cost)
         learned = str(.learned)
         change = str(.change)
@@ -161,12 +172,13 @@ struct PostRunV5: Decodable, Equatable {
          changeState: String, changes: [String], next: String?, why: [String],
          accessibilitySummary: String,
          capture: String? = nil, strides: PostRunStridesV5? = nil,
-         coverage: PostRunCoverageV5? = nil) {
+         coverage: PostRunCoverageV5? = nil, targetProvenanceNote: String? = nil) {
         self.version = version
         self.runId = runId
         self.decisionVersion = decisionVersion
         self.headline = headline
         self.summary = summary
+        self.targetProvenanceNote = targetProvenanceNote
         self.cost = cost
         self.learned = learned
         self.change = change

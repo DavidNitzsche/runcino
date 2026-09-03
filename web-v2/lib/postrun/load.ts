@@ -332,6 +332,29 @@ export async function loadPostRunExperience(
    */
   const phases = await resolveStoredPhases(userId, dateISO, data);
 
+  /* WHO SET THE TARGET this session gets graded against (PROVENANCE-1,
+   * 2026-09-03). `resolveWorkoutVerdict` below grades `phases` against
+   * whatever `targetPaceSPerMi` each phase itself carries — it does NOT
+   * require `planRow.workout_spec` to have a per-phase target at all, which
+   * is exactly how the Americas Finest City half was graded "Slower than
+   * target" against real 7:08/6:39/6:51/6:48/6:58 per-mile splits with NO
+   * `plan_workouts` row for that day: David's own watch carried a
+   * structured, five-segment pacing plan for the race, submitted through
+   * the same watch-completion pipeline a training session uses. The grade
+   * was correct. The screen never said whose target it was.
+   *
+   * `'plan'` when a plan row's own spec exists (the ordinary, coach-
+   * authored case — no note needed, see `readExecution`). `'self_authored'`
+   * when no plan row exists for the day but the run's own phases carry
+   * embedded targets anyway — a workout the runner built on the watch
+   * himself. `'none'` when nothing graded the work at all, which
+   * `resolveWorkoutVerdict` already reports honestly as `not_graded`. */
+  const targetProvenance: 'plan' | 'self_authored' | 'none' = planRow?.workout_spec
+    ? 'plan'
+    : phases.some((p) => p != null && typeof p === 'object' && (p as Record<string, unknown>).targetPaceSPerMi != null)
+      ? 'self_authored'
+      : 'none';
+
   // THE canonical grade. Never re-derived on a surface.
   const verdict = resolveWorkoutVerdict({
     type: planRow?.type ?? (data.workoutType as string | null) ?? null,
@@ -473,6 +496,7 @@ export async function loadPostRunExperience(
     plannedTypeDisplay: planRow?.type ? displayTypeFor(planRow.type, planRow.sub_label) : null,
     plannedDistanceMi: planRow?.distance_mi != null ? Number(planRow.distance_mi) : null,
     raceMatched,
+    targetProvenance,
     verdict,
     evidence,
     workHrCeilingBpm: workCeiling?.bpm ?? null,
