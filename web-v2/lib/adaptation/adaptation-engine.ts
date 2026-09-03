@@ -644,16 +644,29 @@ export type VolumeToleranceRead =
  * stopped it: the DENSITY lever refused on `WEEK_TAKES_NO_STEP` while VOLUME and
  * DURATION read `currentWeeklyMi` off the taper and added to it.
  *
- * The flags are the plan's own (`plan_weeks.is_cutback`, `is_race_week`,
- * `plan_phases.label = 'TAPER'`) and the predicate is `weekRowNoStepReason` in
+ * The flags are the plan's own (`plan_weeks.is_cutback`, `is_race_week`) plus
+ * `plan_phases.label`, and the predicate is `weekRowNoStepReason` in
  * `lib/plan/progression-pass.ts` — ONE definition, shared with the density
  * gate, so the three levers cannot disagree about what a no-step week is
  * (Rule 16). Rule 11: `readable: false` is a failed read of the flags and is
  * its own state; the levers refuse on it rather than assuming the week steps.
+ *
+ * 2026-09-03 · RECOVERY joined the union. The predicate had TAPER and not
+ * RECOVERY while `coaching-thesis.ts` had both, and a recovery block is a
+ * REVERSE taper — its weekly percentages rise — so `is_cutback` is false on
+ * every one of its weeks by construction and no flag was covering for the
+ * gap. All three levers would have taken a progression step through a
+ * post-race recovery block. The phase labels now live in
+ * `lib/plan/non-building-week.ts`; `_non_building_week.test.ts` asserts this
+ * union and that module cannot drift apart.
  */
 export type WeekAheadRead =
   | { readable: true; takesProgressionStep: true }
-  | { readable: true; takesProgressionStep: false; reason: 'CUTBACK' | 'RACE_WEEK' | 'TAPER' }
+  | {
+      readable: true;
+      takesProgressionStep: false;
+      reason: 'CUTBACK' | 'RACE_WEEK' | 'TAPER' | 'RECOVERY';
+    }
   | { readable: false };
 
 /** The VOLUME lever's slice. Absorbed load, and the ceiling it may not pass. */
@@ -911,6 +924,13 @@ function loadAbsorptionGate(v: AdaptationVerdict): LoadAbsorptionGate {
  * refusal, not a hold — the flags could not be read, and a lever that assumed
  * the week steps would be adding load on an assumption (Rule 11).
  */
+/** Compile-time exhaustiveness for `WeekAheadRead`'s reason union. A new
+ *  reason with no runner-facing noun is a type error here rather than a
+ *  sentence that quietly calls it a taper. */
+function assertNoUnnamedReason(reason: never): never {
+  throw new Error(`week-ahead reason has no runner-facing noun: ${String(reason)}`);
+}
+
 function weekAheadBlock(
   w: WeekAheadRead,
 ): { decision: 'HOLD' | 'INSUFFICIENT_EVIDENCE'; code: AdaptationReasonCode; sentence: string } | null {
@@ -922,9 +942,19 @@ function weekAheadBlock(
     };
   }
   if (w.takesProgressionStep) return null;
+  /* EVERY REASON GETS ITS OWN NOUN. The `else` used to say "inside the taper"
+   * for anything that was not a cutback or a race week, so the moment RECOVERY
+   * joined the union (2026-09-03) a post-race recovery block would have been
+   * narrated to the runner as a taper. Two different facts under one sentence
+   * is Rule 16, and it is worse in a HOLD explanation than anywhere else,
+   * because the sentence is the only account he gets of why the plan did not
+   * push. Exhaustive by construction: `never` below stops the next reason
+   * being added without a word for it. */
   const noun = w.reason === 'CUTBACK' ? 'a cutback week'
     : w.reason === 'RACE_WEEK' ? 'race week'
-      : 'inside the taper';
+      : w.reason === 'TAPER' ? 'inside the taper'
+        : w.reason === 'RECOVERY' ? 'inside a recovery block'
+          : assertNoUnnamedReason(w.reason);
   return {
     decision: 'HOLD',
     code: 'WEEK_AHEAD_TAKES_NO_PROGRESSION_STEP',

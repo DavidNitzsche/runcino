@@ -272,10 +272,12 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
      * each matching a different subset of the three id spellings, and two of
      * them disagreed in production. A stale exemption fails until deleted, so
      * this is the deletion rather than a comment beside a live entry. */
-    'app/api/runs/[id]/route.ts':
-      'Run detail PATCH · the shoe-assign fallbacks read day and distance directly. '
-      + 'Its id/activityId lookups now go through `runIdentityMatchSql`; the day and '
-      + 'distance reads in the two synthetic-id fallbacks are the remainder.',
+    // 2026-09-03 · 'app/api/runs/[id]/route.ts' DELETED from this list. Its two
+    // synthetic-id fallbacks — the day and distance reads this entry excused —
+    // moved into `lib/runs/canonical-ref.ts` as rungs 4 and 5, where they use
+    // `runDaySql` and `runDistanceMiSql`. The route now reads no raw jsonb at
+    // all. The ratchet is what made this deletion mandatory rather than
+    // optional, which is the point of it.
     'app/api/strava/push-recent/route.ts': 'Push path · source/day.',
     'app/api/strava/webhook/route.ts': 'Webhook · day only.',
     'app/api/streak/route.ts': 'Day only · next batch.',

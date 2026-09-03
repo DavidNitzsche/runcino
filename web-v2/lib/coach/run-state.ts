@@ -45,7 +45,7 @@ import {
   reconcileRun, reconcileSplitsTotal, reconcileHrZones,
   coherentPace, coherentMovingSec, coherentElapsedSec, runCadenceSpm,
 } from '@/lib/runs/coherence';
-import { runAvgHr, runMaxHr, CANONICAL_ROW_SQL, type RunData } from '@/lib/runs/run-shape';
+import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
 import { resolveCanonicalRunRowId } from '@/lib/runs/canonical-ref';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
 import { resolveHrZoneShares } from './hr-zone-bucket';
@@ -567,36 +567,25 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   // reference runner's `runs` are merge losers and no loser id collides with
   // a canonical one, so every absorbed id resolved HERE, to the discarded
   // half of the merge — 0 splits and no HR on a long run whose canonical row
-  // carries 13 splits and 159 bpm. The measurement, the three rungs and the
-  // reason a bare `AND ${CANONICAL_ROW_SQL}` would be the wrong fix all live
+  // carries 13 splits and 159 bpm. The measurement, the five rungs and the
+  // reason a bare canonical predicate would be the wrong fix all live
   // in `lib/runs/canonical-ref.ts`, which is now the ONE place that answers
   // "which row does this id mean" (Rule 14: one definition, not one per call
   // site — `/api/runs/[id]/recap` and the shoe PATCH had the same defect).
+  //
+  // 2026-09-03 · THE SYNTHETIC-ID FALLBACK THAT USED TO SIT BELOW IS GONE, into
+  // the resolver as its rung 4. It was the second half of the same Rule 16
+  // defect: this function knew the "YYYY-MM-DD-mi" spelling, the shoe PATCH
+  // knew that one AND the trailing-date one, and the recap route knew neither,
+  // so `<uuid>-2026-09-02` assigned a shoe successfully and 404'd here. One id,
+  // three answers, chosen by which route you happened to call.
   const ref = await resolveCanonicalRunRowId(userId, activityId);
-  let row = ref.ok ? (await pool.query(
+  const row = ref.ok ? (await pool.query(
     `SELECT id, data, shoe_id, weather_enriched_at FROM runs
       WHERE user_uuid = $1 AND id::text = $2
       LIMIT 1`,
     [userId, ref.rowId]
   )).rows[0] : undefined;
-
-  // Fallback: synthetic id "YYYY-MM-DD-mi"
-  if (!row) {
-    const m = activityId.match(/^(\d{4}-\d{2}-\d{2})-([\d.]+)$/);
-    if (m) {
-      const [, date, mi] = m;
-      const fb = (await pool.query(
-        `SELECT id, data, shoe_id, weather_enriched_at FROM runs
-          WHERE user_uuid = $1
-            AND ${CANONICAL_ROW_SQL}
-            AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $2
-            AND ABS((data->>'distanceMi')::numeric - $3::numeric) < 0.05
-          ORDER BY data->>'startLocal' DESC LIMIT 1`,
-        [userId, date, mi]
-      ).catch(() => ({ rows: [] }))).rows[0];
-      row = fb;
-    }
-  }
 
   if (!row) return null;
   const r = row.data;

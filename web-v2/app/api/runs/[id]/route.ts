@@ -23,7 +23,6 @@ import { loadRunDetail } from '@/lib/coach/run-state';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
-import { CANONICAL_ROW_SQL } from '@/lib/runs/run-shape';
 import { resolveCanonicalRunRowId } from '@/lib/runs/canonical-ref';
 import { loadPostRunExperience } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
@@ -112,15 +111,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
        * — the shoe was written onto the merge LOSER. `lib/shoe/mileage.ts`
        * computes shoe mileage from CANONICAL runs, so those miles never
        * accrued and the pick did not come back on the next read: the same
-       * symptom the 2026-05-27 synthetic-id fallback below was added for
-       * ("I selected it, clicked off, came back. not there."), from a
-       * different cause. 66 of the 118 pairs already disagree on shoe_id.
+       * symptom the 2026-05-27 synthetic-id fallbacks were added for ("I
+       * selected it, clicked off, came back. not there."), from a different
+       * cause. 66 of the 118 pairs already disagree on shoe_id.
        *
        * The resolver follows `mergedIntoId` rather than just adding the
        * predicate, so an absorbed id still assigns — it assigns to the
-       * survivor, which is the row every reader will look at. */
+       * survivor, which is the row every reader will look at.
+       *
+       * 2026-09-03 · THOSE TWO SYNTHETIC-ID FALLBACKS ARE GONE FROM HERE,
+       * into the resolver as its rungs 4 and 5.
+       *
+       * They were added here on 2026-05-27 for a real symptom ("I selected it,
+       * clicked off, came back. not there.") and they worked — but only for
+       * PATCH. `loadRunDetail` carried one of the two and the recap route
+       * carried neither, so `<uuid>-2026-09-02` wrote a shoe here and 404'd on
+       * the GET beside it. Verified against production 2026-09-03: three ids of
+       * that shape match zero rows on both identity rungs and exactly one
+       * canonical run by trailing date.
+       *
+       * The resolver's day rungs also REFUSE an ambiguous day, which the copy
+       * removed from here did not — its own comment conceded it could tag "the
+       * wrong same-day run". */
       const ref = await resolveCanonicalRunRowId(userId, id);
-      let updated = ref.ok
+      const updated = ref.ok
         ? await pool.query(
             `UPDATE runs
                 SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
@@ -130,48 +144,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             [shoeId, userId, ref.rowId]
           )
         : { rowCount: 0 } as { rowCount: number };
-      // 2026-05-27: synthetic-id fallback. Watch-synced runs without a
-      // first-party Strava id are referenced by "YYYY-MM-DD-mi" — that
-      // matches the GET fallback in loadRunDetail. Without this, PATCH
-      // silently 404'd on those runs and the shoe never persisted even
-      // though the UI optimistically showed it as assigned. David:
-      // "I selected it, clicked off, came back. not there."
-      if (updated.rowCount === 0) {
-        const m = id.match(/^(\d{4}-\d{2}-\d{2})-([\d.]+)$/);
-        if (m) {
-          const [, date, mi] = m;
-          updated = await pool.query(
-            `UPDATE runs
-                SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
-              WHERE user_uuid = $2
-                AND ${CANONICAL_ROW_SQL}
-                AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
-                AND ABS((data->>'distanceMi')::numeric - $4::numeric) < 0.05
-           RETURNING id, shoe_id`,
-            [shoeId, userId, date, mi]
-          );
-        }
-      }
-      // 2026-05-27: second fallback for the "<uuid>-YYYY-MM-DD" and
-      // "wko_<uuid>" formats that /api/log returns for manually-logged
-      // runs. The trailing-date suffix is enough to scope the UPDATE
-      // when there's only one run on that day for the user (the common
-      // case). If multiple runs exist on a day and none has a real
-      // Strava id this could over-match — but the worst case is shoe
-      // tagged on the wrong same-day run, not data loss.
-      if (updated.rowCount === 0) {
-        const dateMatch = id.match(/(\d{4}-\d{2}-\d{2})$/);
-        if (dateMatch) {
-          updated = await pool.query(
-            `UPDATE runs
-                SET shoe_id = $1::int, shoe_auto_assigned_at = NULL
-              WHERE user_uuid = $2
-                AND ${CANONICAL_ROW_SQL}
-                AND COALESCE(data->>'date', LEFT(data->>'startLocal',10)) = $3
-           RETURNING id, shoe_id`,
-            [shoeId, userId, dateMatch[1]]
-          );
-        }
+      // RULE 11 · an ambiguous day and a missing run are two facts, and the
+      // runner can act on only one of them. Say which — and say it with a
+      // LITERAL, because `_refusal_wire.test.ts` reads these bodies
+      // statically and a `reason` variable is invisible to it. A sentence a
+      // gate cannot see is a sentence that can quietly become empty.
+      if (updated.rowCount === 0 && !ref.ok && ref.reason === 'ambiguous_day') {
+        return NextResponse.json({
+          error: 'ambiguous_day',
+          reason: 'You have more than one run that day. Open the run itself and pick the shoe there.',
+        }, { status: 404 });
       }
       if (updated.rowCount === 0) {
         return NextResponse.json({ error: 'run_not_found', reason: 'That run is not in your log any more.' }, { status: 404 });

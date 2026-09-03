@@ -56,19 +56,94 @@
  *                                to nothing. Corruption — the caller gets the
  *                                loser and a warning, because returning null
  *                                would erase a run the runner really did.
+ *   ok · via 'synthetic_day_distance'
+ *                                no row carries this id string; it is a
+ *                                "YYYY-MM-DD-mi" synthetic, and exactly one
+ *                                canonical run that day is that long.
+ *   ok · via 'trailing_date'     no row carries this id string; it ends in a
+ *                                date, and the runner has exactly ONE canonical
+ *                                run that day.
+ *   not ok · 'ambiguous_day'     the id only names a DAY, and that day holds
+ *                                more than one canonical run. A refusal, not a
+ *                                guess (Rule 11).
  *   not ok · 'no_such_run'       no row of this runner's answers to that id
  *
  * `via` is on the success branch on purpose: a caller that wants to log or
  * label the redirect can, and a caller that does not care reads `rowId` and is
- * correct by default. That is the posture Rule 11 asks for — three
- * distinguishable facts, and the safe one as the default.
+ * correct by default. That is the posture Rule 11 asks for — distinguishable
+ * facts, and the safe one as the default.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * WHY RUNGS 4 AND 5 ARE HERE AND NOT IN A ROUTE (2026-09-03 · Rule 16)
+ *
+ * They already existed — three times, in three verbs, and no two agreed:
+ *
+ *   `PATCH /api/runs/[id]`   resolver → "YYYY-MM-DD-mi" → trailing date
+ *   `loadRunDetail`          resolver → "YYYY-MM-DD-mi"
+ *   `/api/runs/[id]/recap`   resolver
+ *
+ * So the SAME id string assigned a shoe and 404'd the run it assigned it to.
+ * Measured on production the same day, `faff_readonly`, reference runner
+ * `0645f40c-951d-4ccc-b86e-9979cd26c795` — three ids of the form
+ * `<uuid>-YYYY-MM-DD` (the spelling `/api/log` and the coach-intent `field`
+ * column both carry, while the run row itself carries `<uuid>-YYYY-MM-DD#HHMM`):
+ *
+ *     id                                   rung1  rung2  trailing-date
+ *     …-2026-09-01                             0      0              1
+ *     …-2026-08-30                             0      0              1
+ *     …-2026-09-02                             0      0              1
+ *
+ * Zero on the identity rungs is a 404 from GET and from the recap; one on the
+ * trailing-date rung is a successful write from PATCH. One id, two answers,
+ * chosen by HTTP verb. The previous agent correctly declined to add a fourth
+ * rung inside the route — that would have been the second resolver the route's
+ * own comments complain about — so the rungs move here and the routes lose
+ * their copies.
+ *
+ * THE DAY RUNGS REFUSE WHEN THE DAY IS AMBIGUOUS, which the route's copy did
+ * not. Its comment conceded the over-match ("the worst case is shoe tagged on
+ * the wrong same-day run") and that was tolerable for a shoe; it is not
+ * tolerable for GET, which would draw a different run than the one asked for.
+ * Measured on the same account: 144 of 149 run days hold exactly one canonical
+ * run and 5 hold more, so the refusal costs 3% of days and buys the guarantee
+ * that a resolved day is an unambiguous one. Rule 11 — "the day is ambiguous"
+ * and "there is no such run" are two facts and the caller can tell them apart.
  */
 import { pool } from '@/lib/db/pool';
-import { runIdentityMatchSql, runMergedIntoIdSql, CANONICAL_ROW_SQL } from '@/lib/runs/run-shape';
+import {
+  runIdentityMatchSql,
+  runMergedIntoIdSql,
+  runDaySql,
+  runDistanceMiSql,
+  CANONICAL_ROW_SQL,
+} from '@/lib/runs/run-shape';
 
 export type CanonicalRunRef =
-  | { ok: true; rowId: string; via: 'canonical' | 'absorbed_pointer' | 'dangling_pointer' }
-  | { ok: false; reason: 'no_such_run' };
+  | {
+      ok: true;
+      rowId: string;
+      via:
+        | 'canonical'
+        | 'absorbed_pointer'
+        | 'dangling_pointer'
+        | 'synthetic_day_distance'
+        | 'trailing_date';
+    }
+  | { ok: false; reason: 'no_such_run' | 'ambiguous_day' };
+
+/** `YYYY-MM-DD-mi` · the state loader's synthetic id for a run with no
+ *  first-party activity id. Anchored at both ends: this is the WHOLE id. */
+const SYNTHETIC_DAY_DISTANCE_ID = /^(\d{4}-\d{2}-\d{2})-([\d.]+)$/;
+
+/** `…-YYYY-MM-DD` · the `<uuid>-YYYY-MM-DD` and `wko_<uuid>-YYYY-MM-DD`
+ *  spellings `/api/log` returns for a manually-logged run. Only the trailing
+ *  date is load-bearing, so only it is matched. */
+const TRAILING_DATE_ID = /(\d{4}-\d{2}-\d{2})$/;
+
+/** How near a synthetic id's stated distance must be to the row's, in miles.
+ *  The synthetic is minted from the same `distanceMi` it is compared against,
+ *  so this is a rounding tolerance and not a fuzzy match. */
+const SYNTHETIC_DISTANCE_TOLERANCE_MI = 0.05;
 
 /**
  * Resolve any spelling of a run id to the PRIMARY KEY of the canonical row.
@@ -105,7 +180,10 @@ export async function resolveCanonicalRunRowId(
       LIMIT 1`,
     [userUuid, runId],
   )).rows[0];
-  if (!loser) return { ok: false, reason: 'no_such_run' };
+  // NO ROW ANSWERS TO THIS STRING. That is not yet "no such run" — the id may
+  // be one of the two synthetic spellings, which name a run by day rather than
+  // by identity. Rungs 4 and 5 below.
+  if (!loser) return resolveByDay(userUuid, runId);
 
   const survivor = loser.merged_into_id == null ? null : (await pool.query<{ id: string }>(
     `SELECT id::text AS id FROM runs
@@ -125,4 +203,79 @@ export async function resolveCanonicalRunRowId(
     `row; its splits, HR, shoe and elevation may be the discarded half of a merge.`,
   );
   return { ok: true, rowId: loser.id, via: 'dangling_pointer' };
+}
+
+/**
+ * Rungs 4 and 5 · the id names a DAY, because nothing carries it as identity.
+ *
+ * Both spellings are minted by this app, not by a device, and both were already
+ * being resolved — in the routes, differently. See the header.
+ *
+ * Every query here states `CANONICAL_ROW_SQL` (Rule 14): resolving a synthetic
+ * id onto a merge loser is the same defect the identity rungs above exist to
+ * stop, and a day is exactly where a merge pair both live.
+ */
+async function resolveByDay(userUuid: string, runId: string): Promise<CanonicalRunRef> {
+  /* BOTH RUNGS RESOLVE ONLY AN UNAMBIGUOUS DAY. `LIMIT 2` and a count, never
+   * `LIMIT 1` off an unordered set — which is what the route copy did, and its
+   * own comment conceded it could "tag the wrong same-day run". That was
+   * tolerable for a shoe; it is not tolerable for a GET, which would draw a
+   * different run than the one asked for and say nothing.
+   *
+   * Rule 11: the refusal is its own fact. "This day holds two runs" is
+   * something the caller can explain and the runner can act on; "there is no
+   * such run" is not the same sentence and is not true.
+   *
+   * Measured on production 2026-09-03, reference runner: 144 of 149 run days
+   * hold exactly one canonical run and 5 hold more, so this costs ~3% of days
+   * and buys the guarantee that a resolved day is an unambiguous one. */
+  const resolveDay = async (
+    day: string,
+    extraSql: string,
+    extraParams: unknown[],
+  ): Promise<string | null | 'ambiguous'> => {
+    const hits = (await pool.query<{ id: string }>(
+      `SELECT id::text AS id FROM runs
+        WHERE user_uuid = $1
+          AND ${CANONICAL_ROW_SQL}
+          AND ${runDaySql()} = $2
+          ${extraSql}
+        LIMIT 2`,
+      [userUuid, day, ...extraParams],
+    )).rows;
+    if (hits.length === 1) return hits[0].id;
+    if (hits.length > 1) {
+      console.warn(
+        `[canonical-ref] run id names the day ${day}, which holds more than one matching ` +
+        `canonical run. Refusing rather than picking one.`,
+      );
+      return 'ambiguous';
+    }
+    return null;
+  };
+
+  // Rung 4 · "YYYY-MM-DD-mi". The distance is part of the id, so a day holding
+  // two runs of different lengths is still unambiguous here — which is why this
+  // rung is tried before the date-only one.
+  const synthetic = SYNTHETIC_DAY_DISTANCE_ID.exec(runId);
+  if (synthetic) {
+    const [, day, mi] = synthetic;
+    const hit = await resolveDay(
+      day,
+      `AND ABS(${runDistanceMiSql()} - $3::numeric) < $4::numeric`,
+      [mi, SYNTHETIC_DISTANCE_TOLERANCE_MI],
+    );
+    if (hit === 'ambiguous') return { ok: false, reason: 'ambiguous_day' };
+    if (hit) return { ok: true, rowId: hit, via: 'synthetic_day_distance' };
+  }
+
+  // Rung 5 · "…-YYYY-MM-DD". The date is ALL this id says.
+  const trailing = TRAILING_DATE_ID.exec(runId);
+  if (trailing) {
+    const hit = await resolveDay(trailing[1], '', []);
+    if (hit === 'ambiguous') return { ok: false, reason: 'ambiguous_day' };
+    if (hit) return { ok: true, rowId: hit, via: 'trailing_date' };
+  }
+
+  return { ok: false, reason: 'no_such_run' };
 }
