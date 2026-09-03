@@ -32,45 +32,56 @@ an incompatible structure. What remains is one system: adaptation.
 
 ---
 
-## 2 · The plan as it composes today
+## 2 · The plan, as it would actually be written
 
-| Wk | Start | Mi | Long | Notable | Flags |
-|---|---|---|---|---|---|
-| 0 | 08-24 | 46.0 → **38.0 written** | 14.5 → *sealed* | see §13.1 | |
-| 1 | 08-31 | 50.0 | 15.0 | | |
-| 2 | 09-07 | 24.4 | RACE 6.2 | Santa Monica 10k · B | cutback |
-| 3 | 09-14 | 48.0 | 16.5 | | |
-| 4 | 09-21 | 56.2 | 17.0 | **Dodgers C + long · 23.21 mi across the pair** | |
-| 5 | 09-28 | 42.0 | 13.0 | | cutback |
-| 6 | 10-05 | 59.5 | 18.5 | | |
-| 7 | 10-12 | **60.0** | 19.0 | `LONG · 4mi @ M + 2mi @ T` | |
-| 8 | 10-19 | 45.0 | 14.0 | | cutback |
-| 9 | 10-26 | 59.5 | **20.5** | **`LONG · 11mi @ MP`** | |
-| 10 | 11-02 | 44.6 | RACE 13.1 | Run Malibu HM · B | cutback |
-| 11 | 11-09 | 40.5 | 16.0 | post-race | cutback |
-| 12 | 11-16 | 49.0 | 18.0 | | |
-| 13 | 11-23 | 36.0 | 13.0 | | |
-| 14 | 11-30 | 44.2 | RACE 26.2 | **CIM · A** | race week |
+Two columns, because they are not the same thing and conflating them is the
+error §13.1 corrects. **Composed** is the composer's arithmetic. **Written** is
+what a rebuild persists — past-dated rows are carried from the sealed history,
+never recomposed, and a past date with no live row is not written at all.
 
-| | live | rebuilt |
-|---|---|---|
-| peak week | 61.0 | 60.0 |
-| peak long | 21.5 | 20.5 |
-| marathon-pace miles, total | 23.0 | **33.0** |
-| MP embedded in long runs | 5.0 | **15.0** |
-| block total | 695.4 | 704.9 |
+| Wk | Start | composed | **WRITTEN** | long | Notable | Flags |
+|---|---|---|---|---|---|---|
+| 0 | 08-24 | 46.0 | **38.0** | 13.0 *sealed* | 5 sealed rows carried | |
+| 1 | 08-31 | 50.0 | **47.5** | 15.0 | 2 sealed rows carried | |
+| 2 | 09-07 | 24.4 | **24.4** | RACE 6.2 | Santa Monica 10k · B | cutback |
+| 3 | 09-14 | 48.0 | **48.0** | 16.5 | | |
+| 4 | 09-21 | 56.2 | **56.2** | 17.0 | **Dodgers C + long · 23.21 mi pair** | |
+| 5 | 09-28 | 42.0 | **42.0** | 13.0 | | cutback |
+| 6 | 10-05 | 59.5 | **59.5** | 18.5 | | |
+| 7 | 10-12 | 60.0 | **60.0** | 19.0 | `LONG · 4mi @ M + 2mi @ T` | **peak week** |
+| 8 | 10-19 | 45.0 | **45.0** | 14.0 | | cutback |
+| 9 | 10-26 | 59.5 | **59.5** | **20.5** | **`LONG · 11mi @ MP`** | peak long |
+| 10 | 11-02 | 44.6 | **44.6** | RACE 13.1 | Run Malibu HM · B | cutback |
+| 11 | 11-09 | 40.5 | **40.5** | 16.0 | post-race | cutback |
+| 12 | 11-16 | 49.0 | **49.0** | 18.0 | `11 mi @ MP` | |
+| 13 | 11-23 | 36.0 | **36.0** | 13.0 | `7 mi @ MP` | |
+| 14 | 11-30 | 44.2 | **44.2** | RACE 26.2 | **CIM · A** | race week |
+
+**Only weeks 0 and 1 differ**, and only because they contain sealed rows. Every
+other week is written exactly as composed.
+
+| | live | **written** | delta |
+|---|---|---|---|
+| block total | 695.4 | **694.4** | **−1.0** |
+| peak week | 61.0 | **60.0** | −1.0 |
+| peak long | 21.5 | **20.5** | −1.0 |
+| marathon-pace miles | 38.5 | **33.0** | **−5.5** |
+
+**The block total is essentially unchanged.** An earlier draft of this document
+reported +9.5 by comparing composed against live; that was wrong and the
+comparison above is like-for-like.
 
 The races, prescribed through the complete production authoring path:
 
-| Date | Race | Role | Stated goal | Projection | Prescribed |
+| Date | Race | Role | Stated goal | Prescribed | Source |
 |---|---|---|---|---|---|
-| 09-13 | Santa Monica 10k | B | none | 42:59 | 43:00 · 6:56 |
-| 09-26 | Dodgers 10K | **C** | 45:00 | 43:04 | **45:00 · 7:15, ceiling 44:30** |
-| 11-08 | Run Malibu HM | B | 1:30:00 | 1:36:02 | 1:32:10 · 7:02 |
-| 12-06 | **CIM** | A | **3:00:00** | 3:23:50 | **3:13:30 · 7:23** |
+| 09-13 | Santa Monica 10k | B | none | 43:00 · 6:56 | `expected_race_day` |
+| 09-26 | Dodgers 10K | **C** | 45:00 | **45:00 · 7:15** | `controlled_c_effort` |
+| 11-08 | Run Malibu HM | B | 1:30:00 | 1:32:10 · 7:02 | `stated_goal_clamped_to_range_edge` |
+| 12-06 | **CIM** | A | **3:00:00** | **3:13:30 · 7:23** | `stated_goal_clamped_to_range_edge` |
 
-Four distinct paces, each with one owner. Your stated goal is untouched at
-10800 s and is never renegotiated:
+Four distinct paces, each with one owner. The stated goal is untouched at
+10800 s and never prescribed:
 
 > "Your goal (3:00:00) is faster than the likely range's fast edge (3:13:27) ·
 > race to the edge; the goal stays yours."
@@ -131,6 +142,22 @@ race replaces the long run on the runner's own long day, so the cadence anchored
 on a deload, stepped once onto the raced week, and stopped — giving the whole
 four-week race-specific phase **zero** MP long runs. The engine wrote
 `racePaceLongsInPhase: 0` into `authored_state` and nothing read it.
+
+**The marathon-pace repair is real but incomplete, and the honest comparison is
+against the LIVE plan, not against the broken composition.** Before the fix the
+race-specific phase received ZERO marathon-pace long runs and the block carried
+23.0 MP miles. It now carries 33.0. His live plan carries **38.5**. So the
+mechanism is fixed — the phase is no longer empty — but the rebuilt block is
+still **5.5 marathon-pace miles short of the plan he is on**, entirely in the
+embedded half: 20.5 embedded miles live against 15.0 rebuilt. The stated-pace
+half is identical at 18.0 in both.
+
+(Both figures count mile-denominated segments, which is what the engine's own
+`33 mi at marathon pace` counts. The rebuilt block additionally carries about
+1.2 mi of kilometre-denominated MP reps inside two ladder sessions; the live
+plan has none. Including them the gap is 4.3 rather than 5.5.) Whether that is
+correct is a coaching question, not a bug, and it is stated here rather than
+left inside a favourable comparison.
 
 The longest run is now chosen from evidence and the choice persisted:
 
@@ -285,6 +312,32 @@ the live plan.
 
 ---
 
+## 10a · How the numbers in this document were checked
+
+Three of the runner's questions each found an error in the previous draft, which
+means the draft was not audited hard enough. The common cause was one habit:
+**reporting what the composer computes rather than what the write persists.**
+§2 now carries both columns for that reason, and §13.1 states the difference
+explicitly.
+
+Provenance for every claim here:
+
+- **Measured by me, read-only against production, in this pass:** the
+  composed-versus-written table and both totals; the peak week and peak long;
+  the marathon-pace accounting on both the live plan and the rebuild; all four
+  race prescriptions through the live outlook; the CIM improvement model; the
+  sealed hashes.
+- **Measured by an agent and quoted, not independently re-run by me:** the
+  cliff sensitivity walks in §4; the falsification outputs; the Dodgers
+  `43:00 → 44:30` pricing proof; the race-row contract's zero violations.
+- **Not measured by anyone** — see §11.
+
+Where a figure came from an agent I have said so rather than absorbing it into
+my own voice. Two agent claims were checked and corrected earlier in this
+programme, so the distinction is not academic.
+
+---
+
 ## 11 · What is not verified
 
 - **The Swift Block screen rendering** the new per-week explanations. It
@@ -369,12 +422,13 @@ number at all.** On his live plan:
 
 The tempo sessions carry 7:52. The long runs carry **8:40 — the long-run easy
 pace** — and the eleven marathon-pace miles inside them have no target of their
-own on the row. So of the 33 miles this document credits to marathon pace,
-**15 are embedded in long runs where the row does not state the pace.**
+own on the row. So of the 33 miles credited to marathon pace, **18 sit on rows
+that state a marathon pace and 15 are embedded in long runs whose row prescribes
+8:40.**
 
 That is a defect in the answer this handback gave, not only in the engine. The
-honest statement is: 18 miles are prescribed AT a stated marathon pace; 15 are
-labelled marathon-pace inside long runs whose row prescribes 8:40.
+honest statement is: **18 miles are prescribed at a stated marathon pace; 15 are
+labelled marathon-pace inside long runs whose row prescribes 8:40.**
 
 ### 13.3 · Why 3:13:30 when the projection is 3:23:50?
 
