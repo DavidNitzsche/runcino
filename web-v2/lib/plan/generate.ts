@@ -10815,7 +10815,13 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     return mx;
   }, 0);
   /** The runner's own biggest 7-day block in the look-back. 0 = not measured. */
-  const demonstratedPeakWeeklyMi = rampEvidence?.peakMi ?? 0;
+  // Rule 11 · THREE states, kept apart at the source rather than downstream.
+  // `?? 0` made "no ramp evidence at all" and "evidence that measured a zero
+  // peak" the same number, and the ceiling below then read both as "no volume
+  // evidence bounded this".
+  const demonstratedPeakWeeklyMi: number | null = rampEvidence
+    ? rampEvidence.peakMi
+    : null;
   /**
    * LOADCONTRACT-1 · the per-cycle growth figure, no longer keyed on
    * `input.level`. `CYCLE_GROWTH_CEILING`'s table is unchanged and still
@@ -10825,9 +10831,12 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
    * the table this way since LONGEVIDENCE-1.
    */
   const cycleGrowth: number = PER_CYCLE_PEAK_GROWTH;
-  const evidenceWeeklyCeilingMi = demonstratedPeakWeeklyMi > 0
-    ? Math.round(demonstratedPeakWeeklyMi * cycleGrowth * 10) / 10
-    : null;
+  // A measured zero peak yields a zero ceiling, which fails closed downstream;
+  // ABSENT evidence yields null, which reads as "nothing bounded this". They
+  // are different facts and they are no longer the same value.
+  const evidenceWeeklyCeilingMi = demonstratedPeakWeeklyMi == null
+    ? null
+    : Math.round(demonstratedPeakWeeklyMi * cycleGrowth * 10) / 10;
   /**
    * LOADCONTRACT-1 · the contract itself, resolved ONCE at authoring off what
    * this authoring measured, and stamped so adaptation can RECOMPUTE it (Rule
@@ -11105,7 +11114,7 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
          * [zero-erasure]` — which is exactly the reading a recomputing consumer
          * must be able to tell apart before deciding whether to trust the
          * frozen ceiling beside it. */
-        demonstrated_peak_weekly_mi: rampEvidence ? demonstratedPeakWeeklyMi : null,
+        demonstrated_peak_weekly_mi: demonstratedPeakWeeklyMi,
         /** Whether the ceiling above was actually BOUNDED by that measurement.
          *  False with no evidence and false at a measured zero — the doctrine
          *  row's own top stood in both cases. */

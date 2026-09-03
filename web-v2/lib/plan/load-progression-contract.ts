@@ -207,8 +207,14 @@ const CITE_VOLUME_RULES = 'Research/00a-distance-running-training.md §"Volume p
 /** A measured number, or null for "not measured". Never 0-as-absent (Rule 11). */
 type Measured = number | null;
 
+/**
+ * Rule 11 · a MEASUREMENT, or null for "not measured". A measured zero is a
+ * measurement and survives as 0 — it is not folded into absence here. Every
+ * consumer below that cannot act on a zero says so at its own site, with its
+ * own reason, which is the distinction this contract exists to keep.
+ */
 const positive = (v: Measured | undefined): number | null =>
-  v != null && Number.isFinite(v) && v > 0 ? v : null;
+  v == null || !Number.isFinite(v) ? null : v;
 
 /**
  * WHAT THE RUNNER HAS ACTUALLY DONE, as of one instant.

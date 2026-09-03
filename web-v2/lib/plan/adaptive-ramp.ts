@@ -112,7 +112,9 @@ export interface RampOpportunity {
   /** Plan id this opportunity applies to. */
   planId: string;
   /** Plan's tier peak weekly upper bound · the bump can't exceed this. */
-  tierWeeklyUpper: number;
+  /** Rule 11 · null when the recompute could not resolve a ceiling. Not 0 —
+   *  an unknown ceiling and a ceiling of zero are different facts. */
+  tierWeeklyUpper: number | null;
   /** Plan's tier peak long upper bound. */
   tierLongUpper: number;
   /** Plan's current peak weekly across non-taper weeks. */
@@ -138,7 +140,7 @@ export interface RampSignals {
     acwrAbsentReason: string | null;
     lastQualityDeltaBpm: number | null;
     lastLongDecouplingPct: number | null;
-    peakHeadroomMi: number;
+    peakHeadroomMi: number | null;
     daysSinceLastBump: number;
     /**
      * LOADCONTRACT-1 · the weekly ceiling this evaluation actually used, and
@@ -147,7 +149,7 @@ export interface RampSignals {
      * cannot tell them apart cannot answer "has this ever pushed up" — which is
      * exactly the ambiguity Rule 21 found had hidden a zero-upgrade engine.
      */
-    tierWeeklyUpperMi: number;
+    tierWeeklyUpperMi: number | null;
     tierWeeklyUpperSource: 'recomputed' | 'stamped' | 'none';
     /** The live demonstrated peak week the recompute used. Null when unread. */
     liveDemonstratedPeakMi: number | null;
@@ -407,9 +409,28 @@ export async function detectRampSignals(
   const recomputed = recomputeAdaptationCeiling({
     stamp: loadStamp,
     liveDemonstratedPeakWeeklyMi: livePeak.ok ? livePeak.value : null,
-    stampedCeilingMi: stampedWeeklyUpper > 0 ? stampedWeeklyUpper : null,
+    // Rule 11 · `readTierUpper` returns 0 BOTH for a plan that carries no band
+    // (pre-tier-system) and for a band whose upper is genuinely 0, so testing
+    // the VALUE collapses absence into measurement. Presence is read off the
+    // stamp itself instead: absent stays null, and a present band flows through
+    // as the number it holds — including a corrupt 0, which fails closed at
+    // `recomputeAdaptationCeiling` rather than being silently reclassified as
+    // "no ceiling recorded".
+    stampedCeilingMi: Array.isArray(activePlan.authoredState['tier_peak_weekly_band'])
+      ? stampedWeeklyUpper
+      : null,
   });
-  const tierWeeklyUpper = recomputed.ceiling.known ? recomputed.ceiling.mi : 0;
+  // Rule 11 · an UNKNOWN ceiling and a ceiling measured at zero are different
+  // facts, and `? mi : 0` made them the same number. The unknown case is now a
+  // branch rather than a value: headroom is not computed at all, and the bump
+  // refuses because it cannot see, not because it measured no room.
+  const ceilingKnown = recomputed.ceiling.known;
+  // Rule 11 · an UNKNOWN ceiling is not a ceiling of zero. This carries no
+  // number at all when the recompute could not resolve one, so nothing
+  // downstream can do arithmetic against a value that was never measured.
+  const tierWeeklyUpperMi: number | null = recomputed.ceiling.known
+    ? recomputed.ceiling.mi
+    : null;
   /* TIEREVIDENCE-2 · say so out loud when this gate is structurally unable to
    * pass, rather than reporting the same `false` a runner with no headroom
    * gets. See `ceilingCanNeverBind`. Kept, and now reporting on the RECOMPUTED
@@ -458,7 +479,9 @@ export async function detectRampSignals(
   // could not measure is the plan we must not add to.
   const peakReadFailed = peakRow === null;
   const currentPeakWeekly = Number(peakRow?.peak_weekly ?? 0);
-  const peakHeadroomMi = tierWeeklyUpper - currentPeakWeekly;
+  const peakHeadroomMi: number | null = tierWeeklyUpperMi == null
+    ? null
+    : tierWeeklyUpperMi - currentPeakWeekly;
   // LOADCONTRACT-1 · the share is `ADAPTATION_HEADROOM_SHARE`, not a literal,
   // because `peakEarnedWhen` computes the demonstrated volume that would
   // satisfy exactly this line and the two must agree by construction (Rule 16).
@@ -466,7 +489,10 @@ export async function detectRampSignals(
   // a refusal, never full headroom.
   const belowTierUpper = !peakReadFailed
     && recomputed.ceiling.known
-    && peakHeadroomMi > tierWeeklyUpper * ADAPTATION_HEADROOM_SHARE;
+    && ceilingKnown
+    && tierWeeklyUpperMi != null
+    && peakHeadroomMi != null
+    && peakHeadroomMi > tierWeeklyUpperMi * ADAPTATION_HEADROOM_SHARE;
 
   // 5. Cooldown · no bump applied in last 7 days
   //
@@ -520,9 +546,9 @@ export async function detectRampSignals(
       acwrAbsentReason,
       lastQualityDeltaBpm,
       lastLongDecouplingPct,
-      peakHeadroomMi: Number(peakHeadroomMi.toFixed(1)),
+      peakHeadroomMi: peakHeadroomMi == null ? null : Number(peakHeadroomMi.toFixed(1)),
       daysSinceLastBump,
-      tierWeeklyUpperMi: tierWeeklyUpper,
+      tierWeeklyUpperMi,
       tierWeeklyUpperSource: recomputed.source,
       liveDemonstratedPeakMi: livePeak.ok ? livePeak.value : null,
     },
