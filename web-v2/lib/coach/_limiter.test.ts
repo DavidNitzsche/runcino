@@ -216,9 +216,20 @@ describe('ambiguous evidence must not produce false confidence', () => {
     // Under-volumed AND missing paces · doctrine's own note that these are
     // entangled (a runner who cannot recover cannot carry volume) shows up here
     // as two findings of near-identical strength. Neither may win by rounding.
+    // TIEREVIDENCE-2 (2026-09-02) · 50 -> 32 mi/wk, because the BAR moved and
+    // this case is about a runner who is under it. `classifyGoalTier` no longer
+    // takes `experienceLevel`, so the volume bar is `TIER_TARGETS.m` at the row
+    // the runner's EVIDENCE earns — `intermediate`'s 45 mi/wk floor with
+    // nothing demonstrated — rather than `advanced`'s 65, which the fixture was
+    // only reaching because `blank()` types 'advanced'. At 50 mi/wk this runner
+    // is now ABOVE the bar the plan is actually built to, which is the
+    // limiter's own promise about what the bar means, so the fixture states the
+    // shortfall it is testing instead of inheriting it from a label. 32 is the
+    // volume at which the two findings are again within a tenth of each other,
+    // which is the property under test — that neither wins by rounding.
     const r = diagnoseLimiter({
       ...blank(),
-      recentWeeklyMi: 50,
+      recentWeeklyMi: 32,
       blockProgressFraction: 0.8,
       sessionsMissingPacesInARow: 2,
     })!;

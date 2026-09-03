@@ -204,12 +204,16 @@ function grade(a: Arc) {
 
   const cat = distanceCategoryOf(built.raceDistanceMi); // engine's actual distance (justRun → hm reference)
   // COLD-1 · grade against the SAME evidence the engine saw. `bestRecentVdotOverride` is
-  // the only measured-fitness signal in the matrix; without it a NULL-level archetype is
-  // capped at intermediate, which is exactly the rung this sweep was blind to.
+  // the only measured-fitness signal in the matrix, and since TIEREVIDENCE-2 it is the ONLY
+  // thing that moves the row at all: `a.experienceLevel` no longer reaches the classifier,
+  // so an archetype with no measured fitness is graded against `developing` whatever the
+  // matrix declared for it. That is the answer key tracking the engine, which is what this
+  // key exists to do — if the two resolved the tier differently every conformance assertion
+  // below would be noise.
   const demonstratedPaceSec = built.derived.bestRecentVdot != null
     ? (() => { const t = predictRaceTime(built.derived.bestRecentVdot, built.raceDistanceMi); return t != null ? Math.round(t / built.raceDistanceMi) : null; })()
     : null;
-  const tier = classifyGoalTier(a.goalTimeSec ? Math.round(a.goalTimeSec / built.raceDistanceMi) : null, built.raceDistanceMi, a.experienceLevel as any, demonstratedPaceSec);
+  const tier = classifyGoalTier(a.goalTimeSec ? Math.round(a.goalTimeSec / built.raceDistanceMi) : null, built.raceDistanceMi, demonstratedPaceSec);
   const band = TIER_TARGETS[cat][tier];
   const recentLong = built.derived.recentLongMi;       // ENGINE-derived (post coherence-clamp)
   const recentWeekly = built.derived.recentWeeklyMi;
@@ -226,7 +230,36 @@ function grade(a: Arc) {
   // overshoot only if the peak exceeds BOTH the band ceiling AND a safe ramp from the reported
   // base — a runner who genuinely reports 45mpw legitimately builds to ~base×1.15 even if their
   // experience tier's band is lower (respecting the base is correct, not over-building).
-  if (peakWk > band.peakWeeklyMileageBand[1] * 1.25 && peakWk > recentWeekly * 1.20) firm(`WK_OVERSHOOT ${cat}/${tier} peak>band×1.25 & base×1.20`, a);
+  /* TIEREVIDENCE-2 (2026-09-02) · A THIRD ESCAPE, and it is the one the block
+   * bound ITSELF with.
+   *
+   * The two clauses below are a template band and the runner's 28-day MEAN.
+   * Neither is the quantity the composer actually sized the block against once
+   * a runner has history: that is `plannedPeakLoad` — their own demonstrated
+   * PEAK WEEK grown by doctrine's per-cycle figure — published on the block as
+   * `authored_state.tier_peak_weekly_band[1]` and spent by
+   * `lib/plan/adaptive-ramp.ts` as the ceiling adaptation may never cross.
+   *
+   * It went from unreachable to reachable here for a mechanical reason: with
+   * the self-declared experience level removed, a `hist:steady` half-marathon
+   * archetype's row moves from `advanced` (band top 85, so the first clause
+   * needed a 106 mi/wk peak) to `intermediate` (top 45, needing only 56.25),
+   * while its demonstrated peak week legitimately licenses more than 1.20x its
+   * 28-day mean. Two archetypes landed in that gap. The plan is right and the
+   * grading proxy was incomplete: a block peaking at or under its OWN published
+   * evidence ceiling has not overshot anything (Rule 16 · grade against the
+   * quantity the engine bound itself with, not a second one that means
+   * something else).
+   *
+   * The clause is narrow on purpose. It exempts only a peak inside the ceiling
+   * the block published, so a plan that overshoots its own ceiling still fires,
+   * and a block carrying no published ceiling gets no exemption at all. */
+  const publishedUpper = (() => {
+    const b = (built.composed.authoredState as Record<string, unknown> | undefined)?.tier_peak_weekly_band;
+    return Array.isArray(b) && typeof b[1] === 'number' && b[1] > 0 ? (b[1] as number) : null;
+  })();
+  const insideOwnCeiling = publishedUpper != null && peakWk <= publishedUpper + 0.05;
+  if (peakWk > band.peakWeeklyMileageBand[1] * 1.25 && peakWk > recentWeekly * 1.20 && !insideOwnCeiling) firm(`WK_OVERSHOOT ${cat}/${tier} peak>band×1.25 & base×1.20`, a);
   for (const w of weeks) {
     if (w.isRaceWeek) continue;
     const realized = w.days.filter((d: any) => d.type !== 'race').reduce((s: number, d: any) => s + d.distanceMi, 0);

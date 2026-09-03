@@ -304,6 +304,19 @@ describe('DOCTRINE-STRIDES-1 · the watch can run a stride', () => {
     let phasesSeen = new Set<string>();
     for (const w of r.composed.weeks) {
       if (w.isRaceWeek) continue;
+      // TIEREVIDENCE-2 (2026-09-02) · DELOADS are out of scope, for the same
+      // measured reason `_mp_doctrine.test.ts` records: this fixture composed
+      // against `TIER_TARGETS.m.advanced` only because it typed
+      // `experienceLevel: 'advanced'`, and on the evidence it carries (VDOT 48,
+      // ~7:04/mi at the marathon) it composes against §"Marathon —
+      // Intermediate". Its cutback weeks are smaller, one easy day is no longer
+      // funded, and the stride pair then has one carrier instead of two. That
+      // is Rule 12's low-volume easy-day allocation, not the stride rule, and
+      // `Research/00b` §"What to Cut First" is doctrine cutting the deload on
+      // purpose. The rule is still asserted on every LOAD week in every phase,
+      // which is where a stride regression would actually live, and the
+      // phase-coverage assertion below still requires all four phases.
+      if (w.isCutback) continue;
       const easyDays = w.days.filter((d) => d.type === 'easy' && d.distanceMi > 0);
       if (easyDays.length === 0) continue;
       const withStrides = easyDays.filter((d) => /strides/i.test(d.subLabel ?? ''));

@@ -30,6 +30,23 @@ function marathonInput(weeklyBaseMi = 60): ComposePlanInput {
     raceDateISO: raceDay.toISOString().slice(0, 10),
     startMondayISO: START_MONDAY,
     level: 'advanced',
+    /* TIEREVIDENCE-2 (2026-09-02) · THE FIXTURE NOW CARRIES THE EVIDENCE ITS
+     * NAME CLAIMS.
+     *
+     * `Research/00a` §3 tags the embedded-T medium-long "(advanced)", and the
+     * composer's gate for it used to be `level === 'advanced'` — the word.
+     * With `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` §"What may not" removing
+     * self-declared experience bands, the gate is now the DEMONSTRATED capacity
+     * band, and this fixture — a 60 mi/wk build for a 3:00 marathon, which is
+     * what "an advanced marathon build" means — reached the composer with no
+     * measured fitness at all and was therefore graded unmeasured.
+     *
+     * VDOT 53 predicts ~3:00 at the marathon (~412 s/mi), inside
+     * `TIER_PACE_EDGES.m.advanced` (420). The fixture is unchanged in every
+     * other respect; what changed is that the claim in its name is now backed
+     * by evidence rather than asserted by a label.
+     */
+    bestRecentVdot: 53,
     recentWeeklyMi: weeklyBaseMi,
     easyDayMedianMi: Math.max(3, Math.round(weeklyBaseMi / 5)),
     recentLongMi: 14,
@@ -181,9 +198,18 @@ describe('VARIATION-CLOSE-1 · §3 embedded-T medium-long is authored, not just 
     ).toBe(true);
   });
 
-  it('a beginner never gets one · the doc tags the variant "(advanced)"', () => {
-    const beginner = { ...marathonInput(25), level: 'beginner' } as ComposePlanInput;
-    for (const l of mlrLabels(beginner)) expect(l).not.toMatch(/@ T\b/);
+  it('a runner with no demonstrated advanced pace never gets one · the doc tags the variant "(advanced)"', () => {
+    // TIEREVIDENCE-2 · the discriminator is the EVIDENCE, not the word. This
+    // used to be `{ ...marathonInput(25), level: 'beginner' }`, which asserted
+    // that a typed label withheld the session; the label is inert now, so the
+    // case withholds the MEASUREMENT instead — a 25 mi/wk runner the app has
+    // never seen race. `bestRecentVdot: undefined` is the whole difference from
+    // the case above.
+    const unmeasured = {
+      ...marathonInput(25), level: 'beginner', bestRecentVdot: undefined,
+    } as unknown as ComposePlanInput;
+    const labels = mlrLabels(unmeasured);
+    for (const l of labels) expect(l).not.toMatch(/@ T\b/);
   });
 
   it('never lands on a week whose long run already carries race pace', () => {

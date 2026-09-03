@@ -63,6 +63,8 @@ import {
   MLR_MAX_WEEK_SHARE,
   MLR_MIN_MI,
   TIER_TARGETS,
+  TIER_PACE_EDGES,
+  peakWeeklyFloorMi,
   MAINTENANCE_BY_TIER,
   BUILD_WINDOW_WEEKS,
   pickPlanMode,
@@ -1803,7 +1805,14 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // fifth parameter — a signature change, not a doctrine one. What the
       // claim asserts is that the computed ceiling REACHES the pass; the
       // pattern now says exactly that and nothing about argument count.
-      if (!/enforceWeeklyRampCeiling\(\s*composed\.weeks,\s*composed\.vols,\s*level,\s*reverseTaperCeilingMi\(composed\)/.test(gen)) {
+      // TIEREVIDENCE-2 (2026-09-02) · the `level,` between `composed.vols` and
+      // the ceiling is GONE from the pattern because it is gone from the
+      // signature: `enforceWeeklyRampCeiling` read
+      // `GENERAL_RAMP_CEILING[level ?? 'intermediate']`, a table keyed on the
+      // self-declared experience level, and now reads `WEEKLY_STEP_GROWTH`.
+      // The claim is unchanged — the computed ceiling must REACH the pass —
+      // and the pattern still says exactly that.
+      if (!/enforceWeeklyRampCeiling\(\s*composed\.weeks,\s*composed\.vols,\s*reverseTaperCeilingMi\(composed\)/.test(gen)) {
         throw new Error('finalizeComposedPlan no longer passes the reverse-taper ceiling · the ceiling is computed and then discarded');
       }
       if (!/block_ceiling_mi: recoveryCeilingMi/.test(gen) || !/recoveryBlockCeilingPct\(lastCat\)/.test(gen)) {
@@ -17499,11 +17508,148 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       );
       matchLiteral(
         src,
-        /\? volumeCurve\(targetWeekly, blocks, input\.level, [^)]*holdPeakTarget\)/,
+        // TIEREVIDENCE-2 (2026-09-02) · `input.level,` dropped from the
+        // pattern because `volumeCurve` no longer takes a self-declared
+        // experience level: its only read of one was
+        // `GENERAL_RAMP_CEILING[level ?? 'intermediate']`, now
+        // `WEEKLY_STEP_GROWTH`. The claim is unchanged — the hold climb must
+        // route through `volumeCurve` with the growth-bounded peak target
+        // rather than growing a parallel ramp — and `[^)]*` still spans
+        // whatever arguments sit between.
+        /\? volumeCurve\(targetWeekly, blocks, [^)]*holdPeakTarget\)/,
         'the hold climb routes through volumeCurve with the growth-bounded peak target',
       );
     },
   },
+  /* ══════════════════════════════════════════════════════════════════════
+   * TIEREVIDENCE-2 (2026-09-02) · THE PACE EDGES THAT DECIDE WHICH RESEARCH/22
+   * ROW A RUNNER IS TRAINED AGAINST.
+   *
+   * They were inline in `tierFromPace`'s switch and watched by nothing. They
+   * became load-bearing for VOLUME the day the self-declared experience level
+   * stopped flooring the tier, because `peakWeeklyFloorMi` now runs the four
+   * published peak floors as control points BETWEEN these same edges — so a
+   * wrong edge no longer only mislabels a runner, it moves the destination
+   * their block climbs to.
+   *
+   * WHAT THIS CLAIM CANNOT CHECK, stated (Rule 22):
+   *   · The MARATHON edge. `Research/22` §"Marathon — Advanced" states its
+   *     cohort as "Multiple marathons, 50+ mpw base, time-goal focused" and
+   *     names no finish time, so there is no number in the doc to read. The
+   *     `hm == m` share is what carries it, and that share is argued in
+   *     `_doctrine_lint.test.ts`'s SHARED_ON_PURPOSE.
+   *   · The ELITE and INTERMEDIATE edges. `Research/22` publishes three rows
+   *     per distance and names a cohort mark only for the Advanced one; elite
+   *     is the engine's extrapolation above it and has no doctrine row at all.
+   *     Ordering is asserted instead, which is the only thing that can be.
+   *   · WHETHER THE INTERPOLATION IS RIGHT. It asserts the two functions read
+   *     ONE table and that the response is monotone across it; it says nothing
+   *     about whether a linear response between centres is the right shape.
+   * ══════════════════════════════════════════════════════════════════════ */
+  {
+    id: 'TIER.pace-edges-cover-the-published-cohorts',
+    binds: [
+      'lib/plan/goal-tiers.ts#TIER_PACE_EDGES',
+      'lib/plan/goal-tiers.ts#peakWeeklyFloorMi',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### Half Marathon — Advanced',
+    claim:
+      'A runner who hits the finish time Research/22 names as a row\'s cohort mark must be '
+      + 'graded INTO that row, so the engine\'s `advanced` pace edge for a distance may not be '
+      + 'faster than the pace that finish implies. Half marathon: "45+ mpw base, sub-1:30". '
+      + '10K: "40+ mpw base, sub-40 10K territory". 5K: "For experienced racers, 30+ mpw base, '
+      + 'sub-20 5K territory". The edges must also be strictly ordered within each distance '
+      + '(elite faster than advanced faster than intermediate), and `peakWeeklyFloorMi` must '
+      + 'be MONOTONE in pace across them - a slower demonstrated pace may never buy a bigger '
+      + 'weekly destination.',
+    check({ exempt }) {
+      const doc = 'Research/22-plan-templates.md';
+      /** Read the cohort finish out of a row's own prose and turn it into s/mi. */
+      const cohortPaceSPerMi = (heading: string, distanceMi: number): number | null => {
+        const text = resolveCitation(doc, heading).text();
+        // "sub-1:30" | "sub-40 10K" | "sub-20 5K"
+        const hm = text.match(/sub-(\d+):(\d{2})/);
+        if (hm) return Math.round((Number(hm[1]) * 3600 + Number(hm[2]) * 60) / distanceMi);
+        const mm = text.match(/sub-(\d+)\s*(?:10K|5K)/);
+        if (mm) return Math.round((Number(mm[1]) * 60) / distanceMi);
+        return null;
+      };
+      const COHORTS: Array<[DistCategory, string, number]> = [
+        ['hm', '### Half Marathon — Advanced', 13.109],
+        ['10k', '### 10K — Advanced', 6.214],
+        ['5k', '### 5K — Advanced', 3.107],
+      ];
+      let read = 0;
+      for (const [cat, heading, mi] of COHORTS) {
+        const pace = cohortPaceSPerMi(heading, mi);
+        if (pace == null) {
+          throw new Error(
+            `no cohort finish parsed out of ${heading} · the claim is reading nothing for ${cat}`,
+          );
+        }
+        read++;
+        const edge = TIER_PACE_EDGES[cat].advanced;
+        if (edge < pace && exempt(`advanced-edge-${cat}`)) continue;
+        if (edge < pace) {
+          throw new Error(
+            `TIER_PACE_EDGES.${cat}.advanced is ${edge} s/mi · Research/22 ${heading} names a `
+            + `cohort finishing at ${pace} s/mi, so that runner grades BELOW the row written `
+            + 'for them',
+          );
+        }
+      }
+      // LIVENESS · the parse actually read all three rows, so an assertion that
+      // passed because nothing was found cannot report clean (Rule 18 §2).
+      if (read !== COHORTS.length) throw new Error(`only ${read} of 3 cohort marks were read`);
+
+      // Ordering, per distance. Nothing in the doc states it; it is what makes
+      // the table a ladder rather than three unrelated numbers.
+      for (const cat of CATS) {
+        const e = TIER_PACE_EDGES[cat];
+        if (!(e.elite < e.advanced && e.advanced < e.intermediate)) {
+          throw new Error(
+            `TIER_PACE_EDGES.${cat} is not ordered elite < advanced < intermediate: `
+            + `${e.elite} / ${e.advanced} / ${e.intermediate}`,
+          );
+        }
+      }
+
+      // And the continuous response over those edges is MONOTONE: walking the
+      // demonstrated pace from fast to slow may never RAISE the destination.
+      // This is the Rule 9 property the interpolation exists for, checked here
+      // rather than only in a plan test, because it is a property of the
+      // doctrine table's shape.
+      for (const cat of CATS) {
+        let prev = Number.POSITIVE_INFINITY;
+        for (let pace = 200; pace <= 900; pace += 1) {
+          const v = peakWeeklyFloorMi(cat, pace);
+          if (v > prev + 1e-9) {
+            throw new Error(
+              `peakWeeklyFloorMi(${cat}) ROSE from ${prev} to ${v} as the demonstrated pace `
+              + `got slower at ${pace} s/mi · a slower runner may not be given a bigger `
+              + 'weekly destination',
+            );
+          }
+          prev = v;
+        }
+      }
+    },
+    exempt: {
+      'advanced-edge-5k':
+        'REAL DIVERGENCE, recorded rather than fixed. Research/22 §"5K — Advanced" says '
+        + '"sub-20 5K territory" (386 s/mi) and the engine\'s 5K advanced edge is 360 s/mi '
+        + '(sub-18:38), so a runner who races 19:30 is graded intermediate against a row '
+        + 'written for them. The 360 predates this claim - it comes from the "5K advanced ~ '
+        + 'sub-18" reading in tierFromPace\'s original header, which is a stricter cohort than '
+        + 'the doc names - and moving it moves the composed row, the published bands and the '
+        + 'workout library rung for every 5K runner between 18:38 and 20:00. That is a '
+        + 'separate decision with its own corpus movement, and it is not TIEREVIDENCE-2\'s to '
+        + 'take. Delete this entry when the edge is moved to 386, or when Research/22 is '
+        + 'changed and the constant re-derived from it.',
+    },
+  },
+
   {
     id: 'SEASON.two-a-races-is-a-season-not-a-conflict',
     binds: ['lib/training/race-card.ts#A_RACE_COLLISION_DAYS'],

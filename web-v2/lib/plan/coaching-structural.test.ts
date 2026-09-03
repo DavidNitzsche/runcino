@@ -388,8 +388,43 @@ describe('CUTBACK-LONG-1 · cutback long-run depth (Research/00b §Depth of Cutb
   });
 
   it('the David fixture cutbacks land in-band against their preceding load blocks', () => {
-    // wk2 55mi/17mi-long → wk3 cutback; wk6 62/20 → wk7; wk10 65/22.5 → wk11.
-    const cases: Array<[number, number, number]> = [[3, 55, 17], [7, 62, 20], [11, 65, 22.5]];
+    /* TIEREVIDENCE-2 (2026-09-02) · THE REFERENCE NUMBERS ARE READ OFF THE PLAN
+     * INSTEAD OF TRANSCRIBED FROM IT.
+     *
+     * The case list was `[[3, 55, 17], [7, 62, 20], [11, 65, 22.5]]` with a
+     * comment transcribing the fixture's own composition. Those numbers were
+     * the plan the fixture produced while its `level: 'advanced'` put it on
+     * `TIER_TARGETS.m.advanced`; on the evidence it actually carries (a VDOT
+     * 48, ~7:04/mi at the marathon) it composes against §"Marathon —
+     * Intermediate" and every load week is smaller, so the transcript went
+     * stale and the assertion measured a plan that no longer exists.
+     *
+     * The INVARIANT is unchanged and is the whole point of the case: each
+     * cutback's long run and weekly total sit inside `Research/00b` §"Depth of
+     * Cutback by Mileage Tier" against the LOAD BLOCK THAT PRECEDES IT. So the
+     * reference is now derived from that block the same way the sweep above
+     * derives it, which is also a stronger test: it cannot go stale again, and
+     * it walks every cutback rather than three hand-picked indices.
+     */
+    const cases: Array<[number, number, number]> = [];
+    for (let wi = 1; wi < plan.weeks.length; wi++) {
+      const w = plan.weeks[wi];
+      if (!w.isCutback || w.isRaceWeek || w.phase === 'TAPER') continue;
+      let refMpw = 0;
+      let refLong = 0;
+      for (let j = wi - 1; j >= 0; j--) {
+        const p = plan.weeks[j];
+        if (p.isCutback || p.isRaceWeek || p.phase === 'TAPER') break;
+        refMpw = Math.max(refMpw, p.weeklyMi);
+        const ld = p.days.find((d) => d.isLong && d.type !== 'race');
+        if (ld) refLong = Math.max(refLong, ld.distanceMi);
+      }
+      if (refMpw > 0 && refLong > 0) cases.push([wi, refMpw, refLong]);
+    }
+    // LIVENESS · three load-block/cutback pairs is what this fixture has always
+    // produced; a fixture that stopped composing cutbacks would otherwise walk
+    // an empty list and report clean (Rule 18 clause 2).
+    expect(cases.length, 'no load-block/cutback pair found in the David fixture').toBeGreaterThanOrEqual(3);
     for (const [wi, refMpw, refLong] of cases) {
       const w = plan.weeks[wi];
       expect(w.isCutback).toBe(true);

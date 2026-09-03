@@ -18,7 +18,7 @@
 // generator only changes structure for `beginner`. David's advanced plan is
 // untouched by construction.
 
-import type { DistCategory } from './goal-tiers';
+import { TIER_TARGETS, type DistCategory } from './goal-tiers';
 
 export type PlanLevel = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus';
 
@@ -160,10 +160,38 @@ const EXPLICIT_LEVEL = (l: string | null | undefined): PlanLevel | null =>
  */
 function unstatedLevelFor(distance: DistCategory, weeklyMi: number | null | undefined): PlanLevel {
   if (weeklyMi == null || !(weeklyMi > 0)) return 'intermediate';
-  const beginnerPeakFloor = PLAN_TEMPLATES
-    .find((t) => t.distance === distance && t.level === 'beginner')?.peakWeeklyMi[0];
-  if (beginnerPeakFloor == null) return 'intermediate';
-  return weeklyMi < beginnerPeakFloor ? 'beginner' : 'intermediate';
+  /* TIEREVIDENCE-2 (2026-09-02) · THE LINE MOVES ONTO A DOCTRINE NUMBER THAT
+   * MEANS WHAT THIS TEST NEEDS IT TO MEAN.
+   *
+   * It read `PLAN_TEMPLATES[beginner].peakWeeklyMi[0]` — the FLOOR of the peak
+   * band the beginner plan builds TO. For the 5K that is 12, which put a runner
+   * reporting exactly 12 mi/wk one hundredth of a mile outside the row whose
+   * own published peak is "12-15 mi/wk", and routed them into the periodized
+   * I/R machine. `_audit_slow_runner.test.ts` then measured what the machine
+   * does to that runner: a 9:10/mi prescribed rep against a demonstrated 5K
+   * pace of 13:30/mi.
+   *
+   * That was unreachable while a STATED level won outright — every runner who
+   * typed "beginner" got the base-building plan whatever their volume. With the
+   * label removed as decision authority, this comparison is the ONLY thing
+   * standing between a low-volume runner and the reps, so it has to sit on a
+   * number that answers the question being asked.
+   *
+   * `TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0]` does: it is the
+   * least weekly volume doctrine asks of ANYONE racing this distance — the same
+   * constant `plannedPeakBound` calls its `distanceFloorMi` and describes in the
+   * same words. A runner who cannot reach the floor of the smallest published
+   * plan for their distance is not on any of its periodized rows. Reusing it
+   * rather than adding a table also means no second doctrine number to keep in
+   * step (Rule 16), and it is already bound in the registry.
+   *
+   * Direction, stated: this can only ever DEMOTE, exactly as LOWVOL-2 wrote it
+   * — "a big week is not a demonstration of anything, whereas a week below the
+   * beginner peak is a hard fact about what the runner can absorb."
+   */
+  const distanceFloorMi = TIER_TARGETS[distance]?.developing?.peakWeeklyMileageBand?.[0];
+  if (distanceFloorMi == null) return 'intermediate';
+  return weeklyMi < distanceFloorMi ? 'beginner' : 'intermediate';
 }
 
 /** The template for a runner's distance + level. A stated level always wins.

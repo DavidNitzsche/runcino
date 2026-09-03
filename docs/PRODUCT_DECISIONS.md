@@ -6,6 +6,103 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-09-02 · TIEREVIDENCE-2 · the self-declared experience level reaches NO plan decision. SETTLED.
+
+**The ruling this closes**, in the owner's words: *"Add a gate proving that
+changing or deleting the self-declared experience level cannot change: Plan
+volume. Peak mileage. Long-run progression. Race prescriptions.
+Race-plus-long-run permission. Cutback placement. Adaptation eligibility. Any
+coaching explanation presented as the evidence supporting those decisions."*
+And: *"My actual history — not an onboarding label — must determine appropriate
+load."* `_declared_level_inert.test.ts` (DECLAREDLEVEL-0) is that gate, and it
+is now green on all eight dimensions plus a whole-block byte comparison, across
+four declared values and both absences.
+
+**What was still reading the label, and what replaced it.**
+
+1. **The load row.** `CAPACITY_BAND`, `CAPACITY_CEILING` and
+   `GOAL_DEMAND_FLOOR` are DELETED — a floor, a ceiling and a reduction floor,
+   all indexed by `profile.experience_level`. `classifyCapacityTier` is now
+   `tierFromPace(demonstratedPaceSec)` and its parameter tuple has no level in
+   it, which the compile-time seal and `check-goal-volume-leak.sh` guard 3 both
+   pin. On the reference runner `authored_state.tier_band_anchor
+   .composed_row_band_weekly` moves **[65, 90] → [45, 55]**: his demonstrated
+   7:43/mi marathon-equivalent is `Research/22` §"Marathon — Intermediate", and
+   §"Marathon — Advanced" opens "Multiple marathons, 50+ mpw base".
+
+2. **The workout library.** `resolvePrescriptions` keeps the label as an
+   accepted, unread argument — so the gate can go on proving it inert — and
+   filters `levelFit` on `capacityBandFor(classifyCapacityTier(...))` instead.
+   The decision the previous pass flagged rather than took is taken: NOT
+   `undefined`, which switches the filter off and hands everyone the lowest-id
+   template, but the evidence-derived rung, defaulting to the conservative one.
+
+3. **Three smaller readers**: `GENERAL_RAMP_CEILING[level ?? 'intermediate']`
+   (three sites → `WEEKLY_STEP_GROWTH`, the trained rung the load contract
+   already exports); `mlrTierAllows` and the catalogue's contraindication gate
+   (→ the demonstrated capacity band); `isBaseBuildingPlan` (→ LOWVOL-2's
+   volume reading alone, with its boundary moved onto
+   `TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0]`, the least volume
+   doctrine asks of anyone racing the distance).
+
+**TWO QUESTIONS, TWO ANSWERS, DELIBERATELY.** `classifyCapacityTier` falls back
+to `UNMEASURED_ROW_TIER` ('intermediate' — COLD-1's own constant, at its own
+value) and `demonstratedLoadCeilingTier` to `EVIDENCE_ABSENT_TIER`
+('developing'). Collapsing them was tried and backed out: the first asks which
+of doctrine's four TEMPLATES an unread runner's block should be shaped like,
+and doctrine's middle row is the honest default; the second is a PERMISSION the
+adaptation engine binds on, and an unread runner gets none (Rule 11). Measured
+cost of collapsing: a 45 mi/wk half-marathoner built to a 39 mi/wk peak against
+§"Half Marathon — Intermediate"'s published 35-45. What the constant may no
+longer do is FLOOR a runner whose measured pace grades below it.
+
+**RULE 9 · one cliff removed, none added.** With the level gone the tier became
+a step function of the runner's demonstrated pace, and
+`_cadence_robust.test.ts`'s VDOT walk priced it: **a 177-mile block total
+between VDOT 52 and 52.25.** `volumeCurve`'s peak destination is now
+`peakWeeklyFloorMi` — `Research/22`'s four published peak floors run as CONTROL
+POINTS with a continuous, monotone response between them, anchored at the
+CENTRE of each pace band (edges would hand every runner one second inside a
+band the faster band's volume). Deleting the band outright was tried FIRST and
+backed out, and the measurement is the argument: a 5K runner reporting 15 mi/wk
+was then built to 16 instead of doctrine's 25, and `_restore_continuity` found
+84 archetypes losing more than a mile of long run because the long sizer's
+`weeklyMi x longCap / peakWeeklyMi` had lost its stable denominator.
+
+**What it costs the reference runner: nothing on volume, 6.5 miles of long run
+across the block.** Peak week **60 mi/wk either way** — his demonstrated 52.3
+mi/wk peak is what sizes his block through `plannedPeakBound`, and always was.
+Fifteen-week total 763.2 → 764.2. Peak long 21.5 either way, capped by his own
+demonstrated long. The early-block longs come down one mile each (18/19/20/21 →
+17/18/19/20), which is the intermediate row's 20-22 band rather than advanced's
+22-24.
+
+**What it costs a runner the app has never measured**: on the shape axis,
+`Research/22`'s intermediate template rather than whichever row they typed. On
+the volume axis, nothing — `max(peakWeeklyFloorMi, base x 1.10)` means their
+own reported base governs, exactly as VAR-06 intended.
+
+**Residuals, named rather than quietly chosen.**
+- `TIER_PACE_EDGES.5k.advanced` is 360 s/mi where `Research/22` §"5K —
+  Advanced" says "sub-20 5K territory" (386). A 19:30 5K runner is graded
+  intermediate against a row written for them. Recorded as an argued `exempt`
+  on `TIER.pace-edges-cover-the-published-cohorts` rather than moved, because
+  moving it moves the composed row, both published bands and the workout
+  library rung for every 5K runner between 18:38 and 20:00.
+- At the intermediate row's smaller weeks, a DELOAD drops one easy day and its
+  strides pair loses a carrier. Pre-existing low-volume layout behaviour
+  (Rule 12's territory), newly reachable; scoped out of `_mp_doctrine` and
+  `_vocab_doctrine` with the measurement in both files.
+- `REBOUND_TO_HELD_LEVEL` is no longer reachable by the archetype corpus (was 8
+  of 8,781 plans). A Rule 15 coverage loss, recorded in
+  `_combined_stress.test.ts`; the code is still exercised directly.
+- `generator-bench`'s cold-start personas declare a `vdotAtStart` that never
+  reaches `composePlan`, so the only thing telling the engine who they are was
+  the label. Threading it fixes one persona and breaks another; named in the
+  file rather than bent.
+
+---
+
 ## 2026-09-02 · `goal_realism` is renamed `goal_vdot_sanity`. A boolean is named for its predicate.
 
 **The complaint.** `goal_realism.flag` read `false` on the owner's live CIM

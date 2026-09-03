@@ -608,7 +608,12 @@ export function diagnoseLimiter(input: LimiterInput): LimiterRead | null {
    * bar is the same one the plan is actually built to. */
   if (volNow != null && volNow > 0) {
     dimensionsRead++;
-    const tier = classifyGoalTier(input.goalPaceSecPerMi, goalMi, input.experienceLevel);
+    // TIEREVIDENCE-2 (2026-09-02) · `input.experienceLevel` is no longer an
+    // argument. The limiter's bar promises to be "the same one the plan is
+    // actually built to", and the plan is no longer built to a self-declared
+    // band (docs/PLAN_SIMPLIFICATION_DOCTRINE.md §"What may not"). Dropping it
+    // here is what keeps that sentence true.
+    const tier = classifyGoalTier(input.goalPaceSecPerMi, goalMi);
     const floor = TIER_TARGETS[cat][tier].peakWeeklyMileageBand[0];
     const progress = input.blockProgressFraction;
     // Being under the PEAK band early in a block is the plan working, not a

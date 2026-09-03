@@ -50,6 +50,32 @@
  *     moved is the contents of long-run and marathon-pace weeks, which is the
  *     intended change. Every coaching gate named above stays green across it.
  *
+ *   · 2026-09-02 · TIEREVIDENCE-2. The self-declared experience level is
+ *     removed as decision authority (`docs/PLAN_SIMPLIFICATION_DOCTRINE.md`
+ *     §"What may not"), so the `TIER_TARGETS` row an archetype composes against
+ *     is selected by its DEMONSTRATED pace instead of by `experienceLevel`. The
+ *     corpus varies the level across the cross-product, so this reaches a large
+ *     share of it — and it reaches every archetype twice over, because
+ *     `volumeCurve`'s peak destination is now `peakWeeklyFloorMi`, doctrine's
+ *     four published peak floors run as CONTROL POINTS with a continuous
+ *     response between them rather than a step at each pace edge (Rule 9: the
+ *     step was worth a 177-mile block total between VDOT 52 and 52.25, measured
+ *     by `_cadence_robust.test.ts`).
+ *
+ *     `composed` (8781), `days` (699860) and `raceWeeks` (3969) are ALL
+ *     unchanged: no archetype gained, lost or refused a plan, and no race week
+ *     moved. What moved is weekly volume and the sessions inside it, for
+ *     archetypes whose row was being chosen by a word.
+ *
+ *     NOTE, and it belongs in the record: this snapshot was ALREADY stale at
+ *     `origin/main@732e0df1`, before any of this change. The three counts
+ *     matched and the digest did not
+ *     (expected fc49ff4e…, actual b83881d3…), so a composer change had landed
+ *     without re-baselining. The digest below is therefore the first one taken
+ *     since that drift, and it carries both movements. Whoever finds this: the
+ *     counts are the part that has stayed constant across all four entries in
+ *     this list, which is what makes them worth asserting separately.
+ *
  *   · 2026-09-02 · LADDER-LENGTH-1. `restoreSteps` no longer emits a rung worth
  *     a tenth of a mile, so a returning runner's block spends one fewer week
  *     restoring and one more week climbing. Reaches only the 89 archetypes in

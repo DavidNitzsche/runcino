@@ -383,7 +383,39 @@ describe('David\'s CIM block', () => {
       // mileage Daniels' share is a share of and the prescription follows it
       // down — which is the deload doing its job, not the ladder stalling.
       const shapes = new Set(track.map((s) => `${s.shape.reps}x${s.shape.repMinutes}`));
-      expect(shapes.size, `${family} held one shape for the whole block`).toBeGreaterThan(2);
+      /* TIEREVIDENCE-2 (2026-09-02) · A LADDER HELD AT ITS DOCTRINE CAP IS NOT
+       * A LADDER THAT STALLED, and the two now have to be told apart.
+       *
+       * This fixture used to compose to a 65 mi/wk peak because
+       * `experienceLevel: 'advanced'` put it on `TIER_TARGETS.m.advanced`. On
+       * the evidence it carries — 45 mi/wk reported and a VDOT 45.1, which is
+       * ~3:15 at the marathon — it composes against §"Marathon — Intermediate"
+       * and peaks at 55, the top of that row's published 45-55 band. Daniels'
+       * at-pace share of a 55-mile week affords 4x7 min at I where a 65-mile
+       * week afforded 5x7, so the interval ladder's top rung is gone and the
+       * track shows two shapes rather than three:
+       *
+       *   before  3x7 -> 4x7 -> 5x7        (wk7 and wk10 unclamped)
+       *   after   3x7 -> 4x7               (every week `[clamped]`)
+       *
+       * That is doctrine binding a smaller week, not the trajectory refusing to
+       * progress — the engine's own log says so on every held step ("every
+       * lever is at its doctrine cap · the session holds"). Asserting three
+       * shapes regardless would demand the ladder break Daniels' share cap.
+       *
+       * So the bar is: the ladder MOVED (more than one shape), and it reached
+       * three UNLESS every step is at its cap. Rule 22 · what this can still
+       * fail on: a ladder that holds one shape all block (`shapes.size` 1), and
+       * a ladder that stops moving with headroom left (any unclamped step in a
+       * two-shape track). Both are the stall this case was written for.
+       */
+      const everyStepAtCap = track.every((s) => s.clamped === true);
+      expect(shapes.size, `${family} held one shape for the whole block`).toBeGreaterThan(1);
+      expect(
+        shapes.size > 2 || everyStepAtCap,
+        `${family} stopped progressing at ${shapes.size} shape(s) with headroom left · `
+        + `steps: ${track.map((s) => `${s.shape.reps}x${s.shape.repMinutes}${s.clamped ? '[cap]' : ''}`).join(' → ')}`,
+      ).toBe(true);
       // SLOT-ROTATE-3 · and it never leaves §6.1's rep-count band on the way.
       if (family === 'interval') {
         for (const s of track) {

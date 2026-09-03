@@ -161,8 +161,18 @@ grep -q '_TierEquals<Parameters<typeof classifyCapacityTier>, CapacityTierParams
   || fail "the compile-time goal-isolation assertion over classifyCapacityTier is GONE · a goal parameter would now compile"
 grep -q 'export type LoadCeilingIsGoalFree' "$TIERS" \
   || fail "the exported witness type is gone · an unused-locals pass could delete the assertion with it"
-# And the tuple must not have quietly grown a fourth member.
-if grep -A 5 'type CapacityTierParams = \[' "$TIERS" | grep -qiE 'goal'; then
+# And the tuple must not have quietly grown a goal-shaped member.
+#
+# Read the tuple BODY, not a fixed number of lines after the header. The first
+# cut was `grep -A 5`, which was written when the tuple had three members over
+# four lines; TIEREVIDENCE-2 dropped it to two, the five-line window ran past
+# the closing bracket into `type _CapacityTierIsGoalFree`, and the gate failed
+# on its own witness type. A window sized to today's source is a gate with an
+# expiry date nobody wrote down.
+TUPLE_BODY="$(awk '/type CapacityTierParams = \[/{inside=1; next} inside && /^\];/{exit} inside' "$TIERS")"
+if [ -z "$TUPLE_BODY" ]; then
+  fail "CapacityTierParams parsed EMPTY · the tuple check is inspecting nothing (Rule 18 point 2)"
+elif printf '%s' "$TUPLE_BODY" | grep -qiE 'goal'; then
   fail "CapacityTierParams mentions a goal · the seal has been widened to admit the thing it excludes"
 fi
 
@@ -252,8 +262,17 @@ done <<< "$ALLOWLIST"
 # it was found by falsifying rather than by reading.
 grep -q 'const { tier, capacityTier, reducedByGoal, target: baseTierTarget } = lookupLoadTierTarget({' "$GEN" \
   || fail "composePlan no longer reads its load band from lookupLoadTierTarget · the block would be sized by something else"
-grep -q 'raceDistanceMi: h.distanceMi, level: input.level,' "$GEN" \
+# TIEREVIDENCE-2 (2026-09-02) · this used to pin `raceDistanceMi: h.distanceMi,
+# level: input.level,`. The `level:` half is GONE from the bag — the load row is
+# no longer selected by a self-declared experience band
+# (docs/PLAN_SIMPLIFICATION_DOCTRINE.md §"What may not") — so the pin follows the
+# code. What guard 6 is actually FOR is unchanged and is still asserted: the
+# horizon-raise lookup goes through the sealed `lookupLoadTierTarget` rather than
+# reading a band some other way. Re-falsified after the edit.
+grep -q 'raceDistanceMi: h.distanceMi,' "$GEN" \
   || fail "the horizon-raise lookup no longer goes through the sealed load lookup · a future race's typed goal could lift this block's long-run dials"
+grep -q 'demonstratedPaceSec: hDemonstrated, goalPaceSec: h.goalPaceSec,' "$GEN" \
+  || fail "the horizon-raise lookup no longer passes a DEMONSTRATED pace beside the goal · check what it does pass"
 grep -q 'goalPaceSec: input.goalPaceSec, // reduction only' "$GEN" \
   || fail "the race path no longer passes the goal as a REDUCTION · check what it does pass"
 grep -q 'capacity_tier: capacityTier' "$GEN" \

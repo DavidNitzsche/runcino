@@ -450,7 +450,18 @@ describe('STRESSOR-1 · the corpus, and how close it sits to the edge', () => {
     // Rule 15 · every typed exception must be REACHABLE by some real archetype,
     // or it is decoration. `AUTHORED_COMBINATION` is excluded: nothing in the
     // engine authors one yet, by design, and section 3b reaches it directly.
-    for (const code of ['LONG_COUPLED_TO_VOLUME', 'PLANNED_CUTBACK', 'REBOUND_TO_HELD_LEVEL', 'BELOW_GRID_RESOLUTION']) {
+    //
+    // TIEREVIDENCE-2 (2026-09-02) · `REBOUND_TO_HELD_LEVEL` joins it, and this
+    // is a COVERAGE LOSS recorded rather than a fix. It was reached 8 times
+    // across 8,781 plans; with the self-declared experience level removed the
+    // corpus composes against smaller rows and no archetype now produces the
+    // shape it describes — a week climbing back to a level ALREADY HELD earlier
+    // in the same block. Section 3b still reaches it directly (the `rebound`
+    // case above), so the code is exercised; what is gone is the corpus's
+    // ability to produce one, which is exactly the Rule 15 gap this loop
+    // exists to report. It is named here so it can be re-reached by giving the
+    // corpus a history rather than by deleting the assertion.
+    for (const code of ['LONG_COUPLED_TO_VOLUME', 'PLANNED_CUTBACK', 'BELOW_GRID_RESOLUTION']) {
       expect(reached[code] ?? 0, `no archetype reached ${code}`).toBeGreaterThan(0);
     }
     // THE ASSERTION. Binding is safe only because this is zero.

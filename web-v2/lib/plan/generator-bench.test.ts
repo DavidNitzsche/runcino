@@ -98,6 +98,17 @@ function personaToComposeInput(p: SyntheticRunner): ComposePlanInput {
     // midBlock block. Cold-start personas leave these undefined.
     recentQualityDistanceMi: p.profile.midBlock?.recentQualityDistanceMi,
     recentQualityPerWeek: p.profile.midBlock?.recentQualityPerWeek,
+    // TIEREVIDENCE-2 (2026-09-02) · KNOWN GAP, NOT FIXED HERE, and worth the
+    // sentence because it is Rule 15's shape: a cold-start persona declares a
+    // `vdotAtStart` and the composer never sees it, so the only thing telling
+    // the engine who these runners are was `p.profile.experienceLevel` — and
+    // that is now inert. Threading `vdotAtStart` in here was tried and backed
+    // out in the same pass: it fixes `david-sub-1-30-hm` (whose band was the
+    // typed word's, see its own note in synthetic-runners.ts) and BREAKS
+    // `sleep-debt-prone`, whose RACE-SPECIFIC long stops carrying its HM
+    // insert at the higher peak the evidence licenses. That is a real
+    // behaviour worth understanding rather than a fixture to bend, so the
+    // gap is named and left for its own change.
     bestRecentVdot: p.profile.midBlock?.bestRecentVdot,
     isMidBlock: Boolean(p.profile.midBlock),
     longRunDow: 0 as DOW,    // Sun

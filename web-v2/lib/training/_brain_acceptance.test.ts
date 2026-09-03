@@ -758,8 +758,8 @@ describe('PHASE 12 · golden runners · what the plan generator prescribes', () 
           // REDUCING from an advanced capacity, which is what the ruling
           // licenses ("the goal may influence ... required development").
           tier: resolveLoadTier({
+            // TIEREVIDENCE-2 · no `level` in the bag, exactly as the composer.
             raceDistanceMi: g.input.raceDistanceMi,
-            level: g.input.level,
             demonstratedPaceSec: g.input.bestRecentVdot != null
               ? (() => {
                   const t = predictRaceTime(g.input.bestRecentVdot, g.input.raceDistanceMi);
