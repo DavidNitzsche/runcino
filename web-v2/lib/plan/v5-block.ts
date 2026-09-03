@@ -43,6 +43,7 @@
  * Nothing in this module writes a row.
  */
 import { weekContainsRace } from './race-week';
+import { resolveRaceWeekRole, type RaceWeekRole } from './race-week-role';
 import { dateWords as usDateWords } from '@/lib/format/date';
 import { loadTrainingState, type TrainingState, type PlanWeek } from '@/lib/coach/training-state';
 import { loadSettings } from '@/lib/coach/settings';
@@ -576,9 +577,22 @@ const FAMILY_LABEL: Record<string, string> = {
  *  its own — the catalogue was never asked to carry recovery-specific
  *  sessions, easy/recovery families already have no phase restriction. Null
  *  here means "do not filter the library by phase", which is the honest
- *  answer rather than a guess at a value that does not exist in the schema. */
-export function libraryPhaseKey(phaseLabel: string | null, isRaceWeek: boolean): LibraryPhase | null {
-  if (isRaceWeek) return 'race_week';
+ *  answer rather than a guess at a value that does not exist in the schema.
+ *
+ *  RACEWEEK-2 (2026-09-03) · takes the typed `RaceWeekRole`
+ *  (`lib/plan/race-week-role.ts`), not the old goal-only boolean, and only
+ *  `'goal'` pulls the catalogue into `race_week` mode. That is a deliberate,
+ *  tested choice, not an oversight: `race_week`'s own `phaseFit` rows are
+ *  built for a full A-race taper (mostly shakeout/easy), and pulling a
+ *  `tuneup` or `controlled` week into that narrow catalogue would hide the
+ *  ordinary phase's quality sessions from a runner who is not tapering — the
+ *  owner's ruling, 2026-09-03: "Do NOT apply CIM-style (goal-race) taper mode
+ *  to this week... Do NOT make the whole week easier merely because it
+ *  contains a tune-up." A tune-up or controlled race still shows as a race
+ *  week on the Block screen (`weekFlag`, via `weekContainsRace`) — this
+ *  function only decides which workout catalogue backs it. */
+export function libraryPhaseKey(phaseLabel: string | null, role: RaceWeekRole): LibraryPhase | null {
+  if (role === 'goal') return 'race_week';
   switch (phaseLabel) {
     case 'BASE': return 'base';
     case 'QUALITY': return 'quality';
@@ -626,7 +640,14 @@ export async function buildLibrary(state: TrainingState, raceDistanceMi: number 
   const all = loadAllWorkouts();
   const cat = raceDistanceMi != null ? distanceCategoryOrNull(raceDistanceMi) : null;
   const current = state.weeks.find((w) => w.isCurrent) ?? null;
-  const phaseKey = libraryPhaseKey(state.currentPhase, current?.isRaceWeek ?? false);
+  // RACEWEEK-2 · role, not the raw goal-only column. `race-week-role.ts`'s own
+  // fallback resolves any non-goal race to `controlled` when priority is not
+  // supplied (as here — this loader has no cheap join onto `races.meta`),
+  // which is fine for THIS decision: `libraryPhaseKey` only branches on
+  // `'goal'` vs everything else, so `tuneup` and `controlled` both fall to the
+  // same, correct, phase-based key either way.
+  const role = current ? resolveRaceWeekRole(current).role : 'none';
+  const phaseKey = libraryPhaseKey(state.currentPhase, role);
   const easyOnly = phaseIsEasyOnly(state.currentPhase);
 
   const relevant = all.filter((t) => {

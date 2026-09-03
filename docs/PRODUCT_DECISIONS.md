@@ -6,6 +6,77 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-09-03 · RACEWEEK-2 · a race week is one of four things, not one boolean. SETTLED.
+
+**The question**, left open by RACEWEEK-1 and stated in
+`docs/MASTER_CORE_PRODUCT_PROGRAM.md` as "does a tune-up race week behave like
+a race week?": RACEWEEK-1 fixed the LABEL (`weekContainsRace` in
+`lib/plan/race-week.ts`, so the Block screen stops calling a 10K week
+"QUALITY") but explicitly left every COACHING decision reading the raw,
+goal-only `is_race_week` column — `libraryPhaseKey`, the adaptation guards in
+`lib/plan/adapt.ts`, quality-counting readers.
+
+**David's ruling, verbatim (in full in the branch's commit and
+`lib/plan/race-week-role.ts`'s header):** create explicit typed distinctions —
+`goalRaceWeek` (unchanged, full taper), `tuneUpRaceWeek` (a B race: replaces
+one quality stimulus, no automatic taper, counts as quality AND as maximal
+race evidence), `controlledTrainingRaceWeek` (a C race: an authored training
+stressor, shown as a race week, never a taper, does NOT count as maximal
+race-performance evidence), `containsRace` (any of the three). Never globally
+exclude a B/C week from quality counting and load evaluation — "this is the
+actual defect RACEWEEK-1 deferred" — and never let race-week classification
+become another blanket reason the engine cannot progress (Rule 21).
+
+**What shipped.** `lib/plan/race-week-role.ts` — one resolver, reusing
+`weekContainsRace` for `containsRace` (Rule 16) rather than re-deriving it, an
+ungraded or unreadable race falling to `controlled` never `tuneup` (Rule 11,
+the same convention `lib/race/effort-authority.ts#selectionAuthority` already
+uses for the sibling question of how much a race's result proves). Wired into:
+
+- `lib/plan/v5-block.ts#libraryPhaseKey` — takes the role, not the goal-only
+  boolean; only `goal` pulls the workout catalogue into the narrow `race_week`
+  taper mode, closing the RACEWEEK-1-deferred item with a typed, tested
+  decision instead of an accidental one.
+- `lib/training/coaching-thesis.ts#familyOf`/`matchesCapacity`/
+  `assessWeekAgainstThesis` — the real defect. A graded race that replaced the
+  week's quality read as `WEEK_HOLDS_NO_KEY_SESSION` ("no key session this
+  week") over a week the runner raced, because `familyOf` graded every race
+  `'race'` and nothing matched it to any limiter. Fixed via `familyAddresses`:
+  a race that took the long-run slot addresses DURABILITY *and* whichever
+  non-long capacity the limiter names (his Run Malibu ruling: "satisfies both
+  the quality slot and the long-run slot"); a race that did not (his Dodgers
+  C race) addresses only the non-long side.
+- `lib/plan/dose-guard.ts` and `lib/plan/generate.ts#applyDosingCaps` and
+  `lib/plan/validate.ts` (the FATAL dosing gate) — all three now agree on
+  `weekContainsRace` for the dosing-context question ("is this week's largest
+  number a race, so percentage caps are reported rather than enforced").
+  These three had drifted into two different answers (Rule 16); widening the
+  authoring-time trimmer alone without widening the FATAL validator regressed
+  `_designed_race_weekend.test.ts` during this work — caught, and both sites
+  fixed together, which is the finding recorded here for the next reader.
+
+**Verified against the owner's real authored weeks** (`faff_readonly`, plan
+`pln_9a57561debb776e5`, 2026-09-03): Santa Monica 10K (B, week of 2026-09-07)
+and Run Malibu half (B, week of 2026-11-02) both grade `tuneup`; Dodgers 10K
+(C, week of 2026-09-21) grades `controlled`; CIM (A, week of 2026-11-30)
+grades `goal` and is byte-unaffected — `is_race_week` still short-circuits
+every touched function on its own, first branch, before any new logic runs.
+The coaching-thesis fix is reachable TODAY specifically on the Dodgers week:
+Santa Monica's and Run Malibu's own `is_cutback=true` (a real, separately
+correct volume observation) already marks those two weeks non-normal before
+family-matching runs.
+
+**What this does not do**, on purpose: it does not build a second mechanism
+for the Dodgers-10K-plus-long-run transaction (`lib/plan/designed-race-
+weekend.ts`'s `DesignedWeekendGrant` owns that, unchanged); it does not
+re-decide which races count as maximal fitness-anchor evidence
+(`lib/race/effort-authority.ts#selectionAuthority` already differentiates B
+`representative` from C `compromised`, reused not rebuilt); it does not touch
+`is_cutback`'s own volume-drop detection, which is a correct, separate
+observation from race role.
+
+---
+
 ## 2026-09-03 · RUNNERLANG-2 · a sentence true of every row of its kind is said once, and Rule 17 finally has a gate. SETTLED.
 
 **What was wrong.** RUNNERLANG-1 (2026-09-02) answered the owner's instruction

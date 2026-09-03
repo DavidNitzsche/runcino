@@ -136,6 +136,7 @@ import {
   dayDoses, weekDosingFindings, duplicatePaceFamily, MARATHON_PACE_WORKOUT_CAP, MI_PER_KM,
   type DosePace, type DosingContext,
 } from './dosing';
+import { weekContainsRace } from './race-week';
 // VOCAB-CATALOGUE-1 (2026-08-18) · the workout vocabulary, wired.
 // `Research/04-workout-vocabulary.md`'s 59 named workouts live in
 // `lib/workout-catalogue/` as cited data, and §15's placement table plus §16's
@@ -15082,8 +15083,21 @@ function applyDosingCaps(composed: ComposePlanResult): void {
     // lever that may overshoot its own target. Three is empirically past the
     // point where the corpus stops changing; the loop exits early when a sweep
     // finds nothing.
+    // RACEWEEK-2 (2026-09-03) · `w.isRaceWeek` on a composed week means the
+    // GOAL race's week only (`isRaceWeek = wi === totalWeeks - 1`, this
+    // file's own composer-local sense). `weekDosingFindings`'s `contextOf`
+    // reads `isRaceWeek` to decide whether percentage caps are ENFORCED
+    // ('training') or only REPORTED ('race-week') — and `dosing.ts`'s own
+    // header argues that a B/C tune-up embedded mid-block deserves the same
+    // treatment, because its largest number is the race, which `weekDose`
+    // already excludes from both sides of the ratio either way. Composer-
+    // local `isRaceWeek` alone under-reported this for a mid-block race
+    // (`weekContainsRace` was already the write-path's answer via
+    // dose-guard.ts; the authoring path had drifted to a narrower one — Rule
+    // 16). Reusing it here closes that gap rather than growing a second one.
+    const raceWeek = weekContainsRace(w);
     for (let sweep = 0; sweep < 3; sweep++) {
-      const findings = weekDosingFindings(w as never).filter((f) => f.enforced);
+      const findings = weekDosingFindings({ ...w, isRaceWeek: raceWeek } as never).filter((f) => f.enforced);
       if (findings.length === 0) break;
       let moved = false;
       for (const f of findings) {
