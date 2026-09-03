@@ -10843,10 +10843,17 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
    * 10) rather than trust a frozen array.
    */
   const loadDemonstrated: DemonstratedLoad = {
-    peakWeeklyMi: rampEvidence ? (rampEvidence.peakMi || null) : null,
-    sustainedWeeklyMi: rampEvidence ? (rampEvidence.sustainedMi || null) : null,
-    heldWeeklyMi: rampEvidence ? (rampEvidence.heldMi || null) : null,
-    meanWeeklyMi: rampEvidence ? (rampEvidence.meanMi || null) : null,
+    // Rule 11 · `||` treats a measured ZERO as absent, which collapsed the two
+    // states one line before `plannedPeakBound` distinguishes them — so its
+    // `peak === 0` refusal was unreachable from authoring and every zero was
+    // recorded as "never measured". The outcome was identical (both refuse and
+    // the doctrine target stands) but the REASON was wrong, and a refusal that
+    // cannot be exercised is a refusal nobody can trust. `??` passes a measured
+    // zero through as the measurement it is.
+    peakWeeklyMi: rampEvidence ? (rampEvidence.peakMi ?? null) : null,
+    sustainedWeeklyMi: rampEvidence ? (rampEvidence.sustainedMi ?? null) : null,
+    heldWeeklyMi: rampEvidence ? (rampEvidence.heldMi ?? null) : null,
+    meanWeeklyMi: rampEvidence ? (rampEvidence.meanMi ?? null) : null,
     asOfISO: input.startMondayISO,
   };
   const loadDistanceFloorMi =
