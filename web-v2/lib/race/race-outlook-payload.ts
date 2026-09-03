@@ -90,6 +90,45 @@ export function raceOutlookPayload(o: RaceOutlook | null | undefined) {
           }
         : null,
     },
+    /**
+     * RP-2 (2026-09-03) · Q7'S FOURTH LAYER REACHED NO SURFACE.
+     *
+     * `race-outlook.ts` has resolved `conditionalUpside` since EXECTARGET-1 and
+     * this serialiser never carried it, so the one thing that keeps the fast
+     * edge of the range from being mistaken for the target — the criteria
+     * attached to it — existed only in server memory. On the owner's CIM,
+     * measured live 2026-09-02, that is 3:13:30 · 7:23/mi: the exact number
+     * that used to BE the execution target, and the exact number a page
+     * without this field has no way to explain.
+     *
+     * `PROGRESSIVE_BASELINE_DOCTRINE.md` Q7 asks for four layers. Three
+     * shipped.
+     */
+    conditional_upside: o.conditionalUpside
+      ? {
+          sec: o.conditionalUpside.targetSec,
+          display: time(o.conditionalUpside.targetSec),
+          pace: pace(o.conditionalUpside.paceSecPerMi),
+          confidence: o.conditionalUpside.confidence,
+          criteria: o.conditionalUpside.criteria,
+        }
+      : null,
+    /**
+     * RP-3 · "Race day cannot ask for a pace the block never made credible."
+     * The seam between the last authored marathon-effort rehearsal and the
+     * execution target. Rule 11: `credible: false` with a null gap is "the
+     * block rehearses nothing", which is a different fact from a gap that is
+     * too wide, and `reason` says which.
+     */
+    block_seam: o.blockSeam
+      ? {
+          last_rehearsal_pace: pace(o.blockSeam.lastRehearsalSecPerMi),
+          execution_pace: pace(o.blockSeam.executionSecPerMi),
+          gap_s_per_mi: o.blockSeam.gapSecPerMi != null ? Math.round(o.blockSeam.gapSecPerMi) : null,
+          credible: o.blockSeam.credible,
+          reason: o.blockSeam.reason,
+        }
+      : null,
     goal_feasibility: {
       status: o.goalFeasibility.status,
       gap_sec: o.goalFeasibility.gapSec,

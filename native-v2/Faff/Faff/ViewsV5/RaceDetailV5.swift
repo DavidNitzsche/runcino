@@ -260,12 +260,33 @@ struct RaceDetailV5: View {
         return (g, m, p, g || m || p)
     }
 
+    /// RULE 17 · WHEN TWO COMPONENTS CAN BOTH DRAW A VALUE, ONE YIELDS.
+    ///
+    /// Caught by RENDERING it. With the layer set drawn, this plate printed
+    /// "Goal 3:00:00" directly above the layer set's "Your goal 3:00:00", and
+    /// "Projected 3:19:43" directly above "Where this block is built to get you
+    /// 3:19:43" — the same two numbers, twice each, on one screen, and one of
+    /// them under a fourth word for a quantity the whole page exists to name
+    /// precisely.
+    ///
+    /// Rule 17 is explicit that the yield happens on the RENDERED TEXT. The
+    /// layers carry every figure this plate carried, with their ranges and the
+    /// sentence saying what each one is, so the plate is the one that goes.
+    /// The gap it uniquely carried now rides on the goal layer's own note.
+    ///
+    /// It stays for a past race, where there is no layer set (a race already
+    /// run is not projected) and Goal / Result / Gap is exactly right.
+    private var layersOwnTheNumbers: Bool {
+        guard let l = raceDetail.raceLayers else { return false }
+        return l.findings.isEmpty && !l.layers.isEmpty && raceDetail.resultEntry?.isPast != true
+    }
+
     @ViewBuilder
     private var statsRow: some View {
         let cols = Self.showsColumns(goal: raceDetail.goal?.text,
                                      middle: raceDetail.projected?.text,
                                      gap: raceDetail.gap?.text)
-        if cols.any {
+        if cols.any && !layersOwnTheNumbers {
             HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
                 if cols.goal {
                     stat("Goal", raceDetail.goal.unreadableIfAbsent, ink: V5.textPrimary)
@@ -384,58 +405,228 @@ struct RaceDetailV5: View {
     // target is against the stated goal. Every value is modelled, so every
     // number wears the mark. Absent on older servers (additive decode).
 
+    // MARK: RP-2 · the four layers, and they must LOOK different
+    //
+    // ── WHAT WAS HERE, AND WHY IT WAS NOT ENOUGH ────────────────────────
+    //
+    // Four `outlookRow`s in one tile, identical in every visual respect: same
+    // type size, same weight, same colour, same alignment. The runner's goal,
+    // what today's evidence carries, where the block is aiming, and the number
+    // to actually run were told apart only by their label text.
+    //
+    // Two of them also printed the SAME NUMBER. Since EXECTARGET-1 the
+    // execution target IS the current projection, so on the owner's CIM
+    // "Today's fitness would race 3:23:50" sat directly above "Run the day at
+    // 3:23:50" — Rule 17's defect on one screen, and the exact shape that had
+    // three CIM projections live at once under one word.
+    //
+    // ── WHAT DECIDES WHAT ───────────────────────────────────────────────
+    //
+    // `lib/race/race-page-layers.ts` decides which layers exist, what each is
+    // called, and which single one is actionable. This view decides only how
+    // each is DRAWN, keyed off `actionable` and `kind` — so a re-labelling or
+    // a fifth layer is a server change and needs no app release.
+    //
+    // Four treatments, and they are different in weight, ground and position,
+    // not merely in wording:
+    //
+    //   · the actionable target — raised tile, a signal rule down its edge,
+    //     display type, its range beneath it. The one thing to do.
+    //   · the runner's goal — a quiet row, and the ONLY number here with no
+    //     tilde, because it is the one number he supplied rather than one we
+    //     modelled (rule one of the design contract).
+    //   · the block's forecast — a quiet row that says in words that it is a
+    //     forecast (`PROGRESSIVE_BASELINE_DOCTRINE.md` §6).
+    //   · the conditional upside — its own tile, set apart, with what it is
+    //     waiting on listed underneath. Never styled like the target.
+    //
+    // ── THE REFUSAL ─────────────────────────────────────────────────────
+    //
+    // The server sends `findings` when the set is incoherent and this view
+    // draws nothing rather than several incompatible values, which is the
+    // whole point. `raceLayers` absent (an older server) falls back to the
+    // bridge below, so this screen degrades to what it drew before rather
+    // than to a blank.
+
     @ViewBuilder
     private var outlookSection: some View {
-        if let o = raceDetail.outlook, raceDetail.resultEntry?.isPast != true {
-            VStack(alignment: .leading, spacing: V5.S.s10) {
-                V5SectionLabel(text: "How the number is built").padding(.horizontal, V5.S.s4)
-                Tile {
-                    VStack(alignment: .leading, spacing: V5.S.s10) {
-                        outlookRow("Today's fitness would race", o.currentProjection.display, o.currentProjection.likelyRange)
-                        outlookRow(o.trainingPrescription.kind == "marathon_specific" ? "Marathon pace in training now" : "Race pace in training now", o.trainingPrescription.pace.map { "\($0)/mi" }, nil)
-                        outlookRow("Expected on race day", o.expectedRaceDay.display, o.expectedRaceDay.likelyRange)
-                        outlookRow("Run the day at", o.execution.targetDisplay.map { d in o.execution.pace.map { "\(d) · \($0)/mi" } ?? d }, nil)
-                        if let why = o.trainingPrescription.why, !why.isEmpty {
-                            Text(why)
-                                .font(.faffText(TypeScaleV5.label13))
-                                .foregroundStyle(V5.textQuiet)
-                                .fixedSize(horizontal: false, vertical: true)
+        if raceDetail.resultEntry?.isPast != true {
+            if let l = raceDetail.raceLayers, l.findings.isEmpty, !l.layers.isEmpty {
+                VStack(alignment: .leading, spacing: V5.S.s16) {
+                    if let target = l.layers.first(where: { $0.actionable }) {
+                        targetLayer(target)
+                    }
+
+                    let context = l.layers.filter { !$0.actionable && $0.kind != "conditional_upside" }
+                    if !context.isEmpty {
+                        Tile {
+                            VStack(alignment: .leading, spacing: V5.S.s14) {
+                                ForEach(context) { contextLayer($0) }
+                            }
                         }
-                        if let reason = o.execution.reason, !reason.isEmpty {
-                            Text(reason)
-                                .font(.faffText(TypeScaleV5.label13))
-                                .foregroundStyle(V5.textQuiet)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        if let hr = o.execution.hr, hr.expectedRangeBpm.count == 2 {
-                            Text(hr.informationalOnly
-                                 ? "Heart rate on the day: expect \(hr.expectedRangeBpm[0])-\(hr.expectedRangeBpm[1]) bpm · a reference, not a target"
-                                 : "Heart rate on the day: expect \(hr.expectedRangeBpm[0])-\(hr.expectedRangeBpm[1]) bpm")
-                                .font(.faffText(TypeScaleV5.label13))
+                    }
+
+                    if let upside = l.layers.first(where: { $0.kind == "conditional_upside" }) {
+                        upsideLayer(upside)
+                    }
+
+                    if let t = l.temporality, !t.isEmpty {
+                        Text(t)
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.textQuiet)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, V5.S.s4)
+                    }
+
+                    hrSentence
+                }
+            }
+        }
+    }
+
+    /// THE ONE NUMBER TO RUN TO. Raised ground, a signal rule, display type.
+    private func targetLayer(_ x: V5RaceLayer) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            // The signal rule. Orange is the phone's accent and this is the
+            // one place on the screen that earns it: the actionable number.
+            Rectangle()
+                .fill(V5.signal)
+                .frame(width: 3)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: V5.S.s6) {
+                Text(x.label.uppercased())
+                    .font(.faffText(TypeScaleV5.label12, weight: .bold))
+                    .tracking(TypeScaleV5.label12 * 0.08)
+                    .foregroundStyle(V5.textQuiet)
+                HStack(alignment: .firstTextBaseline, spacing: V5.S.s8) {
+                    FaffValueText(.from(x.display, modelled: x.modelled),
+                                  font: .faffDisplay(34))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                    if let p = x.pace {
+                        Text("\(p)/mi")
+                            .font(.faffText(17, weight: .semibold))
+                            .foregroundStyle(V5.textSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                }
+                if let r = x.range, let lo = r.lo, let hi = r.hi {
+                    // Q39 · uncertainty is shown as a useful RANGE, never as a
+                    // raw confidence decimal.
+                    Text("\(lo) to \(hi)")
+                        .font(.faffText(TypeScaleV5.label12))
+                        .foregroundStyle(V5.textQuiet)
+                }
+                if let note = x.note, !note.isEmpty {
+                    Text(note)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(V5.S.tilePad)
+            Spacer(minLength: 0)
+        }
+        .background(V5.materialTileRaised, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The goal and the block forecast. Quiet rows, and the goal is the only
+    /// number on this screen that wears no tilde.
+    private func contextLayer(_ x: V5RaceLayer) -> some View {
+        VStack(alignment: .leading, spacing: V5.S.s4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(x.label)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textSecondary)
+                Spacer(minLength: V5.S.s6)
+                VStack(alignment: .trailing, spacing: V5.S.s2) {
+                    FaffValueText(.from(x.display, modelled: x.modelled),
+                                  font: .faffText(17, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    if let r = x.range, let lo = r.lo, let hi = r.hi {
+                        Text("\(lo) to \(hi)")
+                            .font(.faffText(TypeScaleV5.label12))
+                            .foregroundStyle(V5.textQuiet)
+                    }
+                }
+            }
+            if let note = x.note, !note.isEmpty {
+                Text(note)
+                    .font(.faffText(TypeScaleV5.label12))
+                    .foregroundStyle(V5.textQuiet)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// RP-3 · a faster outcome that is NOT the prescription, with what it is
+    /// waiting on. Its own tile so it can never be mistaken for the target.
+    private func upsideLayer(_ x: V5RaceLayer) -> some View {
+        VStack(alignment: .leading, spacing: V5.S.s10) {
+            Text(x.label.uppercased())
+                .font(.faffText(TypeScaleV5.label12, weight: .bold))
+                .tracking(TypeScaleV5.label12 * 0.08)
+                .foregroundStyle(V5.attention)
+            HStack(alignment: .firstTextBaseline, spacing: V5.S.s8) {
+                FaffValueText(.from(x.display, modelled: x.modelled),
+                              font: .faffText(22, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                if let p = x.pace {
+                    Text("\(p)/mi")
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textSecondary)
+                }
+            }
+            if let note = x.note, !note.isEmpty {
+                Text(note)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let criteria = x.criteria, !criteria.isEmpty {
+                VStack(alignment: .leading, spacing: V5.S.s6) {
+                    ForEach(criteria) { c in
+                        HStack(alignment: .top, spacing: V5.S.s8) {
+                            // Rule 11 · nothing in the system judges these yet,
+                            // so nothing here draws a tick. A dot is a list
+                            // marker; a tick would be a claim.
+                            Text(c.isEvaluated ? (c.isMet ? "Done" : "Not yet") : "·")
+                                .font(.faffText(TypeScaleV5.label12,
+                                                weight: c.isEvaluated ? .semibold : .regular))
+                                .foregroundStyle(c.isMet ? V5.signal : V5.textQuiet)
+                                .frame(minWidth: c.isEvaluated ? 46 : 8, alignment: .leading)
+                            Text(c.text)
+                                .font(.faffText(TypeScaleV5.label12))
                                 .foregroundStyle(V5.textQuiet)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
             }
-            .accessibilityElement(children: .combine)
         }
+        .padding(V5.S.tilePad)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 
-    private func outlookRow(_ label: String, _ value: String?, _ range: V5OutlookRange?) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
+    /// RP-7 · one sentence, said once. The full HR ladder (early ceiling, the
+    /// checkpoint, the abort) is sent and is not drawn here — see the report.
+    @ViewBuilder
+    private var hrSentence: some View {
+        if let hr = raceDetail.outlook?.execution.hr, hr.expectedRangeBpm.count == 2 {
+            Text(hr.informationalOnly
+                 ? "Heart rate on the day: expect \(hr.expectedRangeBpm[0])-\(hr.expectedRangeBpm[1]) bpm · a reference, not a target"
+                 : "Heart rate on the day: expect \(hr.expectedRangeBpm[0])-\(hr.expectedRangeBpm[1]) bpm")
                 .font(.faffText(TypeScaleV5.label13))
-                .foregroundStyle(V5.textSecondary)
-            Spacer(minLength: V5.S.s6)
-            VStack(alignment: .trailing, spacing: V5.S.s2) {
-                FaffValueText(.modelled(value ?? "not yet"), font: .faffText(17, weight: .semibold))
-                if let r = range, let lo = r.lo, let hi = r.hi {
-                    Text("\(lo) to \(hi)")
-                        .font(.faffText(TypeScaleV5.label12))
-                        .foregroundStyle(V5.textQuiet)
-                }
-            }
+                .foregroundStyle(V5.textQuiet)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, V5.S.s4)
         }
     }
 
@@ -445,10 +636,22 @@ struct RaceDetailV5: View {
         VStack(alignment: .leading, spacing: V5.S.s10) {
             V5SectionLabel(text: "Course").padding(.horizontal, V5.S.s4)
             Tile {
-                ElevationProfile(points: raceDetail.elevation,
-                                  marks: raceDetail.elevationMarks.map(\.mark),
-                                  footnotes: raceDetail.elevationFootnotes,
-                                  height: 120)
+                VStack(alignment: .leading, spacing: V5.S.s10) {
+                    ElevationProfile(points: raceDetail.elevation,
+                                      marks: raceDetail.elevationMarks.map(\.mark),
+                                      footnotes: raceDetail.elevationFootnotes,
+                                      height: 120)
+                    // RP-4/RP-5 · what the profile MEANS. The footnotes above
+                    // already carry gain and net, so only the interpretation is
+                    // drawn (Rule 17). Null when the trace is not trustworthy
+                    // enough to argue from, and then nothing is said.
+                    if let meaning = raceDetail.courseContext?.meaning, !meaning.isEmpty {
+                        Text(meaning)
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         }
     }

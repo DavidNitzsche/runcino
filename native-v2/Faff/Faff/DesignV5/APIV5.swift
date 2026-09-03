@@ -1084,7 +1084,40 @@ struct V5RaceDetail: Decodable, Equatable {
     /// bridge between them. Additive: absent on older servers, and `var`
     /// with a default so every preview's memberwise init still compiles.
     var outlook: V5RaceOutlook? = nil
+    /// RP-2 / RP-3 · the four layers with their labels and the one actionable
+    /// flag, resolved server-side by `lib/race/race-page-layers.ts`.
+    var raceLayers: V5RaceLayers? = nil
+    /// RP-4 / RP-5 · the course, described as a course.
+    var courseContext: V5CourseContext? = nil
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// RACEWIRE-1 (2026-09-03) · THE OUTLOOK NEVER DECODED, AND IT TOOK THE WHOLE
+// SCREEN WITH IT.
+//
+// `lib/race/race-outlook-payload.ts` says so in its own first line —
+// "Additive, snake_case" — and every one of these structs was written in
+// camelCase against a decoder (`v5(_:cache:as:)` below) that sets no
+// `keyDecodingStrategy`. The rest of `V5RaceDetail` is camelCase on the wire
+// too, so the mismatch is confined to this sub-object and was invisible in
+// review.
+//
+// The cost was not "the outlook section is blank". `outlook` is a present JSON
+// OBJECT on every upcoming race, so the synthesised `decodeIfPresent` calls
+// `V5RaceOutlook.init(from:)`, which throws `keyNotFound("currentProjection")`,
+// and that throw PROPAGATES out of the whole `V5RaceDetail` decode. Every
+// upcoming race's detail screen wore the data-outage copy. Past races decode
+// fine, because the route sends `outlook: null` for them — which is exactly
+// why this survived: the screen worked on the races that had already happened.
+//
+// Falsified before the fix and after it (Rule 18): the same payload throws
+// against the old shape and decodes against this one.
+//
+// FIXED WITH EXPLICIT `CodingKeys`, NOT `.convertFromSnakeCase`. The strategy
+// is set on one shared decoder used by every v5 endpoint, and changing it
+// would silently re-key surfaces this change has no business touching. Local
+// keys have no blast radius, and `V5WireCorpusTests` pins them.
+// ─────────────────────────────────────────────────────────────────────────
 
 /// One quantity of the race outlook: a number with its display forms and,
 /// where the brain has one, a likely range and a confidence.
@@ -1095,6 +1128,11 @@ struct V5OutlookQuantity: Decodable, Equatable {
     let likelyRange: V5OutlookRange?
     let confidence: Double?
     let basis: String?
+
+    enum CodingKeys: String, CodingKey {
+        case sec, display, pace, confidence, basis
+        case likelyRange = "likely_range"
+    }
 }
 
 struct V5OutlookRange: Decodable, Equatable {
@@ -1108,7 +1146,18 @@ struct V5OutlookHr: Decodable, Equatable {
     let earlyThroughMi: Double?
     let checkpointMi: Double?
     let checkpointAbortBpm: Int?
+    let lateAllowanceBpm: Int?
     let informationalOnly: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case expectedRangeBpm = "expected_range_bpm"
+        case earlyCeilingBpm = "early_ceiling_bpm"
+        case earlyThroughMi = "early_through_mi"
+        case checkpointMi = "checkpoint_mi"
+        case checkpointAbortBpm = "checkpoint_abort_bpm"
+        case lateAllowanceBpm = "late_allowance_bpm"
+        case informationalOnly = "informational_only"
+    }
 }
 
 struct V5OutlookExecution: Decodable, Equatable {
@@ -1116,7 +1165,13 @@ struct V5OutlookExecution: Decodable, Equatable {
     let pace: String?
     let source: String?
     let reason: String?
+    let strategy: String?
     let hr: V5OutlookHr?
+
+    enum CodingKeys: String, CodingKey {
+        case pace, source, reason, strategy, hr
+        case targetDisplay = "target_display"
+    }
 }
 
 struct V5OutlookTraining: Decodable, Equatable {
@@ -1133,10 +1188,44 @@ struct V5OutlookBridgeStep: Decodable, Equatable, Identifiable {
     let confidence: Double?
     let differsFromPrevious: String?
     let changeTrigger: String
+
+    enum CodingKeys: String, CodingKey {
+        case step, label, value, confidence
+        case differsFromPrevious = "differs_from_previous"
+        case changeTrigger = "change_trigger"
+    }
 }
 
 struct V5OutlookFeasibility: Decodable, Equatable {
     let status: String
+}
+
+/// RP-2 · Q7's fourth layer. A FASTER OUTCOME THAT IS NOT THE PRESCRIPTION,
+/// carried with the evidence it waits on. Never drawn as a target.
+struct V5OutlookUpside: Decodable, Equatable {
+    let display: String?
+    let pace: String?
+    let criteria: [String]
+
+    enum CodingKeys: String, CodingKey { case display, pace, criteria }
+}
+
+/// RP-3 · "Race day cannot ask for a pace the block never made credible."
+/// `credible == false` with a nil `gapSPerMi` means the block rehearses
+/// nothing, which is a different fact from a gap that is too wide (Rule 11).
+struct V5OutlookSeam: Decodable, Equatable {
+    let lastRehearsalPace: String?
+    let executionPace: String?
+    let gapSPerMi: Int?
+    let credible: Bool
+    let reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case credible, reason
+        case lastRehearsalPace = "last_rehearsal_pace"
+        case executionPace = "execution_pace"
+        case gapSPerMi = "gap_s_per_mi"
+    }
 }
 
 /// The race-pace brain on the wire. Every field is named for the quantity it
@@ -1147,7 +1236,102 @@ struct V5RaceOutlook: Decodable, Equatable {
     let expectedRaceDay: V5OutlookQuantity
     let execution: V5OutlookExecution
     let goalFeasibility: V5OutlookFeasibility
+    let conditionalUpside: V5OutlookUpside?
+    let blockSeam: V5OutlookSeam?
     let bridge: [V5OutlookBridgeStep]
+
+    enum CodingKeys: String, CodingKey {
+        case execution, bridge
+        case currentProjection = "current_projection"
+        case trainingPrescription = "training_prescription"
+        case expectedRaceDay = "expected_race_day"
+        case goalFeasibility = "goal_feasibility"
+        case conditionalUpside = "conditional_upside"
+        case blockSeam = "block_seam"
+    }
+}
+
+// MARK: - RP-2 · the four layers, kept apart
+//
+// `lib/race/race-page-layers.ts` is the one owner of which layers exist, what
+// each is called, and which single one is actionable. The client draws what it
+// is sent and decides none of it — so a future layer, or a re-labelling, is a
+// server change and this screen follows without an app release.
+
+/// Rule 11 · three facts. `notEvaluated` is not `notMet`: nothing in the
+/// system judges these criteria yet, and a fabricated tick would tell the
+/// runner he had earned a faster target on evidence nobody looked at.
+struct V5UpsideCriterion: Decodable, Equatable, Identifiable {
+    var id: String { text }
+    let text: String
+    /// "met" · "not_met" · "not_evaluated"
+    let status: String
+    var isEvaluated: Bool { status == "met" || status == "not_met" }
+    var isMet: Bool { status == "met" }
+}
+
+struct V5LayerRange: Decodable, Equatable {
+    let lo: String?
+    let hi: String?
+}
+
+struct V5RaceLayer: Decodable, Equatable, Identifiable {
+    var id: String { kind }
+    /// "aspirational_goal" · "current_projection" · "execution_target"
+    /// · "block_forecast" · "conditional_upside"
+    let kind: String
+    let label: String
+    let display: String?
+    let pace: String?
+    let range: V5LayerRange?
+    /// Rule one: a modelled number must never look measured. Only the
+    /// runner's own stated goal is false here.
+    let modelled: Bool
+    /// EXACTLY ONE layer in a coherent set is the number to run to.
+    let actionable: Bool
+    let note: String?
+    let criteria: [V5UpsideCriterion]?
+}
+
+struct V5RaceLayers: Decodable, Equatable {
+    let temporality: String?
+    let layers: [V5RaceLayer]
+    /// Non-empty means the SET is incoherent and the screen must not draw it.
+    /// The server would rather send nothing than several incompatible values
+    /// under one word, so this is a refusal signal, not a warning to render.
+    let findings: [String]
+
+    enum CodingKeys: String, CodingKey { case temporality, layers, findings }
+}
+
+/// RP-4 / RP-5 · what the course actually does. No second finish time: the
+/// profile is described as a profile, because a page whose whole job is not to
+/// show several incompatible finish numbers may not add one more.
+struct V5CourseContext: Decodable, Equatable {
+    let gainFt: Double?
+    let lossFt: Double?
+    let netFt: Double?
+    let provenance: String
+    let confidence: String
+    let conflictNote: String?
+    /// The FIGURES. Not drawn on this screen: the elevation footnotes already
+    /// carry gain and net, and Rule 17 yields on the rendered text.
+    let sentence: String?
+    /// What the profile MEANS, which is the half no footnote carries. Null
+    /// when the elevation is not trustworthy enough to argue from.
+    let meaning: String?
+    /// Always false today. Named rather than assumed, so this screen can never
+    /// imply a course-adjusted number it was not given.
+    let appliedToTarget: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case provenance, confidence, sentence, meaning
+        case gainFt = "gain_ft"
+        case lossFt = "loss_ft"
+        case netFt = "net_ft"
+        case conflictNote = "conflict_note"
+        case appliedToTarget = "applied_to_target"
+    }
 }
 
 /// The coach-set A/B/C framing from `lib/race/coach-goal.ts`.
@@ -1794,10 +1978,41 @@ extension V5DecisionCard {
 }
 
 extension V5RaceDetail {
+    // ── RACEWIRE-1 (2026-09-03) · THE FIELD THAT WAS NEVER READ ────────────
+    //
+    // This lenient decoder is the reason the race-pace brain has been dark on
+    // the phone since the day it shipped. `outlook` was declared on the struct,
+    // documented, decoded into `V5RaceOutlook`, drawn by `RaceDetailV5`'s
+    // outlook section — and NOT LISTED IN `K`. A custom `init(from:)` replaces
+    // the synthesised one wholesale, so the property simply kept its `nil`
+    // default on every render. No throw, no error, no empty state: the section
+    // was `if let o = raceDetail.outlook` and the answer was always no.
+    //
+    // That is this codebase's signature failure — wired, tested and inert
+    // (CLAUDE.md, Rule 21's framing) — and it is invisible to every gate,
+    // because the server sends the field, the struct decodes the field in
+    // isolation, and only the join of the two is wrong. Found by RENDERING it
+    // (Rule 13), not by reading it: the screenshot had a Course section sitting
+    // directly under the stat plate where four layers should have been.
+    //
+    // A LENIENT DECODER IS A RATCHET IN THE WRONG DIRECTION. Every field it
+    // omits fails silently and forever. `V5RaceWireTests` now decodes a real
+    // payload and asserts each of these three arrives, so the next field added
+    // to the struct and forgotten here fails a test instead of a runner.
+    //
+    // AND THIS IS A LINE COMMENT ON PURPOSE. Line 26 of this file mentions an
+    // api path with a glob in it, inside a double-slash comment, which leaves a
+    // stray C-style comment OPENER in the text. `_refusal_wire.test.ts`'s
+    // `codeOnly` strips C-style comments before it strips line comments, so the
+    // first real closer anywhere in this file closes that phantom block and
+    // deletes 86K of source from what the gate then scans. Writing this note as
+    // a C-style block made `_refusal_wire` fail on a line nobody had touched.
+    // Keep every comment in this file double-slash.
     enum K: String, CodingKey {
         case slug, name, dateLine, goal, projected, gap, elevation, elevationMarks
         case elevationFootnotes, pacePlan, taperProgress, taperEndpoints
         case taperCentreLabel, gear, coachLine, resultEntry, coachGoal
+        case outlook, raceLayers, courseContext
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -1818,6 +2033,15 @@ extension V5RaceDetail {
         coachLine = c.opt(.coachLine)
         resultEntry = c.opt(.resultEntry)
         coachGoal = c.opt(.coachGoal)
+        // The three additive blocks. `c.opt` swallows a decode failure into
+        // nil, which is right for an older server that does not send them and
+        // is exactly what hid the camelCase/snake_case mismatch above — so the
+        // wire test asserts these are POPULATED from a real payload rather
+        // than merely that the screen did not crash (Rule 18: assert the shape
+        // of the result, not the absence of the defect).
+        outlook = c.opt(.outlook)
+        raceLayers = c.opt(.raceLayers)
+        courseContext = c.opt(.courseContext)
     }
 }
 
