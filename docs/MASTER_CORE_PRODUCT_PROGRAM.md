@@ -528,6 +528,62 @@ takes the peak-stimulus slot and a race rung holds the pace. Correct for his
 calendar. It means his authored progression is **one pace step plus a hold**, not
 three.
 
+
+## VW-3 · THE QA TOKEN PATH DOES NOT WORK, AND IT BLOCKS RULE 13
+
+Found 2026-09-03 while trying to complete the visual walk properly.
+
+`FaffApp.seedQATokenIfAsked()` exists exactly for this — a DEBUG launch argument
+that puts a session token in the Keychain so the app can be driven without a
+password:
+
+    xcrun simctl launch <udid> run.faff.app -faffToken <token>
+
+**It does not hold.** Observed on a locally-built signed Debug binary against the
+walk substrate: the app gets far enough to run its first-launch permission flow
+(so the argument IS read and `faff.onboarded` IS set), then every API request
+arrives at the server with **no Authorization header**, 401s, and
+`.faffSessionExpired` fires — which calls `TokenStore.shared.clear()` and bounces
+to the sign-in gate. One 401 destroys the seeded session.
+
+Proven not to be a server problem: the same token, same server, same moment —
+
+    no token   → 401
+    bad token  → 401
+    walk token → 200, real content (state before_run, Intervals 6.5 mi)
+
+**Why this matters more than it looks.** Rule 13 says a fix to something the
+runner sees is verified by RENDERING it with real data. `-faffToken` is the ONLY
+way to do that without typing a password, which is not something an agent may do.
+So while this is broken, **every phone-side display fix is unverifiable by
+anyone but the owner** — and two are already sitting on `main` waiting on it
+(VW-1's status-bar scrim and PICKERTRUTH-1's gated RUN sheet sentence).
+
+Likely suspects, in order: the Keychain write failing on a locally-built
+simulator binary (there is a standing note that unsigned sim builds break
+Keychain auth, and ad-hoc `CODE_SIGN_IDENTITY="-"` did not fix it); or the
+seeding racing the first hydration request, so a request goes out before the
+token lands, 401s, and clears the token it was about to use. The second would
+also explain why the permission flow ran but the session did not survive it.
+
+**Worth fixing before anything else on the phone**, because it is the gate on
+verifying everything else. A one-line diagnostic would separate the two
+hypotheses: log the result of the Keychain write in `seedQATokenIfAsked`.
+
+### The substrate itself is done and works
+
+`web-v2/scripts/walk-substrate.sh` + `walk-server.sh`, documented in
+`docs/VISUAL_WALK_SUBSTRATE.md`. It reuses the adaptation harness's copier rather
+than adding a second one, refuses any non-loopback target before reading the
+credential, and mints an ordinary `sessions` row — **no auth bypass was added to
+application code**. Fifteen phone endpoints answer 200 with his real data.
+
+**And it found a real safety hole on the way:** the production write barrier
+judges its target from `process.env.DATABASE_URL` rather than from the connection
+the statement is issued on. With `DATABASE_URL` pointing at loopback, the barrier
+would have PERMITTED a write on a production client. Filed to fence the barrier
+per connection.
+
 ---
 
 ## P1 · Known open items outside the critical path
