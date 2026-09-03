@@ -29,6 +29,7 @@ import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-a
 // SPECSUMMARY-1 · the ONE owner of "what family of session is this", shared
 // with the phone's card so the two surfaces cannot name it differently.
 import { specFamilyPhrase } from '@/lib/training/spec-card';
+import { canonicalWorkoutDistanceMi } from '@/lib/format/run';
 import {
   classifySession,
   hrCapBreached,
@@ -1649,7 +1650,10 @@ export async function buildWatchToday(
     };
   }
 
-  const distanceMi = Number(wo.distance_mi) || 0;
+  // CONTRACT-1 (2026-09-03) · the SAME function Today's dose calls
+  // (`lib/format/run.ts#canonicalWorkoutDistanceMi`), so this payload and
+  // Today can never independently drift on the same `plan_workouts` row.
+  const distanceMi = canonicalWorkoutDistanceMi(wo.distance_mi);
   if (distanceMi <= 0) {
     return {
       message: "Rest day. Recover hard.",
