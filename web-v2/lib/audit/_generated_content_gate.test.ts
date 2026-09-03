@@ -238,7 +238,11 @@ const UNCALLED_ROUTES = findUncalledRoutes(REPO, 'web-v2/app/api', [
 ]);
 
 describe('GUARD 5 · a module with no caller is named and reasoned', () => {
-  const graph = buildModuleGraph(REPO, SQL_DIRS);
+  // The web-root entry files are named explicitly: they are outside every
+  // directory in SQL_DIRS, so without them the graph cannot see what
+  // `middleware.ts` imports, and anything only middleware imports reads as an
+  // orphan. `isEntryPoint` already treats both as live roots.
+  const graph = buildModuleGraph(REPO, [...SQL_DIRS, 'web-v2/middleware.ts', 'web-v2/vitest.setup.ts']);
   // A route nothing calls is not a live root. Without this, block-preview.ts
   // reads as "imported by its route" and the module it strands reads as
   // "imported by block-preview", and instance 3 stays invisible.

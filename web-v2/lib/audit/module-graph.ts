@@ -32,7 +32,19 @@ const SOURCE_EXT = ['.ts', '.tsx', '.mts', '.mjs', '.js', '.jsx'];
 export { SOURCE_EXT };
 
 function walk(dir: string, out: string[] = []): string[] {
+  // A caller may name a single FILE rather than a directory. `web-v2/
+  // middleware.ts` is the case that forced this: it sits at the web root, so no
+  // directory in the scan set contains it, and `isEntryPoint` below already
+  // knows it is a live root. Without this branch the graph never reads it, and
+  // every module middleware imports reads as an orphan nothing calls — which is
+  // precisely the false finding this file exists to avoid producing.
   let entries: fs.Dirent[];
+  try {
+    if (fs.statSync(dir).isFile()) {
+      if (SOURCE_EXT.includes(path.extname(dir))) out.push(dir);
+      return out;
+    }
+  } catch { return out; }
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
     if (e.name === 'node_modules' || e.name === '.next' || e.name === '.git') continue;

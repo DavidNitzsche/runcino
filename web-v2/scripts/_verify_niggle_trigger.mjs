@@ -10,6 +10,11 @@
  *
  * Run with: node scripts/_verify_niggle_trigger.mjs
  */
+// PRODUCTION WRITE BARRIER · this file is verification tooling, so it is fenced.
+// The fence refuses any database write unless DATABASE_URL is provably loopback,
+// and stamps every outgoing request X-Faff-Verification so middleware.ts refuses
+// a mutation that would reach production. See scripts/_verification-fence.mjs.
+import './_verification-fence.mjs';
 import pg from 'pg';
 import fs from 'fs';
 const env = fs.readFileSync('.env.local','utf8').split('\n').reduce((a,l)=>{const m=l.match(/^([A-Z_]+)=(.*)$/);if(m)a[m[1]]=m[2].replace(/^["']|["']$/g,'');return a;},{});

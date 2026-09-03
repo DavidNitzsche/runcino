@@ -77,6 +77,37 @@ enum API {
         return try await authedSend(req)
     }
 
+    /// Stamp every authed request with what KIND OF BUILD is sending it.
+    ///
+    /// WHY THIS EXISTS. An agent once ran a live simulator session signed in as
+    /// the owner's production account. The simulator posted two junk activities
+    /// through `/api/ingest/workout` — 0.27 mi each, `status=partial` — into his
+    /// real training history. They were removed only after he approved the
+    /// delete. His ruling: "Simulator and automated test clients must be unable
+    /// to post activities, complete workouts, or mutate my production account.
+    /// Environment labelling or connection-string policy alone is insufficient."
+    ///
+    /// `#if targetEnvironment(simulator)` is a COMPILE-TIME fact, which is the
+    /// only reason this is a control and not a note. A simulator build cannot
+    /// fail to send the header and a device build cannot send it: they are
+    /// different binaries. Nobody has to remember anything, and there is no
+    /// setting to get wrong.
+    ///
+    /// The server side is `web-v2/middleware.ts` +
+    /// `web-v2/lib/verify/client-attestation.ts`. It refuses a MUTATING request
+    /// carrying this stamp whenever it cannot prove it is pointed away from the
+    /// production database. GET is untouched, so reading production from the
+    /// simulator — how Rule 13 display fixes get verified — still works, and so
+    /// is `/api/auth/**`, so the simulator can still sign in to read.
+    ///
+    /// A device build (TestFlight, the runner's own phone) sends nothing extra
+    /// and is never affected.
+    static func stampClientEnvironment(_ req: inout URLRequest) {
+        #if targetEnvironment(simulator)
+        req.setValue("simulator", forHTTPHeaderField: "X-Faff-Client-Env")
+        #endif
+    }
+
     /// Auth-aware request helper for ANY HTTP method (POST/PATCH/DELETE/etc.).
     /// Caller assembles the URLRequest (method, headers, body); we attach the
     /// bearer + do 401 handling so write paths share the same session contract
@@ -84,6 +115,7 @@ enum API {
     /// what to do with the body / status.
     static func authedSend(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var req = request
+        API.stampClientEnvironment(&req)
         // Snapshot the token before the request (nonisolated keychain read — no
         // main-actor hop). Used below to guard against three spurious/missed-
         // expiry vectors:

@@ -22,6 +22,11 @@
  *   skipped_workouts  → day_actions, action='skip'  (/api/today/skip,
  *                       db/migrations/114_day_actions.sql)
  */
+// PRODUCTION WRITE BARRIER · this file is verification tooling, so it is fenced.
+// The fence refuses any database write unless DATABASE_URL is provably loopback,
+// and stamps every outgoing request X-Faff-Verification so middleware.ts refuses
+// a mutation that would reach production. See scripts/_verification-fence.mjs.
+import './_verification-fence.mjs';
 import { Pool } from 'pg';
 const SYNTH = '99999999-0000-0000-0000-000000000002';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });

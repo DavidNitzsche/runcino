@@ -17,6 +17,11 @@
  * an assertion that the produced row shape matches. (This catches schema
  * drift without needing a live server.)
  */
+// PRODUCTION WRITE BARRIER · this file is verification tooling, so it is fenced.
+// The fence refuses any database write unless DATABASE_URL is provably loopback,
+// and stamps every outgoing request X-Faff-Verification so middleware.ts refuses
+// a mutation that would reach production. See scripts/_verification-fence.mjs.
+import './_verification-fence.mjs';
 import pg from 'pg';
 import fs from 'fs';
 import crypto from 'crypto';

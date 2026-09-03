@@ -3,6 +3,13 @@
  * Reads DATABASE_URL from env (Railway prod or local override in .env.local).
  */
 import { Pool } from 'pg';
+// Arms the production write barrier IF this process is verification tooling
+// (vitest, NODE_ENV=test, FAFF_VERIFICATION=1) — and does nothing at all
+// otherwise, so the real application's writes are untouched. Imported for
+// effect, before the pool below is constructed, because the barrier patches
+// `pg`'s prototypes rather than this one instance.
+// See lib/verify/production-barrier.ts for the incident it exists to prevent.
+import './../verify/install-barrier';
 
 declare global {
   // eslint-disable-next-line no-var
