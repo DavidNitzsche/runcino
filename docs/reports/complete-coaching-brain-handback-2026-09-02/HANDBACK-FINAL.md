@@ -36,7 +36,7 @@ an incompatible structure. What remains is one system: adaptation.
 
 | Wk | Start | Mi | Long | Notable | Flags |
 |---|---|---|---|---|---|
-| 0 | 08-24 | 46.0 | 14.5 | | |
+| 0 | 08-24 | 46.0 → **38.0 written** | 14.5 → *sealed* | see §13.1 | |
 | 1 | 08-31 | 50.0 | 15.0 | | |
 | 2 | 09-07 | 24.4 | RACE 6.2 | Santa Monica 10k · B | cutback |
 | 3 | 09-14 | 48.0 | 16.5 | | |
@@ -305,3 +305,113 @@ promotion criteria are met, and one decision explained identically on phone,
 watch, plan, post-run and race outlook.
 
 Everything else in this document is done.
+
+---
+
+## 13 · Three plan-level questions
+
+### 13.1 · Week 0 shows 46 composed miles. What is actually persisted is 38.0.
+
+The 46.0 in the table above is the composer's arithmetic, not the write. It was
+misleading and the correction belongs in this document.
+
+| Date | composed | written | why |
+|---|---|---|---|
+| 08-24 | 5.0 | **4.0** | sealed, carried |
+| 08-25 | 8.5 | **0.0** | past date with no live row — **not written** |
+| 08-26 | 5.0 | **7.0** | sealed, carried |
+| 08-27 | 8.0 | **7.0** | sealed, carried |
+| 08-28 | 5.0 | **7.0** | sealed, carried |
+| 08-29 | 0.0 | **0.0** | past date with no live row — not written |
+| 08-30 | 14.5 | **13.0** | sealed, carried |
+| | **46.0** | **38.0** | identical to the live plan's week 0 |
+
+Every past-dated row is carried verbatim, and the two dates the composer would
+have filled (08-25 at 8.5 mi, 08-29) are **not written**, because authoring a new
+prescription onto a past day is forbidden. So week 0 after a rebuild is
+byte-identical to week 0 today, and the sealed hash proves it.
+
+The same is true of 08-31 and 09-01 in week 1. Seven sealed rows, 51.0 mi,
+carried.
+
+### 13.2 · "33 miles at marathon pace" — at which pace? Four numbers, and two of them disagree.
+
+Four distinct quantities exist and they must not be conflated:
+
+| Quantity | Value | Owner |
+|---|---|---|
+| threshold anchor (T) | 430 s/mi · **7:10** | capacity resolver |
+| **marathon-specific TRAINING pace** | 472 s/mi · **7:52** (range 7:40-8:08) | `race-outlook.trainingPrescription`, durability exponent 1.0825 |
+| **CIM race-day EXECUTION target** | 443 s/mi · **7:23** | `race-outlook.execution` |
+| stated goal | 412 s/mi · **6:52** | the runner |
+
+The training pace is 29 s/mi slower than race-day execution, which is correct —
+it is derived from his durability exponent, not from the race target.
+
+**Two findings, both real:**
+
+**(a) The two derivations of marathon pace disagree by 24 s/mi.** Priced through
+`buildWorkoutSpec` from the T anchor alone, an `11 mi @ MP` session comes out at
+**448 s/mi (7:28)**. The canonical owner says **472 (7:52)**. His live rows carry
+472, because something downstream repriced them — so the number he sees is the
+right one, but only by a second pass. One quantity, two owners, 24 s/mi apart.
+That is a Rule 16 violation and it is the same shape as the three-projections
+defect.
+
+**(b) The marathon-pace miles embedded in long runs carry no marathon-pace
+number at all.** On his live plan:
+
+```
+2026-10-25  long  pace_target=520 (8:40)  "LONG · 11mi @ M"
+2026-11-15  long  pace_target=520 (8:40)  "LONG · 4mi @ M"
+2026-11-17  tempo pace_target=472 (7:52)  "2.5 mi WU · 11 mi @ MP · 1.5 mi CD"
+```
+
+The tempo sessions carry 7:52. The long runs carry **8:40 — the long-run easy
+pace** — and the eleven marathon-pace miles inside them have no target of their
+own on the row. So of the 33 miles this document credits to marathon pace,
+**15 are embedded in long runs where the row does not state the pace.**
+
+That is a defect in the answer this handback gave, not only in the engine. The
+honest statement is: 18 miles are prescribed AT a stated marathon pace; 15 are
+labelled marathon-pace inside long runs whose row prescribes 8:40.
+
+### 13.3 · Why 3:13:30 when the projection is 3:23:50?
+
+It is not arbitrary and it is not the goal. It is the **fast edge of the
+expected race-day range**, which already contains a modelled improvement.
+
+| | |
+|---|---|
+| current projection | 3:17:43 - 3:29:57 (11863-12597 s) |
+| **expected race day** | **3:13:28 - 3:26:51** (11608-12411 s) |
+| prescribed execution | **3:13:30** — the fast edge, 11610 |
+| stated goal | 3:00:00 — untouched, and never prescribed |
+
+The improvement is modelled explicitly:
+
+```json
+{"gainVdot":2.56,"gainRangeVdot":[1.90,2.64],"buildWeeks":10.6,"taperWeeks":3,
+ "executionQuality":0.97,"responseFactor":1,"bindingCap":"runway",
+ "basis":"plan_stimulus_and_execution","confidence":0.585,
+ "reasons":["GAIN_BOUNDED_BY_RUNWAY","HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE"]}
+```
+
+So the ten minutes come from **+2.56 VDOT across 10.6 build weeks plus a 3-week
+taper**, with the gain capped by the runway rather than by the stimulus — there
+is not enough time before CIM to model more, which is why `bindingCap` reads
+`runway`.
+
+**The caveat, which the engine states itself and which should not be lost:**
+`HISTORICAL_RESPONSE_UNKNOWN_POPULATION_RATE`. The gain rate is a **population
+assumption**, not his demonstrated response to training — the app has never
+observed him complete a block and measured what he gained. Confidence **0.585**.
+
+So 3:13:30 is a defensible development target, and the progression in §2 is what
+it rests on: 33 marathon-pace miles, a long run climbing 14.5 → 20.5, and
+threshold work preceding race-specific work. But the ten minutes are **modelled,
+not evidenced**, and the first block he completes under this engine is what will
+replace the population rate with his own.
+
+That is also the honest answer to why upward adaptation matters: until it can
+observe his response, the improvement estimate rests on other runners.
