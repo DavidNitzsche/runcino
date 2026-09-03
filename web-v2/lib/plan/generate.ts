@@ -5714,6 +5714,44 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   const ladderOwnsMp = marathonLadderOwned && cat === 'm';
   const ladderRung = ladderOwnsMp ? mpRung : null;
   const ladderLongRung = ladderRung?.vehicle === 'long_run' ? ladderRung : null;
+  /*
+   * MPLADDER-2 (2026-09-03) · DANIELS' SINGLE-SESSION M CAP BINDS THE LADDER'S
+   * DOSE, AND THE WHOLE WEEK IS SHAPED FROM THE MILES THAT SURVIVE IT.
+   *
+   * The ladder is a pure function of the CALENDAR — by its own header it "knows
+   * nothing about what the runner has recently run" — so it cannot see this
+   * week's mileage and cannot apply a cap stated as a fraction of it. The
+   * modified-block path below has always taken `Math.min(atPaceBandMi,
+   * danielsMi, ladderDoseMi)`; the long-run finish took the ladder's dose raw.
+   *
+   * That hole was invisible while the dose fade cut every peak-stimulus rung to
+   * six miles. Widening the fade to the union of §4.4's and §11.1's windows let
+   * the rung reach its own band and the hole opened at once: three archetypes
+   * composed `8.5 mi at M on 39.7 mi/wk` — 21.41% against `Research/01`'s
+   * "lesser of 18 mi or 20% of weekly mi" — and `_dosing_sweep_gate` named them
+   * ENFORCED, which by its own definition means the session escaped the ledger,
+   * the trimmer AND the budget.
+   *
+   * CLAUDE.md settles the direction: "Never manufacture push by weakening a
+   * guard. Push by spending the headroom doctrine already allows." So the cap
+   * binds, the dose is the lesser, a small week buys a small block exactly as
+   * it does for §11.1's session, and the gate cannot be breached by
+   * construction rather than by trimming afterwards.
+   *
+   * Resolved HERE, once, because the week's SHAPE hangs off it as well as the
+   * segment's size: Q14's quality-density question is "does this long run carry
+   * six marathon-effort miles", and after a trim the intended dose and the
+   * authored one are different numbers (Rule 16).
+   */
+  const ladderDanielsCapMi = Math.min(
+    MARATHON_PACE_WORKOUT_CAP.absMi,
+    Math.max(0, weeklyMi) * MARATHON_PACE_WORKOUT_CAP.pctOfWeekly,
+  );
+  /** The marathon-effort miles this week's long run ACTUALLY gets. */
+  const ladderAuthoredMpMi = ladderLongRung
+    // Half-mile snap, matching every other authored segment in this file.
+    ? Math.floor(Math.min(ladderLongRung.mpMi, ladderDanielsCapMi) * 2) / 2
+    : 0;
   const racePaceLongWeek = ladderOwnsMp
     ? ladderLongRung != null
     : phase === 'RACE-SPECIFIC' && racePaceTag != null
@@ -5745,8 +5783,14 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   // session — schedule only one additional midweek quality workout." A
   // four-mile fast-finish is not that session, and collapsing the week's
   // quality around it was costing a midweek workout for no reason.
+  //
+  // MPLADDER-2 · read from the miles the week ACTUALLY gets, not from the
+  // ladder's intended `countsAsQuality`. Once Daniels' single-session cap can
+  // trim the segment the two are different numbers, and collapsing the week's
+  // quality around a session that was cut below six miles would drop a midweek
+  // workout for a stimulus the plan no longer contains.
   const mpLongWeek = ladderOwnsMp
-    ? (ladderLongRung?.countsAsQuality ?? false)
+    ? ladderAuthoredMpMi >= MP_LONG_COUNTS_AS_QUALITY_MI
     : racePaceTag === 'MP' && racePaceLongWeek;
   // DOCTRINE-TAPERMP-1 · the marathon taper's MP session (Research/08 §9.2).
   // Marathon only — the half, 5K, 10K and ultra tapers have no MP row in that
@@ -5813,13 +5857,20 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   const finishSeg = ladderOwnsMp
     ? (ladderLongRung
         ? {
-          pct: 0, fixedMi: ladderLongRung.mpMi, tag: 'MP' as const,
+          pct: 0, fixedMi: ladderAuthoredMpMi, tag: 'MP' as const,
           // LONGRUN-ROWS-1 · WHICH ROW this session is, from its own dose.
           // `Research/04` §4.4's marathon-pace long is "8-16 mi at MP"; §4.5's
           // fast finish is "final 2-6 mi at MP". A four-mile rung is §4.5 and
           // must not be graded against §4.4's band — that collapse is exactly
           // what `./long-run-rows` exists to stop.
-          kind: (ladderLongRung.countsAsQuality ? 'mp_long' : 'fast_finish') as LongRunKind,
+          //
+          // MPLADDER-2 · read from the AUTHORED miles, not from the ladder's
+          // intended `countsAsQuality`. Once Daniels' cap can trim this segment
+          // the two can disagree, and a session labelled `mp_long` while
+          // carrying under §4.4's own threshold would be graded against a band
+          // it was never given the miles to meet (Rule 16 — a label about a
+          // measurement is gated on that measurement).
+          kind: (ladderAuthoredMpMi >= MP_LONG_COUNTS_AS_QUALITY_MI ? 'mp_long' : 'fast_finish') as LongRunKind,
         }
         : null)
     : longFinishSegment(
@@ -11813,7 +11864,22 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
             pace_range_s_per_mi: rx?.rangeSecPerMi ?? null,
             fallback_pace_s_per_mi: rx?.fallbackSecPerMi ?? null,
             response_assumption: rx?.assumption ?? null,
-            rehearses: r.rationale.rehearses,
+            /*
+             * REHEARSAL-1 (2026-09-03) · FROM THE PRESCRIPTION, NOT THE LADDER.
+             *
+             * This read `r.rationale.rehearses`, which the ladder derived from
+             * `ladderT > 0`. Two producers, one quantity (Rule 16), and the row
+             * they wrote side by side proved it: the tune-up-race rung has
+             * `pace_s_per_mi: null` and `response_assumption: null` and still
+             * carried `rehearses: "forecast_development"` — a claim about a pace
+             * that is not in the row. That is live in the owner's own block.
+             *
+             * `rx` is null exactly when there is no prescribed pace, so `null`
+             * here is the third state, not a coerced default: a race rehearses
+             * no authored pace, which is different from a session that rehearses
+             * today's (Rule 11).
+             */
+            rehearses: rx?.rehearses ?? null,
             purpose: r.rationale.purpose,
             why_this_week: r.rationale.whyThisWeek,
             supported_by: r.rationale.supportedBy,

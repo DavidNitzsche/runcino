@@ -768,6 +768,24 @@ import {
   HIST_AVG_MIDPOINTS,
   HIST_LONG_MIDPOINTS,
 } from '@/lib/onboarding/state';
+import {
+  MP_LADDER_MIN_GAP_WEEKS,
+  MP_LADDER_MAX_GAP_WEEKS,
+  MP_LONG_WINDOW_DAYS,
+  MP_LARGE_SESSION_WINDOW_DAYS,
+  MP_PEAK_STIMULUS_WINDOW_DAYS,
+  MP_FAST_FINISH_MAX_MI,
+  MP_EARNED_STEP_MI,
+  MP_LONG_COUNTS_AS_QUALITY_MI,
+  MP_ROLE_DOSE_MI,
+} from '@/lib/plan/marathon-specific-ladder';
+// `marathon-pace-contract.ts` is pure by contract (its own test asserts it
+// reaches no database), so importing it here is safe. Its twin,
+// `RACE_EXECUTION_BAND_S_PER_MI`, lives in `lib/race/race-outlook.ts`, which
+// DOES reach the pool — so the claim below reads that one out of SOURCE rather
+// than importing it. Pinning two numbers together must not drag a database into
+// the gate that pins them.
+import { MARATHON_PACE_BAND_S_PER_MI, MARATHON_EFFORT_LADDER_T } from '@/lib/training/marathon-pace-contract';
 
 export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
   // == LONG-RUN ROWS · Research/04 4.1's five rows, kept apart ===============
@@ -19148,6 +19166,424 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
             'that beat its target while falling apart counts as upward evidence',
         );
       }
+    },
+  },
+
+  /* == THE MARATHON-SPECIFIC LADDER · Research/04 4.4-4.5 and the owner's Q8 ==
+   *
+   * MPLADDER-2 (2026-09-03) · WHY THESE EXIST NOW.
+   *
+   * `marathon-specific-ladder.ts` and `marathon-pace-contract.ts` shipped nine
+   * constants that assert physiology — a cadence, two windows, two dose caps, a
+   * quality threshold, a pace band and a three-rung pace ladder — and NOT ONE
+   * of them carried a registry claim. Rule 7 is one sentence: a constant that
+   * asserts physiology carries a registry entry. The lint could not see the gap
+   * either, because it hunts distance-keyed tables and these are keyed by
+   * ROLE and by DAYS.
+   *
+   * Worse, three claims were cited by name in prose and did not exist:
+   *
+   *   · `MPLADDER.cadence-is-the-long-run-rhythm` — named in this very file, at
+   *     `MPLONG.race-specific-cadence`, as the thing that "gates" the ladder's
+   *     2-3 week rhythm. Nothing gated it.
+   *   · `MPCONTRACT.pace-band-is-one-number` — named in
+   *     `marathon-pace-contract.ts`'s header as what "pins the two together in
+   *     CI so they cannot drift apart silently (Rule 16)". Nothing pinned them.
+   *   · `MPCONTRACT.no-second-marathon-target` — named in
+   *     `_marathon_pace_contract.test.ts`'s Rule 22 header as the source scan
+   *     that catches a surface computing its own marathon pace.
+   *
+   * That is Rule 20's corollary three times over: a sentence nothing verifies
+   * is worse than silence, because it stops the next reader from checking. The
+   * claims below are those three, written, plus the six the rule asked for.
+   * Every one reads its numbers out of the cited passage at run time.
+   */
+  {
+    id: 'MPLADDER.cadence-is-the-long-run-rhythm',
+    binds: [
+      'lib/plan/marathon-specific-ladder.ts#MP_LADDER_MIN_GAP_WEEKS',
+      'lib/plan/marathon-specific-ladder.ts#MP_LADDER_MAX_GAP_WEEKS',
+      'lib/plan/marathon-specific-ladder.ts#resolveMarathonSpecificLadder',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.4 Marathon-pace long run',
+    claim:
+      'The ladder steps back from its peak by the cadence Research/04 4.4 states in its own '
+      + 'Frequency row, and by nothing else. Both edges of the engine band are read from that '
+      + 'row rather than typed here. The walk itself must still START at that minimum gap: it '
+      + 'is allowed to keep descending when a week is unusable (a deload, a race, a designed '
+      + 'weekend) because dropping the session entirely is worse, but the first candidate it '
+      + 'ever considers is `cursor - MIN`, and a change that let it consider `cursor - 1` would '
+      + 'put two marathon-effort longs on consecutive weekends.',
+    check({ cite }) {
+      const freq = cite.table().cell('Frequency', 'Prescription');
+      const [lo, hi] = parseBand(freq);
+      if (MP_LADDER_MIN_GAP_WEEKS !== lo || MP_LADDER_MAX_GAP_WEEKS !== hi) {
+        throw new Error(
+          `MP_LADDER_MIN/MAX_GAP_WEEKS are ${MP_LADDER_MIN_GAP_WEEKS}/${MP_LADDER_MAX_GAP_WEEKS}, `
+          + `doctrine's Frequency row says "${freq}"`,
+        );
+      }
+      // The band is only doctrine if the walk actually spends it. This is the
+      // regression `MPLONG.race-specific-cadence` believed was covered here.
+      matchLiteral(
+        sourceOf('web-v2/lib/plan/marathon-specific-ladder.ts'),
+        /for \(let cand = cursor - MP_LADDER_MIN_GAP_WEEKS; cand >= 0; cand--\)/,
+        'the build walk opens at the doctrine minimum gap',
+      );
+    },
+  },
+  {
+    id: 'MPLADDER.the-mp-long-sits-in-its-own-window',
+    binds: ['lib/plan/marathon-specific-ladder.ts#MP_LONG_WINDOW_DAYS'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.4 Marathon-pace long run',
+    claim:
+      'Research/04 4.4 states WHEN its session belongs — "6-10 weeks out from goal marathon" — '
+      + 'and the engine window is that row converted to days, not a number someone liked. The '
+      + 'ladder fades a dose that lands outside it down to 4.5\'s fast-finish size rather than '
+      + 'stepping (Rule 9), so the window edge is a control point and never a cliff.',
+    check({ cite }) {
+      const when = cite.table().cell('When in cycle', 'Prescription');
+      const [loWk, hiWk] = parseBand(when);
+      if (MP_LONG_WINDOW_DAYS[0] !== loWk * 7 || MP_LONG_WINDOW_DAYS[1] !== hiWk * 7) {
+        throw new Error(
+          `MP_LONG_WINDOW_DAYS is [${MP_LONG_WINDOW_DAYS.join(', ')}] days, doctrine's When-in-cycle `
+          + `row says "${when}" — ${loWk * 7}-${hiWk * 7} days`,
+        );
+      }
+    },
+  },
+  {
+    id: 'MPLADDER.a-large-session-belongs-where-doctrine-puts-one',
+    binds: [
+      'lib/plan/marathon-specific-ladder.ts#MP_LARGE_SESSION_WINDOW_DAYS',
+      'lib/plan/marathon-specific-ladder.ts#MP_PEAK_STIMULUS_WINDOW_DAYS',
+    ],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 11.1 Canova special block',
+    claim:
+      'MPLADDER-2 · the dose floor is measured against every window in which doctrine licenses a '
+      + 'LARGE marathon-effort session, not against 4.4\'s alone. 11.1\'s own When-in-cycle row '
+      + 'places its blocks from "first block 8-10 weeks out" to "last 4-5 weeks out", and its PM '
+      + 'example carries a bigger at-pace dose than 4.5\'s fast finish. Both edges of the engine '
+      + 'window are read from the two rows at run time. This is what stops the block\'s LARGEST '
+      + 'marathon-specific session coming out smaller than the one three weeks before it: the '
+      + 'peak-stimulus placement sits almost entirely outside 4.4\'s window, so the fade ran to '
+      + 'completion and cut a 10-mile band to six. The peak-stimulus window must also stay '
+      + 'inside the union, or the rung is authored where no row licenses its size.',
+    check({ cite }) {
+      const when = cite.table().cell('When in cycle', 'Prescription');
+      const last = /last\s+(?:block\s+)?(\d+)\s*[–—-]\s*(\d+)\s*weeks out/i.exec(when);
+      if (!last) {
+        throw new Error(`11.1's When-in-cycle row no longer states a "last N-N weeks out" placement: "${when}"`);
+      }
+      // The near edge is the EARLIEST day 11.1 still licenses a block on: the
+      // low end of "4-5 weeks out" is the closest such day to race day.
+      const nearDays = Number(last[1]) * 7;
+      // The far edge stays 4.4's, read from 4.4's own row rather than copied.
+      const mpLong = resolveCitation(
+        'Research/04-workout-vocabulary.md',
+        '### 4.4 Marathon-pace long run',
+      ).table().cell('When in cycle', 'Prescription');
+      const farDays = parseBand(mpLong)[1] * 7;
+      if (MP_LARGE_SESSION_WINDOW_DAYS[0] !== nearDays || MP_LARGE_SESSION_WINDOW_DAYS[1] !== farDays) {
+        throw new Error(
+          `MP_LARGE_SESSION_WINDOW_DAYS is [${MP_LARGE_SESSION_WINDOW_DAYS.join(', ')}], doctrine's two rows `
+          + `give [${nearDays}, ${farDays}] · 11.1 "${when}" and 4.4 "${mpLong}"`,
+        );
+      }
+      if (MP_PEAK_STIMULUS_WINDOW_DAYS[0] < nearDays) {
+        throw new Error(
+          `MP_PEAK_STIMULUS_WINDOW_DAYS opens at ${MP_PEAK_STIMULUS_WINDOW_DAYS[0]} days, inside which no `
+          + `doctrine row licenses a large marathon-effort session (the nearest is ${nearDays} days, `
+          + `11.1's "${when}") · the rung would be placed where its own dose band cannot be spent`,
+        );
+      }
+      // The fade must actually READ the union. A constant nothing spends is
+      // decoration (Rule 21's "wired, tested and inert").
+      matchLiteral(
+        sourceOf('web-v2/lib/plan/marathon-specific-ladder.ts'),
+        /const outsideByDays = Math\.max\(0, MP_LARGE_SESSION_WINDOW_DAYS\[0\] - d, d - MP_LARGE_SESSION_WINDOW_DAYS\[1\]\);/,
+        'the dose fade measures against the union window',
+      );
+    },
+  },
+  {
+    id: 'MPLADDER.the-fade-target-is-the-fast-finish-row',
+    binds: ['lib/plan/marathon-specific-ladder.ts#MP_FAST_FINISH_MAX_MI'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.5 Fast finish long run',
+    claim:
+      'A marathon-effort touch OUTSIDE 4.4\'s window is 4.5\'s session, and 4.5\'s Structure row '
+      + 'states its size: "final 2-6 mi at MP or slightly faster". The engine fades to the TOP of '
+      + 'that band, which is the largest session doctrine licenses outside the marathon-pace '
+      + 'long\'s own window.',
+    check({ cite }) {
+      const structure = cite.table().cell('Structure', 'Prescription');
+      const m = /final\s+(\d+)\s*[–—-]\s*(\d+)\s*mi at MP/i.exec(structure);
+      if (!m) {
+        throw new Error(`4.5's Structure row no longer states a "final N-N mi at MP" band: "${structure}"`);
+      }
+      if (MP_FAST_FINISH_MAX_MI !== Number(m[2])) {
+        throw new Error(
+          `MP_FAST_FINISH_MAX_MI is ${MP_FAST_FINISH_MAX_MI}, doctrine's fast-finish band tops out at ${m[2]}`,
+        );
+      }
+    },
+  },
+  {
+    id: 'MPLADDER.the-earned-step-is-one-doses-worth-of-variation',
+    binds: ['lib/plan/marathon-specific-ladder.ts#MP_EARNED_STEP_MI'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.4 Marathon-pace long run',
+    claim:
+      'How much larger one rung may be than the largest already authored is NOT a tuning knob. '
+      + 'It is the width of 4.4\'s own Common-dose band ("14-18 mi total with 10-14 mi at MP"), '
+      + 'the span doctrine itself treats as one session\'s worth of variation. Read from the '
+      + 'at-MP half of that row, because the at-MP half is what the step bounds.',
+    check({ cite }) {
+      const dose = cite.table().cell('Common dose', 'Prescription');
+      const atMp = /with\s+(\d+)\s*[–—-]\s*(\d+)\s*mi at MP/i.exec(dose);
+      if (!atMp) {
+        throw new Error(`4.4's Common-dose row no longer states an at-MP band: "${dose}"`);
+      }
+      const width = Number(atMp[2]) - Number(atMp[1]);
+      if (MP_EARNED_STEP_MI !== width) {
+        throw new Error(
+          `MP_EARNED_STEP_MI is ${MP_EARNED_STEP_MI}, doctrine's at-MP dose band "${atMp[0]}" is ${width} miles wide`,
+        );
+      }
+    },
+  },
+  {
+    id: 'MPLADDER.role-doses-stay-inside-the-doctrine-session',
+    binds: ['lib/plan/marathon-specific-ladder.ts#MP_ROLE_DOSE_MI'],
+    doc: 'Research/04-workout-vocabulary.md',
+    anchor: '### 4.4 Marathon-pace long run',
+    claim:
+      'Every role\'s dose band is a real session. None may exceed the top of 4.4\'s own at-MP '
+      + 'band, none may be inverted, and the sequence introduction to development to peak must '
+      + 'not go DOWN — a ladder whose later rungs ask for less than its earlier ones is not a '
+      + 'ladder. The owner\'s rulings size each band inside doctrine\'s; doctrine bounds them.',
+    check({ cite }) {
+      const dose = cite.table().cell('Common dose', 'Prescription');
+      const atMp = /with\s+(\d+)\s*[–—-]\s*(\d+)\s*mi at MP/i.exec(dose);
+      if (!atMp) throw new Error(`4.4's Common-dose row no longer states an at-MP band: "${dose}"`);
+      const ceiling = Number(atMp[2]);
+      for (const [role, band] of Object.entries(MP_ROLE_DOSE_MI)) {
+        if (band[0] > band[1]) throw new Error(`MP_ROLE_DOSE_MI.${role} is inverted: [${band.join(', ')}]`);
+        if (band[0] <= 0) throw new Error(`MP_ROLE_DOSE_MI.${role} has a non-positive floor: [${band.join(', ')}]`);
+        if (band[1] > ceiling) {
+          throw new Error(
+            `MP_ROLE_DOSE_MI.${role} tops out at ${band[1]} mi, above doctrine's at-MP ceiling of ${ceiling} ("${dose}")`,
+          );
+        }
+      }
+      const rising = ['introduction', 'development', 'peak_stimulus'] as const;
+      for (let i = 1; i < rising.length; i++) {
+        const prev = MP_ROLE_DOSE_MI[rising[i - 1]];
+        const here = MP_ROLE_DOSE_MI[rising[i]];
+        if (here[1] < prev[1] || here[0] < prev[0]) {
+          throw new Error(
+            `MP_ROLE_DOSE_MI.${rising[i]} [${here.join(', ')}] asks for less than `
+            + `${rising[i - 1]} [${prev.join(', ')}] — the ladder goes down`,
+          );
+        }
+      }
+    },
+  },
+  {
+    id: 'MPLADDER.a-marathon-effort-long-is-a-quality-day',
+    binds: ['lib/plan/marathon-specific-ladder.ts#MP_LONG_COUNTS_AS_QUALITY_MI'],
+    doc: 'docs/PROGRESSIVE_BASELINE_DOCTRINE.md',
+    anchor: '## Q14 · Quality density',
+    claim:
+      'The owner\'s Q14 ruling fixes the mileage at which a long run BECOMES the week\'s second '
+      + 'quality session, and the engine reads that number rather than choosing one. Below it a '
+      + 'fast-finish touch is not a quality session and must not collapse the week around itself '
+      + '— which is what a lower threshold did, costing a midweek workout for no reason.',
+    check({ cite }) {
+      // The ruling wraps across lines, so read the SECTION rather than any one
+      // line of it — a claim that only works while the doc's line breaks stay
+      // where they are is a claim about formatting.
+      const text = cite.text().replace(/\s+/g, ' ');
+      const m = /(\d+)\s*meaningful marathon-effort miles[^.]*?it IS a quality\s*session/i.exec(text);
+      if (!m) {
+        throw new Error(
+          'Q14 no longer states the marathon-effort mileage at which a long run becomes a quality session',
+        );
+      }
+      if (MP_LONG_COUNTS_AS_QUALITY_MI !== Number(m[1])) {
+        throw new Error(
+          `MP_LONG_COUNTS_AS_QUALITY_MI is ${MP_LONG_COUNTS_AS_QUALITY_MI}, Q14 says "${m[0].trim()}"`,
+        );
+      }
+    },
+  },
+  {
+    id: 'MPCONTRACT.pace-band-is-one-number',
+    binds: [
+      'lib/training/marathon-pace-contract.ts#MARATHON_PACE_BAND_S_PER_MI',
+      'lib/race/race-outlook.ts#RACE_EXECUTION_BAND_S_PER_MI',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '## Pace zone width and lock-in rules',
+    claim:
+      'The width of a prescribed marathon-effort range and the width of the race-day execution '
+      + 'band are ONE doctrine number — Research/01\'s M row — and they live in two modules '
+      + 'because one of them may not reach the database. This claim is the thing that stops '
+      + 'them drifting apart silently (Rule 16). `marathon-pace-contract.ts`\'s header has '
+      + 'asserted since it shipped that this claim pins them; until now it did not exist.',
+    check({ cite }) {
+      const m = cite.table().cell('M', 'Default range (sec/mi)');
+      const [lo, hi] = parseBand(m);
+      if (lo !== hi) {
+        throw new Error(`Research/01's M row is no longer a single half-width: "${m}"`);
+      }
+      if (MARATHON_PACE_BAND_S_PER_MI !== lo) {
+        throw new Error(`MARATHON_PACE_BAND_S_PER_MI is ${MARATHON_PACE_BAND_S_PER_MI}, doctrine's M row says "${m}"`);
+      }
+      // The twin, read from SOURCE so this gate does not import a module that
+      // reaches the pool. Same number or the two surfaces disagree.
+      const twin = matchLiteral(
+        sourceOf('web-v2/lib/race/race-outlook.ts'),
+        /export const RACE_EXECUTION_BAND_S_PER_MI = (\d+);/,
+        'the race-day execution band',
+      )[1];
+      if (Number(twin) !== MARATHON_PACE_BAND_S_PER_MI) {
+        throw new Error(
+          `RACE_EXECUTION_BAND_S_PER_MI is ${twin} and MARATHON_PACE_BAND_S_PER_MI is `
+          + `${MARATHON_PACE_BAND_S_PER_MI} · one quantity, two names (Rule 16)`,
+        );
+      }
+    },
+  },
+  {
+    id: 'MPCONTRACT.the-ladder-spends-the-runners-own-band',
+    binds: ['lib/training/marathon-pace-contract.ts#MARATHON_EFFORT_LADDER_T'],
+    doc: 'docs/PROGRESSIVE_BASELINE_DOCTRINE.md',
+    anchor: '## Q8 · Marathon-effort progression in the baseline',
+    claim:
+      'Q8 gives the marathon-effort pace ladder three build rungs and forbids "a mechanical '
+      + 'linear march from 7:52 toward the 6:52 goal". The engine encodes them as fractions of '
+      + 'the RUNNER\'S OWN published band — 0 at today\'s effort, 1 at the fast edge — so the '
+      + 'far end is the pace resolver\'s number and never the goal, however ambitious the goal '
+      + 'or however long the block. The three rungs must be ordered, bounded by [0, 1], and the '
+      + 'early rung must be exactly 0: "Early marathon-specific work" is today\'s honest effort, '
+      + 'and a non-zero early rung would forecast development before any has been earned.',
+    check({ cite }) {
+      const text = cite.text();
+      for (const phrase of ['Early marathon-specific work', 'Middle progression', 'Later peak-specific work']) {
+        if (!text.includes(phrase)) {
+          throw new Error(`Q8 no longer names the rung "${phrase}" — the engine ladder has three arms keyed to these`);
+        }
+      }
+      if (!/only after preceding development/i.test(text)) {
+        throw new Error('Q8 no longer conditions the later rung on preceding development');
+      }
+      const { early, middle, later } = MARATHON_EFFORT_LADDER_T;
+      if (early !== 0) {
+        throw new Error(`MARATHON_EFFORT_LADDER_T.early is ${early}; Q8's early rung is today's supported effort, which is 0`);
+      }
+      if (!(early < middle && middle < later)) {
+        throw new Error(`MARATHON_EFFORT_LADDER_T is not ordered: ${early} / ${middle} / ${later}`);
+      }
+      if (later > 1) {
+        throw new Error(
+          `MARATHON_EFFORT_LADDER_T.later is ${later}; above 1 the ladder walks PAST the fast edge of the `
+          + "runner's own published band, which is the goal reaching a training pace",
+        );
+      }
+    },
+  },
+  {
+    id: 'MPCONTRACT.rehearsal-comes-from-the-prescription',
+    binds: [
+      'lib/training/marathon-pace-contract.ts#marathonEffortPrescription',
+      'lib/plan/generate.ts#marathon_specific_ladder',
+      'lib/plan/marathon-specific-ladder.ts#MarathonSpecificRationale',
+    ],
+    doc: 'docs/BRAIN_CONSTITUTION.md',
+    anchor: '## 5. One question, one resolver',
+    claim:
+      'REHEARSAL-1 · "does this session rehearse current capability or a forecast pace" is a '
+      + 'question about the session\'s PACE, so Pace Prescription answers it and the Plan '
+      + 'Generator consumes the answer. The ladder must not carry a `rehearses` field of its '
+      + 'own — it had one, derived from the rung\'s ladder position rather than from any pace, '
+      + 'and it stamped `forecast_development` on a tune-up-race rung that carries no pace at '
+      + 'all. And the label must be gated on the pace that actually moved, not on the ladder '
+      + 'position: a runner whose published band has no headroom holds at today\'s effort, and '
+      + 'holding is not a forecast however far up the ladder the role sits.',
+    check() {
+      const ladder = sourceOf('web-v2/lib/plan/marathon-specific-ladder.ts');
+      const iface = /export interface MarathonSpecificRationale \{([\s\S]*?)\n\}/.exec(ladder);
+      if (!iface) throw new Error('MarathonSpecificRationale is gone — re-point this claim before deleting it');
+      if (/\brehearses\b/.test(iface[1])) {
+        throw new Error(
+          'MarathonSpecificRationale carries `rehearses` again · that is a second answer to a '
+          + 'Pace Prescription question, and it is the field that stamped forecast_development '
+          + 'on a rung with no pace',
+        );
+      }
+      // The persistence site reads the PRESCRIPTION, and refuses rather than
+      // defaulting when there is none (Rule 11: a race rehearses no authored
+      // pace, which is not the same fact as rehearsing today's).
+      matchLiteral(
+        sourceOf('web-v2/lib/plan/generate.ts'),
+        /rehearses: rx\?\.rehearses \?\? null,/,
+        'the persisted rehearsal label comes from the prescription',
+      );
+      // The label is a comparison of two paces, not a test on `t`.
+      matchLiteral(
+        sourceOf('web-v2/lib/training/marathon-pace-contract.ts'),
+        /const developmentSecPerMi = Math\.max\(0, point - paceSecPerMi\);[\s\S]{0,240}?const rehearses: MarathonRehearsalKind = developmentSecPerMi > 0/,
+        'marathonEffortPrescription gates the rehearsal label on the pace that moved',
+      );
+    },
+  },
+  {
+    id: 'MPCONTRACT.no-second-marathon-target',
+    binds: ['lib/training/marathon-pace-contract.ts#MarathonPaceQuantity'],
+    doc: 'docs/BRAIN_CONSTITUTION.md',
+    anchor: '## 7. No feature-specific overrides',
+    claim:
+      'A marathon number in this app is one of the named quantities in '
+      + '`MarathonPaceQuantity`, and no surface may manufacture another one by pricing a '
+      + 'marathon session off the runner\'s stated GOAL. That is the defect S1.4 removed: a '
+      + '3:00 goal pulled the execution target to the fast edge of a range whose own confidence '
+      + 'was 0.23, so the runner was told to race 7:22 while the block rehearsed 7:52. This is '
+      + 'the source scan `_marathon_pace_contract.test.ts` names in its Rule 22 header — a '
+      + 'behavioural test cannot see a surface that stops calling the contract.',
+    check() {
+      const contract = sourceOf('web-v2/lib/training/marathon-pace-contract.ts');
+      // The six named quantities are the whole vocabulary. Losing one means a
+      // number went back to being anonymous.
+      for (const q of [
+        'aspirational_goal', 'current_projection', 'training_prescription',
+        'block_forecast', 'conditional_upside', 'workout_marathon_effort',
+      ]) {
+        if (!contract.includes(`'${q}'`)) {
+          throw new Error(`MarathonPaceQuantity no longer names "${q}" — a marathon number lost its name (Rule 16)`);
+        }
+      }
+      // The goal may be echoed and compared. It may not price anything.
+      const outlook = stripComments(sourceOf('web-v2/lib/race/race-outlook.ts'));
+      if (/stated_goal_clamped_to_range_edge|stated_goal_within_range/.test(outlook)) {
+        throw new Error(
+          'a stated_goal_* source is back in the execution-target union · '
+          + 'docs/PROGRESSIVE_BASELINE_DOCTRINE.md Q7 rules the active number is the '
+          + 'projection-derived one, and "3:13:30 must not be labelled the current execution '
+          + 'target merely because it is the fast edge of a wide range"',
+        );
+      }
+      // Authoring may not read the goal to price marathon effort.
+      const gen = stripComments(sourceOf('web-v2/lib/plan/generate.ts'));
+      matchLiteral(
+        gen,
+        /aspirationalGoalSecPerMi: null,\s*\n/,
+        'authoring builds the marathon pace contract with no goal in it',
+      );
     },
   },
 ];

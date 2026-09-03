@@ -247,21 +247,79 @@ describe('MPLADDER-1 · pace ladder position', () => {
   it('the later band is only reached after preceding development', () => {
     // A block whose only marathon-specific session IS the peak stimulus may not
     // jump to the fast edge of the runner's band.
+    /*
+     * MPLADDER-2 (2026-09-03) · THE CALENDAR HAD TO BE REBUILT, BECAUSE THE OLD
+     * ONE NEVER PRODUCED THE SHAPE THIS CASE IS ABOUT.
+     *
+     * It was an eight-week slice with an ordinary deload cadence, and it grew a
+     * development rung every time — so `if (peak && !development)` was false on
+     * every run and the body NEVER EXECUTED. The case reported green for years
+     * of nothing (Rule 18: a gate that has never failed is a hypothesis).
+     *
+     * To have a peak stimulus and no development rung the calendar must offer
+     * the peak week and nothing usable before it, so every other week is a
+     * planned cutback. Week 2's long sits 35 days out, inside
+     * `MP_PEAK_STIMULUS_WINDOW_DAYS`.
+     */
     const c = cimCalendar();
+    const PEAK_WK = 2;
     const short: MarathonSpecificLadderInput = {
       ...c,
       totalWeeks: 8,
       longRunISOByWeek: c.longRunISOByWeek.slice(7),
-      isDeloadWeek: (i) => i > 0 && (i + 1) % 3 === 0,
+      isDeloadWeek: (i) => i !== PEAK_WK,
       isTuneUpRaceWeek: () => false,
       isDesignedWeekendLong: () => false,
       peakStimulusRaceWeekIdx: null,
     };
     const l = resolveMarathonSpecificLadder(short);
     const peak = l.rungs.find((r) => r.role === 'peak_stimulus');
-    if (peak && !l.rungs.some((r) => r.role === 'development')) {
-      expect(peak.ladderT).toBe(MARATHON_EFFORT_LADDER_T.middle);
-    }
+    // Both facts the verdict rests on are asserted, so a calendar change that
+    // stops producing this shape fails here instead of quietly emptying the
+    // test again.
+    expect(peak, 'the short calendar authored no peak-stimulus rung — this case read nothing').toBeDefined();
+    expect(l.rungs.some((r) => r.role === 'development'),
+      'the short calendar grew a development rung, so it no longer tests the no-development case').toBe(false);
+    expect(peak!.ladderT).toBe(MARATHON_EFFORT_LADDER_T.middle);
+  });
+
+  /*
+   * MPLADDER-2 (2026-09-03) · THE UPWARD PATH, ASSERTED (Rule 22).
+   *
+   * Every other assertion in this describe is a CEILING: monotone, holds in the
+   * taper, does not jump to the fast edge without development. Measured across
+   * 112 synthetic calendars, 32 of them reach `MARATHON_EFFORT_LADDER_T.later`
+   * — so the rung is reachable — and NOT ONE committed case asserted that it is
+   * ever reached. The gate could fail on "the ladder went too high" and could
+   * not fail on "the ladder never went up at all", which is precisely the
+   * disposition CLAUDE.md's Rule 21 and Rule 22 exist to catch, and the half
+   * this engine can least afford.
+   *
+   * The owner's own block does NOT reach it: Run Malibu is his peak stimulus,
+   * a race takes the rung, and `ladderT` holds. That is correct for his
+   * calendar and is exactly why the positive case has to be written from a
+   * calendar that has no tune-up race in the peak window — otherwise Q8's
+   * "later peak-specific work" row is decoration.
+   */
+  it('a block whose peak stimulus is a LONG RUN reaches Q8\'s later rung', () => {
+    const c = cimCalendar();
+    const noRaceAtPeak: MarathonSpecificLadderInput = {
+      ...c,
+      isTuneUpRaceWeek: () => false,
+      isDesignedWeekendLong: () => false,
+      peakStimulusRaceWeekIdx: null,
+    };
+    const l = resolveMarathonSpecificLadder(noRaceAtPeak);
+    const peak = l.rungs.find((r) => r.role === 'peak_stimulus');
+    expect(peak, 'no peak-stimulus rung was authored — the positive case read nothing').toBeDefined();
+    expect(l.rungs.some((r) => r.role === 'development'),
+      'the later rung is conditioned on preceding development, and there is none').toBe(true);
+    expect(peak!.vehicle).toBe('long_run');
+    expect(peak!.ladderT, 'Q8: "later peak-specific work, only after preceding development"')
+      .toBe(MARATHON_EFFORT_LADDER_T.later);
+    // And the doses go UP into it, not just the pace.
+    const dev = l.rungs.find((r) => r.role === 'development')!;
+    expect(peak!.mpMi).toBeGreaterThanOrEqual(dev.mpMi);
   });
 });
 
@@ -297,18 +355,27 @@ describe('MPLADDER-1 · refusal', () => {
      */
     const base = cimCalendar();
 
-    // 1 · MP_LONG_WINDOW_DAYS · the dose fades across §4.4's window edge.
+    // 1 · MP_LARGE_SESSION_WINDOW_DAYS · the dose fades across the edge of the
+    //     window doctrine licenses a large marathon-effort session in.
     //     Walk the whole block one day at a time and watch the development
-    //     rung's dose as it crosses 42 and 70 days out.
+    //     rung's dose as it crosses 28 and 70 days out.
     //     The RACE DATE moves, not the weeks: that changes every rung's
     //     days-to-race by one and leaves the roles and the weeks they sit in
     //     exactly where they were, so what is measured is the window edge and
     //     nothing else.
     const walk: { dose: number; rungs: number }[] = [];
-    // The development rung sits 49 days out, so the walk has to reach below
-    // §4.4's 42-day edge to cross anything. -10 does; a positive-only walk
-    // never left the window and the liveness assertion below caught that.
-    for (let shift = -10; shift <= 20; shift++) {
+    /*
+     * The development rung sits 49 days out, so the walk has to reach past an
+     * edge of [28, 70] to cross anything.
+     *
+     * MPLADDER-2 (2026-09-03) · THE RANGE MOVED WITH THE EDGE. It was -10..+20,
+     * which crossed §4.4's old 42-day edge and, once the fade began measuring
+     * against the union, crossed nothing at all — the liveness assertion below
+     * caught it immediately, which is the whole reason it is there. +25 takes
+     * the rung past 70 days; the negative side no longer reaches 28 without
+     * dissolving the ladder, and the far edge exercises the same one fade.
+     */
+    for (let shift = -10; shift <= 25; shift++) {
       const l = resolveMarathonSpecificLadder({
         ...base,
         raceDateISO: iso(new Date(Date.parse(`${base.raceDateISO}T12:00:00Z`) + shift * DAY)),
@@ -320,7 +387,7 @@ describe('MPLADDER-1 · refusal', () => {
     for (let i = 1; i < walk.length; i++) {
       const step = Math.abs(walk[i].dose - walk[i - 1].dose);
       if (walk[i].rungs === walk[i - 1].rungs) {
-        // Same sequence, one day of calendar: only the §4.4 window edge can
+        // Same sequence, one day of calendar: only the union window edge can
         // move the dose, and it fades rather than steps.
         expect(step, `the development dose moved ${step} mi for one day of calendar with the ladder unchanged`)
           .toBeLessThanOrEqual(0.5);

@@ -4,7 +4,7 @@ exports[`LAYOUTWEEK-CONTRACT-1 · the decomposition changed nothing > the whole 
 {
   "composed": 8781,
   "days": 699860,
-  "digest": "99e8fe455cb5e05d8986ced0e35adaef4c5cacc15c4dba14fc3ce11804e4a3d4",
+  "digest": "a396fcf494a6e11b45bf435239e8bc225c46c91f0db3fe5d264d995834bbf4bc",
   "raceWeeks": 3969,
 }
 `;

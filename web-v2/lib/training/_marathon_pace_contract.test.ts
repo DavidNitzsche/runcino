@@ -187,6 +187,52 @@ describe('MPCONTRACT-1 · the workout prescription · Q8 + Q30', () => {
     });
     expect(marathonEffortPrescription({ contract: c, ladderT: 1, hrCeilingBpm: null, mpMi: 8 }).paceSecPerMi).toBe(460);
   });
+
+  /*
+   * REHEARSAL-1 (2026-09-03) · the assertions the case above was MISSING.
+   *
+   * It already built the degenerate band and already checked that the pace
+   * holds — and then stopped, so the SENTENCES beside that pace went
+   * unexamined. They were wrong: `rehearses` read `t > 0` and reported
+   * `forecast_development`, and the assumption read "The block develops
+   * marathon-specific endurance by 0 s/mi". A gate that checks the number and
+   * not the claim attached to it is the shape Rule 22 is about — this file's
+   * own header says it cannot see the plan, and it turned out it could not see
+   * half of its own output either.
+   */
+  it('a band with no headroom rehearses today, and says so · REHEARSAL-1', () => {
+    const flat = marathonPaceContract({
+      aspirationalGoalSecPerMi: null, currentProjectionSecPerMi: null, currentProjectionRangeSecPerMi: null,
+      // The shape `syntheticPaceAnchors` actually produces when the marathon
+      // band clamps to the easy-ceiling separation: point and band collapse.
+      trainingPrescriptionSecPerMi: 460, trainingBandSecPerMi: [460, 460],
+      blockForecast: null, upsidePaceSecPerMi: null, upsideFinishSec: null,
+    });
+    for (const t of Object.values(MARATHON_EFFORT_LADDER_T)) {
+      const p = marathonEffortPrescription({ contract: flat, ladderT: t, hrCeilingBpm: null, mpMi: 8 });
+      expect(p.paceSecPerMi, `t=${t} must hold at the point`).toBe(460);
+      // The label is about the PACE, not about the rung's position.
+      expect(p.rehearses, `t=${t} moves no pace, so it rehearses current capability`)
+        .toBe('current_capability');
+      expect(p.assumption.toLowerCase()).toContain('none');
+      // Assert the SHAPE of the sentence, not the absence of the old one: an
+      // absence-only check is satisfied by garbage (Rule 13 point 3).
+      expect(p.assumption).not.toMatch(/\b0 s\/mi\b/);
+      expect(p.guidance).toContain('hold it anyway');
+    }
+  });
+
+  it('a real band still labels a moved pace as a forecast · the other direction', () => {
+    // Rule 22 · the pair matters. A fix that made everything
+    // `current_capability` would pass the case above and be worse than the bug.
+    const later = marathonEffortPrescription({
+      contract: ownerContract(), ladderT: MARATHON_EFFORT_LADDER_T.later, hrCeilingBpm: null, mpMi: 8,
+    });
+    expect(later.paceSecPerMi).toBeLessThan(OWNER.trainingPoint);
+    expect(later.rehearses).toBe('forecast_development');
+    expect(later.assumption).toContain(`${OWNER.trainingPoint - later.paceSecPerMi} s/mi`);
+    expect(later.guidance).toContain('take the session');
+  });
 });
 
 describe('MPCONTRACT-1 · the seam', () => {

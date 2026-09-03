@@ -68,7 +68,7 @@
  * (`docs/PLAN_SIMPLIFICATION_DOCTRINE.md`: "Given the same meaningful inputs,
  * the generator should produce the same plan").
  */
-import { MARATHON_EFFORT_LADDER_T, type MarathonRehearsalKind } from '@/lib/training/marathon-pace-contract';
+import { MARATHON_EFFORT_LADDER_T } from '@/lib/training/marathon-pace-contract';
 
 /**
  * `Research/04` §4.4 · "Frequency | Every 2–3 weeks during marathon specific
@@ -92,14 +92,52 @@ export const MP_LONG_WINDOW_DAYS: readonly [number, number] = [42, 70];
 export const MP_FAST_FINISH_MAX_MI = 6;
 
 /**
+ * MPLADDER-2 (2026-09-03) · every day on which doctrine licenses a LARGE
+ * marathon-effort session, in days from race day.
+ *
+ * `MP_LONG_WINDOW_DAYS` is §4.4's row and only §4.4's row. It is not the whole
+ * of what `Research/04` says about where a big marathon-specific session
+ * belongs: §11.1's own When-in-cycle row is "Specific phase; first block 8–10
+ * weeks out, last 4–5 weeks out" — 28 to 70 days — and its PM example carries
+ * "10–12 km at MP", which is a larger at-pace dose than §4.5's fast finish.
+ *
+ * The union is what the DOSE FLOOR is measured against, because the question
+ * the floor answers is "may a session this size be authored here", and two rows
+ * answer yes across 28-70 days. Placement is unaffected: §4.4's window still
+ * decides where §4.4's own session goes, and a rung's `whyThisWeek` still cites
+ * the row it belongs to.
+ *
+ * Both edges are re-derived from those two rows at run time by
+ * `MPLADDER.a-large-session-belongs-where-doctrine-puts-one`, so they cannot
+ * drift from the doc without the gate saying so (Rule 7, Rule 18).
+ */
+export const MP_LARGE_SESSION_WINDOW_DAYS: readonly [number, number] = [28, 70];
+
+/**
  * The window the block's largest marathon-specific demand sits in, in days.
  *
  * The owner: "4-5 weeks out: a major stimulus — either the Run Malibu half OR a
- * 19-21 mi run with ~8-10 marathon-effort miles." Widened to 24-42 days so a
- * calendar whose deloads fall awkwardly still has somewhere to put it; the
- * preferred 28-35 is inside it.
+ * 19-21 mi run with ~8-10 marathon-effort miles." Widened at the far edge to 42
+ * days so a calendar whose deloads fall awkwardly still has somewhere to put
+ * it; the preferred 28-35 is inside it.
+ *
+ * MPLADDER-2 (2026-09-03) · THE NEAR EDGE WAS 24 AND IS NOW 28, WHICH IS
+ * `MP_LARGE_SESSION_WINDOW_DAYS[0]`.
+ *
+ * Between 24 and 27 days out, no row of `Research/04` licenses a large
+ * marathon-effort session: §11.1's last block is 4-5 weeks out and §4.6's dress
+ * rehearsal — the row that DOES sit closer — is a different, smaller session
+ * with its own placement. So the dose fade cut anything authored there down to
+ * §4.5's fast-finish size while the rung went on calling itself, in its own
+ * persisted purpose, "the block's largest marathon-specific session". A rung
+ * placed where its own band cannot be spent is not a placement, it is a
+ * mislabel (Rule 16), and `MP_ROLE_DOSE_MI.peak_stimulus` was inert across most
+ * of the window (Rule 21).
+ *
+ * Costs nothing measurable: across 112 synthetic calendars the number reaching
+ * each of Q8's three pace rungs is unchanged at 89 / 88 / 32.
  */
-export const MP_PEAK_STIMULUS_WINDOW_DAYS: readonly [number, number] = [24, 42];
+export const MP_PEAK_STIMULUS_WINDOW_DAYS: readonly [number, number] = [28, 42];
 
 /**
  * The taper's sharpening window, in days.
@@ -183,13 +221,33 @@ export const MP_ROLE_DOSE_MI: Record<MarathonSpecificRole, readonly [number, num
   sharpening: [4, 5],
 };
 
-/** Why a rung exists, in the runner's own terms. Persisted per session. */
+/**
+ * Why a rung exists, in the runner's own terms. Persisted per session.
+ *
+ * REHEARSAL-1 (2026-09-03) · `rehearses` IS NOT HERE, AND THAT IS THE POINT.
+ *
+ * It was, computed from `ladderT > 0`. But "does this session rehearse today's
+ * capability or a forecast pace" is a question about the session's PACE, and
+ * this file's own header says it "does not choose paces
+ * (`lib/training/marathon-pace-contract.ts` owns those)". So the app had two
+ * producers of one quantity — Rule 16, and Constitution §5's "one question, one
+ * resolver" — persisted side by side in `authored_state`, where `pace_s_per_mi`
+ * came from the contract and `rehearses` came from here.
+ *
+ * They disagreed with reality on the owner's live block: the Run Malibu rung is
+ * a TUNE-UP RACE, so it carries no prescribed pace at all
+ * (`pace_s_per_mi: null`, `response_assumption: null`) and this file still
+ * stamped it `forecast_development` — a claim about a number that was not
+ * there. Deleting the field is the fix (Constitution §26: ask what can
+ * disappear before asking what to add); `generate.ts` now takes `rehearses`
+ * from the prescription, and a rung with no prescription persists `null`, which
+ * is the honest third state (Rule 11).
+ */
 export interface MarathonSpecificRationale {
   purpose: string;
   whyThisWeek: string;
   supportedBy: string;
   prepares: string;
-  rehearses: MarathonRehearsalKind;
 }
 
 export interface MarathonSpecificRung {
@@ -476,7 +534,40 @@ export function resolveMarathonSpecificLadder(
        * them." §4.4's window stays exactly where it is; the dose crosses it
        * over one cadence week.
        */
-      const outsideByDays = Math.max(0, MP_LONG_WINDOW_DAYS[0] - d, d - MP_LONG_WINDOW_DAYS[1]);
+      /* MPLADDER-2 (2026-09-03) · THE FADE MEASURED AGAINST ONE WINDOW WHEN
+       * DOCTRINE PUBLISHES TWO, AND IT HALVED THE BLOCK'S BIGGEST SESSION.
+       *
+       * Measured: on a calendar with no tune-up race at the peak, the
+       * `peak_stimulus` rung — whose own persisted purpose calls it "the
+       * block's largest marathon-specific session", and whose band is
+       * `[8, 10]` — came out at SIX MILES, smaller than the `development` rung
+       * three weeks earlier at eight. The block's marathon-effort volume went
+       * DOWN into its peak while the pace went UP, which is the pairing Q8
+       * warns about pointing the wrong way, and it is the signature CLAUDE.md
+       * names: the plan's only working lever is "do less".
+       *
+       * The cause was arithmetic, not judgement. `MP_PEAK_STIMULUS_WINDOW_DAYS`
+       * is [24, 42] and `MP_LONG_WINDOW_DAYS` is [42, 70], so a peak stimulus
+       * is outside §4.4's window on every day but one, and the fade ran to
+       * completion. `MP_ROLE_DOSE_MI.peak_stimulus` was a band the engine could
+       * essentially never spend — wired, tested and inert (Rule 21).
+       *
+       * §4.4 is not the only row that licenses a large marathon-effort session.
+       * `Research/04` §11.1's own When-in-cycle row reads "Specific phase;
+       * first block 8–10 weeks out, LAST BLOCK 4–5 WEEKS OUT", and its PM
+       * example is "15–20 km with 10–12 km at MP" — doctrine putting a big
+       * marathon-effort session exactly where the owner's ruling puts his peak
+       * stimulus ("4-5 weeks out: a major stimulus… ~8-10 marathon-effort
+       * miles"). The composer already authors that session; only the ladder's
+       * dose floor did not know the row existed.
+       *
+       * So the fade now measures against the UNION of the two windows. Nothing
+       * is loosened: outside the union the same fade runs at the same rate to
+       * the same §4.5 floor, and the response stays continuous in `d`, so this
+       * REMOVES a cliff (42 days: 8 mi, 41 days: 6 mi) rather than moving one.
+       * It spends headroom doctrine already published.
+       */
+      const outsideByDays = Math.max(0, MP_LARGE_SESSION_WINDOW_DAYS[0] - d, d - MP_LARGE_SESSION_WINDOW_DAYS[1]);
       if (outsideByDays > 0 && mpMi > MP_FAST_FINISH_MAX_MI) {
         const fade = Math.min(1, outsideByDays / (MP_LADDER_MIN_GAP_WEEKS * 7 / 2));
         mpMi = Math.round((mpMi - (mpMi - MP_FAST_FINISH_MAX_MI) * fade) * 2) / 2;
@@ -498,7 +589,7 @@ export function resolveMarathonSpecificLadder(
       weekIdx: step.wi, dateISO: iso, daysToRace: d, role: step.role, vehicle: step.vehicle,
       mpMi, ladderT,
       countsAsQuality: step.vehicle === 'long_run' && mpMi >= MP_LONG_COUNTS_AS_QUALITY_MI,
-      rationale: rationaleFor({ role: step.role, vehicle: step.vehicle, mpMi, daysToRace: d, prev: rungs[rungs.length - 1] ?? null, ladderT }),
+      rationale: rationaleFor({ role: step.role, vehicle: step.vehicle, mpMi, daysToRace: d, prev: rungs[rungs.length - 1] ?? null }),
     });
   }
 
@@ -520,11 +611,9 @@ function rationaleFor(a: {
   vehicle: MarathonSpecificVehicle;
   mpMi: number;
   daysToRace: number;
-  ladderT: number;
   prev: MarathonSpecificRung | null;
 }): MarathonSpecificRationale {
   const weeksOut = Math.round(a.daysToRace / 7);
-  const rehearses: MarathonRehearsalKind = a.ladderT > 0 ? 'forecast_development' : 'current_capability';
   const gapWeeks = a.prev ? Math.round((a.prev.daysToRace - a.daysToRace) / 7) : 0;
   const supportedBy = a.prev == null
     ? 'The block’s aerobic base so far. Nothing at marathon effort yet, which is why this one is small.'
@@ -538,7 +627,6 @@ function rationaleFor(a: {
         whyThisWeek: `${weeksOut} weeks out, on a long run that is not a deload and not attached to a race.`,
         supportedBy,
         prepares: 'The larger marathon-effort block in the specific phase.',
-        rehearses,
       };
     case 'development':
       return {
@@ -546,7 +634,6 @@ function rationaleFor(a: {
         whyThisWeek: `${weeksOut} weeks out, inside Research/04 §4.4's own window for marathon-pace long runs.`,
         supportedBy,
         prepares: 'The block’s largest race-specific demand.',
-        rehearses,
       };
     case 'peak_stimulus':
       return {
@@ -558,7 +645,6 @@ function rationaleFor(a: {
         // Rule 16 · this named a "consolidation touch" that Step C refuses to
         // author, so the sentence promised a session the plan does not contain.
         prepares: 'The final sharpening session that carries it into race week.',
-        rehearses,
       };
     case 'sharpening':
       return {
@@ -566,7 +652,6 @@ function rationaleFor(a: {
         whyThisWeek: `${weeksOut} weeks out. The last marathon-effort running before race day, and it is not another peak workout.`,
         supportedBy,
         prepares: 'Race day. This is the effort the target is built on.',
-        rehearses,
       };
   }
 }
