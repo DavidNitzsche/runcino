@@ -1365,61 +1365,38 @@ struct PlaceHeaderV5: View {
                                  targetWidth: discTargetWidth,
                                  action: onCalendar)
                 }
-                // 22b. THE WAY BACK STANDS WHERE THE ACCOUNT DISC STANDS,
-                // AND THE ACCOUNT DISC STANDS DOWN.
+                // 22b. ON A STEPPED DAY, TODAY'S FURNITURE STANDS DOWN.
                 //
                 // A day you have stepped to must not be mistakable for today,
                 // and the strongest tell is that today's furniture is missing.
                 // Settings are two taps away from the real Today; nothing on
                 // a past Tuesday needs them, and leaving the disc there would
                 // leave the screen looking like the one it is not.
-                if viewingDayLabel != nil, let onBackToToday {
-                    Button(action: onBackToToday) {
-                        HStack(spacing: V5.S.s4) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 10, weight: .semibold))
-                            Text("Today")
-                                .font(.faffText(TypeScaleV5.label12, weight: .semibold))
-                        }
-                        .foregroundStyle(panelInk.primary)
-                        .padding(.horizontal, V5.S.s10)
-                        .frame(height: V5.Shell.headerButton)
-                        .background(panelInk.control, in: Capsule())
-                    }
-                    .buttonStyle(V5PressStyle())
-                    // ── 44 TALL TO TAP, `V5.Shell.headerButton` TALL TO SEE ──
-                    //
-                    // David, 2026-08-25: "the TODAY back button is hard to
-                    // click" — it drew at 30pt, under Apple's own 44pt
-                    // minimum. Then, once a 44pt VISUAL pill was sitting next
-                    // to the 30pt calendar disc: "if you need to make things
-                    // bigger then everything else needs to match too."
-                    //
-                    // Both are true, and this is the same recipe
-                    // `v5HeaderTarget` already uses for that calendar disc:
-                    // `.frame` grows the tap box first, `.contentShape` bakes
-                    // the hit-test region in AT that size, and only THEN does
-                    // negative padding shrink the reported LAYOUT footprint
-                    // back to `V5.Shell.headerButton` — so this row measures
-                    // the same as it always did and nothing shifts, while the
-                    // capsule stays visually the same height as the disc
-                    // beside it.
-                    //
-                    // AN EARLIER PASS TRIED THIS SAME RECIPE AND IT DID NOT
-                    // WORK — tapping did nothing. That turned out to be a
-                    // false trail: the button was always receiving the tap
-                    // and calling `onBackToToday`; the server was marking the
-                    // VIEWED day `is_today` instead of the real one, so the
-                    // handler compared the target date to itself and no-opped
-                    // silently. See `goTo` in `HostsV5.swift` and the fix in
-                    // `app/api/v5/today/route.ts`, 2026-08-25. The enlarge
-                    // recipe was never the problem; it just failed alongside
-                    // the real bug and took the blame.
-                    .frame(height: 44)
-                    .contentShape(Rectangle())
-                    .padding(.vertical, -(44 - V5.Shell.headerButton) / 2)
-                    .accessibilityLabel("Back to today")
-                } else if let onAccount {
+                //
+                // ── AND THE WAY BACK IS NO LONGER DRAWN HERE ──────────────
+                //
+                // This slot used to hold a "\u{2039} Today" chip. It has moved to
+                // `TodayHostV5.pinnedWayBack`, above the scrolling band, and
+                // the copy here is DELETED rather than disabled so there is
+                // only one of it to find.
+                //
+                // Why it moved: this header is drawn inside `DayPanel`, which
+                // is inside the scroll view. The only way back off a past day
+                // scrolled off the top the moment the runner read anything,
+                // and with the tab bar's own re-tap broken as well, the Today
+                // tab became a trap that stayed on a past Tuesday through four
+                // tab switches. The pinned one cannot scroll away.
+                //
+                // Why it is not kept here TOO: Rule 17, and the design
+                // contract's "no content is printed twice on one screen".
+                // Drawn together they put "\u{2039} Today" on screen twice, a few
+                // points apart, which reads as a mistake rather than as
+                // reassurance.
+                //
+                // 22b itself is unchanged: `viewingDayLabel != nil` still
+                // suppresses the account disc, so a stepped day still shows
+                // none of today's controls.
+                if viewingDayLabel == nil, let onAccount {
                     HeaderDiscV5(glyph: .account(initials),
                                  label: "Account and settings",
                                  targetWidth: discTargetWidth,
@@ -1428,6 +1405,16 @@ struct PlaceHeaderV5: View {
             }
         }
         .frame(height: 44)
+        // `onBackToToday` still has a job here, and it is not a leftover.
+        //
+        // Sighted runners reach the pinned bar at the top of the screen. A
+        // VoiceOver runner reading DOWN the panel would have to swipe back up
+        // past everything to find it, so the header — which is where they are
+        // told which day this is — also carries the escape as a rotor action.
+        // Same handler, no second control drawn.
+        .accessibilityAction(named: Text("Back to today")) {
+            if viewingDayLabel != nil { onBackToToday?() }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────

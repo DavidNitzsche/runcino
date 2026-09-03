@@ -32,6 +32,23 @@
 
 import SwiftUI
 
+// MARK: - Returning a tab to its own root
+
+extension Notification.Name {
+    /// Posted when the runner taps the tab they are already on.
+    ///
+    /// The shell clears that tab's NAVIGATION PATH itself. This exists for the
+    /// second half of the problem: state a tab holds that is not a pushed
+    /// screen. `TodayHostV5.viewingDate` is the case that motivated it — the
+    /// week strip steps Today onto another day WITHOUT pushing anything, so
+    /// emptying `paths[.today]` cannot undo it and the tab stayed on a past
+    /// Tuesday forever.
+    ///
+    /// `object` is the `FaffTabV5` that was re-tapped, so a listener on one tab
+    /// never answers for another.
+    static let faffTabReselected = Notification.Name("faff.tab.reselected")
+}
+
 // MARK: - Destinations
 
 enum FaffTabV5: String, CaseIterable, Identifiable, Hashable {
@@ -132,7 +149,23 @@ struct TabBarV5: View {
             HStack(spacing: gap) {
                 ForEach(FaffTabV5.allCases) { tab in
                     Button {
-                        guard selected != tab else { return }
+                        // ── DO NOT REINTRODUCE A `guard selected != tab` HERE ──
+                        //
+                        // It used to read `guard selected != tab else { return }`,
+                        // which made re-tapping the active tab a no-op INSIDE the
+                        // button — so the shell's own pop-to-root handler, which
+                        // lives in this binding's setter and has been written
+                        // correctly the whole time, was unreachable dead code.
+                        //
+                        // The cost was the worst dead end in the app: open a past
+                        // day from the calendar and the Today tab became
+                        // permanently that past day, with the only way back a pill
+                        // inside a scrolling panel. Tapping "Today" — the universal
+                        // iOS affordance for "take me back" — did nothing, verified
+                        // twelve minutes and four tab switches later.
+                        //
+                        // The binding decides what a tap means. This button's only
+                        // job is to report that one happened.
                         selected = tab
                     } label: {
                         VStack(spacing: V5.S.s4) {
@@ -192,6 +225,71 @@ struct TabBarV5: View {
         .frame(height: V5.Shell.tabBarHeight)
         .frame(maxWidth: .infinity)
         .background(V5.surfacePage)
+    }
+}
+
+// MARK: - The back-swipe every iOS user already has in their thumb
+//
+// EVERY PUSHED SCREEN IN THIS APP HIDES THE SYSTEM BACK BUTTON.
+//
+// `.navigationBarBackButtonHidden(true)` appears on ten hosts, because the
+// design draws its own way back inside the panel and does not want UIKit's
+// chrome. That is the right call for the CHROME — but UIKit wires the
+// interactive pop gesture's delegate to the navigation bar's back button, so
+// hiding the button silently takes the EDGE SWIPE with it.
+//
+// The result the audit found: on a pushed screen the swipe-from-the-left-edge
+// did nothing, on every tab. Settings, Shoes, Race detail, Run detail, the run
+// log. Nothing told the runner the gesture was gone; it simply did not answer.
+//
+// So the gesture is put back, without putting the button back. `shouldBegin`
+// asks the only question that matters — is there anything to pop — so this can
+// never fire on a root screen and strand the stack.
+//
+// It is attached in ONE place (the shell's `navigationDestination`), not
+// sprinkled per screen, so a new pushed route inherits it and cannot forget.
+
+private final class V5PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
+    weak var nav: UINavigationController?
+
+    func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        // Only when there is a screen underneath to go back to.
+        (nav?.viewControllers.count ?? 0) > 1
+    }
+
+    /// The pushed screens are scroll views. Without this the edge pan and the
+    /// scroll view arbitrate against each other and the swipe reads as a
+    /// horizontal rubber-band instead of a pop.
+    func gestureRecognizer(_ g: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        false
+    }
+}
+
+private struct V5EnableInteractivePop: UIViewControllerRepresentable {
+    final class Coordinator { let delegate = V5PopGestureDelegate() }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIViewController(context: Context) -> UIViewController { UIViewController() }
+
+    func updateUIViewController(_ vc: UIViewController, context: Context) {
+        // The representable is a child of the pushed screen, so the navigation
+        // controller is up the chain. Resolved on every update rather than
+        // cached, because SwiftUI can re-host a screen under a different stack.
+        DispatchQueue.main.async {
+            guard let nav = vc.navigationController else { return }
+            context.coordinator.delegate.nav = nav
+            nav.interactivePopGestureRecognizer?.delegate = context.coordinator.delegate
+            nav.interactivePopGestureRecognizer?.isEnabled = true
+        }
+    }
+}
+
+extension View {
+    /// Restores the edge-swipe pop on a screen that hides the system back
+    /// button. Zero visual footprint.
+    func v5InteractivePop() -> some View {
+        background(V5EnableInteractivePop().frame(width: 0, height: 0).accessibilityHidden(true))
     }
 }
 
@@ -378,7 +476,7 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                     NavigationStack(path: path(.today)) {
                         today(path(.today))
                             .navigationDestination(for: V5Route.self) { r in
-                                route(r, path(.today))
+                                route(r, path(.today)).v5InteractivePop()
                             }
                     }
                     // Flatten before hiding: a blend mode inside (the panel
@@ -392,7 +490,7 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                     NavigationStack(path: path(.block)) {
                         block(path(.block))
                             .navigationDestination(for: V5Route.self) { r in
-                                route(r, path(.block))
+                                route(r, path(.block)).v5InteractivePop()
                             }
                     }
                     // Flatten before hiding: a blend mode inside (the panel
@@ -406,7 +504,7 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                     NavigationStack(path: path(.races)) {
                         races(path(.races))
                             .navigationDestination(for: V5Route.self) { r in
-                                route(r, path(.races))
+                                route(r, path(.races)).v5InteractivePop()
                             }
                     }
                     // Flatten before hiding: a blend mode inside (the panel
@@ -425,7 +523,14 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                         // Tapping the tab you are already on pops that tab's
                         // stack to its root, which is the only thing a second
                         // tap can usefully mean.
-                        if tab == selected { paths[tab] = [] } else { selected = tab }
+                        guard tab == selected else { selected = tab; return }
+                        paths[tab] = []
+                        // A path is not all of a tab's state. Today can be
+                        // stepped onto another day without pushing anything,
+                        // and only the host can undo that — so say that the
+                        // tab was re-tapped and let it return itself to root.
+                        NotificationCenter.default.post(
+                            name: .faffTabReselected, object: tab)
                     }
                 ), showRun: showRun) {
                     runPickerOpen = true

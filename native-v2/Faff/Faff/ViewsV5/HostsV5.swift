@@ -69,16 +69,48 @@ struct TodayHostV5: View {
                     .transition(.opacity)
                     // STALEDAY-1 · never pass one day off as another.
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        if let asked = otherDayOnScreen(model) {
-                            ErrorNote(
-                                text: "\(Self.dayName(asked)) did not load. "
-                                    + "You are looking at \(Self.dayName(model.dateISO)).",
-                                onRetry: { Task { await surface.load() } }
-                            )
-                            .padding(.horizontal, V5.S.gutter)
-                            .padding(.bottom, V5.S.s12)
-                            .background(V5.surfacePage)
-                            .transition(.opacity)
+                        VStack(spacing: 0) {
+                            // ── THE WAY BACK DOES NOT SCROLL AWAY ────────────
+                            //
+                            // The `‹ Today` chip lives in `PlaceHeaderV5`, which
+                            // is drawn INSIDE the gradient panel — inside the
+                            // scroll view. So it left the screen the moment the
+                            // runner read anything, and on a tab whose own name
+                            // is "Today" the only remaining way back was to
+                            // scroll up and find it again.
+                            //
+                            // A safe-area inset is the same mechanism the
+                            // did-not-load note above already uses: pinned
+                            // between the status bar and the scrolling band,
+                            // which is exactly where the design contract puts
+                            // the app's chrome. The chip inside the panel stays
+                            // — it is the one that reads as part of the poster —
+                            // and this is the one that is always reachable.
+                            if viewingDate != nil {
+                                pinnedWayBack(model)
+                            }
+                            // OFFLINE MUST NOT LOOK LIKE ONLINE. See
+                            // StaleStateV5.swift — the store has always known
+                            // this; nothing ever drew it.
+                            if surface.stale {
+                                StaleBannerV5(cachedAt: surface.cachedAt,
+                                              onRetry: { Task { await surface.load() } })
+                                    .padding(.horizontal, V5.S.gutter)
+                                    .padding(.bottom, V5.S.s12)
+                                    .background(V5.surfacePage)
+                                    .transition(.opacity)
+                            }
+                            if let asked = otherDayOnScreen(model) {
+                                ErrorNote(
+                                    text: "\(Self.dayName(asked)) did not load. "
+                                        + "You are looking at \(Self.dayName(model.dateISO)).",
+                                    onRetry: { Task { await surface.load() } }
+                                )
+                                .padding(.horizontal, V5.S.gutter)
+                                .padding(.bottom, V5.S.s12)
+                                .background(V5.surfacePage)
+                                .transition(.opacity)
+                            }
                         }
                     }
             } else if let reason = surface.absentReason {
@@ -112,6 +144,19 @@ struct TodayHostV5: View {
             }
         }
         .animation(V5.Motion.fill, value: surface.model?.dateISO)
+        // TAPPING "TODAY" WHEN YOU ARE ALREADY ON TODAY MEANS "TAKE ME HOME".
+        //
+        // The shell empties this tab's navigation path itself. It cannot undo
+        // `viewingDate`, because stepping onto another day pushes nothing — so
+        // without this the tab stayed on a past Tuesday through four tab
+        // switches and twelve minutes.
+        //
+        // Guarded on the tab, so a re-tap of Block or Races never moves Today.
+        .onReceive(NotificationCenter.default.publisher(for: .faffTabReselected)) { note in
+            guard note.object as? FaffTabV5 == .today else { return }
+            guard viewingDate != nil else { return }
+            withAnimation(V5.Motion.fill) { backToToday() }
+        }
         // One account sheet for every Today variant. It used to live inside
         // TodayBeforeV5, so the after-run screen and all four state screens
         // had an account button that opened nothing.
@@ -330,13 +375,84 @@ struct TodayHostV5: View {
     /// on the same row. Identity is the id, the date is a lookup — never the
     /// other way round.
     private func pickDay(_ id: String, in model: V5Today) {
-        guard let day = model.weekStrip.first(where: { $0.id == id }) else { return }
-        goTo(day.dateISO, todayISO: todayISO(model))
+        guard let iso = Self.dateISO(forRowID: id, in: model) else { return }
+        goTo(iso, todayISO: todayISO(model))
+    }
+
+    /// A row id to the day it stands for.
+    ///
+    /// THE WEEK STRIP IS NOT THE ONLY THING THAT HANDS US AN ID.
+    ///
+    /// This used to be `weekStrip.first(where: { $0.id == id })` and nothing
+    /// else, which is correct for the strip — seven days, all present — and
+    /// silently wrong for the CALENDAR, which lists the whole block. Any row
+    /// outside the current week resolved to nothing and the tap did nothing,
+    /// with no way for the runner to tell a day that could not open from a day
+    /// that would not.
+    ///
+    /// That mattered the moment future days became tappable (they were dead
+    /// rows before, so the gap could not show). Both id shapes the server
+    /// emits carry the date in them — `date:2026-09-05` and `pw-2026-09-04` —
+    /// so the strip stays the authority where it has an answer, and the id
+    /// itself answers where it does not. Identity is still the id; the date is
+    /// still a lookup, never the other way round.
+    static func dateISO(forRowID id: String, in model: V5Today) -> String? {
+        if let day = model.weekStrip.first(where: { $0.id == id }) { return day.dateISO }
+        return isoDate(embeddedIn: id)
+    }
+
+    /// The first `yyyy-MM-dd` inside a string, validated by actually parsing
+    /// it — so `pw-2026-13-45` is rejected rather than passed to the server as
+    /// a date that does not exist.
+    static func isoDate(embeddedIn s: String) -> String? {
+        let chars = Array(s)
+        guard chars.count >= 10 else { return nil }
+        for start in 0...(chars.count - 10) {
+            let candidate = String(chars[start..<(start + 10)])
+            if Self.iso.date(from: candidate) != nil { return candidate }
+        }
+        return nil
     }
 
     private func backToToday() {
         guard let model = surface.model else { return }
         goTo(todayISO(model), todayISO: todayISO(model))
+    }
+
+    /// The always-reachable way back, drawn ABOVE the scrolling band.
+    ///
+    /// Deliberately plain: this is chrome, not part of the poster, so it takes
+    /// the page ink rather than the panel's. It names the day being looked at,
+    /// because "‹ Today" on a tab labelled Today reads as a tautology until you
+    /// know you are somewhere else.
+    @ViewBuilder
+    private func pinnedWayBack(_ model: V5Today) -> some View {
+        HStack(spacing: V5.S.s8) {
+            Button(action: { backToToday() }) {
+                HStack(spacing: V5.S.s4) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Today")
+                        .font(.faffText(TypeScaleV5.label13, weight: .semibold))
+                }
+                .foregroundStyle(V5.textPrimary)
+                .padding(.horizontal, V5.S.s12)
+                .frame(height: 34)
+                .background(V5.materialControl, in: Capsule())
+            }
+            .buttonStyle(V5PressStyle())
+            .accessibilityLabel("Back to today")
+
+            Text(viewingDayLabel ?? "")
+                .font(.faffText(TypeScaleV5.label13))
+                .foregroundStyle(V5.textQuiet)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, V5.S.gutter)
+        .padding(.bottom, V5.S.s8)
+        .background(V5.surfacePage)
     }
 
     /// Step by days. Nil means today, so stepping from nil starts at the
@@ -775,6 +891,17 @@ struct BlockHostV5: View {
                             Task { await surface.load() }
                         },
                         onOpenRunLog: { path.append(.runLog) })
+                    // Offline must not look like online. See StaleStateV5.swift.
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if surface.stale {
+                            StaleBannerV5(cachedAt: surface.cachedAt,
+                                          onRetry: { Task { await surface.load() } })
+                                .padding(.horizontal, V5.S.gutter)
+                                .padding(.bottom, V5.S.s12)
+                                .background(V5.surfacePage)
+                                .transition(.opacity)
+                        }
+                    }
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -832,6 +959,17 @@ struct RacesHostV5: View {
                             onEvidenceTap: { _ in },
                             onOpenRace: { row in path.append(.raceDetail(slug: row.slug)) },
                             onAddRace: { path.append(.addRace) })
+                        // Offline must not look like online. See StaleStateV5.swift.
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            if surface.stale {
+                                StaleBannerV5(cachedAt: surface.cachedAt,
+                                              onRetry: { Task { await surface.load() } })
+                                    .padding(.horizontal, V5.S.gutter)
+                                    .padding(.bottom, V5.S.s12)
+                                    .background(V5.surfacePage)
+                                    .transition(.opacity)
+                            }
+                        }
                 } else if let reason = surface.absentReason {
                     ScrollView {
                         Silence(reason: reason)
@@ -1295,6 +1433,14 @@ struct SettingsHostV5: View {
         // showed the weekly one as ON no matter what. Both now read and
         // write the jsonb the cron actually gates on.
         let prefs = try? await API.fetchNotificationPrefs()
+        // Re-mirror the wire's own answer at the moment this screen draws it.
+        // `FaffV5Root` writes it at launch; this keeps the row honest for a
+        // session in which the connection changed (an OAuth round-trip, or a
+        // disconnect made on the web) without waiting for a relaunch. Same
+        // authority, same field — never a second source of truth.
+        if let state = try? await API.fetchProfileState() {
+            StravaConnection.set(state.connections.strava.connected)
+        }
         model = SettingsV5Model(
             longRunDay: Self.dayLabel(settings?.long_run_day ?? "sun"),
             longRunDayOptions: Self.dayNames.map(\.label),
@@ -1378,14 +1524,37 @@ struct FaffV5Root<LiveContent: View>: View {
         .environmentObject(runGate)
         .task {
             await runGate.refresh()
-            // The profile-state payload is already cached at launch, so this
-            // is a synchronous read in the common case, not a fetch.
-            if let cached = AppCache.read(.profileState, as: ProfileState.self),
-               let name = cached.identity.full_name, !name.isEmpty {
-                accountName = name
-            } else if let fresh = try? await API.fetchProfileState(),
-                      let name = fresh.identity.full_name, !name.isEmpty {
-                accountName = name
+            // ── THE STRAVA MIRROR HAD NO WRITER IN v5 ────────────────────
+            //
+            // `StravaConnection` is a `UserDefaults` mirror of one wire field,
+            // `connections.strava.connected`. All eight `set(...)` call sites
+            // live in the legacy `Views/` tree — `ProfileView`, `ActivityView`,
+            // `SettingsView`, `TodayView` — none of which the v5 app ever
+            // runs. So the key was never written, `UserDefaults.bool` returned
+            // its `false` default forever, and two things were wrong at once:
+            //
+            //   · Settings read "Strava · Not connected" for a runner with a
+            //     live token (`connected_at 2026-06-01`, `disconnected_at`
+            //     NULL) whose runs this app has actually pushed.
+            //   · `TodayPostRunBody` gates the **Push to Strava** button on the
+            //     same flag, so a working feature was permanently invisible.
+            //
+            // Rule 11, exactly: "never synced" and "explicitly disconnected"
+            // collapsed into one value.
+            //
+            // This is the WRITE PATH being fixed, not a second source of truth.
+            // The wire stays authoritative; the mirror is only ever a cache of
+            // it, and it is now written wherever v5 resolves a profile state.
+            // Both branches below set it, because the cached payload carries
+            // `connections` just as the fresh one does — reading the cache and
+            // skipping the write is how a mirror goes stale.
+            if let cached = AppCache.read(.profileState, as: ProfileState.self) {
+                StravaConnection.set(cached.connections.strava.connected)
+                if let name = cached.identity.full_name, !name.isEmpty { accountName = name }
+            }
+            if let fresh = try? await API.fetchProfileState() {
+                StravaConnection.set(fresh.connections.strava.connected)
+                if let name = fresh.identity.full_name, !name.isEmpty { accountName = name }
             }
         }
     }

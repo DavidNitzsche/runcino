@@ -173,17 +173,24 @@ final class V5ContrastTests: XCTestCase {
         }
     }
 
-    /// The tiers on a light ramp are ONE ink. Hierarchy is size and weight,
-    /// because the ramp leaves no opacity to spend. If a future edit
+    /// The tiers on EVERY ramp are ONE ink. Hierarchy is size and weight,
+    /// because no ramp leaves opacity to spend. If a future edit
     /// reintroduces a haircut, the assertion above is the one that catches the
     /// contrast; this one catches the intent, so the reason is in the failure.
-    func testLightRampTiersAreOneInk() {
-        for state in lightRamps {
+    ///
+    /// WIDENED FROM LIGHT RAMPS TO ALL SIX. The dark ramps kept `secondary` at
+    /// .78 and `quiet` at .62 on the same reasoning the light ramps had already
+    /// abandoned, and it cost the same 1.3-1.6x. Measured on a rendered Block
+    /// screen: `14 weeks to California International Marathon`, on bare ramp,
+    /// 3.56:1 at .78 against 4.76:1 at full white — where 4.5 is the bar. The
+    /// haircut was the difference between passing and failing.
+    func testRampTiersAreOneInk() {
+        for state in V5.DayState.allCases {
             let ink = state.ink
             XCTAssertEqual(rgb(ink.secondary).a, 1.0, accuracy: 0.001,
-                "\(state) secondary is held back — on a light ramp there is no opacity to spend")
+                "\(state) secondary is held back — this ramp has no opacity to spend")
             XCTAssertEqual(rgb(ink.quiet).a, 1.0, accuracy: 0.001,
-                "\(state) quiet is held back — on a light ramp there is no opacity to spend")
+                "\(state) quiet is held back — this ramp has no opacity to spend")
         }
     }
 
@@ -196,14 +203,27 @@ final class V5ContrastTests: XCTestCase {
     /// `darkInk.opacity(0.13)`, which is darker, so it moved the background
     /// toward the ink and cost contrast rather than adding it.
     ///
-    /// LIGHT RAMPS ONLY, ON PURPOSE. The four dark ramps carry a WHITE plate
-    /// under WHITE ink, which reduces contrast for exactly the same reason and
-    /// by the same arithmetic. That is not an oversight in this test — it is
-    /// the unfixed half of the problem, measured and pinned by
-    /// `testDarkRampSmallTypeGapHasNotWidened` below. Fixing it is a design
-    /// change to five more screens, not a token edit.
+    /// NOW ALL SIX RAMPS. It used to read "LIGHT RAMPS ONLY, ON PURPOSE",
+    /// because the four dark ramps carried a WHITE plate under WHITE ink —
+    /// the identical mistake mirrored — and that was recorded as "the unfixed
+    /// half of the problem … a design change to five more screens, not a token
+    /// edit."
+    ///
+    /// It turned out to be a token edit after all. A rendered Block screen
+    /// measured the stats plate's 12pt labels at 2.84:1 and 3.05:1; inverting
+    /// the dark-ramp plate to `.black.opacity(0.20)` takes the same label to
+    /// 4.85:1 without touching a single screen. So the exemption is spent and
+    /// the scope is the whole enum — which is what it should always have been,
+    /// since the rule ("a plate lifts away from its ink") never mentioned
+    /// which direction the ink went.
+    ///
+    /// WHAT THIS TEST STILL CANNOT FAIL ON (Rule 22): it compares a plate
+    /// against the BARE ramp under it, so it proves the plate is not making
+    /// things worse. It does NOT prove the result clears 4.5:1 — that is
+    /// `testStatPlateTypeClearsOnLightRamps` and its new dark-ramp sibling.
+    /// A plate that improved contrast from 1.5:1 to 1.6:1 would pass here.
     func testPlateAndControlLiftAwayFromTheirInk() {
-        for state in lightRamps {
+        for state in V5.DayState.allCases {
             let ink = state.ink
             for depth in [0.2, 0.5, 0.8] {
                 let bare = ramp(state, at: depth)
@@ -234,6 +254,35 @@ final class V5ContrastTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(label, normalText,
                     "\(state) plate label at depth \(String(format: "%.2f", depth)) "
                     + "measures \(String(format: "%.2f", label)):1")
+                XCTAssertGreaterThanOrEqual(value, largeText,
+                    "\(state) plate value at depth \(String(format: "%.2f", depth)) "
+                    + "measures \(String(format: "%.2f", value)):1")
+            }
+        }
+    }
+
+    /// FAILS AGAINST THE PREVIOUS CODE — 2.84:1 and 3.05:1 on a rendered Block
+    /// screen, 2026-09-03.
+    ///
+    /// The dark ramps' own stats plate, which is what Block's `Quality share` /
+    /// `Long run` / `This week's mileage` row and Races' `Goal` / `Projected`
+    /// row sit inside. Same assertion as `testStatPlateTypeClearsOnLightRamps`,
+    /// same measured depth band, pointed at the other four ramps — which is
+    /// the half that had no clearance test at all while the plate was inverted.
+    ///
+    /// This is the test that would have caught the shipped defect. The
+    /// "lift away" test above could not: a plate can be an improvement on the
+    /// bare ramp and still be unreadable.
+    func testStatPlateTypeClearsOnDarkRamps() {
+        for state in V5.DayState.allCases where !state.wantsDarkInk {
+            let ink = state.ink
+            for depth in stride(from: 0.57, through: 0.85, by: 0.07) {
+                let bg = over(ink.plate, ramp(state, at: depth))
+                let label = contrast(ink.secondary, on: bg)
+                let value = contrast(ink.primary, on: bg)
+                XCTAssertGreaterThanOrEqual(label, normalText,
+                    "\(state) plate label at depth \(String(format: "%.2f", depth)) "
+                    + "measures \(String(format: "%.2f", label)):1, needs \(normalText):1")
                 XCTAssertGreaterThanOrEqual(value, largeText,
                     "\(state) plate value at depth \(String(format: "%.2f", depth)) "
                     + "measures \(String(format: "%.2f", value)):1")
@@ -295,8 +344,18 @@ final class V5ContrastTests: XCTestCase {
     /// saturated ground — a different glyph, a rule, a small plate behind the
     /// value. Recorded rather than guessed at, because rule one is the app's
     /// first rule and inventing a treatment for it is not an audit's call.
+    /// RE-MEASURED 2026-09-03. Inverting the dark-ramp plate to a dark scrim
+    /// lifted the mark along with everything else standing on that plate:
+    ///
+    ///     easy  1.37 -> 2.46      phase 1.59 -> 2.95
+    ///     long  1.49 -> 2.71      rest  2.03 -> 3.84   CLEARS
+    ///
+    /// `rest` is deleted rather than re-recorded, on this ratchet's own
+    /// instruction. `phase` at 2.95 is within a rounding error of 3:1 and is
+    /// still recorded as failing, because 2.95 is not 3.00 and a gate that
+    /// rounds in its own favour is worth nothing.
     private let darkRampMarkFloor: [V5.DayState: Double] = [
-        .easy: 1.37, .long: 1.49, .phase: 1.59, .rest: 2.03,
+        .easy: 2.46, .long: 2.71, .phase: 2.95,
     ]
 
     func testDarkRampModelledMarkGapHasNotWidened() {
@@ -385,9 +444,53 @@ final class V5ContrastTests: XCTestCase {
     /// The measured floor per ramp for the week strip's 12pt letter, which is
     /// the smallest and worst-placed type on the panel. Delete an entry when
     /// the design closes the gap, and this test will tell you to.
+    /// RE-MEASURED 2026-09-03, after the dark-ramp tiers collapsed to one ink.
+    /// The haircut was costing 1.3-1.6x here too, so every ramp moved up:
+    ///
+    ///     easy  2.09 -> 3.14      phase 2.45 -> 3.85
+    ///     long  2.27 -> 3.51      rest  3.08 -> 5.25   CLEARS
+    ///
+    /// `rest` is GONE from this map rather than recorded higher, because this
+    /// ratchet's own second assertion demands it: an entry whose gap has closed
+    /// fails until it is deleted. That is the ratchet working, not a
+    /// regression — `rest` is now covered by
+    /// `testDarkRampWeekStripClearsWhereItCan` below.
+    ///
+    /// The remaining three still fail 4.5:1 and are still PINNED, not blessed.
+    /// Full ink is now genuinely spent, so closing the last gap needs the
+    /// design decision the previous pass named — a plate under the strip, or
+    /// darker ramp starts — and that is above this change's authority.
     private let darkRampWeekStripFloor: [V5.DayState: Double] = [
-        .easy: 2.09, .long: 2.27, .phase: 2.45, .rest: 3.08,
+        .easy: 3.14, .long: 3.51, .phase: 3.85,
     ]
+
+    /// THE OTHER HALF OF DELETING A PIN.
+    ///
+    /// `rest` came off `darkRampWeekStripFloor` because it now clears 4.5:1
+    /// across the whole strip. Deleting a pin must not delete the coverage —
+    /// otherwise the ramp that just got fixed is the one nothing watches, and
+    /// a future token edit could quietly take it back to 3.08:1 with no gate
+    /// saying so.
+    ///
+    /// So every dark ramp NOT in the pin map is asserted positively, at every
+    /// measured strip depth. The two maps and this test partition the four
+    /// dark ramps between them: a ramp is either pinned as failing or asserted
+    /// as passing, and it cannot be in neither.
+    func testDarkRampWeekStripClearsWhereItCan() {
+        let pinned = Set(darkRampWeekStripFloor.keys)
+        let unpinned = V5.DayState.allCases.filter { !$0.wantsDarkInk && !pinned.contains($0) }
+        XCTAssertFalse(unpinned.isEmpty,
+            "every dark ramp is pinned as failing · this test is asserting nothing")
+        for state in unpinned {
+            for depth in weekStripDepths {
+                let c = contrast(state.ink.quiet, on: ramp(state, at: depth))
+                XCTAssertGreaterThanOrEqual(c, normalText,
+                    "\(state) week-strip letter at depth \(String(format: "%.2f", depth)) "
+                    + "measures \(String(format: "%.2f", c)):1 · it cleared 4.5:1 when its pin "
+                    + "was deleted, so this is a REGRESSION")
+            }
+        }
+    }
 
     func testDarkRampSmallTypeGapHasNotWidened() {
         // Week-strip letter, left cell: measured depth 0.30, ink `quiet`.

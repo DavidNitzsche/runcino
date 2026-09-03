@@ -557,7 +557,26 @@ struct PanelStatPlate: View {
     }
 
     private var plate: some View {
-        HStack(alignment: .firstTextBaseline, spacing: V5.S.s16) {
+        // ── THE VALUES SHARE A BASELINE, NOT THE LABELS ──────────────────
+        //
+        // This was `.firstTextBaseline`, which aligns each column on its
+        // LABEL. That is fine while every label is one line and wrong the
+        // moment one is not: on Block, "This week's mileage" wraps to two
+        // lines, so its column's label row grew and pushed "45 mi" 33pt below
+        // "33%" and "15 mi". The three numbers the plate exists to show sat on
+        // three different lines because one WORD was long.
+        //
+        // `.lastTextBaseline` pins the columns on their last line instead.
+        // Every value is `.lineLimit(1)`, so the last baseline IS the value's
+        // baseline and the numbers line up whatever the labels do. A wrapped
+        // label now grows UPWARD, which is the direction with room in it.
+        //
+        // Deliberately not a `Grid`: that would align both rows, but it splits
+        // each label from its value into separate row containers and would
+        // cost the per-stat `.accessibilityElement(children: .combine)` below
+        // — which is what makes VoiceOver read "Projected, estimated,
+        // 3:16:45" instead of three labels followed by three numbers.
+        HStack(alignment: .lastTextBaseline, spacing: V5.S.s16) {
             ForEach(stats) { s in
                 VStack(alignment: .leading, spacing: V5.S.s6) {
                     Text(s.label)

@@ -230,6 +230,20 @@ struct BlockV5: View {
                 Text(model.panel.dateLine)
                     .faffDisplayV5(26, fit: .free)
                     .foregroundStyle(panelInk.primary)
+                    // "September 3" was breaking MID-WORD, on the header of a
+                    // primary tab: "Septembe / r 3". The row shares its width
+                    // with a week line that can run to "14 weeks to California
+                    // International Marathon", which squeezed the date until
+                    // its single longest word no longer fit and the layout
+                    // broke it inside the word rather than at the space.
+                    //
+                    // The date is the headline of this row, so it takes its
+                    // width first and never wraps; if a longer date ever
+                    // genuinely cannot fit, it scales rather than breaks. The
+                    // week line already wraps to two lines and keeps doing so.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .layoutPriority(1)
                 Spacer(minLength: 0)
                 if let weekLine = model.panel.weekLine {
                     Text(weekLine)

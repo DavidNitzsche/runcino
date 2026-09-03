@@ -180,12 +180,55 @@ enum V5 {
         /// behind the clock, so the system's own ink is on our surface.
         let statusBar: ColorScheme
 
+        /// THE SAME SIGN ERROR AS THE LIGHT RAMP, POINTING THE OTHER WAY.
+        ///
+        /// `onLightRamp` below already carries the rule: **a plate lifts AWAY
+        /// from its ink.** It was written when a DARK plate under DARK ink
+        /// measured 2.49:1 and the fix was to make the plate lighter.
+        ///
+        /// The corollary was never applied here. These four ramps carried a
+        /// WHITE plate under WHITE ink, which is the identical mistake
+        /// mirrored: it pulls the ground UP toward the type. Measured on a
+        /// rendered Block screen (2026-09-03, iPhone 17, real data), the stats
+        /// plate's own 12pt labels came in at **2.84:1** (`Quality share`) and
+        /// **3.05:1** (`Long run`) against the 4.5:1 normal text needs — and
+        /// they were the DIMMEST things on the panel to begin with, so the
+        /// plate was lightening the ground under exactly the ink that could
+        /// least afford it.
+        ///
+        /// `V5ContrastTests` named this gap honestly rather than hiding it —
+        /// "the four dark ramps carry a WHITE plate under WHITE ink, which
+        /// reduces contrast for exactly the same reason and by the same
+        /// arithmetic … it is the unfixed half of the problem". It is fixed
+        /// here, and `testPlateAndControlLiftAwayFromTheirInk` now runs over
+        /// ALL SIX ramps instead of the two it was scoped to.
+        ///
+        /// Measured, on the ramp beneath that plate (recovered from the same
+        /// screenshot as `(123, 91, 219)`):
+        ///
+        ///     plate white@0.16 (was)   ground (144,117,225)   label 2.84:1
+        ///     plate black@0.20 (now)   ground  (98, 73,175)   label 4.85:1
+        ///
+        /// THE TIERS COLLAPSE, FOR THE REASON THE LIGHT RAMP'S DID.
+        ///
+        /// `secondary` at .78 and `quiet` at .62 cost 1.3-1.6x, and the light
+        /// corner of these ramps has no headroom to spend: `14 weeks to
+        /// California International Marathon` sits OFF the plate on bare ramp
+        /// and measured 3.56:1 at .78 against 4.76:1 at full white. Full ink is
+        /// the whole budget and it only just clears. So hierarchy is carried by
+        /// size and weight — which this design already varies from 12pt to
+        /// 56pt — exactly as `onLightRamp` decided for the same reason.
+        ///
+        /// This does NOT close the week strip, which sits on bare ramp at
+        /// depths where even full white falls short on `easy` and `long`. That
+        /// remains pinned by `testDarkRampSmallTypeGapHasNotWidened`, whose
+        /// floors are updated to the values full ink now gives.
         static let onDarkRamp = PanelInk(
             primary:   .white,
-            secondary: .white.opacity(0.78),
-            quiet:     .white.opacity(0.62),
-            plate:     .white.opacity(0.16),
-            control:   .white.opacity(0.20),
+            secondary: .white,
+            quiet:     .white,
+            plate:     .black.opacity(0.20),
+            control:   .black.opacity(0.22),
             mark:      V5.attention,
             statusBar: .dark)
 
