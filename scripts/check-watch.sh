@@ -172,6 +172,28 @@ if [ ! -d "$TESTS_DIR" ]; then
   exit 1
 fi
 
+# ── 0 · THE PREREQUISITE xcodegen NEEDS AND THE REPO DOES NOT TRACK ──────────
+#
+# `project.yml` names Secrets.xcconfig as the base configuration for both
+# Debug and Release, and Secrets.xcconfig is gitignored (`.gitignore:43`). So
+# xcodegen refuses with "Invalid config file" wherever the file is absent:
+#
+#   · a fresh clone, and any cold CI container
+#   · EVERY verify-commit run, on every commit that touches a native path.
+#     `scripts/verify-commit.sh` runs `git clean -fdx` on its reusable
+#     worktree before each verification, and `-x` deletes ignored files, so
+#     the file is removed immediately before this gate needs it. That made
+#     this gate unpassable there rather than merely unreliable, which is the
+#     inverse of the failure Rule 18 warns about and just as bad: a check
+#     nobody can get green stops being read.
+#
+# Seeded from the tracked example, which is exactly what the file is for and
+# what the README tells a human to do by hand. Never overwrites a real one.
+if [ ! -f "$PROJ/Secrets.xcconfig" ] && [ -f "$PROJ/Secrets.example.xcconfig" ]; then
+  cp "$PROJ/Secrets.example.xcconfig" "$PROJ/Secrets.xcconfig"
+  note "watch · seeded native-v2/Secrets.xcconfig from the example (it is gitignored)"
+fi
+
 # ── 1 · PROJECT FRESHNESS ────────────────────────────────────────────────────
 PBX="$PROJ/Faff.xcodeproj/project.pbxproj"
 before=""
