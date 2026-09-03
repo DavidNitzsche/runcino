@@ -69,6 +69,18 @@
  *       whole file exists to have: from inside a verification process, no
  *       remote database is writable, and no amount of configuration makes one.
  *
+ *       The install shim judges each statement against the CONNECTION it is
+ *       issued on (`connectionStringFromPgInstance`, read off `this` inside
+ *       the patched `query`), not against `process.env.DATABASE_URL`. A
+ *       process can legitimately hold more than one connection — a loopback
+ *       scratch database and a separate client pointed at production — and
+ *       `env.DATABASE_URL` names only one of them. Judging every statement
+ *       against it regardless of which connection issued it is precisely an
+ *       "environment labelling or connection-string policy" the owner's
+ *       ruling above already named insufficient; it is used only as the
+ *       fallback for a connection whose own parameters cannot be read, and
+ *       that fallback still refuses on anything not provably local.
+ *
  *   4 · HOW IT REFUSES — loudly. `[write-barrier] REFUSED` on stderr, a
  *       counted ledger (`productionWriteLedger()` answers "N attempted, 0
  *       issued"), and a thrown `ProductionWriteRefused`. Never a silent no-op:
@@ -361,6 +373,73 @@ export function targetPermitsWrites(t: TargetClass): boolean {
   return t.kind === 'local';
 }
 
+/**
+ * Reconstruct the connection string a `pg` `Client` or `Pool` INSTANCE
+ * actually holds — not `process.env`, the object the statement is about to be
+ * issued on. `undefined` means "could not be read", which callers must treat
+ * as a THIRD state (Rule 11) and fall back to `env.DATABASE_URL` — itself
+ * still routed through `classifyDatabaseTarget`, which refuses whenever it
+ * cannot prove a target — never silently as "local".
+ *
+ * Found 2026-09-03 building `walk-substrate.ts`: a verification process held
+ * TWO connections — a loopback scratch DB as `DATABASE_URL`, plus a second
+ * `pg.Client` built directly against production. The barrier judged every
+ * statement against `DATABASE_URL` regardless of which connection issued it,
+ * so the production client's writes passed straight through while this same
+ * process's own startup line reported "writes permitted (loopback)". This is
+ * exactly the shape Rule 11 (`classifyDatabaseTarget`) exists to close, and
+ * "ENVIRONMENT LABELLING OR CONNECTION-STRING POLICY ALONE IS INSUFFICIENT"
+ * (this file's own header) applies to `process.env.DATABASE_URL` as much as
+ * to any other label.
+ *
+ * A `Client` — including one a `Pool` checks out internally, since `pg-pool`
+ * constructs it as `new this.Client(this.options)` — exposes
+ * `connectionParameters` with host/port/database already resolved from its
+ * config, `PG*` env vars, and pg's own defaults (pg@8.x,
+ * `lib/connection-parameters.js`). A `Pool` itself has no such object; it
+ * keeps the raw `options` it was constructed with, which may carry
+ * `connectionString` directly or the same discrete fields.
+ */
+export function connectionStringFromPgInstance(instance: unknown): string | undefined {
+  const obj = instance as {
+    connectionParameters?: { host?: unknown; port?: unknown; database?: unknown };
+    options?: { connectionString?: unknown; host?: unknown; port?: unknown; database?: unknown };
+  } | null | undefined;
+  if (!obj || typeof obj !== 'object') return undefined;
+
+  const cp = obj.connectionParameters;
+  if (cp && typeof cp === 'object' && typeof cp.host === 'string' && cp.host !== '') {
+    return buildLoggableConnectionString(cp.host, cp.port, cp.database);
+  }
+
+  const opts = obj.options;
+  if (opts && typeof opts === 'object') {
+    if (typeof opts.connectionString === 'string' && opts.connectionString.trim() !== '') {
+      return opts.connectionString;
+    }
+    if (typeof opts.host === 'string' && opts.host !== '') {
+      return buildLoggableConnectionString(opts.host, opts.port, opts.database);
+    }
+  }
+
+  // Neither shape was readable — e.g. a domain socket, or a future pg release
+  // that renames these fields. The caller falls back to `env.DATABASE_URL`.
+  return undefined;
+}
+
+/**
+ * A connection string built ONLY from host/port/database — never
+ * credentials, since those never travel through this module's logs or
+ * `TargetClass.describe`. Good enough for `classifyDatabaseTarget`, which
+ * only ever reads `hostname` and `pathname`.
+ */
+function buildLoggableConnectionString(host: string, port: unknown, database: unknown): string {
+  const h = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  const p = typeof port === 'number' && Number.isFinite(port) ? port : 5432;
+  const db = typeof database === 'string' ? database : '';
+  return `postgresql://${h}:${p}/${encodeURIComponent(db)}`;
+}
+
 // ─── 4 · the ledger and the refusal ──────────────────────────────────────────
 
 let attempted = 0;
@@ -502,7 +581,13 @@ export function installProductionWriteBarrier(pg: PgLike): InstallResult {
       const text = typeof first === 'string'
         ? first
         : (first as { text?: unknown } | null)?.text;
-      const refusal = judge(text);
+      // Judge against THIS connection, not the process environment — see
+      // connectionStringFromPgInstance for why. `undefined` here means the
+      // instance's own parameters could not be read, and `judge` falls back
+      // to `env.DATABASE_URL`, which still refuses on anything it cannot
+      // prove is local (Rule 11) rather than treating "unreadable" as safe.
+      const url = connectionStringFromPgInstance(this);
+      const refusal = judge(text, { url });
       if (refusal) {
         recordRefusal(refusal);
         // A callback-style caller must also see the refusal, not a hang.

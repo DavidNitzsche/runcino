@@ -318,6 +318,37 @@ describe('WRITE BARRIER · a production write is REFUSED during verification', (
     await rogue.end().catch(() => {});
   });
 
+  it('refuses a write on a SEPARATE client pointed at production, even while DATABASE_URL is loopback', async () => {
+    // The walk-substrate incident (2026-09-03): a verification process held a
+    // LOOPBACK scratch database as its own DATABASE_URL, plus a second,
+    // independently-constructed connection pointed at production
+    // (`new Client({ connectionString: process.env.DATABASE_URL_RO })`, the
+    // exact shape `web-v2/scripts/walk-substrate.ts` used). `judge` resolved
+    // its target from `env.DATABASE_URL` no matter which connection actually
+    // issued the statement, so `classifyDatabaseTarget` answered `local`,
+    // `targetPermitsWrites` returned true, and a mutating statement on the
+    // PRODUCTION client would have passed straight through — while this very
+    // process's barrier reported "writes permitted (loopback)" at startup.
+    // The target must be resolved from the CLIENT/POOL issuing the query, not
+    // from `process.env`.
+    process.env.DATABASE_URL = LOOPBACK;
+    const pg = await import('pg');
+
+    const prodPool = new pg.Pool({ connectionString: PROD_SHAPED, connectionTimeoutMillis: 8000, max: 1 });
+    try {
+      await expect(
+        prodPool.query(`DELETE FROM runs WHERE user_uuid = $1`, [OWNER]),
+      ).rejects.toBeInstanceOf(ProductionWriteRefused);
+    } finally {
+      await prodPool.end().catch(() => {});
+    }
+
+    const ledger = productionWriteLedger();
+    expect(ledger.issued).toBe(0);
+    expect(ledger.attempts[0].target).toMatch(/production/);
+    expect(ledger.attempts[0].head).toMatch(/DELETE FROM runs/);
+  });
+
   it('does not break reads · the refusal is targeted, not a blanket outage', async () => {
     process.env.DATABASE_URL = PROD_SHAPED;
     const { pool } = await import('@/lib/db/pool');

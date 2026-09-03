@@ -265,6 +265,17 @@ else
     || bad "proof test no longer reconstructs the incident's own payload"
   grep -q "1 write attempted, 0 issued" "$PROOF" \
     || bad "proof test no longer asserts the ledger sentence"
+
+  # Regression case (2026-09-03 · walk-substrate incident): the barrier used to
+  # judge every statement against process.env.DATABASE_URL regardless of which
+  # connection issued it, so a verification process holding a loopback scratch
+  # DB plus a SEPARATE client pointed at production had that second client's
+  # writes pass straight through. Demand the case and the fix it proves stay
+  # present, not just prose that mentions them (GATEAUDIT-4).
+  grep -q "even while DATABASE_URL is loopback" "$PROOF" \
+    || bad "proof test lost the per-connection target-resolution case (the walk-substrate incident) · the target must be judged per-connection, not against process.env"
+  grep -q "export function connectionStringFromPgInstance" "$CORE" \
+    || bad "core module lost connectionStringFromPgInstance · the barrier may be back to judging process.env instead of the connection issuing the statement"
 fi
 
 # ── GUARD 5 · the scratch-database tooling is out of the served graph ───────
