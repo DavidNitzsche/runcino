@@ -342,76 +342,25 @@ struct TodayBeforeV5: View {
 
     private var panel: some View {
         DayPanel(fill: panelFill) {
-            // Header + week line + strip are one "which day is this" cluster,
-            // not three independently-spaced rows — grouped at s8 instead of
-            // the panel's own s20 rule so the two near-empty rows around a
-            // usually-blank week line stop reading as a gap the size of a
-            // whole extra section. David, 2026-09-03: "the spacing under
-            // TODAY and above the week strip seems very large and too much."
-            // Measured against this real payload: `weekLine` is nil far more
-            // often than not (confirmed on a live account), so this cluster
-            // was routinely spending 20 + ~18 + 20 ≈ 58pt on a label that
-            // wasn't even drawing anything. DayPanel's own s20 still separates
-            // this cluster from the display register below — that gap carries
-            // real meaning ("which day" vs. "what it asks for") and is
-            // untouched.
-            VStack(alignment: .leading, spacing: V5.S.s8) {
-                // The one place header, shared with the after-run screen and
-                // the state screens. This file used to hand-roll its own,
-                // which is how the two Today variants ended up with
-                // different controls.
-                PlaceHeaderV5(place: model.panel.place,
-                              viewingDayLabel: viewingDayLabel,
-                              onBackToToday: onBackToToday,
-                              onCalendar: { withAnimation(V5.Motion.fill) { calendarOpen = true } },
-                              initials: avatarInitials.isEmpty ? nil : avatarInitials,
-                              onAccount: { withAnimation(V5.Motion.sheet) { accountOpen = true } })
-
-                // ── THE DATE LINE IS GONE ────────────────────────────────
-                //
-                // David, 2026-08-25: "TODAY does not need the 'Tuesday 25
-                // August' type", and on a stepped day, "other days show the
-                // date twice. not needed."
-                //
-                // It was drawing the date a second time under a header that
-                // had just given it, and a third time under a week strip
-                // whose whole job is to say which day this is — in context,
-                // against the six days around it, which is strictly more
-                // than a date line can say. The panel's business is what the
-                // day ASKS FOR; the display register below is the session,
-                // and that is what should be wearing 26pt and up.
-                //
-                // The week line stays where it stood, hard right. It is the
-                // one thing on this row the strip does not carry: which week
-                // of the block this is.
-                // ── THE ROW HOLDS ITS SPACE EVEN WITH NOTHING TO SAY ─────
-                //
-                // David, 2026-08-25, watching the strip live: "the week 2 of
-                // 2 is gone making it jump. hold the space for it even if
-                // its not there."
-                //
-                // Stepping past the end of the block (nothing written beyond
-                // it) correctly has no week number to report — but `if let`
-                // made the ABSENCE of that sentence also delete its ROW, so
-                // the panel's height changed and everything below it — the
-                // strip, the display register — shifted up a line the
-                // instant the runner crossed that boundary. A real Text at
-                // empty string, not a conditional view, reserves the exact
-                // line height every other week already draws, invisibly, so
-                // nothing moves.
-                HStack(spacing: V5.S.s12) {
-                    Spacer(minLength: 0)
-                    Text(model.panel.weekLine ?? "")
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(panelInk.secondary)
-                        .opacity(model.panel.weekLine == nil ? 0 : 1)
-                }
-
-                // The strip stays on every day, and pages a week at a time.
-                WeekStripV5(days: stripDays(),
-                            onTap: { day in onPickDay(day.id) },
-                            onPageWeek: { await onPageWeek($0) })
-            }
+            // TODAYSHELL-1 · the header + week-line + strip cluster is one
+            // shared definition (`TodayHeaderStripV5`, DesignV5/ComponentsV5.swift)
+            // now, not hand-rolled per screen — see that struct's own header
+            // for why: it is what the loading/failed navigation card was
+            // missing, and missing it is what made an uncached date tear
+            // down the whole screen instead of leaving header and strip
+            // mounted.
+            TodayHeaderStripV5(
+                place: model.panel.place,
+                viewingDayLabel: viewingDayLabel,
+                weekLine: model.panel.weekLine,
+                weekStripDays: stripDays(),
+                onBackToToday: onBackToToday,
+                onCalendar: { withAnimation(V5.Motion.fill) { calendarOpen = true } },
+                initials: avatarInitials.isEmpty ? nil : avatarInitials,
+                onAccount: { withAnimation(V5.Motion.sheet) { accountOpen = true } },
+                onPickDay: { day in onPickDay(day.id) },
+                onPageWeek: { await onPageWeek($0) }
+            )
 
             VStack(alignment: .leading, spacing: V5.S.s2) {
                 if let kicker = model.panel.kicker {

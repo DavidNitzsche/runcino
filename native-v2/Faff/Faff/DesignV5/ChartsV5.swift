@@ -1282,10 +1282,22 @@ struct WeekStripV5: View {
         }
     }
 
-    /// THE RAIL SAYS WHETHER THERE IS A RUN, AND WHETHER IT IS DONE.
+    /// THE RAIL SAYS WHAT KIND OF DAY THIS IS, AND WHETHER IT IS DONE.
+    ///
+    /// STRIPCOLOR-1 (2026-09-04) · this used to paint every non-rest day the
+    /// same ink at two opacities, so quality, long run, race and easy were
+    /// indistinguishable at a glance — the polish pass asked for "orange for
+    /// quality; blue for long run; race accent for race day" and this had
+    /// none of them. The six-ramp day-state palette already exists
+    /// (`Theme.V5.DayState`, locked, used to paint the full panel gradient
+    /// elsewhere) — this reuses its own top stop rather than inventing a
+    /// second palette for the same six kinds of day. Completion still reads
+    /// as full-strength vs. dimmed, now on top of the real hue instead of a
+    /// neutral one.
     private func rail(_ d: WeekStripDayV5) -> Color {
         guard !d.isRest else { return .clear }
-        return panelInk.primary.opacity(d.isDone ? 1.0 : 0.42)
+        let hue = d.state.stops.first ?? panelInk.primary
+        return hue.opacity(d.isDone ? 1.0 : 0.55)
     }
 }
 

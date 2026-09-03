@@ -607,7 +607,12 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/watch/build-workout.ts::buildWatchToday',
   'lib/watch/build-workout.ts::buildWatchToday',
   'lib/watch/build-workout.ts::buildWatchToday',
-  'lib/watch/build-workout.ts::loadCompletedRun',
+  // WORKOUT-EXECUTION-ID-1 (2026-09-03) · one of the original TWO
+  // loadCompletedRun sites here — the run-selection query's own catch — is
+  // gone (replaced by the canonical day resolver's OBSERVED catch, which
+  // logs). This one, the RPE lookup a few lines further down the same
+  // function, is unrelated and still exactly as it was; the count here is
+  // corrected from 2 to 1, not to 0.
   'lib/watch/build-workout.ts::loadCompletedRun',
   'lib/watch/build-workout.ts::loadNoSessionReason',
   'lib/weather/lookup.ts::baselineTempF',
@@ -714,7 +719,12 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // of the automatic-adaptation levers (commit 8ef72992), and the swallowed read
 // behind it went with the surface. Counted from the scanner (11 emptied sites
 // in that symbol), not from the diff.
-export const EMPTIED_BASELINE = 353;
+// WORKOUT-EXECUTION-ID-1 (2026-09-03) · one of loadCompletedRun's two blind
+// catch-and-return-empty-array sites is gone — the run-selection query now
+// calls the canonical day resolver, whose own failure path is an observed
+// catch (logs the error) rather than a swallow. Its OTHER site (the RPE
+// lookup, unrelated, untouched) is still exactly as it was. 353 -> 352.
+export const EMPTIED_BASELINE = 352;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

@@ -626,33 +626,59 @@ export async function POST(req: NextRequest) {
   // which sibling won the merge. Same ±30% distance guard: a 2 mi bail on
   // a tempo day, or an unplanned jog on a rest day, must not inherit a
   // quality label. workoutTypeSource records provenance.
+  //
+  // WORKOUT-EXECUTION-ID-1 (2026-09-03) · this is also now the ONLY place
+  // that ever stamps `planWorkoutId` — the durable `plan_workouts.id` link
+  // `lib/execution/day-resolver.ts` treats as EXACT evidence a run completed
+  // a specific prescription. Found live: a friend's 4.48mi unplanned run
+  // rendered as `INTERVALS · done` with rep-grading prose, because nothing
+  // this app ever writes could tell "a run exists on this date" apart from
+  // "this run IS the day's prescription" — same date, same or only run of
+  // the day, were all being read as sufficient. They are not (David's
+  // ruling). This block is what makes them unnecessary going forward: a run
+  // that actually came through the app's own tracker (watch, phone GPS,
+  // treadmill — the three callers of this route) carries the exact id from
+  // here on, and the resolver never has to guess again.
+  //
+  // Was previously LIMIT 1 with no ORDER BY on a query that can return more
+  // than one row (a two-a-day) — an arbitrary pick, silently. Now reads every
+  // non-rest prescription for the date and picks the one whose distance is
+  // the closest ±30%-band fit, so two sessions on one day are told apart by
+  // distance rather than by whichever the database happened to return first.
   let plannedWorkoutType: string | null = null;
   let plannedSubLabel: string | null = null;
+  let planWorkoutId: string | null = null;
   try {
-    const planDay = (await pool.query<{ type: string; distance_mi: string | null; sub_label: string | null }>(
-      `SELECT pw.type, pw.distance_mi::text, pw.sub_label
+    const planDays = (await pool.query<{ id: string; type: string; distance_mi: string | null; sub_label: string | null }>(
+      `SELECT pw.id, pw.type, pw.distance_mi::text, pw.sub_label
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE tp.user_uuid = $1::uuid
           AND tp.archived_iso IS NULL
           AND pw.date_iso = $2
           AND pw.type NOT IN ('rest')
-        LIMIT 1`,
+        ORDER BY pw.id`,
       [userId, date],
-    )).rows[0];
-    if (planDay) {
-      // 2026-08-28 · field-test LTHR capture reads this below. Carried out of
-      // the try so a stamp failure can't silently also kill the capture.
-      plannedSubLabel = planDay.sub_label ?? null;
+    )).rows;
+    let best: { id: string; type: string; distance_mi: string | null; sub_label: string | null } | null = null;
+    let bestDelta = Infinity;
+    for (const planDay of planDays) {
       const plannedMi = planDay.distance_mi != null ? Number(planDay.distance_mi) : null;
       const distanceMatches = plannedMi == null || plannedMi <= 0
         ? true
         : totalMi >= plannedMi * 0.7 && totalMi <= plannedMi * 1.3;
-      if (distanceMatches) {
-        // race_week_tuneup is T-pace work · stamp as threshold so the
-        // quality-type readers treat it as the T-effort it is.
-        plannedWorkoutType = planDay.type === 'race_week_tuneup' ? 'threshold' : planDay.type;
-      }
+      if (!distanceMatches) continue;
+      const delta = plannedMi == null ? 0 : Math.abs(totalMi - plannedMi);
+      if (delta < bestDelta) { best = planDay; bestDelta = delta; }
+    }
+    if (best) {
+      // 2026-08-28 · field-test LTHR capture reads this below. Carried out of
+      // the try so a stamp failure can't silently also kill the capture.
+      plannedSubLabel = best.sub_label ?? null;
+      // race_week_tuneup is T-pace work · stamp as threshold so the
+      // quality-type readers treat it as the T-effort it is.
+      plannedWorkoutType = best.type === 'race_week_tuneup' ? 'threshold' : best.type;
+      planWorkoutId = best.id;
     }
   } catch (e: unknown) {
     // Non-fatal · an unstamped run is the pre-fix status quo.
@@ -763,6 +789,10 @@ export async function POST(req: NextRequest) {
     // no plan day matched · readers treat null as untyped (pre-fix behavior).
     workoutType: plannedWorkoutType,
     ...(plannedWorkoutType ? { workoutTypeSource: 'plan' } : {}),
+    // WORKOUT-EXECUTION-ID-1 (2026-09-03) · the durable exact-match id.
+    // Key ABSENT (not null) when no prescription matched, so a re-POST from
+    // an older client build can never clobber an id a richer payload wrote.
+    ...(planWorkoutId ? { planWorkoutId } : {}),
     // F10: raw per-phase array stored directly on the run row so the
     // coach and VDOT engines can query per-phase actuals without a
     // JOIN to coach_intents. Empty array when old clients omit phases.
