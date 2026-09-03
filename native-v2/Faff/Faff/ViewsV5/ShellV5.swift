@@ -323,7 +323,13 @@ struct RunPickerV5: View {
             // Left here rather than deleted because the runner still has to
             // know the run keeps going with the phone away, and that the app
             // is the thing holding it: force-quitting still ends it.
-            Text("An outdoor run keeps recording with your screen locked and the phone in a pocket. Closing the app ends it.")
+            // PICKERTRUTH-1 · gated on the same fact the live screen reads, so
+            // the sheet cannot promise what the build cannot do. The false
+            // branch is the live screen's own wording, verbatim, because two
+            // sentences for one fact is how they drift apart again.
+            Text(PhoneRunTracker.backgroundRecordingAvailable
+                 ? "An outdoor run keeps recording with your screen locked and the phone in a pocket. Closing the app ends it."
+                 : "This build can only record while the app is open. Keep the screen on until you end the run.")
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.textQuiet)
                 .fixedSize(horizontal: false, vertical: true)

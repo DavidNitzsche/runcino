@@ -239,6 +239,14 @@ final class PhoneRunTracker: NSObject, ObservableObject {
     /// from the plist rather than assumed, because xcodegen regenerates
     /// Info.plist and this class of key has been lost that way before (TF
     /// 212's launch-screen colour; audit RK-1's watch workout-processing).
+    /// PICKERTRUTH-1 (2026-09-03) · exposed, because the RUN sheet was making
+    /// this promise before anything had checked it. The picker said "keeps
+    /// recording with your screen locked" unconditionally while the live screen
+    /// said the opposite whenever the key was missing — two surfaces, one fact,
+    /// contradicting each other in the same run. Rule 16: a sentence asserting
+    /// a fact is gated on that fact or it is not said.
+    static var backgroundRecordingAvailable: Bool { backgroundLocationDeclared }
+
     private static let backgroundLocationDeclared: Bool = {
         let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
         return modes?.contains("location") ?? false
