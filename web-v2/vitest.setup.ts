@@ -77,4 +77,14 @@ for (const file of ['.env.local', '.env']) {
 // The per-query decision reads the environment at call time either way, so the
 // only thing that would have been wrong is the sentence in the log — which is
 // exactly the kind of confidently-wrong report this whole file is about.
-await import('./lib/verify/install-barrier');
+const { barrierInstall } = await import('./lib/verify/install-barrier');
+
+// FAIL-LOUD IN VERIFICATION (2026-09-03). The install is wrapped so it can never
+// take the production app down at import; that leniency must not extend to a
+// test run. A barrier that failed to arm here would let 78 test files reach a
+// production pool unfenced while every suite still reported green.
+if (!barrierInstall.installed && !barrierInstall.alreadyInstalled) {
+  throw new Error(
+    `[write-barrier] refused to start the test run: the barrier is not armed — ${barrierInstall.summary}`,
+  );
+}

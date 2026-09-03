@@ -258,7 +258,17 @@ fi
 if [ ! -d "$ROOT/web-v2/node_modules" ]; then
   say "  skip · no node_modules (cold container) · guards 1-3 stand"
 else
-  if ( cd "$ROOT/web-v2" && npx vitest run lib/verify/_production_write_barrier.test.ts >/tmp/_writebarrier.log 2>&1 ); then
+  # BUILD SAFETY (2026-09-03). This gate runs inside `prebuild`, which Railway
+  # executes during a production build with the app's own DATABASE_URL set. The
+  # proof test's live section would then open a connection to the production
+  # database from a build container — which is the wrong place to do it even
+  # when it works, and a build that depends on database reachability is a build
+  # that fails for reasons unrelated to the code. `DATABASE_URL` is stripped for
+  # this invocation only, so `describe.skipIf(!HAS_DATABASE)` skips cleanly (the
+  # behaviour guard 3 above already asserts) and all pure guards still run. The
+  # live section still runs in `test-full` and in a local verify where
+  # credentials are present.
+  if ( cd "$ROOT/web-v2" && env -u DATABASE_URL -u DATABASE_URL_RO npx vitest run lib/verify/_production_write_barrier.test.ts >/tmp/_writebarrier.log 2>&1 ); then
     say "  ok · $(grep -oE 'Tests  [0-9]+ passed[^)]*' /tmp/_writebarrier.log | tail -1)"
   else
     bad "proof test failed · output follows"

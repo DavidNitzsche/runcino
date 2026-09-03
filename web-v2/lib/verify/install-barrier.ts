@@ -27,6 +27,39 @@
 import * as pg from 'pg';
 import { installProductionWriteBarrier, type InstallResult } from './production-barrier';
 
-export const barrierInstall: InstallResult = installProductionWriteBarrier(
-  pg as unknown as { Client?: { prototype: Record<string, unknown> }; Pool?: { prototype: Record<string, unknown> } },
-);
+/**
+ * FAIL-SAFE AT IMPORT, FAIL-LOUD IN VERIFICATION (2026-09-03).
+ *
+ * `lib/db/pool.ts` imports this for effect, so this expression runs at module
+ * load in EVERY process that touches the database — including the production
+ * server, where `installProductionWriteBarrier` correctly declines to patch
+ * anything. But "declines to patch" is not the same as "cannot throw": the
+ * install classifies the process and parses `DATABASE_URL` before it decides,
+ * and a throw there would fail the import of `pool.ts`, which every API route
+ * depends on. Railway restarts on failure five times and then marks the deploy
+ * failed, so a safety mechanism that throws at import takes the whole app down
+ * — the exact inversion of its purpose, and invisible to `next build`.
+ *
+ * So the call is wrapped. In production a failure leaves the app running and
+ * says so. In a verification process that is not good enough, and
+ * `vitest.setup.ts` asserts `barrierInstall.installed` — a barrier that failed
+ * to arm must fail the test run loudly rather than let writes through quietly.
+ */
+export const barrierInstall: InstallResult = (() => {
+  try {
+    return installProductionWriteBarrier(
+      pg as unknown as { Client?: { prototype: Record<string, unknown> }; Pool?: { prototype: Record<string, unknown> } },
+    );
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    // eslint-disable-next-line no-console
+    console.error(`[write-barrier] INSTALL FAILED · ${detail}`);
+    return {
+      installed: false,
+      alreadyInstalled: false,
+      process: { verification: false, reason: `install threw: ${detail}` },
+      target: { kind: 'indeterminate', describe: 'unknown', reason: `install threw: ${detail}` },
+      summary: `[write-barrier] install failed · ${detail}`,
+    } as InstallResult;
+  }
+})();
