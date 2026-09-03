@@ -88,8 +88,15 @@ import {
 } from '@/lib/adaptation/canonical/contract-constants';
 import { realHistory } from './snapshot';
 import { buildInputAt, provenanceOf, SEED_THRESHOLD_SEC_PER_MI, weekStartOf } from './build-input';
+import { sealHistory } from './sealed-history';
 
 const SNAP = realHistory();
+/**
+ * The same rows, behind `asof.ts`'s fence. Every decision below is built from
+ * this; `SNAP` is kept only for the extract-integrity assertions, which are not
+ * decisions and are allowed to see the whole season at once.
+ */
+const SEALED = sealHistory(SNAP);
 
 /* ══════════════════════════════════════════════════════════════════════════
  * THE POISON  ·  the lookahead tripwire
@@ -247,7 +254,7 @@ function walk(opts: {
       stepsTakenThisCycle: steps,
       anchorMovedTodayForLever: { THRESHOLD_PACE: anchorMovedOn === p.date },
       poison: opts.poison ? POISON : undefined,
-    }, SNAP);
+    }, SEALED);
 
     diagnostics.couldNotBuild.forEach((x) => couldNotBuild.add(x));
     diagnostics.notes.forEach((x) => notes.add(x));
@@ -441,7 +448,7 @@ describe('a failed read is its own fact', () => {
         supportingSessionCount: 0, oldestSupportingDateISO: null,
       },
       readable: false,
-    }, SNAP);
+    }, SEALED);
     const out = evaluateAdaptation(input);
     expect(out.records.map((r) => r.decision)).toEqual(['REFUSE', 'REFUSE', 'REFUSE']);
     for (const r of out.records) expect(r.reason).toMatch(/could not be read/);
@@ -466,7 +473,7 @@ describe('Q29 · the run the watch cut short', () => {
         thresholdPaceSecPerMi: 430, weeklyVolumeMi: 33.5, longRunMi: 12,
         supportingSessionCount: 2, oldestSupportingDateISO: '2026-08-16',
       },
-    }, SNAP);
+    }, SEALED);
 
     // Q29 · "Count only recorded distance and duration ... the missing portion
     // is not failed training." The repaired 6.41 mi is inside the week total.
@@ -672,7 +679,7 @@ describe('RULE 21 · what he would have had to do, against what he did', () => {
         oldestSupportingDateISO: null,
       },
     },
-    SNAP,
+    SEALED,
   );
 
   it('THRESHOLD · the longest run of qualifying sessions inside one window', () => {
