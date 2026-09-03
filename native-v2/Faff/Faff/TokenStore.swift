@@ -48,6 +48,59 @@ final class TokenStore: ObservableObject {
     @Published var expiresAt: String?
     @Published var userUuid: String?
 
+    #if DEBUG
+    /// VW-3 · the QA-token seed path (`FaffApp.seedQATokenIfAsked`) sets the
+    /// token via the ordinary Keychain-backed `set(...)` below, and on a
+    /// locally-built, ad-hoc/unsigned simulator binary the write can fail
+    /// silently: `keychainWrite`'s `SecItemAdd` status is never checked, so a
+    /// keychain-access-group entitlement mismatch drops the item with no
+    /// error. `token` (this `@Published` field) still reads "signed in" —
+    /// it was set in memory in the same call — but `readToken()`,
+    /// `readTokenStatus()` and `authorize(_:)` all re-read Keychain fresh, so
+    /// every outbound request goes with no Authorization header.
+    ///
+    /// Reproduced directly, 2026-09-03: a real, unexpired, unrevoked
+    /// walk-substrate session token, confirmed matching in the database,
+    /// still 401'd on every single request (`/api/races`, `/api/profile`,
+    /// `/api/strava/status`, `/api/today/purpose`, `/api/coach/intents`,
+    /// `/api/forecast/...`) after a `-faffToken` launch on this machine —
+    /// the server was never the problem.
+    ///
+    /// Rather than chase the exact SecItem failure mode on this machine, the
+    /// QA path stops depending on the Keychain round-trip at all: an
+    /// in-memory override, checked first by every read below, ahead of
+    /// whatever Keychain does or does not hold. `#if DEBUG` keeps it out of
+    /// every non-DEBUG build, same as the seed path itself.
+    ///
+    /// Rule 20 correction, 2026-09-03: the paragraph above was written when
+    /// this override was ADDED, but `readToken()`, `readTokenStatus()` and
+    /// `authorize(_:)` were never actually changed to check it — only
+    /// `seedDebugToken` wrote it. The doc comment asserted the fix; the code
+    /// did not perform it. Consequence, traced end to end the same day: a
+    /// `-faffToken` launch DID reach `.main` (the in-memory `@Published
+    /// token` made `isSignedIn` true), then `API.prefetchAllOnLaunch()`
+    /// fired every request with no `Authorization` header (`authorize(_:)`
+    /// still read Keychain, which the entitlement-mismatch write above never
+    /// landed in), which 401'd across the board, which fired
+    /// `.faffSessionExpired` (`FaffApp.swift`), which called
+    /// `TokenStore.shared.clear()` and cleared `faff.onboarded`, which
+    /// bounced the app back to the sign-in screen — the exact "stuck on
+    /// sign-in despite a valid token" symptom chased over several rounds.
+    /// The three functions below now actually check `debugOverrideToken`
+    /// first, closing the gap this comment always claimed was closed.
+    nonisolated(unsafe) private static var debugOverrideToken: String?
+
+    /// Seed a QA session without depending on the Keychain write landing.
+    /// Still calls `set(...)` so the ordinary in-memory `@Published` surface
+    /// and a best-effort Keychain write both happen exactly as before —
+    /// this only adds a read path that cannot be defeated by that write
+    /// silently failing.
+    func seedDebugToken(_ token: String) {
+        TokenStore.debugOverrideToken = token
+        set(token: token, expiresAt: nil, userUuid: nil)
+    }
+    #endif
+
     private init() {
         TokenStore.migrateFromUserDefaultsIfNeeded()
         self.token = TokenStore.keychainRead(K.token)
@@ -79,7 +132,12 @@ final class TokenStore: ObservableObject {
     /// from any context (nonisolated) — used by `authedSend` to snapshot the
     /// token before an in-flight request so a late 401 can compare against the
     /// current token and avoid clobbering a freshly-minted replacement.
-    nonisolated func readToken() -> String? { TokenStore.keychainRead(K.token) }
+    nonisolated func readToken() -> String? {
+        #if DEBUG
+        if let override = TokenStore.debugOverrideToken { return override }
+        #endif
+        return TokenStore.keychainRead(K.token)
+    }
 
     /// A token read that distinguishes "no session token exists" from
     /// "couldn't tell right now" (Keychain locked pre-first-unlock, or any
@@ -95,7 +153,12 @@ final class TokenStore: ObservableObject {
         case inaccessible
     }
 
-    nonisolated func readTokenStatus() -> ReadStatus { TokenStore.keychainReadStatus(K.token) }
+    nonisolated func readTokenStatus() -> ReadStatus {
+        #if DEBUG
+        if let override = TokenStore.debugOverrideToken { return .present(override) }
+        #endif
+        return TokenStore.keychainReadStatus(K.token)
+    }
 
     /// Augment a request with `Authorization: Bearer` when a token is set.
     /// Called from API helpers (authedGET/authedSend) on every outbound
@@ -103,6 +166,12 @@ final class TokenStore: ObservableObject {
     /// launched contexts (notifications, watch sync, BGTask) can attach
     /// auth without round-tripping the main actor.
     nonisolated func authorize(_ req: inout URLRequest) {
+        #if DEBUG
+        if let override = TokenStore.debugOverrideToken {
+            req.setValue("Bearer \(override)", forHTTPHeaderField: "Authorization")
+            return
+        }
+        #endif
         if let t = TokenStore.keychainRead(K.token) {
             req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization")
         }

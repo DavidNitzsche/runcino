@@ -69,7 +69,10 @@ struct FaffApp: App {
         guard let i = args.firstIndex(of: "-faffToken"), i + 1 < args.count else { return }
         let token = args[i + 1]
         guard !token.isEmpty else { return }
-        TokenStore.shared.set(token: token, expiresAt: nil, userUuid: nil)
+        // VW-3 · seedDebugToken, not set(...), so the seed survives a
+        // Keychain write that silently fails on this simulator binary —
+        // reproduced directly 2026-09-03 (see TokenStore's own header).
+        TokenStore.shared.seedDebugToken(token)
         UserDefaults.standard.set(true, forKey: "faff.onboarded")
         #endif
     }

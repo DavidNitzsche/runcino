@@ -60,6 +60,16 @@
       "cwd": "/Volumes/WP/06 Claude Code/Runcino/adaptive-engine",
       "port": 4173,
       "autoPort": true
+    },
+    {
+      "name": "faff walk (main, sim 3111)",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "/tmp/walk3111-main.sh"
+      ],
+      "cwd": "/Volumes/WP/06 Claude Code/Runcino/web-v2",
+      "port": 3111,
+      "autoPort": false
     }
   ]
 }
