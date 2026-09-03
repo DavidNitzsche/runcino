@@ -38,7 +38,7 @@ import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achi
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
-import { lookupLoadTierTarget, resolveLoadTier, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
+import { lookupLoadTierTarget, resolveLoadTier, demonstratedLoadCeilingTier, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
   anchorSourceFromCapacityMode,
@@ -9935,27 +9935,70 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const evidenceWeeklyCeilingMi = demonstratedPeakWeeklyMi > 0 && cycleGrowth != null
     ? Math.round(demonstratedPeakWeeklyMi * cycleGrowth * 10) / 10
     : null;
+  /**
+   * TIEREVIDENCE-1 · the row the runner's DEMONSTRATED performance earns, with
+   * the typed experience level allowed to cap it and never to lift it. This is
+   * the whole of the self-declaration's removal: the composed week still reads
+   * `tierTarget` (see `demonstratedLoadCeilingTier`'s own header for why that
+   * row keeps its floor), and the two numbers the ADAPTATION engine binds on
+   * read this instead. With nothing demonstrated it is the bottom row, so a
+   * missing read produces the conservative ceiling and never the ambitious one.
+   */
+  const evidenceRow = TIER_TARGETS[distanceCategoryOf(input.raceDistanceMi)][
+    demonstratedLoadCeilingTier(input.raceDistanceMi, input.level, demonstratedPaceSec)
+  ];
   const publishedWeeklyBand: [number, number] = [
-    authoredPeakWeeklyMi,
-    Math.max(
-      authoredPeakWeeklyMi,
-      evidenceWeeklyCeilingMi != null
-        ? Math.min(tierTarget.peakWeeklyMileageBand[1], evidenceWeeklyCeilingMi)
-        : tierTarget.peakWeeklyMileageBand[1],
-    ),
+    // The FLOOR keeps the doctrine row's own meaning — "the smallest peak this
+    // row is written for" — because that is what every existing reader of a
+    // band's `[0]` takes it to be, and the row it now comes from is the
+    // EVIDENCE row rather than the typed level's. Publishing the block's own
+    // peak here instead was tried and backed out: `generator-bench` compares
+    // every build week's long against `[0]` as a per-week lower bound, which is
+    // a different quantity, and Rule 16 is not served by making one field mean
+    // two things in two readers.
+    evidenceRow.peakWeeklyMileageBand[0],
+    evidenceWeeklyCeilingMi != null
+      ? Math.min(evidenceRow.peakWeeklyMileageBand[1], evidenceWeeklyCeilingMi)
+      : evidenceRow.peakWeeklyMileageBand[1],
   ];
   const publishedLongBand: [number, number] = [
-    // The long band's floor is this block's own peak long for the same Rule 16
-    // reason. Its UPPER is left at the tier row's, unclamped: the doctrine
-    // figure above is a statement about WEEKLY volume growth per cycle, and
-    // `Research/00a` has no per-cycle growth row for the long run — the rule it
-    // does have (">110% of the longest run in the prior 30 days") is a
-    // week-to-week spike bound, already enforced by `rampCeiling` off
-    // `spikeAnchorLongMi`, and borrowing the volume figure here would be
+    // Same split as the weekly band. The upper is NOT additionally clamped by
+    // the per-cycle volume figure: that figure is a statement about WEEKLY
+    // volume growth, and `Research/00a` has no per-cycle growth row for the long
+    // run — the rule it does have (">110% of the longest run in the prior 30
+    // days") is a week-to-week spike bound, already enforced by `rampCeiling`
+    // off `spikeAnchorLongMi`. Borrowing the volume figure here would be
     // inventing doctrine rather than spending it.
-    authoredPeakLongMi > 0 ? authoredPeakLongMi : tierTarget.peakLongMiBand[0],
-    Math.max(authoredPeakLongMi, tierTarget.peakLongMiBand[1]),
+    evidenceRow.peakLongMiBand[0],
+    evidenceRow.peakLongMiBand[1],
   ];
+  /*
+   * NO `Math.max(authoredPeak, …)` ON EITHER UPPER, AND THAT IS DELIBERATE.
+   *
+   * Flooring the ceiling at the block's own peak was written first and removed,
+   * because `authoredPeakWeeklyMi` is composed against `tierTarget` — the row
+   * the TYPED LEVEL still floors — so it carried the self-declaration straight
+   * back into the number this change exists to clean. Measured: a stated
+   * 'advanced_plus' marathoner with nothing demonstrated published a 65 mi/wk
+   * ceiling through that floor while `demonstratedLoadCeilingTier` said 45.
+   *
+   * A ceiling BELOW the block's own peak is therefore reachable, and it is the
+   * honest reading — "the evidence does not support more volume than you are
+   * already carrying". It is also safe, which is why it is allowed to happen:
+   *
+   *   · `detectRampSignals` computes `peakHeadroomMi = upper − currentPeak` and
+   *     `belowTierUpper = headroom > upper × 0.05`, so a negative headroom
+   *     REFUSES the bump. It does not invert it.
+   *   · `planUpgrade`'s long clamp is `capped = min(old + 1, tierLongUpper)`
+   *     followed by `if (capped > old)`, so a low ceiling SKIPS the long bump
+   *     and can never shrink an authored row.
+   *
+   * Both are refusals, and refusing more volume is the conservative direction.
+   * What must never happen is `readTierUpper` returning 0 — its answer for an
+   * ABSENT band — because 0 makes `belowTierUpper` false forever and the ramp
+   * unreachable by construction. Both uppers above are doctrine-table values
+   * and are always positive; `_evidence_tier_band.test.ts` guard 6 holds that.
+   */
 
   return {
     weeks,
@@ -10056,10 +10099,24 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
        * that no volume evidence bounded it.
        */
       tier_band_anchor: {
-        demonstrated_peak_weekly_mi: demonstratedPeakWeeklyMi > 0 ? demonstratedPeakWeeklyMi : null,
+        /* Rule 11 · THREE STATES, not two. `null` is "this authoring carried no
+         * ramp evidence at all" (a pure caller, a synthetic archetype, a
+         * cold start); `0` is "the evidence object was there and measured no
+         * peak"; a positive number is a measurement. Collapsing the first two
+         * into `null` was written first and `check-coercion.sh` named it —
+         * `lib/plan/generate.ts::composePlan::demonstratedPeakWeeklyMi
+         * [zero-erasure]` — which is exactly the reading a recomputing consumer
+         * must be able to tell apart before deciding whether to trust the
+         * frozen ceiling beside it. */
+        demonstrated_peak_weekly_mi: rampEvidence ? demonstratedPeakWeeklyMi : null,
+        /** Whether the ceiling above was actually BOUNDED by that measurement.
+         *  False with no evidence and false at a measured zero — the doctrine
+         *  row's own top stood in both cases. */
+        weekly_ceiling_bounded_by_evidence: evidenceWeeklyCeilingMi != null,
         cycle_growth_ceiling: cycleGrowth,
-        doctrine_band_weekly: tierTarget.peakWeeklyMileageBand,
-        doctrine_band_long: tierTarget.peakLongMiBand,
+        doctrine_band_weekly: evidenceRow.peakWeeklyMileageBand,
+        doctrine_band_long: evidenceRow.peakLongMiBand,
+        composed_row_band_weekly: tierTarget.peakWeeklyMileageBand,
         authored_peak_weekly_mi: authoredPeakWeeklyMi,
         authored_peak_long_mi: authoredPeakLongMi,
       },

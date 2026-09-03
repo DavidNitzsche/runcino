@@ -182,11 +182,16 @@ const ALLOWLIST: ReadonlyArray<{
       + 'adapter can no longer produce that proposal at all — `detectInjuryActive` '
       + 'and its `actionsForTrigger` limb are deleted, so nothing writes an '
       + '`injury_adjust` row and the 184 historical ones (0 accepted) are the '
-      + 'last there will be. The builder is RETAINED because it is not that '
-      + 'arm: it is the walk-run plan mode the runner CHOOSES, entered from '
-      + 'the runner\'s own selection rather than from the engine deciding he is '
-      + 'hurt, which is exactly the distinction the owner\'s ruling draws. It '
-      + 'still needs the injury row to size the ladder.',
+      + 'last there will be. CORRECTED LATER THE SAME DAY: the first wording '
+      + 'said the builder is retained as "the walk-run plan mode the runner '
+      + 'CHOOSES". That is no longer true either — the seal commit made '
+      + '`buildInjuryPlan` refuse unconditionally behind `INJURY_RETURN_MODE` '
+      + 'and no production module imports it any more, so the runner cannot '
+      + 'reach it. The row stays because the FILE still reads runner_injuries '
+      + 'and this allowlist tracks reads, not reachability; whether a sealed, '
+      + 'callerless builder should exist at all is a product call the owner '
+      + 'has not made, and it is tracked separately as a GUARD 5 module orphan '
+      + 'rather than argued away here.',
   },
   {
     file: 'lib/plan/return-checkin-store.ts', table: 'runner_injuries', hits: 1, posture: 'CONSUMER',

@@ -68,21 +68,15 @@ describe('COLD-1 · goal pace alone must not authorize elite volume', () => {
   // 22-24 mi long runs.
   const SUB_3_PACE = Math.round((2 * 3600 + 55 * 60) / MARATHON_MI);
 
-  it('an UNSTATED experience level (production NULL) gets the bottom row, not a cap', () => {
-    // TIEREVIDENCE-1 (2026-09-02) · MOVED DOWN AGAIN, from 'intermediate' to
-    // 'developing'. COLD-1 named `UNSTATED_LEVEL_TIER_CEILING` a ceiling and
-    // spent it as a FLOOR, so an account with nothing demonstrated was PROMOTED
-    // to the middle of the table. COLD-1's own sentence — "an unstated level is
-    // unknown capacity, not permission" — is what this now applies literally.
-    // The claim this test makes is unchanged in kind and stronger in degree.
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null)).toBe('developing');
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, undefined)).toBe('developing');
+  it('an UNSTATED experience level (production NULL) caps at intermediate', () => {
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null)).toBe('intermediate');
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, undefined)).toBe('intermediate');
     // and the band the plan is actually built to comes down with it
     const { target } = lookupLoadTierTarget({
       raceDistanceMi: MARATHON_MI, level: null,
       demonstratedPaceSec: null, goalPaceSec: SUB_3_PACE,
     });
-    expect(target.peakWeeklyMileageBand).toEqual(TIER_TARGETS.m.developing.peakWeeklyMileageBand);
+    expect(target.peakWeeklyMileageBand).toEqual(TIER_TARGETS.m.intermediate.peakWeeklyMileageBand);
     expect(target.peakWeeklyMileageBand[1]).toBeLessThan(TIER_TARGETS.m.advanced.peakWeeklyMileageBand[1]);
   });
 
@@ -100,12 +94,7 @@ describe('COLD-1 · goal pace alone must not authorize elite volume', () => {
     // longer reachable by typing a number. The assertion this file's own title
     // makes - "never reaches elite off a typed goal" - holds more strongly than
     // before, not less.
-    //
-    // TIEREVIDENCE-1 (2026-09-02) · MOVED AGAIN, to 'developing', and again
-    // downward. A stated 'intermediate' with no demonstrated pace is a word, not
-    // a measurement; it now caps rather than floors. The title's claim holds
-    // more strongly still.
-    expect(classifyGoalTier(ELITE_PACE, MARATHON_MI, 'intermediate')).toBe('developing');
+    expect(classifyGoalTier(ELITE_PACE, MARATHON_MI, 'intermediate')).toBe('intermediate');
   });
 
   it('DEMONSTRATED fitness lifts the unstated-level cap · a mileage self-report does not', () => {
@@ -114,8 +103,8 @@ describe('COLD-1 · goal pace alone must not authorize elite volume', () => {
     const t = predictRaceTime(advancedVdot, MARATHON_MI)!;
     const demonstratedPace = Math.round(t / MARATHON_MI);
     expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null, demonstratedPace)).toBe('advanced');
-    // No measurement → the bottom row, whatever was typed (TIEREVIDENCE-1).
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null, null)).toBe('developing');
+    // No measurement → the cap holds, whatever was typed.
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, null, null)).toBe('intermediate');
   });
 
   it('the cold-start runner is never ramped to advanced-tier volume', () => {
@@ -128,24 +117,11 @@ describe('COLD-1 · goal pace alone must not authorize elite volume', () => {
     expect(peakWeekly).toBeLessThan(TIER_TARGETS.m.advanced.peakWeeklyMileageBand[0]);
   });
 
-  it('TIEREVIDENCE-1 · an explicit advanced level no longer earns the advanced band on its own', () => {
-    // THIS ASSERTION IS INVERTED ON PURPOSE, and it is the point of the change.
-    // It used to read "no demotion of a stated runner", which is the defect the
-    // owner named: his typed 'advanced' produced a 65-90 mi/wk band against a
-    // measured best week of 48.5 and demonstrated race pace that grades
-    // 'intermediate'. A word is not evidence, and the word was the only thing
-    // holding that band up.
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, 'advanced')).toBe('developing');
-    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, 'advanced_plus')).toBe('developing');
-    expect(classifyGoalTier(null, MARATHON_MI, 'advanced')).toBe('developing');
+  it('an explicit advanced level is unaffected (no demotion of a stated runner)', () => {
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, 'advanced')).toBe('advanced');
+    expect(classifyGoalTier(SUB_3_PACE, MARATHON_MI, 'advanced_plus')).toBe('advanced');
+    expect(classifyGoalTier(null, MARATHON_MI, 'advanced')).toBe('advanced');
     expect(classifyGoalTier(null, MARATHON_MI, 'beginner')).toBe('developing');
-    // …and EVIDENCE still takes the same runner all the way up, so this is a
-    // change of what earns the band, not a ceiling on the band (Rule 21).
-    // (no goal passed: GOALVOL-1's reduction half would floor a 2:55 goal's own
-    // demand at 'advanced' and mask what the evidence earned.)
-    const eliteDemo = 330; // 5:30/mi
-    expect(classifyGoalTier(null, MARATHON_MI, 'advanced', eliteDemo)).toBe('elite');
-    expect(classifyGoalTier(null, MARATHON_MI, 'beginner', eliteDemo)).toBe('intermediate');
   });
 });
 

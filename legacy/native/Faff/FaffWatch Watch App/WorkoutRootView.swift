@@ -707,10 +707,11 @@ struct WorkoutRootView: View {
     /// page is exercisable.
     private static var simulatorReadiness: WatchReadiness? {
         #if targetEnvironment(simulator)
-        // Neutral fixture — no canned "Hit today's prescription" copy (it's
-        // no longer the recommendation pattern), no real race name leaking.
-        return WatchReadiness(score: 82, state: "green", label: "Primed",
-                              recommendation: "Sleep banked. Today's session is good to go.",
+        // Neutral fixture — a reading and nothing else. No canned "Hit today's
+        // prescription" copy, no verdict on today's session, no real race
+        // name leaking.
+        return WatchReadiness(score: 82, state: "green", label: "READY",
+                              recommendation: "Form +6 · sleep banked.",
                               hrvMs: 68, rhrBpm: 48, suppressReason: nil,
                               nextRace: nil)
         #else

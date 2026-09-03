@@ -154,7 +154,7 @@ export const COERCION_ARGUED: readonly CoercionExemption[] = [
     reason: 'identical contract and identical consumer to loadPlanEasyDayMedian — declared `number | null`, and the caller requires both before computing drift.',
   },
   {
-    id: 'lib/plan/injury-builder.ts::buildInjuryPlan::catch',
+    id: 'lib/plan/injury-builder.ts::buildInjuryPlanBody::catch',
     reason: 'the null path lands on MAX_ACTIVE_DAYS_PER_WEEK, which this file documents as the CONSERVATIVE reading of Research/05 ("at least two full rest days a week while a runner is hurt") rather than a permissive ceiling, so a failed read, an absent row and a NULL column all reach the doctrine default and a stated frequency below it still wins.',
   },
   {
@@ -766,8 +766,15 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/goal-gap.ts::loadGoalAssessment::catch',
   'lib/plan/history-shapes.ts::inflatedQualityPerWeek::v',
   'lib/plan/history-shapes.ts::renderHistory::easyMedianOf',
-  'lib/plan/injury-builder.ts::buildInjuryPlan::catch',
-  'lib/plan/injury-builder.ts::buildInjuryPlan::catch',
+  // 2026-09-02 · SEAL · RENAMED, not fixed. `INJURY_RETURN_MODE` made
+  // `buildInjuryPlan` refuse unconditionally and moved its body to
+  // `buildInjuryPlanBody`, taking both collapses with it. Two ids out, two in,
+  // and the COERCION_ARGUED entry above re-points with them — its argument is
+  // about where the null path LANDS (the doctrine rest-day default), which the
+  // rename did not move. Sealed is not deleted: re-opening the seam re-opens
+  // these, so they stay named rather than being dropped as unreachable.
+  'lib/plan/injury-builder.ts::buildInjuryPlanBody::catch',
+  'lib/plan/injury-builder.ts::buildInjuryPlanBody::catch',
   'lib/plan/mutate.ts::num::n',
   'lib/plan/plan-delta.ts::longRunIn::max',
   'lib/plan/progression-spec.ts::readSelectionRationale::v.trim().length',

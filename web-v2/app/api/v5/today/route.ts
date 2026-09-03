@@ -36,7 +36,7 @@ import { layerOne } from '@/lib/faff/explanation';
 import {
   resolveCoachingThesis, coachSafeSessionName, wireThesis,
 } from '@/lib/training/coaching-thesis';
-import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
@@ -170,24 +170,6 @@ function titleCase(s: string | null | undefined): string | null {
   if (!s || !s.trim()) return null;
   const t = s.trim().toLowerCase();
   return t.charAt(0).toUpperCase() + t.slice(1);
-}
-
-/** "3:12 AM" in the runner's own timezone, or "overnight" when we cannot read
- *  one.
- *
- *  RULE ONE. The fallback used to be a literal `'America/Los_Angeles'`, which
- *  is a fabricated reading dressed as a precise one: a runner in London whose
- *  timezone read failed was told their session changed at 3:12 AM when it was
- *  11:12 AM where they were standing, and nothing on the panel hinted the
- *  clock was a guess. `V5Convergence.updatedAt` is a bare string with no
- *  provenance field, so there is no mark available to soften it with — which
- *  leaves saying less. "Updated overnight" is true in every timezone. */
-async function formatLocalClock(userId: string, ts: string): Promise<string> {
-  const tz = await runnerTimezone(userId).catch(() => null);
-  if (!tz) return 'overnight';
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz,
-  }).format(new Date(ts));
 }
 
 /** Cumulative elevation profile from per-mile split deltas. Splits carry the

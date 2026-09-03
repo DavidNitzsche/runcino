@@ -712,8 +712,16 @@ export function pullbackBlocksBump(
  * enough for any lookback this file will ever use). `null` ts = none on
  * record; `failed: true` = the read itself failed, which is its own state —
  * the caller fails CLOSED, same posture as every other gate in this file.
+ *
+ * EXPORTED 2026-09-02, for testability and for one reason only. The adaptation
+ * seam (`lib/plan/adaptation-authority.ts`) makes `tryAdaptiveBump` return at
+ * its first line, so every DB-shell test that used to reach this read through
+ * that entry point now passes or fails for the seam's reason rather than the
+ * window's — three of them were passing VACUOUSLY. `_bump_pullback_guard.test.ts`
+ * drives this directly instead. It reads and returns; it writes nothing, so
+ * exporting it grants no authority the seam is holding shut.
  */
-async function recentPullbackTs(
+export async function recentPullbackTs(
   userId: string,
 ): Promise<{ failed: boolean; ts: string | null }> {
   const row = await rowOrNull<{ ts: string | null }>(

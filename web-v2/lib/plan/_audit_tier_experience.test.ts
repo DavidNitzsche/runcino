@@ -5,23 +5,24 @@
  * templates). Before the fix, classifyGoalTier ignored level entirely (arity 2) — a beginner,
  * intermediate, and advanced runner with the same goal pace got byte-identical plans.
  *
- * Clamp: beginner never above intermediate.
+ * Clamp: advanced(+) never below advanced; beginner never above intermediate.
  *
- * ── TIEREVIDENCE-1 (2026-09-02) · THE OTHER HALF OF VAR-01'S CLAMP IS GONE ──
+ * ── TIEREVIDENCE-1 (2026-09-02) · WHAT THIS FILE NO LONGER COVERS ───────────
  *
- * VAR-01 was written as a two-directional clamp: "advanced(+) never below
- * advanced; beginner never above intermediate." The first half is a FLOOR set
+ * The clamp's FLOOR half — "advanced(+) never below advanced" — is a floor set
  * by a word the runner typed, and it is the defect the owner named on his own
- * account — a typed 'advanced' produced a 65-90 mi/wk band against a measured
+ * account: a typed 'advanced' produced a 65-90 mi/wk band against a measured
  * best week of 48.5 and demonstrated race pace that grades 'intermediate'.
  *
- * VAR-01's actual finding survives intact and is what this file still guards:
- * experience must not be IGNORED, and three runners with one goal pace must not
- * get byte-identical plans. What changed is the direction it may move them. A
- * self-report may hold a runner DOWN (a stated beginner is not handed an elite
- * load table off one fast race) and may no longer lift one UP.
- *
- * The second test below is inverted for that reason and says so in place.
+ * It still stands HERE, because this row also sets the long-run band, the
+ * long-run share and the quality/day counts, and re-selecting it off a pace
+ * reading shortens a marathoner's long run on evidence that is not about long
+ * runs (measured: the frozen INV-12 David-class fixture keeps 66 mi/wk either
+ * way and loses 2.5 mi off its peak long). What DID change is that the two
+ * numbers the adaptation engine binds on — `authored_state
+ * .tier_peak_weekly_band` and `tier_peak_long_band` — no longer read this row
+ * at all; they read `demonstratedLoadCeilingTier`, which the typed level may
+ * only cap. `_evidence_tier_band.test.ts` is that half's gate.
  */
 import { describe, it, expect } from 'vitest';
 import { buildSimPlan } from './sim-inputs';
@@ -51,16 +52,14 @@ describe('VAR-01 · experience clamps the tier', () => {
     // `_goal_volume_seal.test.ts` §5, which asserts a beginner demonstrating elite
     // pace reaches intermediate and stops there.
     expect(classifyGoalTier(410, 26.2, 'beginner')).toBe('developing');
-    // TIEREVIDENCE-1 · 'advanced' with NO demonstrated pace is now 'developing'
-    // too. The word was the only thing holding the advanced band up.
-    expect(classifyGoalTier(410, 26.2, 'advanced')).toBe('developing');
-    // Soft marathon goal (~4:20 → developing by pace) · nothing demonstrated.
-    expect(classifyGoalTier(595, 26.2, 'advanced')).toBe('developing');
+    expect(classifyGoalTier(410, 26.2, 'advanced')).toBe('advanced');
+    // Soft marathon goal (~4:20 → developing by pace); an advanced runner keeps advanced capacity.
+    expect(classifyGoalTier(595, 26.2, 'advanced')).toBe('advanced');
     expect(classifyGoalTier(595, 26.2, 'beginner')).toBe('developing');
     expect(classifyGoalTier(595, 26.2, 'intermediate')).toBe('developing');
-    // No goal, nothing demonstrated → the bottom row for every level.
+    // No goal → defaults off experience, not a hardcoded intermediate.
     expect(classifyGoalTier(null, 26.2, 'beginner')).toBe('developing');
-    expect(classifyGoalTier(null, 26.2, 'advanced')).toBe('developing');
+    expect(classifyGoalTier(null, 26.2, 'advanced')).toBe('advanced');
     // COLD-1 (2026-08-17) · this line used to assert "no level → unchanged legacy
     // behavior (pace-only)" and expect 'advanced'. That legacy behavior WAS the
     // bug: `profile.experience_level` is NULL on production accounts, so a goal
@@ -68,36 +67,16 @@ describe('VAR-01 · experience clamps the tier', () => {
     // account with zero runs authorized the advanced band (65-90 mi/wk, 22-24 mi
     // long runs). An unstated level is unknown capacity, not permission.
     // See _coldstart_doctrine.test.ts § COLD-1.
-    //
-    // TIEREVIDENCE-1 · and the answer moved one more rung down, to the bottom of
-    // the table, because `UNSTATED_LEVEL_TIER_CEILING` was a promotion wearing a
-    // ceiling's name — it PUT an unevidenced account on the middle row.
-    expect(classifyGoalTier(410, 26.2)).toBe('developing');
-    expect(classifyGoalTier(null, 26.2)).toBe('developing');
-    // ...and it is liftable, but only by DEMONSTRATED pace, never by the goal
-    // and never by the word. This is the Rule 21 half: the band still has a way
-    // up, and evidence is the whole of it.
+    expect(classifyGoalTier(410, 26.2)).toBe('intermediate');
+    expect(classifyGoalTier(null, 26.2)).toBe('intermediate');
+    // ...and it is liftable, but only by DEMONSTRATED pace, never by the goal.
     expect(classifyGoalTier(410, 26.2, null, 405)).toBe('advanced');
-    expect(classifyGoalTier(410, 26.2, 'advanced', 405)).toBe('advanced');
-    expect(classifyGoalTier(410, 26.2, 'beginner', 405)).toBe('intermediate');
   });
 
-  it('TIEREVIDENCE-1 · a typed level alone no longer moves the composed weekly peak', () => {
-    const soft = (lvl: string, demoVdot?: number) => buildSimPlan({ ...base, goalMode: 'goal',
-      distance: 'marathon', planWeeks: 18, goalTimeSec: 15600, experienceLevel: lvl,
-      weeklyMileageBucket: 35, longestRunBucket: '10+',
-      ...(demoVdot != null ? { bestRecentVdotOverride: demoVdot } : {}) });
-    // INVERTED ON PURPOSE. This used to read "advanced clamps UP from the
-    // developing pace-tier → a higher weekly peak than a beginner", which is the
-    // authority TIEREVIDENCE-1 removes: two runners with identical training and
-    // identical goals got peaks 5+ mi/wk apart because of a word.
-    expect(peakWk(soft('advanced'))).toBe(peakWk(soft('beginner')));
-    // …and VAR-01's own finding still holds, on evidence rather than on the
-    // word: a runner who has DEMONSTRATED advanced marathon fitness gets the
-    // bigger peak, and a stated beginner demonstrating the same is held under it
-    // by the ceiling the level still owns.
-    const demonstrated = peakWk(soft('advanced', 58));
-    expect(demonstrated).toBeGreaterThan(peakWk(soft('advanced')) + 5);
-    expect(peakWk(soft('beginner', 58))).toBeLessThan(demonstrated);
+  it('experience moves the composed weekly peak (soft-goal marathon)', () => {
+    const soft = (lvl: string) => buildSimPlan({ ...base, goalMode: 'goal', distance: 'marathon', planWeeks: 18,
+      goalTimeSec: 15600, experienceLevel: lvl, weeklyMileageBucket: 35, longestRunBucket: '10+' });
+    // advanced clamps UP from the developing pace-tier → a higher weekly peak than a beginner.
+    expect(peakWk(soft('advanced'))).toBeGreaterThan(peakWk(soft('beginner')) + 5);
   });
 });

@@ -337,7 +337,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'app/api/v5/today/route.ts::composeToday',
   'app/api/v5/today/route.ts::composeToday',
   'app/api/v5/today/route.ts::composeToday',
-  'app/api/v5/today/route.ts::composeToday',
   'app/api/v5/today/route.ts::loadShoes',
   'app/api/watch/workouts/complete/route.ts::POST',
   'app/dev/route-map-mockups/route.ts::loadRun',
@@ -506,9 +505,15 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/plan/goal-outlook.ts::writeGoalOutlookNote',
   'lib/plan/goal-outlook.ts::writeGoalOutlookNote',
   'lib/plan/goal-outlook.ts::writeGoalOutlookNote',
-  'lib/plan/injury-builder.ts::buildInjuryPlan',
-  'lib/plan/injury-builder.ts::buildInjuryPlan',
-  'lib/plan/injury-builder.ts::buildInjuryPlan',
+  // 2026-09-02 · SEAL · RENAMED, not fixed. `buildInjuryPlan` now refuses
+  // unconditionally behind `INJURY_RETURN_MODE`, and its former body moved to
+  // `buildInjuryPlanBody` carrying all three swallowed reads with it. Net zero:
+  // three ids out, three in, EMPTIED_BASELINE unchanged. Re-pointed rather than
+  // dropped — a sealed function is still a function, and re-opening the seam
+  // would re-open these three reads with it.
+  'lib/plan/injury-builder.ts::buildInjuryPlanBody',
+  'lib/plan/injury-builder.ts::buildInjuryPlanBody',
+  'lib/plan/injury-builder.ts::buildInjuryPlanBody',
   'lib/plan/mutate.ts::loadMutationContext',
   'lib/plan/mutate.ts::loadMutationContext',
   'lib/plan/mutate.ts::mutatePlan',
@@ -699,7 +704,14 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // `.catch(() => ({ rows: [] }))` over the plan's own `training_plans` / `races`
 // lookup with it. Counted from the scanner (9 emptied sites in that symbol),
 // not from the diff.
-export const EMPTIED_BASELINE = 355;
+//
+// 2026-09-02 · SEAL · -1 more (355 -> 354), and a third file:
+// `app/api/v5/today/route.ts::composeToday` drops from 12 listed sites to 11
+// live ones. The `changed_overnight` surface it fed is deleted with the rest
+// of the automatic-adaptation levers (commit 8ef72992), and the swallowed read
+// behind it went with the surface. Counted from the scanner (11 emptied sites
+// in that symbol), not from the diff.
+export const EMPTIED_BASELINE = 354;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

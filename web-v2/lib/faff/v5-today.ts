@@ -897,8 +897,8 @@ export interface V5TodayContext {
   whereYouAre: V5Row[];   // readiness/week-status rows
   beforeYouGo: V5Row[];   // shoe pick, fuel, move/skip rows
   /// See `V5Today.paceNote`. Only set on the content states (before_run /
-  /// race_day / changed_overnight / after_run) — never on a refusal state,
-  /// which already has its own thing to say.
+  /// race_day / after_run) — never on a refusal state, which already has its
+  /// own thing to say.
   paceNote: V5Row | null;
   /// See `V5Today.blockNote`. Same content-states-only contract as paceNote.
   /// Optional (like `contingency`) so pre-existing context builders stay valid.
