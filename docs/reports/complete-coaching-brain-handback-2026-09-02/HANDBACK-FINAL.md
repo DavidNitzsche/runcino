@@ -518,6 +518,65 @@ an artifact in the detail file rather than deleted, so the limit stays visible.
 
 ---
 
+## 9d · How the block explains itself
+
+Derived by the engine and persisted in `block_strategy`, not written by hand.
+`block_strategy` previously reached no route, no component and no Swift file; it
+now reaches the Block screen through `training-state.ts` → `v5-block.ts` →
+`/api/v5/block` → `BlockV5.swift`.
+
+**Block level, verbatim:**
+
+> **How long runs progress** · "The long run opens at 14.5 mi and climbs to
+> 20.5, one step at a time, and never more than a tenth further than the longest
+> run of the previous month. It steps back on every down week so the next step
+> is taken on rested legs."
+
+> **Where marathon-specific work begins** · "Marathon-pace work starts the week
+> of 2026-10-12, 7 weeks out. Threshold and hills come first because pace work
+> is only worth doing on an aerobic base that can hold it."
+
+> **How marathon-pace volume progresses** · "33 mi at marathon pace across the
+> block, in sessions that get longer as race day approaches rather than more
+> frequent. Two weeks between them, never on a down week."
+
+> **Why the longest run is what it is** · "20.5 mi is the longest run, the week
+> of 2026-10-26. It is set from the longest runs you have actually completed and
+> what one training cycle adds to them, not from a category. Nothing in the
+> block asks for more than that."
+
+> **How this prepares race effort** · "The long runs build the hours; the 33 mi
+> at marathon pace inside and beside them build the effort. Running 20.5 mi easy
+> proves you can cover the distance. Holding race pace late in a long run is
+> what proves you can race it."
+
+**Per week, six answers each.** Week 0, verbatim:
+
+> **Why this mileage** · "46 mi. This is the load you are already holding, not a
+> step up."
+> **Why this long run** · "14.5 mi. Holding the distance is what makes the next
+> one repeatable."
+> **Why these quality sessions** · "2 structured sessions. They sit either side
+> of the long run so neither compromises the other."
+> **How it develops the previous week** · "Nothing precedes it. This week sets
+> the load the rest of the block is measured from."
+> **How it prepares for the race** · "14 weeks out. Time on your feet at 14.5 mi
+> builds the durability the last ten kilometres need."
+
+Each BUILD week also carries its `proposedChange` — the lever that moved, from
+what to what, the prerequisite evidence, and the hold alternative if it is not
+earned. Week 4 reads `weekly_volume 48 → 56.2`, with the alternative *"Repeat
+the week of 2026-09-14: 48 mi, long 16.5 mi, 1 quality session."*
+
+**Two caveats, because this is prose he will read.** The `READINESS`
+prerequisite that used to appear beside `ABSORPTION` in that evidence list is
+gone (§8a). And the Block screen will show nothing until the plan is
+re-authored, because his live plan predates `block_strategy.answers` — it
+compiles, but I have not rendered it, and per Rule 13 that is not a claim that
+it renders.
+
+---
+
 ## 9b · Determinism, and proof nothing can mutate the stored plan
 
 **Determinism.** Composed three times against the same inputs:
