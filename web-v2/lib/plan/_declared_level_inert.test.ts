@@ -292,8 +292,21 @@ async function inputAt(v: SweepValue): Promise<ComposePlanInput> {
     lthr: 168,
     maxHr: 180,
     midBlockRaces: DODGERS,
-    demonstratedPairMi: 29.4,
-    demonstratedPairFromISO: '2026-04-25',
+    // EVIDENCE-HONESTY-1 (2026-09-02) · the pair evidence, as the two separate
+    // claims it always was. His citable TRAINING pair is 27.85 mi from
+    // 2026-02-15; the 29.4 this fixture used to carry was a shakeout plus the
+    // Big Sur Marathon and is no longer citable. The ordering claim is NOVEL,
+    // computed off his real history in `_designed_race_weekend.test.ts`.
+    designedWeekendPairEvidence: {
+      pairVolume: {
+        evidenceOf: 'two-day-volume', kind: 'DEMONSTRATED', combinedMi: 27.85,
+        fromISO: '2026-02-15', toISO: '2026-02-16', firstDayMi: 20, secondDayMi: 7.85,
+      },
+      pairOrdering: {
+        evidenceOf: 'hard-then-long-ordering', kind: 'NOVEL', hardFirstPairsSeen: 11,
+        closestHardDayISO: '2026-07-14', closestHardDayMi: 8.02, closestLongDayMi: 9.01,
+      },
+    },
     demonstratedLongMi: 21.5,
     rampBaseEvidence: {
       baseMi: 46, meanMi: 44, sustainedMi: 46.4, heldMi: 46, peakMi: 52.3,
@@ -439,8 +452,11 @@ describe('DECLAREDLEVEL-0 · the label is not persisted inside a decision record
     expect(i, 'DesignedWeekendEvidence not found — this gate is reading the wrong file')
       .toBeGreaterThan(-1);
     const body = src.slice(i, src.indexOf('\n}', i));
-    // LIVENESS · the slice really is the interface body.
-    expect(/demonstratedPairMi/.test(body), 'the evidence body parsed empty').toBe(true);
+    // LIVENESS · the slice really is the interface body. Anchored on
+    // `pairVolume` since EVIDENCE-HONESTY-1 renamed the pair fields; the probe
+    // must name a field that is actually there, or this gate reports clean
+    // about nothing (Rule 18).
+    expect(/pairVolume/.test(body), 'the evidence body parsed empty').toBe(true);
     expect(/\bdeclaredLevel\b/.test(body), 'declaredLevel is back on the grant evidence').toBe(false);
     expect(/\bdeclaredDaysPerWeek\b/.test(body)).toBe(false);
   });

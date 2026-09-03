@@ -541,7 +541,13 @@ describe('COMBINED-STRESS · the placement pass, end to end', () => {
     // No evidence on this fixture → the exception is refused BY NAME and the
     // long run falls back onto doctrine's own return-to-long curve.
     expect(rec.find((x) => x.code === 'ACCEPT_AS_HARD_WORKOUT')).toBeFalsy();
-    const cut = rec.find((x) => x.code === 'REDUCE_DOSE');
+    // EVIDENCE-HONESTY-1 (2026-09-02) · TWO reductions can land here now. The
+    // owner's 17-mile cap on a designed weekend's second day is authored FIRST
+    // and records its own REDUCE_DOSE, then the evidence gate refuses and the
+    // long run falls to the return-to-long curve. The refusal is selected by
+    // the refusal it CARRIES rather than by being first in the list, because a
+    // positional assumption is how this assertion silently stopped checking.
+    const cut = rec.find((x) => x.code === 'REDUCE_DOSE' && x.refusedDesignedWeekend != null);
     expect(cut, 'the decision must be on the record, not implicit').toBeTruthy();
     expect(cut!.refusedDesignedWeekend?.code).toBe('NO_COMBINED_LOAD_EVIDENCE');
     // Rule 16 · the recorded number is the SHIPPED number.
