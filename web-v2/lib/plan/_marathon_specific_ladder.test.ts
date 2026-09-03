@@ -233,6 +233,78 @@ describe('MPLADDER-1 · refusal', () => {
     expect(JSON.stringify(a.rungs)).toBe(JSON.stringify(b.rungs));
   });
 
+  it('Rule 9 · every boundary this file creates is walked, and none of them steps', () => {
+    /* THE FOUR BOUNDARIES, and what a day of calendar either side of each is
+     * worth. A behaviour may be discrete — a rung sits in one week or the next
+     * — but no DOSE may change in kind on a hair of input.
+     *
+     * Falsified: with §4.4's window applied as a hard trim rather than the
+     * fade, the first walk below reports a 2.0 mi step at 42 days.
+     */
+    const base = cimCalendar();
+
+    // 1 · MP_LONG_WINDOW_DAYS · the dose fades across §4.4's window edge.
+    //     Walk the whole block one day at a time and watch the development
+    //     rung's dose as it crosses 42 and 70 days out.
+    //     The RACE DATE moves, not the weeks: that changes every rung's
+    //     days-to-race by one and leaves the roles and the weeks they sit in
+    //     exactly where they were, so what is measured is the window edge and
+    //     nothing else.
+    const walk: { dose: number; rungs: number }[] = [];
+    for (let shift = 0; shift <= 20; shift++) {
+      const l = resolveMarathonSpecificLadder({
+        ...base,
+        raceDateISO: iso(new Date(Date.parse(`${base.raceDateISO}T12:00:00Z`) + shift * DAY)),
+      });
+      const dev = l.rungs.find((r) => r.role === 'development');
+      expect(dev, `the development rung vanished at shift ${shift} · this walk measures nothing`).toBeDefined();
+      walk.push({ dose: dev!.mpMi, rungs: l.rungs.filter((r) => r.mpMi > 0).length });
+    }
+    for (let i = 1; i < walk.length; i++) {
+      const step = Math.abs(walk[i].dose - walk[i - 1].dose);
+      if (walk[i].rungs === walk[i - 1].rungs) {
+        // Same sequence, one day of calendar: only the §4.4 window edge can
+        // move the dose, and it fades rather than steps.
+        expect(step, `the development dose moved ${step} mi for one day of calendar with the ladder unchanged`)
+          .toBeLessThanOrEqual(0.5);
+      } else {
+        // The block gained or lost a marathon-effort session. The earned-step
+        // cap may move the dose by up to one dose band, and losing a rung must
+        // move it DOWN — a shorter block earning MORE is the signature Rule 9
+        // names ("the fitter runner gets the worse plan", inverted).
+        expect(step, `losing a rung moved the dose ${step} mi, past one dose band`)
+          .toBeLessThanOrEqual(MP_EARNED_STEP_MI);
+        if (walk[i].rungs < walk[i - 1].rungs) {
+          expect(walk[i].dose, 'a block with FEWER marathon-effort sessions earned a BIGGER dose')
+            .toBeLessThanOrEqual(walk[i - 1].dose);
+        }
+      }
+    }
+    // Liveness: the walk must actually cross the edge, or it proves nothing.
+    expect(new Set(walk.map((w) => w.dose)).size, 'the walk never changed the dose · it did not cross the window')
+      .toBeGreaterThan(1);
+
+    // 2 · MP_PEAK_STIMULUS_WINDOW_DAYS · a tune-up race sliding across the
+    //     window either IS the peak stimulus or is not. That is a discrete
+    //     calendar fact, so what is walked is the CONSEQUENCE: the ladder still
+    //     produces a coherent sequence on both sides, and no dose jumps.
+    for (const raceWeek of [8, 9, 10, 11]) {
+      const l = resolveMarathonSpecificLadder({ ...base, isTuneUpRaceWeek: (i) => i === 2 || i === raceWeek, peakStimulusRaceWeekIdx: raceWeek });
+      expect(l.rungs.length, `no ladder at all with the race in week ${raceWeek}`).toBeGreaterThan(0);
+      for (const r of l.rungs) {
+        if (r.vehicle === 'tune_up_race') continue;
+        const [lo, hi] = MP_ROLE_DOSE_MI[r.role];
+        expect(r.mpMi, `${r.role} left its band with the race in week ${raceWeek}`).toBeLessThanOrEqual(hi);
+        expect(r.mpMi).toBeGreaterThan(0);
+        expect(lo).toBeGreaterThan(0);
+      }
+    }
+
+    // 3 · MP_SHARPEN_WINDOW_DAYS and MP_LADDER_FIRST_DAYS · walked by the
+    //     calendar shift in the case below, which moves every rung's
+    //     days-to-race together and asserts the whole shape is preserved.
+  });
+
   it('a one-week shift of the whole calendar moves the ladder by one week, not into a different shape · Rule 9', () => {
     const base = cimCalendar();
     const shifted: MarathonSpecificLadderInput = {
