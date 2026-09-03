@@ -53,8 +53,20 @@ export interface FenceVerdict {
 /**
  * Pure predicate over a connection string, so the fence can be falsified
  * without a database and without mutating `process.env`.
+ *
+ * `expectedDb` exists because there is now a SECOND local scratch database in
+ * this repo — `scripts/walk-substrate.ts` builds `faff_visual_walk` so the
+ * phone can be walked against a copy of the runner's rows. That is the same
+ * question this function already answers ("may I truncate and rewrite the
+ * database this string names?"), asked about a different name, so it gets the
+ * same owner rather than a second near-identical predicate somewhere else
+ * (Rule 16). Callers that do not pass one keep the harness's own database, so
+ * every existing call site is unchanged.
  */
-export function inspectConnectionString(url: string | undefined | null): FenceVerdict {
+export function inspectConnectionString(
+  url: string | undefined | null,
+  expectedDb: string = HARNESS_DB_NAME,
+): FenceVerdict {
   if (!url) {
     return { ok: false, refusal: 'DATABASE_URL is not set. The harness will not fall back to a default — a default is how a harness ends up on production.' };
   }
@@ -67,10 +79,10 @@ export function inspectConnectionString(url: string | undefined | null): FenceVe
   const host = parsed.hostname;
   const database = parsed.pathname.replace(/^\//, '');
   if (!LOOPBACK.has(host)) {
-    return { ok: false, refusal: `DATABASE_URL points at host '${host}', which is not loopback. The harness only runs against its own local scratch database.`, host, database };
+    return { ok: false, refusal: `DATABASE_URL points at host '${host}', which is not loopback. Only a local scratch database this tooling owns is an acceptable target.`, host, database };
   }
-  if (database !== HARNESS_DB_NAME) {
-    return { ok: false, refusal: `DATABASE_URL names database '${database}', not '${HARNESS_DB_NAME}'. Being local is not enough — the harness truncates and rewrites every table it touches, so it must own the database it is pointed at.`, host, database };
+  if (database !== expectedDb) {
+    return { ok: false, refusal: `DATABASE_URL names database '${database}', not '${expectedDb}'. Being local is not enough — this tooling truncates and rewrites every table it touches, so it must own the database it is pointed at.`, host, database };
   }
   return { ok: true, host, database };
 }

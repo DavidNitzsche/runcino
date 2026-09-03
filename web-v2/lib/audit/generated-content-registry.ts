@@ -402,8 +402,21 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'Same shape and same exemption as its sibling immediately above (`_shadow_run_absorption_split.script.ts`), extended to a season-wide sample: its own header says outright "NOT a gate. NOT part of `npm test`" and it is read-only end to end (`readAdaptationSplitWithLog` calls only `loadAdaptationInput` / `loadRepresentativeExecutionInput` / `classifyAdaptation` / read-only extra fetches; persistence is an `fs.appendFile` to a git-tracked JSONL log, never a DB write). Invoked directly via `npx vitest run --config vitest.shadow-run.config.ts`, which is the only caller by design — it drives docs/reports/absorption-dual-log-2026-09-01.md\'s season-wide disagreement-rate measurement across every real race window plus a weekly-cadence sweep, per the account owner\'s ruling not to promote `representative_execution` yet. Kept rather than deleted so the sweep stays reproducible against a later account state.',
   'web-v2/lib/adaptation/_falsify_reason_honesty.script.ts':
     'Same shape and same exemption as its two siblings immediately above: a one-off falsifier, not a `.test.ts` the default vitest include glob picks up, read-only against production (`readAdaptationSplit` only). Its own header says outright "Not a gate, not part of `npm test`" and names its only caller — `npx vitest run --config vitest.shadow-run.config.ts` — directly. It captures `representative_execution`\'s summary text across the real 2026-08-16..2026-08-23 AFC episode for docs/reports/adaptation-reason-honesty-fix-2026-09-01.md\'s before/after comparison. Kept rather than deleted so that report\'s claim stays reproducible against a later account state.',
-  'web-v2/lib/adaptation-harness/fence.ts':
-    'A GATE, and the one that keeps the other four safe. It is the write-safety fence for the adaptation harness (CLAUDE.md Rule 21): a pure predicate over DATABASE_URL plus an assertion that throws unless the connection string is loopback AND names the harness\'s own local scratch database. Every other module in the directory calls assertHarnessDatabase() at module scope before importing the pool, and lib/adaptation-harness/falsify.harness.test.ts drives it against a production-shaped URL and asserts it refuses. Runtime code must never import it — a fence something in production consults is a fence something in production can be made to answer differently.',
+  // `web-v2/lib/adaptation-harness/fence.ts` LEFT THIS LIST ON 2026-09-03.
+  //
+  // It gained an importer: `web-v2/scripts/walk-substrate.ts` reuses
+  // `inspectConnectionString` rather than writing a second "may I truncate the
+  // database this string names" predicate (Rule 16). The entry that used to
+  // sit here argued the file was a gate with no reader and ended "runtime code
+  // must never import it — a fence something in production consults is a fence
+  // something in production can be made to answer differently."
+  //
+  // That sentence is still true, and it was being held up by nothing but the
+  // file's orphan status, which has now ended. So it moved from a comment to a
+  // check: `scripts/check-write-barrier.sh` guard 5 fails if anything under
+  // `web-v2/app` or `web-v2/components` imports `lib/adaptation-harness`, and
+  // it is in `prebuild`. Rule 20 — deleting a stale exemption must not quietly
+  // delete the property the exemption was describing.
   'web-v2/lib/adaptation-harness/substrate.ts':
     'TEST-ONLY BY CONSTRUCTION. The adaptation harness\'s substrate: it copies the owner\'s real production rows into a local scratch database and slides one of his real training blocks onto today, so the three worlds of CLAUDE.md\'s hero statement can be driven against a runner with an actual history (Rule 15 — the 11,598-archetype sweep has no history fields at all). It WRITES plan rows, which is exactly why it is fenced: assertHarnessDatabase() runs at module scope and throws before a pool exists unless DATABASE_URL names the harness database, and lib/adaptation-harness is excluded from vitest.config.ts so `npm test` cannot load it. Runtime code must never import it.',
   'web-v2/lib/adaptation-harness/drive.ts':

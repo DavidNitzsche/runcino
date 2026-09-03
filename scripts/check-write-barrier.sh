@@ -50,6 +50,18 @@
 #                   patch AND report the INSERT reaching the real production
 #                   host; making the target classifier fail open makes it name
 #                   the guess.
+#   5 · REACH     · no served code imports the scratch-database tooling. The
+#                   `lib/adaptation-harness` modules TRUNCATE and rewrite every
+#                   table they touch, and `fence.ts` is the predicate that
+#                   decides whether that is allowed. A fence something in
+#                   production consults is a fence something in production can
+#                   be made to answer differently. Verification tooling under
+#                   `web-v2/scripts` may import them; `app/` and `components/`
+#                   may not. Added 2026-09-03: this invariant used to be held
+#                   incidentally by fence.ts having NO importer at all, and
+#                   `scripts/walk-substrate.ts` reusing its predicate ended
+#                   that. Rule 20 — the property did not change, so the check
+#                   had to become explicit rather than quietly lapse.
 #
 # ── WHAT THIS GATE CANNOT FAIL ON (Rule 22) ─────────────────────────────────
 #
@@ -255,8 +267,39 @@ else
     || bad "proof test no longer asserts the ledger sentence"
 fi
 
+# ── GUARD 5 · the scratch-database tooling is out of the served graph ───────
+say "guard 5 · no served code imports the scratch-database tooling"
+
+# An ARRAY, not a space-joined string: this repo lives under a path with spaces
+# in it, and word-splitting made `find` read zero files on the first run. The
+# liveness assertion below is what caught that, which is the entire argument for
+# having one (Rule 18 guard 2).
+SERVED_DIRS=()
+for d in "$ROOT/web-v2/app" "$ROOT/web-v2/components"; do
+  [ -d "$d" ] && SERVED_DIRS+=("$d")
+done
+if [ ${#SERVED_DIRS[@]} -eq 0 ]; then
+  bad "neither web-v2/app nor web-v2/components exists · this guard scanned nothing"
+else
+  # Liveness first. Reporting clean because the scan read no files is the worst
+  # outcome available, since it also reports confidence.
+  served_files=$(find "${SERVED_DIRS[@]}" -type f ! -name '._*' \( -name '*.ts' -o -name '*.tsx' \) | wc -l | tr -d ' ')
+  if [ "$served_files" -lt 100 ]; then
+    bad "only $served_files served files scanned · the scanner is not reading the tree it claims to"
+  fi
+  reach=$(grep -rlE "['\"][^'\"]*adaptation-harness/" "${SERVED_DIRS[@]}" \
+            --include='*.ts' --include='*.tsx' 2>/dev/null || true)
+  if [ -n "$reach" ]; then
+    bad "served code imports lib/adaptation-harness · these modules truncate and rewrite tables:"
+    echo "$reach" | while IFS= read -r f; do bad "    ${f#"$ROOT"/}"; done
+    bad "  Verification tooling under web-v2/scripts may import them. Served code may not."
+  else
+    say "  scanned $served_files served files · 0 import the scratch-database tooling"
+  fi
+fi
+
 if [ ! -d "$ROOT/web-v2/node_modules" ]; then
-  say "  skip · no node_modules (cold container) · guards 1-3 stand"
+  say "  skip · no node_modules (cold container) · guards 1-3 and 5 stand"
 else
   # BUILD SAFETY (2026-09-03). This gate runs inside `prebuild`, which Railway
   # executes during a production build with the app's own DATABASE_URL set. The

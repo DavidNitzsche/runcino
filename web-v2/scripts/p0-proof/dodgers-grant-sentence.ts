@@ -12,7 +12,16 @@
  * about whether the evidence offered for it is honestly stated.
  *
  * READ-ONLY. Uses DATABASE_URL_RO and issues no write of any kind.
+ *
+ * 2026-09-03 · the line below was added because `scripts/check-write-barrier.sh`
+ * guard 3 counts every script that builds its own `pg.Pool` outside the
+ * barrier's reach, and this one landed without the ratchet being raised, so
+ * `prebuild` was failing on `main`. Importing the barrier is the fix the gate
+ * asks for and it is a no-op outside a verification process, so nothing about
+ * how this script runs changes. The header above already claims it issues no
+ * write; this is that claim gated rather than asserted (Rule 20).
  */
+import '../../lib/verify/install-barrier';
 import { Pool } from 'pg';
 import {
   CANONICAL_ROW_SQL,
