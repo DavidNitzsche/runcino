@@ -177,13 +177,34 @@ struct BlockV5: View {
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
         .overlay {
-            // TALL, because this sheet's tallest state is the reason `tall`
-            // exists. The 0821 handoff warns that another-race with an A race
-            // and a displaced session runs five clauses — the last of them two
-            // sentences, six in total — and that "the sheet must hold its
-            // longest realistic string without scrolling". Sized to content
-            // with no ceiling, that state slid off the top of the screen.
-            V5SheetHost(isPresented: $planSheetOpen, tall: true) {
+            // ── NOT TALL ANY MORE, AND THE REASON IT WAS HAS BEEN FIXED ────
+            //
+            // This was `tall: true`, and the argument for it was sound at the
+            // time: the 0821 handoff warns that another-race with an A race
+            // and a displaced session runs five clauses — six sentences in
+            // total — and that "the sheet must hold its longest realistic
+            // string without scrolling". Sized to content WITH NO CEILING,
+            // that state slid its title off the top of the screen.
+            //
+            // "With no ceiling" is the part that has since changed. An
+            // ordinary sheet now caps at 76% of the screen and scrolls past
+            // it (`V5SheetHost.ceiling` / `needsScroll`), so the failure that
+            // justified a fixed detent cannot recur — and the same comment
+            // records that six sentences fits a 390x844 screen with room to
+            // spare, so the longest state still will not scroll.
+            //
+            // What the fixed detent cost, rendered 2026-09-03: the cutback
+            // REFUSAL is one line of text and one ghost button, and it drew
+            // above roughly a thousand points of empty black, because
+            // `.frame(maxHeight:)` inside a full-height ZStack makes a view
+            // flexible UP TO that height rather than hugging its content. A
+            // sheet whose answer is one sentence should be one sentence tall.
+            //
+            // `tall` is unchanged and still right for the sheets that own an
+            // internal scroll region with a pinned action — add-a-race,
+            // travel, reschedule, add-a-shoe. Those must not hug, because a
+            // ScrollView's ideal height would collapse them.
+            V5SheetHost(isPresented: $planSheetOpen) {
                 planSheetBody
             }
         }

@@ -1122,14 +1122,47 @@ struct V5SheetHost<Sheet: View>: View {
                     }
                 }
 
+                // ── A SHEET IS AS TALL AS WHAT IT HAS TO SAY ────────────────
+                //
+                // `.frame(maxHeight: X)` does NOT mean "shrink to fit, up to
+                // X". A frame with only a maximum is GREEDY: it takes the
+                // height its parent proposes, capped at X, without consulting
+                // the child's ideal at all. This sheet lives in a full-screen
+                // ZStack, so the proposal is the whole display and EVERY
+                // ordinary sheet drew at its 76% ceiling however little it
+                // held — with the content top-aligned and the remainder black.
+                //
+                // Rendered 2026-09-03: the cutback refusal is one line of text
+                // and one ghost button, and it drew above roughly 800 points
+                // of empty black. Adding `.fixedSize` to the CONTENT does not
+                // fix it, because the greedy thing is the frame, not the child.
+                //
+                // So the frame is only applied where it is actually needed:
+                //
+                //   · scrolling  — content exceeds the ceiling. Fill to it.
+                //   · tall       — add-a-race, travel, reschedule, add-a-shoe.
+                //                  These are flex columns with their OWN
+                //                  scroll region and a pinned action, so their
+                //                  ideal height is meaningless (a ScrollView's
+                //                  ideal collapses) and the fixed detent is
+                //                  correct. Unchanged.
+                //   · otherwise  — NO frame. The VStack reports its ideal and
+                //                  the sheet is exactly that tall.
+                //
+                // The ceiling still holds: content that would exceed it takes
+                // the scrolling branch instead, so nothing can climb under the
+                // clock the way add-a-race once did.
                 Group {
                     if needsScroll {
-                        ScrollView { body }.scrollIndicators(.visible)
+                        ScrollView { body }
+                            .scrollIndicators(.visible)
+                            .frame(maxHeight: ceiling, alignment: .top)
+                    } else if tall {
+                        body.frame(maxHeight: tallHeight, alignment: .top)
                     } else {
                         body
                     }
                 }
-                .frame(maxHeight: tall ? tallHeight : ceiling, alignment: .top)
                 .padding(.top, V5.S.s24)
                 .padding(.horizontal, V5.S.tilePad)
                 .padding(.bottom, V5.S.s32)
