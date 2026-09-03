@@ -32,7 +32,7 @@
  *
  *   D1  · fewer than three weeks              → volume REFUSE (insufficient window)
  *   D2  · multi-week consistency              → volume PROGRESS
- *   D3  · one-off exceptional performance     → threshold HOLD (no corroboration)
+ *   D3  · one-off exceptional performance     → threshold REFUSE (no corroboration)
  *   D4  · successful threshold sessions       → threshold PROGRESS
  *   D5  · recovery-window / cutback session   → cutback exclusion
  *   D6  · missing data                        → volume REFUSE (Rule 11)
@@ -248,13 +248,20 @@ describe('historical replay · chronological, no lookahead', () => {
   it('D3 · a single exceptional session does NOT move the anchor', () => {
     // 6:54/mi against a 7:10 anchor, graded FULL, and completely uncorroborated.
     // The forbidden-input list names "a single exceptional workout" explicitly.
+    //
+    // 2026-09-03 · REFUSE, not HOLD. One session below the corroboration bar is
+    // "the criterion cannot be evaluated", which Rule 11 separates from "the
+    // anchor should stay" and which the volume and long-run levers already
+    // call a refusal. The property this row exists to protect — the anchor does
+    // not move on one workout — is unchanged and is asserted below.
     const r = point({
       id: 'D3', date: '2026-07-20', covers: 'one-off exceptional performance',
-      lever: 'THRESHOLD_PACE', expected: 'HOLD',
+      lever: 'THRESHOLD_PACE', expected: 'REFUSE',
       subsequent: 'No session within the next month came close to that pace, so the one-off was noise.',
       verdict: 'beneficial',
     });
-    expect(r.actual).toBe('HOLD');
+    expect(r.actual).toBe('REFUSE');
+    expect(r.magnitude).toBe('none');
   });
 
   it('D4 · two corroborating threshold sessions DO move the anchor', () => {
@@ -539,7 +546,23 @@ describe('the replay ledger', () => {
     // The property Rule 21 demands: over a real season, this engine PUSHES.
     // The engine it replaces produced zero upward adaptations in 309 intents.
     expect(dist.PROGRESS ?? 0, 'the replay never progresses').toBeGreaterThanOrEqual(4);
-    expect(dist.HOLD ?? 0).toBeGreaterThanOrEqual(2);
+    // Every non-moving state is reached, so the ledger is not one-note.
+    expect(dist.HOLD ?? 0).toBeGreaterThanOrEqual(1);
     expect(dist.REFUSE ?? 0).toBeGreaterThanOrEqual(2);
+
+    // 2026-09-03 · `HOLD >= 2` was replaced by the line below, and the reason
+    // is worth stating because a relaxed number usually IS a weakened gate.
+    //
+    // D3 moved from HOLD to REFUSE when the threshold lever started calling
+    // "too little qualifying evidence" a refusal, which left HOLD at 1. Two was
+    // never the meaningful number — the test's own title is "not one long
+    // refusal", and a count of HOLDs cannot say that. This can: the upward
+    // decisions must at least MATCH the refusals. It is the same claim the
+    // title makes, it is strictly stronger than what it replaces at this
+    // ledger's shape, and it fails the moment refusals start to dominate.
+    expect(
+      dist.PROGRESS ?? 0,
+      'refusals outnumber upward proposals · the replay has become one long refusal',
+    ).toBeGreaterThanOrEqual(dist.REFUSE ?? 0);
   });
 });

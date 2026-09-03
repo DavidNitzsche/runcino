@@ -62,7 +62,7 @@ import type {
   IncludedEvidence,
   Magnitude,
 } from '../decision-record';
-import { confidenceFrom, miText, nonMoving, type LeverVerdict } from './shared';
+import { confidenceFrom, meetsCompletionBar, miText, nonMoving, type LeverVerdict } from './shared';
 import { roundTo } from '@/lib/format/run';
 
 /**
@@ -218,7 +218,7 @@ export function evaluateLongRun(input: LongRunInput): LeverVerdict {
       grade: null,
       weight: 1,
     };
-    if (c.frac >= LONG_RUN_COMPLETION_MIN_FRAC) included.push(entry);
+    if (meetsCompletionBar(c.frac, LONG_RUN_COMPLETION_MIN_FRAC)) included.push(entry);
     else {
       contradictory.push({
         activityId: entry.activityId,
@@ -228,7 +228,7 @@ export function evaluateLongRun(input: LongRunInput): LeverVerdict {
     }
   }
 
-  const bothCompleted = completions.every((c) => c.frac >= LONG_RUN_COMPLETION_MIN_FRAC);
+  const bothCompleted = completions.every((c) => meetsCompletionBar(c.frac, LONG_RUN_COMPLETION_MIN_FRAC));
 
   /* ── Deterioration across BOTH ─────────────────────────────────────────── */
 
@@ -285,7 +285,7 @@ export function evaluateLongRun(input: LongRunInput): LeverVerdict {
 
   /* ── REGRESS · the same bar, the other way ─────────────────────────────── */
 
-  const bothMissed = completions.every((c) => c.frac < LONG_RUN_COMPLETION_MIN_FRAC);
+  const bothMissed = completions.every((c) => !meetsCompletionBar(c.frac, LONG_RUN_COMPLETION_MIN_FRAC));
   if (bothMissed) {
     const meanCompleted = completions.reduce(
       (a, c) => a + (c.l.completedMi.ok ? c.l.completedMi.value : 0), 0,
@@ -401,12 +401,61 @@ export function evaluateLongRun(input: LongRunInput): LeverVerdict {
   }
 
   if (anyUnknown) {
-    return hold(
-      `The long run stays at ${miText(before)}. The distance was completed, but how `
-      + 'the final third went could not be read, so durability is not established.',
-      ['A long run with complete pace and heart-rate data through the finish.'],
-      'Completion is established. How the runs finished is not.',
-    );
+    /* ── Rule 11 · this is a REFUSAL, and it used to be a HOLD ───────────── */
+
+    // A HOLD is a coaching decision about the plan; a REFUSE is "I could not
+    // judge this". The same fact — durability unknown — already produced a
+    // REFUSE thirty lines above when its cause was truncation ("That is not
+    // evidence either way"), and a HOLD here when its cause was unreadable
+    // thirds. One fact, two decisions, on nothing but the shape of the missing
+    // data.
+    //
+    // The cost was measured on the real replay: `L4-durability-readable` was
+    // blocked at 40 of 40 decision points, and the season report read the
+    // blockage as behaviour because the lever's own verdict said HOLD. The
+    // dominant cause turned out to be an evidence-layer reader that could not
+    // parse a `m:ss` pace string — nothing to do with the runner and nothing
+    // to do with his durability.
+    //
+    // So the decision names the state, and the sentence names the CAUSE rather
+    // than restating the symptom: `assessDeterioration` already distinguishes
+    // "truncated", "not comparable work", "pace unreadable" and "pace held but
+    // HR unreadable", and every one of those is a different thing to go and
+    // fix. Rule 11 · a guard that cannot run is a refusal worth surfacing, not
+    // a default worth assuming.
+    const causes = dets
+      .map((d, i) => ({ d, l: recent[i] }))
+      .filter((x) => x.d.verdict === 'UNKNOWN');
+    for (const c of causes) {
+      excludedList.push({
+        activityId: c.l.provenance.activityId,
+        dateISO: c.l.provenance.dateISO,
+        reason: 'DATA_UNREADABLE',
+        detail: c.d.detail,
+        stillAdmissibleFor: ['completed distance', 'weekly volume', 'time on feet'],
+      });
+    }
+    return nonMoving({
+      lever: LEVER,
+      decision: 'REFUSE',
+      beforeValue: before,
+      included,
+      excluded: excludedList,
+      contradictory,
+      windowDays,
+      confidence: conf(
+        `How ${causes.length} of the ${LONG_RUN_LOOKBACK_COUNT} recent long runs finished could not be read.`,
+        'Durability is unestablished because the data could not answer it, not because the runs went badly.',
+      ),
+      reason:
+        `The long run stays at ${miText(before)}. The distance was completed, but how the `
+        + 'final third went could not be read, so durability cannot be judged either way. '
+        + `${causes.map((c) => `${c.l.provenance.dateISO} · ${c.d.detail}`).join(' ')}`,
+      whatWouldChangeIt: [
+        'A long run with complete pace and heart-rate data through the finish.',
+        'The recording or segmentation for these runs being corrected.',
+      ],
+    });
   }
 
   // Q22 · the following key session, and Rule 11 applied to it.

@@ -87,7 +87,9 @@ import {
   LONG_RUN_COMPLETION_MIN_FRAC,
 } from '@/lib/adaptation/canonical/contract-constants';
 import { realHistory } from './snapshot';
-import { buildInputAt, provenanceOf, SEED_THRESHOLD_SEC_PER_MI, weekStartOf } from './build-input';
+import {
+  buildInputAt, paceSecFromClock, provenanceOf, SEED_THRESHOLD_SEC_PER_MI, weekStartOf,
+} from './build-input';
 import { sealHistory } from './sealed-history';
 
 const SNAP = realHistory();
@@ -149,6 +151,8 @@ interface WalkResult {
   rows: LedgerRow[];
   records: Array<{ date: string; record: CanonicalDecisionRecord }>;
   beliefTrail: Array<{ date: string; threshold: number; weekly: number; long: number }>;
+  /** Rule 18 liveness for the durability sensitivity probe. */
+  durabilityPatches: number;
   diagnostics: { couldNotBuild: string[]; notes: string[] };
 }
 
@@ -199,18 +203,20 @@ function walk(opts: {
    * SENSITIVITY ONLY, and never the engine's behaviour · pretend every long run
    * finished strong.
    *
-   * 11 of his 15 long runs reach the engine with NO thirds at all, because the
-   * prescription varies pace across them ("LONG · 10mi @ HM" finishes fast by
-   * design) and Q13 forbids inferring deterioration from whole-run thirds in
-   * that case. The refusal is doctrine-correct, and its consequence is that the
-   * long-run lever's durability criterion cannot be evaluated for most of a
-   * marathon build.
+   * 2026-09-03 · this comment used to say 11 of his 15 long runs reached the
+   * engine with no thirds "because the prescription varies pace across them",
+   * and that attribution was wrong for most of them. Five arrived unreadable
+   * because `normSplit` could not parse a `m:ss` clock string, which is the
+   * shape 29 of his 146 split-carrying rows use. With that reader fixed, 8 of
+   * the 15 are comparable and the remaining 7 divide honestly: SIX are genuine
+   * Q13 refusals (the prescription really does change pace across the run) and
+   * ONE is a week in which he did not run at all.
    *
-   * This flag replaces those thirds with a clean, comparable set to measure how
-   * much of the lever's inertia that one gap accounts for. It FABRICATES a
-   * positive durability answer, so it is an UPPER BOUND on what better
-   * segmentation could unlock and nothing more. It is never used by the pinned
-   * distribution, and the engine is not changed to behave this way.
+   * This flag replaces the remaining unreadable thirds with a clean, comparable
+   * set to measure how much of the lever's inertia that residual gap accounts
+   * for. It FABRICATES a positive durability answer, so it is an UPPER BOUND on
+   * what better segmentation could unlock and nothing more. It is never used by
+   * the pinned distribution, and the engine is not changed to behave this way.
    */
   assumeDurabilityReadable?: boolean;
 } = {}): WalkResult {
@@ -219,6 +225,8 @@ function walk(opts: {
   const beliefTrail: WalkResult['beliefTrail'] = [];
   const couldNotBuild = new Set<string>();
   const notes = new Set<string>();
+  /** How many long runs `assumeDurabilityReadable` actually rewrote. */
+  let durabilityPatches = 0;
 
   // The carried belief. Seeded once, then moved ONLY by the engine's own
   // accepted proposals — never re-read from the plan, because re-reading would
@@ -272,16 +280,22 @@ function walk(opts: {
     const input = opts.assumeDurabilityReadable
       ? {
         ...windowed,
-        longRuns: windowed.longRuns.map((l) => (l.thirds.comparable ? l : {
-          ...l,
-          thirds: {
-            middlePaceSecPerMi: measured(480),
-            finalPaceSecPerMi: measured(479),
-            middleHrBpm: measured(150),
-            finalHrBpm: measured(150),
-            comparable: true,
-          },
-        })),
+        longRuns: windowed.longRuns.map((l) => {
+          if (l.thirds.comparable) return l;
+          // Rule 18 liveness · counted, so the probe can prove it reached the
+          // engine even on a season where it changes no decision.
+          durabilityPatches += 1;
+          return {
+            ...l,
+            thirds: {
+              middlePaceSecPerMi: measured(480),
+              finalPaceSecPerMi: measured(479),
+              middleHrBpm: measured(150),
+              finalHrBpm: measured(150),
+              comparable: true,
+            },
+          };
+        }),
       }
       : windowed;
 
@@ -346,6 +360,7 @@ function walk(opts: {
     rows,
     records,
     beliefTrail,
+    durabilityPatches,
     diagnostics: { couldNotBuild: [...couldNotBuild], notes: [...notes] },
   };
 }
@@ -505,6 +520,94 @@ describe('Q29 · the run the watch cut short', () => {
 });
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * 3c · THE EVIDENCE LAYER READS WHAT IS ON THE ROW
+ *
+ * Rule 11's most expensive shape, found by the Rule 21 bar report: the
+ * long-run durability gate was blocked at 40 of 40 decision points, and the
+ * blockage was attributed to Q13 (the prescription varies pace across a long
+ * run, so its thirds are not comparable). That was true of four of his fifteen
+ * long runs. The rest were unreadable because `normSplit` read three numeric
+ * spellings of pace and not the fourth — a `m:ss` clock string — while the
+ * same rows carried a complete set of per-mile heart rates.
+ *
+ * ── RULE 22 · WHAT THIS BLOCK CANNOT FAIL ON ───────────────────────────────
+ *
+ * It cannot fail on a pace that parses but is WRONG. It checks that the string
+ * is read, and sanity-bounds the result to 3:00-30:00 per mile; a systematic
+ * unit error inside that band would pass here and poison every durability
+ * comparison downstream.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('the evidence layer reads what is on the row', () => {
+  it('a "m:ss" pace string is a pace, not a missing pace', () => {
+    // The census, read out of the snapshot at run time rather than hardcoded,
+    // so the claim cannot quietly stop being about his real rows.
+    let stringOnly = 0;
+    let withSplits = 0;
+    for (const r of SNAP.runs) {
+      const sp = r.splits ?? [];
+      if (sp.length === 0) continue;
+      withSplits += 1;
+      const rec = sp as unknown as Array<Record<string, unknown>>;
+      const numeric = rec.some((x) => x.paceSecPerMi != null || x.paceSPerMi != null);
+      const clock = rec.some((x) => typeof x.pace === 'string');
+      if (!numeric && clock) stringOnly += 1;
+    }
+    // eslint-disable-next-line no-console
+    console.log(
+      `EVIDENCE · ${stringOnly} of ${withSplits} split-carrying runs record pace ONLY as a clock string`,
+    );
+    // Rule 18 liveness · a census that found nothing would make the assertion
+    // below vacuous, so the shape has to still be present in his rows.
+    expect(stringOnly).toBeGreaterThan(0);
+    expect(paceSecFromClock('8:19')).toBe(499);
+    // And it refuses rather than guessing on anything that is not a pace.
+    expect(paceSecFromClock('0:45')).toBeNull();
+    expect(paceSecFromClock('99:00')).toBeNull();
+    expect(paceSecFromClock(499)).toBeNull();
+    expect(paceSecFromClock('not a time')).toBeNull();
+  });
+
+  it('the long runs whose thirds are unreadable are unreadable for a NAMED reason', () => {
+    const { input } = buildInputAt({
+      asOfISO: '2026-09-03',
+      boundary: 'WEEKLY_BOUNDARY',
+      belief: {
+        thresholdPaceSecPerMi: SEED_THRESHOLD_SEC_PER_MI, weeklyVolumeMi: 43.5, longRunMi: 12,
+        supportingSessionCount: 0, oldestSupportingDateISO: null,
+      },
+    }, SEALED);
+
+    const readable = input.longRuns.filter((l) => l.thirds.comparable);
+    const why = input.longRuns
+      .filter((l) => !l.thirds.comparable)
+      .map((l) => {
+        const m = l.thirds.middlePaceSecPerMi;
+        if (m.ok) return 'ok';
+        return 'what' in m.why ? m.why.what : m.why.kind;
+      });
+    // eslint-disable-next-line no-console
+    console.log(
+      `EVIDENCE · ${readable.length} of ${input.longRuns.length} long runs have comparable thirds\n`
+      + `   the rest: ${JSON.stringify(why.reduce<Record<string, number>>((a, w) => {
+        a[w] = (a[w] ?? 0) + 1; return a;
+      }, {}), null, 0)}`,
+    );
+
+    // Before the reader fix this was 4. Pinned, so a regression in the split
+    // reader reads as a durability finding again and this test says otherwise.
+    expect(readable.length).toBe(8);
+
+    // And every remaining refusal names a cause. "Too few readable splits" was
+    // the reader's own failure wearing a data failure's clothes, so its total
+    // absence is the property worth asserting: what is left is the honest set.
+    expect(why.filter((w) => /too few to compare thirds/.test(w))).toEqual([]);
+    expect(why.filter((w) => /changes pace across the run/.test(w))).toHaveLength(6);
+    expect(why.filter((w) => /no activity was recorded/.test(w))).toHaveLength(1);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
  * 4 · THE DISTRIBUTION  ·  Rule 22, counted rather than assumed
  * ═══════════════════════════════════════════════════════════════════════ */
 
@@ -531,7 +634,30 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     // movable levers, so it governed only the upward path and the same missed
     // weeks were re-spent at every weekly boundary. Sixteen of the twenty
     // downward records were that repetition.
-    expect(dist).toEqual({ PROGRESS: 0, HOLD: 102, REGRESS: 4, REFUSE: 14 });
+    //
+    // 2026-09-03, second pass · re-pinned again after the upward-bar findings.
+    // NOTHING moved into PROGRESS and nothing moved out of REGRESS. What moved
+    // is the line between "the coach decided" and "the engine could not judge":
+    //
+    //   PROGRESS   0 ->   0
+    //   HOLD     102 ->  63
+    //   REGRESS    4 ->   4
+    //   REFUSE    14 ->  53
+    //
+    // Thirty-nine records that read as a coaching decision were a missing
+    // evaluation, and Rule 11 says those are different facts. Three causes,
+    // each argued in the lever it belongs to: the threshold lever refuses
+    // rather than holds when the window carries too little qualifying evidence
+    // (34 of 40 readings had none at all); the long-run lever refuses rather
+    // than holds when durability is unreadable, matching the refusal it
+    // already gave for the truncation case; and the volume lever refuses
+    // rather than passing vacuously when no key session in the window
+    // established anything.
+    //
+    // The count is the FINDING, not the fix. A season in which 44% of records
+    // are refusals is an engine starved of evidence, and saying so is what the
+    // old distribution could not do.
+    expect(dist).toEqual({ PROGRESS: 0, HOLD: 63, REGRESS: 4, REFUSE: 53 });
   });
 
   it('the belief no longer walks below the volume he demonstrably ran', () => {
@@ -612,24 +738,38 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
       + [...new Set(longRun.map((r) => `   ${r.decision} · ${r.reason.slice(0, 120)}`))].sort().join('\n'));
 
     // LIVENESS · the probe must actually reach the engine, or it is measuring
-    // nothing and reporting confidence (Rule 18). It does: the long-run REASONS
-    // change, and "how the final third went could not be read" disappears.
-    const reasonsNow = new Set(longRun.map((r) => r.reason));
-    const reasonsBefore = new Set(RUN.rows.filter((r) => r.lever === 'LONG_RUN').map((r) => r.reason));
-    expect([...reasonsBefore].some((r) => /could not be read/.test(r))).toBe(true);
-    expect([...reasonsNow].some((r) => /could not be read/.test(r))).toBe(false);
+    // nothing and reporting confidence (Rule 18).
+    //
+    // This assertion used to be "the long-run REASONS change, and 'how the
+    // final third went could not be read' disappears", and the reader fix in
+    // `build-input.ts` made it false: with the `m:ss` pace string parsed, no
+    // long-run decision on his real history is reached by that branch at all,
+    // so the probe changes no reason and no decision. A liveness check that
+    // rests on the result is not a liveness check — it goes quiet exactly when
+    // the thing it is probing stops mattering, which is when you most need to
+    // know the instrument still ran.
+    //
+    // So liveness is now asserted on the INPUT: the flag rewrote this many
+    // long runs. That is true whatever the engine then decides.
+    expect(optimistic.durabilityPatches).toBeGreaterThan(0);
+    expect(RUN.durabilityPatches).toBe(0);
 
-    // AND THE RESULT · the distribution does not move at all. The durability
-    // gap is real and it is NOT what holds this lever: every decision point it
-    // unblocks is caught immediately by the next criterion, which is either
-    // "one of the last 2 came in below 95%" or "a key session after one of
-    // these long runs did not go to plan". Both are Q22 criteria read off his
-    // real execution, not walls.
+    // AND THE RESULT · the distribution does not move at all — and after the
+    // reader fix, neither does a single REASON string. The residual durability
+    // gap is real, it is six long runs whose prescription genuinely varies
+    // pace across the run, and it is NOT what holds this lever: every decision
+    // point it unblocks is caught immediately by the next criterion, which is
+    // either "one of the last 2 came in below 95%" or "a key session after one
+    // of these long runs did not go to plan". Both are Q22 criteria read off
+    // his real execution, not walls.
     //
     // Asserted as an equality rather than described in prose, so that the day
     // better segmentation DOES unlock a proposal this test fails and somebody
     // has to come and update the finding.
     expect(dist).toEqual(distributionOf(RUN));
+    const reasonsNow = new Set(longRun.map((r) => r.reason));
+    const reasonsBefore = new Set(RUN.rows.filter((r) => r.lever === 'LONG_RUN').map((r) => r.reason));
+    expect([...reasonsNow].sort()).toEqual([...reasonsBefore].sort());
   });
 
   it('SENSITIVITY · pre-windowing the evidence does not unlock a single increase', () => {

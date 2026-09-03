@@ -34,6 +34,17 @@ Bounded: **~3-5 s/mi** ordinary confirmed update; larger needs stronger and more
 numerous evidence; **no same-day oscillation**; **idempotent on re-ingest**;
 contradiction → **HOLD**, never a bouncing anchor.
 
+**Contradiction and absence are different answers**  *(added 2026-09-03)*.
+Evidence that exists and disagrees is a **HOLD** — that is the sentence above,
+and it is what one qualifying session faster and one slower produces. Too little
+qualifying evidence to evaluate the criterion at all is a **REFUSAL**, matching
+what the volume and long-run levers already return on the same fact. The
+one-faster-one-slower case cannot pass the direction rule and must not: a single
+training session never moves the anchor, so at the minimum evidence count the
+majority rule is unanimity by construction, and loosening the ratio to break a
+1-1 tie would move the anchor on one session while appearing to be a rule about
+direction.
+
 ### Weekly volume  (Q21)
 
 - **≥3 consecutive non-cutback weeks** at **≥~95%** of prescribed volume.
@@ -44,6 +55,41 @@ contradiction → **HOLD**, never a bouncing anchor.
 - Demonstrated-load envelope advanced.
 - The proposed future plan passes **all** volume, density, race, long-run and
   taper invariants.
+
+#### What "relevant" means, and which grades bar a step  *(added 2026-09-03)*
+
+Every criterion above reads **one window**: the span of the three non-cutback
+weeks being judged, from the earliest of them to today. Nothing older is
+relevant to whether *these* weeks earned a step. A replay over the reference
+runner's real season found the long-run and deterioration criteria reading his
+whole history instead, so a long run from a week he did not run at all was still
+counted against a decision eight weeks later, and the headline criterion — three
+weeks at 95% — could be met in full and buy nothing.
+
+Rule 8 applies **per finding, not per week**: sessions and long runs that fall
+inside a week the plan prescribed as taper or recovery are excluded along with
+the week itself. A shortened session the plan asked for is not a session he
+missed.
+
+And the five grades are not two buckets. `FULL` and `SUBSTANTIAL` **support** a
+step. `PARTIAL` **bars** one — Q38 defines it as "not enough of the intended
+session to receive the full training effect", which is a statement about load
+that was not absorbed and is exactly what this lever asks. `DIFFERENT` and
+`INSUFFICIENT` do **neither**: Q38 says a different stimulus "is not failure"
+and that insufficient evidence must never be translated into a bad workout, and
+Q27 says a session supports "the lever it actually tests, not the lever its
+nominal label implies". Their miles still count toward the week.
+
+The criterion is a positive one, so key sessions that ran and established
+nothing are a **refusal for insufficient evidence**, not a pass. A window with
+no key sessions at all is a base block prescribing only easy running, where the
+criterion has nothing to be false of, and a runner there must still be able to
+earn a step on easy running alone.
+
+The bar is `≥~95%`, and the tilde is load-bearing: a completion fraction is a
+quotient, and a bare `>=` rejects a week completed at exactly the bar for 267 of
+the 1,999 prescriptions between 0.1 and 199.9 miles. The comparison carries a
+representation tolerance. It is not a band.
 
 Movement: **≤~5%** above the affected prescribed week · **one upward step per
 cutback cycle** · never retroactive · applies only **through the next cutback
@@ -70,6 +116,16 @@ not exceed the evidence-derived long-run envelope without stronger corroboration
 · recomposes only through the next cutback or race boundary.
 
 > **Faster threshold work must never independently authorize a longer long run.**
+
+**Durability that cannot be read is a refusal, and it names the cause**
+*(added 2026-09-03)*. A long run whose final third cannot be compared — the
+recording was truncated, the prescription varies pace across the run, or the
+pace or heart rate is missing — produces a **REFUSAL**, not a HOLD, and the
+sentence says which of those it was. The distinction is not cosmetic: replayed
+over the reference runner's real season this criterion was unevaluable at 40 of
+40 decision points and read as a coaching decision at every one of them, while
+the dominant cause was an evidence-layer reader that could not parse a `m:ss`
+pace string off rows that also carried complete per-mile heart rate.
 
 ---
 

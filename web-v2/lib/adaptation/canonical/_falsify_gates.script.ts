@@ -6,7 +6,14 @@
  * This is not a test. It is the harness that BREAKS each guard on purpose,
  * records the failure output, and restores the file. Run with:
  *
- *     npx vitest run lib/adaptation/canonical/_falsify_gates.script.ts
+ *     npm --prefix web-v2 run test:falsify
+ *
+ * 2026-09-03 · that command used to read `npx vitest run <this file>`, and it
+ * had never worked. `vitest.config.ts` includes only `*.test.ts`, and a CLI
+ * file argument is a FILTER against the include rather than an addition to it,
+ * so the documented command exited "No test files found" — a falsifier nobody
+ * could run, which is Rule 18 pointed at itself. `vitest.falsify.config.ts`
+ * adds the script pattern and the npm script above invokes it.
  *
  * It is named `.script.ts` so the zero-mutation scanner treats it as a script
  * rather than engine source, matching this directory's existing convention.
@@ -187,6 +194,89 @@ describe('RULE 18 · every gate is made to fail before it is trusted', () => {
       suite: 'lib/adaptation/canonical/_replay_ledger.test.ts',
       mutate: (s) => s.replace('const before = (d: string) => d < dateISO;', 'const before = (_d: string) => true;'),
       expectOutputToMatch: /POISON leaked|cited POISON|dated/,
+    });
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════
+   * 2026-09-03 · the upward-bar changes, each broken on purpose
+   * ═══════════════════════════════════════════════════════════════════ */
+
+  it('volume · un-windowing the long-run criterion is caught', () => {
+    // The defect this replaces: `shortLongRuns` read `input.longRuns` whole
+    // while the weeks were windowed to three, so a long run from eight weeks
+    // earlier still contradicted today's decision. Putting the unbounded read
+    // back must fail the lever contracts.
+    falsify({
+      name: 'volume · long-run criterion reads every long run ever',
+      file: 'lib/adaptation/canonical/levers/weekly-volume.ts',
+      suite: 'lib/adaptation/canonical/_lever_contracts.test.ts',
+      mutate: (src) => src.replace(
+        '  const shortLongRuns = longRunsInWindow.filter(',
+        '  const shortLongRuns = input.longRuns.filter(',
+      ),
+      expectOutputToMatch: /WEEKLY VOLUME|PROGRESS|HOLD/,
+    });
+  });
+
+  it('volume · treating DIFFERENT as counter-evidence again is caught', () => {
+    // The Rule 11 collapse: the complement of "counts as evidence" spent as
+    // "evidence against". Restoring it must fail the lever contracts.
+    falsify({
+      name: 'volume · every grade below SUBSTANTIAL contradicts again',
+      file: 'lib/adaptation/canonical/levers/weekly-volume.ts',
+      suite: 'lib/adaptation/canonical/_lever_contracts.test.ts',
+      mutate: (src) => src.replace(
+        "  const badKeySessions = keySessionsInWindow.filter((s) => s.grade === 'PARTIAL');",
+        '  const badKeySessions = keySessionsInWindow.filter(\n'
+        + "    (s) => !GRADES_THAT_COUNT_AS_EVIDENCE.has(s.grade) && s.grade !== 'INSUFFICIENT',\n"
+        + '  );',
+      ),
+      expectOutputToMatch: /WEEKLY VOLUME|PROGRESS|expected/,
+    });
+  });
+
+  it('long run · downgrading the unreadable-durability refusal to a hold is caught', () => {
+    // Rule 11 · "durability could not be read" is a refusal, not a coaching
+    // decision. Turning it back into a HOLD must fail the lever contracts.
+    falsify({
+      name: 'long run · unknown durability holds instead of refusing',
+      file: 'lib/adaptation/canonical/levers/long-run.ts',
+      suite: 'lib/adaptation/canonical/_lever_contracts.test.ts',
+      mutate: (src) => src.replace(
+        '  if (anyUnknown) {\n',
+        '  if (anyUnknown) {\n'
+        + '    return hold("unreadable", ["x"], "unreadable");\n',
+      ),
+      expectOutputToMatch: /LONG RUN|REFUSE|expected/,
+    });
+  });
+
+  it('threshold · downgrading the no-evidence refusal to a hold is caught', () => {
+    falsify({
+      name: 'threshold · too little evidence holds instead of refusing',
+      file: 'lib/adaptation/canonical/levers/threshold-pace.ts',
+      suite: 'lib/adaptation/canonical/_lever_contracts.test.ts',
+      mutate: (src) => src.replace(
+        "      decision: 'REFUSE',\n      beforeValue: before,\n      included,\n      excluded: excludedList,\n      contradictory,\n      windowDays: window,\n      confidence: confidence(\n        distinct.length === 1",
+        "      decision: 'HOLD',\n      beforeValue: before,\n      included,\n      excluded: excludedList,\n      contradictory,\n      windowDays: window,\n      confidence: confidence(\n        distinct.length === 1",
+      ),
+      expectOutputToMatch: /THRESHOLD PACE|REFUSE|expected/,
+    });
+  });
+
+  it('completion bar · removing the representation tolerance is caught', () => {
+    // Rule 9 · `frac >= bar` on a quotient rejects a week completed at exactly
+    // the bar for 267 of 1,999 possible prescriptions. Reverting to the bare
+    // comparison must fail the lever contracts, where the boundary is pinned.
+    falsify({
+      name: 'shared · meetsCompletionBar loses its epsilon',
+      file: 'lib/adaptation/canonical/levers/shared.ts',
+      suite: 'lib/adaptation/canonical/_lever_contracts.test.ts',
+      mutate: (src) => src.replace(
+        '  observed >= bar - COMPLETION_FRACTION_EPSILON;',
+        '  observed >= bar;',
+      ),
+      expectOutputToMatch: /exactly the bar|PROGRESS|expected/,
     });
   });
 
