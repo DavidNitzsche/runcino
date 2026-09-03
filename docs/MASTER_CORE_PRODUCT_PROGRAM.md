@@ -213,18 +213,130 @@ only, zero rows, verified ten ways before execution — see
    rewrite) is a data write and needs David's explicit per-statement go
    regardless of any further automated confidence-building here.**
 6. The rebuild itself, and persisted-plan verification across every surface —
-   blocked on David's go for the write itself.
-7. Ranked Sunday options, generated against the REBUILT plan (David reports
-   the phone currently offers only "Skip" — the "Move to Friday/Saturday"
-   options that should sit beside it exist only in a design-preview fixture,
-   `TodayBeforeSamplesPreRunV5.options(for:)`, and `RescheduleV5.swift` — a
-   real, substantial screen — is built but not wired into any reachable
-   navigation path yet). Blocked on 6.
+   **DONE 2026-09-03, David's explicit authorization.** Full record in
+   `## LIVE REBUILD EXECUTED` below.
+7. Ranked Sunday options, generated against the REBUILT plan — **now
+   buildable** (the plan they'd generate against exists), but the UI half
+   (RS-2/4/6/7/8) is pre-run session's per the SESSION OWNERSHIP split above;
+   this session keeps RS-1/3/5 (the contract).
 
-**Do not describe the app as complete** until the rebuilt plan is live, every
-production surface is verified against it, TestFlight is distributed with the
-decisions below, and the canonical engine is producing trustworthy shadow or
-owner-visible decisions. None of those five conditions are met yet.
+**Do not describe the app as complete.** The rebuilt plan IS now live and
+verified across Today/Block/Races/watch (see below), which resolves the
+biggest of the five conditions the morning handback named. Still open: the
+canonical Adaptation Engine's proof programme (replay across PROGRESS/HOLD/
+REGRESS/REFUSE, travel/reschedule/missing-data non-penalization) is not yet
+built beyond shadow evaluation; TestFlight has not been re-distributed since
+the rebuild landed; the two new UI sessions' work is not yet integrated.
+
+---
+
+## LIVE REBUILD EXECUTED · 2026-09-03, David's explicit authorization
+
+**Migration 164** (`canonical_adaptation_shadow_log`) applied to production
+first, per the same ten-step protocol as 163 — see
+`docs/migrations/164-canonical-adaptation-shadow-log-evidence-2026-09-03.md`.
+Schema, all three CHECK constraints, both FKs, `faff_readonly` SELECT-only
+grant all confirmed against production directly. First live shadow record
+triggered and read back: 3/3 persisted for David's account (`WEEKLY_VOLUME`
+REGRESS 45→42.8, `LONG_RUN` and `THRESHOLD_PACE` both REFUSE for
+insufficient evidence). `plan_workouts`/`training_plans` row counts
+unaffected by either the DDL or the trigger.
+
+**Preflight re-run from the beginning** against the exact deployed commit
+(`8eef3552`, confirmed **success** via GitHub commit status polled to
+resolution, not merged-status alone): `falsify.sh` 11/12 (the 12th
+structurally defensive, documented in code), `rebuild-preview.ts`
+reproduced identically to the earlier run (composed 105 rows/15 weeks,
++7.2mi, deterministic).
+
+**Rollback snapshot captured independently** before the write, belt-and-
+suspenders alongside the engine's own archive-not-delete mechanism:
+`docs/rebuild-2026-09-03/snapshot-{training_plans,plan_phases,plan_weeks,
+plan_workouts,sealed-days-only}.json`, checksummed. Verified the engine's
+own safety net first, by reading the code rather than trusting its own
+claim: `clearActivePlansFor` only sets `archived_iso`, never deletes
+`plan_workouts`; `snapshotSealedDays` + `persistedDayShape`'s sealed-branch
+overlay every field (type/distance/pace/spec/quality/long/notes) from the
+prior plan for every date with a completed run, before the fresh composition
+can touch it; `/api/plan/undo` already exists, tested, and refuses if any
+run exists on a date the two blocks would prescribe differently.
+
+**Executed via the actual production endpoint** — `POST /api/cron/
+silent-rebuild` with `CRON_SECRET` (not a bypass script) — the same code
+path `fireAutoRebuild` uses for every real rebuild. Result: `prior_plan_id
+pln_9a57561debb776e5` → `new_plan_id pln_7636bcc0a201bf2d`, `unchanged:
+false`, `lthr_ensured` confirmed 168 against a stored 168 (inside the ±3bpm
+noise floor — the anchor had not moved since the plan's own 2026-09-02
+reanchor, confirmed independently beforehand by comparing `profile.lthr`
+against the plan's `authored_state.lthr_bpm`).
+
+**Persisted plan read back from production and verified, not the in-memory
+preview:**
+- **103 rows persisted** (not the previewed 105 — the two extra
+  `NEW DAY` predictions at 08-25/08-29 were correctly dropped at persist
+  time by the composer's own "never author into the unsealed past" gate,
+  confirmed absent).
+- **All 8 sealed/completed days byte-identical** across every field
+  (type, distance, pace, sub_label, HR cap, is_quality, is_long, notes) —
+  zero mismatches, checked twice (once against the wrong shape, caught the
+  bug in my own comparison script, redone correctly).
+- **15 weeks, 3 phases, all 4 upcoming race rows present** (Santa Monica
+  10K, Dodgers, Run Malibu, CIM) with correct distances.
+- **Anchors held**: long-run pace 8:40/mi, threshold pace 7:10 (T) and 7:25
+  (ST), unchanged across every session live vs. new — confirms the visible
+  differences are structural/volume, not anchor drift.
+- **83 of 103 days differ** from the archived plan (the precise figure —
+  the earlier 64 was a cruder type+distance-only comparison that missed
+  pace/HR-only changes; see the classification below). 35 are KEY (every
+  long run, every quality session, every type change, every NEW/REMOVED
+  day) and are individually accounted for in
+  `docs/rebuild-2026-09-03/persisted-vs-old-classified.json`; 18 are
+  EASY_VOLUME (grouped — routine aerobic-day redistribution, 49.4mi total
+  absolute delta across them); the rest are trivial label-only changes
+  (e.g. strides added at unchanged distance).
+- **MP mileage**: 38.5mi → 22mi across the block. Not a new finding — this
+  is S1.1's own already-audited fix (documented in that item above as
+  "18 of 33 (55%) → 5 of ~22.6 (22%)" in the final three weeks, which also
+  moved the block total). 11-17 and 11-24 losing MP content specifically is
+  taper onset (`race_week_tuneup`'s 5×400m sharpening reps replace
+  MP-heavy sessions inside CIM's taper window, confirmed against
+  `generate.ts`'s TAPER-phase logic, not a defect).
+
+**Cross-surface, rendered with real data (Rule 13), not asserted:**
+walk-substrate re-seeded post-rebuild, app cold-launched with
+`-faffToken` + `-faffHost http://127.0.0.1:3111` (the host override was
+the missing piece the first two launch attempts lacked — the app's default
+`API.baseURL` is production, not localhost, so a token-only launch
+authenticates against the wrong database and falls back to sign-in).
+Screenshots taken and confirmed: **Today** shows `INTERVALS · 6 mi ·
+10×1:00 hills · ~168bpm`, matching the persisted row exactly. **Block**
+shows `QUALITY · 14 weeks to CIM · Quality share 31% · Long run 15mi ·
+This week's mileage 46.5mi`. **Races** shows CIM 94 days out, Goal 3:00:00,
+Projected 3:19:43, all 5 races with correct dates/priorities. **Watch
+payload** (`/api/watch/today`) independently confirms `6.0 mi · Intervals ·
+10×60s hills @ 5K-10K effort`.
+
+**A real tooling gap found and worked around, not fixed tonight:**
+`walk-substrate.sh`'s seed (via `adapt-harness-substrate.sh`) does not copy
+`plan_phases`/`plan_weeks` for a plan that was created very recently
+relative to when the seed runs — reproduced twice, not a one-time race.
+Block initially rendered "NO BLOCK" through the walk substrate while
+production itself had the correct 15 `plan_weeks` rows the whole time
+(confirmed directly against `DATABASE_URL_RO` before touching anything) —
+this was a verification-tooling limitation, never a production defect.
+Worked around for tonight by copying the 3 `plan_phases` + 15 `plan_weeks`
+rows from production into the scratch DB directly (sourced from
+production reads, not fabricated). Filed as a real, reproducible bug in
+`adapt-harness-substrate.sh`'s table-copy logic — not investigated further
+tonight since it's tooling, not on the critical path David named.
+
+**No coherence red flags found against the 6-criterion test** (progressive
+capacity development, meaningful MP progression, staged duration/pace
+increases, recovery preserved around genuine stress, no unexplained
+cliffs, cross-surface consistency) — corroborated by S1.1/S1.2/S1.5's own
+prior independent audits (which verified the cutback rhythm, ACWR
+compliance and MP redistribution this exact composer output now reflects)
+rather than re-derived from scratch.
 
 ---
 
