@@ -28,6 +28,79 @@ success."*
 
 ---
 
+## SESSION OWNERSHIP  ·  coordination update, David 2026-09-03 (see also `## OPEN · the week strip is still clunky` below for the pre-existing week-strip session)
+
+David has opened two additional focused sessions — **pre-run** and **post-run**
+— to increase parallel progress without moving anyone off the critical path
+below. Three UI-touching sessions now run alongside this programme-lead
+session; ownership is split so no two can write competing answers to the same
+question.
+
+**Pre-run session owns:** workout presentation below the week strip · workout-
+detail information hierarchy · pre-run coaching language · segment preview ·
+run sheet/lobby · phone/watch readiness presentation · the transition from
+planned workout to active recording · pre-run loading/empty/stale/error
+states. **Does not own:** week-strip paging, top-bar nav, selected-date state,
+week caching, workout prescription, pace/HR calculation, plan generation,
+adaptation decisions, post-run interpretation.
+
+**Post-run session owns:** completed-run detail · post-run information
+hierarchy · post-run graphics/charts · intended-vs-completed presentation ·
+structured segment presentation · matched-workout presentation · data-quality
+and reconciliation presentation · rendering canonical stimulus and adaptation
+decisions after a run (`PR-1` through `PR-20` above are this session's
+inventory). **Does not own:** evidence admission rules, stimulus grading
+rules, fitness beliefs, plan generation, adaptation decisions, race
+projection, workout prescription, week-strip navigation.
+
+**Existing week-strip session continues to own:** Today/Upcoming top bar ·
+safe-area behaviour · horizontal week paging · selected-date and visible-
+workout state · week loading/caching · stale-response protection · plan-
+version invalidation in navigation · calendar navigation performance. The
+status-bar scrim fix (`DAYPANEL-SCRIM-1`, orphaned local commit `2cce812f`,
+never pushed) belongs here — not reintroduced from this session without a new
+instruction.
+
+**This session (programme-lead) continues to own:** canonical coaching
+contracts · plan generation and baseline correction · live-plan rebuild ·
+pace, HR, race, evidence and load ownership · canonical stimulus grades · the
+canonical Adaptation Engine · the rescheduling decision contract (`RS-1`
+through `RS-8` above — the CONTRACT and mutation path; `RS-4`/`RS-7`'s UI
+entry points hand to pre-run once the contract is ready) · production writes ·
+cross-surface consistency · integration into `main` · CI, deployment,
+TestFlight and final verification.
+
+**Overlap check against this session's own in-flight work, done 2026-09-03:**
+Decision 1 (race-week typing), Decision 3/SEP-1 (easy-days separation) and the
+canonical-shadow-evaluation wiring all touched `web-v2/lib/plan/**` and
+`web-v2/lib/adaptation/**` only — no Swift, no `native-v2/**`, no post-run or
+pre-run surface. No competing UI was created and none needs to be handed back.
+
+**Integration rules for handbacks from the two new sessions:** inspect the
+actual diff · identify overlap with current `main` · rebase or cherry-pick
+their commits (never merge a branch wholesale without review) · reject
+duplicate decision logic · ensure all UI consumes canonical contracts rather
+than re-deriving them · run the complete `verify-commit.sh` chain · render the
+integrated experience (Rule 13) · update this document · include accepted
+work in the next TestFlight build.
+
+**Shared-file protocol:** the session owning the canonical state or contract
+makes the shared change; the other session consumes it through an interface.
+Where that cannot be cleanly separated, one session stops editing the file and
+returns its required change as an integration note instead of resolving the
+conflict manually — never let concurrent manual conflict resolution silently
+combine two state models.
+
+**The critical path is unchanged and still programme-lead's:**
+`correct baseline → safe live rebuild → persisted verification → canonical
+Adaptation Engine → historical replay → live shadow → owner-visible proposals
+→ integrated TestFlight release`. The intended final product flow the three
+UI sessions serve: `select the correct workout → understand it before running
+→ execute and record it correctly → understand what happened afterward → turn
+that evidence into the right next prescription`.
+
+---
+
 ## ONE CURRENT TRUTH  ·  resolved 2026-09-03, correcting the handback's contradiction
 
 David: *"One reporting correction: the handback ends by saying the rebuild
@@ -881,6 +954,13 @@ execute its intended structure · how did each important segment go · what did
 the system learn · did that evidence change the plan · how does this move me
 toward the race goal.
 
+**Owner (2026-09-03 coordination update):** the **post-run session** owns this
+whole inventory as UI/presentation work. Programme-lead retains everything
+each row *depends on* — canonical decision record, phase identity, authored
+spec, canonical run set, evidence admission, adaptation decisions (P0-6) — the
+post-run session consumes those through their existing interfaces and does not
+re-derive them.
+
 | ID | Item | Depends on | App release | Status |
 |---|---|---|---|---|
 | PR-1 | Activity identity + headline stats block | — | iPhone | Discovered |
@@ -959,6 +1039,18 @@ the runner supplied a constraint. **Separate typed decisions, owners, records an
 mutation paths.** A reschedule must never update fitness beliefs or count as
 evidence the plan was too demanding.
 
+**Owner (2026-09-03 coordination update):** split down the server/iPhone line
+already in the table. **Programme-lead** keeps RS-1 (the contract + mutation
+path), RS-3 (candidate generation/ranking) and RS-5 (atomic apply) — these are
+the rescheduling decision contract named in the SESSION OWNERSHIP section
+above. **Pre-run session** owns RS-2, RS-4, RS-6, RS-7 and RS-8 — the
+constraint-capture UI, per-option display, undo control, entry points and
+post-approval summary — consuming RS-1/RS-3/RS-5 through their interface
+rather than re-deriving ranking or mutation logic. This item was previously
+blocked on the live rebuild in this session; the split does not change that —
+pre-run's UI work can proceed against the RS-1/RS-3 contract shape without
+waiting on the rebuild, but RS-5's actual writes stay gated on it.
+
 | ID | Item | Depends on | App release | Status |
 |---|---|---|---|---|
 | RS-1 | Canonical rescheduling boundary — its own module and mutation path, distinct from the adaptation seam | — | server | Ready |
@@ -1021,3 +1113,18 @@ here only; no speculative frameworks are being designed for them.
 - I independently inspect every conclusion, verify the changes, reconcile
   cross-surface consequences, and decide acceptance. Final judgement is not
   delegated.
+- **2026-09-03 addendum, per SESSION OWNERSHIP above:** three UI-touching
+  sessions now run in parallel (pre-run, post-run, week-strip), each on its
+  own branch/worktree, none merging to `main` directly. This session
+  integrates their handbacks under the same rules as any agent's, plus: no
+  UI may re-derive a canonical value it can consume through an existing
+  interface, and a shared-file conflict is resolved by one session yielding
+  the file (never by manually combining two state models).
+- **Treadmill incline/speed display** (David, 2026-09-03, hill-repeat workout
+  card screenshot — HR target shown, no incline/speed): split ownership. The
+  DATA question — does `workout_spec` carry a treadmill-equivalent incline/
+  speed target for a hill session at all — is programme-lead's (workout
+  prescription). The RENDERING of that field on the workout card is pre-run
+  session's (workout-detail information hierarchy). Not yet investigated on
+  either side as of this entry; recorded so neither session assumes the other
+  has it.
