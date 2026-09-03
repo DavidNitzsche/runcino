@@ -671,6 +671,97 @@ that would not deploy.
 
 ---
 
+## 10c · The external coaching review
+
+A reviewer with no stake in the build, sandboxed read-only, asked one question:
+**would a good marathon coach sign this plan for this runner?** Not "does the
+code work" — the gates cover that.
+
+**Its verdict: sign it with changes.** *"This is a real coach's plan, not a
+mileage generator. Periodised properly, citations that actually resolve, paces
+anchored to evidence rather than the stated goal, and genuinely aggressive where
+it should be."*
+
+**I checked its factual claims before accepting any of them, and its headline
+finding does not survive.** It reported the live plan containing a
+`39.0 → 60.0 → 61.0` sequence — a +54% week-over-week step — with 96 rows and no
+race rows on any race day including CIM. Measured against production:
+
+| Its claim | Measured |
+|---|---|
+| no race rows on any race day | **4 race rows, all carrying `race_execution`** |
+| 96 rows | **103** |
+| `39.0 → 60.0 → 61.0` | no such sequence; the block runs `38.0 → 45.0 → 28.9 → 34.0 → 48.7 → 56.0 → 61.0 → …` and the largest step is +43%, not +54% |
+
+Same result grouping by the plan's own `week_id` and by Monday calendar week.
+Its highest-priority recommendation rests on numbers that are not in the plan.
+
+**Three of its findings ARE real and I verified each:**
+
+**1 · Marathon-specific work is displaced into the taper.** 18 of the 33
+marathon-pace miles — **55%** — fall in the last three weeks, as the two taper
+sessions (11 mi and 7 mi @ MP). In `Research/04 §4.4`'s own 6-to-10-weeks-out
+window the block delivers **four** MP miles in one session, where doctrine wants
+10-14 every 2-3 weeks. Its phrasing is the sharp part: the taper's MP sessions
+are supposed to sit on top of specific work already done; here they *are* the
+specific work.
+
+**2 · Exactly one long run reaches 20+.** `Research/22`'s Marathon-Intermediate
+row asks for 20-22 mi **two to three times**. The plan peaks at 20.5 once, a
+mile below what he ran on 2026-01-25, in a block whose own thesis names
+`DURABILITY` and `increase_long_run_demand`. It never spends its own 21.5
+ceiling. This is the same finding §5 records; an independent reviewer reaching
+it from the training side is worth more than my reaching it from the code side.
+
+**3 · The Dodgers weekend's stated evidence is the wrong shape, and this one
+matters.** The grant tells him *"You have run 29.4mi across two days before."*
+That pair is:
+
+```
+2026-04-25   2.61 mi   shakeout
+2026-04-26  26.81 mi   Big Sur Marathon
+```
+
+A tiny shakeout, then a marathon — the **opposite** shape of what the weekend
+proposes, which is a hard 10K followed by 17 miles the next morning. And every
+other large two-day block in his history runs the same way round:
+
+```
+02-15  20.00 + 02-16   7.85 = 27.9   big first, small second
+04-05  20.02 + 04-06   7.51 = 27.5   big first, small second
+02-08  17.21 + 02-09   5.35 = 22.6   big first, small second
+```
+
+**He has never run long the morning after a hard effort.** The number is real
+and the query is correct; the shape is not evidence for the demand being made.
+The session may well stand — he approved it knowingly and it is doctrine-cited —
+but **the sentence the app shows him is misleading, and that is a defect in the
+one place the exception was supposed to be athlete-specific.**
+
+**Two corrections it made to my own reporting, both right:**
+
+- **The engine is not inventing evidence.** It reproduced `peakMi 52.3` from raw
+  daily data. The apparent conflict with "best week 48.5" is **calendar-week
+  versus rolling-7-day units**, not a bad read. I had flagged that discrepancy
+  without resolving it; this resolves it.
+- **Four marathon paces are live at once** — training 7:52, projection 7:47,
+  execution 7:23, goal 6:52. He rehearses **29 s/mi slower than he is told to
+  race**. That corroborates §13.2 from a different direction.
+
+**Two more it raised, unverified by me:** the peak *week* is governed but the
+peak *month* is not (+30% on 28-day load against `Research/00a`'s 5-15%); and
+his record suggests the limiter is **consistency** rather than durability — best
+sustained stretch 5 weeks at 42.6, the plan asks 7 at 52.9.
+
+**And what it said to protect:** the taper (82/60/30% with both MP rehearsals
+matching `Research/08 §9.2` line for line) and the CIM downhill work, *"better
+than most human coaches produce for that course."*
+
+It also found Rule 17 still violated inside the plan — the downhill instruction
+12 times, *"Conversational. Z2 HR cap."* 37 times.
+
+---
+
 ## 11 · What is not verified
 
 - **The Swift Block screen rendering** the new per-week explanations. It
