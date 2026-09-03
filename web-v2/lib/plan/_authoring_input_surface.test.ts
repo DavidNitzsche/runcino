@@ -45,6 +45,10 @@ const ALLOWED: Record<string, string[]> = {
     // absorbed in representative training, and the day it started. This is what
     // makes that grant athlete-specific rather than a permission every runner
     // gets.
+    // Both were added by the designed-race-weekend commit without a
+    // classification, which made this gate red on `main` — a second instance of
+    // the collision class that had already broken the deploy once today. The
+    // ratchet caught it rather than the deploy doing so, which is the point.
     'demonstratedPairMi', 'demonstratedPairFromISO',
   ],
   'demonstrated pace capacity': [

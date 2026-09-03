@@ -341,6 +341,41 @@ function offZoneLabel(
   return { label: prescription };
 }
 
+/**
+ * TUNEUP-ANCHOR-1 (2026-09-02) · WHICH PACE A RACE-WEEK TUNE-UP'S REPS ARE
+ * PRESCRIBED AT, ANSWERED ONCE.
+ *
+ * The `race_week_tuneup` branch below reads three pace tokens out of the
+ * prescription and picks a rep pace from them, in this order. That was three
+ * inline regexes inside one branch, which was fine while this branch was the
+ * only thing that needed the answer.
+ *
+ * It is not any more. `race-row-refresh` reprices race rows from the race
+ * outlook, and it treated every tune-up as a rehearsal AT the race's execution
+ * pace. On the owner's block that put the marathon target — 7:23/mi — on
+ * `pace_target_s_per_mi` of a row whose reps were 6:41 and whose label read
+ * "5×400m @ 5K pace", which is `TAPER-SHARP-1`'s neuromuscular primer and is
+ * deliberately FASTER than race pace (Research/08 §9.3, "5×1min @ 5K pace").
+ *
+ * The refresh needs the same answer this branch computes, so it asks this
+ * function rather than growing a fourth copy of the regexes (Rule 16). The
+ * precedence is the branch's own, unchanged: an interval token wins over a
+ * threshold token wins over a race-pace token, and a prescription naming none
+ * of them is the default primer.
+ *
+ * Cite: Research/01 §"Daniels' 5 training zones" (a rep written @ T runs at T);
+ * Research/08 §9.3 (the race-week sharpener).
+ */
+export type TuneupPaceAnchor = 'interval' | 'threshold' | 'race_pace' | 'primer';
+
+export function tuneupPaceAnchor(prescription: string | null | undefined): TuneupPaceAnchor {
+  const s = String(prescription ?? '');
+  if (/5\s*k\s*pace|@\s*I\b/i.test(s)) return 'interval';
+  if (/@\s*T\b/i.test(s)) return 'threshold';
+  if (/race\s*pace|@\s*(?:HM|M)P?\b/i.test(s)) return 'race_pace';
+  return 'primer';
+}
+
 export interface SpecBuildResult {
   /** workout_spec column value · null for types where it's intentionally absent. */
   spec: WorkoutSpec;
@@ -1736,7 +1771,7 @@ export function buildWorkoutSpec(
       const repCount = parsed?.reps ?? 2;
       const repMi = parsed?.repDistanceMi ?? 0.5;
       const restS = parsed?.restS ?? 60;
-      const wantsRacePace = /race\s*pace|@\s*(?:HM|M)P?\b/i.test(String(prescription ?? ''));
+      const wantsRacePace = tuneupPaceAnchor(prescription) === 'race_pace';
       // NOTE: distance_mi here is the WORKOUT's distance (~5mi), not the
       // race's, so the race branch's inverse-offset trick is unavailable.
       // Race pace comes from the threaded goal pace; the no-goal fallback
@@ -1753,7 +1788,7 @@ export function buildWorkoutSpec(
       // (Research/01:130-134: "race pace OR FASTER"), not the T-5 primer. HM "@ race pace" still
       // reads HMP via the goal-pace branch below. In prod, iPaceSec is always threaded for
       // race_week_tuneup (persistPlan computes it unconditionally), so the fallback is defensive.
-      const wants5kPace = /5\s*k\s*pace|@\s*I\b/i.test(String(prescription ?? ''));
+      const wants5kPace = tuneupPaceAnchor(prescription) === 'interval';
       // TUNEUP-T-1 (2026-08-19) · the THIRD pace token this branch can be
       // handed, and the one it silently ignored. `generate.ts` writes the ultra
       // race-week primer as "5×400m @ T pace · 90s jog" (ULTRA-TUNE-1 · both
@@ -1778,7 +1813,7 @@ export function buildWorkoutSpec(
       // default primer describes ITSELF as "just above T-pace", and widening
       // the match would re-point that one at T and change a workout nobody
       // asked to change.
-      const wantsTPace = /@\s*T\b/i.test(String(prescription ?? ''));
+      const wantsTPace = tuneupPaceAnchor(prescription) === 'threshold';
       const repPace = wants5kPace
         ? (iPaceSec ?? (tPaceSec - 18))
         : wantsTPace

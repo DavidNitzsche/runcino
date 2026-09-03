@@ -206,7 +206,22 @@ export interface RaceOutlook {
     gapToRangeEdgeSec: number | null;
     reasons: string[];
   };
-  coachSet: { aSec: number; bSec: number; cSec: number; basis: 'expected_race_day_range' } | null;
+  /**
+   * ROW-CONTRACT-1 (2026-09-02) · REMOVED, AND THE REMOVAL IS THE FIX.
+   *
+   * This produced an A/B/C ladder from `expectedRaceDay.likelyRangeSec`, and
+   * `lib/race/coach-goal.ts` produced ANOTHER one from the same range plus the
+   * course's hill cost. The phone's race detail draws coach-goal's under the
+   * words COACH SET while `outlookRow("Run the day at", …)` on the same screen
+   * draws `execution.targetSec` from here. On Santa Monica, 2026-09-02, they
+   * were 40 seconds apart on the A time.
+   *
+   * Nothing read this one. Not a route, not a component, not a Swift view — it
+   * reached the phone as `coach_set` in the payload and was decoded by no
+   * model. Rule 16 says one quantity has one name; the Constitution says
+   * prefer deletion before addition. `coach-goal.ts` is the owner.
+   */
+  coachSet?: never;
   /**
    * 2026-09-02 · HOW OLD IS THIS. Rule 23's discipline pointed at a belief
    * rather than a job: an outlook resolved from evidence nobody has added to
@@ -663,11 +678,6 @@ export async function composeRaceOutlook(
     };
   }
 
-  // ── 8 · coach-set tiers only when the runner has stated no goal ─────────
-  const coachSet: RaceOutlook['coachSet'] = goalSec == null && expectedSec != null && likelyRangeSec != null
-    ? { aSec: roundRaceTargetSec(likelyRangeSec[0]), bSec: roundRaceTargetSec(expectedSec), cSec: roundRaceTargetSec(likelyRangeSec[1]), basis: 'expected_race_day_range' }
-    : null;
-
   // ── 9 · the bridge ──────────────────────────────────────────────────────
   const bridge: BridgeStep[] = [
     {
@@ -760,7 +770,6 @@ export async function composeRaceOutlook(
     expectedRaceDay,
     execution,
     goalFeasibility: feasibility,
-    coachSet,
     staleness,
     bridge,
     changeTriggers,

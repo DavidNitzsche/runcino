@@ -283,7 +283,13 @@ const NOTE = {
   tempo: 'Continuous and controlled. If the breathing turns ragged, ease off 5 to 10 sec/mi.',
   easy: 'Conversational. Cap the effort and hold form.',
   long: 'Time on feet beats pace. Fuel around 45 min in, then every 30.',
-  race: 'Hold the plan through the first 5K. Mile 1 decisions are paid for at mile 12.',
+  // ROW-CONTRACT-1 (2026-09-02) · this note named TWO distances, under a header
+  // three lines above forbidding exactly that. It read "Hold the plan through
+  // the first 5K. Mile 1 decisions are paid for at mile 12." and it printed
+  // verbatim on the owner's 6.21-mile Dodgers 10K, where the first 5K is half
+  // the race and mile 12 does not exist. Says the same thing about the same
+  // race, at any distance.
+  race: 'Hold the plan early. What you spend in the opening is paid for at the finish.',
   finish: 'The point of the session. Find race rhythm and hold it home.',
   /* A rep the plan sized in effort, not in pace. `Research/03` §14 puts hill
    * repeats under RPE and calls pace meaningless on them, so telling this

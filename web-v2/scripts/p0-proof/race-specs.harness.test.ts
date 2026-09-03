@@ -199,6 +199,17 @@ describe('race specifications from the production authoring path', () => {
         pace_target_s_per_mi: r.pace_target_s_per_mi,
         distance_mi: r.distance_mi,
         workout_spec: r.workout_spec,
+        // ROW-CONTRACT-1 · `notes` and `sub_label` are part of the contract and
+        // the production SELECT returns them, so the rows served here must
+        // carry them too. Omitting them made the refresh see a row with no
+        // prose to reprice, which is not the state the transaction is in — and
+        // the contract check caught exactly that on the first run, reporting
+        // the Run Malibu row as "notes state 6:52/mi; the row prescribes
+        // 7:02/mi". The harness was wrong, not the engine, and a harness that
+        // hides a field is how the last preview reported a pace that was an
+        // artifact of its own call.
+        notes: r.notes,
+        sub_label: r.sub_label,
         sealed: false,
       }));
     const logRebuild: QueryLog[] = [];
@@ -214,26 +225,46 @@ describe('race specifications from the production authoring path', () => {
         if (e.kind !== 'CAPTURED_WRITE') continue;
         if (!/UPDATE plan_workouts/i.test(e.text)) continue;
         if (e.values[0] !== rowId) continue;
-        return { pace_target_s_per_mi: e.values[1], fields: JSON.parse(String(e.values[2])) };
+        return {
+          pace_target_s_per_mi: e.values[1],
+          fields: JSON.parse(String(e.values[2])),
+          drops: (e.values[3] ?? []) as string[],
+          notes: (e.values[4] ?? null) as string | null,
+        };
       }
       return null;
     };
-    const merge = (spec: Record<string, unknown> | null, fields: Record<string, unknown> | null) => {
+    // The same arithmetic the statement performs: drop the named keys, merge
+    // the named fields. Re-typing the key list here would be a second owner of
+    // it, so the drops come off the captured parameters.
+    const merge = (
+      spec: Record<string, unknown> | null,
+      fields: Record<string, unknown> | null,
+      drops: string[] | null,
+    ) => {
       const base = { ...(spec ?? {}) } as Record<string, unknown>;
-      delete base.hr_cap_bpm;
+      for (const k of drops ?? []) delete base[k];
       return { ...base, ...(fields ?? {}) };
     };
 
     const finished: Record<string, unknown>[] = [];
     for (const r of raceRowsForRefresh) {
       const w = capturedFor(logRebuild, r.id);
+      const authoredRow = rebuiltRows.find((x) => x.date_iso === r.date_iso);
       finished.push({
         date_iso: r.date_iso, type: r.type, distance_mi: r.distance_mi,
+        sub_label: authoredRow?.sub_label ?? null,
+        authored_notes: authoredRow?.notes ?? null,
+        finished_notes: (w?.notes as string | null) ?? authoredRow?.notes ?? null,
         authored_pace_target_s_per_mi: r.pace_target_s_per_mi,
         refresh_action: rebuilt?.rows.find((x) => x.id === r.id)?.action ?? 'not-reached',
         refresh_reason: rebuilt?.rows.find((x) => x.id === r.id)?.reason ?? null,
         refreshed_pace_target_s_per_mi: (w?.pace_target_s_per_mi as number | null) ?? r.pace_target_s_per_mi,
-        finished_spec: merge(r.workout_spec as Record<string, unknown> | null, (w?.fields ?? null) as Record<string, unknown> | null),
+        finished_spec: merge(
+          r.workout_spec as Record<string, unknown> | null,
+          (w?.fields ?? null) as Record<string, unknown> | null,
+          (w?.drops ?? null) as string[] | null,
+        ),
       });
     }
 
@@ -270,10 +301,15 @@ describe('race specifications from the production authoring path', () => {
       if (!meta) { executionPlans[row.slug] = { route_status: 404, reason: 'race not found' }; continue; }
       const goalSec = parseRaceTime(meta.goalDisplay as string) ?? parseRaceTime(meta.goalTime as string);
       const distanceMi = Number(meta.distanceMi) || distanceMiFromLabel(meta.distanceLabel as string | null) || null;
-      if (!goalSec || !distanceMi) {
+      // ROW-CONTRACT-1 · the route's gate, as it now stands: a DISTANCE is
+      // required, a stated goal is not. It used to demand `meta.goalDisplay`
+      // and 404 without it, which left the only race with no stated goal — a B
+      // race eleven days out, with a resolved target and a pace plan already
+      // drawn on the phone — without a race-morning brief at all.
+      if (!distanceMi) {
         executionPlans[row.slug] = {
           route_status: 404,
-          reason: 'no goal time set · execution plan needs a goal',
+          reason: 'no distance set · execution plan needs a distance',
           goal_display: meta.goalDisplay ?? null,
         };
         continue;
@@ -286,7 +322,15 @@ describe('race specifications from the production authoring path', () => {
       const fuelDefaults = (await pool.query<{ fuel_brand: string | null; fuel_gel_carbs_g: number | null; fuel_target_g_per_hr: number | null }>(
         `SELECT fuel_brand, fuel_gel_carbs_g, fuel_target_g_per_hr FROM users WHERE id = $1 LIMIT 1`, [U])).rows[0] ?? null;
       const { fuel, fuelIsDefault } = resolveRaceFuel(meta, fuelDefaults);
-      const effective = await loadEffectiveRaceTarget(U, goalSec, distanceMi, { slug: row.slug });
+      const effective = await loadEffectiveRaceTarget(U, goalSec ?? null, distanceMi, { slug: row.slug });
+      if (!(effective.targetSec > 0)) {
+        executionPlans[row.slug] = {
+          route_status: 404,
+          reason: 'no target · the outlook could not resolve one and no goal is set',
+          goal_display: meta.goalDisplay ?? null,
+        };
+        continue;
+      }
       const range = effective.outlook?.expectedRaceDay.likelyRangeSec ?? null;
       const ci = range ? { loSec: range[0], hiSec: range[1] } : null;
       const vdot = effective.outlook?.capacity.thresholdVdot ?? null;
@@ -301,6 +345,25 @@ describe('race specifications from the production authoring path', () => {
         effective_target: { target_sec: effective.targetSec, source: effective.source, goal_sec: effective.goalSec, projection_sec: effective.projectionSec },
         plan,
       };
+    }
+
+    // 8b · ROW-CONTRACT-1 · THE FINISHED ROW AGREES WITH ITSELF.
+    //      The whole point of the coherence work, checked here on the rows the
+    //      PRODUCTION path actually produces rather than on a fixture: every
+    //      field of every race row, after authoring and after the refresh that
+    //      runs inside the same transaction.
+    const { raceRowContractViolations, describeViolations } = await import('@/lib/race/race-row-contract');
+    const contractFindings: Array<Record<string, unknown>> = [];
+    for (const f of finished) {
+      const v = raceRowContractViolations({
+        type: String(f.type),
+        distanceMi: Number(f.distance_mi),
+        paceTargetSecPerMi: (f.refreshed_pace_target_s_per_mi as number | null) ?? null,
+        spec: f.finished_spec as Record<string, unknown>,
+        notes: (f.finished_notes as string | null) ?? null,
+        subLabel: (f.sub_label as string | null) ?? null,
+      });
+      contractFindings.push({ date_iso: f.date_iso, type: f.type, violations: v, detail: describeViolations(v) });
     }
 
     // 9b · THE PHONE'S OWN "Pace plan" SECTION. `GET /api/v5/race/[slug]`
@@ -392,6 +455,7 @@ describe('race specifications from the production authoring path', () => {
       refresh_against_live_plan: { result: live, captured_writes: logLive.filter((e) => e.kind === 'CAPTURED_WRITE') },
       refresh_against_rebuild_rows: { result: rebuilt, captured_writes: logRebuild.filter((e) => e.kind === 'CAPTURED_WRITE') },
       finished_race_rows: finished,
+      contract_findings: contractFindings,
       outlooks,
       execution_plans: executionPlans,
       phone_pace_plans: pacePlans,
@@ -439,6 +503,12 @@ describe('race specifications from the production authoring path', () => {
     expect(seed.ok).toBe(true);
     expect(cimAuthored?.pace_target_s_per_mi).toBe(seed.ok ? seed.paceSecPerMi : null);
     expect(cimAuthored?.pace_target_s_per_mi).not.toBe(persistArgs.goalPaceSec);
+
+    // ROW-CONTRACT-1 · every finished row agrees with itself. Stated as the
+    // findings themselves so a failure prints WHICH row and WHICH field, and
+    // pinning no pace, because a separate change is about to move at least one
+    // of them.
+    expect(contractFindings.filter((f) => (f.violations as unknown[]).length > 0)).toEqual([]);
 
     // Four races, four distances. If any two finished race rows come out at
     // the same pace, something upstream is answering with one number again.

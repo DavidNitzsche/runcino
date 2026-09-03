@@ -44,6 +44,11 @@ import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 import { resolveRaceOutlook, loadRaceForOutlook, RACE_EXECUTION_BAND_S_PER_MI, type RaceOutlook, type RaceForOutlook } from './race-outlook';
 import { MEANINGFUL_MOVE_SEC } from '@/lib/training/projection-trend';
 import { racePaceAbortRule } from '@/lib/race/distance-doctrine';
+// ROW-CONTRACT-1 · the contract this path is required to leave the row in, and
+// the one owner of "which pace a tune-up's reps are prescribed at".
+import { raceRowContractViolations, describeViolations, type RaceRowContractView } from '@/lib/race/race-row-contract';
+import { repriceRaceNote, type RaceTargetVoice } from '@/lib/race/race-row-note';
+import { tuneupPaceAnchor } from '@/lib/plan/spec-builder';
 
 export interface RaceRowRefreshResult {
   planId: string;
@@ -76,6 +81,10 @@ interface RaceRow {
   pace_target_s_per_mi: string | number | null;
   distance_mi: string | number | null;
   workout_spec: Record<string, unknown> | null;
+  /** ROW-CONTRACT-1 · the prose and the chip title are part of the contract,
+   *  so the refresh reads them rather than writing past them. */
+  notes: string | null;
+  sub_label: string | null;
   sealed: boolean;
 }
 
@@ -220,6 +229,265 @@ export function raceExecutionSpecFields(
 }
 
 /**
+ * ROW-CONTRACT-1 (2026-09-02) · THE COMPLETE WRITE FOR ONE RACE ROW, DECIDED
+ * IN ONE PLACE.
+ *
+ * The rule the owner stated: *"A refresh must update the complete workout
+ * contract atomically, not one number inside an incompatible structure."*
+ *
+ * Before this function the loop composed a pace here, a spec fragment there,
+ * and left `notes`, `rep_pace_s_per_mi` and the row's own session type alone.
+ * Four measured defects, all the same shape. Now there is one function, it is
+ * PURE, and the caller applies what it returns without adding anything.
+ *
+ * ── THE TWO KINDS OF ROW IT ANSWERS FOR ─────────────────────────────────
+ *
+ * **A race day.** Gets the full execution contract: the target, the ±5 s/mi
+ * band, `race_execution`, `race_hr`, the repriced mid-race abort, and the
+ * target sentence in its prose repriced to match. `hr_cap_bpm` is dropped —
+ * a race has no ceiling the wrist should alarm on for 26 miles.
+ *
+ * **A race-week tune-up.** A tune-up is a TRAINING session that happens to sit
+ * in race week, and only some of them are run at race pace. `tuneupPaceAnchor`
+ * is the one owner of that question, in `spec-builder`, where the pace is
+ * chosen. When the reps ARE at race pace, both the reps and the headline move
+ * together and the row stays coherent. When they are not — the marathon
+ * sharpener is 5×400m at 5K pace, deliberately faster than race pace — this
+ * path has nothing to say about the row and says nothing, by name.
+ *
+ * What it never does again is give a tune-up a race's clothes: no
+ * `race_execution` describing a different day, no `race_hr` band computed for
+ * 26.2 miles sitting on 4.5, and no "Mile 2 check · switch to the B plan" on a
+ * session of 400s. Those keys are DROPPED from a tune-up rather than merely
+ * not written, because rows in production are already carrying them.
+ *
+ * ── WHY IT RETURNS DROPS RATHER THAN A WHOLE SPEC ───────────────────────
+ *
+ * Rule 6. `workout_spec` has several writers with different field coverage,
+ * and a full-replace upsert silently erases what the active writer does not
+ * know about. So the contract is expressed as "remove exactly these keys, then
+ * merge exactly these" and the SQL applies it field-level.
+ */
+export interface RaceRowWrite {
+  paceTargetSecPerMi: number;
+  /** Keys this write REMOVES from `workout_spec` before merging. */
+  specDrops: string[];
+  /** Keys this write merges in. */
+  specFields: Record<string, unknown>;
+  /** The repriced note, or null to leave `notes` exactly as it stands. */
+  notes: string | null;
+  /** True when the row already satisfies the contract at this pace, so the
+   *  UPDATE would be a no-op. Reported rather than written (Rule 11: an
+   *  unchanged row and a skipped row are different facts). */
+  unchanged: boolean;
+}
+
+/** A row's contract view, straight off the columns. */
+export function contractRowOf(row: {
+  type: string;
+  distance_mi: string | number | null;
+  pace_target_s_per_mi: string | number | null;
+  workout_spec: Record<string, unknown> | null;
+  notes: string | null;
+  sub_label: string | null;
+}): RaceRowContractView {
+  return {
+    type: row.type,
+    distanceMi: row.distance_mi != null ? Number(row.distance_mi) : null,
+    paceTargetSecPerMi: row.pace_target_s_per_mi != null ? Number(row.pace_target_s_per_mi) : null,
+    spec: row.workout_spec ?? null,
+    notes: row.notes,
+    subLabel: row.sub_label,
+  };
+}
+
+/** The row as it would stand after this write. The projection the atomicity
+ *  check runs on, and the same arithmetic the SQL performs — drop, then
+ *  merge — so the check sees what the database will. */
+export function applyWriteToRow(row: RaceRowContractView, write: RaceRowWrite): RaceRowContractView {
+  const spec: Record<string, unknown> = { ...(row.spec ?? {}) };
+  for (const k of write.specDrops) delete spec[k];
+  Object.assign(spec, write.specFields);
+  return {
+    ...row,
+    paceTargetSecPerMi: write.paceTargetSecPerMi,
+    spec,
+    notes: write.notes ?? row.notes,
+  };
+}
+
+/** Keys a refreshed RACE row must not keep. `hr_cap_bpm` because a race has no
+ *  wrist alarm; the two execution blocks because they are rewritten whole and
+ *  a merge would leave a stale sub-key behind. */
+const RACE_SPEC_DROPS = ['hr_cap_bpm', 'race_execution', 'race_hr'] as const;
+/**
+ * Keys a refreshed TUNE-UP must not keep: the race-day clothes it was given by
+ * the version of this path that treated every tune-up as a rehearsal.
+ *
+ * The two execution blocks describe the RACE — a marathon's HR band, checkpoint
+ * and target, sitting on a 4.5-mile session of 400s. The band keys are the same
+ * defect one level down: `pace_target_s_per_mi_lo/hi` is the race's ±5 s/mi
+ * execution window, and once the headline is restored to the session's own rep
+ * pace a band centred 42 s/mi away is a second wrong number, not a leftover.
+ *
+ * The list grew by two when the coherence gate was first run against this fix
+ * and failed it. That is the gate doing its job on its own author.
+ */
+const TUNEUP_SPEC_DROPS = [
+  'race_execution', 'race_hr', 'pace_target_s_per_mi_lo', 'pace_target_s_per_mi_hi',
+] as const;
+
+/**
+ * The row's rules with every mid-race pace abort removed.
+ *
+ * A "Mile 2 check · switch to the B plan" belongs to a start line. On a tune-up
+ * it is priced off a target that is not the session's pace and names a
+ * checkpoint the session may not reach. `rulesRepricedTo` strips the same rule
+ * for a race row before re-adding a correctly priced one; this is the strip
+ * without the re-add, and the two share the predicate rather than each carrying
+ * their own idea of which rule is the race's.
+ */
+/** The session's own rep pace, or nothing. Guards rather than
+ *  `x > 0 ? x : null`, for the reason `effective-race-target.ts` gives: a rep
+ *  pace of zero is invalid input, not a measured zero, and the collapsing
+ *  shape should stay rare enough that the scanner's findings mean something. */
+function repPaceOrNone(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  if (v <= 0) return null;
+  return v;
+}
+
+function rulesWithoutRaceAborts(existing: unknown): Array<Record<string, unknown>> | null {
+  if (!Array.isArray(existing)) return null;
+  const kept = (existing as unknown[]).filter((r): r is Record<string, unknown> => {
+    if (r == null || typeof r !== 'object') return false;
+    const x = r as Record<string, unknown>;
+    return !(x.kind === 'abort' && x.metric === 'pace');
+  });
+  return kept.length === existing.length ? null : kept;
+}
+
+/**
+ * ROW-CONTRACT-1 · THE ATOMICITY CHECK, AND IT LIVES IN THE DECIDER.
+ *
+ * Every return path of `raceRowWrite` goes through here. It projects the row as
+ * it would stand once the write lands and hands it to the contract checker; a
+ * write that would leave the prose naming one pace and the column carrying
+ * another comes back as a REFUSAL, not as a write the caller is trusted to
+ * validate afterwards.
+ *
+ * Placed here rather than at the call site on purpose, and the first version of
+ * this fix got that wrong. The check sat in the refresh loop, and switching it
+ * off left every assertion in the coherence gate passing — because they were
+ * reading the source for the string `CONTRACT_INCOHERENT` rather than
+ * exercising the behaviour. That is precisely the tamper-check any comment
+ * satisfies, which Rule 18 already caught once in this repo. Found by running
+ * the falsifier.
+ */
+function coherentOrRefused(
+  row: RaceRowContractView,
+  write: RaceRowWrite,
+): RaceRowWrite | { refused: string } {
+  const violations = raceRowContractViolations(applyWriteToRow(row, write));
+  if (violations.length === 0) return write;
+  return { refused: `CONTRACT_INCOHERENT · ${describeViolations(violations)}` };
+}
+
+export function raceRowWrite(args: {
+  row: RaceRowContractView;
+  outlook: RaceOutlook;
+}): RaceRowWrite | { refused: string } {
+  const { row, outlook } = args;
+  const pace = outlook.execution.paceSecPerMi;
+  if (pace == null || !Number.isFinite(pace) || pace <= 0) return { refused: 'OUTLOOK_UNAVAILABLE' };
+  const spec = row.spec ?? {};
+
+  // Whose number this is, from the owner's own verdict rather than a second
+  // reading of the goal. A target that IS the stated goal is the runner's;
+  // anything the runway bounded or the projection set is the coach's.
+  const voice: RaceTargetVoice = outlook.execution.source === 'stated_goal_within_range' ? 'runner' : 'coach';
+
+  if (row.type === 'race') {
+    const prevExec = (spec.race_execution ?? null) as { target_sec?: number } | null;
+    const fields = raceExecutionSpecFields(outlook, prevExec, {
+      rules: spec.rules,
+      distanceMi: row.distanceMi ?? outlook.race.distanceMi,
+    });
+    const notes = repriceRaceNote(row.notes, pace, voice);
+    const unchanged =
+      row.paceTargetSecPerMi === pace
+      && prevExec?.target_sec === outlook.execution.targetSec
+      && !('hr_cap_bpm' in spec)
+      && spec.race_hr != null
+      && notes == null
+      // B2 · a row whose target is right but whose pace abort is still priced
+      // off an abandoned anchor is NOT unchanged. Without this clause the
+      // repricing would never land on the rows that need it most — the ones
+      // where the target already settled and only the rule stayed behind.
+      && JSON.stringify(fields.rules ?? null) === JSON.stringify(spec.rules ?? null);
+    return coherentOrRefused(row, {
+      paceTargetSecPerMi: pace,
+      specDrops: [...RACE_SPEC_DROPS],
+      specFields: fields,
+      notes,
+      unchanged,
+    });
+  }
+
+  // A race-week tune-up. `tuneupPaceAnchor` reads the prescription the spec
+  // was built from — the authored label when the branch kept one, else the
+  // chip title the spec derived.
+  const prescription = (typeof spec.label === 'string' ? spec.label : null) ?? row.subLabel;
+  const anchor = tuneupPaceAnchor(prescription);
+  if (anchor !== 'race_pace') {
+    // Rule 11 · a named skip, not silence. This row's PACE belongs to
+    // `recompute-paces`, which prices training sessions off the runner's own
+    // anchors; imposing the race target on it is what produced a 7:23/mi
+    // headline over 6:41 reps.
+    //
+    // But the row must still be left COHERENT, and in production it already is
+    // not: rows written by the version of this path that treated every tune-up
+    // as a rehearsal are carrying the marathon target as their headline and a
+    // marathon HR band. So the headline is restored to the session's OWN pace,
+    // which is what `buildWorkoutSpec` returned for it (`paceTargetSPerMi:
+    // repPace`), and the race clothes are removed. Healing the rows this path
+    // broke is this path's job; a refresh that could only refuse them would
+    // leave every existing block wrong for the life of the block.
+    const headline = repPaceOrNone(spec.rep_pace_s_per_mi) ?? row.paceTargetSecPerMi;
+    if (headline == null) return { refused: 'TUNEUP_HAS_NO_PACE_OF_ITS_OWN' };
+    const strippedRules = rulesWithoutRaceAborts(spec.rules);
+    return coherentOrRefused(row, {
+      paceTargetSecPerMi: headline,
+      specDrops: [...TUNEUP_SPEC_DROPS],
+      specFields: strippedRules == null ? {} : { rules: strippedRules },
+      notes: null,
+      unchanged: headline === row.paceTargetSecPerMi
+        && strippedRules == null
+        && !TUNEUP_SPEC_DROPS.some((k) => spec[k] != null),
+    });
+  }
+
+  // A tune-up whose reps ARE at race pace. Both halves move, together — which
+  // is the whole of the rule: the headline the runner reads and the reps the
+  // watch paces cannot be two different numbers. It is still a training
+  // session, so it takes no race band and no mid-race abort.
+  const strippedRules = rulesWithoutRaceAborts(spec.rules);
+  const notes = repriceRaceNote(row.notes, pace, voice);
+  const unchanged = row.paceTargetSecPerMi === pace
+    && Number(spec.rep_pace_s_per_mi) === pace
+    && strippedRules == null
+    && notes == null
+    && !TUNEUP_SPEC_DROPS.some((k) => spec[k] != null);
+  return coherentOrRefused(row, {
+    paceTargetSecPerMi: pace,
+    specDrops: [...TUNEUP_SPEC_DROPS],
+    specFields: { rep_pace_s_per_mi: pace, ...(strippedRules == null ? {} : { rules: strippedRules }) },
+    notes,
+    unchanged,
+  });
+}
+
+/**
  * Refresh every unsealed race row of a plan. Runs inside the caller's
  * transaction when one is passed (recompute-paces hands its `tx`), else on
  * the pool. Never throws for a single row — each row reports its own action.
@@ -319,6 +587,7 @@ async function refreshRaceRowsCore(
 
   const rows = (await client.query<RaceRow>(
     `SELECT pw.id::text AS id, pw.date_iso::text AS date_iso, pw.type, pw.pace_target_s_per_mi, pw.distance_mi, pw.workout_spec,
+            pw.notes, pw.sub_label,
             EXISTS (
               SELECT 1 FROM runs r
                WHERE r.user_uuid = $2::uuid
@@ -379,35 +648,36 @@ async function refreshRaceRowsCore(
       result.refused++;
       continue;
     }
-    const prevExec = (row.workout_spec?.race_execution ?? null) as { target_sec?: number } | null;
-    // `racePaceAbortRule` refuses a non-positive distance itself, so nothing
-    // here needs to pre-empt it — one refusal, in the owner.
-    const fields = raceExecutionSpecFields(outlook, prevExec, {
-      rules: row.workout_spec?.rules,
-      distanceMi: row.distance_mi != null ? Number(row.distance_mi) : null,
-    });
-    const after = { paceSecPerMi: outlook.execution.paceSecPerMi };
-    const unchanged = before.paceSecPerMi === after.paceSecPerMi
-      && prevExec?.target_sec === outlook.execution.targetSec
-      && row.workout_spec != null && !('hr_cap_bpm' in row.workout_spec)
-      && row.workout_spec.race_hr != null
-      // B2 · a row whose target is right but whose pace abort is still priced
-      // off an abandoned anchor is NOT unchanged. Without this clause the
-      // repricing would never land on the rows that need it most — the ones
-      // where the target already settled and only the rule stayed behind.
-      && JSON.stringify(fields.rules ?? null) === JSON.stringify(row.workout_spec.rules ?? null);
-    if (unchanged) {
+    // ROW-CONTRACT-1 · ONE FUNCTION DECIDES THE WHOLE ROW. Everything below is
+    // a mechanical application of what it returned; nothing here composes a
+    // field of its own.
+    const write = raceRowWrite({ row: contractRowOf(row), outlook });
+    if ('refused' in write) {
+      // CONTRACT_INCOHERENT arrives here too: a write that would leave the row
+      // contradicting itself is refused WHOLE and the stale row stands,
+      // because a stale row is at least a plan somebody could run (Rule 11).
+      console.error(`[race-row-refresh] REFUSED · plan=${planId} row=${row.id} ${row.date_iso} · ${write.refused}`);
+      result.rows.push({ id: row.id, dateISO: row.date_iso, slug, action: 'refused', reason: write.refused, before, after: null, outlook: summary });
+      result.refused++;
+      continue;
+    }
+    const after = { paceSecPerMi: write.paceTargetSecPerMi };
+
+    if (write.unchanged) {
       result.rows.push({ id: row.id, dateISO: row.date_iso, slug, action: 'unchanged', before, after, outlook: summary });
       continue;
     }
     // Rule 6 · field-level merge. Everything the row already carries that this
-    // path does not own (rules, fuel_mi, strides, progression) survives.
+    // path does not own (fuel_mi, strides, progression) survives. The keys a
+    // refreshed row must NOT keep are named by `raceRowWrite`, not by this
+    // statement, so they live with the rest of the contract.
     await client.query(
       `UPDATE plan_workouts
           SET pace_target_s_per_mi = $2,
-              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - 'hr_cap_bpm') || $3::jsonb
+              workout_spec = (COALESCE(workout_spec, '{}'::jsonb) - $4::text[]) || $3::jsonb,
+              notes = COALESCE($5, notes)
         WHERE id = $1`,
-      [row.id, after.paceSecPerMi, JSON.stringify(fields)],
+      [row.id, after.paceSecPerMi, JSON.stringify(write.specFields), write.specDrops, write.notes],
     );
     result.rows.push({ id: row.id, dateISO: row.date_iso, slug, action: 'updated', before, after, outlook: summary });
     result.updated++;

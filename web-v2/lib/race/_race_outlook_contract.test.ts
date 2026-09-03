@@ -52,9 +52,11 @@ describe('RaceOutlook · the goal is never evidence', () => {
     const o = await outlookFor(null);
     expect(o.execution.source).toBe('expected_race_day');
     expect(o.execution.targetSec).toBe(roundRaceTargetSec(o.expectedRaceDay.expectedSec!));
-    expect(o.coachSet).not.toBeNull();
-    expect(o.coachSet!.aSec).toBeLessThan(o.coachSet!.bSec);
-    expect(o.coachSet!.bSec).toBeLessThan(o.coachSet!.cSec);
+    // ROW-CONTRACT-1 (2026-09-02) · the outlook's own A/B/C ladder is GONE, and
+    // this assertion is now that it stays gone. It was a second producer of a
+    // quantity `lib/race/coach-goal.ts` already owns, 40 seconds apart from it
+    // on the owner's Santa Monica row, and read by nothing.
+    expect('coachSet' in (o as unknown as Record<string, unknown>)).toBe(false);
   });
 });
 
