@@ -161,8 +161,8 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
   // PLANVERSION-1 · same construction as the Today route's own
   // `planVersion` — see that file's doc comment for why `id` alone is not
   // enough. Kept as one local computation here rather than importing the
-  // route's, since this loader has no dependency on `app/api/**` and
-  // shouldn't grow one for a two-field string join.
+  // route's, since this loader has no dependency on the `app/api` route
+  // tree and shouldn't grow one for a two-field string join.
   const planVersion = `${plan.id}:${plan.last_adapted_at ?? 'none'}`;
 
   const rows = (await pool.query(

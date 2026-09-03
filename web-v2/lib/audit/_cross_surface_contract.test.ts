@@ -231,41 +231,19 @@ interface KnownDisagreement {
   maxOccurrences?: number;
 }
 
+// CLOSED 2026-09-03 · HR-TARGET-ROW-IS-STALE and
+// AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD. Both entries described
+// defects specific to the plan authored 2026-08-31, which predated both
+// underlying fixes (B7 9c5d9ce0, B2's provenance_only stamp). The live
+// rebuild that night (pln_7636bcc0a201bf2d, 2026-09-03) authored a fresh
+// plan after both fixes landed, and this file's own live checks confirmed
+// each entry's stated `closesWhen` condition is now met — "all 7 candidate
+// sites now AGREE" and "the blob now carries authority:'provenance_only'" —
+// rather than assumed from the rebuild alone. Deleted per Rule 18 rather
+// than widened or left in place; their two standalone `it(...)` tests and
+// the exemption-array arguments on the Q4/Q5 `contract(...)` calls that
+// named them are removed with them.
 const KNOWN_DISAGREEMENTS: readonly KnownDisagreement[] = [
-  {
-    id: 'HR-TARGET-ROW-IS-STALE',
-    quantity: 'prescribed HR target on a threshold-priced quality row',
-    canonicalPath: "zones.prescribedHrTargetBpm({intensity:'threshold', lthr})",
-    divergentPath: "plan_workouts.workout_spec.hr_target_bpm (persisted 2026-08-31)",
-    // The persisted number is the MARATHON row of the same Friel table, which
-    // is what `spec-builder`'s deleted `round(lthr * 0.92)` produced. The fix
-    // landed in code on 2026-09-02 (commit 9c5d9ce0); the runner's block was
-    // authored 2026-08-31 and no writer rewrites `hr_target_bpm` on an
-    // existing row.
-    shape: (canonical, persisted, ctx) =>
-      persisted !== canonical && persisted === ctx.marathonIntensityTarget,
-    observed: 'canonical 164 bpm (Friel Z4 centre, 0.975 × LTHR 168) · persisted 155 bpm (Friel Z3 centre, 0.925 × 168), on rows 2026-09-08 and 2026-09-22, each beside a 430 s/mi threshold pace and a 164 bpm pass rule',
-    reason:
-      'A row-level data repair, not a code change. B7 (9c5d9ce0) gave the quantity one owner and every future authoring gets it right; nothing rewrites an already-authored spec. The wrist reads the row directly, so the watch ships the 155 too.',
-    owner: 'lib/plan/recompute-paces.ts (or a one-off backfill) — the only path that rewrites unsealed future rows',
-    closesWhen: 'every future quality row carries prescribedHrTargetBpm of the intensity its pace was prescribed at',
-    // 4 future rows carried the stale target on 2026-09-02. Shrinks as dates
-    // pass and as any re-author rewrites them; a fifth is a new defect.
-    maxOccurrences: 4,
-  },
-  {
-    id: 'AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD',
-    quantity: 'the prescribed race target for the goal race',
-    canonicalPath: 'race-outlook.execution.paceSecPerMi / .targetSec (and the CIM plan row written from it)',
-    divergentPath: 'training_plans.authored_state.prescribed_race_pace.{pace_s_per_mi,target_sec}',
-    shape: (canonical, seed) => seed !== canonical,
-    observed:
-      'row 443 s/mi / 11610 s (3:13:30) · authored_state 436 s/mi / 11430 s (3:10:30) — 7 s/mi and 180 s apart, with the blob\'s own ceiling_vdot 47.1 stale against a live threshold VDOT of 47.8, and NO `authority: "provenance_only"` key, because the stamp B2 added is written at authoring and this plan predates it',
-    reason:
-      'B2 made `authored_state.prescribed_race_pace` provenance-only and `_race_target_ownership.test.ts` proves in SOURCE that no live module reads its `pace_s_per_mi` back as a value. That gate is real. What it cannot see is that the production blob is still a second, un-stamped, materially different record of the same quantity sitting on the runner\'s active plan.',
-    owner: 'lib/plan/generate.ts — the stamp lands on the next authoring; nothing rewrites the existing blob',
-    closesWhen: "authored_state.prescribed_race_pace carries authority:'provenance_only' and its pace_s_per_mi equals the race row's",
-  },
   {
     id: 'WATCH-CEILING-IS-THE-BAND-MIDPOINT',
     quantity: "the pace ceiling for an easy or long session — what 'do not go faster than' means",
@@ -760,7 +738,7 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
     results.push(contract('prescribed HR target · threshold intensity (bpm) · row-vs-wrist', [
       ...targetRows.map((r) => ({ path: `plan_workouts ${r.d} .workout_spec.hr_target_bpm`, value: Number(r.spec!.hr_target_bpm) })),
       { path: `watch buildWatchToday(${nextThresholdDay}) work phase hrTargetBpm`, value: watchThresholdHr },
-    ], 2, ['HR-TARGET-ROW-IS-STALE']));
+    ], 2));
 
     // ── Q5 · THE PRESCRIBED RACE TARGET ────────────────────────────────────
     for (const r of raceRows) {
@@ -778,7 +756,7 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
         { path: `plan_workouts ${r.d} .pace_target_s_per_mi`, value: targetPace },
         { path: `plan_workouts ${r.d} .workout_spec.race_execution.target_pace_s_per_mi`, value: execPace == null ? null : Number(execPace) },
         { path: `plan_workouts ${r.d} .workout_spec band centre`, value: bandLo != null && bandHi != null ? Math.round((Number(bandLo) + Number(bandHi)) / 2) : null },
-      ], 3, ['AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD']));
+      ], 3));
       if (outlookForRow) {
         // 2026-09-03 · the registered divergence is GONE: the scheduled
         // race-row refresh repriced this row with the deployed EXECTARGET-1
@@ -930,73 +908,6 @@ describe.skipIf(!RO)('cross-surface contract · registered disagreements (LIVE)'
     }
     console.warn(`[cross-surface] KNOWN ${k.id}: ${seen}/${ofHowMany} sites diverge (cap ${cap ?? 'n/a'})`);
   }
-
-  it('HR-TARGET-ROW-IS-STALE · the persisted target is the marathon row of the threshold table', async () => {
-    process.env.DATABASE_URL = RO;
-    const { pool } = await import('@/lib/db/pool');
-    expect((await pool.query('SELECT current_user')).rows[0].current_user).toBe('faff_readonly');
-    const { runnerToday } = await import('@/lib/runtime/runner-tz');
-    const { loadActivePlanStrict } = await import('@/lib/plan/lookup');
-    const { resolveThresholdHr } = await import('@/lib/training/lthr');
-    const { prescribedHrTargetBpm } = await import('@/lib/training/zones');
-    const today = await runnerToday(REFERENCE_USER);
-    const plan = (await loadActivePlanStrict(REFERENCE_USER))!;
-    const lthr = (await resolveThresholdHr(REFERENCE_USER))!.bpm;
-    const rows = (await pool.query(
-      `SELECT date_iso::text AS d, workout_spec AS spec FROM plan_workouts
-        WHERE plan_id = $1 AND date_iso >= $2
-          AND workout_spec ? 'hr_target_bpm'
-          AND workout_spec->>'hr_target_bpm' IS NOT NULL
-        ORDER BY date_iso`, [plan.id, today],
-    )).rows;
-    expect(rows.length, 'no future row carries an hr_target_bpm — this entry is unreachable, not clean')
-      .toBeGreaterThan(0);
-    const canonical = prescribedHrTargetBpm({ intensity: 'threshold', lthr })!.bpm;
-    const marathonIntensityTarget = prescribedHrTargetBpm({ intensity: 'marathon', lthr })!.bpm;
-    const k = entry('HR-TARGET-ROW-IS-STALE');
-    let seen = 0; let candidates = 0;
-    for (const r of rows) {
-      // Only rows whose PACE was prescribed at threshold. An `@ MP` block is
-      // priced at marathon pace and correctly carries no HR target at all.
-      if (r.spec?.marathon_range_s_per_mi != null) continue;
-      candidates += 1;
-      if (Number(r.spec.hr_target_bpm) === canonical) continue;
-      seen += 1;
-      judge(k, canonical, Number(r.spec.hr_target_bpm), {
-        marathonIntensityTarget, lthr, rowPaceSecPerMi: Number(r.spec.tempo_pace_s_per_mi ?? 0),
-      });
-    }
-    judgeCount(k, seen, candidates);
-  }, 300_000);
-
-  it('AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD · the plan holds a second race target', async () => {
-    process.env.DATABASE_URL = RO;
-    const { pool } = await import('@/lib/db/pool');
-    const { loadActivePlanStrict } = await import('@/lib/plan/lookup');
-    const { runnerToday } = await import('@/lib/runtime/runner-tz');
-    const today = await runnerToday(REFERENCE_USER);
-    const plan = (await loadActivePlanStrict(REFERENCE_USER))!;
-    const st = (await pool.query(`SELECT authored_state FROM training_plans WHERE id = $1`, [plan.id]))
-      .rows[0]?.authored_state as Record<string, any> | null;
-    const seed = st?.prescribed_race_pace as Record<string, any> | undefined;
-    expect(seed, 'the plan carries no prescribed_race_pace blob — this entry is unreachable, not clean').toBeTruthy();
-    const row = (await pool.query(
-      `SELECT pace_target_s_per_mi AS pace FROM plan_workouts
-        WHERE plan_id = $1 AND type = 'race' AND date_iso >= $2 AND distance_mi > 20
-        ORDER BY date_iso LIMIT 1`, [plan.id, today],
-    )).rows[0];
-    expect(row, 'no future marathon race row to compare the seed against').toBeTruthy();
-    // A blob stamped provenance-only is not a second record even if its number
-    // is old — that is exactly what the stamp says. Unstamped, it is.
-    if (seed!.authority === 'provenance_only') {
-      throw new Error(
-        `STALE EXEMPTION — AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD: the blob now carries ` +
-        `authority:'provenance_only'. Delete the registry entry.`,
-      );
-    }
-    judge(entry('AUTHORED-SEED-IS-STILL-AN-UNSTAMPED-SECOND-RECORD'),
-      Number(row.pace), Number(seed!.pace_s_per_mi), { seedTargetSec: Number(seed!.target_sec) });
-  }, 300_000);
 
   it('WATCH-CEILING-IS-THE-BAND-MIDPOINT · the wrist calls the band centre a ceiling', async () => {
     process.env.DATABASE_URL = RO;
