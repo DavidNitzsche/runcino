@@ -119,6 +119,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
       startTimeLocal,
       fuel,
       fuelIsDefault,
+      // CEFFORT-1 · the character the race-pace brain priced this day at.
+      // Read, never re-derived: `race-outlook.ts` owns whether a row is a race
+      // or a controlled C effort, and this route consumes that answer.
+      effortCharacter: effective.outlook?.execution.effortCharacter === 'controlled_c_effort'
+        ? 'controlled' : 'race',
     });
     if (!plan) {
       return NextResponse.json({ error: 'plan composition failed' }, { status: 500 });

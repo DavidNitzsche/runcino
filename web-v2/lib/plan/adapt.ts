@@ -111,6 +111,11 @@ import { paceTagOf } from '@/lib/prescription/trajectory';
 import { dosingBreachIfWritten } from './dose-guard';
 import type { AdaptationBand } from '@/lib/adaptation/adaptation-model';
 import { COMPLETION_LADDER } from '@/lib/training/execution-semantics';
+import { runDaySql, runDistanceMiSql } from '@/lib/runs/run-shape';
+// DESIGNEDWEEKEND-1 (2026-09-02) · his point 8. The grant shape and the
+// premise check live in the leaf that owns the decision; this file reads them.
+import { reassessDesignedWeekend } from './designed-race-weekend';
+import { returnToLongDays, longRunFactorAfterRace, type PlacementRecord } from './combined-stress';
 
 /**
  * 2026-06-03 · Rule 15 · seal guard for adapter writes.
@@ -222,6 +227,17 @@ export type AdaptationTriggerKind =
                           // §"Freshness window — when does a VDOT signal
                           // expire?" (a stale anchor is a floor, not a pace
                           // source).
+  | 'designed_weekend_overrun' // DESIGNEDWEEKEND-1 (2026-09-02) · ADVISORY
+                          // ONLY. The runner raced a controlled tune-up harder
+                          // than the target it carried, and a designed
+                          // race-plus-long-run weekend was granted on the
+                          // premise that he would not. The premise is void, so
+                          // the next day is NAMED rather than silently assumed
+                          // to be the controlled version — and it is named in a
+                          // `note`, which changes no plan row. Automatic
+                          // adaptation stays disabled (his ruling, 2026-09-02).
+                          // Cite: Research/00b §"Recovery by Effort" ·
+                          // lib/plan/designed-race-weekend.ts
   | 'training_lead';      // 2026-08-25 · the UPWARD training-evidence path ·
                           // sustained quality work reading above the last race
                           // anchor by the doctrinal soft-lead quantum. The
@@ -1257,6 +1273,11 @@ export const PROPOSE_FIRST_TRIGGERS: ReadonlySet<AdaptationTriggerKind> =
     'field_test_due',
     'volume_overshoot',
     'missed_key_workout',
+    // DESIGNEDWEEKEND-1 is deliberately ABSENT. Propose-first is for actions
+    // that would otherwise change the plan; this one emits a `note`, which
+    // changes no plan row at all, so routing it through the proposal queue
+    // would create a proposal path with nothing behind it — the dormant
+    // pseudo-authority the owner ruled out on 2026-09-02.
   ]);
 
 /**
@@ -1351,6 +1372,15 @@ export async function detectAdaptations(userId: string): Promise<AdaptationResul
   // injury or niggle detector here any more, and there is no place for one.
   // The runner decides how ready he is; this function reads what was
   // scheduled and what was run, and nothing else.
+
+  // 3b. DESIGNED_WEEKEND_OVERRUN (DESIGNEDWEEKEND-1, 2026-09-02) · the runner
+  //     raced a controlled tune-up harder than the target it carried, and the
+  //     long run the next morning was granted on the premise that he would not.
+  //     Runs BEFORE the volume overshoot so the two cannot both take work off
+  //     the same day: this one is specific (one row, one premise, one citation)
+  //     and the overshoot detector's own 7-day shave cooldown then holds it off.
+  const weekendOverrun = await detectDesignedWeekendOverrun(userId);
+  if (weekendOverrun) triggers.push(weekendOverrun);
 
   // 4. Volume overshoot
   const overshoot = await detectVolumeOvershoot(userId);
@@ -4182,6 +4212,165 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   return null;
 }
 
+/**
+ * DESIGNEDWEEKEND-1 (2026-09-02) · HIS POINT 8, DETECTED.
+ *
+ *   "If he races the 10K harder than prescribed, the system recognises that
+ *    and reassesses the following day rather than blindly preserving the 18
+ *    miles."
+ *
+ * A designed race-plus-long-run weekend is granted on a stated PREMISE: that
+ * the race is run as the controlled C effort its row prescribes. This reads
+ * what he actually ran against that premise and, when it is void, RECORDS the
+ * long run doctrine would allow at the effort he actually gave.
+ *
+ * IT MUTATES NOTHING. His ruling, 2026-09-02: "Completed runs may update
+ * evidence and generate an advisory comparison, but they must not
+ * automatically mutate my live plan." The 18 miles stay on the plan; what
+ * changes is that the next day is no longer silently assumed to have followed
+ * a controlled race. The evidence it reads is what he RAN — a clock and a
+ * distance. No readiness, no sleep, no HRV, no self-report; those were removed
+ * from training decisions in the same pass and this must not reach for them.
+ *
+ * WHY IT RUNS ON THE PLAN'S OWN RECORD. The grant sits on
+ * `authored_state.placement_compromises`, written by the composer, carrying
+ * the prescribed pace it was issued against and the evidence that licensed it.
+ * Re-deriving any of that here would be a second answer to a question the
+ * composer owns (Constitution: one question, one owner).
+ *
+ * PER-FINDING CONTEXT FILTERS (CLAUDE.md 2026-05-19 round 4), each of them
+ * this finding's own rather than inherited:
+ *   · Only a grant whose long run is still in the FUTURE. A long run already
+ *     run is not reassessable, and proposing a cut to it would be noise.
+ *   · Only once. A `plan_adapt_shave` inside 24h means this already fired, or
+ *     something else has already taken work off that day.
+ *
+ * WHAT THIS CANNOT FAIL ON (Rule 22):
+ *   · A race run harder in EFFORT but not in TIME. `reassessDesignedWeekend`
+ *     reads the clock, and heat or a hard course can eat every second the
+ *     extra effort bought. HR would be the better instrument and is not read
+ *     here. NAMED GAP.
+ *   · A block authored before DESIGNEDWEEKEND-1. It carries no grant, so there
+ *     is no premise to void and nothing to reassess. The owner's live block is
+ *     one of these until it is next authored.
+ *   · A race the runner did not upload. `reassessDesignedWeekend` returns
+ *     CANNOT_TELL and this fires nothing, which is the correct answer and not
+ *     the same as "he ran it as prescribed" (Rule 11).
+ *   · Whether he then RUNS the shorter long run. This proposes; he decides.
+ */
+async function detectDesignedWeekendOverrun(userId: string): Promise<AdaptationTrigger | null> {
+  const today = await runnerToday(userId);
+  // Rule 11 · `rowsOrNull`, not a swallowed empty. A read that FAILED and a
+  // runner with no active plan are different facts, and neither may become
+  // "he has no grant" by accident.
+  const planRows = await rowsOrNull<{ id: string; pc: unknown }>(
+    'plan/adapt · designedWeekendOverrun · grant',
+    pool.query<{ id: string; pc: unknown }>(
+      `SELECT id, authored_state->'placement_compromises' AS pc
+         FROM training_plans
+        WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+        ORDER BY authored_iso DESC LIMIT 1`,
+      [userId],
+    ),
+  );
+  if (planRows == null) return null;                       // the read failed · say nothing
+  const plan = planRows[0];
+  const records = Array.isArray(plan?.pc) ? plan.pc as PlacementRecord[] : [];
+  const live = records.filter((r) =>
+    r?.code === 'ACCEPT_AS_HARD_WORKOUT'
+    && r.designedWeekend != null
+    && typeof r.dateISO === 'string'
+    && r.dateISO >= today                     // the long run has not happened
+    && typeof r.raceDateISO === 'string'
+    && r.raceDateISO < r.dateISO);
+  if (live.length === 0) return null;
+
+  // Cooldown · one shave per rolling day from any source, the same posture
+  // `detectVolumeOvershoot` takes and for the same reason: a detector that
+  // reads a completed day re-fires every morning until the day rolls out.
+  const cooled = await rowsOrNull<{ one: number }>(
+    'plan/adapt · designedWeekendOverrun · cooldown',
+    pool.query<{ one: number }>(
+      `SELECT 1 AS one FROM coach_intents
+        WHERE COALESCE(user_uuid, user_id) = $1::uuid
+          AND reason = 'plan_adapt_shave'
+          AND ts >= NOW() - INTERVAL '1 day'
+        LIMIT 1`,
+      [userId],
+    ),
+  );
+  // A cooldown check that FAILED is not a clear cooldown. Refuse to fire
+  // rather than risk shaving the same day twice (Rule 11).
+  if (cooled == null || cooled.length > 0) return null;
+
+  for (const rec of live) {
+    const grant = rec.designedWeekend!;
+    // What he actually covered on race day. `runs` is the right source here
+    // (CLAUDE.md §Race-data source-of-truth): this is not a race RESULT being
+    // displayed as a performance, it is the training day's distance and time.
+    const runRows = await rowsOrNull<{ mi: string | null; secs: string | null }>(
+      'plan/adapt · designedWeekendOverrun · race day',
+      pool.query<{ mi: string | null; secs: string | null }>(
+        `SELECT SUM(${runDistanceMiSql('r')})::text AS mi,
+                SUM(COALESCE((r.data->>'movingSec')::numeric, (r.data->>'elapsedSec')::numeric, 0))::text AS secs
+           FROM runs r
+          WHERE r.user_uuid = $1::uuid
+            AND NOT (r.data ? 'mergedIntoId')
+            AND (${runDaySql('r')})::date = $2::date`,
+        [userId, grant.raceDateISO],
+      ),
+    );
+    if (runRows == null) continue;                         // could not look · not "he held"
+    const run = runRows[0];
+    const mi = Number(run?.mi ?? 0);
+    const secs = Number(run?.secs ?? 0);
+    // THREE STATES, BRANCHED, not a ternary collapsing them (Rule 11). Each
+    // reaches `reassessDesignedWeekend` as CANNOT_TELL by name — never as
+    // "the premise held", which is what a silent zero would have meant.
+    let actualRacePaceSec: number | null = null;
+    if (run == null || !(mi > 0)) {
+      // Race day is not uploaded yet.
+    } else if (!(secs > 0)) {
+      // A row with distance and no elapsed time cannot price an effort.
+    } else {
+      actualRacePaceSec = secs / mi;
+    }
+
+    const verdict = reassessDesignedWeekend({ grant, actualRacePaceSec });
+    if (verdict.verdict !== 'PREMISE_VOID') continue;
+
+    // The long run doctrine WOULD allow at the grade the execution earned, on
+    // the same continuous curve the composer would have applied. Not a new
+    // model, not a new constant, and not applied to anything: it is the
+    // comparison the advisory names.
+    const returnDays = returnToLongDays(grant.raceMi, verdict.racedGrade);
+    const allowedMi = Math.max(
+      0.5,
+      Math.round(longRunFactorAfterRace(grant.gapDays, returnDays) * grant.longMi * 2) / 2,
+    );
+    if (!(allowedMi < grant.longMi)) continue;
+
+    return {
+      kind: 'designed_weekend_overrun',
+      severity: 'warn',
+      reason: verdict.message,
+      evidence: {
+        race_slug: grant.raceSlug,
+        race_date: grant.raceDateISO,
+        long_date: grant.longDateISO,
+        granted_long_mi: grant.longMi,
+        allowed_long_mi: allowedMi,
+        prescribed_pace_sec: grant.prescribedRacePaceSec,
+        actual_pace_sec: Math.round(actualRacePaceSec ?? 0),
+        overrun_pct: Math.round(verdict.overrunPct * 1000) / 1000,
+        raced_grade: verdict.racedGrade,
+        citation: verdict.citation,
+      },
+    };
+  }
+  return null;
+}
+
 // ── Action builders ─────────────────────────────────────────────────────
 
 async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<AdaptationAction[]> {
@@ -4593,6 +4782,36 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
         workoutIds: next7.map((r: any) => r.id),
         shaveFraction: 0.17,
         why: `Volume ${Math.round(t.evidence.last7d_mi)}mi exceeded ${baselineWhy}. Shave next 7 days 17%.`,
+      }];
+    }
+    case 'designed_weekend_overrun': {
+      /* DESIGNEDWEEKEND-1 · ADVISORY, AND ADVISORY BY CONSTRUCTION.
+       *
+       * The owner's ruling, 2026-09-02: "Upward and downward automatic
+       * adaptation should remain disabled. Completed runs may update evidence
+       * and generate an advisory comparison, but they must not automatically
+       * mutate my live plan." And, on dormant machinery: "Remove their
+       * decision authority, not merely their UI."
+       *
+       * So this emits a `note` and nothing else. A note writes a
+       * `coach_intents` row and changes no plan row — `LOAD_REDUCING_ACTION_
+       * KINDS` states exactly that, and it is why `note` is absent from it.
+       * The first cut of this case emitted a `shave` on the long-run row; that
+       * path is DELETED rather than left switched off, because a dormant
+       * mutation path is the thing he named.
+       *
+       * What the runner gets is the comparison: he ran the tune-up harder than
+       * it was prescribed, the weekend was designed on the premise that he
+       * would not, and here is the distance doctrine would allow at the effort
+       * he actually gave. The 18 miles stay on the plan. He decides.
+       */
+      const granted = Number(t.evidence.granted_long_mi ?? 0);
+      const allowed = Number(t.evidence.allowed_long_mi ?? 0);
+      if (!(granted > 0) || !(allowed > 0) || allowed >= granted) return [];
+      return [{
+        kind: 'note',
+        why: `${t.reason} ${allowed} miles would be the version doctrine allows off that effort. The ${granted} on your plan is unchanged.`,
+        sourceTrigger: 'designed_weekend_overrun',
       }];
     }
     case 'training_lead': {

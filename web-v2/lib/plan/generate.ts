@@ -21,7 +21,7 @@
  *   Cite: Research/08-pacing-and-race-week.md §taper
  */
 import { pool } from '@/lib/db/pool';
-import { logReadFailure, rowOrNull } from '@/lib/db/read';
+import { logReadFailure, rowOrNull, rowsOrNull } from '@/lib/db/read';
 import type { PoolClient } from 'pg';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { randomBytes } from 'crypto';
@@ -143,6 +143,11 @@ import {
   effectiveRecoveryPriority as effectiveRecoveryPriorityImpl,
   type PlacementRecord,
 } from './combined-stress';
+import {
+  resolveDesignedRaceWeekend,
+  EXTENDED_RECOVERY_DAYS_AFTER_PAIR,
+  type DesignedWeekendEvidence,
+} from './designed-race-weekend';
 
 export type DOW = 0 | 1 | 2 | 3 | 4 | 5 | 6; // Sun=0..Sat=6
 export type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -1709,6 +1714,98 @@ async function recentPeakLongMi(
     }
   }
   return { literalMi, representativeMi };
+}
+
+/**
+ * DESIGNEDWEEKEND-1 (2026-09-02) · HAS THIS RUNNER EVER ABSORBED A COMBINED
+ * LOAD LIKE THE ONE A RACE-PLUS-LONG-RUN WEEKEND PROPOSES?
+ *
+ * The largest total across TWO CONSECUTIVE CALENDAR DAYS, both of them
+ * representative (Rule 8: the filter is applied to BOTH days, since a pair
+ * half of which sits in a taper is not a pair he trained).
+ *
+ * ── WHY THE WINDOW IS A YEAR AND NOT TWENTY-EIGHT DAYS ─────────────────────
+ *
+ * Because this is the only one of the four gates that asks "HAS HE EVER", and
+ * the other three ask "IS HE THERE NOW". `resolveDesignedRaceWeekend` requires
+ * all four: the long run must be inside his CURRENT demonstrated longest
+ * (`recentLongMi`, 28 representative days), the pair must be inside his
+ * CURRENT sustained week (`rampBaseEvidence.sustainedMi`, 16 weeks), and his
+ * declared level must say he trains for this. Those carry the freshness. This
+ * one carries the ceiling, and a weekend he absorbed in April is evidence that
+ * he can absorb one, which does not expire the way a pace anchor does.
+ *
+ * Measured on the owner 2026-09-02, and the split is not academic: over 16
+ * weeks his best two-day total is 21.7 mi and over a year it is 29.4. The
+ * proposed weekend is 24.21. A 16-week window would refuse the exact weekend
+ * he ruled acceptable, on evidence that exists.
+ *
+ * 365 is not a new constant: it is the bound `eligibleDaysBack` already
+ * defaults to, spent explicitly here rather than inherited silently.
+ *
+ * ── A RACE DAY INSIDE THE WINDOW COUNTS, ON PURPOSE ────────────────────────
+ *
+ * The thing being proposed HAS a race in it. A weekend of a race plus a long
+ * run is the closest evidence available for a weekend of a race plus a long
+ * run, and excluding it would leave the reader measuring something else. What
+ * IS excluded is the taper and post-race recovery around the runner's last
+ * race, through the same `prescribedSpans` every other habit reader here uses
+ * (one definition of which days count, Rule 8).
+ *
+ * NAMED GAP (Rule 22): `prescribedSpans` carries only the MOST RECENT race, so
+ * a taper eighteen months of races ago is not excluded from a 365-day window.
+ * That is the span assembly's limitation, not this reader's, and it biases
+ * toward including a taper day rather than excluding a real one — which for a
+ * MAXIMUM (a taper day is small) cannot raise the answer.
+ *
+ * Returns null when the read failed or there is nothing to read. NEVER zero:
+ * "he has never done this" and "I could not look" are different facts and the
+ * resolver refuses on them by different names (Rule 11).
+ */
+export const DEMONSTRATED_PAIR_LOOKBACK_DAYS = 365;
+
+async function demonstratedPairMi(
+  userId: string,
+  todayISO: string,
+  spans: readonly PrescribedSpan[],
+): Promise<{ mi: number; fromISO: string } | null> {
+  const days = eligibleDaysBack(
+    todayISO,
+    DEMONSTRATED_PAIR_LOOKBACK_DAYS,
+    spans,
+    DEMONSTRATED_PAIR_LOOKBACK_DAYS,
+  );
+  if (days.length < 2) return null;
+  const r = await rowsOrNull<{ d: string; mi: string | null }>(
+    'plan/generate · demonstratedPairMi',
+    pool.query<{ d: string; mi: string | null }>(
+      `SELECT (${runDaySql('r')})::date::text AS d, SUM(${runDistanceMiSql('r')})::text AS mi
+         FROM runs r
+        WHERE r.user_uuid = $1::uuid
+          AND NOT (r.data ? 'mergedIntoId')
+          AND (${runDaySql('r')})::date = ANY($2::date[])
+        GROUP BY 1`,
+      [userId, days],
+    ),
+  );
+  if (r == null) return null;
+  const byDay = new Map<string, number>();
+  for (const row of r) {
+    const v = Number(row.mi ?? 0);
+    if (Number.isFinite(v) && v > 0) byDay.set(row.d, v);
+  }
+  if (byDay.size === 0) return null;
+  // Both days must be eligible. A pair whose second half is a taper day is not
+  // a pair this runner trained.
+  const eligible = new Set(days);
+  let best: { mi: number; fromISO: string } | null = null;
+  for (const [d, v] of byDay) {
+    const next = addDays(d, 1);
+    if (!eligible.has(next)) continue;
+    const total = Math.round((v + (byDay.get(next) ?? 0)) * 10) / 10;
+    if (best == null || total > best.mi) best = { mi: total, fromISO: d };
+  }
+  return best;
 }
 
 /**
@@ -7614,6 +7711,39 @@ export function guardGoalRaceRunUp(
  * `raceGoalPaceSec` is already deleted at each of those sites for the same
  * reason. This is the field that was missed.
  */
+/**
+ * DESIGNEDWEEKEND-1 (2026-09-02) · THE COMPOSER'S AUTHORED PURPOSE for a
+ * race-plus-long-run weekend.
+ *
+ * `Research/00b` §"Hard/Easy Alternation" licenses two hard days back to back
+ * only where "the plan explicitly calls for a 'stress block'". This sentence is
+ * that explicit call, written once, on the record, in coach voice. It states
+ * the PURPOSE; the evidence half of the rationale is composed per runner by
+ * `resolveDesignedRaceWeekend` from that runner's own numbers, so no two
+ * runners get the same sentence and no runner gets one on no evidence.
+ *
+ * It is a constant rather than a per-race string because the purpose does not
+ * vary by race: a controlled tune-up in front of a long run is one stimulus
+ * shape with one reason. What varies is whether the runner has earned it.
+ */
+export const DESIGNED_WEEKEND_PURPOSE =
+  'The race is the quality session and the long run the next morning is the point of it. ' +
+  'Racing controlled, then running long on tired legs, is marathon-specific work you cannot get from either day alone.';
+
+/**
+ * The evidence a caller that supplied none has. Every field null, so every
+ * gate that reads one refuses BY NAME (Rule 11) instead of comparing against a
+ * zero somebody could mistake for a measurement.
+ */
+const NO_DESIGNED_WEEKEND_EVIDENCE: DesignedWeekendEvidence = {
+  demonstratedPairMi: null,
+  demonstratedPairFromISO: null,
+  demonstratedLongMi: null,
+  sustainedWeeklyMi: null,
+  declaredLevel: null,
+  declaredDaysPerWeek: null,
+};
+
 function clearWorkShape(d: DayPlan): void {
   delete d.workShape;
   delete d.progressionLever;
@@ -7692,6 +7822,15 @@ export function embedMidBlockRaces(
      * what every existing unit caller wants.
      */
     compromises?: PlacementRecord[];
+    /**
+     * DESIGNEDWEEKEND-1 (2026-09-02) · the athlete-specific evidence the
+     * race-plus-long-run exception is gated on. OMITTED REFUSES: with no
+     * evidence there is no exception, and the long run is cut back onto
+     * doctrine's own return-to-long curve. See
+     * `lib/plan/designed-race-weekend.ts` for why this is a required input
+     * rather than an optional enhancement.
+     */
+    designedWeekendEvidence?: DesignedWeekendEvidence;
   },
 ): EmbeddedRaceSummary[] {
   const compromises: PlacementRecord[] = opts.compromises ?? [];
@@ -8139,6 +8278,162 @@ export function embedMidBlockRaces(
      */
     {
       const effPriority = effectiveRecoveryPriorityImpl({ priority: race.priority, plannedRole: role });
+      /**
+       * DESIGNEDWEEKEND-1 (2026-09-02) · WHETHER THE PAIRING IS AVAILABLE TO
+       * THIS RUNNER, NOT TO EVERY RUNNER.
+       *
+       * The C branch below used to accept unconditionally. That is what the
+       * owner's ruling forbids: "this must be a deliberate athlete-specific
+       * decision, not a universally acceptable default." So the C path now
+       * ASKS `resolveDesignedRaceWeekend`, and a refusal falls through to the
+       * same doctrine curve an A or B effort takes, at C's own (shorter)
+       * window. Nothing is weakened for him and nothing is granted to anybody
+       * on no evidence.
+       */
+      const designed = (() => {
+        if (raceConsumesLongRunSlot(effPriority)) return null;
+        // The window is doctrine's own return-to-long window at THIS effort,
+        // and it is deliberately the same range `designedWeekendFindings`
+        // walks: a long run the validator will ask about must be a long run the
+        // composer decided about, or the validator refuses a block for a
+        // question nobody was asked (Rule 11, and the reason this is not a
+        // hardcoded 2).
+        const searchDays = Math.ceil(returnToLongDays(race.distanceMi, effPriority));
+        const nl = (() => {
+          for (let j = 1; j < searchDays; j++) {
+            const d = dayAt(o + j);
+            if (d && d.isLong && d.type !== 'race' && d.distanceMi > 0) return { d, j };
+          }
+          return null;
+        })();
+        if (!nl) return null;
+        const longDateISO = dowDateInWeek(weeks[Math.floor((o + nl.j) / 7)].startISO, nl.d.dow);
+        // Consecutive non-quality days AFTER the long run. Counted, not
+        // assumed: doctrine's stress-block licence is conditional on the
+        // recovery that follows, so it is measured on the days that exist.
+        const countRecovery = (): number => {
+          let n = 0;
+          for (let k = 1; k <= EXTENDED_RECOVERY_DAYS_AFTER_PAIR; k++) {
+            const d = dayAt(o + nl.j + k);
+            if (!d) break;                          // outside the plan · cannot claim it
+            if (d.type === 'race' || (d.isQuality && d.type !== 'shakeout')) break;
+            n++;
+          }
+          return n;
+        };
+        const ask = (recoveryDaysAfter: number) => resolveDesignedRaceWeekend({
+          raceSlug: race.slug,
+          raceName: race.name,
+          raceDateISO: race.date,
+          raceMi: race.distanceMi,
+          effectivePriority: effPriority,
+          prescribedRacePaceSec: slot.raceGoalPaceSec ?? null,
+          longDateISO,
+          longMi: nl.d.distanceMi,
+          longCarriesQuality: !!nl.d.isQuality || nl.d.raceGoalPaceSec != null,
+          gapDays: nl.j,
+          recoveryDaysAfter,
+          evidence: opts.designedWeekendEvidence ?? NO_DESIGNED_WEEKEND_EVIDENCE,
+          authoredPurpose: DESIGNED_WEEKEND_PURPOSE,
+        });
+        let verdict = ask(countRecovery());
+        // THE COMPOSER'S HALF OF DOCTRINE'S CONDITION. `Research/00b`
+        // §"Hard/Easy Alternation" licenses a stress block only when the plan
+        // "explicitly calls for" it AND it is "followed by extended recovery".
+        // The second clause is the composer's to author, so when the ONLY
+        // thing standing in the way is the recovery window it writes one —
+        // and only then, so a runner whose evidence does not support the
+        // weekend never has his week restructured for it. The gate stays live:
+        // a caller that cannot author the days still gets the refusal, which
+        // `_designed_race_weekend.test.ts` exercises directly.
+        if (!verdict.permitted && verdict.refusal.code === 'NO_EXTENDED_RECOVERY_AFTER') {
+          for (let k = 1; k <= EXTENDED_RECOVERY_DAYS_AFTER_PAIR; k++) {
+            const d = dayAt(o + nl.j + k);
+            if (!d || d.type === 'race' || !d.isQuality || d.type === 'shakeout') continue;
+            d.type = 'easy';
+            d.isQuality = false;
+            d.subLabel = 'EASY';
+            d.notes =
+              `Easy. Day ${k} after ${race.name} and the long run that followed it. ` +
+              'The weekend was the work; quality resumes after this.';
+            clearWorkShape(d);
+            delete d.raceGoalPaceSec;
+            touchedWeeks.add(Math.floor((o + nl.j + k) / 7));
+          }
+          verdict = ask(countRecovery());
+        }
+        return { verdict, nl, longDateISO };
+      })();
+
+      if (designed?.verdict.permitted === false) {
+        // REFUSED. The pairing falls back to doctrine's own curve, at the C
+        // window, and the refusal is recorded BY NAME so the block can say
+        // which fact was missing rather than only that something was.
+        const { nl } = designed;
+        const returnDays = returnToLongDays(race.distanceMi, effPriority);
+        const factor = longRunFactorAfterRace(nl.j, returnDays);
+        const was = nl.d.distanceMi;
+        const now = Math.max(0.5, Math.round(was * factor * 2) / 2);
+        const refusal = designed.verdict.refusal;
+        if (now < was) {
+          nl.d.distanceMi = now;
+          nl.d.notes =
+            `Long run cut to ${now} mi · day ${nl.j} after ${race.name}. ${refusal.message} Run it easy.`;
+          clearWorkShape(nl.d);
+          delete nl.d.raceGoalPaceSec;
+          touchedWeeks.add(Math.floor((o + nl.j) / 7));
+        }
+        compromises.push({
+          code: 'REDUCE_DOSE',
+          raceSlug: race.slug, raceName: race.name, raceDateISO: race.date,
+          dateISO: designed.longDateISO,
+          detail:
+            `long ${was}mi → ${nl.d.distanceMi}mi · the designed race-plus-long-run weekend was refused ` +
+            `(${refusal.code}) · day ${nl.j} of a ${returnDays.toFixed(1)}-day return-to-long window`,
+          citation: refusal.citation,
+          refusedDesignedWeekend: refusal,
+        });
+      } else if (designed?.verdict.permitted === true) {
+        /* GRANTED · AND THE TWO DAYS NAME EACH OTHER (his point 7).
+         *
+         * The pairing was defensible and invisible: the `ACCEPT_AS_HARD_WORKOUT`
+         * record reached no surface, and nothing on either day mentioned the
+         * other. A weekend the runner has to be told about, that he is never
+         * told about, is not a designed weekend.
+         *
+         * `plan_workouts.notes` is the field that reaches him — `/api/v5/today`
+         * reads it as `dayNote` into the Today card's `why` line. Verified by
+         * reading that chain rather than assumed, which is how the previous
+         * framing became invisible: `TrainingPlanDay` (native-v2 API.swift) has
+         * no `notes` field at all, so the WEEK view still cannot show this.
+         * Named gap, not a silent one.
+         *
+         * RULE 17 · ONE SENTENCE PER DAY, each stating that day's half. The
+         * full rationale lives on the grant and is not printed twice.
+         */
+        {
+          const g = designed.verdict.grant;
+          const longNote =
+            `${g.longMi} miles the morning after ${race.name}. ${g.authoredPurpose} ` +
+            'Easy the whole way. The distance is the work, not the pace.';
+          designed.nl.d.notes = longNote;
+          slot.notes =
+            `${race.name}. C race · this is the week's quality session. Run it as the workout, ` +
+            `controlled. Tomorrow's ${g.longMi}-mile long run is the other half of this weekend, ` +
+            'and running today controlled is what buys it.';
+        }
+        compromises.push({
+          code: 'ACCEPT_AS_HARD_WORKOUT',
+          raceSlug: race.slug, raceName: race.name, raceDateISO: race.date,
+          dateISO: designed.longDateISO,
+          detail:
+            `${designed.nl.d.distanceMi}mi long run stands ${designed.nl.j} day(s) after ${race.name} ` +
+            `(${race.distanceMi}mi, C effort) · ${designed.verdict.grant.combinedMi.toFixed(2)}mi across the pair`,
+          citation: designed.verdict.grant.citation,
+          designedWeekend: designed.verdict.grant,
+        });
+      }
+
       if (raceConsumesLongRunSlot(effPriority)) {
         const returnDays = returnToLongDays(race.distanceMi, effPriority);
         for (let j = 1; j < Math.ceil(returnDays); j++) {
@@ -8165,28 +8460,6 @@ export function embedMidBlockRaces(
             citation: 'Research/00b-recovery-protocols.md §"Recovery by Distance" (Return to long runs) · §"Recovery by Effort"',
           });
           touchedWeeks.add(Math.floor((o + j) / 7));
-        }
-      } else {
-        // The decision is recorded even when nothing changes, because "we
-        // looked and doctrine says this stands" and "nothing looked" are
-        // different facts (Rule 11) and only one of them is defensible.
-        const nextLong = (() => {
-          for (let j = 1; j <= 2; j++) {
-            const d = dayAt(o + j);
-            if (d && d.isLong && d.type !== 'race' && d.distanceMi > 0) return { d, j };
-          }
-          return null;
-        })();
-        if (nextLong) {
-          compromises.push({
-            code: 'ACCEPT_AS_HARD_WORKOUT',
-            raceSlug: race.slug, raceName: race.name, raceDateISO: race.date,
-            dateISO: dowDateInWeek(weeks[Math.floor((o + nextLong.j) / 7)].startISO, nextLong.d.dow),
-            detail:
-              `${nextLong.d.distanceMi}mi long run stands ${nextLong.j} day(s) after ${race.name} ` +
-              `(${race.distanceMi}mi, C effort) · ${(race.distanceMi + nextLong.d.distanceMi).toFixed(2)}mi across the pair`,
-            citation: 'Research/00b-recovery-protocols.md §"Recovery by Effort" (C race · treat like a hard workout) · Research/22-plan-templates.md §"Multi-Race Year Planning"',
-          });
         }
       }
     }
@@ -8739,6 +9012,21 @@ export interface ComposePlanInput {
    *  30 d". Undefined falls back to `recentLongMi`, which is what every caller
    *  that does not supply it got before. */
   spikeAnchorLongMi?: number;
+  /**
+   * DESIGNEDWEEKEND-1 (2026-09-02) · the largest total this runner has actually
+   * run across TWO CONSECUTIVE CALENDAR DAYS, in representative training.
+   *
+   * The ONLY evidence that answers "has he absorbed a combined load like the
+   * one this weekend proposes" on the axis the weekend proposes it — see
+   * `lib/plan/designed-race-weekend.ts`. UNDEFINED IS NOT ZERO and must not be
+   * read as one: it means nobody measured, and the resolver refuses by name
+   * (`NO_COMBINED_LOAD_EVIDENCE`) rather than granting on a blank (Rule 11).
+   * Every synthetic caller leaves it undefined, and every one of them is
+   * therefore refused the exception, which is the point.
+   */
+  demonstratedPairMi?: number | null;
+  /** The first day of the demonstrated pair above, so the grant can name it. */
+  demonstratedPairFromISO?: string | null;
   /** 2026-06-03 · mid-block runner doctrine carriers. Optional · all
    *  default to 0/undefined for cold-start runners. Bench persona
    *  "david-mid-block" exercises each as a gap-rule assertion. See
@@ -9851,6 +10139,27 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         currentVdot: anchorIsProvisional ? null : estimatedCurrentVdot,
         // RACEROLE-1 · MP for an mp_workout conversion IS the goal pace.
         targetGoalPaceSec: input.goalPaceSec ?? null,
+        // DESIGNEDWEEKEND-1 · the athlete-specific evidence, assembled from
+        // the readers that already own each number. Nothing is derived here:
+        // the sustained week is the ramp-base estimator's, the long run is the
+        // Rule-8-filtered habit reader's, the pair is `demonstratedPairMi`'s,
+        // and the two declared fields are the runner's own settings.
+        designedWeekendEvidence: {
+          demonstratedPairMi: input.demonstratedPairMi ?? null,
+          demonstratedPairFromISO: input.demonstratedPairFromISO ?? null,
+          // Passed through, not coerced. `recentLongMi` is a number whose 0
+          // already documents "no recoverable baseline" (see its field doc),
+          // so re-spelling that as null would be inventing an absence the
+          // caller never reported — the exact collapse `_coercion_scan`
+          // watches for. The resolver names a non-positive reading
+          // NO_LONG_RUN_EVIDENCE, in one place.
+          demonstratedLongMi: input.recentLongMi,
+          sustainedWeeklyMi: (input.rampBaseEvidence?.sustainedMi ?? 0) > 0
+            ? input.rampBaseEvidence!.sustainedMi
+            : null,
+          declaredLevel: input.level,
+          declaredDaysPerWeek: input.trainingDaysPerWeek ?? null,
+        },
       })
     : [];
 
@@ -12792,6 +13101,17 @@ function refreshPlacementCompromises(composed: ComposePlanResult): void {
       r.detail =
         `${d.distanceMi}mi long run stands ${gap} day(s) after ${r.raceName} ` +
         `(${raceMi}mi, C effort) · ${(raceMi + d.distanceMi).toFixed(2)}mi across the pair`;
+      // DESIGNEDWEEKEND-1 · the GRANT is restated the same way and for the same
+      // reason. A permission that names a weekend the plan does not carry is
+      // Rule 16 in the one field whose whole job is to be true about it, and
+      // the validator's §11c compares the shipped pair against exactly this
+      // number. The grant is never re-DECIDED here: only the numbers move, and
+      // only downward, because no pass after the embed grows a long run.
+      if (r.designedWeekend) {
+        r.designedWeekend.longMi = d.distanceMi;
+        r.designedWeekend.raceMi = raceMi;
+        r.designedWeekend.combinedMi = Math.round((raceMi + d.distanceMi) * 100) / 100;
+      }
     } else if (r.code === 'REDUCE_DOSE') {
       // The "was" half of the sentence is the embed's own record of what it
       // cut FROM and cannot be re-derived here; only the shipped number is
@@ -15198,6 +15518,12 @@ async function loadGeneratorInputs(
   // prior-30-day injury rule, which owns its own window.
   const spikeAnchorLongMi = recentLongRead.literalMi;
   let recentLong = Math.max(recentLongRead.literalMi, recentLongRead.representativeMi ?? 0);
+  // DESIGNEDWEEKEND-1 · the combined-load evidence the race-plus-long-run
+  // exception is gated on. A FAILED read stays null and refuses the exception
+  // by name; it is never floored to zero, because a zero here would read as
+  // "he has never run two days back to back", which is a claim about the
+  // runner rather than about the read (Rule 11).
+  const pairRead = await demonstratedPairMi(userId, todayISO, prescribedSpans);
   // 2026-06-10 persona-suite fix · cold-start race plans. A brand-new
   // runner has NO runs, so recentMi/recentLong read 0 and the ramp from
   // zero to race-prep peaks trips the progression validator (26.2mi
@@ -15594,6 +15920,9 @@ async function loadGeneratorInputs(
       easyDayMedianMi: easyFloor ?? 0,
       recentLongMi: recentLong,
       spikeAnchorLongMi,
+      // DESIGNEDWEEKEND-1 · see `demonstratedPairMi`.
+      demonstratedPairMi: pairRead?.mi ?? null,
+      demonstratedPairFromISO: pairRead?.fromISO ?? null,
       // PLANVERSION-1 (2026-08-30) · a MEASURED ZERO SURVIVES AS ZERO.
       //
       // These were `x > 0 ? x : undefined`, and `undefined` is what
