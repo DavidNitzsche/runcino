@@ -84,7 +84,7 @@ import { projectExpectedGain, type ExpectedGain } from '@/lib/training/fitness-t
 import { predictRaceTime, parseRaceTime } from '@/lib/training/vdot';
 import { GOAL_OPTIMISM_TOLERANCE } from '@/lib/training/achievable-target';
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
-import { raceOpeningPlan } from '@/lib/race/distance-doctrine';
+import { raceOpeningPlan, CONTROLLED_EFFORT_SPAN_SHARE } from '@/lib/race/distance-doctrine';
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { resolveRaceHrGuidance, type RaceHrGuidance, type RaceHrEvidenceRow } from '@/lib/race/race-hr-guidance';
 // EXECTARGET-1 · the marathon pace contract names the quantities and owns the
@@ -100,23 +100,16 @@ export const RACE_OUTLOOK_MODEL_VERSION = '1.0.0';
 export const RACE_EXECUTION_BAND_S_PER_MI = 5;
 
 /**
- * CEFFORT-2 (2026-09-03) · where a controlled C effort sits between the
- * runner's threshold and his marathon anchor.
+ * CEFFORT-2 (2026-09-03) · re-exported, not re-declared.
  *
- * The owner's ruling on the Dodgers 10K: "Pace ~7:30-7:40/mi, or equivalent
- * controlled steady-to-marathon effort... the physiological intent must stay
- * below a true 10K race effort." On his anchors (T 7:10, M 7:52) 0.6 of that
- * span is 7:35, and `RACE_EXECUTION_BAND_S_PER_MI` around it is 7:30-7:40 —
- * his stated band exactly, resolved from his own two anchors rather than
- * pinned to one runner's clock times, so it moves with him.
- *
- * The number is a coaching call, not a research constant, and it is written
- * here as one. What IS doctrine is that the day sits on the marathon side of
- * steady: `Research/00b` §"Recovery by Effort" makes a C race a "hard workout
- * substitute" to be treated "like a hard workout", and this one falls the day
- * before a long run.
+ * The share a controlled C effort spends between threshold and the marathon
+ * anchor prices BOTH the pace (here) and the HR band
+ * (`distance-doctrine.ts#controlledEffortHrBand`). Two copies of it is how one
+ * day ends up with a pace saying steady and a ceiling saying threshold, which
+ * is the defect this constant exists to close — so there is one definition, it
+ * lives beside the HR band, and this file imports it (Rule 16).
  */
-export const CONTROLLED_EFFORT_SPAN_SHARE = 0.6;
+export { CONTROLLED_EFFORT_SPAN_SHARE } from '@/lib/race/distance-doctrine';
 
 /** How old the newest capacity evidence may be before the outlook says so.
  *  `REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS` is the half-life the threshold

@@ -387,6 +387,62 @@ export function controlledEffortHrCategory(cat: RaceDistanceCategory): RaceDista
   }
 }
 
+/**
+ * CEFFORT-2 (2026-09-03) · where a controlled C effort sits between the
+ * runner's threshold and his marathon anchor.
+ *
+ * The owner's ruling on the Dodgers 10K: "Pace ~7:30-7:40/mi, or equivalent
+ * controlled steady-to-marathon effort... the physiological intent must stay
+ * below a true 10K race effort." On his anchors (T 7:10, M 7:52) 0.6 of that
+ * span is 7:35, and one pace band around it is 7:30-7:40 — his stated band
+ * exactly, resolved from his own two anchors rather than pinned to one
+ * runner's clock times, so it moves with him.
+ *
+ * The number is a coaching call, not a research constant, and it is written
+ * here as one. What IS doctrine is that the day sits on the marathon side of
+ * steady: `Research/00b` §"Recovery by Effort" makes a C race a "hard workout
+ * substitute" to be treated "like a hard workout".
+ *
+ * It lives beside the HR band rather than beside the pace because BOTH read it
+ * — one quantity, one definition (Rule 16). `lib/race/race-outlook.ts` imports
+ * it for the pace; `controlledEffortHrBand` below spends it on the HR.
+ */
+export const CONTROLLED_EFFORT_SPAN_SHARE = 0.6;
+
+/**
+ * CEFFORT-2 · THE HR BAND FOR A CONTROLLED C EFFORT, ON THE SAME SPAN THE PACE
+ * IS PRICED ON.
+ *
+ * CEFFORT-1 stepped the HR one published row down and stopped there. For a 10K
+ * that is the half-marathon row, `[0.96, 1.00] × LTHR`, and on the owner's LTHR
+ * of 168 it came out **161-168** — a ceiling equal to his threshold. The pace
+ * on the same day is 7:35/mi against a 7:10/mi threshold. Two instruments, one
+ * day, two different efforts: the pace says steady and the ceiling licenses
+ * threshold, which is the same self-contradiction the 7:15 pricing had, one
+ * level down. His ruling names it: "HR ceiling low-to-mid 160s — explicitly
+ * not permission to sit at 168-176."
+ *
+ * So the band is carried the rest of the way on the SAME share the pace spends,
+ * from the next-longer row toward the marathon row — the slowest row the table
+ * publishes and its own floor. On the reference runner that is `[0.912, 0.97]`,
+ * **153-163 bpm**: a ceiling in the mid 160s, and a full pace band below
+ * threshold.
+ *
+ * NO NEW PHYSIOLOGY. Both endpoints are published rows of `Research/08` §6.1
+ * and the interpolant is the constant above, which the pace already spends.
+ * A marathon is its own floor at both ends, so a controlled marathon C effort
+ * is unchanged.
+ */
+export function controlledEffortHrBand(
+  cat: RaceDistanceCategory,
+  table: Readonly<Record<RaceDistanceCategory, readonly [number, number]>>,
+): readonly [number, number] {
+  const stepped = table[controlledEffortHrCategory(cat)];
+  const floor = table.m;
+  const at = (a: number, b: number) => a + (b - a) * CONTROLLED_EFFORT_SPAN_SHARE;
+  return [at(stepped[0], floor[0]), at(stepped[1], floor[1])];
+}
+
 export const RACE_HR_PCT_MAX: Readonly<Record<RaceDistanceCategory, readonly [number, number]>> = {
   '5k': [0.95, 1.00],
   '10k': [0.92, 0.96],
@@ -420,12 +476,16 @@ export function raceAbortHrBpm(args: {
 }): number | null {
   const raw = raceDistanceCategory(args.distanceMi);
   if (raw == null) return null;
-  const cat = args.effortCharacter === 'controlled' ? controlledEffortHrCategory(raw) : raw;
+  // CEFFORT-2 · the trigger follows the band, or the ceiling licenses an effort
+  // the pace target no longer asks for.
+  const controlled = args.effortCharacter === 'controlled';
   if (args.lthr != null && args.lthr > 0) {
-    return Math.round(args.lthr * RACE_HR_PCT_LTHR[cat][1]) + RACE_HR_TRIGGER_MARGIN_BPM;
+    const hi = controlled ? controlledEffortHrBand(raw, RACE_HR_PCT_LTHR)[1] : RACE_HR_PCT_LTHR[raw][1];
+    return Math.round(args.lthr * hi) + RACE_HR_TRIGGER_MARGIN_BPM;
   }
   if (args.maxHr != null && args.maxHr > 0) {
-    return Math.round(args.maxHr * RACE_HR_PCT_MAX[cat][1]);
+    const hi = controlled ? controlledEffortHrBand(raw, RACE_HR_PCT_MAX)[1] : RACE_HR_PCT_MAX[raw][1];
+    return Math.round(args.maxHr * hi);
   }
   return null;
 }

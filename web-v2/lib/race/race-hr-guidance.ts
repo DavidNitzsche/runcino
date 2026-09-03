@@ -47,6 +47,7 @@
 import {
   RACE_HR_PCT_LTHR,
   controlledEffortHrCategory,
+  controlledEffortHrBand,
   raceAbortHrBpm,
   raceCheckpointMi,
   raceDistanceCategory,
@@ -131,7 +132,9 @@ export function resolveRaceHrGuidance(args: {
   const controlled = args.effortCharacter === 'controlled';
   const cat = controlled ? controlledEffortHrCategory(raw) : raw;
   const lthr = args.lthrBpm;
-  const [lo, hi] = RACE_HR_PCT_LTHR[cat];
+  // CEFFORT-2 · the band is carried onto the same threshold-to-marathon span
+  // the PACE is priced on, so the two instruments describe one effort (Rule 16).
+  const [lo, hi] = controlled ? controlledEffortHrBand(raw, RACE_HR_PCT_LTHR) : RACE_HR_PCT_LTHR[cat];
   const expectedRangeBpm: [number, number] = [Math.round(lthr * lo), Math.round(lthr * hi)];
   const checkpointMi = raceCheckpointMi(args.distanceMi);
   const pace = args.executionPaceSecPerMi;

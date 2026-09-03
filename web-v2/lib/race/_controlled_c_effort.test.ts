@@ -50,6 +50,7 @@ import { repoRoot } from '@/lib/doctrine/resolve';
 import {
   RACE_HR_PCT_LTHR,
   controlledEffortHrCategory,
+  controlledEffortHrBand,
   raceAbortHrBpm,
 } from '@/lib/race/distance-doctrine';
 import { resolveRaceHrGuidance, raceHrLine } from '@/lib/race/race-hr-guidance';
@@ -208,9 +209,36 @@ describe('CEFFORT-1 · the controlled HR band', () => {
   });
 
   it('the band comes out of the published table, not a fudge factor', () => {
+    /* CEFFORT-2 (2026-09-03) · RULING MOVE, and this gate named it when it
+     * landed: it failed with `expected [153, 163] to deeply equal [161, 168]`.
+     *
+     * CEFFORT-1 stepped one published row down and stopped, so a controlled 10K
+     * read the half-marathon row and came out 161-168 on an LTHR of 168 — a
+     * ceiling equal to threshold, beside a pace target of 7:35/mi against a
+     * 7:10/mi threshold. One day, two instruments, two different efforts. The
+     * owner: "HR ceiling low-to-mid 160s — explicitly not permission to sit at
+     * 168-176."
+     *
+     * The band is now carried the rest of the way to the marathon row on the
+     * SAME share the pace spends, so the two cannot describe different days.
+     * The assertion is unchanged in kind — every number still comes out of
+     * `Research/08` §6.1's published rows, and the check still reads them
+     * rather than hardcoding the answer.
+     */
     const ctrl = resolveRaceHrGuidance({ ...base, effortCharacter: 'controlled' })!;
-    const row = RACE_HR_PCT_LTHR[controlledEffortHrCategory('10k')];
-    expect(ctrl.expectedRangeBpm).toEqual([Math.round(lthr * row[0]), Math.round(lthr * row[1])]);
+    const band = controlledEffortHrBand('10k', RACE_HR_PCT_LTHR);
+    expect(ctrl.expectedRangeBpm).toEqual([Math.round(lthr * band[0]), Math.round(lthr * band[1])]);
+    // It sits strictly between the two published rows it interpolates, so it
+    // can never be a number doctrine does not bracket.
+    const stepped = RACE_HR_PCT_LTHR[controlledEffortHrCategory('10k')];
+    expect(band[1]).toBeLessThan(stepped[1]);
+    expect(band[1]).toBeGreaterThan(RACE_HR_PCT_LTHR.m[1]);
+    // And the ceiling is now below threshold, which is the whole point.
+    expect(ctrl.expectedRangeBpm[1]).toBeLessThan(lthr);
+  });
+
+  it('a controlled marathon is its own floor · the blend cannot invent a slower row', () => {
+    expect(controlledEffortHrBand('m', RACE_HR_PCT_LTHR)).toEqual([...RACE_HR_PCT_LTHR.m]);
   });
 
   it('OMITTING effortCharacter is byte-identical to the old behaviour', () => {

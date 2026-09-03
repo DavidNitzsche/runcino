@@ -122,6 +122,19 @@
  *     plan; a handful of easy days on the history-carrying arcs got shorter.
  *     `_rolling_seven_ceiling.test.ts` owns the behaviour and was falsified
  *     against the composer with the pass removed.
+ *
+ *   · 2026-09-03 · DOSE-BAND-2. Two marathon-effort rungs were sitting UNDER
+ *     the owner's own stated bands and now sit at their tops. The opening rung
+ *     was pinned to its band FLOOR because the earned-step rule bounded it
+ *     against a `largest` of zero — a rule about the step between rungs
+ *     bounding a rung that has nothing to step from; it now applies from the
+ *     second rung on. The sharpening rung's band was [3, 4] against a ruling
+ *     that reads "no more than ~4-5", so it was capped below the floor of the
+ *     sentence it cites, and is now [4, 5].
+ *
+ *     On the reference block that is 4 → 5 and 4 → 5. `composed` 8781, `days`
+ *     699860, `raceWeeks` 3969 — unchanged again: the same days, two of them
+ *     carrying a mile more at marathon effort.
  */
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
