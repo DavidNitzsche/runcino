@@ -264,9 +264,28 @@ render is not that. So the walk's findings are labelled by what the evidence sup
 collision is structural and confirmed; a run-detail screen that appeared to have <em>no way out</em>
 is observed and not yet called a defect, because the code as written passes a back action.</p>
 
-<p>I did not sign in, because that needs your password. A substrate that seeds a local throwaway
-database from your real rows — so the app can be walked with real data and still cannot touch
-production — is being built now, and the walk resumes on it.</p>
+<p>I did not sign in, because that needs your password. So I built the substrate instead: a local
+throwaway database seeded from your real rows, serving the app on the port it already targets, with a
+real session row and <strong>no auth bypass added to the app</strong>. It refuses any non-loopback
+target before it even reads the credential. Fifteen phone endpoints answer with your real data.</p>
+
+<div class="card warn">
+<p style="margin-top:0"><strong>And then the app would not hold the token.</strong> There is a built-in
+debug affordance for exactly this — a launch argument that puts a session token in the Keychain. It
+does not work: the app reads the argument, runs its first-launch flow, then sends every request with
+no authorization header, and the first 401 fires the session-expired handler, which clears the token
+and bounces to the sign-in gate. One 401 destroys the seeded session.</p>
+<p style="margin-bottom:0">Not a server problem — same token, same server, same moment: no token 401,
+bad token 401, walk token <strong>200 with real content</strong>. This is now the highest-priority
+phone item, because it is the gate on verifying every other phone fix. While it is broken,
+<strong>you are the only person who can render-verify anything on the phone</strong>, and two fixes
+are already waiting on it.</p>
+</div>
+
+<p>The substrate also found a real hole on its way in: the production write barrier judges its target
+from an environment variable rather than from the connection a statement is actually issued on. With
+that variable pointing at loopback, it would have <strong>permitted a write on a production
+client</strong>. Filed to fence it per connection.</p>
 
 <h2>8 · What I am holding for you</h2>
 
@@ -292,15 +311,92 @@ Your ruling says at least one; <code>validate.ts</code> §9 requires two. One of
 am not guessing which.</p>
 </div>
 
-<h2>9 · Still in flight</h2>
-<p>Four workstreams were running when this was written and will be folded in as they land: the
-marathon-pace and long-run progression rebuild (S1.1 / S1.2 / S1.4), the runner-facing language pass
-(S1.6, where "Conversational." and "Z2 HR cap." appear 37 times and one downhill instruction 12
-times), the walk substrate, and the fix for the volume bar described in section 1.</p>
+<h2>9 · The progression rebuild</h2>
+
+<p>Three of the Stage 1 items — marathon-specific progression, long-run progression, and the
+marathon paces — <strong>had already landed</strong> when the audit started. My own task list said
+otherwise, which is a reporting failure on my side; it is corrected. What the audit did was verify
+them against your real account and find five more defects.</p>
+
+<div class="scroll"><table>
+<tr><th>&nbsp;</th><th>Before</th><th>Now</th></tr>
+<tr><td>MP miles in the last three weeks</td><td>18 of 33 · <strong>55%</strong></td><td>5 of ~22.6 · <strong>22%</strong></td></tr>
+<tr><td>The 6–10-week window</td><td><strong>4 mi in one session</strong></td><td>8 mi at 49 days</td></tr>
+<tr><td>Runs at 20+</td><td>one (20.5)</td><td><strong>two — 20.0 and 21.5</strong></td></tr>
+<tr><td>Longest run</td><td>20.5, a mile under your best</td><td><strong>21.5</strong>, your own ceiling</td></tr>
+<tr><td>MP across the block</td><td>flat</td><td>7:52 → 7:46, held through the taper</td></tr>
+</table></div>
+
+<p>Big Sur is excluded <em>by name</em> — a raced marathon cannot raise a training-long ceiling.</p>
+
+<div class="card hot">
+<p style="margin-top:0"><strong>The block's largest marathon session was its smallest.</strong> The
+peak stimulus carries an 8–10 mile band and composed at <strong>6</strong> — smaller than the rung
+three weeks earlier, with pace going up while volume went down. A dose fade was measuring against a
+window the peak does not sit in, so it ran to completion and the band was inert. Fixed by taking the
+union of the two windows, which removes a cliff rather than moving one: <strong>30 of 4,886
+archetypes change, and all 30 go up.</strong></p>
+<p style="margin-bottom:0">That move immediately exposed a Daniels cap escape at 21.41% against a 20%
+ceiling. <strong>The cap was bound, not loosened.</strong> That is the rule working as written: spend
+the headroom, and when spending it meets a real ceiling, the ceiling wins.</p>
+</div>
+
+<p>Also fixed: two producers of the same "rehearses" label (which stamped a forecast on a rung that
+has no prescribed pace at all); ten missing doctrine claims, <strong>three of which were cited by name
+in prose and did not exist</strong> — including the one supposedly pinning the pace band to the race
+projection, so those two numbers were unpinned while a comment said they were not; and two tests whose
+bodies never ran. Falsified sixteen ways.</p>
+
+<h3>One correction to something I said earlier</h3>
+<p><strong>7:23 is no longer your execution target.</strong> The contract now names six marathon
+quantities with one resolver each, and per your Q7 the active number is the projection-derived
+<strong>7:46</strong>. 7:23 survives as the conditional upside with five criteria attached. Your
+block's last rehearsal is 7:46, so the gap between what you rehearse and what you are told to race is
+<strong>zero</strong> — which was the whole complaint.</p>
+
+<p class="muted">Worth knowing: your block never reaches the ladder's fastest rung, because Run Malibu
+takes the peak-stimulus slot and a race rung holds the pace. That is correct for your calendar. It
+means your authored progression is one pace step plus a hold, not three.</p>
+
+<h2>10 · The plan stopped repeating itself</h2>
+
+<p>An earlier pass had swapped the words and left the repetition exactly where it was — 33 stayed 33.
+This one says each sentence <strong>once per week</strong>:</p>
+
+<div class="scroll"><table>
+<tr><th>Sentence</th><th class="n">Was</th><th class="n">After the word swap</th><th class="n">Now</th></tr>
+<tr><td>"Conversational." → talk in full sentences</td><td class="n">33</td><td class="n">33</td><td class="n"><strong>1</strong></td></tr>
+<tr><td>"Z2 HR cap." → slow down if HR drifts</td><td class="n">33</td><td class="n">33</td><td class="n"><strong>1</strong></td></tr>
+<tr><td>"Off."</td><td class="n">28</td><td class="n">28</td><td class="n"><strong>1</strong></td></tr>
+<tr><td>"Sleep, mobility, fuel."</td><td class="n">27</td><td class="n">27</td><td class="n"><strong>1</strong></td></tr>
+</table></div>
+
+<p>Worst per-week repetition across an eleven-block corpus: <strong>33 → 0</strong>, gated in the build
+and falsified four ways (disabling the pass produces 340 findings). Your easy days now say what they
+are <em>for</em> rather than the same sentence eleven times:</p>
+
+<pre>Wk1 Mon  Easy enough to talk in full sentences. If the heart rate drifts up,
+         slow down even when the pace still looks right. Short and easy. The
+         session is tomorrow. Finish with 4 relaxed 20-second strides.
+Wk2 Mon  Recovery day after the long run. Slower than your normal easy pace.
+Wk3 Wed  The week's longest easy run. This is where the aerobic volume comes
+         from. Easy to steady. Let the last few miles drift up if they want to.</pre>
+
+<div class="card warn">
+<p style="margin:0"><strong>One judgement call to overrule if you want it back.</strong> A plain
+aerobic day now carries <em>no</em> prose at all — roughly one or two rows a week end up bare, because
+the distance, pace band and HR ceiling are already on the row and there was nothing left to say that
+was not filler. That follows your standing instruction to strip bloat, but it is a visible change.</p>
+</div>
+
+<p>A second hole turned up while closing the first: the coach-voice gate's directory scope had been
+widened to cover the plan engine, but it still <em>explicitly excluded</em> the one file where two new
+tables of runner-facing copy had just been put. A test line reading
+<code>"Short and easy — the session is tomorrow! Great work."</code> — an em dash, an exclamation mark
+and hype, three banned things in eleven words — left the gate reporting "324 files clean."</p>
 
 <p class="muted" style="margin-top:40px; font-size:14px">Nothing was written to your production
 database at any point. No completed activity or sealed prescription was touched. No adaptation was
 applied to your live plan. The live rebuild has not been performed — it waits on the progression work
-so it happens once, which is what you authorised.</p>
-
+so it happens once, which is what you authorised, and the case for doing it is section 3.</p>
 </div>
