@@ -1483,6 +1483,12 @@ struct TodayAfterV5: View {
             if serverFlaggedNiggle == nil {
                 niggleRow
             }
+            // The brief's "Add effort/RPE where supported", grouped with the
+            // rest of this screen's log-and-share actions rather than sitting
+            // in the analytical story above (post-run brief §"Actions").
+            if let runId = model.runId {
+                RPECaptureRow(runId: runId)
+            }
         }
     }
 

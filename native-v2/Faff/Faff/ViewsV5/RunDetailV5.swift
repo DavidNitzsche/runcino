@@ -438,6 +438,15 @@ struct RunDetailV5: View {
                                     onTap: onChangeShoe)
                         }
                     }
+
+                    // The brief's "Add effort/RPE where supported" (Actions),
+                    // kept secondary to the interpretation above it and, on
+                    // this screen, to the record it sits beside — same row
+                    // `TodayAfterV5`'s "Log" group draws, over the same API,
+                    // so a rating made from either screen is the same rating.
+                    ListGroup(header: "Log") {
+                        RPECaptureRow(runId: detail.id)
+                    }
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s32)
