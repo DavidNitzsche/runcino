@@ -935,7 +935,7 @@ export async function composeRaceOutlook(
       value: `${fmtTime(targetSec)} · ${fmtPace(paceSecPerMi)}`, valueSec: targetSec, paceSecPerMi,
       rangeSec: null, confidence: expectedRaceDay.confidence,
       evidence: [reasonVsExpected, ...(hr ? [`HR ${hr.expectedRangeBpm[0]}-${hr.expectedRangeBpm[1]} expected${hr.informationalOnly ? ' (reference only)' : ''}`] : [])],
-      changeTrigger: 'Your current projection moving — which is what the block is built to do.',
+      changeTrigger: 'Your current projection moving · which is what the block is built to do.',
       // EXECTARGET-1 · the step now differs from the one before it by going
       // BACK to current evidence, and says so. The forecast above it is the
       // block's intent; this is what today's evidence carries.
