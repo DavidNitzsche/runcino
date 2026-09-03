@@ -385,6 +385,69 @@ export function blockCoachLine(
   });
 }
 
+/**
+ * Punctuation and case removed, spaces collapsed. Comparing RENDERED TEXT is
+ * the whole point (Rule 17: "it yields on the rendered text, not on a row id,
+ * because that is what the runner actually sees"), and a trailing full stop is
+ * not a difference the runner can see.
+ */
+function normalizeSpokenText(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * RULE 17 · THE BLOCK SCREEN PRINTS THE DURABILITY SENTENCE ONCE.
+ *
+ * `BlockV5.swift` draws two `CoachSay` bubbles inside one "Where this goes"
+ * section — `model.coachLine` at :277 and `model.thesis.coachLine` at :302 —
+ * and both come out of `composeCoachLine`. It is ONE writer with two
+ * registers, which is why the second is a superset of the first rather than a
+ * different sentence. Measured on production 2026-09-03, `faff_readonly`,
+ * reference runner `0645f40c-951d-4ccc-b86e-9979cd26c795`, active plan
+ * `pln_9a57561debb776e5`, phase QUALITY, limiter DURABILITY on
+ * CURVE_SHAPE_EVIDENCE:
+ *
+ *   coachLine         "Your races fade with distance faster than your speed
+ *                      predicts, so durability is where the work goes. Your
+ *                      threshold holds."
+ *   thesis.coachLine   …the same twenty-two words, then ", and this week's
+ *                      long run is the session that builds it."
+ *
+ * Twenty-two words twice, eleven words of new information.
+ *
+ * THE THESIS LINE YIELDS, not the block line, for two reasons that are already
+ * written down elsewhere in this file. `blockCoachLine` is phase-gated —
+ * BASE/QUALITY/RACE-SPECIFIC only, never a taper or a race week — and
+ * `thesis.coachLine` is not, so keeping the wrong one would put "durability is
+ * where the work goes" on a taper screen. And the tail it carries is the week
+ * clause that the header above says belongs to Today, where `thesisLeadClause`
+ * already says it on the day itself.
+ *
+ * EMPTY STRING, NOT A DROPPED KEY. `V5Thesis.coachLine` is a non-optional
+ * Swift `String` and `BlockV5.swift:302` already guards `!isEmpty`, so this
+ * suppresses the bubble on the phone builds already in the field with no
+ * release — and `reviewTrigger`, which `BlockV5.swift:296` says "lives HERE
+ * and nowhere else", keeps drawing.
+ *
+ * CONTAINMENT, BOTH DIRECTIONS, ON NORMALISED TEXT. Not equality: the two
+ * forms differ only by a suffix today. Not a flag or an id: a flag would go on
+ * agreeing with itself while the strings drifted, which is the failure mode
+ * Rule 17 names explicitly. Both directions because which of the two is the
+ * longer form is a property of `composeCoachLine`'s branches, not an invariant
+ * this function should assume.
+ */
+export function suppressThesisLineIfBlockAlreadySaidIt(
+  wire: ThesisWire | null,
+  blockLine: string | null,
+): ThesisWire | null {
+  if (!wire || !blockLine) return wire;
+  const a = normalizeSpokenText(wire.coachLine);
+  const b = normalizeSpokenText(blockLine);
+  if (!a || !b) return wire;
+  if (a.includes(b) || b.includes(a)) return { ...wire, coachLine: '' };
+  return wire;
+}
+
 // ── weeks (all of them) ─────────────────────────────────────────────────
 
 export function weekFlag(w: PlanWeek): string {
@@ -780,13 +843,18 @@ export async function loadV5Block(userId: string) {
     resolveCoachingThesis(userId, state.today),
   ]);
 
+  // BLOCK-THESIS-LINE-1 · the thesis when it has something better to say
+  // than the phase, the phase line otherwise. See `blockCoachLine`.
+  const coachLine = blockCoachLine(state, raceDistanceMi, thesis);
+
   return {
     panel: buildPanel(state),
     phases: buildPhases(state),
-    // BLOCK-THESIS-LINE-1 · the thesis when it has something better to say
-    // than the phase, the phase line otherwise. See `blockCoachLine`.
-    coachLine: blockCoachLine(state, raceDistanceMi, thesis),
-    thesis: thesis ? wireThesis(thesis) : null,
+    coachLine,
+    thesis: suppressThesisLineIfBlockAlreadySaidIt(
+      thesis ? wireThesis(thesis) : null,
+      coachLine,
+    ),
     soFar: buildSoFar(state),
     weeks: buildWeeks(state),
     // WEEKANSWERS-1 · the block's five answers. Null when the block predates

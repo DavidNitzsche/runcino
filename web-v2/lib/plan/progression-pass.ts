@@ -78,6 +78,7 @@ import {
   renderShapeLabel,
   type SessionFamily,
 } from '@/lib/prescription/trajectory';
+import { isNonBuildingPhaseLabel } from './non-building-week';
 import { resolveProgressionStep, type ProgressionAction } from './progression-gate';
 import type { AdaptationVerdict } from '@/lib/adaptation/adaptation-model';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
@@ -528,15 +529,36 @@ export interface ProgressionWeekDiagnosis {
  * `lib/adaptation/load-adaptation-engine.ts` (`WeekAheadRead`), so the three
  * levers cannot disagree about which weeks are sized down on purpose. Pure, so
  * the engine's own tests can walk it without a database.
+ *
+ * ── 2026-09-03 · RECOVERY ADDED, and the phase set moved out ────────────────
+ *
+ * This returned null for a post-race RECOVERY week, so all three levers would
+ * have taken a progression step during the block whose entire purpose is not
+ * taking one. `coaching-thesis.ts#assessWeekAgainstThesis` had it right all
+ * along — its `NON_NORMAL_PHASES` is `{TAPER, RECOVERY}` — so the "one
+ * definition" this comment claims to be was in fact the second one, and the
+ * wrong one. Both now read `lib/plan/non-building-week.ts`.
+ *
+ * The flags could not cover for it: a recovery block is a REVERSE taper, so
+ * `is_cutback` (a >15% drop off the week before) is false on every recovery
+ * week by construction. Measured on production 2026-09-03: 6 recovery weeks
+ * across 4 plans, `is_cutback` false on all six. See that module's header.
  */
 export function weekRowNoStepReason(r: {
   is_cutback: boolean | null;
   is_race_week: boolean | null;
   phase: string | null;
-}): 'CUTBACK' | 'RACE_WEEK' | 'TAPER' | null {
+}): 'CUTBACK' | 'RACE_WEEK' | 'TAPER' | 'RECOVERY' | null {
   if (r.is_cutback === true) return 'CUTBACK';
   if (r.is_race_week === true) return 'RACE_WEEK';
-  if ((r.phase ?? '') === 'TAPER') return 'TAPER';
+  // The label, not a flag. Returned VERBATIM (upper-cased) so the caller's log
+  // says which phase eased the week rather than collapsing two into one word —
+  // "the plan is in recovery" and "the plan is tapering" are different facts
+  // and the adaptation log is where the difference has to survive (Rule 21:
+  // a log that records that something happened but not what is not a log).
+  if (isNonBuildingPhaseLabel(r.phase)) {
+    return r.phase!.trim().toUpperCase() as 'TAPER' | 'RECOVERY';
+  }
   return null;
 }
 

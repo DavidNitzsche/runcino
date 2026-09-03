@@ -421,7 +421,10 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/coach/run-state.ts::computeWorkAverages',
   'lib/coach/run-state.ts::loadFormMetrics',
   'lib/coach/run-state.ts::loadPhaseBreakdown',
-  'lib/coach/run-state.ts::loadRunDetail',
+  // 2026-09-03 · one fewer: `loadRunDetail`'s synthetic-"YYYY-MM-DD-mi"
+  // fallback carried a `.catch(() => ({ rows: [] }))` and the whole
+  // fallback moved into `lib/runs/canonical-ref.ts` as rung 4, where it
+  // does not swallow. EMPTIED_BASELINE 354 -> 353.
   'lib/coach/run-state.ts::loadRunDetail',
   'lib/coach/run-state.ts::loadRunDetail',
   'lib/coach/run-state.ts::loadRunDetail',
@@ -711,7 +714,7 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // of the automatic-adaptation levers (commit 8ef72992), and the swallowed read
 // behind it went with the surface. Counted from the scanner (11 emptied sites
 // in that symbol), not from the diff.
-export const EMPTIED_BASELINE = 354;
+export const EMPTIED_BASELINE = 353;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

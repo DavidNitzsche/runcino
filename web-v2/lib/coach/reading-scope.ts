@@ -54,7 +54,47 @@ export interface ScopePhase {
   actual_duration_sec?: number | null;
   avg_hr?: number | null;
   avg_cadence?: number | null;
+  /**
+   * The grader's resolved pace semantics for this phase — `PhaseBreakdown
+   * .pace_shape`, which is `GradedPhase.shape` passed straight through by
+   * `mapWatchPhases`.
+   *
+   * READ HERE FOR ONE REASON: `'effort'` is how a STRIDE arrives. See
+   * `isStride` below. Optional because a fixture or a legacy caller may not
+   * carry it, and absent means "this phase says nothing about being a stride",
+   * never "it is one" (Rule 11).
+   */
+  pace_shape?: string | null;
 }
+
+/**
+ * A STRIDE IS NOT A REP (2026-09-02, from the runner's own screen).
+ *
+ * On his 2026-09-02 easy day the watch stored thirteen phases: one 5.0 mi easy
+ * block typed `work`, six 20-second accelerations also typed `work`, and six
+ * walk-backs. `phases.filter(type === 'work')` is therefore SEVEN, and this
+ * file printed "Cadence, across the 7 reps" over a session the plan never
+ * called a rep set — beside a section header, on the same screen, reading
+ * "Piece by piece" over six strides. Rule 16: two numbers, one screen, one
+ * quantity.
+ *
+ * `pace_shape === 'effort'` is the SERVER'S OWN ANSWER arriving on the wire,
+ * not a second opinion formed here. `gradeStoredPhases` sets `byEffort` from
+ * the stored `isStrideSegment` marker or from the plan's own stride count plus
+ * the authored label, and `paceShapeFor` turns `byEffort` into `'effort'` —
+ * nothing else in the vocabulary makes a WORK phase `effort`. It is rung 2 of
+ * `lib/postrun/experience.ts#isStridePhase`, and it is the same expression the
+ * phone's `RunDetailV5.repSectionTitle` already filters on, which is why the
+ * header said "Piece by piece" while this file said seven.
+ *
+ * The label rung is deliberately NOT reimplemented here. It is conjunctive on
+ * the plan's stride count, no caller of this module supplies one, and a
+ * mechanism no caller can reach is decoration (Rule 15). Where the count
+ * matters — `loadRunDetail`, which is the call site that reaches the post-run
+ * screen — the shape is already resolved, because `loadPhaseBreakdown` passes
+ * `workout_spec.strides_reps` into the grader.
+ */
+const isStride = (p: ScopePhase) => p.type === 'work' && p.pace_shape === 'effort';
 
 /**
  * `whole` · the run had one intent; the whole-run mean describes it.
@@ -147,12 +187,21 @@ function weightedMean(
   return den > 0 ? Math.round(num / den) : null;
 }
 
-/** The median work-phase duration, or null when none of them recorded one.
+/** The median REP duration, or null when none of them recorded one.
+ *
  *  Median rather than mean so one long over-run rep does not lift a set of
- *  short ones over the kinetics floor. */
+ *  short ones over the kinetics floor.
+ *
+ *  STRIDES ARE EXCLUDED, and this is the half of the off-by-one that changes a
+ *  number rather than a word. On the 2026-09-02 easy day the seven work phases
+ *  were one 2577-second block and six 20-second accelerations, so the median
+ *  was 20 — under the floor — and the whole session was refused a heart-rate
+ *  reading with the sentence "Reps this short never reach their heart-rate
+ *  band." over 43 minutes of steady easy running at 137 bpm. Excluding the
+ *  strides leaves a median of 2577 and the reading stands. */
 export function medianWorkDurationSec(phases: ScopePhase[]): number | null {
   const d = phases
-    .filter(isWork)
+    .filter((p) => isWork(p) && !isStride(p))
     .map((p) => p.actual_duration_sec)
     .filter((s): s is number => s != null && Number.isFinite(s) && s > 0)
     .sort((a, b) => a - b);
@@ -194,12 +243,23 @@ export interface ReadingScopeInput {
  */
 export function deriveReadingScopes(input: ReadingScopeInput): ReadingScopes {
   const phases = Array.isArray(input.phases) ? input.phases : [];
-  const work = phases.filter(isWork);
+  // THE WORK IS THE WORK MINUS THE STRIDES. Every rep-flavoured answer below —
+  // the count in the label, the rep-set booleans, the kinetics floor — is
+  // derived from `work`, so excluding strides ONCE here fixes all of them
+  // together rather than in four places that could drift apart.
+  const work = phases.filter((p) => isWork(p) && !isStride(p));
   const isRepSet = work.length >= REP_SET_MIN_WORK_PHASES;
 
   // NO STRUCTURE, NO PROBLEM. An easy run, a long run, a race, and every
   // pre-2026-06 Strava row land here. One intent end to end, so the whole-run
   // mean is exactly what it claims to be and nothing is scoped or withheld.
+  //
+  // AN EASY DAY WHOSE ONLY TYPED WORK IS ITS STRIDES LANDS HERE TOO, and that
+  // is the right answer rather than an accident of the filter above. Six
+  // twenty-second accelerations are two minutes of a forty-five minute run:
+  // the run IS the easy running, its own average describes it, and there is no
+  // rep set for that average to be confused with. `Research/04` §7.2 calls a
+  // stride "Not a workout", which is the same statement in doctrine's words.
   if (work.length === 0) {
     return {
       hr: { scope: 'whole', value: input.wholeHrBpm ?? null, note: null },

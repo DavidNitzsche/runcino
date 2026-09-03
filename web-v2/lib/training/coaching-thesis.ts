@@ -139,6 +139,7 @@ import { pool } from '@/lib/db/pool';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { isNonBuildingPhaseLabel } from '@/lib/plan/non-building-week';
 import { readSelectionRationale } from '@/lib/plan/progression-spec';
 import { POPULATION_ENDURANCE_PRIOR } from '@/lib/training/durability-anchor';
 import { CURVE_NEUTRAL_EXPONENT_BAND } from '@/lib/coach/limiter';
@@ -559,8 +560,14 @@ export interface ThesisWeekRow {
   isCutback: boolean;
 }
 
-/** Phase labels under which the plan is deliberately not building. */
-const NON_NORMAL_PHASES: ReadonlySet<string> = new Set(['TAPER', 'RECOVERY']);
+/* Phase labels under which the plan is deliberately not building.
+ *
+ * 2026-09-03 · this file's private `NON_NORMAL_PHASES` set is GONE, into
+ * `lib/plan/non-building-week.ts`. It was the right answer and the levers'
+ * `weekRowNoStepReason` was the wrong one — it had TAPER and not RECOVERY —
+ * so the two are now one definition rather than two that happened to be
+ * maintained by different people (Rule 16). The module is a leaf with no
+ * imports of its own, so nothing joins this file's graph by reading it. */
 
 /**
  * Pure · Constitution §16 applied to one authored week.
@@ -583,7 +590,7 @@ export function assessWeekAgainstThesis(
   if (limiter === 'UNKNOWN') return { code: 'NOT_ASSESSED', detail: 'no evidenced limiter to assess the week against' };
   if (rows == null || rows.length === 0) return { code: 'NOT_ASSESSED', detail: 'no authored rows for this week' };
 
-  const nonNormal = rows.find((r) => r.isRaceWeek || r.isCutback || (r.phaseLabel != null && NON_NORMAL_PHASES.has(r.phaseLabel.toUpperCase())));
+  const nonNormal = rows.find((r) => r.isRaceWeek || r.isCutback || isNonBuildingPhaseLabel(r.phaseLabel));
   if (nonNormal) {
     const why = nonNormal.isRaceWeek ? 'race week' : nonNormal.isCutback ? 'cutback week' : `${nonNormal.phaseLabel} phase`;
     return { code: 'WEEK_IS_NON_NORMAL', detail: `${why}: the plan is deliberately not building this week` };
