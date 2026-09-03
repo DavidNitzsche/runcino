@@ -49,6 +49,23 @@ narrative as history, not as current status.
 
 ---
 
+## THE CENTRAL PRODUCT REQUIREMENT
+
+`docs/PROGRESSIVE_BASELINE_DOCTRINE.md`, locked 2026-09-03.
+
+> The baseline plan must be **intrinsically progressive** and capable of making
+> the runner faster. Adaptation must **personalize** that progression based on
+> what the runner actually demonstrates.
+
+**Acceptance criterion for every plan task below:** *a plan that merely repeats
+today's capability fails even if every number is internally consistent.* Internal
+consistency is necessary, not sufficient.
+
+The eight-condition machine-evaluable definition of an **earned** peak week is in
+that doctrine and is a hard dependency of P0-6.
+
+---
+
 ## P0 · The critical path
 
 Nothing may displace this.
