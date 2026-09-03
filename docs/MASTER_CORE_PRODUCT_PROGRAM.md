@@ -69,23 +69,25 @@ exposed); Migration 163 (`plan_reschedules`) is applied to production, schema
 only, zero rows, verified ten ways before execution — see
 `docs/migrations/163-plan-reschedules-evidence-2026-09-03.md`.
 
-**Still genuinely open, in dependency order:**
-1. Race-week TYPED coaching distinctions (goal/tune-up/controlled/contains) —
-   in progress, see the section below.
-2. Easy-days-after-intervals typed validator rule — in progress.
-3. VW-3 (the debug-session token path) — in progress.
-4. The full preflight, gating the rebuild.
-5. The rebuild itself, and persisted-plan verification across every surface.
-6. Ranked Sunday options, generated against the REBUILT plan (David reports
+**Status, kept current rather than left at first-write:**
+1. Race-week TYPED coaching distinctions — **DONE**, `8e0180d8`, see the
+   section below.
+2. Easy-days-after-intervals typed validator rule — in progress (verify-commit
+   running as of last check).
+3. VW-3 (the debug-session token path) — **DONE**, real root cause found (a
+   stuck SpringBoard permission dialog, not an auth race), pushed to
+   `fix/vw3-qa-token-path`, not yet merged to `main`.
+4. The canonical Adaptation Engine wired into live SHADOW evaluation — in
+   progress.
+5. The full preflight, gating the rebuild — still blocked on 2 above landing.
+6. The rebuild itself, and persisted-plan verification across every surface —
+   blocked on 5.
+7. Ranked Sunday options, generated against the REBUILT plan (David reports
    the phone currently offers only "Skip" — the "Move to Friday/Saturday"
    options that should sit beside it exist only in a design-preview fixture,
    `TodayBeforeSamplesPreRunV5.options(for:)`, and `RescheduleV5.swift` — a
    real, substantial screen — is built but not wired into any reachable
-   navigation path yet. This is the gap item 8 below closes).
-7. The canonical Adaptation Engine wired into live SHADOW evaluation (still
-   unwired from the live path by design — a hard mutation guard forbids any
-   importer under `web-v2/lib|app`; this is correct and stays until shadow
-   evaluation is proven).
+   navigation path yet). Blocked on 6.
 
 **Do not describe the app as complete** until the rebuilt plan is live, every
 production surface is verified against it, TestFlight is distributed with the
