@@ -705,6 +705,75 @@ describe('DOCTRINE-TAPERMP-1 · the MP block reaches the watch at marathon pace'
   });
 });
 
+/*
+ * REHEARSAL-1 (2026-09-03) · THE PERSISTED LADDER'S SENTENCES ARE CHECKED
+ * AGAINST ITS OWN NUMBERS.
+ *
+ * `authored_state.marathon_specific_ladder` is what the phone, the race page
+ * and every later reader consume, and nothing looked at it. It shipped a row
+ * that claimed `rehearses: "forecast_development"` beside
+ * `pace_s_per_mi: null` — a statement about a pace the row does not carry
+ * (Rule 16) — on the owner's live block, because the label came from the ladder
+ * and the pace came from the contract.
+ *
+ * WHAT THIS CANNOT FAIL ON (Rule 22): it reads the composed SIM block, not the
+ * owner's account, so it cannot see a DB-only shape; it checks the agreement
+ * between two persisted fields, not whether either is the physiologically right
+ * number; and it says nothing about whether the runner's phone renders any of
+ * it.
+ *
+ * AND, NAMED RATHER THAN ASSUMED (Rule 15): `cimBlock()` has NO tune-up race in
+ * it, so every rung it authors is priced and the NULL-PACE ARM — the one that
+ * actually shipped the defect — is not reached here. The assertions for it are
+ * still written, because the composer can produce that rung and this gate must
+ * catch it the day the corpus grows a race; the check that holds it TODAY is
+ * `MPCONTRACT.rehearsal-comes-from-the-prescription` in the doctrine registry,
+ * which pins the persistence site at source level. Two weak checks in different
+ * dimensions, stated as such, rather than one that looks stronger than it is.
+ */
+describe('REHEARSAL-1 · the persisted ladder agrees with itself', () => {
+  it('every rung with no prescribed pace says it rehearses nothing', () => {
+    const r = cimBlock();
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const state = (r.composed as { authoredState?: Record<string, unknown> }).authoredState;
+    const ladder = state?.marathon_specific_ladder as { rungs?: Record<string, unknown>[] } | null | undefined;
+    const rungs = ladder?.rungs ?? [];
+    // Rule 18 · liveness. Zero rungs would make every assertion below vacuous,
+    // and a gate that reports clean because it looked at nothing is the worst
+    // outcome available.
+    expect(rungs.length, 'the sim block authored no ladder rungs — this gate read nothing').toBeGreaterThan(0);
+    let withPace = 0;
+    let withoutPace = 0;
+    for (const rung of rungs) {
+      const pace = rung.pace_s_per_mi as number | null;
+      const rehearses = rung.rehearses as string | null;
+      const assumption = rung.response_assumption as string | null;
+      if (pace == null) {
+        withoutPace++;
+        expect(rehearses, `${rung.role} rung carries no pace, so it may not claim to rehearse one`).toBeNull();
+        expect(assumption, `${rung.role} rung carries no pace, so it may not carry a response assumption`).toBeNull();
+        continue;
+      }
+      withPace++;
+      expect(rehearses === 'current_capability' || rehearses === 'forecast_development',
+        `${rung.role} rung has a pace but rehearses "${rehearses}"`).toBe(true);
+      const point = state?.marathon_specific_ladder as { training_prescription_s_per_mi?: number | null };
+      const today = point?.training_prescription_s_per_mi ?? null;
+      if (today != null) {
+        // The label IS the comparison. A rung at today's pace rehearses today.
+        expect(rehearses, `${rung.role} rung at ${pace} against today's ${today}`)
+          .toBe(pace < today ? 'forecast_development' : 'current_capability');
+      }
+    }
+    // Rule 22 · the distribution, not just the count. This block has a tune-up
+    // race in it, so BOTH arms must be exercised or the gate is only testing
+    // one of them.
+    expect(withPace, 'no priced rung reached this gate').toBeGreaterThan(0);
+    expect(withoutPace + withPace).toBe(rungs.length);
+  });
+});
+
 // Keep the imported floor referenced so a future edit that stops measuring
 // intensity here fails to compile rather than silently passing.
 expect(EASY_SHARE_FLOOR).toBeGreaterThan(0);

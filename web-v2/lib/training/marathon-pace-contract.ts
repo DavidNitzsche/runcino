@@ -319,10 +319,41 @@ export function marathonEffortPrescription(args: {
     paceSecPerMi - MARATHON_PACE_BAND_S_PER_MI,
     paceSecPerMi + MARATHON_PACE_BAND_S_PER_MI,
   ];
-  const rehearses: MarathonRehearsalKind = t > 0 ? 'forecast_development' : 'current_capability';
-  const assumption = t <= 0
+  /*
+   * REHEARSAL-1 (2026-09-03) · GATED ON THE PACE THAT MOVED, NOT ON THE LADDER
+   * POSITION.
+   *
+   * This read `t > 0`, which is a statement about where the session sits on the
+   * ladder, and then reported it as a statement about what the session
+   * REHEARSES — which is a statement about its PACE. Rule 16: a sentence
+   * asserting a fact about a measurement is gated on that measurement or it is
+   * not said.
+   *
+   * The two facts come apart whenever the runner's published band has no
+   * headroom in it, which `headroom = Math.min(0, …)` four lines up already
+   * recognises and calls "the correct refusal". The refusal was then labelled
+   * `forecast_development` anyway, and the sentence beside it read "The block
+   * develops marathon-specific endurance by 0 s/mi" — a forecast of nothing,
+   * announced as a forecast.
+   *
+   * Reachable in the shipped corpus today, not hypothetically: `cimBlock()` in
+   * `_mp_doctrine.test.ts` composes through `syntheticPaceAnchors`, whose
+   * marathon band clamps to the easy-ceiling separation and collapses to
+   * `[460, 460]`. Every rung of that block came out at one pace, every one of
+   * them saying it developed the runner by zero (Rule 15 · the corpus case is
+   * named because a mechanism no case reaches is untested).
+   *
+   * `developmentSecPerMi` is the seconds this session actually asks for beyond
+   * today's supported effort. Zero of them is holding, and holding is
+   * `current_capability` however far up the ladder the role sits.
+   */
+  const developmentSecPerMi = Math.max(0, point - paceSecPerMi);
+  const rehearses: MarathonRehearsalKind = developmentSecPerMi > 0
+    ? 'forecast_development'
+    : 'current_capability';
+  const assumption = developmentSecPerMi <= 0
     ? 'None. This is the pace your own evidence carries today.'
-    : `The block develops marathon-specific endurance by ${Math.abs(Math.round(t * headroom))} s/mi inside your published marathon band. That is a forecast, not a measurement, and completed sessions replace it.`;
+    : `The block develops marathon-specific endurance by ${developmentSecPerMi} s/mi inside your published marathon band. That is a forecast, not a measurement, and completed sessions replace it.`;
   // The fallback is always today's supported effort — the number that needs no
   // forecast to be true.
   const fallbackSecPerMi = point;
@@ -333,7 +364,9 @@ export function marathonEffortPrescription(args: {
       : 'Keep the effort controlled and sustainable.',
     'It should feel like work you could hold, not like a test.',
     'On hills, in heat, or into wind, protect the effort and let the pace go.',
-    t > 0
+    // REHEARSAL-1 · same gate. Offering a fallback to the pace the session is
+    // already prescribed at is a sentence that tells the runner nothing.
+    developmentSecPerMi > 0
       ? `If the pace will not come at that effort, run ${fmtPace(fallbackSecPerMi)} and take the session.`
       : 'If the pace comes easily, hold it anyway. The duration is the work here.',
   ].join(' ');
