@@ -262,30 +262,66 @@ struct PostRunVerdictV5: View {
 
     var body: some View {
         if !headline.isEmpty || !summary.isEmpty {
-            VStack(alignment: .leading, spacing: V5.S.s10) {
+            VStack(alignment: .leading, spacing: V5.S.s14) {
+            // TYPESYS-1, 2026-09-04. The card used to run headline (17/semi)
+            // → summary (17/regular) → planStatusLine (15/secondary) →
+            // provenance (12/QUIET) — a descending staircase that made the
+            // one qualification a runner most needs to catch (whose target
+            // this was) the smallest, dimmest thing on the card. David's own
+            // words: "makes the card feel like legal disclosure rather than
+            // coaching." Three levels now, sized by ROLE not by position:
+            // a section label, a strong verdict, one readable supporting
+            // sentence — CARDED, bordered, matching the Digest concept's own
+            // treatment rather than sitting flush on the page. "Limit the
+            // card to one conclusion and one supporting sentence" is literal
+            // here: the plan-status line, the Why disclosure, `next` and
+            // `coachTip` all moved OUTSIDE the border, because none of them
+            // is the one thing this card exists to say.
+            VStack(alignment: .leading, spacing: V5.S.s8) {
+                Text("COACH'S READ")
+                    .font(.faffText(TypeScaleV5.label12, weight: .semibold))
+                    .foregroundStyle(V5.textQuiet)
+                    .tracking(0.4)
                 if !headline.isEmpty {
                     Text(headline)
-                        .font(.faffText(TypeScaleV5.body17, weight: .semibold))
+                        .font(.faffText(18, weight: .bold))
                         .foregroundStyle(V5.textPrimary)
+                        .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !summary.isEmpty {
                     Text(summary)
-                        .font(.faffText(TypeScaleV5.body17))
-                        .foregroundStyle(V5.textPrimary)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if let planStatusLine {
-                    Text(planStatusLine)
-                        .font(.faffText(TypeScaleV5.body15))
+                        .font(.faffText(TypeScaleV5.body15, weight: .medium))
                         .foregroundStyle(V5.textSecondary)
+                        .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let targetProvenanceTrimmed {
                     Text(targetProvenanceTrimmed)
-                        .font(.faffText(TypeScaleV5.label12))
-                        .foregroundStyle(V5.textQuiet)
+                        .font(.faffText(TypeScaleV5.label13, weight: .semibold))
+                        .foregroundStyle(V5.textSecondary)
+                        .padding(.horizontal, V5.S.s10)
+                        .padding(.vertical, V5.S.s6)
+                        .background(V5.materialTile, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, V5.S.s4)
+                }
+            }
+            .padding(V5.S.s16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous)
+                    .stroke(V5.materialTileRaised, lineWidth: 1)
+            )
+
+            // OUTSIDE THE CARD. Plan status is a fact a runner reads even at
+            // a glance, but it is not the card's own conclusion — see the
+            // header note above.
+            VStack(alignment: .leading, spacing: V5.S.s10) {
+                if let planStatusLine {
+                    Text(planStatusLine)
+                        .font(.faffText(TypeScaleV5.body15, weight: .medium))
+                        .foregroundStyle(V5.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -379,8 +415,8 @@ struct PostRunVerdictV5: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // NO CARD (see the file header). Flush with the page's own
-            // gutter, not a tile's internal padding.
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

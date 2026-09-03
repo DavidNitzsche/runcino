@@ -191,50 +191,55 @@ struct TodayAfterV5: View {
                     }
                 }
 
-                /* ═══ LAYER 1 · THE WORKOUT RESULT ═══════════════════════
+                /* ═══ DIGEST-1 (2026-09-04) — THE SAME HIERARCHY RunDetailV5
+                 * NOW USES, applied over what THIS payload can honestly
+                 * support:
                  *
-                 * 2026-09-03 · brought into line with `RunDetailV5`'s same
-                 * pass, over what THIS payload can honestly support. `model
-                 * .paceWork` is the same server-computed work-phase average
-                 * `RunDetailV5.pace_work` is; completion count and rep-to-
-                 * rep consistency are NOT drawn here, because `V5RoutePhase`
-                 * carries no `completed` flag and no `pace_shape`, so this
-                 * screen cannot tell a true rep from a stride the way
-                 * `phase_breakdown`'s `pace_shape == "effort"` lets
-                 * `RunDetailV5` do. Showing a confident count or a
-                 * consistency sentence anyway would be exactly the kind of
-                 * client-side guess Rule 1 exists to stop. Flagged as a
-                 * missing canonical dependency in the handback rather than
-                 * quietly worked around.
+                 *   1. identity          → `panel` (above)
+                 *   2. activity stats    → `WorkoutResultFactsV5` — the
+                 *      real gap, not papered over: `V5Today` carries no
+                 *      `phase_breakdown` equivalent (`V5RoutePhase` has no
+                 *      `completed` flag, no `pace_shape`, no per-phase
+                 *      duration), so this screen cannot build RunDetailV5's
+                 *      richer `activityStats` (completion count, rep range,
+                 *      marathon-pace-vs-easy split) or its `workoutAnalysis
+                 *      Section` bar chart. `model.paceWork` is the one
+                 *      number both screens genuinely share
+                 *      (`RunDetailV5.pace_work`, same server computation).
+                 *      REQUIRES a wire change to `/api/v5/today` to close —
+                 *      named here as exactly that, not quietly worked
+                 *      around, and not attempted in this pass: reshaping a
+                 *      second live endpoint's contract under this
+                 *      timeline risked breaking what already works.
+                 *   3. Coach's Read      → `PostRunVerdictV5`, the SAME
+                 *      component, same `postRun` object as RunDetailV5 —
+                 *      genuinely canonical, not a parallel implementation.
+                 *   4. Route             → `routeOrBeltCard`, moved up from
+                 *      Layer 4 to sit directly after Coach's Read.
+                 *   5. Workout Analysis  → not built here; see §2.
+                 *   6. Piece by Piece    → `groupsTile`, this screen's own
+                 *      equivalent structure.
+                 *   7. Splits            → `breakdownSection`.
+                 *   8. Secondary evidence → everything below.
                  */
                 WorkoutResultFactsV5(workPaceText: model.paceWork)
 
-                // The recording's own honesty, above every number it is
-                // about — unchanged position/reasoning. `.capture` only:
-                // `.meaning` is now `PostRunVerdictV5` below, over the same
-                // object, so the two cannot drift (Rule 16).
                 if let pr = model.postRun {
                     PostRunLearnedV5(model: pr, includes: .capture)
                 }
 
-                // ONE COACHING READ, not two cards from two sources — same
-                // component, same reasoning as `RunDetailV5`'s own pass.
-                // See `PostRunVerdictV5`'s header.
                 if let pr = model.postRun {
                     PostRunVerdictV5(model: pr,
                                      conditions: model.conditionsNote,
                                      coachTip: model.coachTip)
                 }
 
-                // Compact supporting context — effort (now the ONE picker,
-                // see `askedVsRanSection`'s own header) and the rest of what
-                // the watch recorded, as one column.
+                routeOrBeltCard
+
                 VStack(alignment: .leading, spacing: 0) {
                     askedVsRanSection
                     readingSection
                 }
-
-                /* ═══ LAYER 2 · WORKOUT ANALYSIS ═══════════════════════ */
 
                 if !model.groups.isEmpty {
                     groupsTile
@@ -243,23 +248,13 @@ struct TodayAfterV5: View {
                     PostRunLearnedV5(model: pr, includes: .strides)
                 }
 
-                /* ═══ LAYER 3 · CHARTS AND COMPARISON ═══════════════════
-                 *
-                 * NOT BUILT ON THIS SCREEN. `V5Today` carries no `analysis`
-                 * and no `matchedWorkout` — `RunDetailV5` is the only screen
-                 * with the synchronized chart and the matched-effort
-                 * comparison, because those two fields are simply absent
-                 * from this payload. Named here, not silently skipped: see
-                 * the handback for the missing-dependency entry this is.
-                 */
+                breakdownSection
 
-                /* ═══ LAYER 4 · DETAILED EVIDENCE ═══════════════════════ */
+                /* ═══ §8 · SECONDARY EVIDENCE AND LOGGING ═══════════════ */
 
                 if let shares = model.zoneShares, !shares.isEmpty {
                     zoneTile(shares)
                 }
-                routeOrBeltCard
-                breakdownSection
 
                 /* ═══ LAYER 5 · ACTIONS ══════════════════════════════════ */
 
