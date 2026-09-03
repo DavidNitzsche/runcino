@@ -1721,11 +1721,36 @@ struct LiveRunHostV5: View {
             // from workoutId), so this can never duplicate a run that did
             // manage to save.
             if mode == .outdoor { recovered = PhoneRunTracker.flushInterruptedRun() }
-            // A failure here is not an outage screen: the run can still be
-            // recorded, it just has no target to hold. `plan` stays nil and
-            // both consoles already draw their no-target layout.
-            if let w = try? await API.fetchWatchWorkout() {
-                plan = LiveRunPlanV5(workout: w, sessionType: w.name)
+            // The lobby (`RunLobbyV5`) already fetched today's workout to
+            // show the runner what was about to start — reuse that exact
+            // read rather than fetching a second time, so "what was shown"
+            // and "what starts" can never be two different answers a few
+            // seconds apart (a plan rebuild or midnight rollover landing
+            // between the two calls). Only a fresh, still-relevant snapshot
+            // is consumed (see `PendingRunPlanV5`); anything else (opened via
+            // some other path, or the lobby's own fetch failed) falls
+            // through to the same fetch this always did.
+            //
+            // Unwrapped explicitly (not a same-level switch) on purpose:
+            // `Snapshot` declares its own `.none` case, and matching
+            // `PendingRunPlanV5.Snapshot?` in one switch makes bare `.none`
+            // ambiguous between "never captured" (the Optional's own nil)
+            // and "captured, and the answer was no workout" (`Snapshot.none`
+            // wrapped in `.some`) — exactly the Rule 11 distinction this
+            // holder exists to keep separate. Binding first removes the
+            // ambiguity instead of relying on which one Swift picks.
+            if let snapshot = PendingRunPlanV5.shared.consume() {
+                switch snapshot {
+                case .workout(let w): plan = LiveRunPlanV5(workout: w, sessionType: w.name)
+                case .none:           plan = nil
+                }
+            } else {
+                // A failure here is not an outage screen: the run can still
+                // be recorded, it just has no target to hold. `plan` stays
+                // nil and both consoles already draw their no-target layout.
+                if let w = try? await API.fetchWatchWorkout() {
+                    plan = LiveRunPlanV5(workout: w, sessionType: w.name)
+                }
             }
             asked = true
             // Safe before authorization has been answered: the tracker
