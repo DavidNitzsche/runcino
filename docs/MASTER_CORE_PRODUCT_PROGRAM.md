@@ -215,10 +215,59 @@ Nothing may displace this.
 |---|---|---|---|---|---|
 | **S1.1** | Marathon-specific progression | 18 of 33 MP miles (55%) fall in the last three weeks; the 6-10-weeks-out window gets **4 MP miles in one session** against doctrine's 10-14 every 2-3 weeks | Race-specific phase re-authored so meaningful MP work happens in its window and progresses into the taper; each session persists purpose, pace, why-this-week, what supports it, what it prepares, and whether it rehearses current capability or projected execution | 1 | Ready |
 | **S1.2** | Long-run progression | Exactly one run reaches 20+ (20.5), a mile under his demonstrated 21.5, in a block whose thesis is `DURABILITY` | Number and placement of 20+ runs derived from evidence; longest run 20.5 / 21 / 21.5 with the reason persisted. Big Sur is a race and is not evidence of training-long capacity | 1 | Ready |
-| **S1.3** | Dodgers weekend evidence | Grant claims *"You have run 29.4mi across two days before"* — that pair is a **2.61 mi shakeout + the 26.81 mi Big Sur Marathon**. Every other large pair in his history is big-first-small-second. He has **never** run long after a hard effort | Keep the session; represent it honestly as an owner-authorised, evidence-informed **novel** demand. Volume supported by prior weekends; the hard-short-first ordering stated as novel | 1 | Ready |
+| **S1.3** | Dodgers weekend evidence | Grant claims *"You have run 29.4mi across two days before"* — that pair is a **2.61 mi shakeout + the 26.81 mi Big Sur Marathon**. Every other large pair in his history is big-first-small-second. He has **never** run long after a hard effort | Keep the session; represent it honestly as an owner-authorised, evidence-informed **novel** demand. Volume supported by prior weekends; the hard-short-first ordering stated as novel | 1 | **VERIFIED against production reads 2026-09-03** — see below |
 | **S1.4** | The four marathon paces | Training MP 7:52, projection-derived 7:47, CIM execution 7:23, goal 6:52 — all live, he rehearses 29 s/mi slower than he is told to race | A typed contract naming all five quantities, plus a defensible week-by-week progression from current sustainable marathon effort toward 7:23 — or change the progression, the target, or both | 1 | Ready |
 | **S1.5** | Monthly / sustained load | External review claims ~30% growth in rolling 28-day load and a 7-week stretch at ~52.9 against a best sustained 5 weeks at ~42.6. **Unverified** | Measure from canonical populations. Document if false; if true, judge coherence against cutbacks, rolling-7-day peak, long-run history, density and his aggressive preference. No new arbitrary limiter; any correction smooth and deterministic | 1 | Ready |
 | **S1.6** | Runner-facing language | *"Conversational."* and *"Z2 HR cap."* appear **37 times**; the downhill instruction **12 times** (Rule 17) | Direct instructions: how the effort should feel, the actual HR ceiling, what to prioritise, what to do when pace and effort disagree, how to execute the end. Derived from canonical decisions, not a separate prose brain | 1 | Ready |
+
+
+### S1.3 · verified, with the numbers
+
+`EVIDENCE-HONESTY-1` had already landed in `lib/plan/designed-race-weekend.ts`;
+the master list was stale, not the code. Verified by RENDERING the grant from
+production reads rather than by reading the header that claims it (Rule 13),
+via `web-v2/scripts/p0-proof/dodgers-grant-sentence.ts` — read-only, 149
+eligible days.
+
+The old sentence's evidence, measured independently and confirmed false in
+shape: the heaviest two-day total in his history IS 29.4 mi, on 2026-04-25 +
+2026-04-26 — and that pair **contains a race**. It is the 2.61 mi shakeout plus
+the Big Sur Marathon, which is the opposite arrangement to the one the weekend
+prescribes.
+
+What the resolvers now return:
+
+| Claim | Value |
+|---|---|
+| `pairVolume` | DEMONSTRATED · **27.85 mi**, 2026-02-15/16, races excluded — 20.00 first, 7.85 second |
+| `pairOrdering` | **NOVEL** · 11 hard-first pairs seen; furthest he has gone the day after a hard one is **9.01 mi** |
+
+The two claims are typed separately and cannot be substituted, so the volume
+number can no longer be spent as though it settled the arrangement. Note that
+the citable pair is itself big-first-small-second — which is precisely why the
+ordering sentence has to be, and is, said separately.
+
+Heaviest two-day totals with races excluded: 27.9 / 27.5 / 22.6 / 21.7 / 21.1.
+The weekend asks for 23.21, so the gate clears on evidence rather than on the
+race-contaminated number.
+
+Rendered sentence, at the doctrine-compliant shape (17 mi second day, 3 recovery
+days — the composer is refused by name at 18 mi and at 2 recovery days, both
+refusals confirmed):
+
+> A controlled 10K, then volume on tired legs. 23.21mi across the weekend sits
+> inside the 27.85mi you have already run across two days of training, on
+> 2026-02-15. Running long the morning after a hard effort is new for you. The
+> furthest you have gone the day after a hard one is 9.01mi. You asked for this
+> weekend knowing it is aggressive, and I have kept it. […] is prescribed as a
+> controlled effort, not a race. The 17mi that follows is easy the whole way and
+> inside the 18mi you already run long, and 3 easy days follow it. Nothing
+> changes that long run on its own. If you run […] materially harder than it is
+> prescribed, I will say so and leave the call to you.
+
+**What this proof cannot fail on** (Rule 22): it proves the SENTENCE, not the
+placement. It says nothing about whether the weekend should be prescribed at
+all — only that the evidence offered for it is honestly stated.
 
 ---
 
