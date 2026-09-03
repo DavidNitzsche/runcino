@@ -170,14 +170,42 @@ final class RunLobbySegmentsTests: XCTestCase {
 
     private func phase(_ type: WatchPhaseType, label: String = "", durationSec: Int = 300,
                         target: Int? = nil, tolerance: Int? = nil, hr: Int? = nil,
+                        hrRole: WatchHrRole? = nil,
                         repUnit: WatchRepUnit = .time, distanceMi: Double? = nil) -> WatchPhase {
         WatchPhase(index: 0, type: type, label: label, durationSec: durationSec,
                    targetPaceSPerMi: target, tolerancePaceSPerMi: tolerance, haptic: .start,
-                   repUnit: repUnit, distanceMi: distanceMi, hrTargetBpm: hr)
+                   repUnit: repUnit, distanceMi: distanceMi, hrTargetBpm: hr, hrRole: hrRole)
     }
 
     func test_emptyPhasesProduceNoRows() {
         XCTAssertEqual(RunLobbySegments.summarize([]), [])
+    }
+
+    /// HR-ROLE-1 (2026-09-03 correction) · an observational bpm is DROPPED
+    /// from the row entirely, not relabelled. "Showing a precise HR value
+    /// and then telling the runner not to use it creates false importance" —
+    /// so a 60s hill rep shows pace and length only, never a number beside
+    /// it at all.
+    func test_observationalHrIsDroppedFromTheRowEntirely() {
+        let hill = phase(.work, label: "Hill", durationSec: 60, hr: 176, hrRole: .observational)
+        let recovery = phase(.recovery, durationSec: 120)
+        let phases = Array(repeating: [hill, recovery], count: 5).flatMap { $0 }
+
+        let rows = RunLobbySegments.summarize(phases)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertTrue(rows[0].hrIsObservational, "the classification still survives internally")
+        XCTAssertFalse(rows[0].detail?.contains("176") ?? false,
+                        "an observational bpm must not appear in the row at all: \(rows[0].detail ?? "nil")")
+    }
+
+    /// A rep long enough for HR to actually govern (`.target`) still shows
+    /// the number — this is the case the fix must not silence.
+    func test_targetHrStillRendersInTheRow() {
+        let tempo = phase(.work, label: "Tempo", durationSec: 900, hr: 165, hrRole: .target)
+        let rows = RunLobbySegments.summarize([tempo])
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertFalse(rows[0].hrIsObservational)
+        XCTAssertTrue(rows[0].detail?.contains("HR 165") ?? false, "a target HR must still render: \(rows[0].detail ?? "nil")")
     }
 
     func test_warmupAndCooldownAreAlwaysTheirOwnUngroupedRows() {
