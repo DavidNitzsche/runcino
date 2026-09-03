@@ -92,7 +92,6 @@
 		4E88DDDEE13FBFC793505EDE /* G_Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE323D928DA355934197F38B /* G_Settings.swift */; };
 		50AB24CF8800755A3B9CCA79 /* FaffComplicationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B9D4547CDA7A3180224CA48 /* FaffComplicationViews.swift */; };
 		5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */; };
-		52645EAF7718A0D150819DBB /* LiveRunWatchCompanionV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7593F73EC3646CF56553C4DB /* LiveRunWatchCompanionV5.swift */; };
 		528D47BC25D2A7F0CDB54874 /* SurfaceStoreV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B817BE00E8380E26CE5AC512 /* SurfaceStoreV5.swift */; };
 		533CAEF551723F2A36BFBA9C /* FaffWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2606EFDB59295AF72C865CB /* FaffWidgetSnapshot.swift */; };
 		53BF589D416A19346C3E3869 /* SickV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF7E6E0D868BFA61684A1B5 /* SickV5.swift */; };
@@ -152,6 +151,7 @@
 		9CFEBBFA3F3370E991138836 /* PhoneSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D7420891F1F0024E3D933 /* PhoneSync.swift */; };
 		9D4EFA11F803DC6352341222 /* NudgeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A9245F66AE1A50C76E2FF3 /* NudgeSheet.swift */; };
 		9FD3746AE67B05A44D1CC065 /* WatchLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BC0F0DA346169545F683D08 /* WatchLayout.swift */; };
+		A01BF2028E9F699C9241BE55 /* LiveRunWatchCompanionV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3518819A569ED4E7C4F1E8F /* LiveRunWatchCompanionV5.swift */; };
 		A11A3E74B3A9B30D43030CAA /* B_Provenance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46AEF8CAC73238CD1F086945 /* B_Provenance.swift */; };
 		A2205010201940343C1796E2 /* ToolkitPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B4214411E5A308A6B07D6E4 /* ToolkitPayloads.swift */; };
 		A2BEE994D2DF7B2FCF1B1290 /* FaffWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B66BB20F1C8DE49B6D9600 /* FaffWidgetBundle.swift */; };
@@ -412,7 +412,6 @@
 		71C4F2E6374884D975BBC496 /* FacesLobbyV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacesLobbyV5.swift; sourceTree = "<group>"; };
 		743648B82E2A21410A13F000 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7483C37B55D5EABF86C7B744 /* E_Nudges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E_Nudges.swift; sourceTree = "<group>"; };
-		7593F73EC3646CF56553C4DB /* LiveRunWatchCompanionV5.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LiveRunWatchCompanionV5.swift; sourceTree = "<group>"; };
 		75CB12F69B8E91BD1846A268 /* RaceDayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaceDayView.swift; sourceTree = "<group>"; };
 		760B92E89CF0E2EF5EEB8265 /* TreadmillHRView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillHRView.swift; sourceTree = "<group>"; };
 		761D6D9F643EAA00C64D9BBC /* Runs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Runs.swift; sourceTree = "<group>"; };
@@ -497,6 +496,7 @@
 		BFA85E15978E6315D144D85E /* MIGRATION_PLAN.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MIGRATION_PLAN.md; sourceTree = "<group>"; };
 		C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchMirrorView.swift; sourceTree = "<group>"; };
 		C29FB6AFE3C447E23C510022 /* AddRaceV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddRaceV5.swift; sourceTree = "<group>"; };
+		C3518819A569ED4E7C4F1E8F /* LiveRunWatchCompanionV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunWatchCompanionV5.swift; sourceTree = "<group>"; };
 		C3676EBC48CB66235C0EE731 /* PaceDriftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceDriftTests.swift; sourceTree = "<group>"; };
 		C44CBB9357A15E48DAFCBEEA /* CoachPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachPayloads.swift; sourceTree = "<group>"; };
 		C62B9760D4B508FC2FF8DBD0 /* ValuesV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValuesV5.swift; sourceTree = "<group>"; };
@@ -556,7 +556,7 @@
 		FCA4369345EE34EAFD3E307C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
-		TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_F37EEE1E-E0D8-4147-9AA5-E470878294D2" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -771,6 +771,7 @@
 				6F6FF20A96440B706E0DF836 /* HostsV5.swift */,
 				3319534867031A9898793E4E /* LiveRunOutdoorV5.swift */,
 				21C4E0103C48556262CA34E6 /* LiveRunTreadmillV5.swift */,
+				C3518819A569ED4E7C4F1E8F /* LiveRunWatchCompanionV5.swift */,
 				F8825DD5FD2222468737B3C2 /* OnboardingV5.swift */,
 				B2AB92DBD2E38DE9C55813DC /* PacesMovedV5.swift */,
 				764DB060460773CD4B017A69 /* RaceDetailV5.swift */,
@@ -793,7 +794,6 @@
 				0891DA9583913A7F36C7268C /* TodayBeforeSamplesPreRunV5.swift */,
 				CC98F967EA1071686B9F86C0 /* TodayBeforeV5.swift */,
 				8FCBEC856C1DF94056E0B70B /* TravelV5.swift */,
-				7593F73EC3646CF56553C4DB /* LiveRunWatchCompanionV5.swift */,
 			);
 			path = ViewsV5;
 			sourceTree = "<group>";
@@ -958,6 +958,14 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
+		"TEMP_F1741A09-C4F4-4BA9-9AE3-C65D45A1883F" /* native-v2 */ = {
+			isa = PBXGroup;
+			children = (
+				"TEMP_F37EEE1E-E0D8-4147-9AA5-E470878294D2" /* Secrets.xcconfig */,
+			);
+			path = "native-v2";
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -973,6 +981,8 @@
 				3D03D9822507A5256A710E80 /* PBXTargetDependency */,
 			);
 			name = FaffTests;
+			packageProductDependencies = (
+			);
 			productName = FaffTests;
 			productReference = 801D9B1925F0DC65C5E66C0D /* FaffTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -989,6 +999,8 @@
 			dependencies = (
 			);
 			name = "FaffWatch Widgets";
+			packageProductDependencies = (
+			);
 			productName = "FaffWatch Widgets";
 			productReference = 574046EFA57DAA5E3FA61AB5 /* FaffWatch Widgets.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -1005,6 +1017,8 @@
 				1848BF697DA6AE688BEC132D /* PBXTargetDependency */,
 			);
 			name = "FaffWatch Watch AppTests";
+			packageProductDependencies = (
+			);
 			productName = "FaffWatch Watch AppTests";
 			productReference = 7946847F45F40D00337CF5F6 /* FaffWatch Watch AppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -1045,6 +1059,8 @@
 				E18ECFC0A4A87A41AF4994CB /* PBXTargetDependency */,
 			);
 			name = "FaffWatch Watch App";
+			packageProductDependencies = (
+			);
 			productName = "FaffWatch Watch App";
 			productReference = 79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */;
 			productType = "com.apple.product-type.application";
@@ -1298,6 +1314,7 @@
 				A66CE409BB06035C16E77160 /* LearnArticleSheet.swift in Sources */,
 				468FE2BC3CFB56D3952DA40E /* LiveRunOutdoorV5.swift in Sources */,
 				B6076F76806872AA099B2961 /* LiveRunTreadmillV5.swift in Sources */,
+				A01BF2028E9F699C9241BE55 /* LiveRunWatchCompanionV5.swift in Sources */,
 				FF78B023B6AF759194C870EC /* LoadState.swift in Sources */,
 				C6A2A7918BF78AD7655141C8 /* MatchedWorkoutV5.swift in Sources */,
 				B2BC7B429ADDA0AA8B070554 /* MileBreakdownV5.swift in Sources */,
@@ -1387,7 +1404,6 @@
 				5145860E3D5DA3AF58559C74 /* WatchMirrorView.swift in Sources */,
 				0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */,
 				3BA6B12FCF16C3B5BD62797B /* WeekStrip.swift in Sources */,
-				52645EAF7718A0D150819DBB /* LiveRunWatchCompanionV5.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1436,7 +1452,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_F37EEE1E-E0D8-4147-9AA5-E470878294D2" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1663,7 +1679,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = TEMP_24369975-1B5C-4C27-94BF-2299CF82F0BC /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_F37EEE1E-E0D8-4147-9AA5-E470878294D2" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
