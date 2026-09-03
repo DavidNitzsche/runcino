@@ -325,6 +325,29 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // and the missing `.catch` are what make a failed read reach the wrapper
   // above and become the outage screen instead.
   const activePlan = await loadActivePlanStrict(userId);
+  /**
+   * PLANVERSION-1 (2026-09-03) · a canonical identity for "the plan's
+   * prescribed content," threaded onto every V5Today response so the client
+   * can invalidate a cached day the moment the plan underneath it moves.
+   *
+   * `activePlan.id` alone is not sufficient — confirmed against `generate.ts`
+   * (a full rebuild inserts a new `training_plans` row and archives the old
+   * one, so `id` changes) and `recompute-paces.ts` / `reanchor-plan.ts` (an
+   * in-place pace re-anchor rewrites `plan_workouts` and
+   * `training_plans.authored_state` under the SAME `id` — a runner's
+   * prescribed paces can change with nothing here noticing). `last_adapted_at`
+   * is the second half: `lib/plan/adapt.ts` stamps it on every adaptation
+   * pass, rebuild or re-anchor alike, so the pair together changes for both
+   * cases the client needs to invalidate on. Both fields already exist on
+   * `ActivePlan` (`lib/plan/lookup.ts`) — this reads them, it does not add a
+   * column or a migration.
+   *
+   * `null` when there is no active plan, which is itself a fact worth
+   * carrying rather than collapsing into a placeholder string — a cache
+   * entry keyed on a null plan version simply never matches a real one, so
+   * it is invalidated the moment a real plan appears.
+   */
+  const planVersion = activePlan ? `${activePlan.id}:${activePlan.last_adapted_at ?? 'none'}` : null;
   let raceMode = activePlan != null && (activePlan.mode === 'race-prep' || activePlan.race_id != null);
   if (!activePlan) {
     // No active plan right now — still race-mode if this runner has EVER
@@ -338,7 +361,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   }
 
   if (!raceMode) {
-    const ctx: V5TodayContext = emptyContext(today, false, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, false, isSteppedDay, planVersion);
     return NextResponse.json(composeV5Today(ctx));
   }
 
@@ -497,7 +520,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     ));
     const since = daysSince === 0 ? 'Flagged today' : daysSince === 1 ? 'Flagged yesterday' : `Flagged ${daysSince} days ago`;
     const returnAvailable = inj.expected_return_date != null && today >= inj.expected_return_date;
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.injury = {
       area: inj.site.charAt(0).toUpperCase() + inj.site.slice(1),
@@ -541,7 +564,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     const daysSince = Math.max(0, Math.floor(sick.days_active));
     const since = daysSince === 0 ? 'Flagged today' : daysSince === 1 ? 'Flagged yesterday' : `Flagged ${daysSince} days ago`;
     const verdict = safetyVerdictLine(safety);
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.sick = {
       symptoms: sick.symptoms.map(symptomLabel),
@@ -592,7 +615,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
    */
   if (!safety.known) {
     console.warn(`[v5/today] ${safety.explain}`);
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.weekLine = weekLine;
     ctx.safetyUnknown = {
@@ -642,7 +665,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           sub: '',
         }
       : null;
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.weekOff = {
       reason: 'Away from the plan',
@@ -687,7 +710,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       if (hi > 0) weeklyRange = `${lo} to ${hi} miles a week`;
     } catch { /* leave null · no fabricated range */ }
 
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.offSeason = {
       sinceLastRace,
@@ -1644,7 +1667,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         niggleFlagged: glance.activeNiggle?.body_part ?? null,
       };
 
-      const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+      const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
       ctx.postRun = postRun;
       ctx.todayPlan = todayPlan;
       ctx.todayPlanUnresolved = todayPlanUnresolved;
@@ -1966,7 +1989,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     return out.length > 0 ? out : null;
   })();
 
-  const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+  const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
   ctx.todayPlan = todayPlan;
   ctx.todayPlanUnresolved = todayPlanUnresolved;
   ctx.weekLine = weekLine;
@@ -2096,9 +2119,11 @@ function phaseWords(label: string | null | undefined): string | null {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-function emptyContext(todayISO: string, raceMode: boolean, isSteppedDay = false): V5TodayContext {
+function emptyContext(
+  todayISO: string, raceMode: boolean, isSteppedDay = false, planVersion: string | null = null,
+): V5TodayContext {
   return {
-    todayISO, raceMode, isSteppedDay,
+    todayISO, raceMode, isSteppedDay, planVersion,
     todayPlan: null, weekLine: null, phaseLine: null, weekStripDays: [],
     prescription: null, weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null, why: null,
     whereYouAre: [], beforeYouGo: [], raceDay: false, contingency: null, recentRun: null,

@@ -55,10 +55,30 @@ import UIKit
 //       torture test recorded.
 @MainActor
 final class DayFetchCoordinator {
-    private var inFlight: [String: Task<API.V5Fetch<V5Today>?, Never>] = [:]
+    private var inFlight: [String: Task<V5Today?, Never>] = [:]
     private let maxConcurrent: Int
+    /// The actual network call — injectable so `DayFetchCoordinatorTests`
+    /// can exercise dedup, the concurrency bound, and stale-response
+    /// rejection against a controllable fake, never a real network
+    /// dependency. Defaults to the real endpoint for every production call
+    /// site.
+    private let fetchOne: (String) async -> V5Today?
 
-    init(maxConcurrent: Int = 6) { self.maxConcurrent = maxConcurrent }
+    init(
+        maxConcurrent: Int = 6,
+        fetchOne: @escaping (String) async -> V5Today? = { date in
+            if case .ok(let payload)? = try? await API.fetchV5Today(date: date) { return payload }
+            return nil
+        }
+    ) {
+        self.maxConcurrent = maxConcurrent
+        self.fetchOne = fetchOne
+    }
+
+    /// How many fetches are in flight RIGHT NOW — a testable seam for
+    /// asserting the concurrency bound actually held mid-flight, not one
+    /// inferred from timing alone.
+    var inFlightCount: Int { inFlight.count }
 
     /// Fetch `dates`, deduped and capped, and return whatever came back
     /// `.ok`, keyed by date. Never cancels anything — this feeds prefetch,
@@ -75,13 +95,12 @@ final class DayFetchCoordinator {
             await withTaskGroup(of: (String, V5Today?).self) { group in
                 for date in batch {
                     let task = inFlight[date] ?? {
-                        let t = Task { try? await API.fetchV5Today(date: date) }
+                        let t = Task { await self.fetchOne(date) }
                         inFlight[date] = t
                         return t
                     }()
                     group.addTask {
-                        if case .ok(let payload)? = await task.value { return (date, payload) }
-                        return (date, nil)
+                        (date, await task.value)
                     }
                 }
                 for await (date, payload) in group {
@@ -417,7 +436,7 @@ struct TodayHostV5: View {
         .onChange(of: surface.model?.dateISO, initial: true) { _, _ in
             if let m = surface.model {
                 dayCache[m.dateISO] = m
-                reconcileDayCache(against: m.weekStrip)
+                reconcileDayCache(against: m)
             }
         }
         .refreshable { await surface.load() }
@@ -577,46 +596,83 @@ struct TodayHostV5: View {
     /// the `.onChange` below) and read by `goTo` alone — nothing else derives
     /// truth from it, so a stale or missing entry can only ever cost a round
     /// trip, never show the wrong day.
-    @State private var dayCache: [String: V5Today] = [:]
+    // Not `private` — same reason as `readiness` below: PLANVERSION-1's own
+    // regression test constructs a host and asserts on this directly rather
+    // than driving it through a live view render.
+    @State var dayCache: [String: V5Today] = [:]
 
-    /// PLANVERSION-1 · a day cached under an authoring row the plan no
-    /// longer has must never be handed back as though it still applied.
+    /// PLANVERSION-1 · the last `planVersion` this session has actually
+    /// seen. Nil until the first payload that carries one lands — an older
+    /// server, or the very first fetch of a session, is not "a version
+    /// change" and must not wipe a cache that was never populated under a
+    /// different plan in the first place.
+    @State var lastKnownPlanVersion: String?
+
+    /// A day cached under a plan the runner no longer has must never be
+    /// handed back as though it still applied.
     ///
-    /// There is no `plan_version` field on the wire, and adding one is a
-    /// backend contract change this pass did not make. `weekStrip[i].id`
-    /// already IS a per-day version: it is the `plan_workout_id` backing
-    /// that date's prescribed session (see `V5WeekStripDay.id`'s own doc
-    /// comment — "the date is a lookup, never an identity"), and rebuilding
-    /// a week for a date replaces that row wholesale, id included. So every
-    /// fresh weekStrip that lands is a small, precise diff against
-    /// everything this session has cached: any cached day whose stored id
-    /// no longer matches what the plan currently says for that date is not
-    /// stale by AGE, it is describing a workout that no longer exists, and
-    /// must be dropped rather than served.
+    /// TWO SIGNALS, IN ORDER OF STRENGTH.
     ///
-    /// Called wherever a weekStrip actually lands — the base Today read and
-    /// every prefetch — so a rebuild is caught the moment its evidence is in
-    /// hand, not only when the runner happens to revisit the affected date.
-    /// Only ever prunes `dayCache`, the same non-authoritative read `goTo`
-    /// already treats as "a lookup, never a mutation" — never touches
-    /// `surface.model`. A dropped entry costs the next visit to that date
-    /// one round trip; keeping a wrong one costs the runner a workout that
-    /// was never prescribed.
+    /// **Primary — `planVersion`.** It is a WHOLE-PLAN identity
+    /// (`${training_plans.id}:${last_adapted_at}`, see `V5Today.planVersion`'s
+    /// doc comment), not a per-day one, so the correct response to it
+    /// changing is not a per-day diff — it is "every cached day was fetched
+    /// under a plan that is no longer the active one," and the whole
+    /// `dayCache` is dropped. This is what closes the gap the per-day diff
+    /// below cannot: an in-place pace re-anchor rewrites `plan_workouts`
+    /// under the SAME `plan_workout_id` on every affected day, so a
+    /// row-by-row id diff sees nothing to invalidate even though every
+    /// cached day's paces just moved. `last_adapted_at` is the half of
+    /// `planVersion` that catches exactly this.
     ///
-    /// KNOWN GAP, NAMED RATHER THAN HIDDEN: `plan_workout_id` bumps on a full
-    /// rebuild but NOT on an in-place pace re-anchor or adaptation, which
-    /// rewrites `plan_workouts` rows under the SAME id. A cached day whose
-    /// PACES changed via re-anchoring without its id changing would not be
-    /// caught by this diff. Closing that gap needs the wire-level
-    /// `planVersion` this comment argues against adding lightly — tracked as
-    /// open, not silently accepted as correct.
-    private func reconcileDayCache(against freshWeekStrip: [V5WeekStripDay]) {
-        for freshDay in freshWeekStrip {
-            guard let cachedPayload = dayCache[freshDay.dateISO] else { continue }
+    /// **Fallback — `plan_workout_id`.** For a server too old to send
+    /// `planVersion` at all (nil), or as a second check even when it is
+    /// present: any cached day whose stored row id no longer matches what
+    /// the plan currently says for that date is describing a workout that
+    /// no longer exists, and is dropped individually rather than served.
+    ///
+    /// Called wherever a fresh payload actually lands — the base Today read
+    /// and every prefetch — so a rebuild or re-anchor is caught the moment
+    /// its evidence is in hand, not only when the runner happens to revisit
+    /// the affected date. Only ever prunes `dayCache`, the same
+    /// non-authoritative read `goTo` already treats as "a lookup, never a
+    /// mutation" — never touches `surface.model`. A dropped entry costs the
+    /// next visit to that date one round trip; keeping a wrong one costs
+    /// the runner a workout, a pace, or a completion state that was never
+    /// true under the plan now active.
+    func reconcileDayCache(against fresh: V5Today) {
+        let result = Self.reconciledDayCache(dayCache, lastKnownPlanVersion: lastKnownPlanVersion, against: fresh)
+        dayCache = result.cache
+        lastKnownPlanVersion = result.lastKnownPlanVersion
+    }
+
+    /// The actual decision behind `reconcileDayCache`, factored out as a pure
+    /// function — same reason `readiness(model:wanted:pendingDate:)` above
+    /// takes its inputs as parameters rather than reading `@State` directly:
+    /// `@State` mutated through a bare, unrendered `TodayHostV5` does not
+    /// reliably persist across statements outside a live SwiftUI view
+    /// hierarchy, so PLANVERSION-1's own regression tests call this, never
+    /// the `@State`-touching wrapper above.
+    static func reconciledDayCache(
+        _ cache: [String: V5Today],
+        lastKnownPlanVersion: String?,
+        against fresh: V5Today
+    ) -> (cache: [String: V5Today], lastKnownPlanVersion: String?) {
+        var cache = cache
+        var lastKnownPlanVersion = lastKnownPlanVersion
+        if let freshVersion = fresh.planVersion {
+            if let known = lastKnownPlanVersion, known != freshVersion {
+                cache.removeAll()
+            }
+            lastKnownPlanVersion = freshVersion
+        }
+        for freshDay in fresh.weekStrip {
+            guard let cachedPayload = cache[freshDay.dateISO] else { continue }
             let cachedOwnID = cachedPayload.weekStrip.first(where: { $0.dateISO == freshDay.dateISO })?.id
             guard let cachedOwnID, cachedOwnID != freshDay.id else { continue }
-            dayCache.removeValue(forKey: freshDay.dateISO)
+            cache.removeValue(forKey: freshDay.dateISO)
         }
+        return (cache, lastKnownPlanVersion)
     }
 
     /// The strip hands back a plan row's server id; the date lives beside it
@@ -814,7 +870,7 @@ struct TodayHostV5: View {
         let fetched = await fetchCoordinator.fetch(Array(missing))
         for (key, payload) in fetched {
             dayCache[key] = payload
-            reconcileDayCache(against: payload.weekStrip)
+            reconcileDayCache(against: payload)
         }
     }
 
