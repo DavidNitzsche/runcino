@@ -312,9 +312,18 @@ describe('LONGRUN-DEMAND · the race-specific phase carries §4.4 marathon-pace 
     expect(structure, "§4.4's Structure row no longer states an at-MP range").not.toBeNull();
     const [loMi, hiMi] = [Number(structure![1]), Number(structure![2])];
 
+    // MPLADDER-1 (2026-09-03) · RULING MOVE, in the direction this file's own
+    // sibling comment already argued. §4.4's band governs §4.4's SESSION, and
+    // the ladder now authors three different rows of Research/04 §4.1 into
+    // race-specific weeks: §4.4's marathon-pace long, §4.5's fast-finish touch
+    // ("final 2-6 mi at MP") and §4.6's dress rehearsal. Grading a four-mile
+    // §4.5 touch against §4.4's "8-16 mi at MP" reads a session at its own
+    // correct size as an undersized one — the exact collapse `./long-run-rows`
+    // exists to undo, and the reason `longRunKind` is on the row at all.
     const mpLongs = composed.weeks
       .filter((w) => w.phase === 'RACE-SPECIFIC')
-      .flatMap((w) => w.days.filter((d) => d.isLong && d.type === 'long' && mpMilesOf(d) > 0));
+      .flatMap((w) => w.days.filter((d) => d.isLong && d.type === 'long'
+        && d.longRunKind === 'mp_long' && mpMilesOf(d) > 0));
     for (const d of mpLongs) {
       const mp = mpMilesOf(d);
       expect(mp, `§4.4 asks for ${loMi}-${hiMi} mi at MP; this long carries ${mp}`)

@@ -828,6 +828,34 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
    * Verified alongside: `_sweep_allusers`, `_maint_invariants` and
    * `_dosing_sweep_gate` all stay at zero findings, and this file's own
    * doctrine-band test passes unchanged. Any FURTHER drift is still CRITICAL.
+   *
+   * ── FROZEN SNAPSHOT MOVED · 2026-09-03 · MPLADDER-1 + TAPERLONG-1 ─────────
+   *
+   * Both snapshots moved, on five lines, and every one is a ruling in
+   * `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` landing on this fixture. Recorded
+   * line by line rather than re-baselined, because that is what "FROZEN" is
+   * for. WEEKLY MILEAGE IS UNCHANGED ON EVERY WEEK, which is the property this
+   * fingerprint most exists to protect.
+   *
+   *   wk13  long 18 → 16 · wk14  long 13 → 10
+   *      Q18, the owner overruling `Research/08` §9.2's table by name: "Not
+   *      18/13. Use 14-16 mi two weeks out and 8-10 mi one week out."
+   *
+   *   wk13  tempo "2.5 mi WU · 11 mi @ MP · 1.5 mi CD" → race_week_tuneup
+   *   wk14  tempo "2 mi WU · 7 mi @ MP · 1 mi CD" → "2.5 mi WU · 4.5 mi @ T · 1 mi CD"
+   *      The taper's marathon-effort work moved INTO the long run (Q18), so
+   *      §9.2's -2 row takes its own stated alternative, "or 4-5 mi threshold".
+   *      Eighteen of this block's marathon-pace miles used to sit in these two
+   *      weeks; that displacement is the S1.1 defect the ladder was built for.
+   *
+   *   wk8   intervals → tempo (2 quality → 1) · wk12  threshold → tempo+intervals (1 → 2)
+   *      Q14: "When a long run carries ≥~6 meaningful marathon-effort miles, it
+   *      IS a quality session — schedule only one additional midweek quality
+   *      workout." wk8's long now carries the ladder's development dose and
+   *      wk12's does not, so the second midweek slot moves with it. The block's
+   *      total quality-day count is unchanged.
+   *
+   * Any drift BEYOND these five lines is still CRITICAL.
    */
   it('FROZEN: per-week structural fingerprint is byte-stable', () => {
     COMBO_COUNT++;

@@ -308,10 +308,54 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
     }
   });
 
-  it('weeks untouched by any race stay byte-identical to the baseline', () => {
+  it('weeks untouched by any race keep their SHAPE against the baseline', () => {
+    /* MPLADDER-1 (2026-09-03) · RULING MOVE, and the property that mattered is
+     * kept while the one that can no longer be true is named.
+     *
+     * This asserted byte-identity: embedding a tune-up race must not ripple
+     * into weeks the race is not in. That was right when marathon-effort work
+     * was placed by a phase-anchored cadence walk, which cannot see a race.
+     *
+     * The ladder can, and is REQUIRED to. The owner's rulings put the block's
+     * largest race-specific demand ON the tune-up race ("Run Malibu... replaces
+     * a major quality session and the long run that week") and space the other
+     * marathon-specific sessions 2-3 weeks from it ("roughly 2-3 weeks between
+     * the largest demands where the calendar allows"). A sequence that ignored
+     * the race would put a peak marathon-pace long the week before a half
+     * marathon, which is the pairing the same ruling forbids by name.
+     *
+     * So the marathon-specific CONTENT of a non-race week legitimately moves,
+     * and so does the QUALITY MIX that follows from it: `PROGRESSIVE_BASELINE_
+     * DOCTRINE.md` Q14 makes a long carrying ≥6 marathon-effort miles the
+     * week's quality session, so a week whose long gains or loses that dose
+     * gains or loses a midweek workout with it. Measured here: week 8's long is
+     * 20 mi either way, and it carries a marathon-pace block in the raceless
+     * baseline and none in the embedded plan, so the baseline spends its second
+     * quality slot on the long and the embedded plan spends it on intervals.
+     *
+     * What must NOT move is everything the race embedding has no business
+     * touching, and that is what is asserted instead: week volume, the deload
+     * flag, the number of running days, and the long run's distance. A race
+     * that shifted a week's mileage, dropped a run from a week it is not in, or
+     * resized a long run three weeks away is still the defect this case was
+     * written for, and it still fails here.
+     */
     for (const wi of [0, 1, 2, 6, 7, 8, 9, 10, 13, 14, 15]) {
-      expect(JSON.stringify(embedded.weeks[wi])).toBe(JSON.stringify(baseline.weeks[wi]));
+      const a = embedded.weeks[wi];
+      const b = baseline.weeks[wi];
+      expect(a.weeklyMi, `week ${wi} volume moved`).toBe(b.weeklyMi);
+      expect(a.isCutback, `week ${wi} cutback flag moved`).toBe(b.isCutback);
+      expect(a.days.filter((d) => d.distanceMi > 0).length, `week ${wi} running-day count moved`)
+        .toBe(b.days.filter((d) => d.distanceMi > 0).length);
+      expect(a.days.find((d) => d.isLong)?.distanceMi, `week ${wi} long run resized`)
+        .toBe(b.days.find((d) => d.isLong)?.distanceMi);
     }
+    // Rule 18 liveness · at least one of those weeks really does differ in
+    // marathon-specific content, or this case has stopped saying anything and
+    // the byte-identity assertion should simply have been kept.
+    const anyContentMoved = [0, 1, 2, 6, 7, 8, 9, 10, 13, 14, 15].some((wi) =>
+      JSON.stringify(embedded.weeks[wi]) !== JSON.stringify(baseline.weeks[wi]));
+    expect(anyContentMoved, 'no week differs at all — restore the byte-identity assertion').toBe(true);
   });
 
   it('the plan survives the prod finalize + validate pipeline', () => {

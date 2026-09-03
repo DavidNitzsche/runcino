@@ -97,10 +97,39 @@ const TOLERANCE_MI = 0.2;
  */
 const CENSUS_BASELINE = {
   /** Sessions whose warm-up + cool-down exceeds the owner's answer for them. */
-  overOwner: 7735,
+  overOwner: 7871,
   /** Sessions whose warm-up + cool-down exceeds their own work + jog floats. */
-  legsOutweighWork: 8100,
+  legsOutweighWork: 8114,
 } as const;
+
+/* MPLADDER-1 (2026-09-03) · RAISED, 7735 -> 7871 and 8100 -> 8114, and the
+ * ratchet demands an argued reason before it moves the wrong way. This is it,
+ * and the cause was ISOLATED rather than assumed.
+ *
+ * `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q14: "When a long run carries ≥~6
+ * meaningful marathon-effort miles, it IS a quality session — schedule only one
+ * additional midweek quality workout." The engine used to collapse a marathon
+ * week to ONE midweek session whenever its long carried ANY marathon pace, so a
+ * four-mile fast-finish cost a midweek workout. It no longer does, and those
+ * restored sessions are what this census counts.
+ *
+ * MEASURED, not argued: setting `MP_LONG_COUNTS_AS_QUALITY_MI` to 0 — which
+ * restores the old "any MP collapses the week" behaviour and nothing else —
+ * brings both numbers back under the old baseline and this file green. The
+ * delta is therefore entirely the restored midweek sessions, not a change in
+ * how any session is SIZED: the worst offenders printed by the census are the
+ * same 5K and half archetypes as before, none of which the ladder touches, and
+ * the two other assertions in this file (label arithmetic, habitual-floor
+ * inflation) both pass.
+ *
+ * A session that would not exist at all cannot have a better warm-up-to-work
+ * ratio than one that does, so a corpus with more sessions in it counts more of
+ * them. The RATE is what this census is really about and it is unchanged: 7871
+ * of 19983 in scope, against 7735 of the smaller corpus before.
+ *
+ * BOUNDARY-OWNER-2 in the same change moved this number the other way, by
+ * taking the habitual quality-day floor off the race-week tune-up, which
+ * doctrine sizes itself. The net is +136. */
 
 /* TIEREVIDENCE-2 (2026-09-02) · LOWERED, 18394 -> 7735 and 19249 -> 8100, by
  * the ratchet's own staleness guard rather than by choice: it fails until the

@@ -1016,7 +1016,14 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       );
       matchLiteral(
         src,
-        /const qualityIntensityLongWeek = phase === 'QUALITY' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt\);/,
+        // MPLADDER-1 (2026-09-03) · re-pointed, not loosened. The flag is now a
+        // ternary: a ladder-owned marathon reads the ladder (which enforces the
+        // same 2-3 week cadence in `marathon-specific-ladder.ts`, gated by
+        // `MPLADDER.cadence-is-the-long-run-rhythm` below), and EVERY other
+        // block still walks this picker. The regression this claim exists to
+        // catch — the three-consecutive-week warm-in window coming back — is
+        // caught on either arm.
+        /const qualityIntensityLongWeek = ladderOwnsMp\s*\n\s*\? ladderLongRung != null\s*\n\s*: phase === 'QUALITY' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt\);/,
         'the QUALITY intensity-long cadence flag walks the same picker as the race-specific arm',
       );
     },
@@ -8130,7 +8137,11 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       const src = sourceOf('web-v2/lib/plan/generate.ts');
       matchLiteral(
         src,
-        /const racePaceLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt\);/,
+        // MPLADDER-1 (2026-09-03) · re-pointed. The half is what this claim is
+        // about and the half never takes the ladder arm (it is marathon-only),
+        // so the literal that matters here — `racePaceTag != null`, with no
+        // `=== 'MP'` — is unchanged and still the second half of the ternary.
+        /const racePaceLongWeek = ladderOwnsMp\s*\n\s*\? ladderLongRung != null\s*\n\s*: phase === 'RACE-SPECIFIC' && racePaceTag != null\s*\n\s*&& racePaceLongThisWeek\(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt\);/,
         'the race-pace-long cadence flag is distance-blind',
       );
       matchLiteral(
@@ -17723,7 +17734,21 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'prescribed pace is evidence (engine-doctrine Rule 1). AUTHORING-CANONICAL-1 (2026-09-01) ' +
       'settled this the strongest way available: authoring reads ONE marathon anchor per block ' +
       'from resolveDurability through the runner\'s own fitted Riegel exponent, so there is no ' +
-      'per-week MP expression left to ramp and no goal left to ramp toward.',
+      'per-week MP expression left to ramp and no goal left to ramp toward. '
+      + 'MPLADDER-1 (2026-09-03) · DOCTRINE CHANGED, and this claim is re-derived '
+      + 'from the change rather than exempted. docs/PROGRESSIVE_BASELINE_DOCTRINE.md '
+      + 'Q8, locked 2026-09-03, rules that the baseline "progresses both duration and '
+      + 'pace", with the pace step a FORECAST of expected development and duration the '
+      + 'primary early lever. The sentence this section states — "MP exactly — not '
+      + 'faster" — is about a SESSION, not a block, and it is still enforced: the '
+      + 'runner is never told to run a marathon segment faster than the pace it is '
+      + 'prescribed at. What is now checked instead of "one anchor forever" is the two '
+      + 'properties that make a moving pace honest, and they are stronger than the old '
+      + 'check in the dimension that matters: the ramp\u2019s endpoints are the anchor\u2019s OWN '
+      + 'point estimate and the fast edge of its OWN published band, so it can never '
+      + 'leave what the pace resolver said; and the goal is not an input to it at any '
+      + 'point. A calendar-indexed ramp toward a GOAL remains forbidden and is the '
+      + 'regression this claim catches.',
     check({ cite }) {
       const text = cite.text();
       // Read the rule out of the doc rather than restating it.
@@ -17750,7 +17775,11 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       // BLOCK-SCOPED read of the canonical durability answer rather than
       // anything computed per week.
       const gen = sourceOf('web-v2/lib/plan/generate.ts');
-      const weekMp = /const weekMp = weekT != null && weekT > 0[\s\S]{0,400}?;\n/.exec(gen)?.[0] ?? '';
+      // MPLADDER-1 · the expression is two statements now — the ladder resolves
+      // the week's pace, then `weekMp` wraps it — so the window starts at the
+      // first of them. Both halves must be present or this claim is watching
+      // nothing (Rule 18 liveness).
+      const weekMp = /const mpRungForWeek = [\s\S]{0,1200}?const weekMp = weekT != null && weekT > 0[\s\S]{0,400}?;\n/.exec(gen)?.[0] ?? '';
       if (!weekMp) {
         throw new Error(
           'composePlan\'s marathon-pace expression is no longer findable · this claim is '
@@ -17764,11 +17793,27 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           + 'not a flat offset and not the goal',
         );
       }
-      if (/\bweekIdx\b|\bwi\b\s*[*/+-]/.test(weekMp)) {
+      // MPLADDER-1 · the ramp exists now, and these are the two bounds that
+      // make it honest. Read out of `marathon-pace-contract.ts`, which is the
+      // only place a marathon-effort session pace is resolved.
+      const contract = sourceOf('web-v2/lib/training/marathon-pace-contract.ts');
+      if (!/const point = contract\.trainingPrescriptionSecPerMi;/.test(contract)
+        || !/const fastEdge = contract\.trainingBandSecPerMi\[0\];/.test(contract)
+        || !/const paceSecPerMi = Math\.round\(point \+ t \* headroom\);/.test(contract)) {
         throw new Error(
-          'composePlan\'s marathon pace has re-introduced a calendar term · a pace that '
-          + 'advances on the week number asserts a fitness change nobody measured '
-          + '(engine-doctrine Rule 1, violation #1 by file)',
+          'the marathon-effort ramp no longer interpolates between the anchor\'s own point '
+          + 'estimate and the fast edge of its own published band · a ramp that can leave the '
+          + 'band is a pace the evidence never carried (Rule 18 liveness: this claim is '
+          + 'watching nothing if these three lines are gone)',
+        );
+      }
+      if (/aspirationalGoal|goalPaceSPerMi|goalSec/.test(
+        /export function marathonEffortPrescription[\s\S]*?\n\}/.exec(contract)?.[0] ?? '',
+      )) {
+        throw new Error(
+          'the marathon-effort ramp reads the stated goal · Constitution §G forbids the goal '
+          + 'reaching a training pace, and docs/PROGRESSIVE_BASELINE_DOCTRINE.md Q8 forbids a '
+          + '"mechanical linear march from 7:52 toward the 6:52 goal" by name',
         );
       }
       // And the goal may not reach it. `resolveMarathonPace`'s goal branch is
@@ -17875,17 +17920,40 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         );
       }
       // 2026-09-01 · P0 · ONE brain at the execution moment. The race-outlook
-      // reads the SAME tolerance (feasibility's "aggressive" band) and clamps
-      // a stated goal to the likely range's FAST EDGE — never past it, never
-      // back to the unreduced expectation. Execution surfaces consume the
-      // outlook through `effectiveTargetFromOutlook`; none may read a
-      // projection snapshot of its own any more.
+      // reads the SAME tolerance for feasibility's "aggressive" band.
+      //
+      // EXECTARGET-1 (2026-09-03) · THE CLAMP IS GONE, AND THAT IS THIS
+      // CLAIM'S OWN PURPOSE SATISFIED MORE COMPLETELY.
+      //
+      // This used to require `targetSec = roundRaceTargetSec(likelyRangeSec[0])`
+      // — the goal, when unreachable, pulled to the range's fast edge instead of
+      // straight through. The claim's stated purpose is that "an unreachable
+      // goal reached the race-day row untouched" must not happen.
+      // `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q7, locked 2026-09-03, removes
+      // the pull entirely: the execution target is the projection-derived value
+      // and the goal does not participate, so the goal cannot reach the row at
+      // ANY distance from fitness. There is nothing left to clamp.
+      //
+      // Re-derived rather than exempted: the two things checked now are that
+      // the removal HELD (neither goal-sourced branch may come back) and that
+      // the goal is still compared for feasibility with the same tolerance.
       const ro = sourceOf('web-v2/lib/race/race-outlook.ts');
       if (!/GOAL_OPTIMISM_TOLERANCE/.test(ro)) {
         throw new Error('race-outlook.ts no longer reads GOAL_OPTIMISM_TOLERANCE for feasibility · two tolerances again');
       }
-      if (!/targetSec = roundRaceTargetSec\(likelyRangeSec\[0\]\)/.test(ro)) {
-        throw new Error('race-outlook.ts no longer clamps a beyond-range goal to the likely range\'s fast edge');
+      const roCode = ro.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+      if (/stated_goal_within_range|stated_goal_clamped_to_range_edge/.test(roCode)) {
+        throw new Error(
+          'race-outlook.ts has re-introduced a goal-sourced execution target · '
+          + 'PROGRESSIVE_BASELINE_DOCTRINE Q7: "3:13:30 must not be labelled the current '
+          + 'execution target merely because it is the fast edge of a wide range"',
+        );
+      }
+      if (!/source = 'current_evidence';/.test(roCode)) {
+        throw new Error(
+          'race-outlook.ts no longer sources the execution target from current evidence · '
+          + 'this claim is watching nothing (Rule 18 liveness)',
+        );
       }
       const et = sourceOf('web-v2/lib/race/effective-race-target.ts');
       if (/projection_snapshots/.test(et.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '').replace(/^\s*\*.*$/gm, ''))) {

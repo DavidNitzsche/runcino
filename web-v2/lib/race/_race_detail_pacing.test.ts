@@ -15,14 +15,28 @@ import { describe, it, expect } from 'vitest';
 import { effectiveTargetFromOutlook, roundTargetSec, type EffectiveRaceTarget } from './effective-race-target';
 import type { RaceOutlook } from './race-outlook';
 
-/** A minimal outlook whose execution target is `targetSec`, for the pacing composer. */
+/**
+ * A minimal outlook whose execution target is the CURRENT PROJECTION, for the
+ * pacing composer.
+ *
+ * EXECTARGET-1 (2026-09-03) · RULING MOVE. This helper used to fabricate the
+ * two removed sources — `stated_goal_within_range` when the goal was within 5%
+ * of the projection, `stated_goal_clamped_to_range_edge` otherwise — and the
+ * "goal sane" case below asserted the goal wrote the paces.
+ * `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q7 removed that: the execution target
+ * is the projection-derived value and the goal never sets it. So the helper now
+ * builds what the resolver actually produces, and the case below asserts the
+ * new contract instead of being re-baselined into agreement with it.
+ *
+ * The `no projection snapshot` case still returns source 'goal', because THAT
+ * arm is a Rule 11 refusal (no outlook to read) rather than the goal winning.
+ */
 function resolveEffectiveRaceTarget(goalSec: number, projectionSec: number | null): EffectiveRaceTarget {
   if (projectionSec == null) return effectiveTargetFromOutlook(goalSec, null);
-  const edge = Math.ceil((projectionSec * 0.95) / 10) * 10; // the band edge, cleaned upward
-  const within = goalSec >= edge;
   const fake = {
-    execution: { targetSec: within ? goalSec : edge, source: within ? 'stated_goal_within_range' : 'stated_goal_clamped_to_range_edge' },
-    expectedRaceDay: { expectedSec: projectionSec },
+    execution: { targetSec: roundTargetSec(projectionSec), source: 'current_evidence' },
+    currentProjection: { expectedSec: projectionSec },
+    expectedRaceDay: { expectedSec: Math.round(projectionSec * 0.98) },
     todayISO: '2026-09-01',
   } as unknown as RaceOutlook;
   return effectiveTargetFromOutlook(goalSec, fake);
@@ -50,15 +64,23 @@ describe('composeRaceDetailPacing · effective-target adoption', () => {
       netElevFt: 0,
     });
     expect(pf.effectiveSource).toBe('projection');
-    // 2026-08-30 · Rule 9. Was '3:22:00' — the UNREDUCED projection, which is
+    // 2026-08-30 · Rule 9. Was '3:22:00' — the UNREDUCED projection, which was
     // the cliff: a goal one second inside doctrine's 5% band was raced at the
     // goal, a goal one second outside it was thrown back to the projection
-    // 606 s slower. 3:12:00 is the band EDGE, the bound doctrine states.
-    expect(pf.effectiveGoal).toBe('3:12:00');           // the 5% band edge
+    // 606 s slower. It became '3:12:00', the band EDGE.
+    //
+    // EXECTARGET-1 (2026-09-03) · RULING MOVE, and it is '3:22:00' again for
+    // the OPPOSITE reason. The 5% band was the goal pulling the target toward
+    // itself; Q7 removes that pull entirely, so the page paces off the current
+    // projection and shows the goal as the stretch it is. The number is the one
+    // this assertion started at, and the cliff is gone from underneath it
+    // rather than relocated — the goal no longer participates in the decision,
+    // so there is no boundary left for a second to fall either side of.
+    expect(pf.effectiveGoal).toBe('3:22:00');           // the current projection
     expect(pf.stretchGoal).toBe('3:00:00');             // the stretch line
     expect(pf.aGoal).toBe('3:00:00');                   // hero still shows the stated goal
-    // Pace off the bound, not the goal: 11520/26.2 ≈ 439.7 s/mi.
-    expect(pf.goalPace).toBe('7:20');
+    // Pace off today's evidence, not the goal: 12120/26.2 ≈ 462.6 s/mi.
+    expect(pf.goalPace).toBe('7:43');
     // Splits/pacing recompute off the effective target — cumulative of the
     // final pacing block lands at the effective time, not the goal.
     expect(pf.pacing.length).toBe(4);
@@ -78,7 +100,10 @@ describe('composeRaceDetailPacing · effective-target adoption', () => {
     expect(pf.gels.filter((g) => g.caf)).toHaveLength(2);
   });
 
-  it('goal sane (within 5% of projection) → goal writes the paces, no stretch', () => {
+  it('even a near-miss goal does not write the paces · Q7', () => {
+    // 3:00:00 against a 3:03:20 projection — inside the old 5% band, and it
+    // used to take over the whole page. It no longer does: the projection paces
+    // the day and the goal is shown as the stretch it is.
     const effective = resolveEffectiveRaceTarget(10800, 11000);
     const pf = composeRaceDetailPacing({
       goalDisplay: '3:00:00',
@@ -87,10 +112,10 @@ describe('composeRaceDetailPacing · effective-target adoption', () => {
       distanceMi: MARATHON,
       netElevFt: 0,
     });
-    expect(pf.effectiveSource).toBe('goal');
-    expect(pf.effectiveGoal).toBe('3:00:00');
-    expect(pf.stretchGoal).toBeNull();
-    expect(pf.goalPace).toBe('6:52');                   // 10800/26.2 ≈ 412.2 s/mi
+    expect(pf.effectiveSource).toBe('projection');
+    expect(pf.effectiveGoal).toBe('3:03:20');
+    expect(pf.stretchGoal).toBe('3:00:00');
+    expect(pf.goalPace).not.toBe('6:52');
   });
 
   it('no projection snapshot → goal fallback (cold start)', () => {

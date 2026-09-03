@@ -149,19 +149,48 @@ describe('RAMP CEILING · the week after a tune-up', () => {
     expect(long!.longRunKind).not.toBe('fast_finish');
   });
 
-  it('the removal of that session is RECORDED, not silent', () => {
+  it('the post-race window is RECORDED, not silent', () => {
     // LONGRUN-TRACE-1 · this is the defect the trace exists for. On the owner's
     // own block the strip took an eleven-mile marathon-pace finish off the
     // twenty-one-mile run three weeks out — the biggest session of the build —
     // and left nothing but its absence behind.
-    const changes = (composed.authoredState as Record<string, unknown>)
-      .long_run_race_pace_changes as Array<Record<string, unknown>> | undefined;
-    expect(changes, 'authored_state records what was taken off a long run').toBeDefined();
-    const strip = (changes ?? []).find((c) => String(c.reason).includes('post-race no-quality window'));
-    expect(strip, 'the post-race strip appears in the ledger').toBeDefined();
-    expect(strip!.kind).toBe('mp_long');
-    expect(Number(strip!.from_mi)).toBeGreaterThan(0);
-    expect(Number(strip!.to_mi)).toBe(0);
+    //
+    // MPLADDER-1 (2026-09-03) · RULING MOVE, and the mechanism got BETTER
+    // rather than the assertion getting weaker. `marathon-specific-ladder.ts`
+    // asks `isInsidePostRaceWindow` BEFORE it places a rung, so the session is
+    // no longer authored and then removed — there is nothing to strip. The
+    // record moved with it: `authored_state.marathon_specific_ladder.skipped`
+    // names the week and the reason at the moment the decision is made, which
+    // is the same fact one step earlier. Rule 11 is what both records serve:
+    // a week with no marathon-pace long because doctrine said so and a week
+    // with none because a pass ate it are different facts.
+    const st = composed.authoredState as Record<string, unknown>;
+    const ladder = st.marathon_specific_ladder as
+      { skipped?: Array<{ weekIdx: number; reason: string }> } | null | undefined;
+    const changes = st.long_run_race_pace_changes as Array<Record<string, unknown>> | undefined;
+
+    const skippedForWindow = (ladder?.skipped ?? [])
+      .filter((x) => /post-race no-quality window/i.test(x.reason));
+    const strippedForWindow = (changes ?? [])
+      .filter((c) => String(c.reason).includes('post-race no-quality window'));
+
+    // One of the two ledgers carries it, and whichever does names the reason.
+    expect(
+      skippedForWindow.length + strippedForWindow.length,
+      'neither the ladder\'s skip list nor the race-pace change ledger records the post-race window',
+    ).toBeGreaterThan(0);
+
+    // The ladder's record names a REAL week of this block, so it cannot be a
+    // reason string with nothing behind it (Rule 18 liveness).
+    for (const sk of skippedForWindow) {
+      expect(sk.weekIdx).toBeGreaterThanOrEqual(0);
+      expect(sk.weekIdx).toBeLessThan(composed.weeks.length);
+    }
+    // And where the older ledger still fires, its shape is unchanged.
+    for (const strip of strippedForWindow) {
+      expect(Number(strip.from_mi)).toBeGreaterThan(0);
+      expect(Number(strip.to_mi)).toBe(0);
+    }
   });
 
   /* -- MPSPACING-1 (2026-09-01) - TWO CITED ROWS COLLIDE HERE, AND 16 WINS --

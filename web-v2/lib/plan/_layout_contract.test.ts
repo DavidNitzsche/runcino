@@ -82,6 +82,46 @@
  *     this corpus that carry a history at all — `composed` (8781), `days`
  *     (699860) and `raceWeeks` (3969) are all unchanged, so no plan gained or
  *     lost a day; the contents of some weeks moved.
+ *
+ *   · 2026-09-03 · MPLADDER-1 + LONGARRIVE-2 + TAPERLONG-1, together. The
+ *     MARATHON's marathon-effort work, long-run curve and taper long runs all
+ *     moved; every other distance is untouched, and this corpus is dominated by
+ *     the 5K, 10K and half arcs, which is why the counts do not move at all:
+ *     `composed` 8781, `days` 699860, `raceWeeks` 3969 — IDENTICAL. No plan
+ *     gained or lost a day, no race week appeared or vanished. What changed is
+ *     the CONTENT of marathon days, which is exactly what the three changes
+ *     were for and the reason a content digest is the right instrument.
+ *
+ *     What moved, per `docs/PROGRESSIVE_BASELINE_DOCTRINE.md`:
+ *       - marathon-effort dose and placement now come from
+ *         `marathon-specific-ladder.ts` (Q1/Q8/Q14) instead of three
+ *         mechanisms that did not know about each other;
+ *       - the long-run ramp's arrival week steps back off a week whose long-run
+ *         slot is a tune-up race (LONGARRIVE-2), which raises the peak long to
+ *         the runner's own demonstrated ceiling;
+ *       - the marathon taper's long runs take Q18's 14-16 / 8-10 bands and its
+ *         standalone MP tempo becomes §9.2's threshold alternative.
+ *
+ *     The behavioural gates that own each of those went red first and were
+ *     re-argued rather than re-baselined: `_mp_doctrine`, `_longrun_demand`,
+ *     `_variety_invariants`, `_boundary_run` and the doctrine registry all
+ *     carry their own RULING MOVES sections for this change.
+ *
+ *   · 2026-09-03 · ROLLING7-1, in the same session and folded into the same
+ *     digest. The per-cycle peak ceiling was MEASURED in rolling-7 miles and
+ *     ENFORCED on the peak calendar week (Rule 16, two units on the two sides
+ *     of one inequality), so a block could exceed its own published ceiling by
+ *     a window straddling a week boundary. `enforceRollingSevenCeiling` now
+ *     checks it in the unit it is measured in and takes the difference off EASY
+ *     days only.
+ *
+ *     It reaches only the archetypes that carry a demonstrated peak — most of
+ *     this corpus has no history, the load contract refuses to publish a
+ *     ceiling for them, and the pass records the refusal and returns. `days` is
+ *     699860 either way, so nothing was trimmed to zero and no day left the
+ *     plan; a handful of easy days on the history-carrying arcs got shorter.
+ *     `_rolling_seven_ceiling.test.ts` owns the behaviour and was falsified
+ *     against the composer with the pass removed.
  */
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';

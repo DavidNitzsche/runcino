@@ -38,8 +38,33 @@
  * Cite: Research/22-plan-templates.md §"10K — Intermediate", §"5K — Beginner",
  *       §"10K — Beginner"
  * Cite: Research/04-workout-vocabulary.md §4.3, §4.6, §7.2, §8.2, §15
+ *
+ * ── RULING MOVES ────────────────────────────────────────────────────────────
+ *
+ * MPLADDER-1 / TAPERLONG-1 (2026-09-03). Two assertions in the marathon suite
+ * moved, both because the behaviour they pinned was ruled on, not because the
+ * variety principle changed — the "at least two distinct variants" assertion
+ * above them is untouched and still passes, which is the check that matters.
+ *
+ *   1 · "TAPER longs stay plain" now allows the two-weeks-out long to carry a
+ *       marathon-effort segment. `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q18:
+ *       "The two-weeks-out run may carry a small controlled marathon-effort
+ *       component if earlier development supports it, but must not function as
+ *       another peak workout." The assertion is rewritten to check the LIMIT
+ *       rather than deleted: the one-week-out long stays plain, and the
+ *       two-weeks-out dose may not exceed the block's own largest.
+ *
+ *   2 · "a progression long re-splits the SAME intensity" no longer requires
+ *       §4.3 to appear in a MARATHON block. §4.3 spends a third of its at-pace
+ *       slice at threshold, and on a ladder week the marathon-effort miles are
+ *       the ladder's dose — there is no way to carry that dose inside §4.3's
+ *       shape without growing the session. §11.1's modified block took its
+ *       place as the rotated marathon variant (bounded to the same dose), and
+ *       §4.3 is unchanged and still asserted for the half and the 10K.
+ *
  * Cite: Research/00b-recovery-protocols.md §"Marathon Recovery (4-week reverse taper)"
  * Cite: Research/08-pacing-and-race-week.md §9.1
+ * Cite: docs/PROGRESSIVE_BASELINE_DOCTRINE.md §Q18
  */
 import { describe, it, expect } from 'vitest';
 import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
@@ -620,17 +645,35 @@ describe('VARIETY-LONG-1 · the marathon block rotates its intensity longs on ca
     expect(longs.filter((r) => r.long.longRunKind == null).length).toBeGreaterThan(0);
   });
 
-  it('TAPER longs stay plain', () => {
-    for (const r of longs.filter((x) => x.phase === 'TAPER')) {
-      if (r.long.longRunKind === 'dress_rehearsal') continue; // §4.6's own slot, pre-taper by days
-      expect(r.long.longRunKind ?? null, `${r.week.startISO}`).toBeNull();
-      expect(r.long.subLabel ?? 'LONG').toBe('LONG');
+  it('TAPER longs shed fatigue · at most one carries marathon effort, and never a peak dose', () => {
+    // TAPERLONG-1 · Q18. The two-weeks-out long may carry "a small controlled
+    // marathon-effort component"; everything later than it stays plain, and
+    // nothing in the taper may be another peak workout.
+    const taperLongs = longs.filter((x) => x.phase === 'TAPER' && x.long.longRunKind !== 'dress_rehearsal');
+    const withEffort = taperLongs.filter((r) => (r.long.longRunKind ?? null) != null);
+    expect(withEffort.length, 'more than one taper long carries marathon effort').toBeLessThanOrEqual(1);
+    const biggest = Math.max(0, ...longs
+      .filter((r) => r.phase !== 'TAPER')
+      .map((r) => extractLongSegments(r.long.subLabel).reduce((n, g) => n + (g.tag === 'M' ? g.mi : 0), 0)));
+    for (const r of withEffort) {
+      const mp = extractLongSegments(r.long.subLabel).reduce((n, g) => n + (g.tag === 'M' ? g.mi : 0), 0);
+      expect(mp, `${r.week.startISO} · a taper long out-dosing the block itself is another peak workout`)
+        .toBeLessThan(Math.max(biggest, 0.01));
     }
+    // The LAST long before race week is always plain: "after that the purpose
+    // is shedding fatigue while preserving rhythm".
+    const last = taperLongs[taperLongs.length - 1];
+    if (last) expect(last.long.longRunKind ?? null, `${last.week.startISO}`).toBeNull();
   });
 
   it('a progression long re-splits the SAME intensity the default finish was sized to', () => {
+    // MPLADDER-1 · §4.3 is no longer offered on a marathon's ladder weeks (see
+    // RULING MOVES at the top of this file), so the marathon block rotates to
+    // §11.1 instead. The SHAPE assertions below still run wherever §4.3 does
+    // appear, and the half/10K suites above are where its presence is required.
     const prog = longs.filter((r) => r.long.longRunKind === 'progression');
-    expect(prog.length, 'the marathon block never rotated to §4.3 — check the long-slot wiring').toBeGreaterThan(0);
+    const rotated = new Set(longs.map((r) => r.long.longRunKind).filter((k) => k != null && k !== 'mp_long' && k !== 'dress_rehearsal'));
+    expect(rotated.size, 'the marathon block rotated to nothing — check the long-slot wiring').toBeGreaterThan(0);
     for (const r of prog) {
       const segs = extractLongSegments(r.long.subLabel);
       expect(segs.length).toBe(2);
