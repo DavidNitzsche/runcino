@@ -390,6 +390,81 @@ six stale-stamped canonical rows are gone. The wrong predicate gives the right
 answer today. That is the trap, not the absolution: `CANONICAL_ROW_SQL` stays the
 only definition (Rule 14).
 
+
+## WILL THE ADAPTATION ENGINE FIRE?  ·  measured, 2026-09-03
+
+His question: *"From what I've skimmed it seems like things are making me run
+less and slower? If that's the case now on today's fitness, fine. But we have to
+ensure the adaption engine will fire."*
+
+Answered by replaying his real history through the canonical engine with no
+lookahead — 40 decision points, 120 records, belief carried forward only by the
+engine's own accepted proposals. The no-lookahead property is a COMPILE ERROR,
+not a discipline: sealed collections have no array surface, and the axis is
+outcome-versus-artifact rather than past-versus-future, because a plan authored
+31 August repricing a June week is the leak a date fence waves through.
+
+### The distribution
+
+| | PROGRESS | HOLD | REGRESS | REFUSE |
+|---|---:|---:|---:|---:|
+| **All levers** | **0** | 102 | 4 | 14 |
+| Threshold pace | 0 | 40 | 0 | 0 |
+| Weekly volume | 0 | 38 | 2 | 0 |
+| Long run | 0 | 24 | 2 | 14 |
+
+**The "less" half of his read is largely fixed and the "slower" half is not.**
+REGRESS has gone 20 → 4 since the earlier audit. PROGRESS is still exactly zero.
+
+### Is the bar a wall?
+
+No — and that is the important part, because a wall would mean the engine cannot
+push at all. Swept in favourability against a neutral point, every lever crosses
+from pull-back to push within ONE sweep step:
+
+```
+WEEKLY_VOLUME   pushes from 0.955 · pulls back from 0.95
+LONG_RUN        pushes from 0.95  · pulls back from 0.945
+THRESHOLD_PACE  pushes from +1 s/mi · pulls back from −1
+```
+
+**No unjustified up-versus-down asymmetry exists.** He never reached the bar.
+How close: his best-ever three-week window ran **139% / 97% / 90%**, short by 4.8
+points on one week — **2.1 miles**, 39.7 run against a 41.8 bar.
+
+### Three real defects, now being fixed
+
+1. **The volume lever enforces conditions its contract does not state.** Crediting
+   every non-cutback week at exactly 95% — the stated criterion, met perfectly —
+   produces **0 of 13** PROGRESS verdicts. The code also demands every key session
+   ≥SUBSTANTIAL and every long run ≥95%. That is a Rule 21 violation on its face,
+   and it contradicts the progression doctrine: duration progresses from
+   load-tolerance evidence, so gating a VOLUME increase on quality-session grades
+   makes capacity evidence the judge of a load-tolerance question.
+2. **The long-run lever is blocked by DATA and reports it as behaviour.** **40 of
+   40** readings failed because both long runs' thirds were never comparable — not
+   once in nine months. A segmentation problem counted as "he never earned it":
+   the exact Rule 11 collapse, where "I could not read this" wears the face of
+   "he did not do it".
+3. **A threshold gate that cannot resolve.** `agree >= 2 && agree >= 2*disagree`
+   can never pass at one faster session against one slower — which is exactly
+   where he sat on 2026-09-02. And 34 of 40 readings had no qualifying session in
+   the window at all.
+
+### What this does NOT say
+
+The canonical engine is **still unwired** from the live path, and a gate forbids
+any importer under `web-v2/lib|app`. Everything above is measured on an engine
+that does not yet run. The legacy `lib/plan/adapt.ts` — the path that actually
+produced five downgrades and zero upgrades — still carries a test-coverage ratio
+of **4.4 to 1 against the push**, now pinned as a defect ratchet rather than
+blessed as a ceiling. The canonical suite has inverted that bias (0.24 and 2.00);
+the live one has not.
+
+Rule 21's question is now one SQL query, because every adaptation records what it
+did and in which direction, with direction DERIVED from the action rather than
+passed in, and a switch with no default so a new kind is a compile error.
+
 ---
 
 ## P1 · Known open items outside the critical path
