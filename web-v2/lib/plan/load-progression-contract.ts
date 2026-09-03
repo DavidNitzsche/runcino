@@ -130,6 +130,8 @@
  * Cite: Research/22-plan-templates.md (the template bands, carried as a
  *       reference and no longer as an authority)
  */
+
+import { roundTo } from '@/lib/format/run';
 import {
   CYCLE_GROWTH_CEILING,
   GENERAL_RAMP_CEILING,
@@ -199,7 +201,7 @@ export type LoadReading =
   | { readonly known: false; readonly reason: string };
 
 const known = (mi: number, basis: LoadBasis, citation: string): LoadReading =>
-  ({ known: true, mi: Math.round(mi * 10) / 10, basis, citation });
+  ({ known: true, mi: roundTo(mi), basis, citation });
 const refused = (reason: string): LoadReading => ({ known: false, reason });
 
 const CITE_VOLUME_RULES = 'Research/00a-distance-running-training.md §"Volume progression rules"';
@@ -458,7 +460,7 @@ export function resolveLoadProgressionContract(
   if (plannedPeakLoad.known && stepFrom != null && (args.climbWeeksToPeak ?? 0) > 0) {
     for (let i = 1; i <= (args.climbWeeksToPeak as number); i++) {
       const step = stepFrom * Math.pow(WEEKLY_STEP_GROWTH, i);
-      envelope.push(Math.round(Math.min(step, plannedPeakLoad.mi) * 10) / 10);
+      envelope.push(roundTo(Math.min(step, plannedPeakLoad.mi)));
     }
   }
 
@@ -474,14 +476,14 @@ export function resolveLoadProgressionContract(
   const peakEarnedWhen: PeakEarnedCondition = {
     demonstratedPeakWeeklyMiRequired: requiredDemonstrated,
     aboveCurrentDemonstratedMi: requiredDemonstrated != null && demonstratedPeak != null
-      ? Math.round((requiredDemonstrated - demonstratedPeak) * 10) / 10
+      ? roundTo(requiredDemonstrated - demonstratedPeak)
       : null,
     statement: requiredDemonstrated == null
       ? 'The peak is not bounded by demonstrated volume, so nothing is pending on it.'
       : demonstratedPeak == null
         ? `A completed week of ${requiredDemonstrated} mi would open headroom above this peak.`
         : `A completed week of ${requiredDemonstrated} mi opens headroom above this peak; `
-          + `the biggest week on record is ${Math.round(demonstratedPeak * 10) / 10} mi.`,
+          + `the biggest week on record is ${roundTo(demonstratedPeak)} mi.`,
   };
 
   return {
