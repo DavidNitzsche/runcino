@@ -58,6 +58,20 @@ import { syntheticPaceAnchors } from './authoring-anchors';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import { isBaseBuildingPlan } from './plan-templates';
+// MPLADDER-1 (2026-09-03) · the marathon-specific sequence has ONE owner now.
+import {
+  resolveMarathonSpecificLadder,
+  MP_LADDER_MIN_GAP_WEEKS,
+  MP_LONG_COUNTS_AS_QUALITY_MI,
+  type MarathonSpecificLadder,
+  type MarathonSpecificRung,
+} from './marathon-specific-ladder';
+import {
+  marathonPaceContract,
+  marathonEffortPrescription,
+  marathonSeam,
+  type MarathonPaceContract,
+} from '@/lib/training/marathon-pace-contract';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { isCoachedExternally, COACHED_SKIP_REASON } from './coached-gate';
 import { distanceMiOfMeta } from '@/lib/race/distance'; // 2026-07-07 · ultra-honesty audit · shared label→mi parser (handles 50K/50M/100K/100M)
@@ -4459,7 +4473,13 @@ export async function resolvePrescriptions(
  * phase end, so the last race-specific week always carries one; and never
  * landing on a deload.
  */
-export const MP_LONG_CADENCE_WEEKS = 2;
+/**
+ * MPLADDER-1 (2026-09-03) · ONE definition, re-exported (Rule 16). The number
+ * now lives in `./marathon-specific-ladder`, beside the walk that spends it, so
+ * the cadence and the ladder cannot drift apart. Every existing importer of
+ * `MP_LONG_CADENCE_WEEKS` is unchanged.
+ */
+export const MP_LONG_CADENCE_WEEKS = MP_LADDER_MIN_GAP_WEEKS;
 
 /**
  * Does the marathon-pace long run land in the week at `weekIdx`?
@@ -4757,6 +4777,34 @@ export interface LayoutWeekInput {
    *  own demonstrated long runs by `evidenceLongCeilingMi` and already bounded
    *  by the tier band. Null → no long-run evidence; the band stands alone. */
   evidenceLongCapMi?: number | null;
+  /**
+   * MPLADDER-1 (2026-09-03) · this week's rung of the block's marathon-specific
+   * ladder, or null when the week carries none.
+   *
+   * `marathon-specific-ladder.ts` is the single owner of the SEQUENCE — which
+   * weeks carry marathon-effort work, how much, in what, and why — because that
+   * question needs the whole calendar and this function sees one week.
+   * `composePlan` resolves the ladder once and hands each week its answer.
+   */
+  mpRung?: MarathonSpecificRung | null;
+  /**
+   * True when the composer resolved a marathon-specific ladder for this block.
+   *
+   * The flag exists so this change is BYTE-IDENTICAL for every caller that does
+   * not pass one — every non-marathon distance, the simulator's legacy paths,
+   * and the 11,687-arc archetype corpus. When it is false the three original
+   * mechanisms (`longFinishSegment`'s two arms and `taperMpDose`) run exactly as
+   * before. It is not a feature toggle: nothing reads a setting to decide it,
+   * and it is true for precisely the blocks the ladder can answer for.
+   */
+  marathonLadderOwned?: boolean;
+  /**
+   * The marathon-effort pace RANGE for this week's rung, resolved by
+   * `marathon-pace-contract.ts`. Fast edge first.
+   * `ADAPTATION_ENGINE_CONTRACT.md` Q30: a marathon-effort prescription is a
+   * range plus an HR ceiling plus guidance, never a bare single pace.
+   */
+  mpRangeSecPerMi?: readonly [number, number] | null;
   /** 2026-06-03 · Rule 2 · runner's typical quality-day distance ·
    *  floors qualityMiEach so plan never asks for a shorter tempo/
    *  threshold than the runner is already running. */
@@ -5094,7 +5142,7 @@ function layoutRaceWeek(input: Pick<
 
 function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   const {
-  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, capacityBand = null, courseIsNetDownhill = false, thesisSlot = null, noLongRunWeeks = undefined, evidenceLongCapMi = null,
+  phase, weekIdx, weeksToPhaseEnd, totalWeeks, weeklyMi, peakWeeklyMi, longRunDow, qualityDows, restDow, isRaceWeek, raceDow, raceDistanceMi, rx, easyMileFloor, recentLongMi, spikeAnchorLongMi, recentQualityDistanceMi, tierTarget, trainingDaysPerWeek, cutbackEveryN = 4, baseBuilding = false, availableDows = null, easyPaceSecPerMi = null, trajectory = null, weekTPaceSec = null, weekIPaceSec = null, weekMpPaceSec = null, weekMpAtGoalPace = null, catalogueHistory = null, capacityBand = null, courseIsNetDownhill = false, thesisSlot = null, noLongRunWeeks = undefined, evidenceLongCapMi = null, mpRung = null, marathonLadderOwned = false, mpRangeSecPerMi = null,
   } = input;
   // MPRACE-1 · the cadence walk's "this week has no long run" predicate. One
   // definition here so all four call sites below ask the same question.
@@ -5326,9 +5374,31 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
     // latitude and the same helper shape `racePaceLongThisWeek` already uses
     // for §4.4's cadence. With a four-week cadence the arrival week is usually
     // already a load week and this is a no-op.
+    //
+    // LONGARRIVE-2 (2026-09-03) · A WEEK WITH NO LONG RUN CANNOT BE THE
+    // ARRIVAL WEEK EITHER. Same finding as MPRACE-1, in the ramp instead of the
+    // cadence: `noLongRunWeeks` names the weeks whose long-run SLOT is a
+    // tune-up race, and the step-back above knew only about deloads. On the
+    // reference block that put the arrival week on Run Malibu — a half marathon
+    // on his long-run Sunday — so the ramp aimed the whole block's long-run
+    // curve at a week with no long run in it.
+    //
+    // Measured, and it is the entire S1.2 defect: with the arrival at week 10
+    // the curve reached 19.0 at week 7 and 20.5 at week 9 against a DEMONSTRATED
+    // 21.5, so the block's own ceiling was unreachable and the thesis
+    // (`increase_long_run_demand`) was contradicted by the arithmetic. Stepping
+    // back one more week to 9 arrives at 21.5 on week 9 and lifts week 7 to
+    // 20.0 — the owner's "two 20+ runs: one ~20, one peak ~21-21.5", falling
+    // out of one honest fix rather than being written in as two numbers.
+    //
+    // NO GUARD IS WEAKENED. `Research/00a`'s 110%-of-prior-30-days spike rule
+    // still binds every step and is what makes the sequence legal: 18.5 → 20.0
+    // is 108%, 20.0 → 21.5 is 108%. The ramp was leaving headroom doctrine
+    // already allowed, which is the asymmetry CLAUDE.md names.
     const peakWeekIdx = (() => {
       let i = Math.max(1, totalWeeks - 4);                    // reach the cap ~3-4 wk before race
-      for (let g = 0; i > 1 && i > 0 && (i + 1) % cutbackEveryN === 0 && g < 500; g++) i -= 1;
+      const cannotCarry = (k: number) => ((k + 1) % cutbackEveryN === 0) || noLongRunAt(k);
+      for (let g = 0; i > 1 && cannotCarry(i) && g < 500; g++) i -= 1;
       return Math.max(1, i);
     })();
     const linearTarget = seed + Math.max(0, longCap - seed) * Math.min(1, weekIdx / peakWeekIdx);
@@ -5339,6 +5409,41 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
     longCap,
     rampCeiling,
   );
+  /* ── TAPERLONG-1 (2026-09-03) · Q18 · THE MARATHON TAPER'S LONG RUNS ───────
+   *
+   * `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q18, the owner overruling a
+   * research table by name:
+   *
+   *   "Not 18/13. Use 14-16 mi two weeks out and 8-10 mi one week out. The
+   *    final major long or marathon-specific rehearsal happens ~3 weeks out;
+   *    after that the purpose is shedding fatigue while preserving rhythm...
+   *    A research table matching 18/13 does not override the runner's actual
+   *    consistency history, the aggressive preceding block, and the intended
+   *    function of taper."
+   *
+   * The engine was authoring exactly the 18/13 he names, because the taper long
+   * is `weeklyMi × longShare` carried down by the volume curve and nothing was
+   * asking what the taper is FOR.
+   *
+   * The band is applied as a clamp, in both directions but not symmetrically:
+   * the TOP always binds, and the BOTTOM only as far as the block's own
+   * long-run ceiling allows — a runner whose whole block peaks at 12 miles is
+   * not handed a 14-mile taper long because a ruling written for a 21.5-mile
+   * marathoner says so. Both operations are `min`/`max` on a continuous
+   * quantity, so nothing here can move a plan in kind (Rule 9).
+   *
+   * Marathon only. Every other distance's taper is `Research/08` §9.1's own
+   * row and is untouched.
+   */
+  if (longCat === 'm' && phase === 'TAPER' && !isRaceWeek) {
+    const taperLongBandMi = weeksToPhaseEnd >= 2 ? [14, 16] as const
+      : weeksToPhaseEnd === 1 ? [8, 10] as const
+      : null;
+    if (taperLongBandMi) {
+      longMi = Math.min(longMi, taperLongBandMi[1]);
+      longMi = Math.max(longMi, Math.min(taperLongBandMi[0], longCap));
+    }
+  }
   // DOCTRINE-3 (2026-08-17) · THE ABSOLUTE-TIME CAP, FINALLY IMPLEMENTED.
   //
   // Research/00a §"Volume progression rules": "Long-run cap | ≤25-30% of weekly
@@ -5534,7 +5639,19 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   // DOCTRINE-MPLONG-1 / DOCTRINE-HMLONG-1 · does the race-pace long land this
   // week? Both the marathon's MP long (§4.4) and the half's fast-finish long
   // (§4.5) carry "Every 2–3 weeks", so both walk the same cadence.
-  const racePaceLongWeek = phase === 'RACE-SPECIFIC' && racePaceTag != null
+  //
+  // MPLADDER-1 (2026-09-03) · FOR A MARATHON THE LADDER ANSWERS THIS, and the
+  // three original mechanisms are switched off together rather than one at a
+  // time — a half-migrated week could carry the ladder's dose AND the taper's
+  // standalone session, which is the "two answers to one question" the
+  // Constitution rejects. `marathonLadderOwned` is false for every other
+  // distance and every legacy caller, so they are byte-identical.
+  const ladderOwnsMp = marathonLadderOwned && cat === 'm';
+  const ladderRung = ladderOwnsMp ? mpRung : null;
+  const ladderLongRung = ladderRung?.vehicle === 'long_run' ? ladderRung : null;
+  const racePaceLongWeek = ladderOwnsMp
+    ? ladderLongRung != null
+    : phase === 'RACE-SPECIFIC' && racePaceTag != null
     && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt);
   // VARIETY-LONG-1 (2026-08-28) · the QUALITY warm-in ramp is ALSO on the
   // cadence now. The ramp is §4.5's shape at every step (this function's own
@@ -5548,20 +5665,47 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   // phase's own last week, so the last QUALITY long still carries the HMP/MP
   // step and never lands on a deload. Off-cadence warm-in weeks run plain.
   // Bound by LONGRUN.intensity-cadence.
-  const qualityIntensityLongWeek = phase === 'QUALITY' && racePaceTag != null
+  const qualityIntensityLongWeek = ladderOwnsMp
+    ? ladderLongRung != null
+    : phase === 'QUALITY' && racePaceTag != null
     && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt);
   // The MARATHON-only consequences hang off this narrower flag: §16's forbidden
   // "MP long run + hard tempo" pairing (the half's race-specific mix is
   // threshold + intervals, which §16 does not name) and DAY-SIZE-1's at-pace
   // cap. Extending either to the half is a separate decision and is not taken
   // here — the ruling was about the long run's rhythm, not the week's shape.
-  const mpLongWeek = racePaceTag === 'MP' && racePaceLongWeek;
+  //
+  // MPLADDER-1 · Q14 states the test the old flag only approximated: "When a
+  // long run carries ≥~6 meaningful marathon-effort miles, it IS a quality
+  // session — schedule only one additional midweek quality workout." A
+  // four-mile fast-finish is not that session, and collapsing the week's
+  // quality around it was costing a midweek workout for no reason.
+  const mpLongWeek = ladderOwnsMp
+    ? (ladderLongRung?.countsAsQuality ?? false)
+    : racePaceTag === 'MP' && racePaceLongWeek;
   // DOCTRINE-TAPERMP-1 · the marathon taper's MP session (Research/08 §9.2).
   // Marathon only — the half, 5K, 10K and ultra tapers have no MP row in that
   // table and keep their 5K-pace tune-up. `baseBuilding` (true beginner) is
   // excluded: §9.2 is a competitive-marathoner taper, and a beginner's taper
   // stays the light sharpen day Research/22 §Beginner prescribes.
-  const taperMp = (phase === 'TAPER' && !isRaceWeek && cat === 'm' && !baseBuilding)
+  //
+  // MPLADDER-1 (2026-09-03) · SUPERSEDED FOR A LADDER-OWNED MARATHON, and the
+  // owner overruled the research table by name.
+  //
+  // `PROGRESSIVE_BASELINE_DOCTRINE.md` Q18: "A research table matching 18/13
+  // does not override the runner's actual consistency history, the aggressive
+  // preceding block, and the intended function of taper." And Q1: "~2 weeks
+  // out: reduced-volume sharpening, no more than ~4-5 marathon-effort miles
+  // unless preceding evidence strongly supports more." §9.2's -3 row asks for
+  // 10-12 in a standalone 14-16 mi tempo; the ruling asks for 3-4 inside the
+  // taper long, which is also where the owner wants marathon effort to live
+  // ("embedding marathon effort inside long runs is generally more valuable
+  // than adding large standalone marathon-pace tempos").
+  //
+  // `taperMpDose` and `TAPER_MP_DOSE` are NOT deleted: they remain §9.2's
+  // expression for every marathon block the ladder cannot answer for, and the
+  // doctrine claim that binds them to the research table still runs.
+  const taperMp = (!ladderOwnsMp && phase === 'TAPER' && !isRaceWeek && cat === 'm' && !baseBuilding)
     ? taperMpDose(weeksToPhaseEnd, qualityCeiling)
     : null;
   // MPLABEL-1 · null (no signal threaded) reads as "at goal pace", which is the
@@ -5586,14 +5730,23 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   // spends the M budget, which neither structured slot touches.
   const tenKProgressionWeek = cat === '10k' && !baseBuilding
     && phase === 'RACE-SPECIFIC' && racePaceLongThisWeek(weekIdx, weeksToPhaseEnd, cutbackEveryN, noLongRunAt);
-  const finishSeg = longFinishSegment(
-    phase, weeksToPhaseEnd, racePaceTag,
-    // VARIETY-LONG-1 · one cadence, whichever phase asks. RACE-SPECIFIC weeks
-    // read `racePaceLongWeek` exactly as before; QUALITY weeks now read their
-    // own phase-anchored walk of the same picker.
-    phase === 'QUALITY' ? qualityIntensityLongWeek : racePaceLongWeek,
-    tenKProgressionWeek,
-  );
+  // MPLADDER-1 · the ladder states the dose in MILES, so it takes the same
+  // `fixedMi` road the 10K's §4.3 tail already uses rather than a fraction of
+  // whatever the long happens to be. That is the point: the dose is a coaching
+  // decision about marathon-effort duration, not a percentage of a distance
+  // some other rule chose.
+  const finishSeg = ladderOwnsMp
+    ? (ladderLongRung
+        ? { pct: 0, fixedMi: ladderLongRung.mpMi, tag: 'MP' as const, kind: 'mp_long' as LongRunKind }
+        : null)
+    : longFinishSegment(
+      phase, weeksToPhaseEnd, racePaceTag,
+      // VARIETY-LONG-1 · one cadence, whichever phase asks. RACE-SPECIFIC weeks
+      // read `racePaceLongWeek` exactly as before; QUALITY weeks now read their
+      // own phase-anchored walk of the same picker.
+      phase === 'QUALITY' ? qualityIntensityLongWeek : racePaceLongWeek,
+      tenKProgressionWeek,
+    );
   // DOCTRINE-DOSING-2 · the long-run finish is a DOSE, and it was never charged
   // to one. A half of the long run at marathon pace is marathon-pace mileage —
   // `dosePaceOf` reads it as M, `splitDay` counts its miles as hard — but the
@@ -5703,6 +5856,19 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   const rotatesLongVariant = hasFinish && !baseBuilding
     && finishSeg!.kind !== 'progression'
     && !(phase === 'RACE-SPECIFIC' && racePaceTag === 'MP')
+    // MPLADDER-1 (2026-09-03) · A LADDER RUNG NEVER ROTATES, for exactly the
+    // reason SEGLONG-2 above gives for the race-specific exclusion: the ladder
+    // sized this dose as the week's marathon-specific stimulus and the quality
+    // slots are sized against that, so rotating the shape makes the week pay
+    // for marathon-pace work twice. Measured on the reference block before this
+    // line existed: the ladder's 8-mile development dose came out as a Canova
+    // modified block of "7mi @ M + 1mi @ E + 2mi @ M" — nine marathon-pace
+    // miles, one more than the ladder authorised, in a session whose persisted
+    // purpose described a different workout (Rule 16).
+    //
+    // The phase test is now the wrong instrument as well: the ladder places
+    // rungs in QUALITY weeks, which the race-specific exclusion never saw.
+    && !ladderLongRung
     && (phase === 'QUALITY' || phase === 'RACE-SPECIFIC')
     && longTier != null && catalogueHistory != null;
   /**
@@ -10723,6 +10889,91 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     return out;
   })();
 
+  /* ── MPLADDER-1 (2026-09-03) · THE MARATHON-SPECIFIC LADDER ────────────────
+   *
+   * Resolved ONCE, here, because the question "where does marathon-effort work
+   * belong in this block" needs the whole calendar and `layoutWeek` sees one
+   * week. Every week is then handed its own answer, so no week can invent a
+   * different one (Rule 16).
+   *
+   * It is resolved for MARATHONS ONLY and only when the pace resolver published
+   * a marathon anchor. Everything else — every other distance, every legacy
+   * caller, every one of the 11,687 archetypes — takes `marathonLadderOwned:
+   * false` and composes byte-identically through the three original mechanisms.
+   */
+  const marathonCat = distanceCategoryOf(input.raceDistanceMi) === 'm';
+  const longRunISOByWeek = Array.from({ length: totalWeeks }, (_, wi) =>
+    dowDateInWeek(addDays(input.startMondayISO, wi * 7), input.longRunDow));
+  /** The week index each mid-block race falls in, with its own row. */
+  const midRaceWeeks = (input.midBlockRaces ?? []).flatMap((r) => {
+    if (!r?.date || !(r.distanceMi > 0) || r.date >= input.raceDateISO) return [];
+    const off = daysBetween(input.startMondayISO, r.date);
+    if (off < 0 || off >= totalWeeks * 7) return [];
+    return [{ ...r, weekIdx: Math.floor(off / 7) }];
+  });
+  const mpLadder: MarathonSpecificLadder | null = marathonCat
+    ? resolveMarathonSpecificLadder({
+      totalWeeks,
+      longRunISOByWeek,
+      raceDateISO: input.raceDateISO,
+      // The same deload mask `volumeCurve` and `layoutWeek` already share.
+      isDeloadWeek: (wi) => wi > 0 && (wi + 1) % cutbackEveryN === 0,
+      isTuneUpRaceWeek: (wi) => noLongRunWeeks.has(wi),
+      // A race on the day BEFORE the long-run day makes that Sunday the second
+      // half of a designed race weekend. The owner's Q6 ruling keeps it easy,
+      // with no marathon-pace or progression finish, whether or not
+      // `resolveDesignedRaceWeekend` later grants the pairing — a long run the
+      // morning after a race is not a marathon-pace session either way.
+      isDesignedWeekendLong: (wi) => midRaceWeeks.some((r) => {
+        if (r.weekIdx !== wi) return false;
+        const dow = new Date(`${r.date}T12:00:00Z`).getUTCDay();
+        return ((dow + 1) % 7) === input.longRunDow;
+      }),
+      // `Research/00b` §"Recovery by Distance" · the composer strips quality
+      // from these days independently, so a rung planned here would be authored
+      // and then silently removed — the "wired, tested and inert" shape.
+      isInsidePostRaceWindow: (wi) => midRaceWeeks.some((r) => {
+        const gap = daysBetween(r.date, longRunISOByWeek[wi] ?? r.date);
+        return gap > 0 && gap <= postRaceNoQualityDaysImpl(r.distanceMi, effectiveRecoveryPriorityImpl(r));
+      }),
+      // The block's largest race-specific demand, when a tune-up race is placed
+      // where one belongs. The owner: Run Malibu "stays as a B race and major
+      // checkpoint… It replaces a major quality session and the long run that
+      // week." Latest such race wins, so a block with two takes the one nearer
+      // the goal race.
+      peakStimulusRaceWeekIdx: (() => {
+        let best: number | null = null;
+        for (const r of midRaceWeeks) {
+          if (r.priority !== 'B') continue;
+          if (!noLongRunWeeks.has(r.weekIdx)) continue;   // must own the long-run slot
+          const d = daysBetween(r.date, input.raceDateISO);
+          if (d < 24 || d > 42) continue;                  // MP_PEAK_STIMULUS_WINDOW_DAYS
+          if (best == null || r.weekIdx > best) best = r.weekIdx;
+        }
+        return best;
+      })(),
+    })
+    : null;
+  /**
+   * The TRAINING half of the marathon pace contract. The projection-side
+   * quantities are deliberately absent here: `lib/race/race-outlook.ts` owns
+   * them, it reaches the database, and authoring may not. What authoring needs
+   * is the anchor's point and its published band, which is all the ladder
+   * spends.
+   */
+  const mpContract: MarathonPaceContract | null = marathonCat
+    ? marathonPaceContract({
+      aspirationalGoalSecPerMi: null,           // the goal never prices training
+      currentProjectionSecPerMi: null,
+      currentProjectionRangeSecPerMi: null,
+      trainingPrescriptionSecPerMi: anchors.marathonSecPerMi,
+      trainingBandSecPerMi: anchors.marathonRangeSecPerMi ?? null,
+      blockForecast: null,
+      upsidePaceSecPerMi: null,
+      upsideFinishSec: null,
+    })
+    : null;
+
   const weeks: ComposedWeek[] = [];
   let phaseCursor = 0;
   let phaseWkRemaining = blocks.phases[0].weeks;
@@ -10768,8 +11019,30 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
      * marathon-pace session is ever priced at the goal, so no note may name it
      * as the goal's pace.
      */
+    /*
+     * MPLADDER-1 (2026-09-03) · THE PACE NOW MOVES ACROSS THE BLOCK.
+     *
+     * It was one static number for all fifteen weeks, which is why the audit
+     * found "the progression" was a flat line: the block asked for more MILES
+     * at the same pace and never for the pace itself. `PROGRESSIVE_BASELINE_
+     * DOCTRINE.md` Q8 states the ladder — early 7:50-7:55, middle ~7:45-7:50,
+     * later ~7:38-7:45, taper "preserve the most recently supported effort" —
+     * and `marathon-pace-contract.ts` resolves it against THIS RUNNER'S OWN
+     * published band rather than those clock times, so it can never walk past
+     * what the pace resolver said, and never toward the goal.
+     *
+     * Weeks with no rung keep the anchor's point estimate, which is what every
+     * other consumer of `weekMpPaceSec` (the catalogue's MP-flavoured cutdowns,
+     * an incidental `1km @ MP` rung) has always been priced at.
+     */
+    const mpRungForWeek = mpLadder?.byWeek.get(wi) ?? null;
+    const weekMpPace = mpRungForWeek && mpContract && mpRungForWeek.mpMi > 0
+      ? marathonEffortPrescription({
+        contract: mpContract, ladderT: mpRungForWeek.ladderT, hrCeilingBpm: null, mpMi: mpRungForWeek.mpMi,
+      }).paceSecPerMi
+      : anchors.marathonSecPerMi;
     const weekMp = weekT != null && weekT > 0
-      ? { paceSPerMi: anchors.marathonSecPerMi, source: 'current_fitness' as const }
+      ? { paceSPerMi: weekMpPace, source: 'current_fitness' as const }
       : null;
     const days = layoutWeek({
       phase: phaseLabel,
@@ -10797,6 +11070,19 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       cutbackEveryN,  // #13 · same cadence as volumeCurve's deload mask
       noLongRunWeeks, // MPRACE-1 · weeks whose long-run day is a tune-up race
       evidenceLongCapMi, // LONGEVIDENCE-1 · his own long runs, not the tier label
+      // MPLADDER-1 · this week's rung of the block's marathon-specific ladder.
+      mpRung: mpLadder?.byWeek.get(wi) ?? null,
+      marathonLadderOwned: mpLadder != null,
+      mpRangeSecPerMi: (() => {
+        const rung = mpLadder?.byWeek.get(wi);
+        if (!rung || !mpContract || rung.mpMi <= 0) return null;
+        // Q30 · a marathon-effort prescription is a RANGE. The HR ceiling and
+        // the guidance are attached where the row is written, from the canonical
+        // HR owner; this is the pace half.
+        return marathonEffortPrescription({
+          contract: mpContract, ladderT: rung.ladderT, hrCeilingBpm: null, mpMi: rung.mpMi,
+        }).rangeSecPerMi;
+      })(),
       // 2026-06-20 · beginner = base-building structure (light fartlek, no
       // structured I/R reps). Gated to level==='beginner', so intermediate/
       // advanced (incl. David) are unchanged.
@@ -11352,6 +11638,73 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
               ? 'demonstrated_long_run'
               : 'cycle_growth_allowance',
         citation: 'Research/00a-distance-running-training.md §"Volume progression rules"',
+      },
+      /**
+       * MPLADDER-1 (2026-09-03) · THE MARATHON-SPECIFIC SEQUENCE, PERSISTED.
+       *
+       * S1.1 asks for every marathon-specific workout to carry "its purpose;
+       * the pace or effort trained; why it occurs in that week; what preceding
+       * work supports it; what later workout it prepares; and whether it
+       * rehearses current marathon capability or projected race execution."
+       *
+       * Stored here rather than written into a report, because
+       * `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` says so outright: "Derived by
+       * the engine and persisted — not written into a report by whoever built
+       * it, and not a sentence repeated on every row (Rule 17)."
+       *
+       * `skipped` is stored beside the rungs on purpose. A three-rung ladder
+       * because the calendar allowed three and a three-rung ladder because a
+       * predicate misfired are different facts, and without the reasons nobody
+       * downstream can tell them apart (Rule 11).
+       */
+      marathon_specific_ladder: mpLadder == null ? null : {
+        rungs: mpLadder.rungs.map((r) => {
+          const rx = mpContract && r.mpMi > 0
+            ? marathonEffortPrescription({ contract: mpContract, ladderT: r.ladderT, hrCeilingBpm: null, mpMi: r.mpMi })
+            : null;
+          return {
+            week_idx: r.weekIdx,
+            date_iso: r.dateISO,
+            days_to_race: r.daysToRace,
+            role: r.role,
+            vehicle: r.vehicle,
+            mp_mi: r.mpMi,
+            counts_as_quality: r.countsAsQuality,
+            pace_s_per_mi: rx?.paceSecPerMi ?? null,
+            pace_range_s_per_mi: rx?.rangeSecPerMi ?? null,
+            fallback_pace_s_per_mi: rx?.fallbackSecPerMi ?? null,
+            response_assumption: rx?.assumption ?? null,
+            rehearses: r.rationale.rehearses,
+            purpose: r.rationale.purpose,
+            why_this_week: r.rationale.whyThisWeek,
+            supported_by: r.rationale.supportedBy,
+            prepares: r.rationale.prepares,
+          };
+        }),
+        skipped: mpLadder.skipped,
+        largest_dose_mi: mpLadder.largestDoseMi,
+        /**
+         * The last marathon-effort pace the ladder asks for. `race-outlook.ts`
+         * reads it to answer "does the block make the race-day target
+         * credible" (`marathonSeam`) — the one question neither module can
+         * answer alone, because the block owns the rehearsal and the race brain
+         * owns the target.
+         */
+        last_rehearsal_pace_s_per_mi: (() => {
+          const last = [...mpLadder.rungs].reverse().find((r) => r.mpMi > 0);
+          if (!last || !mpContract) return null;
+          return marathonEffortPrescription({ contract: mpContract, ladderT: last.ladderT, hrCeilingBpm: null, mpMi: last.mpMi }).paceSecPerMi;
+        })(),
+        training_prescription_s_per_mi: mpContract?.trainingPrescriptionSecPerMi ?? null,
+        training_band_s_per_mi: mpContract?.trainingBandSecPerMi ?? null,
+        doctrine: [
+          'docs/PROGRESSIVE_BASELINE_DOCTRINE.md §Q8 · marathon-effort progression',
+          'docs/PROGRESSIVE_BASELINE_DOCTRINE.md §Q14 · quality density',
+          'docs/PROGRESSIVE_BASELINE_DOCTRINE.md §Q16 · the week after the tune-up race',
+          'docs/PROGRESSIVE_BASELINE_DOCTRINE.md §Q18 · taper long runs',
+          'Research/04-workout-vocabulary.md §4.4 Marathon-pace long run',
+          'Research/08-pacing-and-race-week.md §9.1 taper principle',
+        ],
       },
       // TIEREVIDENCE-1 · see the block above the `return`. `[this block's own
       // peak, the highest this cycle's peak may legitimately reach]`, with the
