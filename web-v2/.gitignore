@@ -35,3 +35,7 @@ scripts/probe-*.mjs
 scripts/route-debug.mjs
 scripts/smoke-recap-*.mjs
 .script-bundle-*/
+
+# Visual walk substrate · the scratch-database session token (scripts/walk-substrate.ts).
+# Local-only, but a credential all the same.
+.walk-session-token
