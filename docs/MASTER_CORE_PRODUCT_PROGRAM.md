@@ -340,6 +340,105 @@ rather than re-derived from scratch.
 
 ---
 
+## ADAPTATION PROOF PROGRAMME · 2026-09-03, begun after the rebuild landed
+
+David's item 7: shadow is a stage, not the destination — prove PROGRESS/
+HOLD/REGRESS/REFUSE are all reachable, bounded, evidence-driven, and that
+travel/reschedule/missing-data are never read as lost fitness.
+
+**The replay ledger already existed** (`lib/adaptation/canonical/
+_replay_ledger.test.ts`) — 13 hand-authored, doctrine-grounded decision
+points (D1-D13), chronologically walked with a structurally-enforced no-
+lookahead property (`visibleAt()` is the only path to evidence, attacked by
+an ORACLE test that proves the filter does the work rather than assuming
+it). Its own header is honest about scope: a reconstruction grounded in
+documented figures, not a literal database export, because production
+credentials were not available in the worktree that wrote it.
+
+**A real gap found by auditing it, not assumed clean because 20/20 passed:**
+`RULE 22 · the replay is not one long refusal` asserted floors for
+PROGRESS (≥4), HOLD (≥1) and REFUSE (≥2) — nothing asserted REGRESS, and
+grepping the file confirmed no case anywhere exercised
+`threshold-pace.ts`'s `agreeFaster ? PROGRESS : REGRESS` on its REGRESS
+side. **Closed**: D14, the mirror of D4 — two clean, corroborating
+threshold sessions both meaningfully slower than the held anchor. First
+placement (immediately after D11's own season data) broke D11's own case,
+because D11's reasoning depends on its 28-day evaluation window reaching
+back to exactly one specific date — moved D14 later in the season once
+that was found by running the suite, not guessed. Falsified per Rule 18:
+mutating the two new sessions to be faster instead of slower correctly
+fails D14 itself, the ledger-agreement check, AND the RULE 22 distribution
+floor (3 failures), confirming the new floor is live rather than
+decorative. `9716ea42`, merged. Full suite: 225/225 across
+`lib/adaptation/canonical/`.
+
+**Current distribution, all 14 cases:** `REFUSE 6 · PROGRESS 5 · HOLD 1 ·
+REGRESS 1`. Bounded: D14's magnitude is asserted ≤5 s/mi despite a ~16-17
+s/mi raw delta between the sessions and the anchor — a regression is not
+exempt from the same step discipline a progression is held to (same
+citation D4's PROGRESS case uses). Evidence-driven: every one of the 14
+cases traces to a specific, named set of sessions/weeks/long-runs, not a
+hand-picked verdict.
+
+**Travel / reschedule / missing-data non-penalization — verified
+structural, not merely tested.** Grepped `lib/adaptation/` for
+`plan_reschedules`: zero references anywhere. The rescheduling mechanism
+(RS-1 in the P1 inventory above) writes to a table the adaptation engine's
+input-building layer never reads at all — the separation the master
+programme's Workout Rescheduling section already requires ("a reschedule
+must never update fitness beliefs") is enforced by the engine having no
+code path to that table, not by a rule that a future change could get
+wrong. Grepped for `travel`/`AWAY`/`isAway` across the same directory:
+also zero — there is no travel-specific branch, because travel doesn't
+need one. A day with no run — travel, illness, a genuine rest day — reads
+through the SAME general mechanism D6 already proves: `Rule 11`'s
+absent-not-zero contract turns a missing day into `REFUSE` (insufficient
+evidence), never into evidence of decline. D5 covers the sibling case
+(an AUTHORED cutback is excluded from the shortfall count entirely, not
+merely read charitably). No new test was needed because the general
+mechanism already covers the specific case — adding a travel-specific test
+would have been decoration over a property that already holds.
+
+### Mutation authority across the three systems — David's item 8
+
+| System | Location | Writes to | Can mutate `plan_workouts`? |
+|---|---|---|---|
+| **Legacy** (current production authority) | `lib/plan/adapt.ts`, fired by the `run-adaptations` cron (03:00 UTC) | `plan_workouts` directly, `coach_intents`, `training_plans.adaptation_log` | **Yes — this is the only system that currently does.** |
+| **Intermediate** (PACE-only shadow-compare) | `lib/adaptation/adaptation-engine.ts` + `shadow-compare.ts` | `adaptation_shadow_log` (migration 160/161) | No — shadow only, proven by that mechanism's own scope (one lever, one table). |
+| **Canonical** (tonight's work) | `lib/adaptation/canonical/` + `canonical-shadow/` | `canonical_adaptation_shadow_log` (migration 164, applied tonight) | No — structurally cannot. `_cannot_mutate.test.ts` proves from source that the live-shadow code path can reach only `evaluateAdaptation` and two pure helpers; `_never_mutates_plan.test.ts` proves the writer is allow-listed to exactly one INSERT shape against exactly one table. |
+
+**Who owns the final decision, today:** the legacy system, exclusively.
+Nothing in tonight's work changed that, and nothing was asked to — David's
+instruction was to keep legacy and intermediate non-authoritative *relative
+to the canonical engine* during this comparison phase, not to disable the
+only system that currently pushes real adaptations to his plan.
+
+**Removal / cutover conditions, not yet met:** per Rule 21's own audit
+(still the most recent measurement — see `## WILL THE ADAPTATION ENGINE
+FIRE?` below), the legacy system produced ZERO upward adaptations across
+309 real intents before this pass, and the canonical engine's own replay
+against synthetic-but-doctrine-grounded data has never yet been run
+against David's literal historical rows end-to-end (the `_replay_ledger`
+suite is hand-authored, per its own header, not a database export — see
+above). Cutover to canonical-as-authoritative should not happen before:
+(1) a genuine production-data replay is built and run (blocked on
+`readActivePlan`-style functions being made date-aware — they currently
+read whichever plan is active NOW, not whichever was active as of a
+historical date, which would leak lookahead through plan selection even
+with `evaluatedAtISO` correctly filtering the evidence itself; identified
+tonight, not yet built, because building it hastily and getting the
+plan-selection boundary wrong would be worse than the existing honest
+synthetic approach); (2) canonical's shadow log accumulates enough real
+production decisions (now started — 3 real rows as of tonight) to compare
+against what legacy actually did on the same dates; (3) David reviews and
+approves the cutover explicitly — this is exactly the kind of decision
+Rule 20 says needs a gate, not a comfortable assumption. **The end state
+remains one canonical owner, not three permanent engines** — intermediate
+in particular should be scheduled for removal once canonical supersedes
+what it checks, not kept running in parallel indefinitely.
+
+---
+
 ## Stage 0 · Record and deployment state — VERIFIED 2026-09-03
 
 Resolved from the repository, CI and the deployment provider, not from the
