@@ -117,16 +117,21 @@
  * — and is left to answer it. A reschedule routinely crosses a Monday, and a
  * modulo-7 walk within one week structurally cannot see across one.
  *
- * ─── A KNOWN DOCTRINE DIVERGENCE, REPORTED RATHER THAN PICKED ───────────────
+ * ─── THE Q32 / §9 DIVERGENCE, RESOLVED (SEP-1, 2026-09-03) ──────────────────
  *
- * `RESCHEDULING_CONTRACT.md` Q32's table says the next quality session needs
- * "≥1 complete easy/rest day" after intervals. `lib/plan/validate.ts` §9
- * requires TWO. This module mirrors the VALIDATOR, for the reason
- * `replan-scenarios.ts` gives in its own header: a proposal made against a
- * different number than the boundary will judge it by is worse than no
- * proposal, because the runner confirms a change that is then refused. The
- * divergence is real, is load-bearing for the live case, and is reported
- * rather than silently resolved here.
+ * Used to diverge here: `RESCHEDULING_CONTRACT.md` Q32's table said the next
+ * quality session needs "≥1 complete easy/rest day" after intervals;
+ * `lib/plan/validate.ts` §9 required TWO, and this module mirrored the
+ * validator rather than Q32 for the reason `replan-scenarios.ts` gives in its
+ * own header — a proposal judged against a different number than the
+ * boundary that will actually judge it is worse than no proposal.
+ *
+ * David settled it 2026-09-03: intervals and threshold both need "at least
+ * ONE" easy/rest day, same as Q32 always said. §9 now enforces exactly that
+ * (`requiredSeparationDays` in `validate.ts`, whose fatal floor is the
+ * universal one-day minimum every session type shares), so this module's own
+ * `requiredRecoveryDaysAfter` below is realigned to match — no more
+ * divergence, and Q32's table was the one that had it right.
  *
  * ─── WHAT THIS MODULE NEVER DOES ────────────────────────────────────────────
  *
@@ -184,16 +189,20 @@ export const SEARCH_WINDOW_DAYS = {
 /**
  * Easy or rest days required AFTER a session, before the next demanding one.
  *
- * MIRRORED from `lib/plan/validate.ts` §9 (`reqGap` in `replan-scenarios.ts`):
- * intervals 2, threshold / tempo / long 1, easy 0. The long-run rows extend it
- * with Q32's own table, which grades by distance rather than by type.
+ * MIRRORED from `lib/plan/validate.ts` §9's `requiredSeparationDays` (SEP-1,
+ * 2026-09-03): intervals / threshold / tempo all need 1, easy needs 0. The
+ * long-run rows extend it with Q32's own distance table, which the ruling
+ * kept unchanged (a 16-18mi or 18-plus/marathon-pace long's fuller band is
+ * SEP-1's `.min`, not its fatal-capped floor — this module offers proposals
+ * against the fuller doctrine target, which the validator's fatal gate will
+ * never refuse since it only enforces the one-day floor; see SEP-1's own
+ * FATAL-vs-ADVISORY note in `validate.ts` for why the floor is capped there).
  *
- * See the header on the Q32 / §9 divergence for intervals. The validator wins,
- * because the validator is what will judge the applied change.
+ * The Q32 / §9 intervals divergence this comment used to report is resolved
+ * — see the header above.
  */
 export function requiredRecoveryDaysAfter(d: PlanDay): number {
   if (!isDemanding(d)) return 0;
-  if (d.type === 'intervals') return 2;
   if (d.type === 'race') {
     // Q32 lists a raced B effort among the demanding sessions; a race costs at
     // least as much as a long run of the same distance.

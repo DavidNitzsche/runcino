@@ -21,7 +21,7 @@
  * context so tests are fully deterministic.
  */
 
-import type { ComposePlanResult, DistCategory } from './generate';
+import type { ComposePlanResult, DistCategory, DayPlan } from './generate';
 // #12 follow-up (2026-08-18) · THE categorizer, direct. This used to import
 // `distanceCategoryOfPublic` from generate.ts — a second name for the same
 // function, re-exported so callers could avoid importing the canonical module,
@@ -410,6 +410,103 @@ function addDays(isoDate: string, n: number): string {
   const d = new Date(isoDate + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+// ── SEP-1 (2026-09-03) · required separation after a demanding session ────────
+//
+// Replaces the flat two-easy-day rule §9 used to enforce (`reqGap`: intervals
+// 2, threshold/tempo/long 1, easy 0) — a divergence `lib/plan/reschedule.ts`
+// had already flagged against `RESCHEDULING_CONTRACT.md` Q32's own table
+// ("the validator wins, because the validator is what will judge the applied
+// change"). David settled the divergence, in full, 2026-09-03:
+//
+//   "Ordinary interval or threshold session → at least ONE complete easy or
+//    rest day before another demanding session. Long run under approximately
+//    16 miles and fully easy → at least ONE complete easy or rest day before
+//    quality. Long run of 16-18 miles → normally ONE to TWO easy/rest days
+//    depending on the run's own intensity (not fixed — a mostly-easy
+//    17-miler and a 17-miler with a hard finish are different cases; read
+//    the run's own authored structure, e.g. whether it carries a
+//    marathon-pace or progression finish, to decide which end of the range
+//    applies). Long run of 18-plus miles, OR any long run containing
+//    substantial marathon-pace effort (regardless of total distance) →
+//    normally TWO easy/rest days before another major quality session.
+//    Back-to-back demanding sessions are permitted ONLY through an explicit
+//    authored transaction (this is the Dodgers-weekend shape already built
+//    in lib/plan/designed-race-weekend.ts — a deliberate, evidence-gated
+//    exception, not a validator loophole). Count BOTH easy AND rest days as
+//    low-stress separation — the rule must not require that both separating
+//    days be running days. A rest day counts exactly the same as an easy day
+//    for this purpose."
+//
+// Typed by what the PRECEDING session actually demanded — never a flat
+// number keyed only on `type`. Reads `longRunKind` / `isQuality` /
+// `raceGoalPaceSec`, the SAME fields `generate.ts`'s designed-weekend caller
+// already reads to classify a long run's finish for `resolveDesignedRaceWeekend`
+// (Rule 16: no second classifier invented here).
+//
+// `min` is what this validator enforces; `max` is the top of doctrine's
+// stated band, carried for documentation and for any future consumer that
+// wants the whole range. The two differ only inside the 16-18mi bucket when
+// this function reads no elevated intensity — doctrine states a genuine 1-2
+// band there and the composer is free to land anywhere in it, so the
+// validator enforces only the floor.
+//
+// "Count both easy AND rest days" is already how the §9 caller measures
+// `between` — arithmetic days between two demanding sessions, which does not
+// discriminate by day type — so nothing in this function needs to re-litigate
+// that half of the ruling.
+//
+// Rule 9 walk: the only discontinuities in this function are the 1-day steps
+// David names AT the 16mi and 18mi boundaries (and, separately, where the
+// authored structure — a boolean the composer set, not a continuous input —
+// crosses from "not carrying intensity" to "carrying it"). No other input
+// produces a jump larger than that stated step; see `_sep1_boundary_walk.test.ts`.
+export interface SeparationRequirement { min: number; max: number }
+
+export function requiredSeparationDays(
+  day: Pick<DayPlan, 'type' | 'isQuality' | 'isLong' | 'distanceMi' | 'raceGoalPaceSec' | 'longRunKind'>,
+): SeparationRequirement {
+  // FARTLEK-GAP-1 (2026-06-23) · a fartlek is type='easy' + isQuality=true
+  // (aerobic-zone easy run with 1-minute pickups). Research/00b:55-60's gap
+  // doctrine applies to threshold and interval sessions, not this — a
+  // fartlek is compatible with an adjacent long run and needs no recovery gap.
+  if (day.type === 'easy') return { min: 0, max: 0 };
+
+  if (day.isLong) {
+    // The same `longRunKind` vocabulary `generate.ts:9328` reads for
+    // `resolveDesignedRaceWeekend`'s `longCarriesMarathonPaceFinish` /
+    // `longCarriesProgressionFinish` inputs.
+    const marathonPaceFinish = day.longRunKind === 'mp_long'
+      || day.longRunKind === 'dress_rehearsal'
+      || day.longRunKind === 'modified_block'
+      || day.longRunKind === 'downhill_simulation';
+    const progressionFinish = day.longRunKind === 'progression' || day.longRunKind === 'fast_finish';
+
+    // Bullet 3 · "regardless of total distance" — overrides the distance
+    // bucketing below entirely.
+    if (marathonPaceFinish) return { min: 2, max: 2 };
+    if (day.distanceMi >= 18) return { min: 2, max: 2 };
+    if (day.distanceMi >= 16) {
+      // Bullet 2 · "1-2 ... depending on the run's own intensity". A carried
+      // quality flag, a race-pace segment, or a progression/fast-finish
+      // structure reads the top of the band; a mostly-easy 16-18 miler reads
+      // the bottom.
+      const carriesIntensity = day.isQuality || day.raceGoalPaceSec != null || progressionFinish;
+      return carriesIntensity ? { min: 2, max: 2 } : { min: 1, max: 2 };
+    }
+    // Bullet 1 · under ~16mi and fully easy → 1. Nothing in the ruling
+    // elevates a sub-16mi long run beyond that except bullet 3's
+    // marathon-pace override, already checked above — a progression/
+    // fast-finish long run under 16mi is not "substantial marathon-pace
+    // effort" and stays at the bullet-one floor.
+    return { min: 1, max: 1 };
+  }
+
+  // Ordinary interval, threshold or tempo demanding session (bullet 1's
+  // opening clause). Intervals no longer carry a heavier 2-day requirement
+  // than threshold — that was the divergence David's ruling resolves.
+  return { min: 1, max: 1 };
 }
 
 // ── validator ─────────────────────────────────────────────────────────────────
@@ -998,29 +1095,92 @@ export function validateComposedPlan(
     }
   }
 
-  // ── 9. SP-7 · stimulus-gap adjacency (race-prep) ──────────────────────────
-  // Hard days spaced per Research/00b:55-60 (intervals/VO2max → 2 easy days after;
-  // threshold/tempo/long → 1). Skip race weeks (taper structure differs), sealed past
-  // weeks, and OVER-CONSTRAINED weeks where the required recovery exceeds the available
-  // days (e.g. two VO2max sessions in a ≤6-day week) — the composer does best-achievable
-  // there (B3) and the violation is mathematically unavoidable, not a bug.
+  // ── DESIGNEDWEEKEND-GRANT · hoisted above §9 because §9 now needs it too ──
+  //
+  // Was computed only at §11c below. §9's new typed separation rule (SEP-1)
+  // can require 2 days after an 18mi-plus or marathon-pace-carrying long run
+  // where the OLD flat rule required only 1 (`reqGap('long')` fell into the
+  // "else" bucket) — so a granted Dodgers-shaped weekend, whose long run
+  // relies on `EXTENDED_RECOVERY_DAYS_AFTER_PAIR` rather than a flat 1-day
+  // gap, now needs the SAME grant §9 already has no other way to see. Read
+  // once, off `placement_compromises` — the composer's own record — and
+  // shared by both §9 (below) and §11c's `designedWeekendFindings` (Rule 16:
+  // one reading of the record, not two).
+  const pairDecisions: ShippedPairDecision[] = (() => {
+    const raw = (result.authoredState as Record<string, unknown> | undefined)?.['placement_compromises'];
+    if (!Array.isArray(raw)) return [];
+    const out: ShippedPairDecision[] = [];
+    for (const r of raw) {
+      const rec = r as {
+        raceDateISO?: unknown; dateISO?: unknown;
+        designedWeekend?: { combinedMi?: unknown };
+        refusedDesignedWeekend?: { code?: unknown };
+      };
+      if (typeof rec.raceDateISO !== 'string' || typeof rec.dateISO !== 'string') continue;
+      const granted = rec.designedWeekend?.combinedMi;
+      if (typeof granted === 'number' && granted > 0) {
+        out.push({ raceDateISO: rec.raceDateISO, longDateISO: rec.dateISO, combinedMi: granted });
+      } else if (typeof rec.refusedDesignedWeekend?.code === 'string') {
+        // A RECORDED REFUSAL is a decision. The composer looked, said no by
+        // name, and cut the long run onto doctrine's curve. Rule 11: that is a
+        // different fact from nobody having looked, and only the second is a
+        // violation.
+        out.push({ raceDateISO: rec.raceDateISO, longDateISO: rec.dateISO, combinedMi: null });
+      }
+    }
+    return out;
+  })();
+  /** Long-run dates whose weekend pairing was GRANTED (not merely considered
+   *  and refused) — the only dates §9 defers on. */
+  const grantedLongDates = new Set(
+    pairDecisions.filter((d) => d.combinedMi != null).map((d) => d.longDateISO),
+  );
+
+  // ── 9. SP-7 / SEP-1 · stimulus-gap adjacency (race-prep) ──────────────────
+  // Hard days spaced per `requiredSeparationDays` (SEP-1, 2026-09-03 — see its
+  // own header for David's verbatim ruling). Skip race weeks (taper structure
+  // differs), sealed past weeks, and OVER-CONSTRAINED weeks where the required
+  // recovery exceeds the available days (e.g. two VO2max sessions in a ≤6-day
+  // week) — the composer does best-achievable there (B3) and the violation is
+  // mathematically unavoidable, not a bug.
   // VAL-1 (2026-06-23) · extend stimulus-gap §9 to maintenance mode. The maintenance composer places
   // a single quality session per week, so a gap violation is possible only if qualityDows puts quality
   // adjacent to the long. The over-constrained skip guard (requiredTotal > 7 - hard.length) still applies.
   // Recovery has no quality sessions and trivially passes. 'race-prep' keeps its existing check unchanged.
+  //
+  // FATAL vs ADVISORY (SEP-1) · David's own wording draws the line: the
+  // interval/threshold clause and the under-16mi-fully-easy clause both say
+  // "at least ONE" — an absolute floor. The 16-18mi and 18-plus/marathon-pace
+  // clauses both say "normally TWO" — a doctrine TARGET, not phrased as an
+  // unconditional floor. `Math.min(requiredSeparationDays(d).min, 1)` is the
+  // fatal gate: the universal one-day floor, which resolves the intervals-vs-
+  // threshold divergence (both 1 now) and is what the three worked examples
+  // in his ruling actually test. The full `.min` (up to 2) is measured
+  // against `between` too, and a shortfall against IT that still clears the
+  // 1-day floor is reported through `onStress` as `SEPARATION_BAND_SHORTFALL`
+  // (advisory, not fatal) rather than thrown — see that code's own comment in
+  // `combined-stress.ts` for why: `scheduleQuality` does not yet place
+  // quality against the long run's own classification, so a fatal 2-day gate
+  // here would reject real composer output nothing yet told the composer to
+  // avoid (verified against `buildSimPlan` fixtures before landing this).
+  const separationAdvisory: StressFinding[] = [];
   if (mode === 'race-prep' || mode === 'maintenance') {
-    // FARTLEK-GAP-1 (2026-06-23) · after MAINT-FARTLEK-SPEC, fartlek sessions are type='easy' + isQuality=true.
-    // isQuality=true means they enter the hard[] array; the old reqGap returned 1 for any non-interval type,
-    // so Saturday-fartlek → Sunday-long (0 easy days between) tripped a false PlanValidationError. Research/00b:55-60
-    // gap doctrine applies to threshold and interval sessions — not to aerobic-zone fartlek (easy run with 1-minute
-    // pickups). A fartlek is compatible with adjacent long runs and needs no recovery gap. Return 0 for easy.
-    const reqGap = (t: string): number => (t === 'intervals' ? 2 : t === 'easy' ? 0 : 1);
     for (const week of weeks) {
       if (week.isRaceWeek) continue;
       if (addDays(week.startISO, 6) < ctx.todayISO) continue;
+      const weekStartDow = new Date(week.startISO + 'T12:00:00Z').getUTCDay();
       const hard = week.days
         .filter(d => (d.isQuality || d.isLong) && d.type !== 'race' && d.type !== 'shakeout' && d.type !== 'race_week_tuneup')
-        .map(d => ({ dow: d.dow, type: d.type, g: reqGap(d.type) }))
+        .map(d => {
+          const band = requiredSeparationDays(d).min;
+          return {
+            dow: d.dow,
+            type: d.type,
+            dateISO: addDays(week.startISO, ((d.dow - weekStartDow) % 7 + 7) % 7),
+            g: Math.min(band, 1),
+            band,
+          };
+        })
         .sort((a, b) => a.dow - b.dow);
       if (hard.length < 2) continue;
       const requiredTotal = hard.reduce((s, h) => s + h.g, 0);
@@ -1028,11 +1188,29 @@ export function validateComposedPlan(
       for (let i = 0; i < hard.length; i++) {
         const cur = hard[i]; const nxt = hard[(i + 1) % hard.length];
         const between = ((nxt.dow - cur.dow + 7) % 7) - 1;
+        // DESIGNEDWEEKEND-1 · back-to-back demanding sessions are permitted
+        // ONLY through an explicit authored transaction (David's ruling,
+        // this section's header). The Dodgers-weekend shape is that
+        // transaction, and its own recovery-after correctness is
+        // `designedWeekendFindings`'s job (§11c below) — §9 defers on the
+        // exact dates that transaction GRANTED rather than re-litigating a
+        // decision that already has its own, more specific owner. Same
+        // mechanism (`placement_compromises`), never a second exception path.
+        if (grantedLongDates.has(cur.dateISO)) continue;
         if (between < cur.g) {
           violations.push(
             `Week ${week.startISO} (${week.phase}): ${cur.type}@${cur.dow} → ${nxt.type}@${nxt.dow} ` +
-            `only ${between} easy day(s), needs ${cur.g} (Research/00b:55-60)`,
+            `only ${between} easy day(s), needs ${cur.g} (Research/00b:55-60 · SEP-1)`,
           );
+        } else if (between < cur.band) {
+          separationAdvisory.push({
+            code: 'SEPARATION_BAND_SHORTFALL',
+            weekStartISO: week.startISO,
+            dateISO: cur.dateISO,
+            message: `${week.startISO} (${week.phase}): ${cur.type}@${cur.dow} → ${nxt.type}@${nxt.dow} ` +
+              `only ${between} easy day(s); doctrine's fuller band asks for ${cur.band} (SEP-1, not yet composer-enforced)`,
+            enforced: false,
+          });
         }
       }
     }
@@ -1136,35 +1314,10 @@ export function validateComposedPlan(
    * pairing GRANTED to this runner, and does the grant still describe the
    * block that shipped? See `designedWeekendFindings`.
    *
-   * The grants are read off `placement_compromises` — the composer's own
-   * record — rather than re-resolved here, because the evidence they were
-   * issued on is a database read the validator does not have and must not
-   * invent. One decision, one owner, re-checked against the days.
+   * `pairDecisions` is read off `placement_compromises` once, hoisted above
+   * §9 (which now needs the same grant — see the comment there), rather than
+   * re-resolved here. One decision, one owner, re-checked against the days.
    */
-  const pairDecisions: ShippedPairDecision[] = (() => {
-    const raw = (result.authoredState as Record<string, unknown> | undefined)?.['placement_compromises'];
-    if (!Array.isArray(raw)) return [];
-    const out: ShippedPairDecision[] = [];
-    for (const r of raw) {
-      const rec = r as {
-        raceDateISO?: unknown; dateISO?: unknown;
-        designedWeekend?: { combinedMi?: unknown };
-        refusedDesignedWeekend?: { code?: unknown };
-      };
-      if (typeof rec.raceDateISO !== 'string' || typeof rec.dateISO !== 'string') continue;
-      const granted = rec.designedWeekend?.combinedMi;
-      if (typeof granted === 'number' && granted > 0) {
-        out.push({ raceDateISO: rec.raceDateISO, longDateISO: rec.dateISO, combinedMi: granted });
-      } else if (typeof rec.refusedDesignedWeekend?.code === 'string') {
-        // A RECORDED REFUSAL is a decision. The composer looked, said no by
-        // name, and cut the long run onto doctrine's curve. Rule 11: that is a
-        // different fact from nobody having looked, and only the second is a
-        // violation.
-        out.push({ raceDateISO: rec.raceDateISO, longDateISO: rec.dateISO, combinedMi: null });
-      }
-    }
-    return out;
-  })();
   const designed: StressFinding[] = embeddedRaces.length > 0
     ? designedWeekendFindings({
         races: embeddedRaces,
@@ -1203,7 +1356,7 @@ export function validateComposedPlan(
         isCutback: w.isCutback,
       })),
   });
-  if (opts?.onStress) opts.onStress([...stress, ...designed, ...compound.findings]);
+  if (opts?.onStress) opts.onStress([...stress, ...designed, ...compound.findings, ...separationAdvisory]);
   if (opts?.onCompoundExemption && compound.exemptions.length > 0) {
     opts.onCompoundExemption(compound.exemptions);
   }

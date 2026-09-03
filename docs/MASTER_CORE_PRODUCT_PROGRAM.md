@@ -239,13 +239,24 @@ cover. **Apply refuses rather than making an unrecorded change**, which is the
 correct behaviour, so nothing is broken; the feature simply cannot complete an
 approval until the table exists.
 
-**2 · A doctrine divergence between his ruling and the validator.** `Q32` says
-**≥1** easy day after intervals; `validate.ts` §9 requires **2**. The
-rescheduling engine mirrors the validator, because a proposal built against the
-other number would be rejected at the boundary. **Consequence for the live case:
-Saturday 2026-09-05 — which the contract offers tentatively — does not actually
-clear Thursday's intervals gap.** One of the two numbers should move; that is
-his call, not mine.
+**2 · RESOLVED 2026-09-03.** David ruled in full: ordinary interval/threshold
+sessions need "at least ONE" easy/rest day, same as `Q32` always said — the
+validator's old **2** for intervals was the number that was wrong. He also gave
+the complete typed rule for long runs (under ~16mi fully easy → 1; 16-18mi → 1-2
+by the run's own authored intensity; 18-plus or any marathon-pace-carrying long
+→ 2, regardless of distance) and confirmed back-to-back demanding sessions stay
+gated behind the designed-race-weekend grant, never a general exception.
+Implemented in `requiredSeparationDays()` (`lib/plan/validate.ts` §9, SEP-1) and
+mirrored in `reschedule.ts`'s `requiredRecoveryDaysAfter`; both now agree.
+**Consequence for the live case:** Saturday 2026-09-05 now DOES clear Thursday's
+intervals gap (one intervening day, one required) — see
+`_reschedule_contract.test.ts`'s updated Q32 tests. The 16-18mi/18-plus/
+marathon-pace band's fuller "normally TWO" target is computed and reported
+(`SEPARATION_BAND_SHORTFALL`, advisory) but not yet fatal — `scheduleQuality` in
+`generate.ts` does not yet place quality against the long run's own
+classification, and making it fatal was falsified against real composer output
+before landing (see the fix commit's message). Promoting it to fatal is a
+composer follow-up, not yet done.
 
 **3 · Three other paths can already move a workout** — `/api/today/reschedule`,
 `move_day`, and `PATCH /api/plan/workout` — and **none of them ranks, explains,
