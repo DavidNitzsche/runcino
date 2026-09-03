@@ -106,6 +106,22 @@
  *     re-argued rather than re-baselined: `_mp_doctrine`, `_longrun_demand`,
  *     `_variety_invariants`, `_boundary_run` and the doctrine registry all
  *     carry their own RULING MOVES sections for this change.
+ *
+ *   · 2026-09-03 · ROLLING7-1, in the same session and folded into the same
+ *     digest. The per-cycle peak ceiling was MEASURED in rolling-7 miles and
+ *     ENFORCED on the peak calendar week (Rule 16, two units on the two sides
+ *     of one inequality), so a block could exceed its own published ceiling by
+ *     a window straddling a week boundary. `enforceRollingSevenCeiling` now
+ *     checks it in the unit it is measured in and takes the difference off EASY
+ *     days only.
+ *
+ *     It reaches only the archetypes that carry a demonstrated peak — most of
+ *     this corpus has no history, the load contract refuses to publish a
+ *     ceiling for them, and the pass records the refusal and returns. `days` is
+ *     699860 either way, so nothing was trimmed to zero and no day left the
+ *     plan; a handful of easy days on the history-carrying arcs got shorter.
+ *     `_rolling_seven_ceiling.test.ts` owns the behaviour and was falsified
+ *     against the composer with the pass removed.
  */
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
