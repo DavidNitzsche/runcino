@@ -13,6 +13,12 @@
  *
  * READ-ONLY. Uses DATABASE_URL_RO and issues no write of any kind.
  */
+// THE FENCE, FIRST IMPORT. This script reads production and must never be able
+// to do anything else. The write-barrier ratchet caught it building its own pool
+// outside the barrier — correctly: a proof script that reads the owner's account
+// is exactly what the barrier exists for, and "it only SELECTs" is a property of
+// today's code, not of the file. Fenced rather than exempted.
+import '../_verification-fence.mjs';
 import { Pool } from 'pg';
 import {
   CANONICAL_ROW_SQL,
