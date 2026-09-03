@@ -789,6 +789,44 @@ sites type-check. If this still isn't right when you feel it live, that
 mismatch — a reasoned fix compiling clean vs. an actual device confirming it —
 is exactly what VW-3 needs to close before the next UI-motion complaint.
 
+
+## DECISION 1 · RACE-WEEK TYPED DISTINCTIONS — LANDED 2026-09-03 (`8e0180d8`)
+
+`lib/plan/race-week-role.ts` resolves `goal | tuneup | controlled | none` from
+the goal-only `is_race_week` column plus each race day's actual priority,
+reusing `weekContainsRace` (Rule 16 — one predicate, not a second copy).
+
+**Six call sites changed**, not the two RACEWEEK-1 named:
+
+1. `v5-block.ts#libraryPhaseKey` — now typed on the resolved role; only
+   `goal` reaches `race_week`. Formalises what RACEWEEK-1 left informal.
+2. `coaching-thesis.ts#assessWeekAgainstThesis` — **the real defect**. A
+   graded race always read as family `'race'`, matching no limiter family, so
+   a week whose only quality WAS a race read `WEEK_HOLDS_NO_KEY_SESSION` —
+   "no key session this week" — over a week the runner raced. This is Rule 21
+   by name: an intentionally-substituted workout read as an absence. Fixed so
+   a race taking the long-run slot (Run Malibu) addresses durability AND the
+   limiter's non-long capacity; a race that doesn't (Dodgers) addresses only
+   the non-long side. On his live Dodgers week specifically, this flips a
+   HIGH_INTENSITY-limiter runner from "no key session" to "week addresses the
+   limiter" — reachable today, since that week's `is_cutback=false` doesn't
+   pre-empt the check the way Santa Monica's and Run Malibu's do.
+3-5. `dose-guard.ts`, `generate.ts#applyDosingCaps`, `validate.ts`'s FATAL
+   dosing gate — three more undeclared copies of "does this week contain a
+   race," inconsistent with each other (the write-path guard and the fatal
+   validator disagreed, which the agent caught mid-fix: widening only one
+   broke `_designed_race_weekend.test.ts` on the Dodgers trimmer). All three
+   now call `weekContainsRace`. Full 38-test suite plus the 11,598-archetype
+   dosing sweep pass.
+6. `adapt.ts`'s guards — AUDITED, not changed. Already scoped to the literal
+   goal-only column, so they were never blanket-excluding a B/C week. Recorded
+   as a finding, not a fix.
+
+**Verified against his live account:** Santa Monica (B, cutback=true),
+Dodgers (C, cutback=false), Run Malibu (B, cutback=true), CIM (A) — the CIM
+path is confirmed byte-identical (still short-circuits on `WEEK_IS_NON_NORMAL`
+regardless of limiter).
+
 ---
 
 ## P1 · Known open items outside the critical path
