@@ -495,10 +495,13 @@ describe('Q31 · the search window is a boundary, not a permission', () => {
 });
 
 describe('Q32 · separation between demanding sessions', () => {
-  it('mirrors validate.ts §9: intervals two days, threshold one, marathon-specific long two', async () => {
+  it('mirrors validate.ts §9 SEP-1: intervals one day (same as threshold), marathon-specific long two', async () => {
+    // SEP-1 (2026-09-03) resolved the divergence this test used to assert:
+    // David's ruling is "at least ONE" for ordinary interval/threshold
+    // sessions alike, so intervals no longer needs two.
     const shape = await loadPlanShape(USER_UUID);
     const tl = timelineOf(shape!);
-    expect(requiredRecoveryDaysAfter(tl.byDate.get('2026-09-03')!)).toBe(2);
+    expect(requiredRecoveryDaysAfter(tl.byDate.get('2026-09-03')!)).toBe(1);
     expect(requiredRecoveryDaysAfter(tl.byDate.get('2026-09-01')!)).toBe(1);
     // 15 mi, fuelled, no race-effort block: Q32's "<~16 mi" row, one day.
     expect(requiredRecoveryDaysAfter(tl.byDate.get('2026-09-06')!)).toBe(1);
@@ -573,11 +576,13 @@ describe('Q32 · separation between demanding sessions', () => {
     }
   });
 
-  it("Saturday 09-05 does not clear Thursday's intervals gap", async () => {
-    // The contract's Saturday proviso is "provided Friday stays easy and
-    // Thursday's intervals leave adequate separation". Against the live
-    // schedule they do not: Thu 09-03 intervals to Sat 09-05 leaves ONE
-    // intervening day where validate.ts §9 asks for two.
+  it("Saturday 09-05 DOES clear Thursday's intervals gap, now that intervals needs only one day (SEP-1)", async () => {
+    // Was "does not clear" against the old (2 for intervals) rule this test
+    // used to assert — the contract's own Saturday proviso is "provided
+    // Friday stays easy and Thursday's intervals leave adequate separation",
+    // and under David's ruling (intervals needs "at least ONE", same as
+    // threshold) they now genuinely do: Thu 09-03 intervals to Sat 09-05
+    // leaves exactly the one intervening day (Friday) SEP-1 requires.
     const shape = await loadPlanShape(USER_UUID);
     const tl = timelineOf(shape!);
     const moved = new Map(tl.byDate);
@@ -586,9 +591,9 @@ describe('Q32 · separation between demanding sessions', () => {
     const clash = separationFindings(moved, '2026-09-01', '2026-09-13')
       .find((x) => x.earlierISO === '2026-09-03' && x.laterISO === '2026-09-05');
     expect(clash).toBeDefined();
-    expect(clash!.requiredDays).toBe(2);
+    expect(clash!.requiredDays).toBe(1);
     expect(clash!.interveningDays).toBe(1);
-    expect(clash!.deficitDays).toBe(1);
+    expect(clash!.deficitDays).toBe(0);
   });
 });
 

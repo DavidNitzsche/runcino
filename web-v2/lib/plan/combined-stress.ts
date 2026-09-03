@@ -277,7 +277,19 @@ export type StressContradictionCode =
   /** A C-effort race and a long run stand back to back on the SHIPPED block
    *  carrying more than the grant that licensed them, or with no grant at all.
    *  DESIGNEDWEEKEND-1. */
-  | 'UNGRANTED_RACE_LONG_PAIR';
+  | 'UNGRANTED_RACE_LONG_PAIR'
+  /** SEP-1 (2026-09-03) · a demanding session falls short of
+   *  `requiredSeparationDays`'s fuller doctrine band (2 easy/rest days after
+   *  an 18mi-plus or marathon-pace-carrying long run, or the top of a 16-18mi
+   *  long's 1-2 band) while still clearing the universal "at least one" floor
+   *  `validate.ts` §9 enforces as fatal. Advisory rather than fatal because
+   *  `scheduleQuality` (`generate.ts`) does not yet place quality against the
+   *  long run's OWN classification — only against the quality sessions'
+   *  types — so the composer cannot yet always deliver the fuller band; a
+   *  fatal gate here would reject plans nothing told the composer to avoid.
+   *  Follow-up: make `scheduleQuality` week-and-neighbour-aware of the long
+   *  run's required gap, then promote this to `enforced: true`. */
+  | 'SEPARATION_BAND_SHORTFALL';
 
 /**
  * The named outcomes a placement pass may record when it resolves a
