@@ -698,7 +698,7 @@ export function purposeOf(d: PlanDay): string {
   if (d.type === 'intervals') return 'High-intensity capacity. Repeatable hard efforts with full recovery.';
   if (d.type === 'threshold' || d.type === 'tempo') return 'Threshold capacity. Sustained work at controlled effort.';
   if (d.type === 'race') return 'A race. A real fitness read.';
-  return 'Aerobic volume at conversational effort.';
+  return 'Aerobic volume at an easy effort you can talk through.';
 }
 
 const isRunnable = (d: { type: string; distanceMi: number }): boolean =>
