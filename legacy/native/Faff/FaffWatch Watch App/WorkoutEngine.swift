@@ -1582,8 +1582,22 @@ final class WorkoutEngine: ObservableObject {
             // which can true up a few strides early or late, and "session
             // complete" mid-race reads as "you're done" at exactly the
             // wrong moment.
+            //
+            // Q42 · AND IT NAMES BOTH OPTIONS. The contract's own words are
+            // "Workout complete. Continue running or finish recording." The
+            // cue used to say only the first half — "Session complete." —
+            // which states the fact and leaves the choice unsaid. That is the
+            // moment the 2026-09-02 truncation happened at: the prescription
+            // ended, he kept running, and nothing had told him the watch was
+            // still recording or how to stop it. Saying the fact without the
+            // choice is how "the plan is over" gets heard as "the run is
+            // over".
+            //
+            // Still no "stop" and no "great work": continuing is a first-class
+            // option here, listed first, because overtime is expected running
+            // and not a runner who missed the memo.
             if !workout.isRace {
-                SpokenCues.shared.say("Session complete.")
+                SpokenCues.shared.say("Workout complete. Continue running or finish recording.")
             }
             // No takeover face for plan-done — the live face already
             // signals overtime by flipping the distance row to .bonus

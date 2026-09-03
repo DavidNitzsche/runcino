@@ -130,11 +130,47 @@ final class PhoneSync: NSObject, ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: tokenKey) }
     }
 
+    /// TRUE WHEN THIS PROCESS IS HOSTING THE TEST BUNDLE.
+    ///
+    /// `FaffWatch Watch AppTests` runs with the watch APP as its `TEST_HOST`,
+    /// so every test executes inside a fully live `PhoneSync` whose `apiBase`
+    /// was `https://www.faff.run` and whose POST paths are
+    /// `api/watch/workouts/complete` and `api/runs/{id}/rpe` — the two calls
+    /// that mint and annotate real rows in the owner's training history.
+    ///
+    /// The iPhone target has been fenced since 2026-08-21, when eight phantom
+    /// `phone_conc_*` runs reached the production database from a test that
+    /// assumed "every POST fails at the network layer". The watch target had
+    /// no equivalent. What kept it safe was only that a fresh simulator
+    /// install has no token, since `flushDirectCompletions` returns early
+    /// without one — an accident of state, not a barrier, and one that a test
+    /// seeding `UserDefaults` would remove without anyone noticing.
+    ///
+    /// WHY THIS AND NOT THE PHONE'S `NSPrincipalClass` + `URLProtocol` FENCE.
+    /// `URLProtocol.registerClass` governs `URLSession.shared`. The dangerous
+    /// call here does NOT use it: `flushDirectCompletions` posts through a
+    /// **background** `URLSessionConfiguration.background` session, which
+    /// out-of-process uploads and therefore ignores registered URLProtocols
+    /// entirely. A copy of the phone's fence would have looked identical,
+    /// passed review, and left the completion upload wide open. Moving the
+    /// BASE URL is transport-independent by construction.
+    private static let isHostingTests: Bool =
+        NSClassFromString("XCTestCase") != nil
+        || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        || ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
+
     /// Same base-URL rule as the iPhone target (FaffAPI.baseURL): an explicit
     /// override wins, else prod. (localhost is meaningless from the watch, so
     /// unlike the phone we don't fall back to it.)
+    ///
+    /// Under test it is neither — see `isHostingTests`. `.invalid` is a
+    /// reserved TLD (RFC 2606 §2), so it cannot resolve anywhere, ever, on any
+    /// network, and a test that reaches the network gets the offline result
+    /// its own comments already claim to be exercising. The env override still
+    /// wins, so a test that deliberately points at a local stub is unaffected.
     private var apiBase: URL {
         if let s = ProcessInfo.processInfo.environment["FAFF_API_BASE"], let u = URL(string: s) { return u }
+        if Self.isHostingTests { return URL(string: "https://watch-tests.invalid")! }
         return URL(string: "https://www.faff.run")!
     }
 

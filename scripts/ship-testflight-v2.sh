@@ -168,34 +168,61 @@ PLIST
 echo "→ Palette-sync gate (iPhone: v5 handoff · watch: brief v2 §1)…"
 bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-palette-sync.sh"
 
-# WorkoutEngine test gate · compile-check the watch test target before
-# archiving. Catches regressions in the engine that are only visible via
-# the test layer (state machine, overtime, snapshot, race-pause contracts).
-# Uses build-for-testing so it runs in CI without a booted simulator;
-# test execution is separately verified in dev via xcodebuild test.
-echo "→ Watch engine test gate (build-for-testing)…"
-WATCH_SIM=$(xcrun simctl list devices available 2>/dev/null | \
-  grep -A30 "watchOS" | grep -m1 -oE "[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}" || true)
-if [ -n "$WATCH_SIM" ]; then
-  # 2026-08-25 · THIS BUILT THE WRONG PROJECT AND BLOCKED EVERY SHIP.
-  #
-  # It pointed at `legacy/native/Faff/Faff.xcodeproj`, which has no widget
-  # target — so `FaffWidgetSnapshot.swift` is not in it and `PhoneSync`'s use
-  # of `FaffWidgetStore` could not compile. Verified against a CLEAN main, not
-  # against any particular change: no ship has passed this step since the
-  # widget shelf landed. The watch sources are the same files either way
-  # (native-v2 reaches them by symlink); only native-v2 can build them.
-  ( cd "$NATIVE_V2" && \
-    xcodebuild build-for-testing \
-      -project Faff.xcodeproj \
-      -scheme "FaffWatch Watch App" \
-      -destination "platform=watchOS Simulator,id=$WATCH_SIM" \
-      2>&1 | grep -E "error:|TEST BUILD SUCCEEDED|TEST BUILD FAILED" | tail -5 ) \
-    || { echo "ERROR: Watch test target build FAILED — aborting ship." >&2; exit 1; }
-  echo "✓ Watch engine test target builds clean"
-else
-  echo "  → No watchOS simulator available — skipping test gate (check the simulator after shipping)"
-fi
+# Watch gate · THE WHOLE ONE, not a compile check.
+#
+# 2026-09-03 · THIS STEP COULD NOT FAIL ON A FAILING TEST.
+#
+# It ran `xcodebuild build-for-testing` and its own comment said so: "test
+# execution is separately verified in dev via xcodebuild test". So the step
+# named "Watch engine test gate" compiled the tests and never ran one. Every
+# regression it lists as its purpose — state machine, overtime, snapshot,
+# race-pause — is invisible to a compile, and a shipped build could carry any
+# of them past a green ✓.
+#
+# That is this programme's recurring shape (rule 19): the chain that PROVES a
+# commit was not the chain that SHIPS it. Here the two were one step apart and
+# the shipping one was the weaker.
+#
+# It now runs `scripts/check-watch.sh` — the gate that already knows how to do
+# this properly: the suite serially (parallel cloning produced eleven spurious
+# failures), a floor derived from the @Test declarations so "0 ran" cannot read
+# as a pass, one retry when the test HOST dies rather than a test, the rendered
+# board geometry, and the source-level guards that the run stays endable and
+# the Q41-Q43 contract holds. Reusing it also means the ship gate and the
+# pre-push gate cannot drift apart, which is how this one rotted.
+#
+# Verdicts, per that script's header:
+#   0 · OK or PARTIAL — PARTIAL names the guard that could not run (usually
+#       board geometry, when no 46mm watch simulator is booted). Shipping
+#       proceeds and SAYS what was not checked.
+#   3 · UNRUNNABLE — nothing was checked. Aborts: a ship must not pass a gate
+#       that executed nothing.
+#   1 · FAIL — aborts.
+echo "→ Watch gate (full: engine tests, board geometry, endability, Q41-Q43)…"
+GATE_OUT=/tmp/faff-ship-watch-gate.txt
+set +e
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-watch.sh" 2>&1 | tee "$GATE_OUT"
+GATE_RC=${PIPESTATUS[0]}
+set -e
+case "$GATE_RC" in
+  0)
+    if grep -q '^WATCH-GATE: PARTIAL' "$GATE_OUT"; then
+      echo "  ! Watch gate PARTIAL — shipping, but note what it did NOT check:"
+      grep '^WATCH-GATE: PARTIAL' "$GATE_OUT" | sed 's/^/    /'
+    else
+      echo "✓ Watch gate OK"
+    fi
+    ;;
+  3)
+    echo "ERROR: watch gate UNRUNNABLE — it checked nothing. Aborting ship." >&2
+    echo "  A build that no gate could examine is not a verified build." >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: watch gate FAILED — aborting ship. See $GATE_OUT." >&2
+    exit 1
+    ;;
+esac
 
 echo "→ Archiving…"
 ( cd "$NATIVE_V2" && xcodebuild -scheme Faff -configuration Release \
