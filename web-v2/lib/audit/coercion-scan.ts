@@ -418,13 +418,20 @@ export function findAbsentAsZero(
  * The failure direction is what makes it worth a gate rather than a note. From
  * that sweep, the worst by blast radius:
  *
- *   · `runnerIsCompromised` — the illness / injury / niggle / training-gap
- *     guard for the whole adaptation engine — resolves five detector calls,
- *     each `.catch(() => null | false)`. Any ONE failing reads as "not
- *     compromised", and the caller's next line is `if (compromised) return
- *     null`. So a database blip re-enables a rebuild on a runner who may be
- *     injured. Three call sites of that same helper DISAGREE about the
- *     direction: two fail closed, one fails open.
+ *   · `runnerIsCompromised` — the guard for the whole adaptation engine —
+ *     resolves its detector calls each `.catch(() => null | false)`. Any ONE
+ *     failing reads as "not compromised", and the caller's next line is
+ *     `if (compromised) return null`. So a database blip re-enables a rebuild
+ *     on a runner the guard has not actually cleared. Three call sites of that
+ *     same helper DISAGREED about the direction: two failed closed, one failed
+ *     open (reconciled 2026-08-31 by `runnerIsCompromisedFailClosed`).
+ *
+ *     As swept it read illness / injury / niggle / training-gap across five
+ *     detectors. Since 2026-09-02 it reads TRAINING-GAP ONLY, across two —
+ *     the runner owns his readiness and no self-reported symptom decides his
+ *     training. The finding narrowed with it and did not go away; the live
+ *     count and argument are in `coercion-registry.ts`'s HANDED_BACK entry
+ *     rather than restated here, so the two cannot drift apart.
  *   · `computeAcwr` resolves its mileage map through `.catch(() => new Map())`
  *     and reports the acute:chronic injury ratio ABSENT for insufficient
  *     coverage — when the truth was a failed read.

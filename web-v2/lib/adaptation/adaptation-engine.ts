@@ -902,7 +902,7 @@ type LoadAbsorptionGate = 'PERMITS' | 'HOLDS' | 'INSUFFICIENT';
 
 function loadAbsorptionGate(v: AdaptationVerdict): LoadAbsorptionGate {
   if (v.evidenceSufficient === false) return 'INSUFFICIENT';
-  return v.decision === 'PROGRESS' && v.veto == null ? 'PERMITS' : 'HOLDS';
+  return v.decision === 'PROGRESS' ? 'PERMITS' : 'HOLDS';
 }
 
 /**
@@ -945,13 +945,13 @@ function weekAheadBlock(
  * independent, so their gates are too.
  *
  * So pace is blocked only by the bands that mean something is wrong: `poor`,
- * or any veto. Recorded rather than assumed: this asymmetry does NOT change
+ * Recorded rather than assumed: this asymmetry does NOT change
  * the owner's shadow-mode outcome either way (his pace lever is held one
  * session short of corroboration regardless), so it is a design call and not a
  * number chosen to produce a result.
  */
 function absorptionPermitsPaceProgression(v: AdaptationVerdict): boolean {
-  return v.band !== 'poor' && v.veto == null;
+  return v.band !== 'poor';
 }
 
 /** State decisions that forbid any upward proposal this cycle. */
@@ -1093,7 +1093,7 @@ function detectPace(
     return {
       proposal: null,
       hold: holdWith(
-        [absorption.veto != null ? 'SAFETY_OVERRIDES_NORMAL_PROGRESSION' : 'ABSORPTION_POOR'],
+        ['ABSORPTION_POOR'],
         'Threshold pace holds while the block is not being absorbed.',
       ),
     };
@@ -1813,12 +1813,12 @@ function detectReduce(
   now: string,
 ): AdaptationProposal | null {
   const stateArgues = STATE_ARGUES_REDUCE.has(state.decision);
-  const absorptionArgues = absorption.band === 'poor' || absorption.veto != null;
+  const absorptionArgues = absorption.band === 'poor';
   if (!stateArgues && !absorptionArgues) return null;
 
   const reasons: AdaptationReasonCode[] = [];
   if (stateArgues) reasons.push('STATE_SAYS_TODAY_IS_NOT_THE_DAY');
-  if (state.decision === 'stop' || absorption.veto != null) {
+  if (state.decision === 'stop') {
     reasons.push('SAFETY_OVERRIDES_NORMAL_PROGRESSION');
   }
   if (absorption.band === 'poor') reasons.push('ABSORPTION_POOR');

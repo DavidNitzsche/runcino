@@ -36,6 +36,7 @@ import {
   type DOW,
 } from './generate';
 import { tPaceFromGoal } from './spec-builder';
+import { TIER_TARGETS, distanceCategoryOf, type GoalTier } from './goal-tiers';
 // BOUNDARY-OWNER-1 · the app's one split of a day into easy and at-pace miles.
 import { splitDay } from './intensity-distribution';
 
@@ -172,9 +173,21 @@ describe('Generator bench · composePlan() output against persona doctrine', () 
         // personas' longRunShare × peakWeekly would exceed the tier's
         // peakLong upper bound (e.g. ultra) · the generator correctly
         // caps and the assertion follows.
-        const tierBand = result.authoredState.tier_peak_long_band as number[] | undefined;
-        const tierLongMax = tierBand ? tierBand[1] : Infinity;
-        const tierLongMin = tierBand ? tierBand[0] : 0;
+        // TIEREVIDENCE-1 (2026-09-02) · READ THE COMPOSED ROW, NOT THE
+        // PUBLISHED BAND. `authored_state.tier_peak_long_band` used to be the
+        // composer's own `tierTarget.peakLongMiBand` copied verbatim, so this
+        // oracle could read it. It is now the EVIDENCE ceiling — the row the
+        // runner's demonstrated performance earns, which `adaptive-ramp.ts`
+        // binds the upward bump on — and the block is still composed against
+        // `tierTarget`. Two different quantities, so this assertion has to name
+        // which one it means (Rule 16). It means the composed row, which
+        // `authored_state.goal_tier` records.
+        const composedTier = result.authoredState.goal_tier as GoalTier | undefined;
+        const composedRow = composedTier
+          ? TIER_TARGETS[distanceCategoryOf(p.race.distanceMi)][composedTier]
+          : undefined;
+        const tierLongMax = composedRow ? composedRow.peakLongMiBand[1] : Infinity;
+        const tierLongMin = composedRow ? composedRow.peakLongMiBand[0] : 0;
         const shareLong = Math.min(peakMi * exp.longRunShare, tierLongMax);
         // RC2-2 (2026-06-23): when the share would underreach band[0] (e.g. HM-advanced 14 < 15), the long
         // is distance-DRIVEN UP into the tier band instead of the share. So the peak long is the share OR

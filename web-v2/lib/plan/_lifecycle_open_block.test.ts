@@ -211,19 +211,65 @@ describe('2 · a goal-mode plan that elapses', () => {
     expect(src).toMatch(/archive_reason = 'plan_elapsed'/);
   });
 
-  it('drift signals on a goal-mode plan now reach a rebuild', () => {
+  it('RATCHET · soft drift is OBSERVED and reaches no writer at all', () => {
+    /* INVERTED 2026-09-02, and the inversion is the point.
+     *
+     * This test was "drift signals on a goal-mode plan now reach a rebuild".
+     * Its history is the whole argument for turning it round rather than
+     * deleting it:
+     *
+     *   · 2026-08-19 — the bug it was written for. `} else if (plan?.race_id)`
+     *     was the ONLY drift rebuild call site, so a goal-mode runner produced
+     *     signals_found > 0 and proposals_written === 0 every night, forever.
+     *   · 2026-08-26 — the direct rebuild became a pending card, after two of
+     *     the six kinds re-authored the owner's plan on back-to-back mornings
+     *     (long_drift moved his easy-day target, easy_drift reacted to the
+     *     number long_drift had just written). The test kept its name and
+     *     started asserting `'drift_cron_pending'`.
+     *   · 2026-09-02 — the card goes too. Soft drift is a TRANSIENT READING
+     *     (a 28-day rolling average, an inferred VDOT, a plan's age) and the
+     *     owner's ruling is that a transient reading may not re-phase a block.
+     *
+     * So the subject the old assertions named — the rebuild, then the card —
+     * is deleted at every rung, and there is nothing to retag it onto. What
+     * IS worth locking is the state the ruling put the code in, which no test
+     * covered: soft drift is detected, counted, logged, and writes nothing.
+     * Deleting this test would have left that behaviour unguarded on the day
+     * it became the behaviour.
+     */
     const src = code('app/api/cron/plan-drift/route.ts');
-    // The bug: `} else if (plan?.race_id) {` was the ONLY drift rebuild call
-    // site, so a goal-mode plan produced signals_found > 0 and
-    // proposals_written === 0, every night, forever.
+
+    // LIVENESS (Rule 18 §2) · every assertion below is scoped to a slice, and
+    // a slice that failed to resolve would make all of them vacuously true.
+    const from = src.indexOf('const report = await detectDrift(u);');
+    const to = src.indexOf("recordCronSuccess('plan-drift'");
+    expect(from, 'the drift block anchor is gone · this scan found nothing to read')
+      .toBeGreaterThan(-1);
+    expect(to, 'the cron-ledger anchor is gone · the slice has no end')
+      .toBeGreaterThan(from);
+    const driftBlock = src.slice(from, to);
+    expect(driftBlock.length).toBeGreaterThan(200);
+
+    // OBSERVATION SURVIVES · stated positively, so "nothing happens here" can
+    // never be satisfied by the block having been deleted outright.
+    expect(driftBlock).toMatch(/r\.signals_found = report\.signals\.length/);
+    expect(driftBlock).toMatch(/r\.signals_skipped = report\.signals\.length/);
+
+    // AUTHORITY DOES NOT. Nothing in the soft-drift block may write a plan
+    // row or raise a card. Scoped to the block rather than the file, because
+    // the lifecycle transitions ABOVE it legitimately do both — a file-wide
+    // absence assertion here would be false, and a file-wide one that passed
+    // would mean the KEEP list had been deleted too.
+    expect(driftBlock, 'soft drift raised a proposal again')
+      .not.toMatch(/INSERT INTO plan_proposals/);
+    expect(driftBlock, 'soft drift reached a rebuild again')
+      .not.toMatch(/fireAutoRebuild/);
+    expect(driftBlock, 'soft drift resolved a rebuild target again')
+      .not.toMatch(/resolveGoalTarget/);
+
+    // The 2026-08-19 bug ratchet, unchanged and still meaningful: that branch
+    // must not reappear as a way back to a drift-driven rebuild.
     expect(src).not.toMatch(/\}\s*else if \(plan\?\.race_id\) \{/);
-    // 2026-08-26 · this specific call (soft-drift → fireAutoRebuild with
-    // `goalTarget: goalTarget!`) is gone — every soft-drift signal now writes
-    // a pending plan_proposals row instead of rebuilding directly. The
-    // goal-mode target is still resolved here (for the race-proximity
-    // suppression window below), just never handed to a rebuild call.
-    expect(src).toMatch(/const goalTarget = plan\?\.race_id/);
-    expect(src).toMatch(/'drift_cron_pending'/);
   });
 
   it('fireAutoRebuild accepts a goal target as well as a race slug', () => {

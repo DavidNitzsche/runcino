@@ -289,21 +289,17 @@ const PLAN_ACCEPT_VERB: Record<string, string> = {
 /* ── per-source mappers ──────────────────────────────────────────────── */
 
 function fromCoachProposal(p: CoachProposalInput): CoachDecision {
-  const isInjury = p.proposal_type === 'injury_adjust';
-  const isIllness = p.proposal_type === 'illness_adjust';
-  const title = isInjury
-    ? 'Switch to an injury-return plan'
-    : isIllness
-      ? 'Take the recovery week'
-      // Its two siblings say what the change IS. This one named the speaker
-      // instead, in the third person, on the card where the runner most
-      // needs to know what is being asked of them.
-      : 'There is a change to look at';
-  const acceptVerb = isInjury
-    ? 'BUILD THE INJURY PLAN'
-    : isIllness
-      ? 'DROP THIS WEEK’S QUALITY'
-      : 'MAKE THE CHANGE';
+  // 2026-09-02 · both special-cased branches are gone. `illness_adjust` and
+  // `injury_adjust` are off the board entirely (PLAN_SIMPLIFICATION_DOCTRINE:
+  // illness, injury and automatic return-to-training ladders), and neither
+  // type can be written or accepted any more, so a card offering to "BUILD THE
+  // INJURY PLAN" would be a button that does nothing.
+  //
+  // The generic copy says what the change IS rather than naming the speaker in
+  // the third person, which is what it used to do on the card where the runner
+  // most needs to know what is being asked of them.
+  const title = 'There is a change to look at';
+  const acceptVerb = 'MAKE THE CHANGE';
   // reason = what we noticed, suggested = what we'd do. Both are already
   // coach-voice strings from lib/plan/adapt.ts.
   const body = [p.reason, p.suggested].map((s) => (s ?? '').trim()).filter(Boolean).join(' ');

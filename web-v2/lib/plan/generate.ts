@@ -42,13 +42,12 @@ import { bestVdotFromRaceHistory } from '@/lib/training/race-history';
 // NEW block is authored on. Stated once, in the module that also defines which
 // cycles a block may carry.
 import { DEFAULT_CUTBACK_EVERY_N } from './established-cadence';
-import { lookupLoadTierTarget, resolveLoadTier, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
+import { lookupLoadTierTarget, resolveLoadTier, demonstratedLoadCeilingTier, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
   anchorSourceFromCapacityMode,
   CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
 } from './anchor-provenance';
-import { assessGoalVdotSanity } from './goal-vdot-sanity';
 import { syntheticPaceAnchors } from './authoring-anchors';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
@@ -10175,38 +10174,23 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const prescribedRacePaceSec = achievableRace?.paceSPerMi ?? null;
 
   /**
-   * GOAL-SANITY-NAME-1 (2026-09-02) · WAS `goalRealism`, AND THE NAME WAS THE
-   * DEFECT.
+   * GOALSANITY-DELETE-1 (2026-09-02) · the VDOT the stated goal time demands,
+   * recorded verbatim on `pace_blend`.
    *
-   * This screen asks one narrow question — "does the typed goal demand a VDOT
-   * more than 15% above demonstrated threshold capacity?" — and it shipped
-   * under a name that promised the whole one. On 2026-09-02 the owner's block
-   * recorded `goal_realism.flag = false` while Goal Feasibility's canonical
-   * owner (`lib/race/race-outlook.ts` §7, Constitution §L) returned
-   * `unlikely_currently` on a 19:42 gap, at the same instant, for the same
-   * runner. Two answers to one question, and only the wrong one had an
-   * authoritative name.
+   * OBSERVATIONAL, and the word is load-bearing. Nothing branches on it, no
+   * pace, week, distance, phase or band is derived from it, and no reader may
+   * treat it as a verdict about the goal — it is the arithmetic translation of
+   * a number the runner typed, kept so the block's transparency record can say
+   * what was asked for. `null` means and only means "the goal time falls
+   * outside the Daniels [30, 85] table" (Rule 11).
    *
-   * The predicate is unchanged. The name, the field names and the honesty of
-   * the record are. Remaining training time and uncertainty are NOT inputs and
-   * never were — see `./goal-vdot-sanity` for what this structurally cannot
-   * mean. It still prices nothing: this is the one remaining legitimate
-   * `vdotFromRace(goalSec)` at authoring, and no pace, week or goal is written
-   * from it.
+   * It used to arrive as a field on `assessGoalVdotSanity`'s return, whose
+   * boolean half is deleted — see the `GOALSANITY-DELETE-1` note at the
+   * `authored_state` write below for why.
    */
-  const goalVdotSanity = assessGoalVdotSanity({
-    goalSec: input.goalSec,
-    raceDistanceMi: input.raceDistanceMi,
-    // COLD-3 (2026-08-17) · a provisional anchor makes this NOT ASSESSABLE
-    // rather than a false all-clear: the guard was once silenced by the
-    // fabrication it exists to catch. AUTHORING-CANONICAL-1 · so is a capacity
-    // off the Daniels table. Both branches live in the resolver now.
-    currentVdot: anchorIsProvisional ? null : estimatedCurrentVdot,
-    anchorSource: seasonAnchorSource,
-  });
-  /** The VDOT the goal demands · still recorded on `pace_blend` as the
-   *  baseline the adaptation and projection surfaces read. */
-  const goalVdot = goalVdotSanity.goalVdot;
+  const goalVdot = input.goalSec != null
+    ? vdotFromRace(input.goalSec, input.raceDistanceMi)
+    : null;
 
   const composeBuildWeeks = blocks.phases.filter((p) => p.label !== 'TAPER')
     .reduce((s, p) => s + p.weeks, 0);
@@ -10288,6 +10272,65 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   const thesisSlot: ThesisSlotContext | null = (() => {
     const t = input.thesisAtAuthoring;
     if (!t || t.source !== 'resolved') return null;
+    /* ══════════════════════════════════════════════════════════════════════
+     * CONFIDENCE-STRUCTURE-1 (2026-09-02) · A CONFIDENCE VALUE MAY NOT PICK
+     * THE BLOCK'S SHAPE.
+     *
+     * The limiter decides which workout FAMILIES may fill this block's quality
+     * slots — `pacedEvidenceFamilies`, `evidenceSlots`, `doNotAddFamilies`
+     * below. That is block shape, and it is the most structural thing the
+     * thesis touches.
+     *
+     * `pickLimiter` has two bases and only one of them is a reading of the
+     * runner (`lib/training/coaching-thesis.ts`):
+     *
+     *   · CURVE_SHAPE_EVIDENCE · the runner's own graded race curve, fitted,
+     *     compared against `CURVE_NEUTRAL_EXPONENT_BAND`, which
+     *     `LIMITER.curve-shape-neutral-band` binds to `Research/02` §7.1's
+     *     runner-type table. A MEASUREMENT. It moves when a race lands, which
+     *     is the thesis's own declared review trigger.
+     *   · LOWEST_CONFIDENCE_AMONG_EVIDENCED · `rankCapacities` sorts by
+     *     `a.confidence - b.confidence` and takes the front. No margin, no
+     *     hysteresis. Threshold at 0.8400 and durability at 0.8401 give one
+     *     block; swap the fourth decimal and the block's quality families
+     *     change kind. That is Rule 9's defect exactly — "a hair's difference
+     *     in input must never produce a categorically different plan" — and
+     *     the owner's own block was authored against a thesis carried at
+     *     confidence 0.51.
+     *
+     * So the composer consumes the limiter ONLY when a measurement named it.
+     * On any other basis the block is composed with no thesis steering at all,
+     * which is byte-identical to how every block composed before THESIS-PLAN-1
+     * wired this seam earlier the same day.
+     *
+     * WHY REFUSING IS THE SAFE DIRECTION, and not a quiet loosening. The one
+     * family restriction the thesis imposes is DURABILITY's `doNotAddFamilies`,
+     * and DURABILITY is reachable through basis 1, so a measured durability
+     * limiter keeps its restriction. What a refusal drops is the NARROWING an
+     * unmeasured limiter would have applied — the composer falls back to the
+     * catalogue's own doctrine-bound selection, which is dosing-capped,
+     * intensity-distribution-capped and phase-gated like every other week. No
+     * volume, no quality count and no phase moves either way: `thesisSlot` is
+     * consulted only where a slot's FAMILY is chosen.
+     *
+     * CONFIDENCE IS NOT DELETED. It is still resolved, still stamped on
+     * `authored_state.thesis_at_authoring`, still quoted in the phase answers
+     * and the coach line. It may say how well the runner is known. It may not
+     * silently pick a different plan.
+     * WHICH BRANCHES BELOW ARE REACHABLE TODAY, said out loud rather than left
+     * for the next reader to work out. `pickLimiter`'s basis-1 branch returns
+     * DURABILITY and nothing else, because the race-curve read is currently the
+     * only MEASUREMENT of a capacity's strength this app has: HIGH_INTENSITY
+     * has no direct reader at all, and an endurance-biased curve names
+     * durability a STRENGTH rather than a limiter. So THRESHOLD, HIGH_INTENSITY
+     * and UNKNOWN are unreachable right now. They are kept, not deleted,
+     * because they become live the moment a second evidence basis lands — a
+     * direct high-intensity rung, or any other reading that names a capacity
+     * weak rather than thinly evidenced — with no edit to this switch. Deleting
+     * them would make that landing a rewrite instead of a one-line addition to
+     * `pickLimiter`.
+     * ══════════════════════════════════════════════════════════════════════ */
+    if (t.basis !== 'CURVE_SHAPE_EVIDENCE') return null;
     switch (t.primaryLimiter) {
       case 'HIGH_INTENSITY':
         return {
@@ -10660,6 +10703,131 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
     raceDateISO: input.raceDateISO,
   });
 
+  /* ════════════════════════════════════════════════════════════════════════
+   * TIEREVIDENCE-1 (2026-09-02) · THE PUBLISHED BANDS ARE THIS BLOCK'S OWN
+   * NUMBERS, NOT A TABLE ROW A RUNNER TYPED THEIR WAY INTO.
+   *
+   * `authored_state.tier_peak_weekly_band` and `tier_peak_long_band` used to be
+   * `TIER_TARGETS[cat][tier]` copied verbatim. Two things were wrong with that
+   * and they pull in opposite directions:
+   *
+   *   · THE FLOOR WAS NOT WHAT THE BLOCK BUILDS TO. `volumeCurve` takes
+   *     `max(band[0], start × 1.10)` and then bounds it with `cycleBoundedPeak`,
+   *     so the published 65 and the authored 55.8 were two numbers under one
+   *     name (Rule 16). A reader asking "what does this block peak at" got the
+   *     table row, which is a different quantity.
+   *   · THE UPPER WAS THE ADAPTIVE CEILING. `lib/plan/adaptive-ramp.ts`'s
+   *     `readTierUpper` reads `band[1]` and `belowTierUpper` is what stops the
+   *     upward volume bump running away. A 90 mi/wk ceiling on a runner whose
+   *     biggest week is 48.5 is not a guard, it is decoration — the one thing
+   *     Rule 21 says a ceiling must never be.
+   *
+   * So the band published is `[what this block actually peaks at, the highest
+   * this cycle's peak may legitimately reach]`, and the ceiling half is bounded
+   * by DEMONSTRATED VOLUME through the same resolver the curve already uses:
+   * `cycleBoundedPeak`'s `evidence.peakMi × CYCLE_GROWTH_CEILING`, bound by
+   * `RAMP.cycle-over-cycle-peak-growth` and read out of `Research/00a`
+   * §"Volume progression rules"'s year-on-year row. No new number is invented
+   * here; the doctrine figure the curve spends is the one the ceiling spends.
+   *
+   * THE CEILING STILL BINDS, AND IT CANNOT INVERT. `max(authoredPeak, …)` keeps
+   * the upper at or above the floor, so `readTierUpper` never returns a number
+   * below the plan's own peak and `belowTierUpper` cannot be made false by a
+   * band that closed on itself.
+   *
+   * RULE 11 · NO DEMONSTRATED VOLUME. `cycleBoundedPeak` refuses to bound when
+   * `peakMi` is 0 (every synthetic archetype, every cold start) and this does
+   * the same: the tier row's own upper stands. That is not a licence, because
+   * TIEREVIDENCE-1 has already put a runner with no demonstrated PACE on the
+   * bottom row of the table, so the upper an unevidenced runner inherits is
+   * `developing`'s, not `advanced`'s.
+   *
+   * WHAT THIS DOES NOT FIX, and it is the reason the anchor is stamped beside
+   * the band: `readTierUpper` reads a FROZEN array. As the runner completes
+   * weeks their demonstrated peak rises, and a ceiling struck at authoring
+   * cannot see it (Rule 10). The posture this wants is RECOMPUTE — `readTierUpper`
+   * re-deriving the ceiling against live evidence, with the stamp below as the
+   * fallback for a block that carries none. That is a change to
+   * `adaptive-ramp.ts`, reported rather than made here.
+   * ════════════════════════════════════════════════════════════════════════ */
+  const authoredPeakWeeklyMi = peakWeeklyMi;
+  const authoredPeakLongMi = weeks.reduce((mx, w) => {
+    for (const d of w.days) {
+      if (d.type === 'long' && typeof d.distanceMi === 'number' && d.distanceMi > mx) mx = d.distanceMi;
+    }
+    return mx;
+  }, 0);
+  /** The runner's own biggest 7-day block in the look-back. 0 = not measured. */
+  const demonstratedPeakWeeklyMi = rampEvidence?.peakMi ?? 0;
+  const cycleGrowth = CYCLE_GROWTH_CEILING[input.level ?? 'intermediate'];
+  const evidenceWeeklyCeilingMi = demonstratedPeakWeeklyMi > 0 && cycleGrowth != null
+    ? Math.round(demonstratedPeakWeeklyMi * cycleGrowth * 10) / 10
+    : null;
+  /**
+   * TIEREVIDENCE-1 · the row the runner's DEMONSTRATED performance earns, with
+   * the typed experience level allowed to cap it and never to lift it. This is
+   * the whole of the self-declaration's removal: the composed week still reads
+   * `tierTarget` (see `demonstratedLoadCeilingTier`'s own header for why that
+   * row keeps its floor), and the two numbers the ADAPTATION engine binds on
+   * read this instead. With nothing demonstrated it is the bottom row, so a
+   * missing read produces the conservative ceiling and never the ambitious one.
+   */
+  const evidenceRow = TIER_TARGETS[distanceCategoryOf(input.raceDistanceMi)][
+    demonstratedLoadCeilingTier(input.raceDistanceMi, input.level, demonstratedPaceSec)
+  ];
+  const publishedWeeklyBand: [number, number] = [
+    // The FLOOR keeps the doctrine row's own meaning — "the smallest peak this
+    // row is written for" — because that is what every existing reader of a
+    // band's `[0]` takes it to be, and the row it now comes from is the
+    // EVIDENCE row rather than the typed level's. Publishing the block's own
+    // peak here instead was tried and backed out: `generator-bench` compares
+    // every build week's long against `[0]` as a per-week lower bound, which is
+    // a different quantity, and Rule 16 is not served by making one field mean
+    // two things in two readers.
+    evidenceRow.peakWeeklyMileageBand[0],
+    evidenceWeeklyCeilingMi != null
+      ? Math.min(evidenceRow.peakWeeklyMileageBand[1], evidenceWeeklyCeilingMi)
+      : evidenceRow.peakWeeklyMileageBand[1],
+  ];
+  const publishedLongBand: [number, number] = [
+    // Same split as the weekly band. The upper is NOT additionally clamped by
+    // the per-cycle volume figure: that figure is a statement about WEEKLY
+    // volume growth, and `Research/00a` has no per-cycle growth row for the long
+    // run — the rule it does have (">110% of the longest run in the prior 30
+    // days") is a week-to-week spike bound, already enforced by `rampCeiling`
+    // off `spikeAnchorLongMi`. Borrowing the volume figure here would be
+    // inventing doctrine rather than spending it.
+    evidenceRow.peakLongMiBand[0],
+    evidenceRow.peakLongMiBand[1],
+  ];
+  /*
+   * NO `Math.max(authoredPeak, …)` ON EITHER UPPER, AND THAT IS DELIBERATE.
+   *
+   * Flooring the ceiling at the block's own peak was written first and removed,
+   * because `authoredPeakWeeklyMi` is composed against `tierTarget` — the row
+   * the TYPED LEVEL still floors — so it carried the self-declaration straight
+   * back into the number this change exists to clean. Measured: a stated
+   * 'advanced_plus' marathoner with nothing demonstrated published a 65 mi/wk
+   * ceiling through that floor while `demonstratedLoadCeilingTier` said 45.
+   *
+   * A ceiling BELOW the block's own peak is therefore reachable, and it is the
+   * honest reading — "the evidence does not support more volume than you are
+   * already carrying". It is also safe, which is why it is allowed to happen:
+   *
+   *   · `detectRampSignals` computes `peakHeadroomMi = upper − currentPeak` and
+   *     `belowTierUpper = headroom > upper × 0.05`, so a negative headroom
+   *     REFUSES the bump. It does not invert it.
+   *   · `planUpgrade`'s long clamp is `capped = min(old + 1, tierLongUpper)`
+   *     followed by `if (capped > old)`, so a low ceiling SKIPS the long bump
+   *     and can never shrink an authored row.
+   *
+   * Both are refusals, and refusing more volume is the conservative direction.
+   * What must never happen is `readTierUpper` returning 0 — its answer for an
+   * ABSENT band — because 0 makes `belowTierUpper` false forever and the ramp
+   * unreachable by construction. Both uppers above are doctrine-table values
+   * and are always positive; `_evidence_tier_band.test.ts` guard 6 holds that.
+   */
+
   return {
     weeks,
     blocks,
@@ -10754,8 +10922,6 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // knows the seal predates it.
       capacity_tier: capacityTier,
       load_tier_reduced_by_goal: reducedByGoal,
-      tier_peak_weekly_band: tierTarget.peakWeeklyMileageBand,
-      tier_peak_long_band: tierTarget.peakLongMiBand,
       /**
        * LONGEVIDENCE-1 · WHY THE LONGEST RUN IS THE DISTANCE IT IS.
        *
@@ -10779,6 +10945,42 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
               ? 'demonstrated_long_run'
               : 'cycle_growth_allowance',
         citation: 'Research/00a-distance-running-training.md §"Volume progression rules"',
+      },
+      // TIEREVIDENCE-1 · see the block above the `return`. `[this block's own
+      // peak, the highest this cycle's peak may legitimately reach]`, with the
+      // ceiling half bounded by demonstrated volume. `readTierUpper` reads
+      // `[1]` and its shape is unchanged.
+      tier_peak_weekly_band: publishedWeeklyBand,
+      tier_peak_long_band: publishedLongBand,
+      /**
+       * Rule 10 · the band above is a DERIVED value written to a row, so it
+       * carries the anchor it was struck against. A reader that holds live
+       * evidence should RECOMPUTE the ceiling from `demonstrated_peak_weekly_mi
+       * × cycle_growth` rather than trust the frozen array; one that does not
+       * may spend the array and knows, from `demonstrated_peak_weekly_mi: null`,
+       * that no volume evidence bounded it.
+       */
+      tier_band_anchor: {
+        /* Rule 11 · THREE STATES, not two. `null` is "this authoring carried no
+         * ramp evidence at all" (a pure caller, a synthetic archetype, a
+         * cold start); `0` is "the evidence object was there and measured no
+         * peak"; a positive number is a measurement. Collapsing the first two
+         * into `null` was written first and `check-coercion.sh` named it —
+         * `lib/plan/generate.ts::composePlan::demonstratedPeakWeeklyMi
+         * [zero-erasure]` — which is exactly the reading a recomputing consumer
+         * must be able to tell apart before deciding whether to trust the
+         * frozen ceiling beside it. */
+        demonstrated_peak_weekly_mi: rampEvidence ? demonstratedPeakWeeklyMi : null,
+        /** Whether the ceiling above was actually BOUNDED by that measurement.
+         *  False with no evidence and false at a measured zero — the doctrine
+         *  row's own top stood in both cases. */
+        weekly_ceiling_bounded_by_evidence: evidenceWeeklyCeilingMi != null,
+        cycle_growth_ceiling: cycleGrowth,
+        doctrine_band_weekly: evidenceRow.peakWeeklyMileageBand,
+        doctrine_band_long: evidenceRow.peakLongMiBand,
+        composed_row_band_weekly: tierTarget.peakWeeklyMileageBand,
+        authored_peak_weekly_mi: authoredPeakWeeklyMi,
+        authored_peak_long_mi: authoredPeakLongMi,
       },
       // 2026-06-03 · Rule 11 · horizon raise. Null when no future race
       // raises the long-run cap above the current tier's. Drives the
@@ -10821,15 +11023,29 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         // like one is worse than no number (Rule 20's corollary for prose,
         // applied to a jsonb key).
       },
-      /**
-       * GOAL-SANITY-NAME-1 · the key is `goal_vdot_sanity`, not
-       * `goal_realism`. It names the predicate it holds. `lib/plan/
-       * goal-vdot-sanity.ts` owns the question; Constitution §L's Goal
-       * Feasibility owner is `lib/race/race-outlook.ts` §7 and is a different
-       * question with a different answer. `_goal_vdot_sanity_gate.test.ts`
-       * keeps the two apart, and keeps the old name from coming back.
+      /*
+       * GOALSANITY-DELETE-1 (2026-09-02) · `goal_vdot_sanity` (and the
+       * `goal_realism` it was renamed from) IS DELETED, key and resolver.
+       *
+       * It screened a typed goal against demonstrated threshold capacity and
+       * published a boolean. Traced end to end before removal: the only reader
+       * outside this file was `GET /api/coach/read`, which returned it verbatim
+       * on a response NOTHING in this repository fetches — no page, no route, no
+       * Swift call site. It priced nothing, gated nothing and moved no week.
+       *
+       * It was also a SECOND ANSWER to a question that already has an owner.
+       * Constitution §L assigns "how does the runner's goal compare with the
+       * current race outlook?" to Goal Feasibility (`lib/race/race-outlook.ts`
+       * §7), which reads the projection, its likely range and expected race day
+       * and returns comfortable / realistic / aggressive / unlikely_currently.
+       * On 2026-09-02 the two disagreed out loud on the owner's own block. The
+       * fix for a narrow screen wearing a wide name is not a better name; with
+       * no consumer, it is deletion. `scripts/check-goal-sanity-removed.sh` is
+       * the ratchet that keeps it from coming back.
+       *
+       * The standing app-wide rule is unchanged and nothing here replaces it:
+       * the coach PROJECTS, it never renegotiates a stated goal.
        */
-      goal_vdot_sanity: goalVdotSanity,
       /**
        * RACEPACE-1 · what this authoring decided the block may PRESCRIBE as a
        * race-relative target, and why.
@@ -10843,10 +11059,8 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
        *
        * `optimism_fraction` is the raw distance between ambition and runway. It
        * is what a §8 feasibility read ("Supported / Reach / Stretch / Unlikely /
-       * Unsupported") should be computed from, rather than from the older
-       * `goal_vdot_sanity.beyondSanityBand` (formerly `goal_realism.flag`),
-       * which is a boolean struck at a 15% VDOT band and cannot express four
-       * of those five states.
+       * Unsupported") should be computed from. The boolean that used to sit
+       * beside it could not express four of those five states, and is deleted.
        */
       /*
        * B2 (2026-09-02) · PROVENANCE ONLY. This blob is a record of what the
@@ -16465,7 +16679,7 @@ async function loadGeneratorInputs(
     try {
       const { resolveCoachingThesis } = await import('@/lib/training/coaching-thesis');
       const t = await resolveCoachingThesis(userId, todayISO);
-      return { primaryLimiter: t.primaryLimiter, priority: t.priority, confidence: t.confidence, source: 'resolved' as const };
+      return { primaryLimiter: t.primaryLimiter, priority: t.priority, confidence: t.confidence, basis: t.basis, source: 'resolved' as const };
     } catch (e) {
       logReadFailure('plan/generate · coaching thesis at authoring', e);
       return { primaryLimiter: 'UNKNOWN' as const, priority: 'establish_evidence_before_prioritising' as const, confidence: null, source: 'read_failed' as const };

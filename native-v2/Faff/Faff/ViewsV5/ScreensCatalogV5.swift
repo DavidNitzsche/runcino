@@ -229,10 +229,6 @@ struct ScreensCatalogV5: View {
             Entry(id: "16a", title: "Data outage", sub: "We could not read this") {
                 AnyView(DataOutageV5(today: .sampleOutageV5, onRetry: {}))
             },
-            Entry(id: "17a", title: "Today changed overnight", sub: "Three domains converged") {
-                AnyView(TodayChangedV5(panel: TodayChangedV5Sample.panel,
-                                       convergence: TodayChangedV5Sample.convergedAndMoved))
-            },
             Entry(id: "18a-slower", title: "Paces slower", sub: "Modelled · did this race count?") {
                 AnyView(PacesMovedV5(paces: PacesMovedV5Sample.slower))
             },

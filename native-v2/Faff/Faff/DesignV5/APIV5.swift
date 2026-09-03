@@ -314,7 +314,6 @@ struct V5Step: Decodable, Equatable, Hashable, Identifiable {
 enum V5TodayState: String, Decodable {
     case beforeRun = "before_run"
     case afterRun = "after_run"
-    case changedOvernight = "changed_overnight"
     case injuryFlare = "injury_flare"
     /// Systemic illness (`sick_episodes`), not a diagnosed injury
     /// (`runner_injuries`, `.injuryFlare` above). Same quiet, no-gradient
@@ -408,41 +407,6 @@ struct V5WeekStripDay: Decodable, Equatable, Hashable, Identifiable {
         f.setLocalizedDateFormatFromTemplate("EEEE")
         return f
     }()
-}
-
-/// RULE TWO on the wire.
-///
-/// The engine grades readiness from five independent domains and needs THREE
-/// to converge before it may downgrade a session. So a payload describing a
-/// changed session carries the domains that converged, and the client renders
-/// the story only when there are three. `coachLine` is composed server-side
-/// from the same set and never names one cause.
-struct V5Convergence: Decodable, Equatable {
-    /// "3:12 AM".
-    let updatedAt: String
-    /// What the session was before. "Threshold".
-    let wasType: String?
-    let coachLine: String
-    let converged: [V5ConvergedDomain]
-    /// Where the original session went. Null when a downgrade replaced it in
-    /// place rather than moving it, which is the usual case — and the screen
-    /// then says so instead of inventing a destination.
-    let movedTo: V5Row?
-}
-
-struct V5ConvergedDomain: Decodable, Equatable, Hashable, Identifiable {
-    let id: String
-    /// "Sleep", "HRV", "Resting heart rate".
-    let domain: String
-    let value: V5Number
-    /// The runner's OWN rolling baseline, named. Readiness has no single
-    /// evening/morning pair to compare, only a 7-day median and a 3-day
-    /// average, so the row says which one it is against.
-    let baseline: String
-
-    var row: ConvergenceDomainRow {
-        ConvergenceDomainRow(domain: domain, value: value.value, baseline: baseline)
-    }
 }
 
 struct V5Injury: Decodable, Equatable {
@@ -623,7 +587,6 @@ struct V5Today: Decodable, Equatable {
     let runId: String?
 
     // ── the state screens ──
-    let changed: V5Convergence?
     let injury: V5Injury?
     let sick: V5Sick?
     let weekOff: V5WeekOff?
@@ -1666,7 +1629,7 @@ extension V5Today {
         case routePolyline, elevGainFt, shoeOptions
         case routeSplits, routePhases, hrZones, paceBand, elevGainMeasured
         case shoesWorn, whatThisDidToTheWeek, runId, postRun
-        case changed, injury, weekOff, offSeason, notOnPhoneYet
+        case injury, weekOff, offSeason, notOnPhoneYet
         case paceNote, blockNote, sick
         case facts, win, conditionsNote, coachTip
         case hrAvg, hrMax, cadenceAvg, tempF, workoutType
@@ -1714,7 +1677,6 @@ extension V5Today {
         whatThisDidToTheWeek = c.list(.whatThisDidToTheWeek)
         postRun = try? c.decodeIfPresent(PostRunV5.self, forKey: .postRun)
         runId = c.opt(.runId)
-        changed = c.opt(.changed)
         injury = c.opt(.injury)
         weekOff = c.opt(.weekOff)
         offSeason = c.opt(.offSeason)
@@ -1871,22 +1833,6 @@ extension V5Return {
         checkIn = c.list(.checkIn)
         refusal = c.opt(.refusal)
     }
-}
-
-extension V5Convergence {
-    enum K: String, CodingKey { case updatedAt, wasType, coachLine, converged, movedTo }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: K.self)
-        updatedAt = c.text(.updatedAt)
-        wasType = c.opt(.wasType)
-        coachLine = c.text(.coachLine)
-        converged = c.list(.converged)
-        movedTo = c.opt(.movedTo)
-    }
-
-    /// RULE TWO. Three independent domains, or this is not a story about a
-    /// changed session and no screen may tell one.
-    var namesAConvergence: Bool { converged.count >= ConvergenceList.minimumDomains }
 }
 
 extension V5PlanChangeProposal {

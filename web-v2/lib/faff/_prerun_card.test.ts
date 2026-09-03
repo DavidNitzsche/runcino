@@ -58,7 +58,7 @@ function screen(plan: { type: string; subLabel: string | null; distanceMi: numbe
     weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null,
     why: null, whereYouAre: [], beforeYouGo: [], paceNote: null,
     raceDay: plan.type === 'race', contingency: null, recentRun: null,
-    weekOff: null, offSeason: null, injury: null, sick: null, convergence: null,
+    weekOff: null, offSeason: null, injury: null, sick: null,
   };
   return composeV5Today(ctx);
 }
@@ -270,7 +270,7 @@ describe('PRERUN-1 · what to do if it goes wrong reaches the screen', () => {
       weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null,
       why: null, whereYouAre: [], beforeYouGo: [], paceNote: null, raceDay: true,
       contingency: [{ evidence: 'Mile 5 pace slower than 8:24', judgement: 'Switch to the B plan.' }],
-      recentRun: null, weekOff: null, offSeason: null, injury: null, sick: null, convergence: null,
+      recentRun: null, weekOff: null, offSeason: null, injury: null, sick: null,
     };
     const t = composeV5Today(ctx);
     const g = t.groups.find((x) => x.id === 'contingency')!;

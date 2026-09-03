@@ -352,9 +352,22 @@ const PLAN_WRITER_SITE_OWNERS: Record<string, string> = {
   'lib/plan/progression-pass.ts::applyProgressionReshape': 'cron/run-adaptations',
 
   // Runner-initiated, each with the route that reaches it.
-  'lib/plan/injury-builder.ts::buildInjuryPlan':
-    'runner-initiated: reached only from POST /api/coach/proposal/[id]/accept, which is the runner '
-    + 'accepting an injury protocol. adapt.ts mentions it in comments and does not import it.',
+  // 2026-09-02 · SEALED, and re-pointed rather than deleted. The rename is real:
+  // `buildInjuryPlan` is now a hardcoded refusal and the plan-writing body it
+  // guards moved to `buildInjuryPlanBody`, so the id follows the statement the
+  // way this registry's `<file>::<enclosingFunction>` rule requires.
+  'lib/plan/injury-builder.ts::buildInjuryPlanBody':
+    'runner-initiated: SEALED AND UNREACHABLE (2026-09-02). This wrote the plan when the runner '
+    + 'accepted an injury protocol at '
+    + 'POST /api/coach/proposal/[id]/accept. All three of its reachability conditions are now gone: '
+    + 'the writer (adapt.ts\'s detectInjuryActive), the acceptor (that route\'s injury_adjust limb), '
+    + 'and execution — `buildInjuryPlan` returns a refusal as its first statement, before any '
+    + 'database read, so this body cannot be entered. Kept because four live INJURY.* doctrine '
+    + 'claims bind constants in this module against Research/05; see MODULE_ORPHANS in '
+    + 'lib/audit/generated-content-registry.ts for the full argument, and '
+    + 'lib/plan/_injury_mode_sealed.test.ts for the three guards that hold it shut. It stays '
+    + 'DECLARED rather than dropped because sealed is not deleted: if the seal is ever opened this '
+    + 'statement writes a plan again, and it must not do so unlisted.',
   'lib/race/race-role-apply.ts::applyRaceRole':
     'runner-initiated: reached only from POST /api/plan/proposal accept on a race_role card · the '
     + 'runner accepting the coach\'s tune-up recommendation (RACEROLE-1, 2026-08-28). The nightly '

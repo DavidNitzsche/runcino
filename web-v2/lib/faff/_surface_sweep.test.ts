@@ -5,7 +5,7 @@
  * proves a plan is well-FORMED across 7680 archetypes. This one proves the
  * SURFACES a runner reads hold their contract across every runner state, every
  * awkward data shape production actually contains, and every calendar boundary
- * — 3672 cells, each driving the real composers.
+ * — 4284 cells, each driving the real composers.
  *
  * Run:
  *   ./node_modules/.bin/vitest run lib/faff/_surface_sweep.test.ts \
@@ -49,6 +49,7 @@ import { daysToRace, weeksToRace } from './race-countdown';
 import {
   sweepMatrix, cellId, CELL_FLOOR, BOUNDARY_DATES, GOAL_RACE, BOUNDARIES,
   RULES, RULE_IDS, FIRM_RULE_IDS, MAX_PAUSED_SHARE,
+  RETIRED_WIRE_FIELDS, RETIRED_WIRE_STATES,
   isBadText, voiceBreak, walkStrings, parsePrinted,
   type Cell, type Finding, type RuleId, type RunnerState, type DataShape,
 } from './surface-sweep-matrix';
@@ -291,7 +292,7 @@ function subLabelFor(cell: Cell): string | null {
   return SESSION_FOR[cell.state].subLabel;
 }
 
-function todayCtxFor(cell: Cell, withRun: boolean, convergenceDomains = 0): V5TodayContext {
+function todayCtxFor(cell: Cell, withRun: boolean): V5TodayContext {
   const b = BOUNDARY_DATES[cell.boundary];
   const s = { ...SESSION_FOR[cell.state], subLabel: subLabelFor(cell) };
   const st = cell.state;
@@ -329,37 +330,6 @@ function todayCtxFor(cell: Cell, withRun: boolean, convergenceDomains = 0): V5To
     sick: st === 'illness'
       ? { symptoms: ['Head cold', 'Fatigue'], hasFever: false, since: 'Flagged today', verdict: 'Rest, not run.', checkIn: [] }
       : null,
-    convergence: convergenceDomains > 0 ? convergenceFor(cell, convergenceDomains) : null,
-  };
-}
-
-/**
- * A persisted `coach_intents` convergence verdict.
- *
- * `domains` is how many the verdict names as converging. TWO must produce no
- * change payload at all — that is Rule 2, and the composer enforces it rather
- * than trusting the writer. THREE must produce one, and the sweep hands it a
- * domain whose own reading is MISSING, because `readings` only has to carry
- * entries for domains that counted and the composer's `?? ''` fallback is what
- * puts a labelled tile over blank space.
- */
-function convergenceFor(cell: Cell, domains: number): V5TodayContext['convergence'] {
-  const names = ['sleep', 'rhr', 'hrv', 'soreness'].slice(0, domains);
-  return {
-    updatedAt: '3:12 AM',
-    wasType: 'Threshold',
-    wasSubLabel: 'THRESHOLD',
-    verdict: {
-      grade: 'red',
-      converging: names,
-      domains: names.map((d) => ({ domain: d, dragging: true, daysSustained: 3, suppressedBy: null, counts: true })),
-      rationale: 'Three domains dragging for three days.',
-    },
-    // Deliberately short of the domain list: the last one has no reading.
-    readings: Object.fromEntries(names.slice(0, -1).map((d) => [d, { value: '6h 10m', baseline: '7h 20m' }])),
-    coachLine: cell.shape === 'zero_runs'
-      ? '' // no sentence — the composer must decline the whole story
-      : 'Sleep, resting heart rate and heart-rate variability have all been dragging for three days, so today is easy.',
   };
 }
 
@@ -420,7 +390,7 @@ let CHECKS = 0;
 const check = () => { CHECKS += 1; };
 
 const REFUSAL_WIRE_STATES = new Set(['not_on_phone_yet', 'injury_flare', 'sick', 'week_off', 'off_season']);
-const CONTENT_WIRE_STATES = new Set(['before_run', 'after_run', 'changed_overnight', 'race_day']);
+const CONTENT_WIRE_STATES = new Set(['before_run', 'after_run', 'race_day']);
 
 /** Engine shorthand in the display register. Mirrors `PRESCRIPTION_SHAPE` in
  *  v5-today.ts — the headline draws at 56pt with `lineLimit(1)`, so a
@@ -565,32 +535,22 @@ function auditToday(out: V5Today, ctx: V5TodayContext, cell: Cell): Finding[] {
     }
   }
 
-  // ── Rule 2 · one signal never changes a session ──────────────────────
-  if (out.changed) {
+  // ── a retired surface may not come back ──────────────────────────────
+  // The overnight-convergence story is deleted, not defaulted off
+  // (docs/PLAN_SIMPLIFICATION_DOCTRINE.md). The wire types no longer name it,
+  // so TypeScript stops the obvious route back; these two checks are the route
+  // TypeScript cannot see — a payload widened with an untyped spread, or a
+  // `state` that has been loosened to a bare string.
+  const wire = out as unknown as Record<string, unknown>;
+  for (const field of RETIRED_WIRE_FIELDS) {
     check();
-    if (out.changed.converged.length < 3) {
-      add('RULE2_GATE',
-        `changed_overnight shipped naming ${out.changed.converged.length} domain(s)`,
-        'changed.converged');
-    }
-    check();
-    if (!out.changed.coachLine.trim()) {
-      add('REFUSAL_UNEXPLAINED', 'the session changed overnight and the screen names no reason', 'changed.coachLine');
-    }
-    for (const dom of out.changed.converged) {
-      check();
-      // A domain tile with a blank baseline draws a label over empty space —
-      // `baseline: reading?.baseline ?? ''` is the shape that produces it.
-      if (!dom.baseline.trim()) {
-        add('ORPHAN_SECTION', `converged domain ${dom.domain} has a blank baseline`, 'changed.converged');
-      }
-      check();
-      if (!dom.domain.trim()) add('ORPHAN_SECTION', `converged domain ${dom.id} has no name`, 'changed.converged');
+    if (field in wire) {
+      add('RETIRED_SURFACE', `V5Today carried the retired field ${JSON.stringify(field)}`, field);
     }
   }
   check();
-  if (out.state === 'changed_overnight' && !out.changed) {
-    add('REFUSAL_UNEXPLAINED', 'state says the session changed overnight and no change payload came with it', 'changed');
+  if ((RETIRED_WIRE_STATES as readonly string[]).includes(out.state as string)) {
+    add('RETIRED_SURFACE', `V5Today.state was the retired ${JSON.stringify(out.state)}`, 'state');
   }
 
   // ── a stepped-to day is not in the present tense ─────────────────────
@@ -835,21 +795,13 @@ describe('SURFACE conformance sweep', () => {
       const id = cellId(cell);
       const found: Finding[] = [];
 
-      // Today, four ways: before and after the run, then the two sides of
-      // Rule 2's gate — a two-domain verdict that must NOT become a change
-      // story, and a three-domain one that must.
-      for (const [withRun, domains] of [[false, 0], [true, 0], [false, 2], [false, 3]] as [boolean, number][]) {
-        const ctx = todayCtxFor(cell, withRun, domains);
-        const out = composeV5Today(ctx);
-        found.push(...auditToday(out, ctx, cell));
-        // Rule 2, from the other direction: two converging domains may never
-        // reach the client as a convergence story at all.
-        if (domains === 2) {
-          check();
-          if (out.changed !== null || out.state === 'changed_overnight') {
-            found.push({ rule: 'RULE2_GATE', detail: 'a two-domain verdict became a change story', where: 'composeV5Today' });
-          }
-        }
+      // Today, two ways: before the run and after it. It was four until the
+      // overnight-convergence surface was deleted — the other two fed a
+      // two-domain and a three-domain readiness verdict through the composer,
+      // and there is no longer an input for either.
+      for (const withRun of [false, true]) {
+        const ctx = todayCtxFor(cell, withRun);
+        found.push(...auditToday(composeV5Today(ctx), ctx, cell));
       }
 
       // Why this run.
@@ -1036,10 +988,17 @@ const CONTROLS: Record<RuleId, () => Finding[]> = {
     out.weekStrip = out.weekStrip.map((d, i) => (i === 2 ? { ...d, number: String(Number(d.number) - 1) } : d));
     return auditToday(out, ctx, CELL);
   },
-  RULE2_GATE: () => {
-    const ctx = todayCtxFor(CELL, false, 3);
+  RETIRED_SURFACE: () => {
+    const ctx = todayCtxFor(CELL, false);
     const out = composeV5Today(ctx);
-    out.changed = { ...out.changed!, converged: out.changed!.converged.slice(0, 1) };
+    // Exactly the shape a composer that started re-emitting the deleted
+    // surface would produce: the field back on the payload, and the state to
+    // match. Neither is nameable in the wire types any more, which is the
+    // point — this control proves the auditor sees it anyway.
+    Object.assign(out as unknown as Record<string, unknown>, {
+      changed: { converged: [], coachLine: '' },
+      state: 'changed_overnight',
+    });
     return auditToday(out, ctx, CELL);
   },
   STALE_WINDOW: () => {
@@ -1120,7 +1079,6 @@ describe('SURFACE sweep · the composers do not read the server clock or its zon
         return JSON.stringify({
           before: composeV5Today(todayCtxFor(cell, false)),
           after: composeV5Today(todayCtxFor(cell, true)),
-          changed: composeV5Today(todayCtxFor(cell, false, 3)),
           block,
           ramp: resolveRampScope({ blockState: block, raceIdx: 15, goalName: GOAL_RACE.name }),
           days: daysToRace(GOAL_RACE.dateISO, b.todayISO),

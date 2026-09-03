@@ -77,10 +77,14 @@
  * sustained and corroborated. See `bandFor` below for the ladder and the
  * expected firing rates.
  *
- * The score has no other job. Nothing in this module, and nothing that reads
- * it inside lib/coach, changes a prescription, caps an intensity or writes a
- * plan mutation. `readiness_pullback` in lib/plan/adapt.ts still can, and is
- * reported rather than rewired from here.
+ * The score has no other job, and as of 2026-09-02 NOTHING ANYWHERE DOES.
+ * This paragraph used to end "`readiness_pullback` in lib/plan/adapt.ts still
+ * can, and is reported rather than rewired from here" — that is now false. The
+ * owner ruled that he decides how ready he is: the trigger, its detector and
+ * its `actionsForTrigger` limb are deleted, and the upward ramp's readiness
+ * gate is replaced by an ACWR read over `runs`. No readiness reading changes a
+ * prescription, caps an intensity or writes a plan row anywhere in the app.
+ * The score is a DISPLAY quantity.
  */
 import type { CoachState } from '@/lib/topics/types';
 import { recoveryCoverage } from './state-presence';

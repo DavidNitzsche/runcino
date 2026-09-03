@@ -185,13 +185,20 @@ struct NudgeSheet: View {
         }
     }
 
+    /// DESCRIPTIVE, NOT PRESCRIPTIVE (2026-09-02).
+    ///
+    /// The runner decides how ready he is. These four lines used to say what
+    /// to do about the score — "Ease the targets today.", "Recover. Don't
+    /// push." — and the machinery that could actually have carried those
+    /// through to the plan is gone. A promise the system no longer keeps is
+    /// worse than silence, so each band now states the reading and stops.
     private var readinessHeadline: String {
         let score = readiness?.score ?? 0
         switch score {
-        case 80...: return "Primed for the work."
-        case 65..<80: return "Hold the plan."
-        case 50..<65: return "Ease the targets today."
-        case 1..<50: return "Recover. Don't push."
+        case 80...: return "Above your baseline."
+        case 65..<80: return "On your baseline."
+        case 50..<65: return "Below your baseline."
+        case 1..<50: return "Well below your baseline."
         default: return "Awaiting your first sample."
         }
     }
@@ -282,9 +289,18 @@ struct NudgeSheet: View {
     }
 
     /// Pull the meaning from the worst (most-negative-weight) input the
-    /// readiness endpoint surfaced. Falls back to a generic line keyed off
-    /// the score band when we don't have inputs yet. Always honest · no
-    /// fabricated "intervals" copy when the runner isn't doing intervals.
+    /// readiness endpoint surfaced. Falls back to a line keyed off the score
+    /// band when we don't have inputs yet.
+    ///
+    /// DESCRIPTIVE, NOT PRESCRIPTIVE (2026-09-02). Readiness no longer
+    /// changes a training decision anywhere in this app, so no line here may
+    /// tell the runner to ease off, pull back or hold the plan. Each band
+    /// states what the reading is against his own baseline and stops there.
+    ///
+    /// One caveat this file cannot fix: `worst.meaning` is server copy from
+    /// `/api/readiness` (`lib/coach/readiness.ts`) and takes precedence over
+    /// the bands below. If any of those strings still prescribes, it has to
+    /// be fixed there.
     private var coachMessage: String {
         // Proposal review · the adapter's one-line why IS the coach line.
         // Falls back to the trigger reason when the payload carried none.
@@ -297,10 +313,10 @@ struct NudgeSheet: View {
             return worst.meaning
         }
         switch (readiness?.score ?? 0) {
-        case 80...: return "Your body is primed. Run the plan."
-        case 65..<80: return "Solid recovery. Hold the targets and trust the plan."
-        case 50..<65: return "Borderline. Ease off and listen as you go."
-        case 1..<50: return "Pull back today. Easy miles or a rest day · the work compounds when you recover."
+        case 80...: return "Recovery is running ahead of your baseline."
+        case 65..<80: return "Recovery is sitting on your baseline."
+        case 50..<65: return "Recovery is running under your baseline."
+        case 1..<50: return "Recovery is well under your baseline. Sleep and resting heart rate are the two carrying it."
         default: return "Awaiting your first health sample. Connect your watch to see your readiness."
         }
     }

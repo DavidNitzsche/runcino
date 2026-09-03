@@ -10,12 +10,14 @@
 #
 #   "A missed run is stated, never judged."
 #
-# Rules one, two and three all have machinery behind them. Rule one has
-# `FaffValue` and check-modelled-mark.sh. Rule two has `gradeConvergence` and
-# `ConvergenceList.minimumDomains`. Rule three has `Alert` vs `ErrorNote` and
-# the `absentReason` / `isOutage` split. Rule four had a paragraph in CLAUDE.md
-# and a reviewer's eye, which is the weakest enforcement in the product and
-# covers the largest surface: every sentence a runner can see.
+# Rules one and three have machinery behind them. Rule one has `FaffValue` and
+# check-modelled-mark.sh. Rule three has `Alert` vs `ErrorNote` and the
+# `absentReason` / `isOutage` split. (Rule two's machinery was `gradeConvergence`
+# and `ConvergenceList.minimumDomains`; both are gone as of 2026-09-02, when the
+# runner ruled readiness out of training decisions and the convergence screen
+# went with it.) Rule four had a paragraph in CLAUDE.md and a reviewer's eye,
+# which is the weakest enforcement in the product and covers the largest
+# surface: every sentence a runner can see.
 #
 # Two of the four checks below already existed as one-off assertions inside
 # individual test files — `race-roles.test.ts` greps its own output for `[—!]`,

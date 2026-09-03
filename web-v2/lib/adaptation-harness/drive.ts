@@ -79,7 +79,7 @@ export async function rampDiagnosis(): Promise<{
 
   const s = await detectRampSignals(OWNER_UUID, { id: plan.id, authoredState: plan.authored_state });
   const signals: Record<string, boolean> = {
-    readinessGreen: s.readinessGreen,
+    acwrHeadroom: s.acwrHeadroom,
     lastQualityOnPace: s.lastQualityOnPace,
     lastLongClean: s.lastLongClean,
     belowTierUpper: s.belowTierUpper,

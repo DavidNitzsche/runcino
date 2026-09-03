@@ -579,20 +579,9 @@ export type ReadinessBriefSeed = {
   label: string;                // 'READY'
   headline: string;             // one-line plain-language framing
   oneLineMover: string | null;  // "HRV down 8 pts vs yesterday"
-  /** 2026-06-03 · concrete "what should I DO today" line from the
-   *  prescription engine. Null on cold-start.
-   *  · intent · structured intent for downstream post-run comparison:
-   *      'cut' / 'plan' / 'send' / 'rest'
-   *  · targetMinutes / targetMiles · rough quantity the prescription
-   *      suggests · drives the post-run reflection's "you followed
-   *      the call" vs "ran more than the cut" framing. */
-  prescription: {
-    action: string;
-    why: string;
-    intent: 'cut' | 'plan' | 'send' | 'rest';
-    targetMinutes: number | null;
-    targetMiles: number | null;
-  } | null;
+  /* 2026-09-02 · the readiness `prescription` ("Skip today's quality",
+   * "Drop the long to 50-60%") is gone from the brief. See
+   * `lib/coach/readiness-brief.ts` for why. The brief shows the reading. */
   scoreTrend: Array<{ date: string; score: number; band: string }>;
   pillars: Array<{
     key: 'sleep' | 'hrv' | 'rhr' | 'load' | 'hr_recovery';
@@ -623,7 +612,6 @@ export type ReadinessBriefSeed = {
     subjectiveScore: number;
     objectiveScore: number;
     deltaAbs: number;
-    advice: string;
   } | null;
   /** 2026-06-01 · today's subjective check-in state · drives Section 8. */
   subjectiveCheckin: {

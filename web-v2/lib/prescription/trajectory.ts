@@ -111,10 +111,9 @@ export function authoringAdaptation(): AdaptationVerdict {
     keySessionsPlanned: null, keySessionsCompleted: null, targetVerdicts: null,
     repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
     decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null,
-    recoveryPctOfExpected: null, readinessBelowNormalDays: null, readinessWindowDays: null,
+    recoveryPctOfExpected: null,
     weeklyPlannedMi: null, weeklyActualMi: null, trainingForm: null,
     distinctEvidenceWeeks: null, adapterDowngrades: null,
-    niggleSeverity: null, illnessActive: null, injuryActive: null,
   };
   return classifyAdaptation(blank);
 }

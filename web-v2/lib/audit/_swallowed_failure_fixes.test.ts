@@ -68,13 +68,16 @@ describe('a parameter may not be asked to be two types at once', () => {
     expect(read('lib/plan/seal.ts')).toContain('if (r === null) return true;');
   });
 
-  it('coach_proposals inserts cast the shared parameter per column', () => {
-    const s = sql('lib/plan/adapt.ts');
-    expect(s).not.toContain("VALUES ($1, $1::text, 'illness_adjust'");
-    expect(s).not.toContain("VALUES ($1, $1::text, 'injury_adjust'");
-    expect(s).toContain("VALUES ($1::uuid, $1::text, 'illness_adjust'");
-    expect(s).toContain("VALUES ($1::uuid, $1::text, 'injury_adjust'");
-  });
+  /* DELETED 2026-09-02 · `coach_proposals inserts cast the shared parameter
+   * per column`. All four of its assertions named the `illness_adjust` and
+   * `injury_adjust` INSERTs in `lib/plan/adapt.ts`, and those INSERTs are
+   * gone: illness, injury and a reported niggle no longer influence a training
+   * decision, so `detectSickEpisodeActive` / `detectInjuryActive` and their
+   * `actionsForTrigger` limbs are deleted. There is no cast left to pin.
+   *
+   * The parameter-typing FINDING is not lost — the `post_run_rpe` test
+   * immediately below is the same shape on live INSERTs, and `isDaySealed`
+   * above covers the query half. Only the two dead statements left. */
 
   it('post_run_rpe inserts cast the shared parameter per column', () => {
     // `post_run_rpe.user_id` is text and `.user_uuid` is uuid.

@@ -26,10 +26,33 @@
  *   · RHR 3+ day elevated streak        · Plews monitoring · Research/15
  *   · HRV 3+ day low streak             · Plews HRV CV · Research/15
  *   · HRV CV destabilizing band         · Plews · CV > 7% threshold
- *   · Wrist temp +0.2°C/+0.3°C above    · Research/15 illness-risk thresholds
  *   · ACWR > 1.3 / > 1.4                · Gabbett spike band
  *   · TSB < -30                         · Banister overreach
- *   · Active sick / niggle              · Hard fact (already in voice)
+ *
+ * ── 2026-09-02 · RUNNER-OWNS-READINESS · THIS PANEL DESCRIBES, IT DOES NOT
+ *    PRESCRIBE ──────────────────────────────────────────────────────────────
+ *
+ * The owner: "I want to be the one who decides how ready I am or not ready.
+ * I've been training a long time. Pushed through a lot of things. To have a
+ * plan cheapen itself is not what I'm building here." And, of illness and
+ * injury: "remove illness and injury for now. its noise."
+ *
+ * So the panel keeps every READING and loses every INSTRUCTION:
+ *
+ *   · The illness, niggle-flare, niggle-moderate and wrist-temperature rules
+ *     are deleted. They said "Skip running today", "Skip running until your
+ *     calf clears", "Easy only until it settles" — the app deciding, off
+ *     something he had typed in himself, that he was not up to his training.
+ *   · `voice()` no longer has an instruction branch. It returns the
+ *     observation, always. Previously a three-domain convergence licensed a
+ *     sentence like "Tomorrow easy · let HRV recover"; nothing in the engine
+ *     acts on that convergence any more, and a promise the system does not
+ *     keep is worse than silence (CLAUDE.md Rule 20's corollary).
+ *
+ * What stays, and why it is not the same thing: the ACWR bands and the TSB
+ * overreach band read TRAINING LOAD — what the legs actually absorbed — and
+ * the sleep rows are a behavioural lever rather than a change to the session.
+ * Those are on the owner's explicit keep list.
  */
 
 import type { ReadinessBreakdown } from './readiness';
@@ -39,7 +62,10 @@ import type { ReadinessHistory } from './readiness-history';
 import type { ReadinessStreak } from './readiness-brief';
 import { tierRulesFor, HARD_RULES, type ExperienceLevel } from './tier-rules';
 import { hasRecoverySignal } from './state-presence';
-import { CONVERGENCE, type ConvergenceDomain } from './convergence';
+// `CONVERGENCE` went with the instruction branch of `voice()` (2026-09-02);
+// the domain vocabulary stays, because each rule still states what its
+// evidence spans.
+import type { ConvergenceDomain } from './convergence';
 
 /**
  * Chronic weekly volume in miles · `loadChronic28` is a 28-day mi/DAY
@@ -351,19 +377,35 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
    * in convergence.ts's taxonomy. Two measures of one system count once —
    * that is the whole point of the word independent.
    *
-   * Hard rules do not come through here and should not. An active illness,
-   * a moderate niggle, a wrist temperature at the illness threshold and an
-   * ACWR above the injury cap are FACTS about the body or hard safety
-   * ceilings, not readiness signals looking for corroboration.
+   * 2026-09-02 · this docblock's worked examples ("Tomorrow easy · let HRV
+   * recover", "Pull tomorrow's intensity back") are the sentences that no
+   * longer exist. They are left in the prose because they say precisely what
+   * was removed and why the helper still takes `domains`.
+   *
+   * The illness / moderate-niggle / wrist-temperature hard rules this block
+   * used to exempt were deleted the same day. Nothing in this file now tells
+   * the runner whether to train.
+   */
+  /* 2026-09-02 · THE INSTRUCTION BRANCH IS GONE.
+   *
+   * This used to return `instruction` once the evidence spanned
+   * `CONVERGENCE.redMinDomains` independent domains, and the observation
+   * otherwise. The convergence ladder was the right shape for the question it
+   * was answering — may readiness change a session — but that question no
+   * longer has a yes. Nothing in the engine acts on readiness, so a panel
+   * that told the runner "tomorrow easy" would be describing a change the app
+   * is not going to make.
+   *
+   * `domains` is kept in the signature and still counted, so each caller
+   * continues to state what its evidence spans and the count stays available
+   * to the reader; it no longer decides anything.
    */
   const voice = (
     domains: ConvergenceDomain[],
     observation: string,
-    instruction: string,
   ): string => {
-    const independent = new Set(domains).size;
-    if (isInformational) return observation;
-    return independent >= CONVERGENCE.redMinDomains ? instruction : observation;
+    void new Set(domains).size;
+    return observation;
   };
 
   // When the plan adapter has already absorbed a signal, suppress the
@@ -384,8 +426,9 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
   // reading (corrected to 46 ms on re-sync) scored readiness 38
   // PULL-BACK and fired pull-back prescriptions. The same logic running
   // on race morning would tell a runner to "take 2-3 easy days" at 5 AM
-  // with the gun at 7. Health hard rules (illness, flare, wrist temp)
-  // stay on — racing sick is a medical risk, not taper noise.
+  // with the gun at 7. The illness / flare / wrist-temp hard rules that this
+  // comment used to exempt were themselves deleted on 2026-09-02; nothing in
+  // this file now tells the runner whether to race.
   const daysToRace = state.nextARace?.days_to_race ?? null;
   const isRaceWeek = daysToRace != null && daysToRace >= 0 && daysToRace <= 7;
   const isRaceMorning = daysToRace === 0;
@@ -403,35 +446,16 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
   // skip when they have flu, still stop when something is flaring,
   // still get the illness-onset alert at wrist temp +0.4°C.
 
-  // Active illness · trumps every other signal.
-  if (activeSick) {
-    out.push({
-      signal: 'sick',
-      priority: 'urgent',
-      action: 'Skip running today · easy walk only until symptoms clear.',
-      cite: 'Active illness logged · resume on feel.',
-    });
-  }
-
-  // Niggle flare · pain isn't pushable. Same prescription for everyone.
-  if (state.activeNiggle && state.activeNiggle.severity === 'flare') {
-    out.push({
-      signal: 'niggle',
-      priority: 'urgent',
-      action: `Skip running until ${state.activeNiggle.body_part} clears · don't run through a flare.`,
-      cite: `${state.activeNiggle.body_part} · flare · ${state.activeNiggle.days_ago}d ago.`,
-    });
-  }
-
-  // Wrist temp illness alert · the early-detection threshold.
-  if (wristTempDeltaC != null && wristTempDeltaC >= HARD_RULES.wristTempIllnessAlert) {
-    out.push({
-      signal: 'wrist_temp_elevated',
-      priority: 'urgent',
-      action: 'Watch closely for cold or flu symptoms today.',
-      cite: `Wrist temp +${wristTempDeltaC.toFixed(2)}°C above baseline · illness-onset threshold.`,
-    });
-  }
+  /* 2026-09-02 · three rules stood here and are deleted:
+   *
+   *   · active illness      → "Skip running today · easy walk only ..."
+   *   · niggle at 'flare'   → "Skip running until <part> clears ..."
+   *   · wrist temp ≥ alert  → "Watch closely for cold or flu symptoms today."
+   *
+   * All three are the app reading something the runner logged about his own
+   * body and telling him not to train. He decides that. The tables are
+   * untouched and he still sees what he reported wherever he reported it.
+   */
 
   // ACWR injury hard cap · uncoupled from chronic base.
   if (state.loadAcwr != null && state.loadAcwr >= HARD_RULES.acwrInjuryHardCap) {
@@ -501,7 +525,6 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         action: voice(
           ['load'],
           `Form score ${trainingForm.tsb} · overreach band.`,
-          'Two easy days before the next quality session · you\'re deep in overreach.',
         ),
         cite: `Form score ${trainingForm.tsb} · overreach band.`,
       });
@@ -520,7 +543,6 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         action: voice(
           ['autonomic'],
           `HRV at or below baseline ${hrvStreak.days} days running.`,
-          'Tomorrow easy · let HRV recover.',
         ),
         cite: `HRV ${hrvStreak.days}-day low streak.`,
       });
@@ -536,7 +558,6 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         action: voice(
           ['cardiac'],
           `RHR up ${rhrStreak.days} days running.`,
-          'Pull tomorrow\'s intensity back · run easier or shorter.',
         ),
         cite: `RHR ${rhrStreak.days}-day elevation streak.`,
       });
@@ -549,9 +570,9 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       out.push({
         signal: 'wrist_temp_elevated',
         priority: 'high',
-        action: isInformational
-          ? `Wrist temp +${wristTempDeltaC.toFixed(2)}°C above baseline.`
-          : 'Watch for cold or flu symptoms · drop intensity if anything else shows up.',
+        // 2026-09-02 · was "· drop intensity if anything else shows up" in the
+        // non-informational register. The reading is the whole content now.
+        action: `Wrist temp +${wristTempDeltaC.toFixed(2)}°C above baseline.`,
         cite: `+${wristTempDeltaC.toFixed(2)}°C vs your 30-day baseline.`,
       });
     }
@@ -572,21 +593,13 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         action: voice(
           ['load'],
           `ACWR ${state.loadAcwr.toFixed(2)} · spike band for your tier.`,
-          'Trim 1-2 miles from your next long run · load is spiking.',
         ),
         cite: `ACWR ${state.loadAcwr.toFixed(2)} · spike band.`,
       });
     }
 
-    // Niggle moderate severity.
-    if (state.activeNiggle && state.activeNiggle.severity === 'moderate') {
-      out.push({
-        signal: 'niggle',
-        priority: 'high',
-        action: `Easy only until the ${state.activeNiggle.body_part} settles.`,
-        cite: `${state.activeNiggle.body_part} · moderate · ${state.activeNiggle.days_ago}d ago.`,
-      });
-    }
+    // 2026-09-02 · the moderate-niggle rule ("Easy only until the <part>
+    // settles.") is deleted with its siblings above.
 
     // Sleep deficit · chronic 7-night avg below tier floor OR acute
     // 3-night deficit ≥ 3h. Sleep is a behavioral lever everyone CAN
@@ -648,7 +661,6 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
         action: voice(
           ['autonomic'],
           `HRV CV ${history.hrvPlews.cv.toFixed(1)}% · destabilizing band.`,
-          'Hold this week at easy · let your HRV variability settle.',
         ),
         cite: `RMSSD CV ${history.hrvPlews.cv.toFixed(1)}% · overreach band > 14%.`,
       });
@@ -755,9 +767,9 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       out.push({
         signal: 'compound',
         priority: 'high',
-        // The domain count comes from the evidence itself, so three genuinely
-        // independent channels dragging for days can still change tomorrow —
-        // which is the ladder working, not an exception to it.
+        // 2026-09-02 · the three-domain branch here used to read
+        // "${observation} Tomorrow easy." Tomorrow now stands as written
+        // whatever converges, so the sentence says only that.
         action: voice(
           phrases.map((p) =>
             p === 'sleep is short' ? 'sleep'
@@ -765,7 +777,6 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
               : p === 'your resting heart rate is up' ? 'cardiac'
               : 'load') as ConvergenceDomain[],
           `${observation} Tomorrow stands as written.`,
-          `${observation} Tomorrow easy.`,
         ),
         cite: `Recent scores: ${recentScores.join('/')}.`,
       });
@@ -810,7 +821,7 @@ export function buildHealthActions(args: BuildArgs): HealthAction[] {
       kept.push({
         signal: 'race_week',
         priority: 'low',
-        action: `Race week · ${daysToRace}d out. Taper noise is normal. Fatigue signals don't change the plan now. Illness and injury rules stay on.`,
+        action: `Race week · ${daysToRace}d out. Taper noise is normal. Fatigue signals don't change the plan.`,
         cite: 'Taper crud is expected · Research/08-pacing-and-race-week.md §9.',
       });
     }

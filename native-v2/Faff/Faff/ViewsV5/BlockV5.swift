@@ -34,10 +34,13 @@
 //      comes through `V5Number.value` into a `FaffValue`. There is no `String`
 //      call site for a number anywhere in this file.
 //
-//  2 · ONE SIGNAL NEVER CHANGES A SESSION. Not this screen's job directly —
-//      Today owns the convergence note — but the plan-change sheet respects
-//      it by construction: every "changed session" outcome here is the
-//      engine's own `tradeOff` sentence, never a client-composed one.
+//  2 · THE ENGINE OWNS EVERY SENTENCE ABOUT A CHANGED SESSION. This used to
+//      read "one signal never changes a session" and defer to Today's
+//      convergence note; readiness no longer changes a session at all, and
+//      that note is gone (2026-09-02). What survives is the part that was
+//      always the real guarantee here: every "changed session" outcome on
+//      this screen is the engine's own `tradeOff` sentence, quoted, never a
+//      client-composed one.
 //
 //  3 · A REFUSAL IS A CORRECT ANSWER, NOT AN EMPTY STATE. The plan-change
 //      sheet has three distinct "no" states and they are NOT interchangeable:

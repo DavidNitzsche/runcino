@@ -695,7 +695,7 @@ function grade(r: Runner, rungs: number[], bands: string[]): void {
           whereYouAre: [], beforeYouGo: [], paceNote: null,
           raceDay: todayRow.type === 'race',
           recentRun: null, weekOff: null, offSeason: null, injury: null,
-          sick: null, convergence: null,
+          sick: null,
         });
         // The strip on the screen is the week the loader returned. Not
         // re-derived, not a subset, in order.

@@ -19,9 +19,12 @@
 //      a number takes a `FaffValue`, not a `String`. There is no way to put a
 //      projected finish time into a `ListRow` without saying it is projected.
 //
-//  2 · ONE SIGNAL NEVER CHANGES A SESSION. Not this file's job to enforce —
-//      the engine gates it — but `CoachSay` is where the copy lands, so see
-//      `ConvergenceNote` in ChartsV5 for the shape that names three domains.
+//  2 · READINESS CHANGES NOTHING. Superseded 2026-09-02: this used to read
+//      "one signal never changes a session", and pointed at the convergence
+//      list in ChartsV5 for the shape that named three domains. The runner
+//      ruled readiness out of training decisions entirely, so there is no
+//      three-domain gate to point at any more and no component here draws
+//      one. Readiness readings still render; a verdict on them does not.
 //
 //  3 · A REFUSAL IS A CORRECT ANSWER, NOT AN EMPTY STATE. Three components,
 //      three different jobs, and they must never be swapped:

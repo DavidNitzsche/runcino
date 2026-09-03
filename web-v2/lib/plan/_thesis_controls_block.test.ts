@@ -79,10 +79,28 @@ function tenKInput(thesis: ThesisAtAuthoring | null): ComposePlanInput {
   };
 }
 
+/*
+ * CONFIDENCE-STRUCTURE-1 (2026-09-02) · `basis` IS NOW LOAD-BEARING AND IS
+ * SUPPLIED EXPLICITLY.
+ *
+ * The composer consumes the limiter only when a MEASUREMENT named it —
+ * `basis: 'CURVE_SHAPE_EVIDENCE'`, doctrine's read of the runner's own graded
+ * race curve (`Research/02` §7.1). On the other basis,
+ * `LOWEST_CONFIDENCE_AMONG_EVIDENCED`, the limiter is the front of a sort by
+ * `a.confidence - b.confidence` with no margin, so a fourth-decimal difference
+ * would change the block's quality families in kind: Rule 9's defect exactly.
+ * These two fixtures therefore state the basis rather than leaving it absent,
+ * and the new test at the bottom of this file asserts the refusal.
+ *
+ * The fixtures' `confidence` values are kept and are deliberately NOT equal —
+ * 0.6 against 0.5 — so a regression that started branching on confidence again
+ * would have something to branch on.
+ */
 const HIGH_INTENSITY: ThesisAtAuthoring = {
   primaryLimiter: 'HIGH_INTENSITY',
   priority: 'increase_high_intensity_demand',
   confidence: 0.6,
+  basis: 'CURVE_SHAPE_EVIDENCE',
   source: 'resolved',
 };
 
@@ -90,6 +108,7 @@ const DURABILITY: ThesisAtAuthoring = {
   primaryLimiter: 'DURABILITY',
   priority: 'increase_long_run_demand',
   confidence: 0.5,
+  basis: 'CURVE_SHAPE_EVIDENCE',
   source: 'resolved',
 };
 
@@ -224,5 +243,54 @@ describe('THESIS-PLAN-1 · the limiter reaches the block', () => {
       source: 'read_failed',
     }));
     expect(shape(failed)).toBe(shape(a));
+  });
+
+  /**
+   * CONFIDENCE-STRUCTURE-1 (2026-09-02) · A CONFIDENCE RANKING MAY NOT PICK THE
+   * BLOCK'S SHAPE.
+   *
+   * The same limiter, the same priority, the same `source: 'resolved'` — only
+   * the BASIS differs. On `LOWEST_CONFIDENCE_AMONG_EVIDENCED` the block must
+   * compose exactly as it does with no thesis at all, because that basis is a
+   * sort of two confidences with no margin and the owner's own block was
+   * authored against a thesis carried at 0.51.
+   *
+   * WHAT THIS TEST CANNOT FAIL ON (Rule 22): it cannot tell whether the
+   * MEASURED basis picks the RIGHT limiter — that is `coaching-thesis.ts`'s
+   * question and `_thesis_golden.test.ts`'s. It only asserts which KIND of fact
+   * is allowed to reach the composer.
+   */
+  it('a confidence-ranked limiter composes the same block as no thesis at all', () => {
+    const shape = (p: ReturnType<typeof composePlan>) =>
+      p.weeks.map((w) => `${w.startISO}:${w.phase}:${w.weeklyMi}:`
+        + w.days.map((d) => `${d.type}/${d.distanceMi}/${d.subLabel}`).join('|')).join('\n');
+    const none = shape(composePlan(tenKInput(null)));
+    // Liveness first: if the MEASURED basis changed nothing either, the
+    // assertions below would pass for the wrong reason and this file would be
+    // testing that composePlan ignores its own input. HIGH_INTENSITY is the
+    // fixture the first test in this file already shows moves a session.
+    const measured = shape(composePlan(tenKInput(HIGH_INTENSITY)));
+    expect(measured).not.toBe(none);
+    for (const limiter of ['DURABILITY', 'HIGH_INTENSITY', 'THRESHOLD'] as const) {
+      const ranked = composePlan(tenKInput({
+        primaryLimiter: limiter,
+        priority: limiter === 'DURABILITY' ? 'increase_long_run_demand'
+          : limiter === 'THRESHOLD' ? 'increase_threshold_demand'
+          : 'increase_high_intensity_demand',
+        confidence: 0.51,
+        basis: 'LOWEST_CONFIDENCE_AMONG_EVIDENCED',
+        source: 'resolved',
+      }));
+      expect(shape(ranked), `${limiter} steered the block off a confidence ranking`).toBe(none);
+    }
+    // A stamp written before 2026-09-02 carries NO basis. Absent is treated as
+    // "not a measurement" (Rule 11 · unknown is not permission), never as one.
+    const legacy = composePlan(tenKInput({
+      primaryLimiter: 'DURABILITY',
+      priority: 'increase_long_run_demand',
+      confidence: 0.9,
+      source: 'resolved',
+    }));
+    expect(shape(legacy)).toBe(none);
   });
 });

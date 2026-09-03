@@ -28,15 +28,17 @@
  *       compromised runner — or a plan stamped mode_label='injury-return' —
  *       gets a pending card instead.
  *
- *   4 · GOAL-GAP NEVER SURFACES ITS REBUILD CARD OVER A COMPROMISED RUNNER
- *       (2026-08-31). The widening-projection guard used to default a failed
- *       compromised-check read to `compromised: false`, so a database blip
- *       could surface "rebuild to close the gap?" built on the exact
- *       evidence — illness/injury — the guard's own comment says
- *       contaminates that projection. Now routed through the shared
- *       `runnerIsCompromisedFailClosed` wrapper (also sites 2 and 3 above),
- *       so a genuine compromised read and an unreadable one suppress the
- *       card identically.
+ *   4 · THE GOAL-GAP REBUILD CARD IS GONE, AND THE OBSERVATION IS NOT
+ *       (2026-09-02). This ruling used to read "goal-gap never surfaces its
+ *       rebuild card over a compromised runner" — a guard on WHEN the
+ *       `goal_gap_widening` proposal could fire. The owner's seal ruling
+ *       deleted the proposal itself, so there is nothing left to guard and
+ *       nothing left for a fourth `runnerIsCompromisedFailClosed` call site
+ *       to protect. What replaces it is the RATCHET: a widening projection
+ *       is a transient reading, it may never re-author a block, and the
+ *       tests below fail if any proposal comes back to that branch. The
+ *       UNCLOSABLE half is deliberately still live and still asserted —
+ *       observation stays, authority goes.
  *
  * Same harness idiom as _guard_fail_closed.test.ts: mock the pool, route SQL
  * by shape, drive the route's POST, and assert on the calls that left.
@@ -104,6 +106,7 @@ import { fireAutoRebuild, resolveGoalTarget } from '@/lib/plan/auto-rebuild';
 import { runnerIsCompromisedFailClosed } from '@/lib/plan/adapt';
 import { notifyBlockStarted } from '@/lib/notifications/block-started';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
+import { shouldSurfaceGoalOutlook, writeGoalOutlookNote } from '@/lib/plan/goal-outlook';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * HARNESS
@@ -132,6 +135,10 @@ const compromised = runnerIsCompromisedFailClosed as any;
 const blockNote = notifyBlockStarted as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const goalGap = computeGoalGap as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const shouldSurfaceOutlook = shouldSurfaceGoalOutlook as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const writeOutlook = writeGoalOutlookNote as any;
 
 let route: Router = async () => ({ rows: [] });
 let issued: Array<{ sql: string; params: unknown[] }> = [];
@@ -154,6 +161,12 @@ beforeEach(() => {
   goalTarget.mockResolvedValue(null);
   fire.mockResolvedValue({ ok: true, newPlanId: 'plan-NEW', proposalId: 7 });
   goalGap.mockResolvedValue(null);
+  // `vi.clearAllMocks()` clears the return values the module factory set, so
+  // these two are re-armed here rather than silently becoming `undefined` —
+  // an undefined `shouldSurfaceGoalOutlook` reads as falsy and would make the
+  // outlook test below pass by never running the branch it is about.
+  shouldSurfaceOutlook.mockReturnValue(false);
+  writeOutlook.mockResolvedValue(false);
 });
 
 const sawInsert = (needle: string): number =>
@@ -389,21 +402,36 @@ describe('3 · plan_elapsed · injury guard', () => {
 });
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 4 · goal-gap rebuild suppression · site 4 of runnerIsCompromisedFailClosed
+ * 4 · goal-gap · THE REBUILD CARD IS DELETED (2026-09-02)
  *
- * 2026-08-31 · closed a real direction bug: this site defaulted a failed
- * compromised-check read to `compromised: false` and no comment explaining
- * why, so a database blip while illness/injury/gap-reentry status was
- * unreadable let the cron surface a "rebuild to close the gap?" card built on
- * the exact evidence the comment above the guard says illness/injury
- * contaminates (the widening projection itself). Both a genuine compromised
- * read AND an unreadable one must suppress the card the same way — neither
- * is allowed to fire it.
+ * This section held three tests about WHEN the `goal_gap_widening` proposal
+ * was allowed to fire — one for a genuine compromised read, one for an
+ * unreadable one, one success path — and all three asserted a
+ * `goal_gap_suppressed_compromised` counter. Every one of those subjects is
+ * gone from `app/api/cron/plan-drift/route.ts`:
+ *
+ *   · the `goal_gap_widening` INSERT — deleted with the soft-drift levers.
+ *     Its trigger was a three-day trend across `projection_snapshots`: a
+ *     transient reading, true today and false next week, re-authoring a whole
+ *     block. The owner's ruling names exactly that.
+ *   · the `goal_gap_suppressed_compromised` counter — a count of the reasons
+ *     a card was NOT written, for a card that no longer exists.
+ *   · the fourth `runnerIsCompromisedFailClosed` call site — there is no
+ *     longer an automatic authoring decision at this branch to gate. (The
+ *     wrapper itself is unchanged and sites 2 and 3 are still under test in
+ *     section 3 above, so nothing about the fail-closed contract is lost
+ *     here. `runnerIsCompromised` also reads training-gap re-entry ONLY since
+ *     2026-09-02, which is why the old `reason: 'illness'` fixture below
+ *     could not have been posed either way.)
+ *
+ * So the three tests are not retagged — they have no live subject to be
+ * retagged onto. They are replaced by the ratchet for the behaviour the
+ * ruling actually wants locked, plus the half that deliberately survived.
  * ═══════════════════════════════════════════════════════════════════════ */
 
 // mode:'maintenance' + a future last_workout_iso keeps the plan_elapsed and
 // recovery-complete lifecycle sections silent, so only the goal-gap branch
-// under test can call the compromised guard or write a proposal.
+// under test can reach a proposal writer or the compromised guard.
 const GOAL_GAP_PLAN: PlanRow = {
   plan_id: 'plan-GG', race_id: 'cim-2026', race_date: '2026-12-06',
   goal_mode: null, mode: 'maintenance', authored_mode: null,
@@ -417,43 +445,70 @@ const WIDENING_GOAL_GAP = {
   weeksRemaining: 12, whatClosesIt: null, citation: null,
 };
 
-describe('4 · goal-gap · compromised runner suppresses the rebuild card', () => {
-  it('a compromised runner never sees the "rebuild to close the gap?" card', async () => {
-    compromised.mockResolvedValue({ compromised: true, reason: 'illness' });
+const UNCLOSABLE_GOAL_GAP = {
+  ...WIDENING_GOAL_GAP,
+  status: 'unclosable', consecutiveWideningDays: 0, consecutiveUnclosableDays: 6,
+};
+
+/** Every plan_proposals INSERT the pass issued, whatever its kind. */
+const proposalInserts = (): string[] =>
+  issued.filter((s) => s.sql.includes('INSERT INTO plan_proposals')).map((s) => s.sql);
+
+describe('4 · goal-gap · a widening projection may never re-author a block', () => {
+  it('RATCHET · a widening gap writes NO proposal of any kind', async () => {
     goalGap.mockResolvedValue(WIDENING_GOAL_GAP);
     setRouter(lifecycleRouter({ plan: GOAL_GAP_PLAN }));
     const body = await runCron();
 
+    // LIVENESS first (Rule 18 §2). Every assertion below is an absence, and
+    // an absence is also what a pass that never reached this branch produces.
+    // The gap must actually have been computed for this fixture.
+    expect(goalGap, 'the goal-gap branch was never reached · this test proves nothing')
+      .toHaveBeenCalled();
+
+    // Named, so a future re-introduction under the old name is caught...
     expect(sawInsert("'goal_gap_widening'")).toBe(0);
-    expect(fire).not.toHaveBeenCalled();
+    // ...and unnamed, so it cannot be reintroduced under a NEW kind either.
+    // That is the half the old test could not do: it only ever counted one
+    // string, so a renamed rebuild card would have walked straight past it.
+    expect(proposalInserts(), 'a widening projection raised a proposal again').toEqual([]);
+    expect(fire, 'a widening projection auto-authored a block').not.toHaveBeenCalled();
     expect(body.errors).toBe(0);
-    // Rule 16 (2026-08-25) · the suppression must still be legible in the
-    // cron's own report, not just silently skip the runner.
-    const results = body.results as Array<Record<string, unknown>>;
-    expect(results).toHaveLength(1);
-    expect(results[0].goal_gap_suppressed_compromised).toBe(1);
   });
 
-  it('the guard fails CLOSED · an unreadable state suppresses too, never surfaces the card', async () => {
-    compromised.mockRejectedValue(new Error('connection terminated'));
-    goalGap.mockResolvedValue(WIDENING_GOAL_GAP);
-    setRouter(lifecycleRouter({ plan: GOAL_GAP_PLAN }));
-    const body = await runCron();
-
-    expect(sawInsert("'goal_gap_widening'")).toBe(0);
-    expect(fire).not.toHaveBeenCalled();
-    expect(body.errors).toBe(0);
-    const results = body.results as Array<Record<string, unknown>>;
-    expect(results).toHaveLength(1);
-    expect(results[0].goal_gap_suppressed_compromised).toBe(1);
-  });
-
-  it('success path unchanged · a genuinely uncompromised runner still gets the card', async () => {
-    compromised.mockResolvedValue({ compromised: false });
+  it('the compromised guard is not consulted here any more · site 4 is retired', async () => {
+    // The fixture silences every other lifecycle branch, so the ONLY thing
+    // that could call the wrapper is the goal-gap branch. Nothing does.
+    // Stated as its own test rather than folded into the one above, because
+    // "no proposal was written" and "no authoring decision was even asked"
+    // are different facts and only the second one retires the call site.
     goalGap.mockResolvedValue(WIDENING_GOAL_GAP);
     setRouter(lifecycleRouter({ plan: GOAL_GAP_PLAN }));
     await runCron();
 
-    expect(sawInsert("'goal_gap_widening'")).toBe(1);
+    expect(goalGap).toHaveBeenCalled();
+    expect(compromised).not.toHaveBeenCalled();
+  });
+
+  it('OBSERVATION SURVIVES · an unclosable gap still writes its goal_outlook note', async () => {
+    // The other half of the ruling, and the reason this is a seal and not a
+    // deletion: the projection is unchanged and still surfaces. The note is
+    // observational — it states where the evidence puts the runner, keeps his
+    // stated goal on the board, and has nothing to accept (the accept is
+    // refused server-side, lib/plan/goal-immutability.ts). If this ever goes
+    // quiet, the app has stopped telling him something true rather than
+    // stopped acting without him.
+    goalGap.mockResolvedValue(UNCLOSABLE_GOAL_GAP);
+    shouldSurfaceOutlook.mockReturnValue(true);
+    writeOutlook.mockResolvedValue(true);
+    setRouter(lifecycleRouter({ plan: GOAL_GAP_PLAN }));
+    const body = await runCron();
+
+    expect(writeOutlook, 'the unclosable branch stopped writing its note').toHaveBeenCalled();
+    const results = body.results as Array<Record<string, unknown>>;
+    expect(results).toHaveLength(1);
+    expect(results[0].proposals_written).toBe(1);
+    // And it is still an OBSERVATION · no rebuild rode along with it.
+    expect(fire).not.toHaveBeenCalled();
   });
 });

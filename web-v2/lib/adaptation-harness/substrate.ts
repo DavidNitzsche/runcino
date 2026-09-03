@@ -26,7 +26,7 @@
  * ## What each world adds on top
  *
  * A named, minimal mutation — a missed session, a session run faster than
- * prescribed, a week of poor readiness. Every one is declared in
+ * prescribed, a week under-run against its prescription. Every one is declared in
  * `worlds.harness.test.ts` and applied through the functions below, so a reader
  * can see exactly what was synthesised and exactly what was real.
  *
@@ -295,20 +295,22 @@ export async function shiftRealBlockOntoToday(opts?: {
     // They already run right up to today — his watch has been syncing the
     // whole time — so sliding them forward and then dropping what landed in
     // the future would open a 35-day hole ending TODAY, which is precisely the
-    // window every readiness, convergence and cooldown reader depends on. And
-    // an absent readiness row does not read as "unknown" in
-    // `detectRampSignals`: `rowOrNull` returns undefined for no rows, streaks
-    // come back empty, and the gate grades the runner GREEN. The harness would
-    // then be manufacturing its own permission to add mileage out of a hole it
-    // dug — the Rule 11 collapse, committed by the test instead of the engine.
+    // window the convergence and cooldown display readers depend on.
+    //
+    // 2026-09-02 · this comment used to argue the hole in terms of
+    // `detectRampSignals` grading an absent readiness row GREEN. That gate is
+    // gone: the runner owns his readiness, and the ramp's first gate now reads
+    // ACWR off `runs`, which IS shifted with the block. The hole would still
+    // be wrong for the display readers, so the rows still stay put — but the
+    // Rule 11 argument now belongs to `_acwr_ramp_bound.test.ts`, where the
+    // refusal it describes is actually asserted.
     //
     // The consequence is stated rather than hidden: the biometric series is his
     // real recent one and the executed runs are his real ones from the
     // corresponding weeks of the block. Both are real; they are five weeks
     // apart in provenance. Nothing in the adaptation path joins a run to a
     // biometric sample by date, so this decouples nothing the engine reads
-    // together — and it is why the readiness scenarios below move the
-    // biometrics themselves rather than a derived snapshot.
+    // together.
     for (const hop of [10000 + offsetDays, -10000]) {
       await client.query(
         `UPDATE day_actions SET date_iso = to_char(date_iso::date + $2::int, 'YYYY-MM-DD')
@@ -503,78 +505,6 @@ export async function underRunWeek(fromISO: string, toISO: string, fraction: num
     [OWNER_UUID, fromISO, toISO, factor],
   );
   return r.rowCount ?? 0;
-}
-
-/**
- * Rewrite the last `days` of readiness snapshots to a given posture.
- *
- * `green` clears every dragging streak; `red` makes three domains drag for
- * four days, which is `CONVERGENCE.amberMinDomains` corroboration and then
- * some. The shape matches what `readiness-snapshot`'s own cron writes —
- * `streaks` is an array of `{pillar, direction, days}` — because that is what
- * `detectRampSignals` gate 1 and `gradeConvergence` both read.
- */
-export async function setReadiness(
-  posture: 'green' | 'red', days: number, todayISO: string,
-): Promise<number> {
-  const streaks = posture === 'green'
-    ? []
-    : [
-      { pillar: 'sleep', direction: 'below', days: 4 },
-      { pillar: 'hrv', direction: 'below', days: 4 },
-      { pillar: 'rhr', direction: 'below', days: 4 },
-    ];
-  const band = posture === 'green' ? 'ready' : 'hold';
-  const score = posture === 'green' ? 72 : 34;
-  const from = plusDays(todayISO, -(days - 1));
-  const r = await pool.query(
-    `UPDATE readiness_snapshots
-        SET streaks = $4::jsonb, band = $5, score = $6
-      WHERE user_uuid = $1::uuid AND snapshot_date BETWEEN $2::date AND $3::date`,
-    [OWNER_UUID, from, todayISO, JSON.stringify(streaks), band, score],
-  );
-  return r.rowCount ?? 0;
-}
-
-/**
- * Degrade the biometrics the convergence grader actually reads.
- *
- * `detectReadinessPullback` does NOT read `readiness_snapshots`. It calls
- * `gradeConvergence` over a series built by `loadConvergenceSeries`, which reads
- * raw `health_samples` — `hrv` and `resting_hr` by `recorded_at`, `sleep_hours`
- * by `sample_date`. A scenario that rewrote the derived snapshot would be posing
- * a readiness week the detector cannot see, and would then have "proved" that
- * poor readiness produces no response, when the truth is that no poor readiness
- * had been posed. That is exactly the class of false confidence this harness
- * exists to remove, so it must not commit it itself.
- *
- * This moves the readings themselves, over the runner's own values: RHR up 12%,
- * HRV down 28%, sleep down 30%, across the last `days` days. `plewsSeries`
- * measures against a 60-day rolling baseline built from his untouched earlier
- * readings, so the excursion is real relative to his own normal.
- *
- * Returns the number of readings moved. Zero means the scenario was not posed,
- * and the harness says so rather than asserting against it.
- */
-export async function degradeReadinessSignals(days: number, todayISO: string): Promise<number> {
-  const from = plusDays(todayISO, -(days - 1));
-  const a = await pool.query(
-    `UPDATE health_samples SET value = CASE
-         WHEN sample_type = 'resting_hr' THEN value * 1.12
-         ELSE value * 0.72 END
-      WHERE COALESCE(user_uuid, user_id) = $1::uuid
-        AND sample_type IN ('resting_hr', 'hrv')
-        AND recorded_at >= $2::date AND recorded_at < ($3::date + 1)`,
-    [OWNER_UUID, from, todayISO],
-  );
-  const b = await pool.query(
-    `UPDATE health_samples SET value = value * 0.70
-      WHERE COALESCE(user_uuid, user_id) = $1::uuid
-        AND sample_type = 'sleep_hours'
-        AND sample_date BETWEEN $2::date AND $3::date`,
-    [OWNER_UUID, from, todayISO],
-  );
-  return (a.rowCount ?? 0) + (b.rowCount ?? 0);
 }
 
 /**

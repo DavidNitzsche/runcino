@@ -2,9 +2,23 @@
  * POST /api/cron/run-adaptations  (P38)
  *
  * Daily adaptation pass — detects triggers (training gap, missed key
- * workout, readiness pullback, volume overshoot, niggle/sick/injury,
- * PR bank, goal change) and applies actions to plan_workouts.
+ * workout, volume overshoot, PR bank, goal change, field test, progression
+ * gate, fitness regression, training lead) and routes them.
  * Idempotent.
+ *
+ * ── 2026-09-02 · THIS JOB NO LONGER CHANGES THE PLAN ─────────────────────
+ *
+ * It detects, it proposes, and it records. It does not apply. Every
+ * plan-mutating action goes through `sealAutomaticActions`
+ * (lib/plan/adaptation-authority.ts — THE ONE SEAM, default off) and comes
+ * out either as a card the runner accepts or as a record-only
+ * `coach_intents` note. `applyAdaptations` is still called, with a
+ * note-only batch, because it is the canonical intent writer; with no
+ * plan-mutating action in the batch it performs no plan write.
+ *
+ * The header below still describes the apply-now / propose-first split as
+ * it was. It is kept because the reasoning is the history of how the lane
+ * was narrowed — but read it as archaeology: the apply-now lane is closed.
  *
  * Auth: CRON_SECRET.
  *
@@ -37,7 +51,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
-import { detectAdaptations, applyAdaptations, partitionActionsForCron, reducesLoad, PROPOSE_FIRST_TRIGGERS } from '@/lib/plan/adapt';
+import { detectAdaptations, applyAdaptations, reducesLoad, PROPOSE_FIRST_TRIGGERS } from '@/lib/plan/adapt';
+import { sealAutomaticActions, ADAPTATION_SEAM_ID } from '@/lib/plan/adaptation-authority';
 import { tryAdaptiveBump } from '@/lib/plan/adaptive-ramp';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
@@ -68,6 +83,12 @@ export async function POST(req: NextRequest) {
 
   const results: Array<{
     user_id: string; triggers: number; applied: number; proposed: number;
+    /** 2026-09-02 · plan-mutating actions the adaptation seam refused and
+     *  recorded as observational notes instead. Reported per runner because
+     *  "the engine judged something and was not allowed to act" is a fact the
+     *  operator needs, and a silent zero would read the same as "the engine
+     *  judged nothing" (Rule 11). */
+    sealed_recorded?: number;
     /** 2026-08-24 · a session-moved push was enqueued for this runner because
      *  the day they wake into genuinely reads differently after the pass. */
     session_moved?: boolean;
@@ -185,10 +206,50 @@ export async function POST(req: NextRequest) {
       // downgrades into mislabeled readiness proposals that expired unseen
       // (live twice: Jul 1 + Jul 6 on David's plan). Partition on each
       // action's OWN sourceTrigger tag instead.
+      //
+      // ── 2026-09-02 · THE AUTOMATIC LANE IS SEALED ────────────────────────
+      //
+      // Everything above this line is the history of how the apply-now lane
+      // was narrowed, one ruling at a time. It is now CLOSED, and by a single
+      // switch rather than another rule about which trigger may do what.
+      //
+      // The owner: "too many independent levers can soften, reshape, re-phase,
+      // refuse, or automatically mutate the plan." So no scheduled job changes
+      // the live plan any more. `sealAutomaticActions`
+      // (lib/plan/adaptation-authority.ts) is THE ONE SEAM, default off, and
+      // it splits this pass three ways:
+      //
+      //   · apply    — RECORD-ONLY `note` actions. These write a coach_intents
+      //                row and touch no plan row, so they are OBSERVATIONAL,
+      //                which is the one thing the ruling explicitly allows to
+      //                continue. `applyAdaptations` is still the writer
+      //                because it is the canonical intent-logging path; with a
+      //                note-only batch it performs no plan write at all.
+      //   · propose  — the runner's card. Unchanged in kind from before; it
+      //                now also carries the plan-mutating actions that used to
+      //                apply unattended. Nothing lands until he taps accept.
+      //   · recorded — actions the seam refused that CANNOT be proposed
+      //                (no workoutIds for a card to point at: recompute_paces,
+      //                mark_dirty, reshape, mark_upgrade). Converted to notes
+      //                rather than dropped, under a DISTINCT intent reason
+      //                (`plan_adapt_sealed`) so no downstream guard mistakes a
+      //                refusal for work done — see that file's Rule 11 note
+      //                about pace-anchor.ts's 24h deferral.
+      //
       let applied = 0;
       let proposed = 0;
+      let sealedRecorded = 0;
       {
-        const { applyNow, proposeFirst } = partitionActionsForCron(actions);
+        const { apply: applyNow, propose: proposeFirst, recorded } =
+          sealAutomaticActions(actions);
+        sealedRecorded = recorded.length;
+        if (recorded.length > 0) {
+          console.log(
+            `[run-adaptations] ${ADAPTATION_SEAM_ID} refused ${recorded.length} `
+            + `plan-mutating action(s) for ${uid.slice(0, 8)} · recorded as notes: `
+            + recorded.map((a) => String(a.noteValue?.sealed_kind ?? '?')).join(', '),
+          );
+        }
 
         // 2026-08-24 · SESSION MOVED · the sender `renderSessionMoved` never
         // had. Photograph the day the runner wakes into, on BOTH sides of the
@@ -223,7 +284,19 @@ export async function POST(req: NextRequest) {
 
         // The propose-first portion (if any) still gets proposed.
         if (proposeFirst.length > 0) {
-          const proposeTriggers = triggers.filter((t) => PROPOSE_FIRST_TRIGGERS.has(t.kind));
+          // 2026-09-02 · the propose lane is no longer exactly the
+          // propose-first TRIGGERS: the seam pushes plan-mutating actions
+          // into it from triggers that used to apply unattended (a
+          // training_gap reschedule, for one). `writeWorkoutProposals` looks
+          // up each action's own `sourceTrigger` for the card copy and falls
+          // back to `triggers[0]`, so handing it only the propose-first
+          // triggers would label a gap reschedule with an unrelated reason.
+          // Pass every trigger that actually produced something in this lane,
+          // plus the propose-first set so the fallback stays sane.
+          const laneKinds = new Set(proposeFirst.map((a) => a.sourceTrigger));
+          const proposeTriggers = triggers.filter(
+            (t) => laneKinds.has(t.kind) || PROPOSE_FIRST_TRIGGERS.has(t.kind),
+          );
           const { writeWorkoutProposals } = await import('@/lib/plan/workout-proposals');
           proposed = await writeWorkoutProposals(uid, proposeFirst, proposeTriggers);
         }
@@ -282,7 +355,10 @@ export async function POST(req: NextRequest) {
           [uid],
         );
       }
-      results.push({ user_id: uid, triggers: triggers.length, applied, proposed, session_moved: sessionMoved });
+      results.push({
+        user_id: uid, triggers: triggers.length, applied, proposed,
+        sealed_recorded: sealedRecorded, session_moved: sessionMoved,
+      });
     } catch (e: any) {
       results.push({ user_id: uid, triggers: 0, applied: 0, proposed: 0, error: e?.message ?? String(e) });
       await raiseAlert({
@@ -295,11 +371,13 @@ export async function POST(req: NextRequest) {
   }
   const totalApplied = results.reduce((a, r) => a + r.applied, 0);
   const totalProposed = results.reduce((a, r) => a + r.proposed, 0);
+  const totalSealed = results.reduce((a, r) => a + (r.sealed_recorded ?? 0), 0);
   // 2026-08-30 · scheduler ledger (lib/ops/cron-ledger.ts). Stamped by the
   // ROUTE, not by whatever triggered it, so the GitHub workflow and the
   // in-process tick dedupe against each other instead of both firing this pass.
   await recordCronSuccess('run-adaptations', {
     users: userIds.length, applied: totalApplied, proposed: totalProposed,
+    sealed_recorded: totalSealed,
     errors: results.filter((r) => r.error).length,
   });
   return NextResponse.json({
@@ -307,6 +385,8 @@ export async function POST(req: NextRequest) {
     users: userIds.length,
     total_applied: totalApplied,
     total_proposed: totalProposed,
+    total_sealed_recorded: totalSealed,
+    adaptation_seam: { id: ADAPTATION_SEAM_ID, open: false },
     results,
     timestamp: new Date().toISOString(),
   });

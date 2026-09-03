@@ -36,7 +36,7 @@ import { layerOne } from '@/lib/faff/explanation';
 import {
   resolveCoachingThesis, coachSafeSessionName, wireThesis,
 } from '@/lib/training/coaching-thesis';
-import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
@@ -170,24 +170,6 @@ function titleCase(s: string | null | undefined): string | null {
   if (!s || !s.trim()) return null;
   const t = s.trim().toLowerCase();
   return t.charAt(0).toUpperCase() + t.slice(1);
-}
-
-/** "3:12 AM" in the runner's own timezone, or "overnight" when we cannot read
- *  one.
- *
- *  RULE ONE. The fallback used to be a literal `'America/Los_Angeles'`, which
- *  is a fabricated reading dressed as a precise one: a runner in London whose
- *  timezone read failed was told their session changed at 3:12 AM when it was
- *  11:12 AM where they were standing, and nothing on the panel hinted the
- *  clock was a guess. `V5Convergence.updatedAt` is a bare string with no
- *  provenance field, so there is no mark available to soften it with — which
- *  leaves saying less. "Updated overnight" is true in every timezone. */
-async function formatLocalClock(userId: string, ts: string): Promise<string> {
-  const tz = await runnerTimezone(userId).catch(() => null);
-  if (!tz) return 'overnight';
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz,
-  }).format(new Date(ts));
 }
 
 /** Cumulative elevation profile from per-mile split deltas. Splits carry the
@@ -1686,48 +1668,17 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // ── Convergence check (Gap B3/B4) — did last night's 03:00 pass
-  // downgrade today's session? ─────────────────────────────────────────
-  let convergence: V5TodayContext['convergence'] = null;
-  if (todayPlan?.originalType && glanceToday?.plannedId) {
-    const intentRow = (await pool.query<{ value: any; ts: string }>(
-      `SELECT value, ts::text AS ts FROM coach_intents
-        WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'plan_adapt_downgrade'
-          AND field = $2
-        ORDER BY ts DESC LIMIT 1`,
-      [userId, glanceToday.plannedId],
-    ).catch(() => ({ rows: [] as any[] }))).rows[0];
-    let payload: any = intentRow?.value ?? null;
-    if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { payload = null; } }
-    if (payload?.convergence) {
-      const updatedAt = intentRow ? await formatLocalClock(userId, intentRow.ts) : '';
-      const readings: Record<string, { value: string; baseline: string }> = {};
-      const evidence = payload.convergence;
-      if (glance.sleep7Avg != null) {
-        readings.sleep = { value: `${glance.sleep7Avg.toFixed(1)}h`, baseline: 'Your 7-day median' };
-      }
-      if (glance.hrvCurrent != null && glance.hrvBaseline != null) {
-        readings.autonomic = { value: `${glance.hrvCurrent} ms`, baseline: `Your baseline is ${glance.hrvBaseline} ms` };
-      }
-      if (glance.rhrCurrent != null && glance.rhrBaseline != null) {
-        readings.cardiac = { value: `${glance.rhrCurrent}`, baseline: `Your baseline is ${glance.rhrBaseline}, 3-day average` };
-      }
-      if (glance.loadAcwr != null) {
-        readings.load = { value: glance.loadAcwr.toFixed(2), baseline: 'Your usual acute:chronic ratio' };
-      }
-      readings.subjective = { value: 'Reported', baseline: 'Yesterday, planned easy' };
-      convergence = {
-        updatedAt,
-        // "was Threshold", coach-voice title case — never the raw, shouty
-        // sub_label ("THRESHOLD") the row happens to store.
-        wasType: titleCase(todayPlan.originalSubLabel ?? todayPlan.originalType),
-        wasSubLabel: todayPlan.originalSubLabel,
-        verdict: evidence,
-        readings,
-        coachLine: String(payload.why ?? ''),
-      };
-    }
-  }
+  /* 2026-09-02 · THE CONVERGENCE CHECK STOOD HERE, AND IT COULD ONLY EVER
+   * HAVE READ NULL.
+   *
+   * It looked for a `plan_adapt_downgrade` intent carrying a `convergence`
+   * payload, and composed the `changed_overnight` screen from it. Two separate
+   * reasons it is gone rather than merely dormant: readiness no longer
+   * downgrades anything, and `writeIntent` no longer records a `convergence`
+   * object on any intent row. So the predicate had become unfalsifiable — the
+   * exact shape where a removed input silently switches a surface off and
+   * leaves code that reads as live (Rule 11, Rule 20's corollary).
+   */
 
   // ── Before-run panel: prescription, groups, dose, stats ────────────────
   /* SECOND-OWNER-1 (2026-09-02) · THE CANONICAL ANCHORS, NOT THE TYPED GOAL.
@@ -2125,7 +2076,6 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   ctx.beforeYouGo = beforeYouGo;
   ctx.raceDay = raceDay;
   ctx.contingency = contingency;
-  ctx.convergence = convergence;
   ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
   ctx.blockNote = await loadBlockNote(userId);
 
@@ -2152,7 +2102,7 @@ function emptyContext(todayISO: string, raceMode: boolean, isSteppedDay = false)
     todayPlan: null, weekLine: null, phaseLine: null, weekStripDays: [],
     prescription: null, weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null, why: null,
     whereYouAre: [], beforeYouGo: [], raceDay: false, contingency: null, recentRun: null,
-    weekOff: null, offSeason: null, injury: null, convergence: null,
+    weekOff: null, offSeason: null, injury: null,
     paceNote: null, blockNote: null, sick: null,
   };
 }

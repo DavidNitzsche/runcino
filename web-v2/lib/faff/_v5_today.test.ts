@@ -2,12 +2,11 @@
  * lib/faff/_v5_today.test.ts — one case per `V5Today.state`, against the
  * pure composer (`composeV5Today`). No DB, no network — every input is a
  * hand-built `V5TodayContext`, so this locks the composer's own logic
- * (state precedence, Rule 1's modelled:false stamping, Rule 2's ≥3-domain
- * gate, Rule 3's refusal shapes) independent of whatever the route's DB
- * orchestration does.
+ * (state precedence, Rule 1's modelled:false stamping, Rule 3's refusal
+ * shapes) independent of whatever the route's DB orchestration does.
  */
 import { describe, it, expect } from 'vitest';
-import { composeV5Today, type V5TodayContext, type V5ConvergenceCtx } from './v5-today';
+import { composeV5Today, type V5TodayContext } from './v5-today';
 
 const TODAY = '2026-08-19';
 
@@ -38,7 +37,6 @@ function baseCtx(overrides: Partial<V5TodayContext> = {}): V5TodayContext {
     offSeason: null,
     injury: null,
     sick: null,
-    convergence: null,
     ...overrides,
   };
 }
@@ -279,64 +277,6 @@ describe('composeV5Today · state precedence', () => {
     expect(byId.warmup.isWork).toBe(false);
     expect(byId.work.isWork).toBe(true);
     expect(byId.cooldown.isWork).toBe(false);
-  });
-
-  it('changed_overnight · fires only when THREE domains converged (Rule 2)', () => {
-    const convergence: V5ConvergenceCtx = {
-      updatedAt: '3:12 AM', wasType: 'Threshold', wasSubLabel: 'THRESHOLD',
-      verdict: {
-        grade: 'red',
-        converging: ['sleep', 'autonomic', 'cardiac'],
-        domains: [
-          { domain: 'sleep', dragging: true, daysSustained: 3, suppressedBy: null, counts: true },
-          { domain: 'autonomic', dragging: true, daysSustained: 4, suppressedBy: null, counts: true },
-          { domain: 'cardiac', dragging: true, daysSustained: 2, suppressedBy: null, counts: true },
-        ],
-        rationale: '3 converging: sleep, autonomic, cardiac',
-      },
-      readings: {
-        sleep: { value: '5h 40m', baseline: 'Your baseline is 7h 10m' },
-        autonomic: { value: '52 ms', baseline: 'Your baseline is 68 ms' },
-        cardiac: { value: '54', baseline: 'Your baseline is 48' },
-      },
-      coachLine: 'Three short nights, four days of low HRV and a resting heart rate above your usual. Today is easy running instead. The threshold session comes back when the numbers do.',
-    };
-    const out = composeV5Today(baseCtx({
-      todayPlan: { type: 'easy', subLabel: null, distanceMi: 5, originalType: 'threshold', originalSubLabel: 'THRESHOLD' },
-      convergence,
-    }));
-    expect(out.state).toBe('changed_overnight');
-    expect(out.changed?.converged).toHaveLength(3);
-    expect(out.changed?.movedTo).toBeNull(); // never invents a destination
-    expect(out.changed?.coachLine).toMatch(/Three short nights/);
-    expect(out.panel.dayState).toBe('rest'); // rest-hue gradient, per 17a
-  });
-
-  it('changed_overnight · omits `changed` entirely below three domains', () => {
-    const convergence: V5ConvergenceCtx = {
-      updatedAt: '3:12 AM', wasType: null, wasSubLabel: null,
-      verdict: {
-        grade: 'amber',
-        converging: ['sleep', 'cardiac'],
-        domains: [
-          { domain: 'sleep', dragging: true, daysSustained: 3, suppressedBy: null, counts: true },
-          { domain: 'cardiac', dragging: true, daysSustained: 2, suppressedBy: null, counts: true },
-        ],
-        rationale: '2 converging: sleep, cardiac',
-      },
-      readings: {},
-      coachLine: 'Three short nights and a resting heart rate above your usual. Today stands as written.',
-    };
-    const out = composeV5Today(baseCtx({
-      todayPlan: { type: 'threshold', subLabel: 'THRESHOLD', distanceMi: 8, originalType: null, originalSubLabel: null },
-      convergence,
-    }));
-    // Amber never touches the plan (adapt.ts) — no `original_type` would be
-    // set in practice, but even if a convergence payload showed up with <3
-    // domains, the composer itself refuses to tell the story (Rule 2,
-    // enforced at the point the payload is built, not just trusted upstream).
-    expect(out.changed).toBeNull();
-    expect(out.state).toBe('before_run');
   });
 
   it('race_day · uses the race gradient and the normal before-run shape', () => {

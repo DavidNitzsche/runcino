@@ -31,9 +31,31 @@
 import type { DriftKind } from './drift-monitor';
 import type { AutoRebuildKind } from './auto-rebuild';
 
-/** Every kind the nightly soft-drift writer can stamp on a proposal
- *  row. Must cover detectDrift's emit set minus goal_gap_widening
- *  (which has its own dedupe in the cron's goal-gap block). */
+/**
+ * ── 2026-09-02 · THE SOFT-DRIFT WRITER IS GONE ──────────────────────────
+ *
+ * `app/api/cron/plan-drift/route.ts` no longer writes a proposal for any
+ * drift kind. Soft drift and the goal-gap widening trend are TRANSIENT
+ * READINGS, and the owner's ruling removed their authority to re-phase a
+ * block: "too many independent levers can soften, reshape, re-phase,
+ * refuse, or automatically mutate the plan."
+ *
+ * `SOFT_DRIFT_PROPOSAL_KINDS` and `driftProposalKind` therefore describe
+ * something that no longer happens. They are kept, not deleted, for one
+ * reason and it is not sentiment: `RETIRED_REBUILD_PROPOSAL_KINDS` below is
+ * derived from them, and that list is what stops a `plan_proposals` row
+ * written BEFORE the seal — a pending card still sitting in the runner's
+ * account tonight — from re-authoring his block when he taps it. The set
+ * has to stay accurate for that refusal to be complete.
+ *
+ * `suppressDriftNearRace` is NOT retired: `lib/plan/replan-scenarios.ts`
+ * and `app/api/race/route.ts` both still call it on runner-initiated paths.
+ */
+
+/** Every kind the nightly soft-drift writer COULD stamp on a proposal row,
+ *  before the writer was deleted. Covered detectDrift's emit set minus
+ *  goal_gap_widening (which had its own dedupe in the cron's goal-gap
+ *  block). Now read only as the retired-kinds source below. */
 export const SOFT_DRIFT_PROPOSAL_KINDS = [
   'volume_drift',
   'vdot_drift',
@@ -48,6 +70,36 @@ export const SOFT_DRIFT_PROPOSAL_KINDS = [
  *  AutoRebuildKind) plus the tests lock the honesty. */
 export function driftProposalKind(kind: DriftKind): AutoRebuildKind {
   return kind;
+}
+
+/**
+ * Proposal kinds whose ACCEPT used to re-author the runner's block off a
+ * transient reading, and that nothing writes any more.
+ *
+ * This is the other half of the 2026-09-02 seal, and without it the seal
+ * leaks. Deleting the writer stops NEW cards; it does nothing about a
+ * `plan_proposals` row already sitting at `status = 'pending'` in a live
+ * account. `POST /api/plan/proposal` resolves the underlying race and calls
+ * `generatePlan` for any kind it does not special-case, so a stale
+ * `long_drift` card from last week would still rebuild his block tonight —
+ * the exact lever the ruling removed, arriving one tap late.
+ *
+ * A retired kind is REFUSED on accept and left visible. Not silently
+ * dismissed: the runner tapped a button and is owed an answer, and an
+ * operator reading the table is owed the row.
+ *
+ * Ratchet, in the honest direction: a kind may be ADDED here when its
+ * writer is deleted, and may only be REMOVED when the kind itself is gone
+ * from `AutoRebuildKind`. If a future change re-introduces a writer for one
+ * of these, that writer has to take the kind off this list, which is a
+ * visible act rather than an omission.
+ */
+export const RETIRED_REBUILD_PROPOSAL_KINDS: ReadonlySet<string> =
+  new Set<string>([...SOFT_DRIFT_PROPOSAL_KINDS, 'goal_gap_widening']);
+
+/** Is this a proposal kind whose rebuild authority was retired? */
+export function isRetiredRebuildProposalKind(kind: string | null | undefined): boolean {
+  return kind != null && RETIRED_REBUILD_PROPOSAL_KINDS.has(kind);
 }
 
 /** Days from todayISO to raceDateISO (negative when past). */

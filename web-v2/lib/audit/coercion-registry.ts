@@ -114,16 +114,16 @@ export const COERCION_ARGUED: readonly CoercionExemption[] = [
     reason: 'as above — no rows means no plan weeks in the window. The measured-zero case (weeks present, all at zero) is carried separately by distinctEvidenceWeeks, which was fixed this pass to report it rather than erase it.',
   },
   {
-    id: 'lib/adaptation/load.ts::loadAdaptationInput::readinessTotal',
-    reason: 'readinessTotal is the COUNT OF ROWS in the readiness window, so zero rows is an absence by construction and cannot be a measurement; it also guards the `readiness!` non-null assertion on the same line, and removing it would introduce a crash to fix a distinction that does not exist.',
-  },
-  {
     id: 'lib/adaptation/load.ts::filterExecutionEvidenceByPrescribedWindow::executions.length',
     reason: 'ABSORPTION-SPLIT-1 (2026-09-01) · this is `loadAdaptationInput::executions.length` split out into its own pure function so the Rule 8 fork is falsifiable without a database — same source rows, same filter shape, same argument: the upstream filter already drops every unreadable session, so an empty result here means no key session in the (Rule-8-filtered, representativeLookback-widened) window could be DESCRIBED, never that the runner failed one. Passing it as a measured zero would put a fabricated judgement into the execution dimension that gates progression — the exact defect PRODUCT_DECISIONS.md 2026-09-01 §1 names. Arguing this differently from the unfiltered twin would be the fork Rule 16 forbids.',
   },
   {
     id: 'lib/adaptation/load.ts::filterExecutionEvidenceByPrescribedWindow::verdicts.length',
     reason: 'ABSORPTION-SPLIT-1 (2026-09-01) · the filtered twin of `loadAdaptationInput::verdicts.length`, same consumer (`readInternalCost` opens with `if (input.targetVerdicts && input.targetVerdicts.length > 0)`), so an empty array and null reach identical code and no branch can tell them apart — filtering by the prescribed window does not change that fact, only which dates survive to be tested.',
+  },
+  {
+    id: 'lib/plan/adaptive-ramp.ts::detectRampSignals::catch',
+    reason: 'RUNNER-OWNS-READINESS (2026-09-02) · `computeAcwr(userId, today).catch(() => null)`, the structural replacement for the deleted readiness gate. The scanner is right that a failure collapses into one value here, and the very next four lines split it back apart before anything reads it: `acwrReadFailed` is derived FROM the null, so a thrown read becomes `acwrAbsentReason: \'read_failed\'` while an honestly-uncomputable ratio keeps `computeAcwr`\'s own reason (insufficient_coverage / insufficient_runs / no_chronic_load), and both are distinguishable in the details object, the intent why-line and the audit. The three states therefore do NOT lead to the same outcome by accident — they lead to the same DECISION on purpose (no bump), which is the fail-closed posture the gate they replaced also had, and they stay separately reportable. Argued rather than fixed because the alternative — naming the fallback so the regex cannot see it — is dodging the classifier, which this file forbids. `_acwr_ramp_bound.test.ts` asserts the two refusal reasons stay distinct.',
   },
   {
     id: 'lib/plan/generate.ts::loadGeneratorInputs::horizonRaces.length',
@@ -154,7 +154,7 @@ export const COERCION_ARGUED: readonly CoercionExemption[] = [
     reason: 'identical contract and identical consumer to loadPlanEasyDayMedian — declared `number | null`, and the caller requires both before computing drift.',
   },
   {
-    id: 'lib/plan/injury-builder.ts::buildInjuryPlan::catch',
+    id: 'lib/plan/injury-builder.ts::buildInjuryPlanBody::catch',
     reason: 'the null path lands on MAX_ACTIVE_DAYS_PER_WEEK, which this file documents as the CONSERVATIVE reading of Research/05 ("at least two full rest days a week while a runner is hurt") rather than a permissive ceiling, so a failed read, an absent row and a NULL column all reach the doctrine default and a stated frequency below it still wins.',
   },
   {
@@ -276,9 +276,9 @@ export const HANDED_BACK: readonly HandedBack[] = [
     id: 'lib/plan/adapt.ts::runnerIsCompromised::catch',
     owner: 'Adaptation Engine · lib/plan/adapt.ts. The four EXTERNAL call sites were '
       + 'reconciled 2026-08-31 (runnerIsCompromisedFailClosed); this is the INTERNAL half '
-      + 'and needs the five detectors to return a refusal rather than a false, which is a '
-      + 'signature change across all five.',
-    reason: 'PERMISSIVE · five detector calls each `.catch(() => null | false)` — detectTrainingGap, hasRecentGapIntent, detectSickEpisodeActive, detectInjuryActive, detectNiggleReported. Any ONE failing reads as "not compromised" internally, before the function itself ever gets a chance to reject — so `runnerIsCompromised` currently cannot reject at all, and a database blip during any one of these five reads is silently absorbed into a clean `{compromised:false}` rather than surfacing as a failure. Still open; still this session\'s to route. NOT the same bug as the four EXTERNAL call sites disagreeing about what to do if the whole function ever DID reject — that was fixed 2026-08-31 via the exported `runnerIsCompromisedFailClosed` wrapper (all four call sites now agree, fail closed), and is a distinct, narrower fix that does nothing for the internal permissiveness recorded here.',
+      + 'and needs the two surviving detectors to return a refusal rather than a false, '
+      + 'which is a signature change across both.',
+    reason: 'PERMISSIVE · TWO detector calls each `.catch(() => null | false)` — detectTrainingGap and hasRecentGapIntent. Either failing reads as "not compromised" internally, before the function itself ever gets a chance to reject — so `runnerIsCompromised` still cannot reject at all, and a database blip during either read is silently absorbed into a clean `{compromised:false}` rather than surfacing as a failure. NARROWED 2026-09-02 (RUNNER-OWNS-READINESS): this reason used to enumerate FIVE calls, the other three being detectSickEpisodeActive, detectInjuryActive and detectNiggleReported. Those detectors are deleted — illness, injury and a reported niggle no longer influence any training decision — so the function now reads the training-gap detectors only and `gap_reentry` is its single reason. The finding is NARROWER, not fixed: the two survivors have the same shape and the same consequence, and the fix is still the signature change that makes them return a refusal rather than a false. NOT the same bug as the four EXTERNAL call sites disagreeing about what to do if the whole function ever DID reject — that was fixed 2026-08-31 via the exported `runnerIsCompromisedFailClosed` wrapper (all four call sites now agree, fail closed), and is a distinct, narrower fix that does nothing for the internal permissiveness recorded here.',
   },
   {
     id: 'lib/coach/readiness.ts::scoreReadiness::pillars',
@@ -561,7 +561,12 @@ export const HANDED_BACK_FAILS = false;
 // query is deleted; it delegates to `resolveCurrentVdotSnapshot`, so its
 // `row?.vdot ?? null` collapse over a `.catch(() => ({ rows: [] }))` went with
 // it. The site did not move buckets — the read it collapsed no longer exists.
-export const PERIPHERAL_BASELINE = 178;
+//
+// 2026-09-02 · RUNNER-OWNS-READINESS · 178 → 177. One peripheral collapse left
+// the tree with the readiness, illness, injury and niggle reads that no longer
+// influence training. Taken from the scanner's own count, not from arithmetic
+// on the diff.
+export const PERIPHERAL_BASELINE = 177;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
@@ -636,8 +641,6 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/adaptation/load.ts::loadAdaptationInput::decouplingVerdicts.length',
   'lib/adaptation/load.ts::loadAdaptationInput::executions.length',
   'lib/adaptation/load.ts::loadAdaptationInput::lateDriftBpm.length',
-  'lib/adaptation/load.ts::loadAdaptationInput::readinessTotal',
-  'lib/adaptation/load.ts::loadAdaptationInput::readinessTotal',
   'lib/adaptation/load.ts::loadAdaptationInput::verdicts.length',
   'lib/adaptation/load.ts::loadAdaptationInput::weeklyActualMi.length',
   'lib/adaptation/load.ts::loadAdaptationInput::weeklyPlannedMi.length',
@@ -690,12 +693,23 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/coach/strength-recommender.ts::emitStrengthSkipIntent::catch',
   'lib/coach/training-form.ts::computeTrainingForm::catch',
   'lib/coach/voice-band.ts::countSubjectiveObjectiveMismatchDays::catch',
+  // 2026-09-02 · RUNNER-OWNS-READINESS · an ARGUED ADDITION, the third this
+  // list has taken, and the same shape as the other two. The readiness gate in
+  // `detectRampSignals` is replaced by an ACWR read, and that read's
+  // `.catch(() => null)` is exactly what this scanner watches for. It is named
+  // here rather than hidden from the regex, and its argument is in
+  // COERCION_ARGUED: the null is split back into `read_failed` versus
+  // `computeAcwr`'s own absent-reason on the next line, so the three states
+  // stay separately reportable while deliberately producing one decision (no
+  // bump). Deleting the readiness gate WITHOUT this replacement would have
+  // made the upward ramp strictly more permissive, which is the Rule 11
+  // failure in its worst direction.
+  'lib/plan/adaptive-ramp.ts::detectRampSignals::catch',
   'lib/plan/adapt.ts::actionsForTrigger::weeklyAvgFromWindow',
   'lib/plan/adapt.ts::applyAdaptations::catch',
   'lib/plan/adapt.ts::detectFitnessRegression::catch',
   'lib/plan/adapt.ts::detectPrBank::catch',
   'lib/plan/adapt.ts::detectProgressionGate::catch',
-  'lib/plan/adapt.ts::detectReadinessPullback::catch',
   'lib/plan/adapt.ts::detectTrainingLead::catch',
   // 2026-09-01 · 2 → 1. `observableCoverageDays(...).catch(() => 0)` is fixed:
   // the handler now observes the error, logs a structured refusal, and returns
@@ -705,9 +719,14 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/adapt.ts::detectVolumeOvershoot::catch',
   'lib/plan/adapt.ts::detectVolumeOvershoot::weeklyAvgFromWindow',
   'lib/plan/adapt.ts::rebuildWorkoutDerivations::catch',
-  'lib/plan/adapt.ts::runnerIsCompromised::catch',
-  'lib/plan/adapt.ts::runnerIsCompromised::catch',
-  'lib/plan/adapt.ts::runnerIsCompromised::catch',
+  // 2026-09-02 · RUNNER-OWNS-READINESS · 5 → 2. `runnerIsCompromised` used to
+  // call five detectors, each with its own blind `.catch`. Three of them —
+  // detectSickEpisodeActive, detectInjuryActive, detectNiggleReported — are
+  // deleted with the rest of readiness/illness/injury/niggle influence over
+  // training, and their catches went with them. The two that remain are
+  // detectTrainingGap and hasRecentGapIntent, and they are unfixed: see this
+  // file's HANDED_BACK entry, whose reason was narrowed in the same change
+  // rather than left enumerating five calls that no longer exist.
   'lib/plan/adapt.ts::runnerIsCompromised::catch',
   'lib/plan/adapt.ts::runnerIsCompromised::catch',
   // 2026-08-31 · NOT PERMISSIVE, unlike the five above. This is
@@ -747,8 +766,15 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/goal-gap.ts::loadGoalAssessment::catch',
   'lib/plan/history-shapes.ts::inflatedQualityPerWeek::v',
   'lib/plan/history-shapes.ts::renderHistory::easyMedianOf',
-  'lib/plan/injury-builder.ts::buildInjuryPlan::catch',
-  'lib/plan/injury-builder.ts::buildInjuryPlan::catch',
+  // 2026-09-02 · SEAL · RENAMED, not fixed. `INJURY_RETURN_MODE` made
+  // `buildInjuryPlan` refuse unconditionally and moved its body to
+  // `buildInjuryPlanBody`, taking both collapses with it. Two ids out, two in,
+  // and the COERCION_ARGUED entry above re-points with them — its argument is
+  // about where the null path LANDS (the doctrine rest-day default), which the
+  // rename did not move. Sealed is not deleted: re-opening the seam re-opens
+  // these, so they stay named rather than being dropped as unreachable.
+  'lib/plan/injury-builder.ts::buildInjuryPlanBody::catch',
+  'lib/plan/injury-builder.ts::buildInjuryPlanBody::catch',
   'lib/plan/mutate.ts::num::n',
   'lib/plan/plan-delta.ts::longRunIn::max',
   'lib/plan/progression-spec.ts::readSelectionRationale::v.trim().length',

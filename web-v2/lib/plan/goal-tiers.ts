@@ -1036,7 +1036,7 @@ function tierFromPace(paceSec: number, cat: DistCategory): GoalTier {
 }
 
 /**
- * COLD-1 (2026-08-17) · the tier ceiling an UNSTATED experience level earns.
+ * COLD-1 (2026-08-17) · the tier floor an UNSTATED experience level earns.
  *
  * `profile.experience_level` is NULL for real production accounts, and the
  * clamp below used to pass NULL straight through — so a goal TIME somebody
@@ -1045,13 +1045,17 @@ function tierFromPace(paceSec: number, cat: DistCategory): GoalTier {
  * runs, ramped from a self-reported 30 mi/wk over 13 weeks. Nothing in that
  * chain was demonstrated.
  *
- * `intermediate` was unclamped for the same reason and could reach `elite`.
- *
  * Per Design/adaptive-progression-engine.md ("Fitness must be demonstrated")
- * an unstated level is unknown capacity, not permission. It is capped here,
- * and lifted only by `demonstratedPaceSec` — an equivalent race pace the
- * caller derived from a MEASURED VDOT (races / qualifying runs), never from
- * mileage self-report or from the goal.
+ * an unstated level is unknown capacity, not permission.
+ *
+ * TIEREVIDENCE-1 (2026-09-02) · NAMED A CEILING, SPENT AS A FLOOR, AND THAT IS
+ * THE RESIDUAL. `CAPACITY_BAND.unstated.floor` is this constant with the
+ * ceiling left at 'elite', so it does not cap an unevidenced account — it
+ * PROMOTES one, from the bottom of the table to 'intermediate'. The published
+ * bands no longer inherit that promotion (`demonstratedLoadCeilingTier` starts
+ * every runner at `EVIDENCE_ABSENT_TIER`); the composed row still does. Left
+ * standing rather than changed here because moving it moves the long-run band
+ * and the quality counts too — see the TIEREVIDENCE-1 block below.
  */
 const UNSTATED_LEVEL_TIER_CEILING: GoalTier = 'intermediate';
 /** An explicitly-intermediate runner has a stated base, but not an elite one. */
@@ -1191,6 +1195,117 @@ const capacityLevelKey = (level: ExperienceLevelInput): CapacityLevelKey =>
     ? level
     : 'unstated';
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * TIEREVIDENCE-1 (2026-09-02) · WHAT A TYPED EXPERIENCE LEVEL MAY AND MAY NOT
+ * DECIDE.
+ *
+ * ── THE DEFECT ─────────────────────────────────────────────────────────────
+ *
+ * `CAPACITY_BAND[level].floor` is a FLOOR set by a word the runner typed into
+ * onboarding. Measured on the owner's own account, 2026-09-02:
+ *
+ *   typed level              'advanced'      → floor 'advanced'
+ *   demonstrated race pace    ~7:43/mi at the marathon → `tierFromPace` says
+ *                             'intermediate' (the advanced line is 7:00/mi)
+ *   demonstrated best week    48.5 mi        (`Research/22` §"Marathon —
+ *                             Advanced" opens "Multiple marathons, 50+ mpw
+ *                             base" — he is under its own entry condition)
+ *   published band            [65, 90] mi/wk, from `TIER_TARGETS.m.advanced`
+ *
+ * Both readings of the EVIDENCE said intermediate. The only thing producing a
+ * 65-90 mi/wk band was the word. That band is written to
+ * `authored_state.tier_peak_weekly_band` and read by `lib/plan/adaptive-ramp
+ * .ts` as the ceiling the upward volume bump may never cross, so a
+ * self-declaration was setting the ceiling on every later adaptation — and at
+ * 90 against a 48.5 mi/wk runner it was a ceiling nothing could ever reach,
+ * which is a guard in name only (Rule 21).
+ *
+ * ── WHAT CHANGED, AND WHAT DELIBERATELY DID NOT ────────────────────────────
+ *
+ * `demonstratedLoadCeilingTier` below answers the evidence-only question — the
+ * highest load row this runner's DEMONSTRATED performance earns, with the typed
+ * level allowed to cap it and never to lift it — and `lib/plan/generate.ts`
+ * spends it on the two PUBLISHED BANDS, which is the authority the owner named.
+ *
+ * `classifyCapacityTier` is UNCHANGED and still carries the level's floor,
+ * because the row it selects is not only a volume band: it also sets
+ * `peakLongMiBand`, `longRunShare`, `qualityPerWeek`, `daysPerWeek` and
+ * `mlrPeakMi`. Re-selecting the row from `demonstratedPaceSec` was implemented
+ * and measured before being backed out, and the measurement is the argument:
+ * on the frozen `INV-12 · advanced-marathon (David class)` fixture the peak
+ * WEEKLY volume did not move at all (66 mi/wk either way) while the peak LONG
+ * RUN fell from 22.5 mi to 20. A pace measurement shortening a marathoner's
+ * long run is a category error — the long run's evidence is duration and
+ * late-run behaviour, not race pace — and `classifyCapacityTier` has no volume
+ * axis to answer it with. Adding one is the right next step and it is a
+ * separate decision, because the only volume numbers available at that seam for
+ * a cold-start runner (`recentWeeklyMi` off an onboarding bucket) are
+ * SELF-REPORTS, and feeding a self-report into a capacity resolver is the door
+ * GOALVOL-1 closed.
+ *
+ * So: the level still shapes the row the block is composed against, and it no
+ * longer decides the numbers the adaptation engine binds on. The residual is
+ * recorded rather than quietly chosen.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Where a runner sits before demonstrated evidence moves them.
+ *
+ * The bottom rung, because a self-report is not a measurement and Rule 11 says
+ * "we have not seen this runner" must never read as permission.
+ */
+const EVIDENCE_ABSENT_TIER: GoalTier = 'developing';
+
+/**
+ * How far DEMONSTRATED evidence may carry each stated experience level.
+ *
+ * The direction a self-report may safely move a load table: DOWN. A runner who
+ * says they are a beginner is not handed an elite row however fast one race
+ * went. Same ceilings `CAPACITY_BAND` carried; `unstated` is 'elite' because
+ * COLD-1's `UNSTATED_LEVEL_TIER_CEILING` was a FLOOR wearing a ceiling's name
+ * (its own comment: "with nothing demonstrated that constant is the whole
+ * answer"), and a floor is exactly what this reading must not have.
+ */
+const CAPACITY_CEILING: Record<CapacityLevelKey, GoalTier> = {
+  beginner:      'intermediate',
+  intermediate:  INTERMEDIATE_LEVEL_TIER_CEILING,
+  advanced:      'elite',
+  advanced_plus: 'elite',
+  unstated:      'elite',
+};
+
+/**
+ * THE EVIDENCE-ONLY LOAD CEILING · the highest `TIER_TARGETS` row this runner's
+ * DEMONSTRATED performance earns.
+ *
+ * A different question from `classifyCapacityTier`, and named for it (Rule 16):
+ * that one asks "which row is this block composed against", this one asks "how
+ * far up the table has the runner actually shown they belong". The typed
+ * experience level may only CAP this; with nothing demonstrated the answer is
+ * `EVIDENCE_ABSENT_TIER`, so missing data produces the conservative row and
+ * never the ambitious one (Rule 11).
+ *
+ * Its parameter tuple is the same goal-free tuple `classifyCapacityTier` is
+ * sealed on, and the compile-time assertion at the bottom of this file covers
+ * both.
+ */
+export function demonstratedLoadCeilingTier(
+  raceDistanceMi: number,
+  level: ExperienceLevelInput,
+  demonstratedPaceSec: number | null | undefined,
+): GoalTier {
+  const cat = distanceCategoryOf(raceDistanceMi);
+  const demonstrated =
+    demonstratedPaceSec != null && Number.isFinite(demonstratedPaceSec) && demonstratedPaceSec > 0
+      ? tierFromPace(demonstratedPaceSec, cat)
+      : null;
+  return clampTier(
+    demonstrated ?? EVIDENCE_ABSENT_TIER,
+    EVIDENCE_ABSENT_TIER,
+    CAPACITY_CEILING[capacityLevelKey(level)],
+  );
+}
+
 /**
  * The tier band a stated experience level earns on its own, and the highest
  * DEMONSTRATED evidence may lift it to.
@@ -1200,29 +1315,22 @@ const capacityLevelKey = (level: ExperienceLevelInput): CapacityLevelKey =>
  * carry it — the Rule 21 half: the plan must be able to get harder, and the
  * only thing that may make it harder is what the runner has shown.
  *
- * Every row reproduces what `classifyGoalTier`'s no-goal branch already
- * answered, with two corrections that fall out of writing it as a table:
- *
- *   · `intermediate` no longer leaks past `INTERMEDIATE_LEVEL_TIER_CEILING`.
- *     The old no-goal branch fell through to `unstatedCeiling`, so an
- *     intermediate-level runner demonstrating elite pace reached `elite` while
- *     the same runner WITH a goal was correctly capped at `advanced`.
- *   · `advanced` may now be lifted by evidence. The old no-goal branch
- *     returned a flat 'advanced' and ignored `demonstratedPaceSec` entirely,
- *     so demonstrated elite fitness could not reach the elite band unless the
- *     runner also typed an elite goal — the bar to go UP sitting on ambition
- *     rather than evidence, which is Rule 21's exact complaint.
+ * TIEREVIDENCE-1 · the FLOOR half is the self-report, and it is the residual
+ * recorded in the block above. It survives here because this row also sets the
+ * long-run band, the long-run share and the quality/day counts, and demoting it
+ * off a pace reading shortens a marathoner's long run on evidence that is not
+ * about long runs. `demonstratedLoadCeilingTier` above is what the published
+ * bands use instead.
  */
 const CAPACITY_BAND: Record<CapacityLevelKey, { floor: GoalTier; ceiling: GoalTier }> = {
-  beginner:      { floor: 'developing',   ceiling: 'intermediate' },
-  intermediate:  { floor: 'intermediate', ceiling: INTERMEDIATE_LEVEL_TIER_CEILING },
-  advanced:      { floor: 'advanced',     ceiling: 'elite' },
-  advanced_plus: { floor: 'advanced',     ceiling: 'elite' },
-  // COLD-1 · an unstated level is unknown capacity, not permission. Its floor
-  // IS `UNSTATED_LEVEL_TIER_CEILING` because with nothing demonstrated that
-  // constant is the whole answer; evidence lifts it and nothing else does.
-  unstated:      { floor: UNSTATED_LEVEL_TIER_CEILING, ceiling: 'elite' },
+  beginner:      { floor: 'developing',   ceiling: CAPACITY_CEILING.beginner },
+  intermediate:  { floor: 'intermediate', ceiling: CAPACITY_CEILING.intermediate },
+  advanced:      { floor: 'advanced',     ceiling: CAPACITY_CEILING.advanced },
+  advanced_plus: { floor: 'advanced',     ceiling: CAPACITY_CEILING.advanced_plus },
+  // COLD-1 · an unstated level is unknown capacity, not permission.
+  unstated:      { floor: UNSTATED_LEVEL_TIER_CEILING, ceiling: CAPACITY_CEILING.unstated },
 };
+
 
 /** The lowest rung the goal may reduce a runner to. An `advanced` runner keeps
  *  an advanced base whatever they enter — the floor half of VAR-01's clamp,

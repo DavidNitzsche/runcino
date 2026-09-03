@@ -60,8 +60,28 @@ import type { ThesisLimiter, ThesisPriority } from '@/lib/training/coaching-thes
 export interface ThesisAtAuthoring {
   primaryLimiter: ThesisLimiter;
   priority: ThesisPriority;
-  /** The limiter's own resolved confidence, or null when `UNKNOWN`. */
+  /** The limiter's own resolved confidence, or null when `UNKNOWN`.
+   *
+   *  CONFIDENCE-STRUCTURE-1 (2026-09-02) · REPORTED, NEVER SPENT. This number
+   *  reaches `authored_state` and the phase prose and stops there. Nothing in
+   *  `composePlan` branches on it, and `_evidence_tier_band.test.ts` asserts
+   *  that. See `basis` below for why. */
   confidence: number | null;
+  /** WHICH KIND OF FACT PICKED THE LIMITER (`ThesisBasis`), carried so the
+   *  composer can tell a MEASUREMENT from a confidence ranking without
+   *  re-resolving the thesis.
+   *
+   *  · `CURVE_SHAPE_EVIDENCE` · doctrine's read of the runner's own graded race
+   *    curve against `CURVE_NEUTRAL_EXPONENT_BAND` (`Research/02` §7.1). A
+   *    measurement.
+   *  · `LOWEST_CONFIDENCE_AMONG_EVIDENCED` · "the capacity we know least
+   *    about". A ranking of confidences, not a reading of the runner.
+   *  · `NO_EVIDENCED_CAPACITY` · nothing rankable at all.
+   *
+   *  Optional: a persisted stamp written before 2026-09-02 does not carry it,
+   *  and a pure `composePlan` caller supplies none. Absent is treated exactly
+   *  as "not a measurement" (Rule 11 · unknown is not permission). */
+  basis?: 'CURVE_SHAPE_EVIDENCE' | 'LOWEST_CONFIDENCE_AMONG_EVIDENCED' | 'NO_EVIDENCED_CAPACITY';
   /** `resolved` · the owner answered. `read_failed` · the owner could not be
    *  reached; a different fact from "no runner history" (Rule 11). */
   source: 'resolved' | 'read_failed';

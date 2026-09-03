@@ -116,7 +116,7 @@ describe.skipIf(!RO)('ADAPTATION ENGINE · shadow mode against the owner\'s live
       + `${input.state.driver ? ` · driver ${input.state.driver.kind}: ${input.state.driver.detail}` : ''}`
       + ` · readable ${input.state.readable}`);
     console.log(`absorption · band ${input.absorption.band} · confidence ${input.absorption.confidence} `
-      + `· decision ${input.absorption.decision} · veto ${input.absorption.veto ?? 'none'}`);
+      + `· decision ${input.absorption.decision}`);
     console.log(`plan     · week ahead ${input.load.currentWeeklyMi ?? '-'} mi `
       + `· long ahead ${input.longRun.prescribedLongMi ?? '-'} mi `
       + `· tier ceiling ${input.load.tierWeeklyUpperMi ?? '-'} mi`);

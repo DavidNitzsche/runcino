@@ -55,7 +55,6 @@ function baseCtx(overrides: Partial<V5TodayContext> = {}): V5TodayContext {
     offSeason: null,
     injury: null,
     sick: null,
-    convergence: null,
     ...overrides,
   };
 }

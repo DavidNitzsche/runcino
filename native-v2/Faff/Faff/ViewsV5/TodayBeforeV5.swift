@@ -158,11 +158,11 @@ struct TodayBeforeV5: View {
     /// array (`ReadinessBriefSeed.swift`) — the same composer the full
     /// readiness sheet reads, so the two can never disagree on a number.
     ///
-    /// RULE TWO: this expansion shows pillars SIDE BY SIDE, never combined
-    /// into a claim that one caused another or that the score "changed
-    /// because of X" — that convergence story belongs to `TodayChangedV5`,
-    /// which only renders when three domains actually agree. This is just
-    /// the score's own ingredients, each against its own baseline.
+    /// This expansion shows pillars SIDE BY SIDE, never combined into a
+    /// claim that one caused another or that the score "changed because of
+    /// X". Readiness no longer changes any training decision, so there is
+    /// no such story to tell. This is the score's own ingredients, each
+    /// against its own baseline, and nothing more.
     var readinessPillars: [ReadinessPillar] = []
 
     /// RULE THREE · the pillar read FAILED, as opposed to coming back empty.
@@ -598,9 +598,9 @@ struct TodayBeforeV5: View {
     }
 
     /// The composite score's own ingredients — each pillar against ITS OWN
-    /// baseline, standing side by side. Never a sentence that combines them:
-    /// that convergence story is `TodayChangedV5`'s job, and only when three
-    /// domains actually agree (RULE TWO).
+    /// baseline, standing side by side. Never a sentence that combines them
+    /// into a verdict about today's training: the runner decides how ready
+    /// he is, and these are the readings he decides from.
     @ViewBuilder
     private var readinessExpansion: some View {
         if readinessPillars.isEmpty {

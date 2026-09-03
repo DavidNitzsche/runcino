@@ -89,11 +89,14 @@ const baseOpts = () => ({
 
 describe('P1-37 · cron partition is per-action tag, never index alignment', () => {
   it('reproduces the live Jul 1 sequence: pullback trigger with 0 actions no longer strips the anti-stacking downgrade', () => {
-    // Live failure: triggers [missed_key_workout, readiness_pullback];
-    // pullback emitted 0 actions, missed emitted 2 → the old
-    // actions.filter((_, i) => triggers[i].kind !== 'readiness_pullback')
-    // dropped actions[1] (the downgrade) from apply and proposed it as
-    // "Readiness pullback · HRV below 5 days running".
+    // Live failure (2026-07-01): two triggers fired in one pass, the first
+    // emitted 0 actions and `missed_key_workout` emitted 2, and the old
+    // `actions.filter((_, i) => triggers[i].kind !== <gated kind>)` dropped
+    // actions[1] (the downgrade) from apply and proposed it under the OTHER
+    // trigger's headline. The trigger that paired with it that night was
+    // `readiness_pullback`, which no longer exists — the bug was never about
+    // which kinds those were, it was index alignment, so the sequence is
+    // described here rather than re-posed with a dead kind.
     const actions: AdaptationAction[] = [
       { kind: 'reschedule', workoutIds: ['wko_a'], newDate: '2026-07-03', sourceTrigger: 'missed_key_workout', why: 'x' },
       { kind: 'downgrade', workoutIds: ['wko_b'], newType: 'easy', sourceTrigger: 'missed_key_workout', why: 'Avoid stacking two quality days; downgrade upcoming key to easy.' },
@@ -189,11 +192,15 @@ describe('P1-37 · cron partition is per-action tag, never index alignment', () 
   it('DIRECTION-1 · every load-reducing action proposes, tagged or not', () => {
     // Renamed from "routes pullback-tagged actions to propose-first and
     // untagged actions to apply (back-compat default)". Under DIRECTION-1 the
-    // deciding axis is no longer WHICH TRIGGER but WHICH DIRECTION: a niggle
-    // downgrade takes a session away exactly as a readiness downgrade does.
+    // deciding axis is no longer WHICH TRIGGER but WHICH DIRECTION: a
+    // training-gap downgrade takes a session away exactly as an
+    // anti-stacking one does. (Retagged 2026-09-02 — the two kinds originally
+    // posed here were `readiness_pullback` and `niggle_reported`, which are
+    // gone. The assertion is about direction, not identity, so it survives on
+    // any two load-reducing limbs.)
     const actions: AdaptationAction[] = [
-      { kind: 'downgrade', workoutIds: ['wko_a'], newType: 'easy', sourceTrigger: 'readiness_pullback', why: 'x' },
-      { kind: 'downgrade', workoutIds: ['wko_b'], newType: 'easy', sourceTrigger: 'niggle_reported', why: 'x' },
+      { kind: 'downgrade', workoutIds: ['wko_a'], newType: 'easy', sourceTrigger: 'training_gap', why: 'x' },
+      { kind: 'downgrade', workoutIds: ['wko_b'], newType: 'easy', sourceTrigger: 'missed_key_workout', why: 'x' },
       { kind: 'shave', workoutIds: ['wko_c'], shaveFraction: 0.17, why: 'x' }, // untagged (legacy shape)
     ];
     const { applyNow, proposeFirst } = partitionActionsForCron(actions);
@@ -212,13 +219,13 @@ describe('P1-37 · cron partition is per-action tag, never index alignment', () 
     // downgrade — which is precisely what the flag was originally introduced to
     // do — must not be able to bypass the runner's approval with it.
     const actions: AdaptationAction[] = [
-      { kind: 'downgrade', workoutIds: ['wko_a'], newType: 'easy', sourceTrigger: 'readiness_pullback', forceApplyNow: true, why: 'x' },
+      { kind: 'downgrade', workoutIds: ['wko_a'], newType: 'easy', sourceTrigger: 'missed_key_workout', forceApplyNow: true, why: 'x' },
       { kind: 'shave', workoutIds: ['wko_b'], shaveFraction: 0.17, sourceTrigger: 'volume_overshoot', forceApplyNow: true, why: 'x' },
       // A record-only note applies — and note it carries NO forceApplyNow
       // here on purpose. Notes apply because of what they are, not because
       // somebody remembered to flag them; a note that proposed would be
       // dropped outright by writeWorkoutProposals for having no workoutIds.
-      { kind: 'note', noteReason: 'readiness_convergence_red_proposed', noteField: '2026-08-29', sourceTrigger: 'readiness_pullback', why: 'x' },
+      { kind: 'note', noteReason: 'plan_adapt_missed_noted', noteField: '2026-08-29', sourceTrigger: 'missed_key_workout', why: 'x' },
     ];
     const { applyNow, proposeFirst } = partitionActionsForCron(actions);
     expect(proposeFirst.map((a) => a.workoutIds?.[0])).toEqual(['wko_a', 'wko_b']);

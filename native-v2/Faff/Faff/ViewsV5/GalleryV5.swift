@@ -182,22 +182,6 @@ struct GalleryV5: View {
                     }
                 }
 
-                section("Rule two · fewer than three domains renders nothing") {
-                    VStack(alignment: .leading, spacing: V5.S.inGroup) {
-                        ConvergenceList(domains: [
-                            ConvergenceDomainRow(domain: "Sleep", value: .measured("5h 48m"), baseline: "7-day median 7h 10m"),
-                            ConvergenceDomainRow(domain: "HRV", value: .measured("41 ms"), baseline: "7-day median 58 ms"),
-                            ConvergenceDomainRow(domain: "Resting heart rate", value: .measured("54 bpm"), baseline: "3-day average 48 bpm"),
-                        ])
-                        ConvergenceList(domains: [
-                            ConvergenceDomainRow(domain: "Sleep", value: .measured("5h 48m"), baseline: "7-day median 7h 10m"),
-                        ])
-                        Text("Two lists above. Only one drew.")
-                            .font(.faffText(TypeScaleV5.label13))
-                            .foregroundStyle(V5.textQuiet)
-                    }
-                }
-
                 section("Controls") {
                     VStack(alignment: .leading, spacing: V5.S.inGroup) {
                         FaffButton("Hold the goal", variant: .primary) {}

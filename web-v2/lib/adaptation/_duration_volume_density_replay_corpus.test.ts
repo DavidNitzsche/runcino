@@ -125,7 +125,7 @@ const DECISION_FOR_BAND: Record<AdaptationVerdict['band'], AdaptationVerdict['de
 const absorptionAt = (band: AdaptationVerdict['band']): AdaptationVerdict => ({
   band, confidence: 'high', decision: DECISION_FOR_BAND[band],
   stepMultiplier: band === 'strong' ? 1.25 : band === 'normal' ? 1 : band === 'marginal' ? 0 : -0.5,
-  dimensions: [], veto: null, summary: `absorption reads ${band}`,
+  dimensions: [], summary: `absorption reads ${band}`,
 });
 
 const freshLookback = (): EvidenceLookback => ({
@@ -312,10 +312,9 @@ describe('DURATION 3 · taper-masked absorption — live (unfiltered) vs. not-ye
     keySessionExecutions: null, keySessionsPlanned: null, keySessionsCompleted: null,
     targetVerdicts: null, repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
     decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null,
-    recoveryPctOfExpected: null, readinessBelowNormalDays: null, readinessWindowDays: null,
+    recoveryPctOfExpected: null,
     weeklyPlannedMi: null, weeklyActualMi: null, trainingForm: null,
     distinctEvidenceWeeks: null, adapterDowngrades: null,
-    niggleSeverity: null, illnessActive: null, injuryActive: null,
   };
 
   const unfilteredVerdict = classifyAdaptation({

@@ -144,16 +144,12 @@ const DECISION_FOR_BAND: Record<AdaptationVerdict['band'], AdaptationVerdict['de
   strong: 'PROGRESS', normal: 'PROGRESS', marginal: 'STAY', poor: 'MODIFY',
 };
 
-const absorptionAt = (
-  band: AdaptationVerdict['band'],
-  opts: { veto?: AdaptationVerdict['veto'] } = {},
-): AdaptationVerdict => ({
+const absorptionAt = (band: AdaptationVerdict['band']): AdaptationVerdict => ({
   band,
   confidence: 'high',
-  decision: opts.veto ? 'PROTECT' : DECISION_FOR_BAND[band],
+  decision: DECISION_FOR_BAND[band],
   stepMultiplier: band === 'strong' ? 1.25 : band === 'normal' ? 1 : band === 'marginal' ? 0 : -0.5,
   dimensions: [],
-  veto: opts.veto ?? null,
   summary: `absorption reads ${band}`,
 });
 

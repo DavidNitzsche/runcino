@@ -120,6 +120,57 @@ describe('Rule 20 · the adaptation engine is shadow-only, and says what promoti
     }
   });
 
+  /**
+   * ── 2026-09-02 · THE SEAL, AND WHY IT DOES NOT RETIRE THE LIST BELOW ─────
+   *
+   * The owner sealed every automatic plan mutation on 2026-09-02 and asked
+   * for "exactly one future adaptation boundary, disabled by default". That
+   * boundary is `lib/plan/adaptation-authority.ts`.
+   *
+   * The three LEGACY_MUTATORS are NOT deleted from the list, and that is a
+   * judgment worth stating rather than leaving to be inferred:
+   *
+   *   · `adapt.ts` still contains the plan UPDATEs, still reached by the
+   *     runner tapping accept on a proposal card.
+   *   · `adaptive-ramp.ts` still contains the bump, refused at the seam.
+   *   · `plan-drift/route.ts` still fires `fireAutoRebuild` for the
+   *     lifecycle transitions, which are AUTHORED calendar facts and were
+   *     never in scope for the seal.
+   *
+   * Every one of them is still a live path by this file's own definition, so
+   * deleting the entry would make the list claim less than is true — the
+   * opposite of the honesty it was written for. What HAS changed is that a
+   * promotion of the shadow engine now collides with a second thing as well
+   * as this list, and the assertion below is that collision.
+   */
+  it('the ONE SEAM exists, is off, and is the only switch the shadow engine could be promoted through', () => {
+    const seam = join(ROOT, 'lib', 'plan', 'adaptation-authority.ts');
+    expect(
+      existsSync(seam),
+      'lib/plan/adaptation-authority.ts is gone. It is the single default-off boundary the 2026-09-02 '
+      + 'ruling requires ("exactly one future adaptation boundary, disabled by default"), and it is '
+      + 'what a promotion of this engine has to be routed through rather than around.',
+    ).toBe(true);
+    const src = code(readFileSync(seam, 'utf8'));
+    expect(
+      src,
+      'the seam is no longer pinned OFF. Promoting the adaptation engine and opening automatic '
+      + 'mutation authority are two decisions, and this gate exists so neither can be made by '
+      + 'accident while the other stands.',
+    ).toMatch(/export const AUTOMATIC_ADAPTATION_AUTHORITY\s*:\s*false\s*=\s*false\s*;/);
+
+    // The shadow engine must not be able to reach the seam either: a
+    // promotion that opened the boundary from inside the engine would satisfy
+    // the "writes nothing" assertions above while granting exactly the
+    // authority they exist to withhold.
+    expect(
+      code(readFileSync(ENGINE, 'utf8')),
+      'the shadow engine imports the adaptation authority seam. Shadow-only means it cannot change '
+      + 'the live plan AND cannot grant itself permission to; the switch belongs to the cron wiring '
+      + 'and to the owner, not to the engine being staged.',
+    ).not.toMatch(/adaptation-authority/);
+  });
+
   it('every legacy path is still LIVE — reachable from a route or a cron', () => {
     // The property that matters for promotion is not "does this file contain a
     // write" but "can training still change through here". `adaptive-ramp.ts`

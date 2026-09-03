@@ -53,11 +53,24 @@ vi.mock('@/lib/ops/alerts', async (importOriginal) => ({
   raiseAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
+/* 2026-09-02 · the ramp's first gate. It used to read `readiness_snapshots`;
+ * the owner has ruled readiness decides nothing about training, and it is now
+ * ACWR (`lib/coach/acwr.ts`). The guard THIS file owns is `detectRampSignals`'
+ * own `.catch(() => null)` around that call — "the ratio read threw" must not
+ * come out the far side as permission — so the ratio itself is mocked and the
+ * catch is what gets exercised. `_acwr_ramp_bound.test.ts` owns the gate's
+ * behaviour across the ceiling; this file owns only its failure posture. */
+vi.mock('@/lib/coach/acwr', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  computeAcwr: vi.fn(),
+}));
+
 import { pool } from '@/lib/db/pool';
 import { rowsOrNull } from '@/lib/db/read';
 import { loadNotificationPrefs, DEFAULT_PREFS } from '@/lib/notifications/prefs';
 import { computeFlagCensus } from '@/lib/runs/flag-census';
 import { raiseAlert } from '@/lib/ops/alerts';
+import { computeAcwr } from '@/lib/coach/acwr';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * HARNESS
@@ -194,12 +207,15 @@ const PROPOSAL_ACTIONS = [{
   kind: 'shave',
   workoutIds: ['w-1'],
   shaveFraction: 0.2,
-  why: 'Readiness pull-back.',
+  why: 'Seven-day volume overshoot.',
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }] as any;
 const PROPOSAL_TRIGGERS = [{
-  kind: 'readiness_pullback',
-  reason: 'HRV below baseline two days running.',
+  // Retagged 2026-09-02 · was `readiness_pullback`. This site's subject is the
+  // pending-proposal dedupe, not the trigger, so any live load-reducing kind
+  // poses it identically.
+  kind: 'volume_overshoot',
+  reason: 'Last 7 days ran 18% over prescription.',
   evidence: {},
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }] as any;
@@ -348,11 +364,16 @@ describe('1d · dedupe-runs flag-census baseline', () => {
 /* ══════════════════════════════════════════════════════════════════════════
  * SITE 2 · lib/plan/adaptive-ramp.ts · three reads that AUTHORISE MORE LOAD
  *
- * readinessGreen, lastLongClean and belowTierUpper are three of the five
+ * acwrHeadroom, lastLongClean and belowTierUpper are three of the five
  * gates that let the engine push the runner's long run and weekly total UP.
  * Each used to turn a database error into permission. The lastBump cooldown
  * in the same file has failed closed since 2026-08-24; these now agree with
  * their neighbour.
+ *
+ * 2026-09-02 · the first gate was `readinessGreen` and is now `acwrHeadroom`.
+ * The site is the same one — the first thing the ramp asks before it adds
+ * load — and the property under test is unchanged: a read that FAILED is not
+ * the answer "there is room".
  * ═══════════════════════════════════════════════════════════════════════ */
 
 const ACTIVE_PLAN = {
@@ -363,14 +384,21 @@ const ACTIVE_PLAN = {
   } as Record<string, unknown>,
 };
 
-type RampFailure = 'readiness' | 'quality' | 'long' | 'peak' | null;
+type RampFailure = 'acwr' | 'quality' | 'long' | 'peak' | null;
+
+/** Point the mocked ratio at a value, or make the read throw. */
+function armAcwr(failing: RampFailure): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fn = computeAcwr as any;
+  if (failing === 'acwr') { fn.mockRejectedValue(dbFailure()); return; }
+  // 0.95 · comfortably inside Research/15's 0.8-1.3 sweet spot, so the gate
+  // is open for every case that is not deliberately breaking it.
+  fn.mockResolvedValue({ acwr: 0.95, acute7: 5.7, chronic28: 6.0, coverageDays: 28, reason: null });
+}
 
 function rampRouter(failing: RampFailure): Router {
+  armAcwr(failing);
   return async (sql) => {
-    if (sql.includes('readiness_snapshots')) {
-      if (failing === 'readiness') throw dbFailure();
-      return { rows: [{ streaks: [] }] };
-    }
     // 2026-08-30 · the quality gate no longer runs its own dead `runs` query.
     // It calls `loadKeySessionExecutions`, whose first read is the owned-days
     // scope — the distinctive clause below. A rejection there must close the
@@ -402,19 +430,25 @@ describe('2 · adaptive ramp · a DB error is not permission to add mileage', ()
     const { detectRampSignals } = await import('@/lib/plan/adaptive-ramp');
     const s = await detectRampSignals(UUID, ACTIVE_PLAN);
 
-    expect(s.readinessGreen).toBe(true);
+    expect(s.acwrHeadroom).toBe(true);
+    expect(s.details.acwr).toBe(0.95);
+    expect(s.details.acwrAbsentReason).toBeNull();
     expect(s.lastLongClean).toBe(true);
     expect(s.belowTierUpper).toBe(true);
     expect(s.noBumpRecent).toBe(true);
   });
 
-  it('readiness read rejects → readinessGreen is FALSE, not "no streaks"', async () => {
-    setRouter(rampRouter('readiness'));
+  it('ACWR read rejects → acwrHeadroom is FALSE, and says the read failed', async () => {
+    setRouter(rampRouter('acwr'));
     const { detectRampSignals } = await import('@/lib/plan/adaptive-ramp');
     const s = await detectRampSignals(UUID, ACTIVE_PLAN);
 
-    expect(s.readinessGreen).toBe(false);
-    exercised('plan/adaptive-ramp.ts::readinessGreen');
+    expect(s.acwrHeadroom).toBe(false);
+    // Rule 11 · a thrown read is its own fact, not "no history yet". If these
+    // collapsed, the intent log would blame the runner's data for an outage.
+    expect(s.details.acwr).toBeNull();
+    expect(s.details.acwrAbsentReason).toBe('read_failed');
+    exercised('plan/adaptive-ramp.ts::acwrHeadroom');
   });
 
   /* 2026-08-30 · a NEW fail-closed path, and the reason it did not exist
@@ -453,10 +487,10 @@ describe('2 · adaptive ramp · a DB error is not permission to add mileage', ()
 
   it('no single failed read can leave all five gates green', async () => {
     const { detectRampSignals } = await import('@/lib/plan/adaptive-ramp');
-    for (const failing of ['readiness', 'quality', 'long', 'peak'] as RampFailure[]) {
+    for (const failing of ['acwr', 'quality', 'long', 'peak'] as RampFailure[]) {
       setRouter(rampRouter(failing));
       const s = await detectRampSignals(UUID, ACTIVE_PLAN);
-      const allGreen = s.readinessGreen && s.lastQualityOnPace && s.lastLongClean
+      const allGreen = s.acwrHeadroom && s.lastQualityOnPace && s.lastLongClean
         && s.belowTierUpper && s.noBumpRecent;
       expect(allGreen, `a rejected ${failing} read still authorised a bump`).toBe(false);
     }
@@ -527,10 +561,10 @@ describe('floor · every site is still covered', () => {
       'coach/coach-log.ts::entryExists',
       'cron/dedupe-runs/route.ts::flagCensusBaseline',
       'cron/notifications/route.ts::enqueueIfFresh',
+      'plan/adaptive-ramp.ts::acwrHeadroom',
       'plan/adaptive-ramp.ts::belowTierUpper',
       'plan/adaptive-ramp.ts::lastLongClean',
       'plan/adaptive-ramp.ts::lastQualityOnPace',
-      'plan/adaptive-ramp.ts::readinessGreen',
       'plan/workout-proposals.ts::writeWorkoutProposals',
     ].join('\n'));
     expect(EXERCISED_GUARDS.size).toBe(8);

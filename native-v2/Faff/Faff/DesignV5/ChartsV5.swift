@@ -1302,52 +1302,6 @@ struct WeekShape: View {
     }
 }
 
-// MARK: - Convergence · RULE TWO MADE VISIBLE
-//
-// "One signal never changes a session. Readiness needs three independent
-//  domains to converge before it can downgrade anything, and that is a build
-//  gate. Any copy about a changed session names the convergence, never a
-//  single cause."
-//
-// So this component will not render fewer than three domains. If the payload
-// carries one or two, that is not a story about a changed session and the
-// screen must not tell one — it returns nothing and the caller shows the
-// unchanged session. Enforcing it here means no screen can get it wrong by
-// forgetting to check.
-
-struct ConvergenceDomainRow: Identifiable, Equatable {
-    let id = UUID()
-    /// "Sleep", "HRV", "Resting heart rate".
-    let domain: String
-    /// The reading. Measured.
-    let value: FaffValue
-    /// What it is being compared against — the runner's OWN rolling baseline.
-    /// Readiness has no single evening/morning pair to compare, only a 7-day
-    /// median and a 3-day average, so the row says which.
-    let baseline: String
-
-    init(domain: String, value: FaffValue, baseline: String) {
-        self.domain = domain; self.value = value; self.baseline = baseline
-    }
-}
-
-struct ConvergenceList: View {
-    let domains: [ConvergenceDomainRow]
-
-    /// The gate. Three independent domains, or there is no story.
-    static let minimumDomains = 3
-
-    var body: some View {
-        if domains.count >= Self.minimumDomains {
-            ListGroup(header: "What converged") {
-                ForEach(domains) { d in
-                    ListRow(label: d.domain, sub: d.baseline, value: d.value)
-                }
-            }
-        }
-    }
-}
-
 // MARK: - SplitBars
 //
 // 23a's per-mile split chart. One bar per mile, taller for faster, filled in

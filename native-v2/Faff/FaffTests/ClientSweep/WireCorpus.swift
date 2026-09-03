@@ -128,7 +128,7 @@ enum WireCorpus {
         return out
     }
 
-    /// THE SEVEN COMPOSED TODAY STATES plus the run-detail shapes the phone
+    /// EVERY COMPOSED TODAY STATE plus the run-detail shapes the phone
     /// can be handed. Between them these are the screens the runner actually
     /// looks at on a training day.
     static let all: [CorpusEntry] = [
@@ -138,21 +138,6 @@ enum WireCorpus {
         // is not a hole in Today, it is the absence of Today.
         CorpusEntry("today/before_run",
                     json: V5ContractTests.Fixtures.beforeRun,
-                    identity: ["state", "panel"],
-                    exempt: todayStateDefault.merging(weekStripCollapse) { a, _ in a },
-                    decode: v5Today),
-        CorpusEntry("today/changed_overnight",
-                    json: V5ContractTests.Fixtures.changedOvernight,
-                    identity: ["state", "panel"],
-                    exempt: todayStateDefault
-                        .merging(weekStripCollapse) { a, _ in a }
-                        .merging([
-                            "list|changed.converged":
-                                "Same lenient helper. RULE TWO LIVES IN THIS LIST — three independent domains must converge before a session changes — so one unreadable domain empties it, and the convergence story disappears with no trace that it was ever told."
-                        ]) { a, _ in a },
-                    decode: v5Today),
-        CorpusEntry("today/changed_two_domains",
-                    json: V5ContractTests.Fixtures.changedOvernightTwoDomains,
                     identity: ["state", "panel"],
                     exempt: todayStateDefault.merging(weekStripCollapse) { a, _ in a },
                     decode: v5Today),

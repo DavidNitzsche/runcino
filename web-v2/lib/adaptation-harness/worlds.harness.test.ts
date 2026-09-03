@@ -35,8 +35,8 @@
  *   and slides them forward by a whole number of weeks so a block he actually
  *   ran straddles today. Rule 15's complaint about the 11,598-archetype sweep is
  *   that `hist` is null for every case; here it is his. Each world then layers
- *   ONE named variation — a session not run, a session run faster, a week of
- *   poor readiness. Those are declared in the scenario, so a reader can always
+ *   ONE named variation — a session not run, a session run faster, a week
+ *   under-run against its prescription. Those are declared in the scenario, so a reader can always
  *   see the seam between what is real and what was synthesised.
  *
  * · IT ASSERTS THE OBSERVABLE. Every verdict reads through `observe.ts`, which
@@ -65,8 +65,8 @@ assertHarnessDatabase();
 
 import {
   resetToBase, shiftRealBlockOntoToday, plusDays,
-  readPlanDays, missSessionOn, clearCompletionWindow, runFasterOn, underRunWeek, setReadiness,
-  degradeReadinessSignals, lastMutationRejection,
+  readPlanDays, missSessionOn, clearCompletionWindow, runFasterOn, underRunWeek,
+  lastMutationRejection,
   clearProgressionMarker, intentsSince, type Substrate, type PlanDay,
 } from './substrate';
 import {
@@ -554,54 +554,6 @@ describe('WORLD 2 · he falls short', () => {
     });
   });
 
-  it('a week of poor readiness pulls back — and blocks the upward path while it does', async () => {
-    const sub = await freshWorld(W);
-    // Both layers, because two different readers answer "is he ready".
-    // `detectReadinessPullback` grades convergence off raw `health_samples`;
-    // `detectRampSignals` gate 1 reads the derived `readiness_snapshots.streaks`.
-    // Posing only one would leave the other reading a green runner.
-    const moved = await degradeReadinessSignals(7, sub.todayISO);
-    await setReadiness('red', 7, sub.todayISO);
-
-    const { triggers, actions } = await detect();
-    const pullback = triggers.find((t) => t.kind === 'readiness_pullback') ?? null;
-    const { proposeFirst } = await partition(actions);
-
-    check({
-      world: W, id: 'w2.poor-readiness-is-posable', binding: 'binding',
-      ok: moved > 0,
-      detail: `${moved} of his own HRV / resting-HR / sleep readings over the last 7 days moved against him `
-        + '(RHR +12%, HRV −28%, sleep −30%), measured against his own untouched 60-day baseline.',
-    });
-
-    check({
-      world: W, id: 'w2.poor-readiness-is-read', binding: 'binding',
-      ok: pullback != null,
-      detail: pullback
-        ? `readiness_pullback fired · ${pullback.reason}`
-        : 'a week of degraded HRV, elevated resting HR and short sleep produced NO readiness_pullback. '
-          + `Triggers seen: ${triggers.map((t) => t.kind).join(', ') || 'none'}.`,
-    });
-
-    const before = await seeWeek(sub.planId, sub.todayISO, plusDays(sub.todayISO, 7));
-    await runNightlyPass();
-    const after = await seeWeek(sub.planId, sub.todayISO, plusDays(sub.todayISO, 7));
-
-    check({
-      world: W, id: 'w2.pullback-does-not-auto-cut-the-plan', binding: 'binding',
-      ok: totalMi(after) >= totalMi(before) - 0.05,
-      detail: `week ahead: ${totalMi(before)}mi → ${totalMi(after)}mi. A pull-back is proposed to the runner, not applied to him.`,
-    });
-
-    const diag = await rampDiagnosis();
-    check({
-      world: W, id: 'w2.no-push-up-on-a-red-morning', binding: 'binding',
-      ok: !diag.signals.readinessGreen,
-      detail: diag.signals.readinessGreen
-        ? 'readiness graded GREEN with three pillars dragging four days each — the ramp would add load into a pull-back window.'
-        : `the ramp is correctly shut on a red morning (blocked by: ${diag.blockedBy.join(', ')}).`,
-    });
-  });
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -615,11 +567,14 @@ describe('WORLD 3 · he pushes', () => {
   const W = 'WORLD 3 · he pushes';
 
   /** Three consecutive strong weeks, expressed in his own data: every key
-   *  session in the window run 6% quicker than he actually ran it, readiness
-   *  green, and no pull-back standing in the 48-hour guard window. */
+   *  session in the window run 6% quicker than he actually ran it, and no
+   *  pull-back standing in the 48-hour guard window.
+   *
+   *  2026-09-02 · this used to pose readiness GREEN as well. Nothing in the
+   *  adaptation path reads a readiness snapshot any more, so posing one here
+   *  would be setup for a gate that no longer exists. */
   async function pushForward(sub: Substrate, days = 21): Promise<number> {
     const { pool } = await import('@/lib/db/pool');
-    await setReadiness('green', days + 7, sub.todayISO);
     const window = await readPlanDays(sub.planId, plusDays(sub.todayISO, -days), plusDays(sub.todayISO, -1));
     let sped = 0;
     for (const d of window) {
@@ -634,8 +589,7 @@ describe('WORLD 3 · he pushes', () => {
       `DELETE FROM coach_intents
         WHERE COALESCE(user_uuid, user_id) = $1::uuid
           AND ts >= NOW() - interval '7 days'
-          AND reason IN ('plan_adapt_downgrade','plan_adapt_shave',
-                         'readiness_convergence_red_no_quality','readiness_convergence_red_proposed')`,
+          AND reason IN ('plan_adapt_downgrade','plan_adapt_shave')`,
       [OWNER_UUID],
     );
     return sped;
@@ -656,7 +610,7 @@ describe('WORLD 3 · he pushes', () => {
     check({
       world: W, id: 'w3.push-is-expressible', binding: 'binding',
       ok: sped > 0,
-      detail: `${sped} of the owner's real key sessions in the last 21 days re-scored 6% quicker; readiness green.`,
+      detail: `${sped} of the owner's real key sessions in the last 21 days re-scored 6% quicker.`,
     });
 
     check({

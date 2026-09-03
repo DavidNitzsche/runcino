@@ -461,7 +461,12 @@ describe('DOCTRINE LINT · the shapes that produce doctrine defects', () => {
       'Research/00b-recovery-protocols.md §recovery-timelines',
       'Research/00b-recovery-protocols.md §rest-physiology',
       'Research/04-workout-vocabulary.md §intervals-and-threshold',
-      'Research/05-injury-return-protocols.md §illness-return',
+      // 2026-09-02 · `Research/05-injury-return-protocols.md §illness-return`
+      // was here and is DELETED, by this ratchet's own rule that an entry
+      // suppressing nothing must go. Its only citation sat on
+      // `detectSickEpisodeActive` in `lib/plan/adapt.ts`, removed the same day
+      // when illness stopped influencing training decisions. The list shrinks
+      // by one; it may not grow.
       'Research/08-pacing-and-race-week.md §day-before',
       // GATEAUDIT-2 (2026-08-30) · these five are NOT new defects. They are the
       // same shape as the eighteen above and have been in the tree for months —

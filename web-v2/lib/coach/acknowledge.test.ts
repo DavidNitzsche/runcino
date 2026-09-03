@@ -168,19 +168,18 @@ describe('subjectivePullbackSignal · adapter gating', () => {
     expect(r.reason).not.toMatch(/Research\/|—|!/);
   });
 
-  it('rides readiness_pullback · one vote of several, never a vote on its own', async () => {
+  it('is one vote of several in the convergence grade, never a vote on its own', async () => {
     // 2026-08-19 · the subjective pillar joins the convergence rule's evidence
-    // as ONE DOMAIN of five. It used to be able to fire the trigger alone
+    // as ONE DOMAIN of five. It used to be able to fire a trigger alone
     // (`subjectiveFired` was its own limb of a four-way OR); under the owner's
     // convergence ruling it cannot, and lib/coach/_convergence.test.ts proves
     // that for every domain including this one.
     //
-    // The kind stays propose-first by default — an amber convergence is a
-    // banner and touches nothing. Only a convergent-RED downgrade carries
-    // `forceApplyNow`, which is the owner's "settled the night before".
-    const { PROPOSE_FIRST_TRIGGERS } = await import('@/lib/plan/adapt');
-    expect(PROPOSE_FIRST_TRIGGERS.has('readiness_pullback')).toBe(true);
-
+    // 2026-09-02 · this test used to open by asserting `readiness_pullback`
+    // was propose-first. That trigger no longer exists — the runner owns his
+    // readiness, and no readiness reading changes his training. The grade
+    // itself survives as a DISPLAY quantity, which is what the half below
+    // measures, so the half below is what is kept.
     const { gradeConvergence } = await import('@/lib/coach/convergence');
     const v = gradeConvergence(
       {

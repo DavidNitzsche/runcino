@@ -1,36 +1,53 @@
 // POST /api/cron/plan-drift
 //
-// Nightly scan of every active plan for drift signals and lifecycle
-// transitions. Two tiers (2026-08-28):
+// Nightly scan of every active plan for LIFECYCLE transitions, plus
+// observational drift logging.
 //
-//   · DRIFT observations (soft drift, goal-gap) persist a pending
-//     plan_proposals row — a card, never a silent rebuild (David
-//     2026-08-26).
+// ── 2026-09-02 · DRIFT NO LONGER RE-AUTHORS ANYTHING ─────────────────────
+//
+// This route used to have two tiers. It has one.
+//
 //   · LIFECYCLE transitions (race_graduate, maintenance→race-prep,
-//     recovery_complete, plan_elapsed) auto-apply through
-//     fireAutoRebuild — auto_applied row, undo on the notice card —
-//     unless the runner undid that exact block or is compromised, in
-//     which case they get a pending card instead.
+//     recovery_complete, plan_elapsed, the open-block handoff) auto-apply
+//     through fireAutoRebuild — auto_applied row, undo on the notice card —
+//     unless the runner undid that exact block or is compromised, in which
+//     case they get a pending card instead. THESE STAY. Every one of them
+//     fires on an AUTHORED FACT: a race date that has passed, a race that
+//     has entered its build window, a block that has run out of prescribed
+//     days. The owner's KEEP list preserves the race date and the full
+//     block calendar, and a runner parked in an ended block forever is not
+//     "one stable plan", it is no plan.
 //
-// Idempotent · we check hasPendingProposal before writing so the
-// nightly run doesn't pile up identical "volume drift" rows.
+//   · DRIFT observations — soft drift (volume/vdot/staleness/easy/long/
+//     quality) and the goal-gap widening trend — used to persist a pending
+//     plan_proposals row whose accept re-authored the block. DELETED. Every
+//     one of those triggers is a TRANSIENT READING, true this week and
+//     false the next, and re-phasing a marathon block off one is exactly
+//     the churn the 2026-09-02 ruling removes: "too many independent levers
+//     can soften, reshape, re-phase, refuse, or automatically mutate the
+//     plan." `detectDrift` still runs and its counts are still reported —
+//     observational only, no plan row, no card, no accept action.
+//
+// Still asks the runner two genuine QUESTIONS, neither of which is an
+// adaptation: `race_role` (how to run a tune-up inside the build) and
+// `race_goal_framing` (time or effort on a rolling course). Both are
+// keyed on the race calendar, both are pending cards, and neither moves
+// anything unless he answers.
+//
+// Idempotent · each lifecycle transition checks for an existing pending or
+// recent proposal of its own kind before firing.
 //
 // Same auth pattern as the other cron routes.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { logReadFailure, rowOrNull, rowsOrNull } from '@/lib/db/read';
-import { detectDrift, hasPendingProposal } from '@/lib/plan/drift-monitor';
+import { detectDrift } from '@/lib/plan/drift-monitor';
 import {
   recordCronSuccess, raisePreconditionAlert, cronJob,
 } from '@/lib/ops/cron-ledger';
 import { roundTo } from '@/lib/format/run';
 import { computeGoalGap } from '@/lib/plan/goal-gap';
-import {
-  SOFT_DRIFT_PROPOSAL_KINDS,
-  driftProposalKind,
-  suppressDriftNearRace,
-} from '@/lib/plan/drift-proposal-policy';
 
 export const maxDuration = 60;
 
@@ -84,14 +101,6 @@ export async function POST(req: NextRequest) {
     signals_skipped: number;        // pending row already exists
     auto_results: number;           // provisional race results logged this tick
     proposals_expired: number;      // 2026-08-17 · >14d pending rows expired this tick
-    /** 2026-08-17 · goal-gap rebuilds suppressed because the runner is ill,
-     *  injured, or re-entering after a gap — the states that widen the
-     *  projection in the first place. */
-    goal_gap_suppressed_compromised?: number;
-    /** 2026-08-18 · goal-gap now covers no-race goal mode, which has no race
-     *  slug for the auto-rebuild path to key off. Counted so the skip is
-     *  visible in the cron report rather than silent. */
-    goal_gap_skipped_goal_mode?: number;
     /** 2026-08-19 · plans that ran out of prescribed days this tick. Before
      *  this, a plan with no race had no end at all — the lookup INNER JOINed
      *  `races` and dropped every goal-mode and open-block row. */
@@ -1207,111 +1216,33 @@ export async function POST(req: NextRequest) {
       if (!projectionFresh) {
         r.goal_gap_skipped_stale_projection = 1;
       }
-      if (
-        goalGap && goalGap.status === 'widening' && goalGap.consecutiveWideningDays >= 3
-        // 2026-08-17 · truth-bug fix · inside 14 days of the race the
-        // generator refuses to rebuild ('target < 2 weeks away'), so a
-        // fire here can only produce a stuck pending row. Race week is
-        // briefing territory · suppress entirely.
-        && !suppressDriftNearRace(goalGap.raceDateISO, userToday)
-      ) {
-        /* 2026-08-17 · the projection widens BECAUSE of illness, injury and
-         * training gaps — they crater executionQuality, which lowers projected
-         * fitness, which is the thing this reads. Rebuilding here bakes a sick
-         * week into the plan's assumptions about the runner.
-         *
-         * The field-test trigger already applied exactly this guard inline,
-         * reasoning that "a compromised runner's test result would be noise".
-         * This is the same reasoning about a much larger action: a field test
-         * changes one session, a rebuild re-authors the block. It had no guard
-         * at all beyond race proximity. */
-        // FAILS CLOSED (2026-08-31): this guard stands in front of AUTHORING
-        // (the pending 'goal_gap_widening' card below asks the runner to
-        // rebuild), so an unreadable state must propose nothing, matching the
-        // two lifecycle guards elsewhere in this file — an unreadable state
-        // must propose, not prescribe. Before this fix a failed read defaulted
-        // to compromised:false and surfaced a "rebuild to close the gap?" card
-        // built on the exact evidence the comment above says illness/injury
-        // contaminates, to a runner whose compromised status we never actually
-        // confirmed. Via the shared runnerIsCompromisedFailClosed wrapper so
-        // this direction can't drift from the other three call sites again —
-        // the extra local `.catch` is belt-and-braces: the wrapper cannot
-        // reject in practice, but a second independent layer means a future
-        // edit to the wrapper that reopens this cannot silently reopen it
-        // here too.
-        const { runnerIsCompromisedFailClosed } = await import('@/lib/plan/adapt');
-        const compromised = await runnerIsCompromisedFailClosed(u)
-          .catch(() => ({ compromised: true, reason: 'injury' } as const));
-        if (compromised.compromised) {
-          r.goal_gap_suppressed_compromised = (r.goal_gap_suppressed_compromised ?? 0) + 1;
-          // 2026-08-25 · PUSH BEFORE CONTINUE. `results.push(r)` is the last
-          // statement of the loop body, so this `continue` skipped it: the
-          // runner vanished from the cron's own report, taking the
-          // `goal_gap_suppressed_compromised` count that was just set with
-          // them. The report then read the same as if the runner had never
-          // been iterated at all — the exact confusion this whole audit is
-          // about, one level up. A suppression is a decision and has to be
-          // legible as one.
-          results.push(r);
-          continue;
-        }
-        // Auto-rebuild if no recent goal-gap rebuild. '' planId = any
-        // plan for this user (the strict plan_id='' match could never
-        // hit a real row, so this dedupe was dead before 2026-08-17).
-        // 2026-08-25 · FAILS CLOSED. `false` here means "nothing standing, go
-        // ahead and re-author the block", so a thrown guard used to license the
-        // very action it guards. `hasPendingProposal` now fails closed on its
-        // own; this outer catch must agree with it, not undo it.
-        const recentGapRebuild = await hasPendingProposal(u, '', 'goal_gap_widening')
-          .catch((e) => { logReadFailure('cron/plan-drift · goal-gap rebuild guard', e); return true; });
-        // 2026-08-18 · goal-gap now covers no-race goal mode, where there is
-        // no race slug for fireAutoRebuild to match the active plan against
-        // (its race_id check would reject a null anyway). Those runners get
-        // the widening SIGNAL and the goal assessment; the auto-rebuild path
-        // stays race-anchored until the generator has a goal-mode rebuild
-        // entry point. Skipping is the honest behaviour, not a silent no-op:
-        // it is counted so the cron report shows it.
-        if (goalGap.raceSlug == null) {
-          r.goal_gap_skipped_goal_mode = (r.goal_gap_skipped_goal_mode ?? 0) + 1;
-        } else if (!recentGapRebuild) {
-          // TURNED OFF · David 2026-08-26 (same ruling as the recovery-
-          // complete and soft-drift blocks — no rebuild fires without a
-          // card to approve first).
-          try {
-            const activePlanRow = await rowOrNull(
-              'cron/plan-drift · goal-gap active plan lookup',
-              pool.query<{ id: string }>(
-                `SELECT id FROM training_plans
-                  WHERE user_uuid = $1 AND archived_iso IS NULL
-                  ORDER BY authored_iso DESC LIMIT 1`,
-                [u],
-              ),
-            );
-            const activePlanId = activePlanRow?.id ?? null;
-            await pool.query(
-              `INSERT INTO plan_proposals
-                 (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
-               VALUES ($1, $2, 'goal_gap_widening', $3::jsonb, 'pending', 'goal_gap_cron_pending', NOW())`,
-              [
-                u, activePlanId,
-                JSON.stringify({
-                  drift_kind: 'goal_gap_widening',
-                  message: `Projection drifting away from goal for ${goalGap.consecutiveWideningDays} days · rebuild to close the gap?`,
-                  expected_race_day_sec: goalGap.expectedRaceDaySec,
-                  goal_sec: goalGap.goalSec,
-                  gap_sec: goalGap.gapSec,
-                  weeks_remaining: goalGap.weeksRemaining,
-                  what_closes_it: goalGap.whatClosesIt,
-                  citation: goalGap.citation,
-                }),
-              ],
-            );
-            r.proposals_written++;
-          } catch (e) {
-            console.error('[plan-drift] goal-gap pending write failed:', e);
-          }
-        }
-      }
+      // ── 2026-09-02 · THE GOAL-GAP REBUILD CARD IS DELETED ────────────────
+      //
+      // It used to write a pending `goal_gap_widening` proposal reading
+      // "Projection drifting away from goal for N days · rebuild to close the
+      // gap?", whose accept re-authored the whole block through the generic
+      // rebuild path in POST /api/plan/proposal.
+      //
+      // The owner's 2026-09-02 ruling: "too many independent levers can
+      // soften, reshape, re-phase, refuse, or automatically mutate the plan."
+      // This was the clearest re-phase lever in the app, and its trigger is a
+      // TRANSIENT READING — a three-day trend across `projection_snapshots`,
+      // true today and false next week, computed off the same
+      // execution-quality signal a single bad fortnight craters. A block
+      // re-authored on that is not the stable, coherent block he asked for.
+      //
+      // The projection itself is unchanged and still computed above: the
+      // UNCLOSABLE branch below writes a `goal_outlook` NOTE, which is
+      // observational — it states where the evidence puts him, keeps the
+      // stated goal on the board, and has nothing to accept (the accept is
+      // refused server-side, lib/plan/goal-immutability.ts). Observation
+      // stays; authority goes.
+      //
+      // The `goal_gap_suppressed_compromised` and `goal_gap_skipped_goal_mode`
+      // counters went with it: both counted reasons this card was NOT written,
+      // and a suppression count for a card that no longer exists is noise, not
+      // legibility. `goal_gap_skipped_stale_projection` STAYS — the unclosable
+      // note still reads the series, and a stale series still silences it.
 
       // 2026-08-17 · coaching-loop reconciliation · UNCLOSABLE gap → a note.
       // goal-gap has classified 'unclosable' correctly since Phase 1.1 but
@@ -1376,99 +1307,52 @@ export async function POST(req: NextRequest) {
       r.plan_id = report.planId;
       r.signals_found = report.signals.length;
 
-      // 2026-06-01 · soft drift now AUTO-APPLIES (David's zero-gaps
-      // directive · "no opening the app required"). Generator gaps
-      // that previously made auto-rebuild risky for mid-block runners
-      // are fixed (spec-builder.ts + detectMidBlock) so the rebuilt
-      // plan preserves quality + carries pace targets + workout specs
-      // from row one.
+      // ── 2026-09-02 · SOFT DRIFT IS OBSERVATIONAL. IT PROPOSES NOTHING ────
       //
-      // To avoid thrashing on borderline drift, take ONLY THE HIGHEST-
-      // SEVERITY signal per run · multiple signals (e.g. volume_drift
-      // + staleness simultaneously) collapse into one rebuild.
-      // Idempotency · a pending (or recently dismissed) row of ANY kind
-      // the writer can produce blocks a re-fire. 2026-08-17 · the guard
-      // iterates SOFT_DRIFT_PROPOSAL_KINDS — the exact set the writer
-      // stamps below — so guard and writer agree by construction (the
-      // old three-kind check never matched the synthetic
-      // 'goal_time_changed' rows the writer actually produced, which is
-      // how one runner accumulated 19 daily duplicates).
-      let recent = false;
-      for (const k of SOFT_DRIFT_PROPOSAL_KINDS) {
-        // 2026-08-25 · FAILS CLOSED, same argument as the goal-gap guard above.
-        // This is the guard that stands in front of `fireAutoRebuild` for every
-        // soft-drift kind — the path that re-authored this runner's block on
-        // 2026-08-25 — so `false` on a failed read is the one answer it must
-        // never give.
-        if (await hasPendingProposal(u, report.planId, k)
-          .catch((e) => { logReadFailure('cron/plan-drift · soft-drift rebuild guard', e); return true; })) {
-          recent = true;
-          break;
-        }
-      }
-      if (recent) {
-        r.signals_skipped = report.signals.length;
-      } else if (report.primary) {
-        const signal = report.primary;
-        // Look up the goal race (slug + date) for the plan · the date
-        // gates the race-proximity suppression below.
-        const plan = (await pool.query<{ race_id: string | null; race_date: string | null }>(
-          `SELECT tp.race_id, (rc.meta->>'date')::text AS race_date
-             FROM training_plans tp
-             LEFT JOIN races rc ON rc.slug = tp.race_id AND rc.user_uuid = tp.user_uuid
-            WHERE tp.id = $1`,
-          [report.planId],
-        ).catch(() => ({ rows: [] }))).rows[0];
-        // 2026-08-19 · the goal-mode target, resolved BEFORE the suppression
-        // check so a goal deadline gets the same race-proximity guard a race
-        // date does. Inside 14 days the generator refuses either way.
-        const goalTarget = plan?.race_id
-          ? null
-          : await (await import('@/lib/plan/auto-rebuild')).resolveGoalTarget(u, userToday);
-        const targetDateISO = plan?.race_id ? plan.race_date : (goalTarget?.raceDateISO ?? null);
-        if (!plan?.race_id && !goalTarget) {
-          // No race and no resolvable goal. Nothing to rebuild TOWARD, so
-          // firing would only mint a pending row nothing can resolve. The
-          // elapsed-plan / open-block handoff above owns this runner.
-          r.signals_skipped = report.signals.length;
-        } else if (suppressDriftNearRace(targetDateISO, userToday)) {
-          // 2026-08-17 · truth-bug fix · target race within 14 days:
-          // generatePlan refuses to rebuild in that window ('target <
-          // 2 weeks away'), so firing can only mint a stuck pending
-          // row. The surface must not ask what the engine will refuse.
-          r.signals_skipped = report.signals.length;
-        } else {
-          // TURNED OFF · David 2026-08-26, reversing the 2026-06-01
-          // "zero-gaps" directive after living under it: two of these six
-          // kinds rebuilt his plan on back-to-back mornings (long_drift
-          // 8/25 bumped the easy-day target 4→7 as a side effect of a
-          // long-run correction; easy_drift 8/26 reacted to THAT number
-          // the very next night and cut it to 5.5) — one detector's
-          // rebuild created the exact condition that fired the other,
-          // with nothing surfaced either time. "A real coach would never
-          // rebuild a plan mid-week... something needs to surface asking
-          // if I want to approve." So: every soft-drift signal writes a
-          // pending proposal now, same shape `CoachDecisionCard` already
-          // renders for `easy_drift`/etc (see decision-cards.ts) — it was
-          // built for exactly this, just never reached because this path
-          // auto-applied instead. No more silent rebuild; fireAutoRebuild
-          // is not called here at all now.
-          await pool.query(
-            `INSERT INTO plan_proposals
-               (user_uuid, plan_id, proposal_kind, reasons, status, source, created_at)
-             VALUES ($1, $2, $3, $4::jsonb, 'pending', 'drift_cron_pending', NOW())`,
-            [
-              u, report.planId, driftProposalKind(signal.kind),
-              JSON.stringify({
-                drift_kind: signal.kind,
-                message: signal.message,
-                severity: signal.severity,
-                ...signal.details,
-              }),
-            ],
-          );
-          r.proposals_written++;
-        }
+      // What was here: the highest-severity soft-drift signal of the night
+      // (volume_drift / vdot_drift / staleness / easy_drift / long_drift /
+      // quality_drift) wrote a pending `plan_proposals` row whose accept
+      // re-authored the whole block.
+      //
+      // On 2026-06-01 it auto-applied. On 2026-08-26 the owner reduced it to a
+      // card, after two of these six kinds rebuilt his plan on back-to-back
+      // mornings — long_drift on the 25th bumped his easy-day target 4→7 as a
+      // side effect of a long-run correction, and easy_drift reacted to THAT
+      // number the next night and cut it to 5.5. One detector's rebuild
+      // created the exact condition that fired the other.
+      //
+      // On 2026-09-02 the card goes too. His ruling: "too many independent
+      // levers can soften, reshape, re-phase, refuse, or automatically mutate
+      // the plan. That complexity is now working against the primary product
+      // requirement." Every one of these six triggers is a TRANSIENT READING —
+      // a 28-day rolling average, an inferred VDOT, a plan's age in weeks —
+      // true this week and false the next. None of them is an authored fact,
+      // and re-phasing a marathon block off one is precisely the churn he is
+      // removing. The lifecycle transitions ABOVE are what survive, because
+      // their triggers are the race date and the block calendar: a block that
+      // has run out of prescribed days has genuinely ended.
+      //
+      // `detectDrift` still RUNS, and its counts are still reported. That is
+      // deliberate and is the ruling's own carve-out — "if historical data
+      // must remain for compatibility, make it observational only". The
+      // operator keeps the visibility; the plan keeps its shape. Nothing here
+      // writes a plan row and nothing here creates a card with an accept
+      // action.
+      //
+      // `signals_skipped` now means what it says on this path: every signal
+      // detected, none acted on. The suppression branches that used to set it
+      // — no rebuild target resolvable, race inside 14 days — went with the
+      // writer they guarded. Keeping them would have been a guard standing in
+      // front of nothing (Rule 11), and `suppressDriftNearRace` /
+      // `hasPendingProposal` / `SOFT_DRIFT_PROPOSAL_KINDS` /
+      // `driftProposalKind` lost their only caller here with it.
+      r.signals_skipped = report.signals.length;
+      if (report.primary) {
+        console.log(
+          `[plan-drift] soft drift OBSERVED, not acted on · ${u.slice(0, 8)} · `
+          + `${report.primary.kind} (${report.primary.severity}) · `
+          + `${report.signals.length} signal(s) this tick`,
+        );
       }
     } catch (e: unknown) {
       r.error = e instanceof Error ? e.message : String(e);
@@ -1525,10 +1409,9 @@ export async function GET() {
       'plan_elapsed · ANY plan out of prescribed days · race still ahead → auto-rebuild toward it; race date null/past or no race → goal target / open-block handoff; compromised or injury-return runner → pending card, never an auto-authored build',
       'race_role · a B-priority hm/10k/5k tune-up inside the active build is 12-15 days out → pending recommendation card (never auto-applies; once per race; C races never fire; expiry = the authored composition stands)',
       'race_goal_framing · a rolling-band (19-57 ft/mi) non-C race inside the plan window with no stated goal and no answered framing is ≤28 days out → pending "time or effort?" card (never auto-applies; once per race; accept persists meta.goalFraming=time, decline persists effort; expiry = the graded default stands)',
-      'volume_drift · current 28d avg deviates >40% from authored 4wk avg',
-      'vdot_drift · current VDOT deviates >2 from plan anchor (inferred from T-pace)',
-      'staleness · plan authored >8 weeks ago',
+      'soft drift (volume_drift / vdot_drift / staleness / easy_drift / long_drift / quality_drift) · DETECTED AND LOGGED ONLY since 2026-09-02 · no proposal, no rebuild, no card',
+      'goal_gap · widening trend no longer proposes anything; an UNCLOSABLE gap still writes the informational goal_outlook note, which has nothing to accept',
     ],
-    note: 'Idempotent · checks for an existing pending proposal of the same kind before writing (proposals carry their TRUE kind since 2026-08-17). Staleness/drift proposals are suppressed inside 14 days of the target race (the generator refuses to rebuild there). Soft-drift only, and soft drift PROPOSES (David 2026-08-26 · no drift rebuild without a card); lifecycle transitions (race_graduate / recovery_complete / plan_elapsed / maintenance→race-prep) auto-apply with undo. Hard-drift (race date / goal time / A-race add-or-remove) is handled by immediate-fire hooks at the route level.',
+    note: 'Idempotent · each lifecycle transition checks for an existing pending or recent proposal of its own kind before firing. 2026-09-02 · drift no longer re-authors anything: soft drift and the goal-gap widening trend are observational, and only the LIFECYCLE transitions (race_graduate / recovery_complete / plan_elapsed / maintenance→race-prep / open-block handoff) rebuild — each on an authored calendar fact, each with undo. Hard-drift (race date / goal time / A-race add-or-remove) is still handled by immediate-fire hooks at the route level, because those are the runner editing his own race.',
   });
 }

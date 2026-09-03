@@ -5,7 +5,7 @@
   "description": "faff.run v2 \u2014 coaching-app rewrite against deck-v1-2026-05-25.html. Replaces legacy/web on cutover.",
   "scripts": {
     "dev": "next dev",
-    "prebuild": "bash ../scripts/check-palette-sync.sh && bash ../scripts/check-spacing-tokens.sh && bash ../scripts/check-modelled-mark.sh && bash ../scripts/check-coach-voice.sh && bash ../scripts/check-doctrine.sh && bash ../scripts/check-wire-keys.sh && bash ../scripts/check-generated-content.sh && bash ../scripts/check-surface-sweep.sh && bash ../scripts/check-xcodeproj-sync.sh && bash ../scripts/check-swallowed-failure.sh && bash ../scripts/check-derived-consistency.sh && bash ../scripts/check-automatic-mutations.sh && bash ../scripts/check-normal-window.sh && bash ../scripts/check-goal-immutability.sh && bash ../scripts/check-anchor-derivation.sh && bash ../scripts/check-client-graph.sh && bash ../scripts/check-coercion.sh && bash ../scripts/check-goal-pace-leak.sh && bash ../scripts/check-goal-volume-leak.sh && bash ../scripts/check-goal-sanity-naming.sh",
+    "prebuild": "bash ../scripts/check-palette-sync.sh && bash ../scripts/check-spacing-tokens.sh && bash ../scripts/check-modelled-mark.sh && bash ../scripts/check-coach-voice.sh && bash ../scripts/check-doctrine.sh && bash ../scripts/check-wire-keys.sh && bash ../scripts/check-generated-content.sh && bash ../scripts/check-surface-sweep.sh && bash ../scripts/check-xcodeproj-sync.sh && bash ../scripts/check-swallowed-failure.sh && bash ../scripts/check-derived-consistency.sh && bash ../scripts/check-automatic-mutations.sh && bash ../scripts/check-normal-window.sh && bash ../scripts/check-goal-immutability.sh && bash ../scripts/check-anchor-derivation.sh && bash ../scripts/check-client-graph.sh && bash ../scripts/check-coercion.sh && bash ../scripts/check-goal-pace-leak.sh && bash ../scripts/check-goal-volume-leak.sh && bash ../scripts/check-goal-sanity-removed.sh",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -30,7 +30,7 @@
     "test:clientgraph": "bash ../scripts/check-client-graph.sh",
     "test:coercion": "bash ../scripts/check-coercion.sh",
     "test:goalimmutability": "bash ../scripts/check-goal-immutability.sh",
-    "test:goalsanity": "bash ../scripts/check-goal-sanity-naming.sh"
+    "test:goalsanity": "bash ../scripts/check-goal-sanity-removed.sh"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

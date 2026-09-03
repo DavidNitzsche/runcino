@@ -77,6 +77,7 @@ import { resolveGoalTarget } from '@/lib/plan/auto-rebuild';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { logReadFailure } from '@/lib/db/read';
 import { isInformationalProposalKind } from '@/lib/plan/goal-immutability';
+import { isRetiredRebuildProposalKind } from '@/lib/plan/drift-proposal-policy';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -144,6 +145,31 @@ export async function POST(req: NextRequest) {
   if (action === 'accept' && isInformationalProposalKind(proposal.proposal_kind)) {
     return NextResponse.json({
       error: 'this card is informational · there is nothing to accept',
+      kind: proposal.proposal_kind,
+      status: 'pending',
+    }, { status: 400 });
+  }
+
+  // ── 2026-09-02 · RETIRED REBUILD KINDS ARE REFUSED, SERVER-SIDE ──────────
+  //
+  // Same posture as the informational refusal above, for the same reason: a
+  // server that refuses cannot be undone by a UI edit.
+  //
+  // The 2026-09-02 seal deleted every writer that raised a rebuild card off a
+  // TRANSIENT reading — soft drift (volume/vdot/staleness/easy/long/quality)
+  // and the goal-gap widening trend. Deleting a writer stops NEW cards and
+  // does nothing about the ones already pending in a live account, and this
+  // route's generic branch below resolves the race and calls `generatePlan`
+  // for any kind it does not special-case. Without this guard a stale
+  // `long_drift` row from last week would re-author his block tonight — the
+  // very lever the ruling removed, arriving one tap late.
+  //
+  // Left PENDING rather than auto-dismissed: the runner pressed a button and
+  // is owed an answer, and the row is evidence an operator may want. `dismiss`
+  // still works, so he can clear it himself.
+  if (action === 'accept' && isRetiredRebuildProposalKind(proposal.proposal_kind)) {
+    return NextResponse.json({
+      error: 'this card is no longer actionable · the plan is not re-authored from drift',
       kind: proposal.proposal_kind,
       status: 'pending',
     }, { status: 400 });

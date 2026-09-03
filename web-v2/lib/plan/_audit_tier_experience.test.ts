@@ -6,6 +6,23 @@
  * intermediate, and advanced runner with the same goal pace got byte-identical plans.
  *
  * Clamp: advanced(+) never below advanced; beginner never above intermediate.
+ *
+ * ── TIEREVIDENCE-1 (2026-09-02) · WHAT THIS FILE NO LONGER COVERS ───────────
+ *
+ * The clamp's FLOOR half — "advanced(+) never below advanced" — is a floor set
+ * by a word the runner typed, and it is the defect the owner named on his own
+ * account: a typed 'advanced' produced a 65-90 mi/wk band against a measured
+ * best week of 48.5 and demonstrated race pace that grades 'intermediate'.
+ *
+ * It still stands HERE, because this row also sets the long-run band, the
+ * long-run share and the quality/day counts, and re-selecting it off a pace
+ * reading shortens a marathoner's long run on evidence that is not about long
+ * runs (measured: the frozen INV-12 David-class fixture keeps 66 mi/wk either
+ * way and loses 2.5 mi off its peak long). What DID change is that the two
+ * numbers the adaptation engine binds on — `authored_state
+ * .tier_peak_weekly_band` and `tier_peak_long_band` — no longer read this row
+ * at all; they read `demonstratedLoadCeilingTier`, which the typed level may
+ * only cap. `_evidence_tier_band.test.ts` is that half's gate.
  */
 import { describe, it, expect } from 'vitest';
 import { buildSimPlan } from './sim-inputs';

@@ -3,11 +3,17 @@
  *
  * A live account — 0 runs, 0 races, a 30 mi/wk self-report and a typed 3:30
  * marathon goal — was handed a plan with a 13-mile long run and a threshold
- * session in week one, and the plan recorded `goal_realism: { flag: false }` (renamed
- * 2026-09-02 to `goal_vdot_sanity: { beyondSanityBand }` — see
- * `lib/plan/goal-vdot-sanity.ts`):
- * an affirmative statement that the goal was realistic, made about a runner the
- * engine had never seen take a step.
+ * session in week one, and the plan recorded an affirmative statement that the
+ * goal was realistic, made about a runner the engine had never seen take a step.
+ *
+ * GOALSANITY-DELETE-1 (2026-09-02) · THE SCREEN THAT MADE THAT STATEMENT IS
+ * GONE, so the two tests that read it are gone with it. They are replaced by
+ * one that asserts the key is not written any more, because a deleted
+ * mechanism with no gate is a mechanism that comes back. The COLD-3 doctrine
+ * they carried — a provisional, mileage-invented anchor must never read as an
+ * all-clear — is unchanged and is still asserted here, against the provenance
+ * that survives: `pace_blend.season_anchor_source` /
+ * `season_anchor_provisional`, which is what every live reader actually reads.
  *
  * The structural cause was that every honest cold-start mechanism
  * (`calibrating`, `anchorSource: 'provisional_mileage'`, the maintenance
@@ -183,40 +189,35 @@ describe('COLD-3 · a mileage-derived anchor is marked, and readers refuse it', 
     expect(paceBlendAnchorIsProvisional(pb)).toBe(false);
   });
 
-  it('goal_vdot_sanity reports NOT ASSESSABLE rather than a false all-clear', () => {
-    const built = buildSimPlan(COLD_START);
-    expect(built.ok).toBe(true);
-    if (!built.ok) return;
-    const gr = (built.composed.authoredState as Record<string, any>).goal_vdot_sanity;
-    // The pre-fix value was exactly `{ flag: false }` — the guard silenced by
-    // the fabrication it exists to catch: goal VDOT ~44.6 against a mileage-
-    // invented 40 is +11.5%, under the 15% band.
-    expect(gr.assessable).toBe(false);
-    expect(gr.basis).toBe('provisional_mileage');
-    // GOAL-SANITY-NAME-1 · the anchor is an explicit null rather than an absent
-    // key. Rule 11: "there is no anchor" and "the key was dropped" were the
-    // same absence under the old shape, and the goal VDOT was dropped outright
-    // on the not-flagged branch. Both are now always present, possibly null.
-    expect(gr.anchorVdot).toBeNull();
-    expect(Object.prototype.hasOwnProperty.call(gr, 'goalVdot')).toBe(true);
-    expect(Object.prototype.hasOwnProperty.call(gr, 'anchorVdot')).toBe(true);
-  });
-
-  it('goal_vdot_sanity still fires for a MEASURED runner with an over-ambitious goal', () => {
-    // Measured VDOT 40, goal 2:55 marathon (VDOT ~53) → +30%, well past 15%.
-    const built = buildSimPlan({
-      ...COLD_START, bestRecentVdotOverride: 40,
-      goalTimeSec: 2 * 3600 + 55 * 60, raceDateISO: '2026-12-05',
-    });
-    expect(built.ok).toBe(true);
-    if (!built.ok) return;
-    const gr = (built.composed.authoredState as Record<string, any>).goal_vdot_sanity;
-    expect(gr.assessable).toBe(true);
-    expect(gr.beyondSanityBand).toBe(true);
-    expect(gr.basis).toBe('measured_vdot');
-    // The continuous quantity the boolean steps on is published beside it
-    // (Rule 9), and it agrees in sign with the boolean.
-    expect(gr.bandExcessVdot).toBeGreaterThan(0);
+  it('GOALSANITY-DELETE-1 · no goal-realism screen is written at all', () => {
+    // The screen this file was written around published a boolean about the
+    // runner's stated goal. It had no live consumer (the only reader was
+    // `GET /api/coach/read`, which nothing fetches) and it was a second answer
+    // to Constitution §L's Goal Feasibility question. Deleted 2026-09-02.
+    //
+    // Asserted on BOTH archetypes this file already builds — the cold-start
+    // runner the key most misrepresented, and the measured runner with an
+    // over-ambitious goal it used to fire on — so the check cannot pass by
+    // testing an archetype the composer happens to bail out of early.
+    for (const arc of [
+      COLD_START,
+      { ...COLD_START, bestRecentVdotOverride: 40,
+        goalTimeSec: 2 * 3600 + 55 * 60, raceDateISO: '2026-12-05' },
+    ]) {
+      const built = buildSimPlan(arc);
+      expect(built.ok).toBe(true);
+      if (!built.ok) return;
+      const st = built.composed.authoredState as Record<string, unknown>;
+      // Liveness first: a state object we failed to build would satisfy every
+      // absence assertion below for the wrong reason.
+      expect(Object.keys(st).length).toBeGreaterThan(5);
+      expect(Object.prototype.hasOwnProperty.call(st, 'goal_vdot_sanity')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(st, 'goal_realism')).toBe(false);
+      // The goal's VDOT survives on `pace_blend` as an OBSERVATIONAL record,
+      // and that is a different fact from a verdict about the goal.
+      const pb = st.pace_blend as Record<string, unknown>;
+      expect(Object.prototype.hasOwnProperty.call(pb, 'goal_vdot')).toBe(true);
+    }
   });
 
   it('the reader predicate refuses a provisional anchor by either mark', () => {

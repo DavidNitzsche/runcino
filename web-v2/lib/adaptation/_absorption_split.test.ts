@@ -140,10 +140,9 @@ describe('the split through classifyAdaptation (real classifier, hand-built evid
     keySessionExecutions: null, keySessionsPlanned: null, keySessionsCompleted: null,
     targetVerdicts: null, repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
     decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null,
-    recoveryPctOfExpected: null, readinessBelowNormalDays: null, readinessWindowDays: null,
+    recoveryPctOfExpected: null,
     weeklyPlannedMi: null, weeklyActualMi: null, trainingForm: null,
     distinctEvidenceWeeks: null, adapterDowngrades: null,
-    niggleSeverity: null, illnessActive: null, injuryActive: null,
   };
 
   it('a taper that masks real clean execution reads STRONGER filtered than unfiltered', () => {
@@ -265,10 +264,9 @@ describe('AdaptationAbsorptionSplit shape', () => {
     keySessionExecutions: null, keySessionsPlanned: null, keySessionsCompleted: null,
     targetVerdicts: null, repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
     decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null,
-    recoveryPctOfExpected: null, readinessBelowNormalDays: null, readinessWindowDays: null,
+    recoveryPctOfExpected: null,
     weeklyPlannedMi: null, weeklyActualMi: null, trainingForm: null,
     distinctEvidenceWeeks: null, adapterDowngrades: null,
-    niggleSeverity: null, illnessActive: null, injuryActive: null,
   };
 
   it('carries both named outputs', () => {

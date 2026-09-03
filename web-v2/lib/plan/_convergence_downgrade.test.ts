@@ -153,96 +153,31 @@ describe('the change reaches the plan through one door', () => {
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 
-  const limbOf = (src: string) => {
-    const start = src.indexOf("case 'readiness_pullback': {");
-    expect(start).toBeGreaterThan(-1);
-    return src.slice(start, src.indexOf("case 'heat_bail': {", start));
-  };
-
-  it('the readiness limb emits an action · it issues no write of its own', () => {
-    const limb = limbOf(adaptCode);
-    // It reads (to find today's quality row) and returns actions. It must not
-    // UPDATE, INSERT or DELETE — those belong to applyAdaptations, inside
-    // `mutatePlan`, which snapshots and rolls back on a doctrine violation.
-    expect(limb).not.toMatch(/\bUPDATE\s+plan_workouts\b/i);
-    expect(limb).not.toMatch(/\bINSERT\s+INTO\s+plan_workouts\b/i);
-    expect(limb).not.toMatch(/\bDELETE\s+FROM\s+plan_workouts\b/i);
-    expect(limb).toMatch(/kind: 'downgrade'/);
-  });
-
   it('applyAdaptations still wraps the whole action loop in mutatePlan', () => {
     expect(adaptCode).toMatch(/const boundary = await mutatePlan</);
   });
 
-  it('amber returns a record-only note and never reaches the downgrade', () => {
-    const limb = limbOf(adaptCode);
-    // The amber branch returns BEFORE anything looks for a quality row.
-    const amberAt = limb.indexOf("if (grade !== 'red')");
-    const downgradeAt = limb.indexOf("kind: 'downgrade'");
-    expect(amberAt).toBeGreaterThan(-1);
-    expect(downgradeAt).toBeGreaterThan(amberAt);
-    expect(limb.slice(amberAt, downgradeAt)).toMatch(/kind: 'note'/);
-  });
-
-  it('DIRECTION-1 · no readiness action takes a session away unattended', () => {
-    // REPLACES "every readiness action is settled overnight · none becomes a
-    // banner" (2026-08-19). That test asserted the opposite of what this one
-    // does, and it was right at the time: the owner had ruled a convergent-red
-    // downgrade "settled the night before". He REVERSED that on 2026-08-29 —
-    // asked plainly whether he wanted an automatic pull-back he said no, and
-    // generalised it: load may rise unattended, it may never fall unattended.
+  it('no readiness gate has come back into the CODE', () => {
+    // 2026-09-02 · this used to end by asserting `gradeConvergence` was WIRED
+    // here, as the replacement for the four-way OR that let one pillar streak
+    // downgrade a session by itself. The owner has since ruled that readiness
+    // decides nothing about training, so the adapter calls neither: the
+    // convergence grader now serves display surfaces only. What remains worth
+    // gating is the RATCHET — that none of these ever re-enters the adapter.
     //
-    // So the invariant flips. What must hold now is that the limb's
-    // forceApplyNow flags land ONLY on record-only actions:
-    //   · every `note` may carry it — a note writes a coach_intents row and
-    //     no plan row, so there is nothing for the runner to approve, and the
-    //     adaptive ramp's 48h guard needs that row to exist or it will raise
-    //     load the morning after a red night nobody answered;
-    //   · no `downgrade` may carry it — that is the session being taken away.
-    const limb = limbOf(adaptCode);
-    const notes = limb.match(/kind: 'note'/g)?.length ?? 0;
-    const forced = limb.match(/forceApplyNow: true/g)?.length ?? 0;
-    expect(forced, 'forceApplyNow may only ever sit on a record-only note').toBeLessThanOrEqual(notes);
+    // Rule 18 §2 · assert liveness first. An absence-only assertion over a
+    // file this test failed to read would report clean, which is the worst
+    // outcome available because it also reports confidence.
+    expect(adaptCode.length, 'adapt.ts read as empty · this scan saw nothing')
+      .toBeGreaterThan(5_000);
+    expect(adaptCode, 'the anchor this scan navigates by is gone')
+      .toMatch(/case 'missed_key_workout'/);
 
-    // And structurally: no downgrade object in this limb carries the flag.
-    // Split on the action-object boundary so each `kind:` is checked with its
-    // own fields rather than against the limb as one blob.
-    const objects = limb.split(/(?=kind: ')/).filter((s) => s.startsWith('kind: '));
-    for (const obj of objects) {
-      if (/^kind: 'downgrade'/.test(obj) && /forceApplyNow: true/.test(obj)) {
-        throw new Error(
-          'a readiness downgrade carries forceApplyNow · under DIRECTION-1 a load-reducing '
-          + 'action must be proposed, never applied unattended. (partitionActionsForCron '
-          + 'would refuse it anyway, but the flag should not be written in the first place.)',
-        );
-      }
-    }
-  });
-
-  it('DIRECTION-1 · a red morning is still RECORDED even though the downgrade only proposes', () => {
-    // The failure mode this closes: pull-backs stopped applying, so the
-    // applied-downgrade coach_intents row stopped being written, so
-    // tryAdaptiveBump's 48h guard saw nothing and could raise mileage the
-    // morning after the engine judged the runner red. The red-with-quality
-    // branch must therefore emit a record-only note ALONGSIDE the proposed
-    // downgrade, under a reason the guard actually reads.
-    const limb = limbOf(adaptCode);
-    expect(limb).toMatch(/readiness_convergence_red_proposed/);
-  });
-
-  it('the old single-signal gate is gone from the CODE', () => {
-    // The four-way OR that let one pillar streak, or one bad post-run rating,
-    // downgrade a session by itself. It survives in the docblock as history;
-    // what must not survive is an executable copy.
     expect(adaptCode).not.toMatch(/!sustainedPullBack\s*&&\s*!hasTieredStreak/);
     expect(adaptCode).not.toMatch(/const hasTieredStreak\s*=/);
     expect(adaptCode).not.toMatch(/adapterRelevantPillars/);
-    // And the replacement is wired.
-    expect(adaptCode).toMatch(/gradeConvergence/);
+    expect(adaptCode).not.toMatch(/gradeConvergence/);
+    expect(adaptCode).not.toMatch(/readiness_pullback/);
   });
 
-  it('readiness never re-anchors paces · the limb touches no pace or VDOT', () => {
-    const limb = limbOf(adaptCode);
-    expect(limb).not.toMatch(/recompute_paces|vdot|paceTarget|pace_target/i);
-  });
 });

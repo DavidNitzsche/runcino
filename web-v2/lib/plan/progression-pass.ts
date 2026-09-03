@@ -550,11 +550,44 @@ export async function diagnoseProgressionWeek(userId: string): Promise<Progressi
   const longRunDow = DOW_OF[settings.long_run_day] ?? 0;
   const todayDow = new Date(todayISO + 'T12:00:00Z').getUTCDay();
 
+  // ── 2026-09-02 · THIS MARKER IS RE-BASED, NOT LEFT READING A DEAD TABLE ──
+  //
+  // The once-per-week marker used to be written ONLY by an APPLIED reshape
+  // (`plan_adapt_progression`, adapt.ts). The 2026-09-02 seal means an
+  // unattended reshape is never applied, so that reason stopped being written
+  // by the cron — and this read would have returned null forever, leaving the
+  // guard permanently open and the pass firing on all three catch-up mornings
+  // of every week instead of one.
+  //
+  // That is precisely the Rule 11 shape a seal is most likely to create: a
+  // guard that silently stops guarding because the input it reads was deleted
+  // upstream. So the read is widened rather than the guard abandoned. The
+  // question this marker answers is "has this week's pass already been
+  // DECIDED", and a decision the seam refused is still a decision — the pass
+  // ran, resolved the week, and recorded the outcome as `plan_adapt_sealed`.
+  // Both rows mean "done for this week".
+  //
+  // The two reasons stay DISTINCT everywhere else on purpose: a sealed note
+  // must never be mistaken for work performed (see
+  // lib/plan/adaptation-authority.ts, and the pace-anchor deferral that would
+  // have frozen the block's paces if it had been). This is the one reader for
+  // which they genuinely mean the same thing, and it says so rather than
+  // quietly merging them.
+  //
+  // The `value ? 'week_start_iso'` filter is load-bearing: `plan_adapt_sealed`
+  // is a shared namespace and most of its rows (a refused recompute, a refused
+  // bump) carry no week marker, so without it the newest sealed row of any
+  // kind would answer null and the guard would be open again one layer deeper.
+  // The `LIKE '{%'` guard is the `missedAlreadyHandledSql` idiom:
+  // `coach_intents.value` is TEXT and some reasons store a bare string, so an
+  // unguarded `::jsonb` cast can throw on a row this predicate is not about.
   const lastPass = (await pool.query<{ week_start: string | null }>(
     `SELECT value::jsonb->>'week_start_iso' AS week_start
        FROM coach_intents
       WHERE COALESCE(user_uuid, user_id) = $1::uuid
-        AND reason = 'plan_adapt_progression'
+        AND reason IN ('plan_adapt_progression', 'plan_adapt_sealed')
+        AND value LIKE '{%'
+        AND value::jsonb ? 'week_start_iso'
       ORDER BY ts DESC LIMIT 1`,
     [userId],
   ).catch(() => ({ rows: [] as Array<{ week_start: string | null }> }))).rows[0]?.week_start ?? null;

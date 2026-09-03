@@ -46,9 +46,25 @@ final class WatchSync: NSObject, ObservableObject {
     /// Shape a ReadinessSnapshot (/api/readiness) into the JSON the watch's
     /// WatchReadiness decoder expects. `state` / `label` / `recommendation`
     /// are non-optional on the watch decoder, so they are always present.
+    ///
+    /// NOTHING HERE MAY INSTRUCT (2026-09-02). Readiness no longer changes a
+    /// training decision, so the wrist gets the readings and not a verdict on
+    /// them. Two things carry that:
+    ///
+    ///   · `label` is `/api/readiness`'s own band word — SHARP / READY /
+    ///     MODERATE / PULL BACK — which names where the score sits. It is not
+    ///     the "Primed / Hold easy / Back off" grammar the old glance had.
+    ///   · `recommendation` is a WIRE KEY the watch decoder requires, not a
+    ///     recommendation. What it carries is `formLine`, the TSB caption
+    ///     ("Form +8 · fresh"), which is a reading. Renaming the key means
+    ///     changing `WatchReadiness` and `/api/watch/readiness` together, so
+    ///     it is left as-is and named here instead. If anything ever puts an
+    ///     instruction in this slot because of what the key is called, that
+    ///     is the bug this comment exists to stop.
     static func readinessPayload(from snap: ReadinessSnapshot) -> Data? {
         // /api/readiness bands: sharp | ready | moderate | pull-back | unknown.
-        // Glance grammar: green (good) / yellow (hold) / red (back off).
+        // The watch's `state` is a TINT, not a verdict: green / yellow / red
+        // colour the reading, they do not tell the runner what to run.
         let state: String
         switch snap.band {
         case "sharp", "ready": state = "green"

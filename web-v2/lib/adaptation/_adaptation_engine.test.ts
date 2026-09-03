@@ -111,16 +111,12 @@ const DECISION_FOR_BAND: Record<AdaptationVerdict['band'], AdaptationVerdict['de
   poor: 'MODIFY',
 };
 
-const absorptionAt = (
-  band: AdaptationVerdict['band'],
-  opts: { veto?: AdaptationVerdict['veto'] } = {},
-): AdaptationVerdict => ({
+const absorptionAt = (band: AdaptationVerdict['band']): AdaptationVerdict => ({
   band,
   confidence: 'high',
-  decision: opts.veto ? 'PROTECT' : DECISION_FOR_BAND[band],
+  decision: DECISION_FOR_BAND[band],
   stepMultiplier: band === 'strong' ? 1.25 : band === 'normal' ? 1 : band === 'marginal' ? 0 : -0.5,
   dimensions: [],
-  veto: opts.veto ?? null,
   summary: `absorption reads ${band}`,
 });
 
@@ -428,9 +424,18 @@ describe('ADAPTATION ENGINE · HOLD, REDUCE and RESTRUCTURE are all reachable', 
     expect(contradictionsIn(set)).toEqual([]);
   });
 
-  it('SCENARIO:REDUCE · an absorption VETO reduces and names safety', () => {
+  it('SCENARIO:REDUCE · a STOP state reduces and names safety', () => {
+    // 2026-09-02 · was "an absorption VETO reduces and names safety", posing
+    // `absorptionAt('poor', { veto: 'injury_active' })`. Vetoes are gone from
+    // the verdict — injury, illness and niggle no longer reach a training
+    // decision. This test is retagged rather than deleted because it is the
+    // ONLY coverage `SAFETY_OVERRIDES_NORMAL_PROGRESSION` has, and the code
+    // still emits it: `resolveReduce` pushes it on `state.decision === 'stop'`
+    // (adaptation-engine.ts), which is a training-derived state, not a
+    // self-report. Deleting the test would have left a live reason code with
+    // no case reaching it at all (CLAUDE.md Rule 15).
     const i = baseInput();
-    i.absorption = absorptionAt('poor', { veto: 'injury_active' });
+    i.state = stateAt('stop');
     const set = composeAdaptation(i);
     const reduce = set.proposals.find((p) => p.decision === 'REDUCE');
     expect(reduce).toBeTruthy();
@@ -751,8 +756,11 @@ describe('ADAPTATION ENGINE · the absorption gate is the absorption model\'s ow
     expect(primaryProgress(set)?.target).toBe('PACE');
   });
 
-  it('PACE is still held by a POOR band and by any veto', () => {
-    for (const a of [absorptionAt('poor'), absorptionAt('normal', { veto: 'illness' })]) {
+  it('PACE is still held by a POOR band', () => {
+    // The veto half of this loop (`absorptionAt('normal', { veto: 'illness' })`)
+    // is deleted with the veto itself. The band half is untouched and is the
+    // half that reads training.
+    for (const a of [absorptionAt('poor')]) {
       const i = baseInput();
       i.absorption = a;
       i.capacity = capacityAt(388);
@@ -1483,13 +1491,15 @@ describe('1.1.0 · Rule 11 · an absorption model that cannot see the runner doe
       keySessionExecutions: null, keySessionsPlanned: null, keySessionsCompleted: null,
       targetVerdicts: null, repConsistency: null, rpeReported: null, rpeHarderThanExpected: null,
       decouplingVerdicts: null, lateDriftBpm: null, easyDiscipline: null,
-      recoveryPctOfExpected: null, readinessBelowNormalDays: null, readinessWindowDays: null,
+      recoveryPctOfExpected: null,
       weeklyPlannedMi: null, weeklyActualMi: null, trainingForm: null,
       distinctEvidenceWeeks: null, adapterDowngrades: null,
-      niggleSeverity: null, illnessActive: null, injuryActive: null,
     };
     expect(classifyAdaptation(blank).evidenceSufficient).toBe(false);
-    expect(classifyAdaptation({ ...blank, injuryActive: true }).evidenceSufficient).toBe(true);
+    // A `{ ...blank, injuryActive: true }` case sat here, asserting that a
+    // self-reported veto counted as a read. There is no veto to report.
+    expect(classifyAdaptation({ ...blank, recoveryPctOfExpected: 1.0 })
+      .evidenceSufficient).toBe(false);
     expect(classifyAdaptation({
       ...blank, targetVerdicts: ['on', 'on'], trainingForm: 'PRODUCTIVE', distinctEvidenceWeeks: 2,
     }).evidenceSufficient).toBe(true);
