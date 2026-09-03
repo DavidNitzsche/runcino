@@ -92,7 +92,6 @@ import {
 } from '@/lib/training/pace-anchor';
 import { distanceMiOfMeta } from '@/lib/race/distance';
 import { distanceCategoryOrNull, type DistanceCategory } from '@/lib/race/distance-category';
-import type { ExperienceLevel } from '@/lib/coach/profile-state';
 import { logSealSkip } from './seal';
 import { mutatePlan } from './mutate';
 import { preserveProgressionSql } from './progression-spec';
@@ -363,33 +362,34 @@ export interface AdaptationResult {
   applied: boolean;
 }
 
-/**
- * Experience-level volume caps (P33) — FALLBACK ONLY as of 2026-07-06
- * (P1-55). detectVolumeOvershoot now baselines against the ACTIVE
- * PLAN's scheduled volume for the same trailing window; this table is
- * consulted only when the plan has nothing scheduled in the window.
+/*
+ * DECLAREDLEVEL-0 (2026-09-02) · `EXPERIENCE_CAPS_MI` IS GONE.
  *
- * Values re-derived from the generator's own tier bands (goal-tiers.ts
- * TIER_TARGETS) so the fallback can never contradict a plan the
- * generator itself prescribed. Mapping (same as adapter-bench.test.ts):
- * beginner→developing, intermediate→intermediate, advanced→advanced,
- * advanced_plus→elite; cap = the level's max peakWeeklyMileageBand top
- * across distances, rounded so cap × 1.25 clears the band:
- *   developing max 55 (ultra)   → 45   (45 × 1.25 = 56.25 ≥ 55)
- *   intermediate max 75 (ultra) → 60   (60 × 1.25 = 75    ≥ 75)
- *   advanced max 100 (ultra)    → 80   (80 × 1.25 = 100   ≥ 100)
- *   elite max 120 (ultra)       → 110  (110 × 1.25 = 137.5 ≥ 120)
- * The old {25, 45, 75, 110} table fired on doctrine-compliant plans:
- * a beginner clamps only DOWN to 'intermediate' tier (goal-tiers.ts
- * classifyGoalTier), whose marathon band is 40-55mi — over the old
- * beginner threshold of 31.25mi for most of a build.
+ * It was a `Record<ExperienceLevel, number>` — 45/60/80/110 mi/wk keyed to
+ * `profile.experience_level` — and it was the volume-overshoot detector's
+ * baseline whenever the active plan had nothing scheduled in the trailing
+ * window. So a word the runner typed at onboarding decided what counted as
+ * overreaching, and `detectVolumeOvershoot` then wrote that word into the
+ * finding's own `evidence` object (`{ cap, level }`) and into the sentence the
+ * runner read ("advanced cap 80mi").
+ *
+ * The owner's ruling removes self-declared experience-level bands from every
+ * adaptation decision, and removes the field from the decision records that
+ * presented it as evidence. Both halves applied here: the table is deleted,
+ * not left unread.
+ *
+ * WHAT REPLACES IT: nothing, on purpose. The detector already floors its
+ * baseline at the runner's own chronic weekly load, which is a DEMONSTRATED
+ * number measured over 28 representative days, and prefers the active plan's
+ * own prescription when the window has scheduled days. When it has neither, it
+ * now REFUSES rather than grading against a label (Rule 11). Overshoot is a
+ * reducing mechanism, so refusing is failing closed — the same posture this
+ * file already takes when the chronic-coverage read fails.
+ *
+ * `capMi` survives as a parameter name on `overshootBaseline` /
+ * `overshootFires` under a new name, `fallbackBaselineMi`, because the
+ * arithmetic is unchanged and its unit tests are the record of it.
  */
-export const EXPERIENCE_CAPS_MI: Record<ExperienceLevel, number> = {
-  beginner:      45,
-  intermediate:  60,
-  advanced:      80,
-  advanced_plus: 110,
-};
 
 // ── Pure decision core (2026-07-06 · phone+watch audit adapter fixes) ──
 // Exported so lib/plan/_adapt_invariants.test.ts can lock the math the
@@ -1061,13 +1061,16 @@ export const MEANINGFUL_SCHEDULE_MI = 5;
  */
 export function overshootBaseline(
   scheduledMi: number | null,
-  capMi: number,
+  /** DECLAREDLEVEL-0 · was `capMi`, the runner's declared-experience volume
+   *  cap. The arithmetic is unchanged; the QUANTITY the caller passes is now
+   *  the runner's own demonstrated chronic load, never a label's row. */
+  fallbackBaselineMi: number,
   ctx: OvershootContext = {},
 ): { baseline: number; prescribed: number; usedSchedule: boolean } {
   const usedSchedule = ctx.scheduledDays != null
     ? ctx.scheduledDays > 0 && scheduledMi != null
     : scheduledMi != null && scheduledMi >= MEANINGFUL_SCHEDULE_MI;
-  const prescribed = usedSchedule ? scheduledMi! : capMi;
+  const prescribed = usedSchedule ? scheduledMi! : fallbackBaselineMi;
   const chronic = ctx.chronicWeeklyMi != null && ctx.chronicWeeklyMi > 0 ? ctx.chronicWeeklyMi : 0;
   return { baseline: Math.max(prescribed, chronic), prescribed, usedSchedule };
 }
@@ -1087,7 +1090,8 @@ export function overshootBaseline(
 export function overshootFires(
   completedMi: number,
   scheduledMi: number | null,
-  capMi: number,
+  /** See `overshootBaseline`. Demonstrated load, never a declared band. */
+  fallbackBaselineMi: number,
   ctx: OvershootContext = {},
 ): boolean {
   // Guard A · doctrine guard on the response. Nothing about a recovery block
@@ -1096,7 +1100,7 @@ export function overshootFires(
   // Guard B · arithmetic guard on the baseline, inside `overshootBaseline`: a
   // deliberately-small prescription may not lower the bar beneath the runner's
   // own chronic load.
-  return completedMi > overshootBaseline(scheduledMi, capMi, ctx).baseline * 1.25;
+  return completedMi > overshootBaseline(scheduledMi, fallbackBaselineMi, ctx).baseline * 1.25;
 }
 
 /**
@@ -4127,19 +4131,20 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
          FROM training_plans tp
         WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
         ORDER BY tp.authored_iso DESC LIMIT 1
-     ), p AS (
-       SELECT experience_level FROM profile WHERE user_uuid = $1
      )
      SELECT vol.mi, chronic.mi AS chronic_mi, sched.mi AS scheduled_mi,
             sched.days AS scheduled_days,
-            mode.mode, mode.state_mode, p.experience_level
-       FROM vol, chronic, sched, p LEFT JOIN mode ON TRUE`,
+            mode.mode, mode.state_mode
+       FROM vol, chronic, sched LEFT JOIN mode ON TRUE`,
     [userId, today, ovNonNormalLo, ovNonNormalHi]
   )).rows[0];
   if (!r) return null;
-  const lvl = (r.experience_level ?? 'intermediate') as ExperienceLevel;
-  const cap = EXPERIENCE_CAPS_MI[lvl];
-  if (!cap) return null;
+  // DECLAREDLEVEL-0 (2026-09-02) · the `p AS (SELECT experience_level ...)`
+  // CTE and the `EXPERIENCE_CAPS_MI[lvl]` lookup that used to stand here are
+  // gone. What counts as overreaching is now decided by what this runner has
+  // actually carried, never by the word he typed at onboarding. The refusal
+  // when neither the schedule nor his chronic load can answer is below, after
+  // both have been read.
   const mi = Number(r.mi);
   const scheduledMi = r.scheduled_mi != null ? Number(r.scheduled_mi) : null;
   // The chronic window is 28 days; `weeklyAvgFromWindow` refuses to state an
@@ -4187,25 +4192,67 @@ async function detectVolumeOvershoot(userId: string): Promise<AdaptationTrigger 
   const recoveryBlock = r.mode === 'recovery' || r.state_mode === 'recovery';
   const scheduledDays = r.scheduled_days != null ? Number(r.scheduled_days) : null;
   const ctx = { chronicWeeklyMi, recoveryBlock, scheduledDays };
-  if (overshootFires(mi, scheduledMi, cap, ctx)) {
+
+  /*
+   * DECLAREDLEVEL-0 · THE BASELINE IS DEMONSTRATED OR THERE IS NO BASELINE.
+   *
+   * Two honest answers to "what should this runner have been carrying":
+   * the active plan's own prescription for the window, and his chronic weekly
+   * load over 28 representative days. `overshootBaseline` already takes the
+   * higher of the two. When NEITHER is available the old code reached for the
+   * declared-level cap; now it refuses.
+   *
+   * Rule 11 · "the plan scheduled nothing and I cannot read his base" is not
+   * "his base is 80 mi/wk because he ticked Advanced". Overshoot is a REDUCING
+   * mechanism, so a refusal fails closed — the same posture the chronic-
+   * coverage read above already takes, and stated for the same reason.
+   *
+   * The `usedSchedule` predicate is read back OUT of `overshootBaseline`
+   * rather than restated here (Rule 16): a second copy of it is how this file
+   * ended up with three hand-copied versions of the firing predicate.
+   */
+  const hasChronic = chronicWeeklyMi != null && chronicWeeklyMi > 0;
+  const demonstratedFallbackMi = hasChronic ? (chronicWeeklyMi as number) : 0;
+  if (!overshootBaseline(scheduledMi, demonstratedFallbackMi, ctx).usedSchedule && !hasChronic) {
+    // eslint-disable-next-line no-console
+    console.warn('[plan/adapt] DETECTOR REFUSED', {
+      detector: 'detectVolumeOvershoot',
+      read: 'overshoot baseline',
+      reason: 'no scheduled days in the window and no chronic weekly load · '
+        + 'nothing demonstrated to grade against',
+      consequence: 'no overshoot trigger this pass. Not the same as "no overshoot": '
+        + 'the declared-experience cap that used to answer here was a label, not a measurement.',
+    });
+    return null;
+  }
+
+  if (overshootFires(mi, scheduledMi, demonstratedFallbackMi, ctx)) {
     // One implementation for the arithmetic AND the sentence (Rule 16) — these
     // were three hand-copied copies of the same predicate.
-    const { baseline, prescribed, usedSchedule } = overshootBaseline(scheduledMi, cap, ctx);
+    const { baseline, prescribed, usedSchedule } = overshootBaseline(scheduledMi, demonstratedFallbackMi, ctx);
     // Name whichever quantity actually set the bar. Saying "17mi scheduled"
     // when the bar was the runner's own 43mi base is the sentence that made
     // the original defect read as reasonable.
+    //
+    // DECLAREDLEVEL-0 · the third branch used to read "`${lvl} cap ${cap}mi`",
+    // which told the runner his onboarding label was the reason his plan was
+    // being cut. With no schedule the bar is now his own chronic week, which
+    // the refusal above guarantees exists.
     const baselineLabel = chronicWeeklyMi != null && chronicWeeklyMi > prescribed
       ? `your usual ${Math.round(chronicWeeklyMi)}mi week`
       : usedSchedule
         ? `${Math.round(prescribed)}mi scheduled`
-        : `${lvl} cap ${cap}mi`;
+        : `your usual ${Math.round(chronicWeeklyMi ?? 0)}mi week`;
     return {
       kind: 'volume_overshoot',
       severity: 'warn',
       reason: `Last 7d ${Math.round(mi)}mi exceeds ${baselineLabel} by >25%.`,
+      // DECLAREDLEVEL-0 · `cap` and `level` are gone from this record. Every
+      // number left in it is one the runner ran or the plan prescribed, which
+      // is what an object called `evidence` is allowed to hold.
       evidence: {
         last7d_mi: mi, scheduled_7d_mi: scheduledMi, baseline_mi: baseline,
-        chronic_weekly_mi: chronicWeeklyMi, cap, level: lvl,
+        chronic_weekly_mi: chronicWeeklyMi,
       },
     };
   }

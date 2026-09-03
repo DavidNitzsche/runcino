@@ -22,13 +22,24 @@
  * than the runner is USED TO. Two guards, both proved below.
  */
 import { describe, it, expect } from 'vitest';
-import { overshootFires, EXPERIENCE_CAPS_MI } from './adapt';
+import { overshootFires } from './adapt';
 
 // The incident's real numbers, read out of production on 2026-08-24.
 const COMPLETED_MI = 32;      // 08-17 .. 08-24, deduped
 const SCHEDULED_MI = 17;      // recovery block, 08-17 .. 08-23
 const CHRONIC_MI = 28.7;      // 28d ending 08-16 · his own weekly load
-const CAP = EXPERIENCE_CAPS_MI.advanced;
+/*
+ * DECLAREDLEVEL-0 (2026-09-02) · the fallback baseline used to be
+ * `EXPERIENCE_CAPS_MI[level]`, a weekly-volume ceiling keyed to the word the
+ * runner typed at onboarding. The table is deleted and `detectVolumeOvershoot`
+ * now passes its own chronic weekly load in that argument slot, refusing when
+ * it has neither a schedule nor a chronic read. The ARITHMETIC these cases lock
+ * is untouched, so they keep their numbers — as a plain constant that claims
+ * nothing about who is allowed to run what.
+ */
+const CAP = 80;
+/** The other magnitude these cases exercise. Also just a number now. */
+const FALLBACK_45 = 45;
 
 describe('volume overshoot · a reduced prescription is not a load ceiling', () => {
   it('THE DEFECT · the old three-argument call still fires on the incident', () => {
@@ -78,17 +89,17 @@ describe('volume overshoot · a reduced prescription is not a load ceiling', () 
   it('a null or zero chronic load is "no floor", not "a floor of zero"', () => {
     // Cold start · weeklyAvgFromWindow refuses to state an average off under a
     // week of observable history, and that must not silence the detector.
-    expect(overshootFires(60, 0, EXPERIENCE_CAPS_MI.beginner, { chronicWeeklyMi: null })).toBe(true);
-    expect(overshootFires(60, 0, EXPERIENCE_CAPS_MI.beginner, { chronicWeeklyMi: 0 })).toBe(true);
-    expect(overshootFires(60, 0, EXPERIENCE_CAPS_MI.beginner, {})).toBe(true);
+    expect(overshootFires(60, 0, FALLBACK_45, { chronicWeeklyMi: null })).toBe(true);
+    expect(overshootFires(60, 0, FALLBACK_45, { chronicWeeklyMi: 0 })).toBe(true);
+    expect(overshootFires(60, 0, FALLBACK_45, {})).toBe(true);
   });
 
   it('an omitted context is byte-identical to the pre-fix predicate', () => {
     // The existing P1-55 invariants call the three-argument form; they must
     // keep meaning exactly what they meant.
     for (const [done, sched] of [[42, 42], [55, 42], [52.5, 42], [50, 0], [60, 0]] as const) {
-      expect(overshootFires(done, sched, EXPERIENCE_CAPS_MI.beginner, {}))
-        .toBe(overshootFires(done, sched, EXPERIENCE_CAPS_MI.beginner));
+      expect(overshootFires(done, sched, FALLBACK_45, {}))
+        .toBe(overshootFires(done, sched, FALLBACK_45));
     }
   });
 

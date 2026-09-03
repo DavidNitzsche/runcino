@@ -39,7 +39,6 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  EXPERIENCE_CAPS_MI,
   GAP_SHAVE_FRACTIONS,
   buildGapActions,
   chooseRescheduleDate,
@@ -65,7 +64,6 @@ import {
   MISSED_HANDLED_REASONS,
   missedAlreadyHandledSql,
 } from './adapt';
-import { TIER_TARGETS } from './goal-tiers';
 
 const TODAY = '2026-07-06'; // Monday · the audit's real seed date
 
@@ -628,15 +626,31 @@ describe('P1-36 · gap idempotency across daily crons', () => {
   });
 });
 
+/*
+ * DECLAREDLEVEL-0 (2026-09-02) · these cases used to spend `EXPERIENCE_CAPS_MI
+ * .beginner` / `.advanced` as the fallback baseline. The table is deleted —
+ * self-declared experience-level bands carry no adaptation authority — and
+ * `detectVolumeOvershoot` now passes the runner's own chronic weekly load in
+ * that argument slot, refusing outright when it has neither a schedule nor a
+ * chronic read (Rule 11).
+ *
+ * The ARITHMETIC these cases lock is unchanged, so they keep their numbers and
+ * take them from a local constant. `FALLBACK_45` / `FALLBACK_80` are just
+ * numbers now: they no longer claim to be what a "beginner" or an "advanced"
+ * runner is allowed to run.
+ */
+const FALLBACK_45 = 45;
+const FALLBACK_80 = 80;
+
 describe('P1-55 · volume overshoot vs the plan it came from', () => {
   it('baselines on the ACTIVE PLAN schedule: a compliant runner never fires, regardless of tier', () => {
     // Beginner marathon (clamped to intermediate tier) legitimately
     // scheduled 42mi and ran it: old static cap 25 fired at 31.25.
-    expect(overshootFires(42, 42, EXPERIENCE_CAPS_MI.beginner)).toBe(false);
+    expect(overshootFires(42, 42, FALLBACK_45)).toBe(false);
     // Ran meaningfully more than prescribed → fires.
-    expect(overshootFires(55, 42, EXPERIENCE_CAPS_MI.beginner)).toBe(true);
+    expect(overshootFires(55, 42, FALLBACK_45)).toBe(true);
     // 25% over exactly → does not fire (strict >).
-    expect(overshootFires(52.5, 42, EXPERIENCE_CAPS_MI.beginner)).toBe(false);
+    expect(overshootFires(52.5, 42, FALLBACK_45)).toBe(false);
   });
 
   it('a RECOVERY block cannot baseline the finding · the owner is not overshooting by coming back', () => {
@@ -644,14 +658,14 @@ describe('P1-55 · volume overshoot vs the plan it came from', () => {
     // for the trailing week; he ran 32mi against twelve clean weeks averaging
     // 41 and a real peak of 52.3. The arithmetic fires — that is the point:
     // the baseline, not the comparison, is what is wrong.
-    expect(overshootFires(32, 17, EXPERIENCE_CAPS_MI.advanced)).toBe(true);
+    expect(overshootFires(32, 17, FALLBACK_80)).toBe(true);
     expect(overshootSuppressedByPlanMode('recovery')).toBe(true);
 
     // And the safety net is not switched off with it: the experience cap still
     // governs, and 32mi never approached it for an advanced runner. A runner
     // who genuinely overreaches in recovery is still caught.
-    expect(overshootFires(32, null, EXPERIENCE_CAPS_MI.advanced)).toBe(false);
-    expect(overshootFires(120, null, EXPERIENCE_CAPS_MI.advanced)).toBe(true);
+    expect(overshootFires(32, null, FALLBACK_80)).toBe(false);
+    expect(overshootFires(120, null, FALLBACK_80)).toBe(true);
   });
 
   it('suppresses ONLY recovery · a down week or taper run through is a real overshoot', () => {
@@ -670,26 +684,19 @@ describe('P1-55 · volume overshoot vs the plan it came from', () => {
   });
 
   it('falls back to the tier-aligned experience cap when the plan scheduled nothing meaningful', () => {
-    expect(overshootFires(50, 0, EXPERIENCE_CAPS_MI.beginner)).toBe(false);   // 50 ≤ 45×1.25
-    expect(overshootFires(60, 0, EXPERIENCE_CAPS_MI.beginner)).toBe(true);    // 60 > 56.25
-    expect(overshootFires(60, null, EXPERIENCE_CAPS_MI.beginner)).toBe(true);
+    expect(overshootFires(50, 0, FALLBACK_45)).toBe(false);   // 50 ≤ 45×1.25
+    expect(overshootFires(60, 0, FALLBACK_45)).toBe(true);    // 60 > 56.25
+    expect(overshootFires(60, null, FALLBACK_45)).toBe(true);
   });
 
-  it('fallback caps clear every tier band the generator can prescribe for the level (P1-55 contradiction closed)', () => {
-    // Same level→tier mapping as adapter-bench.test.ts. HARD assert now —
-    // the caps were re-derived from TIER_TARGETS so a doctrine-compliant
-    // plan can never trip the fallback.
-    const levelToTier = {
-      beginner: 'developing', intermediate: 'intermediate',
-      advanced: 'advanced', advanced_plus: 'elite',
-    } as const;
-    for (const cat of Object.keys(TIER_TARGETS) as Array<keyof typeof TIER_TARGETS>) {
-      for (const lvl of Object.keys(EXPERIENCE_CAPS_MI) as Array<keyof typeof EXPERIENCE_CAPS_MI>) {
-        const tierUpper = TIER_TARGETS[cat][levelToTier[lvl]].peakWeeklyMileageBand[1];
-        expect(EXPERIENCE_CAPS_MI[lvl] * 1.25).toBeGreaterThanOrEqual(tierUpper);
-      }
-    }
-  });
+  /*
+   * DELETED 2026-09-02 · 'fallback caps clear every tier band the generator can
+   * prescribe for the level'. Its whole subject was the mapping from a declared
+   * label to a volume ceiling (beginner→developing, advanced→elite, …), which
+   * is the authority the owner removed. There is no level→cap relationship left
+   * to keep consistent. Rule 18's ratchet clause: a check whose target is gone
+   * is deleted, never loosened into something that cannot fail.
+   */
 });
 
 describe('date helpers', () => {

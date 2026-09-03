@@ -789,7 +789,15 @@ let SETTINGS_GROUPS: [SettingGroup] = [
         SettingField(key: "birthday", label: "Birthday", endpoint: .profile, kind: .date),
         SettingField(key: "height_cm", label: "Height", endpoint: .profile, kind: .height, hint: "Unlocks cadence coaching."),
         SettingField(key: "weight_kg", label: "Weight", endpoint: .profile, kind: .weight, hint: "Falls back to Apple Health when unset.", autoSource: "From Apple Health"),
-        SettingField(key: "experience_level", label: "Experience", endpoint: .profile, kind: .select, options: SETTINGS_EXPERIENCE, planShaping: true),
+        // DECLAREDLEVEL-0 (2026-09-02) · `planShaping: true` REMOVED. Self-
+        // declared experience-level bands no longer shape the plan (see
+        // docs/PLAN_SIMPLIFICATION_DOCTRINE.md §"What may not"), the backend
+        // dropped `experience_level` from its PLAN_SHAPING set so editing it
+        // no longer fires a rebuild, and this flag was the client-side claim
+        // that it did. It sits in YOU, with the other biographical fields,
+        // and the hint says plainly what it is now.
+        SettingField(key: "experience_level", label: "Experience", endpoint: .profile, kind: .select, options: SETTINGS_EXPERIENCE,
+                     hint: "Profile only. Your plan is built from what you have actually run."),
     ]),
     SettingGroup(title: "TRAINING", fields: [
         SettingField(key: "weekly_frequency", label: "Days per week", endpoint: .profile, kind: .number, hint: "3 to 7.", planShaping: true),
