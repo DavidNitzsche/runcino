@@ -119,6 +119,55 @@ collapse exactly: "I could not read this" wearing the face of "he did not do it"
 against one slower — which is precisely where you sat on 2 September.</p>
 </div>
 
+<h3>What changed by morning</h3>
+
+<pre>before   PROGRESS 0 · HOLD 102 · REGRESS 4 · REFUSE 14
+after    PROGRESS 0 · HOLD  63 · REGRESS 4 · REFUSE 53</pre>
+
+<p><strong>The zero stays, and it is now a defensible answer rather than a suspicious one.</strong>
+You never completed three consecutive non-cutback weeks at 95% — best run was two, best worst-week
+90.2%. What moved is the line between "the coach decided" and "the engine could not judge":
+<strong>39 records that read as coaching decisions were missing evaluations</strong>, and now say so.
+That is the difference between an engine that declined to push you and one that could not tell.</p>
+
+<p>I had this partly wrong when I set the work up, and the audit said so rather than agreeing with me.
+The contract <em>does</em> declare the extra conditions. What was undeclared was how they were
+<em>read</em>:</p>
+
+<ul>
+<li><strong>No window on the long-run criterion.</strong> Weeks were windowed to three, long runs were
+read whole — so a long run from 5 July, in a week you did not run, was held against the 31 August
+decision <strong>eight weeks later</strong>.</li>
+<li><strong>The opposite of "counts as evidence" was spent as evidence against you.</strong> Five June
+sessions blocked a volume step on a grade whose own definition says it is evidence about a
+<em>different</em> question.</li>
+<li><strong>A week completed at exactly the bar was rejected</strong> — a floating-point comparison,
+affecting 267 of 1,999 prescriptions. Your best worst-week is 48 thousandths away from that line.</li>
+</ul>
+
+<div class="card hot">
+<p style="margin-top:0"><strong>The long-run blockage was never your watch.</strong> It was a reader
+that knew three ways of writing a pace and not the fourth: <strong>29 of your 146</strong>
+split-carrying runs record pace only as a clock string like <code>8:19</code>, on rows that also carry
+a complete set of per-mile heart rates. Reading it takes comparable long runs from
+<strong>4 of 15 to 8 of 15</strong>, and the rest divide honestly — six where the prescription really
+does vary pace across the run, and one week you did not run.</p>
+<p style="margin-bottom:0">So "40 of 40 blocked" was mostly a parser, and the engine was calling it
+your behaviour.</p>
+</div>
+
+<p>On the threshold gate: the one-faster-one-slower case is a <em>correct</em> hold, and it stays —
+a single session should not move the anchor, and loosening the ratio would do exactly that while
+looking like a rule about direction. But the other half was real: 34 of 40 readings had no qualifying
+session at all, and the engine called each one a hold while its own confidence line said none was
+available. That is now a refusal, which is what the other two levers already said about the same
+fact.</p>
+
+<p class="muted">One more thing worth knowing, because it undercuts a lot of past confidence: the
+falsification command — the one that proves a gate can actually fail — <strong>had never
+worked</strong>. It exited "no test files found" for a configuration reason, so every falsification
+anyone believed they had run through it had run nothing. It has its own config now.</p>
+
 <h3>What this does not say</h3>
 <p>The canonical engine is <strong>still unwired</strong> from the live path, and a gate forbids any
 importer reaching it. Everything above is measured on an engine that does not yet run. The legacy
