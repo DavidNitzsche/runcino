@@ -167,25 +167,39 @@ describe('findMoveDayCandidate · a representative argument for planMoveDay, not
 
 describe('libraryPhaseKey · plan_phases.label → workout-library phaseFit', () => {
   it('maps every real phase label the engine emits', () => {
-    expect(libraryPhaseKey('BASE', false)).toBe('base');
-    expect(libraryPhaseKey('QUALITY', false)).toBe('quality');
-    expect(libraryPhaseKey('RACE-SPECIFIC', false)).toBe('race_specific');
-    expect(libraryPhaseKey('TAPER', false)).toBe('taper');
-    expect(libraryPhaseKey('MAINTENANCE', false)).toBe('maintenance');
+    expect(libraryPhaseKey('BASE', 'none')).toBe('base');
+    expect(libraryPhaseKey('QUALITY', 'none')).toBe('quality');
+    expect(libraryPhaseKey('RACE-SPECIFIC', 'none')).toBe('race_specific');
+    expect(libraryPhaseKey('TAPER', 'none')).toBe('taper');
+    expect(libraryPhaseKey('MAINTENANCE', 'none')).toBe('maintenance');
   });
 
-  it('race week overrides whatever phase it sits inside', () => {
-    expect(libraryPhaseKey('TAPER', true)).toBe('race_week');
-    expect(libraryPhaseKey('RACE-SPECIFIC', true)).toBe('race_week');
+  it('a GOAL race week overrides whatever phase it sits inside', () => {
+    expect(libraryPhaseKey('TAPER', 'goal')).toBe('race_week');
+    expect(libraryPhaseKey('RACE-SPECIFIC', 'goal')).toBe('race_week');
+  });
+
+  // RACEWEEK-2 (2026-09-03) · falsifies the RACEWEEK-1-deferred bug directly:
+  // a tune-up or controlled race must NOT pull the catalogue into the same
+  // narrow race_week mode a goal-race taper gets. David's ruling: "Do NOT
+  // apply CIM-style (goal-race) taper mode to this week." Before this file's
+  // fix these two cases were unreachable — `libraryPhaseKey` took a bare
+  // boolean, and every call site fed it the goal-only column, so `tuneup`
+  // and `controlled` had no way to be asked about at all.
+  it('a TUNEUP or CONTROLLED race week keeps the ordinary phase catalogue, not race_week', () => {
+    expect(libraryPhaseKey('QUALITY', 'tuneup')).toBe('quality');
+    expect(libraryPhaseKey('RACE-SPECIFIC', 'tuneup')).toBe('race_specific');
+    expect(libraryPhaseKey('QUALITY', 'controlled')).toBe('quality');
+    expect(libraryPhaseKey('RACE-SPECIFIC', 'controlled')).toBe('race_specific');
   });
 
   it('an unrecognised label maps to null rather than a guess', () => {
-    expect(libraryPhaseKey('SOMETHING-NEW', false)).toBeNull();
-    expect(libraryPhaseKey(null, false)).toBeNull();
+    expect(libraryPhaseKey('SOMETHING-NEW', 'none')).toBeNull();
+    expect(libraryPhaseKey(null, 'none')).toBeNull();
   });
 
   it('RECOVERY (generate.ts\'s post-race composer) has no phase_fit value of its own — null, not a guess', () => {
-    expect(libraryPhaseKey('RECOVERY', false)).toBeNull();
+    expect(libraryPhaseKey('RECOVERY', 'none')).toBeNull();
   });
 });
 

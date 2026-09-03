@@ -525,7 +525,7 @@ export function matchesCapacity(
   capacity: PrimaryCapacity,
   row: { type: string; is_long: boolean },
 ): boolean {
-  return familyOf(row) === familyFor(capacity);
+  return familyAddresses(familyOf(row), familyFor(capacity), row.is_long);
 }
 
 export function familyFor(capacity: PrimaryCapacity): SessionFamily {
@@ -541,6 +541,45 @@ export function familyOf(row: { type: string; is_long: boolean }): SessionFamily
   if (t === 'threshold' || t === 'tempo') return 'threshold';
   if (t === 'intervals' || t === 'interval' || t === 'vo2max') return 'intervals';
   return 'other';
+}
+
+/**
+ * DOES a session of this family address a limiter that wants `wanted`?
+ *
+ * RACEWEEK-2 (2026-09-03) · the owner's ruling on tune-up and controlled race
+ * weeks: "Do NOT penalize the week for omitting a quality workout the race
+ * intentionally replaced — a quality-completion check must know the race WAS
+ * the quality session." Before this, `assessWeekAgainstThesis`'s `addressing`
+ * count only ever matched `family === wanted`, `familyOf` graded every race
+ * `'race'` unconditionally, and a week whose only quality was a graded B or C
+ * race read as `WEEK_HOLDS_NO_KEY_SESSION` — "no key session this week" —
+ * over a week the runner raced.
+ *
+ * `isLong` is threaded through separately from `family` rather than folded
+ * into `familyOf` itself, because a race can address BOTH axes at once and a
+ * single enum value cannot say that. His Run Malibu half ruling names this
+ * exactly: "Treat the half as the week's principal quality AND long-duration
+ * stimulus... it satisfies both the quality slot and the long-run slot for
+ * that week." A race on the long-run day (`isLong`) therefore addresses
+ * DURABILITY *and* whichever non-long capacity the week's limiter names; a
+ * race that did NOT take the long-run slot (his Dodgers C race) addresses
+ * only the non-long side — a short tune-up cannot stand in for a long run it
+ * plainly was not.
+ *
+ * The non-long side credits ANY graded race, not a specific one of THRESHOLD
+ * vs. HIGH_INTENSITY: `Research/00b` §"Recovery by Effort" grades even a C
+ * race "treat like a hard workout", and this file has no finer-grained
+ * per-race effort-class reader to spend on which non-long capacity
+ * specifically (that classification — and the separate question of how much
+ * a race's RESULT proves toward the fitness model — belongs to
+ * `lib/race/effort-authority.ts`, a different axis, not re-decided here).
+ * Crediting both is the honest answer available rather than an invented one.
+ */
+function familyAddresses(family: SessionFamily, wanted: SessionFamily, isLong: boolean): boolean {
+  if (family === wanted) return true;
+  if (family !== 'race') return false;
+  if (wanted === 'long') return isLong === true;
+  return true;
 }
 
 /** A plan row as the thesis reads it — the week's authored truth, with the
@@ -598,7 +637,16 @@ export function assessWeekAgainstThesis(
 
   const wanted = familyFor(limiter);
   const families = rows.map((r) => familyOf({ type: r.type, is_long: r.isLong }));
-  const addressing = families.filter((f) => f === wanted).length;
+  // RACEWEEK-2 · `familyAddresses`, not a raw `=== wanted`, so a graded B or C
+  // race that replaced the week's quality (family 'race', not `wanted`) still
+  // counts — and, for a race that took the long-run slot, counts toward BOTH
+  // DURABILITY and whichever non-long capacity the limiter names (`isLong` is
+  // per-row, hence filtering `rows` here rather than the flattened `families`
+  // array). Same predicate `matchesCapacity` above now shares (Rule 16) —
+  // this file must not answer "does this week address the limiter" twice.
+  const addressing = rows.filter(
+    (r) => familyAddresses(familyOf({ type: r.type, is_long: r.isLong }), wanted, r.isLong),
+  ).length;
   if (addressing > 0) {
     return { code: 'WEEK_ADDRESSES_LIMITER', detail: `${addressing} ${wanted} session(s) this week` };
   }

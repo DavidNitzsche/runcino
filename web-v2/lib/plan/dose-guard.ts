@@ -47,6 +47,7 @@ import { logReadFailure } from '@/lib/db/read';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
 import { weekDosingFindings, type DosingFinding, type DosingWeek } from './dosing';
 import type { IntensityDay } from './intensity-distribution';
+import { weekContainsRace } from './race-week';
 
 /** `user_settings.long_run_day` shortcodes → 0=Sun..6=Sat. */
 const DOW_OF: Record<string, number> = {
@@ -182,10 +183,13 @@ export async function dosingBreachIfWritten(
       startISO: week_start_iso,
       phase: meta.phase ?? undefined,
       days,
-      // The stored flag first; a week carrying a race day is one either way,
-      // which is the same test `weekDose` already applies when it takes the
-      // race out of both sides of the ratio.
-      isRaceWeek: Boolean(meta.is_race_week) || rows.some((r) => r.type === 'race'),
+      // RACEWEEK-2 (2026-09-03) · `weekContainsRace` (race-week.ts), not a
+      // second inline copy of the same predicate (Rule 16) — the stored
+      // `is_race_week` column alone would miss a B/C tune-up, which
+      // `weekDose` needs to know about for the same reason it takes the race
+      // out of both sides of the ratio: its own header states the argument
+      // applies to any week whose largest number is a race, goal or not.
+      isRaceWeek: weekContainsRace({ isRaceWeek: meta.is_race_week, days: rows }),
     };
 
     return weekDosingFindings(week).filter((f) => f.enforced);

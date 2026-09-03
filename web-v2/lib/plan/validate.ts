@@ -30,6 +30,7 @@ import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/dist
 import type { PlanMode } from './goal-tiers';
 import { taperFactor, GENERAL_RAMP_CEILING } from './goal-tiers';
 import { planDosingFindings, type DosingFinding } from './dosing';
+import { weekContainsRace } from './race-week';
 // COMBINED-STRESS-1 (2026-09-02) · brief §5.4's transaction-level check. Imported
 // from the leaf module rather than from `generate.ts`, which imports THIS file.
 import {
@@ -1063,7 +1064,18 @@ export function validateComposedPlan(
   // moves mileage; the whole 180-archetype corpus authors zero enforced
   // breaches. This is the assertion that it stays that way, on every path that
   // writes a plan.
-  const dosing = planDosingFindings(weeks);
+  // RACEWEEK-2 (2026-09-03) · `weekContainsRace`, not the composer-local
+  // `isRaceWeek` (goal-race-only: `isRaceWeek = wi === totalWeeks - 1`). This
+  // FATAL gate and `applyDosingCaps`'s reconciliation loop (generate.ts) must
+  // agree on which weeks the percentage-cap exemption applies to — that loop
+  // is what this gate's own comment above cites as the reason "nothing
+  // should ever reach here", so if the two disagree about which weeks are
+  // exempt, the loop stops trimming to a bar this gate still enforces, and a
+  // week the loop correctly left alone (a B/C tune-up, per the owner's
+  // ruling: "its largest number is the race, which weekDose already excludes
+  // from both sides of the ratio") fails validation instead. Widening BOTH
+  // sites together is what keeps that assertion true.
+  const dosing = planDosingFindings(weeks.map((w) => ({ ...w, isRaceWeek: weekContainsRace(w) })));
   if (opts?.onDosing) opts.onDosing(dosing);
   for (const f of dosing) {
     if (!f.enforced) continue;
