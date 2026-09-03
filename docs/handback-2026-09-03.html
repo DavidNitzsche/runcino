@@ -1,0 +1,306 @@
+<title>Overnight Handback</title>
+<style>
+  :root {
+    --bg: #000; --s1: #0B0B0C; --s2: #141416; --s3: #1D1D20;
+    --ink: #F5F5F4; --quiet: #8A8A8F; --line: #26262A;
+    --signal: #FF5A1F; --amber: #F2B03C; --fault: #FF4438;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); margin: 0;
+         font: 16px/1.65 "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+         -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 56px 24px 120px; }
+  h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.02; letter-spacing: -0.02em;
+       margin: 0 0 8px; font-weight: 800; }
+  .sub { color: var(--quiet); font-size: 15px; margin: 0 0 8px; }
+  h2 { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--quiet);
+       margin: 56px 0 16px; font-weight: 700; border-top: 1px solid var(--line); padding-top: 20px; }
+  h3 { font-size: 19px; margin: 30px 0 8px; letter-spacing: -0.01em; font-weight: 700; }
+  p { margin: 0 0 14px; }
+  .lede { font-size: 19px; line-height: 1.55; color: var(--ink); }
+  .card { background: var(--s1); border: 1px solid var(--line); border-radius: 14px;
+          padding: 20px 22px; margin: 18px 0; }
+  .card.hot { border-color: #4a2a18; background: #140d08; }
+  .card.warn { border-color: #3a3218; background: #12100a; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15px; }
+  th { text-align: left; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+       color: var(--quiet); font-weight: 700; padding: 0 10px 8px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 10px 10px 10px 0; border-bottom: 1px solid var(--s3); vertical-align: top; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+  code { background: var(--s2); padding: 2px 6px; border-radius: 5px; font-size: 13px;
+         font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre { background: var(--s1); border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+        overflow-x: auto; font-size: 13px; line-height: 1.55;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  blockquote { margin: 16px 0; padding: 2px 0 2px 18px; border-left: 3px solid var(--signal);
+               color: var(--ink); font-size: 17px; }
+  blockquote cite { display: block; color: var(--quiet); font-size: 14px; font-style: normal; margin-top: 6px; }
+  .tag { display: inline-block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+         font-weight: 700; padding: 3px 9px; border-radius: 999px; margin-right: 8px; }
+  .t-done { background: #10261a; color: #6ee7a8; }
+  .t-open { background: #2a1e08; color: var(--amber); }
+  .t-you  { background: #2a1008; color: var(--signal); }
+  .t-fail { background: #2a0e0c; color: var(--fault); }
+  ul { margin: 0 0 14px; padding-left: 22px; } li { margin-bottom: 8px; }
+  .big { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+  .big.amber { color: var(--amber); } .big.sig { color: var(--signal); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 18px 0; }
+  .stat { background: var(--s1); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .stat .k { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--quiet); font-weight: 700; }
+  .stat .v { font-size: 26px; font-weight: 800; margin-top: 4px; letter-spacing: -0.01em; }
+  .muted { color: var(--quiet); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
+</style>
+
+<div class="wrap">
+
+<h1>Overnight handback</h1>
+<p class="sub">3 September 2026 · lead engineer report · everything below is on <code>main</code> unless marked otherwise</p>
+
+<p class="lede">You asked whether the app is making you run less and slower, and said the adaptation
+engine has to fire. That question now has a measured answer rather than an opinion, and it is the
+first section. After it: what shipped, one defect I put into the verification tooling myself and
+then caught, and the decisions I am holding for you.</p>
+
+<h2>1 · Will the adaptation engine fire?</h2>
+
+<blockquote>
+From what I've skimmed it seems like things are making me run less and slower? If that's the case
+now on today's fitness, fine. But we have to ensure the adaption engine will fire.
+<cite>— your message</cite>
+</blockquote>
+
+<p>I replayed your real history through the canonical engine with no lookahead — 40 decision points,
+120 records, belief carried forward only by the engine's own accepted proposals. The no-lookahead
+property is a <strong>compile error</strong>, not a discipline: the sealed history has no array
+surface, so code that reaches for a future run does not build.</p>
+
+<div class="scroll"><table>
+<tr><th>Lever</th><th class="n">Progress</th><th class="n">Hold</th><th class="n">Regress</th><th class="n">Refuse</th></tr>
+<tr><td><strong>All</strong></td><td class="n"><strong>0</strong></td><td class="n">102</td><td class="n">4</td><td class="n">14</td></tr>
+<tr><td>Threshold pace</td><td class="n">0</td><td class="n">40</td><td class="n">0</td><td class="n">0</td></tr>
+<tr><td>Weekly volume</td><td class="n">0</td><td class="n">38</td><td class="n">2</td><td class="n">0</td></tr>
+<tr><td>Long run</td><td class="n">0</td><td class="n">24</td><td class="n">2</td><td class="n">14</td></tr>
+</table></div>
+
+<p><strong>The "less" half of your read is largely fixed. The "slower" half is not.</strong>
+Regressive verdicts have gone from 20 to 4 since the last audit. Upward verdicts remain exactly
+zero.</p>
+
+<h3>The bar is not a wall — you never reached it</h3>
+
+<p>That distinction matters. A wall would mean the engine cannot push at all. Swept in favourability
+against a neutral point, every lever crosses from pull-back to push within <em>one sweep step</em>,
+and there is no unjustified asymmetry between up and down:</p>
+
+<pre>WEEKLY_VOLUME   pushes from 0.955 · pulls back from 0.95
+LONG_RUN        pushes from 0.95  · pulls back from 0.945
+THRESHOLD_PACE  pushes from +1 s/mi · pulls back from −1</pre>
+
+<p>How close you came: your best three-week window ran <strong>139% / 97% / 90%</strong>. Short by
+4.8 points on one week — <strong>2.1 miles</strong>, 39.7 run against a 41.8 bar.</p>
+
+<div class="card hot">
+<h3 style="margin-top:0">Three real defects, and the first one is the answer</h3>
+<p><strong>1 · The volume lever enforces conditions its contract never states.</strong> Credit every
+non-cutback week at exactly 95% — the stated criterion, met perfectly — and you get
+<strong>0 of 13</strong> upward verdicts. The code also silently demands every key session graded
+substantial <em>and</em> every long run at 95%. So the published bar buys nothing. That is Rule 21 on
+its face, and it contradicts the progression doctrine: duration progresses from load-tolerance
+evidence, so gating a volume increase on quality-session grades puts capacity evidence in charge of
+a load-tolerance question.</p>
+<p><strong>2 · The long-run lever was blocked by data and reported it as behaviour.</strong>
+<strong>40 of 40</strong> readings failed because two long runs' thirds were never comparable — not
+once in nine months. A segmentation problem counted as "he never earned it". That is the Rule 11
+collapse exactly: "I could not read this" wearing the face of "he did not do it".</p>
+<p><strong>3 · A threshold gate that cannot resolve.</strong>
+<code>agree &gt;= 2 &amp;&amp; agree &gt;= 2*disagree</code> can never pass at one faster session
+against one slower — which is precisely where you sat on 2 September.</p>
+</div>
+
+<h3>What this does not say</h3>
+<p>The canonical engine is <strong>still unwired</strong> from the live path, and a gate forbids any
+importer reaching it. Everything above is measured on an engine that does not yet run. The legacy
+path — the one that actually produced five downgrades and zero upgrades — still carries a test
+coverage ratio of <strong>4.4 to 1 against the push</strong>. That is now pinned as a defect ratchet
+rather than blessed as a ceiling.</p>
+
+<p>Rule 21's question is finally one SQL query, because every adaptation now records what it did and
+in which direction, with direction derived from the action rather than passed in.</p>
+
+<h2>2 · What you would have seen on the phone</h2>
+
+<p>On your 1 September interval session the app rendered: work pace <strong>7:02/mi against 7:10
+asked</strong>, spread across reps <strong>4 s/mi tighter</strong> than the comparable session, and
+<strong>3 s/mi faster by the last rep</strong> where the previous one was 10 s/mi slower by the last
+rep. Better on every axis.</p>
+
+<p>The coach's verdict, in full:</p>
+
+<blockquote>This sits outside what your current threshold range predicts. It is noted, and the next
+session like it will settle whether the number moves.<br><strong>The plan is unchanged.</strong></blockquote>
+
+<p>That is section 1 seen from your side of the screen rather than from the database.</p>
+
+<h2>3 · The plan on your phone is the one that is wrong</h2>
+
+<p>The load audit came back with both external-review claims <strong>true</strong> — roughly 30%
+growth in rolling 28-day load, and a seven-week stretch at 52.9 against a best sustained five weeks
+at 42.6 — and <strong>no correction warranted</strong>. It is coherent on every axis that matters:</p>
+
+<div class="grid">
+  <div class="stat"><div class="k">Rolling-7 peak</div><div class="v">60.1</div><div class="muted" style="font-size:13px">= 52.3 × 1.15 exactly</div></div>
+  <div class="stat"><div class="k">Worst ACWR</div><div class="v">1.20</div><div class="muted" style="font-size:13px">red line 1.5</div></div>
+  <div class="stat"><div class="k">Longest run</div><div class="v">21.5</div><div class="muted" style="font-size:13px">your demonstrated best</div></div>
+  <div class="stat"><div class="k">Cutbacks</div><div class="v">22–29%</div><div class="muted" style="font-size:13px">every 2–3 weeks</div></div>
+</div>
+
+<p>The +30% decomposes as 1.148 peak — doctrine spent <em>once</em> — times 1.136 density. The
+density term is the removal of chaos: 8 of your 36 history weeks are under 25 miles, including a
+0.00 and a 4.16.</p>
+
+<div class="card warn">
+<p style="margin:0"><strong>But the block you are actually running predates the fix.</strong>
+<code>pln_9a57561debb776e5</code>, authored 31 August, carries a peak rolling-7 of
+<strong>61.5 against a 60.1 ceiling</strong>, a 1.23 long-run spike on 4 October, and both contract
+fields null — so nothing on the phone can be measured against a ceiling at all. Composed on current
+<code>main</code>, the same runner comes out at exactly 60.1.</p>
+<p style="margin:14px 0 0"><strong>A recompute reprices; it does not re-lay-out.</strong> Only a
+re-author delivers this. The whole price of being inside the ceiling: <strong>1.3 miles off two easy
+days across fifteen weeks.</strong></p>
+</div>
+
+<h2>4 · Shipped tonight</h2>
+
+<h3><span class="tag t-done">Fixed</span> Your race week was being called "QUALITY"</h3>
+<p><code>plan_weeks.is_race_week</code> holds the <em>goal</em> race's week and nothing else — that
+is the composer's intent and the column is not wrong. What was wrong is that every reader spelled it
+"is race week" and answered a different question with it. Measured on your active plan:</p>
+
+<div class="scroll"><table>
+<tr><th>Week</th><th>Race</th><th>Flag</th></tr>
+<tr><td>2026-09-07</td><td>Santa Monica 10k · 09-13</td><td style="color:var(--fault)"><strong>FALSE</strong></td></tr>
+<tr><td>2026-09-21</td><td>Dodgers · 09-26</td><td style="color:var(--fault)"><strong>FALSE</strong></td></tr>
+<tr><td>2026-11-02</td><td>Run Malibu · 11-08</td><td style="color:var(--fault)"><strong>FALSE</strong></td></tr>
+<tr><td>2026-11-30</td><td>CIM · 12-06</td><td>true</td></tr>
+</table></div>
+
+<p>Three of four, and the nearest is <strong>ten days away</strong>. The Block screen announced
+"QUALITY" over the week you race. Fixed by naming the two quantities apart and resolving from the
+week's own race day, so <em>your live block reads correctly with no stored row rewritten</em>.
+Falsified: revert the fix and the gate reports <code>expected 'QUALITY' to be 'Race week'</code> —
+the literal string your screen showed.</p>
+
+<h3><span class="tag t-done">Verified</span> The Dodgers weekend now says something true</h3>
+<p>The old sentence — "You have run 29.4mi across two days before" — is real arithmetic and false in
+shape. I measured it independently: that pair is 25 and 26 April, and it <strong>contains a
+race</strong> (a 2.61 mi shakeout plus the Big Sur Marathon), which is the opposite arrangement to
+the one being prescribed. Races excluded, your heaviest training pair is <strong>27.85 mi</strong> on
+15 February. The ordering claim now comes back <strong>novel</strong>, with the furthest you have
+ever gone the day after a hard effort stated honestly at <strong>9.01 mi</strong>. Verified by
+rendering the sentence from production reads, not by reading the header that claims it.</p>
+
+<h3><span class="tag t-done">Fixed</span> The status bar was sitting on the content</h3>
+<p>Body text scrolls up under the clock and the Dynamic Island and collides with them. Not one
+screen — the header sits inside the scroll view on <strong>all seven</strong> screens that have one,
+which is deliberate, so all seven do it. One scrim in the shell rather than seven patches, reading
+the device inset the app already measures. <span class="muted">Not yet render-verified — see the
+honesty note in section 6.</span></p>
+
+<h3><span class="tag t-done">Fixed</span> The RUN sheet promised what the build had not checked</h3>
+<p>The picker said an outdoor run "keeps recording with your screen locked" with nothing gating it,
+while the live run screen said the exact opposite whenever the background-location key was missing.
+Two surfaces, one fact, contradicting each other inside the same run. The fact was already measured
+at runtime; the sheet simply was not asking.</p>
+
+<h3><span class="tag t-done">Fixed</span> A run detail that could name a session after a number</h3>
+<p>The new post-run match loader fell back to a column that flattens two eras, where a Strava-era row
+carries the literal code <code>'1'</code>. It was handing that to the function that names sessions.</p>
+
+<h2>5 · Two closed items the list said were open</h2>
+<p>Reporting a closed item as open is the same defect as the reverse — it sends the next session to
+redo finished work. Both verified, not assumed:</p>
+<ul>
+<li><strong>The watch does draw <code>raceHr</code></strong> — it is wired into the lobby as the
+session qualifier, not merely decoded.</li>
+<li><strong><code>HRAlerter</code> is wired</strong> — started at launch, and given today's ceiling
+from the <em>same</em> value the wrist guardrail uses, with null disarming it rather than leaving
+yesterday's easy-day number watching a threshold session. The "has never fired for anyone" comment
+that made it look open is the past-tense description of the bug that was fixed.</li>
+</ul>
+
+<h2>6 · A defect I introduced, and how it was caught</h2>
+
+<div class="card">
+<p style="margin-top:0">My own verification tool ran <strong>without its prebuild section</strong> and
+reported CLEAN on a commit CI then rejected. Nothing was wrong with the version on <code>main</code>:
+the copy I was <em>invoking</em> came from a shared checkout sitting on a stale commit, and amending
+from there reverted the file to a version predating that section while keeping a newer edit. So
+several verifications tonight skipped the twenty shipping gates and told me they had passed.</p>
+<p>What caught it was the write-barrier ratchet in CI, refusing a proof script of mine that built its
+own database pool — correctly, since "it only reads" is a property of today's code rather than of the
+file. That script is now fenced.</p>
+<p>My first fix for the tooling gap <strong>could never fail</strong>: it grepped the script for each
+section's name, and its own list of names satisfied the grep. That is exactly the gate Rule 18 exists
+to catch, built while fixing the thing Rule 18 exists to catch. It is replaced, not patched — the
+check now asserts what actually <em>ran</em>, so a missing section produces no result line and fails.</p>
+<p style="margin-bottom:0">I am reporting this because a verification tool that is confidently wrong
+at the moment you rely on it is worse than no tool, and because you should know which of tonight's
+green results were checked by a short chain. Everything in section 4 has since been re-verified
+through the full chain.</p>
+</div>
+
+<h2>7 · The visual walk, and why it proves less than I wanted</h2>
+
+<p>I walked the app on the current build against a dev server pinned to the read-only role, and probed
+every write path first: insert, update and delete on runs, update on plan workouts, insert on coach
+intents — all refused with genuine permission denials. The verification client was structurally
+incapable of writing your account rather than merely careful.</p>
+
+<p><strong>But the app had no valid session</strong>, so every screen it drew came from its own
+twelve-hour cache. Rule 13 says a display fix is verified by rendering with real data, and a cache
+render is not that. So the walk's findings are labelled by what the evidence supports: the status-bar
+collision is structural and confirmed; a run-detail screen that appeared to have <em>no way out</em>
+is observed and not yet called a defect, because the code as written passes a back action.</p>
+
+<p>I did not sign in, because that needs your password. A substrate that seeds a local throwaway
+database from your real rows — so the app can be walked with real data and still cannot touch
+production — is being built now, and the walk resumes on it.</p>
+
+<h2>8 · What I am holding for you</h2>
+
+<p>Three of these need a word from you and nothing else.</p>
+
+<div class="card">
+<p style="margin-top:0"><span class="tag t-you">Yours</span> <strong>Does a tune-up race week behave
+like a race week?</strong> The label is fixed. Two readers still consult the goal-race column
+directly and deliberately: the workout library switches to race-week mode on the goal race only, and
+the adaptation guards exclude race weeks from quality counting and ramp checks — so your 10K week is
+currently counted as ordinary training. Both are coaching changes with real blast radius, and Rule 21
+cuts both ways: treating every B race as a race week is another way to make the plan easier.</p>
+</div>
+
+<div class="card">
+<p style="margin-top:0"><span class="tag t-you">Yours</span> <strong>Migration 163</strong>
+(<code>plan_reschedules</code>) still needs your per-statement go. Rescheduling is built against it.</p>
+</div>
+
+<div class="card">
+<p style="margin-top:0"><span class="tag t-you">Yours</span> <strong>Easy days after intervals.</strong>
+Your ruling says at least one; <code>validate.ts</code> §9 requires two. One of them is wrong and I
+am not guessing which.</p>
+</div>
+
+<h2>9 · Still in flight</h2>
+<p>Four workstreams were running when this was written and will be folded in as they land: the
+marathon-pace and long-run progression rebuild (S1.1 / S1.2 / S1.4), the runner-facing language pass
+(S1.6, where "Conversational." and "Z2 HR cap." appear 37 times and one downhill instruction 12
+times), the walk substrate, and the fix for the volume bar described in section 1.</p>
+
+<p class="muted" style="margin-top:40px; font-size:14px">Nothing was written to your production
+database at any point. No completed activity or sealed prescription was touched. No adaptation was
+applied to your live plan. The live rebuild has not been performed — it waits on the progression work
+so it happens once, which is what you authorised.</p>
+
+</div>
