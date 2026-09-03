@@ -23,6 +23,30 @@ struct FaffApp: App {
     /// app since this morning" gaps (the original sleep-stale bug).
     @State private var lastImportAt: Date = .distantPast
 
+    /// True when this launch carries `-faffToken` — a DEBUG-only,
+    /// agent/QA-driven session (see `seedQATokenIfAsked` below), never a real
+    /// runner's launch. Used to skip the two interactive system permission
+    /// prompts (Notifications, HealthKit) that a headless verification run
+    /// cannot dismiss: neither the `xcrun simctl launch` invocation nor an
+    /// agent driving the simulator can tap a SpringBoard alert (confirmed
+    /// 2026-09-03 — repeated taps at the alert's own on-screen coordinates do
+    /// not register, because the alert is owned by SpringBoard, not this
+    /// app's process), so the two prompts stacking on top of each other on a
+    /// fresh install silently wedges every verification run behind a dialog
+    /// nothing can dismiss. A QA session driven by `-faffToken` has no
+    /// legitimate use for either capability — it renders real data, it does
+    /// not collect health samples or receive push — so skipping both is
+    /// correct on its own merits, not merely a workaround for the stuck
+    /// dialog. `#if DEBUG` for the same reason as the token seed itself: this
+    /// must not exist in a build that reaches a real device.
+    private static var isQATokenLaunch: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-faffToken")
+        #else
+        return false
+        #endif
+    }
+
     /// QA only, and compiled out of every shipping build.
     ///
     /// The v5 surfaces can only be judged against a real runner's data, and
@@ -184,14 +208,20 @@ struct FaffApp: App {
                     // notification registration so the system hands us
                     // back a device token via the AppDelegate.
                     NotificationCategories.register()
-                    Task.detached(priority: .background) {
-                        let center = UNUserNotificationCenter.current()
-                        let granted = (try? await center.requestAuthorization(
-                            options: [.alert, .badge, .sound]
-                        )) ?? false
-                        if granted {
-                            await MainActor.run {
-                                UIApplication.shared.registerForRemoteNotifications()
+                    // Skip the interactive prompt on a QA-token launch — see
+                    // `isQATokenLaunch`'s doc comment: nothing can dismiss it
+                    // headlessly, and an agent-driven verification session has
+                    // no legitimate use for push anyway.
+                    if !FaffApp.isQATokenLaunch {
+                        Task.detached(priority: .background) {
+                            let center = UNUserNotificationCenter.current()
+                            let granted = (try? await center.requestAuthorization(
+                                options: [.alert, .badge, .sound]
+                            )) ?? false
+                            if granted {
+                                await MainActor.run {
+                                    UIApplication.shared.registerForRemoteNotifications()
+                                }
                             }
                         }
                     }
@@ -220,7 +250,13 @@ struct FaffApp: App {
                     let key = "faff.health.connected.v2"
                     if UserDefaults.standard.bool(forKey: key) {
                         await HealthKitImporter.shared.importIfConnected(daysBack: 7)
-                    } else if UserDefaults.standard.bool(forKey: "faff.onboarded") {
+                    } else if UserDefaults.standard.bool(forKey: "faff.onboarded") && !FaffApp.isQATokenLaunch {
+                        // Skip the interactive HK prompt on a QA-token launch —
+                        // same reasoning as the notifications skip above. A
+                        // fresh simulator install has never connected Health,
+                        // so this branch is exactly the one that would stack a
+                        // second undismissable system alert on top of the
+                        // notifications prompt.
                         await HealthKitImporter.shared.requestAuthAndImport(daysBack: 7)
                     }
                     lastImportAt = Date()
