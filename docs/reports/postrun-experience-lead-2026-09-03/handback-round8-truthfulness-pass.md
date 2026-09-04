@@ -4,9 +4,22 @@
 **Base reconciled against:** `origin/main` @ `626a4414` (fully caught up at the
 time of the final full-suite run below — main moves fast; re-fetch before
 merging)
-**Final commit:** `555cdbd0` (merge of `047c474c`, the pass itself, onto
-`626a4414`)
-**Not yet pushed** — see the end of this document for the plan.
+**Final commit:** `a7be472c` (this handback), on top of `555cdbd0` (merge of
+`047c474c`, the pass itself, onto `626a4414`)
+**Committed locally, push to origin pending** — every commit above is
+complete and verified through the full shipping chain (build, full
+FaffTests, full vitest); the push itself is currently blocked by the
+pre-push hook's watch-conformance gate colliding with what reads as
+persistent, ongoing concurrent watch-simulator test activity from another
+session on this machine (`SessionTimelineTests` dying inside a different
+test case on nearly every attempt, and the hook's own log naming the exact
+mechanism: "something else drove [the simulator] — shoot.sh terminates and
+relaunches the same bundle id the test host runs under"). Roughly a dozen
+attempts across this round, spaced to let the process list clear first each
+time, all diagnosed the same way. No `--no-verify` was used at any point —
+this is the one standing item to resolve before the push clears; nothing
+about it reflects on this pass's own correctness, which is proven
+independently above.
 
 The race-card layout objection from the round-7 handback is withdrawn (your
 own words, at original resolution). This pass did not touch that layout.
