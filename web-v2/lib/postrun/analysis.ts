@@ -131,6 +131,18 @@ export interface AnalysisBand {
   toleranceSec: number | null;
   /** True for a stride. A stride is never pace-graded and is never a miss. */
   isStride: boolean;
+  /**
+   * PACE-SHAPE-CHART-1 (2026-09-05) · what `targetSecPerMi` MEANS on this
+   * band — `GradedPhase.shape`, unmodified. The chart drew every band's
+   * target as the same single dashed line regardless of this, which is the
+   * exact ambiguity Rule 2 of this pass exists to remove: a ceiling's line
+   * is a one-sided "no faster than", a window's is the CENTRE of a
+   * two-sided range, and drawing them identically told the runner a ceiling
+   * was a point to hit. Null only on a payload from before this field
+   * existed; `targetSecPerMi` is null in exactly the cases this is too
+   * (`effort`/`none`), so a reader gates on the target being present first.
+   */
+  paceShape: 'window' | 'ceiling' | 'effort' | 'none' | null;
 }
 
 /** The elevation layer. Its own array because it has its own grain. */
@@ -474,6 +486,7 @@ function bandsFrom(graded: GradedPhase[]): AnalysisBand[] {
       targetSecPerMi: graded_ ? p.targetSecPerMi : null,
       toleranceSec: graded_ ? p.toleranceSec : null,
       isStride: p.isStrideSegment,
+      paceShape: graded_ ? p.shape : null,
     });
     cursor += len;
   }

@@ -1861,7 +1861,13 @@ final class WorkoutEngine: ObservableObject {
             verdict: verdict,
             // STRIDE-RT-1 · the flag the server sent, sent back. Only when
             // true, so a non-stride phase's body is unchanged.
-            isStrideSegment: p.isStrideSegment ? true : nil
+            isStrideSegment: p.isStrideSegment ? true : nil,
+            // PACE-PURPOSE-1 · same return-trip contract: the shape and
+            // purpose the server authored this phase with, sent back
+            // verbatim so grading can read AUTHORED truth instead of
+            // regexing the label.
+            paceShape: p.paceShape.rawValue,
+            purpose: p.purpose
         ))
         // Tier 2: queue an RPE prompt for the recovery that follows a
         // completed work rep. We index the results array entry we just

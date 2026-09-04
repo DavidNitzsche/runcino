@@ -46,9 +46,6 @@ struct TodayAfterV5: View {
     let model: V5Today
 
     var onOpenAccount: () -> Void
-    /// The runner answered "how hard was it". Leaves the screen: the caller
-    /// persists it.
-    var onLogEffort: (Int) -> Void
     /// A body part was picked in the niggle picker. Leaves the screen: the
     /// caller persists it.
     var onFlagNiggle: (String) -> Void
@@ -84,13 +81,6 @@ struct TodayAfterV5: View {
     /// expand-in-place row as the before-run screen; see `SickV5.swift`.
     var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
 
-    /// Which asked-vs-ran / per-mile row is expanded in place. Keyed by the
-    /// row's own server id, per the "identity is the server id" rule — never
-    /// a single shared bool, so a future payload with more than one
-    /// actionable row would not cross-wire two rows to one disclosure.
-    @State private var expandedRowID: String?
-    @State private var pendingEffort: Int?
-
     @State private var niggleOpen = false
     @State private var niggleFlagged: String?
 
@@ -117,7 +107,6 @@ struct TodayAfterV5: View {
 
     init(model: V5Today,
          onOpenAccount: @escaping () -> Void = {},
-         onLogEffort: @escaping (Int) -> Void = { _ in },
          onFlagNiggle: @escaping (String) -> Void = { _ in },
          onOpenInjuryFlare: @escaping () -> Void = {},
          onChangeShoe: @escaping () -> Void = {},
@@ -142,7 +131,6 @@ struct TodayAfterV5: View {
         self.initials = initials
         self.model = model
         self.onOpenAccount = onOpenAccount
-        self.onLogEffort = onLogEffort
         self.onFlagNiggle = onFlagNiggle
         self.onOpenInjuryFlare = onOpenInjuryFlare
         self.onChangeShoe = onChangeShoe
@@ -151,13 +139,6 @@ struct TodayAfterV5: View {
         self.onPushStrava = onPushStrava
         self.onPickDay = onPickDay
         self.onReportSick = onReportSick
-
-        // The one row the server marks actionable in this table is effort.
-        // If it has not been answered yet, the scale opens by default —
-        // the prototype's own behaviour — rather than waiting for a tap.
-        let effortRow = model.askedVsRan.first(where: { $0.action != nil })
-        let notAnswered = effortRow?.value?.text == nil
-        _expandedRowID = State(initialValue: notAnswered ? effortRow?.id : nil)
     }
 
 
@@ -223,22 +204,77 @@ struct TodayAfterV5: View {
                         CoachSay(text: note.body, size: .md)
                     }
                 }
-                // Effort, then the readings, as one column. The gap between
-                // them is the row gap, not the group gap — they are one list
-                // of numbers about one run, not two subjects.
+
+                /* ═══ DIGEST-1 (2026-09-04) — THE SAME HIERARCHY RunDetailV5
+                 * NOW USES, applied over what THIS payload can honestly
+                 * support:
+                 *
+                 *   1. identity          → `panel` (above)
+                 *   2. activity stats    → `marathonPaceStatsGrid` for a
+                 *      marathon-specific long run, `repCompletionGrid` for
+                 *      a rep-style session (TODAY-PARITY-1, 2026-09-05 —
+                 *      completion count + rep range, the SAME Shape 1
+                 *      `RunDetailV5.activityStats` builds), else
+                 *      `WorkoutResultFactsV5`. `routePhases` carries
+                 *      `label`/`pace_shape`/`target_pace`/`actual_pace`/
+                 *      `avg_hr` (same five fields `PhaseBreakdown` always
+                 *      had). STILL NOT PORTED: `workoutAnalysisSection`'s
+                 *      bar chart, and a genuine per-phase `completed` flag
+                 *      (this wire has no way yet to know a rep was SKIPPED
+                 *      rather than simply not yet reported).
+                 *   3. Coach's Read      → `PostRunVerdictV5`, the SAME
+                 *      component, same `postRun` object as RunDetailV5 —
+                 *      genuinely canonical, not a parallel implementation.
+                 *   4. Route             → `routeOrBeltCard`, moved up from
+                 *      Layer 4 to sit directly after Coach's Read.
+                 *   5. Workout Analysis  → not built here; see §2.
+                 *   6. Piece by Piece    → `groupsTile`, this screen's own
+                 *      equivalent structure.
+                 *   7. Splits            → `breakdownSection`.
+                 *   8. Secondary evidence → everything below.
+                 */
+                if let grid = marathonPaceStatsGrid {
+                    SessionDetailsGridV5(scopeCaption: nil, metrics: grid)
+                } else if let grid = repCompletionGrid {
+                    SessionDetailsGridV5(scopeCaption: nil, metrics: grid)
+                } else {
+                    WorkoutResultFactsV5(workPaceText: model.paceWork)
+                }
+
+                if let pr = model.postRun {
+                    PostRunLearnedV5(model: pr, includes: .capture)
+                }
+
+                if let pr = model.postRun {
+                    PostRunVerdictV5(model: pr,
+                                     conditions: model.conditionsNote,
+                                     coachTip: model.coachTip)
+                }
+
+                routeOrBeltCard
+
                 VStack(alignment: .leading, spacing: 0) {
                     askedVsRanSection
                     readingSection
                 }
-                recapSection
+
                 if !model.groups.isEmpty {
                     groupsTile
                 }
+                if let pr = model.postRun {
+                    PostRunLearnedV5(model: pr, includes: .strides)
+                }
+
+                breakdownSection
+
+                /* ═══ §8 · SECONDARY EVIDENCE AND LOGGING ═══════════════ */
+
                 if let shares = model.zoneShares, !shares.isEmpty {
                     zoneTile(shares)
                 }
-                routeOrBeltCard
-                breakdownSection
+
+                /* ═══ LAYER 5 · ACTIONS ══════════════════════════════════ */
+
                 if let shoe = model.shoesWorn {
                     ListGroup(header: "Shoes you wore") {
                         shoeRow(shoe)
@@ -551,85 +587,12 @@ struct TodayAfterV5: View {
         .minimumScaleFactor(0.5)
     }
 
-    // MARK: - What the coach actually said
-    //
-    // THIS SCREEN USED TO DRAW ONE SENTENCE OUT OF FIVE.
-    //
-    // `deriveRecap` returns a verdict, one or two supporting facts, an
-    // optional conditions note and an optional forward-looking tip;
-    // `run-win.ts` adds a short headline. All five are composed on every
-    // request. This view rendered `verdict` and nothing else, and the wire did
-    // not even carry the rest — they were written, returned, and dropped
-    // between the engine and the glass.
-    //
-    // THE ORDER IS THE READING ORDER, and it matches the web surface so the
-    // two do not tell the same run in different sequences:
-    //
-    //   win        · the headline. Four to ten words, the most specific thing
-    //                the engine can say. Null far more often than not.
-    //   verdict    · the fuller read. Always present on a finished run.
-    //   facts      · the evidence under it, quieter, one line each.
-    //   conditions · what the weather did, quieter still.
-    //   tip        · the only line about NEXT time, and the only one that
-    //                leaves the tile — a caveat gets quieter treatment than
-    //                the thing it qualifies.
-    //
-    // RULE THREE. Every one of these is optional and a null is the engine
-    // declining, not a gap. The tile is not drawn at all when it would be
-    // empty, and no line gets a heading of its own that could survive its
-    // content going away.
-    //
-    // NOT RE-WORDED HERE. Every string is quoted verbatim from the composer,
-    // which is the same contract `coachLine` keeps on the changed-overnight
-    // screen. One voice, one author.
-
-    @ViewBuilder
-    private var recapSection: some View {
-        let verdict = model.verdict?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let win = model.win?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let facts = model.facts.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        let conditions = model.conditionsNote?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        if !verdict.isEmpty || !win.isEmpty || !facts.isEmpty || !conditions.isEmpty {
-            Tile {
-                if !win.isEmpty {
-                    Text(win)
-                        .font(.faffText(TypeScaleV5.body17, weight: .semibold))
-                        .foregroundStyle(V5.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !verdict.isEmpty {
-                    Text(verdict)
-                        .font(.faffText(TypeScaleV5.body17))
-                        .foregroundStyle(V5.textPrimary)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                ForEach(facts, id: \.self) { fact in
-                    Text(fact)
-                        .font(.faffText(TypeScaleV5.body15))
-                        .foregroundStyle(V5.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !conditions.isEmpty {
-                    // No "CONDITIONS" label. The web surface carries one
-                    // because it sits in a column of unrelated callouts; here
-                    // it is the fourth line of one paragraph by the same
-                    // author, and a heading would break it into two voices.
-                    Text(conditions)
-                        .font(.faffText(TypeScaleV5.label14))
-                        .foregroundStyle(V5.textQuiet)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-
-        if let tip = model.coachTip?.trimmingCharacters(in: .whitespacesAndNewlines), !tip.isEmpty {
-            CoachCaveat(text: tip)
-        }
-    }
+    // `recapSection` REMOVED 2026-09-03. `win`/`verdict`/`facts`/
+    // `conditionsNote`/`coachTip` are the same canonical composition
+    // `PostRunVerdictV5` now draws from `model.postRun` (`headline`/
+    // `summary`/`cost`), called above with `conditionsNote`/`coachTip`
+    // passed through as the two fields `postRun` does not itself carry.
+    // See `PostRunVerdictV5`'s own header.
 
     // MARK: - Asked vs ran
     //
@@ -677,74 +640,26 @@ struct TodayAfterV5: View {
         }
     }
 
+    /// 2026-09-03 · THE EFFORT ROW NO LONGER DRAWS HERE.
+    ///
+    /// This ForEach used to special-case the one row the server marks
+    /// actionable (`row.action != nil`, always effort) into a ten-button
+    /// picker at 29pt per cell — the component's own prior comment named the
+    /// defect outright: "Ten cells in a row across a phone cannot each be
+    /// 44... it is reported rather than quietly altered." It was also, as of
+    /// this pass, a SECOND effort-logging control on the same screen:
+    /// `RPECaptureRow` (Layer 5, the "Log" group below) writes the exact same
+    /// `POST /api/runs/[id]/rpe` this row's `onLogEffort` called directly —
+    /// two pickers for one number is worse than the accessibility defect
+    /// either one has alone. The actionable row is filtered out here; its
+    /// job belongs to the one accessible picker now.
     private var askedVsRanSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(model.askedVsRan) { row in
-                if row.action != nil {
-                    ExpandingRow(label: row.label,
-                                 sub: row.sub,
-                                 value: Self.fv(row.value),
-                                 question: row.sub.map { "How hard was it \u{00B7} \($0)" } ?? "How hard was it",
-                                 isExpanded: expandedBinding(for: row.id)) {
-                        effortScale
-                    }
-                } else {
-                    ListRow(label: row.label, sub: row.sub, value: Self.fv(row.value))
-                }
+            ForEach(model.askedVsRan.filter { $0.action == nil }) { row in
+                ListRow(label: row.label, sub: row.sub, value: Self.fv(row.value))
             }
         }
         .padding(.horizontal, V5.S.s4)
-    }
-
-    private func expandedBinding(for id: String) -> Binding<Bool> {
-        Binding(
-            get: { expandedRowID == id },
-            set: { isOpen in expandedRowID = isOpen ? id : (expandedRowID == id ? nil : expandedRowID) }
-        )
-    }
-
-    private var effortScale: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 10), spacing: 4) {
-            ForEach(1...10, id: \.self) { n in
-                Button {
-                    pendingEffort = n
-                    onLogEffort(n)
-                    withAnimation(V5.Motion.expand) { expandedRowID = nil }
-                } label: {
-                    Text("\(n)")
-                        // TEN CELLS IN A ROW ACROSS A PHONE IS 29 POINTS EACH.
-                        //
-                        // Scaled with the reading register, "10" outgrew its
-                        // cell at the first accessibility size and rendered as
-                        // "…" — the top of the effort scale, unreachable,
-                        // where the runner is being asked to pick a number.
-                        // The grid is a fixed graphic; its digits are sized to
-                        // the cell. The question above it still scales, and
-                        // every cell is named for VoiceOver below.
-                        .font(.faffText(16, scales: false))
-                        .foregroundStyle(pendingEffort == n ? V5.actionPrimaryText : V5.textPrimary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 46)
-                        .background(pendingEffort == n ? V5.signal : V5.materialTile,
-                                    in: RoundedRectangle(cornerRadius: V5.R.r10, style: .continuous))
-                }
-                .buttonStyle(V5PressStyle())
-                // TEN BUTTONS CALLED "1" THROUGH "10", AND NOTHING SAYING
-                // WHAT THEY WERE FOR OR WHICH ONE WAS ALREADY CHOSEN.
-                //
-                // The scale opens in place under the Effort row, so a sighted
-                // runner reads the question from the row above. VoiceOver
-                // moves focus into the expansion and the question is behind
-                // it. And the chosen number is drawn as an orange fill, which
-                // is a colour — nothing announced it.
-                //
-                // The cells are 29pt wide. Ten of them across a phone cannot
-                // each be 44, so the width is the design's to change, not
-                // this file's; it is reported rather than quietly altered.
-                .accessibilityLabel("Effort \(n) of 10")
-                .accessibilityAddTraits(pendingEffort == n ? [.isSelected] : [])
-            }
-        }
     }
 
     // MARK: - Per-mile instruction groups, with actual numbers
@@ -1252,26 +1167,153 @@ struct TodayAfterV5: View {
             // 8:36/mi) rendered as "18:04/mi" — 1084 seconds read back as a
             // pace. Divide by the phase's own distance first.
             let paceSecPerMi = p.mi > 0 ? Double(p.sec) / p.mi : Double(p.sec)
+            // PARITY-1, 2026-09-04 · `p.label` is the server's own phase
+            // name ("10.0 mi easy", "Interval · 1 km") now that `routePhases`
+            // carries it — the SAME string run detail's `phase_breakdown`
+            // has always shown. Falls back to the generic numbered label
+            // only for a payload from before this date.
             let label: String
-            switch p.type {
-            case "warmup":   label = "Warm Up"
-            case "cooldown": label = "Cool Down"
-            case "recovery": label = "Recovery"
-            case "work":     label = "Interval \(workOrdinal[i] ?? 1)"
-            default:         label = "Section \(i + 1)"
+            if let real = p.label, !real.isEmpty {
+                label = real
+            } else {
+                switch p.type {
+                case "warmup":   label = "Warm Up"
+                case "cooldown": label = "Cool Down"
+                case "recovery": label = "Recovery"
+                case "work":     label = "Interval \(workOrdinal[i] ?? 1)"
+                default:         label = "Section \(i + 1)"
+                }
             }
             return RepPiece(id: i,
                      label: label,
                      isWork: p.type.map { $0 == "work" } ?? true,
                      actualPace: Units.formatPace(secPerMile: paceSecPerMi),
-                     askedPace: nil,
+                     // Same rule `RunDetailV5.repPieces` applies: a recovery
+                     // jog's target is a band the watch needed to draw
+                     // something, not a real prescription, and a stride is
+                     // never pace-graded at all (`pace_shape == "effort"`).
+                     // PACE-CONTRACT-1 · shape-aware text, not the bare
+                     // number — see `RunDetailV5.repPieces`' own comment.
+                     askedPace: (p.type == "work" && p.paceShape != "effort")
+                        ? paceContractText(shape: p.paceShape, targetPaceSec: p.targetPaceSec,
+                                            tolerancePaceSec: p.tolerancePaceSec)
+                        : nil,
                      detail: "\(Units.formatDistance(miles: p.mi, decimals: 2)) \(Units.distanceLabel())",
                      // VERDICT-1 · the canonical word, from the same resolver
-                     // run detail's phase panel reads. Nil on an ungraded
-                     // phase and on older payloads — no row invents one.
-                     verdictPhrase: p.statusLabel,
-                     chosen: false)
+                     // run detail's phase panel reads — now the full
+                     // pace-shape-aware phrase (`phaseVerdictPhrase`), not
+                     // just the bare `status_label`, so a ceiling phase
+                     // reads "Under the ceiling" here exactly as it does on
+                     // run detail rather than falling through to nil.
+                     verdictPhrase: phaseVerdictPhrase(paceShape: p.paceShape, verdict: p.verdict,
+                                                        statusLabel: p.statusLabel, type: p.type),
+                     chosen: false,
+                     kind: RepPiece.Kind.of(type: p.type, isWork: p.type.map { $0 == "work" } ?? true),
+                     durationSec: p.sec)
         }
+    }
+
+    /// PARITY-1, 2026-09-04 · `RunDetailV5.marathonPacePhase`'s twin, off
+    /// `V5RoutePhase` now that `routePhases` carries `label`. Same detection
+    /// rule (a work phase whose own label names marathon pace), so the two
+    /// screens agree on whether a session IS this shape without either
+    /// guessing from a pace value.
+    private var marathonPacePhase: V5RoutePhase? {
+        model.routePhases.first {
+            $0.type == "work" && ($0.label?.lowercased().contains("marathon pace") ?? false)
+        }
+    }
+
+    private var marathonEasyPhase: V5RoutePhase? {
+        guard marathonPacePhase != nil else { return nil }
+        return model.routePhases.first {
+            $0.type == "work" && !($0.label?.lowercased().contains("marathon pace") ?? false)
+        }
+    }
+
+    /// The marathon-pace stats grid — `RunDetailV5.activityStats`' Shape 2,
+    /// off the same server-computed label/pace/HR fields, now that
+    /// `routePhases` carries them (closes the gap this file's own header
+    /// comment on `sectionPieces` used to name). Total distance/time/pace
+    /// are deliberately NOT repeated here — `askedVsRanSection` /
+    /// `readingSection` already state them once on this screen, and
+    /// restating them in a second grid would be Rule 17 on this file's own
+    /// page rather than across two screens.
+    private var marathonPaceStatsGrid: [SessionDetailsGridV5.Metric]? {
+        guard let mp = marathonPacePhase else { return nil }
+        let easy = marathonEasyPhase
+        return [
+            .init("MP distance", .measured(Units.formatDistance(miles: mp.mi, decimals: 1) + " " + Units.distanceLabel())),
+            // PACE-CONTRACT-1 · shape-aware sub text — see `RunDetailV5
+            // .activityStats`' own comment for the same fix on the twin grid.
+            .init("MP pace", .measured(mp.actualPace.map { "\($0)/mi" }),
+                  sub: paceContractText(shape: mp.paceShape, targetPaceSec: mp.targetPaceSec,
+                                         tolerancePaceSec: mp.tolerancePaceSec)),
+            .init("Easy pace", .measured(easy?.actualPace.map { "\($0)/mi" }),
+                  sub: easy.flatMap { paceContractText(shape: $0.paceShape, targetPaceSec: $0.targetPaceSec,
+                                                        tolerancePaceSec: $0.tolerancePaceSec) }),
+            .init("MP heart rate", .measured(mp.avgHr.map { "\($0) bpm" })),
+        ]
+    }
+
+    /// TODAY-PARITY-1, 2026-09-05 · `RunDetailV5.activityStats`' Shape 1
+    /// (rep-style completion/work-pace/rep-range), ported so Today does not
+    /// omit the defining result of an interval workout — David's own
+    /// standing: "Today can remain the concise version and Run Detail the
+    /// complete version, but Today cannot omit the defining result." Same
+    /// `structuredIdentityTypes` vocabulary `RunDetailV5.isRepStyleSession`
+    /// gates on, read here off `model.workoutType` instead of `type_display`
+    /// (the same string, different wire — both come from the one server-
+    /// side `displayTypeFor`/`workoutType` resolution, so the two screens
+    /// cannot classify a session differently).
+    private static let repStyleWorkoutTypes: Set<String> = [
+        "threshold", "interval", "intervals", "tempo", "vo2max", "vo2",
+    ]
+    private var isRepStyleSession: Bool {
+        guard let t = model.workoutType?.lowercased() else { return false }
+        return Self.repStyleWorkoutTypes.contains(t)
+    }
+    private var trueWorkReps: [V5RoutePhase] {
+        model.routePhases.filter { $0.type == "work" && $0.paceShape != "effort" }
+    }
+    /// COMPLETION-STATE-1, 2026-09-05 · WAS `let done = reps.count` — every
+    /// decoded rep counted as done regardless of what the wire actually
+    /// said, with a comment arguing the count-of-records WAS the honest
+    /// reading. It was not: "4 of 4 completed" is a claim about all four
+    /// finishing, and nothing here ever checked that. `V5RoutePhase
+    /// .completed` now carries the same `Bool?` run detail's phase panel
+    /// does; `repCompletionSummary` (`RepBreakdownV5.swift`) resolves the
+    /// weakest claim the data supports. `rep_skips` and a prescribed rep
+    /// count are not on this wire yet — Today stays the concise surface and
+    /// simply cannot say "skipped" or "missing" until they are; passing
+    /// `planned: nil` is the honest degradation, not a guess.
+    private var repCompletionGrid: [SessionDetailsGridV5.Metric]? {
+        guard isRepStyleSession else { return nil }
+        let reps = trueWorkReps
+        guard reps.count >= 2 else { return nil }
+        let states: [RepRecordState] = reps.map { p in
+            switch p.completed {
+            case true: return .completed
+            case false: return .partial
+            case nil: return .unknown
+            }
+        }
+        guard let completion = repCompletionSummary(states: states, planned: nil) else { return nil }
+        let repRange: String? = {
+            let secs = reps.compactMap { p -> Int? in
+                guard p.mi > 0, p.sec > 0 else { return nil }
+                return Int(Double(p.sec) / p.mi)
+            }
+            guard let lo = secs.min(), let hi = secs.max(), lo != hi,
+                  let loText = FaffFmt.pace(secPerMi: Double(lo)),
+                  let hiText = FaffFmt.pace(secPerMi: Double(hi)) else { return nil }
+            return "\(loText)-\(hiText)/mi"
+        }()
+        return [
+            .init(completion.label, .measured(completion.value), sub: completion.sub),
+            .init("Work pace", .measured(model.paceWork.map { "\($0)/mi" })),
+            .init("Rep range", .measured(repRange)),
+        ]
     }
 
     @ViewBuilder
@@ -1466,9 +1508,11 @@ struct TodayAfterV5: View {
     // heading about what the coach learned.
     @ViewBuilder
     private var whatThisDidSection: some View {
-        if let pr = model.postRun {
-            PostRunLearnedV5(model: pr)
-        }
+        // `PostRunLearnedV5` no longer drawn here (2026-09-03) — `.capture`
+        // and `.meaning` moved to Layer 1, `.strides` to Layer 2, each with
+        // the rest of the section it belongs beside. This group is now
+        // Layer 5's Log, exactly what its header already says it is.
+        //
         // Always drawn: the picker is the only way to flag a niggle, and an
         // action the runner cannot find is an action that does not exist.
         ListGroup(header: "Log") {
@@ -1482,6 +1526,12 @@ struct TodayAfterV5: View {
             // that SETS one. Both at once read as two identical rows.
             if serverFlaggedNiggle == nil {
                 niggleRow
+            }
+            // The brief's "Add effort/RPE where supported", grouped with the
+            // rest of this screen's log-and-share actions rather than sitting
+            // in the analytical story above (post-run brief §"Actions").
+            if let runId = model.runId {
+                RPECaptureRow(runId: runId)
             }
         }
     }

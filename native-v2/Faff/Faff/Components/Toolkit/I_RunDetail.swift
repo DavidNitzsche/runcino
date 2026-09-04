@@ -86,8 +86,10 @@ struct PhaseBreakdownList: View {
         case "fast": return StatusVis(label: "Fast",  color: Theme.dist)
         case "slow": return StatusVis(label: "Slow",  color: Theme.goal)
         case "on":   return StatusVis(label: "On",    color: Theme.green)
-        default:     return StatusVis(label: p.completed ? "Done" : "—",
-                                       color: p.completed ? Theme.green : Theme.mute)
+        // COMPLETION-STATE-1 · `p.completed` is nil when the wire never
+        // said either way — that reads as "—", not as "Done".
+        default:     return StatusVis(label: p.completed == true ? "Done" : "—",
+                                       color: p.completed == true ? Theme.green : Theme.mute)
         }
     }
 

@@ -252,6 +252,15 @@ struct RunDetail: Decodable, Identifiable {
     let elev_gain_ft: Int?
     let temp_f: Double?
 
+    /// RACE-HERO-1, 2026-09-05 · true when the server's own `matchedRace`
+    /// resolver found a `races` row for this run — the SAME signal that
+    /// already names a real race in `title` (a proper-noun `name` survives
+    /// the generic/serialized checks there) and drives the race-language
+    /// branch in `experience.ts`'s Coach's Read. Read here so the finish-
+    /// time hero treatment does not have to re-infer "is this a race" from
+    /// prose. `false` on a payload from before this field existed.
+    let race_matched: Bool
+
     let has_route: Bool
     let route_polyline: String?
     let splits: [RunSplit]
@@ -383,6 +392,7 @@ struct RunDetail: Decodable, Identifiable {
         case id, date, start_local, name, source, type, type_display
         case distance_mi, pace, pace_s_per_mi, time_moving, time_elapsed, avg_speed_mph
         case hr_avg, hr_max, cadence_avg, elev_gain_ft, temp_f
+        case race_matched
         case has_route, route_polyline, splits, hrZonePcts, form
         case pace_work, pace_work_s_per_mi, hr_avg_work, cadence_avg_work, work_seconds
         case phase_breakdown
@@ -415,6 +425,7 @@ struct RunDetail: Decodable, Identifiable {
         self.cadence_avg = c.decodeFlexInt(forKey: .cadence_avg)
         self.elev_gain_ft = c.decodeFlexInt(forKey: .elev_gain_ft)
         self.temp_f = try c.decodeIfPresent(Double.self, forKey: .temp_f)
+        self.race_matched = try c.decodeIfPresent(Bool.self, forKey: .race_matched) ?? false
         self.has_route = try c.decodeIfPresent(Bool.self, forKey: .has_route) ?? false
         self.route_polyline = try c.decodeIfPresent(String.self, forKey: .route_polyline)
         self.splits = (try? c.decode([RunSplit].self, forKey: .splits)) ?? []
@@ -490,6 +501,14 @@ struct RunAnalysisBand: Decodable, Equatable, Identifiable {
     /// True for a stride. Doctrine calls a stride "not a workout"; it carries
     /// no target and is never a miss.
     let isStride: Bool
+    /// PACE-SHAPE-CHART-1, 2026-09-05 · "window" | "ceiling" | "effort" |
+    /// "none" | nil. `targetSecPerMi` alone cannot tell a runner whether the
+    /// dashed line beside it is a ceiling (one-sided — do not go faster) or
+    /// a window's centre (two-sided — hold both edges); this is what draws
+    /// the two differently. Nil on a payload from before this field existed
+    /// — treated as unknown-shape, never guessed from `targetSecPerMi`
+    /// alone (which is exactly the ambiguity this field removes).
+    let paceShape: String?
 
     var isWork: Bool { kind == "work" && !isStride }
 }
@@ -626,7 +645,14 @@ struct PhaseBreakdown: Decodable, Identifiable {
     let avg_hr: Int?
     let max_hr: Int?
     let avg_cadence: Int?
-    let completed: Bool
+    /// COMPLETION-STATE-1 (2026-09-05) · `nil` when the wire never said
+    /// either way — the honest majority case for a run with no per-phase
+    /// completion signal at all (a Strava sync, most historical rows).
+    /// WAS defaulted to `true` on decode, which is `null` read as "yes,
+    /// completed" — Rule 11's exact shape, and the reason "4 of 4 completed"
+    /// used to print with no completion data behind it whatsoever. A reader
+    /// may print "completed" only for an explicit `true`.
+    let completed: Bool?
     let status: String?                    // "on" | "fast" | "slow" | nil
 
     /// PACE-SHAPE-1 (2026-09-01) · WHAT `target_pace_sec` MEANS on this phase.
@@ -717,7 +743,7 @@ struct PhaseBreakdown: Decodable, Identifiable {
         self.avg_hr = c.decodeFlexInt(forKey: .avg_hr)
         self.max_hr = c.decodeFlexInt(forKey: .max_hr)
         self.avg_cadence = c.decodeFlexInt(forKey: .avg_cadence)
-        self.completed = (try? c.decodeIfPresent(Bool.self, forKey: .completed)) ?? true
+        self.completed = try? c.decodeIfPresent(Bool.self, forKey: .completed)
         self.status = try? c.decodeIfPresent(String.self, forKey: .status)
         self.verdict = try? c.decodeIfPresent(String.self, forKey: .verdict)
         self.time_in_tolerance_sec = c.decodeFlexInt(forKey: .time_in_tolerance_sec)

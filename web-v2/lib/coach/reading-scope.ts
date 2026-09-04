@@ -149,6 +149,12 @@ export interface ReadingScopes {
    *  the two booleans above are derived from, exported so renderers can order
    *  their sections by it without re-deriving. */
   isRepSet: boolean;
+  /** WORK-COUNT-1, 2026-09-05 · the count `isRepSet` and `workLabel`'s
+   *  (now-uniform) note were both derived from — strides already excluded
+   *  (`isStride`). Structured, not re-parsed out of `note`'s prose: a
+   *  caller that genuinely needs the number (a renderer, a test) reads
+   *  this rather than the label text, which no longer carries it. */
+  workCount: number;
 }
 
 /**
@@ -210,11 +216,33 @@ export function medianWorkDurationSec(phases: ScopePhase[]): number | null {
   return d.length % 2 === 1 ? d[mid] : Math.round((d[mid - 1] + d[mid]) / 2);
 }
 
-/** Plain-English name for the work, sized to how much of it there was. */
-function workLabel(n: number): string {
-  if (n === 1) return 'on the work';
-  if (n === 2) return 'across both reps';
-  return `across the ${n} reps`;
+/**
+ * Plain-English name for the work, sized to how much of it there was.
+ *
+ * `unit` DEFAULTS TO "reps" for the same reason this whole file keys on
+ * STRUCTURE rather than type (see the file header): most of this runner's
+ * history has no reliable semantic type to key a better word off. But
+ * "reps" is flatly wrong for the one shape that IS reliably typed — a race.
+ * The 2026-08-16 Americas Finest City half stores five course segments
+ * (Point Loma Climb, The Drop, Mission Bay...) as work phases, and this
+ * function called them "the 5 reps," which a runner correctly read as
+ * nonsense: a hill climb and a bay-front mile are not repetitions of the
+ * same thing. `races` rows are unambiguous, so a caller that knows this run
+ * IS one may say so.
+ */
+/* LESS-IS-MORE-1, 2026-09-05 · "Heart rate, across the 5 segments" was named
+ * directly as an example of clinical over-labelling, and it was ALSO the
+ * whole reason the `workUnit` parameter existed (`unit` below, since
+ * removed from `ReadingScopeInput` along with it) — distinguishing "reps"
+ * from a race's own "segments" only mattered because the note spelled the
+ * count out. The count is already visible elsewhere on the screen (the
+ * segment list, "4 of 4 completed"); this label's only remaining job is to
+ * say the number is scoped to the work, not the whole run, and "on the
+ * work" says that for one rep or ten without reciting the count — or
+ * relitigating rep-vs-segment, which the page already states correctly
+ * where it matters — a second time. */
+function workLabel(_n: number): string {
+  return 'on the work';
 }
 
 export interface ReadingScopeInput {
@@ -268,6 +296,7 @@ export function deriveReadingScopes(input: ReadingScopeInput): ReadingScopes {
       splitsMeaningful: true,
       zoneBarMeaningful: true,
       isRepSet: false,
+      workCount: 0,
     };
   }
 
@@ -321,5 +350,6 @@ export function deriveReadingScopes(input: ReadingScopeInput): ReadingScopes {
     splitsMeaningful: !isRepSet,
     zoneBarMeaningful: !isRepSet,
     isRepSet,
+    workCount: work.length,
   };
 }

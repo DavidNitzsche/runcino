@@ -122,7 +122,9 @@ export interface PhaseBreakdown {
   avg_hr: number | null;
   max_hr: number | null;
   avg_cadence: number | null;
-  completed: boolean;
+  /** COMPLETION-STATE-1 · `null` when the wire never said either way — the
+   *  honest majority case. A reader may print "completed" only for `true`. */
+  completed: boolean | null;
   // Derived: did the rep hit target? "on" / "fast" / "slow" / null
   status: 'on' | 'fast' | 'slow' | null;
   /**
@@ -396,6 +398,12 @@ export interface RunDetail {
   // Workouts, Strava, manual) where we only have mile splits.
   phase_breakdown: PhaseBreakdown[];
 
+  /** RACE-HERO-1, 2026-09-05 · true when `matchedRace` resolved a `races`
+   *  row for this run — the same signal already proven for the run's
+   *  display name — so the client can give a race's finish time hero
+   *  treatment without inferring "is this a race" from prose. */
+  race_matched: boolean;
+
   has_route: boolean;
   route_polyline: string | null;  // Strava-encoded polyline if available
   splits: RunSplit[];
@@ -665,6 +673,18 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
   //
   // Both loads are best-effort: a failure returns the row's own name, which is
   // what this function did before.
+  //
+  // THE SAME `raceMatch` ALSO ANSWERS "is this a race" for the readings below
+  // (RACEWORD-1, 2026-09-03). `plannedRow?.type === 'race'` is the plan's
+  // OWN answer to a different question — what was PRESCRIBED for the day —
+  // and is null on every race that predates a plan or was never scheduled as
+  // one, which the Americas Finest City half is: no `plan_workouts` row, so
+  // `plannedRow` is null and `r.type` is Strava's raw activity kind ('Run').
+  // Neither carries race information; `matchRaceForRun` against the `races`
+  // table is the one place this app already answers the question honestly,
+  // for the display name above. Reusing it here rather than re-deriving a
+  // second "is this a race" from a field that cannot answer it.
+  let matchedRace: RaceForMatch | null = null;
   const runDisplayName = await (async (): Promise<string | null> => {
     const canonicalRowId = row.id != null ? String(row.id) : null;
     const runDate = String(r.date || (r.startLocal ?? '').slice(0, 10) || '').slice(0, 10);
@@ -715,6 +735,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       const raceMatch = runDate
         ? matchRaceForRun({ date: runDate, distanceMi, workoutTypeHint }, racesForMatch)
         : null;
+      matchedRace = raceMatch;
       // Race name > canonical non-generic > best twin non-generic. Identical
       // precedence to log-state.ts, because it is the same two calls.
       return raceMatch?.name ?? coalesceRunName(r.name ?? null, twins);
@@ -1414,6 +1435,18 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       wholePaceSPerMi: paceSPerMi,
       workPaceSPerMi: workAvgs.paceSPerMi,
     }),
+
+    // RACE-HERO-1, 2026-09-05 · `matchedRace` (above) is the same signal
+    // already proven for this run's display name and for `workUnit`
+    // (removed with `LESS-IS-MORE-1`'s reading-scope simplification) —
+    // exposed here, genuinely, so the client can give a race's finish time
+    // hero treatment without inferring "is this a race" from prose. First
+    // attempt at the ORIGINAL fix this signal came from compared
+    // `plannedRow?.type` against `'race'`, which is null on exactly the
+    // runs that need it: an unplanned or historical race has no matched
+    // `plan_workouts` row, so that check silently never fired for the AFC
+    // half itself.
+    race_matched: matchedRace != null,
 
     has_route: Boolean(r.summaryPolyline || r.routePolyline || r.startLatLng),
     route_polyline: r.summaryPolyline ?? r.routePolyline ?? null,

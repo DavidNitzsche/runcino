@@ -89,7 +89,7 @@ struct ScreensCatalogV5: View {
             },
             Entry(id: "5b", title: "Today · after the run", sub: "Asked against ran") {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.outdoor,
-                                     onOpenAccount: {}, onLogEffort: { _ in },
+                                     onOpenAccount: {},
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
                                      onChangeShoe: {}, onPickShoe: { _ in }, onRowAction: { _ in }, onPushStrava: {}))
             },
@@ -97,7 +97,7 @@ struct ScreensCatalogV5: View {
             // describe until the Distance row landed.
             Entry(id: "5d", title: "Today · after a long overshoot", sub: "Asked 5 mi, ran 11") {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.overshot,
-                                     onOpenAccount: {}, onLogEffort: { _ in },
+                                     onOpenAccount: {},
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
                                      onChangeShoe: {}, onPickShoe: { _ in }, onRowAction: { _ in }, onPushStrava: {}))
             },
@@ -146,7 +146,7 @@ struct ScreensCatalogV5: View {
             },
             Entry(id: "5c", title: "Today · after a treadmill run", sub: "On the belt, no route card") {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.treadmill,
-                                     onOpenAccount: {}, onLogEffort: { _ in },
+                                     onOpenAccount: {},
                                      onFlagNiggle: { _ in }, onOpenInjuryFlare: {},
                                      onChangeShoe: {}, onPickShoe: { _ in }, onRowAction: { _ in }, onPushStrava: {}))
             },

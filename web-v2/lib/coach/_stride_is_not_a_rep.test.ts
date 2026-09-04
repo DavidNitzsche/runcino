@@ -165,7 +165,12 @@ describe('the mechanism is REACHABLE, and it is not a no-op (Rule 15)', () => {
     // one. With no stride count the label rung cannot fire, nothing is shaped
     // `effort`, and the pipeline reproduces the original wrong answer.
     const r = scopesFor(null);
-    expect(r.cadence.note).toBe('across the 7 reps');
+    // LESS-IS-MORE-1, 2026-09-05 · the note text simplified to "on the
+    // work" — this test's own point (the WRONG count of seven, unresolved)
+    // now reads off `workCount` (WORK-COUNT-1), the structured field that
+    // replaced the count's only appearance, in prose, inside `note`.
+    expect(r.cadence.note).toBe('on the work');
+    expect(r.workCount).toBe(7);
     expect(r.isRepSet).toBe(true);
     expect(r.hr.scope).toBe('none');
     expect(r.splitsMeaningful).toBe(false);
@@ -200,7 +205,8 @@ describe('a real rep set is still a rep set', () => {
     // this the whole gate would pass an engine that had simply stopped
     // counting reps at all (Rule 22: check the distribution, both verdicts).
     expect(r.isRepSet).toBe(true);
-    expect(r.cadence.note).toBe('across the 4 reps');
+    expect(r.cadence.note).toBe('on the work');
+    expect(r.workCount).toBe(4);
     expect(r.splitsMeaningful).toBe(false);
   });
 });

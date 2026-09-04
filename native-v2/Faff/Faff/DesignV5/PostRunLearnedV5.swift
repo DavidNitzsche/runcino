@@ -68,6 +68,16 @@ struct PostRunV5: Decodable, Equatable {
     let headline: String
     /// Already drawn by the recap tile as `verdict`.
     let summary: String
+    /// WHOSE target `summary` and the per-segment readings below were graded
+    /// against, when that is not the ordinary plan-authored case
+    /// (PROVENANCE-1, 2026-09-03). Null when the plan itself set the target
+    /// or nothing graded the work at all. Non-null when the run's own
+    /// recorded phases carried targets with no matching plan day behind them
+    /// — a workout the runner built on the watch himself, most often a
+    /// race-day pacing plan. See `lib/postrun/wire.ts`'s doc for the
+    /// Americas Finest City half, the run that found this gap: five real
+    /// per-segment targets, graded correctly, attributed to nobody.
+    let targetProvenanceNote: String?
     /// Already drawn by the recap tile as the first `fact`. Null when nothing
     /// honest can be said about what the session cost.
     let cost: String?
@@ -120,7 +130,7 @@ struct PostRunV5: Decodable, Equatable {
     let coverage: PostRunCoverageV5?
 
     enum K: String, CodingKey {
-        case version, runId, decisionVersion, headline, summary, cost
+        case version, runId, decisionVersion, headline, summary, targetProvenanceNote, cost
         case learned, change, changeState, changes, next, why, accessibilitySummary
         case capture, strides, coverage
     }
@@ -142,6 +152,7 @@ struct PostRunV5: Decodable, Equatable {
         decisionVersion = str(.decisionVersion)
         headline = str(.headline)
         summary = str(.summary)
+        targetProvenanceNote = optStr(.targetProvenanceNote)
         cost = optStr(.cost)
         learned = str(.learned)
         change = str(.change)
@@ -161,12 +172,13 @@ struct PostRunV5: Decodable, Equatable {
          changeState: String, changes: [String], next: String?, why: [String],
          accessibilitySummary: String,
          capture: String? = nil, strides: PostRunStridesV5? = nil,
-         coverage: PostRunCoverageV5? = nil) {
+         coverage: PostRunCoverageV5? = nil, targetProvenanceNote: String? = nil) {
         self.version = version
         self.runId = runId
         self.decisionVersion = decisionVersion
         self.headline = headline
         self.summary = summary
+        self.targetProvenanceNote = targetProvenanceNote
         self.cost = cost
         self.learned = learned
         self.change = change
@@ -382,39 +394,45 @@ struct PostRunLearnedV5: View {
         static let capture = Sections(rawValue: 1 << 0)
         /// The stride rows. Layer 2, with the rest of the session.
         static let strides = Sections(rawValue: 1 << 1)
-        /// Learned / changed / next / why. Layer 3.
-        static let meaning = Sections(rawValue: 1 << 2)
-        static let all: Sections = [.capture, .strides, .meaning]
+        // `.meaning` (learned/change/next/why) REMOVED 2026-09-03 —
+        // `PostRunVerdictV5` (DesignV5/WorkoutResultV5.swift) draws that
+        // content now, over the same `PostRunV5` object, as one coaching
+        // read rather than a second card under this one's `.capture`
+        // sentence. Both call sites (`RunDetailV5`, `TodayAfterV5`) were
+        // updated in the same pass; nothing constructs this case anymore,
+        // so it is gone rather than kept as an unreachable option.
+        static let all: Sections = [.capture, .strides]
     }
 
     var includes: Sections = .all
 
-    /// Collapsed by default. The disclosure exists for the runner who wants
-    /// the provenance; the four in ten who never open it are not shown a
-    /// paragraph they did not ask for.
-    @State private var whyOpen = false
-
-    private var learned: String {
-        model.learned.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    private var change: String {
-        model.change.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    private var next: String? {
-        guard let n = model.next?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !n.isEmpty else { return nil }
-        return n
-    }
-    private var why: [String] {
-        model.why
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
+    /// CAPTURE-COMPACT-1, 2026-09-04. The full reconciliation sentence made
+    /// a normal run open like an error report: "6.41 mi in total: 5.98 mi
+    /// of the session, then 0.43 mi run on after the last prescribed
+    /// piece. The mile table covers the first five." — three clauses, above
+    /// everything else on the screen, for what is usually a completely
+    /// unremarkable fact (the watch kept recording after the workout
+    /// ended). Condensed to one line built from the STRUCTURED number
+    /// (`model.coverage.overtimeDistanceMi`) rather than a substring of the
+    /// prose — the full sentence is one tap away, not parsed apart.
+    @State private var captureExpanded = false
 
     private var capture: String? {
         guard let c = model.capture?.trimmingCharacters(in: .whitespacesAndNewlines),
               !c.isEmpty else { return nil }
         return c
+    }
+
+    /// The compact line, when the reconciliation is honestly summarisable
+    /// as ONE fact — overtime running after the last prescribed piece, the
+    /// common case. Nil when there is no overtime to name (so the full
+    /// sentence, whatever else it says, is shown outright rather than a
+    /// compact line claiming nothing happened) or the coverage numbers
+    /// themselves are absent.
+    private var compactCaptureLine: String? {
+        guard let overtime = model.coverage?.overtimeDistanceMi, overtime > 0,
+              let text = FaffFmt.milesUnit(overtime) else { return nil }
+        return "\(text) recorded after the planned workout"
     }
 
     private var strides: PostRunStridesV5? {
@@ -431,7 +449,6 @@ struct PostRunLearnedV5: View {
     private var hasContent: Bool {
         (includes.contains(.capture) && capture != nil)
             || (includes.contains(.strides) && strides != nil)
-            || (includes.contains(.meaning) && (!learned.isEmpty || !change.isEmpty))
     }
 
     var body: some View {
@@ -450,17 +467,38 @@ struct PostRunLearnedV5: View {
                  * directly under the stats poster, so the sentence reaches the
                  * runner before the numbers rather than after all of them. */
                 if includes.contains(.capture), let c = capture {
-                    Text(c)
-                        .font(.faffText(TypeScaleV5.body15))
-                        .foregroundStyle(V5.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, V5.S.s4)
-                        .padding(.bottom, V5.S.s6)
-                        // The sentence is the run's own honesty about itself,
-                        // and VoiceOver must reach it in the same position a
-                        // sighted reader does — before the figures it qualifies.
+                    if let compactCaptureLine, !captureExpanded {
+                        Button {
+                            withAnimation(V5.Motion.expand) { captureExpanded = true }
+                        } label: {
+                            HStack(spacing: V5.S.s4) {
+                                Text(compactCaptureLine)
+                                    .font(.faffText(TypeScaleV5.label13, weight: .semibold))
+                                    .foregroundStyle(V5.textSecondary)
+                                    .lineSpacing(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, V5.S.s4)
+                            .frame(minHeight: 32)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                         .accessibilityLabel(c)
+                        .accessibilityHint("Double tap for the full recording note")
+                    } else {
+                        Text(c)
+                            .font(.faffText(TypeScaleV5.body15))
+                            .foregroundStyle(V5.textSecondary)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, V5.S.s4)
+                            .padding(.bottom, V5.S.s6)
+                            // The sentence is the run's own honesty about itself,
+                            // and VoiceOver must reach it in the same position a
+                            // sighted reader does — before the figures it qualifies.
+                            .accessibilityLabel(c)
+                    }
                 }
 
                 /* THE STRIDES.
@@ -518,101 +556,10 @@ struct PostRunLearnedV5: View {
                     .padding(.bottom, V5.S.s6)
                 }
 
-                if includes.contains(.meaning), hasMeaning { meaningBlock }
             }
         }
     }
 
-    /// Layer 3 · what the run taught the coach, what the plan did about it and
-    /// what is left to say.
-    ///
-    /// Extracted so `includes` can place it without the capture sentence and
-    /// the strides having to travel with it. Nothing about the copy changed.
-    private var hasMeaning: Bool { !learned.isEmpty || !change.isEmpty }
-
-    @ViewBuilder
-    private var meaningBlock: some View {
-        V5SectionLabel(text: "What this taught the coach")
-            .padding(.horizontal, V5.S.s4)
-
-        VStack(alignment: .leading, spacing: V5.S.s14) {
-            if !learned.isEmpty {
-                Text(learned)
-                    .font(.faffText(TypeScaleV5.body17))
-                    .foregroundStyle(V5.textPrimary)
-                    .lineSpacing(4)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if !change.isEmpty {
-                VStack(alignment: .leading, spacing: V5.S.s6) {
-                    Text(change)
-                        .font(.faffText(TypeScaleV5.body15))
-                        .foregroundStyle(V5.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                    // Only on the state that has them, and each on its
-                    // own line — a plan change the runner cannot see
-                    // itemised is an announcement, not an explanation.
-                    ForEach(model.changes, id: \.self) { line in
-                        Text(line)
-                            .font(.faffText(TypeScaleV5.label14))
-                            .foregroundStyle(V5.textQuiet)
-                            .lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-
-            if let n = next {
-                Text(n)
-                    .font(.faffText(TypeScaleV5.body15))
-                    .foregroundStyle(V5.textPrimary)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if !why.isEmpty {
-                Button {
-                    withAnimation(V5.Motion.expand) { whyOpen.toggle() }
-                } label: {
-                    HStack(spacing: V5.S.s6) {
-                        Text(whyOpen ? "Hide why" : "Why")
-                            .font(.faffText(TypeScaleV5.label14, weight: .semibold))
-                            .foregroundStyle(V5.textSecondary)
-                        Spacer(minLength: 0)
-                    }
-                    // 44pt, per the accessibility contract, on a row
-                    // whose visible text is 14pt.
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                // The state is ANNOUNCED, not left to the caret. A
-                // disclosure whose expanded state is only visual is
-                // invisible to VoiceOver.
-                .accessibilityLabel(whyOpen ? "Hide why" : "Why")
-                .accessibilityAddTraits(whyOpen ? [.isButton, .isSelected] : .isButton)
-
-                if whyOpen {
-                    VStack(alignment: .leading, spacing: V5.S.s6) {
-                        ForEach(why, id: \.self) { line in
-                            Text(line)
-                                .font(.faffText(TypeScaleV5.label14))
-                                .foregroundStyle(V5.textQuiet)
-                                .lineSpacing(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .transition(.opacity)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, V5.S.tilePad)
-        .padding(.vertical, V5.S.s14)
-        .background(V5.materialTile,
-                    in: RoundedRectangle(cornerRadius: V5.R.r18, style: .continuous))
-    }
-
+    // `hasMeaning`/`meaningBlock` (learned/change/next/why, Layer 3) REMOVED
+    // 2026-09-03 with the `.meaning` case above — see that removal's comment.
 }
