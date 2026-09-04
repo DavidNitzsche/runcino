@@ -452,8 +452,39 @@ export function gradeStimulus(input: StimulusInput): StimulusAssessment {
     return finish('DIFFERENT', discountedChannel);
   }
 
-  // HR discounted, pace credible and on target, structure intact.
-  if (!input.hrReliable && paceCredible && paceWithinTolerance && structureIntact) {
+  // HR IS NOT A CHANNEL FOR THIS SESSION · pace credible and on target,
+  // structure intact.
+  //
+  // HRCHANNEL-1 (2026-09-04) · this used to read `!input.hrReliable`, which is
+  // only ONE of the three ways the HR channel can be unusable — a dead or
+  // untrustworthy strap. It did not cover the other two:
+  //
+  //   · the mean work HR could not be read;
+  //   · there is no CEILING to judge the HR against.
+  //
+  // The second is not an edge case. It is the state of every quality session
+  // authored since ZONEBAND-1 (2026-09-03), which correctly stopped stamping a
+  // generic aerobic HR cap on threshold and interval rows — verified on the
+  // live plan: `intervals`, `tempo`, `threshold`, `race` and
+  // `race_week_tuneup` all carry `hr_cap_bpm = null`, while `easy`, `long` and
+  // `shakeout` carry 151.
+  //
+  // So a perfectly executed threshold session — pace on target, work complete,
+  // no late collapse, HR trace clean — fell past every branch above and landed
+  // on the final `DIFFERENT`. DIFFERENT is outside
+  // `GRADES_THAT_COUNT_AS_EVIDENCE`, so it could never corroborate a faster
+  // anchor. A fix to the AUTHORING side had quietly made every future quality
+  // session unable to serve as evidence, and nothing connected the two.
+  //
+  // Rule 11, exactly: "don't know" is not "failed". An absent ceiling is a
+  // missing channel, not a breached one, and the doctrine for a missing channel
+  // is already written two branches up — it costs the LARGER step
+  // (`SUBSTANTIAL`, not `FULL`) and nothing else.
+  //
+  // This cannot become a loophole for a session run too hard. That case has
+  // `hrCredible === true` and `hrAboveCeiling === true`, and it is caught by
+  // `paceCannotRescueExcessiveEffort` long before this line.
+  if (!hrCredible && paceCredible && paceWithinTolerance && structureIntact) {
     return finish('SUBSTANTIAL', 'HR');
   }
 

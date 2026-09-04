@@ -65,6 +65,7 @@ import {
   type AuthoredPlanMode,
 } from '@/lib/adaptation/canonical/input';
 import { gradeStimulus, type StimulusGrade } from '@/lib/adaptation/canonical/stimulus';
+import { workHrCeilingFor } from '@/lib/adaptation/canonical/work-hr-ceiling';
 import { HEAT_HR_CONFOUNDER } from '@/lib/weather/heat-adjustment';
 import { tPaceFromVdot, vdotFromRace } from '@/lib/training/vdot';
 import {
@@ -709,9 +710,12 @@ export function buildSession(
         ? absent<number>('this work segment recorded no heart rate')
         : measured(hr);
     }),
-    hrCeilingBpm: pres.hrCeilingBpm === null
-      ? absent<number>('the prescription carried no HR ceiling')
-      : measured(pres.hrCeilingBpm),
+    // HRCEILING-1 · the stored cap is not taken at face value. An easy-day
+    // aerobic cap stamped on a quality row is a pre-ZONEBAND-1 artefact and is
+    // not a bound on threshold or interval work. This harness and the
+    // production shadow builder call the SAME resolver, so the replay cannot be
+    // more (or less) permissive than the engine it is replaying.
+    hrCeilingBpm: workHrCeilingFor(tests, pres.hrCeilingBpm),
     // C4's precondition. The question is whether HR ON THE WORK is readable,
     // so it is answered from the WORK PHASES, which carry their own measured
     // `avgHr` from the phase's own sample window. `runs.data.avgHrKind` is
@@ -730,6 +734,23 @@ export function buildSession(
 
   if (assessment.grade === 'INSUFFICIENT') {
     cannot(d, `${r.date} · ${w.type} graded INSUFFICIENT · ${assessment.limiting.join(', ')}.`);
+  } else if (assessment.grade !== 'FULL' && assessment.grade !== 'SUBSTANTIAL') {
+    // GRADETRACE-1 (2026-09-04) · a grade that does not COUNT is the single
+    // biggest reason the threshold lever never moves — 98 of the 205 in-window
+    // exclusions across the season's 40 decision points — and until now only
+    // INSUFFICIENT said why. PARTIAL and DIFFERENT went into the ledger as a
+    // bare word, so "the runner did not earn it" and "one condition the engine
+    // could not read" were indistinguishable from the outside. That is Rule 11
+    // at the exact place this engine's upward path is decided.
+    //
+    // A note rather than a `cannot`: the session WAS built and is real evidence
+    // for volume, consistency and time on feet. Only its claim on the pace
+    // anchor is refused, and the reason for that refusal now travels with it.
+    const why = assessment.conditions
+      .filter((c) => assessment.limiting.includes(c.id))
+      .map((c) => `${c.id}[${c.verdict}] ${c.detail}`)
+      .join(' · ');
+    note(d, `${r.date} · ${w.type} graded ${assessment.grade} · ${why}`);
   }
 
   return {

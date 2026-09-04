@@ -657,7 +657,33 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     // The count is the FINDING, not the fix. A season in which 44% of records
     // are refusals is an engine starved of evidence, and saying so is what the
     // old distribution could not do.
-    expect(dist).toEqual({ PROGRESS: 0, HOLD: 63, REGRESS: 4, REFUSE: 53 });
+    //
+    // ── 2026-09-04 · THE STARVATION HAD A CAUSE, AND IT WAS OURS ───────────
+    //
+    // Previous pin: `{ PROGRESS: 0, HOLD: 63, REGRESS: 4, REFUSE: 53 }`.
+    //
+    // Two defects were found and fixed, and both were in the ENGINE, not the
+    // runner (see `lib/adaptation/canonical/work-hr-ceiling.ts` for the full
+    // measurement):
+    //
+    //   HRCEILING-1 · every threshold session in June and July was graded
+    //     against an HR ceiling of 149 while his LTHR is 168. 149 is the
+    //     easy-day aerobic cap; ZONEBAND-1 had already ruled that a generic
+    //     aerobic cap does not belong on a quality row, and fixed the AUTHORING
+    //     side, but nothing reached the GRADING side. Correctly-run tempos at
+    //     155-167 bpm read as "completed at clearly excessive effort".
+    //
+    //   HRCHANNEL-1 · `gradeStimulus`'s "HR is not a channel for this session"
+    //     escape was gated on `!hrReliable` — a dead strap — and did not cover
+    //     an absent CEILING. That is the state of every quality session
+    //     authored since ZONEBAND-1, so a perfect threshold session fell past
+    //     every branch onto the final DIFFERENT and could never be evidence.
+    //
+    // REFUSE fell 53 -> 38 because the refusals that read "no qualifying
+    // threshold session in the last 28 days" had qualifying sessions all along.
+    // REGRESS is UNCHANGED at 4: nothing about the downward path moved, which
+    // is the check that this was a readability fix and not a loosened bar.
+    expect(dist).toEqual({ PROGRESS: 14, HOLD: 64, REGRESS: 4, REFUSE: 38 });
   });
 
   it('the belief no longer walks below the volume he demonstrably ran', () => {
@@ -674,21 +700,43 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     expect(lowest).toBeLessThan(weekly[0]);
   });
 
-  it('THE FINDING · the engine never proposes an increase on his real data', () => {
-    // The canonical engine exists because CLAUDE.md Rule 21 measured the old
-    // one at "309 coach_intents rows ... the number of UPWARD adaptations is
-    // ZERO". Replayed against the same runner's actual training, across 40
-    // decision points and 120 records, this engine also proposes zero.
-    //
-    // The assertion is written as the observation rather than as a target, so
-    // that the day a change makes it push, THIS TEST FAILS and the person who
-    // made it has to come and delete this block. That is the point: a green
-    // suite must not be able to coexist with a silent change in either
-    // direction, which is the exact ambiguity Rule 21 says let the zero
-    // survive unnoticed.
+  it('THE FINDING, RESOLVED · the engine now proposes increases he earned', () => {
+    /* The block this replaces read "THE FINDING · the engine never proposes an
+     * increase on his real data", and it said of itself:
+     *
+     *   "The assertion is written as the observation rather than as a target,
+     *    so that the day a change makes it push, THIS TEST FAILS and the person
+     *    who made it has to come and delete this block."
+     *
+     * 2026-09-04 is that day, and this is that deletion. The mechanism worked
+     * exactly as designed: the change could not land quietly.
+     *
+     * CLAUDE.md Rule 21 measured the old engine at "309 coach_intents rows ...
+     * the number of UPWARD adaptations is ZERO", and this replay reproduced the
+     * zero on the canonical engine. It was never the runner. Two engine defects
+     * — HRCEILING-1 and HRCHANNEL-1, both documented at the distribution pin
+     * above — made a correctly-executed threshold session unable to count as
+     * evidence at all.
+     *
+     * WHAT EARNS AN INCREASE, in the runner's terms, stated here because Rule
+     * 21 asks for exactly this: two threshold sessions on SEPARATE days inside
+     * 28 days, each completed at or near its prescribed work, each faster than
+     * the current anchor and outnumbering any slower ones two to one. That buys
+     * the ORDINARY step of 3 s/mi. Every one of the 14 proposals below is that
+     * step; not one reaches the larger 5 s/mi step, which needs stronger and
+     * more numerous evidence.
+     *
+     * The magnitude is the reassurance: across two months of real training the
+     * anchor walks 7:22 -> 7:16, six seconds a mile, held there by the
+     * one-step-per-cycle contract. His actual production anchor today is
+     * 7:10/mi, so the replayed engine stays BEHIND where his fitness really
+     * went rather than running ahead of it.
+     */
     const dist = distributionOf(RUN);
-    expect(dist.PROGRESS).toBe(0);
-    expect(dist.REGRESS).toBeGreaterThan(0);
+    expect(dist.PROGRESS, 'the engine stopped proposing increases again').toBeGreaterThan(0);
+    // The downward path must remain live. An engine that only pushes is the
+    // opposite defect and Rule 22 is explicit that both directions are checked.
+    expect(dist.REGRESS, 'the downward path went silent').toBeGreaterThan(0);
   });
 
   // Rule 20 · `evaluate.ts` computed `INV_WITHIN_LEVER_BOUND` from the day it
@@ -772,13 +820,20 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     expect([...reasonsNow].sort()).toEqual([...reasonsBefore].sort());
   });
 
-  it('SENSITIVITY · pre-windowing the evidence does not unlock a single increase', () => {
-    // If the engine were inert only because `evaluateWeeklyVolume` never
-    // windows `keySessions`, trimming the evidence to 28 days would let it
-    // push. It does not. So the finding is about the engine's bars against
-    // this runner's real execution, not about where one window lives.
+  it('SENSITIVITY · the increases are not an artefact of where one window lives', () => {
+    // Originally: "pre-windowing the evidence does not unlock a single
+    // increase", which distinguished a real bar from a windowing accident while
+    // the engine was inert. Now that it pushes, the same probe answers the
+    // OPPOSITE question and is more useful for it: are the 14 proposals a
+    // property of the evidence, or of `evaluateWeeklyVolume` not windowing
+    // `keySessions`?
+    //
+    // Trimming the evidence to 28 days before it is handed over must not change
+    // the answer. It does not, which is what makes the increases a fact about
+    // his training rather than about one window's placement.
     const dist = distributionOf(RUN_WINDOWED);
-    expect(dist.PROGRESS).toBe(0);
+    expect(dist.PROGRESS, 'the increases came from the window, not the evidence')
+      .toBe(distributionOf(RUN).PROGRESS);
   });
 });
 

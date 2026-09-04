@@ -1,0 +1,123 @@
+# Do the PRODUCTION-BACKED audits pass?
+#
+# WHY THIS EXISTS — the most expensive false green found in the core-closure
+# programme, and the one that hid two others.
+#
+# 28 `*.audit.test.ts` files read live production over the read-only role. Every
+# one of them is `describe.skipIf(!process.env.DATABASE_URL_RO)`. Neither
+# `test-full.yml` nor Railway carries that credential, so all 28 skip — and a
+# skipped Vitest file is reported as `skipped`, never as `failed`. The suite
+# goes green.
+#
+# On 2026-09-04 THREE of them were failing against production all day while
+# `test-full` and Railway both reported green:
+#
+#   · `_cross_surface_contract.test.ts` — the Rule 16 enforcement for EVERY
+#     race number the iPhone renders. It could not pass in any environment that
+#     actually ran it.
+#   · `_today_thesis.audit.test.ts` and `_voice_live.audit.test.ts` — the
+#     coaching voice on the real `/api/v5/today` payload.
+#
+# Rule 18's central case: a gate that cannot fail anywhere it runs. This job is
+# the fix, and its whole design principle is:
+#
+#     A PRODUCTION AUDIT THAT DID NOT RUN IS A FAILURE, NOT A PASS.
+#
+# So the credential check below is an explicit, loud failure rather than a
+# graceful skip. If `DATABASE_URL_RO` is missing this job goes RED and says why.
+# That is deliberate: the previous behaviour — silence — is the defect.
+#
+# ── SETUP, ONE TIME, BY THE REPO OWNER ─────────────────────────────────────
+#
+# This needs a repository secret named `DATABASE_URL_RO`, set to the SAME
+# read-only connection string `web-v2/.env.local` carries. It is the
+# `faff_readonly` role: `lib/verify/production-barrier.ts` refuses writes from a
+# verification process, and the role itself cannot write, so the credential is
+# read-only at two independent layers. Until the secret exists this job fails on
+# its first step, by design, and says exactly this.
+#
+# ── WHAT THIS JOB CANNOT FAIL ON (Rule 22) ─────────────────────────────────
+#
+#   · anything the audits do not assert. It runs one runner's real account, so
+#     it is evidence about that account (the file headers say so themselves).
+#   · a defect that needs a device. See PHYSICAL-TESTS.md.
+#   · scheduling. It cannot prove a cron ran; it can only see the row a cron
+#     left behind, which is what the freshness assertions in
+#     `_cross_surface_contract.test.ts` were added to do.
+name: audit-suite
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Once a day, because these read LIVE data: an audit that passed on the
+    # commit can fail tomorrow on the same code when a cron stops running or a
+    # stamp goes stale. That is the class `_cross_surface_contract.test.ts`'s
+    # freshness check exists for, and a push-only trigger cannot see it.
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: audit-suite-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-audits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web-v2/package-lock.json
+
+      # THE POINT OF THIS JOB. Not a skip, not a warning — a failure.
+      - name: The credential must exist, or this job has not run
+        env:
+          DATABASE_URL_RO: ${{ secrets.DATABASE_URL_RO }}
+        run: |
+          if [ -z "${DATABASE_URL_RO:-}" ]; then
+            echo "::error title=Production audits did not run::DATABASE_URL_RO is not set."
+            echo ""
+            echo "All 28 *.audit.test.ts files are describe.skipIf(!DATABASE_URL_RO)."
+            echo "Without the credential they SKIP, and a skipped file reports as"
+            echo "green. Three of them were red against production for a full day"
+            echo "while every other signal said clean."
+            echo ""
+            echo "A production audit that did not run is a FAILURE, not a PASS."
+            echo "Add a repository secret DATABASE_URL_RO (the faff_readonly role)."
+            exit 1
+          fi
+          echo "credential present"
+
+      - name: Install
+        working-directory: web-v2
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Run only the production-backed audits
+        working-directory: web-v2
+        env:
+          DATABASE_URL_RO: ${{ secrets.DATABASE_URL_RO }}
+        run: |
+          set -o pipefail
+          npx vitest run --testNamePattern='' $(git ls-files 'lib/**/*.audit.test.ts' | tr '\n' ' ') \
+            2>&1 | tee /tmp/audits.log
+
+      # LIVENESS (Rule 18 guard 2). Vitest exits 0 when every file skipped, so
+      # the exit code alone cannot tell "28 audits passed" from "28 audits were
+      # skipped and nobody noticed" — which is the entire defect this job
+      # closes. Assert that real tests actually executed.
+      - name: The audits actually executed
+        run: |
+          echo "--- summary ---"
+          grep -E 'Test Files|Tests ' /tmp/audits.log | tail -3
+          PASSED=$(grep -oE 'Tests +[0-9]+ passed' /tmp/audits.log | tail -1 | grep -oE '[0-9]+' || echo 0)
+          echo "audit assertions executed: ${PASSED}"
+          if [ "${PASSED:-0}" -lt 20 ]; then
+            echo "::error title=Audits skipped::Only ${PASSED} audit assertions ran."
+            echo "The files were present but did not execute — the credential is"
+            echo "set but the suite skipped anyway. That is the false green again."
+            exit 1
+          fi

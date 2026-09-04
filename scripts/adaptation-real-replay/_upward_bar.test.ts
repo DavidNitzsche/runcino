@@ -227,9 +227,22 @@ describe('Rule 21 · is the upward bar a bar, or a wall?', () => {
     expect(SUMMARY.length).toBeGreaterThanOrEqual(11);
 
     // The headline this whole harness exists to establish. Pinned so a change
-    // in either direction is a deliberate act rather than a drift.
-    expect(W.actualProgress, 'The engine proposed an increase on his real history.')
-      .toBe(0);
+    // in either direction is a deliberate act rather than a drift — and on
+    // 2026-09-04 it did exactly that job: this line failed with "expected 4 to
+    // be 0" and forced the change to be argued rather than absorbed.
+    //
+    // It was 0 from the day this harness was written until HRCEILING-1 and
+    // HRCHANNEL-1 (see `lib/adaptation/canonical/work-hr-ceiling.ts`). Neither
+    // touched a bar. Both stopped a correctly-executed threshold session being
+    // graded against the wrong quantity — an easy-day aerobic HR cap of 149
+    // against an LTHR of 168 — and being filed as "completed at clearly
+    // excessive effort" for it.
+    //
+    // The bar is unchanged and still has to be earned: two threshold sessions
+    // on separate days inside 28 days, faster than the anchor and outnumbering
+    // the slower ones two to one, buys the ordinary 3 s/mi step.
+    expect(W.actualProgress, 'The engine stopped proposing increases on his real history.')
+      .toBeGreaterThan(0);
 
     // Liveness, Rule 18 guard 2. A summary computed from nothing reports
     // "never met" for everything and looks exactly like a damning finding.

@@ -649,6 +649,17 @@ export const SCHEDULED_NON_MUTATORS: readonly { workflow: string; reason: string
     workflow: 'keep-warm.yml',
     reason: 'Registered as cron/keep-warm with an empty changes list, because a job that pings six loaders to hold a container warm is worth naming as verified read-only rather than omitting.',
   },
+  {
+    workflow: 'audit-suite.yml',
+    reason:
+      'Runs the 28 *.audit.test.ts files against production over the faff_readonly role, daily and on push. '
+      + 'It cannot write at two independent layers: the role has no write grant, and lib/verify/production-barrier.ts '
+      + 'refuses any INSERT/UPDATE/DELETE from a process the runner has marked as verification (VITEST set). That '
+      + 'barrier was exercised for real on 2026-09-04 — the shadow-log insert was REFUSED and reported posture '
+      + '"skipped" with its reason — so this is a verified property rather than a claimed one. It exists because a '
+      + 'skipped production audit used to report GREEN: three of these files were red against production for a full '
+      + 'day while test-full and Railway both passed.',
+  },
 ];
 
 /**

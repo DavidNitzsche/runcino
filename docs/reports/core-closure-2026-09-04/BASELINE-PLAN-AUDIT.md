@@ -85,64 +85,50 @@ coaching decision with a real trade-off, so it is raised, not taken.
 `plan_workouts` carries `type = 'race_week_tuneup'` on **2026-11-17**. Race day
 is 12-06. It is not race week; the −3 taper week is.
 
-This is not cosmetic. `lib/plan/adapt.ts:433` declares:
+### RETRACTED, 2026-09-04 · three fifths of this finding were wrong
 
+This section originally claimed the row inherited FIVE exemptions it had not
+earned: adapter protection, exemption from pace recompute, pricing off the
+stated GOAL, no effort cue, and no session on the Watch. **Three of those were
+wrong**, and the correction matters more than the original claim.
+
+The error was reading `RECOMPUTE_EXEMPT_TYPES` as *"nothing re-prices this row"*
+without checking whether something else does. Something else does.
+`lib/race/race-row-refresh.ts:603`:
+
+```sql
+WHERE pw.plan_id = $1 AND pw.type IN ('race', 'race_week_tuneup')
 ```
-export const RACE_PROTECTED_TYPES = ['race', 'race_week_tuneup', 'shakeout']
-```
 
-— "rows the adapter must never shave or downgrade … race execution is owned by
-the race-week machinery, not the volume adapter." A row nineteen days out is
-not race execution, so it inherits a protection it has not earned: the adapter
-cannot reduce it even when the runner needs it reduced. Rule 16 read onto a
-type name — one quantity, one name — and the name here asserts a fact that is
-false.
+Both types are re-priced from the race-pace brain on every recompute. The
+generic evidence-time loop skips them **because a dedicated owner has them** —
+Rule 16 working, not a gap in it. **A tune-up's pace is not frozen and never
+was**, wherever in the block it sits. The effort-cue exclusion follows from the
+same fact: the calibration intro withholds a pace the engine *invented* off a
+provisional anchor, and a race-brain pace is not invented.
 
-The session itself (5×400m @ 5K pace) is defensible as a −3 primer. It is the
-TYPE that is wrong, and the type is load-bearing in four places, all correct in
-race week and all wrong nineteen days out:
+**The doctrine registry caught this, and it was right.**
+`CONVENTION.calibration-intro-window` states in its own words that race day and
+the race-week tune-up "are priced by the race-pace brain's own refresh path
+(`lib/race/race-row-refresh.ts`, 2026-09-01), never by the generic
+evidence-time recompute loop". An attempt to route those rows through the
+generic loop and to add the type to `EFFORT_CUED_TYPES` failed that claim. Both
+changes were **reverted rather than the claim loosened** — CLAUDE.md Rule 7:
+fix the engine, never widen the claim. This is exactly the failure mode the
+registry exists for, and it fired on its author.
 
-1. `RACE_PROTECTED_TYPES` — never shaved or downgraded by the adapter.
-2. `recomputePacesForPlan` exempts it, so its pace never re-prices from
-   evidence, for the ten weeks the block exists to move that evidence.
-3. `anchor-provenance.ts` prices it off the runner's **stated goal** rather than
-   the fitness anchor.
-4. `EFFORT_CUED_TYPES` excludes it, so a provisional anchor still prints as a
-   hard rep pace.
-5. **The watch has no session for it.** `lib/onboarding/_onboarding_e2e.test.ts`
-   reports 127 instances across the archetype sweep — e.g. *2026-11-19 type
-   "race_week_tuneup" (5 mi authored): the watch's fallback prescription is "No
-   workout scheduled"* — on a non-race week. This was already a known-open
-   defect in that file's `KNOWN` list; what this audit adds is that its
-   reachable instances are the type appearing outside race week.
+**What survives:**
 
-### What was attempted, and why it was reverted
+- The NAME is still odd on a non-race week (Rule 16 on a type name). Held by a
+  ratchet in `_layout_contract.test.ts` at 3,475 — may shrink, never grow.
+- **The Watch consequence is real and separate.**
+  `lib/onboarding/_onboarding_e2e.test.ts` measures **127 instances** of the
+  wrist getting "No workout scheduled" for these rows, tracked in that file's
+  `KNOWN` list with its measurement.
 
-Substituting the type was tried and it does not work. Both candidates broke the
-session rather than the symptom:
-
-- `intervals` → *"a VO2max session was cut to 2 rep(s)"* against a floor of 3,
-  caught by `lib/prescription/_trajectory.test.ts` on David's own block.
-- `tempo` → *"3mi continuous tempo built a 1.8mi block"*, and 8,893 sessions
-  past the 8,114 ratchet for legs outweighing their work
-  (`_quality_day.test.ts`, `_boundary_run.test.ts`).
-
-**That is itself the finding, and it explains the original design.** A taper
-week's quality budget is small by construction, and `race_week_tuneup` is the
-only session shape in this engine that scales into it — a rep set loses reps
-until it is no longer the session, and a continuous block loses its work to its
-own warm-up. The type substitution was reverted.
-
-**The correct fix is on the consumer side**: each of the four sites above should
-ask whether the row is in a race week rather than inferring it from a type name
-that cannot carry that fact. Four sites, in modules where a wrong move re-prices
-a real runner's race, so it is named and scoped rather than attempted at the end
-of a session.
-
-Held meanwhile by a **ratchet** in `_layout_contract.test.ts`: 3,475 non-race
-weeks across the 8,781-plan matrix carry the type today, the count may shrink
-and never grow, and the ratchet fails if it reaches zero without being replaced
-by a real assertion.
+The retraction is itself a gate: `lib/plan/_tuneup_consumers.test.ts` asserts
+the single-owner fact, so the same three "fixes" cannot be attempted again
+without reading why they were reverted.
 
 ### S4-3 · the 10K is tapered for harder than the half
 

@@ -300,6 +300,14 @@ const ALLOWLIST: readonly AllowedImport[] = [
   { file: ALLOWED_EXCEPTION_FILE, module: '@/lib/adaptation/canonical/evaluate', symbols: new Set(['evaluateAdaptation']) },
   { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/input', symbols: new Set(['measured', 'absent', 'failed']) },
   { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/stimulus', symbols: new Set(['gradeStimulus']) },
+  // HRCEILING-1 (2026-09-04) · the loader must ask the ONE owner of "what HR
+  // ceiling bounds this session's work" rather than reading `hr_cap_bpm` at
+  // face value. Taking it at face value graded every threshold session against
+  // an easy-day aerobic cap of 149 bpm while the runner's LTHR is 168, which is
+  // why this engine had never proposed an increase. A PURE FUNCTION of
+  // (intensity domain, stored cap) — it reads no plan, writes nothing, and
+  // cannot widen this boundary.
+  { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/work-hr-ceiling', symbols: new Set(['workHrCeilingFor']) },
 ];
 
 function violatesAllowlist(file: string, imp: { module: string; names: string[] }): boolean {

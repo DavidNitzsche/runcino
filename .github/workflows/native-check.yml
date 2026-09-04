@@ -1,0 +1,182 @@
+# Do the iPhone and Watch suites pass?
+#
+# WHY THIS EXISTS — the false green this repo shipped for months.
+#
+# Measured 2026-09-04, at the top of the core-closure programme:
+#
+#     grep -l 'xcodebuild\|swift' .github/workflows/*.yml   →   (nothing)
+#
+# Twenty-one workflows, all `ubuntu-latest`, none of which can compile a Swift
+# file. The iPhone app and the Apple Watch app are THE PRODUCTS, and no
+# automated process had ever run either suite. Both were green when finally
+# measured by hand — 346 iPhone tests and 223 Watch tests — but nothing would
+# have said otherwise, and "green because nobody looked" is the exact shape
+# Rule 18 names as the worst available outcome, because it also reports
+# confidence.
+#
+# ── WHY AD-HOC SIGNING, AND NOT `CODE_SIGNING_ALLOWED=NO` ──────────────────
+#
+# The obvious CI incantation is `CODE_SIGNING_ALLOWED=NO`, because a hosted
+# runner has no developer identity. It produces a FALSE RED: an unsigned app
+# gets no entitlements, so it has no keychain access group, and the four
+# `SignInFlowTests` that exercise token storage fail on the environment rather
+# than on the code:
+#
+#     SignInFlowTests.swift:121: XCTAssertEqual failed: ("nil") is not equal to
+#     ("Optional("Bearer tok_xyz789")") — API helper must attach Authorization
+#
+# That was hit for real in this session and very nearly reported as four
+# product defects. A CI job that fails four tests for an environmental reason
+# is worse than no CI job, because the first person to see it learns to ignore
+# the whole thing.
+#
+# `CODE_SIGN_IDENTITY="-"` is ad-hoc signing: no certificate, no team, no
+# provisioning profile, but entitlements ARE applied, so the keychain works.
+# Verified locally before this workflow was written: 346 tests, 0 failures,
+# with no developer identity in the keychain.
+#
+# ── WHAT THIS JOB CANNOT FAIL ON (Rule 22) ─────────────────────────────────
+#
+#   · anything that needs a PHYSICAL device — HealthKit against a real watch,
+#     the treadmill cue audio actually reaching a speaker, the End/Skip
+#     confirmation dialogs actually blocking a tap. `TreadmillStateMachineTests`
+#     names those three itself; `docs/reports/core-closure-2026-09-04/
+#     PHYSICAL-TESTS.md` is where they live.
+#   · board GEOMETRY on the watch. `scripts/check-watch.sh` guard 3 needs a
+#     booted watch simulator; this job boots one, but if booting fails the
+#     script reports PARTIAL rather than OK and this job surfaces that word
+#     instead of pretending.
+#   · the server the apps talk to. That is `test-full.yml` and `build-check.yml`.
+#
+# ── COST, STATED HONESTLY ──────────────────────────────────────────────────
+#
+# macOS runners bill at a multiplier. This runs on pushes to `main` and on
+# demand, NOT on every branch push, and it takes NO path filter — the same
+# reasoning `test-full.yml` gives in its own header: "A path filter is what
+# produced the gap." A change to a server wire shape can break a native
+# decoder, and `native-v2/**` would not have matched it.
+name: native-check
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: native-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  iphone-and-watch:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes | sed -n '1,40p'
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # The template's blank CARTO key builds fine — its own header says so.
+      # RouteMapView just gets a 401 from CARTO instead of tiles, which no test
+      # asserts on. xcodegen REQUIRES the file to exist at generate time.
+      - name: Provide the secrets template
+        working-directory: native-v2
+        run: cp Secrets.example.xcconfig Secrets.xcconfig
+
+      - name: Generate the Xcode project
+        working-directory: native-v2
+        run: xcodegen generate
+
+      # Destinations are resolved at RUNTIME rather than hard-coded. A runner
+      # image bump renames simulators, and a job pinned to "iPhone 17 Pro" dies
+      # on the environment — the same false-red class the signing note above is
+      # about. Failing because no simulator of the right platform exists is a
+      # real failure and is reported as one.
+      - name: Resolve simulator destinations
+        id: sims
+        working-directory: native-v2
+        run: |
+          set -euo pipefail
+          IOS_ID=$(xcrun simctl list devices available --json \
+            | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")
+          WATCH_ID=$(xcrun simctl list devices available --json \
+            | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for k,v in d.items() if 'watchOS' in k for x in v if 'Watch' in x['name']))")
+          echo "ios=$IOS_ID"   >> "$GITHUB_OUTPUT"
+          echo "watch=$WATCH_ID" >> "$GITHUB_OUTPUT"
+          echo "iOS simulator   $IOS_ID"
+          echo "watch simulator $WATCH_ID"
+
+      - name: iPhone suite
+        working-directory: native-v2
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Faff.xcodeproj -scheme Faff \
+            -destination "platform=iOS Simulator,id=${{ steps.sims.outputs.ios }}" \
+            -derivedDataPath build/dd \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES DEVELOPMENT_TEAM="" \
+            | tee /tmp/iphone.log | xcbeautify || true
+          grep -q '\*\* TEST SUCCEEDED \*\*' /tmp/iphone.log
+          grep -E 'Executed [0-9]+ tests, with' /tmp/iphone.log | tail -1
+
+      # LIVENESS (Rule 18 guard 2). `** TEST SUCCEEDED **` is also what a run
+      # that executed ZERO tests prints. The iPhone suite was 346 tests when
+      # this was written; the floor is deliberately well under that so ordinary
+      # growth does not trip it, and well over zero so a target that stops
+      # being built cannot pass as clean.
+      - name: iPhone suite ran a real number of tests
+        run: |
+          N=$(grep -oE 'Executed [0-9]+ tests' /tmp/iphone.log | tail -1 | grep -oE '[0-9]+')
+          echo "iPhone tests executed: $N"
+          test "${N:-0}" -ge 250
+
+      # The Watch tests use SWIFT TESTING, not XCTest. That matters and it
+      # burned a reading in this very programme: the XCTest bundle legitimately
+      # reports "Executed 0 tests" while Swift Testing reports separately, and
+      # "0 tests" was briefly recorded as a finding. The assertion below reads
+      # the Swift Testing line.
+      - name: Watch suite
+        working-directory: native-v2
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Faff.xcodeproj -scheme "FaffWatch Watch App" \
+            -destination "platform=watchOS Simulator,id=${{ steps.sims.outputs.watch }}" \
+            -derivedDataPath build/dd-watch \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES DEVELOPMENT_TEAM="" \
+            | tee /tmp/watch.log | xcbeautify || true
+          grep -q '\*\* TEST SUCCEEDED \*\*' /tmp/watch.log
+
+      - name: Watch suite ran a real number of tests
+        run: |
+          LINE=$(grep -E 'Test run with [0-9]+ tests' /tmp/watch.log | tail -1 || true)
+          echo "swift-testing: ${LINE:-<none>}"
+          N=$(echo "$LINE" | grep -oE '[0-9]+' | head -1)
+          test "${N:-0}" -ge 150
+
+      # The watch conformance gate, with a booted simulator so guard 3 (board
+      # geometry) actually runs. Without one the script reports PARTIAL and
+      # says, in its own words, that "this line is deliberately not the word
+      # OK" — so this step asserts on OK rather than on the exit code.
+      - name: Watch conformance gate
+        run: |
+          xcrun simctl boot "${{ steps.sims.outputs.watch }}" || true
+          sleep 20
+          bash scripts/check-watch.sh | tee /tmp/checkwatch.log
+          grep -q 'WATCH-GATE: OK' /tmp/checkwatch.log
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-logs
+          path: |
+            /tmp/iphone.log
+            /tmp/watch.log
+            /tmp/checkwatch.log
+          if-no-files-found: ignore

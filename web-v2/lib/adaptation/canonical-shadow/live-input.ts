@@ -74,6 +74,7 @@ import {
   type AuthoredPlanMode,
 } from '@/lib/adaptation/canonical/input';
 import { gradeStimulus, type StimulusInput } from '@/lib/adaptation/canonical/stimulus';
+import { workHrCeilingFor } from '@/lib/adaptation/canonical/work-hr-ceiling';
 import {
   asRunData, runDay, runDaySql, runDistanceMi, runPaceSecPerMi, runAvgHr, runPhases,
   runNotMergedSql, splitsWithHrAndPace, type RunData,
@@ -304,6 +305,11 @@ function buildGradedSession(args: {
     }
   }
 
+  // HRCEILING-1 · not taken at face value. A generic aerobic cap stamped on a
+  // quality row is a pre-ZONEBAND-1 artefact and is not a bound on threshold or
+  // interval work; `workHrCeilingFor` is the one owner of that distinction and
+  // the replay harness calls the same function. See its header for the measured
+  // cost of not doing this.
   const hrCapBpm = num(workout.workout_spec?.hr_cap_bpm);
 
   const input: StimulusInput = {
@@ -315,7 +321,7 @@ function buildGradedSession(args: {
     targetWorkPaceSecPerMi: targetPaceSecPerMi ?? 0,
     actualWorkPaceSecPerMi,
     meanWorkHrBpm,
-    hrCeilingBpm: hrCapBpm != null ? measured(hrCapBpm) : absent('no HR ceiling on this prescription'),
+    hrCeilingBpm: workHrCeilingFor(sessionTests(workout), hrCapBpm),
     workSegmentHrBpm,
     hrReliable: isHrReliable(run),
     majorLateCollapse: absent('late-session comparison not built for live evaluation yet'),
