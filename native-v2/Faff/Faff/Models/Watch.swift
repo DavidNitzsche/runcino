@@ -342,6 +342,23 @@ struct WatchWorkout: Codable, Equatable {
         // through phase re-stamp) — without those fields the iPhone-side
         // WorkoutTodayCard renderer loses rep distance + can't distinguish
         // distance vs time reps.
+        //
+        // TREADMILL-RESTAMP-1 (2026-09-03) · this re-stamp named every field
+        // of `WatchPhase.init` EXCEPT `hrRole`, `treadmillInclinePct` and
+        // `treadmillSpeedMph` — all three have `nil` defaults on that
+        // initializer, so every one of them was silently discarded here on
+        // EVERY real decode, regardless of what the server sent. The
+        // treadmill console's `nominalMph`/`nominalInclinePct` (added the
+        // same day, TREADMILL-STRUCTURE-1) read exactly these three fields —
+        // so the doctrine-computed hill/warm-up/recovery/cooldown speed and
+        // incline could never have reached the belt through this decode
+        // path. Found reading this file end to end while investigating why
+        // today's real hill session opened at flat defaults despite the
+        // server-side fix; the two bugs compounded (server computes the
+        // right number, decode throws it away before the console ever sees
+        // it). Same shape as `effectiveHrRole`'s own doc comment warns
+        // against — an absent field must read as the safe default
+        // downstream, not silently vanish upstream of every consumer.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
         // PACESHAPE-1 (2026-09-03 correction) · this re-stamp had the EXACT
         // same defect three separate times over: `repUnit`/`distanceMi` were

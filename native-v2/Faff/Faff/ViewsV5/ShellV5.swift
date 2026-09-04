@@ -665,24 +665,29 @@ struct NotOnPhoneYetV5: View {
     /// also the one runner who could not sign out of it. A refusal states an
     /// answer; it does not take the door off.
     var onOpenAccount: (() -> Void)? = nil
+    /// SHAREDSHELL-1 (2026-09-04) · see `InjuryFlareV5`'s own doc comment
+    /// in StateScreensV5.swift.
+    var suppressOwnHeader: Bool = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 DayPanel(fill: .quiet) {
-                    if let onOpenAccount {
-                        HStack {
-                            Spacer(minLength: 0)
-                            // 13pt person glyph, matching the other refusal
-                            // screen (`HostsV5.wayOutHeader`) rather than the
-                            // kit's 14. Kept as drawn.
-                            HeaderDiscV5(glyph: .symbol("person", size: 13),
-                                         label: "Account and settings",
-                                         fill: .quietRaised,
-                                         action: onOpenAccount)
+                    if !suppressOwnHeader {
+                        if let onOpenAccount {
+                            HStack {
+                                Spacer(minLength: 0)
+                                // 13pt person glyph, matching the other refusal
+                                // screen (`HostsV5.wayOutHeader`) rather than the
+                                // kit's 14. Kept as drawn.
+                                HeaderDiscV5(glyph: .symbol("person", size: 13),
+                                             label: "Account and settings",
+                                             fill: .quietRaised,
+                                             action: onOpenAccount)
+                            }
                         }
+                        Color.clear.frame(height: onOpenAccount == nil ? V5.S.s56 : V5.S.s24)
                     }
-                    Color.clear.frame(height: onOpenAccount == nil ? V5.S.s56 : V5.S.s24)
                     Text("Not here yet")
                         .faffDisplayV5(TypeScaleV5.display44)
                         .foregroundStyle(V5.textPrimary)

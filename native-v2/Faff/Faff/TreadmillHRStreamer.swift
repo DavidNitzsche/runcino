@@ -165,12 +165,31 @@ final class TreadmillHRStreamer: ObservableObject {
         let predicate = HKQuery.predicateForSamples(
             withStart: when, end: nil, options: [.strictStartDate]
         )
-        let q = HKObserverQuery(sampleType: hrType, predicate: predicate) { [weak self] _, _, _ in
+        let q = HKObserverQuery(sampleType: hrType, predicate: predicate) { [weak self] _, completion, _ in
             Task { await self?.drain(predicate: predicate) }
+            completion()
         }
         store.execute(q)
         observer = q
         observerActive = true
+        // TREADMILL-HR-BACKGROUND-1 (2026-09-03) · this was the one HR
+        // consumer in the app that never asked HealthKit to wake it in the
+        // background — `HRAlerter.swift` and `HealthKitImporter.swift` both
+        // already do, with the same entitlement already granted
+        // (`com.apple.developer.healthkit.background-delivery`). Without it
+        // the observer only fires while the process is actually running;
+        // backgrounding the phone (screen off, phone propped on a console,
+        // a call, another app) stalls every live update until the app is
+        // foregrounded again, at which point HealthKit delivers exactly one
+        // stale catch-up batch — "HR only appeared after backgrounding and
+        // returning, then stopped updating live again" is that catch-up
+        // batch landing once, with no further live delivery behind it.
+        // `.immediate` is the correct frequency for HR specifically (Apple's
+        // own guidance) — a shorter cadence than `.hourly`/`.daily` would
+        // reserve, appropriate for a live in-run display. Best-effort: a
+        // failure here does not fail the stream, it just leaves foreground-
+        // only delivery, exactly today's behavior — never worse.
+        store.enableBackgroundDelivery(for: hrType, frequency: .immediate) { _, _ in }
 
         // First drain · catches any samples that landed in the gap
         // between the watch starting its workout and our observer
@@ -428,12 +447,19 @@ private final class MetricChannel {
         let predicate = HKQuery.predicateForSamples(
             withStart: when, end: nil, options: [.strictStartDate]
         )
-        let q = HKObserverQuery(sampleType: quantityType, predicate: predicate) { [weak self] _, _, _ in
+        let q = HKObserverQuery(sampleType: quantityType, predicate: predicate) { [weak self] _, completion, _ in
             Task { await self?.drain(predicate: predicate) }
+            completion()
         }
         store.execute(q)
         observer = q
         observerActive = true
+        // Same background-delivery fix as `TreadmillHRStreamer.start` above,
+        // for the same reason — these five channels ride the identical
+        // watch workout session HR does, so a runner mid-session should not
+        // lose power/GCT/vertical-oscillation/stride/energy live updates
+        // while HR itself keeps flowing.
+        store.enableBackgroundDelivery(for: quantityType, frequency: .immediate) { _, _ in }
 
         await drain(predicate: predicate)
     }

@@ -175,13 +175,19 @@ struct InjuryFlareV5: View {
     /// the eight-stage walk-run ladder (19a). Absent (`returnAvailable == false`)
     /// draws nothing rather than a disabled row.
     var onReturnToRunning: () -> Void = {}
+    /// SHAREDSHELL-1 (2026-09-04) · `true` when a caller already draws the
+    /// persistent Today header+strip around this content — see the type's
+    /// own doc comment for why this exists and who sets it.
+    var suppressOwnHeader: Bool = false
 
     @State private var checkedRowID: String?
 
     var body: some View {
         StateScreenScaffold {
             DayPanel(fill: .quiet) {
-                PlaceHeaderRow(onOpenAccount: onOpenAccount)
+                if !suppressOwnHeader {
+                    PlaceHeaderRow(onOpenAccount: onOpenAccount)
+                }
                 VStack(alignment: .leading, spacing: V5.S.s2) {
                     Text("\(model.area) · \(model.since)")
                         .font(.faffText(TypeScaleV5.label13))
@@ -255,13 +261,21 @@ struct WeekOffV5: View {
     private var panelInk: V5.PanelInk { PanelFill.state(.rest).ink }
     let model: V5WeekOff
     var onOpenAccount: () -> Void = {}
+    /// SHAREDSHELL-1 (2026-09-04) · see `InjuryFlareV5`'s own doc comment —
+    /// this is the state a NAVIGATED-TO date most commonly lands in ("Away
+    /// from the plan" fires for any date outside the current training
+    /// window, not just today), so it was the clearest live repro of the
+    /// bug this flag exists to close.
+    var suppressOwnHeader: Bool = false
 
     private var range: String { Self.formatRange(fromISO: model.fromISO, toISO: model.toISO) }
 
     var body: some View {
         StateScreenScaffold {
             DayPanel(fill: .state(.rest)) {
-                PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
+                if !suppressOwnHeader {
+                    PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
+                }
                 VStack(alignment: .leading, spacing: V5.S.s2) {
                     Text(range)
                         .font(.faffText(TypeScaleV5.label13))
@@ -337,11 +351,15 @@ struct WeekOffV5: View {
 struct OffSeasonV5: View {
     let model: V5OffSeason
     var onOpenAccount: () -> Void = {}
+    /// SHAREDSHELL-1 (2026-09-04) · see `InjuryFlareV5`'s own doc comment.
+    var suppressOwnHeader: Bool = false
 
     var body: some View {
         StateScreenScaffold {
             DayPanel(fill: .quiet) {
-                PlaceHeaderRow(onOpenAccount: onOpenAccount)
+                if !suppressOwnHeader {
+                    PlaceHeaderRow(onOpenAccount: onOpenAccount)
+                }
                 VStack(alignment: .leading, spacing: V5.S.s2) {
                     if let since = model.sinceLastRace {
                         Text(since)

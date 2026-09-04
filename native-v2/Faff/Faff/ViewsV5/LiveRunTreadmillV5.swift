@@ -151,6 +151,36 @@ struct LiveRunTreadmillV5: View {
     @State private var hrClosedCount: Int = 0
     /// True once the plan has been handed to the recorder.
     @State private var configured = false
+    /// TREADMILL-STATE-MACHINE-1 · set once, in `.task`, before the console
+    /// ever shows Start — resolved BEFORE deciding whether an interrupted
+    /// checkpoint should resume this exact session or be salvaged as a
+    /// finished partial. See `resolveInterruptedRun()`.
+    @State private var checkpointResolved = false
+    /// Read once, in `.task`, before the plan may have finished loading —
+    /// the decision on what to DO with it waits for `configurePlanIfNeeded`
+    /// to have real phases (or to have settled on the synthetic free-run
+    /// fallback), so a resume can never seed itself from the wrong phase
+    /// list. See `resolveInterruptedRunIfNeeded()`.
+    @State private var pendingCheckpoint: BeltCheckpoint?
+    @State private var showEndConfirm = false
+    @State private var showSkipConfirm = false
+    @State private var halfwayAnnounced = false
+    // Seeded to the same default `TreadmillCueEngine` itself falls back to
+    // (on) and synced from the real stored value in `.onAppear` — reading a
+    // `@MainActor` static property inside a struct's own default-value
+    // initializer is the kind of isolation Swift's strict-concurrency
+    // checking can reject depending on this target's build settings, so the
+    // real read happens explicitly, on the main actor, once the view exists.
+    @State private var voiceCuesOn = true
+    @State private var toneCuesOn = true
+    /// `@State`, not `let` — this view struct is reconstructed on every
+    /// re-render, and only property-wrapper-backed storage survives that
+    /// across renders. A plain `let` would hand out a fresh engine (a fresh
+    /// `AVSpeechSynthesizer`, a re-armed audio session) far more often than
+    /// intended, same class of bug this file's other `@State`/`@StateObject`
+    /// fields already exist to avoid.
+    @State private var cues = TreadmillCueEngine()
+    @Environment(\.scenePhase) private var scenePhase
 
     init(plan: LiveRunPlanV5?, hr: TreadmillHRStreamer,
          onPause: @escaping () -> Void, onEnd: @escaping () -> Void) {
@@ -182,39 +212,26 @@ struct LiveRunTreadmillV5: View {
 
     private var walk: LiveRunPhaseWalk? {
         guard let plan else { return nil }
-        return LiveRunPhaseWalk.walk(phases: Self.phasesForWalk(plan.phases), elapsedSec: elapsedSec)
+        return LiveRunPhaseWalk.walk(phases: plan.phases, elapsedSec: elapsedSec)
     }
 
-    /// `-faffFastPhases` companion fix. The belt's own auto-advance
-    /// (`configurePlanIfNeeded` → `BeltSession.SegmentPlan`) is scaled by
-    /// `phaseDurationForBelt`, but `elapsedSec` above is the real,
-    /// unscaled wall clock — it has to be, since the displayed "0:00" /
-    /// "1:07" clock reads it too and must show real time. `LiveRunPhaseWalk`
-    /// compares that real elapsed against EACH PHASE'S `durationSec`, so
-    /// feeding it the workout's real (unscaled) phases while the belt races
-    /// through a 20x-compressed copy is exactly the "two accumulators that
-    /// can disagree" bug the comment above already warns about — caught
-    /// live: at 0:51 real the belt had already advanced to Hill 1's 7.7 mph
-    /// / 5.0% incline, while the header still read "Warm-up" because 51s
-    /// had not passed the real 783s warm-up. Scaling the WALK's phase copy
-    /// the identical way keeps both readers on the same compressed
-    /// timeline. A no-op when `-faffFastPhases` is absent.
-    #if DEBUG
-    private static func phasesForWalk(_ real: [WatchPhase]) -> [WatchPhase] {
-        guard debugPhaseSpeedupFactor != nil else { return real }
-        return real.map {
-            WatchPhase(index: $0.index, type: $0.type, label: $0.label,
-                       durationSec: phaseDurationForBelt($0.durationSec),
-                       targetPaceSPerMi: $0.targetPaceSPerMi,
-                       tolerancePaceSPerMi: $0.tolerancePaceSPerMi, haptic: $0.haptic,
-                       repUnit: $0.repUnit, distanceMi: $0.distanceMi, hrTargetBpm: $0.hrTargetBpm,
-                       hrRole: $0.hrRole, treadmillInclinePct: $0.treadmillInclinePct,
-                       treadmillSpeedMph: $0.treadmillSpeedMph, paceShape: $0.paceShape)
-        }
+    /// Sum of every authored phase's own duration estimate — used only for
+    /// the halfway cue and the total-progress line, never for a per-phase
+    /// countdown (those read `walk.remainingInPhaseSec`, the measured
+    /// figure). A distance-based rep's `durationSec` is still a real
+    /// estimate per `LiveRunPhaseWalk`'s own doc comment, so this stays
+    /// honest even with one in the mix.
+    private var totalEstimatedSec: Int {
+        effectivePhases.reduce(0) { $0 + max($1.durationSec, 0) }
     }
-    #else
-    private static func phasesForWalk(_ real: [WatchPhase]) -> [WatchPhase] { real }
-    #endif
+
+    /// 1-based position of the CURRENT phase among all phases (not just work
+    /// reps) — "phase 4 of 21" — Stage 6's total-progress line. Distinct from
+    /// `walk.workIndex`, which counts only `.work` phases.
+    private var overallPhaseNumber: Int? {
+        guard let walk else { return nil }
+        return effectivePhases.firstIndex(where: { $0.index == walk.phase.index }).map { $0 + 1 }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -222,6 +239,7 @@ struct LiveRunTreadmillV5: View {
                 topRow
                 speedTile
                 inclineTile
+                overrideBadgeRow
                 statRow
                 if let next = nextLineText {
                     Text(next)
@@ -246,6 +264,9 @@ struct LiveRunTreadmillV5: View {
         // ground as 12a, but this screen never reaches for a day-state
         // panel at all; the belt IS the console.
         .background(V5.surfacePage.ignoresSafeArea())
+        // Stage 5 · "independent toggles for voice and tones... do not turn
+        // this into a settings project" — a `Menu`, not a new screen.
+        .overlay(alignment: .topTrailing) { cuesMenu.padding(V5.S.s16) }
         // Live tick · 2026-08-21. Was a `TimelineView(.periodic(from: .now,
         // by: 1.0))` inside `.background`, which reads the clock inside `body`
         // and so closes a feedback loop: render builds a new schedule, the new
@@ -267,15 +288,43 @@ struct LiveRunTreadmillV5: View {
             // cadence by every paused minute and can drop the carried gate
             // altogether. It reads the same clock as the distance now.
             meter.note(movingSec: session.belt.elapsedSec, isPaused: !session.isRunning)
+            // Stage 5 · countdown ticks and the halfway cue both read the
+            // SAME `walk` the display shows, at the SAME tick the display
+            // updates on — never a second clock of their own.
+            if let walk, session.isRunning, (1...3).contains(walk.remainingInPhaseSec) {
+                cues.countdownTick(secondsRemaining: walk.remainingInPhaseSec)
+            }
+            if !halfwayAnnounced, totalEstimatedSec > 0, elapsedSec >= totalEstimatedSec / 2 {
+                halfwayAnnounced = true
+                cues.halfway()
+            }
+        }
+        .onChange(of: session.lastTransition) { _, transition in
+            guard let transition else { return }
+            let idx = effectivePhases.firstIndex(where: { $0.index == transition.to.index })
+            let workIdx = idx.flatMap { i -> Int? in
+                guard effectivePhases[i].type == .work else { return nil }
+                return effectivePhases.prefix(through: i).filter { $0.type == .work }.count
+            }
+            let workTotal = effectivePhases.filter { $0.type == .work }.count
+            cues.phaseTransition(to: transition.to, workIndex: workIdx, workCount: workTotal)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // TREADMILL-STATE-MACHINE-1 · `RunLoop` timers do not fire at
+            // all while the process is suspended — they are not late, they
+            // simply do not run. Waiting for the timer's own next fire to
+            // "notice" a background gap is what used to require a pause/
+            // resume to unstick. Forcing one explicit catch-up the instant
+            // the app is active again removes that dependency entirely; see
+            // `BeltSession.catchUp`'s own header.
+            if phase == .active { session.catchUp() }
         }
         .task {
-            // A belt run this app was killed in the middle of. Same contract
-            // as the outdoor recorder's: re-submitted through the same
-            // durable queue with status "partial", and safe to double-fire
-            // because the endpoint derives its row id from workoutId and
-            // upserts. Runs before this console stamps anything of its own,
-            // so the recovered run can never be confused with the new one.
-            await flushInterruptedBeltRun()
+            // Read-only: capture whatever checkpoint exists, if any, but do
+            // NOT act on it yet — see `resolveInterruptedRunIfNeeded()` for
+            // why the decision has to wait for the real plan.
+            pendingCheckpoint = BeltSession.interruptedRun()
+            await resolveInterruptedRunIfNeeded()
         }
         .onAppear {
             // 2026-08-27 · appearing no longer starts the clock — it only gets
@@ -283,6 +332,8 @@ struct LiveRunTreadmillV5: View {
             // Start (see `buttons`/`startRun()`) the same way the belt itself
             // waits for a button before the display starts counting.
             configurePlanIfNeeded()
+            voiceCuesOn = TreadmillCueEngine.voiceEnabled
+            toneCuesOn = TreadmillCueEngine.tonesEnabled
             // 2026-08-28 · REMOVED the early `startTreadmillHRSession` call
             // that used to fire right here. David, after opening this screen
             // just to check the watch link (never tapping Start): "somethign
@@ -420,7 +471,7 @@ struct LiveRunTreadmillV5: View {
 
     private func currentPhaseIndex(at elapsedSec: Int) -> Int {
         guard let plan, !plan.phases.isEmpty else { return 0 }
-        return LiveRunPhaseWalk.walk(phases: Self.phasesForWalk(plan.phases), elapsedSec: elapsedSec)?.phase.index ?? 0
+        return LiveRunPhaseWalk.walk(phases: plan.phases, elapsedSec: elapsedSec)?.phase.index ?? 0
     }
 
     /// Attach heart rate to whichever phases the recorder has just closed.
@@ -461,8 +512,23 @@ struct LiveRunTreadmillV5: View {
                 // live belt reading at End — the same fallback shape legacy
                 // uses for an unreached segment, inherited here rather than
                 // introduced.
-                "actualSpeedMph": act.map { $0.avgSpeedMph } ?? Self.nominalMph(for: phase),
-                "actualInclinePct": act.map { $0.avgInclinePct } ?? Self.nominalInclinePct(for: phase),
+                "actualSpeedMph": act.map { $0.avgSpeedMph } ?? BeltSession.nominalMph(for: phase),
+                "actualInclinePct": act.map { $0.avgInclinePct } ?? BeltSession.nominalInclinePct(for: phase),
+                // Stage 3 · "record actual selected targets... separately
+                // from the original prescription." Found via a peer
+                // session's independent trace of tonight's real run: the
+                // server's `WatchCompletionPhaseBody` has no target fields
+                // at all today, so this originally-prescribed number has
+                // never once round-tripped back — post-run reads "no
+                // prescribed pace" even when a concrete belt target WAS
+                // live on screen. Additive (older/current server code
+                // simply ignores unrecognized JSON keys — the route has no
+                // strict-schema rejection), so this is safe to send now.
+                // Consuming it server-side (post-run's not_graded verdict,
+                // `WatchCompletionPhaseBody`'s own type) is real scope, not
+                // done here — flagged in the handback, not bolted on quietly.
+                "targetSpeedMph": BeltSession.nominalMph(for: phase),
+                "targetInclinePct": BeltSession.nominalInclinePct(for: phase),
             ]
             if let act, act.durationSec > 0 {
                 let b = act
@@ -578,105 +644,56 @@ struct LiveRunTreadmillV5: View {
     private func configurePlanIfNeeded() {
         guard !configured || session.startedAt == nil else { return }
         configured = true
-        // TREADMILL-HILL-2 (2026-09-03 correction) · this was the actual gap
-        // TREADMILL-HILL-1 left open. That fix taught `defaultSpeedMph`/
-        // `defaultInclinePct` — the ONE-TIME seed read at `init`, before the
-        // plan has even loaded — to read `treadmillSpeedMph`/
-        // `treadmillInclinePct`. It never touched THIS function, which builds
-        // the real per-segment plan `BeltSession.autoAdvanceIfDue()` actually
-        // walks and auto-advances through. So the very first screen could
-        // show 7.7 mph while the segment machine underneath it still carried
-        // a flat, type-keyed 7.0 mph guess and a hardcoded 1.0% incline for
-        // EVERY phase — the auto-transition into the hill reps themselves,
-        // and every recovery/cooldown after, never got the real numbers.
-        // `nominalMph`/`nominalInclinePct` are now the one place both the
-        // seed and the segment plan read from, so a future fix here cannot
-        // fix one and miss the other again.
-        session.configure(plan: effectivePhases.map {
-            BeltSession.SegmentPlan(durationSec: Self.phaseDurationForBelt($0.durationSec),
-                                    targetMph: Self.nominalMph(for: $0),
-                                    targetInclinePct: Self.nominalInclinePct(for: $0))
-        })
+        // TREADMILL-STATE-MACHINE-1 · hands the recorder the FULL phase
+        // list, not a reduced re-derivation of it — see BeltSession.swift's
+        // header for why two independent copies of "what phase, what
+        // target" was the actual defect. `nominalMph`/`nominalInclinePct`
+        // used to be duplicated here AND in BeltSession; now there is one
+        // copy, on BeltSession, and this view no longer keeps its own.
+        session.configurePhases(effectivePhases)
+        Task { await resolveInterruptedRunIfNeeded() }
     }
 
-    /// QA-only phase-advance accelerator, the treadmill's sibling of
-    /// `-faffToken`/`-faffHost`/`-faffRunDetail` (FaffApp.swift) and
-    /// `-autostart`/`-payload` (the watch's `WorkoutRootView`) — same family
-    /// of DEBUG-only launch-argument hooks that exist so CLAUDE.md Rule 13
-    /// ("verified by RENDERING it, with real data") can actually be honoured
-    /// on a screen whose real timescale is ~50 minutes of wall clock.
-    ///
-    ///     xcrun simctl launch <udid> run.faff.app -faffFastPhases 20
-    ///
-    /// divides every phase's BELT-TIMER duration by 20 (a 60s hill rep
-    /// advances after 3s) so the real transition sequence — warm-up → first
-    /// hill → recovery → next hill → … → cooldown → completion — can be
-    /// watched end to end in under a minute instead of manually waiting out
-    /// (or worse, asserting without watching) the real ~50 minutes.
-    ///
-    /// Deliberately narrow: it scales ONLY the number `BeltSession
-    /// .autoAdvanceIfDue()` compares its elapsed timer against. It does not
-    /// touch `nominalMph`/`nominalInclinePct` (the values this session
-    /// exists to verify are unchanged), the phase's own `distanceMi`/label
-    /// (what the runner reads never lies about what was asked), or
-    /// `effectivePhases` itself (no phases are skipped or reordered — this
-    /// compresses time, it does not shortcut the sequence). `#if DEBUG` is
-    /// doing the same real work it does for every sibling in this family:
-    /// this must not exist in a build that reaches a real runner's treadmill.
-    #if DEBUG
-    private static var debugPhaseSpeedupFactor: Double? {
-        let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "-faffFastPhases"), i + 1 < args.count,
-              let factor = Double(args[i + 1]), factor > 0 else { return nil }
-        return factor
-    }
-    #endif
-
-    private static func phaseDurationForBelt(_ real: Int) -> Int {
-        #if DEBUG
-        if let factor = debugPhaseSpeedupFactor {
-            return max(1, Int(Double(real) / factor))
+    /// The plan arrives asynchronously, so a checkpoint read at `.task`
+    /// launch cannot yet know the REAL phase list — resuming into whatever
+    /// `effectivePhases` was at that instant risks seeding the wrong
+    /// interval structure if the plan simply hadn't landed yet. This is
+    /// called again every time `configurePlanIfNeeded()` runs (on appear,
+    /// and again when the plan itself arrives), and only acts once, the
+    /// first time it is called with `effectivePhases` actually settled
+    /// (`configured == true` by construction, since this is only ever
+    /// invoked from inside `configurePlanIfNeeded()`).
+    private func resolveInterruptedRunIfNeeded() async {
+        guard !checkpointResolved, let cp = pendingCheckpoint else { return }
+        checkpointResolved = true
+        guard cp.workoutId == workoutId else {
+            // A DIFFERENT workout's leftover checkpoint. Same contract as
+            // the outdoor recorder's: re-submitted through the durable
+            // queue with status "partial," safe to double-fire because the
+            // endpoint derives its row id from workoutId and upserts. Runs
+            // before this console stamps anything of its own, so the
+            // recovered run can never be confused with the new one.
+            await flushInterruptedBeltRun()
+            return
         }
-        #endif
-        return real
-    }
-
-    /// The ONE rule for a phase's belt speed — the server's doctrine-cited
-    /// treadmill pair FIRST (TREADMILL-STRUCTURE-1, 2026-09-03: every phase
-    /// — hill work, warm-up, recovery, cooldown — is now priced server-side
-    /// through the shared terrain model, not a hill-only special case), then
-    /// a pace-target conversion, then a flat type-keyed guess for a plan
-    /// authored before either field existed. `static` and parameterized on a
-    /// single `WatchPhase` (not `plan: LiveRunPlanV5?`) specifically so the
-    /// initial seed (`defaultSpeedMph`, read at `init` before `self` exists —
-    /// an instance method cannot be called there) and the real per-segment
-    /// plan (`configurePlanIfNeeded`) and the "Next" line (`nextLineText`)
-    /// are physically the same function call, not three call sites kept in
-    /// step by hand. Reverted from a same-round instance-method attempt that
-    /// broke exactly that: `defaultSpeedMph` could no longer call it from
-    /// `init` and re-derived the priority inline instead, at the OLD order
-    /// (pace-target before server field) — the two-answers bug this
-    /// unification exists to prevent, caught while reconciling the two.
-    static func nominalMph(for phase: WatchPhase) -> Double {
-        if let speed = phase.treadmillSpeedMph, speed > 0 { return speed }
-        if let target = phase.targetPaceSPerMi, target > 0 {
-            return (3600.0 / Double(target) * 10).rounded() / 10
+        // TREADMILL-STATE-MACHINE-1 · a checkpoint for THIS EXACT workout.
+        // Recent enough to credibly still be "the run in progress"? Same
+        // 30-minute ceiling the integrator itself uses for crediting any
+        // single gap (`BeltTracker.maxCreditedGapSec`) — past that, this is
+        // not a background interruption any more, it is an abandoned
+        // session, and pretending otherwise would silently continue a run
+        // half an hour after the runner actually stopped.
+        guard Date().timeIntervalSince(cp.updatedAt) < BeltTracker.maxCreditedGapSec else {
+            await flushInterruptedBeltRun()
+            return
         }
-        switch phase.type {
-        case .warmup:   return 5.5
-        case .work:     return 7.0
-        case .recovery: return 5.0
-        case .cooldown: return 5.0
-        }
-    }
-
-    /// Sibling of `nominalMph` — same priority, same server field, same
-    /// reason it is `static` and phase-parameterized. A phase with no
-    /// doctrine-cited grade gets the flat 1.0% "reproduces outdoor flat"
-    /// default (TERRAIN.treadmill-air-resistance-grade).
-    static func nominalInclinePct(for phase: WatchPhase) -> Double {
-        if let incline = phase.treadmillInclinePct, incline > 0 { return incline }
-        return 1.0
+        session.resume(from: cp, phases: effectivePhases)
+        meter.start(from: cp.startedAt)
+        UIApplication.shared.isIdleTimerDisabled = true
+        Task { await hr.start(from: cp.startedAt) }
+        lastBridgeAskAt = .now
+        lastPingAt = .now
+        WatchSync.shared.startTreadmillHRSession(sessionId: workoutId)
     }
 
     /// TREADMILL-STRUCTURE-1 (2026-09-03) · a 60-second hill rep's live HR
@@ -699,16 +716,36 @@ struct LiveRunTreadmillV5: View {
     // MARK: - Top row
 
     private var topRow: some View {
-        HStack(alignment: .lastTextBaseline) {
-            Text(FaffFmt.clock(sec: Double(elapsedSec)) ?? "0:00")
-                .font(.faffText(34, weight: .semibold))
-                .foregroundStyle(V5.textPrimary)
-            Spacer(minLength: V5.S.s12)
-            Text(intervalShortText)
-                .font(.faffText(34, weight: .semibold))
-                .foregroundStyle(V5.signal)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+        VStack(alignment: .leading, spacing: V5.S.s4) {
+            HStack(alignment: .lastTextBaseline) {
+                Text(FaffFmt.clock(sec: Double(elapsedSec)) ?? "0:00")
+                    .font(.faffText(34, weight: .semibold))
+                    .foregroundStyle(V5.textPrimary)
+                Spacer(minLength: V5.S.s12)
+                Text(intervalShortText)
+                    .font(.faffText(34, weight: .semibold))
+                    .foregroundStyle(V5.signal)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+            // Stage 6 · THIS phase's own remaining time/distance — never
+            // conditional on a next phase existing, which is exactly why
+            // cooldown (the last phase, no next) used to show nothing at
+            // all here. Paired with the overall phase count so the runner
+            // can always answer "how much of this workout is left" without
+            // doing arithmetic.
+            HStack(spacing: V5.S.s8) {
+                if let remaining = remainingThisPhaseText {
+                    Text(remaining)
+                        .font(.faffText(15, weight: .medium))
+                        .foregroundStyle(V5.textSecondary)
+                }
+                if let overallPhaseNumber {
+                    Text("\u{00b7} Phase \(overallPhaseNumber) of \(effectivePhases.count)")
+                        .font(.faffText(15))
+                        .foregroundStyle(V5.textQuiet)
+                }
+            }
         }
     }
 
@@ -719,23 +756,21 @@ struct LiveRunTreadmillV5: View {
             : walk.phase.label
     }
 
-    /// Announces the upcoming segment's target the SAME way
-    /// `configurePlanIfNeeded` will actually set the belt when the auto-
-    /// advance crosses into it (`nominalMph`/`nominalInclinePct` — one
-    /// computation, read by both) — so this line can never promise a number
-    /// the segment machine does not then deliver. Incline is stated only
-    /// when it departs from flat (> 1.0%): a paced phase reading "Next ·
-    /// 7:10 /mi pace · 1.0% incline" would bury the one number that matters
-    /// (speed) behind a fact that is never in question on a flat segment.
+    /// THIS phase's own remaining — "left", not "until next" — so the last
+    /// phase (cooldown, or any single-phase free run) still reads something
+    /// instead of the old next-phase-only line going silently blank.
+    private var remainingThisPhaseText: String? {
+        guard let walk else { return nil }
+        return "\(walk.remainingShort) left"
+    }
+
     private var nextLineText: String? {
         guard let walk, let next = walk.nextPhase else { return nil }
-        let mph = Self.nominalMph(for: next)
-        let speedText = "\(Units.formatSpeed(mph: mph)) \(Units.speedLabel())"
-        let incline = Self.nominalInclinePct(for: next)
-        let target = incline > 1.0
-            ? "\(speedText) \u{00b7} \(FaffFmt.oneDecimal(incline) ?? "0.0")% incline"
-            : speedText
-        return "Next \u{00b7} \(next.label) \u{00b7} \(target) in \(walk.remainingShort)"
+        if let target = next.targetPaceSPerMi, target > 0 {
+            let mph = (3600.0 / Double(target) * 10).rounded() / 10
+            return "Next \u{00b7} \(Units.formatSpeed(mph: mph)) \(Units.speedLabel()) in \(walk.remainingShort)"
+        }
+        return "Next \u{00b7} \(next.label) in \(walk.remainingShort)"
     }
 
     // MARK: - Speed tile
@@ -757,11 +792,23 @@ struct LiveRunTreadmillV5: View {
                 // most-read number, unreadable at exactly the speeds a fast
                 // runner uses. Shrink to fit rather than clip; the tile keeps
                 // its height either way.
-                Text(Units.formatSpeed(mph: speedMph))
-                    .font(.faffText(TypeScaleV5.valueMax, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-                    .foregroundStyle(V5.textPrimary)
+                //
+                // Stage 6 · the ± buttons used to shift position as this
+                // text's own width changed between single- and double-digit
+                // values (0.5-9.9 vs 10.0-20.0) — an invisible reference
+                // string sized to the widest value `BeltSpeed.bounds` can
+                // ever produce (20.0 km/h) reserves that width permanently
+                // in the ZStack below, so the number can grow or shrink
+                // inside it without the buttons ever moving.
+                ZStack {
+                    Text("20.0").opacity(0)
+                    Text(Units.formatSpeed(mph: speedMph))
+                        .foregroundStyle(V5.textPrimary)
+                }
+                .font(.faffText(TypeScaleV5.valueMax, weight: .semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
                 roundControl(symbol: "plus", diameter: 72, glyphSize: 30,
                             fill: V5.materialAction, ink: V5.actionPrimaryText,
                             spoken: "Speed the belt up") {
@@ -793,9 +840,13 @@ struct LiveRunTreadmillV5: View {
                             spoken: "Lower the incline") {
                     adjustIncline(-0.5)
                 }
-                Text(FaffFmt.oneDecimal(inclinePct) ?? "0.0")
-                    .font(.faffText(68, weight: .semibold))
-                    .foregroundStyle(V5.textPrimary)
+                ZStack {
+                    Text("15.0").opacity(0)
+                    Text(FaffFmt.oneDecimal(inclinePct) ?? "0.0")
+                        .foregroundStyle(V5.textPrimary)
+                }
+                .font(.faffText(68, weight: .semibold))
+                .monospacedDigit()
                 roundControl(symbol: "plus", diameter: 60, glyphSize: 26,
                             fill: V5.materialAction, ink: V5.actionPrimaryText,
                             spoken: "Raise the incline") {
@@ -844,22 +895,57 @@ struct LiveRunTreadmillV5: View {
         session.stepIncline(delta)
     }
 
-    /// The very first screen's suggestion, before the plan has even loaded
-    /// (`init` runs before `.task`/`.onAppear`) — keyed off the session's
-    /// first WORK phase specifically ("what you'll want for the hard part"),
-    /// via the exact same `nominalMph` the real segment plan
-    /// (`configurePlanIfNeeded`) uses for every phase. Falls to the flat 8.0
-    /// only when there is no plan at all yet (an unstructured run, or the
-    /// plan genuinely has no work phase).
+    /// Pre-Start seed for the console's own display — same fallback chain as
+    /// every other phase (`BeltSession.nominalMph`), applied to the first
+    /// work phase specifically, since that is what the runner sees before
+    /// tapping Start. Used to be a second, near-identical copy of that
+    /// chain; now there is one.
     private static func defaultSpeedMph(plan: LiveRunPlanV5?) -> Double {
         guard let phase = plan?.phases.first(where: { $0.type == .work }) else { return 8.0 }
-        return nominalMph(for: phase)
+        return BeltSession.nominalMph(for: phase)
     }
 
-    /// Sibling of `defaultSpeedMph` — same phase, same shared function.
     private static func defaultInclinePct(plan: LiveRunPlanV5?) -> Double {
         guard let phase = plan?.phases.first(where: { $0.type == .work }) else { return 1.0 }
-        return nominalInclinePct(for: phase)
+        return BeltSession.nominalInclinePct(for: phase)
+    }
+
+    // MARK: - Cues menu
+
+    private var cuesMenu: some View {
+        Menu {
+            Toggle("Voice cues", isOn: $voiceCuesOn)
+            Toggle("Tones", isOn: $toneCuesOn)
+        } label: {
+            Image(systemName: (voiceCuesOn || toneCuesOn) ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(V5.textSecondary)
+                .frame(width: 36, height: 36)
+                .background(V5.materialControl, in: Circle())
+        }
+        .onChange(of: voiceCuesOn) { _, on in TreadmillCueEngine.voiceEnabled = on }
+        .onChange(of: toneCuesOn) { _, on in TreadmillCueEngine.tonesEnabled = on }
+    }
+
+    // MARK: - Override badge
+
+    /// Stage 3 · "make the active override visible and provide a simple
+    /// reset-to-plan action." Shows only while the CURRENT phase is running
+    /// under a standing runner override (propagated from an earlier
+    /// equivalent rep, or set this instant) — invisible the rest of the
+    /// time, so it never competes with the numbers above it (Rule 17).
+    @ViewBuilder private var overrideBadgeRow: some View {
+        if session.hasOverrideForCurrentPhase, let type = walk?.phase.type {
+            HStack {
+                Text("Custom pace for this set")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.attention)
+                Spacer(minLength: V5.S.s8)
+                Button("Reset to plan") { session.resetOverride(for: type) }
+                    .font(.faffText(TypeScaleV5.label13, weight: .semibold))
+                    .foregroundStyle(V5.signal)
+            }
+        }
     }
 
     // MARK: - Stat row
@@ -983,22 +1069,67 @@ struct LiveRunTreadmillV5: View {
     // moment the run actually starts.
 
     private var buttonRow: some View {
-        HStack(spacing: V5.S.s10) {
-            if startedAt == nil {
-                FaffButton("Start", variant: .primary, size: .lg) {
-                    startRun()
-                }
-            } else {
-                FaffButton(isPaused ? "Resume" : "Pause", variant: .secondary, size: .lg) {
-                    // The recorder owns its own clock, so pause and resume
-                    // re-anchor inside the model.
-                    session.togglePause()
-                    onPause()
-                }
-                FaffButton("End", variant: .destructive, size: .lg) {
-                    endAndSave()
+        VStack(spacing: V5.S.s10) {
+            // Stage 6 · Skip sits ABOVE Pause/End, small and quiet (`.ghost`,
+            // not full-width) rather than beside them at the same size and
+            // weight as End — the two are not equally consequential, and
+            // dressing them the same is how an accidental tap lands on the
+            // wrong one. Only offered once the run is live and there is
+            // somewhere to skip TO (never on the last phase — mirrors
+            // `BeltSession.skip()`'s own guard).
+            if startedAt != nil, let next = walk?.nextPhase {
+                HStack {
+                    Spacer()
+                    Button {
+                        showSkipConfirm = true
+                    } label: {
+                        Label("Skip to \(next.label)", systemImage: "forward.end.fill")
+                            .font(.faffText(15, weight: .medium))
+                            .foregroundStyle(V5.textSecondary)
+                    }
                 }
             }
+            HStack(spacing: V5.S.s10) {
+                if startedAt == nil {
+                    FaffButton("Start", variant: .primary, size: .lg) {
+                        startRun()
+                    }
+                } else {
+                    FaffButton(isPaused ? "Resume" : "Pause", variant: .secondary, size: .lg) {
+                        // The recorder owns its own clock, so pause and resume
+                        // re-anchor inside the model.
+                        session.togglePause()
+                        onPause()
+                    }
+                    // Stage 6 · END must always require confirmation while a
+                    // workout is active — was a direct call to `endAndSave()`
+                    // on tap, on a button visually similar to Pause beside it
+                    // and reachable by the same thumb. `confirmationDialog`
+                    // below names exactly what happens.
+                    FaffButton("End", variant: .destructive, size: .lg) {
+                        showEndConfirm = true
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            "Skip to \(walk?.nextPhase?.label ?? "the next phase")?",
+            isPresented: $showSkipConfirm, titleVisibility: .visible
+        ) {
+            Button("Skip \(intervalShortText)", role: .destructive) {
+                session.skip()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\(intervalShortText) will be marked partial. This can't be undone.")
+        }
+        .confirmationDialog(
+            "End this workout?", isPresented: $showEndConfirm, titleVisibility: .visible
+        ) {
+            Button("End Workout", role: .destructive) { endAndSave() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("\(FaffFmt.clock(sec: Double(elapsedSec)) ?? "0:00") elapsed, \(FaffFmt.liveMiles(distanceMi) ?? "0") \(Units.distanceLabel()) so far. This saves and ends the run.")
         }
     }
 
