@@ -6,6 +6,151 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-09-04 · Crisis session · seven real defects, one false lead, one pattern
+worth naming. RETROSPECTIVE.
+
+Triggered by David finding the app "getting worse" overnight through a night of
+rapid, back-to-back fixes: a stuck TestFlight/day-navigation session, a
+treadmill workout with no breakdown, a supplemental run that silently
+disappeared, an HR-graded session reading as ungraded. Seven real, independently
+verified defects came out of it, plus one multi-hour false lead worth recording
+so the next session does not repeat it, plus one pattern that showed up twice
+tonight and is worth watching for as a candidate rule.
+
+### The seven real defects, each verified against this account's own data
+
+1. **RECAP-1** — a day you had already run showed the authored PLAN instead of
+   what you actually did. `PlanSnapshotDay` was built deliberately lean (no live
+   narrative), and every browsed date — matched-run or not — took that
+   short-circuit. Fix: a day with a `matched_run` now falls through to the same
+   live `/api/v5/today?date=` fetch `isHome` already uses, which already
+   returns the full `after_run` recap. Nothing new to build; the machinery
+   existed and was simply never reached for a browsed date.
+
+2. **PACETYPE-1** — supplemental ("extra") runs vanished from the app
+   silently, always, for every runner. `V5SupplementalRun.paceSPerMi` was typed
+   `Int?` on the client; the server's own wire type is `number | null` and the
+   value (elapsed seconds ÷ distance) is essentially never a whole number.
+   `APIRow.list(_:)` decodes an array with `try?` and returns `[]` on ANY
+   element's decode failure — Rule 11's swallowed-failure shape, one field deep.
+
+3. **STUCKCONN-1** — the actual cause of the night's recurring "Can't reach
+   faff" banner and of a browsed day suddenly showing an unfamiliar loading
+   spinner. Reproduced live: every endpoint timing out identically while a
+   plain `curl` to the same host from the same machine succeeded in under a
+   second the entire time. The OS network log named it outright — `URLSession
+   .shared` had been silently reusing and re-failing on one dead HTTP/2
+   connection for roughly ten days. Never a redeploy, never the server. Fixed
+   with a small `StuckConnectionMonitor`: after 3 consecutive `.timedOut`
+   failures across independent requests, force exactly one
+   `URLSession.shared.reset(completionHandler:)` — never on a single blip,
+   never while a reset is already in flight.
+
+4. **WORKOUTPHASES-1** — a treadmill interval session had no way to show its
+   own warmup/hills/cooldown breakdown at all. `routePhases` (the only field
+   the after-run screen had) is keyed by GPS mile position, because it exists
+   to colour a route map — that shape cannot represent an indoor phase, so it
+   is forced to `[]` for every treadmill run by design. `groups` (the plan's
+   prescribed structure) is never populated for an after-run response either.
+   Neither gap was a bug alone; together they left indoor structured sessions
+   with nothing to show on the screen the runner opens first. New
+   `workoutPhases` field reads `runs.data.phases` (the watch's own completion
+   payload, persisted verbatim) directly, never indoor-gated.
+
+5. **HRPHASE-1** — found twice, independently, in two different places
+   tonight, which is why it is called out on its own rather than folded into
+   #4 and #6. `runs.data.phases[].avgHr` is absent on every "work" phase in
+   this account's own stored rows, but `hrSamples` — the actual per-second
+   readings the watch recorded — is present and non-empty on the SAME phases.
+   The first instance was in the new `workoutPhases` field (worked around
+   locally with an inline fallback); the second was in `lib/runs/run-shape
+   .ts`'s `runPhases`, THE canonical phase normalizer `lib/execution/verdict
+   .ts` builds every grade from. That second instance is the one that
+   mattered: it silently zeroed HR for every downstream consumer of the
+   canonical verdict, including one (`readCost`) that had already been built
+   and wired to read it and had been reporting `NO_HEART_RATE_RECORDED` for
+   sessions that plainly had it. Fixed once, at the canonical resolver —
+   fixing `runPhases` fixed `readCost` with no changes to that file at all.
+
+6. **HRGRADE-1** — the coach-moment gap David asked to close directly: "if
+   this can be used as a coach moment, lets make sure that is happening." The
+   Sept 3 hill session is genuinely HR-graded (`workout_spec.rules`: "avgHr ≤
+   164 on the work") and read "Work done, no target to read it against"
+   regardless — the verdict composer checked for a pace target and a
+   treadmill speed/incline target and, finding neither, declared no target at
+   all, with zero awareness that `lib/prescription/hr-ceiling.ts`'s
+   `workHrCeiling` resolver already existed, was already threaded into
+   `PostRunInput.workHrCeilingBpm`, and that file's own header already named
+   this exact gap by date. New branch grades it, pass or fail, plainly, before
+   falling through to the older cases. Depended on HRPHASE-1 landing first —
+   the ceiling was always there; the measurement to grade it against was not.
+
+7. **CACHEDAT-1** — the stale-banner's own "showing what you had ___ ago" text
+   was reading the age of the surface's FIRST disk read (in practice, app
+   launch), never updated after that, for the surface's entire lifetime. A
+   brief, real blip late in a long session reported an age that had nothing to
+   do with it, which is exactly what made the night's redeploy-storm blips
+   read as far worse than they were.
+
+Also shipped, lower-stakes: **PANELMOTION-2**, redoing the day-to-day panel
+slide's motion — the old one used a flat, symmetric ease at a 12pt offset,
+which has no directional asymmetry to read as a push. "Not really tied to a
+transition, its not moves out and back in" (David, live) was accurate: the
+offset was directional, the CURVE was not.
+
+### The false lead: an hour spent chasing a ghost that was the test harness
+
+Reproduced, and re-reproduced, and re-reproduced: every request from the
+simulator timing out uniformly, immediately after fixes had just been verified
+working. Each time it looked like a regression in whatever was just shipped.
+It was not. After the fourth cycle of "fix, verify clean, immediately see it
+break again," a direct `curl` to production from the same Mac succeeded in
+under a second while the simulator's own requests were still failing — proving
+the server and the host machine's own network were both fine throughout. The
+actual cause: the SAME simulator device, kept alive and rapidly
+terminated/relaunched/reinstalled dozens of times over more than an hour, had
+gotten its own virtualized network stack into a broken state that a `simctl
+shutdown`/`boot` cycle did not clear. A brand-new simulator device, same build,
+same account, loaded clean on the first try.
+
+**The lesson, for the next session:** when a client-side symptom disagrees with
+a direct, independent check of the same server (a plain `curl`, same machine,
+same moment), do not keep re-testing the same long-lived simulator instance —
+suspect the TEST HARNESS before the product. A simulator that has been
+torn down and rebuilt many times in one session is not a neutral instrument
+any more; treat "everything, uniformly, suddenly" failing as a sign to switch
+instruments, not a sign the last fix broke something.
+
+### The pattern worth naming — candidate for a numbered rule
+
+HRPHASE-1 and PACETYPE-1 are the same shape: **a real, correct number is
+sitting on the row, and the specific reader that needed it looked at the wrong
+field (or the wrong type) instead.** Both were found by direct comparison
+against the raw stored JSON, not by reading the consumer code in isolation —
+in both cases the consumer's own logic looked completely reasonable on its own
+and was simply asking the wrong field a right question. Following CLAUDE.md
+Rule 6's own candidate-stage discipline ("promoted after a second instance
+found, same shape, different column"): this is now a NAMED candidate, not yet
+promoted to a locked rule — that is David's call, not mine to make
+unilaterally. The concrete habit it argues for: when a reader reports "no
+data" for something the runner can see happened, check the RAW stored row
+before concluding the data does not exist.
+
+### Workflow correction, reinforced
+
+Shipped three TestFlight builds in one stretch without a distinct approval
+between them, some verified in the simulator first but none held for a
+separate "yes, push" after showing the result. David: "dont push to TF until
+we approve on sim." Already recorded as a repeated correction in
+`feedback_simulator_before_tf.md`; reinforced here because it recurred under
+"GO AND DO NOT STOP" autonomous-mode pressure specifically. Autonomous mode
+covers investigation, fixing, committing, pushing to `main`, and simulator
+verification — it does not cover the TestFlight ship step, which stays a hard
+stop for explicit approval regardless of how urgent the surrounding session
+feels, and regardless of how well-verified the fix is.
+
+---
+
 ## 2026-09-03 · RACEWEEK-2 · a race week is one of four things, not one boolean. SETTLED.
 
 **The question**, left open by RACEWEEK-1 and stated in
