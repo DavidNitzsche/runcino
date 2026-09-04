@@ -503,6 +503,10 @@ struct RepBreakdownV5: View {
     private var timelineStrip: some View {
         let total = pieces.reduce(0.0) { $0 + Self.weight($1) }
         return GeometryReader { geo in
+            // v5-spacing-exempt: a hairline gap between timeline segments —
+            // an optical nudge for a 6pt-tall proportional bar, not a
+            // semantic spacing rung; no V5.S.* value below 2 exists for
+            // exactly this reason.
             HStack(spacing: 1.5) {
                 ForEach(pieces) { p in
                     let w = total > 0 ? Self.weight(p) / total : 0
