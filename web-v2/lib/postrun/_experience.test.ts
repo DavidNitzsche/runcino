@@ -377,6 +377,47 @@ describe('run-type states', () => {
     expect(out.briefing.certainty).toBe('UNKNOWN');
   });
 
+  it('TREADMILL EFFORT (P0 gap #3) · a by-effort hill session is not read as "no prescribed pace"', () => {
+    // A real hill-rep shape: no `targetPaceSPerMi` anywhere (by-effort, on
+    // purpose — Research/04, outdoor grade varies), `paceShape: 'effort'` on
+    // every work phase (what the server actually authors for a hill rep,
+    // round-tripped), but a real belt target on every phase via
+    // `targetSpeedMph`/`targetInclinePct` — TREADMILL-TARGET-ROUNDTRIP-1.
+    const phases = [
+      { index: 0, type: 'warmup', label: 'Warm up', completed: true, actualDurationSec: 300, actualDistanceMi: 0.5,
+        paceShape: 'ceiling', targetSpeedMph: 5.5, actualSpeedMph: 5.4, targetInclinePct: 1.0, actualInclinePct: 1.0 },
+      { index: 1, type: 'work', label: 'Hill', completed: true, actualDurationSec: 60, actualDistanceMi: 0.16,
+        paceShape: 'effort', targetSpeedMph: 9.5, actualSpeedMph: 9.54, targetInclinePct: 5.0, actualInclinePct: 4.82,
+        hrRole: 'observational' },
+      { index: 2, type: 'recovery', label: 'Jog', completed: true, actualDurationSec: 120, actualDistanceMi: 0.17,
+        paceShape: 'none', targetSpeedMph: 5.0, actualSpeedMph: 5.0, targetInclinePct: 1.0, actualInclinePct: 1.0 },
+      { index: 3, type: 'work', label: 'Hill', completed: true, actualDurationSec: 60, actualDistanceMi: 0.16,
+        paceShape: 'effort', targetSpeedMph: 9.5, actualSpeedMph: 9.6, targetInclinePct: 5.0, actualInclinePct: 4.9,
+        hrRole: 'observational' },
+      { index: 4, type: 'cooldown', label: 'Cool down', completed: true, actualDurationSec: 180, actualDistanceMi: 0.3,
+        paceShape: 'ceiling', targetSpeedMph: 5.0, actualSpeedMph: 5.0, targetInclinePct: 1.0, actualInclinePct: 1.0 },
+    ];
+    const out = compose({ phases, sessionClass: 'interval' });
+    expect(out.execution.status).toBe('INDETERMINATE');
+    expect(out.execution.headline).not.toMatch(/no target to read it against/i);
+    expect(out.execution.summary).not.toMatch(/carried no prescribed pace/i);
+    expect(out.execution.summary).toMatch(/treadmill speed and incline/i);
+  });
+
+  it('NO TARGET AT ALL · a genuinely untargeted work block still reads "no prescribed pace"', () => {
+    // The control case this fix must not break: a work phase with NEITHER a
+    // pace target NOR a treadmill target (`paceShape: 'none'`, no
+    // `targetSpeedMph`) is a real "nothing was prescribed" session, and must
+    // keep the original sentence.
+    const phases = [
+      { index: 0, type: 'work', label: 'Open run', completed: true, actualDurationSec: 1800, actualDistanceMi: 4.0,
+        paceShape: 'none' },
+    ];
+    const out = compose({ phases, sessionClass: 'other' });
+    expect(out.execution.status).toBe('INDETERMINATE');
+    expect(out.execution.summary).toMatch(/carried no prescribed pace/i);
+  });
+
   it('SENSOR-LIMITED · the refusal names the sensors, and carries no action', () => {
     const out = compose({ phases: [], sensorLimited: true });
     expect(out.execution.status).toBe('SENSOR_LIMITED');
