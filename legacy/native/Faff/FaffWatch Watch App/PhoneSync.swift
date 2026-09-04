@@ -83,6 +83,32 @@ final class PhoneSync: NSObject, ObservableObject {
 
     private override init() { super.init() }
 
+    // MARK: - DUPLICATE-1 (2026-09-03, round 5) · read the phone's active session
+    //
+    // The symmetric half of what this file already publishes below: the
+    // iPhone (`WatchSync.publishPhoneActiveWorkout`, native-v2) sends
+    // `phoneActiveWorkoutId`/`phoneActiveWorkoutStartedAt` through the exact
+    // same applicationContext channel this file has always used, and
+    // `apply(_:)` — the one function that already handles every incoming
+    // context, live or replayed at launch — is where it is read. A missing
+    // key on any delivered context means "not active," per the same
+    // full-state-not-diff contract `WatchSync`'s mirror image relies on.
+    @Published private(set) var phoneActiveWorkoutId: String?
+    private var phoneActiveWorkoutStampedAt: Date?
+
+    /// Same staleness ceiling and same reasoning as `WatchSync
+    /// .activeWorkoutStaleAfter`: the phone is expected to clear this flag on
+    /// its own End (`LiveRunHostV5`'s `.onDisappear`), so this exists only so
+    /// a flag the phone failed to clear (killed app, crash mid-run) cannot
+    /// block a wrist start forever.
+    private static let activeWorkoutStaleAfter: TimeInterval = 6 * 60 * 60
+
+    /// What `WatchRootModel.launch` reads before committing to a fresh start.
+    var phoneActiveWorkoutIsCurrent: Bool {
+        guard phoneActiveWorkoutId != nil, let stampedAt = phoneActiveWorkoutStampedAt else { return false }
+        return Date().timeIntervalSince(stampedAt) <= Self.activeWorkoutStaleAfter
+    }
+
     // MARK: - DUPLICATE-1 (2026-09-03) · publish this watch's own active session
     //
     // Purely additive, and deliberately NOT touching `WorkoutTracker.start()`
@@ -487,6 +513,19 @@ final class PhoneSync: NSObject, ObservableObject {
             Task { await flushDirectCompletions() }
             Task { await flushPendingEffort() }
         }
+        // DUPLICATE-1 · read on EVERY payload, live or replayed, ahead of the
+        // signed-out early-return below — an absent key is read as "not
+        // active" per the full-state-not-diff contract, exactly as
+        // `WatchSync`'s mirror-image delegate method reads the watch's own
+        // flag. Applying this on the replayed context too means a watch that
+        // rebooted mid-run finds out the phone is (or is not) still
+        // recording from the very first frame, not just from the next live
+        // push.
+        let phoneId = payload["phoneActiveWorkoutId"] as? String
+        let phoneStampedAt = (payload["phoneActiveWorkoutStartedAt"] as? TimeInterval)
+            .map { Date(timeIntervalSinceReferenceDate: $0) }
+        phoneActiveWorkoutId = phoneId
+        phoneActiveWorkoutStampedAt = phoneId != nil ? (phoneStampedAt ?? Date()) : nil
         // Sign-out. The phone has no key for this today (its `logout()` clears
         // TokenStore and pushes nothing), so this is the hook rather than a
         // live path — one boolean and the shelf is wiped. Deliberately NOT

@@ -182,8 +182,39 @@ struct LiveRunTreadmillV5: View {
 
     private var walk: LiveRunPhaseWalk? {
         guard let plan else { return nil }
-        return LiveRunPhaseWalk.walk(phases: plan.phases, elapsedSec: elapsedSec)
+        return LiveRunPhaseWalk.walk(phases: Self.phasesForWalk(plan.phases), elapsedSec: elapsedSec)
     }
+
+    /// `-faffFastPhases` companion fix. The belt's own auto-advance
+    /// (`configurePlanIfNeeded` → `BeltSession.SegmentPlan`) is scaled by
+    /// `phaseDurationForBelt`, but `elapsedSec` above is the real,
+    /// unscaled wall clock — it has to be, since the displayed "0:00" /
+    /// "1:07" clock reads it too and must show real time. `LiveRunPhaseWalk`
+    /// compares that real elapsed against EACH PHASE'S `durationSec`, so
+    /// feeding it the workout's real (unscaled) phases while the belt races
+    /// through a 20x-compressed copy is exactly the "two accumulators that
+    /// can disagree" bug the comment above already warns about — caught
+    /// live: at 0:51 real the belt had already advanced to Hill 1's 7.7 mph
+    /// / 5.0% incline, while the header still read "Warm-up" because 51s
+    /// had not passed the real 783s warm-up. Scaling the WALK's phase copy
+    /// the identical way keeps both readers on the same compressed
+    /// timeline. A no-op when `-faffFastPhases` is absent.
+    #if DEBUG
+    private static func phasesForWalk(_ real: [WatchPhase]) -> [WatchPhase] {
+        guard debugPhaseSpeedupFactor != nil else { return real }
+        return real.map {
+            WatchPhase(index: $0.index, type: $0.type, label: $0.label,
+                       durationSec: phaseDurationForBelt($0.durationSec),
+                       targetPaceSPerMi: $0.targetPaceSPerMi,
+                       tolerancePaceSPerMi: $0.tolerancePaceSPerMi, haptic: $0.haptic,
+                       repUnit: $0.repUnit, distanceMi: $0.distanceMi, hrTargetBpm: $0.hrTargetBpm,
+                       hrRole: $0.hrRole, treadmillInclinePct: $0.treadmillInclinePct,
+                       treadmillSpeedMph: $0.treadmillSpeedMph, paceShape: $0.paceShape)
+        }
+    }
+    #else
+    private static func phasesForWalk(_ real: [WatchPhase]) -> [WatchPhase] { real }
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -389,7 +420,7 @@ struct LiveRunTreadmillV5: View {
 
     private func currentPhaseIndex(at elapsedSec: Int) -> Int {
         guard let plan, !plan.phases.isEmpty else { return 0 }
-        return LiveRunPhaseWalk.walk(phases: plan.phases, elapsedSec: elapsedSec)?.phase.index ?? 0
+        return LiveRunPhaseWalk.walk(phases: Self.phasesForWalk(plan.phases), elapsedSec: elapsedSec)?.phase.index ?? 0
     }
 
     /// Attach heart rate to whichever phases the recorder has just closed.
@@ -562,10 +593,52 @@ struct LiveRunTreadmillV5: View {
         // seed and the segment plan read from, so a future fix here cannot
         // fix one and miss the other again.
         session.configure(plan: effectivePhases.map {
-            BeltSession.SegmentPlan(durationSec: $0.durationSec,
+            BeltSession.SegmentPlan(durationSec: Self.phaseDurationForBelt($0.durationSec),
                                     targetMph: Self.nominalMph(for: $0),
                                     targetInclinePct: Self.nominalInclinePct(for: $0))
         })
+    }
+
+    /// QA-only phase-advance accelerator, the treadmill's sibling of
+    /// `-faffToken`/`-faffHost`/`-faffRunDetail` (FaffApp.swift) and
+    /// `-autostart`/`-payload` (the watch's `WorkoutRootView`) — same family
+    /// of DEBUG-only launch-argument hooks that exist so CLAUDE.md Rule 13
+    /// ("verified by RENDERING it, with real data") can actually be honoured
+    /// on a screen whose real timescale is ~50 minutes of wall clock.
+    ///
+    ///     xcrun simctl launch <udid> run.faff.app -faffFastPhases 20
+    ///
+    /// divides every phase's BELT-TIMER duration by 20 (a 60s hill rep
+    /// advances after 3s) so the real transition sequence — warm-up → first
+    /// hill → recovery → next hill → … → cooldown → completion — can be
+    /// watched end to end in under a minute instead of manually waiting out
+    /// (or worse, asserting without watching) the real ~50 minutes.
+    ///
+    /// Deliberately narrow: it scales ONLY the number `BeltSession
+    /// .autoAdvanceIfDue()` compares its elapsed timer against. It does not
+    /// touch `nominalMph`/`nominalInclinePct` (the values this session
+    /// exists to verify are unchanged), the phase's own `distanceMi`/label
+    /// (what the runner reads never lies about what was asked), or
+    /// `effectivePhases` itself (no phases are skipped or reordered — this
+    /// compresses time, it does not shortcut the sequence). `#if DEBUG` is
+    /// doing the same real work it does for every sibling in this family:
+    /// this must not exist in a build that reaches a real runner's treadmill.
+    #if DEBUG
+    private static var debugPhaseSpeedupFactor: Double? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffFastPhases"), i + 1 < args.count,
+              let factor = Double(args[i + 1]), factor > 0 else { return nil }
+        return factor
+    }
+    #endif
+
+    private static func phaseDurationForBelt(_ real: Int) -> Int {
+        #if DEBUG
+        if let factor = debugPhaseSpeedupFactor {
+            return max(1, Int(Double(real) / factor))
+        }
+        #endif
+        return real
     }
 
     /// The ONE rule for a phase's belt speed — pace target first, then the

@@ -57,6 +57,18 @@ final class WatchRootModel: ObservableObject {
     @Published private(set) var staleOverrideAvailable = false
     private var staleTimeoutTask: Task<Void, Never>?
 
+    // MARK: - DUPLICATE-1 (round 5) · symmetric guard, watch half
+    //
+    // The rule is symmetrical: no supported recording surface may begin
+    // while another already has an active session. `LiveRunHostV5` (phone)
+    // already refuses this direction; this is the missing other half.
+    // Checked and set synchronously in `launch`, before anything
+    // irreversible happens — no HealthKit prompt fires, no engine is built,
+    // and there is nothing to tear down on a refusal.
+    @Published private(set) var blockedByPhone = false
+
+    func dismissBlockedByPhone() { blockedByPhone = false }
+
     func start(_ workout: WatchWorkout, indoors: Bool = false) {
         // A second tap before the authorization await returns used to build a
         // SECOND engine on the same tracker. bind() keeps only the newer one,
@@ -128,6 +140,16 @@ final class WatchRootModel: ObservableObject {
     }
 
     private func launch(_ workout: WatchWorkout, indoors: Bool = false) {
+        // DUPLICATE-1 (round 5) · refuse before anything else. Checked here
+        // rather than at each of `launch`'s five call sites (Start, Just
+        // Run from three different boards, START ANYWAY) so there is one
+        // choke point instead of five places that could forget it — the
+        // same reasoning `PhoneSync.publishActiveWorkout`'s own placement
+        // in this function already used.
+        if PhoneSync.shared.phoneActiveWorkoutIsCurrent {
+            blockedByPhone = true
+            return
+        }
         clearStale()
         Task {
             // Prompt for HealthKit (+ location) before the session starts
@@ -250,6 +272,12 @@ final class WatchRootModel: ObservableObject {
                     let completion = WorkoutEngine.completionFromRecovery(snapshot: snap, stats: zeroStats)
                     PhoneSync.shared.sendCompletion(completion)
                     WorkoutEngine.clearSnapshot()
+                    // DUPLICATE-1 (round 5) · this run is definitively over —
+                    // the HKWorkoutSession itself lapsed with the hardware —
+                    // so the phone must not go on believing the watch still
+                    // owns it. `reset()`'s own placement is the model; every
+                    // other terminal recovery branch below gets the same call.
+                    PhoneSync.shared.clearActiveWorkout()
                     // Same post-recovery receipt as a live END & SAVE — the
                     // runner should see their salvaged mileage, not silently
                     // land back on the idle home screen after losing the
@@ -267,6 +295,11 @@ final class WatchRootModel: ObservableObject {
             // exactly as that flow's own end() would have.
             if session.workoutConfiguration.locationType == .indoor {
                 await tracker.endAndDiscardRecovered(session)
+                // DUPLICATE-1 (round 5) · unconditional, unlike the snapshot
+                // clear below it — this branch ends the session regardless
+                // of whether a snapshot existed, so the phone-facing flag
+                // must clear on the same terms, not on the snapshot's.
+                PhoneSync.shared.clearActiveWorkout()
                 if snap == nil { return }
                 // Keep any outdoor-run snapshot for a later attempt? No —
                 // its session is gone too (only one session survives).
@@ -323,6 +356,9 @@ final class WatchRootModel: ObservableObject {
             let completion = WorkoutEngine.completionFromRecovery(snapshot: snap, stats: stats)
             PhoneSync.shared.sendCompletion(completion)
             WorkoutEngine.clearSnapshot()
+            // DUPLICATE-1 (round 5) · see `attemptRecovery`'s zero-stats
+            // branch for why this is needed on every terminal recovery path.
+            PhoneSync.shared.clearActiveWorkout()
             let summaryWorkout = snap?.decodedWorkout()
                 ?? Self.recoveredStubWorkout(completion: completion)
             recoverySummary = RecoverySummary(workout: summaryWorkout, completion: completion)
@@ -346,6 +382,10 @@ final class WatchRootModel: ObservableObject {
         }
         recoveredRun = nil
         recoveredSession = nil
+        // DUPLICATE-1 (round 5) · a discarded run is still an ENDED run —
+        // nothing reaches the backend, but the phone must not go on
+        // believing the watch owns a session that is being thrown away.
+        PhoneSync.shared.clearActiveWorkout()
         Task { await tracker.endAndDiscardRecovered(session) }
     }
 
@@ -534,6 +574,19 @@ struct WorkoutRootView: View {
                         model.tracker.dropGPS()
                     }
             }
+        } else if model.blockedByPhone {
+            // DUPLICATE-1 (round 5) · a Start/Just Run tap was refused
+            // because the phone already owns a session. Reuses the same
+            // refusal shape every other no-session board already draws
+            // (lede + sentence + one quiet escape), rather than a new
+            // component for what is, on the wrist, the same kind of board.
+            V5LobbyRefusal(
+                lede: "On your iPhone",
+                sentence: "Your phone started this run. End it there, then come back to start on your watch.",
+                escapeLabel: "Back",
+                ramp: .noSession,
+                onEscape: { model.dismissBlockedByPhone() }
+            )
         } else {
             // Home: lobby/rest (default) → JUST RUN (escape hatch — one
             // swipe right, always available regardless of today's plan) →

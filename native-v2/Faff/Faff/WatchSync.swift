@@ -79,11 +79,26 @@ final class WatchSync: NSObject, ObservableObject {
     /// `watchActiveWorkoutId`: `nil` clears the key entirely rather than
     /// sending an empty string, so a stale reader cannot mistake "cleared"
     /// for "started, empty id."
+    ///
+    /// SOURCE OF TRUTH, NOT JUST A WIRE WRITE. `pushTodayToWatch()` below
+    /// rebuilds its context from an empty dictionary every time it runs —
+    /// deliberately, since it is the canonical "today's full state" push —
+    /// so merging into `lastContext` here is not enough: a background
+    /// refresh firing mid-run (reachability change, the periodic Today poll)
+    /// would silently drop these two keys off the next delivery, and the
+    /// watch would read that as the phone no longer recording. `myActive*`
+    /// is what `pushTodayToWatch()` re-applies after it rebuilds, so the two
+    /// call sites cannot race each other into an unintentional clear.
+    private(set) var myActiveWorkoutId: String?
+    private var myActiveWorkoutStartedAt: TimeInterval?
+
     func publishPhoneActiveWorkout(id: String?) {
+        myActiveWorkoutId = id
+        myActiveWorkoutStartedAt = id != nil ? Date().timeIntervalSinceReferenceDate : nil
         var ctx = lastContext ?? [:]
         if let id {
             ctx["phoneActiveWorkoutId"] = id
-            ctx["phoneActiveWorkoutStartedAt"] = Date().timeIntervalSinceReferenceDate
+            ctx["phoneActiveWorkoutStartedAt"] = myActiveWorkoutStartedAt
         } else {
             ctx.removeValue(forKey: "phoneActiveWorkoutId")
             ctx.removeValue(forKey: "phoneActiveWorkoutStartedAt")
@@ -305,6 +320,17 @@ final class WatchSync: NSObject, ObservableObject {
                 lastReadinessPayload = r
             }
             if let r = lastReadinessPayload { ctx["readiness"] = r }
+            // DUPLICATE-1 · this function rebuilds `ctx` from scratch, so
+            // without this a refresh firing mid-run (reachability change,
+            // the periodic Today poll) would silently drop the active-run
+            // flag off the wire and the watch would see the phone as free.
+            // `myActiveWorkoutId` is the source of truth precisely so this
+            // re-application does not depend on call order against
+            // `publishPhoneActiveWorkout`. See that function's header.
+            if let id = myActiveWorkoutId {
+                ctx["phoneActiveWorkoutId"] = id
+                ctx["phoneActiveWorkoutStartedAt"] = myActiveWorkoutStartedAt ?? Date().timeIntervalSinceReferenceDate
+            }
             sendContext(ctx)
         } catch {
             lastSyncStatus = "Watch fetch error: \(error.localizedDescription)"
@@ -715,6 +741,12 @@ extension WatchSync: WCSessionDelegate {
     nonisolated func session(_ session: WCSession,
                              activationDidCompleteWith state: WCSessionActivationState,
                              error: Error?) {
+        // DUPLICATE-1 (round 5) · replay whatever the watch last published,
+        // the instant activation completes — including a fresh launch mid-run.
+        // See `applyWatchActiveWorkout`'s header for why this was missing.
+        if state == .activated {
+            Self.applyWatchActiveWorkout(from: session.receivedApplicationContext, into: self)
+        }
         Task { @MainActor in
             self.refreshPairing()
             if let pending = self.pendingContext, state == .activated {
@@ -736,12 +768,28 @@ extension WatchSync: WCSessionDelegate {
     /// previously read anything the watch sent back through this channel.
     nonisolated func session(_ session: WCSession,
                              didReceiveApplicationContext applicationContext: [String: Any]) {
+        Self.applyWatchActiveWorkout(from: applicationContext, into: self)
+    }
+
+    /// Shared by the live delegate callback above and by `start()`'s
+    /// activation-time replay below. Found missing the hard way, round 5's
+    /// paired-device test: a phone that (re)launches WHILE the watch is
+    /// already recording never received a live `didReceiveApplicationContext`
+    /// for it — that only fires on the watch's NEXT publish, which is its
+    /// own End — so `watchActiveWorkoutId` stayed `nil` and a fresh Outdoor
+    /// start sailed straight through the guard. WatchConnectivity persists
+    /// the watch's last-sent context at the OS level specifically for this
+    /// case (`WCSession.receivedApplicationContext`); replaying it here is
+    /// what `PhoneSync.activate()` already does for the identical problem on
+    /// the watch's own launch path — this is the missing mirror image.
+    nonisolated private static func applyWatchActiveWorkout(from applicationContext: [String: Any],
+                                                             into sync: WatchSync) {
         let id = applicationContext["activeWorkoutId"] as? String
         let stampedAt = (applicationContext["activeWorkoutStartedAt"] as? TimeInterval)
             .map { Date(timeIntervalSinceReferenceDate: $0) }
         Task { @MainActor in
-            self.watchActiveWorkoutId = id
-            self.watchActiveWorkoutStampedAt = id != nil ? (stampedAt ?? Date()) : nil
+            sync.watchActiveWorkoutId = id
+            sync.watchActiveWorkoutStampedAt = id != nil ? (stampedAt ?? Date()) : nil
         }
     }
 
