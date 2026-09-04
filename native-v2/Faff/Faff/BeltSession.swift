@@ -179,14 +179,19 @@ final class BeltSession: ObservableObject {
     /// segment-local `autoAdvanceIfDue()` behavior unchanged, untouched by
     /// this file's canonical-walk addition. See the file header.
     private var watchPhases: [WatchPhase] = []
-    /// One runner override per PHASE TYPE, not per phase instance — "change
-    /// one hill rep, the rest of this set's reps follow" (Stage 3). Recovery
-    /// and work are tracked separately so a recovery-pace edit can never
-    /// leak into the next hill rep and vice versa. Warm-up/cooldown are
-    /// singletons in every plan this app authors, so a "type" override on
-    /// either is equivalent to a one-off edit — harmless, not a special case.
-    private(set) var speedOverrideByType: [WatchPhaseType: Double] = [:]
-    private(set) var inclineOverrideByType: [WatchPhaseType: Double] = [:]
+    /// One set id per phase in `watchPhases`, same index — computed once by
+    /// `configurePhases`/`resume`. See `TreadmillPhaseSets.swift`.
+    private var setIds: [Int] = []
+    /// One runner override per SET, not per phase type. Fixed P0 gap #2:
+    /// keying by type alone meant a session with TWO differently-prescribed
+    /// work blocks (4x800 @ threshold, then 4x400 @ mile pace) would have
+    /// carried an edit on an 800 straight into the 400s. `TreadmillPhaseSets
+    /// .setIds` groups by (type, nominal target), so two work blocks with
+    /// different targets get different keys even though both are `.work`.
+    /// Warm-up/cooldown are singletons in every authored plan, so each
+    /// lands in its own one-phase set automatically.
+    private(set) var speedOverrideBySet: [Int: Double] = [:]
+    private(set) var inclineOverrideBySet: [Int: Double] = [:]
     /// Bumped every time the phase actually changes (auto or skip), so the
     /// view can fire a cue exactly once per transition without owning the
     /// boundary logic itself. Carries enough for the cue to speak the right
@@ -199,14 +204,53 @@ final class BeltSession: ObservableObject {
         let auto: Bool
     }
 
-    /// The phase type the belt is currently on, for override bookkeeping.
-    /// Nil only when no phases have been configured at all (a free-run
-    /// session with no plan).
+    /// The equivalent-phase SET the belt is currently on, for override
+    /// bookkeeping. Nil only when no phases have been configured (a
+    /// free-run session with no plan) or the legacy caller never set
+    /// `watchPhases` at all.
+    private var currentSetId: Int? {
+        setIds.indices.contains(segmentIndex) ? setIds[segmentIndex] : nil
+    }
+
+    /// The phase type the belt is currently on — display/labeling only now
+    /// (e.g. the badge asking "reset THIS set"). Override bookkeeping keys
+    /// on `currentSetId`, not this.
     private var currentPhaseType: WatchPhaseType? {
         watchPhases.indices.contains(segmentIndex) ? watchPhases[segmentIndex].type : nil
     }
 
     private var timer: Timer?
+
+    #if DEBUG
+    /// DEBUG-only clock-acceleration factor for the belt's own timer, the
+    /// treadmill sibling of `-faffHost`/`-faffToken`
+    /// (`xcrun simctl launch <udid> run.faff.app -faffFastPhases 30`).
+    /// Exists so CLAUDE.md Rule 13 ("verified by RENDERING it, with real
+    /// data") can be satisfied for a treadmill phase sequence without
+    /// waiting through a real ~50-minute session — every phase boundary,
+    /// cue, and target still fires through the exact same
+    /// `advanceToCanonicalPhase()` / `LiveRunPhaseWalk.walk` this file's own
+    /// header describes, just against a faster clock.
+    ///
+    /// Read ONCE, at first access, from a launch argument. 1.0 (the default
+    /// when the argument is absent) is a byte-for-byte no-op: `startClock`
+    /// below falls through to the exact literal `Date()` / `1.0`-second
+    /// interval it always used. This property does not exist at all outside
+    /// `#if DEBUG`, so no shipped build can run its own clock fast, by
+    /// construction rather than by convention.
+    static let debugPhaseAccelerationFactor: Double = {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffFastPhases"), i + 1 < args.count,
+              let f = Double(args[i + 1]), f > 1 else { return 1.0 }
+        return f
+    }()
+    /// Real wall-clock moment the accelerated timer first fired, so every
+    /// later tick can compute how much REAL time has passed and scale it —
+    /// never compared against `startedAt`, which is the SESSION's clock
+    /// (paused/resumed/resumed-from-checkpoint) and answers a different
+    /// question.
+    private var debugClockRealStart: Date?
+    #endif
 
     /// The console's own idempotency key, carried so the checkpoint can be
     /// matched to the run that wrote it — a finished run must never clear a
@@ -267,6 +311,7 @@ final class BeltSession: ObservableObject {
     func configurePhases(_ phases: [WatchPhase]) {
         guard startedAt == nil else { return }
         watchPhases = phases
+        setIds = TreadmillPhaseSets.setIds(for: phases)
         configure(plan: phases.map {
             SegmentPlan(durationSec: $0.durationSec, targetMph: Self.nominalMph(for: $0),
                         targetInclinePct: Self.nominalInclinePct(for: $0))
@@ -302,14 +347,14 @@ final class BeltSession: ObservableObject {
 
     /// The runner's own belt reading. Records that THEY set it, so the next
     /// segment boundary offers its target instead of overwriting them — and,
-    /// TREADMILL-STATE-MACHINE-1, records it as this PHASE TYPE's standing
-    /// override, so every later equivalent rep in this set adopts it too
-    /// (Stage 3 — "change one rep, the set follows") until reset or the
-    /// session ends.
+    /// TREADMILL-STATE-MACHINE-1 (P0 gap #2 fix), records it as this
+    /// equivalent-phase SET's standing override, so every later phase in the
+    /// SAME set adopts it too, and a differently-prescribed later block of
+    /// the same TYPE never sees it at all.
     func setSpeed(_ mph: Double) {
         speedMph = mph
         runnerSetSpeed = true
-        if let type = currentPhaseType { speedOverrideByType[type] = mph }
+        if let setId = currentSetId { speedOverrideBySet[setId] = mph }
     }
 
     /// Step the belt by `notches` in the runner's own display unit and store
@@ -321,7 +366,7 @@ final class BeltSession: ObservableObject {
     func setIncline(_ pct: Double) {
         inclinePct = Swift.min(Swift.max(pct, 0), 15)
         runnerSetSpeed = true
-        if let type = currentPhaseType { inclineOverrideByType[type] = inclinePct }
+        if let setId = currentSetId { inclineOverrideBySet[setId] = inclinePct }
     }
 
     func stepIncline(_ delta: Double) {
@@ -331,18 +376,19 @@ final class BeltSession: ObservableObject {
     /// True while the phase the belt is on right now carries a standing
     /// runner override — drives the "Custom pace" badge and Reset action.
     var hasOverrideForCurrentPhase: Bool {
-        guard let type = currentPhaseType else { return false }
-        return speedOverrideByType[type] != nil || inclineOverrideByType[type] != nil
+        guard let setId = currentSetId else { return false }
+        return speedOverrideBySet[setId] != nil || inclineOverrideBySet[setId] != nil
     }
 
-    /// Drop this phase type's standing override and, if the belt is on that
-    /// type right now, snap immediately back to the plan's own target —
-    /// Stage 3's "simple reset-to-plan action." Never touches any OTHER
-    /// type's override.
-    func resetOverride(for type: WatchPhaseType) {
-        speedOverrideByType[type] = nil
-        inclineOverrideByType[type] = nil
-        guard currentPhaseType == type, let seg = currentSegment else { return }
+    /// Drop the CURRENT set's standing override and snap immediately back to
+    /// the plan's own target for this phase — Stage 3's "simple
+    /// reset-to-plan action." Never touches any OTHER set's override, even
+    /// one of the same phase type.
+    func resetOverrideForCurrentSet() {
+        guard let setId = currentSetId else { return }
+        speedOverrideBySet[setId] = nil
+        inclineOverrideBySet[setId] = nil
+        guard let seg = currentSegment else { return }
         speedMph = seg.targetMph
         inclinePct = seg.targetInclinePct
         runnerSetSpeed = false
@@ -388,10 +434,8 @@ final class BeltSession: ObservableObject {
                                 elevGainFt: belt.elevGainFt,
                                 speedMph: speedMph,
                                 inclinePct: inclinePct,
-                                speedOverrides: speedOverrideByType.isEmpty ? nil :
-                                    Dictionary(uniqueKeysWithValues: speedOverrideByType.map { ($0.key.rawValue, $0.value) }),
-                                inclineOverrides: inclineOverrideByType.isEmpty ? nil :
-                                    Dictionary(uniqueKeysWithValues: inclineOverrideByType.map { ($0.key.rawValue, $0.value) }),
+                                speedOverrides: speedOverrideBySet.isEmpty ? nil : speedOverrideBySet,
+                                inclineOverrides: inclineOverrideBySet.isEmpty ? nil : inclineOverrideBySet,
                                 pausedSec: belt.pausedSec,
                                 unmeasuredSec: belt.unmeasuredSec,
                                 unmeasuredMi: belt.unmeasuredMi,
@@ -479,9 +523,27 @@ final class BeltSession: ObservableObject {
     /// is where `Timer.invalidate()` is required to be sent.
     private func startClock() {
         guard timer == nil else { return }
-        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] timer in
+        #if DEBUG
+        let factor = Self.debugPhaseAccelerationFactor
+        if factor > 1, debugClockRealStart == nil { debugClockRealStart = .now }
+        let interval = factor > 1 ? Swift.max(0.05, 1.0 / factor) : 1.0
+        #else
+        let interval = 1.0
+        #endif
+        let t = Timer(timeInterval: interval, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
-            Task { @MainActor in self.tick(at: Date()) }
+            Task { @MainActor in
+                #if DEBUG
+                if Self.debugPhaseAccelerationFactor > 1,
+                   let realStart = self.debugClockRealStart, let started = self.startedAt {
+                    let realElapsed = Date().timeIntervalSince(realStart)
+                    let synthetic = started.addingTimeInterval(realElapsed * Self.debugPhaseAccelerationFactor)
+                    self.tick(at: synthetic)
+                    return
+                }
+                #endif
+                self.tick(at: Date())
+            }
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -602,9 +664,22 @@ final class BeltSession: ObservableObject {
         watchPhases.indices.contains(segmentIndex) ? watchPhases[segmentIndex] : nil
     }
 
+    /// TREADMILL-STATE-MACHINE-1 (P0 gap #6) · "completed" is a COMPLIANCE
+    /// claim — this phase was executed as prescribed — never just "wall
+    /// clock time passed while this app could not watch." A background
+    /// catch-up or a resume-from-kill can close several phases in one
+    /// jump, and every phase after the first in that jump has NOTHING real
+    /// behind it — `BeltTracker`'s own segment-local counters start the new
+    /// segment at zero, so the whole span is `unmeasuredSec`. Downgrading
+    /// `completed` to `false` for exactly that case (never for an ordinary
+    /// live close, which always has real measured content) is what "do not
+    /// present credited time as measured phase execution" means at the
+    /// single-phase level — the run-level `unmeasuredSec`/`unmeasuredMi`
+    /// fields already carry the honest total separately.
     private func closeCurrentSegment(completed: Bool) {
         var actual = belt.closeSegment(speedMph: speedMph, bpm: currentBpm)
-        actual.completed = completed
+        let hasAnyMeasuredContent = actual.durationSec > 0 && actual.unmeasuredSec < actual.durationSec
+        actual.completed = completed && hasAnyMeasuredContent
         actuals[segmentIndex] = actual
         closedCount += 1
     }
@@ -628,20 +703,22 @@ final class BeltSession: ObservableObject {
     /// overriding a work rep left it `true` clear through the NEXT
     /// transition into recovery, where `!runnerSetSpeed` was false and the
     /// recovery target was never adopted at all. The work rep's number rode
-    /// straight into recovery. `runnerSetSpeed` and the typed
-    /// `speedOverrideByType`/`inclineOverrideByType` dictionaries were two
-    /// mechanisms answering the same question and disagreeing — exactly
-    /// this file's own named defect class, one level down.
+    /// straight into recovery. `runnerSetSpeed` and the typed override
+    /// dictionaries were two mechanisms answering the same question and
+    /// disagreeing — exactly this file's own named defect class, one level
+    /// down. P0 gap #2 then found the typed dictionaries were STILL too
+    /// broad (type alone, not type+target — see `TreadmillPhaseSets.swift`),
+    /// fixed by keying on `currentSetId` instead of `currentPhaseType`.
     ///
-    /// Fix: for the V5 console (`watchPhases` non-empty), the typed
+    /// Fix: for the V5 console (`watchPhases`/`setIds` non-empty), the SET
     /// dictionaries are the ONLY authority — `runnerSetSpeed` plays no part
     /// in the decision, only in the legacy branch below, which keeps the
     /// ORIGINAL single-flag behavior verbatim for `Views/TreadmillView.swift`
     /// (untouched by this change, never phase-typed to begin with).
     private func adoptTargetOrKeepRunnerSpeed() {
         guard let seg = currentSegment else { runnerSetSpeed = false; return }
-        guard let type = currentPhaseType else {
-            // Legacy path only — no phase types to key an override on.
+        guard let setId = currentSetId else {
+            // Legacy path only — no phase sets to key an override on.
             if !runnerSetSpeed {
                 speedMph = seg.targetMph
                 inclinePct = seg.targetInclinePct
@@ -649,8 +726,8 @@ final class BeltSession: ObservableObject {
             runnerSetSpeed = false
             return
         }
-        speedMph = speedOverrideByType[type] ?? seg.targetMph
-        inclinePct = inclineOverrideByType[type] ?? seg.targetInclinePct
+        speedMph = speedOverrideBySet[setId] ?? seg.targetMph
+        inclinePct = inclineOverrideBySet[setId] ?? seg.targetInclinePct
         runnerSetSpeed = false
     }
 
@@ -666,28 +743,44 @@ final class BeltSession: ObservableObject {
     func resume(from cp: BeltCheckpoint, phases: [WatchPhase], now: Date = .now) {
         guard startedAt == nil else { return }
         watchPhases = phases
+        setIds = TreadmillPhaseSets.setIds(for: phases)
         configure(plan: phases.map {
             SegmentPlan(durationSec: $0.durationSec, targetMph: Self.nominalMph(for: $0),
                         targetInclinePct: Self.nominalInclinePct(for: $0))
         })
-        belt = BeltTracker(now: now, elapsedSec: Double(cp.elapsedSec), distanceMi: cp.distanceMi,
+        // P0 gap #6, found while closing it: seeding the tracker's clock at
+        // `now` (the resume instant) rather than `cp.updatedAt` (the
+        // checkpoint's own last write) silently DROPPED the gap between
+        // them — up to the 10s checkpoint cadence on an ordinary app kill,
+        // or the full suspension length on a real one. That gap is real
+        // elapsed wall time this app did not witness; it belongs in
+        // `unmeasuredSec`/`unmeasuredMi` through the SAME gap-crediting
+        // policy every other interruption goes through
+        // (`BeltTracker.advance`'s own tolerance/cap/drop bands), not
+        // silently absent from the run entirely.
+        belt = BeltTracker(now: cp.updatedAt, elapsedSec: Double(cp.elapsedSec), distanceMi: cp.distanceMi,
                            elevGainFt: cp.elevGainFt, pausedSec: cp.pausedSec ?? 0,
                            unmeasuredSec: cp.unmeasuredSec ?? 0, unmeasuredMi: cp.unmeasuredMi ?? 0,
                            droppedSec: cp.droppedSec ?? 0)
-        speedOverrideByType = Dictionary(uniqueKeysWithValues: (cp.speedOverrides ?? [:]).compactMap { k, v in
-            WatchPhaseType(rawValue: k).map { ($0, v) }
-        })
-        inclineOverrideByType = Dictionary(uniqueKeysWithValues: (cp.inclineOverrides ?? [:]).compactMap { k, v in
-            WatchPhaseType(rawValue: k).map { ($0, v) }
-        })
+        speedOverrideBySet = cp.speedOverrides ?? [:]
+        inclineOverrideBySet = cp.inclineOverrides ?? [:]
         speedMph = cp.speedMph
         inclinePct = cp.inclinePct
         startedAt = cp.startedAt
+        isRunning = true
+        // Credit the checkpoint-to-resume gap through the real integrator —
+        // this is what actually advances `elapsedSec` past the checkpoint's
+        // frozen value, and what marks the gap unmeasured rather than
+        // dropping it.
+        belt.advance(to: now, speedMph: cp.speedMph, inclinePct: cp.inclinePct, bpm: nil)
         // Walk to the phase this elapsed time actually belongs in, closing
         // every phase in between exactly as `advanceToCanonicalPhase` would
         // have live — the runner missed watching those transitions happen,
-        // not the transitions themselves.
-        isRunning = true
+        // not the transitions themselves. `closeCurrentSegment` itself
+        // withholds `completed` from any phase this walk closes with no
+        // real measured content behind it (see its own comment) — a
+        // recovered session keeps its totals honest without claiming
+        // phase-level compliance the data cannot support.
         advanceToCanonicalPhase()
         startClock()
         tickStamp = now
@@ -713,8 +806,13 @@ struct BeltCheckpoint: Codable {
     // checkpoint written by an older build — a missing value here must never
     // fail the decode, only fall back to `resume(from:)`'s own zero
     // defaults (an un-overridden phase, an un-audited pause/gap total).
-    var speedOverrides: [String: Double]? = nil
-    var inclineOverrides: [String: Double]? = nil
+    // Keyed by SET id (P0 gap #2), not phase type — a checkpoint from the
+    // prior type-keyed build fails this decode (string keys where Int keys
+    // are expected) and is treated as no checkpoint at all, exactly like any
+    // other corrupt/foreign file; self-resolving the moment this build has
+    // run once, not worth a migration for a same-day format change.
+    var speedOverrides: [Int: Double]? = nil
+    var inclineOverrides: [Int: Double]? = nil
     var pausedSec: Double? = nil
     var unmeasuredSec: Double? = nil
     var unmeasuredMi: Double? = nil

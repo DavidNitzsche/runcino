@@ -45,6 +45,8 @@ import { resolveThresholdCapacity } from '@/lib/training/capacity-resolver';
 import { displayTypeFor } from '@/lib/faff/v5-today';
 import { workHrCeiling, overallHrCeiling } from '@/lib/prescription/hr-ceiling';
 import { runAvgHr } from '@/lib/runs/run-shape';
+import { matchRaceForRun, normalizeDataWorkoutType, type RaceForMatch } from '@/lib/runs/log-enrich';
+import { distanceMiFromLabel } from '@/lib/race/distance';
 import {
   composePostRunExperience,
   type PostRunAdaptation,
@@ -254,6 +256,57 @@ export async function loadPostRunExperience(
   );
   const activePlanId = planRow?.plan_id ?? activePlanRes.rows[0]?.id ?? null;
 
+  /* ── does this run match a recorded RACE (RACEWORD-1, 2026-09-03) ─────────
+   *
+   * `plannedType` above answers "what did the plan prescribe for this day",
+   * and is null on any race that predates a plan, was never scheduled as
+   * one, or was a spontaneous entry — which is common for a runner's actual
+   * race history. The Americas Finest City half has no matching
+   * `plan_workouts` row at all, so `plannedType` is null and the composer
+   * had no way to know its five course segments are not repetitions of one
+   * thing: `readExecution` printed "Most of the reps sat outside the
+   * prescribed range" over named segments (Point Loma Climb, The Drop,
+   * Mission Bay...), the same category error `reading-scope.ts`'s grid
+   * caption had independently.
+   *
+   * `matchRaceForRun` against the `races` table is this app's one existing
+   * answer to "is this run actually a race" — already proven for the run
+   * log's display name (`lib/coach/run-state.ts`'s `runDisplayName`, same
+   * query shape). Reused here rather than re-derived, and kept as its own
+   * field rather than folded into `plannedType` — PRESCRIBED and ACTUAL are
+   * different facts (Rule 16), and a run that races when the plan called
+   * for an easy day should not silently look plan-prescribed. */
+  let raceMatched = false;
+  try {
+    const distanceMi = Number(data.distanceMi) || 0;
+    if (dateISO) {
+      const raceRows = await pool.query<{ slug: string; meta: Record<string, unknown> }>(
+        `SELECT slug, meta FROM races WHERE user_uuid = $1 AND meta->>'date' LIKE $2 || '%'`,
+        [userId, dateISO],
+      );
+      const racesForMatch: RaceForMatch[] = raceRows.rows.map((raw) => {
+        const meta = (raw.meta ?? {}) as Record<string, unknown>;
+        const explicit = meta.distanceMi != null ? Number(meta.distanceMi) : null;
+        return {
+          slug: String(raw.slug),
+          name: meta.name != null ? String(meta.name) : null,
+          date: meta.date != null ? String(meta.date).slice(0, 10) : null,
+          distanceMi: explicit != null && isFinite(explicit) && explicit > 0
+            ? explicit
+            : distanceMiFromLabel((meta.distanceLabel as string | null) ?? null),
+        };
+      });
+      const workoutTypeHint = normalizeDataWorkoutType(data.workoutType)
+        ?? normalizeDataWorkoutType(data.type)
+        ?? null;
+      raceMatched = matchRaceForRun({ date: dateISO, distanceMi, workoutTypeHint }, racesForMatch) != null;
+    }
+  } catch (e) {
+    // Best-effort, matching run-state.ts's own posture on this exact query —
+    // a failure here loses a nicety (the correct noun), not a safety guard.
+    console.error('[postrun/load] race match unresolved — will read as not a race:', e);
+  }
+
   // ── the wrist's completion payload for the day ───────────────────────────
   // NOT wrapped in a catch. `runnerTimezoneOrPacific` already answers the
   // "this runner has no stored timezone" case by name; a catch here would also
@@ -294,6 +347,29 @@ export async function loadPostRunExperience(
    *       `sim-` payload can never win it.
    */
   const phases = await resolveStoredPhases(userId, dateISO, data);
+
+  /* WHO SET THE TARGET this session gets graded against (PROVENANCE-1,
+   * 2026-09-03). `resolveWorkoutVerdict` below grades `phases` against
+   * whatever `targetPaceSPerMi` each phase itself carries — it does NOT
+   * require `planRow.workout_spec` to have a per-phase target at all, which
+   * is exactly how the Americas Finest City half was graded "Slower than
+   * target" against real 7:08/6:39/6:51/6:48/6:58 per-mile splits with NO
+   * `plan_workouts` row for that day: David's own watch carried a
+   * structured, five-segment pacing plan for the race, submitted through
+   * the same watch-completion pipeline a training session uses. The grade
+   * was correct. The screen never said whose target it was.
+   *
+   * `'plan'` when a plan row's own spec exists (the ordinary, coach-
+   * authored case — no note needed, see `readExecution`). `'self_authored'`
+   * when no plan row exists for the day but the run's own phases carry
+   * embedded targets anyway — a workout the runner built on the watch
+   * himself. `'none'` when nothing graded the work at all, which
+   * `resolveWorkoutVerdict` already reports honestly as `not_graded`. */
+  const targetProvenance: 'plan' | 'self_authored' | 'none' = planRow?.workout_spec
+    ? 'plan'
+    : phases.some((p) => p != null && typeof p === 'object' && (p as Record<string, unknown>).targetPaceSPerMi != null)
+      ? 'self_authored'
+      : 'none';
 
   // THE canonical grade. Never re-derived on a surface.
   const verdict = resolveWorkoutVerdict({
@@ -403,7 +479,27 @@ export async function loadPostRunExperience(
     adaptations = rows.rows.map((r): PostRunAdaptation => {
       let v: any = r.value;
       if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = null; } }
-      return { reason: r.reason, display: runnerSafeWhy(v?.why) ?? 'The plan was adjusted.' };
+      const display = runnerSafeWhy(v?.why);
+      // PLAN-IMPACT-2, 2026-09-05 · WAS `?? 'The plan was adjusted.'` — a
+      // generic filler that reads as a concrete change but says nothing a
+      // runner could act on. David, directly: "That communicates nothing.
+      // ... do not invent generic filler ... do not claim the plan-impact
+      // explanation contract is fully satisfied." `display: null` is now a
+      // real, distinct state `readPlan` must handle honestly (Rule 11: an
+      // adaptation with no readable reason is a different fact from one
+      // with a reason, never collapsed into a manufactured sentence).
+      // Recorded here, not silently dropped — an adaptation row with an
+      // unreadable `why` is a genuine gap in the `plan_adapt_*` contract
+      // (either nothing was written, or everything in it cited doctrine and
+      // got scrubbed to nothing), and this is the one place that gap is
+      // visible server-side.
+      if (display == null) {
+        console.warn(
+          `[postrun/load] adaptation reason=${r.reason} has no runner-safe description — ` +
+          'plan-impact detail contract not satisfied for this row',
+        );
+      }
+      return { reason: r.reason, display };
     });
   } catch {
     adaptations = null;
@@ -435,6 +531,8 @@ export async function loadPostRunExperience(
     plannedType: planRow?.type ?? null,
     plannedTypeDisplay: planRow?.type ? displayTypeFor(planRow.type, planRow.sub_label) : null,
     plannedDistanceMi: planRow?.distance_mi != null ? Number(planRow.distance_mi) : null,
+    raceMatched,
+    targetProvenance,
     verdict,
     evidence,
     workHrCeilingBpm: workCeiling?.bpm ?? null,

@@ -74,6 +74,8 @@ import {
   wireVerdictFellShort,
   WIRE_PHASE_VERDICTS,
   EASY_PHASE_TOLERANCE_S_PER_MI,
+  MP_PHASE_TOLERANCE_S_PER_MI,
+  looksLikeMarathonPaceLabel,
   type PaceShape,
   type PhaseType,
   type PhaseVerdict,
@@ -108,7 +110,18 @@ export interface GradedPhase {
   avgHr: number | null;
   maxHr: number | null;
   avgCadence: number | null;
-  completed: boolean;
+  /**
+   * COMPLETION-STATE-1 (2026-09-05) · `true` / `false` are both a genuine
+   * wire signal; `null` is the honest majority case — nothing on the wire
+   * ever says either way. Renamed from a `boolean` that used to be produced
+   * by `n.completed !== false`, which reads EXACTLY like `null` collapsing
+   * to `true`: the safest-looking coercion produced the most confident claim
+   * ("4 of 4 completed") on the data that can least support it. A display
+   * surface MUST branch on all three states — see `RunDetailV5.repCompletion`
+   * and `TodayAfterV5.repCompletionGrid`, neither of which may print the word
+   * "completed" for a phase where this is null.
+   */
+  completed: boolean | null;
   isFinishSegment: boolean;
   /** Resolved by `gradeStoredPhases` on the two rungs its `GradeOptions`
    *  describes. A stride is never pace-graded: its `shape` is `effort` and its
@@ -124,6 +137,17 @@ export interface GradedPhase {
   storedVerdict: WirePhaseVerdict | null;
   timeInToleranceSec: number | null;
   timeOutOfToleranceSec: number | null;
+  /** TREADMILL-TARGET-ROUNDTRIP-1 (P0 gap #3) · round-tripped from
+   *  `NormalizedPhase`, unchanged — see that type's own comment. Read this
+   *  to answer "was ANY target prescribed", never to grade a pace against it:
+   *  a belt speed is not a pace, and doctrine's own reason a by-effort hill
+   *  carries no `targetSecPerMi` (Research/04 — outdoor grade varies) does
+   *  not license inventing one from the belt number here. */
+  targetSpeedMph: number | null;
+  actualSpeedMph: number | null;
+  targetInclinePct: number | null;
+  actualInclinePct: number | null;
+  hrRole: 'target' | 'observational' | null;
 }
 
 /** The work, summarised — the numbers a surface prints beside the verdict. */
@@ -292,26 +316,72 @@ export function gradeStoredPhases(
         || p.paceShape === 'effort' || p.paceShape === 'none'
         ? p.paceShape
         : null;
+    // MP-EMBEDDED-1, 2026-09-04 · `paceShapeFor` grades every work phase of a
+    // `long` session as a ceiling, because it sees a phase TYPE and a
+    // SESSION class, never the phase's own intent. A marathon-specific long
+    // run's embedded MP segment is not the easy running around it —
+    // `Research/01`'s M row: "window for general MP segments" — and the
+    // owner's real 2026-06-27 long run ("10.0 mi easy" into "4.0 mi @
+    // marathon pace", self-authored on the watch, no `paceShape` on either
+    // phase) proved the gap: the MP phase graded `ceiling`, so 462 s/mi
+    // against a 434 s/mi marathon pace read as compliant no matter how
+    // slow, and the post-run copy that tried to name the gap anyway
+    // (`experience.ts`'s since-reverted `paceShortfalls`) inverted ceiling
+    // semantics instead. Checked ONLY when the wire itself is silent —
+    // `wireShape`, `p.paceShape` from the device, always wins outright, per
+    // Rule 10 (a stamped anchor is read, not second-guessed).
+    const looksLikeMP = wireShape == null && gradable === 'work' && hasTarget
+      && looksLikeMarathonPaceLabel(n.label);
     const shape: PaceShape =
       wireShape
-      ?? (classKnown
-          ? paceShapeFor(gradable, sessionClass, { hasTarget, byEffort })
-          : byEffort ? 'effort'
-            : !hasTarget ? 'none'
-            : gradable === 'recovery' ? 'none'
-            : gradable === 'warmup' || gradable === 'cooldown' ? 'ceiling'
-            : 'window');
+      ?? (looksLikeMP
+          ? 'window'
+          : classKnown
+            ? paceShapeFor(gradable, sessionClass, { hasTarget, byEffort })
+            : byEffort ? 'effort'
+              : !hasTarget ? 'none'
+              : gradable === 'recovery' ? 'none'
+              : gradable === 'warmup' || gradable === 'cooldown' ? 'ceiling'
+              : 'window');
+
+    // PACE-PURPOSE-1, 2026-09-05 · the SAME gap `looksLikeMP` closed for a
+    // label-detected phase, generalised: a phase can now arrive with an
+    // EXPLICIT `wireShape: 'window'` (a newly authored, typed race-pace
+    // segment — `build-workout.ts` sets this from `ExpandedPhase.purpose`)
+    // embedded in a session whose CLASS would otherwise default every work
+    // phase to a ceiling. `phaseToleranceSec` re-runs `paceShapeFor` from
+    // scratch and would size the tolerance for THAT ceiling default — 30s,
+    // not the ~5s a race-pace window actually needs — silently disagreeing
+    // with the `window` shape already resolved above. Caught by the
+    // PACE-PURPOSE-1 gate test with a deliberately relabelled phase (proving
+    // this is not the label detector firing): 462 s/mi against a 434 target
+    // read `hit` at a 30s tolerance and correctly reads `slow` at this one.
+    const classDefaultIsCeiling = classKnown
+      && paceShapeFor(gradable, sessionClass, { hasTarget, byEffort }) === 'ceiling';
+    const isEmbeddedRacePaceWindow = shape === 'window' && (looksLikeMP || classDefaultIsCeiling);
 
     const wireTol = num(p.tolerancePaceSPerMi);
     const toleranceSec: number | null =
       shape === 'none' || shape === 'effort' ? null
       : wireTol
-        ?? (classKnown
-            ? phaseToleranceSec(gradable, sessionClass, { hasTarget, byEffort })
-            : shape === 'ceiling' ? EASY_PHASE_TOLERANCE_S_PER_MI
-            : sessionToleranceSec('other'));
+        ?? (isEmbeddedRacePaceWindow
+            ? MP_PHASE_TOLERANCE_S_PER_MI
+            : classKnown
+              ? phaseToleranceSec(gradable, sessionClass, { hasTarget, byEffort })
+              : shape === 'ceiling' ? EASY_PHASE_TOLERANCE_S_PER_MI
+              : sessionToleranceSec('other'));
 
-    const completed = n.completed !== false;
+    // COMPLETION-STATE-1 (2026-09-05) · WAS `n.completed !== false`, which
+    // reads `null` (the wire never said) as `true` (confirmed complete) —
+    // Rule 11's exact shape, and the direct cause of "4 of 4 completed"
+    // printing on data that never claimed any of the four finished.
+    // `n.completed` is already the honest tri-state `run-shape.ts`'s
+    // `NormalizedPhase` resolves it to; pass it through unmodified. Grading
+    // is unaffected — `gradeWorkPhase`/`gradeCeilingPhase` only branch on
+    // `=== false`, and `null !== false`, so a phase with no completion
+    // signal still grades normally on its pace. Only DISPLAY reads this
+    // field and must not treat `null` as a "yes".
+    const completed = n.completed;
 
     // ONE GRADE, ON THE RESOLVED SHAPE. `gradeWorkPhase` for a window,
     // `gradeCeilingPhase` for a ceiling, nothing for the rest — the same two
@@ -374,6 +444,11 @@ export function gradeStoredPhases(
       storedVerdict: n.verdict,
       timeInToleranceSec: counter(p.timeInToleranceSec),
       timeOutOfToleranceSec: counter(p.timeOutOfToleranceSec),
+      targetSpeedMph: n.targetSpeedMph,
+      actualSpeedMph: n.actualSpeedMph,
+      targetInclinePct: n.targetInclinePct,
+      actualInclinePct: n.actualInclinePct,
+      hrRole: n.hrRole,
     };
   });
 

@@ -148,6 +148,8 @@ function makeInput(o: InputOverrides = {}): PostRunInput {
     plannedType: 'threshold',
     plannedTypeDisplay: 'Threshold',
     plannedDistanceMi: 8.5,
+    raceMatched: false,
+    targetProvenance: 'plan',
     verdict,
     evidence: o.evidence !== undefined ? o.evidence : evidenceFixture(),
     workHrCeilingBpm: workHrCeiling(REAL_0901_SPEC)?.bpm ?? null,
@@ -319,7 +321,9 @@ describe('run-type states', () => {
       workHrCeilingBpm: null, overallHrCeilingBpm: null, wholeRunHrBpm: 159,
     });
     expect(out.execution.status).toBe('FAST');
-    expect(out.execution.summary).toBe('The work block came in ahead of the ceiling.');
+    // PACE-SHAPE-AUDIT-1 · "came in ahead of" read as praise for violating
+    // a ceiling; "ran faster than ... allowed" cannot be misread either way.
+    expect(out.execution.summary).toBe('The work block ran faster than the ceiling allowed.');
     expect(out.execution.summary).not.toMatch(/window/);
   });
 
@@ -373,6 +377,47 @@ describe('run-type states', () => {
     expect(out.briefing.certainty).toBe('UNKNOWN');
   });
 
+  it('TREADMILL EFFORT (P0 gap #3) · a by-effort hill session is not read as "no prescribed pace"', () => {
+    // A real hill-rep shape: no `targetPaceSPerMi` anywhere (by-effort, on
+    // purpose — Research/04, outdoor grade varies), `paceShape: 'effort'` on
+    // every work phase (what the server actually authors for a hill rep,
+    // round-tripped), but a real belt target on every phase via
+    // `targetSpeedMph`/`targetInclinePct` — TREADMILL-TARGET-ROUNDTRIP-1.
+    const phases = [
+      { index: 0, type: 'warmup', label: 'Warm up', completed: true, actualDurationSec: 300, actualDistanceMi: 0.5,
+        paceShape: 'ceiling', targetSpeedMph: 5.5, actualSpeedMph: 5.4, targetInclinePct: 1.0, actualInclinePct: 1.0 },
+      { index: 1, type: 'work', label: 'Hill', completed: true, actualDurationSec: 60, actualDistanceMi: 0.16,
+        paceShape: 'effort', targetSpeedMph: 9.5, actualSpeedMph: 9.54, targetInclinePct: 5.0, actualInclinePct: 4.82,
+        hrRole: 'observational' },
+      { index: 2, type: 'recovery', label: 'Jog', completed: true, actualDurationSec: 120, actualDistanceMi: 0.17,
+        paceShape: 'none', targetSpeedMph: 5.0, actualSpeedMph: 5.0, targetInclinePct: 1.0, actualInclinePct: 1.0 },
+      { index: 3, type: 'work', label: 'Hill', completed: true, actualDurationSec: 60, actualDistanceMi: 0.16,
+        paceShape: 'effort', targetSpeedMph: 9.5, actualSpeedMph: 9.6, targetInclinePct: 5.0, actualInclinePct: 4.9,
+        hrRole: 'observational' },
+      { index: 4, type: 'cooldown', label: 'Cool down', completed: true, actualDurationSec: 180, actualDistanceMi: 0.3,
+        paceShape: 'ceiling', targetSpeedMph: 5.0, actualSpeedMph: 5.0, targetInclinePct: 1.0, actualInclinePct: 1.0 },
+    ];
+    const out = compose({ phases, sessionClass: 'interval' });
+    expect(out.execution.status).toBe('INDETERMINATE');
+    expect(out.execution.headline).not.toMatch(/no target to read it against/i);
+    expect(out.execution.summary).not.toMatch(/carried no prescribed pace/i);
+    expect(out.execution.summary).toMatch(/treadmill speed and incline/i);
+  });
+
+  it('NO TARGET AT ALL · a genuinely untargeted work block still reads "no prescribed pace"', () => {
+    // The control case this fix must not break: a work phase with NEITHER a
+    // pace target NOR a treadmill target (`paceShape: 'none'`, no
+    // `targetSpeedMph`) is a real "nothing was prescribed" session, and must
+    // keep the original sentence.
+    const phases = [
+      { index: 0, type: 'work', label: 'Open run', completed: true, actualDurationSec: 1800, actualDistanceMi: 4.0,
+        paceShape: 'none' },
+    ];
+    const out = compose({ phases, sessionClass: 'other' });
+    expect(out.execution.status).toBe('INDETERMINATE');
+    expect(out.execution.summary).toMatch(/carried no prescribed pace/i);
+  });
+
   it('SENSOR-LIMITED · the refusal names the sensors, and carries no action', () => {
     const out = compose({ phases: [], sensorLimited: true });
     expect(out.execution.status).toBe('SENSOR_LIMITED');
@@ -386,6 +431,135 @@ describe('run-type states', () => {
     const out = compose({ evidence: evidenceFixture({ admissible: false }) });
     expect(out.evidence.role).toBe('EXCLUDED');
     expect(out.evidence.planAuthorityEligible).toBe(false);
+  });
+});
+
+/* ────────────── PROVENANCE-1, 2026-09-03 · whose target this was ───────── */
+
+describe("PROVENANCE-1 · an unplanned race never claims the app's authorship", () => {
+  // The exact shape that found this defect: the Americas Finest City half,
+  // a real production run with five named course segments and NO matching
+  // `plan_workouts` row — `raceMatched` is true, `targetProvenance` is
+  // `'self_authored'`, and the segments still carry real, correctly-graded
+  // per-mile targets from David's own watch.
+
+  it("SELF-AUTHORED RACE · the note names the runner's own pacing plan, never the app's", () => {
+    const out = compose({
+      raceMatched: true,
+      targetProvenance: 'self_authored',
+      phases: REAL_0901_PHASES.map((p) => (p.type === 'work' ? { ...p, actualPaceSPerMi: 470 } : p)),
+    });
+    expect(out.execution.targetProvenance).toBe('self_authored');
+    expect(out.execution.targetProvenanceNote).not.toBeNull();
+    // The exact failure mode this closes: language that reads as if the
+    // COACHING APP set these targets, when no `plan_workouts` row exists.
+    expect(out.execution.targetProvenanceNote).toMatch(/pace plan you set/i);
+    expect(out.execution.targetProvenanceNote).not.toMatch(/the app (asked|prescribed)/i);
+  });
+
+  it("SELF-AUTHORED, NOT A RACE · still attributed to the runner's own watch workout", () => {
+    const out = compose({
+      raceMatched: false,
+      targetProvenance: 'self_authored',
+      phases: REAL_0901_PHASES.map((p) => (p.type === 'work' ? { ...p, actualPaceSPerMi: 470 } : p)),
+    });
+    expect(out.execution.targetProvenanceNote).toMatch(/workout you built on your watch/i);
+  });
+
+  it('PLAN-BACKED · the ordinary case needs no extra caption', () => {
+    const out = compose({ targetProvenance: 'plan' });
+    expect(out.execution.targetProvenance).toBe('plan');
+    expect(out.execution.targetProvenanceNote).toBeNull();
+  });
+
+  it('NO TARGET AT ALL · nothing to attribute, so nothing is said', () => {
+    const out = compose({ phases: [], targetProvenance: 'none' });
+    expect(out.execution.targetProvenance).toBe('none');
+    expect(out.execution.targetProvenanceNote).toBeNull();
+  });
+});
+
+/* ────────── PORTIONS-1, 2026-09-04 · a long run is not a rep set ───────── */
+
+describe('PORTIONS-1 · a marathon-specific long run reads as two portions, never reps', () => {
+  // The owner's REAL 2026-06-27 "Little adventure today": 10.0 mi easy into
+  // 4.0 mi at marathon pace, self-authored on the watch (no plan_workouts
+  // row). Read out of the walk-substrate copy of `faff_readonly` — this is
+  // the exact shape that shipped "All two reps stayed under the ceiling",
+  // which reads as a two-repetition interval set, and the exact shape that
+  // shipped "Work executed" over a marathon-effort mile run 28 sec/mi slow.
+  // No `paceShape` and no `tolerancePaceSPerMi` on either phase, matching
+  // the REAL raw watch-completion payload exactly (queried directly off
+  // `faff_readonly`, 2026-09-04: neither field is present on this run's
+  // stored phases) — the shape and tolerance are resolved entirely by
+  // `gradeStoredPhases`'s fallback, which is the exact path this fixture
+  // exists to prove.
+  const REAL_LONG_PHASES = [
+    { index: 0, type: 'work', label: '10.0 mi easy', completed: true, avgHr: 145,
+      actualDurationSec: 5280, actualDistanceMi: 10.0,
+      targetPaceSPerMi: 480, actualPaceSPerMi: 528 },
+    { index: 1, type: 'work', label: '4.0 mi @ marathon pace', completed: true, avgHr: 163,
+      actualDurationSec: 1848, actualDistanceMi: 4.0,
+      targetPaceSPerMi: 434, actualPaceSPerMi: 462 },
+  ];
+
+  const out = compose({
+    phases: REAL_LONG_PHASES,
+    sessionClass: 'long',
+    plannedType: 'long',
+    plannedTypeDisplay: 'Long',
+    raceMatched: false,
+    targetProvenance: 'self_authored',
+    workHrCeilingBpm: null,
+    overallHrCeilingBpm: null,
+    wholeRunHrBpm: 149,
+  });
+
+  it('grades each phase on its OWN shape — the easy portion a ceiling, the MP portion a window', () => {
+    // KEY-PHASE-1's whole point: `paceShapeFor` alone cannot tell a long
+    // run's easy portion from its embedded marathon-pace portion (both are
+    // phaseType 'work' in a 'long' session), so `gradeStoredPhases` must
+    // detect the MP phase by its own label and grade it as a WINDOW — a
+    // real target, not a ceiling nothing can miss for being slow.
+    const graded = out.execution;
+    expect(graded.status).toBe('PARTIAL_PRODUCTIVE');
+  });
+
+  it('never calls the two phases reps, a repetition, a work block, or segments', () => {
+    expect(out.execution.summary).not.toMatch(/\brep\b/i);
+    expect(out.execution.summary).not.toMatch(/\breps\b/i);
+    expect(out.execution.summary).not.toMatch(/repetition/i);
+    expect(out.execution.summary).not.toMatch(/\bwork block\b/i);
+    expect(out.execution.summary).not.toMatch(/\bsegments?\b/i);
+  });
+
+  it('names the marathon-effort phase as the key finding — never the easy phase it is not', () => {
+    // KEY-PHASE-1, 2026-09-04 · replaces a defect this exact test file
+    // shipped earlier the same day: the OLD sentence cited "10.0 mi easy
+    // averaged 8:48/mi against 8:00/mi prescribed" — a ceiling phase that
+    // ran SLOWER than its ceiling, which is compliant BY DEFINITION
+    // (`gradeCeilingPhase` has no `slow` verdict) — as if it were a missed
+    // target. The real miss was always the marathon-pace phase, graded
+    // against its own ±5 s/mi window (`Research/01`'s M row).
+    //
+    // LESS-IS-MORE-1, 2026-09-05 · David's own correction on the FIRST
+    // version of this sentence: "not a paragraph explaining every phase,
+    // source, comparison, and caveat." One short headline naming the real
+    // phase, one supporting sentence with the actual window (not a bare
+    // target — a runner cannot judge "outside 7:14" without knowing how
+    // wide 7:14 was allowed to be), HR dropped from the prose entirely
+    // (already in the stats grid above — Rule 17, never say a number twice).
+    expect(out.execution.headline).toBe('Marathon work ran slow');
+    expect(out.execution.headline).not.toMatch(/executed/i);
+    expect(out.execution.headline).not.toMatch(/structure completed/i);
+    expect(out.execution.summary).toBe('4 mi averaged 7:42/mi against a 7:09–7:19 window. Easy miles stayed controlled.');
+    expect(out.execution.summary).not.toMatch(/10\.0 mi easy averaged/);
+    expect(out.execution.summary).not.toMatch(/HR averaged/);
+  });
+
+  it('attributes the targets to the watch workout, not the app, for a self-authored long run', () => {
+    expect(out.execution.targetProvenance).toBe('self_authored');
+    expect(out.execution.targetProvenanceNote).toMatch(/workout you built on your watch/i);
   });
 });
 
@@ -450,6 +624,50 @@ describe('Rule 21 · the evidence layer can say a run was strong enough to push'
     });
     expect(out.plan.status).toBe('UPDATED');
     expect(out.plan.changes).toEqual(['4 days off. First run back is easy, not quality.']);
+    expect(out.plan.descriptionContractSatisfied).toBe(true);
+  });
+
+  /* PLAN-IMPACT-2, 2026-09-05. David, directly: "Do not render 'Plan
+   * updated · The plan was adjusted.' That communicates nothing... If the
+   * canonical mutation lacks a meaningful description: show only 'Plan
+   * updated'; record the missing description as an internal contract
+   * defect; do not invent generic filler; do not claim the plan-impact
+   * explanation contract is fully satisfied." */
+  it('an adaptation with no runner-readable description contributes NO invented change line', () => {
+    const out = compose({
+      // `display: null` is exactly what `runnerSafeWhy` returns when an
+      // adaptation's own `why` had nothing left after the citation scrub —
+      // load.ts no longer papers over that with `?? 'The plan was
+      // adjusted.'`. This is the honest shape of that gap reaching the
+      // composer.
+      adaptations: [{ reason: 'plan_adapt_reschedule', display: null }],
+    });
+    expect(out.plan.status).toBe('UPDATED');
+    // The placeholder phrase this bug used to manufacture must never appear
+    // anywhere in the visible detail — asserted by NAME, not just by an
+    // empty array, so a future regression that reintroduces ANY generic
+    // filler ("Schedule adjusted.", "Something changed.") is caught too.
+    expect(out.plan.changes).toEqual([]);
+    for (const line of out.plan.changes) {
+      expect(line).not.toMatch(/the plan was adjusted/i);
+      expect(line).not.toMatch(/plan was adjusted/i);
+    }
+    // The contract is explicitly NOT satisfied — this is the fact the
+    // caller must be able to tell apart from "nothing changed" or "every
+    // change was explained".
+    expect(out.plan.descriptionContractSatisfied).toBe(false);
+  });
+
+  it('a MIX of readable and unreadable adaptations keeps only the readable ones, and still flags the gap', () => {
+    const out = compose({
+      adaptations: [
+        { reason: 'plan_adapt_downgrade', display: 'Friday reduced to 5 mi.' },
+        { reason: 'plan_adapt_gap', display: null },
+      ],
+    });
+    expect(out.plan.status).toBe('UPDATED');
+    expect(out.plan.changes).toEqual(['Friday reduced to 5 mi.']);
+    expect(out.plan.descriptionContractSatisfied).toBe(false);
   });
 });
 

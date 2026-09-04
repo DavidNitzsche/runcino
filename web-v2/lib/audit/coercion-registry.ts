@@ -791,7 +791,6 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   // because that arm was FIXED to read the live HR anchors it used to pass as a
   // literal null. Argued in COERCION_ARGUED, and it fails closed.
   'lib/plan/reanchor-plan.ts::reanchorMaintenance::catch',
-  'lib/plan/seal.ts::isDaySealed::catch',
   'lib/plan/sim-inputs.ts::buildSimPlan::recentWeeklyMi',
   'lib/plan/simulator.ts::simulateActivePlan::catch',
   'lib/plan/spec-builder.ts::buildWorkoutSpec::rules.length',

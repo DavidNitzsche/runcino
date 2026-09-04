@@ -59,13 +59,20 @@ describe('a parameter may not be asked to be two types at once', () => {
     expect(s).toContain('revoked = null');
   });
 
-  it('isDaySealed pins $1 on both sides of the sum', () => {
-    const s = sql('lib/plan/seal.ts');
-    // `runs.user_uuid` is uuid; the second subquery forced $1 to text.
-    expect(s).toContain('WHERE user_uuid = $1::uuid');
-    expect(s).toContain('= $1::text');
-    // A guard that cannot see must seal, not unseal.
-    expect(read('lib/plan/seal.ts')).toContain('if (r === null) return true;');
+  /* NARROWED 2026-09-03 · `isDaySealed`'s own raw SQL — the two-subquery,
+   * shared-`$1` shape this test pinned — is gone. The P0 treadmill-runtime
+   * closure (`79b6f329`) rewrote `isDaySealed` to delegate to
+   * `resolveDayExecutions` (`lib/execution/day-resolver.ts`), which reads
+   * `r.user_uuid = $1` and `r.id::text = ANY($4::text[])` — two DIFFERENT
+   * parameter numbers, so nothing asks Postgres to type one placeholder two
+   * ways any more. The finding this test protected (shape A, this describe
+   * block's own header) is not lost, it no longer has a site to pin here —
+   * the same resolution this file already gave the `illness_adjust`/
+   * `injury_adjust` casts below when their INSERTs were deleted outright.
+   * The one behavior worth keeping — "a guard that cannot see must seal, not
+   * unseal" — is re-pinned against the new code's own null check. */
+  it('isDaySealed still seals (never unseals) when its resolver cannot see the day', () => {
+    expect(read('lib/plan/seal.ts')).toContain('if (day === null) return true;');
   });
 
   /* DELETED 2026-09-02 · `coach_proposals inserts cast the shared parameter

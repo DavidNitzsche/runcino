@@ -937,7 +937,6 @@ struct TodayHostV5: View {
         case .afterRun:
             TodayAfterV5(model: model,
                          onOpenAccount: { accountOpen = true },
-                         onLogEffort: { rpe in Task { await logEffort(model, rpe) } },
                          onFlagNiggle: { part in Task { await flagNiggle(part) } },
                          onOpenInjuryFlare: { path.append(.injuryFlare) },
                          onChangeShoe: { path.append(.shoes) },
@@ -1879,15 +1878,11 @@ struct TodayHostV5: View {
 
     // ── writes ──
 
-    private func logEffort(_ model: V5Today, _ rpe: Int) async {
-        guard let runId = model.runId else { return }
-        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/runs/\(runId)/rpe"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["rpe": rpe])
-        _ = try? await API.authedSend(req)
-        await surface.load()
-    }
+    // `logEffort` removed 2026-09-03 — `RPECaptureRow` (DesignV5/RPEV5.swift)
+    // now owns writing `POST /api/runs/[id]/rpe`, over `API.postRPE`. This
+    // function POSTed the same endpoint directly for the ten-button picker
+    // `TodayAfterV5.askedVsRanSection` used to draw; removed with that
+    // picker rather than left as a second, unused path to the same write.
 
     /// Persist the pair the runner picked from the shoe menu.
     ///

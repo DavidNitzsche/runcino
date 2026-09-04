@@ -50,7 +50,9 @@ describe('recap · the heart rate it quotes names its interval', () => {
     const text = allText(r);
     expect(text).not.toContain('153');
     expect(text).toContain('165');
-    expect(text).toContain('across the 4 reps');
+    // LESS-IS-MORE-1, 2026-09-05 · "across the 4 reps" simplified to "on
+    // the work" — see `reading-scope.ts`'s own header on `workLabel`.
+    expect(text).toContain('on the work');
   });
 
   it('THE DEFECT, pinned · without the scope the old path still emits 153', () => {

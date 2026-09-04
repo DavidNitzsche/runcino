@@ -294,6 +294,17 @@ struct WatchPhase: Codable, Identifiable {
     /// does. The board worked only because `expand-spec.ts` happens to emit
     /// "Stride N of M" — rename that label and strides silently stopped.
     let isStrideSegment: Bool
+    /// PACE-PURPOSE-1 (2026-09-05) · the typed race-pace tag this phase was
+    /// AUTHORED from — 'marathon_pace' | 'half_marathon_pace' | 'tempo_pace'
+    /// | 'race_pace' (`ExpandedPhase.purpose`, `expand-spec.ts`). The watch
+    /// does not branch on it; it exists so completion can echo it straight
+    /// back (`WatchCompletionPhase.purpose`) rather than the server having
+    /// to re-derive it by regexing `label` after the fact. A raw String,
+    /// not a typed enum — unlike `paceShape`, nothing on the wrist reads
+    /// this to make a grading or routing decision, so there is no case this
+    /// struct needs to reject as unrecognised; an unfamiliar value simply
+    /// carries through, silently forward-compatible with a future tag.
+    let purpose: String?
     /// The contingency line drawn under a phase target. Emitted since
     /// 2026-08-21, never decoded.
     let ruleLabel: String?
@@ -308,7 +319,7 @@ struct WatchPhase: Codable, Identifiable {
          targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic,
          paceShape: WatchPaceShape? = nil,
          repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil,
-         isFinishSegment: Bool = false, isStrideSegment: Bool = false,
+         isFinishSegment: Bool = false, isStrideSegment: Bool = false, purpose: String? = nil,
          ruleLabel: String? = nil, ruleEvidence: String? = nil, ruleJudgement: String? = nil) {
         self.index = index
         self.type = type
@@ -324,6 +335,7 @@ struct WatchPhase: Codable, Identifiable {
         self.hrTargetBpm = hrTargetBpm
         self.isFinishSegment = isFinishSegment
         self.isStrideSegment = isStrideSegment
+        self.purpose = purpose
         self.ruleLabel = ruleLabel
         self.ruleEvidence = ruleEvidence
         self.ruleJudgement = ruleJudgement
@@ -343,7 +355,7 @@ struct WatchPhase: Codable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, paceShape, haptic, repUnit, distanceMi, hrTargetBpm, isFinishSegment
-        case isStrideSegment, ruleLabel, ruleEvidence, ruleJudgement
+        case isStrideSegment, purpose, ruleLabel, ruleEvidence, ruleJudgement
     }
 
     /// Decoding without an index — used only when a phase is decoded in
@@ -377,6 +389,7 @@ struct WatchPhase: Codable, Identifiable {
         self.hrTargetBpm = c.lenientIntIfPresent(forKey: .hrTargetBpm)
         self.isFinishSegment = try c.decodeIfPresent(Bool.self, forKey: .isFinishSegment) ?? false
         self.isStrideSegment = ((try? c.decodeIfPresent(Bool.self, forKey: .isStrideSegment)) ?? nil) ?? false
+        self.purpose = (try? c.decodeIfPresent(String.self, forKey: .purpose)) ?? nil
         self.ruleLabel = (try? c.decodeIfPresent(String.self, forKey: .ruleLabel)) ?? nil
         self.ruleEvidence = (try? c.decodeIfPresent(String.self, forKey: .ruleEvidence)) ?? nil
         self.ruleJudgement = (try? c.decodeIfPresent(String.self, forKey: .ruleJudgement)) ?? nil
@@ -398,6 +411,7 @@ struct WatchPhase: Codable, Identifiable {
         try c.encodeIfPresent(distanceMi, forKey: .distanceMi)
         try c.encodeIfPresent(hrTargetBpm, forKey: .hrTargetBpm)
         try c.encode(isFinishSegment, forKey: .isFinishSegment)
+        try c.encodeIfPresent(purpose, forKey: .purpose)
         // RESTAMP-2 · the same four fields, dropped again on the way OUT.
         // This is not a cosmetic symmetry: `WorkoutEngine.persistSnapshot`
         // stores the crash-recovery snapshot as `JSONEncoder().encode(workout)`
@@ -1253,6 +1267,19 @@ struct WatchCompletionPhase: Codable {
     /// byte-identical to what it sent before this existed (Swift synthesises
     /// `encodeIfPresent` for an Optional, so nil omits the key entirely).
     var isStrideSegment: Bool? = nil
+
+    /// PACE-PURPOSE-1 (2026-09-05) · `paceShape`/`purpose` make the SAME
+    /// return trip STRIDE-RT-1 already proved out for `isStrideSegment` —
+    /// echoed straight from the `WatchPhase` this completion phase closes
+    /// out, so `gradeStoredPhases` (`lib/execution/verdict.ts`) can read the
+    /// AUTHORED shape directly rather than falling back to regexing `label`
+    /// for "marathon pace" after the fact. `paceShape` in particular closes
+    /// the exact gap MP-EMBEDDED-1 was built around: without it, a newly
+    /// authored marathon-pace phase inside a `long` session graded as a
+    /// ceiling (the session class's own fallback) unless the label happened
+    /// to say so.
+    var paceShape: String? = nil
+    var purpose: String? = nil
 
     // ─── Tier 2 (2026-06-02) · subjective per-rep RPE ───────────────
     /// Rate of Perceived Exertion the runner tapped on the post-rep

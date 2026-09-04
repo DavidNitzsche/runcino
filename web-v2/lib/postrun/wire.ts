@@ -40,6 +40,19 @@ export interface PostRunWire {
   decisionVersion: string;
   headline: string;
   summary: string;
+  /**
+   * WHOSE target `summary` and the per-segment "asked X" readings were
+   * graded against, when that is not the ordinary coach-authored case
+   * (PROVENANCE-1, 2026-09-03). Null when the plan itself set the target —
+   * the case that needs no extra explanation — or when nothing graded the
+   * work at all. Non-null when the run's own recorded phases carried
+   * targets with no `plan_workouts` row behind them: a workout the runner
+   * built on the watch himself, most often a race-day pacing plan. Shown
+   * once, near the graded comparison, same pattern as Strava's own zone
+   * chart stating "Based on a Marathon race time of 3:40:31" — see
+   * `PostRunExecution.targetProvenanceNote` for the full reasoning.
+   */
+  targetProvenanceNote: string | null;
   cost: string | null;
   learned: string;
   change: string;
@@ -127,6 +140,7 @@ export function postRunWire(x: PostRunExperienceV1): PostRunWire {
     decisionVersion: x.decisionVersion,
     headline: x.execution.headline,
     summary: x.execution.summary,
+    targetProvenanceNote: x.execution.targetProvenanceNote,
     cost: x.cost.summary,
     learned: x.evidence.runnerSummary,
     change: x.plan.runnerSummary,

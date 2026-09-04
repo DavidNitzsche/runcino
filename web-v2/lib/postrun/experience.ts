@@ -72,6 +72,7 @@
 import type { WorkoutVerdict, GradedPhase } from '@/lib/execution/verdict';
 import { looksLikeStrideLabel } from '@/lib/training/expand-spec';
 import { sessionLadder } from '@/lib/training/execution-semantics';
+import { fmtMi, fmtPace, fmtPaceSlash } from '@/lib/format/run';
 import type {
   ActivityEvidenceResult,
   CapacityEvidence,
@@ -107,6 +108,33 @@ export interface PostRunExecution {
   intendedStimulus: string | null;
   stimulusDelivered: StimulusDelivered;
   confidence: 'HIGH' | 'MODERATE' | 'LOW';
+  /**
+   * WHO SET THE TARGET this execution was graded against (PROVENANCE-1,
+   * 2026-09-03). `'plan'` when a `plan_workouts` row authored it — the
+   * coaching app's own prescription. `'self_authored'` when the per-phase
+   * targets live only in the run's own recorded phases
+   * (`data.phases[].targetPaceSPerMi`) with NO matching plan row — a
+   * structured workout the runner built on the watch himself, most often a
+   * race-day pacing plan for a course's segments. `'none'` when nothing
+   * graded the work at all.
+   *
+   * This is a DIFFERENT fact from `raceMatched` on `PostRunInput`, and from
+   * whether the grade itself is a window, a ceiling, or a target — those
+   * describe WHAT the comparison is; this describes WHOSE it is. Collapsing
+   * them was the actual defect on the Americas Finest City half: the per-
+   * segment "asked 7:08" / "Slower than target" language is not invented —
+   * David's own watch carried genuine per-segment pace targets for that
+   * race — but the copy read as if the coaching app had prescribed them,
+   * when there was no `plan_workouts` row for that day at all.
+   */
+  targetProvenance: 'plan' | 'self_authored' | 'none';
+  /** ONE caption stating that provenance in the runner's own words, shown
+   *  once near the graded comparison rather than folded into every phase
+   *  row — same pattern Strava's own zone chart uses ("Based on a Marathon
+   *  race time of 3:40:31"). Null when `targetProvenance` is `'plan'` (the
+   *  ordinary case needs no extra explanation) or `'none'` (nothing to
+   *  attribute). */
+  targetProvenanceNote: string | null;
   /** Machine codes, never rendered. */
   reasons: string[];
 }
@@ -164,8 +192,22 @@ export type PlanImpactStatus =
 export interface PostRunPlanImpact {
   status: PlanImpactStatus;
   runnerSummary: string;
-  /** One line per recorded change. Empty on every status but `UPDATED`. */
+  /** One line per recorded change with a runner-readable description. Empty
+   *  on every status but `UPDATED` — and PLAN-IMPACT-2 (2026-09-05): also
+   *  empty on `UPDATED` when every adaptation that fired had no readable
+   *  `why`, which `descriptionContractSatisfied` below distinguishes from
+   *  "nothing changed". Never filled with invented text. */
   changes: string[];
+  /**
+   * PLAN-IMPACT-2, 2026-09-05 · false when `status === 'UPDATED'` but at
+   * least one firing adaptation had no runner-readable description
+   * (`PostRunAdaptation.display === null`) — i.e. this run's plan-impact
+   * explanation is INCOMPLETE, a fact the caller must not paper over with
+   * filler. True in every other case, including every non-UPDATED status,
+   * where there is nothing to explain in the first place. David, directly:
+   * "do not claim the plan-impact explanation contract is fully satisfied."
+   */
+  descriptionContractSatisfied: boolean;
   /** Hard-typed false. Sealed history is not editable by this path and the
    *  type says so rather than a comment promising it (Rule 20). */
   sealedHistoryChanged: false;
@@ -206,7 +248,9 @@ export interface PostRunStride {
   paceSecPerMi: number | null;
   avgHr: number | null;
   avgCadence: number | null;
-  completed: boolean;
+  /** COMPLETION-STATE-1 · `null` when the wire never said. `readStrides`'s
+   *  own `completed` count below only counts an explicit `true`. */
+  completed: boolean | null;
 }
 
 export interface PostRunStrides {
@@ -325,8 +369,15 @@ export interface PostRunExperienceV1 {
 export interface PostRunAdaptation {
   /** `coach_intents.reason`. */
   reason: string;
-  /** One runner-readable line describing what moved. */
-  display: string;
+  /**
+   * One runner-readable line describing what moved. PLAN-IMPACT-2,
+   * 2026-09-05 · null when the adaptation's own `why` carried nothing a
+   * runner could read (every sentence cited doctrine, or nothing was
+   * written) — a real, distinguishable fact, never papered over with a
+   * generic "The plan was adjusted." `readPlan` below is the one place
+   * that decides what a null display means for the visible sentence.
+   */
+  display: string | null;
 }
 
 export interface PostRunInput {
@@ -337,6 +388,22 @@ export interface PostRunInput {
   /** The runner-facing name for that type, from `displayTypeFor`. */
   plannedTypeDisplay: string | null;
   plannedDistanceMi: number | null;
+  /**
+   * This run matches a recorded `races` row for its own date (RACEWORD-1,
+   * 2026-09-03) — a DIFFERENT fact from `plannedType === 'race'`, which is
+   * null on any race with no matching `plan_workouts` row (unplanned entry,
+   * or a race that predates the plan). "Most of the reps sat outside the
+   * prescribed range" over the Americas Finest City half's five named course
+   * segments is why this exists: that run has no plan row at all, so the
+   * word choice below needs the runner's actual race history, not the plan.
+   */
+  raceMatched: boolean;
+  /** See `PostRunExecution.targetProvenance` for the full doc — this is the
+   *  same fact, computed once in `lib/postrun/load.ts` from whether a
+   *  `plan_workouts` row exists for the day versus whether the run's own
+   *  stored phases carry embedded `targetPaceSPerMi` values with no such
+   *  row backing them. */
+  targetProvenance: 'plan' | 'self_authored' | 'none';
   /** THE canonical grade. Never re-derived here. */
   verdict: WorkoutVerdict;
   /** The Evidence Engine's read, or null when the classification could not be
@@ -468,9 +535,18 @@ export function isStridePhase(p: GradedPhase, stridesPrescribed: number | null):
   if (p.isStrideSegment) return true;
   // 2 · the same answer arriving as a shape, for a phase graded before
   //     `GradedPhase.isStrideSegment` existed or by a caller that could not
-  //     name the spec. Nothing else in the vocabulary makes a work phase
-  //     `effort`.
-  if (p.shape === 'effort') return true;
+  //     name the spec. This rung's own comment used to read "nothing else in
+  //     the vocabulary makes a work phase `effort`" — TREADMILL-TARGET-
+  //     ROUNDTRIP-1 (P0 gap #3) made that false: a by-effort treadmill hill
+  //     rep is ALSO legitimately `effort`-shaped (doctrine-cited, Research/04
+  //     — outdoor grade varies, so no flat pace target is prescribed) without
+  //     being a stride, and its `paceShape` now round-trips for the first
+  //     time. `targetSpeedMph` is present ONLY on a treadmill-recorded phase
+  //     (no other era's completion payload carries it), so it is what tells
+  //     the two apart — a real hill rep excluded here, a real stride still
+  //     caught. Falsified by `_experience.test.ts`'s "TREADMILL EFFORT" case,
+  //     which read a two-hill-rep session as "two strides" before this line.
+  if (p.shape === 'effort' && p.targetSpeedMph == null) return true;
   // 3 · the label rung, for a caller that graded without the spec but can
   //     supply the count here. Conjunctive, always.
   return stridesPrescribed != null && stridesPrescribed > 0 && looksLikeStrideLabel(p.label);
@@ -545,8 +621,16 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
    * "Not a workout" (`Research/04` §7.2) and the band is wide precisely so
    * they are not chased. Rule 17 keeps it to a summary: the per-stride rows
    * live in the strides section and are not restated here. */
+  // LESS-IS-MORE-2, 2026-09-05 · WAS "N strides after, walk-backs taken" —
+  // the walk-backs are routine (doctrine's own prescription, "Full walk-back
+  // or 60-90s jog"), and naming them on the primary summary is exactly the
+  // "the runner should not scan six nearly identical rows unless something
+  // meaningful happened" instruction applied to a sentence instead of a
+  // list. The detailed per-stride/per-walk-back rows still exist, behind
+  // disclosure — see `readStrides`'s own header for why they are never
+  // restated here either way.
   const strideClause = strides && strides.completed > 0
-    ? ` ${cap1(numberWord(strides.completed))} stride${strides.completed === 1 ? '' : 's'} after${strides.recoveryCount > 0 ? ', walk-backs taken' : ''}.`
+    ? ` ${cap1(numberWord(strides.completed))} stride${strides.completed === 1 ? '' : 's'} completed.`
     : '';
 
   // A payload with no phases cannot be graded as a workout. That is a fact
@@ -564,30 +648,91 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'UNKNOWN',
       confidence: 'LOW',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote: null,
       reasons,
     };
   }
 
   if (s.verdict === 'not_graded') {
+    /* TREADMILL-TARGET-ROUNDTRIP-1 (P0 gap #3) · "no prescribed pace" is true
+     * and correct for a genuinely open-ended session — but a by-effort
+     * treadmill hill rep ALSO reads `not_graded` (doctrine's own rule: no
+     * pace target on purpose, Research/04 — outdoor grade varies), and it
+     * was reading the identical sentence despite having a real, authored
+     * belt speed+incline the runner could see live on the console the whole
+     * time. `targetSpeedMph`/`targetInclinePct` are round-tripped now (see
+     * `NormalizedPhase`'s own comment) specifically so this branch can tell
+     * the two apart — never to grade a pace out of the belt number, which
+     * doctrine does not license and this still does not do.
+     */
     reasons.push('NO_PACE_TARGET_ON_THE_WORK');
+    const hadTreadmillTarget = work.length > 0 && work.every((p) => p.targetSpeedMph != null);
     return {
       status: 'INDETERMINATE',
-      headline: 'Work done, no target to read it against',
-      summary: `The work phases carried no prescribed pace, so this is a record of what was run rather than a grade.${strideClause}`,
+      headline: hadTreadmillTarget ? 'Work done by treadmill effort, not pace-graded' : 'Work done, no target to read it against',
+      summary: hadTreadmillTarget
+        ? `The work phases were prescribed by treadmill speed and incline, not pace — this is a record of what was run rather than a pace grade.${strideClause}`
+        : `The work phases carried no prescribed pace, so this is a record of what was run rather than a grade.${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'UNKNOWN',
       confidence: 'LOW',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote: null,
       reasons,
     };
   }
 
+  /* THE PROVENANCE NOTE (PROVENANCE-1, 2026-09-03), from here down — every
+   * remaining branch shows phase-level target language ("asked X",
+   * "prescribed range", "On target"/"Slower than target"), so from here on
+   * the note travels with it. A self-authored race pacing plan reads
+   * "outside the window" the exact same way a coach-prescribed session
+   * does; only WHOSE window it was differs, and that is the one fact this
+   * app was silent about on the Americas Finest City half. See
+   * `PostRunExecution.targetProvenance`'s own doc for the full reasoning. */
+  const targetProvenanceNote = input.targetProvenance === 'self_authored'
+    ? (input.raceMatched
+        ? "These segment targets are the pace plan you set for this race, not one from the app."
+        : "This session's targets came from the workout you built on your watch, not from the app's plan.")
+    : null;
+
   // The runner's word for the work, chosen off the SHAPE of the session
   // rather than a template: four one-mile pieces are reps, one continuous
   // block is not, and calling a tempo "rep 1 of 1" is how a screen stops
-  // sounding like a coach.
+  // sounding like a coach. A RACE's stages are a third shape again — not
+  // repetitions of one thing, so "Most of the reps sat outside the
+  // prescribed range" over Point Loma Climb / The Drop / Mission Bay /
+  // Harbor Approach is a category error, not a style choice. See
+  // `raceMatched`'s own doc comment on `PostRunInput` for why this cannot
+  // read `input.plannedType` instead.
+  //
+  // A FOURTH shape (PORTIONS-1, 2026-09-04): a marathon-specific long run's
+  // "10.0 mi easy" + "4.0 mi @ marathon pace" are two work phases same as
+  // a rep set is, but they are not repetitions of one thing either — they
+  // are two DIFFERENT prescriptions serving two different purposes, and
+  // "All two reps stayed under the ceiling" reads as a two-repetition
+  // interval set that happens to have two pieces, not as what it actually
+  // was. Distinguished from a true rep set by a real structural fact
+  // rather than a label guess: reps of one thing share one target pace;
+  // an easy-plus-marathon-pace long run's two phases do not, by
+  // construction. `input.raceMatched` is checked first — a race's own
+  // segments can vary just as much in target pace and already have the
+  // more specific word.
   const single = work.length === 1;
-  const noun = single ? 'block' : 'reps';
-  const reps = single ? 'the work block' : `all ${numberWord(work.length)} ${noun}`;
+  const distinctWorkTargets = new Set(
+    work.map((p) => (p.targetSecPerMi != null ? Math.round(p.targetSecPerMi / 5) : null)).filter((t) => t != null),
+  );
+  const isMultiPurposeStructure = !single && !input.raceMatched && distinctWorkTargets.size > 1;
+  const noun = single ? 'block'
+    : input.raceMatched ? 'segments'
+    : isMultiPurposeStructure ? 'portions'
+    : 'reps';
+  // "All two portions" reads as a miscount, not a whole set — David's own
+  // example language for this exact case was "Both phases" / "Across the
+  // two portions". At exactly two, say "both"; three or more still needs
+  // the count, where "all N" is the natural English.
+  const reps = single ? 'the work block' : work.length === 2 ? `both ${noun}` : `all ${numberWord(work.length)} ${noun}`;
 
   /* AND THE WORD FOR WHAT IT WAS GRADED AGAINST (2026-09-02).
    *
@@ -605,7 +750,15 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
   const insideBound = bound === 'ceiling' ? 'stayed under the ceiling'
     : bound === 'window' ? 'landed inside the window'
     : 'landed on target';
-  const aheadOfBound = bound === 'ceiling' ? 'came in ahead of the ceiling'
+  // PACE-SHAPE-AUDIT-1, 2026-09-05 · a ceiling's ONLY failure mode is
+  // running FASTER than it, so this branch means the ceiling was violated —
+  // and "came in ahead of the ceiling" reads as a good thing (got ahead,
+  // made progress), the opposite of what happened. "Ran faster than the
+  // ceiling allowed" cannot be misread either direction. A window's fast
+  // edge is a real, if lesser, miss too — "came in ahead of the window"
+  // keeps its existing sense (finished before the window's pace would have
+  // put it), which is directionally fine as it stood.
+  const aheadOfBound = bound === 'ceiling' ? 'ran faster than the ceiling allowed'
     : bound === 'window' ? 'came in ahead of the window'
     : 'came in ahead of target';
   const outsideBound = bound === 'ceiling' ? 'ran faster than the ceiling'
@@ -620,12 +773,36 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
       reasons,
     };
   }
 
   if (s.verdict === 'off_target') {
     reasons.push('MOST_WORK_PIECES_FELL_SHORT');
+    /* RACE-VOICE-1, 2026-09-04 · "Work landed outside the window" /
+     * "sat outside the prescribed range" is internal-composer language —
+     * "work", "window", "prescribed range" are this file's own vocabulary
+     * for a phase's shape, not words a coach says to a runner about a
+     * race. A self-authored race pacing plan gets the direct version:
+     * named as the runner's OWN plan (matches `targetProvenanceNote`
+     * above, which already says whose targets these are), with an exact
+     * count of segments rather than "most of". */
+    if (input.raceMatched && input.targetProvenance === 'self_authored') {
+      const fellShort = work.filter((p) => p.verdict === 'slow').length;
+      return {
+        status: 'SLOW',
+        headline: 'Slower than your race plan',
+        summary: `${cap1(numberWord(fellShort))} of ${numberWord(work.length)} course segments were slower than the pacing plan you set on your Watch.${strideClause}`,
+        intendedStimulus: stimulus,
+        stimulusDelivered: 'PARTIAL',
+        confidence: 'MODERATE',
+        targetProvenance: input.targetProvenance,
+        targetProvenanceNote,
+        reasons,
+      };
+    }
     return {
       status: 'SLOW',
       headline: 'Work landed outside the window',
@@ -635,12 +812,80 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
       reasons,
     };
   }
 
   if (s.verdict === 'uneven') {
     reasons.push('WORK_PIECES_DISAGREE');
+    /* KEY-PHASE-1, 2026-09-04 · replaces the since-deleted `paceShortfalls`
+     * check, which INVERTED ceiling semantics: it flagged a ceiling phase
+     * running SLOWER than its ceiling as a "shortfall", when doctrine is
+     * explicit a ceiling never fails for being slow — "10.0 mi easy
+     * averaged 8:48/mi against 8:00/mi prescribed" was reported as a miss
+     * when 8:48 is compliant with an 8:00 ceiling by construction. That
+     * defect is now impossible by construction too: `MP_PHASE_TOLERANCE_
+     * S_PER_MI` (`execution-semantics.ts`) makes `gradeStoredPhases` grade
+     * a marathon-pace-labelled phase as a WINDOW, not a ceiling, so a real
+     * miss on that phase surfaces as `slow`/`fast` through the SAME ladder
+     * every other window phase uses — this branch only NAMES which phase
+     * within an `isMultiPurposeStructure` session earned the mixed verdict,
+     * it does not re-decide anything `sessionLadder` already decided.
+     *
+     * Research/04-workout-vocabulary.md §4.1: a marathon-pace long run's
+     * whole point is "marathon-specific economy" — the window-shaped phase
+     * IS the prescription this session exists for, and a ceiling phase
+     * beside it is safety context. Prioritized per that: which block, was
+     * its pace compliant with ITS OWN shape, was HR appropriate, then the
+     * supporting phase. */
+    if (isMultiPurposeStructure) {
+      const keyPhases = work.filter((p) => p.shape === 'window' && p.verdict !== 'not_graded');
+      if (keyPhases.length > 0) {
+        const key = keyPhases[0];
+        const support = work.filter((p) => p !== key);
+        /* LESS-IS-MORE-1, 2026-09-05 · David's own correction, mid-review:
+         * "less is more... not a paragraph explaining every phase, source,
+         * comparison, and caveat." The prior version of this branch stacked
+         * pace + HR + a full restatement of the supporting phase into one
+         * summary — HR is already in the stats grid above (`MP heart rate`),
+         * so repeating it here was exactly the "don't repeat numbers already
+         * visible immediately above" rule broken. One headline, one
+         * supporting sentence — his own worked example: "Marathon work ran
+         * slow / 4 mi averaged 7:42/mi against a 7:09–7:19 window. Easy
+         * miles stayed controlled." */
+        const isMarathonPace = (key.label ?? '').toLowerCase().includes('marathon pace');
+        const keyWord = isMarathonPace ? 'Marathon work' : cap1(key.label ?? 'Key work');
+        const keyMi = fmtMi(key.actualDistanceMi);
+        const keyActual = fmtPaceSlash(key.avgSecPerMi);
+        const windowLo = key.targetSecPerMi != null && key.toleranceSec != null
+          ? fmtPace(key.targetSecPerMi - key.toleranceSec) : null;
+        const windowHi = key.targetSecPerMi != null && key.toleranceSec != null
+          ? fmtPace(key.targetSecPerMi + key.toleranceSec) : null;
+        const windowText = windowLo && windowHi ? `${windowLo}–${windowHi} window` : null;
+        const paceLine = keyMi && keyActual && windowText
+          ? key.verdict === 'slow' ? `${keyMi} averaged ${keyActual} against a ${windowText}.`
+            : key.verdict === 'fast' ? `${keyMi} averaged ${keyActual}, ahead of the ${windowText}.`
+            : `${keyMi} averaged ${keyActual}, inside the ${windowText}.`
+          : `${keyWord} was completed.`;
+        const supportLine = support.length > 0 ? ' Easy miles stayed controlled.' : '';
+        reasons.push('KEY_PHASE_NAMED');
+        return {
+          status: 'PARTIAL_PRODUCTIVE',
+          headline: key.verdict === 'slow' ? `${keyWord} ran slow`
+            : key.verdict === 'fast' ? `${keyWord} ran fast`
+            : `${keyWord} completed`,
+          summary: `${paceLine}${supportLine}${strideClause}`,
+          intendedStimulus: stimulus,
+          stimulusDelivered: 'PARTIAL',
+          confidence: 'HIGH',
+          targetProvenance: input.targetProvenance,
+          targetProvenanceNote,
+          reasons,
+        };
+      }
+    }
     return {
       status: 'PARTIAL_PRODUCTIVE',
       headline: 'Mixed set',
@@ -648,6 +893,8 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
       reasons,
     };
   }
@@ -667,12 +914,46 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       intendedStimulus: stimulus,
       stimulusDelivered: 'FULL',
       confidence: 'HIGH',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
       reasons,
     };
   }
   reasons.push('EVERY_WORK_PIECE_LANDED');
   if (s.recoveriesHonest) reasons.push('RECOVERIES_TAKEN_AS_PRESCRIBED');
   if (!s.lateCollapse) reasons.push('NO_LATE_COLLAPSE');
+  /* EASY-VOICE-1, 2026-09-04 · "Work executed" is composer vocabulary — a
+   * single ceiling-shaped block (an ordinary easy or long run, no reps to
+   * land) is not a "work" that gets "executed", it is a run that got done.
+   * By this point in the function the phase has already earned a genuine
+   * `hit` (a `fast` ceiling verdict routed to the branch above, and a
+   * ceiling can never grade `slow` — `gradeCeilingPhase` has no slow
+   * verdict), so "stayed under the ceiling" is asserted only because the
+   * grade actually proves it, per Rule 16 — never asserted merely because
+   * the session happens to be shaped that way. */
+  if (single && bound === 'ceiling') {
+    reasons.push('SINGLE_CEILING_BLOCK');
+    const runWord = input.plannedType === 'long' ? 'Long run'
+      : input.plannedType === 'recovery' ? 'Recovery run'
+      : input.plannedType === 'shakeout' ? 'Shakeout'
+      : 'Easy run';
+    return {
+      status: 'CONTROLLED',
+      headline: `${runWord} complete`,
+      // LESS-IS-MORE-2 · WAS "You kept the run controlled, staying under
+      // the pace ceiling" — restating the ceiling here repeats what the
+      // stats grid's own "No faster than X/mi" sub-text already says two
+      // inches above it (Rule 17), and "staying under" is a step short of
+      // plain. `runWord` already names what kind of run this was.
+      summary: `${runWord} stayed controlled.${strideClause}`,
+      intendedStimulus: stimulus,
+      stimulusDelivered: 'FULL',
+      confidence: 'HIGH',
+      targetProvenance: input.targetProvenance,
+      targetProvenanceNote,
+      reasons,
+    };
+  }
   // CONTROLLED is the word for landed-and-held-together; EXECUTED for landed
   // where the shape of the set is not something this grade can speak to.
   const controlled = s.recoveriesHonest === true && !s.lateCollapse;
@@ -685,6 +966,8 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
     intendedStimulus: stimulus,
     stimulusDelivered: 'FULL',
     confidence: 'HIGH',
+    targetProvenance: input.targetProvenance,
+    targetProvenanceNote,
     reasons,
   };
 }
@@ -1177,25 +1460,116 @@ export function readEvidence(input: PostRunInput): PostRunEvidenceImpact {
 
 /* ══════════════════════════════ 6 · plan ════════════════════════════════ */
 
+/**
+ * WHY THE PLAN MOVED, in the runner's own words — when it is honest to say.
+ *
+ * The defect this closes, from the real 2026-08-16 Americas Finest City
+ * half: the evidence sentence said "This supports your current threshold
+ * range. One session is not enough to move it" — CORROBORATES,
+ * `beliefChanged: false` — directly beside "The plan moved after this run."
+ * A runner reads those two sentences as contradicting each other, because
+ * nothing said WHY the plan moved if not because of what this run's own
+ * evidence just declined to move.
+ *
+ * The two are not actually in tension — they are two DIFFERENT MECHANISMS
+ * answering two different questions, and the real row proves it:
+ * `coach_intents` on that date carries `reason: 'vdot_auto_recalc'`, `field:
+ * 'vdot'` — a race-result VDOT recalculation off the Daniels equivalency
+ * tables, which is a different, more direct computation than the Evidence
+ * Engine's per-activity capacity classification (`readEvidence`, above) that
+ * produced the "one session is not enough" sentence. The plan moved; the
+ * THRESHOLD belief specifically did not; both are true at once, and the
+ * runner is owed the sentence that says so rather than left to read a
+ * contradiction into two true facts.
+ *
+ * ONLY THE REASON CODE ALREADY ON `coach_intents.reason` IS READ. Nothing
+ * here re-derives whether an adaptation was "really" evidence-driven — that
+ * is the Adaptation Engine's own classification, cited verbatim by its own
+ * name. An unrecognised reason produces no clause at all (Rule 11: silence
+ * over a guess), so this can only ever ADD an honest sentence, never
+ * fabricate one for a reason it does not recognise.
+ */
+// Each string here completes the sentence "The plan changed because ___." —
+// a clause, not a prepositional phrase, so `vdot_auto_recalc`'s own full
+// clause ("your race result recalculated...") and the others ("of scheduling
+// reasons") can share one template without one of them reading as a sentence
+// fragment stapled onto another (RACEWORD-1's sibling defect, 2026-09-03: the
+// first draft read "The plan changed your race result recalculated your
+// fitness baseline directly," which does not parse).
+function describeAdaptationCause(reason: string): string | null {
+  if (reason === 'vdot_auto_recalc') {
+    return 'your race result recalculated your fitness baseline directly';
+  }
+  if (reason === 'plan_adapt_reschedule' || reason === 'plan_adapt_gap'
+    || reason === 'plan_adapt_drop_missed' || reason === 'plan_adapt_missed_noted') {
+    return 'of scheduling reasons';
+  }
+  if (reason === 'plan_adapt_downgrade' || reason === 'plan_adapt_long_floor') {
+    return 'training load needed managing';
+  }
+  if (reason === 'plan_adapt_overridden') {
+    return 'you asked for a change';
+  }
+  return null;
+}
+
 export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): PostRunPlanImpact {
   if (!input.hasActivePlan) {
-    return { status: 'NO_PLAN', runnerSummary: 'There is no plan for this to change.', changes: [], sealedHistoryChanged: false };
+    return {
+      status: 'NO_PLAN', runnerSummary: 'There is no plan for this to change.',
+      changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+    };
   }
   if (input.adaptations == null) {
     // Rule 11 again: the look failed. Saying "unchanged" would be a claim we
     // did not earn.
-    return { status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.', changes: [], sealedHistoryChanged: false };
+    return {
+      status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.',
+      changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+    };
   }
   if (input.adaptations.length > 0) {
+    // THE CLARIFYING CLAUSE, ONLY WHEN THE TWO SENTENCES COULD OTHERWISE
+    // READ AS CONTRADICTING EACH OTHER. `evidence.beliefChanged` is false in
+    // every branch this engine currently returns (see `readEvidence`
+    // above), so gating on it alone would append the clause to every single
+    // run with an adaptation — most of which have nothing to reconcile,
+    // because the evidence sentence above did not make a claim the plan
+    // sentence could contradict (CONTEXT_ONLY, an unread belief, a genuine
+    // CHALLENGES). The clause is worth adding specifically when the evidence
+    // role told the runner "this did not move something" in so many words —
+    // CORROBORATES is the one role that does, which is exactly the role the
+    // real defect fired under.
+    const causes = input.adaptations
+      .map((a) => describeAdaptationCause(a.reason))
+      .filter((c): c is string => c != null);
+    const clause = evidence.role === 'CORROBORATES' && causes.length > 0
+      ? ` The plan changed because ${causes[0]}. That is not the same as this run's own evidence moving the estimate above.`
+      : '';
+    // PLAN-IMPACT-2, 2026-09-05 · `changes` carries ONLY readable
+    // descriptions now — a `display: null` adaptation contributes nothing
+    // here rather than a manufactured "The plan was adjusted." When at
+    // least one adaptation fired with no readable description,
+    // `descriptionContractSatisfied` says so explicitly: the caller (the
+    // phone's compact plan-status row) may still say "Plan updated" — that
+    // much is true and earned — but must not claim to have explained it,
+    // and must not invent a change line to fill the gap.
+    const readableChanges = input.adaptations
+      .map((a) => a.display)
+      .filter((d): d is string => d != null);
     return {
       status: 'UPDATED',
-      runnerSummary: 'The plan moved after this run.',
-      changes: input.adaptations.map((a) => a.display),
+      runnerSummary: `The plan moved after this run.${clause}`,
+      changes: readableChanges,
+      descriptionContractSatisfied: readableChanges.length === input.adaptations.length,
       sealedHistoryChanged: false,
     };
   }
   if (evidence.role === 'UNREAD') {
-    return { status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.', changes: [], sealedHistoryChanged: false };
+    return {
+      status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.',
+      changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+    };
   }
   if (evidence.planAuthorityEligible) {
     // The engine says this run COULD move an anchor and nothing has yet. That
@@ -1205,11 +1579,13 @@ export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): 
     return {
       status: 'HELD_FOR_EVIDENCE',
       runnerSummary: 'The plan is unchanged for now. This run is strong enough to act on, so the next review will look at it.',
-      changes: [],
-      sealedHistoryChanged: false,
+      changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
     };
   }
-  return { status: 'UNCHANGED', runnerSummary: 'The plan is unchanged.', changes: [], sealedHistoryChanged: false };
+  return {
+    status: 'UNCHANGED', runnerSummary: 'The plan is unchanged.',
+    changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+  };
 }
 
 /* ══════════════════════════════ 7 · next ════════════════════════════════ */

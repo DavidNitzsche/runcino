@@ -135,7 +135,7 @@ struct RequestDiagnosticsView: View {
 
     @ViewBuilder
     private func row(_ entry: RequestDiagnosticEntry) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: V5.S.s2) {
             HStack {
                 Text("#\(entry.id) · \(entry.endpoint)")
                     .font(.faffText(TypeScaleV5.label12))

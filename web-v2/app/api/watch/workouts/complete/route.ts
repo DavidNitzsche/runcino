@@ -90,11 +90,36 @@ interface WatchCompletionPhaseBody {
   timeInToleranceSec?: number | null;
   timeOutOfToleranceSec?: number | null;
   verdict?: string | null;
+  // PACE-PURPOSE-1 (2026-09-05) · echoed back from `WatchPhase.paceShape` /
+  // `.purpose` (`lib/watch/build-workout.ts`) when the wrist has them, so
+  // `gradeStoredPhases` (`lib/execution/verdict.ts`) can read the AUTHORED
+  // shape/purpose directly instead of falling back to the marathon-pace
+  // label regex. Declared here even though undeclared keys already survive
+  // to `runs.data.phases` verbatim (Rule 20 — a field worth reading deserves
+  // a type, not just a comment saying it's there).
+  paceShape?: string | null;
+  purpose?: string | null;
   repRpe?: number | null;
   repRpeTag?: string | null;
   // Treadmill-only extras (TreadmillView.buildPayload)
   actualSpeedMph?: number;
   actualInclinePct?: number;
+  // TREADMILL-TARGET-ROUNDTRIP-1 (P0 gap #3) · the ORIGINAL authored
+  // prescription — `BeltSession.nominalMph`/`nominalInclinePct` on the
+  // phone, never reconstructed from the actual fields above. `paceShape`
+  // (declared once, above, by PACE-PURPOSE-1)/`targetPaceSPerMi`/
+  // `tolerancePaceSPerMi` are the same fields a pace-graded phase already
+  // carries; a by-effort treadmill work phase sends `paceShape` but not the
+  // pace fields, which is the correct, doctrine-cited shape (Research/04 —
+  // no flat pace number means anything against a varying outdoor grade),
+  // not an omission. `hrRole` is `WatchHrRole` round-tripped —
+  // `observational` on a rep too short for HR to reach steady state. See
+  // `lib/runs/run-shape.ts`'s `NormalizedPhase` for the read side.
+  targetSpeedMph?: number;
+  targetInclinePct?: number;
+  tolerancePaceSPerMi?: number | null;
+  hrRole?: string;
+  hrTargetBpm?: number | null;
   // 2026-08-21 · seconds inside this phase the console did not witness
   // (screen locked / app backgrounded), and the distance credited across
   // them at the last known belt speed. Absent on a clean phase. A treadmill
@@ -129,6 +154,10 @@ interface WatchCompletionBody {
   source?: string;            // 'watch' | 'treadmill' | 'phone' — backend whitelists
   indoor?: boolean;           // spliced in by treadmill path
   timezone?: string;          // spliced in by iPhone relay (WatchSync)
+  // P0 gap #1 · which HR channel most recently produced a sample —
+  // 'mirroredWorkoutSession' | 'asyncHealthKitSync' | 'none'. Diagnostic,
+  // for post-run analysis of HR reliability; never gates grading.
+  hrSource?: string;
   phases?: WatchCompletionPhaseBody[];
   // 2026-06-09 Phase 2 (3.2) · contingency-rule outcomes. Optional ·
   // camelCase per the wire contract (the watch's Encodable emits camel;
