@@ -2001,6 +2001,48 @@ export async function buildWatchToday(
           treadmillSpeedMph = Math.round((3600 / gradedPaceSPerMi) * 10) / 10;
         }
       }
+      /* TREADMILL-STRUCTURE-1 (2026-09-03) · warm-up, recovery and cooldown
+       * used to leave incline/speed null, so the treadmill screen's OWN
+       * unexplained flat default (1.0mph belt speed, 1% incline hardcoded in
+       * Swift with no citation) filled the gap. David's ask: "intentional
+       * treadmill incline values... rather than relying on an unexplained
+       * client default." `TREADMILL_AIR_RESISTANCE_GRADE_PCT` — 1% is the
+       * doctrine constant this app already uses everywhere else to mean "a
+       * treadmill at this incline runs like flat outdoor ground" (its own
+       * comment: "a treadmill run at 1% is a FLAT run, not a 1% climb") — so
+       * it is the correct, cited incline for every NON-hill treadmill phase,
+       * not a guess reinvented here. `treadmillEffectiveGradePct(1)` floors
+       * to 0, so the pace conversion is a no-op on the number; the point is
+       * that 1% now arrives as a named, sourced server value instead of an
+       * undocumented client constant.
+       *
+       * Warm-up / cooldown already carry a real pace target (`p.targetPaceSPerMi`)
+       * — convert IT through the same terrain math the hill reps use, rather
+       * than inventing a second formula.
+       *
+       * Recovery carries no pace target at all (it is a jog, not a paced
+       * segment) — priced off `paceAnchors.shakeoutCeilingSecPerMi`, doctrine's
+       * own recovery-jog band, the same anchor `establishedPaceFor` uses for a
+       * shakeout/recovery domain elsewhere in this codebase. Never priced off
+       * the work-rep pace: a recovery jog run at hill-rep speed would not
+       * recover anything. */
+      if (treadmillInclinePct == null) {
+        const TREADMILL_NON_HILL_INCLINE_PCT = 1; // TERRAIN.treadmill-air-resistance-grade
+        let flatBasisSPerMi: number | null = null;
+        if ((p.type === 'warmup' || p.type === 'cooldown') && p.targetPaceSPerMi != null && p.targetPaceSPerMi > 0) {
+          flatBasisSPerMi = p.targetPaceSPerMi;
+        } else if (p.type === 'recovery' && paceAnchors?.shakeoutCeilingSecPerMi) {
+          flatBasisSPerMi = paceAnchors.shakeoutCeilingSecPerMi;
+        }
+        if (flatBasisSPerMi != null && flatBasisSPerMi > 0) {
+          const effGrade = treadmillEffectiveGradePct(TREADMILL_NON_HILL_INCLINE_PCT);
+          const gradedPaceSPerMi = Math.round(terrainAdjustedTargetSPerMi(flatBasisSPerMi, effGrade, 'treadmill'));
+          if (gradedPaceSPerMi > 0) {
+            treadmillInclinePct = TREADMILL_NON_HILL_INCLINE_PCT;
+            treadmillSpeedMph = Math.round((3600 / gradedPaceSPerMi) * 10) / 10;
+          }
+        }
+      }
       phases.push({
         type: p.type,
         label: p.label,

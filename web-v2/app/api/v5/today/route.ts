@@ -71,7 +71,7 @@ import { deriveWin } from '@/lib/coach/run-win';
 import { loadPostRunExperience } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 import { resolveWorkoutVerdict } from '@/lib/execution/verdict';
-import { resolveDayExecutions, primaryPrescription } from '@/lib/execution/day-resolver';
+import { resolveDayExecutions, primaryPrescription, type ResolvedRun } from '@/lib/execution/day-resolver';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 // The five elevation / splits / merge SQL fragments that used to be imported
@@ -95,6 +95,7 @@ import {
   type V5PrescriptionLike,
   type V5RecentRunCtx,
   type V5Row,
+  type V5SupplementalRunWire,
 } from '@/lib/faff/v5-today';
 
 export const dynamic = 'force-dynamic';
@@ -1710,6 +1711,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
 
       const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
       ctx.postRun = postRun;
+      ctx.supplementalRuns = supplementalRunsWire(resolvedToday?.supplementalRuns ?? []);
       ctx.todayPlan = todayPlan;
       ctx.todayPlanUnresolved = todayPlanUnresolved;
       ctx.weekLine = weekLine;
@@ -2032,6 +2034,11 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
 
   const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
   ctx.todayPlan = todayPlan;
+  // MULTI-RUN-DAY-1 · a supplemental run can exist even though the day's
+  // prescription is still unmatched (the exact live shape this whole fix
+  // started from) — the hero stays the upcoming prescription, and this is
+  // what lets the phone draw the run underneath it rather than nowhere.
+  ctx.supplementalRuns = supplementalRunsWire(resolvedToday?.supplementalRuns ?? []);
   ctx.todayPlanUnresolved = todayPlanUnresolved;
   ctx.weekLine = weekLine;
   // The phase belongs on every branch that composes a real panel, not just
@@ -2158,6 +2165,23 @@ function phaseWords(label: string | null | undefined): string | null {
   const words = String(label).toLowerCase().replace(/[_-]+/g, ' ').trim();
   if (!words) return null;
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** MULTI-RUN-DAY-1 (2026-09-03) · the day resolver's supplemental runs,
+ *  reduced to the lean, display-safe wire shape — same facts basis
+ *  (`runFacts`, elapsed clock) the hero card itself uses, so a supplemental
+ *  run's own numbers are never computed by a second, disagreeing method. */
+function supplementalRunsWire(runs: ResolvedRun[]): V5SupplementalRunWire[] {
+  return runs.map((r) => {
+    const facts = runFacts(r.data, { basis: 'elapsed' });
+    return {
+      runId: r.runId,
+      distanceMi: facts.distanceMi ?? 0,
+      durationSec: facts.timeSec,
+      paceSPerMi: facts.paceSecPerMi,
+      indoor: r.data.indoor === true || r.data.source === 'treadmill',
+    };
+  });
 }
 
 function emptyContext(

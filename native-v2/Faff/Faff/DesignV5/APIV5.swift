@@ -456,6 +456,19 @@ struct V5OffSeason: Decodable, Equatable {
     let weeklyRange: String?
 }
 
+/// MULTI-RUN-DAY-1 (2026-09-03) · one supplemental run's display-safe facts —
+/// `lib/faff/v5-today.ts`'s `V5SupplementalRunWire`. Deliberately lean, no
+/// verdict and no workout type: a supplemental run was never shown to
+/// execute anything prescribed, so nothing here may imply that it did.
+struct V5SupplementalRun: Decodable, Equatable, Identifiable {
+    var id: String { runId }
+    let runId: String
+    let distanceMi: Double
+    let durationSec: Int?
+    let paceSPerMi: Int?
+    let indoor: Bool
+}
+
 /// The whole Today surface.
 struct V5Today: Decodable, Equatable {
     let dateISO: String
@@ -592,6 +605,10 @@ struct V5Today: Decodable, Equatable {
     /// under a heading is not.
     let postRun: PostRunV5?
     let runId: String?
+    /// MULTI-RUN-DAY-1 · see `V5SupplementalRun`'s doc comment. Empty on a
+    /// server that predates the field (`c.list` defaults a missing/absent
+    /// key to `[]`, same posture as `whatThisDidToTheWeek`).
+    let supplementalRuns: [V5SupplementalRun]
 
     // ── the state screens ──
     let injury: V5Injury?
@@ -1848,7 +1865,7 @@ extension V5Today {
         case askedVsRan, verdict, zoneShares, zoneTargets, zoneTarget, elevation, onTheBelt
         case routePolyline, elevGainFt, shoeOptions
         case routeSplits, routePhases, hrZones, paceBand, elevGainMeasured
-        case shoesWorn, whatThisDidToTheWeek, runId, postRun
+        case shoesWorn, whatThisDidToTheWeek, runId, postRun, supplementalRuns
         case injury, weekOff, offSeason, notOnPhoneYet
         case paceNote, blockNote, sick
         case facts, win, conditionsNote, coachTip
@@ -1898,6 +1915,7 @@ extension V5Today {
         whatThisDidToTheWeek = c.list(.whatThisDidToTheWeek)
         postRun = try? c.decodeIfPresent(PostRunV5.self, forKey: .postRun)
         runId = c.opt(.runId)
+        supplementalRuns = c.list(.supplementalRuns)
         injury = c.opt(.injury)
         weekOff = c.opt(.weekOff)
         offSeason = c.opt(.offSeason)

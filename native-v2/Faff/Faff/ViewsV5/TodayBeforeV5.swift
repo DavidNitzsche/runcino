@@ -265,6 +265,14 @@ struct TodayBeforeV5: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     panel
+                    // MULTI-RUN-DAY-1 (2026-09-03) · this is the exact live
+                    // shape the whole fix started from: today's prescription
+                    // is still upcoming (that is why this screen, not the
+                    // after-run one, is drawing) and a supplemental run
+                    // already exists for today. It reads right under the
+                    // hero — visible, never mistaken for having completed
+                    // the session still shown above it as due.
+                    if !model.supplementalRuns.isEmpty { supplementalRunsSection }
                     blockNoteSection
                     groupsSection
                     whySection
@@ -476,6 +484,26 @@ struct TodayBeforeV5: View {
     // reset week counter is the thing it explains, so the explanation sits
     // where the surprise is. Informational only — the transition already
     // happened, so no buttons (the undo lives on the decision-card surface).
+
+    /// MULTI-RUN-DAY-1 (2026-09-03) · a run that happened today but did NOT
+    /// satisfy the prescription still shown above as upcoming —
+    /// `lib/execution/day-resolver.ts`'s `supplementalRuns`, wire-shaped.
+    /// Real training, real mileage, visible here — never folded into the
+    /// hero's own state, never carrying a verdict or a workout-type label,
+    /// because it was never shown to execute anything prescribed. See
+    /// `TodayAfterV5`'s identical section for the incident this closes.
+    private var supplementalRunsSection: some View {
+        ListGroup(header: "Also today") {
+            ForEach(model.supplementalRuns) { run in
+                ListRow(
+                    label: FaffFmt.miles(run.distanceMi).map { "\($0) easy" } ?? "Extra run",
+                    sub: run.indoor ? "Treadmill · not part of today's session" : "Not part of today's session",
+                    value: FaffFmt.pace(secPerMi: run.paceSPerMi.map(Double.init))
+                        .map { FaffValue.measured($0) }
+                )
+            }
+        }
+    }
 
     @ViewBuilder
     private var blockNoteSection: some View {

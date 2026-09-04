@@ -61,6 +61,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { getCanonicalRunIds } from '@/lib/runs/volume';
+import { ownedDaysSql } from '@/lib/plan/owned-days';
 import {
   runDaySql,
   runNotMergedSql,
@@ -135,6 +136,7 @@ function nextDayISO(dateISO: string): string {
 
 interface PrescribedRow {
   id: string;
+  date_iso: string;
   type: string;
   distance_mi: string | null;
   sub_label: string | null;
@@ -144,55 +146,22 @@ interface PrescribedRow {
 
 interface RunRow {
   id: string;
+  day: string;
   data: unknown;
   shoe_id: number | null;
 }
 
 /**
- * Resolve every prescription and every run for one runner-local calendar
- * date, with an explicit, evidence-graded association between them.
- *
- * This never mutates anything — it is a read, same posture as
- * `loadKeySessionExecutions` in `lib/execution/load.ts`. Callers that need to
- * SEAL a day or mark a workout complete do so off `matchedRun`, not off this
- * function reaching into `plan_workouts` itself (Rule 14: this file states
- * its scope, it does not also own writes).
+ * Classify one day's already-fetched rows. Pure — no I/O — so both the
+ * single-day and date-range entry points below share exactly one
+ * implementation of the EXACT/LEGACY/SUPPLEMENTAL rule rather than risking
+ * two copies drifting apart.
  */
-export async function resolveDayExecutions(
-  userUuid: string,
+function classifyDay(
   dateISO: string,
-): Promise<ResolvedDay> {
-  const prescribedRows = (await pool.query<PrescribedRow>(
-    `SELECT pw.id, pw.type, pw.distance_mi::text, pw.sub_label,
-            pw.is_quality, pw.is_long
-       FROM plan_workouts pw
-       JOIN training_plans tp ON tp.id = pw.plan_id
-      WHERE tp.user_uuid = $1::uuid
-        AND tp.archived_iso IS NULL
-        AND pw.date_iso = $2
-        AND pw.type <> 'rest'
-      ORDER BY pw.id`,
-    [userUuid, dateISO],
-  )).rows;
-
-  const canonicalIds = await getCanonicalRunIds(userUuid, dateISO, nextDayISO(dateISO))
-    .catch((err: unknown) => {
-      console.warn('[day-resolver] canonical run ids unreadable:',
-        err instanceof Error ? err.message : err);
-      return [] as string[];
-    });
-
-  const runRows = canonicalIds.length === 0 ? [] : (await pool.query<RunRow>(
-    `SELECT id::text AS id, data, shoe_id
-       FROM runs
-      WHERE user_uuid = $1
-        AND ${runNotMergedSql()}
-        AND ${runDaySql()} = $2
-        AND id::text = ANY($3::text[])
-      ORDER BY id`,
-    [userUuid, dateISO, canonicalIds],
-  )).rows;
-
+  prescribedRows: PrescribedRow[],
+  runRows: RunRow[],
+): ResolvedDay {
   const resolvedRuns: ResolvedRun[] = runRows.map((r) => {
     const data = asRunData(r.data);
     const planWorkoutId = typeof data.planWorkoutId === 'string' && data.planWorkoutId !== ''
@@ -302,6 +271,90 @@ export async function resolveDayExecutions(
     .map((r) => ({ ...r, match: 'supplemental' as const, matchedWorkoutId: null }));
 
   return { dateISO, prescriptions, supplementalRuns };
+}
+
+/**
+ * Resolve every prescription and every run across `[fromISO, toISO)` in a
+ * FIXED number of queries — one for every prescription in range, one for
+ * canonical run ids, one for the run rows themselves — rather than one round
+ * trip per day. `lib/execution/load.ts` walks ranges of weeks to a season;
+ * the single-day entry point below is built on top of this rather than the
+ * reverse, so a multi-day caller never pays for N separate resolutions of
+ * the same rule.
+ *
+ * Reads the prescription side through `ownedDaysSql`, same reign-aware
+ * ownership `resolveDayExecutions`'s doc comment explains — required here
+ * more than anywhere else, since an evidence/adaptation walk is exactly the
+ * caller that routinely crosses a plan rollover.
+ */
+export async function resolveDateRangeExecutions(
+  userUuid: string,
+  fromISO: string,
+  toISO: string,
+): Promise<Map<string, ResolvedDay>> {
+  const prescribedRows = (await pool.query<PrescribedRow>(
+    `WITH owned AS (${ownedDaysSql({
+      columns: 'pw.id, pw.date_iso, pw.type, pw.distance_mi::text, pw.sub_label, pw.is_quality, pw.is_long',
+    })})
+     SELECT * FROM owned WHERE owned.type <> 'rest' ORDER BY owned.date_iso, owned.id`,
+    [userUuid, fromISO, toISO],
+  )).rows;
+
+  const canonicalIds = await getCanonicalRunIds(userUuid, fromISO, toISO)
+    .catch((err: unknown) => {
+      console.warn('[day-resolver] canonical run ids unreadable:',
+        err instanceof Error ? err.message : err);
+      return [] as string[];
+    });
+
+  const runRows = canonicalIds.length === 0 ? [] : (await pool.query<RunRow>(
+    `SELECT id::text AS id, ${runDaySql('r')} AS day, r.data, r.shoe_id
+       FROM runs r
+      WHERE r.user_uuid = $1
+        AND ${runNotMergedSql('r')}
+        AND ${runDaySql('r')} >= $2 AND ${runDaySql('r')} < $3
+        AND r.id::text = ANY($4::text[])
+      ORDER BY day, id`,
+    [userUuid, fromISO, toISO, canonicalIds],
+  )).rows;
+
+  const prescribedByDay = new Map<string, PrescribedRow[]>();
+  for (const p of prescribedRows) {
+    const arr = prescribedByDay.get(p.date_iso) ?? [];
+    arr.push(p);
+    prescribedByDay.set(p.date_iso, arr);
+  }
+  const runsByDay = new Map<string, RunRow[]>();
+  for (const r of runRows) {
+    const arr = runsByDay.get(r.day) ?? [];
+    arr.push(r);
+    runsByDay.set(r.day, arr);
+  }
+
+  const allDays = new Set<string>([...prescribedByDay.keys(), ...runsByDay.keys()]);
+  const out = new Map<string, ResolvedDay>();
+  for (const day of allDays) {
+    out.set(day, classifyDay(day, prescribedByDay.get(day) ?? [], runsByDay.get(day) ?? []));
+  }
+  return out;
+}
+
+/**
+ * Resolve every prescription and every run for one runner-local calendar
+ * date, with an explicit, evidence-graded association between them.
+ *
+ * This never mutates anything — it is a read, same posture as
+ * `loadKeySessionExecutions` in `lib/execution/load.ts`. Callers that need to
+ * SEAL a day or mark a workout complete do so off `matchedRun`, not off this
+ * function reaching into `plan_workouts` itself (Rule 14: this file states
+ * its scope, it does not also own writes).
+ */
+export async function resolveDayExecutions(
+  userUuid: string,
+  dateISO: string,
+): Promise<ResolvedDay> {
+  const map = await resolveDateRangeExecutions(userUuid, dateISO, nextDayISO(dateISO));
+  return map.get(dateISO) ?? { dateISO, prescriptions: [], supplementalRuns: [] };
 }
 
 /** Convenience for a caller that only wants one prescription's own state —
