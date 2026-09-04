@@ -212,7 +212,28 @@ struct LiveRunTreadmillV5: View {
 
     private var walk: LiveRunPhaseWalk? {
         guard let plan else { return nil }
-        return LiveRunPhaseWalk.walk(phases: plan.phases, elapsedSec: elapsedSec)
+        // TREADMILL-SKIP-1 (2026-09-03) · a manual Skip advances
+        // `session.segmentIndex` — and the belt's actual speed/incline
+        // target with it — immediately. This walk is a pure function of
+        // ELAPSED TIME, which Skip deliberately never touches (elapsed time
+        // is the measured record of what the runner actually did, not
+        // something a skip should be allowed to fabricate). Feeding it the
+        // raw `elapsedSec` right after a Skip reports the phase the TIMER
+        // thinks you're in, which can sit an entire phase behind the one the
+        // belt already moved to — and the header, "Phase N of M", the
+        // skip/next text and the cue engine all read this one property, so
+        // every one of them would show the stale phase until real elapsed
+        // time happened to catch up on its own. Found live, rendering a real
+        // skip under `-faffFastPhases`: SPEED/INCLINE read 7.7 mph / 5.0%
+        // (Hill 1's real target) while the header still read "Warm-up" and
+        // "Phase 1 of 21", unchanged, 20+ real seconds later.
+        //
+        // See `LiveRunPhaseWalk.skipFloorSec`'s own header for the full
+        // account — floors the walk at the belt's own `segmentIndex` so a
+        // skip can never leave this view reporting a stale, earlier phase.
+        let floorSec = LiveRunPhaseWalk.skipFloorSec(phases: effectivePhases, segmentIndex: session.segmentIndex,
+                                                      segElapsedSec: Int(session.belt.segElapsedSec.rounded()))
+        return LiveRunPhaseWalk.walk(phases: plan.phases, elapsedSec: max(elapsedSec, floorSec))
     }
 
     /// Sum of every authored phase's own duration estimate — used only for
