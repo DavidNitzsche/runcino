@@ -105,6 +105,8 @@ function input(o: Partial<PostRunInput> = {}): PostRunInput {
     plannedType: 'easy',
     plannedTypeDisplay: 'Easy',
     plannedDistanceMi: 5,
+    raceMatched: false,
+    targetProvenance: 'plan',
     verdict: gradeStoredPhases(REAL_0902_PHASES, 'easy'),
     evidence: null,
     workHrCeilingBpm: null,
@@ -169,17 +171,33 @@ describe("STRIDE-1 · the runner's real 2026-09-02 easy day", () => {
     expect(out.execution.summary).not.toMatch(/\breps?\b/i);
   });
 
-  it('describes the session as one easy work block plus strides', () => {
+  it('describes the session as one easy run plus strides', () => {
     // The SHAPE of the result, not the absence of the defect (Rule 13 cl. 3).
+    // EASY-VOICE-1, 2026-09-04 · "The work block stayed under the ceiling"
+    // was composer vocabulary, not something a coach says about a run that
+    // got done — replaced with activity-appropriate language. `recoveries
+    // Honest` has nothing to evaluate on a single-block session (there are
+    // no between-rep recoveries to judge), so this shape now earns
+    // `CONTROLLED` outright rather than falling to the ambiguous `EXECUTED`
+    // a null `recoveriesHonest` produced.
+    expect(out.execution.headline).toBe('Easy run complete');
+    // LESS-IS-MORE-2, 2026-09-05 · "staying under the pace ceiling" removed
+    // from the sentence — it repeated the stats grid's own "No faster than
+    // X/mi" sub-text two inches above it (Rule 17); "walk-backs taken"
+    // dropped as routine-recovery detail the primary page should not narrate.
     expect(out.execution.summary).toBe(
-      'The work block stayed under the ceiling. Six strides after, walk-backs taken.',
+      'Easy run stayed controlled. Six strides completed.',
     );
-    expect(out.execution.status).toBe('EXECUTED');
+    expect(out.execution.status).toBe('CONTROLLED');
     expect(out.execution.intendedStimulus).toBe('Easy');
   });
 
   it('grades against a CEILING and never a window — an easy run is never failed for being slow', () => {
-    expect(out.execution.summary).toMatch(/ceiling/);
+    // The word "ceiling" no longer has to appear IN THIS SENTENCE (Rule 17 —
+    // the stats grid already states the ceiling); the shape-correctness
+    // claim is now verified structurally, through the reason code the
+    // ceiling-only branch pushes, not by scanning prose for a word.
+    expect(out.execution.reasons).toContain('SINGLE_CEILING_BLOCK');
     expect(out.execution.summary).not.toMatch(/window|interval|tempo|threshold/i);
   });
 });
@@ -338,9 +356,15 @@ describe('TOLERANCE · a ceiling phase with no stored tolerance is not graded at
     expect(REAL_0902_PHASES[0].verdict).toBe('hit');
   });
 
-  it('and the sentence therefore says he stayed under it', () => {
+  it('and the sentence therefore says he stayed controlled, never ahead of the ceiling', () => {
     const out = composePostRunExperience(input({ verdict: graded }));
-    expect(out.execution.summary).toMatch(/stayed under the ceiling/);
+    // LESS-IS-MORE-2, 2026-09-05 · "staying under the pace ceiling" removed
+    // (Rule 17 — the stats grid already states the ceiling as "No faster
+    // than X/mi"); the claim this test protects — a `hit` grade reads as
+    // controlled, never as "ahead of" a limit that was not exceeded — is
+    // now checked through the reason code the ceiling-only branch pushes.
+    expect(out.execution.reasons).toContain('SINGLE_CEILING_BLOCK');
+    expect(out.execution.summary).toMatch(/stayed controlled/);
     expect(out.execution.summary).not.toMatch(/ahead of the ceiling/);
   });
 

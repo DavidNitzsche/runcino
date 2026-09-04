@@ -151,6 +151,48 @@ private struct TargetSteps: Shape {
     }
 }
 
+/// PACE-SHAPE-CHART-1, 2026-09-05 · a WINDOW band, filled between its two
+/// edges, rather than the single dashed line `TargetSteps` draws for a
+/// ceiling. A ceiling is one boundary and a step-line correctly says so; a
+/// window is a two-sided range, and the same single line at its centre used
+/// to read as "the pace to hit" — exactly the ambiguity closure item 2 of
+/// this pass removes. `topValues`/`bottomValues` are already chart-space
+/// (negated seconds, so "top" is the faster edge); nil breaks the fill the
+/// same way a nil in `TargetSteps.values` breaks the line, so a window
+/// phase with no tolerance on the wire draws nothing rather than a guess.
+private struct TargetStepBand: Shape {
+    let topValues: [Double?]
+    let bottomValues: [Double?]
+    let lo: Double
+    let hi: Double
+
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        guard topValues.count > 1, topValues.count == bottomValues.count else { return p }
+        let span = Swift.max(hi - lo, 0.0001)
+        let dx = rect.width / CGFloat(topValues.count - 1)
+        func y(_ v: Double) -> CGFloat { rect.maxY - CGFloat((v - lo) / span) * rect.height }
+        var i = 0
+        while i < topValues.count {
+            guard topValues[i] != nil, bottomValues[i] != nil else { i += 1; continue }
+            var j = i
+            while j < topValues.count, topValues[j] != nil, bottomValues[j] != nil { j += 1 }
+            var sub = Path()
+            for k in i..<j {
+                let pt = CGPoint(x: rect.minX + dx * CGFloat(k), y: y(topValues[k]!))
+                if k == i { sub.move(to: pt) } else { sub.addLine(to: pt) }
+            }
+            for k in stride(from: j - 1, through: i, by: -1) {
+                sub.addLine(to: CGPoint(x: rect.minX + dx * CGFloat(k), y: y(bottomValues[k]!)))
+            }
+            sub.closeSubpath()
+            p.addPath(sub)
+            i = j
+        }
+        return p
+    }
+}
+
 // MARK: - The stack
 
 struct RunAnalysisV5: View {
@@ -337,7 +379,15 @@ struct RunAnalysisV5: View {
                 }
 
                 // ── the target, per band, pace layer only ─────────────────
+                //
+                // PACE-SHAPE-CHART-1 · a ceiling is a single dashed BOUNDARY
+                // (`TargetSteps`, unchanged); a window is a filled RANGE
+                // between two edges (`TargetStepBand`) — never the same mark
+                // for a one-sided limit and a two-sided band to hold inside.
                 if layer == .pace {
+                    TargetStepBand(topValues: windowTop, bottomValues: windowBottom,
+                                    lo: domain.lo, hi: domain.hi)
+                        .fill(V5.textQuiet.opacity(0.12))
                     TargetSteps(values: targetValues, lo: domain.lo, hi: domain.hi)
                         .stroke(V5.textQuiet,
                                 style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
@@ -456,12 +506,37 @@ struct RunAnalysisV5: View {
         }
     }
 
-    /// The target for each column, nil outside a band that carries one.
+    /// The CEILING line for each column — one-sided, "no faster than" — nil
+    /// outside a ceiling band, and nil (not drawn as a ceiling) over a
+    /// window band, which draws as a filled range instead (`windowTop`/
+    /// `windowBottom`, below). PACE-SHAPE-CHART-1: this used to draw every
+    /// graded band's target the same way regardless of shape.
     private var targetValues: [Double?] {
         analysis.points.map { p in
             guard let b = analysis.bands.first(where: { p.atMi >= $0.fromMi && p.atMi <= $0.toMi }),
-                  let t = b.targetSecPerMi else { return nil }
+                  let t = b.targetSecPerMi, b.paceShape != "window" else { return nil }
             return -Double(t)
+        }
+    }
+
+    /// The two edges of a WINDOW band — nil wherever the band is not a
+    /// window, or carries no tolerance to draw a range from. Chart-space
+    /// (negated seconds): `windowTop` is the faster edge, `windowBottom`
+    /// the slower one.
+    private var windowTop: [Double?] {
+        analysis.points.map { p in
+            guard let b = analysis.bands.first(where: { p.atMi >= $0.fromMi && p.atMi <= $0.toMi }),
+                  b.paceShape == "window", let t = b.targetSecPerMi, let tol = b.toleranceSec
+            else { return nil }
+            return -Double(t - tol)
+        }
+    }
+    private var windowBottom: [Double?] {
+        analysis.points.map { p in
+            guard let b = analysis.bands.first(where: { p.atMi >= $0.fromMi && p.atMi <= $0.toMi }),
+                  b.paceShape == "window", let t = b.targetSecPerMi, let tol = b.toleranceSec
+            else { return nil }
+            return -Double(t + tol)
         }
     }
 
@@ -489,7 +564,8 @@ struct RunAnalysisV5: View {
     /// The value domain, padded so a run held honestly at one pace does not
     /// draw as a mountain range. Same reasoning as `SplitBars` and `TrendBars`.
     private func domain(_ s: [Double?]) -> (lo: Double, hi: Double) {
-        let vs = s.compactMap { $0 } + (layer == .pace ? targetValues.compactMap { $0 } : [])
+        let vs = s.compactMap { $0 }
+            + (layer == .pace ? targetValues.compactMap { $0 } + windowTop.compactMap { $0 } + windowBottom.compactMap { $0 } : [])
         guard let lo = vs.min(), let hi = vs.max() else { return (0, 1) }
         let mid = (lo + hi) / 2
         let floorSpan = Swift.max(abs(mid) * 0.06, 1)
@@ -541,8 +617,22 @@ struct RunAnalysisV5: View {
         case .pace:
             var parts: [String] = []
             if !analysis.isSampled { parts.append("One reading per mile.") }
-            if analysis.bands.contains(where: { $0.targetSecPerMi != nil }) {
-                parts.append("The dashed line is what each piece asked for.")
+            // PACE-SHAPE-CHART-1, 2026-09-05 · WAS "The dashed line is what
+            // each piece asked for" unconditionally — the exact "a ceiling
+            // is a point to hit" ambiguity item 2 of this pass exists to
+            // remove, restated in the one place the chart itself explained
+            // its own marks. Neutral and shape-agnostic on purpose: the
+            // MARKS now differ (a dashed line for a ceiling, a shaded range
+            // for a window), and a caption that named only one shape would
+            // mislabel whichever band the runner is actually looking at.
+            let hasCeiling = analysis.bands.contains { $0.targetSecPerMi != nil && $0.paceShape != "window" }
+            let hasWindow = analysis.bands.contains { $0.paceShape == "window" && $0.toleranceSec != nil }
+            if hasCeiling && hasWindow {
+                parts.append("Dashed line: pace ceiling. Shaded range: pace window.")
+            } else if hasCeiling {
+                parts.append("The dashed line is the pace ceiling — not to run faster than.")
+            } else if hasWindow {
+                parts.append("The shaded range is the pace window to hold.")
             }
             return parts.isEmpty ? nil : parts.joined(separator: " ")
         }

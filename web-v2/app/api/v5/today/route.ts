@@ -1683,6 +1683,32 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                     // the same thing run detail's phase panel says.
                     verdict: gp.verdict === 'not_graded' ? null : gp.verdict,
                     status_label: gp.statusLabel,
+                    // PARITY-1, 2026-09-04 · run detail's `activityStats` /
+                    // `workoutAnalysisSection` read `label`, `target_pace`,
+                    // `actual_pace`, `avg_hr` and `pace_shape` straight off
+                    // `PhaseBreakdown` — none of which this wire carried, so
+                    // the immediate post-run sheet fell back to a generic
+                    // grid every time even though the same `GradedPhase[]`
+                    // this route already computed (`grade.phases`, above)
+                    // had all five. Same names run detail's own wire uses,
+                    // so one Swift decoder reads either payload.
+                    label: gp.label,
+                    pace_shape: gp.shape,
+                    target_pace: fmtPaceShared(gp.targetSecPerMi),
+                    actual_pace: fmtPaceShared(gp.avgSecPerMi),
+                    avg_hr: gp.avgHr,
+                    // COMPLETION-STATE-1, 2026-09-05 · null when the wire
+                    // never said (Rule 11) — `repCompletionGrid` must not
+                    // print "completed" for a phase this is null on.
+                    completed: gp.completed,
+                    // PACE-CONTRACT-1, 2026-09-05 · raw seconds, alongside the
+                    // pre-formatted string above — same two fields
+                    // `PhaseBreakdown` (run detail's own wire type) has always
+                    // carried, needed so `paceContractText` can compute a
+                    // WINDOW's actual range (target ± tolerance) rather than
+                    // just relabelling the bare target.
+                    target_pace_sec: gp.targetSecPerMi,
+                    tolerance_pace_sec: gp.toleranceSec,
                   }]
                 : [];
             }),

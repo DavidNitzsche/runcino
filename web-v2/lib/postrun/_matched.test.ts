@@ -158,6 +158,34 @@ describe('signatureOf', () => {
     expect(sig(fourByOne([420, 440])).fadeSec).toBeNull();
     expect(sig(fourByOne([420, 430, 440])).fadeSec).toBe(20);
   });
+
+  it('PORTIONS-1 · a marathon-specific long run is not a rep set', () => {
+    // The owner's REAL 2026-06-27 "Little adventure today": 10.0 mi easy
+    // into 4.0 mi at marathon pace. Read directly against the unfixed
+    // module first: `repDistanceMi` came back the median of 10 and 4 — 7,
+    // a number that describes neither phase — and the render showed "No
+    // comparable 2 × 7 mi session in the last six months."
+    const longRun = [work(10.0, 528, { target: 480 }), work(4.0, 462, { target: 434 })];
+    const s = sig(longRun);
+    expect(s.workCount).toBe(2);
+    expect(s.isMultiPurposeStructure).toBe(true);
+    // A true 2-rep session — same target both times — is NOT this shape.
+    expect(sig(fourByOne([420, 440])).isMultiPurposeStructure).toBe(false);
+  });
+
+  it('PORTIONS-1 · a race with widely varying course segments is not a rep set either', () => {
+    // The owner's REAL Americas Finest City half: five course segments,
+    // 1.0 to 5.4 mi, close enough in target pace (6:39-7:08) to slip past
+    // the pace-distinctness check alone — `repDistanceMi` came back the
+    // median (2.21) and the render showed "No comparable 5 × 2.2 mi
+    // session in the last six months." over a race that was never reps.
+    const race = [
+      work(2.0, 428, { target: 428 }), work(2.5, 399, { target: 399 }),
+      work(5.4, 480, { target: 411 }), work(1.0, 465, { target: 408 }),
+      work(2.21, 523, { target: 418 }),
+    ];
+    expect(sig(race).isMultiPurposeStructure).toBe(true);
+  });
 });
 
 /* ═════════════════════════════ the gates ════════════════════════════════ */
@@ -286,6 +314,20 @@ describe('pickMatchedWorkout', () => {
     const out = pickMatchedWorkout(easy, [TODAY]);
     expect(out.matched).toBeNull();
     // No furniture under every easy run.
+    expect(out.refusal).toBeNull();
+  });
+
+  it('PORTIONS-1 · is SILENT, not "No comparable 2 × 7 mi session", on a marathon-specific long run', () => {
+    // The exact render this closes: `structureWord` composed "2 × 7 mi" —
+    // the median of a 10 mi easy phase and a 4 mi marathon-pace phase — and
+    // printed "No comparable 2 × 7 mi session in the last six months."
+    // under a run that was never a rep set at all. Same posture as the
+    // easy-run case above: this shape has no segmented comparator, so the
+    // honest answer is silence, not a fabricated structure word.
+    const marathonLong = candidate('2026-06-27',
+      [work(10.0, 528, { target: 480 }), work(4.0, 462, { target: 434 })]);
+    const out = pickMatchedWorkout(marathonLong, [TODAY]);
+    expect(out.matched).toBeNull();
     expect(out.refusal).toBeNull();
   });
 

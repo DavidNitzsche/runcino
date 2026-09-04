@@ -188,6 +188,42 @@ export function classifySession(
 export const EASY_PHASE_TOLERANCE_S_PER_MI = 30;
 
 /**
+ * MP-EMBEDDED-1, 2026-09-04 · a marathon-pace-specific segment EMBEDDED in a
+ * `long` session — "10.0 mi easy" into "4.0 mi @ marathon pace" — is not the
+ * same prescription as the easy running around it, and grading it as one is
+ * a real defect this constant closes.
+ *
+ * `Research/01-pace-zones-vdot.md` §"Pace zone width and lock-in rules", the
+ * M row verbatim: `±5 sec/mi | Yes for race-simulation; window for general
+ * MP segments`. "Window", not "ceiling" — the whole point of marathon-pace
+ * work is marathon-specific economy (`Research/04-workout-vocabulary.md`
+ * §4.1, "Marathon-pace long run... Marathon-specific economy"), and running
+ * dramatically slower than MP does not rehearse that regardless of how
+ * comfortably it clears an easy-day ceiling.
+ *
+ * `paceShapeFor` cannot see this on its own — it takes a `phaseType` ('work')
+ * and a `SessionClass` ('long'), never per-phase INTENT, so every work phase
+ * in a long run reads `ceiling` uniformly. `gradeStoredPhases` is the one
+ * place that also holds the phase's own LABEL and can tell the two apart —
+ * see `looksLikeMarathonPaceLabel` and its call site there.
+ */
+export const MP_PHASE_TOLERANCE_S_PER_MI = 5;
+
+/**
+ * Detects a marathon-pace-specific phase by its own label — the same
+ * heuristic the phone already applies client-side
+ * (`RunDetailV5.marathonPacePhase`, `TodayAfterV5.marathonPacePhase`) to
+ * find and prioritise this exact phase in the Digest UI, now given one
+ * server-side home so grading and display cannot disagree about which
+ * phase this is. Matches "4.0 mi @ marathon pace", "Marathon pace block",
+ * etc. — the label vocabulary `lib/postrun/load.ts` composes for this
+ * session shape.
+ */
+export function looksLikeMarathonPaceLabel(label: string | null | undefined): boolean {
+  return typeof label === 'string' && /marathon[\s-]*pace/i.test(label);
+}
+
+/**
  * THE tolerance table, seconds per mile. Every consumer calls this; nobody
  * writes a literal.
  *
@@ -454,7 +490,11 @@ export function gradeWorkPhase(input: {
   targetSecPerMi: number | null | undefined;
   avgSecPerMi: number | null | undefined;
   toleranceSec: number | null | undefined;
-  completed?: boolean;
+  // COMPLETION-STATE-1 · `null` means "the wire never said" (Rule 11), and
+  // must grade exactly as an explicit `true` would — only a confirmed
+  // `false` demotes a phase to `incomplete`. Never coerce this upstream of
+  // here; that is the bug this type exists to make impossible to reintroduce.
+  completed?: boolean | null;
 }): PhaseVerdict {
   const { targetSecPerMi: target, avgSecPerMi: avg } = input;
   const tol = input.toleranceSec;
@@ -486,7 +526,8 @@ export function gradeWorkPhase(input: {
 export function gradeCeilingPhase(input: {
   ceilingSecPerMi: number | null | undefined;
   avgSecPerMi: number | null | undefined;
-  completed?: boolean;
+  // COMPLETION-STATE-1 · see `gradeWorkPhase`'s identical parameter.
+  completed?: boolean | null;
   slackSec?: number;
 }): PhaseVerdict {
   const { ceilingSecPerMi: ceiling, avgSecPerMi: avg } = input;
