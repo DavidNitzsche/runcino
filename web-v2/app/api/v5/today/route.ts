@@ -1487,19 +1487,50 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // same field-name lesson `workAveragesFromPhases` above already
         // learned the hard way for `actualDistanceMi`).
         workoutPhases: Array.isArray(data.phases)
-          ? (data.phases as any[]).map((ph) => ({
-              type: typeof ph.type === 'string' ? ph.type : null,
-              label: typeof ph.label === 'string' ? ph.label : null,
-              durationSec: Number.isFinite(Number(ph.actualDurationSec))
-                ? Math.round(Number(ph.actualDurationSec)) : null,
-              avgHr: Number.isFinite(Number(ph.avgHr)) ? Math.round(Number(ph.avgHr)) : null,
-              maxHr: Number.isFinite(Number(ph.maxHr)) ? Math.round(Number(ph.maxHr)) : null,
-              // Rule 11 · `completed` is a real tri-state on the wire
-              // (true / false / absent-from-an-older-payload) — never
-              // coerced, so "the runner skipped this rep" and "this
-              // payload predates the field" stay two different facts.
-              completed: typeof ph.completed === 'boolean' ? ph.completed : null,
-            }))
+          ? (data.phases as any[]).map((ph) => {
+              // WORKOUTPHASES-2 (2026-09-04) · `avgHr`/`maxHr` are absent on
+              // several phases in THIS account's own stored rows (every
+              // "work" phase in a 2026-09-03 hill session, confirmed
+              // directly) even though the phase's own `hrSamples` — the
+              // per-second readings the watch actually recorded — are
+              // present and non-empty. David, live: "HR isnt shown for each
+              // one." Fall back to computing it from `hrSamples` rather than
+              // leaving a real, present reading unread — same posture as
+              // `beltAverages`'s own header ("we do not know" is honest;
+              // discarding data we DO have is not).
+              const samples: any[] = Array.isArray(ph.hrSamples) ? ph.hrSamples : [];
+              const bpms = samples
+                .map((s) => Number(s?.bpm))
+                .filter((n) => Number.isFinite(n) && n > 0);
+              const avgFromSamples = bpms.length > 0
+                ? Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length) : null;
+              const maxFromSamples = bpms.length > 0 ? Math.round(Math.max(...bpms)) : null;
+              return {
+                type: typeof ph.type === 'string' ? ph.type : null,
+                label: typeof ph.label === 'string' ? ph.label : null,
+                durationSec: Number.isFinite(Number(ph.actualDurationSec))
+                  ? Math.round(Number(ph.actualDurationSec)) : null,
+                avgHr: Number.isFinite(Number(ph.avgHr)) ? Math.round(Number(ph.avgHr)) : avgFromSamples,
+                maxHr: Number.isFinite(Number(ph.maxHr)) ? Math.round(Number(ph.maxHr)) : maxFromSamples,
+                // Rule 11 · `completed` is a real tri-state on the wire
+                // (true / false / absent-from-an-older-payload) — never
+                // coerced, so "the runner skipped this rep" and "this
+                // payload predates the field" stay two different facts.
+                completed: typeof ph.completed === 'boolean' ? ph.completed : null,
+                // The belt's OWN per-phase telemetry — not `beltAverages`'
+                // session-wide, duration-weighted rollup (a different,
+                // already-correct answer to a different question: "what was
+                // the belt set to across the whole run"). This answers "what
+                // was it set to for THIS phase," ramp included — David
+                // confirmed live the ramp itself is real (manual resets
+                // between reps), not a reading error, so it is shown as
+                // measured, not smoothed away.
+                speedMph: Number.isFinite(Number(ph.actualSpeedMph))
+                  ? Math.round(Number(ph.actualSpeedMph) * 10) / 10 : null,
+                inclinePct: Number.isFinite(Number(ph.actualInclinePct))
+                  ? Math.round(Number(ph.actualInclinePct) * 10) / 10 : null,
+              };
+            })
           : [],
         indoor, speedMph, inclinePct,
         askedPaceSPerMi, askedHrCap, askedHrIsHardCap,

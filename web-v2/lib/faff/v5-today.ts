@@ -357,6 +357,11 @@ export interface V5Today {
     maxHr: number | null;
     /** Null when the source did not say (Rule 11) — never coerced to false. */
     completed: boolean | null;
+    /** WORKOUTPHASES-2 · the belt's own per-phase setting, ramp included —
+     *  see `route.ts`'s own comment for why this is deliberately NOT
+     *  smoothed to the nominal target. */
+    speedMph: number | null;
+    inclinePct: number | null;
   }>;
   /** The runner's own HR zone bands. Empty at cold start. */
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
@@ -867,6 +872,7 @@ export interface V5RecentRunCtx {
   workoutPhases: Array<{
     type: string | null; label: string | null; durationSec: number | null;
     avgHr: number | null; maxHr: number | null; completed: boolean | null;
+    speedMph: number | null; inclinePct: number | null;
   }>;
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
   paceBand: { lo: number; hi: number } | null;

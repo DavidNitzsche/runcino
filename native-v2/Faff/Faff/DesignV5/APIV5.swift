@@ -304,6 +304,11 @@ struct V5WorkoutPhase: Decodable, Equatable {
     /// Rule 11 · a real tri-state — nil is "the payload never said," never
     /// coerced to false. A row draws "skipped" only for an explicit false.
     let completed: Bool?
+    /// WORKOUTPHASES-2 (2026-09-04) · the belt's own per-phase setting,
+    /// ramp included — see `web-v2` `route.ts`'s own comment for why this
+    /// is deliberately NOT smoothed toward the nominal target.
+    let speedMph: Double?
+    let inclinePct: Double?
 }
 
 /// The pace window the session asked for, seconds per mile. When present the

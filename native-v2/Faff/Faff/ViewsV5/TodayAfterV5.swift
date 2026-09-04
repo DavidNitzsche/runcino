@@ -707,6 +707,14 @@ struct TodayAfterV5: View {
         var parts: [String] = []
         if let clock = FaffFmt.clock(sec: phase.durationSec.map(Double.init)) { parts.append(clock) }
         if let hr = phase.avgHr { parts.append("\(hr) bpm") }
+        // WORKOUTPHASES-2 · the belt setting for THIS phase — David asked
+        // directly whether it reached the wire. Compact ("9.2mph·3.6%"), no
+        // spaces around the middle dot, so a five-part line (clock, HR,
+        // speed, incline) still fits a trailing-aligned column.
+        if let speed = phase.speedMph {
+            let incline = phase.inclinePct.map { String(format: "%.1f%%", $0) } ?? ""
+            parts.append(String(format: "%.1fmph", speed) + (incline.isEmpty ? "" : "·\(incline)"))
+        }
         if phase.completed == false { parts.append("not completed") }
         return parts.joined(separator: " · ")
     }
