@@ -661,9 +661,32 @@ export function retitleLeadMi(
   const re = /^(\d+(?:\.\d+)?)(mi E w\/)/;
   const m = re.exec(prescription);
   if (!m) return prescription;
-  // Same rounding the authoring site uses, so a day that already agrees
-  // is a byte-identical no-op rather than a cosmetic rewrite.
-  const restated = Math.max(1.5, roundTo(finalDistanceMi, 1));
+  // Same ROUNDING the authoring site uses, so a day that already agrees is a
+  // byte-identical no-op rather than a cosmetic rewrite — but deliberately NOT
+  // the authoring site's 1.5 mi FLOOR.
+  //
+  // LABELTRUTH-3 (2026-09-04) · the floor used to be mirrored here too
+  // (`Math.max(1.5, …)`), and mirroring it defeats the entire purpose of this
+  // function. The authoring floor says "do not AUTHOR a surge session shorter
+  // than 1.5 mi"; this function's whole job is to restate the label against the
+  // distance the day ACTUALLY SETTLED AT after every ramp ceiling and taper
+  // rescale below it. Re-imposing the floor here re-asserts a number the day no
+  // longer carries, which is the exact drift this reconciler exists to remove.
+  //
+  // Surfaced by a TUNEUPTYPE-1 experiment that was reverted: with base-building
+  // taper weeks moved off the race-week type, 16 of 3,080 "mi E w/" days in the
+  // archetype matrix — every one a 15 mi/wk plan whose taper slot settles at
+  // 1.0 mi — read "1.5mi E w/ 1×1 min surges" over a 1.0 mi day. The label was
+  // the only thing lying; a one-mile session with a single one-minute surge is
+  // a perfectly reasonable day for a runner at that volume.
+  //
+  // The experiment did not survive (a rep set and a continuous block both break
+  // rather than scale into a taper budget — see `_layout_contract.test.ts`'s
+  // TUNEUPTYPE-1 ratchet). This fix does, and stands on its own: it is not
+  // inert, it moves real labels in the corpus today, and the trap it removes —
+  // a reconciler re-imposing the floor it exists to reconcile away — is
+  // independent of whatever authors the day.
+  const restated = roundTo(finalDistanceMi, 1);
   if (Math.abs(restated - Number(m[1])) < 0.05) return prescription;
   return prescription.replace(re, `${restated}$2`);
 }

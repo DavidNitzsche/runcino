@@ -188,4 +188,96 @@ describe('LAYOUTWEEK-CONTRACT-1 · the decomposition changed nothing', () => {
     expect({ composed, days, raceWeeks, digest: h.digest('hex') })
       .toMatchSnapshot('layout-corpus-digest');
   }, 300_000);
+
+  /**
+   * TUNEUPTYPE-1 (2026-09-04) · the race-week type appears only in a race week.
+   *
+   * Found on the owner's live block: `type = 'race_week_tuneup'` on 2026-11-17,
+   * nineteen days before CIM, because `qualityTypesFor`'s TAPER arm fell through
+   * to the race-week row whenever neither the MP nor the threshold session
+   * applied. The name is load-bearing in four places — `RACE_PROTECTED_TYPES`
+   * (never shaved or downgraded), `recomputePacesForPlan`'s exemption (never
+   * re-priced from evidence), `anchor-provenance.ts` (priced off the STATED
+   * GOAL, not the fitness anchor), and `EFFORT_CUED_TYPES` (no effort cue on a
+   * provisional anchor) — every one of them correct in race week and wrong
+   * outside it.
+   *
+   * The digest above would have caught the change, but only as "something
+   * moved"; it cannot say what the invariant IS. This can, and it is the half
+   * that survives the next deliberate snapshot update.
+   *
+   * WHAT THIS CANNOT FAIL ON (Rule 22): it walks the same archetype matrix,
+   * whose `Arc` carries no training history (Rule 15), so it says nothing about
+   * a runner with a past. And it checks WHERE the type is authored, never
+   * whether the session under it is the right session.
+   */
+  it('`race_week_tuneup` outside a race week does not SPREAD (ratchet)', () => {
+    const offenders: string[] = [];
+    let raceWeekTuneups = 0;
+    let taperWeeksSeen = 0;
+    for (const a of matrix()) {
+      const built = buildSimPlan(simInputsForArc(a) as never);
+      if (!built.ok) continue;
+      for (const w of built.composed.weeks as unknown as Array<{
+        startISO: string; phase: string; isRaceWeek: boolean;
+        days: Array<{ type: string }>;
+      }>) {
+        if (w.phase === 'TAPER') taperWeeksSeen++;
+        for (const d of w.days) {
+          if (d.type !== 'race_week_tuneup') continue;
+          raceWeekTuneups++;
+          if (!w.isRaceWeek) offenders.push(`${arcStr(a as Arc)} · ${w.startISO} (${w.phase})`);
+        }
+      }
+    }
+    // Liveness, both halves: the type must still be authored SOMEWHERE (or this
+    // passes by the type having quietly disappeared), and taper weeks must
+    // actually be reached (or the branch that produced the defect is dark).
+    expect(raceWeekTuneups, 'no race_week_tuneup was authored anywhere — this gate is vacuous')
+      .toBeGreaterThan(100);
+    expect(taperWeeksSeen, 'no TAPER week in the corpus — the defect branch is unreachable here')
+      .toBeGreaterThan(100);
+    // eslint-disable-next-line no-console
+    console.log(`\n=== TUNEUPTYPE-1 · ${raceWeekTuneups} tune-ups · ${taperWeeksSeen} taper weeks · ${offenders.length} outside race week ===`);
+    // THE RATCHET, and why this is not simply asserted to be zero.
+    //
+    // Two substitutions were tried and both broke the session rather than the
+    // symptom. `intervals` in the -3 marathon taper week produced "a VO2max
+    // session was cut to 2 rep(s)" against a floor of 3
+    // (`lib/prescription/_trajectory.test.ts`, on David's own block); `tempo`
+    // produced `"3mi continuous tempo" built a 1.8mi block` and pushed 8,893
+    // sessions past the 8,114 ratchet for legs outweighing their work
+    // (`_quality_day.test.ts`, `_boundary_run.test.ts`).
+    //
+    // That is the finding, and it explains the original design: a taper week's
+    // quality budget is small by construction, and `race_week_tuneup` is the
+    // only session shape in this engine that scales into it. A rep set loses
+    // reps until it is no longer the session; a continuous block loses its work
+    // to its own warm-up. Substituting the TYPE cannot be the fix.
+    //
+    // The real fix is on the CONSUMER side: `RACE_PROTECTED_TYPES`,
+    // `recomputePacesForPlan`'s exemption, `anchor-provenance`'s goal pricing
+    // and `EFFORT_CUED_TYPES` should each ask whether the ROW IS IN A RACE
+    // WEEK, rather than inferring it from a type name that cannot carry that
+    // fact. Four sites, in modules where a wrong move re-prices a real runner's
+    // race, so it is named and scoped rather than attempted at the end of a
+    // session.
+    //
+    // Until then this holds the line: the count may shrink, never grow. A new
+    // authoring path that puts the race-week type on another ordinary week
+    // fails here immediately.
+    const BASELINE = 3475;
+    expect(
+      offenders.length,
+      `${offenders.length} non-race weeks carry the race-week type, against a ratchet of `
+      + `${BASELINE}. That name grants four exemptions — adapter-protected, pace-recompute-`
+      + 'exempt, priced off the stated GOAL rather than the fitness anchor, and not '
+      + 'effort-cued — every one of which is correct in race week and wrong outside it. '
+      + 'The list may shrink, never grow.',
+    ).toBeLessThanOrEqual(BASELINE);
+    // And it must not silently go to zero by the type disappearing, which would
+    // make the ratchet a rubber stamp rather than a closed defect.
+    expect(offenders.length, 'zero offenders — if the defect is genuinely fixed, delete this '
+      + 'ratchet and assert zero instead').toBeGreaterThan(0);
+  }, 300_000);
 });

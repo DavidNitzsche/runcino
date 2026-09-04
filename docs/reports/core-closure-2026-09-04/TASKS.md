@@ -21,6 +21,12 @@ Status vocabulary is deliberately separated (the brief requires it):
 | SEP13-RACE | 7 | Investigated: **the premise was false, nothing is missing** | closed, no change |
 | LIVEDATES-1 | 8 | Two live audits pinned to hard-coded calendar dates against a plan the runner legitimately moves | implemented |
 | LEXICONWORD-1 | 8 | Coach lexicon matched substrings: "Asics **Superb**last 3" reported as hype | implemented |
+| S4-AUDIT | 4 | Baseline marathon plan audited week by week against the live block | implemented (audit) |
+| S5-VERDICT | 5 | Adaptation replay + shadow + promote/hold verdict — **HOLD** | implemented (audit) |
+| S7-INVENTORY | 7 | Race-number inventory: 9 quantities, one name each, coherent | implemented (audit) |
+| LABELTRUTH-3 | 4 | `retitleLeadMi` re-imposed the authoring floor it exists to reconcile away | implemented |
+| TUNEUPTYPE-1 | 4 | Attempted, **reverted**; held by a ratchet at 3,475 | ratchet + scoped follow-up |
+| WATCHFALLBACK | 4 | Known-open onboarding defect found closed; entry retired | implemented |
 
 ### Detail worth carrying
 

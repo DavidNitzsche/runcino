@@ -150,7 +150,15 @@ const KNOWN: Record<string, string> = {
     'casts (`wo.type as WorkoutType`) and asks anyway, so on a day whose `workout_spec` is ' +
     'absent the watch has an empty card to fall back on — in race week, on the tune-up. The ' +
     'narrowing is now `narrowToPrescriptionType` in `lib/training/prescriptions.ts` and the ' +
-    'watch has only to call it.',
+    'watch has only to call it. ' +
+    'RE-MEASURED 2026-09-04: 127 instances across the sweep, e.g. 2026-11-19 type ' +
+    '"race_week_tuneup" (5 mi authored) — a NON-race week, which is TUNEUPTYPE-1 ' +
+    '(`_layout_contract.test.ts`) and makes this the FIFTH consequence of that type name ' +
+    'appearing outside race week, after adapter protection, pace-recompute exemption, ' +
+    'stated-goal pricing and the suppressed effort cue. This entry was briefly deleted while ' +
+    'a type substitution was in flight; the substitution was reverted (a rep set and a ' +
+    'continuous block both break rather than scale into a taper budget) and the defect is ' +
+    'open again. Kept honest rather than left deleted.',
   // SIM_SEED_IS_NOT_A_SEED_THE_ROUTE_CAN_WRITE · CLOSED 2026-08-24 by SIM-SEED-1.
   //
   // The top three rungs of the simulator's volume ladder seeded 62 / 80 / 100
