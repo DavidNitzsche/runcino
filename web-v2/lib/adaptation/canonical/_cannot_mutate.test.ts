@@ -308,6 +308,13 @@ const ALLOWLIST: readonly AllowedImport[] = [
   // (intensity domain, stored cap) — it reads no plan, writes nothing, and
   // cannot widen this boundary.
   { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/work-hr-ceiling', symbols: new Set(['workHrCeilingFor']) },
+  // HRFLATLINE-1 (2026-09-04) · the loader must also decide whether the HR it
+  // is about to hand C4 is a MEASUREMENT. The owner's 2026-09-03 hill session
+  // holds one value for a whole 60-second rep — 134 bpm for all 18 samples,
+  // 103 for another rep — which is a carried-forward value, and HRPHASE-1 (same
+  // day) turns those into the phase means the grader reads. A PURE FUNCTION of
+  // sample arrays: no plan, no database, no writes.
+  { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/hr-trace-credibility', symbols: new Set(['workTraceIsCredible']) },
 ];
 
 function violatesAllowlist(file: string, imp: { module: string; names: string[] }): boolean {

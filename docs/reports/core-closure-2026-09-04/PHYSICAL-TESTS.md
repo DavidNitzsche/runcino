@@ -27,6 +27,56 @@ section A below is fully testable on 275, including the breakdown.
 Not in 275: `0e80296d` (HRPHASE-1/HRGRADE-1). If you want the HR-graded session
 read, wait for the next build.
 
+## SMOKE · 6 minutes, runnable the moment the build installs
+
+Everything here needs only the app and a phone. Nothing waits for a particular
+workout, a race day, a second runner, or an observation window. Run this first;
+if any of it fails, stop and report rather than continuing to the long-horizon
+sections.
+
+| # | Do this | Pass looks like |
+|---|---|---|
+| 1 | **Rapid day taps.** Tap five different days in the week strip as fast as you can. | Each renders immediately. No spinner, no blank, no "Can't reach faff." The top bar, strip and hero stay put — only the content changes. |
+| 2 | **Repeated week swipes.** Swipe back four weeks and forward four, quickly. | Same. Layout never jumps; no per-day loading shell. |
+| 3 | **Offline launch.** Airplane Mode ON, force-quit, relaunch, browse from plan start to race day. | Every date opens from the local snapshot. No blocking request, no error banner. |
+| 4 | **Recovery after reconnection.** Airplane Mode OFF, wait ~15 s on Today. | Content is never replaced by a loading shell or a blank while it refreshes. |
+| 5 | **Today → Run identity.** Browse to a FUTURE date on Today, then open the Run tab. | Run offers **today's** workout, not the browsed one. |
+| 6 | **Phone/Watch start lock.** Start a run on the watch, then try to start on the phone. Then the reverse. | Refused both ways, with a reason. |
+| 7 | **Normal Watch end clears the lock.** End the watch run normally, then start on the phone. | Allowed. |
+| 8 | **Treadmill automatic transition.** Start a treadmill session on a structured day; let the warm-up run out untouched. | The phase advances on its own; the header changes with it. |
+| 9 | **Skip and End confirmations.** Tap Skip. Tap End. | Each asks before acting. After confirming Skip, the header does not stay on the phase you left. |
+| 10 | **Live HR freshness.** Watch the HR field for ~30 s during a treadmill session. | It updates, and says so when it is stale rather than showing a frozen number as current. |
+| 11 | **Audio/haptic cue.** Cross a phase boundary with the volume up. | Cue fires on the speaker and at the wrist. |
+| 12 | **Post-run single execution.** Finish, let HealthKit sync. | The day shows **one** run, not two. |
+| 13 | **Prescription vs override vs execution.** On the post-run card. | Three visibly separate things: what was asked, what you changed mid-run, what you actually did. |
+| 14 | **Return from Run/post-run.** Back out to Today, then to another date and back. | Today is where you left it; no reload, no shell. |
+
+**HRFLATLINE-1 note for #10:** your 2026-09-03 hill session recorded eight
+distinct HR values across the whole workout, holding 134 bpm through three reps
+and reading 103 during Hill 5. If the live field looks frozen during this test,
+that is the same device artefact and is now refused as evidence rather than
+graded — but it is worth telling me whether the wrist itself looks stuck.
+
+---
+
+## LONG-HORIZON · explicitly open, not closed
+
+These need something that has not happened yet. They are listed so nobody
+mistakes their absence for a pass.
+
+| Scenario | What it needs |
+|---|---|
+| Supplemental run does not seal a prescription | A second runner, or an unlinked easy run on a quality day |
+| Race warm-up does not seal the race | A race day |
+| Over-run matching end to end on a fresh ingest | A run that goes materially long, ingested after `39d69b71` |
+| Rescheduling preserves identity | A deliberate reschedule, then a run on the new date |
+| Delayed duplicate creates no second seal | A late HealthKit or Strava arrival |
+| Treadmill resume gap over a long background | An interrupted session left backgrounded for minutes |
+| Watch race plan carries THIS race | Race morning |
+| Adaptation proposes an increase in production | Two qualifying threshold sessions inside 28 days, and the shadow period |
+
+---
+
 ## A · treadmill runtime — 8 minutes, indoors
 
 `TreadmillStateMachineTests` names its three uncoverable behaviours directly:

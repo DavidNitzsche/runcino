@@ -75,6 +75,7 @@ import {
 } from '@/lib/adaptation/canonical/input';
 import { gradeStimulus, type StimulusInput } from '@/lib/adaptation/canonical/stimulus';
 import { workHrCeilingFor } from '@/lib/adaptation/canonical/work-hr-ceiling';
+import { workTraceIsCredible } from '@/lib/adaptation/canonical/hr-trace-credibility';
 import {
   asRunData, runDay, runDaySql, runDistanceMi, runPaceSecPerMi, runAvgHr, runPhases,
   runNotMergedSql, splitsWithHrAndPace, type RunData,
@@ -359,9 +360,49 @@ function buildGradedSession(args: {
   };
 }
 
+/**
+ * HRFLATLINE-1 (2026-09-04) · reliable means MEASURED, not merely present.
+ *
+ * This asked only whether the run-level average sat in a human range. The
+ * owner's 2026-09-03 hill session averages about 125 and sails through, and its
+ * trace is not a heart rate: eight distinct values across 21 phases and ~460
+ * samples, Hill 1 holding exactly 134 bpm for all 18 samples of a 60-second
+ * rep, Hill 5 holding 103. A heart rate does not do that, and it does not FALL
+ * into a hill rep.
+ *
+ * HRPHASE-1, landed the same day, correctly stopped discarding those readings —
+ * `phaseAvgHr` now derives a phase mean from `hrSamples` when no top-level
+ * `avgHr` exists, because throwing away a reading that is sitting on the row is
+ * not honest. The consequence is that these held values now BECOME the numbers
+ * C4 grades against, and the failure runs both ways: 103 bpm reads as a
+ * comfortably-under-ceiling session that was never measured, and a held-high
+ * value reads as an over-cooked one.
+ *
+ * Rule 11's other half: "don't know" is not "failed", and PRESENT is not
+ * READABLE. Scoped deliberately to the ADAPTATION evidence path, where a wrong
+ * HR moves a capacity belief. What the runner SEES is `runPhases`' question and
+ * is not changed here — see the report for that follow-up.
+ */
 function isHrReliable(run: RunData): boolean {
   const avg = runAvgHr(run);
-  return avg != null && avg > 60 && avg < 220;
+  if (avg == null || avg <= 60 || avg >= 220) return false;
+  // The RAW phases, not `runPhases`. The normalizer exposes the derived
+  // `avgHr` and not the samples it came from, and widening a shared type that
+  // every surface reads — for a check only the evidence path needs — would be
+  // the wrong trade. Read here, judged here.
+  const raw = Array.isArray((run as { phases?: unknown }).phases)
+    ? ((run as { phases?: unknown[] }).phases ?? [])
+    : [];
+  const work = raw
+    .filter((p): p is Record<string, unknown> =>
+      !!p && typeof p === 'object' && (p as Record<string, unknown>).type === 'work')
+    .map((p) => ({
+      label: typeof p.label === 'string' ? p.label : null,
+      samples: (Array.isArray(p.hrSamples) ? p.hrSamples : [])
+        .map((x) => (x && typeof x === 'object' ? (x as Record<string, unknown>).bpm : null))
+        .filter((n): n is number => typeof n === 'number' && Number.isFinite(n)),
+    }));
+  return workTraceIsCredible(work).credible;
 }
 
 /** Long-run thirds from mile splits · see file header for the coarseness

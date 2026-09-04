@@ -54,21 +54,43 @@ Checked rather than assumed — the one item that looked web-shaped is not:
 | S4-AUDIT | shared → iPhone + Watch | Live 15-week CIM block audited week by week | implemented (audit) |
 | S5-VERDICT | shared → iPhone + Watch | Adaptation replay + shadow + promote/hold — **HOLD** | implemented (audit) |
 | S7-INVENTORY | shared → iPhone + Watch | Race-number inventory: 9 quantities, one name each, coherent | implemented (audit) |
+| HRCEILING-1 | shared → iPhone + Watch | Threshold sessions graded against a 149 bpm easy-day cap while LTHR is 168 | implemented |
+| HRCHANNEL-1 | shared → iPhone + Watch | An absent HR ceiling read as a breached one; every post-ZONEBAND-1 quality session was ungradeable as evidence | implemented |
+| HRFLATLINE-1 | shared → iPhone | A held HR value graded as a measurement — 8 distinct bpm across 21 phases | implemented |
+| GRADETRACE-1 | shared | The replay records WHY a grade does not count, not just that it does not | implemented |
+| NATIVECI-1 | iPhone + Watch | `native-check.yml` — no workflow had ever compiled a Swift file | implemented |
+| AUDITCI-1 | shared | `audit-suite.yml` — a skipped production audit now FAILS instead of passing green | implemented |
+| TODAY-RECON | iPhone | Today/week-strip handback verified claim by claim; §5 closed | implemented (audit) |
+| TUNEUP-RETRACTION | shared | Three fifths of the TUNEUPTYPE-1 finding retracted, with a gate | implemented |
 
 ---
 
 ## Open, in priority order
 
-| # | Surface | Item | Blocker |
-|---|---|---|---|
-| 1 | iPhone + Watch | **Physical-device verification** — PHYSICAL-TESTS.md against build 275 | **David only** |
-| 2 | shared → iPhone + Watch | TUNEUPTYPE-1 consumer-side fix (5 sites ask "is this row in a race week") | none — scoped |
-| 3 | shared → iPhone + Watch | Adaptation: make the threshold-direction gate readable (85% data blocks) before promotion | none |
-| 4 | iPhone | Post-run reconciliation | **collision** — another session is live in `TodayAfterV5`/`v5-today.ts` |
-| 5 | iPhone | Today integration | **their handback** |
-| 6 | — | S4-1: the long run stops developing six weeks out | **a coaching decision, David's** |
+| # | Surface | Item | Owner | Blocker |
+|---|---|---|---|---|
+| 1 | iPhone + Watch | **Ship the integrated build** — everything below the line is merged and unshipped | next session | none |
+| 2 | iPhone + Watch | **Physical device pass** — SMOKE (6 min) then the rest of PHYSICAL-TESTS.md | **David** | a device |
+| 3 | shared | Adaptation promotion — shadow period on production + retire the 3 legacy mutators in ONE change | **David** (live authority) | calendar time, then a decision |
+| 4 | shared | `audit-suite.yml` needs the `DATABASE_URL_RO` repository secret | **David** | a credential only he can add |
+| 5 | shared | S4-1 · the long run stops developing six weeks out | **David** (coaching call) | see BASELINE-PLAN-AUDIT |
+| 6 | iPhone | Display-side flat-line HR — `runPhases` still surfaces a held value to the runner; HRFLATLINE-1 is scoped to evidence only | next session | none |
+| 7 | shared | `_durability_anchor.audit.test.ts` flakes at vitest's 5s default under full-suite load against the live DB | next session | none |
+| 8 | shared | S4-3 · the B 10K is tapered harder than the B half (whole-week rounding in doctrine-bound tables) | table owner | doctrine |
+| 9 | iPhone | MOVE-A-RUN not built — the runner moved his week by hand in the backend | parked | product decision |
+| 10 | iPhone | TFCLAIM-1 · build 272's commit message credits a fix authored 5h38m after upload | resolved by construction in the next build's mapping | none |
 
----
+### Merged, deployed, NOT shipped — the whole point of the next build
+
+| Item | Commit | Surface |
+|---|---|---|
+| REDUNDANT-PACE-1 · work pace no longer repeats the header | `39d69b71` | iPhone |
+| ACTIVITY-PLACEMENT-1 · activity renders under the hero | `39d69b71` | iPhone |
+| TODAYSHELL-1, HEROPANEL-1, STALEDEBOUNCE-1, CACHEDAT-1, PANELMOTION-2 | various | iPhone |
+| WORKOUTPHASES-1/2, HRPHASE-1, HRGRADE-1 | `645d540e`, `ea901bea`, `0e80296d` | iPhone |
+
+`WORKOUTPHASES-1/2` ARE in build 275; the rest are not. Exact per-build
+ancestry is in `TODAY-RECONCILIATION.md` and the final HANDBACK.
 
 ## Findings raised, not owned by this session
 
