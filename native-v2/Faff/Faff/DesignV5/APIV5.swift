@@ -1655,7 +1655,18 @@ extension API {
         let (data, http) = try await API.authedGET(url)
 
         if (200...299).contains(http.statusCode) {
-            let decoded = try JSONDecoder().decode(T.self, from: data)
+            // STAGE1-DIAG-1 · the transport already recorded its own success
+            // in `authedSend`; a decode failure here is a SEPARATE fact (the
+            // server answered, the body didn't parse) and gets its own
+            // standalone diagnostics entry rather than mutating that one.
+            let decoded: T
+            do {
+                decoded = try JSONDecoder().decode(T.self, from: data)
+            } catch {
+                await RequestDiagnosticsLog.shared.recordDecodeFailure(
+                    endpoint: url.path, dateParam: url.faffDiagnosticDateParam, error: error)
+                throw error
+            }
             if let cache { AppCache.writeRaw(cache, data: data) }
             // TODAYPERSIST-1 · a dated read (a day the runner navigated to,
             // not "today" itself) has its own disk slot per date, so a
