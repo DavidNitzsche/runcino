@@ -174,6 +174,27 @@ struct BeltTracker {
         self.lastTickAt = now
     }
 
+    /// Reconstruct a tracker's totals from a persisted checkpoint, at
+    /// relaunch — never used mid-run. `now` re-anchors the live clock so the
+    /// very next `advance(to:)` continues the SAME integral instead of
+    /// restarting it; the wall-clock gap between the checkpoint's own
+    /// `updatedAt` and `now` is credited by that first `advance` exactly the
+    /// way any other backgrounding gap is (see the file header's gap
+    /// policy) — this initializer does not itself add that gap, so callers
+    /// must not double-credit it elsewhere.
+    init(now: Date, elapsedSec: Double, distanceMi: Double, elevGainFt: Double,
+         pausedSec: Double, unmeasuredSec: Double, unmeasuredMi: Double, droppedSec: Double) {
+        self.lastTickAt = now
+        self.elapsedSec = elapsedSec
+        self.distanceMi = distanceMi
+        self.elevGainFt = elevGainFt
+        self.pausedSec = pausedSec
+        self.unmeasuredSec = unmeasuredSec
+        self.unmeasuredMi = unmeasuredMi
+        self.droppedSec = droppedSec
+        self.started = true
+    }
+
     /// Whole-run rounded reads, for the UI and the payload.
     var elapsedSecInt: Int { Int(elapsedSec.rounded()) }
     /// True once enough of the run's distance was credited across seconds
