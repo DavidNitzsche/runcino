@@ -891,7 +891,11 @@ struct RescheduleSheetV5: View {
                                                     token: m.token,
                                                     unavailable: cannotRun.sorted())
             switch out {
-            case .applied(let a): stage = .done(a.summary)
+            case .applied(let a):
+                stage = .done(a.summary)
+                // PLANSNAPSHOT-1 · the block just changed under the runner's
+                // feet — a fresh sync is one of the named triggers.
+                NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
             case .refused(let text): refusal = text
             case .failed: refusal = "That did not go through, and nothing was changed. Try again."
             }
@@ -905,7 +909,9 @@ struct RescheduleSheetV5: View {
         defer { busy = false }
         do {
             switch try await API.undoReschedule(decisionId: decisionId) {
-            case .undone: undone = true
+            case .undone:
+                undone = true
+                NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
             case .refused(let text): refusal = text
             case .failed: refusal = "That did not go through. Your plan is as the change left it."
             }

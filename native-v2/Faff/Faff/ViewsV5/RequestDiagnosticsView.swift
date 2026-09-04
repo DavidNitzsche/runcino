@@ -16,10 +16,14 @@ struct RequestDiagnosticsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var entries: [RequestDiagnosticEntry] = []
     @State private var refreshTask: Task<Void, Never>?
+    @State private var snapshotTick = 0
 
     var body: some View {
         VStack(spacing: 0) {
             AppBar(title: "Request log", onBack: { dismiss() })
+
+            planSnapshotSection
+                .id(snapshotTick) // forces the section to re-read PlanSnapshotStore on each poll tick
 
             if entries.isEmpty {
                 Spacer()
@@ -61,13 +65,73 @@ struct RequestDiagnosticsView: View {
         .task {
             // Polled rather than pushed — this is a debug view, not a
             // production data path, and a 1s cadence is plenty to watch
-            // a live navigation session.
+            // a live navigation session. `PlanSnapshotStore` is a plain
+            // class (not `@Published`), so `snapshotTick` is what forces
+            // `planSnapshotSection` to re-read it on the same cadence.
             while !Task.isCancelled {
                 entries = await RequestDiagnosticsLog.shared.snapshot()
+                snapshotTick += 1
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
     }
+
+    /// PLANSNAPSHOT-1 · the diagnostics the original brief asked for:
+    /// local snapshot version, sync state, last successful sync, last real
+    /// error, active request generation (that last one shared with
+    /// STAGE1-DIAG-1's own request log below, since a sync IS a request).
+    @ViewBuilder
+    private var planSnapshotSection: some View {
+        let store = PlanSnapshotStore.shared
+        VStack(alignment: .leading, spacing: V5.S.s4) {
+            Text("PLAN SNAPSHOT")
+                .font(.faffText(TypeScaleV5.label12))
+                .foregroundStyle(V5.textQuiet)
+            diagnosticLine("plan", store.current?.plan_id ?? "none")
+            diagnosticLine("version", store.current?.plan_version ?? "none")
+            diagnosticLine("block", boundsLine(store.current))
+            diagnosticLine("days cached", "\(store.current?.days.count ?? 0)")
+            diagnosticLine("sync state", syncStateLine(store.syncState))
+            diagnosticLine("sync generation", "\(store.syncGeneration)")
+            diagnosticLine("last successful sync", store.lastSuccessfulSyncAt.map { Self.timeFormatter.string(from: $0) } ?? "never")
+            if let err = store.lastError {
+                diagnosticLine("last error", err)
+            }
+        }
+        .padding(.horizontal, V5.S.gutter)
+        .padding(.top, V5.S.s12)
+    }
+
+    private func diagnosticLine(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: V5.S.s8) {
+            Text(label).foregroundStyle(V5.textQuiet)
+            Text(value).foregroundStyle(.white).lineLimit(2)
+        }
+        .font(.faffText(TypeScaleV5.label12))
+    }
+
+    private func boundsLine(_ snapshot: PlanSnapshot?) -> String {
+        guard let snapshot else { return "none" }
+        guard let start = snapshot.plan_start_iso, let end = snapshot.plan_end_iso else {
+            return snapshot.message ?? "no bounds"
+        }
+        return "\(start) .. \(end)"
+    }
+
+    private func syncStateLine(_ state: PlanSnapshotStore.SyncState) -> String {
+        switch state {
+        case .idle: return "idle"
+        case .syncing: return "syncing"
+        case .failed(let reason): return "failed: \(reason)"
+        }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .medium
+        return f
+    }()
 
     @ViewBuilder
     private func row(_ entry: RequestDiagnosticEntry) -> some View {
