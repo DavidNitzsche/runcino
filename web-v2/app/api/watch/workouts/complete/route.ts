@@ -117,7 +117,6 @@ interface WatchCompletionPhaseBody {
   // `NormalizedPhase` for the read side.
   targetSpeedMph?: number;
   targetInclinePct?: number;
-  paceShape?: string;
   tolerancePaceSPerMi?: number | null;
   hrRole?: string;
   hrTargetBpm?: number | null;

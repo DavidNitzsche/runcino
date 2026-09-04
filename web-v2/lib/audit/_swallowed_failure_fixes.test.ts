@@ -59,13 +59,17 @@ describe('a parameter may not be asked to be two types at once', () => {
     expect(s).toContain('revoked = null');
   });
 
-  it('isDaySealed pins $1 on both sides of the sum', () => {
-    const s = sql('lib/plan/seal.ts');
-    // `runs.user_uuid` is uuid; the second subquery forced $1 to text.
-    expect(s).toContain('WHERE user_uuid = $1::uuid');
-    expect(s).toContain('= $1::text');
-    // A guard that cannot see must seal, not unseal.
-    expect(read('lib/plan/seal.ts')).toContain('if (r === null) return true;');
+  it('isDaySealed fails closed when the resolver cannot read', () => {
+    // SEALING-IDENTITY-1 (2026-09-04) replaced the raw date-EXISTS SQL this
+    // test used to pin ($1 typed both uuid and text on either side of the
+    // sum) with delegation to the canonical day-resolver — there is no SQL
+    // left in this function to type wrong. The safety property this test
+    // protects — a guard that cannot see must seal, not unseal — is
+    // preserved by the resolver-failure branch below; the shape changed,
+    // the promise did not.
+    const s = read('lib/plan/seal.ts');
+    expect(s).toContain('resolveDayExecutions(userUuid, dateIso).catch');
+    expect(s).toContain('if (day === null) return true;');
   });
 
   /* DELETED 2026-09-02 · `coach_proposals inserts cast the shared parameter

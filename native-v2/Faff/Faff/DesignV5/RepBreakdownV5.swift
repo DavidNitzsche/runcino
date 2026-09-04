@@ -503,6 +503,9 @@ struct RepBreakdownV5: View {
     private var timelineStrip: some View {
         let total = pieces.reduce(0.0) { $0 + Self.weight($1) }
         return GeometryReader { geo in
+            // v5-spacing-exempt: a hairline seam between thin proportional
+            // segments, not an app-rhythm gap — the ladder's rungs all read
+            // as visible spacing at this scale.
             HStack(spacing: 1.5) {
                 ForEach(pieces) { p in
                     let w = total > 0 ? Self.weight(p) / total : 0

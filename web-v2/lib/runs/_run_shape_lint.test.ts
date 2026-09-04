@@ -191,7 +191,6 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
       'pace_target_s_per_mi are plan_workouts columns, not jsonb). Mixed query · migrate ' +
       'the run half only, carefully.',
     'lib/plan/recompute-paces.ts': 'Day expression only · straightforward, next batch.',
-    'lib/plan/seal.ts': 'Day expression only · straightforward, next batch.',
     'lib/plan/seed-from-onboarding.ts': 'Day + distance · straightforward, next batch.',
 
     /* ── coach surfaces · read-heavy, display-path ────────────────────── */
@@ -326,7 +325,6 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
      * and the long read uses `runNotMergedSql` / `runDistanceMiSql` /
      * `runDaySql`. Nothing there hand-rolls the canonical filter any more. */
     'lib/plan/recompute-paces.ts': 'Next batch.',
-    'lib/plan/seal.ts': 'Next batch.',
     'lib/plan/seed-from-onboarding.ts': 'Next batch.',
 
     /* ── coach surfaces ────────────────────────────────────────────────── */
