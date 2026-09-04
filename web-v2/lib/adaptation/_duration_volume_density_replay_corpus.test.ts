@@ -328,7 +328,20 @@ describe('DURATION 3 · taper-masked absorption — live (unfiltered) vs. not-ye
   const filteredRealFields = filterExecutionEvidenceByPrescribedWindow(raw, [], realWindows);
   const filteredRealVerdict = classifyAdaptation({ ...BLANK, ...CONSISTENCY, ...filteredRealFields });
 
-  it('today, LIVE: the unfiltered (taper-diluted) verdict blocks DURATION even though the long run itself was tolerated', () => {
+  it('today, LIVE: RULE8CLOSE-1 (2026-09-04) already fixed this — the unfiltered verdict no longer blocks DURATION', () => {
+    // This test used to document a LIVE bug: the unfiltered read blocked
+    // DURATION off 5 taper-window misses averaged in as hard zeros, even
+    // though the long run itself was tolerated — the exact gap the
+    // not-yet-promoted `representative_execution` shadow mode existed to
+    // paper over. `readExecution` in `adaptation-model.ts` no longer scores a
+    // MISSED session at all (excluded from the training-credit average,
+    // same treatment `telemetryCompromised` sessions now get) — absence of
+    // evidence is not evidence of poor adaptation, applied to every caller
+    // of `classifyAdaptation` at once, not just this one. The 3 real clean
+    // sessions outside the taper carry the LIVE read to `normal`/PROGRESS on
+    // their own; the 5 taper misses inside it are correctly weightless
+    // either way. The live bug this test named is closed as a consequence,
+    // not worked around a second time.
     console.log('[DURATION-3 unfiltered/actual_load_absorption]', fmtVerdict(unfilteredVerdict));
     const i = baseInput();
     i.absorption = unfilteredVerdict;
@@ -337,13 +350,18 @@ describe('DURATION 3 · taper-masked absorption — live (unfiltered) vs. not-ye
     const p = durationOf(set);
     console.log('[DURATION-3 LIVE]', fmtMag(p));
 
-    expect(unfilteredVerdict.band).toBe('marginal');
-    expect(p?.decision).toBe('HOLD');
-    expect(p?.reasonCodes).toContain('ABSORPTION_MARGINAL');
+    expect(unfilteredVerdict.band).toBe('normal');
+    expect(p?.decision).toBe('PROGRESS');
+    expect(p?.reasonCodes).toContain('LONG_RUN_TOLERATED_WITHOUT_COLLAPSE');
     expect(contradictionsIn(set)).toEqual([]);
   });
 
-  it('counterfactual: the representative_execution verdict (not wired live) would permit DURATION to read the same long run', () => {
+  it('the not-yet-promoted representative_execution verdict agrees with the now-fixed live read, independently', () => {
+    // RULE8CLOSE-1 (2026-09-04): this test used to be the ONLY reading that
+    // got this fixture right, ahead of the live path getting the same fix.
+    // Now both readers independently reach the identical answer — this test
+    // stays as confirmation that the shadow-mode window filter and the
+    // corrected training-credit average agree, not as the only correct path.
     console.log('[DURATION-3 filtered/representative_execution]', fmtVerdict(filteredRealVerdict));
     const i = baseInput();
     i.absorption = filteredRealVerdict;
@@ -358,23 +376,37 @@ describe('DURATION 3 · taper-masked absorption — live (unfiltered) vs. not-ye
     expect(contradictionsIn(set)).toEqual([]);
   });
 
-  it('FALSIFY · calling the real filter with NO prescribed windows (the "filtering is inert" state) collapses back to the live HOLD', () => {
-    // `load.ts` is off-limits to edit, so the break is applied at the INPUT
-    // the real, unmodified `filterExecutionEvidenceByPrescribedWindow` is
-    // given, not to its source: an empty window list is exactly the state
-    // that exists when `isPrescribedNonNormal` can exclude nothing.
+  it('windows=[] no longer distinguishes this fixture from real filtering — RULE8CLOSE-1 fixed the shared root cause, so the filter is genuinely inert here now, and that is proven rather than assumed', () => {
+    // This used to falsify "the real windows were load-bearing" by showing an
+    // empty window list collapses back to the (then-broken) live HOLD. Now
+    // the live read is fixed at the SOURCE (`readExecution` no longer scores
+    // a MISSED session, in or out of any window), so windows=[] collapses to
+    // the SAME correct answer every other reading in this block reaches —
+    // not because the filter stopped working, but because the thing it was
+    // compensating for no longer exists. `load.ts` stays off-limits to edit;
+    // this only proves what its real, unmodified output does today.
+    //
+    // The filter mechanism ITSELF is still real and still does something —
+    // proven directly, not inferred from a verdict that no longer moves: with
+    // no windows, `isPrescribedNonNormal` can exclude nothing, so ALL 8 raw
+    // rows survive; with the real windows, only the 3 rows outside the taper
+    // survive (the 5 taper misses are dropped as prescribed-non-normal, not
+    // kept as negative evidence — there is no positive evidence in this
+    // fixture for MASKING-1's negative-evidence carve-out to have to rescue).
     const brokenFields = filterExecutionEvidenceByPrescribedWindow(raw, [], []);
     const brokenVerdict = classifyAdaptation({ ...BLANK, ...CONSISTENCY, ...brokenFields });
     console.log('[DURATION-3 FALSIFY · windows=[]]', fmtVerdict(brokenVerdict));
-    expect(brokenVerdict.band).toBe(unfilteredVerdict.band); // collapses to the live read
-    expect(brokenVerdict.band).not.toBe(filteredRealVerdict.band); // and is NOT the counterfactual
+    expect(brokenFields.keySessionExecutions).toHaveLength(8);
+    expect(filteredRealFields.keySessionExecutions).toHaveLength(3);
+    expect(brokenVerdict.band).toBe(unfilteredVerdict.band);
+    expect(brokenVerdict.band).toBe(filteredRealVerdict.band);
 
     const i = baseInput();
     i.absorption = brokenVerdict;
     i.longRun.recent = [longRun('2026-08-24')];
     const set = composeAdaptation(i);
     console.log('[DURATION-3 FALSIFY compose]', fmtMag(durationOf(set)));
-    expect(durationOf(set)?.decision).toBe('HOLD'); // the wrong verdict, confirming the real windows were load-bearing
+    expect(durationOf(set)?.decision).toBe('PROGRESS');
   });
 });
 

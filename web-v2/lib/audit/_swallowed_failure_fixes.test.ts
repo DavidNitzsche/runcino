@@ -70,7 +70,10 @@ describe('a parameter may not be asked to be two types at once', () => {
    * the same resolution this file already gave the `illness_adjust`/
    * `injury_adjust` casts below when their INSERTs were deleted outright.
    * The one behavior worth keeping — "a guard that cannot see must seal, not
-   * unseal" — is re-pinned against the new code's own null check. */
+   * unseal" — is re-pinned against the new code's own null check, and
+   * proven the stronger, behavioral way in
+   * `lib/plan/_sealing_identity.test.ts`'s "a resolver failure seals
+   * conservatively, never unseals" case. */
   it('isDaySealed still seals (never unseals) when its resolver cannot see the day', () => {
     expect(read('lib/plan/seal.ts')).toContain('if (day === null) return true;');
   });
