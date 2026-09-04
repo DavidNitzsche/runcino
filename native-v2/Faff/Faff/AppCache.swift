@@ -83,7 +83,15 @@ enum AppCache {
     /// `UserDefaults.standard` rather than the App Group container —
     /// none of these payloads are sensitive (all readable on web too)
     /// and we don't need cross-process visibility.
-    private static let store: UserDefaults = .standard
+    ///
+    /// `var`, not `let` — RETENTION-1's own tests swap this to an isolated
+    /// suite for the duration of a test (see `AppCacheRetentionTests`) so
+    /// eviction-count assertions are never polluted by whatever real
+    /// dynamic keys this machine's simulator has already written, and
+    /// restore `.standard` in `tearDown`. Production code must never
+    /// reassign it — there is no call to `store = …` anywhere outside that
+    /// test file.
+    static var store: UserDefaults = .standard
     private static let prefix = "faff.cache."
 
     // MARK: - Raw data primitives
@@ -171,12 +179,76 @@ enum AppCache {
     // `reconcileDayCache` — a second, wall-clock-based expiry here would
     // just be a competing, worse-reasoned answer to a question that
     // already has an owner.
+    //
+    // RETENTION-1 (2026-09-04) is a DIFFERENT question from staleness, and
+    // answering it does not reopen the paragraph above: staleness asks "is
+    // this entry still TRUE", retention asks "is this entry still worth the
+    // disk space regardless of truth". Nothing removed an old entry once a
+    // newer one superseded it or the runner stopped visiting it, so a
+    // runner who browses widely over a long season would accumulate
+    // `v5.day.*`/`v5.week.*` keys in `UserDefaults` without bound — storage
+    // `UserDefaults` was never designed to hold indefinitely. Each write
+    // now also stamps a per-entry timestamp (LRU, not staleness — a read
+    // touches it too, so a date the runner keeps coming back to, race day
+    // say, outlives one they visited once and never again) and, past a cap
+    // per KIND, evicts the oldest-touched entries of that same kind until
+    // back under it. The two kinds are capped independently — writing many
+    // days never evicts a week and vice versa — because they answer
+    // different questions at different granularity, matching how they're
+    // already read (`seedCachesFromDisk`'s `acceptDay`/`acceptWeek`, each a
+    // separate loop over its own kind).
+    private static let dynamicKindCaps: [(prefix: String, cap: Int)] = [
+        // ~8-9 weeks of daily entries — comfortably covers the current
+        // block plus its surrounding context, the same "nearby" window
+        // `prefetchAround`/`seedCachesFromDisk` already prefetch/restore.
+        ("v5.day.", 60),
+        // A full marathon block is commonly ~16-18 weeks.
+        ("v5.week.", 20),
+    ]
+
     static func writeRawDynamic(_ dynamicKey: String, data: Data) {
         store.set(data, forKey: prefix + dynamicKey)
+        touchDynamicEntry(dynamicKey)
+        enforceRetention(after: dynamicKey)
     }
 
     static func readRawDynamic(_ dynamicKey: String) -> Data? {
-        store.data(forKey: prefix + dynamicKey)
+        guard let data = store.data(forKey: prefix + dynamicKey) else { return nil }
+        // LRU touch: a re-read is evidence this entry is still worth
+        // keeping, same as a fresh write would be.
+        touchDynamicEntry(dynamicKey)
+        return data
+    }
+
+    private static func touchDynamicEntry(_ dynamicKey: String) {
+        store.set(Date(), forKey: prefix + dynamicKey + ".at")
+    }
+
+    /// Evicts the oldest-touched entries of `justWritten`'s own kind
+    /// (`v5.day.` or `v5.week.`) until that kind is back at or under its
+    /// cap. A no-op for any key that doesn't match a known kind prefix —
+    /// this only polices the two kinds it knows about, never the fixed
+    /// `Key` slots above, which have no growth problem to begin with (one
+    /// slot per case, never per date).
+    private static func enforceRetention(after justWritten: String) {
+        guard let kind = dynamicKindCaps.first(where: { justWritten.hasPrefix($0.prefix) }) else { return }
+        let fullPrefix = prefix + kind.prefix
+        let timestampSuffix = ".at"
+        let allKeys = store.dictionaryRepresentation().keys
+        let dataKeys = allKeys.filter { $0.hasPrefix(fullPrefix) && !$0.hasSuffix(timestampSuffix) }
+        guard dataKeys.count > kind.cap else { return }
+
+        let byRecency = dataKeys
+            .map { key -> (key: String, at: Date) in
+                let at = store.object(forKey: key + timestampSuffix) as? Date ?? .distantPast
+                return (key, at)
+            }
+            .sorted { $0.at < $1.at }   // oldest first
+
+        for stale in byRecency.prefix(dataKeys.count - kind.cap) {
+            store.removeObject(forKey: stale.key)
+            store.removeObject(forKey: stale.key + timestampSuffix)
+        }
     }
 
     // MARK: - Identity binding
