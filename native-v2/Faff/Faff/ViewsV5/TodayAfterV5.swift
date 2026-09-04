@@ -75,6 +75,9 @@ struct TodayAfterV5: View {
     /// Page the week strip. -1 back a week, +1 forward. Async — see
     /// WKSTRIP-RACE-1 in ChartsV5.swift; the strip's recentre awaits this.
     var onPageWeek: (Int) async -> Void = { _ in }
+    /// BOUNDARY-1 · straight through to `TodayHeaderStripV5`.
+    var canPageBackward: Bool = true
+    var canPageForward: Bool = true
     var initials: String? = nil
     /// Job 1 · "report sick" — a runner who just finished and feels off
     /// should not have to wait for tomorrow's Today to say so. Same
@@ -126,12 +129,16 @@ struct TodayAfterV5: View {
          selectedDateISO: String? = nil,
          onBackToToday: (() -> Void)? = nil,
          onPageWeek: @escaping (Int) async -> Void = { _ in },
+         canPageBackward: Bool = true,
+         canPageForward: Bool = true,
          initials: String? = nil,
          onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }) {
         self.viewingDayLabel = viewingDayLabel
         self.selectedDateISO = selectedDateISO
         self.onBackToToday = onBackToToday
         self.onPageWeek = onPageWeek
+        self.canPageBackward = canPageBackward
+        self.canPageForward = canPageForward
         self.initials = initials
         self.model = model
         self.onOpenAccount = onOpenAccount
@@ -411,7 +418,9 @@ struct TodayAfterV5: View {
                 initials: initials,
                 onAccount: onOpenAccount,
                 onPickDay: { day in onPickDay(day.id) },
-                onPageWeek: { await onPageWeek($0) }
+                onPageWeek: { await onPageWeek($0) },
+                canPageBackward: canPageBackward,
+                canPageForward: canPageForward
             )
 
             VStack(alignment: .leading, spacing: V5.S.s2) {

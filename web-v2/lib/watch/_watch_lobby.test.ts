@@ -45,6 +45,8 @@ function week(): PlanWeekResult {
     plan_id: 'plan-1',
     week_start_iso: '2026-08-17',
     week_end_iso: '2026-08-23',
+    plan_start_iso: null,
+    plan_end_iso: null,
     today_iso: '2026-08-20',
     days: [
       day({ date_iso: '2026-08-17', dow: 1, distance_mi: 6, is_past: true, done_mi: 6.2, completedRunId: 'r1' }),
@@ -97,6 +99,7 @@ describe('week strip · a projection, never a re-derivation', () => {
   it('is null when there is no window to draw', () => {
     expect(projectWeekStrip({
       plan_id: null, week_start_iso: null, week_end_iso: null,
+      plan_start_iso: null, plan_end_iso: null,
       today_iso: '2026-08-20', days: [], message: 'No active plan.',
     })).toBeNull();
   });
@@ -149,6 +152,7 @@ describe('rest day · every clause drops rather than guesses', () => {
   it('falls all the way back to the bare line when nothing is known', () => {
     const raw: PlanWeekResult = {
       plan_id: 'plan-1', week_start_iso: '2026-08-17', week_end_iso: '2026-08-23',
+      plan_start_iso: null, plan_end_iso: null,
       today_iso: '2026-08-20',
       days: week().days.map((d) => ({ ...d, type: 'rest', distance_mi: 0, done_mi: null, completedRunId: null })),
     };

@@ -201,6 +201,9 @@ struct TodayBeforeV5: View {
     /// Page the week strip. -1 back a week, +1 forward. Async — see
     /// WKSTRIP-RACE-1 in ChartsV5.swift; the strip's recentre awaits this.
     var onPageWeek: (Int) async -> Void = { _ in }
+    /// BOUNDARY-1 · straight through to `TodayHeaderStripV5`.
+    var canPageBackward: Bool = true
+    var canPageForward: Bool = true
 
     /// Job 2 · the coach-line entry point onto 18a (`V5Route.pacesMoved`).
     /// Present only when `model.paceNote != nil` — the way in must appear
@@ -362,7 +365,9 @@ struct TodayBeforeV5: View {
                 initials: avatarInitials.isEmpty ? nil : avatarInitials,
                 onAccount: { withAnimation(V5.Motion.sheet) { accountOpen = true } },
                 onPickDay: { day in onPickDay(day.id) },
-                onPageWeek: { await onPageWeek($0) }
+                onPageWeek: { await onPageWeek($0) },
+                canPageBackward: canPageBackward,
+                canPageForward: canPageForward
             )
 
             VStack(alignment: .leading, spacing: V5.S.s2) {
