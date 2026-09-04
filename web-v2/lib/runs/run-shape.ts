@@ -1582,6 +1582,28 @@ export interface NormalizedPhase {
   verdict: PhaseVerdict | null;
   timeInToleranceSec: number | null;
   timeOutOfToleranceSec: number | null;
+  /**
+   * TREADMILL-TARGET-ROUNDTRIP-1 (P0 gap #3) · the treadmill's own belt
+   * target/actual, present ONLY on a treadmill-recorded phase — a by-effort
+   * hill rep has no `targetPaceSPerMi` on purpose (Research/04: outdoor
+   * grade varies, so a flat pace number would not mean anything), but it DOES
+   * have a real, authored belt speed+incline. Reading `targetSpeedMph` is how
+   * a caller tells "genuinely no target was ever prescribed" apart from
+   * "the target was prescribed in a unit this field does not carry" — the
+   * distinction `readExecution`'s `not_graded` branch needed and did not have
+   * before this. Never used to RECONSTRUCT a pace target — see
+   * `lib/execution/verdict.ts`'s own comment at the one call site that reads
+   * these for exactly that reason.
+   */
+  targetSpeedMph: number | null;
+  actualSpeedMph: number | null;
+  targetInclinePct: number | null;
+  actualInclinePct: number | null;
+  /** `WatchHrRole` round-tripped — `observational` on a by-effort short rep
+   *  (HR has not had time to reach steady state) means this phase's HR is
+   *  real, stored and displayable, just never a compliance signal. Null on
+   *  an era that never sent it (every phase before this round). */
+  hrRole: 'target' | 'observational' | null;
 }
 
 const PHASE_TYPES: readonly string[] = ['warmup', 'work', 'recovery', 'cooldown'];
@@ -1613,6 +1635,11 @@ export function runPhases(d: RunData): NormalizedPhase[] {
       verdict,
       timeInToleranceSec: num(p.timeInToleranceSec),
       timeOutOfToleranceSec: num(p.timeOutOfToleranceSec),
+      targetSpeedMph: pos(p.targetSpeedMph),
+      actualSpeedMph: pos(p.actualSpeedMph),
+      targetInclinePct: pos(p.targetInclinePct),
+      actualInclinePct: pos(p.actualInclinePct),
+      hrRole: p.hrRole === 'target' || p.hrRole === 'observational' ? p.hrRole : null,
     });
   });
   return out;

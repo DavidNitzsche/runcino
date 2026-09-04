@@ -468,9 +468,18 @@ export function isStridePhase(p: GradedPhase, stridesPrescribed: number | null):
   if (p.isStrideSegment) return true;
   // 2 · the same answer arriving as a shape, for a phase graded before
   //     `GradedPhase.isStrideSegment` existed or by a caller that could not
-  //     name the spec. Nothing else in the vocabulary makes a work phase
-  //     `effort`.
-  if (p.shape === 'effort') return true;
+  //     name the spec. This rung's own comment used to read "nothing else in
+  //     the vocabulary makes a work phase `effort`" — TREADMILL-TARGET-
+  //     ROUNDTRIP-1 (P0 gap #3) made that false: a by-effort treadmill hill
+  //     rep is ALSO legitimately `effort`-shaped (doctrine-cited, Research/04
+  //     — outdoor grade varies, so no flat pace target is prescribed) without
+  //     being a stride, and its `paceShape` now round-trips for the first
+  //     time. `targetSpeedMph` is present ONLY on a treadmill-recorded phase
+  //     (no other era's completion payload carries it), so it is what tells
+  //     the two apart — a real hill rep excluded here, a real stride still
+  //     caught. Falsified by `_experience.test.ts`'s "TREADMILL EFFORT" case,
+  //     which read a two-hill-rep session as "two strides" before this line.
+  if (p.shape === 'effort' && p.targetSpeedMph == null) return true;
   // 3 · the label rung, for a caller that graded without the spec but can
   //     supply the count here. Conjunctive, always.
   return stridesPrescribed != null && stridesPrescribed > 0 && looksLikeStrideLabel(p.label);
@@ -569,11 +578,25 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
   }
 
   if (s.verdict === 'not_graded') {
+    /* TREADMILL-TARGET-ROUNDTRIP-1 (P0 gap #3) · "no prescribed pace" is true
+     * and correct for a genuinely open-ended session — but a by-effort
+     * treadmill hill rep ALSO reads `not_graded` (doctrine's own rule: no
+     * pace target on purpose, Research/04 — outdoor grade varies), and it
+     * was reading the identical sentence despite having a real, authored
+     * belt speed+incline the runner could see live on the console the whole
+     * time. `targetSpeedMph`/`targetInclinePct` are round-tripped now (see
+     * `NormalizedPhase`'s own comment) specifically so this branch can tell
+     * the two apart — never to grade a pace out of the belt number, which
+     * doctrine does not license and this still does not do.
+     */
     reasons.push('NO_PACE_TARGET_ON_THE_WORK');
+    const hadTreadmillTarget = work.length > 0 && work.every((p) => p.targetSpeedMph != null);
     return {
       status: 'INDETERMINATE',
-      headline: 'Work done, no target to read it against',
-      summary: `The work phases carried no prescribed pace, so this is a record of what was run rather than a grade.${strideClause}`,
+      headline: hadTreadmillTarget ? 'Work done by treadmill effort, not pace-graded' : 'Work done, no target to read it against',
+      summary: hadTreadmillTarget
+        ? `The work phases were prescribed by treadmill speed and incline, not pace — this is a record of what was run rather than a pace grade.${strideClause}`
+        : `The work phases carried no prescribed pace, so this is a record of what was run rather than a grade.${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'UNKNOWN',
       confidence: 'LOW',
