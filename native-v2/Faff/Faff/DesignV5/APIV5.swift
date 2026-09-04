@@ -1541,6 +1541,7 @@ extension API {
     /// payload, or an outage would erase the screen it was meant to preserve.
     private static func v5<T: Decodable>(_ path: String,
                                          cache: AppCache.Key?,
+                                         dynamicCache: String? = nil,
                                          as: T.Type) async throws -> V5Fetch<T> {
         guard let url = URL(string: API.baseURL.absoluteString + path) else { return .failed }
         let (data, http) = try await API.authedGET(url)
@@ -1548,6 +1549,12 @@ extension API {
         if (200...299).contains(http.statusCode) {
             let decoded = try JSONDecoder().decode(T.self, from: data)
             if let cache { AppCache.writeRaw(cache, data: data) }
+            // TODAYPERSIST-1 · a dated read (a day the runner navigated to,
+            // not "today" itself) has its own disk slot per date, so a
+            // cold relaunch can restore whatever the runner last browsed —
+            // not just today — instead of the loading state re-fetching
+            // it from a network the runner may not have.
+            if let dynamicCache { AppCache.writeRawDynamic(dynamicCache, data: data) }
             return .ok(decoded)
         }
 
@@ -1579,9 +1586,11 @@ extension API {
 
     static func fetchV5Today(date: String? = nil) async throws -> V5Fetch<V5Today> {
         // A dated read is history, not today, so it must not overwrite today's
-        // cache entry.
+        // OWN cache entry — it gets its own dynamic slot instead (TODAYPERSIST-1).
         try await v5("/api/v5/today" + (date.map { "?date=\($0)" } ?? ""),
-                     cache: date == nil ? .v5Today : nil, as: V5Today.self)
+                     cache: date == nil ? .v5Today : nil,
+                     dynamicCache: date.map { "v5.day.\($0)" },
+                     as: V5Today.self)
     }
 
     static func fetchV5Block() async throws -> V5Fetch<V5Block> {
