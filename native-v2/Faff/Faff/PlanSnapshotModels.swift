@@ -78,7 +78,15 @@ struct PlanSnapshotSupplementalRun: Codable, Equatable, Identifiable {
     let indoor: Bool
 }
 
-struct PlanSnapshotDay: Codable, Equatable, Identifiable {
+/// HEROPANEL-1 (2026-09-04) · `V5Number`/`V5Stat` (`DesignV5/APIV5.swift`)
+/// are `Decodable`-only, by design — `V5Number`'s custom decoder carries the
+/// "absent flag reads as MODELLED, never measured" rule that cannot be a
+/// synthesized `Encodable`. Nothing ever encodes a `PlanSnapshotDay` back to
+/// JSON (grepped: `FaffTests` builds fixtures through the memberwise init
+/// below, never `JSONEncoder`), so this is `Decodable`, not `Codable` — the
+/// same posture `PlanSnapshot` itself already takes, one level up, for the
+/// identical reason (see that struct's own header comment).
+struct PlanSnapshotDay: Decodable, Equatable, Identifiable {
     var id: String { date_iso }
     let plan_workout_id: String?
     let date_iso: String
@@ -95,6 +103,86 @@ struct PlanSnapshotDay: Codable, Equatable, Identifiable {
     let treadmill: PlanSnapshotTreadmillGuidance?
     let matched_run: PlanSnapshotMatchedRun?
     let supplemental_runs: [PlanSnapshotSupplementalRun]
+    /// HEROPANEL-1 · the same four fields `V5Panel` (`DesignV5/APIV5.swift`)
+    /// carries for the actual current day, computed server-side by the SAME
+    /// resolver (`dayStateWordFor`) — so every browsed day renders the
+    /// identical hero card `/api/v5/today` draws, never a second, flatter
+    /// template. See `HeroDayPanelV5` (`DesignV5/PanelV5.swift`), the one
+    /// view both this and `TodayBeforeV5`/`TodayAfterV5` now render through.
+    let day_state: String
+    let kicker: String?
+    let dose: V5Number?
+    let stats: [V5Stat]
+
+    var state: V5.DayState { V5.DayState(rawValue: day_state) ?? .easy }
+    var fill: PanelFill { PanelFill.state(state) }
+
+    init(plan_workout_id: String?, date_iso: String, dow: Int, type: String, is_rest: Bool,
+         is_race: Bool, is_quality: Bool, is_long: Bool, distance_mi: Double, sub_label: String?,
+         notes: String?, card: PlanSnapshotCard?, treadmill: PlanSnapshotTreadmillGuidance?,
+         matched_run: PlanSnapshotMatchedRun?, supplemental_runs: [PlanSnapshotSupplementalRun],
+         day_state: String, kicker: String?, dose: V5Number?, stats: [V5Stat]) {
+        self.plan_workout_id = plan_workout_id
+        self.date_iso = date_iso
+        self.dow = dow
+        self.type = type
+        self.is_rest = is_rest
+        self.is_race = is_race
+        self.is_quality = is_quality
+        self.is_long = is_long
+        self.distance_mi = distance_mi
+        self.sub_label = sub_label
+        self.notes = notes
+        self.card = card
+        self.treadmill = treadmill
+        self.matched_run = matched_run
+        self.supplemental_runs = supplemental_runs
+        self.day_state = day_state
+        self.kicker = kicker
+        self.dose = dose
+        self.stats = stats
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case plan_workout_id, date_iso, dow, type, is_rest, is_race, is_quality, is_long,
+             distance_mi, sub_label, notes, card, treadmill, matched_run, supplemental_runs,
+             day_state, kicker, dose, stats
+    }
+
+    /// HEROPANEL-1 · the four new fields decode LENIENTLY — absent, not a
+    /// decode failure — everything else keeps the original strict contract
+    /// unchanged. Two real cases this protects, both already true today
+    /// rather than hypothetical: a `PlanSnapshot` cached on disk from BEFORE
+    /// this feature shipped (`PlanSnapshotStore.loadFromDiskSynchronously`
+    /// re-decodes whatever bytes are already sitting there at cold launch,
+    /// no server round trip to backfill them), and a version-skew window if
+    /// the server and an old build are ever briefly live together. A day
+    /// with no hero data just draws no hero content — `day_state` falls back
+    /// to `"easy"` (harmless: an aerobic-tint panel, not a wrong claim about
+    /// the workout), `stats` to `[]`, exactly `PanelStatPlate`'s own "nothing
+    /// to say, nothing drawn" rule one level up.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        plan_workout_id = try c.decodeIfPresent(String.self, forKey: .plan_workout_id)
+        date_iso = try c.decode(String.self, forKey: .date_iso)
+        dow = try c.decode(Int.self, forKey: .dow)
+        type = try c.decode(String.self, forKey: .type)
+        is_rest = try c.decode(Bool.self, forKey: .is_rest)
+        is_race = try c.decode(Bool.self, forKey: .is_race)
+        is_quality = try c.decode(Bool.self, forKey: .is_quality)
+        is_long = try c.decode(Bool.self, forKey: .is_long)
+        distance_mi = try c.decode(Double.self, forKey: .distance_mi)
+        sub_label = try c.decodeIfPresent(String.self, forKey: .sub_label)
+        notes = try c.decodeIfPresent(String.self, forKey: .notes)
+        card = try c.decodeIfPresent(PlanSnapshotCard.self, forKey: .card)
+        treadmill = try c.decodeIfPresent(PlanSnapshotTreadmillGuidance.self, forKey: .treadmill)
+        matched_run = try c.decodeIfPresent(PlanSnapshotMatchedRun.self, forKey: .matched_run)
+        supplemental_runs = try c.decode([PlanSnapshotSupplementalRun].self, forKey: .supplemental_runs)
+        day_state = try c.decodeIfPresent(String.self, forKey: .day_state) ?? "easy"
+        kicker = try c.decodeIfPresent(String.self, forKey: .kicker)
+        dose = try c.decodeIfPresent(V5Number.self, forKey: .dose)
+        stats = try c.decodeIfPresent([V5Stat].self, forKey: .stats) ?? []
+    }
 }
 
 /// The ONE locally persisted, versioned object. `days` is keyed by

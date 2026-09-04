@@ -16,7 +16,8 @@ final class PlanSnapshotNavigationTests: XCTestCase {
                          is_quality: type == "threshold" || type == "intervals" || type == "tempo",
                          is_long: type == "long", distance_mi: type == "rest" ? 0 : 6,
                          sub_label: nil, notes: nil, card: nil, treadmill: nil,
-                         matched_run: nil, supplemental_runs: [])
+                         matched_run: nil, supplemental_runs: [],
+                         day_state: type == "rest" ? "rest" : type, kicker: nil, dose: nil, stats: [])
     }
 
     private func snapshot(days: [PlanSnapshotDay]) -> PlanSnapshot {
@@ -99,7 +100,8 @@ final class PlanSnapshotNavigationTests: XCTestCase {
         let d = PlanSnapshotDay(plan_workout_id: "pw_1", date_iso: "2026-09-03", dow: 4, type: "intervals",
                                  is_rest: false, is_race: false, is_quality: true, is_long: false,
                                  distance_mi: 6, sub_label: nil, notes: nil, card: nil, treadmill: nil,
-                                 matched_run: matched, supplemental_runs: [supplemental])
+                                 matched_run: matched, supplemental_runs: [supplemental],
+                                 day_state: "quality", kicker: nil, dose: nil, stats: [])
         XCTAssertEqual(d.matched_run?.match, "exact")
         XCTAssertEqual(d.matched_run?.runId, "r_treadmill")
         XCTAssertEqual(d.supplemental_runs.count, 1)

@@ -522,6 +522,50 @@ struct PanelShape: Shape {
     }
 }
 
+// MARK: - The hero content block (HEROPANEL-1, 2026-09-04)
+
+/// The kicker/type/dose/stats block every day-state panel draws, extracted
+/// from `TodayBeforeV5.panel` so it is the SAME view whether the day being
+/// shown is the actual current day or a day the runner browsed to.
+///
+/// David, live, on seeing two different templates: "Every day should look
+/// like this. The only thing that changes is the color, run, specific
+/// info, etc." Before this, `TodayBeforeV5`/`TodayAfterV5` drew this block
+/// themselves and `PlanSnapshotDayView` drew an unrelated, visually flatter
+/// `ListGroup` stack for every OTHER day — the exact inconsistency he
+/// named. Reads `\.v5PanelInk` from the environment, same as
+/// `PanelStatPlate` below it — a caller only has to be inside the right
+/// `DayPanel`, never pass the ink down by hand.
+struct HeroDayPanelContentV5: View {
+    let kicker: String?
+    let type: String
+    let dose: FaffValue?
+    let stats: [PanelStat]
+
+    @Environment(\.v5PanelInk) private var panelInk
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+            VStack(alignment: .leading, spacing: V5.S.s2) {
+                if let kicker {
+                    Text(kicker)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(panelInk.secondary)
+                }
+                Text(type)
+                    .faffDisplayV5(TypeScaleV5.display56)
+                    .foregroundStyle(panelInk.primary)
+            }
+            if let dose {
+                FaffValueText(dose,
+                              font: .faffText(28, weight: .semibold),
+                              color: panelInk.primary, mark: panelInk.mark)
+            }
+            PanelStatPlate(stats: stats)
+        }
+    }
+}
+
 // MARK: - The stats plate
 
 /// The translucent plate a panel carries: three values, side by side, on

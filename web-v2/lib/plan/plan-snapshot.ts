@@ -61,8 +61,10 @@ import { dayNoteFor } from '@/lib/plan/week-loader';
 import { loadGlanceState } from '@/lib/coach/glance-state';
 import { resolveDateRangeExecutions, type ExecutionMatch } from '@/lib/execution/day-resolver';
 import { runFacts } from '@/lib/runs/run-facts';
+import { dayStateWordFor } from '@/lib/faff/v5-today';
+import { fmtMinutesCasual } from '@/lib/format/run';
 import {
-  cardFromSpec, cardWithoutSpec, cardForUnprescribableType, type SpecCard,
+  cardFromSpec, cardWithoutSpec, cardForUnprescribableType, fmtPaceBand, type SpecCard,
 } from '@/lib/training/spec-card';
 import { hrTargets, narrowToPrescriptionType, strictPrescriptionType } from '@/lib/training/prescriptions';
 import { classifySession, sessionToleranceSec } from '@/lib/training/execution-semantics';
@@ -152,6 +154,37 @@ export interface PlanSnapshotDay {
   treadmill: PlanSnapshotTreadmillGuidance | null;
   matched_run: PlanSnapshotMatchedRun | null;
   supplemental_runs: PlanSnapshotSupplementalRun[];
+  /**
+   * HEROPANEL-1 (2026-09-04) · every browsed day renders in the SAME hero
+   * treatment `/api/v5/today` gives the actual current day — one gradient
+   * card, one template, only the color and the numbers changing — not a
+   * separate, visually flatter template for "any day that is not today".
+   * David, live: "Every day should look like this. The only thing that
+   * changes is the color, run, specific info, etc." These four fields are
+   * the client's `V5Panel` shape, computed here from data this file already
+   * resolves (`card`, `row.workout_spec`) — never `composeToday`'s live
+   * narrative, which stays out of scope exactly as this file's header
+   * explains. `dayStateWordFor` is the SAME resolver `/api/v5/today` uses
+   * for its own gradient, imported rather than re-derived, so the two
+   * screens can never pick different colors for one day.
+   */
+  day_state: string;
+  kicker: string | null;
+  dose: PlanSnapshotNumber | null;
+  stats: PlanSnapshotStat[];
+}
+
+/** Mirrors the client's `V5Number` wire shape exactly — see APIV5.swift. */
+export interface PlanSnapshotNumber {
+  text: string;
+  modelled: boolean;
+}
+
+/** Mirrors the client's `V5Stat` wire shape exactly — see APIV5.swift. */
+export interface PlanSnapshotStat {
+  label: string;
+  value: PlanSnapshotNumber;
+  tone: string | null;
 }
 
 export interface PlanSnapshotResult {
@@ -340,6 +373,43 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       };
     });
 
+    // HEROPANEL-1 · same resolver `/api/v5/today` uses for its own gradient
+    // (`dayStateWordFor`, `lib/faff/v5-today.ts`) — 'rest' is its own literal
+    // here rather than routed through the resolver, matching that file's own
+    // `dayState: 'rest'` special case rather than trusting the resolver's
+    // generic string fallback to land on it independently.
+    const dayState = isRest ? 'rest' : dayStateWordFor(rawType);
+
+    // Duration kicker — "about 2h 10m" — the same `card.totalDurationSec`
+    // the phase list itself sums, never a `distance × flat pace` estimate
+    // (PRERUN-1's own rule against exactly that guess).
+    const kicker = !isRest && card?.totalDurationSec
+      ? `about ${fmtMinutesCasual(card.totalDurationSec / 60)}`
+      : null;
+
+    const dose: PlanSnapshotNumber | null = !isRest && distanceMi > 0
+      ? { text: `${distanceMi % 1 === 0 ? distanceMi.toFixed(0) : distanceMi.toFixed(1)} mi`, modelled: false }
+      : null;
+
+    // "Pace band" — the same fmtPaceBand `card`'s own steps already used to
+    // build `pace_target`, read off the SAME work-phase numbers, never a
+    // second derivation. "HR ceiling" — the workout's own authored cap
+    // (ZONEBAND-1's own reasoning: a per-workout authored ceiling, not a
+    // generic Friel bucket), shown only where `/api/v5/today` shows it: easy
+    // and long, never on a long run's race-pace finish segment (Audit
+    // D/D1 — a workout-level ceiling would red-alert through the finish and
+    // coach against the prescription).
+    const stats: PlanSnapshotStat[] = [];
+    if (!isRest && card?.workPaceSPerMi != null) {
+      const band = fmtPaceBand(card.workPaceSPerMi, card.workToleranceSPerMi);
+      if (band) stats.push({ label: 'Pace band', value: { text: band, modelled: true }, tone: null });
+    }
+    const hrCapBpm = (row.workout_spec as { hr_cap_bpm?: number } | null)?.hr_cap_bpm;
+    if (!isRest && (prescriptionType === 'easy' || prescriptionType === 'long')
+        && card?.hasRacePaceFinish !== true && hrCapBpm != null) {
+      stats.push({ label: 'HR ceiling', value: { text: `${hrCapBpm} bpm`, modelled: true }, tone: null });
+    }
+
     return {
       plan_workout_id: row.id,
       date_iso: row.date_iso,
@@ -358,6 +428,10 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       treadmill: treadmillGuidanceFor(card),
       matched_run,
       supplemental_runs,
+      day_state: dayState,
+      kicker,
+      dose,
+      stats,
     };
   });
 

@@ -17,50 +17,47 @@
 
 import SwiftUI
 
+/// HEROPANEL-1 (2026-09-04) · plain content now, NOT its own scrolling
+/// screen. `type`/`kicker`/`dose`/`stats` — the "RACE DAY" eyebrow, the big
+/// display face, the mileage, the pace/HR stat plate — moved OUT of this
+/// view and into `HeroDayPanelContentV5`, drawn inside the SAME coloured
+/// `DayPanel` the header sits in (see `HostsV5.swift`'s snapshot-day call
+/// site). This view used to wrap that same information in its own
+/// `ScrollView`, separately coloured (`.quiet`) from the header above it —
+/// two templates for one day, which is the exact inconsistency David named
+/// live: "Every day should look like this. The only thing that changes is
+/// the color, run, specific info, etc." What is left here — the workout's
+/// own headline/notes, the step list, matched/supplemental activity — is
+/// everything the hero panel does NOT already say, scrolling as one piece
+/// with the panel above it inside `inSharedShell`'s own `ScrollView`.
 struct PlanSnapshotDayView: View {
     let day: PlanSnapshotDay
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-                header
-                if day.is_rest {
-                    restCard
-                } else if let card = day.card {
-                    workoutCard(card)
-                }
-                if day.matched_run != nil || !day.supplemental_runs.isEmpty {
-                    activityOverlay
-                }
+        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+            if let headline = day.card?.headline ?? day.sub_label, !day.is_rest {
+                Text(headline)
+                    .font(.faffDisplay(24))
+                    .foregroundStyle(V5.textPrimary)
             }
-            .padding(.horizontal, V5.S.gutter)
-            .padding(.top, V5.S.s16)
-            // Content must scroll fully above the persistent bottom tab bar —
-            // see `ShellV5.swift`'s `TabBarV5` height token. A fixed bottom
-            // inset here (rather than relying on safe-area alone) is what
-            // keeps the LAST row readable when the sheet's own safe-area
-            // inset is absorbed by the tab bar's own background.
-            .padding(.bottom, V5.Shell.tabBarHeight + V5.S.s24)
-            .v5PageWidth()
-        }
-        .scrollIndicators(.hidden)
-        .background(V5.surfacePage)
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: V5.S.s4) {
-            Text(day.is_race ? "RACE DAY" : day.type.uppercased())
-                .font(.faffText(TypeScaleV5.label12))
-                .foregroundStyle(V5.textQuiet)
-            Text(day.card?.headline ?? (day.is_rest ? "Rest" : day.sub_label ?? day.type.capitalized))
-                .font(.faffDisplay(24))
-                .foregroundStyle(V5.textPrimary)
             if let notes = day.notes, !notes.isEmpty {
                 Text(notes)
                     .font(.faffText(TypeScaleV5.label14))
                     .foregroundStyle(V5.textSecondary)
             }
+            if day.is_rest {
+                restCard
+            } else if let card = day.card {
+                workoutCard(card)
+            }
+            if day.matched_run != nil || !day.supplemental_runs.isEmpty {
+                activityOverlay
+            }
         }
+        // Bottom clearance above the tab bar is `inSharedShell`'s own job
+        // now (`.padding(.bottom, V5.S.s24)` on its outer VStack) — the
+        // same one every other `content()` it wraps already relies on,
+        // rather than this view adding a second, view-specific inset.
     }
 
     private var restCard: some View {

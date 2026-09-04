@@ -375,33 +375,21 @@ struct TodayBeforeV5: View {
                 canPageForward: canPageForward
             )
 
-            VStack(alignment: .leading, spacing: V5.S.s2) {
-                if let kicker = model.panel.kicker {
-                    Text(kicker)
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(panelInk.secondary)
+            // HEROPANEL-1 · this block is now `HeroDayPanelContentV5`, the
+            // SAME view `PlanSnapshotDayView` draws for every other day —
+            // see that view's own header for why the two used to differ.
+            // Genuinely absent dose, not unreadable: a rest day carries no
+            // dose — `type` already says REST at 56pt directly above, and
+            // the server stopped restating it here (David: "it says REST,
+            // REST day. then extra rest").
+            HeroDayPanelContentV5(
+                kicker: model.panel.kicker,
+                type: model.panel.type,
+                dose: model.panel.dose?.value,
+                stats: model.panel.stats.map { stat in
+                    PanelStat(stat.label, stat.value.value, ink: stat.toneValue.inkOverride)
                 }
-                Text(model.panel.type)
-                    .faffDisplayV5(TypeScaleV5.display56)
-                    .foregroundStyle(panelInk.primary)
-            }
-
-            // Genuinely absent, not unreadable. A rest day carries no dose —
-            // `type` already says REST at 56pt directly above, and the
-            // server stopped restating it here (David: "it says REST, REST
-            // day. then extra rest"). `.optionalValue` draws nothing for
-            // nil; `.unreadableIfAbsent` would draw an unexplained dash
-            // where the redundant word used to be.
-            if let dose = model.panel.dose?.value {
-                FaffValueText(dose,
-                              font: .faffText(28, weight: .semibold),
-                              color: panelInk.primary, mark: panelInk.mark)
-            }
-
-            PanelStatPlate(stats: model.panel.stats.map { stat in
-                PanelStat(stat.label, stat.value.value,
-                          ink: stat.toneValue.inkOverride)
-            })
+            )
         }
     }
 

@@ -490,7 +490,22 @@ struct TodayHostV5: View {
                 // whatever Today's own cache last held (seeded from disk at
                 // cold launch, refreshed at launch/foreground) and is not
                 // re-fetched for this date.
-                inSharedShell(shellModel) {
+                inSharedShell(shellModel, fill: snapshotDay.fill, hero: {
+                    // `type` passed RAW (lowercase), same as `/api/v5/today`'s
+                    // own `ctx.type = prescriptionType` — `.faffDisplayV5`
+                    // applies `.textCase(.uppercase)` at this point size on
+                    // its own (`FontsV5.swift`), so uppercasing here would be
+                    // redundant, not wrong, and this way there is exactly one
+                    // place that decides display case.
+                    HeroDayPanelContentV5(
+                        kicker: snapshotDay.kicker,
+                        type: snapshotDay.type,
+                        dose: snapshotDay.dose?.value,
+                        stats: snapshotDay.stats.map { stat in
+                            PanelStat(stat.label, stat.value.value, ink: stat.toneValue.inkOverride)
+                        }
+                    )
+                }) {
                     PlanSnapshotDayView(day: snapshotDay)
                 }
                 .id(snapshotDay.date_iso)
@@ -776,11 +791,28 @@ struct TodayHostV5: View {
     /// wrapping them here too would be the double-header Rule 17 already
     /// forbids elsewhere in this file, so those two cases are deliberately
     /// left alone below.
+    /// HEROPANEL-1 (2026-09-04) · `fill`/`hero` are new, both defaulted, so
+    /// every OTHER call site (loading, failed, pending, etc.) is byte-
+    /// identical to before — `.quiet` fill, an empty hero slot, header alone
+    /// in its own panel. The snapshot-day branch is the one caller that
+    /// passes both: the day's own gradient, and the SAME
+    /// `HeroDayPanelContentV5` block `TodayBeforeV5` draws, so header and
+    /// hero content sit in ONE coloured panel together — David: "the top
+    /// bar by Dynamic Island and week strip never move position" and
+    /// "every day should look like this... only the color, run, specific
+    /// info, etc." changes. Before this, a browsed day's header sat in a
+    /// separately-coloured `.quiet` panel with the day's own content drawn
+    /// FLAT below it — two templates, not one.
     @ViewBuilder
-    private func inSharedShell<Content: View>(_ model: V5Today, @ViewBuilder content: () -> Content) -> some View {
+    private func inSharedShell<Hero: View, Content: View>(
+        _ model: V5Today,
+        fill: PanelFill = .quiet,
+        @ViewBuilder hero: @escaping () -> Hero = { EmptyView() },
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-                DayPanel(fill: .quiet) {
+                DayPanel(fill: fill) {
                     TodayHeaderStripV5(
                         place: model.panel.place,
                         viewingDayLabel: viewingDayLabel,
@@ -795,6 +827,7 @@ struct TodayHostV5: View {
                         canPageBackward: canPageWeek(-1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
                         canPageForward: canPageWeek(1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO)
                     )
+                    hero()
                 }
                 content()
             }
