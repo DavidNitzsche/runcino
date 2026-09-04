@@ -23,18 +23,39 @@
 #
 #     A PRODUCTION AUDIT THAT DID NOT RUN IS A FAILURE, NOT A PASS.
 #
-# So the credential check below is an explicit, loud failure rather than a
-# graceful skip. If `DATABASE_URL_RO` is missing this job goes RED and says why.
-# That is deliberate: the previous behaviour — silence — is the defect.
+# So the missing credential is an explicit, loud, NAMED failure rather than a
+# graceful skip. This job ends by printing exactly one of three words:
+#
+#     PASS                        the audits ran and every assertion held
+#     FAIL                        the audits ran and something is wrong
+#     BLOCKED_MISSING_CREDENTIAL  the audits DID NOT RUN
+#
+# The third is non-green and is never reported as a skip. Rule 11: "it passed",
+# "it failed" and "it never ran" are three facts, and this job used to have
+# only two words for them. The state is written to `$GITHUB_STEP_SUMMARY` as
+# well as stdout, so it survives log truncation.
 #
 # ── SETUP, ONE TIME, BY THE REPO OWNER ─────────────────────────────────────
 #
-# This needs a repository secret named `DATABASE_URL_RO`, set to the SAME
-# read-only connection string `web-v2/.env.local` carries. It is the
-# `faff_readonly` role: `lib/verify/production-barrier.ts` refuses writes from a
-# verification process, and the role itself cannot write, so the credential is
-# read-only at two independent layers. Until the secret exists this job fails on
-# its first step, by design, and says exactly this.
+# Full instructions, including the click-path and the two safety layers, are in
+# `docs/reports/core-closure-2026-09-04/CI-FALSIFICATION.md` §4. In short:
+#
+#   Repository → Settings → Secrets and variables → Actions → Repository
+#   secrets → New repository secret
+#     Name:   DATABASE_URL_RO          (exact, case-sensitive)
+#     Secret: the read-only connection string web-v2/.env.local already carries
+#
+# It is the `faff_readonly` role: SELECT only, no INSERT/UPDATE/DELETE, no DDL.
+# `lib/verify/production-barrier.ts` is the second, independent layer — it
+# refuses any non-read statement issued from a verification process (`VITEST` is
+# set, so every file here is fenced) and there is deliberately no opt-out. Two
+# layers, either of which alone stops a write.
+#
+# NO CODE CHANGE IS NEEDED once the secret exists. The job reads it by name on
+# the next run. Until then it reports BLOCKED_MISSING_CREDENTIAL, by design.
+#
+# The value is never echoed, logged, written to a step output, or put in the
+# summary. Only its emptiness is read.
 #
 # ── WHAT THIS JOB CANNOT FAIL ON (Rule 22) ─────────────────────────────────
 #
@@ -73,12 +94,26 @@ jobs:
           cache: npm
           cache-dependency-path: web-v2/package-lock.json
 
-      # THE POINT OF THIS JOB. Not a skip, not a warning — a failure.
-      - name: The credential must exist, or this job has not run
+      # ── TRI-STATE, STEP 1 OF 2 · classify, do not yet decide ─────────────
+      #
+      # This step RECORDS whether the credential exists and never exits
+      # non-zero, so the verdict step below always runs and always writes a
+      # state. A first step that exits 1 skips every later step, including the
+      # one that writes `$GITHUB_STEP_SUMMARY` — and a job whose only signal is
+      # a red X does not distinguish "the audits ran and found a defect" from
+      # "the audits never ran". Rule 11: those are two different facts, and
+      # collapsing them is what this whole file exists to stop.
+      #
+      # It reads EMPTINESS ONLY. The value is never echoed, never written to an
+      # output, never put in the summary, and never passed anywhere but to
+      # vitest's own env.
+      - name: Is the credential present
+        id: cred
         env:
           DATABASE_URL_RO: ${{ secrets.DATABASE_URL_RO }}
         run: |
           if [ -z "${DATABASE_URL_RO:-}" ]; then
+            echo "present=no" >> "$GITHUB_OUTPUT"
             echo "::error title=Production audits did not run::DATABASE_URL_RO is not set."
             echo ""
             echo "All 28 *.audit.test.ts files are describe.skipIf(!DATABASE_URL_RO)."
@@ -87,37 +122,133 @@ jobs:
             echo "while every other signal said clean."
             echo ""
             echo "A production audit that did not run is a FAILURE, not a PASS."
-            echo "Add a repository secret DATABASE_URL_RO (the faff_readonly role)."
-            exit 1
+            echo "See the SETUP section at the top of this file, and"
+            echo "docs/reports/core-closure-2026-09-04/CI-FALSIFICATION.md §4."
+          else
+            echo "present=yes" >> "$GITHUB_OUTPUT"
+            echo "credential present"
           fi
-          echo "credential present"
 
       - name: Install
+        if: steps.cred.outputs.present == 'yes'
         working-directory: web-v2
         run: npm ci --prefer-offline --no-audit
 
+      # `--testNamePattern=''` was dropped from this command. An empty pattern
+      # is a regex that matches everything, so it did nothing — but a filter
+      # flag that reads as a filter and silently narrows nothing is one edit
+      # away from silently narrowing everything, and this job's entire subject
+      # is suites that quietly stop running.
       - name: Run only the production-backed audits
+        if: steps.cred.outputs.present == 'yes'
         working-directory: web-v2
         env:
           DATABASE_URL_RO: ${{ secrets.DATABASE_URL_RO }}
         run: |
           set -o pipefail
-          npx vitest run --testNamePattern='' $(git ls-files 'lib/**/*.audit.test.ts' | tr '\n' ' ') \
-            2>&1 | tee /tmp/audits.log
+          FILES=$(git ls-files 'lib/**/*.audit.test.ts' | tr '\n' ' ')
+          echo "audit files matched: $(printf '%s' "$FILES" | wc -w)"
+          rc=0
+          npx vitest run $FILES 2>&1 | tee /tmp/audits.log || rc=$?
+          echo "$rc" > /tmp/audits.rc
+          echo "vitest exit code: $rc"
 
-      # LIVENESS (Rule 18 guard 2). Vitest exits 0 when every file skipped, so
-      # the exit code alone cannot tell "28 audits passed" from "28 audits were
-      # skipped and nobody noticed" — which is the entire defect this job
-      # closes. Assert that real tests actually executed.
-      - name: The audits actually executed
+      # ── TRI-STATE, STEP 2 OF 2 · exactly one of three words ──────────────
+      #
+      #   PASS                        the audits ran against production and
+      #                               every assertion held.
+      #   FAIL                        the audits ran and something is wrong.
+      #   BLOCKED_MISSING_CREDENTIAL  the audits did NOT run. Distinct from
+      #                               both of the above, non-green, and never
+      #                               reported as a skip.
+      #
+      # `if: always()` is load-bearing: the state must be written even when an
+      # earlier step failed or was skipped, otherwise the summary is silent in
+      # exactly the cases it matters most.
+      #
+      # LIVENESS (Rule 18 guard 2) is folded in here rather than living in its
+      # own step, so one place decides the verdict (Rule 16). Vitest exits 0
+      # when every file skipped, so the exit code alone cannot tell "28 audits
+      # passed" from "28 audits were skipped and nobody noticed".
+      #
+      # WHAT THIS VERDICT CANNOT FAIL ON (Rule 22):
+      #   · a PASS that read the wrong rows. It counts assertions, not truth.
+      #   · a suite that shrinks from 212 assertions to 25. The floor of 20 is
+      #     a liveness probe, not a ratchet — it separates "ran" from "did not
+      #     run", and nothing here derives a declared count from the sources.
+      #   · an audit file that exists but matches no glob. The matched-file
+      #     count is printed above and is evidence; it is not asserted on,
+      #     because a legitimate rename would then fail for the wrong reason.
+      #   · anything about whether the credential is genuinely READ-ONLY. That
+      #     is `lib/verify/production-barrier.ts` and the `faff_readonly` grant,
+      #     two layers this job assumes and does not verify.
+      - name: Verdict
+        if: always()
+        env:
+          CRED_PRESENT: ${{ steps.cred.outputs.present }}
         run: |
-          echo "--- summary ---"
-          grep -E 'Test Files|Tests ' /tmp/audits.log | tail -3
-          PASSED=$(grep -oE 'Tests +[0-9]+ passed' /tmp/audits.log | tail -1 | grep -oE '[0-9]+' || echo 0)
-          echo "audit assertions executed: ${PASSED}"
-          if [ "${PASSED:-0}" -lt 20 ]; then
-            echo "::error title=Audits skipped::Only ${PASSED} audit assertions ran."
-            echo "The files were present but did not execute — the credential is"
-            echo "set but the suite skipped anyway. That is the false green again."
-            exit 1
+          FLOOR=20
+          SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+          STATE=""
+          REASON=""
+
+          if [ "${CRED_PRESENT:-no}" != "yes" ]; then
+            STATE="BLOCKED_MISSING_CREDENTIAL"
+            REASON="DATABASE_URL_RO is not set, so all 28 *.audit.test.ts files would have skipped. The audits did not run."
+          elif [ ! -f /tmp/audits.rc ]; then
+            STATE="FAIL"
+            REASON="The audit run did not complete — no exit code was recorded. Treated as a failure, never as a skip."
+          else
+            RC=$(cat /tmp/audits.rc)
+            # Read the `Tests` line, then the passed count off it. Two traps,
+            # both hit while falsifying this (rows E5/E6):
+            #   · a FAILING run prints `Tests  9 failed | 203 passed (212)`, so
+            #     an anchored `Tests +[0-9]+ passed` matches nothing and the
+            #     reason line claimed "0 assertions passed" over a run with 203.
+            #     The state was right and the sentence was false — Rule 16.
+            #   · `Test Files  28 passed (28)` also contains "N passed", so the
+            #     line must be selected before the number is. `Tests` followed
+            #     by whitespace excludes `Test Files` without depending on
+            #     which line vitest prints last.
+            TLINE=$(grep -E '^[[:space:]]*Tests[[:space:]]' /tmp/audits.log 2>/dev/null | tail -1 || true)
+            PASSED=$(printf '%s' "$TLINE" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' || true)
+            PASSED="${PASSED:-0}"
+            echo "--- vitest summary ---"
+            grep -E 'Test Files|Tests ' /tmp/audits.log 2>/dev/null | tail -3 || echo "(no summary lines)"
+            echo "audit assertions executed: ${PASSED} (floor ${FLOOR})"
+            if [ "$RC" -ne 0 ]; then
+              STATE="FAIL"
+              REASON="vitest exited ${RC}. ${PASSED} assertions passed before it stopped."
+            elif [ "$PASSED" -lt "$FLOOR" ]; then
+              STATE="FAIL"
+              REASON="Only ${PASSED} audit assertions ran (floor ${FLOOR}). The credential is set but the suite skipped anyway — that is the false green again."
+            else
+              STATE="PASS"
+              REASON="${PASSED} production-backed audit assertions ran and passed."
+            fi
           fi
+
+          # Guard the guard (Rule 18 §3). A tri-state that can print a fourth
+          # word, or none, is not a tri-state. This branch is unreachable by
+          # construction, which is exactly why it is here: the construction is
+          # what a later edit changes.
+          case "$STATE" in
+            PASS|FAIL|BLOCKED_MISSING_CREDENTIAL) ;;
+            *)
+              echo "::error title=Verdict logic broke::computed state '${STATE}' is not one of the three."
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "## audit-suite: ${STATE}"
+            echo ""
+            echo "${REASON}"
+            echo ""
+            echo "\`PASS\` · \`FAIL\` · \`BLOCKED_MISSING_CREDENTIAL\` are the only three"
+            echo "outcomes. A production audit that did not run is not a pass."
+          } >> "$SUMMARY"
+
+          echo "AUDIT-SUITE: ${STATE}"
+          echo "${REASON}"
+          [ "$STATE" = "PASS" ]
