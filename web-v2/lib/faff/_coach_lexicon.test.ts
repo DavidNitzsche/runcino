@@ -120,6 +120,60 @@ describe('the lexicon is one list, and the shell gate reads it', () => {
       .not.toContain('limiter');
   });
 
+  /**
+   * LEXICONWORD-1 (2026-09-04) · a banned word is a WORD.
+   *
+   * `scanCopy` matched by bare substring, so the owner's shoe — "Asics
+   * Superblast 3", printed in `beforeYouGo[0].label` — was reported as the hype
+   * term "superb". A brand name is not coach prose and no rewording satisfies
+   * it, so the only ways out were deleting a real hype term or exempting a
+   * whole field. Found on 2026-08-31's payload the moment the live voice audit
+   * started resolving its days from the plan instead of a pinned week.
+   *
+   * Falsified in BOTH directions, which is the point of the pairs below: a
+   * boundary loose enough to let "Superblast" through must not also stop
+   * catching "crushing" or "greatest".
+   */
+  it('a banned term matches as a word, not as a substring', () => {
+    // The defect, verbatim.
+    expect(scanLayerOne('Asics Superblast 3').map((f) => f.term)).not.toContain('superb');
+    // Other real proper nouns that embed a banned term.
+    expect(scanLayerOne('Nike Vaporfly 3').map((f) => f.term)).toEqual([]);
+    // …and the term itself is still caught, inflections included.
+    expect(scanLayerOne('That was superb.').map((f) => f.term)).toContain('superb');
+    expect(scanLayerOne('You ran superbly.').map((f) => f.term)).toContain('superb');
+  });
+
+  it('EVERY term still matches itself — the round trip that keeps the gate live', () => {
+    /* Rule 18 point 2, and the regression this fix nearly shipped.
+     *
+     * `\b` only asserts a boundary beside a WORD character, so wrapping every
+     * term in one would have made `"· z2"` (leading interpunct) and
+     * `"send it."` (trailing full stop) permanently unmatchable. The gate would
+     * not have started failing — it would have gone SILENT on two real terms,
+     * which is strictly worse, because it also keeps reporting confidence.
+     *
+     * Nothing here is hand-listed: it walks the lexicon itself, so a term added
+     * tomorrow in a shape this matcher cannot express fails immediately. */
+    const unmatched = COACH_LEXICON
+      .filter((e) => scanCopy(e.term, [e.band]).every((f) => f.term !== e.term))
+      .map((e) => `${e.band} · ${JSON.stringify(e.term)}`);
+    expect(COACH_LEXICON.length, 'the lexicon is empty — this walk proves nothing')
+      .toBeGreaterThan(40);
+    expect(unmatched,
+      'these terms no longer match their own text, so the matcher has gone silent on them',
+    ).toEqual([]);
+  });
+
+  it('inflections of a banned term are still caught', () => {
+    // The other direction: a boundary loose enough to let "Superblast" through
+    // must not stop catching an ordinary inflection a coach would type.
+    expect(scanLayerOne('You ran superbly.').map((f) => f.term)).toContain('superb');
+    // Multi-word phrases are unaffected by the boundary change.
+    expect(scanLayerOne('You crushed it out there.').map((f) => f.term)).toContain('crushed it');
+    expect(scanLayerOne('Keep it up.').map((f) => f.term)).toContain('keep it up');
+  });
+
   it('punctuation: the unreadable glyph survives, prose em dashes do not', () => {
     expect(scanPunctuation('—')).toEqual([]);
     expect(scanPunctuation('Good run — nothing changes.')).toContain('em dash');

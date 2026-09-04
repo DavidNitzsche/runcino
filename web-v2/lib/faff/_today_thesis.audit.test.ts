@@ -44,12 +44,18 @@ import { describe, it, expect, vi } from 'vitest';
 
 const RO = process.env.DATABASE_URL_RO;
 const OWNER = '0645f40c-951d-4ccc-b86e-9979cd26c795';
-/* 09-03 hills and 09-08 tempo are the two QUALITY days the original wiring
- * spoke on. 09-06 is the week's LONG RUN, added with THESIS-V3: it is the
- * session the resolver names as addressing the owner's DURABILITY limiter,
- * and before the fix in app/api/v5/today/route.ts the thesis was suppressed
- * on exactly that day (the quality-type set has no 'long'). */
-const DATES = ['2026-09-03', '2026-09-06', '2026-09-08'] as const;
+/* THE DATES ARE RESOLVED BY ROLE, NOT PINNED.
+ *
+ * This list used to read `['2026-09-03', '2026-09-06', '2026-09-08']`, with a
+ * comment calling 09-06 "the week's LONG RUN". True when written on
+ * 2026-09-02; on 09-03 the owner moved his week by hand around travel, the
+ * long run went to 09-04, and 09-06 became a plain 7.5 mi easy day — on which
+ * the thesis opener is CORRECTLY silent. The test then failed against working
+ * code, and only where DATABASE_URL_RO is set, which is nowhere in CI.
+ *
+ * Two quality days and the long run is what this test is named for and what it
+ * has always meant. `lib/faff/_live_plan_dates.ts` resolves those roles off the
+ * live plan so a rebuild — which is the product working — stops breaking it. */
 
 // The auth line, and ONLY the auth line. Declared as a bare object rather than
 // spread over `importOriginal` so the real module (and the pool it imports) is
@@ -62,6 +68,25 @@ describe.skipIf(!RO)('TODAY · the thesis-composed "why", rendered on the real r
   it('renders the two quality days AND the long run that addresses the limiter, from the live payload', async () => {
     process.env.DATABASE_URL = RO;
     const { GET } = await import('@/app/api/v5/today/route');
+    const { runnerToday } = await import('@/lib/runtime/runner-tz');
+    const { livePlanDays, thesisRoleDates } = await import('./_live_plan_dates');
+
+    const anchor = await runnerToday(OWNER);
+    const shift = (iso: string, days: number): string => {
+      const d = new Date(`${iso}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+    const days = await livePlanDays(OWNER, shift(anchor, -4), shift(anchor, 10));
+    const roles = thesisRoleDates(days);
+    // Rule 11 · "the window has no long run" is a fact worth failing on, not an
+    // empty list to iterate past in silence.
+    expect(roles.quality.length, 'no quality day in the ±window of the active plan')
+      .toBeGreaterThanOrEqual(2);
+    expect(roles.long, 'no long run in the ±window of the active plan').toBeTruthy();
+    const DATES = [...roles.quality, roles.long!].sort();
+    // eslint-disable-next-line no-console
+    console.log(`\n[thesis-audit] anchor=${anchor} roles → quality=${roles.quality.join(',')} long=${roles.long}`);
 
     for (const date of DATES) {
       const res = await GET(

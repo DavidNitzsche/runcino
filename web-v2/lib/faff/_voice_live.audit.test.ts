@@ -60,18 +60,36 @@ import { scanLayerOne, scanPunctuation } from './coach-lexicon';
 const RO = process.env.DATABASE_URL_RO;
 const OWNER = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 
-/* One week of the owner's real block, chosen to span the day states this
- * account actually has: easy, quality (threshold and intervals), rest, long,
- * and the day the thesis names as addressing the limiter. */
-const DATES = [
-  '2026-09-01', // threshold · 4x1mi
-  '2026-09-02', // easy
-  '2026-09-03', // intervals · hills
-  '2026-09-04', // easy
-  '2026-09-05', // rest
-  '2026-09-06', // long · the session the thesis addresses
-  '2026-09-08', // tempo
-] as const;
+/* THE DAYS ARE RESOLVED BY ROLE, NOT PINNED — see `_live_plan_dates.ts`.
+ *
+ * This was a hard-coded week with `'2026-09-06', // long · the session the
+ * thesis addresses` in it. True on 2026-09-02, when this file was written. On
+ * 09-03 the owner moved his week by hand around travel, the long run went to
+ * 09-04, and 09-06 became a 7.5 mi easy day — so the second test below demanded
+ * the thesis opener on a day the engine is CORRECTLY silent on, and failed
+ * against working code. It failed only where DATABASE_URL_RO is set, which is
+ * nowhere in CI, so nothing reported it.
+ *
+ * "Chosen to span the day states this account actually has" is the real intent
+ * and it is now computed, so a plan rebuild stops breaking a voice audit. */
+
+/** Days spanning the account's states, and the days the thesis speaks on. */
+async function liveDates(): Promise<{ spanning: string[]; thesisDays: string[] }> {
+  const { runnerToday } = await import('@/lib/runtime/runner-tz');
+  const { livePlanDays, thesisRoleDates, spanningStateDates } = await import('./_live_plan_dates');
+  const anchor = await runnerToday(OWNER);
+  const shift = (iso: string, n: number): string => {
+    const d = new Date(`${iso}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const days = await livePlanDays(OWNER, shift(anchor, -4), shift(anchor, 10));
+  const roles = thesisRoleDates(days);
+  return {
+    spanning: spanningStateDates(days),
+    thesisDays: [...roles.quality, ...(roles.long ? [roles.long] : [])].sort(),
+  };
+}
 
 vi.mock('@/lib/auth/session', () => ({
   requireUserId: async () => '0645f40c-951d-4ccc-b86e-9979cd26c795',
@@ -131,7 +149,12 @@ describe.skipIf(!RO)('TODAY · the voice, on the real payload', () => {
     const defects: string[] = [];
     let stringsSeen = 0;
 
-    for (const date of DATES) {
+    const { spanning } = await liveDates();
+    expect(spanning.length, 'the active plan window yielded no days to audit').toBeGreaterThan(2);
+    // eslint-disable-next-line no-console
+    console.log(`\n[voice-live] spanning days = ${spanning.join(', ')}`);
+
+    for (const date of spanning) {
       const res = await GET(new Request(`https://faff.run/api/v5/today?date=${date}`) as never);
       const body = await res.json();
       expect(res.status, date).toBe(200);
@@ -155,7 +178,7 @@ describe.skipIf(!RO)('TODAY · the voice, on the real payload', () => {
     }
 
     /* eslint-disable-next-line no-console */
-    console.log(`\n  ${stringsSeen} runner-readable strings scanned across ${DATES.length} days`);
+    console.log(`\n  ${stringsSeen} runner-readable strings scanned across ${spanning.length} days`);
 
     // LIVENESS (Rule 18 point 2). The walk is a hand-written field list, so
     // the way it fails silently is by finding nothing. Measured 2026-09-02 on
@@ -174,10 +197,16 @@ describe.skipIf(!RO)('TODAY · the voice, on the real payload', () => {
     process.env.DATABASE_URL = RO;
     const { GET } = await import('@/app/api/v5/today/route');
 
-    // The three days the thesis speaks on. Asserted on the SHAPE OF THE
-    // RESULT, not the absence of the old word (Rule 13 clause 3): the
+    // The days the thesis speaks on — the quality days and the long run,
+    // resolved from the live plan rather than named. Asserted on the SHAPE OF
+    // THE RESULT, not the absence of the old word (Rule 13 clause 3): the
     // sentence has to still say what the block is trying to move.
-    for (const date of ['2026-09-03', '2026-09-06', '2026-09-08']) {
+    const { thesisDays } = await liveDates();
+    expect(thesisDays.length, 'no quality or long day in the active plan window')
+      .toBeGreaterThanOrEqual(2);
+    // eslint-disable-next-line no-console
+    console.log(`\n[voice-live] thesis days = ${thesisDays.join(', ')}`);
+    for (const date of thesisDays) {
       const res = await GET(new Request(`https://faff.run/api/v5/today?date=${date}`) as never);
       const body = await res.json();
       expect(body.why, date).toMatch(/the thing to move right now/);

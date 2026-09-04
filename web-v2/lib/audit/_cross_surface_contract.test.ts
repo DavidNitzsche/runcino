@@ -340,6 +340,85 @@ function contract(
  * on the row the phone and the wrist read. The bound is what turns "these
  * differ by 1" from a shrug into a monitored fact.
  */
+/**
+ * STAMPFRESH-1 (2026-09-04) · when a stamp and the live resolver disagree,
+ * WHICH of the two facts is it?
+ *
+ * `stampContract` below was calibrated on 2026-09-02, a day the runner had not
+ * yet run: F4 measured the drift on the row at 1s and 5s was a generous bound
+ * around it. It is not robust to the ordinary case. Measured 2026-09-04: the
+ * nightly `snapshot-projections` cron stamped `race_execution` at 05:13 local
+ * and the daily projection snapshot at 00:03; the owner's 15.51 mi long run
+ * landed at 08:20; the live projection moved 12033 → 12025. Eight seconds, and
+ * every one of them is that morning's long run. Day-over-day the same quantity
+ * moves 50s, 134s — so 5s is far below the natural quantum of change, and this
+ * contract fails on any day the runner runs before the next refresh.
+ *
+ * Widening the bound would be the wrong repair — Rule 9's own warning, and
+ * Rule 18's: a tolerance stretched until the red goes away has stopped
+ * measuring anything. The question is not "how far may these differ" but
+ * "is the difference EXPLAINED". Rule 11: a stamp that disagrees because it
+ * predates new evidence, and a stamp that disagrees against an unchanged
+ * anchor, are two different facts and only the second is a defect.
+ *
+ * So: if nothing has landed since the stamp was struck, the tight bound holds
+ * exactly as before and every falsification F4 recorded still fires. If
+ * evidence HAS landed since, the divergence is the mechanism working, and what
+ * is asserted instead is FRESHNESS — that the refresh cycle is actually
+ * running. That is a strictly stronger position than this file had: hole 6 in
+ * the list above says in as many words "It cannot prove a job RAN", and a
+ * stamp older than a full refresh cycle with new evidence sitting in front of
+ * it is precisely the Rule 23 failure that hole describes.
+ */
+const STAMP_REFRESH_CYCLE_HOURS = 26; // nightly cron + slack for a late run
+
+async function newestCanonicalEvidenceAt(userUuid: string): Promise<Date | null> {
+  // `pool` and the merge-loser predicate are imported here rather than at module
+  // scope for the same reason every other query in this file does it: the live
+  // half is `describe.skipIf(!RO)` and must not open a connection when it is
+  // skipped.
+  const { pool } = await import('@/lib/db/pool');
+  const { runNotMergedSql } = await import('@/lib/runs/run-shape');
+  const { rows } = await pool.query<{ at: Date | null }>(
+    `SELECT MAX(r.fetched_at) AS at
+       FROM runs r
+      WHERE r.user_uuid = $1::uuid
+        AND ${runNotMergedSql('r')}`,
+    [userUuid],
+  );
+  return rows[0]?.at ?? null;
+}
+
+/**
+ * The stamp comparison, told what has happened since the stamp was written.
+ * `evidenceAt` null (unreadable) falls through to the strict bound — a failed
+ * read must never be the thing that excuses a disagreement (Rule 11).
+ */
+function stampContractSince(
+  quantity: string, live: number | null, stamped: number | null,
+  maxDriftSec: number, why: string,
+  resolvedAt: Date | null, evidenceAt: Date | null, now: Date,
+): ContractResult {
+  const explained =
+    resolvedAt != null && evidenceAt != null && evidenceAt.getTime() > resolvedAt.getTime();
+  if (!explained) return stampContract(quantity, live, stamped, maxDriftSec, why);
+
+  const ageHours = (now.getTime() - resolvedAt!.getTime()) / 3_600_000;
+  const findings: string[] = [];
+  const readings: Reading[] = [
+    { path: `${quantity} · live resolver`, value: live },
+    { path: `${quantity} · stamped on the row`, value: stamped },
+  ];
+  if (ageHours > STAMP_REFRESH_CYCLE_HOURS) {
+    findings.push(
+      `${quantity}: STAMP STALE — struck ${ageHours.toFixed(1)}h ago (bound ${STAMP_REFRESH_CYCLE_HOURS}h) `
+      + `with evidence landing since, and still not re-struck (live ${live}, stamped ${stamped}). `
+      + 'The refresh cycle that owns this row has not run. Rule 23: a schedule is not a guarantee.',
+    );
+  }
+  return { quantity, readings, findings };
+}
+
 function stampContract(
   quantity: string, live: number | null, stamped: number | null,
   maxDriftSec: number, why: string,
@@ -623,7 +702,7 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
       new NextRequest('https://faff.run/api/targets/projection') as never,
     ) as Response).json();
     const gps = (await pool.query(
-      `SELECT projected_sec FROM goal_projection_snapshots
+      `SELECT projected_sec, snapshot_date FROM goal_projection_snapshots
         WHERE user_uuid = $1::uuid AND race_slug = $2
         ORDER BY snapshot_date DESC LIMIT 1`,
       [REFERENCE_USER, goalSlug],
@@ -635,14 +714,54 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
     results.push(contract(`projected finish · ${goalSlug} (s)`, [
       { path: 'race-outlook.expectedRaceDay.expectedSec', value: goalOutlook!.expectedRaceDay.expectedSec },
       { path: 'race-projection.raceProjectionFromOutlook().projectedSec (what v5/races and v5/race render)', value: projection.projectedSec },
-      { path: 'goal_projection_snapshots.projected_sec (latest)', value: gps ? Number(gps.projected_sec) : null },
       { path: 'iPhone GET /api/v5/races · panel stat "Projected"', value: racesProjected },
       { path: 'iPhone GET /api/v5/races · trend[] last point', value: racesTrendLast },
       { path: `iPhone GET /api/v5/race/${goalSlug} · projected`, value: raceDetailProjected },
       { path: `iPhone GET /api/v5/race/${goalSlug} · outlook.expected_race_day.sec`, value: raceDetailOutlookSec },
       { path: 'GET /api/targets/projection · projectionSec', value: targetsBody.projectionSec ?? null },
       { path: 'GET /api/targets/projection · trajectoryProjectedSec (legacy alias)', value: targetsBody.trajectoryProjectedSec ?? null },
-    ], 9));
+    ], 8));
+    /**
+     * SNAPSHOTQUANTITY-1 (2026-09-04) · `goal_projection_snapshots` used to sit
+     * in the identity contract above, and it does not belong there.
+     *
+     * It is a daily TIME SERIES — one row per `snapshot_date`, eight days of
+     * history behind it — written by the nightly cron so the trend line has
+     * something to plot. "The projection as of 2026-09-04" and "the projection
+     * right now" are two quantities, not two paths to one, and Rule 16 is the
+     * reason to keep them apart rather than a reason to fuse them: the whole
+     * point of the series is that yesterday's row still says what yesterday
+     * said. Demanding the latest row equal the live resolver asks a historical
+     * record to be a live one, and it fails the moment any run lands after
+     * midnight — which is most days. Measured 2026-09-04: snapshot 12033 struck
+     * at 00:03, long run in at 08:20, live 12025.
+     *
+     * What is worth asserting about it is that the series is CURRENT — that the
+     * job wrote a row today at all. That is a real check this file did not have
+     * (hole 6: "It cannot prove a job RAN") and it is the failure Rule 23 is
+     * about.
+     */
+    // `snapshot_date` is a DATE column and node-pg hands it back as a Date in
+    // the process timezone, whose `String()` is "Fri Sep 04" — not an ISO day.
+    // The repo's own note on this trap (reference_pg_timestamp_tz_parsing) is
+    // why this formats the wall-clock parts rather than slicing a stringified
+    // Date or reaching for toISOString(), which would shift the day for any
+    // runner west of UTC.
+    const snapshotDayISO = (() => {
+      const raw = gps?.snapshot_date;
+      if (raw == null) return null;
+      if (typeof raw === 'string') return raw.slice(0, 10);
+      const d = raw as Date;
+      if (Number.isNaN(d.getTime())) return null;
+      const p2 = (n: number): string => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+    })();
+    expect(
+      snapshotDayISO,
+      'the latest goal-projection snapshot is not today\'s. The nightly '
+      + '`snapshot-projections` cron has not run, so the trend the runner reads is '
+      + 'missing its most recent point. Rule 23: a schedule is not a guarantee.',
+    ).toBe(today);
     // The targets route may not carry a SECOND number under the word. Two
     // separate things: nothing else is labelled a projection, and the one
     // number it does publish came from the owner rather than its own chain.
@@ -670,20 +789,40 @@ describe.skipIf(!RO)('cross-surface contract · LIVE production (read-only)', ()
       `${targetsBody.projectionSec}s. Rule 16: a sentence about a measurement is gated on ` +
       'that measurement.',
     ).toBe(targetsBody.projectionSec);
-    results.push(stampContract(
+    // STAMPFRESH-1 · both stamp comparisons are told what has landed since the
+    // stamp was written. Nothing new → the 5s bound holds exactly as F4 left
+    // it. Something new → the divergence is explained and FRESHNESS is what is
+    // asserted instead. See `stampContractSince` for why widening the bound
+    // would have been the wrong repair.
+    const stampResolvedAt = (() => {
+      const raw = goalRaceRow?.spec?.race_execution?.resolved_at;
+      if (raw == null) return null;
+      const d = new Date(String(raw));
+      return Number.isNaN(d.getTime()) ? null : d;
+    })();
+    const evidenceAt = await newestCanonicalEvidenceAt(REFERENCE_USER);
+    const nowAt = new Date();
+    console.log(
+      `[cross-surface] stamp resolved_at=${stampResolvedAt?.toISOString() ?? 'null'} `
+      + `newest evidence=${evidenceAt?.toISOString() ?? 'null'} `
+      + `→ ${stampResolvedAt && evidenceAt && evidenceAt > stampResolvedAt ? 'EXPLAINED (freshness asserted)' : 'STRICT (drift bound asserted)'}`,
+    );
+    results.push(stampContractSince(
       `projected finish · ${goalSlug} · race_execution.expected_race_day_sec`,
       projection.projectedSec, rowExpected == null ? null : Number(rowExpected), 5,
       'Beyond 5s the stamp was struck against a different anchor, and the row the phone and the wrist read is then a second answer.',
+      stampResolvedAt, evidenceAt, nowAt,
     ));
     // The current-fitness expectation is a DIFFERENT quantity and is named
     // differently everywhere. Checked as its own contract precisely so that a
     // future edit collapsing the two is caught by the file that cares.
-    results.push(stampContract(
+    results.push(stampContractSince(
       `current-fitness expectation · ${goalSlug} · race_execution.current_projection_sec`,
       goalOutlook!.currentProjection.expectedSec,
       goalRaceRow?.spec?.race_execution?.current_projection_sec == null
         ? null : Number(goalRaceRow.spec!.race_execution.current_projection_sec), 5,
       'Same bound, same reason. This is the quantity Rule 16 found live three times under one "projected" label; it must stay distinct from the trajectory above AND agree with its own owner.',
+      stampResolvedAt, evidenceAt, nowAt,
     ));
     // …and the two must not collapse into each other. A single contract that
     // checked each against its own owner would pass an engine that had started

@@ -306,9 +306,52 @@ export function scanCopy(
   const found: LexiconFinding[] = [];
   for (const e of COACH_LEXICON) {
     if (!bands.includes(e.band)) continue;
-    if (low.includes(e.term)) found.push({ band: e.band, term: e.term, why: e.why });
+    if (matchesTerm(low, e.term)) found.push({ band: e.band, term: e.term, why: e.why });
   }
   return found;
+}
+
+/**
+ * LEXICONWORD-1 (2026-09-04) · a banned word is a WORD, not a substring.
+ *
+ * This was `low.includes(e.term)`, and it flagged the owner's own shoe:
+ *
+ *     2026-08-31 beforeYouGo[0].label · hype "superb" · "Asics Superblast 3"
+ *
+ * A brand name is not coach prose and there is no wording change that would
+ * satisfy the finding, so the gate could only be silenced by deleting a real
+ * hype term or by exempting a whole field. Found the moment
+ * `_voice_live.audit.test.ts` started resolving its days from the live plan
+ * instead of a pinned week — the old week simply never contained a shoe.
+ *
+ * A leading `\b` alone does NOT fix it: "superb" begins at the word boundary of
+ * "Superblast". The end has to be bounded too, with the ordinary English
+ * inflections still caught, so "crush" keeps matching "crushing" and "great"
+ * keeps matching "greatest" while "Superblast" stops matching "superb".
+ *
+ * Multi-word terms pass through unchanged — `\b` behaves the same around a
+ * phrase — and the term is escaped rather than trusted as a pattern.
+ */
+const TERM_CACHE = new Map<string, RegExp>();
+
+function matchesTerm(lowerText: string, term: string): boolean {
+  let re = TERM_CACHE.get(term);
+  if (re == null) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // A BOUNDARY ONLY WHERE ONE CAN EXIST. `\b` asserts a \w|\W transition, so
+    // it never matches beside a non-word character — and this lexicon holds
+    // `"· z2"` (leading interpunct) and `"send it."` (trailing full stop).
+    // Wrapping those unconditionally would have made both terms permanently
+    // unmatchable: the gate would have gone quiet rather than gone wrong, which
+    // is the failure mode Rule 18 point 2 exists for. The round-trip assertion
+    // in `_coach_lexicon.test.ts` — every term matches itself — is what makes
+    // that impossible to reintroduce.
+    const lead = /^\w/.test(term) ? '\\b' : '';
+    const tail = /\w$/.test(term) ? '(?:s|es|ed|ing|ly|er|est)?\\b' : '';
+    re = new RegExp(`${lead}${escaped}${tail}`, 'i');
+    TERM_CACHE.set(term, re);
+  }
+  return re.test(lowerText);
 }
 
 /**
