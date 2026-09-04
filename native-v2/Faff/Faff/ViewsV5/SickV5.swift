@@ -77,12 +77,17 @@ struct SickFlareV5: View {
     /// (`POST /api/sick/recovery`) and reloads. This view does not persist
     /// anything itself.
     var onLogTrend: (V5Row) -> Void = { _ in }
+    /// SHAREDSHELL-1 (2026-09-04) · see `InjuryFlareV5`'s own doc comment
+    /// in StateScreensV5.swift.
+    var suppressOwnHeader: Bool = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 DayPanel(fill: .quiet) {
-                    header
+                    if !suppressOwnHeader {
+                        header
+                    }
                     VStack(alignment: .leading, spacing: V5.S.s2) {
                         Text(model.since)
                             .font(.faffText(TypeScaleV5.label13))

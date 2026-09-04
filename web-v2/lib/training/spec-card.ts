@@ -41,7 +41,7 @@
 
 import { expandSpecToPhases, subLabelFromSpec, type ExpandedPhase } from './expand-spec';
 import { classifySession, sessionToleranceSec } from './execution-semantics';
-import { fmtPace as fmtPaceNoUnit, roundTo } from '@/lib/format/run';
+import { fmtPace as fmtPaceNoUnit, canonicalWorkoutDistanceMi } from '@/lib/format/run';
 import { sessionRationale, type PrescriptionStep, type WorkoutType } from './prescriptions';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 import { readSelectionRationale } from '@/lib/plan/progression-spec';
@@ -686,7 +686,7 @@ export function cardFromSpec(input: {
   // The day's total is the plan's own figure, not a re-summed one. The two can
   // differ by a rounding step inside the expander, and when they do it is the
   // plan row that the week's mileage, the fuel plan and the watch all count.
-  const total = Number.isFinite(distanceMi) && distanceMi > 0 ? roundTo(distanceMi, 1) : 0;
+  const total = canonicalWorkoutDistanceMi(distanceMi);
 
   // The authored name of the day beats a generic one, and `subLabelFromSpec`
   // is the SAME function that wrote `sub_label` at generation time — so the
@@ -872,7 +872,7 @@ export function cardWithoutSpec(input: {
 }): SpecCard {
   const { type, distanceMi, paceTargetSPerMi, hr } = input;
   const rationale = sessionRationale(type);
-  const total = Number.isFinite(distanceMi) && distanceMi > 0 ? roundTo(distanceMi, 1) : 0;
+  const total = canonicalWorkoutDistanceMi(distanceMi);
 
   if (type === 'rest') {
     return {

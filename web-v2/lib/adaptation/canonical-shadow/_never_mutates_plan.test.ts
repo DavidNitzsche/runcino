@@ -106,16 +106,28 @@ describe('guard 3 · every literal SQL string this directory issues classifies c
   const READ_FILES = ['live-input.ts', 'run-live-shadow-evaluation.ts', 'read-only-db.ts']
     .map((n) => path.join(HERE, n));
 
+  // Anchored to the START of the literal (leading whitespace only), not a
+  // bare "contains the word anywhere" test. Every real query in this
+  // directory is written as one contiguous template literal that opens
+  // directly on its keyword (this file's own header states that as the
+  // scan's precondition) — a `contains` test also catches plain-English
+  // log strings that happen to mention one of these words, e.g.
+  // `` `[canonical-shadow] insert failed for ${userUuid}...` `` (a
+  // console.warn, not SQL), which is exactly the false positive this
+  // anchoring removes without weakening what guard 1 above already proves
+  // about the one authorized write.
+  const SQL_SHAPED_RE = /^\s*(?:--[^\n]*\n|\s)*\b(select|insert|update|delete|with)\b/i;
+
   it('liveness · found SQL-shaped literals to classify', () => {
     const all = READ_FILES.flatMap((f) => templateLiterals(readFileSync(f, 'utf8')));
-    const sqlShaped = all.filter((s) => /\b(select|insert|update|delete)\b/i.test(s));
+    const sqlShaped = all.filter((s) => SQL_SHAPED_RE.test(s));
     expect(sqlShaped.length).toBeGreaterThan(5);
   });
 
   it('every SQL-shaped literal in the evidence-reading files classifies as a READ', () => {
     for (const f of READ_FILES) {
       const literals = templateLiterals(readFileSync(f, 'utf8'))
-        .filter((s) => /\b(select|insert|update|delete|with)\b/i.test(s));
+        .filter((s) => SQL_SHAPED_RE.test(s));
       for (const sql of literals) {
         // `run-live-shadow-evaluation.ts` builds ONE insert string for the
         // shadow log itself — that one statement is EXPECTED to classify as

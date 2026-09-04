@@ -458,6 +458,18 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/coach/voice-band.ts::goalOffProjectedForWindow',
   'lib/coach/voice-band.ts::loadVoiceBandLite',
   'lib/coach/voice-band.ts::loadVoiceBandLite',
+  // buildRaceOnToday's own header already argues this: "returns `null` on
+  // any failure so a broken resolver degrades Today to its ordinary
+  // rendering rather than failing the request (Rule 3: additive, never
+  // load-bearing for the whole page)." `loadEffectiveRaceTarget` is a
+  // multi-step race-pace computation, not a raw row fetch — `rowOrNull`
+  // doesn't fit its shape, and swallowing it into "no race card today"
+  // is the correct behavior for an additive surface, not a bug to route
+  // through `lib/db/read.ts`. The SIBLING swallow this function used to
+  // carry (a raw `pool.query(...).catch(() => ({rows: []}))`) was fixed
+  // to `rowOrNull` in the same change that added this exemption — this
+  // is the one remaining site, not the two the scanner first found.
+  'lib/faff/race-on-today.ts::buildRaceOnToday',
   'lib/faff/race-week-course.ts::loadRaceWeekCourse',
   'lib/faff/race-week-course.ts::loadRaceWeekCourse',
   'lib/faff/race-week-course.ts::loadRaceWeekCourse',
@@ -724,7 +736,13 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // calls the canonical day resolver, whose own failure path is an observed
 // catch (logs the error) rather than a swallow. Its OTHER site (the RPE
 // lookup, unrelated, untouched) is still exactly as it was. 353 -> 352.
-export const EMPTIED_BASELINE = 352;
+// DUPLICATE-1/pre-run-experience (2026-09-03) · `buildRaceOnToday` had two
+// unlisted swallow sites the scanner had never seen before this merge (the
+// function predates this ratchet). One (`planRace`'s raw `pool.query(...)
+// .catch()`) is fixed to `rowOrNull` in the same change; the other
+// (`loadEffectiveRaceTarget`'s catch) is a genuine, argued exemption — see
+// its entry above. Net +1, not +2: 352 -> 353.
+export const EMPTIED_BASELINE = 353;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

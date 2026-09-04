@@ -81,51 +81,6 @@ final class RunLobbyRecordingOwnerTests: XCTestCase {
     }
 }
 
-final class RunLobbyRecordingLineTests: XCTestCase {
-    func test_watchOwnerStatesExecutionAndRecording() {
-        let line = RunLobbyRecordingLine.resolve(owner: .watch, watch: .ready(lastSync: "Synced 9:00 AM"))
-        XCTAssertTrue(line.line.contains("Apple Watch"))
-        XCTAssertTrue(line.line.contains("execute"))
-        XCTAssertFalse(line.offersWatchRetry, "already executing on watch — nothing to retry")
-    }
-
-    func test_noWatchAtAllNamesNoWatchWithNoRetry() {
-        let line = RunLobbyRecordingLine.resolve(owner: .phone, watch: .noWatch)
-        XCTAssertTrue(line.line.contains("phone"))
-        XCTAssertFalse(line.line.contains("Apple Watch"), "must not mention a watch that does not exist")
-        XCTAssertFalse(line.offersWatchRetry)
-    }
-
-    func test_unreachableWatchOffersRetryAndNamesTheReason() {
-        let line = RunLobbyRecordingLine.resolve(owner: .phone, watch: .unreachable(lastSync: "Synced 8:00 AM"))
-        XCTAssertTrue(line.line.contains("not reachable"))
-        XCTAssertTrue(line.offersWatchRetry)
-    }
-
-    func test_reachableButUnsyncedWatchNamesThatSpecificReason() {
-        let line = RunLobbyRecordingLine.resolve(owner: .phone, watch: .ready(lastSync: nil))
-        XCTAssertTrue(line.line.contains("hasn't confirmed"))
-        XCTAssertTrue(line.offersWatchRetry)
-    }
-}
-
-final class RunLobbyHrLineTests: XCTestCase {
-    func test_watchOwnerMeansHrConnected() {
-        XCTAssertEqual(RunLobbyHrLine.resolve(owner: .watch), .connectedFromWatch)
-        XCTAssertTrue(RunLobbyHrLine.resolve(owner: .watch).line.contains("Apple Watch"))
-    }
-
-    func test_phoneOwnerNeverClaimsHrFromDeviceChoiceAlone() {
-        // This is the corrected-bug case: "no watch" must not be rendered as
-        // "recording and heart rate are on your phone" — an iPhone does not
-        // inherently provide running heart rate.
-        let hr = RunLobbyHrLine.resolve(owner: .phone)
-        XCTAssertEqual(hr, .unavailable)
-        XCTAssertTrue(hr.line.lowercased().contains("unavailable"))
-        XCTAssertFalse(hr.line.contains("connected"), "must not claim a connection that was not verified")
-    }
-}
-
 final class RunLobbyTitleTests: XCTestCase {
     func test_splitsHeadlineFromDescriptorAtAtSign() {
         let (headline, descriptor) = RunLobbyTitle.split("10\u{00D7}60s hills @ 5K-10K effort \u{00B7} 2 min jog down")
@@ -144,6 +99,56 @@ final class RunLobbyTitleTests: XCTestCase {
         // rather than an empty title.
         let (headline, _) = RunLobbyTitle.split(" @ effort only")
         XCTAssertFalse(headline.isEmpty)
+    }
+}
+
+/// LABELCONSISTENCY-1 (2026-09-03 correction) · "Not 10×60s hills in one
+/// place and 10 × 1 min Hill in another." `RunLobbyV5.displayHeadline`
+/// reuses the structure row's own title for the common single-block case
+/// instead of leaving the name-split headline and the row's own phrase to
+/// agree by accident.
+final class RunLobbyDisplayHeadlineTests: XCTestCase {
+    private func phase(_ type: WatchPhaseType, label: String, durationSec: Int = 60) -> WatchPhase {
+        WatchPhase(index: 0, type: type, label: label, durationSec: durationSec,
+                   targetPaceSPerMi: nil, tolerancePaceSPerMi: nil, haptic: .start)
+    }
+
+    private func workout(name: String, phases: [WatchPhase]) -> WatchWorkout {
+        WatchWorkout(workoutId: "wko_a", name: name, summary: "S", totalEstimatedMinutes: 30,
+                     phases: phases, completionEndpoint: "e", expiresAt: "2099-01-01T00:00:00Z")
+    }
+
+    func test_theExactReportedCaseHeadlineMatchesTheStructureRowVerbatim() throws {
+        // The real wire shape (Rule 13): index in the middle, a duration
+        // clause after — see RunLobbySegments' own header comment.
+        var phases: [WatchPhase] = [phase(.warmup, label: "Warm-up", durationSec: 540)]
+        for i in 1...10 {
+            phases.append(phase(.work, label: "Hill \(i) of 10 \u{00B7} 1 min"))
+            if i < 10 { phases.append(phase(.recovery, label: "Recovery", durationSec: 120)) }
+        }
+        phases.append(phase(.cooldown, label: "Cooldown", durationSec: 480))
+        let w = workout(name: "10\u{00D7}60s hills @ 5K-10K effort \u{00B7} 2 min jog down", phases: phases)
+
+        let headline = RunLobbyV5.displayHeadline(w)
+        let rows = RunLobbySegments.summarize(w.phases)
+        let workRow = try XCTUnwrap(rows.first { $0.title != "Warm-up" && $0.title != "Cooldown" })
+        XCTAssertEqual(headline, workRow.title, "the headline must be the EXACT string the structure row shows, not an independently-parsed one")
+        XCTAssertTrue(headline.contains("10"), "the count must survive: \(headline)")
+        XCTAssertFalse(headline.contains("60s"), "must read the grouped-structure phrasing (\"1 min\"), not the compact name shorthand")
+    }
+
+    func test_aMixedSessionWithNoSingleWorkBlockFallsBackToTheCanonicalName() {
+        // Two DIFFERENT work phases (e.g. a tempo segment then strides) never
+        // reduce to one grouped row — the fallback must still show something
+        // real rather than guessing at a combined phrase.
+        let phases = [
+            phase(.warmup, label: "Warm-up", durationSec: 600),
+            phase(.work, label: "Tempo", durationSec: 1200),
+            phase(.work, label: "Strides", durationSec: 30),
+            phase(.cooldown, label: "Cooldown", durationSec: 600),
+        ]
+        let w = workout(name: "Tempo + strides @ mixed session", phases: phases)
+        XCTAssertEqual(RunLobbyV5.displayHeadline(w), "Tempo + strides")
     }
 }
 
@@ -211,41 +216,87 @@ final class RunLobbyPlanCheckTests: XCTestCase {
     }
 }
 
-final class RunLobbyLocationReadinessTests: XCTestCase {
-    func test_deniedIsBlockingForOutdoor() {
-        let r = RunLobbyLocationReadiness.resolve(.denied)
-        XCTAssertTrue(r.isBlockingForOutdoor)
-        XCTAssertTrue(r.line.contains("Treadmill"), "a blocked runner must be told the fallback, not just the problem")
-    }
-
-    func test_restrictedIsTreatedAsDenied() {
-        XCTAssertEqual(RunLobbyLocationReadiness.resolve(.restricted), .denied)
-    }
-
-    func test_notDeterminedIsNotBlocking() {
-        let r = RunLobbyLocationReadiness.resolve(.notDetermined)
-        XCTAssertFalse(r.isBlockingForOutdoor, "never block a run for optional/not-yet-asked permission")
-    }
-
-    func test_authorizedIsReady() {
-        let r = RunLobbyLocationReadiness.resolve(.authorizedWhenInUse)
-        XCTAssertEqual(r, .authorized)
-        XCTAssertFalse(r.isBlockingForOutdoor)
-    }
-}
-
 final class RunLobbySegmentsTests: XCTestCase {
 
     private func phase(_ type: WatchPhaseType, label: String = "", durationSec: Int = 300,
                         target: Int? = nil, tolerance: Int? = nil, hr: Int? = nil,
+                        hrRole: WatchHrRole? = nil, paceShape: WatchPaceShape? = nil,
                         repUnit: WatchRepUnit = .time, distanceMi: Double? = nil) -> WatchPhase {
         WatchPhase(index: 0, type: type, label: label, durationSec: durationSec,
                    targetPaceSPerMi: target, tolerancePaceSPerMi: tolerance, haptic: .start,
-                   repUnit: repUnit, distanceMi: distanceMi, hrTargetBpm: hr)
+                   repUnit: repUnit, distanceMi: distanceMi, hrTargetBpm: hr, hrRole: hrRole,
+                   paceShape: paceShape)
     }
 
     func test_emptyPhasesProduceNoRows() {
         XCTAssertEqual(RunLobbySegments.summarize([]), [])
+    }
+
+    // MARK: - PACESHAPE-1 · pace phrasing preserves target/ceiling/window meaning
+
+    func test_aCeilingPhaseReadsNoFasterThanNotANakedPace() {
+        let warmup = phase(.warmup, label: "Warm-up", target: 502, paceShape: .ceiling)
+        let rows = RunLobbySegments.summarize([warmup])
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertTrue(rows[0].detail?.contains("no faster than") ?? false,
+                       "a ceiling must say so, never a bare pace: \(rows[0].detail ?? "nil")")
+    }
+
+    func test_aWindowPhaseReadsAsATwoSidedRange() {
+        let tempo = phase(.work, label: "Tempo", target: 420, tolerance: 10, paceShape: .window)
+        let rows = RunLobbySegments.summarize([tempo])
+        XCTAssertEqual(rows.count, 1)
+        // 420±10 s/mi = 6:50–7:10/mi.
+        XCTAssertTrue(rows[0].detail?.contains("6:50") ?? false, "\(rows[0].detail ?? "nil")")
+        XCTAssertTrue(rows[0].detail?.contains("7:10") ?? false, "\(rows[0].detail ?? "nil")")
+    }
+
+    func test_anEffortPhaseShowsNoPaceEvenIfATargetIsSomehowPresent() {
+        // Should not occur in practice — the server never sends both — but
+        // the shape must win if it ever does: never a number the shape says
+        // is not there to hit.
+        let hill = phase(.work, label: "Hill", target: 480, paceShape: .effort)
+        let rows = RunLobbySegments.summarize([hill])
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertFalse(rows[0].detail?.contains(":") ?? false, "no clock-formatted pace must appear: \(rows[0].detail ?? "nil")")
+    }
+
+    func test_anOlderPayloadWithNoPaceShapeAtAllStillRendersAPlainPace() {
+        // effectivePaceShape defaults to .window when absent — an older
+        // payload behaves exactly as it always did, never silently
+        // reclassified as a ceiling or blanked as effort.
+        let easy = phase(.work, label: "Easy", target: 500, paceShape: nil)
+        let rows = RunLobbySegments.summarize([easy])
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertFalse(rows[0].detail?.contains("no faster than") ?? true)
+        XCTAssertTrue(rows[0].detail?.contains(":") ?? false, "a plain pace must still render: \(rows[0].detail ?? "nil")")
+    }
+
+    /// HR-ROLE-1 (2026-09-03 correction) · an observational bpm is DROPPED
+    /// from the row entirely, not relabelled. "Showing a precise HR value
+    /// and then telling the runner not to use it creates false importance" —
+    /// so a 60s hill rep shows pace and length only, never a number beside
+    /// it at all.
+    func test_observationalHrIsDroppedFromTheRowEntirely() {
+        let hill = phase(.work, label: "Hill", durationSec: 60, hr: 176, hrRole: .observational)
+        let recovery = phase(.recovery, durationSec: 120)
+        let phases = Array(repeating: [hill, recovery], count: 5).flatMap { $0 }
+
+        let rows = RunLobbySegments.summarize(phases)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertTrue(rows[0].hrIsObservational, "the classification still survives internally")
+        XCTAssertFalse(rows[0].detail?.contains("176") ?? false,
+                        "an observational bpm must not appear in the row at all: \(rows[0].detail ?? "nil")")
+    }
+
+    /// A rep long enough for HR to actually govern (`.target`) still shows
+    /// the number — this is the case the fix must not silence.
+    func test_targetHrStillRendersInTheRow() {
+        let tempo = phase(.work, label: "Tempo", durationSec: 900, hr: 165, hrRole: .target)
+        let rows = RunLobbySegments.summarize([tempo])
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertFalse(rows[0].hrIsObservational)
+        XCTAssertTrue(rows[0].detail?.contains("HR 165") ?? false, "a target HR must still render: \(rows[0].detail ?? "nil")")
     }
 
     func test_warmupAndCooldownAreAlwaysTheirOwnUngroupedRows() {

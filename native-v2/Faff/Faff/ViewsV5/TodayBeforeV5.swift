@@ -209,6 +209,10 @@ struct TodayBeforeV5: View {
     /// Present only when `model.paceNote != nil` — the way in must appear
     /// exactly when there is something to say, never as a standing nudge.
     var onOpenPacesMoved: () -> Void = {}
+    /// DECISION-2 · "link to full race detail" on the race card, present
+    /// only when `model.race != nil`. Takes the slug so the caller can push
+    /// `V5Route.raceDetail(slug:)` without this file knowing the route enum.
+    var onOpenRace: (String) -> Void = { _ in }
     /// Job 1 · "report sick" — expand-in-place, off Today. `SickReportRowV5`
     /// collects the backend's own vocabulary (symptom codes, the `started`
     /// enum); the caller POSTs `/api/sick` and reloads, which is what turns
@@ -276,6 +280,7 @@ struct TodayBeforeV5: View {
                     // hero — visible, never mistaken for having completed
                     // the session still shown above it as due.
                     if !model.supplementalRuns.isEmpty { supplementalRunsSection }
+                    raceSection
                     blockNoteSection
                     groupsSection
                     whySection
@@ -549,6 +554,99 @@ struct TodayBeforeV5: View {
                 V5SectionLabel(text: "About", color: V5.textSecondary)
                 CoachSay(text: body, size: .md)
             }
+        }
+    }
+
+    // MARK: - Race day (Decision 2) — a concise summary, not the full brief
+    //
+    // "Today should provide immediate orientation without becoming the
+    // complete race page" — the lobby (fed by the SAME canonical
+    // WatchWorkout fields) may show the fuller executable brief; this card
+    // only orients. Every value is a straight read of `model.race`
+    // (`V5Race`), itself a straight decode of the backend's
+    // `V5RaceOnToday` — nothing here is computed, and the execution target
+    // and the goal are rendered as two separate numbers, never merged.
+
+    @ViewBuilder
+    /// Prioritized, not one flat block (2026-09-03 correction) — "Do not
+    /// place every race field into one enormous block. Prioritize race
+    /// name, active execution target, and essential strategy. Goal, detailed
+    /// fueling, and deeper explanation can be secondary." Name/target/
+    /// strategy render together at full weight; goal, HR guidance and
+    /// fueling follow as a visually quieter group below — still every field,
+    /// still goal kept distinct from the target (Rule 16), just not
+    /// competing for the same first glance.
+    private var raceSection: some View {
+        if let race = model.race {
+            VStack(alignment: .leading, spacing: V5.S.s12) {
+                // Primary: identity, active execution target, strategy.
+                VStack(alignment: .leading, spacing: V5.S.s10) {
+                    HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
+                        V5SectionLabel(
+                            text: race.role == "controlled_c_effort" ? "Controlled effort today" : "Race day",
+                            color: V5.textPrimary)
+                        Spacer(minLength: 0)
+                        Text(Units.formatDistance(miles: race.distanceMi) + " " + Units.distanceLabel())
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.textSecondary)
+                    }
+                    Text(race.name)
+                        .font(.faffDisplay(22))
+                        .foregroundStyle(V5.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let target = race.executionTargetSec, let clock = FaffFmt.raceTime(sec: Double(target)) {
+                        raceClock(label: "Today's target", clock: clock, emphasized: true)
+                    }
+                    if let strategy = race.strategyLabel {
+                        Text(strategy)
+                            .font(.faffText(TypeScaleV5.body15))
+                            .foregroundStyle(V5.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                // Secondary: the stated goal (kept visibly distinct from the
+                // target above — never the same number, never unlabeled,
+                // per Rule 16), HR guidance, fueling. Quieter type, a step
+                // down from the primary group rather than stacked at equal
+                // weight with it.
+                if race.goalSec != nil || race.hrLine != nil || race.fuelingSummary != nil {
+                    VStack(alignment: .leading, spacing: V5.S.s6) {
+                        if let goal = race.goalSec, let clock = FaffFmt.raceTime(sec: Double(goal)) {
+                            raceClock(label: "Goal", clock: clock, emphasized: false)
+                        }
+                        if let hr = race.hrLine {
+                            Text(hr)
+                                .font(.faffText(TypeScaleV5.label13))
+                                .foregroundStyle(V5.textQuiet)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let fueling = race.fuelingSummary {
+                            Text(fueling)
+                                .font(.faffText(TypeScaleV5.label13))
+                                .foregroundStyle(V5.textQuiet)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                FaffButton("Full race detail", variant: .secondary, size: .md,
+                           action: { onOpenRace(race.slug) })
+            }
+            .padding(V5.S.tilePad)
+            .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+        }
+    }
+
+    private func raceClock(label: String, clock: String, emphasized: Bool) -> some View {
+        VStack(alignment: .leading, spacing: V5.S.s2) {
+            Text(label)
+                .font(.faffText(TypeScaleV5.label12))
+                .foregroundStyle(V5.textQuiet)
+            Text(clock)
+                .font(.faffText(emphasized ? 20 : 16, weight: emphasized ? .bold : .semibold))
+                .foregroundStyle(emphasized ? V5.textPrimary : V5.textSecondary)
         }
     }
 

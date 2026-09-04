@@ -86,6 +86,30 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         await load()
     }
 
+    /// FETCHOWNER-1 (2026-09-04) · like `rebind`, but does not change what a
+    /// LATER, UNRELATED refresh fetches.
+    ///
+    /// `rebind`/`refreshBehind` permanently overwrite `fetch` — correct for
+    /// "the runner is home now, THIS is the canonical fetch going forward"
+    /// (Today's own `goTo` calls `refreshBehind` exactly once, for that
+    /// case). It is wrong for "fetch this one OTHER date, temporarily,
+    /// because the runner tapped it" — that reassignment used to survive
+    /// the navigation, so `.faffForegroundRefresh` (app backgrounded then
+    /// foregrounded — a completely ordinary interruption, not an edge
+    /// case) firing while the runner was looking at a date two weeks out
+    /// would silently re-fetch THAT date instead of today, and could hand
+    /// the shared "today" surface an `.absent`/failed outcome for a day
+    /// that was never today at all. `model`/`stale`/`absentReason` still
+    /// update exactly as `rebind` would for THIS call, so `readiness()`'s
+    /// `.match` still fires the same way — only the STANDING `fetch`
+    /// closure is protected, restored the instant this call finishes.
+    func fetchOnce(_ oneOffFetch: @escaping () async throws -> API.V5Fetch<Model>) async {
+        let standingFetch = fetch
+        fetch = oneOffFetch
+        await load()
+        fetch = standingFetch
+    }
+
     /// Put a payload the caller already holds on screen NOW, then refresh it
     /// for real behind that.
     ///

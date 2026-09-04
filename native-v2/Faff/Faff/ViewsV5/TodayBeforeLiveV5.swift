@@ -55,6 +55,7 @@ struct TodayBeforeLiveV5: View {
     var canPageBackward: Bool = true
     var canPageForward: Bool = true
     var onOpenPacesMoved: () -> Void = {}
+    var onOpenRace: (String) -> Void = { _ in }
     var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
     /// Re-reads the Today surface after a write. Owned by `TodayHostV5`'s
     /// own `V5Surface<V5Today>` — this view never holds a surface of its
@@ -106,6 +107,7 @@ struct TodayBeforeLiveV5: View {
             canPageBackward: canPageBackward,
             canPageForward: canPageForward,
             onOpenPacesMoved: onOpenPacesMoved,
+            onOpenRace: onOpenRace,
             onReportSick: onReportSick
         )
         .task { await prefetch() }

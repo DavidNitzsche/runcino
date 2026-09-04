@@ -548,3 +548,83 @@ describe('heat is filtered per observation, not per surface', () => {
     expect(v.dimensions.find((d) => d.dimension === 'internal_cost')!.score).toBeNull();
   });
 });
+
+/**
+ * EXECUTION-IDENTITY-1 (2026-09-03) · one exact-linked, telemetry-limited
+ * session must not be able to trigger a downgrade on its own.
+ *
+ * David's own ruling on the live incident: an EXACT `planWorkoutId` match
+ * proves which run this was, never that it was fully executed, and a
+ * shortfall the app itself caused (automatic phase transitions failing,
+ * prescribed targets never round-tripping to post-run) must not read as a
+ * demonstrated pace/HR/incline/rep failure.
+ *
+ * Verified live against David's real account the night this was found
+ * (Rule 13): `buildAdaptationComparisonRecord` run at '2026-09-02' (before
+ * the session) and '2026-09-04' (after) — same 42-day window, same runner,
+ * one session added. The execution score MOVED TOWARD ZERO (-0.679 to
+ * -0.559), band stayed `marginal`, decision stayed `STAY`, in both
+ * directions — because the session displaced what the window would
+ * otherwise have counted as a plain MISS. This is the synthetic version of
+ * that same proof, so the property survives independent of any one
+ * account's real data.
+ */
+describe('EXECUTION-IDENTITY-1 · a single telemetry-limited partial session cannot force a downgrade', () => {
+  const partial_productive: KeySessionRead =
+    { state: 'PARTIAL_PRODUCTIVE', stimulusCompletion: 0.336, earnsProgression: false };
+
+  // The realistic, boundary-adjacent window — not a pristine one. Reuses the
+  // exact fixture the 'missed and missed-target sessions cap the band' test
+  // above already established as 'marginal'/'STAY': 5 clean sessions, 3
+  // missed, degraded targets and rep consistency. A pristine 8-for-8 window
+  // is too far from any gate to prove anything by swapping one slot — every
+  // real risk here is at a boundary, so the fixture has to sit near one.
+  function boundaryWindow(third: KeySessionRead): AdaptationInput {
+    return {
+      ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 5), ...repeat(missed, 2), third],
+      keySessionsCompleted: 5,
+      targetVerdicts: ['slow', 'slow', 'on', 'slow', 'on', 'on'],
+      repConsistency: ['fading', 'fading', 'even'],
+    };
+  }
+
+  it('swapping one MISS for the honest partial never makes the verdict worse', () => {
+    const withMiss = classifyAdaptation(boundaryWindow(missed));
+    const withPartial = classifyAdaptation(boundaryWindow(partial_productive));
+    const execScore = (v: ReturnType<typeof classifyAdaptation>) =>
+      v.dimensions.find((d) => d.dimension === 'execution')!.score!;
+    // A real, if incomplete, effort is never scored worse than an
+    // unexplained absence — this is the property, not a specific number.
+    expect(execScore(withPartial)).toBeGreaterThanOrEqual(execScore(withMiss));
+    // Neither reading crosses further into 'poor', and neither decides a
+    // downgrade — the boundary window is already 'marginal'/STAY (proven
+    // above); replacing a miss with an honest partial cannot push it past
+    // that same edge in the wrong direction.
+    expect(withPartial.band).not.toBe('poor');
+    expect(['PROGRESS', 'STAY']).toContain(withPartial.decision);
+    expect(withPartial.stepMultiplier).toBeGreaterThanOrEqual(withMiss.stepMultiplier);
+  });
+
+  it('pins the real production before/after finding this test generalises — verified live 2026-09-03, David\'s own account, 42-day window: adding the session moved the execution score TOWARD zero, not away from it', () => {
+    // lib/adaptation/load.ts buildAdaptationComparisonRecord at
+    // '2026-09-02' (before) vs '2026-09-04' (after, the real session
+    // included): -0.679 -> -0.559. Reproduced here structurally: the miss
+    // this session displaced scores lower than the honest partial that
+    // replaced it, on the same shared dimension.
+    const before = classifyAdaptation(boundaryWindow(missed));
+    const after = classifyAdaptation(boundaryWindow(partial_productive));
+    const execScore = (v: ReturnType<typeof classifyAdaptation>) =>
+      v.dimensions.find((d) => d.dimension === 'execution')!.score!;
+    expect(execScore(after)).toBeGreaterThan(execScore(before));
+  });
+
+  it('the partial session never earns progression credit, whatever the surrounding window looks like', () => {
+    const withOnePartial = boundaryWindow(partial_productive);
+    const share = progressionCreditShare(withOnePartial);
+    expect(share).toBeLessThan(1);
+    // 5 of 8 compliant sessions earn progression (the 2 misses and the
+    // partial do not) — 0.625, never a number that credits the partial.
+    expect(share).toBeCloseTo(5 / 8, 5);
+  });
+});

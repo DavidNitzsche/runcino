@@ -53,6 +53,17 @@ extension Notification.Name {
 
 enum FaffTabV5: String, CaseIterable, Identifiable, Hashable {
     case today, block, races
+    /// RUN (2026-09-03 correction) · was a filled pill that opened
+    /// `RunLobbyV5` as a bottom sheet OVER whichever tab the runner was on —
+    /// which is exactly the "Today launches the recording lobby" mixing
+    /// David called out. Run is now a real fourth destination, a peer of
+    /// the other three, not an overlay: tapping it SELECTS the tab, the way
+    /// tapping Today or Block does, and it keeps its own place in the
+    /// runner's navigation the same way they do. `TabBarV5` still draws it
+    /// with the design's distinct filled-pill treatment — that is a visual
+    /// choice about ONE destination's weight in the bar, not evidence it is
+    /// a different KIND of thing than the other three.
+    case run
     var id: String { rawValue }
 
     var label: String {
@@ -60,18 +71,23 @@ enum FaffTabV5: String, CaseIterable, Identifiable, Hashable {
         case .today: return "Today"
         case .block: return "Block"
         case .races: return "Races"
+        case .run:   return "Run"
         }
     }
 
     /// The design draws Lucide strokes and says to "swap for the target app's
     /// own icon set". These are the SF Symbols that match them: sun, list,
     /// flag. Stroke weights are left at regular so they read as drawn lines
-    /// rather than as filled shapes.
+    /// rather than as filled shapes. `run`'s symbol is unused by `TabBarV5`
+    /// (it draws Run as the filled pill with its own play glyph, not this
+    /// icon-over-label treatment) — it exists so the enum stays exhaustive
+    /// wherever something switches over every destination.
     var symbol: String {
         switch self {
         case .today: return "sun.max"
         case .block: return "list.bullet"
         case .races: return "flag"
+        case .run:   return "play.fill"
         }
     }
 }
@@ -114,7 +130,13 @@ struct TabBarV5: View {
     /// not here — the design is explicit that RUN "only appears when 'start
     /// runs from this phone' is on in Settings".
     let showRun: Bool
-    let onRun: () -> Void
+
+    /// Plain icon-over-label destinations — everything except Run, which
+    /// keeps the design's distinct filled-pill treatment below rather than
+    /// this loop's shape. `.run` stays a case of the same enum `selected`
+    /// holds (so it is a real destination, not a side channel), it is just
+    /// never one of THESE buttons.
+    private var plainTabs: [FaffTabV5] { FaffTabV5.allCases.filter { $0 != .run } }
 
     /// The prototype's flex ratios: each destination is flex 1, RUN is flex
     /// 1.1. SwiftUI has no flex, and `layoutPriority` is NOT it — priority
@@ -126,7 +148,7 @@ struct TabBarV5: View {
     var body: some View {
         GeometryReader { geo in
             let gap = showRun ? V5.S.s6 : V5.S.s4
-            let slots = CGFloat(FaffTabV5.allCases.count)
+            let slots = CGFloat(plainTabs.count)
             let gaps = gap * (slots - 1 + (showRun ? 1 : 0))
             // ── the bar's own gutter ──────────────────────────────────────
             //
@@ -147,7 +169,7 @@ struct TabBarV5: View {
             let unit = usable / (slots + (showRun ? Self.runFlex : 0))
 
             HStack(spacing: gap) {
-                ForEach(FaffTabV5.allCases) { tab in
+                ForEach(plainTabs) { tab in
                     Button {
                         // ── DO NOT REINTRODUCE A `guard selected != tab` HERE ──
                         //
@@ -191,7 +213,13 @@ struct TabBarV5: View {
                 }
 
                 if showRun {
-                    Button(action: onRun) {
+                    // Selects the tab through the SAME binding the plain
+                    // destinations use above — re-tapping Run while already
+                    // on it pops that tab's own stack to root exactly like
+                    // re-tapping Today does, because it goes through the
+                    // identical setter. Run is a destination, not a
+                    // one-shot action, since 2026-09-03.
+                    Button { selected = .run } label: {
                         HStack(spacing: V5.S.s6) {
                             Image(systemName: "play.fill")
                                 .font(.system(size: 13, weight: .bold))
@@ -205,19 +233,17 @@ struct TabBarV5: View {
                         .background(V5.materialAction, in: Capsule(style: .continuous))
                     }
                     .buttonStyle(V5PressStyle())
-                    // "RUN" alone is a word, not an action, and the play glyph
-                    // beside it read out as "play". Says what the tap does and
-                    // what comes back — the pill opens the Outdoor/Treadmill
-                    // sheet, it does not start a run on the spot.
-                    .accessibilityLabel("Start a run")
-                    .accessibilityHint("Choose outdoor or treadmill")
+                    .accessibilityLabel("Run")
+                    .accessibilityHint("Confirm today's workout and choose how to record it")
+                    .accessibilityAddTraits(selected == .run ? [.isSelected] : [])
                 }
             }
             .padding(.horizontal, V5.S.gutter)
             .frame(width: geo.size.width, height: geo.size.height)
-            // The bar is the app's three destinations. Named as a tab bar,
-            // VoiceOver offers it to the rotor and announces "tab, 1 of 3"
-            // instead of three loose buttons pinned to the bottom.
+            // The bar is the app's four destinations (three plain, one the
+            // filled Run pill). Named as a tab bar, VoiceOver offers it to
+            // the rotor as a set of tabs instead of loose buttons pinned to
+            // the bottom.
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Destinations")
             .accessibilityAddTraits(.isTabBar)
@@ -363,9 +389,20 @@ struct RunPickerV5: View {
 
 /// A live run takes the whole screen. No tab bar — the design calls it
 /// immersive, and the run console is the only thing that should be tappable.
+///
+/// Three cases, one per explicit choice on the Run tab — `.watch` added
+/// 2026-09-03 alongside removing the automatic watch-vs-phone resolution
+/// `LiveRunHostV5` used to do for `.outdoor`. The runner picks which device
+/// executes; nothing infers it from reachability after the tap.
 enum LiveRunMode: Identifiable, Hashable {
-    case outdoor, treadmill
-    var id: String { self == .outdoor ? "outdoor" : "treadmill" }
+    case watch, outdoor, treadmill
+    var id: String {
+        switch self {
+        case .watch:    return "watch"
+        case .outdoor:  return "outdoor"
+        case .treadmill: return "treadmill"
+        }
+    }
 }
 
 // MARK: - The shell
@@ -375,13 +412,20 @@ enum LiveRunMode: Identifiable, Hashable {
 /// Content comes in as builders so this file owns the SHELL and nothing else:
 /// the screens are separate views that take a decoded model and render it, and
 /// the composition root wires the two together.
-struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteContent: View, LiveContent: View>: View {
+struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RunContent: View, RouteContent: View, LiveContent: View>: View {
     @Binding var selected: FaffTabV5
     let showRun: Bool
 
     @ViewBuilder var today: (Binding<[V5Route]>) -> TodayContent
     @ViewBuilder var block: (Binding<[V5Route]>) -> BlockContent
     @ViewBuilder var races: (Binding<[V5Route]>) -> RacesContent
+    /// Run's own content — a peer of the three above, not a sheet presented
+    /// over them (2026-09-03 correction). Takes the same path binding shape
+    /// as the others for architectural symmetry, even though nothing pushes
+    /// a `V5Route` from it today, plus the one thing a sheet used to give it
+    /// for free: a way to ask the shell for the full-screen live console
+    /// once the runner has made an explicit execution choice.
+    @ViewBuilder var run: (Binding<[V5Route]>, @escaping (LiveRunMode) -> Void) -> RunContent
     /// A pushed screen sometimes needs to push again — the run log opens a
     /// run. It gets the same path the stack is driven by rather than starting
     /// a nested NavigationStack, which would give the runner two back chains
@@ -390,7 +434,6 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
     @ViewBuilder var live: (LiveRunMode, @escaping () -> Void) -> LiveContent
 
     @State private var paths: [FaffTabV5: [V5Route]] = [:]
-    @State private var runPickerOpen = false
     @State private var liveRun: LiveRunMode?
 
     private func path(_ tab: FaffTabV5) -> Binding<[V5Route]> {
@@ -520,6 +563,26 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                     .compositingGroup()
                     .opacity(selected == .races ? 1 : 0)
                     .allowsHitTesting(selected == .races)
+
+                    // Run (2026-09-03) · a fourth peer destination, mounted
+                    // and gated exactly like the three above — same reasons:
+                    // the launch gate does not wait on it (`FaffApp.swift`'s
+                    // `launchSurfaces` stays `{today, block, races}`, and
+                    // `isSuperset(of:)` does not require an exact match), but
+                    // switching TO it paints from state already loaded at
+                    // launch rather than starting a fresh fetch and
+                    // reflowing, same as the other three.
+                    if showRun {
+                        NavigationStack(path: path(.run)) {
+                            run(path(.run), { mode in liveRun = mode })
+                                .navigationDestination(for: V5Route.self) { r in
+                                    route(r, path(.run)).v5InteractivePop()
+                                }
+                        }
+                        .compositingGroup()
+                        .opacity(selected == .run ? 1 : 0)
+                        .allowsHitTesting(selected == .run)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -538,9 +601,7 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
                         NotificationCenter.default.post(
                             name: .faffTabReselected, object: tab)
                     }
-                ), showRun: showRun) {
-                    runPickerOpen = true
-                }
+                ), showRun: showRun)
             }
 
             // VW-1 (a status-bar scrim over every AppBar screen) was tried
@@ -550,18 +611,9 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RouteC
             // deleted from `ComponentsV5.swift`; do not re-add a call site
             // here either.
             //
-            // RunLobbyV5 (pre-run experience) replaces the bare two-button
-            // RunPickerV5 here: it shows what's about to start and whether
-            // the devices are ready before the runner commits. RunPickerV5
-            // itself is left in place (GalleryV5 still references it as a
-            // component sample) — only this, the one real call site, moved.
-            V5SheetHost(isPresented: $runPickerOpen, title: "Start the run") {
-                RunLobbyV5(
-                    onOutdoor: { runPickerOpen = false; liveRun = .outdoor },
-                    onTreadmill: { runPickerOpen = false; liveRun = .treadmill },
-                    onCancel: { runPickerOpen = false }
-                )
-            }
+            // No sheet here any more (2026-09-03 correction) — RunLobbyV5
+            // is the Run tab's own NavigationStack root, above, not a
+            // V5SheetHost presented over whichever tab the runner was on.
         }
         // ── THE END OF ONBOARDING HAD NOWHERE TO LAND ────────────────────
         //
@@ -613,24 +665,29 @@ struct NotOnPhoneYetV5: View {
     /// also the one runner who could not sign out of it. A refusal states an
     /// answer; it does not take the door off.
     var onOpenAccount: (() -> Void)? = nil
+    /// SHAREDSHELL-1 (2026-09-04) · see `InjuryFlareV5`'s own doc comment
+    /// in StateScreensV5.swift.
+    var suppressOwnHeader: Bool = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 DayPanel(fill: .quiet) {
-                    if let onOpenAccount {
-                        HStack {
-                            Spacer(minLength: 0)
-                            // 13pt person glyph, matching the other refusal
-                            // screen (`HostsV5.wayOutHeader`) rather than the
-                            // kit's 14. Kept as drawn.
-                            HeaderDiscV5(glyph: .symbol("person", size: 13),
-                                         label: "Account and settings",
-                                         fill: .quietRaised,
-                                         action: onOpenAccount)
+                    if !suppressOwnHeader {
+                        if let onOpenAccount {
+                            HStack {
+                                Spacer(minLength: 0)
+                                // 13pt person glyph, matching the other refusal
+                                // screen (`HostsV5.wayOutHeader`) rather than the
+                                // kit's 14. Kept as drawn.
+                                HeaderDiscV5(glyph: .symbol("person", size: 13),
+                                             label: "Account and settings",
+                                             fill: .quietRaised,
+                                             action: onOpenAccount)
+                            }
                         }
+                        Color.clear.frame(height: onOpenAccount == nil ? V5.S.s56 : V5.S.s24)
                     }
-                    Color.clear.frame(height: onOpenAccount == nil ? V5.S.s56 : V5.S.s24)
                     Text("Not here yet")
                         .faffDisplayV5(TypeScaleV5.display44)
                         .foregroundStyle(V5.textPrimary)
