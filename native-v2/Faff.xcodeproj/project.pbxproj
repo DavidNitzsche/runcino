@@ -250,6 +250,7 @@
 		F64C10EDC3372CCA402D5759 /* OnboardingV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8825DD5FD2222468737B3C2 /* OnboardingV5.swift */; };
 		F70FE052B115F95BFC68C5BD /* V5ContrastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A738F6B07437E922761372 /* V5ContrastTests.swift */; };
 		F78C87C61CF8C1E957424497 /* FaffWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB78B57C63F6CAA75CB24270 /* FaffWatchApp.swift */; };
+		F8DD2B76A52E7C51F99593C3 /* CancellationBannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D788C0D1C580B15D9E5F85C0 /* CancellationBannerTests.swift */; };
 		F9DA343CAB8DDF3C41954887 /* Archivo-Variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 3ED7487505A037C4114A81C1 /* Archivo-Variable.ttf */; };
 		F9EAEA6A32A4C57CDB1EAE91 /* V5PlanSheetCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E415054AF8F3E0C1B04391 /* V5PlanSheetCopyTests.swift */; };
 		FACEBAA69F1C4822991FE9B5 /* LiveRunTreadmillNominalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */; };
@@ -539,6 +540,7 @@
 		D3F9F97249181DA2EB82D25D /* TodayShoePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayShoePicker.swift; sourceTree = "<group>"; };
 		D4F35B32A76C4221652B197B /* A11yDump.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = A11yDump.swift; sourceTree = "<group>"; };
 		D70DA6E4F25CD4993251236D /* WireProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireProbe.swift; sourceTree = "<group>"; };
+		D788C0D1C580B15D9E5F85C0 /* CancellationBannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CancellationBannerTests.swift; sourceTree = "<group>"; };
 		D8887459C81D2BD8B503FAFE /* F_Sheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = F_Sheets.swift; sourceTree = "<group>"; };
 		DAA1CCA3DF5D33860D0F8DA9 /* PhoneRunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRunView.swift; sourceTree = "<group>"; };
 		DB78B57C63F6CAA75CB24270 /* FaffWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWatchApp.swift; sourceTree = "<group>"; };
@@ -576,7 +578,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_1150D1AD-7D30-42A6-8EA1-88E2CDB334EC" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_39BA490A-2E9E-4F56-9FDF-5D6AF61D0380" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -617,6 +619,7 @@
 				5714B50567FAC68FA7473384 /* _SplitsDecompositionTests.swift */,
 				F134E0F92EB424BCC3563D4B /* AppCacheRetentionTests.swift */,
 				0BBD87A2B7AEEDE1D12808EB /* BeltTrackerTests.swift */,
+				D788C0D1C580B15D9E5F85C0 /* CancellationBannerTests.swift */,
 				1EB6EA7F37EF5FFF18E53441 /* CatalogSampleArithmeticTests.swift */,
 				C55E4F4FBC346F8A31E8DE6D /* DayFetchCoordinatorTests.swift */,
 				902F9B952BC025BB545BF8E8 /* HRAlerterArmingTests.swift */,
@@ -988,10 +991,10 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_CF35696B-40A7-4E6B-83AF-CE1E88EE9C60" /* native-v2 */ = {
+		"TEMP_5C733744-3E0E-4AF9-B1AE-4EB3BDE12C1F" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_1150D1AD-7D30-42A6-8EA1-88E2CDB334EC" /* Secrets.xcconfig */,
+				"TEMP_39BA490A-2E9E-4F56-9FDF-5D6AF61D0380" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1249,6 +1252,7 @@
 			files = (
 				0F40C6D1D80D2707F6427394 /* AppCacheRetentionTests.swift in Sources */,
 				CC56F6522DB4029831F4ECE1 /* BeltTrackerTests.swift in Sources */,
+				F8DD2B76A52E7C51F99593C3 /* CancellationBannerTests.swift in Sources */,
 				3E71C61C03EEB17ADE58BD88 /* CatalogSampleArithmeticTests.swift in Sources */,
 				B9291CB1BBF3B150B4768147 /* DayFetchCoordinatorTests.swift in Sources */,
 				1BB8C7635DAD616EC84CB80E /* DecodeSweepTests.swift in Sources */,
@@ -1492,7 +1496,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_1150D1AD-7D30-42A6-8EA1-88E2CDB334EC" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_39BA490A-2E9E-4F56-9FDF-5D6AF61D0380" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1719,7 +1723,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_1150D1AD-7D30-42A6-8EA1-88E2CDB334EC" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_39BA490A-2E9E-4F56-9FDF-5D6AF61D0380" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;

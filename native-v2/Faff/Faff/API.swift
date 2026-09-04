@@ -108,6 +108,24 @@ enum API {
         #endif
     }
 
+    /// CANCELBANNER-1 · true for an error that means "this specific request
+    /// was cancelled," never for "the network is unreachable." Extracted as
+    /// a plain, static, input-to-output function — same reasoning as
+    /// `TodayHostV5.canPageWeek`/`planVersionAcceptable` elsewhere in this
+    /// app — so the exact distinction `authedSend`'s catch block relies on
+    /// is directly testable, rather than provable only by triggering a real
+    /// cancelled `URLSession` task.
+    ///
+    /// Two shapes are checked because which one `URLSession.shared.data(for:)`
+    /// throws for a Task-cancelled request is not guaranteed across OS/SDK
+    /// versions: Swift concurrency's own `CancellationError`, and
+    /// Foundation's `URLError(.cancelled)`.
+    static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        return false
+    }
+
     /// Auth-aware request helper for ANY HTTP method (POST/PATCH/DELETE/etc.).
     /// Caller assembles the URLRequest (method, headers, body); we attach the
     /// bearer + do 401 handling so write paths share the same session contract
@@ -147,6 +165,30 @@ enum API {
         do {
             (data, resp) = try await URLSession.shared.data(for: req)
         } catch {
+            // CANCELBANNER-1 (2026-09-04) · a superseded navigation is not a
+            // connectivity failure — the runner's OWN next tap cancelled
+            // this request, on a perfectly healthy connection. This used to
+            // post the SAME global banner for that as for a dead connection,
+            // because `URLSession.shared.data(for:)` is Task-cancellation-
+            // aware and throws when its enclosing Task is cancelled — which
+            // happens on every ordinary fast navigation: `goTo`'s
+            // `navigationTask?.cancel()` fires the instant a newer tap
+            // arrives while the previous fetch is still in flight. That is
+            // completely routine and correct — `V5Surface.load()` already
+            // treats it as one, catching `CancellationError` with "a screen
+            // going away is not an outage" — but THIS function sits below
+            // that, is the one and only place that posts the global
+            // `.faffReachabilityLost` banner, and was posting it on every
+            // one of these before the cancellation ever reached `load()`'s
+            // own correct handling. David, physical device: "the app
+            // repeatedly says it cannot reach faff" during what was, by his
+            // own account, ordinary browsing — this is why: normal-speed
+            // navigation cancels the previous date's request essentially
+            // every time, and every one of those cancellations was a false
+            // "can't reach faff."
+            if API.isCancellation(error) {
+                throw error
+            }
             // Network-level failure (offline / can't reach Faff). Surface a
             // loud global signal so the runner sees "can't reach Faff" instead
             // of every surface silently falling back to empty/stale cache.
