@@ -64,6 +64,7 @@ import {
   gradePhase,
 } from '@/lib/training/execution-semantics';
 import { splitRuleRegisters } from '@/lib/watch/build-workout';
+import { buildRaceOnToday } from '@/lib/faff/race-on-today';
 import { fmtPace as fmtPaceShared, fmtMinutesCasual } from '@/lib/format/run';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
@@ -2015,6 +2016,13 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   }
 
   const raceDay = todayPlan?.type === 'race';
+  // DECISION-2 · race content on Today itself, not only in the pre-run
+  // lobby. Additive: a resolver failure returns null and Today renders
+  // exactly as it did before this existed — never load-bearing for the
+  // whole page (Rule 3).
+  const raceOnToday = raceDay
+    ? await buildRaceOnToday(userId, today, activePlan?.race_id ? String(activePlan.race_id) : null)
+    : null;
 
   /* PRERUN-1 · the plan for going wrong, off the same key the wrist reads.
    *
@@ -2146,6 +2154,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   ctx.whereYouAre = buildWhereYouAre(glance, fitnessRow);
   ctx.beforeYouGo = beforeYouGo;
   ctx.raceDay = raceDay;
+  ctx.raceOnToday = raceOnToday;
   ctx.contingency = contingency;
   ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
   ctx.blockNote = await loadBlockNote(userId);

@@ -110,6 +110,27 @@ export function roundTo(v: number, places = 1): number {
   return decimal(Math.round(decimal(v) * f) / f);
 }
 
+/**
+ * CONTRACT-1 (2026-09-03) · the ONE rule for turning `plan_workouts.
+ * distance_mi` (or any equivalent raw value) into the total distance a
+ * runner reads for a workout. Today's dose (`lib/training/spec-card.ts`'s
+ * `cardFromSpec`) and the phone/watch payload (`lib/watch/build-workout.ts`)
+ * both call this — not two independently-written expressions that happen to
+ * agree today. Traced 2026-09-03 after a report showed 6.0 mi on one surface
+ * and 6.5 on another for what was assumed to be the same workout: the two
+ * numbers turned out to come from different databases (production vs. an
+ * isolated QA seed), not a real code defect — but the two call sites were
+ * still applying DIFFERENT transforms (`roundTo(_, 1)` vs. a raw `Number()`)
+ * to the same column, which is exactly the kind of hair's-width divergence
+ * that becomes a real bug the next time either side changes alone (Rule 9).
+ * "The day's total is the plan's own figure, not a re-summed one" — this
+ * never sums phase distances, it only normalizes the one stored value.
+ */
+export function canonicalWorkoutDistanceMi(raw: number | string | null | undefined): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? roundTo(n, 1) : 0;
+}
+
 /** A finite, positive, formattable number — or null. Zero is not a distance,
  *  a pace or a duration, and every formatter here refuses it as such. */
 function usable(v: number | null | undefined): v is number {

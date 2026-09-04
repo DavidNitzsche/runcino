@@ -52,6 +52,28 @@ enum WatchRepUnit: String, Codable, Equatable {
     case time, distance
 }
 
+/// PACESHAPE-1 (2026-09-03) · what a phase's `targetPaceSPerMi` MEANS, not
+/// just what it IS. The server has carried this since SPECFIRST-1
+/// (`lib/training/execution-semantics.ts#paceShapeFor`) — one owner, never
+/// re-derived — but the phone discarded it on decode until now, which is
+/// how a warm-up's easy-band ceiling ("no faster than 8:22/mi") rendered as
+/// a naked, undifferentiated "8:22/mi" indistinguishable from a flat target
+/// pace to hold. `.none` means the phase carries no pace to grade at all
+/// (a recovery jog); a target with `.none` should not be read as a number
+/// to hit.
+enum WatchPaceShape: String, Codable, Equatable {
+    /// Warm-up/cool-down, or an easy/long work phase — the number is the
+    /// easy band's FAST edge, never a midpoint to hover on.
+    case ceiling
+    /// Quality/race work — a two-sided range around the target, using
+    /// `tolerancePaceSPerMi`.
+    case window
+    /// By-effort — grade varies (outdoor hills) or no pace applies at all.
+    case effort
+    /// No prescribed pace (a recovery jog by feel).
+    case none
+}
+
 struct WatchPhase: Codable, Identifiable, Equatable {
     /// Stable identity for SwiftUI lists · the cursor index assigned at
     /// decode time (the backend payload has no per-phase id).
@@ -85,6 +107,9 @@ struct WatchPhase: Codable, Identifiable, Equatable {
     /// phase, and on any payload from before this field existed.
     let treadmillInclinePct: Double?
     let treadmillSpeedMph: Double?
+    /// See `WatchPaceShape`. Absent on an older payload — `effectivePaceShape`
+    /// below is what every consumer should read, never this raw field.
+    let paceShape: WatchPaceShape?
 
     /// The backend payload omits `index` (the phases array is ordered
     /// and the watch walks it with a cursor).  We assign it during
@@ -94,7 +119,7 @@ struct WatchPhase: Codable, Identifiable, Equatable {
          targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic,
          repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil,
          hrRole: WatchHrRole? = nil, treadmillInclinePct: Double? = nil,
-         treadmillSpeedMph: Double? = nil) {
+         treadmillSpeedMph: Double? = nil, paceShape: WatchPaceShape? = nil) {
         self.index = index
         self.type = type
         self.label = label
@@ -108,10 +133,11 @@ struct WatchPhase: Codable, Identifiable, Equatable {
         self.hrRole = hrRole
         self.treadmillInclinePct = treadmillInclinePct
         self.treadmillSpeedMph = treadmillSpeedMph
+        self.paceShape = paceShape
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm, hrRole, treadmillInclinePct, treadmillSpeedMph
+        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm, hrRole, treadmillInclinePct, treadmillSpeedMph, paceShape
     }
 
     /// Decoding without an index — used only when a phase is decoded in
@@ -131,6 +157,7 @@ struct WatchPhase: Codable, Identifiable, Equatable {
         self.hrRole = try c.decodeIfPresent(WatchHrRole.self, forKey: .hrRole)
         self.treadmillInclinePct = try c.decodeIfPresent(Double.self, forKey: .treadmillInclinePct)
         self.treadmillSpeedMph = try c.decodeIfPresent(Double.self, forKey: .treadmillSpeedMph)
+        self.paceShape = try c.decodeIfPresent(WatchPaceShape.self, forKey: .paceShape)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -147,7 +174,16 @@ struct WatchPhase: Codable, Identifiable, Equatable {
         try c.encodeIfPresent(hrRole, forKey: .hrRole)
         try c.encodeIfPresent(treadmillInclinePct, forKey: .treadmillInclinePct)
         try c.encodeIfPresent(treadmillSpeedMph, forKey: .treadmillSpeedMph)
+        try c.encodeIfPresent(paceShape, forKey: .paceShape)
     }
+
+    /// PACESHAPE-1 · what every consumer should read, never the raw
+    /// `paceShape` field — absent on an older payload defaults to `.window`
+    /// (a flat target/range) exactly like today's undifferentiated
+    /// rendering, so a client that has not been told otherwise behaves as it
+    /// always has rather than silently reclassifying every pace as a
+    /// ceiling or an ineffort.
+    var effectivePaceShape: WatchPaceShape { paceShape ?? .window }
 
     /// The role to actually use. An absent wire value (older payload, or a
     /// server not yet carrying this field) defaults to `.observational` —
@@ -324,13 +360,38 @@ struct WatchWorkout: Codable, Equatable {
         // against — an absent field must read as the safe default
         // downstream, not silently vanish upstream of every consumer.
         let raw = try c.decode([WatchPhase].self, forKey: .phases)
+        // PACESHAPE-1 (2026-09-03 correction) · this re-stamp had the EXACT
+        // same defect three separate times over: `repUnit`/`distanceMi` were
+        // the 2026-05-25 fix this comment already cites; `hrRole` (HR-ROLE-1)
+        // and `treadmillInclinePct`/`treadmillSpeedMph` (TREADMILL-HILL-1)
+        // were BOTH added to `WatchPhase` since, and BOTH silently dropped
+        // right here, because this list was never updated to carry them —
+        // every field added to the struct after this map was written had to
+        // be added here too, by hand, and nothing enforced it.
+        //
+        // Found because `hrRole`'s drop was INVISIBLE: `effectiveHrRole`
+        // defaults dropped-to-nil to `.observational`, which happens to be
+        // the correct answer for the by-effort hill reps this session kept
+        // testing against — so HR-ROLE-1 "worked" in every render this
+        // session did, by coincidence, while silently misclassifying any
+        // REAL `.target` HR phase (a tempo session's genuine HR target) as
+        // observational instead. `treadmillInclinePct`/`treadmillSpeedMph`
+        // had no such lucky default — TREADMILL-HILL-2's own fix, wired and
+        // unit-tested against hand-built `WatchPhase` values (which never
+        // pass through this decoder at all), never once fired against real
+        // decoded data because of this exact line.
+        //
+        // Every field the memberwise init accepts is threaded through now.
+        // The next field added to `WatchPhase` will still need a line here —
+        // Swift has no "spread the rest" for a memberwise init — but at
+        // least this sweep closes every gap that existed today.
         self.phases = raw.enumerated().map { (i, p) in
             WatchPhase(index: i, type: p.type, label: p.label, durationSec: p.durationSec,
                        targetPaceSPerMi: p.targetPaceSPerMi,
                        tolerancePaceSPerMi: p.tolerancePaceSPerMi, haptic: p.haptic,
                        repUnit: p.repUnit, distanceMi: p.distanceMi, hrTargetBpm: p.hrTargetBpm,
                        hrRole: p.hrRole, treadmillInclinePct: p.treadmillInclinePct,
-                       treadmillSpeedMph: p.treadmillSpeedMph)
+                       treadmillSpeedMph: p.treadmillSpeedMph, paceShape: p.paceShape)
         }
     }
 }

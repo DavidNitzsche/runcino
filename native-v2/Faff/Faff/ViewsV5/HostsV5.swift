@@ -869,6 +869,7 @@ struct TodayHostV5: View {
                           canPageBackward: canPageWeek(-1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
                           canPageForward: canPageWeek(1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
                           onOpenPacesMoved: { path.append(.pacesMoved) },
+                          onOpenRace: { slug in path.append(.raceDetail(slug: slug)) },
                           onReportSick: { sym, started, fever in
                               Task { await reportSick(sym, started, fever) }
                           },
@@ -2417,6 +2418,13 @@ struct FaffV5Root<LiveContent: View>: View {
             today: { path in TodayHostV5(path: path, accountName: accountName) },
             block: { path in BlockHostV5(path: path) },
             races: { path in RacesHostV5(path: path) },
+            run: { _, onExecute in
+                RunLobbyV5(
+                    onWatch: { onExecute(.watch) },
+                    onOutdoor: { onExecute(.outdoor) },
+                    onTreadmill: { onExecute(.treadmill) }
+                )
+            },
             route: { route, path in
                 switch route {
                 case .raceDetail(let slug): RaceDetailHostV5(slug: slug)
@@ -2553,6 +2561,33 @@ struct InjuryPreviewHostV5: View {
 // that comes from the same `/api/watch/today` payload the watch reads, so the
 // phone and the wrist are never prescribing different things.
 
+/// DUPLICATE-1 · shown instead of either phone console when the watch has
+/// already published an active session. Deliberately terse: the runner does
+/// not need a diagnosis, they need to know their run is already being
+/// recorded and where to look for it.
+struct LiveRunBlockedByOtherDeviceV5: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: V5.S.s16) {
+            Spacer(minLength: 0)
+            Text("Already recording on your Apple Watch")
+                .font(.faffDisplay(22))
+                .foregroundStyle(V5.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Your watch started this run. Starting it again here would record two activities for the same run. Use your watch to pause or end it.")
+                .font(.faffText(TypeScaleV5.body15))
+                .foregroundStyle(V5.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            FaffButton("Back to Run", variant: .secondary, size: .md, action: onDismiss)
+        }
+        .padding(V5.S.gutter)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(V5.surfacePage.ignoresSafeArea())
+    }
+}
+
 struct LiveRunHostV5: View {
     let mode: LiveRunMode
     let onDismiss: () -> Void
@@ -2570,11 +2605,6 @@ struct LiveRunHostV5: View {
     /// renders, because a live console that appears and then reflows when the
     /// plan lands is exactly what the design forbids.
     @State private var asked = false
-    /// DECISION-1 · which device is the SOLE recorder for this session,
-    /// frozen once in `.task` before anything starts. Defaults to `.phone`,
-    /// the existing behavior, until the task resolves it — `asked` gates
-    /// rendering, so this default is never actually read by `body`.
-    @State private var recordingOwner: RunLobbyRecordingOwner = .phone
     /// The End confirm. A run is hours of work and End is a single tap next
     /// to Pause; it used to finish, save and dismiss with no step in between.
     @State private var confirmingEnd = false
@@ -2582,6 +2612,12 @@ struct LiveRunHostV5: View {
     /// in — see `.task`. Shown once, on this console, because there is
     /// nowhere else the runner would think to look for it.
     @State private var recovered: PhoneRunCheckpoint?
+    /// DUPLICATE-1 · set in `.task`, before either console ever mounts, when
+    /// the watch has already published an active session. Checked for BOTH
+    /// `.outdoor` and `.treadmill` (both are "phone recording" in the sense
+    /// this guard cares about) — `.watch` mode needs no check of its own,
+    /// since it never starts anything on the phone to conflict with.
+    @State private var blockedByActiveWatchSession = false
 
     var body: some View {
         Group {
@@ -2593,15 +2629,22 @@ struct LiveRunHostV5: View {
             // every planned session opened at the flat fallback speed and
             // counted the fetch as running. Build it when there is something
             // to build it from.
-            if asked {
+            if blockedByActiveWatchSession {
+                // DUPLICATE-1 · the whole point: never silently let this
+                // console start recording over a session the watch already
+                // owns. Named, explicit, and gives the runner the one
+                // sensible next step (leave; the watch is already going).
+                LiveRunBlockedByOtherDeviceV5(onDismiss: onDismiss)
+            } else if asked {
                 switch mode {
-                case .outdoor where recordingOwner == .watch:
-                    // DECISION-1 · the watch executes and records; this
-                    // phone screen is companion status only. It never
-                    // touches `tracker` (never started for this session,
-                    // see `.task`) and never shows Pause/End of its own —
-                    // those live on the watch, which is the one recording
-                    // owner for this session.
+                case .watch:
+                    // The runner explicitly chose Apple Watch on the Run
+                    // tab (only offered there when the watch already has
+                    // today's workout) — this phone screen is companion
+                    // status only. It never touches `tracker` (never
+                    // started for this session, see `.task`) and never
+                    // shows Pause/End of its own — those live on the watch,
+                    // which is the one recording owner for this session.
                     LiveRunWatchCompanionV5(plan: plan, onDismiss: onDismiss)
                 case .outdoor:
                     // A run worth keeping gets a confirm; an empty console —
@@ -2667,33 +2710,45 @@ struct LiveRunHostV5: View {
                     canonicalWorkoutId = w.workoutId
                 }
             }
+            // DUPLICATE-1 · checked ONCE, here, before either phone console
+            // ever mounts or `tracker.start` is ever called — the same
+            // "decide once, before anything starts" discipline Decision 1
+            // already applies to the owner itself. `.watch` mode is exempt:
+            // it starts nothing on the phone, so there is nothing here for
+            // it to conflict with.
+            if mode != .watch, WatchSync.shared.watchActiveWorkoutIsCurrent {
+                blockedByActiveWatchSession = true
+                asked = true
+                return
+            }
             asked = true
-            // DECISION-1 · one recording owner per session, decided ONCE,
-            // here, before anything starts — never re-decided later in this
-            // view's lifetime (a live-updating decision is exactly how two
-            // devices could each believe the other is recording). `body`'s
-            // switch below reads this same frozen value to choose which
-            // console to render.
-            recordingOwner = mode == .outdoor
-                ? .resolve(RunLobbyWatchReadiness.resolve(isPaired: WatchSync.shared.isPaired,
-                                                           isWatchAppInstalled: WatchSync.shared.isWatchAppInstalled,
-                                                           isReachable: WatchSync.shared.isReachable,
-                                                           lastSyncStatus: WatchSync.shared.lastSyncStatus))
-                : .phone
-            // Safe before authorization has been answered: the tracker
-            // remembers the request and starts itself when the prompt is
-            // answered. It used to return silently, leaving a live-looking
-            // console frozen at 0:00 on every runner's first ever run.
-            //
-            // DECISION-1 · the phone never starts its own tracking session
-            // when the watch owns this run — that IS the guarantee against
-            // two devices independently persisting one activity. When the
-            // phone DOES record (owner == .phone), it stamps the SAME
-            // canonical workoutId the watch would have used, rather than a
-            // random `phone_<uuid>` unrelated to the day's prescription —
-            // "the phone fallback must preserve the same workout identity."
-            if mode == .outdoor && recordingOwner == .phone {
+            // DECISION-1 · one recording owner per session — `mode` IS that
+            // decision now (2026-09-03 correction), made explicitly by the
+            // runner tapping Apple Watch / Outdoor / Treadmill on the Run
+            // tab, never inferred here from live reachability. `.watch`
+            // never starts `tracker`; `.outdoor` always does, unconditionally
+            // — the phone is only ever recording because the runner picked
+            // it, not because the watch happened to be unreachable at the
+            // moment this view appeared. It stamps the SAME canonical
+            // workoutId the watch would have used, rather than a random
+            // `phone_<uuid>` unrelated to the day's prescription.
+            if mode == .outdoor {
                 tracker.start(canonicalWorkoutId: canonicalWorkoutId)
+            }
+            // DUPLICATE-1 · the phone's own half of the handshake, published
+            // the moment either phone console actually commits to a session
+            // — so a direct watch start a moment later can (once the watch
+            // side reads this app's context) see the phone already owns
+            // one. Both `.outdoor` and `.treadmill` publish; `.watch` never
+            // reaches this line (returned above). `canonicalWorkoutId` alone
+            // — never `tracker.workoutId`, which is only meaningful for
+            // `.outdoor` (`.treadmill` never starts this `tracker` at all;
+            // its own console synthesizes its own id from this SAME
+            // `plan?.workoutId` source, so an unstructured run's fallback
+            // placeholder here does not need to match it byte-for-byte to
+            // serve this guard's actual job — flagging "a session exists."
+            if mode == .outdoor || mode == .treadmill {
+                WatchSync.shared.publishPhoneActiveWorkout(id: canonicalWorkoutId ?? "phone-run")
             }
             // 2026-08-21 · the HR stream is NOT started here any more.
             // `TreadmillHRStreamer.start` is first-caller-wins on the sample
@@ -2704,6 +2759,15 @@ struct LiveRunHostV5: View {
             // Each console owns its own anchor because each console knows
             // when its run began.
         }
+        // DUPLICATE-1 · clears the phone's half of the handshake regardless
+        // of WHICH exit path this view leaves through (End, discard, the
+        // blocked-refusal's own dismiss, `.faffSessionExpired` tearing the
+        // whole shell down) — one place, not one call per exit, so a future
+        // exit path cannot forget it. Harmless to call when nothing was ever
+        // published (`.watch` mode, or the blocked path that returned
+        // before publishing): `publishPhoneActiveWorkout(id: nil)` merges a
+        // key-removal into whatever context already exists.
+        .onDisappear { WatchSync.shared.publishPhoneActiveWorkout(id: nil) }
     }
 
     /// ─────────────────────────────────────────────────────────────────────
