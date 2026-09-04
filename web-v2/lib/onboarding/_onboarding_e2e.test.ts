@@ -435,6 +435,8 @@ function readBackWeek(w: Walked, allRows: PlanWorkoutRow[], dateISO: string): Pl
     plan_id: 'pln_sim',
     week_start_iso: win.week_start_iso,
     week_end_iso: win.week_end_iso,
+    plan_start_iso: null,
+    plan_end_iso: null,
     today_iso: dateISO,
     days: shapePlanWeekDays(inWindow, {
       weekStart: win.week_start_iso, today: dateISO,

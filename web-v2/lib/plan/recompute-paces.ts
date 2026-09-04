@@ -573,6 +573,27 @@ export async function recomputePacesForPlan(
       console.error(`[recomputePacesForPlan] race-row refresh failed · plan=${planId}`, e);
       return null;
     });
+    /* PLANVERSION-1 (2026-09-03) · a recompute that actually MOVED a
+     * prescribed pace is exactly the "in-place pace re-anchor" case that
+     * field's own doc comment names as a trigger — and this UPDATE never
+     * touched it, so a client cache keyed on `${id}:${last_adapted_at}`
+     * (Today, the week strip, the watch) had no signal that 72 workouts'
+     * paces had just changed underneath it. Found auditing the pace-
+     * recompute run against David's own account this session — the exact
+     * "Today/week caches invalidated?" check his own protocol asks for.
+     *
+     * Gated on something having actually changed, not run unconditionally:
+     * a no-op recompute (every anchor already current, nothing to write)
+     * must not force every client to refetch and redraw for zero real
+     * content change — that would be its own small Rule 9 violation in the
+     * other direction. */
+    const raceRowsChanged = (raceRefresh?.rows ?? []).some((r) => r.action === 'updated');
+    if (updated > 0 || raceRowsChanged) {
+      await tx.query(
+        `UPDATE training_plans SET last_adapted_at = now() WHERE id = $1`,
+        [planId],
+      );
+    }
     // Audit stamp · field-level jsonb merge (Rule 6 · never full-replace).
     await tx.query(
       `UPDATE training_plans

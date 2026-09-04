@@ -151,6 +151,34 @@ enum AppCache {
         for k in keys { store.removeObject(forKey: k) }
     }
 
+    // MARK: - Dynamic keys (TODAYPERSIST-1, 2026-09-04)
+    //
+    // The fixed `Key` enum above is one slot per SCREEN — exactly right for
+    // "today", which is one thing. A navigated-to day or a navigated-to
+    // week is not one thing, it's however many the runner has visited, so
+    // it needs a slot per DATE rather than one shared slot a second visit
+    // would overwrite. Same store, same "faff.cache." prefix — `clearAll`
+    // and `bindOwner` already sweep by prefix match, not by enumerating
+    // `Key`'s cases, so every dynamic entry is covered by the existing
+    // sign-out/identity-change guarantee with no new code there.
+    //
+    // Deliberately NO staleness gate here, unlike `read`/`fresh` above.
+    // "Today" has one obvious clock — the calendar date — so a 12h cutoff
+    // is the right call for it. A day or week the runner explicitly
+    // navigated to has no such single clock: validity is a PLAN VERSION
+    // question ("does this still match what the plan looks like now"),
+    // which the caller already asks and answers via PLANVERSION-1's
+    // `reconcileDayCache` — a second, wall-clock-based expiry here would
+    // just be a competing, worse-reasoned answer to a question that
+    // already has an owner.
+    static func writeRawDynamic(_ dynamicKey: String, data: Data) {
+        store.set(data, forKey: prefix + dynamicKey)
+    }
+
+    static func readRawDynamic(_ dynamicKey: String) -> Data? {
+        store.data(forKey: prefix + dynamicKey)
+    }
+
     // MARK: - Identity binding
     //
     // 2026-08-21 · multi-tenancy audit. This cache was a single global

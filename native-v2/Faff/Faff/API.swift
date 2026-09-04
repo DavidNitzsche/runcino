@@ -1433,6 +1433,15 @@ enum API {
         if date == nil {
             AppCache.writeRaw(.planWeek, data: data)
         }
+        // TODAYPERSIST-1 · an anchored fetch (a week the runner paged to,
+        // not necessarily today's) gets its own disk slot too, keyed by
+        // the week's OWN start date rather than the anchor date the
+        // caller requested — same key `TodayHostV5.weekCache` already
+        // uses in memory, so a cold-launch reload can seed that dictionary
+        // straight from disk with no re-keying.
+        if let start = decoded.week_start_iso {
+            AppCache.writeRawDynamic("v5.week.\(start)", data: data)
+        }
         return decoded
     }
 
@@ -1601,6 +1610,15 @@ struct PlanWeek: Decodable {
     let plan_version: String?
     let week_start_iso: String?
     let week_end_iso: String?
+    /// BOUNDARY-1 (2026-09-04) · the plan's own first/last authored day —
+    /// see the server's doc comment on the same field in
+    /// `lib/plan/week-loader.ts`. Absent on an older server; a nil bound
+    /// on either side is read as "unknown, don't clamp" rather than
+    /// "the plan has zero days", so a phone talking to a server that
+    /// predates this field degrades to the old unclamped behavior instead
+    /// of refusing to page at all.
+    let plan_start_iso: String?
+    let plan_end_iso: String?
     let today_iso: String
     let days: [PlanDay]
     let message: String?
@@ -1610,7 +1628,7 @@ struct PlanWeek: Decodable {
     // briefly null, days array missing. Strict decode would nuke the
     // whole Today week strip; defensive defaults keep it rendering.
     enum CodingKeys: String, CodingKey {
-        case plan_id, plan_version, week_start_iso, week_end_iso, today_iso, days, message
+        case plan_id, plan_version, week_start_iso, week_end_iso, plan_start_iso, plan_end_iso, today_iso, days, message
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -1618,6 +1636,8 @@ struct PlanWeek: Decodable {
         self.plan_version = try c.decodeIfPresent(String.self, forKey: .plan_version)
         self.week_start_iso = try c.decodeIfPresent(String.self, forKey: .week_start_iso)
         self.week_end_iso = try c.decodeIfPresent(String.self, forKey: .week_end_iso)
+        self.plan_start_iso = try c.decodeIfPresent(String.self, forKey: .plan_start_iso)
+        self.plan_end_iso = try c.decodeIfPresent(String.self, forKey: .plan_end_iso)
         self.today_iso = try c.decodeIfPresent(String.self, forKey: .today_iso) ?? ""
         self.days = (try? c.decode([PlanDay].self, forKey: .days)) ?? []
         self.message = try c.decodeIfPresent(String.self, forKey: .message)

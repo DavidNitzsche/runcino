@@ -54,6 +54,7 @@ import {
   type RunData,
 } from '@/lib/runs/run-shape';
 import { resolveWorkoutVerdict, type WorkoutVerdict } from '@/lib/execution/verdict';
+import { resolveDayExecutions } from '@/lib/execution/day-resolver';
 import { displayTypeFor } from '@/lib/faff/v5-today';
 import { resolveStoredPhases } from './load';
 import { composePostRunAnalysis, type PostRunAnalysis } from './analysis';
@@ -138,27 +139,48 @@ export async function loadPostRunDetailExtras(
   const data = row.data ?? {};
   const dateISO = String(data.date ?? String(data.startLocal ?? '').slice(0, 10));
 
-  /* THE ACTIVE PLAN'S ROW FOR THIS RUN'S DAY. For the CURRENT run only — it
-   * is what gives the grader the session class and the stride count, and what
-   * lets the basis sentence name the session family. Candidates get none, on
-   * purpose; see the Rule 14 note in the header. */
-  const planRes = await pool.query<{
-    type: string | null; sub_label: string | null; workout_spec: Record<string, unknown> | null;
-  }>(
-    `SELECT pw.type, pw.sub_label, pw.workout_spec
-       FROM plan_workouts pw
-       JOIN training_plans tp ON tp.id = pw.plan_id
-      WHERE tp.user_uuid = $1::uuid
-        AND tp.archived_iso IS NULL
-        AND pw.date_iso = $2
-      ORDER BY pw.id ASC
-      LIMIT 1`,
-    [userId, dateISO],
-  );
-  const planRow = planRes.rows[0] ?? null;
+  /* EXECUTION-IDENTITY-1 (2026-09-03) · this run only inherits the day's
+   * prescription (type, spec, sub-label) when THE CANONICAL RESOLVER
+   * confirms this specific run is what satisfies it — never merely because
+   * some plan_workouts row exists for its date, which is what the prior
+   * `WHERE pw.date_iso = $2 ... LIMIT 1` query did regardless of which run
+   * was actually being analysed. This page is reached by run id directly —
+   * from the log, from a supplemental run's own secondary card — so a
+   * friend's unrelated easy run opened on a day the plan asked for hill
+   * intervals would have been rep-graded as the interval session. Same
+   * defect class WORKOUT-EXECUTION-ID-1 fixed on Today/Watch/Recap, on the
+   * one remaining surface: post-run analysis.
+   *
+   * No match → `planRow` stays null and `currentType` falls through to
+   * `null`, never to `data.workoutType` — that field can carry a PASSIVE
+   * sync's date+distance guess (`workoutTypeSource !== 'plan'`-gated
+   * evidence is exactly what the resolver's LEGACY tier already refuses to
+   * trust without a live-tracked source), and this file must not re-open
+   * the door the resolver closes. An ungraded, honestly-labelled analysis is
+   * correct for a run that was never shown to execute anything prescribed. */
+  const resolvedDay = await resolveDayExecutions(userId, dateISO).catch((err: unknown) => {
+    console.warn('[postrun/detail-load] day resolver unreadable:',
+      err instanceof Error ? err.message : err);
+    return null;
+  });
+  const matchedPrescription = resolvedDay?.prescriptions.find(
+    (p) => p.matchedRun?.runId === row.id,
+  ) ?? null;
+  let planRow: { type: string | null; sub_label: string | null; workout_spec: Record<string, unknown> | null } | null = null;
+  if (matchedPrescription) {
+    const specRes = await pool.query<{ workout_spec: Record<string, unknown> | null }>(
+      `SELECT workout_spec FROM plan_workouts WHERE id = $1`,
+      [matchedPrescription.id],
+    );
+    planRow = {
+      type: matchedPrescription.type,
+      sub_label: matchedPrescription.subLabel,
+      workout_spec: specRes.rows[0]?.workout_spec ?? null,
+    };
+  }
 
   const rawPhases = await resolveStoredPhases(userId, dateISO, data);
-  const currentType = planRow?.type ?? (data.workoutType as string | null) ?? null;
+  const currentType = planRow?.type ?? null;
   const verdict = resolveWorkoutVerdict({
     type: currentType,
     spec: (planRow?.workout_spec ?? null) as never,

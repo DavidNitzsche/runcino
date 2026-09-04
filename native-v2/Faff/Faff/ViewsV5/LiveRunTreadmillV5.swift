@@ -431,7 +431,7 @@ struct LiveRunTreadmillV5: View {
                 // uses for an unreached segment, inherited here rather than
                 // introduced.
                 "actualSpeedMph": act.map { $0.avgSpeedMph } ?? nominalMph(for: phase),
-                "actualInclinePct": act.map { $0.avgInclinePct } ?? 1.0,
+                "actualInclinePct": act.map { $0.avgInclinePct } ?? nominalInclinePct(for: phase),
             ]
             if let act, act.durationSec > 0 {
                 let b = act
@@ -550,11 +550,19 @@ struct LiveRunTreadmillV5: View {
         session.configure(plan: effectivePhases.map {
             BeltSession.SegmentPlan(durationSec: $0.durationSec,
                                     targetMph: nominalMph(for: $0),
-                                    targetInclinePct: 1.0)
+                                    targetInclinePct: nominalInclinePct(for: $0))
         })
     }
 
+    /// TREADMILL-STRUCTURE-1 (2026-09-03) · every phase — hill work, warm-up,
+    /// recovery, cooldown — is now priced server-side through the shared
+    /// terrain model (`WatchPhase.treadmillSpeedMph`'s doc comment), so this
+    /// is the FIRST rung, not a hill-only special case. The pace-target
+    /// conversion and the per-type guesses below only fire for a plan
+    /// authored before this field existed, or a free-run session with no
+    /// structured phases at all — an older cached plan, never a fresh one.
     private func nominalMph(for phase: WatchPhase) -> Double {
+        if let speed = phase.treadmillSpeedMph, speed > 0 { return speed }
         if let target = phase.targetPaceSPerMi, target > 0 {
             return (3600.0 / Double(target) * 10).rounded() / 10
         }
@@ -564,6 +572,32 @@ struct LiveRunTreadmillV5: View {
         case .recovery: return 5.0
         case .cooldown: return 5.0
         }
+    }
+
+    /// Sibling of `nominalMph` for incline. `1.0%` remains the fallback for
+    /// the same two legacy cases — it is TERRAIN.treadmill-air-resistance-grade,
+    /// not an unexplained guess, but the server's own per-phase value is
+    /// preferred outright whenever a fresh plan carries one.
+    private func nominalInclinePct(for phase: WatchPhase) -> Double {
+        if let incline = phase.treadmillInclinePct, incline > 0 { return incline }
+        return 1.0
+    }
+
+    /// TREADMILL-STRUCTURE-1 (2026-09-03) · a 60-second hill rep's live HR
+    /// number is not a real reading of the effort — HR has not had time to
+    /// climb to steady state before the rep ends, per `hrRoleForRepDuration`
+    /// (the server-side owner of this call, `lib/watch/build-workout.ts`).
+    /// David's own instruction: "show effort as the governing instruction...
+    /// do not expose the non-actionable short-rep HR number." Scoped to WORK
+    /// phases only — `effectiveHrRole` also reads `.observational` for every
+    /// warm-up, recovery and cooldown phase, simply because those never get
+    /// an `hrRole` at all (they carry no `hrTargetBpm` to grade against), and
+    /// their HR is not rep-kinetics-limited the way a 60s hill's is. Hiding
+    /// it there too would suppress a genuinely readable number for the wrong
+    /// reason — this only ever hides a WORK phase's number, never any other.
+    private var showHrThisPhase: Bool {
+        guard let phase = walk?.phase, phase.type == .work else { return true }
+        return phase.effectiveHrRole != .observational
     }
 
     // MARK: - Top row
@@ -760,7 +794,7 @@ struct LiveRunTreadmillV5: View {
                 statColumn(label: "PACE",
                            value: FaffValue.from(currentPaceText,
                                                  modelled: distanceIsModelled))
-                if let bpm = hr.currentBpm {
+                if let bpm = hr.currentBpm, showHrThisPhase {
                     statColumn(label: "HR",
                                value: FaffValue.from(FaffFmt.bpm(Double(bpm)),
                                                      modelled: false))

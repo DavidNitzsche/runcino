@@ -1024,6 +1024,23 @@ struct WeekStripV5: View {
     let days: [WeekStripDayV5]
     var onTap: ((WeekStripDayV5) -> Void)? = nil
 
+    /// BOUNDARY-1 (2026-09-04) · whether a further swipe in that direction
+    /// leads to a week that actually exists in the authored plan. `true`
+    /// (both default) when the boundary is unknown — an older server, or
+    /// the very first frame before any week has answered yet — because
+    /// "don't clamp" is the safe failure: it degrades to the OLD unbounded
+    /// behavior rather than trapping the runner one week from where they
+    /// actually are.
+    ///
+    /// Implemented by not OFFERING the boundary page at all rather than by
+    /// intercepting the gesture — `TabView(.page)` is a real UIScrollView
+    /// underneath, and a scroll view with nothing past its last page
+    /// already rubber-bands there on its own. That is the "restrained
+    /// native resistance" the polish pass asked for, for free, from asking
+    /// for one fewer page rather than from writing spring physics by hand.
+    var canPageBackward: Bool = true
+    var canPageForward: Bool = true
+
     /// Page the whole strip a week at a time. -1 back, +1 forward.
     ///
     /// WKSTRIP-RACE-1 (2026-09-03) · ASYNC ON PURPOSE. David: "the swipe
@@ -1110,15 +1127,26 @@ struct WeekStripV5: View {
 
     var body: some View {
         TabView(selection: $page) {
-            week(neighbour(-7)).tag(0)
+            if canPageBackward {
+                week(neighbour(-7)).tag(0)
+            }
             week(days).tag(1)
-            week(neighbour(7)).tag(2)
+            if canPageForward {
+                week(neighbour(7)).tag(2)
+            }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         // The old app's own number, unmeasured — see the header comment.
         .frame(height: 80)
         .onChange(of: page) { _, p in
             guard p != 1, let onPageWeek else { return }
+            // A boundary page can only be selected by SWIPING to it while it
+            // still existed — a flag flipping to `false` while page 0 or 2
+            // is already the live selection (a fetch landing mid-gesture)
+            // must not fire a page-week call in a direction that no longer
+            // has anywhere to go.
+            if p == 0 && !canPageBackward { return }
+            if p == 2 && !canPageForward { return }
             // WKSTRIP-RACE-1 · ONE Task, and the recentre is now the LAST
             // thing in it, after the await — not a second, independently
             // scheduled Task racing the first. `await` already lands back on

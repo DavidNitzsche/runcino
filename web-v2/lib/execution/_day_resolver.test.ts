@@ -16,7 +16,7 @@ vi.mock('@/lib/runs/volume', () => ({ getCanonicalRunIds: vi.fn() }));
 
 import { pool } from '@/lib/db/pool';
 import { getCanonicalRunIds } from '@/lib/runs/volume';
-import { resolveDayExecutions, primaryPrescription } from './day-resolver';
+import { resolveDayExecutions, resolveDateRangeExecutions, primaryPrescription } from './day-resolver';
 
 const USER = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const DAY = '2026-09-03';
@@ -27,11 +27,29 @@ interface Prescription {
 }
 interface Run { id: string; data: Record<string, unknown> }
 
-function wire(prescriptions: Prescription[], runs: Run[]) {
-  (getCanonicalRunIds as any).mockResolvedValue(runs.map((r) => r.id));
+/**
+ * `canonicalIds`, when passed, simulates the REAL SQL's `AND id::text = ANY($n)`
+ * filter — a run row present in `runs` but absent from `canonicalIds` never
+ * reaches the resolver, exactly as a dedup-losing sibling never reaches it in
+ * production. Defaults to every run's own id (nothing pre-excluded) when
+ * omitted, matching every existing call site's behaviour unchanged.
+ */
+function wire(
+  prescriptions: Prescription[],
+  runs: Run[],
+  opts: { day?: string; canonicalIds?: string[] } = {},
+) {
+  const day = opts.day ?? DAY;
+  const canonicalIds = opts.canonicalIds ?? runs.map((r) => r.id);
+  (getCanonicalRunIds as any).mockResolvedValue(canonicalIds);
   (pool.query as any).mockImplementation((sql: string) => {
-    if (sql.includes('FROM plan_workouts')) return Promise.resolve({ rows: prescriptions });
-    if (sql.includes('FROM runs')) return Promise.resolve({ rows: runs });
+    if (sql.includes('FROM plan_workouts')) {
+      return Promise.resolve({ rows: prescriptions.map((p) => ({ ...p, date_iso: day })) });
+    }
+    if (sql.includes('FROM runs')) {
+      const survivors = runs.filter((r) => canonicalIds.includes(r.id));
+      return Promise.resolve({ rows: survivors.map((r) => ({ ...r, day })) });
+    }
     return Promise.resolve({ rows: [] });
   });
 }
@@ -152,5 +170,163 @@ describe('exact IDs, not ordering, decide association', () => {
     const day = await resolveDayExecutions(USER, DAY);
     expect(day.prescriptions[0].matchedRun?.runId).toBe('run_survivor');
     expect(day.supplementalRuns).toHaveLength(0);
+  });
+});
+
+/**
+ * EXECUTION-IDENTITY-1 (2026-09-03) · the full matrix David's ruling named
+ * explicitly, beyond the live-shape and ordering cases above: temporal
+ * ordering within a day, partial completion, treadmill, idempotency against
+ * a duplicate recording, a rescheduled prescription, a race with warm-up /
+ * cooldown activities, and a day with nothing prescribed at all.
+ */
+describe('the full named matrix', () => {
+  it('supplemental run logged BEFORE the prescribed workout — array order does not decide association', async () => {
+    // The friend run's row comes first in the array; the exact hill
+    // execution comes second. Only the id link decides, never position.
+    wire([hillPrescription], [
+      { id: 'run_friend', data: { distanceMi: 4.48, source: 'apple_watch' } },
+      { id: 'run_hills', data: { distanceMi: 6, source: 'phone', planWorkoutId: 'wko_hills' } },
+    ]);
+    const day = await resolveDayExecutions(USER, DAY);
+    expect(primaryPrescription(day)?.matchedRun?.runId).toBe('run_hills');
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_friend']);
+  });
+
+  it('supplemental run logged AFTER the prescribed workout — same result, reversed array order', async () => {
+    wire([hillPrescription], [
+      { id: 'run_hills', data: { distanceMi: 6, source: 'phone', planWorkoutId: 'wko_hills' } },
+      { id: 'run_friend', data: { distanceMi: 4.48, source: 'apple_watch' } },
+    ]);
+    const day = await resolveDayExecutions(USER, DAY);
+    expect(primaryPrescription(day)?.matchedRun?.runId).toBe('run_hills');
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_friend']);
+  });
+
+  it('a PARTIAL prescribed execution plus a supplemental run — the partial still owns the exact link, the extra run stays supplemental', async () => {
+    wire([hillPrescription], [
+      // watchStatus lives in `data`, not the resolver's own classification —
+      // `match` only answers identity, never completeness. A partial exact
+      // execution is still `exact`; grading its partial-ness is the
+      // interpreter's job (lib/execution/interpret.ts), not this file's.
+      { id: 'run_hills_partial', data: { distanceMi: 3.5, source: 'watch', planWorkoutId: 'wko_hills', status: 'partial' } },
+      { id: 'run_extra', data: { distanceMi: 2.0, source: 'apple_watch' } },
+    ]);
+    const day = await resolveDayExecutions(USER, DAY);
+    const primary = primaryPrescription(day);
+    expect(primary?.matchedRun?.runId).toBe('run_hills_partial');
+    expect(primary?.matchedRun?.match).toBe('exact');
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_extra']);
+  });
+
+  it('a TREADMILL-recorded exact execution matches, same as watch and phone', async () => {
+    wire([hillPrescription], [{ id: 'run_trd', data: { distanceMi: 6, source: 'treadmill', planWorkoutId: 'wko_hills' } }]);
+    const day = await resolveDayExecutions(USER, DAY);
+    expect(primaryPrescription(day)?.matchedRun?.match).toBe('exact');
+  });
+
+  it('a delayed HealthKit duplicate of an app-recorded execution resolves to ONE execution — canonical dedup upstream, never double-counted here', async () => {
+    // Two raw rows describe the SAME physical run: the app's own live-tracked
+    // completion (exact id) and a later HK import of the identical activity.
+    // getCanonicalRunIds is this app's one dedup authority (lib/runs/identity.ts)
+    // and has already picked the survivor — only ITS id is passed here. The
+    // resolver must never re-admit the loser just because its row exists in
+    // `runs`; `wire`'s canonicalIds filter reproduces the real SQL predicate
+    // that keeps it out.
+    wire(
+      [hillPrescription],
+      [
+        { id: 'run_app_tracked', data: { distanceMi: 6, source: 'phone', planWorkoutId: 'wko_hills' } },
+        { id: 'run_hk_duplicate', data: { distanceMi: 6.02, source: 'apple_health' } },
+      ],
+      { canonicalIds: ['run_app_tracked'] },
+    );
+    const day = await resolveDayExecutions(USER, DAY);
+    const primary = primaryPrescription(day);
+    expect(primary?.matchedRun?.runId).toBe('run_app_tracked');
+    expect(day.supplementalRuns).toHaveLength(0);
+    // The would-be duplicate never appears anywhere in the resolved day —
+    // not matched, not supplemental — because it was never a canonical run.
+    const allRunIds = [
+      ...day.prescriptions.map((p) => p.matchedRun?.runId).filter(Boolean),
+      ...day.supplementalRuns.map((r) => r.runId),
+    ];
+    expect(allRunIds).not.toContain('run_hk_duplicate');
+  });
+
+  it('a rescheduled workout executed on its NEW date attaches by exact id, queried against the date it now lives on', async () => {
+    const rescheduledDay = '2026-09-05';
+    wire(
+      [hillPrescription],
+      [{ id: 'run_hills_rescheduled', data: { distanceMi: 6, source: 'watch', planWorkoutId: 'wko_hills' } }],
+      { day: rescheduledDay },
+    );
+    const day = await resolveDayExecutions(USER, rescheduledDay);
+    expect(primaryPrescription(day)?.matchedRun?.runId).toBe('run_hills_rescheduled');
+  });
+
+  it('a race day with a separately-logged warm-up run — the race attaches by exact id, the warm-up stays supplemental', async () => {
+    const race: Prescription = { id: 'wko_race', type: 'race', distance_mi: '13.1', sub_label: 'Half marathon', is_quality: true, is_long: true };
+    wire([race], [
+      { id: 'run_warmup', data: { distanceMi: 1.2, source: 'apple_watch' } },
+      { id: 'run_race', data: { distanceMi: 13.1, source: 'watch', planWorkoutId: 'wko_race' } },
+    ]);
+    const day = await resolveDayExecutions(USER, DAY);
+    const primary = primaryPrescription(day);
+    expect(primary?.matchedRun?.runId).toBe('run_race');
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_warmup']);
+  });
+
+  it('a race day with a separately-logged COOLDOWN run — same result, the cooldown never inherits the race', async () => {
+    const race: Prescription = { id: 'wko_race', type: 'race', distance_mi: '13.1', sub_label: 'Half marathon', is_quality: true, is_long: true };
+    wire([race], [
+      { id: 'run_race', data: { distanceMi: 13.1, source: 'watch', planWorkoutId: 'wko_race' } },
+      { id: 'run_cooldown', data: { distanceMi: 0.8, source: 'apple_watch' } },
+    ]);
+    const day = await resolveDayExecutions(USER, DAY);
+    expect(primaryPrescription(day)?.matchedRun?.runId).toBe('run_race');
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_cooldown']);
+  });
+
+  it('no prescribed workout that day — every run is supplemental, prescriptions is empty, nothing is graded', async () => {
+    wire([], [{ id: 'run_rest_day_extra', data: { distanceMi: 3, source: 'apple_watch' } }]);
+    const day = await resolveDayExecutions(USER, DAY);
+    expect(day.prescriptions).toHaveLength(0);
+    expect(primaryPrescription(day)).toBeNull();
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_rest_day_extra']);
+  });
+
+  it('resolveDateRangeExecutions batches multiple days in one pass and each day classifies independently', async () => {
+    wire(
+      [hillPrescription, { id: 'wko_easy_next', type: 'easy', distance_mi: '5', sub_label: null, is_quality: false, is_long: false }],
+      [],
+    );
+    // Override the plan_workouts mock to return prescriptions on two
+    // different dates, and runs on two different dates, all in one batch —
+    // the shape resolveDateRangeExecutions actually receives in production.
+    (getCanonicalRunIds as any).mockResolvedValue(['run_hills', 'run_friend']);
+    (pool.query as any).mockImplementation((sql: string) => {
+      if (sql.includes('FROM plan_workouts')) {
+        return Promise.resolve({
+          rows: [
+            { ...hillPrescription, date_iso: '2026-09-03' },
+            { id: 'wko_easy_next', type: 'easy', distance_mi: '5', sub_label: null, is_quality: false, is_long: false, date_iso: '2026-09-04' },
+          ],
+        });
+      }
+      if (sql.includes('FROM runs')) {
+        return Promise.resolve({
+          rows: [
+            { id: 'run_hills', data: { distanceMi: 6, source: 'watch', planWorkoutId: 'wko_hills' }, day: '2026-09-03' },
+            { id: 'run_friend', data: { distanceMi: 3, source: 'apple_watch' }, day: '2026-09-04' },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    const map = await resolveDateRangeExecutions(USER, '2026-09-03', '2026-09-05');
+    expect(primaryPrescription(map.get('2026-09-03')!)?.matchedRun?.runId).toBe('run_hills');
+    expect(primaryPrescription(map.get('2026-09-04')!)?.matchedRun).toBeNull();
+    expect(map.get('2026-09-04')!.supplementalRuns.map((r) => r.runId)).toEqual(['run_friend']);
   });
 });
