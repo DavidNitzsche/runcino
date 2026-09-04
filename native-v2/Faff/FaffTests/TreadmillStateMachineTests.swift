@@ -221,6 +221,57 @@ final class TreadmillStateMachineTests: XCTestCase {
         XCTAssertEqual(session.speedMph, phases[1].treadmillSpeedMph!, accuracy: 1e-9)
     }
 
+    /// TREADMILL-SKIP-1 · found live via `-faffFastPhases` rendering: after a
+    /// Skip, SPEED/INCLINE correctly read the new phase's target, but the
+    /// header/"Phase N of M"/next-text all read a FRESH `LiveRunPhaseWalk
+    /// .walk(elapsedSec:)` call keyed to raw elapsed time, which a skip never
+    /// touches — so they kept reporting "Warm-up," unchanged, long after the
+    /// belt had moved to Hill 1. This is the falsification `_prior_ existing
+    /// coverage (`testSkipMarksTheLeftPhasePartialAndAdoptsTheNextTarget`)
+    /// never ran: it checks the RECORDER's target after a skip, never what a
+    /// fresh display-side walk over the same elapsed time would report.
+    func testARawWalkAfterSkipDisagreesButTheFlooredWalkDoesNot() {
+        let phases = hillSet()
+        let session = makeSession(phases: phases)
+        _ = advance(session, seconds: 30, from: t0)   // half-way through warm-up (300s)
+        session.skip()                                // belt jumps straight to phase 1 (Hill)
+
+        let elapsed = session.belt.elapsedSecInt       // still ~30s — skip never moves this
+        let rawWalk = LiveRunPhaseWalk.walk(phases: phases, elapsedSec: elapsed)
+        XCTAssertEqual(rawWalk?.phase.index, 0,
+                       "documents the defect: a raw time-only walk still names phase 0 (Warm-up) right after skipping past it")
+
+        let floor = LiveRunPhaseWalk.skipFloorSec(phases: phases, segmentIndex: session.segmentIndex,
+                                                  segElapsedSec: Int(session.belt.segElapsedSec.rounded()))
+        let flooredWalk = LiveRunPhaseWalk.walk(phases: phases, elapsedSec: max(elapsed, floor))
+        XCTAssertEqual(flooredWalk?.phase.index, phases[1].index,
+                       "the floored walk — what the view now actually renders — must name the phase the belt is really on")
+        XCTAssertEqual(flooredWalk?.phase.treadmillSpeedMph, phases[1].treadmillSpeedMph,
+                       "the header's own phase must be the SAME phase SPEED/INCLINE are already showing")
+        XCTAssertEqual(flooredWalk?.elapsedInPhaseSec, 0,
+                       "a skip lands at the START of the next phase — the floored walk must not fabricate partial progress into it")
+    }
+
+    /// The floor must never affect ordinary, non-skipped auto-advance: at
+    /// every second of a full run with no skip, `segmentIndex` and a raw
+    /// time-only walk already agree (this is `advanceToCanonicalPhase()`'s
+    /// own contract, proven separately by `testRecorderNeverDisagreesWithTheDisplayWalk`),
+    /// so the floor must compute to `elapsed` or less and change nothing.
+    func testTheSkipFloorIsANoOpWithoutAnySkip() {
+        let phases = hillSet()
+        let session = makeSession(phases: phases)
+        var now = t0
+        let totalSec = phases.reduce(0) { $0 + $1.durationSec }
+        for _ in 0..<totalSec {
+            now = now.addingTimeInterval(1)
+            session.tick(at: now)
+            let elapsed = session.belt.elapsedSecInt
+            let floor = LiveRunPhaseWalk.skipFloorSec(phases: phases, segmentIndex: session.segmentIndex,
+                                                      segElapsedSec: Int(session.belt.segElapsedSec.rounded()))
+            XCTAssertLessThanOrEqual(floor, elapsed, "the floor must never push elapsed time FORWARD absent a skip, at elapsed \(elapsed)s")
+        }
+    }
+
     func testSkipOnTheFinalPhaseIsANoOp() {
         let phases = hillSet()
         let session = makeSession(phases: phases)

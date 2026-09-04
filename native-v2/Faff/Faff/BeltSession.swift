@@ -221,6 +221,37 @@ final class BeltSession: ObservableObject {
 
     private var timer: Timer?
 
+    #if DEBUG
+    /// DEBUG-only clock-acceleration factor for the belt's own timer, the
+    /// treadmill sibling of `-faffHost`/`-faffToken`
+    /// (`xcrun simctl launch <udid> run.faff.app -faffFastPhases 30`).
+    /// Exists so CLAUDE.md Rule 13 ("verified by RENDERING it, with real
+    /// data") can be satisfied for a treadmill phase sequence without
+    /// waiting through a real ~50-minute session — every phase boundary,
+    /// cue, and target still fires through the exact same
+    /// `advanceToCanonicalPhase()` / `LiveRunPhaseWalk.walk` this file's own
+    /// header describes, just against a faster clock.
+    ///
+    /// Read ONCE, at first access, from a launch argument. 1.0 (the default
+    /// when the argument is absent) is a byte-for-byte no-op: `startClock`
+    /// below falls through to the exact literal `Date()` / `1.0`-second
+    /// interval it always used. This property does not exist at all outside
+    /// `#if DEBUG`, so no shipped build can run its own clock fast, by
+    /// construction rather than by convention.
+    static let debugPhaseAccelerationFactor: Double = {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffFastPhases"), i + 1 < args.count,
+              let f = Double(args[i + 1]), f > 1 else { return 1.0 }
+        return f
+    }()
+    /// Real wall-clock moment the accelerated timer first fired, so every
+    /// later tick can compute how much REAL time has passed and scale it —
+    /// never compared against `startedAt`, which is the SESSION's clock
+    /// (paused/resumed/resumed-from-checkpoint) and answers a different
+    /// question.
+    private var debugClockRealStart: Date?
+    #endif
+
     /// The console's own idempotency key, carried so the checkpoint can be
     /// matched to the run that wrote it — a finished run must never clear a
     /// live one's file.
@@ -492,9 +523,27 @@ final class BeltSession: ObservableObject {
     /// is where `Timer.invalidate()` is required to be sent.
     private func startClock() {
         guard timer == nil else { return }
-        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] timer in
+        #if DEBUG
+        let factor = Self.debugPhaseAccelerationFactor
+        if factor > 1, debugClockRealStart == nil { debugClockRealStart = .now }
+        let interval = factor > 1 ? Swift.max(0.05, 1.0 / factor) : 1.0
+        #else
+        let interval = 1.0
+        #endif
+        let t = Timer(timeInterval: interval, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
-            Task { @MainActor in self.tick(at: Date()) }
+            Task { @MainActor in
+                #if DEBUG
+                if Self.debugPhaseAccelerationFactor > 1,
+                   let realStart = self.debugClockRealStart, let started = self.startedAt {
+                    let realElapsed = Date().timeIntervalSince(realStart)
+                    let synthetic = started.addingTimeInterval(realElapsed * Self.debugPhaseAccelerationFactor)
+                    self.tick(at: synthetic)
+                    return
+                }
+                #endif
+                self.tick(at: Date())
+            }
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
