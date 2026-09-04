@@ -72,7 +72,7 @@
 import type { WorkoutVerdict, GradedPhase } from '@/lib/execution/verdict';
 import { looksLikeStrideLabel } from '@/lib/training/expand-spec';
 import { sessionLadder } from '@/lib/training/execution-semantics';
-import { fmtPace, fmtPaceSlash } from '@/lib/format/run';
+import { fmtMi, fmtPace, fmtPaceSlash } from '@/lib/format/run';
 import type {
   ActivityEvidenceResult,
   CapacityEvidence,
@@ -795,9 +795,7 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
          * miles stayed controlled." */
         const isMarathonPace = (key.label ?? '').toLowerCase().includes('marathon pace');
         const keyWord = isMarathonPace ? 'Marathon work' : cap1(key.label ?? 'Key work');
-        const keyMi = key.actualDistanceMi != null
-          ? `${Number.isInteger(key.actualDistanceMi) ? key.actualDistanceMi : key.actualDistanceMi.toFixed(1)} mi`
-          : null;
+        const keyMi = fmtMi(key.actualDistanceMi);
         const keyActual = fmtPaceSlash(key.avgSecPerMi);
         const windowLo = key.targetSecPerMi != null && key.toleranceSec != null
           ? fmtPace(key.targetSecPerMi - key.toleranceSec) : null;
