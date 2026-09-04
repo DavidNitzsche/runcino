@@ -358,6 +358,13 @@ final class HealthKitImporter: ObservableObject {
                 print("[HKImporter] workout ingest failed \(w.uuid): \(error)")
             }
         }
+        if workoutOk > 0 {
+            // PLANSNAPSHOT-1 · a HealthKit-imported completion can move
+            // plan progress same as a phone/watch completion — completion
+            // sync is a named trigger alongside plan-mutation. One post per
+            // batch, not per workout.
+            NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
+        }
 
         // 2) Daily vitals → /api/ingest/health  (P27.1)
         // Pulls HRV / sleep / RHR / VO2 / respiration / wrist temp /
