@@ -1696,6 +1696,10 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                     target_pace: fmtPaceShared(gp.targetSecPerMi),
                     actual_pace: fmtPaceShared(gp.avgSecPerMi),
                     avg_hr: gp.avgHr,
+                    // COMPLETION-STATE-1, 2026-09-05 · null when the wire
+                    // never said (Rule 11) — `repCompletionGrid` must not
+                    // print "completed" for a phase this is null on.
+                    completed: gp.completed,
                     // PACE-CONTRACT-1, 2026-09-05 · raw seconds, alongside the
                     // pre-formatted string above — same two fields
                     // `PhaseBreakdown` (run detail's own wire type) has always

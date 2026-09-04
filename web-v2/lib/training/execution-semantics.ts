@@ -490,7 +490,11 @@ export function gradeWorkPhase(input: {
   targetSecPerMi: number | null | undefined;
   avgSecPerMi: number | null | undefined;
   toleranceSec: number | null | undefined;
-  completed?: boolean;
+  // COMPLETION-STATE-1 · `null` means "the wire never said" (Rule 11), and
+  // must grade exactly as an explicit `true` would — only a confirmed
+  // `false` demotes a phase to `incomplete`. Never coerce this upstream of
+  // here; that is the bug this type exists to make impossible to reintroduce.
+  completed?: boolean | null;
 }): PhaseVerdict {
   const { targetSecPerMi: target, avgSecPerMi: avg } = input;
   const tol = input.toleranceSec;
@@ -522,7 +526,8 @@ export function gradeWorkPhase(input: {
 export function gradeCeilingPhase(input: {
   ceilingSecPerMi: number | null | undefined;
   avgSecPerMi: number | null | undefined;
-  completed?: boolean;
+  // COMPLETION-STATE-1 · see `gradeWorkPhase`'s identical parameter.
+  completed?: boolean | null;
   slackSec?: number;
 }): PhaseVerdict {
   const { ceilingSecPerMi: ceiling, avgSecPerMi: avg } = input;

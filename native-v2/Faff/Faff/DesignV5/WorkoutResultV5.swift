@@ -203,6 +203,16 @@ struct PostRunVerdictV5: View {
     /// stays visible under the disclosure rather than inside it — a runner
     /// closing "Why" should not lose the one line about tomorrow.
     var coachTip: String? = nil
+    /// LESS-IS-MORE-2, 2026-09-05 · a secondary, plain-language diagnostic
+    /// the caller computed client-side (`RunDetailV5.toleranceLine`, e.g.
+    /// time actually held in the pace band) — real, but not the defining
+    /// result, so it moves here rather than sitting unconditionally under
+    /// the rep list. David, directly: "Avoid sentences such as 'The watch
+    /// had you inside the target pace for 9:50 of the 27:40 of work it
+    /// graded' on the primary page. If that diagnostic is valuable, place
+    /// it in deeper analysis and express it plainly." Last in the
+    /// disclosure — supporting detail, not a headline reason.
+    var analysisNote: String? = nil
 
     @State private var whyOpen = false
 
@@ -270,6 +280,21 @@ struct PostRunVerdictV5: View {
         case "NO_PLAN", "UNKNOWN": return nil
         default:                  return nil
         }
+    }
+
+    /// PLAN-IMPACT-1, 2026-09-05 · "Plan updated." with no change beside it
+    /// makes the runner open "Why" to learn something the row could have
+    /// just said. David, directly: "If updated, show the actual change in
+    /// the same compact row: 'Plan updated · Friday reduced to 5 mi'." The
+    /// first entry of `model.changes` — never invented here, always the
+    /// server's own `readPlan` output, itself gated on a real
+    /// `coach_intents` adaptation row (`input.adaptations.length > 0`) — so
+    /// this can only ever say something a canonical persisted mutation
+    /// produced. A second or third change stays behind "Why" (`changes`
+    /// still renders there in full); this is the headline one, not the log.
+    private var planStatusDetail: String? {
+        guard model.changeState == "UPDATED" else { return nil }
+        return changes.first
     }
 
     /// STATUS-ROW-1, 2026-09-04 · a small SF Symbol so "Plan unchanged." reads
@@ -363,10 +388,22 @@ struct PostRunVerdictV5: View {
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(V5.textQuiet)
                         }
-                        Text(planStatusLine)
-                            .font(.faffText(TypeScaleV5.body15, weight: .medium))
-                            .foregroundStyle(V5.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        // PLAN-IMPACT-1 · the change itself, appended to the
+                        // same row rather than left for "Why" to explain —
+                        // one `Text` concatenation so the two colours share
+                        // one truncation, never wrapping into a second line
+                        // that would compete with the card above it.
+                        Group {
+                            if let detail = planStatusDetail {
+                                Text(planStatusLine).foregroundStyle(V5.textSecondary)
+                                    + Text(" \u{00B7} \(detail)").foregroundStyle(V5.textQuiet)
+                            } else {
+                                Text(planStatusLine).foregroundStyle(V5.textSecondary)
+                            }
+                        }
+                        .font(.faffText(TypeScaleV5.body15, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                     }
                 }
 
@@ -435,7 +472,11 @@ struct PostRunVerdictV5: View {
                                     .lineSpacing(3)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
-                            ForEach(changes, id: \.self) { line in
+                            // PLAN-IMPACT-1 · the first change is now stated
+                            // on the compact row (`planStatusDetail`) — drop
+                            // it here so it is not read twice (Rule 17). Any
+                            // second or further change still lives here.
+                            ForEach(planStatusDetail != nil ? Array(changes.dropFirst()) : changes, id: \.self) { line in
                                 Text(line)
                                     .font(.faffText(TypeScaleV5.label14))
                                     .foregroundStyle(V5.textQuiet)
@@ -451,6 +492,13 @@ struct PostRunVerdictV5: View {
                             }
                             ForEach(why, id: \.self) { line in
                                 Text(line)
+                                    .font(.faffText(TypeScaleV5.label14))
+                                    .foregroundStyle(V5.textQuiet)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if let analysisNote {
+                                Text(analysisNote)
                                     .font(.faffText(TypeScaleV5.label14))
                                     .foregroundStyle(V5.textQuiet)
                                     .lineSpacing(3)

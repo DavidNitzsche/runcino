@@ -501,6 +501,14 @@ struct RunAnalysisBand: Decodable, Equatable, Identifiable {
     /// True for a stride. Doctrine calls a stride "not a workout"; it carries
     /// no target and is never a miss.
     let isStride: Bool
+    /// PACE-SHAPE-CHART-1, 2026-09-05 · "window" | "ceiling" | "effort" |
+    /// "none" | nil. `targetSecPerMi` alone cannot tell a runner whether the
+    /// dashed line beside it is a ceiling (one-sided — do not go faster) or
+    /// a window's centre (two-sided — hold both edges); this is what draws
+    /// the two differently. Nil on a payload from before this field existed
+    /// — treated as unknown-shape, never guessed from `targetSecPerMi`
+    /// alone (which is exactly the ambiguity this field removes).
+    let paceShape: String?
 
     var isWork: Bool { kind == "work" && !isStride }
 }
@@ -637,7 +645,14 @@ struct PhaseBreakdown: Decodable, Identifiable {
     let avg_hr: Int?
     let max_hr: Int?
     let avg_cadence: Int?
-    let completed: Bool
+    /// COMPLETION-STATE-1 (2026-09-05) · `nil` when the wire never said
+    /// either way — the honest majority case for a run with no per-phase
+    /// completion signal at all (a Strava sync, most historical rows).
+    /// WAS defaulted to `true` on decode, which is `null` read as "yes,
+    /// completed" — Rule 11's exact shape, and the reason "4 of 4 completed"
+    /// used to print with no completion data behind it whatsoever. A reader
+    /// may print "completed" only for an explicit `true`.
+    let completed: Bool?
     let status: String?                    // "on" | "fast" | "slow" | nil
 
     /// PACE-SHAPE-1 (2026-09-01) · WHAT `target_pace_sec` MEANS on this phase.
@@ -728,7 +743,7 @@ struct PhaseBreakdown: Decodable, Identifiable {
         self.avg_hr = c.decodeFlexInt(forKey: .avg_hr)
         self.max_hr = c.decodeFlexInt(forKey: .max_hr)
         self.avg_cadence = c.decodeFlexInt(forKey: .avg_cadence)
-        self.completed = (try? c.decodeIfPresent(Bool.self, forKey: .completed)) ?? true
+        self.completed = try? c.decodeIfPresent(Bool.self, forKey: .completed)
         self.status = try? c.decodeIfPresent(String.self, forKey: .status)
         self.verdict = try? c.decodeIfPresent(String.self, forKey: .verdict)
         self.time_in_tolerance_sec = c.decodeFlexInt(forKey: .time_in_tolerance_sec)

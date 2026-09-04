@@ -146,8 +146,10 @@ describe.skipIf(!RO)('post-run experience · live payload', () => {
     // ceiling-shaped block. The compliance claim is unchanged and still
     // gated on the real grade (a ceiling can never fail for being slow).
     expect(out.execution.headline).toBe('Easy run complete');
+    // LESS-IS-MORE-2, 2026-09-05 · ceiling restated from the stats grid
+    // removed (Rule 17); routine walk-back detail dropped from the summary.
     expect(out.execution.summary).toBe(
-      'You kept the run controlled, staying under the pace ceiling. Six strides after, walk-backs taken.',
+      'Easy run stayed controlled. Six strides completed.',
     );
     expect(out.execution.intendedStimulus).toBe('Easy');
 

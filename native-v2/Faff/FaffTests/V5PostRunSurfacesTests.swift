@@ -128,9 +128,11 @@ final class V5PostRunSurfacesTests: XCTestCase {
         """)
         let v = view(d)
         XCTAssertTrue(v.repPieces.isEmpty)
-        // 90 in, 2370 graded. The owner's own sentence, in the app's words.
+        // 90 in, 2370 graded. LESS-IS-MORE-2, 2026-09-05 · plain-language
+        // rewrite, and "target pace" → "pace window" (this sums only
+        // non-ceiling phases, so "window" is the correct word for it).
         XCTAssertEqual(v.toleranceLine,
-                       "The watch had you inside the target pace for 1:30 of the 39:30 of work it graded.")
+                       "Held the pace window for 1:30 of 39:30 of graded work.")
     }
 
     // MARK: - The rep list
@@ -165,20 +167,20 @@ final class V5PostRunSurfacesTests: XCTestCase {
         XCTAssertEqual(view(tempo).repSectionTitle, "Piece by piece")
     }
 
-    /// RULE ONE. An actual pace is a reading off the wrist. A target pace
-    /// comes out of the plan's pace table, so the word "asked" carries it —
-    /// and only work reps get one.
+    /// RULE ONE, updated for PACE-CONTRACT-1 (2026-09-05). An actual pace is
+    /// a reading off the wrist. A target pace comes out of the plan's pace
+    /// table, worded for its SHAPE (`paceContractText`) — and `tuneUp` is
+    /// the 2026-08-11 fixture, genuinely dated BEFORE `pace_shape` shipped
+    /// (2026-09-01). A work rep with a real target and tolerance but no
+    /// shape opinion at all is exactly the "unrecognised/absent shape" case
+    /// `paceContractText`'s own header documents choosing nil for, on
+    /// purpose, over guessing a contract the wire never named — so this
+    /// authentic pre-dated-the-field row correctly shows nothing now,
+    /// where it used to show the bare, un-shaped number.
     func testOnlyWorkRepsCarryAnAsk() {
         let pieces = view(tuneUp).repPieces
-        for p in pieces where p.isWork {
-            XCTAssertEqual(p.askedPace, "6:52", "a rep must name the pace it was asked for")
-        }
-        // A RECOVERY JOG'S "TARGET" IS NOT A TARGET. The server writes easy
-        // pace into every jog and cool-down because the watch needs a number
-        // to draw a band against. Printing "asked 8:57" beside a 90-second jog
-        // asserts a prescription the plan never wrote.
-        for p in pieces where !p.isWork {
-            XCTAssertNil(p.askedPace, "\(p.label) must not claim a prescription")
+        for p in pieces {
+            XCTAssertNil(p.askedPace, "\(p.label): a payload with no pace_shape must not guess a contract")
         }
     }
 
@@ -223,9 +225,11 @@ final class V5PostRunSurfacesTests: XCTestCase {
         // could not". The rep was never run.
         XCTAssertNil(skipped?.actualPace)
         XCTAssertEqual(RepBreakdownV5.note(skipped!), "You took the stop the watch offered")
-        // It still names the pace it was asked for. The runner did not fail
-        // it; they chose not to run it, and both facts belong on the row.
-        XCTAssertEqual(skipped?.askedPace, "6:52")
+        // PACE-CONTRACT-1 · `tuneUpWithSkip` predates `pace_shape` (2026-08-11
+        // vs the field's 2026-09-01 ship date), same as `tuneUp` — see
+        // `testOnlyWorkRepsCarryAnAsk`'s header. Correctly nil now rather
+        // than a guessed bare number.
+        XCTAssertNil(skipped?.askedPace)
     }
 
     /// `RunRepSkip.repIndex` counts REPS; `PhaseBreakdown.index` counts
@@ -240,9 +244,9 @@ final class V5PostRunSurfacesTests: XCTestCase {
     /// would charge them for the decision.
     func testToleranceLineExcludesTheSkippedRep() {
         XCTAssertEqual(view(tuneUp).toleranceLine,
-                       "The watch had you inside the target pace for 5:55 of the 16:30 of work it graded.")
+                       "Held the pace window for 5:55 of 16:30 of graded work.")
         XCTAssertEqual(view(tuneUpWithSkip).toleranceLine,
-                       "The watch had you inside the target pace for 3:05 of the 12:10 of work it graded.")
+                       "Held the pace window for 3:05 of 12:10 of graded work.")
     }
 
     /// WORK PHASES ONLY. The 2026-08-11 cool-down alone spent 490 seconds out

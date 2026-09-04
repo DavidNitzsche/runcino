@@ -110,7 +110,18 @@ export interface GradedPhase {
   avgHr: number | null;
   maxHr: number | null;
   avgCadence: number | null;
-  completed: boolean;
+  /**
+   * COMPLETION-STATE-1 (2026-09-05) · `true` / `false` are both a genuine
+   * wire signal; `null` is the honest majority case — nothing on the wire
+   * ever says either way. Renamed from a `boolean` that used to be produced
+   * by `n.completed !== false`, which reads EXACTLY like `null` collapsing
+   * to `true`: the safest-looking coercion produced the most confident claim
+   * ("4 of 4 completed") on the data that can least support it. A display
+   * surface MUST branch on all three states — see `RunDetailV5.repCompletion`
+   * and `TodayAfterV5.repCompletionGrid`, neither of which may print the word
+   * "completed" for a phase where this is null.
+   */
+  completed: boolean | null;
   isFinishSegment: boolean;
   /** Resolved by `gradeStoredPhases` on the two rungs its `GradeOptions`
    *  describes. A stride is never pace-graded: its `shape` is `effort` and its
@@ -349,7 +360,17 @@ export function gradeStoredPhases(
               : shape === 'ceiling' ? EASY_PHASE_TOLERANCE_S_PER_MI
               : sessionToleranceSec('other'));
 
-    const completed = n.completed !== false;
+    // COMPLETION-STATE-1 (2026-09-05) · WAS `n.completed !== false`, which
+    // reads `null` (the wire never said) as `true` (confirmed complete) —
+    // Rule 11's exact shape, and the direct cause of "4 of 4 completed"
+    // printing on data that never claimed any of the four finished.
+    // `n.completed` is already the honest tri-state `run-shape.ts`'s
+    // `NormalizedPhase` resolves it to; pass it through unmodified. Grading
+    // is unaffected — `gradeWorkPhase`/`gradeCeilingPhase` only branch on
+    // `=== false`, and `null !== false`, so a phase with no completion
+    // signal still grades normally on its pace. Only DISPLAY reads this
+    // field and must not treat `null` as a "yes".
+    const completed = n.completed;
 
     // ONE GRADE, ON THE RESOLVED SHAPE. `gradeWorkPhase` for a window,
     // `gradeCeilingPhase` for a ceiling, nothing for the rest — the same two

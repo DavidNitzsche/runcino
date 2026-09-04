@@ -56,15 +56,17 @@
 //      outcome.
 //
 //  RULE ONE. An actual pace is measured — it is a reading off the wrist. A
-//  target pace is modelled: it comes out of the plan's own pace table. The
-//  tilde is retired, so the distinction is carried by the WORD "asked" in
-//  front of every target, and by VoiceOver saying "estimated" before the
-//  figure. A label that says what a number is beats a symbol that hints.
+//  target pace is modelled: it comes out of the plan's own pace table.
+//  PACE-CONTRACT-1 (2026-09-05) retired the blanket word "asked" in front of
+//  every target — it named a ceiling's one-sided bound the same way it named
+//  a window's own range, which is the "8:48 against an 8:00/mi ceiling reads
+//  as a miss" bug. The distinction is carried by `paceContractText`'s
+//  shape-aware phrasing instead ("No faster than 8:00/mi", "7:09–7:19/mi
+//  window") — see that function's own header in this file.
 //
 //  RULE THREE. A run with no phases draws NOTHING — not a header over an
 //  empty list, which reads as a section that failed to load. The caller does
-//  not construct this view at all in that case, and `pieces.isEmpty &&
-//  toleranceLine == nil` is belt and braces.
+//  not construct this view at all in that case.
 //
 
 import SwiftUI
@@ -165,7 +167,12 @@ func phaseVerdictPhrase(paceShape: String?, verdict: String?, statusLabel: Strin
         switch verdict {
         case "fast":       return "Over the ceiling"
         case "hit":        return "Under the ceiling"
-        case "incomplete": return "Ended before its target"
+        // PACE-SHAPE-AUDIT-1, 2026-09-05 · WAS "Ended before its target" on
+        // both arms — "target" names a point a ceiling never claimed to be,
+        // and the completion fact (stopped early) has nothing to do with
+        // pace direction anyway. "Ended early" says exactly what happened,
+        // correctly for a ceiling or a window.
+        case "incomplete": return "Ended early"
         default:           return statusLabel
         }
     }
@@ -222,6 +229,76 @@ func paceContractText(
     }
 }
 
+/// COMPLETION-STATE-1, 2026-09-05 · one rep's recorded outcome, resolved by
+/// the caller from what it actually has — `PhaseBreakdown.completed` /
+/// `V5RoutePhase.completed` (both now the honest `Bool?` the wire sends,
+/// never coerced) crossed with `rep_skips` where that's available. Kept as
+/// its own enum, not folded into `PhaseVerdict` (`hit`/`fast`/`slow`/…),
+/// because completion and pace grade are different questions — a rep can be
+/// `.completed` and `slow`, or `.partial` and otherwise on pace up to the
+/// point it stopped.
+enum RepRecordState { case completed, partial, skipped, unknown }
+
+struct RepCompletionSummary { let label: String; let value: String; let sub: String? }
+
+/// "4 of 4 completed" is a claim, and until this function existed it was
+/// made unconditionally — the grid printed it whether or not any phase ever
+/// said so. David, directly: "Today and Run Detail cannot say '4 of 4
+/// completed' when the wire has no explicit completion status and the
+/// implementation is counting returned rep records."
+///
+/// Picks the WEAKEST claim the data actually supports, in this order:
+///
+///   1. any rep's completion is genuinely unknown → "Recorded" / bare count.
+///      Nothing here licenses the word "completed".
+///   2. a rep is EXPLICITLY incomplete (ended early) → "N of M completed",
+///      M excluding chosen skips, with the ended-early count in `sub`.
+///   3. every recorded, non-skipped rep is explicitly complete, but
+///      `planned` (when known) says there should be more → "N of PLANNED
+///      completed", the gap named as missing in `sub`.
+///   4. more were recorded than planned → "Recorded" / the total, the
+///      surplus named in `sub`.
+///   5. otherwise — everything recorded is explicitly complete and either
+///      the planned count is unknown or matches → "N of N completed".
+///
+/// `planned` is nil wherever the caller has no prescribed rep count to
+/// compare against (Today, currently) — cases 3-4 then never fire, which is
+/// the correct, honest degradation: a surface with less data makes a
+/// narrower claim, never a guessed one.
+func repCompletionSummary(states: [RepRecordState], planned: Int?) -> RepCompletionSummary? {
+    guard !states.isEmpty else { return nil }
+    let recorded = states.count
+    let completed = states.filter { $0 == .completed }.count
+    let partial = states.filter { $0 == .partial }.count
+    let skipped = states.filter { $0 == .skipped }.count
+    let unknown = states.filter { $0 == .unknown }.count
+    let attempted = recorded - skipped
+    let skipNote = skipped == 1 ? "1 skipped" : "\(skipped) skipped"
+
+    if unknown > 0 {
+        return .init(label: "Recorded", value: "\(recorded)", sub: skipped > 0 ? skipNote : nil)
+    }
+    if partial > 0 {
+        let endedEarly = partial == 1 ? "1 ended early" : "\(partial) ended early"
+        let sub = skipped > 0 ? "\(endedEarly), \(skipNote)" : endedEarly
+        return .init(label: "Completed", value: "\(completed) of \(attempted)", sub: sub)
+    }
+    if let planned, recorded < planned {
+        let missing = planned - recorded
+        return .init(label: "Completed", value: "\(completed) of \(planned)",
+                     sub: missing == 1 ? "1 missing" : "\(missing) missing")
+    }
+    if let planned, recorded > planned {
+        let extra = recorded - planned
+        return .init(label: "Recorded", value: "\(recorded)",
+                     sub: extra == 1 ? "1 more than planned" : "\(extra) more than planned")
+    }
+    if skipped > 0 {
+        return .init(label: "Completed", value: "\(completed) of \(attempted)", sub: skipNote)
+    }
+    return .init(label: "Completed", value: "\(completed) of \(completed)", sub: nil)
+}
+
 // MARK: - The section
 
 struct RepBreakdownV5: View {
@@ -231,16 +308,20 @@ struct RepBreakdownV5: View {
     let title: String
     let pieces: [RepPiece]
 
-    /// The watch's tolerance arithmetic for the whole of the work, as one
-    /// sentence. Nil when no work phase carried the counters — every
-    /// treadmill session, and anything the device could not grade.
+    /// DEPRECATED, 2026-09-05 (LESS-IS-MORE-2) · the watch's tolerance
+    /// arithmetic used to draw here unconditionally, as the exact sentence
+    /// David named to remove from the primary scan path. It now lives in
+    /// `PostRunVerdictV5.analysisNote`, behind "Why", in plain language.
+    /// Parameter kept (always nil in every live call site) rather than torn
+    /// out of the initializer in the same pass that also touched every
+    /// caller — deleting it is a clean, separate, zero-behavior-risk step.
     var toleranceLine: String? = nil
 
     var body: some View {
         // RULE THREE, belt and braces. The caller already guards this; a
         // component that can draw an empty header is a component that
         // eventually will.
-        if !pieces.isEmpty || toleranceLine != nil {
+        if !pieces.isEmpty {
             VStack(alignment: .leading, spacing: V5.S.s10) {
                 V5SectionLabel(text: title).padding(.horizontal, V5.S.s4)
 
@@ -257,28 +338,6 @@ struct RepBreakdownV5: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(pieces) { piece in
                         row(piece)
-                    }
-                    if let toleranceLine {
-                        // A TILE INSIDE A TILE STEPS UP ONE FILL LEVEL.
-                        // `TokensV5` is explicit that containment in this
-                        // system is a fill-step change and NEVER a hairline —
-                        // "no borders anywhere" — so the sum of the rows above
-                        // is separated from them by stepping up, not by a
-                        // rule. On a single-phase session there are no rows
-                        // and this stands alone, which is still a statement
-                        // and not an orphan header.
-                        Text(toleranceLine)
-                            .font(.faffText(TypeScaleV5.label14))
-                            .lineSpacing(TypeScaleV5.label14 * 0.4)
-                            .foregroundStyle(V5.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, V5.S.s14)
-                            .padding(.vertical, V5.S.s12)
-                            .background(V5.materialTileRaised,
-                                        in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
-                            .padding(.horizontal, V5.S.s8)
-                            .padding(.top, pieces.isEmpty ? 0 : V5.S.s8)
                     }
                 }
                 .padding(.vertical, V5.S.s6)
@@ -520,8 +579,7 @@ struct RepBreakdownV5: View {
                 RepPiece(id: 7, label: "Interval \u{00B7} 1 km", isWork: true, actualPace: nil,
                          askedPace: "6:52", detail: nil,
                          verdictPhrase: nil, chosen: true),
-            ],
-            toleranceLine: "The watch had you inside the target pace for 5:55 of the 16:30 of work it graded."
+            ]
         )
         .padding(.horizontal, V5.S.gutter)
     }

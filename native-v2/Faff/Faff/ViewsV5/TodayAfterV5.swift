@@ -1276,16 +1276,29 @@ struct TodayAfterV5: View {
     private var trueWorkReps: [V5RoutePhase] {
         model.routePhases.filter { $0.type == "work" && $0.paceShape != "effort" }
     }
+    /// COMPLETION-STATE-1, 2026-09-05 · WAS `let done = reps.count` — every
+    /// decoded rep counted as done regardless of what the wire actually
+    /// said, with a comment arguing the count-of-records WAS the honest
+    /// reading. It was not: "4 of 4 completed" is a claim about all four
+    /// finishing, and nothing here ever checked that. `V5RoutePhase
+    /// .completed` now carries the same `Bool?` run detail's phase panel
+    /// does; `repCompletionSummary` (`RepBreakdownV5.swift`) resolves the
+    /// weakest claim the data supports. `rep_skips` and a prescribed rep
+    /// count are not on this wire yet — Today stays the concise surface and
+    /// simply cannot say "skipped" or "missing" until they are; passing
+    /// `planned: nil` is the honest degradation, not a guess.
     private var repCompletionGrid: [SessionDetailsGridV5.Metric]? {
         guard isRepStyleSession else { return nil }
         let reps = trueWorkReps
         guard reps.count >= 2 else { return nil }
-        // No per-phase `completed` flag on this wire yet (the genuinely
-        // open gap named in the handback) — every decoded rep is one the
-        // watch reported back, so "done" reads as the count actually
-        // present rather than a guess, same posture as `verdict == nil`
-        // reading as ungraded rather than as failed (Rule 11).
-        let done = reps.count
+        let states: [RepRecordState] = reps.map { p in
+            switch p.completed {
+            case true: return .completed
+            case false: return .partial
+            case nil: return .unknown
+            }
+        }
+        guard let completion = repCompletionSummary(states: states, planned: nil) else { return nil }
         let repRange: String? = {
             let secs = reps.compactMap { p -> Int? in
                 guard p.mi > 0, p.sec > 0 else { return nil }
@@ -1297,7 +1310,7 @@ struct TodayAfterV5: View {
             return "\(loText)-\(hiText)/mi"
         }()
         return [
-            .init("Completed", .measured("\(done) of \(reps.count)")),
+            .init(completion.label, .measured(completion.value), sub: completion.sub),
             .init("Work pace", .measured(model.paceWork.map { "\($0)/mi" })),
             .init("Rep range", .measured(repRange)),
         ]

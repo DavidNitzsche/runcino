@@ -321,7 +321,9 @@ describe('run-type states', () => {
       workHrCeilingBpm: null, overallHrCeilingBpm: null, wholeRunHrBpm: 159,
     });
     expect(out.execution.status).toBe('FAST');
-    expect(out.execution.summary).toBe('The work block came in ahead of the ceiling.');
+    // PACE-SHAPE-AUDIT-1 · "came in ahead of" read as praise for violating
+    // a ceiling; "ran faster than ... allowed" cannot be misread either way.
+    expect(out.execution.summary).toBe('The work block ran faster than the ceiling allowed.');
     expect(out.execution.summary).not.toMatch(/window/);
   });
 

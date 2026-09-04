@@ -282,7 +282,8 @@ struct RunDetailV5: View {
                     if let pr = detail.postRun {
                         PostRunVerdictV5(model: pr,
                                          conditions: recap?.conditions_note,
-                                         coachTip: recap?.coach_tip)
+                                         coachTip: recap?.coach_tip,
+                                         analysisNote: toleranceLine)
                     }
 
                     // §4 · ROUTE, WHEN GPS EXISTS. Moved up from Layer 5 —
@@ -301,10 +302,16 @@ struct RunDetailV5: View {
                     // reps on a threshold day, easy/marathon-pace segments
                     // on a long run. RULE THREE: nothing drawn when there is
                     // nothing to build from.
-                    if !repPieces.isEmpty || toleranceLine != nil {
+                    //
+                    // LESS-IS-MORE-2 · `toleranceLine` no longer reaches this
+                    // card — see its own header. It now feeds `PostRunVerdictV5
+                    // .analysisNote` above, so this section's guard is back to
+                    // the one honest question it should ask: is there a list
+                    // to draw.
+                    if !repPieces.isEmpty {
                         RepBreakdownV5(title: repSectionTitle,
                                        pieces: repPieces,
-                                       toleranceLine: toleranceLine)
+                                       toleranceLine: nil)
                     }
 
                     // Strides are part of the session, drawn with it.
@@ -948,7 +955,16 @@ struct RunDetailV5: View {
         guard counted > 0, total > 0,
               let inside = FaffFmt.clock(sec: Double(inSec)),
               let graded = FaffFmt.clock(sec: Double(total)) else { return nil }
-        return "The watch had you inside the target pace for \(inside) of the \(graded) of work it graded."
+        // LESS-IS-MORE-2, 2026-09-05 · WAS "The watch had you inside the
+        // target pace for X of the Y of work it graded" — David's own
+        // example of a sentence to remove from the primary scan path
+        // ("Avoid sentences such as..."), and, independently, ambiguous:
+        // "target pace" names neither a ceiling nor a window. This only
+        // ever sums non-ceiling phases (see the guard above), so "pace
+        // window" is the correct word for what it is actually measuring.
+        // No longer wired into `RepBreakdownV5` at all — it moves into
+        // `PostRunVerdictV5`'s "Why" disclosure as `analysisNote`.
+        return "Held the pace window for \(inside) of \(graded) of graded work."
     }
 
     // MARK: - Workout result facts · Layer 1's "did I execute it, what was
@@ -962,9 +978,10 @@ struct RunDetailV5: View {
         workPhases.filter { $0.pace_shape != "effort" }
     }
 
-    /// "4 of 4 completed." Nil when this was not a rep session — an easy or
-    /// long run has nothing to complete in this sense, and the fact block
-    /// draws nothing rather than a completion count nobody asked for.
+    /// "4 of 4 completed" — or the weaker, honest claim the data actually
+    /// supports. Nil when this was not a rep session — an easy or long run
+    /// has nothing to complete in this sense, and the fact block draws
+    /// nothing rather than a completion count nobody asked for.
     ///
     /// GATED ON `isRepStyleSession`, added after rendering the real corpus
     /// (not just the one fixture this pass started from) turned up the
@@ -974,11 +991,30 @@ struct RunDetailV5: View {
     /// thing — and the first draft of this property read that as "1 of 2
     /// completed," which is exactly the "reps ranged" framing this brief
     /// asked for on an interval day, wrongly applied to a long run.
-    var workCompletion: (done: Int, total: Int)? {
+    ///
+    /// COMPLETION-STATE-1, 2026-09-05 · used to unconditionally read
+    /// `reps.filter(\.completed).count` against a `completed` that was
+    /// ITSELF defaulted to `true` on decode — "4 of 4 completed" printed on
+    /// a run whose wire never sent a single completion signal. `completed`
+    /// is now the honest `Bool?` the wire actually sends;
+    /// `repCompletionSummary` (`RepBreakdownV5.swift`) picks the weakest
+    /// claim the resulting states support, factoring in `rep_skips` (a
+    /// decision, never a lapse) and `planned_spec.rep_count` (missing/extra
+    /// reps against the prescription, when the plan is known).
+    var workCompletion: RepCompletionSummary? {
         guard isRepStyleSession else { return nil }
         let reps = trueWorkReps
         guard reps.count >= 2 else { return nil }
-        return (reps.filter(\.completed).count, reps.count)
+        let skipped = chosenSkipPhaseIndices
+        let states: [RepRecordState] = reps.map { p in
+            if skipped.contains(p.index) { return .skipped }
+            switch p.completed {
+            case true: return .completed
+            case false: return .partial
+            case nil: return .unknown
+            }
+        }
+        return repCompletionSummary(states: states, planned: detail.planned_spec?.rep_count)
     }
 
     /// The work-phase-only average — `pace_work`, server-computed since
@@ -1105,7 +1141,7 @@ struct RunDetailV5: View {
             }()
             _ = paces
             return [
-                .init("Completed", .measured("\(completion.done) of \(completion.total)")),
+                .init(completion.label, .measured(completion.value), sub: completion.sub),
                 .init("Work pace", .measured(workPaceHeroText)),
                 .init("Rep range", .measured(repRange)),
                 .init("Total", .measured(FaffFmt.milesUnit(detail.distance_mi))),
@@ -1262,7 +1298,7 @@ struct RunDetailV5: View {
         case .sections:
             RepBreakdownV5(title: repSectionTitle,
                            pieces: repPieces,
-                           toleranceLine: toleranceLine)
+                           toleranceLine: nil)
         /* BOTH, BODY FIRST (2026-09-02).
          *
          * An easy run with strides is two things at once and the screen used to
@@ -1288,7 +1324,7 @@ struct RunDetailV5: View {
                             allowsPace: shape.showsPerMilePace)
             RepBreakdownV5(title: repSectionTitle,
                            pieces: repPieces,
-                           toleranceLine: toleranceLine)
+                           toleranceLine: nil)
         case .miles:
             MileBreakdownV5(title: shape.breakdownTitle(.miles),
                             pieces: milePieces,

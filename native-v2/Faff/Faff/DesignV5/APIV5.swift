@@ -229,6 +229,12 @@ struct V5RoutePhase: Decodable, Equatable {
     /// caller already falls back to the bare-target text in that case.
     let targetPaceSec: Double?
     let tolerancePaceSec: Double?
+    /// COMPLETION-STATE-1, 2026-09-05 · the same nullable tri-state
+    /// `PhaseBreakdown.completed` carries — nil when the wire never said
+    /// either way, which is the honest majority case. `TodayAfterV5
+    /// .repCompletionGrid` may print "completed" only for an explicit
+    /// `true`; see that property's own header for why `nil` is not `true`.
+    let completed: Bool?
 
     enum K: String, CodingKey {
         case mi, sec, type, verdict
@@ -240,6 +246,7 @@ struct V5RoutePhase: Decodable, Equatable {
         case avgHr = "avg_hr"
         case targetPaceSec = "target_pace_sec"
         case tolerancePaceSec = "tolerance_pace_sec"
+        case completed
     }
 
     init(from decoder: Decoder) throws {
@@ -256,17 +263,19 @@ struct V5RoutePhase: Decodable, Equatable {
         avgHr = try c.decodeIfPresent(Int.self, forKey: .avgHr)
         targetPaceSec = try c.decodeIfPresent(Double.self, forKey: .targetPaceSec)
         tolerancePaceSec = try c.decodeIfPresent(Double.self, forKey: .tolerancePaceSec)
+        completed = try c.decodeIfPresent(Bool.self, forKey: .completed)
     }
 
     init(mi: Double, sec: Int, type: String?, verdict: String? = nil, statusLabel: String? = nil,
          label: String? = nil, paceShape: String? = nil, targetPace: String? = nil,
          actualPace: String? = nil, avgHr: Int? = nil, targetPaceSec: Double? = nil,
-         tolerancePaceSec: Double? = nil) {
+         tolerancePaceSec: Double? = nil, completed: Bool? = nil) {
         self.mi = mi; self.sec = sec; self.type = type
         self.verdict = verdict; self.statusLabel = statusLabel
         self.label = label; self.paceShape = paceShape
         self.targetPace = targetPace; self.actualPace = actualPace; self.avgHr = avgHr
         self.targetPaceSec = targetPaceSec; self.tolerancePaceSec = tolerancePaceSec
+        self.completed = completed
     }
 }
 

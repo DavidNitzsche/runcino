@@ -234,7 +234,9 @@ export interface PostRunStride {
   paceSecPerMi: number | null;
   avgHr: number | null;
   avgCadence: number | null;
-  completed: boolean;
+  /** COMPLETION-STATE-1 · `null` when the wire never said. `readStrides`'s
+   *  own `completed` count below only counts an explicit `true`. */
+  completed: boolean | null;
 }
 
 export interface PostRunStrides {
@@ -589,8 +591,16 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
    * "Not a workout" (`Research/04` §7.2) and the band is wide precisely so
    * they are not chased. Rule 17 keeps it to a summary: the per-stride rows
    * live in the strides section and are not restated here. */
+  // LESS-IS-MORE-2, 2026-09-05 · WAS "N strides after, walk-backs taken" —
+  // the walk-backs are routine (doctrine's own prescription, "Full walk-back
+  // or 60-90s jog"), and naming them on the primary summary is exactly the
+  // "the runner should not scan six nearly identical rows unless something
+  // meaningful happened" instruction applied to a sentence instead of a
+  // list. The detailed per-stride/per-walk-back rows still exist, behind
+  // disclosure — see `readStrides`'s own header for why they are never
+  // restated here either way.
   const strideClause = strides && strides.completed > 0
-    ? ` ${cap1(numberWord(strides.completed))} stride${strides.completed === 1 ? '' : 's'} after${strides.recoveryCount > 0 ? ', walk-backs taken' : ''}.`
+    ? ` ${cap1(numberWord(strides.completed))} stride${strides.completed === 1 ? '' : 's'} completed.`
     : '';
 
   // A payload with no phases cannot be graded as a workout. That is a fact
@@ -696,7 +706,15 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
   const insideBound = bound === 'ceiling' ? 'stayed under the ceiling'
     : bound === 'window' ? 'landed inside the window'
     : 'landed on target';
-  const aheadOfBound = bound === 'ceiling' ? 'came in ahead of the ceiling'
+  // PACE-SHAPE-AUDIT-1, 2026-09-05 · a ceiling's ONLY failure mode is
+  // running FASTER than it, so this branch means the ceiling was violated —
+  // and "came in ahead of the ceiling" reads as a good thing (got ahead,
+  // made progress), the opposite of what happened. "Ran faster than the
+  // ceiling allowed" cannot be misread either direction. A window's fast
+  // edge is a real, if lesser, miss too — "came in ahead of the window"
+  // keeps its existing sense (finished before the window's pace would have
+  // put it), which is directionally fine as it stood.
+  const aheadOfBound = bound === 'ceiling' ? 'ran faster than the ceiling allowed'
     : bound === 'window' ? 'came in ahead of the window'
     : 'came in ahead of target';
   const outsideBound = bound === 'ceiling' ? 'ran faster than the ceiling'
@@ -878,7 +896,12 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
     return {
       status: 'CONTROLLED',
       headline: `${runWord} complete`,
-      summary: `You kept the run controlled, staying under the pace ceiling.${strideClause}`,
+      // LESS-IS-MORE-2 · WAS "You kept the run controlled, staying under
+      // the pace ceiling" — restating the ceiling here repeats what the
+      // stats grid's own "No faster than X/mi" sub-text already says two
+      // inches above it (Rule 17), and "staying under" is a step short of
+      // plain. `runWord` already names what kind of run this was.
+      summary: `${runWord} stayed controlled.${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'FULL',
       confidence: 'HIGH',

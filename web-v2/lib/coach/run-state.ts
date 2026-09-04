@@ -122,7 +122,9 @@ export interface PhaseBreakdown {
   avg_hr: number | null;
   max_hr: number | null;
   avg_cadence: number | null;
-  completed: boolean;
+  /** COMPLETION-STATE-1 · `null` when the wire never said either way — the
+   *  honest majority case. A reader may print "completed" only for `true`. */
+  completed: boolean | null;
   // Derived: did the rep hit target? "on" / "fast" / "slow" / null
   status: 'on' | 'fast' | 'slow' | null;
   /**
