@@ -44,6 +44,17 @@ BUILD_FILE="$ROOT/legacy/native/.asc.build"
 LOCK_DIR="/tmp/.faff.asc.shipping.lock"   # mkdir is atomic → cross-agent mutex, MACHINE-WIDE
 STALE_LOCK_SEC=$((45 * 60))           # 45-min ceiling for stale locks
 
+# SHIPRACE-1 · per-run scratch, so two concurrent shippers cannot hand each
+# other a binary. `$$` is this shell's pid; the build number is not known yet.
+# The trap removes it on every exit path, including the error paths, so a failed
+# ship does not leave a stale .ipa for the next run to pick up — which is the
+# other half of the same defect.
+SHIP_SCRATCH="/tmp/faff-ship-$$"
+SHIP_ARCHIVE="$SHIP_SCRATCH/Faff-v2.xcarchive"
+SHIP_EXPORT="$SHIP_SCRATCH/export"
+mkdir -p "$SHIP_SCRATCH"
+trap 'rm -rf "$SHIP_SCRATCH"' EXIT
+
 # ── Cross-agent ship lock ─────────────────────────────────────────────
 #
 # Both ship-testflight.sh (legacy) and ship-testflight-v2.sh share the
