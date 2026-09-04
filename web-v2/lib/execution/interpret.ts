@@ -97,6 +97,23 @@ export interface ExecutionContext {
    *  Lets a failure at a KNOWN pace read as high fitness evidence rather than
    *  as a bad day — the case doctrine calls "extremely informative". */
   establishedPaceSPerMi?: number | null;
+  /**
+   * True when the CALLER already knows — from a specific, named cause, not a
+   * guess — that part of what this session recorded cannot be trusted as a
+   * measurement of what the runner actually did: prescribed per-phase targets
+   * that never round-tripped into the completion payload, a build with a
+   * known capture bug, phase transitions the device itself failed to fire.
+   * Not a shortfall the runner produced.
+   *
+   * RULE8CLOSE-1 (2026-09-04). This interpreter does not detect the
+   * condition — that requires domain knowledge (which build, which payload
+   * field, which device path) this module has none of, and duplicating that
+   * detection here would duplicate the treadmill/watch owner's own state
+   * machine. This flag is the one place a caller who DOES know reports it, so
+   * the quarantine downstream (see `sameStimulus`/completion handling below)
+   * runs the same way regardless of which caller set it.
+   */
+  telemetryCompromised?: boolean;
 }
 
 export interface EvidenceRead {
@@ -112,11 +129,22 @@ export interface EvidenceRead {
 
 export interface ExecutionRead {
   state: ExecutionState;
-  /** 0..1 · how much of the intended stimulus was delivered. */
+  /** 0..1 · how much of the intended stimulus was delivered. Distance and
+   *  duration are preserved even when `telemetryCompromised` is true — those
+   *  come from the device's own GPS/elapsed-time total, not from the
+   *  per-phase data that can be lost. */
   stimulusCompletion: number;
   evidence: EvidenceRead;
   /** One line a coach surface or the log can use. */
   why: string;
+  /** Set from `ctx.telemetryCompromised` verbatim (RULE8CLOSE-1). When true,
+   *  `evidence.fitness`/`evidence.adaptation` are already quarantined to
+   *  `'none'`/`'unknown'` by this function — no capacity or absorption
+   *  conclusion has been drawn from this session's per-phase data. Callers
+   *  building adaptation-model input (`lib/adaptation/load.ts`) must exclude
+   *  a compromised session's `stimulusCompletion` from any SCORE, the same
+   *  way a `MISSED` session is excluded — real, but not gradeable. */
+  telemetryCompromised?: boolean;
 }
 
 /* ------------------------------------------------------------- constants */
@@ -179,8 +207,31 @@ function recoveryPreserved(planned: Stimulus, actual: Stimulus): boolean {
  *
  * `actual` is null when nothing was run at all. Pure — callers reconstruct the
  * actual stimulus from phases, splits or the watch's own phase verdicts.
+ *
+ * RULE8CLOSE-1: when `ctx.telemetryCompromised` is set, the read below is
+ * computed exactly as normal — `stimulusCompletion`, and every state branch's
+ * reasoning about volume/domain/recovery, stay real, because distance and
+ * duration are the trustworthy half of what a device records. Only the
+ * CONCLUSIONS this function would otherwise draw about capacity and
+ * absorption from that number are quarantined afterward — those are the half
+ * an app-side capture failure can fabricate.
  */
 export function interpretExecution(
+  planned: Stimulus,
+  actual: Stimulus | null,
+  ctx: ExecutionContext = {},
+): ExecutionRead {
+  const read = interpretExecutionCore(planned, actual, ctx);
+  if (!ctx.telemetryCompromised) return read;
+  return {
+    ...read,
+    telemetryCompromised: true,
+    evidence: { ...read.evidence, fitness: 'none', adaptation: 'unknown' },
+    why: `${read.why} Some of this session's data could not be captured reliably; counted as real training load, never as demonstrated pace, HR, incline or capacity.`,
+  };
+}
+
+function interpretExecutionCore(
   planned: Stimulus,
   actual: Stimulus | null,
   ctx: ExecutionContext = {},
