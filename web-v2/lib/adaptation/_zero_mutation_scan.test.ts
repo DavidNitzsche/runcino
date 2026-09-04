@@ -35,8 +35,14 @@ import path from 'node:path';
 const HERE = __dirname;
 const WEB = path.resolve(HERE, '..', '..');
 
-/** The one table this layer may write. */
-const OWNED_TABLES = new Set(['adaptation_shadow_log']);
+/** The tables this layer may write. `canonical_adaptation_shadow_log`
+ *  (added 2026-09-03) is the sibling shadow log for the canonical
+ *  Adaptation Engine's live evaluation (`canonical-shadow/run-live-shadow-
+ *  evaluation.ts`) — same shape as `adaptation_shadow_log`, one allow-
+ *  listed INSERT, proven separately and more tightly by that directory's
+ *  own `_never_mutates_plan.test.ts`. Argued exemption, not a widened
+ *  hole: this scan only proves NO OTHER table is touched. */
+const OWNED_TABLES = new Set(['adaptation_shadow_log', 'canonical_adaptation_shadow_log']);
 
 /** Every function in this codebase that writes a plan row, or reaches one. */
 export const PLAN_WRITERS = [
@@ -59,6 +65,14 @@ const PERMITTED_EXTERNAL_IMPORTS: ReadonlyArray<{ file: string; module: string; 
     file: 'app/api/cron/prune-adaptation-shadow-log/route.ts', module: '@/lib/adaptation/shadow-log-retention',
     names: ['pruneAdaptationShadowLog'],
     why: 'DELETE-only against adaptation_shadow_log, the table this layer owns',
+  },
+  {
+    file: 'app/api/cron/prune-adaptation-shadow-log/route.ts', module: '@/lib/adaptation/canonical-adaptation-shadow-log-retention',
+    names: ['pruneCanonicalAdaptationShadowLog'],
+    why:
+      'DELETE-only against canonical_adaptation_shadow_log — the scaled sibling of the entry '
+      + 'above, same route, same retention shape (age + per-user row cap), added 2026-09-03 '
+      + 'alongside the canonical engine\'s live shadow evaluation.',
   },
   {
     file: 'app/api/cron/run-adaptations/route.ts', module: '@/lib/adaptation/shadow-compare',
@@ -273,7 +287,12 @@ describe('guard 3b · no plan writer may import the PROPOSAL path, in any form',
 describe('guard 4 · the cron route reads the shadow result for its error and nothing else', () => {
   it('run-adaptations never hands a shadow result to a writer', () => {
     const src = stripComments(readFileSync(path.join(WEB, 'app/api/cron/run-adaptations/route.ts'), 'utf8'));
-    const uses = [...src.matchAll(/\bshadow\b(?!-)/g)].length;
+    // (?<!-) added 2026-09-03 alongside (?!-): the canonical shadow pass logs
+    // under the tag `[canonical-shadow]` and imports from a path segment
+    // named `canonical-shadow/...`, both hyphen-joined compounds that are
+    // log/path noise, not a bare identifier read — the same reasoning the
+    // original (?!-) already applied to `[shadow-compare]`, made symmetric.
+    const uses = [...src.matchAll(/(?<!-)\bshadow\b(?!-)/g)].length;
     expect(uses).toBeGreaterThan(0); // liveness
     // Every use of the identifier is the assignment or `.error`.
     const legit = [...src.matchAll(/const shadow = await runAndPersistPaceShadowCompare|shadow\.error/g)].length;
