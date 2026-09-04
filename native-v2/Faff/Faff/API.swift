@@ -160,6 +160,12 @@ enum API {
         //     .faffSessionExpired" — see ReadStatus in TokenStore.swift.
         let tokenAtSend = TokenStore.shared.readTokenStatus()
         TokenStore.shared.authorize(&req)
+        // STAGE1-DIAG-1 · one recorded lifecycle per request, closed at
+        // every exit path below (cancellation, transport failure, non-HTTP
+        // response, 401, and the final return). See RequestDiagnostics.swift.
+        let diagEndpoint = req.url?.path ?? "?"
+        let diagDateParam = req.url?.faffDiagnosticDateParam
+        let diagGen = await RequestDiagnosticsLog.shared.begin(endpoint: diagEndpoint, dateParam: diagDateParam)
         let data: Data
         let resp: URLResponse
         do {
@@ -187,17 +193,25 @@ enum API {
             // every time, and every one of those cancellations was a false
             // "can't reach faff."
             if API.isCancellation(error) {
+                await RequestDiagnosticsLog.shared.finish(diagGen, outcome: .cancelled)
                 throw error
             }
             // Network-level failure (offline / can't reach Faff). Surface a
             // loud global signal so the runner sees "can't reach Faff" instead
             // of every surface silently falling back to empty/stale cache.
+            let isTimeout = (error as? URLError)?.code == .timedOut
+            await RequestDiagnosticsLog.shared.finish(
+                diagGen,
+                outcome: isTimeout ? .timeout : .transportError(String(describing: error).prefix(200).description))
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .faffReachabilityLost, object: nil)
             }
             throw error
         }
-        guard let http = resp as? HTTPURLResponse else { throw APIError.badStatus(-1) }
+        guard let http = resp as? HTTPURLResponse else {
+            await RequestDiagnosticsLog.shared.finish(diagGen, outcome: .transportError("non-HTTP response"))
+            throw APIError.badStatus(-1)
+        }
         if http.statusCode == 401 {
             let tokenNow = TokenStore.shared.readTokenStatus()
             // Only two shapes are safe to raise .faffSessionExpired for:
@@ -225,8 +239,12 @@ enum API {
                     NotificationCenter.default.post(name: .faffSessionExpired, object: nil)
                 }
             }
+            await RequestDiagnosticsLog.shared.finish(diagGen, outcome: .httpError(status: 401))
             throw APIAuthError.unauthorized
         }
+        await RequestDiagnosticsLog.shared.finish(
+            diagGen,
+            outcome: (200..<300).contains(http.statusCode) ? .success(status: http.statusCode) : .httpError(status: http.statusCode))
         return (data, http)
     }
     /// Production API base. next.faff.run was the pre-cutover staging
@@ -1469,7 +1487,17 @@ enum API {
         guard (200..<300).contains(http.statusCode) else {
             throw APIError.badStatus(http.statusCode)
         }
-        let decoded = try JSONDecoder().decode(PlanWeek.self, from: data)
+        // STAGE1-DIAG-1 · see the matching comment in APIV5.swift's `v5<T>` —
+        // a decode failure is recorded as its own standalone entry.
+        let decoded: PlanWeek
+        do {
+            decoded = try JSONDecoder().decode(PlanWeek.self, from: data)
+        } catch {
+            await RequestDiagnosticsLog.shared.recordDecodeFailure(
+                endpoint: comps.url?.path ?? "/api/plan/week",
+                dateParam: date, error: error)
+            throw error
+        }
         // Current-week only — date-overridden fetches are previews and
         // shouldn't overwrite the canonical plan-week cache.
         if date == nil {

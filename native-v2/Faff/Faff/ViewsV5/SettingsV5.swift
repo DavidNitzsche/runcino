@@ -104,6 +104,11 @@ struct SettingsV5: View {
     @State private var sessionReminders: Bool
     @State private var weeklySummary: Bool
     @State private var units: String
+    // STAGE1-DIAG-1 · hidden entry point into the internal request-diagnostics
+    // sheet. Deliberately not a visible settings row — this is a support tool,
+    // not a runner-facing feature (see RequestDiagnosticsView's own header).
+    @State private var diagTapCount = 0
+    @State private var showDiagnostics = false
 
     init(model: SettingsV5Model,
          onSetLongRunDay: @escaping (String) -> Void,
@@ -147,6 +152,12 @@ struct SettingsV5: View {
         "\(longRunDay) evening, after the long run"
     }
 
+    private var appVersionString: String {
+        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "faff.run \(short) (\(build))"
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -166,6 +177,25 @@ struct SettingsV5: View {
                     FaffButton("Sign out", variant: .destructive, size: .md, full: true) {
                         Task { await SessionHygiene.signOut() }
                     }
+
+                    // STAGE1-DIAG-1 · plain version/build text, useful on its
+                    // own for a support conversation. Seven taps within the
+                    // gesture's own window opens the internal request-
+                    // diagnostics sheet — never advertised, never a labeled
+                    // row, so it stays out of the normal runner interface.
+                    Text(appVersionString)
+                        .font(.faffText(TypeScaleV5.label12))
+                        .foregroundStyle(V5.textQuiet)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, V5.S.s8)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            diagTapCount += 1
+                            if diagTapCount >= 7 {
+                                diagTapCount = 0
+                                showDiagnostics = true
+                            }
+                        }
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s32)
@@ -175,6 +205,9 @@ struct SettingsV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
+        .sheet(isPresented: $showDiagnostics) {
+            RequestDiagnosticsView()
+        }
         // The phone-run switch is the ONE control here that talks to the
         // network directly — see the file header.
         .onChange(of: phoneRunEnabled) { _, newValue in
