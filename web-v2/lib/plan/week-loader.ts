@@ -128,7 +128,10 @@ export interface PlanWeekResult {
  * will actually read rather than a sentence that is about to disappear.
  * Both passes are idempotent, so a double application is harmless.
  */
-function dayNoteFor(raw: string | null | undefined): string | null {
+/** Exported for `lib/plan/plan-snapshot.ts` (PLANSNAPSHOT-1) — the ONE
+ *  scrub-and-render pass a day's note gets, reused rather than re-composed,
+ *  per this file's own header on why the two calls are ordered as they are. */
+export function dayNoteFor(raw: string | null | undefined): string | null {
   if (typeof raw !== 'string') return null;
   const scrubbed = renderRunnerInstruction(stripResearchCitations(raw))?.trim() ?? '';
   return scrubbed.length > 0 ? scrubbed : null;

@@ -13,6 +13,7 @@
 		0565B4AAF1E1AC26C3DE1F75 /* WatchSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */; };
 		05EEB9EB948603B0592062F2 /* TodayShoePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3F9F97249181DA2EB82D25D /* TodayShoePicker.swift */; };
 		06733C4049CBBF30D8DF2EA1 /* API+Toolkit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E06A7E99186B27147ADDE22 /* API+Toolkit.swift */; };
+		0681EB2D1E7C2464EEE8A63F /* PlanSnapshotDayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5AB7330728883C00212DCC3 /* PlanSnapshotDayView.swift */; };
 		06D85202CC7B5FEA024A919D /* V5GaugeGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61803F39A7F14262E27C4D4 /* V5GaugeGeometryTests.swift */; };
 		078244894854B58646D93CF0 /* FacesControlV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8199CD282C5F9AF41DCFFAB5 /* FacesControlV5.swift */; };
 		087938D53B0E81241BFCCA7A /* TreadmillHRView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760B92E89CF0E2EF5EEB8265 /* TreadmillHRView.swift */; };
@@ -53,6 +54,7 @@
 		2CECC6E66207BE2B489E1660 /* SweepLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D5343ED9131EF5857DDCA4 /* SweepLedger.swift */; };
 		2CF96FA9F2763CF433717CD6 /* SpokenCues.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E67560BFE144A0B9CA885E /* SpokenCues.swift */; };
 		2D92791A3F6EEE6824DBACB3 /* StravaConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309A3C38F033A266C6A92A5D /* StravaConnection.swift */; };
+		2F77D42466DF390C5F1F8F2F /* PlanSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF90E5509325856AF770BF0 /* PlanSnapshotStore.swift */; };
 		2FFA12FF938E115A5971545D /* WatchWorkoutModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */; };
 		303AD12FAA2419ECDCF2D562 /* V5ContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */; };
 		30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2B62D9179AAC7D41426156 /* FaffApp.swift */; };
@@ -80,6 +82,7 @@
 		44DDBCF77E1B9D072A6A11C1 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 743648B82E2A21410A13F000 /* SettingsView.swift */; };
 		44FC4C0D4BEF22E6E023630C /* WatchDeviceState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C2C08025A102B779831008 /* WatchDeviceState.swift */; };
 		456E4CFA1CB168E314A39A1D /* FaffMesh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C18DDEE14414B527EFBB143 /* FaffMesh.swift */; };
+		457429C6BEBA4D2FEA4AF0D7 /* PlanSnapshotModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31AB0DE9A9BF90BBAEF5661D /* PlanSnapshotModels.swift */; };
 		468FE2BC3CFB56D3952DA40E /* LiveRunOutdoorV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3319534867031A9898793E4E /* LiveRunOutdoorV5.swift */; };
 		47F3245DF57F054F4D025850 /* NotificationCategories.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCEEE47B94CDA981E430812A /* NotificationCategories.swift */; };
 		484DFA221C704DBC9C376466 /* FacesRunV6.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCE561B22AA8DF2CB1C87B37 /* FacesRunV6.swift */; };
@@ -184,6 +187,7 @@
 		B2BC7B429ADDA0AA8B070554 /* MileBreakdownV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B93A292D47A0897A9E97E59 /* MileBreakdownV5.swift */; };
 		B5DFBF384D9E66275E5A115A /* CoachDecisionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5CA8D8B53BA60480112C8E /* CoachDecisionCard.swift */; };
 		B6076F76806872AA099B2961 /* LiveRunTreadmillV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C4E0103C48556262CA34E6 /* LiveRunTreadmillV5.swift */; };
+		B6A6774CA499DC489DCEC981 /* PlanSnapshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39372D39D00335DD55A60910 /* PlanSnapshotStoreTests.swift */; };
 		B6D9A30FAAC0365482CBE064 /* FaffWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B75E74C9AB9210EF368E6327 /* FontsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = A954B02519E4D94FB0775C18 /* FontsV5.swift */; };
 		B7A4614D920CC943C7E2CEB4 /* HealthSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1BECCB43A8C9B865BBDCA7 /* HealthSeed.swift */; };
@@ -205,6 +209,7 @@
 		C6A2A7918BF78AD7655141C8 /* MatchedWorkoutV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDB2FFAE1C35FF5532669FEA /* MatchedWorkoutV5.swift */; };
 		CBCBD59107DBD5C69D2DE353 /* CoachIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516DCD5B946ABCCE017F3F40 /* CoachIntents.swift */; };
 		CC56F6522DB4029831F4ECE1 /* BeltTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BBD87A2B7AEEDE1D12808EB /* BeltTrackerTests.swift */; };
+		CD6CDE532ADFEC86D020C8E6 /* PlanSnapshotNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A34FDF3F6A6AE06227A16DD /* PlanSnapshotNavigationTests.swift */; };
 		CF1C1E572DC1A191D8D58977 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A2DDEC15725161C4032FEC9 /* SignInView.swift */; };
 		D015F75F19467F2CC4F858F4 /* TodayReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F7FD10DD9073D194489F29 /* TodayReliabilityTests.swift */; };
 		D0882F637FE348F184468398 /* FaffWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2606EFDB59295AF72C865CB /* FaffWidgetSnapshot.swift */; };
@@ -375,8 +380,10 @@
 		2E20B32808244C5EC8C98C05 /* FaffWidgetContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWidgetContent.swift; sourceTree = "<group>"; };
 		3021BAFCB3395A359AD25A3C /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		309A3C38F033A266C6A92A5D /* StravaConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaConnection.swift; sourceTree = "<group>"; };
+		31AB0DE9A9BF90BBAEF5661D /* PlanSnapshotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSnapshotModels.swift; sourceTree = "<group>"; };
 		3319534867031A9898793E4E /* LiveRunOutdoorV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunOutdoorV5.swift; sourceTree = "<group>"; };
 		339FE2F9F859B2369B4348E2 /* TrainingCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingCalendarView.swift; sourceTree = "<group>"; };
+		39372D39D00335DD55A60910 /* PlanSnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSnapshotStoreTests.swift; sourceTree = "<group>"; };
 		39A87ED56AB9F59CDC05C03F /* RequestDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestDiagnostics.swift; sourceTree = "<group>"; };
 		3A3B4A49A291F2E6280DAC72 /* StravaPushSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaPushSheet.swift; sourceTree = "<group>"; };
 		3A85664CAD8235007F2987E2 /* RecorderConcurrencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecorderConcurrencyTests.swift; sourceTree = "<group>"; };
@@ -443,6 +450,7 @@
 		7BF7E6E0D868BFA61684A1B5 /* SickV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SickV5.swift; sourceTree = "<group>"; };
 		7C1BECCB43A8C9B865BBDCA7 /* HealthSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSeed.swift; sourceTree = "<group>"; };
 		7CBC6B190CCB38D107978B08 /* PhoneRunTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRunTracker.swift; sourceTree = "<group>"; };
+		7DF90E5509325856AF770BF0 /* PlanSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSnapshotStore.swift; sourceTree = "<group>"; };
 		7E9955658E632F56C2B84C68 /* EmailSignInSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailSignInSheet.swift; sourceTree = "<group>"; };
 		801D9B1925F0DC65C5E66C0D /* FaffTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FaffTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		80D79010E6307A7B819FD164 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
@@ -459,6 +467,7 @@
 		87DEABD97368BE1C69024791 /* ChimePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChimePlayer.swift; sourceTree = "<group>"; };
 		894094955F354E1174579A70 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		89D7554D68355339D82D6F51 /* TargetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetsView.swift; sourceTree = "<group>"; };
+		8A34FDF3F6A6AE06227A16DD /* PlanSnapshotNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSnapshotNavigationTests.swift; sourceTree = "<group>"; };
 		8A369BFF325F4DEEBD7624B8 /* RacesV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RacesV5.swift; sourceTree = "<group>"; };
 		8A7AF53AC1B5DF3231932FB6 /* HealthCompactGauge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthCompactGauge.swift; sourceTree = "<group>"; };
 		8AFF6EE9836728CE662BA316 /* OpenEndedSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenEndedSessionTests.swift; sourceTree = "<group>"; };
@@ -488,6 +497,7 @@
 		A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthView.swift; sourceTree = "<group>"; };
 		A4141967D7277D2DF4252A9A /* GalleryV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryV5.swift; sourceTree = "<group>"; };
 		A568CF011D15B9560E0B84FE /* NotificationsControllerV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsControllerV5.swift; sourceTree = "<group>"; };
+		A5AB7330728883C00212DCC3 /* PlanSnapshotDayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSnapshotDayView.swift; sourceTree = "<group>"; };
 		A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayPreRunBodyV3.swift; sourceTree = "<group>"; };
 		A69925035C6326F0327A2787 /* HowItWentPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HowItWentPanel.swift; sourceTree = "<group>"; };
 		A6CDCA6D9D915AA28A0458FB /* BeltSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeltSession.swift; sourceTree = "<group>"; };
@@ -584,7 +594,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_56E857E8-1A78-4574-B5A0-5F68807E2938" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_92535008-BD31-4955-B3B8-95C00EDBF2B3" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -633,6 +643,8 @@
 				FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */,
 				FA3B687F7BD1375763E551FE /* NetworkFence.swift */,
 				8AFF6EE9836728CE662BA316 /* OpenEndedSessionTests.swift */,
+				8A34FDF3F6A6AE06227A16DD /* PlanSnapshotNavigationTests.swift */,
+				39372D39D00335DD55A60910 /* PlanSnapshotStoreTests.swift */,
 				0C7F0C958D7BCB61A44F07CC /* PlanVersionInvalidationTests.swift */,
 				3A85664CAD8235007F2987E2 /* RecorderConcurrencyTests.swift */,
 				DAD38C7298C01A8DA4A62EB5 /* RequestDiagnosticsTests.swift */,
@@ -813,6 +825,7 @@
 				C3518819A569ED4E7C4F1E8F /* LiveRunWatchCompanionV5.swift */,
 				F8825DD5FD2222468737B3C2 /* OnboardingV5.swift */,
 				B2AB92DBD2E38DE9C55813DC /* PacesMovedV5.swift */,
+				A5AB7330728883C00212DCC3 /* PlanSnapshotDayView.swift */,
 				764DB060460773CD4B017A69 /* RaceDetailV5.swift */,
 				8A369BFF325F4DEEBD7624B8 /* RacesV5.swift */,
 				B49B340C9CA89A0A1197B53C /* RequestDiagnosticsView.swift */,
@@ -942,6 +955,8 @@
 				DCEEE47B94CDA981E430812A /* NotificationCategories.swift */,
 				B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */,
 				7CBC6B190CCB38D107978B08 /* PhoneRunTracker.swift */,
+				31AB0DE9A9BF90BBAEF5661D /* PlanSnapshotModels.swift */,
+				7DF90E5509325856AF770BF0 /* PlanSnapshotStore.swift */,
 				39A87ED56AB9F59CDC05C03F /* RequestDiagnostics.swift */,
 				2600BF38DD79CB8A08592B03 /* Theme.swift */,
 				9EC4B08F6610A04777F2FC2E /* ThemeV5.swift */,
@@ -1000,10 +1015,10 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_57E3BD51-7683-43DC-A024-67C2FBE1A9B1" /* native-v2 */ = {
+		"TEMP_BC89C29F-99AE-41B1-8386-692D21473753" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_56E857E8-1A78-4574-B5A0-5F68807E2938" /* Secrets.xcconfig */,
+				"TEMP_92535008-BD31-4955-B3B8-95C00EDBF2B3" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1272,6 +1287,8 @@
 				FACEBAA69F1C4822991FE9B5 /* LiveRunTreadmillNominalTests.swift in Sources */,
 				C67F80D498970CE5809D709B /* NetworkFence.swift in Sources */,
 				8A6D45456669247805119032 /* OpenEndedSessionTests.swift in Sources */,
+				CD6CDE532ADFEC86D020C8E6 /* PlanSnapshotNavigationTests.swift in Sources */,
+				B6A6774CA499DC489DCEC981 /* PlanSnapshotStoreTests.swift in Sources */,
 				BBA603C1BA581CA74ECEFB35 /* PlanVersionInvalidationTests.swift in Sources */,
 				EFAA4C1C630B5B39F42C3003 /* RecorderConcurrencyTests.swift in Sources */,
 				AE498C495063F6C98677718F /* RegisterSweepTests.swift in Sources */,
@@ -1382,6 +1399,9 @@
 				F36FFE86BA1F5C6A8215B496 /* PanelV5.swift in Sources */,
 				FFF338FB78E8EDB247A9B0D4 /* PhoneRunTracker.swift in Sources */,
 				69DC55B9E2B4A094BCF9B2D1 /* PhoneRunView.swift in Sources */,
+				0681EB2D1E7C2464EEE8A63F /* PlanSnapshotDayView.swift in Sources */,
+				457429C6BEBA4D2FEA4AF0D7 /* PlanSnapshotModels.swift in Sources */,
+				2F77D42466DF390C5F1F8F2F /* PlanSnapshotStore.swift in Sources */,
 				DF214510EDD5AB5B065F0B39 /* PostRunLearnedV5.swift in Sources */,
 				6A41A06EA9E2FD8E7C5EE1B6 /* PostRunShapeV5.swift in Sources */,
 				D2D6BC52AB864AD678DF3709 /* Primitives.swift in Sources */,
@@ -1508,7 +1528,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_56E857E8-1A78-4574-B5A0-5F68807E2938" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_92535008-BD31-4955-B3B8-95C00EDBF2B3" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1735,7 +1755,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_56E857E8-1A78-4574-B5A0-5F68807E2938" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_92535008-BD31-4955-B3B8-95C00EDBF2B3" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
