@@ -93,6 +93,7 @@ import {
 import { distanceMiOfMeta } from '@/lib/race/distance';
 import { distanceCategoryOrNull, type DistanceCategory } from '@/lib/race/distance-category';
 import { logSealSkip } from './seal';
+import { resolveDateRangeExecutions } from '@/lib/execution/day-resolver';
 import { mutatePlan } from './mutate';
 import { preserveProgressionSql } from './progression-spec';
 import { stripResearchCitations } from './strip-citations';
@@ -120,13 +121,24 @@ import { returnToLongDays, longRunFactorAfterRace, type PlacementRecord } from '
 /**
  * 2026-06-03 · Rule 15 · seal guard for adapter writes.
  *
- * Given a list of plan_workouts IDs, returns the subset whose dates
- * are NOT sealed (no completed run for that date). Sealed IDs are
- * filtered out with a [plan/seal] log line.
+ * Given a list of plan_workouts IDs, returns the subset that are NOT
+ * sealed. Sealed IDs are filtered out with a [plan/seal] log line.
  *
  * Used by every UPDATE path in applyAdaptations so the adapter can't
  * retroactively change what the runner was prescribed for a day they
  * already ran. Cite: designs/briefs/backend-rule-completed-days-immutable-2026-06-02.md
+ *
+ * SEALING-IDENTITY-1 (2026-09-04) · this used to be a SECOND, independently
+ * written copy of the exact date-EXISTS join `lib/plan/seal.ts`'s own
+ * `isDaySealed` also carried — a Rule 14 violation with a live cost: a
+ * friend's unrelated same-date run would have sealed a prescription this
+ * function was asked to adapt, purely because SOMETHING existed on that
+ * calendar date. Now delegates entirely to
+ * `lib/execution/day-resolver.ts::resolveDateRangeExecutions` — the one
+ * canonical resolver every other "did this happen" question in this
+ * codebase already answers through — batched over the workouts' own date
+ * span rather than one round trip per id, so this stays the single query
+ * this call site always was.
  */
 async function filterUnsealedWorkouts(
   client: { query: typeof pool.query },
@@ -135,34 +147,41 @@ async function filterUnsealedWorkouts(
   source: string,
 ): Promise<string[]> {
   if (workoutIds.length === 0) return [];
-  // Join workouts to runs by date · row is sealed if a non-merged
-  // run row exists for the same date.
-  const r = await client.query<{ id: string; sealed: boolean; date_iso: string }>(
-    `SELECT pw.id::text AS id, pw.date_iso::text,
-            EXISTS (
-              SELECT 1 FROM runs r
-               WHERE r.user_uuid = $1::uuid
-                 AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
-                 AND NOT (r.data ? 'mergedIntoId')
-            ) AS sealed
+  const rows = (await client.query<{ id: string; date_iso: string }>(
+    `SELECT pw.id::text AS id, pw.date_iso::text
        FROM plan_workouts pw
        JOIN training_plans tp ON tp.id = pw.plan_id
       WHERE pw.id = ANY($2::text[])
         AND tp.user_uuid = $1::uuid`,
     [userUuid, workoutIds],
-    // GENUINELY FINE, and argued: an empty result here means NO id is treated
-    // as unsealed, so every action is skipped. A failed read therefore mutates
-    // nothing, which is the safe direction for a guard whose whole job is to
-    // protect a session the runner has already run. It logs now, because
-    // "adaptation touched nothing" and "adaptation could not see" produced the
-    // same run of `[plan/seal]`-free silence.
   ).catch((e) => {
-    logReadFailure('plan/adapt · filterUnsealedWorkouts', e);
-    return { rows: [] as Array<{ id: string; sealed: boolean; date_iso: string }> };
-  });
+    logReadFailure('plan/adapt · filterUnsealedWorkouts · row lookup', e);
+    return { rows: [] as Array<{ id: string; date_iso: string }> };
+  })).rows;
+  if (rows.length === 0) return [];
+
+  const dates = rows.map((r) => r.date_iso).sort();
+  const fromISO = dates[0];
+  const toISOExclusive = (() => {
+    const d = new Date(`${dates[dates.length - 1]}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
+  // Same conservative direction as before: a resolver read this function
+  // cannot see is not a batch it can vouch for as unsealed, so a failure
+  // here seals everything rather than nothing.
+  const resolved = await resolveDateRangeExecutions(userUuid, fromISO, toISOExclusive)
+    .catch((e: unknown) => {
+      logReadFailure('plan/adapt · filterUnsealedWorkouts · resolver', e);
+      return null;
+    });
+
   const unsealed: string[] = [];
-  for (const row of r.rows) {
-    if (row.sealed) {
+  for (const row of rows) {
+    const day = resolved?.get(row.date_iso) ?? null;
+    const prescription = day?.prescriptions.find((p) => p.id === row.id) ?? null;
+    const sealed = resolved === null || prescription?.matchedRun != null;
+    if (sealed) {
       logSealSkip(source, userUuid, row.date_iso);
     } else {
       unsealed.push(row.id);
