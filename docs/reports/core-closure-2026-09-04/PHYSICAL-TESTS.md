@@ -2,7 +2,7 @@
 
 **Products in scope: the iPhone app and the Apple Watch app.** The Watch ships
 INSIDE the iPhone build — `project.yml` embeds `FaffWatch Watch App` in the
-`Faff` target — so installing TestFlight 275 installs both, and there is no
+`Faff` target — so installing TestFlight 278 installs both, and there is no
 separate Watch build number to track.
 
 **Current status: iPhone NOT VERIFIED · Watch NOT VERIFIED.** Nothing below has
@@ -16,16 +16,32 @@ that it cannot cover it.
 
 ## Build to install
 
-**TestFlight 275** (`89f602df`). Established by `git merge-base --is-ancestor`
-against the ship commit, not by reading a commit message — see TFCLAIM-1.
+**TestFlight 278** (source commit `b384b8b7`). Established by
+`git merge-base --is-ancestor` against the ship commit AND by reading
+`CFBundleVersion` out of the produced `.ipa` with PlistBuddy — not from a commit
+message, and not from an upload timestamp. See `BUILD-278.md` for the full
+chain.
 
-It contains every treadmill runtime change through `cd754fd3`
-(TREADMILL-SKIP-1), **and** WORKOUTPHASES-1/2 — the treadmill's own
-warmup/hills/cooldown post-run breakdown with per-phase HR from raw samples. So
-section A below is fully testable on 275, including the breakdown.
+  iPhone  CFBundleVersion 278 · `run.faff.app`
+  Watch   CFBundleVersion 278 · `run.faff.app.watchkitapp`, embedded in the same `.ipa`
 
-Not in 275: `0e80296d` (HRPHASE-1/HRGRADE-1). If you want the HR-graded session
-read, wait for the next build.
+**Every section below is testable on 278.** Proven ancestors, each checked
+individually:
+
+| In 278 | What it gives you |
+|---|---|
+| `0e80296d` | HRPHASE-1 + HRGRADE-1 — an HR-graded session reads as graded |
+| `39d69b71` | REDUNDANT-PACE-1, ACTIVITY-PLACEMENT-1, OVERRUN-MATCH-1, PASSIVE-SYNC-TYPE-CONFIRM-1 |
+| `cd754fd3` | all treadmill runtime through TREADMILL-SKIP-1 |
+| `645d540e` + `ea901bea` | the treadmill's warmup/hills/cooldown breakdown, per-phase HR |
+| `d115d857` | HRCEILING-1 + HRCHANNEL-1 |
+| `58c9dcc3` | HRFLATLINE-1 |
+
+**Do NOT install or report against builds 272 or 277.** Both have a broken
+provenance chain (SHIPRACE-1 in `BUILD-278.md`); 277's binary was another
+agent's export uploaded by this session's `altool`, and 272's commit message
+credits a fix authored 5h38m after its upload. They are kept in the record as
+the failure, not as validation targets.
 
 ## SMOKE · 6 minutes, runnable the moment the build installs
 
@@ -159,8 +175,8 @@ board geometry, not the wrist. These are what remain:
 
 ## What "closure" would require
 
-- iPhone: sections A, B, C and D confirmed on build 275.
-- Watch: section E confirmed on build 275.
+- iPhone: SMOKE, then sections A, B, C and D confirmed on build 278.
+- Watch: section E confirmed on build 278.
 
 Until both are done, the honest status is **shipped, not physically verified** —
 for either product.
