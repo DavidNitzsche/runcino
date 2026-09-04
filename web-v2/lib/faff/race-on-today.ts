@@ -96,10 +96,13 @@ export async function buildRaceOnToday(
     ),
   );
   const planRace = planRaceId
-    ? (await pool.query<{ slug: string; meta: Record<string, unknown> | null }>(
-        `SELECT slug, meta FROM races WHERE user_uuid = $1 AND slug = $2 LIMIT 1`,
-        [userId, planRaceId],
-      ).catch(() => ({ rows: [] as { slug: string; meta: Record<string, unknown> | null }[] }))).rows[0]
+    ? await rowOrNull<{ slug: string; meta: Record<string, unknown> | null }>(
+        'v5today/plan-race',
+        pool.query(
+          `SELECT slug, meta FROM races WHERE user_uuid = $1 AND slug = $2 LIMIT 1`,
+          [userId, planRaceId],
+        ),
+      )
     : null;
 
   const slug = todaysRace?.slug ?? planRace?.slug ?? null;
