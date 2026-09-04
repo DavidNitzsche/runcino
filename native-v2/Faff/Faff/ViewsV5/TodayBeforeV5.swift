@@ -323,19 +323,6 @@ struct TodayBeforeV5: View {
 
     // MARK: - Panel
 
-    /// 22b. THE GRADIENT MEANS TODAY. Nothing else earns it.
-    ///
-    /// The day-state ramp is the loudest thing on the screen, and it is what
-    /// makes Today feel like today. A day you have stepped to keeps every
-    /// word — the kicker still names the state, the type still reads EASY —
-    /// but drops the paint, so the two can never be confused at a glance.
-    ///
-    /// This applies FORWARD as well as back. A planned Friday carries a real
-    /// day-state and the gradient would be truthful there, which is exactly
-    /// the trap: truthful and still mistakable for today is the failure this
-    /// screen exists to prevent. One rule, no exceptions, nothing to misread.
-    private var steppedAway: Bool { viewingDayLabel != nil }
-
     /// Named once, because the ink has to come from the SAME value the panel
     /// is filled with. Computing them separately is how a stepped-to quality
     /// day would end up with a quiet fill and dark ink.
