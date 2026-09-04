@@ -21,7 +21,27 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NATIVE_V2="$ROOT/native-v2"
 ENV_FILE="$ROOT/legacy/native/.asc.env"
 BUILD_FILE="$ROOT/legacy/native/.asc.build"
-LOCK_DIR="$ROOT/.asc.shipping.lock"   # mkdir is atomic → cross-agent mutex
+# SHIPRACE-1 (2026-09-04) · THE LOCK AND THE SCRATCH PATHS MUST BE MACHINE-WIDE.
+#
+# `$ROOT` is the WORKTREE, and every agent ships from its own worktree, so this
+# lock only ever excluded a shipper from itself. Meanwhile the archive and export
+# paths below were fixed strings under /tmp, shared by every worktree on the
+# machine. The two facts together produce a silent, provable defect:
+#
+#   15:32:17  this agent archives (CURRENT_PROJECT_VERSION=276) -> /tmp/Faff-v2.xcarchive
+#   15:32:29  ANOTHER agent exports its own build 277           -> /tmp/Faff-v2-export/Faff.ipa
+#   15:33:27  this agent uploads /tmp/Faff-v2-export/Faff.ipa  -> the OTHER agent's binary
+#   15:34:40  App Store Connect records build 277
+#
+# The script then printed "✓ Uploaded build 276" and "✓ Build 276 distributed",
+# because its wait loop greps App Store Connect for "276: VALID" and a build 276
+# genuinely existed — uploaded by someone else at 11:58. Every line of that
+# output was false, and this is very likely the mechanism behind TFCLAIM-1
+# (build 272's commit message crediting a fix authored 5h38m after its upload).
+#
+# The lock moves to a machine-wide path so it excludes across worktrees, and the
+# scratch paths become per-run so two shippers cannot hand each other a binary.
+LOCK_DIR="/tmp/.faff.asc.shipping.lock"   # mkdir is atomic → cross-agent mutex, MACHINE-WIDE
 STALE_LOCK_SEC=$((45 * 60))           # 45-min ceiling for stale locks
 
 # ── Cross-agent ship lock ─────────────────────────────────────────────
@@ -145,8 +165,8 @@ if [ ! -L "$NATIVE_V2/Faff/FaffWatch Widgets" ] && [ ! -e "$NATIVE_V2/Faff/FaffW
 fi
 
 echo "→ Shipping Faff-v2 build $BUILD to TestFlight (team $ASC_TEAM_ID)…"
-rm -rf /tmp/Faff-v2.xcarchive /tmp/Faff-v2-export
-cat > /tmp/FaffV2ExportOptions.plist <<PLIST
+rm -rf "$SHIP_ARCHIVE" "$SHIP_EXPORT"
+cat > "$SHIP_SCRATCH/ExportOptions.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -266,19 +286,19 @@ esac
 
 echo "→ Archiving…"
 ( cd "$NATIVE_V2" && xcodebuild -scheme Faff -configuration Release \
-    -destination 'generic/platform=iOS' -archivePath /tmp/Faff-v2.xcarchive archive \
+    -destination 'generic/platform=iOS' -archivePath "$SHIP_ARCHIVE" archive \
     -allowProvisioningUpdates CURRENT_PROJECT_VERSION="$BUILD" )
 
 echo "→ Exporting signed .ipa…"
-xcodebuild -exportArchive -archivePath /tmp/Faff-v2.xcarchive \
-  -exportOptionsPlist /tmp/FaffV2ExportOptions.plist -exportPath /tmp/Faff-v2-export \
+xcodebuild -exportArchive -archivePath "$SHIP_ARCHIVE" \
+  -exportOptionsPlist "$SHIP_SCRATCH/ExportOptions.plist" -exportPath "$SHIP_EXPORT" \
   -allowProvisioningUpdates \
   -authenticationKeyPath "$ASC_KEY_PATH" \
   -authenticationKeyID "$ASC_KEY_ID" \
   -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
 echo "→ Uploading to TestFlight…"
-xcrun altool --upload-app -f /tmp/Faff-v2-export/Faff.ipa -t ios \
+xcrun altool --upload-app -f "$SHIP_EXPORT"/Faff.ipa -t ios \
   --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
 
 # Counter was already bumped inside the lock at script start. The
