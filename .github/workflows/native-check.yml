@@ -42,11 +42,21 @@
 #     confirmation dialogs actually blocking a tap. `TreadmillStateMachineTests`
 #     names those three itself; `docs/reports/core-closure-2026-09-04/
 #     PHYSICAL-TESTS.md` is where they live.
-#   · board GEOMETRY on the watch. `scripts/check-watch.sh` guard 3 needs a
-#     booted watch simulator; this job boots one, but if booting fails the
-#     script reports PARTIAL rather than OK and this job surfaces that word
-#     instead of pretending.
+#   · board geometry against a real WRIST. Guard 3 renders the `_FacePreview`
+#     harness on a simulator, so a board correct in the harness and wrong
+#     against live engine state passes. Guard 3 itself is now MANDATORY here
+#     (see the conformance-gate step) — this job fails on PARTIAL — but what it
+#     proves is harness geometry, not Rule 13's "render it with real data".
 #   · the server the apps talk to. That is `test-full.yml` and `build-check.yml`.
+#
+# ── FALSIFICATION ──────────────────────────────────────────────────────────
+#
+# Every assertion in this job was made to fail on purpose on 2026-09-04, and
+# the observed failure text is recorded in
+# `docs/reports/core-closure-2026-09-04/CI-FALSIFICATION.md`. That pass found a
+# real defect in the watch count assertion (it green-lit a 12-test run) and a
+# structural false red in the conformance gate (it could never have printed OK
+# on a hosted runner). Rule 18: a gate that has never failed is a hypothesis.
 #
 # ── COST, STATED HONESTLY ──────────────────────────────────────────────────
 #
@@ -122,18 +132,46 @@ jobs:
             CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES DEVELOPMENT_TEAM="" \
             | tee /tmp/iphone.log | xcbeautify || true
           grep -q '\*\* TEST SUCCEEDED \*\*' /tmp/iphone.log
-          grep -E 'Executed [0-9]+ tests, with' /tmp/iphone.log | tail -1
+          # Informational only. The COUNT is owned by exactly one step, the next
+          # one — Rule 16, one quantity one name. This line used to be a second,
+          # narrower assertion on the same number (it required the ", with"
+          # clause), so a summary-line format change could fail here while the
+          # real floor passed, and the failure would name no threshold at all.
+          grep -E 'Executed [0-9]+ tests' /tmp/iphone.log | tail -1 || true
 
       # LIVENESS (Rule 18 guard 2). `** TEST SUCCEEDED **` is also what a run
       # that executed ZERO tests prints. The iPhone suite was 346 tests when
       # this was written; the floor is deliberately well under that so ordinary
       # growth does not trip it, and well over zero so a target that stops
       # being built cannot pass as clean.
+      #
+      # FALSIFIED 2026-09-04 (docs/reports/core-closure-2026-09-04/
+      # CI-FALSIFICATION.md, rows A1/A2/A3) against captured xcodebuild logs.
+      #
+      # WHAT THIS ASSERTION CANNOT FAIL ON (Rule 22):
+      #   · a suite that shrinks from 346 to 260. The floor is a liveness
+      #     probe, not a ratchet — it catches "the target stopped being built",
+      #     not "someone deleted 86 tests". Nothing here reads the source to
+      #     derive a declared count the way check-watch.sh guard 2 does.
+      #   · WHICH tests ran. 250 renamed placeholders satisfy it.
+      #   · a test that is present, compiled, and `XCTSkip`-ed at run time —
+      #     xcodebuild counts a skipped case in `Executed N tests`.
       - name: iPhone suite ran a real number of tests
         run: |
-          N=$(grep -oE 'Executed [0-9]+ tests' /tmp/iphone.log | tail -1 | grep -oE '[0-9]+')
-          echo "iPhone tests executed: $N"
-          test "${N:-0}" -ge 250
+          FLOOR=250
+          # `|| true` so an ABSENT summary line fails on the assertion below
+          # with a printed reason, rather than on `set -e` killing the
+          # assignment before anything is echoed. Falsification row A2 was
+          # exit 1 with completely empty output before this changed, which is
+          # the "reports a failure and not why" shape.
+          N=$(grep -oE 'Executed [0-9]+ tests' /tmp/iphone.log | tail -1 | grep -oE '[0-9]+' || true)
+          echo "iPhone tests executed: ${N:-<no summary line in the log>} (floor ${FLOOR})"
+          if [ "${N:-0}" -lt "$FLOOR" ]; then
+            echo "::error title=iPhone suite did not really run::Executed ${N:-0} tests, floor is ${FLOOR}."
+            echo "'** TEST SUCCEEDED **' is also what a run that executed ZERO tests prints."
+            echo "Check that the FaffTests target is still in native-v2/project.yml."
+            exit 1
+          fi
 
       # The Watch tests use SWIFT TESTING, not XCTest. That matters and it
       # burned a reading in this very programme: the XCTest bundle legitimately
@@ -152,23 +190,143 @@ jobs:
             | tee /tmp/watch.log | xcbeautify || true
           grep -q '\*\* TEST SUCCEEDED \*\*' /tmp/watch.log
 
+      # FALSIFIED 2026-09-04 (rows B1/B2/B3). Row B3 found a REAL DEFECT in the
+      # first draft of this step and it is the reason the extraction changed:
+      #
+      #   N=$(echo "$LINE" | grep -oE '[0-9]+' | head -1)
+      #
+      # `head -1` takes the first number ON THE LINE, not the first number in
+      # `Test run with N tests`. xcodebuild prefixes its own stderr with a
+      # timestamp, and against
+      #
+      #   2026-09-04 09:10:03.552 xcodebuild[4471:88231] ✔ Test run with 12
+      #   tests in 1 suites passed after 2.1 seconds.
+      #
+      # it read 2026, compared 2026 >= 150, and PASSED a watch suite that had
+      # collapsed from 223 cases to 12. A liveness guard that green-lights a
+      # 12-test run is the exact false green this whole workflow exists to
+      # close. The pattern below anchors the digits to the phrase.
+      #
+      # WHAT THIS ASSERTION CANNOT FAIL ON (Rule 22):
+      #   · a suite that shrinks from 223 to 160. Same liveness-not-ratchet
+      #     limit as the iPhone floor. check-watch.sh guard 2 is the ratchet:
+      #     it derives the floor from `@Test` declarations in the sources, so
+      #     the two are complementary and neither replaces the other.
+      #   · a `.disabled` Swift Testing case — Swift Testing does not count it,
+      #     so 223 declarations minus one disabled still clears 150 silently.
+      #   · anything about the XCTest half of the bundle, which legitimately
+      #     reports `Executed 0 tests` here and is deliberately not read.
       - name: Watch suite ran a real number of tests
         run: |
+          FLOOR=150
           LINE=$(grep -E 'Test run with [0-9]+ tests' /tmp/watch.log | tail -1 || true)
           echo "swift-testing: ${LINE:-<none>}"
-          N=$(echo "$LINE" | grep -oE '[0-9]+' | head -1)
-          test "${N:-0}" -ge 150
+          N=$(printf '%s' "$LINE" | grep -oE 'Test run with [0-9]+' | grep -oE '[0-9]+' || true)
+          echo "watch tests executed: ${N:-<no swift-testing summary line>} (floor ${FLOOR})"
+          if [ "${N:-0}" -lt "$FLOOR" ]; then
+            echo "::error title=Watch suite did not really run::Executed ${N:-0} tests, floor is ${FLOOR}."
+            echo "The Watch tests use Swift Testing, not XCTest. The XCTest bundle"
+            echo "legitimately prints 'Executed 0 tests'; the line read here is"
+            echo "'Test run with N tests in M suites'. If it is absent the suite did"
+            echo "not run at all — check the FaffWatch Watch AppTests target."
+            exit 1
+          fi
 
-      # The watch conformance gate, with a booted simulator so guard 3 (board
-      # geometry) actually runs. Without one the script reports PARTIAL and
-      # says, in its own words, that "this line is deliberately not the word
-      # OK" — so this step asserts on OK rather than on the exit code.
-      - name: Watch conformance gate
+      # ── GUARD 3 MAY NOT SILENTLY SKIP ────────────────────────────────────
+      #
+      # check-watch.sh's board-geometry guard has THREE preconditions, and it
+      # skips — honestly in its own output, but exit 0 — when any is unmet:
+      # `--fast`, no booted simulator matching `$SIM`, no Pillow. The first
+      # draft of this job met NONE of them reliably:
+      #
+      #   · `$SIM` defaults to `DC794E30-…-05DC44E39A75` (check-watch.sh:134),
+      #     a UDID captured on a developer's Mac. A hosted runner mints its own
+      #     simulator set, so the boot step booted one device and the gate
+      #     inspected another. Guard 3 would have skipped on EVERY run and
+      #     `grep -q 'WATCH-GATE: OK'` would have been red forever — a false
+      #     red, the same class this file's signing note is about. Fixed by
+      #     handing the resolved UDID to the gate through `WATCH_SIM`, which is
+      #     the override the script already documents.
+      #   · Pillow is not on the macOS image and nothing installed it, so the
+      #     third branch fired too.
+      #   · `simctl boot … || true` swallowed a boot failure outright, and the
+      #     `sleep 20` that followed was a guess, not a check.
+      - name: Pillow, so guard 3 can measure the boards
         run: |
-          xcrun simctl boot "${{ steps.sims.outputs.watch }}" || true
-          sleep 20
-          bash scripts/check-watch.sh | tee /tmp/checkwatch.log
-          grep -q 'WATCH-GATE: OK' /tmp/checkwatch.log
+          python3 -m pip install --break-system-packages --quiet Pillow \
+            || python3 -m pip install --quiet Pillow
+          python3 -c "import PIL; print('Pillow', PIL.__version__)"
+
+      # A boot failure is a FAILURE. `bootstatus -b` blocks until the device
+      # finishes booting and exits non-zero if it cannot; the `grep` after it
+      # is an INDEPENDENT confirmation, because trusting one command's exit
+      # code about its own success is how `|| true` got here in the first place.
+      - name: Boot the watch simulator
+        run: |
+          set -euo pipefail
+          WATCH="${{ steps.sims.outputs.watch }}"
+          # An already-booted device exits 149, which is success for us and the
+          # only reason this line tolerates a non-zero code. Everything after
+          # it re-establishes the fact independently.
+          xcrun simctl boot "$WATCH" || true
+          xcrun simctl bootstatus "$WATCH" -b
+          if ! xcrun simctl list devices booted | grep -F "$WATCH"; then
+            echo "::error title=Watch simulator did not boot::$WATCH is not in the booted list."
+            echo "Guard 3 (board geometry) cannot run without it, and a skipped"
+            echo "geometry guard reads as coverage. Failing rather than skipping."
+            exit 1
+          fi
+
+      # WHAT THIS STEP CANNOT FAIL ON (Rule 22):
+      #   · a board that is correct in the `_FacePreview` harness and wrong
+      #     against live engine state. check-watch.sh says so itself; Rule 13's
+      #     "render it with real data" is not satisfied here and never was.
+      #   · the phone. Nothing in check-watch.sh compiles the iOS target.
+      #   · a board that is geometrically legal and semantically wrong.
+      - name: Watch conformance gate (board geometry may not silently skip)
+        env:
+          WATCH_SIM: ${{ steps.sims.outputs.watch }}
+        run: |
+          set -o pipefail
+          # `|| true` because the verdict LINE is the assertion, not the exit
+          # code: the script exits 1 on FAIL, 3 on UNRUNNABLE and 0 on both OK
+          # and PARTIAL, and it is precisely the 0-that-means-PARTIAL this step
+          # exists to reject.
+          bash scripts/check-watch.sh 2>&1 | tee /tmp/checkwatch.log || true
+          LINE=$(grep -E '^WATCH-GATE: ' /tmp/checkwatch.log | tail -1 || true)
+          VERDICT=$(printf '%s' "$LINE" | awk '{print $2}')
+          echo "watch gate verdict: ${VERDICT:-<no WATCH-GATE line at all>}"
+          case "${VERDICT:-NONE}" in
+            OK)
+              echo "all four guards executed, board geometry included."
+              ;;
+            PARTIAL)
+              echo "::error title=Board geometry did not run::$LINE"
+              echo "PARTIAL means a guard was SKIPPED, not that it passed. This job"
+              echo "supplies every precondition guard 3 has — a booted watch"
+              echo "simulator whose UDID is handed to the gate as WATCH_SIM, and"
+              echo "Pillow — so a skip here means one of those stopped working."
+              echo "Accepting PARTIAL would restore the exact silent skip this"
+              echo "step exists to close."
+              exit 1
+              ;;
+            FAIL)
+              echo "::error title=Watch conformance gate failed::$LINE"
+              echo "A guard ran and found something. The WATCH FAIL lines above say what."
+              exit 1
+              ;;
+            UNRUNNABLE)
+              echo "::error title=Watch gate could not run::$LINE"
+              echo "No guard executed at all. That is not a pass."
+              exit 1
+              ;;
+            *)
+              echo "::error title=Watch gate printed no verdict::check-watch.sh emitted no 'WATCH-GATE:' line."
+              echo "The script always prints exactly one. Its absence means the script"
+              echo "died before reaching the verdict, and an unread verdict is not OK."
+              exit 1
+              ;;
+          esac
 
       - name: Upload logs on failure
         if: failure()
