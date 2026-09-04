@@ -59,13 +59,26 @@ describe('a parameter may not be asked to be two types at once', () => {
     expect(s).toContain('revoked = null');
   });
 
-  it('isDaySealed pins $1 on both sides of the sum', () => {
-    const s = sql('lib/plan/seal.ts');
-    // `runs.user_uuid` is uuid; the second subquery forced $1 to text.
-    expect(s).toContain('WHERE user_uuid = $1::uuid');
-    expect(s).toContain('= $1::text');
-    // A guard that cannot see must seal, not unseal.
-    expect(read('lib/plan/seal.ts')).toContain('if (r === null) return true;');
+  /* RETIRED 2026-09-04 · SEALING-IDENTITY-1. `isDaySealed`'s two-part UNION —
+   * one subquery against `runs.user_uuid` (uuid), a second the original bug
+   * forced to `$1::text` — is gone. `lib/plan/seal.ts` no longer runs its own
+   * SQL at all: every date check now routes through
+   * `lib/execution/day-resolver.ts`'s `resolveDayExecutions` /
+   * `resolveDateRangeExecutions`, which has exactly one `WHERE r.user_uuid =
+   * $1` (no UNION, no second differently-typed use of `$1`) — the
+   * one-placeholder-two-types shape this test named has nothing left to pin
+   * in the sealing path, not just a relocated fix.
+   *
+   * The OTHER half of the original assertion — "a guard that cannot see must
+   * seal, not unseal" — is still real and still true, just under a different
+   * variable name (`day`, not `r`); that property is proven directly in
+   * `lib/plan/_sealing_identity.test.ts`'s "a resolver failure seals
+   * conservatively, never unseals" case, which is the stronger form of this
+   * check (it calls the real function against a rejected resolver, rather
+   * than grepping for a literal comparison). */
+  it('isDaySealed still seals, never unseals, when the resolver cannot see — proven by grep as a fast structural check, alongside the behavioral proof in _sealing_identity.test.ts', () => {
+    const s = read('lib/plan/seal.ts');
+    expect(s).toContain('if (day === null) return true;');
   });
 
   /* DELETED 2026-09-02 · `coach_proposals inserts cast the shared parameter

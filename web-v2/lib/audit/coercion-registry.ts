@@ -791,7 +791,10 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   // because that arm was FIXED to read the live HR anchors it used to pass as a
   // literal null. Argued in COERCION_ARGUED, and it fails closed.
   'lib/plan/reanchor-plan.ts::reanchorMaintenance::catch',
-  'lib/plan/seal.ts::isDaySealed::catch',
+  // 2026-09-04 · SEALING-IDENTITY-1 removed `lib/plan/seal.ts::isDaySealed::catch`
+  // — `isDaySealed` no longer runs its own SQL or its own catch; it delegates
+  // entirely to `lib/execution/day-resolver.ts`, whose own resolver-failure
+  // catch is a fresh, already-argued site, not this one carried forward.
   'lib/plan/sim-inputs.ts::buildSimPlan::recentWeeklyMi',
   'lib/plan/simulator.ts::simulateActivePlan::catch',
   'lib/plan/spec-builder.ts::buildWorkoutSpec::rules.length',
