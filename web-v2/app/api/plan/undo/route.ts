@@ -130,6 +130,7 @@ import {
 } from '@/lib/plan/plan-delta';
 import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
+import { isDaySealed } from '@/lib/plan/seal';
 
 /** The reason a refusal gives, in the voice the card renders verbatim. */
 type Refusal = { error: string; message: string; status: number };
@@ -372,10 +373,28 @@ async function refuse(
  * Dates the runner has run where the two blocks do not prescribe the same
  * thing. Sorted, earliest first.
  *
- * "Has run" uses the SAME definition `isDaySealed` uses — a `runs` row with no
- * `mergedIntoId`, or a `watch_completion` coach intent — because a day that is
- * sealed against the adapter is exactly a day that must not be re-described by
- * an undo. One definition, two callers.
+ * SEALDATE-1 (2026-09-04) · this used to claim, in this comment, that "has run"
+ * used "the SAME definition `isDaySealed` uses". That stopped being true when
+ * SEALING-IDENTITY-1 moved `isDaySealed` onto `lib/execution/day-resolver.ts`
+ * and left this route behind, and nothing could tell — a header comment
+ * asserting an invariant is documentation, not enforcement (Rule 20). What was
+ * left here was a pure DATE-COINCIDENCE test: any unmerged run on a date made
+ * that date "completed". A friend's supplemental 4-mile run beside an interval
+ * prescription — the exact activity WORKOUT-EXECUTION-ID-1, EXECUTION-IDENTITY-1
+ * and SEALING-IDENTITY-1 each closed elsewhere — would refuse a legitimate undo
+ * with "You have already run <date>", about a prescription he had not run.
+ *
+ * Now the date-keyed SQL is only a cheap CANDIDATE scan, and every surviving
+ * candidate must clear the canonical resolver: a date conflicts only when a run
+ * there actually MATCHED that date's prescription (EXACT, or accepted-unambiguous
+ * LEGACY). Supplemental activity is real mileage and never a completion.
+ *
+ * The `watch_completion` arm is deliberately KEPT as a candidate source and
+ * treated as conflicting on its own. The resolver reads `runs`, not
+ * `coach_intents`, so a watch completion whose run row has not landed yet would
+ * otherwise vanish from this guard entirely — narrowing a second, different
+ * protection while fixing the first. Rule 11: "no matching run" and "the run has
+ * not arrived yet" are two facts, and only the first one is safe to wave through.
  *
  * A date neither block prescribes is not a conflict: an unplanned run has no
  * prescription to lose. A date only ONE block prescribes IS a conflict, because
@@ -395,7 +414,7 @@ async function conflictingCompletedDays(
     .reduce<string | null>((m, d) => (m == null || d.dateISO > m ? d.dateISO : m), null);
   if (spanStart == null || spanEnd == null) return [];
 
-  const completed = (await client.query<{ d: string }>(
+  const completed = (await client.query<{ d: string; from_watch: boolean }>(
     // The day key and the merge-loser filter come from `lib/runs/run-shape.ts`
     // rather than being spelled here. There is one correct answer to "which day
     // is this run on" and one to "is this row the real one", and a route that
@@ -405,20 +424,21 @@ async function conflictingCompletedDays(
     // shared across a `uuid` column and a `text` one is what made `isDaySealed`
     // throw for every user and every date until 2026-08-24, and this query is
     // the same shape.
-    `SELECT DISTINCT d::text AS d FROM (
-       SELECT ${runDaySql('r')}::date AS d
+    `SELECT d::text AS d, bool_or(from_watch) AS from_watch FROM (
+       SELECT ${runDaySql('r')}::date AS d, false AS from_watch
          FROM runs r
         WHERE r.user_uuid = $1::uuid
           AND ${runNotMergedSql('r')}
-       UNION
-       SELECT (ci.ts AT TIME ZONE $4::text)::date AS d
+       UNION ALL
+       SELECT (ci.ts AT TIME ZONE $4::text)::date AS d, true AS from_watch
          FROM coach_intents ci
         WHERE COALESCE(ci.user_uuid::text, ci.user_id::text) = $1::text
           AND ci.reason = 'watch_completion'
      ) x
-      WHERE d >= $2::date AND d <= $3::date`,
+      WHERE d >= $2::date AND d <= $3::date
+      GROUP BY d`,
     [userUuid, spanStart, spanEnd, tz],
-  )).rows.map((r) => String(r.d).slice(0, 10));
+  )).rows.map((r) => ({ date: String(r.d).slice(0, 10), fromWatch: r.from_watch === true }));
 
   const fpRestore = new Map<string, string>();
   for (const d of restoreDays) fpRestore.set(d.dateISO, dayFingerprint(d));
@@ -426,11 +446,17 @@ async function conflictingCompletedDays(
   for (const d of putAwayDays) fpPutAway.set(d.dateISO, dayFingerprint(d));
 
   const out: string[] = [];
-  for (const d of completed) {
+  for (const { date: d, fromWatch } of completed) {
     const a = fpRestore.get(d);
     const b = fpPutAway.get(d);
     if (a === undefined && b === undefined) continue;
-    if (a !== b) out.push(d);
+    if (a === b) continue;
+    // SEALDATE-1 · a candidate date is only a conflict once a run there is
+    // shown to have executed that date's OWN prescription. `isDaySealed` is the
+    // canonical answer (`lib/execution/day-resolver.ts`); it seals
+    // conservatively — returning true — if the resolver is unreadable, so a
+    // failed read still refuses the undo rather than waving it through.
+    if (fromWatch || await isDaySealed(userUuid, d)) out.push(d);
   }
   return out.sort();
 }
@@ -456,9 +482,10 @@ export async function GET() {
       'not_undoable · no earlier block is recorded against that change',
     ],
     note:
-      'A completed run carries no pointer to a prescription — the match is by calendar date at read '
-      + 'time — so this cannot orphan or double-count one. What it can do is change which prescription '
-      + 'a date resolves to, which is why the completed-day gate compares both blocks rather than '
-      + 'trusting Rule 15 sealing to have made them agree.',
+      'A completed run carries an EXACT pointer to its prescription (runs.data.planWorkoutId, '
+      + 'stamped by the completion route), so this cannot orphan or double-count one. What it can do '
+      + 'is change which prescription a date resolves to, which is why the completed-day gate compares '
+      + 'both blocks rather than trusting Rule 15 sealing to have made them agree. A run that matched '
+      + 'no prescription is supplemental and never blocks an undo.',
   });
 }

@@ -24,7 +24,7 @@
  * and refuses any number the card invented on top of it.
  */
 import { describe, it, expect } from 'vitest';
-import { cardFromSpec, cardWithoutSpec, fmtPace, fmtPaceCeiling, fmtPaceBand } from './spec-card';
+import { cardFromSpec, cardWithoutSpec, dedupeLabelDistance, fmtPace, fmtPaceCeiling, fmtPaceBand } from './spec-card';
 import { expandSpecToPhases } from './expand-spec';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 
@@ -347,5 +347,53 @@ describe('STEPLABEL-DUP-1 · a single-block label never restates the distance_mi
     expect(step.label).toBe('Long run');
     expect(step.label).not.toContain('15');
     expect(step.label).not.toContain('mi');
+  });
+
+  /**
+   * STEPLABEL-WHOLEMILE-1 (2026-09-04) · the case the original fix could not
+   * survive, and which had NO test at all (Rule 20 — the rule was real, the
+   * gate was missing).
+   *
+   * `dedupeLabelDistance` compared against ONE spelling of the distance,
+   * `distanceMi.toFixed(1)` → "6.0 mi ". It matched only because
+   * `expand-spec.ts`'s generic labels independently chose the same spelling —
+   * a coincidence, not a contract. `lib/format/run.ts`'s canonical `miNum`
+   * drops a whole mile's trailing zero ("6"), and it is the formatter every
+   * label producer in this codebase is being migrated onto. On the day any
+   * producer moved, a WHOLE-mile label would silently stop deduping and the
+   * runner would read "6 mi long run · 6 mi" again — while every FRACTIONAL
+   * distance kept working, so the regression would appear on some long runs
+   * and not others.
+   *
+   * WHAT THIS CANNOT FAIL ON (Rule 22): it does not prove any production path
+   * currently emits the canonical spelling — measured 2026-09-04 against the
+   * seven active plans, none does. It proves the comparison is no longer
+   * pinned to one spelling, so the migration cannot reintroduce the defect.
+   */
+  const CASES: Array<[string, number, string]> = [
+    // canonical spelling · a whole mile with no trailing zero
+    ['6 mi long run', 6, 'Long run'],
+    ['20 mi long run', 20, 'Long run'],
+    ['4 mi easy', 4, 'Easy'],
+    // legacy spelling · still emitted by expand-spec.ts, still stripped
+    ['6.0 mi long run', 6, 'Long run'],
+    ['15.0 mi long run', 15, 'Long run'],
+    // fractional · identical in both spellings, must keep working
+    ['6.5 mi long run', 6.5, 'Long run'],
+    ['13.1 mi easy', 13.1, 'Easy'],
+  ];
+  for (const [label, mi, want] of CASES) {
+    it(`strips "${label}" beside distance_mi=${mi}`, () => {
+      expect(dedupeLabelDistance(label, mi)).toBe(want);
+    });
+  }
+
+  it('leaves a label alone when it does NOT restate this step\'s distance', () => {
+    // A label naming a DIFFERENT distance is not a restatement — stripping it
+    // would delete a real fact. Rule 11: not-a-match and a-match are two facts.
+    expect(dedupeLabelDistance('6 mi long run', 8)).toBe('6 mi long run');
+    expect(dedupeLabelDistance('Warmup', 1.5)).toBe('Warmup');
+    expect(dedupeLabelDistance('16 mi long run', 6)).toBe('16 mi long run');
+    expect(dedupeLabelDistance('6 mi long run', null)).toBe('6 mi long run');
   });
 });

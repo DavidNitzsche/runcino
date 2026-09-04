@@ -41,7 +41,7 @@
 
 import { expandSpecToPhases, subLabelFromSpec, type ExpandedPhase } from './expand-spec';
 import { classifySession, sessionToleranceSec } from './execution-semantics';
-import { fmtPace as fmtPaceNoUnit, canonicalWorkoutDistanceMi } from '@/lib/format/run';
+import { fmtPace as fmtPaceNoUnit, canonicalWorkoutDistanceMi, miNum, roundTo } from '@/lib/format/run';
 import { sessionRationale, type PrescriptionStep, type WorkoutType } from './prescriptions';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 import { readSelectionRationale } from '@/lib/plan/progression-spec';
@@ -138,10 +138,43 @@ export interface SpecCard {
  * label when it restates the distance about to be sent separately, so the
  * one fact is stated once, in whichever field is displaying it.
  */
-function dedupeLabelDistance(label: string, distanceMi: number | null | undefined): string {
+export function dedupeLabelDistance(label: string, distanceMi: number | null | undefined): string {
   if (distanceMi == null) return label;
-  const prefix = `${distanceMi.toFixed(1)} mi `;
-  if (!label.startsWith(prefix)) return label;
+
+  // STEPLABEL-WHOLEMILE-1 (2026-09-04) · this comparison used to hard-code ONE
+  // rendering of the distance, `distanceMi.toFixed(1)` → "6.0 mi ". It matched
+  // only because `expand-spec.ts`'s generic fallback labels independently chose
+  // the same `toFixed(1)`, and NOTHING held the two together — a coincidence,
+  // not a contract. The canonical formatter drops a whole mile's `.0`
+  // (`miNum(6)` → "6", `lib/format/run.ts`), so the day ANY label producer moves
+  // onto it — which is the direction the format lint pushes every one of them —
+  // a whole-mile label stops matching and the runner reads "6 mi long run · 6 mi"
+  // again. Fractional distances would keep working, so the regression would show
+  // up on some long runs and not others.
+  //
+  // Compare against BOTH renderings instead: the canonical one, and the legacy
+  // one-decimal spelling still emitted by `expand-spec.ts`. Rule 16 — one
+  // quantity — is satisfied by the canonical form being tried first; the legacy
+  // form is accepted only so an un-migrated producer keeps deduping, and it can
+  // be deleted once `expand-spec.ts` is migrated too.
+  //
+  // The ROUNDING in both candidates is `lib/format/run.ts`'s — that is what the
+  // format lint is actually about, and there is no second rounding rule here.
+  // What differs is only the SPELLING of a whole mile's trailing zero, and the
+  // legacy spelling has to stay readable because phase labels are PERSISTED with
+  // executed phases ("5.0 mi easy" is stored on the owner's real runs) and are
+  // matched by string downstream in post-run interpretation. Migrating the
+  // producer would rewrite the meaning of history, so the comparison widens
+  // instead. Delete the legacy candidate when `expand-spec.ts` is migrated AND
+  // stored phases have been backfilled — not before.
+  const canonical = miNum(distanceMi);
+  const legacy = `${roundTo(distanceMi, 1).toFixed(1)} mi `;
+  const candidates = [
+    ...(canonical != null ? [`${canonical} mi `] : []),
+    legacy,
+  ];
+  const prefix = candidates.find((c) => label.startsWith(c));
+  if (prefix == null) return label;
   const rest = label.slice(prefix.length);
   // The stripped remainder is now a ROW LABEL on its own ("long run",
   // "easy"), not the tail of a sentence — capitalise it the same way every
