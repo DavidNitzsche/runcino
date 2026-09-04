@@ -124,6 +124,17 @@ export interface GradedPhase {
   storedVerdict: WirePhaseVerdict | null;
   timeInToleranceSec: number | null;
   timeOutOfToleranceSec: number | null;
+  /** TREADMILL-TARGET-ROUNDTRIP-1 (P0 gap #3) · round-tripped from
+   *  `NormalizedPhase`, unchanged — see that type's own comment. Read this
+   *  to answer "was ANY target prescribed", never to grade a pace against it:
+   *  a belt speed is not a pace, and doctrine's own reason a by-effort hill
+   *  carries no `targetSecPerMi` (Research/04 — outdoor grade varies) does
+   *  not license inventing one from the belt number here. */
+  targetSpeedMph: number | null;
+  actualSpeedMph: number | null;
+  targetInclinePct: number | null;
+  actualInclinePct: number | null;
+  hrRole: 'target' | 'observational' | null;
 }
 
 /** The work, summarised — the numbers a surface prints beside the verdict. */
@@ -374,6 +385,11 @@ export function gradeStoredPhases(
       storedVerdict: n.verdict,
       timeInToleranceSec: counter(p.timeInToleranceSec),
       timeOutOfToleranceSec: counter(p.timeOutOfToleranceSec),
+      targetSpeedMph: n.targetSpeedMph,
+      actualSpeedMph: n.actualSpeedMph,
+      targetInclinePct: n.targetInclinePct,
+      actualInclinePct: n.actualInclinePct,
+      hrRole: n.hrRole,
     };
   });
 

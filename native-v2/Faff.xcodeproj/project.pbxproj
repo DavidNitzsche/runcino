@@ -53,6 +53,7 @@
 		2CECC6E66207BE2B489E1660 /* SweepLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D5343ED9131EF5857DDCA4 /* SweepLedger.swift */; };
 		2CF96FA9F2763CF433717CD6 /* SpokenCues.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E67560BFE144A0B9CA885E /* SpokenCues.swift */; };
 		2D92791A3F6EEE6824DBACB3 /* StravaConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309A3C38F033A266C6A92A5D /* StravaConnection.swift */; };
+		2F7E3D3A106458D3BC8791BD /* TreadmillPhaseSets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D371572E692F405659C13F0 /* TreadmillPhaseSets.swift */; };
 		2FFA12FF938E115A5971545D /* WatchWorkoutModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */; };
 		303AD12FAA2419ECDCF2D562 /* V5ContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */; };
 		30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2B62D9179AAC7D41426156 /* FaffApp.swift */; };
@@ -140,6 +141,7 @@
 		89208AB9C17FEC1DBCC09F60 /* ReturnToRunningV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = E31F85E8B90F164EEBB50013 /* ReturnToRunningV5.swift */; };
 		8A6D45456669247805119032 /* OpenEndedSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFF6EE9836728CE662BA316 /* OpenEndedSessionTests.swift */; };
 		8CDFAB33DF64025E741E486C /* TodayRecoveryPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 081F3BDD4979D92FC6A19386 /* TodayRecoveryPanel.swift */; };
+		8F9FAF730E183C2D74D6223E /* TreadmillHRFreshness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A5479540B3B31A49520009 /* TreadmillHRFreshness.swift */; };
 		9276B87CB0A938E3DF8E70EA /* PaceDrift.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA31DB52794BE1700934B01 /* PaceDrift.swift */; };
 		92B4B04DC3045097B60E9AC4 /* RecoveryWindowStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5F68CF60A53A86E84CD6B2 /* RecoveryWindowStrip.swift */; };
 		93719A4457B3D049C1A86D64 /* TreadmillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607A158397177D21CBC58EB8 /* TreadmillView.swift */; };
@@ -413,6 +415,7 @@
 		58ADF42EDED4C71FB0AD2CDD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5A39B98C5EC62375867B3D43 /* Faff.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Faff.entitlements; sourceTree = "<group>"; };
 		5AD01DD17592B8872CD72B36 /* C_CoachTransparency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = C_CoachTransparency.swift; sourceTree = "<group>"; };
+		5D371572E692F405659C13F0 /* TreadmillPhaseSets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillPhaseSets.swift; sourceTree = "<group>"; };
 		5ECB1DD6BF684DF37A90CBBB /* RunLobbyV5Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLobbyV5Tests.swift; sourceTree = "<group>"; };
 		5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSync.swift; sourceTree = "<group>"; };
 		607A158397177D21CBC58EB8 /* TreadmillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillView.swift; sourceTree = "<group>"; };
@@ -485,6 +488,7 @@
 		9EE93A5F82FD8DB924A5C5BA /* TodayBeforeLiveV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayBeforeLiveV5.swift; sourceTree = "<group>"; };
 		9FCF573DA7A5C1E3F9FBC5A1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A0C2C08025A102B779831008 /* WatchDeviceState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchDeviceState.swift; sourceTree = "<group>"; };
+		A1A5479540B3B31A49520009 /* TreadmillHRFreshness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillHRFreshness.swift; sourceTree = "<group>"; };
 		A1EC1ECACDBA2B7AF4787D13 /* HealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthView.swift; sourceTree = "<group>"; };
 		A4141967D7277D2DF4252A9A /* GalleryV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryV5.swift; sourceTree = "<group>"; };
 		A568CF011D15B9560E0B84FE /* NotificationsControllerV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsControllerV5.swift; sourceTree = "<group>"; };
@@ -584,7 +588,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_56E857E8-1A78-4574-B5A0-5F68807E2938" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_9E590E9C-4495-4EDF-ABE9-6E90F6D23EE4" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -947,7 +951,9 @@
 				9EC4B08F6610A04777F2FC2E /* ThemeV5.swift */,
 				80D79010E6307A7B819FD164 /* TokenStore.swift */,
 				AA643B12A262641210C15641 /* TreadmillCueEngine.swift */,
+				A1A5479540B3B31A49520009 /* TreadmillHRFreshness.swift */,
 				CDEF841F0E0D35E45EE40065 /* TreadmillHRStreamer.swift */,
+				5D371572E692F405659C13F0 /* TreadmillPhaseSets.swift */,
 				5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */,
 				88951A9181D51E114B2B4F0F /* Components */,
 				00A40C55CB0AA30B6F69D363 /* DesignV5 */,
@@ -1000,10 +1006,10 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_57E3BD51-7683-43DC-A024-67C2FBE1A9B1" /* native-v2 */ = {
+		"TEMP_CFB4447A-A2AD-4B20-BA2F-0503A4FCB3C3" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_56E857E8-1A78-4574-B5A0-5F68807E2938" /* Secrets.xcconfig */,
+				"TEMP_9E590E9C-4495-4EDF-ABE9-6E90F6D23EE4" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1452,7 +1458,9 @@
 				B1A6E0DF54B3924387506BAA /* TrainingCalendarView.swift in Sources */,
 				6375319A151652850547BD28 /* TravelV5.swift in Sources */,
 				965B547181ADBD7B5FB037A2 /* TreadmillCueEngine.swift in Sources */,
+				8F9FAF730E183C2D74D6223E /* TreadmillHRFreshness.swift in Sources */,
 				E1D19AD240AAA3B18043EF2F /* TreadmillHRStreamer.swift in Sources */,
+				2F7E3D3A106458D3BC8791BD /* TreadmillPhaseSets.swift in Sources */,
 				93719A4457B3D049C1A86D64 /* TreadmillView.swift in Sources */,
 				74D86F02898E21A4BFE78C3F /* Units.swift in Sources */,
 				D750DCF6D7FC785D59A8C918 /* ValuesV5.swift in Sources */,
@@ -1508,7 +1516,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_56E857E8-1A78-4574-B5A0-5F68807E2938" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_9E590E9C-4495-4EDF-ABE9-6E90F6D23EE4" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1735,7 +1743,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_56E857E8-1A78-4574-B5A0-5F68807E2938" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_9E590E9C-4495-4EDF-ABE9-6E90F6D23EE4" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
