@@ -667,7 +667,43 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
      * doctrine does not license and this still does not do.
      */
     reasons.push('NO_PACE_TARGET_ON_THE_WORK');
+    /* HRGRADE-1 (2026-09-04) · a `not_graded` session (doctrine's own word
+     * for "no pace target on purpose") can still carry a REAL, doctrine-
+     * cited HR ceiling — `lib/prescription/hr-ceiling.ts`'s `workHrCeiling`,
+     * threaded in as `input.workHrCeilingBpm`, resolved from `spec.rules`'
+     * own `pass`/`hr`/`<=`/`work` rule (`spec-builder.ts`'s
+     * `thresholdPassHrBpm(lthr)`). That file's own header names this exact
+     * gap: "No server reader has ever read it, so the post-run screens said
+     * nothing about what the session cost on exactly the sessions where the
+     * plan had stated a cost budget." True here too — a by-effort hill
+     * session graded `avgHr ≤ 164 on the work` read "no target to read it
+     * against" despite carrying a real, gradable HR ceiling the whole time.
+     * `v.work.hrAvg` is the SAME work-scoped mean `readCost` below already
+     * reads for the cost line — never re-derived, just consulted here too,
+     * because a work-scoped ceiling may only be read against a work-scoped
+     * mean (the same Rule 16 scope rule `hr-ceiling.ts` itself states).
+     */
+    const hrCeiling = input.workHrCeilingBpm;
+    const hrAvgWork = v.work.hrAvg;
+    const hadHrTarget = hrCeiling != null && hrAvgWork != null;
+    const hrPassed = hadHrTarget && hrAvgWork! <= hrCeiling!;
     const hadTreadmillTarget = work.length > 0 && work.every((p) => p.targetSpeedMph != null);
+    if (hadHrTarget) {
+      reasons.push(hrPassed ? 'HR_CEILING_HELD' : 'HR_CEILING_EXCEEDED');
+      return {
+        status: 'INDETERMINATE',
+        headline: hrPassed ? 'Work done, held under the HR ceiling' : 'Work done, HR ran past the ceiling',
+        summary: hrPassed
+          ? `The work phases carried no prescribed pace, but the session's own HR ceiling held: avg ${Math.round(hrAvgWork!)} against ${hrCeiling} bpm.${strideClause}`
+          : `The work phases carried no prescribed pace, and the session's own HR ceiling ran over: avg ${Math.round(hrAvgWork!)} against ${hrCeiling} bpm.${strideClause}`,
+        intendedStimulus: stimulus,
+        stimulusDelivered: hrPassed ? 'FULL' : 'PARTIAL',
+        confidence: 'MODERATE',
+        targetProvenance: input.targetProvenance,
+        targetProvenanceNote: null,
+        reasons,
+      };
+    }
     return {
       status: 'INDETERMINATE',
       headline: hadTreadmillTarget ? 'Work done by treadmill effort, not pace-graded' : 'Work done, no target to read it against',

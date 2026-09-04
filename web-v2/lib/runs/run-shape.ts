@@ -1609,6 +1609,32 @@ export interface NormalizedPhase {
 const PHASE_TYPES: readonly string[] = ['warmup', 'work', 'recovery', 'cooldown'];
 const PHASE_VERDICTS: readonly string[] = WIRE_PHASE_VERDICTS;
 
+/**
+ * HRPHASE-1 (2026-09-04) · a phase's mean HR, from the top-level field OR,
+ * when absent, from its own `hrSamples` — the per-second readings the watch
+ * actually recorded. Confirmed directly against a real account's own stored
+ * row: every "work" phase in a 2026-09-03 hill session has no top-level
+ * `avgHr` at all, while `hrSamples` (18+ readings per phase) is present and
+ * non-empty on the SAME phases. `runPhases` is the canonical normalizer
+ * `lib/execution/verdict.ts` builds every grade from ("every consumer reads
+ * that object" — this file's own header), so the gap silently zeroed HR
+ * everywhere downstream: `readCost` reported "NO_HEART_RATE_RECORDED" for a
+ * session that had it, which is what made a genuinely HR-graded hill session
+ * ("avgHr ≤ 164 on the work") read as ungraded end to end. Same posture as
+ * `beltAverages`'s own header argues for — "we do not know" is honest,
+ * discarding a reading already sitting on the row is not.
+ */
+function phaseAvgHr(p: Record<string, unknown>): number | null {
+  const direct = hrToNum(p.avgHr);
+  if (direct != null) return direct;
+  const samples = Array.isArray(p.hrSamples) ? p.hrSamples : [];
+  const bpms = samples
+    .map((s) => hrToNum((s as Record<string, unknown> | null)?.bpm))
+    .filter((n): n is number => n != null);
+  if (bpms.length === 0) return null;
+  return Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length);
+}
+
 /** Normalise `data.phases`. Returns [] when the row carries none. */
 export function runPhases(d: RunData): NormalizedPhase[] {
   const raw = d.phases;
@@ -1630,7 +1656,7 @@ export function runPhases(d: RunData): NormalizedPhase[] {
       actualPaceSPerMi: pos(p.actualPaceSPerMi),
       actualDurationSec: pos(p.actualDurationSec),
       actualDistanceMi: pos(p.actualDistanceMi),
-      avgHr: hrToNum(p.avgHr),
+      avgHr: phaseAvgHr(p),
       completed: typeof p.completed === 'boolean' ? p.completed : null,
       verdict,
       timeInToleranceSec: num(p.timeInToleranceSec),
