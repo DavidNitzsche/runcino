@@ -107,7 +107,7 @@ interface WatchCompletionPhaseBody {
   // TREADMILL-TARGET-ROUNDTRIP-1 (P0 gap #3) · the ORIGINAL authored
   // prescription — `BeltSession.nominalMph`/`nominalInclinePct` on the
   // phone, never reconstructed from the actual fields above. `paceShape`
-  // (declared once, above, under PACE-PURPOSE-1)/`targetPaceSPerMi`/
+  // (declared once, above, by PACE-PURPOSE-1)/`targetPaceSPerMi`/
   // `tolerancePaceSPerMi` are the same fields a pace-graded phase already
   // carries; a by-effort treadmill work phase sends `paceShape` but not the
   // pace fields, which is the correct, doctrine-cited shape (Research/04 —

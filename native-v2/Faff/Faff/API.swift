@@ -17,6 +17,12 @@ extension Notification.Name {
     /// the alternative is every surface quietly falling back to empty/stale
     /// cache, which reads as data loss (see the 2026-06-12 keychain episode).
     static let faffReachabilityLost = Notification.Name("faff.reachability.lost")
+    /// PLANSNAPSHOT-1 · posted whenever the runner's authored block just
+    /// changed server-side — a reschedule applied/undone, a run completion
+    /// synced. One of the named triggers for a fresh whole-block sync (see
+    /// `TodayHostV5.syncPlanSnapshot()`); never posted for a read, only a
+    /// write that succeeded.
+    static let faffPlanMutated = Notification.Name("faff.plan.mutated")
 }
 
 /// Decodes from either a JSON number OR a JSON string. Backstop against

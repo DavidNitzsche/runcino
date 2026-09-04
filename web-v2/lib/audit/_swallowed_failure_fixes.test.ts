@@ -59,26 +59,23 @@ describe('a parameter may not be asked to be two types at once', () => {
     expect(s).toContain('revoked = null');
   });
 
-  /* RETIRED 2026-09-04 · SEALING-IDENTITY-1. `isDaySealed`'s two-part UNION —
-   * one subquery against `runs.user_uuid` (uuid), a second the original bug
-   * forced to `$1::text` — is gone. `lib/plan/seal.ts` no longer runs its own
-   * SQL at all: every date check now routes through
-   * `lib/execution/day-resolver.ts`'s `resolveDayExecutions` /
-   * `resolveDateRangeExecutions`, which has exactly one `WHERE r.user_uuid =
-   * $1` (no UNION, no second differently-typed use of `$1`) — the
-   * one-placeholder-two-types shape this test named has nothing left to pin
-   * in the sealing path, not just a relocated fix.
-   *
-   * The OTHER half of the original assertion — "a guard that cannot see must
-   * seal, not unseal" — is still real and still true, just under a different
-   * variable name (`day`, not `r`); that property is proven directly in
+  /* NARROWED 2026-09-03 · `isDaySealed`'s own raw SQL — the two-subquery,
+   * shared-`$1` shape this test pinned — is gone. The P0 treadmill-runtime
+   * closure (`79b6f329`) rewrote `isDaySealed` to delegate to
+   * `resolveDayExecutions` (`lib/execution/day-resolver.ts`), which reads
+   * `r.user_uuid = $1` and `r.id::text = ANY($4::text[])` — two DIFFERENT
+   * parameter numbers, so nothing asks Postgres to type one placeholder two
+   * ways any more. The finding this test protected (shape A, this describe
+   * block's own header) is not lost, it no longer has a site to pin here —
+   * the same resolution this file already gave the `illness_adjust`/
+   * `injury_adjust` casts below when their INSERTs were deleted outright.
+   * The one behavior worth keeping — "a guard that cannot see must seal, not
+   * unseal" — is re-pinned against the new code's own null check, and
+   * proven the stronger, behavioral way in
    * `lib/plan/_sealing_identity.test.ts`'s "a resolver failure seals
-   * conservatively, never unseals" case, which is the stronger form of this
-   * check (it calls the real function against a rejected resolver, rather
-   * than grepping for a literal comparison). */
-  it('isDaySealed still seals, never unseals, when the resolver cannot see — proven by grep as a fast structural check, alongside the behavioral proof in _sealing_identity.test.ts', () => {
-    const s = read('lib/plan/seal.ts');
-    expect(s).toContain('if (day === null) return true;');
+   * conservatively, never unseals" case. */
+  it('isDaySealed still seals (never unseals) when its resolver cannot see the day', () => {
+    expect(read('lib/plan/seal.ts')).toContain('if (day === null) return true;');
   });
 
   /* DELETED 2026-09-02 · `coach_proposals inserts cast the shared parameter
