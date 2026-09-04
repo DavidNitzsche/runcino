@@ -62,7 +62,7 @@ import { loadGlanceState } from '@/lib/coach/glance-state';
 import { resolveDateRangeExecutions, type ExecutionMatch } from '@/lib/execution/day-resolver';
 import { runFacts } from '@/lib/runs/run-facts';
 import { dayStateWordFor } from '@/lib/faff/v5-today';
-import { fmtMinutesCasual } from '@/lib/format/run';
+import { fmtMi, fmtMinutesCasual } from '@/lib/format/run';
 import {
   cardFromSpec, cardWithoutSpec, cardForUnprescribableType, fmtPaceBand, type SpecCard,
 } from '@/lib/training/spec-card';
@@ -387,8 +387,18 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       ? `about ${fmtMinutesCasual(card.totalDurationSec / 60)}`
       : null;
 
-    const dose: PlanSnapshotNumber | null = !isRest && distanceMi > 0
-      ? { text: `${distanceMi % 1 === 0 ? distanceMi.toFixed(0) : distanceMi.toFixed(1)} mi`, modelled: false }
+    // Gated on CARD presence, not `distanceMi > 0` — matches `/api/v5/today`'s
+    // own `dose` exactly (`ctx.prescription && type !== 'rest'`), including
+    // its fallback: `fmtMi` reads 0 as "no distance to show" the same way it
+    // reads null, so a duration-only session (no mile target at all) still
+    // gets a dose line, off the card's own headline, rather than silently
+    // going dose-less. COERCION-1's zero-erasure matcher flags a bare
+    // `distanceMi > 0 ? … : null` as a peripheral collapse; reusing the
+    // canonical `fmtMi` (already the single arbiter of "is this distance
+    // presentable" everywhere else in the app) answers the same question
+    // through the one place that's allowed to, instead of re-deciding it here.
+    const dose: PlanSnapshotNumber | null = !isRest && card
+      ? { text: fmtMi(distanceMi) ?? card.headline, modelled: false }
       : null;
 
     // "Pace band" — the same fmtPaceBand `card`'s own steps already used to
