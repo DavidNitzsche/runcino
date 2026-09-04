@@ -202,6 +202,15 @@ final class LifecycleSweepTests: XCTestCase {
         await surface.rebind({ .failed })
 
         XCTAssertNotNil(surface.model, "a failed refresh must not blank a screen the runner is reading")
+
+        // STALEDEBOUNCE-1 (2026-09-04) · a failed load no longer flips
+        // `stale` synchronously — it waits out a 1.2s debounce first, so a
+        // one-request blip that resolves itself never becomes visible. This
+        // test outlives that window before asserting the outage still gets
+        // said, which is the property STALEDEBOUNCE-1 explicitly preserves
+        // (a genuinely sustained outage still shows the banner promptly).
+        try? await Task.sleep(nanoseconds: 1_400_000_000)
+
         XCTAssertTrue(surface.stale, """
         A FAILED REFRESH LEFT THE OLD VALUE ON SCREEN AND DID NOT SAY SO. \
         `stale` is the only signal separating a live number from a stranded \
