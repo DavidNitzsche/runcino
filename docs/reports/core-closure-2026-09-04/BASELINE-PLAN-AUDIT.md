@@ -56,34 +56,52 @@ adjacent; the 5-day gap pattern (Tu/Th or Tu/Fr) is consistent.
 
 ## Findings
 
-### S4-1 · the long-run development stops six weeks out — the strongest finding
+### S4-1 · CORRECTED — the premise was a date-reading error of mine
 
-The longest run in the block is **21.5 mi on 2026-10-25, forty-two days before
-race day**. After it: 13.1 (race), 16, 16, 10, race. Only **two runs of 20 mi
-or more exist in the entire block**, both in October.
+**Retracted as originally stated.** An independent check against production
+found the arithmetic wrong, and it was mine.
 
-For a 3:00 marathon — roughly 2:30–2:40 of continuous running at goal effort —
-that is thin, and the last six weeks do nothing to extend it. Conventional
-marathon prep places the longest runs 8, 6 and 4 weeks out; here the peak long
-is 6 weeks out and nothing after it exceeds 16.
+The table above chunks weeks Monday-start. I read a week-START date as the long
+run's date. The block's peak long run is **2026-11-01, 35 days before CIM** —
+not 10-25 / 42 days. Verified:
 
-**This is largely an INPUT consequence, not an engine defect, and the
-distinction matters.** The runner has four races inside a fifteen-week build
-(09-13 10K, 09-26 10K, 11-08 half, 12-06 marathon). Weeks 3, 5, 11 and 12 are
-each shaped by one of them. The engine is honouring a race calendar it did not
-choose. A coach would still say it out loud: *the half on 11-08 costs the two
-weeks either side of it, and those are exactly the weeks a marathon block wants
-its longest runs in.*
+```
+2026-11-01   21.5 mi   35 days before CIM
+2026-10-18   20.0 mi   49 days before CIM
+2026-10-11   18.5 mi   56 days before CIM
+```
 
-**Recommendation, for the owner rather than the engine:** either move the peak
-long run later (a 20–21 on 11-15 or 11-22 in place of the 16s), or accept the
-half as the last long effort and say so explicitly in the block note. This is a
-coaching decision with a real trade-off, so it is raised, not taken.
+Two further corrections to the original finding:
 
-### S4-2 · `race_week_tuneup` authored nineteen days before the race — TUNEUPTYPE-1
+- **"Only two runs reach 20 mi" is not a defect on its own.** `Research/22`'s
+  Marathon-Intermediate row says "peak long run 20-22 mi, **2-3 times**". Two is
+  inside the band, at its low edge.
+- **The Nov 8 half's recovery cost was overstated.** I quoted `Research/00b`'s
+  **A-race** row (10-14 days no quality, 21-28 days to next race effort). §Recovery
+  by Effort scales a **B**-priority half to 7-10 days. CIM is 28 days after it —
+  clear even of the A-race band.
 
-`plan_workouts` carries `type = 'race_week_tuneup'` on **2026-11-17**. Race day
-is 12-06. It is not race week; the −3 taper week is.
+**What survives, and it is sharper than what I originally claimed.** Measured
+against his actual history rather than against the calendar:
+
+| | |
+|---|---|
+| his peak actual week in 2026 | **48.5 mi** |
+| what the plan asks at peak | **60.0 mi** (+24%) |
+| his longest run in the last 90 days | **18.0 mi** |
+| `Research/00a`'s 25-30% long-run share cap | **breached in 9 of 9 build weeks** |
+
+So the real tension is not that the long run stops developing. It is that the
+long runs are already **oversized relative to the weeks that carry them**, and
+the block's marathon-specific density — not its distance — is what thins out
+near the race. `Research/22`'s four-week race-prep phase (10-19 → 11-15)
+contains **four marathon-pace miles**, and the 21.5 mi dress-rehearsal slot is
+spent as a plain easy run.
+
+**The recommendation is in `PLAN-PREVIEW.md`**, and it is to spend the last six
+weeks on marathon-pace DENSITY rather than a third 20-miler — peak volume and
+peak long run both unchanged. That preview is read-only; the live plan has not
+been written.
 
 ### RETRACTED, 2026-09-04 · three fifths of this finding were wrong
 

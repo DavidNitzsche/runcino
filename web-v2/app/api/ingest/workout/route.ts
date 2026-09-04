@@ -217,27 +217,65 @@ export async function POST(req: NextRequest) {
   // session it was. David, watching it live: "Mondays run did match it just
   // went longer." See `lib/runs/plan-type-stamp.ts` for the fix and why the
   // band is now asymmetric — the same band, so it can't drift out of sync.
+  //
+  // ── EXECIDENT-2 (2026-09-04) · STAMP THE DURABLE LINK, NOT ONLY THE TYPE ──
+  //
+  // This route stamped `workoutType`/`workoutTypeSource` and never
+  // `planWorkoutId`, so everything it ingested could only ever reach
+  // `day-resolver.ts`'s LEGACY tier. Measured on the owner's account: **2 of
+  // 159 canonical rows carry `planWorkoutId`** — the only writer is
+  // `/api/watch/workouts/complete`, live since 2026-09-03. So 98.7% of every
+  // completion this app resolves rides LEGACY, and LEGACY's guards, not the
+  // EXACT tier's durability, are what protect the runner.
+  //
+  // That matters because the passive-sync door LEGACY opens is weaker than its
+  // own comment claims. Traced this session: `data.type` is not in
+  // `canonical.ts`'s NEVER_COPY, so absorption copies it off a merged Strava
+  // sibling; and `strava/webhook`'s `stravaTypeToFaff` returns the literal
+  // `'easy'` for `workout_type === 0`, which is Strava's UNLABELLED DEFAULT. The
+  // "independent self-classification" the resolver trusts can therefore be an
+  // absence rendered as an assertion — the exact Rule 11 collapse
+  // `ownTypeConfirms` refuses for `null` and `'Run'`. Across the whole account
+  // only two `data.type` values exist at all: `'Run'` (141) and `'easy'` (57).
+  //
+  // The structural answer is not to tighten LEGACY — that would unmatch the
+  // owner's real 2026-08-31 overrun, which is correctly matched today. It is to
+  // stop needing LEGACY: this route already has the prescription row in hand
+  // and simply never selected its id.
+  //
+  // AMBIGUITY IS REFUSED, NOT GUESSED. The old query was `LIMIT 1` with no
+  // ORDER BY — arbitrary on a two-a-day, and `/api/watch/workouts/complete` was
+  // fixed for exactly that in `6e0ca1ae` while this one was not. Now every
+  // non-rest prescription for the day is read, the distance band is applied to
+  // each, and a stamp is written only when EXACTLY ONE survives. Two candidates
+  // is a fact worth keeping (Rule 11), not a coin to flip.
   let plannedWorkoutType: string | null = null;
+  let plannedWorkoutId: string | null = null;
   try {
-    const planDay = (await pool.query<{ type: string; distance_mi: string | null }>(
-      `SELECT pw.type, pw.distance_mi::text
+    const planDays = (await pool.query<{ id: string; type: string; distance_mi: string | null }>(
+      `SELECT pw.id::text AS id, pw.type, pw.distance_mi::text
          FROM plan_workouts pw
          JOIN training_plans tp ON tp.id = pw.plan_id
         WHERE tp.user_uuid = $1::uuid
           AND tp.archived_iso IS NULL
           AND pw.date_iso = $2
           AND pw.type NOT IN ('rest')
-        LIMIT 1`,
+        ORDER BY pw.id`,
       [userId, body.date],
-    )).rows[0];
-    if (planDay) {
-      const plannedMi = planDay.distance_mi != null ? Number(planDay.distance_mi) : null;
-      const actualMi = Number(body.distance_mi);
-      if (distanceMatchesPlan(actualMi, plannedMi)) {
-        // race_week_tuneup is T-pace work · stamp as threshold so the
-        // quality-type readers treat it as the T-effort it is.
-        plannedWorkoutType = planDay.type === 'race_week_tuneup' ? 'threshold' : planDay.type;
-      }
+    )).rows;
+    const actualMi = Number(body.distance_mi);
+    const candidates = planDays.filter((d) => distanceMatchesPlan(
+      actualMi, d.distance_mi != null ? Number(d.distance_mi) : null,
+    ));
+    if (candidates.length === 1) {
+      const planDay = candidates[0];
+      // race_week_tuneup is T-pace work · stamp as threshold so the
+      // quality-type readers treat it as the T-effort it is.
+      plannedWorkoutType = planDay.type === 'race_week_tuneup' ? 'threshold' : planDay.type;
+      plannedWorkoutId = planDay.id;
+    } else if (candidates.length > 1) {
+      console.warn(`[ingest/workout] ${candidates.length} prescriptions on ${body.date} `
+        + 'fit this distance — refusing to stamp rather than picking one');
     }
   } catch (e: unknown) {
     // Non-fatal · an unstamped run is the pre-fix status quo.
@@ -431,6 +469,10 @@ export async function POST(req: NextRequest) {
     // pre-fix behavior.
     workoutType: plannedWorkoutType,
     ...(plannedWorkoutType ? { workoutTypeSource: 'plan' } : {}),
+    // EXECIDENT-2 · the durable row-to-row link. `day-resolver.ts`'s EXACT tier
+    // reads this and nothing else, so a run carrying it never depends on the
+    // LEGACY tier's type heuristics again.
+    ...(plannedWorkoutId ? { planWorkoutId: plannedWorkoutId } : {}),
     // 2026-07-06 · P1-26 · distance quarantine. Key is ABSENT (not null)
     // on clean runs so the merge upsert below can never clobber a flag
     // set by a prior over-soft-bound write. See lib/runs/distance-guard.ts.

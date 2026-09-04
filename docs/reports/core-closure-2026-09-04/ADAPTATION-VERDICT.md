@@ -14,6 +14,206 @@ over his training.
 
 ---
 
+## RECONCILED (later the same day) · "PROGRESS 14" IS NOT WHAT IT SOUNDS LIKE
+
+The number was challenged and it does not survive contact. This section
+corrects everything below it; where they disagree, this one is right.
+
+### What 14 actually counts
+
+**Fourteen PROGRESS *proposals*. ONE applied.**
+
+| | |
+|---|---|
+| PROGRESS records in the as-run replay | **14** |
+| of those, carrying an arbitration suppression note | **13** |
+| **proposals that actually moved the belief** | **1** |
+
+| × | Suppressed by |
+|---|---|
+| 10 | `WEEKLY_VOLUME` · "the threshold evidence supports this change, but this week already contains enough change" |
+| 3 | `PLAN_LOAD` · "the evidence is recorded. Changes to the plan are arbitrated at the weekly boundary" |
+| 1 | — applied |
+
+The one that applied: **2026-06-22, threshold 7:22 → 7:19/mi, −3 s/mi**, on two
+corroborating sessions (06-18 at 7:05/mi, 06-11 at 7:17/mi, both SUBSTANTIAL).
+
+Every later record re-proposes the SAME move from the SAME belief, because the
+belief never advanced. Reading the count as fourteen anchor movements is exactly
+the misreading it invites.
+
+### What the belief actually did
+
+```
+2026-06-22   threshold  7:22 -> 7:19      (the only upward threshold move)
+2026-07-20   weekly     43.5 -> 41.3 mi   (DOWN)
+2026-08-03   long       12.0 -> 12.1 mi   (up 0.1)
+2026-08-17   weekly     41.3 -> 39.2 mi   (DOWN)
+
+seed 2026-06-03  threshold 442s · weekly 43.5 · long 12.0
+end  2026-09-02  threshold 439s · weekly 39.2 · long 12.1
+```
+
+**Four belief movements in three months. Net threshold change: 3 s/mi.**
+
+### A correction to this document's own claim
+
+The section below says *"the anchor walks 7:22 → 7:16, six seconds a mile"*.
+**That never happened.** It reached 7:19 and stopped; every 7:19 → 7:16 proposal
+was suppressed. The claim was read off proposals rather than off the belief
+trail — the same error as counting 14 movements.
+
+### As-run or counterfactual?
+
+**As-run.** All 14 come from the replay's own walk over the real snapshot. The
+counterfactual ladder is a separate instrument and none of it is counted here.
+
+`_upward_bar.test.ts` reports `actualProgress: 4` over the SAME points and
+snapshot. Both are as-run; they model different loops — `real-replay` moves the
+belief on PROGRESS **and** REGRESS (the engine's arbitrated loop), while
+`_upward_bar` applies only upward moves so it can measure the bar without the
+downward path moving the target underneath it. Quoting either without saying
+which loop it walked is a Rule 16 failure, and this document did that.
+
+### The finding that matters more than the count
+
+Over three months the engine credits **3 s/mi**. His actual production threshold
+anchor today is **7:10/mi (430 s)** — nine seconds a mile faster than the replay
+ever reached, arrived at through the race-anchored VDOT path, not adaptation.
+
+Different mechanisms, so this is not "the engine is wrong". But it is the number
+that decides whether promotion helps. **Rule 21's asymmetry has not gone away —
+it has moved**, from "the upward path cannot fire" to "the upward path fires and
+is then arbitrated away almost every time."
+
+That is an ARBITRATION question, not a readability one. The readability work did
+what it claimed: the evidence is visible now. What happens to it next is a
+different mechanism with its own doctrine.
+
+### Required proofs
+
+| Category | Proof | File |
+|---|---|---|
+| no run at all | "a runner we cannot see gets normal + low confidence, never marginal or poor" | `_adaptation_model.test.ts` |
+| | "and SAYS it could not see · the verdict names itself a refusal, not a read" | same |
+| no HR data | "not penalised for the missing dimension"; "unknown dimensions carry zero weight" | same |
+| MISSED | excluded from the score entirely | `adaptation-model.ts:446` |
+| telemetry-compromised | scores **exactly** like the miss it replaced (RULE8CLOSE-1) | `_adaptation_model.test.ts` |
+| flatlined HR | a work phase whose samples are all identical is refused | `_hr_trace.test.ts` |
+| unreadable ≠ zero | "an unreadable week is not a week at zero"; "key sessions that established nothing are missing evidence, not a pass"; "unreadable thirds are a refusal that NAMES the cause" | `_lever_contracts.test.ts` |
+
+None can satisfy an upgrade either: `GRADES_THAT_COUNT_AS_EVIDENCE` is
+`{FULL, SUBSTANTIAL}` and every category lands outside it or is excluded before
+grading. **625 tests / 25 files in `lib/adaptation/`, all passing.**
+
+**No legacy writer can mutate alongside the engine.** `_promotion_contract.test.ts`:
+the shadow claim is true (writes nothing, nothing calls it on a live path); the
+ONE SEAM `lib/plan/adaptation-authority.ts` exists and is default-OFF; every
+legacy mutator still exists and is still live. Two engines cannot both write
+today because one writes nothing — and the contract fails the moment that
+changes without the legacy paths being retired in the same commit.
+
+### THE ARBITRATION BLOCKER, LOCATED PRECISELY — and it is a doctrine choice
+
+Traced to two lines. `lib/adaptation/canonical/arbitration.ts`:
+
+```ts
+const increasesDemand = s.demandShare > 0;                       // ANY increase
+if (loadLeverHeld && increasesDemand && s.material && ...) suppress
+```
+
+and `contract-constants.ts`:
+
+```ts
+export const MATERIAL_SHARE_OF_ORDINARY_STEP = 0.5;   //  threshold: half of 3 s/mi = 1.5
+```
+
+The ordinary threshold step **is** 3 s/mi, and the engine only ever proposes 3
+or the larger 5. So `s.material` is **true for every threshold proposal that can
+exist**, and `demandShare > 0` is true for any increase at all.
+
+`arbitration.ts`'s rule 2 says, in its own words:
+
+> "It does NOT automatically suppress a threshold-pace proposal. The word doing
+> the work is AUTOMATICALLY: a small pace correction that preserves the intended
+> stimulus may proceed, and only a MATERIAL demand increase is caught by rule 1.
+> … A suppression rule with no exception is a freeze."
+
+**That exception is effectively inert.** Corrected from a first draft that said
+"unreachable", which was too strong: `THRESHOLD_MIN_MEANINGFUL_STEP_SEC_PER_MI`
+is 1, below the 1.5 bar, so a 1 s/mi proposal *would* proceed. The accurate
+statement is narrower and still damning — **the window in which the exception
+can fire is [1, 1.5) s/mi, narrower than a single ordinary step**, and across
+the owner's entire real history all fourteen proposals were the ordinary 3.
+Reachable in principle, reached zero times in practice. Wired, tested and inert
+— this codebase's signature failure, in the file that names the failure. And it is
+exactly what that file's Rule 22 note says its own gate cannot catch: *"It
+cannot fail on the materiality threshold being set wrong. Every test here
+constructs proposals that are clearly above or clearly below the bar."*
+
+Measured consequence: **10 of 13 suppressed threshold proposals** cite
+`WEEKLY_VOLUME`.
+
+#### Why I did NOT just fix it
+
+The obvious fix — make rule 1 ask about DEMAND materiality (a threshold step
+moves weekly total "well under one percent", by the constants file's own
+admission) — is blocked by a genuine conflict inside the contract. The same
+`contract-constants.ts` comment records that demand-share materiality was tried
+first and rejected, because it made the contract's own acceptance sentence
+unreachable:
+
+> "Your threshold evidence supports a faster threshold pace, but this week
+> already contains enough total demand, so the change is deferred."
+
+So the contract contains **two sentences that cannot both be satisfiable**:
+
+| Reading | Acceptance sentence | Rule 2's exception |
+|---|---|---|
+| **A — today** · materiality in own units | reachable | **inert** |
+| **B** · materiality as a share of demand | **unreachable** | reachable |
+
+Each makes one sentence dead. Choosing between them changes what David is
+actually told and how often his paces move, so it is a coaching decision, not an
+engineering one, and I have not made it.
+
+#### My recommendation, if asked
+
+**Neither A nor B — reading C.** Rule 1's question is *"is this week already at
+its demand ceiling"*, not *"is this proposal big"*. Suppress a pace change when
+the week's demand is at or over its own bound, whatever the proposal's size; let
+it through when the week has headroom, whatever the proposal's size. That keeps
+the acceptance sentence sayable (it is said on a full week, which is when it is
+true) AND keeps rule 2 live (a pace correction proceeds on a week with room).
+The two sentences stop competing because they stop measuring the same thing.
+
+Cost: it needs a defensible "week is at its ceiling" bound, which the volume
+lever already owns, so it reuses an existing doctrine number rather than
+inventing one.
+
+**This is the single highest-value open item in the engine.** Everything else in
+the upward path now works.
+
+### VERDICT: HOLD — same word, better-understood reason
+
+**Removed as a blocker:** evidence readability. Genuinely fixed (34/40 → 14/40).
+
+**Remaining, in order:**
+
+1. **Arbitration, not readability.** One applied move per quarter against
+   evidence supporting three times that. `WEEKLY_VOLUME` suppressed 10 of 13
+   threshold proposals with "this week already contains enough change" — a
+   threshold anchor and a volume target are different quantities and it is not
+   obvious one should crowd out the other. **Next engineering task; needs no
+   decision from David.**
+2. A live shadow period — calendar time, not code.
+3. Legacy retirement in the same change as promotion.
+4. David's decision on live authority.
+
+**Live automatic mutation remains disabled.**
+
+---
+
 ## What changed · PROGRESS 0 → 14
 
 | | Before | After |
