@@ -519,12 +519,26 @@ struct V5OffSeason: Decodable, Equatable {
 /// `lib/faff/v5-today.ts`'s `V5SupplementalRunWire`. Deliberately lean, no
 /// verdict and no workout type: a supplemental run was never shown to
 /// execute anything prescribed, so nothing here may imply that it did.
+///
+/// PACETYPE-1 (2026-09-04) · `paceSPerMi` was `Int?`, but the server's own
+/// wire type is `number | null` (`V5SupplementalRunWire`) and the value it
+/// actually sends — `runFacts(...).paceSecPerMi`, elapsed seconds divided by
+/// distance — is essentially never a whole number. `APIRow.list(_:)`
+/// decodes an array with `try?` and returns `[]` on ANY element failure
+/// (Rule 11: a swallowed decode failure, not a genuine empty read), so a
+/// fractional pace on ONE supplemental run silently erased the WHOLE array
+/// for that day, every day, unconditionally. Caught live: David, on a day
+/// with a real second run logged, "not loading in my treadmill run or the
+/// extra easy run" — the treadmill run (the matched, prescribed one) was
+/// never affected by this, only the supplemental one, because only
+/// `V5SupplementalRun` carried the wrong type; `PlanSnapshotModels.swift`'s
+/// sibling structs already had this right as `Double?`.
 struct V5SupplementalRun: Decodable, Equatable, Identifiable {
     var id: String { runId }
     let runId: String
     let distanceMi: Double
     let durationSec: Int?
-    let paceSPerMi: Int?
+    let paceSPerMi: Double?
     let indoor: Bool
 }
 

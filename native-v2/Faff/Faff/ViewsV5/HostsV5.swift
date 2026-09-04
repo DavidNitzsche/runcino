@@ -494,7 +494,15 @@ struct TodayHostV5: View {
             // uses (`inSharedShell`, SHELLBYPASS-1) — header, week strip
             // and account button stay mounted exactly as they do for
             // every other branch this switch draws.
+            //
+            // RECAP-1 · `matched_run == nil` MUST mirror `goTo`'s own
+            // `shouldRenderFromSnapshot` exactly, or the two disagree on
+            // which days skip the network: a day WITH a matched run falls
+            // through to the `else if let model = surface.model` branch
+            // below instead, so it renders `TodayAfterV5`'s real recap —
+            // see `shouldRenderFromSnapshot`'s own header for why.
             if let viewingDate, let snapshotDay = PlanSnapshotStore.shared.current?.day(on: viewingDate),
+               snapshotDay.matched_run == nil,
                let shellModel = surface.model {
                 // `shellModel` supplies the shell's chrome ONLY (header text,
                 // week-strip rotation via `stripDays(for:)`'s own snapshot
@@ -1539,9 +1547,28 @@ struct TodayHostV5: View {
     /// real navigation. `isHome` always routes to the existing live-Today
     /// path (never the snapshot) — see `PlanSnapshotDayView.swift`'s header
     /// for why today specifically keeps its live narrative.
+    ///
+    /// RECAP-1 (2026-09-04) · a day the runner has already RUN is excluded
+    /// too, same reasoning as the `isHome` guard one line up. David, live,
+    /// on a past day showing its authored plan instead of what he actually
+    /// did: "this is not post run display... its not showing what I did."
+    /// `PlanSnapshotDay` carries authored STRUCTURE only, by design — see
+    /// `PlanSnapshotDayView.swift`'s own header — so a `matched_run` day
+    /// forces the SAME live `/api/v5/today?date=` fetch `isHome` already
+    /// gets, which returns the real `after_run` narrative (splits, actual
+    /// pace, HR zones, route, coach's read) through `TodayAfterV5` — the
+    /// exact screen today's own completed run already renders correctly
+    /// with. Verified directly against production: `date=2026-09-03`, a
+    /// day with a matched run, returns `state: "after_run"` with the full
+    /// recap payload — nothing to build here, only to stop bypassing it.
+    /// A day with ONLY a supplemental run (no completion of the day's OWN
+    /// prescription) still renders from the snapshot — `PlanSnapshotDayView`
+    /// already surfaces a supplemental run in its own activity section, and
+    /// a session nobody asked this day to run is not "what I did today"
+    /// in the sense this fix is about.
     static func shouldRenderFromSnapshot(iso: String, isHome: Bool, snapshot: PlanSnapshot?) -> Bool {
-        guard !isHome else { return false }
-        return snapshot?.day(on: iso) != nil
+        guard !isHome, let day = snapshot?.day(on: iso) else { return false }
+        return day.matched_run == nil
     }
 
     /// PLANSNAPSHOT-1 · the ONLY place that fetches the whole-block

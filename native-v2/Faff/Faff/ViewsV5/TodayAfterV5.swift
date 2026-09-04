@@ -633,7 +633,7 @@ struct TodayAfterV5: View {
                 ListRow(
                     label: FaffFmt.miles(run.distanceMi).map { "\($0) easy" } ?? "Extra run",
                     sub: run.indoor ? "Treadmill · not part of today's session" : "Not part of today's session",
-                    value: FaffFmt.pace(secPerMi: run.paceSPerMi.map(Double.init))
+                    value: FaffFmt.pace(secPerMi: run.paceSPerMi)
                         .map { FaffValue.measured($0) }
                 )
             }

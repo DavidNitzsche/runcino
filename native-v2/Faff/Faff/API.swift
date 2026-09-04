@@ -5,6 +5,73 @@
 
 import Foundation
 
+/// STUCKCONN-1 (2026-09-04) · iOS's own connection pool can hold onto a
+/// silently-dead HTTP/2 connection far longer than any per-request timeout
+/// would suggest — every request `authedSend` queues onto it fails
+/// identically until the OS notices on its own, which can take a long time.
+///
+/// Caught live, reproducing on the simulator exactly what David was seeing
+/// on his physical phone: EVERY endpoint (today, races, block,
+/// plan-snapshot, watch) timing out at once, over and over, while a plain
+/// `curl` to the same production host from the SAME machine succeeded in
+/// under a second the entire time. The OS log named the actual cause
+/// directly, once looked at:
+///
+///   "HTTP/2 terminating broken Connection 3, last success 867595s ago,
+///    consecutive failures 11"
+///
+/// — a connection `URLSession.shared` had been silently reusing and
+/// re-failing on for roughly TEN DAYS before finally giving up on its own.
+/// This was never a redeploy, a server outage, or a bug in any of tonight's
+/// other fixes; "Can't reach faff" was completely honest, but the thing it
+/// could not reach was one specific broken pipe the OS kept handing every
+/// new request back into.
+///
+/// `URLSession.shared` is a process-wide singleton — nothing here can swap
+/// it for a fresh instance — but `.reset(completionHandler:)` tears down
+/// and clears its ENTIRE connection cache, forcing every subsequent request
+/// onto brand new connections. This tracks CONSECUTIVE stuck-connection
+/// signals (see `API.isStuckConnectionSignal`) across `authedSend` calls
+/// and fires exactly one reset once several requests in a row have failed
+/// that way — never on the first (a single timeout is routine: a slow
+/// tower handoff, a momentary Wi-Fi drop, nothing to react to), and never
+/// while a reset it already triggered is still in flight (a second reset
+/// racing the first would tear down connections that are already being
+/// rebuilt, for nothing).
+private actor StuckConnectionMonitor {
+    static let shared = StuckConnectionMonitor()
+
+    /// 3, not 1: the OS log's own "consecutive failures 11" shows a single
+    /// stuck attempt is not unusual on its own — reacting to the first one
+    /// would reset a perfectly recoverable connection on every ordinary
+    /// blip. 3 in a row, across independent requests, is what actually
+    /// distinguishes "this one attempt was unlucky" from "the connection
+    /// itself is the problem."
+    private static let threshold = 3
+
+    private var consecutiveStuckSignals = 0
+    private var resetInFlight = false
+
+    func recordSuccess() {
+        consecutiveStuckSignals = 0
+    }
+
+    func recordStuckSignal() {
+        guard !resetInFlight else { return }
+        consecutiveStuckSignals += 1
+        guard consecutiveStuckSignals >= Self.threshold else { return }
+        consecutiveStuckSignals = 0
+        resetInFlight = true
+        URLSession.shared.reset {
+            Task { await StuckConnectionMonitor.shared.clearResetInFlight() }
+        }
+    }
+
+    private func clearResetInFlight() {
+        resetInFlight = false
+    }
+}
+
 extension Notification.Name {
     /// Posted when any /api/* call returns 401. RootContainer listens for
     /// this and bounces to SignIn so the user can mint a fresh session.
@@ -114,6 +181,19 @@ enum API {
         #endif
     }
 
+    /// STUCKCONN-1 · true for a transport error that means "the connection
+    /// itself is broken," as opposed to a genuine timeout of an otherwise-
+    /// healthy attempt or an outright absence of network. See
+    /// `StuckConnectionMonitor`'s own header for the incident this closes —
+    /// scoped to `.timedOut` specifically because that is the literal
+    /// signature the OS logged for the stuck connection, and because a
+    /// `.notConnectedToInternet`/`.networkConnectionLost` reset would tear
+    /// down connections a genuinely offline device has no way to rebuild
+    /// anyway, for no benefit.
+    private static func isStuckConnectionSignal(_ error: Error) -> Bool {
+        (error as? URLError)?.code == .timedOut
+    }
+
     /// CANCELBANNER-1 · true for an error that means "this specific request
     /// was cancelled," never for "the network is unreachable." Extracted as
     /// a plain, static, input-to-output function — same reasoning as
@@ -209,11 +289,26 @@ enum API {
             await RequestDiagnosticsLog.shared.finish(
                 diagGen,
                 outcome: isTimeout ? .timeout : .transportError(String(describing: error).prefix(200).description))
+            // STUCKCONN-1 · see `StuckConnectionMonitor`'s own header. A
+            // repeated `.timedOut` is the one signal that means "the
+            // connection pool itself is broken," as opposed to a single
+            // unlucky attempt — never gated on the SAME `isTimeout` local
+            // that only names this ONE error, but on the same predicate
+            // being asked consistently every time this catch block runs.
+            if API.isStuckConnectionSignal(error) {
+                await StuckConnectionMonitor.shared.recordStuckSignal()
+            }
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .faffReachabilityLost, object: nil)
             }
             throw error
         }
+        // STUCKCONN-1 · any real HTTP response — success, 401, 500, doesn't
+        // matter — proves the connection itself works, which is the only
+        // fact this monitor tracks. A prior stuck streak that resolved
+        // itself (or that a reset already fixed) must not linger and reset
+        // the connection pool again over an unrelated later blip.
+        await StuckConnectionMonitor.shared.recordSuccess()
         guard let http = resp as? HTTPURLResponse else {
             await RequestDiagnosticsLog.shared.finish(diagGen, outcome: .transportError("non-HTTP response"))
             throw APIError.badStatus(-1)
