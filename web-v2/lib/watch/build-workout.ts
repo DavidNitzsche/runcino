@@ -43,7 +43,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
 import { raceOpeningSegments } from '@/lib/race/distance-doctrine';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
-import { aerobicCeilingBpm, prescribedHrTargetBpm } from '@/lib/training/zones';
+import { aerobicCeilingBpm, prescribedHrTargetBpm, hrRoleForRepDuration } from '@/lib/training/zones';
 import { computeRaceFueling } from '@/lib/race/execution-plan';
 import { resolveRaceFuel } from '@/lib/race/fuel-resolve';
 import { distanceMiFromLabel as sharedDistanceMiFromLabel } from '@/lib/race/distance';
@@ -59,7 +59,9 @@ import { resolveSafety } from '@/lib/safety/load-safety';
 import type { SafetyResolution } from '@/lib/safety/safety-verdict';
 import { adjustPhasesForHeat, heatNote, recordHeatEasing } from '@/lib/watch/heat';
 import { runFacts } from '@/lib/runs/run-facts';
-import { runAvgHr, runDaySql, runNotMergedSql, runDistanceMiSql } from '@/lib/runs/run-shape';
+import { runAvgHr } from '@/lib/runs/run-shape';
+import { resolveDayExecutions } from '@/lib/execution/day-resolver';
+import { terrainAdjustedTargetSPerMi, treadmillEffectiveGradePct } from '@/lib/terrain/grade-adjust';
 import { fmtMi, fmtMi2 } from '@/lib/format/run';
 
 const DEFAULT_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.faff.run';
@@ -106,9 +108,52 @@ export interface WatchPhase {
   distanceMi?: number | null;
   /** HR target for work phases on quality sessions (intervals/threshold/tempo).
    *  Sourced from workout_spec.lthr_bpm → profile.lthr → null.
-   *  Null on warmup/recovery/cooldown and on easy/long workouts.
-   *  Watch renders this as a reference; floor/ceiling semantics are a face-display decision. */
+   *  Null on warmup/recovery/cooldown and on easy/long workouts. */
   hrTargetBpm?: number | null;
+  /** HR-ROLE-1 (2026-09-03) · WHAT `hrTargetBpm` means, mirroring `paceShape`.
+   *  Used to read "floor/ceiling semantics are a face-display decision" —
+   *  which is exactly the bug: a rendering surface cannot correctly choose
+   *  between "target" and "reference" from the bpm number alone, and every
+   *  short rep (a 60s hill) was rendering the same precise-looking number as
+   *  a 15-minute tempo repeat, inviting a runner to chase a signal that
+   *  Research/03 §13 says has not caught up to the effort yet.
+   *
+   *    · 'target'        — hover near it. The rep is long enough (≥ the
+   *                         kinetics floor below) for HR to reach something
+   *                         close to steady state.
+   *    · 'observational' — the number is real and worth reading AFTER the
+   *                         rep, never worth CHASING during it. Render it
+   *                         quietly, never as a live target.
+   *
+   *  `null` only when `hrTargetBpm` itself is null. Never independently
+   *  re-derive this on a consumer — see `hrRoleFor` below, the one place
+   *  that decides it, off `HR_REP_KINETICS_FLOOR_SEC` — the SAME floor
+   *  `lib/coach/reading-scope.ts` already uses to gate whether a post-run
+   *  verdict may even be drawn from a rep this short. */
+  hrRole?: 'target' | 'observational' | null;
+  /** TREADMILL-HILL-1 (2026-09-03) · a belt speed + incline for a WORK phase
+   *  that has no `targetPaceSPerMi` because it is prescribed by effort — a
+   *  hill repeat, whose outdoor pace target is deliberately absent since a
+   *  flat-ground number is unreachable on varying grade (Research/04 §8.1).
+   *  On a treadmill the grade IS fixed, so a pace+incline pair is meaningful
+   *  again — this is that pair, present ONLY when the phase's own label
+   *  names it a hill rep (`/hill/i.test(label)`) and canonical pace anchors
+   *  were resolvable. Never present for a genuinely paced phase (redundant
+   *  with `targetPaceSPerMi`) or a non-hill effort phase (no doctrine band
+   *  to convert). `inclinePct` is the doctrine-cited midpoint of Research/04
+   *  §8.3's 4-6% grade band for medium hill repeats (60-90s, matching this
+   *  app's only hill-rep shape); `speedMph` is that grade applied to the
+   *  midpoint of the runner's threshold/interval anchors (the "5K-10K
+   *  effort" band's own two named ends) via the SAME treadmill grade model
+   *  `lib/terrain/grade-adjust.ts` already uses for post-run judging —
+   *  reused, not re-derived. Built at prescription time so the treadmill
+   *  flow can read a real number instead of falling back to a flat default
+   *  that ignores the hill structure entirely (found live, 2026-09-03: a
+   *  runner's actual hill session opened at a flat 8.0mph with no incline
+   *  because `LiveRunTreadmillV5.swift`'s own default only knows
+   *  `targetPaceSPerMi`). */
+  treadmillInclinePct?: number | null;
+  treadmillSpeedMph?: number | null;
   /** 2026-06-08 · True on the long-run HM/M finish segment. Optional on the
    *  wire — old watch builds omit/ignore it (field defaults to false there);
    *  new builds route it to the FINISH face instead of the rep face. */
@@ -1277,17 +1322,27 @@ async function loadSessionMoved(
 async function loadCompletedRun(
   userId: string,
   today: string,
-  wo: { distance_mi: number | string | null; pace_target_s_per_mi: number | null; workout_spec: any },
+  wo: { id?: string | null; distance_mi: number | string | null; pace_target_s_per_mi: number | null; workout_spec: any },
 ): Promise<WatchCompletedRun | null> {
-  const runRow = (await pool.query<{ id: string; data: Record<string, any> }>(
-    `SELECT id::text AS id, data FROM runs
-      WHERE user_uuid = $1 AND ${runNotMergedSql()}
-        AND ${runDaySql()} = $2
-      ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
-      LIMIT 1`,
-    [userId, today],
-  ).catch(() => ({ rows: [] as any[] }))).rows[0];
-  if (!runRow) return null;
+  // WORKOUT-EXECUTION-ID-1 (2026-09-03) · replaces TWO-RUNS-ONE-DAY-1, which
+  // did not hold — see the long explanation on its sibling in
+  // app/api/v5/today/route.ts. Same root cause here: `plannedWorkoutType` is
+  // populated on ~1 of 276 of David's own rows, so the old ORDER BY was
+  // almost always inert and this face kept drawing the day's biggest run as
+  // "today's session, done" regardless of whether it had anything to do with
+  // `wo`. Now uses the one canonical resolver and requires an EXACT or
+  // LEGACY-TYPE match against THIS specific `plan_workouts` row — not merely
+  // "a run exists on this date" — before the wrist calls it complete.
+  const resolved = await resolveDayExecutions(userId, today).catch((err: unknown) => {
+    console.warn('[watch/build-workout] day resolver unreadable:',
+      err instanceof Error ? err.message : err);
+    return null;
+  });
+  const matched = wo.id
+    ? resolved?.prescriptions.find((p) => p.id === wo.id)?.matchedRun ?? null
+    : null;
+  if (!matched) return null;
+  const runRow = { id: matched.runId, data: matched.data as Record<string, any> };
 
   const data = runRow.data ?? {};
   // Elapsed basis — the lobby's own hero prints the elapsed clock beside
@@ -1948,10 +2003,29 @@ export async function buildWatchToday(
       // authored (expand-spec.ts already sized it for a finish segment,
       // e.g. never looser than the tempo width) rather than recomputed here.
       const isRacePacePurpose = p.purpose != null;
+      const phaseDurationSec = p.durationSec ?? Math.round((p.distanceMi ?? 0) * (p.targetPaceSPerMi ?? 540));
+      const phaseHrTargetBpm = p.type === 'work' ? workHrTargetBpm : null;
+      // TREADMILL-HILL-1 · see WatchPhase.treadmillInclinePct's doc comment.
+      // Scoped to WORK phases the phase's own label names as a hill rep and
+      // that carry no pace target at all — never a paced phase (redundant)
+      // and never a non-hill effort phase (no doctrine band to convert).
+      let treadmillInclinePct: number | null = null;
+      let treadmillSpeedMph: number | null = null;
+      if (p.type === 'work' && p.targetPaceSPerMi == null && /hill/i.test(p.label)
+          && paceAnchors?.thresholdSecPerMi && paceAnchors?.intervalSecPerMi) {
+        const DOCTRINE_HILL_INCLINE_PCT = 5; // Research/04 §8.3 · medium hill repeats, midpoint of the 4-6% band
+        const flatTargetSPerMi = Math.round((paceAnchors.thresholdSecPerMi + paceAnchors.intervalSecPerMi) / 2);
+        const effGrade = treadmillEffectiveGradePct(DOCTRINE_HILL_INCLINE_PCT);
+        const gradedPaceSPerMi = Math.round(terrainAdjustedTargetSPerMi(flatTargetSPerMi, effGrade, 'treadmill'));
+        if (gradedPaceSPerMi > 0) {
+          treadmillInclinePct = DOCTRINE_HILL_INCLINE_PCT;
+          treadmillSpeedMph = Math.round((3600 / gradedPaceSPerMi) * 10) / 10;
+        }
+      }
       phases.push({
         type: p.type,
         label: p.label,
-        durationSec: p.durationSec ?? Math.round((p.distanceMi ?? 0) * (p.targetPaceSPerMi ?? 540)),
+        durationSec: phaseDurationSec,
         targetPaceSPerMi: p.targetPaceSPerMi ?? null,
         // PACE-SHAPE-1 · the tolerance and the shape come from ONE owner, and
         // they are asked the same question with the same arguments, so they
@@ -1972,7 +2046,10 @@ export async function buildWatchToday(
               :                         'transition-work',
         repUnit: p.distanceMi != null ? 'distance' : 'time',
         distanceMi: p.distanceMi ?? null,
-        hrTargetBpm: p.type === 'work' ? workHrTargetBpm : null,
+        hrTargetBpm: phaseHrTargetBpm,
+        hrRole: phaseHrTargetBpm != null ? hrRoleForRepDuration(phaseDurationSec) : null,
+        treadmillInclinePct,
+        treadmillSpeedMph,
         // Emit ONLY when true so non-finish phases omit it on the wire
         // (JSON.stringify drops undefined) — keeps the optional-field contract.
         isFinishSegment: p.isFinishSegment ? true : undefined,
@@ -2417,6 +2494,10 @@ export async function buildWatchToday(
             haptic: i === 0 ? ('start' as const) : ('transition-work' as const),
             repUnit: 'distance' as const,
             hrTargetBpm: race.hrTargetBpm ?? null,
+            // `race` is itself one of the already-built phases above, so its
+            // `hrRole` was already decided by the one function — carried
+            // over, not re-derived, for a segment that inherits its bpm.
+            hrRole: race.hrTargetBpm != null ? (race.hrRole ?? 'target') : null,
           })));
         } else {
           race.targetPaceSPerMi = Math.round(raceGoalSec / raceDistMi);

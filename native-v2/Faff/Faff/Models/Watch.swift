@@ -20,11 +20,11 @@ import Foundation
 
 // MARK: - Incoming · today's prescribed workout
 
-enum WatchPhaseType: String, Codable {
+enum WatchPhaseType: String, Codable, Equatable {
     case warmup, work, recovery, cooldown
 }
 
-enum WatchHaptic: String, Codable {
+enum WatchHaptic: String, Codable, Equatable {
     case start
     case transitionWork = "transition-work"
     case transitionRecovery = "transition-recovery"
@@ -35,11 +35,24 @@ enum WatchHaptic: String, Codable {
 /// How a rep is measured — a time interval ("7 min") or a fixed distance
 /// ("800 m" / "1 mi"). Drives whether the engine advances/counts down by
 /// elapsed time or by GPS distance, and how the remaining value reads.
-enum WatchRepUnit: String, Codable {
+/// HR-ROLE-1 · WHAT `WatchPhase.hrTargetBpm` means, mirroring `paceShape`.
+/// A rep shorter than the doctrine kinetics floor (`Research/03` §13 — HR
+/// has a ~30s response half-time and does not reach a real target within a
+/// short rep) still carries a real bpm number, but it must never render as a
+/// live target: doctrine says pace/effort governs and HR is read only.
+/// `nil`/absent on an older payload defaults to `.observational` on the
+/// phone side — the conservative reading, never the one that invites a
+/// runner to chase a number the wire didn't label.
+enum WatchHrRole: String, Codable, Equatable {
+    case target
+    case observational
+}
+
+enum WatchRepUnit: String, Codable, Equatable {
     case time, distance
 }
 
-struct WatchPhase: Codable, Identifiable {
+struct WatchPhase: Codable, Identifiable, Equatable {
     /// Stable identity for SwiftUI lists · the cursor index assigned at
     /// decode time (the backend payload has no per-phase id).
     var id: Int { index }
@@ -61,6 +74,17 @@ struct WatchPhase: Codable, Identifiable {
     /// Sourced from workout_spec.lthr_bpm at plan-generation time.
     /// nil on warmup/recovery/cooldown and on easy/long sessions.
     let hrTargetBpm: Int?
+    /// See `WatchHrRole`. Absent on an older payload — `effectiveHrRole`
+    /// below is what every consumer should read, never this raw field.
+    let hrRole: WatchHrRole?
+    /// TREADMILL-HILL-1 (2026-09-03) · a belt speed + incline for a WORK
+    /// phase that is prescribed by effort (no `targetPaceSPerMi`) and whose
+    /// label names it a hill rep. See the server's `WatchPhase.
+    /// treadmillInclinePct` doc comment (web-v2/lib/watch/build-workout.ts)
+    /// for the full derivation. nil on every non-hill or already-paced
+    /// phase, and on any payload from before this field existed.
+    let treadmillInclinePct: Double?
+    let treadmillSpeedMph: Double?
 
     /// The backend payload omits `index` (the phases array is ordered
     /// and the watch walks it with a cursor).  We assign it during
@@ -68,7 +92,9 @@ struct WatchPhase: Codable, Identifiable {
     /// own position for labels + completion reporting.
     init(index: Int, type: WatchPhaseType, label: String, durationSec: Int,
          targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?, haptic: WatchHaptic,
-         repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil) {
+         repUnit: WatchRepUnit = .time, distanceMi: Double? = nil, hrTargetBpm: Int? = nil,
+         hrRole: WatchHrRole? = nil, treadmillInclinePct: Double? = nil,
+         treadmillSpeedMph: Double? = nil) {
         self.index = index
         self.type = type
         self.label = label
@@ -79,10 +105,13 @@ struct WatchPhase: Codable, Identifiable {
         self.repUnit = repUnit
         self.distanceMi = distanceMi
         self.hrTargetBpm = hrTargetBpm
+        self.hrRole = hrRole
+        self.treadmillInclinePct = treadmillInclinePct
+        self.treadmillSpeedMph = treadmillSpeedMph
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm
+        case type, label, durationSec, targetPaceSPerMi, tolerancePaceSPerMi, haptic, repUnit, distanceMi, hrTargetBpm, hrRole, treadmillInclinePct, treadmillSpeedMph
     }
 
     /// Decoding without an index — used only when a phase is decoded in
@@ -99,6 +128,9 @@ struct WatchPhase: Codable, Identifiable {
         self.repUnit = try c.decodeIfPresent(WatchRepUnit.self, forKey: .repUnit) ?? .time
         self.distanceMi = try c.decodeIfPresent(Double.self, forKey: .distanceMi)
         self.hrTargetBpm = try c.decodeIfPresent(Int.self, forKey: .hrTargetBpm)
+        self.hrRole = try c.decodeIfPresent(WatchHrRole.self, forKey: .hrRole)
+        self.treadmillInclinePct = try c.decodeIfPresent(Double.self, forKey: .treadmillInclinePct)
+        self.treadmillSpeedMph = try c.decodeIfPresent(Double.self, forKey: .treadmillSpeedMph)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -112,10 +144,20 @@ struct WatchPhase: Codable, Identifiable {
         try c.encode(repUnit, forKey: .repUnit)
         try c.encodeIfPresent(distanceMi, forKey: .distanceMi)
         try c.encodeIfPresent(hrTargetBpm, forKey: .hrTargetBpm)
+        try c.encodeIfPresent(hrRole, forKey: .hrRole)
+        try c.encodeIfPresent(treadmillInclinePct, forKey: .treadmillInclinePct)
+        try c.encodeIfPresent(treadmillSpeedMph, forKey: .treadmillSpeedMph)
     }
+
+    /// The role to actually use. An absent wire value (older payload, or a
+    /// server not yet carrying this field) defaults to `.observational` —
+    /// the conservative reading. Never default to `.target`: that is
+    /// exactly the bug this field exists to fix, and a missing field must
+    /// not silently resurrect it.
+    var effectiveHrRole: WatchHrRole { hrRole ?? .observational }
 }
 
-struct WatchWorkout: Codable {
+struct WatchWorkout: Codable, Equatable {
 
     /// An OPEN-ENDED session — one work phase with a ceiling nobody reaches,
     /// finished when the runner says so rather than when the plan runs out.
@@ -353,7 +395,7 @@ struct WatchCompletion: Encodable {
 ///     crosses each mark.
 ///   - `shortLine` is the one-liner the runner sees on the prompt
 ///     ("Maurten 100 now — 1 of 3"). `gels` lets us suffix "X of Y".
-struct WatchFueling: Codable {
+struct WatchFueling: Codable, Equatable {
     let needed: Bool
     let gels: Int
     let atMins: [Int]

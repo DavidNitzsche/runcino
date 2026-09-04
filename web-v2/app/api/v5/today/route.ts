@@ -71,6 +71,7 @@ import { deriveWin } from '@/lib/coach/run-win';
 import { loadPostRunExperience } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 import { resolveWorkoutVerdict } from '@/lib/execution/verdict';
+import { resolveDayExecutions, primaryPrescription } from '@/lib/execution/day-resolver';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 // The five elevation / splits / merge SQL fragments that used to be imported
@@ -325,6 +326,29 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // and the missing `.catch` are what make a failed read reach the wrapper
   // above and become the outage screen instead.
   const activePlan = await loadActivePlanStrict(userId);
+  /**
+   * PLANVERSION-1 (2026-09-03) · a canonical identity for "the plan's
+   * prescribed content," threaded onto every V5Today response so the client
+   * can invalidate a cached day the moment the plan underneath it moves.
+   *
+   * `activePlan.id` alone is not sufficient — confirmed against `generate.ts`
+   * (a full rebuild inserts a new `training_plans` row and archives the old
+   * one, so `id` changes) and `recompute-paces.ts` / `reanchor-plan.ts` (an
+   * in-place pace re-anchor rewrites `plan_workouts` and
+   * `training_plans.authored_state` under the SAME `id` — a runner's
+   * prescribed paces can change with nothing here noticing). `last_adapted_at`
+   * is the second half: `lib/plan/adapt.ts` stamps it on every adaptation
+   * pass, rebuild or re-anchor alike, so the pair together changes for both
+   * cases the client needs to invalidate on. Both fields already exist on
+   * `ActivePlan` (`lib/plan/lookup.ts`) — this reads them, it does not add a
+   * column or a migration.
+   *
+   * `null` when there is no active plan, which is itself a fact worth
+   * carrying rather than collapsing into a placeholder string — a cache
+   * entry keyed on a null plan version simply never matches a real one, so
+   * it is invalidated the moment a real plan appears.
+   */
+  const planVersion = activePlan ? `${activePlan.id}:${activePlan.last_adapted_at ?? 'none'}` : null;
   let raceMode = activePlan != null && (activePlan.mode === 'race-prep' || activePlan.race_id != null);
   if (!activePlan) {
     // No active plan right now — still race-mode if this runner has EVER
@@ -338,7 +362,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   }
 
   if (!raceMode) {
-    const ctx: V5TodayContext = emptyContext(today, false, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, false, isSteppedDay, planVersion);
     return NextResponse.json(composeV5Today(ctx));
   }
 
@@ -497,7 +521,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     ));
     const since = daysSince === 0 ? 'Flagged today' : daysSince === 1 ? 'Flagged yesterday' : `Flagged ${daysSince} days ago`;
     const returnAvailable = inj.expected_return_date != null && today >= inj.expected_return_date;
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.injury = {
       area: inj.site.charAt(0).toUpperCase() + inj.site.slice(1),
@@ -541,7 +565,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     const daysSince = Math.max(0, Math.floor(sick.days_active));
     const since = daysSince === 0 ? 'Flagged today' : daysSince === 1 ? 'Flagged yesterday' : `Flagged ${daysSince} days ago`;
     const verdict = safetyVerdictLine(safety);
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.sick = {
       symptoms: sick.symptoms.map(symptomLabel),
@@ -592,7 +616,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
    */
   if (!safety.known) {
     console.warn(`[v5/today] ${safety.explain}`);
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.weekLine = weekLine;
     ctx.safetyUnknown = {
@@ -642,7 +666,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           sub: '',
         }
       : null;
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.weekOff = {
       reason: 'Away from the plan',
@@ -687,7 +711,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       if (hi > 0) weeklyRange = `${lo} to ${hi} miles a week`;
     } catch { /* leave null · no fabricated range */ }
 
-    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+    const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
     ctx.weekStripDays = weekStripDays;
     ctx.offSeason = {
       sinceLastRace,
@@ -921,16 +945,56 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       }, { decisionVersion });
 
   // ── Already ran today? → after_run (5b/5c) ─────────────────────────────
-  const ranToday = glanceToday && glanceToday.doneMi >= 0.5;
+  /* WORKOUT-EXECUTION-ID-1 (2026-09-03) · replaces TWO-RUNS-ONE-DAY-1, which
+   * did not hold. That fix reordered candidates by `plannedWorkoutType IS
+   * NOT NULL` — a key populated on 1 of 276 of David's own rows, because the
+   * completion route has only ever written that value into `workoutType` /
+   * `workoutTypeSource`, not `plannedWorkoutType`. So the ORDER BY was
+   * almost always a no-op and this branch kept doing exactly what it always
+   * had: pick the day's biggest run and render it as "today's workout,
+   * done" — which is how a friend's unrelated 4.48mi easy run kept
+   * rendering as `INTERVALS · done`, complete with rep-grading prose, over
+   * a 6mi hill session David had not yet gone out to run. Found live,
+   * 2026-09-03, on his own phone, twice.
+   *
+   * The real defect was never the ORDER BY. It was that "a run exists on
+   * this date" — same date, only run of the day, biggest run of the day —
+   * was being read as sufficient evidence that the run completed today's
+   * prescription. David's ruling: it is not, ever. Only an EXACT,
+   * durable association does — `lib/execution/day-resolver.ts` is now the
+   * one place that decides this, for every surface.
+   *
+   * So this branch is now gated on the RESOLVER, not on `doneMi` alone: if
+   * today carries a real prescription and nothing has satisfied it yet, this
+   * route renders the ordinary PRE-RUN card — the prescription stays
+   * upcoming — no matter how many other runs exist today. A day with no
+   * prescription (rest / unplanned) is unaffected: any logged run still
+   * renders as before, because there is nothing it could be misattributed
+   * against. */
+  const resolvedToday = await resolveDayExecutions(userId, today).catch((err: unknown) => {
+    console.warn('[v5/today] day resolver unreadable:',
+      err instanceof Error ? err.message : err);
+    return null;
+  });
+  const todayPrimary = resolvedToday ? primaryPrescription(resolvedToday) : null;
+  const prescriptionUnmatched = todayPrimary != null && todayPrimary.matchedRun == null;
+  const ranToday = glanceToday && glanceToday.doneMi >= 0.5 && !prescriptionUnmatched;
   if (ranToday) {
-    const runRow = (await pool.query<{ id: string; data: Record<string, any> }>(
-      `SELECT id::text AS id, data, shoe_id FROM runs
-        WHERE user_uuid = $1 AND ${runNotMergedSql()}
-          AND ${runDaySql()} = $2
-        ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
-        LIMIT 1`,
-      [userId, today],
-    ).catch(() => ({ rows: [] as any[] }))).rows[0];
+    // The resolver already found the exact/legacy match for today's
+    // prescription — use it directly rather than re-deriving "which run" a
+    // second time. Only re-queries (the old, unmatched-population-safe way)
+    // when today carries no prescription at all, so an unplanned/rest-day
+    // run still renders sensibly with nothing to misattribute against.
+    const runRow = todayPrimary?.matchedRun
+      ? { id: todayPrimary.matchedRun.runId, data: todayPrimary.matchedRun.data as Record<string, any>, shoe_id: todayPrimary.matchedRun.shoeId }
+      : (await pool.query<{ id: string; data: Record<string, any> }>(
+          `SELECT id::text AS id, data, shoe_id FROM runs
+            WHERE user_uuid = $1 AND ${runNotMergedSql()}
+              AND ${runDaySql()} = $2
+            ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
+            LIMIT 1`,
+          [userId, today],
+        ).catch(() => ({ rows: [] as any[] }))).rows[0];
 
     if (runRow) {
       const data = runRow.data ?? {};
@@ -1666,7 +1730,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         niggleFlagged: glance.activeNiggle?.body_part ?? null,
       };
 
-      const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+      const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
       ctx.postRun = postRun;
       ctx.todayPlan = todayPlan;
       ctx.todayPlanUnresolved = todayPlanUnresolved;
@@ -1988,7 +2052,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     return out.length > 0 ? out : null;
   })();
 
-  const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay);
+  const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
   ctx.todayPlan = todayPlan;
   ctx.todayPlanUnresolved = todayPlanUnresolved;
   ctx.weekLine = weekLine;
@@ -2118,9 +2182,11 @@ function phaseWords(label: string | null | undefined): string | null {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-function emptyContext(todayISO: string, raceMode: boolean, isSteppedDay = false): V5TodayContext {
+function emptyContext(
+  todayISO: string, raceMode: boolean, isSteppedDay = false, planVersion: string | null = null,
+): V5TodayContext {
   return {
-    todayISO, raceMode, isSteppedDay,
+    todayISO, raceMode, isSteppedDay, planVersion,
     todayPlan: null, weekLine: null, phaseLine: null, weekStripDays: [],
     prescription: null, weatherKicker: null, paceBandStat: null, hrCapStat: null, effortStat: null, why: null,
     whereYouAre: [], beforeYouGo: [], raceDay: false, contingency: null, recentRun: null,

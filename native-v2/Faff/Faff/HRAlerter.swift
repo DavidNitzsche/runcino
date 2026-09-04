@@ -155,7 +155,23 @@ final class HRAlerter: ObservableObject {
               !observerActive else { return }
 
         // Request notification permission once. Silent if already granted.
+        //
+        // Skipped for a `-faffToken` QA/verification launch. Per
+        // `FaffApp.isQATokenLaunch`'s own doc comment, an automated or
+        // headless driver cannot tap a SpringBoard permission alert — it
+        // is owned by SpringBoard, not this app's window — so requesting
+        // one here wedges every verification run behind a dialog nothing
+        // can dismiss the moment today's workout arms an HR ceiling. This
+        // was the one call site `isQATokenLaunch` was introduced for; this
+        // one was simply missed. A QA session renders real data and does
+        // not need to actually deliver an HR-breach notification.
+        #if DEBUG
+        if !FaffApp.isQATokenLaunch {
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        }
+        #else
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        #endif
 
         let hrType = HKQuantityType(.heartRate)
         // P-1a: capture the completion handler and call it after the drain so iOS

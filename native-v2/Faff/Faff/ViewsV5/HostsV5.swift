@@ -26,6 +26,129 @@
 //
 
 import SwiftUI
+import UIKit
+
+// MARK: - Bounded, deduplicating day-fetch coordinator
+//
+// REQCOORD-1 (2026-09-03) · "Fourteen concurrent single-day requests are an
+// improvement over no prefetch, but they are not the desired architecture.
+// The development server crashing under rapid navigation is evidence that
+// the request shape matters."
+//
+// A genuine one-request-per-week endpoint does not land in this pass — see
+// the handback's own "Load weeks as weeks" section for why (the composition
+// a week response needs does not exist server-side yet, and writing it
+// fresh, under this pass's time budget, for coaching-facing pace/HR output
+// is exactly the kind of rushed addition this codebase's doctrine warns
+// against). This is the review's own explicit fallback: a coordinator that
+// prevents uncontrolled fan-out, so the master task — weeks loading as
+// coherent units — stays open rather than silently declared done.
+//
+// Two things a widened `TaskGroup` alone did not give:
+//   1 · DEDUPE. Two overlapping prefetch calls — the visible week's own
+//       fetch and the adjacent-week fetch, or two navigations landing close
+//       together — used to each fire their own request for the same date.
+//       A date already in flight is handed the SAME task, never a second one.
+//   2 · A BOUND. However many dates a burst of swipes wants primed, only
+//       `maxConcurrent` requests are ever open on this coordinator at once —
+///      the measured cause of the local dev server crash this pass's own
+//       torture test recorded.
+@MainActor
+final class DayFetchCoordinator {
+    private var inFlight: [String: Task<V5Today?, Never>] = [:]
+    private let maxConcurrent: Int
+    /// The actual network call — injectable so `DayFetchCoordinatorTests`
+    /// can exercise dedup, the concurrency bound, and stale-response
+    /// rejection against a controllable fake, never a real network
+    /// dependency. Defaults to the real endpoint for every production call
+    /// site.
+    private let fetchOne: (String) async -> V5Today?
+
+    init(
+        maxConcurrent: Int = 6,
+        fetchOne: @escaping (String) async -> V5Today? = { date in
+            if case .ok(let payload)? = try? await API.fetchV5Today(date: date) { return payload }
+            return nil
+        }
+    ) {
+        self.maxConcurrent = maxConcurrent
+        self.fetchOne = fetchOne
+    }
+
+    /// How many fetches are in flight RIGHT NOW — a testable seam for
+    /// asserting the concurrency bound actually held mid-flight, not one
+    /// inferred from timing alone.
+    var inFlightCount: Int { inFlight.count }
+
+    /// Fetch `dates`, deduped and capped, and return whatever came back
+    /// `.ok`, keyed by date. Never cancels anything — this feeds prefetch,
+    /// which is advisory. `TodayHostV5.navigationTask` remains the ONLY
+    /// thing that owns cancellation of the runner's actual selection; a
+    /// prefetch that turns out to be unwanted just goes unread, the same
+    /// as it always has.
+    func fetch(_ dates: [String]) async -> [String: V5Today] {
+        var results: [String: V5Today] = [:]
+        var pending = dates
+        while !pending.isEmpty {
+            let batch = Array(pending.prefix(maxConcurrent))
+            pending.removeFirst(batch.count)
+            await withTaskGroup(of: (String, V5Today?).self) { group in
+                for date in batch {
+                    let task = inFlight[date] ?? {
+                        let t = Task { await self.fetchOne(date) }
+                        inFlight[date] = t
+                        return t
+                    }()
+                    group.addTask {
+                        (date, await task.value)
+                    }
+                }
+                for await (date, payload) in group {
+                    if let payload { results[date] = payload }
+                }
+            }
+            for date in batch { inFlight.removeValue(forKey: date) }
+        }
+        return results
+    }
+}
+
+// MARK: - Directional panel transition (PANELMOTION-1)
+//
+// "Later date: old content moves slightly left and fades; earlier date: old
+// content moves slightly right and fades; new content enters from the
+// corresponding direction... same-date refresh: crossfade only." A plain
+// `.move(edge:)` slides a full frame width, which reads as a page changing,
+// not a date changing — this moves by a fixed, small offset instead, the
+// "8-16pt, not theatrical" the polish pass asked for.
+private struct PanelSlideModifier: ViewModifier {
+    let offsetX: CGFloat
+    let opacity: Double
+    func body(content: Content) -> some View {
+        content.offset(x: offsetX).opacity(opacity)
+    }
+}
+
+private extension AnyTransition {
+    /// `sign` is +1 for a later date (content enters from the trailing edge,
+    /// exits toward leading) and -1 for an earlier one (reversed). A `sign`
+    /// of 0 (no directional read yet — first render) degrades to a plain
+    /// crossfade rather than guessing a direction nothing chose.
+    static func todayPanel(sign: Int, points: CGFloat = 12) -> AnyTransition {
+        guard sign != 0 else { return .opacity }
+        let enter = points * CGFloat(sign)
+        return .asymmetric(
+            insertion: .modifier(
+                active: PanelSlideModifier(offsetX: enter, opacity: 0),
+                identity: PanelSlideModifier(offsetX: 0, opacity: 1)
+            ),
+            removal: .modifier(
+                active: PanelSlideModifier(offsetX: -enter, opacity: 0),
+                identity: PanelSlideModifier(offsetX: 0, opacity: 1)
+            )
+        )
+    }
+}
 
 // MARK: - Today
 
@@ -57,41 +180,319 @@ struct TodayHostV5: View {
         return letters.isEmpty ? nil : String(letters).uppercased()
     }
 
+    /// STATEGATE-1 (2026-09-03) · THE GOVERNING INVARIANT, AS A TYPE.
+    ///
+    /// "The app must never render workout content for date A beneath a
+    /// selected or labeled date B." STALEDAY-1 answered this with an honest
+    /// banner explaining the mismatch — correct information, wrong fix: the
+    /// review that followed it named the actual rule precisely — "do not
+    /// solve a state-integrity defect with explanatory copy" — because the
+    /// workout card itself still rendered the WRONG day underneath. A caller
+    /// could always read past the banner (or fail to render it — the two
+    /// mismatch conditions were themselves stacked as two separate `if`s at
+    /// one point in this file's history) and reach `content(model)` with a
+    /// `model` that did not belong to the visible selection.
+    ///
+    /// `readiness(for:wanted:)` is the fix: `content(_:)` is called from
+    /// EXACTLY ONE place below, and only when `.match` says the payload's own
+    /// `dateISO` equals the date the runner asked for. There is no second
+    /// path in. A day whose content has not arrived yet is `.loading`, not a
+    /// stale render of some OTHER day; a day whose fetch genuinely failed is
+    /// `.failed`, not a silent freeze on whatever loaded before it. See
+    /// `TodayNavigationTests.testReadinessNeverMatchesADifferentDate` for the
+    /// assertion this makes into a compile-time-adjacent guarantee — the enum
+    /// carries no case that can hold a mismatched pair at all.
+    enum ContentReadiness: Equatable {
+        case match(V5Today)
+        case loading(date: String)
+        case failed(date: String)
+
+        static func == (l: ContentReadiness, r: ContentReadiness) -> Bool {
+            switch (l, r) {
+            case (.match(let a), .match(let b)): return a.dateISO == b.dateISO
+            case (.loading(let a), .loading(let b)): return a == b
+            case (.failed(let a), .failed(let b)): return a == b
+            default: return false
+            }
+        }
+    }
+
+    /// The date the runner has actually asked to see. `viewingDate` when set,
+    /// else whatever the current payload calls today — the same resolution
+    /// `goTo`'s callers already use, named once so `readiness` cannot drift
+    /// from it.
+    private func wantedDate(given model: V5Today) -> String { viewingDate ?? todayISO(model) }
+
+    /// STATEGATE-1's actual gate, pulled out of `body` so it is a plain
+    /// function a test can call directly rather than a fact only provable by
+    /// rendering. `pendingDate` is what distinguishes the two ways `model`
+    /// can fail to match `wanted`: a fetch for it is still in flight (loading)
+    /// versus one already ran and did not produce a match (failed) — see
+    /// `goTo`, the only place that sets it.
+    func readiness(model: V5Today?, wanted: String, pendingDate: String?) -> ContentReadiness {
+        if let model, model.dateISO == wanted { return .match(model) }
+        if pendingDate == wanted { return .loading(date: wanted) }
+        return .failed(date: wanted)
+    }
+
+    /// A stable string discriminator for `.animation(value:)` — see the
+    /// call site below. Nil-safe: before the first payload ever lands there
+    /// is no `readiness` to compute, and that is `coldStart`'s territory,
+    /// unaffected by this key changing.
+    private var readinessKey: String {
+        guard let model = surface.model else { return "none" }
+        switch readiness(model: model, wanted: wantedDate(given: model), pendingDate: pendingDate) {
+        case .match(let m): return "match:\(m.dateISO)"
+        case .loading(let d): return "loading:\(d)"
+        case .failed(let d): return "failed:\(d)"
+        }
+    }
+
+    /// TODAYSHELL-1 (2026-09-04) · THE PERSISTENT SHELL, FOR REAL THIS TIME.
+    ///
+    /// David, P0, on build 254: "tapping a future day replaces the entire
+    /// Today screen with a giant unexplained skeleton; the week strip
+    /// disappears; the page changes into a different layout... I cannot
+    /// tell whether a day, workout, week, or plan is loading; navigation
+    /// feels coupled to network requests."
+    ///
+    /// The old `navigatingCard`/`navigatingHeader` this replaces built a
+    /// SECOND, unrelated screen — its own header (no calendar button, no
+    /// account button, no week line), and no `WeekStripV5` at all. Every
+    /// `.loading`/`.failed` readiness therefore tore the whole panel down
+    /// and rebuilt a different one, which is externally indistinguishable
+    /// from "the app changed pages." `TodayHeaderStripV5` (ComponentsV5.swift)
+    /// is the fix at the root: the SAME header+strip cluster `TodayBeforeV5`
+    /// and `TodayAfterV5` draw for a MATCHED day is what this draws too, so
+    /// the runner's finger never sees a different screen — only the content
+    /// beneath the strip changes, exactly as 22b's cross-day rule already
+    /// requires for a cached day (David, 2026-08-21: "Keep everything just
+    /// change the info below the week strip").
+    ///
+    /// `weekStripDays(for:)` below is what makes this possible even when
+    /// NOTHING has loaded for `date` yet: it degrades gracefully from an
+    /// exact cached day, to the currently-loaded model (if its week still
+    /// covers `date`), to a week computed by pure DATE ARITHMETIC — the
+    /// same technique `WeekStripV5.neighbour(_:)` already uses for its own
+    /// un-fetched neighbour pages — so the strip always has something
+    /// honest to draw.
+    @ViewBuilder
+    private func pendingCard(for date: String, phase: PendingPhase) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                DayPanel(fill: .quiet) {
+                    TodayHeaderStripV5(
+                        place: "Today",
+                        viewingDayLabel: viewingDayLabel,
+                        weekLine: weekLine(for: date),
+                        weekStripDays: weekStripDays(for: date),
+                        onBackToToday: { backToToday() },
+                        // No calendar sheet here — this card has no full
+                        // `V5Today` to build one from (that is what is
+                        // still loading). The account sheet is hoisted onto
+                        // `TodayHostV5` itself and works regardless.
+                        onCalendar: nil,
+                        initials: initials,
+                        onAccount: { accountOpen = true },
+                        onPickDay: { day in
+                            if let iso = Self.isoDate(embeddedIn: day.id) ?? day.dateISO {
+                                goTo(iso, todayISO: knownTodayISO ?? date)
+                            }
+                        },
+                        onPageWeek: { await stepWeekFromWanted($0, wanted: date) }
+                    )
+
+                    switch phase {
+                    case .loading(let summary):
+                        pendingContentBody(for: date, summary: summary)
+                    case .failed:
+                        ErrorNote(
+                            text: "Can't reach faff. \(Self.dayName(date)) did not load.",
+                            onRetry: { retryPending(date) }
+                        )
+                    case .offlineNoCache:
+                        ErrorNote(
+                            text: "\(Self.dayName(date))’s workout isn’t available offline.",
+                            onRetry: { retryPending(date) }
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal, V5.S.gutter)
+            .padding(.bottom, V5.S.s24)
+            .v5PageWidth()
+        }
+        .background(V5.surfacePage)
+    }
+
+    /// The content region alone — what changes while the header and strip
+    /// stay put. A week-summary hit (from `weekCache`, a much cheaper read
+    /// than the full day) renders the real type/dose/duration immediately,
+    /// satisfying "if additional information is loading, render the
+    /// available plan information immediately and quietly enrich it
+    /// afterward"; with nothing cached at all, a single compact, labeled
+    /// line — never the old 380pt anonymous rectangle.
+    @ViewBuilder
+    private func pendingContentBody(for date: String, summary: PlanDay?) -> some View {
+        if let summary {
+            VStack(alignment: .leading, spacing: V5.S.s2) {
+                if let sub = summary.sub_label, !sub.isEmpty {
+                    Text(sub)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textQuiet)
+                }
+                Text(summary.type.capitalized)
+                    .faffDisplayV5(TypeScaleV5.display44)
+                    .foregroundStyle(V5.textPrimary)
+            }
+            if summary.distance_mi > 0 {
+                Text(Self.miles(summary.distance_mi))
+                    .font(.faffText(28, weight: .semibold))
+                    .foregroundStyle(V5.textPrimary)
+            }
+            HStack(spacing: V5.S.s8) {
+                ProgressView().tint(V5.textQuiet).controlSize(.small)
+                Text("Getting the full session…")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+            }
+            .padding(.top, V5.S.s8)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(summary.type), \(Self.miles(summary.distance_mi)). Getting the full session.")
+        } else {
+            HStack(spacing: V5.S.s8) {
+                ProgressView().tint(V5.textQuiet)
+                Text("Loading \(Self.dayName(date))’s workout…")
+                    .font(.faffText(TypeScaleV5.body15))
+                    .foregroundStyle(V5.textQuiet)
+            }
+            .padding(.vertical, V5.S.s16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private enum PendingPhase {
+        case loading(summary: PlanDay?)
+        case failed
+        case offlineNoCache
+    }
+
+    private static func miles(_ mi: Double) -> String {
+        let whole = mi.truncatingRemainder(dividingBy: 1) == 0
+        return String(format: whole ? "%.0f mi" : "%.1f mi", mi)
+    }
+
+    /// Re-run the fetch for a pending date, whether it is currently
+    /// `.failed` or `.offlineNoCache` — both retry the same way. Not a
+    /// blanket `surface.load()` (that only ever re-reads `viewingDate`);
+    /// this re-enters `goTo` so a retry on a date the runner has since
+    /// swiped past does not silently override a newer selection.
+    private func retryPending(_ date: String) {
+        goTo(date, todayISO: knownTodayISO ?? date)
+    }
+
+    /// The best available week-strip data for `date` — exact cached day,
+    /// else the loaded model if its own week still covers `date`, else a
+    /// week computed by pure date arithmetic. See `pendingCard`'s own doc
+    /// comment for why this exists.
+    /// The plate marks `date` — the day the runner is WAITING on, not
+    /// whichever the last-loaded `model` happens to say is its own today —
+    /// same reasoning as `TodayBeforeV5.stripDays()`'s own `selectedDateISO`
+    /// remap: the pill moves the instant the tap registers, never after a
+    /// round trip.
+    private func weekStripDays(for date: String) -> [WeekStripDayV5] {
+        func selected(_ days: [WeekStripDayV5]) -> [WeekStripDayV5] {
+            days.map { var d = $0; d.isToday = d.dateISO == date; return d }
+        }
+        if let exact = dayCache[date] {
+            return selected(exact.weekStrip.map { $0.strip })
+        }
+        if let current = surface.model,
+           let first = current.weekStrip.first?.dateISO,
+           let last = current.weekStrip.last?.dateISO,
+           (first...last).contains(date) {
+            return selected(current.weekStrip.map { $0.strip })
+        }
+        guard let reference = surface.model?.weekStrip, reference.count == 7,
+              let refFirstISO = reference.first?.dateISO,
+              let refFirstDate = Self.iso.date(from: refFirstISO),
+              let wantedDate = Self.iso.date(from: date) else { return [] }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let refWeekday = cal.component(.weekday, from: refFirstDate)
+        var start = wantedDate
+        var guardCount = 0
+        while cal.component(.weekday, from: start) != refWeekday, guardCount < 7 {
+            start = cal.date(byAdding: .day, value: -1, to: start) ?? start
+            guardCount += 1
+        }
+        return selected((0..<7).compactMap { (offset: Int) -> WeekStripDayV5? in
+            guard let d = cal.date(byAdding: .day, value: offset, to: start) else { return nil }
+            let iso = Self.iso.string(from: d)
+            let refDay = reference[offset].strip
+            return WeekStripDayV5(id: "ghost:\(iso)", dateISO: iso,
+                                   letter: refDay.letter, weekday: refDay.weekday,
+                                   number: String(cal.component(.day, from: d)),
+                                   state: .rest, isToday: false, isDone: false, isRest: true)
+        })
+    }
+
+    private func weekLine(for date: String) -> String? {
+        if let exact = dayCache[date] { return exact.panel.weekLine }
+        if let current = surface.model,
+           let first = current.weekStrip.first?.dateISO,
+           let last = current.weekStrip.last?.dateISO,
+           (first...last).contains(date) {
+            return current.panel.weekLine
+        }
+        return nil
+    }
+
+    /// `WeekStripV5`'s own paging, generalized off an arbitrary `wanted`
+    /// date rather than always `viewingDate ?? model.dateISO` — the pending
+    /// card has no `model` for `wanted` to read that from.
+    private func stepWeekFromWanted(_ weeks: Int, wanted: String) async {
+        guard let d = Self.iso.date(from: wanted),
+              let next = Calendar.current.date(byAdding: .day, value: weeks * 7, to: d) else { return }
+        goTo(Self.iso.string(from: next), todayISO: knownTodayISO ?? wanted)
+        await navigationTask?.value
+    }
+
     var body: some View {
         Group {
             if let model = surface.model {
-                // Keyed on the day, so stepping between days crossfades
-                // instead of snapping. The old day stays up until the new one
-                // lands (see V5Surface.rebind), so this is a fade between two
-                // real screens and never a fade through nothing.
-                content(model)
-                    .id(model.dateISO)
-                    .transition(.opacity)
-                    // STALEDAY-1 · never pass one day off as another.
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        VStack(spacing: 0) {
-                            // ── THE WAY BACK DOES NOT SCROLL AWAY ────────────
-                            //
-                            // The `‹ Today` chip lives in `PlaceHeaderV5`, which
-                            // is drawn INSIDE the gradient panel — inside the
-                            // scroll view. So it left the screen the moment the
-                            // runner read anything, and on a tab whose own name
-                            // is "Today" the only remaining way back was to
-                            // scroll up and find it again.
-                            //
-                            // A safe-area inset is the same mechanism the
-                            // did-not-load note above already uses: pinned
-                            // between the status bar and the scrolling band,
-                            // which is exactly where the design contract puts
-                            // the app's chrome. The chip inside the panel stays
-                            // — it is the one that reads as part of the poster —
-                            // and this is the one that is always reachable.
-                            if viewingDate != nil {
-                                pinnedWayBack(model)
-                            }
+                let wanted = wantedDate(given: model)
+                switch readiness(model: model, wanted: wanted, pendingDate: pendingDate) {
+                case .match(let matched):
+                    // Keyed on the day, so stepping between days crossfades
+                    // instead of snapping.
+                    content(matched)
+                        .id(matched.dateISO)
+                        // PANELMOTION-1 · `navDirection` is set synchronously
+                        // in `goTo`, so it always reflects the navigation
+                        // that produced THIS transition, never a later one —
+                        // there is no in-flight window where it could be
+                        // stale, because `.id` changing and `navDirection`
+                        // changing happen in the same `goTo` call.
+                        .transition(.todayPanel(sign: navDirection))
+                        // Deliberately NOT a second "‹ Today" chip here.
+                        // `PlaceHeaderV5` already draws one, inside the panel,
+                        // the moment `viewingDayLabel` is non-nil — right at
+                        // the top of the scroll, not scrolled away. A pinned
+                        // duplicate sat above it and both were visible at
+                        // once, which is exactly the "no content printed
+                        // twice on one screen" rule this file elsewhere
+                        // enforces on everyone else.
+                        .safeAreaInset(edge: .top, spacing: 0) {
                             // OFFLINE MUST NOT LOOK LIKE ONLINE. See
-                            // StaleStateV5.swift — the store has always known
-                            // this; nothing ever drew it.
+                            // StaleStateV5.swift. This is the ONLY banner
+                            // reachable from the matched branch, and it names
+                            // exactly one fact — connectivity — because a day
+                            // mismatch can no longer coexist with rendered
+                            // content at all; it is a different `readiness`
+                            // case, rendered as a different screen, never
+                            // stacked as a second card beside this one.
                             if surface.stale {
                                 StaleBannerV5(cachedAt: surface.cachedAt,
                                               onRetry: { Task { await surface.load() } })
@@ -100,19 +501,21 @@ struct TodayHostV5: View {
                                     .background(V5.surfacePage)
                                     .transition(.opacity)
                             }
-                            if let asked = otherDayOnScreen(model) {
-                                ErrorNote(
-                                    text: "\(Self.dayName(asked)) did not load. "
-                                        + "You are looking at \(Self.dayName(model.dateISO)).",
-                                    onRetry: { Task { await surface.load() } }
-                                )
-                                .padding(.horizontal, V5.S.gutter)
-                                .padding(.bottom, V5.S.s12)
-                                .background(V5.surfacePage)
-                                .transition(.opacity)
-                            }
                         }
+                        .animation(V5.Motion.fill, value: surface.stale)
+                case .loading(let date):
+                    pendingCard(for: date, phase: .loading(summary: weekSummary(for: date)))
+                case .failed(let date):
+                    // isOffline is a best-effort local signal (see its own
+                    // doc comment) — genuine loss vs. any other failure
+                    // changes the copy, never the mechanism: both retry
+                    // through the exact same `retryPending`.
+                    if isOffline && dayCache[date] == nil {
+                        pendingCard(for: date, phase: .offlineNoCache)
+                    } else {
+                        pendingCard(for: date, phase: .failed)
                     }
+                }
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -143,7 +546,11 @@ struct TodayHostV5: View {
                 coldStart
             }
         }
-        .animation(V5.Motion.fill, value: surface.model?.dateISO)
+        // A crossfade for every readiness transition, not just a matched
+        // day changing — moving into or out of a loading/failed card is a
+        // real change too, and this file's own brief is explicit that
+        // header, strip and card must never pop.
+        .animation(V5.Motion.fill, value: readinessKey)
         // TAPPING "TODAY" WHEN YOU ARE ALREADY ON TODAY MEANS "TAKE ME HOME".
         //
         // The shell empties this tab's navigation path itself. It cannot undo
@@ -206,7 +613,10 @@ struct TodayHostV5: View {
             // very first navigation of the session. Priming today's own
             // neighbours here means that first tap gets the instant path
             // too, not just the second one onward.
-            if let m = surface.model { await prefetchAround(m.dateISO) }
+            if let m = surface.model {
+                await prefetchAround(m.dateISO)
+                await fetchAndCacheWeek(anchoredOn: m.dateISO)
+            }
         }
         // Learn the real today the instant any payload actually carries it —
         // see `todayISO(_:)`. A plain side effect, not a render-time read: a
@@ -225,7 +635,19 @@ struct TodayHostV5: View {
         // except `goTo`, so this cannot be the thing two navigations race
         // over — that's `navigationTask`'s job alone.
         .onChange(of: surface.model?.dateISO, initial: true) { _, _ in
-            if let m = surface.model { dayCache[m.dateISO] = m }
+            if let m = surface.model {
+                dayCache[m.dateISO] = m
+                reconcileDayCache(against: m)
+                // Any payload landing is proof the network is reachable
+                // right now, whatever caused an earlier failure.
+                isOffline = false
+            }
+        }
+        // WEEKCACHE-1 · best-effort transport-level signal — see
+        // `isOffline`'s own doc comment for exactly what this can and
+        // cannot promise.
+        .onReceive(NotificationCenter.default.publisher(for: .faffReachabilityLost)) { _ in
+            isOffline = true
         }
         .refreshable { await surface.load() }
         .v5ReloadOnForeground { await surface.load() }
@@ -364,11 +786,173 @@ struct TodayHostV5: View {
     /// new `goTo` call, so an old request can never land after a newer one.
     @State private var navigationTask: Task<Void, Never>?
 
+    /// REQCOORD-1 · every prefetch this host fires goes through this one
+    /// bounded, deduplicating coordinator — see its own doc comment.
+    @State private var fetchCoordinator = DayFetchCoordinator()
+
+    /// STATEGATE-1 · the date a real fetch is currently in flight for, or
+    /// nil. This is what tells `readiness` (below) apart "still loading the
+    /// date the runner asked for" from "already failed to load it" — the two
+    /// facts a governing invariant this file did not used to distinguish
+    /// collapsed into "whatever `model` happens to hold," which is exactly
+    /// how a date mismatch used to render as if it belonged to the selection.
+    /// Set the instant a real (non-cache-hit) `goTo` starts; cleared only by
+    /// the specific task that set it, and only if nothing newer has already
+    /// moved past it — see `goTo`.
+    @State private var pendingDate: String?
+
     /// Days decoded this session, keyed by ISO date. Populated passively (see
     /// the `.onChange` below) and read by `goTo` alone — nothing else derives
     /// truth from it, so a stale or missing entry can only ever cost a round
     /// trip, never show the wrong day.
-    @State private var dayCache: [String: V5Today] = [:]
+    // Not `private` — same reason as `readiness` below: PLANVERSION-1's own
+    // regression test constructs a host and asserts on this directly rather
+    // than driving it through a live view render.
+    @State var dayCache: [String: V5Today] = [:]
+
+    /// PLANVERSION-1 · the last `planVersion` this session has actually
+    /// seen. Nil until the first payload that carries one lands — an older
+    /// server, or the very first fetch of a session, is not "a version
+    /// change" and must not wipe a cache that was never populated under a
+    /// different plan in the first place.
+    @State var lastKnownPlanVersion: String?
+
+    /// WEEKCACHE-1 (2026-09-04) · `GET /api/plan/week` for the visible week
+    /// plus its immediate neighbours, keyed by `week_start_iso`. Far
+    /// cheaper than a full day and — per `loadPlanWeek`'s own doc comment —
+    /// already the SAME loader `/api/v5/today`'s own `weekStrip` calls
+    /// internally, so this is not a new server-side cost, only a new
+    /// client-side use of an existing one. What lets a date with no full
+    /// detail yet still show its real type/dose immediately: "if
+    /// additional information is loading, render the available plan
+    /// information immediately and quietly enrich it afterward."
+    @State private var weekCache: [String: PlanWeek] = [:]
+    /// Anchor dates currently being fetched — a week is not known by its
+    /// OWN start date until the response names it, so dedup keys on
+    /// whatever date was actually requested, not on a week_start_iso this
+    /// call cannot yet know.
+    @State private var weekFetchInFlight: Set<String> = []
+
+    /// Best-effort, local-only connectivity signal. Set the instant a
+    /// request fails at the TRANSPORT level (`API.authedSend`'s own catch
+    /// posts `.faffReachabilityLost` before any HTTP status exists to
+    /// read) and cleared the moment any fetch actually lands — never
+    /// authoritative, only enough to choose between "can't reach faff"
+    /// (a real, worth-retrying error) and "isn't available offline" (a
+    /// state the runner should read as expected, not alarming) on the
+    /// pending card's failed phase.
+    @State private var isOffline = false
+
+    /// PANELMOTION-1 (2026-09-04) · which way the runner just navigated, so
+    /// the workout panel can slide in the SAME direction as the date moved
+    /// instead of only crossfading. +1 = a later date (content slides in
+    /// from the trailing edge, old content exits leading), -1 = earlier
+    /// (reversed), 0 = no directional read yet (first render). Set
+    /// synchronously in `goTo`, where both the old and new date are known —
+    /// never derived inside `body`, so it never fights the transition it
+    /// drives. String comparison is safe and correct here because every
+    /// date on screen is `yyyy-MM-dd`, which sorts lexicographically exactly
+    /// like it sorts chronologically.
+    @State private var navDirection: Int = 0
+
+    /// One week summary for `date`, if a cached week covers it. Cheaper
+    /// than the full day and, per `pendingCard`'s own doc comment, what
+    /// lets a still-loading date show its real type/dose instead of a bare
+    /// "Loading…" label.
+    private func weekSummary(for date: String) -> PlanDay? {
+        for week in weekCache.values {
+            if let day = week.days.first(where: { $0.date_iso == date }) { return day }
+        }
+        return nil
+    }
+
+    /// Fetch and cache the week containing `date`, deduped by the anchor
+    /// date actually requested. PLANVERSION-1 applies here too: a plan
+    /// re-anchor that changes `planVersion` invalidates cached week
+    /// summaries the same way it invalidates cached full days, so a
+    /// provisional dose from before a re-anchor can never survive to be
+    /// shown as if it were still current.
+    private func fetchAndCacheWeek(anchoredOn date: String) async {
+        if weekCache.values.contains(where: { w in
+            guard let s = w.week_start_iso, let e = w.week_end_iso else { return false }
+            return (s...e).contains(date)
+        }) { return }
+        guard !weekFetchInFlight.contains(date) else { return }
+        weekFetchInFlight.insert(date)
+        defer { weekFetchInFlight.remove(date) }
+        guard let week = try? await API.fetchPlanWeek(date: date), let start = week.week_start_iso else { return }
+        if let known = lastKnownPlanVersion, let fresh = week.plan_version, known != fresh {
+            weekCache.removeAll()
+        }
+        weekCache[start] = week
+    }
+
+    /// A day cached under a plan the runner no longer has must never be
+    /// handed back as though it still applied.
+    ///
+    /// TWO SIGNALS, IN ORDER OF STRENGTH.
+    ///
+    /// **Primary — `planVersion`.** It is a WHOLE-PLAN identity
+    /// (`${training_plans.id}:${last_adapted_at}`, see `V5Today.planVersion`'s
+    /// doc comment), not a per-day one, so the correct response to it
+    /// changing is not a per-day diff — it is "every cached day was fetched
+    /// under a plan that is no longer the active one," and the whole
+    /// `dayCache` is dropped. This is what closes the gap the per-day diff
+    /// below cannot: an in-place pace re-anchor rewrites `plan_workouts`
+    /// under the SAME `plan_workout_id` on every affected day, so a
+    /// row-by-row id diff sees nothing to invalidate even though every
+    /// cached day's paces just moved. `last_adapted_at` is the half of
+    /// `planVersion` that catches exactly this.
+    ///
+    /// **Fallback — `plan_workout_id`.** For a server too old to send
+    /// `planVersion` at all (nil), or as a second check even when it is
+    /// present: any cached day whose stored row id no longer matches what
+    /// the plan currently says for that date is describing a workout that
+    /// no longer exists, and is dropped individually rather than served.
+    ///
+    /// Called wherever a fresh payload actually lands — the base Today read
+    /// and every prefetch — so a rebuild or re-anchor is caught the moment
+    /// its evidence is in hand, not only when the runner happens to revisit
+    /// the affected date. Only ever prunes `dayCache`, the same
+    /// non-authoritative read `goTo` already treats as "a lookup, never a
+    /// mutation" — never touches `surface.model`. A dropped entry costs the
+    /// next visit to that date one round trip; keeping a wrong one costs
+    /// the runner a workout, a pace, or a completion state that was never
+    /// true under the plan now active.
+    func reconcileDayCache(against fresh: V5Today) {
+        let result = Self.reconciledDayCache(dayCache, lastKnownPlanVersion: lastKnownPlanVersion, against: fresh)
+        dayCache = result.cache
+        lastKnownPlanVersion = result.lastKnownPlanVersion
+    }
+
+    /// The actual decision behind `reconcileDayCache`, factored out as a pure
+    /// function — same reason `readiness(model:wanted:pendingDate:)` above
+    /// takes its inputs as parameters rather than reading `@State` directly:
+    /// `@State` mutated through a bare, unrendered `TodayHostV5` does not
+    /// reliably persist across statements outside a live SwiftUI view
+    /// hierarchy, so PLANVERSION-1's own regression tests call this, never
+    /// the `@State`-touching wrapper above.
+    static func reconciledDayCache(
+        _ cache: [String: V5Today],
+        lastKnownPlanVersion: String?,
+        against fresh: V5Today
+    ) -> (cache: [String: V5Today], lastKnownPlanVersion: String?) {
+        var cache = cache
+        var lastKnownPlanVersion = lastKnownPlanVersion
+        if let freshVersion = fresh.planVersion {
+            if let known = lastKnownPlanVersion, known != freshVersion {
+                cache.removeAll()
+            }
+            lastKnownPlanVersion = freshVersion
+        }
+        for freshDay in fresh.weekStrip {
+            guard let cachedPayload = cache[freshDay.dateISO] else { continue }
+            let cachedOwnID = cachedPayload.weekStrip.first(where: { $0.dateISO == freshDay.dateISO })?.id
+            guard let cachedOwnID, cachedOwnID != freshDay.id else { continue }
+            cache.removeValue(forKey: freshDay.dateISO)
+        }
+        return (cache, lastKnownPlanVersion)
+    }
 
     /// The strip hands back a plan row's server id; the date lives beside it
     /// on the same row. Identity is the id, the date is a lookup — never the
@@ -418,42 +1002,6 @@ struct TodayHostV5: View {
         goTo(todayISO(model), todayISO: todayISO(model))
     }
 
-    /// The always-reachable way back, drawn ABOVE the scrolling band.
-    ///
-    /// Deliberately plain: this is chrome, not part of the poster, so it takes
-    /// the page ink rather than the panel's. It names the day being looked at,
-    /// because "‹ Today" on a tab labelled Today reads as a tautology until you
-    /// know you are somewhere else.
-    @ViewBuilder
-    private func pinnedWayBack(_ model: V5Today) -> some View {
-        HStack(spacing: V5.S.s8) {
-            Button(action: { backToToday() }) {
-                HStack(spacing: V5.S.s4) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Today")
-                        .font(.faffText(TypeScaleV5.label13, weight: .semibold))
-                }
-                .foregroundStyle(V5.textPrimary)
-                .padding(.horizontal, V5.S.s12)
-                .frame(height: 34)
-                .background(V5.materialControl, in: Capsule())
-            }
-            .buttonStyle(V5PressStyle())
-            .accessibilityLabel("Back to today")
-
-            Text(viewingDayLabel ?? "")
-                .font(.faffText(TypeScaleV5.label13))
-                .foregroundStyle(V5.textQuiet)
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, V5.S.gutter)
-        .padding(.bottom, V5.S.s8)
-        .background(V5.surfacePage)
-    }
-
     /// Step by days. Nil means today, so stepping from nil starts at the
     /// runner's own today rather than at a date the device invented.
     private func step(_ days: Int, from model: V5Today) {
@@ -486,7 +1034,24 @@ struct TodayHostV5: View {
     /// header, the strip and the fetch can never disagree about which day
     /// the screen is on.
     private func goTo(_ iso: String, todayISO today: String) {
-        guard iso != (viewingDate ?? today) else { return }
+        let from = viewingDate ?? today
+        guard iso != from else { return }
+
+        // PANELMOTION-1 · the only place both the old and new date are known
+        // synchronously, before anything async starts.
+        navDirection = iso > from ? 1 : -1
+
+        // ONE haptic, exactly here — the single place every navigation
+        // (a day tap, a week-strip swipe, "Today") funnels through, and
+        // guarded by the line above so a re-tap of the day already showing
+        // never fires one. It marks the SELECTION, not the data: "the
+        // calendar follows the runner's finger immediately; data quietly
+        // catches up" — firing on `surface.model` landing instead would tie
+        // the feedback to a round trip the runner's thumb has already moved
+        // past, and it would fire on a day the reader had NOT yet confirmed
+        // is the one now showing, which is exactly what STATEGATE-1 exists
+        // to rule out.
+        UISelectionFeedbackGenerator().selectionChanged()
 
         // Landing back on the runner's own today is going HOME, not visiting a
         // date: `viewingDate` goes nil so the header stops offering a way back
@@ -497,13 +1062,37 @@ struct TodayHostV5: View {
         let param: String? = isHome ? nil : iso
         let refresh: () async throws -> API.V5Fetch<V5Today> = { try await API.fetchV5Today(date: param) }
 
+        // WEEKCACHE-1 · fired the instant a navigation starts, not awaited —
+        // a week summary is what the pending card upgrades to on a cache
+        // miss (see `pendingContentBody`), so the earlier this lands the
+        // sooner a "Loading…" label becomes a real type/dose. Independent
+        // of `navigationTask`: it never touches `surface.model`, same
+        // reasoning as `prefetchAround` below.
+        if dayCache[iso] == nil { Task { await fetchAndCacheWeek(anchoredOn: iso) } }
+
         navigationTask?.cancel()
         if let known = dayCache[iso] {
-            // Already decoded — on screen this tick, refreshed for real
-            // right behind it, both inside the one Task a newer tap cancels.
-            navigationTask = Task { await surface.present(known, refreshWith: refresh) }
+            // STATEGATE-1 · painted SYNCHRONOUSLY, this line, not inside the
+            // Task below — see `presentSync`'s own doc comment for why a
+            // Task hop here would open exactly the render-gate false-mismatch
+            // window this whole mechanism exists to close. `pendingDate` is
+            // cleared because there is nothing left to be "pending": the
+            // content on screen right now already matches `iso`.
+            surface.presentSync(known)
+            pendingDate = nil
+            navigationTask = Task { await surface.refreshBehind(refresh) }
         } else {
-            navigationTask = Task { await surface.rebind(refresh) }
+            // No cache hit — genuinely nothing to show for `iso` yet.
+            // `pendingDate` is what `readiness` (below) reads to tell "still
+            // loading this date" apart from "already failed to load it."
+            pendingDate = iso
+            navigationTask = Task {
+                await surface.rebind(refresh)
+                // Only clear if nothing newer has already moved on — a
+                // cancelled task's late completion must not un-pend a date
+                // the runner is no longer waiting on.
+                if pendingDate == iso { pendingDate = nil }
+            }
         }
         Task { await prefetchAround(iso) }
     }
@@ -518,63 +1107,95 @@ struct TodayHostV5: View {
     /// moves the strip offers: the neighbouring cells, and the swipe.
     /// Prefetching the whole visible week would be seven reads for a runner
     /// who taps one.
+    /// REQCOORD-1 (2026-09-03) · ONE coordinated fetch for everything worth
+    /// priming, not two independent `TaskGroup`s each opening their own
+    /// requests.
+    ///
+    /// David, live in the simulator, before this pass: tapped Sunday from a
+    /// Tuesday-today week and it was a real, visible wait — Sunday is 5 days
+    /// away, which the old `[-1, 1, -7, 7]` radius never covered. Every one
+    /// of the seven cells in the strip is tappable RIGHT NOW, so "what might
+    /// get tapped next" is the WHOLE visible week, not an arithmetic
+    /// neighbourhood a swipe gesture happens to use — and "Prefetch the
+    /// immediately previous and next weeks" is the brief's own words, not
+    /// just the day either side of today.
+    ///
+    /// Bounds are read off `weekStrip` itself (first/last date), never
+    /// re-derived by hand, so this can never disagree with what the strip is
+    /// actually drawing, including on a short first or last week of the
+    /// block.
     private func prefetchAround(_ iso: String) async {
-        guard let d = Self.iso.date(from: iso) else { return }
+        var wanted: Set<String> = []
 
-        // ── EVERY DAY THE STRIP IS ACTUALLY SHOWING, FIRST ─────────────────
-        //
-        // David, live in the simulator: tapped Sunday from a Tuesday-today
-        // week and it was a real, visible wait. The old radius here was
-        // `[-1, 1, -7, 7]` — built around STEPPING one day at a time or
-        // paging a whole week, and it does not cover Sunday from Tuesday at
-        // all: Sunday is 5 days away, which is neither ±1 nor ±7. Every one
-        // of the seven cells in the strip is tappable RIGHT NOW — that is
-        // the whole point of drawing them — so "what might get tapped next"
-        // is the visible week, not an arithmetic neighbourhood the swipe
-        // gesture happens to use.
-        //
-        // Read off `weekStrip` itself rather than re-deriving the week's
-        // bounds by hand, so this can never disagree with what the strip is
-        // actually drawing.
-        //
-        // CONCURRENT, NOT SEQUENTIAL. Seven `await`s in a row, one after
-        // another, is seven round trips of wall-clock time before the LAST
-        // cell in the strip is covered — which defeats the point when the
-        // whole reason this runs is to be ready before the tap. A
-        // `TaskGroup` fires every read at once; the cache is warm in roughly
-        // the time ONE request takes, not seven.
-        if let strip = surface.model?.weekStrip {
-            let missing = strip.map(\.dateISO).filter { dayCache[$0] == nil }
-            if !missing.isEmpty {
-                await withTaskGroup(of: (String, API.V5Fetch<V5Today>?).self) { group in
-                    for key in missing {
-                        group.addTask { (key, try? await API.fetchV5Today(date: key)) }
-                    }
-                    for await (key, result) in group {
-                        if case .ok(let payload)? = result { dayCache[key] = payload }
-                    }
+        if let strip = surface.model?.weekStrip, let first = strip.first?.dateISO,
+           let last = strip.last?.dateISO,
+           let firstDate = Self.iso.date(from: first), let lastDate = Self.iso.date(from: last) {
+            // The visible week itself.
+            wanted.formUnion(strip.map(\.dateISO))
+            // The full seven days of the immediately previous and next week.
+            for offset in 1...7 {
+                if let prev = Calendar.current.date(byAdding: .day, value: -offset, to: firstDate) {
+                    wanted.insert(Self.iso.string(from: prev))
+                }
+                if let next = Calendar.current.date(byAdding: .day, value: offset, to: lastDate) {
+                    wanted.insert(Self.iso.string(from: next))
+                }
+            }
+        } else if let d = Self.iso.date(from: iso) {
+            // No strip in hand yet (a cold prefetch before the first payload
+            // has landed) — fall back to the single-day radius this
+            // replaced, which needs only `iso` and no strip bounds.
+            for off in [-1, 1, -7, 7] {
+                if let n = Calendar.current.date(byAdding: .day, value: off, to: d) {
+                    wanted.insert(Self.iso.string(from: n))
                 }
             }
         }
 
-        // ── THEN THE SWIPE NEIGHBOURHOOD, SAME WAY ──────────────────────
-        //
-        // ±1 day for stepping one at a time past the visible week's own
-        // edge, ±7 for "the same weekday, a week over" — priming the week
-        // the strip's own swipe would land on next.
-        let neighbourKeys = [-1, 1, -7, 7].compactMap { off -> String? in
-            guard let n = Calendar.current.date(byAdding: .day, value: off, to: d) else { return nil }
-            let key = Self.iso.string(from: n)
-            return dayCache[key] == nil ? key : nil
+        let missing = wanted.filter { dayCache[$0] == nil }
+
+        // WEEKCACHE-1 · "fetch and cache: the visible week; the immediately
+        // previous week; the immediately next week" — three week-summary
+        // reads, run alongside the per-day prefetch below rather than
+        // gating on it, since a summary is useful even for a day whose
+        // full detail prefetch hasn't landed yet.
+        if let strip = surface.model?.weekStrip, let first = strip.first?.dateISO,
+           let last = strip.last?.dateISO,
+           let firstDate = Self.iso.date(from: first), let lastDate = Self.iso.date(from: last) {
+            async let visible: Void = fetchAndCacheWeek(anchoredOn: first)
+            async let prev: Void = {
+                if let d = Calendar.current.date(byAdding: .day, value: -1, to: firstDate) {
+                    await fetchAndCacheWeek(anchoredOn: Self.iso.string(from: d))
+                }
+            }()
+            async let next: Void = {
+                if let d = Calendar.current.date(byAdding: .day, value: 1, to: lastDate) {
+                    await fetchAndCacheWeek(anchoredOn: Self.iso.string(from: d))
+                }
+            }()
+            // PRELOAD-1 (2026-09-04) · "at rest, the app already has ... the
+            // next two weeks." One week ahead was the swipe-adjacent case;
+            // this is the second, so a runner who swipes twice in a row
+            // still lands on cached content rather than a network round trip
+            // on the second swipe.
+            async let nextNext: Void = {
+                if let d = Calendar.current.date(byAdding: .day, value: 8, to: lastDate) {
+                    await fetchAndCacheWeek(anchoredOn: Self.iso.string(from: d))
+                }
+            }()
+            _ = await (visible, prev, next, nextNext)
         }
-        guard !neighbourKeys.isEmpty else { return }
-        await withTaskGroup(of: (String, API.V5Fetch<V5Today>?).self) { group in
-            for key in neighbourKeys {
-                group.addTask { (key, try? await API.fetchV5Today(date: key)) }
-            }
-            for await (key, result) in group {
-                if case .ok(let payload)? = result { dayCache[key] = payload }
-            }
+
+        guard !missing.isEmpty else { return }
+
+        // ONE call into the bounded, deduplicating coordinator — never more
+        // than `maxConcurrent` requests open at once, however many dates a
+        // burst of navigation asked for, and a date already in flight from
+        // an earlier call is never started a second time.
+        let fetched = await fetchCoordinator.fetch(Array(missing))
+        for (key, payload) in fetched {
+            dayCache[key] = payload
+            reconcileDayCache(against: payload)
         }
     }
 
@@ -638,48 +1259,22 @@ struct TodayHostV5: View {
     /// a screen called TODAY showing another day is a lie, without repeating
     /// what is already on screen twice.
     // ─────────────────────────────────────────────────────────────────────
-    // STALEDAY-1 (2026-09-02) · A SCREEN MUST NEVER PASS ONE DAY OFF AS ANOTHER
+    // STALEDAY-1 → STATEGATE-1 (2026-09-02 → 2026-09-03)
     //
-    // `V5Surface.load()` answers a failed read with `case .failed: stale =
-    // true` and deliberately leaves `model` alone. That is right, and
-    // SurfaceStoreV5's header argues it at length: a fetch that fails with a
-    // payload in hand means the screen is OLD, not wrong, and blanking it
-    // would be the worse answer.
+    // STALEDAY-1 answered "a screen must never pass one day off as another"
+    // with an honest banner naming the mismatch — `otherDayOnScreen`, once
+    // here, compared `viewingDate` against `model.dateISO` and let a caller
+    // render `content(model)` regardless, with a note stacked above it. That
+    // is real information, and it is still the wrong fix: the review that
+    // followed named the actual rule — "do not solve a state-integrity
+    // defect with explanatory copy" — the workout card underneath was still
+    // the WRONG day.
     //
-    // It is not merely old after a `rebind`. Tapping Tuesday the 1st moves
-    // `viewingDate` to the 1st and the strip's selection with it, at once,
-    // because a strip that waits on the network is the clunkiness David has
-    // rejected three separate times. If that read then FAILS, the header and
-    // the strip both say the 1st and every word below them is still Wednesday
-    // the 2nd's easy run. Nothing said so: `stale` is read only through
-    // `isOutage`, which requires `model == nil`, so with content in hand it
-    // lit exactly nothing. Reproduced on the simulator.
-    //
-    // This is the same lie the header's own doc comment already forbids —
-    // "a screen called TODAY showing another day without saying so is a lie"
-    // — arriving by a door that comment did not cover.
-    //
-    // THE FIX DOES NOT SLOW THE STRIP DOWN, which is what made a previous
-    // pass decline this. It does not drive the strip off `model.dateISO` and
-    // it makes nothing wait. It compares the day the runner ASKED for against
-    // the day the payload on screen is actually FOR — the payload's own
-    // `dateISO`, a fact, not a flag — and says so when they differ.
-    //
-    // `refreshing` is the whole reason this does not fire on every ordinary
-    // navigation: while the read is in flight the mismatch IS just a load,
-    // and the existing crossfade covers it. The note appears only once the
-    // read has come back and the day still has not changed.
-
-    /// The day the runner asked for, when the screen is showing a different
-    /// one and nothing is still in flight. Nil in the ordinary case.
-    private func otherDayOnScreen(_ model: V5Today) -> String? {
-        guard !surface.refreshing else { return nil }
-        // Home resolves through the payload's own today, never the device's —
-        // same reason `step` and `viewingDayLabel` do. A failed "back to
-        // today" is the identical lie and must light the identical note.
-        let asked = viewingDate ?? todayISO(model)
-        return asked == model.dateISO ? nil : asked
-    }
+    // The comparison this function made is now `readiness(model:wanted:
+    // pendingDate:)`, at the top of this file, and it does not return
+    // information for a caller to render a banner from — it returns which of
+    // three screens gets built, and `content(_:)` is reachable from exactly
+    // one of them. See that function's own doc comment.
 
     /// "Tuesday 1 September", for the one sentence that has to name two days
     /// and cannot lean on the strip to disambiguate them.
@@ -799,6 +1394,14 @@ struct TodayHostV5: View {
 
     private var coldStart: some View {
         ScrollView {
+            // A11Y · same fix as `pendingCard`'s `.loading` case: the
+            // 380pt placeholder is a bare Shape (publishes nothing to the
+            // accessibility tree) and the two `Skeleton`s each independently
+            // announced "Loading", so the FIRST thing a VoiceOver runner
+            // heard on a cold launch was a silent gap then a duplicated
+            // "Loading". One element, one label — there is no date to name
+            // yet here (no payload has ever landed), so "Loading your plan"
+            // rather than a specific day.
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 // The panel's own height, reserved. Nothing appears or
                 // disappears and reflows.
@@ -808,6 +1411,8 @@ struct TodayHostV5: View {
                 Skeleton(lines: 3)
                 Skeleton(lines: 2)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Loading your plan")
             .padding(.horizontal, V5.S.gutter)
         }
         .background(V5.surfacePage)
@@ -1671,6 +2276,11 @@ struct LiveRunHostV5: View {
     /// renders, because a live console that appears and then reflows when the
     /// plan lands is exactly what the design forbids.
     @State private var asked = false
+    /// DECISION-1 · which device is the SOLE recorder for this session,
+    /// frozen once in `.task` before anything starts. Defaults to `.phone`,
+    /// the existing behavior, until the task resolves it — `asked` gates
+    /// rendering, so this default is never actually read by `body`.
+    @State private var recordingOwner: RunLobbyRecordingOwner = .phone
     /// The End confirm. A run is hours of work and End is a single tap next
     /// to Pause; it used to finish, save and dismiss with no step in between.
     @State private var confirmingEnd = false
@@ -1691,6 +2301,14 @@ struct LiveRunHostV5: View {
             // to build it from.
             if asked {
                 switch mode {
+                case .outdoor where recordingOwner == .watch:
+                    // DECISION-1 · the watch executes and records; this
+                    // phone screen is companion status only. It never
+                    // touches `tracker` (never started for this session,
+                    // see `.task`) and never shows Pause/End of its own —
+                    // those live on the watch, which is the one recording
+                    // owner for this session.
+                    LiveRunWatchCompanionV5(plan: plan, onDismiss: onDismiss)
                 case .outdoor:
                     // A run worth keeping gets a confirm; an empty console —
                     // the refusal screen's "Back", or a mode opened by
@@ -1716,18 +2334,73 @@ struct LiveRunHostV5: View {
             // from workoutId), so this can never duplicate a run that did
             // manage to save.
             if mode == .outdoor { recovered = PhoneRunTracker.flushInterruptedRun() }
-            // A failure here is not an outage screen: the run can still be
-            // recorded, it just has no target to hold. `plan` stays nil and
-            // both consoles already draw their no-target layout.
-            if let w = try? await API.fetchWatchWorkout() {
-                plan = LiveRunPlanV5(workout: w, sessionType: w.name)
+            // The lobby (`RunLobbyV5`) already fetched today's workout to
+            // show the runner what was about to start — reuse that exact
+            // read rather than fetching a second time, so "what was shown"
+            // and "what starts" can never be two different answers a few
+            // seconds apart (a plan rebuild or midnight rollover landing
+            // between the two calls). Only a fresh, still-relevant snapshot
+            // is consumed (see `PendingRunPlanV5`); anything else (opened via
+            // some other path, or the lobby's own fetch failed) falls
+            // through to the same fetch this always did.
+            //
+            // Unwrapped explicitly (not a same-level switch) on purpose:
+            // `Snapshot` declares its own `.none` case, and matching
+            // `PendingRunPlanV5.Snapshot?` in one switch makes bare `.none`
+            // ambiguous between "never captured" (the Optional's own nil)
+            // and "captured, and the answer was no workout" (`Snapshot.none`
+            // wrapped in `.some`) — exactly the Rule 11 distinction this
+            // holder exists to keep separate. Binding first removes the
+            // ambiguity instead of relying on which one Swift picks.
+            // `expectedDateISO` refuses a snapshot recorded for a different
+            // calendar day — the guard against a cached workout from
+            // another date or plan version ever reaching Start, independent
+            // of the age check (a midnight rollover between the lobby
+            // opening and this task running is otherwise invisible to a
+            // pure elapsed-time check).
+            var canonicalWorkoutId: String?
+            if let snapshot = PendingRunPlanV5.shared.consume(expectedDateISO: RunLobbyDate.todayISO()) {
+                switch snapshot {
+                case .workout(let w): plan = LiveRunPlanV5(workout: w, sessionType: w.name); canonicalWorkoutId = w.workoutId
+                case .none:           plan = nil
+                }
+            } else {
+                // A failure here is not an outage screen: the run can still
+                // be recorded, it just has no target to hold. `plan` stays
+                // nil and both consoles already draw their no-target layout.
+                if let w = try? await API.fetchWatchWorkout() {
+                    plan = LiveRunPlanV5(workout: w, sessionType: w.name)
+                    canonicalWorkoutId = w.workoutId
+                }
             }
             asked = true
+            // DECISION-1 · one recording owner per session, decided ONCE,
+            // here, before anything starts — never re-decided later in this
+            // view's lifetime (a live-updating decision is exactly how two
+            // devices could each believe the other is recording). `body`'s
+            // switch below reads this same frozen value to choose which
+            // console to render.
+            recordingOwner = mode == .outdoor
+                ? .resolve(RunLobbyWatchReadiness.resolve(isPaired: WatchSync.shared.isPaired,
+                                                           isWatchAppInstalled: WatchSync.shared.isWatchAppInstalled,
+                                                           isReachable: WatchSync.shared.isReachable,
+                                                           lastSyncStatus: WatchSync.shared.lastSyncStatus))
+                : .phone
             // Safe before authorization has been answered: the tracker
             // remembers the request and starts itself when the prompt is
             // answered. It used to return silently, leaving a live-looking
             // console frozen at 0:00 on every runner's first ever run.
-            if mode == .outdoor { tracker.start() }
+            //
+            // DECISION-1 · the phone never starts its own tracking session
+            // when the watch owns this run — that IS the guarantee against
+            // two devices independently persisting one activity. When the
+            // phone DOES record (owner == .phone), it stamps the SAME
+            // canonical workoutId the watch would have used, rather than a
+            // random `phone_<uuid>` unrelated to the day's prescription —
+            // "the phone fallback must preserve the same workout identity."
+            if mode == .outdoor && recordingOwner == .phone {
+                tracker.start(canonicalWorkoutId: canonicalWorkoutId)
+            }
             // 2026-08-21 · the HR stream is NOT started here any more.
             // `TreadmillHRStreamer.start` is first-caller-wins on the sample
             // anchor, and this call fires with "whenever the plan finished

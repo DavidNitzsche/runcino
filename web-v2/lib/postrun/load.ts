@@ -37,6 +37,7 @@
 import { pool } from '@/lib/db/pool';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
 import { runDaySql, runDistanceMiSql, runIdentityMatchSql } from '@/lib/runs/run-shape';
+import { resolveDayExecutions, primaryPrescription } from '@/lib/execution/day-resolver';
 import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { resolveWorkoutVerdict, phasesFromCompletion } from '@/lib/execution/verdict';
 import { classifyStoredActivity } from '@/lib/evidence/load-activity-evidence';
@@ -120,8 +121,23 @@ async function loadRun(userId: string, ref: PostRunRef): Promise<RunRow | null> 
     if (r.rows[0]) return r.rows[0];
   }
   if (ref.dateISO) {
-    // The day's LONGEST canonical run — the same pick `/api/v5/today` makes
-    // for its poster, so the two cannot describe different runs.
+    // WORKOUT-EXECUTION-ID-1 (2026-09-03) · replaces TWO-RUNS-ONE-DAY-1,
+    // which read `plannedWorkoutType` — a key populated on ~1 of 276 of
+    // David's own rows and therefore almost always inert (see
+    // app/api/v5/today/route.ts's fuller account). Now shares THE canonical
+    // resolver with the Today poster, so a run-detail page opened by date
+    // can never disagree with what the hero card that linked here showed.
+    const resolved = await resolveDayExecutions(userId, ref.dateISO).catch((err: unknown) => {
+      console.warn('[postrun/load] day resolver unreadable:',
+        err instanceof Error ? err.message : err);
+      return null;
+    });
+    const matched = resolved ? primaryPrescription(resolved)?.matchedRun ?? null : null;
+    if (matched) return { id: matched.runId, data: matched.data as Record<string, any> };
+
+    // No prescription matched today (none exists, or nothing has satisfied
+    // it yet) — fall back to the day's biggest run, same as before this fix,
+    // for the by-date case that isn't naming any specific prescription.
     const r = await pool.query<RunRow>(
       `SELECT id::text AS id, data
          FROM runs

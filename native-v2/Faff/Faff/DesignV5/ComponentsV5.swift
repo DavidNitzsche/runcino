@@ -107,57 +107,13 @@ struct Tile<Content: View>: View {
 // Pushed screens are AppBar + plain list. They do NOT get a gradient panel —
 // that is the shell exception the README names.
 
-/// VW-1 · THE STATUS BAR SITS ON THE CONTENT, AND NOTHING WAS BEHIND IT.
-///
-/// Observed on the build of 2026-09-03: body text scrolled up under the clock
-/// and the Dynamic Island and collided with them — "Temperature, from weather"
-/// rendered through "2:36". Not one screen's bug. `AppBar` is drawn INSIDE the
-/// `ScrollView` on every screen that has one, which is deliberate (the big
-/// title is meant to scroll away), so on all seven of them the status bar ends
-/// up over raw body copy.
-///
-/// The fix is a scrim, not a pinned header, because the scrolling title is the
-/// design's intent and pinning it would change every one of those screens. It
-/// lives in the shell's ZStack so there is ONE of it rather than seven, and it
-/// reads the device's real inset from `\.v5TopInset` — the value the shell
-/// already measures at the root and publishes, and which `PanelV5` already
-/// consumes. Nothing new is measured.
-///
-/// It is opaque across the status bar itself and fades out below it, so content
-/// dissolves rather than ending on a hard line. Non-interactive: it must never
-/// eat a tap meant for the content it covers.
-///
-/// WHAT THIS CANNOT FIX (Rule 22): it hides the collision, it does not create
-/// space. A screen whose first element needs to be READ at rest still has to
-/// pad itself below the inset — the scrim only governs what happens to content
-/// scrolling past.
-struct StatusBarScrimV5: View {
-    @Environment(\.v5TopInset) private var topInset
-
-    /// How far past the inset the fade runs. Enough to be a fade rather than a
-    /// band, short enough not to dim a resting headline.
-    private static let fade: CGFloat = 16
-
-    var body: some View {
-        VStack(spacing: 0) {
-            LinearGradient(
-                stops: [
-                    .init(color: V5.surfacePage, location: 0),
-                    .init(color: V5.surfacePage, location: topInset <= 0 ? 0.6
-                          : topInset / (topInset + Self.fade)),
-                    .init(color: V5.surfacePage.opacity(0), location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: topInset + Self.fade)
-            Spacer(minLength: 0)
-        }
-        .ignoresSafeArea(edges: .top)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
+// VW-1 (a status-bar scrim over every AppBar screen) was tried and
+// explicitly rejected by David — "the status bar skrim and fade is WRONG
+// and should not be there" — twice now, including once after this exact
+// branch's own merge reintroduced it. Do not re-add a scrim here. If the
+// status-bar collision it was trying to fix needs a different answer,
+// that is a fresh decision to make with David, not a reason to bring this
+// one back.
 
 struct AppBar: View {
     let title: String
@@ -1542,6 +1498,67 @@ struct PlaceHeaderV5: View {
     // ─────────────────────────────────────────────────────────────────────
     private var discTargetWidth: CGFloat {
         (onCalendar != nil && onAccount != nil) ? 36 : 44
+    }
+}
+
+// MARK: - The persistent Today header + week-strip shell
+
+/// TODAYSHELL-1 (2026-09-04) · the header + week-line + week-strip cluster,
+/// factored into ONE definition so a date with no cached content yet can
+/// draw the EXACT same shell as a date that has one.
+///
+/// Previously this cluster was hand-rolled, verbatim, inside both
+/// `TodayBeforeV5` and `TodayAfterV5` — and absent entirely from the
+/// loading/failed navigation card, which built a second, header-less,
+/// strip-less screen instead. That is why tapping an uncached date tore
+/// down the whole screen — header, strip and all — rather than leaving
+/// them mounted with only the content below changing.
+///
+/// David, P0, 2026-09-04, on build 254: "tapping a future day replaces the
+/// entire Today screen with a giant unexplained skeleton; the week strip
+/// disappears; the page changes into a different layout." And, the
+/// standing rule this restates, 2026-08-21: "If I go back to a past run,
+/// it should not change like this and remove the week strip etc. Keep
+/// everything just change the info below the week strip."
+///
+/// A child of `DayPanel`, so `@Environment(\.v5PanelInk)` resolves to the
+/// panel's own fill — same as `PlaceHeaderV5` and `WeekStripV5`, both of
+/// which this simply composes rather than re-implements.
+struct TodayHeaderStripV5: View {
+    let place: String
+    var viewingDayLabel: String? = nil
+    let weekLine: String?
+    let weekStripDays: [WeekStripDayV5]
+    var onBackToToday: (() -> Void)? = nil
+    var onCalendar: (() -> Void)? = nil
+    var initials: String? = nil
+    var onAccount: (() -> Void)? = nil
+    var onPickDay: (WeekStripDayV5) -> Void = { _ in }
+    var onPageWeek: ((Int) async -> Void)? = nil
+
+    @Environment(\.v5PanelInk) private var panelInk
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: V5.S.s8) {
+            PlaceHeaderV5(place: place,
+                          viewingDayLabel: viewingDayLabel,
+                          onBackToToday: onBackToToday,
+                          onCalendar: onCalendar,
+                          initials: initials,
+                          onAccount: onAccount)
+
+            HStack(spacing: V5.S.s12) {
+                Spacer(minLength: 0)
+                Text(weekLine ?? "")
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(panelInk.secondary)
+                    .opacity(weekLine == nil ? 0 : 1)
+            }
+
+            WeekStripV5(days: weekStripDays,
+                        onTap: onPickDay,
+                        onPageWeek: onPageWeek)
+        }
     }
 }
 

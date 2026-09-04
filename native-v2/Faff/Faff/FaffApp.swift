@@ -39,7 +39,12 @@ struct FaffApp: App {
     /// correct on its own merits, not merely a workaround for the stuck
     /// dialog. `#if DEBUG` for the same reason as the token seed itself: this
     /// must not exist in a build that reaches a real device.
-    private static var isQATokenLaunch: Bool {
+    ///
+    /// Not `private` — `HRAlerter.start()` reads it too (see that call site's
+    /// comment). This was the ONE guarded call site for a while; the gap is
+    /// what let a second, unguarded `requestAuthorization` wedge a verification
+    /// run behind the exact dialog this flag exists to skip.
+    static var isQATokenLaunch: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("-faffToken")
         #else
@@ -64,7 +69,10 @@ struct FaffApp: App {
         guard let i = args.firstIndex(of: "-faffToken"), i + 1 < args.count else { return }
         let token = args[i + 1]
         guard !token.isEmpty else { return }
-        TokenStore.shared.set(token: token, expiresAt: nil, userUuid: nil)
+        // VW-3 · seedDebugToken, not set(...), so the seed survives a
+        // Keychain write that silently fails on this simulator binary —
+        // reproduced directly 2026-09-03 (see TokenStore's own header).
+        TokenStore.shared.seedDebugToken(token)
         UserDefaults.standard.set(true, forKey: "faff.onboarded")
         #endif
     }

@@ -207,6 +207,11 @@ export type V5TodayStateWire =
 
 export interface V5Today {
   dateISO: string;
+  /** PLANVERSION-1 · see `V5TodayContext.planVersion`'s doc comment. Carried
+   *  through unchanged — this field's whole job is to let the client tell
+   *  "the plan changed under this cached day" apart from "this day is just
+   *  old," which age alone cannot answer. */
+  planVersion: string | null;
   state: V5TodayStateWire;
   panel: V5Panel;
   weekStrip: V5WeekStripDay[];
@@ -824,6 +829,20 @@ export interface V5TodayContext {
    *  `V5Today.postRun`. Null before a run, and null when it could not be
    *  composed — the surface then draws no briefing rather than an empty one. */
   postRun?: PostRunWire | null;
+  /**
+   * PLANVERSION-1 · the plan's content identity, `${training_plans.id}:
+   * ${last_adapted_at}` — changes on a full rebuild (new `id`) AND an
+   * in-place pace re-anchor or adaptation (bumped `last_adapted_at`), which
+   * `plan_workout_id` alone does not. Null when there is no active plan. See
+   * the route's own doc comment on where this is computed — this field only
+   * carries it through to the wire.
+   *
+   * Optional, not required: existing fixture-shaped contexts across this
+   * codebase's test suite construct `V5TodayContext` without it, and
+   * `composeV5Today` (via `EMPTY_TODAY`) already defaults an absent value to
+   * `null` — the same posture `postRun` above already takes.
+   */
+  planVersion?: string | null;
   todayISO: string;
   /**
    * True when `todayISO` is a day the runner has STEPPED TO, not the day it
@@ -1526,8 +1545,11 @@ function buildRecentRun(r: V5RecentRunCtx): {
 // The composer
 // ─────────────────────────────────────────────────────────────────────────
 
-const EMPTY_TODAY = (todayISO: string, state: V5TodayStateWire): V5Today => ({
+const EMPTY_TODAY = (
+  todayISO: string, state: V5TodayStateWire, planVersion: string | null = null,
+): V5Today => ({
   dateISO: todayISO,
+  planVersion,
   state,
   panel: {
     dayState: 'rest', quiet: true, place: 'Today', dateLine: dateLineFor(todayISO),
@@ -1589,14 +1611,14 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   // distance-goal-without-a-race. This is a refusal, not an attempt to
   // populate a payload the client cannot render.
   if (!ctx.raceMode) {
-    const t = EMPTY_TODAY(ctx.todayISO, 'not_on_phone_yet');
+    const t = EMPTY_TODAY(ctx.todayISO, 'not_on_phone_yet', ctx.planVersion);
     t.notOnPhoneYet = 'This phone build only coaches toward a goal race. Coached, just-run and distance-goal training keep running in the app, just not here yet.';
     return t;
   }
 
   // ── injury_flare — a quiet panel, nothing to prescribe (RULE 3) ────────
   if (ctx.injury) {
-    const t = EMPTY_TODAY(ctx.todayISO, 'injury_flare');
+    const t = EMPTY_TODAY(ctx.todayISO, 'injury_flare', ctx.planVersion);
     t.panel.quiet = true;
     t.panel.type = ctx.injury.title || 'Not today';
     t.injury = {
@@ -1616,7 +1638,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   // sick day, which is the rarer overlap and the one where the injury's own
   // load restrictions are more specific than "rest, you're sick".
   if (ctx.sick) {
-    const t = EMPTY_TODAY(ctx.todayISO, 'sick');
+    const t = EMPTY_TODAY(ctx.todayISO, 'sick', ctx.planVersion);
     t.panel.quiet = true;
     t.panel.type = 'Not today';
     t.sick = {
@@ -1643,7 +1665,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
    * to be true (that the runner is hurt).
    */
   if (ctx.safetyUnknown) {
-    const t = EMPTY_TODAY(ctx.todayISO, 'before_run');
+    const t = EMPTY_TODAY(ctx.todayISO, 'before_run', ctx.planVersion);
     t.panel.quiet = true;
     t.panel.type = 'NOT CLEARED';
     t.panel.weekLine = ctx.weekLine;
@@ -1655,7 +1677,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
 
   // ── week_off — a deliberate break, still a gradient panel (rest hue) ──
   if (ctx.weekOff) {
-    const t = EMPTY_TODAY(ctx.todayISO, 'week_off');
+    const t = EMPTY_TODAY(ctx.todayISO, 'week_off', ctx.planVersion);
     t.panel.quiet = false;
     t.panel.dayState = 'rest';
     t.panel.type = 'Week off';
@@ -1675,7 +1697,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
 
   // ── off_season — the coach has nothing honest to say yet (RULE 3) ─────
   if (ctx.offSeason) {
-    const t = EMPTY_TODAY(ctx.todayISO, 'off_season');
+    const t = EMPTY_TODAY(ctx.todayISO, 'off_season', ctx.planVersion);
     t.panel.quiet = true;
     t.panel.type = 'Off-season';
     t.offSeason = {
@@ -1690,7 +1712,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   // ── after_run (incl. treadmill, 5c) ─────────────────────────────────────
   if (ctx.recentRun) {
     const built = buildRecentRun(ctx.recentRun);
-    const t = EMPTY_TODAY(ctx.todayISO, 'after_run');
+    const t = EMPTY_TODAY(ctx.todayISO, 'after_run', ctx.planVersion);
     t.panel = {
       dayState: dayStateWordFor(ctx.todayPlan?.type),
       quiet: false,
@@ -1761,7 +1783,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     return t;
   }
 
-  const t = EMPTY_TODAY(ctx.todayISO, ctx.raceDay ? 'race_day' : 'before_run');
+  const t = EMPTY_TODAY(ctx.todayISO, ctx.raceDay ? 'race_day' : 'before_run', ctx.planVersion);
   t.panel = {
     dayState: dayStateWordFor(ctx.todayPlan?.type),
     quiet: false,

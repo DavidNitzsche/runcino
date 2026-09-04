@@ -509,6 +509,13 @@ struct V5OffSeason: Decodable, Equatable {
 /// The whole Today surface.
 struct V5Today: Decodable, Equatable {
     let dateISO: String
+    /// PLANVERSION-1 · `${training_plans.id}:${last_adapted_at}`, changing
+    /// on both a full rebuild and an in-place pace re-anchor — the two
+    /// cases `weekStrip[i].id` (plan_workout_id) alone does not fully
+    /// cover, since a re-anchor rewrites `plan_workouts` under the SAME id.
+    /// Optional/nullable: absent on an older server, and nil when the
+    /// runner has no active plan. See `TodayHostV5.reconcileDayCache`.
+    let planVersion: String?
     let state: V5TodayState
     let panel: V5Panel
     let weekStrip: [V5WeekStripDay]
@@ -1887,7 +1894,7 @@ private extension KeyedDecodingContainer {
 
 extension V5Today {
     enum K: String, CodingKey {
-        case dateISO, state, panel, weekStrip, groups, why, thesis, whereYouAre, beforeYouGo
+        case dateISO, planVersion, state, panel, weekStrip, groups, why, thesis, whereYouAre, beforeYouGo
         case askedVsRan, verdict, zoneShares, zoneTargets, zoneTarget, elevation, onTheBelt
         case routePolyline, elevGainFt, shoeOptions
         case routeSplits, routePhases, hrZones, paceBand, elevGainMeasured
@@ -1901,6 +1908,7 @@ extension V5Today {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
         dateISO = c.text(.dateISO)
+        planVersion = c.opt(.planVersion)
         state = c.opt(.state) ?? .beforeRun
         panel = try c.decode(V5Panel.self, forKey: .panel)
         weekStrip = c.list(.weekStrip)

@@ -158,11 +158,15 @@ struct LiveRunTreadmillV5: View {
         self._hr = ObservedObject(wrappedValue: hr)
         self.onPause = onPause
         self.onEnd = onEnd
-        let id = "trd_\(UUID().uuidString)"
+        // DECISION-1 · prefer the canonical id ("the phone fallback must
+        // preserve the same workout identity") when today's real prescribed
+        // workout was loaded; fall back to the prior synthetic id only for
+        // a genuinely unstructured/no-plan run (`plan?.workoutId == nil`).
+        let id = plan?.workoutId ?? "trd_\(UUID().uuidString)"
         self.workoutId = id
         self._session = StateObject(wrappedValue: BeltSession(
             workoutId: id,
-            speedMph: Self.defaultSpeedMph(plan: plan), inclinePct: 1.0))
+            speedMph: Self.defaultSpeedMph(plan: plan), inclinePct: Self.defaultInclinePct(plan: plan)))
     }
 
     // One accumulator, read for the UI. `elapsedSec` and `distanceMi` were
@@ -701,9 +705,27 @@ struct LiveRunTreadmillV5: View {
     }
 
     private static func defaultSpeedMph(plan: LiveRunPlanV5?) -> Double {
+        guard let phase = plan?.phases.first(where: { $0.type == .work }) else { return 8.0 }
+        if let target = phase.targetPaceSPerMi, target > 0 {
+            return (3600.0 / Double(target) * 10).rounded() / 10
+        }
+        // TREADMILL-HILL-1 · a by-effort hill rep carries no pace target on
+        // purpose (outdoor grade varies) — this is the treadmill-specific
+        // pair the server derives for exactly that case, not a second
+        // fallback guess. See WatchPhase.treadmillSpeedMph's doc comment.
+        if let speed = phase.treadmillSpeedMph, speed > 0 { return speed }
+        return 8.0
+    }
+
+    /// TREADMILL-HILL-1 · sibling of `defaultSpeedMph`. 1.0% is this file's
+    /// prior flat-run default (`TREADMILL_AIR_RESISTANCE_GRADE_PCT` — a
+    /// belt at 1% reproduces outdoor flat, per Research/01), correct for
+    /// any session with no incline prescription. A hill rep's own doctrine-
+    /// cited grade (Research/04 §8.3) overrides it when present.
+    private static func defaultInclinePct(plan: LiveRunPlanV5?) -> Double {
         guard let phase = plan?.phases.first(where: { $0.type == .work }),
-              let target = phase.targetPaceSPerMi, target > 0 else { return 8.0 }
-        return (3600.0 / Double(target) * 10).rounded() / 10
+              let incline = phase.treadmillInclinePct, incline > 0 else { return 1.0 }
+        return incline
     }
 
     // MARK: - Stat row
