@@ -62,7 +62,20 @@ final class V5Surface<Model: Decodable>: ObservableObject {
 
     /// When the payload in hand was written. For a "cached 12m ago"
     /// affordance, if a screen wants one.
-    let cachedAt: Date?
+    ///
+    /// CACHEDAT-1 (2026-09-04) · was a `let`, set once from `AppCache.writtenAt`
+    /// at `init` and never touched again — so `StaleBannerV5`'s "showing what
+    /// you had ___ ago" kept reporting the age of the surface's FIRST disk
+    /// read (app cold launch, in practice) for the surface's entire lifetime,
+    /// no matter how many successful fetches landed in between. `APIV5.swift`
+    /// writes a fresh `AppCache` entry on every successful V5 fetch (line
+    /// ~1670) — the disk timestamp WAS advancing; this property just never
+    /// looked again. Caught live: David saw "2 hours ago" on a banner that
+    /// had, in truth, refreshed cleanly dozens of times since — a brief blip
+    /// minutes earlier was reported with an age that had nothing to do with
+    /// it, which is exactly what made "it's never happened so much before"
+    /// look like a much longer outage than the one that actually occurred.
+    @Published private(set) var cachedAt: Date?
 
     private let cacheKey: AppCache.Key?
     private var fetch: () async throws -> API.V5Fetch<Model>
@@ -189,6 +202,10 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         model = known
         stale = false
         absentReason = nil
+        // CACHEDAT-1 · re-read, not left at whatever `init` saw — a cache
+        // hit years into a session should report ITS OWN disk age, not the
+        // first one this surface ever observed.
+        cachedAt = cacheKey.flatMap { AppCache.writtenAt($0) }
     }
 
     /// The async half of `present` — refetch behind whatever is already on
@@ -251,6 +268,12 @@ final class V5Surface<Model: Decodable>: ObservableObject {
                 model = fresh
                 stale = false
                 absentReason = nil
+                // CACHEDAT-1 · this fetch just wrote a new `AppCache` entry
+                // (`APIV5.swift`'s shared V5 fetch helper). `Date()` directly
+                // rather than re-reading disk: the write already happened,
+                // and there is nothing a round trip through `AppCache.writtenAt`
+                // would tell us that we do not already know.
+                cachedAt = Date()
             case .absent(let reason):
                 // The engine decided. Not an outage, and not something to
                 // paper over with a cached payload from when it did apply.
