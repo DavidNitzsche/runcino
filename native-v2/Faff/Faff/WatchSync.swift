@@ -671,6 +671,10 @@ final class WatchSync: NSObject, ObservableObject {
                 // completedRunId and pivots to the post-run view without
                 // waiting for the next foreground wakeup.
                 NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+                // PLANSNAPSHOT-1 · a completed run lands here from every
+                // origin (phone outdoor/treadmill finish, watch sync) —
+                // completion sync is a named trigger alongside plan-mutation.
+                NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
             }
             if stalled { break }
             lastFlushFailedAt = nil
