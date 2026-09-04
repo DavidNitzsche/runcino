@@ -503,10 +503,10 @@ struct RepBreakdownV5: View {
     private var timelineStrip: some View {
         let total = pieces.reduce(0.0) { $0 + Self.weight($1) }
         return GeometryReader { geo in
-            // v5-spacing-exempt: 1.5pt hairline gap between proportional
-            // timeline segments — an optical nudge for a data-viz strip
-            // sized by pixel-precise share-of-duration math, not a layout
-            // gap the token ladder's semantic rungs describe.
+            // v5-spacing-exempt: a hairline gap between segments of a 6pt-tall
+            // proportional bar, sized to match the strip's own minimum
+            // segment width below (also 1.5) — not a spacing rhythm, an
+            // optical value tied to this one micro-visualization's own scale.
             HStack(spacing: 1.5) {
                 ForEach(pieces) { p in
                     let w = total > 0 ? Self.weight(p) / total : 0
