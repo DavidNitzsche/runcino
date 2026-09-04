@@ -118,13 +118,14 @@ lock, and that a mirrored watch+phone treadmill pair reads as one execution.
 ## Exact commits and deployments
 
 - **Base:** `origin/main` @ `72f2f84c`
-- **Final commit:** `94a207bb`
+- **Final commit:** `051c0fdb`
 
 | Commit | Railway deployment | Status |
 |---|---|---|
 | `5104342f` | (superseded) | reached SUCCESS |
 | `28c882ec` | (superseded) | reached SUCCESS |
-| **`94a207bb`** | **`962c0258-3d3d-4510-a04d-169d30e9d4c0`** | **SUCCESS** |
+| `94a207bb` | `962c0258-3d3d-4510-a04d-169d30e9d4c0` | SUCCESS |
+| **`051c0fdb`** | **`be143ce3-23c3-48f0-899a-0f5b2a17aa71`** | **SUCCESS** |
 
 ---
 
