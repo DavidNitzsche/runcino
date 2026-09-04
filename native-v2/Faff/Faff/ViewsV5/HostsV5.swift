@@ -519,9 +519,45 @@ struct TodayHostV5: View {
                         pendingCard(for: date, phase: .failed)
                     }
                 }
+            } else if let viewingDate {
+                // SHELLBYPASS-1 (2026-09-04) · `surface.model` is nil, but the
+                // runner is mid-navigation to a date that is NOT their real
+                // today — never route that through `wayOutHeader` below.
+                //
+                // David, physical device, after TODAYSHELL-1 shipped: "the
+                // normal top controls disappear on future dates... a
+                // different, stripped-down UPCOMING shell." `wayOutHeader`'s
+                // own doc comment says exactly why it looks like that:
+                // "Deliberately plain: no gradient panel, no week strip, no
+                // big headline." Correct for the ONE case it was built for —
+                // "today itself" has genuinely nothing (off-season, no plan
+                // at all) — and silently wrong for a navigated-to date,
+                // because `surface.absentReason`/`surface.isOutage` are
+                // fields on the SAME surface `goTo` fetches arbitrary dates
+                // through, so a `.absent` or outright-failed response for
+                // Sept 25 lands here exactly as if TODAY itself had nothing,
+                // and this branch used to trust that unconditionally.
+                //
+                // Route it through the SAME shared shell every other
+                // pending/failed state already uses instead: an engine
+                // refusal (`absentReason`) reads as unavailable-for-this-
+                // date, same copy and same Retry as any other fetch that
+                // came back with nothing to show; a genuine outage
+                // (`isOutage`) reads as offline-or-unreachable. Neither is
+                // reachable when `surface.model` is non-nil (the `if let
+                // model` branch above already owns that case via
+                // `readiness()`), so this can only fire for a date whose
+                // fetch produced nothing at all to paint.
+                if isOffline && dayCache[viewingDate] == nil {
+                    pendingCard(for: viewingDate, phase: .offlineNoCache)
+                } else {
+                    pendingCard(for: viewingDate, phase: .failed)
+                }
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
-                // not apply. Silence, never ErrorNote: nothing failed.
+                // not apply, for the runner's OWN today — `viewingDate` is
+                // nil here, so this is never reached for a navigated date.
+                // Silence, never ErrorNote: nothing failed.
                 ScrollView {
                     VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                         wayOutHeader
@@ -532,9 +568,11 @@ struct TodayHostV5: View {
                 }
                 .background(V5.surfacePage)
             } else if surface.isOutage {
-                // Nothing cached and the read failed. The design's own outage
-                // screen needs a Today shell to sit in, and we do not have one,
-                // so this is the honest floor: the note and the reserved space.
+                // Nothing cached and the read failed, for today itself
+                // (again, `viewingDate == nil` here). The design's own
+                // outage screen needs a Today shell to sit in, and we do not
+                // have one, so this is the honest floor: the note and the
+                // reserved space.
                 ScrollView {
                     VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                         wayOutHeader
@@ -662,18 +700,96 @@ struct TodayHostV5: View {
         .v5ReloadOnForeground { await surface.load() }
     }
 
+    /// SHAREDSHELL-1 (2026-09-04) · the ROOT CAUSE closure for the physical-
+    /// device P0: TODAYSHELL-1 (build 255) shared the header+strip cluster
+    /// for the `.loading`/`.failed`/matched-content path `readiness()`
+    /// governs — but `content(_:)`'s own switch on `model.state`, one level
+    /// deeper, has FIVE branches (`notOnPhoneYet`, `injuryFlare`, `sick`,
+    /// `weekOff`, `offSeason`) that predate TODAYSHELL-1 and never went
+    /// through it: `NotOnPhoneYetV5`, `InjuryFlareV5`, `SickFlareV5`,
+    /// `WeekOffV5`, `OffSeasonV5` each drew their OWN header (`PlaceHeaderRow`
+    /// or equivalent — no week strip, no calendar button, no back-to-today).
+    /// `model.state` is a property of the requested DATE, not of the app, so
+    /// navigating to ANY date whose state happened to be one of these five —
+    /// most commonly `weekOff`, which `lib/faff/v5-today.ts` returns for
+    /// "Away from the plan," i.e. any date outside the current training
+    /// window — dropped the runner onto a completely different, stripped
+    /// screen. David, physical device, TestFlight 259: "the normal top
+    /// controls disappear on future dates... a different, stripped-down
+    /// UPCOMING shell." Exactly that shape, on exactly that trigger — and
+    /// invisible to every round of simulator testing so far, because the
+    /// synthetic test data used for those checks never happened to place a
+    /// week-off/injury/sick/off-season day inside the navigated range.
+    ///
+    /// The fix: draw `TodayHeaderStripV5` here, ONCE, for every one of the
+    /// seven `model.state` cases — not just the two (`beforeRun`/`raceDay`,
+    /// `afterRun`) that already had it — and pass `suppressOwnHeader: true`
+    /// to the five screens that used to draw their own. `TodayBeforeV5`/
+    /// `TodayAfterV5` keep drawing their own header internally (unchanged);
+    /// wrapping them here too would be the double-header Rule 17 already
+    /// forbids elsewhere in this file, so those two cases are deliberately
+    /// left alone below.
+    @ViewBuilder
+    private func inSharedShell<Content: View>(_ model: V5Today, @ViewBuilder content: () -> Content) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                DayPanel(fill: .quiet) {
+                    TodayHeaderStripV5(
+                        place: model.panel.place,
+                        viewingDayLabel: viewingDayLabel,
+                        weekLine: model.panel.weekLine,
+                        weekStripDays: stripDays(for: model),
+                        onBackToToday: { backToToday() },
+                        onCalendar: nil,
+                        initials: initials,
+                        onAccount: { accountOpen = true },
+                        onPickDay: { day in pickDay(day.id, in: model) },
+                        onPageWeek: { await stepWeekAndWait($0 * 7, from: model) },
+                        canPageBackward: canPageWeek(-1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
+                        canPageForward: canPageWeek(1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO)
+                    )
+                }
+                content()
+            }
+            .padding(.horizontal, V5.S.gutter)
+            .padding(.bottom, V5.S.s24)
+            .v5PageWidth()
+        }
+        .background(V5.surfacePage)
+    }
+
+    /// The pill's position, remapped exactly like `TodayBeforeV5.stripDays()`
+    /// — `viewingDate` (this file's own single source of truth for "which
+    /// day is selected," the same value that drives the header's tense)
+    /// rather than the server's own `isToday`, so the pill follows the
+    /// runner's selection instantly rather than waiting on a round trip.
+    private func stripDays(for model: V5Today) -> [WeekStripDayV5] {
+        let selected = viewingDate ?? model.dateISO
+        return model.weekStrip.map { d in
+            var s = d.strip
+            s.isToday = d.dateISO == selected
+            return s
+        }
+    }
+
     @ViewBuilder
     private func content(_ model: V5Today) -> some View {
         switch model.state {
         case .notOnPhoneYet:
-            NotOnPhoneYetV5(reason: model.notOnPhoneYet, onOpenAccount: { accountOpen = true })
+            inSharedShell(model) {
+                NotOnPhoneYetV5(reason: model.notOnPhoneYet, onOpenAccount: { accountOpen = true },
+                                suppressOwnHeader: true)
+            }
 
         case .injuryFlare:
             if let injury = model.injury {
-                InjuryFlareV5(model: injury,
-                              onOpenAccount: { accountOpen = true },
-                              onCheckIn: { row in Task { await checkInNiggle(row.id) } },
-                              onReturnToRunning: { path.append(.returnToRunning) })
+                inSharedShell(model) {
+                    InjuryFlareV5(model: injury,
+                                  onOpenAccount: { accountOpen = true },
+                                  onCheckIn: { row in Task { await checkInNiggle(row.id) } },
+                                  onReturnToRunning: { path.append(.returnToRunning) },
+                                  suppressOwnHeader: true)
+                }
             } else {
                 TodayBeforeLiveV5(model: model, accountName: accountName,
                               accountWeekLine: model.panel.weekLine ?? "",
@@ -682,9 +798,12 @@ struct TodayHostV5: View {
 
         case .sick:
             if let sick = model.sick {
-                SickFlareV5(model: sick,
-                            onOpenAccount: { accountOpen = true },
-                            onLogTrend: { row in Task { await logSickTrend(row.action) } })
+                inSharedShell(model) {
+                    SickFlareV5(model: sick,
+                                onOpenAccount: { accountOpen = true },
+                                onLogTrend: { row in Task { await logSickTrend(row.action) } },
+                                suppressOwnHeader: true)
+                }
             } else {
                 TodayBeforeLiveV5(model: model, accountName: accountName,
                                   accountWeekLine: model.panel.weekLine ?? "",
@@ -693,7 +812,9 @@ struct TodayHostV5: View {
 
         case .weekOff:
             if let off = model.weekOff {
-                WeekOffV5(model: off, onOpenAccount: { accountOpen = true })
+                inSharedShell(model) {
+                    WeekOffV5(model: off, onOpenAccount: { accountOpen = true }, suppressOwnHeader: true)
+                }
             } else {
                 TodayBeforeLiveV5(model: model, accountName: accountName,
                               accountWeekLine: model.panel.weekLine ?? "",
@@ -702,9 +823,13 @@ struct TodayHostV5: View {
 
         case .offSeason:
             if let off = model.offSeason {
-                OffSeasonV5(model: off, onOpenAccount: { accountOpen = true })
+                inSharedShell(model) {
+                    OffSeasonV5(model: off, onOpenAccount: { accountOpen = true }, suppressOwnHeader: true)
+                }
             } else {
-                NotOnPhoneYetV5(reason: nil, onOpenAccount: { accountOpen = true })
+                inSharedShell(model) {
+                    NotOnPhoneYetV5(reason: nil, onOpenAccount: { accountOpen = true }, suppressOwnHeader: true)
+                }
             }
 
         case .afterRun:
@@ -1136,6 +1261,14 @@ struct TodayHostV5: View {
         if dayCache[iso] == nil { Task { await fetchAndCacheWeek(anchoredOn: iso) } }
 
         navigationTask?.cancel()
+        // FETCHOWNER-1 · only an `isHome` navigation is allowed to
+        // permanently rebind the shared surface's canonical fetch — that
+        // IS "today" going forward, correctly. Any other date borrows the
+        // surface for exactly this one read (`fetchOnce`) so a later,
+        // unrelated refresh (`.faffForegroundRefresh`, the StaleBanner's
+        // Retry) can never re-fetch a date the runner already navigated
+        // away from — see `fetchOnce`'s own doc comment for the concrete
+        // failure this closes.
         if let known = dayCache[iso] {
             // STATEGATE-1 · painted SYNCHRONOUSLY, this line, not inside the
             // Task below — see `presentSync`'s own doc comment for why a
@@ -1145,14 +1278,18 @@ struct TodayHostV5: View {
             // content on screen right now already matches `iso`.
             surface.presentSync(known)
             pendingDate = nil
-            navigationTask = Task { await surface.refreshBehind(refresh) }
+            navigationTask = Task {
+                if isHome { await surface.refreshBehind(refresh) }
+                else { await surface.fetchOnce(refresh) }
+            }
         } else {
             // No cache hit — genuinely nothing to show for `iso` yet.
             // `pendingDate` is what `readiness` (below) reads to tell "still
             // loading this date" apart from "already failed to load it."
             pendingDate = iso
             navigationTask = Task {
-                await surface.rebind(refresh)
+                if isHome { await surface.rebind(refresh) }
+                else { await surface.fetchOnce(refresh) }
                 // Only clear if nothing newer has already moved on — a
                 // cancelled task's late completion must not un-pend a date
                 // the runner is no longer waiting on.
