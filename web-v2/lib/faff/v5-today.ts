@@ -364,6 +364,18 @@ export interface V5Today {
    */
   postRun: PostRunWire | null;
   runId: string | null;
+  /**
+   * MULTI-RUN-DAY-1 (2026-09-03) · every OTHER canonical run today that did
+   * NOT satisfy today's prescription — real training, real mileage, never a
+   * completion. `lib/execution/day-resolver.ts`'s `supplementalRuns`, wire-
+   * shaped. Empty, never omitted, so a client that has not built the
+   * secondary-card UI yet can safely ignore it and a client that has can
+   * render a compact row per entry — this must never read as, or be
+   * rendered as, plan completion. Populated on both the after-run and
+   * before-run branches: a supplemental run can exist whether or not the
+   * prescription itself has been matched yet.
+   */
+  supplementalRuns: V5SupplementalRunWire[];
 
   injury: V5Injury | null;
   sick: V5Sick | null;
@@ -705,6 +717,18 @@ export interface V5WeekOffCtx {
 }
 
 
+/** MULTI-RUN-DAY-1 · one supplemental run's display-safe facts. Deliberately
+ *  lean — this is a compact secondary card, not a second hero. No verdict,
+ *  no grading, no workout type: a supplemental run was never shown to
+ *  execute anything prescribed, so nothing here may imply that it did. */
+export interface V5SupplementalRunWire {
+  runId: string;
+  distanceMi: number;
+  durationSec: number | null;
+  paceSPerMi: number | null;
+  indoor: boolean;
+}
+
 export interface V5RecentRunCtx {
   runId: string;
   distanceMi: number;
@@ -850,6 +874,11 @@ export interface V5TodayContext {
    * `null` — the same posture `postRun` above already takes.
    */
   planVersion?: string | null;
+  /** MULTI-RUN-DAY-1 · see `V5Today.supplementalRuns`'s doc comment. Optional
+   *  on the context (defaults to `[]` same as every other optional field
+   *  here) so the many fixture-shaped contexts across this codebase's test
+   *  suite that predate this field keep constructing without it. */
+  supplementalRuns?: V5SupplementalRunWire[];
   todayISO: string;
   /**
    * True when `todayISO` is a day the runner has STEPPED TO, not the day it
@@ -1606,6 +1635,7 @@ const EMPTY_TODAY = (
   whatThisDidToTheWeek: [],
   postRun: null,
   runId: null,
+  supplementalRuns: [],
   injury: null,
   sick: null,
   weekOff: null,
@@ -1791,11 +1821,13 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.whatThisDidToTheWeek = built.whatThisDidToTheWeek;
     t.postRun = ctx.postRun ?? null;
     t.runId = ctx.recentRun.runId;
+    t.supplementalRuns = ctx.supplementalRuns ?? [];
     t.weekStrip = buildWeekStrip(ctx);
     return t;
   }
 
   const t = EMPTY_TODAY(ctx.todayISO, ctx.raceDay ? 'race_day' : 'before_run', ctx.planVersion);
+  t.supplementalRuns = ctx.supplementalRuns ?? [];
   t.panel = {
     dayState: dayStateWordFor(ctx.todayPlan?.type),
     quiet: false,

@@ -75,6 +75,9 @@ struct TodayAfterV5: View {
     /// Page the week strip. -1 back a week, +1 forward. Async — see
     /// WKSTRIP-RACE-1 in ChartsV5.swift; the strip's recentre awaits this.
     var onPageWeek: (Int) async -> Void = { _ in }
+    /// BOUNDARY-1 · straight through to `TodayHeaderStripV5`.
+    var canPageBackward: Bool = true
+    var canPageForward: Bool = true
     var initials: String? = nil
     /// Job 1 · "report sick" — a runner who just finished and feels off
     /// should not have to wait for tomorrow's Today to say so. Same
@@ -126,12 +129,16 @@ struct TodayAfterV5: View {
          selectedDateISO: String? = nil,
          onBackToToday: (() -> Void)? = nil,
          onPageWeek: @escaping (Int) async -> Void = { _ in },
+         canPageBackward: Bool = true,
+         canPageForward: Bool = true,
          initials: String? = nil,
          onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }) {
         self.viewingDayLabel = viewingDayLabel
         self.selectedDateISO = selectedDateISO
         self.onBackToToday = onBackToToday
         self.onPageWeek = onPageWeek
+        self.canPageBackward = canPageBackward
+        self.canPageForward = canPageForward
         self.initials = initials
         self.model = model
         self.onOpenAccount = onOpenAccount
@@ -200,6 +207,13 @@ struct TodayAfterV5: View {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 panel
+                // MULTI-RUN-DAY-1 (2026-09-03) · a supplemental run reads
+                // right under the hero, never inside it — visible, never a
+                // second completion. See `supplementalRunsSection`'s own
+                // doc comment for why.
+                if !model.supplementalRuns.isEmpty {
+                    supplementalRunsSection
+                }
                 // Block-transition note (2026-08-28) — same section the
                 // before-run screen draws, because a runner who ran early
                 // still wakes into a new block and is owed the sentence.
@@ -404,7 +418,9 @@ struct TodayAfterV5: View {
                 initials: initials,
                 onAccount: onOpenAccount,
                 onPickDay: { day in onPickDay(day.id) },
-                onPageWeek: { await onPageWeek($0) }
+                onPageWeek: { await onPageWeek($0) },
+                canPageBackward: canPageBackward,
+                canPageForward: canPageForward
             )
 
             VStack(alignment: .leading, spacing: V5.S.s2) {
@@ -636,6 +652,28 @@ struct TodayAfterV5: View {
         guard let hr = model.hrAvg else { return false }
         return model.askedVsRan.contains { row in
             row.id == "heart" && row.value?.text == "\(hr)"
+        }
+    }
+
+    /// MULTI-RUN-DAY-1 (2026-09-03) · a run that happened today but did NOT
+    /// satisfy the prescription above — `lib/execution/day-resolver.ts`'s
+    /// `supplementalRuns`, wire-shaped. Real training, real mileage, and a
+    /// visible row here — never folded into the hero's own numbers, never
+    /// carrying a verdict or a workout-type label, because it was never
+    /// shown to execute anything prescribed. Found live: a friend's
+    /// unrelated 4.48mi easy run once rendered AS the day's graded interval
+    /// session; this is the correct representation of what actually
+    /// happened, distinct from that completion, not merely hidden from it.
+    private var supplementalRunsSection: some View {
+        ListGroup(header: "Also today") {
+            ForEach(model.supplementalRuns) { run in
+                ListRow(
+                    label: FaffFmt.miles(run.distanceMi).map { "\($0) easy" } ?? "Extra run",
+                    sub: run.indoor ? "Treadmill · not part of today's session" : "Not part of today's session",
+                    value: FaffFmt.pace(secPerMi: run.paceSPerMi.map(Double.init))
+                        .map { FaffValue.measured($0) }
+                )
+            }
         }
     }
 

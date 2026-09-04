@@ -278,14 +278,15 @@ struct TodayHostV5: View {
     /// honest to draw.
     @ViewBuilder
     private func pendingCard(for date: String, phase: PendingPhase) -> some View {
-        ScrollView {
+        let stripDays = weekStripDays(for: date)
+        return ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 DayPanel(fill: .quiet) {
                     TodayHeaderStripV5(
                         place: "Today",
                         viewingDayLabel: viewingDayLabel,
                         weekLine: weekLine(for: date),
-                        weekStripDays: weekStripDays(for: date),
+                        weekStripDays: stripDays,
                         onBackToToday: { backToToday() },
                         // No calendar sheet here — this card has no full
                         // `V5Today` to build one from (that is what is
@@ -299,7 +300,9 @@ struct TodayHostV5: View {
                                 goTo(iso, todayISO: knownTodayISO ?? date)
                             }
                         },
-                        onPageWeek: { await stepWeekFromWanted($0, wanted: date) }
+                        onPageWeek: { await stepWeekFromWanted($0, wanted: date) },
+                        canPageBackward: canPageWeek(-1, weekStart: stripDays.first?.dateISO, weekEnd: stripDays.last?.dateISO),
+                        canPageForward: canPageWeek(1, weekStart: stripDays.first?.dateISO, weekEnd: stripDays.last?.dateISO)
                     )
 
                     switch phase {
@@ -605,6 +608,12 @@ struct TodayHostV5: View {
         // state — an app that never lifts its splash because the network is
         // down is worse than one that shows the outage screen honestly.
         .task {
+            // TODAYPERSIST-1 · disk-only, synchronous, before the first
+            // `await` — `surface.model` is already the disk-cached "today"
+            // by this point (seeded at `V5Surface.init`), so this can
+            // restore the runner's other recently-visited days and weeks
+            // in the same tick, before the network is ever asked.
+            seedCachesFromDisk()
             await surface.load()
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
             // The FIRST tap a runner makes is overwhelmingly a neighbour of
@@ -713,6 +722,8 @@ struct TodayHostV5: View {
                          selectedDateISO: viewingDate,
                          onBackToToday: { backToToday() },
                          onPageWeek: { await stepWeekAndWait($0 * 7, from: model) },
+                         canPageBackward: canPageWeek(-1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
+                         canPageForward: canPageWeek(1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
                          initials: initials,
                          onReportSick: { sym, started, fever in
                              Task { await reportSick(sym, started, fever) }
@@ -730,6 +741,8 @@ struct TodayHostV5: View {
                           selectedDateISO: viewingDate,
                           onBackToToday: { backToToday() },
                           onPageWeek: { await stepWeekAndWait($0 * 7, from: model) },
+                          canPageBackward: canPageWeek(-1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
+                          canPageForward: canPageWeek(1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
                           onOpenPacesMoved: { path.append(.pacesMoved) },
                           onOpenRace: { slug in path.append(.raceDetail(slug: slug)) },
                           onReportSick: { sym, started, fever in
@@ -835,6 +848,43 @@ struct TodayHostV5: View {
     /// call cannot yet know.
     @State private var weekFetchInFlight: Set<String> = []
 
+    /// BOUNDARY-1 (2026-09-04) · the plan's own first/last authored day —
+    /// see `PlanWeek.plan_start_iso`'s doc comment. Set from whichever
+    /// `PlanWeek` last landed, network or disk; every week of the same
+    /// plan carries the same two values, so overwriting on each arrival is
+    /// self-correcting rather than something that needs its own
+    /// invalidation path tied to `lastKnownPlanVersion`.
+    @State private var planStartISO: String?
+    @State private var planEndISO: String?
+
+    /// Whether paging one week further in `direction` (-1 back, +1
+    /// forward) from the week spanning `weekStart...weekEnd` leads
+    /// somewhere the plan actually has. `true` when the boundary is
+    /// unknown (either plan bound absent, or either week bound absent) —
+    /// see `WeekStripV5.canPageBackward`'s own doc comment for why "don't
+    /// clamp" is the correct default rather than "clamp everything until
+    /// proven otherwise."
+    ///
+    /// A free function of its four inputs, not an instance method reading
+    /// `@State` directly — `TodayNavigationTests` already establishes the
+    /// pattern of testing this file's decision logic directly rather than
+    /// through a rendered view, and a pure function is what that pattern
+    /// needs. ISO `yyyy-MM-dd` strings compare correctly with plain `<`/`>`
+    /// — lexicographic order equals chronological order for that format,
+    /// the same fact `navDirection`'s own computation in `goTo` already
+    /// relies on — so this needs no `Date` parsing to get a month or year
+    /// boundary right.
+    static func canPageWeek(_ direction: Int, planStart: String?, planEnd: String?,
+                             weekStart: String?, weekEnd: String?) -> Bool {
+        guard let planStart, let planEnd, let weekStart, let weekEnd else { return true }
+        return direction < 0 ? weekStart > planStart : weekEnd < planEnd
+    }
+
+    private func canPageWeek(_ direction: Int, weekStart: String?, weekEnd: String?) -> Bool {
+        Self.canPageWeek(direction, planStart: planStartISO, planEnd: planEndISO,
+                          weekStart: weekStart, weekEnd: weekEnd)
+    }
+
     /// Best-effort, local-only connectivity signal. Set the instant a
     /// request fails at the TRANSPORT level (`API.authedSend`'s own catch
     /// posts `.faffReachabilityLost` before any HTTP status exists to
@@ -887,6 +937,10 @@ struct TodayHostV5: View {
             weekCache.removeAll()
         }
         weekCache[start] = week
+        // BOUNDARY-1 · every week of the same plan carries the same two
+        // values, so the last one to land wins and that's fine.
+        if let s = week.plan_start_iso { planStartISO = s }
+        if let e = week.plan_end_iso { planEndISO = e }
     }
 
     /// A day cached under a plan the runner no longer has must never be
@@ -1035,13 +1089,23 @@ struct TodayHostV5: View {
     /// The one way onto another day. Everything above funnels here so the
     /// header, the strip and the fetch can never disagree about which day
     /// the screen is on.
+    /// +1 when `to` is later than `from`, -1 when earlier. `yyyy-MM-dd`
+    /// strings compare correctly with plain `>`, including across a month
+    /// or year boundary ("2026-08-31" < "2026-09-01" < ... < "2027-01-01"
+    /// all hold as plain string comparisons) — extracted so PANELMOTION-1's
+    /// direction call is testable on its own rather than only observable
+    /// through which way a rendered panel slides.
+    static func navigationSign(from: String, to: String) -> Int {
+        to > from ? 1 : -1
+    }
+
     private func goTo(_ iso: String, todayISO today: String) {
         let from = viewingDate ?? today
         guard iso != from else { return }
 
         // PANELMOTION-1 · the only place both the old and new date are known
         // synchronously, before anything async starts.
-        navDirection = iso > from ? 1 : -1
+        navDirection = Self.navigationSign(from: from, to: iso)
 
         // ONE haptic, exactly here — the single place every navigation
         // (a day tap, a week-strip swipe, "Today") funnels through, and
@@ -1126,6 +1190,94 @@ struct TodayHostV5: View {
     /// re-derived by hand, so this can never disagree with what the strip is
     /// actually drawing, including on a short first or last week of the
     /// block.
+    /// TODAYPERSIST-1 (2026-09-04) · cold-launch cache seed, disk only, no
+    /// network — synchronous, so it's done before this file's own `.task`
+    /// ever reaches its first `await`. `surface.model` is ALREADY populated
+    /// by the time this runs, because `V5Surface.init` seeds itself from
+    /// `AppCache.read(.v5Today, ...)` synchronously at construction — this
+    /// function exists to do the SAME thing for the OTHER dates and weeks
+    /// the runner has previously visited, which today's fixed cache slot
+    /// has no room for.
+    ///
+    /// Deliberately mirrors `prefetchAround`'s own definition of "nearby"
+    /// (the visible week, the immediately previous/next week's days, two
+    /// weeks of summaries) rather than inventing a second one — a cold
+    /// launch should be able to instantly show exactly what a warm launch
+    /// would have prefetched by now, no more, no less.
+    ///
+    /// A cached entry whose OWN `planVersion` disagrees with what
+    /// `surface.model` just loaded is discarded, not accepted — the same
+    /// call PLANVERSION-1's `reconcileDayCache` already makes for a
+    /// network arrival. A nil version (a legacy payload, or the very first
+    /// launch before any version has ever been seen) is treated as
+    /// "unknown, not necessarily wrong" and accepted rather than refused —
+    /// Rule 11's three-state discipline applied to a version tag rather
+    /// than a measurement: absent is not the same fact as contradicted.
+    /// Rule 11's three-state discipline, applied to a version tag instead
+    /// of a measurement: a `candidate` version that disagrees with
+    /// `current` is discarded, but an ABSENT version on either side is
+    /// "unknown, not necessarily wrong" and passes. Extracted as a static
+    /// function — same reasoning as `canPageWeek` above — so
+    /// `seedCachesFromDisk`'s acceptance rule for a disk-cached day or week
+    /// is directly testable rather than only reachable through a full
+    /// cold-launch simulation.
+    static func planVersionAcceptable(candidate: String?, current: String?) -> Bool {
+        candidate == nil || current == nil || candidate == current
+    }
+
+    private func seedCachesFromDisk() {
+        guard let model = surface.model,
+              let first = model.weekStrip.first?.dateISO,
+              let last = model.weekStrip.last?.dateISO,
+              let firstDate = Self.iso.date(from: first),
+              let lastDate = Self.iso.date(from: last)
+        else { return }
+        let planVersion = model.planVersion
+
+        func versionOK(_ candidate: String?) -> Bool {
+            Self.planVersionAcceptable(candidate: candidate, current: planVersion)
+        }
+        func acceptDay(_ iso: String) {
+            guard dayCache[iso] == nil,
+                  let data = AppCache.readRawDynamic("v5.day.\(iso)"),
+                  let decoded = try? JSONDecoder().decode(V5Today.self, from: data),
+                  versionOK(decoded.planVersion)
+            else { return }
+            dayCache[iso] = decoded
+        }
+        func acceptWeek(_ start: String) {
+            guard weekCache[start] == nil,
+                  let data = AppCache.readRawDynamic("v5.week.\(start)"),
+                  let decoded = try? JSONDecoder().decode(PlanWeek.self, from: data),
+                  versionOK(decoded.plan_version)
+            else { return }
+            weekCache[start] = decoded
+            if let s = decoded.plan_start_iso { planStartISO = s }
+            if let e = decoded.plan_end_iso { planEndISO = e }
+        }
+
+        for d in model.weekStrip.map(\.dateISO) { acceptDay(d) }
+        for offset in 1...7 {
+            if let prev = Calendar.current.date(byAdding: .day, value: -offset, to: firstDate) {
+                acceptDay(Self.iso.string(from: prev))
+            }
+            if let next = Calendar.current.date(byAdding: .day, value: offset, to: lastDate) {
+                acceptDay(Self.iso.string(from: next))
+            }
+        }
+
+        acceptWeek(first)
+        if let prevStart = Calendar.current.date(byAdding: .day, value: -1, to: firstDate) {
+            acceptWeek(Self.iso.string(from: prevStart))
+        }
+        if let nextStart = Calendar.current.date(byAdding: .day, value: 1, to: lastDate) {
+            acceptWeek(Self.iso.string(from: nextStart))
+        }
+        if let nextNextStart = Calendar.current.date(byAdding: .day, value: 8, to: lastDate) {
+            acceptWeek(Self.iso.string(from: nextNextStart))
+        }
+    }
+
     private func prefetchAround(_ iso: String) async {
         var wanted: Set<String> = []
 

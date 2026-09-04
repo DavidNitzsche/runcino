@@ -566,7 +566,13 @@ export const HANDED_BACK_FAILS = false;
 // the tree with the readiness, illness, injury and niggle reads that no longer
 // influence training. Taken from the scanner's own count, not from arithmetic
 // on the diff.
-export const PERIPHERAL_BASELINE = 177;
+//
+// 2026-09-03 · EXECUTION-IDENTITY-1 · 177 → 176. lib/postrun/detail-load.ts's
+// `currentType` collapse (`planRow?.type ?? (data.workoutType as string |
+// null) ?? null`) is gone — the resolver-matched prescription's type is now
+// the ONLY source, with no coerced fallback to a passive stamp. Taken from
+// the scanner's own count, not from arithmetic on the diff.
+export const PERIPHERAL_BASELINE = 176;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

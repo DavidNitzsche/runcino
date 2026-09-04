@@ -29,11 +29,23 @@ final class LiveRunTreadmillNominalTests: XCTestCase {
 
     // MARK: - nominalMph
 
-    func test_pacedPhaseUsesItsOwnPaceRegardlessOfTreadmillFields() {
-        // A paced phase carrying a treadmill pair too (should not happen in
-        // practice — the server only ever sets one or the other — but pace
-        // must win if it ever does, since a real target beats a fallback).
+    func test_theServersDoctrineTreadmillPairWinsOverAPaceTargetWhenBothArePresent() {
+        // TREADMILL-STRUCTURE-1 (2026-09-03, reconciled from origin/main):
+        // every phase is now priced server-side through the shared terrain
+        // model, not a hill-only special case — so `treadmillSpeedMph` is
+        // the FIRST rung, ahead of a pace-target conversion, which now only
+        // fires for a plan authored before that field existed. Reversed from
+        // this file's own original assertion (pace-target-first), which was
+        // this round's own TREADMILL-HILL-1/2 priority — superseded here.
         let p = phase(.work, target: 480, treadmillSpeedMph: 99, treadmillInclinePct: 99)
+        XCTAssertEqual(LiveRunTreadmillV5.nominalMph(for: p), 99, accuracy: 0.05)
+    }
+
+    func test_pacedPhaseWithNoTreadmillPairUsesItsOwnPace() {
+        // The case the reversed priority above still has to serve: an older
+        // cached plan (or any phase type the server never prices) carries
+        // only a pace target — that must still convert correctly.
+        let p = phase(.work, target: 480, treadmillSpeedMph: nil, treadmillInclinePct: nil)
         XCTAssertEqual(LiveRunTreadmillV5.nominalMph(for: p), 7.5, accuracy: 0.05)
     }
 

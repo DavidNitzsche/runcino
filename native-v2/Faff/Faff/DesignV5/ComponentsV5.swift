@@ -1516,6 +1516,10 @@ struct TodayHeaderStripV5: View {
     var onAccount: (() -> Void)? = nil
     var onPickDay: (WeekStripDayV5) -> Void = { _ in }
     var onPageWeek: ((Int) async -> Void)? = nil
+    /// BOUNDARY-1 · straight through to `WeekStripV5` — see its own doc
+    /// comment. Defaults match its "unknown, don't clamp" default.
+    var canPageBackward: Bool = true
+    var canPageForward: Bool = true
 
     @Environment(\.v5PanelInk) private var panelInk
 
@@ -1538,6 +1542,8 @@ struct TodayHeaderStripV5: View {
 
             WeekStripV5(days: weekStripDays,
                         onTap: onPickDay,
+                        canPageBackward: canPageBackward,
+                        canPageForward: canPageForward,
                         onPageWeek: onPageWeek)
         }
     }

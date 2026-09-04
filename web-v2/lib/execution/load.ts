@@ -22,16 +22,8 @@
  */
 
 import { pool } from '@/lib/db/pool';
-import { getCanonicalRunIds } from '@/lib/runs/volume';
 import { ownedDaysSql } from '@/lib/plan/owned-days';
-import {
-  runDaySql,
-  runPhasesSql,
-  runSplitsSql,
-  runWatchCompletionRefSql,
-  runDistanceMiSql,
-  asRunData,
-} from '@/lib/runs/run-shape';
+import { resolveDateRangeExecutions } from './day-resolver';
 import type { PhaseVerdict } from '@/lib/training/execution-semantics';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
@@ -93,6 +85,7 @@ export interface KeySessionExecution {
 }
 
 interface OwnedQualityRow {
+  id: string;
   date_iso: string;
   type: string | null;
   is_quality: boolean | null;
@@ -100,13 +93,6 @@ interface OwnedQualityRow {
   distance_mi: string | null;
   pace_target_s_per_mi: number | null;
   workout_spec: unknown;
-}
-
-interface RunRow {
-  id: string;
-  day: string;
-  data: unknown;
-  ref: string | null;
 }
 
 /**
@@ -125,7 +111,7 @@ export async function loadKeySessionExecutions(
   const owned = (await pool.query<OwnedQualityRow>(
     `WITH owned AS (${ownedDaysSql({
       columns:
-        'pw.date_iso, pw.type, pw.is_quality, pw.is_long, pw.distance_mi, ' +
+        'pw.id, pw.date_iso, pw.type, pw.is_quality, pw.is_long, pw.distance_mi, ' +
         'pw.pace_target_s_per_mi, pw.workout_spec',
     })})
      SELECT * FROM owned WHERE owned.is_quality = true ORDER BY owned.date_iso`,
@@ -169,43 +155,38 @@ export async function loadKeySessionExecutions(
     anchors = null;
   }
 
-  const canonicalIds = await getCanonicalRunIds(userUuid, fromISO, toISO).catch(() => [] as string[]);
-
-  /* One run per DAY, choosing the richest.
+  /* EXECUTION-IDENTITY-1 (2026-09-03) · replaces "one run per day, choosing
+   * the richest" — the exact shape WORKOUT-EXECUTION-ID-1 fixed on Today,
+   * Watch Today and Run Detail, applied here because this is the file that
+   * feeds capacity belief and the Adaptation Engine. Grading a session off
+   * whichever run merely LOOKED richest that day is the same misattribution
+   * risk with higher stakes: a threshold session graded off an unrelated
+   * easy run would silently poison VDOT belief, not just paint one screen
+   * wrong. THE canonical resolver (`lib/execution/day-resolver.ts`) decides
+   * which run, if any, satisfies each prescription — never this file
+   * re-deriving "richest" on its own, and never a passive sync's type stamp
+   * alone (the resolver's LEGACY tier already excludes those — see its own
+   * header for the live find that made that necessary).
    *
-   * `getCanonicalRunIds` settles WHICH physical run is real, and that is not
-   * the same question as which ROW carries the most signal — its own header
-   * says it optimises for mileage truth. A day with a watch row and a Strava
-   * row has one run and two descriptions of it, and only one of them has
-   * phases. Ordering by phase presence, then split count, then distance keeps
-   * the richest description while `DISTINCT ON (day)` keeps the count honest.
-   * Same shape as the long-run pick in `lib/adaptation/load.ts`.
-   *
-   * No merge-loser filter on top of the canonical ids, deliberately. Canonical
-   * selection has already chosen the winner of each dedup cluster; a second
-   * predicate that disagreed with it would drop the day entirely, and a day
-   * with no run reads as MISSED. A session must never be marked missed by a
-   * filter mismatch. */
-  const runs = (await pool.query<RunRow>(
-    `SELECT DISTINCT ON (day) r.id::text, ${runDaySql('r')} AS day, r.data,
-            ${runWatchCompletionRefSql('r')} AS ref
-       FROM runs r
-      WHERE r.user_uuid = $1
-        AND r.id::text = ANY($4::text[])
-        AND ${runDaySql('r')} >= $2 AND ${runDaySql('r')} < $3
-      ORDER BY day,
-               jsonb_array_length(COALESCE(${runPhasesSql('r')}, '[]'::jsonb)) DESC,
-               jsonb_array_length(COALESCE(${runSplitsSql('r')}, '[]'::jsonb)) DESC,
-               ${runDistanceMiSql('r')} DESC,
-               r.id DESC`,
-    [userUuid, fromISO, toISO, canonicalIds],
-  )).rows;
-  const runByDay = new Map(runs.map((r) => [r.day, r]));
+   * A prescription with no matched run reads as a genuine MISS below, exactly
+   * as if no run existed that day — David's ruling: "A missing prescribed
+   * workout must remain missing even when supplemental mileage exists." The
+   * supplemental run is not lost, it simply never enters THIS function,
+   * because this function's only question is "was the prescribed session
+   * executed" — total mileage, load and durability are answered by separate
+   * readers (`canonicalMileageByDay` et al.) that already sum every canonical
+   * run regardless of prescription match, and a run that carries its own
+   * genuine capacity signal still reaches the Evidence Engine through
+   * whichever activity-level detector reads it — never by inheriting the
+   * prescription that happened to sit on its calendar date. */
+  const resolvedDays = await resolveDateRangeExecutions(userUuid, fromISO, toISO);
 
-  const watchStatusByRef = await loadWatchStatuses(
-    userUuid,
-    runs.map((r) => r.ref).filter((r): r is string => r != null),
-  );
+  const matchedWatchRefs = [...resolvedDays.values()]
+    .flatMap((d) => d.prescriptions.map((p) => p.matchedRun))
+    .filter((r): r is NonNullable<typeof r> => r != null)
+    .map((r) => (typeof r.data.watchCompletionRef === 'string' ? r.data.watchCompletionRef : null))
+    .filter((ref): ref is string => ref != null);
+  const watchStatusByRef = await loadWatchStatuses(userUuid, matchedWatchRefs);
   const rpeByDay = await loadRpe(userUuid, fromISO, toISO);
   const raceDays = await loadRaceDays(userUuid, fromISO, toISO);
 
@@ -221,8 +202,9 @@ export async function loadKeySessionExecutions(
       spec: (row.workout_spec ?? null) as WorkoutSpec,
     };
     const planned = plannedStimulus(session, { vdot });
-    const run = runByDay.get(row.date_iso) ?? null;
-    const runData = run ? asRunData(run.data) : null;
+    const matchedRun = resolvedDays.get(row.date_iso)?.prescriptions
+      .find((p) => p.id === row.id)?.matchedRun ?? null;
+    const runData = matchedRun ? matchedRun.data : null;
     /* A race day, however it got there.
      *
      * Doctrine's `REPLACED` read is written for a race that displaced a
@@ -252,7 +234,9 @@ export async function loadKeySessionExecutions(
       continue;
     }
 
-    const statusFallback = run?.ref ? watchStatusByRef.get(run.ref) ?? null : null;
+    const watchRef = runData && typeof runData.watchCompletionRef === 'string'
+      ? runData.watchCompletionRef : null;
+    const statusFallback = watchRef ? watchStatusByRef.get(watchRef) ?? null : null;
     const actual: ActualRead | null = runData
       ? actualStimulus(runData, planned, session, { vdot, watchStatusFallback: statusFallback })
       : null;

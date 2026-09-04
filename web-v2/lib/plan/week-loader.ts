@@ -56,6 +56,18 @@ export interface PlanWeekResult {
   plan_version?: string | null;
   week_start_iso: string | null;
   week_end_iso: string | null;
+  /** BOUNDARY-1 (2026-09-04) · the plan's own first and last authored day
+   *  — MIN/MAX(date_iso) over this plan's `plan_workouts`, not a schema
+   *  column, because none exists and this is what "authored boundary"
+   *  actually means: the plan generator's own reverse-taper-from-race-day
+   *  construction guarantees the last row IS race day (or the block's
+   *  final day for a goal with no set race), and the first row is the
+   *  block's opening day. Lets the phone clamp week-paging to where a
+   *  real week actually exists instead of generating ghost weeks forever
+   *  in either direction off pure date arithmetic. Null only when the
+   *  runner has no active plan at all. */
+  plan_start_iso: string | null;
+  plan_end_iso: string | null;
   today_iso: string;
   days: PlanWeekDay[];
   message?: string;
@@ -152,11 +164,22 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
       plan_version: null,
       week_start_iso: null,
       week_end_iso: null,
+      plan_start_iso: null,
+      plan_end_iso: null,
       today_iso: today,
       days: [],
       message: 'No active plan.',
     };
   }
+
+  // BOUNDARY-1 · one cheap indexed aggregate, scoped to this plan_id
+  // exactly like the day-rows query below it — MIN/MAX over an already
+  // plan_id-scoped set is not the expensive kind of aggregate.
+  const bounds = (await pool.query(
+    `SELECT MIN(date_iso)::text AS start_iso, MAX(date_iso)::text AS end_iso
+       FROM plan_workouts WHERE plan_id = $1`,
+    [plan.id]
+  )).rows[0];
 
   // PLANVERSION-1 · same construction as the Today route's own
   // `planVersion` — see that file's doc comment for why `id` alone is not
@@ -274,6 +297,8 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
     plan_version: planVersion,
     week_start_iso: weekStart,
     week_end_iso: weekEnd,
+    plan_start_iso: bounds?.start_iso ?? null,
+    plan_end_iso: bounds?.end_iso ?? null,
     today_iso: today,
     days,
     // Carried on the LOADER's return, not the shaper's: the shaper is pure and

@@ -462,7 +462,7 @@ struct LiveRunTreadmillV5: View {
                 // uses for an unreached segment, inherited here rather than
                 // introduced.
                 "actualSpeedMph": act.map { $0.avgSpeedMph } ?? Self.nominalMph(for: phase),
-                "actualInclinePct": act.map { $0.avgInclinePct } ?? 1.0,
+                "actualInclinePct": act.map { $0.avgInclinePct } ?? Self.nominalInclinePct(for: phase),
             ]
             if let act, act.durationSec > 0 {
                 let b = act
@@ -641,25 +641,27 @@ struct LiveRunTreadmillV5: View {
         return real
     }
 
-    /// The ONE rule for a phase's belt speed — pace target first, then the
-    /// server's doctrine-cited treadmill pair (TREADMILL-HILL-1), then a
-    /// flat type-keyed guess. `static` and parameterized on a single
-    /// `WatchPhase` (not `plan: LiveRunPlanV5?`) specifically so the initial
-    /// seed (`defaultSpeedMph`, read at `init` before the segment plan
-    /// exists) and the real per-segment plan (`configurePlanIfNeeded`) and
-    /// the "Next" line (`nextLineText`) are physically the same function
-    /// call, not three call sites that have to be kept in step by hand —
-    /// which is exactly how TREADMILL-HILL-1 fixed the seed and missed the
-    /// segment plan underneath it.
+    /// The ONE rule for a phase's belt speed — the server's doctrine-cited
+    /// treadmill pair FIRST (TREADMILL-STRUCTURE-1, 2026-09-03: every phase
+    /// — hill work, warm-up, recovery, cooldown — is now priced server-side
+    /// through the shared terrain model, not a hill-only special case), then
+    /// a pace-target conversion, then a flat type-keyed guess for a plan
+    /// authored before either field existed. `static` and parameterized on a
+    /// single `WatchPhase` (not `plan: LiveRunPlanV5?`) specifically so the
+    /// initial seed (`defaultSpeedMph`, read at `init` before `self` exists —
+    /// an instance method cannot be called there) and the real per-segment
+    /// plan (`configurePlanIfNeeded`) and the "Next" line (`nextLineText`)
+    /// are physically the same function call, not three call sites kept in
+    /// step by hand. Reverted from a same-round instance-method attempt that
+    /// broke exactly that: `defaultSpeedMph` could no longer call it from
+    /// `init` and re-derived the priority inline instead, at the OLD order
+    /// (pace-target before server field) — the two-answers bug this
+    /// unification exists to prevent, caught while reconciling the two.
     static func nominalMph(for phase: WatchPhase) -> Double {
+        if let speed = phase.treadmillSpeedMph, speed > 0 { return speed }
         if let target = phase.targetPaceSPerMi, target > 0 {
             return (3600.0 / Double(target) * 10).rounded() / 10
         }
-        // TREADMILL-HILL-1 · a by-effort hill rep carries no pace target on
-        // purpose (outdoor grade varies) — this is the treadmill-specific
-        // pair the server derives for exactly that case, not a second
-        // fallback guess. See WatchPhase.treadmillSpeedMph's doc comment.
-        if let speed = phase.treadmillSpeedMph, speed > 0 { return speed }
         switch phase.type {
         case .warmup:   return 5.5
         case .work:     return 7.0
@@ -670,11 +672,28 @@ struct LiveRunTreadmillV5: View {
 
     /// Sibling of `nominalMph` — same priority, same server field, same
     /// reason it is `static` and phase-parameterized. A phase with no
-    /// doctrine-cited grade (every paced phase, every non-hill effort phase)
-    /// gets the flat 1.0% "reproduces outdoor flat" default.
+    /// doctrine-cited grade gets the flat 1.0% "reproduces outdoor flat"
+    /// default (TERRAIN.treadmill-air-resistance-grade).
     static func nominalInclinePct(for phase: WatchPhase) -> Double {
         if let incline = phase.treadmillInclinePct, incline > 0 { return incline }
         return 1.0
+    }
+
+    /// TREADMILL-STRUCTURE-1 (2026-09-03) · a 60-second hill rep's live HR
+    /// number is not a real reading of the effort — HR has not had time to
+    /// climb to steady state before the rep ends, per `hrRoleForRepDuration`
+    /// (the server-side owner of this call, `lib/watch/build-workout.ts`).
+    /// David's own instruction: "show effort as the governing instruction...
+    /// do not expose the non-actionable short-rep HR number." Scoped to WORK
+    /// phases only — `effectiveHrRole` also reads `.observational` for every
+    /// warm-up, recovery and cooldown phase, simply because those never get
+    /// an `hrRole` at all (they carry no `hrTargetBpm` to grade against), and
+    /// their HR is not rep-kinetics-limited the way a 60s hill's is. Hiding
+    /// it there too would suppress a genuinely readable number for the wrong
+    /// reason — this only ever hides a WORK phase's number, never any other.
+    private var showHrThisPhase: Bool {
+        guard let phase = walk?.phase, phase.type == .work else { return true }
+        return phase.effectiveHrRole != .observational
     }
 
     // MARK: - Top row
@@ -875,7 +894,7 @@ struct LiveRunTreadmillV5: View {
                 statColumn(label: "PACE",
                            value: FaffValue.from(currentPaceText,
                                                  modelled: distanceIsModelled))
-                if let bpm = hr.currentBpm {
+                if let bpm = hr.currentBpm, showHrThisPhase {
                     statColumn(label: "HR",
                                value: FaffValue.from(FaffFmt.bpm(Double(bpm)),
                                                      modelled: false))
