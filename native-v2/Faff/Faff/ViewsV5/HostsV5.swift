@@ -113,14 +113,26 @@ final class DayFetchCoordinator {
     }
 }
 
-// MARK: - Directional panel transition (PANELMOTION-1)
+// MARK: - Directional panel transition (PANELMOTION-1, motion redone PANELMOTION-2)
 //
 // "Later date: old content moves slightly left and fades; earlier date: old
 // content moves slightly right and fades; new content enters from the
 // corresponding direction... same-date refresh: crossfade only." A plain
 // `.move(edge:)` slides a full frame width, which reads as a page changing,
-// not a date changing — this moves by a fixed, small offset instead, the
-// "8-16pt, not theatrical" the polish pass asked for.
+// not a date changing — this moves by a fixed offset instead.
+//
+// PANELMOTION-2 (2026-09-04) · the offset and curve are `V5.Motion
+// .dayTransition`/`dayTransitionOffset` now, not `fill`/12pt. David, live,
+// on the original: "not really tied to a transition, its not moves out and
+// back in." A flat `.easeInOut` decelerates identically on both ends, which
+// reads as a soft crossfade with a nudge attached, not a push — there is no
+// asymmetry in the curve to read as DIRECTION even though the offset itself
+// is directional. `.animation(_:)` is chained directly onto each half of
+// the transition below (not left to the ambient `.animation(value:)` at the
+// call site) so this transition always uses its own curve regardless of
+// what else is changing in the same transaction — the two are allowed to
+// diverge, but only for a since-argued reason (see `V5.Motion.dayTransition`
+// itself), not by accident of whatever value happened to trigger it.
 private struct PanelSlideModifier: ViewModifier {
     let offsetX: CGFloat
     let opacity: Double
@@ -134,18 +146,19 @@ private extension AnyTransition {
     /// exits toward leading) and -1 for an earlier one (reversed). A `sign`
     /// of 0 (no directional read yet — first render) degrades to a plain
     /// crossfade rather than guessing a direction nothing chose.
-    static func todayPanel(sign: Int, points: CGFloat = 12) -> AnyTransition {
+    static func todayPanel(sign: Int, points: CGFloat = V5.Motion.dayTransitionOffset) -> AnyTransition {
         guard sign != 0 else { return .opacity }
         let enter = points * CGFloat(sign)
+        let curve = V5.Motion.dayTransition
         return .asymmetric(
             insertion: .modifier(
                 active: PanelSlideModifier(offsetX: enter, opacity: 0),
                 identity: PanelSlideModifier(offsetX: 0, opacity: 1)
-            ),
+            ).animation(curve),
             removal: .modifier(
                 active: PanelSlideModifier(offsetX: -enter, opacity: 0),
                 identity: PanelSlideModifier(offsetX: 0, opacity: 1)
-            )
+            ).animation(curve)
         )
     }
 }

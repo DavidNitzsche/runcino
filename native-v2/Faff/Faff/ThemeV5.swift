@@ -165,6 +165,25 @@ extension Theme {
             /// Sheet slide-up: translateY 24 → 0 with opacity .4 → 1.
             static let sheet:  Animation = .timingCurve(0.2, 0.7, 0.3, 1, duration: 0.32)
             static let sheetOffset: CGFloat = 24
+            /// PANELMOTION-2 (2026-09-04) · the day-to-day panel slide.
+            /// `fill`'s flat `.easeInOut` decelerates symmetrically on both
+            /// ends, which reads as a soft crossfade with a nudge, not a
+            /// push — David, live: "not really tied to a transition, its
+            /// not moves out and back in." Steep initial slope, long
+            /// decelerating tail — the SAME shape `enter`'s own doc comment
+            /// names "the difference between elements that appear and
+            /// elements that arrive" — applied here instead of invented
+            /// fresh, so the week strip's `matchedGeometryEffect` morph and
+            /// this panel read as one connected mechanism, not two.
+            static let dayTransition: Animation = .timingCurve(0.16, 1, 0.3, 1, duration: 0.30)
+            /// How far the panel actually travels. `fill`'s old 12pt was
+            /// "8-16pt, not theatrical" — correct for a value-refresh nudge,
+            /// too subtle to read as a DIRECTIONAL push on a full-width
+            /// panel. Not full-frame-width either — `todayPanel`'s own doc
+            /// comment already ruled that out as reading like a page
+            /// changing rather than a date changing. This is the middle: big
+            /// enough to unmistakably read as a slide.
+            static let dayTransitionOffset: CGFloat = 32
         }
 
         // ───── Shadow ─────

@@ -452,6 +452,15 @@ enum V5 {
         /// Expand-in-place, the app's one picker interaction. Same curve as a
         /// sheet: a row opening is the same gesture at a smaller scale.
         static var expand: Animation? { reduced ? nil : Theme.V5.Motion.sheet }
+
+        /// PANELMOTION-2 · the day-to-day panel slide. See `Theme.V5.Motion
+        /// .dayTransition`'s own doc comment for why this replaced `fill`
+        /// here specifically.
+        static var dayTransition: Animation? { reduced ? nil : Theme.V5.Motion.dayTransition }
+
+        /// Zero under reduce-motion, same contract as `sheetOffset` — the
+        /// state still changes, it just does not travel to show it.
+        static var dayTransitionOffset: CGFloat { reduced ? 0 : Theme.V5.Motion.dayTransitionOffset }
     }
 
     // ═════════════════════════════════════════════════════════════════════
