@@ -72,7 +72,7 @@
 import type { WorkoutVerdict, GradedPhase } from '@/lib/execution/verdict';
 import { looksLikeStrideLabel } from '@/lib/training/expand-spec';
 import { sessionLadder } from '@/lib/training/execution-semantics';
-import { fmtPaceSlash } from '@/lib/format/run';
+import { fmtPace, fmtPaceSlash } from '@/lib/format/run';
 import type {
   ActivityEvidenceResult,
   CapacityEvidence,
@@ -783,31 +783,40 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       if (keyPhases.length > 0) {
         const key = keyPhases[0];
         const support = work.filter((p) => p !== key);
-        const keyLabel = key.label ?? 'the key block';
+        /* LESS-IS-MORE-1, 2026-09-05 · David's own correction, mid-review:
+         * "less is more... not a paragraph explaining every phase, source,
+         * comparison, and caveat." The prior version of this branch stacked
+         * pace + HR + a full restatement of the supporting phase into one
+         * summary — HR is already in the stats grid above (`MP heart rate`),
+         * so repeating it here was exactly the "don't repeat numbers already
+         * visible immediately above" rule broken. One headline, one
+         * supporting sentence — his own worked example: "Marathon work ran
+         * slow / 4 mi averaged 7:42/mi against a 7:09–7:19 window. Easy
+         * miles stayed controlled." */
+        const isMarathonPace = (key.label ?? '').toLowerCase().includes('marathon pace');
+        const keyWord = isMarathonPace ? 'Marathon work' : cap1(key.label ?? 'Key work');
+        const keyMi = key.actualDistanceMi != null
+          ? `${Number.isInteger(key.actualDistanceMi) ? key.actualDistanceMi : key.actualDistanceMi.toFixed(1)} mi`
+          : null;
         const keyActual = fmtPaceSlash(key.avgSecPerMi);
-        const keyTarget = fmtPaceSlash(key.targetSecPerMi);
-        const paceLine = keyActual && keyTarget
-          ? key.verdict === 'slow'
-            ? `averaged ${keyActual}, outside its ${keyTarget} window`
-            : key.verdict === 'fast'
-              ? `averaged ${keyActual}, ahead of its ${keyTarget} window`
-              : `averaged ${keyActual}, inside its ${keyTarget} window`
-          : 'was completed';
-        const hrLine = key.avgHr == null ? ''
-          : input.workHrCeilingBpm != null
-            ? ` HR averaged ${key.avgHr} bpm, ${key.avgHr <= input.workHrCeilingBpm ? 'under' : 'over'} the ${input.workHrCeilingBpm} bpm ceiling.`
-            : ` HR averaged ${key.avgHr} bpm.`;
-        const supportNames = support.map((p) => p.label).filter((l): l is string => !!l);
-        const supportLine = supportNames.length > 0
-          ? ` ${cap1(listWords(supportNames))} stayed within ${supportNames.length === 1 ? 'its' : 'their'} own ceiling.`
-          : '';
+        const windowLo = key.targetSecPerMi != null && key.toleranceSec != null
+          ? fmtPace(key.targetSecPerMi - key.toleranceSec) : null;
+        const windowHi = key.targetSecPerMi != null && key.toleranceSec != null
+          ? fmtPace(key.targetSecPerMi + key.toleranceSec) : null;
+        const windowText = windowLo && windowHi ? `${windowLo}–${windowHi} window` : null;
+        const paceLine = keyMi && keyActual && windowText
+          ? key.verdict === 'slow' ? `${keyMi} averaged ${keyActual} against a ${windowText}.`
+            : key.verdict === 'fast' ? `${keyMi} averaged ${keyActual}, ahead of the ${windowText}.`
+            : `${keyMi} averaged ${keyActual}, inside the ${windowText}.`
+          : `${keyWord} was completed.`;
+        const supportLine = support.length > 0 ? ' Easy miles stayed controlled.' : '';
         reasons.push('KEY_PHASE_NAMED');
         return {
           status: 'PARTIAL_PRODUCTIVE',
-          headline: key.verdict === 'slow' ? 'Structure completed, pace below target'
-            : key.verdict === 'fast' ? 'Structure completed, pace ahead of target'
-            : 'Structure completed',
-          summary: `${cap1(keyLabel)} ${paceLine}.${hrLine}${supportLine}${strideClause}`,
+          headline: key.verdict === 'slow' ? `${keyWord} ran slow`
+            : key.verdict === 'fast' ? `${keyWord} ran fast`
+            : `${keyWord} completed`,
+          summary: `${paceLine}${supportLine}${strideClause}`,
           intendedStimulus: stimulus,
           stimulusDelivered: 'PARTIAL',
           confidence: 'HIGH',

@@ -196,21 +196,18 @@ struct TodayAfterV5: View {
                  * support:
                  *
                  *   1. identity          → `panel` (above)
-                 *   2. activity stats    → `marathonPaceStatsGrid` when
-                 *      this session is a marathon-specific long run (the
-                 *      shape RunDetailV5's `activityStats` Shape 2 also
-                 *      special-cases), else `WorkoutResultFactsV5`.
-                 *      PARITY-1, 2026-09-04 · `routePhases` now carries
+                 *   2. activity stats    → `marathonPaceStatsGrid` for a
+                 *      marathon-specific long run, `repCompletionGrid` for
+                 *      a rep-style session (TODAY-PARITY-1, 2026-09-05 —
+                 *      completion count + rep range, the SAME Shape 1
+                 *      `RunDetailV5.activityStats` builds), else
+                 *      `WorkoutResultFactsV5`. `routePhases` carries
                  *      `label`/`pace_shape`/`target_pace`/`actual_pace`/
                  *      `avg_hr` (same five fields `PhaseBreakdown` always
-                 *      had), closing the wire gap this comment used to
-                 *      describe. STILL NOT PORTED: the rep-style Shape 1
-                 *      (completion count, rep range) — that needs a
-                 *      `completed` flag and a total rep count this wire
-                 *      still does not carry, and `workoutAnalysisSection`'s
-                 *      bar chart, deferred rather than rushed under this
-                 *      pass's timeline. `model.paceWork` remains the
-                 *      fallback for every other session shape.
+                 *      had). STILL NOT PORTED: `workoutAnalysisSection`'s
+                 *      bar chart, and a genuine per-phase `completed` flag
+                 *      (this wire has no way yet to know a rep was SKIPPED
+                 *      rather than simply not yet reported).
                  *   3. Coach's Read      → `PostRunVerdictV5`, the SAME
                  *      component, same `postRun` object as RunDetailV5 —
                  *      genuinely canonical, not a parallel implementation.
@@ -223,6 +220,8 @@ struct TodayAfterV5: View {
                  *   8. Secondary evidence → everything below.
                  */
                 if let grid = marathonPaceStatsGrid {
+                    SessionDetailsGridV5(scopeCaption: nil, metrics: grid)
+                } else if let grid = repCompletionGrid {
                     SessionDetailsGridV5(scopeCaption: nil, metrics: grid)
                 } else {
                     WorkoutResultFactsV5(workPaceText: model.paceWork)
@@ -1193,7 +1192,12 @@ struct TodayAfterV5: View {
                      // jog's target is a band the watch needed to draw
                      // something, not a real prescription, and a stride is
                      // never pace-graded at all (`pace_shape == "effort"`).
-                     askedPace: (p.type == "work" && p.paceShape != "effort") ? p.targetPace : nil,
+                     // PACE-CONTRACT-1 · shape-aware text, not the bare
+                     // number — see `RunDetailV5.repPieces`' own comment.
+                     askedPace: (p.type == "work" && p.paceShape != "effort")
+                        ? paceContractText(shape: p.paceShape, targetPaceSec: p.targetPaceSec,
+                                            tolerancePaceSec: p.tolerancePaceSec)
+                        : nil,
                      detail: "\(Units.formatDistance(miles: p.mi, decimals: 2)) \(Units.distanceLabel())",
                      // VERDICT-1 · the canonical word, from the same resolver
                      // run detail's phase panel reads — now the full
@@ -1240,9 +1244,62 @@ struct TodayAfterV5: View {
         let easy = marathonEasyPhase
         return [
             .init("MP distance", .measured(Units.formatDistance(miles: mp.mi, decimals: 1) + " " + Units.distanceLabel())),
-            .init("MP pace", .measured(mp.actualPace.map { "\($0)/mi" }), sub: mp.targetPace.map { "\($0)/mi" }),
-            .init("Easy pace", .measured(easy?.actualPace.map { "\($0)/mi" }), sub: easy?.targetPace.map { "\($0)/mi" }),
+            // PACE-CONTRACT-1 · shape-aware sub text — see `RunDetailV5
+            // .activityStats`' own comment for the same fix on the twin grid.
+            .init("MP pace", .measured(mp.actualPace.map { "\($0)/mi" }),
+                  sub: paceContractText(shape: mp.paceShape, targetPaceSec: mp.targetPaceSec,
+                                         tolerancePaceSec: mp.tolerancePaceSec)),
+            .init("Easy pace", .measured(easy?.actualPace.map { "\($0)/mi" }),
+                  sub: easy.flatMap { paceContractText(shape: $0.paceShape, targetPaceSec: $0.targetPaceSec,
+                                                        tolerancePaceSec: $0.tolerancePaceSec) }),
             .init("MP heart rate", .measured(mp.avgHr.map { "\($0) bpm" })),
+        ]
+    }
+
+    /// TODAY-PARITY-1, 2026-09-05 · `RunDetailV5.activityStats`' Shape 1
+    /// (rep-style completion/work-pace/rep-range), ported so Today does not
+    /// omit the defining result of an interval workout — David's own
+    /// standing: "Today can remain the concise version and Run Detail the
+    /// complete version, but Today cannot omit the defining result." Same
+    /// `structuredIdentityTypes` vocabulary `RunDetailV5.isRepStyleSession`
+    /// gates on, read here off `model.workoutType` instead of `type_display`
+    /// (the same string, different wire — both come from the one server-
+    /// side `displayTypeFor`/`workoutType` resolution, so the two screens
+    /// cannot classify a session differently).
+    private static let repStyleWorkoutTypes: Set<String> = [
+        "threshold", "interval", "intervals", "tempo", "vo2max", "vo2",
+    ]
+    private var isRepStyleSession: Bool {
+        guard let t = model.workoutType?.lowercased() else { return false }
+        return Self.repStyleWorkoutTypes.contains(t)
+    }
+    private var trueWorkReps: [V5RoutePhase] {
+        model.routePhases.filter { $0.type == "work" && $0.paceShape != "effort" }
+    }
+    private var repCompletionGrid: [SessionDetailsGridV5.Metric]? {
+        guard isRepStyleSession else { return nil }
+        let reps = trueWorkReps
+        guard reps.count >= 2 else { return nil }
+        // No per-phase `completed` flag on this wire yet (the genuinely
+        // open gap named in the handback) — every decoded rep is one the
+        // watch reported back, so "done" reads as the count actually
+        // present rather than a guess, same posture as `verdict == nil`
+        // reading as ungraded rather than as failed (Rule 11).
+        let done = reps.count
+        let repRange: String? = {
+            let secs = reps.compactMap { p -> Int? in
+                guard p.mi > 0, p.sec > 0 else { return nil }
+                return Int(Double(p.sec) / p.mi)
+            }
+            guard let lo = secs.min(), let hi = secs.max(), lo != hi,
+                  let loText = FaffFmt.pace(secPerMi: Double(lo)),
+                  let hiText = FaffFmt.pace(secPerMi: Double(hi)) else { return nil }
+            return "\(loText)-\(hiText)/mi"
+        }()
+        return [
+            .init("Completed", .measured("\(done) of \(reps.count)")),
+            .init("Work pace", .measured(model.paceWork.map { "\($0)/mi" })),
+            .init("Rep range", .measured(repRange)),
         ]
     }
 

@@ -90,6 +90,15 @@ interface WatchCompletionPhaseBody {
   timeInToleranceSec?: number | null;
   timeOutOfToleranceSec?: number | null;
   verdict?: string | null;
+  // PACE-PURPOSE-1 (2026-09-05) · echoed back from `WatchPhase.paceShape` /
+  // `.purpose` (`lib/watch/build-workout.ts`) when the wrist has them, so
+  // `gradeStoredPhases` (`lib/execution/verdict.ts`) can read the AUTHORED
+  // shape/purpose directly instead of falling back to the marathon-pace
+  // label regex. Declared here even though undeclared keys already survive
+  // to `runs.data.phases` verbatim (Rule 20 — a field worth reading deserves
+  // a type, not just a comment saying it's there).
+  paceShape?: string | null;
+  purpose?: string | null;
   repRpe?: number | null;
   repRpeTag?: string | null;
   // Treadmill-only extras (TreadmillView.buildPayload)

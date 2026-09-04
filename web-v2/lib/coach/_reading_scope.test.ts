@@ -44,7 +44,10 @@ describe('deriveReadingScopes · the 2026-08-11 tune-up', () => {
     // ran at.
     expect(r.hr.value).toBe(165);
     expect(r.hr.value).not.toBe(153);
-    expect(r.hr.note).toBe('across the 4 reps');
+    // LESS-IS-MORE-1, 2026-09-05 · "across the 4 reps" was named directly
+    // as clinical over-labelling; the scope note is now uniformly "on the
+    // work" (the count is visible elsewhere on the screen already).
+    expect(r.hr.note).toBe('on the work');
   });
 
   it('scopes cadence to the reps, away from the jogs that halve it', () => {
@@ -210,12 +213,18 @@ describe('deriveReadingScopes · refusing rather than falling back', () => {
   //
   // The real 2026-08-16 Americas Finest City half stores five work phases —
   // Point Loma Climb, The Drop, Mission Bay, and two more — and this
-  // function's default label called them "the 5 reps." A runner correctly
-  // read that as nonsense: a hill climb and a bay-front mile are not
-  // repetitions of the same thing, they are stages of one course. `workUnit`
-  // is the fix; this pins that a caller passing it changes the note without
-  // changing the scope, the value, or anything else in the read.
-  it('names a race\'s stages "segments" when the caller says so, and reps otherwise', () => {
+  // function's default label used to call them "the 5 reps," which a runner
+  // correctly read as nonsense: a hill climb and a bay-front mile are not
+  // repetitions of the same thing. The original fix was a `workUnit` param
+  // that let a caller say "segment" instead — LESS-IS-MORE-1 (2026-09-05)
+  // removed the count-and-word distinction entirely rather than getting it
+  // right per caller: "Heart rate, across the 5 segments" was named
+  // directly as its OWN over-labelling, so the note is now uniformly "on
+  // the work" for a race's course stages exactly as for a rep set. This
+  // test now pins that a race's own phases still resolve `scope`/`value`/
+  // `isRepSet` correctly — the mechanism `workUnit` protected — even though
+  // the note itself no longer distinguishes the two.
+  it('scopes a race\'s stages the SAME way it scopes reps — only the note used to differ, and no longer does', () => {
     const courseStages: ScopePhase[] = [
       { type: 'work', actual_duration_sec: 872, avg_hr: 163, avg_cadence: 168 },
       { type: 'work', actual_duration_sec: 1036, avg_hr: 167, avg_cadence: 165 },
@@ -223,26 +232,18 @@ describe('deriveReadingScopes · refusing rather than falling back', () => {
       { type: 'work', actual_duration_sec: 1400, avg_hr: 178, avg_cadence: 160 },
       { type: 'work', actual_duration_sec: 495, avg_hr: 181, avg_cadence: 164 },
     ];
-    const asReps = deriveReadingScopes({ phases: courseStages, wholeHrBpm: 170 });
-    expect(asReps.hr.note).toBe('across the 5 reps');
-
-    const asRace = deriveReadingScopes({
-      phases: courseStages, wholeHrBpm: 170, workUnit: 'segment',
-    });
-    expect(asRace.hr.note).toBe('across the 5 segments');
-    expect(asRace.cadence.note).toBe('across the 5 segments');
-    // The scope decision and the value are unaffected by the word choice —
-    // `workUnit` only ever touches `note`.
-    expect(asRace.hr.scope).toBe(asReps.hr.scope);
-    expect(asRace.hr.value).toBe(asReps.hr.value);
-    expect(asRace.isRepSet).toBe(asReps.isRepSet);
+    const r = deriveReadingScopes({ phases: courseStages, wholeHrBpm: 170 });
+    expect(r.hr.note).toBe('on the work');
+    expect(r.cadence.note).toBe('on the work');
+    expect(r.hr.scope).toBe('work');
+    expect(r.isRepSet).toBe(true);
   });
 
-  it('still says "on the work" for a single-segment race block, workUnit or not', () => {
+  it('still says "on the work" for a single-segment race block', () => {
     const oneStage: ScopePhase[] = [
       { type: 'work', actual_duration_sec: 1800, avg_hr: 165 },
     ];
-    const r = deriveReadingScopes({ phases: oneStage, workUnit: 'segment' });
+    const r = deriveReadingScopes({ phases: oneStage });
     expect(r.hr.note).toBe('on the work');
   });
 });

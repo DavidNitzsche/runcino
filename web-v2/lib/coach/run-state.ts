@@ -396,6 +396,12 @@ export interface RunDetail {
   // Workouts, Strava, manual) where we only have mile splits.
   phase_breakdown: PhaseBreakdown[];
 
+  /** RACE-HERO-1, 2026-09-05 · true when `matchedRace` resolved a `races`
+   *  row for this run — the same signal already proven for the run's
+   *  display name — so the client can give a race's finish time hero
+   *  treatment without inferring "is this a race" from prose. */
+  race_matched: boolean;
+
   has_route: boolean;
   route_polyline: string | null;  // Strava-encoded polyline if available
   splits: RunSplit[];
@@ -1426,17 +1432,19 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
       workCadenceSpm: workAvgs.cadenceAvg,
       wholePaceSPerMi: paceSPerMi,
       workPaceSPerMi: workAvgs.paceSPerMi,
-      // "Across the 5 reps" over the Americas Finest City half's five course
-      // segments (Point Loma Climb, The Drop, Mission Bay...) is not a typo
-      // of severity, it is a category error — a race's stages are not
-      // repetitions of one thing. First attempt at this fix compared
-      // `plannedRow?.type` against `'race'`, which is null on exactly the
-      // runs that need it: an unplanned or historical race has no matched
-      // `plan_workouts` row, so that check silently never fired for the AFC
-      // half itself. `matchedRace` (above) is the same signal already proven
-      // for this run's display name — reused, not re-derived.
-      workUnit: matchedRace != null ? 'segment' : undefined,
     }),
+
+    // RACE-HERO-1, 2026-09-05 · `matchedRace` (above) is the same signal
+    // already proven for this run's display name and for `workUnit`
+    // (removed with `LESS-IS-MORE-1`'s reading-scope simplification) —
+    // exposed here, genuinely, so the client can give a race's finish time
+    // hero treatment without inferring "is this a race" from prose. First
+    // attempt at the ORIGINAL fix this signal came from compared
+    // `plannedRow?.type` against `'race'`, which is null on exactly the
+    // runs that need it: an unplanned or historical race has no matched
+    // `plan_workouts` row, so that check silently never fired for the AFC
+    // half itself.
+    race_matched: matchedRace != null,
 
     has_route: Boolean(r.summaryPolyline || r.routePolyline || r.startLatLng),
     route_polyline: r.summaryPolyline ?? r.routePolyline ?? null,

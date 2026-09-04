@@ -119,6 +119,16 @@ export interface WatchPhase {
    *  execute them correctly; builds that know the flag can route them to a
    *  dedicated stride face. */
   isStrideSegment?: boolean;
+  /** PACE-PURPOSE-1 (2026-09-05) · the typed race-pace tag this phase was
+   *  authored from, serialised straight off `ExpandedPhase.purpose` (see its
+   *  own doc comment in `expand-spec.ts`) — 'marathon_pace' | 'half_marathon
+   *  _pace' | 'tempo_pace' | 'race_pace'. Optional on the wire, same
+   *  contract as isFinishSegment/isStrideSegment: absent on every phase this
+   *  is not a finish segment for, and on any payload built before this field
+   *  existed. Echoed back on `WatchCompletionPhase` when the wrist has it,
+   *  so grading can read it directly instead of falling back to the label
+   *  regex (`MP-EMBEDDED-1`, `lib/execution/verdict.ts`). */
+  purpose?: 'marathon_pace' | 'half_marathon_pace' | 'tempo_pace' | 'race_pace';
   /** 2026-06-09 Phase 2 (3.2) · one-line contingency label for this phase
    *  ("HR over 167 and climbing · finish easy, the stimulus is banked").
    *  Optional on the wire — old builds ignore it; new builds render it in
@@ -1927,6 +1937,17 @@ export async function buildWatchToday(
     // workout_spec drove the phase list · convert ExpandedPhase →
     // WatchPhase (same shape, just need to add haptic + repUnit + hrTargetBpm).
     for (const p of expanded) {
+      // PACE-PURPOSE-1 · a phase carrying a typed `purpose` (marathon pace,
+      // half-marathon pace, tempo pace, or race pace — `expand-spec.ts`'s
+      // `finishTagWords`) is a RACE-PACE PRESCRIPTION, never a ceiling, and
+      // says so explicitly rather than letting `paceShapeFor`'s type+class
+      // fallback guess from `p.type === 'work'` + the session's OWN class
+      // (which for a `long` session's easy-plus-finish shape would grade the
+      // finish segment as a ceiling the same way the embedded phase this
+      // whole fix exists for was). `p.tolerancePaceSPerMi` is used as
+      // authored (expand-spec.ts already sized it for a finish segment,
+      // e.g. never looser than the tempo width) rather than recomputed here.
+      const isRacePacePurpose = p.purpose != null;
       phases.push({
         type: p.type,
         label: p.label,
@@ -1935,11 +1956,13 @@ export async function buildWatchToday(
         // PACE-SHAPE-1 · the tolerance and the shape come from ONE owner, and
         // they are asked the same question with the same arguments, so they
         // cannot disagree about whether this phase is pace-graded at all.
-        tolerancePaceSPerMi: phaseToleranceSec(p.type, sessionClass, {
-          hasTarget: p.targetPaceSPerMi != null && p.targetPaceSPerMi > 0,
-          byEffort: p.isStrideSegment === true,
-        }),
-        paceShape: paceShapeFor(p.type, sessionClass, {
+        tolerancePaceSPerMi: isRacePacePurpose
+          ? p.tolerancePaceSPerMi ?? phaseToleranceSec('work', 'threshold', { hasTarget: true })
+          : phaseToleranceSec(p.type, sessionClass, {
+              hasTarget: p.targetPaceSPerMi != null && p.targetPaceSPerMi > 0,
+              byEffort: p.isStrideSegment === true,
+            }),
+        paceShape: isRacePacePurpose ? 'window' : paceShapeFor(p.type, sessionClass, {
           hasTarget: p.targetPaceSPerMi != null && p.targetPaceSPerMi > 0,
           byEffort: p.isStrideSegment === true,
         }),
@@ -1954,6 +1977,7 @@ export async function buildWatchToday(
         // (JSON.stringify drops undefined) — keeps the optional-field contract.
         isFinishSegment: p.isFinishSegment ? true : undefined,
         isStrideSegment: p.isStrideSegment ? true : undefined,
+        purpose: p.purpose,
       });
     }
   } else {

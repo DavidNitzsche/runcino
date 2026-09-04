@@ -207,10 +207,19 @@ struct AppBar: View {
                         .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(V5.textQuiet)
                 }
+                // TITLE-SIZE-1, 2026-09-05 · "reduce the giant all-caps
+                // workout titles — strong, not dominating half the screen."
+                // A structured identity ("MARATHON-SPECIFIC LONG RUN") is
+                // the longest string this ever carries and was the one that
+                // wrapped to two lines at full weight; one step down in
+                // size and tracking keeps it legible and strong without the
+                // shout. `lineSpacing` added for the same reason — two
+                // uppercase lines with no spacing read as a wall.
                 Text(title)
-                    .font(.faffDisplay(20))
+                    .font(.faffDisplay(18))
                     .textCase(.uppercase)
-                    .tracking(20 * 0.02)
+                    .tracking(18 * 0.015)
+                    .lineSpacing(2)
                     .foregroundStyle(V5.textPrimary)
                 if let subtitle {
                     Text(subtitle)

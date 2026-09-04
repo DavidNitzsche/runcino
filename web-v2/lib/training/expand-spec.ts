@@ -62,6 +62,39 @@ export interface ExpandedPhase {
    *  contract as isFinishSegment: a client that has never heard of strides
    *  sees ordinary short work phases and runs them correctly. */
   isStrideSegment?: boolean;
+  /**
+   * PACE-PURPOSE-1 (2026-09-05) · the TYPED tag this phase's finish/segment
+   * pace was authored from (`finish_label` / `finish_segments[].label`,
+   * `'M' | 'HM' | 'T'`), carried through as structured data rather than
+   * left to survive only inside the prose `label` string.
+   *
+   * WHY THIS EXISTS: `MP-EMBEDDED-1` (`lib/execution/verdict.ts`) detected a
+   * marathon-pace phase embedded in a long run by REGEXING its display
+   * label — a real fix for a real defect (a ceiling-graded marathon-pace
+   * phase could never fail for being slow), but David's own correction:
+   * "the marathon-phase label regex is acceptable only as a backwards-
+   * compatibility fallback... newly authored workouts must explicitly carry
+   * phase purpose and paceShape." This field is that explicit carrier — set
+   * from the SAME tag `paceWord` below reads, by the same mapper, so label
+   * text and `purpose` can never disagree (Rule 16). Absent on every phase
+   * that isn't a finish/race-pace segment, and on any spec authored before
+   * this field existed — those keep working through the label-regex
+   * fallback, which stays in `verdict.ts` for exactly that population.
+   */
+  purpose?: 'marathon_pace' | 'half_marathon_pace' | 'tempo_pace' | 'race_pace';
+}
+
+/** ONE mapper for a finish tag → both its prose word and its typed purpose,
+ *  so the two can never drift apart (Rule 16). `'M' | 'HM' | 'T'` are the
+ *  only tags `spec-builder.ts`'s `extractFinishSegment`/`extractLongSegments`
+ *  emit; anything else authored later falls to the generic race-pace case. */
+function finishTagWords(tag: string): { paceWord: string; purpose: ExpandedPhase['purpose'] } {
+  switch (tag) {
+    case 'M':  return { paceWord: 'marathon pace', purpose: 'marathon_pace' };
+    case 'HM': return { paceWord: 'half marathon pace', purpose: 'half_marathon_pace' };
+    case 'T':  return { paceWord: 'tempo pace', purpose: 'tempo_pace' };
+    default:   return { paceWord: tag ? `${tag} pace` : 'race pace', purpose: 'race_pace' };
+  }
 }
 
 export interface ExpandSpecInput {
@@ -661,11 +694,6 @@ function expandLong(
     const recoveryTotal = segs.reduce((a, seg) => a + seg.recoveryMi, 0);
     if (segs.length >= 2 && segTotal > 0 && segTotal + recoveryTotal < totalMi) {
       const bulkMi = Number((totalMi - segTotal - recoveryTotal).toFixed(1));
-      const paceWord = (label: string) =>
-        label === 'M' ? 'marathon pace'
-        : label === 'HM' ? 'half marathon pace'
-        : label === 'T' ? 'threshold pace'
-        : label ? `${label} pace` : 'race pace';
       const phases: ExpandedPhase[] = [{
         type: 'work',
         label: `${bulkMi.toFixed(1)} mi easy`,
@@ -675,15 +703,17 @@ function expandLong(
         tolerancePaceSPerMi: easyTol,
       }];
       for (const seg of segs) {
+        const { paceWord, purpose } = finishTagWords(seg.label);
         phases.push({
           type: 'work',
-          label: `${seg.mi.toFixed(1)} mi @ ${paceWord(seg.label)}`,
+          label: `${seg.mi.toFixed(1)} mi @ ${paceWord}`,
           distanceMi: Number(seg.mi.toFixed(1)),
           durationSec: Math.round(seg.mi * seg.pace),
           targetPaceSPerMi: seg.pace,
           tolerancePaceSPerMi: 12,
           paceRangeSPerMi: seg.range,
           isFinishSegment: true,
+          purpose,
         });
         // SEGLONG-1 · the gap that makes a segmented long run segmented.
         //
@@ -717,10 +747,7 @@ function expandLong(
   if (finishMi > 0 && finishPace > 0 && finishMi < totalMi) {
     const easyMi = Number((totalMi - finishMi).toFixed(1));
     const finishLabel = String(s.finish_label ?? '').trim();
-    const finishPaceLabel = finishLabel === 'M' ? 'marathon pace'
-      : finishLabel === 'HM' ? 'half marathon pace'
-      : finishLabel === 'T' ? 'tempo pace'
-      : finishLabel ? `${finishLabel} pace` : 'race pace';
+    const { paceWord: finishPaceLabel, purpose: finishPurpose } = finishTagWords(finishLabel);
     const finishTag = `@ ${finishPaceLabel}`;
     return [
       {
@@ -742,6 +769,7 @@ function expandLong(
         // build (never looser than 12 s/mi, the tempo tolerance).
         tolerancePaceSPerMi: easyTol != null ? Math.min(easyTol, 12) : 12,
         isFinishSegment: true,
+        purpose: finishPurpose,
       },
     ];
   }

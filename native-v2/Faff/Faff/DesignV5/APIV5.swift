@@ -221,6 +221,14 @@ struct V5RoutePhase: Decodable, Equatable {
     let targetPace: String?
     let actualPace: String?
     let avgHr: Int?
+    /// PACE-CONTRACT-1, 2026-09-05 · raw seconds beside `targetPace`'s
+    /// pre-formatted string — the same pair `PhaseBreakdown.target_pace_sec`
+    /// / `.tolerance_pace_sec` carries — needed so `paceContractText` can
+    /// compute a WINDOW phase's actual range rather than relabelling the
+    /// bare target. Nil on a payload from before this field existed; every
+    /// caller already falls back to the bare-target text in that case.
+    let targetPaceSec: Double?
+    let tolerancePaceSec: Double?
 
     enum K: String, CodingKey {
         case mi, sec, type, verdict
@@ -230,6 +238,8 @@ struct V5RoutePhase: Decodable, Equatable {
         case targetPace = "target_pace"
         case actualPace = "actual_pace"
         case avgHr = "avg_hr"
+        case targetPaceSec = "target_pace_sec"
+        case tolerancePaceSec = "tolerance_pace_sec"
     }
 
     init(from decoder: Decoder) throws {
@@ -244,15 +254,19 @@ struct V5RoutePhase: Decodable, Equatable {
         targetPace = try c.decodeIfPresent(String.self, forKey: .targetPace)
         actualPace = try c.decodeIfPresent(String.self, forKey: .actualPace)
         avgHr = try c.decodeIfPresent(Int.self, forKey: .avgHr)
+        targetPaceSec = try c.decodeIfPresent(Double.self, forKey: .targetPaceSec)
+        tolerancePaceSec = try c.decodeIfPresent(Double.self, forKey: .tolerancePaceSec)
     }
 
     init(mi: Double, sec: Int, type: String?, verdict: String? = nil, statusLabel: String? = nil,
          label: String? = nil, paceShape: String? = nil, targetPace: String? = nil,
-         actualPace: String? = nil, avgHr: Int? = nil) {
+         actualPace: String? = nil, avgHr: Int? = nil, targetPaceSec: Double? = nil,
+         tolerancePaceSec: Double? = nil) {
         self.mi = mi; self.sec = sec; self.type = type
         self.verdict = verdict; self.statusLabel = statusLabel
         self.label = label; self.paceShape = paceShape
         self.targetPace = targetPace; self.actualPace = actualPace; self.avgHr = avgHr
+        self.targetPaceSec = targetPaceSec; self.tolerancePaceSec = tolerancePaceSec
     }
 }
 

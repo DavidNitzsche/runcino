@@ -149,6 +149,12 @@ export interface ReadingScopes {
    *  the two booleans above are derived from, exported so renderers can order
    *  their sections by it without re-deriving. */
   isRepSet: boolean;
+  /** WORK-COUNT-1, 2026-09-05 · the count `isRepSet` and `workLabel`'s
+   *  (now-uniform) note were both derived from — strides already excluded
+   *  (`isStride`). Structured, not re-parsed out of `note`'s prose: a
+   *  caller that genuinely needs the number (a renderer, a test) reads
+   *  this rather than the label text, which no longer carries it. */
+  workCount: number;
 }
 
 /**
@@ -224,10 +230,19 @@ export function medianWorkDurationSec(phases: ScopePhase[]): number | null {
  * same thing. `races` rows are unambiguous, so a caller that knows this run
  * IS one may say so.
  */
-function workLabel(n: number, unit: string = 'rep'): string {
-  if (n === 1) return 'on the work';
-  if (n === 2) return `across both ${unit}s`;
-  return `across the ${n} ${unit}s`;
+/* LESS-IS-MORE-1, 2026-09-05 · "Heart rate, across the 5 segments" was named
+ * directly as an example of clinical over-labelling, and it was ALSO the
+ * whole reason the `workUnit` parameter existed (`unit` below, since
+ * removed from `ReadingScopeInput` along with it) — distinguishing "reps"
+ * from a race's own "segments" only mattered because the note spelled the
+ * count out. The count is already visible elsewhere on the screen (the
+ * segment list, "4 of 4 completed"); this label's only remaining job is to
+ * say the number is scoped to the work, not the whole run, and "on the
+ * work" says that for one rep or ten without reciting the count — or
+ * relitigating rep-vs-segment, which the page already states correctly
+ * where it matters — a second time. */
+function workLabel(_n: number): string {
+  return 'on the work';
 }
 
 export interface ReadingScopeInput {
@@ -246,14 +261,6 @@ export interface ReadingScopeInput {
   wholePaceSPerMi?: number | null;
   /** Work-only average pace (`RunDetail.pace_work_s_per_mi`). */
   workPaceSPerMi?: number | null;
-  /**
-   * The plain-English singular for one work phase, when the caller knows
-   * something more honest than "rep" — "segment" for a race's course
-   * segments, chiefly. Undefined keeps the existing "rep" default, which is
-   * the right answer for the structure-only majority of this runner's
-   * history (see the file header for why type cannot be the general key).
-   */
-  workUnit?: string;
 }
 
 /**
@@ -289,6 +296,7 @@ export function deriveReadingScopes(input: ReadingScopeInput): ReadingScopes {
       splitsMeaningful: true,
       zoneBarMeaningful: true,
       isRepSet: false,
+      workCount: 0,
     };
   }
 
@@ -314,13 +322,13 @@ export function deriveReadingScopes(input: ReadingScopeInput): ReadingScopes {
         if (v == null) {
           return { scope: 'none' as const, value: null, note: null };
         }
-        return { scope: 'work' as const, value: v, note: workLabel(work.length, input.workUnit) };
+        return { scope: 'work' as const, value: v, note: workLabel(work.length) };
       })();
 
   const cadence: ScopedReading = (() => {
     const v = input.workCadenceSpm ?? weightedMean(work, (p) => p.avg_cadence);
     if (v == null) return { scope: 'none' as const, value: null, note: null };
-    return { scope: 'work' as const, value: v, note: workLabel(work.length, input.workUnit) };
+    return { scope: 'work' as const, value: v, note: workLabel(work.length) };
   })();
 
   // PACE FALLS BACK RATHER THAN REFUSING. If the work phases carried no pace
@@ -330,7 +338,7 @@ export function deriveReadingScopes(input: ReadingScopeInput): ReadingScopes {
   const pace: ScopedReading = (() => {
     const w = input.workPaceSPerMi;
     if (w != null && Number.isFinite(w) && w > 0) {
-      return { scope: 'work' as const, value: Math.round(w), note: workLabel(work.length, input.workUnit) };
+      return { scope: 'work' as const, value: Math.round(w), note: workLabel(work.length) };
     }
     return { scope: 'whole' as const, value: input.wholePaceSPerMi ?? null, note: null };
   })();
@@ -342,5 +350,6 @@ export function deriveReadingScopes(input: ReadingScopeInput): ReadingScopes {
     splitsMeaningful: !isRepSet,
     zoneBarMeaningful: !isRepSet,
     isRepSet,
+    workCount: work.length,
   };
 }

@@ -272,6 +272,57 @@ describe('MP-EMBEDDED-1 · a marathon-pace-labelled phase in a long run grades a
   });
 });
 
+/* ══ PACE-PURPOSE-1 gate ══ a NEWLY authored marathon-pace phase does not
+ * need its label to grade as a window.
+ *
+ * The label regex (`looksLikeMarathonPaceLabel`) is a FALLBACK for historical
+ * records with no typed shape data — David's own correction: "the marathon-
+ * phase label regex is acceptable only as a backwards-compatibility fallback
+ * for old stored workouts... newly authored workouts must explicitly carry
+ * phase purpose and paceShape." The propagation this gate proves:
+ * `spec-builder.ts`'s typed `finish_label` ('M'/'HM'/'T') → `expand-spec.ts`'s
+ * `ExpandedPhase.purpose` → `build-workout.ts` sets `paceShape: 'window'` on
+ * the OUTGOING `WatchPhase` (never `paceShapeFor`'s ceiling default) →
+ * `WatchCompletionPhase.paceShape` echoes it back (STRIDE-RT-1's own
+ * round-trip pattern) → `runs.data.phases[].paceShape` carries it verbatim
+ * (the ingest route stores `body.phases` unchanged) → `gradeStoredPhases`
+ * reads `wireShape` FIRST, before it would ever reach the label regex.
+ */
+describe('PACE-PURPOSE-1 gate · a new workout does not depend on its label for window grading', () => {
+  it('an explicit paceShape grades as a window even when the label says nothing about marathon pace', () => {
+    // Simulates the wire a NEWLY authored + watch-completed run produces —
+    // `build-workout.ts` set `paceShape: 'window'` from the typed
+    // `purpose`, and the watch echoed it back untouched. The label is
+    // deliberately renamed to prove detection never touched it.
+    const graded = gradeStoredPhases([
+      { index: 0, type: 'work', label: 'Race-pace effort block', completed: true,
+        paceShape: 'window', purpose: 'marathon_pace',
+        targetPaceSPerMi: 434, actualPaceSPerMi: 462 },
+    ], 'long', {}).phases;
+    expect(looksLikeMarathonPaceLabel('Race-pace effort block')).toBe(false);
+    expect(graded[0].shape).toBe('window');
+    expect(graded[0].verdict).toBe('slow');
+  });
+
+  it('the SAME renamed label, with NO typed shape at all, falls back to a ceiling — proving the label regex is a fallback, not a requirement, and cannot rescue an untyped historical row it does not recognise', () => {
+    const graded = gradeStoredPhases([
+      { index: 0, type: 'work', label: 'Race-pace effort block', completed: true,
+        targetPaceSPerMi: 434, actualPaceSPerMi: 462 },
+    ], 'long', {}).phases;
+    expect(graded[0].shape).toBe('ceiling');
+    expect(graded[0].verdict).toBe('hit'); // never fails for slow — the exact defect this whole fix exists to prevent, still live for an UNTYPED, unrecognised-label historical row
+  });
+
+  it('a historical row (no paceShape) that DOES carry the marathon-pace label still grades correctly via the fallback', () => {
+    const graded = gradeStoredPhases([
+      { index: 0, type: 'work', label: '4.0 mi @ marathon pace', completed: true,
+        targetPaceSPerMi: 434, actualPaceSPerMi: 462 },
+    ], 'long', {}).phases;
+    expect(graded[0].shape).toBe('window');
+    expect(graded[0].verdict).toBe('slow');
+  });
+});
+
 /* ═════════════ 6 · the five real-shaped examples, named verdicts ═══════════ */
 
 describe('the five real-shaped examples · plain-language verdict beside each', () => {

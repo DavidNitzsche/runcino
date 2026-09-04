@@ -1631,6 +1631,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                     target_pace: fmtPaceShared(gp.targetSecPerMi),
                     actual_pace: fmtPaceShared(gp.avgSecPerMi),
                     avg_hr: gp.avgHr,
+                    // PACE-CONTRACT-1, 2026-09-05 · raw seconds, alongside the
+                    // pre-formatted string above — same two fields
+                    // `PhaseBreakdown` (run detail's own wire type) has always
+                    // carried, needed so `paceContractText` can compute a
+                    // WINDOW's actual range (target ± tolerance) rather than
+                    // just relabelling the bare target.
+                    target_pace_sec: gp.targetSecPerMi,
+                    tolerance_pace_sec: gp.toleranceSec,
                   }]
                 : [];
             }),

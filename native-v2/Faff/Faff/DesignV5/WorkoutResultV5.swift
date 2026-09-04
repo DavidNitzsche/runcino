@@ -86,9 +86,14 @@ struct SessionDetailsGridV5: View {
         let id: String
         let label: String
         let value: FaffValue
-        /// "asked 9:15" — the target this reading is judged against, when
-        /// the caller has an honest one. Same role `RunDetailV5.stat()`'s
-        /// `asked` parameter played before this grid replaced it.
+        /// PACE-CONTRACT-1, 2026-09-05 · the full, shape-aware contract text
+        /// for what this reading was judged against — "No faster than
+        /// 8:00/mi", "7:09–7:19/mi window" — pre-composed by the caller
+        /// (`paceContractText`, `RepBreakdownV5.swift`) and printed
+        /// verbatim. No longer auto-prefixed with "asked": that word made a
+        /// ceiling's one-sided bound and a window's own displayed RANGE
+        /// both read as "the point you were supposed to hit", which is
+        /// only true for the window case.
         var sub: String? = nil
         init(_ label: String, _ value: FaffValue, sub: String? = nil) {
             self.id = label; self.label = label; self.value = value; self.sub = sub
@@ -121,10 +126,9 @@ struct SessionDetailsGridV5: View {
                             FaffValueText(m.value, font: .faffText(TypeScaleV5.body15, weight: .medium),
                                           color: V5.textPrimary)
                             if let sub = m.sub {
-                                Text("asked \(sub)")
+                                Text(sub)
                                     .font(.faffText(TypeScaleV5.label12))
                                     .foregroundStyle(V5.textQuiet)
-                                    .accessibilityLabel("asked estimated \(sub) per mile")
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

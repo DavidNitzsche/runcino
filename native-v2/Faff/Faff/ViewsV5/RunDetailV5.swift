@@ -260,6 +260,10 @@ struct RunDetailV5: View {
                         PostRunLearnedV5(model: pr, includes: .capture)
                     }
 
+                    // RACE-HERO-1 · the finish time, standalone and large,
+                    // above everything else — nothing draws for a non-race.
+                    raceFinishHero
+
                     // §2 · ACTIVITY-SPECIFIC RESULT STATISTICS. Three shapes
                     // — rep-style, marathon-pace long run, or the existing
                     // generic grid — see `activityStats`'s own header.
@@ -393,34 +397,33 @@ struct RunDetailV5: View {
         return name.contains(" @ ")
     }
 
-    /// IDENTITY-1, 2026-09-04 · "Little adventure today" is a real, personal
-    /// name — it passes every check `title` runs below — but printing it
-    /// alone as the 20pt title hides that this was a marathon-specific long
-    /// run (10 mi easy into 4 mi at marathon pace), which is the fact a
-    /// runner scanning their history actually needs. Distinct from
-    /// `structuredIdentity`: that composes a title FROM the rep data for
-    /// threshold/interval-shaped sessions; this only fires for the long-run
-    /// shape `marathonPacePhase` already detects, and it does not replace
-    /// the personal name — it demotes it to `titleSubtitle`, the way a race
-    /// keeps its real name primary and this keeps the runner's own words
-    /// too, just not load-bearing for "what was this session."
+    /// IDENTITY-1, 2026-09-04, revised LESS-IS-MORE-1 (2026-09-05) ·
+    /// "Little adventure today" is a real, personal name, but it says
+    /// nothing about what this session WAS — a marathon-specific long run
+    /// (10 mi easy into 4 mi at marathon pace) — which is the fact a runner
+    /// scanning their history actually needs. First cut kept the personal
+    /// name as a demoted `AppBar` subtitle; David's own direct correction —
+    /// "remove filler such as 'Little adventure today' unless it is real,
+    /// useful coaching language" — drops it outright rather than keeping it
+    /// small. A run whose OWN structure had to be computed to be nameable
+    /// is, by construction, a run whose personal name was not carrying that
+    /// information; there is nothing left for the subtitle slot to earn its
+    /// place with. Distinct from `structuredIdentity`: that composes a
+    /// title FROM the rep data for threshold/interval-shaped sessions; this
+    /// only fires for the long-run shape `marathonPacePhase` detects.
     private var marathonLongRunIdentity: String? {
         marathonPacePhase != nil ? "Marathon-specific long run" : nil
     }
 
-    /// The personal name, when `title` demoted it to a subtitle. Nil for
-    /// every other case — a generic or serialized name already falls
-    /// through to a structured title with nothing personal left to keep,
-    /// and an ordinary run keeps its own name as the title, not a subtitle.
-    var titleSubtitle: String? {
-        guard let name = detail.name?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !name.isEmpty, !Self.genericNames.contains(name.lowercased()),
-              !nameIsSerializedRecord, marathonLongRunIdentity != nil else { return nil }
-        return name
-    }
+    /// No longer populated (LESS-IS-MORE-1) — the personal name this used
+    /// to demote to a subtitle is dropped outright when a structured
+    /// identity is available, not kept small. `AppBar`'s `subtitle` slot
+    /// itself stays (other call sites may use it); this screen simply has
+    /// nothing left to pass it for a marathon-specific long run.
+    var titleSubtitle: String? { nil }
 
     var title: String {
-        if let marathonIdentity = marathonLongRunIdentity, titleSubtitle != nil {
+        if let marathonIdentity = marathonLongRunIdentity {
             return marathonIdentity
         }
         if let name = detail.name?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -743,9 +746,23 @@ struct RunDetailV5: View {
     /// in a list of one is a section that says nothing. The tolerance line
     /// below still draws, because that is a fact the poster does not hold.
     var repPieces: [RepPiece] {
-        guard phases.count > 1 else { return [] }
+        // STRIDE-DEDUP-1 (2026-09-05) · a stride does not repeat here.
+        //
+        // `PostRunLearnedV5(.strides)` already draws every stride, a few
+        // groups below this one, with its own dedicated summary line — see
+        // "Strides are part of the session, drawn with it" at its call site.
+        // Before this filter, a stride day rendered all six strides a THIRD
+        // time here, in the exact per-rep numbers `workoutAnalysisSection`
+        // had just drawn as bars two groups up: three lists, one set of
+        // paces, the repetition Rule 17 exists to catch. `repSectionTitle`
+        // already excludes `pace_shape == "effort"` phases when deciding
+        // whether to call this "Rep by rep" — this makes the LIST agree with
+        // that decision instead of counting strides out of the name while
+        // still printing them in the body.
+        let nonStride = phases.filter { $0.pace_shape != "effort" }
+        guard nonStride.count > 1 else { return [] }
         let chosen = chosenSkipPhaseIndices
-        return phases.map { p in
+        return nonStride.map { p in
             let isChosenSkip = chosen.contains(p.index)
             return RepPiece(
                 id: p.index,
@@ -785,7 +802,14 @@ struct RunDetailV5: View {
                 // `paceShapeFor` returns `effort` for `byEffort` and for
                 // nothing else. It is the same field `repSectionTitle` already
                 // reads one screen up to keep a stride from being counted a rep.
-                askedPace: (p.type == "work" && p.pace_shape != "effort") ? p.target_pace : nil,
+                // PACE-CONTRACT-1 · shape-aware text ("No faster than
+                // 8:00/mi", "7:09–7:19/mi window"), not the bare number —
+                // still nil for a recovery jog's borrowed easy-pace target
+                // and for a stride's effort grade, per the reasoning above.
+                askedPace: (p.type == "work" && p.pace_shape != "effort")
+                    ? paceContractText(shape: p.pace_shape, targetPaceSec: p.target_pace_sec,
+                                        tolerancePaceSec: p.tolerance_pace_sec)
+                    : nil,
                 detail: Self.pieceDetail(p),
                 verdictPhrase: isChosenSkip ? nil : Self.verdictPhrase(p),
                 chosen: isChosenSkip,
@@ -1099,14 +1123,20 @@ struct RunDetailV5: View {
                 .init("Total distance", .measured(FaffFmt.milesUnit(detail.distance_mi))),
                 .init("Total time", .measured(detail.time_moving ?? detail.time_elapsed)),
                 .init("MP distance", .measured(FaffFmt.milesUnit(mp.actual_distance_mi))),
-                // `SessionDetailsGridV5.Metric` already renders its `sub` as
-                // "asked \(sub)" — see that type's own doc comment. Passing
-                // "asked 7:14/mi" here doubled the word, "asked asked
-                // 7:14/mi", caught directly against this render.
+                // PACE-CONTRACT-1 · the MP phase is WINDOW-shaped (MP-
+                // EMBEDDED-1 in verdict.ts) so its sub is the real range —
+                // "7:09–7:19/mi window" — not the bare target, which read as
+                // a single point to hit and made 7:42 look like a miss of
+                // "7:14" specifically rather than of a band around it.
                 .init("MP pace", .measured(mp.actual_pace.map { "\($0)/mi" }),
-                      sub: mp.target_pace.map { "\($0)/mi" }),
+                      sub: paceContractText(shape: mp.pace_shape, targetPaceSec: mp.target_pace_sec,
+                                             tolerancePaceSec: mp.tolerance_pace_sec)),
+                // The easy phase is CEILING-shaped, so its sub states the
+                // one edge that matters — "No faster than 8:00/mi" — rather
+                // than a bare number that reads as a target to hit exactly.
                 .init("Easy pace", .measured(easy?.actual_pace.map { "\($0)/mi" }),
-                      sub: easy?.target_pace.map { "\($0)/mi" }),
+                      sub: easy.flatMap { paceContractText(shape: $0.pace_shape, targetPaceSec: $0.target_pace_sec,
+                                                            tolerancePaceSec: $0.tolerance_pace_sec) }),
                 .init("MP heart rate", .measured(mp.avg_hr.map { "\($0) bpm" })),
             ]
         }
@@ -1128,15 +1158,42 @@ struct RunDetailV5: View {
     /// that needs to say what it covers still can, without implicating
     /// rows next to it that do not share that scope.
     private var sessionDetailMetrics: [SessionDetailsGridV5.Metric] {
-        var out: [SessionDetailsGridV5.Metric] = [
-            .init("Distance", .measured(FaffFmt.milesUnit(detail.distance_mi))),
-            .init("Time", .measured(detail.time_moving ?? detail.time_elapsed)),
-            .init("Pace", .measured(detail.pace.map { "\($0)/mi" }), sub: askedPaceText),
-        ]
+        // RACE-HERO-1 · Time already leads the page as the finish-time hero
+        // (`raceFinishHero`, drawn above this grid) — Rule 17: never state
+        // the same number twice on one screen, so the grid drops it here.
+        var out: [SessionDetailsGridV5.Metric] = detail.race_matched
+            ? [.init("Distance", .measured(FaffFmt.milesUnit(detail.distance_mi))),
+               .init("Pace", .measured(detail.pace.map { "\($0)/mi" }), sub: askedPaceText)]
+            : [.init("Distance", .measured(FaffFmt.milesUnit(detail.distance_mi))),
+               .init("Time", .measured(detail.time_moving ?? detail.time_elapsed)),
+               .init("Pace", .measured(detail.pace.map { "\($0)/mi" }), sub: askedPaceText)]
         for (label, value) in readingRows {
             out.append(.init(label, value))
         }
         return out
+    }
+
+    /// RACE-HERO-1, 2026-09-05 · "Give race results an unmistakable primary
+    /// finish-time presentation. Race time should be the hero number." —
+    /// a large standalone display above the compact grid, gated on the
+    /// genuine `race_matched` signal (not inferred from the title or the
+    /// Coach's Read's own race-language branch). Nil for every non-race
+    /// run, so this view draws nothing and the grid's own "Time" row
+    /// carries the number as it always has.
+    @ViewBuilder
+    private var raceFinishHero: some View {
+        if detail.race_matched, let finish = detail.time_moving ?? detail.time_elapsed {
+            VStack(alignment: .leading, spacing: V5.S.s2) {
+                Text("FINISH TIME")
+                    .font(.faffText(TypeScaleV5.label12, weight: .semibold))
+                    .foregroundStyle(V5.textQuiet)
+                    .tracking(0.4)
+                Text(finish)
+                    .font(.faffDisplay(52))
+                    .foregroundStyle(V5.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     // MARK: - Splits

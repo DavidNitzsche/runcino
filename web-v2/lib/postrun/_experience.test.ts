@@ -498,23 +498,20 @@ describe('PORTIONS-1 · a marathon-specific long run reads as two portions, neve
     // (`gradeCeilingPhase` has no `slow` verdict) — as if it were a missed
     // target. The real miss was always the marathon-pace phase, graded
     // against its own ±5 s/mi window (`Research/01`'s M row).
-    expect(out.execution.headline).toBe('Structure completed, pace below target');
+    //
+    // LESS-IS-MORE-1, 2026-09-05 · David's own correction on the FIRST
+    // version of this sentence: "not a paragraph explaining every phase,
+    // source, comparison, and caveat." One short headline naming the real
+    // phase, one supporting sentence with the actual window (not a bare
+    // target — a runner cannot judge "outside 7:14" without knowing how
+    // wide 7:14 was allowed to be), HR dropped from the prose entirely
+    // (already in the stats grid above — Rule 17, never say a number twice).
+    expect(out.execution.headline).toBe('Marathon work ran slow');
     expect(out.execution.headline).not.toMatch(/executed/i);
-    expect(out.execution.summary).toMatch(/4\.0 mi @ marathon pace averaged 7:42\/mi, outside its 7:14\/mi window/);
+    expect(out.execution.headline).not.toMatch(/structure completed/i);
+    expect(out.execution.summary).toBe('4 mi averaged 7:42/mi against a 7:09–7:19 window. Easy miles stayed controlled.');
     expect(out.execution.summary).not.toMatch(/10\.0 mi easy averaged/);
-    // The easy portion is supporting context, named once, never the lead.
-    expect(out.execution.summary).toMatch(/10\.0 mi easy stayed within its own ceiling/);
-    expect(out.execution.summary.indexOf('marathon pace')).toBeLessThan(out.execution.summary.indexOf('10.0 mi easy'));
-  });
-
-  it('states heart rate on the key phase, never a fabricated ceiling claim', () => {
-    // `workHrCeilingBpm` is null in this fixture (a self-authored watch
-    // workout carries no HR ceiling on the wire) — Rule 11: an absent
-    // ceiling is a fact, not a licence to assert compliance with one that
-    // was never set.
-    expect(out.execution.summary).toMatch(/HR averaged 163 bpm\./);
-    expect(out.execution.summary).not.toMatch(/under the .* bpm ceiling/);
-    expect(out.execution.summary).not.toMatch(/over the .* bpm ceiling/);
+    expect(out.execution.summary).not.toMatch(/HR averaged/);
   });
 
   it('attributes the targets to the watch workout, not the app, for a self-authored long run', () => {

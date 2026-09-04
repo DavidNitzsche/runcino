@@ -322,11 +322,27 @@ export function gradeStoredPhases(
               : gradable === 'warmup' || gradable === 'cooldown' ? 'ceiling'
               : 'window');
 
+    // PACE-PURPOSE-1, 2026-09-05 · the SAME gap `looksLikeMP` closed for a
+    // label-detected phase, generalised: a phase can now arrive with an
+    // EXPLICIT `wireShape: 'window'` (a newly authored, typed race-pace
+    // segment — `build-workout.ts` sets this from `ExpandedPhase.purpose`)
+    // embedded in a session whose CLASS would otherwise default every work
+    // phase to a ceiling. `phaseToleranceSec` re-runs `paceShapeFor` from
+    // scratch and would size the tolerance for THAT ceiling default — 30s,
+    // not the ~5s a race-pace window actually needs — silently disagreeing
+    // with the `window` shape already resolved above. Caught by the
+    // PACE-PURPOSE-1 gate test with a deliberately relabelled phase (proving
+    // this is not the label detector firing): 462 s/mi against a 434 target
+    // read `hit` at a 30s tolerance and correctly reads `slow` at this one.
+    const classDefaultIsCeiling = classKnown
+      && paceShapeFor(gradable, sessionClass, { hasTarget, byEffort }) === 'ceiling';
+    const isEmbeddedRacePaceWindow = shape === 'window' && (looksLikeMP || classDefaultIsCeiling);
+
     const wireTol = num(p.tolerancePaceSPerMi);
     const toleranceSec: number | null =
       shape === 'none' || shape === 'effort' ? null
       : wireTol
-        ?? (looksLikeMP
+        ?? (isEmbeddedRacePaceWindow
             ? MP_PHASE_TOLERANCE_S_PER_MI
             : classKnown
               ? phaseToleranceSec(gradable, sessionClass, { hasTarget, byEffort })

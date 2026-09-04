@@ -115,8 +115,13 @@ struct RepPiece: Identifiable, Equatable {
     /// The pace that was run, formatted with its unit. Measured.
     let actualPace: String?
 
-    /// The pace that was asked for, bare. Modelled — the caller prefixes it
-    /// with "asked" and this component never prints it without that word.
+    /// PACE-CONTRACT-1, 2026-09-05 · the FULL, shape-aware pace contract
+    /// text — "No faster than 8:00/mi", "7:09–7:19/mi window" — pre-composed
+    /// by the caller via `paceContractText(shape:targetPaceSec:tolerancePaceSec:)`
+    /// so this component never re-derives shape from a bare number. Renamed
+    /// in meaning, not in name, from the old "bare pace the caller prefixes
+    /// with 'asked'" contract — every call site already reads through this
+    /// doc comment rather than the old one surviving as a trap.
     let askedPace: String?
 
     /// Distance, duration, heart rate — whatever the phase carried, joined by
@@ -176,6 +181,44 @@ func phaseVerdictPhrase(paceShape: String?, verdict: String?, statusLabel: Strin
     case "missed":     return "Outside the band"
     case "incomplete": return "Ended before its target"
     default:           return nil
+    }
+}
+
+/// PACE-CONTRACT-1, 2026-09-05 · what a phase was actually asked to do,
+/// worded for what its SHAPE means — replacing a blanket "asked X" that
+/// implied every prescription was one point to hit exactly. A runner's own
+/// correction, direct: showing "asked 8:00/mi" beside an 8:48 actual reads
+/// as a miss even when 8:48 is fully compliant with an 8:00 CEILING; a
+/// window's real contract is a RANGE, not the bare number in the middle of
+/// it; an effort-graded phase was never asked a pace at all.
+///
+///   · `ceiling` — "No faster than 7:XX/mi" · the one edge that matters.
+///   · `window`  — the RANGE, `target ± tolerance`, when both are known;
+///                 the bare target only when tolerance is not.
+///   · `effort` / `none` — nil. Nothing to compare — omit, don't guess.
+///   · unrecognised/absent shape — nil rather than the old blanket "asked
+///     X", which is exactly the ambiguous case this function replaces.
+///
+/// Takes RAW seconds (not the pre-formatted `target_pace` string) because a
+/// window's range has to be computed, not just relabelled.
+func paceContractText(
+    shape: String?, targetPaceSec: Double?, tolerancePaceSec: Double?
+) -> String? {
+    guard let targetPaceSec, targetPaceSec > 0 else { return nil }
+    switch shape {
+    case "ceiling":
+        guard let t = FaffFmt.pace(secPerMi: targetPaceSec) else { return nil }
+        return "No faster than \(t)/mi"
+    case "window":
+        if let tol = tolerancePaceSec, tol > 0,
+           let lo = FaffFmt.pace(secPerMi: targetPaceSec - tol),
+           let hi = FaffFmt.pace(secPerMi: targetPaceSec + tol) {
+            return "\(lo)–\(hi)/mi window"
+        }
+        guard let t = FaffFmt.pace(secPerMi: targetPaceSec) else { return nil }
+        return "\(t)/mi window"
+    default:
+        return nil
     }
 }
 
@@ -362,10 +405,14 @@ struct RepBreakdownV5: View {
                                   color: primary)
                 }
                 if let asked = p.askedPace {
-                    // THE WORD CARRIES RULE ONE. "asked" says this is a
-                    // prescription, which is what the retired tilde was
-                    // gesturing at and never managed to say.
-                    Text("asked \(asked)")
+                    // PACE-CONTRACT-1 · the caller's already-composed,
+                    // shape-aware text — "No faster than 8:00/mi", "7:09–
+                    // 7:19/mi window" — printed verbatim. The bare "asked X"
+                    // prefix this used to add is gone: it named every
+                    // prescription a single point to hit, which is only
+                    // true for a window's own displayed range, never for a
+                    // ceiling's one-sided bound.
+                    Text(asked)
                         .font(.faffText(TypeScaleV5.label12))
                         .foregroundStyle(V5.textQuiet)
                 }
@@ -438,7 +485,10 @@ struct RepBreakdownV5: View {
     private func spoken(_ p: RepPiece) -> String {
         var parts: [String] = [p.label]
         if let pace = p.actualPace { parts.append("ran \(pace)") }
-        if let asked = p.askedPace { parts.append("asked estimated \(asked) per mile") }
+        // PACE-CONTRACT-1 · `asked` is now the full shape-aware sentence
+        // fragment ("No faster than 8:00/mi", "7:09–7:19/mi window") —
+        // "per mile" no longer belongs appended, it is already inside it.
+        if let asked = p.askedPace { parts.append(asked) }
         if let detail = p.detail { parts.append(detail.replacingOccurrences(of: " \u{00B7} ", with: ", ")) }
         if let note = Self.note(p) { parts.append(note) }
         return parts.joined(separator: ". ") + "."

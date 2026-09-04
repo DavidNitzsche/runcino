@@ -252,6 +252,15 @@ struct RunDetail: Decodable, Identifiable {
     let elev_gain_ft: Int?
     let temp_f: Double?
 
+    /// RACE-HERO-1, 2026-09-05 · true when the server's own `matchedRace`
+    /// resolver found a `races` row for this run — the SAME signal that
+    /// already names a real race in `title` (a proper-noun `name` survives
+    /// the generic/serialized checks there) and drives the race-language
+    /// branch in `experience.ts`'s Coach's Read. Read here so the finish-
+    /// time hero treatment does not have to re-infer "is this a race" from
+    /// prose. `false` on a payload from before this field existed.
+    let race_matched: Bool
+
     let has_route: Bool
     let route_polyline: String?
     let splits: [RunSplit]
@@ -383,6 +392,7 @@ struct RunDetail: Decodable, Identifiable {
         case id, date, start_local, name, source, type, type_display
         case distance_mi, pace, pace_s_per_mi, time_moving, time_elapsed, avg_speed_mph
         case hr_avg, hr_max, cadence_avg, elev_gain_ft, temp_f
+        case race_matched
         case has_route, route_polyline, splits, hrZonePcts, form
         case pace_work, pace_work_s_per_mi, hr_avg_work, cadence_avg_work, work_seconds
         case phase_breakdown
@@ -415,6 +425,7 @@ struct RunDetail: Decodable, Identifiable {
         self.cadence_avg = c.decodeFlexInt(forKey: .cadence_avg)
         self.elev_gain_ft = c.decodeFlexInt(forKey: .elev_gain_ft)
         self.temp_f = try c.decodeIfPresent(Double.self, forKey: .temp_f)
+        self.race_matched = try c.decodeIfPresent(Bool.self, forKey: .race_matched) ?? false
         self.has_route = try c.decodeIfPresent(Bool.self, forKey: .has_route) ?? false
         self.route_polyline = try c.decodeIfPresent(String.self, forKey: .route_polyline)
         self.splits = (try? c.decode([RunSplit].self, forKey: .splits)) ?? []
