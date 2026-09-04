@@ -2729,7 +2729,24 @@ async function detectMidBlock(userId: string): Promise<boolean | null> {
   if (r1 === null) return null;
   if (Number(r1.rows[0]?.n ?? 0) >= 2) return true;
 
-  // Signal 2 · runs with quality-effort tag.
+  /* Signal 2 · runs with a quality-effort tag.
+   *
+   * EXECUTION-IDENTITY-1 (2026-09-03) · `workoutType` alone used to be
+   * enough. Found live, same account: a friend's unrelated 4.48mi easy run
+   * carried `workoutType: 'intervals'` / `workoutTypeSource: 'plan'`,
+   * stamped by `/api/ingest/workout`'s own passive date+distance heuristic —
+   * nothing to do with whether the run was actually a quality effort. That
+   * stamp is exactly what `lib/execution/day-resolver.ts`'s LEGACY tier now
+   * refuses to trust without a live-tracked source (watch, treadmill, the
+   * phone's own GPS recorder) — the same rule applies here: a passive sync's
+   * type guess may not decide whether this runner "looks mid-block."
+   *
+   * `data->>'type'` is untouched — that is the self-reported/sport-type
+   * field (a different provenance question, not the one this incident
+   * found) — so a runner who logs a tempo run by hand still counts. Only the
+   * plan-derived `workoutType` stamp now requires the same live-tracked
+   * source `day-resolver.ts` requires, which is "legitimate independent
+   * history evidence" rather than an inherited, unverified label. */
   const r2 = await pool.query<{ n: string }>(
     `SELECT COUNT(*)::text AS n
        FROM runs r
@@ -2739,7 +2756,10 @@ async function detectMidBlock(userId: string): Promise<boolean | null> {
             >= $2::date - $3::int
         AND (
               LOWER(COALESCE(r.data->>'type', '')) IN ('tempo','threshold','intervals','vo2max','race')
-              OR LOWER(COALESCE(r.data->>'workoutType', '')) ~ '(tempo|threshold|interval|vo2|race)'
+              OR (
+                LOWER(COALESCE(r.data->>'workoutType', '')) ~ '(tempo|threshold|interval|vo2|race)'
+                AND LOWER(COALESCE(r.data->>'source', '')) IN ('watch','treadmill','phone')
+              )
             )`,
     [userId, today, lookback]
   ).catch((e) => { logReadFailure('plan/generate · detectMidBlock signal 2 · quality-tagged runs', e); return null; });
