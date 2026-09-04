@@ -258,6 +258,7 @@ function recentRunFor(cell: Cell): V5TodayContext['recentRun'] {
     hrMax: 158, cadenceAvg: 172, tempF: 61, workoutType: 'easy', hrAvgWork: null, cadenceAvgWork: null, paceWork: null,
     routeSplits: [],
     routePhases: [],
+    workoutPhases: [],
     hrZones: [],
     paceBand: null,
     routePolyline: null,

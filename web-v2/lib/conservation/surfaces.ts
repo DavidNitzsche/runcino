@@ -138,6 +138,7 @@ function posterCtx(shape: RunShape, data: RunData): V5TodayContext {
       hrMax: 158, cadenceAvg: 172, tempF: 61, workoutType: 'easy', hrAvgWork: null, cadenceAvgWork: null, paceWork: null,
     routeSplits: [],
       routePhases: [],
+      workoutPhases: [],
       hrZones: [],
       paceBand: null,
       routePolyline: null,

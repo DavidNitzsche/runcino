@@ -98,6 +98,7 @@ function aug23Run(overrides: Partial<V5RecentRunCtx> = {}): V5RecentRunCtx {
     hrMax: 158, cadenceAvg: 172, tempF: 61, workoutType: 'easy', hrAvgWork: null, cadenceAvgWork: null, paceWork: null,
     routeSplits: [],
     routePhases: [],
+    workoutPhases: [],
     hrZones: [],
     paceBand: null,
     routePolyline: null,

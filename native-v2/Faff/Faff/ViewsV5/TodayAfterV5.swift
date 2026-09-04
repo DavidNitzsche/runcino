@@ -260,6 +260,15 @@ struct TodayAfterV5: View {
 
                 if !model.groups.isEmpty {
                     groupsTile
+                } else if !model.workoutPhases.isEmpty {
+                    // WORKOUTPHASES-1 · `groups` is the PRESCRIBED structure
+                    // and is never populated for an after-run response — see
+                    // `V5Today.workoutPhases`'s own header for why this is a
+                    // separate field rather than a second use of `groups`.
+                    // Same slot in the hierarchy (DIGEST-1 §6, "Piece by
+                    // Piece"), same visual language, the runner's OWN
+                    // executed structure instead of the plan's.
+                    workoutPhasesTile
                 }
                 if let pr = model.postRun {
                     PostRunLearnedV5(model: pr, includes: .strides)
@@ -660,6 +669,46 @@ struct TodayAfterV5: View {
             }
         }
         .padding(.horizontal, V5.S.s4)
+    }
+
+    // MARK: - WORKOUTPHASES-1 · the session's own executed structure
+
+    /// `groups`' sibling for an after-run day: the SAME "Piece by Piece"
+    /// slot, drawing what was actually held per phase instead of what was
+    /// prescribed. David, live, on a treadmill interval session: "its not
+    /// showing my treadmill breakdown though. the warm up, hills, etc." —
+    /// `routePhases` (the other candidate for this) is keyed by GPS mile
+    /// and is always empty indoors; `workoutPhases` reads the watch's own
+    /// completion payload directly and carries every phase regardless.
+    private var workoutPhasesTile: some View {
+        Tile {
+            VStack(alignment: .leading, spacing: V5.S.s12) {
+                V5SectionLabel(text: "Piece by piece", size: TypeScaleV5.body15)
+                ForEach(Array(model.workoutPhases.enumerated()), id: \.offset) { _, phase in
+                    HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
+                        Text(phase.label ?? phase.type?.capitalized ?? "Phase")
+                            .font(.faffText(15))
+                            .foregroundStyle(V5.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(phaseTrailingText(phase))
+                            .font(.faffText(TypeScaleV5.label13))
+                            .foregroundStyle(V5.textSecondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+            }
+        }
+    }
+
+    /// "13:03 · 145 bpm", "1:00" alone when HR never sampled, "1:00 ·
+    /// not completed" when the wire's own tri-state (Rule 11 — nil means
+    /// the payload never said, never coerced) says an explicit false.
+    private func phaseTrailingText(_ phase: V5WorkoutPhase) -> String {
+        var parts: [String] = []
+        if let clock = FaffFmt.clock(sec: phase.durationSec.map(Double.init)) { parts.append(clock) }
+        if let hr = phase.avgHr { parts.append("\(hr) bpm") }
+        if phase.completed == false { parts.append("not completed") }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Per-mile instruction groups, with actual numbers

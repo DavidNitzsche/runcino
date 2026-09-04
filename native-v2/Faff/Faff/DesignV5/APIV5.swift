@@ -279,6 +279,33 @@ struct V5RoutePhase: Decodable, Equatable {
     }
 }
 
+/// WORKOUTPHASES-1 (2026-09-04) · the session's own authored phase list —
+/// warmup / work / recovery / cooldown, each with what was actually held —
+/// independent of GPS. `V5RoutePhase` above is keyed by mile position
+/// because it exists to colour a route MAP; that shape cannot represent a
+/// treadmill phase at all, so `routePhases` is always `[]` on an indoor run.
+/// This reads `web-v2` `route.ts`'s new `workoutPhases`, sourced from
+/// `runs.data.phases` directly and never indoor-gated. David, live, on a
+/// treadmill interval session: "its not showing my treadmill breakdown
+/// though. the warm up, hills, etc." All fields already camelCase on the
+/// wire — no custom `CodingKeys` needed.
+///
+/// NOT `Identifiable` — several phases share type/label/duration verbatim
+/// (ten straight "Jog 2 min" recoveries, several landing on the same
+/// rounded second), so any derived id collides. `ForEach` over this array
+/// keys on `.offset`, the same pattern `PlanSnapshotDayView`'s own step
+/// list already uses for the identical reason.
+struct V5WorkoutPhase: Decodable, Equatable {
+    let type: String?
+    let label: String?
+    let durationSec: Int?
+    let avgHr: Int?
+    let maxHr: Int?
+    /// Rule 11 · a real tri-state — nil is "the payload never said," never
+    /// coerced to false. A row draws "skipped" only for an explicit false.
+    let completed: Bool?
+}
+
 /// The pace window the session asked for, seconds per mile. When present the
 /// route stops grading and answers the same question the split chart answers.
 struct V5PaceBand: Decodable, Equatable {
@@ -648,6 +675,9 @@ struct V5Today: Decodable, Equatable {
     /// of drawing one flat line that says only where the runner went.
     let routeSplits: [RunSplit]
     let routePhases: [V5RoutePhase]
+    /// WORKOUTPHASES-1 · see `V5WorkoutPhase`'s own header — the session's
+    /// own authored phase list, populated for indoor and outdoor runs alike.
+    let workoutPhases: [V5WorkoutPhase]
     let hrZones: [HRZoneRange]
     let paceBand: V5PaceBand?
     /// True only when an instrument measured the climb. A `gps_derived` figure
@@ -2006,7 +2036,7 @@ extension V5Today {
         case dateISO, planVersion, state, panel, weekStrip, groups, why, thesis, whereYouAre, beforeYouGo
         case askedVsRan, verdict, zoneShares, zoneTargets, zoneTarget, elevation, onTheBelt
         case routePolyline, elevGainFt, shoeOptions
-        case routeSplits, routePhases, hrZones, paceBand, elevGainMeasured
+        case routeSplits, routePhases, workoutPhases, hrZones, paceBand, elevGainMeasured
         case shoesWorn, whatThisDidToTheWeek, runId, postRun, supplementalRuns
         case injury, weekOff, offSeason, notOnPhoneYet
         case paceNote, blockNote, sick, race
@@ -2048,6 +2078,7 @@ extension V5Today {
         elevGainFt = c.opt(.elevGainFt)
         routeSplits = c.list(.routeSplits)
         routePhases = c.list(.routePhases)
+        workoutPhases = c.list(.workoutPhases)
         hrZones = c.list(.hrZones)
         paceBand = c.opt(.paceBand)
         elevGainMeasured = c.opt(.elevGainMeasured) ?? false

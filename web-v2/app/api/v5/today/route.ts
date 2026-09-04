@@ -1476,6 +1476,31 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         workoutType: canonicalSessionType(
           (todayPlan?.type ?? data.workoutType ?? data.type ?? null) as string | null,
         ),
+        // WORKOUTPHASES-1 (2026-09-04) · `runs.data.phases`, the watch
+        // completion payload persisted verbatim on the run row, straight
+        // through — NEVER gated on `indoor`, unlike `routePhases` below
+        // (which is keyed by GPS mile position and cannot represent a
+        // treadmill phase at all). David, live: "its not showing my
+        // treadmill breakdown though. the warm up, hills, etc." The field
+        // is `actualDurationSec` (confirmed against this account's own
+        // stored phases — `durationSec` does not exist on this shape,
+        // same field-name lesson `workAveragesFromPhases` above already
+        // learned the hard way for `actualDistanceMi`).
+        workoutPhases: Array.isArray(data.phases)
+          ? (data.phases as any[]).map((ph) => ({
+              type: typeof ph.type === 'string' ? ph.type : null,
+              label: typeof ph.label === 'string' ? ph.label : null,
+              durationSec: Number.isFinite(Number(ph.actualDurationSec))
+                ? Math.round(Number(ph.actualDurationSec)) : null,
+              avgHr: Number.isFinite(Number(ph.avgHr)) ? Math.round(Number(ph.avgHr)) : null,
+              maxHr: Number.isFinite(Number(ph.maxHr)) ? Math.round(Number(ph.maxHr)) : null,
+              // Rule 11 · `completed` is a real tri-state on the wire
+              // (true / false / absent-from-an-older-payload) — never
+              // coerced, so "the runner skipped this rep" and "this
+              // payload predates the field" stay two different facts.
+              completed: typeof ph.completed === 'boolean' ? ph.completed : null,
+            }))
+          : [],
         indoor, speedMph, inclinePct,
         askedPaceSPerMi, askedHrCap, askedHrIsHardCap,
         // The same number this route already hands `deriveRecap` as

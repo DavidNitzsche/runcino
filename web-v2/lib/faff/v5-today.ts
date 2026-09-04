@@ -333,6 +333,31 @@ export interface V5Today {
      *  `incomplete`) and its word. Null when the phase was not pace-graded. */
     verdict?: string | null; status_label?: string | null;
   }>;
+  /**
+   * WORKOUTPHASES-1 (2026-09-04) · the session's own authored phase list —
+   * warmup / work / recovery / cooldown, each with what was actually held —
+   * independent of GPS. `routePhases` above is keyed by MILE (`mi`) because
+   * it exists to colour a route MAP; that shape structurally cannot carry a
+   * treadmill phase, which has no position on a route, so `routePhases` is
+   * forced to `[]` for every indoor run (`recentRun.routePhases`, this
+   * file's own `buildRecentRun`). This field answers a different question —
+   * "what did the session's own structure look like, executed" — and reads
+   * `runs.data.phases` (the watch completion payload, persisted verbatim on
+   * the run row) directly, so it is populated for indoor and outdoor runs
+   * alike. David, live, on a treadmill interval session: "its not showing my
+   * treadmill breakdown though. the warm up, hills, etc." — `data.phases`
+   * had the full breakdown (label, avgHr, maxHr, per-phase duration) the
+   * entire time; nothing before this field ever put it on the wire.
+   */
+  workoutPhases: Array<{
+    type: string | null;
+    label: string | null;
+    durationSec: number | null;
+    avgHr: number | null;
+    maxHr: number | null;
+    /** Null when the source did not say (Rule 11) — never coerced to false. */
+    completed: boolean | null;
+  }>;
   /** The runner's own HR zone bands. Empty at cold start. */
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
   /** The pace window the session asked for, seconds per mile. */
@@ -837,6 +862,11 @@ export interface V5RecentRunCtx {
     /** VERDICT-1 · the canonical per-phase verdict (`hit` / `fast` / `slow` /
      *  `incomplete`) and its word. Null when the phase was not pace-graded. */
     verdict?: string | null; status_label?: string | null;
+  }>;
+  /** WORKOUTPHASES-1 · see `V5Today.workoutPhases`'s own doc comment. */
+  workoutPhases: Array<{
+    type: string | null; label: string | null; durationSec: number | null;
+    avgHr: number | null; maxHr: number | null; completed: boolean | null;
   }>;
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
   paceBand: { lo: number; hi: number } | null;
@@ -1628,6 +1658,7 @@ const EMPTY_TODAY = (
   shoeOptions: [],
   routeSplits: [],
   routePhases: [],
+  workoutPhases: [],
   hrZones: [],
   paceBand: null,
   onTheBelt: null,
@@ -1804,6 +1835,10 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.hrAvgWork = ctx.recentRun.hrAvgWork;
     t.cadenceAvgWork = ctx.recentRun.cadenceAvgWork;
     t.paceWork = ctx.recentRun.paceWork;
+    // WORKOUTPHASES-1 · straight through, same pattern as `hrAvgWork` above —
+    // unlike `routePhases`/`routeSplits` (`built.*`, GPS-mile-keyed and
+    // deliberately empty on an indoor run), this is never indoor-gated.
+    t.workoutPhases = ctx.recentRun.workoutPhases;
     t.zoneShares = ctx.recentRun.zoneShares;
     t.zoneTarget = ctx.recentRun.zoneTarget;
     t.zoneTargets = ctx.recentRun.zoneTargets;
