@@ -281,6 +281,11 @@ struct LiveRunTreadmillV5: View {
             maintainWatchBridge(at: now)
             pushLiveStatsToWatch()
             attachHrForClosedPhases()
+            // TREADMILL-LIVE-HR-1 · ages `hr.snapshot.freshness` forward on
+            // the console's own one clock — a sample that landed live 90s
+            // ago must read `.stale` NOW, not still `.live` because nothing
+            // re-evaluated it since.
+            hr.refreshFreshness(at: now)
             // 2026-08-25 · the meter is started in `.onAppear` and stopped in
             // `.onDisappear`, so nothing between them ever told it the run had
             // paused. It measured its step rate over wall clock while the run
@@ -436,6 +441,13 @@ struct LiveRunTreadmillV5: View {
     /// and "your heart rate stopped four minutes ago" are different problems
     /// and get different sentences.
     ///
+    /// TREADMILL-LIVE-HR-1 (2026-09-03) · driven by `hr.snapshot.freshness`
+    /// now — the console's own testable classification of sample age — not
+    /// a second, view-local "how long since I last saw a bpm" clock kept in
+    /// step by hand. `.stale`'s 120s threshold is
+    /// `TreadmillHRFreshnessPolicy.staleWindowSec`, the exact number this
+    /// sentence used to hardcode.
+    ///
     /// 2026-08-27 · dropped the passive "No heart rate source · running on
     /// speed and incline alone." — a dead end with nothing the runner can do
     /// about it. `treadmillSessionConfirmed` now actually reflects whether the
@@ -445,9 +457,13 @@ struct LiveRunTreadmillV5: View {
     /// HealthKit latency, not a real problem, so it says nothing.
     private var hrHint: String? {
         guard startedAt != nil else { return nil }
-        if let last = lastBpmAt {
-            guard Date().timeIntervalSince(last) >= 120 else { return nil }
+        switch hr.snapshot.freshness {
+        case .live, .delayed:
+            return nil
+        case .stale:
             return "Heart rate stopped \u{00b7} reconnecting to your watch."
+        case .connecting, .unavailable:
+            break
         }
         guard elapsedSec > 45 else { return nil }
         guard !watchSync.treadmillSessionConfirmed else { return nil }
@@ -514,22 +530,36 @@ struct LiveRunTreadmillV5: View {
                 // introduced.
                 "actualSpeedMph": act.map { $0.avgSpeedMph } ?? BeltSession.nominalMph(for: phase),
                 "actualInclinePct": act.map { $0.avgInclinePct } ?? BeltSession.nominalInclinePct(for: phase),
-                // Stage 3 · "record actual selected targets... separately
-                // from the original prescription." Found via a peer
-                // session's independent trace of tonight's real run: the
-                // server's `WatchCompletionPhaseBody` has no target fields
-                // at all today, so this originally-prescribed number has
-                // never once round-tripped back — post-run reads "no
-                // prescribed pace" even when a concrete belt target WAS
-                // live on screen. Additive (older/current server code
-                // simply ignores unrecognized JSON keys — the route has no
-                // strict-schema rejection), so this is safe to send now.
-                // Consuming it server-side (post-run's not_graded verdict,
-                // `WatchCompletionPhaseBody`'s own type) is real scope, not
-                // done here — flagged in the handback, not bolted on quietly.
+                // TREADMILL-TARGET-ROUNDTRIP-1 (P0 gap #3) · the ORIGINAL
+                // authored prescription, never reconstructed from what was
+                // actually run — `nominalMph`/`nominalInclinePct` read only
+                // `phase`'s own server-authored fields, untouched by any
+                // runtime override. Server-side: `web-v2/lib/runs/run-shape.ts`
+                // `NormalizedPhase` now carries these same four names
+                // (target/actual × speed/incline) as the canonical reader —
+                // see that file for the read side of this round trip.
                 "targetSpeedMph": BeltSession.nominalMph(for: phase),
                 "targetInclinePct": BeltSession.nominalInclinePct(for: phase),
+                // The rest of "the authored target," for a phase that DOES
+                // carry a real pace prescription (a paced treadmill session,
+                // not a by-effort hill) — `nil` on a hill rep is itself
+                // correct information (by-effort has no pace to report), not
+                // a gap this omits to hide.
+                "paceShape": phase.effectivePaceShape.rawValue,
             ]
+            if let target = phase.targetPaceSPerMi { p["targetPaceSPerMi"] = target }
+            if let tolerance = phase.tolerancePaceSPerMi { p["tolerancePaceSPerMi"] = tolerance }
+            // P0 gap #4 · "labelled observational rather than silently
+            // suppressed." `effectiveHrRole` is the SAME classification
+            // `showHrThisPhase` already reads to decide what the LIVE screen
+            // shows (`.observational` on a 60s hill rep — HR has not had
+            // time to reach steady state, per `hrRoleForRepDuration`,
+            // `lib/watch/build-workout.ts`) — sent here so a server-side or
+            // post-run reader gets the SAME classification rather than
+            // re-deriving a second opinion about the same fact from
+            // `durationSec` alone.
+            p["hrRole"] = phase.effectiveHrRole.rawValue
+            if let hrTarget = phase.hrTargetBpm { p["hrTargetBpm"] = hrTarget }
             if let act, act.durationSec > 0 {
                 let b = act
                 // The phase's own slice of the integration — never a
@@ -566,6 +596,11 @@ struct LiveRunTreadmillV5: View {
             }
             return p
         }
+        // P0 gap #1/#4 · captured BEFORE `closeSession()` below, which resets
+        // the streamer's snapshot for a possible second run in this same
+        // instance — "available in post-run analysis" means the LAST real
+        // state, not whatever the reset leaves behind.
+        let finalHrSource = hr.snapshot.source
         // Session-level HR rollup · separate from the per-phase buffers so it
         // captures samples landing right at a phase boundary. Nil when no
         // watch is paired.
@@ -588,6 +623,11 @@ struct LiveRunTreadmillV5: View {
         ]
         if let avgHr = sessionHr.avg { payload["avgHr"] = avgHr }
         if let maxHr = sessionHr.max { payload["maxHr"] = maxHr }
+        // P0 gap #1 · which channel most recently produced HR for this run —
+        // never asserted as "the" source, since both channels can and did
+        // contribute (see TreadmillHRFreshness.swift's header). `.none`
+        // (no watch ever answered) is a real, reportable fact, not omitted.
+        payload["hrSource"] = finalHrSource.rawValue
         // 2026-08-27 · session-level running-form + energy, same watch
         // bridge. `kcal` is the one worth calling out: treadmill runs have
         // never carried a measured calorie figure (TreadmillHRSession never
@@ -935,13 +975,13 @@ struct LiveRunTreadmillV5: View {
     /// equivalent rep, or set this instant) — invisible the rest of the
     /// time, so it never competes with the numbers above it (Rule 17).
     @ViewBuilder private var overrideBadgeRow: some View {
-        if session.hasOverrideForCurrentPhase, let type = walk?.phase.type {
+        if session.hasOverrideForCurrentPhase {
             HStack {
                 Text("Custom pace for this set")
                     .font(.faffText(TypeScaleV5.label13))
                     .foregroundStyle(V5.attention)
                 Spacer(minLength: V5.S.s8)
-                Button("Reset to plan") { session.resetOverride(for: type) }
+                Button("Reset to plan") { session.resetOverrideForCurrentSet() }
                     .font(.faffText(TypeScaleV5.label13, weight: .semibold))
                     .foregroundStyle(V5.signal)
             }
@@ -980,10 +1020,18 @@ struct LiveRunTreadmillV5: View {
                 statColumn(label: "PACE",
                            value: FaffValue.from(currentPaceText,
                                                  modelled: distanceIsModelled))
-                if let bpm = hr.currentBpm, showHrThisPhase {
+                // TREADMILL-LIVE-HR-1 · `hr.snapshot.bpm` is nil for
+                // `.connecting`/`.unavailable` (see TreadmillHRFreshness.swift)
+                // — the column simply doesn't exist for those states, same as
+                // before. For `.live`/`.delayed`/`.stale` it IS shown, but
+                // "do not display a stale HealthKit sample as live" — a
+                // sample past the live window wears the same amber mark
+                // every other modelled number on this screen does, rather
+                // than looking exactly like a fresh reading.
+                if let bpm = hr.snapshot.bpm, showHrThisPhase {
                     statColumn(label: "HR",
                                value: FaffValue.from(FaffFmt.bpm(Double(bpm)),
-                                                     modelled: false))
+                                                     modelled: hr.snapshot.freshness != .live))
                 }
             }
             .padding(.vertical, V5.S.s16)

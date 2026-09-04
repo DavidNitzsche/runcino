@@ -52,10 +52,47 @@ import Foundation
 import HealthKit
 
 @MainActor
-final class TreadmillHRStreamer: ObservableObject {
+final class TreadmillHRStreamer: NSObject, ObservableObject {
     /// Most recent bpm seen · drives the live display. Nil until the
     /// first sample lands (or forever, if no watch is paired).
     @Published private(set) var currentBpm: Int?
+
+    /// TREADMILL-LIVE-HR-1 (2026-09-03) · the complete, honest answer to
+    /// "what is this console's own HR number right now" — see this file's
+    /// sibling `TreadmillHRFreshness.swift` for the two-channel architecture
+    /// (mirrored HKWorkoutSession vs. async HealthKit sync) and why freshness
+    /// is computed from sample AGE, never from which channel produced it.
+    /// `currentBpm` above is kept in sync with `snapshot.bpm` for the
+    /// existing call sites that only ever wanted the number; new code should
+    /// read `snapshot` for source/timestamp/state.
+    @Published private(set) var snapshot: TreadmillHRSnapshot = .empty
+    private var lastSampleAt: Date?
+    private var lastSampleSource: TreadmillHRSource = .none
+    /// True once `start(from:)` has been called for the current session —
+    /// distinguishes "asked and waiting" (`.connecting`) from "never asked"
+    /// (`.unavailable`), per Rule 11.
+    private var attemptInFlight = false
+
+    /// The mirrored copy of the watch's own `HKWorkoutSession` — see the
+    /// file header. Non-nil once iOS has actually handed one over via
+    /// `workoutSessionMirroringStartHandler`; nil the whole run if mirroring
+    /// never attaches (no paired watch reachable at the right moment, an
+    /// older OS, or a handshake this session cannot verify on real hardware —
+    /// the async channel below is what keeps the console working in every
+    /// one of those cases).
+    private var mirroredSession: HKWorkoutSession?
+    /// `HKLiveWorkoutBuilder` itself — not just `associatedWorkoutBuilder()`
+    /// — is an iOS-26-only type ON THE PHONE (it has existed on watchOS for
+    /// years; the iPhone-side live-mirrored builder is newer). This app's
+    /// deployment target is 17.0, so the property cannot be typed
+    /// `HKLiveWorkoutBuilder?` without breaking every earlier OS this app
+    /// still supports. Stored type-erased; every read/write happens inside
+    /// an `if #available(iOS 26.0, *)` block that casts it back — see
+    /// `attachMirroredSession`/`stop()`/the delegate extension below. On
+    /// iOS 17-25 this simply never gets set, and the async channel
+    /// (`TreadmillHRFreshness.swift`'s `.asyncHealthKitSync`) is the whole
+    /// story — never a crash, never a silent wrong answer.
+    private var mirroredBuilderBox: Any?
 
     /// HKHealthStore is thread-safe per Apple's docs · reads happen via
     /// callbacks, no awaits on the store directly.
@@ -132,10 +169,77 @@ final class TreadmillHRStreamer: ObservableObject {
     /// cumulative, so "current" here means "so far this run."
     @Published private(set) var currentActiveEnergyKcal: Double?
 
+    /// Registers the mirroring handler as early as this object exists —
+    /// `LiveRunHostV5` constructs one `TreadmillHRStreamer` for the whole
+    /// console's lifetime (reused across a second run in the same session,
+    /// per `closeSession()`'s own comment), so this fires well before the
+    /// runner ever taps Start. iOS attaches a mirrored session to whichever
+    /// handler was already registered when the WATCH'S session begins — a
+    /// handler set only inside `start(from:)`, racing the WatchConnectivity
+    /// message that asks the watch to start, would risk losing the mirror
+    /// for that run to timing alone. Registering here removes the race
+    /// rather than narrowing it.
+    override init() {
+        super.init()
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        store.workoutSessionMirroringStartHandler = { [weak self] mirrored in
+            Task { @MainActor in self?.attachMirroredSession(mirrored) }
+        }
+    }
+
+    /// A mirrored `HKWorkoutSession` has arrived from iOS — the watch's own
+    /// session just started and this phone was registered to receive it.
+    /// Wires the SAME delegate shape the watch's own `TreadmillHRSession`
+    /// uses for its live display, so HR reaches the phone via the live
+    /// builder callback (`workoutBuilder(_:didCollectDataOf:)` below)
+    /// instead of waiting on a HealthKit store round-trip.
+    private func attachMirroredSession(_ session: HKWorkoutSession) {
+        mirroredSession = session
+        session.delegate = self
+        if #available(iOS 26.0, *) {
+            let builder = session.associatedWorkoutBuilder()
+            mirroredBuilderBox = builder
+            builder.delegate = self
+        }
+        // Pre-26: `mirroredBuilderBox` stays nil. `mirroredSession` is still
+        // set (state-change/failure delegate callbacks still fire), but
+        // nothing delivers a live HR sample through it — the async channel
+        // is the whole story on these OS versions, exactly as it was before
+        // this file added mirroring.
+    }
+
+    /// The one place every real sample, from either channel, lands. Always
+    /// keeps the FRESHEST sample regardless of which channel produced it —
+    /// see the file header for why this is not a channel-priority decision.
+    private func applySample(bpm: Int, at sampleAt: Date, source: TreadmillHRSource) {
+        if let existing = lastSampleAt, sampleAt < existing { return }
+        currentBpm = bpm
+        lastSampleAt = sampleAt
+        lastSampleSource = source
+        recomputeSnapshot(at: sampleAt)
+    }
+
+    /// Called every tick by the console (it already has one clock —
+    /// `BeltSession.tickStamp` — this reuses it rather than running a
+    /// second timer) so `snapshot.freshness` ages forward even between
+    /// samples: a sample that landed live 90 seconds ago must read as
+    /// `.stale` NOW, not still `.live` because nothing re-evaluated it.
+    func refreshFreshness(at now: Date = .now) {
+        recomputeSnapshot(at: now)
+    }
+
+    private func recomputeSnapshot(at now: Date) {
+        snapshot = TreadmillHRFreshnessPolicy.snapshot(
+            now: now, bpm: currentBpm, source: lastSampleSource,
+            sampleAt: lastSampleAt, isAttemptInFlight: attemptInFlight)
+    }
+
     /// Begin streaming HR samples. Requests HK auth on first call (no-op
     /// if already granted in the standard import auth sweep). Anchors at
     /// `when` so historical samples don't leak into the session.
     func start(from when: Date) async {
+        attemptInFlight = true
+        recomputeSnapshot(at: when)
         guard HKHealthStore.isHealthDataAvailable() else { return }
         // 2026-08-21 · this was a bare `guard !observerActive else { return }`,
         // so the FIRST caller pinned the sample anchor and every later, more
@@ -215,12 +319,26 @@ final class TreadmillHRStreamer: ObservableObject {
     /// Stop streaming. The observer is retired, not merely muted.
     func stop() {
         observerActive = false
+        attemptInFlight = false
         retireObserver()
         powerChannel.stop()
         gctChannel.stop()
         voChannel.stop()
         strideChannel.stop()
         energyChannel.stop()
+        // The mirrored session's own lifecycle is driven by the WATCH
+        // ending its session — `workoutSession(_:didChangeTo:)` below will
+        // usually fire `.ended` on its own. Detaching the delegate/reference
+        // here too is defensive: if this console stops before the watch
+        // does (the runner ends first), nothing should keep delivering
+        // callbacks into a screen that is going away.
+        mirroredSession?.delegate = nil
+        if #available(iOS 26.0, *) {
+            (mirroredBuilderBox as? HKLiveWorkoutBuilder)?.delegate = nil
+        }
+        mirroredSession = nil
+        mirroredBuilderBox = nil
+        recomputeSnapshot(at: .now)
     }
 
     private func retireObserver() {
@@ -261,6 +379,13 @@ final class TreadmillHRStreamer: ObservableObject {
         phaseSamples.removeAll(keepingCapacity: false)
         anchor = nil
         anchorDate = nil
+        // Same reset-on-closeSession-not-stop reasoning as the buffers
+        // above: a second run in this same instance must not open reading
+        // the first run's last sample as if it just arrived.
+        currentBpm = nil
+        lastSampleAt = nil
+        lastSampleSource = .none
+        snapshot = .empty
         return (avg, max)
     }
 
@@ -361,10 +486,76 @@ final class TreadmillHRStreamer: ObservableObject {
                 let v = s.quantity.doubleValue(for: bpm)
                 phaseSamples.append(v)
                 sessionSamples.append(v)
-                // Drive the live display off the newest sample.
-                currentBpm = Int(v.rounded())
+                // Drive the live display off the newest sample, through the
+                // shared freshness-aware path — this channel's own real
+                // timestamp (`endDate`, when HealthKit actually recorded the
+                // reading), never `.now`, or a sample delayed by sync would
+                // wrongly read as `.live` the instant it happened to arrive.
+                applySample(bpm: Int(v.rounded()), at: s.endDate, source: .asyncHealthKitSync)
             }
         } while drainAgain
+    }
+}
+
+// MARK: - Mirrored HKWorkoutSession (the live channel)
+//
+// See the file header for the full architecture. `HKWorkoutSessionDelegate`
+// and `HKLiveWorkoutBuilderDelegate` both extend `NSObjectProtocol`, which is
+// why this type now inherits `NSObject`. Mirrors the exact delegate shape
+// the watch's own `TreadmillHRSession.swift` already uses for its live
+// display — same reviewed pattern, not a second design.
+
+extension TreadmillHRStreamer: HKWorkoutSessionDelegate {
+    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession,
+                                    didChangeTo toState: HKWorkoutSessionState,
+                                    from fromState: HKWorkoutSessionState,
+                                    date: Date) {
+        guard toState == .ended || toState == .stopped else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.mirroredSession === workoutSession else { return }
+            self.mirroredSession?.delegate = nil
+            if #available(iOS 26.0, *) {
+                (self.mirroredBuilderBox as? HKLiveWorkoutBuilder)?.delegate = nil
+            }
+            self.mirroredSession = nil
+            self.mirroredBuilderBox = nil
+        }
+    }
+
+    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
+        print("[TreadmillHRStreamer] mirrored workout session failed: \(error.localizedDescription)")
+    }
+}
+
+/// The live channel's actual delivery point — fires as HealthKit collects
+/// each new sample on the WATCH's session, mirrored to this builder with no
+/// HealthKit-store round trip. `HKLiveWorkoutBuilder` is iOS-26-only on the
+/// phone (see `mirroredBuilderBox`'s own comment), so this whole conformance
+/// is gated — Swift supports a conditionally-available protocol conformance
+/// exactly like this. On iOS 17-25 `TreadmillHRStreamer` simply does not
+/// conform, `attachMirroredSession` never sets a delegate that would need
+/// it, and the async channel carries the whole console.
+@available(iOS 26.0, *)
+extension TreadmillHRStreamer: HKLiveWorkoutBuilderDelegate {
+    nonisolated func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
+
+    nonisolated func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder,
+                                    didCollectDataOf collectedTypes: Set<HKSampleType>) {
+        let bpmUnit = HKUnit.count().unitDivided(by: .minute())
+        guard collectedTypes.contains(where: { ($0 as? HKQuantityType) == HKQuantityType(.heartRate) }),
+              let stats = workoutBuilder.statistics(for: HKQuantityType(.heartRate)),
+              let q = stats.mostRecentQuantity() else { return }
+        let bpm = Int(q.doubleValue(for: bpmUnit).rounded())
+        // `HKStatistics` does not carry the originating sample's own
+        // timestamp — `.now` is honest here because this callback fires
+        // essentially the instant HealthKit collected the reading (the
+        // whole point of mirroring), unlike the async channel above where
+        // the wire timestamp and the arrival time can be meaningfully
+        // different.
+        let now = Date()
+        Task { @MainActor [weak self] in
+            self?.applySample(bpm: bpm, at: now, source: .mirroredWorkoutSession)
+        }
     }
 }
 
@@ -557,7 +748,12 @@ private final class MetricChannel {
 #if DEBUG
 extension TreadmillHRStreamer {
     func seedForPreview(bpm: Int?) {
-        currentBpm = bpm
+        if let bpm {
+            applySample(bpm: bpm, at: .now, source: .asyncHealthKitSync)
+        } else {
+            currentBpm = nil
+            snapshot = .empty
+        }
     }
 
     func seedExtrasForPreview(
