@@ -2438,7 +2438,7 @@ struct LiveRunBlockedByOtherDeviceV5: View {
                 .font(.faffDisplay(22))
                 .foregroundStyle(V5.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Your watch started this run. Starting it again here would record two activities for the same run — use your watch to pause or end it.")
+            Text("Your watch started this run. Starting it again here would record two activities for the same run. Use your watch to pause or end it.")
                 .font(.faffText(TypeScaleV5.body15))
                 .foregroundStyle(V5.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
