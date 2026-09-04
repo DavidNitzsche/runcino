@@ -145,7 +145,18 @@ describe('the split through classifyAdaptation (real classifier, hand-built evid
     distinctEvidenceWeeks: null, adapterDowngrades: null,
   };
 
-  it('a taper that masks real clean execution reads STRONGER filtered than unfiltered', () => {
+  it('a taper that masks real clean execution now reads IDENTICALLY filtered and unfiltered — RULE8CLOSE-1 already excludes the misses either way', () => {
+    // Before RULE8CLOSE-1 (2026-09-04), the 3 taper-window misses averaged
+    // into `unfiltered`'s training-credit share as hard zeros, so filtering
+    // them out measurably raised the score — that gap is what this test
+    // proved. `readExecution` now excludes a MISSED session from that
+    // average unconditionally (absence of evidence is not evidence of poor
+    // adaptation), so the 3 misses were ALREADY weightless in `unfiltered`
+    // before the window filter ever touched them. Removing an already-inert
+    // input cannot raise a score further — both readings correctly land on
+    // the same ceiling, from the same 5 real clean sessions. Equality is the
+    // stronger, more honest claim now; "filtered > unfiltered" would still
+    // describe a world where misses cost something by default.
     const windows = prescribedWindowsFrom([HALF_A]);
     const raw = [
       planned('2026-07-07'), planned('2026-07-12'), planned('2026-07-16'),
@@ -161,9 +172,14 @@ describe('the split through classifyAdaptation (real classifier, hand-built evid
     const filteredFields = filterExecutionEvidenceByPrescribedWindow(raw, [], windows);
     const filtered = classifyAdaptation({ ...BLANK, ...filteredFields });
 
+    // The filter mechanism itself still does something real — it drops the 3
+    // taper-window rows from the SET, even though doing so no longer moves
+    // the SCORE. Proven directly rather than inferred.
+    expect(filteredFields.keySessionExecutions).toHaveLength(5);
+
     const execUnfiltered = unfiltered.dimensions.find((d) => d.dimension === 'execution')!.score!;
     const execFiltered = filtered.dimensions.find((d) => d.dimension === 'execution')!.score!;
-    expect(execFiltered).toBeGreaterThan(execUnfiltered);
+    expect(execFiltered).toBe(execUnfiltered);
   });
 
   it('genuine detraining with no race nearby is read IDENTICALLY by both — the corollary control case', () => {
@@ -186,19 +202,32 @@ describe('the split through classifyAdaptation (real classifier, hand-built evid
       .toBe(unfiltered.dimensions.find((d) => d.dimension === 'execution')!.score);
   });
 
-  it('MASKING-1 falsifier: a fully-masked window of real failures must not flip the decision toward MORE permission', () => {
+  it('MASKING-1 falsifier, corrected under RULE8CLOSE-1: a fully-masked window of genuine misses must not flip the decision toward MORE permission — and must not be scored as a "shortfall" either', () => {
     // Every session in the window is a genuine MISS, and every one of them
-    // falls inside the prescribed window. Before the MASKING-1 fix,
+    // falls inside the prescribed window. Before the original MASKING-1 fix,
     // `filterExecutionEvidenceByPrescribedWindow` erased all four rows,
-    // `readExecution` scored null, `classifyAdaptation` fell through its
-    // MIN_DIMENSIONS_FOR_VERDICT refusal (Rule 11's "not enough evidence,
-    // proceed as planned"), and the filtered verdict came out
-    // normal/PROGRESS — MORE permissive than the unfiltered poor/MODIFY it
-    // was supposed to be a stricter, more honest read of. That is the exact
-    // "total-evidence-masking" risk named in
-    // docs/reports/absorption-dual-log-2026-09-01.md §7.2 and never fixed
-    // there. This assertion is the falsifier: it fails against the
-    // pre-MASKING-1 code and passes after the fix.
+    // `readExecution` scored null, and the filtered verdict came out MORE
+    // permissive than the (then-punitive) unfiltered read. MASKING-1 fixed
+    // that by making sure the filter PRESERVES negative evidence rather than
+    // erasing it — `filteredFields.keySessionExecutions` still carries all 4
+    // misses, and that half of this test is unchanged below.
+    //
+    // RULE8CLOSE-1 (2026-09-04) changed what "the fully-masked window" reads
+    // as, on BOTH sides. It is no longer true that 4 genuine misses with
+    // nothing else to see constitute "a real shortfall" the way this test
+    // used to assert (`unfiltered.decision).not.toBe('PROGRESS')`) — that
+    // itself was David's exact correction: "no activity on a prescribed day
+    // is not evidence that fitness declined, it is absence of execution
+    // evidence." With no other real signal, `readExecution` now correctly
+    // returns `score: null` for BOTH readers (the misses were never going to
+    // be scored, preserved by the filter or not), `classifyAdaptation` falls
+    // through the `MIN_DIMENSIONS_FOR_VERDICT` refusal identically on both
+    // sides, and BOTH read `normal`/PROGRESS/`evidenceSufficient: false` — a
+    // refusal to judge, not a permissive finding of "room for more". The
+    // property MASKING-1 exists to guarantee — filtered can never read as
+    // MORE permissive than unfiltered when only negative evidence was
+    // excluded — is not weakened by this; it is now trivially, robustly true,
+    // because there is nothing left for the two readers to disagree about.
     //
     // BLANK alone is too thin to isolate the mechanism: with only `execution`
     // ever populated, `classifyAdaptation`'s general
@@ -211,7 +240,9 @@ describe('the split through classifyAdaptation (real classifier, hand-built evid
     // `targetVerdicts`; `internal_cost`/`recovery`/`consistency`/`trend` are
     // always identical between the two readers. `trainingForm` (consistency)
     // stands in for that here — the same value on both sides, exactly as
-    // `{ ...base, ...filtered }` produces in the real loader.
+    // `{ ...base, ...filtered }` produces in the real loader. It alone is
+    // still not enough to clear `MIN_DIMENSIONS_FOR_VERDICT` (one dimension),
+    // so both readers land on the SAME refusal, which is the point.
     const windows = prescribedWindowsFrom([HALF_A]);
     const raw = [missed('2026-08-05'), missed('2026-08-12'), missed('2026-08-19'), missed('2026-08-24')];
     const unfiltered = classifyAdaptation({
@@ -224,17 +255,26 @@ describe('the split through classifyAdaptation (real classifier, hand-built evid
     const filteredFields = filterExecutionEvidenceByPrescribedWindow(raw, [], windows);
     const filtered = classifyAdaptation({ ...BLANK, trainingForm: 'BUILDING', ...filteredFields });
 
-    // The real fix: a real failure is not erased by the calendar it fell on.
-    expect(filtered.dimensions.find((d) => d.dimension === 'execution')!.score).not.toBeNull();
+    // MASKING-1's own guarantee, unchanged: the misses are preserved by the
+    // filter, not erased, whatever they end up scoring as.
     expect(filteredFields.keySessionExecutions).not.toBeNull();
-    // The decisive assertion: filtering must never be MORE permissive than
-    // the unfiltered read when what it excluded was entirely negative
-    // evidence. Here they must land on the identical verdict, since nothing
-    // outside the window existed to differentiate them.
+    expect(filteredFields.keySessionExecutions).toHaveLength(4);
+    // RULE8CLOSE-1: nothing here scores, on either side — absence of
+    // evidence, never a punitive number.
+    expect(filtered.dimensions.find((d) => d.dimension === 'execution')!.score).toBeNull();
+    expect(unfiltered.dimensions.find((d) => d.dimension === 'execution')!.score).toBeNull();
+    // The decisive assertion, still: filtering must never be MORE permissive
+    // than the unfiltered read. They must land on the identical verdict,
+    // since nothing outside the window existed to differentiate them.
     expect(filtered.decision).toBe(unfiltered.decision);
     expect(filtered.band).toBe(unfiltered.band);
-    expect(unfiltered.decision).not.toBe('PROGRESS'); // sanity: the scenario is a real shortfall
-    expect(filtered.decision).not.toBe('PROGRESS');
+    // And the safety property this test's OLD sanity check was reaching for,
+    // stated correctly this time: a block with no readable evidence is a
+    // REFUSAL, not a permissive finding — `evidenceSufficient: false` is what
+    // stops a downstream consumer from reading this `PROGRESS` as "earned
+    // more" rather than "the calendar's own plan proceeds unjudged."
+    expect(unfiltered.evidenceSufficient).toBe(false);
+    expect(filtered.evidenceSufficient).toBe(false);
   });
 
   it('MASKING-1 corollary: a window with real OUTSIDE evidence still excludes the in-window days (3a is unaffected)', () => {

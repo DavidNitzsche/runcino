@@ -164,6 +164,13 @@ export interface KeySessionRead {
   /** `earnsProgressionCredit(read)` — whether this session demonstrated room
    *  for more, which is a different question from whether it was useful. */
   earnsProgression: boolean;
+  /** From `ExecutionRead.telemetryCompromised` (RULE8CLOSE-1). A real
+   *  session an app-side capture failure left partly unreadable — never a
+   *  runner shortfall. Excluded from the training-credit average below,
+   *  exactly like `MISSED`: real evidence that cannot be graded is not the
+   *  same fact as no evidence, and it is narrated separately, but neither one
+   *  is scored as a demonstrated failure. */
+  telemetryCompromised?: boolean;
 }
 
 export interface AdaptationInput {
@@ -416,23 +423,49 @@ function readExecution(input: AdaptationInput): DimensionRead {
    *
    * The other currency — progression credit — is a GATE on the top band rather
    * than a term in the mean, for the same reason the trend gate is. See
-   * `PROGRESSION_GATE`. */
+   * `PROGRESSION_GATE`.
+   *
+   * `MISSED` is excluded from the average itself (2026-09-04, RULE8CLOSE-1):
+   * a session with no run at all carries `stimulusCompletion: 0` at the type
+   * level (`lib/execution/interpret.ts`), which is a real fact about training
+   * load delivered, but averaging it flat into this dimension made "no
+   * evidence" indistinguishable from "attempted and got 0% of the intended
+   * work" — the two are opposite facts (Rule 11) and this dimension's own
+   * header states the rule that closes the gap: "absence of evidence is not
+   * evidence of poor adaptation... unknown dimensions are excluded from the
+   * mean, never scored as zero." That principle applied to whole dimensions
+   * (no HR strap, three weeks old) but not to individual missed sessions
+   * inside a dimension that had other data — a real hill session run at 4.71
+   * of 6mi could still be dragged toward `marginal`/`poor` by a SEPARATE
+   * day's absence, through the exact `EXECUTION_GATE` cap below, which reads
+   * as "the runner's capacity looks worse" for a day that produced no
+   * evidence at all. `REPLACED` (raced instead) and `PARTIAL_FAILED` (a real,
+   * poorly-executed attempt) both stay in the average — both are real
+   * evidence, unlike an absence. */
   const reads = input.keySessionExecutions ? compliantSessions(input.keySessionExecutions) : [];
-  if (reads.length > 0) {
-    const training = reads.reduce((a, r) => a + clamp(r.stimulusCompletion, 0, 1), 0) / reads.length;
+  const attempted = reads.filter((r) => r.state !== 'MISSED' && !r.telemetryCompromised);
+  if (attempted.length > 0) {
+    const training = attempted.reduce((a, r) => a + clamp(r.stimulusCompletion, 0, 1), 0) / attempted.length;
     parts.push(shareToScore(training));
-
+  }
+  if (reads.length > 0) {
     const full = reads.filter((r) => r.earnsProgression).length;
     const missed = reads.filter((r) => r.state === 'MISSED').length;
+    const compromised = reads.filter((r) => r.telemetryCompromised && r.state !== 'MISSED').length;
     // Named rather than swept into "partial": a race is not a session the
     // runner half-did, and reading it as one is the misdescription the states
     // exist to end.
     const replaced = reads.filter((r) => r.state === 'REPLACED').length;
-    const partial = reads.length - full - missed - replaced;
+    const partial = reads.length - full - missed - replaced - compromised;
     const bits = [`${full} of ${reads.length} key sessions delivered the full stimulus`];
     if (partial > 0) bits.push(`${partial} partial`);
     if (replaced > 0) bits.push(`${replaced} replaced by a race`);
+    // "not run" is schedule-completion reporting, per David's ruling — named
+    // here, never folded into the score above.
     if (missed > 0) bits.push(`${missed} not run`);
+    // Real, but its own data cannot grade it — named separately from
+    // "partial" so the two are never conflated in what the runner reads.
+    if (compromised > 0) bits.push(`${compromised} telemetry-compromised`);
     notes.push(bits.join(' · '));
   } else if (
     input.keySessionsPlanned != null && input.keySessionsPlanned > 0

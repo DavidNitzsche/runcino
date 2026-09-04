@@ -14,6 +14,7 @@ import {
   type AdaptationInput,
   type KeySessionRead,
 } from './adaptation-model';
+import { interpretExecution } from '../execution/interpret';
 
 /** Shorthand for a session in a given state. The execution dimension scores
  *  these; the planned/completed headcount beside them is narration. */
@@ -155,14 +156,35 @@ describe('the doctrine progression table', () => {
   });
 
   it('marginal holds the current stimulus rather than adding to it', () => {
+    // RULE8CLOSE-1 (2026-09-04): this used to spell "struggling" with three
+    // MISSED sessions. A miss is absence of evidence, never itself the
+    // negative signal — see the `execution is a gate` and `EXECUTION-IDENTITY-1`
+    // blocks below for that doctrine directly. This band/decision test's own
+    // job is the mapping downstream of a genuinely bad read, so it now uses
+    // `partial_failed` — three REAL, attempted sessions that came apart —
+    // which is the honest way to construct "struggling" without leaning on
+    // the mechanism this file no longer treats as punitive.
+    // Real struggle, not absence — internal-cost and recovery are genuinely
+    // degraded too, moderately rather than severely (that is the `poor`
+    // test's job below). Calibrated against the live model rather than
+    // hand-derived: a fixture that leans on only ONE dimension being bad
+    // while the rest stay pristine no longer reaches `marginal` under the
+    // corrected training-credit average, because a small real-but-imperfect
+    // sample reads honestly rather than punitively.
     const struggling: AdaptationInput = {
       ...baseline(),
-      keySessionExecutions: [...repeat(as_planned, 5), ...repeat(missed, 3)],
-      keySessionsCompleted: 5,
+      keySessionExecutions: [...repeat(as_planned, 5), ...repeat(partial_failed, 3)],
+      keySessionsCompleted: 8,
       targetVerdicts: ['slow', 'slow', 'on', 'slow', 'on', 'on'],
       repConsistency: ['fading', 'fading', 'even'],
       trainingForm: 'LOADED',
-      adapterDowngrades: 1,
+      adapterDowngrades: 2,
+      rpeReported: 6,
+      rpeHarderThanExpected: 4,
+      decouplingVerdicts: ['poor', 'poor', 'building'],
+      lateDriftBpm: [12, 10, 9],
+      recoveryPctOfExpected: 0.65,
+      weeklyActualMi: [30, 34, 36],
     };
     const v = classifyAdaptation(struggling);
     expect(v.band).toBe('marginal');
@@ -171,10 +193,15 @@ describe('the doctrine progression table', () => {
   });
 
   it('poor reduces or modifies the stimulus', () => {
+    // Same substitution and the same reason: real, poorly-executed sessions
+    // (not misses) carry this to `poor`, alongside genuinely bad internal-cost
+    // and consistency signals (decoupling, late drift, RPE, downgrades) —
+    // this test was always meant to prove those dimensions can reach `poor`
+    // together, not to prove that skipping sessions can.
     const failing: AdaptationInput = {
       ...baseline(),
-      keySessionExecutions: [...repeat(as_planned, 2), ...repeat(missed, 6)],
-      keySessionsCompleted: 2,
+      keySessionExecutions: [...repeat(as_planned, 2), ...repeat(partial_failed, 6)],
+      keySessionsCompleted: 8,
       targetVerdicts: ['slow', 'slow', 'slow', 'slow'],
       repConsistency: ['fading', 'fading', 'fading'],
       decouplingVerdicts: ['poor', 'poor', 'poor'],
@@ -182,9 +209,10 @@ describe('the doctrine progression table', () => {
       rpeReported: 6,
       rpeHarderThanExpected: 6,
       trainingForm: 'OVERREACH',
-      weeklyActualMi: [26, 28, 24],
+      weeklyActualMi: [20, 22, 18],
       adapterDowngrades: 4,
       easyDiscipline: { established: true, read: 'ran_faster_than_band' },
+      recoveryPctOfExpected: 0.45,
     };
     const v = classifyAdaptation(failing);
     expect(v.band).toBe('poor');
@@ -194,44 +222,84 @@ describe('the doctrine progression table', () => {
 });
 
 describe('execution is a gate — you cannot earn stress by not doing the work', () => {
-  it('missed and missed-target sessions cap the band even when everything else is pristine', () => {
-    // The trap this closes: skip the sessions and your HR, recovery and
-    // decoupling all look excellent, because the stimulus that would have
-    // taxed them was never delivered. Averaging calls that "absorbing well".
-    const skipping: AdaptationInput = {
+  /**
+   * RULE8CLOSE-1 (2026-09-04) rewrote this whole block. The trap the original
+   * tests closed still matters — skip the sessions and your HR, recovery and
+   * decoupling all look excellent, because the stimulus that would have taxed
+   * them was never delivered — but the OLD fix was to let missed sessions drag
+   * the execution score itself into `marginal`/`poor`. David's ruling: "No
+   * activity on a prescribed day is not evidence that fitness declined. It is
+   * absence of execution evidence" — a miss must not read as negative, in any
+   * amount. The trap is still closed, correctly, by the PROGRESSION gate
+   * (`compliantSessions` still counts a miss in its denominator, so a block
+   * that skipped enough of the schedule cannot demonstrate room for more) —
+   * never by treating the miss as punitive evidence of decline.
+   */
+  it('missing most of the block blocks strong, but does not punish the block that happened', () => {
+    // 5 of 8 key sessions missed — decisively below PROGRESSION_GATE's 0.6
+    // share, so `strong` cannot fire however good the 3 real sessions were.
+    const mostlyMissed: AdaptationInput = {
       ...baseline(),
-      keySessionExecutions: [...repeat(as_planned, 5), ...repeat(missed, 3)],
-      keySessionsCompleted: 5,
-      targetVerdicts: ['slow', 'slow', 'on', 'slow', 'on', 'on'],
-      repConsistency: ['fading', 'fading', 'even'],
+      keySessionExecutions: [...repeat(as_planned, 3), ...repeat(missed, 5)],
+      keySessionsCompleted: 3,
+      targetVerdicts: ['on', 'on', 'on'],
+      repConsistency: ['even'],
     };
-    const v = classifyAdaptation(skipping);
+    const v = classifyAdaptation(mostlyMissed);
+    // The trap: HR/recovery/decoupling never got taxed, and still must not
+    // read as evidence of GOOD absorption either — but that is what `strong`
+    // would claim, and it is blocked.
     expect(v.dimensions.find((d) => d.dimension === 'internal_cost')!.score).toBeGreaterThan(0);
     expect(v.dimensions.find((d) => d.dimension === 'recovery')!.score).toBeGreaterThan(0);
-    expect(v.band).toBe('marginal');
-    expect(v.decision).toBe('STAY');
+    expect(v.band).not.toBe('strong');
+    // And not punished into a downgrade either — the 5 misses are absence of
+    // evidence, not evidence of decline, so nothing here forces MODIFY/PROTECT.
+    expect(['PROGRESS', 'STAY']).toContain(v.decision);
+    expect(progressionCreditShare(mostlyMissed)).toBeLessThan(PROGRESSION_GATE.strongMinShare);
   });
 
-  it('wholesale non-execution caps at poor', () => {
+  it('wholesale non-execution blocks strong via the progression gate, not via a punitive score', () => {
+    // Internally consistent this time: a block where 7 of 8 key sessions were
+    // missed has nothing to grade a quality target or rep consistency
+    // against for the 7 that did not happen — the old fixture glued pristine
+    // 'slow'/'fading' verdicts onto a near-total miss, which does not
+    // correspond to anything that could really be measured.
     const absent: AdaptationInput = {
       ...baseline(),
       keySessionExecutions: [as_planned, ...repeat(missed, 7)],
       keySessionsCompleted: 1,
+      targetVerdicts: null,
+      repConsistency: null,
+    };
+    const v = classifyAdaptation(absent);
+    // The 7 misses contribute nothing to the average either way — they are
+    // simply excluded, never a hard zero. What is left is an honest read of
+    // the one real session that happened, which was perfect: the
+    // training-credit dimension correctly says "of what was attempted, it
+    // was all fully delivered" — that is a true, narrow fact, not a claim
+    // about the other 7 sessions. It is exactly what stops this dimension
+    // from EVER being the strongly negative number that used to force `poor`
+    // off nothing but absence.
+    expect(v.dimensions.find((d) => d.dimension === 'execution')!.score).toBe(2);
+    // The claim that matters is downstream: 1 of 8 attempted cannot
+    // demonstrate room for more, so `strong` is blocked by the progression
+    // gate regardless of how good that one session was.
+    expect(v.band).not.toBe('strong');
+    expect(progressionCreditShare(absent)).toBeCloseTo(1 / 8, 5);
+  });
+
+  it('the gate explains itself in terms of the sessions, not the heart rate, when execution is what actually failed', () => {
+    // Repoints to a REAL struggle (partial_failed — attempted and came apart),
+    // which is the case this sentence is actually describing. A pure miss
+    // carries no session-quality story to tell; see the tests above for that.
+    const struggling: AdaptationInput = {
+      ...baseline(),
+      keySessionExecutions: [...repeat(as_planned, 2), ...repeat(partial_failed, 6)],
+      keySessionsCompleted: 8,
       targetVerdicts: ['slow', 'slow', 'slow', 'slow'],
       repConsistency: ['fading', 'fading', 'fading'],
     };
-    expect(classifyAdaptation(absent).band).toBe('poor');
-  });
-
-  it('the gate explains itself in terms of the sessions, not the heart rate', () => {
-    const skipping: AdaptationInput = {
-      ...baseline(),
-      keySessionExecutions: [...repeat(as_planned, 5), ...repeat(missed, 3)],
-      keySessionsCompleted: 5,
-      targetVerdicts: ['slow', 'slow', 'on', 'slow', 'on', 'on'],
-      repConsistency: ['fading', 'fading', 'even'],
-    };
-    expect(classifyAdaptation(skipping).summary).toMatch(/session|rep/i);
+    expect(classifyAdaptation(struggling).summary).toMatch(/session|rep/i);
   });
 });
 
@@ -265,9 +333,25 @@ describe('execution reads STATES · a run on the date is not a session done', ()
   });
 
   it('a missed block reads as missed even when a run exists on every date', () => {
+    // RULE8CLOSE-1 (2026-09-04): the headcount claims 8 of 8 ran, and the
+    // resolver must still see through that to `MISSED` — that part of this
+    // test's name is unchanged. What changed is what "reads as missed" means:
+    // absence of evidence, not a punitive score. Every session in this block
+    // is a real MISS, so there is no attempted evidence at all for the
+    // training-credit dimension — it stays null, exactly like the "no HR
+    // strap" case elsewhere in this file, rather than the strongly negative
+    // number the old model computed from eight hard zeros.
     const v = classifyAdaptation(skipped);
-    expect(v.dimensions.find((d) => d.dimension === 'execution')!.score).toBeLessThan(-1);
-    expect(v.band).toBe('poor');
+    expect(v.dimensions.find((d) => d.dimension === 'execution')!.score).toBeNull();
+    // Nothing here can demonstrate room for more — progression share is 0.
+    expect(progressionCreditShare(skipped)).toBe(0);
+    expect(v.band).not.toBe('strong');
+    // And it is not punished into `poor` either — a whole block of absence is
+    // still absence, not decline. The other four pristine dimensions carry
+    // the read to `normal`, and the calendar's own step proceeds.
+    expect(v.band).toBe('normal');
+    expect(v.decision).toBe('PROGRESS');
+    expect(v.stepMultiplier).toBe(1);
   });
 
   it('a replaced session is not a miss and is not room for more', () => {
@@ -322,11 +406,36 @@ describe('rule 4 · training credit and progression credit are different currenc
   };
 
   it('partial work is not scored as zero', () => {
+    // RULE8CLOSE-1 (2026-09-04): this used to compare against a fully MISSED
+    // block's score. That comparison no longer proves what it once did — a
+    // miss is now excluded from the training-credit average entirely (Rule 1:
+    // absence of evidence is not evidence of poor adaptation), so "missed"
+    // reads as `null`/no-opinion, not as a competing negative number, and the
+    // two are no longer the same kind of thing to compare. What this test
+    // actually needs to prove is unchanged: a genuinely partial but REAL
+    // effort (attempted, measured, real data) must not be scored as though
+    // it were the worst possible reading on the scale — compare it directly
+    // against that floor instead.
     const partialScore = classifyAdaptation(allPartial)
       .dimensions.find((d) => d.dimension === 'execution')!.score!;
-    const missedScore = classifyAdaptation({ ...baseline(), keySessionExecutions: repeat(missed, 8) })
-      .dimensions.find((d) => d.dimension === 'execution')!.score!;
-    expect(partialScore).toBeGreaterThan(missedScore);
+    expect(partialScore).not.toBeNull();
+    // shareToScore(0) === -2, the scale's own floor. 8 real sessions at 0.6
+    // completion land well clear of it.
+    expect(partialScore).toBeGreaterThan(-2);
+  });
+
+  it('and a miss is excluded from the average, never scored as a competing negative', () => {
+    // The corollary Rule 1 now enforces directly on this dimension: a fully
+    // missed block carries no training-credit opinion at all (null), which is
+    // categorically different from — and never lower than — a real partial
+    // effort's actual measured number.
+    const missedScore = classifyAdaptation({
+      ...baseline(),
+      keySessionExecutions: repeat(missed, 8),
+      targetVerdicts: null,
+      repConsistency: null,
+    }).dimensions.find((d) => d.dimension === 'execution')!.score;
+    expect(missedScore).toBeNull();
   });
 
   it('and is not rewarded as though it demonstrated capacity for more', () => {
@@ -550,8 +659,10 @@ describe('heat is filtered per observation, not per surface', () => {
 });
 
 /**
- * EXECUTION-IDENTITY-1 (2026-09-03) · one exact-linked, telemetry-limited
- * session must not be able to trigger a downgrade on its own.
+ * EXECUTION-IDENTITY-1 (2026-09-03), corrected under RULE8CLOSE-1
+ * (2026-09-04) · one exact-linked, telemetry-compromised session must not
+ * be able to trigger a downgrade — and must not be scored at all, positive
+ * or negative, off data an app-side capture failure produced.
  *
  * David's own ruling on the live incident: an EXACT `planWorkoutId` match
  * proves which run this was, never that it was fully executed, and a
@@ -559,26 +670,42 @@ describe('heat is filtered per observation, not per surface', () => {
  * prescribed targets never round-tripping to post-run) must not read as a
  * demonstrated pace/HR/incline/rep failure.
  *
- * Verified live against David's real account the night this was found
+ * The first version of this block (2026-09-03) proved the session "scored
+ * better than a plain miss" and read that as the safe direction. David's
+ * follow-up ruling named exactly why that was still wrong: it treated a MISS
+ * as a legitimate negative baseline for the telemetry-compromised session to
+ * beat, when a miss must never be negative evidence at all — "must not... make
+ * a later partial run appear beneficial merely because it replaced a negative
+ * 'miss' score." The corrected property is stronger and cleaner than
+ * "not worse": a genuine miss and a telemetry-compromised session are BOTH
+ * excluded from this dimension's score, so replacing one with the other
+ * leaves the number EXACTLY unchanged, never merely "no worse."
+ *
+ * Verified live against David's real account the night the incident happened
  * (Rule 13): `buildAdaptationComparisonRecord` run at '2026-09-02' (before
  * the session) and '2026-09-04' (after) — same 42-day window, same runner,
- * one session added. The execution score MOVED TOWARD ZERO (-0.679 to
- * -0.559), band stayed `marginal`, decision stayed `STAY`, in both
- * directions — because the session displaced what the window would
- * otherwise have counted as a plain MISS. This is the synthetic version of
- * that same proof, so the property survives independent of any one
- * account's real data.
+ * one session added, execution score moved from -0.679 to -0.559. That
+ * finding is superseded by this corrected model, not restated by it — see
+ * `docs/handback-2026-09-04-sealing-and-adaptation-doctrine.md` for the
+ * re-verification against the corrected code.
  */
-describe('EXECUTION-IDENTITY-1 · a single telemetry-limited partial session cannot force a downgrade', () => {
-  const partial_productive: KeySessionRead =
-    { state: 'PARTIAL_PRODUCTIVE', stimulusCompletion: 0.336, earnsProgression: false };
+describe('RULE8CLOSE-1 · a telemetry-compromised session scores exactly like the miss it replaced, never worse and never "improved"', () => {
+  // The real incident, typed: an EXACT match (planWorkoutId present upstream,
+  // out of scope for this pure model), 4.71 of 6mi recorded, automatic phase
+  // transitions failed, prescribed targets never round-tripped — the app's own
+  // fault, not the runner's. `telemetryCompromised: true` is how a caller who
+  // knows that reports it (`lib/execution/interpret.ts` RULE8CLOSE-1).
+  const telemetry_compromised_partial: KeySessionRead = {
+    state: 'PARTIAL_PRODUCTIVE',
+    stimulusCompletion: 0.336,
+    earnsProgression: false,
+    telemetryCompromised: true,
+  };
 
-  // The realistic, boundary-adjacent window — not a pristine one. Reuses the
-  // exact fixture the 'missed and missed-target sessions cap the band' test
-  // above already established as 'marginal'/'STAY': 5 clean sessions, 3
-  // missed, degraded targets and rep consistency. A pristine 8-for-8 window
-  // is too far from any gate to prove anything by swapping one slot — every
-  // real risk here is at a boundary, so the fixture has to sit near one.
+  // The realistic, boundary-adjacent window — not a pristine one. Same shape
+  // the original incident used: 5 clean sessions, 2 plain misses, one more
+  // slot that varies per test. A pristine 8-for-8 window is too far from any
+  // gate to prove anything by swapping one slot.
   function boundaryWindow(third: KeySessionRead): AdaptationInput {
     return {
       ...baseline(),
@@ -589,42 +716,70 @@ describe('EXECUTION-IDENTITY-1 · a single telemetry-limited partial session can
     };
   }
 
-  it('swapping one MISS for the honest partial never makes the verdict worse', () => {
+  it('swapping one MISS for the telemetry-compromised session leaves the execution score exactly unchanged', () => {
     const withMiss = classifyAdaptation(boundaryWindow(missed));
-    const withPartial = classifyAdaptation(boundaryWindow(partial_productive));
+    const withCompromised = classifyAdaptation(boundaryWindow(telemetry_compromised_partial));
     const execScore = (v: ReturnType<typeof classifyAdaptation>) =>
       v.dimensions.find((d) => d.dimension === 'execution')!.score!;
-    // A real, if incomplete, effort is never scored worse than an
-    // unexplained absence — this is the property, not a specific number.
-    expect(execScore(withPartial)).toBeGreaterThanOrEqual(execScore(withMiss));
-    // Neither reading crosses further into 'poor', and neither decides a
-    // downgrade — the boundary window is already 'marginal'/STAY (proven
-    // above); replacing a miss with an honest partial cannot push it past
-    // that same edge in the wrong direction.
-    expect(withPartial.band).not.toBe('poor');
-    expect(['PROGRESS', 'STAY']).toContain(withPartial.decision);
-    expect(withPartial.stepMultiplier).toBeGreaterThanOrEqual(withMiss.stepMultiplier);
+    // Both sessions are excluded from the training-credit average — there is
+    // nothing here for either one to beat or lose to. Exact equality is the
+    // correct, stronger claim; "not worse" would still tolerate exactly the
+    // "beat a negative miss score" framing David's ruling rejected.
+    expect(execScore(withCompromised)).toBe(execScore(withMiss));
+    expect(withCompromised.band).toBe(withMiss.band);
+    expect(withCompromised.decision).toBe(withMiss.decision);
+    expect(withCompromised.stepMultiplier).toBe(withMiss.stepMultiplier);
   });
 
-  it('pins the real production before/after finding this test generalises — verified live 2026-09-03, David\'s own account, 42-day window: adding the session moved the execution score TOWARD zero, not away from it', () => {
-    // lib/adaptation/load.ts buildAdaptationComparisonRecord at
-    // '2026-09-02' (before) vs '2026-09-04' (after, the real session
-    // included): -0.679 -> -0.559. Reproduced here structurally: the miss
-    // this session displaced scores lower than the honest partial that
-    // replaced it, on the same shared dimension.
-    const before = classifyAdaptation(boundaryWindow(missed));
-    const after = classifyAdaptation(boundaryWindow(partial_productive));
+  it('the telemetry-compromised session is narrated separately from a plain miss and from an honest partial', () => {
+    const v = classifyAdaptation(boundaryWindow(telemetry_compromised_partial));
+    const detail = v.dimensions.find((d) => d.dimension === 'execution')!.detail;
+    expect(detail).toMatch(/telemetry-compromised/i);
+    expect(detail).not.toMatch(/1 partial/i);
+  });
+
+  it('an honest, non-compromised partial at the same completion still contributes its own real evidence', () => {
+    // The distinguishing case: a REAL partial session (same 0.336, no capture
+    // failure) is not the same fact as a telemetry-compromised one, and must
+    // not be silently excluded too — that would quarantine real, trustworthy
+    // evidence the runner actually produced.
+    const honestPartial: KeySessionRead =
+      { state: 'PARTIAL_PRODUCTIVE', stimulusCompletion: 0.336, earnsProgression: false };
+    const withMiss = classifyAdaptation(boundaryWindow(missed));
+    const withHonestPartial = classifyAdaptation(boundaryWindow(honestPartial));
     const execScore = (v: ReturnType<typeof classifyAdaptation>) =>
       v.dimensions.find((d) => d.dimension === 'execution')!.score!;
-    expect(execScore(after)).toBeGreaterThan(execScore(before));
+    // Real data changes the reading — this is the training-credit dimension
+    // doing its job, not a punishment. It differs from the miss/compromised
+    // case above specifically because THIS session's numbers can be trusted.
+    expect(execScore(withHonestPartial)).not.toBe(execScore(withMiss));
   });
 
-  it('the partial session never earns progression credit, whatever the surrounding window looks like', () => {
-    const withOnePartial = boundaryWindow(partial_productive);
-    const share = progressionCreditShare(withOnePartial);
+  it('the telemetry-compromised session never earns progression credit, and never claims high fitness evidence', () => {
+    const withOneCompromised = boundaryWindow(telemetry_compromised_partial);
+    const share = progressionCreditShare(withOneCompromised);
     expect(share).toBeLessThan(1);
     // 5 of 8 compliant sessions earn progression (the 2 misses and the
-    // partial do not) — 0.625, never a number that credits the partial.
+    // compromised session do not) — 0.625, never a number that credits it.
     expect(share).toBeCloseTo(5 / 8, 5);
+  });
+
+  it('interpretExecution itself quarantines fitness/adaptation evidence when telemetryCompromised is set, and preserves the trustworthy completion figure', () => {
+    const read = interpretExecution(
+      // workMi:12 sits outside the interval at-pace band (3-6mi,
+      // `AT_PACE_SESSION_MI.interval`) so this exercises the genuine PARTIAL
+      // path rather than accidentally landing in `bothInsideBand`'s
+      // same-stimulus read — both planned and actual otherwise mirror the
+      // real incident's shape (a hill session cut well short).
+      { domain: 'interval', workMinutes: 20, workMi: 12, meanWorkPaceSPerMi: null, recoveryIntent: 'incomplete' },
+      { domain: 'interval', workMinutes: 6.72, workMi: 4.71, meanWorkPaceSPerMi: null, recoveryIntent: 'incomplete' },
+      { telemetryCompromised: true },
+    );
+    expect(read.telemetryCompromised).toBe(true);
+    expect(read.evidence.fitness).toBe('none');
+    expect(read.evidence.adaptation).toBe('unknown');
+    // Distance/duration-derived completion is preserved — the trustworthy half.
+    expect(read.stimulusCompletion).toBeCloseTo(6.72 / 20, 2);
+    expect(read.why).toMatch(/could not be captured reliably/i);
   });
 });
