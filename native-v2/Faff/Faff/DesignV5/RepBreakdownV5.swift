@@ -247,24 +247,32 @@ struct RepCompletionSummary { let label: String; let value: String; let sub: Str
 /// completed' when the wire has no explicit completion status and the
 /// implementation is counting returned rep records."
 ///
-/// Picks the WEAKEST claim the data actually supports, in this order:
+/// Picks the WEAKEST claim the data actually supports:
 ///
 ///   1. any rep's completion is genuinely unknown → "Recorded" / bare count.
 ///      Nothing here licenses the word "completed".
-///   2. a rep is EXPLICITLY incomplete (ended early) → "N of M completed",
-///      M excluding chosen skips, with the ended-early count in `sub`.
-///   3. every recorded, non-skipped rep is explicitly complete, but
-///      `planned` (when known) says there should be more → "N of PLANNED
-///      completed", the gap named as missing in `sub`.
-///   4. more were recorded than planned → "Recorded" / the total, the
-///      surplus named in `sub`.
-///   5. otherwise — everything recorded is explicitly complete and either
-///      the planned count is unknown or matches → "N of N completed".
+///   2. more were recorded than planned → "Recorded" / the total recorded,
+///      the surplus named in `sub` — "completed" against a number the plan
+///      never set is not a claim to make.
+///   3. otherwise → "Completed" / `completed of TOTAL`, where TOTAL is the
+///      prescribed count (`planned` when known, else the raw recorded
+///      count) — SKIP-TRANSPARENCY-1 (2026-09-05): a chosen skip is one of
+///      the reps that was prescribed and still counts in the denominator,
+///      so "3 of 3" never happens for a 4-rep session with one skip — that
+///      reads as though only three were ever asked for. David, directly:
+///      "Do not turn four prescribed reps with one chosen skip into '3 of 3
+///      completed.' That can imply only three were prescribed." `sub` names
+///      every qualifier that applies, in order: ended-early count,
+///      intentionally-skipped count, missing count (`planned` known and
+///      more reps were prescribed than ever got a record at all — a
+///      distinct fact from a skip, which DOES have a record).
 ///
 /// `planned` is nil wherever the caller has no prescribed rep count to
-/// compare against (Today, currently) — cases 3-4 then never fire, which is
-/// the correct, honest degradation: a surface with less data makes a
-/// narrower claim, never a guessed one.
+/// compare against (Today, currently) — the "missing" qualifier then never
+/// fires, which is the correct, honest degradation: a surface with less
+/// data makes a narrower claim, never a guessed one. Recorded-but-skipped
+/// reps are never treated as "missing" — a skip has a phase record and a
+/// reason; a genuinely missing rep has neither.
 func repCompletionSummary(states: [RepRecordState], planned: Int?) -> RepCompletionSummary? {
     guard !states.isEmpty else { return nil }
     let recorded = states.count
@@ -272,31 +280,36 @@ func repCompletionSummary(states: [RepRecordState], planned: Int?) -> RepComplet
     let partial = states.filter { $0 == .partial }.count
     let skipped = states.filter { $0 == .skipped }.count
     let unknown = states.filter { $0 == .unknown }.count
-    let attempted = recorded - skipped
-    let skipNote = skipped == 1 ? "1 skipped" : "\(skipped) skipped"
 
     if unknown > 0 {
-        return .init(label: "Recorded", value: "\(recorded)", sub: skipped > 0 ? skipNote : nil)
-    }
-    if partial > 0 {
-        let endedEarly = partial == 1 ? "1 ended early" : "\(partial) ended early"
-        let sub = skipped > 0 ? "\(endedEarly), \(skipNote)" : endedEarly
-        return .init(label: "Completed", value: "\(completed) of \(attempted)", sub: sub)
-    }
-    if let planned, recorded < planned {
-        let missing = planned - recorded
-        return .init(label: "Completed", value: "\(completed) of \(planned)",
-                     sub: missing == 1 ? "1 missing" : "\(missing) missing")
+        let sub = skipped > 0 ? (skipped == 1 ? "1 skipped" : "\(skipped) skipped") : nil
+        return .init(label: "Recorded", value: "\(recorded)", sub: sub)
     }
     if let planned, recorded > planned {
         let extra = recorded - planned
         return .init(label: "Recorded", value: "\(recorded)",
                      sub: extra == 1 ? "1 more than planned" : "\(extra) more than planned")
     }
-    if skipped > 0 {
-        return .init(label: "Completed", value: "\(completed) of \(attempted)", sub: skipNote)
+
+    // The denominator is the PRESCRIBED count, never silently shrunk by
+    // subtracting a chosen skip — a skip is one of the prescribed reps, not
+    // one fewer of them.
+    let total = planned ?? recorded
+
+    var subParts: [String] = []
+    if partial > 0 {
+        subParts.append(partial == 1 ? "1 ended early" : "\(partial) ended early")
     }
-    return .init(label: "Completed", value: "\(completed) of \(completed)", sub: nil)
+    if skipped > 0 {
+        subParts.append(skipped == 1 ? "1 intentionally skipped" : "\(skipped) intentionally skipped")
+    }
+    if let planned, recorded < planned {
+        let missing = planned - recorded
+        subParts.append(missing == 1 ? "1 missing" : "\(missing) missing")
+    }
+
+    return .init(label: "Completed", value: "\(completed) of \(total)",
+                 sub: subParts.isEmpty ? nil : subParts.joined(separator: ", "))
 }
 
 // MARK: - The section
@@ -307,15 +320,6 @@ struct RepBreakdownV5: View {
     /// phase types.
     let title: String
     let pieces: [RepPiece]
-
-    /// DEPRECATED, 2026-09-05 (LESS-IS-MORE-2) · the watch's tolerance
-    /// arithmetic used to draw here unconditionally, as the exact sentence
-    /// David named to remove from the primary scan path. It now lives in
-    /// `PostRunVerdictV5.analysisNote`, behind "Why", in plain language.
-    /// Parameter kept (always nil in every live call site) rather than torn
-    /// out of the initializer in the same pass that also touched every
-    /// caller — deleting it is a clean, separate, zero-behavior-risk step.
-    var toleranceLine: String? = nil
 
     var body: some View {
         // RULE THREE, belt and braces. The caller already guards this; a

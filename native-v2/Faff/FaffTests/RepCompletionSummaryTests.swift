@@ -68,19 +68,36 @@ final class RepCompletionSummaryTests: XCTestCase {
 
     // MARK: - 3 · skipped-rep — a decision, never a lapse (rep_skips)
 
-    func testChosenSkipDoesNotCountAsIncomplete() {
+    /// SKIP-TRANSPARENCY-1, 2026-09-05. David, directly: "Do not turn four
+    /// prescribed reps with one chosen skip into '3 of 3 completed.' That
+    /// can imply only three were prescribed." A chosen skip still has a
+    /// phase record, and is one of the RECORDED reps — the denominator must
+    /// not shrink to hide it.
+    func testChosenSkipNamedAgainstTheFullPrescribedCount() {
         let s = repCompletionSummary(states: [.completed, .completed, .completed, .skipped], planned: nil)
         XCTAssertEqual(s?.label, "Completed")
-        // Three of the three ATTEMPTED reps completed — the skip is named,
-        // never folded into "3 of 4", which would call a decision a miss.
-        XCTAssertEqual(s?.value, "3 of 3")
-        XCTAssertEqual(s?.sub, "1 skipped")
+        // NOT "3 of 3" — that reads as though only three reps ever existed.
+        XCTAssertEqual(s?.value, "3 of 4")
+        XCTAssertEqual(s?.sub, "1 intentionally skipped")
+    }
+
+    /// The exact four-reps-one-skip shape from David's own example, with an
+    /// explicit `planned` too (Run Detail's real case, via
+    /// `planned_spec.rep_count`) — confirms the denominator is the
+    /// prescribed count whether it comes from `planned` or from the
+    /// recorded set itself.
+    func testFourPrescribedOneChosenSkipReadsAsThreeOfFour() {
+        let s = repCompletionSummary(states: [.completed, .completed, .completed, .skipped], planned: 4)
+        XCTAssertEqual(s?.value, "3 of 4")
+        XCTAssertEqual(s?.sub, "1 intentionally skipped")
     }
 
     func testSkipAndPartialCombine() {
         let s = repCompletionSummary(states: [.completed, .partial, .skipped], planned: nil)
-        XCTAssertEqual(s?.value, "1 of 2")
-        XCTAssertEqual(s?.sub, "1 ended early, 1 skipped")
+        // Three reps recorded (one completed, one partial, one skipped) —
+        // the denominator is the full three, not two.
+        XCTAssertEqual(s?.value, "1 of 3")
+        XCTAssertEqual(s?.sub, "1 ended early, 1 intentionally skipped")
     }
 
     // MARK: - 4 · extra-rep — more recorded than the plan prescribed

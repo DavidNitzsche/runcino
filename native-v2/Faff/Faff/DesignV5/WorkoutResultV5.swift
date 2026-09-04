@@ -218,26 +218,14 @@ struct PostRunVerdictV5: View {
 
     private var headline: String { model.headline.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var summary: String { model.summary.trimmingCharacters(in: .whitespacesAndNewlines) }
-    /// PROVENANCE-1, 2026-09-03. The FACT stays visible, not behind "Why" —
-    /// a runner reading "asked 7:08" needs to know in the same glance
-    /// whether that target came from the coaching app or his own watch.
-    /// PROVENANCE-2, 2026-09-04: the full server sentence was too heavy for
-    /// that glance — "still visually heavy and reads like a disclaimer"
-    /// (David, directly against this render). The full sentence now lives
-    /// in the Why disclosure (`targetProvenanceTrimmed`, unchanged, moved);
-    /// this is a short label derived from it for the compact line the card
-    /// actually shows. Derived rather than a new wire field: the server
-    /// sentence already names "race" only when it is one
-    /// (`describeAdaptationCause`'s sibling in `experience.ts` composes it
-    /// that way), so checking for the word is a real signal, not a guess
-    /// invented on the phone.
+    /// PROVENANCE-3, 2026-09-05 · Why-only now (see the body's own comment
+    /// on the removed primary-card line). The short derived label this fed
+    /// (`targetProvenanceShortLabel` — "Watch race plan" / "Watch-built
+    /// workout") is gone with it: Why shows the full sentence, never the
+    /// short form, so there was nothing left to derive it for.
     private var targetProvenanceTrimmed: String? {
         let t = model.targetProvenanceNote?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (t?.isEmpty ?? true) ? nil : t
-    }
-    private var targetProvenanceShortLabel: String? {
-        guard let t = targetProvenanceTrimmed else { return nil }
-        return t.localizedCaseInsensitiveContains("race") ? "Watch race plan" : "Watch-built workout"
     }
     private var cost: String? {
         let c = model.cost?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -247,7 +235,19 @@ struct PostRunVerdictV5: View {
         let l = model.learned.trimmingCharacters(in: .whitespacesAndNewlines)
         return l.isEmpty ? nil : l
     }
+    /// WHY-DEDUP-1, 2026-09-05 · nil on `UNCHANGED` — `model.change` there is
+    /// server text ("The plan is unchanged.") that restates the compact
+    /// row's own `planStatusLine` ("Plan unchanged.") word for word in
+    /// substance, which is exactly the repetition David's screenshot caught:
+    /// the same fact stated once outside "Why" and once inside it. Every
+    /// other status keeps its sentence — `UPDATED`'s can carry the
+    /// clarifying clause, `HELD_FOR_EVIDENCE`'s carries information the
+    /// compact row's bare "Under review." does not. `model.change` itself is
+    /// untouched (it also feeds accessibility and the coach log elsewhere),
+    /// so this is a display-only suppression, not a change to what the
+    /// server computed.
     private var change: String? {
+        guard model.changeState != "UNCHANGED" else { return nil }
         let c = model.change.trimmingCharacters(in: .whitespacesAndNewlines)
         return c.isEmpty ? nil : c
     }
@@ -353,22 +353,18 @@ struct PostRunVerdictV5: View {
                         .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                // COMPACT LINE, not the full sentence — "Compared with:
-                // Watch race plan", same weight/scale as a metadata row,
-                // never a disclaimer paragraph. The full explanation moved
-                // to the Why disclosure, appended alongside `learned`/
-                // `change` below.
-                if let targetProvenanceShortLabel {
-                    HStack(spacing: V5.S.s4) {
-                        Text("Compared with:")
-                            .foregroundStyle(V5.textQuiet)
-                        Text(targetProvenanceShortLabel)
-                            .foregroundStyle(V5.textSecondary)
-                            .fontWeight(.semibold)
-                    }
-                    .font(.faffText(TypeScaleV5.label13))
-                    .padding(.top, V5.S.s2)
-                }
+                // PROVENANCE-3, 2026-09-05 · REMOVED from the primary card.
+                // David, directly: "'Compared with: Watch-built workout' and
+                // similar source/provenance text should not occupy the
+                // primary Coach's Read card unless it resolves an active
+                // discrepancy... The primary card should remain: one
+                // verdict; one purposeful sentence." This reverses
+                // PROVENANCE-1's "the fact stays visible, not behind Why" —
+                // that reasoning is superseded. The full sentence still
+                // lives in the Why disclosure (`targetProvenanceTrimmed`,
+                // below), unchanged; only the compact duplicate on the
+                // primary card is gone. `targetProvenanceShortLabel` is now
+                // read only there.
             }
             .padding(V5.S.s16)
             .frame(maxWidth: .infinity, alignment: .leading)

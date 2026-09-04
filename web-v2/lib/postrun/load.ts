@@ -479,7 +479,27 @@ export async function loadPostRunExperience(
     adaptations = rows.rows.map((r): PostRunAdaptation => {
       let v: any = r.value;
       if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = null; } }
-      return { reason: r.reason, display: runnerSafeWhy(v?.why) ?? 'The plan was adjusted.' };
+      const display = runnerSafeWhy(v?.why);
+      // PLAN-IMPACT-2, 2026-09-05 · WAS `?? 'The plan was adjusted.'` — a
+      // generic filler that reads as a concrete change but says nothing a
+      // runner could act on. David, directly: "That communicates nothing.
+      // ... do not invent generic filler ... do not claim the plan-impact
+      // explanation contract is fully satisfied." `display: null` is now a
+      // real, distinct state `readPlan` must handle honestly (Rule 11: an
+      // adaptation with no readable reason is a different fact from one
+      // with a reason, never collapsed into a manufactured sentence).
+      // Recorded here, not silently dropped — an adaptation row with an
+      // unreadable `why` is a genuine gap in the `plan_adapt_*` contract
+      // (either nothing was written, or everything in it cited doctrine and
+      // got scrubbed to nothing), and this is the one place that gap is
+      // visible server-side.
+      if (display == null) {
+        console.warn(
+          `[postrun/load] adaptation reason=${r.reason} has no runner-safe description — ` +
+          'plan-impact detail contract not satisfied for this row',
+        );
+      }
+      return { reason: r.reason, display };
     });
   } catch {
     adaptations = null;

@@ -303,15 +303,14 @@ struct RunDetailV5: View {
                     // on a long run. RULE THREE: nothing drawn when there is
                     // nothing to build from.
                     //
-                    // LESS-IS-MORE-2 · `toleranceLine` no longer reaches this
-                    // card — see its own header. It now feeds `PostRunVerdictV5
-                    // .analysisNote` above, so this section's guard is back to
-                    // the one honest question it should ask: is there a list
-                    // to draw.
+                    // LESS-IS-MORE-2 · the watch's tolerance arithmetic no
+                    // longer reaches this card. It feeds `PostRunVerdictV5
+                    // .analysisNote` above instead (`RunDetailV5
+                    // .toleranceLine`, behind "Why"), so this section's guard
+                    // is back to the one honest question it should ask: is
+                    // there a list to draw.
                     if !repPieces.isEmpty {
-                        RepBreakdownV5(title: repSectionTitle,
-                                       pieces: repPieces,
-                                       toleranceLine: nil)
+                        RepBreakdownV5(title: repSectionTitle, pieces: repPieces)
                     }
 
                     // Strides are part of the session, drawn with it.
@@ -1296,9 +1295,7 @@ struct RunDetailV5: View {
                                     hasMiles: !milePieces.isEmpty)
         switch d {
         case .sections:
-            RepBreakdownV5(title: repSectionTitle,
-                           pieces: repPieces,
-                           toleranceLine: nil)
+            RepBreakdownV5(title: repSectionTitle, pieces: repPieces)
         /* BOTH, BODY FIRST (2026-09-02).
          *
          * An easy run with strides is two things at once and the screen used to
@@ -1308,8 +1305,7 @@ struct RunDetailV5: View {
          * design. See `RunShapeV5.Decomposition.milesAndSections`.
          *
          * The mile table keeps the pace caption and the pace ramp; the piece
-         * list carries no caption of its own beyond its tolerance line, so
-         * nothing is said twice. */
+         * list carries no caption of its own, so nothing is said twice. */
         case .milesAndSections:
             MileBreakdownV5(title: shape.breakdownTitle(.miles),
                             pieces: milePieces,
@@ -1322,9 +1318,7 @@ struct RunDetailV5: View {
                                                                 phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,
                             allowsPace: shape.showsPerMilePace)
-            RepBreakdownV5(title: repSectionTitle,
-                           pieces: repPieces,
-                           toleranceLine: nil)
+            RepBreakdownV5(title: repSectionTitle, pieces: repPieces)
         case .miles:
             MileBreakdownV5(title: shape.breakdownTitle(.miles),
                             pieces: milePieces,

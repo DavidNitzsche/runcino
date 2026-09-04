@@ -583,6 +583,50 @@ describe('Rule 21 · the evidence layer can say a run was strong enough to push'
     });
     expect(out.plan.status).toBe('UPDATED');
     expect(out.plan.changes).toEqual(['4 days off. First run back is easy, not quality.']);
+    expect(out.plan.descriptionContractSatisfied).toBe(true);
+  });
+
+  /* PLAN-IMPACT-2, 2026-09-05. David, directly: "Do not render 'Plan
+   * updated · The plan was adjusted.' That communicates nothing... If the
+   * canonical mutation lacks a meaningful description: show only 'Plan
+   * updated'; record the missing description as an internal contract
+   * defect; do not invent generic filler; do not claim the plan-impact
+   * explanation contract is fully satisfied." */
+  it('an adaptation with no runner-readable description contributes NO invented change line', () => {
+    const out = compose({
+      // `display: null` is exactly what `runnerSafeWhy` returns when an
+      // adaptation's own `why` had nothing left after the citation scrub —
+      // load.ts no longer papers over that with `?? 'The plan was
+      // adjusted.'`. This is the honest shape of that gap reaching the
+      // composer.
+      adaptations: [{ reason: 'plan_adapt_reschedule', display: null }],
+    });
+    expect(out.plan.status).toBe('UPDATED');
+    // The placeholder phrase this bug used to manufacture must never appear
+    // anywhere in the visible detail — asserted by NAME, not just by an
+    // empty array, so a future regression that reintroduces ANY generic
+    // filler ("Schedule adjusted.", "Something changed.") is caught too.
+    expect(out.plan.changes).toEqual([]);
+    for (const line of out.plan.changes) {
+      expect(line).not.toMatch(/the plan was adjusted/i);
+      expect(line).not.toMatch(/plan was adjusted/i);
+    }
+    // The contract is explicitly NOT satisfied — this is the fact the
+    // caller must be able to tell apart from "nothing changed" or "every
+    // change was explained".
+    expect(out.plan.descriptionContractSatisfied).toBe(false);
+  });
+
+  it('a MIX of readable and unreadable adaptations keeps only the readable ones, and still flags the gap', () => {
+    const out = compose({
+      adaptations: [
+        { reason: 'plan_adapt_downgrade', display: 'Friday reduced to 5 mi.' },
+        { reason: 'plan_adapt_gap', display: null },
+      ],
+    });
+    expect(out.plan.status).toBe('UPDATED');
+    expect(out.plan.changes).toEqual(['Friday reduced to 5 mi.']);
+    expect(out.plan.descriptionContractSatisfied).toBe(false);
   });
 });
 

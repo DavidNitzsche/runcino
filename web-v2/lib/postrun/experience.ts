@@ -192,8 +192,22 @@ export type PlanImpactStatus =
 export interface PostRunPlanImpact {
   status: PlanImpactStatus;
   runnerSummary: string;
-  /** One line per recorded change. Empty on every status but `UPDATED`. */
+  /** One line per recorded change with a runner-readable description. Empty
+   *  on every status but `UPDATED` — and PLAN-IMPACT-2 (2026-09-05): also
+   *  empty on `UPDATED` when every adaptation that fired had no readable
+   *  `why`, which `descriptionContractSatisfied` below distinguishes from
+   *  "nothing changed". Never filled with invented text. */
   changes: string[];
+  /**
+   * PLAN-IMPACT-2, 2026-09-05 · false when `status === 'UPDATED'` but at
+   * least one firing adaptation had no runner-readable description
+   * (`PostRunAdaptation.display === null`) — i.e. this run's plan-impact
+   * explanation is INCOMPLETE, a fact the caller must not paper over with
+   * filler. True in every other case, including every non-UPDATED status,
+   * where there is nothing to explain in the first place. David, directly:
+   * "do not claim the plan-impact explanation contract is fully satisfied."
+   */
+  descriptionContractSatisfied: boolean;
   /** Hard-typed false. Sealed history is not editable by this path and the
    *  type says so rather than a comment promising it (Rule 20). */
   sealedHistoryChanged: false;
@@ -355,8 +369,15 @@ export interface PostRunExperienceV1 {
 export interface PostRunAdaptation {
   /** `coach_intents.reason`. */
   reason: string;
-  /** One runner-readable line describing what moved. */
-  display: string;
+  /**
+   * One runner-readable line describing what moved. PLAN-IMPACT-2,
+   * 2026-09-05 · null when the adaptation's own `why` carried nothing a
+   * runner could read (every sentence cited doctrine, or nothing was
+   * written) — a real, distinguishable fact, never papered over with a
+   * generic "The plan was adjusted." `readPlan` below is the one place
+   * that decides what a null display means for the visible sentence.
+   */
+  display: string | null;
 }
 
 export interface PostRunInput {
@@ -1471,12 +1492,18 @@ function describeAdaptationCause(reason: string): string | null {
 
 export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): PostRunPlanImpact {
   if (!input.hasActivePlan) {
-    return { status: 'NO_PLAN', runnerSummary: 'There is no plan for this to change.', changes: [], sealedHistoryChanged: false };
+    return {
+      status: 'NO_PLAN', runnerSummary: 'There is no plan for this to change.',
+      changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+    };
   }
   if (input.adaptations == null) {
     // Rule 11 again: the look failed. Saying "unchanged" would be a claim we
     // did not earn.
-    return { status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.', changes: [], sealedHistoryChanged: false };
+    return {
+      status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.',
+      changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+    };
   }
   if (input.adaptations.length > 0) {
     // THE CLARIFYING CLAUSE, ONLY WHEN THE TWO SENTENCES COULD OTHERWISE
@@ -1496,15 +1523,30 @@ export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): 
     const clause = evidence.role === 'CORROBORATES' && causes.length > 0
       ? ` The plan changed because ${causes[0]}. That is not the same as this run's own evidence moving the estimate above.`
       : '';
+    // PLAN-IMPACT-2, 2026-09-05 · `changes` carries ONLY readable
+    // descriptions now — a `display: null` adaptation contributes nothing
+    // here rather than a manufactured "The plan was adjusted." When at
+    // least one adaptation fired with no readable description,
+    // `descriptionContractSatisfied` says so explicitly: the caller (the
+    // phone's compact plan-status row) may still say "Plan updated" — that
+    // much is true and earned — but must not claim to have explained it,
+    // and must not invent a change line to fill the gap.
+    const readableChanges = input.adaptations
+      .map((a) => a.display)
+      .filter((d): d is string => d != null);
     return {
       status: 'UPDATED',
       runnerSummary: `The plan moved after this run.${clause}`,
-      changes: input.adaptations.map((a) => a.display),
+      changes: readableChanges,
+      descriptionContractSatisfied: readableChanges.length === input.adaptations.length,
       sealedHistoryChanged: false,
     };
   }
   if (evidence.role === 'UNREAD') {
-    return { status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.', changes: [], sealedHistoryChanged: false };
+    return {
+      status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.',
+      changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+    };
   }
   if (evidence.planAuthorityEligible) {
     // The engine says this run COULD move an anchor and nothing has yet. That
@@ -1514,11 +1556,13 @@ export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): 
     return {
       status: 'HELD_FOR_EVIDENCE',
       runnerSummary: 'The plan is unchanged for now. This run is strong enough to act on, so the next review will look at it.',
-      changes: [],
-      sealedHistoryChanged: false,
+      changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
     };
   }
-  return { status: 'UNCHANGED', runnerSummary: 'The plan is unchanged.', changes: [], sealedHistoryChanged: false };
+  return {
+    status: 'UNCHANGED', runnerSummary: 'The plan is unchanged.',
+    changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+  };
 }
 
 /* ══════════════════════════════ 7 · next ════════════════════════════════ */
