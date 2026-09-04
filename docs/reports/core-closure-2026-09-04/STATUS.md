@@ -110,3 +110,58 @@ Held for its handback: TFCLAIM-1, Stage 9 integration, Today-specific voice rend
 - **Shipped, not physically verified**: TestFlight 269–272 (treadmill, post-run, Today hero panel).
 - **Contradicted**: TFCLAIM-1 (build 272 ↔ HEROPANEL-1).
 - **Unmeasured**: native + Watch test state — no CI covers them at all.
+
+---
+
+## Scope correction, applied 2026-09-04 mid-session
+
+David narrowed the programme: the products are the **native iPhone app**, the
+**Apple Watch app**, and the shared backend / database / APIs / coaching, plan
+and adaptation engines / synchronisation / deployment those two require.
+Browser-facing pages are out of scope and excluded from the closure verdict.
+
+Living under `web-v2` does **not** make code web-only. Almost all of it is the
+native apps' server, and it stays in scope wherever the iPhone or Watch consumes
+it, or where it determines plans, workouts, execution identity, post-run
+interpretation, race information, evidence or adaptation.
+
+### Re-audit of Stage 0 against the corrected scope
+
+**Nothing measured in Stage 0 was web-only. Nothing is withdrawn.**
+
+| Stage 0 finding | Surface | Still in scope |
+|---|---|---|
+| main RED on `test-full` (FORMATLINT-1) | shared → iPhone + Watch (`spec-card.ts` feeds the Today card and the wrist) | yes |
+| Railway deployment reality | shared — the phone and watch read this server | yes |
+| TestFlight 269–275, TFCLAIM-1 | iPhone (+ Watch, embedded) | yes |
+| native suite unmeasured, no CI | iPhone | yes — now the highest-value CI gap |
+| Watch suite unmeasured, no CI | Watch | yes |
+| VACUOUS-AUDITS | shared → iPhone | yes |
+| Today agent boundary | iPhone | held, unchanged |
+
+The one item that looked web-shaped is not: `app/api/plan/undo/route.ts`
+(SEALDATE-1) is called by the iPhone at
+`native-v2/Faff/Faff/API+Toolkit.swift:422`.
+
+### The Watch, corrected
+
+Stage 0 recorded the Watch suite as "0 tests executed". **That was wrong, and
+the correction matters:** the Watch tests use Swift Testing, not XCTest, so the
+XCTest bundle count is legitimately zero while Swift Testing reports separately
+— `Test run with 223 tests in 16 suites passed`.
+
+Stage 0 also ran `check-watch.sh` only in its PARTIAL form (board geometry
+skipped for want of a booted simulator). With Apple Watch Series 11 (46mm)
+booted it now reports **OK, all guards executed**: 223 test cases, 22 boards
+inside Apple's content box, run endable.
+
+### Deployment, final
+
+`94a207bb` → deployment `962c0258-3d3d-4510-a04d-169d30e9d4c0` → **SUCCESS**.
+
+### The integrated build
+
+`git diff --name-only 89f602df origin/main -- native-v2/` is **empty**: no
+native file has changed since build 275 was cut. Build 275 is therefore the
+integrated validation build for both iPhone and Watch, and a 276 would be
+byte-identical.

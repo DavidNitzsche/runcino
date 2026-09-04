@@ -1,5 +1,14 @@
 # Physical-device checklist · what code cannot prove
 
+**Products in scope: the iPhone app and the Apple Watch app.** The Watch ships
+INSIDE the iPhone build — `project.yml` embeds `FaffWatch Watch App` in the
+`Faff` target — so installing TestFlight 275 installs both, and there is no
+separate Watch build number to track.
+
+**Current status: iPhone NOT VERIFIED · Watch NOT VERIFIED.** Nothing below has
+been confirmed on a device. Everything asserted elsewhere in this report is
+code-level.
+
 Rule 13: a fix to something the runner sees is verified by RENDERING it with
 real data. Everything below is behaviour with **no headless test surface** —
 each item is listed because a test file in this repo says, in its own words,
@@ -79,3 +88,29 @@ Start a treadmill session on a day with a structured set (hills or intervals).
 Both are covered headlessly by `lib/plan/_sealing_identity.test.ts` and now by
 `EXECID-SCAN-1`; they are here because the runner is the only one who can
 confirm the SCREEN agrees with the resolver.
+
+## E · Apple Watch — 5 minutes, on the wrist
+
+`check-watch.sh` now reports **OK, all guards executed** (223 test cases, 22
+boards inside Apple's content box, run endable) — that is the simulator and the
+board geometry, not the wrist. These are what remain:
+
+1. **One workout, three surfaces.** The watch offers the SAME session the phone
+   and the treadmill offer for today.
+2. **The lock is symmetric.** Start on the watch → the phone refuses. End
+   normally on the watch → the phone can start again.
+3. **A mirrored pair is one execution.** A watch+phone treadmill session that is
+   genuinely mirrored reads as ONE run after sync, not a blocked duplicate and
+   not two runs.
+4. **The race plan is this race's.** On a race day the watch carries THAT race's
+   goal, strategy and fuelling — never the marathon's on a 10K morning.
+5. **A run that ends on a recovery phase is still endable.** Every strides day
+   ends on one, and that is what once left no Pause/End control at all.
+
+## What "closure" would require
+
+- iPhone: sections A, B, C and D confirmed on build 275.
+- Watch: section E confirmed on build 275.
+
+Until both are done, the honest status is **shipped, not physically verified** —
+for either product.
