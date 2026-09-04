@@ -67,6 +67,22 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     private let cacheKey: AppCache.Key?
     private var fetch: () async throws -> API.V5Fetch<Model>
 
+    /// STALEDEBOUNCE-1 (2026-09-04) · a single failed `load()` used to flip
+    /// `stale` to `true` immediately, and the banner's own `.safeAreaInset`
+    /// reflows everything below it the instant that happens (and again the
+    /// instant it clears). Found live on David's phone during a night of
+    /// rapid back-to-back production redeploys: a brief container swap fails
+    /// one request, the banner appears, the very next poll succeeds, the
+    /// banner vanishes — a real transient blip, correctly detected, but
+    /// shown and hidden so quickly it reads as the whole screen "jumping
+    /// around". A genuine, sustained outage should still show the banner
+    /// promptly; a one-request blip that resolves itself within about a
+    /// second should never have been visible at all. This generation counter
+    /// is what lets a delayed "show" be cancelled by a load that already
+    /// succeeded before the delay elapsed, without touching `stale`'s own
+    /// meaning or `SurfaceReadiness`'s three-state contract above it.
+    private var staleAttemptGeneration = 0
+
     /// Point this surface at a different read — the same Today surface serving
     /// a different date, for instance.
     ///
@@ -165,6 +181,11 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     /// 200ms fade a network-driven `rebind` already uses, so a cached day and
     /// a freshly fetched one move exactly the same way.
     func presentSync(_ known: Model) {
+        // STALEDEBOUNCE-1 · cancels any pending delayed-stale task from an
+        // earlier failed load — without this, a debounce timer scheduled
+        // before this cache hit could still fire afterward and flip `stale`
+        // back to true over content that just proved itself current.
+        staleAttemptGeneration += 1
         model = known
         stale = false
         absentReason = nil
@@ -226,21 +247,40 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         do {
             switch try await fetch() {
             case .ok(let fresh):
+                staleAttemptGeneration += 1
                 model = fresh
                 stale = false
                 absentReason = nil
             case .absent(let reason):
                 // The engine decided. Not an outage, and not something to
                 // paper over with a cached payload from when it did apply.
+                staleAttemptGeneration += 1
                 absentReason = reason
                 model = nil
                 stale = false
             case .failed:
-                stale = true
+                markStaleAfterDebounce()
             }
         } catch is CancellationError {
             // A screen going away is not an outage.
         } catch {
+            markStaleAfterDebounce()
+        }
+    }
+
+    /// STALEDEBOUNCE-1 · does not set `stale` itself. Waits out a short
+    /// window first, so a load that succeeds in the meantime — the common
+    /// case for a one-off blip — cancels this one by bumping the generation
+    /// before it fires. 1.2s: long enough to absorb a single dropped request
+    /// during a container swap, short enough that a GENUINE outage still
+    /// shows the banner well within what would read as "instant" to a
+    /// runner glancing at the screen.
+    private func markStaleAfterDebounce() {
+        staleAttemptGeneration += 1
+        let myGeneration = staleAttemptGeneration
+        Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard myGeneration == staleAttemptGeneration else { return }
             stale = true
         }
     }

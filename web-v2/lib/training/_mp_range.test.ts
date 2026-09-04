@@ -83,7 +83,7 @@ describe('MPRANGE-1 · the marathon band survives to the runner', () => {
     expect((built.spec as Record<string, unknown>).marathon_range_s_per_mi).toBeUndefined();
     const card = cardFromSpec({ spec: built.spec, type: 'tempo', distanceMi: 9,
       easyPaceSec: 522, easyCeilingSec: 502, hr: null })!;
-    const work = card.steps.find((s) => /tempo/.test(s.label))!;
+    const work = card.steps.find((s) => /tempo/i.test(s.label))!;
     expect(work.pace_target).toBe('7:02-7:18 /mi');
   });
 
