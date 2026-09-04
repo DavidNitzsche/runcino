@@ -1703,6 +1703,23 @@ extension API {
         let refusal: String?
     }
 
+    /// PLANSNAPSHOT-1 · the ONE call that fetches the runner's whole
+    /// authored block. Deliberately returns raw `Data`, not a decoded type
+    /// — `PlanSnapshotStore.commit(rawData:)` owns decode + validation +
+    /// atomic write as ONE step, so this function must not decode first and
+    /// hand back something already "trusted." A non-2xx status is surfaced
+    /// as a thrown error, same contract as every other authed read.
+    static func fetchPlanSnapshotRaw() async throws -> Data {
+        guard let url = URL(string: API.baseURL.absoluteString + "/api/v5/plan-snapshot") else {
+            throw APIError.invalidURL
+        }
+        let (data, http) = try await API.authedGET(url)
+        guard (200..<300).contains(http.statusCode) else {
+            throw APIError.badStatus(http.statusCode)
+        }
+        return data
+    }
+
     static func fetchV5Today(date: String? = nil) async throws -> V5Fetch<V5Today> {
         // A dated read is history, not today, so it must not overwrite today's
         // OWN cache entry — it gets its own dynamic slot instead (TODAYPERSIST-1).

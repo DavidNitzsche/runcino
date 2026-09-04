@@ -392,6 +392,12 @@ struct TodayHostV5: View {
     /// this re-enters `goTo` so a retry on a date the runner has since
     /// swiped past does not silently override a newer selection.
     private func retryPending(_ date: String) {
+        // PLANSNAPSHOT-1 · an explicit Retry is one of the named triggers
+        // for a fresh whole-block sync — not awaited here so the per-date
+        // retry below (the existing pending-card contract) is not held up
+        // by it; if the snapshot sync lands first, `date` may resolve
+        // straight from it without `goTo` needing its own fetch at all.
+        Task { await syncPlanSnapshot() }
         goTo(date, todayISO: knownTodayISO ?? date)
     }
 
@@ -464,7 +470,32 @@ struct TodayHostV5: View {
 
     var body: some View {
         Group {
-            if let model = surface.model {
+            // PLANSNAPSHOT-1 · a browsed (non-today) date the local snapshot
+            // covers renders ENTIRELY from it — checked FIRST, ahead of
+            // every network-driven branch below, so it can never wait on
+            // `surface.model`. `goTo`'s own snapshot short-circuit (see its
+            // header comment) is what guarantees `viewingDate` is set here
+            // with no fetch ever having started for it.
+            //
+            // Wrapped in the SAME shared shell every other Today state
+            // uses (`inSharedShell`, SHELLBYPASS-1) — header, week strip
+            // and account button stay mounted exactly as they do for
+            // every other branch this switch draws.
+            if let viewingDate, let snapshotDay = PlanSnapshotStore.shared.current?.day(on: viewingDate),
+               let shellModel = surface.model {
+                // `shellModel` supplies the shell's chrome ONLY (header text,
+                // week-strip rotation via `stripDays(for:)`'s own snapshot
+                // branch above, account initials) — never this date's
+                // content, which is `snapshotDay` alone. `shellModel` is
+                // whatever Today's own cache last held (seeded from disk at
+                // cold launch, refreshed at launch/foreground) and is not
+                // re-fetched for this date.
+                inSharedShell(shellModel) {
+                    PlanSnapshotDayView(day: snapshotDay)
+                }
+                .id(snapshotDay.date_iso)
+                .transition(.todayPanel(sign: navDirection))
+            } else if let model = surface.model {
                 let wanted = wantedDate(given: model)
                 switch readiness(model: model, wanted: wanted, pendingDate: pendingDate) {
                 case .match(let matched):
@@ -651,9 +682,20 @@ struct TodayHostV5: View {
             // by this point (seeded at `V5Surface.init`), so this can
             // restore the runner's other recently-visited days and weeks
             // in the same tick, before the network is ever asked.
+            // PLANSNAPSHOT-1 · synchronous, disk-only, same "before the
+            // first await" contract `seedCachesFromDisk()` already keeps —
+            // so a cold launch can paint a browsed date from local storage
+            // in the very first frame, offline or not.
+            PlanSnapshotStore.shared.loadFromDiskSynchronously()
             seedCachesFromDisk()
             await surface.load()
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
+            // Not awaited: the launch gate above is keyed to `surface.load()`
+            // landing, not to the (much larger) whole-block sync. The first
+            // frame paints from whatever `loadFromDiskSynchronously()` just
+            // restored; this fills in a fresher snapshot behind it exactly
+            // as `WEEKCACHE-1`'s prefetch does for the week strip.
+            Task { await syncPlanSnapshot() }
             // The FIRST tap a runner makes is overwhelmingly a neighbour of
             // today — yesterday, tomorrow. `goTo` prefetches around wherever
             // it lands, but that is by definition one step too late for the
@@ -696,8 +738,13 @@ struct TodayHostV5: View {
         .onReceive(NotificationCenter.default.publisher(for: .faffReachabilityLost)) { _ in
             isOffline = true
         }
-        .refreshable { await surface.load() }
-        .v5ReloadOnForeground { await surface.load() }
+        // PLANSNAPSHOT-1 · a plan mutation (reschedule apply/undo — see
+        // `RescheduleV5.swift`) is a named sync trigger.
+        .onReceive(NotificationCenter.default.publisher(for: .faffPlanMutated)) { _ in
+            Task { await syncPlanSnapshot() }
+        }
+        .refreshable { await surface.load(); await syncPlanSnapshot() }
+        .v5ReloadOnForeground { await surface.load(); await syncPlanSnapshot() }
     }
 
     /// SHAREDSHELL-1 (2026-09-04) · the ROOT CAUSE closure for the physical-
@@ -765,11 +812,66 @@ struct TodayHostV5: View {
     /// runner's selection instantly rather than waiting on a round trip.
     private func stripDays(for model: V5Today) -> [WeekStripDayV5] {
         let selected = viewingDate ?? model.dateISO
+        // PLANSNAPSHOT-1 · `model.weekStrip` is whichever week `model` was
+        // itself fetched for — with per-date network fetches gone for any
+        // snapshot-covered date, `model` usually still holds TODAY's own
+        // week even while `viewingDate` points somewhere else entirely. If
+        // `selected` falls outside `model`'s own week, rebuild the strip
+        // from the LOCAL snapshot instead of drawing the wrong week's pills.
+        let modelWeekISOs = Set(model.weekStrip.compactMap { $0.dateISO as String? })
+        if !modelWeekISOs.contains(selected), let snapshotWeek = snapshotWeekStripDays(selected: selected, alignedTo: model) {
+            return snapshotWeek
+        }
         return model.weekStrip.map { d in
             var s = d.strip
             s.isToday = d.dateISO == selected
             return s
         }
+    }
+
+    /// Rebuilds a week strip for `selected` entirely from the local
+    /// `PlanSnapshot` — no fetch. Reuses the SAME "shift a known week by
+    /// whole weeks" trick `WeekStripV5.neighbour(_:)` already uses for an
+    /// unread ghost week, except every resulting date is looked up in the
+    /// snapshot for REAL type/completion data instead of staying a ghost.
+    /// `alignedTo` only supplies the day-of-week ROTATION (which weekday the
+    /// runner's week starts on) — never date content — by borrowing it from
+    /// whatever week `model` last actually held.
+    private func snapshotWeekStripDays(selected: String, alignedTo model: V5Today) -> [WeekStripDayV5]? {
+        guard let store = PlanSnapshotStore.shared.current,
+              let firstISO = model.weekStrip.first?.dateISO,
+              let firstDate = Self.iso.date(from: firstISO),
+              let selectedDate = Self.iso.date(from: selected)
+        else { return nil }
+        let daysDiff = Calendar.current.dateComponents([.day], from: firstDate, to: selectedDate).day ?? 0
+        let weeksOffset = Int(floor(Double(daysDiff) / 7.0))
+        return model.weekStrip.map { d in
+            guard let base = Self.iso.date(from: d.dateISO),
+                  let moved = Calendar.current.date(byAdding: .day, value: weeksOffset * 7, to: base)
+            else { return d.strip }
+            let movedISO = Self.iso.string(from: moved)
+            let number = String(Calendar.current.component(.day, from: moved))
+            if let day = store.day(on: movedISO) {
+                return WeekStripDayV5(id: day.plan_workout_id ?? "date:\(movedISO)", dateISO: movedISO,
+                                       letter: d.letter, weekday: d.strip.weekday, number: number,
+                                       state: Self.dayState(for: day), isToday: movedISO == selected,
+                                       isDone: day.matched_run != nil, isRest: day.is_rest)
+            }
+            // Outside the authored block (or no snapshot has ever synced far
+            // enough) — an honest ghost, same as `neighbour(_:)` draws for
+            // any week nothing is known about yet.
+            return WeekStripDayV5(id: "date:\(movedISO)", dateISO: movedISO, letter: d.letter, weekday: d.strip.weekday,
+                                   number: number, state: .rest, isToday: movedISO == selected,
+                                   isDone: false, isRest: true)
+        }
+    }
+
+    private static func dayState(for day: PlanSnapshotDay) -> V5.DayState {
+        if day.is_race { return .race }
+        if day.is_rest { return .rest }
+        if day.is_long { return .long }
+        if day.is_quality { return .quality }
+        return .easy
     }
 
     @ViewBuilder
@@ -1249,6 +1351,28 @@ struct TodayHostV5: View {
         let isHome = iso == today
         viewingDate = isHome ? nil : iso
 
+        // PLANSNAPSHOT-1 · a date the local snapshot already covers is
+        // rendered ENTIRELY from that snapshot — no fetch, no cache lookup,
+        // no `navigationTask`, no `pendingDate`. This is the whole point of
+        // the snapshot: once a sync has landed, browsing the block must
+        // never depend on the network again. Only a genuinely non-today
+        // date takes this path — landing back on today keeps the existing
+        // live-narrative fetch below, since a snapshot day carries authored
+        // STRUCTURE only, never today's readiness/contingency narrative
+        // (see `PlanSnapshotDayView.swift`'s header).
+        //
+        // `surface.model`/`dayCache`/`navigationTask` are left completely
+        // alone here — `body`'s own snapshot branch (see its header
+        // comment) reads `viewingDate` + `PlanSnapshotStore` directly and
+        // never looks at `surface.model` for this date, so there is no
+        // stale-model risk from skipping the fetch.
+        if Self.shouldRenderFromSnapshot(iso: iso, isHome: isHome, snapshot: PlanSnapshotStore.shared.current) {
+            pendingDate = nil
+            navigationTask?.cancel()
+            navigationTask = nil
+            return
+        }
+
         let param: String? = isHome ? nil : iso
         let refresh: () async throws -> API.V5Fetch<V5Today> = { try await API.fetchV5Today(date: param) }
 
@@ -1359,6 +1483,50 @@ struct TodayHostV5: View {
     /// cold-launch simulation.
     static func planVersionAcceptable(candidate: String?, current: String?) -> Bool {
         candidate == nil || current == nil || candidate == current
+    }
+
+    /// PLANSNAPSHOT-1 · the decision `goTo` gates its whole network
+    /// short-circuit on, extracted as a plain, static, input-to-output
+    /// function — same reasoning as `canPageWeek`/`planVersionAcceptable`
+    /// above — so "does this navigation need the network" is directly
+    /// testable rather than provable only by driving a live host through a
+    /// real navigation. `isHome` always routes to the existing live-Today
+    /// path (never the snapshot) — see `PlanSnapshotDayView.swift`'s header
+    /// for why today specifically keeps its live narrative.
+    static func shouldRenderFromSnapshot(iso: String, isHome: Bool, snapshot: PlanSnapshot?) -> Bool {
+        guard !isHome else { return false }
+        return snapshot?.day(on: iso) != nil
+    }
+
+    /// PLANSNAPSHOT-1 · the ONLY place that fetches the whole-block
+    /// snapshot. Triggered by launch (`.task` below), foreground
+    /// (`.v5ReloadOnForeground`), explicit Retry, a plan mutation, or a
+    /// completion sync — NEVER by `goTo`/week-strip paging, which is the
+    /// whole point of the snapshot existing. A cancelled or failed fetch
+    /// leaves `PlanSnapshotStore.current` exactly as it was — `commit`
+    /// itself never touches it on failure, and a genuine cancellation
+    /// (e.g. this task superseded by a newer sync request) is read as
+    /// routine, not a failure, so it does not even reach `markSyncFailed`.
+    @discardableResult
+    func syncPlanSnapshot() async -> Bool {
+        PlanSnapshotStore.shared.markSyncing()
+        let raw: Data
+        do {
+            raw = try await API.fetchPlanSnapshotRaw()
+        } catch {
+            if API.isCancellation(error) { return false }
+            PlanSnapshotStore.shared.markSyncFailed(String(describing: error).prefix(300).description)
+            return false
+        }
+        switch PlanSnapshotStore.shared.commit(rawData: raw) {
+        case .success:
+            return true
+        case .failure:
+            // `commit` has already recorded its own `lastError`/`syncState`
+            // — nothing further to do here. The prior valid snapshot (if
+            // any) is untouched; see `PlanSnapshotStore`'s own contract.
+            return false
+        }
     }
 
     private func seedCachesFromDisk() {

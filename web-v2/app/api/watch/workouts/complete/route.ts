@@ -106,15 +106,15 @@ interface WatchCompletionPhaseBody {
   actualInclinePct?: number;
   // TREADMILL-TARGET-ROUNDTRIP-1 (P0 gap #3) · the ORIGINAL authored
   // prescription — `BeltSession.nominalMph`/`nominalInclinePct` on the
-  // phone, never reconstructed from the actual fields above. `paceShape`/
-  // `targetPaceSPerMi`/`tolerancePaceSPerMi` are the same fields a
-  // pace-graded phase already carries; a by-effort treadmill work phase
-  // sends `paceShape` but not the pace fields, which is the correct,
-  // doctrine-cited shape (Research/04 — no flat pace number means anything
-  // against a varying outdoor grade), not an omission. `hrRole` is
-  // `WatchHrRole` round-tripped — `observational` on a rep too short for
-  // HR to reach steady state. See `lib/runs/run-shape.ts`'s
-  // `NormalizedPhase` for the read side.
+  // phone, never reconstructed from the actual fields above. `paceShape`
+  // (declared once, above, by PACE-PURPOSE-1)/`targetPaceSPerMi`/
+  // `tolerancePaceSPerMi` are the same fields a pace-graded phase already
+  // carries; a by-effort treadmill work phase sends `paceShape` but not the
+  // pace fields, which is the correct, doctrine-cited shape (Research/04 —
+  // no flat pace number means anything against a varying outdoor grade),
+  // not an omission. `hrRole` is `WatchHrRole` round-tripped —
+  // `observational` on a rep too short for HR to reach steady state. See
+  // `lib/runs/run-shape.ts`'s `NormalizedPhase` for the read side.
   targetSpeedMph?: number;
   targetInclinePct?: number;
   tolerancePaceSPerMi?: number | null;

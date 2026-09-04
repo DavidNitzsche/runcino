@@ -630,7 +630,7 @@ struct RunAnalysisV5: View {
             if hasCeiling && hasWindow {
                 parts.append("Dashed line: pace ceiling. Shaded range: pace window.")
             } else if hasCeiling {
-                parts.append("The dashed line is the pace ceiling · not to run faster than.")
+                parts.append("The dashed line is the pace ceiling. Not to run faster than.")
             } else if hasWindow {
                 parts.append("The shaded range is the pace window to hold.")
             }
