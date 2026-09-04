@@ -113,6 +113,18 @@ function normType(t: string): string {
   return t === 'race_week_tuneup' ? 'threshold' : t;
 }
 
+/** PASSIVE-SYNC-TYPE-CONFIRM-1 · whether a passive sync's OWN self-reported
+ *  `type` independently agrees with a prescription's (normalized) type —
+ *  see the LEGACY tier's own comment for why this exists. `null` and the
+ *  generic Strava/HealthKit activity label ('Run') confirm nothing, since
+ *  every run — related or not — could carry either. */
+function ownTypeConfirms(ownType: string | null | undefined, prescribedType: string): boolean {
+  if (typeof ownType !== 'string') return false;
+  const norm = ownType.trim().toLowerCase();
+  if (norm === '' || norm === 'run') return false;
+  return norm === normType(prescribedType).toLowerCase();
+}
+
 function richer(a: ResolvedRun, b: ResolvedRun): ResolvedRun {
   const aPhases = Array.isArray(a.data.phases) ? a.data.phases.length : 0;
   const bPhases = Array.isArray(b.data.phases) ? b.data.phases.length : 0;
@@ -229,30 +241,57 @@ function classifyDay(
       // executed — it does not fall back to a type guess that might name a
       // DIFFERENT prescription than the one it actually claimed.
       if (r.matchedWorkoutId) return false;
-      /* LIVE-TRACKED SOURCES ONLY. Found live, 2026-09-03: the friend's
-       * unrelated 4.48mi run — `source: 'apple_watch'`, a passive HealthKit
-       * sync — already carried `workoutType: 'intervals'` /
-       * `workoutTypeSource: 'plan'`, stamped by `/api/ingest/workout`'s OWN
-       * independent date + ±30%-distance heuristic (the "EXACT mirror" of
-       * the completion route's stamp, per that file's own comment) —
-       * completely apart from whether the run had anything to do with the
-       * prescription. Trusting `workoutTypeSource === 'plan'` alone would
-       * have let this exact defect back in through the "legacy" door this
-       * same fix was meant to close: a run's type STILL would have decided
-       * association, exactly what David's ruling forbids.
+      /* LIVE-TRACKED SOURCES, OR A PASSIVE SYNC THAT INDEPENDENTLY CONFIRMS
+       * ITS OWN TYPE. Found live, 2026-09-03: the friend's unrelated 4.48mi
+       * run — `source: 'apple_watch'`, a passive HealthKit sync — already
+       * carried `workoutType: 'intervals'` / `workoutTypeSource: 'plan'`,
+       * stamped by `/api/ingest/workout`'s OWN independent date +
+       * ±30%-distance heuristic (the "EXACT mirror" of the completion
+       * route's stamp, per that file's own comment) — completely apart from
+       * whether the run had anything to do with the prescription. Trusting
+       * `workoutTypeSource === 'plan'` alone would have let this exact
+       * defect back in through the "legacy" door this same fix was meant to
+       * close: a run's type STILL would have decided association, exactly
+       * what David's ruling forbids.
        *
        * `/api/watch/workouts/complete` (the app's own live tracker — watch,
-       * treadmill, or the phone's own GPS recorder) is the one write path
-       * this file trusts for ANY type-based evidence, live or legacy,
-       * because starting a session through the app is itself a declaration
-       * of intent to run whatever the app loaded, at the moment the runner
-       * pressed start — categorically different from a passive sync's
-       * after-the-fact guess from date and distance alone. A run synced from
-       * Apple Workouts, Strava, or manual entry never qualifies here, no
-       * matter what its stamped `workoutType` says. */
+       * treadmill, or the phone's own GPS recorder) stays trusted
+       * unconditionally: starting a session through the app is itself a
+       * declaration of intent to run whatever the app loaded.
+       *
+       * PASSIVE-SYNC-TYPE-CONFIRM-1 (2026-09-04) · the friend's-run defect
+       * was never really about the SOURCE — it was that the stamp itself
+       * (`workoutType`) was BORROWED from the plan by date+distance alone,
+       * with zero check against what the run itself claimed to be. That
+       * same-day blanket exclusion of every passive sync also caught a real,
+       * legitimate case: a run started from the Watch's own stock Workout
+       * app (`source: 'apple_watch'`), which is exactly how David runs some
+       * of his sessions — his own words: "Mondays run did match it just
+       * went longer." That run's OWN data carried `type: 'easy'`, agreeing
+       * independently with the day's easy prescription — a fact the friend's
+       * run never had (`lib/runs/run-shape.ts`'s own header on `type`: MIXED
+       * SEMANTICS, generic 'Run' on Strava-era rows, a real workout-type
+       * classification on some faff rows — so a passive sync's `type` is
+       * trusted here ONLY when it is not that generic label).
+       *
+       * So a passive sync now qualifies when its OWN self-reported `type` —
+       * not the borrowed `workoutType` stamp — independently agrees with the
+       * prescription. A run synced from Strava or manual entry, or one
+       * carrying no usable self-classification (null, or the generic 'Run'),
+       * still never qualifies here, no matter what its stamped `workoutType`
+       * says — closing the actual gap the incident exposed, not just the
+       * source it happened to arrive through. */
       const LIVE_TRACKED_SOURCES = new Set(['watch', 'treadmill', 'phone']);
       const source = typeof r.data.source === 'string' ? r.data.source : null;
-      if (source == null || !LIVE_TRACKED_SOURCES.has(source)) return false;
+      if (source == null) return false;
+      // Scoped to `apple_watch` specifically — the Watch's OWN stock
+      // Workout app, David's confirmed real usage — not every passive sync
+      // source. Strava and manual entry still never qualify here, own type
+      // or not: a self-reported label from either is far less trustworthy
+      // (freeform text, third-party categorisation) than the Watch's own
+      // HealthKit workout-type field.
+      const isConfirmedAppleWatchSync = source === 'apple_watch' && ownTypeConfirms(r.data.type, t);
+      if (!LIVE_TRACKED_SOURCES.has(source) && !isConfirmedAppleWatchSync) return false;
       if (r.data.workoutTypeSource !== 'plan') return false;
       const plannedType = typeof r.data.workoutType === 'string'
         ? r.data.workoutType : null;

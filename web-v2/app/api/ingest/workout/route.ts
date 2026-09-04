@@ -50,6 +50,7 @@ import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs
 import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
 import { bucketHrSamplesByZone, hasHrSamples } from '@/lib/coach/hr-zone-bucket';
 import { computeZones } from '@/lib/training/zones';
+import { distanceMatchesPlan } from '@/lib/runs/plan-type-stamp';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -209,10 +210,13 @@ export async function POST(req: NextRequest) {
   // mapped in vdot-inputs.ts); this stamps the PLAN's string type on
   // device-ingested runs.
   //
-  // Guard: only stamp when the run's distance is within ±30% of the
-  // planned distance — a 2 mi bail on a tempo day (or an unplanned
-  // jog on a rest day) must not inherit a quality label and pollute
-  // the type-gated readers. workoutTypeSource records provenance.
+  // OVERRUN-MATCH-1 (2026-09-04) · the band was symmetric, ±30%, and a real
+  // easy day paid for it: prescribed 4.5 mi, run 6.18 mi (+37%), one hair
+  // past the old 5.85 mi ceiling — so this run got NO type stamp at all and
+  // fell to `day-resolver.ts`'s SUPPLEMENTAL bucket, unrelated to the very
+  // session it was. David, watching it live: "Mondays run did match it just
+  // went longer." See `lib/runs/plan-type-stamp.ts` for the fix and why the
+  // band is now asymmetric — the same band, so it can't drift out of sync.
   let plannedWorkoutType: string | null = null;
   try {
     const planDay = (await pool.query<{ type: string; distance_mi: string | null }>(
@@ -229,10 +233,7 @@ export async function POST(req: NextRequest) {
     if (planDay) {
       const plannedMi = planDay.distance_mi != null ? Number(planDay.distance_mi) : null;
       const actualMi = Number(body.distance_mi);
-      const distanceMatches = plannedMi == null || plannedMi <= 0
-        ? true
-        : actualMi >= plannedMi * 0.7 && actualMi <= plannedMi * 1.3;
-      if (distanceMatches) {
+      if (distanceMatchesPlan(actualMi, plannedMi)) {
         // race_week_tuneup is T-pace work · stamp as threshold so the
         // quality-type readers treat it as the T-effort it is.
         plannedWorkoutType = planDay.type === 'race_week_tuneup' ? 'threshold' : planDay.type;

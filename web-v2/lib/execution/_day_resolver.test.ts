@@ -330,3 +330,73 @@ describe('the full named matrix', () => {
     expect(map.get('2026-09-04')!.supplementalRuns.map((r) => r.runId)).toEqual(['run_friend']);
   });
 });
+
+describe('PASSIVE-SYNC-TYPE-CONFIRM-1 · a passive sync trusted only when its OWN type agrees', () => {
+  const easyPrescription: Prescription = {
+    id: 'wko_easy', type: 'easy', distance_mi: '4.5', sub_label: 'EASY · 6×20s strides',
+    is_quality: false, is_long: false,
+  };
+
+  it('the live incident: started from the Watch\'s own stock app, own type "easy" confirms an easy prescription run 37% long — MATCHES', async () => {
+    wire([easyPrescription], [{
+      id: 'run_monday', data: {
+        distanceMi: 6.18, source: 'apple_watch', type: 'easy',
+        workoutType: 'easy', workoutTypeSource: 'plan',
+      },
+    }]);
+    const day = await resolveDayExecutions(USER, DAY);
+    const matched = primaryPrescription(day)?.matchedRun;
+    expect(matched?.runId).toBe('run_monday');
+    expect(matched?.match).toBe('legacy_type');
+    expect(day.supplementalRuns).toHaveLength(0);
+  });
+
+  it('a passive sync with no own type at all still refuses — the original friend\'s-run shape, unchanged', async () => {
+    wire([easyPrescription], [{
+      id: 'run_untyped', data: {
+        distanceMi: 5.0, source: 'apple_watch',
+        workoutType: 'easy', workoutTypeSource: 'plan',
+        // no `type` — nothing of its own to confirm with.
+      },
+    }]);
+    const day = await resolveDayExecutions(USER, DAY);
+    expect(primaryPrescription(day)?.matchedRun).toBeNull();
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_untyped']);
+  });
+
+  it('the generic Strava/HealthKit "Run" label confirms nothing — still refuses', async () => {
+    wire([easyPrescription], [{
+      id: 'run_generic', data: {
+        distanceMi: 5.0, source: 'apple_watch', type: 'Run',
+        workoutType: 'easy', workoutTypeSource: 'plan',
+      },
+    }]);
+    const day = await resolveDayExecutions(USER, DAY);
+    expect(primaryPrescription(day)?.matchedRun).toBeNull();
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_generic']);
+  });
+
+  it('an own type that DISAGREES with the prescription still refuses, even with a matching stamp', async () => {
+    wire([easyPrescription], [{
+      id: 'run_disagrees', data: {
+        distanceMi: 5.0, source: 'apple_watch', type: 'tempo',
+        workoutType: 'easy', workoutTypeSource: 'plan',
+      },
+    }]);
+    const day = await resolveDayExecutions(USER, DAY);
+    expect(primaryPrescription(day)?.matchedRun).toBeNull();
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_disagrees']);
+  });
+
+  it('a Strava-sourced sync never qualifies here, own type or not — only apple_watch and the live-tracked sources reach this door', async () => {
+    wire([easyPrescription], [{
+      id: 'run_strava', data: {
+        distanceMi: 4.6, source: 'strava', type: 'easy',
+        workoutType: 'easy', workoutTypeSource: 'plan',
+      },
+    }]);
+    const day = await resolveDayExecutions(USER, DAY);
+    expect(primaryPrescription(day)?.matchedRun).toBeNull();
+    expect(day.supplementalRuns.map((r) => r.runId)).toEqual(['run_strava']);
+  });
+});

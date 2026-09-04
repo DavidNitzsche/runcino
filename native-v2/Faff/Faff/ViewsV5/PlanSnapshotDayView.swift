@@ -45,13 +45,25 @@ struct PlanSnapshotDayView: View {
                     .font(.faffText(TypeScaleV5.label14))
                     .foregroundStyle(V5.textSecondary)
             }
+            // ACTIVITY-PLACEMENT-1 (2026-09-04) · was the LAST thing on the
+            // page, below the prescription card and the treadmill card — so
+            // a run that genuinely happened that day (matched OR
+            // supplemental) read as buried, easy to miss on a normal
+            // scroll. David, live, on a day carrying exactly this shape (a
+            // run that did not durably match its prescription, so the page
+            // kept showing the still-open prescription as the hero): "the
+            // status like this shoudl all be together at the top." Same
+            // principle `TodayBeforeV5`'s own `supplementalRunsSection`
+            // already states in its header — "it reads right under the
+            // hero" — applied here so both renderers of a day agree on
+            // where real activity goes.
+            if day.matched_run != nil || !day.supplemental_runs.isEmpty {
+                activityOverlay
+            }
             if day.is_rest {
                 restCard
             } else if let card = day.card {
                 workoutCard(card)
-            }
-            if day.matched_run != nil || !day.supplemental_runs.isEmpty {
-                activityOverlay
             }
         }
         // Bottom clearance above the tab bar is `inSharedShell`'s own job

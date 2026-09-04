@@ -238,7 +238,19 @@ struct TodayAfterV5: View {
                 } else if let grid = repCompletionGrid {
                     SessionDetailsGridV5(scopeCaption: nil, metrics: grid)
                 } else {
-                    WorkoutResultFactsV5(workPaceText: model.paceWork)
+                    // REDUNDANT-PACE-1 (2026-09-04) · an unstructured run
+                    // (LONG, EASY — no warm-up/cooldown/recovery phases to
+                    // dilute it) has a work pace that is arithmetically the
+                    // SAME number the poster header above already shows as
+                    // the whole-run pace. Printing it again read the same
+                    // fact twice — David: "dont need the 8:38 average work
+                    // pace if its right above it in the blue." Compare the
+                    // rendered text itself (Rule 16/17: yield on what the
+                    // runner actually sees, not on a row id) and only show
+                    // work pace when it is a genuinely different number.
+                    WorkoutResultFactsV5(
+                        workPaceText: model.paceWork == headerPaceCoreText ? nil : model.paceWork
+                    )
                 }
 
                 if let pr = model.postRun {
@@ -516,6 +528,15 @@ struct TodayAfterV5: View {
             out.append((v, unitFor(v, "/mi"), pace.label))
         }
         return out
+    }
+
+    /// REDUNDANT-PACE-1 (2026-09-04) · the whole-run pace's bare digits
+    /// ("8:38"), stripped of the "/mi" the poster appends — so the fallback
+    /// facts block below can compare against `model.paceWork` and yield
+    /// when they are the same number. See the call site's own comment.
+    private var headerPaceCoreText: String? {
+        guard let pace = posterStats.first(where: { $0.label.lowercased().contains("pace") }) else { return nil }
+        return pace.value.text.replacingOccurrences(of: "/mi", with: "")
     }
 
     /// THREE NUMBERS, ONE LINE, ALL THE SAME SIZE.
