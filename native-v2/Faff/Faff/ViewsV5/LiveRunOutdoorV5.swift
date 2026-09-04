@@ -175,6 +175,31 @@ struct LiveRunPhaseWalk {
         return nil
     }
 
+    /// TREADMILL-SKIP-1 (2026-09-03) · the elapsed-time floor a manual phase
+    /// skip imposes on `walk(phases:elapsedSec:)`. `walk` is a pure function
+    /// of elapsed TIME, and a skip deliberately never touches elapsed time
+    /// (it is the measured record of what the runner actually did) — so
+    /// feeding `walk` the raw elapsed time right after a skip can name a
+    /// phase an entire phase BEHIND the one the belt's own `segmentIndex`
+    /// already moved to. Every caller of `walk` in the treadmill view (the
+    /// header, "Phase N of M", the skip/next text, the cue engine) would
+    /// then show the stale phase until real elapsed time happened to catch
+    /// up on its own — found live, rendering an actual skip under
+    /// `-faffFastPhases`: SPEED/INCLINE read Hill 1's real target while the
+    /// header still read "Warm-up," unchanged, 20+ real seconds later.
+    ///
+    /// Never reports a phase EARLIER than `segmentIndex` — the same "one
+    /// canonical answer" contract `BeltSession.advanceToCanonicalPhase()`
+    /// already holds for auto-advance, extended to the one path that can
+    /// legitimately outrun it. Within that floor phase the caller should
+    /// still pass the REAL segment-local elapsed time
+    /// (`BeltSession.belt.segElapsedSec`, reset to 0 by the skip's own
+    /// `closeSegment`) as `segElapsedSec`, never a fabricated one — a skip
+    /// lands the runner at the START of the next phase, not partway through.
+    static func skipFloorSec(phases: [WatchPhase], segmentIndex: Int, segElapsedSec: Int) -> Int {
+        phases.prefix(max(segmentIndex, 0)).reduce(0) { $0 + max($1.durationSec, 0) } + max(segElapsedSec, 0)
+    }
+
     /// "0.6 mi" or "1:20" — no trailing words, so a caller can build either
     /// "… to go" (12a) or "Next · 8.6 mph in …" (12b) around it.
     var remainingShort: String {
