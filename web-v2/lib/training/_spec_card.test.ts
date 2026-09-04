@@ -280,3 +280,72 @@ describe('SPECFIRST-1 · the phone and the watch read the same phases', () => {
     });
   }
 });
+
+/**
+ * ZONEBAND-1 (2026-09-04) · the HR band a card quotes must match the zone
+ * the workout's own doctrine actually prescribes.
+ *
+ * Found live on David's own Friday long run: the card read "~152–159 bpm
+ * (Z3 Tempo)" while the SAME workout's authored `hr_cap_bpm` (151, matching
+ * every other easy/long day in his plan) sat BELOW that band's floor — a
+ * long run, labelled as tempo-zone effort, exceeding its own doctrine cap.
+ * Two competing, un-reconciled mechanisms answered "what HR for this day":
+ * a per-workout authored ceiling and a generic %LTHR Friel bucket that had
+ * nothing to do with the prescribed type. `cardFromSpec`'s own header
+ * comment already stated the rule this code contradicted: "a quality HR
+ * target belongs to threshold/interval work, never to an easy or long
+ * block."
+ */
+describe('ZONEBAND-1 · long is an aerobic-band effort, never Tempo, and a race gets no generic band', () => {
+  const longSpec = {
+    kind: 'long', fuel_mi: [5, 9, 13], hr_cap_bpm: 151,
+    pace_target_s_per_mi_hi: 537, pace_target_s_per_mi_lo: 502,
+  } as unknown as WorkoutSpec;
+
+  it('a long run reads the SAME Z2 band an easy day reads — never Z3/Tempo', () => {
+    const long = cardFromSpec({ spec: longSpec, type: 'long', distanceMi: 15, easyPaceSec: 540, hr: HR })!;
+    const easy = cardFromSpec({ spec: longSpec, type: 'easy', distanceMi: 7.5, easyPaceSec: 540, hr: HR })!;
+    const longStep = long.steps.find((s) => s.hr_target != null)!;
+    const easyStep = easy.steps.find((s) => s.hr_target != null)!;
+    expect(longStep.hr_target).toBe(HR.z2);
+    expect(longStep.hr_target).toBe(easyStep.hr_target);
+    expect(longStep.hr_target).not.toBe(HR.z3);
+    expect(longStep.hr_target).not.toMatch(/tempo/i);
+  });
+
+  it('a race carries no generic Friel band at all — no per-distance race HR model exists here', () => {
+    const race = cardFromSpec({ spec: longSpec, type: 'race', distanceMi: 6.2, easyPaceSec: 540, hr: HR })!;
+    for (const s of race.steps) expect(s.hr_target).toBeUndefined();
+  });
+
+  it('cardWithoutSpec (the no-stored-breakdown fallback) applies the identical fix', () => {
+    const long = cardWithoutSpec({ type: 'long', distanceMi: 15, paceTargetSPerMi: 520, hr: HR })!;
+    const race = cardWithoutSpec({ type: 'race', distanceMi: 6.2, paceTargetSPerMi: 416, hr: HR })!;
+    expect(long.steps[0].hr_target).toBe(HR.z2);
+    expect(race.steps[0].hr_target).toBeUndefined();
+  });
+});
+
+/**
+ * STEPLABEL-DUP-1 (2026-09-04) · the label and the distance are one fact,
+ * stated once.
+ *
+ * Found on the same live screen: "15.0 mi long run · 15.0 mi" — the card's
+ * generic single-block label already spells the distance out
+ * (`expand-spec.ts`'s `\`${totalMi} mi long run\`` fallback), and the card
+ * ALSO sends `distance_mi` as separate structured data, which the client
+ * (`PlanSnapshotDayView.stepLabel`) appends after whatever the label says.
+ */
+describe('STEPLABEL-DUP-1 · a single-block label never restates the distance_mi beside it', () => {
+  it('a long run\'s label is a clean type name, not "N mi long run"', () => {
+    const spec = {
+      kind: 'long', fuel_mi: [5, 9, 13], hr_cap_bpm: 151,
+      pace_target_s_per_mi_hi: 537, pace_target_s_per_mi_lo: 502,
+    } as unknown as WorkoutSpec;
+    const card = cardFromSpec({ spec, type: 'long', distanceMi: 15, easyPaceSec: 540, hr: HR })!;
+    const step = card.steps.find((s) => s.distance_mi != null)!;
+    expect(step.label).toBe('Long run');
+    expect(step.label).not.toContain('15');
+    expect(step.label).not.toContain('mi');
+  });
+});

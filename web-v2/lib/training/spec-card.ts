@@ -125,6 +125,30 @@ export interface SpecCard {
   basis: 'spec' | 'row';
 }
 
+/**
+ * STEPLABEL-DUP-1 (2026-09-04) · a single-block step's `label` and its
+ * `distance_mi` field are two ways of saying the SAME fact, and the client
+ * (`PlanSnapshotDayView.stepLabel`, `TodayAfterV5`/`TodayBeforeV5`'s
+ * equivalents) prints both — it appends `distance_mi` after whatever `label`
+ * already says, which is correct for a short descriptor ("Warmup" → "Warmup
+ * · 1.5 mi") and wrong for `expand-spec.ts`'s own generic fallback label
+ * (`"${totalMi} mi long run"`, `"${totalMi} mi easy"`), which already spells
+ * the same number out in words. Found live: "15.0 mi long run · 15.0 mi" on
+ * David's own Friday long run. Strips the leading "`N mi `" phrase from a
+ * label when it restates the distance about to be sent separately, so the
+ * one fact is stated once, in whichever field is displaying it.
+ */
+function dedupeLabelDistance(label: string, distanceMi: number | null | undefined): string {
+  if (distanceMi == null) return label;
+  const prefix = `${distanceMi.toFixed(1)} mi `;
+  if (!label.startsWith(prefix)) return label;
+  const rest = label.slice(prefix.length);
+  // The stripped remainder is now a ROW LABEL on its own ("long run",
+  // "easy"), not the tail of a sentence — capitalise it the same way every
+  // sibling label in this list already is ("Warmup", "Strides").
+  return rest.length > 0 ? rest[0].toUpperCase() + rest.slice(1) : rest;
+}
+
 /** "1:30" · "45s" · "7:00". Recovery and time-based reps are read as a clock. */
 function fmtDuration(sec: number | null | undefined): string | null {
   if (sec == null || !Number.isFinite(sec) || sec <= 0) return null;
@@ -481,12 +505,23 @@ export function cardFromSpec(input: {
   const repSetKind = specKind === 'threshold' || specKind === 'intervals';
 
   // The work zone the card quotes. Same gating the watch uses: a quality HR
-  // target belongs to threshold/interval work, never to an easy or long block.
+  // target belongs to threshold/interval work, never to an easy or long
+  // block — the rule this comment already stated, which the code below it
+  // contradicted for `long` until ZONEBAND-1 (2026-09-04). A `long` day's
+  // own pace ceiling ("no faster than X/mi") is the same aerobic-band
+  // ceiling `easy` uses, and its authored `hr_cap_bpm` matches every easy
+  // day's, never a tempo day's — Z2 is the doctrinally correct band, not
+  // Z3/"Tempo", found live on David's own Friday long run showing
+  // "~152–159 bpm (Z3 Tempo)" against a plan-authored cap of 151.
+  // `race` gets no generic Friel band at all: a race's true intensity
+  // spans every zone depending on distance (a 5K race is nowhere near
+  // "Tempo" effort), and this module has no per-distance race HR model to
+  // consult — showing nothing here is the honest answer, not a guess.
   const workHr =
     type === 'intervals' ? hr?.z5 ?? null
     : type === 'threshold' ? hr?.z4 ?? null
     : type === 'tempo' ? hr?.z3 ?? null
-    : type === 'long' || type === 'race' ? hr?.z3 ?? null
+    : type === 'race' ? null
     : hr?.z2 ?? null;
 
   for (let i = 0; i < tokens.length; i++) {
@@ -663,8 +698,12 @@ export function cardFromSpec(input: {
         } : {}),
       });
     } else {
+      // STEPLABEL-DUP-1 · the client appends `distance_mi` after `label`
+      // ("Warmup" → "Warmup · 1.5 mi"); a label that already spells the
+      // distance out itself (expand-spec.ts's generic "N mi long run" /
+      // "N mi easy" fallback) must not restate it a second time.
       steps.push({
-        label: w.label,
+        label: dedupeLabelDistance(w.label, w.distanceMi),
         ...(w.distanceMi != null ? { distance_mi: w.distanceMi } : {}),
         ...(w.distanceMi == null && fmtDuration(w.durationSec) ? { duration: fmtDuration(w.durationSec)! } : {}),
         ...(paceStr ? { pace_target: paceStr } : {}),
@@ -885,10 +924,14 @@ export function cardWithoutSpec(input: {
   }
 
   const paceStr = fmtPace(paceTargetSPerMi);
+  // ZONEBAND-1 (2026-09-04) · same fix, same reason as `cardFromSpec`'s
+  // `workHr` above: `long` is an aerobic-band effort (Z2), never Tempo, and
+  // `race` gets no generic Friel band (no per-distance race HR model here).
   const zone =
     type === 'intervals' ? hr?.z5 ?? null
     : type === 'threshold' ? hr?.z4 ?? null
-    : type === 'tempo' || type === 'long' || type === 'race' ? hr?.z3 ?? null
+    : type === 'tempo' ? hr?.z3 ?? null
+    : type === 'race' ? null
     : hr?.z2 ?? null;
 
   const isQuality = type === 'threshold' || type === 'intervals' || type === 'tempo';

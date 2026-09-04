@@ -79,7 +79,7 @@ describe('EASYCEIL-1 · easy running states a limit, not a number to hold', () =
     expect(finish.pace_target).toBe('7:55 /mi');
     expect(finish.pace_target).not.toContain('no faster than');
     // …and the easy bulk above it is still a ceiling, on the same card.
-    const bulk = card.steps.find((s) => /mi easy$/.test(s.label))!;
+    const bulk = card.steps.find((s) => /^easy$/i.test(s.label))!;
     expect(bulk.pace_target).toBe('no faster than 8:22 /mi');
   });
 
