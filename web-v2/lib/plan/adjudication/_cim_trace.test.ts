@@ -217,14 +217,66 @@ describe('CIM block · corrected history', () => {
       weekStartISO: '2026-09-21', weeklyMi: 55.2, longestMi: 17.0,
       stressors: ['Dodgers 10k', 'tempo', '17 mi long'], mpMi: 0, isTaper: false, isRaceWeek: false,
     };
-    const f = detectSimultaneousStressAddition(w0921, w0914);
+    const f = detectSimultaneousStressAddition(w0921, [w0914]);
     expect(f).not.toBeNull();
     expect(f?.stressorsBefore).toBe(2);
     expect(f?.stressorsAfter).toBe(3);
     expect(f?.volumeStep).toBeGreaterThan(0.17);
   });
 
-  it('a cutback week is not the baseline for an addition claim', () => {
+  it('a CUTBACK is not the baseline for an addition claim either', () => {
+    // The defect this function shipped with. Comparing against the immediately
+    // preceding week made every week after a planned dip look like a spike.
+    // Measured on the live block, that misreported four of thirteen weeks.
+    //
+    // My first version of this test asserted the wrong thing and the test
+    // caught me: against the trailing max, 2026-10-05 adds mileage (+7.8%) but
+    // does NOT add intensity, because 2026-09-21 two weeks earlier already
+    // carried three stressors. So the correct answer is no finding at all, and
+    // the single-previous-week reading produced one.
+    const w0921: PlannedWeek = { weekStartISO: '2026-09-21', weeklyMi: 55.2, longestMi: 17.0,
+      stressors: ['race', 'tempo', 'long'], mpMi: 0, isTaper: false, isRaceWeek: false };
+    const cutback: PlannedWeek = { weekStartISO: '2026-09-28', weeklyMi: 43.0, longestMi: 14.0,
+      stressors: ['intervals'], mpMi: 0, isTaper: false, isRaceWeek: false };
+    const w1005: PlannedWeek = { weekStartISO: '2026-10-05', weeklyMi: 59.5, longestMi: 18.5,
+      stressors: ['intervals', 'tempo', 'long'], mpMi: 0, isTaper: false, isRaceWeek: false };
+
+    expect(detectSimultaneousStressAddition(w1005, [w0921, cutback])).toBeNull();
+  });
+
+  it('the baseline is the trailing MAX, so a cutback cannot inflate the step', () => {
+    // Same shape, but with a genuine stressor increase so the finding fires and
+    // its volumeStep is observable. Against the cutback alone this is +38.4%;
+    // against the trailing max it is +7.8%, because 55.2 is what he was
+    // actually doing two weeks before.
+    const w0921: PlannedWeek = { weekStartISO: '2026-09-21', weeklyMi: 55.2, longestMi: 17.0,
+      stressors: ['tempo', 'long'], mpMi: 0, isTaper: false, isRaceWeek: false };
+    const cutback: PlannedWeek = { weekStartISO: '2026-09-28', weeklyMi: 43.0, longestMi: 14.0,
+      stressors: ['intervals'], mpMi: 0, isTaper: false, isRaceWeek: false };
+    const w1005: PlannedWeek = { weekStartISO: '2026-10-05', weeklyMi: 59.5, longestMi: 18.5,
+      stressors: ['intervals', 'tempo', 'long'], mpMi: 0, isTaper: false, isRaceWeek: false };
+
+    const f = detectSimultaneousStressAddition(w1005, [w0921, cutback]);
+    expect(f).not.toBeNull();
+    expect(f?.stressorsBefore).toBe(2);   // the max, not the cutback's one
+    expect(f?.volumeStep).toBeGreaterThan(0.05);
+    expect(f?.volumeStep).toBeLessThan(0.10);   // +7.8%, not +38.4%
+  });
+
+  it('a week that is FLAT against the trailing max is not an addition at all', () => {
+    // 2026-10-26 reads +30.4% against the preceding cutback and +0.7% against
+    // the trailing max. The block is flat there, and the first version called
+    // it a mileage increase.
+    const w1012 = { weekStartISO: '2026-10-12', weeklyMi: 59.6, longestMi: 20.0,
+      stressors: ['threshold', 'long'], mpMi: 0, isTaper: false, isRaceWeek: false };
+    const w1019 = { weekStartISO: '2026-10-19', weeklyMi: 46.0, longestMi: 15.0,
+      stressors: ['intervals', 'tempo'], mpMi: 0, isTaper: false, isRaceWeek: false };
+    const w1026 = { weekStartISO: '2026-10-26', weeklyMi: 60.0, longestMi: 21.5,
+      stressors: ['tempo', 'intervals', 'long'], mpMi: 0, isTaper: false, isRaceWeek: false };
+    expect(detectSimultaneousStressAddition(w1026, [w1012, w1019])).toBeNull();
+  });
+
+  it('a taper week is not the baseline for an addition claim', () => {
     // Comparing against a prescribed dip makes the week after it look like a
     // spike. Rule 8 in miniature: a taper is never the runner's normal.
     const taper: PlannedWeek = {
@@ -235,7 +287,7 @@ describe('CIM block · corrected history', () => {
       weekStartISO: '2026-09-14', weeklyMi: 46.8, longestMi: 16.5,
       stressors: ['threshold', '16.5 mi long'], mpMi: 0, isTaper: false, isRaceWeek: false,
     };
-    expect(detectSimultaneousStressAddition(after, taper)).toBeNull();
+    expect(detectSimultaneousStressAddition(after, [taper])).toBeNull();
   });
 
   it('promotion BLOCKS a one-at-a-time week that was pushed with no gate', () => {

@@ -372,31 +372,80 @@ export interface SimultaneousStressAddition {
 /** Below this, a volume change is noise rather than "adding mileage". */
 export const VOLUME_ADDITION_THRESHOLD = 0.05;
 
+/**
+ * How many prior weeks the baseline is read over.
+ *
+ * THREE, and the reason is a defect this function shipped with for a few hours
+ * on 2026-09-04. The first version compared against the IMMEDIATELY PRECEDING
+ * week, and a planned cutback poisons that comparison completely. Measured on
+ * the live CIM block, the two readings disagree on four of thirteen weeks:
+ *
+ *   week        vs previous week   vs trailing max
+ *   2026-09-14      +91.8%              +0.6%
+ *   2026-10-26      +30.4%              +0.7%
+ *   2026-11-16      +21.0%             -18.3%
+ *   2026-11-30      +21.4%             -10.8%
+ *
+ * Every one of those is a week that follows a deliberate dip, and every one was
+ * reported as "adds mileage" when the block is in fact flat or falling there.
+ * Only 2026-09-21 survives as a real addition, which is the same week the
+ * volume classification independently flags.
+ *
+ * This is CLAUDE.md Rule 8 one level down. That rule says a taper or recovery
+ * window is never the runner's NORMAL; the same is true of a cutback as a
+ * BASELINE. The first version guarded taper weeks and race weeks explicitly and
+ * missed the cutback, which is the most common dip in any block.
+ */
+export const ADDITION_BASELINE_TRAILING_WEEKS = 3;
+
 export function detectSimultaneousStressAddition(
   week: PlannedWeek,
-  previous: PlannedWeek | null,
+  /** The weeks before this one, oldest first. Only the trailing few are read. */
+  previousWeeks: readonly PlannedWeek[],
 ): SimultaneousStressAddition | null {
-  if (previous == null || !(previous.weeklyMi > 0)) return null;
-  // A cutback or race week is not "adding" anything, and comparing against one
-  // makes the week after it look like a spike. Both are prescribed dips.
-  if (previous.isTaper || previous.isRaceWeek) return null;
+  const window = previousWeeks
+    .slice(-ADDITION_BASELINE_TRAILING_WEEKS)
+    .filter((w) => w.weeklyMi > 0);
+  if (window.length === 0) return null;
 
-  const volumeStep = week.weeklyMi / previous.weeklyMi - 1;
-  const before = previous.stressors.length;
+  // ── THE SECOND VERSION OF THE SAME MISTAKE, CAUGHT BY THE PRODUCTION REPLAY
+  //
+  // This filtered `isTaper || isRaceWeek` weeks OUT of the window before taking
+  // the max, which sounds right and is wrong twice over.
+  //
+  // `isRaceWeek` conflates two different weeks (Rule 16): one that TAPERS for a
+  // race, and one that merely CONTAINS a race without tapering. On the live CIM
+  // block, 2026-09-21 is a 55.2 mile week holding a C-priority tune-up, and it
+  // is his biggest week in the block. Filtering it out inflated the next week's
+  // step from +7.8% to +27.1% and manufactured a finding.
+  //
+  // And the filter was redundant even where it was right. A MAXIMUM is already
+  // immune to a dip: that is the whole reason it is a max and not a mean. The
+  // filter was a second mechanism doing the same job worse.
+  //
+  // What survives is the honest part, as a REFUSAL rather than a subtraction:
+  // if every week in the window is a prescribed dip there is no baseline to
+  // read, and Rule 11 says that is "do not know" rather than a number.
+  if (window.every((w) => w.isTaper || w.isRaceWeek)) return null;
+
+  const baselineMi = Math.max(...window.map((w) => w.weeklyMi));
+  const baselineStressors = Math.max(...window.map((w) => w.stressors.length));
+
+  const volumeStep = week.weeklyMi / baselineMi - 1;
   const after = week.stressors.length;
 
   const addsMileage = volumeStep > VOLUME_ADDITION_THRESHOLD;
-  const addsIntensity = after > before;
+  const addsIntensity = after > baselineStressors;
   if (!addsMileage || !addsIntensity) return null;
 
   return {
     weekStartISO: week.weekStartISO,
     volumeStep,
-    stressorsBefore: before,
+    stressorsBefore: baselineStressors,
     stressorsAfter: after,
-    why: `Volume rises ${Math.round(volumeStep * 1000) / 10}% on the previous week AND the `
-      + `stressor count goes from ${before} to ${after}. Research/00a §"Practical load rules" `
-      + 'asks for one or the other in a given week, not both.',
+    why: `Volume rises ${Math.round(volumeStep * 1000) / 10}% on the highest of the previous `
+      + `${window.length} week(s) AND the stressor count goes from ${baselineStressors} to ${after}. `
+      + 'Research/00a §"Practical load rules" asks for one or the other in a given week, not both.',
   };
 }
 
@@ -550,7 +599,7 @@ export function checkPromotion(
     const weeks = ctx?.weeks ?? [];
     const out: SimultaneousStressAddition[] = [];
     for (let i = 1; i < weeks.length; i += 1) {
-      const f = detectSimultaneousStressAddition(weeks[i], weeks[i - 1]);
+      const f = detectSimultaneousStressAddition(weeks[i], weeks.slice(0, i));
       if (f != null) out.push(f);
     }
     return out;
