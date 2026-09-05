@@ -71,6 +71,7 @@ import type {
 } from '@/lib/adaptation/canonical/deferral-queue';
 import type { CanonicalLever, Measured } from '@/lib/adaptation/canonical/input';
 import { roQuery } from './read-only-db';
+import { attempt } from '@/lib/db/read';
 import { writeDeferral, REASSESSMENT_SCHEDULE_TABLE } from './deferral-writer';
 
 /* `measured` / `absent` / `failed` are re-declared here rather than imported
@@ -105,26 +106,75 @@ interface DeferralRow {
   idempotency_key: string;
 }
 
-let tableExists: boolean | null = null;
+/**
+ * ── MIGRATIONPROBE-1 (2026-09-05) · TWO DEFECTS IN ONE EIGHT-LINE FUNCTION
+ *
+ * Found while writing the production migration approval packet, which is the
+ * right time to find them and nearly too late.
+ *
+ * 1 · A FAILED PROBE WAS CACHED AS "ABSENT", FOREVER.
+ *     `catch { tableExists = false }` collapses "the read failed" into "the
+ *     table is not there" — Rule 11, on the one code path whose entire job is
+ *     to tell those apart. One connection blip during the first probe and this
+ *     process stops recording decisions for its whole life, reporting
+ *     `table_absent` — a clean, confident, wrong answer.
+ *
+ * 2 · A NEGATIVE RESULT WAS CACHED ACROSS THE MIGRATION.
+ *     The probe runs once per process. If the code deploys before the DDL —
+ *     which the packet explicitly permits, because either order is safe for a
+ *     bare CREATE TABLE — every process started in that window answers
+ *     `table_absent` until it is restarted, long after the table exists. The
+ *     migration would land, the packet would verify, and the ledger would stay
+ *     empty with nothing anywhere reporting a fault.
+ *
+ * The fix for both: only a DEFINITE answer is cached, and only `true` is
+ * cached permanently. A definite "not there" is re-probed on a cooldown so the
+ * table appearing underneath a running process is noticed without asking the
+ * database on every write. A failed probe caches nothing at all.
+ */
+const ABSENT_REPROBE_MS = 60_000;
 
-/** Probed once per process, mirroring `run-live-shadow-evaluation.ts`'s own
- *  posture for the shadow log. */
-async function deferralTableExists(): Promise<boolean> {
-  if (tableExists != null) return tableExists;
-  try {
-    const r = await roQuery<{ reg: string | null }>(
+/**
+ * Rule 11 · three answers, because there are three.
+ *
+ * `null` rather than an `'unknown'` member on purpose. The swallow scanner
+ * classifies a fabricated literal returned from a `catch` as MINTED and demands
+ * an argued exemption whose sentence is "absent and failed lead to the same
+ * outcome for every consumer, because ___". That sentence is FALSE here — they
+ * lead to deliberately different outcomes — so an exemption would have been a
+ * lie told to a gate. `null` is the shape the registry itself names as the
+ * alternative, and it is what `rowsOrNull` already uses for exactly this.
+ */
+type TableProbe = 'present' | 'absent' | null;
+
+let tableExists: true | null = null;
+let absentUntilMs = 0;
+
+async function deferralTableExists(): Promise<TableProbe> {
+  if (tableExists === true) return 'present';
+  if (Date.now() < absentUntilMs) return 'absent';
+  const r = await attempt(
+    'deferral-store/table-probe',
+    roQuery<{ reg: string | null }>(
       `SELECT to_regclass('public.${REASSESSMENT_SCHEDULE_TABLE}')::text AS reg`,
-    );
-    tableExists = r.rows[0]?.reg != null;
-  } catch {
-    tableExists = false;
-  }
-  return tableExists;
+    ),
+  );
+  // The failure is LOGGED by `attempt` and reported as null. Not caught and
+  // discarded here — routing through lib/db/read.ts is what the swallow
+  // registry names as the alternative to an exemption, and it is right: this
+  // caller genuinely can tell the difference.
+  if (!r.ok) return null;
+  if (r.value.rows[0]?.reg != null) { tableExists = true; return 'present'; }
+  // Definite: the database answered and the table is not there. Re-probe
+  // later, so a migration applied under a live process is picked up.
+  absentUntilMs = Date.now() + ABSENT_REPROBE_MS;
+  return 'absent';
 }
 
 /** Test-only reset, mirroring `_resetTableProbeForTests` next door. */
 export function _resetDeferralTableProbeForTests(): void {
   tableExists = null;
+  absentUntilMs = 0;
 }
 
 const asNum = (v: string | number): number => (typeof v === 'number' ? v : Number(v));
@@ -161,7 +211,7 @@ function rowToItem(athleteId: string, r: DeferralRow): QueuedDeferral {
  * date first, so a reader sees what is due next.
  */
 export async function loadLiveQueue(userUuid: string): Promise<Measured<QueuedDeferral[]>> {
-  if (!(await deferralTableExists())) {
+  if ((await deferralTableExists()) !== 'present') {
     return noTable(
       `${REASSESSMENT_SCHEDULE_TABLE} does not exist on this database, so no queue `
       + 'could be read. Migration 167 has not been applied here. That is not an empty queue.',
@@ -308,7 +358,7 @@ export async function persistQueueAtBoundary(
   userUuid: string,
   outcome: { carried: readonly QueuedDeferral[]; expired: readonly ExpiredDeferral[] },
 ): Promise<DeferralPersistenceResult> {
-  if (!(await deferralTableExists())) {
+  if ((await deferralTableExists()) !== 'present') {
     return {
       written: 0, retired: 0,
       refusal: 'table-absent',

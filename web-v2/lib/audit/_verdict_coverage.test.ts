@@ -182,7 +182,19 @@ const PAIRS: readonly Pair[] = [
     // canonical-engine vocabulary, so this exclusion changes nothing today
     // (measured 0.44 either way) and is applied to both progression-ladder
     // pairs so the two cannot answer the same question over different corpora.
-    excludePathContains: ['lib/adaptation/canonical/', 'lib/plan/adjudication/'],
+    excludePathContains: [
+      'lib/adaptation/canonical/', 'lib/plan/adjudication/',
+      // LEDGERHOLD-1 (2026-09-05) · a THIRD mechanism that spells a verdict
+      // `HOLD`, for the same reason the two above are excluded. The decision
+      // ledger records PUSH / HOLD / PULL_BACK as the DIRECTION of any
+      // decision, on any lever — it is not the progression ladder's verdict and
+      // its files are not the ladder's corpus. Counting them here moved this
+      // pair from 2.00 to 2.40 the moment a ledger test was added, which would
+      // have made every future ledger test look like a fresh pull-back bias.
+      // The exclusion is scoped to the LEDGER's own directory, so a real
+      // progression-ladder test cannot hide in it.
+      'lib/brain/ledger/',
+    ],
     // MEASURED 0.38 · 8 ACCELERATE files against 3 BACK_OFF. This is the pair
     // Rule 22 was locked on, at 2 against 1 in the other direction ("29 files
     // know how to hold a runner back, 2 know what it means to accelerate one"
@@ -213,7 +225,19 @@ const PAIRS: readonly Pair[] = [
     mechanism: 'progression ladder · take against hold',
     up: ['TAKE', 'ACCELERATE'],
     down: ['HOLD', 'BACK_OFF'],
-    excludePathContains: ['lib/adaptation/canonical/', 'lib/plan/adjudication/'],
+    excludePathContains: [
+      'lib/adaptation/canonical/', 'lib/plan/adjudication/',
+      // LEDGERHOLD-1 (2026-09-05) · a THIRD mechanism that spells a verdict
+      // `HOLD`, for the same reason the two above are excluded. The decision
+      // ledger records PUSH / HOLD / PULL_BACK as the DIRECTION of any
+      // decision, on any lever — it is not the progression ladder's verdict and
+      // its files are not the ladder's corpus. Counting them here moved this
+      // pair from 2.00 to 2.40 the moment a ledger test was added, which would
+      // have made every future ledger test look like a fresh pull-back bias.
+      // The exclusion is scoped to the LEDGER's own directory, so a real
+      // progression-ladder test cannot hide in it.
+      'lib/brain/ledger/',
+    ],
     // RE-MEASURED 2.00 on 2026-09-04 · 10 against 20, over the progression
     // ladder's own corpus. The previous pin of 2.44 (9 against 22) was measured
     // over a corpus that also contained every canonical-engine test file,

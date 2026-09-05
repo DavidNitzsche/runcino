@@ -426,3 +426,207 @@ confidence (Rule 18).
   measurement of an engine that has not pushed — which is the point.
 - **`adaptation_log` is untouched and still has consumers.** Retiring it is a
   separate, non-additive change with its own reader audit still to do.
+
+---
+
+# ADDENDUM · 2026-09-05, for the production approval
+
+Everything below was added after the owner asked for permissions, deployment
+ordering in both directions, locking risk, failure recovery, expected row counts
+and read-only verification queries. It is measured, not assumed — the production
+figures come from a read-only connection made while writing this.
+
+## A · Production pre-state, measured
+
+```
+server                PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2)
+scratch was           PostgreSQL 18.4 (Homebrew)      ← minor version differs
+app runtime role      postgres   (superuser, owner of every table)
+read-only role        faff_readonly  (SELECT only, not superuser)
+owner of training_plans   postgres
+
+to_regclass('public.plan_decision_ledger')          →  NULL   (absent)
+to_regclass('public.reassessment_schedule')         →  NULL   (absent)
+to_regclass('public.canonical_adaptation_deferrals')→  NULL   (absent, and 165 must stay unapplied)
+
+training_plans   59 rows
+plan_workouts  4742 rows
+```
+
+The minor-version gap (18.4 scratch, 18.6 production) is stated rather than
+waved past. Nothing in either migration uses a feature that moved between those
+releases — they are `CREATE TABLE`, `CREATE INDEX`, `COMMENT` and CHECK
+constraints — but "it worked on my machine's Postgres" is not the same sentence
+as "it will work on yours", and the difference belongs in the packet.
+
+## B · Permissions · nothing to grant, and here is why
+
+Neither migration contains a `GRANT`, and that is correct here rather than an
+omission:
+
+- **The app writes as `postgres`**, which is the superuser and will own both new
+  tables. It needs no grant to write what it created.
+- **`faff_readonly` is covered automatically.** `ALTER DEFAULT PRIVILEGES` is
+  already configured on this database:
+
+  ```
+  pg_default_acl → grantor postgres, objtype r, acl {faff_readonly=r/postgres}
+  ```
+
+  Every new RELATION created by `postgres` is granted `SELECT` to
+  `faff_readonly` on creation. That is what makes section E's verification
+  queries runnable on the read-only connection immediately after the apply, with
+  no follow-up grant.
+
+**If that default ACL is ever removed**, the verification queries start failing
+with `permission denied for table plan_decision_ledger` — which is a loud,
+correct failure, not a silent one, and the fix is
+`GRANT SELECT ON plan_decision_ledger, reassessment_schedule TO faff_readonly;`
+
+## C · Locking and deployment risk · effectively none, and precisely why
+
+| statement | lock taken | on what | blocks |
+|---|---|---|---|
+| `CREATE TABLE IF NOT EXISTS` | `AccessExclusive` | the NEW table only | nothing — no other session can name a table that did not exist |
+| `CREATE INDEX` (×9) | `Share` | the NEW table | nothing — the table is empty and unreferenced |
+| `COMMENT ON TABLE` | `ShareUpdateExclusive` | the NEW table | nothing |
+
+**No statement touches `training_plans`, `plan_workouts`, `runs`, `races`, or
+any other existing relation.** There is no `ALTER`, no `ADD COLUMN`, no rewrite,
+no backfill and no `VACUUM`-triggering change. `scripts/check-decision-ledger.sh`
+guard 3 fails the build if a non-additive statement ever appears in either file,
+and it was falsified by planting an `ALTER TABLE`.
+
+Expected wall-clock: sub-second each. Both tables are created empty, so the nine
+`CREATE INDEX` statements have nothing to scan.
+
+**Risk to the running app during the apply: none that we can construct.** The
+app is not reading these tables — it cannot, they do not exist — and the code
+paths that name them already branch on absence (section D).
+
+## D · Deployment ordering · both directions, and one real hazard
+
+The tables are independent `CREATE TABLE`s with no foreign keys, so **either
+order is structurally safe.** But "safe" and "correct" came apart here, and the
+difference was found while writing this section rather than after the apply.
+
+### D.1 · Migration first, then code — RECOMMENDED
+
+Nothing reads the tables until the code that names them deploys. Zero window.
+
+### D.2 · Code first, then migration — WORKS, BUT RESTART THE SERVICE
+
+Three modules probe `to_regclass` before writing: the decision ledger, the
+reassessment scheduler, and the shadow deferral store. All three returned
+`table_absent` honestly — and **all three cached that answer for the life of the
+process.** A process started before the DDL would have kept answering
+`table_absent` long after the table existed. The migration would land, section E
+would verify clean, and the ledger would stay empty with nothing anywhere
+reporting a fault.
+
+**Fixed before this packet was submitted** (`MIGRATIONPROBE-1`): only a
+DEFINITE answer is cached, only `true` is cached permanently, and a definite
+absence is re-probed on a 60-second cooldown, so a table appearing under a live
+process is picked up within a minute without asking the database on every write.
+
+The same eight lines carried a second defect, which is the more dangerous one
+because it does not need a migration to fire: **`catch { tableExists = false }`
+cached a FAILED probe as "table absent"** — Rule 11, on the one function whose
+entire job is to tell those two facts apart. A single connection blip during a
+process's first probe and that process stops recording decisions permanently,
+reporting a clean and confident wrong answer. A failed probe now caches nothing.
+
+`lib/brain/ledger/_migration_probe.test.ts` gates both, and both were falsified
+by restoring the original behaviour and watching the named test fail:
+
+```
+× does not cache a thrown probe as "table absent"
+× notices the table appearing under a running process
+× does not re-probe on every write while it is genuinely absent
+```
+
+**With that fix, D.2 is safe and self-healing within 60 seconds.** D.1 is still
+recommended, because a rollout that needs nothing to heal is better than one
+that heals.
+
+## E · Verification, read-only, immediately after the apply
+
+Run as `faff_readonly`. None of these writes anything.
+
+```sql
+-- 1 · both tables exist, and 165's table still does not
+SELECT to_regclass('public.plan_decision_ledger')            AS ledger,
+       to_regclass('public.reassessment_schedule')           AS schedule,
+       to_regclass('public.canonical_adaptation_deferrals')  AS must_be_null;
+
+-- 2 · expected row counts immediately after apply: 0 and 0.
+--     Anything non-zero means this ran against a database that is not
+--     production, or the apply was run twice against different data.
+SELECT (SELECT count(*) FROM plan_decision_ledger)  AS ledger_rows,
+       (SELECT count(*) FROM reassessment_schedule) AS schedule_rows;
+
+-- 3 · indexes · expect 6 on the ledger (5 + pkey) and 5 on the schedule (4 + pkey)
+SELECT tablename, count(*) AS idx
+  FROM pg_indexes
+ WHERE tablename IN ('plan_decision_ledger','reassessment_schedule')
+ GROUP BY tablename ORDER BY tablename;
+
+-- 4 · constraints survived · expect 5 CHECKs on the ledger, 3 on the schedule
+SELECT rel.relname, count(*) FILTER (WHERE con.contype = 'c') AS checks
+  FROM pg_constraint con JOIN pg_class rel ON rel.oid = con.conrelid
+ WHERE rel.relname IN ('plan_decision_ledger','reassessment_schedule')
+ GROUP BY rel.relname ORDER BY rel.relname;
+
+-- 5 · nothing else moved
+SELECT (SELECT count(*) FROM training_plans) AS training_plans,   -- expect 59
+       (SELECT count(*) FROM plan_workouts)  AS plan_workouts;    -- expect 4742
+
+-- 6 · the read-only role can actually see them (proves the default ACL held)
+SELECT table_name, privilege_type
+  FROM information_schema.role_table_grants
+ WHERE grantee = 'faff_readonly'
+   AND table_name IN ('plan_decision_ledger','reassessment_schedule');
+```
+
+**Then, within one deploy cycle**, confirm the ledger is actually being written
+rather than merely present — a table that exists and stays empty is the failure
+mode D.2 describes:
+
+```sql
+SELECT count(*) AS decisions, max(at) AS most_recent FROM plan_decision_ledger;
+SELECT direction, count(*) FROM plan_decision_ledger GROUP BY direction;
+```
+
+That second query is Rule 21's census. **On the day this lands it will read
+`UP: 0`,** and that is a true measurement of an engine that has not yet pushed —
+not a fault in the migration.
+
+## F · Failure recovery
+
+| what fails | symptom | recovery |
+|---|---|---|
+| `166` errors partway | Postgres runs each `CREATE` in its own implicit transaction; a failure leaves the table created and some indexes missing | re-run the file. Every statement is `IF NOT EXISTS`; the second pass creates only what is missing. Proven on scratch: applied twice, exit 0, **rows preserved** (26 ledger / 31 schedule) |
+| `167` errors partway | same | same |
+| both applied, app cannot write | ledger stays empty, `[ledger] table_absent` in logs | restart the service (or wait 60s for the re-probe, post-`MIGRATIONPROBE-1`) |
+| applied to the wrong database | tables exist where they should not | `DROP TABLE IF EXISTS plan_decision_ledger; DROP TABLE IF EXISTS reassessment_schedule;` — nothing references them, so the drop is clean |
+| decision to reverse entirely | — | the full inverse above. **No data loss to anything else**: neither table is referenced by a foreign key, and nothing existing was altered |
+
+**There is no backfill.** Both tables start empty and accumulate forward. No
+historical decision is reconstructed into the ledger, and none should be:
+inventing provenance for decisions nobody recorded is exactly the fabrication
+this ledger exists to make impossible.
+
+## G · Runtime behaviour, before and after
+
+| | before the migration | after |
+|---|---|---|
+| `mutatePlan` | all 8 exits reached; each calls the ledger, which answers `table_absent` and says so | same 8 exits; each writes a row |
+| a plan mutation | applies exactly as today | applies exactly as today, plus a durable record |
+| the reassessment sweep | `table_absent`, no deferrals persisted | deferrals persist and survive restart |
+| `adaptation_log` | written | **still written, unchanged** |
+| the runner's plan | untouched | untouched |
+| `AUTOMATIC_ADAPTATION_AUTHORITY` | `false` | `false` |
+
+**Applying these migrations enables nothing that writes a plan.** They create
+two tables that record and schedule. The authority seam is a separate switch and
+this does not move it.

@@ -92,6 +92,7 @@
  *   anybody reads `ops_alerts` is outside every check in this repo.
  */
 import { pool } from '@/lib/db/pool';
+import { attempt } from '@/lib/db/read';
 import { raiseAlert } from '@/lib/ops/alerts';
 
 export const REASSESSMENT_SCHEDULE_TABLE = 'reassessment_schedule';
@@ -244,24 +245,80 @@ export type SchedulerResult<T> =
 
 const ok = <T>(value: T): SchedulerResult<T> => ({ state: 'ok', value });
 
-let tableExists: boolean | null = null;
+/**
+ * ── MIGRATIONPROBE-1 (2026-09-05) · TWO DEFECTS IN ONE EIGHT-LINE FUNCTION
+ *
+ * Found while writing the production migration approval packet, which is the
+ * right time to find them and nearly too late.
+ *
+ * 1 · A FAILED PROBE WAS CACHED AS "ABSENT", FOREVER.
+ *     `catch { tableExists = false }` collapses "the read failed" into "the
+ *     table is not there" — Rule 11, on the one code path whose entire job is
+ *     to tell those apart. One connection blip during the first probe and this
+ *     process stops recording decisions for its whole life, reporting
+ *     `table_absent` — a clean, confident, wrong answer.
+ *
+ * 2 · A NEGATIVE RESULT WAS CACHED ACROSS THE MIGRATION.
+ *     The probe runs once per process. If the code deploys before the DDL —
+ *     which the packet explicitly permits, because either order is safe for a
+ *     bare CREATE TABLE — every process started in that window answers
+ *     `table_absent` until it is restarted, long after the table exists. The
+ *     migration would land, the packet would verify, and the ledger would stay
+ *     empty with nothing anywhere reporting a fault.
+ *
+ * The fix for both: only a DEFINITE answer is cached, and only `true` is
+ * cached permanently. A definite "not there" is re-probed on a cooldown so the
+ * table appearing underneath a running process is noticed without asking the
+ * database on every write. A failed probe caches nothing at all.
+ */
+const ABSENT_REPROBE_MS = 60_000;
 
-async function scheduleTableExists(): Promise<boolean> {
-  if (tableExists != null) return tableExists;
-  try {
-    const r = await pool.query<{ reg: string | null }>(
+/**
+ * Rule 11 · three answers, because there are three.
+ *
+ * `null` rather than an `'unknown'` member on purpose. The swallow scanner
+ * classifies a fabricated literal returned from a `catch` as MINTED and demands
+ * an argued exemption whose sentence is "absent and failed lead to the same
+ * outcome for every consumer, because ___". That sentence is FALSE here — they
+ * lead to deliberately different outcomes — so an exemption would have been a
+ * lie told to a gate. `null` is the shape the registry itself names as the
+ * alternative, and it is what `rowsOrNull` already uses for exactly this.
+ */
+type TableProbe = 'present' | 'absent' | null;
+
+let tableExists: true | null = null;
+let absentUntilMs = 0;
+
+async function scheduleTableExists(): Promise<TableProbe> {
+  if (tableExists === true) return 'present';
+  if (Date.now() < absentUntilMs) return 'absent';
+  const r = await attempt(
+    'scheduler/table-probe',
+    pool.query<{ reg: string | null }>(
       `SELECT to_regclass('public.${REASSESSMENT_SCHEDULE_TABLE}')::text AS reg`,
-    );
-    tableExists = r.rows[0]?.reg != null;
-  } catch {
-    tableExists = false;
-  }
-  return tableExists;
+    ),
+  );
+  // The failure is LOGGED by `attempt` and reported as null. Not caught and
+  // discarded here — routing through lib/db/read.ts is what the swallow
+  // registry names as the alternative to an exemption, and it is right: this
+  // caller genuinely can tell the difference.
+  if (!r.ok) return null;
+  if (r.value.rows[0]?.reg != null) { tableExists = true; return 'present'; }
+  // Definite: the database answered and the table is not there. Re-probe
+  // later, so a migration applied under a live process is picked up.
+  absentUntilMs = Date.now() + ABSENT_REPROBE_MS;
+  return 'absent';
 }
 
 export function _resetScheduleTableProbeForTests(): void {
   tableExists = null;
+  absentUntilMs = 0;
 }
+
+const PROBE_FAILED_WHY =
+  'the check for reassessment_schedule could not be completed, so whether this decision was recorded is '
+  + 'UNKNOWN. That is not the same as the migration not having been applied, and it is not a '
+  + 'successful write of nothing.';
 
 const ABSENT_WHY =
   `${REASSESSMENT_SCHEDULE_TABLE} does not exist on this database, so the schedule was `
@@ -343,7 +400,9 @@ export async function loadLiveQueue(
   userUuid: string,
   kind?: ReassessmentKind,
 ): Promise<SchedulerResult<ScheduledReassessment[]>> {
-  if (!(await scheduleTableExists())) return absent();
+  const probe = await scheduleTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return absent();
   try {
     const r = await pool.query(
       `SELECT ${SELECT_COLUMNS}
@@ -371,7 +430,9 @@ export async function loadDueItems(
   todayISO: string,
   limit = 500,
 ): Promise<SchedulerResult<ScheduledReassessment[]>> {
-  if (!(await scheduleTableExists())) return absent();
+  const probe = await scheduleTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return absent();
   try {
     const r = await pool.query(
       `SELECT ${SELECT_COLUMNS}
@@ -411,7 +472,9 @@ export async function loadDueItems(
 export async function scheduleReassessment(
   req: ScheduleRequest,
 ): Promise<SchedulerResult<string>> {
-  if (!(await scheduleTableExists())) return absent();
+  const probe = await scheduleTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return absent();
   try {
     const r = await pool.query<{ id: string }>(
       `INSERT INTO reassessment_schedule (
@@ -486,7 +549,9 @@ export async function resolveReassessment(args: {
   detail: string;
   ledgerId?: string | null;
 }): Promise<SchedulerResult<boolean>> {
-  if (!(await scheduleTableExists())) return absent();
+  const probe = await scheduleTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return absent();
   if (args.detail.trim().length === 0) {
     return {
       state: 'failed',
@@ -513,7 +578,9 @@ export async function resolveReassessment(args: {
 
 /** Promote a PENDING item whose date has arrived. Idempotent by its guard. */
 export async function markDue(id: string): Promise<SchedulerResult<boolean>> {
-  if (!(await scheduleTableExists())) return absent();
+  const probe = await scheduleTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return absent();
   try {
     const r = await pool.query(
       `UPDATE reassessment_schedule
@@ -540,7 +607,9 @@ export async function recordAssessmentFailure(
   id: string,
   error: string,
 ): Promise<SchedulerResult<'retrying' | 'failed' | 'not_live'>> {
-  if (!(await scheduleTableExists())) return absent();
+  const probe = await scheduleTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return absent();
   const message = error.trim().length > 0 ? error : 'the evaluator failed and reported no message';
   try {
     const cur = await pool.query<{ attempts: number }>(

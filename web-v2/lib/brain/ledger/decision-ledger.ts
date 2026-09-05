@@ -54,7 +54,7 @@
  *   psql session is outside any check here.
  */
 import { pool } from '@/lib/db/pool';
-import { rowOrNull } from '@/lib/db/read';
+import { attempt, rowOrNull } from '@/lib/db/read';
 import type { LedgerDirection, LedgerEntry, LedgerRunnerResponse } from './ledger-entry';
 
 export const PLAN_DECISION_LEDGER_TABLE = 'plan_decision_ledger';
@@ -65,26 +65,81 @@ export type LedgerWrite =
   | { readonly state: 'table_absent'; readonly why: string }
   | { readonly state: 'failed'; readonly why: string };
 
-let tableExists: boolean | null = null;
+/**
+ * ── MIGRATIONPROBE-1 (2026-09-05) · TWO DEFECTS IN ONE EIGHT-LINE FUNCTION
+ *
+ * Found while writing the production migration approval packet, which is the
+ * right time to find them and nearly too late.
+ *
+ * 1 · A FAILED PROBE WAS CACHED AS "ABSENT", FOREVER.
+ *     `catch { tableExists = false }` collapses "the read failed" into "the
+ *     table is not there" — Rule 11, on the one code path whose entire job is
+ *     to tell those apart. One connection blip during the first probe and this
+ *     process stops recording decisions for its whole life, reporting
+ *     `table_absent` — a clean, confident, wrong answer.
+ *
+ * 2 · A NEGATIVE RESULT WAS CACHED ACROSS THE MIGRATION.
+ *     The probe runs once per process. If the code deploys before the DDL —
+ *     which the packet explicitly permits, because either order is safe for a
+ *     bare CREATE TABLE — every process started in that window answers
+ *     `table_absent` until it is restarted, long after the table exists. The
+ *     migration would land, the packet would verify, and the ledger would stay
+ *     empty with nothing anywhere reporting a fault.
+ *
+ * The fix for both: only a DEFINITE answer is cached, and only `true` is
+ * cached permanently. A definite "not there" is re-probed on a cooldown so the
+ * table appearing underneath a running process is noticed without asking the
+ * database on every write. A failed probe caches nothing at all.
+ */
+const ABSENT_REPROBE_MS = 60_000;
 
-/** Probed once per process, mirroring `deferral-store.ts`'s posture. */
-async function ledgerTableExists(): Promise<boolean> {
-  if (tableExists != null) return tableExists;
-  try {
-    const r = await pool.query<{ reg: string | null }>(
+/**
+ * Rule 11 · three answers, because there are three.
+ *
+ * `null` rather than an `'unknown'` member on purpose. The swallow scanner
+ * classifies a fabricated literal returned from a `catch` as MINTED and demands
+ * an argued exemption whose sentence is "absent and failed lead to the same
+ * outcome for every consumer, because ___". That sentence is FALSE here — they
+ * lead to deliberately different outcomes — so an exemption would have been a
+ * lie told to a gate. `null` is the shape the registry itself names as the
+ * alternative, and it is what `rowsOrNull` already uses for exactly this.
+ */
+type TableProbe = 'present' | 'absent' | null;
+
+let tableExists: true | null = null;
+let absentUntilMs = 0;
+
+async function ledgerTableExists(): Promise<TableProbe> {
+  if (tableExists === true) return 'present';
+  if (Date.now() < absentUntilMs) return 'absent';
+  const r = await attempt(
+    'ledger/table-probe',
+    pool.query<{ reg: string | null }>(
       `SELECT to_regclass('public.${PLAN_DECISION_LEDGER_TABLE}')::text AS reg`,
-    );
-    tableExists = r.rows[0]?.reg != null;
-  } catch {
-    tableExists = false;
-  }
-  return tableExists;
+    ),
+  );
+  // The failure is LOGGED by `attempt` and reported as null. Not caught and
+  // discarded here — routing through lib/db/read.ts is what the swallow
+  // registry names as the alternative to an exemption, and it is right: this
+  // caller genuinely can tell the difference.
+  if (!r.ok) return null;
+  if (r.value.rows[0]?.reg != null) { tableExists = true; return 'present'; }
+  // Definite: the database answered and the table is not there. Re-probe
+  // later, so a migration applied under a live process is picked up.
+  absentUntilMs = Date.now() + ABSENT_REPROBE_MS;
+  return 'absent';
 }
 
 /** Test-only reset, mirroring `_resetDeferralTableProbeForTests` next door. */
 export function _resetLedgerTableProbeForTests(): void {
   tableExists = null;
+  absentUntilMs = 0;
 }
+
+const PROBE_FAILED_WHY =
+  'the check for plan_decision_ledger could not be completed, so whether this decision was recorded is '
+  + 'UNKNOWN. That is not the same as the migration not having been applied, and it is not a '
+  + 'successful write of nothing.';
 
 const ABSENT_WHY =
   `${PLAN_DECISION_LEDGER_TABLE} does not exist on this database, so the decision was made `
@@ -118,7 +173,8 @@ export async function resolvePlanLineage(args: {
   replacedPlanId: string | null;
 }): Promise<string> {
   const known = async (planId: string): Promise<string | null> => {
-    if (!(await ledgerTableExists())) return null;
+    // A lineage lookup that could not run is not "no lineage on record".
+    if ((await ledgerTableExists()) !== 'present') return null;
     // `rowOrNull` keeps the three states apart and LOGS a failure rather than
     // swallowing it (lib/db/read.ts). Both a failed read and a miss fall through
     // to the next rung, and that is the conservative direction on purpose: this
@@ -156,7 +212,9 @@ export async function resolvePlanLineage(args: {
  * distinct event every time and never collides.
  */
 export async function recordDecision(entry: LedgerEntry): Promise<LedgerWrite> {
-  if (!(await ledgerTableExists())) return { state: 'table_absent', why: ABSENT_WHY };
+  const probe = await ledgerTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return { state: 'table_absent', why: ABSENT_WHY };
   try {
     const r = await pool.query<{ id: string }>(
       `INSERT INTO plan_decision_ledger (
@@ -238,7 +296,10 @@ export async function markSuperseded(
   id: string,
   supersededBy: string,
 ): Promise<{ ok: boolean; why: string }> {
-  if (!(await ledgerTableExists())) return { ok: false, why: ABSENT_WHY };
+  const probe = await ledgerTableExists();
+  if (probe !== 'present') {
+    return { ok: false, why: probe === null ? PROBE_FAILED_WHY : ABSENT_WHY };
+  }
   try {
     const r = await pool.query(
       `UPDATE plan_decision_ledger
@@ -260,7 +321,10 @@ export async function markUndone(
   id: string,
   reason: string,
 ): Promise<{ ok: boolean; why: string }> {
-  if (!(await ledgerTableExists())) return { ok: false, why: ABSENT_WHY };
+  const probe = await ledgerTableExists();
+  if (probe !== 'present') {
+    return { ok: false, why: probe === null ? PROBE_FAILED_WHY : ABSENT_WHY };
+  }
   if (reason.trim().length === 0) {
     return { ok: false, why: 'an undo states a reason; the table refuses one without' };
   }
@@ -289,7 +353,10 @@ export async function recordRunnerResponse(
   id: string,
   response: Exclude<LedgerRunnerResponse, 'PENDING'>,
 ): Promise<{ ok: boolean; why: string }> {
-  if (!(await ledgerTableExists())) return { ok: false, why: ABSENT_WHY };
+  const probe = await ledgerTableExists();
+  if (probe !== 'present') {
+    return { ok: false, why: probe === null ? PROBE_FAILED_WHY : ABSENT_WHY };
+  }
   try {
     const r = await pool.query(
       `UPDATE plan_decision_ledger
@@ -348,7 +415,9 @@ export async function loadRecentDecisions(
   userUuid: string,
   limit = 50,
 ): Promise<LedgerHistory> {
-  if (!(await ledgerTableExists())) return { state: 'table_absent', why: ABSENT_WHY };
+  const probe = await ledgerTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return { state: 'table_absent', why: ABSENT_WHY };
   try {
     const r = await pool.query<{
       id: string; at: string; plan_id: string | null; plan_lineage_id: string;
@@ -422,7 +491,9 @@ export type DirectionCensus =
   | { readonly state: 'failed'; readonly why: string };
 
 export async function directionCensus(userUuid: string): Promise<DirectionCensus> {
-  if (!(await ledgerTableExists())) return { state: 'table_absent', why: ABSENT_WHY };
+  const probe = await ledgerTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return { state: 'table_absent', why: ABSENT_WHY };
   try {
     const r = await pool.query<{ direction: string; n: string }>(
       `SELECT direction, count(*)::text AS n
