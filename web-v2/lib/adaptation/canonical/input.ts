@@ -429,6 +429,39 @@ export interface CanonicalAdaptationInput {
   readonly longRuns: readonly LongRunObservation[];
 
   /**
+   * The athlete's own ceiling on a week's total demand, expressed on the same
+   * scale as `plan-load.ts`'s `demandIndex` (build one with
+   * `demandCeilingForWeek`).
+   *
+   * ── WHY THIS IS AN INPUT AND NOT SOMETHING THIS ENGINE DERIVES ───────────
+   *
+   * `docs/BRAIN_CONSTITUTION.md` · one question, one canonical owner. "How much
+   * total weekly demand can this athlete absorb" is a Training Load and Runner
+   * Model question, not an arbitration question. Arbitration's job is to decide
+   * whether the week it is about to propose fits inside that answer, so it takes
+   * the answer and does not invent one. A demand model is a separate workstream;
+   * until it lands, this arrives absent, and the consequence is recorded rather
+   * than hidden.
+   *
+   * ── RULE 11 · THREE FACTS, AND THE POSTURE FOR EACH ──────────────────────
+   *
+   * A number, an explicit ABSENT, and an explicit FAILED are three different
+   * things and this engine keeps them apart:
+   *
+   *   READ    · rule 1 evaluates the week against it.
+   *   ABSENT  · no demand model has answered yet. Rule 1 CANNOT FIRE. It does
+   *             not mean "no ceiling" and it does not mean "at the ceiling".
+   *   FAILED  · the model was asked and the read broke. Rule 1 CANNOT FIRE, and
+   *             this is a louder fact than ABSENT, because something is wrong.
+   *
+   * In both refusal cases the missing input must never silently disable the
+   * mechanism: `ArbitrationResult.demandCeiling` carries the posture, every
+   * decision record carries the `INV_DEMAND_CEILING_POSTURE_STATED` invariant,
+   * and `CanonicalEvaluation.demandCeiling` puts it in front of any caller.
+   */
+  readonly athleteCeilingWeeklyDemand: Measured<number>;
+
+  /**
    * Rule 11 · false when a read FAILED rather than came back empty. A failed
    * read must never look like a runner with no evidence, and it must never look
    * like a runner who trained successfully.

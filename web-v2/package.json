@@ -32,7 +32,8 @@
     "test:coercion": "bash ../scripts/check-coercion.sh",
     "test:goalimmutability": "bash ../scripts/check-goal-immutability.sh",
     "test:goalsanity": "bash ../scripts/check-goal-sanity-removed.sh",
-    "test:writebarrier": "bash ../scripts/check-write-barrier.sh"
+    "test:writebarrier": "bash ../scripts/check-write-barrier.sh",
+    "counterfactual": "vitest run --config vitest.counterfactual.config.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

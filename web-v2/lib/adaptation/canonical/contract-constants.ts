@@ -262,17 +262,29 @@ export const DETERIORATION_REPEATED_MIN_SESSIONS = 2;
  * What makes a proposal MATERIAL, expressed as a share of that lever's OWN
  * ordinary doctrine step.
  *
+ * ── WHAT THIS NUMBER IS FOR, AS OF READING C ───────────────────────────────
+ *
+ * ONE question only: rule 3, "prefer one material lever per evaluation cycle so
+ * the response stays attributable". It is a question about ATTRIBUTABILITY, and
+ * it is asked in the lever's own units because attributability is about whether
+ * a coach could point at the change afterwards and say which lever caused what.
+ *
+ * It is no longer any part of rule 1. Until 2026-09-04 this same number also
+ * decided whether a load HOLD suppressed a proposal, which made one predicate
+ * answer two different questions — a Rule 16 defect, and a measured one: the
+ * exception it was supposed to carve out had a live window of [1, 1.5) s/mi
+ * against an engine whose smallest ordinary step is 3, so it fired zero times
+ * across the owner's entire history while every pace progression was suppressed.
+ * See `arbitration.ts` for the split and
+ * `docs/reports/core-closure-2026-09-04/ARBITRATION-CHOICE.md` for the ruling.
+ *
  * ── WHY THIS IS NOT A SHARE OF WEEKLY LOAD ─────────────────────────────────
  *
  * The first draft measured materiality as a share of projected weekly demand,
- * and the arbitration tests proved it unusable. Quality is roughly a quarter of
- * a week's demand, so changing its INTENSITY by one doctrine step moves the
- * weekly total by well under one percent. A threshold-pace proposal could
- * therefore never be material at any plausible bar, which made the contract's
- * own acceptance sentence unreachable:
- *
- *     "Your threshold evidence supports a faster threshold pace, but this week
- *      already contains enough total demand, so the change is deferred."
+ * and the arbitration tests proved it unusable for THIS question. Quality is
+ * roughly a quarter of a week's demand, so changing its INTENSITY by one
+ * doctrine step moves the weekly total by well under one percent, and a pace
+ * change would never be "material" even when a runner would plainly notice it.
  *
  * A load index cannot answer this question, because the three levers move
  * quantities of genuinely different kinds. Half a mile on the long run and
@@ -280,19 +292,35 @@ export const DETERIORATION_REPEATED_MIN_SESSIONS = 2;
  * and no single scalar makes them comparable without flattening one of them.
  *
  * So materiality is asked in each lever's OWN units, against the bound the
- * contract already gives that lever. A change of at least half the ordinary
- * doctrine step is material; anything smaller is the "small pace correction"
- * the contract explicitly allows to proceed alongside a hold.
+ * contract already gives that lever.
  *
  *   threshold pace · half of 3 s/mi   = 1.5 s/mi
  *   weekly volume  · half of 5%       = 2.5% of the affected week
  *   long run       · half of 1 mile   = 0.5 mi
  *
- * The plan-load representation is still what evaluates the COMBINED effect,
- * which is what the contract asks it for. It is simply no longer asked the one
- * question it cannot answer.
+ * The plan-load representation is what evaluates the week's COMBINED demand
+ * against the athlete's ceiling, which is what the contract actually asks it
+ * for. It is no longer asked the one question it cannot answer.
  */
 export const MATERIAL_SHARE_OF_ORDINARY_STEP = 0.5;
+
+/**
+ * Rule 9 · the REPRESENTATION tolerance on the demand-ceiling comparison. Not
+ * a band, and never a place to hide a widened threshold.
+ *
+ * `projectPlanLoad` already rounds `demandIndex` to three decimals, so two
+ * projections that describe the same week agree exactly. This exists for the
+ * one case that is otherwise a coin toss: a caller who states the ceiling AS a
+ * projection of the same week (via `demandCeilingForWeek`) would otherwise have
+ * `projected > ceiling` decided by whether the two rounding operations landed
+ * on the same ulp. A week exactly AT its ceiling is at its ceiling, not over it.
+ *
+ * 1e-9 is roughly a billionth of a mile of equivalent easy running. Nothing a
+ * lever can propose is that small: the smallest movement in this engine is
+ * 1 s/mi of threshold anchor, which moves the index by about 0.005 per quality
+ * minute.
+ */
+export const DEMAND_CEILING_EPSILON = 1e-9;
 
 /**
  * "Prefer one material lever per evaluation cycle so the response stays

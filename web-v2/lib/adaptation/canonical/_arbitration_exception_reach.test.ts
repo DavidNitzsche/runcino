@@ -1,47 +1,54 @@
 /**
- * ARBREACH-1 (2026-09-04) · is rule 2's exception REACHABLE?
+ * ARBREACH-1, CLOSED (2026-09-04) · the defect this file pinned, and the proof
+ * it can no longer exist.
  *
- * `arbitration.ts` states four rules, and says of the second:
+ * ── WHAT IT PINNED ─────────────────────────────────────────────────────────
  *
- *   "It does NOT automatically suppress a threshold-pace proposal. The word
- *    doing the work is AUTOMATICALLY: a small pace correction that preserves
- *    the intended stimulus may proceed, and only a MATERIAL demand increase is
- *    caught by rule 1. Implementing rule 1 without rule 2 gives you an engine
- *    where any hold anywhere freezes everything … A suppression rule with no
- *    exception is a freeze."
+ * `arbitration.ts` used to state a rule 2 that read:
  *
- * That exception is currently UNREACHABLE for the threshold lever, and this
- * file exists to say so out loud rather than leave it as a paragraph nobody
- * re-derives.
+ *   "It does NOT automatically suppress a threshold-pace proposal ... a small
+ *    pace correction that preserves the intended stimulus may proceed, and only
+ *    a MATERIAL demand increase is caught by rule 1 ... A suppression rule with
+ *    no exception is a freeze."
  *
- * THE ARITHMETIC. Materiality is half the lever's own ordinary step:
+ * The exception was keyed to MATERIALITY, which for the threshold lever is
  *
- *     material bar = THRESHOLD_ORDINARY_STEP_SEC_PER_MI × MATERIAL_SHARE_OF_ORDINARY_STEP
- *                  = 3 × 0.5 = 1.5 s/mi
+ *     THRESHOLD_ORDINARY_STEP_SEC_PER_MI x MATERIAL_SHARE_OF_ORDINARY_STEP
+ *       = 3 x 0.5 = 1.5 s/mi
  *
- * and the engine only ever proposes the ORDINARY step (3) or the LARGER step
- * (5). Both clear 1.5. So `s.material` is true for every threshold proposal
- * that can exist, `demandShare > 0` is true for any increase at all, and the
- * conjunct that was put there to let a small correction through never lets
- * anything through.
+ * against an engine whose smallest emitted step is 1 and whose ordinary step is
+ * 3. Live window: [1, 1.5) s/mi. MEASURED on the owner's whole history: 14
+ * threshold proposals, every one of them the ordinary 3 s/mi, exception fired
+ * ZERO times, ten suppressions citing WEEKLY_VOLUME.
  *
- * MEASURED CONSEQUENCE, on the owner's real history
- * (`scripts/adaptation-real-replay`): 14 PROGRESS proposals, ONE applied. Ten of
- * the thirteen suppressions cite WEEKLY_VOLUME.
+ * ── WHY THE FILE STILL EXISTS ──────────────────────────────────────────────
  *
- * WHY THIS IS A PIN AND NOT A FIX. The obvious repair — ask rule 1 about DEMAND
- * rather than about the proposal's own size — is blocked by a conflict inside
- * the contract itself, recorded in `contract-constants.ts`: demand-share
- * materiality was tried first and rejected because it makes the contract's own
- * acceptance sentence ("this week already contains enough total demand, so the
- * change is deferred") unreachable. Each reading kills one contract sentence.
- * Choosing between them changes how often a real runner's paces move, so it is
- * a coaching decision and is recorded in ADAPTATION-VERDICT.md rather than made
- * here.
+ * The defect was not fixed by widening the window, which Rule 9 forbids
+ * ("widening a tolerance around the same threshold relocates the cliff, it does
+ * not remove it"). Rule 2 was DELETED and rule 1 was changed to ask the
+ * question its own sentence poses, per the owner's reading C. So the arithmetic
+ * above is no longer a defect, because nothing depends on it any more, and this
+ * file's job changed from PINNING the defect to proving it cannot come back:
  *
- * WHAT THIS CANNOT FAIL ON (Rule 22): it reads the CONSTANTS, not the engine's
- * behaviour on a plan. It cannot tell whether suppression is the right coaching
- * call — only whether the exception the file claims to have is reachable at all.
+ *   1 · the constants are unchanged, so the arithmetic that made the old
+ *       exception useless is still true, and a future author cannot "fix" this
+ *       by nudging a constant and calling it done;
+ *   2 · materiality no longer decides suppression by a HOLD, asserted
+ *       BEHAVIOURALLY on a proposal of exactly the size that used to be caught.
+ *
+ * Property 2 is the one that would fail if reading C were reverted, and it is
+ * asserted against the engine rather than against the constants, which is what
+ * ARBREACH-1 could never do. `_arbitration_reading_c.test.ts` carries the rest.
+ *
+ * ── RULE 22 · WHAT THIS FILE CANNOT FAIL ON ────────────────────────────────
+ *
+ * · Whether reading C is the right coaching answer. It proves the old
+ *   predicate is gone, not that the new one is wise.
+ * · The materiality bar being the right number for rule 3, which is now the
+ *   only thing that reads it. Both halves below construct proposals far from
+ *   the bar on purpose.
+ * · Anything about the ceiling, which is the other half of the new rule 1 and
+ *   is covered in `_arbitration_reading_c.test.ts` instead.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -50,42 +57,71 @@ import {
   THRESHOLD_MIN_MEANINGFUL_STEP_SEC_PER_MI,
   MATERIAL_SHARE_OF_ORDINARY_STEP,
 } from './contract-constants';
+import { evaluateAdaptation } from './evaluate';
+import {
+  baseInput, week, longRun, decayingThirds, twoFasterThresholdSessions,
+  baseWeekWithHeadroom,
+} from './_fixtures';
 
-describe('ARBREACH-1 · rule 2 says a small pace correction may proceed', () => {
+describe('ARBREACH-1 · the arithmetic that made the old exception useless is unchanged', () => {
   const bar = THRESHOLD_ORDINARY_STEP_SEC_PER_MI * MATERIAL_SHARE_OF_ORDINARY_STEP;
 
-  it('the materiality bar is half the ordinary step, read from the constants', () => {
-    // Read, never restated — a check that hardcodes both sides only proves the
+  it('the materiality bar is still half the ordinary step, read from the constants', () => {
+    // Read, never restated. A check that hardcodes both sides only proves the
     // test agrees with itself (Rule 18).
     expect(bar).toBe(THRESHOLD_ORDINARY_STEP_SEC_PER_MI / 2);
     expect(bar).toBeLessThan(THRESHOLD_ORDINARY_STEP_SEC_PER_MI);
   });
 
-  it('DOCUMENTS THE DEFECT · every step the engine actually proposes is material', () => {
-    // Both proposable steps clear the bar, so a proposal the engine really makes
-    // can never use rule 2's exception.
+  it('every step the engine can propose is still MATERIAL', () => {
+    // This was the defect when materiality gated suppression. It is now merely
+    // a fact about rule 3, and it is asserted so nobody "closes" ARBREACH-1 by
+    // moving a constant instead of moving the rule.
     expect(THRESHOLD_ORDINARY_STEP_SEC_PER_MI).toBeGreaterThanOrEqual(bar);
     expect(THRESHOLD_MAX_STEP_SEC_PER_MI).toBeGreaterThanOrEqual(bar);
+    const oldWindowWidth = bar - THRESHOLD_MIN_MEANINGFUL_STEP_SEC_PER_MI;
+    expect(oldWindowWidth).toBeGreaterThan(0);
+    expect(oldWindowWidth).toBeLessThan(THRESHOLD_ORDINARY_STEP_SEC_PER_MI);
   });
+});
 
-  it('the exception is reachable only BELOW the meaningful-step floor\'s useful range', () => {
-    /* A CORRECTION TO THIS FILE'S FIRST DRAFT, kept because the distinction is
-     * the whole point. The first version asserted the exception was strictly
-     * UNREACHABLE. It is not: `THRESHOLD_MIN_MEANINGFUL_STEP_SEC_PER_MI` is 1,
-     * which is below the 1.5 bar, so a 1 s/mi proposal WOULD be non-material and
-     * WOULD proceed alongside a hold.
+describe('ARBREACH-1 · CLOSED · materiality no longer decides suppression by a HOLD', () => {
+  it('a FULL ordinary-step pace correction proceeds alongside two load HOLDs', () => {
+    /* The exact case ARBREACH-1 said was impossible. Both load levers hold, the
+     * threshold proposal is the ordinary 3 s/mi step, which is twice the old
+     * materiality bar, and the week has room. Under the old rule this was
+     * suppressed every time; ten of the owner's thirteen real suppressions were
+     * this shape.
      *
-     * The accurate statement is narrower and still damning: the window in which
-     * the exception can fire is [1, 1.5) s/mi, and the engine's own ordinary
-     * step is 3. Across the owner's entire real history the replay produced
-     * fourteen threshold proposals and every one was the ordinary 3 s/mi step.
-     * So the exception is reachable in principle and was reached zero times in
-     * practice. */
-    expect(THRESHOLD_MIN_MEANINGFUL_STEP_SEC_PER_MI).toBeLessThan(bar);
-    const windowWidth = bar - THRESHOLD_MIN_MEANINGFUL_STEP_SEC_PER_MI;
-    expect(windowWidth).toBeGreaterThan(0);
-    // …and it is narrower than a single ordinary step, which is what makes it
-    // a technicality rather than a working exception.
-    expect(windowWidth).toBeLessThan(THRESHOLD_ORDINARY_STEP_SEC_PER_MI);
+     * Rule 15 · the case that reaches the mechanism is named here rather than
+     * assumed: a runner with one short week (so volume HOLDS), a deteriorating
+     * long run (so the long run HOLDS), and two corroborating faster threshold
+     * sessions. */
+    const out = evaluateAdaptation(baseInput({
+      weeks: [
+        week('2026-08-17', 47, 47.2),
+        week('2026-08-24', 48, 43),
+        week('2026-08-31', 48, 47.9),
+      ],
+      longRuns: [
+        longRun('lr-1', '2026-08-23', 16, 16),
+        longRun('lr-2', '2026-08-30', 16, 16, { thirds: decayingThirds() }),
+      ],
+      qualitySessions: twoFasterThresholdSessions(),
+      athleteCeilingWeeklyDemand: baseWeekWithHeadroom(),
+    }));
+
+    expect(out.records.find((r) => r.lever === 'WEEKLY_VOLUME')!.decision).toBe('HOLD');
+    expect(out.records.find((r) => r.lever === 'LONG_RUN')!.decision).toBe('HOLD');
+
+    const pace = out.records.find((r) => r.lever === 'THRESHOLD_PACE')!;
+    expect(pace.decision).toBe('PROGRESS');
+    const moved = Math.abs(pace.magnitude!.value);
+    // Material by the old bar, and applied anyway.
+    expect(moved).toBeGreaterThanOrEqual(
+      THRESHOLD_ORDINARY_STEP_SEC_PER_MI * MATERIAL_SHARE_OF_ORDINARY_STEP,
+    );
+    expect(pace.suppressedBy).toBeNull();
+    expect(pace.planDiff.entries.length).toBeGreaterThan(0);
   });
 });

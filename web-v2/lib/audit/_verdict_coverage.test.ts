@@ -45,11 +45,17 @@
  *     mark_upgrade 6  ·  downgrade 20     reshape   3   ·  shave   17
  *     progression_gate 2               ·  readiness_pullback 8
  *
- *   canonical engine · PROGRESS against REGRESS      17 v  4  ratio 0.24
- *   canonical engine · moving against not moving     17 v 34  ratio 2.00
- *   progression ladder · ACCELERATE against BACK_OFF  8 v  3  ratio 0.38
- *   progression ladder · TAKE+ACCEL against HOLD+BACK 9 v 22  ratio 2.44
+ *   canonical engine · PROGRESS against REGRESS      21 v  5  ratio 0.24
+ *   canonical engine · moving against not moving     21 v 40  ratio 1.90
+ *   progression ladder · ACCELERATE against BACK_OFF  9 v  4  ratio 0.44
+ *   progression ladder · TAKE+ACCEL against HOLD+BACK 10 v 20 ratio 2.00
  *   legacy adapt · push against pull back             7 v 31  ratio 4.43
+ *
+ * RE-MEASURED 2026-09-04. The two progression-ladder rows are now taken over
+ * the progression ladder's OWN corpus: `HOLD` is a verdict in that mechanism
+ * AND in the canonical engine, and counting canonical files on the ladder's
+ * pull-back side made push-side work on the canonical engine read as a
+ * regression here. See `Pair.excludePathContains`.
  *
  * Two things follow, and they point in opposite directions. The CANONICAL
  * engine's suite is no longer lopsided — its upward path is better covered than
@@ -113,6 +119,31 @@ interface Pair {
   /** Its opposite number: the verdict that makes it EASIER. */
   readonly down: readonly string[];
   /**
+   * Path fragments whose files this pair does NOT measure. Empty for most.
+   *
+   * ── WHY THIS EXISTS (added 2026-09-04) ───────────────────────────────────
+   *
+   * `HOLD` is a verdict word in TWO unrelated mechanisms: the progression
+   * ladder's TAKE / ACCELERATE / HOLD / BACK_OFF, and the canonical Adaptation
+   * Engine's PROGRESS / HOLD / REGRESS / REFUSE. A file-name census cannot tell
+   * them apart, so every canonical-engine test file was being counted on the
+   * progression ladder's pull-back side as well as on its own pair's — the same
+   * name for two quantities, which is a Rule 16 collision the census inherited
+   * rather than created.
+   *
+   * The consequence was measurable and pointed the wrong way: writing tests for
+   * the canonical engine's UPWARD path (arbitration reading C, 2026-09-04)
+   * moved the progression ladder's ratio from 2.50 to 2.80 and failed this
+   * gate, because those tests name `HOLD` in their setup while proving that a
+   * hold no longer freezes a pace change. A census that penalises push-side
+   * work for describing what it pushed past is measuring the wrong thing.
+   *
+   * The canonical engine is NOT thereby unwatched: its own two pairs above it
+   * measure exactly these files, on its own vocabulary. Nothing left the census;
+   * one mechanism stopped being counted inside another's.
+   */
+  readonly excludePathContains?: readonly string[];
+  /**
    * The ratio MEASURED when this entry was written or last tightened, as
    * down-files over up-files. Not a ceiling anybody chose — a pin.
    *
@@ -147,6 +178,11 @@ const PAIRS: readonly Pair[] = [
     mechanism: 'progression ladder · accelerate against back off',
     up: ['ACCELERATE'],
     down: ['BACK_OFF'],
+    // Scoped for the reason argued on `excludePathContains`. Neither word is
+    // canonical-engine vocabulary, so this exclusion changes nothing today
+    // (measured 0.44 either way) and is applied to both progression-ladder
+    // pairs so the two cannot answer the same question over different corpora.
+    excludePathContains: ['lib/adaptation/canonical/'],
     // MEASURED 0.38 · 8 ACCELERATE files against 3 BACK_OFF. This is the pair
     // Rule 22 was locked on, at 2 against 1 in the other direction ("29 files
     // know how to hold a runner back, 2 know what it means to accelerate one"
@@ -158,9 +194,16 @@ const PAIRS: readonly Pair[] = [
     mechanism: 'progression ladder · take against hold',
     up: ['TAKE', 'ACCELERATE'],
     down: ['HOLD', 'BACK_OFF'],
-    // MEASURED 2.44 · 9 against 22. This is the pair CLAUDE.md's own census
-    // reported as 29 HOLD files against 2 ACCELERATE.
-    measuredRatio: 2.44,
+    excludePathContains: ['lib/adaptation/canonical/'],
+    // RE-MEASURED 2.00 on 2026-09-04 · 10 against 20, over the progression
+    // ladder's own corpus. The previous pin of 2.44 (9 against 22) was measured
+    // over a corpus that also contained every canonical-engine test file,
+    // because both mechanisms spell one of their verdicts `HOLD` — see
+    // `excludePathContains` for the argument. Tightening rather than raising:
+    // the number came DOWN because the census stopped double-counting, not
+    // because anybody deleted a pull-back test. CLAUDE.md's original census
+    // for this pair read 29 HOLD files against 2 ACCELERATE.
+    measuredRatio: 2.0,
   },
   {
     mechanism: 'legacy adapt actions · push against pull back',
@@ -250,6 +293,24 @@ function looseFiles(verdict: string): string[] {
 const count = (verdicts: readonly string[], fn: (v: string) => string[]): number =>
   new Set(verdicts.flatMap(fn)).size;
 
+/**
+ * The same count, restricted to the corpus a PAIR actually measures.
+ *
+ * A pair with no `excludePathContains` counts exactly what `count` does, so the
+ * two agree everywhere the scoping is empty — asserted in the liveness block so
+ * this cannot silently start subtracting from pairs that never asked it to.
+ */
+const countForPair = (
+  p: Pair,
+  verdicts: readonly string[],
+  fn: (v: string) => string[],
+): number => {
+  const excluded = p.excludePathContains ?? [];
+  return new Set(
+    verdicts.flatMap(fn).filter((f) => !excluded.some((frag) => f.includes(frag))),
+  ).size;
+};
+
 const ALL_VERDICTS = [...new Set(PAIRS.flatMap((p) => [...p.up, ...p.down]))];
 
 /**
@@ -284,6 +345,39 @@ describe('Rule 22 · the distribution on each side of every opposing verdict', (
     expect(looseFiles('PROGRESS').length).toBeGreaterThan(0);
   });
 
+  it('ORACLE · pair scoping subtracts exactly what it claims, and nothing else', () => {
+    // Rule 18 · `excludePathContains` narrows a corpus, which is the kind of
+    // change that can quietly stop a gate meaning anything. Two assertions,
+    // both of which would fail if it were doing more or less than it says.
+
+    // 1 · an UNSCOPED pair counts exactly what the plain counter counts.
+    for (const p of PAIRS.filter((x) => x.excludePathContains === undefined)) {
+      expect(countForPair(p, p.down, looseFiles), p.mechanism)
+        .toBe(count(p.down, looseFiles));
+    }
+
+    // 2 · a SCOPED pair really does drop the named files, and they really do
+    // exist. A scoping that matched nothing would report clean while claiming
+    // to have corrected something.
+    const scoped = PAIRS.filter((x) => x.excludePathContains !== undefined);
+    expect(scoped.length).toBeGreaterThan(0);
+    const laddersHold = scoped.find((p) => p.down.includes('HOLD'));
+    expect(laddersHold, 'the TAKE-against-HOLD pair must be one of the scoped ones')
+      .toBeDefined();
+    if (laddersHold !== undefined) {
+      const all = count(laddersHold.down, looseFiles);
+      const scopedCount = countForPair(laddersHold, laddersHold.down, looseFiles);
+      expect(scopedCount).toBeLessThan(all);
+      // And every file it dropped is a canonical-engine file, so the exclusion
+      // cannot be silently swallowing anything outside its argued scope.
+      const dropped = count(laddersHold.down, looseFiles) - scopedCount;
+      const canonicalHits = looseFiles('HOLD')
+        .concat(looseFiles('BACK_OFF'))
+        .filter((f) => f.includes('lib/adaptation/canonical/'));
+      expect(dropped).toBe(new Set(canonicalHits).size);
+    }
+  });
+
   it('no false zero · a strict zero beside a loose non-zero is a broken detector', () => {
     // The rule's own warning, mechanised. `progression_gate: 0` was reported on
     // a mechanism with 43 tests; this is what would have caught it.
@@ -308,8 +402,8 @@ describe('Rule 22 · the distribution on each side of every opposing verdict', (
     // correctly refuse?" will pass an engine that can only refuse.
     const blind: string[] = [];
     for (const p of PAIRS) {
-      const up = count(p.up, looseFiles);
-      const down = count(p.down, looseFiles);
+      const up = countForPair(p, p.up, looseFiles);
+      const down = countForPair(p, p.down, looseFiles);
       if (up === 0 && down > 0) {
         blind.push(
           `${p.mechanism}: ${down} file(s) exercise [${p.down.join(', ')}] and NOTHING exercises `
@@ -324,8 +418,8 @@ describe('Rule 22 · the distribution on each side of every opposing verdict', (
   it('the imbalance on each pair is within its ceiling, or argued', () => {
     const findings: string[] = [];
     for (const p of PAIRS) {
-      const up = count(p.up, looseFiles);
-      const down = count(p.down, looseFiles);
+      const up = countForPair(p, p.up, looseFiles);
+      const down = countForPair(p, p.down, looseFiles);
       const ratio = up === 0 ? Infinity : down / up;
       const argued = ARGUED_IMBALANCES.find((a) => a.mechanism === p.mechanism);
       const over = ratio > p.measuredRatio + PIN_TOLERANCE;
@@ -367,8 +461,8 @@ describe('Rule 22 · the distribution on each side of every opposing verdict', (
     }
     lines.push('');
     for (const p of PAIRS) {
-      const up = count(p.up, looseFiles);
-      const down = count(p.down, looseFiles);
+      const up = countForPair(p, p.up, looseFiles);
+      const down = countForPair(p, p.down, looseFiles);
       lines.push(`  ${p.mechanism}`);
       lines.push(`    push ${String(up).padStart(4)} · pull back ${String(down).padStart(4)}`
         + ` · ratio ${(up === 0 ? Infinity : down / up).toFixed(2)} (pin ${p.measuredRatio})`);

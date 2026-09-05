@@ -254,8 +254,31 @@ export interface CanonicalDecisionRecord {
   readonly suppressedBy: SuppressionNote | null;
 }
 
+/**
+ * WHY a proposal was deferred, as a code rather than by matching on prose.
+ *
+ * Added 2026-09-04 with arbitration reading C. Before it, the only machine
+ * readable field on a suppression was `by`, which names WHO and not WHICH RULE,
+ * and two different rules both wrote `by: 'PLAN_LOAD'`. The deferral queue has
+ * to tell them apart to know when a queued item is due for reconsideration, and
+ * a queue that told them apart by regex over `detail` would be one coach-voice
+ * edit away from silently mis-filing every deferral (Rule 16: one fact, one
+ * name, and prose is not a name).
+ */
+export type DeferralRule =
+  /** Rule 1 · the complete projected week is at the athlete's demand ceiling. */
+  | 'WEEK_AT_DEMAND_CEILING'
+  /** Rule 3 · another lever is already making a material change this cycle. */
+  | 'ONE_MATERIAL_LEVER_PER_CYCLE'
+  /** Cadence · evidence at a session boundary, arbitrated at the weekly one. */
+  | 'ARBITRATED_AT_WEEKLY_BOUNDARY'
+  /** Idempotency · this exact evidence has already raised this proposal. */
+  | 'ALREADY_RAISED_ON_THIS_EVIDENCE';
+
 export interface SuppressionNote {
   readonly by: CanonicalLever | 'PLAN_LOAD';
+  /** Which arbitration rule deferred this, as a code. */
+  readonly rule: DeferralRule;
   readonly detail: string;
   readonly reconsiderAtISO: string | null;
 }
