@@ -37,9 +37,13 @@
  *                          2026-02-08  17.21   after Disney Half
  *                          2026-08-23  11.01   after Americas Finest City
  *                          2026-05-10   7.37   after Sombrero Half  · EXCLUDED
- * largest M block in the   5.0 mi (2026-10-18 and 2026-11-22). There is no
- *   whole 15-week block    10-mile marathon-pace dose anywhere in it; the two
- *                          sessions written "10 mi" are TOTAL session distance
+ * largest CONTINUOUS M      5.0 mi (2026-10-18's first block, and 2026-11-22).
+ *   block in the whole      The largest TOTAL at-MP dose is 8.0 mi, on
+ *   15-week block           2026-10-18, across two blocks split by an easy
+ *                          mile. Those are two different quantities and the
+ *                          ladder below keeps them apart. There is no 10-mile
+ *                          marathon-pace dose anywhere in the block; the two
+ *                          sessions written "10 mi" are TOTAL SESSION DISTANCE
  *                          containing 6 mi at threshold.
  *
  * The Sombrero exclusion is Rule 8 and it is the only judgement call in the
@@ -334,23 +338,53 @@ describe('beat 4 · the context the 11-22 decision sits in', () => {
  * ═══════════════════════════════════════════════════════════════════════ */
 
 /**
- * The marathon-pace ladder in the block as authored, from
- * `plan_workouts.workout_spec.finish_mi`:
+ * The marathon-pace ladder in the block as authored, read from
+ * `plan_workouts.sub_label` and `workout_spec.finish_mi`.
  *
- *   2026-09-20   16.5 mi long, 3 mi at M
- *   2026-10-18   20.0 mi long, 5 mi at M
- *   2026-11-15   16.0 mi long, 4 mi at M   (dress rehearsal, 3 weeks out)
- *   2026-11-22   16.0 mi long, 5 mi at M   (fast finish, 2 weeks out)
+ * ── A RULE 16 TRAP, CORRECTED HERE AFTER WALKING INTO IT ───────────────────
  *
- * Nothing above 5. That is the ceiling the owner is pointing at, and the point
- * of this gate is that 5 is the right number TODAY and must not be the only
- * number available in November.
+ * "The marathon-pace dose" is TWO QUANTITIES, and `workout_spec.finish_mi`
+ * holds only one of them. The September and October sessions are BROKEN
+ * blocks, and their real sub_labels say so:
+ *
+ *   2026-09-20  "LONG · 3mi @ M + 1mi @ E + 2mi @ M"   16.5 mi   finish_mi 3
+ *   2026-10-18  "LONG · 5mi @ M + 1mi @ E + 3mi @ M"   20.0 mi   finish_mi 5
+ *   2026-11-15  "LONG · 4mi @ M"                       16.0 mi   finish_mi 4
+ *   2026-11-22  "LONG · 5mi @ M"                       16.0 mi   finish_mi 5
+ *
+ * So `finish_mi` is the FIRST block, not the session's marathon-pace dose. The
+ * totals are 5, 8, 4 and 5, and the largest continuous blocks are 3, 5, 4 and
+ * 5. An earlier draft of this trace read `finish_mi` as the dose and would have
+ * reported that the block never exceeds 5 miles at marathon pace, when it
+ * already reaches EIGHT on 18 October.
+ *
+ * The two are different stimuli and doctrine treats them differently, which is
+ * why the distinction has to survive into the gate rather than being averaged
+ * away. `Research/04` §4.1's fast-finish row says "last 2-6 mi at MP", which
+ * describes ONE continuous finish. §4.6's dress-rehearsal row says
+ * "2-3 segments at MP (4-8 mi TOTAL at MP)", which is explicitly the sum. The
+ * 18 October session's own authored note names the intent of the broken shape:
+ * "The second block is the session: you are practising getting back to race
+ * pace on tired legs."
+ *
+ * Hence the two gates below read different quantities on purpose. The 22 Nov
+ * gate is a continuous fast finish and is bounded by §4.1's 2-6. The 15 Nov
+ * gate is a dress rehearsal and is bounded by §4.6's 4-8 total.
  */
-const M_LADDER: readonly { readonly dateISO: string; readonly totalMi: number; readonly mMi: number }[] = [
-  { dateISO: '2026-09-20', totalMi: 16.5, mMi: 3 },
-  { dateISO: '2026-10-18', totalMi: 20.0, mMi: 5 },
-  { dateISO: '2026-11-15', totalMi: 16.0, mMi: 4 },
-  { dateISO: '2026-11-22', totalMi: 16.0, mMi: 5 },
+interface MSession {
+  readonly dateISO: string;
+  readonly totalMi: number;
+  /** Every at-MP mile in the session, summed across blocks. */
+  readonly mTotalMi: number;
+  /** The largest single unbroken block at marathon pace. */
+  readonly mContinuousMi: number;
+  readonly subLabel: string;
+}
+const M_LADDER: readonly MSession[] = [
+  { dateISO: '2026-09-20', totalMi: 16.5, mTotalMi: 5, mContinuousMi: 3, subLabel: 'LONG · 3mi @ M + 1mi @ E + 2mi @ M' },
+  { dateISO: '2026-10-18', totalMi: 20.0, mTotalMi: 8, mContinuousMi: 5, subLabel: 'LONG · 5mi @ M + 1mi @ E + 3mi @ M' },
+  { dateISO: '2026-11-15', totalMi: 16.0, mTotalMi: 4, mContinuousMi: 4, subLabel: 'LONG · 4mi @ M' },
+  { dateISO: '2026-11-22', totalMi: 16.0, mTotalMi: 5, mContinuousMi: 5, subLabel: 'LONG · 5mi @ M' },
 ];
 
 const RESEARCH_04_FAST_FINISH = {
@@ -793,7 +827,7 @@ describe('beat 7 · Rule 21 · prove the upward path can actually fire on his hi
     // prescriptions, nine landed at or above what was asked.
     const LANDED = 9;
     const M_BLOCKS_AVAILABLE_BEFORE_ASSESSMENT = M_LADDER
-      .filter((s) => s.dateISO < '2026-11-16').length;
+      .filter((x) => x.dateISO < '2026-11-16').length;
     expect(LANDED).toBeGreaterThanOrEqual(5);
     // Three M blocks exist before the assessment date, which is exactly the
     // threshold. The bar is reachable, and it is not reachable twice over.
@@ -802,19 +836,42 @@ describe('beat 7 · Rule 21 · prove the upward path can actually fire on his hi
       .toBe(M_BLOCKS_AVAILABLE_BEFORE_ASSESSMENT);
   });
 
-  it('the M ladder rises, and the gate is what lets it rise further', () => {
-    const doses = M_LADDER.map((s) => s.mMi);
-    // As authored it tops out at 5 and never goes past it.
-    expect(Math.max(...doses)).toBe(5);
+  it('the ladder rows agree with their own sub_labels · the trap that caught this trace', () => {
+    // Parse the authored label back into miles at M and check it against the
+    // two numbers the row claims. A row whose label and figures disagree is
+    // exactly how `finish_mi` got read as the dose in the first place.
+    for (const x of M_LADDER) {
+      const blocks = [...x.subLabel.matchAll(/(\d+(?:\.\d+)?)mi @ M\b/g)].map((m) => Number(m[1]));
+      expect(blocks.length).toBeGreaterThan(0);
+      expect(blocks.reduce((a, b) => a + b, 0)).toBe(x.mTotalMi);
+      expect(Math.max(...blocks)).toBe(x.mContinuousMi);
+    }
+  });
+
+  it('the M ladder rises on both readings, and the gate lets it rise further', () => {
+    // CONTINUOUS: as authored it tops out at 5 and never goes past it, which
+    // is the ceiling the owner was pointing at.
+    expect(Math.max(...M_LADDER.map((x) => x.mContinuousMi))).toBe(5);
+    // TOTAL: it already reaches 8, on 18 October. Reporting the block as
+    // capped at 5 without this distinction is the Rule 16 error this trace
+    // corrected in itself.
+    expect(Math.max(...M_LADDER.map((x) => x.mTotalMi))).toBe(8);
     // The gate does not raise the authored number. It makes a higher number
     // reachable on evidence, which is the whole ask.
     expect(nov22().defaultDose.value).toBe(5);
     expect(nov22().earnedDose.value).toBeGreaterThan(5);
+    // And the earned 6 is a real step against his largest demonstrated
+    // CONTINUOUS block by the assessment date, which is 18 October's 5.
+    const continuousByAssessment = Math.max(
+      ...M_LADDER.filter((x) => x.dateISO < '2026-11-16').map((x) => x.mContinuousMi),
+    );
+    expect(continuousByAssessment).toBe(5);
+    expect(nov22().earnedDose.value / continuousByAssessment - 1).toBeCloseTo(0.2, 6);
   });
 });
 
 describe('beat 8 · what the September plan should contain TODAY', () => {
-  it('the 20 Sep block stays at 3 mi, because that is the dose he has earned', () => {
+  it('the 20 Sep block stays as authored, because that is the dose he has earned', () => {
     // He has no completed plan-linked marathon-pace dose at all. Execution
     // identity only began stamping in September, so the honest reading is an
     // absence, and Rule 11 says an absence holds the default rather than
@@ -822,10 +879,13 @@ describe('beat 8 · what the September plan should contain TODAY', () => {
     // §4.1's fast-finish band and it is the rung that PRODUCES the evidence
     // the November gate needs.
     const [ffLo, ffHi] = fastFinishMpBand();
-    const sept = M_LADDER.find((s) => s.dateISO === '2026-09-20')!;
-    expect(sept.mMi).toBe(3);
-    expect(sept.mMi).toBeGreaterThanOrEqual(ffLo);
-    expect(sept.mMi).toBeLessThanOrEqual(ffHi);
+    const sept = M_LADDER.find((x) => x.dateISO === '2026-09-20')!;
+    expect(sept.mContinuousMi).toBe(3);
+    expect(sept.mTotalMi).toBe(5);
+    // Both readings sit inside §4.1's band, which is what makes the session
+    // legal on either interpretation of "the dose".
+    expect(sept.mContinuousMi).toBeGreaterThanOrEqual(ffLo);
+    expect(sept.mTotalMi).toBeLessThanOrEqual(ffHi);
     // And it is inside a 16.5 mi session, which §4.1 puts at 12-18 mi.
     expect(sept.totalMi).toBeLessThanOrEqual(18);
   });
@@ -835,13 +895,14 @@ describe('beat 8 · what the September plan should contain TODAY', () => {
     // both." The M dose rises 3 to 5 between 20 Sep and 18 Oct, and the long
     // run rises 16.5 to 20.0 across the same span. Those are four weeks
     // apart, not one week, which is what makes both moves legal.
-    const sept = M_LADDER.find((s) => s.dateISO === '2026-09-20')!;
-    const oct = M_LADDER.find((s) => s.dateISO === '2026-10-18')!;
+    const sept = M_LADDER.find((x) => x.dateISO === '2026-09-20')!;
+    const oct = M_LADDER.find((x) => x.dateISO === '2026-10-18')!;
     const weeksApart = Math.round(
       (Date.parse(oct.dateISO) - Date.parse(sept.dateISO)) / (7 * 86_400_000),
     );
     expect(weeksApart).toBe(4);
-    expect(oct.mMi).toBeGreaterThan(sept.mMi);
+    expect(oct.mContinuousMi).toBeGreaterThan(sept.mContinuousMi);
+    expect(oct.mTotalMi).toBeGreaterThan(sept.mTotalMi);
     expect(addStressOneAtATime()).toContain('not both');
   });
 });
