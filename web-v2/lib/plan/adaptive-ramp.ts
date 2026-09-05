@@ -1044,6 +1044,84 @@ export async function tryAdaptiveBump(
   }
   const action = await actionForAdaptiveRamp(userId);
   if (!action) return null;
+
+  /* ── ADJUDICATION-WIRE-1 (2026-09-04) · THE ADJUDICATED CEILING ──────────
+   *
+   * The gate on the PROMOTION path. `lib/plan/adjudication/` sizes a week
+   * against what this runner has actually completed, and this is the only
+   * automatic lever in the engine that can push a week PAST that verdict after
+   * authoring already cleared it. So the week the bump would produce is
+   * re-adjudicated before it lands.
+   *
+   * It is here rather than at the top of the function on purpose:
+   * `_seal_single_seam.test.ts` GUARD 3 requires the seam check to come first
+   * ("a guard placed after the detection leaves a live path to applyAdaptations
+   * one edit away"), and this runs after it, so a sealed engine does no
+   * database work to answer a question the seam already closed.
+   *
+   * TODAY THIS LINE IS UNREACHABLE, because `automaticPlanMutationIsAuthorised()`
+   * is pinned false and returns above. That is the point of wiring it now:
+   * opening the seam is one line, and it must not also be a line that silently
+   * restores an unadjudicated bump. Rule 20 — the rule and its check land
+   * together, or the rule is a hypothesis.
+   *
+   * REFUSES ON AN ABSENT HISTORY. An UNATTENDED volume increase applied while
+   * nobody is watching, on evidence nobody could read, is exactly Rule 11's
+   * "a missing input must never silently disable a safety mechanism" pointed
+   * at the write direction. The runner asking for more volume goes through
+   * `/api/plan/replan` and is not gated here at all.
+   */
+  {
+    const { adjudicateProposedBump } = await import('./adjudication/promotion');
+    const { recentPeakWeeklyMileage, PEAK_WEEK_LOOKBACK_DAYS } = await import('./generate');
+    const today = await runnerToday(userId);
+    // THE SAME READER AUTHORING USED (Rule 16). A second implementation of
+    // "the runner's biggest week" is a second chance to disagree about where
+    // his ceiling is, which is the LOADCONTRACT-1 defect this file already
+    // avoids for the tier ceiling.
+    //
+    // Read through `attempt`, not a bare `.catch(() => null)`. Rule 11: a read
+    // that FAILED and a runner with a real peak of zero are different facts,
+    // and `attempt`'s discriminated union is what keeps them apart until this
+    // code has decided what each one means. It decides that both refuse — a
+    // zero peak is a cold-start runner the bump has nothing to reason from,
+    // and a failed read is a runner we could not see — but they refuse for
+    // reasons the log line can tell apart, which is the whole distinction.
+    const peakRead = await attempt(
+      'plan/adaptive-ramp · peak week for the promotion adjudication',
+      recentPeakWeeklyMileage(userId, today),
+    );
+    const verdict = await adjudicateProposedBump({
+      userUuid: userId,
+      todayISO: today,
+      bumps: action.bumps,
+      history: !peakRead.ok ? null : {
+        peakWeeklyMi: peakRead.value,
+        // NOT READ ON THIS PATH, and null says so rather than a zero saying
+        // he has never run long. `demonstratedLongMi` needs the runner's
+        // prescribed race windows, which only the authoring loader assembles;
+        // reassembling them here would give that one quantity two owners.
+        // The long-run decision therefore reads UNKNOWN and the bump is
+        // gated on the volume axis alone. That is a real limit and it is
+        // recorded rather than papered over.
+        longestRunMi: null,
+        maxCompletedMpMi: null,
+        maxStressorsInAWeek: null,
+        after: [],
+        windowDescribed: `peak completed week over the last ${PEAK_WEEK_LOOKBACK_DAYS} days`
+          + '; nothing on this path reads a demonstrated longest run, a completed '
+          + 'marathon-pace dose, or a per-week stressor maximum',
+      },
+    });
+    if (!verdict.ok) {
+      console.warn(
+        `[adaptive-ramp] bump REFUSED by the adjudication layer · user=${userId.slice(0, 8)} · `
+        + verdict.because.join(' | '),
+      );
+      return null;
+    }
+  }
+
   const { applyAdaptations } = await import('./adapt');
   /* ── BUMP-LANDED-1 (2026-08-30) · REPORT WHAT LANDED, NOT WHAT WAS ASKED FOR
    *

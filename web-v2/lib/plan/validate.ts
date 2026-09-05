@@ -40,6 +40,18 @@ import {
   type StressDay, type StressRace, type StressFinding,
   type CompoundExemptionRecord, type ShippedPairDecision,
 } from './combined-stress';
+// ADJUDICATION-WIRE-1 (2026-09-04) · §12. See the section at the bottom of this
+// file for why this is unconditional and not another advisory sink.
+import { extractLongSegments } from './spec-builder';
+import {
+  adjudicatePlanBlock, plannedWeeksFromComposed,
+  REFUSAL_NO_HISTORY, REFUSAL_UNKNOWN_QUANTITY,
+  type DemonstratedHistoryInput,
+} from './adjudication/from-plan';
+import {
+  ADJUDICATION_QUANTITY_EXEMPTIONS, historyExemptionFor,
+  type AdjudicationCaller,
+} from './adjudication/caller-registry';
 
 // ── constraint table (doctrine caps) ─────────────────────────────────────────
 //
@@ -331,6 +343,49 @@ export interface PlanValidationContext {
   /** 2026-06-23 · CC-2 · onboarding-seeded recent weekly mileage (the cold-start base). Used as the
    *  peak-vs-trailing ramp-check base when trailingAvg is null, so cold-start and Strava agree. */
   recentWeeklyMi?: number | null;
+  /**
+   * ADJUDICATION-WIRE-1 (2026-09-04) · WHAT THIS RUNNER HAS ACTUALLY DONE.
+   *
+   * §12 sizes every prescribed week against these four numbers. Absent means
+   * the adjudication could not run, which is a REFUSAL and not a pass — see
+   * §12 and `adjudication/caller-registry.ts` for who is excused from that
+   * refusal and on what argument.
+   *
+   * ── RULE 8 · WHICH SIDE OF THE COROLLARY, AND WHY ────────────────────────
+   *
+   * These are CAPABILITY questions, every one of them: "what is the most this
+   * runner has ever done", asked so a prescription can be told from a
+   * prescription he has earned. Rule 8's corollary puts capability on the
+   * FILTERED side — a taper is never his normal — and that is the side chosen
+   * here, deliberately:
+   *
+   *   · `longestRunMi` is `demonstratedLongMi`, which already excludes each
+   *     race's taper lead-in and post-race recovery window (LONGEVIDENCE-1)
+   *     AND excludes race days themselves, because a marathon he raced is not
+   *     a training long run.
+   *   · `peakWeeklyMi` is `recentPeakWeeklyMileage`, which is UNFILTERED and
+   *     argues its own case in its header: it is a MAXIMUM over a rolling
+   *     window, so excluding taper days cannot RAISE it and can only remove a
+   *     week that was by definition not the peak. Filtering would cost a query
+   *     and change no answer. That is the corollary's safe side, not an
+   *     exception to it.
+   *
+   * The tissue-load readers stay where they are. `trailingAvgWeeklyMi` above
+   * is still the unfiltered ramp guard and nothing here touches it: what the
+   * legs will experience next week is a different question from what this
+   * runner is capable of, and Rule 8 is explicit that collapsing the two makes
+   * a safety guard MORE permissive exactly where it exists to bind.
+   */
+  demonstratedHistory?: DemonstratedHistoryInput | null;
+  /**
+   * Which path is authoring. Named so the absent-history refusal can be
+   * excused for the callers that genuinely cannot supply one, by name and with
+   * an argument, and for nobody else. See `adjudication/caller-registry.ts`.
+   *
+   * NOT a switch. There is no value of this field that turns the adjudication
+   * off, and a REAL adjudication finding is fatal whatever it says.
+   */
+  adjudicationCaller?: AdjudicationCaller;
 }
 
 // ── advisory sinks ────────────────────────────────────────────────────────────
@@ -1363,6 +1418,103 @@ export function validateComposedPlan(
   for (const f of [...stress, ...designed, ...compound.findings]) {
     if (!f.enforced) continue;
     violations.push(`Week ${f.weekStartISO} (${f.code}): ${f.message}`);
+  }
+
+  /* ── 12. THE ADJUDICATION · does the runner's own history support this ────
+   *
+   * ADJUDICATION-WIRE-1 (2026-09-04). David, on the layer this calls:
+   *
+   *   "Wire checkPromotion into the real plan-authoring and adaptation-
+   *    promotion paths. Until that happens, this is a tested prototype, not a
+   *    functioning brain safeguard."
+   *
+   * UNCONDITIONAL, and there is no callback shape anywhere in this section.
+   * That is not a style preference: `onDosing` five hundred lines up records
+   * what an advisory sink cost — "no production caller ever passed the
+   * callback, so the check was declared and never ran" — and `onStress`
+   * repeats the lesson. A gate that has to be requested is not a gate.
+   *
+   * ── WHAT §12 ASKS THAT NOTHING ELSE IN THIS FILE DOES ────────────────────
+   *
+   * Every check above asks whether a number is LEGAL. §1 asks whether the long
+   * run is inside doctrine's cap, §10 whether the session doses fit Daniels'
+   * percentages, §11 whether a race and a long run collide. All of them are
+   * questions about a research table, and a week of 60 mi with 6 mi at T, 9x3
+   * min at I and a 21.5 mi long run passes every one of them.
+   *
+   * §12 asks whether THIS RUNNER has done anything like it. Those are
+   * different questions and the layer's whole existence is the distinction
+   * between them: ALLOWED means a table permits it, SUPPORTED means he has
+   * completed something comparable. A citation is not evidence about a person.
+   *
+   * ── RULE 11 · THE THREE OUTCOMES, AND WHICH ONE IS EXEMPTIBLE ────────────
+   *
+   *   1. A REAL FINDING — an unsupported decision that is not marked for
+   *      reassessment, a week that peaks in volume, long run AND stressor
+   *      count and was still pushed, a decision that did not compare all three
+   *      options. FATAL. On every path, for every caller, always. No exemption
+   *      exists and none can be added: the partition below is on the refusal
+   *      PREFIX, so the allowlist is unreachable from this branch.
+   *   2. NO HISTORY AT ALL — the adjudication could not run. That is "don't
+   *      know", never "passed", so it is RECORDED as a refusal naming the
+   *      absent inputs, and it is fatal UNLESS this caller is named in
+   *      `ADJUDICATION_HISTORY_EXEMPTIONS` with an argument. Two live callers
+   *      are (the mutation boundary and the simulator) and the production
+   *      authoring path is NOT.
+   *   3. ONE READING MISSING — the history arrived and a quantity the block
+   *      needed was absent. Same posture, per quantity, through
+   *      `ADJUDICATION_QUANTITY_EXEMPTIONS`. Both entries there record that
+   *      this app has no reader for the quantity YET, with what was searched.
+   *
+   * ── WHAT THIS SECTION CANNOT FAIL ON (Rule 22) ───────────────────────────
+   *
+   *   · execution quality. It compares prescribed distances against completed
+   *     distances and cannot see whether a completed session was controlled,
+   *     so a runner who managed 18 miles once, badly, reads as a runner who
+   *     has 18 miles in him. `ADAPTATION_PROGRESSION_DOCTRINE.md` owns that
+   *     and it is not built.
+   *   · pace. Nothing here grades how fast anything was prescribed at.
+   *   · a week already run. Sealed past weeks are excluded, for §11b's reason.
+   *   · a taper's or race week's volume and long run, which are DESIGNED to
+   *     sit under the runner's maximum. Their stacked stress is still read.
+   */
+  {
+    const adjudication = adjudicatePlanBlock({
+      weeks: plannedWeeksFromComposed(weeks, {
+        // Rule 16 · `extractLongSegments` is the one owner of "how many miles
+        // of this label are at marathon pace"; §10's dosing census and the
+        // intensity split already read it, and a second parser here would be
+        // a second chance to disagree about the dose.
+        mpMilesOf: (subLabel) => extractLongSegments(subLabel)
+          .filter((s) => s.tag === 'M')
+          .reduce((a, s) => a + s.mi, 0),
+        // RACEWEEK-2 · the same predicate §10 uses, for the same reason.
+        isRaceWeek: (w) => weekContainsRace(w),
+      }),
+      history: ctx.demonstratedHistory ?? null,
+      todayISO: ctx.todayISO,
+    });
+
+    for (const b of adjudication.blockedBecause) {
+      if (b.startsWith(REFUSAL_NO_HISTORY)) {
+        // Outcome 2. The allowlist is consulted HERE and only here.
+        if (historyExemptionFor(ctx.adjudicationCaller) != null) continue;
+        violations.push(b);
+        continue;
+      }
+      if (b.startsWith(REFUSAL_UNKNOWN_QUANTITY)) {
+        // Outcome 3. Excused only when EVERY absent reading has its own
+        // argued entry — one unexplained gap and the whole refusal stands.
+        const allExplained = adjudication.unknownQuantities.length > 0
+          && adjudication.unknownQuantities.every(
+            (q) => ADJUDICATION_QUANTITY_EXEMPTIONS[q] != null);
+        if (allExplained) continue;
+        violations.push(b);
+        continue;
+      }
+      // Outcome 1. Never exemptible.
+      violations.push(`Adjudication · ${b}`);
+    }
   }
 
   if (violations.length > 0) throw new PlanValidationError(violations);

@@ -60,7 +60,18 @@ export async function POST(req: NextRequest) {
 
     let validation: { valid: boolean; violations: string[] };
     try {
-      validateComposedPlan(built.composed, built.raceDistanceMi, built.mode, built.validateCtx);
+      // §12 · ADJUDICATION-WIRE-1 (2026-09-04). The simulator composes from a
+      // form body with no user and no database, so there is no runner whose
+      // demonstrated history could be read. Named here so the exemption is a
+      // registry entry with an argument (`lib/plan/adjudication/
+      // caller-registry.ts`) rather than an anonymous path inheriting the
+      // fixture default. Every REAL adjudication finding still fails the sim,
+      // which is the point: the panel should show what the generator would be
+      // refused for.
+      validateComposedPlan(built.composed, built.raceDistanceMi, built.mode, {
+        ...built.validateCtx,
+        adjudicationCaller: 'api/plan/simulate',
+      });
       validation = { valid: true, violations: [] };
     } catch (err) {
       if (err instanceof PlanValidationError) validation = { valid: false, violations: err.violations };

@@ -390,6 +390,15 @@ export function violationsOf(snap: PlanSnapshot, ctx: PlanMutationContext): stri
   if (plan.weeks.length === 0) return [];
   try {
     validateComposedPlan(plan, ctx.raceDistanceMi, ctx.mode, {
+      // §12 · ADJUDICATION-WIRE-1 (2026-09-04). This path is NAMED rather than
+      // anonymous, and the argument for its absent-history exemption lives in
+      // `lib/plan/adjudication/caller-registry.ts` where a ratchet can check
+      // it — not here, where it would be prose. The short version: this
+      // function is synchronous by contract and `PlanMutationContext` carries
+      // no runner history, and the block it re-validates was already
+      // adjudicated at authoring by `plan/generate`, which is never exempt.
+      // The real adjudication findings are still fatal on this path.
+      adjudicationCaller: 'plan/mutate',
       level: ctx.level,
       isSteppingStoneToMarathon: ctx.isSteppingStoneToMarathon,
       // §2 · not applicable to an in-place mutation. See the file header.

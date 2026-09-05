@@ -16850,7 +16850,61 @@ async function composeForUserInternal(
     // from targetWeekly/wkWeekly scalars. VOL-1 in finalizeComposedPlan overwrites weeklyMi with the
     // actual day-sum for ALL modes, so vols[] must track it to stay in sync.
     composed.vols = composed.weeks.map((w) => w.weeklyMi);
+    /* ── ADJUDICATION-WIRE-1 (2026-09-04) · WHAT HE HAS ACTUALLY DONE ──────
+     *
+     * `validateComposedPlan` §12 sizes every prescribed week against these.
+     * This is the PRODUCTION authoring path and it is deliberately NOT in
+     * `ADJUDICATION_HISTORY_EXEMPTIONS`: a block cannot reach a runner without
+     * having been adjudicated against him at least once, and this is where
+     * that happens.
+     *
+     * NO NEW READERS (Rule 16). Both numbers come from the canonical owner
+     * that already exists, and the loader's own comments carry each one's Rule
+     * 8 argument:
+     *
+     *   · `demonstratedLongMi` (LONGEVIDENCE-1) · 365 days, prescribed spans
+     *     EXCLUDED, race days excluded. The filtered/capability side of Rule
+     *     8's corollary, which is where "the most he has ever run" belongs.
+     *     `null` is a FAILED READ and travels as null: §12 turns that into a
+     *     named refusal rather than a zero, because a runner we could not see
+     *     and a runner who has never run long are opposite facts.
+     *   · `recentPeakWeeklyMileage` · a rolling 7-day MAXIMUM, deliberately
+     *     unfiltered and arguing so in its own header — excluding taper days
+     *     cannot RAISE a maximum, so the filter would cost a query and change
+     *     no answer. `0` here is a MEASURED zero (the cold-start runner), and
+     *     the layer reads it as UNKNOWN rather than as a 1000% overreach.
+     *
+     * ── THE TWO READINGS THIS APP CANNOT TAKE YET ─────────────────────────
+     *
+     * `maxCompletedMpMi` and `maxStressorsInAWeek` are null, and null is the
+     * honest value: searched 2026-09-04 across lib/evidence, lib/execution,
+     * lib/adaptation, lib/training, lib/plan and lib/coach, and nothing reads
+     * either from completed runs. Both carry an argued, ratcheted entry in
+     * `adjudication/caller-registry.ts` naming what was searched and what
+     * would close it. They are gaps ON THE RECORD, which is the difference
+     * between a known blind spot and a silent one.
+     *
+     * ONE EXTRA QUERY on the race-prep path, which previously took none —
+     * `recentPeakWeeklyMileage` was read only by the maintenance and recovery
+     * composers. That is the price of the check and it is paid once per
+     * authoring.
+     */
+    const adjudicationHistory = {
+      peakWeeklyMi: await recentPeakWeeklyMileage(userId, todayISO),
+      longestRunMi: inputs.compose.demonstratedLongMi ?? null,
+      maxCompletedMpMi: null,
+      maxStressorsInAWeek: null,
+      after: [],
+      windowDescribed:
+        'peak week over the last ' + PEAK_WEEK_LOOKBACK_DAYS + ' days (rolling 7-day maximum, '
+        + 'unfiltered because a maximum cannot be raised by excluding days); longest completed '
+        + 'training run over the last ' + DEMONSTRATED_LONG_ELIGIBLE_DAYS + ' days with every '
+        + 'race day and every prescribed taper and post-race recovery window excluded. Nothing '
+        + 'in this app reads a completed marathon-pace dose or a per-week stressor maximum.',
+    };
     validateComposedPlan(composed, inputs.compose.raceDistanceMi, mode, {
+      adjudicationCaller: 'plan/generate',
+      demonstratedHistory: adjudicationHistory,
       level: inputs.compose.level,
       // CC2-4 (2026-06-23) · key this to the SAME boundary the builder's horizonRaise extends at — any
       // horizon at marathon category or longer (distanceMi > 17, the hm→m cutoff). At >=20 a (17,20]
