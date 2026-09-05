@@ -20,6 +20,28 @@
  * while changing which prescriptions reach a runner. The same is true of
  * `MIN_COMPARABLES_FOR_CEILING_CLAIM`.
  *
+ * The four dimensions added on 2026-09-04 (CORPUS-ADJ-1) carry their own
+ * blindness, stated rather than implied:
+ *
+ *   · `earningGateTiming` cannot tell whether the REQUIREMENT is the right
+ *     requirement. It checks that the gate is assessed early enough to act and
+ *     does not ask about a week that has not run. A gate demanding something
+ *     trivially true, on a sane schedule, passes it.
+ *   · `executionIdentity` only knows the identities the caller declared. It
+ *     reads `PlannedWeek.isRaceWeek`; a race week mislabelled as an ordinary
+ *     one is invisible here and belongs to whatever builds the weeks.
+ *   · `evidenceProvenance` checks the VOICE, never the number. A fabricated
+ *     measurement carrying `ATHLETE_EVIDENCE` and a plausible basis string
+ *     passes every clause. `_cim_trace.test.ts` pins the population; nothing
+ *     here can.
+ *   · `stackedStress` cannot fail on `STACKED_STRESSOR_THRESHOLD` being wrong,
+ *     for the same reason the step bands above are unfailable.
+ *
+ * And with ZERO traces, six of the ten dimensions are vacuously true — there is
+ * no violation in an empty set. Promotion is still blocked, by
+ * `wholeBlockCoherence`'s "nothing was adjudicated at all", which is the
+ * dimension that owns the silent zero.
+ *
  * They also cannot tell whether the HISTORY handed in is the right population.
  * The first CIM trace was wrong for exactly that reason and every test here
  * passed on it: the fixture said his longest run was 18.0 when it was 21.51,
@@ -308,8 +330,29 @@ export function detectStackedStress(
 ): StackedStress | null {
   const volStep = week.weeklyMi != null && hist.peakWeeklyMi
     ? week.weeklyMi / hist.peakWeeklyMi - 1 : null;
-  const longStep = week.longestMi != null && hist.longestRunMi
-    ? week.longestMi / hist.longestRunMi - 1 : null;
+  /**
+   * EXECUTION IDENTITY (CORPUS-ADJ-1, 2026-09-04) · THE GOAL RACE IS NOT A
+   * TRAINING LONG RUN.
+   *
+   * `week.longestMi` on a race week is the RACE. Dividing 26.2 by an 18-mile
+   * demonstrated longest training run reads +46% and flags the goal race
+   * itself as an injury-grade long-run spike, in every marathon block ever
+   * authored. It is the same shape as Rule 16's watch defect — one quantity
+   * wearing two identities — and it is worse than noise, because the honest
+   * verdict on "should he run the race he entered" is not a doctrine question
+   * this layer gets to ask.
+   *
+   * `hist.longestRunMi` is symmetric about this: the corpus bridge and
+   * `_cim_trace.test.ts` both read it from COMPLETED TRAINING only, never from
+   * a race, so neither side of the comparison carries a race.
+   *
+   * Volume is deliberately still compared. A race week's total mileage is a
+   * real week of load the legs absorb, and Rule 8's corollary keeps an
+   * absorbed-load reader on the literal number.
+   */
+  const longStep = week.isRaceWeek ? null
+    : week.longestMi != null && hist.longestRunMi
+      ? week.longestMi / hist.longestRunMi - 1 : null;
 
   const overStressed = week.stressors.length > STACKED_STRESSOR_THRESHOLD
     || (hist.maxStressorsInAWeek != null && week.stressors.length > hist.maxStressorsInAWeek);
@@ -471,11 +514,13 @@ export function rankOptions(opts: readonly OptionAppraisal[]): OptionAppraisal[]
  * a REAL conflict and the caller must say which wins and why. This refuses to
  * invent a reason, because inventing one is the failure being fixed.
  */
+export const forceRank = (f: DoctrineCitation['force']): number =>
+  f === 'HARD_CONSTRAINT' ? 2 : f === 'GUIDELINE' ? 1 : 0;
+
 export function adjudicate(
   a: DoctrineCitation, b: DoctrineCitation, becauseIfEqual?: string,
 ): DoctrineConflict {
-  const rank = (f: DoctrineCitation['force']): number =>
-    f === 'HARD_CONSTRAINT' ? 2 : f === 'GUIDELINE' ? 1 : 0;
+  const rank = forceRank;
   const ra = rank(a.force); const rb = rank(b.force);
   if (ra !== rb) {
     return {
@@ -504,6 +549,47 @@ export interface PromotionContext {
   readonly weeks: readonly PlannedWeek[];
 }
 
+/** ISO calendar day, strictly. `Date.parse` accepts far too much. */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Whole days from `fromISO` to `toISO`, or null when either is not an ISO day.
+ *
+ * Null is a THIRD fact and the callers branch on it (Rule 11): an unparseable
+ * date is not "zero days apart", and it is not "fine".
+ */
+export function daysBetweenISO(fromISO: string, toISO: string): number | null {
+  if (!ISO_DAY.test(fromISO) || !ISO_DAY.test(toISO)) return null;
+  const a = Date.parse(`${fromISO}T00:00:00Z`);
+  const b = Date.parse(`${toISO}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86_400_000);
+}
+
+/**
+ * How far before the prescription an earning gate must be assessed.
+ *
+ * POLICY_ASSUMPTION, and the honest floor rather than a comfortable number: a
+ * gate assessed ON the day it guards, or after it, cannot change the
+ * prescription at all — `ifUnmet: 'REDUCE'` has nothing left to reduce. One
+ * day is the minimum that can still act, and for a week-scale decision it is
+ * also the right one, because the week the gate is testing has just ended.
+ */
+export const MIN_GATE_LEAD_DAYS = 1;
+
+/**
+ * Which WEEK a decision is about.
+ *
+ * `stacked.weekStartISO` when the trace carries stacked stress, and the
+ * decision's own date otherwise. The second half is load-bearing and was the
+ * taper-integrity hole: `detectStackedStress` returns NULL for an ordinary
+ * taper week (low volume, one stressor, a short long run — no reach on any of
+ * the three), so a gate keyed only on `t.stacked` could not see a PUSH inside
+ * a taper unless the caller hand-built a `StackedStress` that the detector
+ * would never have produced. The one test that "covered" it did exactly that.
+ */
+const weekOf = (t: DecisionTrace): string => t.stacked?.weekStartISO ?? t.dateISO;
+
 export function checkPromotion(
   traces: readonly DecisionTrace[],
   ctx?: PromotionContext,
@@ -529,8 +615,28 @@ export function checkPromotion(
     return !(seen.has('PUSH') && seen.has('HOLD') && seen.has('PULL_BACK'));
   });
 
+  /**
+   * A conflict is unresolved when nobody said why, OR when the "resolution"
+   * hands it to the WEAKER citation.
+   *
+   * The empty-`because` clause alone was a proxy that the supported path could
+   * not produce: `adjudicate()` always writes a non-empty sentence and throws
+   * outright on two equal-force citations with no argument, so the only way to
+   * reach that filter was to hand-write a `DoctrineConflict` literal. Rule 18
+   * §1 — a check nothing can make fail is a hypothesis.
+   *
+   * The second clause is the real defect it was standing in for. Letting a
+   * GUIDELINE beat a HARD_CONSTRAINT is precisely "quoting whichever sentence
+   * supports the proposal already made", which is what `contract.ts` says this
+   * type exists to stop, and it is expressible today.
+   */
   const unresolvedConflict = traces.filter((t) =>
-    t.conflicts.some((c) => c.because.trim() === ''));
+    t.conflicts.some((c) => {
+      if (c.because.trim() === '') return true;
+      const winner = c.between[c.resolvedInFavourOf];
+      const loser = c.between[c.resolvedInFavourOf === 0 ? 1 : 0];
+      return forceRank(winner.force) < forceRank(loser.force);
+    }));
 
   // Defect 2 enforced at the gate as well as at the source: nothing may be
   // refused on a ceiling claim that does not have the comparables behind it.
@@ -556,18 +662,137 @@ export function checkPromotion(
     return out;
   })();
   const unarguedAdditions = simultaneousAdditions.filter((a) => {
-    const t = traces.find((x) => x.stacked?.weekStartISO === a.weekStartISO
-      || x.dateISO === a.weekStartISO);
+    const t = traces.find((x) => weekOf(x) === a.weekStartISO);
     // No trace at all for a week doctrine flags is the worst case: nobody looked.
     if (t == null) return true;
     return t.chosen === 'PUSH' && t.earningGate === null;
   });
 
   // Taper integrity, likewise real. Nothing gets pushed inside a taper.
+  //
+  // CORPUS-ADJ-1 · keyed on `weekOf`, not on `t.stacked`. See `weekOf`: the
+  // old predicate required a `StackedStress` that `detectStackedStress` cannot
+  // produce for a taper week, so this dimension was structurally unfailable
+  // through the supported path and its one test hand-built the object.
   const taperWeeks = new Set((ctx?.weeks ?? []).filter((w) => w.isTaper || w.isRaceWeek)
     .map((w) => w.weekStartISO));
   const pushedInTaper = ctx == null ? [] : traces.filter((t) =>
-    t.chosen === 'PUSH' && t.stacked != null && taperWeeks.has(t.stacked.weekStartISO));
+    t.chosen === 'PUSH' && taperWeeks.has(weekOf(t)));
+
+  /**
+   * RULE 11 AT THE GATE · an honest absence is not support.
+   *
+   * `UNKNOWN` means "nothing comparable exists either way", and `contract.ts`
+   * says so: "an honest absence (Rule 11)". The gate only ever collected
+   * CONDITIONAL and CONTRAINDICATED, so a decision the layer could say NOTHING
+   * about, PUSHed, with no gate and no reassessment, promoted silently — the
+   * exact shape of every Rule 11 defect in CLAUDE.md, where a missing input
+   * disables the mechanism that exists for it.
+   *
+   * A HOLD or a PULL_BACK on unknown evidence is not caught here, deliberately:
+   * declining to advance into the dark needs no gate. Advancing into it does.
+   */
+  const unknownPushed = traces.filter((t) =>
+    t.athlete.evidenceClass === 'UNKNOWN' && t.chosen === 'PUSH'
+    && t.earningGate === null && t.reassessOnISO === null);
+
+  /* ── EARNING-GATE TIMING · defect 1 of David's list, at the gate ──────────
+   *
+   * "October and November workouts must be evaluated against the training
+   * accumulated by then." The corollary nobody checked: the CHECK has to
+   * happen in time to act, and it may not ask about training that has not
+   * happened when it runs.
+   */
+  const gateTimingFaults: string[] = [];
+  for (const t of traces) {
+    const g = t.earningGate;
+    if (g == null) continue;
+    const lead = daysBetweenISO(g.assessOnISO, t.dateISO);
+    if (lead == null) {
+      gateTimingFaults.push(`${g.gateId} · assessOnISO "${g.assessOnISO}" or decision date `
+        + `"${t.dateISO}" is not an ISO day, so the gate cannot be scheduled at all`);
+    } else if (lead < MIN_GATE_LEAD_DAYS) {
+      gateTimingFaults.push(`${g.gateId} · assessed on ${g.assessOnISO}, ${lead} day(s) before the `
+        + `${t.dateISO} prescription it guards. A gate assessed on or after the day it guards has `
+        + 'nothing left to defer, reduce or drop.');
+    }
+    for (const r of g.requires) {
+      const slack = daysBetweenISO(r.byISO, g.assessOnISO);
+      if (slack == null) {
+        gateTimingFaults.push(`${g.gateId} · requirement due "${r.byISO}" is not an ISO day`);
+      } else if (slack < 0) {
+        gateTimingFaults.push(`${g.gateId} · assessed on ${g.assessOnISO} but requires "${r.measurable}" `
+          + `by ${r.byISO}. It asks whether a week that has not yet run has completed.`);
+      }
+    }
+    if (g.ifUnmet === 'REDUCE' && g.reduceTo == null) {
+      gateTimingFaults.push(`${g.gateId} · reduces on failure but names no reduced value, so "REDUCE" `
+        + 'is a word rather than an instruction');
+    }
+  }
+
+  /* ── EXECUTION IDENTITY · one quantity, one identity (Rule 16) ───────────
+   *
+   * The goal race is not a training long run. `detectStackedStress` now
+   * declines to compare a race week's distance against demonstrated TRAINING
+   * capacity; this is the gate that acts on it, so a caller who hand-builds a
+   * `StackedStress` for a race week — or whose detector regresses — is caught
+   * rather than trusted. Detector and gate, per the defect found on
+   * 2026-09-04 where disabling a promotion-level block left the suite green.
+   */
+  const raceWeekStarts = new Set((ctx?.weeks ?? []).filter((w) => w.isRaceWeek)
+    .map((w) => w.weekStartISO));
+  const allWeekStarts = new Set((ctx?.weeks ?? []).map((w) => w.weekStartISO));
+  const identityFaults: string[] = [];
+  for (const t of traces) {
+    const wk = weekOf(t);
+    if (raceWeekStarts.has(wk) && t.stacked?.longRunOverDemonstratedMax != null) {
+      identityFaults.push(`${t.decisionId} · week ${wk} is a RACE week and its distance is being read as `
+        + `a ${Math.round(t.stacked.longRunOverDemonstratedMax * 1000) / 10}% reach over his longest `
+        + 'TRAINING run. A race is not a long run.');
+    }
+    if (ctx != null && allWeekStarts.size > 0 && !allWeekStarts.has(wk)) {
+      identityFaults.push(`${t.decisionId} · decides about week ${wk}, which is not a week of this block. `
+        + 'The decision and the block are describing different plans.');
+    }
+  }
+
+  /* ── EVIDENCE PROVENANCE · defect 3 of David's list, at the gate ─────────
+   *
+   * "The output must clearly distinguish calculated physiology, athlete
+   * evidence and policy assumptions." `Attributed.basis` says of itself:
+   * "Never empty." Nothing checked either sentence.
+   */
+  const provenanceFaults: string[] = [];
+  for (const t of traces) {
+    const a = t.athlete;
+    const checkAttr = (label: string, attr: Attributed<unknown>, want: Attributed<unknown>['provenance']) => {
+      if (attr.provenance !== want) {
+        provenanceFaults.push(`${t.decisionId} · ${label} is reported as ${attr.provenance}, not ${want}`);
+      }
+      if (attr.basis.trim() === '') {
+        provenanceFaults.push(`${t.decisionId} · ${label} carries no basis, and a number with no basis `
+          + 'is a claim rather than evidence');
+      }
+    };
+    checkAttr('demonstratedMaxToday', a.demonstratedMaxToday, 'ATHLETE_EVIDENCE');
+    checkAttr('demonstratedMaxProjected', a.demonstratedMaxProjected, 'POLICY_ASSUMPTION');
+    for (const o of t.options) {
+      const s = o.heuristicRankScore;
+      if (s == null) {
+        if (o.evidenceClass !== 'UNKNOWN') {
+          provenanceFaults.push(`${t.decisionId} · the ${o.option} option is ${o.evidenceClass} but was `
+            + 'not ranked at all, so the comparison the layer exists to make was not made');
+        }
+        continue;
+      }
+      if (o.evidenceClass === 'UNKNOWN') {
+        provenanceFaults.push(`${t.decisionId} · the ${o.option} option is UNKNOWN and was ranked `
+          + `${s.value} anyway. Ranking an unknown means inventing a number (Rule 11).`);
+      }
+      checkAttr(`the ${o.option} option's heuristicRankScore`, s, 'POLICY_ASSUMPTION');
+    }
+  }
 
   if (ungated.length > 0) {
     blocked.push(`athleteSpecificSupport · ${ungated.length} decision(s) are not supported by his own `
@@ -582,8 +807,13 @@ export function checkPromotion(
       + `ceiling claim with fewer than ${MIN_COMPARABLES_FOR_CEILING_CLAIM} comparables: `
       + `${badCeiling.map((t) => t.decisionId).join(', ')}`);
   }
+  if (unknownPushed.length > 0) {
+    blocked.push(`athleteSpecificSupport · ${unknownPushed.length} decision(s) PUSH on evidence the layer `
+      + 'classed UNKNOWN, with no gate and no reassessment. An honest absence is not support (Rule 11): '
+      + `${unknownPushed.map((t) => t.decisionId).join(', ')}`);
+  }
   if (stackedUnaddressed.length > 0) {
-    blocked.push(`recoverability · ${stackedUnaddressed.length} week(s) peak in volume, long run AND `
+    blocked.push(`stackedStress · ${stackedUnaddressed.length} week(s) peak in volume, long run AND `
       + `stressor count simultaneously and were still PUSHed: ${stackedUnaddressed.map((t) => t.decisionId).join(', ')}`);
   }
   if (missingOptions.length > 0) {
@@ -609,15 +839,31 @@ export function checkPromotion(
     blocked.push(`taperIntegrity · ${pushedInTaper.length} decision(s) PUSH inside a taper or race week: `
       + `${pushedInTaper.map((t) => t.decisionId).join(', ')}`);
   }
+  if (gateTimingFaults.length > 0) {
+    blocked.push(`earningGateTiming · ${gateTimingFaults.length} gate(s) cannot be assessed in time to `
+      + `act, or ask about training that has not happened yet: ${gateTimingFaults.join(' | ')}`);
+  }
+  if (identityFaults.length > 0) {
+    blocked.push(`executionIdentity · ${identityFaults.length} decision(s) read one quantity under two `
+      + `identities: ${identityFaults.join(' | ')}`);
+  }
+  if (provenanceFaults.length > 0) {
+    blocked.push(`evidenceProvenance · ${provenanceFaults.length} number(s) are printed in the wrong `
+      + `voice or with no basis: ${provenanceFaults.join(' | ')}`);
+  }
 
   const check: PromotionCheck = {
     athleteSpecificSupport: ungated.length === 0 && markedButUnexplained.length === 0
-      && badCeiling.length === 0 && traces.length > 0,
+      && badCeiling.length === 0 && unknownPushed.length === 0 && traces.length > 0,
     wholeBlockCoherence: missingOptions.length === 0 && traces.length > 0,
-    recoverability: stackedUnaddressed.length === 0 && unarguedAdditions.length === 0,
+    recoverability: unarguedAdditions.length === 0,
     progression: traces.length > 0 && anyAdvance,
     taperIntegrity: pushedInTaper.length === 0,
     doctrineResolution: unresolvedConflict.length === 0,
+    stackedStress: stackedUnaddressed.length === 0,
+    earningGateTiming: gateTimingFaults.length === 0,
+    executionIdentity: identityFaults.length === 0,
+    evidenceProvenance: provenanceFaults.length === 0,
   };
   // Belt and braces · a dimension added to the type but forgotten here would
   // otherwise silently read as passing.

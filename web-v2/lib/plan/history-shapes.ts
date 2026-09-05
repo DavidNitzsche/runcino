@@ -86,6 +86,16 @@
  *    `Research/22` passes every archetype. That is `check-doctrine.sh`'s job,
  *    not this one.
  * 4. ANYTHING THE RUNNER SEES. Copy, labels, ordering, contrast. Rule 13.
+ * 5. EXECUTION GRADES (CORPUS-ADJ-1, 2026-09-04). The demonstrated-history
+ *    fields added for the adjudication layer carry `executed: true` on every
+ *    logged day, because that is all the corpus can honestly say: these shapes
+ *    render what a runner DID, and a grade is prescribed-versus-actual, which
+ *    needs a prescription for the past that no shape has. So nothing here can
+ *    fail on an engine that ignores execution quality, and
+ *    `heuristicRankScore`'s "replace with completion-at-grade rates once a
+ *    season of graded sessions exists" stays as far away from this corpus as
+ *    it is from production. `maxCompletedMpMi` is null for the same reason and
+ *    is stated as UNKNOWN rather than as a zero (Rule 11).
  *
  * DISTRIBUTION, counted rather than assumed. Of the nine shapes, SIX describe
  * a runner below their own level (postRaceShallow, postRaceDeep, shortLayoff,
@@ -117,6 +127,36 @@ export interface HistoryDay {
   kind: DayKind;
 }
 
+/**
+ * CORPUS-ADJ-1 (2026-09-04) · ONE COMPLETED LONG RUN, AND WHAT FOLLOWED IT.
+ *
+ * The adjudication layer's `ComparableSession` is the athlete-evidence unit —
+ * "he has completed something comparable and it went well" — and the second
+ * half of that sentence is the seven days AFTER, not the session itself. The
+ * layer could not be reached from this corpus for exactly this reason: an
+ * `Arc` carried mileage but nothing shaped like a comparable, so
+ * `athleteEvidenceFor` had nothing to size a prescription against and
+ * `ceilingClaimFrom` had no set to read a limit off.
+ */
+export interface CorpusComparable {
+  /** Days before the block start date. `daily[i]` is `addDaysISO(start, -i)`. */
+  daysAgo: number;
+  distanceMi: number;
+  /** The rendered past is what he ACTUALLY logged, so a day with miles on it
+   *  was executed. There is no prescribed-vs-actual in this corpus, which is
+   *  why no execution GRADE is derived here — see the file header. */
+  executed: boolean;
+  /**
+   * Miles in the seven days after it.
+   *
+   * Null, never zero, when the window runs past the most recent day rendered:
+   * an incomplete window and a week of rest are opposite facts (Rule 11), and
+   * a zero here would read as "he collapsed afterwards" on the runner's most
+   * recent long run, every time.
+   */
+  next7DaysMi: number | null;
+}
+
 /** A rendered runner-past: the series plus everything derived from it. */
 export interface RenderedHistory {
   /** `sim.dailyMiMostRecentFirst` · miles run `i` days before the start date. */
@@ -137,6 +177,48 @@ export interface RenderedHistory {
   /** True when the last 28 days contain quality — the honest read of
    *  "has this runner been in a block", which is what `isMidBlock` means. */
   isMidBlock: boolean;
+
+  // ── CORPUS-ADJ-1 (2026-09-04) · THE DEMONSTRATED HISTORY ─────────────────
+  //
+  // `lib/plan/adjudication/` asks a different question of the past than the
+  // ramp readers do. They ask "what is he holding"; it asks "what has he
+  // DEMONSTRATED, and what happened afterwards". Nothing on this type could
+  // answer the second, so the whole adjudication layer was unreachable from
+  // the primary corpus — Rule 15's exact shape, one level up from the four
+  // mechanisms this file was written for.
+  //
+  // Derived from the SAME render as everything above, so the demonstrated
+  // maxima and the mileage series describe one runner rather than two.
+
+  /** Weekly totals, most-recent-first · `HISTORY_WEEKS` long. */
+  weeklyMiMostRecentFirst: number[];
+  /** Highest completed week. `DemonstratedHistory.peakWeeklyMi`. */
+  peakWeeklyMi: number;
+  /**
+   * Longest completed single TRAINING run. `DemonstratedHistory.longestRunMi`.
+   *
+   * Race days are excluded by construction, which matters even though these
+   * shapes render none: a race is not a training long run, and the moment a
+   * shape adds one, counting it here would let the goal race's own distance
+   * license the next block's long run. That is the identity confusion
+   * `checkPromotion`'s `executionIdentity` dimension exists for, and both
+   * sides of the comparison have to hold it or only one of them is right.
+   */
+  longestRunMi: number;
+  /**
+   * Most stressors carried in one completed week.
+   *
+   * A STRESSOR is counted identically here and on a `PlannedWeek` (see
+   * `stressorsOfComposedWeek` in `adjudication-corpus.ts`): every quality
+   * session, every race, and the long run. That matches how the layer's own
+   * fixtures name them — `PEAK_WEEK` in `_adjudication.test.ts` and
+   * `WEEK_1026` in `_cim_trace.test.ts` both list the long run as a stressor —
+   * and the property that actually matters is that the two sides count the
+   * same way, because `detectStackedStress` divides one by the other.
+   */
+  maxStressorsInAWeek: number;
+  /** Every completed long run, with what the following seven days held. */
+  longRunComparables: CorpusComparable[];
 }
 
 export interface HistoryShapeSpec {
@@ -549,6 +631,37 @@ export function renderHistory(
     ? r1(qDays.reduce((s, d) => s + d.mi, 0) / qDays.length)
     : 0;
 
+  // ── CORPUS-ADJ-1 · the demonstrated history, off the same render ─────────
+  const weeklyMiMostRecentFirst: number[] = [];
+  let maxStressorsInAWeek = 0;
+  for (let w = 0; w < HISTORY_WEEKS; w++) {
+    const wk = days.slice(w * 7, w * 7 + 7);
+    weeklyMiMostRecentFirst.push(r1(wk.reduce((s, d) => s + d.mi, 0)));
+    // Symmetric with `stressorsOfComposedWeek`: quality, races, and the long
+    // run. A day with no miles on it was not run, so it is not a stressor.
+    const stressors = wk.filter((d) => d.mi > 0
+      && (d.kind === 'quality' || d.kind === 'race' || d.kind === 'long')).length;
+    if (stressors > maxStressorsInAWeek) maxStressorsInAWeek = stressors;
+  }
+  const peakWeeklyMi = weeklyMiMostRecentFirst.reduce((m, v) => (v > m ? v : m), 0);
+
+  // A race is not a training long run — see `longestRunMi`'s doc comment.
+  let longestRunMi = 0;
+  const longRunComparables: CorpusComparable[] = [];
+  for (let i = 0; i < days.length; i++) {
+    const d = days[i];
+    if (d.kind === 'race') continue;
+    if (d.mi > longestRunMi) longestRunMi = d.mi;
+    if (d.kind !== 'long' || !(d.mi > 0)) continue;
+    // The seven days AFTER a day `i` days ago are indices i-1 … i-7. When the
+    // window runs past the most recent rendered day it is INCOMPLETE, and an
+    // incomplete window is not a zero (Rule 11).
+    const next7DaysMi = i >= 7
+      ? r1(days.slice(i - 7, i).reduce((s, x) => s + x.mi, 0))
+      : null;
+    longRunComparables.push({ daysAgo: i, distanceMi: d.mi, executed: true, next7DaysMi });
+  }
+
   return {
     dailyMiMostRecentFirst,
     recentQualityPerWeek,
@@ -560,5 +673,19 @@ export function renderHistory(
     // `isMidBlock` means "has been doing quality recently", which is a fact
     // about the last 28 days and is therefore derived, never declared.
     isMidBlock: qDays.length > 0,
+    // CORPUS-ADJ-1 · appended, deliberately, rather than slotted in beside the
+    // fields they belong with. `lib/audit/coercion-scan.ts` keys a collapse on
+    // `file::symbol::testExpression`, and its test expression is read off the
+    // identifier before the collapse — so reordering this literal silently
+    // renames the `renderHistory::easyMedianOf` entry in `coercion-registry.ts`
+    // and the ratchet fails as STALE while the collapse it names is untouched.
+    // Keeping `easyDayMedianMi` adjacent to `lastRaceFinishedDaysAgo` keeps the
+    // registry id stable. The fragility belongs to the scanner, not here; it is
+    // recorded so the next editor does not rediscover it by breaking the build.
+    weeklyMiMostRecentFirst,
+    peakWeeklyMi,
+    longestRunMi: r1(longestRunMi),
+    maxStressorsInAWeek,
+    longRunComparables,
   };
 }
