@@ -137,6 +137,33 @@ if [ -n "${1:-}" ]; then
   fi
 else
   BUILD=$(cat "$BUILD_FILE" 2>/dev/null || echo 1)
+
+  # ── SHIPCOUNTER-1 (2026-09-04) · RECONCILE AGAINST APP STORE CONNECT ──────
+  #
+  # `.asc.build` is a per-checkout file and the checkouts HAD already diverged:
+  # on 2026-09-04 the root checkout held 276 while TestFlight held 278. A ship
+  # from there would have reserved 277, a number that already exists.
+  #
+  # A failed read is NOT "the counter is fine" (Rule 11). It refuses, because a
+  # collision hands the runner someone else's binary under the right build
+  # number, which is the 2026-05-26 postmortem. Set ASC_SKIP_COUNTER_CHECK=1 to
+  # override deliberately.
+  if [ "${ASC_SKIP_COUNTER_CHECK:-0}" != "1" ]; then
+    ASC_MAX="$(node "$ROOT/web-v2/scripts/_asc_max_build.mjs" 2>/dev/null || echo "")"
+    if [ -z "$ASC_MAX" ]; then
+      echo "ERROR: could not read the highest build from App Store Connect." >&2
+      echo "  A build number collision silently ships the wrong binary, so this refuses" >&2
+      echo "  rather than guessing. Re-run when ASC is reachable, or set" >&2
+      echo "  ASC_SKIP_COUNTER_CHECK=1 if you have confirmed the number by hand." >&2
+      exit 2
+    fi
+    if [ "$BUILD" -le "$ASC_MAX" ]; then
+      echo "→ counter said $BUILD but App Store Connect already holds $ASC_MAX."
+      echo "  Reserving $((ASC_MAX + 1)) instead and repairing $BUILD_FILE."
+      BUILD=$((ASC_MAX + 1))
+    fi
+  fi
+
   echo "$((BUILD + 1))" > "$BUILD_FILE"
 fi
 echo "→ reserved build $BUILD (next available: $(cat "$BUILD_FILE"))"

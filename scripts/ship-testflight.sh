@@ -20,7 +20,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$ROOT/legacy/native/.asc.env"
 BUILD_FILE="$ROOT/legacy/native/.asc.build"
-LOCK_DIR="$ROOT/.asc.shipping.lock"  # shared with ship-testflight-v2.sh
+# SHIPLOCK-2 (2026-09-04) · MACHINE-WIDE, not $ROOT-scoped.
+#
+# The comment said "shared with ship-testflight-v2.sh" and it was not. v2 moved
+# its lock to /tmp when SHIPRACE-1 landed; this one stayed under $ROOT, so the
+# two scripts that share a bundle id AND a build counter did not share a mutex,
+# and two checkouts of this repo did not either. That is the exact 2026-05-26
+# postmortem the header cites, still reachable.
+LOCK_DIR="/tmp/.faff.asc.shipping.lock"  # genuinely shared with ship-testflight-v2.sh
 STALE_LOCK_SEC=$((45 * 60))
 
 # Cross-agent ship lock — same convention as ship-testflight-v2.sh.
