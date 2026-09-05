@@ -13274,6 +13274,17 @@ async function clearActivePlansFor(client: PoolClient, userId: string, reason = 
   // already-archived plan.
   const { supersedeProposalsForArchivedPlans } = await import('./proposals-state');
   await supersedeProposalsForArchivedPlans(client, userId);
+  /* ACKSURVIVE-1 (2026-09-05) · and the workout-level proposals, which have
+   * the same dangling shape and were reached only by the undo route. Best
+   * effort in its own try: an archive must never fail on proposal hygiene,
+   * and a failure here leaves a card that the accept path still refuses. */
+  try {
+    const { supersedeWorkoutProposalsForArchivedPlans } = await import('./proposals-state');
+    await supersedeWorkoutProposalsForArchivedPlans(client, userId);
+  } catch (e) {
+    console.error('[clearActivePlansFor] workout-proposal supersede failed:',
+      e instanceof Error ? e.message : e);
+  }
 }
 
 /**

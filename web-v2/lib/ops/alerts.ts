@@ -32,6 +32,17 @@ export type AlertKind = 'plan_convergence' | 'cron_fail' | 'cron_ok' | 'cron_sta
    * not run must be NOTICED, and the cron ledger being green is not the same as
    * the work being done. */
   | 'reassessment_overdue'
+  /* SHADOWOBS-1 (2026-09-05) · one row per `run-adaptations` pass saying what
+   * the canonical Adaptation Engine's live shadow evaluation actually did —
+   * per-exit-code histogram, defect count, records persisted, and the remedy
+   * for the first defect. Raised by `app/api/cron/run-adaptations/route.ts`.
+   *
+   * It exists because `cron_ok` was green every day between 2026-09-03 and
+   * 2026-09-05 while that mechanism wrote zero rows: the route completed, so
+   * the ledger was honest, and the ledger's own header already warned it
+   * "cannot tell a job that ran and did nothing from a job that ran and did
+   * the wrong thing". This is the row that can. */
+  | 'canonical_shadow_exit'
   | 'unknown';
 export type AlertSeverity = 'info' | 'warn' | 'error' | 'critical';
 

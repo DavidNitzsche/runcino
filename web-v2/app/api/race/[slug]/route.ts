@@ -398,10 +398,41 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     ],
   ).catch(() => {/* audit failure shouldn't block */});
 
-  // Fire auto-rebuild · paces shift at the new goal
+  /* ── REBUILDTRUTH-1 (2026-09-05) · THE FLAG REPORTS THE REBUILD ─────────
+   *
+   * This block used to discard `fireAutoRebuild`'s return value entirely
+   * (`await fireAutoRebuild({...});`, no assignment) and the response below
+   * carried the literal `rebuildTriggered: true`. So the caller was told a
+   * rebuild happened in all SEVEN cases where it did not:
+   *
+   *   1 · the call threw and was swallowed by the catch below
+   *   2 · the runner is externally coached      (auto-rebuild.ts COACHED_SKIP)
+   *   3 · no active plan                        (`no_active_plan`)
+   *   4 · the plan is for a different race      (`race_mismatch`)
+   *   5 · deduped inside 60s — nothing ran this call
+   *   6 · `generatePlan` returned `ok: false`   (a pending proposal instead)
+   *   7 · `generatePlan` returned `unchanged: true` — the rebuild RAN, produced
+   *       nothing worth landing, and was rolled back
+   *
+   * Case 7 is the one that matters most, and `generate.ts` says so in its own
+   * words on the `unchanged` field: "Writing 'plan rebuilt' off `ok: true` when
+   * nothing was rebuilt is the drift between the report and reality." The
+   * sibling that gets this right is `fireAutoRebuild` itself, which computes
+   * `status = !rebuildOk ? 'pending' : unchanged ? 'no_change' : 'auto_applied'`
+   * precisely so a notice card cannot point at a plan that was never replaced.
+   *
+   * Three states, not two (Rule 11): REBUILT, NO_CHANGE, and NOT_REBUILT with
+   * a reason. `rebuildTriggered` keeps its name and its type for the existing
+   * clients, and now carries the truth. */
+  let rebuild: {
+    rebuilt: boolean;
+    status: 'rebuilt' | 'no_change' | 'not_rebuilt';
+    reason: string | null;
+    newPlanId: string | null;
+  } = { rebuilt: false, status: 'not_rebuilt', reason: 'the rebuild was not attempted', newPlanId: null };
   try {
     const { fireAutoRebuild } = await import('@/lib/plan/auto-rebuild');
-    await fireAutoRebuild({
+    const r = await fireAutoRebuild({
       userUuid: userId,
       raceSlug: slug,
       kind: 'goal_time_changed',
@@ -413,7 +444,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
       },
       source: 'goal_edit',
     });
+    // `newPlanId` is absent on an `unchanged` rebuild by `auto-rebuild.ts`'s
+    // own contract ("Absent on a refusal. The caller asked whether a NEW plan
+    // exists."), which is exactly what separates 'rebuilt' from 'no_change'
+    // here without this route re-deriving the distinction (Rule 16).
+    const newPlanId = r?.newPlanId ?? null;
+    rebuild = r?.ok
+      ? newPlanId
+        ? { rebuilt: true, status: 'rebuilt', reason: null, newPlanId }
+        : { rebuilt: false, status: 'no_change', reason: 'the rebuild ran and produced no change worth landing', newPlanId: null }
+      : { rebuilt: false, status: 'not_rebuilt', reason: r?.reason ?? 'the rebuild did not run', newPlanId: null };
   } catch (e) {
+    // Rule 11 · a swallowed throw is not a successful rebuild. It was reported
+    // as one for as long as this flag was a literal.
+    rebuild = {
+      rebuilt: false, status: 'not_rebuilt',
+      reason: `the rebuild threw: ${e instanceof Error ? e.message : String(e)}`,
+      newPlanId: null,
+    };
     console.error('[race goal edit] auto-rebuild failed:', e);
   }
 
@@ -428,6 +476,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
     goalSec,
     goalDisplay,
     oldGoalSec,
-    rebuildTriggered: true,
+    // REBUILDTRUTH-1 · what actually happened, not what was attempted.
+    rebuildTriggered: rebuild.rebuilt,
+    rebuildStatus: rebuild.status,
+    rebuildReason: rebuild.reason,
+    rebuiltPlanId: rebuild.newPlanId,
   });
 }

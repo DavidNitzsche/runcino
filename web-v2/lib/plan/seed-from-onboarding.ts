@@ -502,6 +502,16 @@ async function clearActivePlansFor(userId: string, tx: Queryable = pool): Promis
   // whatever just got archived here is stale the moment this commits.
   const { supersedeProposalsForArchivedPlans } = await import('./proposals-state');
   await supersedeProposalsForArchivedPlans(tx, userId);
+  /* ACKSURVIVE-1 (2026-09-05) · and the workout-level proposals — same
+   * dangling shape, see `proposals-state.ts`. Best effort in its own try: a
+   * reseed must never fail on proposal hygiene. */
+  try {
+    const { supersedeWorkoutProposalsForArchivedPlans } = await import('./proposals-state');
+    await supersedeWorkoutProposalsForArchivedPlans(tx, userId);
+  } catch (e) {
+    console.error('[clearActivePlansFor] workout-proposal supersede failed:',
+      e instanceof Error ? e.message : e);
+  }
   // Plan mutation → invalidate memoized lookup.
   (await import('./lookup')).bustPlanLookupCache(userId);
 }

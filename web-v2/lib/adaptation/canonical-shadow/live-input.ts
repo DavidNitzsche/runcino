@@ -92,6 +92,7 @@ import {
   type DemandSubstrate, type RanRace,
 } from './demand-input';
 import { roQuery } from './read-only-db';
+import type { ShadowExitCode } from './shadow-exit';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * SMALL HELPERS
@@ -540,6 +541,33 @@ export interface LiveInputResult {
   /** Why no input could be built, when `input` is null. Rule 11: a refusal
    *  names its cause rather than looking like "nothing to report". */
   readonly refusal: string | null;
+  /**
+   * The SAME refusal as a machine-readable code, non-null whenever this build
+   * did not produce a fully readable input — INCLUDING the case where `input`
+   * is non-null but `readable: false`, which is a read that FAILED and must
+   * never reach a caller looking like a runner who simply had a quiet month.
+   *
+   * ── WHY THE SENTENCE WAS NOT ENOUGH (2026-09-05) ────────────────────────
+   *
+   * `refusal` was already honest and already named its cause. It was a
+   * STRING, so the only thing downstream could do with it was print it, and
+   * the only place it was printed was `console.warn` inside a cron loop on
+   * Railway. Four distinct facts —
+   *
+   *   "this athlete has no active plan"        (nothing is wrong)
+   *   "his plan has no linked race"            (nothing is wrong)
+   *   "his plan carries no belief anchor"      (nothing is wrong)
+   *   "a read of his training history THREW"   (something IS wrong)
+   *
+   * — were indistinguishable to every caller, so no alert could fire on the
+   * fourth without also firing on the first three. Rule 11: a failed read
+   * and an empty one are opposite facts, and code that collapses them has
+   * thrown away the only thing that mattered.
+   *
+   * `shadow-exit.ts` owns the code set and, with it, whether a code means
+   * "a human must act".
+   */
+  readonly refusalCode: ShadowExitCode | null;
 }
 
 /**
@@ -561,7 +589,11 @@ export async function buildLiveCanonicalInput(
   try {
     plan = await readPlan(userUuid, asOf, planSelection);
   } catch (e) {
-    return { input: null, refusal: `Could not read the active plan: ${e instanceof Error ? e.message : String(e)}` };
+    return {
+      input: null,
+      refusal: `Could not read the active plan: ${e instanceof Error ? e.message : String(e)}`,
+      refusalCode: 'INPUT_READ_FAILED',
+    };
   }
   if (!plan) {
     return {
@@ -569,21 +601,55 @@ export async function buildLiveCanonicalInput(
       refusal: planSelection === 'ACTIVE'
         ? 'No active plan for this athlete.'
         : `No plan had been authored for this athlete on or before ${asOf}.`,
+      refusalCode: 'NO_ACTIVE_PLAN',
     };
   }
 
   let race: RaceRow | null = null;
+  /** Non-null ONLY when the race read threw. Rule 11 · a swallowed exception
+   *  and an absent row are opposite facts; this variable is what keeps them
+   *  apart on the way to the refusal below. */
+  let raceReadFailed: string | null = null;
   if (plan.race_id) {
     try {
       race = await readRace(plan.race_id, userUuid);
-    } catch { /* handled below as "no race" */ }
+    } catch (e) {
+      raceReadFailed = e instanceof Error ? e.message : String(e);
+    }
   }
-  if (!race) return { input: null, refusal: `Active plan ${plan.id} has no readable linked race.` };
+  if (!race) {
+    // Rule 11 · THREE facts were collapsed here until 2026-09-05, and the
+    // `catch {}` above is where the third one went. `plan.race_id` being null,
+    // `readRace` returning no row, and `readRace` THROWING all produced this
+    // one sentence, so an operator reading "no readable linked race" could not
+    // tell an under-specified plan (nothing wrong) from a broken database read
+    // (something wrong). They are now separated at the point they happen —
+    // `raceReadFailed` is set only on the throw — and they carry different
+    // codes, which is what lets one raise an alert and the other not.
+    if (raceReadFailed) {
+      return {
+        input: null,
+        refusal: `Could not read the race linked to plan ${plan.id}: ${raceReadFailed}`,
+        refusalCode: 'INPUT_READ_FAILED',
+      };
+    }
+    return {
+      input: null,
+      refusal: plan.race_id
+        ? `Active plan ${plan.id} links race ${plan.race_id}, and no such race row exists for this athlete.`
+        : `Active plan ${plan.id} has no linked race.`,
+      refusalCode: 'INPUT_MISSING',
+    };
+  }
 
   const raceDistMi = distanceMiOfMeta(race.meta);
   const raceDateISO = (race.meta?.date as string | undefined) ?? null;
   if (raceDistMi == null || !raceDateISO) {
-    return { input: null, refusal: `Race ${race.slug} is missing a distance or a date.` };
+    return {
+      input: null,
+      refusal: `Race ${race.slug} is missing a distance or a date.`,
+      refusalCode: 'INPUT_MISSING',
+    };
   }
   const racePlanGoal = (race.plan as { goal?: { finish_time_s?: unknown } } | null)?.goal;
   const goalSec = num(racePlanGoal?.finish_time_s);
@@ -593,7 +659,11 @@ export async function buildLiveCanonicalInput(
   try {
     [weeks, workouts] = await Promise.all([readPlanWeeks(plan.id), readPlanWorkouts(plan.id)]);
   } catch (e) {
-    return { input: null, refusal: `Could not read the plan structure: ${e instanceof Error ? e.message : String(e)}` };
+    return {
+      input: null,
+      refusal: `Could not read the plan structure: ${e instanceof Error ? e.message : String(e)}`,
+      refusalCode: 'INPUT_READ_FAILED',
+    };
   }
 
   const LOOKBACK_DAYS = 84; // 12 weeks — enough for the volume lever's 3-week
@@ -716,7 +786,11 @@ export async function buildLiveCanonicalInput(
   };
 
   if (belief.thresholdPaceSecPerMi <= 0) {
-    return { input: null, refusal: `Active plan ${plan.id} has no readable threshold pace in authored_state — nothing to carry as belief.` };
+    return {
+      input: null,
+      refusal: `Active plan ${plan.id} has no readable threshold pace in authored_state — nothing to carry as belief.`,
+      refusalCode: 'BELIEF_CONFLICT',
+    };
   }
 
   /* ── BOUNDARIES · cutback / race / taper, from the plan's own week flags ── */
@@ -896,7 +970,7 @@ export async function buildLiveCanonicalInput(
     readable: true,
   };
 
-  return { input, refusal: null };
+  return { input, refusal: null, refusalCode: null };
 }
 
 /** `EvaluationBoundary` for a live cron cycle: `WEEKLY_BOUNDARY` on the
@@ -911,10 +985,28 @@ function resolveBoundary(asOfISO: string): EvaluationBoundary {
   return dow === 0 ? 'WEEKLY_BOUNDARY' : 'SESSION_COMPLETED';
 }
 
+/**
+ * An input the engine will honestly REFUSE on every lever, because the
+ * evidence read broke.
+ *
+ * ── THE REASON USED TO BE DISCARDED (fixed 2026-09-05) ────────────────────
+ *
+ * This function took the failure message as `_reason` and never used it, and
+ * returned `refusal: null`. So a caller saw a non-null input and no refusal,
+ * evaluated it, got three REFUSE records, and reported a normal evaluation.
+ * The fact that a database read had THROWN — the one thing an operator needed
+ * — existed nowhere outside a local variable. Rule 11: a failed read and a
+ * quiet training block are opposite facts, and this is the seam where they
+ * were being merged.
+ *
+ * The input is still returned and still evaluated, because the engine's own
+ * `readable: false` branch produces the correct, honest records and those are
+ * worth persisting. What changed is that the REASON travels with it.
+ */
 function buildUnreadableInput(
   userUuid: string, plan: ActivePlanRow, workouts: PlanWorkoutRow[],
   raceDateISO: string, raceDistMi: number, goalSec: number | null, asOf: string,
-  _reason: string,
+  reason: string,
 ): LiveInputResult {
   const belief: CapacityBelief = {
     thresholdPaceSecPerMi: num(plan.authored_state?.t_pace_s_per_mi) ?? 0,
@@ -952,7 +1044,8 @@ function buildUnreadableInput(
       ),
       readable: false,
     },
-    refusal: null,
+    refusal: reason,
+    refusalCode: 'INPUT_READ_FAILED',
   };
 }
 

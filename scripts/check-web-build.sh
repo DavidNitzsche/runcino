@@ -109,4 +109,26 @@ if ! npx next build; then
   echo "  Override with: git push --no-verify   (prod WILL fail to deploy)"
   exit 1
 fi
-echo "✓ next build green. Railway is building the same tree."
+# ── STATUSWORDS-1 (2026-09-05) · THE SENTENCE HERE USED TO BE ───────────────
+#
+#     "✓ next build green. Railway is building the same tree."
+#
+# Present tense, about a thing this script does not contact. Nothing here
+# talks to Railway; the local build tree and the deployed artifact are two
+# different facts and this line asserted the second from the first. That is
+# the whole of CLAUDE.md Rule 19 in one echo, inside the script whose entire
+# purpose is Rule 19 — and note that `check-web-build.sh` runs `next build`
+# directly, so it does not even execute the `prebuild` gate chain Railway
+# runs first.
+#
+# BUILT is not MERGED is not DEPLOYED is not SHIPPED. This says the first,
+# and names the other three as still open.
+echo "✓ next build green — BUILT, locally."
+echo "  That is one of four facts, and the only one this script can observe:"
+echo "    BUILT     · this tree compiles here            ← proven above"
+echo "    MERGED    · the commit is on origin/main       ← not checked here"
+echo "    DEPLOYED  · Railway reports SUCCESS for it     ← not checked here"
+echo "    SHIPPED   · the runner's device is running it  ← not checked here"
+echo "  Railway also runs the web-v2 prebuild chain, which this script skips."
+echo "  After pushing, confirm the deployment STATUS (a deployment can exist"
+echo "  and be FAILED; 'success' is the only word that means deployed)."

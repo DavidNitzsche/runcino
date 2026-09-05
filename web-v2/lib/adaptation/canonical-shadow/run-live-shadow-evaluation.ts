@@ -52,12 +52,31 @@ import { buildLiveCanonicalInput } from './live-input';
 import { loadLiveQueue, persistQueueAtBoundary } from './deferral-store';
 import { roQuery, readOnlyConnectionConfigured } from './read-only-db';
 import { insertShadowRecord, CANONICAL_ADAPTATION_SHADOW_LOG_TABLE } from './shadow-log-writer';
+import { shadowExit, type ShadowExit } from './shadow-exit';
 
 export interface LiveShadowEvaluationResult {
   readonly userUuid: string;
   readonly ran: boolean;
   /** Present when `ran` is false, or when it ran but persisted nothing. */
   readonly detail: string;
+  /**
+   * THE SAME OUTCOME, AS A FACT SOMETHING OTHER THAN A HUMAN CAN READ.
+   *
+   * `ran` + `detail` were already honest. They were a boolean and a
+   * sentence, and the only consumer was `console.warn` inside the
+   * `run-adaptations` cron loop, so between 2026-09-03 and 2026-09-05 this
+   * function reported "DATABASE_URL_RO is not configured" four times a day
+   * into Railway's log buffer and nothing anywhere could act on it. `exit`
+   * carries the code, the health verdict and the remedy, which is what lets
+   * the cron raise an `ops_alerts` row on a DEFECT and stay quiet on an
+   * honest "nothing to say". See `shadow-exit.ts`.
+   *
+   * Note `ran` and `exit.health` answer DIFFERENT questions and are not
+   * redundant (Rule 16): `ran: true` with `exit.code === 'PERSISTENCE_FAILED'`
+   * is a real, reachable state — the evaluation happened and the write did
+   * not.
+   */
+  readonly exit: ShadowExit;
   readonly records: readonly {
     lever: CanonicalDecisionRecord['lever'];
     decision: CanonicalDecisionRecord['decision'];
@@ -120,8 +139,13 @@ async function previouslyEmittedKeysFor(userUuid: string): Promise<ReadonlySet<s
   }
 }
 
-async function persistOne(userUuid: string, r: CanonicalDecisionRecord): Promise<boolean> {
-  if (!(await shadowLogTableExists())) return false;
+/** Rule 11 · THREE outcomes. `false` used to mean both "the table is not
+ *  there" and "the INSERT threw", which are a migration problem and a schema
+ *  problem and want different remedies from an operator. */
+type PersistOutcome = 'WROTE' | 'TABLE_ABSENT' | 'INSERT_FAILED';
+
+async function persistOne(userUuid: string, r: CanonicalDecisionRecord): Promise<PersistOutcome> {
+  if (!(await shadowLogTableExists())) return 'TABLE_ABSENT';
   try {
     // The table name is written LITERALLY here rather than through
     // `${CANONICAL_ADAPTATION_SHADOW_LOG_TABLE}` on purpose: `writesIn()`
@@ -168,10 +192,10 @@ async function persistOne(userUuid: string, r: CanonicalDecisionRecord): Promise
         'cron_run_adaptations_canonical_shadow',
       ],
     );
-    return true;
+    return 'WROTE';
   } catch (e) {
     console.warn(`[canonical-shadow] insert failed for ${userUuid} · ${r.lever}:`, e instanceof Error ? e.message : e);
-    return false;
+    return 'INSERT_FAILED';
   }
 }
 
@@ -184,28 +208,55 @@ async function persistOne(userUuid: string, r: CanonicalDecisionRecord): Promise
 export async function runAndPersistCanonicalShadowEvaluation(
   userUuid: string,
 ): Promise<LiveShadowEvaluationResult> {
+  /* ── EXIT 1 · NO READ-ONLY CONNECTION ──────────────────────────────────
+   *
+   * THE 2026-09 PRODUCTION CAUSE, returned from exactly here on every one of
+   * the four daily cron passes between 2026-09-03 and 2026-09-05. It is a
+   * DEFECT, not a quiet night, and `shadow-exit.ts` carries the one-line
+   * remedy so the alert the cron raises says what to do rather than only
+   * what happened. */
   if (!readOnlyConnectionConfigured()) {
+    const detail = 'DATABASE_URL_RO is not configured · live canonical shadow evaluation cannot run.';
     return {
-      userUuid, ran: false,
-      detail: 'DATABASE_URL_RO is not configured · live canonical shadow evaluation cannot run.',
+      userUuid, ran: false, detail,
+      exit: shadowExit('NO_RO_CONNECTION', detail),
       records: [], deferrals: 'not reached — the evaluation did not run.',
     };
   }
 
+  /* ── EXIT 2 · THE INPUT BUILD THREW ────────────────────────────────────
+   *
+   * `buildLiveCanonicalInput` promises not to throw for ordinary missing
+   * data. If it throws anyway that is the promise being broken, which is a
+   * different fact from any refusal it returns deliberately. */
   let built: Awaited<ReturnType<typeof buildLiveCanonicalInput>>;
   try {
     built = await buildLiveCanonicalInput(userUuid);
   } catch (e) {
+    const detail = `Building live input failed: ${e instanceof Error ? e.message : String(e)}`;
     return {
-      userUuid, ran: false,
-      detail: `Building live input failed: ${e instanceof Error ? e.message : String(e)}`,
+      userUuid, ran: false, detail,
+      exit: shadowExit('INPUT_READ_FAILED', detail),
       records: [], deferrals: 'not reached — the evaluation did not run.',
     };
   }
+
+  /* ── EXITS 3-5 · NO ACTIVE PLAN / INPUT MISSING / BELIEF CONFLICT ──────
+   *
+   * Three distinct facts, and the loader now says which (`refusalCode`).
+   * All three are EXPECTED — the mechanism worked and the honest answer was
+   * "there is nothing here to evaluate". None of them raises an alert, and
+   * that is the whole point of separating them from the two above. */
   if (!built.input) {
+    const detail = built.refusal ?? 'No input could be built.';
     return {
-      userUuid, ran: false, detail: built.refusal ?? 'No input could be built.', records: [],
-      deferrals: 'not reached — no input could be built.',
+      userUuid, ran: false, detail,
+      // `refusalCode` is non-null whenever `input` is null. The fallback is
+      // written out rather than asserted away with `!`, because a `!` here
+      // would be the one place this function could produce an exit whose code
+      // did not come from the loader that actually made the decision.
+      exit: shadowExit(built.refusalCode ?? 'INPUT_MISSING', detail),
+      records: [], deferrals: 'not reached — no input could be built.',
     };
   }
 
@@ -219,9 +270,11 @@ export async function runAndPersistCanonicalShadowEvaluation(
   try {
     evaluation = evaluateAdaptation(built.input, previouslyEmittedKeys);
   } catch (e) {
+    /* ── EXIT 6 · EVALUATION ERROR ───────────────────────────────────── */
+    const detail = `evaluateAdaptation threw, which its own contract says never happens: ${e instanceof Error ? e.message : String(e)}`;
     return {
-      userUuid, ran: false,
-      detail: `evaluateAdaptation threw, which its own contract says never happens: ${e instanceof Error ? e.message : String(e)}`,
+      userUuid, ran: false, detail,
+      exit: shadowExit('EVALUATION_ERROR', detail),
       records: [], deferrals: 'not reached — the evaluation did not run.',
     };
   }
@@ -231,21 +284,67 @@ export async function runAndPersistCanonicalShadowEvaluation(
     decision: CanonicalDecisionRecord['decision'];
     persisted: boolean;
   }> = [];
+  let wrote = 0;
+  let tableAbsent = 0;
+  let insertFailed = 0;
   for (const r of evaluation.records) {
-    const persisted = await persistOne(userUuid, r);
-    results.push({ lever: r.lever, decision: r.decision, persisted });
+    const outcome = await persistOne(userUuid, r);
+    if (outcome === 'WROTE') wrote += 1;
+    else if (outcome === 'TABLE_ABSENT') tableAbsent += 1;
+    else insertFailed += 1;
+    results.push({ lever: r.lever, decision: r.decision, persisted: outcome === 'WROTE' });
   }
 
-  const anyTable = await shadowLogTableExists();
-  return {
-    userUuid, ran: true,
-    detail: anyTable
-      ? `${results.filter((r) => r.persisted).length}/${results.length} records persisted.`
-      : `evaluated but not persisted — canonical_adaptation_shadow_log does not exist yet `
-        + `(migration 164 not applied on this database).`,
-    records: results,
-    deferrals: await carryTheQueue(userUuid, built.input, evaluation.records),
-  };
+  const deferrals = await carryTheQueue(userUuid, built.input, evaluation.records);
+  const counts = { recordsEvaluated: evaluation.records.length, recordsPersisted: wrote };
+  const base = { userUuid, ran: true as const, records: results, deferrals };
+
+  /* ── EXIT 7 · THE INPUT WAS BUILT FROM A READ THAT FAILED ──────────────
+   *
+   * `built.input` is non-null and `readable: false`: the engine produced
+   * honest REFUSE records saying the data could not be read, and they are
+   * worth persisting. But the EXIT is the read failure, not the refusal.
+   *
+   * This ordering is load-bearing. Reporting `EVALUATION_REFUSAL` here would
+   * file a broken database read as "the runner had nothing to say", which is
+   * the exact collapse Rule 11 forbids — and it would do it WHILE WRITING
+   * ROWS, so the log would look healthier than the system. */
+  if (built.refusalCode != null) {
+    const detail =
+      `${built.refusal ?? 'the evidence read failed'} — the engine refused on every lever `
+      + `and ${wrote}/${evaluation.records.length} of those refusals were persisted.`;
+    return { ...base, detail, exit: shadowExit(built.refusalCode, detail, counts) };
+  }
+
+  /* ── EXIT 8 · PERSISTENCE UNAVAILABLE ───────────────────────────────── */
+  if (tableAbsent > 0 && wrote === 0) {
+    const detail =
+      'evaluated but not persisted — canonical_adaptation_shadow_log does not exist yet '
+      + '(migration 164 not applied on this database).';
+    return { ...base, detail, exit: shadowExit('PERSISTENCE_UNAVAILABLE', detail, counts) };
+  }
+
+  /* ── EXIT 9 · PERSISTENCE FAILED ────────────────────────────────────── */
+  if (insertFailed > 0) {
+    const detail = `${wrote}/${evaluation.records.length} records persisted · ${insertFailed} INSERT(s) threw.`;
+    return { ...base, detail, exit: shadowExit('PERSISTENCE_FAILED', detail, counts) };
+  }
+
+  /* ── EXIT 10 · A COMPLETE, HONEST REFUSAL ON EVERY LEVER ──────────────
+   *
+   * Reported separately from `WROTE` even though rows landed, because "the
+   * engine looked and had nothing to change" and "the engine moved a lever"
+   * are the two facts anyone reading this mechanism actually wants to tell
+   * apart. Both are healthy; only one is evidence the engine can act, and
+   * Rule 21's whole complaint is that nobody could tell those apart. */
+  if (evaluation.records.length > 0 && evaluation.records.every((r) => r.decision === 'REFUSE')) {
+    const detail = `every lever REFUSED · ${wrote}/${evaluation.records.length} refusals persisted.`;
+    return { ...base, detail, exit: shadowExit('EVALUATION_REFUSAL', detail, counts) };
+  }
+
+  /* ── EXIT 11 · THE HEALTHY PATH ─────────────────────────────────────── */
+  const detail = `${wrote}/${evaluation.records.length} records persisted.`;
+  return { ...base, detail, exit: shadowExit('WROTE', detail, counts) };
 }
 
 /**

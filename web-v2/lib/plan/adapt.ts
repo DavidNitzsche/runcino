@@ -1687,7 +1687,36 @@ export async function applyAdaptations(
     touches: 'structural',
     detail: { action_kinds: actions.map((a) => a.kind) },
     apply: async (client) => {
+    /* ── LOGAPPLIED-1 (2026-09-05) · THE LOG RECORDS WHAT LANDED ───────────
+     *
+     * `buildAdaptationLogEntry(actions, …)` mapped the WHOLE action list —
+     * including every action this loop skipped: seal-filtered rows, the
+     * anti-stacking coupled skip, the dosing-breach skips for `field_test`
+     * and `reshape`, and a reshape whose `applyProgressionReshape` returned
+     * false. So an entry could carry `direction: 'UP'` for a bump that never
+     * touched a workout, and `n` (the true count) and `did` (the offered
+     * list) could disagree by any margin.
+     *
+     * That is worse than the `{ts, n}` log Rule 21 complains about, because
+     * it is the same shape as a real record. Rule 21's whole point is that
+     * the log must be able to tell an engine that never pushes from a runner
+     * who never earned it; a log that reports refused pushes as pushes
+     * answers that question WRONG rather than not at all.
+     *
+     * Collected by watching `touched`, not by editing eight `touched++`
+     * sites: the limbs `continue` in several places, so an end-of-iteration
+     * check would miss them. An action is recorded exactly when the counter
+     * moved while it was the one being processed. */
+    const appliedActions: AdaptationAction[] = [];
+    let touchedBeforeCurrent = 0;
+    let currentAction: AdaptationAction | null = null;
+    const settleCurrent = (): void => {
+      if (currentAction && touched > touchedBeforeCurrent) appliedActions.push(currentAction);
+    };
     for (const a of actions) {
+      settleCurrent();
+      touchedBeforeCurrent = touched;
+      currentAction = a;
       // Map action kind → coach_intents reason. Prefix with plan_adapt_
       // so the briefing voice can detect any prescription-mutation row by
       // a single string-prefix scan in the LLM context.
@@ -2187,18 +2216,35 @@ export async function applyAdaptations(
         }
       }
     }
-    // Stamp the plan. last_adapted_at = "cron evaluated" (run-adaptations
-    // also bumps it on no-op runs, so it does NOT mean anything changed).
-    // 2026-06-06 · Audit C C3 (Option C) · record an actual change only
-    // when touched > 0 by appending to adaptation_log. Consumers derive
-    // "last changed" = max(adaptation_log.ts); also fixes the empty-log
-    // finding (no schema change).
-    await client.query(
-      `UPDATE training_plans SET last_adapted_at = NOW()
-        WHERE user_uuid = $1 AND archived_iso IS NULL`,
-      [userId]
-    );
+    // LOGAPPLIED-1 · the final iteration has no successor to settle it.
+    settleCurrent();
+
+    // ── NOOPSTAMP-1 (2026-09-05) · STAMPED ONLY WHEN SOMETHING MOVED ─────
+    //
+    // This UPDATE used to run unconditionally, and its own comment said why:
+    // `last_adapted_at` meant "cron evaluated", not "anything changed". That
+    // reading is no longer available. `plan-version.ts` builds `planVersion`
+    // as `${id}:${last_adapted_at}` and five consumers spend it as "the
+    // prescription changed" — including `brain/proposal/staleness.ts`, which
+    // marks a pending proposal stale on exactly this signal, and
+    // `canonical/deferral-queue.ts`, which expires a deferral as
+    // `PLAN_VERSION_CHANGED`. One column cannot mean both (Rule 16), and the
+    // "cron evaluated" half now has its own owner in `lib/ops/cron-ledger.ts`.
+    //
+    // `touched` is the same condition `adaptation_log` has gated on since
+    // 2026-06-06. The two now agree, which is the point: a pass that appended
+    // nothing to the log must not move the version either.
+    //
+    // A batch of ONLY record-only notes (the modal case under the closed
+    // adaptation seam — `adaptation-authority.ts`) `continue`s before
+    // `touched++`, so it correctly leaves the version alone. The note still
+    // lands in `coach_intents`; nothing about the audit trail is lost here.
     if (touched > 0) {
+      await client.query(
+        `UPDATE training_plans SET last_adapted_at = NOW()
+          WHERE user_uuid = $1 AND archived_iso IS NULL`,
+        [userId]
+      );
       // 2026-09-03 · Rule 21 · "a log that records that something happened but
       // not what is not a log". `{ts, n}` is produced identically by a pass
       // that raised three weeks and one that cut three sessions, so the
@@ -2211,7 +2257,11 @@ export async function applyAdaptations(
       // Direction is DERIVED from each action rather than passed in — see
       // `adaptation-log.ts` for why a caller that could label its own change
       // would eventually label a downgrade an adjustment.
-      const entry = buildAdaptationLogEntry(actions, touched, new Date().toISOString());
+      // LOGAPPLIED-1 · the actions that MOVED a workout, never the ones that
+      // were offered. `appliedActions.length` and `touched` can still differ
+      // legitimately (one action may touch several workouts), which is why
+      // `n` stays the workout count and this stays the action list.
+      const entry = buildAdaptationLogEntry(appliedActions, touched, new Date().toISOString());
       await client.query(
         `UPDATE training_plans
             SET adaptation_log = COALESCE(adaptation_log, '[]'::jsonb)

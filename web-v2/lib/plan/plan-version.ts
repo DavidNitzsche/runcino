@@ -17,7 +17,9 @@
  * adaptation (same plan, new prescription); `last_adapted_at` alone misses a
  * full rebuild that lands in the same second. PLANVERSION-1 stamps the second
  * field in exactly one place — `mutatePlan`'s `stampAdapted` — and
- * `check-planversion-ratchet.sh` is the gate that keeps it that way.
+ * STATUSWORDS-1 (2026-09-05) · this line named `check-planversion-ratchet.sh`
+ * as the gate. `check-planversion-ratchet.sh` does not exist and never did. The gates that do:
+ * `lib/plan/_planversion_invalidation.test.ts` and `lib/plan/_noop_stamp.test.ts`.
  */
 
 /** The row shape every caller already has in hand. */
