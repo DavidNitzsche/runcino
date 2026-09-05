@@ -30,6 +30,27 @@ vi.mock('@/lib/plan/pace-drop-event', () => ({
 vi.mock('@/lib/plan/lookup', () => ({
   bustPlanLookupCache: vi.fn(),
 }));
+// REANCHORPROPOSES-1 · the proposal writer asks the day-resolver which future
+// days are already run, rather than writing its own date-coincidence query
+// (EXECID-SCAN-1). One day is sealed here so the fixture exercises both counts.
+vi.mock('@/lib/execution/day-resolver', () => ({
+  resolveDateRangeExecutions: vi.fn(async () => new Map([
+    ['2026-08-29', { dateISO: '2026-08-29', prescriptions: [{ id: 'wko-1', matchedRun: { id: 'run-1' } }], supplementalRuns: [] }],
+  ])),
+}));
+// REANCHORPROPOSES-1 · both halves of the self-heal price off the canonical
+// resolver, so it is stubbed with a fixed, coherent anchor set. The suite is
+// about WHICH HALF RUNS, never about the numbers.
+vi.mock('@/lib/training/load-prescription-anchors', () => ({
+  resolvePrescribedPaceAnchors: vi.fn(async () => ({
+    ok: true,
+    anchors: {
+      thresholdSecPerMi: 420, intervalSecPerMi: 392, repetitionSecPerMi: 356,
+      easyCeilingSecPerMi: 492, shakeoutCeilingSecPerMi: 522, marathonSecPerMi: 462,
+      basis: { threshold: { vdot: 48.5, confidence: 0.8, sourceMode: 'direct' } },
+    },
+  })),
+}));
 
 import { pool } from '@/lib/db/pool';
 import { mutatePlan } from '@/lib/plan/mutate';
@@ -160,16 +181,40 @@ function maintenancePlanRouter(opts: {
   adapterMovedRecently: boolean;
 }): Router {
   return (sql) => {
-    if (sql.includes('SELECT id, mode, race_id, authored_state FROM training_plans')) {
+    if (sql.includes('FROM training_plans')) {
       return { rows: [{
         id: 'plan-1', mode: 'maintenance', race_id: null,
-        authored_state: { anchorSource: opts.anchorSource, anchorVdot: 50 },
+        authored_state: {
+          anchorSource: opts.anchorSource,
+          anchorVdot: 50,
+          // REANCHORPROPOSES-1 · the Rule 10 stamp. Without a from-side the
+          // proposal writer REFUSES (it cannot say what would change), so a
+          // fixture with no anchors would exercise the refusal branch and
+          // report it as coverage of the propose branch — Rule 15's shape.
+          pace_anchors: {
+            threshold_s_per_mi: 430, interval_s_per_mi: 401, repetition_s_per_mi: 365,
+            easy_ceiling_s_per_mi: 502, shakeout_ceiling_s_per_mi: 532, marathon_s_per_mi: 472,
+          },
+        },
       }] };
     }
     if (sql.includes("reason = 'plan_adapt_recompute_paces'")) {
       return { rows: opts.adapterMovedRecently ? [{ '?column?': 1 }] : [] };
     }
-    // Maintenance arm's future-workouts read and every write: empty is fine.
+    // The proposal writer's prescription-side read. The SEALED side is the
+    // day-resolver's, stubbed above — this writer issues no `runs` query.
+    if (sql.includes('FROM plan_workouts pw') && sql.includes('date_iso >=')) {
+      return { rows: [
+        { id: 'wko-1', date_iso: '2026-08-29' },
+        { id: 'wko-2', date_iso: '2026-08-31' },
+        { id: 'wko-3', date_iso: '2026-09-02' },
+      ] };
+    }
+    if (sql.includes('INSERT INTO plan_workout_proposals')) {
+      return { rows: [{ id: 900 }] };
+    }
+    // Maintenance arm's future-workouts read, the existing-reprice read and
+    // every write: empty is fine.
     return { rows: [] };
   };
 }
@@ -190,29 +235,49 @@ describe('4 · reanchorActivePlan deferral', () => {
     expect(mutatePlan).not.toHaveBeenCalled();
   });
 
-  it('a provisional→measured upgrade still fires the same morning', async () => {
+  it('a provisional→measured upgrade still fires the same morning · as a CARD', async () => {
     route = maintenancePlanRouter({ anchorSource: null, adapterMovedRecently: true });
-    const { reanchorActivePlan, isReanchorDeferral } = await import('@/lib/plan/reanchor-plan');
+    const { reanchorActivePlan, isReanchorDeferral, isReanchorProposed } =
+      await import('@/lib/plan/reanchor-plan');
     const out = await reanchorActivePlan(UUID, 46, '2026-08-28');
 
     expect(isReanchorDeferral(out)).toBe(false);
     expect(out).not.toBeNull();
-    if (out && !isReanchorDeferral(out)) {
-      expect(out.clearedProvisional).toBe(true);
+    // REANCHORPROPOSES-1 · this used to assert `clearedProvisional` and
+    // `mutatePlan` called once. Both were assertions that the UNATTENDED path
+    // writes the plan, which is the thing that was wrong.
+    expect(isReanchorProposed(out)).toBe(true);
+    if (isReanchorProposed(out)) {
+      expect(out.outcome.status).toBe('written');
+      expect(out.arm).toBe('maintenance');
+      if (out.outcome.status === 'written') {
+        // The card hangs on the earliest day that is NOT already run, and it
+        // counts both sides. `wko-1` carries a matched run, so it is sealed.
+        expect(out.outcome.payload.workoutsAffected).toBe(2);
+        expect(out.outcome.payload.workoutsSealed).toBe(1);
+        // A faster anchor set reads NEGATIVE seconds per mile.
+        expect(out.outcome.payload.meanAnchorDeltaSecPerMi).toBeLessThan(0);
+      }
     }
+    expect(issued.some((s) => s.sql.includes('INSERT INTO plan_workout_proposals'))).toBe(true);
     // The deferral question is not even asked for an upgrade.
     expect(issued.some((s) => s.sql.includes('plan_adapt_recompute_paces'))).toBe(false);
-    expect(mutatePlan).toHaveBeenCalledTimes(1);
+    expect(mutatePlan).not.toHaveBeenCalled();
   });
 
-  it('with no adapter move on record, a real fitness shift proceeds', async () => {
+  it('with no adapter move on record, a real fitness shift raises a card and writes NO plan row', async () => {
     route = maintenancePlanRouter({ anchorSource: 'measured_run', adapterMovedRecently: false });
-    const { reanchorActivePlan, isReanchorDeferral } = await import('@/lib/plan/reanchor-plan');
+    const { reanchorActivePlan, isReanchorDeferral, isReanchorProposed } =
+      await import('@/lib/plan/reanchor-plan');
     const out = await reanchorActivePlan(UUID, 53, '2026-08-28'); // Δ3 ≥ 2.0
 
     expect(isReanchorDeferral(out)).toBe(false);
-    expect(out).not.toBeNull();
-    expect(mutatePlan).toHaveBeenCalledTimes(1);
+    expect(isReanchorProposed(out)).toBe(true);
+    expect(
+      issued.some((s) => /UPDATE plan_workouts/i.test(s.sql)),
+      'the unattended self-heal wrote a plan row. That is the defect this conversion removed.',
+    ).toBe(false);
+    expect(mutatePlan).not.toHaveBeenCalled();
   });
 
   it('the race-authority FORCE path never consults the deferral', async () => {

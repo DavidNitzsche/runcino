@@ -105,6 +105,7 @@ import { preserveProgressionSql, readSelectionRationale, RATIONALE_SPEC_KEY } fr
 import { rationaleForRow } from '@/lib/workout-catalogue/select';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
+import type { AuthorityClass } from '@/lib/brain/mutation/authority';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * THE GOAL→TRAINING-PACE BLEND IS DELETED · AUTHORING-CANONICAL-1 (2026-09-01)
@@ -235,6 +236,22 @@ export async function recomputePacesForPlan(
   opts?: {
     source?: string;
     client?: { query: typeof pool.query };
+    /**
+     * REANCHORPROPOSES-1 (2026-09-05) · WHO IS ASKING, when this function has
+     * to open its own transaction.
+     *
+     * Only meaningful on the STANDALONE branch — with a `client` the caller
+     * already owns a `mutatePlan` and has already declared its own authority,
+     * and declaring a second one here would be a second answer to a question
+     * that has one owner (Rule 16).
+     *
+     * There is no default, and that is deliberate. This used to declare
+     * `COACHING_ADAPTATION` and then pass a hold that let the write through
+     * anyway; the hold is gone, so a caller that cannot say who is asking is
+     * REFUSED rather than waved through. Rule 11: "nobody said" and "the
+     * runner asked" are not the same fact.
+     */
+    authority?: AuthorityClass;
   },
 ): Promise<RecomputePacesResult | null> {
   if (!Number.isFinite(vdotNow) || vdotNow <= 0) return null;
@@ -649,18 +666,22 @@ export async function recomputePacesForPlan(
     // a subset of the caller's batch would judge an intermediate state.
     await core(opts.client);
   } else {
+    // REANCHORPROPOSES-1 (2026-09-05) · the hold is GONE, and with it the last
+    // way this function could open its own transaction on nobody's authority.
+    // A standalone caller states its class or is refused; the refusal is loud
+    // because a silent one would look exactly like "there was nothing to
+    // reprice" (Rule 11).
+    if (opts?.authority == null) {
+      console.error(
+        `[recomputePacesForPlan] REFUSED · plan=${planId} · source=${opts?.source ?? 'standalone'} · `
+        + 'a standalone recompute must declare its authority class. Pass one, or run inside a '
+        + 'caller-owned mutatePlan by supplying `client`.',
+      );
+      return null;
+    }
     const { mutatePlan } = await import('./mutate');
     const boundary = await mutatePlan<void>({
-    // AUTHORITY (2026-09-05) · this IS a coaching adaptation: it rewrites
-    // prescribed paces on a live plan from the engine's own judgement, and it
-    // is called from an unattended cron. Held, not exempted: the hold is
-    // logged on every run and the gate fails when any field is missing.
-    authority: 'COACHING_ADAPTATION',
-    hold: {
-      owner: 'David',
-      blocker: 'called by reanchor and plan-drift, so it inherits reanchor own blocker',
-      expiresWhen: 'its callers stop writing directly and go through a proposal',
-    },
+      authority: opts.authority,
       userUuid: plan.user_uuid,
       source: `recompute-paces/${opts?.source ?? 'standalone'}`,
       todayISO: today,

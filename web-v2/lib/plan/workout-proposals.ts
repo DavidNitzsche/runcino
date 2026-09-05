@@ -26,6 +26,7 @@ import { expireStaleWorkoutProposals } from './proposal-expiry';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { AdaptationAction, AdaptationTrigger } from './adapt';
 import { stripResearchCitations } from './strip-citations';
+import type { RepricePayload } from './reprice-payload';
 
 export interface PendingProposal {
   id: number;
@@ -37,11 +38,28 @@ export interface PendingProposal {
   // shadow of the same defect `PROPOSABLE_KINDS` had: the proposal lane could
   // not describe an increase, so nothing could have travelled down it even if
   // the seam had let something through.
-  actionKind: 'downgrade' | 'shave' | 'reschedule' | 'field_test' | 'mark_upgrade';
+  //
+  // REANCHORPROPOSES-1 (2026-09-05) · `reprice` joins them, and it is the first
+  // member that is NOT an `AdaptationAction['kind']`. It cannot be: a repricing
+  // is one decision over the whole remaining block, and `AdaptationAction` is
+  // per-workout by construction. It therefore does not travel through
+  // `writeWorkoutProposals` or `PROPOSABLE_KINDS` at all — `lib/plan/
+  // reanchor-proposal.ts` is its writer and the accept route branches on it
+  // before it builds an action. See `lib/plan/reprice-payload.ts` for why one
+  // coordinated proposal beats seventy-seven cards.
+  actionKind: 'downgrade' | 'shave' | 'reschedule' | 'field_test' | 'mark_upgrade' | 'reprice';
   actionPayload: {
     newType?: string;
     newDate?: string;
     shaveFraction?: number;
+    /**
+     * The whole coordinated repricing, present only on a `reprice` row.
+     *
+     * `action_payload` is jsonb with no constraint, so this needed no
+     * migration — the column could always have held it, and only the TYPE said
+     * a proposal must be about a single workout.
+     */
+    reprice?: RepricePayload;
     /**
      * The distance an upward proposal would set. Absent on every other kind.
      *

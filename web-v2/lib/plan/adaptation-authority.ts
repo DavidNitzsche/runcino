@@ -63,14 +63,28 @@
  *     preserved, and a runner parked in a dead block forever is not "one
  *     stable plan", it is no plan. Those live in
  *     `app/api/cron/plan-drift/route.ts` and are unchanged.
- *   · `reanchorActivePlan` (`cron/snapshot-projections`). Flagged in the
- *     2026-09-02 seal report as the one automatic plan writer left outside
- *     this seam. It is doctrine-bound (`lib/doctrine/registry.ts` asserts
- *     the call site exists) and it is the path that PRICES a block that was
- *     authored without canonical pace anchors, so sealing it would leave
- *     such a block permanently mis-priced — a coherence regression, not a
- *     simplification. Deliberately left for the owner to rule on rather
- *     than sealed by an agent.
+ *   · `reanchorActivePlan` (`cron/snapshot-projections`). RULED ON AND CLOSED,
+ *     2026-09-05 (REANCHORPROPOSES-1). This paragraph used to say the writer
+ *     was "deliberately left for the owner to rule on rather than sealed by an
+ *     agent". He ruled: "AUTOMATIC_ADAPTATION_AUTHORITY=false is meaningless if
+ *     reanchorActivePlan can bypass it and rewrite 76 workouts", and "a hold
+ *     that continues writing is an exemption with better paperwork."
+ *
+ *     It no longer writes. The cron calculates the repricing and raises ONE
+ *     coordinated `plan_workout_proposals` card (`action_kind` = `reprice`);
+ *     the plan moves when the runner accepts, through
+ *     `applyReanchorProposal` under `RUNNER_ACCEPTED`. The coherence worry the
+ *     old paragraph raised — a block authored without canonical anchors going
+ *     permanently mis-priced — is answered by the card rather than by an
+ *     unattended write: the `canonical-prior` arm still fires daily, it is
+ *     still doctrine-bound, and what changed is who says yes.
+ *
+ *     This seam did NOT move to cover it. A proposal is not a mutation, and
+ *     widening the seam to gate one would have made "may an unattended job
+ *     change the plan" and "may the engine ask a question" the same switch —
+ *     which is the conflation the seam's own doc warns about two paragraphs
+ *     up. GUARD 3 in `_seal_single_seam.test.ts` holds the self-heal shut on
+ *     its declared authority instead.
  *
  * ── RULE 20 ──────────────────────────────────────────────────────────────
  *

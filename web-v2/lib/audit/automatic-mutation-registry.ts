@@ -192,16 +192,29 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
     route: 'app/api/cron/snapshot-projections/route.ts',
     trigger: '30 7 * * * · collides on the minute with enrich-weather',
     reach: 'overwrites_engine_state',
-    changes: ['projection_snapshots', 'users.max_hr', 'runner_calibration', 'plan_workouts', 'training_plans.authored_state', 'pace_zone_events', 'ops_alerts'],
+    changes: ['projection_snapshots', 'users.max_hr', 'runner_calibration', 'plan_workouts', 'plan_workout_proposals', 'training_plans.authored_state', 'pace_zone_events', 'ops_alerts'],
     idempotent: true,
     onPartialFailure:
-      'Snapshots are independent upserts. The plan re-anchor runs through mutatePlan, so it rolls back whole. '
-      + 'A failed re-anchor is now logged; before 2026-08-25 a bare catch made it indistinguishable from '
-      + 'having had nothing to do.',
-    runnerSees: 'audit_row_only',
-    reversible: 'pace_zone_events records fromVdot to toVdot, so the prior anchor is recoverable. The prescribed paces are overwritten in place.',
+      'Snapshots are independent upserts. The re-anchor now writes a proposal row rather than the plan, and '
+      + 'the supersede+insert is ONE data-modifying CTE, so it cannot half-land. Every branch of the writer '
+      + 'returns a named status which the cron reports as reanchor_proposed.status; before 2026-08-25 a bare '
+      + 'catch made a failure indistinguishable from having had nothing to do.',
+    runnerSees: 'surfaced',
+    reversible: 'A proposal is reversible by dismissing it. On accept, pace_zone_events records fromVdot to toVdot, so the prior anchor is recoverable; the prescribed paces are then overwritten in place.',
     note:
-      'THE THIRD PLAN WRITER, and the one whose name hides it. reanchorActivePlan rewrites pace_target_s_per_mi '
+      'SEALED 2026-09-05 · REANCHORPROPOSES-1 · THIS CRON NO LONGER CHANGES THE PLAN. David: "The current '
+      + 'state is contradictory: COACHING_ADAPTATION is supposedly refused, while a named hold allows reanchor '
+      + 'to continue changing workouts. A hold that continues writing is an exemption with better paperwork." '
+      + 'reanchorActivePlan now calculates exactly what it always calculated and raises ONE coordinated '
+      + 'plan_workout_proposals card (action_kind reprice) covering every future unsealed pace-bearing day; '
+      + 'the write happens on the runner tapping accept, through applyReanchorProposal under RUNNER_ACCEPTED. '
+      + 'plan_workouts REMAINS in `changes` above for the same reason it does under cron/run-adaptations: the '
+      + 'registry keys a writer on the FUNCTION this route invokes, reanchorRacePrep and reanchorMaintenance '
+      + 'still contain those statements, and they are still reached — by the accept route, and by the '
+      + 'race-authority answer. Claiming the capability had vanished would be the dishonest answer. '
+      + 'AUTOMATIC_ADAPTATION_AUTHORITY was NOT opened; a proposal is not a mutation. Historical behaviour '
+      + 'below. '
+      + 'THE THIRD PLAN WRITER, and the one whose name hides it. reanchorActivePlan rewrites pace_target_s_per_mi '
       + 'and workout_spec for every future unsealed day. Sealed days are skipped, so it cannot rewrite what the '
       + 'runner already ran. It was not on the incident brief. 2026-08-28 · it now DEFERS to the 03:00 adapter: '
       + 'when a plan_adapt_recompute_paces intent exists within 24h it stands down with a recorded '

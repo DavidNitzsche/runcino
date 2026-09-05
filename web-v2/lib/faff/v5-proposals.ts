@@ -56,6 +56,46 @@ export function directionOf(
   switch (kind) {
     case 'mark_upgrade': return 'push';
     case 'field_test': return 'push';
+    /* ── REANCHORPROPOSES-1 (2026-09-05) · THE PACE AXIS GETS A CARD ────────
+     *
+     * `reanchorActivePlan` used to write this change straight into the plan
+     * from an unattended cron. It now proposes it, and without this arm the
+     * card would be SILENTLY WITHHELD: `toWire` returns null for a null
+     * direction, so the proposal row would exist, the runner would never see
+     * it, and his paces would simply stop updating with nothing on screen to
+     * say why. That is the exact failure this conversion had to avoid.
+     *
+     * Direction comes from `meanAnchorDeltaSecPerMi`, which
+     * `lib/plan/reanchor-proposal.ts` computes ONCE and nothing else
+     * re-derives (Rule 16). A pace is seconds per mile, so NEGATIVE IS FASTER.
+     *
+     * ── THE DISCRETE LABEL OVER A CONTINUOUS QUANTITY, AND WHY IT IS NOT
+     *    RULE 9's DEFECT ─────────────────────────────────────────────────
+     *
+     * One second per mile faster reads PUSH and one second slower reads
+     * PULL BACK, which looks like a cliff. It is not the class Rule 9 names,
+     * because nothing about the PRESCRIPTION differs across it: the accept
+     * applies the same canonical anchors either way, and the numbers on the
+     * card move continuously through zero. What changes is a word describing
+     * which way they moved, and "faster" and "slower" are genuinely discrete
+     * facts about a signed number. There is no "the fitter runner gets the
+     * worse plan" signature here, which is the recurring tell.
+     *
+     * A repricing whose anchors do not move on balance is HOLD, and this is
+     * the first writer that direction has ever had. It is real: threshold can
+     * move faster while marathon moves slower, and telling the runner the
+     * block is being re-priced without claiming a direction is the honest
+     * answer.
+     */
+    case 'reprice': {
+      const d = payload?.reprice?.meanAnchorDeltaSecPerMi;
+      // Rule 11 · a payload we cannot read is not a hold. Withheld, per the
+      // default branch's own reasoning.
+      if (typeof d !== 'number' || !Number.isFinite(d)) return null;
+      if (d <= -1) return 'push';
+      if (d >= 1) return 'pull_back';
+      return 'hold';
+    }
     case 'shave': return 'pull_back';
     case 'downgrade': {
       const t = typeof payload?.newType === 'string' ? payload.newType : null;
@@ -108,6 +148,23 @@ export function headlineFor(p: PendingProposal): string {
     }
     case 'field_test':
       return `Make ${day} a field test`;
+    /**
+     * A repricing is about the BLOCK, not about `day`, so this headline is the
+     * one that does not name a weekday. The card's date still says where the
+     * change starts; saying it twice would be Rule 17.
+     */
+    case 'reprice': {
+      const r = p.actionPayload?.reprice;
+      const n = numberOrNull(r?.workoutsAffected);
+      const d = numberOrNull(r?.meanAnchorDeltaSecPerMi);
+      const sessions = n == null ? 'Every session ahead'
+        : n === 1 ? '1 session ahead'
+        : `${n} sessions ahead`;
+      // `1 session ahead GETS`, `4 sessions ahead GET`. Found by reading the
+      // rendered string, which is the only place a verb agreement shows up.
+      if (d == null || (d > -1 && d < 1)) return `${sessions} ${n === 1 ? 'gets' : 'get'} updated paces`;
+      return d < 0 ? `${sessions} move to faster paces` : `${sessions} move to easier paces`;
+    }
   }
 }
 
@@ -162,6 +219,14 @@ const EVIDENCE_LABELS: Record<string, string> = {
   days_since_test: 'Days since last test',
   weekly_mi: 'Week volume, miles',
   long_mi: 'Longest run, miles',
+  // REANCHORPROPOSES-1 · what a repricing measured.
+  anchor_vdot_now: 'Block is priced at',
+  anchor_vdot_proposed: 'Your evidence reads',
+  evidence_source: 'Evidence came from',
+  anchor_confidence: 'Confidence in that read',
+  anchor_source: 'How the anchor is known',
+  ends_calibration_intro: 'Ends the calibration intro',
+  priced_before_canonical_layer: 'Block predates the canonical pace layer',
 };
 
 /**
@@ -301,6 +366,28 @@ function reassessOnFrom(ev: Record<string, unknown>): string | null {
  * place a second date belongs (see `V5ProposalWire.dateISO`).
  */
 function affectedFrom(p: PendingProposal): V5ProposalWorkoutWire[] {
+  // REANCHORPROPOSES-1 · a repricing touches the whole remaining block, and
+  // listing 77 rows here would be the seventy-seven-cards defect wearing a
+  // different hat. One row, naming the count, from the day it takes effect.
+  const r = p.actionPayload?.reprice;
+  if (p.actionKind === 'reprice' && r != null) {
+    const n = numberOrNull(r.workoutsAffected);
+    const rows: V5ProposalWorkoutWire[] = [{
+      dateISO: p.workoutDateISO,
+      what: n == null || n === 1
+        ? 'Every prescribed session from this day on'
+        : `${n} prescribed sessions, from this day to the end of the block`,
+    }];
+    const sealed = numberOrNull(r.workoutsSealed);
+    if (sealed != null && sealed > 0) {
+      rows.push({
+        dateISO: p.workoutDateISO,
+        what: `${sealed} day${sealed === 1 ? '' : 's'} left alone because you already ran ${sealed === 1 ? 'it' : 'them'}`,
+      });
+    }
+    return rows;
+  }
+
   const ev = p.evidence ?? {};
   const type = firstString(ev.planned_type);
   const mi = numberOrNull(ev.planned_distance_mi);

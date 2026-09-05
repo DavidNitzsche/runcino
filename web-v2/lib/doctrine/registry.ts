@@ -10327,6 +10327,25 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (!/reanchorActivePlan/.test(sourceOf('web-v2/app/api/cron/snapshot-projections/route.ts'))) {
         throw new Error('the projection cron no longer calls the re-anchor · the intro cannot end');
       }
+      // REANCHORPROPOSES-1 (2026-09-05) · the escape is now TWO steps, so the
+      // claim has to check both. The cron raises a card; the runner accepting
+      // it is what applies the measured anchors and ends the intro. Checking
+      // only the cron would have gone on passing with an apply half that no
+      // caller could reach — the intro would be endable in principle and
+      // permanent in fact, which is the Justin bug wearing a proposal.
+      if (!/export async function applyReanchorProposal/.test(reanchor)) {
+        throw new Error(
+          'nothing applies an accepted re-anchor · the cron proposes, the runner taps, and the '
+          + 'calibration intro never ends',
+        );
+      }
+      const accept = sourceOf('web-v2/app/api/plan/workout-proposals/[id]/accept/route.ts');
+      if (!/applyReanchorProposal/.test(accept)) {
+        throw new Error(
+          'the accept route no longer reaches the re-anchor apply half · a reprice card the '
+          + 'runner taps would change nothing',
+        );
+      }
 
       // 7 · Both doctrine passages this claim leans on must still say what it
       // says they say. The field-test protocols are the grounding for the
