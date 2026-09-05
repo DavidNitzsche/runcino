@@ -34,8 +34,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  athleteEvidenceFor, ceilingClaimFrom, checkPromotion, detectStackedStress,
-  earningGateFor, heuristicRankScore, rankOptions,
+  athleteEvidenceFor, ceilingClaimFrom, checkPromotion, detectSimultaneousStressAddition,
+  detectStackedStress, earningGateFor, heuristicRankScore, rankOptions,
   type DemonstratedHistory, type PlannedWeek,
 } from '@/lib/plan/adjudication/adjudicate';
 import type { ComparableSession, DecisionTrace, OptionAppraisal } from '@/lib/plan/adjudication/contract';
@@ -202,6 +202,90 @@ describe('CIM block · corrected history', () => {
     expect(s?.provenance).toBe('POLICY_ASSUMPTION');
     expect(s?.basis).toContain('not measured');
     expect(heuristicRankScore('UNKNOWN')).toBeNull();
+  });
+
+  it('doctrine one-at-a-time · the 2026-09-21 week adds mileage AND intensity', () => {
+    // Research/00a §"Practical load rules": "Either add mileage OR add intensity
+    // in a given week, not both." The block goes 46.8 mi with 2 stressors to
+    // 55.2 with 3. Two independent lines land on the same week: it is also the
+    // only week rated above SUPPORTED on volume.
+    const w0914: PlannedWeek = {
+      weekStartISO: '2026-09-14', weeklyMi: 46.8, longestMi: 16.5,
+      stressors: ['threshold', '16.5 mi long'], mpMi: 0, isTaper: false, isRaceWeek: false,
+    };
+    const w0921: PlannedWeek = {
+      weekStartISO: '2026-09-21', weeklyMi: 55.2, longestMi: 17.0,
+      stressors: ['Dodgers 10k', 'tempo', '17 mi long'], mpMi: 0, isTaper: false, isRaceWeek: false,
+    };
+    const f = detectSimultaneousStressAddition(w0921, w0914);
+    expect(f).not.toBeNull();
+    expect(f?.stressorsBefore).toBe(2);
+    expect(f?.stressorsAfter).toBe(3);
+    expect(f?.volumeStep).toBeGreaterThan(0.17);
+  });
+
+  it('a cutback week is not the baseline for an addition claim', () => {
+    // Comparing against a prescribed dip makes the week after it look like a
+    // spike. Rule 8 in miniature: a taper is never the runner's normal.
+    const taper: PlannedWeek = {
+      weekStartISO: '2026-09-07', weeklyMi: 24.4, longestMi: 6.2,
+      stressors: ['Santa Monica 10k'], mpMi: 0, isTaper: false, isRaceWeek: true,
+    };
+    const after: PlannedWeek = {
+      weekStartISO: '2026-09-14', weeklyMi: 46.8, longestMi: 16.5,
+      stressors: ['threshold', '16.5 mi long'], mpMi: 0, isTaper: false, isRaceWeek: false,
+    };
+    expect(detectSimultaneousStressAddition(after, taper)).toBeNull();
+  });
+
+  it('promotion BLOCKS a one-at-a-time week that was pushed with no gate', () => {
+    // Caught by falsification, not by design: disabling the promotion-level
+    // block left the whole suite green, because the detector was tested and the
+    // gate acting on it was not. Rule 18, on my own gate.
+    const w0914: PlannedWeek = {
+      weekStartISO: '2026-09-14', weeklyMi: 46.8, longestMi: 16.5,
+      stressors: ['threshold', '16.5 mi long'], mpMi: 0, isTaper: false, isRaceWeek: false,
+    };
+    const w0921: PlannedWeek = {
+      weekStartISO: '2026-09-21', weeklyMi: 55.2, longestMi: 17.0,
+      stressors: ['Dodgers 10k', 'tempo', '17 mi long'], mpMi: 0, isTaper: false, isRaceWeek: false,
+    };
+    const base = (gate: DecisionTrace['earningGate']): DecisionTrace => ({
+      decisionId: 'vol-0921', dateISO: '2026-09-21', what: '55.2 mi week', windowDays: 7,
+      athlete: athleteEvidenceFor({
+        what: '55.2 mi week', asOfISO: '2026-09-21', prescribed: 55.2,
+        demonstratedMaxToday: 48.5, demonstratedMaxProjected: null,
+        comparables: [], historyWindow: HISTORY_WINDOW,
+      }),
+      stacked: detectStackedStress(w0921, HIST),
+      demand: null,
+      options: [
+        opt('PUSH', 'run 55.2', 'ALLOWED', 'adds mileage and a stressor together'),
+        opt('HOLD', 'hold at 48.5', 'SUPPORTED', ''),
+        opt('PULL_BACK', 'drop the tune-up', 'SUPPORTED', ''),
+      ],
+      chosen: 'PUSH',
+      because: 'the block needs the volume',
+      rejected: [], conflicts: [], citations: [],
+      reassessOnISO: '2026-09-20',
+      earningGate: gate,
+    });
+
+    const blockedRes = checkPromotion([base(null)], { weeks: [w0914, w0921] });
+    expect(blockedRes.check.recoverability).toBe(false);
+    expect(blockedRes.blockedBecause.join(' ')).toMatch(/add mileage AND intensity together/);
+    expect(blockedRes.blockedBecause.join(' ')).toMatch(/2026-09-21/);
+
+    // …and clears once the week carries a gate, because the rule asks for the
+    // decision to be argued, not for the week to be forbidden.
+    const gated = base(earningGateFor({
+      decisionId: 'vol-0921', what: '55.2 mi week', prescribed: 55.2,
+      demonstratedMaxToday: 48.5, assessOnISO: '2026-09-20',
+      requires: [{ what: 'the 46.8 mi week completed', measurable: 'weekly mileage >= 46.8, no session graded MISSED', byISO: '2026-09-20' }],
+      ifUnmet: 'REDUCE', reduceTo: 48.5,
+    }));
+    const okRes = checkPromotion([gated], { weeks: [w0914, w0921] });
+    expect(okRes.check.recoverability).toBe(true);
   });
 
   it('the block passes promotion once every conditional carries a gate', () => {

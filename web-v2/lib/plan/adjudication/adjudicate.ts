@@ -82,6 +82,35 @@ export interface PlannedWeek {
 export const STEP_SUPPORTED_MAX = 0.10;   // +10% · inside ordinary progression
 export const STEP_ALLOWED_MAX = 0.25;     // +25% · a real reach, not yet earned
 
+/**
+ * A correction to the paragraph above, found while checking my own constants
+ * against the source rather than against my memory of it.
+ *
+ * For a LONG RUN, +10% is doctrine and is strong: `Research/00a` §"Practical
+ * load rules" caps a single long run at 110% of the longest run in the prior 30
+ * days, and §"The 10% rule reconsidered" prices the breach at a 64% rise in
+ * overuse-injury risk from a 5,200-runner cohort. That band is
+ * CALCULATED_PHYSIOLOGY and `LONGRUN.wow-single-step-cap-is-the-injury-red-line`
+ * already binds it in CI.
+ *
+ * For WEEKLY VOLUME, +10% is NOT doctrine, and doctrine says so explicitly. The
+ * same section is titled "The 10% rule reconsidered" and its findings are that
+ * novices at +24% over 8 weeks showed no higher injury rate than +10% over 12,
+ * and that "weekly mileage change correlated weakly with injury". So a 10%
+ * weekly-volume band is a POLICY_ASSUMPTION wearing a research number's
+ * clothes, and reading it as a limit makes this layer more restrictive than the
+ * evidence warrants, which is Rule 22 pointed at my own constant.
+ *
+ * The band stays where it is, because it is doing a different job here: it is a
+ * reading rule for how far past demonstrated capacity counts as "comparable",
+ * not an injury threshold. What changes is that it is labelled honestly, and
+ * that the real cited constraint on a week which adds volume is the
+ * one-stressor-at-a-time rule below, which actually bites.
+ */
+export const VOLUME_BAND_IS_POLICY_NOT_THE_TEN_PERCENT_RULE =
+  'Research/00a §"The 10% rule reconsidered" declines to support a 10% weekly cap. '
+  + 'This band classifies comparability, it does not assert an injury threshold.';
+
 export function classifyStep(
   prescribed: number | null,
   demonstratedMax: number | null,
@@ -315,6 +344,62 @@ export function detectStackedStress(
   };
 }
 
+/**
+ * ONE STRESSOR AT A TIME.
+ *
+ *   "Add stress one-at-a-time · Either add mileage OR add intensity in a given
+ *    week, not both."      — Research/00a §"Practical load rules"
+ *
+ * A HARD_CONSTRAINT, cited, and until now unenforced at authoring. The string
+ * "stress one-at-a-time" appears in `lib/plan/adaptive-ramp.ts`, which governs
+ * ADAPTATION, and Rule 21 measured that path at zero firings in 309 production
+ * intents. So the rule was quoted in a file that never runs and checked nowhere
+ * that composes a plan. Rule 20 exactly: a product rule with no gate is a
+ * hypothesis.
+ *
+ * It belongs here rather than in a per-week validator because it is a SEQUENCE
+ * question. It compares this week against the one before it, and every existing
+ * gate samples weeks one at a time, which is why nothing caught it.
+ */
+export interface SimultaneousStressAddition {
+  readonly weekStartISO: string;
+  readonly volumeStep: number;
+  readonly stressorsBefore: number;
+  readonly stressorsAfter: number;
+  readonly why: string;
+}
+
+/** Below this, a volume change is noise rather than "adding mileage". */
+export const VOLUME_ADDITION_THRESHOLD = 0.05;
+
+export function detectSimultaneousStressAddition(
+  week: PlannedWeek,
+  previous: PlannedWeek | null,
+): SimultaneousStressAddition | null {
+  if (previous == null || !(previous.weeklyMi > 0)) return null;
+  // A cutback or race week is not "adding" anything, and comparing against one
+  // makes the week after it look like a spike. Both are prescribed dips.
+  if (previous.isTaper || previous.isRaceWeek) return null;
+
+  const volumeStep = week.weeklyMi / previous.weeklyMi - 1;
+  const before = previous.stressors.length;
+  const after = week.stressors.length;
+
+  const addsMileage = volumeStep > VOLUME_ADDITION_THRESHOLD;
+  const addsIntensity = after > before;
+  if (!addsMileage || !addsIntensity) return null;
+
+  return {
+    weekStartISO: week.weekStartISO,
+    volumeStep,
+    stressorsBefore: before,
+    stressorsAfter: after,
+    why: `Volume rises ${Math.round(volumeStep * 1000) / 10}% on the previous week AND the `
+      + `stressor count goes from ${before} to ${after}. Research/00a §"Practical load rules" `
+      + 'asks for one or the other in a given week, not both.',
+  };
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
  * 4 · THE THREE OPTIONS  ·  push / hold / pull back, every time
  * ═══════════════════════════════════════════════════════════════════════ */
@@ -458,6 +543,26 @@ export function checkPromotion(
   // first version could not fail on.
   const anyAdvance = traces.some((t) => t.chosen === 'PUSH');
 
+  // ONE STRESSOR AT A TIME, walked across the SEQUENCE. A week that adds
+  // mileage and intensity together may still be right, but it has to be argued
+  // rather than assumed, so it must either not be pushed or carry a gate.
+  const simultaneousAdditions = (() => {
+    const weeks = ctx?.weeks ?? [];
+    const out: SimultaneousStressAddition[] = [];
+    for (let i = 1; i < weeks.length; i += 1) {
+      const f = detectSimultaneousStressAddition(weeks[i], weeks[i - 1]);
+      if (f != null) out.push(f);
+    }
+    return out;
+  })();
+  const unarguedAdditions = simultaneousAdditions.filter((a) => {
+    const t = traces.find((x) => x.stacked?.weekStartISO === a.weekStartISO
+      || x.dateISO === a.weekStartISO);
+    // No trace at all for a week doctrine flags is the worst case: nobody looked.
+    if (t == null) return true;
+    return t.chosen === 'PUSH' && t.earningGate === null;
+  });
+
   // Taper integrity, likewise real. Nothing gets pushed inside a taper.
   const taperWeeks = new Set((ctx?.weeks ?? []).filter((w) => w.isTaper || w.isRaceWeek)
     .map((w) => w.weekStartISO));
@@ -495,6 +600,11 @@ export function checkPromotion(
     blocked.push('progression · no decision in this block advances anything. Rule 21: a plan that only '
       + 'holds and pulls back is a safety system wearing a coach\'s clothes.');
   }
+  if (unarguedAdditions.length > 0) {
+    blocked.push(`recoverability · ${unarguedAdditions.length} week(s) add mileage AND intensity `
+      + 'together with no gate and no argument, against Research/00a §"Practical load rules": '
+      + `${unarguedAdditions.map((a) => a.weekStartISO).join(', ')}`);
+  }
   if (pushedInTaper.length > 0) {
     blocked.push(`taperIntegrity · ${pushedInTaper.length} decision(s) PUSH inside a taper or race week: `
       + `${pushedInTaper.map((t) => t.decisionId).join(', ')}`);
@@ -504,7 +614,7 @@ export function checkPromotion(
     athleteSpecificSupport: ungated.length === 0 && markedButUnexplained.length === 0
       && badCeiling.length === 0 && traces.length > 0,
     wholeBlockCoherence: missingOptions.length === 0 && traces.length > 0,
-    recoverability: stackedUnaddressed.length === 0,
+    recoverability: stackedUnaddressed.length === 0 && unarguedAdditions.length === 0,
     progression: traces.length > 0 && anyAdvance,
     taperIntegrity: pushedInTaper.length === 0,
     doctrineResolution: unresolvedConflict.length === 0,
