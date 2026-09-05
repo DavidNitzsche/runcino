@@ -146,7 +146,7 @@ function nextDayISO(dateISO: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-interface PrescribedRow {
+export interface PrescribedRow {
   id: string;
   date_iso: string;
   type: string;
@@ -156,7 +156,7 @@ interface PrescribedRow {
   is_long: boolean | null;
 }
 
-interface RunRow {
+export interface RunRow {
   id: string;
   day: string;
   data: unknown;
@@ -168,8 +168,20 @@ interface RunRow {
  * single-day and date-range entry points below share exactly one
  * implementation of the EXACT/LEGACY/SUPPLEMENTAL rule rather than risking
  * two copies drifting apart.
+ *
+ * EXPORTED for testing (2026-09-04). `lib/plan/reschedule.ts` guarantees that a
+ * moved session "remains the same workout instance", and the only thing that
+ * guarantee is FOR is that a run stamped with `data.planWorkoutId` still
+ * resolves EXACT after the move. That claim was previously made in prose and
+ * checked by asserting the row id had not changed, which is one step short of
+ * the thing that matters. `_reschedule_race_and_demand.test.ts` now drives this
+ * function directly on the post-move rows, because a guarantee nothing
+ * exercises is a hypothesis (Rule 20).
+ *
+ * The entry points below remain the only callers in production. This export
+ * adds no second implementation and no second door.
  */
-function classifyDay(
+export function classifyDay(
   dateISO: string,
   prescribedRows: PrescribedRow[],
   runRows: RunRow[],

@@ -14,14 +14,31 @@
  *   - Target day empty (rest / no run) → the run just lands there.
  *   - Target day already has a run → caller must pass replace:true. Without it
  *     we return { conflict: true, existing } so the client can prompt
- *     "Replace the easy 5?". On replace, the displaced run is removed for that
- *     day (it's regenerable plan data, logged in the coach intent).
+ *     "Replace the easy 5?". On replace the two runs SWAP: the displaced run
+ *     takes the day the moved run just vacated. Nothing is deleted. See
+ *     NEVER-DELETE-1 at that branch for what this used to do and why it
+ *     changed.
  *
  * Reversibility: the moved row stamps original_date_iso (COALESCE — first move
  * wins, so a move-then-move-back still points at the true origin). The coach
  * acknowledges the change once via a 'workout_swapped' intent (same reason the
  * /api/plan/workout swap path uses, so the cache-bust + briefing voice already
  * handle it).
+ *
+ * ─── THIS IS NOT THE RESCHEDULING OWNER ─────────────────────────────────────
+ *
+ * `lib/plan/reschedule.ts` and `POST /api/plan/reschedule` own the coaching
+ * question: WHERE should this session go, what does moving it cost, and can it
+ * be undone. That surface generates candidates, ranks them, reads separation
+ * and race proximity, records a decision in `plan_reschedules` and supports
+ * undo. The iPhone uses it (`ViewsV5/RescheduleV5.swift`).
+ *
+ * This route is the older, dumber verb: the caller names both days and it moves
+ * the row. It survives because the web frontend still calls it. It offers no
+ * opinion, writes no reschedule record and cannot be undone. New callers should
+ * use `/api/plan/reschedule`. `API.swift`'s `rescheduleRun` still points here
+ * and has no caller in the app; it should be deleted or repointed by whoever
+ * owns that file.
  *
  * Auth: requireUserId. Same-week moves (the common case) need nothing special —
  * the training week ENDS on long_run_day, so Sat is still inside this week and
@@ -150,7 +167,7 @@ export async function POST(req: NextRequest) {
   const dowOf = (iso: string) => new Date(iso + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
 
   // Routed through the plan mutation boundary (lib/plan/mutate.ts). A move is
-  // six statements — relocate, possibly delete the displaced run, reconcile the
+  // six statements — relocate, possibly swap the displaced run, reconcile the
   // rest placeholders — and only the FINISHED state is meaningful, so the
   // boundary wraps the whole set rather than each statement. Structural by
   // definition: date_iso, week_id and the row set all move.
@@ -158,7 +175,10 @@ export async function POST(req: NextRequest) {
   // What this catches that nothing did before: a move that lands a quality day
   // adjacent to the long run (Research/00b:55-60), or drops a run after race
   // day in race week.
-  const boundary = await mutatePlan<{ moved: Record<string, unknown>; replaced: { type: string; distance_mi: number } | null }>({
+  const boundary = await mutatePlan<{
+    moved: Record<string, unknown>;
+    swapped: { type: string; distance_mi: number; to_date: string } | null;
+  }>({
     userUuid: userId,
     source: 'api/today/reschedule',
     todayISO: fromDate,
@@ -172,12 +192,44 @@ export async function POST(req: NextRequest) {
         [plan.id, dateIso],
       )).rows;
 
-    // Replace: remove the displaced run on the target day. Only the running
-    // row — strength/cross on that day stay put.
-    let replaced: { type: string; distance_mi: number } | null = null;
-    if (target && body?.replace) {
-      await client.query(`DELETE FROM plan_workouts WHERE id = $1`, [target.id]);
-      replaced = { type: target.type, distance_mi: Number(target.distance_mi) || 0 };
+    // ── NEVER-DELETE-1 (2026-09-04) · replace is a SWAP, not a destruction ──
+    //
+    // This branch used to issue `DELETE FROM plan_workouts WHERE id = $1` on
+    // the run sitting on the target day, and called it "regenerable plan
+    // data". It is not regenerable in any sense the runner can reach: nothing
+    // restores it, `/api/plan/undo` does not know about it, and the coach
+    // intent records that a swap happened without recording what was in the
+    // row. A prescribed session vanished from the block and the only way back
+    // was a full rebuild, which re-authors everything else too.
+    //
+    // The rescheduling contract this route predates is explicit that a move is
+    // "a permutation of dates over existing rows plus in-place prescription
+    // changes. No INSERT, no DELETE", and that a workout is never duplicated
+    // or lost. So the displaced run takes the day the moved run just vacated.
+    //
+    // That is also what the runner means. "Do Sunday's long run on Saturday,
+    // replacing Saturday's easy 5" wants the easy 5 on Sunday, not deleted.
+    // `lib/plan/reschedule.ts` has carried `SWAP_WITH_DAY` as a first-class
+    // move kind from the start, for the same reason.
+    //
+    // Strength and cross rows on either day are untouched, exactly as before:
+    // only the primary RUNNING row moves.
+    let swapped: { type: string; distance_mi: number; to_date: string } | null = null;
+    if (target && body?.replace && fromWeek) {
+      await client.query(
+        `UPDATE plan_workouts
+            SET date_iso = $2,
+                week_id = $3,
+                dow = $4,
+                original_date_iso = COALESCE(original_date_iso, $5)
+          WHERE id = $1`,
+        [target.id, fromDate, fromWeek, dowOf(fromDate), toDate],
+      );
+      swapped = {
+        type: target.type,
+        distance_mi: Number(target.distance_mi) || 0,
+        to_date: fromDate,
+      };
     }
 
     // Move the source run onto the target day. Stamp original_date_iso the
@@ -234,11 +286,11 @@ export async function POST(req: NextRequest) {
        VALUES ($1, $1, 'workout_swapped', $2, $3)`,
       [userId, fromDate, JSON.stringify({
         kind: 'reschedule', from: fromDate, to: toDate,
-        type: source.type, replaced,
+        type: source.type, swapped,
       })],
     ).catch(() => {});
 
-      return { moved, replaced };
+      return { moved, swapped };
     },
   });
 
@@ -257,7 +309,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     moved: boundary.value?.moved,
-    replaced: boundary.value?.replaced ?? null,
+    // NEVER-DELETE-1 · `replaced` is retained on the wire and is now always
+    // null, because nothing is replaced any more. `swapped` says where the
+    // other run went. Neither web caller reads either field (both read only
+    // `conflict`), so this is additive rather than a break.
+    replaced: null,
+    swapped: boundary.value?.swapped ?? null,
   });
 }
 

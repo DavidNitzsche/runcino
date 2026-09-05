@@ -77,6 +77,13 @@
  *   · `POST /api/today/reschedule` — the runner names BOTH days. No candidate
  *     generation, no ranking, no separation reading, no stimulus assessment.
  *     It also writes a `coach_intents` row, which is an adaptation-seam record.
+ *     NEVER-DELETE-1 (2026-09-04): it used to DELETE the run sitting on the
+ *     destination when called with `replace: true`, calling that row
+ *     "regenerable plan data". Nothing regenerated it and nothing could undo
+ *     it. It now SWAPS instead, so the displaced run takes the vacated day, and
+ *     `_move_never_deletes.test.ts` fails if any move path deletes a workout
+ *     again. That closes the data-loss half of the consolidation below; the
+ *     rest of the consolidation is still open.
  *   · `POST /api/plan/change` scenario `move_day` — the runner names both days,
  *     the destination must already be a rest day, and it refuses a cross-week
  *     move outright ("A session moves inside its own week"). For the live case
@@ -89,6 +96,23 @@
  * on purpose, and the three above should be retired into it or reduced to thin
  * callers. That consolidation is NOT done here (those files belong to other
  * owners this cycle) and is reported instead.
+ *
+ * ─── RS-9 · RACE PROXIMITY AT DAY GRAIN  (2026-09-04) ───────────────────────
+ *
+ * Race context used to be read at WEEK grain only: `dateVerdict` refuses a
+ * race day, a taper week and an A-race week, and `downstreamOf` REPORTED
+ * `daysAfterMovedSession` without ever spending it. So a threshold session
+ * could be moved onto the Monday two days after a B-priority 10k and offered
+ * as a clean option, because the destination week was neither a taper nor an
+ * A-race week and the race sat in the PREVIOUS week. `Research/00b`
+ * §"Recovery by Effort" owes about five no-quality days there.
+ *
+ * `raceProximityFindings` closes it, borrowing both numbers from
+ * `combined-stress.ts` rather than restating either (Rule 16), and giving each
+ * half the shape of its own doctrine (Rule 9): the no-quality WINDOW refuses,
+ * the return-to-long RAMP is a continuous cost. Differential, like every other
+ * gate here — only a window the move INTRODUCES refuses. See the block comment
+ * above `raceProximityFindings` for the full argument.
  *
  * ─── RANKING: PHYSIOLOGICAL AND PLAN DISRUPTION, NOT CALENDAR DISTANCE ──────
  *
@@ -158,6 +182,13 @@ import { mutatePlan } from '@/lib/plan/mutate';
 import { loadPlanShape, type PlanShape } from '@/lib/plan/replan-scenarios';
 import { weekDosingFindings, type DosingFinding, type DosingWeek } from '@/lib/plan/dosing';
 import { isDaySealed } from '@/lib/plan/seal';
+import {
+  postRaceNoQualityDays,
+  returnToLongDays,
+  longRunFactorAfterRace,
+  effectiveRecoveryPriority,
+} from '@/lib/plan/combined-stress';
+import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // shapes borrowed rather than redeclared
@@ -225,6 +256,23 @@ export function requiredRecoveryDaysAfter(d: PlanDay): number {
  */
 const W_STIMULUS = 1000;
 const W_SEPARATION = 200;
+/**
+ * RS-9 · the long run landing inside a race's return-to-long window.
+ *
+ * Placed BELOW `W_SEPARATION` deliberately, and the reason is doctrine rather
+ * than taste. A separation deficit is a whole missing recovery day between two
+ * demanding sessions; this term is scaled by `1 - longRunFactorAfterRace`,
+ * which is a FRACTION of one run's distance that doctrine says should not be
+ * carried yet. At its very worst (`factor` 0, the day after the race) it costs
+ * less than one missing recovery day, which is the ordering the preservation
+ * list asks for. It sits above `W_DISPLACED_QUALITY` because a race the runner
+ * has already run is a physiological fact and a displaced session is a
+ * schedule.
+ *
+ * The QUALITY half of race proximity has no weight here on purpose. It is a
+ * window, it refuses in `dateVerdict`, and a refused date never reaches a cost.
+ */
+const W_RACE_RECOVERY = 150;
 const W_DISPLACED_QUALITY = 60;
 const W_CONTINUITY = 25;
 const W_ROLLING_LOAD = 12;
@@ -476,11 +524,22 @@ export interface RescheduleOption {
   /** The complete diff. Nothing is written that is not in here. */
   edits: RescheduleRowEdit[];
 
+  /**
+   * RS-9 · every race-proximity reading at the destination, shown verbatim.
+   *
+   * Includes `UNPRICEABLE_RACE`, which is a statement of what could not be
+   * read rather than a verdict. It is carried so the phone can print it: an
+   * unreadable race silently dropped is exactly the Rule 11 failure.
+   */
+  raceProximity: RaceProximityFinding[];
+
   /** Ranking arithmetic, exposed so a rank can be argued with, not trusted. */
   cost: {
     total: number;
     stimulus: number;
     separation: number;
+    /** RS-9 · the long-run recovery this move gives up relative to its own day. */
+    raceRecovery: number;
     displacedQuality: number;
     continuity: number;
     rollingLoad: number;
@@ -496,6 +555,8 @@ export interface RescheduleRefusal {
   cause:
     | 'RUNNER_UNAVAILABLE' | 'IN_THE_PAST' | 'DAY_SEALED' | 'RACE_DAY'
     | 'PROTECTED_WEEK' | 'OUTSIDE_PLAN' | 'SEPARATION' | 'DOSING'
+    /** RS-9 · inside the no-quality window a race the runner ran already owes. */
+    | 'RACE_RECOVERY'
     | 'UNKNOWN_AVAILABILITY';
 }
 
@@ -985,6 +1046,246 @@ export const totalDeficit = (f: readonly SeparationFinding[]): number =>
   f.reduce((s, x) => s + x.deficitDays, 0);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RACE PROXIMITY  (RS-9, 2026-09-04) · the question the week grain could not ask
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * HOW CLOSE THE DESTINATION SITS TO A RACE THE RUNNER HAS ALREADY RUN.
+ *
+ * ─── the gap this closes ────────────────────────────────────────────────────
+ *
+ * Before RS-9 this module read race context at WEEK grain only. `dateVerdict`
+ * refuses a race day, a taper week and an A-race week, and `downstreamOf`
+ * REPORTS `daysAfterMovedSession` without ever spending it. Nothing asked the
+ * question `Research/00b` actually answers, which is a DAY question:
+ *
+ *   "How many days after a race of this distance and this effort may quality
+ *    resume, and when is the long run back?"
+ *
+ * So a threshold session could be moved onto the Monday two days after a B
+ * half marathon and be offered as a clean option. Doctrine owes roughly ten
+ * no-quality days there. The destination week is neither a taper nor an
+ * A-race week, and the race is in the PREVIOUS week, so every existing guard
+ * passed it.
+ *
+ * ─── RULE 16 · BOTH NUMBERS ARE BORROWED, NEITHER IS RESTATED ───────────────
+ *
+ * `combined-stress.ts` already owns both, is doctrine-bound in the registry,
+ * and is imported rather than mirrored:
+ *
+ *   · `postRaceNoQualityDays(distanceMi, priority)` — days of no quality owed,
+ *     read off `POST_RACE_RECOVERY_WEEKS` and scaled by §"Recovery by Effort".
+ *   · `returnToLongDays` / `longRunFactorAfterRace` — the day the long run is
+ *     unrestricted, and the linear fraction it may carry before then.
+ *
+ * `requiredRecoveryDaysAfter` above is NOT the same quantity and is left
+ * alone. It answers Q32's "how long before the next DEMANDING session", which
+ * for a race it prices at one or two days. This asks "how long before QUALITY
+ * resumes", which for a B half is about ten. Both are real, they compose, and
+ * collapsing them into one name would be the Rule 16 error rather than the fix.
+ * Reported alongside: `requiredRecoveryDaysAfter`'s own race rows are a local
+ * invention (`distanceMi >= 20 ? 2 : 1`) sitting next to a doctrine-bound table
+ * that answers a neighbouring question, and that belongs to whoever owns Q32.
+ *
+ * ─── RULE 9 · THE TWO HALVES TAKE THE SHAPE OF THEIR OWN DOCTRINE ───────────
+ *
+ * They deliberately do NOT get the same treatment, because the two doctrine
+ * quantities do not have the same shape:
+ *
+ *   · QUALITY is a WINDOW. "No quality for N days" is a discrete honest fact
+ *     about a date, the same class as "that week is the taper", so it refuses.
+ *     No continuous quantity is compared against a threshold anywhere.
+ *   · THE LONG RUN is a RAMP. `longRunFactorAfterRace` is linear and monotone
+ *     in days-after and reaches 1 exactly at `returnToLongDays`, so it enters
+ *     as a CONTINUOUS COST. One day earlier moves the number, never the option
+ *     set. A long run is never refused for race proximity.
+ *
+ * ─── DIFFERENTIAL, LIKE EVERY OTHER GATE IN THIS FILE ───────────────────────
+ *
+ * A move is judged on what it INTRODUCES, never on what it inherited. If the
+ * session is ALREADY inside the window on its authored day, moving it to
+ * another day in the same window introduces nothing and is not refused. The
+ * same discipline `mutatePlan` and `dosingBreachesOf` both take, and for the
+ * same reason: an absolute gate would make the feature go dark on exactly the
+ * plans that need it. A runner who is already mid-recovery is the one most
+ * likely to be moving sessions around.
+ *
+ * ─── RULE 11 · AN UNREADABLE RACE NEVER SILENTLY PERMITS THE MOVE ───────────
+ *
+ * A race with no priority or no recognisable distance cannot be priced.
+ * `postRaceNoQualityDays` THROWS on an unknown distance, so it is guarded by
+ * `distanceCategoryOrNull` and never called speculatively. The finding is
+ * emitted as `UNPRICEABLE_RACE` and shown to the runner as a stated tradeoff.
+ * It does not refuse, because refusing on every unprioritised race would block
+ * moves for a whole calendar, and it is not swallowed, because that is the
+ * silent permission Rule 11 forbids. Unknown is a third state and it is named.
+ */
+export type RaceProximityKind =
+  /** Quality lands inside the days doctrine owes with no quality after a race. */
+  | 'QUALITY_IN_NO_QUALITY_WINDOW'
+  /** A long run lands before the race's return-to-long day. Priced, not refused. */
+  | 'LONG_INSIDE_RETURN_WINDOW'
+  /** The race carries no priority or no readable distance. Named, never assumed. */
+  | 'UNPRICEABLE_RACE';
+
+export interface RaceProximityFinding {
+  kind: RaceProximityKind;
+  raceSlug: string;
+  raceName: string;
+  raceDateISO: string;
+  racePriority: 'A' | 'B' | 'C' | null;
+  raceDistanceMi: number | null;
+  /** Complete days from race day to the destination. Race day itself is 0. */
+  daysAfterRace: number;
+  /**
+   * The doctrine window in days: no-quality days for the quality finding,
+   * return-to-long days for the long finding. Null when unpriceable.
+   */
+  windowDays: number | null;
+  /**
+   * Fraction of its planned distance a long run may carry on that day, from
+   * `longRunFactorAfterRace`. 1 outside the window. Null for the other kinds.
+   */
+  longRunFactor: number | null;
+  /** Coach voice, shown to the runner verbatim. */
+  message: string;
+}
+
+/**
+ * Every race-proximity finding for one candidate DATE, given what is moving.
+ *
+ * Walks races that fall on or before the date. A runner can have two races
+ * close together, so all of them are read and every finding is returned rather
+ * than only the nearest — the most binding one is what the caller spends, and
+ * hiding the others would be a sentence the runner never gets to read.
+ */
+export function raceProximityFindings(opts: {
+  dateISO: string;
+  carriesQuality: boolean;
+  isLongRun: boolean;
+  races: readonly RaceEntry[];
+}): RaceProximityFinding[] {
+  const { dateISO, carriesQuality, isLongRun, races } = opts;
+  if (!carriesQuality && !isLongRun) return [];
+
+  const out: RaceProximityFinding[] = [];
+  for (const race of races) {
+    if (race.dateISO >= dateISO) continue;
+    const daysAfter = daysBetweenISO(race.dateISO, dateISO);
+    // Nothing in either doctrine table reaches past five weeks, so a race
+    // further back than that cannot produce a finding and is not walked.
+    if (daysAfter > 35) continue;
+
+    const cat = race.distanceMi != null ? distanceCategoryOrNull(race.distanceMi) : null;
+    if (race.priority == null || cat == null) {
+      // Rule 11 · named, not assumed in either direction.
+      out.push({
+        kind: 'UNPRICEABLE_RACE',
+        raceSlug: race.slug, raceName: race.name, raceDateISO: race.dateISO,
+        racePriority: race.priority, raceDistanceMi: race.distanceMi,
+        daysAfterRace: daysAfter, windowDays: null, longRunFactor: null,
+        message: `${race.name} was ${daysAfter} days before that day. `
+          + `${race.priority == null ? 'It carries no priority' : 'Its distance is not one we recognise'}, `
+          + 'so we cannot say how much recovery it owes. Read that day yourself before you commit to it.',
+      });
+      continue;
+    }
+
+    const priority = effectiveRecoveryPriority({ priority: race.priority });
+    const distanceMi = race.distanceMi as number;
+
+    if (carriesQuality) {
+      const windowDays = postRaceNoQualityDays(distanceMi, priority);
+      if (daysAfter < windowDays) {
+        out.push({
+          kind: 'QUALITY_IN_NO_QUALITY_WINDOW',
+          raceSlug: race.slug, raceName: race.name, raceDateISO: race.dateISO,
+          racePriority: race.priority, raceDistanceMi: distanceMi,
+          daysAfterRace: daysAfter, windowDays, longRunFactor: null,
+          message: `That day is ${daysAfter} days after ${race.name}. `
+            + `A ${priority} effort over that distance owes ${windowDays} days without quality, `
+            + 'so hard work does not go there.',
+        });
+      }
+    }
+
+    if (isLongRun) {
+      const windowDays = returnToLongDays(distanceMi, priority);
+      const factor = longRunFactorAfterRace(daysAfter, windowDays);
+      if (factor < 1) {
+        out.push({
+          kind: 'LONG_INSIDE_RETURN_WINDOW',
+          raceSlug: race.slug, raceName: race.name, raceDateISO: race.dateISO,
+          racePriority: race.priority, raceDistanceMi: distanceMi,
+          daysAfterRace: daysAfter, windowDays: round1(windowDays), longRunFactor: round3(factor),
+          message: `That day is ${daysAfter} days after ${race.name}, and the long run is not `
+            + `fully back until day ${Math.ceil(windowDays)}. It can carry about `
+            + `${Math.round(factor * 100)}% of its distance there.`,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The finding that binds, or null. The quality window is the harder fact and
+ * wins over a long-run ramp; among findings of one kind the longest window
+ * binds. `UNPRICEABLE_RACE` never binds, because it is a statement of what we
+ * could not read and not a verdict.
+ */
+/**
+ * The races whose no-quality window ALREADY covers this session on its
+ * authored day. These are inherited, so landing inside them again introduces
+ * nothing and does not refuse. See the differential note in the block above.
+ */
+export function inheritedNoQualityRaceSlugs(
+  day: Pick<PlanDay, 'dateISO' | 'isQuality' | 'isLong'>, races: readonly RaceEntry[],
+): Set<string> {
+  const f = raceProximityFindings({
+    dateISO: day.dateISO,
+    carriesQuality: day.isQuality === true,
+    isLongRun: day.isLong === true,
+    races,
+  });
+  return new Set(
+    f.filter((x) => x.kind === 'QUALITY_IN_NO_QUALITY_WINDOW').map((x) => x.raceSlug),
+  );
+}
+
+export function bindingRaceProximity(
+  f: readonly RaceProximityFinding[],
+): RaceProximityFinding | null {
+  const quality = f.filter((x) => x.kind === 'QUALITY_IN_NO_QUALITY_WINDOW');
+  if (quality.length > 0) {
+    return quality.reduce((a, b) => ((b.windowDays ?? 0) > (a.windowDays ?? 0) ? b : a));
+  }
+  const long = f.filter((x) => x.kind === 'LONG_INSIDE_RETURN_WINDOW');
+  if (long.length > 0) {
+    return long.reduce((a, b) => ((b.longRunFactor ?? 1) < (a.longRunFactor ?? 1) ? b : a));
+  }
+  return null;
+}
+
+/**
+ * The long-run shortfall this move INTRODUCES, as a fraction in [0, 1].
+ *
+ * Continuous, differential and floored at zero: a move that lands the long run
+ * FURTHER from the race than it started scores 0 rather than a negative, so
+ * race proximity can never pay for another cost term. Improving one thing does
+ * not buy permission to damage another.
+ */
+export function raceRecoveryShortfall(
+  before: readonly RaceProximityFinding[], after: readonly RaceProximityFinding[],
+): number {
+  const factorOf = (f: readonly RaceProximityFinding[]): number => {
+    const long = f.filter((x) => x.kind === 'LONG_INSIDE_RETURN_WINDOW');
+    return long.length === 0 ? 1 : Math.min(...long.map((x) => x.longRunFactor ?? 1));
+  };
+  return Math.max(0, factorOf(before) - factorOf(after));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // dosing · priced BEFORE the boundary, because the boundary will not price it
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1102,8 +1403,17 @@ export function dateVerdict(opts: {
   constraint: AvailabilityConstraint;
   sealed: ReadonlySet<string>;
   movingIsDemanding: boolean;
+  /** RS-9 · the calendar, so race proximity can be read at DAY grain. */
+  races: readonly RaceEntry[];
+  /** RS-9 · does the session being moved carry quality work. */
+  movingCarriesQuality: boolean;
+  /** RS-9 · races whose no-quality window already covers its authored day. */
+  inheritedNoQualitySlugs: ReadonlySet<string>;
 }): RescheduleRefusal | null {
-  const { dateISO, todayISO, tl, roles, constraint, sealed, movingIsDemanding } = opts;
+  const {
+    dateISO, todayISO, tl, roles, constraint, sealed, movingIsDemanding,
+    races, movingCarriesQuality, inheritedNoQualitySlugs,
+  } = opts;
   if (dateISO <= todayISO) {
     return {
       dateISO, cause: 'IN_THE_PAST',
@@ -1141,6 +1451,20 @@ export function dateVerdict(opts: {
       };
     }
   }
+  // RS-9 · the DAY-grain race question the week roles above cannot ask. Only
+  // an INTRODUCED window refuses: a session already sitting inside one keeps
+  // its options. The long-run half of this reading is a continuous cost in
+  // `costOf` and never appears here, because a ramp is not a boundary.
+  if (movingCarriesQuality) {
+    const introduced = raceProximityFindings({
+      dateISO, carriesQuality: true, isLongRun: false, races,
+    }).filter((x) => x.kind === 'QUALITY_IN_NO_QUALITY_WINDOW'
+      && !inheritedNoQualitySlugs.has(x.raceSlug));
+    if (introduced.length > 0) {
+      const worst = introduced.reduce((a, b) => ((b.windowDays ?? 0) > (a.windowDays ?? 0) ? b : a));
+      return { dateISO, cause: 'RACE_RECOVERY', reason: worst.message };
+    }
+  }
   return null;
 }
 
@@ -1176,9 +1500,11 @@ function buildCandidate(opts: {
   todayISO: string;
   constraint: AvailabilityConstraint;
   sealed: ReadonlySet<string>;
+  /** RS-9 · so a displaced session is not relocated into a race window either. */
+  races: readonly RaceEntry[];
   shortenToMi?: number;
 }): CandidateOutcome {
-  const { target, newDateISO, tl, roles, todayISO, constraint, sealed, shortenToMi } = opts;
+  const { target, newDateISO, tl, roles, todayISO, constraint, sealed, races, shortenToMi } = opts;
   const dest = tl.byDate.get(newDateISO);
   if (!dest || dest.id === target.id) return { refusal: 'That is the day it is already on.' };
 
@@ -1317,6 +1643,10 @@ function buildCandidate(opts: {
       const v = dateVerdict({
         dateISO: cand, todayISO, tl, roles, constraint, sealed,
         movingIsDemanding: isDemanding(victim),
+        // RS-9 · a displaced session is subject to the same race window as the
+        // one that displaced it. Its own authored day supplies what it inherits.
+        races, movingCarriesQuality: victim.isQuality === true,
+        inheritedNoQualitySlugs: inheritedNoQualityRaceSlugs(victim, races),
       });
       if (v) continue;
       const candDay = after.get(cand);
@@ -1515,18 +1845,37 @@ interface Costed {
   separation: SeparationFinding[];
   load: LoadEffect;
   dosing: DosingReading;
+  raceProximity: RaceProximityFinding[];
 }
 
 function costOf(opts: {
   c: Candidate; target: PlanDay;
   tl: Timeline; shape: PlanShape; roles: Map<string, WeekRole>;
+  races: readonly RaceEntry[];
   windowFrom: string; windowTo: string;
 }): Costed {
-  const { c, target, tl, shape, roles, windowFrom, windowTo } = opts;
+  const { c, target, tl, shape, roles, races, windowFrom, windowTo } = opts;
   const after = applyEditsToTimeline(tl, c.edits);
   const separation = separationFindings(after, windowFrom, windowTo);
   const load = loadEffectOf(tl, shape, roles, c.edits, windowFrom, windowTo);
   const dosing = dosingBreachesOf(shape, tl, c.edits, roles);
+
+  // RS-9 · race proximity at the destination, and the shortfall the move
+  // INTRODUCES relative to the authored day. Continuous in days-after by
+  // construction, so this term can change a RANK and never an option set.
+  const raceProximity = raceProximityFindings({
+    dateISO: c.newDateISO,
+    carriesQuality: target.isQuality === true,
+    isLongRun: target.isLong === true,
+    races,
+  });
+  const raceProximityBefore = raceProximityFindings({
+    dateISO: target.dateISO,
+    carriesQuality: target.isQuality === true,
+    isLongRun: target.isLong === true,
+    races,
+  });
+  const raceRecovery = raceRecoveryShortfall(raceProximityBefore, raceProximity);
 
   const stimulus = c.preservation === 'SUBSTITUTED'
     ? SUBSTITUTED_STIMULUS_LOSS
@@ -1547,14 +1896,16 @@ function costOf(opts: {
   const rl = rollingLoadCost(load);
 
   const total = W_STIMULUS * stimulus + W_SEPARATION * sep
+    + W_RACE_RECOVERY * raceRecovery
     + W_DISPLACED_QUALITY * c.displacedQualityLoss + W_CONTINUITY * continuity
     + W_ROLLING_LOAD * rl + W_BLOCK_DISTURBANCE * blockDisturbance;
 
   return {
-    separation, load, dosing,
+    separation, load, dosing, raceProximity,
     cost: {
       stimulus: round3(W_STIMULUS * stimulus),
       separation: round3(W_SEPARATION * sep),
+      raceRecovery: round3(W_RACE_RECOVERY * raceRecovery),
       displacedQuality: round3(W_DISPLACED_QUALITY * c.displacedQualityLoss),
       continuity: round3(W_CONTINUITY * continuity),
       rollingLoad: round3(W_ROLLING_LOAD * rl),
@@ -1661,6 +2012,7 @@ export async function recommendReschedule(input: RecommendInput): Promise<Recomm
   const roles = weekRolesOf(shape, races);
   const family = familyOf(target);
 
+
   // Q31 · the search boundary. The adjacent week only on an explicit request.
   const spread = SEARCH_WINDOW_DAYS[family] + (input.allowAdjacentWeek ? 7 : 0);
   const considered: string[] = [];
@@ -1679,10 +2031,16 @@ export async function recommendReschedule(input: RecommendInput): Promise<Recomm
 
   const refusals: RescheduleRefusal[] = [];
   const viable: string[] = [];
+  // RS-9 · what the session already inherits on its authored day, computed
+  // ONCE and spent by every candidate, so the differential cannot drift
+  // between dates.
+  const inheritedSlugs = inheritedNoQualityRaceSlugs(target, races);
   for (const iso of considered) {
     const v = dateVerdict({
       dateISO: iso, todayISO: input.todayISO, tl, roles,
       constraint: input.constraint, sealed, movingIsDemanding: isDemanding(target),
+      races, movingCarriesQuality: target.isQuality === true,
+      inheritedNoQualitySlugs: inheritedSlugs,
     });
     if (v) refusals.push(v); else viable.push(iso);
   }
@@ -1699,7 +2057,7 @@ export async function recommendReschedule(input: RecommendInput): Promise<Recomm
       return;
     }
     const c = built;
-    const costed = costOf({ c, target, tl, shape, roles, windowFrom, windowTo });
+    const costed = costOf({ c, target, tl, shape, roles, races, windowFrom, windowTo });
     if (costed.dosing.introduced.length > 0) {
       refusals.push({
         dateISO: c.newDateISO, cause: 'DOSING',
@@ -1715,6 +2073,7 @@ export async function recommendReschedule(input: RecommendInput): Promise<Recomm
     consider(buildCandidate({
       target, newDateISO: iso, tl, roles, todayISO: input.todayISO,
       constraint: input.constraint, sealed,
+      races,
     }), iso);
   }
 
@@ -1768,10 +2127,10 @@ export async function recommendReschedule(input: RecommendInput): Promise<Recomm
     seenShort.add(key);
     const built = buildCandidate({
       target, newDateISO: t.iso, tl, roles, todayISO: input.todayISO,
-      constraint: input.constraint, sealed, shortenToMi: t.toMi,
+      constraint: input.constraint, sealed, races, shortenToMi: t.toMi,
     });
     if ('refusal' in built) continue;
-    const costed = costOf({ c: built, target, tl, shape, roles, windowFrom, windowTo });
+    const costed = costOf({ c: built, target, tl, shape, roles, races, windowFrom, windowTo });
     if (costed.dosing.introduced.length > 0) continue;
     if (totalDeficit(costed.separation) === 0) clean.push({ c: built, costed });
     else compromises.push({ c: built, costed });
@@ -1824,6 +2183,24 @@ export async function recommendReschedule(input: RecommendInput): Promise<Recomm
         `${worst.earlierLabel} on ${worst.earlierISO} and ${worst.laterLabel} on ${worst.laterISO} sit ${worst.interveningDays} easy day apart where doctrine asks for ${worst.requiredDays}. That is the compromise.`,
       );
     }
+    // RS-9 · race proximity, stated on the option that carries it.
+    //
+    // Two kinds reach here and the quality-window kind never does, because a
+    // date inside a no-quality window is refused before it becomes an option.
+    // What is left is the long run's return-to-long ramp, which is priced and
+    // offered, and the race we could not price at all. Rule 11: an unreadable
+    // race is named to the runner rather than passing as permission.
+    //
+    // Rule 17 · one sentence per race. `raceProximityFindings` can return both
+    // a long-run and an unpriceable finding for the same race, and printing
+    // both would say the same thing twice.
+    const seenRaces = new Set<string>();
+    for (const f of x.costed.raceProximity) {
+      if (f.kind === 'QUALITY_IN_NO_QUALITY_WINDOW') continue;
+      if (seenRaces.has(f.raceSlug)) continue;
+      seenRaces.add(f.raceSlug);
+      tradeoffs.push(f.message);
+    }
     // Shown, not swallowed. The reschedule added no intensity, but the week it
     // took mileage out of is now a harder week by proportion, and he is
     // entitled to read that before choosing.
@@ -1870,6 +2247,7 @@ export async function recommendReschedule(input: RecommendInput): Promise<Recomm
       }),
       isCompromise,
       dosingShareNotes: x.costed.dosing.denominatorOnly,
+      raceProximity: x.costed.raceProximity,
       edits: x.c.edits,
       cost: x.costed.cost,
     };
