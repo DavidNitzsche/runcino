@@ -119,6 +119,14 @@ const MUTATOR_NAME_EXEMPT: Record<string, string> = {
   'app/api/plan/workout-proposals/[id]/accept/route.ts':
     'RUNNER-INITIATED. The runner tapped accept on a proposal card; this is the driver\'s seat the '
     + 'ruling preserves, not an unattended lever. Not a cron route.',
+  'lib/brain/proposal/accept.ts':
+    'ACTIONCOMPLETE-1 (2026-09-05). The SAME runner tap as the route immediately above, moved one '
+    + 'level down so the accept lane dispatches on the action rather than on one of five legacy '
+    + 'engine words. Its ONLY caller is that route. It declares authority RUNNER_ACCEPTED on every '
+    + 'path, it never reads AUTOMATIC_ADAPTATION_AUTHORITY, and its direct-write branch goes through '
+    + 'mutatePlan like every other writer. check-action-completeness.sh guard 2 fails if any of '
+    + 'those three stop being true. If a cron ever imports this file, the exemption is wrong and the '
+    + 'import is the bug.',
 };
 
 describe('LIVENESS · the scan opened real files', () => {

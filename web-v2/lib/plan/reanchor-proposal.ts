@@ -36,6 +36,8 @@ import { attempt } from '@/lib/db/read';
 import { resolveDateRangeExecutions } from '@/lib/execution/day-resolver';
 import { stripResearchCitations } from './strip-citations';
 import { describesEvidence } from '@/lib/brain/objective';
+import { actionFromReprice } from '@/lib/brain/proposal/generate/from-reprice';
+import { serializeAction } from '@/lib/brain/proposal/serialize';
 import {
   REPRICE_ACTION_KIND,
   asRepricePayload,
@@ -367,7 +369,14 @@ export async function writeReanchorProposal(
        RETURNING id`,
       [
         input.userUuid, row.id, row.date_iso, REPRICE_ACTION_KIND,
-        JSON.stringify({ why, reprice: payload }),
+        /* ACTIONCOMPLETE-1 (2026-09-05) · the repricing is stated as the
+         * coordinated action it is, WITH ITS ANCHOR MOVES ENUMERATED as
+         * PACE_CHANGE parts. `reprice` stays and stays authoritative for the
+         * apply path — `applyReanchorProposal` re-resolves the anchors at
+         * accept time and the parts are description, not a replay script.
+         * What the parts buy is a ledger that can answer "did the threshold
+         * anchor move up this month", which one PLAN_STRUCTURE row cannot. */
+        JSON.stringify({ why, reprice: payload, action: serializeAction(actionFromReprice(payload)) }),
         why,
         JSON.stringify(input.evidence),
         supersededId,

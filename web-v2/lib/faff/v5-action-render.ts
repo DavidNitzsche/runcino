@@ -23,9 +23,9 @@
  * true is the adjudicator's.
  */
 
-import type { ActionShape, BrainAction } from '@/lib/brain/proposal/action';
+import type { ActionShape, BrainAction, Quantity } from '@/lib/brain/proposal/action';
 import type { V5ProposalDirection } from '@/lib/faff/v5-today';
-import { fmtMi } from '@/lib/format/run';
+import { fmtMi, roundTo } from '@/lib/format/run';
 
 /**
  * Which way the runner is being asked to move.
@@ -92,7 +92,13 @@ export function actionHeadline(action: BrainAction, dayName: string): string {
     case 'RECOVERY_INTERVAL_CHANGE':
       return `Recovery between reps goes to ${Math.round(action.to.value)} minutes`;
     case 'QUALITY_DOSE_CHANGE':
-      return `${leverWord(action.lever)} work goes to ${fmtMi(action.to.value)}`;
+      /* ACTIONCOMPLETE-1 · READ THE UNIT. This printed `fmtMi` whatever the
+       * quantity said, so a dose resolved in MINUTES — which is how
+       * `progression-pass.ts` resolves every interval session, reps times rep
+       * minutes — rendered as "Threshold work goes to 24.0 mi". `Quantity`
+       * carries a unit precisely so a renderer never guesses, and this one
+       * guessed. Found by driving the progression generator through it. */
+      return `${leverWord(action.lever)} work goes to ${doseStr(action.to)}`;
     case 'LONG_RUN_STRUCTURE_CHANGE':
       return `${dayName}'s long run changes shape`;
     case 'WORKOUT_TYPE_CHANGE':
@@ -127,6 +133,23 @@ export function actionHeadline(action: BrainAction, dayName: string): string {
       throw new Error(`no headline for ${JSON.stringify(never)}`);
     }
   }
+}
+
+/**
+ * A dose in the unit it was decided in.
+ *
+ * Miles and minutes are both real ways to state work at pace — `Research/04`
+ * gives cruise intervals in miles and interval sessions in minutes — so the
+ * unit is read rather than assumed. Anything else is a bug upstream and reads
+ * as a bare number rather than as a wrong one.
+ */
+function doseStr(q: Quantity): string {
+  // `fmtMi` answers null for a value it will not format, and a headline reading
+  // "goes to null" is worse than one reading a plain number (Rule 11 on the
+  // rendered string rather than on the data).
+  if (q.unit === 'mi') return fmtMi(q.value) ?? `${roundTo(q.value, 1)} mi`;
+  if (q.unit === 'min') return `${Math.round(q.value)} minutes`;
+  return String(roundTo(q.value, 1));
 }
 
 function leverWord(l: 'THRESHOLD' | 'MARATHON' | 'INTERVAL' | 'EASY'): string {

@@ -27,6 +27,8 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { AdaptationAction, AdaptationTrigger } from './adapt';
 import { stripResearchCitations } from './strip-citations';
 import type { RepricePayload } from './reprice-payload';
+import { actionFromAdaptation } from '@/lib/brain/proposal/generate/from-adaptation';
+import { serializeAction, type StoredAction } from '@/lib/brain/proposal/serialize';
 
 export interface PendingProposal {
   id: number;
@@ -69,6 +71,15 @@ export interface PendingProposal {
      * finding, in one field.
      */
     newDistanceMi?: number;
+    /**
+     * ACTIONCOMPLETE-1 (2026-09-05) · THE DECISION ITSELF, versioned.
+     *
+     * Present on rows written from 2026-09-05 onward. Absent on the seven that
+     * predate it, which is why `actionFromPending` still carries its
+     * reconstruction path — an absent action is a row from an older writer,
+     * never a row that decided nothing (Rule 11).
+     */
+    action?: StoredAction;
     why?: string;
   };
   reason: string;
@@ -202,12 +213,37 @@ export async function writeWorkoutProposals(
          * to end rather than relocate. */
         const bumpForRow = (action.bumps ?? []).find((b) => b.workoutId === workoutId);
 
+        /* ── ACTIONCOMPLETE-1 (2026-09-05) · THE DECISION, STATED ──────────
+         *
+         * The four legacy fields below are a LOSSY SUMMARY: everything
+         * downstream that wants a `BrainAction` reconstructs one by guessing
+         * which of them the writer happened to populate, and no combination of
+         * them could ever carry a rep count, a recovery interval or a
+         * coordinated part list.
+         *
+         * So the action is stated here, in the same jsonb column — the same
+         * trick `reprice` and `newDistanceMi` already used, which is why this
+         * needed no migration. `actionFromPending` prefers it and falls back to
+         * its own reconstruction, so the rows already in production are
+         * unaffected.
+         *
+         * Rule 11: a kind with no translation stores NO action rather than a
+         * no-op one. A reader that finds none reconstructs as before.
+         */
+        const brainAction = actionFromAdaptation(action, {
+          planWorkoutId: workoutId,
+          dateISO: row.date_iso,
+          type: row.type,
+          distanceMi: row.distance_mi === null ? null : Number(row.distance_mi),
+        });
+
         const payload = {
           newType: action.newType ?? null,
           newDate: action.newDate ?? null,
           shaveFraction: action.shaveFraction ?? null,
           newDistanceMi: bumpForRow?.newDistanceMi ?? null,
           why: stripResearchCitations(action.why),
+          ...(brainAction ? { action: serializeAction(brainAction) } : {}),
         };
 
         /* The session as it stands, recorded ON THE PROPOSAL. This is the

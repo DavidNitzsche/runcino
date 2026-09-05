@@ -103,6 +103,64 @@ export async function POST(
     return NextResponse.json({ ok: false, error: 'not_pending' }, { status: 404 });
   }
 
+  /* ── ACTIONCOMPLETE-1 (2026-09-05) · ONE DOOR, DISPATCHED ON THE ACTION ───
+   *
+   * Below this, the route used to switch on the ROW's `action_kind` and rebuild
+   * an `AdaptationAction` from three payload fields — so it could apply exactly
+   * what the legacy payload could describe, and the twenty-one-kind schema was
+   * a reader with no writer.
+   *
+   * A row that STATES its action now goes through `applyBrainAction`, which
+   * dispatches on `executor-map.ts`'s named path. The legacy path underneath is
+   * unchanged and still serves every row written before 2026-09-05, which have
+   * no stored action at all.
+   *
+   * The write is `RUNNER_ACCEPTED` either way. Nothing about the seam moves.
+   *
+   * `reprice` is EXCLUDED and keeps the branch below. Not because that branch
+   * would be wrong — `applyBrainAction` routes COORDINATED to the same
+   * `applyReanchorProposal` — but because it answers with `sealed`,
+   * `proposed_to_vdot` and `applied_to_vdot`, which is how a reader can see
+   * that the arms re-resolved the anchors at accept time. Rerouting it would
+   * quietly shrink a response the client already reads.
+   */
+  const storedAction = actionFromPending(proposal);
+  if (storedAction != null
+    && proposal.actionPayload?.action != null
+    && proposal.actionKind !== 'reprice') {
+    const { applyBrainAction } = await import('@/lib/brain/proposal/accept');
+    const { runnerToday } = await import('@/lib/runtime/runner-tz');
+    const outcome = await applyBrainAction(storedAction, {
+      userUuid: userId,
+      todayISO: await runnerToday(userId),
+      proposalId,
+      why: proposal.actionPayload.why ?? proposal.reason,
+    });
+    if (!outcome.ok) {
+      console.error('[proposal/accept] applyBrainAction refused', { proposalId, outcome });
+      const status = outcome.error === 'unsupported' ? 422
+        : outcome.error === 'apply_failed' ? 500 : 409;
+      return NextResponse.json({ ok: false, error: outcome.error, detail: outcome.detail }, { status });
+    }
+    /* The wrist is asked to look again only when what it CARRIES moved. A
+     * change three weeks out has no business invalidating a workout the runner
+     * may be standing on the start line of (Rule 16). */
+    if (outcome.watch.kind !== 'NO_WATCH_EFFECT') {
+      await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});
+    }
+    return NextResponse.json({
+      ok: true,
+      applied: outcome.applied,
+      recorded_only: outcome.recordedOnly,
+      /* "Approval is not the control mechanism; reversibility is" — so the
+       * response says whether this one can be put back, rather than leaving the
+       * runner to find out by trying. */
+      undoable: outcome.undo.can,
+      ...(outcome.undo.can ? {} : { undo_blocked_because: outcome.undo.because }),
+      ...(outcome.because ? { because: outcome.because } : {}),
+    });
+  }
+
   /* ── REANCHORPROPOSES-1 (2026-09-05) · THE COORDINATED REPRICING ──────────
    *
    * A `reprice` is not an `AdaptationAction` and cannot be turned into one:

@@ -14,6 +14,7 @@ import { pool } from '@/lib/db/pool';
 import { planVersionOf } from '@/lib/plan/plan-version';
 import type { ActionShape, LiveRow, BrainAction, RowBefore } from './action';
 import { ACTION_SCHEMA_VERSION } from './action';
+import { deserializeAction } from './serialize';
 
 /**
  * The current state of the named rows, scoped to this runner's ACTIVE plan.
@@ -94,6 +95,15 @@ export interface LegacyPayload {
   newDistanceMi?: number | null;
   /** REANCHORPROPOSES-1 · a whole-block repricing, carried as one decision. */
   reprice?: { meanAnchorDeltaSecPerMi?: number; workoutsAffected?: number } | null;
+  /**
+   * ACTIONCOMPLETE-1 (2026-09-05) · the decision as the writer stated it.
+   *
+   * Typed `unknown` on purpose. This is a stored jsonb blob written by some
+   * earlier build, and `deserializeAction` type-checks every field before it
+   * becomes an action — a declared shape here would be a claim about data this
+   * process did not write.
+   */
+  action?: unknown;
   why?: string | null;
 }
 
@@ -165,6 +175,28 @@ export function actionFromPending(p: {
       ? { distanceMi: ev.planned_distance_mi } : {}),
   }];
   const base = { schemaVersion: ACTION_SCHEMA_VERSION, before } as const;
+
+  /* ── ACTIONCOMPLETE-1 (2026-09-05) · READ THE DECISION, DO NOT INFER IT ───
+   *
+   * A row written by the current writer STATES its action. Reconstructing one
+   * from `action_kind` plus whichever of four legacy fields happened to be
+   * populated is what limited the whole lane to five kinds: no combination of
+   * those fields can express a rep count or a recovery interval.
+   *
+   * The stored action wins where it parses, and where it does not the switch
+   * below runs exactly as before. That fallback is not politeness — the seven
+   * rows already in production carry no action at all, and treating their
+   * absence as a failure would blank every card on the runner's phone.
+   *
+   * The stored action's `before` is REPLACED by the one reconstructed above,
+   * because staleness must be compared against what the ROW recorded rather
+   * than against a snapshot the writer serialized; the two agree today, and if
+   * they ever diverge the row is the authority.
+   */
+  const stored = deserializeAction(p.actionPayload?.action);
+  if (stored != null) {
+    return stored.kind === 'COORDINATED' ? stored : { ...stored, before };
+  }
 
   switch (p.actionKind) {
     case 'field_test':
