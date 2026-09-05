@@ -29,8 +29,17 @@ export async function GET(req: NextRequest) {
   const userId = auth;
 
   try {
-    const proposals = await loadPendingProposals(userId);
-    return NextResponse.json({ ok: true, proposals });
+    // V5PROPOSALSURFACE-1 · the read now says which of the three things
+    // happened. A failed read must not answer "you have no pending decisions",
+    // which is the one wrong answer this endpoint can give (Rule 11).
+    const read = await loadPendingProposals(userId);
+    if (!read.ok) {
+      return NextResponse.json(
+        { ok: false, error: 'could not read proposals' },
+        { status: 503 },
+      );
+    }
+    return NextResponse.json({ ok: true, proposals: read.proposals });
   } catch (err: any) {
     console.error('[api/plan/workout-proposals] failed:', err);
     return NextResponse.json(

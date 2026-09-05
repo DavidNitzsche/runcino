@@ -3055,7 +3055,16 @@ async function buildSeedInner(): Promise<FaffSeed> {
   const pendingWorkoutProposals = await (async () => {
     try {
       const { loadPendingProposals: loadWoP } = await import('@/lib/plan/workout-proposals');
-      return await loadWoP(userId);
+      // V5PROPOSALSURFACE-1 · the read now names its own failure. The web
+      // frontend is paused (CLAUDE.md), so this keeps the pre-existing
+      // degrade-to-empty behaviour rather than growing a new surface for it,
+      // and says so instead of hiding it inside a bare catch.
+      const read = await loadWoP(userId);
+      if (!read.ok) {
+        console.error('[seed] workout-proposal read failed · rendering none:', read.error.message);
+        return [];
+      }
+      return read.proposals;
     } catch { return []; }
   })();
 

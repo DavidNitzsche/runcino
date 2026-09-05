@@ -548,7 +548,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/plan/simulator.ts::simulateActivePlan',
   'lib/plan/workout-proposals.ts::acceptProposal',
   'lib/plan/workout-proposals.ts::dismissProposal',
-  'lib/plan/workout-proposals.ts::loadPendingProposals',
   'lib/plan/workout-proposals.ts::writeWorkoutProposals',
   'lib/race/auto-result.ts::detectAndLogProvisionalResults',
   'lib/race/auto-result.ts::detectAndLogProvisionalResults',
@@ -742,7 +741,19 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // .catch()`) is fixed to `rowOrNull` in the same change; the other
 // (`loadEffectiveRaceTarget`'s catch) is a genuine, argued exemption — see
 // its entry above. Net +1, not +2: 352 -> 353.
-export const EMPTIED_BASELINE = 353;
+// V5PROPOSALSURFACE-1 (2026-09-05) · -1 (353 -> 352).
+// `loadPendingProposals` no longer answers a failed read with an empty list.
+// It returns a `ProposalRead` whose failure branch carries NO `proposals`
+// field, so a caller cannot spend a list it never read, and its two swallowed
+// sites go with it: the `.catch(() => ({ rows: [] }))` over the SELECT, and
+// the `.catch(() => {})` over the expiry UPDATE that had been hiding whether
+// expiry ran at all. The expiry moved to `lib/plan/proposal-expiry.ts`, which
+// reports through `attempt` and is mounted on the nightly plan-drift cron.
+//
+// This was the single most consequential swallow left on the list: it sat on
+// the ONE surface whose entire job is carrying a decision to the runner, and
+// its empty list rendered as "your coach has nothing to say."
+export const EMPTIED_BASELINE = 352;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

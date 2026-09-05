@@ -3312,11 +3312,23 @@ async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | n
     // "No race in six weeks" is false and reads as a mistake when the runner
     // raced a fortnight ago; what is true in that case is that the race could
     // not measure their threshold heart rate.
+    //
+    // V5PROPOSALSURFACE-1 (2026-09-05) · THE ACTION CLAUSE WAS REMOVED, and it
+    // was removed because the card was RENDERED for the first time.
+    //
+    // This sentence is a proposal's `reason`, which the phone draws as `why`
+    // directly under a headline that already says what would change ("Make
+    // Wednesday a field test"). So the trailing "Convert <date>'s quality
+    // session to a 30-minute threshold field test" restated the headline
+    // underneath itself, and printed a raw ISO date at a runner while doing
+    // it. Rule 17: the runner reads a sentence once, and the split
+    // `lib/faff/v5-proposals.ts` documents is reason = the evidence, headline
+    // = the change. The conversion itself is still described by the action and
+    // still applied by `applyAdaptations`; nothing about the behaviour moved.
     const reason = lthrStale.stale
-      ? `Threshold HR was last set ${lthrStale.ageDays ?? 'over 12 weeks'} days ago and no race since could re-derive it. `
-        + `Convert ${slot.date}'s quality session to a 30-minute threshold field test to re-anchor your zones.`
-      : `No race or field test in the last 6 weeks. Pace anchors are going stale. `
-        + `Convert ${slot.date}'s quality session to a 30-minute threshold field test to lock in current fitness.`;
+      ? `Threshold HR was last set ${lthrStale.ageDays ?? 'over 12 weeks'} days ago `
+        + 'and no race since could re-derive it.'
+      : 'No race or field test in the last 6 weeks. Pace anchors are going stale.';
 
     return {
       kind: 'field_test_due',

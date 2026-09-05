@@ -101,6 +101,15 @@ export async function POST(req: NextRequest) {
     signals_skipped: number;        // pending row already exists
     auto_results: number;           // provisional race results logged this tick
     proposals_expired: number;      // 2026-08-17 · >14d pending rows expired this tick
+    // V5PROPOSALSURFACE-1 (2026-09-05) · the SIBLING table's sweep, which had
+    // no unattended home at all. `plan_workout_proposals` expiry lived inside
+    // `loadPendingProposals`, so it only ran when a phone opened a screen —
+    // and the only V5 caller of that read shipped on 2026-09-05. Production
+    // row 6 sat `pending` for eleven days past its workout date as a result.
+    // Rule 23: a job does not get to assume a human opened an app.
+    // -1 means the sweep FAILED this tick, which is not the same fact as 0
+    // (Rule 11) and is why this is not a plain count.
+    workout_proposals_expired: number;
     /** 2026-08-19 · plans that ran out of prescribed days this tick. Before
      *  this, a plan with no race had no end at all — the lookup INNER JOINed
      *  `races` and dropped every goal-mode and open-block row. */
@@ -144,6 +153,7 @@ export async function POST(req: NextRequest) {
       signals_skipped: 0,
       auto_results: 0,
       proposals_expired: 0,
+      workout_proposals_expired: 0,
     };
     try {
       // ── 2026-08-30 · ENSURE THE ANCHOR. THIS JOB NO LONGER ASSUMES A SIBLING
@@ -212,6 +222,26 @@ export async function POST(req: NextRequest) {
         r.proposals_expired = await expireStalePendingProposals(u);
       } catch (e) {
         console.error('[plan-drift] proposal expiry failed:', e);
+      }
+      // V5PROPOSALSURFACE-1 · the same hygiene for `plan_workout_proposals`.
+      // See the field's doc comment above for why this could not stay on the
+      // read path. Two clauses, both in `expireStaleWorkoutProposals`: the
+      // workout date has passed (in the RUNNER'S timezone), or the question
+      // has stood unanswered for 14 days.
+      try {
+        const { expireStaleWorkoutProposals, expiredCount } =
+          await import('@/lib/plan/proposal-expiry');
+        const swept = await expireStaleWorkoutProposals(u);
+        if (swept.ok) {
+          r.workout_proposals_expired = expiredCount(swept);
+        } else {
+          // Rule 11 · a failed sweep is not a sweep that found nothing.
+          r.workout_proposals_expired = -1;
+          console.error('[plan-drift] workout-proposal expiry FAILED:', swept.error.message);
+        }
+      } catch (e) {
+        r.workout_proposals_expired = -1;
+        console.error('[plan-drift] workout-proposal expiry threw:', e);
       }
       // 2026-08-28 · intent hygiene, same pass. plan_proposals pointing at
       // archived plans get superseded at each archive site; coach_intents rows

@@ -1,4 +1,4 @@
-import type { V5ProposalWire } from '@/lib/faff/v5-today';
+import type { V5ProposalReadWire, V5ProposalWire } from '@/lib/faff/v5-today';
 /**
  * GET /api/v5/today
  *
@@ -1818,7 +1818,11 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // Until today they were served only at /api/plan/workout-proposals,
       // whose one Swift caller is the v4 shell behind -faffLegacy, so the app
       // that ships had no proposal surface at all.
-      ctx.proposals = await loadV5Proposals(userId);
+      {
+        const proposalRead = await loadV5Proposals(userId);
+        ctx.proposals = proposalRead.items;
+        ctx.proposalsRead = proposalRead.read;
+      }
       return NextResponse.json(composeV5Today(ctx));
     }
   }
@@ -2250,7 +2254,11 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // Until today they were served only at /api/plan/workout-proposals,
       // whose one Swift caller is the v4 shell behind -faffLegacy, so the app
       // that ships had no proposal surface at all.
-      ctx.proposals = await loadV5Proposals(userId);
+      {
+        const proposalRead = await loadV5Proposals(userId);
+        ctx.proposals = proposalRead.items;
+        ctx.proposalsRead = proposalRead.read;
+      }
 
   return NextResponse.json(composeV5Today(ctx));
 }
@@ -2321,24 +2329,43 @@ const BLOCK_NOTE_KINDS = new Set([
 /**
  * V5PROPOSAL-1 · pending adaptations, mapped for the phone.
  *
- * Rule 11 on the failure path: a read that throws returns an EMPTY list and
- * says so in the log, because "we could not read your proposals" and "you have
- * none" are different facts and the screen must not present the first as the
- * second. It cannot refuse outright without blanking Today, so the honest
- * middle is an empty list plus a loud line.
+ * Rule 11 on the failure path, and this is the SECOND cut of it. The first
+ * returned an empty list plus a log line, on the argument that the route
+ * cannot refuse outright without blanking Today. That much was right; what it
+ * missed is that the log line goes to Railway and the runner gets silence, so
+ * from his side "the database did not answer" and "your coach has nothing to
+ * say" were still one fact.
+ *
+ * So the failure now travels ON THE WIRE. The list is still empty, Today still
+ * renders, and `proposalsRead: 'failed'` is what lets the phone draw the fault
+ * treatment instead of nothing at all.
  */
-async function loadV5Proposals(userId: string): Promise<V5ProposalWire[]> {
+async function loadV5Proposals(
+  userId: string,
+): Promise<{ items: V5ProposalWire[]; read: V5ProposalReadWire }> {
   try {
-    const [{ loadPendingProposals }, { toWire }] = await Promise.all([
+    const [{ loadPendingProposals }, { toWire }, { runnerToday }] = await Promise.all([
       import('@/lib/plan/workout-proposals'),
       import('@/lib/faff/v5-proposals'),
+      import('@/lib/runtime/runner-tz'),
     ]);
-    const rows = await loadPendingProposals(userId);
-    return rows.map(toWire).filter((w): w is V5ProposalWire => w !== null);
+    const read = await loadPendingProposals(userId);
+    if (!read.ok) {
+      console.log('[v5/today] proposal read FAILED, showing none · '
+        + 'this is not the same fact as having none · ' + read.error.message.slice(0, 160));
+      return { items: [], read: 'failed' };
+    }
+    // The runner's own day decides whether a reassessment date is still in the
+    // future, which is what separates a deferral from a live question.
+    const today = await runnerToday(userId);
+    const items = read.proposals
+      .map((r) => toWire(r, today))
+      .filter((w): w is V5ProposalWire => w !== null);
+    return { items, read: 'ok' };
   } catch (err) {
-    console.log('[v5/today] proposal read FAILED, showing none · '
+    console.log('[v5/today] proposal read THREW, showing none · '
       + 'this is not the same fact as having none · ' + String(err).slice(0, 160));
-    return [];
+    return { items: [], read: 'failed' };
   }
 }
 
