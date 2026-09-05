@@ -565,7 +565,7 @@ struct TodayHostV5: View {
                             // stacked as a second card beside this one.
                             if surface.stale {
                                 StaleBannerV5(cachedAt: surface.cachedAt,
-                                              onRetry: { Task { await surface.load() } })
+                                              onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                                     .padding(.horizontal, V5.S.gutter)
                                     .padding(.bottom, V5.S.s12)
                                     .background(V5.surfacePage)
@@ -643,7 +643,7 @@ struct TodayHostV5: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                         wayOutHeader
-                        OutageBodyV5(onRetry: { Task { await surface.load() } })
+                        OutageBodyV5(onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                     }
                     .padding(.horizontal, V5.S.gutter)
                     .padding(.top, V5.S.s24)
@@ -2045,7 +2045,7 @@ struct BlockHostV5: View {
                     .safeAreaInset(edge: .top, spacing: 0) {
                         if surface.stale {
                             StaleBannerV5(cachedAt: surface.cachedAt,
-                                          onRetry: { Task { await surface.load() } })
+                                          onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                                 .padding(.horizontal, V5.S.gutter)
                                 .padding(.bottom, V5.S.s12)
                                 .background(V5.surfacePage)
@@ -2063,7 +2063,7 @@ struct BlockHostV5: View {
                 .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(copy: .block, onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .block, onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                         .padding(.top, V5.S.s40)
                 }
@@ -2113,7 +2113,7 @@ struct RacesHostV5: View {
                         .safeAreaInset(edge: .top, spacing: 0) {
                             if surface.stale {
                                 StaleBannerV5(cachedAt: surface.cachedAt,
-                                              onRetry: { Task { await surface.load() } })
+                                              onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                                     .padding(.horizontal, V5.S.gutter)
                                     .padding(.bottom, V5.S.s12)
                                     .background(V5.surfacePage)
@@ -2129,7 +2129,7 @@ struct RacesHostV5: View {
                     .background(V5.surfacePage)
                 } else if surface.isOutage {
                     ScrollView {
-                        OutageBodyV5(copy: .races, onRetry: { Task { await surface.load() } })
+                        OutageBodyV5(copy: .races, onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                             .padding(.horizontal, V5.S.gutter)
                             .padding(.top, V5.S.s40)
                     }
@@ -2264,7 +2264,7 @@ struct RaceDetailHostV5: View {
                 .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(copy: .raceDetail, onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .raceDetail, onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                 }
                 .background(V5.surfacePage)
@@ -2339,7 +2339,7 @@ struct PacesHostV5: View {
                 .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(copy: .paces, onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .paces, onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                 }
                 .background(V5.surfacePage)
@@ -2371,7 +2371,7 @@ struct ReturnHostV5: View {
                 .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(copy: .returnLadder, onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .returnLadder, onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                 }
                 .background(V5.surfacePage)
@@ -2775,7 +2775,7 @@ struct InjuryPreviewHostV5: View {
                 .background(V5.surfacePage)
             } else if surface.isOutage {
                 ScrollView {
-                    OutageBodyV5(copy: .tomorrow, onRetry: { Task { await surface.load() } })
+                    OutageBodyV5(copy: .tomorrow, onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                         .padding(.horizontal, V5.S.gutter)
                         .padding(.top, V5.S.s40)
                 }

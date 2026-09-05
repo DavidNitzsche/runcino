@@ -23,6 +23,12 @@ struct FaffApp: App {
     /// app since this morning" gaps (the original sleep-stale bug).
     @State private var lastImportAt: Date = .distantPast
 
+    /// STUCKCONN-2 · when this scene last became active, so a foreground after
+    /// a long background can throw away a connection pool that has almost
+    /// certainly died. Nil until the first foreground, which is a COLD START
+    /// and correctly resets nothing.
+    @State private var lastActiveAt: Date?
+
     /// True when this launch carries `-faffToken` — a DEBUG-only,
     /// agent/QA-driven session (see `seedQATokenIfAsked` below), never a real
     /// runner's launch. Used to skip the two interactive system permission
@@ -326,6 +332,26 @@ struct FaffApp: App {
         // until the next pull-to-refresh.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
+            // STUCKCONN-2 (2026-09-04) · A LONG BACKGROUND KILLS POOLED
+            // CONNECTIONS, AND URLSession DOES NOT ALWAYS NOTICE.
+            //
+            // This is the specific shape of the incident: the phone sleeps
+            // overnight, the HTTP/2 connection dies quietly, and on foreground
+            // URLSession keeps handing every request to the dead one. The app
+            // then renders a cache from before the phone went to sleep, under
+            // "Showing what you had 11 hours ago", and Retry could not fix it
+            // because it reused the same connection. Measured on David's own
+            // phone: eleven hours, a healthy server, and every read failing.
+            //
+            // Detecting it after the fact takes three failures and a window.
+            // Not walking into it is free: after a long background, throw the
+            // pool away BEFORE the foreground refresh below asks it for
+            // anything. A fresh connection costs one handshake.
+            if ForegroundWork.shouldResetConnections(now: Date(), lastActiveAt: lastActiveAt) {
+                Task { await API.resetConnectionPool() }
+            }
+            lastActiveAt = Date()
+
             // 2026-06-09 (RK-4): re-push today's workout to the watch + flush
             // the completion relay queue on every foreground. WatchSync.start()
             // only runs once per process, so an iPhone that sat backgrounded

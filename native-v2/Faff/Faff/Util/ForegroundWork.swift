@@ -52,6 +52,28 @@ enum ForegroundWork {
         now.timeIntervalSince(lastImportAt) > importThrottleSec
     }
 
+    /// STUCKCONN-2 · a background longer than this is treated as long enough
+    /// to have killed any pooled HTTP/2 connection.
+    ///
+    /// Five minutes, and the number is a POLICY CHOICE rather than a measured
+    /// one. iOS suspends an app's networking within seconds of backgrounding
+    /// and servers commonly close idle keep-alives inside a minute, so the
+    /// true threshold is smaller than this; five minutes is deliberately
+    /// conservative so an ordinary app-switch does not throw away a healthy
+    /// pool. The failure it exists for was eleven hours, which clears this by
+    /// two orders of magnitude.
+    static let connectionResetAfterBackgroundSec: TimeInterval = 300
+
+    /// Should this foreground throw away the connection pool first?
+    ///
+    /// Nil `lastActiveAt` is a COLD START, and the answer there is no: a fresh
+    /// process has no pool to be stale. Saying yes would spend a reset on
+    /// every launch to fix a state that cannot exist yet.
+    static func shouldResetConnections(now: Date, lastActiveAt: Date?) -> Bool {
+        guard let lastActiveAt else { return false }
+        return now.timeIntervalSince(lastActiveAt) > connectionResetAfterBackgroundSec
+    }
+
     /// Should this foreground refresh the surfaces?
     ///
     /// ALWAYS, on every return to the foreground. There is no throttle here on

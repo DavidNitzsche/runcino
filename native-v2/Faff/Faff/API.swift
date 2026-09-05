@@ -41,27 +41,81 @@ import Foundation
 private actor StuckConnectionMonitor {
     static let shared = StuckConnectionMonitor()
 
-    /// 3, not 1: the OS log's own "consecutive failures 11" shows a single
-    /// stuck attempt is not unusual on its own — reacting to the first one
-    /// would reset a perfectly recoverable connection on every ordinary
-    /// blip. 3 in a row, across independent requests, is what actually
-    /// distinguishes "this one attempt was unlucky" from "the connection
-    /// itself is the problem."
+    // ─────────────────────────────────────────────────────────────────────
+    // STUCKCONN-2 (2026-09-04) · WHY THE FIRST VERSION DID NOT HOLD
+    //
+    // David, after eleven hours of "Can't reach faff. Showing what you had 11
+    // hours ago." with a healthy server: "There's no error. There is some huge
+    // bug somewhere making this happen. I've brought this up MANY times."
+    //
+    // STUCKCONN-1 diagnosed the cause correctly (a pooled HTTP/2 connection
+    // that URLSession keeps reusing and re-failing on) and then built a
+    // detector that cannot fire in the situation it was built for. Three
+    // separate defects, each sufficient on its own:
+    //
+    // 1 · A SUCCESS ANYWHERE CLEARED THE STREAK. `recordSuccess()` zeroed the
+    //     counter on ANY completed response, reasoning that "any real HTTP
+    //     response proves the connection itself works." That sentence treats
+    //     the connection as one thing. URLSession keeps a POOL. A success on a
+    //     healthy connection says nothing about a broken sibling, and this app
+    //     fires many requests in parallel, so a genuine stuck streak was
+    //     repeatedly wiped by its own healthy neighbours and never reached 3.
+    //     One name for two quantities, which is Rule 16.
+    //
+    // 2 · ONLY `.timedOut` COUNTED. The incident's OS log said "HTTP/2
+    //     terminating broken Connection", and Foundation surfaces that as
+    //     `.networkConnectionLost` at least as often as `.timedOut`. The old
+    //     comment declined to include it on the grounds that a reset helps no
+    //     offline device, which conflates "there is no network" with "our
+    //     pooled connection is dead while the network is fine". On a genuinely
+    //     offline device a reset costs nothing, because there are no working
+    //     connections to tear down.
+    //
+    // 3 · THE COUNT WAS "CONSECUTIVE" ACROSS INDEPENDENT REQUESTS, which is
+    //     not a meaningful sequence when requests are concurrent. It is now
+    //     N failures inside a rolling WINDOW, and the window is also what
+    //     expires a streak that resolved itself, so nothing needs to clear it.
+    //
+    // The fix that matters most to the runner is not in this actor at all. It
+    // is that Retry now resets the pool before refetching. See
+    // `API.resetConnectionPool()`.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// 3 signals inside `windowSec`. Not "in a row": see defect 3 above.
     private static let threshold = 3
+    /// Long enough to span one screen's fan-out of parallel reads, short
+    /// enough that two unrelated blips a minute apart do not add up.
+    private static let windowSec: TimeInterval = 90
+    /// A reset tears down every connection, so it must not run in a loop
+    /// while a genuinely offline device keeps failing.
+    private static let minSecondsBetweenResets: TimeInterval = 30
 
-    private var consecutiveStuckSignals = 0
+    private var stuckAt: [Date] = []
     private var resetInFlight = false
-
-    func recordSuccess() {
-        consecutiveStuckSignals = 0
-    }
+    private var lastResetAt: Date?
 
     func recordStuckSignal() {
+        let now = Date()
+        stuckAt.append(now)
+        stuckAt.removeAll { now.timeIntervalSince($0) > Self.windowSec }
+        guard stuckAt.count >= Self.threshold else { return }
+        resetPool(now: now)
+    }
+
+    /// Reset the pool without waiting for a streak. This is what Retry calls:
+    /// the runner has explicitly told us the last read was wrong, which is a
+    /// stronger signal than any heuristic in this file.
+    func resetNow() {
+        resetPool(now: Date(), force: true)
+    }
+
+    private func resetPool(now: Date, force: Bool = false) {
         guard !resetInFlight else { return }
-        consecutiveStuckSignals += 1
-        guard consecutiveStuckSignals >= Self.threshold else { return }
-        consecutiveStuckSignals = 0
+        if !force, let last = lastResetAt,
+           now.timeIntervalSince(last) < Self.minSecondsBetweenResets { return }
+        stuckAt.removeAll()
         resetInFlight = true
+        lastResetAt = now
         URLSession.shared.reset {
             Task { await StuckConnectionMonitor.shared.clearResetInFlight() }
         }
@@ -181,17 +235,37 @@ enum API {
         #endif
     }
 
-    /// STUCKCONN-1 · true for a transport error that means "the connection
-    /// itself is broken," as opposed to a genuine timeout of an otherwise-
-    /// healthy attempt or an outright absence of network. See
-    /// `StuckConnectionMonitor`'s own header for the incident this closes —
-    /// scoped to `.timedOut` specifically because that is the literal
-    /// signature the OS logged for the stuck connection, and because a
-    /// `.notConnectedToInternet`/`.networkConnectionLost` reset would tear
-    /// down connections a genuinely offline device has no way to rebuild
-    /// anyway, for no benefit.
-    private static func isStuckConnectionSignal(_ error: Error) -> Bool {
-        (error as? URLError)?.code == .timedOut
+    /// STUCKCONN-2 · true for a transport error that can mean "the pooled
+    /// connection itself is broken", as opposed to a clean refusal.
+    ///
+    /// `.networkConnectionLost` is here now and was not before. It is the
+    /// error Foundation raises when a connection the pool believed was open
+    /// turns out to be dead, which is the literal shape of the incident this
+    /// closes. `.cannotConnectToHost` joins it for the same reason. The
+    /// previous version excluded both on the argument that resetting helps no
+    /// offline device; that argument answers a different question, because a
+    /// dead pooled connection on a device with perfectly good WiFi is exactly
+    /// the case here, and on a truly offline device a reset tears down nothing
+    /// worth keeping.
+    /// Internal, not private, for the same reason `isCancellation` is: the
+    /// distinction is the whole fix and it should be directly testable.
+    static func isStuckConnectionSignal(_ error: Error) -> Bool {
+        guard let code = (error as? URLError)?.code else { return false }
+        return code == .timedOut
+            || code == .networkConnectionLost
+            || code == .cannotConnectToHost
+    }
+
+    /// STUCKCONN-2 · force fresh connections, then let the caller refetch.
+    ///
+    /// THE BUG THIS EXISTS FOR. The stale banner's Retry button called
+    /// `surface.load()` and nothing else, so it reissued the same request
+    /// through the same `URLSession.shared` and out over the same dead pooled
+    /// connection, and failed identically. The one control the app offers for
+    /// this failure could not fix this failure, which is why tapping it for
+    /// eleven hours changed nothing.
+    static func resetConnectionPool() async {
+        await StuckConnectionMonitor.shared.resetNow()
     }
 
     /// CANCELBANNER-1 · true for an error that means "this specific request
@@ -303,12 +377,14 @@ enum API {
             }
             throw error
         }
-        // STUCKCONN-1 · any real HTTP response — success, 401, 500, doesn't
-        // matter — proves the connection itself works, which is the only
-        // fact this monitor tracks. A prior stuck streak that resolved
-        // itself (or that a reset already fixed) must not linger and reset
-        // the connection pool again over an unrelated later blip.
-        await StuckConnectionMonitor.shared.recordSuccess()
+        // STUCKCONN-2 · the `recordSuccess()` call that used to sit here is
+        // GONE, not moved. It cleared the stuck streak on any completed
+        // response, and because this app issues many reads in parallel over a
+        // POOL of connections, a success on a healthy one routinely wiped a
+        // genuine streak on a dead one before it could reach the threshold.
+        // The rolling window in `StuckConnectionMonitor` is what expires a
+        // streak that resolved on its own, and it does that without needing a
+        // signal from an unrelated connection.
         guard let http = resp as? HTTPURLResponse else {
             await RequestDiagnosticsLog.shared.finish(diagGen, outcome: .transportError("non-HTTP response"))
             throw APIError.badStatus(-1)
