@@ -56,6 +56,7 @@
  * third way.
  */
 import { pool } from '@/lib/db/pool';
+import { planVersionOf } from '@/lib/plan/plan-version';
 import { ownedDaysSql } from '@/lib/plan/owned-days';
 import { dayNoteFor } from '@/lib/plan/week-loader';
 import { loadGlanceState } from '@/lib/coach/glance-state';
@@ -244,7 +245,7 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
   // Same construction as `/api/v5/today` and `loadPlanWeek` — see either's
   // own doc comment for why `id` alone under-invalidates (an in-place
   // re-anchor rewrites rows under the same plan id).
-  const planVersion = `${plan.id}:${plan.last_adapted_at ?? 'none'}`;
+  const planVersion = planVersionOf(plan);
 
   // BOUNDARY-1's own query, scoped to THIS plan id — one cheap indexed
   // aggregate, not the reign-aware `ownedDaysSql` below (that answers a

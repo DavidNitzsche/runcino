@@ -572,7 +572,7 @@ export const HANDED_BACK_FAILS = false;
 // null) ?? null`) is gone — the resolver-matched prescription's type is now
 // the ONLY source, with no coerced fallback to a passive stamp. Taken from
 // the scanner's own count, not from arithmetic on the diff.
-export const PERIPHERAL_BASELINE = 176;
+export const PERIPHERAL_BASELINE = 175;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

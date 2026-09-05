@@ -363,6 +363,54 @@ function toPending(r: {
 }
 
 /**
+ * Read one pending proposal WITHOUT consuming it.
+ *
+ * `acceptProposal` marks the row accepted in the same statement that returns
+ * it, which is correct for the apply step and wrong for anything that needs to
+ * look before it leaps. The staleness check needs to look: a proposal raised
+ * against a plan that has since been rebuilt must stay pending rather than be
+ * spent on a plan it was not reasoned about.
+ *
+ * THREE STATES, because there are three (Rule 11). A read that failed is not a
+ * proposal that is missing, and the accept route answers them differently — a
+ * 500 the runner can retry against a 404 he cannot. My first cut of this
+ * function swallowed the failure into an empty row set, which is exactly the
+ * defect the swallow ratchet exists to catch, and it caught it.
+ */
+export type ProposalLookup =
+  | { readonly ok: true; readonly proposal: PendingProposal | null }
+  | { readonly ok: false };
+
+export async function loadPendingProposalById(
+  userUuid: string,
+  proposalId: number,
+): Promise<ProposalLookup> {
+  const r = await rowOrNull<{
+    id: number;
+    user_uuid: string;
+    plan_workout_id: string;
+    workout_date_iso: string;
+    action_kind: string;
+    action_payload: PendingProposal['actionPayload'];
+    reason: string;
+    evidence: Record<string, unknown>;
+    created_at: Date;
+  }>(
+    'workout-proposals/loadPendingProposalById',
+    pool.query(
+      `SELECT id, user_uuid, plan_workout_id, workout_date_iso::text AS workout_date_iso,
+              action_kind, action_payload, reason, evidence, created_at
+         FROM plan_workout_proposals
+        WHERE id = $1 AND user_uuid = $2::uuid AND status = 'pending'`,
+      [proposalId, userUuid],
+    ),
+  );
+
+  if (r === null) return { ok: false };
+  return { ok: true, proposal: r === undefined ? null : toPending(r) };
+}
+
+/**
  * Mark a proposal as accepted · returns the action so the route can
  * call applyAdaptations with the original payload.
  *

@@ -47,68 +47,60 @@ import type {
 } from '@/lib/faff/v5-today';
 import { fmtMi } from '@/lib/format/run';
 import type { PendingProposal } from '@/lib/plan/workout-proposals';
+import { actionFromPending, actionShapeOfEngineKind } from '@/lib/brain/proposal/staleness';
+import { phoneDirectionOf, actionHeadline } from '@/lib/faff/v5-action-render';
 
-/** Engine kind to the runner's question. See the header for the two calls. */
+/**
+ * Engine kind to the runner's question.
+ *
+ * V5PROPOSALRENDER-1 (2026-09-05) · this now DELEGATES. It used to hold its own
+ * five-kind switch, which was correct for the five kinds the engine could raise
+ * and would have gone quiet the moment it learnt a sixth: an unrecognised kind
+ * returns null and `toWire` withholds the card, so a new lever would have
+ * reached the phone as nothing at all. That is this codebase's signature
+ * failure — wired, tested and inert — arriving on the one surface where the
+ * runner would never know to look for it.
+ *
+ * The direction now comes from `phoneDirectionOf`, which is TOTAL over the
+ * action union: a kind with no drawing fails to compile rather than fails to
+ * appear. The two judgement calls the old switch documented are preserved
+ * there (a field test is a push; a downgrade to rest or recovery is prescribed
+ * RECOVERY, not a pull-back) and are gated by name.
+ */
 export function directionOf(
   kind: string,
   payload?: PendingProposal['actionPayload'],
 ): V5ProposalDirection | null {
-  switch (kind) {
-    case 'mark_upgrade': return 'push';
-    case 'field_test': return 'push';
-    case 'shave': return 'pull_back';
-    case 'downgrade': {
-      const t = typeof payload?.newType === 'string' ? payload.newType : null;
-      return t === 'rest' || t === 'recovery' ? 'recovery' : 'pull_back';
-    }
-    case 'reschedule': return 'move';
-    // Rule 11: an unrecognised kind is not a pull-back. It is a kind this
-    // mapping has not been taught, and showing the runner a card whose
-    // direction we guessed is worse than showing nothing.
-    default: return null;
-  }
+  const shape = actionShapeOfEngineKind(kind, payload ?? {});
+  // Rule 11: a kind this bridge has not been taught is not a pull-back. It is
+  // a kind nobody decided how to draw, and a guessed direction on a card the
+  // runner may act on is worse than no card.
+  return shape == null ? null : phoneDirectionOf(shape);
 }
 
 /**
  * Six to ten words, in the coach's voice.
  *
- * Switches on the ACTION KIND, not the direction, because the headline answers
- * a different question: direction is which way, headline is what changes. Two
- * kinds map to `push` and they do not change the same thing, so a headline
- * derived from the direction would have had to say "more" about a field test.
- * Rule 17: two lines on one card, two facts.
+ * Also delegating, for the same reason as `directionOf`, and to the same total
+ * renderer. Direction and headline are two facts on one card (Rule 17) —
+ * direction is which way, headline is what changes — so they are two functions
+ * over the same action rather than one derived from the other.
  *
- * The engine's own `reason` is a sentence about evidence and belongs in `why`.
+ * The wording is unchanged: `actionHeadline` carries the exact sentences this
+ * function used to build, which is why the pinned assertions in
+ * `_v5_proposals.test.ts` still hold. Those tests now exercise the total
+ * renderer through this adapter, which is the point — a renderer no corpus
+ * reaches is untested however total it is (Rule 15).
  */
 export function headlineFor(p: PendingProposal): string {
-  const day = dayName(p.workoutDateISO);
-  switch (p.actionKind) {
-    case 'mark_upgrade': {
-      const mi = numberOrNull(p.actionPayload?.newDistanceMi);
-      // `fmtMi` carries its own unit, which is the point of having one
-      // formatter: my first cut appended " mi" and produced "9 mi mi".
-      const shown = mi == null ? null : fmtMi(mi);
-      return shown == null ? `Add to ${day}` : `${day} goes to ${shown}`;
-    }
-    case 'shave': {
-      const frac = numberOrNull(p.actionPayload?.shaveFraction);
-      return frac == null ? `Ease ${day}` : `Take ${Math.round(frac * 100)}% off ${day}`;
-    }
-    case 'downgrade': {
-      switch (p.actionPayload?.newType) {
-        case 'rest': return `${day} becomes a rest day`;
-        case 'recovery': return `${day} becomes a recovery run`;
-        case 'easy': return `${day} becomes an easy run`;
-        default: return `Ease ${day}`;
-      }
-    }
-    case 'reschedule': {
-      const to = typeof p.actionPayload?.newDate === 'string' ? p.actionPayload.newDate : null;
-      return to == null ? `Move ${day}` : `Move ${day} to ${dayName(to)}`;
-    }
-    case 'field_test':
-      return `Make ${day} a field test`;
+  const action = actionFromPending(p);
+  if (action == null) {
+    // Reached only by a row whose payload does not specify what to change —
+    // an upgrade with no distance, a move with no date. It cannot be applied
+    // either, and `toWire` withholds it, so this is the log-side wording only.
+    return `Change to ${dayName(p.workoutDateISO)}`;
   }
+  return actionHeadline(action, dayName(p.workoutDateISO));
 }
 
 /**

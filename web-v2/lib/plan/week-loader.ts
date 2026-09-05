@@ -9,6 +9,7 @@
  * the response-shape docs, which still apply verbatim.
  */
 import { pool } from '@/lib/db/pool';
+import { planVersionOf } from '@/lib/plan/plan-version';
 import { rowsOrNull } from '@/lib/db/read';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { loadSettings } from '@/lib/coach/settings';
@@ -189,7 +190,7 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
   // enough. Kept as one local computation here rather than importing the
   // route's, since this loader has no dependency on the `app/api` route
   // tree and shouldn't grow one for a two-field string join.
-  const planVersion = `${plan.id}:${plan.last_adapted_at ?? 'none'}`;
+  const planVersion = planVersionOf(plan);
 
   const rows = (await pool.query(
     // `notes` is the generator's own per-day reason ("Recovery easy ·

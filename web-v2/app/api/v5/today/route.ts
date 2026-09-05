@@ -1,4 +1,5 @@
 import type { V5ProposalReadWire, V5ProposalWire } from '@/lib/faff/v5-today';
+import { planVersionOrNull } from '@/lib/plan/plan-version';
 /**
  * GET /api/v5/today
  *
@@ -351,7 +352,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
    * entry keyed on a null plan version simply never matches a real one, so
    * it is invalidated the moment a real plan appears.
    */
-  const planVersion = activePlan ? `${activePlan.id}:${activePlan.last_adapted_at ?? 'none'}` : null;
+  const planVersion = planVersionOrNull(activePlan);
   let raceMode = activePlan != null && (activePlan.mode === 'race-prep' || activePlan.race_id != null);
   if (!activePlan) {
     // No active plan right now — still race-mode if this runner has EVER
