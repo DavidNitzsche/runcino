@@ -1745,7 +1745,8 @@ extension API {
                                          dynamicCache: String? = nil,
                                          as: T.Type) async throws -> V5Fetch<T> {
         guard let url = URL(string: API.baseURL.absoluteString + path) else { return .failed }
-        let (data, http) = try await API.authedGET(url)
+        // REQUESTSTORM-1 · one in-flight GET per URL. See V5RequestCoalescer.
+        let (data, http) = try await V5RequestCoalescer.shared.get(url)
 
         if (200...299).contains(http.statusCode) {
             // STAGE1-DIAG-1 · the transport already recorded its own success
@@ -2392,4 +2393,67 @@ extension V5PlanChangeRefusal {
         reason = c.text(.reason)
         violations = c.opt(.violations)
     }
+}
+
+/// REQUESTSTORM-1 (2026-09-05) · one in-flight GET per URL, shared by every
+/// caller that asks for it while it is running.
+///
+/// ── THE EVIDENCE ──────────────────────────────────────────────────────────
+///
+/// From the runner's own on-device request log, 2026-09-05 08:23:
+///
+///   · 281 requests logged in one session, up from 156 five minutes earlier
+///   · a single burst carrying THREE `/api/v5/today`, THREE `/api/v5/block`
+///     and THREE `/api/v5/races`, all in flight together
+///   · ingest POSTs completing in 5,527 / 5,974 / 6,057 / 6,549 ms, and
+///     `/api/v5/plan-snapshot` in 8,848 ms
+///   · `last error: NSURLErrorDomain Code=-1001 "The request timed out."`
+///
+/// The reads were not failing because the connection was dead. They timed out
+/// at the 12-second bound while the app's OWN duplicate traffic saturated the
+/// link. STUCKCONN-2 reset the connection pool on three timeouts, which is the
+/// right response to a dead connection and the wrong one to a busy one: it
+/// tears down the in-flight requests and the app re-fires the same burst into
+/// a cold pool.
+///
+/// ── WHERE THE DUPLICATES COME FROM ────────────────────────────────────────
+///
+/// `.faffForegroundRefresh` is posted TWICE per foreground (once immediately,
+/// once after the HealthKit import) and observed by eight files, including
+/// `SurfaceStoreV5`, which every V5 surface uses. On top of that the launch
+/// prefetch in `API.swift` fires seven reads whose own comment says "every view
+/// still re-fetches". Nobody was wrong locally; the total was never counted.
+///
+/// ── WHY COALESCE RATHER THAN THROTTLE ─────────────────────────────────────
+///
+/// A throttle drops a request, and a dropped refresh is how a screen goes on
+/// showing a value the server has already corrected. Coalescing drops no
+/// request: the second caller receives the SAME response, so every observer
+/// still gets its answer and the wire carries one copy.
+///
+/// Scoped to GET, and to reads only. A write must never be coalesced: two
+/// identical POSTs are two intents.
+private actor V5RequestCoalescer {
+    static let shared = V5RequestCoalescer()
+
+    private var inFlight: [String: Task<(Data, HTTPURLResponse), Error>] = [:]
+
+    /// How many callers joined an existing request rather than opening a new
+    /// one. Read by the diagnostics sheet, so the saving is measurable on the
+    /// device rather than asserted here.
+    private(set) var joinedCount = 0
+
+    func get(_ url: URL) async throws -> (Data, HTTPURLResponse) {
+        let key = url.absoluteString
+        if let existing = inFlight[key] {
+            joinedCount += 1
+            return try await existing.value
+        }
+        let task = Task { try await API.authedGET(url) }
+        inFlight[key] = task
+        defer { inFlight[key] = nil }
+        return try await task.value
+    }
+
+    func joins() -> Int { joinedCount }
 }
