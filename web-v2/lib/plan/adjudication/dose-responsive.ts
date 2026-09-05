@@ -444,6 +444,27 @@ export interface DoseResponsivePrescription {
 
   /** 4 · when this is re-taken. Must be before it lands. */
   readonly assessOnISO: string;
+  /**
+   * Whether `assessOnISO` falls inside a taper, race week or post-race
+   * recovery block, resolved by `isPrescribedNonNormal` (reader
+   * PRESCRIBED_NON_NORMAL_DAY). Null when the caller did not resolve the race
+   * calendar at all, which is reported rather than assumed.
+   *
+   * This exists because of a defect in the first version of this module, found
+   * while tracing the owner's own block. Both November gates were scheduled to
+   * be assessed on 2026-11-09 and 2026-11-16, and Run Malibu is 2026-11-08, so
+   * BOTH assessment dates sit inside the post-race recovery window the engine
+   * itself prescribed. Rule 8 then does exactly what it should: the habit
+   * reader excludes those days, and if it cannot reach far enough back for a
+   * representative answer it REFUSES. A refusal is an absence, an absence
+   * holds the default, and a gate whose earning condition can only ever read
+   * absent is not a bar, it is a wall (Rule 21).
+   *
+   * The right fix is usually to move the assessment before the taper begins,
+   * and where it genuinely cannot move, to say so with the reason. Neither
+   * happens on its own, so the field is required and unanswered `true` blocks.
+   */
+  readonly assessOnIsPrescribedNonNormal: boolean | null;
   /** 5 · the fallback, stated. */
   readonly onIncompleteEvidence: IncompleteEvidencePosture;
   /** 6 · the maximum permitted change. */
@@ -455,6 +476,11 @@ export interface DoseResponsivePrescription {
    * An unanswered finding blocks the prescription.
    */
   readonly asymmetryJustified: Readonly<Partial<Record<SymmetryFindingKind, string>>>;
+  /**
+   * Why this gate is assessed inside a prescribed non-normal window anyway.
+   * Required when `assessOnIsPrescribedNonNormal` is true, ignored otherwise.
+   */
+  readonly assessInsideWindowJustified: string | null;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -543,6 +569,23 @@ export function validatePrescription(
   }
   if (rx.citations.length === 0) {
     out.push({ field: 'citations', detail: 'No doctrine citation for either dose.' });
+  }
+  if (rx.assessOnIsPrescribedNonNormal === null) {
+    out.push({
+      field: 'assessOnIsPrescribedNonNormal',
+      detail: `Nobody resolved whether ${rx.assessOnISO} sits inside a taper, race week or `
+        + 'post-race recovery block. Ask isPrescribedNonNormal and say which it is. Rule 11: '
+        + 'an unresolved question is not the same fact as a resolved no.',
+    });
+  } else if (rx.assessOnIsPrescribedNonNormal && !rx.assessInsideWindowJustified) {
+    out.push({
+      field: 'assessInsideWindowJustified',
+      detail: `${rx.assessOnISO} is inside a taper, race week or post-race recovery block. `
+        + 'Rule 8 excludes those days from every habit reader, so an earning condition that '
+        + 'reads habit may only ever come back absent, and a condition that can only read '
+        + 'absent is a wall rather than a bar. Move the assessment before the window, or say '
+        + 'why it cannot move and which requirements survive there.',
+    });
   }
   for (const f of auditSymmetry(rx)) {
     if (!rx.asymmetryJustified[f.kind]) {

@@ -83,12 +83,22 @@ import {
 import { athleteEvidenceFor, ceilingClaimFrom } from '@/lib/plan/adjudication/adjudicate';
 import type { ComparableSession } from '@/lib/plan/adjudication/contract';
 import { sessionDoseCeilingMi } from '@/lib/plan/dosing';
+import { isPrescribedNonNormal, prescribedWindowFor } from '@/lib/training/normal-window';
 import type { Measured } from '@/lib/adaptation/canonical/input';
 
 const measured = reading.of;
 const absent = reading.absent;
 
 const OWNER_HISTORY_WINDOW = 'all of 2026, canonical rows only, Rule 8 windows named';
+
+/**
+ * Run Malibu's Rule 8 window, resolved by `prescribedWindowFor` rather than
+ * restated here, so a change to the taper or post-race tables moves this trace
+ * with it instead of leaving it agreeing with itself (Rule 18).
+ */
+const MALIBU_WINDOW = prescribedWindowFor({
+  slug: 'run-malibu', dateISO: '2026-11-08', distanceMi: 13.1, priority: 'B',
+})!;
 const RESEARCH = path.resolve(process.cwd(), '..', 'Research');
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -460,6 +470,7 @@ function nov22(): DoseResponsivePrescription {
       },
     ],
     assessOnISO: '2026-11-16',
+    assessOnIsPrescribedNonNormal: isPrescribedNonNormal('2026-11-16', [MALIBU_WINDOW]),
     onIncompleteEvidence: 'HOLD_DEFAULT',
     cap: {
       maxHarder: {
@@ -495,6 +506,7 @@ function nov22(): DoseResponsivePrescription {
         + 'window rather than a lower ceiling. Outside a taper this justification does not '
         + 'hold and the gate should be rejected without it.',
     },
+    assessInsideWindowJustified: null,
   };
 }
 
@@ -524,6 +536,18 @@ function nov15(): DoseResponsivePrescription {
       basis: 'A fast-finish dose instead, per Research/04 §4.1.',
     },
     assessOnISO: '2026-11-09',
+    assessOnIsPrescribedNonNormal: isPrescribedNonNormal('2026-11-09', [MALIBU_WINDOW]),
+    assessInsideWindowJustified:
+      'FOUND BY THIS TRACE, AND STATED RATHER THAN MOVED. 2026-11-09 is inside Run Malibu\'s '
+      + 'prescribed window (2026-10-25 to 2026-11-15, two taper weeks plus one recovery week), '
+      + 'and it cannot move earlier without assessing before the 18 Oct block has been run, '
+      + 'which is the evidence the gate exists to read. The consequence is named rather than '
+      + 'waved past: the habit requirement reads normalWeeklyMileage, which excludes every day '
+      + 'in that window, so on this date it answers from weeks ending 2026-10-24 or earlier or '
+      + 'refuses outright. A refusal holds the default at 4 mi, which is safe and is the '
+      + 'correct Rule 11 posture, but it means the upward path here rests on the two execution '
+      + 'requirements rather than on all three. The 22 Nov gate does not have this problem: its '
+      + 'assessment lands one day after the window closes.',
     earn: nov22().earn.map((r) => ({
       ...r,
       requirementId: r.requirementId.replace('nov22', 'nov15'),
@@ -569,6 +593,52 @@ function nov15(): DoseResponsivePrescription {
 
 const at = (assessedOnISO: string, pairs: Record<string, Measured<number>>): DoseEvidence => ({
   assessedOnISO, readings: new Map(Object.entries(pairs)),
+});
+
+describe('beat 4b · Rule 8 · where the assessment dates fall, resolved not restated', () => {
+  /**
+   * FOUND WHILE TRACING, AND IT IS A DEFECT CLASS RATHER THAN A DETAIL. A gate
+   * whose earning condition reads HABIT and whose assessment lands inside a
+   * taper or post-race recovery block can only ever read what Rule 8 leaves
+   * behind, and where that is too little the reader refuses. A refusal is an
+   * absence, an absence holds the default, and a condition that can only read
+   * absent is a wall rather than a bar (Rule 21).
+   */
+  it('Run Malibu excludes 2026-10-25 to 2026-11-15, two taper weeks and one recovery week', () => {
+    expect(MALIBU_WINDOW.category).toBe('hm');
+    expect(MALIBU_WINDOW.taperWeeks).toBe(2);
+    expect(MALIBU_WINDOW.recoveryWeeks).toBe(1);
+    expect(MALIBU_WINDOW.fromISO).toBe('2026-10-25');
+    expect(MALIBU_WINDOW.toISO).toBe('2026-11-15');
+  });
+
+  it('the 15 Nov session LANDS on the last excluded day, and its gate is assessed inside', () => {
+    expect(isPrescribedNonNormal('2026-11-15', [MALIBU_WINDOW])).toBe(true);
+    expect(isPrescribedNonNormal('2026-11-09', [MALIBU_WINDOW])).toBe(true);
+    expect(nov15().assessOnIsPrescribedNonNormal).toBe(true);
+    // So it must carry the reason, and it does.
+    expect(nov15().assessInsideWindowJustified).toContain('normalWeeklyMileage');
+  });
+
+  it('the 22 Nov gate is assessed one day AFTER the window closes, and needs no reason', () => {
+    expect(isPrescribedNonNormal('2026-11-16', [MALIBU_WINDOW])).toBe(false);
+    expect(nov22().assessOnIsPrescribedNonNormal).toBe(false);
+    expect(nov22().assessInsideWindowJustified).toBeNull();
+  });
+
+  it('and an unjustified assessment inside the window BLOCKS', () => {
+    const bad = { ...nov15(), assessInsideWindowJustified: null };
+    const defects = validatePrescription(bad);
+    expect(defects.map((d) => d.field)).toContain('assessInsideWindowJustified');
+    expect(defects.find((d) => d.field === 'assessInsideWindowJustified')?.detail)
+      .toContain('wall rather than a bar');
+  });
+
+  it('an unresolved calendar is its own finding, not a quiet no', () => {
+    const unresolved = { ...nov22(), assessOnIsPrescribedNonNormal: null };
+    expect(validatePrescription(unresolved).map((d) => d.field))
+      .toContain('assessOnIsPrescribedNonNormal');
+  });
 });
 
 describe('beat 5 · both November marathon-pace doses are well-formed gates', () => {

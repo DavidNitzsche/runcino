@@ -99,6 +99,7 @@ function rx(over: Partial<DoseResponsivePrescription> = {}): DoseResponsivePresc
       req({ requirementId: 'd3', reader: 'ABSORBED_WEEKLY_MI', comparator: 'AT_MOST', threshold: 30, rampFrom: 45 }),
     ],
     assessOnISO: '2026-11-16',
+    assessOnIsPrescribedNonNormal: false,
     onIncompleteEvidence: 'HOLD_DEFAULT',
     cap: {
       maxHarder: { value: 3, provenance: 'POLICY_ASSUMPTION', basis: 'fixture' },
@@ -108,6 +109,7 @@ function rx(over: Partial<DoseResponsivePrescription> = {}): DoseResponsivePresc
     },
     citations: [{ source: 'Research/04', section: '4.5', says: 'fixture', force: 'GUIDELINE' }],
     asymmetryJustified: {},
+    assessInsideWindowJustified: null,
     ...over,
   };
 }
