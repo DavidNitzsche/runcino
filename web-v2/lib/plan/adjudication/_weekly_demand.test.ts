@@ -31,9 +31,17 @@
  *     green with `STACK_UPLIFT_PER_PAIR` at 0.004 or at 0.4. Calibrating them
  *     needs outcomes this app does not have.
  *   · Whether `athleteCeiling` is the right CEILING. It proves the ceiling is
- *     the largest absorbed week under the same formula. Whether a runner may
- *     be taken past his largest absorbed week, and by how much, is a coaching
- *     question this module does not answer and must not be read as answering.
+ *     the largest absorbed week under the same formula, on a stated basis
+ *     applied to both sides. Whether a runner may be taken past his largest
+ *     absorbed week, and by how much, is a coaching question this module does
+ *     not answer and must not be read as answering.
+ *   · Whether the reconstructed contexts in `DAVID_WEEKS_IN_CONTEXT` are TRUE.
+ *     Two of the five fields are invented and labelled as invented, and their
+ *     sensitivity is measured rather than hidden — but no assertion here can
+ *     check them against run history the suite has not got. The FULL_CONTEXT
+ *     numbers are therefore evidence about the MACHINERY, not about the
+ *     runner, and `it('RULE 8 · a filtering caller drops two of these weeks')`
+ *     states how far the answer moves under a different admissible input.
  *   · Whether any caller filtered `demonstratedWeeks` through
  *     `normal-window.ts`. The contract is asserted as TEXT in this file, which
  *     stops the sentence being deleted; it cannot see what a caller passes.
@@ -45,7 +53,10 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import {
   computeWeeklyDemand,
-  athleteCeilingFrom,
+  compareToAthleteCeiling,
+  ceilingCostOf,
+  priceWeek,
+  demonstratedWeekAsInput,
   baseCostOfWeek,
   longRunSpikeFraction,
   stackingShape,
@@ -58,6 +69,7 @@ import {
   RECOVERY_DEBT_UPLIFT,
   INJURY_UPLIFT_BY_SEVERITY,
   type WeeklyDemandInput,
+  type WeekCostInput,
   type DemonstratedWeek,
   type DemandComponentKey,
 } from './weekly-demand';
@@ -100,19 +112,66 @@ const SAFETY_INJURED: SafetyResolution = {
 };
 
 /**
- * The owner's demonstrated weeks. Weekly totals and long-run distances are
- * measured; the PAIRING of the two, and the quality minutes, are reconstructed.
+ * The owner's demonstrated weeks, with NO reconstructed context.
+ *
+ * Weekly totals and long-run distances are measured; the PAIRING of the two,
+ * and the quality minutes, are reconstructed. `context: null` is the honest
+ * state of this fixture: nothing here pins where his hard days fell or what
+ * his prior-30-day longest was going into each week. So a comparison against
+ * this set degrades to BASE_ONLY on BOTH sides, which is the point.
  */
 const DAVID_WEEKS: readonly DemonstratedWeek[] = [
-  { weekStartISO: '2026-01-19', weeklyMi: 45.8, longRunMi: 21.51, qualityMinutes: 30, absorbed: true },
-  { weekStartISO: '2026-02-09', weeklyMi: 48.5, longRunMi: 20.02, qualityMinutes: 40, absorbed: true },
-  { weekStartISO: '2026-02-16', weeklyMi: 47.5, longRunMi: 18.00, qualityMinutes: 40, absorbed: true },
-  { weekStartISO: '2026-02-23', weeklyMi: 47.3, longRunMi: 16.00, qualityMinutes: 35, absorbed: true },
+  { weekStartISO: '2026-01-19', weeklyMi: 45.8, longRunMi: 21.51, qualityMinutes: 30, absorbed: true, context: null },
+  { weekStartISO: '2026-02-09', weeklyMi: 48.5, longRunMi: 20.02, qualityMinutes: 40, absorbed: true, context: null },
+  { weekStartISO: '2026-02-16', weeklyMi: 47.5, longRunMi: 18.00, qualityMinutes: 40, absorbed: true, context: null },
+  { weekStartISO: '2026-02-23', weeklyMi: 47.3, longRunMi: 16.00, qualityMinutes: 35, absorbed: true, context: null },
   // The 07-20 week: he ran 4.2 mi in the seven days that followed, against 52
   // prescribed. Run, and NOT absorbed. It must not raise the ceiling.
-  { weekStartISO: '2026-07-20', weeklyMi: 44.9, longRunMi: 18.00, qualityMinutes: 30, absorbed: false },
+  { weekStartISO: '2026-07-20', weeklyMi: 44.9, longRunMi: 18.00, qualityMinutes: 30, absorbed: false, context: null },
   // Nobody has judged this one. Unknown does not raise the ceiling either.
-  { weekStartISO: '2026-08-03', weeklyMi: 43.2, longRunMi: 14.00, qualityMinutes: 20, absorbed: null },
+  { weekStartISO: '2026-08-03', weeklyMi: 43.2, longRunMi: 14.00, qualityMinutes: 20, absorbed: null, context: null },
+];
+
+/**
+ * The same weeks WITH context, so the FULL_CONTEXT path is reachable at all.
+ *
+ * Rule 15: a mechanism the corpus cannot reach is untested however many cases
+ * pass, and with `DAVID_WEEKS` alone every ceiling in this suite would take
+ * the degraded branch. What each field is, said plainly, because the ceiling
+ * now has a real dependency on it:
+ *
+ *   lastRace                MEASURED. The 2026 race calendar is pinned in the
+ *                           header: Rose Bowl half 01-18, Disney half 02-01.
+ *                           Days are counted to each week's Monday start.
+ *   longestRunPrior30dMi    MEASURED for three of the four, from the pinned
+ *                           21.51 mi on 2026-01-25. RECONSTRUCTED for the
+ *                           01-19 week, whose 30-day lookback runs into 2025.
+ *   hardSessionDayOrdinals  RECONSTRUCTED. Every week here carries quality
+ *                           minutes and a long run, so two hard days is the
+ *                           floor, not a guess about the shape. A mid-week
+ *                           quality day and a weekend long run is [2, 6].
+ *                           `it('is not very sensitive to the hard-day
+ *                           reconstruction')` measures what this costs.
+ *   acwr                    RECONSTRUCTED NEUTRAL. Sweet spot, contributes 0.
+ *   weeksSinceLastCutback   RECONSTRUCTED NEUTRAL. Inside cadence, contributes 0.
+ *
+ * The two neutral fields are chosen neutral rather than favourable BECAUSE
+ * they are invented: a reconstruction must not be able to raise the ceiling
+ * through a term nobody measured.
+ */
+const CTX_NEUTRAL = {
+  acwr: SWEET_SPOT,
+  weeksSinceLastCutback: 2,
+  hardSessionDayOrdinals: [2, 6] as readonly number[],
+} as const;
+
+const DAVID_WEEKS_IN_CONTEXT: readonly DemonstratedWeek[] = [
+  { ...DAVID_WEEKS[0], context: { ...CTX_NEUTRAL, longestRunPrior30dMi: 18.00, lastRace: { daysSince: 1, noQualityWindowDays: 14 } } },
+  { ...DAVID_WEEKS[1], context: { ...CTX_NEUTRAL, longestRunPrior30dMi: 21.51, lastRace: { daysSince: 8, noQualityWindowDays: 14 } } },
+  { ...DAVID_WEEKS[2], context: { ...CTX_NEUTRAL, longestRunPrior30dMi: 21.51, lastRace: { daysSince: 15, noQualityWindowDays: 14 } } },
+  { ...DAVID_WEEKS[3], context: { ...CTX_NEUTRAL, longestRunPrior30dMi: 21.51, lastRace: { daysSince: 22, noQualityWindowDays: 14 } } },
+  { ...DAVID_WEEKS[4], context: { ...CTX_NEUTRAL, longestRunPrior30dMi: 18.00, lastRace: { daysSince: 78, noQualityWindowDays: 14 } } },
+  { ...DAVID_WEEKS[5], context: { ...CTX_NEUTRAL, longestRunPrior30dMi: 18.00, lastRace: { daysSince: 92, noQualityWindowDays: 14 } } },
 ];
 
 /** The live 2026-10-26 peak week, as the preview authors it today. */
@@ -326,8 +385,27 @@ describe('WEEKLYDEMAND-1 · Rule 11 · unknown is null, and null refuses', () =>
       expect(componentOf(r, key).contribution).toBeNull();
       expect(r.demandIndex).toBeNull();
       expect(r.unknownComponents).toContain(key);
-      expect(r.atCeiling).toBeNull();
       expect(r.explain).toMatch(/No demand index/);
+      // The FULL_CONTEXT comparison refuses with it, because it is the same
+      // six components on both sides.
+      expect(compareToAthleteCeiling(
+        { ...PEAK_WEEK, ...patch }, DAVID_WEEKS_IN_CONTEXT,
+      )!.proposed).toBeNull();
+      // BASE_ONLY reads three measured quantities and none of the context
+      // terms, so it refuses on exactly those three and stands otherwise.
+      // Refusing a ratio that IS honestly computable is as much a Rule 11
+      // failure as inventing one that is not.
+      const touchesBase = ['weeklyMi', 'qualityMinutes', 'longRunMi']
+        .includes(Object.keys(patch)[0]);
+      expect(r.ceiling!.basis).toBe('BASE_ONLY');
+      if (touchesBase) {
+        expect(r.ceiling!.proposed).toBeNull();
+        expect(r.atCeiling).toBeNull();
+        expect(r.explain).toMatch(/cannot be priced on the BASE_ONLY basis/);
+      } else {
+        expect(r.ceiling!.proposed).toBeCloseTo(86.825, 3);
+        expect(r.atCeiling).toBe(true);
+      }
     });
   }
 
@@ -575,41 +653,91 @@ describe('WEEKLYDEMAND-1 · recovery reads the calendar, not a wrist', () => {
  * ═══════════════════════════════════════════════════════════════════════ */
 
 describe('WEEKLYDEMAND-1 · the athlete ceiling', () => {
-  it('is the largest week he ABSORBED, under the same formula', () => {
-    const { ceiling, from, considered } = athleteCeilingFrom(DAVID_WEEKS);
-    expect(from?.weekStartISO).toBe('2026-02-09');
-    expect(considered).toBe(4);
-    expect(ceiling).toBeCloseTo(baseCostOfWeek(DAVID_WEEKS[1]), 6);
-    expect(ceiling).toBeCloseTo(66.705, 3);
+  const cmp = (weeks: readonly DemonstratedWeek[] | null, proposed = PEAK_WEEK) =>
+    compareToAthleteCeiling(proposed, weeks);
+
+  it('with no reconstructed context it degrades BOTH sides to BASE_ONLY', () => {
+    const c = cmp(DAVID_WEEKS)!;
+    expect(c.basis).toBe('BASE_ONLY');
+    expect(c.considered).toBe(4);
+    expect(c.withoutContext).toEqual([
+      '2026-01-19', '2026-02-09', '2026-02-16', '2026-02-23',
+    ]);
+    expect(c.from?.weekStartISO).toBe('2026-02-09');
+    expect(c.ceiling).toBeCloseTo(baseCostOfWeek(DAVID_WEEKS[1]), 6);
+    expect(c.ceiling).toBeCloseTo(66.705, 3);
+    // And the PROPOSED side is on the same basis, which is the whole fix.
+    expect(c.proposed).toBeCloseTo(ceilingCostOf(PEAK_WEEK, 'BASE_ONLY')!, 9);
+    expect(c.proposed).toBeCloseTo(86.825, 3);
+  });
+
+  it('with context on every absorbed week it prices both sides in FULL', () => {
+    const c = cmp(DAVID_WEEKS_IN_CONTEXT)!;
+    expect(c.basis).toBe('FULL_CONTEXT');
+    expect(c.withoutContext).toEqual([]);
+    expect(c.considered).toBe(4);
+    expect(c.proposed).toBeCloseTo(
+      ceilingCostOf(PEAK_WEEK, 'FULL_CONTEXT')!, 9);
+  });
+
+  it('ONE absorbed week without context degrades the WHOLE comparison', () => {
+    // Rule 11 at the ceiling. The alternative — drop the unreconstructable
+    // week and keep FULL_CONTEXT for the rest — lowers the ceiling, and a
+    // lower ceiling is the restrictive direction this model must not lean in.
+    const mixed = [
+      ...DAVID_WEEKS_IN_CONTEXT.slice(0, 3),
+      { ...DAVID_WEEKS_IN_CONTEXT[3], context: null },
+      ...DAVID_WEEKS_IN_CONTEXT.slice(4),
+    ];
+    const c = cmp(mixed)!;
+    expect(c.basis).toBe('BASE_ONLY');
+    expect(c.withoutContext).toEqual(['2026-02-23']);
+    expect(c.reason).toMatch(/BOTH sides drop/);
+  });
+
+  it('a partly-reconstructed context still refuses, it does not price a zero', () => {
+    // A context whose hard-day placement is unknown must NOT be read as "that
+    // week had no stacking". That assumption is precisely what inflated the
+    // ratio, and it is the one this branch exists to forbid.
+    const halfKnown = DAVID_WEEKS_IN_CONTEXT.map((w) => (
+      w.absorbed === true && w.context != null
+        ? { ...w, context: { ...w.context, hardSessionDayOrdinals: null } }
+        : w
+    ));
+    const c = cmp(halfKnown)!;
+    expect(c.basis).toBe('BASE_ONLY');
+    expect(c.withoutContext).toHaveLength(4);
   });
 
   it('a week he ran and did NOT absorb does not raise it', () => {
-    const withBigUnabsorbed = athleteCeilingFrom([
+    const withBigUnabsorbed = cmp([
       ...DAVID_WEEKS,
-      { weekStartISO: '2026-11-02', weeklyMi: 70, longRunMi: 22, qualityMinutes: 90, absorbed: false },
-    ]);
+      { weekStartISO: '2026-11-02', weeklyMi: 70, longRunMi: 22, qualityMinutes: 90, absorbed: false, context: null },
+    ])!;
     expect(withBigUnabsorbed.ceiling).toBeCloseTo(66.705, 3);
   });
 
   it('a week NOBODY HAS JUDGED does not raise it either', () => {
     // PLAN_SIMPLIFICATION_DOCTRINE invariant 11: missing data may not silently
     // create a more aggressive plan, and a higher ceiling is exactly that.
-    const withBigUnknown = athleteCeilingFrom([
+    const withBigUnknown = cmp([
       ...DAVID_WEEKS,
-      { weekStartISO: '2026-11-02', weeklyMi: 70, longRunMi: 22, qualityMinutes: 90, absorbed: null },
-    ]);
+      { weekStartISO: '2026-11-02', weeklyMi: 70, longRunMi: 22, qualityMinutes: 90, absorbed: null, context: null },
+    ])!;
     expect(withBigUnknown.ceiling).toBeCloseTo(66.705, 3);
   });
 
   it('"did not look" and "looked and found none" are two different facts', () => {
-    expect(athleteCeilingFrom(null).ceiling).toBeNull();
-    expect(athleteCeilingFrom([]).ceiling).toBeNull();
+    expect(cmp(null)).toBeNull();
+    expect(cmp([])).toBeNull();
     const didNotLook = computeWeeklyDemand({ ...PEAK_WEEK, demonstratedWeeks: null });
     const foundNone = computeWeeklyDemand({ ...PEAK_WEEK, demonstratedWeeks: [] });
     expect(didNotLook.explain).toMatch(/No demonstrated weeks were supplied/);
     expect(foundNone.explain).toMatch(/No demonstrated week is marked as absorbed/);
     expect(didNotLook.atCeiling).toBeNull();
     expect(foundNone.atCeiling).toBeNull();
+    expect(didNotLook.ceiling).toBeNull();
+    expect(foundNone.ceiling).toBeNull();
   });
 
   it('is not very sensitive to the quality-minutes reconstruction', () => {
@@ -617,12 +745,62 @@ describe('WEEKLYDEMAND-1 · the athlete ceiling', () => {
     // the ceiling rests on that rather than pretending it does not.
     const lean = DAVID_WEEKS.map((w) => ({ ...w, qualityMinutes: 20 }));
     const rich = DAVID_WEEKS.map((w) => ({ ...w, qualityMinutes: 60 }));
-    expect(athleteCeilingFrom(lean).ceiling).toBeCloseTo(60.105, 3);
-    expect(athleteCeilingFrom(rich).ceiling).toBeCloseTo(73.305, 3);
+    expect(cmp(lean)!.ceiling).toBeCloseTo(60.105, 3);
+    expect(cmp(rich)!.ceiling).toBeCloseTo(73.305, 3);
     // Volume is 73% of the ceiling either way. The reconstruction moves it by
     // about a fifth across a three-fold change in assumed quality.
-    expect(athleteCeilingFrom(rich).ceiling! / athleteCeilingFrom(lean).ceiling!)
-      .toBeLessThan(1.25);
+    expect(cmp(rich)!.ceiling! / cmp(lean)!.ceiling!).toBeLessThan(1.25);
+  });
+
+  it('is not very sensitive to the hard-day reconstruction either', () => {
+    // The FULL_CONTEXT ceiling rests on an invented hard-day placement. This
+    // measures that dependency across the whole plausible range rather than
+    // hiding it: two hard days spread apart, versus three crowded together.
+    const spread = DAVID_WEEKS_IN_CONTEXT.map((w) => (w.context == null ? w : {
+      ...w, context: { ...w.context, hardSessionDayOrdinals: [0, 6] },
+    }));
+    const crowded = DAVID_WEEKS_IN_CONTEXT.map((w) => (w.context == null ? w : {
+      ...w, context: { ...w.context, hardSessionDayOrdinals: [4, 5, 6] },
+    }));
+    const lo = cmp(spread)!.ceiling!;
+    const hi = cmp(crowded)!.ceiling!;
+    expect(cmp(spread)!.basis).toBe('FULL_CONTEXT');
+    expect(hi).toBeGreaterThan(lo);
+    // Worth stating plainly: this is the largest reconstruction dependency in
+    // the file, larger than the quality-minutes one measured above.
+    expect(hi / lo).toBeLessThan(1.30);
+  });
+
+  it('RULE 8 · a filtering caller drops two of these weeks, and it MATTERS', () => {
+    // Said out loud rather than buried: the FULL_CONTEXT ceiling above comes
+    // from the week of 2026-01-19, which starts ONE day after the Rose Bowl
+    // half. Rule 8 says a post-race window is never his normal, so a caller
+    // that has run `normal-window.ts` over this history would not have handed
+    // that week over at all, nor 2026-02-09 (8 days after Disney). Both sit
+    // inside the 14-day no-quality window `Research/00b` gives a half.
+    //
+    // This is a fixture defect the module cannot see and must not paper over,
+    // so it is measured instead. The ceiling a properly-filtered caller gets
+    // is materially lower, and the honest range is stated in both directions.
+    const filtered = DAVID_WEEKS_IN_CONTEXT.filter((w) => {
+      const r = w.context?.lastRace;
+      return r == null || r === 'NONE' || r.daysSince > r.noQualityWindowDays;
+    });
+    expect(filtered.map((w) => w.weekStartISO))
+      .toEqual(['2026-02-16', '2026-02-23', '2026-07-20', '2026-08-03']);
+    const c = cmp(filtered)!;
+    expect(c.basis).toBe('FULL_CONTEXT');
+    expect(c.considered).toBe(2);
+    expect(c.from?.weekStartISO).toBe('2026-02-16');
+    expect(c.ceiling).toBeCloseTo(67.808, 3);
+    expect(c.ratio!).toBeCloseTo(1.5446, 3);
+    // The honest range for this runner's peak week, then: 126% to 154% on
+    // FULL_CONTEXT depending on whether the two post-race weeks are admitted,
+    // and 130% base-to-base. Every one of those is below the 157% the mixed
+    // basis reported, which is the point — the defect could only inflate.
+    const mixed = computeWeeklyDemand(PEAK_WEEK).demandIndex! / 66.705;
+    expect(mixed).toBeCloseTo(1.5701, 3);
+    expect(c.ratio!).toBeLessThan(mixed);
   });
 
   it('RULE 8 · the habit-side filter contract is written on the input', () => {
@@ -647,10 +825,48 @@ describe('WEEKLYDEMAND-1 · the 2026-10-26 peak week, priced', () => {
     expect(r.demandIndex).toBeCloseTo(104.736, 2);
   });
 
-  it('and that is about 157% of his demonstrated ceiling', () => {
+  it('and against his ceiling, LIKE FOR LIKE, that is 130% and not 157%', () => {
+    // 157% was the mixed-basis reading: the proposed week's seven-component
+    // index against a base-only ceiling. 140% was the half-fix, still mixed,
+    // because the proposed base carried a long-run spike the historical base
+    // had no anchor to compute. 130% is both sides on BASE_ONLY.
+    const c = r.ceiling!;
+    expect(c.basis).toBe('BASE_ONLY');
+    expect(c.ceiling).toBeCloseTo(66.705, 3);
+    expect(c.proposed).toBeCloseTo(86.825, 3);
+    expect(c.ratio!).toBeCloseTo(1.3016, 3);
     expect(r.athleteCeiling).toBeCloseTo(66.705, 3);
     expect(r.atCeiling).toBe(true);
-    expect(r.demandIndex! / r.athleteCeiling!).toBeCloseTo(1.57, 2);
+    // The old readings, kept here as the thing that must not come back.
+    expect(r.demandIndex! / c.ceiling!).toBeCloseTo(1.5701, 3);
+    expect(c.ratio!).toBeLessThan(r.demandIndex! / c.ceiling!);
+  });
+
+  it('and in FULL context on both sides it is 126%, off a ceiling of 83.09', () => {
+    const rc = computeWeeklyDemand({
+      ...PEAK_WEEK, demonstratedWeeks: DAVID_WEEKS_IN_CONTEXT,
+    });
+    const c = rc.ceiling!;
+    expect(c.basis).toBe('FULL_CONTEXT');
+    expect(c.ceiling).toBeCloseTo(83.09, 2);
+    expect(c.from?.weekStartISO).toBe('2026-01-19');
+    expect(c.proposed).toBeCloseTo(104.736, 2);
+    expect(c.ratio!).toBeCloseTo(1.2605, 3);
+    // Every ceiling this suite can compute is BELOW the old mixed reading,
+    // in both directions of the basis choice. That is the defect's signature:
+    // it could only ever inflate.
+    expect(c.ratio!).toBeLessThan(rc.demandIndex! / 66.705);
+  });
+
+  it('the explain states which basis was used, on both branches', () => {
+    expect(r.explain).toMatch(/Measured on the BASE_ONLY basis/);
+    expect(r.explain).toMatch(/applied to BOTH sides by one function/);
+    expect(r.explain).toMatch(/excluded from the proposed week too/);
+    const rc = computeWeeklyDemand({
+      ...PEAK_WEEK, demonstratedWeeks: DAVID_WEEKS_IN_CONTEXT,
+    });
+    expect(rc.explain).toMatch(/Measured on the FULL_CONTEXT basis/);
+    expect(rc.explain).toMatch(/all six required components/);
   });
 
   it('the long run alone carries more than twice its flat surcharge', () => {
@@ -668,10 +884,214 @@ describe('WEEKLYDEMAND-1 · the 2026-10-26 peak week, priced', () => {
   });
 
   it('and mileage alone would have said 60 against a peak of 48.5', () => {
-    // The reading the owner said was not a demand model: weekly miles against a
-    // ceiling. It sees 124% and stops. The demand model sees 157% and says why.
+    // The reading the owner said was not a demand model: weekly miles against
+    // a ceiling. It sees 124% and stops. The demand model sees 130% and says
+    // why, in seven components, on one basis for both sides.
     expect(60 / 48.5).toBeCloseTo(1.237, 3);
-    expect(r.demandIndex! / r.athleteCeiling!)
-      .toBeGreaterThan(60 / 48.5);
+    expect(r.ceiling!.ratio!).toBeGreaterThan(60 / 48.5);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 7b · THE CALIBRATION WEEK
+ *
+ * A sane, unremarkable marathon week for this runner: 46 mi, an 18 mi long
+ * run at his own recent longest, one quality session and the long run. It
+ * exists so the model has a fixed point that a reader can hold against the
+ * peak week, and so a future edit that quietly inflates everything by 20% has
+ * something to fail on other than the week that was already contentious.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('WEEKLYDEMAND-1 · the 46 mi calibration week', () => {
+  const CALIBRATION: WeeklyDemandInput = {
+    ...PEAK_WEEK,
+    weekStartISO: '2026-10-05',
+    weeklyMi: 46,
+    longRunMi: 18,
+    qualityMinutes: 40,
+    hardSessionDayOrdinals: [2, 6],   // two hard days, four days apart
+    longestRunPrior30dMi: 18,         // at his recent longest: no spike
+  };
+
+  it('prices at 66.256, and its long run carries no spike at all', () => {
+    const r = computeWeeklyDemand(CALIBRATION);
+    expect(componentOf(r, 'volume').contribution).toBeCloseTo(46, 3);
+    expect(componentOf(r, 'intensity').contribution).toBeCloseTo(13.2, 3);
+    expect(componentOf(r, 'longRunLoad').contribution).toBeCloseTo(4.5, 3);
+    expect(componentOf(r, 'longRunLoad').provenance).toBe('POLICY_ASSUMPTION');
+    expect(componentOf(r, 'stacking').contribution).toBeCloseTo(2.548, 3);
+    expect(componentOf(r, 'recentAdaptation').contribution).toBe(0);
+    expect(componentOf(r, 'recovery').contribution).toBe(0);
+    expect(r.demandIndex).toBeCloseTo(66.248, 3);
+  });
+
+  it('and sits at 95% of his ceiling, not over it', () => {
+    const r = computeWeeklyDemand(CALIBRATION);
+    expect(r.ceiling!.basis).toBe('BASE_ONLY');
+    expect(r.ceiling!.proposed).toBeCloseTo(63.7, 3);
+    expect(r.ceiling!.ceiling).toBeCloseTo(66.705, 3);
+    expect(r.ceiling!.ratio!).toBeCloseTo(0.9550, 3);
+    expect(r.atCeiling).toBe(false);
+    // The peak week is a real step up from this one, and the like-for-like
+    // comparison still says so — the fix removes an inflation, not the signal.
+    const peak = computeWeeklyDemand(PEAK_WEEK);
+    expect(peak.ceiling!.ratio!).toBeGreaterThan(r.ceiling!.ratio! * 1.3);
+  });
+
+  it('in FULL context it reads 77% of the same ceiling', () => {
+    const r = computeWeeklyDemand({
+      ...CALIBRATION, demonstratedWeeks: DAVID_WEEKS_IN_CONTEXT,
+    });
+    expect(r.ceiling!.basis).toBe('FULL_CONTEXT');
+    expect(r.ceiling!.proposed).toBeCloseTo(66.248, 3);
+    expect(r.ceiling!.ceiling).toBeCloseTo(83.09, 2);
+    expect(r.ceiling!.ratio!).toBeCloseTo(0.7973, 3);
+    expect(r.atCeiling).toBe(false);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 8 · MIXEDBASIS-1 · THE TWO SIDES ARE COMPUTED THE SAME WAY
+ *
+ * The defect this section exists for, in one sentence: `demandIndex` summed
+ * all seven components and the ceiling summed three, so every week with two
+ * or more hard sessions was charged for its stacking while the week it was
+ * measured against was not. Both sides legal, both sides arithmetically
+ * correct, and the comparison meaningless — the exact shape Rule 9 says a
+ * point-sampling gate cannot see, pointed at a ratio instead of a cliff.
+ *
+ * ── RULE 22 · WHAT THIS SECTION CANNOT FAIL ON ─────────────────────────────
+ *
+ *   · Whether FULL_CONTEXT or BASE_ONLY is the RIGHT basis for a given
+ *     caller. It proves only that one basis is applied to both sides.
+ *   · Whether the reconstructed contexts in `DAVID_WEEKS_IN_CONTEXT` are
+ *     true. They are labelled as a reconstruction and their sensitivity is
+ *     measured; the suite cannot check them against run history it has not
+ *     got.
+ *   · Whether a runner may be taken past his largest absorbed week at all.
+ *     That is a coaching question and this module does not answer it.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('MIXEDBASIS-1 · one basis, both sides', () => {
+  /**
+   * THE FALSIFIER.
+   *
+   * A week identical in every field to a week he has already absorbed must
+   * price at EXACTLY 100% of the ceiling. Under the mixed basis it read 141%,
+   * because the proposed copy was charged three live context uplifts the
+   * identical demonstrated week was not. No fixture, no reconstruction and no
+   * argument about magnitudes enters: the two inputs are the same object, and
+   * anything but 1.0 is the defect showing.
+   */
+  it('a week IDENTICAL to one he absorbed prices at exactly 100% of the ceiling', () => {
+    const twin: DemonstratedWeek = {
+      weekStartISO: '2026-02-09',
+      weeklyMi: 48.5,
+      longRunMi: 20.02,
+      qualityMinutes: 40,
+      absorbed: true,
+      context: {
+        hardSessionDayOrdinals: [2, 4, 6],
+        longestRunPrior30dMi: 21,   // no spike: the point here is the four uplifts
+        acwr: { acwr: 1.42, acute7: 8.5, chronic28: 6.0, coverageDays: 28, reason: null },
+        lastRace: { daysSince: 4, noQualityWindowDays: 14 },
+        weeksSinceLastCutback: 7,
+      },
+    };
+    const proposed: WeekCostInput = demonstratedWeekAsInput(twin);
+    const c = compareToAthleteCeiling(proposed, [twin])!;
+
+    expect(c.basis).toBe('FULL_CONTEXT');
+    expect(c.ratio).toBeCloseTo(1, 12);
+    expect(c.proposed).toBe(c.ceiling);
+
+    // And the twin is deliberately loaded: stacking, an elevated ACWR, a fresh
+    // race and an overdue cutback all fire. Under the mixed basis those land on
+    // the numerator alone and the same week reads 141% of itself.
+    const priced = priceWeek(proposed);
+    const mixed = priced.demandIndex! / baseCostOfWeek(twin);
+    expect(mixed).toBeCloseTo(1.41, 3);
+    expect(baseCostOfWeek(twin)).toBeCloseTo(66.705, 3);
+  });
+
+  it('an uplift on the PROPOSED week alone cannot move a BASE_ONLY ratio', () => {
+    // Under the mixed basis, crowding the hard days of the proposed week
+    // raised the ratio against an unchanged ceiling. On a stated basis it
+    // cannot, because the basis is symmetric by construction.
+    const spread = computeWeeklyDemand({ ...PEAK_WEEK, hardSessionDayOrdinals: [0, 3, 6] });
+    const crowded = computeWeeklyDemand({ ...PEAK_WEEK, hardSessionDayOrdinals: [4, 5, 6] });
+    expect(spread.ceiling!.basis).toBe('BASE_ONLY');
+    expect(crowded.ceiling!.ratio).toBeCloseTo(spread.ceiling!.ratio!, 12);
+    // The COST still moves. It is the comparison that must not.
+    expect(crowded.demandIndex!).toBeGreaterThan(spread.demandIndex!);
+  });
+
+  it('on FULL_CONTEXT the same uplift moves both sides, not one', () => {
+    const base = { ...PEAK_WEEK, demonstratedWeeks: DAVID_WEEKS_IN_CONTEXT };
+    const spread = computeWeeklyDemand({ ...base, hardSessionDayOrdinals: [0, 3, 6] });
+    const crowdedBoth = computeWeeklyDemand({
+      ...base,
+      hardSessionDayOrdinals: [4, 5, 6],
+      demonstratedWeeks: DAVID_WEEKS_IN_CONTEXT.map((w) => (w.context == null ? w : {
+        ...w, context: { ...w.context, hardSessionDayOrdinals: [4, 5, 6] },
+      })),
+    });
+    expect(crowdedBoth.ceiling!.ceiling!).toBeGreaterThan(spread.ceiling!.ceiling!);
+    expect(crowdedBoth.ceiling!.proposed!).toBeGreaterThan(spread.ceiling!.proposed!);
+  });
+
+  it('`ceiling.proposed` is NOT `demandIndex` whenever context is live', () => {
+    // Rule 16: two quantities, two names. The cost of the week includes the
+    // uplifts; the like-for-like comparison does not, on either side.
+    const r = computeWeeklyDemand(PEAK_WEEK);
+    expect(r.demandIndex).toBeCloseTo(104.736, 2);
+    expect(r.ceiling!.proposed).toBeCloseTo(86.825, 3);
+    expect(r.ceiling!.proposed).not.toBeCloseTo(r.demandIndex!, 1);
+  });
+
+  it('injury is excluded from BOTH sides, not added to the proposed one', () => {
+    // Injury is never reconstructable for a past week, so pricing it on the
+    // proposed side alone would rebuild the defect in miniature.
+    const clear = computeWeeklyDemand({
+      ...PEAK_WEEK, demonstratedWeeks: DAVID_WEEKS_IN_CONTEXT, safety: SAFETY_CLEAR,
+    });
+    const hurt = computeWeeklyDemand({
+      ...PEAK_WEEK, demonstratedWeeks: DAVID_WEEKS_IN_CONTEXT, safety: SAFETY_INJURED,
+    });
+    expect(hurt.demandIndex!).toBeGreaterThan(clear.demandIndex!);
+    expect(hurt.ceiling!.proposed).toBeCloseTo(clear.ceiling!.proposed!, 12);
+    expect(hurt.ceiling!.ratio).toBeCloseTo(clear.ceiling!.ratio!, 12);
+  });
+
+  it('every basis prices both sides through ceilingCostOf, and only there', () => {
+    // Rule 18/20 pointed at the structure rather than at one number: a
+    // behavioural test alone cannot catch a caller that stops going through
+    // the shared function, which is the failure mode Rule 16 names.
+    const src = readFileSync(path.join(__dirname, 'weekly-demand.ts'), 'utf8');
+    expect((src.match(/export function ceilingCostOf/g) ?? [])).toHaveLength(1);
+    const body = src.slice(
+      src.indexOf('export function compareToAthleteCeiling'),
+      src.indexOf('THE MODEL'),
+    );
+    expect(body.length).toBeGreaterThan(200);
+    // Both sides, and nothing else, compute a comparable cost.
+    expect((body.match(/ceilingCostOf\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(body).not.toMatch(/baseCostOfWeek\(/);
+    // The removed shortcut stays removed: no declaration, and no call site.
+    expect(src).not.toMatch(/function athleteCeilingFrom/);
+    expect(src).not.toMatch(/athleteCeilingFrom\s*\(/);
+    // ...and the note explaining WHY it was deleted rather than deprecated
+    // survives, because a shortcut nobody remembers is one somebody re-adds.
+    expect(src).toMatch(/`athleteCeilingFrom` IS GUARDED AS REMOVED/);
+  });
+
+  it('and the same two functions produce both sides for every basis', () => {
+    for (const basis of ['BASE_ONLY', 'FULL_CONTEXT'] as const) {
+      const weeks = basis === 'FULL_CONTEXT' ? DAVID_WEEKS_IN_CONTEXT : DAVID_WEEKS;
+      const c = compareToAthleteCeiling(PEAK_WEEK, weeks)!;
+      expect(c.basis).toBe(basis);
+      expect(c.proposed).toBe(ceilingCostOf(PEAK_WEEK, basis));
+      expect(c.ceiling).toBe(ceilingCostOf(demonstratedWeekAsInput(c.from!), basis));
+    }
   });
 });

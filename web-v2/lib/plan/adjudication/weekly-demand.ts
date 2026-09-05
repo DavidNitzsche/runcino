@@ -99,6 +99,62 @@
  *     that reads this file's own text, since a comment nothing verifies is a
  *     hypothesis (Rule 20).
  *
+ * ── THE CEILING COMPARISON IS SYMMETRIC OR IT IS NOTHING ───────────────────
+ *
+ * The first cut of this file compared the proposed week's full seven-component
+ * `demandIndex` against a ceiling that was `baseCostOfWeek()` — volume plus
+ * intensity plus a flat long-run surcharge, and nothing else. So the proposed
+ * week was charged for its stacking, its ACWR and its recovery debt while the
+ * demonstrated week it was measured against was not. That is apples to
+ * oranges, and it fails in ONE direction: every week with two or more hard
+ * sessions reads inflated, and the inflation grows with exactly the thing the
+ * model was built to price. On the owner's 2026-10-26 week it read 157% of a
+ * ceiling that a like-for-like comparison puts at 130%.
+ *
+ * That is not a rounding concern. An "at ceiling" verdict is what suppresses a
+ * progression, and CLAUDE.md Rule 22 measured this repo's standing bias:
+ * 29 test files know how to hold a runner back and 2 know what accelerating
+ * means; 309 production adaptations with zero upward. A defect that inflates
+ * the proposed side and deflates the demonstrated side pushes the engine in
+ * the direction it is already wrong.
+ *
+ * So the comparison now names a BASIS, and both sides go through the SAME
+ * function on it (`ceilingCostOf`, which is the only place either side is
+ * computed):
+ *
+ *   FULL_CONTEXT   all six required components, both sides priced by
+ *                  `priceWeek`. Available only when EVERY absorbed week
+ *                  carries a `context` that prices without refusing.
+ *   BASE_ONLY      volume + intensity + the FLAT long-run surcharge, both
+ *                  sides via `baseCostOfWeek`. The four context uplifts AND
+ *                  the long-run spike term are excluded from BOTH sides,
+ *                  because the historical prior-30-day anchor is not known.
+ *
+ * Note the spike term specifically. "Compare base to base" is itself still
+ * mixed if the proposed side's base carries a spike measured against a
+ * prior-30-day longest and the historical side's cannot. BASE_ONLY therefore
+ * drops the spike from both, which is why the owner's like-for-like number is
+ * 130% and not the 140% you get by comparing a spiked base against an
+ * unspiked one.
+ *
+ * ── RULE 11 AT THE CEILING · A MISSING CONTEXT TERM IS NOT A ZERO ──────────
+ *
+ * When a demonstrated week's context cannot be reconstructed, the model does
+ * NOT price its stacking at zero and call the result a ceiling. It degrades
+ * the WHOLE comparison to BASE_ONLY, names the weeks it could not reconstruct
+ * in `withoutContext`, and says so in `explain`. Degrading is chosen over
+ * refusing outright because a labelled symmetric comparison is strictly more
+ * informative than nothing and cannot be misread — the label is on the
+ * returned value, not only in prose. What is never allowed is the mixture.
+ *
+ * `injury` is excluded from BOTH sides of the comparison on purpose. It is not
+ * a required component, it is read and never detected, and it is never
+ * reconstructable for a historical week — so including it on the proposed side
+ * alone would rebuild the same defect in miniature. It stays in `demandIndex`,
+ * which is the cost of the week, and stays out of `ceiling.proposed`, which is
+ * the like-for-like comparison. Those are two quantities and they have two
+ * names (Rule 16).
+ *
  * ── RULE 9 · CONTINUOUS AND MONOTONE ───────────────────────────────────────
  *
  * Every response here runs continuously through doctrine's numbers rather
@@ -198,14 +254,64 @@ export interface DemandComponent {
   readonly why: string;
 }
 
+/**
+ * Which component set BOTH sides of the ceiling comparison are priced on.
+ *
+ * There is no third value and there is deliberately no default. A comparison
+ * without a stated basis is the defect this type exists to make unsayable.
+ */
+export type CeilingBasis =
+  /** All six required components, both sides through `priceWeek`. */
+  | 'FULL_CONTEXT'
+  /** Volume + intensity + the FLAT long-run surcharge, both sides. */
+  | 'BASE_ONLY';
+
+/**
+ * The proposed week measured against the biggest week he has absorbed, with
+ * both numbers produced by one call each to `ceilingCostOf` on one basis.
+ *
+ * `proposed` is NOT `demandIndex`. It is this week priced on `basis`, which is
+ * what makes it comparable to `ceiling`. Reading `demandIndex / ceiling` is
+ * the original defect and the suite fails on it by name.
+ */
+export interface CeilingComparison {
+  readonly basis: CeilingBasis;
+  /** This week, on `basis`. Equivalent easy miles. */
+  readonly proposed: number | null;
+  /** His biggest absorbed week, on the SAME basis. Equivalent easy miles. */
+  readonly ceiling: number | null;
+  /** `proposed / ceiling`. Null when either side is null. */
+  readonly ratio: number | null;
+  readonly from: DemonstratedWeek | null;
+  readonly considered: number;
+  /**
+   * Absorbed weeks whose context could not be priced, which is WHY the basis
+   * degraded. Empty on FULL_CONTEXT. Never silently zeroed (Rule 11).
+   */
+  readonly withoutContext: readonly string[];
+  /** Why this basis and not the other, in one sentence. */
+  readonly reason: string;
+}
+
 export interface WeeklyDemand {
   readonly weekStartISO: string;
   readonly components: readonly DemandComponent[];
-  /** Equivalent easy miles. Null when a required component is unknown. */
+  /**
+   * What the week COSTS: all seven components, injury included when a human
+   * recorded one. Equivalent easy miles. Null when a required component is
+   * unknown. This is not the number compared against the ceiling — see
+   * `ceiling.proposed`, which is this week on the ceiling's own basis.
+   */
   readonly demandIndex: number | null;
   readonly unknownComponents: readonly string[];
-  /** The biggest base week he has DEMONSTRATED he absorbs, same unit. */
+  /**
+   * The like-for-like comparison, or null when there is no absorbed week to
+   * compare against. Both sides are on `ceiling.basis`.
+   */
+  readonly ceiling: CeilingComparison | null;
+  /** `ceiling.ceiling`, kept for readers that want the one number. */
   readonly athleteCeiling: number | null;
+  /** `ceiling.proposed >= ceiling.ceiling`, on one basis for both sides. */
   readonly atCeiling: boolean | null;
   readonly explain: string;
 }
@@ -437,6 +543,44 @@ export const ADAPTATION_CURVE: ReadonlyArray<readonly [acwr: number, frac: numbe
  * and cannot apply the filter itself: `normal-window.ts` statically imports
  * `@/lib/db/pool`.
  */
+/**
+ * The four context terms as they stood for a week the runner already ran.
+ *
+ * This exists so the demonstrated week can be priced by the SAME function as
+ * the proposed one. Every field here is reconstructable from the run and race
+ * history the caller already holds — where the hard days fell, what his
+ * prior-30-day longest was at the time, his acute-to-chronic ratio that week,
+ * how long since a race and since a down week.
+ *
+ * A field left `null` is "not reconstructed", and it refuses rather than
+ * pricing at zero. That refusal degrades the whole comparison to BASE_ONLY
+ * for BOTH sides, which is the honest outcome; pricing a historical week's
+ * stacking at zero while charging the proposed week for its own is the
+ * apples-to-oranges defect this type was added to remove.
+ *
+ * `safety` is absent by design. Injury is read and never detected, is never
+ * reconstructable for a past week, and is excluded from both sides of the
+ * comparison — see the header block on the ceiling comparison.
+ */
+export interface DemonstratedWeekContext {
+  /** Where that week's hard sessions fell. See `WeekCostInput`. */
+  readonly hardSessionDayOrdinals: readonly number[] | null;
+  /** His longest run in the 30 days BEFORE that week, literal. */
+  readonly longestRunPrior30dMi: number | null;
+  /** His acute-to-chronic ratio as it stood that week. */
+  readonly acwr: AcwrResult | null;
+  /**
+   * The race behind him at that week, or `'NONE'`.
+   *
+   * A caller that has applied Rule 8's habit filter has already dropped every
+   * week inside a post-race no-quality window, so this term is usually zero by
+   * the filter's own guarantee. It is still supplied rather than assumed,
+   * because "the filter would have caught it" is not a fact about this week.
+   */
+  readonly lastRace: LastRaceContext | 'NONE' | null;
+  readonly weeksSinceLastCutback: number | null;
+}
+
 export interface DemonstratedWeek {
   readonly weekStartISO: string;
   readonly weeklyMi: number;
@@ -451,6 +595,14 @@ export interface DemonstratedWeek {
    * a week nobody has judged is not evidence of capacity.
    */
   readonly absorbed: boolean | null;
+  /**
+   * That week's own context, or `null` for "not reconstructed".
+   *
+   * REQUIRED, not optional, so every construction site has to say which it is.
+   * An optional field would let a caller omit context by accident and get a
+   * silently base-only ceiling, which is how the mixed-basis defect got in.
+   */
+  readonly context: DemonstratedWeekContext | null;
 }
 
 /** A race he actually ran, and the recovery window doctrine gives it. */
@@ -466,7 +618,16 @@ export interface LastRaceContext {
   readonly noQualityWindowDays: number;
 }
 
-export interface WeeklyDemandInput {
+/**
+ * Everything needed to PRICE one week, and nothing about any other week.
+ *
+ * A demonstrated week is mapped onto this same shape before it is priced, so
+ * the historical side and the proposed side go through one function. That is
+ * the whole point of the split: `WeeklyDemandInput` adds the comparison set,
+ * and the comparison set must not be reachable from the pricing code, or the
+ * two sides can drift apart again.
+ */
+export interface WeekCostInput {
   readonly weekStartISO: string;
 
   /* ── THE WEEK BEING PRICED ─────────────────────────────────────────── */
@@ -533,15 +694,6 @@ export interface WeeklyDemandInput {
    */
   readonly weeksSinceLastCutback: number | null;
 
-  /* ── HABIT · RULE 8 SAYS FILTER THIS ──────────────────────────────── */
-
-  /**
-   * `null` is "the caller did not look". An EMPTY array is "the caller looked
-   * and there are none", which is a different fact and produces a different
-   * sentence in `explain`. Both give a null ceiling, and neither is a zero.
-   */
-  readonly demonstratedWeeks: readonly DemonstratedWeek[] | null;
-
   /* ── RECORDED INJURY CONTEXT · READ, NEVER DETECTED ────────────────── */
 
   /**
@@ -554,6 +706,17 @@ export interface WeeklyDemandInput {
    * already recorded and otherwise reports unknown.
    */
   readonly safety: SafetyResolution | null;
+}
+
+export interface WeeklyDemandInput extends WeekCostInput {
+  /* ── HABIT · RULE 8 SAYS FILTER THIS ──────────────────────────────── */
+
+  /**
+   * `null` is "the caller did not look". An EMPTY array is "the caller looked
+   * and there are none", which is a different fact and produces a different
+   * sentence in `explain`. Both give a null ceiling, and neither is a zero.
+   */
+  readonly demonstratedWeeks: readonly DemonstratedWeek[] | null;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -761,31 +924,126 @@ export function baseCostOfWeek(w: {
     + w.longRunMi * LONG_RUN_SURCHARGE_PER_MI;
 }
 
-/**
- * The biggest base week he has demonstrated he ABSORBS.
+/* NOTE · `athleteCeilingFrom` IS GUARDED AS REMOVED.
  *
- * Computed with the same function the week under test is priced with, so the
- * two are comparable by construction rather than by coincidence. No spike term
- * enters: a completed week's long run either was absorbed, in which case the
- * week counts, or it was not, in which case the week does not.
+ * It used to return `baseCostOfWeek(best)` and was compared against the
+ * proposed week's full `demandIndex`. That mixed basis is the defect this
+ * section was rewritten to remove, so the function is deleted rather than
+ * deprecated: a "// legacy, don't call" shortcut is one someone calls.
+ * `_weekly_demand.test.ts` fails if the identifier reappears in this file. */
+
+/** Map a week the runner already ran onto the shape the pricer takes. */
+export function demonstratedWeekAsInput(w: DemonstratedWeek): WeekCostInput {
+  return {
+    weekStartISO: w.weekStartISO,
+    weeklyMi: w.weeklyMi,
+    qualityMinutes: w.qualityMinutes,
+    longRunMi: w.longRunMi,
+    hardSessionDayOrdinals: w.context?.hardSessionDayOrdinals ?? null,
+    longestRunPrior30dMi: w.context?.longestRunPrior30dMi ?? null,
+    acwr: w.context?.acwr ?? null,
+    lastRace: w.context?.lastRace ?? null,
+    weeksSinceLastCutback: w.context?.weeksSinceLastCutback ?? null,
+    // Injury is excluded from BOTH sides of the comparison. See the header.
+    safety: null,
+  };
+}
+
+/**
+ * THE ONLY PLACE EITHER SIDE OF THE CEILING COMPARISON IS COMPUTED.
+ *
+ * Both the proposed week and every demonstrated week go through this one
+ * function on one basis, so they are commensurable by construction rather
+ * than by coincidence. If you find yourself computing one side any other way,
+ * that is the bug.
+ *
+ * BASE_ONLY deliberately uses `baseCostOfWeek`, which carries the FLAT
+ * long-run surcharge and no spike. A base that includes a spike measured
+ * against a prior-30-day anchor on one side and cannot on the other is still
+ * a mixed comparison, just a subtler one.
+ */
+export function ceilingCostOf(
+  week: WeekCostInput,
+  basis: CeilingBasis,
+): number | null {
+  if (basis === 'BASE_ONLY') {
+    if (!isReal(week.weeklyMi) || !isReal(week.longRunMi) || !isReal(week.qualityMinutes)) {
+      return null;
+    }
+    return round3(baseCostOfWeek({
+      weeklyMi: week.weeklyMi,
+      longRunMi: week.longRunMi,
+      qualityMinutes: week.qualityMinutes,
+    }));
+  }
+  const priced = priceWeek(week);
+  if (priced.missingRequired.length > 0) return null;
+  let total = 0;
+  for (const key of REQUIRED_COMPONENTS) {
+    const c = priced.components.find((x) => x.key === key);
+    if (c == null || c.contribution == null) return null;
+    total += c.contribution;
+  }
+  return round3(total);
+}
+
+/**
+ * The proposed week against the biggest week he has demonstrated he ABSORBS,
+ * both on one basis.
  *
  * Only weeks marked `absorbed === true` count. A week nobody has judged does
  * not raise the ceiling, because a higher ceiling licenses a bigger plan and
  * `PLAN_SIMPLIFICATION_DOCTRINE` invariant 11 forbids missing data doing that.
+ *
+ * The basis is FULL_CONTEXT only when EVERY absorbed week prices without
+ * refusing. One unreconstructable week degrades the whole comparison rather
+ * than being dropped from it, because dropping weeks lowers the ceiling and
+ * a lower ceiling is the restrictive direction this fix exists to stop the
+ * model leaning in.
  */
-export function athleteCeilingFrom(
+export function compareToAthleteCeiling(
+  proposed: WeekCostInput,
   weeks: readonly DemonstratedWeek[] | null,
-): { readonly ceiling: number | null; readonly from: DemonstratedWeek | null; readonly considered: number } {
-  if (weeks == null) return { ceiling: null, from: null, considered: 0 };
+): CeilingComparison | null {
+  if (weeks == null) return null;
   const absorbed = weeks.filter((w) => w.absorbed === true);
-  if (absorbed.length === 0) return { ceiling: null, from: null, considered: 0 };
-  let best = absorbed[0];
-  let bestCost = baseCostOfWeek(best);
+  if (absorbed.length === 0) return null;
+
+  const priced = absorbed.map((w) => ({
+    week: w,
+    full: ceilingCostOf(demonstratedWeekAsInput(w), 'FULL_CONTEXT'),
+  }));
+  const withoutContext = priced
+    .filter((p) => p.full == null)
+    .map((p) => p.week.weekStartISO);
+
+  const basis: CeilingBasis = withoutContext.length === 0 ? 'FULL_CONTEXT' : 'BASE_ONLY';
+
+  let best: DemonstratedWeek | null = null;
+  let ceiling: number | null = null;
   for (const w of absorbed) {
-    const c = baseCostOfWeek(w);
-    if (c > bestCost) { best = w; bestCost = c; }
+    const c = ceilingCostOf(demonstratedWeekAsInput(w), basis);
+    if (c == null) continue;
+    if (ceiling == null || c > ceiling) { ceiling = c; best = w; }
   }
-  return { ceiling: round3(bestCost), from: best, considered: absorbed.length };
+
+  const proposedCost = ceilingCostOf(proposed, basis);
+  const ratio = proposedCost == null || ceiling == null || ceiling === 0
+    ? null
+    : proposedCost / ceiling;
+
+  const reason = basis === 'FULL_CONTEXT'
+    ? `All ${absorbed.length} absorbed weeks carry a reconstructed context, so `
+      + 'both sides are priced on all six required components by the same '
+      + 'function. Injury is excluded from both, because it is never '
+      + 'reconstructable for a past week.'
+    : `${withoutContext.length} of ${absorbed.length} absorbed weeks could not `
+      + `be priced in context (${withoutContext.join(', ')}), so BOTH sides drop `
+      + 'to volume, quality and the flat long-run surcharge. The four context '
+      + 'uplifts and the long-run spike term are excluded from the proposed '
+      + 'week too, not just from the ceiling.';
+
+  return { basis, proposed: proposedCost, ceiling, ratio, from: best, considered: absorbed.length, withoutContext, reason };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -797,7 +1055,24 @@ export const REQUIRED_COMPONENTS: readonly DemandComponentKey[] = [
   'volume', 'intensity', 'longRunLoad', 'stacking', 'recentAdaptation', 'recovery',
 ];
 
-export function computeWeeklyDemand(input: WeeklyDemandInput): WeeklyDemand {
+/** What one week costs, with no reference to any other week. */
+export interface WeekPricing {
+  readonly components: readonly DemandComponent[];
+  readonly unknownComponents: readonly DemandComponentKey[];
+  readonly missingRequired: readonly DemandComponentKey[];
+  /** All seven components. Null when a required one is unknown. */
+  readonly demandIndex: number | null;
+}
+
+/**
+ * Price one week. The proposed week and every demonstrated week both come
+ * through here, which is what makes the ceiling comparison honest.
+ *
+ * It takes `WeekCostInput` and not `WeeklyDemandInput` on purpose: the pricer
+ * cannot see the comparison set, so it cannot start treating the two sides
+ * differently.
+ */
+export function priceWeek(input: WeekCostInput): WeekPricing {
   /* ── 1 · VOLUME ─────────────────────────────────────────────────────── */
   const volume: DemandComponent = isReal(input.weeklyMi)
     ? {
@@ -1089,19 +1364,31 @@ export function computeWeeklyDemand(input: WeeklyDemandInput): WeeklyDemand {
     ? null
     : round3(components.reduce((s, c) => s + (c.contribution ?? 0), 0));
 
-  const ceil = athleteCeilingFrom(input.demonstratedWeeks);
-  const atCeiling = demandIndex == null || ceil.ceiling == null
+  return { components, unknownComponents, missingRequired, demandIndex };
+}
+
+/**
+ * Price the week and, where there is evidence to compare it against, set it
+ * beside the biggest week he has absorbed — on ONE basis, both sides.
+ */
+export function computeWeeklyDemand(input: WeeklyDemandInput): WeeklyDemand {
+  const priced = priceWeek(input);
+  const ceiling = compareToAthleteCeiling(input, input.demonstratedWeeks);
+  const atCeiling = ceiling == null || ceiling.proposed == null || ceiling.ceiling == null
     ? null
-    : demandIndex >= ceil.ceiling;
+    : ceiling.proposed >= ceiling.ceiling;
 
   return {
     weekStartISO: input.weekStartISO,
-    components,
-    demandIndex,
-    unknownComponents,
-    athleteCeiling: ceil.ceiling,
+    components: priced.components,
+    demandIndex: priced.demandIndex,
+    unknownComponents: priced.unknownComponents,
+    ceiling,
+    athleteCeiling: ceiling?.ceiling ?? null,
     atCeiling,
-    explain: explainDemand(input, components, demandIndex, ceil, missingRequired),
+    explain: explainDemand(
+      input, priced.components, priced.demandIndex, ceiling, priced.missingRequired,
+    ),
   };
 }
 
@@ -1113,7 +1400,7 @@ function explainDemand(
   input: WeeklyDemandInput,
   components: readonly DemandComponent[],
   demandIndex: number | null,
-  ceil: ReturnType<typeof athleteCeilingFrom>,
+  ceil: CeilingComparison | null,
   missingRequired: readonly DemandComponentKey[],
 ): string {
   const named = (k: DemandComponentKey): string => {
@@ -1122,25 +1409,38 @@ function explainDemand(
     return `${k} ${round3(c.contribution)}`;
   };
 
+  const ceilingLine = ceil == null || ceil.ceiling == null || ceil.proposed == null
+    ? (input.demonstratedWeeks == null
+      ? 'No demonstrated weeks were supplied, so there is no athlete ceiling to '
+        + 'compare against.'
+      : ceil == null
+        ? 'No demonstrated week is marked as absorbed, so there is no athlete '
+          + 'ceiling. A week nobody has judged does not raise it.'
+        : `There is an absorbed week to compare against, but this week cannot be `
+          + `priced on the ${ceil.basis} basis the comparison would use, so no `
+          + 'ratio is reported rather than a ratio measured two different ways.')
+    : `Measured on the ${ceil.basis} basis, which is applied to BOTH sides by `
+      + 'one function: this week costs '
+      + `${round3(ceil.proposed)} on that basis against a demonstrated ceiling `
+      + `of ${ceil.ceiling}, from the week of `
+      + `${ceil.from?.weekStartISO ?? 'unknown'}, the largest of `
+      + `${ceil.considered} weeks he is recorded as having absorbed. That is `
+      + `${Math.round((ceil.proposed / ceil.ceiling) * 100)}% of it`
+      + `${ceil.proposed >= ceil.ceiling ? ', so it is at or over the ceiling.' : '.'}`
+      + ` ${ceil.reason}`;
+
+  // The ceiling comparison can stand when the index does not. BASE_ONLY reads
+  // three measured quantities and none of the context terms, so a week that
+  // refuses an index because its ACWR is unknown still has an honest
+  // like-for-like ratio. Rule 11 cuts both ways: refusing a fact that IS known
+  // is as much a loss of information as inventing one that is not.
   if (demandIndex == null) {
     return `Week of ${input.weekStartISO}. No demand index: `
       + `${missingRequired.join(', ')} could not be computed, and a partial `
       + 'index would make the week look cheaper than it is. The components that '
       + `are known read ${components.filter((c) => c.contribution != null).map((c) => named(c.key)).join(', ') || 'nothing at all'}. `
-      + 'Supply the missing inputs and the index resolves.';
+      + `Supply the missing inputs and the index resolves. ${ceilingLine}`;
   }
-
-  const ceilingLine = ceil.ceiling == null
-    ? (input.demonstratedWeeks == null
-      ? 'No demonstrated weeks were supplied, so there is no athlete ceiling to '
-        + 'compare against.'
-      : 'No demonstrated week is marked as absorbed, so there is no athlete '
-        + 'ceiling. A week nobody has judged does not raise it.')
-    : `His demonstrated ceiling is ${ceil.ceiling} equivalent easy miles, from `
-      + `the week of ${ceil.from?.weekStartISO ?? 'unknown'}, the largest of `
-      + `${ceil.considered} weeks he is recorded as having absorbed. This week `
-      + `runs at ${Math.round((demandIndex / ceil.ceiling) * 100)}% of it`
-      + `${demandIndex >= ceil.ceiling ? ', so it is at or over the ceiling.' : '.'}`;
 
   const injuryLine = components.find((c) => c.key === 'injury')?.contribution == null
     ? ' Injury context is not in this number: it is reported separately and '

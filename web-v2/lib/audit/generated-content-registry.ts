@@ -366,6 +366,8 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
  * feature is not.
  */
 export const MODULE_ORPHANS: Record<string, string> = {
+  'web-v2/lib/plan/adjudication/weekly-demand.ts':
+    'OBSERVATIONAL BY DESIGN, AND UNWIRED ON PURPOSE. It prices what a week costs this runner in this context — seven components in one unit, the equivalent easy mile — and answers the owner\'s question "show how weekly demand is calculated". It has no production importer because `docs/PLAN_SIMPLIFICATION_DOCTRINE.md` (locked 2026-09-02) removed decision authority from readiness, recovery and injury and from "any hidden rule that silently makes the plan easier or reorganizes it", so wiring this into a plan mutation is a product decision the owner has not made. The module\'s own header states the posture in as many words and forbids a caller reading `atCeiling` as licence to shrink a week. THIS ENTRY EXPIRES the moment anything under app/ or a cron imports it: at that point the posture has changed and the header claim, the `atCeiling` contract and this exemption all have to be re-argued together rather than inherited. Deleting it instead is also a fine outcome — what is not fine is it acquiring a caller quietly.',
   'web-v2/lib/adaptation/canonical/_fixtures.ts':
     'A FIXTURE SET for the canonical Adaptation Engine, which is a fine reason by this gate\'s own text. It builds real CanonicalAdaptationInput values from the documented figures for the one real runner (a 7:10 threshold anchor, 47-50 mile weeks, a 16-mile long run, a December marathon) so all six test files drive the REAL engine from one corpus rather than six copies that would drift apart. Runtime code must never import it.',
   'web-v2/lib/adaptation/canonical/_falsify_gates.script.ts':
