@@ -47,6 +47,24 @@ export interface ActivePlanExemption {
  */
 export const ACTIVE_PLAN_EXEMPTIONS: readonly ActivePlanExemption[] = [
   {
+    file: 'lib/adaptation/volume-evidence/_replay_real_history.script.ts',
+    reason:
+      'DELIBERATE, AND THE POINT OF THE FILE. This is MILEAGE-RESPONSIVE-1\'s ' +
+      'historical replay: it walks the owner\'s whole 2026 and has to price each ' +
+      'past week against the plan that was LIVE THAT WEEK, which is by definition ' +
+      'an archived version. `AND tp.archived_iso IS NULL` would price January ' +
+      'against a block authored in September, which is the same class of error as ' +
+      'the one ACTIVEPLAN-1 exists to stop, pointed the other way. The read is ' +
+      'narrowed IN THE FILE rather than in the query, and narrowly: `planAt(iso)` ' +
+      'resolves the single plan whose `[authored_iso, archived_iso)` window ' +
+      'contains that week, every row is indexed under `plan_id|date_iso`, and no ' +
+      'lookup ever crosses a plan boundary. So the 49-versions defect the rule is ' +
+      'named for cannot occur here: nothing sums across versions, and the file ' +
+      'reports which plan priced each week. It is also a read-only diagnostic ' +
+      'script, run by hand through `npm run mileage-replay`, with no runtime ' +
+      'caller and no writer anywhere in it.',
+  },
+  {
     file: 'lib/plan/drift-monitor.ts',
     reason:
       'NOT EXISTS exclusion. Reading across archived plans can only EXCLUDE MORE ' +

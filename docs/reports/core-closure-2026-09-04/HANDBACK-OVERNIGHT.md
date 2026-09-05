@@ -83,8 +83,25 @@ chain fixes, and every report.
 
 **Held, deliberately:** `wire-adjudication` (`5e0cf42d`). See §7.
 
-**Deployed:** Railway tracks `main` on every push; each was confirmed SUCCESS by
-`railway deployment list`, not assumed from a green push.
+**Deployed:** the current `main` IS deployed. But two intermediate deploys
+FAILED and I did not notice at the time, which is Rule 19 and I broke it twice
+tonight:
+
+    d783937f1  committed 00:16:18  ->  deploy 00:16:44  FAILED
+    6c1ce04f2  committed 00:37:02  ->  deploy 00:37:28  FAILED
+    62aa5206f  committed 01:03:55  ->  deploy 01:04:20  SUCCESS
+
+The correlation is exact. For roughly forty-eight minutes `main` was not
+deployed while I believed it was, because I read the pre-push hook's line
+"next build green. Railway is building the same tree" as confirmation. **It is
+not. It says a build STARTED.** Rule 19 says to check the deployment status, not
+the push result, and the hook's sentence is the precise thing that rule warns
+against trusting.
+
+I could not retrieve the build logs for either failure (`railway logs` returns
+nothing for them). The tree that succeeded at 01:04 is a strict superset of both
+failed ones, so a persistent code fault is unlikely, but I am not asserting
+"transient" without evidence I do not have.
 
 ---
 
@@ -197,7 +214,33 @@ that is stated rather than glossed.
 
 ---
 
-## 9 · Known-failing, pre-existing
+## 9 · Merge work that was mine to do, and what caught me
+
+Four branches were cut from `a8392d08`, before I changed
+`detectSimultaneousStressAddition` from a single previous week to the prefix of
+prior weeks. Git merged three of them textually while their call sites still
+used the old shape, and `tsc` caught every one. The corpus bridge's earning gate
+was quietly asking the runner to complete a planned CUTBACK, which is the same
+defect in a third costume, and it now requires the largest week the block asks
+before this one.
+
+Two gates caught mechanical resolutions of mine:
+
+- The Rule 22 bias gate failed when the dose corpus pushed the progression
+  ladder's ratio from 2.00 to 2.50, because `HOLD` is now a verdict word in a
+  THIRD mechanism. Scoping alone would have made the gate quieter rather than
+  more correct, so the dose mechanism got its own pair, measured at **0.54: 24
+  push-side files against 13 pull-back.** Its upward path is better covered than
+  its downward one.
+- An oracle then caught THAT, because it hardcoded one exclusion path and my new
+  one made it fail with `expected 15 to be 9`. It now reads the pair's declared
+  scope, and widening that declaration to `lib/` fails it with `expected 15 to
+  be 34`.
+- The orphan gate caught my additive merge of the registry: I kept both sides
+  mechanically and re-added a `weekly-demand.ts` exemption that had become stale
+  the moment `defer-persist` gave that module a caller.
+
+## 10 · Known-failing, pre-existing
 
 Nine failures in two post-run live-audit files. **Verified pre-existing** by
 running them against unmodified `origin/main` in a detached worktree, where they

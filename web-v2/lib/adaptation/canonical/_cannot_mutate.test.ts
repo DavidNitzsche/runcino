@@ -320,6 +320,10 @@ const ALLOWED_LOADER_FILE = path.join(WEB, 'lib/adaptation/canonical-shadow/live
  * exactly which symbols the split bought.
  */
 const ALLOWED_DEMAND_LOADER_FILE = path.join(WEB, 'lib/adaptation/canonical-shadow/demand-input.ts');
+// MILEAGE-RESPONSIVE-1 (2026-09-04) · see the four grants at the end of
+// ALLOWLIST. ONE file, deliberately, so a whole directory's dependence on this
+// engine is auditable in one place.
+const ALLOWED_VOLUME_EVIDENCE_DOOR = path.join(WEB, 'lib/adaptation/volume-evidence/contract.ts');
 const ALLOWLIST: readonly AllowedImport[] = [
   { file: ALLOWED_EXCEPTION_FILE, module: '@/lib/adaptation/canonical/evaluate', symbols: new Set(['evaluateAdaptation']) },
   // DEFERPERSIST-1 (2026-09-04) · the shadow cycle must CARRY THE DEFERRAL
@@ -406,6 +410,35 @@ const ALLOWLIST: readonly AllowedImport[] = [
     // the same week. It has to call the other side to compare against it.
     symbols: new Set(['projectPlanLoad']),
   },
+  /* ── MILEAGE-RESPONSIVE-1 (2026-09-04) · FOUR GRANTS, ONE FILE ──────────
+   *
+   * `lib/adaptation/volume-evidence/` is the shadow-only path from "the runner
+   * ran MORE than prescribed" to "future planned mileage increases" -- the
+   * question three separate code paths answered downward or not at all. It
+   * needs this engine's EVIDENCE VOCABULARY: the `Measured<T>` constructors so
+   * a second dialect of "measured / absent / failed" never has to exist (Rule
+   * 16), the grade set whose complement that engine's own doc comment warns
+   * must not be spent as counter-evidence, and the doctrine constants whose
+   * whole point is that the upward and downward paths share them (Rule 21).
+   *
+   * IT TAKES ONE DOOR. Five files there needed these symbols and the first cut
+   * imported them five ways; this guard caught it on the first full-suite run.
+   * They now reach the directory through `volume-evidence/contract.ts`, which
+   * re-exports them, so the surface below is four grants against ONE file
+   * rather than a dozen against five.
+   *
+   * NOTHING BEHIND THESE GRANTS CAN DECIDE ANYTHING. Two pure constructors, a
+   * frozen Set of two grade names, five doctrine constants and a citation
+   * string, and one PURE ledger function that takes a queue and returns a
+   * queue. There is deliberately no grant for `evaluate`, for any lever, or
+   * for `arbitrate`: that directory speaks this engine's vocabulary, it does
+   * not run it, and `volume-evidence/_mileage_responsive.test.ts` asserts it
+   * holds no writer of its own.
+   */
+  { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/input', symbols: new Set(['measured', 'absent', 'failed']) },
+  { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/stimulus', symbols: new Set(['GRADES_THAT_COUNT_AS_EVIDENCE']) },
+  { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/deferral-queue', symbols: new Set(['reconsiderAtBoundary']) },
+  { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/contract-constants', symbols: new Set(['CONTRACT_DOC', 'VOLUME_MAX_STEP_FRAC', 'VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE', 'VOLUME_MIN_CONSECUTIVE_WEEKS', 'VOLUME_WEEK_COMPLETION_MIN_FRAC']) },
 ];
 
 function violatesAllowlist(file: string, imp: { module: string; names: string[] }): boolean {
@@ -425,6 +458,7 @@ describe('guard 4 · nothing outside imports this engine, nested paths included,
   it('liveness · both authorized files exist and were included in the scan', () => {
     expect(OUTSIDE).toContain(ALLOWED_EXCEPTION_FILE);
     expect(OUTSIDE).toContain(ALLOWED_LOADER_FILE);
+    expect(OUTSIDE).toContain(ALLOWED_VOLUME_EVIDENCE_DOOR);
   });
 
   it('ORACLE · a nested import is detected, which the pre-existing flat gate misses', () => {
