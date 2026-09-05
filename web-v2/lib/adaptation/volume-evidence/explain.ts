@@ -50,6 +50,18 @@ export interface ExplainInput {
   /** What stopped it, when nothing was raised. */
   readonly blockedBy: PreservationReason | null;
   readonly phase: PhaseIntent;
+  /**
+   * CONTINUOUS-EVIDENCE-1 · how much of a full doctrinal step the accumulated
+   * evidence has bought, in [0, 1]. `CapacityAccumulation.progressionFraction`.
+   *
+   * Carried because without it this composer attributed EVERY unmoved week to
+   * the envelope, and said "the weeks ahead are already at what it supports"
+   * over a runner whose real situation was "you ran extra and recovery has not
+   * yet shown you absorbed it". Both produce zero added miles and they are
+   * different facts, so they must not produce the same sentence (Rule 16: a
+   * sentence about a measurement is gated on that measurement).
+   */
+  readonly progressionFraction: number;
 }
 
 const mi = (n: number): string => `${roundTo(n)} miles`;
@@ -116,6 +128,15 @@ export function explainVolumeResponse(input: ExplainInput): string {
         + 'block to change.';
     case 'ALREADY_AT_OR_ABOVE_THE_ENVELOPE':
     default:
+      // THREE different facts behind one zero, said as three sentences.
+      if (input.progressionFraction <= 0) {
+        return 'The extra mileage is on the record. Recovery has not shown yet that you '
+          + 'absorbed it, so the weeks ahead stay as written.';
+      }
+      if (input.progressionFraction < 1) {
+        return 'The extra mileage counts as evidence, and it is part of the way to a larger '
+          + 'week. The weeks ahead stay as written until there is more of it.';
+      }
       return 'The extra mileage counts as evidence. The weeks ahead are already at what it '
         + 'supports, so they stay as written.';
   }
@@ -132,14 +153,19 @@ export function allExplanations(): string[] {
   const out: string[] = [];
   for (const phase of phases) {
     for (const blockedBy of reasons) {
-      out.push(explainVolumeResponse({
-        admission: admitted, addedMi: 0, weeksRaised: 0, firstRaisedWeekISO: null, blockedBy, phase,
-      }));
+      // Every progression fraction that produces a DIFFERENT sentence, so the
+      // voice gate walks all three of them rather than only the full one.
+      for (const progressionFraction of [0, 0.28, 1]) {
+        out.push(explainVolumeResponse({
+          admission: admitted, addedMi: 0, weeksRaised: 0, firstRaisedWeekISO: null,
+          blockedBy, phase, progressionFraction,
+        }));
+      }
     }
     for (const weeksRaised of [1, 3]) {
       out.push(explainVolumeResponse({
         admission: admitted, addedMi: 2.4, weeksRaised, firstRaisedWeekISO: '2026-09-07',
-        blockedBy: null, phase,
+        blockedBy: null, phase, progressionFraction: 1,
       }));
     }
     for (const outcome of ['NOT_SUPPORTED', 'UNREADABLE'] as const) {
@@ -151,6 +177,7 @@ export function allExplanations(): string[] {
         out.push(explainVolumeResponse({
           admission: { admitted: false, outcome, blocking: [...blocking], conditions: [] },
           addedMi: 0, weeksRaised: 0, firstRaisedWeekISO: null, blockedBy: null, phase,
+          progressionFraction: 0,
         }));
       }
     }

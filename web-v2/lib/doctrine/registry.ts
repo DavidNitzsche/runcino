@@ -19677,6 +19677,160 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       );
     },
   },
+
+  /* ══════════════════════════════════════════════════════════════════════
+   * CONTINUOUS-EVIDENCE-1 · the volume-evidence curve.
+   *
+   * `lib/adaptation/volume-evidence/weight.ts` replaced a binary admission bar
+   * with a continuous, confidence-weighted curve, and every coefficient in it
+   * carries a declared provenance. The three claims below are the
+   * CALCULATED_PHYSIOLOGY half of that ledger: each reads its number out of
+   * the cited doc at gate time and asserts the engine constant equals it, so a
+   * constant that drifts from its own citation fails rather than agreeing with
+   * itself (Rule 7 point 2).
+   *
+   * The POLICY_ASSUMPTION half is deliberately NOT here, because it cites
+   * nothing. `_continuous_evidence.test.ts` is what holds those honest: it
+   * asserts every chosen number says in its own text that it was chosen.
+   * ═════════════════════════════════════════════════════════════════════ */
+  {
+    id: 'VOLUME.evidence-noise-floor-is-the-gps-error-band',
+    binds: [
+      'web-v2/lib/adaptation/volume-evidence/weight.ts#GPS_DISTANCE_ERROR_LO_FRAC',
+      'web-v2/lib/adaptation/volume-evidence/weight.ts#GPS_DISTANCE_ERROR_HI_FRAC',
+    ],
+    doc: 'Research/15-wearable-data.md',
+    anchor: 'measured by GPS distance can over- or under-report by',
+    claim:
+      'A GPS watch can misreport distance by 1-3 per cent on its own. So a weekly surplus '
+      + 'below the LOWER edge of that band says nothing about the runner and contributes no '
+      + 'volume evidence, and the gate between there and the upper edge is a ramp rather than '
+      + 'a step, because doctrine states a range and a step inside a stated range is CLAUDE.md '
+      + 'Rule 9\'s cliff.',
+    check({ cite }) {
+      const [lo, hi] = parsePctBand(cite.section[0]);
+      const src = sourceOf('web-v2/lib/adaptation/volume-evidence/weight.ts');
+      const loM = matchLiteral(
+        src, /export const GPS_DISTANCE_ERROR_LO_FRAC = ([\d.]+);/,
+        'the volume-evidence noise floor',
+      );
+      const hiM = matchLiteral(
+        src, /export const GPS_DISTANCE_ERROR_HI_FRAC = ([\d.]+);/,
+        'the volume-evidence noise ceiling',
+      );
+      if (Number(loM[1]) !== lo || Number(hiM[1]) !== hi) {
+        throw new Error(
+          `the GPS noise band in weight.ts is ${loM[1]}-${hiM[1]}, doctrine states `
+            + `${lo}-${hi} (${cite.section[0].trim()})`,
+        );
+      }
+    },
+  },
+  {
+    id: 'VOLUME.credit-ceiling-and-unlock-are-the-cycle-growth-band',
+    binds: [
+      'web-v2/lib/adaptation/volume-evidence/weight.ts#PER_WEEK_CREDIT_CEILING_FRAC',
+      'web-v2/lib/adaptation/volume-evidence/weight.ts#PROGRESSION_UNLOCK_FRAC',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'Doctrine states base growth of 5-15 per cent PER TRAINING CYCLE, not per week. So the '
+      + 'LOWER edge is the most a single week of extra mileage may claim as evidence, which is '
+      + 'what stops one extreme overrun establishing sustainable capacity, and the UPPER edge '
+      + 'is one cycle\'s worth of growth and therefore what a full volume step costs. Their '
+      + 'ratio is exactly the contract\'s minimum corroboration count of three weeks.',
+    check({ cite }) {
+      const cell = cite.table().cell('Year-on-year base growth', 'Specification');
+      if (!cell.toLowerCase().includes('cycle')) {
+        throw new Error(
+          'the base-growth cell no longer states its band per CYCLE, which is the entire '
+            + `argument for the lower edge being a per-WEEK ceiling: "${cell}"`,
+        );
+      }
+      const [lo, hi] = parsePctBand(cell);
+      const src = sourceOf('web-v2/lib/adaptation/volume-evidence/weight.ts');
+      const unlock = Number(matchLiteral(
+        src, /export const PROGRESSION_UNLOCK_FRAC = ([\d.]+);/,
+        'the volume-evidence progression unlock',
+      )[1]);
+      if (unlock !== hi) {
+        throw new Error(
+          `PROGRESSION_UNLOCK_FRAC is ${unlock}, doctrine's per-cycle growth ceiling is ${hi}`,
+        );
+      }
+      // The per-week ceiling is not a literal in that file: it is
+      // VOLUME_ADDITION_THRESHOLD, imported so the bar to add mileage is one
+      // constant on the way up and on the way down (CLAUDE.md Rule 21). Assert
+      // the IMPORT, then assert the imported value against doctrine's lower edge.
+      matchLiteral(
+        src,
+        /export const PER_WEEK_CREDIT_CEILING_FRAC = VOLUME_ADDITION_THRESHOLD;/,
+        'the per-week credit ceiling reuses the app\'s one addition threshold',
+      );
+      const adj = sourceOf('web-v2/lib/plan/adjudication/adjudicate.ts');
+      const addition = Number(matchLiteral(
+        adj, /VOLUME_ADDITION_THRESHOLD\s*=\s*([\d.]+)/,
+        'the shared volume-addition threshold',
+      )[1]);
+      if (addition !== lo) {
+        throw new Error(
+          `VOLUME_ADDITION_THRESHOLD is ${addition}, doctrine's per-cycle growth FLOOR is `
+            + `${lo}, and weight.ts spends it as the per-week credit ceiling`,
+        );
+      }
+      if (Math.abs(unlock / addition - 3) > 1e-9) {
+        throw new Error(
+          `the calibration identity broke: ${unlock} / ${addition} is `
+            + `${unlock / addition}, not the three consecutive weeks the adaptation contract `
+            + 'requires. Re-argue the calibration rather than adjusting one side.',
+        );
+      }
+    },
+  },
+  {
+    id: 'VOLUME.evidence-window-is-the-chronic-load-window',
+    binds: ['web-v2/lib/adaptation/volume-evidence/weight.ts#EVIDENCE_WINDOW_DAYS'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Load metrics',
+    claim:
+      'Chronic load is defined over 28 days, so 28 days is the period this domain\'s own '
+      + 'doctrine integrates training volume over, and therefore the outer edge of the window '
+      + 'a volume-evidence ledger may accumulate across. Evidence older than that has decayed '
+      + 'to nothing, and it decays along a ramp rather than dropping at the edge, because a '
+      + 'flat window is Rule 9\'s cliff on the time axis.',
+    check({ cite }) {
+      const [days] = parseBand(cite.table().cell('Chronic load (28-day)', 'Calculation'));
+      const src = sourceOf('web-v2/lib/adaptation/volume-evidence/weight.ts');
+      // The window is not a literal in that file: it is the contract's own
+      // THRESHOLD_EVIDENCE_WINDOW_DAYS, imported through this directory's one
+      // door so the app holds a single definition of it (Rule 16). So assert
+      // the IMPORT, then assert the imported value against doctrine.
+      matchLiteral(
+        src,
+        /export const EVIDENCE_WINDOW_DAYS = THRESHOLD_EVIDENCE_WINDOW_DAYS;/,
+        'the volume-evidence window reuses the contract\'s one evidence window',
+      );
+      const cc = sourceOf('web-v2/lib/adaptation/canonical/contract-constants.ts');
+      const engine = Number(matchLiteral(
+        cc, /export const THRESHOLD_EVIDENCE_WINDOW_DAYS = (\d+);/,
+        'the contract evidence window',
+      )[1]);
+      if (engine !== days) {
+        throw new Error(
+          `EVIDENCE_WINDOW_DAYS resolves to ${engine}, doctrine's chronic-load window is `
+            + `${days}`,
+        );
+      }
+      // And the decay is a ramp. A gate that only checked the number would pass
+      // a flat window, which is the defect this claim's second sentence names.
+      matchLiteral(
+        src,
+        /return 1 - rampAcross\(EVIDENCE_FULL_CREDIT_DAYS, EVIDENCE_WINDOW_DAYS, ageDays\);/,
+        'recencyWeight decays along a ramp rather than dropping at the window edge',
+      );
+    },
+  },
 ];
 
 /** The four race-week templates in Research/08 section 9.3, by their own
