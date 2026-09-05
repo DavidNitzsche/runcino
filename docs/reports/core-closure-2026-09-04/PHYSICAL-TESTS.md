@@ -43,6 +43,39 @@ agent's export uploaded by this session's `altool`, and 272's commit message
 credits a fix authored 5h38m after its upload. They are kept in the record as
 the failure, not as validation targets.
 
+## What was attempted on the simulator, and exactly where it stopped
+
+Asked to execute this checklist before calling execution proven, I took it as
+far as it honestly goes without David's device or account, and no further.
+
+**Done, 2026-09-04, ad-hoc signed against commit `290c7782`:**
+
+| step | result |
+|---|---|
+| build for simulator | `** BUILD SUCCEEDED **` |
+| install on iPhone 17 Pro | ok |
+| launch `run.faff.app` | ok, pid 82344 |
+| first frame renders | sign-in screen, correct palette and display face |
+
+**That is the whole of it, and it proves only that the build is not broken.**
+
+**Why it stops there.** The build points at `https://www.faff.run` — production,
+not a local server (`API.swift:355`). Every screen past sign-in therefore needs
+a real session for David's account, and minting one is a **production write**.
+That is not covered by the read-only credential approval, so I did not do it.
+Previous sessions minted `debug-verify-*` tokens and revoked them; I am not
+treating that as standing permission.
+
+**So none of the fourteen SMOKE steps below has been executed.** Even the ones a
+simulator could in principle drive (rapid day taps, week swipes, Today→Run
+identity) need authenticated real data to mean anything — a screenshot of an
+empty shell is the "verified against a sample fixture" failure Rule 13 names.
+
+**Nothing about workout execution is proven.** iPhone: NOT VERIFIED. Watch: NOT
+VERIFIED.
+
+---
+
 ## SMOKE · 6 minutes, runnable the moment the build installs
 
 Everything here needs only the app and a phone. Nothing waits for a particular
