@@ -34,6 +34,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { rowsOrNull } from '@/lib/db/read';
+import { planVersionOf } from '@/lib/plan/plan-version';
 import {
   type PlannedWeek,
   detectSimultaneousStressAddition,
@@ -95,7 +96,14 @@ export interface LiveWeek extends PlannedWeek {
 }
 
 export type SequenceRead =
-  | { readonly ok: true; readonly weeks: readonly LiveWeek[] }
+  | {
+    readonly ok: true;
+    readonly weeks: readonly LiveWeek[];
+    /** The plan the weeks were read from, and its version — so a caller that
+     *  schedules or proposes against them names the same plan (Rule 16). */
+    readonly planId: string;
+    readonly planVersion: string;
+  }
   | { readonly ok: false; readonly why: string };
 
 /**
@@ -126,6 +134,8 @@ export async function loadPlannedWeeks(userUuid: string): Promise<SequenceRead> 
     is_race_week: boolean | null;
     is_cutback: boolean | null;
     phase_label: string | null;
+    plan_id: string;
+    last_adapted_at: Date | null;
   }>(
     'adjudication/live-sequence · active block',
     pool.query(
@@ -182,7 +192,12 @@ export async function loadPlannedWeeks(userUuid: string): Promise<SequenceRead> 
     });
   }
 
-  return { ok: true, weeks: [...byWeek.values()].sort((a, b) => a.weekStartISO.localeCompare(b.weekStartISO)) };
+  return {
+    ok: true,
+    weeks: [...byWeek.values()].sort((a, b) => a.weekStartISO.localeCompare(b.weekStartISO)),
+    planId: rows[0].plan_id,
+    planVersion: planVersionOf({ id: rows[0].plan_id, last_adapted_at: rows[0].last_adapted_at }),
+  };
 }
 
 export interface SequenceFinding {

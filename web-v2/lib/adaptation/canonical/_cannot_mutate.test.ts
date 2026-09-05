@@ -258,7 +258,26 @@ describe('guard 3 · no engine file names a plan writer', () => {
  * mixed in — is what actually runs code, and is everything below.
  */
 function canonicalEngineImportsIn(code: string): Array<{ module: string; names: string[] }> {
-  const RE = /import\s+(?!type\s)\{([^}]*)\}\s+from\s+'(@\/lib\/adaptation\/[a-zA-Z0-9_/-]+)'/g;
+  /**
+   * ── SEALDOOR-1 (2026-09-05) · `export { X } from` IS AN IMPORT
+   *
+   * This matched `import ... from` only, so a RE-EXPORT was invisible to the
+   * whole gate. Any file outside the engine could write
+   *
+   *     export { projectPlanLoad } from '@/lib/adaptation/canonical/plan-load';
+   *
+   * and every guard here would report clean while the symbol was handed to
+   * anyone who imported that file. The seal's own purpose — that nothing
+   * outside reaches the engine except through enumerated entry points — was
+   * bypassable in one line.
+   *
+   * Found by falsifying an allowlist entry rather than by reading: a new door
+   * file was added with an entry authorising ONE symbol, and widening it to a
+   * second unauthorised symbol PASSED. Removing the entry entirely also
+   * passed, which is the tell — the entry was decorative, and a decorative
+   * allowlist entry is worse than none because it reads as protection.
+   */
+  const RE = /(?:import|export)\s+(?!type\s)\{([^}]*)\}\s+from\s+'(@\/lib\/adaptation\/[a-zA-Z0-9_/-]+)'/g;
   const out: Array<{ module: string; names: string[] }> = [];
   let m: RegExpExecArray | null;
   // eslint-disable-next-line no-cond-assign
@@ -324,7 +343,24 @@ const ALLOWED_DEMAND_LOADER_FILE = path.join(WEB, 'lib/adaptation/canonical-shad
 // ALLOWLIST. ONE file, deliberately, so a whole directory's dependence on this
 // engine is auditable in one place.
 const ALLOWED_VOLUME_EVIDENCE_DOOR = path.join(WEB, 'lib/adaptation/volume-evidence/contract.ts');
+/**
+ * ROLLINGBOUNDARY-1 (2026-09-05) · the adjudication layer's one door, in the
+ * pattern MILEAGE-RESPONSIVE-1 set: ONE file per directory, so a whole
+ * directory's dependence on this engine is auditable in one place.
+ *
+ * `lib/plan/adjudication/rolling-boundary.ts` compares WEEKS BY DEMAND rather
+ * than by a count of hard days, because a count cannot tell a controlled 10K
+ * followed by 17 miles from a milder week carrying the same number of
+ * stressors. `projectPlanLoad` is the one function that prices weekly miles,
+ * the long-run surcharge and quality minutes together; re-deriving it in the
+ * adjudication layer would be a second opinion about what a week costs and
+ * would drift the first time a coefficient moved (Rule 16).
+ *
+ * Pure, plain numbers in and out, in a file that already passes guards 1-3.
+ */
+const ALLOWED_ADJUDICATION_DEMAND_DOOR = path.join(WEB, 'lib/plan/adjudication/canonical-demand.ts');
 const ALLOWLIST: readonly AllowedImport[] = [
+  { file: ALLOWED_ADJUDICATION_DEMAND_DOOR, module: '@/lib/adaptation/canonical/plan-load', symbols: new Set(['projectPlanLoad']) },
   { file: ALLOWED_EXCEPTION_FILE, module: '@/lib/adaptation/canonical/evaluate', symbols: new Set(['evaluateAdaptation']) },
   // DEFERPERSIST-1 (2026-09-04) · the shadow cycle must CARRY THE DEFERRAL
   // QUEUE across boundaries, which is what makes a deferred progression

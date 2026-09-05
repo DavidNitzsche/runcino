@@ -454,9 +454,14 @@ export async function POST(req: NextRequest) {
        * throw here would cost the whole nightly tick for every runner behind
        * him in the loop. */
       try {
-        const [{ loadPlannedWeeks, findSequenceFindings }, { runnerToday }] = await Promise.all([
+        const [
+          { loadPlannedWeeks, findSequenceFindings },
+          { runnerToday },
+          { boundaryDatesForWeek },
+        ] = await Promise.all([
           import('@/lib/plan/adjudication/live-sequence'),
           import('@/lib/runtime/runner-tz'),
+          import('@/lib/plan/adjudication/rolling-boundary'),
         ]);
         const seq = await loadPlannedWeeks(uid);
         if (!seq.ok) {
@@ -479,6 +484,50 @@ export async function POST(req: NextRequest) {
           if (findings.length === 0) {
             console.log(`[run-adaptations] sequence gate clean · ${uid.slice(0, 8)} · `
               + `${seq.weeks.length} week(s) read`);
+          }
+
+          /* ── LIVESEQ-2 (2026-09-05) · THE THREE ROLLING BOUNDARIES
+           *
+           * The owner's ruling on the single 09-21 gate: "Do not use one
+           * impossible gate." A gate on one date has to decide what a week
+           * will cost using evidence that does not exist yet — how the
+           * mid-week session was absorbed, and what the weekend race actually
+           * turned out to be — so it must either guess or refuse.
+           *
+           * Three boundaries each decide with the evidence available AT that
+           * moment, and each can only change what is still ahead of it. They
+           * are scheduled for the NEXT upcoming week, every night,
+           * idempotently: the key is the week plus the boundary, so a nightly
+           * re-request yields one row each rather than one per tick.
+           *
+           * While migration 167 is unapplied every one of these answers
+           * `table_absent`, which is reported rather than swallowed. That is
+           * the honest state and it is visible. */
+          const today = await runnerToday(uid);
+          const upcoming = seq.weeks.find((w) => w.weekStartISO > today);
+          if (upcoming) {
+            const dates = boundaryDatesForWeek(upcoming);
+            if (dates) {
+              const { boundariesForWeek } = await import('@/lib/plan/adjudication/rolling-boundary');
+              const { scheduleReassessment } = await import('@/lib/ops/reassessment-scheduler');
+              const reqs = boundariesForWeek({
+                userUuid: uid,
+                planId: seq.planId,
+                planVersion: seq.planVersion,
+                weekStartISO: upcoming.weekStartISO,
+                ...dates,
+                todayISO: today,
+              });
+              for (const r of reqs) {
+                const res = await scheduleReassessment(r);
+                if (res.state !== 'ok') {
+                  console.log(
+                    `[run-adaptations] boundary ${r.reasonCode} for ${upcoming.weekStartISO} `
+                    + `not scheduled · ${res.state} · ${res.why}`,
+                  );
+                }
+              }
+            }
           }
         }
       } catch (e) {
