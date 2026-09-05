@@ -304,7 +304,10 @@ function optionsFor(cls: EvidenceClass, holdCls: EvidenceClass): OptionAppraisal
  */
 export function traceForWeek(args: {
   readonly week: PlannedWeek;
-  readonly previous: PlannedWeek | null;
+  /** Every week composed BEFORE this one, oldest first. The one-at-a-time
+   *  reader takes the trailing few and reads their max, because the single
+   *  previous week is poisoned by any planned cutback. */
+  readonly priorWeeks: readonly PlannedWeek[];
   readonly hist: DemonstratedHistory;
   /** What the plan builds him to by this week, if he executes it: the largest
    *  week composed before this one. Defect 1 — a November week is not run by
@@ -312,7 +315,12 @@ export function traceForWeek(args: {
   readonly projectedPeakMi: number | null;
   readonly historyWindow: string;
 }): DecisionTrace {
-  const { week, previous, hist, projectedPeakMi, historyWindow } = args;
+  const { week, priorWeeks, hist, projectedPeakMi, historyWindow } = args;
+  // The largest week the block asks before this one, which is what an earning
+  // gate should require and what a REDUCE should fall back to.
+  const gateBaselineMi = priorWeeks.length === 0
+    ? null
+    : Math.max(...priorWeeks.map((w) => w.weeklyMi));
 
   const athlete = athleteEvidenceFor({
     what: `a ${week.weeklyMi} mi week`,
@@ -325,7 +333,12 @@ export function traceForWeek(args: {
   });
 
   const stacked = detectStackedStress(week, hist);
-  const addsBoth = detectSimultaneousStressAddition(week, previous);
+  // SIGNATURE-MERGE (2026-09-05) · this took `previous: PlannedWeek | null` when
+  // this file was written. It now takes the PREFIX of weeks before this one,
+  // because reading the single previous week let a planned cutback poison the
+  // baseline. `priorWeeks` is that prefix; a null `previous` becomes an empty
+  // one, which the function already refuses on.
+  const addsBoth = detectSimultaneousStressAddition(week, priorWeeks);
   const cls = athlete.evidenceClass;
   const options = optionsFor(cls, 'SUPPORTED');
   const ranked = rankOptions(options);
@@ -361,17 +374,21 @@ export function traceForWeek(args: {
       demonstratedMaxToday: hist.peakWeeklyMi,
       assessOnISO,
       requires: [{
-        what: previous == null
+        // The requirement names the LARGEST week the block asks before this
+        // one, not the immediately preceding week: a gate that asks the runner
+        // to complete a planned cutback is asking for the wrong thing, and it
+        // is the same defect the baseline had.
+        what: gateBaselineMi == null
           ? 'the block\'s opening week completed'
-          : `the ${previous.weeklyMi} mi week completed`,
-        measurable: `weekly mileage >= ${previous == null ? week.weeklyMi : previous.weeklyMi}, `
+          : `the ${gateBaselineMi} mi week completed`,
+        measurable: `weekly mileage >= ${gateBaselineMi ?? week.weeklyMi}, `
           + 'no session graded MISSED',
         // The requirement is due when the gate runs, never after it. A gate
         // that asks about a week which has not run yet cannot be answered.
         byISO: assessOnISO,
       }],
       ifUnmet: 'REDUCE',
-      reduceTo: previous?.weeklyMi ?? hist.peakWeeklyMi,
+      reduceTo: gateBaselineMi ?? hist.peakWeeklyMi,
     })
     : null;
 
@@ -527,14 +544,14 @@ export function adjudicateComposedBlock(args: {
 
   for (let i = 0; i < material.length; i += 1) {
     const week = material[i];
-    // `material[-1]` is undefined, so this is "there is no week before this
-    // one" rather than a comparison against a fabricated empty week.
-    const previous = material[i - 1] ?? null;
+    // The prefix, not the single previous week: `earlier` is empty at the
+    // opening, which the reader refuses on, rather than a comparison against a
+    // fabricated empty week.
     const earlier = material.slice(0, i);
     // The body the plan builds him to by this week: the largest week it has
     // asked for before this one, or null at the opening, which has no runway.
     const projectedPeakMi = maxOf(earlier.map((w) => w.weeklyMi));
-    traces.push(traceForWeek({ week, previous, hist, projectedPeakMi, historyWindow: windowDescribed }));
+    traces.push(traceForWeek({ week, priorWeeks: earlier, hist, projectedPeakMi, historyWindow: windowDescribed }));
     if (week.mpMi > 0) {
       traces.push(mpTraceForWeek({
         week,
@@ -622,7 +639,7 @@ export function adjReachOf(adj: CorpusAdjudication): Set<AdjReachBranch> {
   // The sequence walk, run over the same weeks `checkPromotion` walks.
   let violated = false;
   for (let i = 1; i < adj.weeks.length; i += 1) {
-    if (detectSimultaneousStressAddition(adj.weeks[i], adj.weeks[i - 1]) != null) violated = true;
+    if (detectSimultaneousStressAddition(adj.weeks[i], adj.weeks.slice(0, i)) != null) violated = true;
   }
   got.add(violated ? 'adj:one-at-a-time-violated' : 'adj:one-at-a-time-clean');
 

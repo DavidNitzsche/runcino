@@ -387,12 +387,13 @@ describe('ADJ-PROP-1 · unknown stays unknown, all the way through checkPromotio
     expect(e.ceilingClaim!.why).toMatch(/may not be used to refuse anything/);
   });
 
-  it('a missing PREVIOUS week is not a zero-mileage week · the sequence walk refuses', () => {
-    // `detectSimultaneousStressAddition(week, null)` must not read "no previous
-    // week" as "a previous week of zero miles", which would make every block's
-    // opening week a 100% mileage addition.
-    expect(detectSimultaneousStressAddition(W1, null)).toBeNull();
-    expect(detectSimultaneousStressAddition(W1, { ...W1, weeklyMi: 0 })).toBeNull();
+  it('an EMPTY history of prior weeks is not a zero-mileage week · the walk refuses', () => {
+    // The reader must not treat "there is no week before this one" as "a
+    // previous week of zero miles", which would make every block's opening week
+    // a 100% mileage addition. The signature is now the PREFIX of prior weeks,
+    // so the empty case is `[]` rather than `null`.
+    expect(detectSimultaneousStressAddition(W1, [])).toBeNull();
+    expect(detectSimultaneousStressAddition(W1, [{ ...W1, weeklyMi: 0 }])).toBeNull();
   });
 });
 

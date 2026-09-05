@@ -182,7 +182,7 @@ const PAIRS: readonly Pair[] = [
     // canonical-engine vocabulary, so this exclusion changes nothing today
     // (measured 0.44 either way) and is applied to both progression-ladder
     // pairs so the two cannot answer the same question over different corpora.
-    excludePathContains: ['lib/adaptation/canonical/'],
+    excludePathContains: ['lib/adaptation/canonical/', 'lib/plan/adjudication/'],
     // MEASURED 0.38 · 8 ACCELERATE files against 3 BACK_OFF. This is the pair
     // Rule 22 was locked on, at 2 against 1 in the other direction ("29 files
     // know how to hold a runner back, 2 know what it means to accelerate one"
@@ -191,10 +191,29 @@ const PAIRS: readonly Pair[] = [
     measuredRatio: 0.38,
   },
   {
+    // DOSE-RESPONSIVE (2026-09-05) · a THIRD mechanism spelling a verdict
+    // `HOLD`, after the progression ladder and the canonical engine. Adding it
+    // to the corpus moved the ladder's take-against-hold pair from 2.00 to 2.50
+    // and failed this gate, for the same Rule 16 reason the canonical engine
+    // did: a file-name census cannot tell three mechanisms' vocabularies apart.
+    //
+    // So `lib/plan/adjudication/` is scoped out of both ladder pairs above AND
+    // measured here on its own words. Scoping without adding this pair would
+    // have made the gate quieter rather than more correct, which is exactly
+    // what its own header warns against.
+    mechanism: 'dose-responsive future workouts · progress against reduce',
+    up: ['PROGRESS'],
+    down: ['REDUCE'],
+    // MEASURED 0.54 · 24 push-side files against 13 pull-back. The upward path
+    // is BETTER covered than the downward one here, which is the direction Rule
+    // 21 asks for and the opposite of the legacy progression ladder.
+    measuredRatio: 0.54,
+  },
+  {
     mechanism: 'progression ladder · take against hold',
     up: ['TAKE', 'ACCELERATE'],
     down: ['HOLD', 'BACK_OFF'],
-    excludePathContains: ['lib/adaptation/canonical/'],
+    excludePathContains: ['lib/adaptation/canonical/', 'lib/plan/adjudication/'],
     // RE-MEASURED 2.00 on 2026-09-04 · 10 against 20, over the progression
     // ladder's own corpus. The previous pin of 2.44 (9 against 22) was measured
     // over a corpus that also contained every canonical-engine test file,
@@ -368,13 +387,19 @@ describe('Rule 22 · the distribution on each side of every opposing verdict', (
       const all = count(laddersHold.down, looseFiles);
       const scopedCount = countForPair(laddersHold, laddersHold.down, looseFiles);
       expect(scopedCount).toBeLessThan(all);
-      // And every file it dropped is a canonical-engine file, so the exclusion
-      // cannot be silently swallowing anything outside its argued scope.
+      // And every file it dropped matches one of the paths the pair DECLARES,
+      // so the exclusion cannot silently swallow anything outside its argued
+      // scope. Read off `excludePathContains` rather than hardcoding a path:
+      // this oracle used to name `lib/adaptation/canonical/` literally, and
+      // when a third mechanism's exclusion was added on 2026-09-05 it failed
+      // with `expected 15 to be 9`, which is the oracle doing its job and also
+      // the reason it should describe the declaration instead of one instance.
       const dropped = count(laddersHold.down, looseFiles) - scopedCount;
-      const canonicalHits = looseFiles('HOLD')
-        .concat(looseFiles('BACK_OFF'))
-        .filter((f) => f.includes('lib/adaptation/canonical/'));
-      expect(dropped).toBe(new Set(canonicalHits).size);
+      const declared = laddersHold.excludePathContains ?? [];
+      const hits = laddersHold.down
+        .flatMap((verdict) => looseFiles(verdict))
+        .filter((f) => declared.some((d) => f.includes(d)));
+      expect(dropped).toBe(new Set(hits).size);
     }
   });
 
