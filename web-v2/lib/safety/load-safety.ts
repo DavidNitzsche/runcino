@@ -280,8 +280,16 @@ async function readNiggle(userUuid: string, q: SafetyQuery): Promise<SignalRead<
   if (!current) return { ok: true, value: null };
 
   const site = String(current.body_part);
+  const currentAt = new Date(current.logged_at).getTime();
+  // STRICTLY EARLIER, not merely "a different row". `current` is the first
+  // UNCLEARED row, and a cleared row for the same site could have been logged
+  // after it; comparing against that would make `previousSeverity` a later
+  // reading than the one it is the previous of. Rare, and the kind of thing
+  // that produces a confident wrong "escalating" rather than a visible error.
   const earlier = rows.filter(
-    (x) => String(x.body_part) === site && String(x.id) !== String(current.id),
+    (x) => String(x.body_part) === site
+      && String(x.id) !== String(current.id)
+      && new Date(x.logged_at).getTime() < currentAt,
   );
   // `rows` arrives newest-first, so the first earlier row for this site IS the
   // most recent earlier reading.
