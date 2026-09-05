@@ -1,6 +1,6 @@
 # Handback · one brain
 
-**Start `141d025cd`.** End commit and deploy confirmed at the foot of this file.
+**Start `141d025cd` · end `3d6bc1e79`.** Deploy confirmed at the foot of this file.
 
 `AUTOMATIC_ADAPTATION_AUTHORITY` is still `false`. No live plan was written, no
 production migration applied, no plan data modified.
@@ -109,3 +109,61 @@ dropped refresh is how a screen keeps showing a corrected value.
 
 **None of these should be described as operational, and I am not describing
 them that way.**
+
+
+---
+
+## 7 · Ten direct answers
+
+**1 · If I outperform next week, what changes?** `demonstratedVolume` in
+`lib/adaptation/volume-evidence/belief.ts`, continuously and confidence-weighted.
+Your 2026-06-15 week (47.3 against 45.5) now contributes 27.8% of a step where
+it contributed zero. Fatigue moves on a separate channel and always moves.
+
+**2 · If threshold and mileage improve together, what advances?** Volume, then
+the long run, then pace, cited to `PROGRESSIVE_BASELINE_DOCTRINE`. The loser is
+deferred, not discarded. **This priority is still static; phase-aware
+arbitration is not built.**
+
+**3 · When does the deferred change return?** At the next weekly boundary,
+through the deferral queue. **In memory only. Its migration is unapplied, so it
+does not survive a process restart.**
+
+**4 · What exact proposal appears on my phone?** A card with direction
+(PUSH / HOLD / PULL BACK / MOVE / RECOVERY / STOP), a headline, the evidence
+sentence, an effective date, a standing, and Do it / Leave it / Details.
+Rendered, with screenshots. **Shipped in build 280 and 281.**
+
+**5 · What happens after I accept it?** `/api/plan/workout-proposals/[id]/accept`
+rebuilds the action and applies it through `applyAdaptations` under
+`RUNNER_ACCEPTED`. **That round trip has not been executed end to end.**
+
+**6 · What reaches my Watch?** One sentence, `sessionMoved.line`, and only for a
+moved session. **No other lever reaches the wrist.**
+
+**7 · What survives a plan rebuild?** Today: `plan_workouts` rows and their ids.
+**Beliefs, decisions and acknowledgements do not, because the durable ledger
+does not exist.** This is the single largest gap.
+
+**8 · Can I move a run and trigger complete re-adjudication?** Move yes,
+re-adjudicate no. `weekly-demand.ts` reaches `lib/adaptation/**`, a forbidden
+directory for the rescheduling surface.
+
+**9 · Can the ledger see every automatic and runner-approved change?** **No.
+There is no ledger.** The authority boundary logs to console.
+
+**10 · Which of the 23 levers are truly complete?** **One: threshold pace**, and
+only after tonight's unification. Weekly volume has an open lane with no
+generator. Everything else stops before the runner.
+
+---
+
+## 8 · Deployment
+
+    3d6bc1e79   pushed 2026-09-05T10:27:00-07:00
+    TestFlight 280   from 7998ad4b9   V5 proposal card, STUCKCONN-2
+    TestFlight 281   from e4295b1e8   plus REQUESTSTORM-1
+
+Tests: 10,862 passing, 1 expected fail, zero unexpected failures, 22/22 gates.
+
+Migrations applied to production: **none**.
