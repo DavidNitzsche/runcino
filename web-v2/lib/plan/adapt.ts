@@ -261,6 +261,20 @@ export type AdaptationTriggerKind =
                           // adaptation stays disabled (his ruling, 2026-09-02).
                           // Cite: Research/00b §"Recovery by Effort" ·
                           // lib/plan/designed-race-weekend.ts
+  | 'adaptive_ramp'       // PROPOSEUP-2 (2026-09-05) · the UPWARD VOLUME path,
+                          // and the reason it needed a name of its own: every
+                          // trigger kind above either reduces load, moves it,
+                          // or re-anchors PACE. `training_lead` is the pace
+                          // axis. Volume had no upward trigger at all, so the
+                          // one lever that could add mileage produced an action
+                          // with no trigger to carry its reason to the runner —
+                          // it went straight to `applyAdaptations` while the
+                          // seam was open, and to nothing at all once it
+                          // closed. CLAUDE.md's hero statement asks for both
+                          // axes ("with pace but also with volume"); this is
+                          // the second one becoming sayable.
+                          // Detector: lib/plan/adaptive-ramp.ts ·
+                          // Research/00a §"Practical load rules".
   | 'training_lead';      // 2026-08-25 · the UPWARD training-evidence path ·
                           // sustained quality work reading above the last race
                           // anchor by the doctrinal soft-lead quantum. The

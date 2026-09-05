@@ -1028,7 +1028,25 @@ export async function tryAdaptiveBump(
   //
   // To restore it, open `AUTOMATIC_ADAPTATION_AUTHORITY` in
   // lib/plan/adaptation-authority.ts. There is no other switch.
-  if (!automaticPlanMutationIsAuthorised()) return null;
+  //
+  // ── PROPOSEUP-2 (2026-09-05) · SEALED FROM WRITING IS NOT SEALED FROM ASKING
+  //
+  // The seal says this lever may not CHANGE the live plan. It has never said
+  // the runner may not be OFFERED the change, and the difference is the whole
+  // of Rule 21: measured across 309 production intents, the number of upward
+  // adaptations is zero, and nothing could distinguish "the engine never
+  // proposed one" from "it proposed and he declined", because there was no
+  // propose lane to decline from.
+  //
+  // So a closed seam now routes to `proposeAdaptiveBump`, which writes a
+  // `plan_workout_proposals` row and NOTHING else. It cannot reach
+  // `applyAdaptations` — it does not import it, and `_upward_propose.test.ts`
+  // asserts that by reading this module's source, because a comment saying so
+  // is documentation and a check saying so is enforcement (Rule 20).
+  if (!automaticPlanMutationIsAuthorised()) {
+    await proposeAdaptiveBump(userId, pullbackApplied);
+    return null;
+  }
   if (pullbackApplied) return null;
   // 48h lookback · a pull-back applied on an EARLIER tick still blocks.
   // Fails closed: an unreadable intents table is not "no recent pull-back".
@@ -1102,4 +1120,79 @@ function composeReason(signals: RampSignals): string {
     bits.push(`${signals.details.peakHeadroomMi}mi headroom to tier upper`);
   }
   return `Adaptive bump · ${bits.join(' · ')}.`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE UPWARD LEVER, AS AN OFFER
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Run the ramp detector and, when it fires, RAISE A CARD.
+ *
+ * This is the same detector `tryAdaptiveBump` uses — `actionForAdaptiveRamp`,
+ * with the same doctrine-bound caps — pointed at the proposal table instead of
+ * the plan. Nothing here writes `plan_workouts`, and that is structural rather
+ * than careful: `writeWorkoutProposals` is the only writer this function knows
+ * about, and it inserts into `plan_workout_proposals` alone.
+ *
+ * THE GUARDS ARE THE SAME ONES, DELIBERATELY. A pull-back inside the lookback
+ * still blocks, and an unreadable intents table still fails closed. Offering to
+ * add mileage the morning after the engine took some away would be incoherent
+ * whether or not the runner gets a say, and a guard that applies to the write
+ * and not to the offer is a guard with a hole in the shape of this function.
+ *
+ * WHAT THIS CANNOT DO (Rule 22): it cannot make the runner's plan harder. It
+ * can only ask. If he never opens the card, nothing happens, and that is the
+ * correct behaviour while the seam is closed — but it is also why "a card was
+ * raised" is not the same evidence as "the plan went up", and the ledger has
+ * to record which of the two occurred.
+ */
+export async function proposeAdaptiveBump(
+  userId: string,
+  pullbackApplied: boolean,
+): Promise<number> {
+  if (pullbackApplied) return 0;
+  const pullback = await recentPullbackTs(userId);
+  if (pullback.failed || pullbackBlocksBump(pullback.ts, Date.now())) return 0;
+
+  const action = await actionForAdaptiveRamp(userId);
+  if (!action) return 0;
+
+  const { writeWorkoutProposals } = await import('./workout-proposals');
+  const written = await writeWorkoutProposals(
+    userId,
+    [{
+      kind: 'mark_upgrade',
+      // Both fields, and they are not redundant. `bumps` carries the target
+      // distance per row, which is what makes the card acceptable at all;
+      // `workoutIds` is what the proposal writer iterates. An action with
+      // bumps and no workoutIds writes nothing and reports success.
+      workoutIds: action.bumps.map((b) => b.workoutId),
+      bumps: action.bumps,
+      why: action.why,
+      sourceTrigger: 'adaptive_ramp',
+    }],
+    [{
+      kind: 'adaptive_ramp',
+      // `info`, not `warn`. The severity scale is about how much attention a
+      // finding demands, and an offer of more work is not a warning — dressing
+      // a push as one would be the reducing instinct wearing the other lever's
+      // clothes.
+      severity: 'info' as const,
+      reason: action.why,
+      evidence: {
+        weekly_bump_mi: action.weeklyBumpMi,
+        long_bump_mi: action.longBumpMi,
+      },
+    }],
+  );
+
+  if (written > 0) {
+    console.log(
+      `[adaptive-ramp] PROPOSED a bump · user=${userId.slice(0, 8)} · `
+      + `${written} card(s) · +${action.weeklyBumpMi} mi on the week, `
+      + `+${action.longBumpMi} on the long. The plan is unchanged until he accepts.`,
+    );
+  }
+  return written;
 }

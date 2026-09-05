@@ -111,8 +111,16 @@ export async function writeWorkoutProposals(
     for (const workoutId of workoutIds) {
       try {
         // Read the workout's date for the row + sealed-day check.
-        const row = (await pool.query<{ date_iso: string }>(
-          `SELECT date_iso FROM plan_workouts WHERE id = $1 LIMIT 1`,
+        /* PROPOSEUP-2 (2026-09-05) · read the session's TYPE and DISTANCE too,
+         * not just its date. Two things needed them and neither could have
+         * them: the card cannot say "take 17% off" without a denominator, and
+         * the staleness check cannot tell whether the session changed under a
+         * pending proposal without knowing what it was. Both were reading an
+         * evidence blob that only some triggers happened to populate. */
+        const row = (await pool.query<{
+          date_iso: string; type: string; distance_mi: string | number | null;
+        }>(
+          `SELECT date_iso, type, distance_mi FROM plan_workouts WHERE id = $1 LIMIT 1`,
           [workoutId],
         ).catch(() => ({ rows: [] }))).rows[0];
         if (!row) continue;
@@ -169,11 +177,30 @@ export async function writeWorkoutProposals(
           continue;
         }
 
+        /* An upgrade names the distance it is proposing. Without it the card
+         * reads "Add to Thursday", the accept path finds no target to write,
+         * and the runner taps a button that cannot do anything — a proposable
+         * kind that is still inert, which is the failure PROPOSEUP-1 was meant
+         * to end rather than relocate. */
+        const bumpForRow = (action.bumps ?? []).find((b) => b.workoutId === workoutId);
+
         const payload = {
           newType: action.newType ?? null,
           newDate: action.newDate ?? null,
           shaveFraction: action.shaveFraction ?? null,
+          newDistanceMi: bumpForRow?.newDistanceMi ?? null,
           why: stripResearchCitations(action.why),
+        };
+
+        /* The session as it stands, recorded ON THE PROPOSAL. This is the
+         * `before` the accept path compares against: if the session is moved,
+         * resized or retyped while the card is pending, the decision was about
+         * something that no longer exists and accepting it would write over a
+         * plan it never saw. */
+        const evidenceForRow = {
+          ...evidence,
+          planned_type: row.type,
+          planned_distance_mi: row.distance_mi === null ? null : Number(row.distance_mi),
         };
 
         await pool.query(
@@ -182,7 +209,7 @@ export async function writeWorkoutProposals(
               action_payload, reason, evidence, source)
            VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7::jsonb, 'cron_evening')`,
           [userUuid, workoutId, row.date_iso, action.kind,
-           JSON.stringify(payload), reason, JSON.stringify(evidence)],
+           JSON.stringify(payload), reason, JSON.stringify(evidenceForRow)],
         );
         count++;
       } catch {

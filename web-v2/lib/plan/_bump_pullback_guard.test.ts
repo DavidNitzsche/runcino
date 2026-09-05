@@ -229,18 +229,58 @@ describe('2 · the 48h window, read from coach_intents', () => {
  *     accident.
  * ═══════════════════════════════════════════════════════════════════════ */
 
-describe('3 · tryAdaptiveBump refuses at the seam, before the window is even asked', () => {
-  it('no input reaches a read while AUTOMATIC_ADAPTATION_AUTHORITY is false', async () => {
-    // Both arguments, because `pullbackApplied: true` used to be its own
-    // "short-circuits before any read" test and is now the same fact as the
-    // other branch. One test, stated once (Rule 17), naming the real cause.
-    for (const pullbackApplied of [true, false]) {
-      issued.length = 0;
-      routeQueries(() => ({ rows: [] }));
-      expect(await tryAdaptiveBump(UUID, pullbackApplied)).toBeNull();
-      expect(issued, `pullbackApplied=${pullbackApplied} · the sealed bump read the database`)
-        .toEqual([]);
-    }
+describe('3 · tryAdaptiveBump cannot change the plan at the seam', () => {
+  /**
+   * ── PROPOSEUP-2 (2026-09-05) · THIS SECTION CHANGED. READ BEFORE TRUSTING IT.
+   *
+   * It used to assert that a sealed bump issued NO DATABASE READ AT ALL, and
+   * that was true until the upward lever gained a way to ASK. A closed seam now
+   * routes to `proposeAdaptiveBump`, which runs the same detector and writes a
+   * `plan_workout_proposals` row — so it reads, and the old assertion could
+   * only be kept by leaving the runner unable to ever be offered a push.
+   *
+   * WHY THE RELAXATION IS THE OWNER'S RULING AND NOT A WEAKENING OF IT.
+   * The ruling is "upward adaptation remains shadow-only and must remain
+   * incapable of changing the live plan", and the standing instruction is not
+   * to change the live plan or promote a live adaptation without approval.
+   * Proposing is neither: no `plan_workouts` row moves, and nothing is applied
+   * until he taps Accept. Rule 21 is the other half — the engine must be able
+   * to push, and a seal that also forbids ASKING makes the zero in "309
+   * intents, zero upward" unfalsifiable, because there is no propose lane to
+   * decline from.
+   *
+   * SO THE INVARIANT MOVED FROM "reads nothing" TO "writes no plan row", which
+   * is what the ruling actually says. If the owner wants the stricter form
+   * back, this is the one place to change and `proposeAdaptiveBump`'s call site
+   * is the one line to delete.
+   */
+  it('reports no bump, and reaches the OFFER path rather than dying at line one', async () => {
+    /* The load-bearing half. Asserting only "no plan row was written" would be
+     * VACUOUS here — with a stubbed database the detector finds nothing and
+     * returns long before any write could happen, so that assertion passes
+     * whatever this function does. Falsified and caught: injecting a literal
+     * `UPDATE plan_workouts` into the offer path did not fail it.
+     *
+     * What IS falsifiable is that the sealed branch now DOES look. Restore the
+     * old `return null` at the seam and this fails, which is exactly the
+     * regression worth catching: the upward lever going quiet again. */
+    issued.length = 0;
+    routeQueries(() => ({ rows: [] }));
+    expect(await tryAdaptiveBump(UUID, false)).toBeNull();
+    expect(issued.length, 'the sealed bump no longer reaches its detector — the upward '
+      + 'lever is inert again').toBeGreaterThan(0);
+    const planWrites = issued.filter((q) => /\b(UPDATE|INSERT|DELETE)\b/i.test(q)
+      && /plan_workouts\b/i.test(q));
+    expect(planWrites, 'the sealed bump wrote the plan').toEqual([]);
+  });
+
+  it('still reads nothing when a pull-back already fired this tick', async () => {
+    // The cheap guard is unchanged and still short-circuits first: there is no
+    // reason to run a detector whose answer is already blocked.
+    issued.length = 0;
+    routeQueries(() => ({ rows: [] }));
+    expect(await tryAdaptiveBump(UUID, true)).toBeNull();
+    expect(issued).toEqual([]);
   });
 
   it('and the seam is the reason · the switch is off and this file says which one', () => {
